@@ -224,7 +224,6 @@ export function stampGatePlanesLens(k: number): StampLensFrame {
     ]),
     bloom: 0,
     focus: null,
-    moving: false,
   };
 }
 

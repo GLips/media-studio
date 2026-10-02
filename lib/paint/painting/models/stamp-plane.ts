@@ -85,8 +85,8 @@ export type StampPlaneView = { readonly ma: number; readonly mb: number; readonl
 
 /**
  * How a frame shows one plane: `view`; `defocus`, a gaussian's sigma in frame px over its picture (0 sharp);
- * `distance`, from the camera, depth units; `shutter`, its views as the shutter opens and closes in a frame gathered
- * along its motion, else null.
+ * `distance`, from the camera, depth units; `shutter`, its views as the shutter opens and closes in a fast frame when
+ * they differ, else null.
  */
 export type StampPlaneLook = {
   readonly view: StampPlaneView;
@@ -97,7 +97,6 @@ export type StampPlaneLook = {
 
 /**
  * What a frame's lens does: each plane's look by id (a plane left out is at rest and sharp), and its bloom's sigma,
- * frame px. `focus`: what defocuses a three plane per pixel, its focus measured from the camera (null: sharp).
- * `moving`: the frame is gathered along its motion, a fast frame with its shutter open.
+ * frame px. `focus`: what defocuses a source plane per pixel, its focus measured from the camera (null: sharp).
  */
-export type StampLensFrame = { readonly planes: ReadonlyMap<string, StampPlaneLook>; readonly bloom: number; readonly focus: LensFocus | null; readonly moving: boolean };
+export type StampLensFrame = { readonly planes: ReadonlyMap<string, StampPlaneLook>; readonly bloom: number; readonly focus: LensFocus | null };

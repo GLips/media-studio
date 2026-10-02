@@ -52,9 +52,9 @@ export const drawnImages = (gate: StampGatePainting) => {
   return (file: string) => urls[file];
 };
 
-/** `renderer`'s frame at `t` in frame state `state`, through `lens` if given, once the GPU has drawn it. */
+/** `renderer`'s frame at `t` in frame state `state`, through `lens` with its shutter shut if given, once the GPU has drawn it. */
 export const drawn = (renderer: StampPaintRenderer, frame: () => Uint8ClampedArray, t: number, state?: StampPaintFrameState, lens?: StampLensFrame) =>
-  drawnExposures(renderer, frame, [{ t, state, lens }]);
+  drawnExposures(renderer, frame, [lens ? { kind: 'fast', t, state, lens, shutter: null } : { kind: 'once', t, state }]);
 
 /** `renderer`'s frame drawn as `draws` say, in turn (a reference frame's exposures, the last developing it), once the GPU has drawn it. */
 export async function drawnExposures(renderer: StampPaintRenderer, frame: () => Uint8ClampedArray, draws: readonly StampPaintFrame[]) {

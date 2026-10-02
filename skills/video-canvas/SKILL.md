@@ -238,9 +238,10 @@ elements, which is what keeps objects from showing through each other.
    - It returns `{ ok: false, problems }` naming two writers on one pin, a node that isn't a group, a hold that
      isn't whole frames, a boil or pose that folds; throw them.
    - A point goes through its own bend and placement, then its parent's, and so up, as a rig nests.
-5. **Each frame,** `paintMotionFrameAt(motion, at, frame)` gives the frame state at moment `at` of the frame shown at
-   `frame`, live marks included. Hand the painting the function, as the lens asks for other moments of the shutter:
-   `<StampPainting painting={painting} t={s.t} frameAt={(at, frame) => paintMotionFrameAt(motion, at, frame)} />`
+5. **Each frame,** `paintMotionFrameAt(motion, moment)` gives the frame state at a `PaintMoment` (`paintMoment(at,
+   frame)`: second `at` of the frame shown at `frame`), live marks included. Hand the painting the function, as the
+   lens asks for other moments of the shutter:
+   `<StampPainting painting={painting} t={s.t} frameAt={(moment) => paintMotionFrameAt(motion, moment)} />`
    (memoise it). A drawing held on the animation grid (`hold`) holds through its frame's shutter, so it never smears
    into the next drawing; only what no hold steps (fades, an unheld play, the camera) blurs.
 

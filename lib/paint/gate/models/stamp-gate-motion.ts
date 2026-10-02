@@ -1,7 +1,8 @@
 // stamp-gate-motion.ts: the gate's motion-blur case, the fast path held to the reference (lens-mode.ts). A painted
 // plane drawn once through a moving lens, its motion gathered, is compared with the same frame averaged over the
-// reference's exposures across the shutter: once for a group's own travel within its plane, once for the camera's
-// pan. Still strokes beside and under the moving one put occlusion edges in the frame.
+// reference's exposures across the shutter: for a group's own travel within its plane, for the camera's pan, and for
+// two groups crossing each other's paths at right angles. Still strokes beside and under the moving one put
+// occlusion edges in the frame.
 
 import { lensExposures } from '#lib/picture/lens/models/lens-exposures.ts';
 import { LENS_REFERENCE_EXPOSURES } from '#lib/picture/lens/models/lens-mode.ts';
@@ -19,17 +20,26 @@ export const STAMP_GATE_MOTION_T = 1;
 export const STAMP_GATE_MOTION_SHUTTER = 1 / 60;
 /** How far the moving stroke travels, and the camera pans, over the shutter, px. */
 const TRAVEL = 14;
+/**
+ * For `crossed`: the red stroke's travel right, and a stroke above it falling faster, px. The faller is the
+ * neighbourhood's longest motion, across the red's own: the red must still blur along its own.
+ */
+const CROSSED = { travel: 8, fall: 24 };
 /** Where the moving stroke lies at the frame's time, px right of where it's painted: off its rest, so it's laid through a lattice. */
 const LAID_AT = 6;
 
-/** The case's two motions: a group's own travel within a still camera, or every group still under a panning camera. */
-export type StampGateMotionKind = 'own' | 'pan';
+/**
+ * The case's motions: a group's own travel within a still camera, every group still under a panning camera, or two
+ * groups moving at right angles.
+ */
+export type StampGateMotionKind = 'own' | 'pan' | 'crossed';
 
 /**
  * Still strokes on white paper, a blue one across and a green one down, and a red one down between them, laid after,
- * which the frame state moves right: its smear runs along the blue and up to and over the green's edge.
+ * which the frame state moves right: its smear runs along the blue and up to and over the green's edge. For
+ * `crossed`, an orange stroke across above the blue too, which falls.
  */
-export function stampGateMotionPainting(): StampGatePainting {
+export function stampGateMotionPainting(kind: StampGateMotionKind): StampGatePainting {
   const brush = stampGateBrush('Motion', { flow: 0.9 });
   const painting = compileStampPaintRecipe(stampPaintRecipe({ paper: STAMP_GATE_WHITE, mixing: { kind: 'flat' } }, (p) => {
     p.group('still', { composite: 'opaque' }, (g) => g.passage('p', {}, (pass) => {
@@ -39,15 +49,26 @@ export function stampGateMotionPainting(): StampGatePainting {
     p.group('moving', { composite: 'opaque' }, (g) => g.passage('p', {}, (pass) => {
       pass.stroke('red', { brush, size: 12, well: { paint: { kind: 'color', color: '#c0302a' } }, path: [{ x: 74, y: 20 }, { x: 78, y: 82 }] });
     }));
+    if (kind === 'crossed') {
+      p.group('falling', { composite: 'opaque' }, (g) => g.passage('p', {}, (pass) => {
+        pass.stroke('orange', { brush, size: 10, well: { paint: { kind: 'color', color: '#d98a1c' } }, path: [{ x: 28, y: 22 }, { x: 60, y: 24 }] });
+      }));
+    }
   }));
   return { painting, width: 160, height: 100, t: STAMP_GATE_MOTION_T, images: STAMP_GATE_IMAGES };
 }
 
-/** `kind`'s frame state at scene second `at`: the red stroke drifting right on ones for `own`, every group still for `pan`. */
+const motionGateLaid = (x: number, y: number) => ({ lay: { placement: { x, y, rotation: 0, scale: 1 }, pivot: { x: 0, y: 0 } } });
+
+/**
+ * `kind`'s frame state at scene second `at`: the red stroke drifting right on ones for `own` and `crossed` (the orange
+ * falling too), every group still for `pan`.
+ */
 export function stampGateMotionState(kind: StampGateMotionKind, at: number): StampPaintFrameState {
   if (kind === 'pan') return new Map();
-  const x = LAID_AT + (TRAVEL * (at - STAMP_GATE_MOTION_T)) / STAMP_GATE_MOTION_SHUTTER;
-  return new Map([['moving', { lay: { placement: { x, y: 0, rotation: 0, scale: 1 }, pivot: { x: 0, y: 0 } } }]]);
+  const shutters = (at - STAMP_GATE_MOTION_T) / STAMP_GATE_MOTION_SHUTTER;
+  if (kind === 'own') return new Map([['moving', motionGateLaid(LAID_AT + TRAVEL * shutters, 0)]]);
+  return new Map([['moving', motionGateLaid(LAID_AT + CROSSED.travel * shutters, 0)], ['falling', motionGateLaid(0, CROSSED.fall * shutters)]]);
 }
 
 /** The view panned `x` px right. */
@@ -57,15 +78,15 @@ const panned = (x: number): StampPlaneView => ({ ...STAMP_GATE_REST_LOOK.view, k
 export function stampGateMotionFastLens(kind: StampGateMotionKind): StampLensFrame {
   const reach = kind === 'pan' ? TRAVEL / 2 : 0;
   const look = { ...STAMP_GATE_REST_LOOK, shutter: { open: panned(-reach), close: panned(reach) } };
-  return { planes: new Map([[STAMP_SINGLE_PLANE_ID, look]]), bloom: 0, focus: null, moving: true };
+  return { planes: new Map([[STAMP_SINGLE_PLANE_ID, look]]), bloom: 0, focus: null };
 }
 
 /** The reference's exposures: each one's moment and the lens it sees, the camera where the pan has it then. */
-export function stampGateMotionExposures(kind: StampGateMotionKind): { index: number; count: number; at: number; lens: StampLensFrame }[] {
-  return lensExposures(LENS_REFERENCE_EXPOSURES).map(({ index, count, shutter }) => {
+export function stampGateMotionExposures(kind: StampGateMotionKind): { index: number; count: number; at: number; aperture: readonly [number, number]; lens: StampLensFrame }[] {
+  return lensExposures(LENS_REFERENCE_EXPOSURES).map(({ index, count, shutter, aperture }) => {
     const look = { ...STAMP_GATE_REST_LOOK, view: panned(kind === 'pan' ? TRAVEL * (shutter - 0.5) : 0) };
-    const lens: StampLensFrame = { planes: new Map([[STAMP_SINGLE_PLANE_ID, look]]), bloom: 0, focus: null, moving: false };
-    return { index, count, at: STAMP_GATE_MOTION_T + STAMP_GATE_MOTION_SHUTTER * (shutter - 0.5), lens };
+    const lens: StampLensFrame = { planes: new Map([[STAMP_SINGLE_PLANE_ID, look]]), bloom: 0, focus: null };
+    return { index, count, at: STAMP_GATE_MOTION_T + STAMP_GATE_MOTION_SHUTTER * (shutter - 0.5), aperture, lens };
   });
 }
 
@@ -77,8 +98,8 @@ const CROSSING = { x0: 86, x1: 114, y0: 10, y1: 92 };
 
 /**
  * How far the fast frame may sit from the reference's, levels: `mean` over the frame, `most` away from the crossing
- * and `crossing` within it. Away, it's the gather's 15 jittered taps a pixel against 24 exposures (measured 16 and
- * 23). At the edge, what's revealed behind the moving stroke is guessed from still paint near it (measured 63).
+ * and `crossing` within it. Away: 24 jittered taps against 24 exposures (measured own 14, pan 22, crossed 31). At
+ * the edge, what a moving stroke reveals is guessed from still paint near it (measured 63).
  */
 export const STAMP_GATE_MOTION_TOLERANCE = { mean: 0.75, most: 32, crossing: 80 };
 
@@ -95,7 +116,7 @@ function mostApart(a: ArrayLike<number>, b: ArrayLike<number>, width: number) {
 
 /** Whether each kind's fast frame is the reference's within tolerance, and blurred: not the sharp frame. */
 export function checkStampGateMotion(frames: Record<StampGateMotionKind, Record<'fast' | 'reference' | 'sharp', ArrayLike<number>>>, width: number): StampGateWashCheck {
-  const kinds = (['own', 'pan'] as const).map((kind) => {
+  const kinds = (['own', 'pan', 'crossed'] as const).map((kind) => {
     const { fast, reference, sharp } = frames[kind];
     return { kind, apart: mostApart(fast, reference, width), mean: stampGateFrameDifference(fast, reference).mean, shown: stampGateFrameDifference(sharp, fast).max };
   });

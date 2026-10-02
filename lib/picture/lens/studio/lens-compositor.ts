@@ -4,9 +4,9 @@
 // written. lens-passes.ts holds the passes.
 //
 // Warning: it encodes into its caller's command encoder, and its uniforms go up with `flush`, which the caller runs
-// before each submit.
+// before each submit. One frame is open at a time: beginning one ends the last.
 
-import { GPU_GAUSSIAN_PASS, gpuGaussianPassWgsl } from '#lib/platform/gpu/models/gpu-gaussian.ts';
+import { GPU_GAUSSIAN_PASS, gpuGaussianPassWgsl, type GpuGaussianRead } from '#lib/platform/gpu/models/gpu-gaussian.ts';
 import { gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { createGpuUniformRing } from '#lib/platform/gpu/studio/gpu-uniform-ring.ts';
 import { LENS_GAUSSIAN_SIGMAS, lensGaussianReach, type LensFocus } from '../models/lens-focus.ts';
@@ -40,10 +40,30 @@ export type LensLayer = {
 };
 
 /**
- * An exposure's place in its frame. `glowing`: some layer has an emission. `moving`: the frame is one exposure whose
+ * What an exposure's layers hold. `glowing`: some layer has an emission. `moving`: the frame is one exposure whose
  * layers carry their motion, to be gathered along it.
  */
-export type LensExposureDraw = { readonly index: number; readonly count: number; readonly glowing: boolean; readonly moving: boolean };
+export type LensExposureDraw = { readonly glowing: boolean; readonly moving: boolean };
+
+/** How a frame is developed: into `into` (a `format` target), `bloom` added, written as `encoding` says. */
+export type LensDevelopDraw = { readonly bloom: LensBloom | null; readonly into: GPUTextureView; readonly format: GPUTextureFormat; readonly encoding: LensImageEncoding };
+
+/**
+ * A frame of `count` exposures (LensCompositor's beginFrame), taken in order: each composited, or handed in already
+ * drawn through the camera, then the frame developed once all have arrived.
+ */
+export type LensFrameExposures = {
+  readonly count: number;
+  /** Composites the next exposure's `layers`, far to near; the first of several clears the sum, each adds its share. */
+  exposure: (encoder: GPUCommandEncoder, layers: readonly LensLayer[], draw: LensExposureDraw) => void;
+  /**
+   * Takes the next exposure already drawn through the camera: `image`, linear premultiplied light the lens's size,
+   * read until the frame is developed when it's the only one.
+   */
+  exposureImage: (encoder: GPUCommandEncoder, image: GPUTextureView) => void;
+  /** Develops the frame its exposures made. Throws unless every one has arrived. */
+  develop: (encoder: GPUCommandEncoder, draw: LensDevelopDraw) => void;
+};
 
 /**
  * The frame's bloom: a gaussian of `sigma` frame px over its glow, times `strength`, added. The glow is the layers'
@@ -69,16 +89,9 @@ export type LensDefocusDraw = {
 export type LensCompositor = {
   readonly width: number;
   readonly height: number;
-  /** Composites one exposure's `layers`, far to near; the first of several clears the sum, each adds its share. */
-  exposure: (encoder: GPUCommandEncoder, layers: readonly LensLayer[], draw: LensExposureDraw) => void;
-  /**
-   * Takes one exposure already drawn through the camera: `image`, linear premultiplied light the lens's size, read
-   * until the frame is developed when it's the only one.
-   */
-  exposureImage: (encoder: GPUCommandEncoder, image: GPUTextureView, draw: Pick<LensExposureDraw, 'index' | 'count'>) => void;
-  /** Develops the frame its exposures made into `into` (a `format` target), `bloom` added, written as `encoding` says. */
-  develop: (encoder: GPUCommandEncoder, frame: { bloom: LensBloom | null; into: GPUTextureView; format: GPUTextureFormat; encoding: LensImageEncoding }) => void;
-  /** A gaussian of `sigma` px (lens-focus.ts's reach) over boxes in one space, past `read` clear. */
+  /** Begins a frame of `count` exposures; the frame begun before it, if still open, takes no more. */
+  beginFrame: (count: number) => LensFrameExposures;
+  /** A gaussian of `sigma` px (lens-focus.ts's reach) over boxes in one space, past `read` clear, within its blur extent. */
   gaussian: (encoder: GPUCommandEncoder, draw: LensGaussianDraw) => void;
   defocus: (encoder: GPUCommandEncoder, draw: LensDefocusDraw) => void;
   /** Uploads the uniforms encoded since the last flush: before every submit of an encoder the lens encoded into. */
@@ -90,15 +103,18 @@ export type LensCompositor = {
 const LENS_WORKGROUP = 8;
 /** The motion gather's tile, px, and so the farthest a point's half-motion reaches. */
 const LENS_MOTION_TILE = 32;
-/** The motion gather's samples a pixel. */
-const LENS_MOTION_TAPS = 15;
+/** The motion gather's samples a pixel, half along each of its two lines. */
+const LENS_MOTION_TAPS = 24;
 /** Distances within this share of each other count as one depth in the motion gather. */
 const LENS_MOTION_SOFT = 0.02;
 
 const clearing = (view: GPUTextureView): GPURenderPassColorAttachment => ({ view, loadOp: 'clear', clearValue: [0, 0, 0, 0], storeOp: 'store' });
 
-/** A lens for frames `width` × `height` on `device`; its targets and pipelines are made when a frame first asks. */
-export function createLensCompositor(device: GPUDevice, { width, height }: { width: number; height: number }): LensCompositor {
+/**
+ * A lens for frames `width` × `height` on `device`; its targets and pipelines are made when a frame first asks.
+ * `blurExtent`: the largest box a gaussian or defocus spans, its corner included (the frame when left out).
+ */
+export function createLensCompositor(device: GPUDevice, { width, height, blurExtent = { w: width, h: height } }: { width: number; height: number; blurExtent?: { w: number; h: number } }): LensCompositor {
   // Read here, not at load: a project's timeline test imports this module in Node, which has no GPU globals.
   const RENDER = GPUTextureUsage.RENDER_ATTACHMENT, STORAGE = GPUTextureUsage.STORAGE_BINDING, SAMPLED = GPUTextureUsage.TEXTURE_BINDING;
   const ring = createGpuUniformRing(device, { label: 'lens' });
@@ -119,15 +135,13 @@ export function createLensCompositor(device: GPUDevice, { width, height }: { wid
     return kept.get(key)!;
   };
   const frameTarget = (name: string, format: GPUTextureFormat, usage: number) => target(name, width, height, format, usage);
-  // The gaussian's first pass's scratch, by layer count: grown to the largest asked for, never shrunk. One
-  // outgrown stays until dispose, as passes encoded but not yet submitted may still read it.
+  // The gaussian's first pass's target, by layer count, made once at the blur extent: one made larger later would
+  // leave the smaller to passes encoded but not yet submitted.
   const acrosses = new Map<number, LensTarget>();
   const acrossFor = (w: number, h: number, layers: number) => {
-    const have = acrosses.get(layers);
-    if (have && have.texture.width >= w && have.texture.height >= h) return have;
-    const grown = makeTarget('across', Math.max(w, have?.texture.width ?? 0), Math.max(h, have?.texture.height ?? 0), 'rgba16float', STORAGE, layers);
-    acrosses.set(layers, grown);
-    return grown;
+    if (w > blurExtent.w || h > blurExtent.h) throw new Error(`lens: a ${w} × ${h} blur past its ${blurExtent.w} × ${blurExtent.h} blur extent`);
+    if (!acrosses.has(layers)) acrosses.set(layers, makeTarget('across', blurExtent.w, blurExtent.h, 'rgba16float', STORAGE, layers));
+    return acrosses.get(layers)!;
   };
 
   const computes = new Map<string, GPUComputePipeline>();
@@ -167,15 +181,7 @@ export function createLensCompositor(device: GPUDevice, { width, height }: { wid
     motion: () => frameTarget('motion', 'rgba16float', RENDER),
   };
   const sum = { colour: () => frameTarget('sum colour', 'rgba32float', RENDER), emission: () => frameTarget('sum emission', 'rgba32float', RENDER) };
-  // What the exposures so far leave for develop: a lone exposure drawn elsewhere is read where it was drawn.
-  let frame: { count: number; glowed: boolean; moving: boolean; image: GPUTextureView | null } | null = null;
-  const frameAt = (index: number, count: number) => {
-    if (index === 0) frame = { count, glowed: false, moving: false, image: null };
-    if (frame?.count !== count) throw new Error(`lens: exposure ${index} of ${count} drawn into a frame of ${frame?.count ?? 'none'}`);
-    return frame;
-  };
-
-  /** Adds `colour` and, when `glowing`, the composite's emission to the sum, its share of `count`. */
+  /** Adds `colour` and, when `glowing`, the composite's emission to the sum, exposure `index`'s share of `count`. */
   function addToSum(encoder: GPUCommandEncoder, colour: GPUTextureView, glowing: boolean, index: number, count: number) {
     const adding = LENS_LAYING_BLEND.add, loadOp: GPULoadOp = index === 0 ? 'clear' : 'load';
     const pipeline = drawn(`sum|${glowing}`, () => lensSumWgsl(glowing), [{ format: 'rgba32float', blend: adding }, { format: 'rgba32float', blend: adding }]);
@@ -186,18 +192,9 @@ export function createLensCompositor(device: GPUDevice, { width, height }: { wid
     ]);
   }
 
-  function exposureImage(encoder: GPUCommandEncoder, image: GPUTextureView, { index, count }: Pick<LensExposureDraw, 'index' | 'count'>) {
-    const at = frameAt(index, count);
-    if (count === 1) at.image = image;
-    else addToSum(encoder, image, false, index, count);
-  }
-
-  function exposure(encoder: GPUCommandEncoder, layers: readonly LensLayer[], { index, count, glowing, moving }: LensExposureDraw) {
-    const at = frameAt(index, count);
-    at.glowed ||= glowing;
-    at.moving = count === 1 && moving;
-    const has = { glowing, moving: at.moving };
-    const attachments = [composited.colour(), ...(glowing ? [composited.emission()] : []), ...(has.moving ? [composited.motion()] : [])].map(({ view }) => clearing(view));
+  /** Composites `layers` far to near into the composite's targets: colour, then emission and motion as `has` says. */
+  function composite(encoder: GPUCommandEncoder, layers: readonly LensLayer[], has: LensExposureDraw) {
+    const attachments = [composited.colour(), ...(has.glowing ? [composited.emission()] : []), ...(has.moving ? [composited.motion()] : [])].map(({ view }) => clearing(view));
     const pass = encoder.beginRenderPass({ colorAttachments: attachments });
     for (const layer of layers) {
       const { view, shutter } = layer;
@@ -216,10 +213,10 @@ export function createLensCompositor(device: GPUDevice, { width, height }: { wid
       for (const laying of ['filter', 'add'] as const satisfies readonly LensLaying[]) {
         const colorTargets: GPUColorTargetState[] = [
           { format: 'rgba16float', blend: LENS_LAYING_BLEND[laying] },
-          ...(glowing ? [{ format: 'rgba16float' as const, blend: LENS_LAYING_BLEND[laying] }] : []),
+          ...(has.glowing ? [{ format: 'rgba16float' as const, blend: LENS_LAYING_BLEND[laying] }] : []),
           ...(has.moving ? [{ format: 'rgba16float' as const, blend: LENS_MOTION_BLEND, writeMask: laying === 'add' ? GPUColorWrite.ALL : 0 }] : []),
         ];
-        const key = `composite|${glowing}|${has.moving}|${lensPictureLayersKey(layer.layers)}|${laying}`;
+        const key = `composite|${has.glowing}|${has.moving}|${lensPictureLayersKey(layer.layers)}|${laying}`;
         const pipeline = drawn(key, () => lensCompositeWgsl(has, layer.layers, laying), colorTargets);
         pass.setPipeline(pipeline);
         pass.setBindGroup(0, bindGroup(pipeline, [uniform, layer.picture, linearClamp]));
@@ -227,13 +224,48 @@ export function createLensCompositor(device: GPUDevice, { width, height }: { wid
       }
     }
     pass.end();
-    // Several exposures: each adds its share, emission too, so a glow in some exposures and not others averages.
-    if (count > 1) addToSum(encoder, composited.colour().view, glowing, index, count);
+  }
+
+  // The open frame: only it may add exposures, so a frame given up halfway can't leak into the next.
+  let open: object | null = null;
+  function beginFrame(count: number): LensFrameExposures {
+    if (!(Number.isInteger(count) && count >= 1)) throw new Error(`lens: a frame takes a whole number of exposures, 1 or more, not ${count}`);
+    const self = {};
+    open = self;
+    let arrived = 0, glowed = false, moving = false, image: GPUTextureView | null = null;
+    const next = () => {
+      if (open !== self) throw new Error('lens: an exposure added to a frame after another began');
+      if (arrived === count) throw new Error(`lens: exposure ${arrived + 1} added to a frame of ${count}`);
+      return arrived++;
+    };
+    return {
+      count,
+      exposure: (encoder, layers, draw) => {
+        const index = next();
+        glowed ||= draw.glowing;
+        moving = count === 1 && draw.moving;
+        composite(encoder, layers, { glowing: draw.glowing, moving });
+        // Several exposures: each adds its share, emission too, so a glow in some exposures and not others averages.
+        if (count > 1) addToSum(encoder, composited.colour().view, draw.glowing, index, count);
+      },
+      exposureImage: (encoder, drawnImage) => {
+        const index = next();
+        if (count === 1) image = drawnImage;
+        else addToSum(encoder, drawnImage, false, index, count);
+      },
+      develop: (encoder, draw) => {
+        if (open !== self) throw new Error('lens: a frame developed after another began');
+        if (arrived < count) throw new Error(`lens: a frame developed with ${arrived} of its ${count} exposures`);
+        open = null;
+        const exposed = count === 1 ? composited : sum;
+        developFrame(encoder, { colour: image ? { view: image } : exposed.colour(), emission: glowed ? exposed.emission() : null, moving }, draw);
+      },
+    };
   }
 
   function gaussian(encoder: GPUCommandEncoder, { source, into, layers, sigma, read, sourceAt, box }: LensGaussianDraw) {
     const pipeline = compute(`gaussian|${layers}`, () => gpuGaussianPassWgsl({ layers, read: 'texels', workgroup: LENS_WORKGROUP }));
-    const across = acrossFor(Math.max(width, box.x + box.w), Math.max(height, box.y + box.h), layers);
+    const across = acrossFor(box.x + box.w, box.y + box.h, layers);
     const pass = (from: GPUTextureView, to: GPUTextureView, axis: 0 | 1, readBox: LensBox, at: { x: number; y: number }, intoAt: { x: number; y: number }) => dispatch(encoder, pipeline, [ring.slot((views) => {
       const put = gpuUniformWriter(GPU_GAUSSIAN_PASS, views);
       put('sigma', sigma);
@@ -293,31 +325,41 @@ export function createLensCompositor(device: GPUDevice, { width, height }: { wid
     return glow;
   }
 
-  function develop(encoder: GPUCommandEncoder, { bloom, into, format, encoding }: { bloom: LensBloom | null; into: GPUTextureView; format: GPUTextureFormat; encoding: LensImageEncoding }) {
-    if (!frame) throw new Error('lens: a frame developed before any exposure');
-    const { count, glowed, moving, image } = frame;
-    frame = null;
-    const exposed = count === 1 ? composited : sum;
-    let colour: { view: GPUTextureView } = image ? { view: image } : exposed.colour(), emission = glowed ? exposed.emission() : null;
-    if (moving) ({ colour, emission } = gatherMotion(encoder, colour, emission));
-    let light: LensTarget | null = null;
-    if (bloom) {
-      const glow = bloom.glow === 'emission' ? emission : glowOf(encoder, colour, bloom.glow.threshold);
-      if (glow && bloom.sigma > 0) {
-        const bloomed = frameTarget('bloom', 'rgba16float', STORAGE), whole: LensBox = { x: 0, y: 0, w: width, h: height };
-        gaussian(encoder, { source: glow.array, into: bloomed.array, layers: 1, sigma: bloom.sigma, read: whole, sourceAt: whole, box: whole });
-        light = bloomed;
-      } else light = glow;
-    }
-    const pipeline = drawn(`output|${!!light}|${JSON.stringify(encoding)}|${format}`, () => lensOutputWgsl(!!light, encoding), [{ format }]);
+  /**
+   * `glow` bloomed by `sigma` frame px at half the frame's size each way: wide glows are cheap, and the output reads it
+   * back bilinear. Its first pass box-filters as it reads (gpu-gaussian.ts's `bilinear`).
+   */
+  function bloomOf(encoder: GPUCommandEncoder, glow: LensTarget, sigma: number) {
+    const w = Math.ceil(width / 2), h = Math.ceil(height / 2), halfSigma = sigma / 2;
+    const across = target('bloom across', w, h, 'rgba16float', STORAGE), bloomed = target('bloom', w, h, 'rgba16float', STORAGE);
+    const pipeline = compute('gaussian|1|bilinear', () => gpuGaussianPassWgsl({ layers: 1, read: 'bilinear' satisfies GpuGaussianRead, workgroup: LENS_WORKGROUP }));
+    const pass = (from: GPUTextureView, to: GPUTextureView, axis: 0 | 1, stride: number) => dispatch(encoder, pipeline, [ring.slot((views) => {
+      const put = gpuUniformWriter(GPU_GAUSSIAN_PASS, views);
+      put('sigma', halfSigma);
+      put('reach', lensGaussianReach(halfSigma));
+      put('axis', axis);
+      put('stride', stride);
+      put('box', [0, 0, w, h]);
+    }), from, to, linearClamp], w, h);
+    pass(glow.array, across.array, 0, width / w);
+    pass(across.array, bloomed.array, 1, 1);
+    return bloomed;
+  }
+
+  function developFrame(encoder: GPUCommandEncoder, exposed: { colour: { view: GPUTextureView }; emission: LensTarget | null; moving: boolean }, { bloom, into, format, encoding }: LensDevelopDraw) {
+    let { colour, emission } = exposed;
+    if (exposed.moving) ({ colour, emission } = gatherMotion(encoder, colour, emission));
+    const glow = bloom && (bloom.glow === 'emission' ? emission : glowOf(encoder, colour, bloom.glow.threshold));
+    const light = glow && bloom.sigma > 0 ? { view: bloomOf(encoder, glow, bloom.sigma).view, size: 'half' as const } : glow && { view: glow.view, size: 'whole' as const };
+    const pipeline = drawn(`output|${light?.size}|${JSON.stringify(encoding)}|${format}`, () => lensOutputWgsl(light ? light.size : null, encoding), [{ format }]);
     fullFrame(encoder, [{ view: into, loadOp: 'clear', storeOp: 'store' }], pipeline, [
       light ? ring.slot((views) => gpuUniformWriter(LENS_OUTPUT, views)('strength', bloom!.strength)) : null,
-      colour.view, light?.view ?? null,
+      colour.view, light?.view ?? null, light?.size === 'half' ? linearClamp : null,
     ]);
   }
 
   return {
-    width, height, exposure, exposureImage, develop, gaussian, defocus,
+    width, height, beginFrame, gaussian, defocus,
     flush: ring.flush,
     dispose: () => {
       for (const texture of made.splice(0)) texture.destroy();

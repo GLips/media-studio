@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  clipSeconds, compilePaintPlayClock, paintMoment, paintPlayClipTimeAt, paintPlayInterval, type PaintPlayClock,
+  clipSeconds, compilePaintPlayClock, paintLaneClipAt, paintPlayClipTimeAt, paintPlayInterval, type PaintPlayClock,
 } from './paint-clock.ts';
+import { paintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 
 const FPS = 24;
 const compiled = (clock: PaintPlayClock) => compilePaintPlayClock(clock, []);
@@ -24,6 +25,17 @@ test('a drawing holds through its frame\'s shutter, and an unheld play moves thr
   assert.equal(read(held, 1 - 1 / 120), read(held, 1 + 1 / 120));
   assert.equal(read(held, 1 - 1 / 120), clipAt(held, 1));
   assert.ok(read(free, 1 + 1 / 120) - read(free, 1 - 1 / 120) > 0.016);
+});
+
+test('where one held play hands on to the next, its frame shows one of them through the shutter', () => {
+  // The frame at 1 s is the second play's first drawing; its shutter opens in the first play's time.
+  const lane = [{ at: 0, hold: 2 }, { at: 1, hold: 2 }].map((clock, i) => {
+    const play = compiled(clock);
+    return { clip: i, clock: play, interval: paintPlayInterval(play, clipSeconds(1)), origin: `${i}` };
+  });
+  const [open, close] = [1 - 1 / 120, 1 + 1 / 120].map((at) => paintLaneClipAt(lane, paintMoment(at, 1), FPS)!);
+  assert.deepEqual([open.play.clip, open.time], [close.play.clip, close.time]);
+  assert.equal(close.play.clip, 1);
 });
 
 const twice = (mode: 'repeat' | 'pingpong'): PaintPlayClock => ({ at: 0, loop: { period: 1, mode, times: 2 } });

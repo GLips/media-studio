@@ -23,7 +23,7 @@ async function drawDryPassage(passage: DryPassage, { brushes, paper, mixing, pac
       // Copied before the surface is disposed, which unconfigures its canvas and clears it.
       try {
         const renderer = await createStampPaintRenderer(surface, painting);
-        await renderer.draw({ t: 1 });
+        await renderer.draw({ kind: 'once', t: 1 });
         copy.getContext('2d')!.drawImage(canvas, 0, 0);
       } finally {
         surface.dispose();

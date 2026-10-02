@@ -178,9 +178,9 @@ export function lensMotionNeighboursWgsl(workgroup: number) {
 }
 
 /**
- * The gather: `taps` samples along the neighbourhood's longest motion. What lies in front of a pixel (nearer, or at
- * one depth, `soft` relative, moving faster) and smears across it covers it for its share of the shutter, laid over
- * the box average of what lies behind or level as far as the pixel's own motion reaches.
+ * The gather: `taps` samples on two lines through a pixel: the neighbourhood's longest motion, and the pixel's own
+ * (across the longest when it's still). What lies in front (nearer, or level, `soft` relative, and faster) and sweeps
+ * over the pixel covers it for its share of the shutter, over the average of what its own sweep passes.
  */
 export const LENS_MOTION_GATHER = gpuUniformLayout('LensMotionGather', [['tile', 'u32'], ['taps', 'u32'], ['reach', 'f32'], ['soft', 'f32']]);
 
@@ -200,12 +200,25 @@ ${LENS_MOTION_GATHER.wgsl}
 ${each(`@group(0) @binding(5) var emission: texture_2d<f32>;
 @group(0) @binding(6) var gatheredEmission: texture_storage_2d<rgba16float, write>;`)}
 ${halfMotionWgsl}
-/** Whether a point whose half-motion is \`reach\` px passes over one \`d\` px away: a pixel's edge softened. */
-fn spread(d: f32, reach: f32) -> f32 { return clamp(reach - d + 0.5, 0.0, 1.0); }
+/** \`h\`'s direction, else \`fallback\`'s: a still point's sweep is the pixel it's on, whichever way it's met. */
+fn direction(h: vec2f, fallback: vec2f) -> vec2f {
+  if (length(h) > 1e-3) { return h / length(h); }
+  if (length(fallback) > 1e-6) { return fallback / length(fallback); }
+  return vec2f(1.0, 0.0);
+}
+/** Whether a point at \`y\` moving \`h\` each way passes over the pixel centred at \`x\`: its sweep, a pixel's edges softened. */
+fn passes(x: vec2f, y: vec2f, h: vec2f) -> f32 {
+  let d = x - y;
+  let unit = direction(h, d);
+  let along = abs(dot(d, unit));
+  let across = abs(d.x * unit.y - d.y * unit.x);
+  return clamp(max(length(h), 0.5) - along + 0.5, 0.0, 1.0) * clamp(1.0 - across, 0.0, 1.0);
+}
 @compute @workgroup_size(${workgroup}, ${workgroup}) fn lensMotionGather(@builtin(global_invocation_id) id: vec3u) {
   let size = textureDimensions(colour);
   if (any(id.xy >= size)) { return; }
   let x = vec2i(id.xy);
+  let centre = vec2f(x) + 0.5;
   let longest = textureLoad(near, id.xy / u.tile, 0).xy;
   let cx = textureLoad(colour, x, 0);${each(`
   let ex = textureLoad(emission, x, 0);`)}
@@ -215,33 +228,48 @@ fn spread(d: f32, reach: f32) -> f32 { return clamp(reach - d + 0.5, 0.0, 1.0); 
     return;
   }
   let mx = textureLoad(motion, x, 0);
-  let reachX = max(length(halfMotion(mx, u.reach)), 0.5);
-  // Each tap stands for its cell of the line, this many px: a point there covers this pixel for spacing/(2·reach) of the shutter.
-  let spacing = 2.0 * length(longest) / f32(u.taps);
+  let hx = halfMotion(mx, u.reach);
+  let reachX = max(length(hx), 0.5);
+  let lines = array<vec2f, 2>(longest, select(vec2f(-longest.y, longest.x), hx, length(hx) >= 0.5));
+  let units = array<vec2f, 2>(normalize(lines[0]), normalize(lines[1]));
+  let perLine = u.taps / 2u;
   var behind = cx;
   var behindWeight = 1.0;
   var front = vec4f(0.0);
   var cover = 0.0;${each(`
   var behindEmission = ex;
   var frontEmission = vec4f(0.0);`)}
-  // A fixed jitter by pixel, the same every frame: a still frame's bytes depend only on what it shows.
-  let jitter = fract(dot(vec2f(x), vec2f(0.7548776662, 0.5698402910))) - 0.5;
+  // A fixed jitter by pixel, the same every frame: a still frame's bytes depend only on what it shows. The lines'
+  // taps sit half a cell apart, so where the lines are one they don't sample the same points.
+  let jitter = (fract(dot(vec2f(x), vec2f(0.7548776662, 0.5698402910))) - 0.5) * 0.5;
   for (var i = 0u; i < u.taps; i++) {
-    let share = 2.0 * (f32(i) + 0.5 + jitter) / f32(u.taps) - 1.0;
-    let y = clamp(vec2i(floor(vec2f(x) + 0.5 + longest * share)), vec2i(0), vec2i(size) - 1);
+    let line = i % 2u;
+    let share = 2.0 * (f32(i / 2u) + 0.25 + 0.5 * f32(line) + jitter) / f32(perLine) - 1.0;
+    let at = centre + lines[line] * share;
+    let y = clamp(vec2i(floor(at)), vec2i(0), vec2i(size) - 1);
     if (all(y == x)) { continue; }
+    // Sweeps are measured between pixel centres: from the tap's own point, a still neighbour would pass over x.
+    let yc = vec2f(y) + 0.5;
+    // Each tap stands for its cell of its line, this many px.
+    let cell = 2.0 * length(lines[line]) / f32(perLine);
     let my = textureLoad(motion, y, 0);
-    let reachY = max(length(halfMotion(my, u.reach)), 0.5);
-    let d = length(vec2f(y - x));
+    let hy = halfMotion(my, u.reach);
+    let reachY = max(length(hy), 0.5);
     let nearer = (mx.z - my.z) / max(u.soft * mx.z, 1e-6);
     let level = clamp(1.0 - abs(nearer), 0.0, 1.0);
     let ahead = (1.0 - level) * step(0.0, nearer) + level * clamp(reachY - reachX, 0.0, 1.0);
     let cy = textureLoad(colour, y, 0);${each(`
     let ey = textureLoad(emission, y, 0);`)}
-    let covers = ahead * spread(d, reachY) * spacing / (2.0 * reachY);
+    // In front: the share of the shutter y's sweep spends over x, as much of its cell as lies along that sweep. Its
+    // sweep is met by both lines; each takes the part it runs along (cos²), so one met twice counts once.
+    let sweep = direction(hy, centre - yc);
+    let along = vec2f(dot(units[0], sweep), dot(units[1], sweep));
+    let mine = select(along.x * along.x, along.y * along.y, line == 1u) / max(dot(along, along), 1e-6);
+    let covers = ahead * passes(centre, yc, hy) * mine * cell * abs(dot(units[line], sweep)) / (2.0 * reachY);
     front += cy * covers;
     cover += covers;
-    let seen = (1.0 - ahead) * spread(d, reachX);
+    // Behind: what x's own sweep passes over, weighed by how much of its line the cell holds.
+    let seen = (1.0 - ahead) * passes(yc, centre, hx) * cell * abs(dot(units[line], direction(hx, yc - centre)));
     behind += cy * seen;
     behindWeight += seen;${each(`
     frontEmission += ey * covers;
@@ -340,11 +368,13 @@ export const LENS_OUTPUT = gpuUniformLayout('LensOutput', [['strength', 'f32']])
 export type LensImageEncoding = { readonly kind: 'encoded'; readonly dithered: boolean } | { readonly kind: 'linear' };
 
 /**
- * The output's WGSL: the frame's colour (1) and, when `blooming`, its bloom (2) times `strength`, added in linear
- * light and written as `encoding` says.
+ * The output's WGSL: the frame's colour (1) and, with `bloom`, its bloom (2) times `strength`, added in linear light
+ * and written as `encoding` says. A `half` bloom is half the frame's size each way, read bilinear through the
+ * sampler (3); a `whole` one, texel for texel.
  */
-export function lensOutputWgsl(blooming: boolean, encoding: LensImageEncoding) {
-  const light = blooming ? ' + max(textureLoad(bloom, pixel, 0).rgb, vec3f(0.0)) * u.strength' : '';
+export function lensOutputWgsl(bloom: 'half' | 'whole' | null, encoding: LensImageEncoding) {
+  const bloomAt = bloom === 'half' ? 'textureSampleLevel(bloom, linearClamp, (vec2f(pixel) + 0.5) / vec2f(textureDimensions(colour)), 0.0)' : 'textureLoad(bloom, pixel, 0)';
+  const light = bloom ? ` + max(${bloomAt}.rgb, vec3f(0.0)) * u.strength` : '';
   const written = encoding.kind === 'linear' ? /* wgsl */ `
   let c = textureLoad(colour, pixel, 0);
   return vec4f(c.rgb${light}, c.a);` : /* wgsl */ `
@@ -358,7 +388,8 @@ ${GPU_SRGB_WGSL}
 ${LENS_OUTPUT.wgsl}
 @group(0) @binding(0) var<uniform> u: LensOutput;
 @group(0) @binding(1) var colour: texture_2d<f32>;
-${blooming ? '@group(0) @binding(2) var bloom: texture_2d<f32>;' : ''}
+${bloom ? '@group(0) @binding(2) var bloom: texture_2d<f32>;' : ''}
+${bloom === 'half' ? '@group(0) @binding(3) var linearClamp: sampler;' : ''}
 @fragment fn lensOutput(@builtin(position) at: vec4f) -> @location(0) vec4f {
   let pixel = vec2u(at.xy);${written}
 }`;

@@ -12,7 +12,8 @@ import { shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { StampLensFrame, StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import { paintLanePlayAt, paintMoment, paintPlayClipTimeAt, type PaintLane, type PaintMoment, type PaintPlayClock } from './paint-clock.ts';
+import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import { paintLaneClipAt, type PaintLane, type PaintPlayClock } from './paint-clock.ts';
 import { paintPxRounded, paintRatioRounded } from './paint-deform.ts';
 import { paintKeySpanAt, type PaintEase } from './paint-motion-clips.ts';
 import type { PaintSimilarity } from './paint-similarity.ts';
@@ -144,14 +145,14 @@ export function paintCameraFocusClipAt(clip: PaintCameraFocusClip, time: number)
 
 /** Where the camera is at moment `t` (paintMoment): before the first move starts, that move's first key's pose; at rest with no move. */
 export function paintCameraPoseAt(camera: PaintCamera, t: PaintMoment): PaintCameraPose {
-  const play = paintLanePlayAt(camera.move, t.at);
-  return play ? paintCameraMoveAt(play.clip, paintPlayClipTimeAt(play.clock, t, camera.animationFps)) : PAINT_CAMERA_REST;
+  const playing = paintLaneClipAt(camera.move, t, camera.animationFps);
+  return playing ? paintCameraMoveAt(playing.play.clip, playing.time) : PAINT_CAMERA_REST;
 }
 
 /** The camera's focus at moment `t`: before the first focus play starts, its first key's; null, every plane sharp, with none. */
 export function paintCameraFocusAt(camera: PaintCamera, t: PaintMoment): PaintCameraFocus | null {
-  const play = paintLanePlayAt(camera.focus, t.at);
-  return play ? paintCameraFocusClipAt(play.clip, paintPlayClipTimeAt(play.clock, t, camera.animationFps)) : null;
+  const playing = paintLaneClipAt(camera.focus, t, camera.animationFps);
+  return playing ? paintCameraFocusClipAt(playing.play.clip, playing.time) : null;
 }
 
 /**
@@ -185,10 +186,10 @@ export function paintCameraLensAt(camera: PaintCamera, t: number, exposure: { at
   const aperture = exposure?.aperture, seenAt = paintMoment(exposure?.at ?? t, t);
   const pose = paintCameraPoseAt(camera, seenAt), lens = paintCameraFocusAt(camera, seenAt), centre = paintStageCentre(camera.stage);
   if (lens && lens.focus - pose.dolly <= PAINT_CAMERA_NEAREST) throw new Error(`paint camera: at ${seenAt.at}s the camera focuses at depth ${lens.focus}, at or behind itself (dollied ${pose.dolly})`);
-  // A fast frame is gathered along its motion over the shutter; an exposure is its own moment.
-  const { shutter } = camera.lens, moving = !aperture && shutter > 0;
-  const opens = shutterOpensAt(t, shutter);
-  const openPose = moving ? paintCameraPoseAt(camera, paintMoment(opens, t)) : pose, closePose = moving ? paintCameraPoseAt(camera, paintMoment(opens + shutter, t)) : pose;
+  // A fast frame is gathered along the camera's motion over the shutter, if it moves; an exposure is its own moment.
+  const { shutter } = camera.lens, opens = shutterOpensAt(t, shutter), opening = !aperture && shutter > 0;
+  const openPose = opening ? paintCameraPoseAt(camera, paintMoment(opens, t)) : pose, closePose = opening ? paintCameraPoseAt(camera, paintMoment(opens + shutter, t)) : pose;
+  const moving = !paintCameraPosesEqual(openPose, closePose);
   const planes = new Map<string, StampPlaneLook>();
   for (const { id, depth } of camera.planes) {
     const nearest = Math.max(pose.dolly, openPose.dolly, closePose.dolly);
@@ -203,5 +204,8 @@ export function paintCameraLensAt(camera: PaintCamera, t: number, exposure: { at
     planes.set(id, { view: { ...view, kx: view.kx + slide.x, ky: view.ky + slide.y }, defocus: 0, distance, shutter: null });
   }
   const focus = lens && !aperture ? { focus: lens.focus - pose.dolly, aperture: lens.aperture } : null;
-  return { planes, bloom: camera.lens.bloom, focus, moving };
+  return { planes, bloom: camera.lens.bloom, focus };
 }
+
+const paintCameraPosesEqual = (a: PaintCameraPose, b: PaintCameraPose) =>
+  a.pan.x === b.pan.x && a.pan.y === b.pan.y && a.dolly === b.dolly && a.zoom === b.zoom && a.roll === b.roll;

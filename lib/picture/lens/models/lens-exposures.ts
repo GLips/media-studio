@@ -1,6 +1,7 @@
 // lens-exposures.ts: where a frame's exposures sample the shutter, aperture, pixel and a light's disc. The pattern
 // depends only on the count, so a still scene doesn't shimmer. The aperture is apodised: its samples fall as a 2D
-// standard normal, so a flat plane averaged over them blurs by the fast path's gaussian.
+// standard normal, whitened to mean 0 and unit covariance exactly, so a flat plane averaged over them blurs by the
+// fast path's gaussian.
 
 /**
  * One exposure of `count`. `shutter`: its moment, a share of the open shutter (lens-shutter.ts), stratified.
@@ -32,17 +33,37 @@ export function lensExposures(count: number): LensExposure[] {
     return [r * Math.cos(a), r * Math.sin(a)];
   };
   const lensStride = coprimeNear(count, 0.618), lightStride = coprimeNear(count, 0.382);
+  const apertures = whitened(Array.from({ length: count }, (_, k) => spiral((k * lensStride) % count, normalRadius)));
   return Array.from({ length: count }, (_, k) => ({
     index: k,
     count,
     shutter: (k + 0.5) / count,
-    aperture: spiral((k * lensStride) % count, normalRadius),
+    aperture: apertures[k],
     pixel: [halton(k + 1, 2) - 0.5, halton(k + 1, 3) - 0.5],
     light: spiral((k * lightStride + 1) % count, Math.sqrt),
   }));
 }
 
 const normalRadius = (u: number) => Math.sqrt(-2 * Math.log(1 - u));
+
+/**
+ * `points` less their mean, through the inverse square root of their covariance: mean 0, covariance the identity. A
+ * direction they don't vary along (two points' across) stays 0.
+ */
+function whitened(points: readonly [number, number][]): [number, number][] {
+  const n = points.length, mx = points.reduce((sum, [x]) => sum + x, 0) / n, my = points.reduce((sum, [, y]) => sum + y, 0) / n;
+  const centred = points.map(([x, y]): [number, number] => [x - mx, y - my]);
+  const a = centred.reduce((sum, [x]) => sum + x * x, 0) / n, b = centred.reduce((sum, [x, y]) => sum + x * y, 0) / n, d = centred.reduce((sum, [, y]) => sum + y * y, 0) / n;
+  // The covariance [[a, b], [b, d]]'s eigenvectors (cos θ, sin θ) and (−sin θ, cos θ), and their variances.
+  const theta = 0.5 * Math.atan2(2 * b, a - d), c = Math.cos(theta), s = Math.sin(theta);
+  const along = a * c * c + 2 * b * c * s + d * s * s, across = a * s * s - 2 * b * c * s + d * c * c;
+  const [ku, kv] = [whiteningScale(along), whiteningScale(across)];
+  return centred.map(([x, y]) => {
+    const u = (x * c + y * s) * ku, v = (-x * s + y * c) * kv;
+    return [u * c - v * s, u * s + v * c];
+  });
+}
+const whiteningScale = (variance: number) => (variance > 1e-12 ? 1 / Math.sqrt(variance) : 0);
 const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
 
 function coprimeNear(n: number, share: number) {

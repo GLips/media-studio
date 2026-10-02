@@ -116,29 +116,34 @@ export async function createThreeStageGpu(canvas: HTMLCanvasElement, { width, he
       msaa ??= three.targetInto(exposed, { samples: 4 });
       return msaa;
     },
-    /** Hands the exposure just rendered to the lens, its share of `count`. */
-    addExposure(index: number, count: number) {
-      const encoder = device.createCommandEncoder({ label: 'three stage exposure' });
-      lens.exposureImage(encoder, exposedView, { index, count });
-      lens.flush();
-      device.queue.submit([encoder.finish()]);
-    },
-    /** The exposures developed through the lens, looked at as `look` says, onto the canvas. */
-    show(look: ThreeStageLook) {
-      const encoder = device.createCommandEncoder({ label: 'three stage develop' });
-      const { bloom } = look;
-      lens.develop(encoder, {
-        bloom: bloom ? { sigma: bloom.sigma, strength: bloom.strength, glow: { threshold: bloom.threshold } } : null,
-        into: developedView, format: LINEAR_IMAGE, encoding: { kind: 'linear' },
-      });
-      lens.flush();
-      device.queue.submit([encoder.finish()]);
-      backdrop.value.setFromColor(new Color(look.transparent ? look.backdrop : '#000000'));
-      exposure.value = look.exposure;
-      renderer.setRenderTarget(shown);
-      outputPass(look).render(renderer);
-      renderer.setRenderTarget(null);
-      output.present();
+    /**
+     * A frame of `count` exposures: `addExposure` hands the lens each one just rendered, then `show` develops them,
+     * looked at as `look` says, onto the canvas.
+     */
+    beginFrame(count: number) {
+      const frame = lens.beginFrame(count);
+      const submitted = (label: string, encode: (encoder: GPUCommandEncoder) => void) => {
+        const encoder = device.createCommandEncoder({ label });
+        encode(encoder);
+        lens.flush();
+        device.queue.submit([encoder.finish()]);
+      };
+      return {
+        addExposure: () => submitted('three stage exposure', (encoder) => frame.exposureImage(encoder, exposedView)),
+        show: (look: ThreeStageLook) => {
+          const { bloom } = look;
+          submitted('three stage develop', (encoder) => frame.develop(encoder, {
+            bloom: bloom ? { sigma: bloom.sigma, strength: bloom.strength, glow: { threshold: bloom.threshold } } : null,
+            into: developedView, format: LINEAR_IMAGE, encoding: { kind: 'linear' },
+          }));
+          backdrop.value.setFromColor(new Color(look.transparent ? look.backdrop : '#000000'));
+          exposure.value = look.exposure;
+          renderer.setRenderTarget(shown);
+          outputPass(look).render(renderer);
+          renderer.setRenderTarget(null);
+          output.present();
+        },
+      };
     },
     /** The room prefiltered for this device, built on first use: it's the same every frame, and costly to make. */
     room(env: ThreeEnvironment) {

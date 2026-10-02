@@ -45,7 +45,7 @@ async function drawStampFillSheet(brush: StampBrush, diameter: number, packUrls:
     // Copied before the surface is disposed, which unconfigures its canvas and clears it.
     try {
       const renderer = await createStampPaintRenderer(surface, painting);
-      await renderer.draw({ t: 0 });
+      await renderer.draw({ kind: 'once', t: 0 });
       context.drawImage(paintCanvas, 0, 0);
     } finally {
       surface.dispose();

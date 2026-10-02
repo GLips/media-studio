@@ -1,8 +1,8 @@
 // painted-three-sources.ts: three.js in a painted scene, on the device its stamp renderer draws on and that device's
-// one three.js renderer (gpu-device-owner.ts). Each three source is a plane of the scene's camera: its scene is
-// rendered through the camera's shot camera (paint-camera-world.ts) into a texture of ours, the frame grown by the
-// plane's defocus margin, which the stamp renderer lays among the painted planes. Painted textures, paintings a
-// material reads, are drawn first, each frame.
+// one three.js renderer (gpu-device-owner.ts). Each three source is a plane of the scene's camera and a lens source of
+// the renderer's (stamp-lens-source.ts): its scene is rendered through the camera's shot camera (paint-camera-world.ts)
+// into a texture of ours, the frame grown by the plane's defocus margin. Painted textures, paintings a material reads,
+// are drawn first, once a frame.
 //
 // Texture contracts: a source's texture is rgba16float premultiplied linear colour (normal blending over a clear
 // target premultiplies), its motion texture the lens's motion layer (lens-three-motion.ts); a painted texture is
@@ -11,18 +11,17 @@
 import { ExternalTexture, PerspectiveCamera, type Scene } from 'three/webgpu';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { shotCameraGrown, type ShotCamera } from '#lib/picture/shot-camera/models/shot-camera.ts';
-import type { LensExposure } from '#lib/picture/lens/models/lens-exposures.ts';
 import { shotCameraExposed, shotLensOfFocus } from '#lib/picture/lens/models/lens-focus.ts';
 import { shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import { createLensThreeMotion, LENS_THREE_MOTION_NAME } from '#lib/picture/lens/studio/lens-three-motion.ts';
 import { setThreeShotCamera } from '#lib/picture/shot-camera/studio/three-shot-camera.ts';
 import { paintCameraShotAt, paintCameraWorld, paintWorldPlane, type PaintCameraWorld, type PaintWorldPlane } from '#lib/paint/animation/models/paint-camera-world.ts';
 import { PAINT_CAMERA_REST, paintCameraFocusAt, paintCameraPoseAt, type PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
-import { paintMoment } from '#lib/paint/animation/models/paint-clock.ts';
-import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import { paintMoment, type StampPaintFrameAt } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import type { StampLensSource, StampLensSourceExposure } from '#lib/paint/painting/studio/stamp-lens-source.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
-import { createStampPaintRenderer, type StampPaintRenderer, type StampThreePicture } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
+import { createStampPaintRenderer, type StampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
 import { createStampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 
 /** A source's multisampling: its edges antialiased, resolved the same each time (vid-129). */
@@ -30,15 +29,15 @@ const PAINTED_THREE_SAMPLES = 4;
 
 /**
  * A painting drawn each frame into a texture three samples: a painting on a 3D object. `width` × `height` of its own
- * px; `frameAt`, its groups' state at scene time t (as painted when left out). A material reads it through
- * paintedThreeColorNode.
+ * px; `frameAt`, its groups' state at a frame's moment (as painted when left out), held through the frame's shutter.
+ * A material reads it through paintedThreeColorNode.
  */
 export type PaintedThreeTexture = {
   id: string;
   painting: CompiledStampPaint;
   width: number;
   height: number;
-  frameAt?: (t: number) => StampPaintFrameState;
+  frameAt?: StampPaintFrameAt;
 };
 
 /**
@@ -59,21 +58,9 @@ export type PaintedThreeSource = { id: string; build: (tools: PaintedThreeSource
 /** What a painted scene renders with three.js: a source for each of its camera's three planes, and the painted textures they read. */
 export type PaintedThree = { sources: readonly PaintedThreeSource[]; paintedTextures?: readonly PaintedThreeTexture[] };
 
-/**
- * One exposure of a reference frame (lens-mode.ts): its moment `at`, its point on the aperture, and its `index` (the
- * first draws the painted textures, held at the frame's time for every exposure).
- */
-export type PaintedThreeExposure = { index: number; at: number; aperture: LensExposure['aperture'] };
-
-/** three.js loaded on an owner's device: each source's picture by its plane's id, rendered for a frame by `render`. */
+/** three.js loaded on an owner's device: a lens source for each three plane, by its id. */
 export type PaintedThreeLoaded = {
-  pictures: ReadonlyMap<string, StampThreePicture>;
-  /**
-   * Draws the painted textures and renders each source at scene time `t`, through the camera there; with `exposure`,
-   * posed at its moment and seen from its point on the aperture. Warning: one at a time, each settled before the next
-   * and before dispose: every render writes the same textures the stamp draw reads.
-   */
-  render: (t: number, exposure?: PaintedThreeExposure) => Promise<void>;
+  sources: ReadonlyMap<string, StampLensSource>;
   /** Lets go of everything it made; the owner stays. */
   dispose: () => void;
 };
@@ -150,40 +137,46 @@ export async function loadPaintedThree(owner: StampPaintGpuOwner, camera: PaintC
       });
     });
 
-    return {
-      pictures: new Map(loaded.map(({ id, picture }) => [id, picture])),
-      render: async (t, exposure) => {
-        if (!exposure?.index) await Promise.all(painted.map(({ texture, renderer: paintedRenderer }) => paintedRenderer.draw({ t, state: texture.frameAt?.(t) })));
-        const at = exposure?.at ?? t, pose = paintCameraPoseAt(camera, paintMoment(at, t)), focus = exposure && paintCameraFocusAt(camera, paintMoment(at, t));
-        // The exposure's camera: moved over the aperture by the world size of the paint camera's (frame px) opening.
-        const seen = (shot: ShotCamera) => {
-          if (!exposure) return shot;
-          const distance = focus && focus.focus - pose.dolly;
-          const lens = focus && distance ? shotLensOfFocus(shot, { focus: distance, aperture: focus.aperture }, distance * world.depthUnit) : null;
-          return shotCameraExposed(shot, lens, { aperture: exposure.aperture, pixel: [0, 0] });
-        };
-        // A fast frame's motion over the camera's shutter, centred on t; a reference exposure's is its own exposure.
-        const shutter = exposure ? 0 : camera.lens.shutter, opens = shutterOpensAt(t, shutter);
-        await owner.checked(`three.js rendering its sources at ${at} s`, () => {
-          for (const { built, shotAt, camera: threeCamera, target, motion } of loaded) {
-            motion.still();
-            if (shutter > 0) {
-              for (const [moment, when] of [['open', opens], ['close', opens + shutter]] as const) {
-                built.poseAt(when);
-                setThreeShotCamera(threeCamera, shotAt(paintCameraPoseAt(camera, paintMoment(when, t))));
-                motion.record(moment, built.scene, threeCamera);
-              }
-            }
-            built.poseAt(at);
-            setThreeShotCamera(threeCamera, seen(shotAt(pose)));
-            renderer.setMRT(motion.mrt);
-            renderer.setRenderTarget(target);
-            renderer.render(built.scene, threeCamera);
+    // The frame time the painted textures were last drawn for: they're held through a frame, so drawn once for all its sources and exposures.
+    let paintedFor: number | null = null;
+    const render = async ({ built, shotAt, camera: threeCamera, target, motion }: (typeof loaded)[number], t: number, exposure: StampLensSourceExposure | null) => {
+      if (paintedFor !== t) {
+        await Promise.all(painted.map(({ texture, renderer: paintedRenderer }) => paintedRenderer.draw({ kind: 'once', t, state: texture.frameAt?.(paintMoment(t)) })));
+        paintedFor = t;
+      }
+      const at = exposure?.at ?? t, pose = paintCameraPoseAt(camera, paintMoment(at, t)), focus = exposure && paintCameraFocusAt(camera, paintMoment(at, t));
+      // The exposure's camera: moved over the aperture by the world size of the paint camera's (frame px) opening.
+      const seen = (shot: ShotCamera) => {
+        if (!exposure) return shot;
+        const distance = focus && focus.focus - pose.dolly;
+        const lens = focus && distance ? shotLensOfFocus(shot, { focus: distance, aperture: focus.aperture }, distance * world.depthUnit) : null;
+        return shotCameraExposed(shot, lens, { aperture: exposure.aperture, pixel: [0, 0] });
+      };
+      // A fast frame's motion over the camera's shutter, centred on t; a reference exposure's is its own exposure.
+      const shutter = exposure ? 0 : camera.lens.shutter, opens = shutterOpensAt(t, shutter);
+      return owner.checked(`three.js rendering a source at ${at} s`, () => {
+        motion.still();
+        let moved = false;
+        if (shutter > 0) {
+          for (const [moment, when] of [['open', opens], ['close', opens + shutter]] as const) {
+            built.poseAt(when);
+            setThreeShotCamera(threeCamera, shotAt(paintCameraPoseAt(camera, paintMoment(when, t))));
+            motion.record(moment, built.scene, threeCamera);
           }
-          renderer.setMRT(null);
-          renderer.setRenderTarget(null);
-        });
-      },
+          moved = motion.moved(built.scene);
+        }
+        built.poseAt(at);
+        setThreeShotCamera(threeCamera, seen(shotAt(pose)));
+        renderer.setMRT(motion.mrt);
+        renderer.setRenderTarget(target);
+        renderer.render(built.scene, threeCamera);
+        renderer.setMRT(null);
+        renderer.setRenderTarget(null);
+        return { moved };
+      });
+    };
+    return {
+      sources: new Map(loaded.map((source) => [source.id, { picture: source.picture, render: (t, exposure) => render(source, t, exposure) }])),
       dispose: release,
     };
   } catch (error) {

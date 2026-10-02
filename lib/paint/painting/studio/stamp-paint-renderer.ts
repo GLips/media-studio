@@ -39,6 +39,7 @@ import { stampPigmentCompositor } from './stamp-paint-pigment-compositor.ts';
 import { type StampPaintDevice, type StampPaintImage } from './stamp-paint-gpu.ts';
 import type { StampPaintGpuScope } from './stamp-paint-gpu-owner.ts';
 import type { StampPaintSurface } from './stamp-paint-surface.ts';
+import type { StampLensSource, StampLensSourceExposure } from './stamp-lens-source.ts';
 import { gpuUniformLayout, gpuUniformStruct, gpuUniformWriter, type GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { STAMP_WET_STAGES, stampWetStageReach, type StampLoadedWetStage, type StampWetStage, type StampWetDepositMoment, type StampWetDryingMoment, type StampWetStageContext } from './stamp-wet-stages.ts';
 import {
@@ -48,12 +49,12 @@ import {
 } from './stamp-paint-plane-passes.ts';
 import { LENS_DEFOCUS_LEAST, lensGaussianReach, lensSigmaStepped, type LensFocus } from '#lib/picture/lens/models/lens-focus.ts';
 import { GPU_GAUSSIAN_PASS, gpuGaussianPassWgsl } from '#lib/platform/gpu/models/gpu-gaussian.ts';
-import { createLensCompositor, type LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
+import { createLensCompositor, type LensFrameExposures, type LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
 import type { LensPictureLayers } from '#lib/picture/lens/studio/lens-passes.ts';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { stampWarpCells, stampWarpTriangles, STAMP_WARP_MOST_CELLS } from '../models/stamp-group-warp.ts';
 import {
-  stampFramePlan, stampFramePlanExposed, stampFramePlanTravel, stampGroupSceneMap, type StampGroupFrame, type StampGroupTravel, type StampPaintMoment,
+  stampFramePlan, stampFramePlanExposed, stampFramePlanMotion, stampGroupSceneMap, type StampGroupFrame, type StampGroupTravel, type StampMotionSpan, type StampPosedMoment,
 } from '../models/stamp-frame-plan.ts';
 import type { StampGroupMarks, StampPaintFrameState } from '../models/stamp-paint-frame-state.ts';
 import { stampSinglePlane, type StampLaidPlanes, type StampLensFrame, type StampPlaneLook } from '../models/stamp-plane.ts';
@@ -716,42 +717,53 @@ ${compositor.group.wgsl}
 }`;
 };
 
-// A moved or warped group's lattice (stamp-group-warp.ts) rasterised into \`rest\`: each scene pixel it covers learns the
-// rest point it shows; the rest keep STAMP_NO_REST. Where the field folds, a later triangle covers an earlier one
-// unless its rest point holds nothing: bare lattice mustn't hide paint. \`motion\`: it writes its travel too, replaced.
-const groupLatticeWgsl = (layer: StampPaintTarget, stage: StampStage, motion: boolean) => /* wgsl */ `
+const latticeMotionInto = (view: GPUTextureView): GPURenderPassColorAttachment => ({ view, loadOp: 'load', storeOp: 'store' });
+
+// A moved or warped group's lattice (stamp-group-warp.ts) rasterised into \`rest\`: each scene pixel it covers learns its
+// rest point; the rest keep STAMP_NO_REST. Where it folds, a later triangle covers an earlier unless its rest holds
+// nothing. \`traced\`: its travel goes into the plane's motion, where its paint lies (\`paint\`), or over
+// all it covers (\`region\`, a pass alone).
+const groupLatticeWgsl = (layer: StampPaintTarget, stage: StampStage, traced: StampMotionCover | null) => /* wgsl */ `
 ${stampStageWgsl(stage)}
 ${stampPaintTargetWgsl('source', 0, layer, null)}
 @group(0) @binding(1) var linearClamp: sampler;
 struct LatticePoint { @builtin(position) at: vec4f, @location(0) rest: vec2f, @location(1) travel: vec2f };
-struct LatticeLaid { @location(0) rest: vec4f${motion ? ', @location(1) motion: vec4f' : ''} };
+struct LatticeLaid { ${traced === 'region' ? '@location(0) motion: vec4f' : `@location(0) rest: vec4f${traced ? ', @location(1) motion: vec4f' : ''}`} };
 @vertex fn latticeVertex(@location(0) clip: vec2f, @location(1) rest: vec2f, @location(2) travel: vec2f) -> LatticePoint {
   return LatticePoint(vec4f(clip, 0.0, 1.0), rest, travel);
 }
-@fragment fn latticeRest(point: LatticePoint) -> LatticeLaid {
+@fragment fn latticeRest(point: LatticePoint) -> LatticeLaid {${traced === 'region' ? `
+  return LatticeLaid(vec4f(point.travel, 0.0, 1.0));` : `
   let uv = (point.rest + vec2f(STAGE_MARGIN)) / vec2f(textureDimensions(source));
   var held = vec4f(0.0);
   ${layer.kind === 'array'
     ? `for (var l = 0u; l < ${layer.layers}u; l++) { held += abs(textureSampleLevel(source, linearClamp, uv, l, 0.0)); }`
     : 'held = abs(textureSampleLevel(source, linearClamp, uv, 0.0));'}
   if (all(held == vec4f(0.0))) { discard; }
-  return LatticeLaid(vec4f(point.rest, 0.0, 1.0)${motion ? ', vec4f(point.travel, 0.0, 1.0)' : ''});
+  return LatticeLaid(vec4f(point.rest, 0.0, 1.0)${traced ? ', vec4f(point.travel, 0.0, 1.0)' : ''});`}
 }`;
 
 /** A boiling group's epochs kept on the GPU besides its first: the one drawing, and a couple a scrub returns to. */
 const STAMP_BOIL_EPOCHS_KEPT = 3;
 /** A live group's marks kept on the GPU: the frame drawing's, and the last, which a hold on twos draws again. */
 const STAMP_LIVE_MARKS_KEPT = 2;
-/** A lattice vertex's floats: its stage clip point, its rest point, and its travel over the shutter. */
+/** A lattice vertex's floats: its stage clip point, its rest point, and its travel over its plane's motion span. */
 const LATTICE_VERTEX_FLOATS = 6;
 const STILL_TRAVEL = { x: 0, y: 0 };
 /**
- * A frame's groups as its planes' pictures are painted: `travels`, each group's over the shutter when the frame moves
- * (stampFramePlanTravel), else null; `whole` and `frameTrace` as draw takes them.
+ * Where a group writes its motion: where its paint lies, as the lens gathers it, or over all its lattice covers, as
+ * paper is carried with it (vid-151).
  */
-type StampPlaneDraw = { readonly groups: readonly StampGroupFrame[]; readonly travels: readonly (StampGroupTravel | null)[] | null; readonly whole: boolean; readonly frameTrace?: FrameTrace };
+type StampMotionCover = 'paint' | 'region';
+const stampMotionCover = (span: StampMotionSpan['kind']): StampMotionCover => (span === 'shutter' ? 'paint' : 'region');
+/**
+ * A plane's motion as its picture is painted: each group's over `span` (stampFramePlanMotion), when one moves.
+ */
+type StampPlaneMotion = { readonly span: StampMotionSpan['kind']; readonly travels: readonly (StampGroupTravel | null)[] };
+/** A frame's groups as its planes' pictures are painted: `motion`, when asked for and some group moves; `whole` and `frameTrace` as draw takes them. */
+type StampPlaneDraw = { readonly groups: readonly StampGroupFrame[]; readonly motion: StampPlaneMotion | null; readonly whole: boolean; readonly frameTrace?: FrameTrace };
 /** A plane's motion traced as its groups are laid: `into`, its motion target; `travel`, the group's (null: it lies still). */
-type StampTracedMotion = { readonly into: GPUTextureView; readonly travel: StampGroupTravel | null };
+type StampTracedMotion = { readonly into: GPUTextureView; readonly travel: StampGroupTravel | null; readonly cover: StampMotionCover };
 /** How far past its painted box a group's lay reads its layer, px: the lattice's held test and four-tap read. */
 const LAY_READ_REACH = 2;
 
@@ -982,23 +994,24 @@ type LoadedRegions = {
 };
 
 /**
- * A frame of a painting: `t` seconds into its scene, each group in `state` (as painted where it gives none), each
- * plane where `lens` puts it (stamp-plane.ts; every plane at rest and sharp, nothing blooming, when left out). Each
- * three plane's texture is filled for it before it's drawn. `exposure`: this draw is one of a reference frame's.
+ * A frame of a painting, `t` seconds into its scene, each group in `state` (as painted where it gives none).
+ * `once`: as painted, every plane at rest and sharp. `fast`: each plane where `lens` puts it, gathered along what
+ * moves over `shutter` (null: shut). `exposure`: one of a reference frame's, each plane where `lens` puts it then.
  */
-export type StampPaintFrame = { t: number; state?: StampPaintFrameState; lens?: StampLensFrame; exposure?: StampPaintExposure; shutter?: StampPaintShutter };
+export type StampPaintFrame =
+  | { readonly kind: 'once'; readonly t: number; readonly state?: StampPaintFrameState }
+  | { readonly kind: 'fast'; readonly t: number; readonly state?: StampPaintFrameState; readonly lens: StampLensFrame; readonly shutter: StampPaintShutter | null }
+  | { readonly kind: 'exposure'; readonly t: number; readonly state?: StampPaintFrameState; readonly lens: StampLensFrame; readonly exposure: StampPaintExposure };
 
-/**
- * A frame's groups as its shutter opens and closes: drawn once through a moving lens (StampLensFrame's `moving`), each
- * group's travel between them is gathered as its own motion.
- */
-export type StampPaintShutter = { readonly open: StampPaintMoment; readonly close: StampPaintMoment };
+/** A frame's groups as its shutter opens and closes, each group's travel between them gathered as its own motion. */
+export type StampPaintShutter = { readonly open: StampPosedMoment; readonly close: StampPosedMoment };
 
 /**
  * Exposure `index` of a reference frame's `count` (lens-mode.ts): its groups laid as at `at` in `state`, their paint
- * held at the frame's `t` (stampFramePlanExposed), and `lens` the lens as this exposure sees. The last develops the frame.
+ * held at the frame's `t` (stampFramePlanExposed), seen from `aperture` (lens-exposures.ts). Exposures are drawn in
+ * order; the last develops the frame.
  */
-export type StampPaintExposure = { index: number; count: number; at: number; state?: StampPaintFrameState };
+export type StampPaintExposure = { readonly index: number; readonly count: number; readonly at: number; readonly aperture: StampLensSourceExposure['aperture']; readonly state?: StampPaintFrameState };
 
 export type StampPaintRenderer = {
   /** The stage it paints on: its targets' size, and the frame its output shows. */
@@ -1057,16 +1070,9 @@ export type StampPaintRendererOptions = {
    * (stampScenePlanes); one plane of every group when left out (stampSinglePlane).
    */
   planes?: StampLaidPlanes;
-  /** Each three plane's picture by its id, filled before each draw (paint/three-layers). */
-  three?: ReadonlyMap<string, StampThreePicture>;
+  /** Each source plane's source by its id (stamp-lens-source.ts), rendered before each draw. */
+  sources?: ReadonlyMap<string, StampLensSource>;
 };
-
-/**
- * A three plane's picture: `texture`, rgba16float premultiplied linear colour, and `motion`, the lens's motion layer
- * (lens-passes.ts), both with TEXTURE_BINDING and COPY_SRC; `at`, the frame px their first texel lies on. A negative
- * `at` reaches past the frame, so a defocus blurs in what lies beyond its edge.
- */
-export type StampThreePicture = { readonly texture: GPUTexture; readonly motion: GPUTexture; readonly at: { readonly x: number; readonly y: number } };
 
 /** The most lattice cells a frame lays `group` through: a warp's most; a move's one, as is a still group's whose motion is traced. */
 const latticeCellsMost = ({ warp }: StampGroupFrame) => (warp ? STAMP_WARP_MOST_CELLS ** 2 : 1);
@@ -1078,7 +1084,7 @@ const latticeCellsMost = ({ warp }: StampGroupFrame) => (warp ? STAMP_WARP_MOST_
  */
 export async function createStampPaintRenderer(
   surface: StampPaintSurface, painting: CompiledStampPaint,
-  { profile, wetStages = STAMP_WET_STAGES, stage: given, planes = stampSinglePlane(painting), three = new Map() }: StampPaintRendererOptions = {},
+  { profile, wetStages = STAMP_WET_STAGES, stage: given, planes = stampSinglePlane(painting), sources = new Map() }: StampPaintRendererOptions = {},
 ): Promise<StampPaintRenderer> {
   const { paper, mixing } = painting;
   const { owner } = surface;
@@ -1087,7 +1093,7 @@ export async function createStampPaintRenderer(
   if (stage.frame.width !== surface.width || stage.frame.height !== surface.height) {
     throw new Error(`stamp paint: the stage's frame is ${stage.frame.width} × ${stage.frame.height}, and its surface ${surface.width} × ${surface.height}`);
   }
-  checkStampThreePictures(planes, three, stage);
+  checkStampLensSources(planes, sources, stage);
   let done = span('stamp paint compositor load');
   const { compositorOn, wetnessOf, mediumOf } = compositorFor(painting, paper, mixing, stage, wetStages);
   done();
@@ -1116,7 +1122,7 @@ export async function createStampPaintRenderer(
   try {
     const loading = owner.checked('loading the painting onto the GPU', () =>
       rendererOnSurface(
-        surface, stage, scope, compositorOn, wetnessOf, mediumOf, painting, paper, image, bound, { masks: brushedMasks, bound: boundMarks }, tipLevels, wetStages, { planes, three }, span,
+        surface, stage, scope, compositorOn, wetnessOf, mediumOf, painting, paper, image, bound, { masks: brushedMasks, bound: boundMarks }, tipLevels, wetStages, { planes, sources }, span,
       ));
     // The load itself ran within the call: what's left is WebGPU's check of it, and reading back what the brushed
     // masks cover, which the wetness is worked out with.
@@ -1152,21 +1158,24 @@ function compositorFor(painting: CompiledStampPaint, paper: StampPaintPaper, mix
 }
 
 /**
- * Refuses a three plane without a picture, one that isn't rgba16float to sample or doesn't cover the frame, and a
- * picture for a plane that isn't a three plane.
+ * Refuses a source plane without a source, a picture that isn't rgba16float to sample or doesn't cover the frame, and
+ * a source for a plane that isn't a source plane.
  */
-function checkStampThreePictures(planes: StampLaidPlanes, three: ReadonlyMap<string, StampThreePicture>, { frame }: StampStage) {
-  const threePlanes = new Set(planes.nearer.flatMap((plane) => (plane.kind === 'three' ? [plane.id] : [])));
-  for (const id of three.keys()) if (!threePlanes.has(id)) throw new Error(`stamp paint: a three.js picture is handed in for ${id}, which isn't a three plane`);
-  for (const id of threePlanes) {
-    const picture = three.get(id);
-    if (!picture) throw new Error(`stamp paint: three plane ${id} has no picture handed in`);
-    const { texture, at } = picture;
-    if (texture.format !== 'rgba16float' || texture.depthOrArrayLayers !== 1 || !(texture.usage & GPUTextureUsage.TEXTURE_BINDING)) {
-      throw new Error(`stamp paint: three plane ${id}'s texture must be rgba16float, one layer, with TEXTURE_BINDING usage`);
+function checkStampLensSources(planes: StampLaidPlanes, sources: ReadonlyMap<string, StampLensSource>, { frame }: StampStage) {
+  const sourcePlanes = new Set(planes.nearer.flatMap((plane) => (plane.kind === 'three' ? [plane.id] : [])));
+  for (const id of sources.keys()) if (!sourcePlanes.has(id)) throw new Error(`stamp paint: a source is handed in for ${id}, which isn't a source plane`);
+  for (const id of sourcePlanes) {
+    const source = sources.get(id);
+    if (!source) throw new Error(`stamp paint: source plane ${id} has no source handed in`);
+    const { texture, motion, at } = source.picture;
+    for (const [name, made] of [['texture', texture], ['motion', motion]] as const) {
+      const usage = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC;
+      if (made.format !== 'rgba16float' || made.depthOrArrayLayers !== 1 || (made.usage & usage) !== usage || made.width !== texture.width || made.height !== texture.height) {
+        throw new Error(`stamp paint: source plane ${id}'s ${name} must be rgba16float, one layer, the colour's size, with TEXTURE_BINDING and COPY_SRC usage`);
+      }
     }
     if (!(Number.isInteger(at.x) && Number.isInteger(at.y) && at.x <= 0 && at.y <= 0 && at.x + texture.width >= frame.width && at.y + texture.height >= frame.height)) {
-      throw new Error(`stamp paint: three plane ${id}'s picture, ${texture.width} × ${texture.height} at (${at.x}, ${at.y}), must cover the ${frame.width} × ${frame.height} frame from whole px`);
+      throw new Error(`stamp paint: source plane ${id}'s picture, ${texture.width} × ${texture.height} at (${at.x}, ${at.y}), must cover the ${frame.width} × ${frame.height} frame from whole px`);
     }
   }
 }
@@ -1182,7 +1191,7 @@ function rendererOnSurface(
   painting: CompiledStampPaint, paper: StampPaintPaper, image: (source: StampBrushImageSource) => StampPaintImage, bound: ReadonlyMap<CompiledStampDeposit, StampBrush<StampPaintImage>>,
   brushed: { masks: readonly CompiledStampBrushedMask[]; bound: ReadonlyMap<CompiledStampMarkPlacement, StampBrush<StampPaintImage>> },
   tipLevels: ReadonlyMap<StampPaintImage, StampTipLevel[]>, wetStages: readonly StampWetStage[],
-  { planes, three }: { planes: StampLaidPlanes; three: ReadonlyMap<string, StampThreePicture> },
+  { planes, sources }: { planes: StampLaidPlanes; sources: ReadonlyMap<string, StampLensSource> },
   span: FrameProfileStart,
 ): { measured: Promise<StampBrushedCoverage>; finish: (coverage: StampBrushedCoverage) => StampPaintRenderer } {
   const { width, height, frame, margin } = stage, { format, owner } = surface, { device } = scope;
@@ -1445,22 +1454,27 @@ function rendererOnSurface(
    * What laying a group through a lattice takes, made the first time a frame moves or warps one: its pipelines, and
    * each scene pixel's rest point.
    */
-  let latticeLay: { movedGroupPipeline: GPUComputePipeline; latticePipeline: GPURenderPipeline; motionPipeline: GPURenderPipeline; rest: ReturnType<typeof target> } | null = null;
-  const latticeLayOf = () => {
+  type LatticeLay = { movedGroupPipeline: GPUComputePipeline; pipeline: (traced: StampMotionCover | null) => GPURenderPipeline; rest: ReturnType<typeof target> };
+  let latticeLay: LatticeLay | null = null;
+  const latticeLayOf = (): LatticeLay => {
     if (latticeLay) return latticeLay;
-    const latticePipeline = (motion: boolean) => {
-      const module = device.createShaderModule({ code: groupLatticeWgsl(compositor.targets.layer, stage, motion) });
+    const latticePipelines = new Map<StampMotionCover | null, GPURenderPipeline>();
+    const latticePipeline = (traced: StampMotionCover | null) => {
+      const module = device.createShaderModule({ code: groupLatticeWgsl(compositor.targets.layer, stage, traced) });
       const attributes: GPUVertexAttribute[] = [0, 1, 2].map((shaderLocation) => ({ shaderLocation, offset: shaderLocation * 8, format: 'float32x2' }));
+      const rest: GPUColorTargetState[] = traced === 'region' ? [] : [{ format: 'rg32float' }];
       return device.createRenderPipeline({
         layout: 'auto',
         vertex: { module, buffers: [{ arrayStride: LATTICE_VERTEX_FLOATS * 4, attributes }] },
-        fragment: { module, targets: [{ format: 'rg32float' }, ...(motion ? [{ format: 'rgba16float' as const }] : [])] },
+        fragment: { module, targets: [...rest, ...(traced ? [{ format: 'rgba16float' as const }] : [])] },
       });
     };
     latticeLay = {
       movedGroupPipeline: computePipeline(groupWgsl(compositor, true, stage)),
-      latticePipeline: latticePipeline(false),
-      motionPipeline: latticePipeline(true),
+      pipeline: (traced) => {
+        if (!latticePipelines.has(traced)) latticePipelines.set(traced, latticePipeline(traced));
+        return latticePipelines.get(traced)!;
+      },
       rest: target('rest', width, height, GPUTextureUsage.RENDER_ATTACHMENT, 'rg32float'),
     };
     return latticeLay;
@@ -2202,18 +2216,20 @@ function rendererOnSurface(
       lay = latticeLayOf();
       const first = latticeUsed, floats = (triangles.length / 4) * LATTICE_VERTEX_FLOATS;
       latticeUsed += floats;
-      const pass = encoder.beginRenderPass({
-        colorAttachments: [
-          { view: lay.rest.view, loadOp: 'clear', clearValue: [STAMP_NO_REST, STAMP_NO_REST, 0, 0], storeOp: 'store' },
-          ...(traced ? [{ view: traced.into, loadOp: 'load' as const, storeOp: 'store' as const }] : []),
-        ],
-      });
-      const pipeline = traced ? lay.motionPipeline : lay.latticePipeline;
-      pass.setPipeline(pipeline);
-      pass.setBindGroup(0, bindGroup(pipeline, [targets.layer.view, linearClamp]));
-      pass.setVertexBuffer(0, latticeVertices, first * 4, floats * 4);
-      pass.draw(triangles.length / 4);
-      pass.end();
+      const latticePass = (attachments: GPURenderPassColorAttachment[], mode: StampMotionCover | null) => {
+        const pipeline = lay!.pipeline(mode), pass = encoder.beginRenderPass({ colorAttachments: attachments });
+        pass.setPipeline(pipeline);
+        // A region's pass reads nothing: its pipeline binds nothing.
+        if (mode !== 'region') pass.setBindGroup(0, bindGroup(pipeline, [targets.layer.view, linearClamp]));
+        pass.setVertexBuffer(0, latticeVertices, first * 4, floats * 4);
+        pass.draw(triangles.length / 4);
+        pass.end();
+      };
+      const restInto: GPURenderPassColorAttachment = { view: lay.rest.view, loadOp: 'clear', clearValue: [STAMP_NO_REST, STAMP_NO_REST, 0, 0], storeOp: 'store' };
+      // A region's motion is drawn on its own: the rest's pass drops what holds no paint.
+      if (traced?.cover === 'paint') latticePass([restInto, latticeMotionInto(traced.into)], 'paint');
+      else latticePass([restInto], null);
+      if (traced?.cover === 'region') latticePass([latticeMotionInto(traced.into)], 'region');
       // A still group's lattice is drawn for its motion alone: it's laid where it's painted.
       if (!map) lay = null;
     }
@@ -2237,7 +2253,7 @@ function rendererOnSurface(
   }
 
   // Planes (stamp-plane.ts). A painted plane's picture is kept on the device under what it shows, and its defocus
-  // under that and its sigma; a three plane's texture is handed in, defocused each frame it's blurred. Every picture
+  // under that and its sigma; a source plane's texture is handed in, defocused each frame it's blurred. Every picture
   // box here is in the stage's texels. Pipelines and targets are made when a frame first asks.
   const planePipelines = new Map<string, GPUComputePipeline>();
   const planePipeline = (key: string, code: () => string) => {
@@ -2256,7 +2272,9 @@ function rendererOnSurface(
   };
   const stageBox: Box = { x: 0, y: 0, w: width, h: height };
   // The frame's lens: composites the planes' pictures, blooms what glows and writes the frame (lens-compositor.ts).
-  const lensGpu = createLensCompositor(owner.webgpu, frame);
+  // Its blur extent spans the stage, or a source's picture if wider.
+  const sourceSizes = [...sources.values()].map(({ picture: { texture } }) => texture);
+  const lensGpu = createLensCompositor(owner.webgpu, { ...frame, blurExtent: { w: Math.max(width, ...sourceSizes.map(({ width: w }) => w)), h: Math.max(height, ...sourceSizes.map(({ height: h }) => h)) } });
 
   /** A picture on the device: its layers (by its kind), its texture, and its box in stage texels. */
   type StampPictureNote = StampPlanePictureLayers & { readonly box: Box };
@@ -2328,15 +2346,15 @@ function rendererOnSurface(
    * picture over the stage, on the painting's paper; a film over what its groups were laid over (stage texels), laid
    * on white and again on black, from the films the first lay kept. Null for none.
    */
-  function paintPicture(encoder: GPUCommandEncoder, planeGroups: readonly number[], kind: StampPlanePictureLayers['kind'], { groups, travels, whole, frameTrace }: StampPlaneDraw, key: string): StampPlanePicture | null {
+  function paintPicture(encoder: GPUCommandEncoder, planeGroups: readonly number[], kind: StampPlanePictureLayers['kind'], { groups, motion: planeMotion, whole, frameTrace }: StampPlaneDraw, key: string): StampPlanePicture | null {
     const shown = planeGroups.filter((index) => groups[index].visibility);
-    const travelling = travels && shown.some((index) => travels[index]);
-    const layers = stampPlanePictureLayers(kind, { emits: shown.some((index) => groups[index].glow), travels: !!travelling });
+    const travelling = !!planeMotion && shown.some((index) => planeMotion.travels[index]);
+    const layers = stampPlanePictureLayers(kind, { emits: shown.some((index) => groups[index].glow), travels: travelling });
     const first = layers.kind === 'film' ? 'white' : 'paper';
     drawPaper(encoder, first);
     if (layers.emission !== null) clear(encoder, emissionTarget().view);
     if (travelling) clear(encoder, motionTarget().view);
-    const motion = travelling ? { into: motionTarget().view, travels } : undefined;
+    const motion = travelling && planeMotion ? { into: motionTarget().view, travels: planeMotion.travels, cover: stampMotionCover(planeMotion.span) } : undefined;
     const laidBox = layPlaneGroups(encoder, planeGroups, groups, { whole, frameTrace, backing: first, motion });
     const box = layers.kind === 'film' ? laidBox : stageBox;
     if (!box) return null;
@@ -2362,7 +2380,7 @@ function rendererOnSurface(
    * the films the first kept. Returns the union of its groups' laid boxes (stage texels); null for none.
    */
   function layPlaneGroups(encoder: GPUCommandEncoder, planeGroups: readonly number[], groups: readonly StampGroupFrame[], { whole, frameTrace, backing, motion }: {
-    whole: boolean; frameTrace?: FrameTrace; backing: StampPaintBacking; motion?: { into: GPUTextureView; travels: readonly (StampGroupTravel | null)[] };
+    whole: boolean; frameTrace?: FrameTrace; backing: StampPaintBacking; motion?: { into: GPUTextureView; travels: readonly (StampGroupTravel | null)[]; cover: StampMotionCover };
   }): Box | null {
     const again = backing === 'black';
     // A whole frame paints each film once, so its trace sees each deposit once: a clear plane keeps its films for the
@@ -2381,7 +2399,7 @@ function rendererOnSurface(
         if (keeps) keepFilm(encoder, filmKey, painted);
       } else painted = kept;
       if (!painted) continue;
-      const laid = layGroup(encoder, index, groupFrame, painted, backing, motion && !again ? { into: motion.into, travel: motion.travels[index] } : null);
+      const laid = layGroup(encoder, index, groupFrame, painted, backing, motion && !again ? { into: motion.into, travel: motion.travels[index], cover: motion.cover } : null);
       if (!laid) continue;
       // Before the next group: the layer and the lattice's rest map are this group's until the next one is laid. A
       // glaze leaves the glow under it: dimming it by its tint would take its spectral transmittance.
@@ -2424,21 +2442,21 @@ function rendererOnSurface(
     return look.defocus ? blurredPicture(encoder, picture, key, look.defocus / Math.hypot(look.view.ma, look.view.mb)) : picture;
   }
   /**
-   * Three plane `id`'s picture for the lens and its box in frame px: its colour alone when sharp and still, else with
+   * Source plane `id`'s picture for the lens and its box in frame px: its colour alone when sharp and still, else with
    * its motion layer, each texel defocused by `focus` at its own distance, at most twice the aperture: else a point by
    * the lens would blur the whole picture.
    */
-  function threePicture(encoder: GPUCommandEncoder, id: string, focus: LensFocus | null, moving: boolean): { view: GPUTextureView; box: Box; layers: LensPictureLayers } {
-    const { texture, motion, at } = three.get(id)!, { width: w, height: h } = texture;
+  function sourcePicture(encoder: GPUCommandEncoder, id: string, focus: LensFocus | null, moving: boolean): { view: GPUTextureView; box: Box; layers: LensPictureLayers } {
+    const { texture, motion, at } = sources.get(id)!.picture, { width: w, height: h } = texture;
     const box: Box = { x: at.x, y: at.y, w, h };
     const defocusing = focus !== null && focus.aperture >= LENS_DEFOCUS_LEAST;
-    if (!defocusing && !moving) return { view: arrayView(texture), box, layers: THREE_LAYERS };
-    const both = planeTarget(`three ${id}`, w, h, 2);
+    if (!defocusing && !moving) return { view: arrayView(texture), box, layers: SOURCE_LAYERS };
+    const both = planeTarget(`source ${id}`, w, h, 2);
     encoder.copyTextureToTexture({ texture }, { texture: both.texture, origin: { x: 0, y: 0, z: 0 } }, [w, h, 1]);
     encoder.copyTextureToTexture({ texture: motion }, { texture: both.texture, origin: { x: 0, y: 0, z: 1 } }, [w, h, 1]);
-    const layers = moving ? THREE_MOVING_LAYERS : THREE_LAYERS;
+    const layers = moving ? SOURCE_MOVING_LAYERS : SOURCE_LAYERS;
     if (!defocusing) return { view: both.array, box, layers };
-    const defocused = planeTarget(`three ${id} defocused`, w, h, 2);
+    const defocused = planeTarget(`source ${id} defocused`, w, h, 2);
     lensGpu.defocus(encoder, { source: both.array, into: defocused.array, size: { w, h }, focus, most: 2 * focus.aperture });
     return { view: defocused.array, box, layers };
   }
@@ -2574,22 +2592,31 @@ function rendererOnSurface(
     return painted;
   }
 
+  // The reference frame its exposures go into, from its first to its last.
+  let referenceFrame: LensFrameExposures | null = null;
+  /** The lens frame `paintFrame` draws into: its own for one exposure, else its reference frame's. */
+  function lensFrameOf(paintFrame: StampPaintFrame): LensFrameExposures {
+    if (paintFrame.kind !== 'exposure') return lensGpu.beginFrame(1);
+    const { index, count } = paintFrame.exposure;
+    if (index === 0) referenceFrame = lensGpu.beginFrame(count);
+    if (referenceFrame?.count !== count) throw new Error(`stamp paint: exposure ${index} of ${count} drawn into a paintFrame of ${referenceFrame?.count ?? 'none'}`);
+    return referenceFrame;
+  }
+
   /**
-   * Encodes the frame at `t`. `whole` paints every group afresh, keeping only the films a clear plane lays again: a
-   * traced frame, so every deposit it asks for is resolved in it, and a read-back layer. One plane at rest and sharp,
-   * nothing glowing, is output as painted; else each plane's picture is laid where `lens` puts it.
+   * Encodes `paintFrame`. `whole` paints every group afresh, keeping only the films a clear plane lays again: for a
+   * traced frame and a read-back layer. `moved`: the source planes whose render moved over the shutter. One plane at
+   * rest, nothing glowing or moving, is output as painted; else each picture is laid where the lens puts it.
    */
-  function draw(t: number, { frameTrace, whole = frameTrace !== undefined, state, lens: lensFrame, exposure, shutter }: {
-    frameTrace?: FrameTrace; whole?: boolean; state?: StampPaintFrameState; lens?: StampLensFrame; exposure?: StampPaintExposure; shutter?: StampPaintShutter;
-  } = {}) {
+  function draw(paintFrame: StampPaintFrame, { frameTrace, whole = frameTrace !== undefined, moved = new Set() }: { frameTrace?: FrameTrace; whole?: boolean; moved?: ReadonlySet<string> } = {}) {
     owner.assertLive();
-    const groups = exposure ? stampFramePlanExposed(painting, { t, state }, { t: exposure.at, state: exposure.state }) : stampFramePlan(painting, t, state);
-    const { index, count } = exposure ?? { index: 0, count: 1 };
+    const { t, state } = paintFrame, lensFrame = paintFrame.kind === 'once' ? null : paintFrame.lens;
+    const groups = paintFrame.kind === 'exposure' ? stampFramePlanExposed(painting, { t, state }, { t: paintFrame.exposure.at, state: paintFrame.exposure.state }) : stampFramePlan(painting, t, state);
     slots = 0;
     latticeUsed = 0;
     latticeRoom(groups);
     const glows = groups.some(({ visibility, glow }) => visibility && glow);
-    if (glows && !lensFrame) throw new Error(`stamp paint: a group glows at ${t} s, and only a lens blooms it: draw the frame through a camera's lens (paint-camera.ts)`);
+    if (glows && !lensFrame) throw new Error(`stamp paint: a group glows at ${t} s, and only a lens blooms it: draw the paintFrame through a camera's lens (paint-camera.ts)`);
     const lookOf = (id: string) => lensFrame?.planes.get(id) ?? REST_LOOK;
     const encoder = device.createCommandEncoder();
     const output = (pipeline: GPURenderPipeline, resources: (GPUBindingResource | null)[]) => {
@@ -2600,16 +2627,18 @@ function rendererOnSurface(
       pass.end();
     };
     const { back, nearer } = planes;
-    const moving = count === 1 && !!lensFrame?.moving;
-    const travels = moving && shutter ? stampFramePlanTravel(painting, { t, state }, shutter) : null;
-    if (count === 1 && !nearer.length && !glows && isRest(lookOf(back.id)) && !travels?.some(Boolean)) {
+    // A fast frame is gathered along whatever moves over its shutter: a plane's view, a group, a source's render.
+    const travels = paintFrame.kind === 'fast' && paintFrame.shutter ? stampFramePlanMotion(painting, { t, state }, { kind: 'shutter', ...paintFrame.shutter }) : null;
+    const planeMotion: StampPlaneMotion | null = travels?.some(Boolean) ? { span: 'shutter', travels } : null;
+    const moving = paintFrame.kind === 'fast' && (!!planeMotion || moved.size > 0 || [...paintFrame.lens.planes.values()].some(({ shutter }) => shutter));
+    if (paintFrame.kind !== 'exposure' && !nearer.length && !glows && isRest(lookOf(back.id)) && !planeMotion) {
       // The composite of one opaque plane at rest is its painting: shown as it is, not round linear light and back.
       drawPaper(encoder, 'paper');
       layPlaneGroups(encoder, back.groups, groups, { whole, frameTrace, backing: 'paper' });
       output(outputPipeline, [targets.painting.view]);
     } else {
       // Every picture first, as each plane is painted on the one painting target; then laid far to near.
-      const planeDraw: StampPlaneDraw = { groups, travels, whole, frameTrace };
+      const planeDraw: StampPlaneDraw = { groups, motion: planeMotion, whole, frameTrace };
       const layerOf = (picture: StampPlanePicture | null, look: StampPlaneLook, clipped: boolean): LensLayer[] => (picture
         ? [{
           picture: arrayView(picture.texture), layers: picture, view: look.view, shutter: look.shutter,
@@ -2620,19 +2649,26 @@ function rendererOnSurface(
         ...layerOf(planePicture(encoder, back, 'paper', lookOf(back.id), planeDraw), lookOf(back.id), false),
         ...nearer.flatMap((plane): LensLayer[] => {
           const look = lookOf(plane.id);
-          if (plane.kind === 'picture') return layerOf(planePicture(encoder, plane, 'film', look, planeDraw), look, true);
-          // A three.js render is drawn through the camera, its motion with it: only the lens's defocus is left to do.
-          const { view, box, layers: pictureLayers } = threePicture(encoder, plane.id, lensFrame?.focus ?? null, moving);
-          return [{
-            picture: view, layers: pictureLayers, view: REST_LOOK.view, shutter: null, origin: { x: box.x, y: box.y }, size: box, clipped: true,
-            distance: look.distance, distances: moving ? 'texels' : 'layer',
-          }];
+          switch (plane.kind) {
+            case 'picture': return layerOf(planePicture(encoder, plane, 'film', look, planeDraw), look, true);
+            case 'three': {
+              // A source renders through the camera, its motion with it: only the lens's defocus is left to do.
+              const sourceMoving = moving && moved.has(plane.id);
+              const { view, box, layers: pictureLayers } = sourcePicture(encoder, plane.id, lensFrame?.focus ?? null, sourceMoving);
+              return [{
+                picture: view, layers: pictureLayers, view: REST_LOOK.view, shutter: null, origin: { x: box.x, y: box.y }, size: box, clipped: true,
+                distance: look.distance, distances: sourceMoving ? 'texels' : 'layer',
+              }];
+            }
+            default: return plane satisfies never;
+          }
         }),
       ];
-      lensGpu.exposure(encoder, layers, { index, count, glowing: glows, moving });
+      const lensFrameExposures = lensFrameOf(paintFrame);
+      lensFrameExposures.exposure(encoder, layers, { glowing: glows, moving });
       // One bloom, of all that glows as the frame shows it, once its exposures are in.
-      if (index === count - 1) {
-        lensGpu.develop(encoder, {
+      if (paintFrame.kind !== 'exposure' || paintFrame.exposure.index === paintFrame.exposure.count - 1) {
+        lensFrameExposures.develop(encoder, {
           bloom: lensFrame ? { sigma: lensFrame.bloom, strength: 1, glow: 'emission' } : null,
           into: surface.frameTexture().createView(), format, encoding: { kind: 'encoded', dithered },
         });
@@ -2642,6 +2678,16 @@ function rendererOnSurface(
     if (latticeUsed) device.queue.writeBuffer(latticeVertices!, 0, latticeStaging, 0, latticeUsed);
     lensGpu.flush();
     return encoder;
+  }
+
+  /** Renders each source plane for `paintFrame`, one after another: the ones whose render moved over its shutter. */
+  async function renderSources(paintFrame: StampPaintFrame): Promise<ReadonlySet<string>> {
+    const exposure = paintFrame.kind === 'exposure' ? { index: paintFrame.exposure.index, at: paintFrame.exposure.at, aperture: paintFrame.exposure.aperture } : null;
+    return [...sources].reduce<Promise<Set<string>>>(async (prior, [id, source]) => {
+      const moved = await prior;
+      if ((await source.render(paintFrame.t, exposure)).moved) moved.add(id);
+      return moved;
+    }, Promise.resolve(new Set()));
   }
 
   /**
@@ -2783,18 +2829,19 @@ function rendererOnSurface(
       stage,
       wetness,
       wetWarnings,
-      draw: async ({ t, state, lens, exposure, shutter }) => {
+      draw: async (paintFrame) => {
         if (disposed) return;
-        await owner.checked(`drawing the painting at ${t} s`, () => queue.submit([draw(t, { state, lens, exposure, shutter }).finish()]));
+        const moved = await renderSources(paintFrame);
+        await owner.checked(`drawing the painting at ${paintFrame.t} s`, () => queue.submit([draw(paintFrame, { moved }).finish()]));
       },
-      trace: async ({ t, state, lens }, requests) => {
+      trace: async (paintFrame, requests) => {
         if (disposed) throw new Error('stamp paint: a disposed renderer traces nothing');
         const traced: FrameTrace['deposits'] = new Map();
         let floats = 0;
         for (const request of requests) {
           const { deposit, crop } = request;
           if (!writtenBank.deposits.has(deposit)) throw new Error(`stamp paint: can't trace ${deposit.id}, which isn't in the painting`);
-          if (traced.has(deposit)) throw new Error(`stamp paint: ${deposit.id} is traced twice in one frame`);
+          if (traced.has(deposit)) throw new Error(`stamp paint: ${deposit.id} is traced twice in one paintFrame`);
           if (!(crop.w > 0 && crop.h > 0)) throw new Error(`stamp paint: ${deposit.id}'s trace crop is ${crop.w} × ${crop.h}, and a crop needs pixels`);
           traced.set(deposit, { request, order: request.order ? stampResolveOrderIndex(request.order) : writtenBank.deposits.get(deposit)!.resolveOrder, offset: floats });
           floats += crop.w * crop.h * TRACE_SLOTS;
@@ -2803,8 +2850,9 @@ function rendererOnSurface(
         const traceBuffer = owner.device.createBuffer({ size: bytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
         const read = owner.device.createBuffer({ size: bytes, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
         try {
-          await owner.checked(`tracing the painting at ${t} s`, () => {
-            const encoder = draw(t, { frameTrace: { deposits: traced, buffer: traceBuffer }, state, lens });
+          const moved = await renderSources(paintFrame);
+          await owner.checked(`tracing the painting at ${paintFrame.t} s`, () => {
+            const encoder = draw(paintFrame, { frameTrace: { deposits: traced, buffer: traceBuffer }, moved });
             encoder.copyBufferToBuffer(traceBuffer, 0, read, 0, bytes);
             queue.submit([encoder.finish()]);
           });
@@ -2821,13 +2869,14 @@ function rendererOnSurface(
           read.destroy();
         }
       },
-      readLayer: async ({ t, state, lens }) => {
+      readLayer: async (paintFrame) => {
         if (disposed) throw new Error('stamp paint: a disposed renderer reads back nothing');
         const layers = targets.layer.layers.length, rowBytes = Math.ceil((width * 8) / 256) * 256;
         const read = owner.device.createBuffer({ size: rowBytes * height * layers, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
         try {
-          await owner.checked(`reading back the layer at ${t} s`, () => {
-            const encoder = draw(t, { whole: true, state, lens });
+          const moved = await renderSources(paintFrame);
+          await owner.checked(`reading back the layer at ${paintFrame.t} s`, () => {
+            const encoder = draw(paintFrame, { whole: true, moved });
             encoder.copyTextureToBuffer({ texture: targets.layer.texture }, { buffer: read, bytesPerRow: rowBytes, rowsPerImage: height }, [width, height, layers]);
             queue.submit([encoder.finish()]);
           });
@@ -2864,14 +2913,14 @@ function rendererOnSurface(
 
 /** `texture` viewed as an array, as a gaussian pass binds a plain target and an array one alike. */
 const arrayView = (texture: GPUTexture) => texture.createView({ dimension: '2d-array' });
-/** What `plane`'s picture shows this frame: each of its groups' film, lay, warp, visibility, glow and travel. */
-const pictureKey = (plane: { id: string; groups: readonly number[] }, { groups, travels }: StampPlaneDraw) => JSON.stringify([plane.id, plane.groups.map((index) => {
+/** What `plane`'s picture shows this frame: each of its groups' film, lay, warp, visibility, glow and motion. */
+const pictureKey = (plane: { id: string; groups: readonly number[] }, { groups, motion }: StampPlaneDraw) => JSON.stringify([plane.id, plane.groups.map((index) => {
   const { paintKey, lay, warp, visibility, glow } = groups[index];
-  return visibility ? [paintKey, lay, warp && [warp.key, warp.cell], visibility, glow, travels?.[index]?.key] : null;
-}), !!travels]);
-/** A three render's layers: laid over by its alpha, as a paper picture is, with no emission. */
-const THREE_LAYERS: LensPictureLayers = { taken: null, emission: null, motion: null };
-const THREE_MOVING_LAYERS: LensPictureLayers = { ...THREE_LAYERS, motion: 1 };
+  return visibility ? [paintKey, lay, warp && [warp.key, warp.cell], visibility, glow, motion?.travels[index]?.key] : null;
+}), motion?.span ?? null]);
+/** A source's render's layers: laid over by its alpha, as a paper picture is, with no emission. */
+const SOURCE_LAYERS: LensPictureLayers = { taken: null, emission: null, motion: null };
+const SOURCE_MOVING_LAYERS: LensPictureLayers = { ...SOURCE_LAYERS, motion: 1 };
 /** Rest: a plane where it's painted, sharp. */
 const REST_LOOK: StampPlaneLook = { view: { ma: 1, mb: 0, kx: 0, ky: 0 }, defocus: 0, distance: 1, shutter: null };
 const isRest = ({ view, defocus, shutter }: StampPlaneLook) => view.ma === 1 && view.mb === 0 && view.kx === 0 && view.ky === 0 && !defocus && !shutter;

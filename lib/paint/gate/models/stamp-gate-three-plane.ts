@@ -76,7 +76,7 @@ export function stampGateThreeContentBlurred(): Float64Array {
 
 /** The defocus case's lens: focused at half the card's distance, so its texels blur by STAMP_GATE_THREE_DEFOCUS px. */
 export const STAMP_GATE_THREE_DEFOCUS_LENS: StampLensFrame = {
-  planes: new Map([[STAMP_GATE_CARD, STAMP_GATE_REST_LOOK]]), bloom: 0, focus: { focus: STAMP_GATE_THREE_DISTANCE / 2, aperture: 2 * STAMP_GATE_THREE_DEFOCUS }, moving: false,
+  planes: new Map([[STAMP_GATE_CARD, STAMP_GATE_REST_LOOK]]), bloom: 0, focus: { focus: STAMP_GATE_THREE_DISTANCE / 2, aperture: 2 * STAMP_GATE_THREE_DEFOCUS },
 };
 
 const flood = (box: Box) => stampGatePolygon(box.x0, box.y0, box.x1, box.y0, box.x1, box.y1, box.x0, box.y1);

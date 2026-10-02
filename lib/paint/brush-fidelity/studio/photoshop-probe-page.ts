@@ -59,7 +59,7 @@ function cropPlane(plane: Float32Array, crop: { x: number; y: number; w: number 
  */
 async function tracePhotoshopProbeCells(requests: readonly PhotoshopProbeCellRequest[]): Promise<PhotoshopProbeCellTrace[]> {
   const { sheet, cells, renderer, order } = open!;
-  const traces = await renderer.trace({ t: 0 }, requests.flatMap(({ cell, crop }) => cells[cell].map((deposit) => ({ deposit, crop, ...(order && { order }) }))));
+  const traces = await renderer.trace({ kind: 'once', t: 0 }, requests.flatMap(({ cell, crop }) => cells[cell].map((deposit) => ({ deposit, crop, ...(order && { order }) }))));
   let next = 0;
   return requests.map(({ cell, stages }) => {
     const own = traces.slice(next, next += cells[cell].length), { box } = sheet.cells[cell];

@@ -3,7 +3,8 @@
 // every object's world matrix and the camera are recorded, and a fragment's point is projected through both.
 //
 // Negative space: an object's motion is rigid, its matrices' alone. A skinned or morphed vertex moves with its
-// object, not its bones: a deforming source (vid-150) brings its own open and close positions.
+// object, not its bones, and an InstancedMesh's instances with the mesh, not their instance matrices: a deforming or
+// instanced source (vid-150) brings its own open and close positions.
 
 import { Matrix4, type Camera, type Object3D, type Scene } from 'three/webgpu';
 import { mrt, output, positionLocal, positionView, uniform, varying, vec2, vec4 } from 'three/tsl';
@@ -16,6 +17,11 @@ export type LensThreeMotion = {
   mrt: ReturnType<typeof mrt>;
   /** Records where `scene`'s objects and `camera` are (their world matrices updated) as the shutter opens or closes. */
   record: (moment: 'open' | 'close', scene: Scene, camera: Camera) => void;
+  /**
+   * Once both are recorded: whether anything in `scene` or its camera moved between them. If nothing did, its motion
+   * is still, as `still` leaves it.
+   */
+  moved: (scene: Scene) => boolean;
   /** Forgets the records: every fragment's motion is 0, as a frame with its shutter shut. */
   still: () => void;
 };
@@ -43,9 +49,21 @@ export function createLensThreeMotion({ width, height, distanceUnit }: { width: 
       const kept = moment === 'open' ? opens : closes;
       scene.updateMatrixWorld(true);
       camera.updateMatrixWorld(true);
-      scene.traverse((object) => void kept.set(object, object.matrixWorld.clone()));
+      scene.traverse((object) => {
+        const had = kept.get(object);
+        if (had) had.copy(object.matrixWorld);
+        else kept.set(object, object.matrixWorld.clone());
+      });
       (moment === 'open' ? openView : closeView).value.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
       moving.value = 1;
+    },
+    moved: (scene) => {
+      let any = !openView.value.equals(closeView.value);
+      scene.traverse((object) => {
+        any ||= !opens.get(object)!.equals(closes.get(object)!);
+      });
+      if (!any) moving.value = 0;
+      return any;
     },
     still: () => {
       moving.value = 0;

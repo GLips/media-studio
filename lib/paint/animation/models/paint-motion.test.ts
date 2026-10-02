@@ -5,6 +5,7 @@ import { stampGroupSceneFromLayer } from '#lib/paint/painting/models/stamp-group
 import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import type { StampGroupOptions, StampPaintEnvironment } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
+import { paintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { paintMotionPlay, type PaintMotion, type PaintMotionNode } from './paint-motion-compile.ts';
 import type { PaintPoseClip } from './paint-motion-clips.ts';
@@ -46,7 +47,7 @@ test('a frame is the same in any order, render frames inside one hold share keys
   const painting = paintingOf([square('frog'), square('frog-ink')]);
   const build = () => built(buildPaintMotion(painting, { nodes: [body, outline], plays: [paintMotionPlay(body, puff, { clock: { at: 0.1, loop: { period: 1 } }, origin: 'puff' })], foldCheck: { from: 0, to: 3 } }));
   const probe = { x: 260, y: 180 };
-  const read = (motion: PaintMotion, t: number) => [...paintMotionFrameAt(motion, t)].map(([id, s]) => `${id} ${s.warp?.key} ${JSON.stringify(s.warp?.map(probe))}`).join('\n');
+  const read = (motion: PaintMotion, t: number) => [...paintMotionFrameAt(motion, paintMoment(t))].map(([id, s]) => `${id} ${s.warp?.key} ${JSON.stringify(s.warp?.map(probe))}`).join('\n');
   const times = Array.from({ length: 90 }, (_, i) => i / 30);
   const forwards = build(), forward = times.map((t) => read(forwards, t));
   // A fresh motion read in a fixed shuffle, every 37th frame round the ring, as a render in many tabs would.
@@ -60,7 +61,7 @@ test('a frame is the same in any order, render frames inside one hold share keys
     assert.equal(maps.get(`${id} ${key}`) ?? at, at, `key ${key} names one map`);
     maps.set(`${id} ${key}`, at);
   }
-  const wobbled = paintMotionFrameAt(forwards, 0.8).get('frog-ink')!.warp!;
+  const wobbled = paintMotionFrameAt(forwards, paintMoment(0.8)).get('frog-ink')!.warp!;
   assert.match(wobbled.key, /^wobble\("frog-ink",9,2\.2,45\)>pins\[radial/, 'the ink wobbles in its rest space, then bends with the body');
 });
 
@@ -76,7 +77,7 @@ test('a point goes through its own bend and placement, then its parent\'s, as a 
       paintMotionPlay(child, { kind: 'place', keys: [{ at: 0, x: 300, y: 0 }] }, { clock: { at: 0 }, origin: 'carry' }),
     ],
   }));
-  const state = paintMotionFrameAt(motion, 0).get('c')!;
+  const state = paintMotionFrameAt(motion, paintMoment(0)).get('c')!;
   // Placed first, the child's (0, 0) lands at (300, 0), where the parent's bend takes it 20 px further.
   close(state.warp!.map({ x: 0, y: 0 }), { x: 320, y: 0 }, 'the child bends where it is placed');
   assert.equal(state.lay, undefined, 'its placement is inside the parent\'s bend, so it is in the warp');
@@ -94,7 +95,7 @@ test('placements outside every bend compose into one lay about the node\'s pivot
       paintMotionPlay(parent, { kind: 'place', keys: [{ at: 0, x: 5, y: 0, scale: 3 }] }, { clock, origin: 'zoom' }),
     ],
   }));
-  const state = paintMotionFrameAt(motion, 0).get('c')!;
+  const state = paintMotionFrameAt(motion, paintMoment(0)).get('c')!;
   const rest = { x: 7, y: 3 };
   // The child's own scale ×2 about the origin is its warp; its turn and the parent's zoom, both rigid, its lay.
   const grown = { x: 14, y: 6 };
@@ -117,7 +118,7 @@ test('two flutters with crossed axes give different keys for different maps, eve
       paintMotionPlay(wings, beat(Math.PI / 2), { clock: { at: 1 }, origin: 'across y' }),
     ],
   }));
-  const [a, b] = [0.75, 1.75].map((t) => paintMotionFrameAt(motion, t).get('butterfly')!.warp!);
+  const [a, b] = [0.75, 1.75].map((t) => paintMotionFrameAt(motion, paintMoment(t)).get('butterfly')!.warp!);
   const probe = { x: 20, y: 30 };
   assert.notDeepEqual(a.map(probe), b.map(probe), 'the maps differ');
   assert.notEqual(a.key, b.key, 'so their keys do');
@@ -128,8 +129,8 @@ test('a re-seeding group always has its epoch; a stuck one over a boil is held a
   const still = { id: 'rock' } satisfies PaintMotionNode;
   const painting = paintingOf([square('ink', { options: { boil: { every: 2 } } }), square('rock', { options: { boil: { every: 2 } } })]);
   const motion = built(buildPaintMotion(painting, { nodes: [reseeded, still], plays: [] }));
-  assert.deepEqual(paintMotionFrameAt(motion, 1.5).get('ink')?.marks, { kind: 'written', epoch: 18 });
-  assert.deepEqual(paintMotionFrameAt(motion, 1.5).get('rock')?.marks, { kind: 'written', epoch: 0 });
+  assert.deepEqual(paintMotionFrameAt(motion, paintMoment(1.5)).get('ink')?.marks, { kind: 'written', epoch: 18 });
+  assert.deepEqual(paintMotionFrameAt(motion, paintMoment(1.5)).get('rock')?.marks, { kind: 'written', epoch: 0 });
   const unboiled = buildPaintMotion(paintingOf([square('ink')]), { nodes: [reseeded], plays: [] });
   assert.match(problemsOf(unboiled)[0], /^ink re-seeds its marks, but its group is compiled without a boil/);
 });
@@ -149,14 +150,14 @@ test('a live child is posed by its own pins alone, and its parent\'s breath reac
       paintMotionPlay(sac, { kind: 'poses', keys: [{ at: 0, pose: {} }, { at: 1, pose: { puff: { scale: 1.9 } } }] }, { clock: { at: 0 }, origin: 'puff' }),
     ],
   }));
-  assert.equal(paintMotionFrameAt(motion, 0).get('sac'), undefined, 'at rest it draws as written');
-  const puffed = paintMotionFrameAt(motion, 1).get('sac')!;
+  assert.equal(paintMotionFrameAt(motion, paintMoment(0)).get('sac'), undefined, 'at rest it draws as written');
+  const puffed = paintMotionFrameAt(motion, paintMoment(1)).get('sac')!;
   assert.ok(puffed.marks?.kind === 'live', 'puffed, it is re-placed');
   assert.equal(puffed.marks.marks.passes[0].id, 'sac/p');
   const puffedKey = puffed.marks.key;
   assert.match(puffedKey, /^sac\{puff=0,0,0,1\.9\}$/);
   assert.match(puffed.warp!.key, /^pins\[radial\(200,200;300\)=0,0,0,1\.05\]$/, 'the breath, at its fullest, bends the sac too');
-  paintMotionFrameAt(motion, 3);
+  paintMotionFrameAt(motion, paintMoment(3));
   assert.equal(poses.filter((key) => key === puffedKey).length, 1, 'each pose is compiled once');
 });
 

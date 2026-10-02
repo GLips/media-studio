@@ -93,22 +93,26 @@ async function checkStampGateLensCase(id: string): Promise<StampGateWashCheck[]>
     })];
   }
   if (id === 'lens/motion') {
-    const gate = stampGateMotionPainting(), url = drawnImages(gate), t = STAMP_GATE_MOTION_T, opens = t - STAMP_GATE_MOTION_SHUTTER / 2;
-    const frameOf = (draws: (kind: StampGateMotionKind) => StampPaintFrame[]) => (kind: StampGateMotionKind) =>
-      withGateRenderer(gate, url, (renderer, frame) => drawnExposures(renderer, frame, draws(kind)));
-    const fast = frameOf((kind) => [{
-      t, state: stampGateMotionState(kind, t), lens: stampGateMotionFastLens(kind),
+    const t = STAMP_GATE_MOTION_T, opens = t - STAMP_GATE_MOTION_SHUTTER / 2;
+    const fast = motionGateFramesDrawn((kind) => [{
+      kind: 'fast', t, state: stampGateMotionState(kind, t), lens: stampGateMotionFastLens(kind),
       shutter: { open: { at: opens, state: stampGateMotionState(kind, opens) }, close: { at: opens + STAMP_GATE_MOTION_SHUTTER, state: stampGateMotionState(kind, opens + STAMP_GATE_MOTION_SHUTTER) } },
     }]);
-    const reference = frameOf((kind) => stampGateMotionExposures(kind).map(({ lens, ...exposure }) => ({
-      t, state: stampGateMotionState(kind, t), lens, exposure: { ...exposure, state: stampGateMotionState(kind, exposure.at) },
+    const reference = motionGateFramesDrawn((kind) => stampGateMotionExposures(kind).map(({ lens, ...exposure }) => ({
+      kind: 'exposure', t, state: stampGateMotionState(kind, t), lens, exposure: { ...exposure, state: stampGateMotionState(kind, exposure.at) },
     })));
-    const sharp = frameOf((kind) => [{ t, state: stampGateMotionState(kind, t) }]);
+    const sharp = motionGateFramesDrawn((kind) => [{ kind: 'once', t, state: stampGateMotionState(kind, t) }]);
     const framesOf = async (kind: StampGateMotionKind) => ({ fast: await fast(kind), reference: await reference(kind), sharp: await sharp(kind) });
-    return [checkStampGateMotion({ own: await framesOf('own'), pan: await framesOf('pan') }, gate.width)];
+    return [checkStampGateMotion({ own: await framesOf('own'), pan: await framesOf('pan'), crossed: await framesOf('crossed') }, stampGateMotionPainting('own').width)];
   }
   throw new Error(`stamp gate: no lens case ${JSON.stringify(id)}`);
 }
+
+/** A motion-gate frame drawer: `kind`'s painting drawn through the frames `draws` gives it, read back. */
+const motionGateFramesDrawn = (draws: (kind: StampGateMotionKind) => StampPaintFrame[]) => (kind: StampGateMotionKind) => {
+  const gate = stampGateMotionPainting(kind);
+  return withGateRenderer(gate, drawnImages(gate), (renderer, frame) => drawnExposures(renderer, frame, draws(kind)));
+};
 
 /**
  * Three-plane case `id` (stamp-gate-three-plane.ts), on one surface, the card's texture written before each frame. A
@@ -123,8 +127,10 @@ export async function checkStampGateThreeCase(id: string): Promise<StampGateWash
     const { device } = surface.owner;
     const usage = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC;
     const texture = device.createTexture({ size: [width, height], format: 'rgba16float', usage }), motion = device.createTexture({ size: [width, height], format: 'rgba16float', usage });
+    // The card's texture is written before each frame, so its render does nothing, and nothing in it moves.
+    const card = { picture: { texture, motion, at: { x: 0, y: 0 } }, render: async () => ({ moved: false }) };
     const withCard = async <T,>(use: (renderer: StampPaintRenderer) => Promise<T>) => {
-      const renderer = await gateRenderer(gate, surface, { planes: stampGateThreePlanes(gate.painting, { card: true }), three: new Map([[STAMP_GATE_CARD, { texture, motion, at: { x: 0, y: 0 } }]]) });
+      const renderer = await gateRenderer(gate, surface, { planes: stampGateThreePlanes(gate.painting, { card: true }), sources: new Map([[STAMP_GATE_CARD, card]]) });
       try {
         return await use(renderer);
       } finally {

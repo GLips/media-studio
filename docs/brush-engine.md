@@ -214,10 +214,13 @@ where the paper lets it: a stage supplies the paper (wet, open), the bloom the d
 and where paint may land, the rim open wherever it isn't bare paper at the grain's scale.
 
 **Frame state.** Everything about a group that varies with time reaches the renderer as data, per frame:
-`renderer.draw({ t, state })` takes a `StampPaintFrameState`, and `StampPainting`'s `frameAt` prop gives one for a moment
-within a frame (`stamp-paint-frame-state.ts`, `StampPaintFrameAt`). A frame drawn through a moving lens also takes its
-`shutter`, the states as it opens and closes: each group's travel between them is rasterised through its lattice into
-its plane picture's motion layer, which the lens gathers and paper advection can read. It holds each group's:
+`renderer.draw([{ kind: 'once', t, state }])` takes a `StampPaintFrameState`, and `StampPainting`'s `frameAt` prop
+gives one for a `PaintMoment` (`stamp-paint-frame-state.ts`, `StampPaintFrameAt`): `at`, the second an exposure sees,
+within the frame shown at `frame`. A `fast` frame through a lens takes its `shutter`, the states as it opens and closes;
+an `exposure` frame is one of a reference frame's. Each group's travel over a `StampMotionSpan` is rasterised through
+its lattice into its plane picture's motion layer: the shutter's (`stampFramePlanMotion`, `shutter`), which the lens
+gathers, or frame to frame (`transport`, over the group's whole region), which paper advection asks for. It holds
+each group's:
 - `lay`: a placement about its pivot;
 - `warp`: a rest-to-scene map with a key naming it, sampled on a lattice over the group's painted layer;
 - `marks`: `written` at a boil epoch (0 is as written), or `live`, compiled for this frame, with a key naming them;
@@ -253,13 +256,14 @@ an error. A frame held on twos gives every group the keys it had, so it repaints
   bend and placement, then its parent's, as a rig nests.
 - **Checks:** the build checks the tree, the groups, the clocks, the boil's wobble, one writer per lane
   (`paint-channels.ts`), and every frame's emitted warp for folds on the renderer's own lattice.
-  `paintMotionFrameAt(motion, t)` is pure in `t`, and writes each group's `StampGroupFrameState`.
+  `paintMotionFrameAt(motion, moment)` is pure in its `PaintMoment`, and writes each group's `StampGroupFrameState`.
 - **Planes and the camera** (`painting/models/stamp-plane.ts`, `paint-camera.ts`, `paint-camera-build.ts`): a scene
   is planes, each `{ id, depth, source }`, laid far to near. The back, the farthest, is paper to the stage's edge.
   Every nearer painted plane is clear film: its paint, opaque or glazed, hides and filters what's behind, moving,
   warping and fading with its group; as on one sheet over white and black, and close to it over other paint (see
   Planes on the GPU). A three
-  plane is a three.js render. A painted plane's picture doesn't depend on the camera and is kept on the device while
+  plane is a lens source (`stamp-lens-source.ts`): a picture and motion layer rendered for each frame and exposure,
+  which three.js fills (`painted-three-sources.ts`) and any other renderer can. A painted plane's picture doesn't depend on the camera and is kept on the device while
   its groups hold. The camera is one description: its plays key `move` (pan, dolly, zoom, roll) and `focus` (focus
   depth, aperture), plus `fov` and a lens with one `bloom`. `paintCameraLensAt` gives each plane's view (a
   similarity) and defocus (a thin lens's circle of confusion, as gaussian sigma) at a time. The build proves every

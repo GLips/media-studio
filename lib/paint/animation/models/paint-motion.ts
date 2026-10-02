@@ -7,7 +7,8 @@ import { STAMP_WARP_CELL, stampWarpCells, stampWarpTriangles } from '#lib/paint/
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
-import { paintAnimationFrameStart, paintMoment, type AnimationFrame } from './paint-clock.ts';
+import { paintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import { paintAnimationFrameStart, type AnimationFrame } from './paint-clock.ts';
 import { paintDeformMap, paintDeformShifts, paintWarpChainKey, paintWarpChainMap, type PaintWarpChain } from './paint-deform.ts';
 import { compilePaintMotion, type PaintMotion, type PaintMotionNode, type PaintMotionPlay } from './paint-motion-compile.ts';
 import { paintNodeWarpAt } from './paint-motion-frame.ts';

@@ -93,32 +93,41 @@ export function stampGroupSceneMap({ lay, warp }: Pick<StampGroupFrame, 'lay' | 
   return placed ? (rest) => placed(warp.map(rest)) : warp.map;
 }
 
+/** A moment a frame's groups are posed at: `at` seconds, each group in `state` (stampPaintFrameStateAt). */
+export type StampPosedMoment = { readonly at: number; readonly state?: StampPaintFrameState };
+
 /**
- * A group's travel over a frame's shutter: `travel` takes a point of its layer to how far it moves, scene px, where
- * the shutter closes less where it opens. `key` names it, as a picture's cache key needs.
+ * What a plane's motion runs between, as the one who reads it asks. `shutter`: its frame's shutter opening and
+ * closing, a displacement the lens gathers along, where paint lies. `transport`: the frame before to this one, which
+ * carries paper with its group (vid-151), over the group's whole laid region.
+ */
+export type StampMotionSpan =
+  | { readonly kind: 'shutter'; readonly open: StampPosedMoment; readonly close: StampPosedMoment }
+  | { readonly kind: 'transport'; readonly from: StampPosedMoment; readonly to: StampPosedMoment };
+
+/**
+ * A group's motion over a span: `travel` takes a point of its layer to how far it moves, scene px, where it ends less
+ * where it starts. `key` names it, as a picture's cache key needs.
  */
 export type StampGroupTravel = { readonly travel: StampWarpMap; readonly key: string };
-
-/** A moment a frame's groups are posed at: `at` seconds, each group in `state` (stampPaintFrameStateAt). */
-export type StampPaintMoment = { readonly at: number; readonly state?: StampPaintFrameState };
 
 const groupPoseKey = ({ lay, warp }: StampGroupFrame) => JSON.stringify([lay, warp && [warp.key, warp.cell]]);
 
 /**
- * Each of `painting`'s groups' travel over a shutter opening at `open` and closing at `close`, null for one posed
- * alike at both. Its paint is held at `held`, as a shutter's paint doesn't change (stampFramePlanExposed).
+ * Each of `painting`'s groups' motion over `span`, null for one posed alike at both ends: the one producer of a
+ * plane's motion layer. Its paint is held at `held` (stampFramePlanExposed): a shutter's paint doesn't change, and
+ * paper is carried by where a group lies, not what it paints.
  */
-export function stampFramePlanTravel(
-  painting: CompiledStampPaint, held: { t: number; state?: StampPaintFrameState }, { open, close }: { open: StampPaintMoment; close: StampPaintMoment },
-): readonly (StampGroupTravel | null)[] {
-  const opened = stampFramePlanExposed(painting, held, { t: open.at, state: open.state });
-  const closed = stampFramePlanExposed(painting, held, { t: close.at, state: close.state });
-  return opened.map((from, index) => {
-    const to = closed[index], key = `${groupPoseKey(from)}>${groupPoseKey(to)}`;
+export function stampFramePlanMotion(painting: CompiledStampPaint, held: { t: number; state?: StampPaintFrameState }, span: StampMotionSpan): readonly (StampGroupTravel | null)[] {
+  const [start, end] = span.kind === 'shutter' ? [span.open, span.close] : [span.from, span.to];
+  const started = stampFramePlanExposed(painting, held, { t: start.at, state: start.state });
+  const ended = stampFramePlanExposed(painting, held, { t: end.at, state: end.state });
+  return started.map((from, index) => {
+    const to = ended[index];
     if (groupPoseKey(from) === groupPoseKey(to)) return null;
     const mapFrom = stampGroupSceneMap(from), mapTo = stampGroupSceneMap(to);
     return {
-      key,
+      key: `${groupPoseKey(from)}>${groupPoseKey(to)}`,
       travel: (rest) => {
         const a = mapFrom?.(rest) ?? rest, b = mapTo?.(rest) ?? rest;
         return { x: b.x - a.x, y: b.y - a.y };

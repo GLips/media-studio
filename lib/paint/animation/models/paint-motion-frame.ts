@@ -9,10 +9,10 @@
 // warp and lay.
 
 import type { StampGroupPlacement } from '#lib/paint/painting/models/stamp-group-motion.ts';
-import { stampLiveGroupProblem, type StampGroupFrameState, type StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import { stampLiveGroupProblem, type PaintMoment, type StampGroupFrameState, type StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { CompiledStampGroup } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import { paintBoilEpochAt, paintLanePlayAt, paintMoment, paintNodeTimeAt, paintPlayClipTimeAt, type PaintMoment } from './paint-clock.ts';
+import { paintBoilEpochAt, paintLaneClipAt, paintNodeTimeAt, sceneSeconds } from './paint-clock.ts';
 import {
   paintPlacementIsRest, paintPlacementRounded, paintRatioSteps, paintWarpChainKey, paintWarpChainMap,
   type PaintDeform, type PaintPinMoved, type PaintWarpChain,
@@ -24,30 +24,29 @@ import { PAINT_SIMILARITY_IDENTITY, paintPlacementOfSimilarity, paintSimilarityA
 
 /** Each of `node`'s pins moved at `t`, rounded; pins at rest left out. */
 function pinsMovedAt(motion: PaintMotion, node: CompiledPaintNode, t: PaintMoment): PaintPinMoved[] {
-  const time = paintNodeTimeAt(node.clock, t, motion.animationFps).at;
   return [...node.pins].flatMap(([name, { pin, lane }]) => {
-    const play = paintLanePlayAt(lane, time);
-    if (!play) return [];
-    const move = paintPlacementRounded(paintPinClipMoveAt(play.clip, name, paintPlayClipTimeAt(play.clock, t, motion.animationFps)));
+    const playing = paintLaneClipAt(lane, t, motion.animationFps);
+    if (!playing) return [];
+    const move = paintPlacementRounded(paintPinClipMoveAt(playing.play.clip, name, playing.time));
     return paintPlacementIsRest(move) ? [] : [{ name, pin, move }];
   });
 }
 
 /** `node`'s own bend at `t` as data, its pins left out for a live node's own level; empty when nothing bends. */
 function ownDeformsAt(motion: PaintMotion, node: CompiledPaintNode, t: PaintMoment, withPins: boolean): PaintDeform[] {
-  const fps = motion.animationFps, time = paintNodeTimeAt(node.clock, t, fps).at, owner = node.id;
+  const fps = motion.animationFps, owner = node.id;
   const deforms: PaintDeform[] = [];
   const moves = withPins ? pinsMovedAt(motion, node, t) : [];
   if (moves.length) deforms.push({ owner, kind: 'pins', moves });
-  const flutter = paintLanePlayAt(node.flutter, time);
+  const flutter = paintLaneClipAt(node.flutter, t, fps);
   if (flutter) {
-    const spreadSteps = paintRatioSteps(paintFlutterSpreadAt(flutter.clip, node.phase, paintPlayClipTimeAt(flutter.clock, t, fps)));
-    if (spreadSteps !== paintRatioSteps(1)) deforms.push({ owner, kind: 'flutter', origin: flutter.clip.at, direction: flutter.clip.direction, spreadSteps });
+    const { clip } = flutter.play, spreadSteps = paintRatioSteps(paintFlutterSpreadAt(clip, node.phase, flutter.time));
+    if (spreadSteps !== paintRatioSteps(1)) deforms.push({ owner, kind: 'flutter', origin: clip.at, direction: clip.direction, spreadSteps });
   }
-  const sway = paintLanePlayAt(node.sway, time);
+  const sway = paintLaneClipAt(node.sway, t, fps);
   if (sway) {
-    const angleSteps = paintRatioSteps(paintSwayAngleAt(sway.clip, node.phase, paintPlayClipTimeAt(sway.clock, t, fps)));
-    const { root, direction, length } = sway.clip;
+    const angleSteps = paintRatioSteps(paintSwayAngleAt(sway.play.clip, node.phase, sway.time));
+    const { root, direction, length } = sway.play.clip;
     if (angleSteps !== 0) deforms.push({ owner, kind: 'sway', root, direction, length, angleSteps });
   }
   return deforms;
@@ -55,16 +54,16 @@ function ownDeformsAt(motion: PaintMotion, node: CompiledPaintNode, t: PaintMome
 
 /** `node`'s own placement at `t` about its pivot, rounded; null at rest or when nothing places it. */
 function ownPlacementAt(motion: PaintMotion, node: CompiledPaintNode, t: PaintMoment): PaintDeform | null {
-  const play = paintLanePlayAt(node.place, paintNodeTimeAt(node.clock, t, motion.animationFps).at);
-  if (!play) return null;
-  const placement = paintPlacementRounded(paintPlaceClipAt(play.clip, paintPlayClipTimeAt(play.clock, t, motion.animationFps)));
+  const playing = paintLaneClipAt(node.place, t, motion.animationFps);
+  if (!playing) return null;
+  const placement = paintPlacementRounded(paintPlaceClipAt(playing.play.clip, playing.time));
   return paintPlacementIsRest(placement) ? null : { owner: node.id, kind: 'place', placement, pivot: node.pivot };
 }
 
 /** `node`'s boil epoch at `t`, on its own time: 0 unless it boils. A boil is held through its frame, as a hold is. */
 function epochAt(motion: PaintMotion, node: CompiledPaintNode, t: PaintMoment): number {
   if (node.marks.kind !== 'wobble' && node.marks.kind !== 'reseed') return 0;
-  return paintBoilEpochAt(paintNodeTimeAt(node.clock, t, motion.animationFps).frame, node.marks.every, motion.animationFps);
+  return paintBoilEpochAt(sceneSeconds(paintNodeTimeAt(node.clock, t, motion.animationFps).frame), node.marks.every, motion.animationFps);
 }
 
 /** Rigid placements, innermost first, as one placement about `pivot`: one already about it is handed on as it is. */
@@ -122,15 +121,15 @@ function nodeFrameAt(motion: PaintMotion, node: CompiledPaintNode, t: PaintMomen
 }
 
 /**
- * Every group's frame state at scene second `at` of the frame shown at `frame` (paintMoment) that differs from as
- * painted (moved, bent, re-placed or glowing): a pure function of the motion and the moment.
+ * Every group's frame state at `moment` that differs from as painted (moved, bent, re-placed or glowing): a pure
+ * function of the motion and the moment.
  */
-export function paintMotionFrameAt(motion: PaintMotion, at: number, frame = at): StampPaintFrameState {
-  const { last } = motion.remembered;
+export function paintMotionFrameAt(motion: PaintMotion, moment: PaintMoment): StampPaintFrameState {
+  const { last } = motion.remembered, { at, frame } = moment;
   if (last?.at === at && last.frame === frame) return last.state;
   const own = new Map<string, StampGroupFrameState>();
   for (const node of motion.nodes.values()) {
-    const groupState = nodeFrameAt(motion, node, paintMoment(at, frame));
+    const groupState = nodeFrameAt(motion, node, moment);
     if (groupState.lay || groupState.warp || groupState.marks || groupState.glow) own.set(node.id, groupState);
   }
   motion.remembered.last = { at, frame, state: own };

@@ -22,7 +22,7 @@ import { setThreeShotCamera } from '#lib/picture/shot-camera/studio/three-shot-c
 import { lensExposures, type LensExposure } from '#lib/picture/lens/models/lens-exposures.ts';
 import { shotCameraExposed, type ShotCameraLensFocus } from '#lib/picture/lens/models/lens-focus.ts';
 import { shutterMomentAt } from '#lib/picture/lens/models/lens-shutter.ts';
-import { createThreeStageGpu, threeSceneResources, type ThreeBloom, type ThreeEnvironment, type ThreeStageGpu } from './three-stage-gpu.ts';
+import { createThreeStageGpu, threeSceneResources, type ThreeBloom, type ThreeEnvironment, type ThreeStageGpu, type ThreeStageLook } from './three-stage-gpu.ts';
 
 export type { ThreeBloom, ThreeEnvironment } from './three-stage-gpu.ts';
 
@@ -147,7 +147,7 @@ const threeStageCanvasFreed = (canvas: HTMLCanvasElement) => threeStageCanvasesI
 
 type ThreeStageFrame = {
   draw: (sample: ThreeSample) => ThreeFrame; samples: number; shutter: number; lens: ThreeLens | undefined; softShadows: number; shadows: boolean;
-  environment: boolean | ThreeEnvironment; fps: number; w: number; h: number; look: Parameters<ThreeStageGpu['show']>[0];
+  environment: boolean | ThreeEnvironment; fps: number; w: number; h: number; look: ThreeStageLook;
 };
 
 /** One frame: every exposure drawn and added, then the average shown. */
@@ -159,7 +159,7 @@ function drawThreeStageFrame(stage: ThreeStageGpu, { draw, samples, shutter, len
 
   const count = Math.max(1, Math.round(samples));
   const exposures = lensExposures(count), threeLens = lens && threeShotLens(lens);
-  const target = stage.exposureTarget(count);
+  const target = stage.exposureTarget(count), frame = stage.beginFrame(count);
   const camera = new PerspectiveCamera();
   let previous = new Set<{ dispose(): void }>();
 
@@ -175,7 +175,7 @@ function drawThreeStageFrame(stage: ThreeStageGpu, { draw, samples, shutter, len
     renderer.clear();
     renderer.render(scene, camera);
     restore();
-    stage.addExposure(index, count);
+    frame.addExposure();
 
     // Freed as soon as the next exposure stops using them: a draw that shares its scene across exposures keeps its
     // shadow maps and buffers, and one that builds afresh holds no more than two exposures' worth.
@@ -183,7 +183,7 @@ function drawThreeStageFrame(stage: ThreeStageGpu, { draw, samples, shutter, len
     for (const r of previous) if (!current.has(r)) r.dispose();
     previous = current;
   }
-  stage.show(look);
+  frame.show(look);
   for (const r of previous) r.dispose();
 }
 
