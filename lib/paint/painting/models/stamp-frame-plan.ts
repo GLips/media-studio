@@ -70,3 +70,18 @@ export function stampFramePlan(painting: CompiledStampPaint, t: number, given?: 
   const state = stampPaintFrameStateAt(painting, t, given);
   return painting.groups.map((group) => stampGroupFrame(group, state.get(group.id) ?? {}));
 }
+
+/**
+ * One exposure of a reference frame of `painting` (lens-mode.ts): each group's paint as at the frame's own time `held`
+ * (its marks, boil epoch and paintAt: paint doesn't change within a shutter, and its films are drawn once a frame),
+ * and where it lies, bends, shows and glows as at the exposure's moment `exposed`.
+ */
+export function stampFramePlanExposed(
+  painting: CompiledStampPaint, held: { t: number; state?: StampPaintFrameState }, exposed: { t: number; state?: StampPaintFrameState },
+): readonly StampGroupFrame[] {
+  const paint = stampPaintFrameStateAt(painting, held.t, held.state), seen = stampPaintFrameStateAt(painting, exposed.t, exposed.state);
+  return painting.groups.map((group) => {
+    const { marks, paintAt } = paint.get(group.id) ?? {};
+    return stampGroupFrame(group, { ...seen.get(group.id), marks, paintAt });
+  });
+}

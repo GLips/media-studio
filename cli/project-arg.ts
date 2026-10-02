@@ -15,9 +15,22 @@ export const renderWorkersArg = {
   description: "Tabs rendering at once, in place of the video's renderWorkers or the default, 3. The tabs share one GPU, so more rarely render faster and leave the machine less to spare",
 } as const satisfies StringArgDef;
 
-/** Bundles the project a command-line argument names, which must have a video.tsx; `workers` is a --workers value. */
-export async function openStudioRenderSession(projectArg: string, { workers }: { workers?: string } = {}) {
+/** The --lens a rendering command takes: how its frames draw the lens. */
+export const renderLensArg = {
+  type: 'string',
+  valueHint: 'fast',
+  description: 'How the lens draws: fast (each frame once, defocus and motion blur drawn directly; the default) or reference (exposures averaged over the shutter and aperture, slow, the truth fast is measured against)',
+} as const satisfies StringArgDef;
+
+/**
+ * Bundles the project a command-line argument names, which must have a video.tsx; `workers` is a --workers value,
+ * `lens` a --lens one.
+ */
+export async function openStudioRenderSession(projectArg: string, { workers, lens }: { workers?: string; lens?: string } = {}) {
   const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
   const { openRenderSession } = await import('#lib/output/render/engine/render-session.ts');
-  return openRenderSession(resolveStudioProjectWith(projectArg, 'video.tsx'), { workers: workers === undefined ? undefined : Number(workers) });
+  const { lensModeChecked } = await import('#lib/picture/lens/models/lens-mode.ts');
+  return openRenderSession(resolveStudioProjectWith(projectArg, 'video.tsx'), {
+    workers: workers === undefined ? undefined : Number(workers), lens: lens === undefined ? undefined : lensModeChecked(lens),
+  });
 }

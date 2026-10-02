@@ -1,6 +1,6 @@
 // studio repeatable: proves chosen frames are a pure function of time.
 import { defineCommand } from 'citty';
-import { openStudioRenderSession, studioProjectArg } from '../project-arg.ts';
+import { openStudioRenderSession, renderLensArg, studioProjectArg } from '../project-arg.ts';
 
 export default defineCommand({
   meta: {
@@ -10,10 +10,11 @@ export default defineCommand({
   args: {
     project: studioProjectArg,
     times: { type: 'positional', required: true, description: 'Seconds, comma-separated, e.g. 2,8.5' },
+    lens: renderLensArg,
   },
   async run({ args }) {
     const { checkFramesRepeatable } = await import('#lib/output/render/engine/render-pipeline.ts');
-    const session = await openStudioRenderSession(args.project);
+    const session = await openStudioRenderSession(args.project, { lens: args.lens });
     const { ok, report } = await checkFramesRepeatable(session, args.times.split(',').map(Number));
     for (const line of report) console.log(line);
     if (!ok) process.exitCode = 1;

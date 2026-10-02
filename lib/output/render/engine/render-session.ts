@@ -26,6 +26,7 @@ import { inRenderBrowser, RENDER_CHROMIUM } from '#lib/platform/browser/engine/r
 import type { MotionTracks } from '#lib/picture/measurement/models/motion-tracks.ts';
 import type { CompositionRenderSettings, ReplayProps, VideoProps } from '#lib/picture/video/models/composition-props.ts';
 import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
+import type { LensMode } from '#lib/picture/lens/models/lens-mode.ts';
 
 export type RenderSession = Awaited<ReturnType<typeof openRenderSession>>;
 
@@ -60,8 +61,11 @@ const RENDER_NICENESS = 10;
 /** One timed pass of a command's renders: `workers` and `gpu` where it rendered frames. */
 export type RenderPass = { pass: string; seconds: number; workers?: number; gpu?: string };
 
-/** `workers` overrides the video's `renderWorkers` and DEFAULT_RENDER_WORKERS, as a command's --workers does. */
-export async function openRenderSession(project: string, { workers }: { workers?: number } = {}) {
+/**
+ * `workers` overrides the video's `renderWorkers` and DEFAULT_RENDER_WORKERS, as a command's --workers does; `lens` is
+ * how every render of the session draws the lens, as --lens says.
+ */
+export async function openRenderSession(project: string, { workers, lens = 'fast' }: { workers?: number; lens?: LensMode } = {}) {
   if (workers !== undefined && !(Number.isInteger(workers) && workers > 0)) throw new Error(`--workers is ${workers}: give a whole number above 0`);
   // Only ever lower: raising a process's priority back takes root.
   if (getPriority() < RENDER_NICENESS) setPriority(RENDER_NICENESS);
@@ -72,7 +76,7 @@ export async function openRenderSession(project: string, { workers }: { workers?
   const clock = (await readProjectClock(project)) ?? null;
   // A silent video delivers with no mix and no audio track (render-pipeline.ts).
   const silent = (await readProjectCapability(project)) === 'silent';
-  const props = (p: Partial<VideoProps> = {}): VideoProps => ({ captions: false, probe: false, blockouts: false, ...p });
+  const props = (p: Partial<VideoProps> = {}): VideoProps => ({ captions: false, probe: false, blockouts: false, lens, ...p });
   const compositionFor = (inputProps: VideoProps, browser?: HeadlessBrowser) =>
     selectComposition({ serveUrl, chromiumOptions: RENDER_CHROMIUM, id: projectSlug(project), inputProps, puppeteerInstance: browser });
 
@@ -276,7 +280,7 @@ export async function openRenderSession(project: string, { workers }: { workers?
   }
 
   return {
-    project, serveUrl, clock, silent, opened, passes, props, compositionFor, workersFor, timed, inBrowser,
+    project, serveUrl, clock, silent, lens, opened, passes, props, compositionFor, workersFor, timed, inBrowser,
     renderStills, renderReplay, measureFrames, readTimeline, renderVideo, renderTransparentVideo, renderAudio, renderFrameFiles,
   };
 }

@@ -487,11 +487,9 @@ export async function joinVideoSlices(session: RenderSession, { dir, out }: { di
 // ---------- repeatability ----------
 
 /**
- * Renders each frame at `times`, then again in one tab after other frames and among neighbours in the render's
- * concurrent tabs: a tab's history leaks into a frame that isn't a pure function of time.
- *
- * Equal means over 50 dB PSNR, as a GPU scene may round differently each draw. Captures are PNG: JPEG can hide a ±1
- * difference.
+ * Renders each frame at `times`, then in one tab after others and among neighbours in concurrent tabs: a frame that
+ * isn't a pure function of time differs. Equal is over 50 dB PSNR (a GPU rounds each draw apart), from PNGs (JPEG
+ * hides a ±1). Times a frame too.
  */
 export async function checkFramesRepeatable(session: RenderSession, times: number[]): Promise<{ ok: boolean; report: string[] }> {
   if (!times.length || times.some((t) => !Number.isFinite(t))) throw new Error('give times in seconds, e.g. 2,8.5');
@@ -501,6 +499,7 @@ export async function checkFramesRepeatable(session: RenderSession, times: numbe
   const bad = frames.find((f) => !(f >= 0 && f < durationInFrames));
   if (bad !== undefined) throw new Error(`${bad / fps}s is outside the video`);
   const inVideo = (f: number) => f >= 0 && f < durationInFrames;
+  let frameMs = 0;
   const worst = await withStudioTemp('repeatable', async (dir) => {
     const fresh = new Map<number, Awaited<ReturnType<typeof session.renderStills>>>();
     for (const [i, f] of frames.entries()) fresh.set(f, await session.renderStills(join(dir, `fresh-${i}`), [f], { lossless: true }));
@@ -511,7 +510,10 @@ export async function checkFramesRepeatable(session: RenderSession, times: numbe
       ...frames.flatMap((f) => [Math.min(durationInFrames - 1, f + 7), f, Math.max(0, f - 11), f]),
       ...frames.flatMap((f) => [1, 2, 3].flatMap((every) => [...runUpTo(f, every), f])),
     ];
+    // One tab drawing every frame in turn: its time a frame is the frame's cost, its browser's start spread thin.
+    const replayStarted = performance.now();
     const replay = await session.renderReplay(join(dir, 'replay'), order);
+    frameMs = (performance.now() - replayStarted) / order.length;
     const tabs = Math.max(2, session.workersFor(composition));
     const together = await session.renderStills(join(dir, 'together'), frames.flatMap((f) => [-2, -1, 0, 1, 2].map((d) => f + d)).filter(inVideo), { tabs, lossless: true });
     const worst = new Map<number, number>();
@@ -528,6 +530,7 @@ export async function checkFramesRepeatable(session: RenderSession, times: numbe
     const db = worst.get(f)!;
     return `  ${db > 50 ? '✓' : '✗'} ${(f / fps).toFixed(2)}s  ${Number.isFinite(db) ? `${db.toFixed(1)} dB at worst` : 'identical'}`;
   });
+  report.push(`  lens ${session.lens}: ${Math.round(frameMs)} ms a frame, drawn in one tab`);
   const ok = frames.every((f) => worst.get(f)! > 50);
   report.push(ok ? 'repeatable ✓' : 'not repeatable: something in those frames depends on what the tab drew before, or on the tabs drawing beside it');
   return { ok, report };

@@ -51,7 +51,7 @@ import { GPU_GAUSSIAN_PASS, gpuGaussianPassWgsl } from '#lib/platform/gpu/models
 import { createLensCompositor, type LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { stampPlacementWarpMap, stampWarpCells, stampWarpTriangles, STAMP_WARP_MOST_CELLS } from '../models/stamp-group-warp.ts';
-import { stampFramePlan, type StampGroupFrame } from '../models/stamp-frame-plan.ts';
+import { stampFramePlan, stampFramePlanExposed, type StampGroupFrame } from '../models/stamp-frame-plan.ts';
 import type { StampGroupMarks, StampPaintFrameState } from '../models/stamp-paint-frame-state.ts';
 import { stampSinglePlane, type StampLaidPlanes, type StampLensFrame, type StampPlaneLook } from '../models/stamp-plane.ts';
 import { stampStage, stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
@@ -968,9 +968,15 @@ type LoadedRegions = {
 /**
  * A frame of a painting: `t` seconds into its scene, each group in `state` (as painted where it gives none), each
  * plane where `lens` puts it (stamp-plane.ts; every plane at rest and sharp, nothing blooming, when left out). Each
- * three plane's texture is filled for it before it's drawn.
+ * three plane's texture is filled for it before it's drawn. `exposure`: this draw is one of a reference frame's.
  */
-export type StampPaintFrame = { t: number; state?: StampPaintFrameState; lens?: StampLensFrame };
+export type StampPaintFrame = { t: number; state?: StampPaintFrameState; lens?: StampLensFrame; exposure?: StampPaintExposure };
+
+/**
+ * Exposure `index` of a reference frame's `count` (lens-mode.ts): its groups laid as at `at` in `state`, their paint
+ * held at the frame's `t` (stampFramePlanExposed), and `lens` the lens as this exposure sees. The last develops the frame.
+ */
+export type StampPaintExposure = { index: number; count: number; at: number; state?: StampPaintFrameState };
 
 export type StampPaintRenderer = {
   /** The stage it paints on: its targets' size, and the frame its output shows. */
@@ -2514,11 +2520,12 @@ function rendererOnSurface(
    * traced frame, so every deposit it asks for is resolved in it, and a read-back layer. One plane at rest and sharp,
    * nothing glowing, is output as painted; else each plane's picture is laid where `lens` puts it.
    */
-  function draw(t: number, { frameTrace, whole = frameTrace !== undefined, state, lens: lensFrame }: {
-    frameTrace?: FrameTrace; whole?: boolean; state?: StampPaintFrameState; lens?: StampLensFrame;
+  function draw(t: number, { frameTrace, whole = frameTrace !== undefined, state, lens: lensFrame, exposure }: {
+    frameTrace?: FrameTrace; whole?: boolean; state?: StampPaintFrameState; lens?: StampLensFrame; exposure?: StampPaintExposure;
   } = {}) {
     owner.assertLive();
-    const groups = stampFramePlan(painting, t, state);
+    const groups = exposure ? stampFramePlanExposed(painting, { t, state }, { t: exposure.at, state: exposure.state }) : stampFramePlan(painting, t, state);
+    const { index, count } = exposure ?? { index: 0, count: 1 };
     slots = 0;
     latticeUsed = 0;
     latticeRoom(groups);
@@ -2534,7 +2541,7 @@ function rendererOnSurface(
       pass.end();
     };
     const { back, nearer } = planes;
-    if (!nearer.length && !glows && isRest(lookOf(back.id))) {
+    if (count === 1 && !nearer.length && !glows && isRest(lookOf(back.id))) {
       // The composite of one opaque plane at rest is its painting: shown as it is, not round linear light and back.
       drawPaper(encoder, 'paper');
       layPlaneGroups(encoder, back.groups, groups, { whole, frameTrace, backing: 'paper' });
@@ -2557,12 +2564,14 @@ function rendererOnSurface(
           return [{ picture: view, layers: THREE_LAYERS, view: REST_LOOK.view, shutter: null, origin: { x: box.x, y: box.y }, size: box, clipped: true, distance: 1, distances: 'layer' }];
         }),
       ];
-      lensGpu.exposure(encoder, layers, { index: 0, count: 1, glowing: glows, moving: false });
-      // One bloom, of all that glows as the frame shows it.
-      lensGpu.develop(encoder, {
-        bloom: glows ? { sigma: lensFrame!.bloom, strength: 1, glow: 'emission' } : null,
-        into: surface.frameTexture().createView(), format, encoding: { kind: 'encoded', dithered },
-      });
+      lensGpu.exposure(encoder, layers, { index, count, glowing: glows, moving: false });
+      // One bloom, of all that glows as the frame shows it, once its exposures are in.
+      if (index === count - 1) {
+        lensGpu.develop(encoder, {
+          bloom: lensFrame ? { sigma: lensFrame.bloom, strength: 1, glow: 'emission' } : null,
+          into: surface.frameTexture().createView(), format, encoding: { kind: 'encoded', dithered },
+        });
+      }
     }
     device.queue.writeBuffer(uniforms, 0, staging, 0, slots * SLOT);
     if (latticeUsed) device.queue.writeBuffer(latticeVertices!, 0, latticeStaging, 0, latticeUsed);
@@ -2709,9 +2718,9 @@ function rendererOnSurface(
       stage,
       wetness,
       wetWarnings,
-      draw: async ({ t, state, lens }) => {
+      draw: async ({ t, state, lens, exposure }) => {
         if (disposed) return;
-        await owner.checked(`drawing the painting at ${t} s`, () => queue.submit([draw(t, { state, lens }).finish()]));
+        await owner.checked(`drawing the painting at ${t} s`, () => queue.submit([draw(t, { state, lens, exposure }).finish()]));
       },
       trace: async ({ t, state, lens }, requests) => {
         if (disposed) throw new Error('stamp paint: a disposed renderer traces nothing');

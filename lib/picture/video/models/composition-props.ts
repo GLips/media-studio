@@ -1,6 +1,8 @@
 // composition-props.ts: what Node hands the compositions Root.tsx registers (lib/picture/composition/studio/Root.tsx),
 // and how it renders them: the contract between the renderer (lib/output/render/engine/) and the composition.
 
+import type { LensMode } from '#lib/picture/lens/models/lens-mode.ts';
+
 export type VideoProps = {
   /** Burn captions in. */
   captions: boolean;
@@ -12,6 +14,8 @@ export type VideoProps = {
   auditionSfxCueList?: boolean;
   /** Time the work drawing code offers and log it, for `studio profile` (see frame-profiler.tsx). */
   profile?: boolean;
+  /** How the lens draws: fast, or the reference the fast path is measured against (lens-mode.ts). */
+  lens?: LensMode;
 };
 
 /** One previs scene's blockout alone (BlockoutSolo), for `studio gen video`, run for the chosen model's `seconds`. */

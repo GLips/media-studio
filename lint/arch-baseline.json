@@ -1929,9 +1929,6 @@
       "function judgeCheckedFrames(session: RenderSession, sink: ReturnType<typeof artifactSink>, timeline: TimelineReport, span: { first: number; last: number }): ProjectCheck {": 1,
       "const runUpTo = (f: number, every: number) => [3, 2, 1].map((k) => f - k * every).filter((g) => g >= 0);": 1
     },
-    "lib/output/render/engine/render-session.ts": {
-      "export async function openRenderSession(project: string, { workers }: { workers?: number } = {}) {": 1
-    },
     "lib/output/render/engine/render-stills.ts": {
       "const keeps = (list: readonly string[] | undefined, value: string) => !list || list.includes(value);": 1,
       "export function describeStillFits({ still, fits }: RenderedStill): string[] {": 1

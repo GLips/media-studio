@@ -1,7 +1,7 @@
 // studio render: the whole pipeline, from framing check to a delivered video.mp4; the animatic, as the video plays
 // now, for studio review; or a slice of the video, and the slices joined back into one.
 import { defineCommand } from 'citty';
-import { openStudioRenderSession, renderWorkersArg, studioProjectArg } from '../project-arg.ts';
+import { openStudioRenderSession, renderLensArg, renderWorkersArg, studioProjectArg } from '../project-arg.ts';
 
 export default defineCommand({
   meta: {
@@ -11,6 +11,7 @@ export default defineCommand({
   args: {
     project: studioProjectArg,
     workers: renderWorkersArg,
+    lens: renderLensArg,
     plain: { type: 'boolean', description: 'Also render out/video-plain.mp4, without captions' },
     animatic: { type: 'boolean', description: 'Render the video as it plays now, unchecked and unmixed, to out/wip/animatic.mp4 or --out, for studio review' },
     frames: { type: 'string', valueHint: '120:239', description: 'Render only these frames (inclusive), silent, with no framing check or mix, to out/wip/frames-<a>-<b>.mp4 or --out' },
@@ -27,7 +28,7 @@ export default defineCommand({
       throw new Error(`--frames is a first and last frame like 120:239, not ${args.frames}`);
     }
     const pipeline = await import('#lib/output/render/engine/render-pipeline.ts');
-    const session = await openStudioRenderSession(args.project, { workers: args.workers });
+    const session = await openStudioRenderSession(args.project, { workers: args.workers, lens: args.lens });
     const inProject = (file: string) => (isAbsolute(file) ? file : join(session.project, file));
     if (range) {
       const [from, last] = range;

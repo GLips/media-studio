@@ -238,8 +238,9 @@ elements, which is what keeps objects from showing through each other.
    - It returns `{ ok: false, problems }` naming two writers on one pin, a node that isn't a group, a hold that
      isn't whole frames, a boil or pose that folds; throw them.
    - A point goes through its own bend and placement, then its parent's, and so up, as a rig nests.
-5. **Each frame,** `paintMotionFrameAt(motion, s.t)` gives the frame state, live marks included:
-   `<StampPainting painting={painting} t={s.t} frame={paintMotionFrameAt(motion, s.t)} />`.
+5. **Each frame,** `paintMotionFrameAt(motion, t)` gives the frame state, live marks included. Hand the painting the
+   function, as the reference lens asks for other moments of the shutter:
+   `<StampPainting painting={painting} t={s.t} frameAt={(t) => paintMotionFrameAt(motion, t)} />` (memoise it).
 
 **Planes and the camera (multiplane).** A scene is planes `{ id, depth, source }`, 1 being where a pan's pixels are
 measured and nearer under 1. Every group is on exactly one painted plane (`{ kind: 'painted', groups }`). The
@@ -247,7 +248,7 @@ farthest is paper to the stage's edge. Every nearer painted plane is clear film:
 what's behind, a `glaze` group's (an ink line, a shadow) filters it, and both move, bend and fade with the group (a swaying tuft, a drifting butterfly, a puffing sac). It's measured on white and black, so over other paint it's close to one sheet, not exact: a strongly coloured glaze
 (phthalo, rose) over coloured paint behind comes out lighter than painted on one sheet, so put such a glaze on the
 plane of what it tints. Paint each plane the size it should look before the camera moves: at rest nothing changes. Build the
-camera with `buildPaintingCamera(painting, { stage: stampStage({ width, height }, margin), motion, fov, planes, lens: { bloom },
+camera with `buildPaintingCamera(painting, { stage: stampStage({ width, height }, margin), motion, fov, planes, lens: { bloom, shutter },
 plays })`, `motion` the scene's built motion (null when nothing moves a group); its `camera` is the paint camera and the planes
 checked over the painting as one value, which `StampPainting` takes whole as its `camera`. Planes not from a painting (a three.js scene,
 a rig's pictures) build with `buildPaintCamera` from each plane's depth and extent alone. Plays are `paintCameraPlay({ kind: 'move', keys: [{ at, pan?: { x, y }, dolly?, zoom?, roll?, ease? }] },
@@ -260,13 +261,15 @@ re-seeded and reports each
 plane's greatest magnification (past about 1.3, its paint looks soft). Keep the camera on ones: held on twos it
 judders. Give a group `glow: { amount, threshold }` in its frame state for a soft light; the lens blooms all glow
 once, at `lens.bloom` px of sigma, and opaque paint covering glowing paint, laid after it on its plane or on a nearer one, stops its glow. Show it with
-`<StampPainting painting t frame camera />`; a glowing frame without a camera is refused.
+`<StampPainting painting t frameAt camera />`; a glowing frame without a camera is refused. `lens.shutter` is seconds
+open about each frame (1/60 is 180° at 30 fps). `studio render --lens reference` averages exposures over the shutter
+and aperture, three.js re-rendered for each: slow, the truth the default fast lens is measured against.
 
 **3D in a painting.** A three plane shows 3D content as 3D (the round trip's card, a previs-like set, a model with a
 plain graphic material). A model can also be painted by the brushes, which read its guides from the shared renderer
 (docs/plans/2026-10-01-plan-feat-painted-models-and-characters.md). A three.js scene is a plane of its own,
 `{ id, depth, source: { kind: 'three' } }`, rendered on the painting's own GPU device. Hand its source to the painting:
-`<StampPainting painting t frame camera three={{ sources, paintedTextures }} />`. A source is
+`<StampPainting painting t frameAt camera three={{ sources, paintedTextures }} />`. A source is
 `{ id, build }`, its id its plane's. `build` gets the world, its own `plane` (`plane.point(px)` places a mesh,
 `plane.length(px)` sizes it, both at the plane's depth) and the painted textures, each a painting drawn every frame
 for a material (`paintedThreeColorNode`). It returns `{ scene, poseAt(t), dispose }`. Its render is laid between the

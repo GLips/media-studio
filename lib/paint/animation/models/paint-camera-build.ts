@@ -179,6 +179,7 @@ export function buildPaintCamera(o: PaintCameraOptions): PaintCameraBuild {
   }
   if (!(o.fov > 0 && o.fov < 180)) problems.push(`a field of view is between 0 and 180 degrees, not ${o.fov}`);
   if (!(o.lens.bloom >= 0 && Number.isFinite(o.lens.bloom))) problems.push(`the lens blooms by a sigma of 0 px or more, not ${o.lens.bloom}`);
+  if (!(o.lens.shutter >= 0 && Number.isFinite(o.lens.shutter))) problems.push(`the lens's shutter is open 0 s or more, not ${o.lens.shutter}`);
   const move: CompiledPaintPlay<PaintCameraMoveClip>[] = [], focus: CompiledPaintPlay<PaintCameraFocusClip>[] = [], writers: PaintChannelWriter[] = [];
   for (const play of o.plays) {
     const problem = paintCameraClipProblem(play.clip) ?? paintPlayClockProblem(play.clock);

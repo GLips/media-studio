@@ -2,7 +2,7 @@
 // chosen frames, before/after against another render, a stretch's motion stats, and graphs of its tracked elements, or
 // of its pieces read from their scene models with no render.
 import { defineCommand } from 'citty';
-import { openStudioRenderSession, studioProjectArg } from '../project-arg.ts';
+import { openStudioRenderSession, renderLensArg, studioProjectArg } from '../project-arg.ts';
 
 export default defineCommand({
   meta: {
@@ -28,6 +28,7 @@ export default defineCommand({
     cols: { type: 'string', description: 'Columns (default 3; 5 for --strip; before/after rows for --against, default 1)' },
     w: { type: 'string', description: 'Width of each frame in pixels (default 640; 384 for --strip)' },
     captions: { type: 'boolean', description: 'Burn captions in (the composition only)' },
+    lens: { ...renderLensArg, description: `${renderLensArg.description}; the composition only` },
     out: { type: 'string', description: 'Where to write, relative to the project unless absolute (default out/check/sheet.jpg, against.jpg, motion.txt or graph.png)' },
   },
   async run({ args }) {
@@ -93,7 +94,7 @@ export default defineCommand({
 
     const source = await openLookSource(args.video
       ? renderSource(inProject(args.video))
-      : { kind: 'composition', session: await openStudioRenderSession(project), captions: Boolean(args.captions) });
+      : { kind: 'composition', session: await openStudioRenderSession(project, { lens: args.lens }), captions: Boolean(args.captions) });
     const clock = args.bar || args.motion ? await readProjectClock(project) : undefined;
     // A render names its frames by the clock: it must be the whole reel or one bar, placed by its snapshot or --starts-at.
     if (clock && args.video && !(source.first === 0 && source.end === clock.end) && !clock.bars.some((b) => b.from === source.first && b.to === source.end)) {

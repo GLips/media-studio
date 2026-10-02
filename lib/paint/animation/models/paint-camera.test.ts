@@ -52,7 +52,7 @@ const threePlaneScene = [painted('back', 2, ['sky']), painted('frog', 1, ['frog'
 
 test('the build names a group on no plane or two, and orders the planes farthest first with the groups each shows', () => {
   const painting = paintingOf([{ id: 'sky', box: across }, { id: 'frog', box: across }, { id: 'toad', box: across }, { id: 'leaf', box: across }]);
-  const build = (planes: readonly StampPlane[]) => buildPaintingCamera(painting, { stage, fov: 35, lens: { bloom: 0 }, plays: [], planes, motion: null });
+  const build = (planes: readonly StampPlane[]) => buildPaintingCamera(painting, { stage, fov: 35, lens: { bloom: 0, shutter: 0 }, plays: [], planes, motion: null });
   assert.deepEqual(problemsOf(build([painted('back', 4, ['sky', 'frog']), painted('mid', 1, ['frog']), painted('near', 0.5, ['leaf'])])), [
     'frog is on plane back and plane mid; a group is on one plane',
     'toad is on no plane',
@@ -66,7 +66,7 @@ test('the build names a group on no plane or two, and orders the planes farthest
 
 test('the build refuses a pan that shows the back past the stage, holds a nearer plane only where it\'s painted, and a wider margin takes it', () => {
   const whip = (margin: number, frog: StampBox) => buildPaintingCamera(paintingOf([{ id: 'sky', box: across }, { id: 'frog', box: frog }]), {
-    stage: stampStage(stage.frame, margin), fov: 35, lens: { bloom: 0 }, motion: null,
+    stage: stampStage(stage.frame, margin), fov: 35, lens: { bloom: 0, shutter: 0 }, motion: null,
     planes: [painted('back', 4, ['sky']), painted('frog', 1, ['frog'])],
     plays: [move([{ at: 0 }, { at: 1, pan: { x: 900, y: 0 } }], { at: 0 }, 'whip')],
   });
@@ -84,7 +84,7 @@ const marginOf = ({ planes }: PaintCamera) => planes.flatMap((plane) => (plane.k
 
 test('a camera builds from plane depths and extents alone, holding each picture as far as its extent, and refuses a box that isn\'t one', () => {
   const whip = (extent: PaintCameraExtent) => buildPaintCamera({
-    stage, fov: 35, lens: { bloom: 0 },
+    stage, fov: 35, lens: { bloom: 0, shutter: 0 },
     planes: [{ id: 'near', depth: 1, kind: 'picture', extent }, { id: 'far', depth: 4, kind: 'picture', extent: { kind: 'everywhere' } }, { id: 'model', depth: 2, kind: 'three' }],
     plays: [move([{ at: 0 }, { at: 1, pan: { x: 300, y: 0 } }], { at: 0 }, 'whip')],
   });
@@ -94,7 +94,7 @@ test('a camera builds from plane depths and extents alone, holding each picture 
   // Never defocused, the three plane renders the frame alone; defocused, past it by the blur's reach.
   assert.deepEqual(marginOf(built.camera), [0]);
   const focused = buildPaintCamera({
-    stage, fov: 35, lens: { bloom: 0 }, planes: [{ id: 'far', depth: 4, kind: 'picture', extent: { kind: 'unchecked', why: 'not this test' } }, { id: 'model', depth: 2, kind: 'three' }],
+    stage, fov: 35, lens: { bloom: 0, shutter: 0 }, planes: [{ id: 'far', depth: 4, kind: 'picture', extent: { kind: 'unchecked', why: 'not this test' } }, { id: 'model', depth: 2, kind: 'three' }],
     plays: [paintCameraPlay({ kind: 'focus', keys: [{ at: 0, focus: 1, aperture: 4 }] }, { clock: { at: 0 }, origin: 'focus' })],
   });
   if (!focused.ok) assert.fail(focused.problems.join('\n'));
@@ -116,7 +116,7 @@ test('a nearer plane holds as far as its groups\' motion can lay their paint: a 
     nodes: [frog], plays: [paintMotionPlay(frog, { kind: 'place', keys: [{ at: 0, x: 0, y: 0 }, { at: 1, x: to, y: 0 }] }, { clock: { at: 0 }, origin: 'drift' })],
   }));
   const follow = (motion: PaintMotion | null) => buildPaintingCamera(painting, {
-    stage: stampStage(stage.frame, 300), fov: 35, lens: { bloom: 0 }, motion,
+    stage: stampStage(stage.frame, 300), fov: 35, lens: { bloom: 0, shutter: 0 }, motion,
     planes: [painted('back', 4, ['sky']), painted('frog', 1, ['frog'])], plays: [move([{ at: 0 }, { at: 1, pan: { x: 300, y: 0 } }])],
   });
   assert.deepEqual(problemsOf(follow(null)), []);
@@ -128,7 +128,7 @@ test('a nearer plane holds as far as its groups\' motion can lay their paint: a 
 
 test('a plane\'s magnification is the most it\'s scaled anywhere in the shot, growing with dolly and zoom, the near plane more', () => {
   const magnified = (plays: readonly PaintCameraPlay[]) => {
-    const build = buildPaintingCamera(threePlanes, { stage, fov: 35, lens: { bloom: 0 }, planes: threePlaneScene, plays, motion: null });
+    const build = buildPaintingCamera(threePlanes, { stage, fov: 35, lens: { bloom: 0, shutter: 0 }, planes: threePlaneScene, plays, motion: null });
     if (!build.ok) assert.fail(build.problems.join('\n'));
     return Object.fromEntries(build.magnification);
   };
@@ -140,7 +140,7 @@ test('a plane\'s magnification is the most it\'s scaled anywhere in the shot, gr
 
 test('the lens at a time views each plane by its depth (a pan parallaxes), defocuses it by its distance from the focus, and blooms', () => {
   const build = buildPaintingCamera(threePlanes, {
-    stage, fov: 35, lens: { bloom: 3 }, planes: threePlaneScene, motion: null,
+    stage, fov: 35, lens: { bloom: 3, shutter: 0 }, planes: threePlaneScene, motion: null,
     plays: [
       move([{ at: 0 }, { at: 1, pan: { x: 100, y: 0 } }]),
       paintCameraPlay({ kind: 'focus', keys: [{ at: 0, focus: 1, aperture: 4 }] }, { clock: { at: 0 }, origin: 'focus' }),

@@ -28,6 +28,7 @@ import { captionTrackOfVoice, type CaptionTrack } from '#lib/picture/captions/mo
 import { pillCaptions } from '#lib/picture/captions/studio/pill-captions.tsx';
 import type { CaptionStyle } from '#lib/picture/captions/studio/caption-style.tsx';
 import { VideoTransparentContext } from '#lib/picture/frame/studio/video-format.ts';
+import { LensModeContext } from '#lib/picture/lens/studio/lens-mode-context.ts';
 
 export const TIMELINE_ARTIFACT = 'timeline.json';
 
@@ -82,7 +83,7 @@ function timelineReport(video: VideoDef, tl: LaidVideo, { fps, width, height, du
 
 // `reportTimeline` is off in the replay composition: its Freeze can land on frame 0 more than once, and Remotion
 // refuses a second artifact with the same name.
-export function Video({ video, captions, probe, blockouts, auditionSfxCueList = false, profile = false, reportTimeline = true }: VideoProps & { video: VideoDef; reportTimeline?: boolean }) {
+export function Video({ video, captions, probe, blockouts, auditionSfxCueList = false, profile = false, lens = 'fast', reportTimeline = true }: VideoProps & { video: VideoDef; reportTimeline?: boolean }) {
   const frame = useCurrentFrame();
   const config = useVideoConfig(), { fps } = config;
   const tl = useMemo(() => laidVideoOf(video), [video]);
@@ -98,6 +99,7 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
 
   return (
     <AbsoluteFill ref={root} style={{ background: transparent ? undefined : '#fff', overflow: 'hidden' }}>
+      <LensModeContext value={lens}>
       <CaptionBandContext value={captioned.style.band}>
       <SfxCueListPlaying.Provider value={playsCueList}>
         <ProfiledScenes profile={profile}>{tl.scenes.map((scene, k) => {
@@ -110,6 +112,7 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
         })}</ProfiledScenes>
       </SfxCueListPlaying.Provider>
       </CaptionBandContext>
+      </LensModeContext>
       {playsCueList && sfxCues && <SfxCueListAudio cues={sfxCues} />}
       {video.sounds?.map((s, i) => <Sfx key={i} sound={s.sound} at={s.at} t={t} id={s.id ?? i} volume={s.volume} />)}
       {tl.cues.map((cue) =>

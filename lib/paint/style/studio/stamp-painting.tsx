@@ -2,9 +2,10 @@
 // the frame until the painting is on the GPU, then until WebGPU has checked each draw for errors (never for the
 // drawing itself: the screenshot waits for the GPU).
 //
-// Each StampPainting owns its own device (stamp-paint-gpu-owner.ts) and canvas while mounted at one size, so its GPU
-// cache's budget is shared by everything that one component draws: two paintings on screen hold two devices and two
-// budgets. A new painting, camera or three object loads anew; what changes within one painting goes through `frame`.
+// Each StampPainting owns its own device (stamp-paint-gpu-owner.ts) and canvas while mounted at one size: two
+// paintings on screen hold two devices and two GPU cache budgets. A new painting, camera or three object loads anew;
+// what changes within one painting goes through `frameAt`. In the reference lens mode (lens-mode.ts) a painting with a
+// camera draws each frame as exposures over its shutter and aperture.
 
 import { useLayoutEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
@@ -16,23 +17,29 @@ import { useFrameProfile, type FrameProfileStart } from '#lib/picture/profiling/
 import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
-import { paintCameraLensAt } from '#lib/paint/animation/models/paint-camera.ts';
+import { lensExposures } from '#lib/picture/lens/models/lens-exposures.ts';
+import { LENS_REFERENCE_EXPOSURES, type LensMode } from '#lib/picture/lens/models/lens-mode.ts';
+import { shutterMomentAt } from '#lib/picture/lens/models/lens-shutter.ts';
+import { useLensMode } from '#lib/picture/lens/studio/lens-mode-context.ts';
+import { paintCameraLensAt, type PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
 import type { StampPaintingCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
 import { createStampPaintGpuOwner, type StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
-import { createStampPaintRenderer, type StampPaintFrame, type StampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
+import { createStampPaintRenderer, type StampPaintExposure, type StampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
+import type { StampLensFrame } from '#lib/paint/painting/models/stamp-plane.ts';
 import { createStampPaintSurface, type StampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
-import { loadPaintedThree, type PaintedThree, type PaintedThreeLoaded } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
+import { loadPaintedThree, type PaintedThree, type PaintedThreeExposure, type PaintedThreeLoaded } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
 import { stampPaintAssetUrl } from './stamp-paint-styles.ts';
 
 /**
- * Draws `painting` at `t` seconds (a scene's `s.t`), each group in `frame`'s state, `width` by `height` pixels (the
- * frame's size unless given), over `box` (the whole frame unless given). `camera` (buildPaintingCamera): its planes on a
- * stage whose frame is those pixels; without one, one plane at rest. `three`: a source per three plane. Memoise both.
+ * Draws `painting` at `t` seconds (a scene's `s.t`), each group in `frameAt(t)`'s state (other moments too, in the
+ * reference lens mode), `width` by `height` px (the frame's unless given), over `box` (the whole frame unless given).
+ * `camera` (buildPaintingCamera): its planes on a stage of those px; without one, one plane at rest. `three`: a
+ * source per three plane. Memoise both.
  */
-export function StampPainting({ painting, t, frame, camera: painted, three, width, height, box: given }: {
+export function StampPainting({ painting, t, frameAt, camera: painted, three, width, height, box: given }: {
   painting: CompiledStampPaint;
   t: number;
-  frame?: StampPaintFrameState;
+  frameAt?: (t: number) => StampPaintFrameState;
   camera?: StampPaintingCamera;
   three?: PaintedThree;
   width?: number;
@@ -51,6 +58,7 @@ export function StampPainting({ painting, t, frame, camera: painted, three, widt
   const [scene, setScene] = useState<StampPaintingScene | null>(null);
   const { delayRender, continueRender, cancelRender } = useDelayRender();
   const profile = useFrameProfile();
+  const lensMode = useLensMode();
 
   // Each size gets a device and a canvas of its own, made here and let go of with it, so a device still loading when
   // the size changes never shares a canvas with the next.
@@ -121,7 +129,7 @@ export function StampPainting({ painting, t, frame, camera: painted, three, widt
     };
     const drawn = profile?.('stamp paint');
     // Profiling also holds the frame until the GPU is done, to time the drawing rather than its queueing.
-    scene.draw({ t, state: frame, lens: camera && paintCameraLensAt(camera, t) }, { untilGpuDone: Boolean(drawn) }).then(() => {
+    scene.draw(stampPaintingFrame(t, frameAt, camera, lensMode), { untilGpuDone: Boolean(drawn) }).then(() => {
       drawn?.();
       return release();
     }, (error: Error) => {
@@ -132,9 +140,31 @@ export function StampPainting({ painting, t, frame, camera: painted, three, widt
       live = false;
       release();
     };
-  }, [scene, camera, t, frame, profile, delayRender, continueRender, cancelRender]);
+  }, [scene, camera, t, frameAt, lensMode, profile, delayRender, continueRender, cancelRender]);
 
   return <div ref={holder} {...unmeasuredAttrs('stamp painting')} style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h }} />;
+}
+
+/** A frame as StampPainting draws it: once, or as `exposures`, each with the lens it sees and its three.js render. */
+type StampPaintingFrame = {
+  t: number;
+  state?: StampPaintFrameState;
+  lens?: StampLensFrame;
+  exposures: readonly { exposure: StampPaintExposure; lens: StampLensFrame; three: PaintedThreeExposure }[] | null;
+};
+
+/**
+ * The frame at `t`: through `camera`'s lens once, or in the reference mode, its exposures over the camera's shutter
+ * (centred on `t`) and aperture. A painting with no camera has no lens to expose through, and draws once either way.
+ */
+function stampPaintingFrame(t: number, frameAt: ((t: number) => StampPaintFrameState) | undefined, camera: PaintCamera | undefined, mode: LensMode): StampPaintingFrame {
+  const state = frameAt?.(t);
+  if (!camera || mode === 'fast') return { t, state, lens: camera && paintCameraLensAt(camera, t), exposures: null };
+  const exposures = lensExposures(LENS_REFERENCE_EXPOSURES).map(({ index, count, shutter, aperture }) => {
+    const at = shutterMomentAt(t, camera.lens.shutter, shutter);
+    return { exposure: { index, count, at, state: frameAt?.(at) }, lens: paintCameraLensAt(camera, at, aperture), three: { index, at, aperture } };
+  });
+  return { t, state, exposures };
 }
 
 /**
@@ -156,7 +186,7 @@ type StampPaintingScene = {
    * Renders three.js at `frame.t`, then draws the painting over it, as one task after every earlier one; with
    * `untilGpuDone`, also waits for the GPU to finish. A no-op once disposed.
    */
-  draw: (frame: StampPaintFrame, options: { untilGpuDone: boolean }) => Promise<void>;
+  draw: (frame: StampPaintingFrame, options: { untilGpuDone: boolean }) => Promise<void>;
   /** Takes no more draws, waits out the load and the draws queued, then lets go of the renderer and three.js. */
   dispose: () => Promise<void>;
 };
@@ -213,10 +243,18 @@ function loadStampPaintingScene(owner: StampPaintGpuOwner, surface: StampPaintSu
   let disposing: Promise<void> | null = null;
   return {
     ready,
-    draw: (frame, { untilGpuDone }) => enqueue(async () => {
+    draw: ({ t, state, lens, exposures }, { untilGpuDone }) => enqueue(async () => {
       await ready;
-      await madeThree?.render(frame.t);
-      await made!.draw(frame);
+      if (!exposures) {
+        await madeThree?.render(t);
+        await made!.draw({ t, state, lens });
+      }
+      // One after another: each exposure's three.js render fills the textures the one before it read.
+      await (exposures ?? []).reduce(async (before, { exposure, lens: seen, three: threeExposure }) => {
+        await before;
+        await madeThree?.render(t, threeExposure);
+        await made!.draw({ t, state, lens: seen, exposure });
+      }, Promise.resolve());
       if (untilGpuDone) await made!.finish();
     }),
     dispose: () => {

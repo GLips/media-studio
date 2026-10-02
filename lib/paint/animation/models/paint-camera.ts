@@ -1,12 +1,13 @@
 // paint-camera.ts: the multiplane camera, one description that painted planes and three.js sources both read: its
-// pose and focus as plays on clocks, its projection (a vertical field of view) and its lens (a bloom), each in the
+// pose and focus as plays on clocks, its projection (a vertical field of view) and its lens (a bloom and a shutter), each in the
 // units its type names. It places each plane's picture by a similarity and blurs it by its depth; it never edits a
 // group's lay, which stays inside its plane's picture.
 //
 // Planes stay parallel to the image: the camera pans, dollies, zooms and rolls. A plane is painted the size it looks
 // at rest, so at rest every plane's similarity is the identity. Unless a play holds it, the camera is on ones.
 
-import { LENS_DEFOCUS_LEAST, lensDefocusSigned } from '#lib/picture/lens/models/lens-focus.ts';
+import { LENS_DEFOCUS_LEAST, lensApertureSlide, lensDefocusSigned } from '#lib/picture/lens/models/lens-focus.ts';
+import type { LensExposure } from '#lib/picture/lens/models/lens-exposures.ts';
 import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { StampLensFrame, StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
@@ -51,8 +52,11 @@ export const paintCameraPlay = (clip: PaintCameraClip, timing: { readonly clock:
 /** How near the camera a plane or its focus may come, depth units: nearer, its scale runs off toward infinity. */
 export const PAINT_CAMERA_NEAREST = 1e-3;
 
-/** The lens past its focus: `bloom`, the sigma in frame px of the gaussian spreading the frame's emission. */
-export type PaintCameraLens = { readonly bloom: number };
+/**
+ * The lens past its focus: `bloom`, the sigma in frame px of the gaussian spreading the frame's emission; `shutter`,
+ * seconds open about each frame's time (lens-shutter.ts; REEL_SHUTTER is the reel's).
+ */
+export type PaintCameraLens = { readonly bloom: number; readonly shutter: number };
 
 /**
  * Where a picture plane can hold anything, which the camera keeps on the stage wherever it shows it: within `box`
@@ -173,16 +177,22 @@ export function paintPlaneDefocus({ focus, aperture }: PaintCameraFocus, dolly: 
 
 /**
  * What the camera does at scene time `t`: each plane's look (its similarity, and its defocus with a focus play) and
- * the lens's bloom. Throws on a plane or the focus at or behind the camera: a build can't hold every curve between its
- * checked times.
+ * the lens's bloom; from `aperture`'s point on the lens (a reference exposure), slid instead, and sharp. Throws on a
+ * plane or the focus at or behind the camera: a build can't hold every curve between its checked times.
  */
-export function paintCameraLensAt(camera: PaintCamera, t: number): StampLensFrame {
+export function paintCameraLensAt(camera: PaintCamera, t: number, aperture: LensExposure['aperture'] | null = null): StampLensFrame {
   const pose = paintCameraPoseAt(camera, t), lens = paintCameraFocusAt(camera, t), centre = paintStageCentre(camera.stage);
   if (lens && lens.focus - pose.dolly <= PAINT_CAMERA_NEAREST) throw new Error(`paint camera: at ${t}s the camera focuses at depth ${lens.focus}, at or behind itself (dollied ${pose.dolly})`);
   const planes = new Map<string, StampPlaneLook>();
   for (const { id, depth } of camera.planes) {
     if (depth - pose.dolly <= PAINT_CAMERA_NEAREST) throw new Error(`paint camera: at ${t}s the camera, dollied ${pose.dolly}, is at or past plane ${id} at depth ${depth}`);
-    planes.set(id, { view: paintPlaneSimilarity(pose, depth, centre), defocus: lens ? paintPlaneDefocus(lens, pose.dolly, depth) : 0 });
+    const view = paintPlaneSimilarity(pose, depth, centre);
+    if (!aperture) {
+      planes.set(id, { view, defocus: lens ? paintPlaneDefocus(lens, pose.dolly, depth) : 0 });
+      continue;
+    }
+    const slide = lens ? lensApertureSlide({ focus: lens.focus - pose.dolly, aperture: lens.aperture }, depth - pose.dolly, aperture) : { x: 0, y: 0 };
+    planes.set(id, { view: { ...view, kx: view.kx + slide.x, ky: view.ky + slide.y }, defocus: 0 });
   }
   return { planes, bloom: camera.lens.bloom };
 }
