@@ -14,47 +14,6 @@ import { gpuUniformLayout } from '#lib/platform/gpu/models/gpu-uniform-layout.ts
 import { GPU_FULL_FRAME_WGSL, GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 
 /**
- * One direction of a gaussian: `axis` 0 across, 1 down; read within `read` (x, y, w, h), written over `box`, scaled by
- * `gain`. Boxes are in one space for both textures, whose first texels sit at `sourceAt` and `intoAt` in it. Past
- * `read` counts as clear, so whatever a target held outside a picture never reaches the result.
- */
-export const STAMP_GAUSSIAN_PASS = gpuUniformLayout('GaussianPass', [
-  ['sigma', 'f32'], ['reach', 'u32'], ['axis', 'u32'], ['gain', 'f32'], ['read', 'vec4f'], ['box', 'vec4f'], ['sourceAt', 'vec2f'], ['intoAt', 'vec2f'],
-]);
-
-/**
- * WGSL for one direction of a gaussian over `layers` array layers of rgba16float (a plain texture viewed as an array
- * of one). Weights are normalised over every tap, read or not: paint fades into clear past its box, as a lens spreads
- * it.
- */
-export function stampGaussianPassWgsl(layers: number, workgroup: number) {
-  return /* wgsl */ `
-${STAMP_GAUSSIAN_PASS.wgsl}
-@group(0) @binding(0) var<uniform> u: GaussianPass;
-@group(0) @binding(1) var source: texture_2d_array<f32>;
-@group(0) @binding(2) var blurred: texture_storage_2d_array<rgba16float, write>;
-@compute @workgroup_size(${workgroup}, ${workgroup}) fn gaussianPass(@builtin(global_invocation_id) id: vec3u) {
-  if (any(vec2f(id.xy) >= u.box.zw)) { return; }
-  let pixel = vec2i(u.box.xy) + vec2i(id.xy);
-  let step = select(vec2i(1, 0), vec2i(0, 1), u.axis == 1u);
-  let low = vec2i(u.read.xy);
-  let high = low + vec2i(u.read.zw);
-  let reach = i32(u.reach);
-  var sum: array<vec4f, ${layers}>;
-  var total = 0.0;
-  for (var i = -reach; i <= reach; i++) {
-    let w = exp(-0.5 * f32(i * i) / (u.sigma * u.sigma));
-    total += w;
-    let at = pixel + step * i;
-    if (any(at < low) || any(at >= high)) { continue; }
-    for (var l = 0u; l < ${layers}u; l++) { sum[l] += w * textureLoad(source, at - vec2i(u.sourceAt), l, 0); }
-  }
-  let into = pixel - vec2i(u.intoAt);
-  for (var l = 0u; l < ${layers}u; l++) { textureStore(blurred, into, l, sum[l] * (u.gain / total)); }
-}`;
-}
-
-/**
  * A glow's source over `origin` `extent`: the painting's linear light past `threshold` (by luminance, its hue kept),
  * times the cover there and `strength` (the glow's amount, the group's opacity and its visibility).
  */

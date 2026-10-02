@@ -42,11 +42,12 @@ import type { StampPaintSurface } from './stamp-paint-surface.ts';
 import { gpuUniformLayout, gpuUniformStruct, gpuUniformWriter, type GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { STAMP_WET_STAGES, stampWetStageReach, type StampLoadedWetStage, type StampWetStage, type StampWetDepositMoment, type StampWetDryingMoment, type StampWetStageContext } from './stamp-wet-stages.ts';
 import {
-  STAMP_GAUSSIAN_PASS, STAMP_GLOW_OCCLUSION, STAMP_GLOW_SOURCE, STAMP_PLANE_COMPOSITE, STAMP_PLANE_LIGHT, STAMP_PLANE_PICTURE, stampGaussianPassWgsl, stampGlowOcclusionWgsl, stampGlowSourceWgsl, stampPlaneCompositeWgsl,
+  STAMP_GLOW_OCCLUSION, STAMP_GLOW_SOURCE, STAMP_PLANE_COMPOSITE, STAMP_PLANE_LIGHT, STAMP_PLANE_PICTURE, stampGlowOcclusionWgsl, stampGlowSourceWgsl, stampPlaneCompositeWgsl,
   stampPlaneLightWgsl, stampPlaneOutputWgsl, stampPlanePictureLayerCount, stampPlanePictureLayers, stampPlanePictureLayersKey, stampPlanePictureWgsl, type StampPlaneLaying,
   type StampPlanePictureLayers,
 } from './stamp-paint-plane-passes.ts';
-import { stampDefocusSigmaStepped, stampGaussianReach, stampGrownBox } from '../models/stamp-defocus.ts';
+import { lensGaussianReach, lensSigmaStepped } from '#lib/picture/lens/models/lens-focus.ts';
+import { GPU_GAUSSIAN_PASS, gpuGaussianPassWgsl } from '#lib/platform/gpu/models/gpu-gaussian.ts';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { stampPlacementWarpMap, stampWarpCells, stampWarpTriangles, STAMP_WARP_MOST_CELLS } from '../models/stamp-group-warp.ts';
 import { stampFramePlan, type StampGroupFrame } from '../models/stamp-frame-plan.ts';
@@ -256,30 +257,6 @@ struct Stamp { @location(0) mask: vec4f, @location(1) cap: vec4f, @location(2) t
 @fragment fn coverOrderedTinted(@builtin(position) at: vec4f) -> Stamp {
   let laid = laidInOrder(at.xy, true);
   return Stamp(vec4f(laid.built), vec4f(0.0), laid.tintA, laid.tintB);
-}`;
-
-const BLUR = gpuUniformLayout('Blur', [['sourceSize', 'vec2f'], ['direction', 'vec2f'], ['sigma', 'f32'], ['origin', 'vec2u'], ['extent', 'vec2u']]);
-const BLUR_WGSL = /* wgsl */ `
-${BLUR.wgsl}
-@group(0) @binding(0) var<uniform> u: Blur;
-@group(0) @binding(1) var source: texture_2d<f32>;
-@group(0) @binding(2) var blurred: texture_storage_2d<rgba16float, write>;
-@group(0) @binding(3) var linearClamp: sampler;
-@compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn blur(@builtin(global_invocation_id) id: vec3u) {
-  let size = textureDimensions(blurred);
-  let pixel = u.origin + id.xy;
-  if (any(id.xy >= u.extent) || any(pixel >= size)) { return; }
-  let uv = (vec2f(pixel) + 0.5) / vec2f(size);
-  let step = u.direction / u.sourceSize;
-  let reach = i32(min(40.0, ceil(u.sigma * 2.5)));
-  var sum = vec4f(0.0);
-  var total = 0.0;
-  for (var i = -reach; i <= reach; i++) {
-    let w = exp(-0.5 * f32(i * i) / (u.sigma * u.sigma));
-    sum += textureSampleLevel(source, linearClamp, uv + step * f32(i), 0.0) * w;
-    total += w;
-  }
-  textureStore(blurred, pixel, sum / total);
 }`;
 
 /** The WGSL declaring a compositor's `target` as `name` at `binding`: storage with `access`, or sampled for null. */
@@ -1439,7 +1416,7 @@ function rendererOnSurface(
     }
     return depositPipelines.get(key)!;
   };
-  const pipelines = { blur: computePipeline(BLUR_WGSL), group: computePipeline(groupWgsl(compositor, false, stage)), paper: computePipeline(paperWgsl(compositor, stage)) };
+  const pipelines = { blur: computePipeline(gpuGaussianPassWgsl({ layers: 1, read: 'bilinear', workgroup: WORKGROUP })), group: computePipeline(groupWgsl(compositor, false, stage)), paper: computePipeline(paperWgsl(compositor, stage)) };
   /**
    * What laying a group through a lattice takes, made the first time a frame moves or warps one: its pipelines, and
    * each scene pixel's rest point.
@@ -1546,6 +1523,9 @@ function rendererOnSurface(
     footprint: washes ? target('footprint', width, height, STORAGE) : null,
     fresh: washes ? layered('fresh', compositor.targets.layer, STORAGE) : null,
   };
+
+  // The gaussian binds arrays; the mask's targets are plain.
+  const maskArrays = { mask: arrayView(targets.mask.texture), blurA: arrayView(targets.blurA.texture), blurB: arrayView(targets.blurB.texture) };
 
   /** Binds each of `resources` at its index; a null is a binding the pipeline doesn't have. */
   const bindGroup = (pipeline: GPURenderPipeline | GPUComputePipeline, resources: (GPUBindingResource | null)[]) =>
@@ -1962,25 +1942,27 @@ function rendererOnSurface(
   function blurMask(encoder: GPUCommandEncoder, sigma: number, box: Box) {
     const halfSigma = Math.max(0.5, sigma / 2);
     const half = stampBlurRegion(box, halfW, halfH);
+    // Reached as the GPU would work it out in f32, so the taps match the mask-edge goldens'.
+    const taps = Math.min(40, Math.ceil(Math.fround(Math.fround(halfSigma) * 2.5)));
     // The across pass also covers the rows the down pass reaches past the box: blurA outside them holds whatever an
     // earlier deposit or frame left, which would make a frame depend on what was drawn before it.
-    const reach = Math.min(40, Math.ceil(halfSigma * 2.5)) + 1;
+    const reach = taps + 1;
     const top = Math.max(0, half.y - reach);
     const across = { ...half, y: top, h: half.h + (half.y - top) + reach };
-    const blur = (source: GPUTextureView, sourceSize: [number, number], into: GPUTextureView, direction: [number, number], region: typeof half) => dispatch(encoder, pipelines.blur, [
+    const blur = (source: GPUTextureView, into: GPUTextureView, axis: 0 | 1, stride: number, region: typeof half) => dispatch(encoder, pipelines.blur, [
       slot((views) => {
-        const put = gpuUniformWriter(BLUR, views);
-        put('sourceSize', sourceSize);
-        put('direction', direction);
+        const put = gpuUniformWriter(GPU_GAUSSIAN_PASS, views);
         put('sigma', halfSigma);
-        put('origin', [region.x, region.y]);
-        put('extent', [region.w, region.h]);
+        put('reach', taps);
+        put('axis', axis);
+        put('stride', stride);
+        put('box', [region.x, region.y, region.w, region.h]);
       }),
       source, into, linearClamp,
     ], region.w, region.h);
     // Sampling the full-size mask at half size, at a texel's corner, averages four pixels: a box before the blur.
-    blur(targets.mask.view, [width, height], targets.blurA.view, [2, 0], across);
-    blur(targets.blurA.view, [halfW, halfH], targets.blurB.view, [0, 1], half);
+    blur(maskArrays.mask, maskArrays.blurA, 0, 2, across);
+    blur(maskArrays.blurA, maskArrays.blurB, 1, 1, half);
   }
 
   // The paper's tooth's tile in pixels and the mip level it's read at.
@@ -2247,14 +2229,13 @@ function rendererOnSurface(
   function gaussian(encoder: GPUCommandEncoder, { source, into, layers, sigma, read, sourceAt, box }: {
     source: GPUTextureView; into: GPUTextureView; layers: number; sigma: number; read: Box; sourceAt: { x: number; y: number }; box: Box;
   }) {
-    const pipeline = lensPipeline(`gaussian|${layers}`, () => stampGaussianPassWgsl(layers, WORKGROUP));
+    const pipeline = lensPipeline(`gaussian|${layers}`, () => gpuGaussianPassWgsl({ layers, read: 'texels', workgroup: WORKGROUP }));
     const across = lensTarget('lens across', Math.max(width, box.w), Math.max(height, box.h), layers);
     const pass = (from: GPUTextureView, to: GPUTextureView, axis: 0 | 1, readBox: Box, at: { x: number; y: number }, intoAt: { x: number; y: number }) => dispatch(encoder, pipeline, [slot((views) => {
-      const put = gpuUniformWriter(STAMP_GAUSSIAN_PASS, views);
+      const put = gpuUniformWriter(GPU_GAUSSIAN_PASS, views);
       put('sigma', sigma);
-      put('reach', stampGaussianReach(sigma));
+      put('reach', lensGaussianReach(sigma));
       put('axis', axis);
-      put('gain', 1);
       put('read', [readBox.x, readBox.y, readBox.w, readBox.h]);
       put('box', [box.x, box.y, box.w, box.h]);
       put('sourceAt', [at.x, at.y]);
@@ -2391,11 +2372,11 @@ function rendererOnSurface(
   }
   /** `picture` (under `key`) defocused by `sigma`, plane px: kept under its key and the stepped sigma. */
   function blurredPicture(encoder: GPUCommandEncoder, picture: StampPlanePicture, key: string, sigma: number): StampPlanePicture {
-    const stepped = stampDefocusSigmaStepped(sigma), blurredKey = `${key}|${stepped}`;
+    const stepped = lensSigmaStepped(sigma), blurredKey = `${key}|${stepped}`;
     const found = blurredPictures.find(blurredKey, encoder);
     if (found) return { ...found.note, texture: found.textures[0] };
     const { texture: sharp, box: sharpBox, ...layers } = picture;
-    const box = stampGrownBox(sharpBox, stampGaussianReach(stepped), width, height), count = sharp.depthOrArrayLayers;
+    const box = stampGrownBox(sharpBox, lensGaussianReach(stepped), width, height), count = sharp.depthOrArrayLayers;
     const note: StampPictureNote = { ...layers, box };
     const [texture] = blurredPictures.make(blurredKey, encoder, [{ width: box.w, height: box.h, layers: count, format: 'rgba16float', usage: STORAGE | GPUTextureUsage.TEXTURE_BINDING }], note).textures;
     gaussian(encoder, { source: arrayView(sharp), into: arrayView(texture), layers: count, sigma: stepped, read: sharpBox, sourceAt: sharpBox, box });
@@ -2426,7 +2407,7 @@ function rendererOnSurface(
     const { texture, at } = three.get(id)!, view = arrayView(texture);
     const box: Box = { x: at.x, y: at.y, w: texture.width, h: texture.height }, own: Box = { x: 0, y: 0, w: texture.width, h: texture.height };
     if (!sigma) return { view, box };
-    const defocused = lensTarget(`three ${id}`, texture.width, texture.height, 1), stepped = stampDefocusSigmaStepped(sigma);
+    const defocused = lensTarget(`three ${id}`, texture.width, texture.height, 1), stepped = lensSigmaStepped(sigma);
     gaussian(encoder, { source: view, into: defocused.array, layers: 1, sigma: stepped, read: own, sourceAt: own, box: own });
     return { view: defocused.array, box };
   }
@@ -2901,6 +2882,12 @@ function washLanding(identity: CompiledStampDeposit, staged: CompiledStampDeposi
 
 /** A box as a uniform's four words; an empty box for none, whose region reads 0 everywhere. */
 const boxWords = (box: Box | undefined): [number, number, number, number] => (box ? [box.x, box.y, box.w, box.h] : [0, 0, 0, 0]);
+
+/** `box` grown by `by` px each side, held to a `width` × `height` target. */
+function stampGrownBox(box: Box, by: number, width: number, height: number): Box {
+  const x = Math.max(0, box.x - by), y = Math.max(0, box.y - by);
+  return { x, y, w: Math.min(width, box.x + box.w + by) - x, h: Math.min(height, box.y + box.h + by) - y };
+}
 
 const unionOf = (a: Box | null, b: Box | null) => (a && b ? union(a, b) : a ?? b);
 

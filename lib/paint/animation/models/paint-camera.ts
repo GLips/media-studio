@@ -6,6 +6,7 @@
 // Planes stay parallel to the image: the camera pans, dollies, zooms and rolls. A plane is painted the size it looks
 // at rest, so at rest every plane's similarity is the identity. Unless a play holds it, the camera is on ones.
 
+import { LENS_DEFOCUS_LEAST, lensDefocusSigned } from '#lib/picture/lens/models/lens-focus.ts';
 import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { StampLensFrame, StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
@@ -161,17 +162,13 @@ export function paintPlaneSimilarity({ pan, dolly, zoom, roll }: PaintCameraPose
   return { ma, mb, kx: centre.x - (ma * centre.x - mb * centre.y) + (ca * shiftX - sa * shiftY), ky: centre.y - (mb * centre.x + ma * centre.y) + (sa * shiftX + ca * shiftY) };
 }
 
-/** A defocus below this sigma, frame px, is drawn sharp: no blur pass for a change nobody sees. */
-export const PAINT_DEFOCUS_LEAST = 0.1;
-
 /**
- * A plane's defocus, frame px of gaussian sigma: a thin lens's circle of confusion, aperture·|1 − f/s|, f the focus's
- * distance (focus − dolly), s the plane's (depth − dolly). The lens's own factor f/(f − focal length), near 1, is
- * left in the aperture. A gaussian of sigma σ spreads as a disc 4σ across, so a/4 stands for an a px disc.
+ * A plane's defocus, frame px of gaussian sigma: the lens's (lens-focus.ts) at the plane's distance from the camera,
+ * depth − dolly, its focus focus − dolly away.
  */
 export function paintPlaneDefocus({ focus, aperture }: PaintCameraFocus, dolly: number, depth: number): number {
-  const sigma = paintPxRounded(aperture * Math.abs(1 - (focus - dolly) / (depth - dolly)));
-  return sigma < PAINT_DEFOCUS_LEAST ? 0 : sigma;
+  const sigma = paintPxRounded(Math.abs(lensDefocusSigned({ focus: focus - dolly, aperture }, depth - dolly)));
+  return sigma < LENS_DEFOCUS_LEAST ? 0 : sigma;
 }
 
 /**

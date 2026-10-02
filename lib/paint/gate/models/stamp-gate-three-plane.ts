@@ -9,7 +9,7 @@ import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { linearToSrgb, srgbToLinear } from '#lib/paint/materials/models/paint-spectrum.ts';
-import { stampDefocusSigmaStepped } from '#lib/paint/painting/models/stamp-defocus.ts';
+import { lensSigmaStepped } from '#lib/picture/lens/models/lens-focus.ts';
 import { compileStampPaintRecipe, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import { stampScenePlanes, type StampLaidPlanes, type StampLensFrame, type StampPlane } from '#lib/paint/painting/models/stamp-plane.ts';
@@ -67,7 +67,7 @@ export function stampGateThreeContent(which: 'a' | 'b'): Float32Array {
  */
 export function stampGateThreeContentBlurred(): Float64Array {
   const { width, height } = STAMP_GATE_THREE_SIZE;
-  return stampGateGaussian(stampGateThreeContent('a'), width, height, 4, stampDefocusSigmaStepped(STAMP_GATE_THREE_DEFOCUS), 0);
+  return stampGateGaussian(stampGateThreeContent('a'), width, height, 4, lensSigmaStepped(STAMP_GATE_THREE_DEFOCUS), 0);
 }
 
 /** The defocus case's lens: the card STAMP_GATE_THREE_DEFOCUS px out of focus. */

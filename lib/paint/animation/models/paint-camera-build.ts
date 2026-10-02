@@ -8,7 +8,7 @@
 // bounded by the circle the frame's corners turn on. Negative space: frame state written outside `motion` is the
 // scene's to keep on the stage.
 
-import { stampDefocusSigmaStepped, stampGaussianReach } from '#lib/paint/painting/models/stamp-defocus.ts';
+import { LENS_SIGMA_STEP, lensGaussianReach, lensSigmaStepped } from '#lib/picture/lens/models/lens-focus.ts';
 import { stampPlaneDepthProblems, stampScenePlanes, type StampLaidPlanes, type StampPlane } from '#lib/paint/painting/models/stamp-plane.ts';
 import { stampStageExtent, type StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
@@ -146,7 +146,7 @@ function extentBoxProblem(id: string, extent: PaintCameraExtent): string | null 
 }
 
 /** How far a defocus of `sigma` px spreads: its reach, the sigma stepped up at most a step, a bilinear read's pixel and one for rounding. */
-const defocusGrowth = (sigma: number) => stampGaussianReach(stampDefocusSigmaStepped(sigma) * 1.02) + 2;
+const defocusGrowth = (sigma: number) => lensGaussianReach(lensSigmaStepped(sigma) * LENS_SIGMA_STEP) + 2;
 
 /**
  * Why a plane at `depth` can't hold what the camera shows of it in some span, or null. `extent`: where its picture

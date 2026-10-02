@@ -3,7 +3,7 @@
 // glow to adding light only past its threshold, nothing at amount 0, nothing under opaque paint laid after it on its
 // plane or on a nearer one, and the same frame when the picture holding its light is restored.
 
-import { stampDefocusSigmaStepped, stampGaussianReach } from '#lib/paint/painting/models/stamp-defocus.ts';
+import { lensGaussianReach, lensSigmaStepped } from '#lib/picture/lens/models/lens-focus.ts';
 import { linearToSrgb, srgbToLinear } from '#lib/paint/materials/models/paint-spectrum.ts';
 import { compileStampPaintRecipe, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
@@ -63,7 +63,7 @@ export function stampGateDefocusLens(defocus: number, scale = 1): StampLensFrame
  * `ground` (what lies past the image), weighted as the renderer weighs it: over three sigmas, normalised over every tap.
  */
 export function stampGateGaussian(values: ArrayLike<number>, width: number, height: number, channels: number, sigma: number, ground: number): Float64Array {
-  const reach = stampGaussianReach(sigma), weights = Array.from({ length: 2 * reach + 1 }, (_, k) => Math.exp(-0.5 * ((k - reach) ** 2) / (sigma * sigma)));
+  const reach = lensGaussianReach(sigma), weights = Array.from({ length: 2 * reach + 1 }, (_, k) => Math.exp(-0.5 * ((k - reach) ** 2) / (sigma * sigma)));
   const total = weights.reduce((sum, w) => sum + w, 0);
   const pass = (from: Float64Array, dx: number, dy: number) => {
     const to = new Float64Array(from.length);
@@ -105,7 +105,7 @@ function fromGaussian(frame: ArrayLike<number>, expected: ArrayLike<number>) {
 export function checkStampGateDefocus({ sharp, zero, blurred, scaledSharp, scaledBlurred }: Record<'sharp' | 'zero' | 'blurred' | 'scaledSharp' | 'scaledBlurred', ArrayLike<number>>): StampGateWashCheck {
   const none = stampGateFrameDifference(sharp, zero);
   // The renderer holds a picture's sigma to its steps, so the frame's is the step nearest the sigma over the scale, rescaled.
-  const frameSigma = (scale: number) => scale * stampDefocusSigmaStepped(STAMP_GATE_DEFOCUS_SIGMA / scale);
+  const frameSigma = (scale: number) => scale * lensSigmaStepped(STAMP_GATE_DEFOCUS_SIGMA / scale);
   const still = fromGaussian(blurred, linearGaussian(sharp, frameSigma(1)));
   const scaled = fromGaussian(scaledBlurred, linearGaussian(scaledSharp, frameSigma(STAMP_GATE_DEFOCUS_SCALE)));
   const shown = stampGateFrameDifference(sharp, blurred).max;
@@ -204,7 +204,7 @@ export function checkStampGateGlow({ plain, grey, zero, pale, paleAgain, paleAft
   const lit = rise(pale, grey, { box: GLOW_PALE, by: GLOW_SPILL });
   const again: StampGateFrameDifference = stampGateFrameDifference(pale, paleAgain), shifted = stampGateFrameDifference(paleFresh, paleAfterMove);
   // The bloom spreads what glows past the cover's edge into it, so the cover is read only past the bloom's reach.
-  const reach = stampGaussianReach(STAMP_GATE_BLOOM);
+  const reach = lensGaussianReach(STAMP_GATE_BLOOM);
   const inside = { x0: GLOW_COVER.x0 + reach, x1: GLOW_COVER.x1 - reach, y0: GLOW_COVER.y0 + reach, y1: GLOW_COVER.y1 - reach };
   const under = rise(covered, coveredPlain, { within: inside }), laidOver = rise(onSheet, onSheetDim, { within: inside });
   return {
