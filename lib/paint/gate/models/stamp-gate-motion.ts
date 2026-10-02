@@ -128,3 +128,25 @@ export function checkStampGateMotion(frames: Record<StampGateMotionKind, Record<
       + `max ${apart.away} away from the crossing (past ${tolerance.most} fails), ${apart.within} at it (past ${tolerance.crossing} fails); against sharp max ${shown} (40 or under fails)`).join('; '),
   };
 }
+
+/** The transport case: paper's travel frame to frame, asked of a renderer drawn through no lens. */
+export const STAMP_GATE_TRANSPORT_ID = 'planes/transport';
+/** The step it's asked over, s: a frame at 30 fps, the red stroke carried two shutters' travel. */
+export const STAMP_GATE_TRANSPORT_STEP = 1 / 30;
+/** A point on the red stroke and one off every stroke, painting px, where it lies at the frame's time. */
+const TRANSPORT_ON = { x: 82, y: 40 }, TRANSPORT_OFF = { x: 20, y: 90 };
+
+/**
+ * Whether the back plane's transport layer (rgba floats over a stage `margin` px past a `width` px wide frame) carries
+ * the red stroke's region its travel over the step, and leaves paper away from it still.
+ */
+export function checkStampGateTransport(layer: Float32Array, width: number, margin: number): StampGateWashCheck {
+  const at = ({ x, y }: { x: number; y: number }) => Array.from(layer.subarray(((y + margin) * (width + 2 * margin) + x + margin) * 4, ((y + margin) * (width + 2 * margin) + x + margin) * 4 + 4));
+  const on = at(TRANSPORT_ON), off = at(TRANSPORT_OFF), travel = TRAVEL * STAMP_GATE_TRANSPORT_STEP / STAMP_GATE_MOTION_SHUTTER;
+  const carried = Math.abs(on[0] - travel) <= 0.05 && Math.abs(on[1]) <= 0.05 && on[3] === 1;
+  return {
+    id: `${STAMP_GATE_TRANSPORT_ID}: a transport request carries a moving group's region its travel, with no lens`,
+    passed: carried && off.every((value) => value === 0),
+    detail: `on the stroke ${on.map((v) => v.toFixed(2)).join(', ')} (${travel}, 0, 0, 1 wanted); off it ${off.map((v) => v.toFixed(2)).join(', ')} (all 0 wanted)`,
+  };
+}

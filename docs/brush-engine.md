@@ -219,7 +219,8 @@ gives one for a `PaintMoment` (`stamp-paint-frame-state.ts`, `StampPaintFrameAt`
 within the frame shown at `frame`. A `fast` frame through a lens takes its `shutter`, the states as it opens and closes;
 an `exposure` frame is one of a reference frame's. Each group's travel over a `StampMotionSpan` is rasterised through
 its lattice into its plane picture's motion layer: the shutter's (`stampFramePlanMotion`, `shutter`), which the lens
-gathers, or frame to frame (`transport`, over the group's whole region), which paper advection asks for. It holds
+gathers, or frame to frame (`transport`, over a travelling group's whole region), which paper advection asks for
+with `renderer.transport({ t, state, from, to })`, apart from any lens. It holds
 each group's:
 - `lay`: a placement about its pivot;
 - `warp`: a rest-to-scene map with a key naming it, sampled on a lattice over the group's painted layer;

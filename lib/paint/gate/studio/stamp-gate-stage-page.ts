@@ -2,7 +2,7 @@
 // stamp-gate-lens.ts, stamp-gate-three-plane.ts), drawn on surfaces of their own.
 
 import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
-import type { StampLensFrame } from '#lib/paint/painting/models/stamp-plane.ts';
+import { STAMP_SINGLE_PLANE_ID, type StampLensFrame } from '#lib/paint/painting/models/stamp-plane.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { StampPaintFrame, StampPaintRenderer, StampPaintRendererOptions } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
 import { stampGateFrameDifference, type StampGateFrameDifference } from '../models/stamp-gate-frames.ts';
@@ -14,6 +14,10 @@ import {
   checkStampGateThreeDefocus, checkStampGateThreePlane, STAMP_GATE_CARD, STAMP_GATE_THREE_DEFOCUS_LENS, STAMP_GATE_THREE_IDS, stampGateThreeContent, stampGateThreeContentBlurred, stampGateThreeKind, stampGateThreeMotion,
   stampGateThreePainting, stampGateThreePlanes,
 } from '../models/stamp-gate-three-plane.ts';
+import {
+  checkStampGateThreeStill, STAMP_GATE_THREE_STILL_ID, STAMP_GATE_THREE_STILL_LENS, STAMP_GATE_THREE_STILL_SHUTTER, STAMP_GATE_THREE_STILL_T, stampGateThreeStillContent,
+  stampGateThreeStillExposures, stampGateThreeStillPainting, stampGateThreeStillPlanes, stampGateThreeStillState,
+} from '../models/stamp-gate-three-still.ts';
 import type { StampGatePainting } from '../models/stamp-gate-paintings.ts';
 import {
   checkStampGateFilmCache, checkStampGateMargin, checkStampGateOneSheet, checkStampGatePan, checkStampGatePictureCache, STAMP_GATE_PARALLAX_ORDER, STAMP_GATE_PLANES_IDS, STAMP_GATE_STAGE_IDS,
@@ -21,10 +25,10 @@ import {
   stampGateParallaxTime, stampGatePlanesLens, stampGatePlanesOf, stampGatePlanesPainting,
 } from '../models/stamp-gate-stage.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
-import { stampGateHalfBits } from '../models/stamp-gate-flow.ts';
+import { stampGateHalfBits, stampGateHalfValue } from '../models/stamp-gate-flow.ts';
 import { drawn, drawnExposures, drawnImages, gateRenderer, withGateRenderer, withGateSurface } from './stamp-gate-page-surface.ts';
 import {
-  checkStampGateMotion, STAMP_GATE_MOTION_SHUTTER, STAMP_GATE_MOTION_T, stampGateMotionExposures, stampGateMotionFastLens, stampGateMotionPainting, stampGateMotionState, type StampGateMotionKind,
+  checkStampGateMotion, checkStampGateTransport, STAMP_GATE_MOTION_SHUTTER, STAMP_GATE_MOTION_T, STAMP_GATE_TRANSPORT_ID, STAMP_GATE_TRANSPORT_STEP, stampGateMotionExposures, stampGateMotionFastLens, stampGateMotionPainting, stampGateMotionState, type StampGateMotionKind,
 } from '../models/stamp-gate-motion.ts';
 
 /** `gate`'s stage, `margin` px past its frame each side. */
@@ -120,8 +124,9 @@ const motionGateFramesDrawn = (draws: (kind: StampGateMotionKind) => StampPaintF
  * own. The defocus case: the card defocused through the lens, then its content blurred on the CPU, then sharp.
  */
 export async function checkStampGateThreeCase(id: string): Promise<StampGateWashCheck[]> {
+  if (id === STAMP_GATE_THREE_STILL_ID) return [await checkThreeStillFront()];
   const kind = id === 'three/defocus' ? 'flat' : stampGateThreeKind(id);
-  if (!kind) throw new Error(`stamp gate: no three-plane case ${JSON.stringify(id)}; the gate has ${STAMP_GATE_THREE_IDS.join(', ')}`);
+  if (!kind) throw new Error(`stamp gate: no three-plane case ${JSON.stringify(id)}; the gate has ${[...STAMP_GATE_THREE_IDS, STAMP_GATE_THREE_STILL_ID].join(', ')}`);
   const gate = stampGateThreePainting(kind), { width, height } = gate;
   return withGateSurface(gate, drawnImages(gate), async (surface, frame) => {
     const { device } = surface.owner;
@@ -159,6 +164,49 @@ export async function checkStampGateThreeCase(id: string): Promise<StampGateWash
   });
 }
 
+/**
+ * The still-front case (stamp-gate-three-still.ts): the card's patch written once, still, before a stroke that moves;
+ * drawn fast, as the reference's exposures and sharp.
+ */
+async function checkThreeStillFront(): Promise<StampGateWashCheck> {
+  const gate = stampGateThreeStillPainting(), { width, height } = gate, t = STAMP_GATE_THREE_STILL_T, opens = t - STAMP_GATE_THREE_STILL_SHUTTER / 2;
+  return withGateSurface(gate, drawnImages(gate), async (surface, frame) => {
+    const { device } = surface.owner;
+    const usage = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC;
+    const texture = device.createTexture({ size: [width, height], format: 'rgba16float', usage }), motion = device.createTexture({ size: [width, height], format: 'rgba16float', usage });
+    const content = stampGateThreeStillContent();
+    device.queue.writeTexture({ texture }, Uint16Array.from(content, stampGateHalfBits), { bytesPerRow: width * 8 }, [width, height]);
+    device.queue.writeTexture({ texture: motion }, Uint16Array.from(stampGateThreeMotion(content), stampGateHalfBits), { bytesPerRow: width * 8 }, [width, height]);
+    const card = { picture: { texture, motion, at: { x: 0, y: 0 } }, render: async () => ({ moved: false }) };
+    const drawnAs = async (draws: StampPaintFrame[]) => {
+      const renderer = await gateRenderer(gate, surface, { planes: stampGateThreeStillPlanes(gate.painting), sources: new Map([[STAMP_GATE_CARD, card]]) });
+      try {
+        return await drawnExposures(renderer, frame, draws);
+      } finally {
+        renderer.dispose();
+      }
+    };
+    const lens = STAMP_GATE_THREE_STILL_LENS, state = stampGateThreeStillState(t), closes = opens + STAMP_GATE_THREE_STILL_SHUTTER;
+    const fast = await drawnAs([{ kind: 'fast', t, state, lens, shutter: { open: { at: opens, state: stampGateThreeStillState(opens) }, close: { at: closes, state: stampGateThreeStillState(closes) } } }]);
+    const reference = await drawnAs(stampGateThreeStillExposures().map((exposure) => ({ kind: 'exposure', t, state, lens, exposure: { ...exposure, state: stampGateThreeStillState(exposure.at) } })));
+    const sharp = await drawnAs([{ kind: 'fast', t, state, lens, shutter: null }]);
+    return checkStampGateThreeStill({ fast, reference, sharp });
+  });
+}
+
+/** A transport layer read back as rgba floats, row by row. */
+async function readTransportLayer(device: GPUDevice, texture: GPUTexture): Promise<Float32Array> {
+  const rowBytes = Math.ceil((texture.width * 8) / 256) * 256, read = device.createBuffer({ size: rowBytes * texture.height, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+  const encoder = device.createCommandEncoder();
+  encoder.copyTextureToBuffer({ texture }, { buffer: read, bytesPerRow: rowBytes }, [texture.width, texture.height]);
+  device.queue.submit([encoder.finish()]);
+  await read.mapAsync(GPUMapMode.READ);
+  const halves = new Uint16Array(read.getMappedRange()), values = new Float32Array(texture.width * texture.height * 4);
+  for (let y = 0; y < texture.height; y++) for (let i = 0; i < texture.width * 4; i++) values[y * texture.width * 4 + i] = stampGateHalfValue(halves[y * (rowBytes / 2) + i]);
+  read.destroy();
+  return values;
+}
+
 /** Stage or planes case `id` (stamp-gate-stage.ts), or a lens case (stamp-gate-lens.ts). */
 export async function checkStampGateStageCase(id: string): Promise<StampGateWashCheck[]> {
   if (id.startsWith('lens/')) return checkStampGateLensCase(id);
@@ -183,6 +231,18 @@ export async function checkStampGateStageCase(id: string): Promise<StampGateWash
     const restores = stampGateSpanCounter('stamp paint picture restore');
     const scrambled = await framesInOrder(gate, STAMP_GATE_PARALLAX_ORDER, { ...options, profile: restores.profile }, stampGatePlanesLens);
     return [checkStampGatePictureCache(await againstFresh(gate, scrambled, options, stampGatePlanesLens), restores.spans)];
+  }
+  if (id === STAMP_GATE_TRANSPORT_ID) {
+    const gate = stampGateMotionPainting('own'), t = STAMP_GATE_MOTION_T, from = t - STAMP_GATE_TRANSPORT_STEP;
+    return [await withGateSurface(gate, drawnImages(gate), async (surface) => {
+      const renderer = await gateRenderer(gate, surface, { stage: gateStage(gate, STAMP_GATE_STAGE_MARGIN) });
+      try {
+        const layers = await renderer.transport({ t, state: stampGateMotionState('own', t), from: { at: from, state: stampGateMotionState('own', from) }, to: { at: t, state: stampGateMotionState('own', t) } });
+        return checkStampGateTransport(await readTransportLayer(surface.owner.webgpu, layers.get(STAMP_SINGLE_PLANE_ID)!), gate.width, renderer.stage.margin);
+      } finally {
+        renderer.dispose();
+      }
+    })];
   }
   if (id === 'planes/one-sheet') {
     const gate = stampGateOneSheetPainting(), url = drawnImages(gate);
