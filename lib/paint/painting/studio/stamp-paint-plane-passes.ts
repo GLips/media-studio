@@ -1,6 +1,6 @@
-// stamp-paint-plane-passes.ts: the renderer's passes from a plane's paint to the frame (stamp-plane.ts). Each painted
-// plane's picture (its colour, premultiplied; a clear plane's taken share; emission) is defocused and laid over the
-// planes behind where the camera puts it. The output blooms the emission once, adds it, and encodes.
+// stamp-paint-plane-passes.ts: the renderer's passes from a plane's paint to its picture (stamp-plane.ts): its colour,
+// premultiplied; a clear plane's taken share; its emission. The lens (lens-compositor.ts) defocuses each picture,
+// lays it over the planes behind where the camera puts it, blooms the emission once, and encodes.
 //
 // A nearer plane is clear film, measured on white and on black and taken as C + T·b per RGB channel over backing b:
 // exact over those two. Pigment's KM, R + T²·b/(1 − R·b) per spectral band, isn't that, so over other paint it's a
@@ -11,7 +11,7 @@ import type { StampStage } from '../models/stamp-stage.ts';
 import { stampStageWgsl } from '../models/stamp-stage.ts';
 import { type StampPaintCompositor, type StampPaintTarget } from './stamp-paint-compositor.ts';
 import { gpuUniformLayout } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
-import { GPU_FULL_FRAME_WGSL, GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
+import { GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 
 /**
  * A glow's source over `origin` `extent`: the painting's linear light past `threshold` (by luminance, its hue kept),
@@ -108,16 +108,16 @@ ${laidCoverWgsl(compositor, cover, noRest, 'false')}
 export const STAMP_PLANE_PICTURE = gpuUniformLayout('PlanePicture', [['origin', 'vec2u'], ['extent', 'vec2u']]);
 
 /**
- * A picture's array layers: its colour (0), premultiplied, then for `film` (a clear plane's) its taken share (1 − what
- * it lets through, per channel), then its emission when it glows. A `paper` picture is laid over by its alpha, as a
- * three render is.
+ * A picture's array layers (lens-passes.ts): its colour (0), premultiplied, then for `film` (a clear plane's) its
+ * taken share (1 − what it lets through, per channel), then its emission when it glows. A `paper` picture is laid
+ * over by its alpha, as a three render is.
  */
 export type StampPlanePictureLayers =
-  | { readonly kind: 'paper'; readonly emission: 1 | null }
-  | { readonly kind: 'film'; readonly taken: 1; readonly emission: 2 | null };
+  | { readonly kind: 'paper'; readonly taken: null; readonly emission: 1 | null; readonly motion: null }
+  | { readonly kind: 'film'; readonly taken: 1; readonly emission: 2 | null; readonly motion: null };
 
 export const stampPlanePictureLayers = (kind: StampPlanePictureLayers['kind'], emits: boolean): StampPlanePictureLayers =>
-  (kind === 'film' ? { kind, taken: 1, emission: emits ? 2 : null } : { kind, emission: emits ? 1 : null });
+  (kind === 'film' ? { kind, taken: 1, emission: emits ? 2 : null, motion: null } : { kind, taken: null, emission: emits ? 1 : null, motion: null });
 
 export const stampPlanePictureLayerCount = (layers: StampPlanePictureLayers) => 1 + Number(layers.kind === 'film') + Number(layers.emission !== null);
 
@@ -176,71 +176,5 @@ ${compositor.output}
   textureStore(picture, id.xy, 0u, vec4f(light, 1.0));`}${layers.emission !== null ? `
   // The glow source weighed each group's light by its cover already.
   textureStore(picture, id.xy, ${layers.emission}u, vec4f(textureLoad(emission, texel, 0).rgb, 0.0));` : ''}
-}`;
-}
-
-/**
- * Where a frame shows a picture: `view` the plane's similarity to frame px (ma, mb, kx, ky: p ↦ (ma + i·mb)·p +
- * (kx + i·ky)); the picture's first texel's corner at plane point `origin`, `size` texels; `clipped`, clear past its
- * edge (a clear plane's), else its edge texels held (the back's, proved to reach past the frame).
- */
-export const STAMP_PLANE_COMPOSITE = gpuUniformLayout('PlaneComposite', [['view', 'vec4f'], ['origin', 'vec2f'], ['size', 'vec2f'], ['clipped', 'u32']]);
-
-/**
- * How a picture is laid: `filter` multiplies what's behind, colour and emission, by what the picture lets through;
- * `add` adds its colour and emission. The two make `over` for a paper picture.
- */
-export type StampPlaneLaying = 'filter' | 'add';
-
-/**
- * The composite's WGSL, drawn twice a plane (`laying`) into the frame's colour (location 0) and, when `glowing`, its
- * emission (1): binds its uniform (0), the picture as an array (1) and a linear clamped sampler (2). A film lets
- * through what its taken layer leaves; a paper picture or three render what its alpha leaves.
- */
-const sampledLayer = (layer: number) => `textureSampleLevel(picture, linearClamp, uv, ${layer}u, 0.0).rgb`;
-
-export function stampPlaneCompositeWgsl(glowing: boolean, layers: StampPlanePictureLayers, laying: StampPlaneLaying) {
-  const laid = {
-    filter: `let through = ${layers.kind === 'film' ? `1.0 - ${sampledLayer(layers.taken)}` : 'vec3f(1.0 - colour.a)'};
-  return Laid(vec4f(through, 1.0 - colour.a)${glowing ? ', vec4f(through, 1.0 - colour.a)' : ''});`,
-    add: `return Laid(colour${glowing ? `, vec4f(${layers.emission !== null ? sampledLayer(layers.emission) : 'vec3f(0.0)'}, 0.0)` : ''});`,
-  }[laying];
-  return /* wgsl */ `
-${GPU_FULL_FRAME_WGSL}
-${STAMP_PLANE_COMPOSITE.wgsl}
-@group(0) @binding(0) var<uniform> u: PlaneComposite;
-@group(0) @binding(1) var picture: texture_2d_array<f32>;
-@group(0) @binding(2) var linearClamp: sampler;
-struct Laid { @location(0) colour: vec4f${glowing ? ', @location(1) emission: vec4f' : ''} }
-@fragment fn planeComposite(@builtin(position) at: vec4f) -> Laid {
-  // The frame pixel's centre back through the view to the plane: q = m·p + k, so p = (q − k)·conj(m) / |m|².
-  let m = u.view.xy;
-  let d = at.xy - u.view.zw;
-  let p = vec2f(d.x * m.x + d.y * m.y, d.y * m.x - d.x * m.y) / dot(m, m);
-  var uv = (p - u.origin) / u.size;
-  // Past a clipped picture's edge it's clear: nothing is laid there, by either laying.
-  if (u.clipped == 1u && (any(uv < vec2f(0.0)) || any(uv > vec2f(1.0)))) { discard; }
-  let colour = textureSampleLevel(picture, linearClamp, uv, 0u, 0.0);
-  ${laid}
-}`;
-}
-
-/**
- * The output's WGSL from the composite: its colour (0) and, when `glowing`, the emission bloomed (1), added in linear
- * light, encoded, and dithered into bytes when `dithered`.
- */
-export function stampPlaneOutputWgsl(glowing: boolean, dithered: boolean) {
-  return /* wgsl */ `
-${GPU_FULL_FRAME_WGSL}
-${GPU_SRGB_WGSL}
-@group(0) @binding(0) var colour: texture_2d<f32>;
-${glowing ? '@group(0) @binding(1) var light: texture_2d<f32>;' : ''}
-@fragment fn planeOutput(@builtin(position) at: vec4f) -> @location(0) vec4f {
-  let pixel = vec2u(at.xy);
-  var linear = max(textureLoad(colour, pixel, 0).rgb, vec3f(0.0));${glowing ? `
-  linear += max(textureLoad(light, pixel, 0).rgb, vec3f(0.0));` : ''}
-  // An ordered dither, the same each frame, so a smooth flood doesn't band when the half floats become bytes.
-  let dither = ${dithered ? '(fract(dot(vec2f(pixel), vec2f(0.7548776662, 0.5698402910))) - 0.5) / 255.0' : '0.0'};
-  return vec4f(clamp(srgbEncoded(linear) + dither, vec3f(0.0), vec3f(1.0)), 1.0);
 }`;
 }

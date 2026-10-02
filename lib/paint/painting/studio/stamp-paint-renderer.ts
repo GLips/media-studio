@@ -42,12 +42,13 @@ import type { StampPaintSurface } from './stamp-paint-surface.ts';
 import { gpuUniformLayout, gpuUniformStruct, gpuUniformWriter, type GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { STAMP_WET_STAGES, stampWetStageReach, type StampLoadedWetStage, type StampWetStage, type StampWetDepositMoment, type StampWetDryingMoment, type StampWetStageContext } from './stamp-wet-stages.ts';
 import {
-  STAMP_GLOW_OCCLUSION, STAMP_GLOW_SOURCE, STAMP_PLANE_COMPOSITE, STAMP_PLANE_LIGHT, STAMP_PLANE_PICTURE, stampGlowOcclusionWgsl, stampGlowSourceWgsl, stampPlaneCompositeWgsl,
-  stampPlaneLightWgsl, stampPlaneOutputWgsl, stampPlanePictureLayerCount, stampPlanePictureLayers, stampPlanePictureLayersKey, stampPlanePictureWgsl, type StampPlaneLaying,
+  STAMP_GLOW_OCCLUSION, STAMP_GLOW_SOURCE, STAMP_PLANE_LIGHT, STAMP_PLANE_PICTURE, stampGlowOcclusionWgsl, stampGlowSourceWgsl,
+  stampPlaneLightWgsl, stampPlanePictureLayerCount, stampPlanePictureLayers, stampPlanePictureLayersKey, stampPlanePictureWgsl,
   type StampPlanePictureLayers,
 } from './stamp-paint-plane-passes.ts';
 import { lensGaussianReach, lensSigmaStepped } from '#lib/picture/lens/models/lens-focus.ts';
 import { GPU_GAUSSIAN_PASS, gpuGaussianPassWgsl } from '#lib/platform/gpu/models/gpu-gaussian.ts';
+import { createLensCompositor, type LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { stampPlacementWarpMap, stampWarpCells, stampWarpTriangles, STAMP_WARP_MOST_CELLS } from '../models/stamp-group-warp.ts';
 import { stampFramePlan, type StampGroupFrame } from '../models/stamp-frame-plan.ts';
@@ -1353,11 +1354,6 @@ function rendererOnSurface(
   // (stampAccumulationPlan), and this blend lays only those whose opacity holds or rises, where it never lowers B.
   const buildBlend: GPUBlendState = { color: { operation: 'add', srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' }, alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } };
   // Tints are laid premultiplied, each stamp over those before it.
-  /** A picture's two layings (stamp-paint-plane-passes.ts): what's behind times what it lets through, then its own added. */
-  const layingBlend: Record<StampPlaneLaying, GPUBlendState> = {
-    filter: { color: { operation: 'add', srcFactor: 'zero', dstFactor: 'src' }, alpha: { operation: 'add', srcFactor: 'zero', dstFactor: 'src-alpha' } },
-    add: { color: { operation: 'add', srcFactor: 'one', dstFactor: 'one' }, alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one' } },
-  };
   const overBlend: GPUBlendState = { color: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } };
   const stampModule = device.createShaderModule({ code: stampWgsl(stage) });
   /**
@@ -2196,64 +2192,34 @@ function rendererOnSurface(
   // Planes (stamp-plane.ts). A painted plane's picture is kept on the device under what it shows, and its defocus
   // under that and its sigma; a three plane's texture is handed in, defocused each frame it's blurred. Every picture
   // box here is in the stage's texels. Pipelines and targets are made when a frame first asks.
-  const lensPipelines = new Map<string, GPUComputePipeline>();
-  const lensPipeline = (key: string, code: () => string) => {
-    if (!lensPipelines.has(key)) lensPipelines.set(key, computePipeline(code()));
-    return lensPipelines.get(key)!;
+  const planePipelines = new Map<string, GPUComputePipeline>();
+  const planePipeline = (key: string, code: () => string) => {
+    if (!planePipelines.has(key)) planePipelines.set(key, computePipeline(code()));
+    return planePipelines.get(key)!;
   };
-  const drawnPipelines = new Map<string, GPURenderPipeline>();
-  /** A full-frame pipeline drawing `code` into `targetFormats`, each blended by `blend` if given. */
-  const drawnPipeline = (key: string, code: () => string, targetFormats: readonly GPUTextureFormat[], blend?: GPUBlendState) => {
-    if (!drawnPipelines.has(key)) {
-      const module = device.createShaderModule({ code: code() });
-      drawnPipelines.set(key, device.createRenderPipeline({ layout: 'auto', vertex: { module }, fragment: { module, targets: targetFormats.map((targetFormat) => ({ format: targetFormat, blend })) } }));
-    }
-    return drawnPipelines.get(key)!;
-  };
-  const lensTargets = new Map<string, { texture: GPUTexture; view: GPUTextureView; array: GPUTextureView }>();
+  const planeTargets = new Map<string, { texture: GPUTexture; view: GPUTextureView; array: GPUTextureView }>();
   /** A scratch target of `layers` array layers, `w` × `h`, as a storage array, a sampled array and a render target. */
-  const lensTarget = (name: string, w: number, h: number, layers: number) => {
+  const planeTarget = (name: string, w: number, h: number, layers: number) => {
     const key = `${name}|${w}|${h}|${layers}`;
-    if (!lensTargets.has(key)) {
+    if (!planeTargets.has(key)) {
       const texture = owner.target(name, { size: [w, h, layers], format: 'rgba16float', usage: STORAGE | RENDER | GPUTextureUsage.TEXTURE_BINDING });
-      lensTargets.set(key, { texture, view: texture.createView({ dimension: layers > 1 ? '2d-array' : '2d' }), array: arrayView(texture) });
+      planeTargets.set(key, { texture, view: texture.createView({ dimension: layers > 1 ? '2d-array' : '2d' }), array: arrayView(texture) });
     }
-    return lensTargets.get(key)!;
+    return planeTargets.get(key)!;
   };
-  const frameBox: Box = { x: 0, y: 0, w: frame.width, h: frame.height }, stageBox: Box = { x: 0, y: 0, w: width, h: height };
-  /**
-   * A gaussian of `sigma` px over `source` (its first texel at `sourceAt`, read within `read`) into `into` (its first
-   * texel at `box`'s corner) over `box`, through a scratch target the stage's size or the box's if larger (a three
-   * picture past the frame): boxes in one space.
-   */
-  function gaussian(encoder: GPUCommandEncoder, { source, into, layers, sigma, read, sourceAt, box }: {
-    source: GPUTextureView; into: GPUTextureView; layers: number; sigma: number; read: Box; sourceAt: { x: number; y: number }; box: Box;
-  }) {
-    const pipeline = lensPipeline(`gaussian|${layers}`, () => gpuGaussianPassWgsl({ layers, read: 'texels', workgroup: WORKGROUP }));
-    const across = lensTarget('lens across', Math.max(width, box.w), Math.max(height, box.h), layers);
-    const pass = (from: GPUTextureView, to: GPUTextureView, axis: 0 | 1, readBox: Box, at: { x: number; y: number }, intoAt: { x: number; y: number }) => dispatch(encoder, pipeline, [slot((views) => {
-      const put = gpuUniformWriter(GPU_GAUSSIAN_PASS, views);
-      put('sigma', sigma);
-      put('reach', lensGaussianReach(sigma));
-      put('axis', axis);
-      put('read', [readBox.x, readBox.y, readBox.w, readBox.h]);
-      put('box', [box.x, box.y, box.w, box.h]);
-      put('sourceAt', [at.x, at.y]);
-      put('intoAt', [intoAt.x, intoAt.y]);
-    }), from, to], box.w, box.h);
-    pass(source, across.array, 0, read, sourceAt, { x: 0, y: 0 });
-    pass(across.array, into, 1, box, { x: 0, y: 0 }, box);
-  }
+  const stageBox: Box = { x: 0, y: 0, w: width, h: height };
+  // The frame's lens: composites the planes' pictures, blooms what glows and writes the frame (lens-compositor.ts).
+  const lensGpu = createLensCompositor(owner.webgpu, frame);
 
   /** A picture on the device: its layers (by its kind), its texture, and its box in stage texels. */
   type StampPictureNote = StampPlanePictureLayers & { readonly box: Box };
   type StampPlanePicture = StampPictureNote & { readonly texture: GPUTexture };
   const pictures = owner.cache.store<StampPictureNote>('picture'), blurredPictures = owner.cache.store<StampPictureNote>('blurred');
   /** The plane's emission as its groups glow, stage-sized: cleared for each plane that glows. */
-  const emissionTarget = () => lensTarget('emission', width, height, 1);
+  const emissionTarget = () => planeTarget('emission', width, height, 1);
   /** The painting's linear light over `box` (stage texels) into array layer `layer` of `into`, from its first texel. */
   function measureLight(encoder: GPUCommandEncoder, box: Box, into: GPUTextureView, layer: number) {
-    dispatch(encoder, lensPipeline('light', () => stampPlaneLightWgsl(compositor, WORKGROUP)), [slot((views) => {
+    dispatch(encoder, planePipeline('light', () => stampPlaneLightWgsl(compositor, WORKGROUP)), [slot((views) => {
       const put = gpuUniformWriter(STAMP_PLANE_LIGHT, views);
       put('origin', [box.x, box.y]);
       put('extent', [box.w, box.h]);
@@ -2284,7 +2250,7 @@ function rendererOnSurface(
    */
   function addGlow(encoder: GPUCommandEncoder, { group, glow, visibility }: StampGroupFrame, laid: { box: Box; rest: GPUTextureView | null }) {
     const cover = laid.rest ? 'moved group' : 'group';
-    const pipeline = lensPipeline(`glow|${cover}`, () => stampGlowSourceWgsl(compositor, cover, stage, STAMP_NO_REST, WORKGROUP));
+    const pipeline = planePipeline(`glow|${cover}`, () => stampGlowSourceWgsl(compositor, cover, stage, STAMP_NO_REST, WORKGROUP));
     dispatch(encoder, pipeline, [slot((views) => {
       const put = gpuUniformWriter(STAMP_GLOW_SOURCE, views);
       put('threshold', glow!.threshold);
@@ -2297,7 +2263,7 @@ function rendererOnSurface(
   /** Takes opaque group `groupFrame`'s cover over `laid` out of the plane's emission so far, as its paint covers the light. */
   function occludeGlow(encoder: GPUCommandEncoder, { group, visibility }: StampGroupFrame, laid: { box: Box; rest: GPUTextureView | null }) {
     const cover = laid.rest ? 'moved group' : 'group';
-    const pipeline = lensPipeline(`glow occlusion|${cover}`, () => stampGlowOcclusionWgsl(compositor, cover, stage, STAMP_NO_REST, WORKGROUP));
+    const pipeline = planePipeline(`glow occlusion|${cover}`, () => stampGlowOcclusionWgsl(compositor, cover, stage, STAMP_NO_REST, WORKGROUP));
     dispatch(encoder, pipeline, [slot((views) => {
       const put = gpuUniformWriter(STAMP_GLOW_OCCLUSION, views);
       put('strength', group.opacity * visibility);
@@ -2326,7 +2292,7 @@ function rendererOnSurface(
       drawPaper(encoder, 'black');
       layPlaneGroups(encoder, planeGroups, groups, { whole, backing: 'black' });
     }
-    const pipeline = lensPipeline(`picture|${stampPlanePictureLayersKey(layers)}`, () => stampPlanePictureWgsl(compositor, layers, WORKGROUP));
+    const pipeline = planePipeline(`picture|${stampPlanePictureLayersKey(layers)}`, () => stampPlanePictureWgsl(compositor, layers, WORKGROUP));
     dispatch(encoder, pipeline, [slot((views) => {
       const put = gpuUniformWriter(STAMP_PLANE_PICTURE, views);
       put('origin', [box.x, box.y]);
@@ -2379,7 +2345,7 @@ function rendererOnSurface(
     const box = stampGrownBox(sharpBox, lensGaussianReach(stepped), width, height), count = sharp.depthOrArrayLayers;
     const note: StampPictureNote = { ...layers, box };
     const [texture] = blurredPictures.make(blurredKey, encoder, [{ width: box.w, height: box.h, layers: count, format: 'rgba16float', usage: STORAGE | GPUTextureUsage.TEXTURE_BINDING }], note).textures;
-    gaussian(encoder, { source: arrayView(sharp), into: arrayView(texture), layers: count, sigma: stepped, read: sharpBox, sourceAt: sharpBox, box });
+    lensGpu.gaussian(encoder, { source: arrayView(sharp), into: arrayView(texture), layers: count, sigma: stepped, read: sharpBox, sourceAt: sharpBox, box });
     return { ...note, texture };
   }
   /**
@@ -2407,8 +2373,8 @@ function rendererOnSurface(
     const { texture, at } = three.get(id)!, view = arrayView(texture);
     const box: Box = { x: at.x, y: at.y, w: texture.width, h: texture.height }, own: Box = { x: 0, y: 0, w: texture.width, h: texture.height };
     if (!sigma) return { view, box };
-    const defocused = lensTarget(`three ${id}`, texture.width, texture.height, 1), stepped = lensSigmaStepped(sigma);
-    gaussian(encoder, { source: view, into: defocused.array, layers: 1, sigma: stepped, read: own, sourceAt: own, box: own });
+    const defocused = planeTarget(`three ${id}`, texture.width, texture.height, 1), stepped = lensSigmaStepped(sigma);
+    lensGpu.gaussian(encoder, { source: view, into: defocused.array, layers: 1, sigma: stepped, read: own, sourceAt: own, box: own });
     return { view: defocused.array, box };
   }
   /** The stage's whole texels within painting points x0..x1, y0..y1, or null for none. */
@@ -2548,7 +2514,7 @@ function rendererOnSurface(
    * traced frame, so every deposit it asks for is resolved in it, and a read-back layer. One plane at rest and sharp,
    * nothing glowing, is output as painted; else each plane's picture is laid where `lens` puts it.
    */
-  function draw(t: number, { frameTrace, whole = frameTrace !== undefined, state, lens }: {
+  function draw(t: number, { frameTrace, whole = frameTrace !== undefined, state, lens: lensFrame }: {
     frameTrace?: FrameTrace; whole?: boolean; state?: StampPaintFrameState; lens?: StampLensFrame;
   } = {}) {
     owner.assertLive();
@@ -2557,8 +2523,8 @@ function rendererOnSurface(
     latticeUsed = 0;
     latticeRoom(groups);
     const glows = groups.some(({ visibility, glow }) => visibility && glow);
-    if (glows && !lens) throw new Error(`stamp paint: a group glows at ${t} s, and only a lens blooms it: draw the frame through a camera's lens (paint-camera.ts)`);
-    const lookOf = (id: string) => lens?.planes.get(id) ?? REST_LOOK;
+    if (glows && !lensFrame) throw new Error(`stamp paint: a group glows at ${t} s, and only a lens blooms it: draw the frame through a camera's lens (paint-camera.ts)`);
+    const lookOf = (id: string) => lensFrame?.planes.get(id) ?? REST_LOOK;
     const encoder = device.createCommandEncoder();
     const output = (pipeline: GPURenderPipeline, resources: (GPUBindingResource | null)[]) => {
       const pass = encoder.beginRenderPass({ colorAttachments: [{ view: surface.frameTexture().createView(), loadOp: 'clear', storeOp: 'store' }] });
@@ -2575,53 +2541,32 @@ function rendererOnSurface(
       output(outputPipeline, [targets.painting.view]);
     } else {
       // Every picture first, as each plane is painted on the one painting target; then laid far to near.
-      type Shown = { view: GPUTextureView; layers: StampPlanePictureLayers; look: StampPlaneLook; origin: { x: number; y: number }; size: Box; clipped: boolean };
-      const shownOf = (picture: StampPlanePicture | null, look: StampPlaneLook, clipped: boolean): Shown[] => (picture
-        ? [{ view: arrayView(picture.texture), layers: picture, look, origin: { x: picture.box.x - margin, y: picture.box.y - margin }, size: picture.box, clipped }]
+      const layerOf = (picture: StampPlanePicture | null, look: StampPlaneLook, clipped: boolean): LensLayer[] => (picture
+        ? [{
+          picture: arrayView(picture.texture), layers: picture, view: look.view, shutter: null,
+          origin: { x: picture.box.x - margin, y: picture.box.y - margin }, size: picture.box, clipped, distance: 1, distances: 'layer',
+        }]
         : []);
-      const shown: Shown[] = [
-        ...shownOf(planePicture(encoder, back, 'paper', lookOf(back.id), groups, whole, frameTrace), lookOf(back.id), false),
-        ...nearer.flatMap((plane) => {
+      const layers: LensLayer[] = [
+        ...layerOf(planePicture(encoder, back, 'paper', lookOf(back.id), groups, whole, frameTrace), lookOf(back.id), false),
+        ...nearer.flatMap((plane): LensLayer[] => {
           const look = lookOf(plane.id);
-          if (plane.kind === 'picture') return shownOf(planePicture(encoder, plane, 'film', look, groups, whole, frameTrace), look, true);
+          if (plane.kind === 'picture') return layerOf(planePicture(encoder, plane, 'film', look, groups, whole, frameTrace), look, true);
           // A three.js render is drawn through the camera already: only the lens's defocus is left to do.
           const { view, box } = threePicture(encoder, plane.id, look.defocus);
-          return [{ view, layers: THREE_LAYERS, look: REST_LOOK, origin: { x: box.x, y: box.y }, size: box, clipped: true }];
+          return [{ picture: view, layers: THREE_LAYERS, view: REST_LOOK.view, shutter: null, origin: { x: box.x, y: box.y }, size: box, clipped: true, distance: 1, distances: 'layer' }];
         }),
       ];
-      const colour = lensTarget('composite', frame.width, frame.height, 1), emission = glows ? lensTarget('composite emission', frame.width, frame.height, 1) : null;
-      const composite = encoder.beginRenderPass({
-        colorAttachments: [colour, ...(emission ? [emission] : [])].map(({ view }) => ({ view, loadOp: 'clear' as const, clearValue: [0, 0, 0, 0], storeOp: 'store' as const })),
-      });
-      for (const { view, layers, look, origin, size, clipped } of shown) {
-        const uniform = slot((views) => {
-          const put = gpuUniformWriter(STAMP_PLANE_COMPOSITE, views);
-          put('view', [look.view.ma, look.view.mb, look.view.kx, look.view.ky]);
-          put('origin', [origin.x, origin.y]);
-          put('size', [size.w, size.h]);
-          put('clipped', clipped ? 1 : 0);
-        });
-        for (const laying of ['filter', 'add'] as const satisfies readonly StampPlaneLaying[]) {
-          const pipeline = drawnPipeline(`composite|${glows}|${stampPlanePictureLayersKey(layers)}|${laying}`, () => stampPlaneCompositeWgsl(glows, layers, laying), emission ? ['rgba16float', 'rgba16float'] : ['rgba16float'], layingBlend[laying]);
-          composite.setPipeline(pipeline);
-          composite.setBindGroup(0, bindGroup(pipeline, [uniform, view, linearClamp]));
-          composite.draw(3);
-        }
-      }
-      composite.end();
+      lensGpu.exposure(encoder, layers, { index: 0, count: 1, glowing: glows, moving: false });
       // One bloom, of all that glows as the frame shows it.
-      let light: GPUTextureView | null = null;
-      if (emission) {
-        if (lens!.bloom > 0) {
-          const bloomed = lensTarget('bloom', frame.width, frame.height, 1);
-          gaussian(encoder, { source: emission.array, into: bloomed.array, layers: 1, sigma: lens!.bloom, read: frameBox, sourceAt: frameBox, box: frameBox });
-          light = bloomed.view;
-        } else light = emission.view;
-      }
-      output(drawnPipeline(`output|${!!light}|${format}`, () => stampPlaneOutputWgsl(!!light, dithered), [format]), [colour.view, light]);
+      lensGpu.develop(encoder, {
+        bloom: glows ? { sigma: lensFrame!.bloom, strength: 1, glow: 'emission' } : null,
+        into: surface.frameTexture().createView(), format, encoding: { kind: 'encoded', dithered },
+      });
     }
     device.queue.writeBuffer(uniforms, 0, staging, 0, slots * SLOT);
     if (latticeUsed) device.queue.writeBuffer(latticeVertices!, 0, latticeStaging, 0, latticeUsed);
+    lensGpu.flush();
     return encoder;
   }
 
@@ -2834,6 +2779,7 @@ function rendererOnSurface(
         films.dispose();
         pictures.dispose();
         blurredPictures.dispose();
+        lensGpu.dispose();
         scope.destroy();
       },
     };
