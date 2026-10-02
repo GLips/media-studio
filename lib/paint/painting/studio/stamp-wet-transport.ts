@@ -8,7 +8,7 @@
 // transport").
 
 import { STAMP_WET_TRANSPORT_WGSL, stampWetTransportStrides } from '../models/stamp-wet-transport.ts';
-import { stampUniformLayout, stampUniformWriter } from './stamp-uniform-layout.ts';
+import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import type { StampPaintDevice } from './stamp-paint-gpu.ts';
 
 const WORKGROUP = 8;
@@ -16,7 +16,7 @@ const WORKGROUP = 8;
 export const STAMP_WET_TRANSPORT_SLOT = 256;
 
 /** One pass over a box `extent`: its stride; for ways, the last level's (0: built from the paper); for a spread, the variance below it, the axis (0 x, 1 y) and its sigma. */
-const TRANSPORT_PASS = stampUniformLayout('TransportPass', [
+const TRANSPORT_PASS = gpuUniformLayout('TransportPass', [
   ['extent', 'vec2u'], ['stride', 'u32'], ['lastStride', 'u32'], ['before', 'f32'], ['axis', 'u32'], ['sigma', 'f32'],
 ]);
 
@@ -47,7 +47,7 @@ export function stampWetSpreadPasses(sigma: number, order: 'forward' | 'transpos
 /** Writes `pass`, over a box `extent` and as part of a spread `sigma` wide, into the slot at byte `offset` of `data`. */
 export function putStampWetTransportSlot(data: ArrayBuffer, offset: number, extent: { w: number; h: number }, sigma: number, pass: StampWetTransportPass) {
   const words = STAMP_WET_TRANSPORT_SLOT / 4;
-  const put = stampUniformWriter(TRANSPORT_PASS, {
+  const put = gpuUniformWriter(TRANSPORT_PASS, {
     floats: new Float32Array(data, offset, words), ints: new Int32Array(data, offset, words), words: new Uint32Array(data, offset, words),
   });
   put('extent', [extent.w, extent.h]);

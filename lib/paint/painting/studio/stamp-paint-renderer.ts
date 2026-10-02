@@ -34,12 +34,12 @@ import type { FrozenStampMarks } from '#lib/paint/brush/models/stamp-placement.t
 import { STAMP_FLOATS, STAMP_ORDERED_TILE, stampBinsAppended, stampInstanceFloats, stampMarksExtremes, stampMarksOrderedBins, stampMarksPlan, stampMarksReach, stampTintFloats, TINT_FLOATS } from '../models/stamp-mark-load.ts';
 import { stampBlurRegion, type StampPixelBox } from '../models/stamp-blur-region.ts';
 import { coarsestStampTipLevel, STAMP_TIP_HULL_SIDES, type StampTipHull, type StampTipLevel } from '../models/stamp-tip-hull.ts';
-import { flatStampPaintCompositor, STAMP_SRGB_WGSL, type StampPaintCompositor, type StampPaintTarget, type StampWashLayer } from './stamp-paint-compositor.ts';
+import { flatStampPaintCompositor, type StampPaintCompositor, type StampPaintTarget, type StampWashLayer } from './stamp-paint-compositor.ts';
 import { stampPigmentCompositor } from './stamp-paint-pigment-compositor.ts';
-import { FULL_FRAME_WGSL, type StampPaintDevice, type StampPaintImage } from './stamp-paint-gpu.ts';
+import { type StampPaintDevice, type StampPaintImage } from './stamp-paint-gpu.ts';
 import type { StampPaintGpuScope } from './stamp-paint-gpu-owner.ts';
 import type { StampPaintSurface } from './stamp-paint-surface.ts';
-import { stampUniformLayout, stampUniformStruct, stampUniformWriter, type StampUniformViews } from './stamp-uniform-layout.ts';
+import { gpuUniformLayout, gpuUniformStruct, gpuUniformWriter, type GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { STAMP_WET_STAGES, stampWetStageReach, type StampLoadedWetStage, type StampWetStage, type StampWetDepositMoment, type StampWetDryingMoment, type StampWetStageContext } from './stamp-wet-stages.ts';
 import {
   STAMP_GAUSSIAN_PASS, STAMP_GLOW_OCCLUSION, STAMP_GLOW_SOURCE, STAMP_PLANE_COMPOSITE, STAMP_PLANE_LIGHT, STAMP_PLANE_PICTURE, stampGaussianPassWgsl, stampGlowOcclusionWgsl, stampGlowSourceWgsl, stampPlaneCompositeWgsl,
@@ -53,6 +53,7 @@ import { stampFramePlan, type StampGroupFrame } from '../models/stamp-frame-plan
 import type { StampGroupMarks, StampPaintFrameState } from '../models/stamp-paint-frame-state.ts';
 import { stampSinglePlane, type StampLaidPlanes, type StampLensFrame, type StampPlaneLook } from '../models/stamp-plane.ts';
 import { stampStage, stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
+import { GPU_FULL_FRAME_WGSL, GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 
 /** Bytes per uniform slot: every draw's uniforms sit at an offset WebGPU allows binding at (256). */
 const SLOT = 256;
@@ -72,7 +73,7 @@ const WORKGROUP = 8;
  * and contrast; `layer` whether its blend is a layer formula, `aboutMean` its contrast's pivot, `mirror` whether it
  * tiles mirrored.
  */
-const GRAIN = stampUniformLayout('Grain', [['place', 'vec4f'], ['shape', 'vec4f'], ['blend', 'i32'], ['layer', 'u32'], ['aboutMean', 'u32'], ['mirror', 'u32']]);
+const GRAIN = gpuUniformLayout('Grain', [['place', 'vec4f'], ['shape', 'vec4f'], ['blend', 'i32'], ['layer', 'u32'], ['aboutMean', 'u32'], ['mirror', 'u32']]);
 
 const GRAIN_WGSL = /* wgsl */ `
 ${COVERAGE_FORMULAS_WGSL}
@@ -97,8 +98,8 @@ const STAMP_EDGE_SLIVER = (1 / 64).toFixed(6);
 // A stamp is its tip's hull (stamp-tip-hull.ts) as a triangle fan, its tip place interpolated: Apple's GPUs fetch
 // an interpolated place's texel before the shader runs; computing it took twice as long. A flip mirrors the hull,
 // not its sampling, so the hull holds the paint. The tip's center lands on the stamp's place. Mask rows run top first.
-const STAMP_DRAW = stampUniformLayout('StampDraw', [
-  ['resolution', 'vec2f'], ['roundness', 'f32'], ['rolling', 'u32'], ['grain', stampUniformStruct(GRAIN)], ['diameter', 'f32'], ['zoom', 'f32'],
+const STAMP_DRAW = gpuUniformLayout('StampDraw', [
+  ['resolution', 'vec2f'], ['roundness', 'f32'], ['rolling', 'u32'], ['grain', gpuUniformStruct(GRAIN)], ['diameter', 'f32'], ['zoom', 'f32'],
   ['movement', 'f32'], ['hull', { vec4fArray: STAMP_TIP_HULL_SIDES / 2 }], ['span', 'f32'], ['towardFull', 'u32'], ['center', 'vec2f'], ['noise', 'f32'], ['pressed', 'vec4f'],
 ]);
 const stampWgsl = (stage: StampStage) => /* wgsl */ `
@@ -175,14 +176,14 @@ fn covered(corner: Corner) -> vec2f {
 // An `ordered` layer is one triangle over the deposit's box: each texel walks its tile's stamps in order, laying each
 // by its accumulation's lay. A stamp's tip place inverts the fixed path's vertex transform; tip and rolling grain are
 // sampled at that path's interpolated gradients, the tip's grown by its blur as the fixed path's bias grows it.
-const ORDERED_DRAW = stampUniformLayout('OrderedDraw', [
-  ['grain', stampUniformStruct(GRAIN)], ['roundness', 'f32'], ['rolling', 'u32'], ['diameter', 'f32'], ['zoom', 'f32'], ['movement', 'f32'],
+const ORDERED_DRAW = gpuUniformLayout('OrderedDraw', [
+  ['grain', gpuUniformStruct(GRAIN)], ['roundness', 'f32'], ['rolling', 'u32'], ['diameter', 'f32'], ['zoom', 'f32'], ['movement', 'f32'],
   // `first`: the layer's first stamp's first float in its bound slice; `tint`: its first tint's index there.
   ['span', 'f32'], ['first', 'u32'], ['count', 'u32'], ['tint', 'u32'], ['bins', 'u32'], ['tilesX', 'u32'], ['accumulation', 'i32'], ['center', 'vec2f'], ['noise', 'f32'], ['pressed', 'vec4f'],
 ]);
 const orderedWgsl = (stage: StampStage) => /* wgsl */ `
 ${stampStageWgsl(stage)}
-${FULL_FRAME_WGSL}
+${GPU_FULL_FRAME_WGSL}
 ${ORDERED_DRAW.wgsl}
 @group(0) @binding(0) var<uniform> u: OrderedDraw;
 @group(0) @binding(1) var tip: texture_2d<f32>;
@@ -257,7 +258,7 @@ struct Stamp { @location(0) mask: vec4f, @location(1) cap: vec4f, @location(2) t
   return Stamp(vec4f(laid.built), vec4f(0.0), laid.tintA, laid.tintB);
 }`;
 
-const BLUR = stampUniformLayout('Blur', [['sourceSize', 'vec2f'], ['direction', 'vec2f'], ['sigma', 'f32'], ['origin', 'vec2u'], ['extent', 'vec2u']]);
+const BLUR = gpuUniformLayout('Blur', [['sourceSize', 'vec2f'], ['direction', 'vec2f'], ['sigma', 'f32'], ['origin', 'vec2u'], ['extent', 'vec2u']]);
 const BLUR_WGSL = /* wgsl */ `
 ${BLUR.wgsl}
 @group(0) @binding(0) var<uniform> u: Blur;
@@ -289,9 +290,9 @@ function stampPaintTargetWgsl(name: string, binding: number, target: StampPaintT
 }
 
 /** A deposit's resolve uniform. Its compositor's PaintDeposit has a slot of its own, `paint`, as this one is full. */
-const DEPOSIT = stampUniformLayout('Deposit', [
+const DEPOSIT = gpuUniformLayout('Deposit', [
   ['view', 'vec4f'], ['edges', 'vec4f'], ['dualEdges', 'vec4f'],
-  ['grain', stampUniformStruct(GRAIN)], ['dualGrain', stampUniformStruct(GRAIN)], ['paperDepth', 'f32'], ['paperLod', 'f32'], ['opacity', 'f32'],
+  ['grain', gpuUniformStruct(GRAIN)], ['dualGrain', gpuUniformStruct(GRAIN)], ['paperDepth', 'f32'], ['paperLod', 'f32'], ['opacity', 'f32'],
   ['dualBlend', 'i32'], ['flags', 'u32'], ['resolveOrder', 'i32'], ['origin', 'vec2u'], ['extent', 'vec2u'],
   ['build', 'vec2f'], ['accumulation', 'vec2u'], ['pooling', 'vec4f'], ['press', 'f32'], ['beforeReach', 'f32'],
 ]);
@@ -307,7 +308,7 @@ const DEPOSIT_FLAGS = {
  * width, height), and a fill's load field (STAMP_PAINT_FIELD_SHARE) and body levels as it lands outside a wash (FLOOD_LAND_COVER_WGSL); how far round a pixel its stroke's body is
  * looked for, where its coverage hardens (strokeBodyAt).
  */
-const KEEP = stampUniformLayout('Keep', [
+const KEEP = gpuUniformLayout('Keep', [
   ['fluid', 'vec4f'], ['within', 'vec4f'], ['load', 'vec4f'], ['loadEnds', 'vec2f'], ['loadKind', 'i32'], ['bodyReach', 'f32'],
   ['bodyLevels', 'vec2f'],
 ]);
@@ -316,7 +317,7 @@ const KEEP = stampUniformLayout('Keep', [
  * the wet grid buffer (workable and settled follow it), its painting time, its brush's water, a lift's strength, and
  * what it does.
  */
-const WET_OP = stampUniformLayout('WetOp', [
+const WET_OP = gpuUniformLayout('WetOp', [
   ['lattice', 'vec4f'], ['size', 'vec2u'], ['first', 'u32'], ['tau', 'f32'], ['water', 'f32'], ['strength', 'f32'], ['action', 'u32'],
 ]);
 /** How far round a pixel a wash's resolve looks for its stroke's body (strokeBodyAt), as a share of the deposit's diameter: past a soft tip's shoulder. */
@@ -392,7 +393,7 @@ fn texturized(g: texture_2d<f32>, at: vec2f, a: f32, p: Grain) -> f32 {
 const TRACE_SLOTS = STAMP_RESOLVE_PLANS.grainFirst.length + 2;
 
 /** A traced deposit's crop (its origin and size in the painting's pixels) and where in the trace buffer its slots start, in floats. */
-const TRACE_CROP = stampUniformLayout('TraceCrop', [['origin', 'vec2u'], ['extent', 'vec2u'], ['offset', 'u32']]);
+const TRACE_CROP = gpuUniformLayout('TraceCrop', [['origin', 'vec2u'], ['extent', 'vec2u'], ['offset', 'u32']]);
 
 // A compute pass has no derivatives, so each grain's mip level is worked out on the CPU. A wash's resolve (`wet`) is
 // a module of its own: WGSL counts a binding read under a false override as used, and a dry resolve mustn't hold
@@ -550,7 +551,7 @@ fn strokeBodyAt(pixel: vec2u, here: f32, reach: f32) -> f32 {
  * A brushed mask's mark resolved into its texture (stamp-brushed-mask.ts): the stage's texel the texture's first is,
  * and its resist's amount (0 for fluid).
  */
-const BRUSHED_COVER = stampUniformLayout('BrushedCover', [['origin', 'vec2f'], ['resist', 'f32']]);
+const BRUSHED_COVER = gpuUniformLayout('BrushedCover', [['origin', 'vec2f'], ['resist', 'f32']]);
 // A mark's coverage as a deposit's resolve has it before its paper, fluid and pigment: its builds resolved, the
 // dual's grain and pooling, then its plan's stages. Wax keeps only what catches the paper's peaks, as a dry stick
 // pressed fully does (paintDryContact). A mask's marks join by max, the blend.
@@ -562,7 +563,7 @@ ${GRAIN_WGSL}
 ${DEPOSIT_FLAGS_WGSL}
 ${STAMP_ACCUMULATION_RESOLVE_WGSL}
 ${PAINT_PAPER_WGSL}
-${FULL_FRAME_WGSL}
+${GPU_FULL_FRAME_WGSL}
 @group(0) @binding(0) var<uniform> u: Deposit;
 @group(0) @binding(1) var mask: texture_2d<f32>;
 @group(0) @binding(2) var cap: texture_2d<f32>;
@@ -604,11 +605,11 @@ ${RESOLVE_STAGES_WGSL}
 }`;
 
 /** A brushed mask's texture's first pixel on the painting, and the first sample it's read onto (stampCoverageSampleGrid). */
-const SAMPLE_COVER = stampUniformLayout('SampleCover', [['origin', 'vec2f'], ['first', 'vec2f']]);
+const SAMPLE_COVER = gpuUniformLayout('SampleCover', [['origin', 'vec2f'], ['first', 'vec2f']]);
 // Each of the wetness's samples a brushed mask's texture reaches: the mean of its pixels, none outside the texture.
 const SAMPLE_COVER_WGSL = /* wgsl */ `
 ${SAMPLE_COVER.wgsl}
-${FULL_FRAME_WGSL}
+${GPU_FULL_FRAME_WGSL}
 const STEP = ${STAMP_COVERAGE_SAMPLE_STEP}i;
 @group(0) @binding(0) var mask: texture_2d<f32>;
 @group(0) @binding(1) var<uniform> s: SampleCover;
@@ -625,7 +626,7 @@ const STEP = ${STAMP_COVERAGE_SAMPLE_STEP}i;
   return vec4f(sum / f32(STEP * STEP));
 }`;
 
-const PAPER = stampUniformLayout('Paper', [['color', 'vec3f'], ['hasImage', 'u32'], ['cover', 'vec2f'], ['lod', 'f32'], ['frame', 'vec2f']]);
+const PAPER = gpuUniformLayout('Paper', [['color', 'vec3f'], ['hasImage', 'u32'], ['cover', 'vec2f'], ['lod', 'f32'], ['frame', 'vec2f']]);
 const PAPER_COLOR_WGSL = /* wgsl */ `
 ${PAPER.wgsl}
 // The paper's gamma-encoded colour at painting point \`at\`: its photograph's, covering the frame (p.frame) and mirrored
@@ -638,7 +639,7 @@ fn paperColor(image: texture_2d<f32>, paperSampler: sampler, p: Paper, at: vec2f
 const paperWgsl = (compositor: StampPaintCompositor, stage: StampStage) => /* wgsl */ `
 ${stampStageWgsl(stage)}
 ${stampPaintTargetWgsl('painting', 2, compositor.targets.painting, 'write')}
-${STAMP_SRGB_WGSL}
+${GPU_SRGB_WGSL}
 ${compositor.paper}
 ${PAPER_COLOR_WGSL}
 @group(0) @binding(0) var<uniform> u: Paper;
@@ -655,8 +656,8 @@ const STAMP_NO_REST = -65536;
 // \`paper\` is the paper under a group, read where a scene pixel is (groupGroundAt, fixed to the stage) unless the group
 // carries its own as it moves or warps (StampGroupPaper, \`paperFromRest\`): then where its texel was painted.
 // \`backing\` (STAMP_PAINT_BACKING_WORDS): what a reserve or lift shows, the paper or a clear plane's measuring backing.
-const GROUP = stampUniformLayout('Group', [
-  ['opacity', 'f32'], ['glaze', 'u32'], ['origin', 'vec2u'], ['extent', 'vec2u'], ['group', 'u32'], ['paper', stampUniformStruct(PAPER)], ['paperFromRest', 'u32'],
+const GROUP = gpuUniformLayout('Group', [
+  ['opacity', 'f32'], ['glaze', 'u32'], ['origin', 'vec2u'], ['extent', 'vec2u'], ['group', 'u32'], ['paper', gpuUniformStruct(PAPER)], ['paperFromRest', 'u32'],
   ['backing', 'u32'],
 ]);
 /**
@@ -678,7 +679,7 @@ ${stampStageWgsl(stage)}
 ${stampPaintTargetWgsl('layer', 1, layer, null)}
 ${stampPaintTargetWgsl('painting', 2, painting, 'read_write')}
 ${PAPER_COLOR_WGSL}
-${STAMP_SRGB_WGSL}
+${GPU_SRGB_WGSL}
 ${GROUP.wgsl}
 @group(0) @binding(0) var<uniform> u: Group;
 fn groupUnderAt(pixel: vec2u, i: u32) -> vec4f { return ${paintingAt}; }
@@ -763,9 +764,9 @@ const LAY_READ_REACH = 2;
 // The frame's window of the stage, a painting shown as it is: an output pixel is the stage's texel a margin in.
 const outputWgsl = (compositor: StampPaintCompositor, dithered: boolean, stage: StampStage) => /* wgsl */ `
 ${stampStageWgsl(stage)}
-${FULL_FRAME_WGSL}
+${GPU_FULL_FRAME_WGSL}
 ${stampPaintTargetWgsl('painting', 0, compositor.targets.painting, null)}
-${STAMP_SRGB_WGSL}
+${GPU_SRGB_WGSL}
 ${compositor.output}
 @fragment fn output(@builtin(position) at: vec4f) -> @location(0) vec4f {
   let pixel = vec2u(at.xy);
@@ -777,13 +778,13 @@ ${compositor.output}
 // A state of the masking fluid over its box: the state it's built on (`parent`, width 0 for none), then `opCount` ops
 // from `firstOp`: a mask joins its area by max, an unmask lifts its amount (everywhere for `count` 0), a clip keeps
 // only its area (an application's `within`). An op's area is worked out only within its `reach`.
-const MASK_STEP = stampUniformLayout('MaskStep', [['box', 'vec4f'], ['parent', 'vec4f'], ['source', 'vec4f'], ['firstOp', 'u32'], ['opCount', 'u32']]);
+const MASK_STEP = gpuUniformLayout('MaskStep', [['box', 'vec4f'], ['parent', 'vec4f'], ['source', 'vec4f'], ['firstOp', 'u32'], ['opCount', 'u32']]);
 /** A MaskOp's words: its fifteen, padded to its vec4f's alignment. */
 const MASK_OP_WORDS = 16;
 const MASK_STEP_WGSL = /* wgsl */ `
 ${COVERAGE_FORMULAS_WGSL}
 ${STAMP_REGION_WGSL}
-${FULL_FRAME_WGSL}
+${GPU_FULL_FRAME_WGSL}
 ${MASK_STEP.wgsl}
 struct MaskOp { reach: vec4f, ragged: vec2f, width: f32, amount: f32, first: u32, count: u32, kind: u32, seed: u32, inset: f32, boundaryFirst: u32, boundaryCount: u32 }
 @group(0) @binding(0) var<uniform> u: MaskStep;
@@ -818,11 +819,11 @@ ${STAMP_AREA_COVERAGE_WGSL}
 
 // A flood's body over its box (floodBody), how thick its region is read from its grid (gridAt): the grid's first value
 // in `grid`, its origin and cell, and its columns and rows.
-const FLOOD_BODY = stampUniformLayout('FloodBody', [['box', 'vec4f'], ['grid', 'vec4f'], ['gridSize', 'vec2u'], ['first', 'u32'], ['count', 'u32'], ['gridFirst', 'u32'], ['inset', 'f32']]);
+const FLOOD_BODY = gpuUniformLayout('FloodBody', [['box', 'vec4f'], ['grid', 'vec4f'], ['gridSize', 'vec2u'], ['first', 'u32'], ['count', 'u32'], ['gridFirst', 'u32'], ['inset', 'f32']]);
 const FLOOD_BODY_WGSL = /* wgsl */ `
 ${COVERAGE_FORMULAS_WGSL}
 ${STAMP_REGION_WGSL}
-${FULL_FRAME_WGSL}
+${GPU_FULL_FRAME_WGSL}
 ${FLOOD_BODY.wgsl}
 @group(0) @binding(0) var<uniform> u: FloodBody;
 @group(0) @binding(1) var<storage, read> points: array<vec2f>;
@@ -837,9 +838,9 @@ ${STAMP_GRID_AT_WGSL}
 // A flood's body joined to its stamps' build, in the stamps' render pass, before rims blur it: its box, levels
 // (stampFloodBodyLevels) and tint (CompiledStampFlood's). Its blend joins it as the accumulation lays paint: screen
 // toward full, else max; a glaze's cap by max; its tint over the stamps', so inside it their jitter evens to its mean.
-const BODY_DRAW = stampUniformLayout('BodyDraw', [['box', 'vec4f'], ['tint', 'vec4f'], ['levels', 'vec2f']]);
+const BODY_DRAW = gpuUniformLayout('BodyDraw', [['box', 'vec4f'], ['tint', 'vec4f'], ['levels', 'vec2f']]);
 const BODY_DRAW_WGSL = /* wgsl */ `
-${FULL_FRAME_WGSL}
+${GPU_FULL_FRAME_WGSL}
 ${BODY_DRAW.wgsl}
 @group(0) @binding(0) var<uniform> u: BodyDraw;
 @group(0) @binding(1) var body: texture_2d<f32>;
@@ -920,7 +921,7 @@ type LoadedDeposit = {
   active: ReturnType<typeof stampActiveLayers<StampPaintImage>>;
   main: number; dual: number; tint: number | null;
   /** Writes its compositor's PaintDeposit at scene time `t` into a uniform slot. */
-  writePaint: (views: StampUniformViews, t: number) => void;
+  writePaint: (views: GpuUniformViews, t: number) => void;
   mainHull: StampTipHull; dualHull: StampTipHull | null;
   /** How each layer's stamps are laid, and an `ordered` layer's bins' table in the bin buffer (stampMarksOrderedBins). */
   mainPlan: LoadedPlan; dualPlan: LoadedPlan | null;
@@ -1349,7 +1350,7 @@ function rendererOnSurface(
   const stagedFloats = new Float32Array(staging), stagedInts = new Int32Array(staging), stagedWords = new Uint32Array(staging);
   let slots = 0;
   /** A zeroed slot filled by `fill`, which writes its words from 0 into the views it's given. */
-  const slot = (fill: (views: StampUniformViews) => void): GPUBufferBinding => {
+  const slot = (fill: (views: GpuUniformViews) => void): GPUBufferBinding => {
     const offset = slots++ * SLOT, word = offset / 4, words = SLOT / 4;
     stagedWords.fill(0, word, word + words);
     fill({ floats: stagedFloats.subarray(word, word + words), ints: stagedInts.subarray(word, word + words), words: stagedWords.subarray(word, word + words) });
@@ -1615,7 +1616,7 @@ function rendererOnSurface(
       for (const { path, treatment, reach } of treated) boundaryFloats.push(...pointsOf(path), treatment === 'merge' ? 1 : 0, reach);
       return [first, treated.length];
     };
-    type Step = { box: Box; draw: (views: StampUniformViews) => GPURenderPipeline; parent?: Step | null; source?: RegionTexture | null; grid?: boolean };
+    type Step = { box: Box; draw: (views: GpuUniformViews) => GPURenderPipeline; parent?: Step | null; source?: RegionTexture | null; grid?: boolean };
     const steps: Step[] = [];
     // A region's box is in painting points, held to the stage.
     const inPainting = (box: StampBox): Box | null => {
@@ -1638,7 +1639,7 @@ function rendererOnSurface(
     const maskStep = (box: Box, parent: Step | null, firstOp: number, opCount: number, source: RegionTexture | null = null): Step => ({
       box, parent, source,
       draw: (views) => {
-        const put = stampUniformWriter(MASK_STEP, views);
+        const put = gpuUniformWriter(MASK_STEP, views);
         put('box', boxWords(box));
         put('parent', boxWords(parent?.box));
         put('source', boxWords(source?.box));
@@ -1658,7 +1659,7 @@ function rendererOnSurface(
       const step: Step = {
         box, grid: true,
         draw: (views) => {
-          const put = stampUniformWriter(FLOOD_BODY, views);
+          const put = gpuUniformWriter(FLOOD_BODY, views);
           put('box', boxWords(box));
           put('grid', [flood.thickness.x0, flood.thickness.y0, flood.thickness.cell, 0]);
           put('gridSize', [flood.thickness.columns, flood.thickness.rows]);
@@ -1782,7 +1783,7 @@ function rendererOnSurface(
   }
 
   /** A layer's canvas grain's tile (a share of its stamps' diameter across), offset and mip level, written as a Grain at `at`. */
-  const canvasGrainAt = (views: StampUniformViews, at: number, layer: StampActiveLayer<StampPaintImage> | undefined, offset: readonly [number, number]) => {
+  const canvasGrainAt = (views: GpuUniformViews, at: number, layer: StampActiveLayer<StampPaintImage> | undefined, offset: readonly [number, number]) => {
     const grain = layer?.canvasGrain;
     if (!grain) return;
     const size = grain.scale * layer.diameter;
@@ -1806,7 +1807,7 @@ function rendererOnSurface(
     const { rolling, diameter, offset, textures, center, contact, pressedWords } = stampInputs(grainOffset, layer, active, stampChannel);
     return [
       slot((views) => {
-        const put = stampUniformWriter(STAMP_DRAW, views);
+        const put = gpuUniformWriter(STAMP_DRAW, views);
         put('resolution', [width, height]);
         put('roundness', layer.tip.roundness * aspectOf(layer));
         put('rolling', rolling ? 1 : 0);
@@ -1906,7 +1907,7 @@ function rendererOnSurface(
         pass.setPipeline(pipeline);
         pass.setBindGroup(0, bindGroup(pipeline, [
           slot((views) => {
-            const put = stampUniformWriter(ORDERED_DRAW, views);
+            const put = gpuUniformWriter(ORDERED_DRAW, views);
             put('roundness', layer.tip.roundness * aspectOf(layer));
             put('rolling', rolling ? 1 : 0);
             if (rolling) {
@@ -1947,7 +1948,7 @@ function rendererOnSurface(
       const pipeline = bodyPipeline(towardFull, keepsCap, tinted);
       pass.setPipeline(pipeline);
       pass.setBindGroup(0, bindGroup(pipeline, [slot((views) => {
-        const put = stampUniformWriter(BODY_DRAW, views);
+        const put = gpuUniformWriter(BODY_DRAW, views);
         put('box', texelBoxWords(body.region.box));
         const { levels, tint } = body.flood;
         put('tint', [tint.hue, tint.saturation, tint.lightness, tint.secondary]);
@@ -1968,7 +1969,7 @@ function rendererOnSurface(
     const across = { ...half, y: top, h: half.h + (half.y - top) + reach };
     const blur = (source: GPUTextureView, sourceSize: [number, number], into: GPUTextureView, direction: [number, number], region: typeof half) => dispatch(encoder, pipelines.blur, [
       slot((views) => {
-        const put = stampUniformWriter(BLUR, views);
+        const put = gpuUniformWriter(BLUR, views);
         put('sourceSize', sourceSize);
         put('direction', direction);
         put('sigma', halfSigma);
@@ -2001,8 +2002,8 @@ function rendererOnSurface(
    * `grainOffset`, its dual's blend, its accumulations and pooling (a pooled peak at its body's where `washRims`).
    * Returns the writer, for the rest.
    */
-  const writeCoverage = (views: StampUniformViews, { brush, active }: LoadedMarks, grainOffset: GrainOffset, resolveOrder: number, washRims: boolean) => {
-    const put = stampUniformWriter(DEPOSIT, views);
+  const writeCoverage = (views: GpuUniformViews, { brush, active }: LoadedMarks, grainOffset: GrainOffset, resolveOrder: number, washRims: boolean) => {
+    const put = gpuUniformWriter(DEPOSIT, views);
     put('view', [width, height, paperTile[0], paperTile[1]]);
     canvasGrainAt(views, DEPOSIT.at.grain, active.main, grainOffset.main);
     canvasGrainAt(views, DEPOSIT.at.dualGrain, active.dual, grainOffset.dual);
@@ -2064,7 +2065,7 @@ function rendererOnSurface(
       fluid?.view ?? targets.blank.view, targets.clip.view, targets.layer.view, linearClamp, tile,
       { buffer: trace ? frameTrace!.buffer : noTraceBuffer },
       trace ? slot((views) => {
-        const put = stampUniformWriter(TRACE_CROP, views);
+        const put = gpuUniformWriter(TRACE_CROP, views);
         const { crop } = trace.request;
         put('origin', [crop.x + margin, crop.y + margin]);
         put('extent', [crop.w, crop.h]);
@@ -2072,7 +2073,7 @@ function rendererOnSurface(
       }) : { buffer: noTraceCrop },
       targets.cap.view, mirrorTile,
       slot((views) => {
-        const put = stampUniformWriter(KEEP, views);
+        const put = gpuUniformWriter(KEEP, views);
         put('fluid', texelBoxWords(fluid?.box));
         put('within', texelBoxWords(within?.box));
         put('bodyReach', WET_BODY_REACH * deposit.diameter);
@@ -2087,7 +2088,7 @@ function rendererOnSurface(
       slot((views) => loadedDeposit.writePaint(views, paintAt)),
       landing && { buffer: loadedDeposit.home.grids.buffer },
       landing && slot((views) => {
-        const put = stampUniformWriter(WET_OP, views);
+        const put = gpuUniformWriter(WET_OP, views);
         const { window } = landing.before, { action } = deposit;
         put('lattice', [window.x0, window.y0, window.cell, 0]);
         put('size', [window.columns, window.rows]);
@@ -2121,8 +2122,8 @@ function rendererOnSurface(
    * fills the frame, cropped along whichever side it has to spare, so a margin leaves the frame's paper as it was;
    * past the frame it's mirrored.
    */
-  const writePaper = (views: StampUniformViews, at: number, backing: StampPaintBacking) => {
-    const put = stampUniformWriter(PAPER, views, at);
+  const writePaper = (views: GpuUniformViews, at: number, backing: StampPaintBacking) => {
+    const put = gpuUniformWriter(PAPER, views, at);
     put('frame', [frame.width, frame.height]);
     if (backing !== 'paper') {
       put('color', backing === 'white' ? [1, 1, 1] : [0, 0, 0]);
@@ -2194,7 +2195,7 @@ function rendererOnSurface(
     const at = box;
     dispatch(encoder, lay ? lay.movedGroupPipeline : pipelines.group, [
       slot((views) => {
-        const put = stampUniformWriter(GROUP, views);
+        const put = gpuUniformWriter(GROUP, views);
         put('opacity', group.opacity * visibility);
         put('glaze', group.composite === 'glaze' ? 1 : 0);
         put('origin', [at.x, at.y]);
@@ -2249,7 +2250,7 @@ function rendererOnSurface(
     const pipeline = lensPipeline(`gaussian|${layers}`, () => stampGaussianPassWgsl(layers, WORKGROUP));
     const across = lensTarget('lens across', Math.max(width, box.w), Math.max(height, box.h), layers);
     const pass = (from: GPUTextureView, to: GPUTextureView, axis: 0 | 1, readBox: Box, at: { x: number; y: number }, intoAt: { x: number; y: number }) => dispatch(encoder, pipeline, [slot((views) => {
-      const put = stampUniformWriter(STAMP_GAUSSIAN_PASS, views);
+      const put = gpuUniformWriter(STAMP_GAUSSIAN_PASS, views);
       put('sigma', sigma);
       put('reach', stampGaussianReach(sigma));
       put('axis', axis);
@@ -2272,7 +2273,7 @@ function rendererOnSurface(
   /** The painting's linear light over `box` (stage texels) into array layer `layer` of `into`, from its first texel. */
   function measureLight(encoder: GPUCommandEncoder, box: Box, into: GPUTextureView, layer: number) {
     dispatch(encoder, lensPipeline('light', () => stampPlaneLightWgsl(compositor, WORKGROUP)), [slot((views) => {
-      const put = stampUniformWriter(STAMP_PLANE_LIGHT, views);
+      const put = gpuUniformWriter(STAMP_PLANE_LIGHT, views);
       put('origin', [box.x, box.y]);
       put('extent', [box.w, box.h]);
       put('layer', layer);
@@ -2304,7 +2305,7 @@ function rendererOnSurface(
     const cover = laid.rest ? 'moved group' : 'group';
     const pipeline = lensPipeline(`glow|${cover}`, () => stampGlowSourceWgsl(compositor, cover, stage, STAMP_NO_REST, WORKGROUP));
     dispatch(encoder, pipeline, [slot((views) => {
-      const put = stampUniformWriter(STAMP_GLOW_SOURCE, views);
+      const put = gpuUniformWriter(STAMP_GLOW_SOURCE, views);
       put('threshold', glow!.threshold);
       put('strength', glow!.amount * group.opacity * visibility);
       put('glaze', group.composite === 'glaze' ? 1 : 0);
@@ -2317,7 +2318,7 @@ function rendererOnSurface(
     const cover = laid.rest ? 'moved group' : 'group';
     const pipeline = lensPipeline(`glow occlusion|${cover}`, () => stampGlowOcclusionWgsl(compositor, cover, stage, STAMP_NO_REST, WORKGROUP));
     dispatch(encoder, pipeline, [slot((views) => {
-      const put = stampUniformWriter(STAMP_GLOW_OCCLUSION, views);
+      const put = gpuUniformWriter(STAMP_GLOW_OCCLUSION, views);
       put('strength', group.opacity * visibility);
       put('origin', [laid.box.x, laid.box.y]);
       put('extent', [laid.box.w, laid.box.h]);
@@ -2346,7 +2347,7 @@ function rendererOnSurface(
     }
     const pipeline = lensPipeline(`picture|${stampPlanePictureLayersKey(layers)}`, () => stampPlanePictureWgsl(compositor, layers, WORKGROUP));
     dispatch(encoder, pipeline, [slot((views) => {
-      const put = stampUniformWriter(STAMP_PLANE_PICTURE, views);
+      const put = gpuUniformWriter(STAMP_PLANE_PICTURE, views);
       put('origin', [box.x, box.y]);
       put('extent', [box.w, box.h]);
     }), targets.painting.view, layers.emission !== null ? emissionTarget().view : null, arrayView(texture), layers.kind === 'film' ? arrayView(backingLight!) : null], box.w, box.h);
@@ -2613,7 +2614,7 @@ function rendererOnSurface(
       });
       for (const { view, layers, look, origin, size, clipped } of shown) {
         const uniform = slot((views) => {
-          const put = stampUniformWriter(STAMP_PLANE_COMPOSITE, views);
+          const put = gpuUniformWriter(STAMP_PLANE_COMPOSITE, views);
           put('view', [look.view.ma, look.view.mb, look.view.kx, look.view.ky]);
           put('origin', [origin.x, origin.y]);
           put('size', [size.w, size.h]);
@@ -2716,7 +2717,7 @@ function rendererOnSurface(
           marks.active.main.canvasGrain?.image.view ?? targets.blank.view, marks.active.dual?.canvasGrain?.image.view ?? targets.blank.view,
           tooth ? image(tooth.image).view : targets.blank.view, tile, mirrorTile,
           slot((views) => {
-            const put = stampUniformWriter(BRUSHED_COVER, views);
+            const put = gpuUniformWriter(BRUSHED_COVER, views);
             put('origin', [box.x, box.y]);
             put('resist', mask.resist?.amount ?? 0);
           }),
@@ -2729,7 +2730,7 @@ function rendererOnSurface(
       const pass = encoder.beginRenderPass({ colorAttachments: [{ view: samples.createView(), loadOp: 'clear', storeOp: 'store' }] });
       pass.setPipeline(samplesPipeline);
       pass.setBindGroup(0, bindGroup(samplesPipeline, [view, slot((views) => {
-        const put = stampUniformWriter(SAMPLE_COVER, views);
+        const put = gpuUniformWriter(SAMPLE_COVER, views);
         put('origin', [region.x, region.y]);
         put('first', [grid.a0, grid.b0]);
       })]));
@@ -2879,8 +2880,8 @@ const rgb = (hex: string): [number, number, number] => [channel(hex, 1), channel
 const grainLod = (texture: StampPaintImage, tileW: number) => Math.max(0, Math.log2(texture.width / tileW));
 
 /** Writes a Grain at word `at`: its tile in pixels, its offset in tiles, its mip level and how it reads. */
-function writeGrain(views: StampUniformViews, at: number, grain: StampBrushGrain<StampPaintImage>, tile: readonly [number, number], offset: readonly [number, number], lod: number) {
-  const put = stampUniformWriter(GRAIN, views, at);
+function writeGrain(views: GpuUniformViews, at: number, grain: StampBrushGrain<StampPaintImage>, tile: readonly [number, number], offset: readonly [number, number], lod: number) {
+  const put = gpuUniformWriter(GRAIN, views, at);
   put('place', [tile[0], tile[1], offset[0], offset[1]]);
   put('shape', [grain.depth, lod, grain.brightness, grain.contrast]);
   put('blend', stampGrainModeIndex(grain.blend));

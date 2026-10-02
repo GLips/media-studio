@@ -9,16 +9,16 @@
 
 import type { StampStage } from '../models/stamp-stage.ts';
 import { stampStageWgsl } from '../models/stamp-stage.ts';
-import { STAMP_SRGB_WGSL, type StampPaintCompositor, type StampPaintTarget } from './stamp-paint-compositor.ts';
-import { FULL_FRAME_WGSL } from './stamp-paint-gpu.ts';
-import { stampUniformLayout } from './stamp-uniform-layout.ts';
+import { type StampPaintCompositor, type StampPaintTarget } from './stamp-paint-compositor.ts';
+import { gpuUniformLayout } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
+import { GPU_FULL_FRAME_WGSL, GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 
 /**
  * One direction of a gaussian: `axis` 0 across, 1 down; read within `read` (x, y, w, h), written over `box`, scaled by
  * `gain`. Boxes are in one space for both textures, whose first texels sit at `sourceAt` and `intoAt` in it. Past
  * `read` counts as clear, so whatever a target held outside a picture never reaches the result.
  */
-export const STAMP_GAUSSIAN_PASS = stampUniformLayout('GaussianPass', [
+export const STAMP_GAUSSIAN_PASS = gpuUniformLayout('GaussianPass', [
   ['sigma', 'f32'], ['reach', 'u32'], ['axis', 'u32'], ['gain', 'f32'], ['read', 'vec4f'], ['box', 'vec4f'], ['sourceAt', 'vec2f'], ['intoAt', 'vec2f'],
 ]);
 
@@ -58,10 +58,10 @@ ${STAMP_GAUSSIAN_PASS.wgsl}
  * A glow's source over `origin` `extent`: the painting's linear light past `threshold` (by luminance, its hue kept),
  * times the cover there and `strength` (the glow's amount, the group's opacity and its visibility).
  */
-export const STAMP_GLOW_SOURCE = stampUniformLayout('GlowSource', [['threshold', 'f32'], ['strength', 'f32'], ['glaze', 'u32'], ['origin', 'vec2u'], ['extent', 'vec2u']]);
+export const STAMP_GLOW_SOURCE = gpuUniformLayout('GlowSource', [['threshold', 'f32'], ['strength', 'f32'], ['glaze', 'u32'], ['origin', 'vec2u'], ['extent', 'vec2u']]);
 
 /** An opaque group's cover over `origin` `extent`, times `strength` (its opacity and visibility), taken out of the plane's emission. */
-export const STAMP_GLOW_OCCLUSION = stampUniformLayout('GlowOcclusion', [['strength', 'f32'], ['origin', 'vec2u'], ['extent', 'vec2u']]);
+export const STAMP_GLOW_OCCLUSION = gpuUniformLayout('GlowOcclusion', [['strength', 'f32'], ['origin', 'vec2u'], ['extent', 'vec2u']]);
 
 /** Where a laid group's cover is read: its layer as laid still, or through its lattice's rest map. */
 export type StampLaidGroupCover = 'group' | 'moved group';
@@ -106,7 +106,7 @@ ${coverAt}`;
 export function stampGlowSourceWgsl(compositor: StampPaintCompositor, cover: StampLaidGroupCover, stage: StampStage, noRest: number, workgroup: number) {
   return /* wgsl */ `
 ${stampStageWgsl(stage)}
-${STAMP_SRGB_WGSL}
+${GPU_SRGB_WGSL}
 ${STAMP_GLOW_SOURCE.wgsl}
 @group(0) @binding(0) var<uniform> u: GlowSource;
 @group(0) @binding(1) var painting: ${targetType(compositor.targets.painting)};
@@ -146,7 +146,7 @@ ${laidCoverWgsl(compositor, cover, noRest, 'false')}
 }
 
 /** A picture over `extent` texels, its first at stage texel `origin`. */
-export const STAMP_PLANE_PICTURE = stampUniformLayout('PlanePicture', [['origin', 'vec2u'], ['extent', 'vec2u']]);
+export const STAMP_PLANE_PICTURE = gpuUniformLayout('PlanePicture', [['origin', 'vec2u'], ['extent', 'vec2u']]);
 
 /**
  * A picture's array layers: its colour (0), premultiplied, then for `film` (a clear plane's) its taken share (1 − what
@@ -166,7 +166,7 @@ export const stampPlanePictureLayerCount = (layers: StampPlanePictureLayers) => 
 export const stampPlanePictureLayersKey = (layers: StampPlanePictureLayers) => `${layers.kind}|${layers.emission !== null}`;
 
 /** The painting's linear light over `extent` stage texels from `origin`, written from the target's first texel into array layer `layer`. */
-export const STAMP_PLANE_LIGHT = stampUniformLayout('PlaneLight', [['origin', 'vec2u'], ['extent', 'vec2u'], ['layer', 'u32']]);
+export const STAMP_PLANE_LIGHT = gpuUniformLayout('PlaneLight', [['origin', 'vec2u'], ['extent', 'vec2u'], ['layer', 'u32']]);
 
 /**
  * The light pass's WGSL: binds its uniform (0), the painting (1) and the target written (2), an array. It measures the
@@ -174,7 +174,7 @@ export const STAMP_PLANE_LIGHT = stampUniformLayout('PlaneLight', [['origin', 'v
  */
 export function stampPlaneLightWgsl(compositor: StampPaintCompositor, workgroup: number) {
   return /* wgsl */ `
-${STAMP_SRGB_WGSL}
+${GPU_SRGB_WGSL}
 ${STAMP_PLANE_LIGHT.wgsl}
 @group(0) @binding(0) var<uniform> u: PlaneLight;
 @group(0) @binding(1) var painting: ${targetType(compositor.targets.painting)};
@@ -202,7 +202,7 @@ export function stampPlanePictureWgsl(compositor: StampPaintCompositor, layers: 
   textureStore(picture, id.xy, 0u, vec4f(max(light - through * black, vec3f(0.0)), 1.0 - (through.r + through.g + through.b) / 3.0));
   textureStore(picture, id.xy, ${layers.taken}u, vec4f(1.0 - through, 0.0));`;
   return /* wgsl */ `
-${STAMP_SRGB_WGSL}
+${GPU_SRGB_WGSL}
 ${STAMP_PLANE_PICTURE.wgsl}
 @group(0) @binding(0) var<uniform> u: PlanePicture;
 @group(0) @binding(1) var painting: ${targetType(compositor.targets.painting)};
@@ -225,7 +225,7 @@ ${compositor.output}
  * (kx + i·ky)); the picture's first texel's corner at plane point `origin`, `size` texels; `clipped`, clear past its
  * edge (a clear plane's), else its edge texels held (the back's, proved to reach past the frame).
  */
-export const STAMP_PLANE_COMPOSITE = stampUniformLayout('PlaneComposite', [['view', 'vec4f'], ['origin', 'vec2f'], ['size', 'vec2f'], ['clipped', 'u32']]);
+export const STAMP_PLANE_COMPOSITE = gpuUniformLayout('PlaneComposite', [['view', 'vec4f'], ['origin', 'vec2f'], ['size', 'vec2f'], ['clipped', 'u32']]);
 
 /**
  * How a picture is laid: `filter` multiplies what's behind, colour and emission, by what the picture lets through;
@@ -247,7 +247,7 @@ export function stampPlaneCompositeWgsl(glowing: boolean, layers: StampPlanePict
     add: `return Laid(colour${glowing ? `, vec4f(${layers.emission !== null ? sampledLayer(layers.emission) : 'vec3f(0.0)'}, 0.0)` : ''});`,
   }[laying];
   return /* wgsl */ `
-${FULL_FRAME_WGSL}
+${GPU_FULL_FRAME_WGSL}
 ${STAMP_PLANE_COMPOSITE.wgsl}
 @group(0) @binding(0) var<uniform> u: PlaneComposite;
 @group(0) @binding(1) var picture: texture_2d_array<f32>;
@@ -272,8 +272,8 @@ struct Laid { @location(0) colour: vec4f${glowing ? ', @location(1) emission: ve
  */
 export function stampPlaneOutputWgsl(glowing: boolean, dithered: boolean) {
   return /* wgsl */ `
-${FULL_FRAME_WGSL}
-${STAMP_SRGB_WGSL}
+${GPU_FULL_FRAME_WGSL}
+${GPU_SRGB_WGSL}
 @group(0) @binding(0) var colour: texture_2d<f32>;
 ${glowing ? '@group(0) @binding(1) var light: texture_2d<f32>;' : ''}
 @fragment fn planeOutput(@builtin(position) at: vec4f) -> @location(0) vec4f {

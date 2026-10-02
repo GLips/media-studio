@@ -15,7 +15,7 @@ import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.
 import type { StampWetLanding } from '../models/stamp-wetness.ts';
 import { stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 import type { StampLoadedWetStage, StampWetDepositMoment, StampWetStage, StampWetStageContext } from './stamp-wet-stages.ts';
-import { stampUniformLayout, stampUniformWriter } from './stamp-uniform-layout.ts';
+import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { putStampWetTransportSlot, stampWetTransportPipelines, stampWetTransportSlotBinding } from './stamp-wet-transport.ts';
 
 const WORKGROUP = 8;
@@ -28,7 +28,7 @@ const ACTIONS = { paint: 0, water: 1, lift: 2 } as const;
  * layer it moves (`chunk`); the stride, the last (0 for none), the variance before it and the axis (0 x, 1 y); its
  * sigma, water and the medium's rewetting; what it does; whether no exchange has run yet (`start`); the paper's depth.
  */
-const FLOW_PASS = stampUniformLayout('FlowPass', [
+const FLOW_PASS = gpuUniformLayout('FlowPass', [
   ['origin', 'vec2u'], ['extent', 'vec2u'], ['lattice', 'vec4f'], ['size', 'vec2u'], ['first', 'u32'], ['chunk', 'u32'],
   ['stride', 'u32'], ['lastStride', 'u32'], ['before', 'f32'], ['axis', 'u32'], ['sigma', 'f32'], ['water', 'f32'], ['rewetting', 'f32'],
   ['action', 'u32'], ['start', 'u32'], ['depth', 'f32'],
@@ -282,7 +282,7 @@ function flowOnDevice(context: StampWetStageContext, flowing: readonly (readonly
     /** The next pass's uniform slot: the fields every pass shares, then `own`. */
     const slot = (own: FlowPassOwn): GPUBufferBinding => {
       const offset = slots++ * SLOT;
-      const put = stampUniformWriter(FLOW_PASS, {
+      const put = gpuUniformWriter(FLOW_PASS, {
         floats: new Float32Array(data, offset, SLOT / 4), ints: new Int32Array(data, offset, SLOT / 4), words: new Uint32Array(data, offset, SLOT / 4),
       });
       put('origin', [box.x, box.y]);

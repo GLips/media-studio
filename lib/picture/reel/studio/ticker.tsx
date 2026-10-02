@@ -8,7 +8,7 @@
 import { useId, type ReactNode } from 'react';
 import { DISPLAY_FONT } from '#lib/picture/type/models/faces.ts';
 import { motionCurves } from '#lib/picture/motion/models/motion.ts';
-import { smearSigma } from '#lib/picture/motion/models/shutter.ts';
+import { smearSigma } from '#lib/picture/lens/models/lens-shutter.ts';
 import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 import { pieceMotionAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { hashRandom } from '#lib/picture/motion/models/random.ts';

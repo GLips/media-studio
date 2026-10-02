@@ -19,7 +19,7 @@ import { STAMP_OPAQUE_COVER, type CompiledStampDeposit } from '../models/stamp-p
 import type { StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
 import type { StampPaintCompositor } from './stamp-paint-compositor.ts';
 import type { StampPaintDevice } from './stamp-paint-gpu.ts';
-import { stampUniformLayout, stampUniformWriter, type StampUniformViews } from './stamp-uniform-layout.ts';
+import { gpuUniformLayout, gpuUniformWriter, type GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 
 /** Words per component in the component buffer: slot, seed, granulation, flocculation. */
 const COMPONENT_WORDS = 4;
@@ -29,7 +29,7 @@ const COMPONENT_WORDS = 4;
  * channel and knockout layer (0 for none), 1 if in its group's knockout, 1 if a dry brush (`dryBrush`), and each
  * component's amounts at its material's ends, two to a vec4f: written each frame, so a recolour uploads no more.
  */
-const PIGMENT_PAINT_DEPOSIT = stampUniformLayout('PaintDeposit', [
+const PIGMENT_PAINT_DEPOSIT = gpuUniformLayout('PaintDeposit', [
   ['first', 'u32'], ['count', 'u32'], ['group', 'u32'], ['gradeKind', 'i32'], ['grade', 'vec4f'], ['open', 'u32'], ['knockoutLayer', 'u32'], ['knockout', 'u32'], ['dryBrush', 'u32'],
   ['amounts', { vec4fArray: STAMP_PIGMENT_GROUP_SLOTS / 2 }],
 ]);
@@ -165,13 +165,13 @@ ${media.map((_, m) => `    case ${m === 0 ? '0u, default' : `${m}u`}: { ${name}$
   const eachMedium = (perMedium: (medium: PaintMedium, s: string) => string) => media.map((medium, m) => perMedium(medium, mediumSuffix(m))).join('\n');
   const mediumOfGroup = (group: number) => media[paint.groups[group].medium];
 
-  const writers = new Map<CompiledStampDeposit, (views: StampUniformViews, t: number) => void>();
+  const writers = new Map<CompiledStampDeposit, (views: GpuUniformViews, t: number) => void>();
   const componentWords: number[] = [];
   for (const [deposit, { group, components, grade, knockout, dryBrush }] of paint.deposits) {
     const first = componentWords.length / COMPONENT_WORDS;
     const amounts = new Float32Array(STAMP_PIGMENT_GROUP_SLOTS * 2);
     writers.set(deposit, (views, t) => {
-      const put = stampUniformWriter(PIGMENT_PAINT_DEPOSIT, views);
+      const put = gpuUniformWriter(PIGMENT_PAINT_DEPOSIT, views);
       put('first', first);
       put('count', components.length);
       put('group', group);

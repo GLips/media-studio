@@ -5,7 +5,7 @@ import { Fragment, useId, type ReactNode } from 'react';
 import { applyAffine, type AffineMatrix, type Point } from '#lib/picture/frame/models/geometry.ts';
 import { useStudioFontsReady } from '#lib/picture/type/studio/fonts.ts';
 import { DISPLAY_FONT } from '#lib/picture/type/models/faces.ts';
-import { REEL_SHUTTER, shutterOpensAt, smearSigma } from '#lib/picture/motion/models/shutter.ts';
+import { REEL_SHUTTER, shutterOpensAt, smearSigma } from '#lib/picture/lens/models/lens-shutter.ts';
 import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 import { pieceMotionAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import {

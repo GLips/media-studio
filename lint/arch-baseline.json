@@ -1004,7 +1004,7 @@
       "value: unknown": 17,
       "v: unknown": 2
     },
-    "lib/paint/painting/studio/stamp-uniform-layout.ts": {
+    "lib/platform/gpu/models/gpu-uniform-layout.ts": {
       "value: unknown": 1
     },
     "lib/paint/photoshop-brushes/engine/photoshop-capture.ts": {
@@ -1114,7 +1114,7 @@
     "lib/paint/brush-packs/models/stamp-paint-pack.ts": {
       "Record<string, unknown>": 1
     },
-    "lib/paint/painting/studio/stamp-uniform-layout.ts": {
+    "lib/platform/gpu/models/gpu-uniform-layout.ts": {
       "Readonly<Record<string, unknown>>": 1
     },
     "lib/paint/photoshop-brushes/engine/photoshop-capture.ts": {
@@ -1170,7 +1170,7 @@
     "lib/paint/brush-packs/models/stamp-paint-pack.ts": {
       "typeof value": 2
     },
-    "lib/paint/painting/studio/stamp-uniform-layout.ts": {
+    "lib/platform/gpu/models/gpu-uniform-layout.ts": {
       "typeof value": 1
     },
     "lib/paint/photoshop-brushes/models/photoshop-descriptor.ts": {
@@ -1973,9 +1973,6 @@
     },
     "lib/picture/captions/models/caption-sidecar.ts": {
       "function timestamp(seconds: number, separator: ',' | '.') {": 1
-    },
-    "lib/picture/film/studio/three-stage.tsx": {
-      "function coprimeNear(n: number, share: number) {": 1
     },
     "lib/picture/kit/studio/kit.tsx": {
       "export function ConfirmDialog({ k, origin, message, anchor: given }: { k: number; origin: string; message: string; anchor?: { x: number; y: number } }) {": 1

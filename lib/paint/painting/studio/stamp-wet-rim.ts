@@ -15,7 +15,7 @@ import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import { stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 import type { StampLoadedWetStage, StampWetDryingMoment, StampWetStage, StampWetStageContext } from './stamp-wet-stages.ts';
-import { stampUniformLayout, stampUniformWriter } from './stamp-uniform-layout.ts';
+import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { encodeStampWetTransportSteps, stampWetSpreads } from './stamp-wet-transport.ts';
 
 const WORKGROUP = 8;
@@ -59,7 +59,7 @@ const FLOOD_FIRST_STEP = 2 ** Math.ceil(Math.log2(STAMP_DRYING_RIM_MOST_BAND));
  * medium's spread and damp, its brushes' mean diameter; its line's width; the seed its line's unevenness is drawn
  * from; and its strength, the drying's `rim`.
  */
-const RIM = stampUniformLayout('Rim', [
+const RIM = gpuUniformLayout('Rim', [
   ['lattice', 'vec4f'], ['size', 'vec2u'], ['first', 'u32'], ['seed', 'u32'], ['origin', 'vec2u'], ['extent', 'vec2u'],
   ['spread', 'f32'], ['damp', 'f32'], ['diameter', 'f32'], ['width', 'f32'], ['rim', 'f32'],
 ]);
@@ -425,7 +425,7 @@ function loadDryingRim({ device, wetness, stage, layer, wash }: StampWetStageCon
     const spreads = stampWetSpreads(device, [{ sigma, order: 'transposed', layers: 1, from: 1 }, { sigma, order: 'forward', layers, from: 0 }]);
     spreads.write(box);
     const words = new ArrayBuffer(RIM.words * 4);
-    const put = stampUniformWriter(RIM, { floats: new Float32Array(words), ints: new Int32Array(words), words: new Uint32Array(words) });
+    const put = gpuUniformWriter(RIM, { floats: new Float32Array(words), ints: new Int32Array(words), words: new Uint32Array(words) });
     put('lattice', [grid.x0, grid.y0, grid.cell, 0]);
     put('size', [grid.columns, grid.rows]);
     put('first', points);

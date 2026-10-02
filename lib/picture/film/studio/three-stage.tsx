@@ -19,6 +19,9 @@ import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import type { ShotCamera } from '#lib/picture/shot-camera/models/shot-camera.ts';
 import { setThreeShotCamera } from '#lib/picture/shot-camera/studio/three-shot-camera.ts';
+import { lensExposures, type LensExposure } from '#lib/picture/lens/models/lens-exposures.ts';
+import { shotCameraExposed, type ShotCameraLensFocus } from '#lib/picture/lens/models/lens-focus.ts';
+import { shutterMomentAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import { createThreeStageGpu, threeSceneResources, type ThreeBloom, type ThreeEnvironment, type ThreeStageGpu } from './three-stage-gpu.ts';
 
 export type { ThreeBloom, ThreeEnvironment } from './three-stage-gpu.ts';
@@ -30,8 +33,10 @@ export type ThreeFrame = { scene: Scene; camera: ShotCamera };
 export type ThreeSample = {
   /** The frame the stage draws, its box's size: the camera a draw returns makes this frame. */
   frame: FrameSize;
-  /** Seconds from the frame's time to this exposure: 0 for the last, back to −shutter/fps. Build the scene at t + dt. */
+  /** Seconds from the frame's time to this exposure, within the shutter centred on it (lens-shutter.ts). Build the scene at t + dt. */
   dt: number;
+  /** The same moment as a share of the open shutter, 0..1. */
+  shutter: number;
   /** This exposure's place among the frame's `count`. */
   index: number;
   count: number;
@@ -40,9 +45,9 @@ export type ThreeSample = {
 };
 
 /**
- * A thin lens. `focus` is the distance along the view in scene units that's sharp; `aperture` the lens's opening in
- * scene units. A point at distance d blurs to a disc f·aperture·|1/focus − 1/d| px across, f being the focal length in
- * px ((h/2)/tan(fov/2), h the stage's height), in front of the focus as behind it.
+ * A thin lens: `focus`, the distance held sharp along the view, and `aperture`, the opening's diameter, scene units.
+ * The aperture is apodised (lens-exposures.ts): its sigma is a quarter of the diameter, so a point blurs about as
+ * wide as a disc that diameter would blur it.
  */
 export type ThreeLens = { focus: number; aperture: number };
 
@@ -153,7 +158,7 @@ function drawThreeStageFrame(stage: ThreeStageGpu, { draw, samples, shutter, len
   const room = environment === false ? null : stage.room(environment === true ? ROOM : environment);
 
   const count = Math.max(1, Math.round(samples));
-  const exposures = exposurePattern(count);
+  const exposures = lensExposures(count), threeLens = lens && threeShotLens(lens);
   const target = count < 4 ? stage.sampleMsaa() : stage.sample;
   const camera = new PerspectiveCamera();
   let previous = new Set<{ dispose(): void }>();
@@ -161,11 +166,12 @@ function drawThreeStageFrame(stage: ThreeStageGpu, { draw, samples, shutter, len
   renderer.setClearColor(0x000000, 0);
   renderer.clear(true, false, false);
 
-  for (const [index, e] of exposures.entries()) {
-    const { scene, camera: shot } = draw({ frame: { width: w, height: h }, dt: -(1 - e.time) * (shutter / fps), index, count, environment: room });
+  for (const exposure of exposures) {
+    const { index, shutter: share } = exposure;
+    const { scene, camera: shot } = draw({ frame: { width: w, height: h }, dt: shutterMomentAt(0, shutter / fps, share), shutter: share, index, count, environment: room });
     if (room && !scene.environment) scene.environment = room;
-    setThreeShotCamera(camera, shot);
-    const restore = count > 1 ? jitterExposure(scene, camera, e, { lens, softShadows, w, h }) : () => {};
+    setThreeShotCamera(camera, shotCameraExposed(shot, threeLens ?? null, exposure));
+    const restore = softShadows > 0 ? jitterLights(scene, exposure.light, softShadows) : () => {};
 
     renderer.setRenderTarget(target);
     renderer.setClearColor(0x000000, look.transparent ? 0 : 1);
@@ -217,90 +223,31 @@ export const softboxEnvironment: ThreeEnvironment = {
   },
 };
 
-// ---------- the exposure pattern ----------
-
-/** Where exposure `index` sits: its moment in the shutter (0..1, 1 the frame's time) and its offsets. */
-type Exposure = { time: number; lens: readonly [number, number]; pixel: readonly [number, number]; light: readonly [number, number] };
-
-const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
-
 /**
- * Stratified shutter times, a golden-angle spiral over the aperture, Halton sub-pixel offsets and a second spiral for
- * the lights. The spirals are walked in strides coprime to the count so that no exposure's time tracks its place on
- * the lens: otherwise a moving, defocused edge would smear sharp at one end and soft at the other.
+ * Moves each shadow-casting directional and spot light to point `at` of its disc, `softShadows` degrees across as seen
+ * from its target; returns what puts them back, so a draw may hand the same objects to every exposure.
  */
-function exposurePattern(count: number): Exposure[] {
-  if (count === 1) return [{ time: 1, lens: [0, 0], pixel: [0, 0], light: [0, 0] }];
-  const spiral = (j: number): [number, number] => {
-    const r = Math.sqrt((j + 0.5) / count), a = j * GOLDEN_ANGLE;
-    return [r * Math.cos(a), r * Math.sin(a)];
-  };
-  const lensStride = coprimeNear(count, 0.618), lightStride = coprimeNear(count, 0.382);
-  return Array.from({ length: count }, (_, k) => ({
-    time: (k + 1) / count,
-    lens: spiral((k * lensStride) % count),
-    pixel: [halton(k + 1, 2) - 0.5, halton(k + 1, 3) - 0.5],
-    light: spiral((k * lightStride + 1) % count),
-  }));
-}
-
-function coprimeNear(n: number, share: number) {
-  const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
-  const want = Math.max(1, Math.round(n * share));
-  for (let d = 0; d < n; d++) for (const s of [want + d, want - d]) if (s >= 1 && s < n && gcd(s, n) === 1) return s;
-  return 1;
-}
-
-function halton(i: number, base: number) {
-  let f = 1, r = 0;
-  for (; i > 0; i = Math.floor(i / base)) {
-    f /= base;
-    r += f * (i % base);
-  }
-  return r;
-}
-
-/**
- * Moves this exposure's camera over the aperture and its lights over their discs; returns what puts them back, so a
- * draw may hand the same objects to every exposure. The frustum is sheared so the focal plane stays put while the eye
- * moves (an off-axis thin lens): turning the camera toward the focus would blur the frame's edges.
- */
-function jitterExposure(scene: Scene, camera: PerspectiveCamera, e: Exposure, o: { lens?: ThreeLens; softShadows: number; w: number; h: number }) {
-  const cameraAt = camera.position.clone();
-  const m = camera.projectionMatrix.elements;
-  if (o.lens && o.lens.aperture > 0) {
-    const [ox, oy] = [e.lens[0] * o.lens.aperture / 2, e.lens[1] * o.lens.aperture / 2];
-    camera.translateX(ox);
-    camera.translateY(oy);
-    m[8] -= (m[0] * ox) / o.lens.focus;
-    m[9] -= (m[5] * oy) / o.lens.focus;
-  }
-  m[8] -= (2 * e.pixel[0]) / o.w;
-  m[9] -= (2 * e.pixel[1]) / o.h;
-  camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
-  camera.updateMatrixWorld();
-
+function jitterLights(scene: Scene, at: LensExposure['light'], softShadows: number) {
   const lights: [Object3D, Vector3][] = [];
-  if (o.softShadows > 0) {
-    scene.updateMatrixWorld();
-    const tan = Math.tan((o.softShadows * Math.PI) / 180);
-    scene.traverse((light) => {
-      if (!((light instanceof DirectionalLight || light instanceof SpotLight) && light.castShadow && light.parent)) return;
-      const from = light.getWorldPosition(new Vector3()), to = light.target.getWorldPosition(new Vector3());
-      const axis = from.clone().sub(to);
-      const reach = axis.length() * tan;
-      const u = new Vector3(0, 1, 0).cross(axis);
-      if (u.lengthSq() < 1e-9) u.set(1, 0, 0);
-      u.normalize();
-      const v = axis.clone().cross(u).normalize();
-      lights.push([light, light.position.clone()]);
-      from.addScaledVector(u, e.light[0] * reach).addScaledVector(v, e.light[1] * reach);
-      light.position.copy(light.parent.worldToLocal(from));
-    });
-  }
+  scene.updateMatrixWorld();
+  const tan = Math.tan((softShadows * Math.PI) / 180);
+  scene.traverse((light) => {
+    if (!((light instanceof DirectionalLight || light instanceof SpotLight) && light.castShadow && light.parent)) return;
+    const from = light.getWorldPosition(new Vector3()), to = light.target.getWorldPosition(new Vector3());
+    const axis = from.clone().sub(to);
+    const reach = axis.length() * tan;
+    const u = new Vector3(0, 1, 0).cross(axis);
+    if (u.lengthSq() < 1e-9) u.set(1, 0, 0);
+    u.normalize();
+    const v = axis.clone().cross(u).normalize();
+    lights.push([light, light.position.clone()]);
+    from.addScaledVector(u, at[0] * reach).addScaledVector(v, at[1] * reach);
+    light.position.copy(light.parent.worldToLocal(from));
+  });
   return () => {
-    camera.position.copy(cameraAt);
-    camera.updateMatrixWorld();
-    for (const [light, at] of lights) light.position.copy(at);
+    for (const [light, was] of lights) light.position.copy(was);
   };
 }
+
+/** A ThreeLens as the shot camera's: its opening's diameter is four sigmas of the apodised aperture. */
+const threeShotLens = ({ focus, aperture }: ThreeLens): ShotCameraLensFocus => ({ focus, aperture: aperture / 4 });

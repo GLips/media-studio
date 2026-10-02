@@ -11,18 +11,10 @@
 import type { StampBlend } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampKeySpanAt, type StampKeyList } from '../models/stamp-scene-keys.ts';
 import { STAMP_OPAQUE_COVER, type CompiledStampDeposit, type CompiledStampPaint } from '../models/stamp-paint-recipe-compile.ts';
-import { stampUniformLayout, stampUniformWriter, type StampUniformField, type StampUniformLayout, type StampUniformViews } from './stamp-uniform-layout.ts';
+import { gpuUniformLayout, gpuUniformWriter, type GpuUniformField, type GpuUniformLayout, type GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 
 /** A texture the compositor keeps its paint in: four channels, or an array of `layers` of four. */
 export type StampPaintTarget = { kind: 'plain' } | { kind: 'array'; layers: number };
-
-/**
- * sRGB's transfer, both ways, the one copy in WGSL: a compositor's paper, group and output pieces call srgbDecoded and
- * srgbEncoded, and every module assembling them (or adding light, as the lens does) declares this once.
- */
-export const STAMP_SRGB_WGSL = /* wgsl */ `
-fn srgbDecoded(c: vec3f) -> vec3f { return select(pow((c + 0.055) / 1.055, vec3f(2.4)), c / 12.92, c <= vec3f(0.04045)); }
-fn srgbEncoded(c: vec3f) -> vec3f { return select(1.055 * pow(c, vec3f(1.0 / 2.4)) - 0.055, c * 12.92, c <= vec3f(0.0031308)); }`;
 
 /**
  * A way of mixing paint: WGSL for four passes, each binding its own resources. The renderer declares `layer` and `painting` from `targets`; in the deposit pass `paint` (a
@@ -41,7 +33,7 @@ export type StampPaintCompositor = {
   reads: { press: boolean; before: { reach: number } | null };
   deposit: {
     /** Its PaintDeposit, the renderer's `paint`. */
-    layout: StampUniformLayout<readonly StampUniformField[]>;
+    layout: GpuUniformLayout<readonly GpuUniformField[]>;
     /**
      * Its bindings from 24; `paperKept(tooth, mean, depth)`, `layerCoverage(pixel)` and `layDeposit(pixel, coverage,
      * rims, tooth, at, press)`: `rims` the main and dual burnt rims apart, `tooth` the paper's paint here and its mean,
@@ -55,7 +47,7 @@ export type StampPaintCompositor = {
      */
     wet?: string;
     /** The writer of `deposit`'s PaintDeposit at scene time `t` (its paint may be keyed), made once as the renderer loads it. */
-    writerFor: (deposit: CompiledStampDeposit) => (views: StampUniformViews, t: number) => void;
+    writerFor: (deposit: CompiledStampDeposit) => (views: GpuUniformViews, t: number) => void;
     /**
      * What it binds from 24, given the renderer's tint targets (blank where a pass has none), for a dry resolve or a
      * wash's (`wet`): a binding only `wet` reads must be left out of a dry one's, whose layout doesn't hold it.
@@ -114,7 +106,7 @@ const BLENDS: readonly StampBlend[] = ['normal', 'multiply', 'screen', 'overlay'
 
 const blendIndex = (blend: StampBlend) => BLENDS.indexOf(blend);
 
-const FLAT_PAINT_DEPOSIT = stampUniformLayout('PaintDeposit', [
+const FLAT_PAINT_DEPOSIT = gpuUniformLayout('PaintDeposit', [
   ['color', 'vec3f'], ['blend', 'i32'], ['secondary', 'vec3f'], ['tinted', 'u32'], ['burntBlend', 'i32'], ['dualBurntBlend', 'i32'],
 ]);
 
@@ -183,7 +175,7 @@ function easedGammaColor(keys: StampKeyList<{ at: number }>, colors: readonly (r
  * its own paper: flat colour lays no paper under a group, so it has none to carry.
  */
 export function flatStampPaintCompositor(painting: CompiledStampPaint): StampPaintCompositor {
-  const writers = new Map<CompiledStampDeposit, (views: StampUniformViews, t: number) => void>();
+  const writers = new Map<CompiledStampDeposit, (views: GpuUniformViews, t: number) => void>();
   const cutOut = painting.groups.find((group) => group.paper === 'own');
   if (cutOut) throw new Error(`stamp paint: ${cutOut.id} lies on its own paper, and a group carries paper only in a style that paints in pigment`);
   const passes = painting.groups.flatMap((group) => group.passes);
@@ -208,7 +200,7 @@ export function flatStampPaintCompositor(painting: CompiledStampPaint): StampPai
     const burntBlend = (brush.burntEdge ?? brush.dual?.burntEdge)?.blend ?? 'colorBurn';
     const dualBurntBlend = brush.dual?.burntEdge?.blend ?? burntBlend;
     writers.set(deposit, (views, t) => {
-      const put = stampUniformWriter(FLAT_PAINT_DEPOSIT, views);
+      const put = gpuUniformWriter(FLAT_PAINT_DEPOSIT, views);
       put('color', easedGammaColor(keys, colors, t));
       put('blend', blendIndex(deposit.blend));
       put('secondary', easedGammaColor(secondaries, secondaryColors, t));

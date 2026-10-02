@@ -1,5 +1,7 @@
-// shutter.ts: a 30 fps shutter's length and the smear a move makes while it's open, for a piece's model to size its
-// blur. lib/picture/film/studio/motion-blur.tsx draws it.
+// lens-shutter.ts: the studio's one shutter convention, for every sampler and every smear sized by hand. A frame at
+// time t exposes while the shutter is open around t, centred on it: a smear lies centred on where the frame's own
+// pose puts a thing, so a blurred frame and a sharp one register. ThreeStage, ShutterBlur, StampPainting's lens and
+// the reel's hand-sized smears all place their moments here.
 
 /**
  * The reference reel's shutter, 180° at its 60 fps: its smears are this long, so ours match it frame for frame. Our
@@ -25,3 +27,9 @@ export function shutterTravel(at: (t: number) => number, t: number, shutter: num
   const open = shutterOpensAt(t, shutter, start);
   return Math.abs(at(open + shutter) - at(open));
 }
+
+/**
+ * Where exposure `share` (0..1 across the open shutter, LensExposure's `shutter`) sits in time: `share` of the way
+ * through a shutter `shutter` long opened as shutterOpensAt says.
+ */
+export const shutterMomentAt = (t: number, shutter: number, share: number, start = -Infinity) => shutterOpensAt(t, shutter, start) + share * shutter;

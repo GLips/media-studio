@@ -6,6 +6,7 @@ import type { FrameSize, VideoFormat } from '#lib/picture/frame/models/frame.ts'
 import { Vector3 } from 'three';
 import type { Vector3Tuple } from 'three';
 import { shotCameraProject, shotCameraRolled, type ShotCamera, type ShotPoint } from '#lib/picture/shot-camera/models/shot-camera.ts';
+import { shutterMomentAt, shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import { BODY_BACK, BODY_START, NOSE } from './needle-cartridge.ts';
 
 export type NeedleStrike = {
@@ -249,8 +250,8 @@ export type NeedleLensing = { rig: NeedleRigSettings; shutter: number; fastShutt
 /** One exposure of the frame: how long its shutter is open, as a share of a frame, and when each moment of it is taken. */
 export type NeedleTake = {
   shutter: number;
-  /** When the exposure `dt` seconds into the frame (−shutter/fps … 0) is taken. */
-  exposureAt: (dt: number) => number;
+  /** When the exposure `share` of the way through the open shutter (0..1, LensExposure's `shutter`) is taken. */
+  exposureAt: (share: number) => number;
 };
 
 /** How the frame at `t` is taken: the needle's pose, how long the shutter is open, what's in focus, when each exposure is. */
@@ -268,17 +269,22 @@ export function needleShotAt(strikes: readonly NeedleStrike[], t: number, o: Nee
   const pose = needlePoseAt(strikes, t, r);
   const lens = needleLensHeight(r);
   const contact = needleContactAt(strikes, t);
-  // A contact frame's shutter opens on the strike, so the needle lands sharp rather than streaking down its path.
-  const opens = contact?.strike.at ?? -Infinity;
-  // The frame after it has gone still catches the end of its exit, in the fast shutter.
-  const tail = pose ? null : needlePoseAt(strikes, t - o.fastShutter / fps, r);
+  // A contact frame takes every exposure at the strike itself, so the needle lands sharp rather than streaking down its
+  // path or along its drive.
+  const held = contact && contact.since < 0.5 / fps ? contact.strike.at : null;
+  // The frame after it has gone still catches the end of its exit as the fast shutter opens.
+  const tail = pose ? null : needlePoseAt(strikes, shutterOpensAt(t, o.fastShutter / fps), r);
   const seen = pose ?? tail;
+  const shutter = seen?.fast ? o.fastShutter : o.shutter, streakShutter = r.enter * fps;
   return {
     pose,
-    shutter: seen?.fast ? o.fastShutter : o.shutter,
+    shutter,
     focusDistance: seen ? lens - (seen.tip[2] + o.focus * r.scale * seen.axis[2]) : lens,
-    exposureAt: (dt) => Math.max(t + dt, opens),
-    streak: contact?.strike.streak && contact.since < 0.5 / fps ? { shutter: r.enter * fps, exposureAt: (dt) => t + dt } : null,
+    exposureAt: (share) => held ?? shutterMomentAt(t, shutter / fps, share),
+    // The streak is the whole way in, so its shutter closes on the contact: centred half its length before the frame.
+    streak: contact?.strike.streak && contact.since < 0.5 / fps
+      ? { shutter: streakShutter, exposureAt: (share) => shutterMomentAt(t - streakShutter / fps / 2, streakShutter / fps, share) }
+      : null,
   };
 }
 
@@ -296,7 +302,7 @@ type NeedleSampling = { samples: number; maxSamples: number; aperture: number };
 
 export function needleTakeExposures(strikes: readonly NeedleStrike[], take: NeedleTake, focusDistance: number, r: NeedleRig, o: NeedleSampling): number {
   const lens = needleLensHeight(r), camera = needleShotCamera(r), steps = 12;
-  const poses = Array.from({ length: steps + 1 }, (_, k) => needlePoseAt(strikes, take.exposureAt(-((steps - k) / steps) * (take.shutter / r.format.fps)), r));
+  const poses = Array.from({ length: steps + 1 }, (_, k) => needlePoseAt(strikes, take.exposureAt(k / steps), r));
   if (poses.every((pose) => pose === null)) return 0;
   let need = 0;
   for (const [along, out] of NEEDLE_OUTLINE) {

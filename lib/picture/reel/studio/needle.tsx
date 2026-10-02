@@ -284,7 +284,7 @@ export function Needle({
   const takes = [shot.streak, shot].filter((take) => take !== null).map((take) => {
     // Built on the take's first exposure and shared by the rest; its stage frees it after the frame.
     let stage: ReturnType<typeof needleStage> | null = null;
-    const draw = ({ frame, dt }: ThreeSample) => (stage ??= needleStage(r, frame, color, shadow, shift))(needlePoseAt(strikes, take.exposureAt(dt), r));
+    const draw = ({ frame, shutter: share }: ThreeSample) => (stage ??= needleStage(r, frame, color, shadow, shift))(needlePoseAt(strikes, take.exposureAt(share), r));
     return { take, draw, exposures: needleTakeExposures(strikes, take, shot.focusDistance, r, { samples, maxSamples, aperture }) };
   });
   // No bloom: the grouping's wires lie side by side, and their glints would glow together into a white smear that

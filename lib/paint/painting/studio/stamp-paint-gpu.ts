@@ -5,6 +5,7 @@
 // which 8 bits would round away. The renderer's compute passes read and write those targets in place, which needs
 // read_write storage of rgba16float: the `texture-formats-tier2` feature.
 
+import { GPU_FULL_FRAME_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 import type { StampTipLevel } from '../models/stamp-tip-hull.ts';
 
 /**
@@ -16,15 +17,8 @@ export type StampPaintDevice = Pick<
   'createBuffer' | 'createTexture' | 'createShaderModule' | 'createComputePipeline' | 'createRenderPipeline' | 'createBindGroup' | 'createCommandEncoder' | 'createSampler' | 'queue' | 'limits'
 >;
 
-/** Covers the target with one triangle, no buffers: a fragment pass reads its pixel from its position. */
-export const FULL_FRAME_WGSL = /* wgsl */ `
-@vertex fn fullFrame(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
-  let corner = vec2f(f32((i << 1u) & 2u), f32(i & 2u));
-  return vec4f(corner * 2.0 - 1.0, 0.0, 1.0);
-}`;
-
 const MIP_WGSL = /* wgsl */ `
-${FULL_FRAME_WGSL}
+${GPU_FULL_FRAME_WGSL}
 @group(0) @binding(0) var source: texture_2d<f32>;
 @group(0) @binding(1) var linearClamp: sampler;
 @fragment fn halve(@builtin(position) at: vec4f) -> @location(0) vec4f {

@@ -17,7 +17,7 @@ import { stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampLoadedWetStage, StampWetDepositMoment, StampWetStage, StampWetStageContext } from './stamp-wet-stages.ts';
-import { stampUniformLayout, stampUniformWriter } from './stamp-uniform-layout.ts';
+import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { encodeStampWetTransportSteps, stampWetSpreads, type StampWetTransportStep } from './stamp-wet-transport.ts';
 
 const WORKGROUP = 8;
@@ -33,7 +33,7 @@ const STAMP_BLOOM_SEND_FLOOR = 0.2;
  * A bloom: its lattice; where its paper before starts in the painting's grids and its wetness after in the stage's;
  * its box; seed; drive; the water's spread (sigma); the medium's damp and shiny (PaintSheen); the send floor.
  */
-const BLOOM = stampUniformLayout('Bloom', [
+const BLOOM = gpuUniformLayout('Bloom', [
   ['lattice', 'vec4f'], ['size', 'vec2u'], ['first', 'u32'], ['afterFirst', 'u32'],
   ['origin', 'vec2u'], ['extent', 'vec2u'],
   ['seed', 'u32'], ['drive', 'f32'], ['sigma', 'f32'], ['water', 'f32'], ['damp', 'f32'], ['shine', 'f32'], ['sendFloor', 'f32'],
@@ -354,7 +354,7 @@ function loadBloom({ device, wetness, layer, footprint, grids, wash, stage }: St
     const plan = plans.get(deposit)!, { sigma, lattice } = plan;
     if (!scratch || box.w > scratch.w || box.h > scratch.h) throw new Error(`stamp paint: the bloom stage was given ${deposit.id}'s box unreserved`);
     const words = new ArrayBuffer(BLOOM.words * 4);
-    const put = stampUniformWriter(BLOOM, { floats: new Float32Array(words), ints: new Int32Array(words), words: new Uint32Array(words) });
+    const put = gpuUniformWriter(BLOOM, { floats: new Float32Array(words), ints: new Int32Array(words), words: new Uint32Array(words) });
     put('lattice', [lattice.x0, lattice.y0, lattice.cell, 0]);
     put('size', [lattice.columns, lattice.rows]);
     put('first', plan.first);

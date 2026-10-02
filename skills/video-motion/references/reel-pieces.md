@@ -71,7 +71,7 @@ Look here first: a second copy of one of these drifts from the first.
 
 - **Curves:** `motionCurves`, `seg`, `perceptualSpring`, `backOutEase(overshoot)`, `powerOutEase(power)`, `sineInOutEase`
   (`motion.ts`).
-- **Smear:** `ShutterBlur`, `REEL_SHUTTER`, `shutterOpensAt`, `shutterTravel`, `smearSigma` (`motion-blur.tsx`).
+- **Smear:** `ShutterBlur` (`motion-blur.tsx`); `REEL_SHUTTER`, `shutterOpensAt`, `shutterTravel`, `smearSigma` (`lens-shutter.ts`), the one shutter convention.
 - **The beat:** `steadyBeatGrid`, `wordOnBeat` (`beats.ts`).
 - **Geometry:** 3D points are three's `Vector3`; `AffineMatrix`, `multiplyAffine`, `applyAffine` (`geometry.ts`).
 - **Cameras:** the studio's one camera is `ShotCamera` (`lib/picture/shot-camera/models/shot-camera.ts`), made by

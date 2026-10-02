@@ -23,8 +23,8 @@ test('every exposure of a contact frame sees the tip on its strike\'s pixel, and
     for (const t of [s.at, s.at - 1e-9]) {
       const shot = needleShotAt(strikes, t, lensing);
       for (const share of [1, 0.5, 0]) {
-        const tip = shotCameraProject(camera, needlePoseAt(strikes, shot.exposureAt((-share * shot.shutter) / 30), rig)!.tip)!;
-        assert.ok(Math.hypot(tip.x - s.x, tip.y - s.y) < 0.01, `strike ${index} at ${t}, ${share} of the shutter back: tip at ${tip.x}, ${tip.y}`);
+        const tip = shotCameraProject(camera, needlePoseAt(strikes, shot.exposureAt(share), rig)!.tip)!;
+        assert.ok(Math.hypot(tip.x - s.x, tip.y - s.y) < 0.01, `strike ${index} at ${t}, ${share} of the way through the shutter: tip at ${tip.x}, ${tip.y}`);
       }
       assert.equal(needleContactAt(strikes, t)?.index, index);
     }
@@ -43,13 +43,14 @@ test('each strike is one blow: out of shot between strikes, in and out at the fa
     assert.equal(between.pose, null, `strike ${index}: in shot between strikes`);
     assert.deepEqual([coming, leaving].map((f) => f.pose?.fast && f.shutter), [1, 1], `strike ${index}: coming in and leaving`);
     assert.deepEqual([contact, drive].map((f) => !f.pose!.fast && f.shutter), [0.25, 0.25], `strike ${index}: contact and drive`);
-    // Gone, but the frame's shutter still catches the end of the exit.
-    assert.deepEqual([gone.pose, gone.shutter], [null, 1], `strike ${index}: the frame after it leaves`);
+    // Gone at the frame's time, but a fast shutter still catches whatever is left of the exit as it opens.
+    const tail = needlePoseAt(strikes, gone.exposureAt(0), rig);
+    assert.deepEqual([gone.pose, tail === null || gone.shutter === 1], [null, true], `strike ${index}: the frame after it leaves`);
     assert.equal(contact.streak !== null, index === 0, `strike ${index}: a streak on its contact frame`);
   }
   // The streak takes the whole way in: its first moment has the needle wholly out of frame.
   const streak = needleShotAt(strikes, strikes[0].at, lensing).streak!;
-  const first = needlePoseAt(strikes, streak.exposureAt((-(1 - 1e-6) * streak.shutter) / 30), rig)!;
+  const first = needlePoseAt(strikes, streak.exposureAt(1e-6), rig)!;
   const tip = shotCameraProject(camera, first.tip)!;
   assert.ok(tip.x > 1920 || tip.x < 0 || tip.y > 1080 || tip.y < 0, `the streak starts with the tip at ${tip.x}, ${tip.y}`);
   assert.equal(streak.shutter, rig.enter * 30);

@@ -2,7 +2,7 @@
 // ticker-layout.ts lays the glyphs out; lib/picture/reel/studio/ticker.tsx draws them.
 
 import type { FrameSize } from '#lib/picture/frame/models/frame.ts';
-import { smearSigma } from '#lib/picture/motion/models/shutter.ts';
+import { smearSigma } from '#lib/picture/lens/models/lens-shutter.ts';
 import { mixGlyphPose, tickerBreathAt, type GlyphPose, type TickerBreath, type TickerPose } from './ticker-layout.ts';
 import { archivoAdvance, layoutGlyphLine, type GlyphAxes, type GlyphLineSlot } from '#lib/picture/type/models/glyph-layout.ts';
 
