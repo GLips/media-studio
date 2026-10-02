@@ -87,10 +87,10 @@ const LENS_MOTION_SOFT = 0.02;
 
 const clearing = (view: GPUTextureView): GPURenderPassColorAttachment => ({ view, loadOp: 'clear', clearValue: [0, 0, 0, 0], storeOp: 'store' });
 
-const RENDER = GPUTextureUsage.RENDER_ATTACHMENT, STORAGE = GPUTextureUsage.STORAGE_BINDING, SAMPLED = GPUTextureUsage.TEXTURE_BINDING;
-
 /** A lens for frames `width` × `height` on `device`; its targets and pipelines are made when a frame first asks. */
 export function createLensCompositor(device: GPUDevice, { width, height }: { width: number; height: number }): LensCompositor {
+  // Read here, not at load: a project's timeline test imports this module in Node, which has no GPU globals.
+  const RENDER = GPUTextureUsage.RENDER_ATTACHMENT, STORAGE = GPUTextureUsage.STORAGE_BINDING, SAMPLED = GPUTextureUsage.TEXTURE_BINDING;
   const ring = createGpuUniformRing(device, { label: 'lens' });
   const linearClamp = device.createSampler({ magFilter: 'linear', minFilter: 'linear', addressModeU: 'clamp-to-edge', addressModeV: 'clamp-to-edge' });
 
