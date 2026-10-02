@@ -1,22 +1,22 @@
-// paint-camera-build.ts: a camera's planes, projection, lens and plays checked over the painting it shows.
+// paint-camera-build.ts: a camera's planes, projection, lens and plays checked, from plane depths and extents alone;
+// a painting is one source of those (buildPaintedCamera, its nearer planes' extents from paint-motion-reach.ts).
 //
-// Checked over the whole shot: no plane or focus comes to or behind the camera, and every painted plane's picture
-// holds the frame's preimage, grown by the widest defocus's reach and a pixel. A nearer plane needs that only where
-// its paint can be laid (paint-motion-reach.ts), everywhere once marks are live or re-seeded.
+// Checked over the whole shot: no plane or focus comes to or behind the camera, and the stage holds the frame's
+// preimage on every picture plane, grown by the widest defocus's reach and a pixel, wherever its extent holds anything.
 //
 // Eases never overshoot a key, so between keys pan and the span (d − dolly)/(zoom·d) move monotonically; a roll is
 // bounded by the circle the frame's corners turn on. Negative space: frame state written outside `motion` is the
 // scene's to keep on the stage.
 
 import { stampDefocusSigmaStepped, stampGaussianReach } from '#lib/paint/painting/models/stamp-defocus.ts';
-import { compileStampPlanes, stampPlanesFarthestFirst, type StampPlane } from '#lib/paint/painting/models/stamp-plane.ts';
+import { compileStampPlanes, stampPlaneDepthProblems, type CompiledStampPlanes, type StampPlane } from '#lib/paint/painting/models/stamp-plane.ts';
 import { stampStageExtent, type StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import {
   PAINT_CAMERA_NEAREST, PAINT_CAMERA_REST, paintCameraClipProblem, paintStageCentre,
-  type PaintCamera, type PaintCameraFocusClip, type PaintCameraLens, type PaintCameraMoveClip, type PaintCameraPlay, type PaintCameraPose,
+  type PaintCamera, type PaintCameraFocusClip, type PaintCameraLens, type PaintCameraMoveClip, type PaintCameraPlane, type PaintCameraPlay, type PaintCameraPose,
 } from './paint-camera.ts';
 import { paintChannelConflicts, type PaintChannelWriter } from './paint-channels.ts';
 import { clipSeconds, compilePaintPlayClock, paintLaneByStart, paintPlayClockProblem, paintPlayInterval, type CompiledPaintPlay } from './paint-clock.ts';
@@ -26,13 +26,12 @@ import { paintGroupLaidReach } from './paint-motion-reach.ts';
 
 /**
  * A camera as written: the `stage` its pictures are painted on, its projection (`fov`, vertical degrees over the
- * frame at rest), its `planes`, its `lens`, its plays, and the `motion` laying the painting's groups (null for none).
+ * frame at rest), its `planes` (in any order), its `lens` and its plays.
  */
 export type PaintCameraOptions = {
   readonly stage: StampStage;
-  readonly motion: PaintMotion | null;
   readonly fov: number;
-  readonly planes: readonly StampPlane[];
+  readonly planes: readonly PaintCameraPlane[];
   readonly lens: PaintCameraLens;
   readonly plays: readonly PaintCameraPlay[];
   readonly animationFps?: number;
@@ -44,6 +43,16 @@ export type PaintCameraOptions = {
  */
 export type PaintCameraBuild =
   | { readonly ok: true; readonly camera: PaintCamera; readonly magnification: ReadonlyMap<string, number> }
+  | { readonly ok: false; readonly problems: readonly string[] };
+
+/** A camera over a painting as written: its planes as the painting's, and the `motion` laying its groups (null for none). */
+export type PaintedCameraOptions = Omit<PaintCameraOptions, 'planes'> & { readonly planes: readonly StampPlane[]; readonly motion: PaintMotion | null };
+
+/** A camera over a painting, with its planes checked over the painting for the renderer: what a StampPainting shows through. */
+export type PaintedCamera = { readonly camera: PaintCamera; readonly planes: CompiledStampPlanes };
+
+export type PaintedCameraBuild =
+  | (PaintedCamera & { readonly ok: true; readonly magnification: ReadonlyMap<string, number> })
   | { readonly ok: false; readonly problems: readonly string[] };
 
 const MOVE_LANE = 'the camera\'s move', FOCUS_LANE = 'the camera\'s focus';
@@ -112,30 +121,30 @@ const meet = (a: StampBox, b: StampBox): StampBox | null => {
   return box.x0 < box.x1 && box.y0 < box.y1 ? box : null;
 };
 
-/** Where a nearer plane's groups' paint can lie in the shot: a box, null for none, or 'anywhere' when one can't be bounded. */
-function nearerPaintReach(painting: CompiledStampPaint, groups: readonly number[], motion: PaintMotion | null): StampBox | null | 'anywhere' {
+/** Where a nearer plane's groups' paint can lie in the shot: a box, null for none, or 'everywhere' when one can't be bounded. */
+function nearerPaintReach(painting: CompiledStampPaint, groups: readonly number[], motion: PaintMotion | null): StampBox | null | 'everywhere' {
   let reach: StampBox | null = null;
   for (const index of groups) {
     const laid = paintGroupLaidReach(painting.groups[index], motion);
-    if (laid.kind === 'unbounded') return 'anywhere';
+    if (laid.kind === 'unbounded') return 'everywhere';
     if (laid.box) reach = reach ? unionBox(reach, laid.box) : laid.box;
   }
   return reach;
 }
 
 /**
- * Why a plane at `depth` can't hold what the camera shows of it in some span, or null. `painted`: where a nearer
- * plane's paint can lie, beyond which it's clear film and needs nothing held; 'anywhere' for the back.
+ * Why a plane at `depth` can't hold what the camera shows of it in some span, or null. `extent`: where its picture
+ * holds anything, beyond which it needs nothing held.
  */
-function extentProblem(stage: StampStage, { id, depth }: { id: string; depth: number }, painted: StampBox | 'anywhere', spans: readonly PoseSpan[], sigma: number): string | null {
+function extentProblem(stage: StampStage, { id, depth }: { id: string; depth: number }, extent: StampBox | 'everywhere', spans: readonly PoseSpan[], sigma: number): string | null {
   const stageBox = stampStageExtent(stage);
   for (const span of spans) {
     const k = Math.max(planePxPerFramePx(span.a, depth), planePxPerFramePx(span.b, depth));
     // The blur's reach in picture px, its sigma stepped up at most a step, the bilinear read's pixel, and one for rounding.
     const grow = stampGaussianReach(stampDefocusSigmaStepped(sigma * k) * 1.02) + 2;
     const seen = framePreimageBox(stage, span, depth), needed = grownBox(seen, grow);
-    // The paint's own defocus spreads it `grow` past its box, and that spread must be on the stage too.
-    const held = painted === 'anywhere' ? needed : meet(needed, grownBox(painted, grow));
+    // The picture's own defocus spreads it `grow` past its extent, and that spread must be on the stage too.
+    const held = extent === 'everywhere' ? needed : meet(needed, grownBox(extent, grow));
     if (held && !within(held, stageBox)) {
       return `plane ${id}'s picture must hold what the camera shows of it, ${boxText(held)} ${span.name}, but the stage holds ${boxText(stageBox)}; widen the stage's margin`;
     }
@@ -143,10 +152,10 @@ function extentProblem(stage: StampStage, { id, depth }: { id: string; depth: nu
   return null;
 }
 
-/** A camera over `painting`, checked (see the file's head), with each plane's greatest magnification. */
-export function buildPaintCamera(painting: CompiledStampPaint, o: PaintCameraOptions): PaintCameraBuild {
+/** A camera over `o.planes`, checked (see the file's head), with each plane's greatest magnification. */
+export function buildPaintCamera(o: PaintCameraOptions): PaintCameraBuild {
   const problems: string[] = [], fps = o.animationFps ?? PAINT_ANIMATION_FPS;
-  const planes = compileStampPlanes(painting, o.planes, problems);
+  stampPlaneDepthProblems(o.planes, problems);
   if (!(o.fov > 0 && o.fov < 180)) problems.push(`a field of view is between 0 and 180 degrees, not ${o.fov}`);
   if (!(o.lens.bloom >= 0 && Number.isFinite(o.lens.bloom))) problems.push(`the lens blooms by a sigma of 0 px or more, not ${o.lens.bloom}`);
   const move: CompiledPaintPlay<PaintCameraMoveClip>[] = [], focus: CompiledPaintPlay<PaintCameraFocusClip>[] = [], writers: PaintChannelWriter[] = [];
@@ -159,12 +168,13 @@ export function buildPaintCamera(painting: CompiledStampPaint, o: PaintCameraOpt
     writers.push({ channel: 'camera', target: play.clip.kind === 'move' ? MOVE_LANE : FOCUS_LANE, ...interval, origin: play.origin });
   }
   problems.push(...paintChannelConflicts(writers));
-  if (problems.length || !planes) return { ok: false, problems };
+  if (problems.length) return { ok: false, problems };
+  // Ties keep their written order, as compileStampPlanes keeps them.
+  const planes = o.planes.toSorted((a, b) => b.depth - a.depth);
   const camera: PaintCamera = { stage: o.stage, fov: o.fov, planes, lens: o.lens, animationFps: fps, move: paintLaneByStart(move), focus: paintLaneByStart(focus) };
 
   const spans = poseSpans(move), dolly = range(spans.flatMap(({ a, b }) => [a.dolly, b.dolly]));
-  const all = stampPlanesFarthestFirst(planes);
-  for (const { id, depth } of all) {
+  for (const { id, depth } of planes) {
     if (depth - dolly.high <= PAINT_CAMERA_NEAREST) problems.push(`the camera dollies ${dolly.high}, at or past plane ${id} at depth ${depth}; a plane stays in front of the camera`);
   }
   const focused = focus.flatMap(({ clip }) => clip.keys.map((key) => key.focus));
@@ -172,17 +182,33 @@ export function buildPaintCamera(painting: CompiledStampPaint, o: PaintCameraOpt
     problems.push(`the camera may focus at depth ${Math.min(...focused)} while dollied ${dolly.high}, at or behind itself`);
   }
   if (problems.length) return { ok: false, problems };
-  const painted = [
-    { plane: planes.back, reach: 'anywhere' as const },
-    ...planes.nearer.flatMap((plane) => (plane.kind === 'clear' ? [{ plane, reach: nearerPaintReach(painting, plane.groups, o.motion) }] : [])),
-  ];
-  for (const { plane, reach } of painted) {
-    const problem = reach && extentProblem(o.stage, plane, reach, spans, widestDefocus(focus, dolly, plane.depth));
+  for (const plane of planes) {
+    const problem = plane.kind === 'picture' && plane.extent && extentProblem(o.stage, plane, plane.extent, spans, widestDefocus(focus, dolly, plane.depth));
     if (problem) problems.push(problem);
   }
   if (problems.length) return { ok: false, problems };
   const zoom = range(spans.flatMap(({ a, b }) => [a.zoom, b.zoom]));
   // zoom·d/(d − dolly) at its largest zoom and dolly: at least what any pose in the shot shows.
-  const magnification = new Map(all.map(({ id, depth }) => [id, (zoom.high * depth) / (depth - dolly.high)]));
+  const magnification = new Map(planes.map(({ id, depth }) => [id, (zoom.high * depth) / (depth - dolly.high)]));
   return { ok: true, camera, magnification };
+}
+
+/**
+ * A camera over `painting`, its planes checked over it first (compileStampPlanes): the back holds paint everywhere,
+ * a nearer painted plane wherever `motion` can lay its groups.
+ */
+export function buildPaintedCamera(painting: CompiledStampPaint, { planes: written, motion, ...o }: PaintedCameraOptions): PaintedCameraBuild {
+  const problems: string[] = [];
+  const planes = compileStampPlanes(painting, written, problems);
+  if (problems.length || !planes) return { ok: false, problems };
+  const built = buildPaintCamera({
+    ...o,
+    planes: [
+      { id: planes.back.id, depth: planes.back.depth, kind: 'picture', extent: 'everywhere' },
+      ...planes.nearer.map((plane): PaintCameraPlane => (plane.kind === 'three'
+        ? plane
+        : { id: plane.id, depth: plane.depth, kind: 'picture', extent: nearerPaintReach(painting, plane.groups, motion) })),
+    ],
+  });
+  return built.ok ? { ...built, planes } : built;
 }

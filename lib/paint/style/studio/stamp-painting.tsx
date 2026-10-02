@@ -16,7 +16,8 @@ import { useFrameProfile, type FrameProfileStart } from '#lib/picture/profiling/
 import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
-import { paintCameraLensAt, type PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
+import { paintCameraLensAt } from '#lib/paint/animation/models/paint-camera.ts';
+import type { PaintedCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
 import { createStampPaintGpuOwner, type StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { createStampPaintRenderer, type StampPaintFrame, type StampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
 import { createStampPaintSurface, type StampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
@@ -25,14 +26,14 @@ import { stampPaintAssetUrl } from './stamp-paint-styles.ts';
 
 /**
  * Draws `painting` at `t` seconds (a scene's `s.t`), each group in `frame`'s state, `width` by `height` pixels (the
- * frame's size unless given), over `box` (the whole frame unless given). `camera` (buildPaintCamera): its planes on a
+ * frame's size unless given), over `box` (the whole frame unless given). `camera` (buildPaintedCamera): its planes on a
  * stage whose frame is those pixels; without one, one plane at rest. `three`: a source per three plane. Memoise both.
  */
-export function StampPainting({ painting, t, frame, camera, three, width, height, box: given }: {
+export function StampPainting({ painting, t, frame, camera: painted, three, width, height, box: given }: {
   painting: CompiledStampPaint;
   t: number;
   frame?: StampPaintFrameState;
-  camera?: PaintCamera;
+  camera?: PaintedCamera;
   three?: PaintedThree;
   width?: number;
   height?: number;
@@ -40,7 +41,7 @@ export function StampPainting({ painting, t, frame, camera, three, width, height
 }) {
   const format = useVideoFormat();
   const box = given ?? fullFrameRect(format);
-  const w = Math.round(width ?? box.w), h = Math.round(height ?? box.h);
+  const w = Math.round(width ?? box.w), h = Math.round(height ?? box.h), camera = painted?.camera;
   if (camera && (camera.stage.frame.width !== w || camera.stage.frame.height !== h)) {
     throw new Error(`stamp painting: its camera's frame is ${camera.stage.frame.width} × ${camera.stage.frame.height}, and its pixels ${w} × ${h}`);
   }
@@ -92,7 +93,7 @@ export function StampPainting({ painting, t, frame, camera, three, width, height
       open = false;
     };
     const timedLoad = profile?.('stamp paint load');
-    const loading = gpu.loadScene({ painting, camera, three, profile });
+    const loading = gpu.loadScene({ painting, camera: painted, three, profile });
     // A load given up as its device goes may fail for want of the device; only a live one's failure is the frame's.
     loading.ready.then(() => {
       timedLoad?.();
@@ -108,7 +109,7 @@ export function StampPainting({ painting, t, frame, camera, three, width, height
       setScene(null);
       release();
     };
-  }, [gpu, painting, camera, three, profile, delayRender, continueRender, cancelRender]);
+  }, [gpu, painting, painted, three, profile, delayRender, continueRender, cancelRender]);
 
   useLayoutEffect(() => {
     if (!scene) return undefined;
@@ -145,7 +146,7 @@ type StampPaintingGpu = {
   dispose: () => Promise<void>;
 };
 
-type StampPaintingSceneLoad = { painting: CompiledStampPaint; camera?: PaintCamera; three?: PaintedThree; profile: FrameProfileStart | null };
+type StampPaintingSceneLoad = { painting: CompiledStampPaint; camera?: PaintedCamera; three?: PaintedThree; profile: FrameProfileStart | null };
 
 /** A painting and its three.js loaded on a StampPaintingGpu, drawn a frame at a time. */
 type StampPaintingScene = {
@@ -198,8 +199,8 @@ async function createStampPaintingGpu(canvas: HTMLCanvasElement, width: number, 
 function loadStampPaintingScene(owner: StampPaintGpuOwner, surface: StampPaintSurface, { painting, camera, three, profile }: StampPaintingSceneLoad): StampPaintingScene {
   let madeThree: PaintedThreeLoaded | null = null, made: StampPaintRenderer | null = null, disposed = false;
   const ready = (async () => {
-    madeThree = three ? await loadPaintedThree(owner, camera!, three, profile) : null;
-    const stage = camera?.stage ?? stampStage({ width: surface.width, height: surface.height });
+    madeThree = three ? await loadPaintedThree(owner, camera!.camera, three, profile) : null;
+    const stage = camera?.camera.stage ?? stampStage({ width: surface.width, height: surface.height });
     made = await createStampPaintRenderer(surface, painting, { profile, stage, planes: camera?.planes, three: madeThree?.textures });
   })();
   // The tasks queued so far, settled either way: one's failure is its caller's, not the next task's.

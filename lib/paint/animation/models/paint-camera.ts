@@ -7,8 +7,8 @@
 // at rest, so at rest every plane's similarity is the identity. Unless a play holds it, the camera is on ones.
 
 import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
-import { stampPlanesFarthestFirst, type CompiledStampPlanes, type StampLensFrame, type StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
-import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import type { StampLensFrame, StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
+import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { paintLanePlayAt, paintPlayClipTimeAt, sceneSeconds, type PaintLane, type PaintPlayClock } from './paint-clock.ts';
 import { paintPxRounded, paintRatioRounded } from './paint-deform.ts';
 import { paintKeySpanAt, type PaintEase } from './paint-motion-clips.ts';
@@ -54,14 +54,23 @@ export const PAINT_CAMERA_NEAREST = 1e-3;
 export type PaintCameraLens = { readonly bloom: number };
 
 /**
+ * A plane the camera shows, `depth` units from it at rest. `three`: a three.js render, drawn each frame through the
+ * camera's perspective. `picture`: a picture on the stage, `extent` where it can hold anything (stage px), which the
+ * camera keeps on the stage wherever it shows it: 'everywhere' when that can't be bounded, null when it holds nothing.
+ */
+export type PaintCameraPlane =
+  | { readonly id: string; readonly depth: number; readonly kind: 'picture'; readonly extent: StampBox | 'everywhere' | null }
+  | { readonly id: string; readonly depth: number; readonly kind: 'three' };
+
+/**
  * A camera checked (paint-camera-build.ts): the `stage` its planes' pictures are painted on, its projection (`fov`,
  * vertical degrees over the frame at rest, which sets how deep a three.js source's world looks, never where a plane
- * lands), the planes it shows, its lens, and its plays in a lane per thing they write.
+ * lands), the planes it shows farthest first, its lens, and its plays in a lane per thing they write.
  */
 export type PaintCamera = {
   readonly stage: StampStage;
   readonly fov: number;
-  readonly planes: CompiledStampPlanes;
+  readonly planes: readonly PaintCameraPlane[];
   readonly lens: PaintCameraLens;
   readonly animationFps: number;
   readonly move: PaintLane<PaintCameraMoveClip>;
@@ -157,7 +166,7 @@ export function paintCameraLensAt(camera: PaintCamera, t: number): StampLensFram
   const pose = paintCameraPoseAt(camera, t), lens = paintCameraFocusAt(camera, t), centre = paintStageCentre(camera.stage);
   if (lens && lens.focus - pose.dolly <= PAINT_CAMERA_NEAREST) throw new Error(`paint camera: at ${t}s the camera focuses at depth ${lens.focus}, at or behind itself (dollied ${pose.dolly})`);
   const planes = new Map<string, StampPlaneLook>();
-  for (const { id, depth } of stampPlanesFarthestFirst(camera.planes)) {
+  for (const { id, depth } of camera.planes) {
     if (depth - pose.dolly <= PAINT_CAMERA_NEAREST) throw new Error(`paint camera: at ${t}s the camera, dollied ${pose.dolly}, is at or past plane ${id} at depth ${depth}`);
     planes.set(id, { view: paintPlaneSimilarity(pose, depth, centre), defocus: lens ? paintPlaneDefocus(lens, pose.dolly, depth) : 0 });
   }

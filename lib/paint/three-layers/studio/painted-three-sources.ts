@@ -99,7 +99,7 @@ async function oneAfterAnother<T, R>(items: readonly T[], step: (item: T) => Pro
  * with no three plane in the camera, and a three plane with no source.
  */
 export async function loadPaintedThree(owner: StampPaintGpuOwner, camera: PaintCamera, three: PaintedThree, profile: FrameProfileStart | null): Promise<PaintedThreeLoaded> {
-  const depths = new Map(camera.planes.nearer.flatMap((plane) => (plane.kind === 'three' ? [[plane.id, plane.depth] as const] : [])));
+  const depths = new Map(camera.planes.flatMap((plane) => (plane.kind === 'three' ? [[plane.id, plane.depth] as const] : [])));
   const ids = new Set(three.sources.map(({ id }) => id));
   for (const id of ids) if (!depths.has(id)) throw new Error(`painted three: source ${id} isn't a three plane of the camera`);
   for (const id of depths.keys()) if (!ids.has(id)) throw new Error(`painted three: the camera's three plane ${id} has no source`);

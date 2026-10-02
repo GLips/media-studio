@@ -28,14 +28,21 @@ export type CompiledStampNearerPlane = CompiledStampClearPlane | CompiledStampTh
 /** A scene's planes checked: the back, then the nearer ones farthest first, the order they're laid in. */
 export type CompiledStampPlanes = { readonly back: CompiledStampBackPlane; readonly nearer: readonly CompiledStampNearerPlane[] };
 
-/** Every plane of `planes`, farthest first: for what reads only a plane's id and depth. */
-export const stampPlanesFarthestFirst = ({ back, nearer }: CompiledStampPlanes): readonly { readonly id: string; readonly depth: number }[] => [back, ...nearer];
-
 /** The one plane a painting shown without a camera is: every group, on paper, at depth 1. */
 export const STAMP_SINGLE_PLANE_ID = 'painting';
 
 export const stampSinglePlane = (painting: CompiledStampPaint): CompiledStampPlanes =>
   ({ back: { id: STAMP_SINGLE_PLANE_ID, depth: 1, groups: painting.groups.map((_, i) => i) }, nearer: [] });
+
+/** `planes`' ids and depths checked into `problems`: unique ids, depths above 0. */
+export function stampPlaneDepthProblems(planes: readonly { readonly id: string; readonly depth: number }[], problems: string[]): void {
+  const ids = new Set<string>();
+  for (const { id, depth } of planes) {
+    if (ids.has(id)) problems.push(`two planes are called ${id}`);
+    ids.add(id);
+    if (!(depth > 0 && Number.isFinite(depth))) problems.push(`plane ${id} is at depth ${depth}; a plane's depth is above 0`);
+  }
+}
 
 /**
  * `planes` checked over `painting` into `problems`, ordered farthest first, ties as declared: unique ids, depths above
@@ -43,12 +50,10 @@ export const stampSinglePlane = (painting: CompiledStampPaint): CompiledStampPla
  * show). Null when there's no back to build on; `problems` then says why.
  */
 export function compileStampPlanes(painting: CompiledStampPaint, planes: readonly StampPlane[], problems: string[]): CompiledStampPlanes | null {
-  const indexOf = new Map(painting.groups.map(({ id }, i) => [id, i])), onPlane = new Map<string, string>(), ids = new Set<string>();
+  const indexOf = new Map(painting.groups.map(({ id }, i) => [id, i])), onPlane = new Map<string, string>();
   const compiled: (CompiledStampClearPlane | CompiledStampThreePlane)[] = [];
+  stampPlaneDepthProblems(planes, problems);
   for (const { id, depth, source } of planes) {
-    if (ids.has(id)) problems.push(`two planes are called ${id}`);
-    ids.add(id);
-    if (!(depth > 0 && Number.isFinite(depth))) problems.push(`plane ${id} is at depth ${depth}; a plane's depth is above 0`);
     if (source.kind === 'three') {
       compiled.push({ id, depth, kind: 'three' });
       continue;
