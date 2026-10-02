@@ -260,9 +260,9 @@ judders. Give a group `glow: { amount, threshold }` in its frame state for a sof
 once, at `lens.bloom` px of sigma, and opaque paint covering glowing paint, laid after it on its plane or on a nearer one, stops its glow. Show it with
 `<StampPainting painting t frame camera />`; a glowing frame without a camera is refused.
 
-**3D in a painting.** A three plane is for 3D content that should be shown as 3D (the round trip's card, a previs-like
-set), not the way to paint a character: a model painted by the brushes is a source of shapes for an ordinary painted
-group (docs/plans/2026-10-01-plan-feat-painted-models-and-characters.md). A three.js scene is a plane of its own,
+**3D in a painting.** A three plane shows 3D content as 3D (the round trip's card, a previs-like set, a model with a
+plain graphic material). A model can also be painted by the brushes, which read its guides from the shared renderer
+(docs/plans/2026-10-01-plan-feat-painted-models-and-characters.md). A three.js scene is a plane of its own,
 `{ id, depth, source: { kind: 'three' } }`, rendered on the painting's own GPU device. Hand its source to the painting:
 `<StampPainting painting t frame camera three={{ sources, paintedTextures }} />`. A source is
 `{ id, build }`, its id its plane's. `build` gets the world, its own `plane` (`plane.point(px)` places a mesh,

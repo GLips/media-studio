@@ -94,8 +94,8 @@ We know whether silhouette strokes extracted each frame from a three.js mesh, te
 Moved to `docs/plans/2026-10-01-plan-feat-painted-models-and-characters.md`. It paints a model built in code from its
 regions, light zones and outlines, still objects first and then characters. That plan's spike 2.0 asks whether
 outlines hold as an object turns. This plan's spike 1.0 above (silhouettes from a turning mesh, seeding, visibility)
-stays the deeper test, and whichever runs first answers for both. Hatching that keeps its tone across sizes (Kalnins)
-and one model drawn in several styles aren't in either plan yet.
+stays the deeper test, and whichever runs first answers for both. One-model reuse is proved in painted-models phase 2.
+Tone-keeping hatching waits for an engraving requirement.
 
 ## Phase 3: Projection painting (sketched)
 

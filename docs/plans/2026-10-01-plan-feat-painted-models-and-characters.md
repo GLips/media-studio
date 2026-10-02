@@ -74,11 +74,10 @@ directly, provided it lists every gap it hand-crafted in its findings.
 - **A scene declares; it never works around.** When writing a scene hits a missing affordance, the work stops and
   builds the affordance in `lib/`, or records it in the findings. It never hand-crafts the gap in the scene. *Why:*
   the tools are the product. vid-130's light, masks and sac were scene workarounds no other scene can reuse.
-- **A model is a source of shapes, never a shown picture.** Its renders (region IDs, normals, depth, light) only
-  guide the painting, and the model enters a scene inside a painted plane, not as one of vid-140's three.js planes.
-  *Why:* the look is painted. A model wired in as a 3D plane would bypass the brushes.
-- **One light description and one camera description.** Painters read light zones from the scene's light list,
-  whether a shape comes from a model or from `stampRoundedForm`. A model's view uses `buildPaintCamera`'s camera description.
+- **Models render through the shared renderer.** This plan's painted look comes from the stamp painter reading its
+  guides. *Why:* one renderer serves every way of drawing a model, so a graphic material needs no tier of its own.
+- **One light description and one camera description.** Models and painters use the shared camera
+  (`buildPaintCamera`'s camera description) and the scene's lights. Each style owns how light maps to painted values.
   *Why:* two ways to say "lit from the upper left" or a fifth camera model would split every later tool.
 
 ## Phase 2.0: One skin and its regions, to the painter (spike: toy experiment)
@@ -279,8 +278,11 @@ especially.
 **New questions and follow-ons:**
 - **Steady folds:** hysteresis on the fold threshold, or no folds while turning, and the turn rate. This is the
   boil's small fix.
-- **Values:** retune the constants above against the reference's spread.
-- **Cheaper tracing:** typed-array contouring, or the GPU ID image (10 ms) feeding field regions.
+- **Values:** the style owns zone thresholds, core darkness and rim strength.
+- **Stable marks:** test rest-surface attachment for fills, and silhouette coherence, separately. This and plan 3's
+  silhouette spike are one experiment.
+- **Cheaper tracing:** measure GPU readback plus today's tracing. Optimise the tracing first; consider field-native
+  regions only if cost or quality demands it.
 - **Mesh density:** field regions don't need the finest mesh (face IDs did), so edge 0.06 halves the frog's build;
   check its silhouette.
 - **A .glb in a scene:** a loader and `delayRender` in the bundle, or a build step that writes a module, as this toy's
@@ -300,8 +302,15 @@ body at rest are painted this way, and the scene file only declares them.
   the film stage can use code-built models too. Painting from a model lives in paint.
 - The light list is the one light affordance. `StampFormLight` folds into it, and `stampRoundedForm` becomes its
   source for a flat outline.
+- The shared renderer makes GPU guides. The stamp painter's adapter traces the read-back fields into polygon regions
+  and extracts curves for strokes.
+- The mesh keeps rest positions and topology, and the guide carries rest position for marks attached to the surface.
 - The frog's hand-written light and shifted masks are deleted here. The primitive figure stays until phase 3, because
   the live sac is still posed through it.
+
+### Done when
+
+- The same frog also renders with one simple graphic material, from the same geometry, pose, camera and lights.
 
 ## Phase 3.0: Change of form as blend shapes (spike: toy experiment)
 
@@ -322,6 +331,7 @@ markings stretch with the skin and glTF morph targets can carry it.
 
 - A toy on phase 2's model and painting source; it may extend them on its own branch. A puff and a breath on the frog
   only, in watercolour, beside the reference.
+- Blend shapes keep the rest mesh's topology and its surface correspondence.
 
 ### Done when
 
