@@ -214,8 +214,10 @@ where the paper lets it: a stage supplies the paper (wet, open), the bloom the d
 and where paint may land, the rim open wherever it isn't bare paper at the grain's scale.
 
 **Frame state.** Everything about a group that varies with time reaches the renderer as data, per frame:
-`renderer.draw({ t, state })` takes a `StampPaintFrameState`, and `StampPainting`'s `frameAt` prop gives one for a time
-(`stamp-paint-frame-state.ts`). It holds each group's:
+`renderer.draw({ t, state })` takes a `StampPaintFrameState`, and `StampPainting`'s `frameAt` prop gives one for a moment
+within a frame (`stamp-paint-frame-state.ts`, `StampPaintFrameAt`). A frame drawn through a moving lens also takes its
+`shutter`, the states as it opens and closes: each group's travel between them is rasterised through its lattice into
+its plane picture's motion layer, which the lens gathers and paper advection can read. It holds each group's:
 - `lay`: a placement about its pivot;
 - `warp`: a rest-to-scene map with a key naming it, sampled on a lattice over the group's painted layer;
 - `marks`: `written` at a boil epoch (0 is as written), or `live`, compiled for this frame, with a key naming them;

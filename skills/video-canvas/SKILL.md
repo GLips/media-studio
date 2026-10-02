@@ -238,9 +238,11 @@ elements, which is what keeps objects from showing through each other.
    - It returns `{ ok: false, problems }` naming two writers on one pin, a node that isn't a group, a hold that
      isn't whole frames, a boil or pose that folds; throw them.
    - A point goes through its own bend and placement, then its parent's, and so up, as a rig nests.
-5. **Each frame,** `paintMotionFrameAt(motion, t)` gives the frame state, live marks included. Hand the painting the
-   function, as the reference lens asks for other moments of the shutter:
-   `<StampPainting painting={painting} t={s.t} frameAt={(t) => paintMotionFrameAt(motion, t)} />` (memoise it).
+5. **Each frame,** `paintMotionFrameAt(motion, at, frame)` gives the frame state at moment `at` of the frame shown at
+   `frame`, live marks included. Hand the painting the function, as the lens asks for other moments of the shutter:
+   `<StampPainting painting={painting} t={s.t} frameAt={(at, frame) => paintMotionFrameAt(motion, at, frame)} />`
+   (memoise it). A drawing held on the animation grid (`hold`) holds through its frame's shutter, so it never smears
+   into the next drawing; only what no hold steps (fades, an unheld play, the camera) blurs.
 
 **Planes and the camera (multiplane).** A scene is planes `{ id, depth, source }`, 1 being where a pan's pixels are
 measured and nearer under 1. Every group is on exactly one painted plane (`{ kind: 'painted', groups }`). The
@@ -262,8 +264,10 @@ plane's greatest magnification (past about 1.3, its paint looks soft). Keep the 
 judders. Give a group `glow: { amount, threshold }` in its frame state for a soft light; the lens blooms all glow
 once, at `lens.bloom` px of sigma, and opaque paint covering glowing paint, laid after it on its plane or on a nearer one, stops its glow. Show it with
 `<StampPainting painting t frameAt camera />`; a glowing frame without a camera is refused. `lens.shutter` is seconds
-open about each frame (1/60 is 180° at 30 fps). `studio render --lens reference` averages exposures over the shutter
-and aperture, three.js re-rendered for each: slow, the truth the default fast lens is measured against.
+open about each frame (1/60 is 180° at 30 fps). The fast lens gathers each frame's motion: the camera's, a group's own
+travel over the shutter (its plane's motion layer, from its lattice), and a three source's per pixel. `studio render
+--lens reference` averages exposures over the shutter and aperture, three.js re-rendered for each: slow, the truth the
+fast lens is measured against (the gate's `lens/motion` and `three/defocus`).
 
 **3D in a painting.** A three plane shows 3D content as 3D (the round trip's card, a previs-like set, a model with a
 plain graphic material). A model can also be painted by the brushes, which read its guides from the shared renderer

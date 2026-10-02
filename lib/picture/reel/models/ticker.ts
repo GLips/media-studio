@@ -2,7 +2,7 @@
 // ticker-layout.ts lays the glyphs out; lib/picture/reel/studio/ticker.tsx draws them.
 
 import type { FrameSize } from '#lib/picture/frame/models/frame.ts';
-import { smearSigma } from '#lib/picture/lens/models/lens-shutter.ts';
+import { shutterOpensAt, smearSigma } from '#lib/picture/lens/models/lens-shutter.ts';
 import { mixGlyphPose, tickerBreathAt, type GlyphPose, type TickerBreath, type TickerPose } from './ticker-layout.ts';
 import { archivoAdvance, layoutGlyphLine, type GlyphAxes, type GlyphLineSlot } from '#lib/picture/type/models/glyph-layout.ts';
 
@@ -98,10 +98,8 @@ export const tickerLookBeat = (t: number, spb: number, fps: number) => Math.floo
 
 /** Where a moving block was mid-exposure, and how far it travelled while the shutter was open, px. */
 export function tickerExposure(block: (t: number) => number, t: number, shutter: number) {
-  const now = block(t);
-  if (shutter <= 0) return { offset: now, travel: 0 };
-  const before = block(t - shutter);
-  return { offset: (now + before) / 2, travel: Math.abs(now - before) };
+  const opens = shutterOpensAt(t, shutter), open = block(opens), close = block(opens + shutter);
+  return { offset: (open + close) / 2, travel: Math.abs(close - open) };
 }
 
 // ---------- the hero's line ----------

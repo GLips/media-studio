@@ -8,7 +8,7 @@
 import { useId, type ReactNode } from 'react';
 import { DISPLAY_FONT } from '#lib/picture/type/models/faces.ts';
 import { motionCurves } from '#lib/picture/motion/models/motion.ts';
-import { smearSigma } from '#lib/picture/lens/models/lens-shutter.ts';
+import { shutterOpensAt, smearSigma } from '#lib/picture/lens/models/lens-shutter.ts';
 import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 import { pieceMotionAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { hashRandom } from '#lib/picture/motion/models/random.ts';
@@ -201,16 +201,18 @@ export function TickerBand({
   const margin = Math.tan((Math.abs(oblique) * Math.PI) / 180) * cap + 24 + reach;
   const span = { from: Math.max(0, -offset) - margin, to: Math.min(width, width - offset) + margin, centre: width / 2, anchor: width };
   const row = layoutTickerRow(t, style, { offset: drift * t, ...span });
-  const was = shutter > 0 ? new Map(layoutTickerRow(t - shutter, style, { offset: drift * (t - shutter), ...span, from: span.from - width / 4, to: span.to + width / 4 }).map((s) => [s.index, s.x])) : null;
+  const opens = shutterOpensAt(t, shutter);
+  const slotsAt = (at: number) => new Map(layoutTickerRow(at, style, { offset: drift * at, ...span, from: span.from - width / 4, to: span.to + width / 4 }).map((s) => [s.index, s.x]));
+  const ends = shutter > 0 ? { open: slotsAt(opens), close: slotsAt(opens + shutter) } : null;
   const baseline = (height + cap) / 2;
   const blurs = new Set<number>();
   // Where a slot was mid-exposure, and the level of the smear its travel leaves (null when that's too little to see).
   const exposed = (slot: TickerSlot, scaleX: number) => {
-    const before = was?.get(slot.index);
-    if (before === undefined) return { x: slot.x, level: null };
-    const level = tickerBlurLevel(smearSigma(slot.x - before) / scaleX);
+    const open = ends?.open.get(slot.index), close = ends?.close.get(slot.index);
+    if (open === undefined || close === undefined) return { x: slot.x, level: null };
+    const level = tickerBlurLevel(smearSigma(close - open) / scaleX);
     if (level !== null) blurs.add(level);
-    return { x: (slot.x + before) / 2, level };
+    return { x: (open + close) / 2, level };
   };
 
   const cells = row.map((slot) => {
@@ -272,16 +274,18 @@ function HeroBand({ t, top, height, word, count, size, cap, colors, breath, pose
   const baseline = (height + cap) / 2;
   const lineAt = (at: number) => tickerHeroLine(at, { word, count, size, breath, poses, heldAt, phase, frame });
   const line = lineAt(t);
-  const was = shutter > 0 ? lineAt(t - shutter) : null;
+  const opens = shutterOpensAt(t, shutter);
+  const ends = shutter > 0 ? { open: lineAt(opens), close: lineAt(opens + shutter) } : null;
   const blurs = new Set<number>();
   const glyphs = line.glyphs.map((g, i) => {
-    const before = was?.glyphs[i].x;
-    if (before === undefined) return { ...g, level: null };
-    const level = tickerBlurLevel(smearSigma(g.x - before) / (g.axes.scaleX ?? 1));
+    const open = ends?.open.glyphs[i]?.x, close = ends?.close.glyphs[i]?.x;
+    if (open === undefined || close === undefined) return { ...g, level: null };
+    const level = tickerBlurLevel(smearSigma(close - open) / (g.axes.scaleX ?? 1));
     if (level !== null) blurs.add(level);
-    return { ...g, x: (g.x + before) / 2, level };
+    return { ...g, x: (open + close) / 2, level };
   });
-  const number = line.count && { ...line.count, x: was?.count ? (line.count.x + was.count.x) / 2 : line.count.x };
+  const counted = ends?.open.count && ends.close.count && { open: ends.open.count.x, close: ends.close.count.x };
+  const number = line.count && { ...line.count, x: counted ? (counted.open + counted.close) / 2 : line.count.x };
   const inset = (height / 2) * collapse;
 
   const content = (color: string, live: boolean) => (

@@ -5,6 +5,7 @@ import type { FrameSize, VideoFormat } from '#lib/picture/frame/models/frame.ts'
 import type { Point } from '#lib/picture/frame/models/geometry.ts';
 import { backOutEase, clamp, lerp, motionCurves, type EaseFn } from '#lib/picture/motion/models/motion.ts';
 import { hashRandom } from '#lib/picture/motion/models/random.ts';
+import { shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import { GLYPH_FIELD_COLORS, GLYPH_SHAPES, glyphFieldLayout, glyphPunchScale, glyphRegroupPlan, glyphWaveArrivals, type GlyphCell, type GlyphClip, type GlyphFilterStep, type GlyphFilterTiming, type GlyphHit, type GlyphImplode, type GlyphKey, type GlyphLayout, type GlyphPunch, type GlyphShape, type GlyphWave } from './glyph-field.ts';
 
 /** One frame of the reference reel (60 fps): the unit its timings were measured in. */
@@ -345,19 +346,19 @@ export function glyphFieldFrame<D>(props: GlyphFieldProps<D>, format: VideoForma
     const reach = Math.max(state.L, state.w);
     let samples: GlyphSample[] = [now], share = 1;
     if (shutter > 0) {
-      const then = placeAt(n, t - shutter, state);
-      const travel = Math.hypot(now.x - then.x, now.y - then.y) + (Math.abs(now.unit - then.unit) * reach) / 2 + Math.abs(now.theta - then.theta) * RAD * (now.unit * reach) / 2;
+      const opens = shutterOpensAt(t, shutter), then = placeAt(n, opens, state), last = placeAt(n, opens + shutter, state);
+      const travel = Math.hypot(last.x - then.x, last.y - then.y) + (Math.abs(last.unit - then.unit) * reach) / 2 + Math.abs(last.theta - then.theta) * RAD * (last.unit * reach) / 2;
       // 12 px in half a frame is 24 px a frame: below that a move reads at 30 fps, and the reference's scale pops and
       // turns stay sharp.
       if (travel > 12) {
         // A sample every 2.5 px of travel, so the steps between them don't show.
         const k = Math.min(160, Math.ceil(travel / 2.5) + 1);
-        samples = Array.from({ length: k }, (_, q) => (q === k - 1 ? now : placeAt(n, t - shutter * (1 - q / (k - 1)), state)));
+        samples = Array.from({ length: k }, (_, q) => placeAt(n, opens + (shutter * q) / (k - 1), state));
         let gap = Infinity;
         for (let q = 1; q < k; q++) gap = Math.min(gap, Math.hypot(samples[q].x - samples[q - 1].x, samples[q].y - samples[q - 1].y));
         // 1/k each is a true shutter. More, up to SMEAR_GAIN × that, as long as the samples bunched where the glyph
         // moves slowest still add to no more than its colour.
-        share = clamp(gap / Math.max(1, reach * Math.max(now.unit, then.unit)), 1 / k, SMEAR_GAIN / k);
+        share = clamp(gap / Math.max(1, reach * Math.max(last.unit, then.unit)), 1 / k, SMEAR_GAIN / k);
       }
     }
     const alpha = clamp(state.opacity) * fill[3] * share;
