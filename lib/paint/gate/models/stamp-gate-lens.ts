@@ -14,7 +14,7 @@ import { STAMP_GATE_IMAGES, STAMP_GATE_WHITE, stampGateBrush, stampGatePolygon, 
 import { stampGateFrameDifference, type StampGateFrameDifference } from './stamp-gate-frames.ts';
 import type { StampGateWashCheck } from './stamp-gate-layer.ts';
 
-export const STAMP_GATE_LENS_IDS = ['lens/defocus', 'lens/glow'];
+export const STAMP_GATE_LENS_IDS = ['lens/defocus', 'lens/glow', 'lens/motion'];
 
 const LENS_SIZE = { width: 160, height: 100 };
 const LENS_FLAT: StampPaintEnvironment = { paper: STAMP_GATE_WHITE, mixing: { kind: 'flat' } };

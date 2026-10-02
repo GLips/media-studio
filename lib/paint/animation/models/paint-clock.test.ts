@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  clipSeconds, compilePaintPlayClock, paintPlayClipTimeAt, paintPlayInterval, sceneSeconds, type PaintPlayClock,
+  clipSeconds, compilePaintPlayClock, paintMoment, paintPlayClipTimeAt, paintPlayInterval, type PaintPlayClock,
 } from './paint-clock.ts';
 
 const FPS = 24;
 const compiled = (clock: PaintPlayClock) => compilePaintPlayClock(clock, []);
-const clipAt = (clock: PaintPlayClock, t: number) => paintPlayClipTimeAt(compiled(clock), sceneSeconds(t), FPS);
+const clipAt = (clock: PaintPlayClock, t: number) => paintPlayClipTimeAt(compiled(clock), paintMoment(t), FPS);
 
 test('a loop held on twos and placed at an off-grid cue steps on the scene grid and starts at its first drawing', () => {
   const clock: PaintPlayClock = { at: 1.03, hold: 2, loop: { period: 0.5 } };
@@ -15,6 +15,15 @@ test('a loop held on twos and placed at an off-grid cue steps on the scene grid 
   assert.ok(Math.abs(clipAt(clock, 1.09) - (26 / 24 - 1.03)) < 1e-9);
   assert.equal(clipAt(clock, 1.09), clipAt(clock, 1.12), 'two render frames inside one hold read one drawing');
   assert.ok(clipAt(clock, 1.03 + 0.5 + 2 / 24) < 0.5, 'it wraps after its period');
+});
+
+test('a drawing holds through its frame\'s shutter, and an unheld play moves through it', () => {
+  // The frame at 1 s shows the drawing from 1 s on; its shutter opens 1/120 s before, in the drawing before.
+  const held: PaintPlayClock = { at: 0, hold: 2 }, free: PaintPlayClock = { at: 0 };
+  const read = (clock: PaintPlayClock, at: number) => paintPlayClipTimeAt(compiled(clock), paintMoment(at, 1), FPS);
+  assert.equal(read(held, 1 - 1 / 120), read(held, 1 + 1 / 120));
+  assert.equal(read(held, 1 - 1 / 120), clipAt(held, 1));
+  assert.ok(read(free, 1 + 1 / 120) - read(free, 1 - 1 / 120) > 0.016);
 });
 
 const twice = (mode: 'repeat' | 'pingpong'): PaintPlayClock => ({ at: 0, loop: { period: 1, mode, times: 2 } });

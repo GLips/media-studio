@@ -53,6 +53,12 @@ export type StampGroupFrameState = {
 export type StampPaintFrameState = ReadonlyMap<string, StampGroupFrameState>;
 
 /**
+ * A painting's frame state at scene second `at`, an exposure's moment within the frame shown at `frame` (a lens's
+ * shutter, lens-shutter.ts): a drawing held on the animation grid holds through its frame (paintMoment).
+ */
+export type StampPaintFrameAt = (at: number, frame: number) => StampPaintFrameState;
+
+/**
  * What `group`'s own recipe gives it `t` seconds into its scene: its motion's lay, its boil's epoch (on the animation
  * clock, stampBoilEpoch) and, while it recolours, the time its paint reads, held to its keys' span.
  */

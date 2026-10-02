@@ -18,6 +18,7 @@ import { createLensThreeMotion, LENS_THREE_MOTION_NAME } from '#lib/picture/lens
 import { setThreeShotCamera } from '#lib/picture/shot-camera/studio/three-shot-camera.ts';
 import { paintCameraShotAt, paintCameraWorld, paintWorldPlane, type PaintCameraWorld, type PaintWorldPlane } from '#lib/paint/animation/models/paint-camera-world.ts';
 import { PAINT_CAMERA_REST, paintCameraFocusAt, paintCameraPoseAt, type PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
+import { paintMoment } from '#lib/paint/animation/models/paint-clock.ts';
 import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
@@ -153,7 +154,7 @@ export async function loadPaintedThree(owner: StampPaintGpuOwner, camera: PaintC
       pictures: new Map(loaded.map(({ id, picture }) => [id, picture])),
       render: async (t, exposure) => {
         if (!exposure?.index) await Promise.all(painted.map(({ texture, renderer: paintedRenderer }) => paintedRenderer.draw({ t, state: texture.frameAt?.(t) })));
-        const at = exposure?.at ?? t, pose = paintCameraPoseAt(camera, at), focus = exposure && paintCameraFocusAt(camera, at);
+        const at = exposure?.at ?? t, pose = paintCameraPoseAt(camera, paintMoment(at, t)), focus = exposure && paintCameraFocusAt(camera, paintMoment(at, t));
         // The exposure's camera: moved over the aperture by the world size of the paint camera's (frame px) opening.
         const seen = (shot: ShotCamera) => {
           if (!exposure) return shot;
@@ -169,7 +170,7 @@ export async function loadPaintedThree(owner: StampPaintGpuOwner, camera: PaintC
             if (shutter > 0) {
               for (const [moment, when] of [['open', opens], ['close', opens + shutter]] as const) {
                 built.poseAt(when);
-                setThreeShotCamera(threeCamera, shotAt(paintCameraPoseAt(camera, when)));
+                setThreeShotCamera(threeCamera, shotAt(paintCameraPoseAt(camera, paintMoment(when, t))));
                 motion.record(moment, built.scene, threeCamera);
               }
             }

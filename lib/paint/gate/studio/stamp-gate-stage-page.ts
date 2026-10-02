@@ -4,7 +4,7 @@
 import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampLensFrame } from '#lib/paint/painting/models/stamp-plane.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
-import type { StampPaintRenderer, StampPaintRendererOptions } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
+import type { StampPaintFrame, StampPaintRenderer, StampPaintRendererOptions } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
 import { stampGateFrameDifference, type StampGateFrameDifference } from '../models/stamp-gate-frames.ts';
 import {
   checkStampGateDefocus, checkStampGateGlow, STAMP_GATE_DEFOCUS_MARGIN, STAMP_GATE_DEFOCUS_SCALE, STAMP_GATE_DEFOCUS_SIGMA, STAMP_GATE_GLOW, STAMP_GATE_GLOW_COVER_X, STAMP_GATE_GLOW_LENS,
@@ -22,7 +22,10 @@ import {
 } from '../models/stamp-gate-stage.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { stampGateHalfBits } from '../models/stamp-gate-flow.ts';
-import { drawn, drawnImages, gateRenderer, withGateRenderer, withGateSurface } from './stamp-gate-page-surface.ts';
+import { drawn, drawnExposures, drawnImages, gateRenderer, withGateRenderer, withGateSurface } from './stamp-gate-page-surface.ts';
+import {
+  checkStampGateMotion, STAMP_GATE_MOTION_SHUTTER, STAMP_GATE_MOTION_T, stampGateMotionExposures, stampGateMotionFastLens, stampGateMotionPainting, stampGateMotionState, type StampGateMotionKind,
+} from '../models/stamp-gate-motion.ts';
 
 /** `gate`'s stage, `margin` px past its frame each side. */
 const gateStage = (gate: StampGatePainting, margin: number) => stampStage({ width: gate.width, height: gate.height }, margin);
@@ -88,6 +91,21 @@ async function checkStampGateLensCase(id: string): Promise<StampGateWashCheck[]>
       // The grey, laid after the pale on the one plane, glows under its threshold: drawn the way the glowing frame is.
       onSheet: await frameIn(stampGateGlowState(['pale'], 0, { greyX })), onSheetDim: await frameIn(stampGateGlowState(['grey'], 0, { greyX })),
     })];
+  }
+  if (id === 'lens/motion') {
+    const gate = stampGateMotionPainting(), url = drawnImages(gate), t = STAMP_GATE_MOTION_T, opens = t - STAMP_GATE_MOTION_SHUTTER / 2;
+    const frameOf = (draws: (kind: StampGateMotionKind) => StampPaintFrame[]) => (kind: StampGateMotionKind) =>
+      withGateRenderer(gate, url, (renderer, frame) => drawnExposures(renderer, frame, draws(kind)));
+    const fast = frameOf((kind) => [{
+      t, state: stampGateMotionState(kind, t), lens: stampGateMotionFastLens(kind),
+      shutter: { open: { at: opens, state: stampGateMotionState(kind, opens) }, close: { at: opens + STAMP_GATE_MOTION_SHUTTER, state: stampGateMotionState(kind, opens + STAMP_GATE_MOTION_SHUTTER) } },
+    }]);
+    const reference = frameOf((kind) => stampGateMotionExposures(kind).map(({ lens, ...exposure }) => ({
+      t, state: stampGateMotionState(kind, t), lens, exposure: { ...exposure, state: stampGateMotionState(kind, exposure.at) },
+    })));
+    const sharp = frameOf((kind) => [{ t, state: stampGateMotionState(kind, t) }]);
+    const framesOf = async (kind: StampGateMotionKind) => ({ fast: await fast(kind), reference: await reference(kind), sharp: await sharp(kind) });
+    return [checkStampGateMotion({ own: await framesOf('own'), pan: await framesOf('pan') }, gate.width)];
   }
   throw new Error(`stamp gate: no lens case ${JSON.stringify(id)}`);
 }

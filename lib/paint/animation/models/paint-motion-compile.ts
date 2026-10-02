@@ -104,7 +104,7 @@ export type PaintMotion = {
   readonly nodes: ReadonlyMap<string, CompiledPaintNode>;
   readonly animationFps: number;
   /** The last frame asked for: a scene may render one frame's tree twice, and the same t hands back the same state. */
-  readonly remembered: { last?: { readonly t: number; readonly state: StampPaintFrameState } };
+  readonly remembered: { last?: { readonly at: number; readonly frame: number; readonly state: StampPaintFrameState } };
 };
 
 /** How far past its stamps' extent a group's paint may reach (bleeds, blooms), px. */

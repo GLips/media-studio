@@ -178,9 +178,9 @@ export function lensMotionNeighboursWgsl(workgroup: number) {
 }
 
 /**
- * The gather: `taps` samples along the neighbourhood's longest motion, each counted as far as its own motion or
- * this pixel's reaches it, nearer over farther (McGuire et al., 2012, "A Reconstruction Filter for Plausible Motion
- * Blur"); distances within `soft` of each other, relative, count as one depth.
+ * The gather: `taps` samples along the neighbourhood's longest motion. What lies in front of a pixel (nearer, or at
+ * one depth, `soft` relative, moving faster) and smears across it covers it for its share of the shutter, laid over
+ * the box average of what lies behind or level as far as the pixel's own motion reaches.
  */
 export const LENS_MOTION_GATHER = gpuUniformLayout('LensMotionGather', [['tile', 'u32'], ['taps', 'u32'], ['reach', 'f32'], ['soft', 'f32']]);
 
@@ -200,10 +200,8 @@ ${LENS_MOTION_GATHER.wgsl}
 ${each(`@group(0) @binding(5) var emission: texture_2d<f32>;
 @group(0) @binding(6) var gatheredEmission: texture_storage_2d<rgba16float, write>;`)}
 ${halfMotionWgsl}
-fn cone(d: f32, reach: f32) -> f32 { return clamp(1.0 - d / reach, 0.0, 1.0); }
-fn cylinder(d: f32, reach: f32) -> f32 { return 1.0 - smoothstep(0.95 * reach, 1.05 * reach, d); }
-/** How surely a point at distance a is at or before one at b: 1 nearer, 0 past it by soft·b. */
-fn before(a: f32, b: f32) -> f32 { return clamp(1.0 - (a - b) / max(u.soft * b, 1e-6), 0.0, 1.0); }
+/** Whether a point whose half-motion is \`reach\` px passes over one \`d\` px away: a pixel's edge softened. */
+fn spread(d: f32, reach: f32) -> f32 { return clamp(reach - d + 0.5, 0.0, 1.0); }
 @compute @workgroup_size(${workgroup}, ${workgroup}) fn lensMotionGather(@builtin(global_invocation_id) id: vec3u) {
   let size = textureDimensions(colour);
   if (any(id.xy >= size)) { return; }
@@ -218,26 +216,41 @@ fn before(a: f32, b: f32) -> f32 { return clamp(1.0 - (a - b) / max(u.soft * b, 
   }
   let mx = textureLoad(motion, x, 0);
   let reachX = max(length(halfMotion(mx, u.reach)), 0.5);
-  var weight = 1.0 / reachX;
-  var sum = cx * weight;${each(`
-  var sumEmission = ex * weight;`)}
+  // Each tap stands for its cell of the line, this many px: a point there covers this pixel for spacing/(2·reach) of the shutter.
+  let spacing = 2.0 * length(longest) / f32(u.taps);
+  var behind = cx;
+  var behindWeight = 1.0;
+  var front = vec4f(0.0);
+  var cover = 0.0;${each(`
+  var behindEmission = ex;
+  var frontEmission = vec4f(0.0);`)}
   // A fixed jitter by pixel, the same every frame: a still frame's bytes depend only on what it shows.
   let jitter = fract(dot(vec2f(x), vec2f(0.7548776662, 0.5698402910))) - 0.5;
   for (var i = 0u; i < u.taps; i++) {
-    let share = mix(-1.0, 1.0, (f32(i) + jitter + 1.0) / f32(u.taps + 1u));
+    let share = 2.0 * (f32(i) + 0.5 + jitter) / f32(u.taps) - 1.0;
     let y = clamp(vec2i(floor(vec2f(x) + 0.5 + longest * share)), vec2i(0), vec2i(size) - 1);
     if (all(y == x)) { continue; }
     let my = textureLoad(motion, y, 0);
     let reachY = max(length(halfMotion(my, u.reach)), 0.5);
     let d = length(vec2f(y - x));
-    // y seen over x where it's nearer and its motion reaches x; x's own blur shows y behind it as far as it reaches.
-    let w = before(my.z, mx.z) * cone(d, reachY) + before(mx.z, my.z) * cone(d, reachX) + cylinder(d, reachY) * cylinder(d, reachX) * 2.0;
-    weight += w;
-    sum += textureLoad(colour, y, 0) * w;${each(`
-    sumEmission += textureLoad(emission, y, 0) * w;`)}
+    let nearer = (mx.z - my.z) / max(u.soft * mx.z, 1e-6);
+    let level = clamp(1.0 - abs(nearer), 0.0, 1.0);
+    let ahead = (1.0 - level) * step(0.0, nearer) + level * clamp(reachY - reachX, 0.0, 1.0);
+    let cy = textureLoad(colour, y, 0);${each(`
+    let ey = textureLoad(emission, y, 0);`)}
+    let covers = ahead * spread(d, reachY) * spacing / (2.0 * reachY);
+    front += cy * covers;
+    cover += covers;
+    let seen = (1.0 - ahead) * spread(d, reachX);
+    behind += cy * seen;
+    behindWeight += seen;${each(`
+    frontEmission += ey * covers;
+    behindEmission += ey * seen;`)}
   }
-  textureStore(gathered, x, sum / weight);${each(`
-  textureStore(gatheredEmission, x, sumEmission / weight);`)}
+  // Light in front past full cover is its own average, covering all.
+  let laid = min(cover, 1.0) / max(cover, 1e-6);
+  textureStore(gathered, x, front * laid + behind / behindWeight * (1.0 - min(cover, 1.0)));${each(`
+  textureStore(gatheredEmission, x, frontEmission * laid + behindEmission / behindWeight * (1.0 - min(cover, 1.0)));`)}
 }`;
 }
 

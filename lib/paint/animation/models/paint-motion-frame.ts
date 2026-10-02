@@ -12,7 +12,7 @@ import type { StampGroupPlacement } from '#lib/paint/painting/models/stamp-group
 import { stampLiveGroupProblem, type StampGroupFrameState, type StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { CompiledStampGroup } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import { paintBoilEpochAt, paintLanePlayAt, paintNodeTimeAt, paintPlayClipTimeAt, sceneSeconds, type SceneSeconds } from './paint-clock.ts';
+import { paintBoilEpochAt, paintLanePlayAt, paintMoment, paintNodeTimeAt, paintPlayClipTimeAt, type PaintMoment } from './paint-clock.ts';
 import {
   paintPlacementIsRest, paintPlacementRounded, paintRatioSteps, paintWarpChainKey, paintWarpChainMap,
   type PaintDeform, type PaintPinMoved, type PaintWarpChain,
@@ -23,8 +23,8 @@ import { paintFlutterSpreadAt, paintPinClipMoveAt, paintPlaceClipAt, paintSwayAn
 import { PAINT_SIMILARITY_IDENTITY, paintPlacementOfSimilarity, paintSimilarityAfter, paintSimilarityOf } from './paint-similarity.ts';
 
 /** Each of `node`'s pins moved at `t`, rounded; pins at rest left out. */
-function pinsMovedAt(motion: PaintMotion, node: CompiledPaintNode, t: SceneSeconds): PaintPinMoved[] {
-  const time = paintNodeTimeAt(node.clock, t, motion.animationFps);
+function pinsMovedAt(motion: PaintMotion, node: CompiledPaintNode, t: PaintMoment): PaintPinMoved[] {
+  const time = paintNodeTimeAt(node.clock, t, motion.animationFps).at;
   return [...node.pins].flatMap(([name, { pin, lane }]) => {
     const play = paintLanePlayAt(lane, time);
     if (!play) return [];
@@ -34,8 +34,8 @@ function pinsMovedAt(motion: PaintMotion, node: CompiledPaintNode, t: SceneSecon
 }
 
 /** `node`'s own bend at `t` as data, its pins left out for a live node's own level; empty when nothing bends. */
-function ownDeformsAt(motion: PaintMotion, node: CompiledPaintNode, t: SceneSeconds, withPins: boolean): PaintDeform[] {
-  const fps = motion.animationFps, time = paintNodeTimeAt(node.clock, t, fps), owner = node.id;
+function ownDeformsAt(motion: PaintMotion, node: CompiledPaintNode, t: PaintMoment, withPins: boolean): PaintDeform[] {
+  const fps = motion.animationFps, time = paintNodeTimeAt(node.clock, t, fps).at, owner = node.id;
   const deforms: PaintDeform[] = [];
   const moves = withPins ? pinsMovedAt(motion, node, t) : [];
   if (moves.length) deforms.push({ owner, kind: 'pins', moves });
@@ -54,17 +54,17 @@ function ownDeformsAt(motion: PaintMotion, node: CompiledPaintNode, t: SceneSeco
 }
 
 /** `node`'s own placement at `t` about its pivot, rounded; null at rest or when nothing places it. */
-function ownPlacementAt(motion: PaintMotion, node: CompiledPaintNode, t: SceneSeconds): PaintDeform | null {
-  const play = paintLanePlayAt(node.place, paintNodeTimeAt(node.clock, t, motion.animationFps));
+function ownPlacementAt(motion: PaintMotion, node: CompiledPaintNode, t: PaintMoment): PaintDeform | null {
+  const play = paintLanePlayAt(node.place, paintNodeTimeAt(node.clock, t, motion.animationFps).at);
   if (!play) return null;
   const placement = paintPlacementRounded(paintPlaceClipAt(play.clip, paintPlayClipTimeAt(play.clock, t, motion.animationFps)));
   return paintPlacementIsRest(placement) ? null : { owner: node.id, kind: 'place', placement, pivot: node.pivot };
 }
 
-/** `node`'s boil epoch at `t`, on its own time: 0 unless it boils. */
-function epochAt(motion: PaintMotion, node: CompiledPaintNode, t: SceneSeconds): number {
+/** `node`'s boil epoch at `t`, on its own time: 0 unless it boils. A boil is held through its frame, as a hold is. */
+function epochAt(motion: PaintMotion, node: CompiledPaintNode, t: PaintMoment): number {
   if (node.marks.kind !== 'wobble' && node.marks.kind !== 'reseed') return 0;
-  return paintBoilEpochAt(paintNodeTimeAt(node.clock, t, motion.animationFps), node.marks.every, motion.animationFps);
+  return paintBoilEpochAt(paintNodeTimeAt(node.clock, t, motion.animationFps).frame, node.marks.every, motion.animationFps);
 }
 
 /** Rigid placements, innermost first, as one placement about `pivot`: one already about it is handed on as it is. */
@@ -74,7 +74,7 @@ function composedPlacement(places: readonly Extract<PaintDeform, { kind: 'place'
 }
 
 /** Where `node`'s paint goes at `t`: the warp chain (up to its outermost bend) and the rigid lay after it, if any. */
-export function paintNodeWarpAt(motion: PaintMotion, node: CompiledPaintNode, t: SceneSeconds): { warp: PaintWarpChain; lay: StampGroupPlacement | null } {
+export function paintNodeWarpAt(motion: PaintMotion, node: CompiledPaintNode, t: PaintMoment): { warp: PaintWarpChain; lay: StampGroupPlacement | null } {
   const epoch = node.marks.kind === 'wobble' ? epochAt(motion, node, t) : 0;
   const steps: PaintDeform[] = node.marks.kind === 'wobble' && epoch > 0 ? [{ owner: node.id, kind: 'wobble', seed: node.id, epoch, wobble: node.marks.wobble }] : [];
   for (const [depth, id] of node.levels.entries()) {
@@ -89,7 +89,7 @@ export function paintNodeWarpAt(motion: PaintMotion, node: CompiledPaintNode, t:
 }
 
 /** A live node's marks at `t` from its poser, kept by pose key; null at rest, where it draws as written. */
-function liveMarksAt(motion: PaintMotion, node: CompiledPaintNode, t: SceneSeconds): { marks: CompiledStampGroup; key: string } | null {
+function liveMarksAt(motion: PaintMotion, node: CompiledPaintNode, t: PaintMoment): { marks: CompiledStampGroup; key: string } | null {
   if (node.marks.kind !== 'live') return null;
   const moves = pinsMovedAt(motion, node, t);
   if (!moves.length) return null;
@@ -109,7 +109,7 @@ function liveMarksAt(motion: PaintMotion, node: CompiledPaintNode, t: SceneSecon
 }
 
 /** `node`'s group's frame at `t`. */
-function nodeFrameAt(motion: PaintMotion, node: CompiledPaintNode, t: SceneSeconds): StampGroupFrameState {
+function nodeFrameAt(motion: PaintMotion, node: CompiledPaintNode, t: PaintMoment): StampGroupFrameState {
   const { warp, lay } = paintNodeWarpAt(motion, node, t), live = liveMarksAt(motion, node, t);
   const epoch = node.marks.kind === 'reseed' ? epochAt(motion, node, t) : 0;
   const laid = lay && !paintPlacementIsRest(lay) ? lay : null;
@@ -122,17 +122,17 @@ function nodeFrameAt(motion: PaintMotion, node: CompiledPaintNode, t: SceneSecon
 }
 
 /**
- * Every group's frame state at scene time `t` that differs from as painted (moved, bent, re-placed or glowing): a
- * pure function of the motion and `t`.
+ * Every group's frame state at scene second `at` of the frame shown at `frame` (paintMoment) that differs from as
+ * painted (moved, bent, re-placed or glowing): a pure function of the motion and the moment.
  */
-export function paintMotionFrameAt(motion: PaintMotion, t: number): StampPaintFrameState {
+export function paintMotionFrameAt(motion: PaintMotion, at: number, frame = at): StampPaintFrameState {
   const { last } = motion.remembered;
-  if (last?.t === t) return last.state;
+  if (last?.at === at && last.frame === frame) return last.state;
   const own = new Map<string, StampGroupFrameState>();
   for (const node of motion.nodes.values()) {
-    const groupState = nodeFrameAt(motion, node, sceneSeconds(t));
+    const groupState = nodeFrameAt(motion, node, paintMoment(at, frame));
     if (groupState.lay || groupState.warp || groupState.marks || groupState.glow) own.set(node.id, groupState);
   }
-  motion.remembered.last = { t, state: own };
+  motion.remembered.last = { at, frame, state: own };
   return own;
 }

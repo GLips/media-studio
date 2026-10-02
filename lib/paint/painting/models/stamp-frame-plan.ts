@@ -4,7 +4,7 @@
 // frame held on twos draws the film it drew before.
 
 import type { StampGroupPlacement } from './stamp-group-motion.ts';
-import { STAMP_WARP_CELL, type StampWarpMap } from './stamp-group-warp.ts';
+import { STAMP_WARP_CELL, stampPlacementWarpMap, type StampWarpMap } from './stamp-group-warp.ts';
 import {
   stampLiveGroupProblem, stampPaintFrameStateAt, type StampGroupFrameState, type StampGroupGlow, type StampGroupLay, type StampGroupMarks, type StampPaintFrameState,
 } from './stamp-paint-frame-state.ts';
@@ -83,5 +83,46 @@ export function stampFramePlanExposed(
   return painting.groups.map((group) => {
     const { marks, paintAt } = paint.get(group.id) ?? {};
     return stampGroupFrame(group, { ...seen.get(group.id), marks, paintAt });
+  });
+}
+
+/** Where `frame` lays a point of its group's layer (rest space) in the scene: its warp, then its placement; null where it lies as painted. */
+export function stampGroupSceneMap({ lay, warp }: Pick<StampGroupFrame, 'lay' | 'warp'>): StampWarpMap | null {
+  const placed = lay && stampPlacementWarpMap(lay.placement, lay.pivot);
+  if (!warp) return placed;
+  return placed ? (rest) => placed(warp.map(rest)) : warp.map;
+}
+
+/**
+ * A group's travel over a frame's shutter: `travel` takes a point of its layer to how far it moves, scene px, where
+ * the shutter closes less where it opens. `key` names it, as a picture's cache key needs.
+ */
+export type StampGroupTravel = { readonly travel: StampWarpMap; readonly key: string };
+
+/** A moment a frame's groups are posed at: `at` seconds, each group in `state` (stampPaintFrameStateAt). */
+export type StampPaintMoment = { readonly at: number; readonly state?: StampPaintFrameState };
+
+const groupPoseKey = ({ lay, warp }: StampGroupFrame) => JSON.stringify([lay, warp && [warp.key, warp.cell]]);
+
+/**
+ * Each of `painting`'s groups' travel over a shutter opening at `open` and closing at `close`, null for one posed
+ * alike at both. Its paint is held at `held`, as a shutter's paint doesn't change (stampFramePlanExposed).
+ */
+export function stampFramePlanTravel(
+  painting: CompiledStampPaint, held: { t: number; state?: StampPaintFrameState }, { open, close }: { open: StampPaintMoment; close: StampPaintMoment },
+): readonly (StampGroupTravel | null)[] {
+  const opened = stampFramePlanExposed(painting, held, { t: open.at, state: open.state });
+  const closed = stampFramePlanExposed(painting, held, { t: close.at, state: close.state });
+  return opened.map((from, index) => {
+    const to = closed[index], key = `${groupPoseKey(from)}>${groupPoseKey(to)}`;
+    if (groupPoseKey(from) === groupPoseKey(to)) return null;
+    const mapFrom = stampGroupSceneMap(from), mapTo = stampGroupSceneMap(to);
+    return {
+      key,
+      travel: (rest) => {
+        const a = mapFrom?.(rest) ?? rest, b = mapTo?.(rest) ?? rest;
+        return { x: b.x - a.x, y: b.y - a.y };
+      },
+    };
   });
 }

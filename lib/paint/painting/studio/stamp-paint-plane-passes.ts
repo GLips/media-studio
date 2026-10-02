@@ -109,20 +109,23 @@ export const STAMP_PLANE_PICTURE = gpuUniformLayout('PlanePicture', [['origin', 
 
 /**
  * A picture's array layers (lens-passes.ts): its colour (0), premultiplied, then for `film` (a clear plane's) its
- * taken share (1 − what it lets through, per channel), then its emission when it glows. A `paper` picture is laid
- * over by its alpha, as a three render is.
+ * taken share (1 − what it lets through, per channel), then its emission when it glows, then its groups' own motion
+ * when one travels over the shutter. A `paper` picture is laid over by its alpha, as a three render is.
  */
 export type StampPlanePictureLayers =
-  | { readonly kind: 'paper'; readonly taken: null; readonly emission: 1 | null; readonly motion: null }
-  | { readonly kind: 'film'; readonly taken: 1; readonly emission: 2 | null; readonly motion: null };
+  | { readonly kind: 'paper'; readonly taken: null; readonly emission: number | null; readonly motion: number | null }
+  | { readonly kind: 'film'; readonly taken: 1; readonly emission: number | null; readonly motion: number | null };
 
-export const stampPlanePictureLayers = (kind: StampPlanePictureLayers['kind'], emits: boolean): StampPlanePictureLayers =>
-  (kind === 'film' ? { kind, taken: 1, emission: emits ? 2 : null, motion: null } : { kind, taken: null, emission: emits ? 1 : null, motion: null });
+export function stampPlanePictureLayers(kind: StampPlanePictureLayers['kind'], { emits, travels }: { emits: boolean; travels: boolean }): StampPlanePictureLayers {
+  const emission = kind === 'film' ? 2 : 1, motion = emission + Number(emits);
+  const extra = { emission: emits ? emission : null, motion: travels ? motion : null };
+  return kind === 'film' ? { kind, taken: 1, ...extra } : { kind, taken: null, ...extra };
+}
 
-export const stampPlanePictureLayerCount = (layers: StampPlanePictureLayers) => 1 + Number(layers.kind === 'film') + Number(layers.emission !== null);
+export const stampPlanePictureLayerCount = (layers: StampPlanePictureLayers) => 1 + Number(layers.kind === 'film') + Number(layers.emission !== null) + Number(layers.motion !== null);
 
 /** A pipeline key naming `layers`' shape. */
-export const stampPlanePictureLayersKey = (layers: StampPlanePictureLayers) => `${layers.kind}|${layers.emission !== null}`;
+export const stampPlanePictureLayersKey = (layers: StampPlanePictureLayers) => `${layers.kind}|${layers.emission !== null}|${layers.motion !== null}`;
 
 /** The painting's linear light over `extent` stage texels from `origin`, written from the target's first texel into array layer `layer`. */
 export const STAMP_PLANE_LIGHT = gpuUniformLayout('PlaneLight', [['origin', 'vec2u'], ['extent', 'vec2u'], ['layer', 'u32']]);
@@ -146,9 +149,9 @@ ${compositor.output}
 }
 
 /**
- * The picture pass's WGSL: binds its uniform (0), the painting (1), its emission (2), the picture (3) and, for a
- * film, the measuring backings' light (4: white's at layer 0, black's at 1, one texel each). A film's painting is its
- * lay on black, and its picture's colour layer holds its light on white, read and replaced here.
+ * The picture pass's WGSL: binds its uniform (0), the painting (1), its emission (2), the picture (3), for a film
+ * the measuring backings' light (4: white's at layer 0, black's at 1, a texel each), and its groups' motion (5). A
+ * film's painting is its lay on black; its picture's colour layer holds its light on white, read and replaced.
  */
 export function stampPlanePictureWgsl(compositor: StampPaintCompositor, layers: StampPlanePictureLayers, workgroup: number) {
   // Light over backing b taken as C + T·b per channel: the two lays give T = ΔL / Δbacking, and C what black leaves
@@ -168,6 +171,7 @@ ${STAMP_PLANE_PICTURE.wgsl}
 ${layers.emission !== null ? '@group(0) @binding(2) var emission: texture_2d<f32>;' : ''}
 @group(0) @binding(3) var picture: texture_storage_2d_array<rgba16float, ${film ? 'read_write' : 'write'}>;
 ${film ? '@group(0) @binding(4) var backingLight: texture_2d_array<f32>;' : ''}
+${layers.motion !== null ? '@group(0) @binding(5) var motion: texture_2d<f32>;' : ''}
 ${compositor.output}
 @compute @workgroup_size(${workgroup}, ${workgroup}) fn planePicture(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
@@ -175,6 +179,7 @@ ${compositor.output}
   let light = linearLight(texel);${film || `
   textureStore(picture, id.xy, 0u, vec4f(light, 1.0));`}${layers.emission !== null ? `
   // The glow source weighed each group's light by its cover already.
-  textureStore(picture, id.xy, ${layers.emission}u, vec4f(textureLoad(emission, texel, 0).rgb, 0.0));` : ''}
+  textureStore(picture, id.xy, ${layers.emission}u, vec4f(textureLoad(emission, texel, 0).rgb, 0.0));` : ''}${layers.motion !== null ? `
+  textureStore(picture, id.xy, ${layers.motion}u, textureLoad(motion, texel, 0));` : ''}
 }`;
 }

@@ -7,7 +7,7 @@ import { STAMP_WARP_CELL, stampWarpCells, stampWarpTriangles } from '#lib/paint/
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
-import { paintAnimationFrameStart, type AnimationFrame } from './paint-clock.ts';
+import { paintAnimationFrameStart, paintMoment, type AnimationFrame } from './paint-clock.ts';
 import { paintDeformMap, paintDeformShifts, paintWarpChainKey, paintWarpChainMap, type PaintWarpChain } from './paint-deform.ts';
 import { compilePaintMotion, type PaintMotion, type PaintMotionNode, type PaintMotionPlay } from './paint-motion-compile.ts';
 import { paintNodeWarpAt } from './paint-motion-frame.ts';
@@ -56,7 +56,7 @@ export function paintMotionFolds(motion: PaintMotion, { from, to }: { from: numb
     const checked = new Set<string>();
     for (let frame = Math.ceil(from * fps - 1e-6); frame / fps <= to; frame++) {
       // SAFETY: a whole frame number on the animation grid.
-      const t = paintAnimationFrameStart(frame as AnimationFrame, fps), { warp } = paintNodeWarpAt(motion, node, t), key = paintWarpChainKey(warp);
+      const t = paintAnimationFrameStart(frame as AnimationFrame, fps), { warp } = paintNodeWarpAt(motion, node, paintMoment(t)), key = paintWarpChainKey(warp);
       if (!warp.length || checked.has(key)) continue;
       checked.add(key);
       const { at, det } = paintWarpWorstFold(paintWarpChainMap(warp), node.box);

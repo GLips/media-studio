@@ -3,7 +3,7 @@
 
 import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampLensFrame } from '#lib/paint/painting/models/stamp-plane.ts';
-import { createStampPaintRenderer, type StampPaintRenderer, type StampPaintRendererOptions } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
+import { createStampPaintRenderer, type StampPaintFrame, type StampPaintRenderer, type StampPaintRendererOptions } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
 import { createStampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { createStampPaintSurface, type StampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 import type { StampGateImage, StampGatePainting } from '../models/stamp-gate-paintings.ts';
@@ -53,8 +53,15 @@ export const drawnImages = (gate: StampGatePainting) => {
 };
 
 /** `renderer`'s frame at `t` in frame state `state`, through `lens` if given, once the GPU has drawn it. */
-export async function drawn(renderer: StampPaintRenderer, frame: () => Uint8ClampedArray, t: number, state?: StampPaintFrameState, lens?: StampLensFrame) {
-  await renderer.draw({ t, state, lens });
+export const drawn = (renderer: StampPaintRenderer, frame: () => Uint8ClampedArray, t: number, state?: StampPaintFrameState, lens?: StampLensFrame) =>
+  drawnExposures(renderer, frame, [{ t, state, lens }]);
+
+/** `renderer`'s frame drawn as `draws` say, in turn (a reference frame's exposures, the last developing it), once the GPU has drawn it. */
+export async function drawnExposures(renderer: StampPaintRenderer, frame: () => Uint8ClampedArray, draws: readonly StampPaintFrame[]) {
+  await draws.reduce(async (before, draw) => {
+    await before;
+    await renderer.draw(draw);
+  }, Promise.resolve());
   await renderer.finish();
   return frame();
 }

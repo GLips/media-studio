@@ -12,7 +12,7 @@ import { shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { StampLensFrame, StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import { paintLanePlayAt, paintPlayClipTimeAt, sceneSeconds, type PaintLane, type PaintPlayClock } from './paint-clock.ts';
+import { paintLanePlayAt, paintMoment, paintPlayClipTimeAt, type PaintLane, type PaintMoment, type PaintPlayClock } from './paint-clock.ts';
 import { paintPxRounded, paintRatioRounded } from './paint-deform.ts';
 import { paintKeySpanAt, type PaintEase } from './paint-motion-clips.ts';
 import type { PaintSimilarity } from './paint-similarity.ts';
@@ -142,16 +142,16 @@ export function paintCameraFocusClipAt(clip: PaintCameraFocusClip, time: number)
   return { focus: paintRatioRounded(between(a.focus, b.focus, share)), aperture: paintPxRounded(between(a.aperture, b.aperture, share)) };
 }
 
-/** Where the camera is at scene time `t`: before the first move starts, that move's first key's pose; at rest with no move. */
-export function paintCameraPoseAt(camera: PaintCamera, t: number): PaintCameraPose {
-  const play = paintLanePlayAt(camera.move, sceneSeconds(t));
-  return play ? paintCameraMoveAt(play.clip, paintPlayClipTimeAt(play.clock, sceneSeconds(t), camera.animationFps)) : PAINT_CAMERA_REST;
+/** Where the camera is at moment `t` (paintMoment): before the first move starts, that move's first key's pose; at rest with no move. */
+export function paintCameraPoseAt(camera: PaintCamera, t: PaintMoment): PaintCameraPose {
+  const play = paintLanePlayAt(camera.move, t.at);
+  return play ? paintCameraMoveAt(play.clip, paintPlayClipTimeAt(play.clock, t, camera.animationFps)) : PAINT_CAMERA_REST;
 }
 
-/** The camera's focus at scene time `t`: before the first focus play starts, its first key's; null, every plane sharp, with none. */
-export function paintCameraFocusAt(camera: PaintCamera, t: number): PaintCameraFocus | null {
-  const play = paintLanePlayAt(camera.focus, sceneSeconds(t));
-  return play ? paintCameraFocusClipAt(play.clip, paintPlayClipTimeAt(play.clock, sceneSeconds(t), camera.animationFps)) : null;
+/** The camera's focus at moment `t`: before the first focus play starts, its first key's; null, every plane sharp, with none. */
+export function paintCameraFocusAt(camera: PaintCamera, t: PaintMoment): PaintCameraFocus | null {
+  const play = paintLanePlayAt(camera.focus, t.at);
+  return play ? paintCameraFocusClipAt(play.clip, paintPlayClipTimeAt(play.clock, t, camera.animationFps)) : null;
 }
 
 /**
@@ -177,16 +177,18 @@ export function paintPlaneDefocus({ focus, aperture }: PaintCameraFocus, dolly: 
 }
 
 /**
- * What the camera does at scene time `t`: each plane's look (its similarity, and its defocus with a focus play) and
- * the lens's bloom; from `aperture`'s point on the lens (a reference exposure), slid instead, and sharp. Throws on a
- * plane or the focus at or behind the camera: a build can't hold every curve between its checked times.
+ * What the camera does in the frame at `t`: each plane's look (its similarity, and defocus with a focus play) and the
+ * lens's bloom; for a reference `exposure`, as at its moment from its aperture point, slid and sharp. Throws on a
+ * plane or the focus at or behind the camera: a build can't hold every curve between its checks.
  */
-export function paintCameraLensAt(camera: PaintCamera, t: number, aperture: LensExposure['aperture'] | null = null): StampLensFrame {
-  const pose = paintCameraPoseAt(camera, t), lens = paintCameraFocusAt(camera, t), centre = paintStageCentre(camera.stage);
-  if (lens && lens.focus - pose.dolly <= PAINT_CAMERA_NEAREST) throw new Error(`paint camera: at ${t}s the camera focuses at depth ${lens.focus}, at or behind itself (dollied ${pose.dolly})`);
+export function paintCameraLensAt(camera: PaintCamera, t: number, exposure: { at: number; aperture: LensExposure['aperture'] } | null = null): StampLensFrame {
+  const aperture = exposure?.aperture, seenAt = paintMoment(exposure?.at ?? t, t);
+  const pose = paintCameraPoseAt(camera, seenAt), lens = paintCameraFocusAt(camera, seenAt), centre = paintStageCentre(camera.stage);
+  if (lens && lens.focus - pose.dolly <= PAINT_CAMERA_NEAREST) throw new Error(`paint camera: at ${seenAt.at}s the camera focuses at depth ${lens.focus}, at or behind itself (dollied ${pose.dolly})`);
   // A fast frame is gathered along its motion over the shutter; an exposure is its own moment.
   const { shutter } = camera.lens, moving = !aperture && shutter > 0;
-  const opens = shutterOpensAt(t, shutter), openPose = moving ? paintCameraPoseAt(camera, opens) : pose, closePose = moving ? paintCameraPoseAt(camera, opens + shutter) : pose;
+  const opens = shutterOpensAt(t, shutter);
+  const openPose = moving ? paintCameraPoseAt(camera, paintMoment(opens, t)) : pose, closePose = moving ? paintCameraPoseAt(camera, paintMoment(opens + shutter, t)) : pose;
   const planes = new Map<string, StampPlaneLook>();
   for (const { id, depth } of camera.planes) {
     const nearest = Math.max(pose.dolly, openPose.dolly, closePose.dolly);

@@ -14,17 +14,17 @@ import { fullFrameRect } from '#lib/picture/frame/models/frame.ts';
 import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { useFrameProfile, type FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
-import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import type { StampPaintFrameAt, StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { lensExposures } from '#lib/picture/lens/models/lens-exposures.ts';
 import { LENS_REFERENCE_EXPOSURES, type LensMode } from '#lib/picture/lens/models/lens-mode.ts';
-import { shutterMomentAt } from '#lib/picture/lens/models/lens-shutter.ts';
+import { shutterMomentAt, shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import { useLensMode } from '#lib/picture/lens/studio/lens-mode-context.ts';
 import { paintCameraLensAt, type PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
 import type { StampPaintingCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
 import { createStampPaintGpuOwner, type StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
-import { createStampPaintRenderer, type StampPaintExposure, type StampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
+import { createStampPaintRenderer, type StampPaintExposure, type StampPaintRenderer, type StampPaintShutter } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
 import type { StampLensFrame } from '#lib/paint/painting/models/stamp-plane.ts';
 import { createStampPaintSurface, type StampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 import { loadPaintedThree, type PaintedThree, type PaintedThreeExposure, type PaintedThreeLoaded } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
@@ -39,7 +39,7 @@ import { stampPaintAssetUrl } from './stamp-paint-styles.ts';
 export function StampPainting({ painting, t, frameAt, camera: painted, three, width, height, box: given }: {
   painting: CompiledStampPaint;
   t: number;
-  frameAt?: (t: number) => StampPaintFrameState;
+  frameAt?: StampPaintFrameAt;
   camera?: StampPaintingCamera;
   three?: PaintedThree;
   width?: number;
@@ -150,19 +150,26 @@ type StampPaintingFrame = {
   t: number;
   state?: StampPaintFrameState;
   lens?: StampLensFrame;
+  shutter?: StampPaintShutter;
   exposures: readonly { exposure: StampPaintExposure; lens: StampLensFrame; three: PaintedThreeExposure }[] | null;
 };
 
 /**
- * The frame at `t`: through `camera`'s lens once, or in the reference mode, its exposures over the camera's shutter
- * (centred on `t`) and aperture. A painting with no camera has no lens to expose through, and draws once either way.
+ * The frame at `t`: through `camera`'s lens once, its groups posed as its shutter opens and closes too when it moves,
+ * or in the reference mode, its exposures over the shutter (centred on `t`) and aperture. A painting with no camera
+ * has no lens to expose through, and draws once either way.
  */
-function stampPaintingFrame(t: number, frameAt: ((t: number) => StampPaintFrameState) | undefined, camera: PaintCamera | undefined, mode: LensMode): StampPaintingFrame {
-  const state = frameAt?.(t);
-  if (!camera || mode === 'fast') return { t, state, lens: camera && paintCameraLensAt(camera, t), exposures: null };
+function stampPaintingFrame(t: number, frameAt: StampPaintFrameAt | undefined, camera: PaintCamera | undefined, mode: LensMode): StampPaintingFrame {
+  const state = frameAt?.(t, t);
+  if (!camera) return { t, state, exposures: null };
+  if (mode === 'fast') {
+    const lens = paintCameraLensAt(camera, t), open = shutterOpensAt(t, camera.lens.shutter), close = open + camera.lens.shutter;
+    const shutter = lens.moving ? { open: { at: open, state: frameAt?.(open, t) }, close: { at: close, state: frameAt?.(close, t) } } : undefined;
+    return { t, state, lens, shutter, exposures: null };
+  }
   const exposures = lensExposures(LENS_REFERENCE_EXPOSURES).map(({ index, count, shutter, aperture }) => {
     const at = shutterMomentAt(t, camera.lens.shutter, shutter);
-    return { exposure: { index, count, at, state: frameAt?.(at) }, lens: paintCameraLensAt(camera, at, aperture), three: { index, at, aperture } };
+    return { exposure: { index, count, at, state: frameAt?.(at, t) }, lens: paintCameraLensAt(camera, t, { at, aperture }), three: { index, at, aperture } };
   });
   return { t, state, exposures };
 }
@@ -243,11 +250,11 @@ function loadStampPaintingScene(owner: StampPaintGpuOwner, surface: StampPaintSu
   let disposing: Promise<void> | null = null;
   return {
     ready,
-    draw: ({ t, state, lens, exposures }, { untilGpuDone }) => enqueue(async () => {
+    draw: ({ t, state, lens, shutter, exposures }, { untilGpuDone }) => enqueue(async () => {
       await ready;
       if (!exposures) {
         await madeThree?.render(t);
-        await made!.draw({ t, state, lens });
+        await made!.draw({ t, state, lens, shutter });
       }
       // One after another: each exposure's three.js render fills the textures the one before it read.
       await (exposures ?? []).reduce(async (before, { exposure, lens: seen, three: threeExposure }) => {

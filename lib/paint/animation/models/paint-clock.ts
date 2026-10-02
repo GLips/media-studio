@@ -131,15 +131,26 @@ export function paintPlayClipSceneTimes(clock: CompiledPaintPlayClock, clipTimes
   return clipTimes.filter((k) => k >= 0 && k <= period).map((k) => sceneSeconds(clock.start + k / rate)).filter((t) => t <= clock.until);
 }
 
-/** The time a scene step hands on. */
-function sceneStepTime(step: PaintSceneStep, time: SceneSeconds, animationFps: number): SceneSeconds {
-  if (step.kind === 'freeze') return step.time;
-  const frame = paintAnimationFrameOf(time, animationFps);
-  return paintAnimationFrameStart(animationFrame(Math.floor(frame / step.frames) * step.frames), animationFps);
+/**
+ * A moment an animation is read at: `at`, the scene second an exposure sees, within the frame shown at `frame`. A
+ * hold resolves at the frame, so a drawing is held through its frame's shutter, never double-exposed or smeared into
+ * the next one; what no hold steps moves through it, read at `at`.
+ */
+export type PaintMoment = { readonly at: SceneSeconds; readonly frame: SceneSeconds };
+
+/** The moment `at` scene seconds into the frame shown at `frame` (the frame's own moment when left out). */
+export const paintMoment = (at: number, frame = at): PaintMoment => ({ at: sceneSeconds(at), frame: sceneSeconds(frame) });
+
+/** The moment a scene step hands on. */
+function sceneStepTime(step: PaintSceneStep, time: PaintMoment, animationFps: number): PaintMoment {
+  if (step.kind === 'freeze') return { at: step.time, frame: step.time };
+  const frame = paintAnimationFrameOf(time.frame, animationFps);
+  const held = paintAnimationFrameStart(animationFrame(Math.floor(frame / step.frames) * step.frames), animationFps);
+  return { at: held, frame: held };
 }
 
-/** A node's time at scene time `t`: through each of its steps, outermost first. */
-export const paintNodeTimeAt = (steps: readonly PaintSceneStep[], t: SceneSeconds, animationFps: number) =>
+/** A node's time at moment `t`: through each of its steps, outermost first. */
+export const paintNodeTimeAt = (steps: readonly PaintSceneStep[], t: PaintMoment, animationFps: number) =>
   steps.reduce((time, step) => sceneStepTime(step, time, animationFps), t);
 
 /**
@@ -160,11 +171,12 @@ function clipStepTime(step: PaintClipStep, time: ClipSeconds): ClipSeconds {
 }
 
 /**
- * The clip time `clock` hands its clip at scene time `t`, through its scene steps (its node's holds and its own):
- * past `until`, the time shown at `until`. Before its start it reads below 0, which a clip reads as 0.
+ * The clip time `clock` hands its clip at moment `t`, through its scene steps (its node's holds and its own): past
+ * `until`, the time shown at `until`. Before its start it reads below 0, which a clip reads as 0.
  */
-export function paintPlayClipTimeAt(clock: CompiledPaintPlayClock, t: SceneSeconds, animationFps: number): ClipSeconds {
-  const held = paintNodeTimeAt(clock.scene, sceneSeconds(Math.min(t, clock.until)), animationFps);
+export function paintPlayClipTimeAt(clock: CompiledPaintPlayClock, t: PaintMoment, animationFps: number): ClipSeconds {
+  const until = (time: SceneSeconds) => sceneSeconds(Math.min(time, clock.until));
+  const held = paintNodeTimeAt(clock.scene, { at: until(t.at), frame: until(t.frame) }, animationFps).at;
   return clock.clip.reduce((time, step) => clipStepTime(step, time), clipSeconds(held - clock.start));
 }
 
