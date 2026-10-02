@@ -18,21 +18,23 @@ export type StampPlaneSource = { readonly kind: 'painted'; readonly groups: read
 /** A plane `depth` units from the camera at rest (above 0; a camera's pan is measured at 1). */
 export type StampPlane = { readonly id: string; readonly depth: number; readonly source: StampPlaneSource };
 
-/** The back checked: paper to the stage's edge, its groups' indices in the painting, in its order. */
-export type CompiledStampBackPlane = { readonly id: string; readonly depth: number; readonly groups: readonly number[] };
-/** A nearer painted plane checked: clear film, its groups' indices in the painting, in its order. */
-export type CompiledStampClearPlane = { readonly id: string; readonly depth: number; readonly kind: 'clear'; readonly groups: readonly number[] };
-export type CompiledStampThreePlane = { readonly id: string; readonly depth: number; readonly kind: 'three' };
-export type CompiledStampNearerPlane = CompiledStampClearPlane | CompiledStampThreePlane;
+/**
+ * A plane as the renderer lays it: a `picture` (painted groups, on paper for the farthest and on clear film nearer) or
+ * a `three` render. A camera's planes are these (paint-camera.ts), so the renderer reads the camera's own list.
+ */
+export type StampScenePlane = { readonly id: string; readonly kind: 'picture' | 'three' };
 
-/** A scene's planes checked: the back, then the nearer ones farthest first, the order they're laid in. */
-export type CompiledStampPlanes = { readonly back: CompiledStampBackPlane; readonly nearer: readonly CompiledStampNearerPlane[] };
+/** Which of the painting's groups each picture plane shows, by plane id: their indices, in the painting's order. */
+export type StampPlaneGroups = ReadonlyMap<string, readonly number[]>;
+
+/** A scene's planes farthest first, the order they're laid in, and what each picture plane shows. */
+export type StampScenePlanes = { readonly planes: readonly StampScenePlane[]; readonly groups: StampPlaneGroups };
 
 /** The one plane a painting shown without a camera is: every group, on paper, at depth 1. */
 export const STAMP_SINGLE_PLANE_ID = 'painting';
 
-export const stampSinglePlane = (painting: CompiledStampPaint): CompiledStampPlanes =>
-  ({ back: { id: STAMP_SINGLE_PLANE_ID, depth: 1, groups: painting.groups.map((_, i) => i) }, nearer: [] });
+export const stampSinglePlane = (painting: CompiledStampPaint): StampScenePlanes =>
+  ({ planes: [{ id: STAMP_SINGLE_PLANE_ID, kind: 'picture' }], groups: new Map([[STAMP_SINGLE_PLANE_ID, painting.groups.map((_, i) => i)]]) });
 
 /** `planes`' ids and depths checked into `problems`: unique ids, depths above 0. */
 export function stampPlaneDepthProblems(planes: readonly { readonly id: string; readonly depth: number }[], problems: string[]): void {
@@ -44,40 +46,39 @@ export function stampPlaneDepthProblems(planes: readonly { readonly id: string; 
   }
 }
 
+/** A written plane checked: where it lies, and what it is. */
+export type StampDepthPlane = StampScenePlane & { readonly depth: number };
+
 /**
  * `planes` checked over `painting` into `problems`, ordered farthest first, ties as declared: unique ids, depths above
- * 0, every group on exactly one painted plane, and the farthest painted (a three source behind the back would never
- * show). Null when there's no back to build on; `problems` then says why.
+ * 0, every group on exactly one picture plane, and the farthest a picture (a three source behind the paper would never
+ * show). Null when there's no paper to build on; `problems` then says why.
  */
-export function compileStampPlanes(painting: CompiledStampPaint, planes: readonly StampPlane[], problems: string[]): CompiledStampPlanes | null {
-  const indexOf = new Map(painting.groups.map(({ id }, i) => [id, i])), onPlane = new Map<string, string>();
-  const compiled: (CompiledStampClearPlane | CompiledStampThreePlane)[] = [];
+export function stampScenePlanes(painting: CompiledStampPaint, planes: readonly StampPlane[], problems: string[]): { readonly planes: readonly StampDepthPlane[]; readonly groups: StampPlaneGroups } | null {
+  const indexOf = new Map(painting.groups.map(({ id }, i) => [id, i])), onPlane = new Map<string, string>(), groups = new Map<string, readonly number[]>();
   stampPlaneDepthProblems(planes, problems);
-  for (const { id, depth, source } of planes) {
-    if (source.kind === 'three') {
-      compiled.push({ id, depth, kind: 'three' });
-      continue;
-    }
+  for (const { id, source } of planes) {
+    if (source.kind === 'three') continue;
     for (const group of source.groups) {
       if (!indexOf.has(group)) problems.push(`plane ${id} shows ${group}, which isn't a group of the painting`);
       else if (onPlane.has(group)) problems.push(`${group} is on plane ${onPlane.get(group)} and plane ${id}; a group is on one plane`);
       else onPlane.set(group, id);
     }
-    const groups = source.groups.flatMap((group) => indexOf.get(group) ?? []).toSorted((a, b) => a - b);
-    compiled.push({ id, depth, kind: 'clear', groups });
+    groups.set(id, source.groups.flatMap((group) => indexOf.get(group) ?? []).toSorted((a, b) => a - b));
   }
   const missing = painting.groups.filter(({ id }) => !onPlane.has(id));
   if (missing.length) problems.push(`${missing.map(({ id }) => id).join(', ')} ${missing.length > 1 ? 'are' : 'is'} on no plane`);
-  const [back, ...nearer] = compiled.toSorted((a, b) => b.depth - a.depth);
+  const ordered = planes.toSorted((a, b) => b.depth - a.depth).map(({ id, depth, source }): StampDepthPlane => ({ id, depth, kind: source.kind === 'three' ? 'three' : 'picture' }));
+  const back = ordered[0];
   if (!back) {
     problems.push('a scene needs a plane');
     return null;
   }
-  if (back.kind !== 'clear') {
+  if (back.kind !== 'picture') {
     problems.push(`the farthest plane, ${back.id}, must be painted, on paper to the stage's edge`);
     return null;
   }
-  return { back: { id: back.id, depth: back.depth, groups: back.groups }, nearer };
+  return { planes: ordered, groups };
 }
 
 /**

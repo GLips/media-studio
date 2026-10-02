@@ -1,13 +1,18 @@
 // capture-plane.ts: the geometry and light of a capture card in space (reel/capture-plane.tsx draws it): its pose,
 // its axes in lens space and their projection, the key light's shade, sheen and rim, the hold drift, the shutter's
 // exposures and the lift's spring. Runs without a browser.
+//
+// The card is CSS 3D, so it's posed in CSS's lens space (x right, y down, z toward the viewer) and seen through a CSS
+// perspective; `capturePlaneCamera` is that perspective as the studio's shot camera, which does the projecting.
 
+import { Vector3 } from 'three';
+import type { Vector3Tuple } from 'three';
 import { scaleFor, screenPoint, view, type Shot, type View } from '#lib/picture/camera/models/camera.ts';
 import { centerOf, inflate, type Point, type Rect } from '#lib/picture/frame/models/geometry.ts';
 import { fullFrameRect, type FrameSize } from '#lib/picture/frame/models/frame.ts';
 import { clamp, lerp, perceptualSpring, type PerceptualSpring } from '#lib/picture/motion/models/motion.ts';
 import { hashRandom } from '#lib/picture/motion/models/random.ts';
-import { crossVec3, dotVec3, unitVec3, type Vec3 } from '#lib/picture/frame/models/vec3.ts';
+import { shotCameraProject, shotCameraRolled, type ShotCamera } from '#lib/picture/shot-camera/models/shot-camera.ts';
 
 /**
  * Where a card is and how it's turned. `x`, `y` are px from its view's box, `z` px toward the viewer. `rx` tips the top
@@ -66,10 +71,14 @@ export type PlaneLift = {
 
 // ---------- the card in space ----------
 
-export const along = (a: Vec3, b: Vec3, k: number): Vec3 => [a[0] + b[0] * k, a[1] + b[1] * k, a[2] + b[2] * k];
+/** A point or direction in lens space (CSS axes: x right, y down, z toward the viewer), px. */
+export type LensPoint = Readonly<Vector3Tuple>;
 
-/** A posed face in lens space (CSS axes: x right, y down, z toward the viewer): its centre and its x, y and out axes. */
-export type PlaneFrame = { c: Vec3; ex: Vec3; ey: Vec3; n: Vec3 };
+const lensVector = (p: LensPoint) => new Vector3(...p);
+const lensPointOf = (v: Vector3): LensPoint => [v.x, v.y, v.z];
+
+/** A posed face in lens space: its centre and its x, y and out axes. */
+export type PlaneFrame = { c: LensPoint; ex: LensPoint; ey: LensPoint; n: LensPoint };
 
 export function planeFrame(box: Rect, p: PlanePose): PlaneFrame {
   // CSS composes rotateX(rx) rotateY(ry) rotateZ(rz) as Rx·Ry·Rz on column vectors; its columns are the card's axes.
@@ -84,16 +93,37 @@ export function planeFrame(box: Rect, p: PlanePose): PlaneFrame {
 }
 
 /** The same card seen from behind, as its back face lays out: rotateY(180°) mirrors its x axis and its normal. */
-export const backOf = (f: PlaneFrame): PlaneFrame => ({ ...f, ex: along([0, 0, 0], f.ex, -1), n: along([0, 0, 0], f.n, -1) });
+export const backOf = (f: PlaneFrame): PlaneFrame => ({ ...f, ex: lensPointOf(lensVector(f.ex).negate()), n: lensPointOf(lensVector(f.n).negate()) });
 
-export const pointOn = (f: PlaneFrame, u: number, v: number, w = 0): Vec3 => along(along(along(f.c, f.ex, u), f.ey, v), f.n, w);
-// Past the lens a point has no image; the card should never get there, so hold it just in front.
-export const lensScale = (z: number, lens: number) => lens / Math.max(lens - z, 1);
-const project = (p: Vec3, lens: number, vp: Point): Point => {
-  const s = lensScale(p[2], lens);
-  return { x: vp.x + (p[0] - vp.x) * s, y: vp.y + (p[1] - vp.y) * s };
-};
-export const eyeOf = (lens: number, vp: Point): Vec3 => [vp.x, vp.y, lens];
+export const pointOn = (f: PlaneFrame, u: number, v: number, w = 0): LensPoint =>
+  lensPointOf(lensVector(f.c).addScaledVector(lensVector(f.ex), u).addScaledVector(lensVector(f.ey), v).addScaledVector(lensVector(f.n), w));
+
+/**
+ * The camera a CSS `perspective` of `lens` px over `vanish` is: a pinhole `lens` px in front of the vanishing point,
+ * its focal length `lens` px and its picture's centre on the vanishing point. Lens space's y runs down and three's
+ * world's up, so lens point (x, y, z) stands at (x, −y, z) in the camera's world.
+ */
+export function capturePlaneCamera(frame: FrameSize, lens: number, vanish: Point): ShotCamera {
+  const { width, height } = frame;
+  // CSS draws at any depth: `far` only has to lie past every card. `near` is where projectLensPoint holds a point.
+  return shotCameraRolled(
+    { frame: { width, height }, fov: (2 * Math.atan(height / 2 / lens) * 180) / Math.PI, near: 1, far: lens * 100, shift: { x: vanish.x - width / 2, y: vanish.y - height / 2 } },
+    { position: [vanish.x, -vanish.y, lens], rollZ: 0 },
+  );
+}
+
+/** Where the viewer's eye is in lens space: the camera's place. */
+export const capturePlaneEye = ({ position: [x, y, z] }: ShotCamera): LensPoint => [x, -y, z];
+
+/**
+ * A lens-space point's image in frame px, and its `scale`, frame px per lens px there. Past the lens a point has no
+ * image; the card should never get there, so it's held just in front, at the camera's near.
+ */
+export function projectLensPoint(camera: ShotCamera, [x, y, z]: LensPoint): { x: number; y: number; scale: number } {
+  // Never null: held at the near, the point is always in front of the camera.
+  const s = shotCameraProject(camera, [x, -y, Math.min(z, camera.position[2] - camera.near)])!;
+  return { x: s.x, y: s.y, scale: s.scale };
+}
 export const cornersOf = (box: Rect): [number, number][] => [[-box.w / 2, -box.h / 2], [box.w / 2, -box.h / 2], [box.w / 2, box.h / 2], [-box.w / 2, box.h / 2]];
 
 /** A lift's plate on the card: its centre from the card's (u, v), its size, how far it's up, and its scale. */
@@ -104,16 +134,16 @@ export type LiftedPlate = { u: number; v: number; w: number; h: number; z: numbe
  * layout px; 0 if none is in frame. Sampled on a grid, as a push-in's nearest corner is often off frame, from the
  * projection's local stretch, as perspective stretches a tilted card past its depth's scale.
  */
-export function framedStretch(f: PlaneFrame, box: Rect, lens: number, vanish: Point, lifted: LiftedPlate | null, { width, height }: FrameSize) {
-  const N = 16;
+export function framedStretch(f: PlaneFrame, box: Rect, camera: ShotCamera, lifted: LiftedPlate | null) {
+  const N = 16, { width, height } = camera.frame;
   let most = 0;
   const sample = (u: number, v: number, w: number, h: number, z: number, scale: number) => {
     for (let i = 0; i <= N; i++) {
       for (let j = 0; j <= N; j++) {
         const [pu, pv] = [u + w * (i / N - 0.5), v + h * (j / N - 0.5)];
-        const s = project(pointOn(f, pu, pv, z), lens, vanish);
+        const s = projectLensPoint(camera, pointOn(f, pu, pv, z));
         if (s.x < 0 || s.x > width || s.y < 0 || s.y > height) continue;
-        const du = project(pointOn(f, pu + 1, pv, z), lens, vanish), dv = project(pointOn(f, pu, pv + 1, z), lens, vanish);
+        const du = projectLensPoint(camera, pointOn(f, pu + 1, pv, z)), dv = projectLensPoint(camera, pointOn(f, pu, pv + 1, z));
         most = Math.max(most, largestStretch(du.x - s.x, dv.x - s.x, du.y - s.y, dv.y - s.y) * scale);
       }
     }
@@ -132,9 +162,9 @@ function largestStretch(a: number, b: number, c: number, d: number) {
 /** Where a card at a pose puts things, as CapturePlane draws it. */
 export type CapturePlaneProjection = {
   /** A page point of the view's capture, `w` px off the card's face toward the viewer, in lens space (CSS axes). */
-  pageInLens: (page: Point, w?: number) => Vec3;
+  pageInLens: (page: Point, w?: number) => LensPoint;
   /** A lens-space point's image in frame px. */
-  lensToScreen: (q: Vec3) => Point;
+  lensToScreen: (q: LensPoint) => Point;
   /** A page point on the card, `w` px off its face, in frame px. */
   pageToScreen: (page: Point, w?: number) => Point;
   /** The card's corners in frame px, clockwise from its top left while its face is toward the lens. */
@@ -155,7 +185,11 @@ export function capturePlaneProjection(view: View, pose: PlanePose, { lens = 110
     const s = screenPoint(view, page);
     return pointOn(f, s.x - box.x - box.w / 2, s.y - box.y - box.h / 2, w);
   };
-  const lensToScreen = (q: Vec3) => project(q, lens, vanish);
+  const camera = capturePlaneCamera(view.frameSize, lens, vanish);
+  const lensToScreen = (q: LensPoint) => {
+    const { x, y } = projectLensPoint(camera, q);
+    return { x, y };
+  };
   const corners = cornersOf(box).map(([u, v]) => lensToScreen(pointOn(f, u, v)));
   const covers = (p: Point) => {
     const sides = corners.map((a, i) => {
@@ -168,7 +202,7 @@ export function capturePlaneProjection(view: View, pose: PlanePose, { lens = 110
 }
 
 /** The key light's direction (toward it) from its angles: left/right of the lens axis, then above it. */
-export function lightDirection({ x, y }: { x: number; y: number } = { x: -25, y: 35 }): Vec3 {
+export function lightDirection({ x, y }: { x: number; y: number } = { x: -25, y: 35 }): LensPoint {
   const [az, el] = [(x * Math.PI) / 180, (y * Math.PI) / 180];
   return [Math.sin(az) * Math.cos(el), -Math.sin(el), Math.cos(az) * Math.cos(el)];
 }
@@ -211,7 +245,7 @@ export function planeTrail(v: View, now: PlanePose, before: PlanePose, lens: num
 // HyperFrames' rake: the sheen band runs at 105°, leaning like "/", and its strip light leans the same way in the world.
 const SHEEN_DEG = 105;
 const SHEEN_DIR = [Math.sin((SHEEN_DEG * Math.PI) / 180), -Math.cos((SHEEN_DEG * Math.PI) / 180)] as const;
-const SHEEN_STRIP: Vec3 = [-SHEEN_DIR[1], SHEEN_DIR[0], 0];
+const SHEEN_STRIP: LensPoint = [-SHEEN_DIR[1], SHEEN_DIR[0], 0];
 export const sheenLineLength = (w: number, h: number) => w * Math.abs(SHEEN_DIR[0]) + h * Math.abs(SHEEN_DIR[1]);
 
 /**
@@ -219,14 +253,13 @@ export const sheenLineLength = (w: number, h: number) => w * Math.abs(SHEEN_DIR[
  * ray, mirrored in the face, meets a long light's plane. It slides twice as fast as the face turns (3% of the card a
  * degree, as HyperFrames' yaw-driven sweep), and in from off the face, held `reach` px out.
  */
-function sheenOffset(f: PlaneFrame, w: number, h: number, eye: Vec3, light: Vec3, reach: number): number {
-  const across = unitVec3(crossVec3(light, SHEEN_STRIP));
-  const len = sheenLineLength(w, h);
+function sheenOffset(f: PlaneFrame, w: number, h: number, eye: Vector3, light: Vector3, reach: number): number {
+  const across = new Vector3().crossVectors(light, lensVector(SHEEN_STRIP)).normalize();
+  const n = lensVector(f.n), len = sheenLineLength(w, h);
   const angle = (u: number) => {
-    const p = pointOn(f, SHEEN_DIR[0] * u, SHEEN_DIR[1] * u);
-    const toEye = unitVec3(along(eye, p, -1));
-    const mirrored = along(along([0, 0, 0], f.n, 2 * dotVec3(f.n, toEye)), toEye, -1);
-    return Math.asin(clamp(dotVec3(mirrored, across), -1, 1));
+    const toEye = eye.clone().sub(lensVector(pointOn(f, SHEEN_DIR[0] * u, SHEEN_DIR[1] * u))).normalize();
+    const mirrored = n.clone().multiplyScalar(2 * n.dot(toEye)).sub(toEye);
+    return Math.asin(clamp(mirrored.dot(across), -1, 1));
   };
   const us = Array.from({ length: 9 }, (_, i) => -len / 2 + (len * i) / 8);
   const as = us.map(angle);
@@ -266,13 +299,13 @@ export type FaceLightSettings = { lens?: number; vanish?: Point; light?: { x: nu
 export function faceLight(f: PlaneFrame, box: Rect, props: FaceLightSettings, ss: number, frameSize: FrameSize): FaceLight {
   const { lens = 1100, vanish = centerOf(fullFrameRect(frameSize)), shade = 0.2, rim = 0.14, sheenWidth = 0.28 } = props;
   const len = sheenLineLength(box.w, box.h);
-  const light = lightDirection(props.light);
-  const eye = eyeOf(lens, vanish);
+  const light = lensVector(lightDirection(props.light)), n = lensVector(f.n);
+  const eye = lensVector(capturePlaneEye(capturePlaneCamera(frameSize, lens, vanish)));
   // Lambert against the card's rest: nothing at rest or turned toward the light, `shade` edge-on to it.
-  const dark = shade * clamp((light[2] - dotVec3(f.n, light)) / light[2]);
+  const dark = shade * clamp((light.z - n.dot(light)) / light.z);
   // The edge facing the light catches it, brighter as the face turns edge-on to the viewer (Fresnel).
-  const grazing = 1 - Math.abs(dotVec3(f.n, unitVec3(along(eye, f.c, -1))));
-  const [lx, ly] = [dotVec3(light, f.ex), dotVec3(light, f.ey)];
+  const grazing = 1 - Math.abs(n.dot(eye.clone().sub(lensVector(f.c)).normalize()));
+  const [lx, ly] = [light.dot(lensVector(f.ex)), light.dot(lensVector(f.ey))];
   const l = Math.hypot(lx, ly) || 1;
   const [ox, oy] = [(-lx / l) * 1.5 * ss, (-ly / l) * 1.5 * ss];
   const lit = Math.min(0.9, rim * (1 + 3 * grazing));

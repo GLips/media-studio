@@ -232,8 +232,8 @@ rule), [hud]'s numbers win.
 - Bar 6's sphere spins 115°/s and wagon-wheels at 30: halve it to ≈60°/s. The ticker kick at 30 reads as a jolt of
   0.7–1.0·A, a frame near 0, then two frames of ≈−0.2·A.
 - `ShutterBlur` trails (its samples span [t − span, t]) where the reference centres: shift t by half the span to
-  match. Around a `ThreeStage` every sample is a WebGL context, and Chrome drops contexts past ≈16: use the stage's
-  own `samples` and `shutter`.
+  match. Around a `ThreeStage` every sample is a stage with a GPU device of its own: use the stage's own `samples`
+  and `shutter`.
 
 ### Pieces
 

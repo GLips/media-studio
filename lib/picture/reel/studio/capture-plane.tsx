@@ -8,16 +8,17 @@
 
 import type { CSSProperties, ReactNode } from 'react';
 import { Img } from 'remotion';
+import { Vector3 } from 'three';
 import { rectToScreen, viewScale, type View } from '#lib/picture/camera/models/camera.ts';
 import { centerOf, inflate, type Point, type Rect } from '#lib/picture/frame/models/geometry.ts';
 import { fullFrameRect } from '#lib/picture/frame/models/frame.ts';
 import { clamp } from '#lib/picture/motion/models/motion.ts';
 import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 import { cameraMotionAttrs, motionEchoAttrs, pieceMotionAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
-import { dotVec3, type Vec3 } from '#lib/picture/frame/models/vec3.ts';
+import type { ShotCamera } from '#lib/picture/shot-camera/models/shot-camera.ts';
 import {
-  along, backOf, cornersOf, eyeOf, faceLight, framedStretch, lensScale, liftHeight, lightDirection, planeFrame, planeTrail, plateSheen, pointOn,
-  sheenGradient, sheenLineLength, withDrift, PLANE_REST_POSE, type LiftedPlate, type PlaneFrame, type PlaneLift, type PlanePose,
+  backOf, capturePlaneCamera, capturePlaneEye, cornersOf, faceLight, framedStretch, liftHeight, lightDirection, planeFrame, planeTrail, plateSheen, pointOn,
+  projectLensPoint, sheenGradient, sheenLineLength, withDrift, PLANE_REST_POSE, type LensPoint, type LiftedPlate, type PlaneFrame, type PlaneLift, type PlanePose,
 } from '../models/capture-plane.ts';
 
 type PoseInput = Partial<PlanePose> | ((t: number) => Partial<PlanePose>);
@@ -86,7 +87,7 @@ export function CapturePlane(props: CapturePlaneProps) {
   const trail = typeof pose === 'function' && shutter > 0 ? planeTrail(v, now, poseAt(t - 1 / fps), lens, vanish, shutter) : null;
   return (
     <>
-      {shadow !== false && <PlaneShadow box={v.box} pose={now} lens={lens} vanish={vanish} radius={props.radius ?? 18} light={lightDirection(props.light)} elevation={elevation} color={shadow} blur={blur} alpha={alpha} />}
+      {shadow !== false && <PlaneShadow box={v.box} pose={now} camera={capturePlaneCamera(v.frameSize, lens, vanish)} radius={props.radius ?? 18} light={lightDirection(props.light)} elevation={elevation} color={shadow} blur={blur} alpha={alpha} />}
       {trail && (
         // Isolated, so the exposures add up among themselves and the sum lies over the ground as one layer.
         <div {...motionEchoAttrs} style={{ position: 'absolute', inset: 0, isolation: 'isolate', pointerEvents: 'none' }}>
@@ -102,14 +103,17 @@ export function CapturePlane(props: CapturePlaneProps) {
 
 // ---------- drawing ----------
 
+/** The CSS perspective that draws what `camera` sees: its distance from the page, over its vanishing point. */
+const perspectiveOf = ({ position: [x, y, z] }: ShotCamera): CSSProperties => ({ perspective: z, perspectiveOrigin: `${x}px ${-y}px` });
+
 type ExposureProps = Omit<CapturePlaneProps, 'pose'> & { pose: PlanePose; at: number; opacity: number; echo?: boolean };
 
 /** One exposure of the card: its lens root, the card at `pose`, whichever face is toward the viewer, and the lift. */
 function PlaneExposure(props: ExposureProps) {
   const { view: v, pose, at, opacity, echo = false, lens = 1100, vanish = centerOf(fullFrameRect(v.frameSize)), radius = 18, blur = 0, sheen = 0.16, sheenWidth = 0.28, back = '#1d1d21', paper = '#fff', lift, motion } = props;
   const { box } = v;
-  const f = planeFrame(box, pose);
-  const facing = dotVec3(along(eyeOf(lens, vanish), f.c, -1), f.n) > 0;
+  const f = planeFrame(box, pose), camera = capturePlaneCamera(v.frameSize, lens, vanish);
+  const facing = new Vector3(...capturePlaneEye(camera)).sub(new Vector3(...f.c)).dot(new Vector3(...f.n)) > 0;
   const up = lift ? liftHeight(lift, at) : 0;
   const plate = lift && up > 0.001 ? rectToScreen(v, inflate(lift.rect, lift.pad ?? 6)) : null;
   const plateScale = 1 + ((lift?.scale ?? 1.08) - 1) * up;
@@ -120,13 +124,13 @@ function PlaneExposure(props: ExposureProps) {
   const lifted: LiftedPlate | null = plate && facing
     ? { u: plate.x - box.x + plate.w / 2 - box.w / 2, v: plate.y - box.y + plate.h / 2 - box.h / 2, w: plate.w, h: plate.h, z: plateZ, scale: plateScale }
     : null;
-  const scales = cornersOf(box).map(([u, vv]) => lensScale(pointOn(f, u, vv)[2], lens));
-  if (lifted) scales.push(lensScale(pointOn(f, lifted.u, lifted.v, lifted.z)[2], lens) * lifted.scale);
+  const scales = cornersOf(box).map(([u, vv]) => projectLensPoint(camera, pointOn(f, u, vv)).scale);
+  if (lifted) scales.push(projectLensPoint(camera, pointOn(f, lifted.u, lifted.v, lifted.z)).scale * lifted.scale);
   const ss = clamp(Math.max(...scales), 0.2, 3);
   // Frame px per capture px where the shown capture is most magnified in frame, recorded so a graph can show a capture
   // too small for its closest frame: past about 1.3, its text goes soft. A parent's scale multiplies it.
   const shown = facing ? v : typeof back === 'string' ? null : back;
-  const upscale = shown ? (viewScale(shown) * framedStretch(f, box, lens, vanish, lifted, v.frameSize)) / shown.shot.scale : 0;
+  const upscale = shown ? (viewScale(shown) * framedStretch(f, box, camera, lifted)) / shown.shot.scale : 0;
   const side = facing ? f : backOf(f);
   const lit = faceLight(side, box, props, ss, v.frameSize);
   const len = sheenLineLength(box.w, box.h);
@@ -144,7 +148,7 @@ function PlaneExposure(props: ExposureProps) {
   const sheenCss = sheen > 0 ? sheenGradient(sheenCentre, sheenWidth * 100, sheen) : null;
   return (
     <div style={{
-      ...layer, perspective: lens, perspectiveOrigin: `${vanish.x}px ${vanish.y}px`, opacity, filter: blur > 0.05 ? `blur(${blur}px)` : undefined,
+      ...layer, ...perspectiveOf(camera), opacity, filter: blur > 0.05 ? `blur(${blur}px)` : undefined,
       mixBlendMode: echo ? 'plus-lighter' : undefined, pointerEvents: 'none',
     }}>
       <div
@@ -201,9 +205,10 @@ function CaptureCrop({ view, ss, blur = 0 }: { view: View; ss: number; blur?: nu
  * the higher it rises, and the rest of the page dimmed.
  */
 function UnderLift({ plate, box, f, light, z, scale, up, lift, socket, ss }: {
-  plate: Rect; box: Rect; f: PlaneFrame; light: Vec3; z: number; scale: number; up: number; lift: PlaneLift; socket: string; ss: number;
+  plate: Rect; box: Rect; f: PlaneFrame; light: LensPoint; z: number; scale: number; up: number; lift: PlaneLift; socket: string; ss: number;
 }) {
-  const [lx, ly, lz] = [dotVec3(light, f.ex), dotVec3(light, f.ey), dotVec3(light, f.n)];
+  const l = new Vector3(...light);
+  const [lx, ly, lz] = [f.ex, f.ey, f.n].map((axis) => l.dot(new Vector3(...axis)));
   // A light grazing the face would throw the shadow off the card: hold it to a steep angle and fade it instead.
   const steep = Math.max(lz, 0.25);
   const [dx, dy] = [(-z * lx) / steep, (-z * ly) / steep];
@@ -229,8 +234,8 @@ function UnderLift({ plate, box, f, light, z, scale, up, lift, socket, ss }: {
  * parallaxes, shrinks with depth and follows each turn. HyperFrames' two layers: a tight one under the card, a wide
  * soft one. Each blurs on its lens root: a penumbra lies on the surface, not in the tilted card.
  */
-function PlaneShadow({ box, pose, lens, vanish, radius, light, elevation, color, blur, alpha }: {
-  box: Rect; pose: PlanePose; lens: number; vanish: Point; radius: number; light: Vec3; elevation: number; color: string; blur: number; alpha: number;
+function PlaneShadow({ box, pose, camera, radius, light, elevation, color, blur, alpha }: {
+  box: Rect; pose: PlanePose; camera: ShotCamera; radius: number; light: LensPoint; elevation: number; color: string; blur: number; alpha: number;
 }) {
   const layers = [
     { reach: 0.3, soft: 0.35, strength: 0.55 },
@@ -242,9 +247,9 @@ function PlaneShadow({ box, pose, lens, vanish, radius, light, elevation, color,
       {layers.map(({ reach, soft, strength }, i) => {
         const e = elevation * reach;
         const z = pose.z - e;
-        const sigma = (3 + soft * e) * lensScale(z, lens);
+        const sigma = (3 + soft * e) * projectLensPoint(camera, [0, 0, z]).scale;
         return (
-          <div key={i} style={{ position: 'absolute', inset: 0, perspective: lens, perspectiveOrigin: `${vanish.x}px ${vanish.y}px`, filter: `blur(${Math.hypot(sigma, blur)}px)`, opacity: alpha * strength, pointerEvents: 'none' }}>
+          <div key={i} style={{ position: 'absolute', inset: 0, ...perspectiveOf(camera), filter: `blur(${Math.hypot(sigma, blur)}px)`, opacity: alpha * strength, pointerEvents: 'none' }}>
             <div style={{
               position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h, borderRadius: radius, background: color,
               transform: `translate3d(${pose.x + sx * e}px, ${pose.y + sy * e}px, ${z}px) rotateX(${pose.rx}deg) rotateY(${pose.ry}deg) rotateZ(${pose.rz}deg)`,

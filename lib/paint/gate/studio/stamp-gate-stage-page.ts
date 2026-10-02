@@ -105,7 +105,7 @@ export async function checkStampGateThreeCase(id: string): Promise<StampGateWash
     const { device } = surface.owner;
     const texture = device.createTexture({ size: [width, height], format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
     const withCard = async <T,>(use: (renderer: StampPaintRenderer) => Promise<T>) => {
-      const renderer = await gateRenderer(gate, surface, { planes: stampGateThreePlanes(gate.painting, { card: true }), three: new Map([[STAMP_GATE_CARD, texture]]) });
+      const renderer = await gateRenderer(gate, surface, { planes: stampGateThreePlanes(gate.painting, { card: true }), three: new Map([[STAMP_GATE_CARD, { texture, at: { x: 0, y: 0 } }]]) });
       try {
         return await use(renderer);
       } finally {

@@ -2,9 +2,9 @@
 // from tiles, a disc of cells, and the point on a column's top that the ball lands on and HUD marks aim at.
 
 import type { Material, Matrix4, Texture, Vector3 } from 'three';
+import type { ShotCamera, ShotPoint } from '#lib/picture/shot-camera/models/shot-camera.ts';
 import { clamp, lerp, motionCurves, type EaseFn } from '#lib/picture/motion/models/motion.ts';
 import { hashRandom } from '#lib/picture/motion/models/random.ts';
-import type { Vec3 } from '#lib/picture/frame/models/vec3.ts';
 
 /** A column: its place on the grid (i across, j down the overhead frame, a pitch apart) and its colour. */
 export type ColumnCell = { i: number; j: number; color: string };
@@ -13,7 +13,7 @@ export type ColumnCell = { i: number; j: number; color: string };
  * An orbit camera, in pitches and degrees: `elevation` above the ground (90 looks straight down), `azimuth` round the
  * target (0 looks from +z, the bottom of the overhead frame; negative circles clockwise seen from above), vertical `fov`.
  */
-export type ColumnCameraPose = { target: Vec3; distance: number; elevation: number; azimuth: number; fov: number };
+export type ColumnCameraPose = { target: ShotPoint; distance: number; elevation: number; azimuth: number; fov: number };
 
 /**
  * One continuous move: a crane between two poses over `crane` (seconds, on `ease`, an in-out sine), then `drift` per
@@ -37,11 +37,8 @@ export type ColumnCameraMove = {
   whip?: { at: number; rate?: number; double?: number; defocus?: number; samples?: number };
 };
 
-/** The camera at a moment: where it is, its axes, its vertical fov (punches in), crane progress and whip (0..1). */
-export type ColumnCameraState = {
-  position: Vector3; forward: Vector3; right: Vector3; up: Vector3;
-  fov: number; target: Vector3; crane: number; whip: number;
-};
+/** The camera at a moment (punches in), the point it orbits, and its crane progress and whip (0..1). */
+export type ColumnCameraState = { camera: ShotCamera; target: ShotPoint; crane: number; whip: number };
 
 /**
  * A ball landing on column tops at `contacts` (seconds, cell, squash 0.13–0.27 in the reference), hopping between them
@@ -53,8 +50,8 @@ export type ColumnBall = {
   contacts: readonly { at: number; cell: readonly [number, number]; squash?: number }[];
   radius?: number;
   gravity?: number;
-  enter?: { from: Vec3; duration: number };
-  launch?: Vec3;
+  enter?: { from: ShotPoint; duration: number };
+  launch?: ShotPoint;
   /** Seconds it stays on a top while it squashes: the reference's squash peaks 25 ms in and is gone by 70. */
   contact?: number;
   /** How far it stretches along its path at 50 pitch/s (0.12). */
@@ -84,7 +81,7 @@ export type ColumnLabel = {
   tilt?: number | 'camera';
   turn?: number | 'camera';
   /** From the centre of the column's top, pitches. */
-  offset?: Vec3;
+  offset?: ShotPoint;
   opacity?: number;
   /** Multiplies its colours: above 1 holds a white against the tone mapping, which takes 1 down to about 0.8. */
   intensity?: number;
@@ -205,8 +202,8 @@ function cellAt<C extends ColumnCell>(cells: readonly C[], i: number, j: number)
   return k === undefined ? undefined : cells[k];
 }
 
-/** The centre of a column's top at t, `lift` pitches above it: the point to hand columnFieldProject for a mark. */
-export function columnFieldPoint<C extends ColumnCell>(spec: Pick<ColumnFieldSpec<C>, 'cells' | 'height' | 'rise' | 'seed'>, t: number, cell: readonly [number, number], lift = 0): Vec3 {
+/** The centre of a column's top at t, `lift` pitches above it: the point to project for a mark. */
+export function columnFieldPoint<C extends ColumnCell>(spec: Pick<ColumnFieldSpec<C>, 'cells' | 'height' | 'rise' | 'seed'>, t: number, cell: readonly [number, number], lift = 0): ShotPoint {
   const found = cellAt(spec.cells, cell[0], cell[1]);
   return [cell[0], (found ? columnFieldHeight(spec, found, t) : 0) + lift, cell[1]];
 }

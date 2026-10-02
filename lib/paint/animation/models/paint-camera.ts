@@ -73,14 +73,16 @@ export type PaintCameraPlane =
   | { readonly id: string; readonly depth: number; readonly kind: 'three' };
 
 /**
- * A camera checked (paint-camera-build.ts): the `stage` its planes' pictures are painted on, its projection (`fov`,
- * vertical degrees over the frame at rest, which sets how deep a three.js source's world looks, never where a plane
- * lands), the planes it shows farthest first, its lens, and its plays in a lane per thing they write.
+ * A camera checked (paint-camera-build.ts): its `stage`, its projection (`fov`, vertical degrees at rest: how deep a
+ * three.js world looks, never where a plane lands), its planes farthest first (the renderer's one list), its lens and
+ * its plays. `threeMargin`: by three plane, the px its render reaches past the frame, so its defocus blurs in what
+ * lies beyond the edge.
  */
 export type PaintCamera = {
   readonly stage: StampStage;
   readonly fov: number;
   readonly planes: readonly PaintCameraPlane[];
+  readonly threeMargin: ReadonlyMap<string, number>;
   readonly lens: PaintCameraLens;
   readonly animationFps: number;
   readonly move: PaintLane<PaintCameraMoveClip>;

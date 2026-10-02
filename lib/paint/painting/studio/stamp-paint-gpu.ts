@@ -1,5 +1,5 @@
-// stamp-paint-gpu.ts: the WebGPU pieces the stamp-paint renderer is built from: a checked device, images as mipmapped
-// textures, and a tip's paint read back from each of its mip levels.
+// stamp-paint-gpu.ts: the WebGPU pieces the stamp-paint renderer is built from, on a studio device
+// (gpu-device-owner.ts): images as mipmapped textures, and a tip's paint read back from each of its mip levels.
 //
 // Paint is held in half floats (rgba16float, rg16float): a glaze lays each stamp at a few thousandths of its flow,
 // which 8 bits would round away. The renderer's compute passes read and write those targets in place, which needs
@@ -15,22 +15,6 @@ export type StampPaintDevice = Pick<
   GPUDevice,
   'createBuffer' | 'createTexture' | 'createShaderModule' | 'createComputePipeline' | 'createRenderPipeline' | 'createBindGroup' | 'createCommandEncoder' | 'createSampler' | 'queue' | 'limits'
 >;
-
-// Newer than TypeScript's DOM lib.
-const TIER2 = 'texture-formats-tier2' as GPUFeatureName;
-
-/** A device for stamp painting on the GPU, or a thrown error naming what the browser lacks. */
-export async function createStampPaintDevice(): Promise<GPUDevice> {
-  if (!navigator.gpu) throw new Error('stamp paint: this browser has no WebGPU (navigator.gpu), which stamp painting needs; it exists only in a secure context');
-  const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
-  if (!adapter) throw new Error('stamp paint: this browser has no WebGPU adapter');
-  if (adapter.info.isFallbackAdapter) throw new Error('stamp paint: this browser\'s WebGPU adapter is a software fallback');
-  if (!adapter.features.has(TIER2)) throw new Error(`stamp paint: this GPU can't read and write half-float storage textures (${TIER2})`);
-  // A painting's stamps sit in one buffer, bound whole as storage, which a large painting takes past WebGPU's
-  // defaults (256 MiB a buffer, 128 MiB a binding): ask for what the adapter offers.
-  const { maxBufferSize, maxStorageBufferBindingSize } = adapter.limits;
-  return adapter.requestDevice({ requiredFeatures: [TIER2], requiredLimits: { maxBufferSize, maxStorageBufferBindingSize } });
-}
 
 /** Covers the target with one triangle, no buffers: a fragment pass reads its pixel from its position. */
 export const FULL_FRAME_WGSL = /* wgsl */ `

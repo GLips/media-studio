@@ -3,9 +3,9 @@
 
 export { BrandLogo, brandLogoFor, type StudioBrand, type StudioBrandLogo } from '#lib/picture/brand/studio/brand.tsx';
 export { Blockout, type BlockoutShape, type BlockoutSubject } from '#lib/footage/previs/studio/blockout.tsx';
-export { dollyMove, orbitMove, pushInMove, type BlockoutMove, type BlockoutPose } from '#lib/footage/previs/studio/blockout-camera.ts';
+export { dollyMove, orbitMove, pushInMove, type BlockoutLookAt, type BlockoutMove } from '#lib/footage/previs/models/blockout-camera.ts';
 export { FlatBlockout, type FlatPiece, type FlatPieceKind, type FlatViewMoves } from '#lib/footage/previs/studio/flat-blockout.tsx';
-export type { FlatKey, FlatPose, FlatView } from '#lib/footage/previs/studio/flat-blockout-pose.ts';
+export type { FlatKey, FlatPose, FlatView } from '#lib/footage/previs/models/flat-blockout-pose.ts';
 export { beatGrid, steadyBeatGrid, type BeatGrid } from '#lib/timing/timeline/models/beat-grid.ts';
 export { assertKeysInOrder, camAt, camFit, camTop, camWhole, clampCam, lerpCam, pagePoint, rectToScreen, scaleFor, screenPoint, screenRect, view, viewOf, viewOfScreenRect, viewScale, type Cam, type Shot, type View } from '#lib/picture/camera/models/camera.ts';
 export { applyAffine, centerOf, inflate, multiplyAffine, union, type AffineMatrix, type Point, type Rect } from '#lib/picture/frame/models/geometry.ts';
@@ -36,7 +36,7 @@ export { CapturePlane, type CapturePlaneProps } from '#lib/picture/reel/studio/c
 export { PLANE_REST_POSE, capturePlaneProjection, capturePlaneView, lerpPlanePose, planeLiftStart, type CapturePlaneProjection, type PlaneLift, type PlanePose } from '#lib/picture/reel/models/capture-plane.ts';
 export { ColumnField, type ColumnFieldProps } from '#lib/picture/reel/studio/column-field.tsx';
 export { columnDiscCells, columnFieldHeight, columnFieldPoint, columnNoise, type ColumnBall, type ColumnBallState, type ColumnCameraMove, type ColumnCameraPose, type ColumnCameraState, type ColumnCell, type ColumnFieldLights, type ColumnFieldSpec, type ColumnLabel, type ColumnLight, type ColumnRise } from '#lib/picture/reel/models/column-field.ts';
-export { columnBallAt, columnCameraAt, columnFieldProject, topDownPose } from '#lib/picture/reel/models/column-field-motion.ts';
+export { columnBallAt, columnCameraAt, columnFieldCameraAt, topDownPose } from '#lib/picture/reel/models/column-field-motion.ts';
 export { columnTitaniumMaterial } from '#lib/picture/reel/studio/column-field-materials.ts';
 export { FieldFlash, GlyphField, ShockRing } from '#lib/picture/reel/studio/glyph-field.tsx';
 export { GLYPH_FIELD_COLORS, GLYPH_SHAPES, glyphFieldLayout, glyphPunchScale, glyphRegroupPlan, glyphWaveArrivals, type GlyphCell, type GlyphClip, type GlyphFieldSlot, type GlyphFilterStep, type GlyphFilterTiming, type GlyphFront, type GlyphHit, type GlyphImplode, type GlyphKey, type GlyphLayout, type GlyphPunch, type GlyphRegroup, type GlyphShape, type GlyphShapeKey, type GlyphWave } from '#lib/picture/reel/models/glyph-field.ts';
@@ -46,7 +46,7 @@ export { REEL_HUD_BOOT_DECODE, REEL_HUD_GLYPHS, REEL_HUD_PALETTE, REEL_HUD_SLOTS
 export { LensFringe, channelSplitPrimitives } from '#lib/picture/reel/studio/lens.tsx';
 export { lensFringeAt, lensFringeSubpixelMax, type LensFringeState, type LensFringeTiming } from '#lib/picture/reel/models/lens.ts';
 export { Needle, type NeedleProps } from '#lib/picture/reel/studio/needle.tsx';
-export { needleContactAt, needleCoversAt, needleExposuresAt, needleLensHeight, needlePoseAt, needleRig, needleScreenPoint, needleShotAt, type NeedleLensing, type NeedlePose, type NeedleRig, type NeedleRigSettings, type NeedleShot, type NeedleStrike, type NeedleTake } from '#lib/picture/reel/models/needle.ts';
+export { needleContactAt, needleCoversAt, needleExposuresAt, needleLensHeight, needlePoseAt, needleRig, needleShotAt, needleShotCamera, type NeedleLensing, type NeedlePose, type NeedleRig, type NeedleRigSettings, type NeedleShot, type NeedleStrike, type NeedleTake } from '#lib/picture/reel/models/needle.ts';
 export { FadeToBlack, GlitchFlash, RecapGrid, Shake, type RecapTile, type RecapTileView } from '#lib/picture/reel/studio/recap.tsx';
 export { recapGridRects, recapPopStarts, recapTileUnder, shakeOffset, type GlitchHit, type GlitchLook, type RecapExit, type RecapLayout, type RecapOrder } from '#lib/picture/reel/models/recap.ts';
 export { TickerBand, TickerBands, type TickerBandProps, type TickerBandsProps } from '#lib/picture/reel/studio/ticker.tsx';
@@ -70,7 +70,6 @@ export { STILL_FEED_SIZES, STILL_PRESETS, type StillFitReport, type StillPreset 
 export { CoverImage, FitText, STILL_CARD_TILT, StillCard, StillHud, defineStills, stillDesign, useStillFrame, type StillAxes, type StillCardTilt, type StillDesign, type StillFocus, type StillImage, type StillsDef } from '#lib/picture/stills/studio/stills.tsx';
 export { checkSourcePins, fitTake, onTake, pinnedSourceTime, sceneTimeOf, takeFrameAt, takeMouseAt, takeShot, takeTimeAt, type Take, type TakeFit, type TakeFrame, type TakeMark, type TakeMouse } from '#lib/footage/capture/studio/take.ts';
 export { ThreeStage, softboxEnvironment, type ThreeBloom, type ThreeEnvironment, type ThreeFrame, type ThreeLens, type ThreeSample } from '#lib/picture/film/studio/three-stage.tsx';
-export { addVec3, crossVec3, dotVec3, lengthVec3, lerpVec3, scaleVec3, subVec3, unitVec3, type Vec3 } from '#lib/picture/frame/models/vec3.ts';
 // Stamp painting: a recipe of opaque and glaze groups of passages of applications, written against a style and
 // painted on the GPU with its brushes (docs/private-styles.md, skills/video-canvas/SKILL.md).
 export { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';

@@ -1,12 +1,13 @@
-// paint-camera-world.ts: the multiplane camera as a perspective camera, for three.js sources. A point placed by
-// paintPlaneWorldPoint and rendered through a PerspectiveCamera set from paintCameraPerspectiveAt lands on the frame
-// pixel paintPlaneSimilarity puts it on, to float precision, so a three.js source at depth d moves as a plane there does.
+// paint-camera-world.ts: the multiplane camera as the studio's one camera description (shot-camera.ts), for three.js
+// sources. A point placed by paintPlaneWorldPoint and seen through paintCameraShotAt lands on the frame pixel
+// paintPlaneSimilarity puts it on, so a three.js source at depth d moves as a plane there does.
 //
-// The world is three's: x right, y up, the camera at rest at the origin looking down −z. Its unit is a px at depth 1;
-// depth d lies d·depthUnit away, depthUnit being the rest lens's focal length in px, from the fov the scene picks.
-// The fov sets how deep the 3D world looks, never where a plane lands. Plain numbers: models never import three.
+// The world is three's: y up, the camera at rest at the origin looking down −z. Its unit is a px at depth 1; depth d
+// lies d·depthUnit away, depthUnit the rest lens's focal length in px. The fov sets how deep the world looks, never
+// where a plane lands.
 
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import { shotCameraRolled, type ShotCamera } from '#lib/picture/shot-camera/models/shot-camera.ts';
 import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { paintStageCentre, type PaintCameraPose } from './paint-camera.ts';
 
@@ -42,20 +43,24 @@ export type PaintWorldPlane = { readonly depth: number; readonly point: (point: 
 export const paintWorldPlane = (world: PaintCameraWorld, depth: number): PaintWorldPlane =>
   ({ depth, point: (point) => paintPlaneWorldPoint(world, point, depth), length: (px) => worldUnits(px * depth) });
 
+/** How deep a three.js source sees, in depth units: its content lies between, and anything nearer than `near` is cut. */
+export const PAINT_WORLD_DEPTH_RANGE = { near: 0.02, far: 200 } as const;
+
 /**
- * A three.js PerspectiveCamera's settings for `pose`, rendering a frame-sized target: `position`; `rotationZ`, its
- * rotation.z (x and y 0); `fov`, vertical degrees over the frame, zoom included, so three's zoom stays 1; `aspect`.
- * Its near plane must be under (depth − dolly)·depthUnit.
+ * The camera at `pose` seeing `world`'s frame: the zoom in its field of view, the roll about its view. Negative space:
+ * a pose never looks at or orbits anything, which would turn planes off the image where a flat picture can't follow;
+ * a scene that needs one is a three.js scene through a ShotCamera of its own.
  */
-export function paintCameraPerspectiveAt({ stage, depthUnit }: PaintCameraWorld, { pan, dolly, zoom, roll }: PaintCameraPose): {
-  readonly position: PaintWorldPoint; readonly rotationZ: number; readonly fov: number; readonly aspect: number;
-} {
+export function paintCameraShotAt({ stage, depthUnit }: PaintCameraWorld, { pan, dolly, zoom, roll }: PaintCameraPose): ShotCamera {
   const { width, height } = stage.frame;
-  return {
-    position: { x: worldUnits(pan.x), y: worldUnits(-pan.y), z: worldUnits(-dolly * depthUnit) },
-    // A rotation.z of −roll in three's y-up world turns the picture by −roll in the painting's y-down angles.
-    rotationZ: -roll,
+  return shotCameraRolled({
+    frame: { width, height },
     fov: (2 * Math.atan(height / 2 / (zoom * depthUnit)) * 180) / Math.PI,
-    aspect: width / height,
-  };
+    near: PAINT_WORLD_DEPTH_RANGE.near * depthUnit,
+    far: PAINT_WORLD_DEPTH_RANGE.far * depthUnit,
+  }, {
+    position: [pan.x, -pan.y, -dolly * depthUnit],
+    // Turned −roll about its view in three's y-up world, the picture turns by −roll in the painting's y-down angles.
+    rollZ: -roll,
+  });
 }

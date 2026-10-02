@@ -3,11 +3,12 @@
 // overhead (at a 2D grid's pitch, for a match cut) down to a low three-quarter view, punching on each landing.
 //
 // Heights, the ball's path and the camera are pure functions of t (models/reel/column-field.ts and
-// column-field-motion.ts), so the same functions draw the frame and aim HUD marks at it (columnFieldProject).
-// ColumnField draws them on ThreeStage's accumulated exposures. The columns are one instanced mesh whose tops a vertex
-// shader raises (scaling would stretch the bevel), darkened and tinted by their neighbours (column-field-materials.ts).
+// column-field-motion.ts), so the same functions draw the frame and aim HUD marks at it (columnFieldCameraAt, then
+// shotCameraProject). ColumnField draws them on ThreeStage's accumulated exposures. The columns are one instanced mesh
+// whose tops a position node raises (scaling would stretch the bevel), darkened and tinted by their neighbours
+// (column-field-materials.ts).
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { useStudioFontsReady } from '#lib/picture/type/studio/fonts.ts';
 import { fullFrameRect } from '#lib/picture/frame/models/frame.ts';
 import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
@@ -15,8 +16,10 @@ import { pieceMotionAttrs } from '#lib/picture/measurement/studio/motion-tag.ts'
 import { clamp } from '#lib/picture/motion/models/motion.ts';
 import { ThreeStage, softboxEnvironment, type ThreeBloom, type ThreeEnvironment, type ThreeFrame, type ThreeLens, type ThreeSample } from '#lib/picture/film/studio/three-stage.tsx';
 import { columnFieldHeight, columnFieldPoint, type ColumnCameraState, type ColumnCell, type ColumnFieldLights, type ColumnFieldSpec, type ColumnLabel, type ColumnLight } from '../models/column-field.ts';
-import { columnBallAt, columnFieldProject, fieldCamera } from '../models/column-field-motion.ts';
-import { ballMaterial, columnDepthMaterial, columnGeometry, columnMaterial, columnTopology, floorMaterial, type BallShadowUniforms } from './column-field-materials.ts';
+import { shotCameraAxes, shotCameraProject } from '#lib/picture/shot-camera/models/shot-camera.ts';
+import type { FrameSize } from '#lib/picture/frame/models/frame.ts';
+import { columnBallAt, columnFieldCameraAt } from '../models/column-field-motion.ts';
+import { ballMaterial, columnBallShadow, columnGeometry, columnMaterial, columnTopology, floorMaterial, type ColumnBallShadow } from './column-field-materials.ts';
 
 export type ColumnFieldProps<C extends ColumnCell = ColumnCell> = ColumnFieldSpec<C> & {
   /** Seconds since the piece starts. */
@@ -41,7 +44,6 @@ const REFERENCE_LIGHTS = {
 } satisfies ColumnFieldLights;
 
 const rad = (d: number) => (d * Math.PI) / 180;
-const Y = new THREE.Vector3(0, 1, 0);
 
 // ---------- the component ----------
 
@@ -52,9 +54,9 @@ const Y = new THREE.Vector3(0, 1, 0);
 export function ColumnField<C extends ColumnCell>({ t, samples = 12, shutter = 0.5, bloom, environment = softboxEnvironment, toneMapping = THREE.NeutralToneMapping, exposure, motion, ...spec }: ColumnFieldProps<C>) {
   const format = useVideoFormat(), box = spec.box ?? fullFrameRect(format);
   const fontsReady = useStudioFontsReady(Boolean(spec.labels));
-  const cam = fieldCamera(spec, t);
+  const cam = columnFieldCameraAt(spec, t, format);
   const ball = columnBallAt(spec, t);
-  const mark = ball && columnFieldProject(spec, t, ball.position, format);
+  const mark = ball && shotCameraProject(cam.camera, ball.position);
   const whip = spec.camera.whip;
   const key = fieldLights(spec).key;
   // Built on a frame's first exposure and shared by the rest; a new render is a new frame.
@@ -64,12 +66,12 @@ export function ColumnField<C extends ColumnCell>({ t, samples = 12, shutter = 0
       <ThreeStage
         samples={whip && t > whip.at ? Math.max(samples, whip.samples ?? 32) : samples} shutter={shutter} lens={spec.lens && lensAt(spec, t, cam)}
         shadows softShadows={key ? key.softness ?? 3 : 0} bloom={bloom} environment={environment} toneMapping={toneMapping} exposure={exposure}
-        box={{ x: 0, y: 0, w: box.w, h: box.h }} draw={(sample) => drawColumnField(spec, t, sample, frame, fontsReady)}
+        box={{ x: 0, y: 0, w: box.w, h: box.h }} draw={(sample) => drawColumnField(spec, t, format, sample, frame, fontsReady)}
       />
       {mark && ball && motion !== false && (
         <div
           {...pieceMotionAttrs(undefined, 'ball', { kind: 'column-field-ball', values: { squash: round(ball.squash) } })}
-          style={{ position: 'absolute', left: mark.x - box.x - ball.radius * mark.scale, top: mark.y - box.y - ball.radius * mark.scale, width: 2 * ball.radius * mark.scale, height: 2 * ball.radius * mark.scale }}
+          style={{ position: 'absolute', left: mark.x - ball.radius * mark.scale, top: mark.y - ball.radius * mark.scale, width: 2 * ball.radius * mark.scale, height: 2 * ball.radius * mark.scale }}
         />
       )}
     </div>
@@ -85,11 +87,12 @@ const fieldLights = <C extends ColumnCell>(spec: ColumnFieldSpec<C>): ColumnFiel
  */
 function lensAt<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: number, cam: ColumnCameraState): ThreeLens {
   const { aperture, focus = 'ball' } = spec.lens!;
-  const toTarget = cam.target.distanceTo(cam.position);
+  const position = new THREE.Vector3(...cam.camera.position), { forward } = shotCameraAxes(cam.camera);
+  const toTarget = position.distanceTo(new THREE.Vector3(...cam.target));
   let distance = typeof focus === 'number' ? focus : toTarget;
   if (focus === 'ball' && spec.ball) {
     let sum = 0;
-    for (let s = 0; s < 5; s++) sum += columnBallAt(spec, t - s * 0.03)!.position.sub(cam.position).dot(cam.forward);
+    for (let s = 0; s < 5; s++) sum += columnBallAt(spec, t - s * 0.03)!.position.sub(position).dot(forward);
     distance = clamp(sum / 5, 0.6 * toTarget, 1.5 * toTarget);
   }
   return { focus: distance * (1 - cam.whip * (spec.camera.whip?.defocus ?? 0.35)), aperture };
@@ -98,15 +101,15 @@ function lensAt<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: number, cam: 
 // ---------- the scene ----------
 
 type FieldBuild = {
-  scene: THREE.Scene; camera: THREE.PerspectiveCamera; fog: THREE.Fog | null;
+  scene: THREE.Scene; fog: THREE.Fog | null;
   heights: Float32Array; neighbourHeights: Float32Array; neighbours: Int32Array;
   heightAttr: THREE.InstancedBufferAttribute; neighbourAttr: THREE.InstancedBufferAttribute;
   key: THREE.DirectionalLight | null; rim: THREE.DirectionalLight | null; pool: THREE.SpotLight | null;
-  ball: THREE.Mesh | null; ballShadow: BallShadowUniforms; labels: { mesh: THREE.Mesh; label: ColumnLabel }[];
+  ball: THREE.Mesh | null; ballShadow: ColumnBallShadow; labels: { mesh: THREE.Mesh; label: ColumnLabel }[];
 };
 
 /** One exposure: the frame's scene (built on its first) moved to this exposure's moment. */
-function drawColumnField<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: number, sample: ThreeSample, frame: { build?: FieldBuild }, fontsReady: boolean): ThreeFrame {
+function drawColumnField<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: number, format: FrameSize, sample: ThreeSample, frame: { build?: FieldBuild }, fontsReady: boolean): ThreeFrame {
   const at = t + sample.dt;
   const build = (frame.build ??= buildColumnField(spec, t, sample.environment, fontsReady));
   const { heights, neighbourHeights, neighbours } = build;
@@ -114,33 +117,31 @@ function drawColumnField<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: numb
   for (let k = 0; k < neighbours.length; k++) neighbourHeights[k] = neighbours[k] < 0 ? 0 : heights[neighbours[k]];
   build.heightAttr.needsUpdate = build.neighbourAttr.needsUpdate = true;
 
-  const cam = fieldCamera(spec, at, t);
-  build.camera.position.copy(cam.position);
-  build.camera.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(cam.right, cam.up, cam.forward.clone().negate()));
-  build.camera.fov = cam.fov;
-  const reach = cam.position.distanceTo(cam.target);
+  const cam = columnFieldCameraAt(spec, at, format, t);
+  const position = new THREE.Vector3(...cam.camera.position), target = new THREE.Vector3(...cam.target);
+  const reach = position.distanceTo(target);
   const fog = spec.fog === undefined ? REFERENCE_FOG : spec.fog;
   if (build.fog && fog) [build.fog.near, build.fog.far] = [reach + fog.near, reach + fog.far];
 
   const lights = fieldLights(spec);
-  const ground = new THREE.Vector3(cam.target.x, 0, cam.target.z);
+  const ground = new THREE.Vector3(target.x, 0, target.z);
   if (build.key && lights.key) aimLight(build.key, ground, lights.key);
   if (build.rim && lights.rim) aimLight(build.rim, ground, lights.rim);
   if (build.pool && lights.pool) {
-    const height = (lights.pool.above ?? 0.8) * Math.max(cam.position.y - cam.target.y, 1);
-    build.pool.position.copy(cam.target).addScaledVector(Y, height);
-    build.pool.target.position.copy(cam.target);
+    const height = (lights.pool.above ?? 0.8) * Math.max(position.y - target.y, 1);
+    build.pool.position.set(target.x, target.y + height, target.z);
+    build.pool.target.position.copy(target);
     build.pool.intensity = lights.pool.intensity * height * height;
-    build.ballShadow.columnLamp.value.set(build.pool.position.x, build.pool.position.y, build.pool.position.z, (lights.pool.size ?? 3) / 2);
+    build.ballShadow.lamp.value.set(build.pool.position.x, build.pool.position.y, build.pool.position.z, (lights.pool.size ?? 3) / 2);
   }
   if (build.ball) {
     const ball = columnBallAt(spec, at)!;
     build.ball.matrix.copy(ball.matrix);
     build.ball.matrixWorldNeedsUpdate = true;
-    build.ballShadow.columnBall.value.set(ball.position.x, ball.position.y, ball.position.z, ball.radius);
+    build.ballShadow.ball.value.set(ball.position.x, ball.position.y, ball.position.z, ball.radius);
   }
   for (const { mesh, label } of build.labels) placeLabel(mesh, label, spec, at, cam);
-  return { scene: build.scene, camera: build.camera };
+  return { scene: build.scene, camera: cam.camera };
 }
 
 function buildColumnField<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: number, environment: THREE.Texture | null, fontsReady: boolean): FieldBuild {
@@ -163,14 +164,13 @@ function buildColumnField<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: num
   geometry.setAttribute('columnHeight', heightAttr);
   geometry.setAttribute('columnNeighbourHeights', neighbourAttr);
   geometry.setAttribute('columnNeighbourColors', new THREE.InstancedBufferAttribute(topology.neighbourColors, 4));
-  const ballShadow: BallShadowUniforms = { columnBall: { value: new THREE.Vector4() }, columnLamp: { value: new THREE.Vector4() } };
+  const ballShadow = columnBallShadow();
   const columns = new THREE.InstancedMesh(geometry, columnMaterial(column, environment, reflect, ballShadow), n);
-  columns.customDepthMaterial = columnDepthMaterial();
   columns.instanceColor = new THREE.InstancedBufferAttribute(topology.colors, 3);
   const place = new THREE.Matrix4();
   for (const [k, c] of spec.cells.entries()) columns.setMatrixAt(k, place.makeTranslation(c.i, 0, c.j));
   columns.castShadow = columns.receiveShadow = true;
-  // The shader raises the tops past the geometry's bounds, which culling would trust.
+  // The position node raises the tops past the geometry's bounds, which culling would trust.
   columns.frustumCulled = false;
   scene.add(columns);
 
@@ -194,7 +194,8 @@ function buildColumnField<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: num
     scene.add(rim, rim.target);
   }
   if (lights.pool) {
-    // Placed and scaled each exposure, as the camera moves. It casts no shadow map: the shader shadows it, by the ball.
+    // Placed and scaled each exposure, as the camera moves. It casts no shadow map: the ball's shadow on it is worked
+    // out in the surfaces' lighting.
     pool = new THREE.SpotLight(lights.pool.color, 0, 0, rad(lights.pool.spread ?? 38), 1, 2);
     scene.add(pool, pool.target);
   }
@@ -210,10 +211,7 @@ function buildColumnField<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: num
   }
   const labels = fontsReady ? (spec.labels?.(t) ?? []).map((label) => ({ label, mesh: labelMesh(label) })) : [];
   for (const { mesh } of labels) scene.add(mesh);
-
-  // ThreeStage sets the aspect to its box's before each exposure.
-  const camera = new THREE.PerspectiveCamera(27, 1, 0.1, 600);
-  return { scene, camera, fog, heights, neighbourHeights, neighbours: topology.neighbours, heightAttr, neighbourAttr, key, rim, pool, ball, ballShadow, labels };
+  return { scene, fog, heights, neighbourHeights, neighbours: topology.neighbours, heightAttr, neighbourAttr, key, rim, pool, ball, ballShadow, labels };
 }
 
 function aimLight(light: THREE.DirectionalLight, at: THREE.Vector3, { azimuth, elevation }: ColumnLight) {
@@ -235,7 +233,7 @@ function labelMesh(label: ColumnLabel) {
   const map = new THREE.CanvasTexture(canvas);
   Object.assign(map, { colorSpace: THREE.SRGBColorSpace, anisotropy: 8, premultiplyAlpha: true });
   const opacity = label.opacity ?? 1;
-  const material = new THREE.MeshBasicMaterial({
+  const material = new THREE.MeshBasicNodeMaterial({
     map, color: new THREE.Color().setScalar(opacity * (label.intensity ?? 1)), opacity, transparent: true, fog: false, depthWrite: false,
     blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
     polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
@@ -244,8 +242,9 @@ function labelMesh(label: ColumnLabel) {
 }
 
 function placeLabel<C extends ColumnCell>(mesh: THREE.Mesh, label: ColumnLabel, spec: ColumnFieldSpec<C>, t: number, cam: ColumnCameraState) {
-  const turn = label.turn === undefined || label.turn === 'camera' ? Math.atan2(-cam.right.z, cam.right.x) : rad(label.turn);
-  const tilt = label.tilt === 'camera' ? Math.PI / 2 - Math.asin(clamp(-cam.forward.y, -1, 1)) : rad(label.tilt ?? 0);
+  const { right, forward } = shotCameraAxes(cam.camera);
+  const turn = label.turn === undefined || label.turn === 'camera' ? Math.atan2(-right.z, right.x) : rad(label.turn);
+  const tilt = label.tilt === 'camera' ? Math.PI / 2 - Math.asin(clamp(-forward.y, -1, 1)) : rad(label.tilt ?? 0);
   mesh.rotation.set(tilt - Math.PI / 2, turn, 0, 'YXZ');
   const [ox, oy, oz] = label.offset ?? [0, 0, 0];
   const [x, y, z] = columnFieldPoint(spec, t, label.cell, 0.004);

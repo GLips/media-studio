@@ -12,7 +12,7 @@ import { linearToSrgb, srgbToLinear } from '#lib/paint/materials/models/paint-sp
 import { stampDefocusSigmaStepped } from '#lib/paint/painting/models/stamp-defocus.ts';
 import { compileStampPaintRecipe, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
-import { compileStampPlanes, type CompiledStampPlanes, type StampLensFrame, type StampPlane } from '#lib/paint/painting/models/stamp-plane.ts';
+import { stampScenePlanes, type StampScenePlanes, type StampLensFrame, type StampPlane } from '#lib/paint/painting/models/stamp-plane.ts';
 import { stampGateFrameDifference, stampGateFramePasses } from './stamp-gate-frames.ts';
 import { STAMP_GATE_IMAGES, STAMP_GATE_WHITE, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
 import { STAMP_GATE_DEFOCUS_TOLERANCE, STAMP_GATE_REST_LOOK, stampGateGaussian } from './stamp-gate-lens.ts';
@@ -99,14 +99,14 @@ export function stampGateThreePainting(kind: StampGateThreeKind): StampGatePaint
  * The painting's planes: the ground at the back, the card before it when `card`, and the front's box on clear film.
  * Without the card they're what an all-clear card should draw as.
  */
-export function stampGateThreePlanes(painting: CompiledStampPaint, { card }: { card: boolean }): CompiledStampPlanes {
+export function stampGateThreePlanes(painting: CompiledStampPaint, { card }: { card: boolean }): StampScenePlanes {
   const problems: string[] = [];
   const planes: StampPlane[] = [
     { id: 'ground', depth: 2, source: { kind: 'painted', groups: ['ground'] } },
     ...(card ? [{ id: STAMP_GATE_CARD, depth: 1, source: { kind: 'three' } } as const] : []),
     { id: 'front', depth: 0.8, source: { kind: 'painted', groups: ['front'] } },
   ];
-  const compiled = compileStampPlanes(painting, planes, problems);
+  const compiled = stampScenePlanes(painting, planes, problems);
   if (!compiled || problems.length) throw new Error(`stamp gate: the three-plane case's planes: ${problems.join('; ')}`);
   return compiled;
 }

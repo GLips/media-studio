@@ -1,3 +1,4 @@
 {
+  "lib/footage/previs": "A 3D blockout is a plain render (one exposure, no lens) staged on ThreeStage, the studio's one place a three.js scene meets the GPU.",
   "lib/picture/reel": "Reel pieces that film a 3D scene (needle, column field) stage it on ThreeStage."
 }

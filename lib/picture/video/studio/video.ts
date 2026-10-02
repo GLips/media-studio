@@ -76,7 +76,7 @@ export type VideoDef = {
   format?: Partial<VideoFormat>;
   /**
    * How many tabs render it at once, in place of the default, 3; a command's --workers overrides it. Fewer for heavy
-   * WebGL scenes: the tabs share one GPU, and Chrome drops the oldest WebGL contexts past about 16.
+   * three.js scenes: the tabs share one GPU, and each stage holds a WebGPU device of its own.
    */
   renderWorkers?: number;
   /** The project's timeline.ts `timeline`: where every scene and line falls. */

@@ -7,15 +7,16 @@
 // pixel of the layer beneath (the ink grid). The canvas is transparent. The motion is a pure function of time
 // (`needlePoseAt`, models/needle.ts), drawn here.
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
+import { mix, normalView, positionViewDirection, vec3 } from 'three/tsl';
 import { motionCurves } from '#lib/picture/motion/models/motion.ts';
 import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 import { pieceMotionAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { hashRandom } from '#lib/picture/motion/models/random.ts';
 import { ThreeStage, type ThreeEnvironment, type ThreeFrame, type ThreeSample } from '#lib/picture/film/studio/three-stage.tsx';
-import type { Vec3 } from '#lib/picture/frame/models/vec3.ts';
+import { shotCameraProject } from '#lib/picture/shot-camera/models/shot-camera.ts';
 import {
-  needleInFrame, needleLensHeight, needlePoseAt, needleRestAxis, needleRig, needleScreenPoint, needleShotAt, needleTakeExposures,
+  needleInFrame, needleLensHeight, needlePoseAt, needleRestAxis, needleRig, needleShotAt, needleShotCamera, needleTakeExposures,
   type NeedlePose, type NeedleRig, type NeedleStrike,
 } from '../models/needle.ts';
 import { BODY_BARREL, BODY_FRONT, CLEAR_TIP, needleLine, sampled, SOLDER, type Profile } from '../models/needle-cartridge.ts';
@@ -91,7 +92,7 @@ function tubeGeometry(zs: number[], centre: (z: number) => [number, number], rad
  * pointing down past its tip: so the floor is the ground's colour, and two strips on that cone draw a line of light
  * down each needle, tip and barrel. A card behind the lens glints on the ink.
  */
-function needleStudio(axis: Vec3, ground: string): ThreeEnvironment {
+function needleStudio(axis: NeedlePose['axis'], ground: string): ThreeEnvironment {
   return {
     key: `needle-studio ${axis.map((v) => v.toFixed(3)).join(' ')} ${ground}`,
     blur: 0.012,
@@ -125,20 +126,24 @@ function needleStudio(axis: Vec3, ground: string): ThreeEnvironment {
   };
 }
 
-/** Clear plastic over a DOM ground: its haze covers what's behind a little (more at grazing angles), its reflections add. */
-function clearPlasticMaterial() {
-  const m = new THREE.MeshPhysicalMaterial({ color: '#8c9398', metalness: 0, roughness: 0.04, ior: 1.58, transparent: true, premultipliedAlpha: true, depthWrite: false });
-  m.onBeforeCompile = (shader) => {
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <opaque_fragment>', /* glsl */ `
-        float clearFacing = saturate( dot( normal, geometryViewDir ) );
-        float clearAlpha = mix( 0.22, 0.03, clearFacing );
-        gl_FragColor = vec4( totalDiffuse * clearAlpha + totalSpecular, clearAlpha );`)
-      // Already premultiplied above: the reflections must not be scaled down by the haze's alpha.
-      .replace('#include <premultiplied_alpha_fragment>', '');
-  };
-  m.customProgramCacheKey = () => 'needle-clear-plastic';
-  return m;
+/**
+ * Clear plastic over a DOM ground: its haze covers what's behind a little (more at grazing angles), its reflections
+ * add. Its colour leaves the shader already premultiplied, diffuse light scaled by the haze and reflections not, so
+ * three's own premultiply, which would scale the reflections down too, is skipped.
+ */
+class NeedleClearPlasticMaterial extends THREE.MeshPhysicalNodeMaterial {
+  constructor() {
+    super({ color: '#8c9398', metalness: 0, roughness: 0.04, ior: 1.58, transparent: true, premultipliedAlpha: true, depthWrite: false });
+    const haze = mix(0.22, 0.03, normalView.dot(positionViewDirection).saturate());
+    this.opacityNode = haze;
+    // Diffuse light mixed toward black by what the haze lets through: the diffuse share scaled by the haze.
+    this.backdropNode = vec3(0);
+    this.backdropAlphaNode = haze.oneMinus();
+  }
+
+  override setupPremultipliedAlpha(_builder: THREE.NodeBuilder, output: THREE.Node): THREE.Node {
+    return output;
+  }
 }
 
 /**
@@ -147,11 +152,8 @@ function clearPlasticMaterial() {
  */
 function needleStage(r: NeedleRig, color: string, shadow: number, shift: { x: number; y: number }) {
   const { width, height } = r.format, lens = needleLensHeight(r);
-  const camera = new THREE.PerspectiveCamera(r.fov, width / height, lens * 0.02, lens * 1.5);
-  camera.position.set(0, 0, lens);
-  camera.lookAt(0, 0, 0);
   // A lens shift, not a move: the picture slides whole, as the layers under it do, and draws what slides in.
-  camera.setViewOffset(width, height, -shift.x, -shift.y, width, height);
+  const camera = needleShotCamera(r, shift);
   const scene = new THREE.Scene();
 
   // The surface: depth only, drawn first, so what's driven past it is hidden; and a layer that is only shadow.
@@ -185,8 +187,8 @@ function needleStage(r: NeedleRig, color: string, shadow: number, shift: { x: nu
   body.castShadow = true;
   // Two passes of one shell, far faces then near, so the transparent walls blend in depth order.
   const clearGeometry = latheGeometry(CLEAR_TIP, 72);
-  const clearBack = new THREE.Mesh(clearGeometry, Object.assign(clearPlasticMaterial(), { side: THREE.BackSide }));
-  const clearFront = new THREE.Mesh(clearGeometry, clearPlasticMaterial());
+  const clearBack = new THREE.Mesh(clearGeometry, Object.assign(new NeedleClearPlasticMaterial(), { side: THREE.BackSide }));
+  const clearFront = new THREE.Mesh(clearGeometry, new NeedleClearPlasticMaterial());
   clearBack.renderOrder = 1;
   clearFront.renderOrder = 2;
   needle.add(drop, solder, body, clearBack, clearFront);
@@ -276,7 +278,7 @@ export function Needle({
   const r = needleRig({ ...rig, format: useVideoFormat() });
   const shot = needleShotAt(strikes, t, { rig: r, shutter, fastShutter, focus });
   const { pose } = shot;
-  const tip = pose && needleScreenPoint(pose.tip, r);
+  const tip = pose && shotCameraProject(needleShotCamera(r, shift), pose.tip);
   // Each take is its own stage: the streak is laid down first, and the sharp contact over it.
   const takes = [shot.streak, shot].filter((take) => take !== null).map((take) => {
     // Built on the take's first exposure and shared by the rest; its stage frees it after the frame.
@@ -296,7 +298,7 @@ export function Needle({
         <div {...pieceMotionAttrs(motion, 'needle', { kind: 'needle', values: {
           lift: pose.tip[2] / r.scale, grow: pose.tip[2] / (needleLensHeight(r) - pose.tip[2]), tilt: Math.acos(pose.axis[2]) / DEG, inFrame: needleInFrame(pose, r),
         } })}
-          style={{ position: 'absolute', left: tip.x + shift.x - 3, top: tip.y + shift.y - 3, width: 6, height: 6, pointerEvents: 'none' }} />
+          style={{ position: 'absolute', left: tip.x - 3, top: tip.y - 3, width: 6, height: 6, pointerEvents: 'none' }} />
       )}
     </>
   );

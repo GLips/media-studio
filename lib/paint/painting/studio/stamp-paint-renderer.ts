@@ -51,7 +51,7 @@ import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-prof
 import { stampPlacementWarpMap, stampWarpCells, stampWarpTriangles, STAMP_WARP_MOST_CELLS } from '../models/stamp-group-warp.ts';
 import { stampFramePlan, type StampGroupFrame } from '../models/stamp-frame-plan.ts';
 import type { StampGroupMarks, StampPaintFrameState } from '../models/stamp-paint-frame-state.ts';
-import { stampSinglePlane, type CompiledStampPlanes, type StampLensFrame, type StampPlaneLook } from '../models/stamp-plane.ts';
+import { stampSinglePlane, type StampLensFrame, type StampPlaneLook, type StampScenePlanes } from '../models/stamp-plane.ts';
 import { stampStage, stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 
 /** Bytes per uniform slot: every draw's uniforms sit at an offset WebGPU allows binding at (256). */
@@ -1045,14 +1045,37 @@ export type StampPaintRendererOptions = {
    * the painting's planes may bring in. The frame alone, no margin, when left out.
    */
   stage?: StampStage;
-  /** The scene's planes (compileStampPlanes); one plane of every group when left out (stampSinglePlane). */
-  planes?: CompiledStampPlanes;
   /**
-   * Each three plane's texture by its id, on the surface's device: frame-sized rgba16float, premultiplied linear colour,
-   * with TEXTURE_BINDING usage, filled before each draw (paint/three-layers).
+   * The scene's planes, farthest first: a camera's own list, with the groups each picture plane shows
+   * (buildPaintingCamera, stampScenePlanes); one plane of every group when left out (stampSinglePlane).
    */
-  three?: ReadonlyMap<string, GPUTexture>;
+  planes?: StampScenePlanes;
+  /** Each three plane's picture by its id, filled before each draw (paint/three-layers). */
+  three?: ReadonlyMap<string, StampThreePicture>;
 };
+
+/**
+ * A three plane's picture: `texture`, on the surface's device, rgba16float premultiplied linear colour, one layer, with
+ * TEXTURE_BINDING usage; `at`, the frame px its first texel lies on. It may reach past the frame (a negative `at`),
+ * so a defocus blurs in what lies beyond the frame's edge.
+ */
+export type StampThreePicture = { readonly texture: GPUTexture; readonly at: { readonly x: number; readonly y: number } };
+
+/** The back, paper to the stage's edge, and the nearer planes, as the renderer lays them. */
+type StampLaidPlanes = {
+  readonly back: { readonly id: string; readonly groups: readonly number[] };
+  readonly nearer: readonly ({ readonly id: string; readonly kind: 'clear'; readonly groups: readonly number[] } | { readonly id: string; readonly kind: 'three' })[];
+};
+
+/** `scene`'s planes as laid: the farthest the back, which must be a picture to be paper. */
+function stampLaidPlanes({ planes: [back, ...nearer], groups }: StampScenePlanes): StampLaidPlanes {
+  if (back?.kind !== 'picture') throw new Error('stamp paint: the farthest plane must be a picture, on paper to the stage\'s edge');
+  const groupsOf = (id: string) => groups.get(id) ?? [];
+  return {
+    back: { id: back.id, groups: groupsOf(back.id) },
+    nearer: nearer.map(({ id, kind }) => (kind === 'three' ? { id, kind } : { id, kind: 'clear' as const, groups: groupsOf(id) })),
+  };
+}
 
 /** The most lattice cells a frame lays `group` through: a warp's most, a move's one, none still. */
 const latticeCellsMost = ({ lay, warp }: StampGroupFrame) => (warp ? STAMP_WARP_MOST_CELLS ** 2 : Number(!!lay));
@@ -1064,7 +1087,7 @@ const latticeCellsMost = ({ lay, warp }: StampGroupFrame) => (warp ? STAMP_WARP_
  */
 export async function createStampPaintRenderer(
   surface: StampPaintSurface, painting: CompiledStampPaint,
-  { profile, wetStages = STAMP_WET_STAGES, stage: given, planes = stampSinglePlane(painting), three = new Map() }: StampPaintRendererOptions = {},
+  { profile, wetStages = STAMP_WET_STAGES, stage: given, planes: scene = stampSinglePlane(painting), three = new Map() }: StampPaintRendererOptions = {},
 ): Promise<StampPaintRenderer> {
   const { paper, mixing } = painting;
   const { owner } = surface;
@@ -1073,7 +1096,8 @@ export async function createStampPaintRenderer(
   if (stage.frame.width !== surface.width || stage.frame.height !== surface.height) {
     throw new Error(`stamp paint: the stage's frame is ${stage.frame.width} × ${stage.frame.height}, and its surface ${surface.width} × ${surface.height}`);
   }
-  checkStampThreeTextures(planes, three, stage);
+  const planes = stampLaidPlanes(scene);
+  checkStampThreePictures(planes, three, stage);
   let done = span('stamp paint compositor load');
   const { compositorOn, wetnessOf, mediumOf } = compositorFor(painting, paper, mixing, stage, wetStages);
   done();
@@ -1138,17 +1162,21 @@ function compositorFor(painting: CompiledStampPaint, paper: StampPaintPaper, mix
 }
 
 /**
- * Refuses a three plane without a texture, or one that isn't frame-sized rgba16float to sample, and a texture for a
- * plane that isn't a three plane.
+ * Refuses a three plane without a picture, one that isn't rgba16float to sample or doesn't cover the frame, and a
+ * picture for a plane that isn't a three plane.
  */
-function checkStampThreeTextures(planes: CompiledStampPlanes, three: ReadonlyMap<string, GPUTexture>, { frame }: StampStage) {
+function checkStampThreePictures(planes: StampLaidPlanes, three: ReadonlyMap<string, StampThreePicture>, { frame }: StampStage) {
   const threePlanes = new Set(planes.nearer.flatMap((plane) => (plane.kind === 'three' ? [plane.id] : [])));
-  for (const id of three.keys()) if (!threePlanes.has(id)) throw new Error(`stamp paint: a three.js texture is handed in for ${id}, which isn't a three plane`);
+  for (const id of three.keys()) if (!threePlanes.has(id)) throw new Error(`stamp paint: a three.js picture is handed in for ${id}, which isn't a three plane`);
   for (const id of threePlanes) {
-    const texture = three.get(id);
-    if (!texture) throw new Error(`stamp paint: three plane ${id} has no texture handed in`);
-    if (texture.format !== 'rgba16float' || texture.width !== frame.width || texture.height !== frame.height || texture.depthOrArrayLayers !== 1 || !(texture.usage & GPUTextureUsage.TEXTURE_BINDING)) {
-      throw new Error(`stamp paint: three plane ${id}'s texture must be ${frame.width} × ${frame.height} rgba16float, one layer, with TEXTURE_BINDING usage`);
+    const picture = three.get(id);
+    if (!picture) throw new Error(`stamp paint: three plane ${id} has no picture handed in`);
+    const { texture, at } = picture;
+    if (texture.format !== 'rgba16float' || texture.depthOrArrayLayers !== 1 || !(texture.usage & GPUTextureUsage.TEXTURE_BINDING)) {
+      throw new Error(`stamp paint: three plane ${id}'s texture must be rgba16float, one layer, with TEXTURE_BINDING usage`);
+    }
+    if (!(Number.isInteger(at.x) && Number.isInteger(at.y) && at.x <= 0 && at.y <= 0 && at.x + texture.width >= frame.width && at.y + texture.height >= frame.height)) {
+      throw new Error(`stamp paint: three plane ${id}'s picture, ${texture.width} × ${texture.height} at (${at.x}, ${at.y}), must cover the ${frame.width} × ${frame.height} frame from whole px`);
     }
   }
 }
@@ -1164,7 +1192,7 @@ function rendererOnSurface(
   painting: CompiledStampPaint, paper: StampPaintPaper, image: (source: StampBrushImageSource) => StampPaintImage, bound: ReadonlyMap<CompiledStampDeposit, StampBrush<StampPaintImage>>,
   brushed: { masks: readonly CompiledStampBrushedMask[]; bound: ReadonlyMap<CompiledStampMarkPlacement, StampBrush<StampPaintImage>> },
   tipLevels: ReadonlyMap<StampPaintImage, StampTipLevel[]>, wetStages: readonly StampWetStage[],
-  { planes, three }: { planes: CompiledStampPlanes; three: ReadonlyMap<string, GPUTexture> },
+  { planes, three }: { planes: StampLaidPlanes; three: ReadonlyMap<string, StampThreePicture> },
   span: FrameProfileStart,
 ): { measured: Promise<StampBrushedCoverage>; finish: (coverage: StampBrushedCoverage) => StampPaintRenderer } {
   const { width, height, frame, margin } = stage, { format, owner } = surface, { device } = scope;
@@ -2229,13 +2257,14 @@ function rendererOnSurface(
   const frameBox: Box = { x: 0, y: 0, w: frame.width, h: frame.height }, stageBox: Box = { x: 0, y: 0, w: width, h: height };
   /**
    * A gaussian of `sigma` px over `source` (its first texel at `sourceAt`, read within `read`) into `into` (its first
-   * texel at `box`'s corner) over `box`, through a stage-sized scratch target: boxes in one space, within the stage's.
+   * texel at `box`'s corner) over `box`, through a scratch target the stage's size or the box's if larger (a three
+   * picture past the frame): boxes in one space.
    */
   function gaussian(encoder: GPUCommandEncoder, { source, into, layers, sigma, read, sourceAt, box }: {
     source: GPUTextureView; into: GPUTextureView; layers: number; sigma: number; read: Box; sourceAt: { x: number; y: number }; box: Box;
   }) {
     const pipeline = lensPipeline(`gaussian|${layers}`, () => stampGaussianPassWgsl(layers, WORKGROUP));
-    const across = lensTarget('lens across', width, height, layers);
+    const across = lensTarget('lens across', Math.max(width, box.w), Math.max(height, box.h), layers);
     const pass = (from: GPUTextureView, to: GPUTextureView, axis: 0 | 1, readBox: Box, at: { x: number; y: number }, intoAt: { x: number; y: number }) => dispatch(encoder, pipeline, [slot((views) => {
       const put = stampUniformWriter(STAMP_GAUSSIAN_PASS, views);
       put('sigma', sigma);
@@ -2405,13 +2434,17 @@ function rendererOnSurface(
     // A plane's defocus is frame px: on its picture, it's that over the view's scale.
     return look.defocus ? blurredPicture(encoder, picture, key, look.defocus / Math.hypot(look.view.ma, look.view.mb)) : picture;
   }
-  /** Three plane `id`'s texture, defocused by `sigma` frame px into a scratch target of its own. */
+  /**
+   * Three plane `id`'s picture, defocused by `sigma` frame px into a scratch target of its own, and its box in frame
+   * px. The whole picture is blurred, so what it holds past the frame blurs in across the frame's edge.
+   */
   function threePicture(encoder: GPUCommandEncoder, id: string, sigma: number): { view: GPUTextureView; box: Box } {
-    const view = arrayView(three.get(id)!);
-    if (!sigma) return { view, box: frameBox };
-    const defocused = lensTarget(`three ${id}`, frame.width, frame.height, 1), stepped = stampDefocusSigmaStepped(sigma);
-    gaussian(encoder, { source: view, into: defocused.array, layers: 1, sigma: stepped, read: frameBox, sourceAt: frameBox, box: frameBox });
-    return { view: defocused.array, box: frameBox };
+    const { texture, at } = three.get(id)!, view = arrayView(texture);
+    const box: Box = { x: at.x, y: at.y, w: texture.width, h: texture.height }, own: Box = { x: 0, y: 0, w: texture.width, h: texture.height };
+    if (!sigma) return { view, box };
+    const defocused = lensTarget(`three ${id}`, texture.width, texture.height, 1), stepped = stampDefocusSigmaStepped(sigma);
+    gaussian(encoder, { source: view, into: defocused.array, layers: 1, sigma: stepped, read: own, sourceAt: own, box: own });
+    return { view: defocused.array, box };
   }
   /** The stage's whole texels within painting points x0..x1, y0..y1, or null for none. */
   function onStage(x0: number, y0: number, x1: number, y1: number): Box | null {

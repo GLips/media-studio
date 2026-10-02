@@ -3,7 +3,9 @@
 // where a point is seen, and each frame's shutter, focus and exposures. Pure: reel/needle.tsx draws it.
 
 import type { FrameSize, VideoFormat } from '#lib/picture/frame/models/frame.ts';
-import { addVec3, crossVec3, dotVec3, lengthVec3, lerpVec3, scaleVec3, subVec3, unitVec3, type Vec3 } from '#lib/picture/frame/models/vec3.ts';
+import { Vector3 } from 'three';
+import type { Vector3Tuple } from 'three';
+import { shotCameraProject, shotCameraRolled, type ShotCamera, type ShotPoint } from '#lib/picture/shot-camera/models/shot-camera.ts';
 import { BODY_BACK, BODY_START, NOSE } from './needle-cartridge.ts';
 
 export type NeedleStrike = {
@@ -70,9 +72,9 @@ const DEG = Math.PI / 180;
 
 /** Where the needle is at one moment. Positions are world px: x right and y up from the frame's centre, z toward the lens. */
 export type NeedlePose = {
-  tip: Vec3;
+  tip: ShotPoint;
   /** Unit vector from the tip up the needle toward the body. */
-  axis: Vec3;
+  axis: Readonly<Vector3Tuple>;
   /** The ink on the tip: the strike's it's coming in to or has made. */
   ink: string;
   /** How full the drop of ink on the tip is, 0..1: full coming in, spent into the surface on contact. */
@@ -84,13 +86,17 @@ export type NeedlePose = {
 /** The lens's height above the surface, in frame px: the distance at which one surface unit is one frame pixel. */
 export const needleLensHeight = ({ fov, format }: Pick<NeedleRig, 'fov' | 'format'>) => format.height / 2 / Math.tan((fov * DEG) / 2);
 
-/** The frame pixel that a world point (see `NeedlePose`) is seen at through the rig's lens. */
-export function needleScreenPoint(p: Vec3, r: Pick<NeedleRig, 'fov' | 'format'>): { x: number; y: number } {
-  const { width, height } = r.format, m = needleLensHeight(r) / (needleLensHeight(r) - p[2]);
-  return { x: width / 2 + p[0] * m, y: height / 2 - p[1] * m };
+/**
+ * The rig's camera: straight down from the lens height, the frame's centre over the origin, slid by `shift` px as a
+ * lens shift (the layers under the needle's shake).
+ */
+export function needleShotCamera(r: Pick<NeedleRig, 'fov' | 'format'>, shift = { x: 0, y: 0 }): ShotCamera {
+  const lens = needleLensHeight(r), { width, height } = r.format;
+  return shotCameraRolled({ frame: { width, height }, fov: r.fov, near: lens * 0.02, far: lens * 1.5, shift }, { position: [0, 0, lens], rollZ: 0 });
 }
 
-const surfacePoint = (s: NeedleStrike, { width, height }: FrameSize): Vec3 => [s.x - width / 2, height / 2 - s.y, 0];
+const surfacePoint = (s: NeedleStrike, { width, height }: FrameSize) => new Vector3(s.x - width / 2, height / 2 - s.y, 0);
+const tupleOf = (v: Vector3): [number, number, number] => [v.x, v.y, v.z];
 
 /** Whether frame point `s` is in the frame, or within `margin` px past its edges (negative: that far inside them). */
 const inFrame = (s: { x: number; y: number }, { width, height }: FrameSize, margin: number) =>
@@ -113,25 +119,25 @@ export function needleContactAt(strikes: readonly NeedleStrike[], t: number): { 
 export function needlePoseAt(strikes: readonly NeedleStrike[], t: number, rig: NeedleRigSettings): NeedlePose | null {
   const r = needleRig(rig);
   const order = strikes.toSorted((p, q) => p.at - q.at);
-  const rest = needleRestAxis(r);
+  const rest = new Vector3(...needleRestAxis(r));
   const here = tipPath(order, t, r, rest);
   if (!here) return null;
   // The lean follows the tip's velocity across its axis, a quarter frame back: so the contact frame still leans into
   // the blow, and the drive straightens it.
   const leanDt = 1 / (4 * r.format.fps);
   const before = tipPath(order, t - leanDt, r, rest);
-  let axis = rest;
+  const axis = rest.clone();
   if (before) {
-    const velocity = scaleVec3(subVec3(here.tip, before.tip), 1 / leanDt);
-    const across = subVec3(velocity, scaleVec3(rest, dotVec3(velocity, rest)));
-    const speed = lengthVec3(across);
-    if (speed > 1e-6) axis = unitVec3(addVec3(rest, scaleVec3(across, (Math.tan(r.lean * DEG) * Math.tanh(speed / LEAN_SPEED)) / speed)));
+    const velocity = new Vector3(...here.tip).sub(new Vector3(...before.tip)).multiplyScalar(1 / leanDt);
+    const across = velocity.clone().sub(rest.clone().multiplyScalar(velocity.dot(rest)));
+    const speed = across.length();
+    if (speed > 1e-6) axis.addScaledVector(across, (Math.tan(r.lean * DEG) * Math.tanh(speed / LEAN_SPEED)) / speed).normalize();
   }
-  return { ...here, axis };
+  return { ...here, axis: tupleOf(axis) };
 }
 
 /** The needle's axis at rest, tip to body: `tilt` off the lens, its body running toward `grip`. */
-export const needleRestAxis = (r: NeedleRig): Vec3 =>
+export const needleRestAxis = (r: NeedleRig): Readonly<Vector3Tuple> =>
   [Math.sin(r.tilt * DEG) * Math.cos(r.grip * DEG), Math.sin(r.tilt * DEG) * Math.sin(r.grip * DEG), Math.cos(r.tilt * DEG)];
 
 // Frame px a second across its axis at which the lean is three quarters of `lean`: a blow reaches it, a drift doesn't.
@@ -143,22 +149,22 @@ const SPENT = 0.35;
 const EXIT_POWER = 1.6;
 
 /** The tip's pose without the lean: the whole choreography. */
-function tipPath(order: readonly NeedleStrike[], t: number, r: NeedleRig, axis: Vec3): Omit<NeedlePose, 'axis'> | null {
+function tipPath(order: readonly NeedleStrike[], t: number, r: NeedleRig, axis: Vector3): Omit<NeedlePose, 'axis'> | null {
   const next = order.find((s) => s.at > t + CONTACT_SLACK);
   if (next && next.at - t < r.enter) {
     const p = surfacePoint(next, r.format);
-    return { tip: lerpVec3(needleOffFrame(p, axis, r), p, 1 - (next.at - t) / r.enter), ink: next.ink, load: 1, fast: true };
+    return { tip: tupleOf(needleOffFrame(p, axis, r).lerp(p, 1 - (next.at - t) / r.enter)), ink: next.ink, load: 1, fast: true };
   }
   const strike = order.findLast((s) => s.at <= t + CONTACT_SLACK);
   if (!strike) return null;
   const tau = Math.max(0, t - strike.at), p = surfacePoint(strike, r.format);
-  const driven = subVec3(p, scaleVec3(axis, overdriveDepth(Math.min(tau, r.dwell), r.overdrive * r.scale, r.format.fps)));
+  const driven = p.clone().sub(axis.clone().multiplyScalar(overdriveDepth(Math.min(tau, r.dwell), r.overdrive * r.scale, r.format.fps)));
   const spent = { ink: strike.ink, load: SPENT };
   // Within the slack a frame on the dwell's last beat is still in the surface.
-  if (tau < r.dwell + CONTACT_SLACK) return { tip: driven, ...spent, fast: false };
+  if (tau < r.dwell + CONTACT_SLACK) return { tip: tupleOf(driven), ...spent, fast: false };
   const v = (tau - r.dwell) / r.exit;
   if (v >= 1) return null;
-  return { tip: lerpVec3(driven, needleOffFrame(p, axis, r), v ** EXIT_POWER), ...spent, fast: true };
+  return { tip: tupleOf(driven.lerp(needleOffFrame(p, axis, r), v ** EXIT_POWER)), ...spent, fast: true };
 }
 
 /** Depth past the surface `tau` seconds after contact: driven to `overdrive` a frame in, then easing back as it dwells. */
@@ -174,17 +180,16 @@ const OFF_FRAME_MARGIN = 40;
  * Where the tip comes in from and leaves to for a strike at `p`: the first point out along its path (toward `from`,
  * rising at `climb`) at which the needle is wholly out of frame.
  */
-function needleOffFrame(p: Vec3, axis: Vec3, r: NeedleRig): Vec3 {
-  const way = (r.from ?? r.grip) * DEG, rise = r.climb * DEG, lens = needleLensHeight(r);
-  const out: Vec3 = [Math.cos(rise) * Math.cos(way), Math.cos(rise) * Math.sin(way), Math.sin(rise)];
+function needleOffFrame(p: Vector3, axis: Vector3, r: NeedleRig): Vector3 {
+  const way = (r.from ?? r.grip) * DEG, rise = r.climb * DEG, lens = needleLensHeight(r), camera = needleShotCamera(r);
+  const out = new Vector3(Math.cos(rise) * Math.cos(way), Math.cos(rise) * Math.sin(way), Math.sin(rise));
   for (let d = 20; ; d += 20) {
-    const tip = addVec3(p, scaleVec3(out, d));
-    if (tip[2] > 0.8 * lens) throw new Error(`the needle's path reaches the lens before it leaves frame: lower its climb (${r.climb}°)`);
-    const pose = { tip, axis };
+    const tip = p.clone().add(out.clone().multiplyScalar(d));
+    if (tip.z > 0.8 * lens) throw new Error(`the needle's path reaches the lens before it leaves frame: lower its climb (${r.climb}°)`);
     const seen = NEEDLE_OUTLINE.some(([along, radius]) => [0, 1, 2, 3].some((j) => {
-      const q = outlinePoint(pose, along * r.scale, radius * r.scale, (j * Math.PI) / 2);
-      if (q[2] >= lens) return false;
-      return inFrame(needleScreenPoint(q, r), r.format, OFF_FRAME_MARGIN);
+      // A point at or behind the lens has no image, so it isn't seen.
+      const s = shotCameraProject(camera, outlinePoint(tip, axis, along * r.scale, radius * r.scale, (j * Math.PI) / 2));
+      return s !== null && inFrame(s, r.format, OFF_FRAME_MARGIN);
     }));
     if (!seen) return tip;
   }
@@ -199,20 +204,22 @@ const NEEDLE_OUTLINE: readonly (readonly [number, number])[] = [
 // A sharp edge copied every 2.5 px or closer reads as a smear; further apart, as copies.
 const SHARP_STEP = 2.5;
 
-const outlinePoint = (pose: Pick<NeedlePose, 'tip' | 'axis'>, along: number, out: number, angle: number): Vec3 => {
-  const a = pose.axis;
-  const across: Vec3 = Math.hypot(a[0], a[1]) > 1e-6 ? unitVec3([-a[1], a[0], 0]) : [1, 0, 0];
-  const side = crossVec3(a, across);
-  return addVec3(addVec3(pose.tip, scaleVec3(a, along)), addVec3(scaleVec3(across, out * Math.cos(angle)), scaleVec3(side, out * Math.sin(angle))));
-};
+/** The point `along` up the needle's axis from `tip` and `out` from it, `angle` round it. */
+function outlinePoint(tip: Vector3 | ShotPoint, axis: Vector3 | ShotPoint, along: number, out: number, angle: number): Vector3 {
+  const a = axis instanceof Vector3 ? axis : new Vector3(...axis);
+  const across = Math.hypot(a.x, a.y) > 1e-6 ? new Vector3(-a.y, a.x, 0).normalize() : new Vector3(1, 0, 0);
+  const side = new Vector3().crossVectors(a, across);
+  const ring = across.multiplyScalar(out * Math.cos(angle)).addScaledVector(side, out * Math.sin(angle));
+  return (tip instanceof Vector3 ? tip.clone() : new Vector3(...tip)).addScaledVector(a, along).add(ring);
+}
 
 /** The share of the needle's length, tip to back end, whose image is in frame. */
 export function needleInFrame(pose: NeedlePose, r: NeedleRig) {
-  const steps = 40;
+  const steps = 40, camera = needleShotCamera(r);
   let seen = 0;
   for (let k = 0; k <= steps; k++) {
-    const s = needleScreenPoint(addVec3(pose.tip, scaleVec3(pose.axis, (k / steps) * BODY_BACK * r.scale)), r);
-    if (s.x >= 0 && s.x <= r.format.width && s.y >= 0 && s.y <= r.format.height) seen++;
+    const s = shotCameraProject(camera, outlinePoint(pose.tip, pose.axis, (k / steps) * BODY_BACK * r.scale, 0, 0));
+    if (s && s.x >= 0 && s.x <= r.format.width && s.y >= 0 && s.y <= r.format.height) seen++;
   }
   return seen / (steps + 1);
 }
@@ -226,13 +233,12 @@ export function needleCoversAt(strikes: readonly NeedleStrike[], t: number, p: {
   const r = needleRig(rig);
   const pose = needlePoseAt(strikes, t, r);
   if (!pose || pose.fast) return false;
-  const lens = needleLensHeight(r);
+  const camera = needleShotCamera(r);
   return NEEDLE_OUTLINE.slice(1).some(([along1, out1], k) => {
     const [along0, out0] = NEEDLE_OUTLINE[k], steps = Math.max(1, Math.ceil(along1 - along0));
     return Array.from({ length: steps + 1 }, (_, j) => j / steps).some((u) => {
-      const centre = addVec3(pose.tip, scaleVec3(pose.axis, (along0 + (along1 - along0) * u) * r.scale));
-      const s = needleScreenPoint(centre, r);
-      return Math.hypot(p.x - s.x, p.y - s.y) <= ((out0 + (out1 - out0) * u) * r.scale * lens) / (lens - centre[2]);
+      const s = shotCameraProject(camera, outlinePoint(pose.tip, pose.axis, (along0 + (along1 - along0) * u) * r.scale, 0, 0));
+      return s !== null && Math.hypot(p.x - s.x, p.y - s.y) <= (out0 + (out1 - out0) * u) * r.scale * s.scale;
     });
   });
 }
@@ -289,7 +295,7 @@ export function needleExposuresAt(strikes: readonly NeedleStrike[], t: number, o
 type NeedleSampling = { samples: number; maxSamples: number; aperture: number };
 
 export function needleTakeExposures(strikes: readonly NeedleStrike[], take: NeedleTake, focusDistance: number, r: NeedleRig, o: NeedleSampling): number {
-  const lens = needleLensHeight(r), steps = 12;
+  const lens = needleLensHeight(r), camera = needleShotCamera(r), steps = 12;
   const poses = Array.from({ length: steps + 1 }, (_, k) => needlePoseAt(strikes, take.exposureAt(-((steps - k) / steps) * (take.shutter / r.format.fps)), r));
   if (poses.every((pose) => pose === null)) return 0;
   let need = 0;
@@ -301,12 +307,16 @@ export function needleTakeExposures(strikes: readonly NeedleStrike[], take: Need
           last = null;
           continue;
         }
-        const p = outlinePoint(pose, along * r.scale, out * r.scale, (q * Math.PI) / 2);
-        const s = needleScreenPoint(p, r), seen = inFrame(s, r.format, 0);
+        const s = shotCameraProject(camera, outlinePoint(pose.tip, pose.axis, along * r.scale, out * r.scale, (q * Math.PI) / 2));
+        if (!s) {
+          last = null;
+          continue;
+        }
+        const seen = inFrame(s, r.format, 0);
         if (last && (seen || last.seen)) travel += Math.hypot(s.x - last.x, s.y - last.y);
         // The defocus disc's diameter, by ThreeLens's thin lens (its focal length in px is the lens height).
-        if (seen) blur = Math.min(blur, lens * o.aperture * Math.abs(1 / focusDistance - 1 / (lens - p[2])));
-        last = { ...s, seen };
+        if (seen) blur = Math.min(blur, lens * o.aperture * Math.abs(1 / focusDistance - 1 / s.depth));
+        last = { x: s.x, y: s.y, seen };
       }
       if (travel > 0) need = Math.max(need, travel / Math.max(SHARP_STEP, blur / 2) + 1);
     }

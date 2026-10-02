@@ -2,8 +2,8 @@
 //
 // Chrome silently falls back to SwiftShader, its software GL, when it can't have the GPU or its GPU process keeps
 // crashing: the render just takes many times as long. So each render's browser is asked which renderer a WebGL
-// context gets and which adapter WebGPU gets, before the render and again after, and a missing or software one fails
-// the render. Film, previs and reel draw with WebGL, stamp paintings with WebGPU.
+// context gets and which adapter WebGPU gets, before the render and after; a missing or software one fails it.
+// Everything three.js and painted draws with WebGPU; software GL still means the page composites in software.
 //
 // WebGPU exists only in a secure context, so the question is asked of a page served over loopback HTTP, as Remotion
 // serves a render's: about:blank has no navigator.gpu.
@@ -12,8 +12,8 @@ import type { AddressInfo } from 'node:net';
 import { openBrowser, type HeadlessBrowser } from '@remotion/renderer';
 
 /**
- * Every render's browser runs on the GPU. Three scenes (film, previs, reel) draw with WebGL, which Remotion's
- * default software renderer makes crawl; WebGPU needs no flag.
+ * Every render's browser runs on the GPU: Chrome's compositing goes through its GL backend, which Remotion's default
+ * software renderer makes crawl; WebGPU needs no flag.
  */
 export const RENDER_CHROMIUM = { gl: 'angle' } as const;
 
@@ -56,7 +56,7 @@ const describeGpu = ({ gl, webgpu }: GpuBackends) => `${gl}; WebGPU ${webgpu!.ve
 
 function assertHardwareGpu({ gl, webgpu }: GpuBackends, when: 'before' | 'after') {
   const what = when === 'before' ? 'has' : 'fell back to';
-  if (gl === null) throw new Error(`the render's browser ${what} no WebGL: painted layers can't draw`);
+  if (gl === null) throw new Error(`the render's browser ${what} no GL backend: its GPU process is gone`);
   if (SOFTWARE_GL.test(gl)) {
     throw new Error(`the render's browser ${what} software GL (${gl}), which renders many times slower. Close other GPU-heavy apps, or render with fewer --workers`);
   }

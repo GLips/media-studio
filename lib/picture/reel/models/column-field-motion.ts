@@ -1,33 +1,35 @@
-// column-field-motion.ts: the cube field's camera move and ball, pure functions of t, and where a point of the
-// field lands in the frame through that camera.
+// column-field-motion.ts: the cube field's camera move and ball, pure functions of t. The camera is a shot camera
+// (shot-camera.ts), so a point of the field lands in the frame through shotCameraProject.
 
 import { Matrix4, Quaternion, Vector3 } from 'three';
 import { fullFrameRect, type FrameSize } from '#lib/picture/frame/models/frame.ts';
 import { clamp, lerp, sineInOutEase } from '#lib/picture/motion/models/motion.ts';
-import type { Vec3 } from '#lib/picture/frame/models/vec3.ts';
+import { shotCameraFocalPx, shotCameraFromAxes } from '#lib/picture/shot-camera/models/shot-camera.ts';
 import { columnFieldPoint, type ColumnBall, type ColumnBallState, type ColumnCameraMove, type ColumnCameraPose, type ColumnCameraState, type ColumnCell, type ColumnFieldSpec } from './column-field.ts';
 
 const rad = (d: number) => (d * Math.PI) / 180;
 const deg = (r: number) => (r * 180) / Math.PI;
-const focalPx = (fov: number, h: number) => h / 2 / Math.tan(rad(fov) / 2);
-const Y = new Vector3(0, 1, 0);
+/** The world's up, new each time: three's vectors are mutable, so none is shared. */
+const worldUp = () => new Vector3(0, 1, 0);
+/** The depth the field's camera sees, in pitches: the fog has closed in long before its far end. */
+const COLUMN_CAMERA_DEPTH = { near: 0.1, far: 600 };
 
 // ---------- camera ----------
 
 /**
- * Straight down on the field with one pitch `pitch` px across at the tops' `height`, in a box `frameHeight` px tall
- * (the field's `box`, or the frame): the first frame of a match cut from a 2D grid drawn at that pitch (the
- * reference's steps from 100 to 101.25). `centre` is the cell under the centre.
+ * Straight down on the field with one pitch `pitch` px across at the tops' `height`, in a `frame` of px (the field's
+ * `box`, or the video's): the first frame of a match cut from a 2D grid drawn at that pitch (the reference's steps
+ * from 100 to 101.25). `centre` is the cell under the centre.
  */
-export function topDownPose({ pitch, fov = 27, centre = [0, 0], height = 0, frameHeight }: { pitch: number; fov?: number; centre?: readonly [number, number]; height?: number; frameHeight: number }): ColumnCameraPose {
-  return { target: [centre[0], height, centre[1]], distance: focalPx(fov, frameHeight) / pitch, elevation: 90, azimuth: 0, fov };
+export function topDownPose({ pitch, fov = 27, centre = [0, 0], height = 0, frame }: { pitch: number; fov?: number; centre?: readonly [number, number]; height?: number; frame: FrameSize }): ColumnCameraPose {
+  return { target: [centre[0], height, centre[1]], distance: shotCameraFocalPx({ frame, fov }) / pitch, elevation: 90, azimuth: 0, fov };
 }
 
 /**
- * The camera at t. `punchAt` evaluates the punches at another moment: a frame's exposures share the frame's, since a
- * one-frame punch smeared across the shutter would be lost. `ballAt` feeds the follow.
+ * The camera at t, making a `frame` of px. `punchAt` evaluates the punches at another moment: a frame's exposures
+ * share the frame's, since a one-frame punch smeared across the shutter would be lost. `ballAt` feeds the follow.
  */
-export function columnCameraAt(move: ColumnCameraMove, t: number, o: { punchAt?: number; ballAt?: (t: number) => Vector3 | null } = {}): ColumnCameraState {
+export function columnCameraAt(move: ColumnCameraMove, t: number, o: { frame: FrameSize; punchAt?: number; ballAt?: (t: number) => Vector3 | null }): ColumnCameraState {
   const { from, to } = move;
   const [c0, c1] = move.crane;
   const k = (move.ease ?? sineInOutEase)(clamp((t - c0) / Math.max(1e-6, c1 - c0)));
@@ -56,14 +58,15 @@ export function columnCameraAt(move: ColumnCameraMove, t: number, o: { punchAt?:
     pan += ((rate * double) / Math.LN2) * (growth - 1);
     whip = clamp(Math.log2(growth) / 5);
   }
-  const turn = new Quaternion().setFromAxisAngle(Y, -rad(pan));
+  const turn = new Quaternion().setFromAxisAngle(worldUp(), -rad(pan));
   for (const v of [forward, right, up]) v.applyQuaternion(turn);
 
   let zoom = 1;
   const tp = o.punchAt ?? t;
   for (const p of move.punches ?? []) if (tp >= p.at) zoom *= 1 + p.amount * Math.exp(-(tp - p.at) / (move.punchDecay ?? 0.025));
   const fov = deg(2 * Math.atan(Math.tan(rad(lerp(from.fov, to.fov, k)) / 2) / zoom));
-  return { position, forward, right, up, fov, target, crane: k, whip };
+  const camera = shotCameraFromAxes({ frame: o.frame, fov, ...COLUMN_CAMERA_DEPTH }, { position: position.toArray(), right: right.toArray(), up: up.toArray(), forward: forward.toArray() });
+  return { camera, target: target.toArray(), crane: k, whip };
 }
 
 /** Degrees right that would aim the view at the ball's recent place, averaged over 0.1 s to follow travel, not hops. */
@@ -80,9 +83,14 @@ function followPan(position: Vector3, forward: Vector3, ballAt: (t: number) => V
   return deg(Math.atan2(Math.sin(d), Math.cos(d)));
 }
 
-export function fieldCamera<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: number, punchAt = t) {
+/**
+ * The field's camera at t, for a video `format` big: its frame is the field's `box` (px from the box's top left), the
+ * whole frame without one. `punchAt` as columnCameraAt's.
+ */
+export function columnFieldCameraAt<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: number, format: FrameSize, punchAt = t): ColumnCameraState {
+  const box = spec.box ?? fullFrameRect(format);
   const ballAt = spec.ball && spec.camera.follow ? (at: number) => columnBallAt(spec, at)?.position ?? null : undefined;
-  return columnCameraAt(spec.camera, t, { punchAt, ballAt });
+  return columnCameraAt(spec.camera, t, { frame: { width: box.w, height: box.h }, punchAt, ballAt });
 }
 
 // ---------- the ball ----------
@@ -104,11 +112,11 @@ function ballPath<C extends ColumnCell>(spec: ColumnFieldSpec<C>, ball: ColumnBa
   const top = (cell: readonly [number, number], at: number) => new Vector3(...columnFieldPoint(spec, at, cell, r));
   const aim = (t0: number, p0: Vector3, t1: number, p1: Vector3): Flight => {
     const T = Math.max(1e-3, t1 - t0);
-    return { start: t0, t0, t1, p0, v0: p1.clone().sub(p0).divideScalar(T).addScaledVector(Y, 0.5 * g * T) };
+    return { start: t0, t0, t1, p0, v0: p1.clone().sub(p0).divideScalar(T).addScaledVector(worldUp(), 0.5 * g * T) };
   };
   const contacts = ball.contacts.toSorted((p, q) => p.at - q.at);
   const first = contacts[0];
-  const { from, duration } = ball.enter ?? { from: [-1, 9, -7] as Vec3, duration: 0.45 };
+  const { from, duration } = ball.enter ?? { from: [-1, 9, -7] as const, duration: 0.45 };
   const landing = top(first.cell, first.at);
   const flights: Flight[] = [{ ...aim(first.at - duration, landing.clone().add(new Vector3(...from)), first.at, landing), t0: -Infinity }];
   for (const [k, contact] of contacts.entries()) {
@@ -138,11 +146,11 @@ export function columnBallAt<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: 
   }
   const flight = path.flights.find((f) => t >= f.t0 && t <= f.t1)!;
   const dt = t - flight.start;
-  const position = flight.p0.clone().addScaledVector(flight.v0, dt).addScaledVector(Y, -0.5 * g * dt * dt);
-  const velocity = flight.v0.clone().addScaledVector(Y, -g * dt);
+  const position = flight.p0.clone().addScaledVector(flight.v0, dt).addScaledVector(worldUp(), -0.5 * g * dt * dt);
+  const velocity = flight.v0.clone().addScaledVector(worldUp(), -g * dt);
   const speed = velocity.length();
   const along = 1 + (ball.stretch ?? 0.12) * Math.min(speed / 50, 1.5), across = 1 / Math.sqrt(along);
-  const toPath = new Quaternion().setFromUnitVectors(Y, speed > 1e-6 ? velocity.clone().divideScalar(speed) : Y);
+  const toPath = new Quaternion().setFromUnitVectors(worldUp(), speed > 1e-6 ? velocity.clone().divideScalar(speed) : worldUp());
   const stretch = new Matrix4().makeRotationFromQuaternion(toPath).multiply(new Matrix4().makeScale(across, along, across)).multiply(new Matrix4().makeRotationFromQuaternion(toPath.clone().invert()));
   const matrix = new Matrix4().makeTranslation(position).multiply(stretch).multiply(roll);
   return { position, velocity, matrix, squash: 0, radius: r };
@@ -160,24 +168,7 @@ function rollAt(path: BallPath, t: number, r: number) {
     const horizontal = new Vector3(f.v0.x, 0, f.v0.z);
     const speed = horizontal.length();
     if (span === 0 || speed < 1e-6) continue;
-    total.premultiply(new Quaternion().setFromAxisAngle(Y.clone().cross(horizontal).normalize(), (speed * span) / r));
+    total.premultiply(new Quaternion().setFromAxisAngle(worldUp().cross(horizontal).normalize(), (speed * span) / r));
   }
   return new Matrix4().makeRotationFromQuaternion(total);
-}
-
-// ---------- projection ----------
-
-
-/**
- * Where a point of the field (pitches) lands in a frame `frameSize` big at t: px, `box` included; its depth along the
- * view; px per pitch there. Null behind the camera. For HUD marks and type that must sit on a column or the ball.
- */
-export function columnFieldProject<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: number, point: Vec3 | Vector3, frameSize: FrameSize) {
-  const cam = fieldCamera(spec, t);
-  const box = spec.box ?? fullFrameRect(frameSize);
-  const v = (point instanceof Vector3 ? point.clone() : new Vector3(...point)).sub(cam.position);
-  const depth = v.dot(cam.forward);
-  if (depth <= 0.1) return null;
-  const f = focalPx(cam.fov, box.h);
-  return { x: box.x + box.w / 2 + (v.dot(cam.right) / depth) * f, y: box.y + box.h / 2 - (v.dot(cam.up) / depth) * f, depth, scale: f / depth };
 }

@@ -1,29 +1,22 @@
-// stamp-paint-gpu-owner.ts: the one owner of a GPU device stamp painting draws on, and of everything on it that
-// outlasts a painting: the images, each tip's mip levels and hulls, modules, pipelines and samplers, the targets, and
-// the GPU cache (stamp-paint-gpu-cache.ts), whose one budget every painting and output on the device shares. Outputs
-// (stamp-paint-surface.ts) and three.js (paint/three-layers) render on it too.
+// stamp-paint-gpu-owner.ts: a studio device owner (gpu-device-owner.ts) with everything on it that outlasts a
+// painting: the images, each tip's mip levels and hulls, modules, pipelines and samplers, the targets, and the GPU
+// cache (stamp-paint-gpu-cache.ts), whose one budget every painting and output on the device shares. Outputs
+// (stamp-paint-surface.ts) and three.js (the owner's one renderer) render on it too.
 //
 // A painting's buffers and textures go in a scope (StampPaintGpuScope) freed with it.
-//
-// Warning: error scopes are one stack per device. A synchronous check pops within its task, so it nests inside
-// anything open. An asynchronous one (three.js's loads) stays open across awaits, so they run one after another:
-// two open at once would pop each other's scopes.
 
 import type { StampBrushAsset } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampTipHull, type StampTipHull, type StampTipLevel } from '../models/stamp-tip-hull.ts';
 import { stampPaintGpuCache, type StampPaintGpuCache } from './stamp-paint-gpu-cache.ts';
+import { createGpuDeviceOwner, type GpuDeviceOwner } from '#lib/platform/gpu/studio/gpu-device-owner.ts';
 import {
-  createStampPaintDevice, fetchStampPaintBitmaps, readStampTipLevels, type StampPaintDevice, type StampPaintImage, uploadStampPaintBitmaps, uploadStampPaintGreyImages,
+  fetchStampPaintBitmaps, readStampTipLevels, type StampPaintDevice, type StampPaintImage, uploadStampPaintBitmaps, uploadStampPaintGreyImages,
 } from './stamp-paint-gpu.ts';
-
-const GPU_ERROR_SCOPES = ['validation', 'out-of-memory', 'internal'] as const;
 
 /** A painting's share of a device: what it makes through `device` is destroyed by `destroy`. */
 export type StampPaintGpuScope = { device: StampPaintDevice; destroy: () => void };
 
-export type StampPaintGpuOwner = {
-  /** The device itself, for what draws on it besides stamp painting (three.js) and for configuring a canvas. */
-  webgpu: GPUDevice;
+export type StampPaintGpuOwner = GpuDeviceOwner & {
   /**
    * The device as a painting reads it: modules, pipelines and samplers come from caches keyed by their descriptors;
    * a buffer or texture made through it lasts until the owner is disposed.
@@ -31,19 +24,6 @@ export type StampPaintGpuOwner = {
   device: StampPaintDevice;
   /** A new scope for one painting's buffers and textures. */
   scope: () => StampPaintGpuScope;
-  /**
-   * Runs `work`, which mustn't await, and resolves with what it returns once WebGPU has checked it, or rejects naming
-   * `what` and the error. Its scopes are popped before any other work can push one, so checks never catch each
-   * other's errors.
-   */
-  checked: <T>(what: string, work: () => T) => Promise<T>;
-  /**
-   * Runs `work`, which may await, once every asynchronous check asked for before it is done, and resolves or rejects
-   * as `checked` does. Its errors are those of the work done meanwhile outside any synchronous check.
-   */
-  checkedAsync: <T>(what: string, work: () => Promise<T>) => Promise<T>;
-  /** Throws if the device was lost (a lost device isn't an error a scope catches). */
-  assertLive: () => void;
   /** Each image at its asset, the paper's photograph in colour and the rest by their red channel; fetched once a device. */
   images: (assets: readonly { asset: StampBrushAsset; channels: 'red' | 'colour' }[]) => Promise<StampPaintImage[]>;
   /** An image drawn in memory under `key` (a bristle tip at a diameter), uploaded the first time it's asked for. */
@@ -59,7 +39,7 @@ export type StampPaintGpuOwner = {
    * shared by every painting and output of that size. A frame never depends on what an earlier one left in them.
    */
   target: (name: string, descriptor: GPUTextureDescriptor) => GPUTexture;
-  /** Frees all it holds and destroys the device; dispose what else draws on it (three.js) first. */
+  /** Frees all it holds, then the device and its three.js renderer; dispose what else draws on it first. */
   dispose: () => void;
 };
 
@@ -70,47 +50,7 @@ type StampDescriptorValue = GPUShaderModule | string | number | boolean | null |
 
 /** An owner of a new device, fetching each image from `imageUrl`. */
 export async function createStampPaintGpuOwner(imageUrl: (asset: StampBrushAsset) => string): Promise<StampPaintGpuOwner> {
-  const webgpu = await createStampPaintDevice();
-  let lost: string | null = null;
-  void webgpu.lost.then(({ reason, message }) => (lost ??= reason === 'destroyed' ? null : message));
-
-  const checked = async <T,>(what: string, work: () => T): Promise<T> => {
-    for (const scope of GPU_ERROR_SCOPES) webgpu.pushErrorScope(scope);
-    let popped: Promise<(GPUError | null)[]>, result: T;
-    try {
-      result = work();
-    } finally {
-      // Popped together, before anything else can push, so no other work's errors land in them; a destroyed
-      // device's resolve with no error.
-      popped = Promise.all(GPU_ERROR_SCOPES.map(() => webgpu.popErrorScope()));
-    }
-    const error = (await popped).find(Boolean);
-    if (error) throw new Error(`stamp paint: ${what} failed: ${error.message}`);
-    return result;
-  };
-
-  // The asynchronous checks asked for so far, each settled before the next pushes.
-  let asyncChecks: Promise<unknown> = Promise.resolve();
-  const checkedAsync = <T,>(what: string, work: () => Promise<T>): Promise<T> => {
-    const run = asyncChecks.then(async () => {
-      for (const scope of GPU_ERROR_SCOPES) webgpu.pushErrorScope(scope);
-      // Every scope is popped before anything is thrown: one left pushed would swallow the next check's errors.
-      const popped = () => Promise.all(GPU_ERROR_SCOPES.map(() => webgpu.popErrorScope()));
-      let result: T;
-      try {
-        result = await work();
-      } catch (error) {
-        await popped();
-        throw error;
-      }
-      const error = (await popped()).find(Boolean);
-      if (error) throw new Error(`stamp paint: ${what} failed: ${error.message}`);
-      return result;
-    });
-    asyncChecks = run.catch(() => {});
-    return run;
-  };
-
+  const base = await createGpuDeviceOwner(), { webgpu, checked } = base;
   // Everything the owner makes, freed on dispose.
   const ownGpu = stampPaintGpuScope(cachingStampPaintDevice(webgpu));
   const { device } = ownGpu;
@@ -122,11 +62,8 @@ export async function createStampPaintGpuOwner(imageUrl: (asset: StampBrushAsset
   const cache = stampPaintGpuCache(device);
 
   return {
-    webgpu, device, checked, checkedAsync, cache,
+    ...base, device, cache,
     scope: () => stampPaintGpuScope(device),
-    assertLive: () => {
-      if (lost) throw new Error(`stamp paint: the GPU device was lost: ${lost}`);
-    },
     images: (wanted) => {
       const missing = wanted.filter(({ asset, channels }) => !images.has(`${channels}|${assetKey(asset)}`));
       if (missing.length) {
@@ -166,7 +103,7 @@ export async function createStampPaintGpuOwner(imageUrl: (asset: StampBrushAsset
     dispose: () => {
       cache.dispose();
       ownGpu.destroy();
-      webgpu.destroy();
+      base.dispose();
     },
   };
 }

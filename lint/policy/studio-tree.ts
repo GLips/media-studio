@@ -104,10 +104,10 @@ export const LIB_LAYERS: readonly LibLayer[] = [
     name: 'platform',
     features: [
       'platform/temp', 'platform/git', 'platform/zip', 'platform/wav', 'platform/ffmpeg', 'platform/raster', 'platform/paid-generation',
-      'platform/photoshop', 'platform/project', 'platform/host', 'platform/web', 'platform/browser',
+      'platform/photoshop', 'platform/project', 'platform/host', 'platform/web', 'platform/browser', 'platform/gpu',
     ],
   },
-  { name: 'vocabulary', features: ['picture/frame', 'picture/motion', 'picture/type', 'picture/color'] },
+  { name: 'vocabulary', features: ['picture/frame', 'picture/motion', 'picture/type', 'picture/color', 'picture/shot-camera'] },
   { name: 'timing', features: ['timing/voice', 'timing/timeline', 'timing/sound', 'timing/music'] },
   // The camera keeps clear of the caption band a style reserves, so it stands on captions.
   { name: 'framing', features: ['picture/captions', 'picture/camera'] },

@@ -9,7 +9,7 @@ import { compileStampPaintRecipe, type CompiledStampPaint } from '#lib/paint/pai
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import type { StampPaintEnvironment } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { StampGroupGlow, StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
-import { compileStampPlanes, STAMP_SINGLE_PLANE_ID, type CompiledStampPlanes, type StampLensFrame, type StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
+import { stampScenePlanes, STAMP_SINGLE_PLANE_ID, type StampScenePlanes, type StampLensFrame, type StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
 import { STAMP_GATE_IMAGES, STAMP_GATE_WHITE, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
 import { stampGateFrameDifference, type StampGateFrameDifference } from './stamp-gate-frames.ts';
 import type { StampGateWashCheck } from './stamp-gate-layer.ts';
@@ -163,9 +163,9 @@ export const STAMP_GATE_GLOW_COVER_X = GLOW_PALE.x0 - GLOW_GREY.x0;
  * The glow painting as two planes: the back holds the ground, pale patch and mark; a nearer one, the grey patch, whose
  * opaque paint, moved onto the pale by STAMP_GATE_GLOW_COVER_X, covers it.
  */
-export function stampGateGlowCoverPlanes(painting: CompiledStampPaint): CompiledStampPlanes {
+export function stampGateGlowCoverPlanes(painting: CompiledStampPaint): StampScenePlanes {
   const problems: string[] = [];
-  const planes = compileStampPlanes(painting, [
+  const planes = stampScenePlanes(painting, [
     { id: 'back', depth: 1, source: { kind: 'painted', groups: ['ground', 'pale', 'mark'] } },
     { id: 'cover', depth: 0.8, source: { kind: 'painted', groups: ['grey'] } },
   ], problems);

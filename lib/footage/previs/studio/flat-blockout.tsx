@@ -7,7 +7,7 @@
 
 import { AbsoluteFill } from 'remotion';
 import { DISPLAY_FONT, MONO_FONT } from '#lib/picture/type/models/faces.ts';
-import { flatPoseAt, type FlatKey, type FlatPose, type FlatView } from './flat-blockout-pose.ts';
+import { flatPoseAt, type FlatKey, type FlatPose, type FlatView } from '#lib/footage/previs/models/flat-blockout-pose.ts';
 import { motionAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 

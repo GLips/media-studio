@@ -12,7 +12,8 @@ import {
 import { buildPaintCamera, buildPaintingCamera, type PaintCameraBuild, type PaintingCameraBuild } from './paint-camera-build.ts';
 import { paintMotionPlay, type PaintMotion, type PaintMotionNode } from './paint-motion-compile.ts';
 import { buildPaintMotion, type PaintMotionBuild } from './paint-motion.ts';
-import { paintCameraPerspectiveAt, paintCameraWorld, paintPlaneWorldPoint } from './paint-camera-world.ts';
+import { shotCameraProject } from '#lib/picture/shot-camera/models/shot-camera.ts';
+import { paintCameraShotAt, paintCameraWorld, paintPlaneWorldPoint } from './paint-camera-world.ts';
 import { paintSimilarityApply } from './paint-similarity.ts';
 
 const brush: StampBrush = {
@@ -49,7 +50,7 @@ const motionOf = (build: PaintMotionBuild): PaintMotion => {
 const threePlanes = paintingOf([{ id: 'sky', box: across }, { id: 'frog', box: across }, { id: 'leaf', box: across }]);
 const threePlaneScene = [painted('back', 2, ['sky']), painted('frog', 1, ['frog']), painted('leaf', 0.5, ['leaf'])];
 
-test('the build names a group on no plane or two, and backs the farthest plane with paper and every nearer one with clear film', () => {
+test('the build names a group on no plane or two, and orders the planes farthest first with the groups each shows', () => {
   const painting = paintingOf([{ id: 'sky', box: across }, { id: 'frog', box: across }, { id: 'toad', box: across }, { id: 'leaf', box: across }]);
   const build = (planes: readonly StampPlane[]) => buildPaintingCamera(painting, { stage, fov: 35, lens: { bloom: 0 }, plays: [], planes, motion: null });
   assert.deepEqual(problemsOf(build([painted('back', 4, ['sky', 'frog']), painted('mid', 1, ['frog']), painted('near', 0.5, ['leaf'])])), [
@@ -58,9 +59,9 @@ test('the build names a group on no plane or two, and backs the farthest plane w
   ]);
   const built = build([painted('near', 0.5, ['leaf']), painted('back', 4, ['sky']), painted('mid', 1, ['frog', 'toad'])]);
   if (!built.ok) assert.fail(built.problems.join('\n'));
-  const { back, nearer } = built.camera.planes;
-  assert.deepEqual([back.id, ...nearer.map((plane) => `${plane.id} ${plane.kind}`)], ['back', 'mid clear', 'near clear']);
-  assert.deepEqual(built.camera.camera.planes.map(({ id }) => id), ['back', 'mid', 'near']);
+  const { camera, groups } = built.camera;
+  assert.deepEqual(camera.planes.map(({ id, kind }) => `${id} ${kind}`), ['back picture', 'mid picture', 'near picture']);
+  assert.deepEqual([...groups], [['near', [3]], ['back', [0]], ['mid', [1, 2]]]);
 });
 
 test('the build refuses a pan that shows the back past the stage, holds a nearer plane only where it\'s painted, and a wider margin takes it', () => {
@@ -87,6 +88,14 @@ test('a camera builds from plane depths and extents alone, holding each picture 
   const built = whip({ kind: 'box', box: middle });
   if (!built.ok) assert.fail(built.problems.join('\n'));
   assert.deepEqual(built.camera.planes.map(({ id }) => id), ['far', 'model', 'near']);
+  // Never defocused, the three plane renders the frame alone; defocused, past it by the blur's reach.
+  assert.deepEqual([...built.camera.threeMargin], [['model', 0]]);
+  const focused = buildPaintCamera({
+    stage, fov: 35, lens: { bloom: 0 }, planes: [{ id: 'far', depth: 4, kind: 'picture', extent: { kind: 'unchecked', why: 'not this test' } }, { id: 'model', depth: 2, kind: 'three' }],
+    plays: [paintCameraPlay({ kind: 'focus', keys: [{ at: 0, focus: 1, aperture: 4 }] }, { clock: { at: 0 }, origin: 'focus' })],
+  });
+  if (!focused.ok) assert.fail(focused.problems.join('\n'));
+  assert.ok(focused.camera.threeMargin.get('model')! >= 3 * 2, `a sigma of 2 px reaches ${focused.camera.threeMargin.get('model')} px`);
   assert.deepEqual(problemsOf(whip({ kind: 'empty' })), []);
   assert.deepEqual(problemsOf(whip({ kind: 'unchecked', why: 'its caller holds it' })), []);
   assert.match(problemsOf(whip({ kind: 'everywhere' })).join('\n'), /^plane near's picture must hold what the camera shows of it/);
@@ -142,7 +151,7 @@ test('the lens at a time views each plane by its depth (a pan parallaxes), defoc
   assert.equal(lens.bloom, 3);
 });
 
-test("a point on a plane, rendered through the perspective camera three.js is given onto a frame-sized target, lands where its plane's view puts it", () => {
+test("a point on a plane, seen through the pose's shot camera, lands where its plane's view puts it", () => {
   const world = paintCameraWorld(stage, { fov: 35 }), centre = paintStageCentre(stage);
   const poses: PaintCameraPose[] = [
     { pan: { x: 0, y: 0 }, dolly: 0, zoom: 1, roll: 0 },
@@ -150,16 +159,11 @@ test("a point on a plane, rendered through the perspective camera three.js is gi
     { pan: { x: -60, y: 80 }, dolly: -0.5, zoom: 0.8, roll: -0.7 },
   ];
   for (const pose of poses) {
-    const camera = paintCameraPerspectiveAt(world, pose), focal = 1 / Math.tan((camera.fov * Math.PI) / 360);
-    const targetHeight = stage.frame.height;
+    const camera = paintCameraShotAt(world, pose);
     for (const depth of [0.6, 1, 3.5]) {
       for (const point of [{ x: 120, y: 90 }, { x: 790, y: 560 }, { x: -80, y: 640 }]) {
-        // three: the view is the camera's inverse (a turn about z by rotationZ after its position), then its projection.
-        const p = paintPlaneWorldPoint(world, point, depth), dx = p.x - camera.position.x, dy = p.y - camera.position.y, dz = p.z - camera.position.z;
-        const c = Math.cos(-camera.rotationZ), s = Math.sin(-camera.rotationZ), vx = c * dx - s * dy, vy = s * dx + c * dy;
-        const ndc = { x: (focal / camera.aspect) * (vx / -dz), y: focal * (vy / -dz) };
-        const onTarget = { x: ((ndc.x + 1) / 2) * targetHeight * camera.aspect, y: ((1 - ndc.y) / 2) * targetHeight };
-        close(onTarget, paintSimilarityApply(paintPlaneSimilarity(pose, depth, centre), point), `depth ${depth} under ${JSON.stringify(pose)}`, 1e-9);
+        const { x, y, z } = paintPlaneWorldPoint(world, point, depth);
+        close(shotCameraProject(camera, [x, y, z])!, paintSimilarityApply(paintPlaneSimilarity(pose, depth, centre), point), `depth ${depth} under ${JSON.stringify(pose)}`, 1e-6);
       }
     }
   }

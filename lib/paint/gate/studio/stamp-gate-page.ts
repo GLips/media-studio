@@ -19,7 +19,7 @@ import { STAMP_AREA_COVERAGE_WGSL } from '#lib/paint/painting/models/stamp-area.
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { compileStampWetness } from '#lib/paint/painting/models/stamp-wetness.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
-import { createStampPaintDevice } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
+import { requestStudioGpuDevice } from '#lib/platform/gpu/studio/gpu-device-owner.ts';
 import { STAMP_WET_FLOW_STAGE } from '#lib/paint/painting/studio/stamp-wet-flow.ts';
 import { STAMP_BLOOM_STAGE } from '#lib/paint/painting/studio/stamp-wet-bloom.ts';
 import { STAMP_DRYING_RIM_STAGE } from '#lib/paint/painting/studio/stamp-wet-rim.ts';
@@ -87,7 +87,7 @@ fn x(i: u32) -> f32 { return inputs[row * ${width}u + i]; }
 
 /** Each grid's results, row by row, from the GPU. */
 async function runStampGateFormulas(grids: readonly PageGrid[]): Promise<number[][]> {
-  const device = await createStampPaintDevice();
+  const device = await requestStudioGpuDevice();
   try {
     device.pushErrorScope('validation');
     const storage = (values: readonly number[]) => {
@@ -401,7 +401,7 @@ async function runStampGateStage(
 ): Promise<{ before: Float32Array; after: Float32Array }> {
   const { width, height } = written, layers = written.layer.length, stage = stampStage({ width, height });
   const wetness = compileStampWetness(painting, () => medium, stage);
-  const device = await createStampPaintDevice();
+  const device = await requestStudioGpuDevice();
   try {
     const texture = (count: number, arrays: readonly Float32Array[]) => {
       const made = device.createTexture({ size: [width, height, count], format: 'rgba16float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST });

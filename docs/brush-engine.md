@@ -265,11 +265,15 @@ an error. A frame held on twos gives every group the keys it had, so it repaints
   its groups' paint can be laid (`paint-motion-reach.ts`: the painted box grown by the most each step of the
   `motion` it's given and the recipe's own motion can move it), or everywhere the frame looks once a group's marks
   are live or re-seeded. A frame state from anything but that `motion` isn't covered. It reports each plane's
-  greatest magnification and names bad planes. `paint-camera-world.ts` gives three.js the perspective camera that lands a 3D point where the plane
-  step lays its depth.
+  greatest magnification and names bad planes. The camera's `planes` are the renderer's one plane list; the painting
+  side adds only which groups each picture plane shows (`StampPaintingCamera.groups`). `paint-camera-world.ts` gives
+  a pose as the studio's one camera description (`ShotCamera`), landing a 3D point where the plane step lays its
+  depth. A three plane renders past the frame by its widest defocus's reach (`threeMargin`), so it blurs in what
+  lies beyond the frame's edge.
 
 **Planes on the GPU** (`stamp-paint-renderer.ts`, `stamp-paint-plane-passes.ts`). One owner holds a device
-(`stamp-paint-gpu-owner.ts`): its images, pipelines' targets and one cache budget, shared by films, pictures and
+(`stamp-paint-gpu-owner.ts`, built on the studio's `gpu-device-owner.ts`, whose one three.js renderer the three
+sources draw with): its images, pipelines' targets and one cache budget, shared by films, pictures and
 blurred pictures. A surface is one output on it. One painted plane at rest, sharp and not glowing is drawn straight
 to the output, as a still always was. Otherwise each plane's picture is painted (paper, its groups, and each glowing group's light past its threshold
 into the plane's emission, which each later opaque group on the plane dims by its cover; a glaze leaves it), defocused,

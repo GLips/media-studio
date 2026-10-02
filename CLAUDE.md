@@ -16,7 +16,7 @@
   `#studio`. `paint` is the brush engine, its features laid out in `docs/brush-engine.md`. `models` imports only
   `models`; `studio` imports `models` and `studio`; `engine` imports `models` and `engine`; browser code never
   imports `engine`. Features stand in layers, lowest first (`LIB_LAYERS` in `lint/policy/studio-tree.ts`): platform,
-  vocabulary (frame, motion, type, color), timing, framing (captions, camera), measurement, authoring (video,
+  vocabulary (frame, motion, type, color, shot-camera), timing, framing (captions, camera), measurement, authoring (video,
   stills). A foundation imports only its own layer or lower, and anyone imports it freely; every other feature is a
   peer, imported only with a reasoned grant in its `visibility.json`. A new area is declared in
   `lint/policy/studio-tree.ts`. An import into a feature from outside it uses `#lib/*`, never a relative path;

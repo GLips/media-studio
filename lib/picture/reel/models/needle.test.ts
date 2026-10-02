@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { steadyBeatGrid } from '#lib/timing/timeline/models/beat-grid.ts';
-import { needleContactAt, needlePoseAt, needleRig, needleScreenPoint, needleShotAt } from './needle.ts';
+import { shotCameraProject } from '#lib/picture/shot-camera/models/shot-camera.ts';
+import { needleContactAt, needlePoseAt, needleRig, needleShotAt, needleShotCamera } from './needle.ts';
 
 const rig = needleRig({ format: { fps: 30, width: 1920, height: 1080, transparent: false } });
+const camera = needleShotCamera(rig);
 
 const g = steadyBeatGrid(120);
 // On the beats, the last two out by the frame's corners, where the perspective is strongest.
@@ -21,7 +23,7 @@ test('every exposure of a contact frame sees the tip on its strike\'s pixel, and
     for (const t of [s.at, s.at - 1e-9]) {
       const shot = needleShotAt(strikes, t, lensing);
       for (const share of [1, 0.5, 0]) {
-        const tip = needleScreenPoint(needlePoseAt(strikes, shot.exposureAt((-share * shot.shutter) / 30), rig)!.tip, rig);
+        const tip = shotCameraProject(camera, needlePoseAt(strikes, shot.exposureAt((-share * shot.shutter) / 30), rig)!.tip)!;
         assert.ok(Math.hypot(tip.x - s.x, tip.y - s.y) < 0.01, `strike ${index} at ${t}, ${share} of the shutter back: tip at ${tip.x}, ${tip.y}`);
       }
       assert.equal(needleContactAt(strikes, t)?.index, index);
@@ -48,7 +50,7 @@ test('each strike is one blow: out of shot between strikes, in and out at the fa
   // The streak takes the whole way in: its first moment has the needle wholly out of frame.
   const streak = needleShotAt(strikes, strikes[0].at, lensing).streak!;
   const first = needlePoseAt(strikes, streak.exposureAt((-(1 - 1e-6) * streak.shutter) / 30), rig)!;
-  const tip = needleScreenPoint(first.tip, rig);
+  const tip = shotCameraProject(camera, first.tip)!;
   assert.ok(tip.x > 1920 || tip.x < 0 || tip.y > 1080 || tip.y < 0, `the streak starts with the tip at ${tip.x}, ${tip.y}`);
   assert.equal(streak.shutter, rig.enter * 30);
 });
