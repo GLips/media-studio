@@ -33,3 +33,6 @@
   violations sit in baselines that only shrink, both tiers' in one file per repo: `lint/arch-baseline.json` for the
   studio, `work/arch-baseline.json` for the workspace. Fixing one leaves a stale entry: rewrite the baseline with
   `-- --update-baseline` on the command that reported it.
+- Subagents that draw (painting a picture, posing, render-look-adjust loops, tuning a look by eye) run on Sonnet
+  (`model: "sonnet"`): drawing is many short look-and-respond turns, and faster, cheaper turns buy more iterations.
+  Design, engine code and review stay on the default model.
