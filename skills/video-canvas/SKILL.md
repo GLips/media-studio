@@ -247,9 +247,9 @@ farthest is paper to the stage's edge. Every nearer painted plane is clear film:
 what's behind, a `glaze` group's (an ink line, a shadow) filters it, and both move, bend and fade with the group (a swaying tuft, a drifting butterfly, a puffing sac). It's measured on white and black, so over other paint it's close to one sheet, not exact: a strongly coloured glaze
 (phthalo, rose) over coloured paint behind comes out lighter than painted on one sheet, so put such a glaze on the
 plane of what it tints. Paint each plane the size it should look before the camera moves: at rest nothing changes. Build the
-camera with `buildPaintedCamera(painting, { stage: stampStage({ width, height }, margin), motion, fov, planes, lens: { bloom },
-plays })`, `motion` the scene's built motion (null when nothing moves a group); it gives the camera and the planes checked
-over the painting together, which `StampPainting` takes as its `camera`. Planes not from a painting (a three.js scene,
+camera with `buildPaintingCamera(painting, { stage: stampStage({ width, height }, margin), motion, fov, planes, lens: { bloom },
+plays })`, `motion` the scene's built motion (null when nothing moves a group); its `camera` is the paint camera and the planes
+checked over the painting as one value, which `StampPainting` takes whole as its `camera`. Planes not from a painting (a three.js scene,
 a rig's pictures) build with `buildPaintCamera` from each plane's depth and extent alone. Plays are `paintCameraPlay({ kind: 'move', keys: [{ at, pan?: { x, y }, dolly?, zoom?, roll?, ease? }] },
 { clock, origin })`, and `{ kind: 'focus', keys: [{ at, focus, aperture }] }` for depth of field: `focus` is the depth
 held sharp, `aperture` the defocus (px of gaussian sigma) a plane at infinity gets. A pan of 100 moves a plane at

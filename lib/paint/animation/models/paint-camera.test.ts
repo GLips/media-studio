@@ -7,9 +7,9 @@ import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.
 import type { StampPlane } from '#lib/paint/painting/models/stamp-plane.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import {
-  paintCameraLensAt, paintCameraPlay, paintPlaneSimilarity, paintStageCentre, type PaintCameraMoveKey, type PaintCameraPlay, type PaintCameraPose,
+  paintCameraLensAt, paintCameraPlay, paintPlaneSimilarity, paintStageCentre, type PaintCameraExtent, type PaintCameraMoveKey, type PaintCameraPlay, type PaintCameraPose,
 } from './paint-camera.ts';
-import { buildPaintCamera, buildPaintedCamera, type PaintCameraBuild, type PaintedCameraBuild } from './paint-camera-build.ts';
+import { buildPaintCamera, buildPaintingCamera, type PaintCameraBuild, type PaintingCameraBuild } from './paint-camera-build.ts';
 import { paintMotionPlay, type PaintMotion, type PaintMotionNode } from './paint-motion-compile.ts';
 import { buildPaintMotion, type PaintMotionBuild } from './paint-motion.ts';
 import { paintCameraPerspectiveAt, paintCameraWorld, paintPlaneWorldPoint } from './paint-camera-world.ts';
@@ -39,7 +39,7 @@ const painted = (id: string, depth: number, groups: readonly string[]): StampPla
 const close = (a: StampPoint, b: StampPoint, what: string, within = 1e-6) => assert.ok(Math.hypot(a.x - b.x, a.y - b.y) < within, `${what}: (${a.x}, ${a.y}) is not (${b.x}, ${b.y})`);
 const move = (keys: readonly PaintCameraMoveKey[], clock: PaintCameraPlay['clock'] = { at: 0 }, origin = 'move') =>
   paintCameraPlay({ kind: 'move', keys }, { clock, origin });
-const problemsOf = (build: PaintCameraBuild | PaintedCameraBuild) => (build.ok ? [] : build.problems);
+const problemsOf = (build: PaintCameraBuild | PaintingCameraBuild) => (build.ok ? [] : build.problems);
 const motionOf = (build: PaintMotionBuild): PaintMotion => {
   if (!build.ok) assert.fail(build.problems.join('\n'));
   return build.motion;
@@ -51,20 +51,20 @@ const threePlaneScene = [painted('back', 2, ['sky']), painted('frog', 1, ['frog'
 
 test('the build names a group on no plane or two, and backs the farthest plane with paper and every nearer one with clear film', () => {
   const painting = paintingOf([{ id: 'sky', box: across }, { id: 'frog', box: across }, { id: 'toad', box: across }, { id: 'leaf', box: across }]);
-  const build = (planes: readonly StampPlane[]) => buildPaintedCamera(painting, { stage, fov: 35, lens: { bloom: 0 }, plays: [], planes, motion: null });
+  const build = (planes: readonly StampPlane[]) => buildPaintingCamera(painting, { stage, fov: 35, lens: { bloom: 0 }, plays: [], planes, motion: null });
   assert.deepEqual(problemsOf(build([painted('back', 4, ['sky', 'frog']), painted('mid', 1, ['frog']), painted('near', 0.5, ['leaf'])])), [
     'frog is on plane back and plane mid; a group is on one plane',
     'toad is on no plane',
   ]);
   const built = build([painted('near', 0.5, ['leaf']), painted('back', 4, ['sky']), painted('mid', 1, ['frog', 'toad'])]);
   if (!built.ok) assert.fail(built.problems.join('\n'));
-  const { back, nearer } = built.planes;
+  const { back, nearer } = built.camera.planes;
   assert.deepEqual([back.id, ...nearer.map((plane) => `${plane.id} ${plane.kind}`)], ['back', 'mid clear', 'near clear']);
-  assert.deepEqual(built.camera.planes.map(({ id }) => id), ['back', 'mid', 'near']);
+  assert.deepEqual(built.camera.camera.planes.map(({ id }) => id), ['back', 'mid', 'near']);
 });
 
 test('the build refuses a pan that shows the back past the stage, holds a nearer plane only where it\'s painted, and a wider margin takes it', () => {
-  const whip = (margin: number, frog: StampBox) => buildPaintedCamera(paintingOf([{ id: 'sky', box: across }, { id: 'frog', box: frog }]), {
+  const whip = (margin: number, frog: StampBox) => buildPaintingCamera(paintingOf([{ id: 'sky', box: across }, { id: 'frog', box: frog }]), {
     stage: stampStage(stage.frame, margin), fov: 35, lens: { bloom: 0 }, motion: null,
     planes: [painted('back', 4, ['sky']), painted('frog', 1, ['frog'])],
     plays: [move([{ at: 0 }, { at: 1, pan: { x: 900, y: 0 } }], { at: 0 }, 'whip')],
@@ -78,17 +78,21 @@ test('the build refuses a pan that shows the back past the stage, holds a nearer
   assert.match(problemsOf(whip(300, { ...across, x1: 1200 })).join('\n'), /^plane frog's picture must hold what the camera shows of it/);
 });
 
-test('a camera builds from plane depths and extents alone, holding each picture where its extent reaches and a picture of nothing nowhere', () => {
-  const whip = (extent: StampBox | 'everywhere' | null) => buildPaintCamera({
+test('a camera builds from plane depths and extents alone, holding each picture as far as its extent, and refuses a box that isn\'t one', () => {
+  const whip = (extent: PaintCameraExtent) => buildPaintCamera({
     stage, fov: 35, lens: { bloom: 0 },
-    planes: [{ id: 'near', depth: 1, kind: 'picture', extent }, { id: 'far', depth: 4, kind: 'picture', extent: 'everywhere' }, { id: 'model', depth: 2, kind: 'three' }],
+    planes: [{ id: 'near', depth: 1, kind: 'picture', extent }, { id: 'far', depth: 4, kind: 'picture', extent: { kind: 'everywhere' } }, { id: 'model', depth: 2, kind: 'three' }],
     plays: [move([{ at: 0 }, { at: 1, pan: { x: 300, y: 0 } }], { at: 0 }, 'whip')],
   });
-  const built = whip(middle);
+  const built = whip({ kind: 'box', box: middle });
   if (!built.ok) assert.fail(built.problems.join('\n'));
   assert.deepEqual(built.camera.planes.map(({ id }) => id), ['far', 'model', 'near']);
-  assert.deepEqual(problemsOf(whip(null)), []);
-  assert.match(problemsOf(whip('everywhere')).join('\n'), /^plane near's picture must hold what the camera shows of it/);
+  assert.deepEqual(problemsOf(whip({ kind: 'empty' })), []);
+  assert.deepEqual(problemsOf(whip({ kind: 'unchecked', why: 'its caller holds it' })), []);
+  assert.match(problemsOf(whip({ kind: 'everywhere' })).join('\n'), /^plane near's picture must hold what the camera shows of it/);
+  for (const box of [{ ...middle, x1: Number.NaN }, { ...middle, y0: Infinity }, { ...middle, x0: 450, x1: 350 }]) {
+    assert.match(problemsOf(whip({ kind: 'box', box })).join('\n'), /^plane near's extent is .*; a box's bounds are finite, x0 ≤ x1 and y0 ≤ y1$/);
+  }
 });
 
 test('a nearer plane holds as far as its groups\' motion can lay their paint: a group the camera follows off the stage is refused', () => {
@@ -98,7 +102,7 @@ test('a nearer plane holds as far as its groups\' motion can lay their paint: a 
   const drift = (to: number) => motionOf(buildPaintMotion(painting, {
     nodes: [frog], plays: [paintMotionPlay(frog, { kind: 'place', keys: [{ at: 0, x: 0, y: 0 }, { at: 1, x: to, y: 0 }] }, { clock: { at: 0 }, origin: 'drift' })],
   }));
-  const follow = (motion: PaintMotion | null) => buildPaintedCamera(painting, {
+  const follow = (motion: PaintMotion | null) => buildPaintingCamera(painting, {
     stage: stampStage(stage.frame, 300), fov: 35, lens: { bloom: 0 }, motion,
     planes: [painted('back', 4, ['sky']), painted('frog', 1, ['frog'])], plays: [move([{ at: 0 }, { at: 1, pan: { x: 300, y: 0 } }])],
   });
@@ -111,7 +115,7 @@ test('a nearer plane holds as far as its groups\' motion can lay their paint: a 
 
 test('a plane\'s magnification is the most it\'s scaled anywhere in the shot, growing with dolly and zoom, the near plane more', () => {
   const magnified = (plays: readonly PaintCameraPlay[]) => {
-    const build = buildPaintedCamera(threePlanes, { stage, fov: 35, lens: { bloom: 0 }, planes: threePlaneScene, plays, motion: null });
+    const build = buildPaintingCamera(threePlanes, { stage, fov: 35, lens: { bloom: 0 }, planes: threePlaneScene, plays, motion: null });
     if (!build.ok) assert.fail(build.problems.join('\n'));
     return Object.fromEntries(build.magnification);
   };
@@ -122,7 +126,7 @@ test('a plane\'s magnification is the most it\'s scaled anywhere in the shot, gr
 });
 
 test('the lens at a time views each plane by its depth (a pan parallaxes), defocuses it by its distance from the focus, and blooms', () => {
-  const build = buildPaintedCamera(threePlanes, {
+  const build = buildPaintingCamera(threePlanes, {
     stage, fov: 35, lens: { bloom: 3 }, planes: threePlaneScene, motion: null,
     plays: [
       move([{ at: 0 }, { at: 1, pan: { x: 100, y: 0 } }]),
@@ -130,7 +134,7 @@ test('the lens at a time views each plane by its depth (a pan parallaxes), defoc
     ],
   });
   if (!build.ok) assert.fail(build.problems.join('\n'));
-  const lens = paintCameraLensAt(build.camera, 1), point = { x: 300, y: 200 };
+  const lens = paintCameraLensAt(build.camera.camera, 1), point = { x: 300, y: 200 };
   // A pan of 100 px at depth 1 moves a plane at depth 2 by 50 px and one at 0.5 by 200.
   for (const [id, shift] of [['back', -50], ['frog', -100], ['leaf', -200]] as const) close(paintSimilarityApply(lens.planes.get(id)!.view, point), { x: 300 + shift, y: 200 }, `${id} panned`, 1e-3);
   // Focused at depth 1 with aperture 4: depth 2 blurs 4·|1 − 1/2|, the frog none, depth 0.5 4·|1 − 2|.

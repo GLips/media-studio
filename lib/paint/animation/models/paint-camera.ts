@@ -54,12 +54,22 @@ export const PAINT_CAMERA_NEAREST = 1e-3;
 export type PaintCameraLens = { readonly bloom: number };
 
 /**
+ * Where a picture plane can hold anything, which the camera keeps on the stage wherever it shows it: within `box`
+ * (stage px), everywhere (it can't be bounded), or nowhere (empty). `unchecked`: the camera isn't told, and holds
+ * nothing of it; `why` says who holds it instead.
+ */
+export type PaintCameraExtent =
+  | { readonly kind: 'box'; readonly box: StampBox }
+  | { readonly kind: 'everywhere' }
+  | { readonly kind: 'empty' }
+  | { readonly kind: 'unchecked'; readonly why: string };
+
+/**
  * A plane the camera shows, `depth` units from it at rest. `three`: a three.js render, drawn each frame through the
- * camera's perspective. `picture`: a picture on the stage, `extent` where it can hold anything (stage px), which the
- * camera keeps on the stage wherever it shows it: 'everywhere' when that can't be bounded, null when it holds nothing.
+ * camera's perspective. `picture`: a picture on the stage, held as far as its `extent`.
  */
 export type PaintCameraPlane =
-  | { readonly id: string; readonly depth: number; readonly kind: 'picture'; readonly extent: StampBox | 'everywhere' | null }
+  | { readonly id: string; readonly depth: number; readonly kind: 'picture'; readonly extent: PaintCameraExtent }
   | { readonly id: string; readonly depth: number; readonly kind: 'three' };
 
 /**

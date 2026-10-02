@@ -17,7 +17,7 @@ import type { StampPaintFrameState } from '#lib/paint/painting/models/stamp-pain
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { paintCameraLensAt } from '#lib/paint/animation/models/paint-camera.ts';
-import type { PaintedCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
+import type { StampPaintingCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
 import { createStampPaintGpuOwner, type StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { createStampPaintRenderer, type StampPaintFrame, type StampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
 import { createStampPaintSurface, type StampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
@@ -26,14 +26,14 @@ import { stampPaintAssetUrl } from './stamp-paint-styles.ts';
 
 /**
  * Draws `painting` at `t` seconds (a scene's `s.t`), each group in `frame`'s state, `width` by `height` pixels (the
- * frame's size unless given), over `box` (the whole frame unless given). `camera` (buildPaintedCamera): its planes on a
+ * frame's size unless given), over `box` (the whole frame unless given). `camera` (buildPaintingCamera): its planes on a
  * stage whose frame is those pixels; without one, one plane at rest. `three`: a source per three plane. Memoise both.
  */
 export function StampPainting({ painting, t, frame, camera: painted, three, width, height, box: given }: {
   painting: CompiledStampPaint;
   t: number;
   frame?: StampPaintFrameState;
-  camera?: PaintedCamera;
+  camera?: StampPaintingCamera;
   three?: PaintedThree;
   width?: number;
   height?: number;
@@ -146,7 +146,7 @@ type StampPaintingGpu = {
   dispose: () => Promise<void>;
 };
 
-type StampPaintingSceneLoad = { painting: CompiledStampPaint; camera?: PaintedCamera; three?: PaintedThree; profile: FrameProfileStart | null };
+type StampPaintingSceneLoad = { painting: CompiledStampPaint; camera?: StampPaintingCamera; three?: PaintedThree; profile: FrameProfileStart | null };
 
 /** A painting and its three.js loaded on a StampPaintingGpu, drawn a frame at a time. */
 type StampPaintingScene = {
