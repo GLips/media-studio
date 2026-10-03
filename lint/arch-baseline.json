@@ -265,9 +265,6 @@
     "lib/picture/stills/studio/stills.tsx": {
       "for (const [name, { component, presets, axes, props }] of Object.entries(designs) as [string, StillDesign<object, StillAxes>][]) {": 1
     },
-    "lib/picture/video/studio/timeline-scene.tsx": {
-      "return Object.fromEntries(Object.entries(clock.cues).map(([name, frame]) => [name, ((frame as number) - clock.from) / clock.fps])) as Record<Cue, number>;": 2
-    },
     "lib/platform/browser/engine/browser-module-page.ts": {
       "const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;": 1
     },

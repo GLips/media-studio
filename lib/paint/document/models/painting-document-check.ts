@@ -8,7 +8,7 @@ import { PAINT_MEDIA, paintMediumCan } from '#lib/paint/materials/models/paint-m
 import { STAMP_PIGMENT_GROUP_SLOTS } from '#lib/paint/painting/models/stamp-pigment-paint.ts';
 import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
 import { checkPaintingApplication, checkPaintingFootprint, type PaintingApplicationSetting } from './painting-application-check.ts';
-import type { AnyApplication, Key, LayerNode, MediumName, PaintingDocument, Paper, Wash } from './painting-document.ts';
+import type { AnyApplication, DryingScale, Key, LayerNode, MediumName, PaintingDocument, Paper, Wash } from './painting-document.ts';
 import { paintingBoxUnion, paintingGeometryBox, paintingNodeBox, paintingWashBox } from './painting-footprint.ts';
 import {
   isPaintingHexColor, isPaintingList, isPaintingPositive, isPaintingShare, paintingApplicationOwner, paintingField, PaintingProblemList, type PaintingProblem,
@@ -17,7 +17,7 @@ import { checkPaintingAmount, checkPaintingRegion } from './painting-region-chec
 import { checkPaintingSheetOrders } from './painting-sheet-check.ts';
 import { paintingSheetOrders, paintingWashOrderTimes, type PaintingSheetOrder, type PaintingWashOrderTimes } from './painting-sheet-program.ts';
 import { paintingAssetProblem, type PaintingStyleCatalogue } from './painting-styles.ts';
-import { isPaintingGroup, paintingTree, type PaintingLayerPlace, type PaintingTree } from './painting-tree.ts';
+import { isPaintingGroup, paintingSheetName, paintingTree, type PaintingLayerPlace, type PaintingTree } from './painting-tree.ts';
 
 /** WebGPU's guaranteed `maxTextureDimension2D`: the largest document side every device can hold. */
 const LARGEST_DOCUMENT_SIDE = 8192;
@@ -65,6 +65,8 @@ function checkPaintingTreeAndKeys(list: PaintingProblemList, paintingDocument: P
     const sheet: string | undefined = node.sheet?.kind;
     if (sheet !== undefined && sheet !== 'own' && sheet !== 'scene') list.error(owner, 'sheet.kind', `'${sheet}' isn't own or scene`, box);
     if (node.sheet?.kind === 'own' && !node.sheet.paper) list.error(owner, 'sheet.paper', 'an own sheet needs its paper', box);
+    const sceneScale: unknown = node.sheet?.kind === 'scene' ? node.sheet.dryingScale : undefined;
+    if (sceneScale !== undefined) list.error(owner, 'sheet.dryingScale', "sheet is the scene's: its dryingScale is the document's", box);
     if (isPaintingGroup(node)) {
       node.children.forEach((child, i) => visit(child, `${path}.children[${i}]`));
       return;
@@ -135,18 +137,35 @@ function checkWashFields(list: PaintingProblemList, layer: PaintingLayerPlace, w
   if (!direct && wash.rim !== undefined && !(wash.rim >= 0 && wash.rim <= 2)) list.error(wash.key, 'rim', `${wash.rim} isn't within 0..2`, box);
   const { clock } = wash, clocked = before.findLast((earlier) => earlier.clock);
   if (clock) {
-    const { origin, dryingScale } = clock;
+    const { origin } = clock;
     if (origin !== 'set' && !Number.isFinite(origin)) list.error(wash.key, 'clock.origin', `${origin} isn't a finite scene second or 'set'`, box);
-    if (direct && dryingScale !== 'instant') list.error(wash.key, 'clock.dryingScale', `a direct wash's clock is instant, not ${dryingScale}`, box);
-    else if (dryingScale !== 'instant' && dryingScale !== 'never' && !(dryingScale > 0 && Number.isFinite(dryingScale))) {
-      list.error(wash.key, 'clock.dryingScale', `${dryingScale} isn't above 0, 'instant' or 'never'`, box);
-    }
     if (origin === 'set' && !clocked) list.error(wash.key, 'clock', `starts when earlier washes set, and ${layer.node.key} has none before it`, box);
     const latest = latestOrderTime(before, times);
     if (origin !== 'set' && latest && origin < latest.time) list.error(wash.key, 'clock', `starts at ${origin} s, before ${latest.wash.key}'s ${latest.what} at ${latest.time} s`, box);
   }
-  if (clocked?.clock?.dryingScale === 'never') list.error(wash.key, 'clock', `follows ${clocked.key}, which never dries`, box);
-  else if (clocked && !clock) list.error(wash.key, 'clock', `follows ${clocked.key}, which is clocked: a wash after a clocked wash is clocked too`, box);
+  if (clocked && !clock) list.error(wash.key, 'clock', `follows ${clocked.key}, which is clocked: a wash after a clocked wash is clocked too`, box);
+}
+
+/** A stated drying scale: a scene second per model second above 0, `instant` or `never`. */
+function checkDryingScale(list: PaintingProblemList, owner: string, field: string, scale: DryingScale | undefined): void {
+  if (scale === undefined || scale === 'instant' || scale === 'never' || (scale > 0 && Number.isFinite(scale))) return;
+  list.error(owner, field, `${String(scale)} isn't above 0, 'instant' or 'never'`);
+}
+
+/**
+ * Each stated drying scale whose sheet no clocked wet wash paints: its clock never runs, so the scale times nothing
+ * and its sheet dries in model time.
+ */
+function checkIdleDryingScales(list: PaintingProblemList, paintingDocument: PaintingDocument, tree: PaintingTree, orders: readonly PaintingSheetOrder[]): void {
+  for (const { sheet, clock } of orders) {
+    if (clock.kind !== 'none') continue;
+    const node = sheet.owner === null ? null : tree.byKey.get(sheet.owner)?.node;
+    const declared = node?.sheet?.kind === 'own' ? node.sheet : undefined;
+    const stated = node ? declared?.dryingScale : paintingDocument.dryingScale;
+    if (stated === undefined) continue;
+    const [owner, field] = node ? [node.key, 'sheet.dryingScale'] : ['document', 'dryingScale'];
+    list.warn(owner, field, `${paintingSheetName(sheet)}'s dryingScale ${stated} times nothing: no clocked wet wash paints it`);
+  }
 }
 
 /**
@@ -199,9 +218,11 @@ export function checkPaintingDocument(paintingDocument: PaintingDocument, styles
   if (list.hasErrors) return { problems: list.problems, tree: null };
   const tree = paintingTree(paintingDocument);
   checkPaper(list, 'document', 'paper', paintingDocument.paper, styles);
+  checkDryingScale(list, 'document', 'dryingScale', paintingDocument.dryingScale);
   for (const place of tree.nodes) {
     const { node } = place;
     if (node.sheet?.kind === 'own') checkPaper(list, node.key, 'sheet.paper', node.sheet.paper, styles);
+    if (node.sheet?.kind === 'own') checkDryingScale(list, node.key, 'sheet.dryingScale', node.sheet.dryingScale);
     if (place.kind === 'group' && place.node.children.length === 0) list.warn(node.key, 'children', 'holds nothing');
     if (place.kind === 'layer') checkLayer(list, place, styles);
   }
@@ -209,5 +230,6 @@ export function checkPaintingDocument(paintingDocument: PaintingDocument, styles
   const orders = paintingSheetOrders(tree);
   checkLayerPalettes(list, tree, orders);
   checkPaintingSheetOrders(list, tree, orders, styles);
+  checkIdleDryingScales(list, paintingDocument, tree, orders);
   return { problems: list.problems, tree };
 }

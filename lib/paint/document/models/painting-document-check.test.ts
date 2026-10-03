@@ -20,8 +20,8 @@ const stroke = (key: string): Application => ({
   key, kind: 'stroke', subpaths: [[{ x: 20, y: 150 }, { x: 380, y: 150 }]], ...TIP, diameterPx: 20, seed: `stroke-${key}`,
   charge: { kind: 'paint', mix: { parts: [{ pigment: burntSienna, amount: 1 }], strength: 0.7 } },
 });
-const documentOf = (layers: readonly LayerNode[], medium: PaintingDocument['medium'] = 'watercolour'): PaintingDocument => ({
-  widthPx: W, heightPx: H, paper: { color: '#f4f2ed', absorbency: 0.5 }, medium, layers,
+const documentOf = (layers: readonly LayerNode[], medium: PaintingDocument['medium'] = 'watercolour', dryingScale?: PaintingDocument['dryingScale']): PaintingDocument => ({
+  widthPx: W, heightPx: H, paper: { color: '#f4f2ed', absorbency: 0.5 }, medium, ...(dryingScale !== undefined && { dryingScale }), layers,
 });
 const sourceOf = (paintingDocument: PaintingDocument): PaintingSourceModule => ({ default: function broken() { return paintingDocument; } });
 const layer = (key: string, washes: readonly Wash[]): Layer => ({ key, washes });
@@ -49,7 +49,7 @@ const brokenSources: readonly { readonly name: string; readonly check: () => rea
   {
     name: 'a fixed at before its predecessor',
     check: () => checkPaintingSource(sourceOf(documentOf([layer('landscape', [{
-      key: 'hill', clock: { origin: 0, dryingScale: 0.025 }, applications: [{ ...flood({ key: 'hill-base', water: 0.85 }), at: 3.5 }, { ...stroke('hill-flood'), at: 3.2 }],
+      key: 'hill', clock: { origin: 0 }, applications: [{ ...flood({ key: 'hill-base', water: 0.85 }), at: 3.5 }, { ...stroke('hill-flood'), at: 3.2 }],
     }])]))),
     expect: { severity: 'error', path: 'hill-flood.at', message: 'fixed at 3.2 s precedes its predecessor at 3.5 s' },
   },
@@ -91,12 +91,12 @@ const brokenSources: readonly { readonly name: string; readonly check: () => rea
     expect: { severity: 'warning', path: 'treeline.on', message: "on 'wet' follows only applications at or below shiny 0.7: it can never hold" },
   },
   {
-    name: 'two clocked wet washes on one sheet at different dryingScales',
-    check: () => checkPaintingSource(sourceOf(documentOf([
-      layer('shallows', [{ key: 'puddle', clock: { origin: 0, dryingScale: 0.025 }, applications: [flood({ key: 'puddle-flood', water: 0.9 })] }]),
-      layer('rain', [{ key: 'drop', clock: { origin: 1, dryingScale: 0.05 }, applications: [stroke('drop-paint')] }]),
-    ]))),
-    expect: { severity: 'error', path: 'drop.clock', message: "paints the root's sheet at dryingScale 0.05 and puddle at 0.025: a sheet keeps one clock" },
+    name: "an own sheet's dryingScale of 0",
+    check: () => {
+      const wing: Layer = { key: 'wing', washes: [{ key: 'wing-wash', clock: { origin: 0 }, applications: [flood({ key: 'wing-flood', water: 0.85 })] }] };
+      return checkPaintingSource(sourceOf(documentOf([{ key: 'card', sheet: { kind: 'own', paper: { color: '#ffffff', absorbency: 0.5 }, dryingScale: 0 }, children: [wing] }])));
+    },
+    expect: { severity: 'error', path: 'card.sheet.dryingScale', message: "0 isn't above 0, 'instant' or 'never'" },
   },
   {
     name: 'a wet wash on a crayon-owned sheet',
@@ -109,10 +109,10 @@ const brokenSources: readonly { readonly name: string; readonly check: () => rea
   {
     name: "a wash after a wet one on a sheet whose clock is 'never'",
     check: () => checkPaintingSource(sourceOf(documentOf([
-      layer('shallows', [{ key: 'puddle', clock: { origin: 0, dryingScale: 'never' }, applications: [flood({ key: 'puddle-flood', water: 0.9 })] }]),
+      layer('shallows', [{ key: 'puddle', clock: { origin: 0 }, applications: [flood({ key: 'puddle-flood', water: 0.9 })] }]),
       layer('landscape', [{ key: 'sky', applications: [flood({ key: 'sky-flood', water: 0.85 })] }, { key: 'hill', applications: [stroke('ridge')] }]),
-    ]))),
-    expect: { severity: 'error', path: 'hill.clock', message: "follows sky on the root's sheet, whose clock never dries" },
+    ], 'watercolour', 'never'))),
+    expect: { severity: 'error', path: 'hill.clock', message: "follows sky on the root's sheet, which never dries" },
   },
 ];
 

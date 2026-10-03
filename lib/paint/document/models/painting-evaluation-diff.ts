@@ -38,7 +38,7 @@ function documentChanges(a: PaintingDocument, b: PaintingDocument): string[] {
     const found = paintingFirstDifference(x, y, path, 'identity');
     if (found !== null) changes.push(found);
   };
-  for (const field of ['widthPx', 'heightPx', 'medium', 'paper'] as const) compare(a[field], b[field], field);
+  for (const field of ['widthPx', 'heightPx', 'medium', 'paper', 'dryingScale'] as const) compare(a[field], b[field], field);
   const visit = (x: readonly LayerNode[], y: readonly LayerNode[], path: string) => {
     for (let i = 0; i < Math.max(x.length, y.length); i++) {
       const at = `${path}[${i}]`, before = x.at(i), after = y.at(i);

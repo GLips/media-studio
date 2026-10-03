@@ -40,7 +40,8 @@ engine (the recipe path, docs/brush-engine.md) lacks too; unmarked behaviour is 
    their open paint. Layer and group boundaries dry nothing. A later wash of a layer meets that layer's earlier washes
    set. Each layer keeps its own film, so colours of two layers glaze rather than mix. Separate sheets are separate
    paintings. **NEW**
-5. A painting has no clock unless a wash declares one; a sheet keeps one; unclocked work is always shown finished.
+5. A painting has no clock unless a wash declares one; a sheet keeps one, running at the sheet's `dryingScale`;
+   unclocked work is always shown finished.
 6. Scenes own clocks: they choose property values and sample times, and put finished layers on planes under a camera.
 7. A sheet is one painting: a layer posed (place, pins, sway, flutter, rig) on a sheet it doesn't own is repainted
    into it at each distinct pose, its applications scheduled again where the pose puts them. Everything else a scene
@@ -142,7 +143,7 @@ places, and so how many solves, a second, and `warm` solves them before the firs
 ## The document
 
 ```
-PaintingDocument {widthPx, heightPx, paper, medium, layers}
+PaintingDocument {widthPx, heightPx, paper, medium, dryingScale?, layers}
 └─ layers: LayerNode[]            back to front
    ├─ LayerGroup {key, sheet?, medium?, children: LayerNode[]}
    └─ Layer {key, sheet?, medium?, washes: Wash[]}
@@ -156,6 +157,7 @@ PaintingDocument {widthPx, heightPx, paper, medium, layers}
 | `widthPx`, `heightPx` | px | Any size; (0, 0) is the top-left corner. Paint outside the rectangle is clipped away. |
 | `paper` | `Paper` | The root's own sheet: `{color, image?, grain?: {image, scale, depth}, absorbency}`. |
 | `medium` | `'watercolour' \| 'gouache' \| 'crayon'` | Default for every layer; a layer or group may override. Not per wash. |
+| `dryingScale` | `number \| 'instant' \| 'never'` | The root sheet's: scene seconds per model second once a clocked wet wash starts its clock (Time). 1 when left out. An own sheet states its own. |
 | `layers` | `LayerNode[]` | Back to front. |
 | an application's `brush` | `{style, brush}` | A style's own brush name (Reference). The style is spelt `'watercolor'`, the medium `'watercolour'`. |
 | a paint charge's `mix` | `Mix \| Field<Mix>` | `{parts: [{pigment, amount}], strength}`; a pigment is an appearance from `WATERCOLOUR_PIGMENTS` or a hex. |
@@ -312,8 +314,8 @@ it, on its real tooth.
 | `sheet` | Lies on | Posed by a scene | Hides what's behind | Use |
 |---|---|---|---|---|
 | left out | its parent's sheet (the root's, at the top) | repainted into that sheet at each distinct pose (**NEW**): the grain stays still, edges shift a little from solve to solve, and its water meets the sheet's | no: it glazes | almost everything; an element crossing or touching a painted scene |
-| `{kind: 'own', paper}` | a new sheet of `paper`, which its layers lie on | the cut-out moves whole, paper and paint, with no solve; its layers posed apart from it are repainted into it | as far as its layers' paint landed, by its paper: a lift lightens paint and leaves the card whole | collage, a cut-out that slides, turns or bends |
-| `{kind: 'scene'}` | the root's sheet, past any enclosing own sheet | as left out, on the root's paper | no: it glazes | a shadow under a cut-out, falling on the scene's paper. A shadow on a card it's glued to is a layer of the card beside it |
+| `{kind: 'own', paper, dryingScale?}` | a new sheet of `paper`, which its layers lie on, drying at its own `dryingScale` (1), never another sheet's | the cut-out moves whole, paper and paint, with no solve; its layers posed apart from it are repainted into it | as far as its layers' paint landed, by its paper: a lift lightens paint and leaves the card whole | collage, a cut-out that slides, turns or bends |
+| `{kind: 'scene'}` | the root's sheet, past any enclosing own sheet, at the root's `dryingScale` | as left out, on the root's paper | no: it glazes | a shadow under a cut-out, falling on the scene's paper. A shadow on a card it's glued to is a layer of the card beside it |
 
 Posing is a node's place, pins, sway, flutter or rig. On a sheet the occurrence owns, it moves finished paint.
 Otherwise (**NEW**) it moves the marks before painting: strokes, stamps and fills are planned at rest, then each mark
@@ -342,11 +344,12 @@ A sheet's grain is baked where its paint lies. Paint on a nearer plane, or on an
 was painted on over the back plane's paper, which the camera moves differently. For grain that stays still under a
 moving element, keep the element on the back plane's document.
 
-`paintingTree(document)` (`painting-tree.ts`) gives a document's sheets, each `{owner, paper, edge, water}` (`water`
-the medium its water dries by; `owner` null for the root's), and each node's sheet; `paintingSheetOrders`
-(`painting-sheet-program.ts`) gives each sheet's order, its layers with their films' pigment slots, and its clock, the
-one order the checks, the diff and the solver read. A sheet's clock runs from the earliest start among its clocked
-washes, a direct one's too.
+`paintingTree(document)` (`painting-tree.ts`) gives a document's sheets, each `{owner, paper, edge, water,
+dryingScale}` (`water` the medium its water dries by; `owner` null for the root's), and each node's sheet;
+`paintingSheetOrders` (`painting-sheet-program.ts`) gives each sheet's order, its layers with their films' pigment
+slots, and its clock, the one order the checks, the diff and the solver read. A sheet's clock runs at its
+`dryingScale` from the earliest start among its clocked washes, a direct one's too, and only once a clocked wet wash
+paints it.
 
 ## Units
 
@@ -371,7 +374,7 @@ washes, a direct one's too.
 | medium `drying` | model s for a flooded wash at absorbency 0.5 | — | 240 / 120 / 1 |
 | painting time | model seconds, from 0 at its sheet's start | ≥ 0 | — |
 | clock `origin`, application `at`, `layersOf` `at`, `PaintMoment.at`, `warm` | scene seconds (`origin` may be `'set'`) | — | — |
-| `dryingScale` | scene seconds per model second | > 0, `instant`, `never` | — |
+| `dryingScale` (the document's, an own sheet's) | scene seconds per model second | > 0, `instant`, `never` | 1 |
 | holds, boil `every` | animation frames at `camera.animationFps` | whole ≥ 1 | 24 fps |
 | place `x`, `y`; rig pose `x`, `y`; boil `amount`, `scale` | document px | — | 0; 2.2, 45 |
 | camera `pan` | `{x, y}` px as seen at depth 1 | — | 0 |
@@ -427,37 +430,42 @@ sheet a crayon node declared is refused: crayon keeps no wet history.
 - **Unclocked wash**: scheduled in painting time like any other, so its `on`s hold as they would; `at` is refused by
   type. A sheet's unclocked work is painted before any clock starts, in document order. Always shown finished; a
   sample time changes nothing.
-- **Clocked wash** (**NEW**): `clock: {origin, dryingScale}`. A sheet keeps one clock: its clocked wet washes share
-  one `dryingScale`, and its clocked work starts, at the earliest `origin`, the moment its unclocked work is painted.
-  From there a model second takes `dryingScale` scene seconds. A wash's `origin` is the earliest its first
-  application lands: if earlier work on the sheet waits past it, the wash starts then, and its scene times say so.
-  Nothing of the wash shows before its first application's scene time. Its prewet lands at its start, before its
-  first application's `on` is judged.
+- **Clocked wash** (**NEW**): `clock: {origin}`. Its sheet keeps one clock, running at the sheet's `dryingScale`: the
+  document's for the root, an own sheet's for that sheet, 1 when left out. An own sheet never takes another sheet's
+  scale, and a `scene` sheet is the root's, scale and all. No wash sets a scale, so every clocked wash on a sheet
+  runs at one rate. The clock starts with the sheet's clocked wet work, at the earliest `origin`, the moment its
+  unclocked work is painted; from there a model second takes `dryingScale` scene seconds. A scale alone times
+  nothing: a wash without `clock` is unclocked on any sheet, and a sheet with no clocked wet wash dries in model time
+  whatever its scale. A wash's `origin` is the earliest its first application lands: if earlier work on the sheet
+  waits past it, the wash starts then, and its scene times say so. Nothing of the wash shows before its first
+  application's scene time. Its prewet lands at its start, before its first application's `on` is judged.
   - `dryingScale` = scene seconds wanted ÷ model seconds needed. Model seconds to dry from w0 to w1 =
     (w0 − w1) × drying ÷ (0.5 + absorbency). A 0.85 flood to damp, watercolour, absorbency 0.5: 120 model s; to see
-    that in 3 scene s, dryingScale = 0.025, and its damp window runs from scene 3 s to 5.1 s.
-  - A shown step is finished, so `dryingScale` doesn't change how a step looks. It changes when each application lands
+    that in 3 scene s, give the sheet `dryingScale: 0.025`, and its damp window runs from scene 3 s to 5.1 s.
+  - A shown step is finished, so the scale doesn't change how a step looks. It changes when each application lands
     in scene time, which gates hold, the wetness each landing meets (how far a charge walks, a bloom's reach, the rim)
     and when the wash shows set.
   - A negative `origin` ages the sheet: −age × dryingScale opens the shot `age` model s in, and whatever landed before
-    scene 0 shows finished from the first frame. A 0.9 flood at dryingScale 0.025 with origin −3.25 s is 130 model s
+    scene 0 shows finished from the first frame. A 0.9 flood on a sheet at 0.025 with origin −3.25 s is 130 model s
     old at scene 0, and damp from scene 0.05 s.
-  - `origin: 'set'` starts the wash when every earlier clocked wash of its layer has set, found at solve (printed by
-    `studio paint check --solve` once the solver takes clocked washes). A fixed `at` stays an absolute scene second, checked at solve.
-  - `'instant'`: the first application lands at the start, each untimed one at its predecessor's scene time. Each
-    application runs wet within itself, then the whole sheet sets before the next lands, so `on: 'dry'` holds at once
-    and `wet`, `damp` and blooms over earlier paint are unreachable. The wash sets at its last application's scene
-    time.
-  - `'never'`: nothing on the sheet dries. Wetness stays where applications leave it: `wet` holds where it's above
-    shiny, `damp` where it's at or below damp and above 0, `dry` only where no water landed. Paint stays open
-    (Techniques: blooms). That includes the sheet's unclocked work, so on such a sheet no layer can start a wash after
-    a wet one.
+  - `origin: 'set'` starts the wash when every earlier clocked wash of its layer has set, found at solve and printed
+    by `studio paint check --solve`. A fixed `at` stays an absolute scene second, checked at solve.
+  - `dryingScale: 'instant'`: the first application lands at the start, each untimed one at its predecessor's scene
+    time. Each application runs wet within itself, then the whole sheet sets before the next lands, so `on: 'dry'`
+    holds at once and `wet`, `damp` and blooms over earlier paint are unreachable. A wash's prewet sets before its
+    first application too. A wash sets at its last application's scene time.
+  - `dryingScale: 'never'`: nothing on the sheet dries. Wetness stays where applications leave it: `wet` holds where
+    it's above shiny, `damp` where it's at or below damp and above 0, `dry` only where no water landed. Paint stays
+    open (Techniques: blooms). That includes the sheet's unclocked work, so on such a sheet no layer can start a wash
+    after a wet one.
   - Under `instant` and `never`, `at` sets the scene time only.
 - **Fixed `at`** (clocked washes only): never moves; must not precede its predecessor or the wash's start; its `on`,
   if any, must hold there, at whatever pose the frame gives. Two applications may share one `at`: they land in
   document order.
-- **Direct washes** (`wetHistory: false`, crayon's only kind) may take `clock: {origin, dryingScale: 'instant'}`, so a
-  drawing appears stroke by stroke at fixed `at`s; `on` is refused.
+- **Direct washes** (`wetHistory: false`, crayon's only kind) may take `clock: {origin}`, so a drawing appears stroke
+  by stroke at fixed `at`s; `on` is refused. A direct application neither reads nor writes water, so the sheet's
+  scale never changes how it looks, and a direct wash can't choose it. On a numeric clock, the time between its
+  strokes still dries the water already on the sheet.
 - **Scheduling** is forward: applications in the sheet's order, each at the earliest time at or after its predecessor
   where its `on` holds, judged against the simulated field. Earlier decisions are never revisited. The step is 1 ms
   of model time and the field is read per paper px (**NEW**). The sheet is one painter: an application waiting on
@@ -465,7 +473,7 @@ sheet a crayon node declared is refused: crayon keeps no wet history.
   `at`, which orders it by that time.
 - **Washes in one layer**: an unclocked wash may come before a clocked one, which meets it set. After a clocked wash,
   a wash must be clocked and start once it has set (`origin: 'set'` does that), building on the whole earlier wash.
-  A wash after a `never` wash can't start, nor, on a sheet whose clock is `never`, one after any wet wash.
+  On a sheet whose clock is `never`, no wash can start after a wet wash of its layer.
 - **Across layers** (**NEW**): layers on one sheet share its order and water. Their clocked washes interleave by
   time: a later layer's application at 2 s lands before an earlier layer's at 3 s, into whatever is wet. To have a
   layer meet another dry, start it once the other has set (`studio paint check --solve` prints set times) or give
@@ -477,13 +485,55 @@ sheet a crayon node declared is refused: crayon keeps no wet history.
 - **Warming**: `warm: {from, to}` on the shot solves the films of the render frames from `from` to `to` (at the
   composition's fps), and of the moments they sample, before the first frame: prefixes, poses, property values,
   dissolve levels. It reports what it solved and kept, and promises no residency: a span whose films outgrow the
-  cache's budget evicts its beginning, and those frames solve again. Warm spans that fit. To time a scene beat to a
-  landing, fix that application's `at` from a constant both the factory and the scene import; `studio paint check
-  <source> --solve` prints every application's landing time.
+  cache's budget evicts its beginning, and those frames solve again. Warm spans that fit.
 - **A drop landing in a wash** at a scene second: a timed water application on that wash's sheet with `at` (a bloom,
-  if wanted), in the wash or a clocked layer of its own at the sheet's `dryingScale`, then its paint as the next
-  application without `on`, so the bloom's label still checks water alone. A bloom rewets its footprint, so a later
-  `damp` landing overlapping it waits or fails.
+  if wanted), in the wash or a clocked layer of its own on that sheet, then its paint as the next application without
+  `on`, so the bloom's label still checks water alone. A bloom rewets its footprint, so a later `damp` landing
+  overlapping it waits or fails.
+
+### Cues and painting time
+
+A document's times (`origin`, `at`) are the seconds its selections' `at` counts: scene seconds when a plane passes
+`moment.at`. Tying a painting to the video's timeline is one of two things, and they do different work.
+
+**Land paint on a cue.** Fix the application's `at` from the project's timeline. `timeline.ts` resolves every
+scene's cues, and `sceneCueSeconds` gives one scene's in seconds of its `t`. A painting source imports it from
+models, not `#studio`, so it still loads in plain Node for `studio paint check`. A timed version of the meadow's sky
+(its constants as in `meadow.painting.ts`), its treeline charging in on the scene's `trees` cue:
+
+```ts
+import { sceneCueSeconds } from '#lib/timing/timeline/models/scene-cue-seconds.ts';
+import { timeline } from '../timeline.ts';
+
+/** The meadow scene's cues, in seconds of its `t`. */
+const CUE = sceneCueSeconds(timeline.clock('meadow'));
+
+/** On the root's sheet, which the document gives `dryingScale: 0.1`: the flood shines until scene 3.6 s. */
+const SKY_WASH: Wash = {
+  key: 'sky',
+  clock: { origin: 0 },
+  applications: [
+    {
+      key: 'sky-flood', kind: 'fill', area: { region: { kind: 'polygon', rings: [SKY] } },
+      brush: EVEN, diameterPx: 90, seed: 'sky-flood', charge: { kind: 'paint', mix: SKY_BLUE, water: 0.85 },
+    },
+    {
+      key: 'treeline', at: CUE.trees, on: 'wet', kind: 'stroke', subpaths: [TREELINE], clips: [IN_SKY],
+      brush: CHARGE, diameterPx: 26, seed: 'treeline', charge: { kind: 'paint', mix: EARTH, water: 0.6 },
+    },
+  ],
+};
+```
+
+Moving the cue in `timeline.ts` moves the treeline's landing, and so what it meets: a later cue finds the sky less
+wet, or, past 3.6 s, refuses `on: 'wet'` at solve. `studio paint check <source> --solve` prints every landing's
+scene time, so a scene can check it against its cues.
+
+**Play a painting at another pace.** The selection's `at` is the painting's own time, so a scene maps its time into
+it: `layersOf(p, ['landscape'], { at: (moment.at - CUE.paint) * 2 })` starts the painting on the `paint` cue and shows
+it twice as fast. That retimes playback only: every prefix is the same solve, with the same wet interactions, shown at
+another moment. To change what the water does (a charge meeting the sky wetter or drier), change the document's
+times or its `dryingScale`, which re-solves.
 
 ## What changes, what runs, what it costs
 
@@ -536,15 +586,15 @@ shows what a property step re-solves; the cost report counts what each frame and
 | 18 | crayon pressed hard | paint charge `burnish: true` | crayon layers only |
 | 19 | hill hiding a far range | the far range's applications take `reserves: [NEAR_HILL]` | inset the shape by the overlap you want |
 | 20 | sponge-out through what's behind | a lift wash added to the layer behind | lifts never cross layers |
-| 21 | wash painted on screen | clocked wash; plane source `(m) => layersOf(p, keys, {at: m.at})`; `clock: {hold: 2}`; `warm: {from, to}` | each step shows dry; dissolve between prefixes to smooth the jump |
-| 22 | a raindrop joining a puddle | on the puddle's sheet (its wash, or a clocked layer of the drop's own at the puddle's `dryingScale`), the drop's water stamp `at` its landing, then its paint with no `on` | a falling drop on another plane never joins by overlap |
+| 21 | wash painted on screen | clocked wash on a sheet at a `dryingScale`; plane source `(m) => layersOf(p, keys, {at: m.at})`; `clock: {hold: 2}`; `warm: {from, to}` | each step shows dry; dissolve between prefixes to smooth the jump |
+| 22 | a raindrop joining a puddle | on the puddle's sheet (its wash, or a clocked layer of the drop's own, at the sheet's one `dryingScale`), the drop's water stamp `at` its landing, then its paint with no `on` | a falling drop on another plane never joins by overlap |
 | 23 | falling rain | an instanced plane: drop variants, `instances(m)` placing each under a lasting key | finished paint moving: no wet interaction; each drop blurs along its own fall |
 | 24 | collage cut-out sliding | the layer with `sheet: {kind: 'own', paper}`; motion on its occurrence | its grain travels with it, as paper does |
 | 25 | paint drifting over still paper | the layer left on its parent's sheet; motion on its occurrence, held | a solve per distinct pose, from its first application on |
 | 26 | handwriting reveal | `masks: [{kind: 'path', subpaths, widthPx: 14, revealPx: (m) => …}]` | `widthPx` is the band's full width; pen-ups add no length; the ground stays; a cut-out's paper follows its masked paint |
 | 27 | animated property, smooth | `bracket(v, LEVELS)` → `dissolve(layersOf(lower), layersOf(upper), k)` | ghosting where edges move between levels |
 | 28 | one painting, two places | two planes selecting the same evaluation and layers | each is its own occurrence |
-| 29 | a drawing appearing stroke by stroke | a direct wash with `clock: {origin, dryingScale: 'instant'}` and an `at` per application | or a path mask over the finished drawing |
+| 29 | a drawing appearing stroke by stroke | a direct wash with `clock: {origin}` and an `at` per application, on any sheet: a direct wash has no say in its drying | or a path mask over the finished drawing |
 | 30 | an element fading | `visibility: {'plane/layer': (m) => …}` on the shot | a group's visibility fades it as one |
 | 31 | an element passing behind a ridge on shared paper | its applications' `clips: [{region: ABOVE_RIDGE, anchor: 'paper'}]`; motion on its occurrence | the clip stays on the paper while the element moves |
 | 32 | an element mingling with a wet wash as it moves | its layer on the wash's sheet (left out, or `scene` under an own sheet), posed by motion or a rig; its charge timed while the wash is wet (`at`, or `on: 'wet'`), later work `at` once it has set | a solve per pose from its first application; hiding it leaves its water's work in the wash: fade a group holding both |
@@ -765,11 +815,13 @@ What the check says today, and what to do:
 | Message | When | Do |
 |---|---|---|
 | `treeline.on: on 'wet' follows only applications at or below shiny 0.7: it can never hold` (warning) | nothing before it on its sheet states water above shiny; its own layer's earlier washes have set and don't count | flood wetter |
-| `drop.on: on 'damp' follows no water on the root's sheet: it can never hold` / `on 'wet' in an instant wash: everything before it has set when it lands: it can never hold` (warnings) | nothing could be wet under it | lay water first, or drop the `on` |
+| `drop.on: on 'damp' follows no water on the root's sheet: it can never hold` / `on 'wet' on the root's sheet, whose clock is instant: everything before it has set when it lands: it can never hold` (warnings) | nothing could be wet under it | lay water first, or drop the `on` |
 | `hill-flood.at: fixed at 3.2 s precedes its predecessor at 3.5 s` / `fixed at 1 s precedes its wash's start 2 s` / `at needs a clocked wash` | an `at` breaks its wash's order | move the `at`, or clock the wash |
 | `hill.clock: starts at 2 s, before sky's application at 3 s` / `starts when earlier washes set, and landscape has none before it` / `follows sky, which is clocked: a wash after a clocked wash is clocked too` | a layer's washes out of order | `origin: 'set'`, or clock differently |
-| `hill.clock: follows sky, which never dries` / `follows sky on the root's sheet, whose clock never dries` | a wash after a wet one where nothing dries | give the later wash a layer or sheet of its own, or clock differently |
-| `drop.clock: paints the root's sheet at dryingScale 0.05 and puddle at 0.025: a sheet keeps one clock` | two clocks on one sheet | one `dryingScale` per sheet, or an own sheet |
+| `hill.clock: follows sky on the root's sheet, which never dries` | a wash after a wet one on a sheet whose clock is `never` | give the later wash a layer or sheet of its own, or another `dryingScale` |
+| `document.dryingScale: 0 isn't above 0, 'instant' or 'never'` / `card.sheet.dryingScale: …` | a bad scale | a scene second per model second above 0, `instant` or `never` |
+| `heron.sheet.dryingScale: sheet is the scene's: its dryingScale is the document's` | a `scene` sheet stating a scale (from JS) | set the document's, or give the node an own sheet |
+| `document.dryingScale: the root's sheet's dryingScale 0.025 times nothing: no clocked wet wash paints it` (warning) | a scale on a sheet no clocked wet wash paints: it dries in model time | give a wash `clock`, or drop the scale |
 | `sky-wash.applications: lays water on card's own sheet, whose medium crayon keeps no wet history` | a wet wash on a crayon-declared sheet | a watercolour or gouache sheet |
 | `lines.wetHistory: needs wetHistory: false: crayon keeps no wet history` / `a.charge.water: needs 'water', which crayon doesn't declare` / `a.charge.water: water needs a wet history: its wash says wetHistory: false` | a capability the medium or wash lacks | change medium or technique |
 | `drop.effect: lays paint; a bloom is water` / `drop.effect: won't bloom: gouache spreads 0.1 d, so its largest bloom is 0.3 px` | `effect: 'bloom'` that certainly can't act | a water charge, a bigger tip, or no label |

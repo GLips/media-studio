@@ -33,8 +33,9 @@ export type PaintingSheetEntry = {
 };
 
 /**
- * The one clock a sheet's clocked wet washes share: `scale` maps model time to scene time from `origin`, where its
- * clocked run starts: the earliest start of the clocked washes painting the sheet. `none` when no clocked wet wash does.
+ * A sheet's one clock, at its record's drying scale, running once a clocked wet wash paints it: `scale` maps model
+ * time to scene time from `origin`, where its clocked run starts, the earliest start of the clocked washes painting
+ * the sheet, direct ones included. `none` when no clocked wet wash does: a scale alone times nothing.
  */
 export type PaintingSheetClock = { readonly kind: 'none' } | { readonly kind: 'scale'; readonly scale: number; readonly origin: number } | { readonly kind: 'instant' } | { readonly kind: 'never' };
 
@@ -77,14 +78,13 @@ export function paintingWashOrderTimes(layer: Layer): PaintingWashOrderTimes[] {
 }
 
 /**
- * The clock of a sheet whose clocked wet washes, in its order, are `wet`: the first one's, its scale run from
- * `origin`, the earliest start among the sheet's clocked washes.
+ * The clock of `sheet` if `timed`, some clocked wet wash paints it: at its scale, run from `origin`, the earliest start
+ * among the sheet's clocked washes.
  */
-function paintingSheetClock(wet: readonly Wash[], origin: number): PaintingSheetClock {
-  const first = wet[0]?.clock;
-  if (!first) return { kind: 'none' };
-  if (first.dryingScale === 'instant' || first.dryingScale === 'never') return { kind: first.dryingScale };
-  return { kind: 'scale', scale: first.dryingScale, origin };
+function paintingSheetClock(sheet: PaintingSheet, timed: boolean, origin: number): PaintingSheetClock {
+  if (!timed) return { kind: 'none' };
+  const scale = sheet.dryingScale;
+  return scale === 'instant' || scale === 'never' ? { kind: scale } : { kind: 'scale', scale, origin };
 }
 
 /** A wash an order paints: its layer and wash ordinals as its entries give them, its layer's place, and itself. */
@@ -139,7 +139,7 @@ export function paintingSheetOrders(tree: PaintingTree, selected?: ReadonlySet<n
     });
     // toSorted is stable: ties keep document order.
     const order = { sheet, ownerChain: paintingSheetOwnerChain(tree, sheet), layers, entries: [...unclocked, ...clocked.toSorted((a, b) => (a.orderTime ?? 0) - (b.orderTime ?? 0))] };
-    const wet = paintingSheetWashes(tree, order).map(({ node }) => node).filter(isPaintingClockedWetWash);
-    return { ...order, clock: paintingSheetClock(wet, Math.min(...starts)) };
+    const timed = paintingSheetWashes(tree, order).some(({ node }) => isPaintingClockedWetWash(node));
+    return { ...order, clock: paintingSheetClock(sheet, timed, Math.min(...starts)) };
   });
 }

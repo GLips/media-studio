@@ -9,12 +9,14 @@ const count = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 /** `evaluation` as lines: a header, then a line per layer and group, indented by depth. */
 export function paintingEvaluationSummary({ source, values, document: paintingDocument, tree }: PaintingEvaluation): string[] {
   const shown = Object.entries(values).map(([name, value]) => `${name} ${String(value)}`).join(', ');
-  const header = `${source}${shown ? ` (${shown})` : ''}: ${paintingDocument.widthPx} × ${paintingDocument.heightPx} px, ${paintingDocument.medium}, on ${paintingDocument.paper.color} paper`;
+  const scale = paintingDocument.dryingScale === undefined ? '' : ` at dryingScale ${paintingDocument.dryingScale}`;
+  const header = `${source}${shown ? ` (${shown})` : ''}: ${paintingDocument.widthPx} × ${paintingDocument.heightPx} px, ${paintingDocument.medium}, on ${paintingDocument.paper.color} paper${scale}`;
   return [header, ...tree.nodes.map((place) => {
-    const indent = '  '.repeat(place.groups.length + 1), where = `${place.medium}, on ${paintingSheetName(place.sheet)}`;
+    const own = place.node.sheet?.kind === 'own' && place.node.sheet.dryingScale !== undefined ? ` at dryingScale ${place.node.sheet.dryingScale}` : '';
+    const indent = '  '.repeat(place.groups.length + 1), where = `${place.medium}, on ${paintingSheetName(place.sheet)}${own}`;
     if (place.kind === 'group') return `${indent}${place.node.key}: group of ${count(place.node.children.length, 'node')}, ${where}`;
     const washes = place.node.washes.map((wash) => {
-      const clock = wash.clock ? `, clocked from ${wash.clock.origin === 'set' ? 'set' : `${wash.clock.origin} s`} at ${wash.clock.dryingScale}` : '';
+      const clock = wash.clock ? `, clocked from ${wash.clock.origin === 'set' ? 'set' : `${wash.clock.origin} s`}` : '';
       const direct = wash.wetHistory === false ? ', direct' : '';
       return `${wash.key} (${count(wash.applications.length, 'application')}${direct}${clock})`;
     });

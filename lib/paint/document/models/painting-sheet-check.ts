@@ -1,7 +1,6 @@
 // painting-sheet-check.ts: the rules a sheet's order decides, the last stage of a document's check: a wet wash only
-// on a sheet whose water keeps a wet history, one clock per sheet, no wash after a wet one under a `never` clock, and
-// the `on`s that can never hold, judged over every layer on the sheet, since water is the sheet's and layers dry
-// nothing.
+// on a sheet whose water keeps a wet history, no wash after a wet one under a `never` clock, and the `on`s that can
+// never hold, judged over every layer on the sheet, since water is the sheet's and layers dry nothing.
 
 import { PAINT_MEDIA, paintMediumCan } from '#lib/paint/materials/models/paint-medium.ts';
 import { stampDepositWetness } from '#lib/paint/painting/models/stamp-paint-action.ts';
@@ -9,7 +8,7 @@ import { stampPaintFieldEnds } from '#lib/paint/painting/models/stamp-paint-fiel
 import type { AnyApplication, Prewet, Wash } from './painting-document.ts';
 import { paintingGeometryBox } from './painting-footprint.ts';
 import { paintingApplicationOwner, type PaintingProblemList } from './painting-problem.ts';
-import { isPaintingClockedWetWash, paintingSheetWashes, type PaintingSheetOrder } from './painting-sheet-program.ts';
+import { paintingSheetWashes, type PaintingSheetClock, type PaintingSheetOrder } from './painting-sheet-program.ts';
 import { paintingBrushMedia, type PaintingStyleCatalogue } from './painting-styles.ts';
 import { paintingSheetName, type PaintingTree } from './painting-tree.ts';
 
@@ -21,8 +20,8 @@ function prewetWater({ water = 1 }: Prewet): number {
 }
 
 /**
- * Each wet wash on a sheet that keeps a wet history, every clocked one at the sheet's first clocked wash's scale, and,
- * where that clock is `never`, no wash after a wet one in its layer: nothing on the sheet dries, so it never starts.
+ * Each wet wash on a sheet that keeps a wet history, and, where the sheet's clock is `never`, no wash after a wet one
+ * in its layer: nothing on the sheet dries, its unclocked work included, so it never starts.
  */
 function checkSheetWashes(list: PaintingProblemList, tree: PaintingTree, order: PaintingSheetOrder): void {
   const water = PAINT_MEDIA[order.sheet.water], name = paintingSheetName(order.sheet);
@@ -32,24 +31,22 @@ function checkSheetWashes(list: PaintingProblemList, tree: PaintingTree, order: 
       list.error(wash.key, 'applications', `lays water on ${name}, whose medium ${water.name} keeps no wet history`);
     }
   }
-  const [first, ...later] = washes.filter(isPaintingClockedWetWash);
-  for (const wash of later) {
-    if (wash.clock?.dryingScale === first.clock?.dryingScale) continue;
-    list.error(wash.key, 'clock', `paints ${name} at dryingScale ${wash.clock?.dryingScale} and ${first.key} at ${first.clock?.dryingScale}: a sheet keeps one clock`);
-  }
   if (order.clock.kind !== 'never') return;
   for (const { layer } of order.layers) {
     const layerWashes = tree.layers[layer].node.washes;
     layerWashes.forEach((wash, w) => {
       const wet = layerWashes.slice(0, w).findLast((earlier) => earlier.wetHistory !== false);
-      if (wet) list.error(wash.key, 'clock', `follows ${wet.key} on ${name}, whose clock never dries`);
+      if (wet) list.error(wash.key, 'clock', `follows ${wet.key} on ${name}, which never dries`);
     });
   }
 }
 
-/** Why an `on` can never hold, given the wettest water laid before it that it could wait on, or null. */
-function unreachableOnReason(on: 'wet' | 'damp', wash: Wash, wettest: number, shiny: number, sheetName: string): string | null {
-  if (wash.clock?.dryingScale === 'instant') return `on '${on}' in an instant wash: everything before it has set when it lands`;
+/**
+ * Why an `on` in `wash` can never hold on a sheet keeping `clock`, given the wettest water laid before it that it
+ * could wait on, or null.
+ */
+function unreachableOnReason(on: 'wet' | 'damp', wash: Wash, clock: PaintingSheetClock, wettest: number, shiny: number, sheetName: string): string | null {
+  if (wash.clock && clock.kind === 'instant') return `on '${on}' on ${sheetName}, whose clock is instant: everything before it has set when it lands`;
   if (wettest <= 0) return `on '${on}' follows no water on ${sheetName}`;
   return on === 'wet' && wettest <= shiny ? `on 'wet' follows only applications at or below shiny ${shiny}` : null;
 }
@@ -74,7 +71,7 @@ function checkSheetWaits(list: PaintingProblemList, tree: PaintingTree, order: P
     const on = 'on' in application ? application.on : undefined;
     if (on === 'wet' || on === 'damp') {
       const wettest = Math.max(0, ...[...laid.values()].filter((w) => w.layer !== entry.layer || w.wash >= entry.wash).map((w) => w.water));
-      const why = unreachableOnReason(on, wash, wettest, shiny, name);
+      const why = unreachableOnReason(on, wash, order.clock, wettest, shiny, name);
       const owner = paintingApplicationOwner(wash, application, entry.application);
       if (why) list.warn(owner, 'on', `${why}: it can never hold`, paintingGeometryBox(application, application.diameterPx));
     }

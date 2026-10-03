@@ -125,13 +125,20 @@ export type Paper = {
 };
 
 /**
- * What a layer or group is painted on. Left out: its parent's sheet. `own`: a new sheet of `paper`, a cut-out
- * hiding what's behind as far as its layers' paint lies. `scene`: the root's sheet, past any enclosing own sheet.
- * Layers on one sheet share its wet history; separate sheets are separate paintings.
+ * How scene time drives a sheet's drying once a clocked wet wash starts its clock: a number, the scene seconds a model
+ * second takes; `instant`, the sheet sets before each clocked application; `never`, nothing on it dries, its unclocked
+ * work included. A sheet with no clocked wet wash dries in model time whatever its scale.
+ */
+export type DryingScale = number | 'instant' | 'never';
+
+/**
+ * What a layer or group is painted on. Left out: its parent's sheet. `own`: a new sheet of `paper`, a cut-out hiding
+ * what's behind as far as its layers' paint lies, at its own `dryingScale` (1). `scene`: the root's sheet, past any
+ * enclosing own sheet, at the root's scale. Layers on one sheet share its wet history and clock.
  */
 export type Sheet =
-  | { readonly kind: 'own'; readonly paper: Paper }
-  | { readonly kind: 'scene' };
+  | { readonly kind: 'own'; readonly paper: Paper; readonly dryingScale?: DryingScale }
+  | { readonly kind: 'scene'; readonly dryingScale?: never };
 
 // ---- what an application lays ---------------------------------------------------------------------------------------
 
@@ -253,12 +260,11 @@ export type AnyApplication = Application | TimedApplication | DirectApplication 
 export type Prewet = { readonly region: Region; readonly water?: Amount; readonly reserves?: readonly Footprint[] };
 
 /**
- * How scene time drives its sheet's drying: a model second takes `dryingScale` scene seconds. `origin`: the earliest
- * scene second its first application lands (negative ages the sheet before the shot), or `'set'`: once the layer's
- * earlier washes have set. `instant`: the sheet sets before each application. `never`: nothing on it dries. A
- * sheet's clocked wet washes share one `dryingScale`.
+ * A clocked wash, which its sheet's clock times at the sheet's `dryingScale`. `origin`: the earliest scene second its
+ * first application lands (negative ages the sheet before the shot), or `'set'`: once the layer's earlier washes have
+ * set.
  */
-export type WashClock = { readonly origin: number | 'set'; readonly dryingScale: number | 'instant' | 'never' };
+export type WashClock = { readonly origin: number | 'set' };
 
 type WashCommon = {
   readonly key: WashKey;
@@ -278,16 +284,13 @@ type DirectWashCommon = WashCommon & { readonly wetHistory: false; readonly prew
 /**
  * A run of applications in its sheet's wet history, meeting its layer's earlier washes set. Unclocked, it's painted
  * before any clock starts and shown with every application; clocked, a scene can show it partway. `wetHistory:
- * false` touches no water, in any medium (crayon's only kind); clocked, only instantly.
+ * false` touches no water, in any medium (crayon's only kind), so it has no say in its sheet's drying.
  */
 export type Wash =
   | (WetWashCommon & { readonly clock?: undefined; readonly applications: readonly Application[] })
   | (WetWashCommon & { readonly clock: WashClock; readonly applications: readonly TimedApplication[] })
   | (DirectWashCommon & { readonly clock?: undefined; readonly applications: readonly DirectApplication[] })
-  | (DirectWashCommon & {
-    readonly clock: { readonly origin: number | 'set'; readonly dryingScale: 'instant' };
-    readonly applications: readonly TimedDirectApplication[];
-  });
+  | (DirectWashCommon & { readonly clock: WashClock; readonly applications: readonly TimedDirectApplication[] });
 
 /**
  * One film of paint, glazed over what's behind. It shares its sheet's water: its paint lands into whatever is still
@@ -315,12 +318,16 @@ export type LayerNode = Layer | LayerGroup;
 
 // ---- document ------------------------------------------------------------------------------------------------------
 
-/** Any size; (0, 0) is its top-left corner. `paper` is the root's own sheet, the whole document rectangle. */
+/**
+ * Any size; (0, 0) is its top-left corner. `paper` is the root's own sheet, the whole document rectangle, drying at
+ * `dryingScale` (1) once a clocked wet wash on it starts its clock.
+ */
 export type PaintingDocument = {
   readonly widthPx: number;
   readonly heightPx: number;
   readonly paper: Paper;
   readonly medium: MediumName;
+  readonly dryingScale?: DryingScale;
   /** Back to front. */
   readonly layers: readonly LayerNode[];
 };

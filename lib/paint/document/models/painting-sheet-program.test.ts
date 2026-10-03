@@ -15,16 +15,16 @@ const DRYING = 0.025;
 const shallows: Layer = {
   key: 'shallows', washes: [
     { key: 'ground', applications: [touch('ground')] },
-    { key: 'pool', clock: { origin: 0, dryingScale: DRYING }, applications: [touch('pool'), { ...touch('ripple'), at: 2 }] },
-    { key: 'pool-glaze', clock: { origin: 'set', dryingScale: DRYING }, applications: [touch('glaze')] },
+    { key: 'pool', clock: { origin: 0 }, applications: [touch('pool'), { ...touch('ripple'), at: 2 }] },
+    { key: 'pool-glaze', clock: { origin: 'set' }, applications: [touch('glaze')] },
   ],
 };
-const foot: Layer = { key: 'foot', washes: [{ key: 'foot-wash', clock: { origin: 0.5, dryingScale: DRYING }, applications: [touch('charge'), { ...touch('step'), at: 2 }] }] };
+const foot: Layer = { key: 'foot', washes: [{ key: 'foot-wash', clock: { origin: 0.5 }, applications: [touch('charge'), { ...touch('step'), at: 2 }] }] };
 
 test("a sheet's order: the unclocked run, then every layer's clocked applications by order time, ties in document order", () => {
   const pond = painting({
     default: function pond(): PaintingDocument {
-      return { widthPx: 200, heightPx: 200, paper: { color: '#f4f2ed', absorbency: 0.5 }, medium: 'watercolour', layers: [shallows, { key: 'heron', children: [foot] }] };
+      return { widthPx: 200, heightPx: 200, paper: { color: '#f4f2ed', absorbency: 0.5 }, medium: 'watercolour', dryingScale: DRYING, layers: [shallows, { key: 'heron', children: [foot] }] };
     },
   });
   const [root] = paintingSheetOrders(pond.tree);
@@ -45,11 +45,11 @@ test("a sheet's clock runs from its earliest clocked start, a direct wash's too;
   const study = painting({
     default: function study(): PaintingDocument {
       return {
-        widthPx: 200, heightPx: 200, paper: { color: '#f4f2ed', absorbency: 0.5 }, medium: 'watercolour', layers: [{
+        widthPx: 200, heightPx: 200, paper: { color: '#f4f2ed', absorbency: 0.5 }, medium: 'watercolour', dryingScale: DRYING, layers: [{
           key: 'study', washes: [
-            { key: 'sketch', wetHistory: false, clock: { origin: 1, dryingScale: 'instant' }, applications: [touch('sketch')] },
-            { key: 'hold', clock: { origin: 3, dryingScale: DRYING }, applications: [] },
-            { key: 'flood', clock: { origin: 'set', dryingScale: DRYING }, applications: [touch('flood')] },
+            { key: 'sketch', wetHistory: false, clock: { origin: 1 }, applications: [touch('sketch')] },
+            { key: 'hold', clock: { origin: 3 }, applications: [] },
+            { key: 'flood', clock: { origin: 'set' }, applications: [touch('flood')] },
           ],
         }],
       };
