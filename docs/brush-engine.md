@@ -7,6 +7,7 @@ feature under `lib/paint/`, each importing only those below it:
 
 ```
 animation          → painting
+rig                → painting
 brush-fidelity     → brush-packs, photoshop-brushes, procreate-brushes, painting, brush
 studies            → style, brush-packs, painting, materials, brush
 gate               → brush-packs, painting, materials, brush
@@ -315,6 +316,14 @@ The output blooms the emission once (`lens.bloom`), adds it in linear light, and
 pictures, three sources and the composite are rgba16float, premultiplied linear; a painted texture three samples is
 rgba16float, gamma-encoded and opaque, decoded by `paintedThreeColorNode`. A glowing frame drawn without a lens is
 refused.
+
+**rig** is a painted rig's geometry: layers (whole paintings at rest) cut into parts that meet at skin joints or
+hinges, and their feet. `paint-rig-cuts.ts` resolves drawn regions into which part owns each texel, splitting an
+overlap across a skin joint on the joint's line; `paint-rig-painted-coverage.ts` reads a sheet's paint against its
+blank paper, so the paint's edge is the silhouette. `paint-rig-skin.ts` meshes a layer's skin-joined parts and poses
+the mesh by rotation-blend skinning, each vertex turning by its share of a joint's angle, from each part's
+rest-to-posed map; it measures folds across a joint's band. `paint-rig-contact.ts` gives a foot's contact shadow and
+its drift by the least-moved contact. A rig's files, poses and clocks stay with the projects that use them.
 
 **procreate-brushes** reads a Procreate brush's settings into a `StampBrush` (`procreate-brush.ts`, by the constants
 of `procreate-reading.ts`), and the stroke Procreate draws its previews along. Its `engine/` reads binary plists and

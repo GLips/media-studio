@@ -5,5 +5,6 @@
   "lib/paint/gate": "The GPU gate runs the renderer's formulas and paintings, held to accepted baselines and their CPU twins.",
   "lib/paint/animation": "A figure's shapes are regions the engine fills, clips and masks with, and its motion is evaluated into each group's placement and warp.",
   "lib/paint/brush-packs": "An import measures each brush's profile by painting probe strokes with the renderer and reading what each laid by its trace.",
-  "lib/paint/three-layers": "three.js draws its painted textures with the renderer, on the device's owner the renderer draws on, and hands its renders to it as three planes."
+  "lib/paint/three-layers": "three.js draws its painted textures with the renderer, on the device's owner the renderer draws on, and hands its renders to it as three planes.",
+  "lib/paint/rig": "A rig's layers are paintings cut into parts along regions, and its feet and joints are points on the painting's plane."
 }
