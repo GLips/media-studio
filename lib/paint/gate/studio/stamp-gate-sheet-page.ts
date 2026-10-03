@@ -7,7 +7,8 @@ import { createStampPaintCostTally } from '#lib/paint/painting/models/stamp-pain
 import type { StampSheetProgram } from '#lib/paint/painting/models/stamp-sheet-program.ts';
 import { STAMP_SHEET_REBASE } from '#lib/paint/painting/models/stamp-sheet-schedule.ts';
 import { createStampPaintGpuOwner, type StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
-import { drawStampSheetStill, readStampSheetFilm } from '#lib/paint/painting/studio/stamp-sheet-films.ts';
+import { drawStampSheetsStill } from '#lib/paint/painting/studio/stamp-sheet-composite.ts';
+import { readStampSheetFilm } from '#lib/paint/painting/studio/stamp-sheet-films.ts';
 import { solveStampSheet, type StampSheetSolved, type StampSheetSolveOptions } from '#lib/paint/painting/studio/stamp-sheet-solver.ts';
 import type { StampGateLayer, StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import {
@@ -62,12 +63,14 @@ async function checkForward(): Promise<StampGateWashCheck[]> {
     const meadow = stampGateSheetProgram(meadowSource);
     const treeline = await solveStampSheet(owner, meadow, { through: 2, finish: false });
     const refused = await rejection(solveStampSheet(owner, stampGateSheetProgram(STAMP_GATE_NEVER_WETTED)));
-    const prefixes = await names.reduce<Promise<{ through: number; same: boolean }[]>>(async (done, _name, k) => {
+    // The appended program's prefixes solve on a device of their own: on one device a prefix's key would find the
+    // other's films kept, and nothing would be painted twice to compare.
+    const prefixes = await withSheetOwner((other) => names.reduce<Promise<{ through: number; same: boolean }[]>>(async (done, _name, k) => {
       const list = await done, through = k + 1, options = { through, finish: false };
-      const [shorter, longer] = [await solvedFilms(owner, program, options), await solvedFilms(owner, appended, options)];
+      const [shorter, longer] = [await solvedFilms(owner, program, options), await solvedFilms(other, appended, options)];
       list.push({ through, same: shorter.films.every((film, f) => stampGateFilmsEqual(film, longer.films[f])) });
       return list;
-    }, Promise.resolve([]));
+    }, Promise.resolve([])));
     const [flood, wet] = treeline.decisions;
     return [
       checkStampGateTimes(`${id}: closed forms`, decisions, stampGateForwardTimes(), names),
@@ -131,7 +134,7 @@ export function paintStampGateSolved(id: StampGateSolvedId): Promise<string> {
   const program = stampGateSolvedProgram(id);
   return withGateSurface(program, sheetImageUrl, async (surface, frame) => {
     const solved = await solveStampSheet(surface.owner, program);
-    await drawStampSheetStill(surface, program, solved.films);
+    await drawStampSheetsStill(surface, { sheets: [{ program, films: solved.films, place: null }], steps: program.films.map((_, film) => ({ kind: 'film', sheet: 0, film })) });
     await surface.owner.device.queue.onSubmittedWorkDone();
     const rgba = frame(), rgb = new Uint8Array(program.width * program.height * 3);
     for (let i = 0; i < program.width * program.height; i++) rgb.set(rgba.subarray(i * 4, i * 4 + 3), i * 3);

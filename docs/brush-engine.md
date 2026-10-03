@@ -143,8 +143,14 @@ key (`stamp-sheet-films.ts`), which a still lays as the renderer lays a painting
 before it reads them. A solve holds the device's FIFO lease (`stamp-solve-lease.ts`) from its first encode to its
 last readback, never holds an encoder across an await, and counts into a `StampPaintCostTally` when given one (its
 solve, decisions made and reused, readbacks, warnings). The renderer and the solver read a layered target back through
-`stamp-layer-readback.ts`. It solves the root's sheet, unclocked; the gate's `schedule/` and `sheet/` cases hold it to
-the wet laws' closed forms.
+`stamp-layer-readback.ts`. A solve ending where a kept one did, its films still held, is that solve: a pose met again
+solves nothing. It solves any sheet, unclocked; the gate's `schedule/` and `sheet/` cases hold it to the wet laws'
+closed forms. `stamp-sheet-composite.ts` lays a selection's solved sheets as one picture (ENGINE 5.4): the root's
+paper as the ground, then each film in document order, an own sheet's card (its paper, wherever the union of its films'
+coverage reaches half, by `STAMP_OPAQUE_COVER`) before anything under its owner. Each sheet lays with its own
+compositor and lay, so one device holds several papers; a sheet its owner's chain poses lays through a rest texture,
+films and edge sampled at the rest point (`drawPlacedRest`), so its grain moves with it. The edge is the films' union,
+cached under their keys (producer `edge`).
 
 **Capabilities.** A `PaintMedium` declares what it can do besides lay paint (`PaintCapability`): `'wet-history'`,
 `'wet-conditions'`, `'water'`, `'lift'`, `'burnish'`. Watercolour and gouache declare the first four; crayon `lift`
@@ -374,10 +380,12 @@ check calls the engine's own problem function. A problem's box comes from `paint
 `painting-tree.ts` resolves a document's tree: its sheets, and each node's medium and sheet; `painting-sheet-program.ts`
 is each sheet's order, its layers' films (`painting-pigment-slots.ts`) and its clock, the one order the checks, the
 evaluation diff (`painting-evaluation-diff.ts`) and the solver read. The checks never touch the GPU.
-`painting-document-compile.ts` compiles an evaluation's root sheet to the solver's program, each application through
-`painting-deposit-compile.ts` and `painting-area-compile.ts`; `engine/painting-still.ts` resolves its brushes from
-`work/styles/` and has `studio/painting-still-page.ts` solve and lay it, for `studio paint still` and `studio paint
-check --solve`.
+`painting-document-compile.ts` compiles a selection of an evaluation's layers to one solver program per sheet they
+lie on, each application through `painting-deposit-compile.ts` and `painting-area-compile.ts`, and the composite's
+steps; `painting-pose.ts` poses a program before it's solved, each pose kept per program; `studio/painting-sheets-solve.ts`
+solves a selection's sheets and places each own sheet by its owner's chain; `engine/painting-still.ts` resolves its
+brushes and papers from `work/styles/` and has `studio/painting-still-page.ts` solve and lay it, for `studio paint
+still` and `studio paint check --solve`.
 
 **shot** is what a scene puts on screen from evaluations: `layersOf` selects an evaluation's layers and groups on a
 plane, `bracket` and `dissolve` blend two, `paintedSourceShares` weighs the selections a dissolve blends (linear in

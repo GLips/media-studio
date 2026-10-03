@@ -32,12 +32,12 @@ test("a sheet's order: the unclocked run, then every layer's clocked application
   const slots = { palette: ['color:#4a5a7b'], paintLayers: 1, open: 3 };
   assert.deepEqual(root.layers, [{ layer: 0, medium: 'watercolour', slots }, { layer: 1, medium: 'watercolour', slots }]);
   assert.deepEqual(root.entries.map(({ layer, wash, application, chain, orderTime }) => [layer, wash, application, chain, orderTime]), [
-    [0, 0, 0, [], null],
-    [0, 1, 0, [], 0],
-    [1, 0, 0, [0], 0.5],
-    [0, 1, 1, [], 2],
-    [0, 2, 0, [], 2],
-    [1, 0, 1, [0], 2],
+    [0, 0, 0, [0], null],
+    [0, 1, 0, [0], 0],
+    [1, 0, 0, [1, 2], 0.5],
+    [0, 1, 1, [0], 2],
+    [0, 2, 0, [0], 2],
+    [1, 0, 1, [1, 2], 2],
   ]);
 });
 

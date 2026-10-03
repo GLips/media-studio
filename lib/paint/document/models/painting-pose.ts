@@ -18,9 +18,10 @@ import type { CompiledStampDeposit, CompiledStampMask } from '#lib/paint/paintin
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import type { StampSheetEntry, StampSheetPrewet, StampSheetProgram } from '#lib/paint/painting/models/stamp-sheet-program.ts';
 import { StampSheetRefusal } from '#lib/paint/painting/models/stamp-sheet-refusal.ts';
+import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
 
-/** Each group's map by its ordinal, in its parent's frame; a group left out stands at rest. */
+/** Each node's map by its ordinal in `PaintingTree.nodes`, in its parent's frame; a node left out stands at rest. */
 export type PaintingPoses = ReadonlyMap<number, PaintSimilarity>;
 
 /** The canonical text of `map`, as an entry's `pose` holds it. */
@@ -29,9 +30,9 @@ export const paintingPoseText = (map: PaintSimilarity) => stampCanonicalJson(map
 /** An entry's `pose` at rest. */
 export const PAINTING_REST_POSE = paintingPoseText(PAINT_SIMILARITY_IDENTITY);
 
-/** The map `chain` (group ordinals, outermost first) poses its marks by. */
+/** The map `chain` (node ordinals, outermost first) poses its marks by. */
 export const paintingChainMap = (chain: readonly number[], poses: PaintingPoses): PaintSimilarity =>
-  chain.reduce((map, group) => paintSimilarityAfter(map, poses.get(group) ?? PAINT_SIMILARITY_IDENTITY), PAINT_SIMILARITY_IDENTITY);
+  chain.reduce((map, node) => paintSimilarityAfter(map, poses.get(node) ?? PAINT_SIMILARITY_IDENTITY), PAINT_SIMILARITY_IDENTITY);
 
 /** A move, document px. */
 type PaintingMove = { readonly x: number; readonly y: number };
@@ -109,21 +110,41 @@ function movedDeposit(entry: StampSheetEntry, by: PaintingMove, moveFluid: (mask
 const movedPrewet = (prewet: StampSheetPrewet, by: PaintingMove, moveFluid: (mask: CompiledStampMask | null) => CompiledStampMask | null): StampSheetPrewet =>
   ({ ...prewet, area: movedArea(prewet.area, by), water: movedField(prewet.water, by), held: moveFluid(prewet.held) });
 
+/** How many poses of one program are kept, the oldest forgotten first: as many as a shot's frames tend to revisit. */
+export const PAINTING_POSES_KEPT = 64;
+const posesKept = new WeakMap<StampSheetProgram, Map<string, StampSheetProgram>>();
+
 /**
- * `program` with each entry posed by its chain's map in `poses`, and each wash's prewet by its first entry's. Refuses
- * a map that turns or scales: the solver poses by moves so far.
+ * `program` with each entry posed by its chain's map in `poses`, each wash's prewet by its first entry's. Kept by its
+ * maps (PAINTING_POSES_KEPT a program): a pose met again is the one made before, counted into `costs` as a pose hit.
+ * Refuses a map that turns or scales: the solver poses by moves so far.
  */
-export function paintingSheetPosed(program: StampSheetProgram, poses: PaintingPoses): StampSheetProgram {
+export function paintingSheetPosed(program: StampSheetProgram, poses: PaintingPoses, costs?: StampPaintCostTally): StampSheetProgram {
+  const maps = program.entries.map((entry) => paintingChainMap(entry.chain, poses)), texts = maps.map(paintingPoseText);
+  if (texts.every((text) => text === PAINTING_REST_POSE)) return program;
+  let kept = posesKept.get(program);
+  if (!kept) posesKept.set(program, (kept = new Map<string, StampSheetProgram>()));
+  const key = texts.join('\n'), known = kept.get(key);
+  costs?.count(known ? 'pose hits' : 'poses made');
+  if (known) return known;
+  const posed = paintingSheetPosedBy(program, maps, texts);
+  kept.set(key, posed);
+  if (kept.size > PAINTING_POSES_KEPT) kept.delete(kept.keys().next().value!);
+  return posed;
+}
+
+/** `program` with entry k posed by `maps[k]`, whose canonical text is `texts[k]`. */
+function paintingSheetPosedBy(program: StampSheetProgram, maps: readonly PaintSimilarity[], texts: readonly string[]): StampSheetProgram {
   const movedFluid = new Map<string, Map<CompiledStampMask, CompiledStampMask>>();
   const moverFor = (by: PaintingMove, anchored: ReadonlySet<CompiledStampMask>) => {
     const tag = moveTag(by);
     if (!movedFluid.has(tag)) movedFluid.set(tag, new Map());
     return fluidMover(by, anchored, movedFluid.get(tag)!);
   };
-  const posed = program.entries.map((entry) => {
-    const map = paintingChainMap(entry.chain, poses);
+  const posed = program.entries.map((entry, k) => {
+    const map = maps[k], pose = texts[k];
     if (map.ma !== 1 || map.mb !== 0) throw new StampSheetRefusal(`painting: ${entry.name} is posed by a turn or a scale, and the solver poses by moves only so far`);
-    const by = { x: map.kx, y: map.ky }, pose = paintingPoseText(map);
+    const by = { x: map.kx, y: map.ky };
     if (by.x === 0 && by.y === 0) return { entry: { ...entry, pose }, by };
     return { entry: { ...entry, deposit: movedDeposit(entry, by, moverFor(by, entry.anchors.masks)), pose }, by };
   });

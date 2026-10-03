@@ -11,8 +11,8 @@ import type { StampPaintDevice } from './stamp-paint-gpu.ts';
 /** The most a device's cache holds once a frame's own entries are counted out, bytes: a 1080p scene's planes and films. */
 export const STAMP_GPU_CACHE_BUDGET = 768 * 1024 * 1024;
 
-/** What makes an entry: a group's painted layer, a plane's picture, or a picture blurred. */
-export type StampGpuCacheProducer = 'film' | 'picture' | 'blurred';
+/** What makes an entry: a group's painted layer, a plane's picture, a picture blurred, or an own sheet's edge. */
+export type StampGpuCacheProducer = 'film' | 'picture' | 'blurred' | 'edge';
 
 /** A texture an entry holds: `layers` array layers of `width` × `height` in `format`. */
 export type StampGpuCacheTexture = { width: number; height: number; layers: number; format: GPUTextureFormat; usage: GPUTextureUsageFlags };
@@ -24,6 +24,8 @@ export type StampGpuCacheEntry<Note> = { readonly textures: readonly GPUTexture[
 export type StampGpuCacheStore<Note> = {
   /** The entry under `key`, as used by `encoder`'s frame; null for none. */
   find: (key: string, encoder: GPUCommandEncoder) => StampGpuCacheEntry<Note> | null;
+  /** Whether an entry is held under `key`, using none: what a frame encoded later finds unless the budget gives it up. */
+  has: (key: string) => boolean;
   /** A new entry under `key`, used by `encoder`'s frame: textures made as `textures` says, for the caller to fill. */
   make: (key: string, encoder: GPUCommandEncoder, textures: readonly StampGpuCacheTexture[], note: Note) => StampGpuCacheEntry<Note>;
   /** Gives up every entry, once the frames that read them are submitted. */
@@ -84,6 +86,7 @@ export function stampPaintGpuCache(device: StampPaintDevice): StampPaintGpuCache
           found.encoder = encoder;
           return { textures: found.textures, note: found.note };
         },
+        has: (key) => held.has(key),
         make: (key, encoder, textures, note) => {
           held.get(key)?.forget();
           const bytes = textures.reduce((sum, texture) => sum + textureBytes(texture), 0);

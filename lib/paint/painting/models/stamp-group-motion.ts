@@ -76,3 +76,12 @@ export function stampGroupSceneFromLayer({ x, y, rotation, scale }: StampGroupPl
   const dx = (point.x - pivot.x) * scale, dy = (point.y - pivot.y) * scale, cos = Math.cos(rotation), sin = Math.sin(rotation);
   return { x: pivot.x + x + cos * dx - sin * dy, y: pivot.y + y + sin * dx + cos * dy };
 }
+
+/**
+ * The map undoing `placement` (about the origin) as a pass reads a similarity, p ↦ (ma + i·mb)·p + (kx + i·ky): its
+ * words [ma, mb, kx, ky], taking a point where the placement laid it back to where it was painted.
+ */
+export function stampPlacementInverseWords({ x, y, rotation, scale }: StampGroupPlacement): [number, number, number, number] {
+  const ma = Math.cos(rotation) / scale, mb = -Math.sin(rotation) / scale;
+  return [ma, mb, -(ma * x - mb * y), -(mb * x + ma * y)];
+}

@@ -1,11 +1,14 @@
 // stamp-paint-lay-pass.ts: films laid over paper, and the painting shown. The paper (its colour, or its photograph
 // covering the frame and mirrored past it) is laid first; each group's film over it by its compositor's layGroup,
-// at rest or through a lattice's rest points (a moved or warped group); the painting is output in screen colour.
-// The renderer and the sheet solver's still both lay through it.
+// at rest or through a lattice's rest points (a moved or warped group); an own sheet's card, its paper as far as its
+// paint reaches, where its first layer goes; the painting is output in screen colour. The renderer and the sheet
+// solver's composites both lay through it, a lay per paper.
 
 import { gpuUniformLayout, gpuUniformStruct, gpuUniformWriter, type GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { GPU_FULL_FRAME_WGSL, GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
+import { stampPlacementInverseWords, type StampGroupPlacement } from '../models/stamp-group-motion.ts';
+import { STAMP_OPAQUE_COVER } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampPaintPaper } from '../models/stamp-paint-recipe-types.ts';
 import { stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 import { stampPaintTargetWgsl, type StampPaintCompositor } from './stamp-paint-compositor.ts';
@@ -121,6 +124,67 @@ ${compositor.group.wgsl}
 }`;
 };
 
+const STAMP_LAY_CARD = gpuUniformLayout('Card', [
+  ['paper', gpuUniformStruct(PAPER)], ['origin', 'vec2u'], ['extent', 'vec2u'], ['edgeOrigin', 'vec2u'], ['edgeExtent', 'vec2u'], ['moved', 'u32'],
+]);
+// An own sheet's card: its paper laid over what's behind as far as its union reaches, cover = min(1, STAMP_OPAQUE_COVER
+// × union), read where each pixel was painted when the sheet is moved, its photograph too.
+const cardWgsl = (compositor: StampPaintCompositor, stage: StampStage) => /* wgsl */ `
+${stampStageWgsl(stage)}
+${stampPaintTargetWgsl('painting', 2, compositor.targets.painting, 'read_write')}
+${GPU_SRGB_WGSL}
+${compositor.card}
+${PAPER_COLOR_WGSL}
+${STAMP_LAY_CARD.wgsl}
+@group(0) @binding(0) var<uniform> u: Card;
+@group(0) @binding(1) var image: texture_2d<f32>;
+@group(0) @binding(3) var photographSampler: sampler;
+@group(0) @binding(4) var edge: texture_2d<f32>;
+@group(0) @binding(5) var rest: texture_2d<f32>;
+// The union at stage texel \`t\`, none outside its box.
+fn unionAt(t: vec2i) -> f32 {
+  let q = t - vec2i(u.edgeOrigin);
+  if (any(q < vec2i(0)) || any(q >= vec2i(u.edgeExtent))) { return 0.0; }
+  return textureLoad(edge, vec2u(q), 0).r;
+}
+@compute @workgroup_size(${STAMP_WORKGROUP}, ${STAMP_WORKGROUP}) fn card(@builtin(global_invocation_id) id: vec3u) {
+  if (any(id.xy >= u.extent)) { return; }
+  let pixel = u.origin + id.xy;
+  var at = stagePoint(vec2i(pixel));
+  var inked = unionAt(vec2i(pixel));
+  if (u.moved == 1u) {
+    at = textureLoad(rest, pixel, 0).xy;
+    if (at.x < ${STAMP_NO_REST / 2}.0) { return; }
+    let q = at - 0.5 + vec2f(STAGE_MARGIN);
+    let b = vec2i(floor(q));
+    let f = q - floor(q);
+    inked = mix(mix(unionAt(b), unionAt(b + vec2i(1, 0)), f.x), mix(unionAt(b + vec2i(0, 1)), unionAt(b + vec2i(1, 1)), f.x), f.y);
+  }
+  let cover = min(1.0, inked * ${STAMP_OPAQUE_COVER.toFixed(1)});
+  if (cover <= 0.0) { return; }
+  layCard(pixel, paperColor(image, photographSampler, u.paper, at), cover);
+}`;
+
+const STAMP_LAY_PLACE = gpuUniformLayout('Place', [['undo', 'vec4f'], ['extent', 'vec2u']]);
+// Each stage texel's rest point under a placement: where the paint laid there was painted, by the map undoing it.
+const placeRestWgsl = (stage: StampStage) => /* wgsl */ `
+${stampStageWgsl(stage)}
+${STAMP_LAY_PLACE.wgsl}
+@group(0) @binding(0) var<uniform> u: Place;
+@group(0) @binding(1) var rest: texture_storage_2d<rg32float, write>;
+@compute @workgroup_size(${STAMP_WORKGROUP}, ${STAMP_WORKGROUP}) fn place(@builtin(global_invocation_id) id: vec3u) {
+  if (any(id.xy >= u.extent)) { return; }
+  let p = stagePoint(vec2i(id.xy));
+  let m = u.undo;
+  textureStore(rest, id.xy, vec4f(m.x * p.x - m.y * p.y + m.z, m.y * p.x + m.x * p.y + m.w, 0.0, 1.0));
+}`;
+
+/**
+ * An own sheet's card laid: `edge`, its union's coverage over stage texels `edgeBox` (r32float, its texel 0 the box's
+ * first), onto `painting` over `box`; through `rest`, a placement's rest points, when the sheet is moved.
+ */
+export type StampCardLay = { edge: GPUTextureView; edgeBox: StampPixelBox; painting: GPUTextureView; box: StampPixelBox; rest: GPUTextureView | null };
+
 // The frame's window of the stage, a painting shown as it is: an output pixel is the stage's texel a margin in.
 export const stampPaintOutputWgsl = (compositor: StampPaintCompositor, dithered: boolean, stage: StampStage) => /* wgsl */ `
 ${stampStageWgsl(stage)}
@@ -158,7 +222,7 @@ export function createStampPaintLay(device: StampPaintDevice, arena: StampUnifor
   const { frame } = stage;
   const compute = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }) } });
   const pipelines = { group: compute(groupWgsl(compositor, false, stage)), paper: compute(paperWgsl(compositor, stage)) };
-  let movedGroup: GPUComputePipeline | null = null;
+  let movedGroup: GPUComputePipeline | null = null, card: GPUComputePipeline | null = null, placeRest: GPUComputePipeline | null = null;
   /**
    * The Paper uniform at word `at` for `backing`: the painting's paper, or plain white or black. Cover: the photograph
    * fills the frame, cropped along whichever side it has to spare, so a margin leaves the frame's paper as it was;
@@ -205,6 +269,35 @@ export function createStampPaintLay(device: StampPaintDevice, arena: StampUnifor
         }),
         lay.layer, lay.painting, ...groupResources, ...restBinding,
       ], box.w, box.h);
+    },
+    /** Lays an own sheet's card as `lay` says, its paper this lay's. */
+    layCard(encoder: GPUCommandEncoder, lay: StampCardLay) {
+      const { box, edgeBox } = lay;
+      card ??= compute(cardWgsl(compositor, stage));
+      dispatchStampCompute(device, encoder, card, [
+        arena.slot((views) => {
+          const put = gpuUniformWriter(STAMP_LAY_CARD, views);
+          writePaper(views, STAMP_LAY_CARD.at.paper, 'paper');
+          put('origin', [box.x, box.y]);
+          put('extent', [box.w, box.h]);
+          put('edgeOrigin', [edgeBox.x, edgeBox.y]);
+          put('edgeExtent', [edgeBox.w, edgeBox.h]);
+          put('moved', lay.rest ? 1 : 0);
+        }),
+        photograph?.view ?? blank, lay.painting, sampler, lay.edge, lay.rest ?? blank,
+      ], box.w, box.h);
+    },
+    /** Writes into `rest` (rg32float, the stage's size) each stage texel's rest point under `placement`, about the origin. */
+    drawPlacedRest(encoder: GPUCommandEncoder, rest: GPUTextureView, placement: StampGroupPlacement) {
+      placeRest ??= compute(placeRestWgsl(stage));
+      dispatchStampCompute(device, encoder, placeRest, [
+        arena.slot((views) => {
+          const put = gpuUniformWriter(STAMP_LAY_PLACE, views);
+          put('undo', stampPlacementInverseWords(placement));
+          put('extent', [stage.width, stage.height]);
+        }),
+        rest,
+      ], stage.width, stage.height);
     },
   };
 }

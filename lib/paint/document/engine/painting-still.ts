@@ -1,7 +1,8 @@
 // painting-still.ts: a painting source solved and shown, for `studio paint still` and `studio paint check --solve`.
 // Checked first as `studio paint check` checks it; then its brushes and paper resolved from work/styles/ and handed,
-// with the values, to studio/painting-still-page.ts, which bundles the source in, solves its root sheet on the GPU and
-// returns the painting (and each film alone over the paper) as PNGs, with what the solve decided; and those written.
+// with the values, to studio/painting-still-page.ts, which bundles the source in, solves its sheets on the GPU and
+// returns the painting (and each film alone over the paper) as PNGs, with what each sheet's solve decided; and those
+// written. Every sheet's paper is resolved, each own sheet's too.
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
@@ -26,8 +27,8 @@ export type PaintingStillRun = { readonly problems: readonly PaintingProblem[]; 
 export async function paintPaintingSourceStill(file: string, texts: Readonly<Record<string, string>>, { films }: { films: boolean }): Promise<PaintingStillRun> {
   const { problems, evaluation } = await checkPaintingSourceFile(file, texts);
   if (!evaluation) return { problems, still: null, refused: null };
-  const refs = paintingBrushRefs(evaluation.tree), { paper } = evaluation.document;
-  const names = new Set([...refs.map(({ style }) => style), ...[paper.image, paper.grain?.image].flatMap((asset) => (asset ? [asset.style] : []))]);
+  const refs = paintingBrushRefs(evaluation.tree), papers = evaluation.tree.sheets.map(({ paper }) => paper);
+  const names = new Set([...refs.map(({ style }) => style), ...papers.flatMap(({ image, grain }) => [image, grain?.image].flatMap((asset) => (asset ? [asset.style] : [])))]);
   const styles = new Map(await Promise.all([...names].map(async (name) => [name, await readWorkspacePigmentStyle(STUDIO_STYLES_DIR, name, 'paint still')] as const)));
   const request: PaintingStillRequest = {
     texts, films,

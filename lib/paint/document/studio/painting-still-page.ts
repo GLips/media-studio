@@ -1,7 +1,8 @@
 // painting-still-page.ts: a painting source's still, the browser side of engine/painting-still.ts (through
-// withBrowserModulePage). The source, bundled in as `@painting-source`, is evaluated at the values handed in, its
-// root sheet compiled with the brushes Node resolved from the styles, solved on the GPU and laid on its paper; then
-// each film alone over the paper, when asked. Images are served at /files/ (stamp-paint-pack-urls.ts).
+// withBrowserModulePage). The source, bundled in as `@painting-source`, is evaluated at the values handed in, every
+// sheet compiled with the brushes Node resolved from the styles, each solved on the GPU, and laid as one painting on
+// the root's paper, each own sheet's card under its films; then each film alone over the paper, when asked. Images
+// are served at /files/ (stamp-paint-pack-urls.ts).
 
 import * as paintingSource from '@painting-source';
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
@@ -10,48 +11,55 @@ import { createStampPaintCostTally } from '#lib/paint/painting/models/stamp-pain
 import { StampSheetRefusal } from '#lib/paint/painting/models/stamp-sheet-refusal.ts';
 import { createStampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { createStampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
-import { drawStampSheetStill, type StampSheetFilmKept } from '#lib/paint/painting/studio/stamp-sheet-films.ts';
-import { solveStampSheet } from '#lib/paint/painting/studio/stamp-sheet-solver.ts';
-import { compilePaintingRootSheet } from '../models/painting-document-compile.ts';
+import { drawStampSheetsStill, type StampSheetsComposite } from '#lib/paint/painting/studio/stamp-sheet-composite.ts';
+import { compilePaintingSelection } from '../models/painting-document-compile.ts';
 import { paintingValuesFromText } from '../models/painting-properties.ts';
 import { paintingSolveCostsLine, paintingSolveLines } from '../models/painting-solve-report.ts';
 import type { PaintingStill, PaintingStillOutcome, PaintingStillRequest } from '../models/painting-still-request.ts';
 import { painting } from '../models/painting-source.ts';
+import { paintingSheetName } from '../models/painting-tree.ts';
+import { solvePaintingSheets } from './painting-sheets-solve.ts';
 
-/** The source's still, as `request` asks for it. Throws what the solve refuses: an application it can't land. */
+/** The source's still, as `request` asks for it. Throws what a solve refuses: an application it can't land. */
 async function paintingStillOf({ texts, brushes, packUrls, films }: PaintingStillRequest): Promise<PaintingStill> {
   const evaluation = painting(paintingSource, paintingValuesFromText(paintingSource.properties ?? {}, texts));
-  const program = compilePaintingRootSheet(evaluation, ({ style, brush }): StampBrush => {
+  const compiled = compilePaintingSelection(evaluation, ({ style, brush }): StampBrush => {
     const key = `${style}/${brush}`;
     if (!Object.hasOwn(brushes, key)) throw new Error(`painting still: ${key} wasn't resolved for the page`);
     return brushes[key];
   });
-  const { width, height } = program;
+  const { width, height } = compiled.sheets[0].program;
   const canvas = Object.assign(document.createElement('canvas'), { width, height });
   const copy = Object.assign(document.createElement('canvas'), { width, height });
   const owner = await createStampPaintGpuOwner((asset) => stampPaintPackAssetUrl(packUrls, asset));
   try {
     const surface = await createStampPaintSurface(owner, { canvas, width, height });
     try {
-      const costs = createStampPaintCostTally(), solved = await solveStampSheet(owner, program, { costs });
-      /** `kept` laid on the surface, as a PNG: copied out before anything draws again. */
-      const shown = async (kept: readonly StampSheetFilmKept[]) => {
-        await drawStampSheetStill(surface, program, kept);
+      const costs = createStampPaintCostTally(), { solved, composite } = await solvePaintingSheets(owner, evaluation, compiled, { costs });
+      /** `steps` of the composite laid on the surface, as a PNG: copied out before anything draws again. */
+      const shown = async (steps: StampSheetsComposite['steps']) => {
+        await drawStampSheetsStill(surface, { ...composite, steps });
         const context = copy.getContext('2d')!;
         context.clearRect(0, 0, width, height);
         context.drawImage(canvas, 0, 0);
         return copy.toDataURL('image/png');
       };
-      const png = await shown(solved.films);
-      /** Film `f` alone: every other kept with no box, so it lays nothing. */
-      const only = (f: number) => solved.films.map((kept, g): StampSheetFilmKept => (g === f ? kept : { ...kept, box: null }));
-      // One at a time: each is drawn on the one surface and copied out before the next.
-      const filmPngs = await (films ? program.films : []).reduce<Promise<{ name: string; png: string }[]>>(async (done, { name }, f) => {
-        const pngs = await done;
-        pngs.push({ name, png: await shown(only(f)) });
+      const png = await shown(composite.steps);
+      // Each film alone over the paper, on its own sheet's card when it has one; one at a time, each drawn on the
+      // one surface and copied out before the next.
+      const alone = films ? composite.steps.flatMap((step) => (step.kind === 'film' ? [step] : [])) : [];
+      const filmPngs = await alone.reduce<Promise<{ name: string; png: string }[]>>(async (done, step) => {
+        const pngs = await done, card = composite.steps.filter((other) => other.kind === 'card' && other.sheet === step.sheet);
+        pngs.push({ name: compiled.sheets[step.sheet].program.films[step.film].name, png: await shown([...card, step]) });
         return pngs;
       }, Promise.resolve([]));
-      return { png, films: filmPngs, lines: paintingSolveLines(program, solved.decisions), costs: paintingSolveCostsLine(costs.take()) };
+      const several = compiled.sheets.filter(({ program }) => program.entries.length > 0).length > 1;
+      const lines = compiled.sheets.flatMap(({ sheet, program }, s) => {
+        if (program.entries.length === 0) return [];
+        const solveLines = paintingSolveLines(program, solved[s].decisions);
+        return several ? [`${paintingSheetName(sheet)}:`].concat(solveLines.map((line) => `  ${line}`)) : solveLines;
+      });
+      return { png, films: filmPngs, lines, costs: paintingSolveCostsLine(costs.take()) };
     } finally {
       surface.dispose();
     }

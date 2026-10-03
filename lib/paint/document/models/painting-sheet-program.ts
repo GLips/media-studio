@@ -20,8 +20,9 @@ export type PaintingSheetLayer = { readonly layer: number; readonly medium: Medi
 
 /**
  * One application in its sheet's order: its layer (an index into its order's `layers`), wash and application
- * ordinals; `chain`, the groups between the sheet's owner and its layer (indexes into `PaintingTree.groups`, outermost
- * first), whose poses move its marks before painting; and its order time (null in the unclocked run).
+ * ordinals; `chain`, the nodes below the sheet's owner down to its layer, the layer too unless it owns the sheet
+ * (indexes into `PaintingTree.nodes`, outermost first), whose poses move its marks before painting; and its order
+ * time (null in the unclocked run).
  */
 export type PaintingSheetEntry = {
   readonly layer: number;
@@ -96,15 +97,29 @@ export function paintingSheetWashes(tree: PaintingTree, order: Pick<PaintingShee
   });
 }
 
-/** Every sheet's order and clock, the root's first. Expects a document whose washes, clocks and mixes are checked. */
-export function paintingSheetOrders(tree: PaintingTree): PaintingSheetOrder[] {
+/**
+ * The nodes posing `place`'s marks on `sheet` before painting, as node ordinals outermost first: those below the
+ * sheet's owner (below the document's top for the root's) down to the layer itself. Everything from the owner up
+ * moves the finished sheet instead.
+ */
+function paintingSheetChain(tree: PaintingTree, sheet: PaintingSheet, place: PaintingLayerPlace): number[] {
+  if (sheet.owner === place.node.key) return [];
+  const below = sheet.owner === null ? 0 : place.groups.indexOf(sheet.owner) + 1;
+  return [...place.groups.slice(below), place.node.key].map((key) => tree.nodes.indexOf(tree.byKey.get(key)!));
+}
+
+/**
+ * Every sheet's order and clock, the root's first, over the layers `selected` (ordinals in `PaintingTree.layers`; all
+ * of them when left out): a plane painting some of a sheet's layers paints them as a painting of their own. Expects a
+ * document whose washes, clocks and mixes are checked.
+ */
+export function paintingSheetOrders(tree: PaintingTree, selected?: ReadonlySet<number>): PaintingSheetOrder[] {
   return tree.sheets.map((sheet) => {
     const layers: PaintingSheetLayer[] = [], unclocked: PaintingSheetEntry[] = [], clocked: PaintingSheetEntry[] = [], starts: number[] = [];
     tree.layers.forEach((place, ordinal) => {
-      if (place.sheet !== sheet) return;
+      if (place.sheet !== sheet || (selected && !selected.has(ordinal))) return;
       const layer = layers.push({ layer: ordinal, medium: place.medium, slots: paintingLayerSlots(place.node, PAINT_MEDIA[place.medium]) }) - 1;
-      const below = sheet.owner === null ? 0 : place.groups.indexOf(sheet.owner) + 1;
-      const chain = sheet.owner === place.node.key ? [] : place.groups.slice(below).map((key) => tree.groups.findIndex(({ node }) => node.key === key));
+      const chain = paintingSheetChain(tree, sheet, place);
       paintingWashOrderTimes(place.node).forEach(({ start, times }, wash) => {
         if (start !== null && times.length > 0) starts.push(start);
         times.forEach((orderTime, application) => (orderTime === null ? unclocked : clocked).push({ layer, wash, application, chain, orderTime }));

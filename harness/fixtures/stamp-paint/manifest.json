@@ -201,19 +201,19 @@
     "solved/forward": {
       "file": "solved/forward.png",
       "output": "f0003f7c4e327d9e25299197504d478b1343f240457c5e2663bf37768ec463f8",
-      "inputs": "dfcf078e0da13e65d61af3e907380404338818b42abc94232d3d0a81b1fbf2d9",
-      "reason": "vid-157 solver review: a state key reads its entry's {reads, marks} datum and its pose; a solve's films are cleared at its start and finished films settled; targets at the stage size through the owner; proxies only into films with a wet history",
+      "inputs": "cf5514b2723545acc0b0d5f4820a7648d81a9b912560ebd5a8ed7f1c07e45fc5",
+      "reason": "vid-157 sheets: a selection compiled to one program per sheet with composite steps; chains are node ordinals (the layer's own included); the still drawn by the sheets' composite on each sheet's paper",
       "accepted": "2026-10-03",
-      "acceptedOver": "bf5b7e92",
+      "acceptedOver": "42629fe0",
       "adapter": "apple metal-3"
     },
     "solved/wet-contact": {
       "file": "solved/wet-contact.png",
       "output": "1757cfbd705b4cbbe3a942a00a517621b1e0dff08617dcf746cc80a9acf6fecd",
-      "inputs": "9abaaade53748582900c9334d9ecbb5623a124217208e32dabfc6dd99c524068",
-      "reason": "vid-157 solver review: a state key reads its entry's {reads, marks} datum and its pose; a solve's films are cleared at its start and finished films settled; targets at the stage size through the owner; proxies only into films with a wet history",
+      "inputs": "66952161ffa41e63961ae4bd6c0bf92aae9079b3d7b1e1dd010a51476162e121",
+      "reason": "vid-157 sheets: a selection compiled to one program per sheet with composite steps; chains are node ordinals (the layer's own included); the still drawn by the sheets' composite on each sheet's paper",
       "accepted": "2026-10-03",
-      "acceptedOver": "bf5b7e92",
+      "acceptedOver": "42629fe0",
       "adapter": "apple metal-3"
     }
   }

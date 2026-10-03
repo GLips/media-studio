@@ -84,6 +84,11 @@ export type StampPaintCompositor = {
   /** `layPaper(pixel, color)`, `color` gamma-encoded. */
   paper: string;
   /**
+   * `layCard(pixel, color, cover)`: paper of `color` (gamma-encoded) laid over what's there by `cover` 0..1, `painting`
+   * read and written: an own sheet's card (ENGINE 5.4).
+   */
+  card: string;
+  /**
    * What the painting shows at a pixel, read from `painting` alone: `screenColor(pixel)` gamma-encoded, as a still is
    * output, and `linearLight(pixel)` within 0..1, as a plane's picture holds it (stamp-paint-plane-passes.ts).
    */
@@ -271,6 +276,7 @@ fn layGroup(pixel: vec2u, glaze: bool, opacity: f32) {
       resources: () => [],
     },
     paper: /* wgsl */ `fn layPaper(pixel: vec2u, color: vec3f) { textureStore(painting, pixel, vec4f(color, 1.0)); }`,
+    card: /* wgsl */ `fn layCard(pixel: vec2u, color: vec3f, cover: f32) { textureStore(painting, pixel, mix(textureLoad(painting, pixel), vec4f(color, 1.0), cover)); }`,
     output: /* wgsl */ `
 fn screenColor(pixel: vec2u) -> vec3f { return textureLoad(painting, pixel, 0).rgb; }
 fn linearLight(pixel: vec2u) -> vec3f { return srgbDecoded(clamp(screenColor(pixel), vec3f(0.0), vec3f(1.0))); }`,

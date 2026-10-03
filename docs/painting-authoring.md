@@ -11,14 +11,15 @@ checking. The types are the contract: `lib/paint/document/models/painting-docume
 Built: sources and `painting()`; property schemas and values; every check made without solving (Checking); a
 document's tree, its sheets and each sheet's order (`painting-tree.ts`, `painting-sheet-program.ts`); the evaluation
 diff; `layersOf`, `bracket` and `dissolve`, and the problems a shot's load reports in a plane's selection
-(`paintedSourceProblems`); the shot's types; `studio paint check` and `studio paint diff`; and the solver, for a
-document's root sheet with unclocked washes, seen through `studio paint still` and `studio paint check --solve`. The
+(`paintedSourceProblems`); the shot's types; `studio paint check` and `studio paint diff`; and the solver, for
+every sheet of a document with unclocked washes, each own sheet laid as a cut-out of its paper, seen through `studio
+paint still` and `studio paint check --solve`. The
 shot's presentation is built as models in `lib/paint/shot/models/`, checked but not yet drawn: a dissolve's weighted
 selections, the drawable order (`shot-plan.ts`), a path mask's reveal by inked length and the `alphaOf` graph
 (`shot-masks.ts`), instanced items' batches and travel (`shot-instances.ts`), pin and cover lays through the camera
 and a pin's measured centres (`shot-placement.ts`), visibility's checks and the groups it isolates
 (`shot-visibility.ts`), a warm span's frames and moments (`shot-warm.ts`), and the cost report (`shot-cost-report.ts`,
-tabled by `studio profile --costs`). Not yet built: clocked washes and own sheets in the solver, `<PaintedShot>` and
+tabled by `studio profile --costs`). Not yet built: clocked washes in the solver, `<PaintedShot>` and
 `<PaintedShotCanvas>`, and the passes drawing masks, items and pins. Until they land, a project can write, check and
 see its sources as stills and build its `PaintedShotProps`, but no scene shows them. **NEW** marks behaviour the brush
 engine (the recipe path, docs/brush-engine.md) lacks too; unmarked behaviour is how it already paints.
@@ -782,10 +783,11 @@ What the check says today, and what to do:
 | `rain.depths.far: 2.5 isn't nearer than the back, street at depth 2` / `rain: two items are called a at 2.04 s` / `label.lay.points: both pin 40, 40: two points set a scale and turn only apart` | an instanced plane at load and its items each frame (`shotInstancedPlaneProblems`, `shotInstanceProblems`); a pin or cover (`shotPlacementProblems`) | keep items nearer than the back; one key an item |
 | `meadow/hil.visibility: names no plane or occurrence of this shot` / `rain/drop-3.visibility: fades an item of rain, which isn't an occurrence: …` / `meadow/sky.visibility: 1.2 at 3 s; visibility is within 0..1` / `shot.warm: 2..1 isn't a span of scene seconds: …` | the shot's `visibility` (`shotVisibilityProblems` at load, `shotVisibilityProblem` each frame) and `warm` (`shotWarmProblems`) | name an occurrence; fade an item by its own `visibility` |
 
-`studio paint check <source> --solve [--out <dir>]` then solves the root sheet on the GPU (run it under the GPU lock)
-and prints, in the sheet's order, each wash's start and when what it wetted had set, and each application's landing
-time with the `on` it waited for. It writes the painting to `<dir>/painting.png` and each layer's film alone over the
-paper to `<dir>/films/<layer>.png` (`<dir>` is `<source>.solve` by default). `studio paint still <source> [--set …]
+`studio paint check <source> --solve [--out <dir>]` then solves every sheet on the GPU (run it under the GPU lock)
+and prints, in each sheet's order (under the sheet's name when there are several), each wash's start and when what it
+wetted had set, and each application's landing time with the `on` it waited for. It writes the painting to
+`<dir>/painting.png` and each layer's film alone over the root's paper, on its own sheet's card if it lies on one, to
+`<dir>/films/<layer>.png` (`<dir>` is `<source>.solve` by default). `studio paint still <source> [--set …]
 [--out <file>]` checks and solves the same way and writes only the painting, the document's size (`<source>.png`).
 Both end on what the solve cost: solves, entries run, decisions made and reused (a decision is remembered by its
 prefix's key), and readbacks.
@@ -814,7 +816,7 @@ A refusal prints alone, after the check's summary, and fails the run. What the s
 | `sky.applications[3] won't bloom: no open paint on workable paper under its core` | a bloom with nothing to act on where it lands; fails the solve | bloom over a wash still open, or drop `effect` |
 | `drop: its core is empty: nothing of it reaches paper` (warning) | its clips, resists or reserves leave none of it on paper; it lands at its predecessor's time | widen its clips, or drop it |
 | `treeline: decided within rounding of on 'wet'; another GPU may place it a step apart` (warning) | its `on` holds by a hair | wetter or drier, by a little |
-| `painting: meadow's wash hill is clocked, and the solver paints unclocked washes so far` / `painting: meadow paints on heron's own sheet, and the solver paints only the root's sheet so far` | what this solver doesn't paint yet | check it without `--solve` |
+| `painting: meadow's wash hill is clocked, and the solver paints unclocked washes so far` | what this solver doesn't paint yet | check it without `--solve` |
 
 With `<PaintedShot>`, the solve adds a clocked wash starting while an earlier one is wet (`hill starts at 2 s while
 sky is still wet until 5.1 s`) and, per frame and warmed span, the cost report (evaluations, cache hits and misses,

@@ -562,6 +562,12 @@ fn layPaper(pixel: vec2u, color: vec3f) {
   for (var i = 0u; i < BAND_VEC4S; i++) { textureStore(painting, pixel, i, paperReflectance(i, color)); }
   for (var r = 0u; r < ${underLayers}u; r++) { textureStore(painting, pixel, BAND_VEC4S + r, vec4f(0.0)); }
 }`,
+    card: /* wgsl */ `
+${bandWgsl}
+fn layCard(pixel: vec2u, color: vec3f, cover: f32) {
+  for (var i = 0u; i < BAND_VEC4S; i++) { textureStore(painting, pixel, i, mix(textureLoad(painting, pixel, i), paperReflectance(i, color), cover)); }
+  for (var r = 0u; r < ${underLayers}u; r++) { textureStore(painting, pixel, BAND_VEC4S + r, textureLoad(painting, pixel, BAND_VEC4S + r) * (1.0 - cover)); }
+}`,
     output: /* wgsl */ `
 ${bandWgsl}
 fn linearLight(pixel: vec2u) -> vec3f {

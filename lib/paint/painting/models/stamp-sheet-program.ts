@@ -66,6 +66,12 @@ export type StampSheetProgram = {
 };
 
 /**
+ * A step of a composite of sheets, back to front (ENGINE 5.4): an own sheet's card, its paper as far as the union of
+ * its films' paint reaches; or film `film` of sheet `sheet` (indexes into the composite's sheets).
+ */
+export type StampSheetCompositeStep = { readonly kind: 'card'; readonly sheet: number } | { readonly kind: 'film'; readonly sheet: number; readonly film: number };
+
+/**
  * The painting `program`'s films mix as, a group per film (film f is group f), a pass per wash holding its entries'
  * deposits: the compositor is keyed by deposit object, so it's made for the program as posed.
  */

@@ -28,14 +28,14 @@ async function withPaintSourceStack(verb: () => Promise<void>): Promise<void> {
 const checkPaintArgs = {
   source: { type: 'positional', required: true, description: 'The *.painting.ts module' },
   set: { type: 'string', valueHint: 'hillTopPx=210,dusk=true', description: 'Property values, held to their schema like any other (an off-step value is an error)' },
-  solve: { type: 'boolean', description: 'With no error, solve the root sheet on the GPU (under the GPU lock): print each wash\'s start and set times and each application\'s landing time, and write the painting and each film over the paper as PNGs' },
+  solve: { type: 'boolean', description: 'With no error, solve every sheet on the GPU (under the GPU lock): print each wash\'s start and set times and each application\'s landing time, sheet by sheet, and write the painting and each film over the paper (on its own sheet\'s card, if it has one) as PNGs' },
   out: { type: 'string', valueHint: 'meadow.solve', description: 'Where --solve writes painting.png and films/<layer>.png (default: <source>.solve in the current directory)' },
 } as const satisfies ArgsDef;
 
 const checkPaintCommand = defineCommand({
   meta: {
     name: 'check',
-    description: "Evaluate a painting source at its default property values (or those --set gives) and print every problem found: the schema and values, the factory's purity (called twice, its documents compared), the document's shape and keys, its papers, brushes and assets against work/styles/, its geometry, charges and media, washes, clocks and `on`s that can never hold. Each problem prints as `<path>: <message> [x0,y0 → x1,y1]`, the box in document px; warnings say so. Then, if it has no error, the document's size and medium and each layer's medium, sheet, washes and applications; with --solve, the root sheet solved (an application that can't land fails the check, naming where its rule failed). Fails on any error.",
+    description: "Evaluate a painting source at its default property values (or those --set gives) and print every problem found: the schema and values, the factory's purity (called twice, its documents compared), the document's shape and keys, its papers, brushes and assets against work/styles/, its geometry, charges and media, washes, clocks and `on`s that can never hold. Each problem prints as `<path>: <message> [x0,y0 → x1,y1]`, the box in document px; warnings say so. Then, if it has no error, the document's size and medium and each layer's medium, sheet, washes and applications; with --solve, every sheet solved (an application that can't land fails the check, naming where its rule failed). Fails on any error.",
   },
   args: checkPaintArgs,
   run: ({ args, rawArgs }) => {
@@ -79,7 +79,7 @@ const stillPaintArgs = {
 const stillPaintCommand = defineCommand({
   meta: {
     name: 'still',
-    description: "Paint a painting source at its default property values (or those --set gives): checked as `paint check` checks it, then its root sheet solved on the GPU (run it under the GPU lock) and written as a PNG the document's size. Prints its problems and fails on any error, or on an application that can't land.",
+    description: "Paint a painting source at its default property values (or those --set gives): checked as `paint check` checks it, then its sheets solved on the GPU (run it under the GPU lock) and laid as one PNG the document's size, each own sheet a cut-out of its paper. Prints its problems and fails on any error, or on an application that can't land.",
   },
   args: stillPaintArgs,
   run: ({ args, rawArgs }) => {

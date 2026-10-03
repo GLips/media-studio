@@ -4,7 +4,7 @@
 // (STAMP_GATE_SOLVED_IDS). Every brush a gate document names is the gate's round.
 
 import meadow from '#lib/paint/document/models/meadow.painting.ts';
-import { compilePaintingRootSheet } from '#lib/paint/document/models/painting-document-compile.ts';
+import { compilePaintingSelection } from '#lib/paint/document/models/painting-document-compile.ts';
 import { paintingSheetPosed } from '#lib/paint/document/models/painting-pose.ts';
 import type { BrushRef, PaintingDocument, Region, Subpath } from '#lib/paint/document/models/painting-document.ts';
 import type { PropertySchema, PropertyValues } from '#lib/paint/document/models/painting-properties.ts';
@@ -43,7 +43,7 @@ export const STAMP_GATE_SHEET_IMAGES = {
 
 /** `source`'s root sheet at `values`, compiled with the gate's brushes. */
 export const stampGateSheetProgram = <S extends PropertySchema>(source: PaintingSourceModule<S>, values: Partial<PropertyValues<S>> = {}) =>
-  compilePaintingRootSheet(painting(source, values), stampGateSheetBrushOf);
+  compilePaintingSelection(painting(source, values), stampGateSheetBrushOf).sheets[0].program;
 
 const GATE_ROUND: BrushRef = { style: 'gate', brush: 'round' };
 const { cerulean, ultramarine, burntSienna } = WATERCOLOUR_PIGMENTS;
@@ -154,7 +154,7 @@ export const STAMP_GATE_HERON_AWAY = { ma: 1, mb: 0, kx: 0, ky: -70 } as const;
 
 /** The wet-contact sheet's program with its heron posed by `pose`, as the shot poses a group (painting-pose.ts). */
 export function stampGateHeronPosed(pose: typeof STAMP_GATE_HERON_POSE | typeof STAMP_GATE_HERON_AWAY): StampSheetProgram {
-  const heron = painting(STAMP_GATE_WET_CONTACT).tree.groups.findIndex(({ node }) => node.key === 'heron');
+  const heron = painting(STAMP_GATE_WET_CONTACT).tree.nodes.findIndex(({ node }) => node.key === 'heron');
   return paintingSheetPosed(stampGateSheetProgram(STAMP_GATE_WET_CONTACT), new Map([[heron, pose]]));
 }
 /** Where the foot's charge touches at rest, document px; and a stretch of the shallows far from it. */

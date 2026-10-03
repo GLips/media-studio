@@ -1,11 +1,11 @@
 // stamp-sheet-solver.ts: a sheet program, posed, solved forward (ENGINE 3, 4): each application in order, its time
 // decided against the paper the ones before it left (stamp-sheet-decide.ts), then landed into the wet field and its
 // film, its water reaching other films' open paint by a proxy; a drying closes once all since the last has set,
-// rimming the films painted in it. Finishing closes the last drying and settles every film. The state is one value
-// (StampSheetSolveState) the schedule's transitions move on.
+// rimming the films painted in it.
 //
-// A decision is remembered under the key after its entry (ENGINE 4.2), so a later solve through that prefix reads
-// nothing back for it, though it paints it again: no film is kept partway, only a solve's last (stamp-sheet-films.ts).
+// A decision is remembered under the key after its entry (ENGINE 4.2): a later solve through that prefix reads nothing
+// back for it, though it paints it again, as only a solve's last films are kept (stamp-sheet-films.ts). A solve ending
+// where a kept one did, its films still held, is that solve.
 
 import { paintPigmentSeed } from '#lib/paint/materials/models/paint-paper.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
@@ -28,7 +28,7 @@ import { stampPaintCompositorFor } from './stamp-paint-compositor-for.ts';
 import { clearStampTarget, type StampPaintDevice } from './stamp-paint-gpu.ts';
 import type { StampPaintGpuOwner } from './stamp-paint-gpu-owner.ts';
 import { decideStampSheetEntry } from './stamp-sheet-decide.ts';
-import { keepStampSheetFilms, type StampSheetFilmKept } from './stamp-sheet-films.ts';
+import { keepStampSheetFilms, stampSheetFilmsHeld, type StampSheetFilmKept } from './stamp-sheet-films.ts';
 import { loadStampSheetSolve, type StampSheetSolveGpu } from './stamp-sheet-load.ts';
 import { createStampSheetSteps, type StampSheetClock } from './stamp-sheet-steps.ts';
 import { withStampSolveLease } from './stamp-solve-lease.ts';
@@ -53,6 +53,23 @@ const remembered = new Map<string, StampSheetDecision>();
 function rememberStampSheetDecision(key: string, decision: StampSheetDecision) {
   remembered.set(key, decision);
   if (remembered.size > STAMP_SHEET_REMEMBERED) remembered.delete(remembered.keys().next().value!);
+}
+
+/** How many solves each device remembers, the oldest forgotten first: each only names films its cache keeps or gave up. */
+const STAMP_SHEET_SOLVES_REMEMBERED = 4096;
+const solvedOn = new WeakMap<StampPaintGpuOwner, Map<string, StampSheetSolved>>();
+
+/** The solve `owner` remembers ending at `key` (finished or open), while every film it kept is still kept. */
+function keptStampSheetSolve(owner: StampPaintGpuOwner, key: string): StampSheetSolved | null {
+  const solved = solvedOn.get(owner)?.get(key);
+  return solved && stampSheetFilmsHeld(owner, solved.films) ? solved : null;
+}
+
+function rememberStampSheetSolve(owner: StampPaintGpuOwner, key: string, solved: StampSheetSolved) {
+  let solves = solvedOn.get(owner);
+  if (!solves) solvedOn.set(owner, (solves = new Map<string, StampSheetSolved>()));
+  solves.set(key, solved);
+  if (solves.size > STAMP_SHEET_SOLVES_REMEMBERED) solves.delete(solves.keys().next().value!);
 }
 
 /**
@@ -88,6 +105,9 @@ async function solveLeased(owner: StampPaintGpuOwner, program: StampSheetProgram
   checkStampSheetWashRuns(program);
   if (!(Number.isInteger(through) && through >= 0 && through <= program.entries.length)) throw new Error(`stamp sheet: a solve goes through 0 to ${program.entries.length} entries, not ${through}`);
   const keys = await stampSheetKeys(program, through), finished = finish ?? through === program.entries.length;
+  const solveKey = `${keys[through]}|${finished ? 'finished' : 'open'}`, kept = keptStampSheetSolve(owner, solveKey);
+  costs?.count(kept ? 'film hits' : 'film misses', program.films.length);
+  if (kept) return kept;
   const choice = stampPaintCompositorFor(stampSheetMixedPainting(program));
   if (!choice.wet) throw new Error('stamp sheet: a sheet solve paints in pigment, its films each in a medium');
   const posed = program.entries.map(({ deposit }) => deposit);
@@ -104,11 +124,13 @@ async function solveLeased(owner: StampPaintGpuOwner, program: StampSheetProgram
     const films = await run.steps.step('keeping the films', (encoder) => {
       if (finished) run.finish(encoder);
       gpu.targets.putBack(encoder);
-      const kept = program.films.map((_, f) => ({ texture: gpu.targets.film(f).texture, box: run.state().painted[f] }));
-      return keepStampSheetFilms(owner, encoder, `${keys[through]}|${finished ? 'finished' : 'open'}`, kept);
+      const finals = program.films.map((_, f) => ({ texture: gpu.targets.film(f).texture, box: run.state().painted[f] }));
+      return keepStampSheetFilms(owner, encoder, solveKey, finals);
     });
     costs?.solved({ program: program.name, from: through ? program.entries[0].name : 'no entry', entries: through });
-    return { key: keys[through], through, finished, films, decisions };
+    const solved = { key: keys[through], through, finished, films, decisions };
+    rememberStampSheetSolve(owner, solveKey, solved);
+    return solved;
   } finally {
     scope.destroy();
   }
