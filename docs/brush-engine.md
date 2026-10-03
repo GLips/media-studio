@@ -452,8 +452,10 @@ each runtime twin against its CPU side, synthetic paintings that walk every path
 resolve against its frame; `media/mixed` holds each group of a three-medium painting to itself painted alone in its
 own medium (max 0), and gouache glazed over a dark watercolour wash to covering it. The sheet solver's cases
 (`stamp-gate-sheets.ts`) solve documents compiled with the gate's round: each decision on its closed form, an
-appended application changing no earlier film, a foot's charge mingling only where it touches wet shallows, the
-reductions exact at 8192², and two stills (`solved/`) accepted by eye. Pre-commit runs it on the staged tree when a
+appended application changing no earlier film, a foot's charge mingling only where it touches wet shallows and not
+at all from an own sheet, the reductions exact at 8192², a heron's paper (`paper/heron`, `stamp-gate-paper-heron.ts`:
+moved, the grain under its body's paint stays and its wing's cut-out takes its own along; turned and grown, its body
+lands where the pose puts it), and three stills (`solved/`) accepted by eye. Pre-commit runs it on the staged tree when a
 path it covers changes; no adapter, a timeout
 or a difference fails the commit. Public baselines live in `harness/fixtures/stamp-paint/`, a pack's brushes' in
 `work/validation/stamp-paint/` (`stamp:gate -- private run`). A baseline changes only by `update <ids> --reason …`,

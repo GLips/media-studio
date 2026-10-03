@@ -1,14 +1,14 @@
-// stamp-gate-sheets.ts: the gate's sheet solves (ENGINE 9, tests 3, 7 and 8, unclocked): painting documents compiled
-// and solved forward on the GPU, held to the wet laws' closed forms on the 1 ms grid, to what an appended application
-// or a posed group may change, and the reductions to exact integer totals. Two are accepted by eye
-// (STAMP_GATE_SOLVED_IDS). Every brush a gate document names is the gate's round.
+// stamp-gate-sheets.ts: the gate's sheet solves (ENGINE 9, tests 3, 6's sheets, 7 and 8, unclocked): painting
+// documents compiled and solved forward on the GPU, held to the wet laws' closed forms on the 1 ms grid, to what an
+// appended application, a posed group or a separate sheet may change, and the reductions to exact integer totals.
+// Three are accepted by eye (STAMP_GATE_SOLVED_IDS). Every brush a gate document names is the gate's round.
 
 import meadow from '#lib/paint/document/models/meadow.painting.ts';
-import { compilePaintingSelection } from '#lib/paint/document/models/painting-document-compile.ts';
-import { paintingSheetPosed } from '#lib/paint/document/models/painting-pose.ts';
+import { compilePaintingSelection, type PaintingSelectionCompiled } from '#lib/paint/document/models/painting-document-compile.ts';
+import { paintingSheetPosed, type PaintingPoses } from '#lib/paint/document/models/painting-pose.ts';
 import type { BrushRef, PaintingDocument, Region, Subpath } from '#lib/paint/document/models/painting-document.ts';
 import type { PropertySchema, PropertyValues } from '#lib/paint/document/models/painting-properties.ts';
-import { painting, type PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
+import { painting, type PaintingEvaluation, type PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import type { StampPixelBox } from '#lib/paint/painting/models/stamp-blur-region.ts';
@@ -18,12 +18,13 @@ import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state
 import { stampDrying } from '#lib/paint/painting/models/stamp-wetness.ts';
 import { stampGateSlotAmounts, type StampGateLayer, type StampGateWashCheck } from './stamp-gate-layer.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, type StampGateImage } from './stamp-gate-paintings.ts';
+import { STAMP_GATE_HERON_TURNED, STAMP_GATE_PAPER_HERON, stampGatePaperHeronPoses } from './stamp-gate-paper-heron.ts';
 
-export const STAMP_GATE_SHEET_IDS = ['schedule/forward', 'schedule/reductions', 'sheet/wet-contact'] as const;
+export const STAMP_GATE_SHEET_IDS = ['schedule/forward', 'schedule/reductions', 'sheet/wet-contact', 'paper/heron'] as const;
 export type StampGateSheetId = (typeof STAMP_GATE_SHEET_IDS)[number];
 
 /** The sheet solves accepted by eye: each a baseline subject, its document's still. */
-export const STAMP_GATE_SOLVED_IDS = ['solved/forward', 'solved/wet-contact'] as const;
+export const STAMP_GATE_SOLVED_IDS = ['solved/forward', 'solved/wet-contact', 'solved/paper-heron'] as const;
 export type StampGateSolvedId = (typeof STAMP_GATE_SOLVED_IDS)[number];
 
 /** The gate's round, flooding at full flow: its touch whole inside a fill, so a flood's water lands at its own. */
@@ -116,18 +117,19 @@ const SHALLOWS_WATER = 0.75;
 const FOOT_WATER = 1;
 const FOOT = line(70, 80, 80, 92, 92, 80);
 
-const wetContactProperties = { heron: { type: 'boolean', default: true } } as const satisfies PropertySchema;
+const wetContactProperties = { heron: { type: 'boolean', default: true }, apart: { type: 'boolean', default: false } } as const satisfies PropertySchema;
 
 /**
  * Shallows flooded across the foot of the sheet, and, `heron`, a rigged heron group whose foot charges across their
- * edge while they shine, its water letting their paint walk out into it, and glazes once all under it has set (`on:
- * 'dry'`), on the same sheet.
+ * edge while they shine, letting their paint walk out into its water, and glazes once all under it has set (`on:
+ * 'dry'`), on one sheet; `apart`, the shallows and the heron each on an own sheet.
  */
 export const STAMP_GATE_WET_CONTACT: PaintingSourceModule<typeof wetContactProperties> = {
   properties: wetContactProperties,
-  default: function gateWetContact({ heron }: PropertyValues<typeof wetContactProperties>): PaintingDocument {
+  default: function gateWetContact({ heron, apart }: PropertyValues<typeof wetContactProperties>): PaintingDocument {
+    const sheet = apart ? { sheet: { kind: 'own', paper: SHEET_PAPER } } as const : {};
     const shallows = {
-      key: 'shallows',
+      key: 'shallows', ...sheet,
       washes: [{ key: 'shallows-wash', applications: [{ key: 'flood', kind: 'fill', area: { region: rectangle(0, 84, 160, 120) }, brush: GATE_ROUND, diameterPx: 24, seed: 'shallows', charge: { kind: 'paint', mix: POOL, water: SHALLOWS_WATER } }] }],
     } as const;
     const foot = {
@@ -142,7 +144,7 @@ export const STAMP_GATE_WET_CONTACT: PaintingSourceModule<typeof wetContactPrope
     } as const;
     return {
       widthPx: WET_CONTACT.width, heightPx: WET_CONTACT.height, paper: SHEET_PAPER, medium: 'watercolour',
-      layers: heron ? [shallows, { key: 'heron', children: [foot] }] : [shallows],
+      layers: heron ? [shallows, { key: 'heron', ...sheet, children: [foot] }] : [shallows],
     };
   },
 };
@@ -169,11 +171,26 @@ export function stampGateWetContactTimes(): number[] {
   return [0, 0, stampSheetGrid(0, DRYING.openTime + Math.max(SHALLOWS_WATER, FOOT_WATER) / DRYING.rate)];
 }
 
-/** The program solved baseline `id` draws. */
-export const stampGateSolvedProgram = (id: StampGateSolvedId) => (id === 'solved/forward' ? stampGateSheetProgram(STAMP_GATE_FORWARD) : stampGateSheetProgram(STAMP_GATE_WET_CONTACT));
+/** The still solved baseline `id` draws: an evaluation, every layer of it compiled, and the poses it holds. */
+export type StampGateSolvedStill = { readonly evaluation: PaintingEvaluation; readonly compiled: PaintingSelectionCompiled; readonly poses: PaintingPoses };
 
-/** What solved baseline `id` is drawn from, as text: its program and the images it loads. */
-export const stampGateSolvedInputs = (id: StampGateSolvedId) => stampCanonicalJson({ program: stampGateSolvedProgram(id), images: STAMP_GATE_SHEET_IMAGES });
+const SOLVED_STILLS: Readonly<Record<StampGateSolvedId, () => { evaluation: PaintingEvaluation; poses: PaintingPoses }>> = {
+  'solved/forward': () => ({ evaluation: painting(STAMP_GATE_FORWARD), poses: new Map() }),
+  'solved/wet-contact': () => ({ evaluation: painting(STAMP_GATE_WET_CONTACT), poses: new Map() }),
+  'solved/paper-heron': () => ({ evaluation: painting(STAMP_GATE_PAPER_HERON), poses: stampGatePaperHeronPoses(STAMP_GATE_HERON_TURNED) }),
+};
+
+/** Solved baseline `id`'s still, compiled with the gate's brushes. */
+export function stampGateSolvedStill(id: StampGateSolvedId): StampGateSolvedStill {
+  const { evaluation, poses } = SOLVED_STILLS[id]();
+  return { evaluation, compiled: compilePaintingSelection(evaluation, stampGateSheetBrushOf), poses };
+}
+
+/** What solved baseline `id` is drawn from, as text: its sheets' programs, how they're laid, its poses and the images it loads. */
+export function stampGateSolvedInputs(id: StampGateSolvedId) {
+  const { compiled, poses } = stampGateSolvedStill(id);
+  return stampCanonicalJson({ programs: compiled.sheets.map(({ program }) => program), steps: compiled.steps, poses: [...poses], images: STAMP_GATE_SHEET_IMAGES });
+}
 
 const REBASE_WASHES = 22;
 /**

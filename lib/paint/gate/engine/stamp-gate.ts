@@ -29,7 +29,7 @@ import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { STAMP_GATE_REGION_IDS } from '../models/stamp-gate-regions.ts';
 import { STAMP_GATE_CONTACT_IDS } from '../models/stamp-gate-contact.ts';
 import { STAMP_GATE_MASK_IDS } from '../models/stamp-gate-masks.ts';
-import { STAMP_GATE_SHEET_IDS, STAMP_GATE_SOLVED_IDS, stampGateSolvedInputs, stampGateSolvedProgram, type StampGateSolvedId } from '../models/stamp-gate-sheets.ts';
+import { STAMP_GATE_SHEET_IDS, STAMP_GATE_SOLVED_IDS, stampGateSolvedInputs, stampGateSolvedStill, type StampGateSolvedId } from '../models/stamp-gate-sheets.ts';
 import { readStampGateBaseline, stampGateFrame, stampGateInputsHash, writeStampGateCandidate, type StampGateOutput } from './stamp-gate-store.ts';
 
 /** The gate's browser side, which the private run loads too. */
@@ -94,7 +94,7 @@ async function collectStampGate({ paintings, solved, cases }: StampGateRun) {
       })),
       Promise.all(solved.map(async (id): Promise<StampGateSubject> => {
         const rgb = Buffer.from(await call<string>('paintStampGateSolved', id), 'base64');
-        const { width, height } = stampGateSolvedProgram(id);
+        const { widthPx: width, heightPx: height } = stampGateSolvedStill(id).evaluation.document;
         return { id, output: stampGateFrame(new Uint8Array(rgb), width, height), inputs: stampGateInputsHash(stampGateSolvedInputs(id)) };
       })),
       call<{ worst: number; mean: number; ordinary: StampGateFrameDifference; orders: string[] }>('traceStampGate'),
