@@ -1,8 +1,9 @@
 // stamp-gate-clocks-page.ts: the gate page's clocked sheets (stamp-gate-clocks.ts), schedule/clocks: each solved on a
-// device of its own, its decisions, films and refusals read back; and two playbacks, each prefix shown at a scene
+// device of its own, its decisions, films and refusals read back; and three playbacks, each prefix shown at a scene
 // second drawn as a still and held to a fresh solve of that prefix, drawn on a surface of its own.
 
 import { paintingSolveLines } from '#lib/paint/document/models/painting-solve-report.ts';
+import { createStampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import type { StampSheetProgram } from '#lib/paint/painting/models/stamp-sheet-program.ts';
 import { stampSheetEmptyCore, stampSheetGrid } from '#lib/paint/painting/models/stamp-sheet-schedule.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
@@ -11,7 +12,7 @@ import type { StampSheetFilmKept } from '#lib/paint/painting/studio/stamp-sheet-
 import { solveStampSheet, type StampSheetSolveOptions } from '#lib/paint/painting/studio/stamp-sheet-solver.ts';
 import {
   checkStampGateMoments, STAMP_GATE_CLOCKED, STAMP_GATE_DRAWING, STAMP_GATE_DRAWING_PLAYBACK, STAMP_GATE_DRAWN, STAMP_GATE_FIXED_TOO_EARLY, STAMP_GATE_FORWARD_SCALED,
-  STAMP_GATE_INSTANT_REFUSAL, STAMP_GATE_INTERLEAVE, STAMP_GATE_INTERLEAVED, STAMP_GATE_NEVER_REFUSAL, STAMP_GATE_POND_ALONE, STAMP_GATE_SET_ORIGIN, STAMP_GATE_SET_PLAYBACK,
+  STAMP_GATE_INSTANT_REFUSAL, STAMP_GATE_INTERLEAVE, STAMP_GATE_INTERLEAVE_PLAYBACK, STAMP_GATE_INTERLEAVED, STAMP_GATE_NEVER_REFUSAL, STAMP_GATE_POND_ALONE, STAMP_GATE_SET_ORIGIN, STAMP_GATE_SET_PLAYBACK,
   STAMP_GATE_STRAY, STAMP_GATE_STRAY_MOMENT, stampGateClockedMoments, stampGateFixedTooEarlyMessage,
 } from '../models/stamp-gate-clocks.ts';
 import { stampGateFrameDifference, stampGateFramePasses } from '../models/stamp-gate-frames.ts';
@@ -127,22 +128,28 @@ async function stillOf(program: StampSheetProgram, options: StampSheetSolveOptio
 }
 
 /**
- * `program` played forward on one surface at each `at` in `plan`: each prefix showing its `through` entries, its still
- * passing against a fresh solve of them, finished, and, `appears`, moved from the still before it.
+ * `program` played forward on one surface at each `at` in `plan`: each prefix showing its `through` entries, resumed
+ * from the checkpoint before entry `from` where that's named, its still passing against a fresh solve of them,
+ * finished, and, `appears`, moved from the still before it.
  */
-async function checkPlayback(name: string, program: StampSheetProgram, plan: readonly { at: number; through: number }[], appears: boolean): Promise<StampGateWashCheck> {
-  const shown = await withGateSurface(program, stampGateSheetImageUrl, (surface, frame) => plan.reduce<Promise<{ through: number; frame: Uint8ClampedArray }[]>>(async (done, { at }) => {
-    const list = await done, solved = await solveStampSheet(surface.owner, program, { at });
+async function checkPlayback(name: string, program: StampSheetProgram, plan: readonly { at: number; through: number; from?: string }[], appears: boolean): Promise<StampGateWashCheck> {
+  const costs = createStampPaintCostTally();
+  const shown = await withGateSurface(program, stampGateSheetImageUrl, (surface, frame) => plan.reduce<Promise<{ through: number; from: string; frame: Uint8ClampedArray }[]>>(async (done, { at }) => {
+    const list = await done, solved = await solveStampSheet(surface.owner, program, { at, costs });
     await drawStampSheetsStill(surface, aloneOnPaper(program, solved.films));
     await surface.owner.device.queue.onSubmittedWorkDone();
-    list.push({ through: solved.through, frame: frame() });
+    list.push({ through: solved.through, from: costs.take().solves[0]?.from ?? 'nothing solved', frame: frame() });
     return list;
   }, Promise.resolve([])));
   const fresh = await plan.reduce<Promise<Uint8ClampedArray[]>>(async (done, { through }) => [...await done, (await stillOf(program, { through, finish: true })).frame], Promise.resolve([]));
-  const steps = plan.map(({ at, through }, i) => {
+  const steps = plan.map(({ at, through, from }, i) => {
     const { max, mean } = stampGateFrameDifference(shown[i].frame, fresh[i]);
     const moved = i === 0 || !stampGateFramePasses(stampGateFrameDifference(shown[i].frame, shown[i - 1].frame));
-    return { passed: shown[i].through === through && stampGateFramePasses({ max, mean, overTwo: 0 }) && (!appears || moved), text: `at ${at} s: ${shown[i].through} of ${through} entries, max ${max}, mean ${mean.toFixed(4)}${appears && !moved ? ', unchanged' : ''}` };
+    const resumed = from === undefined || shown[i].from === from;
+    return {
+      passed: shown[i].through === through && resumed && stampGateFramePasses({ max, mean, overTwo: 0 }) && (!appears || moved),
+      text: `at ${at} s: ${shown[i].through} of ${through} entries from ${shown[i].from}${resumed ? '' : `, not ${from}`}, max ${max}, mean ${mean.toFixed(4)}${appears && !moved ? ', unchanged' : ''}`,
+    };
   });
   return { id: `${ID}: playback ${name}`, passed: steps.every(({ passed }) => passed), detail: steps.map(({ text }) => text).join('; ') };
 }
@@ -157,5 +164,6 @@ export async function checkStampGateClocks(): Promise<StampGateWashCheck[]> {
     ...solved,
     await checkPlayback('set', stampGateSheetProgram(STAMP_GATE_SET_ORIGIN), STAMP_GATE_SET_PLAYBACK, false),
     await checkPlayback('drawing', stampGateSheetProgram(STAMP_GATE_DRAWING), STAMP_GATE_DRAWING_PLAYBACK, true),
+    await checkPlayback('interleave', stampGateSheetProgram(STAMP_GATE_INTERLEAVE), STAMP_GATE_INTERLEAVE_PLAYBACK, true),
   ];
 }

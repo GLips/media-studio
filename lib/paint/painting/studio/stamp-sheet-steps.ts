@@ -3,7 +3,7 @@
 // arena reset after; a readback's mapping is awaited outside it, so no encoder is held across an await.
 //
 // The field keeps times after a base (ENGINE 3.4), which the solve's state holds: a step reads a time through its
-// clock, which moves the base up in that step, before anything reads it, once the time runs far past it.
+// time base, which moves the base up in that step, before anything reads it, once the time runs far past it.
 
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { StampBox } from '../models/stamp-region.ts';
@@ -32,10 +32,10 @@ export type StampSheetTimeBase = { base: () => number; after: (encoder: GPUComma
 
 /**
  * A solve's steps on `owner` through `device` (its scope's), over `gpu`, the paper drying as `drying` says and its
- * times read through `clock`; readbacks counted into `costs`.
+ * times read through `timeBase`; readbacks counted into `costs`.
  */
-export function createStampSheetSteps(owner: StampPaintGpuOwner, device: StampPaintDevice, gpu: StampSheetSolveGpu, drying: StampDrying, clock: StampSheetTimeBase, costs: StampPaintCostTally | null) {
-  const { after } = clock;
+export function createStampSheetSteps(owner: StampPaintGpuOwner, device: StampPaintDevice, gpu: StampSheetSolveGpu, drying: StampDrying, timeBase: StampSheetTimeBase, costs: StampPaintCostTally | null) {
+  const { after } = timeBase;
   const words = (count: number): StampSheetWords => ({
     count,
     storage: device.createBuffer({ size: count * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST }),
@@ -77,7 +77,7 @@ export function createStampSheetSteps(owner: StampPaintGpuOwner, device: StampPa
         prepare?.(encoder);
         gpu.reductions.totals(encoder, buffers.totals.storage, probe, bloom);
       });
-      return stampSheetTotals(read, clock.base());
+      return stampSheetTotals(read, timeBase.base());
     },
     /** A damp histogram of `core` from `tau0`, bins `width` steps wide from step `start`. */
     async histogramAt(core: StampSheetCore, tau0: number, start: number, width: number): Promise<StampDampHistogram> {
@@ -100,7 +100,7 @@ export function createStampSheetSteps(owner: StampPaintGpuOwner, device: StampPa
       const read = await readback('reading when boxes set', buffers.totals, (encoder) => {
         for (const box of boxes) gpu.reductions.boxLatest(encoder, buffers.totals.storage, box, drying);
       });
-      return stampSheetTotals(read, clock.base()).boxLatestSet;
+      return stampSheetTotals(read, timeBase.base()).boxLatestSet;
     },
   };
 }

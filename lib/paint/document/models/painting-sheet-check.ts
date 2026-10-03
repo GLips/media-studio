@@ -8,7 +8,8 @@ import { stampPaintFieldEnds } from '#lib/paint/painting/models/stamp-paint-fiel
 import type { AnyApplication, Prewet, Wash } from './painting-document.ts';
 import { paintingGeometryBox } from './painting-footprint.ts';
 import { paintingApplicationOwner, type PaintingProblemList } from './painting-problem.ts';
-import { paintingSheetWashes, type PaintingSheetClock, type PaintingSheetOrder } from './painting-sheet-program.ts';
+import type { StampSheetClock } from '#lib/paint/painting/models/stamp-sheet-program.ts';
+import { paintingSheetWashes, type PaintingSheetOrder } from './painting-sheet-program.ts';
 import { paintingBrushMedia, type PaintingStyleCatalogue } from './painting-styles.ts';
 import { paintingSheetName, type PaintingTree } from './painting-tree.ts';
 
@@ -45,7 +46,7 @@ function checkSheetWashes(list: PaintingProblemList, tree: PaintingTree, order: 
  * Why an `on` in `wash` can never hold on a sheet keeping `clock`, given the wettest water laid before it that it
  * could wait on, or null.
  */
-function unreachableOnReason(on: 'wet' | 'damp', wash: Wash, clock: PaintingSheetClock, wettest: number, shiny: number, sheetName: string): string | null {
+function unreachableOnReason(on: 'wet' | 'damp', wash: Wash, clock: StampSheetClock, wettest: number, shiny: number, sheetName: string): string | null {
   if (wash.clock && clock.kind === 'instant') return `on '${on}' on ${sheetName}, whose clock is instant: everything before it has set when it lands`;
   if (wettest <= 0) return `on '${on}' follows no water on ${sheetName}`;
   return on === 'wet' && wettest <= shiny ? `on 'wet' follows only applications at or below shiny ${shiny}` : null;

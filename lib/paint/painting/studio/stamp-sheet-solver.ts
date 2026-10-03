@@ -2,15 +2,15 @@
 // entries, or those landing by a scene second `at`. Each entry is run by stamp-sheet-run.ts; a finished prefix has
 // its last drying closed and every film settled, its films kept under its last key (stamp-sheet-films.ts).
 //
-// Remembered by state key (ENGINE 4.2): each landed entry's decision; the scene second of an entry past a prefix's
-// `at`, so the next solve knows where it stops; checkpoints (stamp-sheet-checkpoints.ts) before each wash's first
-// entry, the first posed one, and where an unfinished prefix stops, kept before finishing. A known prefix with kept
+// Remembered by state key (ENGINE 4.2), in one memo: each landed entry's decision, or the scene second of an entry
+// past a prefix's `at`, so the next solve knows where it stops. Checkpoints (stamp-sheet-checkpoints.ts) are kept
+// before each wash's first entry, the first posed one, and where an unfinished prefix stops. A known prefix with kept
 // films solves nothing; else a solve runs on from its latest checkpoint.
 
 import { stampBrushedMasksUnder } from '../models/stamp-brushed-mask.ts';
 import type { StampPaintCostTally } from '../models/stamp-paint-costs.ts';
 import type { StampSheetDecision } from '../models/stamp-sheet-schedule.ts';
-import { stampSheetMixedPainting, type StampSheetProgram } from '../models/stamp-sheet-program.ts';
+import { stampSheetMixedPainting, stampSheetWashSpans, type StampSheetProgram } from '../models/stamp-sheet-program.ts';
 import { stampSheetEntryKey, stampSheetHeadKey } from '../models/stamp-sheet-state-key.ts';
 import { stampDrying } from '../models/stamp-wetness.ts';
 import { bindStampPaintBrushes } from './stamp-deposit-bank.ts';
@@ -35,15 +35,26 @@ export type StampSheetSolveOptions = {
 /** A solve: its last key (Kₖ after the entries solved), how many it solved and whether the painting ended there, the films it kept, each entry's decision. */
 export type StampSheetSolved = { key: string; through: number; finished: boolean; films: readonly StampSheetFilmKept[]; decisions: readonly StampSheetDecision[] };
 
-/** How many decisions, and scene seconds of entries past a prefix, are remembered, the oldest forgotten first. */
-const STAMP_SHEET_REMEMBERED = 65536;
-const remembered = new Map<string, StampSheetDecision>();
-const pastPrefix = new Map<string, number | null>();
+/** What's remembered of an entry by its key Kₖ₊₁: its decision once it has landed, else the scene second a prefix's `at` was found to stop it at. */
+type StampSheetMemo = { decision: StampSheetDecision } | { past: number };
 
-function rememberStampSheet<T>(memo: Map<string, T>, key: string, value: T) {
-  memo.set(key, value);
-  if (memo.size > STAMP_SHEET_REMEMBERED) memo.delete(memo.keys().next().value!);
+/** How many entries are remembered, the oldest forgotten first. */
+const STAMP_SHEET_REMEMBERED = 65536;
+const remembered = new Map<string, StampSheetMemo>();
+
+function rememberStampSheet(key: string, memo: StampSheetMemo) {
+  remembered.set(key, memo);
+  if (remembered.size > STAMP_SHEET_REMEMBERED) remembered.delete(remembered.keys().next().value!);
 }
+
+/** The scene second a memo's entry lands at, or was found past a prefix at. */
+const stampSheetMemoScene = (memo: StampSheetMemo) => ('past' in memo ? memo.past : memo.decision.scene);
+
+/** The decision remembered under `key`: null for none, or an entry only known to stop a prefix. */
+const stampSheetKnownDecision = (key: string) => {
+  const memo = remembered.get(key);
+  return memo && 'decision' in memo ? memo.decision : null;
+};
 
 /**
  * `program` (posed: painting-pose.ts) solved on `owner`'s device as `options` say, once every solve asked for before
@@ -69,12 +80,11 @@ async function stampSheetKeys(program: StampSheetProgram, through: number): Prom
  */
 function stampSheetRemembered(keys: readonly string[], limit: number, at: number | undefined) {
   const decisions: StampSheetDecision[] = [];
-  const past = (scene: number | null | undefined) => at !== undefined && scene !== undefined && scene !== null && scene > at;
   for (let k = 0; k < limit; k++) {
-    const decision = remembered.get(keys[k + 1]);
-    if (past(decision ? decision.scene : pastPrefix.get(keys[k + 1]))) return { decisions, stop: k };
-    if (!decision) return { decisions, stop: null };
-    decisions.push(decision);
+    const memo = remembered.get(keys[k + 1]), scene = memo ? stampSheetMemoScene(memo) : null;
+    if (at !== undefined && scene !== null && scene > at) return { decisions, stop: k };
+    if (!memo || 'past' in memo) return { decisions, stop: null };
+    decisions.push(memo.decision);
   }
   return { decisions, stop: limit };
 }
@@ -104,11 +114,11 @@ async function solveLeased(owner: StampPaintGpuOwner, program: StampSheetProgram
     }));
     // `never` dries nothing on the sheet, its unclocked run included.
     const drying = { ...stampDrying(program.water.wetting, program.paper), ...(program.clock.kind === 'never' && { rate: 0 }) };
-    const run = stampSheetRun(owner, scope.device, { program, gpu, drying, brushes, waterOf: choice.media.waterOf, costs: costs ?? null });
-    const resumed = await resumeStampSheet(run, keys, known.decisions.length);
+    const run = stampSheetRun(owner, scope.device, { program, keys, gpu, drying, brushes, waterOf: choice.media.waterOf, costs: costs ?? null });
+    const resumed = await resumeStampSheet(run, known.decisions);
     if (known.decisions.length) costs?.count(resumed.from ? 'checkpoint hits' : 'checkpoint misses');
     const { stop, decisions } = await runStampSheet(program, run, { keys, limit, at, ...resumed });
-    if (stop < all && !run.kept(keys[stop], stop)) await run.steps.step('keeping where the prefix stops', (encoder) => run.keep(encoder, keys[stop], stop, decisions));
+    if (stop < all && !run.kept(stop)) await run.steps.step('keeping where the prefix stops', (encoder) => run.keep(encoder, stop));
     const films = await run.steps.step('keeping the films', (encoder) => {
       if (finished) run.finish(encoder);
       gpu.targets.putBack(encoder);
@@ -122,12 +132,11 @@ async function solveLeased(owner: StampPaintGpuOwner, program: StampSheetProgram
   }
 }
 
-/** Where `run` resumes: the latest checkpoint among K₁ to K_`reach`, restored, and the decisions it kept; else the start. */
-async function resumeStampSheet(run: StampSheetRun, keys: readonly string[], reach: number) {
-  const from = Array.from({ length: reach }, (_, i) => reach - i).find((k) => run.kept(keys[k], k)) ?? 0;
-  if (!from) return { from: 0, decisions: [] };
-  const restored = await run.steps.step('resuming from a checkpoint', (encoder) => run.restore(encoder, keys[from], from));
-  return { from, decisions: [...restored!.decisions] };
+/** Where `run` resumes: the latest checkpoint after one of the entries `known` decided, restored, and the decisions before it; else the start. */
+async function resumeStampSheet(run: StampSheetRun, known: readonly StampSheetDecision[]) {
+  const from = Array.from({ length: known.length }, (_, i) => known.length - i).find((k) => run.kept(k)) ?? 0;
+  if (from) await run.steps.step('resuming from a checkpoint', (encoder) => run.restore(encoder, from));
+  return { from, decisions: known.slice(0, from) };
 }
 
 /**
@@ -137,28 +146,31 @@ async function resumeStampSheet(run: StampSheetRun, keys: readonly string[], rea
 async function runStampSheet(program: StampSheetProgram, run: StampSheetRun, plan: {
   keys: readonly string[]; limit: number; at: number | undefined; from: number; decisions: readonly StampSheetDecision[];
 }): Promise<{ stop: number; decisions: StampSheetDecision[] }> {
-  const { entries } = program, { keys, limit, at } = plan, decisions = [...plan.decisions];
-  const firstOf = program.washes.map((_, w) => entries.findIndex((entry) => entry.wash === w));
+  const { entries } = program, { keys, limit, at } = plan, decisions = [...plan.decisions], { first } = stampSheetWashSpans(program);
   const firstPosed = entries.findIndex(({ chain }) => chain.length > 0);
   const from = async (k: number): Promise<number> => {
     if (k === limit) return k;
-    const starts = firstOf[entries[k].wash] === k;
-    if (k > 0 && (starts || k === firstPosed) && !run.kept(keys[k], k)) {
-      await run.steps.step('keeping a checkpoint', (encoder) => run.keep(encoder, keys[k], k, decisions));
-    }
-    // The checkpoint a wash started past `at` is undone from mustn't be given up meanwhile.
-    const release = at !== undefined && starts && k > 0 ? run.hold(keys[k], k) : null;
+    const starts = first[entries[k].wash] === k;
+    // The checkpoint a wash started past `at` is undone from is held in the step keeping it: another user of the
+    // device making an entry while that step's checks are awaited could give it up otherwise.
+    const holds = at !== undefined && starts && k > 0, releases: (() => void)[] = [];
     try {
-      const ran = await run.entry(k, remembered.get(keys[k + 1]) ?? null, entries.slice(k + 1, limit).map(({ name }) => name), at ?? null);
+      if (k > 0 && (starts || k === firstPosed) && !run.kept(k)) {
+        await run.steps.step('keeping a checkpoint', (encoder) => {
+          run.keep(encoder, k);
+          if (holds) releases.push(run.hold(k));
+        });
+      } else if (holds) releases.push(run.hold(k));
+      const ran = await run.entry(k, stampSheetKnownDecision(keys[k + 1]), entries.slice(k + 1, limit).map(({ name }) => name), at ?? null);
       if (!ran.lands) {
-        if (!ran.known) rememberStampSheet(pastPrefix, keys[k + 1], ran.decision.scene);
-        if (ran.started) await run.steps.step('undoing a wash past the prefix', (encoder) => (k ? run.restore(encoder, keys[k], k) : run.restart(encoder)));
+        if (!ran.known) rememberStampSheet(keys[k + 1], { past: ran.scene });
+        if (ran.started) await run.steps.step('undoing a wash past the prefix', (encoder) => (k ? run.restore(encoder, k) : run.restart(encoder)));
         return k;
       }
-      if (!ran.known) rememberStampSheet(remembered, keys[k + 1], ran.decision);
+      if (!ran.known) rememberStampSheet(keys[k + 1], { decision: ran.decision });
       decisions.push(ran.decision);
     } finally {
-      release?.();
+      for (const release of releases) release();
     }
     return from(k + 1);
   };

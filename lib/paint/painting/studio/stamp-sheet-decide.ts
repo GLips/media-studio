@@ -1,12 +1,10 @@
 // stamp-sheet-decide.ts: when one application lands (ENGINE 3.5), read off the wet field over its core: at τ0 for
 // `wet`, at the first 1 ms step a damp histogram finds for `damp`, once the core's latest texel sets for `dry`; then
 // checked by the field's own law, stepping a millisecond at a time while f32 rounding keeps it from holding. A bloom
-// must find open paint on workable paper under its core to spread into.
+// must find open paint on workable paper under its core. The CPU decides, in f64; the GPU only sums.
 //
-// At a fixed `at`, and on a sheet whose paper doesn't change after τ0 (`instant`: all set by then; `never`: nothing
-// dries), every rule is judged at τ0 alone.
-//
-// The decisions are the CPU's, in f64 (models/stamp-sheet-schedule.ts); the GPU only sums.
+// At a fixed `at`, and under `instant` or `never`, a rule is judged at τ0 alone, but `dry` under `instant`: τ0 is the
+// GPU's f32 set time, which rounding may leave a texel workable at.
 
 import {
   STAMP_SHEET_SHARE, STAMP_SHEET_STEP, STAMP_SHEET_VERIFY_STEPS, stampDampFirstStep, stampDampFirstWidth, stampDampStep, stampSheetAtFails, stampSheetEmptyCore,
@@ -60,7 +58,7 @@ export async function decideStampSheetEntry(steps: StampSheetSteps, input: Stamp
 async function firstHolding(steps: StampSheetSteps, input: StampSheetDecideInput, core: StampSheetCore, tau0: number, first: StampSheetTotals): Promise<number> {
   const on = input.on!;
   if (stampSheetHolds(on, first)) return tau0;
-  if (input.regime !== 'drying') return unreachable(steps, input, core, { tau: tau0, held: stampSheetHeld(on, first), totals: first });
+  if (input.regime === 'never' || (input.regime === 'instant' && on !== 'dry')) return unreachable(steps, input, core, { tau: tau0, held: stampSheetHeld(on, first), totals: first });
   if (on === 'dry') return stampSheetGrid(tau0, first.latestSet ?? tau0);
   if (on === 'damp' && first.latestSet !== null) {
     const last = stampDampStep(first.latestSet, tau0), need = STAMP_SHEET_SHARE * first.weight;

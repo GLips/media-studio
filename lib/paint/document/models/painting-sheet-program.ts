@@ -5,6 +5,7 @@
 // solve.
 
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
+import type { StampSheetClock } from '#lib/paint/painting/models/stamp-sheet-program.ts';
 import type { AnyApplication, Layer, MediumName, Wash } from './painting-document.ts';
 import { paintingLayerSlots, type PaintingPigmentSlots } from './painting-pigment-slots.ts';
 import type { PaintingLayerPlace, PaintingSheet, PaintingTree } from './painting-tree.ts';
@@ -33,20 +34,13 @@ export type PaintingSheetEntry = {
 };
 
 /**
- * A sheet's one clock, at its record's drying scale, running once a clocked wet wash paints it: `scale` maps model
- * time to scene time from `origin`, where its clocked run starts, the earliest start of the clocked washes painting
- * the sheet, direct ones included. `none` when no clocked wet wash does: a scale alone times nothing.
- */
-export type PaintingSheetClock = { readonly kind: 'none' } | { readonly kind: 'scale'; readonly scale: number; readonly origin: number } | { readonly kind: 'instant' } | { readonly kind: 'never' };
-
-/**
  * A sheet's order: its record, its clock, the layers on it back to front, and its entries; `ownerChain`, the nodes
  * whose poses move the finished sheet, paper and all (ENGINE 5.3): its owner and every group enclosing it, as node
  * ordinals outermost first, none for the root's.
  */
 export type PaintingSheetOrder = {
   readonly sheet: PaintingSheet;
-  readonly clock: PaintingSheetClock;
+  readonly clock: StampSheetClock;
   readonly ownerChain: readonly number[];
   readonly layers: readonly PaintingSheetLayer[];
   readonly entries: readonly PaintingSheetEntry[];
@@ -81,7 +75,7 @@ export function paintingWashOrderTimes(layer: Layer): PaintingWashOrderTimes[] {
  * The clock of `sheet` if `timed`, some clocked wet wash paints it: at its scale, run from `origin`, the earliest start
  * among the sheet's clocked washes.
  */
-function paintingSheetClock(sheet: PaintingSheet, timed: boolean, origin: number): PaintingSheetClock {
+function paintingSheetClock(sheet: PaintingSheet, timed: boolean, origin: number): StampSheetClock {
   if (!timed) return { kind: 'none' };
   const scale = sheet.dryingScale;
   return scale === 'instant' || scale === 'never' ? { kind: scale } : { kind: 'scale', scale, origin };

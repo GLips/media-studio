@@ -1,13 +1,14 @@
 // stamp-sheet-checkpoints.ts: a sheet solve's state after an entry, kept in the device's cache as producer
 // 'checkpoint' (ENGINE 4.5): its GPU state as pieces, each cropped to where it was drawn and naming where it goes
-// back (a film over its paint box, the field's paper and rim over the box water touched, each clip a later entry
-// reads), and in its note the CPU's state and the decisions so far. Resuming from one equals replaying to it.
+// back (a film, the field's paper and rim, each clip a later entry reads), and in its note the CPU's state. Resuming
+// from one equals replaying to it; the decisions before it are the solve's memo's.
 //
 // A piece names its film, so programs sharing a prefix share its checkpoints whatever layers follow. The cache gives
-// checkpoints up first: a solve can always run from an earlier one, or the start.
+// checkpoints up first, as a solve can run from an earlier one; one a solve must go back to is held from the step
+// keeping it (ENGINE 4.7).
 
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
-import type { StampSheetDecision, StampSheetSolveState } from '../models/stamp-sheet-schedule.ts';
+import type { StampSheetSolveState } from '../models/stamp-sheet-schedule.ts';
 import type { StampGpuCacheStore } from './stamp-paint-gpu-cache.ts';
 import { copyStampTextureBox } from './stamp-paint-gpu.ts';
 import type { StampPaintGpuOwner } from './stamp-paint-gpu-owner.ts';
@@ -19,8 +20,8 @@ export type StampSheetPieceTarget = { kind: 'film'; film: number } | { kind: 'pa
 /** Part of a solve's GPU state: where it goes back to, the stage-sized texture holding it, and the box of it that's kept (null for nothing drawn). */
 export type StampSheetPiece = { target: StampSheetPieceTarget; texture: GPUTexture; box: StampPixelBox | null };
 
-/** A checkpoint's CPU half: the solve's state, the decisions of the entries before it, and the clips it kept. */
-export type StampSheetCheckpoint = { state: StampSheetSolveState; decisions: readonly StampSheetDecision[]; clips: readonly StampSheetClipKept[] };
+/** A checkpoint's CPU half: the solve's state, and the clips it kept. */
+export type StampSheetCheckpoint = { state: StampSheetSolveState; clips: readonly StampSheetClipKept[] };
 
 /** A checkpoint's note: its CPU half, and each piece kept, in the order of its textures. */
 type StampSheetCheckpointNote = StampSheetCheckpoint & { pieces: readonly { target: StampSheetPieceTarget; box: StampPixelBox }[] };
@@ -36,11 +37,18 @@ function stampSheetCheckpointStore(owner: StampPaintGpuOwner): StampGpuCacheStor
   return made;
 }
 
+/** The engine fault of a checkpoint a solve relies on that isn't kept. */
+const stampSheetCheckpointGone = (key: string) => `stamp sheet: the checkpoint ${key} was given up while a solve relied on it; an engine fault`;
+
 /** Whether a checkpoint is kept under `key` on `owner`'s device. */
 export const stampSheetCheckpointKept = (owner: StampPaintGpuOwner, key: string) => stampSheetCheckpointStore(owner).peek(key) !== null;
 
-/** Holds the checkpoint under `key` from the cache's eviction until the returned release runs; null when none is kept. */
-export const holdStampSheetCheckpoint = (owner: StampPaintGpuOwner, key: string) => stampSheetCheckpointStore(owner).hold(key);
+/** Holds the checkpoint under `key` from the cache's eviction until the returned release runs. Throws where none is kept. */
+export function holdStampSheetCheckpoint(owner: StampPaintGpuOwner, key: string): () => void {
+  const release = stampSheetCheckpointStore(owner).hold(key);
+  if (!release) throw new Error(stampSheetCheckpointGone(key));
+  return release;
+}
 
 /** Keeps `checkpoint` under `key`, its `pieces` copied in `encoder`. */
 export function keepStampSheetCheckpoint(owner: StampPaintGpuOwner, encoder: GPUCommandEncoder, key: string, pieces: readonly StampSheetPiece[], checkpoint: StampSheetCheckpoint) {
@@ -54,14 +62,15 @@ export function keepStampSheetCheckpoint(owner: StampPaintGpuOwner, encoder: GPU
 }
 
 /**
- * The checkpoint under `key`, null when none is kept. Its pieces are copied in `encoder` into the textures `into`
- * gives for it, each piece's at the box it came from; what no piece covers is the caller's to have cleared.
+ * The checkpoint under `key`, its pieces copied in `encoder` into the textures `into` gives for it, each piece's at
+ * the box it came from; what no piece covers is the caller's to have cleared. Throws where none is kept: a caller
+ * checks `stampSheetCheckpointKept`, or holds it, first.
  */
 export function restoreStampSheetCheckpoint(
   owner: StampPaintGpuOwner, encoder: GPUCommandEncoder, key: string, into: (checkpoint: StampSheetCheckpoint) => (target: StampSheetPieceTarget) => GPUTexture,
-): StampSheetCheckpoint | null {
+): StampSheetCheckpoint {
   const found = stampSheetCheckpointStore(owner).find(key, encoder);
-  if (!found) return null;
+  if (!found) throw new Error(stampSheetCheckpointGone(key));
   const textureOf = into(found.note);
   found.note.pieces.forEach(({ target, box }, i) => copyStampTextureBox(encoder, { texture: found.textures[i], x: 0, y: 0 }, { texture: textureOf(target), x: box.x, y: box.y }, box));
   return found.note;

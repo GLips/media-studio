@@ -49,10 +49,11 @@ export type StampSheetWash = {
 
 /**
  * A sheet's one clock (ENGINE 4.1), once a clocked wet wash paints it: `scale`, a model second taking `scale` scene
- * seconds from `origin` (S) at its unclocked run's end; `instant`, the sheet set before each clocked application;
- * `never`, nothing drying. `none`: model time only, clocked scene times their order times.
+ * seconds from `origin` (S, its clocked washes' earliest start) at its unclocked run's end; `instant`, the sheet set
+ * before each clocked application; `never`, nothing drying. `none`, a scale alone timing nothing: model time only,
+ * clocked scene times their order times.
  */
-export type StampSheetClock = { kind: 'none' } | { kind: 'scale'; scale: number; origin: number } | { kind: 'instant' } | { kind: 'never' };
+export type StampSheetClock = { readonly kind: 'none' } | { readonly kind: 'scale'; readonly scale: number; readonly origin: number } | { readonly kind: 'instant' } | { readonly kind: 'never' };
 
 /**
  * What an entry leaves on the paper when posed: which of its deposit's `within` areas (by index), and which masks of
@@ -86,6 +87,14 @@ export type StampSheetProgram = {
  * its films' paint reaches; or film `film` of sheet `sheet` (indexes into the composite's sheets).
  */
 export type StampSheetCompositeStep = { readonly kind: 'card'; readonly sheet: number } | { readonly kind: 'film'; readonly sheet: number; readonly film: number };
+
+/**
+ * Each wash's first and last entry in `program`'s order (-1 for a wash with none): where it starts, its clip and
+ * checkpoint with it, and where it ends, its set time measured there.
+ */
+export function stampSheetWashSpans({ washes, entries }: Pick<StampSheetProgram, 'washes' | 'entries'>): { first: readonly number[]; last: readonly number[] } {
+  return { first: washes.map((_, w) => entries.findIndex((entry) => entry.wash === w)), last: washes.map((_, w) => entries.findLastIndex((entry) => entry.wash === w)) };
+}
 
 /**
  * The painting `program`'s films mix as, a group per film (film f is group f), a pass per wash holding its entries'

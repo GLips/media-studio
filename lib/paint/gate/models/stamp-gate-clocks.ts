@@ -1,5 +1,6 @@
 // stamp-gate-clocks.ts: the gate's clocked sheets (ENGINE 9, test 4): one wash on a sheet drying at a scale, at
-// `instant` and at `never`; a later wash at a `'set'` origin with its prewet; two layers' clocked washes interleaving;
+// `instant` and at `never`; a later wash at a `'set'` origin with its prewet; two layers' clocked washes interleaving,
+// played back through checkpoints holding clips;
 // a fixed `at` refused, and one landing on an empty core; a clocked crayon drawing beside a clocked wash; and the
 // forward sheet, unclocked, at a scale. Each is held to its closed form on the 1 ms grid, its scene seconds
 // S + (τ − τc) × scale, every brush the gate's round.
@@ -213,6 +214,11 @@ export const STAMP_GATE_POND_ALONE = [0, GLAZE_AT].map((scene) => ({ tau: scene 
 export const STAMP_GATE_DRAWING_PLAYBACK = [{ at: 0.5, through: 1 }, { at: 1.5, through: 2 }, { at: 2.5, through: 3 }, { at: 3.5, through: 4 }, { at: 7.5, through: 5 }] as const;
 /** The `'set'` sheet shown before its second wash starts, and after. */
 export const STAMP_GATE_SET_PLAYBACK = [{ at: 1, through: 1 }, { at: 5, through: 2 }] as const;
+/**
+ * The interleaved sheet shown before the ripples (its checkpoint keeping the basin's base), with the first ripple's
+ * coverage parked behind a reed (kept so), and whole: each later prefix resuming from the checkpoint before it.
+ */
+export const STAMP_GATE_INTERLEAVE_PLAYBACK = [{ at: 3, through: 2 }, { at: 7.5, through: 4, from: 'ripple-a' }, { at: 9, through: 6, from: 'ripple-b' }] as const;
 
 /** The forward sheet at the gate's scale, with no clocked wash: its times model seconds whatever the scale. */
 export const STAMP_GATE_FORWARD_SCALED: PaintingSourceModule = {

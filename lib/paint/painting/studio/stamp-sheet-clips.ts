@@ -3,7 +3,7 @@
 // own in a target of its own while other washes' entries land, and has it back before its next. A wash clipped to
 // leaves its coverage as a base when it ends, for each wash clipping to it to start from.
 
-import type { StampSheetProgram } from '../models/stamp-sheet-program.ts';
+import { stampSheetWashSpans, type StampSheetProgram } from '../models/stamp-sheet-program.ts';
 import { clearStampTarget } from './stamp-paint-gpu.ts';
 import type { StampSheetFieldPasses } from './stamp-sheet-field-passes.ts';
 import type { StampSheetTargets } from './stamp-sheet-targets.ts';
@@ -17,11 +17,9 @@ const copyStampSheetClip = (encoder: GPUCommandEncoder, from: GPUTexture, to: GP
 
 /** `program`'s clip coverages in `targets`, a base copied by `passes`. */
 export function createStampSheetClips(program: StampSheetProgram, targets: StampSheetTargets, passes: StampSheetFieldPasses) {
-  const { washes, entries } = program;
+  const { washes } = program, { first: firstOf, last: lastOf } = stampSheetWashSpans(program);
   const clippedTo = new Set(washes.flatMap(({ clipTo }) => (clipTo === null ? [] : [clipTo])));
   const keeps = (w: number) => washes[w].clipTo !== null || clippedTo.has(w);
-  const firstOf = washes.map((_, w) => entries.findIndex((entry) => entry.wash === w));
-  const lastOf = washes.map((_, w) => entries.findLastIndex((entry) => entry.wash === w));
   /** Whether wash `w` has started and not ended once `k` entries have landed. */
   const openAfter = (w: number, k: number) => firstOf[w] >= 0 && firstOf[w] < k && lastOf[w] >= k;
   // The wash whose coverage the clip target holds (null for none worth keeping), and the washes started, not ended.

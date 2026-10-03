@@ -97,9 +97,9 @@ test("a selection's sheets: an own sheet's card before all under its owner, a ne
 });
 
 test("a boil epoch reseeds its layer's marks and keys alone: each epoch lays them anew, the same epoch alike", () => {
-  const evaluation = painting(meadow), hill = evaluation.tree.layers.findIndex(({ node }) => node.key === 'landscape');
-  const rootOf = (reseed?: ReadonlyMap<number, number>) => compilePaintingSelection(evaluation, brushOf, { reseed }).sheets[0].program;
-  const still = rootOf(), boiled = rootOf(new Map([[hill, 1]])), again = rootOf(new Map([[hill, 1]]));
+  const evaluation = painting(meadow);
+  const rootOf = (reseed?: ReadonlyMap<string, number>) => compilePaintingSelection(evaluation, brushOf, { reseed }).sheets[0].program;
+  const still = rootOf(), boiled = rootOf(new Map([['landscape', 1]])), again = rootOf(new Map([['landscape', 1]]));
   assert.deepEqual(boiled.entries.map(({ datum }, k) => datum === still.entries[k].datum), [false, false, false, true]);
   assert.notEqual(boiled.entries[0].deposit.id, still.entries[0].deposit.id);
   assert.deepEqual(again.entries.map(({ datum }) => datum), boiled.entries.map(({ datum }) => datum));

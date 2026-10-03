@@ -3,7 +3,7 @@
 // its warnings after it; then what the solve cost. A clocked application's times are scene seconds, model time beside.
 
 import { STAMP_PAINT_COST_NAMES, type StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
-import type { StampSheetProgram } from '#lib/paint/painting/models/stamp-sheet-program.ts';
+import { stampSheetWashSpans, type StampSheetProgram } from '#lib/paint/painting/models/stamp-sheet-program.ts';
 import { stampSheetSeconds, type StampSheetDecision, type StampSheetMoment } from '#lib/paint/painting/models/stamp-sheet-schedule.ts';
 
 /** A moment as a report prints it: its scene second with model time beside, or model time alone off the clock. */
@@ -11,9 +11,9 @@ const paintingSolveMoment = ({ tau, scene }: StampSheetMoment) => (scene === nul
 
 /** `program`'s solve as lines, each entry's decision `decisions`' at its index. */
 export function paintingSolveLines(program: StampSheetProgram, decisions: readonly StampSheetDecision[]): string[] {
+  const { last } = stampSheetWashSpans(program);
   return decisions.flatMap((decision, k) => {
-    const entry = program.entries[k], wash = program.washes[entry.wash];
-    const ends = program.entries.findLastIndex((other) => other.wash === entry.wash) === k;
+    const entry = program.entries[k], wash = program.washes[entry.wash], ends = last[entry.wash] === k;
     const waits = entry.on ? ` (on '${entry.on}'${decision.tau > decision.tau0 ? `, ${stampSheetSeconds(decision.tau - decision.tau0)} after it could` : ''})` : '';
     const neverSets = program.clock.kind === 'never' && wash.wetHistory ? [`  ${wash.name}: never sets`] : [];
     return [

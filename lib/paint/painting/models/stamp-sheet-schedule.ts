@@ -1,6 +1,6 @@
 // stamp-sheet-schedule.ts: the forward scheduler's decisions, in f64 on the CPU, from the GPU's reductions over an
-// application's core: model time on a 1 ms grid anchored at each predecessor, and its scene times (ENGINE 3.5). A
-// solve's state moves on by the transitions here.
+// application's core: model time on a 1 ms grid anchored at each predecessor, and the clock's policy (ENGINE 3.5). A
+// solve's state moves by its transitions.
 //
 // The laws, per texel wetted to ℓ at a, drying at rate r with open time o, sheen shiny h and damp d: wet while
 // τ < U = a + (ℓ − h)/r; matte from L = a + (ℓ − d)/r; set from Z = a + o + ℓ/r; under `never` (r = 0), U and Z are
@@ -10,7 +10,8 @@ import { STAMP_BLOOM_SURPLUS } from './stamp-wet-bloom.ts';
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { StampPixelBox } from './stamp-blur-region.ts';
 import type { StampBox } from './stamp-region.ts';
-import type { StampSheetClock, StampSheetWetness } from './stamp-sheet-program.ts';
+import type { StampSheetClock, StampSheetEntry, StampSheetWash, StampSheetWetness } from './stamp-sheet-program.ts';
+import { StampSheetRefusal } from './stamp-sheet-refusal.ts';
 import { stampBoxUnion } from './stamp-stage.ts';
 import type { StampWetting } from './stamp-wash-ledger.ts';
 import { stampWetnessAt, stampWorkableAt, type StampDrying, type StampWashDrying, type StampWetLanding } from './stamp-wetness.ts';
@@ -60,6 +61,92 @@ export function stampSheetGrid(tau0: number, x: number): number {
   if (!(x > tau0)) return tau0;
   return tau0 + STAMP_SHEET_STEP * Math.ceil((x - tau0) / STAMP_SHEET_STEP - 1e-9);
 }
+
+/**
+ * A model time and its scene second where that's known exactly (a numeric origin, a fixed `at`, a predecessor's):
+ * carried rather than mapped there and back, so a fixed `at` of 9 prints 9. Null to map it on the clock.
+ */
+export type StampSheetTimed = { tau: number; exact: number | null };
+
+/** How an entry with order time `orderTime` (null in the unclocked run) dries as it's decided on `clock`. */
+export function stampSheetRegimeOf(clock: StampSheetClock, orderTime: number | null): StampSheetRegime {
+  if (clock.kind === 'never') return 'never';
+  return clock.kind === 'instant' && orderTime !== null ? 'instant' : 'drying';
+}
+
+/**
+ * The scene second an entry with order time `orderTime` lands at, landing `at` after `state`: null in the unclocked
+ * run; its order time off a scale; on a scale, `at`'s exact second, else S + (τ − τc) × scale.
+ */
+export function stampSheetSceneOf(clock: StampSheetClock, state: StampSheetSolveState, orderTime: number | null, at: StampSheetTimed): number | null {
+  if (orderTime === null) return null;
+  if (clock.kind !== 'scale') return orderTime;
+  return at.exact ?? stampSheetSceneAt(clock, state.clockStart!, at.tau);
+}
+
+/** When a wash can start, or why it can't: its layer's earlier water never sets, or is still wet past its origin. */
+export type StampSheetWashStart = { kind: 'starts'; at: StampSheetTimed } | { kind: 'never-sets' } | { kind: 'still-wet'; origin: number; until: number };
+
+/**
+ * When a wash can start after `state` (ENGINE 3.5), its first entry `clocked` or not, `set` (Y) the latest its
+ * layer's earlier wet washes set (null for none, +∞ for never): at Y on the grid, or on a scale at its numeric
+ * origin, refused before Y. Direct washes hold no water to wait on.
+ */
+export function stampSheetWashStart(
+  clock: StampSheetClock, state: StampSheetSolveState, { origin }: Pick<StampSheetWash, 'origin'>, clocked: boolean, set: number | null,
+): StampSheetWashStart {
+  if (set === Infinity) return { kind: 'never-sets' };
+  if (clocked && clock.kind === 'scale' && typeof origin === 'number') {
+    const from = stampSheetModelAt(clock, state.clockStart!, origin);
+    if (set !== null && from < set) return { kind: 'still-wet', origin, until: stampSheetSceneAt(clock, state.clockStart!, set) };
+    return { kind: 'starts', at: from > state.tau ? { tau: from, exact: origin } : { tau: state.tau, exact: state.scene } };
+  }
+  const tau = stampSheetGrid(state.tau, set ?? state.tau);
+  return { kind: 'starts', at: { tau, exact: tau === state.tau ? state.scene : null } };
+}
+
+/**
+ * Where `entry` may land from, τ0, after `from` (its wash's start or its predecessor's landing): under `instant`, a
+ * clocked entry once `fieldSet`, when the sheet's paper has set (null for none wetted); on a scale, a fixed `at`'s
+ * model time, refused before `from`. Direct entries too.
+ */
+export function stampSheetEntryFrom(
+  clock: StampSheetClock, state: StampSheetSolveState, entry: Pick<StampSheetEntry, 'name' | 'orderTime' | 'at'>, from: StampSheetTimed, fieldSet: number | null,
+): StampSheetTimed {
+  const instant = stampSheetRegimeOf(clock, entry.orderTime) === 'instant';
+  const settled: StampSheetTimed = instant && fieldSet !== null && fieldSet > from.tau ? { tau: stampSheetGrid(from.tau, fieldSet), exact: null } : from;
+  if (entry.at === null || clock.kind !== 'scale') return settled;
+  const fixed = stampSheetModelAt(clock, state.clockStart!, entry.at);
+  if (fixed < settled.tau) throw new StampSheetRefusal(stampSheetAtTooEarly(entry.name, entry.at, stampSheetSceneOf(clock, state, entry.orderTime, settled)!));
+  return { tau: fixed, exact: entry.at };
+}
+
+/**
+ * When all a wash touched has set, its paper setting at model `tau`, its last entry (`clocked` or not) landed as
+ * `state` says: under `instant`, at that landing's scene second; on a scale, `tau` mapped; else model time alone.
+ */
+export function stampSheetWashSetMoment(clock: StampSheetClock, state: StampSheetSolveState, clocked: boolean, tau: number): StampSheetMoment {
+  if (clock.kind === 'instant') return { tau, scene: state.scene };
+  return { tau, scene: clock.kind === 'scale' && clocked ? stampSheetSceneAt(clock, state.clockStart!, tau) : null };
+}
+
+/** A wash's start as decided: its moment, and whether a drying closed there. */
+export type StampSheetBegun = { start: StampSheetMoment; closes: boolean };
+
+/** An entry's landing as decided: τ0, τ and its scene second, its warnings, and whether a drying closed as it landed. */
+export type StampSheetLandingDecided = Pick<StampSheetDecision, 'tau0' | 'tau' | 'scene' | 'warnings'> & { closes: boolean };
+
+/** An entry's decision from its parts: its wash's start (null past the wash's first), its landing, its wash's set moment. */
+export const stampSheetDecisionOf = (begun: StampSheetBegun | null, landing: StampSheetLandingDecided, washSet: StampSheetMoment | null): StampSheetDecision => ({
+  start: begun?.start ?? null, tau0: landing.tau0, tau: landing.tau, scene: landing.scene,
+  closes: { start: begun?.closes ?? false, landing: landing.closes }, washSet, warnings: landing.warnings,
+});
+
+/** The wash start a remembered decision of its wash's first entry made. */
+export const stampSheetBegunOf = ({ start, closes }: StampSheetDecision): StampSheetBegun => ({ start: start!, closes: closes.start });
+
+/** The landing a remembered decision made. */
+export const stampSheetLandingOf = ({ tau0, tau, scene, warnings, closes }: StampSheetDecision): StampSheetLandingDecided => ({ tau0, tau, scene, warnings, closes: closes.landing });
 
 /** A two-word total as the GPU leaves it (low word, then high): exact in f64 up to 2⁵³. */
 export const stampSheetWide = (words: Uint32Array, at: number) => words[at + 1] * 2 ** 32 + words[at];

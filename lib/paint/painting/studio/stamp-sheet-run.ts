@@ -2,9 +2,9 @@
 // the entries before it left (stamp-sheet-decide.ts), then landed into the wet field and its film; a drying closes
 // once all since the last has set. Its state is one value the schedule's transitions move on.
 //
-// The clock (ENGINE 3.5): a scale maps model time to scene seconds from S at τc, the unclocked run's end; `instant`
-// sets the sheet before each clocked entry; `never` dries nothing (rate 0). A scene second known exactly (an origin,
-// an `at`, a predecessor's) is carried rather than mapped there and back.
+// The clock's policy is the schedule's (models/stamp-sheet-schedule.ts); the run reads back what it needs (when the
+// paper under a wash or the whole sheet sets) and lays the work. A decision is made in parts, its wash's start and
+// its landing, and a remembered one is replayed through the same parts, so deciding and replaying land alike.
 
 import { paintPigmentSeed } from '#lib/paint/materials/models/paint-paper.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
@@ -12,11 +12,12 @@ import type { StampPaintCostTally } from '../models/stamp-paint-costs.ts';
 import { stampPaintFieldEnds } from '../models/stamp-paint-field.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import {
-  stampSheetAtTooEarly, stampSheetClockStarted, stampSheetClosed, stampSheetDecided, stampSheetDrawn, stampSheetGrid, stampSheetLanded, stampSheetLandingAt,
-  stampSheetMaySetBy, stampSheetModelAt, stampSheetNeverSets, stampSheetPainted, stampSheetPrewetted, stampSheetRebased, stampSheetSceneAt, stampSheetSetKnown,
-  stampSheetSolveStart, stampSheetStartsWet, stampSheetStateResized, type StampSheetDecision, type StampSheetMoment, type StampSheetRegime, type StampSheetSolveState,
+  stampSheetBegunOf, stampSheetClockStarted, stampSheetClosed, stampSheetDecided, stampSheetDecisionOf, stampSheetDrawn, stampSheetEntryFrom, stampSheetLanded,
+  stampSheetLandingAt, stampSheetLandingOf, stampSheetMaySetBy, stampSheetNeverSets, stampSheetPainted, stampSheetPrewetted, stampSheetRebased, stampSheetRegimeOf,
+  stampSheetSceneOf, stampSheetSetKnown, stampSheetSolveStart, stampSheetStartsWet, stampSheetStateResized, stampSheetWashSetMoment, stampSheetWashStart,
+  type StampSheetBegun, type StampSheetDecision, type StampSheetLandingDecided, type StampSheetMoment, type StampSheetSolveState,
 } from '../models/stamp-sheet-schedule.ts';
-import type { StampSheetProgram } from '../models/stamp-sheet-program.ts';
+import { stampSheetWashSpans, type StampSheetProgram } from '../models/stamp-sheet-program.ts';
 import { StampSheetRefusal } from '../models/stamp-sheet-refusal.ts';
 import { STAMP_REST_IDENTITY } from '../models/stamp-rest-map.ts';
 import { stampBoxUnion } from '../models/stamp-stage.ts';
@@ -26,31 +27,32 @@ import { stampFloodHeldWetness, type StampDrying, type StampWashDrying, type Sta
 import type { StampPaintBrushes } from './stamp-deposit-bank.ts';
 import { clearStampTarget, type StampPaintDevice } from './stamp-paint-gpu.ts';
 import type { StampPaintGpuOwner } from './stamp-paint-gpu-owner.ts';
-import {
-  holdStampSheetCheckpoint, keepStampSheetCheckpoint, restoreStampSheetCheckpoint, stampSheetCheckpointKept, type StampSheetCheckpoint, type StampSheetPieceTarget,
-} from './stamp-sheet-checkpoints.ts';
+import { holdStampSheetCheckpoint, keepStampSheetCheckpoint, restoreStampSheetCheckpoint, stampSheetCheckpointKept, type StampSheetPieceTarget } from './stamp-sheet-checkpoints.ts';
 import { createStampSheetClips } from './stamp-sheet-clips.ts';
 import { decideStampSheetEntry } from './stamp-sheet-decide.ts';
 import type { StampSheetSolveGpu } from './stamp-sheet-load.ts';
 import { createStampSheetSteps, type StampSheetTimeBase } from './stamp-sheet-steps.ts';
 import { planStampWetStage, type StampWetBank, type StampWetDepositMoment, type StampWetStagePlan } from './stamp-wet-stages.ts';
 
-/** What a run lays through its loaded GPU work, its paper drying as `drying` says: its brushes, each deposit's water, where it counts costs. */
+/**
+ * What a run lays through its loaded GPU work, its paper drying as `drying` says: its brushes, each deposit's water,
+ * where it counts costs; `keys`, K₀ onwards as far as it may run, naming its checkpoints.
+ */
 export type StampSheetRunInput = {
-  program: StampSheetProgram; gpu: StampSheetSolveGpu; drying: StampDrying; brushes: StampPaintBrushes; waterOf: (deposit: CompiledStampDeposit) => number;
-  costs: StampPaintCostTally | null;
+  program: StampSheetProgram; keys: readonly string[]; gpu: StampSheetSolveGpu; drying: StampDrying; brushes: StampPaintBrushes;
+  waterOf: (deposit: CompiledStampDeposit) => number; costs: StampPaintCostTally | null;
 };
 
 /**
- * What running an entry came to: its decision and whether it was remembered; whether it landed, as it doesn't past
- * its prefix's `at`; and whether its wash started, which a prefix stopping before it must undo.
+ * What running an entry came to: landed, its decision and whether it was remembered; or not, past its prefix's `at`,
+ * the scene second it was decided at and whether its wash started, which a prefix stopping before it must undo.
  */
-export type StampSheetEntryRun = { decision: StampSheetDecision; known: boolean; lands: boolean; started: boolean };
+export type StampSheetEntryRun = { lands: true; decision: StampSheetDecision; known: boolean } | { lands: false; scene: number; known: boolean; started: boolean };
 
 const pixelBoxMeets = (a: StampPixelBox | null, b: StampPixelBox) => !!a && a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
 /** A solve's run over its loaded GPU work. */
-export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevice, { program, gpu, drying, brushes, waterOf, costs }: StampSheetRunInput) {
+export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevice, { program, keys, gpu, drying, brushes, waterOf, costs }: StampSheetRunInput) {
   let state: StampSheetSolveState = stampSheetSolveStart(program.films.length, program.washes.length);
   const timeBase: StampSheetTimeBase = {
     base: () => state.base,
@@ -65,8 +67,7 @@ export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevic
   const { targets, passes } = gpu, { clock, washes, entries } = program;
   const clips = createStampSheetClips(program, targets, passes);
   const filmOfEntry = (k: number) => washes[entries[k].wash].film;
-  const firstOf = washes.map((_, w) => entries.findIndex((entry) => entry.wash === w));
-  const lastOf = washes.map((_, w) => entries.findLastIndex((entry) => entry.wash === w));
+  const spans = stampSheetWashSpans(program);
   // Films with a wet history: the only paint that's ever open, so the only paint settled, marked open or reached.
   const openFilms = program.films.flatMap(({ slots }, f) => (slots.open === null ? [] : [f]));
   const touchedBox = (w: number) => state.touched[w].reduce<StampPixelBox | null>(stampBoxUnion, null);
@@ -77,19 +78,6 @@ export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevic
   };
   const paintedInto = (film: number, box: StampPixelBox | null) => {
     state = stampSheetPainted(state, film, box);
-  };
-
-  /** The scene second entry `k` lands at if it lands at model time `tau`: `exact` when that's known, null in the unclocked run. */
-  const sceneOf = (k: number, tau: number, exact: number | null): number | null => {
-    const { orderTime } = entries[k];
-    if (orderTime === null) return null;
-    if (clock.kind !== 'scale') return orderTime;
-    return exact ?? stampSheetSceneAt(clock, state.clockStart!, tau);
-  };
-  /** How entry `k`'s paper dries as it's decided. */
-  const regimeOf = (k: number): StampSheetRegime => {
-    if (clock.kind === 'never') return 'never';
-    return clock.kind === 'instant' && entries[k].orderTime !== null ? 'instant' : 'drying';
   };
 
   /** Each open film but `except` painted over `box`, settled where the paper has, before water lands there at `at`. */
@@ -132,34 +120,36 @@ export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevic
     gpu.field.dried(encoder);
   };
 
-  /** Wash `w`'s start at `at` (the GPU's time): its clip, then its prewet's water over every film's paint settled. */
-  const startWash = (encoder: GPUCommandEncoder, w: number, at: number) => {
-    clips.start(encoder, w);
-    const { prewet } = washes[w], region = gpu.prewetRegion(w);
-    if (!prewet || !region) return;
-    settleUnder(encoder, region.box, at, null);
-    passes.prewet(encoder, { region, fluid: gpu.fluidOf(prewet.held), water: prewet.water, rest: prewet.rest ?? STAMP_REST_IDENTITY }, at, drying);
+  /**
+   * When wash `w`, its first entry `k`'s, starts (ENGINE 3.5), and whether a drying closes there, its prewet landing
+   * once all since the last has set. Refused where it can't start: its layer's earlier wet washes still wet past its
+   * origin, or never setting.
+   */
+  const decideWashStart = async (k: number, w: number): Promise<StampSheetBegun> => {
+    const wash = washes[w], clocked = entries[k].orderTime !== null;
+    const earlier = washes.flatMap(({ film, wetHistory }, v) => (v < w && film === wash.film && wetHistory && state.touched[v].length ? [v] : []));
+    const wettest = async () => washes[(await latestSetting(earlier))!.wash].name;
+    const starts = stampSheetWashStart(clock, state, wash, clocked, await steps.latestSetOver(earlier.map((v) => touchedBox(v)!)));
+    if (starts.kind === 'never-sets') throw new StampSheetRefusal(stampSheetNeverSets(wash.name, await wettest()));
+    if (starts.kind === 'still-wet') throw new StampSheetRefusal(stampSheetStartsWet(wash.name, starts.origin, await wettest(), starts.until));
+    const { tau } = starts.at;
+    return { start: { tau, scene: stampSheetSceneOf(clock, state, entries[k].orderTime, starts.at) }, closes: !!wash.prewet && !!gpu.prewetRegion(w) && await setBy(tau) };
   };
 
-  /**
-   * When wash `w`, its first entry `k`'s, can start (ENGINE 3.5), and the scene second that is when it's known
-   * exactly: once its layer's earlier wet washes have set, or at its numeric origin on a scale clock, refused before
-   * they have. Refused where they never will. A direct wash has no water to wait on.
-   */
-  const washStartAt = async (k: number, w: number): Promise<{ tau: number; exact: number | null }> => {
-    const wash = washes[w], earlier = washes.flatMap(({ film, wetHistory }, v) => (v < w && film === wash.film && wetHistory && state.touched[v].length ? [v] : []));
-    const set = await steps.latestSetOver(earlier.map((v) => touchedBox(v)!));
-    if (set === Infinity) throw new StampSheetRefusal(stampSheetNeverSets(wash.name, washes[(await latestSetting(earlier))!.wash].name));
-    if (entries[k].orderTime !== null && clock.kind === 'scale' && typeof wash.origin === 'number') {
-      const from = stampSheetModelAt(clock, state.clockStart!, wash.origin);
-      if (set !== null && from < set) {
-        const wet = (await latestSetting(earlier))!;
-        throw new StampSheetRefusal(stampSheetStartsWet(wash.name, wash.origin, washes[wet.wash].name, stampSheetSceneAt(clock, state.clockStart!, set)));
-      }
-      return from > state.tau ? { tau: from, exact: wash.origin } : { tau: state.tau, exact: state.scene };
-    }
-    const tau = stampSheetGrid(state.tau, set ?? state.tau);
-    return { tau, exact: tau === state.tau ? state.scene : null };
+  /** Wash `w` started as `begun` says: the drying closed first if it closes, then its clip, then its prewet's water over every film's paint settled. */
+  const beginWash = async (w: number, { start, closes }: StampSheetBegun) => {
+    const { prewet, name } = washes[w], region = gpu.prewetRegion(w);
+    await steps.step(`starting wash ${name}`, (encoder) => {
+      const at = timeBase.after(encoder, start.tau);
+      if (closes) close(encoder, start.tau, 'set');
+      clips.start(encoder, w);
+      if (!prewet || !region) return;
+      settleUnder(encoder, region.box, at, null);
+      passes.prewet(encoder, { region, fluid: gpu.fluidOf(prewet.held), water: prewet.water, rest: prewet.rest ?? STAMP_REST_IDENTITY }, at, drying);
+    });
+    if (!prewet || !region) return;
+    const ends = stampPaintFieldEnds(prewet.water);
+    state = stampSheetPrewetted(state, { wash: w, at: start.tau, level: Math.max(ends.first, ends.second), box: region.box });
   };
 
   /**
@@ -211,59 +201,27 @@ export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevic
     state = stampSheetLanded(state, { entry: k, wash: entry.wash, landing, support, lifts: deposit.action.kind === 'lift', held: stampFloodHeldWetness(deposit, landing), box });
   };
 
-  /**
-   * When all wash `w` touched has set, measured as its last entry `k`, scene second and all: null for a wash with no
-   * water of its own, or none under it, or a sheet that never dries; under `instant`, its last landing's second.
-   */
+  /** When all wash `w` touched has set, measured at its last entry `k`: null for a wash with no water of its own, or none under it, or a sheet that never dries. */
   const washSetAt = async (k: number, w: number): Promise<StampSheetMoment | null> => {
     const box = touchedBox(w);
     if (!washes[w].wetHistory || !box) return null;
     const tau = await steps.latestSetOver([box]);
-    if (tau === null || tau === Infinity) return null;
-    if (clock.kind === 'instant') return { tau, scene: state.scene };
-    return { tau, scene: clock.kind === 'scale' && entries[k].orderTime !== null ? stampSheetSceneAt(clock, state.clockStart!, tau) : null };
+    return tau === null || tau === Infinity ? null : stampSheetWashSetMoment(clock, state, entries[k].orderTime !== null, tau);
   };
 
   /**
-   * Entry `k` decided (or `known`, remembered) and landed, unless its prefix ends at scene second `at` (null for no
-   * end) before it; `unscheduled`, the names after it for a failure's message.
+   * When entry `k` lands from `from` (its wash's start, or its predecessor's landing), decided over its core, and
+   * whether a drying closes as it does: none for one landing `past` its prefix. Refused where it can't land.
    */
-  const entry = async (k: number, known: StampSheetDecision | null, unscheduled: readonly string[], at: number | null): Promise<StampSheetEntryRun> => {
-    const { wash: w, name, on, bloom, deposit, orderTime } = entries[k], wash = washes[w], loaded = gpu.bank.get(deposit)!, clipped = wash.clipTo !== null;
-    const past = (scene: number | null) => at !== null && scene !== null && scene > at;
-    if (known && past(known.scene)) return { decision: known, known: true, lands: false, started: false };
-    if (orderTime !== null && state.clockStart === null) state = stampSheetClockStarted(state, clock.kind === 'scale' ? clock.origin : null);
-    let tau0 = state.tau, exact = state.scene, start: StampSheetMoment | null = null, closesAtStart = false;
-    if (firstOf[w] === k) {
-      ({ tau: tau0, exact } = known ? { tau: known.start!.tau, exact: known.start!.scene } : await washStartAt(k, w));
-      start = { tau: tau0, scene: sceneOf(k, tau0, exact) };
-      const region = gpu.prewetRegion(w);
-      closesAtStart = known ? known.closes.start : !!wash.prewet && !!region && await setBy(tau0);
-      await steps.step(`starting wash ${wash.name}`, (encoder) => {
-        const gpuTau = timeBase.after(encoder, tau0);
-        if (closesAtStart) close(encoder, tau0, 'set');
-        startWash(encoder, w, gpuTau);
-      });
-      if (wash.prewet && region) {
-        const ends = stampPaintFieldEnds(wash.prewet.water);
-        state = stampSheetPrewetted(state, { wash: w, at: tau0, level: Math.max(ends.first, ends.second), box: region.box });
-      }
-    } else if (clips.away(w)) await steps.step(`returning to wash ${wash.name}`, (encoder) => clips.enter(encoder, w));
-    const regime = regimeOf(k), fixed = entries[k].at !== null && clock.kind === 'scale' ? entries[k].at : null;
-    if (known) tau0 = known.tau0;
-    else {
-      // `instant` sets the sheet before each clocked entry; a fixed `at` on a scale clock is its model time.
-      const setAt = regime === 'instant' && state.field ? await steps.latestSetOver([state.field]) : null;
-      if (setAt !== null && setAt > tau0) ({ tau: tau0, exact } = { tau: stampSheetGrid(tau0, setAt), exact: null });
-      if (fixed !== null && clock.kind === 'scale') {
-        const fixedTau = stampSheetModelAt(clock, state.clockStart!, fixed);
-        if (fixedTau < tau0) throw new StampSheetRefusal(stampSheetAtTooEarly(name, fixed, sceneOf(k, tau0, exact)!));
-        ({ tau: tau0, exact } = { tau: fixedTau, exact: fixed });
-      }
-    }
+  const decideLanding = async (k: number, from: StampSheetMoment, unscheduled: readonly string[], past: (scene: number | null) => boolean): Promise<StampSheetLandingDecided> => {
+    const entry = entries[k], { name, on, bloom, deposit, orderTime } = entry, loaded = gpu.bank.get(deposit)!, clipped = washes[entry.wash].clipTo !== null;
+    const regime = stampSheetRegimeOf(clock, orderTime);
+    // Only `instant` reads when the whole sheet sets: it sets before each clocked entry.
+    const fieldSet = regime === 'instant' && state.field ? await steps.latestSetOver([state.field]) : null;
+    const tau0 = stampSheetEntryFrom(clock, state, entry, { tau: from.tau, exact: from.scene }, fieldSet);
     const core = loaded.box && { box: loaded.box, fluid: gpu.fluidOf(deposit.mask), within: gpu.boundsOf(deposit, clipped).within, clipped };
-    const decided = known ?? await decideStampSheetEntry(steps, {
-      name, on, bloom: bloom ? waterOf(deposit) : null, core, unscheduled, regime, fixed,
+    const { tau, warnings } = await decideStampSheetEntry(steps, {
+      name, on, bloom: bloom ? waterOf(deposit) : null, core, unscheduled, regime, fixed: clock.kind === 'scale' ? entry.at : null,
       touch: (encoder) => {
         if (loaded.box) gpu.drawing.drawTouch(encoder, deposit, loaded, loaded.box, targets.core.view);
       },
@@ -274,35 +232,56 @@ export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevic
           if (box) passes.markOpen(encoder, targets.film(f).view, gpu.layouts[f], box);
         }
       },
-    }, tau0);
-    const { tau } = decided, scene = known ? known.scene : sceneOf(k, tau, tau === tau0 ? exact : null);
-    costs?.count(known ? 'decisions reused' : 'decisions made');
-    if (past(scene)) {
-      const decision = { start, tau0, tau, scene, closes: { start: closesAtStart, landing: false }, washSet: null, warnings: decided.warnings };
-      return { decision, known: false, lands: false, started: start !== null };
-    }
-    for (const warning of decided.warnings) costs?.warned(warning);
-    state = stampSheetDecided(state, { tau, scene });
-    const closesAtLanding = known ? known.closes.landing : await setBy(tau);
-    await steps.step(`landing ${name}`, (encoder) => {
-      const gpuTau = timeBase.after(encoder, tau);
-      if (closesAtLanding) close(encoder, tau, 'set');
-      land(encoder, k, gpuTau);
-      if (lastOf[w] === k) clips.end(encoder, w);
-    });
-    let washSet = known ? known.washSet : null;
-    if (!known && lastOf[w] === k) washSet = await washSetAt(k, w);
-    const decision = { start, tau0, tau, scene, closes: { start: closesAtStart, landing: closesAtLanding }, washSet, warnings: decided.warnings };
-    return { decision, known: !!known, lands: true, started: start !== null };
+    }, tau0.tau);
+    const scene = stampSheetSceneOf(clock, state, orderTime, tau === tau0.tau ? tau0 : { tau, exact: null });
+    return { tau0: tau0.tau, tau, scene, warnings, closes: !past(scene) && await setBy(tau) };
   };
 
-  /** A checkpoint after `k` entries, keyed `key`, by name: its clips told apart, as another program's may differ. */
-  const checkpointKey = (key: string, k: number) => `${key}|clips ${clips.keptName(k)}`;
+  /**
+   * Entry `k` decided, or replayed from `known`, its remembered decision, and landed, unless its prefix ends at scene
+   * second `at` (null for no end) before it; `unscheduled`, the names after it for a failure's message.
+   */
+  const entry = async (k: number, known: StampSheetDecision | null, unscheduled: readonly string[], at: number | null): Promise<StampSheetEntryRun> => {
+    const { wash: w, name, orderTime } = entries[k];
+    /** `scene` when it's past the prefix's end; null when it lands by it, or off the clock. */
+    const beyond = (scene: number | null) => (at !== null && scene !== null && scene > at ? scene : null);
+    const knownBeyond = known ? beyond(known.scene) : null;
+    if (knownBeyond !== null) return { lands: false, scene: knownBeyond, known: true, started: false };
+    if (orderTime !== null && state.clockStart === null) state = stampSheetClockStarted(state, clock.kind === 'scale' ? clock.origin : null);
+    let begun: StampSheetBegun | null = null;
+    if (spans.first[w] === k) begun = known ? stampSheetBegunOf(known) : await decideWashStart(k, w);
+    if (begun) await beginWash(w, begun);
+    else if (clips.away(w)) await steps.step(`returning to wash ${washes[w].name}`, (encoder) => clips.enter(encoder, w));
+    const from = begun?.start ?? { tau: state.tau, scene: state.scene };
+    const landing = known ? stampSheetLandingOf(known) : await decideLanding(k, from, unscheduled, (scene) => beyond(scene) !== null);
+    costs?.count(known ? 'decisions reused' : 'decisions made');
+    const landsBeyond = beyond(landing.scene);
+    if (landsBeyond !== null) return { lands: false, scene: landsBeyond, known: false, started: !!begun };
+    for (const warning of landing.warnings) costs?.warned(warning);
+    state = stampSheetDecided(state, landing);
+    await steps.step(`landing ${name}`, (encoder) => {
+      const gpuTau = timeBase.after(encoder, landing.tau);
+      if (landing.closes) close(encoder, landing.tau, 'set');
+      land(encoder, k, gpuTau);
+      if (spans.last[w] === k) clips.end(encoder, w);
+    });
+    const measured = !known && spans.last[w] === k ? await washSetAt(k, w) : null;
+    return { lands: true, decision: stampSheetDecisionOf(begun, landing, known ? known.washSet : measured), known: !!known };
+  };
+
+  /** The checkpoint after `k` entries, by name: its clips told apart, as another program's may differ. */
+  const checkpointKey = (k: number) => `${keys[k]}|clips ${clips.keptName(k)}`;
   /** Where a checkpoint's piece goes back to. */
   const pieceTexture = (target: StampSheetPieceTarget): GPUTexture => {
     if (target.kind === 'film') return targets.film(target.film).texture;
     if (target.kind === 'clip') return clips.textureOf(target.clip);
     return target.kind === 'paper' ? targets.paper.texture : targets.rim.texture;
+  };
+  /** The run back at its start: clean films and dry paper. */
+  const restart = (encoder: GPUCommandEncoder) => {
+    gpu.restart(encoder);
+    state = stampSheetSolveStart(program.films.length, washes.length);
+    clips.restored(encoder, 0, []);
   };
 
   return {
@@ -318,38 +297,30 @@ export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevic
         if (box) passes.settleAll(encoder, targets.film(f).view, gpu.layouts[f], box);
       }
     },
-    /** Whether a checkpoint is kept after `k` entries, keyed `key`. */
-    kept: (key: string, k: number) => stampSheetCheckpointKept(owner, checkpointKey(key, k)),
-    /** Holds the checkpoint after `k` entries, keyed `key`, from eviction until the returned release runs; null for none. */
-    hold: (key: string, k: number) => holdStampSheetCheckpoint(owner, checkpointKey(key, k)),
-    /** Keeps the state after `k` entries, keyed `key`, with `decisions`, theirs. */
-    keep(encoder: GPUCommandEncoder, key: string, k: number, decisions: readonly StampSheetDecision[]) {
+    /** Whether a checkpoint is kept after `k` entries. */
+    kept: (k: number) => stampSheetCheckpointKept(owner, checkpointKey(k)),
+    /** Holds the checkpoint after `k` entries from eviction until the returned release runs. Throws where none is kept. */
+    hold: (k: number) => holdStampSheetCheckpoint(owner, checkpointKey(k)),
+    /** Keeps the state after `k` entries as a checkpoint. */
+    keep(encoder: GPUCommandEncoder, k: number) {
       targets.putBack(encoder);
       const kept = clips.kept(k);
-      keepStampSheetCheckpoint(owner, encoder, checkpointKey(key, k), [
+      keepStampSheetCheckpoint(owner, encoder, checkpointKey(k), [
         ...program.films.map((_, film) => ({ target: { kind: 'film', film } as const, texture: targets.film(film).texture, box: state.painted[film] })),
         { target: { kind: 'paper' }, texture: targets.paper.texture, box: state.field }, { target: { kind: 'rim' }, texture: targets.rim.texture, box: state.field },
         ...kept.map((clip) => ({ target: { kind: 'clip', clip } as const, texture: clips.textureOf(clip), box: clipBox(clip.wash) })),
-      ], { state, decisions: [...decisions], clips: kept });
+      ], { state, clips: kept });
     },
-    /** The state the checkpoint after `k` entries, keyed `key`, kept; null when none is, the run at its start. */
-    restore(encoder: GPUCommandEncoder, key: string, k: number): StampSheetCheckpoint | null {
-      gpu.restart(encoder);
-      state = stampSheetSolveStart(program.films.length, washes.length);
-      clips.restored(encoder, 0, []);
-      const restored = restoreStampSheetCheckpoint(owner, encoder, checkpointKey(key, k), (checkpoint) => {
+    /** The run as the checkpoint after `k` entries left it. Throws where none is kept: an engine fault, as a caller checks or holds it first. */
+    restore(encoder: GPUCommandEncoder, k: number) {
+      restart(encoder);
+      const restored = restoreStampSheetCheckpoint(owner, encoder, checkpointKey(k), (checkpoint) => {
         clips.restored(encoder, k, checkpoint.clips);
         return pieceTexture;
       });
-      if (restored) state = stampSheetStateResized(restored.state, program.films.length, washes.length);
-      return restored;
+      state = stampSheetStateResized(restored.state, program.films.length, washes.length);
     },
-    /** The run back at its start: clean films and dry paper. */
-    restart(encoder: GPUCommandEncoder) {
-      gpu.restart(encoder);
-      state = stampSheetSolveStart(program.films.length, washes.length);
-      clips.restored(encoder, 0, []);
-    },
+    restart,
   };
 }
 

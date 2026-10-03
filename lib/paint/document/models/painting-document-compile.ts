@@ -46,13 +46,13 @@ const paintingEntryMarks = (deposit: CompiledStampDeposit, prewet: StampSheetPre
 });
 
 /**
- * `order`, a sheet's order in `evaluation`, as its program at rest, brushes resolved by `brushOf`, its boiling layers
- * reseeded by `reseed` (PaintingSelectionCompileOptions'). Refuses what the solver can't paint so far: a lift in a
+ * `order`, a sheet's order in `evaluation`, as its program at rest, brushes resolved by `brushOf`, each boiling layer
+ * reseeded for its epoch in `epochs` (paintingLayerEpochs'). Refuses what the solver can't paint so far: a lift in a
  * direct wash.
  */
-function compilePaintingSheet(evaluation: PaintingEvaluation, order: PaintingSheetOrder, brushOf: PaintingBrushOf, reseed: ReadonlyMap<number, number> | undefined): StampSheetProgram {
+function compilePaintingSheet(evaluation: PaintingEvaluation, order: PaintingSheetOrder, brushOf: PaintingBrushOf, epochs: ReadonlyMap<number, number>): StampSheetProgram {
   const { document: paintingDocument, tree } = evaluation;
-  const epochOf = (sheetLayer: number) => reseed?.get(order.layers[sheetLayer].layer) ?? 0;
+  const epochOf = (sheetLayer: number) => epochs.get(order.layers[sheetLayer].layer) ?? 0;
   const reads = paintingEntryReads(tree, order);
   const sheetWashes = paintingSheetWashes(tree, order);
   const washIndex = new Map(sheetWashes.map(({ layer, wash }, w) => [`${layer}/${wash}`, w]));
@@ -109,11 +109,21 @@ export type PaintingSheetCompiled = {
 export type PaintingSelectionCompiled = { readonly tree: PaintingTree; readonly sheets: readonly PaintingSheetCompiled[]; readonly steps: readonly StampSheetCompositeStep[] };
 
 /**
- * What a selection's compile is told: `layers`, the layers and groups selected (all when left out); `reseed`, each
- * boiling layer's epoch by its ordinal in the tree's layers (ENGINE 4.6), every seed of its applications suffixed for
- * it and its entries keyed by it, a layer left out, or at 0, as written.
+ * What a selection's compile is told: `layers`, the layers and groups selected (all when left out); `reseed`, boil
+ * epochs by the key of the layer or group boiling (ENGINE 4.6), a group's covering every layer under it and the
+ * innermost naming a layer winning. A reseeded layer's every seed is suffixed for its epoch and its entries keyed by
+ * it; a layer none names, or at 0, is as written.
  */
-export type PaintingSelectionCompileOptions = { readonly layers?: readonly NodeKey[]; readonly reseed?: ReadonlyMap<number, number> };
+export type PaintingSelectionCompileOptions = { readonly layers?: readonly NodeKey[]; readonly reseed?: ReadonlyMap<NodeKey, number> };
+
+/** Each layer `reseed` boils, by its ordinal in `tree.layers`, at its epoch (PaintingSelectionCompileOptions'); none at 0. */
+export function paintingLayerEpochs(tree: PaintingTree, reseed?: ReadonlyMap<NodeKey, number>): ReadonlyMap<number, number> {
+  if (!reseed?.size) return new Map();
+  return new Map(tree.layers.flatMap(({ node, groups }, layer) => {
+    const epoch = [node.key, ...groups.toReversed()].map((key) => reseed.get(key)).find((each) => each !== undefined) ?? 0;
+    return epoch ? [[layer, epoch] as const] : [];
+  }));
+}
 
 /**
  * The layers `keys` name (layers, and every layer under a group), as ordinals in `tree.layers`; every layer when
@@ -129,8 +139,8 @@ export function paintingSelectedLayers(tree: PaintingTree, keys?: readonly NodeK
 }
 
 /**
- * Compiled selections by evaluation, the brushes resolving them and the layers selected: one program a sheet while its
- * evaluation lives, so the poses kept per program (painting-pose.ts) are met again.
+ * Compiled selections by evaluation, the brushes resolving them, and the layers selected with their boil epochs: one
+ * program a sheet while its evaluation lives, so the poses kept per program (painting-pose.ts) are met again.
  */
 const compiledSelections = new WeakMap<PaintingEvaluation, WeakMap<PaintingBrushOf, Map<string, PaintingSelectionCompiled>>>();
 
@@ -140,27 +150,26 @@ const compiledSelections = new WeakMap<PaintingEvaluation, WeakMap<PaintingBrush
  * card and a scene layer under the owner glazes over it. Memoised per `brushOf`, selection and epochs.
  */
 export function compilePaintingSelection(evaluation: PaintingEvaluation, brushOf: PaintingBrushOf, { layers, reseed }: PaintingSelectionCompileOptions = {}): PaintingSelectionCompiled {
-  const selected = paintingSelectedLayers(evaluation.tree, layers);
-  const epochs = [...(reseed ?? [])].filter(([, epoch]) => epoch !== 0).toSorted(([a], [b]) => a - b);
-  const key = `${[...selected].toSorted((a, b) => a - b).join(',')}|${epochs.map(([layer, epoch]) => `${layer}@${epoch}`).join(',')}`;
+  const selected = paintingSelectedLayers(evaluation.tree, layers), epochs = paintingLayerEpochs(evaluation.tree, reseed);
+  const key = `${[...selected].toSorted((a, b) => a - b).join(',')}|${[...epochs].map(([layer, epoch]) => `${layer}@${epoch}`).join(',')}`;
   let byBrushes = compiledSelections.get(evaluation);
   if (!byBrushes) compiledSelections.set(evaluation, (byBrushes = new WeakMap<PaintingBrushOf, Map<string, PaintingSelectionCompiled>>()));
   let bySelection = byBrushes.get(brushOf);
   if (!bySelection) byBrushes.set(brushOf, (bySelection = new Map<string, PaintingSelectionCompiled>()));
   const known = bySelection.get(key);
   if (known) return known;
-  const compiled = compileSelectedLayers(evaluation, brushOf, selected, reseed);
+  const compiled = compileSelectedLayers(evaluation, brushOf, selected, epochs);
   bySelection.set(key, compiled);
   return compiled;
 }
 
 function compileSelectedLayers(
-  evaluation: PaintingEvaluation, brushOf: PaintingBrushOf, selected: ReadonlySet<number>, reseed: ReadonlyMap<number, number> | undefined,
+  evaluation: PaintingEvaluation, brushOf: PaintingBrushOf, selected: ReadonlySet<number>, epochs: ReadonlyMap<number, number>,
 ): PaintingSelectionCompiled {
   const { tree } = evaluation;
   const sheets = paintingSheetOrders(tree, selected).flatMap((order, s): PaintingSheetCompiled[] => (s > 0 && order.layers.length === 0
     ? []
-    : [{ sheet: order.sheet, layers: order.layers.map(({ layer }) => layer), ownerChain: order.ownerChain, program: compilePaintingSheet(evaluation, order, brushOf, reseed) }]));
+    : [{ sheet: order.sheet, layers: order.layers.map(({ layer }) => layer), ownerChain: order.ownerChain, program: compilePaintingSheet(evaluation, order, brushOf, epochs) }]));
   const steps = tree.nodes.flatMap((place): StampSheetCompositeStep[] => {
     const sheet = sheets.findIndex((compiled) => compiled.sheet === place.sheet);
     if (sheet < 0) return [];
