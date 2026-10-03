@@ -22,6 +22,7 @@ import type { CompiledStampDeposit, CompiledStampFlood, CompiledStampMask } from
 import type { StampResolvedGeometry } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import { stampGridAt, type StampGrid } from '#lib/paint/painting/models/stamp-region.ts';
 import type { StampSheetAnchors } from '#lib/paint/painting/models/stamp-sheet-program.ts';
+import { StampSheetRefusal } from '#lib/paint/painting/models/stamp-sheet-schedule.ts';
 import { compilePaintingArea, paintingOuterRings, paintingRegionRings } from './painting-area-compile.ts';
 import type { AnyApplication, Amount, BrushRef, Charge, FillGeometry, Footprint, Mix, MixPart, Resist, Subpath } from './painting-document.ts';
 
@@ -98,7 +99,7 @@ export function compilePaintingFluid(id: string, reserves: readonly Footprint[],
   });
   resists.forEach(({ footprints, amount }, i) => footprints.forEach((footprint, j) => {
     const opId = `${id}/resists[${i}].footprints[${j}]`;
-    if (footprint.kind === 'region') throw new Error(`painting: ${opId} is a region, and wax is laid by a brush's marks: give it a stroke or stamps`);
+    if (footprint.kind === 'region') throw new StampSheetRefusal(`painting: ${opId} is a region, and wax is laid by a brush's marks: give it a stroke or stamps`);
     // Wax of no amount keeps all the contact: nothing to lay.
     if (amount > 0) lay({ id: opId, under: mask, kind: 'brushed', brushed: compileStampBrushedMask(opId, [paintingFootprintMark(footprint, brushOf)], { amount }) }, footprint);
   }));
@@ -133,7 +134,7 @@ export type PaintingDepositSetting = { id: string; wet: boolean; brushOf: Painti
  * to lift by, and on what compileDeposit refuses.
  */
 export function compilePaintingDeposit(application: AnyApplication, owner: string, { id, wet, brushOf }: PaintingDepositSetting): PaintingCompiledDeposit {
-  if (!wet && application.charge.kind !== 'paint') throw new Error(`painting: ${owner} ${application.charge.kind === 'lift' ? 'lifts' : 'lays water'} in a wash without wet history; do it in a wet wash`);
+  if (!wet && application.charge.kind !== 'paint') throw new StampSheetRefusal(`painting: ${owner} ${application.charge.kind === 'lift' ? 'lifts' : 'lays water'} in a wash without wet history; do it in a wet wash`);
   const brush = brushOf(application.brush), action = paintingAction(application.charge);
   const tool = { brush, diameter: application.diameterPx, ...(application.charge.kind === 'paint' && application.charge.opacityCap !== undefined && { opacity: application.charge.opacityCap }) };
   const fluid = compilePaintingFluid(id, application.reserves ?? [], application.resists ?? [], brushOf);

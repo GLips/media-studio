@@ -37,9 +37,7 @@ import {
 import type { StampRegionTexture } from './stamp-region-textures.ts';
 import { STAMP_UNIFORM_SLOT, type StampUniformArena } from './stamp-uniform-arena.ts';
 import { putStampWetLand, putStampWetPrepare, stampDryingWords, type StampWetField } from './stamp-wet-field.ts';
-import {
-  stampWetStagesOwnWetEdges, type StampLoadedWetStages, type StampWetStage, type StampWetStageContext, type StampWetStagePlans,
-} from './stamp-wet-stages.ts';
+import type { StampLoadedWetStages, StampWetStage, StampWetStageContext, StampWetStagePlans } from './stamp-wet-stages.ts';
 
 export type StampDepositTarget = { texture: GPUTexture; view: GPUTextureView };
 
@@ -83,8 +81,11 @@ export function stampPaperTooth(paper: StampPaintPaper, image: (asset: StampBrus
  */
 export type StampDepositBounds = { fluid: StampRegionTexture | null; within: { region: StampRegionTexture | null } | null; clipped: boolean };
 
-/** A wash deposit's landing, the wash's stages planned for its bank (its deposit stages run after it), and their seed. */
-export type StampDepositWet = { landing: StampWetLanding; plans: StampWetStagePlans; seed: number };
+/**
+ * A wash deposit's landing, the wash's stages planned for its bank (its deposit stages run after it), and their seed;
+ * `rimmed`, whether a drying's rim draws its wet edge, so its brush's own wet edges stand down.
+ */
+export type StampDepositWet = { landing: StampWetLanding; plans: StampWetStagePlans; seed: number; rimmed: boolean };
 
 /** A wash's preparation as it starts: its wetness, and its region and the fluid holding it off, null for none on the stage. */
 export type StampWashStart = { wetness: StampSeededPaintField<number>; region: StampRegionTexture | null; fluid: StampRegionTexture | null };
@@ -407,15 +408,16 @@ export function createStampDepositDrawing(device: StampPaintDevice, { stage, com
     const { trace, tooth, wet, bounds: { fluid, within, clipped } } = draw, { active } = loaded;
     // Where a stage rims the deposit's drying (the drying rim, stamp-wet-rim.ts), a brush's own wet edges would rim
     // each stroke again. Its Procreate rim goes, and Photoshop's pooling keeps its body, not its peak.
-    const washRims = !!wet && stampWetStagesOwnWetEdges(wet.plans, deposit);
+    const washRims = !!wet && wet.rimmed;
     const edgesOf = (layer?: StampActiveLayer<StampPaintImage>): [number, number, number, number] => (blurred && layer
       ? [washRims ? 0 : layer.rim?.rim ?? 0, layer.rim?.sharpness ?? 0, layer.burntEdge?.strength ?? 0, layer.burntEdge?.sharpness ?? 0] : [0, 0, 0, 0]);
     const mainGrain = active.main.canvasGrain, dualGrain = active.dual?.canvasGrain, tinted = loaded.tint !== null;
     const flags: StampCoverageFlag[] = [
       ...stampMarksCoverageFlags(loaded, tooth), ...(fluid ? ['masked' as const] : []), ...(within ? ['within' as const] : []),
       ...(deposit.kind === 'flood' ? ['flood' as const] : []),
-      // Only paint makes a clip base: water and a lift leave where a pass holds paint as it was.
-      ...(clipped ? ['clipped' as const] : []), ...(!clipped && deposit.action.kind === 'paint' ? ['clips' as const] : []),
+      // Only paint makes a clip base: water and a lift leave where a pass holds paint as it was. A clipped pass's paint
+      // makes one of its own beside the base it reads (the resolve's clip store).
+      ...(clipped ? ['clipped' as const] : []), ...(deposit.action.kind === 'paint' ? ['clips' as const] : []),
     ];
     dispatchStampCompute(device, encoder, depositPipeline(!!trace, !!wet), [
       slot((views) => {
@@ -507,6 +509,13 @@ export function createStampDepositDrawing(device: StampPaintDevice, { stage, com
       return painted;
     },
     drawStamps,
+    /**
+     * Lays `deposit`'s touch over `box` into the wet targets' touch, as its draw does: where its water reaches before
+     * the paper hardens it, for a schedule reading its core.
+     */
+    drawTouch(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loaded: StampLoadedDeposit, box: StampPixelBox) {
+      layMaxStamps(encoder, touchPipeline!, wetTargets!.touch, deposit, loaded, box);
+    },
     /** Writes into a Deposit at `views` what a brushed mask's mark's coverage resolves with on `tooth`, its flags too. */
     writeMarkCoverage(views: GpuUniformViews, marks: StampLoadedMarks, grainOffset: CompiledStampDeposit['grainOffset'], tooth: StampPaperTooth | null) {
       writeCoverage(views, marks, grainOffset, marks.resolveOrder, false, tooth)('flags', stampCoverageFlagWord(stampMarksCoverageFlags(marks, tooth)));

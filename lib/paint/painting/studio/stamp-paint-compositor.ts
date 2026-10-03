@@ -96,9 +96,9 @@ export type StampWashLayer = {
   layersOf: (deposit: CompiledStampDeposit) => number;
   /**
    * WGSL for `deposit`'s group, of layersOf(deposit) layers in its medium: `washPigmentMask(l)`, 1 on layer `l`'s
-   * pigment channels; `washPigmentTotal(v)` and `washOpen(v)`, a pixel's pigment and open share; and
-   * `washMoved(now, wasPigment)`, the pixel once a stage has moved its pigment total from `wasPigment` to `now`'s, its
-   * other channels as before the move.
+   * pigment channels; `washPigmentTotal(v)` and `washOpen(v)`, a pixel's pigment and open share; `washSettled(v)`, the
+   * pixel with its open share set to none; and `washMoved(now, wasPigment)`, the pixel once a stage has moved its
+   * pigment total from `wasPigment` to `now`'s, its other channels as before the move.
    */
   movedWgsl: (deposit: CompiledStampDeposit) => string;
   /**

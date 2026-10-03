@@ -56,15 +56,21 @@ function* brushedUnder(mask: CompiledStampMask | null | undefined): Generator<Co
   for (let op = mask; op; op = op.under) if (op.kind === 'brushed') yield op.brushed;
 }
 
+/** Every brushed mask under any of `fluids`' chains, each once. */
+export function stampBrushedMasksUnder(fluids: Iterable<CompiledStampMask | null | undefined>): CompiledStampBrushedMask[] {
+  const found = new Set<CompiledStampBrushedMask>();
+  for (const fluid of fluids) for (const brushed of brushedUnder(fluid)) found.add(brushed);
+  return [...found];
+}
+
 /** Every brushed mask any deposit or preparation of `painting` lands under, each once. */
 export function stampPaintingBrushedMasks(painting: CompiledStampPaint): CompiledStampBrushedMask[] {
-  const found = new Set<CompiledStampBrushedMask>();
-  for (const pass of painting.groups.flatMap((group) => group.passes)) {
+  return stampBrushedMasksUnder(painting.groups.flatMap((group) => group.passes).flatMap((pass) => {
     const deposits = pass.kind === 'dry' ? pass.deposits : pass.wash.schedule.flatMap((step) => (step.kind === 'deposit' ? [step.deposit] : []));
-    for (const deposit of deposits) for (const brushed of brushedUnder(deposit.mask)) found.add(brushed);
-    if (pass.kind === 'wash') for (const brushed of brushedUnder(pass.wash.preparation?.held)) found.add(brushed);
-  }
-  return [...found];
+    const masks: (CompiledStampMask | null | undefined)[] = deposits.map((deposit) => deposit.mask);
+    if (pass.kind === 'wash') masks.push(pass.wash.preparation?.held);
+    return masks;
+  }));
 }
 
 /**

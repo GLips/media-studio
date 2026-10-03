@@ -9,6 +9,7 @@
 import { PAINT_MEDIA, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { PaintPigmentAppearance } from '#lib/paint/materials/models/paint-pigment.ts';
 import type { StampSheetEntry, StampSheetFilm, StampSheetPrewet, StampSheetProgram, StampSheetWash } from '#lib/paint/painting/models/stamp-sheet-program.ts';
+import { StampSheetRefusal } from '#lib/paint/painting/models/stamp-sheet-schedule.ts';
 import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
 import { compilePaintingArea } from './painting-area-compile.ts';
 import { compilePaintingDeposit, compilePaintingFluid, paintingMixAppearances, type PaintingBrushOf } from './painting-deposit-compile.ts';
@@ -38,11 +39,11 @@ export function compilePaintingRootSheet(evaluation: PaintingEvaluation, brushOf
   const { document: paintingDocument, tree } = evaluation;
   const [order, ...others] = paintingSheetOrders(tree);
   const elsewhere = others.find(({ entries }) => entries.length > 0);
-  if (elsewhere) throw new Error(`painting: ${evaluation.source} paints on ${paintingSheetName(elsewhere.sheet)}, and the solver paints only the root's sheet so far`);
+  if (elsewhere) throw new StampSheetRefusal(`painting: ${evaluation.source} paints on ${paintingSheetName(elsewhere.sheet)}, and the solver paints only the root's sheet so far`);
   const clocked = order.entries.find(({ orderTime }) => orderTime !== null);
   if (clocked) {
     const wash = tree.layers[order.layers[clocked.layer].layer].node.washes[clocked.wash];
-    throw new Error(`painting: ${evaluation.source}'s wash ${wash.key} is clocked, and the solver paints unclocked washes so far`);
+    throw new StampSheetRefusal(`painting: ${evaluation.source}'s wash ${wash.key} is clocked, and the solver paints unclocked washes so far`);
   }
   const reads = paintingEntryReads(tree, order);
   const sheetWashes = paintingSheetWashes(tree, order);
@@ -57,7 +58,7 @@ export function compilePaintingRootSheet(evaluation: PaintingEvaluation, brushOf
   });
   const washes = sheetWashes.map(({ layer, wash, place, node }): StampSheetWash => {
     const wet = node.wetHistory !== false, clipTo = node.clipTo === undefined ? null : washIndex.get(`${layer}/${place.node.washes.findIndex(({ key }) => key === node.clipTo)}`);
-    if (clipTo === undefined) throw new Error(`painting: ${node.key} is clipped to ${node.clipTo}, which paints nothing on this sheet`);
+    if (clipTo === undefined) throw new StampSheetRefusal(`painting: ${node.key} is clipped to ${node.clipTo}, which paints nothing on this sheet`);
     const prewet = wet && node.prewet ? compilePaintingPrewet(node.prewet, `${layer}/${wash}/prewet`, node.key, brushOf) : null;
     return { film: layer, name: node.key, prewet, rim: wet ? node.rim ?? 1 : 0, clipTo, wetHistory: wet };
   });

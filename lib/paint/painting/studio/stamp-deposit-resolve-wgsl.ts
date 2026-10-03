@@ -275,5 +275,9 @@ fn strokeBodyAt(pixel: vec2u, here: f32, reach: f32) -> f32 {
   let burnable = max(layerCoverage(pixel), clamp(m, 0.0, 1.0)) * keep * u.opacity;
   let rims = vec2f(clamp(burnt, 0.0, 1.0) * burnable, clamp(dualBurnt, 0.0, 1.0) * burnable);
   ${wet ? WET_LAND_WGSL : `layDeposit(pixel, coverage, rims, tooth, at, ${compositor.reads.press ? 'pressAt(pixel)' : '1.0'});`}
-  if ((u.flags & CLIPS) != 0u) { textureStore(clip, pixel, vec4f(coverage) + clipped * (1.0 - coverage)); }
+  // The clip base is r. A clipped pass reads it and lays its own paint's in g, a base for a wash clipping to it.
+  if ((u.flags & CLIPS) != 0u) {
+    let laid = vec4f(coverage) + clipped * (1.0 - coverage);
+    textureStore(clip, pixel, select(laid, vec4f(clipped.r, laid.g, clipped.ba), (u.flags & CLIPPED) != 0u));
+  }
 }`;

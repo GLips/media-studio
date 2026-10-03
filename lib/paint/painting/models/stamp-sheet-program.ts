@@ -13,7 +13,7 @@ import type { CompiledStampArea } from './stamp-area.ts';
 import type { CompiledStampBoundary } from './stamp-area-boundaries.ts';
 import type { CompiledStampBrushedMask } from './stamp-brushed-mask.ts';
 import type { StampSeededPaintField } from './stamp-paint-field.ts';
-import type { CompiledStampPaintAction } from './stamp-paint-action.ts';
+import type { CompiledStampAction, CompiledStampPaintAction } from './stamp-paint-action.ts';
 import type { CompiledStampDeposit, CompiledStampMask, StampMixedPainting, StampMixedPass } from './stamp-paint-recipe-compile.ts';
 import type { StampPigmentMixing } from './stamp-pigment-paint.ts';
 import type { StampPaintPaper } from './stamp-paint-recipe-types.ts';
@@ -127,6 +127,9 @@ function movedField<T>(field: StampSeededPaintField<T>, by: StampSheetPose): Sta
   return field;
 }
 
+/** `action` moved by `by`: a paint's material field, which a linear or radial one lays by place. */
+const movedAction = (action: CompiledStampAction, by: StampSheetPose): CompiledStampAction => (action.kind === 'paint' ? { ...action, material: movedField(action.material, by) } : action);
+
 const movedBrushed = (brushed: CompiledStampBrushedMask, by: StampSheetPose): CompiledStampBrushedMask => ({
   ...brushed, id: `${brushed.id}|moved${by.x},${by.y}`,
   marks: brushed.marks.map((mark) => ({ ...mark, stamps: movedStamps(mark.stamps, by), dualStamps: movedStamps(mark.dualStamps, by) })),
@@ -151,15 +154,15 @@ function movedMask(mask: CompiledStampMask | null, by: StampSheetPose, anchored:
 }
 
 /**
- * `entry`'s deposit posed by `by`: its stamps, a flood's barrier, scale and load, its `within` areas and its fluid's
- * ops moved, all but `anchors`. At rest (0, 0) it's the deposit itself. `moved` shares posed fluid between entries.
+ * `entry`'s deposit posed by `by`: its stamps, its paint's field, a flood's barrier, scale and load, its `within` areas
+ * and its fluid's ops moved, all but `anchors`. At rest (0, 0) it's the deposit itself. `moved` shares posed fluid between entries.
  */
 export function stampSheetDepositPosed(entry: Pick<StampSheetEntry, 'deposit' | 'anchors'>, by: StampSheetPose, moved: Map<CompiledStampMask, CompiledStampMask>): CompiledStampDeposit {
   const { deposit, anchors } = entry;
   if (by.x === 0 && by.y === 0) return deposit;
   const common = {
     ...deposit,
-    stamps: movedStamps(deposit.stamps, by), dualStamps: movedStamps(deposit.dualStamps, by),
+    stamps: movedStamps(deposit.stamps, by), dualStamps: movedStamps(deposit.dualStamps, by), action: movedAction(deposit.action, by),
     mask: movedMask(deposit.mask, by, anchors.masks, moved),
     ...(deposit.within && { within: deposit.within.map((area, k) => (anchors.within.has(k) ? area : stampAreaMoved(area, by))) }),
   };

@@ -33,7 +33,7 @@ import { checkStampLensSources, createStampLensFrames, createStampLensSourceLaye
 import { gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { STAMP_WET_STAGES } from './stamp-wet-stage-list.ts';
 import {
-  planStampWetStages, stampWetStageReach, type StampLoadedWetStages, type StampWetBank, type StampWetStage, type StampWetStagePlans, type StampWetWall,
+  planStampWetStages, stampWetStageReach, stampWetStagesOwnWetEdges, type StampLoadedWetStages, type StampWetBank, type StampWetStage, type StampWetStagePlans, type StampWetWall,
 } from './stamp-wet-stages.ts';
 import { STAMP_WET_FIELD_FORMATS, stampWetField } from './stamp-wet-field.ts';
 import {
@@ -897,7 +897,9 @@ function rendererOnSurface({
     // A flood is within its barrier, its region in the deposit's.
     const isWithin = deposit.kind === 'flood' || !!pass.within || !!deposit.within;
     const bounds = { fluid: deposit.mask ? regions.fluids.get(deposit.mask) ?? null : null, within: isWithin ? { region: barrierOf(regions, deposit) } : null, clipped: !!pass.clipTo };
-    const wet = loaded.wash && { landing: home.landings.get(deposit)!, plans: stages, seed: paintPigmentSeed(stampBoilSeed(loaded.identity.id, epoch)) };
+    const wet = loaded.wash && {
+      landing: home.landings.get(deposit)!, plans: stages, seed: paintPigmentSeed(stampBoilSeed(loaded.identity.id, epoch)), rimmed: stampWetStagesOwnWetEdges(stages, deposit),
+    };
     const trace = traced ? { buffer: frameTrace!.buffer, offset: traced.offset, crop: traced.request.crop, order: traced.order } : null;
     return { paintAt, tooth: paperTooth, bounds, wet, trace };
   }

@@ -57,6 +57,11 @@ fn washPigmentTotal(v: array<vec4f, ${layers}>) -> f32 {
   return total;
 }
 fn washOpen(v: array<vec4f, ${layers}>) -> f32 { return v${at}; }
+fn washSettled(v: array<vec4f, ${layers}>) -> array<vec4f, ${layers}> {
+  var settled = v;
+  settled${at} = 0.0;
+  return settled;
+}
 fn washMoved(now: array<vec4f, ${layers}>, wasPigment: f32) -> array<vec4f, ${layers}> {
   var moved = now;
   let total = washPigmentTotal(now);

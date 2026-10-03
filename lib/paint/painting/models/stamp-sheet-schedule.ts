@@ -32,6 +32,21 @@ export const STAMP_SHEET_REBASE = 2 ** 13;
 /** Water a bloom must bring over the paper's wetness to spread: the bloom stage's least surplus. */
 export const STAMP_SHEET_BLOOM_SURPLUS = STAMP_BLOOM_SURPLUS.least;
 
+/**
+ * What a solve won't paint as written: the document's to change, not an engine fault. Its message is the author's,
+ * so a tool prints it alone, without a stack.
+ */
+export class StampSheetRefusal extends Error {}
+
+/**
+ * What a solve decided for an entry, model s: τ0, the earliest it could land; when it landed; whether a drying closed
+ * as its wash started (before its prewet) and as it landed; for its wash's last, when all its wash wetted has set
+ * (null for another entry, or a wash that wetted nothing); and what its author should hear.
+ */
+export type StampSheetDecision = {
+  tau0: number; tau: number; closes: { start: boolean; landing: boolean }; washSet: number | null; warnings: readonly string[];
+};
+
 /** The earliest time at or after `x` on the 1 ms grid anchored at `tau0`; `tau0` itself when `x` isn't past it. */
 export function stampSheetGrid(tau0: number, x: number): number {
   if (!(x > tau0)) return tau0;

@@ -6,7 +6,8 @@
 //
 // Negative space: a drying is the whole wash's, never a region's that has set while the rest is wet.
 
-import type { StampWashDrying, StampWetness } from './stamp-wetness.ts';
+import type { CompiledStampDeposit } from './stamp-paint-recipe-compile.ts';
+import type { StampWashDrying, StampWetLanding, StampWetness } from './stamp-wetness.ts';
 
 /** The widest band a rim draws pigment from, px: past it the kernels' taps grow and a real rim's band is no wider. */
 export const STAMP_DRYING_RIM_MOST_BAND = 32;
@@ -52,10 +53,22 @@ export function stampDryingRimBound(drying: Pick<StampWashDrying, 'deposits' | '
   if (!painted.length || !landed.length) return null;
   const widest = landed.reduce((most, { deposit, landing }) =>
     (deposit.action.kind === 'lift' || (landing.water <= 0 && !landing.finds.wet) ? most : Math.max(most, deposit.diameter)), 0);
-  // A wash is one group's, so its paint is in one medium.
-  const { spread, sheen: { damp } } = wetness.landings.get(painted[0])!.medium.wetting;
+  // A wash is one group's, so its paint is in one medium; an application may hold its spread lower (maxSpreadPx).
+  const { sheen: { damp } } = wetness.landings.get(painted[0])!.medium.wetting;
+  const spread = Math.max(...painted.map((deposit) => wetness.landings.get(deposit)?.medium.wetting.spread ?? 0));
   const wetShare = stampDryingRimWetShare(drying.wettest, damp);
   return { painted, spread, damp, wetShare, band: stampDryingRimBand(spread, widest, wetShare) };
+}
+
+/**
+ * Whether a drying's rim will cover `deposit`'s wet edge, decided as it lands, from it alone: paint carrying water
+ * whose own band (as a drying of it alone would draw it) reaches STAMP_DRYING_RIM_LEAST_BAND. The drying closing over
+ * it is at least as wet and wide, so its rim is drawn there; its brush's own wet edges then stand down.
+ */
+export function stampDryingRimCoversLanding(deposit: Pick<CompiledStampDeposit, 'action' | 'diameter'>, landing: Pick<StampWetLanding, 'water' | 'medium'>): boolean {
+  if (deposit.action.kind !== 'paint' || !(landing.water > 0)) return false;
+  const { spread, sheen: { damp } } = landing.medium.wetting;
+  return stampDryingRimBand(spread, deposit.diameter, stampDryingRimWetShare(Math.min(1, landing.water), damp)) >= STAMP_DRYING_RIM_LEAST_BAND;
 }
 
 /**
