@@ -16,16 +16,17 @@ every sheet of a document, clocked washes and their prefixes included, each own 
 seen through `studio paint still` and `studio paint check --solve`, each at a scene second with `--at`; posing before
 painting by a similarity (a place, a turn, a scale), the marks mapped and their fields, ragged edges and noise read
 where they were planned; and a layer's film read back through a selection's prefix, its coverage or its picture
-(`paintingFilmCoverage`, `paintingFilmPicture`). The
-shot's presentation is built as models in `lib/paint/shot/models/`, checked but not yet drawn: a dissolve's weighted
-selections, the drawable order (`shot-plan.ts`), a path mask's reveal by inked length and the `alphaOf` graph
-(`shot-masks.ts`), instanced items' batches and travel (`shot-instances.ts`), pin and cover lays through the camera
-and a pin's measured centres (`shot-placement.ts`), visibility's checks and the groups it isolates
-(`shot-visibility.ts`), a warm span's frames and moments (`shot-warm.ts`), and the cost report (`shot-cost-report.ts`,
-tabled by `studio profile --costs`). Not yet built: `<PaintedShot>` and
-`<PaintedShotCanvas>`, and the passes drawing masks, items and pins. Until they land, a project can write, check and
-see its sources as stills and build its `PaintedShotProps`, but no scene shows them. **NEW** marks behaviour the brush
-engine (the recipe path, docs/brush-engine.md) lacks too; unmarked behaviour is how it already paints.
+(`paintingFilmCoverage`, `paintingFilmPicture`).
+
+`<PaintedShot>` and `<PaintedShotCanvas>` draw a shot in a scene: painted, picture and three planes far to near
+under the camera and its lens, on one canvas or several among HTML; occurrences and their motion (nodes hang from
+their nearest enclosing node, a paintless group's included, clocks chaining); visibility, a group's fading all it
+holds as one; rigs (Composition), a cel swap re-solving nothing; and per-plane `clock` and `sourceClock` holds. Built
+as models, checked but not yet drawn, so a shot naming them is refused as it loads: dissolves between their ends,
+path and `alphaOf` masks (`shot-masks.ts`), instanced planes (`shot-instances.ts`), pin and cover lays
+(`shot-placement.ts`), `warm` (`shot-warm.ts`) and the cost report (`shot-cost-report.ts`). Painted textures for
+three.js objects (`paintedTextures`) are refused too. **NEW** marks behaviour the brush engine (the recipe path,
+docs/brush-engine.md) lacks too; unmarked behaviour is how it already paints.
 
 ## The model
 
@@ -103,7 +104,8 @@ export const meadowShot: PaintedShotProps = {
     // Ease sits on the key it eases into.
     plays: [paintCameraPlay({ kind: 'move', keys: [{ at: 0 }, { at: 5, dolly: 0.08, ease: 'inOut' }] }, { clock: { at: 0 }, origin: 'push' })],
   },
-  planes: [{ id: 'meadow', depth: 1, clock: { hold: 6 }, source: (moment) => landscapeAt(hillTopAt(moment.at)) }],
+  // The source reads its own held moment: the hill steps on sixes while anything the plane moves keeps the frame's.
+  planes: [{ id: 'meadow', depth: 1, sourceClock: { hold: 6 }, source: (moment) => landscapeAt(hillTopAt(moment.at)) }],
   motion: {
     nodes: [cloud],
     plays: [paintMotionPlay(cloud, { kind: 'place', keys: [{ at: 0, x: 0, y: 0 }, { at: 4, x: 60, y: -4, ease: 'inOut' }] }, {
@@ -114,9 +116,9 @@ export const meadowShot: PaintedShotProps = {
 };
 ```
 
-This typechecks against today's types. Once `<PaintedShot>` lands, the scene component is
-`({ t }: { t: number }) => <PaintedShot shot={meadowShot} t={t} />`, wrapped as a project's other scenes are; the shot
-needs only `t`, in scene seconds.
+The scene component is `({ t }: { t: number }) => <PaintedShot shot={meadowShot} t={t} />`, wrapped as a project's
+other scenes are; the shot needs only `t`, in scene seconds. A shot refuses `warm` as it loads until warming is drawn
+(What's built): leave it out to see this scene today.
 
 What lands, and why it looks as it does:
 
@@ -481,7 +483,7 @@ sheet a crayon node declared is refused: crayon keeps no wet history.
   its first application `on: 'dry'`. A layer boundary dries nothing.
 - **Showing a wash partway**: a selection's `at` shows its sheet's clocked applications scheduled at or before it,
   every layer's film finished there: `layersOf(p, ['landscape'], { at: moment.at })`. Each step shows dry while the
-  next still lands into the wet history. Each distinct prefix is one solve; a plane `clock: { hold }` bounds how many.
+  next still lands into the wet history. Each distinct prefix is one solve; a plane's `sourceClock: { hold }` bounds how many.
   A held moment floors to its hold's grid: on threes, frames 0, 1 and 2 all show frame 0.
 - **Warming**: `warm: {from, to}` on the shot solves the films of the render frames from `from` to `to` (at the
   composition's fps), and of the moments they sample, before the first frame: prefixes, poses, property values,
@@ -587,7 +589,7 @@ shows what a property step re-solves; the cost report counts what each frame and
 | 18 | crayon pressed hard | paint charge `burnish: true` | crayon layers only |
 | 19 | hill hiding a far range | the far range's applications take `reserves: [NEAR_HILL]` | inset the shape by the overlap you want |
 | 20 | sponge-out through what's behind | a lift wash added to the layer behind | lifts never cross layers |
-| 21 | wash painted on screen | clocked wash on a sheet at a `dryingScale`; plane source `(m) => layersOf(p, keys, {at: m.at})`; `clock: {hold: 2}`; `warm: {from, to}` | each step shows dry; dissolve between prefixes to smooth the jump |
+| 21 | wash painted on screen | clocked wash on a sheet at a `dryingScale`; plane source `(m) => layersOf(p, keys, {at: m.at})`; `sourceClock: {hold: 2}`; `warm: {from, to}` | each step shows dry; dissolve between prefixes to smooth the jump |
 | 22 | a raindrop joining a puddle | on the puddle's sheet (its wash, or a clocked layer of the drop's own, at the sheet's one `dryingScale`), the drop's water stamp `at` its landing, then its paint with no `on` | a falling drop on another plane never joins by overlap |
 | 23 | falling rain | an instanced plane: drop variants, `instances(m)` placing each under a lasting key | finished paint moving: no wet interaction; each drop blurs along its own fall |
 | 24 | collage cut-out sliding | the layer with `sheet: {kind: 'own', paper}`; motion on its occurrence | its grain travels with it, as paper does |
@@ -628,7 +630,7 @@ plane's paint must cover what the camera shows of it: the camera build reports a
 
 | Concept | How | Notes |
 |---|---|---|
-| plane | `PlaneProps {id, depth, source, lay?, clock?, masks?, canvas?}` | farther first; equal depths keep written order |
+| plane | `PlaneProps {id, depth, source, lay?, clock?, sourceClock?, masks?, canvas?}` | farther first; equal depths keep written order |
 | back and nearer planes | the farthest non-instanced plane is the back, fixed at load: painted on paper, or a picture held everywhere. Nearer painted planes are clear film; picture and three planes lay premultiplied over what's behind | across painted planes: the white/black approximation `C + T × behind`, so a strong coloured glaze over coloured paint reads light. Nearer paint keeps its own grain (Sheets) |
 | ground | a selection's `ground`: paper on the back, transparent elsewhere, when left out | the back is opaque, or says `ground: 'transparent'` with HTML before the first canvas, which shows through. On paper, a back smaller than the frame still covers it: the paper runs on past the document, mirrored |
 | selection | `layersOf(evaluation, keys, {ground?, at?})` | layer or group keys; groups include their descendants; composed in document order; an own sheet's layers with their owner, on one plane |
@@ -640,7 +642,7 @@ plane's paint must cover what the camera shows of it: the camera build reports a
 | moving lay | `lay: (m) => …`, `reach?` (the stage box it stays in) | without `reach` the camera checks it as reaching everywhere |
 | pin to HTML | `lay: {kind: 'pin', points: [{sourcePx, element}], at?}`, one point or two | one moves the plane; two also scale and turn it. Measured in frame px once laid out and on resize, nothing drawn until then, checked where it lies (**NEW**). Hold the refs in the scene component (`useRef`) and memoise the shot on them |
 | cover the frame | `lay: {kind: 'cover', box, at?}` | centres the box where the frame's centre lies and scales it about its centre, unturned, until it holds the frame's corners, through the shot's own camera at `at` (**NEW**). A rolled camera grows the box to hold its turned frame |
-| hold | plane `clock: {hold: n}` | every callback reads the held moment, floored to the hold's grid; the camera still moves through the shutter |
+| hold | plane `clock: {hold: n}` holds its presentation and motion: its lay, visibility and rig poses, and its nodes' plays; `sourceClock: {hold: n}` holds what `source` reads (its prefix, property values, dissolve weights) | each callback reads its clock's held moment, floored to the hold's grid. Both start from the frame's moment; neither holds the other's. The camera still moves through the shutter |
 | masks | `path` (a band `widthPx` wide in all, round ends, `softPx` 0 or a ramp that far inside its edge; `revealPx` 0 shows nothing, `shotPathInkedLength(subpaths)` all of it), `alphaOf` (another drawable's coverage, partial alpha included, where it lies this frame: a plane by id, any kind, or a painted plane's occurrence; an instanced plane's items are read through their plane) | both **NEW**, on painted planes only. They cut the plane's paint and the own-sheet paper it shapes; the ground stays whole. To leave a layer unmasked, put it on a second plane at the same depth. No mask reads its own plane, through any chain |
 | instances | `{kind: 'instanced', depths: {near, far}, variants, instances(m), reach?}` | each item lays its variant as a plane at its depth (`lay` from the variant's document px; clear outside its paint), depth-sorted with every drawable, planes first on ties, all nearer than the back. A key is one item's lifetime: the same key at the shutter's two ends blurs the item along its own travel; a key missing at either end draws it unblurred; a recycled item takes a new key. Items take no motion nodes (**NEW**) |
 | dissolve | `dissolve(a, b, k)`, nestable | blends the two pictures in the plane's own form (the back's opaque colour, a nearer plane's colour and transmittance, premultiplied RGBA on a later canvas), never their pigment; its occurrences are both sides', moved alike; no rigs inside (**NEW**) |
@@ -770,9 +772,10 @@ in its parent's frame about its pivot (a root's, the group node's pivot); `bend`
 its pivot to its farthest paint at rest; `cel` shows another of its cels. Parts left out rest on their first cel.
 Views (whole-body drawings a joint can't reach) are groups switched by `visibility`. Every cel and view is painted,
 shown or not, into its sheet's water: one painted while another is wet mingles with it, and stays mingled when that
-one is hidden. To paint each apart, give each later cel's or view's first application `on: 'dry'`. The pose is read
-at the node's held moment (its own hold, else its plane's). Boil wobbles finished paint: on an own sheet, the rest
-picture before the rig bends it; on shared paper, the posed film. No mirrors.
+one is hidden. To paint each apart, give each later cel's or view's first application `on: 'dry'`. A hidden cel
+stays in its sheet's program, only not laid, so a swap re-solves nothing. The pose is read at the node's held
+moment (its own hold, else its plane's). Boil wobbles finished paint: on an own sheet, the rest picture before the
+rig bends it; on shared paper, the posed film. No mirrors.
 
 ## Checking and diagnostics
 
@@ -897,8 +900,10 @@ A refusal prints alone, after the check's summary, and fails the run. What the s
 | `glaze: at 6 s, on 'dry' holds over 80% of its core there` | a fixed `at` whose `on` doesn't hold then (for `damp`, an upper bound) | move the `at`, or drop the `on` |
 | `painting: glint lifts in a wash without wet history, and the solver lifts only in a wet wash so far` | what this solver doesn't paint yet | lift in a wet wash, or check it without `--solve` |
 
-With `<PaintedShot>`, the solve adds, per frame and warmed span, the cost report (evaluations, cache hits and misses,
-solves by sheet from the first application re-run, decisions reused, uploads, bytes kept); a shot adds its own: a bad
-rig (`meadow/heron is rigged: it takes no pins, sway or flutter`, `heron's layer eye lies in no part's cels`), a pose
-folding paint (warning), a plane whose selection changes (`plane meadow showed landscape, cloud at load and landscape
-now`), the camera build's problems and `paintChannelConflicts`' channel conflicts.
+`<PaintedShot>` refuses, as it loads, every problem at once: its sources' (as above), a bad rig (`meadow/heron is
+rigged: it takes no pins, sway or flutter`, `meadow/eye lies under rigged meadow/heron and in no part's cels`), the
+camera build's problems and `paintChannelConflicts`' channel conflicts. A frame fails on a source callback's
+selection with a problem, or one whose occurrences differ from its first (`shot: plane meadow's source at 2 s shows
+meadow/landscape, and its first showed meadow/landscape, meadow/cloud: …`). The cost report, per frame and warmed
+span (evaluations, cache hits and misses, solves by sheet from the first application re-run, decisions reused,
+uploads, bytes kept, and warnings such as a pose folding paint), comes with warming (What's built).

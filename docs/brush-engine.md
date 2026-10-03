@@ -6,13 +6,13 @@ painted brush comes to the app's own, the studies a person judges, and the gate 
 feature under `lib/paint/`, each importing only those below it:
 
 ```
-shot               → document, animation, rig, three-layers, painting, picture/lens, picture/profiling
+shot               → document, animation, rig, three-layers, style, painting, brush, picture/lens, picture/profiling
 document           → style, painting, materials, brush
 animation          → painting
 rig                → painting
 brush-fidelity     → brush-packs, photoshop-brushes, procreate-brushes, painting, brush
 studies            → style, brush-packs, painting, materials, brush
-gate               → document, brush-packs, painting, materials, brush
+gate               → shot, document, brush-packs, painting, materials, brush
 style              → brush-packs, painting, materials, brush
 brush-packs        → photoshop-brushes, procreate-brushes, materials, brush, platform/zip
 photoshop-brushes  → procreate-brushes, brush
@@ -425,14 +425,34 @@ each form a plane's picture takes, so one weighted sum), and `paintedSourceProbl
 a plane's selection, an own sheet split among them (`shot-selection.ts`); and `PaintedShotProps` (`shot-props.ts`)
 is the shot itself, its planes, motion, rigs and camera in the engine's shapes. A drawable is named by plane id or
 occurrence key, `<plane>/<key>` (`shot-occurrences.ts`), and every frame draws its planes and instanced items far
-to near, planes first on ties (`shot-plan.ts`). Its presentation, as models the passes will draw from: a path
+to near, planes first on ties (`shot-plan.ts`).
+
+`PaintedShot` (`studio/painted-shot.tsx`) is a shot in a scene, beside `StampPainting`: one device owner over its
+canvases, the first opaque and each `PaintedShotCanvas` after it premultiplied. `shot-compile.ts` checks the props
+as they load, every problem at once: planes far to near, each painted plane's occurrences from its first evaluation
+(read through its `sourceClock`), the rigs, visibility and motion over them, and the camera built over each plane's
+reach (`shot-reach.ts`). Motion (`shot-motion.ts`) hangs each node from its nearest enclosing node, a paintless
+group's too, its clock chained under its parents' and the plane's `clock`. `shot-frame-plan.ts` reads a plane at one
+moment: its selection at its source moment, its node poses, boil epochs, visibility and rig poses. A rig
+(`shot-rigs.ts`) whose group owns its sheet is drawn as pieces: a cel layer of its shown cels
+(`paint-rig-cel-layer.ts`), cut by ownership and posed through three.js meshes into colour and motion
+(`studio/shot-rig-pieces.ts`); any other rig poses its cels' marks before the solve, a skinned cel by its skin mesh.
+A hidden cel stays in its sheet's program and isn't laid, so a cel swap re-solves nothing. `studio/shot-renderer.ts`
+solves each painted plane once a frame (`studio/shot-painted-plane.ts`, through `painting-sheets-solve.ts`), then at
+each exposure lays its sheets through lattices (`shot-sheet-lays.ts`, `shot-lattice.ts`, laid by
+`studio/shot-sheets-lay.ts` over `stamp-lattice-pass.ts`): ground, then each card and film where its owners and the
+plane's place put it, a pieces rig's picture at its card by the compositor's `layPicture`, a faded group's span mixed
+back by its visibility (`studio/shot-group-pass.ts`). Picture and three planes are the old path's sources, laid
+through `stamp-lens-source-layers.ts`; they read no painted textures yet.
+
+Its presentation, as models the passes will draw from, refused by a shot's load until they're drawn: a path
 mask's capsules for the first `revealPx` of inked length, pen-ups adding none, and the `alphaOf` graph, checked
 acyclic and sorted so each read plane composites first (`shot-masks.ts`); an instanced plane's items batched by
 variant and stepped sigma, and paired by key across the shutter (`shot-instances.ts`); pin and cover lays found
 through the inverse of the camera's plane view at their `at` (`paintPlaneViewAt`, `paintSimilarityThrough`), and a
-DOM box's centre in frame px (`shot-placement.ts`); visibility's keys and range, and the group occurrences that
-composite on their own (`shot-visibility.ts`); the frames and held moments a `warm` span reads (`shot-warm.ts`); and
-the cost report. Its counts are painting's (`painting/models/stamp-paint-costs.ts`, one set of names the document,
+DOM box's centre in frame px (`shot-placement.ts`); the frames and held moments a `warm` span reads (`shot-warm.ts`);
+and the cost report. Visibility's keys and range, and the group occurrences that composite on their own
+(`shot-visibility.ts`), are drawn. The cost report's counts are painting's (`painting/models/stamp-paint-costs.ts`, one set of names the document,
 solver, caches and shot all count into); the shot logs a frame's and a warm's under its labels
 (`shot-cost-report.ts`) through `picture/profiling`'s costs channel, which knows nothing of paint, so
 `studio profile --costs` tables any drawing's counts.
@@ -475,7 +495,12 @@ earlier film, a foot's charge mingling only where it touches wet shallows and no
 prefix played forward matching a fresh solve of it (one resuming from checkpoints that hold a clip's base and a
 parked coverage), the reductions exact at 8192², a heron's paper (`paper/heron`, `stamp-gate-paper-heron.ts`:
 moved, the grain under its body's paint stays and its wing's cut-out takes its own along; turned and grown, its body
-lands where the pose puts it), and three stills (`solved/`) accepted by eye. Pre-commit runs it on the staged tree when a
+lands where the pose puts it), and three stills (`solved/`) accepted by eye. The shot's cases (`stamp-gate-shots.ts`)
+draw through the shot's renderer: a rigged paper heron, its neck skinned to its body on the scene's sheet, bent, then
+swapped to its lowered cel with nothing solved, then faded halfway as one group, lying between it shown and hidden
+with nothing solved, and reeds owning their sheet drawn as pieces, matching that sheet laid unrigged at rest away from
+a 1.5 px edge band; and the wet-contact foot posed by a rig, resuming its sheet's
+solve from its checkpoints. Each shot's frame is a baseline (`shot/`) accepted by eye. Pre-commit runs it on the staged tree when a
 path it covers changes; no adapter, a timeout
 or a difference fails the commit. Public baselines live in `harness/fixtures/stamp-paint/`, a pack's brushes' in
 `work/validation/stamp-paint/` (`stamp:gate -- private run`). A baseline changes only by `update <ids> --reason …`,
