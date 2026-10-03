@@ -36,3 +36,6 @@
 - Subagents that draw (painting a picture, posing, render-look-adjust loops, tuning a look by eye) run on Sonnet
   (`model: "sonnet"`): drawing is many short look-and-respond turns, and faster, cheaper turns buy more iterations.
   Design, engine code and review stay on the default model.
+- The painting engine is in flux: renders may shift a little between runs and between commits, and that's fine. Don't
+  chase byte-identical output or prove a change leaves images untouched. Judge by eye at delivery size, accept moved
+  baselines when they look right, and save repeatability work for differences a viewer would notice.
