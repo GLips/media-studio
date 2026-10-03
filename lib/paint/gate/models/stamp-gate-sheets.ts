@@ -1,7 +1,8 @@
-// stamp-gate-sheets.ts: the gate's sheet solves (ENGINE 9, tests 3, 6's sheets, 7 and 8): painting documents
-// compiled and solved forward on the GPU, held to the wet laws' closed forms on the 1 ms grid, to what an appended
-// application, a posed group or a separate sheet may change, and the reductions to exact integer totals. Three are
-// accepted by eye (STAMP_GATE_SOLVED_IDS). Every brush a gate document names is the gate's round.
+// stamp-gate-sheets.ts: the gate's sheet solves (ENGINE 9, tests 3, 6's sheets, 7 and 8; test 4's clocks are in
+// stamp-gate-clocks.ts): painting documents compiled and solved forward on the GPU, held to the wet laws' closed forms
+// on the 1 ms grid, to what an appended application, a posed group or a separate sheet may change, and the reductions
+// to exact integer totals. Three are accepted by eye (STAMP_GATE_SOLVED_IDS). Every brush a gate document names is the
+// gate's round.
 
 import type { PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import meadow from '#lib/paint/document/models/meadow.painting.ts';
@@ -21,7 +22,7 @@ import { stampGateSlotAmounts, type StampGateLayer, type StampGateWashCheck } fr
 import { STAMP_GATE_IMAGES, stampGateBrush, type StampGateImage } from './stamp-gate-paintings.ts';
 import { STAMP_GATE_HERON_TURNED, STAMP_GATE_PAPER_HERON, stampGatePaperHeronPoses } from './stamp-gate-paper-heron.ts';
 
-export const STAMP_GATE_SHEET_IDS = ['schedule/forward', 'schedule/reductions', 'sheet/wet-contact', 'paper/heron'] as const;
+export const STAMP_GATE_SHEET_IDS = ['schedule/forward', 'schedule/clocks', 'schedule/reductions', 'sheet/wet-contact', 'paper/heron'] as const;
 export type StampGateSheetId = (typeof STAMP_GATE_SHEET_IDS)[number];
 
 /** The sheet solves accepted by eye: each a baseline subject, its document's still. */

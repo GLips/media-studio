@@ -25,6 +25,7 @@ import {
   STAMP_GATE_WET_CONTACT, stampGateFilmCentre, stampGateFilmDifference, stampGateFilmsEqual, stampGateForwardTimes, stampGateHeronPosed, stampGateRebaseTimes, stampGateSheetBrushOf,
   stampGateSheetProgram, stampGateSolvedStill, stampGateWetContactTimes, type StampGateSheetId, type StampGateSolvedId,
 } from '../models/stamp-gate-sheets.ts';
+import { checkStampGateClocks } from './stamp-gate-clocks-page.ts';
 import { withGateSurface } from './stamp-gate-page-surface.ts';
 import { checkStampGateReductions } from './stamp-gate-reductions-page.ts';
 import { stampGateRejection, stampGateSheetImageUrl, stampGateSolvedFilms, withStampGateSheetOwner } from './stamp-gate-sheet-owner.ts';
@@ -173,6 +174,7 @@ export async function checkStampGateSheetCase(id: StampGateSheetId): Promise<Sta
   if (id === 'sheet/wet-contact') return checkWetContact();
   if (id === 'schedule/reductions') return [...await checkStampGateReductions(), await checkRebase()];
   if (id === 'paper/heron') return checkPaperHeron();
+  if (id === 'schedule/clocks') return checkStampGateClocks();
   throw new Error(`stamp gate: no sheet case ${JSON.stringify(id)}; the gate has ${STAMP_GATE_SHEET_IDS.join(', ')}`);
 }
 
