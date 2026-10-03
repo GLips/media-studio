@@ -1,7 +1,8 @@
-// stamp-gate.ts: the GPU gate. In one headless browser session it runs every formula grid, paints every gate painting
-// and traces a resolve (studio/stamp-gate-page.ts), then holds each to what it answers to: a rendering formula and a
-// painting to their accepted baselines (stamp-gate-store.ts), a runtime twin to its CPU side, a trace to its frame.
-// `node harness/stamp-paint-gate.ts` runs it; pre-commit runs it on the staged tree (stamp-gate-staged.ts).
+// stamp-gate.ts: the GPU gate. In one headless browser session it runs every formula grid, paints every gate painting,
+// solves every sheet case and traces a resolve (studio/stamp-gate-page.ts), then holds each to what it answers to: a
+// rendering formula, a painting and a solved sheet's still to their accepted baselines (stamp-gate-store.ts), a
+// runtime twin to its CPU side, a trace to its frame. `node harness/stamp-paint-gate.ts` runs it; pre-commit runs it
+// on the staged tree (stamp-gate-staged.ts).
 //
 // Negative space: nothing here skips or retries. No adapter, a missing feature or a failed draw is an error, and an
 // error fails the gate as a difference does.
@@ -28,6 +29,7 @@ import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { STAMP_GATE_REGION_IDS } from '../models/stamp-gate-regions.ts';
 import { STAMP_GATE_CONTACT_IDS } from '../models/stamp-gate-contact.ts';
 import { STAMP_GATE_MASK_IDS } from '../models/stamp-gate-masks.ts';
+import { STAMP_GATE_SHEET_IDS, STAMP_GATE_SOLVED_IDS, stampGateSolvedInputs, stampGateSolvedProgram, type StampGateSolvedId } from '../models/stamp-gate-sheets.ts';
 import { readStampGateBaseline, stampGateFrame, stampGateInputsHash, writeStampGateCandidate, type StampGateOutput } from './stamp-gate-store.ts';
 
 /** The gate's browser side, which the private run loads too. */
@@ -48,25 +50,40 @@ export type StampGateSubject = { id: string; output: StampGateOutput; inputs: st
 const formulaId = (grid: StampGateFormulaGrid) => `formula/${grid.formula}`;
 const formulaInputs = (grid: StampGateFormulaGrid) => stampGateInputsHash(`${grid.call}|${grid.width}|${Buffer.from(grid.rows.buffer).toString('base64')}`);
 
-/** Every baseline subject's ID: each rendering formula's and each painting's. */
+/** Every baseline subject's ID: each rendering formula's, each painting's and each solved sheet's. */
 export const stampGateBaselineIds = () => [
   ...stampGateFormulaGrids().filter((grid) => grid.expected.kind === 'baseline').map(formulaId),
   ...STAMP_GATE_PAINTING_IDS.map((id) => `painting/${id}`),
+  ...STAMP_GATE_SOLVED_IDS,
 ];
 
-/** Runs the page: every formula grid, the paintings named, the trace, and the wash, animation, flow, stripe, region, mask, media, three-plane, stage, planes, lens and contact cases named. */
-async function collectStampGate(
-  paintings: readonly string[], washes: readonly string[] = [], animations: readonly string[] = [], flows: readonly string[] = [], stripes: readonly string[] = [], regions: readonly string[] = [],
-  masks: readonly string[] = [], media: readonly string[] = [], three: readonly string[] = [], stages: readonly string[] = [], contacts: readonly string[] = [],
-) {
+/** Each kind of case: the page function checking one, and every case of it the gate runs. */
+const STAMP_GATE_CASES = {
+  checkStampGateWash: STAMP_GATE_WASH_IDS,
+  checkStampGateAnimation: STAMP_GATE_ANIMATION_IDS,
+  checkStampGateFlowCase: STAMP_GATE_FLOW_IDS,
+  checkStampGateStripeCase: STAMP_GATE_STRIPE_IDS,
+  checkStampGateRegionCase: STAMP_GATE_REGION_IDS,
+  checkStampGateMaskCase: STAMP_GATE_MASK_IDS,
+  checkStampGateMediaCase: STAMP_GATE_MEDIA_IDS,
+  checkStampGateThreeCase: [...STAMP_GATE_THREE_IDS, STAMP_GATE_THREE_STILL_ID, STAMP_GATE_PICTURE_ID],
+  checkStampGateStageCase: [...STAMP_GATE_STAGE_IDS, ...STAMP_GATE_PLANES_IDS, STAMP_GATE_TRANSPORT_ID, ...STAMP_GATE_LENS_IDS],
+  checkStampGateContactCase: STAMP_GATE_CONTACT_IDS,
+  checkStampGateSheetCase: STAMP_GATE_SHEET_IDS,
+} satisfies Readonly<Record<string, readonly string[]>>;
+
+/** What a run collects: the paintings and solved sheets drawn, and the cases checked, by page function. */
+type StampGateRun = { paintings: readonly string[]; solved: readonly StampGateSolvedId[]; cases: Readonly<Record<string, readonly string[]>> };
+
+/** Runs the page: every formula grid, the paintings and solved sheets named, the trace, and the cases named. */
+async function collectStampGate({ paintings, solved, cases }: StampGateRun) {
   const grids = stampGateFormulaGrids();
   const gates = paintings.map((id) => ({ id, gate: stampGatePainting(id) }));
   // The page loads no files; it's served its own folder only because the page server serves one.
   return withBrowserModulePage({ entry: STAMP_GATE_PAGE, filesDir: dirname(STAMP_GATE_PAGE), pages: STAMP_GATE_PAGES }, async (call) => {
     // Every call is issued at once and runs on the first page free; each painting asks for a device of its own, so
     // which page a case lands on, or what ran there before it, can't change what it draws. Promise.all keeps the order.
-    const cases = <R>(name: string, ids: readonly string[]) => Promise.all(ids.map((id) => call<R | R[]>(name, id))).then((checks) => checks.flatMap((check) => check));
-    const [adapter, values, frames, trace, ...checks] = await Promise.all([
+    const [adapter, values, frames, sheets, trace, checks] = await Promise.all([
       call<string>('stampGateAdapter'),
       call<number[][]>('runStampGateFormulas', grids.map(({ call: wgsl, width, rows, points, grid, boundaries }) => ({
         call: wgsl, width, rows: Array.from(rows), ...(points && { points: Array.from(points) }), ...(grid && { grid: Array.from(grid) }), ...(boundaries && { boundaries: Array.from(boundaries) }),
@@ -75,19 +92,15 @@ async function collectStampGate(
         const rgb = Buffer.from(await call<string>('paintStampGate', id), 'base64');
         return { id: `painting/${id}`, output: stampGateFrame(new Uint8Array(rgb), gate.width, gate.height), inputs: stampGateInputsHash(stampGatePaintingInputs(gate)) };
       })),
+      Promise.all(solved.map(async (id): Promise<StampGateSubject> => {
+        const rgb = Buffer.from(await call<string>('paintStampGateSolved', id), 'base64');
+        const { width, height } = stampGateSolvedProgram(id);
+        return { id, output: stampGateFrame(new Uint8Array(rgb), width, height), inputs: stampGateInputsHash(stampGateSolvedInputs(id)) };
+      })),
       call<{ worst: number; mean: number; ordinary: StampGateFrameDifference; orders: string[] }>('traceStampGate'),
-      cases<StampGateWashCheck>('checkStampGateWash', washes),
-      cases<StampGateWashCheck>('checkStampGateAnimation', animations),
-      cases<StampGateWashCheck>('checkStampGateFlowCase', flows),
-      cases<StampGateWashCheck>('checkStampGateStripeCase', stripes),
-      cases<StampGateWashCheck>('checkStampGateRegionCase', regions),
-      cases<StampGateWashCheck>('checkStampGateMaskCase', masks),
-      cases<StampGateWashCheck>('checkStampGateMediaCase', media),
-      cases<StampGateWashCheck>('checkStampGateThreeCase', three),
-      cases<StampGateWashCheck>('checkStampGateStageCase', stages),
-      cases<StampGateWashCheck>('checkStampGateContactCase', contacts),
+      Promise.all(Object.entries(cases).flatMap(([name, ids]) => ids.map((id) => call<StampGateWashCheck | StampGateWashCheck[]>(name, id)))),
     ]);
-    return { adapter, grids: grids.map((grid, g) => ({ grid, gpu: Float32Array.from(values[g]) })), frames, trace, washChecks: checks.flat() };
+    return { adapter, grids: grids.map((grid, g) => ({ grid, gpu: Float32Array.from(values[g]) })), frames: [...frames, ...sheets], trace, washChecks: checks.flat() };
   });
 }
 
@@ -152,12 +165,9 @@ function checkTrace({ trace }: Collected): StampGateCheck {
   };
 }
 
-/** The whole gate against the baselines in `store`: every formula, twin, property grid, painting, the trace, every wash, animation, flow, stripe, region, mask, media, three-plane, stage, planes, lens and contact case. */
+/** The whole gate against the baselines in `store`: every formula, twin, property grid, painting, solved sheet, the trace, and every case. */
 export async function runStampGate(store: string): Promise<StampGateCheck[]> {
-  const collected = await collectStampGate(
-    STAMP_GATE_PAINTING_IDS, STAMP_GATE_WASH_IDS, STAMP_GATE_ANIMATION_IDS, STAMP_GATE_FLOW_IDS, STAMP_GATE_STRIPE_IDS, STAMP_GATE_REGION_IDS, STAMP_GATE_MASK_IDS, STAMP_GATE_MEDIA_IDS,
-    [...STAMP_GATE_THREE_IDS, STAMP_GATE_THREE_STILL_ID, STAMP_GATE_PICTURE_ID], [...STAMP_GATE_STAGE_IDS, ...STAMP_GATE_PLANES_IDS, STAMP_GATE_TRANSPORT_ID, ...STAMP_GATE_LENS_IDS], STAMP_GATE_CONTACT_IDS,
-  );
+  const collected = await collectStampGate({ paintings: STAMP_GATE_PAINTING_IDS, solved: STAMP_GATE_SOLVED_IDS, cases: STAMP_GATE_CASES });
   return [
     ...formulaSubjects(collected).map((subject) => checkStampGateSubject(store, subject, collected.adapter)),
     ...checkTwins(collected),
@@ -176,7 +186,7 @@ export async function updateStampGate(store: string, ids: readonly string[], rea
   const known = new Set(stampGateBaselineIds()), unknown = ids.filter((id) => !known.has(id));
   if (unknown.length) throw new Error(`stamp gate: no baseline subject ${unknown.join(', ')}; the gate has ${[...known].join(', ')}`);
   const paintings = ids.flatMap((id) => (id.startsWith('painting/') ? [id.slice('painting/'.length)] : []));
-  const collected = await collectStampGate(paintings);
+  const collected = await collectStampGate({ paintings, solved: STAMP_GATE_SOLVED_IDS.filter((id) => ids.includes(id)), cases: {} });
   const subjects = [...formulaSubjects(collected), ...collected.frames].filter((subject) => ids.includes(subject.id));
   return subjects.map((subject) => {
     const accepted = readStampGateBaseline(store, subject.id, subject.output);

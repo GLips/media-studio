@@ -1,3 +1,4 @@
 {
-  "lib/paint/shot": "A shot selects an evaluation's layers and groups by key, and rigs them by their cels."
+  "lib/paint/shot": "A shot selects an evaluation's layers and groups by key, and rigs them by their cels.",
+  "lib/paint/gate": "The gate's sheet cases are painting documents, compiled to the solver's program as a source's still is."
 }

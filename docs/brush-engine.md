@@ -12,7 +12,7 @@ animation          → painting
 rig                → painting
 brush-fidelity     → brush-packs, photoshop-brushes, procreate-brushes, painting, brush
 studies            → style, brush-packs, painting, materials, brush
-gate               → brush-packs, painting, materials, brush
+gate               → document, brush-packs, painting, materials, brush
 style              → brush-packs, painting, materials, brush
 brush-packs        → photoshop-brushes, procreate-brushes, materials, brush, platform/zip
 photoshop-brushes  → procreate-brushes, brush
@@ -120,6 +120,23 @@ tokens: `compileStampWetness` closes one after any wait the whole wash has set b
 long enough) and one at the wash's end, each `StampWashRecord.dryings`, which the rim stage and the wet report both
 read. A drying is the whole wash's, never a region's. A graded material lays each pigment
 of either end, its amount graded on the GPU. A passage without a history lands as it always has. Flat colour has no washes.
+
+**The sheet solver.** A painting document's sheet is solved forward, not timed in closed form. Its program
+(`stamp-sheet-program.ts`, compiled by `lib/paint/document`) is a film per layer, a wash per wash and each application
+a deposit planned at rest. `solveStampSheet` (`studio/stamp-sheet-solver.ts`) runs it beside the renderer, on the
+stages the renderer calls (the deposit drawing, the wet stages, the lay pass). Each application's time is decided
+against the paper the ones before it left: the GPU sums over its core (its touch, off its fluid, within its regions,
+inside its clip base) in integer atomics, two-word totals and 4096-bin damp histograms (`stamp-sheet-reductions.ts`),
+and the CPU decides in f64 on a 1 ms grid (`stamp-sheet-schedule.ts`, `stamp-sheet-decide.ts`), checked again by the
+field's own law. An `on` that can't hold, or a bloom with nothing to act on, is a `StampSheetRefusal`, its message
+the author's. Then it lands into the one wet field and its film; its water reaches other films' paint through a
+proxy; a drying closes once everything since the last has set, rimming each film that painted in it. The field keeps
+times after a base it moves up past 2¹³ s. Keys chain from the program's head through each entry as posed
+(`stamp-sheet-state-key.ts`), so a decision is remembered by its prefix, and a solve's films are kept, cropped, in the
+device's cache under its last key (`stamp-sheet-films.ts`), which a still lays as the renderer lays a painting. A
+solve holds the device's FIFO lease (`stamp-solve-lease.ts`) from its first encode to its last readback, and never
+holds an encoder across an await. It solves the root's sheet, unclocked, each group posed by a translation; the
+gate's `schedule/` and `sheet/` cases hold it to the wet laws' closed forms.
 
 **Capabilities.** A `PaintMedium` declares what it can do besides lay paint (`PaintCapability`): `'wet-history'`,
 `'wet-conditions'`, `'water'`, `'lift'`, `'burnish'`. Watercolour and gouache declare the first four; crayon `lift`
@@ -348,8 +365,11 @@ layer's pigments. Where a rule is the engine's (a fill's guides and strokes, rin
 check calls the engine's own problem function. A problem's box comes from `painting-footprint.ts`.
 `painting-tree.ts` resolves a document's tree: its sheets, and each node's medium and sheet; `painting-sheet-program.ts`
 is each sheet's order, its layers' films (`painting-pigment-slots.ts`) and its clock, the one order the checks, the
-evaluation diff (`painting-evaluation-diff.ts`) and a solver read. Nothing here paints, and the checks never touch the
-GPU.
+evaluation diff (`painting-evaluation-diff.ts`) and the solver read. The checks never touch the GPU.
+`painting-document-compile.ts` compiles an evaluation's root sheet to the solver's program, each application through
+`painting-deposit-compile.ts` and `painting-area-compile.ts`; `engine/painting-still.ts` resolves its brushes from
+`work/styles/` and has `studio/painting-still-page.ts` solve and lay it, for `studio paint still` and `studio paint
+check --solve`.
 
 **shot** is what a scene puts on screen from evaluations: `layersOf` selects an evaluation's layers and groups on a
 plane, `bracket` and `dissolve` blend two, `paintedSourceShares` weighs the selections a dissolve blends (linear in
@@ -400,7 +420,11 @@ reading registered for fitting (`brush-readings.ts`). `npm run brushes:sheet`, `
 **gate** holds the GPU renderer to accepted output (`npm run stamp:gate -- run`): every rendering formula over a grid,
 each runtime twin against its CPU side, synthetic paintings that walk every path the renderer takes, and a traced
 resolve against its frame; `media/mixed` holds each group of a three-medium painting to itself painted alone in its
-own medium (max 0), and gouache glazed over a dark watercolour wash to covering it. Pre-commit runs it on the staged tree when a path it covers changes; no adapter, a timeout
+own medium (max 0), and gouache glazed over a dark watercolour wash to covering it. The sheet solver's cases
+(`stamp-gate-sheets.ts`) solve documents compiled with the gate's round: each decision on its closed form, an
+appended application changing no earlier film, a foot's charge mingling only where it touches wet shallows, the
+reductions exact at 8192², and two stills (`solved/`) accepted by eye. Pre-commit runs it on the staged tree when a
+path it covers changes; no adapter, a timeout
 or a difference fails the commit. Public baselines live in `harness/fixtures/stamp-paint/`, a pack's brushes' in
 `work/validation/stamp-paint/` (`stamp:gate -- private run`). A baseline changes only by `update <ids> --reason …`,
 which writes candidates with their differences, then `accept <ids>`.
