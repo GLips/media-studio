@@ -1,18 +1,16 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import { resolvePaintRigCutLayer, type PaintRigCutPart, type PaintRigDrawnCut, type PaintRigOverlapZone } from './paint-rig-cuts.ts';
+import { resolvePaintRigCutLayer, type PaintRigDrawnCut } from './paint-rig-cuts.ts';
 import { paintRigPaintedCoverage } from './paint-rig-painted-coverage.ts';
 
 const rect = (x0: number, y0: number, x1: number, y1: number) => [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
-const drawn = (part: PaintRigCutPart, polygon: StampPoint[], overlap: PaintRigOverlapZone | null = null): PaintRigDrawnCut => ({ part, polygon, overlap });
 
 test('regions overlapping across a skin joint split on its line, a hinge overlaps its parent, and the parts tile the layer', () => {
   // Body 0..40, thigh hinged at y 40 overlapping it by a 6 px disc; shin drawn from y 60, overlapping the thigh to 80, skinned at y 70.
-  const cuts = [
-    drawn({ id: 'body', parent: null, z: 0, pivot: { x: 20, y: 20 } }, rect(10, 0, 30, 40)),
-    drawn({ id: 'thigh', parent: 'body', z: 1, pivot: { x: 20, y: 40 }, joint: 'hinge' }, rect(10, 40, 30, 80), { radius: 6 }),
-    drawn({ id: 'shin', parent: 'thigh', z: 0, pivot: { x: 20, y: 70 }, joint: 'skin', blend: 12 }, rect(10, 60, 30, 110)),
+  const cuts: PaintRigDrawnCut[] = [
+    { part: { id: 'body', parent: null, z: 0 }, polygon: rect(10, 0, 30, 40) },
+    { part: { id: 'thigh', parent: 'body', z: 1, pivot: { x: 20, y: 40 }, joint: 'hinge' }, polygon: rect(10, 40, 30, 80), overlap: { radius: 6 } },
+    { part: { id: 'shin', parent: 'thigh', z: 0, pivot: { x: 20, y: 70 }, joint: 'skin', blend: 12 }, polygon: rect(10, 60, 30, 110) },
   ];
   const layer = resolvePaintRigCutLayer('side.figure', cuts, { w: 100, h: 200 }, new Float32Array(100 * 200).fill(1)), { box, owner, matte } = layer;
   const ownerAt = (x: number, y: number) => layer.parts[owner[(y - box.y0) * box.w + x - box.x0]]?.id;
@@ -34,7 +32,7 @@ test('the paint is the silhouette: a region over blank paper owns nothing there,
   const painted = paintRigPaintedCoverage(sheet, paper, w, h), at = (x: number, y: number) => painted[y * w + x];
   assert.deepEqual([at(2, 2), at(5, 5), at(9, 7), at(20, 5)], [1, 1, 1, 1]);
   assert.ok(at(15, 4) > 0 && at(15, 4) < 0.5);
-  const layer = resolvePaintRigCutLayer('side.figure', [drawn({ id: 'body', parent: null, z: 0, pivot: { x: 15, y: 5 } }, rect(0, 0, 30, 10))], { w, h }, painted);
+  const layer = resolvePaintRigCutLayer('side.figure', [{ part: { id: 'body', parent: null, z: 0 }, polygon: rect(0, 0, 30, 10) }], { w, h }, painted);
   const unpainted = [...layer.region.keys()].filter((t) => !painted[t]);
   assert.ok(unpainted.length > 0 && unpainted.every((t) => layer.region[t] === 1 && layer.matte[t] === 0 && layer.owner[t] === -1));
 });

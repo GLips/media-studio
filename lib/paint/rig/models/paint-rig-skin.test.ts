@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import type { PaintRigCutLayer, PaintRigCutPart } from './paint-rig-cuts.ts';
+import { paintRigCutParts, type PaintRigCutLayer } from './paint-rig-cuts.ts';
 import { paintRigBandStretch, paintRigSkinGroups, paintRigSkinMesh, paintRigSkinTriangles } from './paint-rig-skin.ts';
 
 /** A limb 24 px wide and 84 tall: `upper` owns rows 0..42, `lower` (skin, `blend` px) the rest, its pivot at (12, 42). */
 function limb(blend: number): PaintRigCutLayer {
   const box = { x0: 0, y0: 0, w: 24, h: 84 }, owner = new Int16Array(box.w * box.h), matte = new Float32Array(box.w * box.h).fill(1);
   for (let t = 0; t < owner.length; t++) owner[t] = Math.floor(t / box.w) < 42 ? 0 : 1;
-  const parts: PaintRigCutPart[] = [{ id: 'upper', parent: null, z: 0, pivot: { x: 12, y: 0 } }, { id: 'lower', parent: 'upper', z: 0, joint: 'skin', blend, pivot: { x: 12, y: 42 } }];
+  const parts = paintRigCutParts([{ id: 'upper', parent: null, z: 0 }, { id: 'lower', parent: 'upper', z: 0, joint: 'skin', blend, pivot: { x: 12, y: 42 } }]);
   return { id: 'side.limb', box, parts, owner, matte, overlaps: new Map() };
 }
 /** Rotation by `degrees` about `pivot`. */

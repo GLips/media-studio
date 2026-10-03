@@ -7,17 +7,32 @@
 
 import { stampPolygonDistance, type StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 
-/** A texel grid in plane px: texel (i, j) covers x0 + i … x0 + i + 1, y0 + j … y0 + j + 1. */
+/**
+ * A texel grid in the layer's px, the space its regions and pivots are given in: texel (i, j) covers x0 + i … x0 + i + 1,
+ * y0 + j … y0 + j + 1.
+ */
 export type PaintRigTexelBox = { readonly x0: number; readonly y0: number; readonly w: number; readonly h: number };
 
 /**
- * A part as its layer's cuts know it: its rest `pivot`, its draw order, and, below the root, how it meets its parent:
- * a skin joint blending the two parts' moves over `blend` px, or a hinge.
+ * A part as it's declared cut from a layer: its draw order and, below the root, its parent by id and how it meets it
+ * there, at its rest `pivot`: a skin joint blending the two parts' moves over `blend` px, or a hinge.
  */
-export type PaintRigCutPart = { readonly id: string; readonly z: number; readonly pivot: StampPoint } & (
-  | { readonly parent: null; readonly joint?: undefined }
-  | { readonly parent: string; readonly joint: 'skin'; readonly blend: number }
-  | { readonly parent: string; readonly joint: 'hinge' });
+export type PaintRigCutDeclaration = { readonly id: string; readonly z: number } & (
+  | { readonly parent: null }
+  | { readonly parent: string; readonly joint: 'skin'; readonly pivot: StampPoint; readonly blend: number }
+  | { readonly parent: string; readonly joint: 'hinge'; readonly pivot: StampPoint });
+
+/**
+ * How a part meets its parent within its layer, the parent an index into the layer's parts. `loose`: its parent isn't
+ * cut from this layer (or it has none), so it starts a group of its own here, as a root does.
+ */
+export type PaintRigCutJoint =
+  | { readonly kind: 'loose' }
+  | { readonly kind: 'skin'; readonly parent: number; readonly pivot: StampPoint; readonly blend: number }
+  | { readonly kind: 'hinge'; readonly parent: number; readonly pivot: StampPoint };
+
+/** A part as its layer's cuts know it. */
+export type PaintRigCutPart = { readonly id: string; readonly z: number; readonly joint: PaintRigCutJoint };
 
 /**
  * A layer's cuts: `parts` cut from it; `owner` each texel's part (an index into `parts`, -1 none); `matte` the
@@ -28,11 +43,24 @@ export type PaintRigCutLayer = {
   readonly owner: Int16Array; readonly matte: Float32Array; readonly overlaps: ReadonlyMap<number, Uint8Array>;
 };
 
+/** `declared`, one layer's parts in order, with each parent found among them. */
+export function paintRigCutParts(declared: readonly PaintRigCutDeclaration[]): PaintRigCutPart[] {
+  const index = new Map(declared.map((part, k) => [part.id, k]));
+  return declared.map((part): PaintRigCutPart => {
+    const { id, z } = part, parent = part.parent === null ? undefined : index.get(part.parent);
+    if (!('joint' in part) || parent === undefined) return { id, z, joint: { kind: 'loose' } };
+    if (part.joint === 'skin') return { id, z, joint: { kind: 'skin', parent, pivot: part.pivot, blend: part.blend } };
+    return { id, z, joint: { kind: 'hinge', parent, pivot: part.pivot } };
+  });
+}
+
 /** What a hinge child takes past its joint, besides its own region: a disc about its pivot, or a region drawn by hand. */
 export type PaintRigOverlapZone = { readonly radius: number } | { readonly polygon: readonly StampPoint[] };
 
-/** A part's region of a layer as drawn by hand, sheet px, and a hinge's overlap (null for any other joint, or none given). */
-export type PaintRigDrawnCut = { readonly part: PaintRigCutPart; readonly polygon: readonly StampPoint[]; readonly overlap: PaintRigOverlapZone | null };
+/** A part's region of a layer as drawn by hand, in the layer's px; a hinge's with its overlap, if it was given one. */
+export type PaintRigDrawnCut =
+  | { readonly part: Exclude<PaintRigCutDeclaration, { readonly joint: 'hinge' }>; readonly polygon: readonly StampPoint[] }
+  | { readonly part: Extract<PaintRigCutDeclaration, { readonly joint: 'hinge' }>; readonly polygon: readonly StampPoint[]; readonly overlap: PaintRigOverlapZone | null };
 
 /** A layer's cuts resolved from drawn regions, with `region`, the regions' union as drawn, before the paint clips it. */
 export type PaintRigDrawnCutLayer = PaintRigCutLayer & { readonly region: Float32Array };
@@ -50,7 +78,7 @@ function polygonCentroid(polygon: readonly StampPoint[]): StampPoint {
 }
 
 /** A child's bone at its pivot: the unit vector from its pivot toward its region's centroid (straight down if they meet). */
-export function paintRigCutBone(pivot: StampPoint, polygon: readonly StampPoint[]): StampPoint {
+function cutBone(pivot: StampPoint, polygon: readonly StampPoint[]): StampPoint {
   const c = polygonCentroid(polygon), dx = c.x - pivot.x, dy = c.y - pivot.y, length = Math.hypot(dx, dy);
   return length > 1e-9 ? { x: dx / length, y: dy / length } : { x: 0, y: 1 };
 }
@@ -76,15 +104,11 @@ function inZone(zone: PaintRigOverlapZone, pivot: StampPoint): (x: number, y: nu
  * coverage per sheet texel. A hinge drawn over a parent cut from the same layer needs its overlap; throws without one.
  */
 export function resolvePaintRigCutLayer(layer: string, cuts: readonly PaintRigDrawnCut[], sheet: { readonly w: number; readonly h: number }, painted: Float32Array): PaintRigDrawnCutLayer {
-  const parts = cuts.map(({ part }) => part), all = cuts.flatMap(({ polygon }) => polygon);
+  const parts = paintRigCutParts(cuts.map(({ part }) => part)), all = cuts.flatMap(({ polygon }) => polygon);
   const x0 = Math.max(0, Math.floor(Math.min(...all.map((p) => p.x)))), y0 = Math.max(0, Math.floor(Math.min(...all.map((p) => p.y))));
   const box = { x0, y0, w: Math.min(sheet.w, Math.ceil(Math.max(...all.map((p) => p.x)))) - x0, h: Math.min(sheet.h, Math.ceil(Math.max(...all.map((p) => p.y)))) - y0 };
-  const index = new Map(parts.map((part, k) => [part.id, k]));
-  // Each skin child's joint line, against its parent's index.
-  const lines = cuts.map(({ part, polygon }) => {
-    const parent = part.parent === null ? undefined : index.get(part.parent);
-    return part.joint === 'skin' && parent !== undefined ? { parent, pivot: part.pivot, bone: paintRigCutBone(part.pivot, polygon) } : undefined;
-  });
+  // Each skin child's joint line.
+  const lines = parts.map(({ joint }, k) => (joint.kind === 'skin' ? { parent: joint.parent, pivot: joint.pivot, bone: cutBone(joint.pivot, cuts[k].polygon) } : undefined));
   const resolve = (earlier: number, later: number, x: number, y: number): number => {
     let across = -1;
     if (lines[later]?.parent === earlier) across = later;
@@ -124,16 +148,16 @@ export function resolvePaintRigCutLayer(layer: string, cuts: readonly PaintRigDr
     if (matte[t] > 0) owner[t] = best;
   }
   const overlaps = new Map<number, Uint8Array>();
-  cuts.forEach(({ part, overlap }, k) => {
-    const parent = part.parent === null ? undefined : index.get(part.parent);
-    if (part.joint !== 'hinge' || parent === undefined) return;
+  cuts.forEach((cut, k) => {
+    const part = parts[k], { joint } = part;
+    if (joint.kind !== 'hinge' || !('overlap' in cut)) return;
     // A hinge drawn beneath its parent has its seam covered by it; what its turn uncovers is cut from a layer behind.
-    if (!overlap && part.z < parts[parent].z) return;
-    if (!overlap) throw new Error(`paint rig: cut ${part.id} is a hinge drawn over ${part.parent} on ${layer} with no overlap; give it one (a radius in px, or a region)`);
-    const zone = inZone(overlap, part.pivot), extra = new Uint8Array(box.w * box.h);
+    if (!cut.overlap && part.z < parts[joint.parent].z) return;
+    if (!cut.overlap) throw new Error(`paint rig: cut ${part.id} is a hinge drawn over ${parts[joint.parent].id} on ${layer} with no overlap; give it one (a radius in px, or a region)`);
+    const zone = inZone(cut.overlap, joint.pivot), extra = new Uint8Array(box.w * box.h);
     for (let j = 0; j < box.h; j++) for (let i = 0; i < box.w; i++) {
       const t = j * box.w + i;
-      if (owner[t] === parent && matte[t] >= 1 && zone(box.x0 + i + 0.5, box.y0 + j + 0.5)) extra[t] = 1;
+      if (owner[t] === joint.parent && matte[t] >= 1 && zone(box.x0 + i + 0.5, box.y0 + j + 0.5)) extra[t] = 1;
     }
     overlaps.set(k, extra);
   });

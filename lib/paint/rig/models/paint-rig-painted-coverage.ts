@@ -8,11 +8,11 @@
  * `full`: below the faintest glaze measured on studio-p6 (17, a head's cel; 32 in its layers). `edgeShare`: a boundary
  * texel is whole from this share of its painted neighbours' mean difference.
  */
-export const PAINT_RIG_PAINTED = { full: 16, edgeShare: 0.5 } as const;
+export const PAINT_RIG_PAINTED_COVERAGE = { full: 16, edgeShare: 0.5 } as const;
 
 /** Each texel's painted coverage (0..1) of a `w` × `h` sheet, both it and `paper` 8-bit RGBA (alpha unread). */
 export function paintRigPaintedCoverage(sheet: Uint8Array, paper: Uint8Array, w: number, h: number): Float32Array {
-  const { full, edgeShare } = PAINT_RIG_PAINTED, difference = new Uint8Array(w * h), coverage = new Float32Array(w * h);
+  const { full, edgeShare } = PAINT_RIG_PAINTED_COVERAGE, difference = new Uint8Array(w * h), coverage = new Float32Array(w * h);
   for (let t = 0; t < w * h; t++) {
     const at = 4 * t;
     difference[t] = Math.max(Math.abs(sheet[at] - paper[at]), Math.abs(sheet[at + 1] - paper[at + 1]), Math.abs(sheet[at + 2] - paper[at + 2]));

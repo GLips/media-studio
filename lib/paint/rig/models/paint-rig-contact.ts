@@ -3,7 +3,7 @@
 // (the same darkness spread over more ground). And a planted foot's drift, measured by the contact that moved least,
 // so a foot rolling over its heel or toe isn't read as sliding. Plane px throughout.
 
-import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 
 /**
  * `strength`: how much a planted foot darkens the ground at the shadow's heart. `reach`, `depth`: its spread past heel
@@ -47,7 +47,7 @@ export function paintRigContactShadow(heel: StampPoint, toe: StampPoint, length:
 }
 
 /** How far each shadow reaches before it's faded to nothing: a box round them all, plane px. */
-export function paintRigShadowsBox(shadows: readonly PaintRigContactShadow[]): { x0: number; y0: number; x1: number; y1: number } {
+export function paintRigShadowsBox(shadows: readonly PaintRigContactShadow[]): StampBox {
   const span = 1.6;
   return {
     x0: Math.min(...shadows.map(({ centre, rx }) => centre.x - span * rx)), x1: Math.max(...shadows.map(({ centre, rx }) => centre.x + span * rx)),

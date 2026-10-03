@@ -6,18 +6,21 @@
 //
 // A mesh is data a renderer can take whole: triangles over a vertex grid, and each vertex's share in each joint.
 
+import type { StampWarpMap } from '#lib/paint/painting/models/stamp-group-warp.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import type { PaintRigCutLayer, PaintRigTexelBox } from './paint-rig-cuts.ts';
 
 /** A skin mesh's cell, px. */
-export const PAINT_RIG_SKIN_CELL = 6;
+const SKIN_CELL = 6;
 
 /**
  * Parts of a layer drawn as one mesh: `members` (indices into the layer's parts) joined by skin joints under `root`,
  * drawn at its `z`. `mover`: the member each texel moves with (-1 off the group; a hinge root's overlap moves with
  * it); `cover`: the group's picture's coverage of the layer.
  */
-export type PaintRigSkinGroup = { root: number; members: readonly number[]; z: number; mover: Int16Array; cover: Float32Array };
+export type PaintRigSkinGroup = {
+  readonly root: number; readonly members: readonly number[]; readonly z: number; readonly mover: Int16Array; readonly cover: Float32Array;
+};
 
 /** A skin joint of a group: its `child` and `parent` (indices into the layer's parts) and the child's rest pivot. */
 export type PaintRigSkinJoint = { readonly child: number; readonly parent: number; readonly pivot: StampPoint };
@@ -28,14 +31,17 @@ export type PaintRigSkinJoint = { readonly child: number; readonly parent: numbe
  * (`joints.length` a vertex), and each joint's band, by child: the painted triangles with a vertex part-way across it.
  */
 export type PaintRigSkinMesh = {
-  box: PaintRigTexelBox; cell: number; columns: number; rows: number; triangles: Uint32Array;
-  root: number; joints: readonly PaintRigSkinJoint[]; shares: Float32Array; bands: ReadonlyMap<number, Uint32Array>;
+  readonly box: PaintRigTexelBox; readonly cell: number; readonly columns: number; readonly rows: number; readonly triangles: Uint32Array;
+  readonly root: number; readonly joints: readonly PaintRigSkinJoint[]; readonly shares: Float32Array; readonly bands: ReadonlyMap<number, Uint32Array>;
 };
 
 /** The layer's groups, back to front by z (ties in the order their roots were cut). */
 export function paintRigSkinGroups(layer: PaintRigCutLayer): PaintRigSkinGroup[] {
-  const { parts, owner, matte, overlaps } = layer, index = new Map(parts.map((part, k) => [part.id, k]));
-  const skinParent = (k: number) => (parts[k].joint === 'skin' ? index.get(parts[k].parent) : undefined);
+  const { parts, owner, matte, overlaps } = layer;
+  const skinParent = (k: number) => {
+    const { joint } = parts[k];
+    return joint.kind === 'skin' ? joint.parent : undefined;
+  };
   const rootOf = (k: number): number => {
     const up = skinParent(k);
     return up === undefined ? k : rootOf(up);
@@ -70,21 +76,19 @@ function nearest(box: PaintRigTexelBox, x: number, y: number, reach: number, is:
 
 /** `group`'s mesh over `layer`: the cells any of whose texels (or their neighbours) it covers, and each vertex's share in each skin joint's child. */
 export function paintRigSkinMesh(layer: PaintRigCutLayer, group: PaintRigSkinGroup): PaintRigSkinMesh {
-  const { box, parts } = layer, cell = PAINT_RIG_SKIN_CELL, { mover, cover } = group;
+  const { box, parts } = layer, cell = SKIN_CELL, { mover, cover } = group;
   const columns = Math.ceil(box.w / cell), rows = Math.ceil(box.h / cell), stride = columns + 1;
-  const index = new Map(parts.map((part, k) => [part.id, k]));
   // A joint's bone: from its pivot toward the middle of its child's texels, as a unit vector.
   const boneOf = (child: number, pivot: StampPoint) => {
     let x = 0, y = 0;
     for (let t = 0; t < mover.length; t++) if (mover[t] === child) { x += box.x0 + (t % box.w) + 0.5 - pivot.x; y += box.y0 + Math.floor(t / box.w) + 0.5 - pivot.y; }
     const length = Math.hypot(x, y);
+    if (!(length > 0)) throw new Error(`paint rig: ${parts[child].id} is skinned on ${layer.id} with no paint of its own there, so its joint has no bone`);
     return { x: x / length, y: y / length };
   };
   const skinJoints = group.members.flatMap((child) => {
-    const part = parts[child];
-    // A group's root may be a skin child whose parent isn't cut from this layer: it bends nothing here.
-    const parent = part.joint === 'skin' ? index.get(part.parent) : undefined;
-    return part.joint === 'skin' && parent !== undefined ? [{ child, parent, pivot: part.pivot, bone: boneOf(child, part.pivot), blend: part.blend }] : [];
+    const { joint } = parts[child];
+    return joint.kind === 'skin' ? [{ child, parent: joint.parent, pivot: joint.pivot, bone: boneOf(child, joint.pivot), blend: joint.blend }] : [];
   });
   const parentOf = new Map(skinJoints.map(({ child, parent }) => [child, parent]));
   const depth = (k: number): number => (parentOf.has(k) ? 1 + depth(parentOf.get(k)!) : 0);
@@ -138,8 +142,8 @@ export function paintRigSkinMesh(layer: PaintRigCutLayer, group: PaintRigSkinGro
  */
 type SkinTurn = { pivot: StampPoint; angle: number; stretch: readonly [number, number, number, number]; shift: StampPoint };
 
-function skinTurnOf(parent: (rest: StampPoint) => StampPoint, child: (rest: StampPoint) => StampPoint, pivot: StampPoint): SkinTurn {
-  const jacobian = (map: (rest: StampPoint) => StampPoint) => {
+function skinTurnOf(parent: StampWarpMap, child: StampWarpMap, pivot: StampPoint): SkinTurn {
+  const jacobian = (map: StampWarpMap) => {
     const at = map(pivot), across = map({ x: pivot.x + 1, y: pivot.y }), down = map({ x: pivot.x, y: pivot.y + 1 });
     return { at, a: across.x - at.x, b: down.x - at.x, c: across.y - at.y, d: down.y - at.y };
   };
@@ -166,7 +170,7 @@ function skinTurnBy({ pivot, angle, stretch: [a, b, c, d], shift }: SkinTurn, sh
  * within, after its share of each joint below that it straddles, deepest first, so one wholly in a part goes exactly
  * by its map. Triangles as the rasteriser takes them: posed x, y, rest x, y a vertex.
  */
-export function paintRigSkinTriangles(mesh: PaintRigSkinMesh, mapOf: (part: number) => (rest: StampPoint) => StampPoint): Float32Array {
+export function paintRigSkinTriangles(mesh: PaintRigSkinMesh, mapOf: (part: number) => StampWarpMap): Float32Array {
   const { box, cell, columns, triangles, root, joints, shares } = mesh, stride = columns + 1;
   const turns = joints.map(({ child, parent, pivot }) => skinTurnOf(mapOf(parent), mapOf(child), pivot));
   const posed = new Map<number, StampPoint>(), out = new Float32Array(triangles.length * 4);

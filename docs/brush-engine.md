@@ -318,12 +318,14 @@ rgba16float, gamma-encoded and opaque, decoded by `paintedThreeColorNode`. A glo
 refused.
 
 **rig** is a painted rig's geometry: layers (whole paintings at rest) cut into parts that meet at skin joints or
-hinges, and their feet. `paint-rig-cuts.ts` resolves drawn regions into which part owns each texel, splitting an
-overlap across a skin joint on the joint's line; `paint-rig-painted-coverage.ts` reads a sheet's paint against its
-blank paper, so the paint's edge is the silhouette. `paint-rig-skin.ts` meshes a layer's skin-joined parts and poses
-the mesh by rotation-blend skinning, each vertex turning by its share of a joint's angle, from each part's
-rest-to-posed map; it measures folds across a joint's band. `paint-rig-contact.ts` gives a foot's contact shadow and
-its drift by the least-moved contact. A rig's files, poses and clocks stay with the projects that use them.
+hinges, and their feet. `paint-rig-cuts.ts` holds a layer's parts with each joint resolved to its parent's index (a
+part whose parent isn't on the layer is loose, a group of its own), and resolves drawn regions into which part owns
+each texel, splitting an overlap across a skin joint on the joint's line; `paint-rig-painted-coverage.ts` reads a
+sheet's paint against its blank paper, so the paint's edge is the silhouette. `paint-rig-skin.ts` meshes a layer's
+skin-joined parts and poses the mesh by rotation-blend skinning, each vertex turning by its share of a joint's angle,
+from each part's rest-to-posed map; it measures folds across a joint's band. `paint-rig-rasterise.ts` draws posed
+triangles on the CPU. `paint-rig-contact.ts` gives a foot's contact shadow and its drift by the least-moved contact.
+A rig's files, poses and clocks stay with the projects that use them.
 
 **procreate-brushes** reads a Procreate brush's settings into a `StampBrush` (`procreate-brush.ts`, by the constants
 of `procreate-reading.ts`), and the stroke Procreate draws its previews along. Its `engine/` reads binary plists and
