@@ -201,28 +201,28 @@
     "solved/forward": {
       "file": "solved/forward.png",
       "output": "f0003f7c4e327d9e25299197504d478b1343f240457c5e2663bf37768ec463f8",
-      "inputs": "70e1c844b4e123d1916bd6b6fd915e51bf0c39eb49179a5da2c6a82d77e6be39",
-      "reason": "vid-157 sheets review: a sheet program carries its edge (document or union), and poses are keyed by node key (the paper heron's by 'heron'), so each solved still's inputs text changes; images unchanged",
+      "inputs": "fdd8a73f8c32e7eeb52087cbe8920dda6f7a1b578eeb8b4d8285799817148242",
+      "reason": "vid-157 clocks landed on sheets: each sheet program carries both its edge and its clock, so each solved still's inputs text changes; wet-contact is clocked (shallows from 0 s, the foot's charge at 0.5 s and glaze at 6 s, drying scale 0.015)",
       "accepted": "2026-10-03",
-      "acceptedOver": "ce669f0a",
+      "acceptedOver": "a5ab9ff5",
       "adapter": "apple metal-3"
     },
     "solved/paper-heron": {
       "file": "solved/paper-heron.png",
       "output": "e1a527af83dafb333807a02864dfbeef5abc25c8d3472d4af45f2698fe21cc91",
-      "inputs": "eae8017efcad699a90fef8988d53c1b0f64c07f4362611b95ba9790807908d1f",
-      "reason": "vid-157 sheets review: a sheet program carries its edge (document or union), and poses are keyed by node key (the paper heron's by 'heron'), so each solved still's inputs text changes; images unchanged",
+      "inputs": "57a44d3bab3bd5969fa485b26b65d5d9867e45395f2933e556e08dc06ad587c6",
+      "reason": "vid-157 clocks landed on sheets: each sheet program carries both its edge and its clock, so each solved still's inputs text changes; wet-contact is clocked (shallows from 0 s, the foot's charge at 0.5 s and glaze at 6 s, drying scale 0.015)",
       "accepted": "2026-10-03",
-      "acceptedOver": "ce669f0a",
+      "acceptedOver": "a5ab9ff5",
       "adapter": "apple metal-3"
     },
     "solved/wet-contact": {
       "file": "solved/wet-contact.png",
       "output": "885f09a77450e573c6a0e08467514feadd8b38157a820dedf5dcb3554cd3fda7",
-      "inputs": "92e987706d7029656d475ed99589797cb6fe0985b5fbde672f89e43fd83ad469",
-      "reason": "vid-157 clocks: a program carries its sheet's clock and each entry its order time and fixed at; wet-contact is clocked (shallows from 0 s, the foot's charge at 0.5 s and glaze at 6 s, drying scale 0.015)",
+      "inputs": "a9e001dda2f6113a72d77389eb9722cdf97674b7feac36cc34d8eed8cf599048",
+      "reason": "vid-157 clocks landed on sheets: each sheet program carries both its edge and its clock, so each solved still's inputs text changes; wet-contact is clocked (shallows from 0 s, the foot's charge at 0.5 s and glaze at 6 s, drying scale 0.015)",
       "accepted": "2026-10-03",
-      "acceptedOver": "690213d6",
+      "acceptedOver": "a5ab9ff5",
       "adapter": "apple metal-3"
     }
   }

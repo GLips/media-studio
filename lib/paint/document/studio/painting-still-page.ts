@@ -67,7 +67,7 @@ async function paintingStillOf({ texts, brushes, packUrls, films, at }: Painting
       const several = compiled.sheets.filter(({ program }) => program.entries.length > 0).length > 1;
       const lines = compiled.sheets.flatMap(({ sheet, program }, s) => {
         if (program.entries.length === 0) return [];
-        const solveLines = paintingSolveLines(program, solved[s].decisions);
+        const landed = paintingSolveLines(program, solved[s].decisions), solveLines = landed.length ? landed : [`nothing lands by scene ${at} s`];
         return several ? [`${paintingSheetName(sheet)}:`].concat(solveLines.map((line) => `  ${line}`)) : solveLines;
       });
       return { png, films: filmPngs, lines, costs: paintingSolveCostsLine(costs.take()) };

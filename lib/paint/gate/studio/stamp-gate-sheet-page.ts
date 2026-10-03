@@ -70,9 +70,8 @@ function apartSheet(heron: boolean, owner: string): StampSheetProgram {
 
 /**
  * sheet/wet-contact: the foot's charge reaches the wet shallows' film under it and nowhere far from it (against the
- * foot lifted clear of them); the glaze lands at its time on paper all set; a second pose moves the foot's paint by the
- * pose, solved from the charge on, the flood's checkpoint and decision restored; on own sheets the shallows are as they
- * are alone (solved on another device, so not a kept solve).
+ * foot lifted clear); the glaze lands at its time on paper all set; a second pose moves the foot's paint, solved from
+ * the charge's checkpoint on; on own sheets the shallows are as they are alone (solved on another device).
  */
 async function checkWetContact(): Promise<StampGateWashCheck[]> {
   const id = 'sheet/wet-contact', program = stampGateSheetProgram(STAMP_GATE_WET_CONTACT), names = program.entries.map(({ name }) => name);

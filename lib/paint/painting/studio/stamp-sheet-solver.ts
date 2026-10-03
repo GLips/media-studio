@@ -147,7 +147,8 @@ async function runStampSheet(program: StampSheetProgram, run: StampSheetRun, pla
   keys: readonly string[]; limit: number; at: number | undefined; from: number; decisions: readonly StampSheetDecision[];
 }): Promise<{ stop: number; decisions: StampSheetDecision[] }> {
   const { entries } = program, { keys, limit, at } = plan, decisions = [...plan.decisions], { first } = stampSheetWashSpans(program);
-  const firstPosed = entries.findIndex(({ chain }) => chain.length > 0);
+  // A pose moved this entry's marks: a deposit carries its map back to rest only once posed (painting-pose.ts).
+  const firstPosed = entries.findIndex(({ deposit }) => deposit.rest !== undefined);
   const from = async (k: number): Promise<number> => {
     if (k === limit) return k;
     const starts = first[entries[k].wash] === k;

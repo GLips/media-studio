@@ -1,9 +1,9 @@
 // painting-document-compile.ts: a selection of an evaluation's layers as the programs the wash solver runs
-// (stamp-sheet-program.ts), one per sheet they lie on (ENGINE 4.1): a film per selected layer with its slots, washes
-// and applications in the sheet's order with their order times, the sheet's clock, each deposit planned at rest, with
-// the canonical text of what each entry reads (ENGINE 4.2) and of the sheet's head, from which a solve chains its
-// state keys; and the steps compositing them (ENGINE 5.4). Keys name things in messages only: deposits are named by
-// ordinals and seeded by their tips. Posing comes after (painting-pose.ts).
+// (stamp-sheet-program.ts), one per sheet they lie on (ENGINE 4.1): a film per selected layer, its washes and
+// applications in the sheet's order with their order times, the sheet's clock, each deposit planned at rest, with the
+// text of what each entry reads (ENGINE 4.2) and of the sheet's head, which a solve chains its keys from; and the
+// steps compositing them (ENGINE 5.4). Keys name things in messages only: deposits are named by ordinals and seeded
+// by their tips. Posing comes after (painting-pose.ts).
 //
 // Negative space: a lift in a direct wash, the solver's limit so far, is refused by name, not painted wrong.
 
@@ -12,7 +12,6 @@ import type { PaintMixturePigment } from '#lib/paint/materials/models/paint-pigm
 import { stampBrushedMasksUnder } from '#lib/paint/painting/models/stamp-brushed-mask.ts';
 import { stampBoilSeed, type CompiledStampDeposit } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampSheetCompositeStep, StampSheetEntry, StampSheetFilm, StampSheetPrewet, StampSheetProgram, StampSheetWash } from '#lib/paint/painting/models/stamp-sheet-program.ts';
-import { StampSheetRefusal } from '#lib/paint/painting/models/stamp-sheet-refusal.ts';
 import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
 import { compilePaintingArea } from './painting-area-compile.ts';
 import { compilePaintingDeposit, compilePaintingFluid, paintingMixPigments, type PaintingBrushOf } from './painting-deposit-compile.ts';
@@ -110,9 +109,8 @@ export type PaintingSelectionCompiled = { readonly tree: PaintingTree; readonly 
 
 /**
  * What a selection's compile is told: `layers`, the layers and groups selected (all when left out); `reseed`, boil
- * epochs by the key of the layer or group boiling (ENGINE 4.6), a group's covering every layer under it and the
- * innermost naming a layer winning. A reseeded layer's every seed is suffixed for its epoch and its entries keyed by
- * it; a layer none names, or at 0, is as written.
+ * epochs by the key of the layer or group boiling (ENGINE 4.6), the innermost naming a layer winning. A reseeded
+ * layer's every seed is suffixed for its epoch and its entries keyed by it; one at 0 is as written.
  */
 export type PaintingSelectionCompileOptions = { readonly layers?: readonly NodeKey[]; readonly reseed?: ReadonlyMap<NodeKey, number> };
 

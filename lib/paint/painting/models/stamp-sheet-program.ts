@@ -62,10 +62,9 @@ export type StampSheetClock = { readonly kind: 'none' } | { readonly kind: 'scal
 export type StampSheetAnchors = { within: ReadonlySet<number>; masks: ReadonlySet<CompiledStampMask> };
 
 /**
- * One application in its sheet's order: its deposit, as posed; its paint's medium (its film's, spread held to its
- * own cap); what it waits for; the node ordinals posing it, outermost first, its layer's among them; its order time
- * and fixed `at`, scene s (null when unclocked or untimed); `datum`, the text of all it reads at rest, marks too
- * (ENGINE 4.2); `pose`, the text of the map posing it.
+ * One application in its sheet's order: its deposit, as posed; its paint's medium (its film's, spread capped); what
+ * it waits for; the node ordinals posing it, outermost first, its layer's too; its order time and fixed `at`, scene s
+ * (null when unclocked or untimed); `datum`, the text of all it reads at rest (ENGINE 4.2); `pose`, its map's text.
  */
 export type StampSheetEntry = {
   wash: number; name: string; deposit: CompiledStampDeposit; medium: PaintMedium; on: StampSheetWetness | null; bloom: boolean;

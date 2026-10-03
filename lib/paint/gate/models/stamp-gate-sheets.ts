@@ -130,10 +130,9 @@ const FOOT_GLAZE_AT = 6;
 const wetContactProperties = { heron: { type: 'boolean', default: true }, apart: { type: 'boolean', default: false } } as const satisfies PropertySchema;
 
 /**
- * Shallows flooded across the foot of the sheet from scene second 0, and, `heron`, a rigged heron group whose foot
- * charges across their edge at 0.5 s while they shine, its water letting their paint walk out into it, and glazes at
- * 6 s once all under it has set (`on: 'dry'`), on one sheet (ENGINE 4.1's example); `apart`, the shallows and the
- * heron each on an own sheet at the same scale.
+ * Shallows flooded across the sheet's foot from 0 s, and, `heron`, a rigged heron whose foot charges across their
+ * edge at 0.5 s while they shine, their paint walking into its water, and glazes at 6 s once all under it has set
+ * (`on: 'dry'`), on one sheet (ENGINE 4.1); `apart`, each on an own sheet at that scale.
  */
 export const STAMP_GATE_WET_CONTACT: PaintingSourceModule<typeof wetContactProperties> = {
   properties: wetContactProperties,
