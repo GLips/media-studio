@@ -22,7 +22,7 @@ import { paintPigmentSeed } from '#lib/paint/materials/models/paint-paper.ts';
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { StampTipsOf } from '../models/stamp-tip-support.ts';
-import { stampPaintTargetWgsl, type StampPaintCompositor, type StampPaintTarget, type StampWashLayer } from './stamp-paint-compositor.ts';
+import { type StampPaintCompositor, type StampPaintTarget, type StampWashLayer } from './stamp-paint-compositor.ts';
 import { stampPaintCompositorFor } from './stamp-paint-compositor-for.ts';
 import { clearStampTarget, copyStampTextureBox, dispatchStampCompute, STAMP_WORKGROUP, stampArrayView, stampBindGroup, stampPaintSamplers, type StampPaintDevice } from './stamp-paint-gpu.ts';
 import { createStampUniformArena } from './stamp-uniform-arena.ts';
@@ -45,12 +45,13 @@ import { lensGaussianReach, lensSigmaStepped } from '#lib/picture/lens/models/le
 import { createLensCompositor, type LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { stampWarpCells, stampWarpTriangles, STAMP_WARP_MOST_CELLS } from '../models/stamp-group-warp.ts';
+import { createStampLatticePass, STAMP_LATTICE_VERTEX_FLOATS } from './stamp-lattice-pass.ts';
 import {
   stampFramePlan, stampFramePlanExposed, stampFramePlanMotion, stampGroupSceneMap, type StampGroupFrame, type StampGroupTravel, type StampMotionSpan, type StampPosedMoment,
 } from '../models/stamp-frame-plan.ts';
 import type { StampGroupMarks, StampPaintFrameState } from '../models/stamp-paint-frame-state.ts';
 import { STAMP_REST_LOOK, stampSinglePlane, type StampLaidPlanes, type StampLensFrame, type StampPlaneLook } from '../models/stamp-plane.ts';
-import { stampBoxUnion, stampStage, stampStageTexelsGrown, stampStageTexelsWithin, stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
+import { stampBoxUnion, stampStage, stampStageTexelsGrown, stampStageTexelsWithin, type StampStage } from '../models/stamp-stage.ts';
 import { bindStampPaintBrushes, loadStampDepositBank, type StampDepositToLoad, type StampLoadedDeposit, type StampPaintBrushes } from './stamp-deposit-bank.ts';
 import { createStampDepositDrawing, stampDepositUniformSlots, stampPaperTooth, type StampDepositDraw, type StampDepositTargets, type StampWashStart } from './stamp-deposit-drawing.ts';
 import { STAMP_TRACE_ACCUMULATOR, STAMP_TRACE_SLOTS } from './stamp-deposit-resolve-wgsl.ts';
@@ -67,39 +68,10 @@ const PLANE_SLOTS = 7;
 /** The uniform slots a frame's bloom takes: a gaussian's two passes. */
 const BLOOM_SLOTS = 2;
 
-const latticeMotionInto = (view: GPUTextureView): GPURenderPassColorAttachment => ({ view, loadOp: 'load', storeOp: 'store' });
-
-// A moved or warped group's lattice (stamp-group-warp.ts) rasterised into \`rest\`: each scene pixel it covers learns its
-// rest point; the rest keep STAMP_NO_REST. Where it folds, a later triangle covers an earlier unless its rest holds
-// nothing. \`traced\`: its travel goes into the plane's motion, where its paint lies (\`paint\`), or over
-// all it covers (\`region\`, a pass alone).
-const groupLatticeWgsl = (layer: StampPaintTarget, stage: StampStage, traced: StampMotionCover | null) => /* wgsl */ `
-${stampStageWgsl(stage)}
-${stampPaintTargetWgsl('source', 0, layer, null)}
-@group(0) @binding(1) var linearClamp: sampler;
-struct LatticePoint { @builtin(position) at: vec4f, @location(0) rest: vec2f, @location(1) travel: vec2f };
-struct LatticeLaid { ${traced === 'region' ? '@location(0) motion: vec4f' : `@location(0) rest: vec4f${traced ? ', @location(1) motion: vec4f' : ''}`} };
-@vertex fn latticeVertex(@location(0) clip: vec2f, @location(1) rest: vec2f, @location(2) travel: vec2f) -> LatticePoint {
-  return LatticePoint(vec4f(clip, 0.0, 1.0), rest, travel);
-}
-@fragment fn latticeRest(point: LatticePoint) -> LatticeLaid {${traced === 'region' ? `
-  return LatticeLaid(vec4f(point.travel, 0.0, 1.0));` : `
-  let uv = (point.rest + vec2f(STAGE_MARGIN)) / vec2f(textureDimensions(source));
-  var held = vec4f(0.0);
-  ${layer.kind === 'array'
-    ? `for (var l = 0u; l < ${layer.layers}u; l++) { held += abs(textureSampleLevel(source, linearClamp, uv, l, 0.0)); }`
-    : 'held = abs(textureSampleLevel(source, linearClamp, uv, 0.0));'}
-  if (all(held == vec4f(0.0))) { discard; }
-  return LatticeLaid(vec4f(point.rest, 0.0, 1.0)${traced ? ', vec4f(point.travel, 0.0, 1.0)' : ''});`}
-}`;
-
 /** A boiling group's epochs kept on the GPU besides its first: the one drawing, and a couple a scrub returns to. */
 const STAMP_BOIL_EPOCHS_KEPT = 3;
 /** A live group's marks kept on the GPU: the frame drawing's, and the last, which a hold on twos draws again. */
 const STAMP_LIVE_MARKS_KEPT = 2;
-/** A lattice vertex's floats: its stage clip point, its rest point, and its travel over its plane's motion span. */
-const LATTICE_VERTEX_FLOATS = 6;
-const STILL_TRAVEL = { x: 0, y: 0 };
 /**
  * Where a group writes its motion: where its paint lies, as the lens gathers it, or over all its lattice covers, as
  * paper is carried with it (vid-151).
@@ -385,55 +357,21 @@ function rendererOnSurface({
   // Each frame's uniforms, and each of the load's own submits'.
   const uniforms = createStampUniformArena(device, slotsPerFrame), { slot } = uniforms;
 
-  // Each frame's lattice triangles, uploaded with its uniforms, in room grown for the most a frame has laid through
-  // one (latticeRoom).
-  let latticeStaging = new Float32Array(0), latticeVertices: GPUBuffer | null = null, latticeUsed = 0;
-
   const { linearClamp, mirrorTile } = stampPaintSamplers(device);
 
   const computePipeline = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }) } });
-  /**
-   * What laying a group through a lattice takes, made the first time a frame moves or warps one: its pipelines, and
-   * each scene pixel's rest point.
-   */
-  type LatticeLay = { pipeline: (traced: StampMotionCover | null) => GPURenderPipeline; rest: ReturnType<typeof target> };
-  let latticeLay: LatticeLay | null = null;
-  const latticeLayOf = (): LatticeLay => {
-    if (latticeLay) return latticeLay;
-    const latticePipelines = new Map<StampMotionCover | null, GPURenderPipeline>();
-    const latticePipeline = (traced: StampMotionCover | null) => {
-      const module = device.createShaderModule({ code: groupLatticeWgsl(compositor.targets.layer, stage, traced) });
-      const attributes: GPUVertexAttribute[] = [0, 1, 2].map((shaderLocation) => ({ shaderLocation, offset: shaderLocation * 8, format: 'float32x2' }));
-      const rest: GPUColorTargetState[] = traced === 'region' ? [] : [{ format: 'rg32float' }];
-      return device.createRenderPipeline({
-        layout: 'auto',
-        vertex: { module, buffers: [{ arrayStride: LATTICE_VERTEX_FLOATS * 4, attributes }] },
-        fragment: { module, targets: [...rest, ...(traced ? [{ format: 'rgba16float' as const }] : [])] },
-      });
-    };
-    latticeLay = {
-      pipeline: (traced) => {
-        if (!latticePipelines.has(traced)) latticePipelines.set(traced, latticePipeline(traced));
-        return latticePipelines.get(traced)!;
-      },
-      rest: target('rest', width, height, GPUTextureUsage.RENDER_ATTACHMENT, 'rg32float'),
-    };
-    return latticeLay;
-  };
+  // Each frame's lattices, their vertices uploaded with its uniforms, in room grown for the most a frame lays (latticeRoom).
+  const latticePass = createStampLatticePass(device, { layer: compositor.targets.layer, stage, sampler: linearClamp });
+  /** Each scene pixel's rest point under a moved or warped group's lattice, made the first time a frame moves or warps one. */
+  let latticeRest: ReturnType<typeof target> | null = null;
   /** How many times a frame may lay each group: twice on a clear plane, on its paper and on black. */
   const laysOf = painting.groups.map((_, index) => (planes.nearer.some((plane) => plane.kind === 'painted' && plane.groups.includes(index)) ? 2 : 1));
   /**
    * Room for a frame laying `groups` through lattices, each lay: a moved group's one cell, a warped group's most, and
    * a still group's one when its plane's motion is traced.
    */
-  const latticeRoom = (groups: readonly StampGroupFrame[]) => {
-    const floats = groups.reduce((sum, group, index) => sum + 6 * LATTICE_VERTEX_FLOATS * latticeCellsMost(group) * laysOf[index], 0);
-    if (floats <= latticeStaging.length) return;
-    latticeStaging = new Float32Array(floats);
-    // Destroyed once the frames that drew from it are done.
-    latticeVertices?.destroy();
-    latticeVertices = device.createBuffer({ size: floats * 4, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
-  };
+  const latticeRoom = (groups: readonly StampGroupFrame[]) =>
+    latticePass.reset(groups.reduce((sum, group, index) => sum + 6 * STAMP_LATTICE_VERTEX_FLOATS * latticeCellsMost(group) * laysOf[index], 0));
   const dithered = format.endsWith('8unorm');
   const outputPipeline = (() => {
     const module = device.createShaderModule({ code: stampPaintOutputWgsl(compositor, dithered, stage) });
@@ -562,56 +500,35 @@ function rendererOnSurface({
    */
   function layGroup(encoder: GPUCommandEncoder, index: number, groupFrame: StampGroupFrame, painted: Box, backing: StampPaintBacking, traced: StampTracedMotion | null): { box: Box; rest: GPUTextureView | null } | null {
     const { group, lay: laidAt, warp, visibility } = groupFrame;
-    let box: Box | null = painted, lattice: ReturnType<typeof latticeLayOf> | null = null;
+    let box: Box | null = painted, rest: GPUTextureView | null = null;
     const map = stampGroupSceneMap(groupFrame);
     if (map || traced) {
       // A pixel past the painted box, for the bilinear read's reach, in painting points as the warp and placement map
       // them. A placement is affine, so one cell carries it exactly.
-      const rest = { x: painted.x - margin - 1, y: painted.y - margin - 1, w: painted.w + 2, h: painted.h + 2 };
+      const restBox = { x: painted.x - margin - 1, y: painted.y - margin - 1, w: painted.w + 2, h: painted.h + 2 };
       let triangles: Float32Array;
       if (warp) {
         const at = laidAt && { ...laidAt.placement, pivot: laidAt.pivot };
-        const key = `${JSON.stringify(warp.key)}|${warp.cell}|${at ? JSON.stringify(at) : ''}|${rest.x},${rest.y},${rest.w},${rest.h}`;
+        const key = `${JSON.stringify(warp.key)}|${warp.cell}|${at ? JSON.stringify(at) : ''}|${restBox.x},${restBox.y},${restBox.w},${restBox.h}`;
         const kept = lattices.get(index);
         if (kept?.key === key) triangles = kept.triangles;
         else {
-          const { columns, rows } = stampWarpCells(rest.w, rest.h, warp.cell);
-          triangles = stampWarpTriangles(map!, rest, columns, rows);
+          const { columns, rows } = stampWarpCells(restBox.w, restBox.h, warp.cell);
+          triangles = stampWarpTriangles(map!, restBox, columns, rows);
           lattices.set(index, { key, triangles });
         }
-      } else triangles = stampWarpTriangles(map ?? ((point) => point), rest, 1, 1);
-      const travel = traced?.travel?.travel;
-      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-      for (let v = 0, k = latticeUsed; v < triangles.length; v += 4, k += LATTICE_VERTEX_FLOATS) {
-        x0 = Math.min(x0, triangles[v]); x1 = Math.max(x1, triangles[v]);
-        y0 = Math.min(y0, triangles[v + 1]); y1 = Math.max(y1, triangles[v + 1]);
-        const moved = travel ? travel({ x: triangles[v + 2], y: triangles[v + 3] }) : STILL_TRAVEL;
-        // To the stage's texels, then clip space, y up.
-        latticeStaging.set([((triangles[v] + margin) / width) * 2 - 1, 1 - ((triangles[v + 1] + margin) / height) * 2, triangles[v + 2], triangles[v + 3], moved.x, moved.y], k);
-      }
-      if (map) box = stampStageTexelsWithin(stage, x0, y0, x1, y1);
+      } else triangles = stampWarpTriangles(map ?? ((point) => point), restBox, 1, 1);
+      const { span: latticeSpan, reach } = latticePass.add(triangles, traced?.travel?.travel);
+      if (map) box = stampStageTexelsWithin(stage, reach.x0, reach.y0, reach.x1, reach.y1);
       if (!box) return null;
-      lattice = latticeLayOf();
-      const first = latticeUsed, floats = (triangles.length / 4) * LATTICE_VERTEX_FLOATS;
-      latticeUsed += floats;
-      const latticePass = (attachments: GPURenderPassColorAttachment[], mode: StampMotionCover | null) => {
-        const pipeline = lattice!.pipeline(mode), pass = encoder.beginRenderPass({ colorAttachments: attachments });
-        pass.setPipeline(pipeline);
-        // A region's pass reads nothing: its pipeline binds nothing.
-        if (mode !== 'region') pass.setBindGroup(0, bindGroup(pipeline, [targets.layer.view, linearClamp]));
-        pass.setVertexBuffer(0, latticeVertices, first * 4, floats * 4);
-        pass.draw(triangles.length / 4);
-        pass.end();
-      };
-      const restInto: GPURenderPassColorAttachment = { view: lattice.rest.view, loadOp: 'clear', clearValue: [STAMP_NO_REST, STAMP_NO_REST, 0, 0], storeOp: 'store' };
+      latticeRest ??= target('rest', width, height, GPUTextureUsage.RENDER_ATTACHMENT, 'rg32float');
+      const targetsOf = { rest: latticeRest.view, motion: traced?.into ?? null, source: targets.layer.view };
       // A region's motion is drawn on its own: the rest's pass drops what holds no paint.
-      if (traced?.cover === 'paint') latticePass([restInto, latticeMotionInto(traced.into)], 'paint');
-      else latticePass([restInto], null);
-      if (traced?.cover === 'region') latticePass([latticeMotionInto(traced.into)], 'region');
+      latticePass.draw(encoder, latticeSpan, { rest: 'paint', motion: traced?.cover === 'paint' }, targetsOf);
+      if (traced?.cover === 'region') latticePass.draw(encoder, latticeSpan, { rest: null, motion: true }, targetsOf);
       // A still group's lattice is drawn for its motion alone: it's laid where it's painted.
-      if (!map) lattice = null;
+      if (map) rest = latticeRest.view;
     }
-    const rest = lattice ? lattice.rest.view : null;
     lay.layGroup(encoder, {
       layer: targets.layer.view, painting: targets.painting.view, index, opacity: group.opacity * visibility, glaze: group.composite === 'glaze', box, backing,
       rest, paperFromRest: group.paper === 'own',
@@ -737,6 +654,7 @@ function rendererOnSurface({
       const put = gpuUniformWriter(STAMP_PLANE_PICTURE, views);
       put('origin', [box.x, box.y]);
       put('extent', [box.w, box.h]);
+      put('visibility', 1);
     }), targets.painting.view, layers.emission !== null ? emissionTarget().view : null, stampArrayView(texture), layers.kind === 'film' ? stampArrayView(backingLight!) : null, layers.motion !== null ? motionTarget().view : null], box.w, box.h);
     return { ...note, texture };
   }
@@ -933,7 +851,6 @@ function rendererOnSurface({
     const { t, state } = paintFrame, lensFrame = paintFrame.kind === 'once' ? null : paintFrame.lens;
     const groups = paintFrame.kind === 'exposure' ? stampFramePlanExposed(painting, { t, state }, { t: paintFrame.exposure.at, state: paintFrame.exposure.state }) : stampFramePlan(painting, t, state);
     uniforms.reset();
-    latticeUsed = 0;
     latticeRoom(groups);
     const glows = groups.some(({ visibility, glow }) => visibility && glow);
     if (glows && !lensFrame) throw new Error(`stamp paint: a group glows at ${t} s, and only a lens blooms it: draw the paintFrame through a camera's lens (paint-camera.ts)`);
@@ -983,7 +900,7 @@ function rendererOnSurface({
       }
     }
     uniforms.flush();
-    if (latticeUsed) device.queue.writeBuffer(latticeVertices!, 0, latticeStaging, 0, latticeUsed);
+    latticePass.flush();
     lensGpu.flush();
     return encoder;
   }
@@ -993,7 +910,6 @@ function rendererOnSurface({
     owner.assertLive();
     const groups = stampFramePlan(painting, t, state), travels = stampFramePlanMotion(painting, { t, state }, { kind: 'transport', from, to });
     uniforms.reset();
-    latticeUsed = 0;
     latticeRoom(groups);
     const encoder = device.createCommandEncoder(), layers = new Map<string, GPUTexture>();
     for (const plane of [planes.back, ...planes.nearer].flatMap((laid) => (laid.kind === 'painted' ? [laid] : []))) {
@@ -1006,7 +922,7 @@ function rendererOnSurface({
       layers.set(plane.id, into.texture);
     }
     uniforms.flush();
-    if (latticeUsed) device.queue.writeBuffer(latticeVertices!, 0, latticeStaging, 0, latticeUsed);
+    latticePass.flush();
     return { encoder, layers };
   }
 

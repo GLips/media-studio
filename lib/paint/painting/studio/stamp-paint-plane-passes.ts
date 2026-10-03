@@ -104,8 +104,8 @@ ${laidCoverWgsl(compositor, cover, noRest, 'false')}
 }`;
 }
 
-/** A picture over `extent` texels, its first at stage texel `origin`. */
-export const STAMP_PLANE_PICTURE = gpuUniformLayout('PlanePicture', [['origin', 'vec2u'], ['extent', 'vec2u']]);
+/** A picture over `extent` texels, its first at stage texel `origin`, all it holds faded by `visibility` 0..1. */
+export const STAMP_PLANE_PICTURE = gpuUniformLayout('PlanePicture', [['origin', 'vec2u'], ['extent', 'vec2u'], ['visibility', 'f32']]);
 
 /**
  * A picture's array layers (lens-passes.ts): its colour (0), premultiplied, then for `film` (a clear plane's) its
@@ -149,20 +149,21 @@ ${compositor.output}
 }
 
 /**
- * The picture pass's WGSL: binds its uniform (0), the painting (1), its emission (2), the picture (3), for a film
- * the measuring backings' light (4: white's at layer 0, black's at 1, a texel each), and its groups' motion (5). A
- * film's painting is its lay on black; its picture's colour layer holds its light on white, read and replaced.
+ * The picture pass's WGSL: binds its uniform (0), the painting (1), its emission (2), the picture (3), for a film the
+ * backings' light (4: white's at layer 0, black's at 1), and its groups' motion (5). A film's painting is its lay on
+ * black, its colour layer its light on white; its alpha 1 − luminance(T), for a canvas over HTML.
  */
 export function stampPlanePictureWgsl(compositor: StampPaintCompositor, layers: StampPlanePictureLayers, workgroup: number) {
   // Light over backing b taken as C + T·b per channel: the two lays give T = ΔL / Δbacking, and C what black leaves
-  // past T·black.
+  // past T·black. Faded by v, it's v·C + (1 − v·(1 − T))·b: every layer scales by v.
   const film = layers.kind === 'film' && /* wgsl */ `
   let onWhite = textureLoad(picture, id.xy, 0u).rgb;
   let white = textureLoad(backingLight, vec2u(0u), 0u, 0).rgb;
   let black = textureLoad(backingLight, vec2u(0u), 1u, 0).rgb;
   let through = clamp((onWhite - light) / (white - black), vec3f(0.0), vec3f(1.0));
-  textureStore(picture, id.xy, 0u, vec4f(max(light - through * black, vec3f(0.0)), 1.0 - (through.r + through.g + through.b) / 3.0));
-  textureStore(picture, id.xy, ${layers.taken}u, vec4f(1.0 - through, 0.0));`;
+  let kept = 1.0 - dot(through, vec3f(0.2126, 0.7152, 0.0722));
+  textureStore(picture, id.xy, 0u, vec4f(max(light - through * black, vec3f(0.0)), kept) * u.visibility);
+  textureStore(picture, id.xy, ${layers.taken}u, vec4f(1.0 - through, 0.0) * u.visibility);`;
   return /* wgsl */ `
 ${GPU_SRGB_WGSL}
 ${STAMP_PLANE_PICTURE.wgsl}
@@ -177,9 +178,10 @@ ${compositor.output}
   if (any(id.xy >= u.extent)) { return; }
   let texel = u.origin + id.xy;
   let light = linearLight(texel);${film || `
-  textureStore(picture, id.xy, 0u, vec4f(light, 1.0));`}${layers.emission !== null ? `
+  textureStore(picture, id.xy, 0u, vec4f(light, 1.0) * u.visibility);`}${layers.emission !== null ? `
   // The glow source weighed each group's light by its cover already.
-  textureStore(picture, id.xy, ${layers.emission}u, vec4f(textureLoad(emission, texel, 0).rgb, 0.0));` : ''}${layers.motion !== null ? `
-  textureStore(picture, id.xy, ${layers.motion}u, textureLoad(motion, texel, 0));` : ''}
+  textureStore(picture, id.xy, ${layers.emission}u, vec4f(textureLoad(emission, texel, 0).rgb, 0.0) * u.visibility);` : ''}${layers.motion !== null ? `
+  // Motion is premultiplied by its cover, which fades with the rest.
+  textureStore(picture, id.xy, ${layers.motion}u, textureLoad(motion, texel, 0) * u.visibility);` : ''}
 }`;
 }

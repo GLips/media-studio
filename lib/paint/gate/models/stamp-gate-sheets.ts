@@ -7,7 +7,7 @@
 import type { PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import meadow from '#lib/paint/document/models/meadow.painting.ts';
 import { compilePaintingSelection, type PaintingSelectionCompiled } from '#lib/paint/document/models/painting-document-compile.ts';
-import { paintingSheetPosed, type PaintingPoses } from '#lib/paint/document/models/painting-pose.ts';
+import { paintingSheetPosed, paintingSimilarityPose, type PaintingPoses } from '#lib/paint/document/models/painting-pose.ts';
 import type { BrushRef, PaintingDocument, Region, Subpath } from '#lib/paint/document/models/painting-document.ts';
 import type { PropertySchema, PropertyValues } from '#lib/paint/document/models/painting-properties.ts';
 import { painting, type PaintingEvaluation, type PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
@@ -170,7 +170,7 @@ export const STAMP_GATE_HERON_AWAY = { ma: 1, mb: 0, kx: 0, ky: -70 } as const;
 /** The wet-contact sheet's program with its heron posed by `pose`, as the shot poses a group (painting-pose.ts). */
 export function stampGateHeronPosed(pose: PaintSimilarity): StampSheetProgram {
   const evaluation = painting(STAMP_GATE_WET_CONTACT), { program } = compilePaintingSelection(evaluation, stampGateSheetBrushOf).sheets[0];
-  return paintingSheetPosed(evaluation.tree, program, new Map([['heron', pose]]));
+  return paintingSheetPosed(evaluation.tree, program, new Map([['heron', paintingSimilarityPose(pose)]]));
 }
 /** Where the foot's charge touches at rest, document px; and a stretch of the shallows far from it. */
 export const STAMP_GATE_FOOT_BOX = { x: 64, y: 74, w: 34, h: 24 } as const;
@@ -199,7 +199,9 @@ export function stampGateSolvedStill(id: StampGateSolvedId): StampGateSolvedStil
 /** What solved baseline `id` is drawn from, as text: its sheets' programs, how they're laid, its poses and the images it loads. */
 export function stampGateSolvedInputs(id: StampGateSolvedId) {
   const { compiled, poses } = stampGateSolvedStill(id);
-  return stampCanonicalJson({ programs: compiled.sheets.map(({ program }) => program), steps: compiled.steps, poses: [...poses], images: STAMP_GATE_SHEET_IMAGES });
+  // A similarity's words as they always were, so a baseline's inputs read alike.
+  const posed = [...poses].map(([key, pose]) => [key, pose.kind === 'similarity' ? pose.map : pose.text]);
+  return stampCanonicalJson({ programs: compiled.sheets.map(({ program }) => program), steps: compiled.steps, poses: posed, images: STAMP_GATE_SHEET_IMAGES });
 }
 
 const REBASE_WASHES = 22;

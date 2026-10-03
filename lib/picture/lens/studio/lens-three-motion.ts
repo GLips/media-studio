@@ -7,7 +7,7 @@
 // copies the posed positions into them. Negative space: three's own skinning, morphs and instance matrices aren't
 // read, so a mesh deformed by those moves with its object alone.
 
-import { BufferAttribute, BufferGeometry, Matrix4, type Camera, type NodeBuilder, type Object3D, type Scene } from 'three/webgpu';
+import { BlendMode, BufferAttribute, BufferGeometry, MaterialBlending, Matrix4, type Camera, type NodeBuilder, type Object3D, type Scene } from 'three/webgpu';
 import { attribute, Fn, mrt, output, positionLocal, positionView, uniform, varying, vec2, vec4 } from 'three/tsl';
 import { isThreeGeometryDrawable } from '#lib/platform/gpu/studio/studio-three-renderer.ts';
 
@@ -99,7 +99,8 @@ export function createLensThreeMotion({ width, height, distanceUnit }: { width: 
   const px = vec2(width / 2, -height / 2);
   const travel = closed.xy.div(closed.w).sub(opened.xy.div(opened.w)).mul(px).mul(moving);
   const distance = positionView.z.negate().div(distanceUnit);
-  const node = mrt({ output, [LENS_THREE_MOTION_NAME]: vec4(travel, distance, output.a) });
+  // three blends an attachment other than `output` not at all unless told to.
+  const node = mrt({ output, [LENS_THREE_MOTION_NAME]: vec4(travel, distance, output.a) }).setBlendMode(LENS_THREE_MOTION_NAME, new BlendMode(MaterialBlending));
   return {
     mrt: node,
     record: (moment, scene, camera) => {

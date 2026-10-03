@@ -19,6 +19,7 @@ import { STAMP_OPAQUE_COVER, type CompiledStampDeposit } from '../models/stamp-p
 import type { StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
 import type { StampPaintCompositor, StampWashGroupLayer } from './stamp-paint-compositor.ts';
 import type { StampPaintDevice } from './stamp-paint-gpu.ts';
+import { STAMP_REFLECTANCE_READING_WGSL } from './stamp-reflectance-reading.ts';
 import { gpuUniformLayout, gpuUniformWriter, type GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 
 /** Words per component in the component buffer: slot, seed, granulation, flocculation. */
@@ -566,6 +567,14 @@ fn layPaper(pixel: vec2u, color: vec3f) {
 ${bandWgsl}
 fn layCard(pixel: vec2u, color: vec3f, cover: f32) {
   for (var i = 0u; i < BAND_VEC4S; i++) { textureStore(painting, pixel, i, mix(textureLoad(painting, pixel, i), paperReflectance(i, color), cover)); }
+  for (var r = 0u; r < ${underLayers}u; r++) { textureStore(painting, pixel, BAND_VEC4S + r, textureLoad(painting, pixel, BAND_VEC4S + r) * (1.0 - cover)); }
+}
+${STAMP_REFLECTANCE_READING_WGSL}
+// A picture's premultiplied linear \`light\` laid over what's there by its alpha \`cover\`, band by band: its own
+// spectrum is the paper's moved to read as its colour, so a reflectance's linear reading lays it exactly.
+fn layPicture(pixel: vec2u, light: vec3f, cover: f32) {
+  let own = reflectanceReading(clamp(light / cover, vec3f(0.0), vec3f(1.0)), PAPER);
+  for (var i = 0u; i < BAND_VEC4S; i++) { textureStore(painting, pixel, i, mix(textureLoad(painting, pixel, i), own[i], cover)); }
   for (var r = 0u; r < ${underLayers}u; r++) { textureStore(painting, pixel, BAND_VEC4S + r, textureLoad(painting, pixel, BAND_VEC4S + r) * (1.0 - cover)); }
 }`,
     output: /* wgsl */ `

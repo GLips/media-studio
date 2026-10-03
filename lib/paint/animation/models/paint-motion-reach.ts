@@ -10,7 +10,7 @@
 import type { StampGroupPlacement } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import type { CompiledStampGroup } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import { paintGroupPaintedBox, type CompiledPaintNode, type PaintMotion } from './paint-motion-compile.ts';
+import { paintGroupPaintedBox, type CompiledPaintLevel, type PaintMotion } from './paint-motion-compile.ts';
 
 /** Where a group's paint can lie anywhere in the shot (null: it paints nothing), or why that can't be bounded. */
 export type PaintGroupLaidReach = { readonly kind: 'bounded'; readonly box: StampBox | null } | { readonly kind: 'unbounded'; readonly why: string };
@@ -41,7 +41,7 @@ const placementShift = (range: PlacementRange, pivot: StampPoint, box: StampBox)
 const grown = ({ x0, x1, y0, y1 }: StampBox, by: number): StampBox => ({ x0: x0 - by, x1: x1 + by, y0: y0 - by, y1: y1 + by });
 
 /** The most `level`'s own bend and placement move a point of `box`, its pins left out for a live node's own level. */
-function levelShift(level: CompiledPaintNode, box: StampBox, withPins: boolean): number {
+export function paintLevelShift(level: CompiledPaintLevel, box: StampBox, withPins: boolean): number {
   let shift = 0;
   // Pins' displacements add, each at most its whole move (a weight is at most 1).
   if (withPins) {
@@ -84,7 +84,7 @@ export function paintGroupLaidReach(group: CompiledStampGroup, motion: PaintMoti
     if (node.marks.kind === 'wobble') box = grown(box, node.marks.wobble.amount);
     for (const [depth, id] of node.levels.entries()) {
       const level = motion.nodes.get(id)!;
-      box = grown(box, levelShift(level, box, depth > 0 || node.marks.kind !== 'live'));
+      box = grown(box, paintLevelShift(level, box, depth > 0 || node.marks.kind !== 'live'));
     }
   }
   if (group.motion) box = grown(box, placementShift(placementRange(group.motion.keys), group.motion.pivot ?? { x: 0, y: 0 }, box));

@@ -1,11 +1,8 @@
 // painting-pose.ts: a sheet program posed before it's solved (ENGINE 5.3). Each entry's marks, planned at rest, are
-// mapped by its chain's map (its nodes' maps, each in its parent's frame, outermost first). A stamp goes where the map
-// puts it, scaled and turned, keeping where it was placed (its noise's seed); an area maps as its outline. Fields
-// aren't mapped: a posed deposit, area and prewet carry the map back to rest (StampRestMap), where the solver reads
-// fields, ragged noise and a flood's local scale. Anchored clips, reserves and resists stay. An entry's `pose`, its
-// map's text, is in its state key.
-//
-// Negative space: similarities only. Pins and skin map marks by meshes, which come with the shot's rigs.
+// mapped by its chain's map (its nodes' maps, outermost first). A stamp goes where the map puts it, scaled and turned
+// there, keeping its noise's seed; an area maps as its outline, densified under a warp. Fields aren't mapped: a posed
+// deposit, area and prewet carry a similarity back to rest (StampRestMap), the best fit under a warp, where the solver
+// reads fields and noise. Anchored clips, reserves and resists stay. An entry's pose text is in its state key.
 import { stampFrozenMarks, type FrozenStampMarks } from '#lib/paint/brush/models/stamp-placement.ts';
 import {
   PAINT_SIMILARITY_IDENTITY, paintSimilarityAfter, paintSimilarityApply, paintSimilarityInverse, paintSimilarityScale, type PaintSimilarity,
@@ -13,6 +10,7 @@ import {
 import type { CompiledStampArea } from '#lib/paint/painting/models/stamp-area.ts';
 import type { CompiledStampBoundary } from '#lib/paint/painting/models/stamp-area-boundaries.ts';
 import type { CompiledStampBrushedMask } from '#lib/paint/painting/models/stamp-brushed-mask.ts';
+import type { StampWarpMap } from '#lib/paint/painting/models/stamp-group-warp.ts';
 import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import type { CompiledStampDeposit, CompiledStampMask } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampEdge, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
@@ -22,55 +20,152 @@ import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state
 import type { NodeKey } from './painting-document.ts';
 import type { PaintingTree } from './painting-tree.ts';
 
-/** Each posed node's map by its key, in its parent's frame; a node left out stands at rest. */
-export type PaintingPoses = ReadonlyMap<NodeKey, PaintSimilarity>;
+/**
+ * A node's map in its parent's frame: a similarity, or a warp (pins, sway, flutter, a rig's part or skin) whose
+ * canonical `text` names every number it's built from, so equal texts are equal maps.
+ */
+export type PaintingNodePose = { readonly kind: 'similarity'; readonly map: PaintSimilarity } | { readonly kind: 'warp'; readonly map: StampWarpMap; readonly text: string };
+
+/** Each posed node's map by its key; a node left out stands at rest. */
+export type PaintingPoses = ReadonlyMap<NodeKey, PaintingNodePose>;
+
+export const paintingSimilarityPose = (map: PaintSimilarity): PaintingNodePose => ({ kind: 'similarity', map });
+
+const REST_POSE = paintingSimilarityPose(PAINT_SIMILARITY_IDENTITY);
 
 /** An entry's `pose` at rest: the canonical text of the identity, as an entry's `pose` holds its map's. */
 export const PAINTING_REST_POSE = stampCanonicalJson(PAINT_SIMILARITY_IDENTITY);
 
-/** The map `chain` (ordinals in `tree.nodes`, outermost first) poses by under `poses`. */
-export const paintingChainMap = (tree: PaintingTree, chain: readonly number[], poses: PaintingPoses): PaintSimilarity =>
-  chain.reduce((map, node) => paintSimilarityAfter(map, poses.get(tree.nodes[node].node.key) ?? PAINT_SIMILARITY_IDENTITY), PAINT_SIMILARITY_IDENTITY);
+/** `pose`'s canonical text: a similarity's words as JSON, a warp's own. */
+export const paintingPoseText = (pose: PaintingNodePose) => (pose.kind === 'similarity' ? stampCanonicalJson(pose.map) : pose.text);
+
+/** `pose` as a map of points. */
+export const paintingPoseMap = (pose: PaintingNodePose): StampWarpMap => (pose.kind === 'warp' ? pose.map : (point) => paintSimilarityApply(pose.map, point));
+
+/** `outer` after `inner`, one pose: a similarity while both are; a pose at rest leaves the other as it is. */
+export function paintingPoseAfter(outer: PaintingNodePose, inner: PaintingNodePose): PaintingNodePose {
+  if (outer.kind === 'similarity' && inner.kind === 'similarity') return paintingSimilarityPose(paintSimilarityAfter(outer.map, inner.map));
+  if (paintingPoseText(outer) === PAINTING_REST_POSE) return inner;
+  if (paintingPoseText(inner) === PAINTING_REST_POSE) return outer;
+  const o = paintingPoseMap(outer), i = paintingPoseMap(inner);
+  return { kind: 'warp', map: (rest) => o(i(rest)), text: `${paintingPoseText(outer)}∘${paintingPoseText(inner)}` };
+}
+
+/** The pose `chain` (ordinals in `tree.nodes`, outermost first) poses by under `poses`. */
+export const paintingChainPose = (tree: PaintingTree, chain: readonly number[], poses: PaintingPoses): PaintingNodePose =>
+  chain.reduce((pose, node) => paintingPoseAfter(pose, poses.get(tree.nodes[node].node.key) ?? REST_POSE), REST_POSE);
 
 const wordsOf = ({ ma, mb, kx, ky }: PaintSimilarity) => [ma, mb, kx, ky] as const;
 
 /** `map` as a pass reads a placed sheet's: its words, and its inverse's, back to where the sheet was painted. */
 export const paintingSheetPlace = (map: PaintSimilarity): StampSheetPlace => ({ laid: wordsOf(map), rest: wordsOf(paintSimilarityInverse(map)) });
 
-/** A pose's map, as the marks it moves read it: the map, how it scales and turns, and its words back to rest. */
-type PaintingMap = { readonly map: PaintSimilarity; readonly scale: number; readonly turn: number; readonly rest: StampRestMap; readonly tag: string };
+/**
+ * The similarity taking `points` nearest, in least squares, to where `map` puts them; the identity for none. A
+ * warp's stand-in where one similarity must do: a deposit's way back to rest.
+ */
+export function paintingFitSimilarity(points: readonly StampPoint[], map: StampWarpMap): PaintSimilarity {
+  if (!points.length) return PAINT_SIMILARITY_IDENTITY;
+  const posed = points.map(map), n = points.length;
+  const rx = points.reduce((sum, p) => sum + p.x, 0) / n, ry = points.reduce((sum, p) => sum + p.y, 0) / n;
+  const px = posed.reduce((sum, p) => sum + p.x, 0) / n, py = posed.reduce((sum, p) => sum + p.y, 0) / n;
+  let a = 0, b = 0, spread = 0;
+  points.forEach((p, k) => {
+    const ux = p.x - rx, uy = p.y - ry, vx = posed[k].x - px, vy = posed[k].y - py;
+    a += ux * vx + uy * vy;
+    b += ux * vy - uy * vx;
+    spread += ux * ux + uy * uy;
+  });
+  // Points all at one place only move: nothing says how they turn or scale.
+  const ma = spread > 0 ? a / spread : 1, mb = spread > 0 ? b / spread : 0;
+  return { ma, mb, kx: px - (ma * rx - mb * ry), ky: py - (mb * rx + ma * ry) };
+}
 
-const paintingMapOf = (map: PaintSimilarity, text: string): PaintingMap =>
-  ({ map, scale: paintSimilarityScale(map), turn: Math.atan2(map.mb, map.ma), rest: paintingSheetPlace(map).rest, tag: `posed${text}` });
+/** How far apart a warp's outline points are before it maps them, px: a curve bends between them by little more. */
+const WARP_DENSIFY = 2;
 
-const mappedPoint = <P extends StampPoint>(point: P, { map }: PaintingMap): P => ({ ...point, ...paintSimilarityApply(map, point) });
+/** `ring` with points added so none is more than WARP_DENSIFY px from the next, open (`closed` false) or closed. */
+function densified(ring: readonly StampPoint[], closed: boolean): StampPoint[] {
+  const out: StampPoint[] = [], last = closed ? ring.length : ring.length - 1;
+  for (let i = 0; i < last; i++) {
+    const a = ring[i], b = ring[(i + 1) % ring.length], steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / WARP_DENSIFY));
+    for (let k = 0; k < steps; k++) out.push({ x: a.x + ((b.x - a.x) * k) / steps, y: a.y + ((b.y - a.y) * k) / steps });
+  }
+  if (!closed && ring.length) out.push(ring[ring.length - 1]);
+  return out;
+}
 
-/** A stamp where the map puts it, scaled and turned with it, its rest point where it was placed. */
-const mappedStamps = (stamps: FrozenStampMarks, by: PaintingMap) => stampFrozenMarks(stamps.map((stamp) => ({
-  ...mappedPoint(stamp, by), tint: stamp.tint, diameter: stamp.diameter * by.scale, rotation: stamp.rotation + by.turn, grainTurn: stamp.grainTurn + by.turn,
-  rest: stamp.rest ?? Object.freeze({ x: stamp.x, y: stamp.y }),
-})));
+/**
+ * A pose's map as the marks it moves read it: each point mapped, the map's local scale (√|det J|) and turn at a
+ * point, the similarity it fits over some points (a deposit's, an area's), an outline made ready to map, and a tag.
+ */
+type PaintingMap = {
+  readonly point: (point: StampPoint) => StampPoint;
+  readonly local: (point: StampPoint) => { readonly scale: number; readonly turn: number };
+  readonly fit: (points: readonly StampPoint[]) => PaintSimilarity;
+  readonly outline: (ring: readonly StampPoint[], closed: boolean) => readonly StampPoint[];
+  readonly tag: string;
+};
 
-const mappedBoundary = (boundary: CompiledStampBoundary, by: PaintingMap): CompiledStampBoundary =>
-  ({ ...boundary, path: boundary.path.map((point) => mappedPoint(point, by)), reach: boundary.reach * by.scale });
+function paintingMapOf(pose: PaintingNodePose, text: string): PaintingMap {
+  const tag = `posed${text}`;
+  if (pose.kind === 'similarity') {
+    const { map } = pose, local = { scale: paintSimilarityScale(map), turn: Math.atan2(map.mb, map.ma) };
+    return { point: (point) => paintSimilarityApply(map, point), local: () => local, fit: () => map, outline: (ring) => ring, tag };
+  }
+  const { map } = pose;
+  return {
+    point: map,
+    // J by central differences half a pixel each way: its polar decomposition's turn, and √|det J| its scale.
+    local: ({ x, y }) => {
+      const r = map({ x: x + 0.5, y }), l = map({ x: x - 0.5, y }), d = map({ x, y: y + 0.5 }), u = map({ x, y: y - 0.5 });
+      const a = r.x - l.x, c = r.y - l.y, b = d.x - u.x, e = d.y - u.y;
+      return { scale: Math.sqrt(Math.abs(a * e - b * c)), turn: Math.atan2(c - b, a + e) };
+    },
+    fit: (points) => paintingFitSimilarity(points, map),
+    outline: densified,
+    tag,
+  };
+}
+
+/** What an element's own similarity under `by`, fit over `points`, gives it: a scale for widths, and its way back to rest. */
+function fitOf(by: PaintingMap, points: readonly StampPoint[]): { readonly scale: number; readonly rest: StampRestMap } {
+  const map = by.fit(points);
+  return { scale: paintSimilarityScale(map), rest: wordsOf(paintSimilarityInverse(map)) };
+}
+
+/** A stamp where the map puts it, scaled and turned as the map is there, its rest point where it was placed. */
+const mappedStamps = (stamps: FrozenStampMarks, by: PaintingMap) => stampFrozenMarks(stamps.map((stamp) => {
+  const { scale, turn } = by.local(stamp);
+  return {
+    ...stamp, ...by.point(stamp), tint: stamp.tint, diameter: stamp.diameter * scale, rotation: stamp.rotation + turn, grainTurn: stamp.grainTurn + turn,
+    rest: stamp.rest ?? Object.freeze({ x: stamp.x, y: stamp.y }),
+  };
+}));
+
+const mappedOutline = (ring: readonly StampPoint[], by: PaintingMap, closed: boolean) => by.outline(ring, closed).map((point) => by.point(point));
+
+const mappedBoundary = (boundary: CompiledStampBoundary, by: PaintingMap, scale: number): CompiledStampBoundary =>
+  ({ ...boundary, path: mappedOutline(boundary.path, by, false), reach: boundary.reach * scale });
 
 /** `edge`'s widths scaled; its ragged noise keeps its scale, read at rest. */
-const mappedEdge = ({ soft, ragged }: StampEdge, { scale }: PaintingMap): StampEdge =>
+const mappedEdge = ({ soft, ragged }: StampEdge, scale: number): StampEdge =>
   ({ ...(soft !== undefined && { soft: soft * scale }), ...(ragged && { ragged: { amount: ragged.amount * scale, scale: ragged.scale } }) });
 
 /** `area` mapped: its outline, rings and treated stretches, its widths scaled, its ragged noise read back at rest. */
 function mappedArea(area: CompiledStampArea, by: PaintingMap): CompiledStampArea {
-  const rings = area.rings?.map((ring) => ring.map((point) => mappedPoint(point, by)));
+  const { scale, rest } = fitOf(by, area.rings?.flat() ?? area.polygon);
+  const rings = area.rings?.map((ring) => mappedOutline(ring, by, true));
   return {
-    ...area, polygon: rings?.[0] ?? area.polygon.map((point) => mappedPoint(point, by)), ...(rings && { rings }),
-    ...(area.edge && { edge: mappedEdge(area.edge, by) }), ...(area.inset !== undefined && { inset: area.inset * by.scale }),
-    ...(area.boundaries && { boundaries: area.boundaries.map((boundary) => mappedBoundary(boundary, by)) }), rest: by.rest,
+    ...area, polygon: rings?.[0] ?? mappedOutline(area.polygon, by, true), ...(rings && { rings }),
+    ...(area.edge && { edge: mappedEdge(area.edge, scale) }), ...(area.inset !== undefined && { inset: area.inset * scale }),
+    ...(area.boundaries && { boundaries: area.boundaries.map((boundary) => mappedBoundary(boundary, by, scale)) }), rest,
   };
 }
 
 const mappedBrushed = (brushed: CompiledStampBrushedMask, by: PaintingMap): CompiledStampBrushedMask => ({
   ...brushed, id: `${brushed.id}|${by.tag}`,
-  marks: brushed.marks.map((mark) => ({ ...mark, diameter: mark.diameter * by.scale, stamps: mappedStamps(mark.stamps, by), dualStamps: mappedStamps(mark.dualStamps, by) })),
+  marks: brushed.marks.map((mark) => ({ ...mark, diameter: mark.diameter * fitOf(by, mark.stamps).scale, stamps: mappedStamps(mark.stamps, by), dualStamps: mappedStamps(mark.dualStamps, by) })),
 });
 
 /**
@@ -99,8 +194,10 @@ function fluidMapper(by: PaintingMap, anchored: ReadonlySet<CompiledStampMask>, 
  */
 function mappedDeposit(entry: StampSheetEntry, by: PaintingMap, mapFluid: (mask: CompiledStampMask | null) => CompiledStampMask | null): CompiledStampDeposit {
   const { deposit, anchors } = entry;
+  const barrier = deposit.kind === 'flood' ? deposit.flood.barrier.rings?.flat() ?? deposit.flood.barrier.polygon : [];
+  const { scale, rest } = fitOf(by, [...deposit.stamps, ...barrier]);
   const common = {
-    ...deposit, diameter: deposit.diameter * by.scale, rest: by.rest,
+    ...deposit, diameter: deposit.diameter * scale, rest,
     stamps: mappedStamps(deposit.stamps, by), dualStamps: mappedStamps(deposit.dualStamps, by), mask: mapFluid(deposit.mask),
     ...(deposit.within && { within: deposit.within.map((area, k) => (anchors.within.has(k) ? area : mappedArea(area, by))) }),
   };
@@ -109,8 +206,10 @@ function mappedDeposit(entry: StampSheetEntry, by: PaintingMap, mapFluid: (mask:
 }
 
 /** `prewet` mapped by `by`, its held fluid's ops mapped but those anchored, its water read back at rest. */
-const mappedPrewet = (prewet: StampSheetPrewet, by: PaintingMap, mapFluid: (mask: CompiledStampMask | null) => CompiledStampMask | null): StampSheetPrewet =>
-  ({ ...prewet, area: mappedArea(prewet.area, by), held: mapFluid(prewet.held), rest: by.rest });
+function mappedPrewet(prewet: StampSheetPrewet, by: PaintingMap, mapFluid: (mask: CompiledStampMask | null) => CompiledStampMask | null): StampSheetPrewet {
+  const area = mappedArea(prewet.area, by);
+  return { ...prewet, area, held: mapFluid(prewet.held), rest: area.rest };
+}
 
 /** How many poses of one program are kept, the oldest forgotten first: as many as a shot's frames tend to revisit. */
 export const PAINTING_POSES_KEPT = 64;
@@ -118,26 +217,26 @@ const posesKept = new WeakMap<StampSheetProgram, Map<string, StampSheetProgram>>
 
 /**
  * `program` (compiled from `tree`) with each entry posed by its chain's map in `poses`, each wash's prewet by its first
- * entry's. Kept by its maps (PAINTING_POSES_KEPT a program), a pose met again counted as a pose hit. Kept per program
- * object, so poses are met again only through one compile (compilePaintingSelection's memo).
+ * entry's. Kept by its maps' texts (PAINTING_POSES_KEPT a program), a pose met again counted as a pose hit. Kept per
+ * program object, so poses are met again only through one compile (compilePaintingSelection's memo).
  */
 export function paintingSheetPosed(tree: PaintingTree, program: StampSheetProgram, poses: PaintingPoses, costs?: StampPaintCostTally): StampSheetProgram {
-  const maps = program.entries.map((entry) => paintingChainMap(tree, entry.chain, poses)), texts = maps.map((map) => stampCanonicalJson(map));
+  const chained = program.entries.map((entry) => paintingChainPose(tree, entry.chain, poses)), texts = chained.map(paintingPoseText);
   if (texts.every((text) => text === PAINTING_REST_POSE)) return program;
   let kept = posesKept.get(program);
   if (!kept) posesKept.set(program, (kept = new Map<string, StampSheetProgram>()));
   const key = texts.join('\n'), known = kept.get(key);
   costs?.count(known ? 'pose hits' : 'poses made');
   if (known) return known;
-  const posed = paintingSheetPosedBy(program, maps, texts);
+  const posed = paintingSheetPosedBy(program, chained, texts);
   kept.set(key, posed);
   if (kept.size > PAINTING_POSES_KEPT) kept.delete(kept.keys().next().value!);
   return posed;
 }
 
-/** `program` with entry k posed by `maps[k]`, whose canonical text is `texts[k]`. */
-function paintingSheetPosedBy(program: StampSheetProgram, maps: readonly PaintSimilarity[], texts: readonly string[]): StampSheetProgram {
-  const mappedFluid = new Map<string, Map<CompiledStampMask, CompiledStampMask>>();
+/** `program` with entry k posed by `chained[k]`, whose canonical text is `texts[k]`. */
+function paintingSheetPosedBy(program: StampSheetProgram, chained: readonly PaintingNodePose[], texts: readonly string[]): StampSheetProgram {
+  const mappedFluid = new Map<string, Map<CompiledStampMask, CompiledStampMask>>(), maps = new Map<string, PaintingMap>();
   const mapperFor = (by: PaintingMap, anchored: ReadonlySet<CompiledStampMask>) => {
     if (!mappedFluid.has(by.tag)) mappedFluid.set(by.tag, new Map());
     return fluidMapper(by, anchored, mappedFluid.get(by.tag)!);
@@ -145,7 +244,8 @@ function paintingSheetPosedBy(program: StampSheetProgram, maps: readonly PaintSi
   const posed = program.entries.map((entry, k) => {
     const pose = texts[k];
     if (pose === PAINTING_REST_POSE) return { entry: { ...entry, pose }, by: null };
-    const by = paintingMapOf(maps[k], pose);
+    let by = maps.get(pose);
+    if (!by) maps.set(pose, (by = paintingMapOf(chained[k], pose)));
     return { entry: { ...entry, deposit: mappedDeposit(entry, by, mapperFor(by, entry.anchors.masks)), pose }, by };
   });
   const washes = program.washes.map((wash, w) => {

@@ -1,8 +1,8 @@
 // stamp-paint-lay-pass.ts: films laid over paper, and the painting shown. The paper (its colour, or its photograph
 // covering the frame and mirrored past it) is laid first; each group's film over it by its compositor's layGroup,
 // at rest or through a lattice's rest points (a moved or warped group); an own sheet's card, its paper as far as its
-// paint reaches, where its first layer goes; the painting is output in screen colour. The renderer and the sheet
-// solver's composites both lay through it, a lay per paper.
+// paint reaches, where its first layer goes; the painting is output in screen colour. The renderer, the sheet
+// solver's composites and a shot all lay through it, a lay per paper.
 
 import { gpuUniformLayout, gpuUniformStruct, gpuUniformWriter, type GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { GPU_FULL_FRAME_WGSL, GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
@@ -41,6 +41,28 @@ ${PAPER_COLOR_WGSL}
 
 /** A scene pixel's rest point where no moved or warped group's lattice covers it: outside any layer. */
 export const STAMP_NO_REST = -65536;
+
+const STAMP_LAY_PLACED_PAPER = gpuUniformLayout('PlacedPaper', [['paper', gpuUniformStruct(PAPER)], ['origin', 'vec2u'], ['extent', 'vec2u']]);
+// Paper laid where a lattice's rest map puts it: each pixel the paper's colour at its rest point, one no lattice
+// covers left as it was.
+const placedPaperWgsl = (compositor: StampPaintCompositor, stage: StampStage) => /* wgsl */ `
+${stampStageWgsl(stage)}
+${stampPaintTargetWgsl('painting', 2, compositor.targets.painting, 'write')}
+${GPU_SRGB_WGSL}
+${compositor.paper}
+${PAPER_COLOR_WGSL}
+${STAMP_LAY_PLACED_PAPER.wgsl}
+@group(0) @binding(0) var<uniform> u: PlacedPaper;
+@group(0) @binding(1) var image: texture_2d<f32>;
+@group(0) @binding(3) var photographSampler: sampler;
+@group(0) @binding(4) var rest: texture_2d<f32>;
+@compute @workgroup_size(${STAMP_WORKGROUP}, ${STAMP_WORKGROUP}) fn placedPaper(@builtin(global_invocation_id) id: vec3u) {
+  if (any(id.xy >= u.extent)) { return; }
+  let pixel = u.origin + id.xy;
+  let at = textureLoad(rest, pixel, 0).xy;
+  if (at.x < ${STAMP_NO_REST / 2}.0) { return; }
+  layPaper(pixel, paperColor(image, photographSampler, u.paper, at));
+}`;
 
 // \`paper\` is the paper under a group, read where a scene pixel is (groupGroundAt, fixed to the stage) unless the group
 // carries its own as it moves or warps (StampGroupPaper, \`paperFromRest\`): then where its texel was painted.
@@ -201,9 +223,14 @@ ${compositor.output}
 const channel = (hex: string, i: number) => parseInt(hex.slice(i, i + 2), 16) / 255;
 const rgb = (hex: string): [number, number, number] => [channel(hex, 1), channel(hex, 3), channel(hex, 5)];
 
-/** What a lay is made for: its stage and compositor, the paper and its photograph (null for none), a texture bound for none, and the photograph's sampler. */
+/**
+ * What a lay is made for: its stage and compositor, the paper and its photograph (null for none), a texture bound for
+ * none, and the photograph's sampler; `paperFrame`, the rectangle a photograph covers from the stage's origin, the
+ * stage's frame when left out (a shot's sheet covers its document).
+ */
 export type StampPaintLayOptions = {
   stage: StampStage; compositor: StampPaintCompositor; paper: StampPaintPaper; photograph: StampPaintImage | null; blank: GPUTextureView; sampler: GPUSampler;
+  paperFrame?: { readonly width: number; readonly height: number };
 };
 
 /**
@@ -217,11 +244,11 @@ export type StampGroupLay = {
 };
 
 /** The lay's passes on `device`, their pipelines made now; each pass's uniform from `arena`. */
-export function createStampPaintLay(device: StampPaintDevice, arena: StampUniformArena, { stage, compositor, paper, photograph, blank, sampler }: StampPaintLayOptions) {
-  const { frame } = stage;
+export function createStampPaintLay(device: StampPaintDevice, arena: StampUniformArena, { stage, compositor, paper, photograph, blank, sampler, paperFrame }: StampPaintLayOptions) {
+  const frame = paperFrame ?? stage.frame;
   const compute = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }) } });
   const pipelines = { group: compute(groupWgsl(compositor, false, stage)), paper: compute(paperWgsl(compositor, stage)) };
-  let movedGroup: GPUComputePipeline | null = null, card: GPUComputePipeline | null = null, placeRest: GPUComputePipeline | null = null;
+  let movedGroup: GPUComputePipeline | null = null, card: GPUComputePipeline | null = null, placeRest: GPUComputePipeline | null = null, placedPaper: GPUComputePipeline | null = null;
   /**
    * The Paper uniform at word `at` for `backing`: the painting's paper, or plain white or black. Cover: the photograph
    * fills the frame, cropped along whichever side it has to spare, so a margin leaves the frame's paper as it was;
@@ -246,6 +273,19 @@ export function createStampPaintLay(device: StampPaintDevice, arena: StampUnifor
     /** `backing` over `painting`'s first `w` × `h` texels. */
     drawPaper(encoder: GPUCommandEncoder, painting: GPUTextureView, backing: StampPaintBacking, w: number, h: number) {
       dispatchStampCompute(device, encoder, pipelines.paper, [arena.slot((views) => writePaper(views, 0, backing)), photograph?.view ?? blank, painting, sampler], w, h);
+    },
+    /** The painting's paper over `painting`'s `box` (stage texels) where `rest`, a lattice's rest map, puts it. */
+    drawPlacedPaper(encoder: GPUCommandEncoder, painting: GPUTextureView, rest: GPUTextureView, box: StampPixelBox) {
+      placedPaper ??= compute(placedPaperWgsl(compositor, stage));
+      dispatchStampCompute(device, encoder, placedPaper, [
+        arena.slot((views) => {
+          writePaper(views, STAMP_LAY_PLACED_PAPER.at.paper, 'paper');
+          const put = gpuUniformWriter(STAMP_LAY_PLACED_PAPER, views);
+          put('origin', [box.x, box.y]);
+          put('extent', [box.w, box.h]);
+        }),
+        photograph?.view ?? blank, painting, sampler, rest,
+      ], box.w, box.h);
     },
     /** Lays a group as `lay` says. */
     layGroup(encoder: GPUCommandEncoder, lay: StampGroupLay) {

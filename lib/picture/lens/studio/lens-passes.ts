@@ -362,10 +362,11 @@ ${LENS_GLOW.wgsl}
 export const LENS_OUTPUT = gpuUniformLayout('LensOutput', [['strength', 'f32']]);
 
 /**
- * How the image is written. `encoded`: sRGB, opaque, dithered into bytes when `dithered`; `linear`: linear light,
- * premultiplied, its alpha kept, for an output pass of the caller's (a tone map).
+ * How the image is written. `encoded`: sRGB, opaque, dithered into bytes when `dithered`; `premultiplied`: sRGB over
+ * its alpha, premultiplied by it as a browser composites a canvas, light past its alpha dropped; `linear`: linear
+ * light, premultiplied, its alpha kept, for an output pass of the caller's (a tone map).
  */
-export type LensImageEncoding = { readonly kind: 'encoded'; readonly dithered: boolean } | { readonly kind: 'linear' };
+export type LensImageEncoding = { readonly kind: 'encoded' | 'premultiplied'; readonly dithered: boolean } | { readonly kind: 'linear' };
 
 /**
  * The output's WGSL: the frame's colour (1) and, with `bloom`, its bloom (2) times `strength`, added in linear light
@@ -375,13 +376,25 @@ export type LensImageEncoding = { readonly kind: 'encoded'; readonly dithered: b
 export function lensOutputWgsl(bloom: 'half' | 'whole' | null, encoding: LensImageEncoding) {
   const bloomAt = bloom === 'half' ? 'textureSampleLevel(bloom, linearClamp, (vec2f(pixel) + 0.5) / vec2f(textureDimensions(colour)), 0.0)' : 'textureLoad(bloom, pixel, 0)';
   const light = bloom ? ` + max(${bloomAt}.rgb, vec3f(0.0)) * u.strength` : '';
-  const written = encoding.kind === 'linear' ? /* wgsl */ `
-  let c = textureLoad(colour, pixel, 0);
-  return vec4f(c.rgb${light}, c.a);` : /* wgsl */ `
-  let linear = max(textureLoad(colour, pixel, 0).rgb, vec3f(0.0))${light};
   // An ordered dither, the same each frame, so a smooth flood doesn't band when the half floats become bytes.
-  let dither = ${encoding.dithered ? '(fract(dot(vec2f(pixel), vec2f(0.7548776662, 0.5698402910))) - 0.5) / 255.0' : '0.0'};
-  return vec4f(clamp(srgbEncoded(linear) + dither, vec3f(0.0), vec3f(1.0)), 1.0);`;
+  const dither = `let dither = ${encoding.kind !== 'linear' && encoding.dithered ? '(fract(dot(vec2f(pixel), vec2f(0.7548776662, 0.5698402910))) - 0.5) / 255.0' : '0.0'};`;
+  const written = {
+    linear: /* wgsl */ `
+  let c = textureLoad(colour, pixel, 0);
+  return vec4f(c.rgb${light}, c.a);`,
+    encoded: /* wgsl */ `
+  let linear = max(textureLoad(colour, pixel, 0).rgb, vec3f(0.0))${light};
+  ${dither}
+  return vec4f(clamp(srgbEncoded(linear) + dither, vec3f(0.0), vec3f(1.0)), 1.0);`,
+    // A browser lays a premultiplied canvas as c + (1 − a)·behind, in encoded colour, and wants c no more than a.
+    premultiplied: /* wgsl */ `
+  let c = textureLoad(colour, pixel, 0);
+  let a = clamp(c.a, 0.0, 1.0);
+  if (a <= 0.0) { return vec4f(0.0); }
+  let linear = max(c.rgb, vec3f(0.0))${light};
+  ${dither}
+  return vec4f(clamp(srgbEncoded(linear / a) + dither, vec3f(0.0), vec3f(1.0)) * a, a);`,
+  }[encoding.kind];
   return /* wgsl */ `
 ${GPU_FULL_FRAME_WGSL}
 ${GPU_SRGB_WGSL}

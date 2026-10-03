@@ -7,13 +7,12 @@
 // them up before they're drawn or read.
 
 import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
-import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import type { StampSheetsComposite } from '#lib/paint/painting/studio/stamp-sheet-composite.ts';
 import { holdStampSheetFilms } from '#lib/paint/painting/studio/stamp-sheet-films.ts';
 import { solveStampSheet, type StampSheetSolved } from '#lib/paint/painting/studio/stamp-sheet-solver.ts';
 import type { PaintingSelectionCompiled } from '../models/painting-document-compile.ts';
-import { PAINTING_REST_POSE, paintingChainMap, paintingSheetPlace, paintingSheetPosed, type PaintingPoses } from '../models/painting-pose.ts';
+import { PAINTING_REST_POSE, paintingChainPose, paintingPoseText, paintingSheetPlace, paintingSheetPosed, type PaintingPoses } from '../models/painting-pose.ts';
 
 /**
  * A selection's sheets solved: each one's solve, at its index in the compiled selection; their composite; and
@@ -28,12 +27,12 @@ export type PaintingSheetsSolved = { readonly solved: readonly StampSheetSolved[
 export type PaintingSheetsSolveOptions = { readonly poses?: PaintingPoses; readonly at?: number; readonly costs?: StampPaintCostTally };
 
 /**
- * Each of `compiled`'s sheets posed by `poses` and solved on `owner`, one after another, its films held; and the
- * composite laying them, each own sheet placed by its owner chain's map.
+ * Each of `compiled`'s sheets posed by `poses` and solved on `owner`, one after another, its films held until
+ * `release`: each one's solve at its index in the compiled selection. Releases what it held when one is refused.
  */
-export async function solvePaintingSheets(
+export async function solvePaintingSheetFilms(
   owner: StampPaintGpuOwner, compiled: PaintingSelectionCompiled, { poses = new Map(), at, costs }: PaintingSheetsSolveOptions = {},
-): Promise<PaintingSheetsSolved> {
+): Promise<{ readonly solved: readonly StampSheetSolved[]; readonly release: () => void }> {
   const holds: (() => void)[] = [], release = () => holds.splice(0).forEach((letGo) => letGo());
   // The device's lease runs the solves in turn, and each hold runs as its solve settles, before the next one starts.
   const settled = await Promise.allSettled(compiled.sheets.map(({ program }) => solveStampSheet(owner, paintingSheetPosed(compiled.tree, program, poses, costs), { costs, ...(at !== undefined && { at }) }).then((done) => {
@@ -48,9 +47,23 @@ export async function solvePaintingSheets(
     }
     solved.push(outcome.value);
   }
+  return { solved, release };
+}
+
+/**
+ * Each of `compiled`'s sheets posed by `poses` and solved on `owner` (solvePaintingSheetFilms); and the composite
+ * laying them, each own sheet placed by its owner chain's map. Refuses an own sheet its chain warps: a composite
+ * places a sheet by a similarity, and only a shot lays one through a warp (shot-sheets-lay.ts).
+ */
+export async function solvePaintingSheets(owner: StampPaintGpuOwner, compiled: PaintingSelectionCompiled, options: PaintingSheetsSolveOptions = {}): Promise<PaintingSheetsSolved> {
+  const { solved, release } = await solvePaintingSheetFilms(owner, compiled, options), poses = options.poses ?? new Map();
   const sheets = compiled.sheets.map(({ program, ownerChain }, s) => {
-    const map = paintingChainMap(compiled.tree, ownerChain, poses);
-    return { program, films: solved[s].films, place: stampCanonicalJson(map) === PAINTING_REST_POSE ? null : paintingSheetPlace(map) };
+    const pose = paintingChainPose(compiled.tree, ownerChain, poses);
+    if (pose.kind === 'warp') {
+      release();
+      throw new Error(`painting: ${program.name} is placed by a warp (${pose.text}); a still lays a sheet moved by a similarity only`);
+    }
+    return { program, films: solved[s].films, place: paintingPoseText(pose) === PAINTING_REST_POSE ? null : paintingSheetPlace(pose.map) };
   });
   return { solved, composite: { sheets, steps: compiled.steps }, release };
 }

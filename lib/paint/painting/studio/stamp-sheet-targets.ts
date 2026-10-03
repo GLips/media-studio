@@ -14,14 +14,14 @@ import { clearStampTarget } from './stamp-paint-gpu.ts';
 import type { StampPaintGpuOwner } from './stamp-paint-gpu-owner.ts';
 import { STAMP_WET_FIELD_FORMATS } from './stamp-wet-field.ts';
 
-const RENDER = GPUTextureUsage.RENDER_ATTACHMENT, STORAGE = GPUTextureUsage.STORAGE_BINDING, SAMPLED = GPUTextureUsage.TEXTURE_BINDING;
-const COPIED = GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST;
-
 /** A layered target: its texture, a view of it as an array, and a view of each layer. */
 export type StampSheetLayered = StampDepositTarget & { layers: readonly GPUTextureView[] };
 
 /** A sheet solve's targets from `owner` over `stage`, its layer shaped as `compositor` keeps one, `films` of them. */
 export function createStampSheetTargets(owner: StampPaintGpuOwner, stage: StampStage, compositor: StampPaintCompositor, films: number) {
+  // Read here, not at module scope: Node imports this module (a project's tests through #studio) with no WebGPU.
+  const RENDER = GPUTextureUsage.RENDER_ATTACHMENT, STORAGE = GPUTextureUsage.STORAGE_BINDING, SAMPLED = GPUTextureUsage.TEXTURE_BINDING;
+  const COPIED = GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST;
   const { width, height } = stage, shape = compositor.targets.layer;
   if (shape.kind !== 'array') throw new Error('stamp sheet: a sheet solve paints in pigment, whose layers are arrays');
   // Names start "sheet", apart from the renderer's targets of the same size.

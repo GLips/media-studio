@@ -98,6 +98,12 @@ export type CompiledPaintNode = {
   readonly place: PaintLane<PaintPlaceClip>;
 };
 
+/**
+ * A node's own motion, as one level of any chain reads it: its id, pivot and sway phase, and its lanes. A painting's
+ * node is one; a shot's occurrence node (lib/paint/shot) is another, over no group.
+ */
+export type CompiledPaintLevel = Pick<CompiledPaintNode, 'id' | 'pivot' | 'phase' | 'pins' | 'sway' | 'flutter' | 'place'>;
+
 /** A scene's motion, checked and ready to evaluate (paintMotionFrameAt). Its caches only remember. */
 export type PaintMotion = {
   readonly nodes: ReadonlyMap<string, CompiledPaintNode>;
@@ -139,13 +145,14 @@ function compileMarks(node: PaintMotionNode, group: CompiledStampGroup, problems
   return { kind: 'wobble', every, wobble };
 }
 
-const glowProblem = ({ amount, threshold }: StampGroupGlow) =>
+/** Why `glow` can't be drawn, or null. */
+export const paintGlowProblem = ({ amount, threshold }: StampGroupGlow) =>
   amount >= 0 && Number.isFinite(amount) && threshold >= 0 && threshold <= 1 ? null : `its glow needs an amount of 0 or more and a threshold in 0..1, not ${amount} and ${threshold}`;
 
 /** The glow `levels` give their first: the nearest that says, `'none'` none. */
 function inheritedGlow(levels: readonly string[], byId: ReadonlyMap<string, PaintMotionNode>): StampGroupGlow | null {
   const glow = levels.map((id) => byId.get(id)?.glow).find((said) => said !== undefined);
-  return glow && glow !== 'none' && !glowProblem(glow) ? glow : null;
+  return glow && glow !== 'none' && !paintGlowProblem(glow) ? glow : null;
 }
 
 /** Each node's ancestors, nearest first, or the problem with its line. */
@@ -159,10 +166,30 @@ function nodeLevels(node: PaintMotionNode, byId: ReadonlyMap<string, PaintMotion
   return levels;
 }
 
-type MutableNode = Omit<CompiledPaintNode, 'pins' | 'sway' | 'flutter' | 'place'> & {
+/** A level's lanes as its plays are filed into them, unsorted: a lane per pin, its sway, its flutter, its placement. */
+export type PaintLevelLanes = {
   pins: Map<string, { pin: CompiledPaintPin; lane: CompiledPaintPlay<PaintPinClip<string>>[] }>;
   sway: CompiledPaintPlay<PaintSwayClip>[]; flutter: CompiledPaintPlay<PaintFlutterClip>[]; place: CompiledPaintPlay<PaintPlaceClip>[];
 };
+
+/** Empty lanes for node `id`'s `pins`, each pin checked into `problems`. */
+export function paintLevelLanes(id: string, pins: PaintPinRig<string> | undefined, problems: string[]): PaintLevelLanes {
+  const compiled = new Map<string, { pin: CompiledPaintPin; lane: CompiledPaintPlay<PaintPinClip<string>>[] }>();
+  for (const [name, pin] of Object.entries(pins ?? {})) {
+    const problem = paintPinProblem(pin);
+    if (problem) problems.push(`${id}'s pin '${name}': ${problem}`);
+    else compiled.set(name, { pin: compilePaintPin(pin), lane: [] });
+  }
+  return { pins: compiled, sway: [], flutter: [], place: [] };
+}
+
+/** `lanes` sorted by start, as a compiled level keeps them. */
+export const paintLevelLanesSorted = (lanes: PaintLevelLanes): Pick<CompiledPaintLevel, 'pins' | 'sway' | 'flutter' | 'place'> => ({
+  pins: new Map([...lanes.pins].map(([name, { pin, lane }]) => [name, { pin, lane: paintLaneByStart(lane) }])),
+  sway: paintLaneByStart(lanes.sway), flutter: paintLaneByStart(lanes.flutter), place: paintLaneByStart(lanes.place),
+});
+
+type MutableNode = Omit<CompiledPaintNode, 'pins' | 'sway' | 'flutter' | 'place'> & PaintLevelLanes;
 
 function compileNodes(painting: CompiledStampPaint, nodes: readonly PaintMotionNode[], problems: string[]): Map<string, MutableNode> {
   const groups = new Map(painting.groups.map((group) => [group.id, group]));
@@ -179,27 +206,25 @@ function compileNodes(painting: CompiledStampPaint, nodes: readonly PaintMotionN
     const levels = nodeLevels(node, byId, problems);
     const clockProblem = node.clock && paintNodeClockProblem(node.clock);
     if (clockProblem) problems.push(`${node.id}: ${clockProblem}`);
-    const glow = node.glow && node.glow !== 'none' && glowProblem(node.glow);
+    const glow = node.glow && node.glow !== 'none' && paintGlowProblem(node.glow);
     if (glow) problems.push(`${node.id}: ${glow}`);
-    const pins = new Map<string, { pin: CompiledPaintPin; lane: CompiledPaintPlay<PaintPinClip<string>>[] }>();
-    for (const [name, pin] of Object.entries(node.pins ?? {})) {
-      const problem = paintPinProblem(pin);
-      if (problem) problems.push(`${node.id}'s pin '${name}': ${problem}`);
-      else pins.set(name, { pin: compilePaintPin(pin), lane: [] });
-    }
+    const lanes = paintLevelLanes(node.id, node.pins, problems);
     compiled.set(node.id, {
       id: node.id, glow: inheritedGlow(levels, byId), group, levels, pivot: node.pivot ?? { x: 0, y: 0 }, phase: paintIdPhase(node.id),
       clock: levels.toReversed().flatMap((id) => { const clock = byId.get(id)?.clock; return clock && !paintNodeClockProblem(clock) ? [paintNodeClockStep(clock)] : []; }),
       marks: compileMarks(node, group, problems),
-      pins, sway: [], flutter: [], place: [],
+      ...lanes,
     });
   }
   return compiled;
 }
 
-/** Files `play` in its node's lanes, by what its clip writes, and names each lane it writes as a channel writer. */
-function filePlay(node: MutableNode, play: PaintMotionPlay, writers: PaintChannelWriter[], problems: string[]) {
-  const clock = compilePaintPlayClock(play.clock, node.clock);
+/**
+ * Files `play` in node `id`'s `lanes`, by what its clip writes, through the node's clock steps `nodeClock`, and names
+ * each lane it writes as a channel writer.
+ */
+export function filePaintLevelPlay(id: string, lanes: PaintLevelLanes, nodeClock: readonly PaintSceneStep[], play: PaintMotionPlay, writers: PaintChannelWriter[], problems: string[]) {
+  const clock = compilePaintPlayClock(play.clock, nodeClock);
   const interval = paintPlayInterval(clock, paintMotionClipLength(play.clip));
   const written = <C>(clip: C): CompiledPaintPlay<C> => ({ clip, clock, interval, origin: play.origin });
   const writer = (channel: PaintChannelWriter['channel'], target: string) => writers.push({ channel, target, ...interval, origin: play.origin });
@@ -207,22 +232,25 @@ function filePlay(node: MutableNode, play: PaintMotionPlay, writers: PaintChanne
   switch (clip.kind) {
     case 'poses':
     case 'breathe': {
-      const pins = paintMotionClipPins(clip), missing = pins.filter((pin) => !node.pins.has(pin));
-      if (missing.length) { problems.push(`${play.origin} moves pins ${missing.map((pin) => `'${pin}'`).join(', ')}, which ${node.id} doesn't have`); return; }
+      const pins = paintMotionClipPins(clip), missing = pins.filter((pin) => !lanes.pins.has(pin));
+      if (missing.length) { problems.push(`${play.origin} moves pins ${missing.map((pin) => `'${pin}'`).join(', ')}, which ${id} doesn't have`); return; }
       for (const pin of pins) {
-        node.pins.get(pin)!.lane.push(written(clip));
-        writer('deform', `${node.id}'s pin '${pin}'`);
+        lanes.pins.get(pin)!.lane.push(written(clip));
+        writer('deform', `${id}'s pin '${pin}'`);
       }
       return;
     }
-    case 'sway': node.sway.push(written(clip)); writer('deform', `${node.id}'s sway`); return;
-    case 'flutter': node.flutter.push(written(clip)); writer('deform', `${node.id}'s flutter`); return;
-    case 'place':
-      if (node.group.motion) { problems.push(`${play.origin} places ${node.id}, whose group already moves by its recipe's motion`); return; }
-      node.place.push(written(clip)); writer('place', node.id);
-      return;
+    case 'sway': lanes.sway.push(written(clip)); writer('deform', `${id}'s sway`); return;
+    case 'flutter': lanes.flutter.push(written(clip)); writer('deform', `${id}'s flutter`); return;
+    case 'place': lanes.place.push(written(clip)); writer('place', id); return;
     default: clip satisfies never;
   }
+}
+
+/** Files `play` in its node's lanes (filePaintLevelPlay), refusing to place a group its recipe already moves. */
+function filePlay(node: MutableNode, play: PaintMotionPlay, writers: PaintChannelWriter[], problems: string[]) {
+  if (play.clip.kind === 'place' && node.group.motion) { problems.push(`${play.origin} places ${node.id}, whose group already moves by its recipe's motion`); return; }
+  filePaintLevelPlay(node.id, node, node.clock, play, writers, problems);
 }
 
 /**
@@ -242,10 +270,6 @@ export function compilePaintMotion(painting: CompiledStampPaint, o: { nodes: rea
     if (node && !clipProblem && !clockProblem) filePlay(node, play, writers, problems);
   }
   problems.push(...paintChannelConflicts(writers));
-  const sorted = new Map([...nodes].map(([id, node]): [string, CompiledPaintNode] => [id, {
-    ...node,
-    pins: new Map([...node.pins].map(([name, { pin, lane }]) => [name, { pin, lane: paintLaneByStart(lane) }])),
-    sway: paintLaneByStart(node.sway), flutter: paintLaneByStart(node.flutter), place: paintLaneByStart(node.place),
-  }]));
+  const sorted = new Map([...nodes].map(([id, node]): [string, CompiledPaintNode] => [id, { ...node, ...paintLevelLanesSorted(node) }]));
   return { nodes: sorted, animationFps: o.animationFps, remembered: {} };
 }

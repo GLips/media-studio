@@ -12,15 +12,17 @@ export type StampPaintSurface = {
   frameTexture: () => GPUTexture;
   /** The format `frameTexture` is in. */
   format: GPUTextureFormat;
+  /** How the page lays it: opaque, or premultiplied colour over what lies behind the canvas. */
+  alphaMode: GPUCanvasAlphaMode;
   /** Unconfigures the canvas; the owner and what it holds stay. */
   dispose: () => void;
 };
 
 /**
- * Where a surface draws: a canvas of `width` × `height`, or `frame`, which gets the canvas's colour, gamma-encoded and
- * opaque, dithered only into bytes.
+ * Where a surface draws: a canvas of `width` × `height`, opaque unless `alphaMode` says it's laid premultiplied over
+ * the page; or `frame`, which gets the canvas's colour, gamma-encoded and opaque, dithered only into bytes.
  */
-export type StampPaintSurfaceOutput = { canvas: HTMLCanvasElement; width: number; height: number } | { frame: GPUTexture };
+export type StampPaintSurfaceOutput = { canvas: HTMLCanvasElement; width: number; height: number; alphaMode?: GPUCanvasAlphaMode } | { frame: GPUTexture };
 
 /**
  * The output pass writes encoded colour to one 2D image it renders to: an -srgb format would encode it twice, and an
@@ -39,11 +41,11 @@ export async function createStampPaintSurface(owner: StampPaintGpuOwner, output:
   if ('frame' in output) {
     checkStampPaintFrameTexture(output.frame);
     const { frame } = output;
-    return { owner, width: frame.width, height: frame.height, format: frame.format, frameTexture: () => frame, dispose: () => {} };
+    return { owner, width: frame.width, height: frame.height, format: frame.format, alphaMode: 'opaque', frameTexture: () => frame, dispose: () => {} };
   }
   // SAFETY: the canvas is the surface's alone, so it has no other kind of context to refuse 'webgpu' for.
   const context = output.canvas.getContext('webgpu') as GPUCanvasContext;
-  const format: GPUTextureFormat = 'rgba8unorm';
-  await owner.checked('configuring the canvas', () => context.configure({ device: owner.webgpu, format, alphaMode: 'opaque' }));
-  return { owner, width: output.width, height: output.height, format, frameTexture: () => context.getCurrentTexture(), dispose: () => context.unconfigure() };
+  const format: GPUTextureFormat = 'rgba8unorm', alphaMode = output.alphaMode ?? 'opaque';
+  await owner.checked('configuring the canvas', () => context.configure({ device: owner.webgpu, format, alphaMode }));
+  return { owner, width: output.width, height: output.height, format, alphaMode, frameTexture: () => context.getCurrentTexture(), dispose: () => context.unconfigure() };
 }

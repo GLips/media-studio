@@ -55,14 +55,14 @@ ${STAMP_SHEET_EDGE.wgsl}
   textureStore(edge, at, vec4f(max(textureLoad(edge, at).r, max(textureLoad(film, id.xy, 0, 0).x, 0.0))));
 }`;
 
-/** A sheet's edge as a card reads it: the union of its films' coverage (r32float) over `box`, stage texels. */
-type StampSheetEdge = { view: GPUTextureView; box: StampPixelBox };
+/** A sheet's edge as a card reads it: the union of its films' coverage (r32float) over `box`, document px. */
+export type StampSheetEdge = { view: GPUTextureView; box: StampPixelBox };
 
 /**
  * The union of `films`' coverage, used by `encoder`'s work: kept under their keys, so a sheet whose films haven't
  * changed joins them no more. Null for films painted nowhere.
  */
-function stampSheetEdge(owner: StampPaintGpuOwner, device: StampPaintDevice, encoder: GPUCommandEncoder, arena: StampUniformArena, films: readonly StampSheetFilmKept[]): StampSheetEdge | null {
+export function stampSheetEdge(owner: StampPaintGpuOwner, device: StampPaintDevice, encoder: GPUCommandEncoder, arena: StampUniformArena, films: readonly StampSheetFilmKept[]): StampSheetEdge | null {
   const box = films.reduce<StampPixelBox | null>((union, { box: painted }) => stampBoxUnion(union, painted), null);
   if (!box) return null;
   let store = edgeStores.get(owner);
@@ -103,29 +103,35 @@ const compositeSlots = ({ sheets, steps }: StampSheetsComposite) =>
   1 + sheets.length + steps.reduce((sum, step) => sum + (step.kind === 'card' ? 1 + sheets[step.sheet].films.length : 1), 0);
 
 /** A composite's sheets made ready to lay on a device: each one's compositor and lay, its paper's photograph loaded. */
-type StampSheetsLays = { stage: StampStage; compositors: readonly StampPaintCompositor[]; lays: readonly StampPaintLay[]; painting: StampPaintTarget };
+export type StampSheetsLays = { stage: StampStage; compositors: readonly StampPaintCompositor[]; lays: readonly StampPaintLay[]; painting: StampPaintTarget };
 
-/** What laying `composite` needs that loads: each sheet's paper photograph. */
-async function stampSheetsPhotographs(owner: StampPaintGpuOwner, composite: StampSheetsComposite) {
-  return Promise.all(composite.sheets.map(async ({ program: { paper } }) => (paper.image ? (await owner.images([{ asset: paper.image, kind: 'photograph' }]))[0] : null)));
+/** What laying `sheets` needs that loads: each one's paper photograph. */
+export async function stampSheetsPhotographs(owner: StampPaintGpuOwner, sheets: readonly Pick<StampSheetKeptFilms, 'program'>[]) {
+  return Promise.all(sheets.map(async ({ program: { paper } }) => (paper.image ? (await owner.images([{ asset: paper.image, kind: 'photograph' }]))[0] : null)));
 }
 
-/** Each sheet's compositor and lay on `device`, from `arena`. Throws unless every sheet's compositor keeps one painting alike. */
-function stampSheetsLays(owner: StampPaintGpuOwner, device: StampPaintDevice, arena: StampUniformArena, composite: StampSheetsComposite, photographs: Awaited<ReturnType<typeof stampSheetsPhotographs>>): StampSheetsLays {
-  const [first] = composite.sheets, stage = stampStage(first.program);
+/**
+ * Each of `sheets`' compositor and lay on `device`, from `arena`, on `stage` (the document's, no margin, when left
+ * out), each photograph covering the document. Throws unless every sheet's compositor keeps one painting alike.
+ */
+export function stampSheetsLays(
+  owner: StampPaintGpuOwner, device: StampPaintDevice, arena: StampUniformArena, sheets: readonly Pick<StampSheetKeptFilms, 'program'>[],
+  photographs: Awaited<ReturnType<typeof stampSheetsPhotographs>>, on?: StampStage,
+): StampSheetsLays {
+  const [first] = sheets, stage = on ?? stampStage(first.program), paperFrame = { width: first.program.width, height: first.program.height };
   const blank = owner.target('sheet blank', { size: [1, 1], format: 'r8unorm', usage: GPUTextureUsage.TEXTURE_BINDING }).createView();
-  const compositors = composite.sheets.map(({ program }) => stampPaintCompositorFor(stampSheetMixedPainting(program)).compositorOn(device));
+  const compositors = sheets.map(({ program }) => stampPaintCompositorFor(stampSheetMixedPainting(program)).compositorOn(device));
   const painting = compositors[0].targets.painting;
   compositors.forEach((compositor, s) => {
-    if (JSON.stringify(compositor.targets.painting) !== JSON.stringify(painting)) throw new Error(`stamp sheet: ${composite.sheets[s].program.name} keeps its painting otherwise than ${first.program.name}, so the two can't be laid as one`);
+    if (JSON.stringify(compositor.targets.painting) !== JSON.stringify(painting)) throw new Error(`stamp sheet: ${sheets[s].program.name} keeps its painting otherwise than ${first.program.name}, so the two can't be laid as one`);
   });
   const sampler = stampPaintSamplers(device).mirrorTile;
-  const lays = composite.sheets.map(({ program }, s) => createStampPaintLay(device, arena, { stage, compositor: compositors[s], paper: program.paper, photograph: photographs[s], blank, sampler }));
+  const lays = sheets.map(({ program }, s) => createStampPaintLay(device, arena, { stage, compositor: compositors[s], paper: program.paper, photograph: photographs[s], blank, sampler, paperFrame }));
   return { stage, compositors, lays, painting };
 }
 
 /** `owner`'s target `name` of `stage`'s size shaped as `shape`, sampled and `usage`: whoever lays into it overwrites all it reads. */
-function compositeTarget(owner: StampPaintGpuOwner, name: string, stage: StampStage, shape: StampPaintTarget, usage: number) {
+export function stampSheetCompositeTarget(owner: StampPaintGpuOwner, name: string, stage: StampStage, shape: StampPaintTarget, usage: number) {
   const layers = shape.kind === 'array' ? shape.layers : 1;
   const texture = owner.target(`sheet composite ${name}`, { size: [stage.width, stage.height, layers], format: 'rgba16float', usage: usage | GPUTextureUsage.TEXTURE_BINDING });
   return { texture, view: texture.createView({ dimension: shape.kind === 'array' ? '2d-array' : '2d' }), layers: Array.from({ length: layers }, (_, layer) => texture.createView({ dimension: '2d', baseArrayLayer: layer, arrayLayerCount: 1 })) };
@@ -156,7 +162,7 @@ function encodeStampSheetsSteps(
     const film = films[step.film], kept = keptStampSheetFilm(owner, film, encoder), box = film.box && (place ? placedBox(stage, film.box, place) : film.box);
     if (!kept || !film.box || !box) continue;
     const shape = compositors[step.sheet].targets.layer, usage = GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT;
-    const layer = compositeTarget(owner, `layer ${shape.kind === 'array' ? shape.layers : 1}`, stage, shape, usage);
+    const layer = stampSheetCompositeTarget(owner, `layer ${shape.kind === 'array' ? shape.layers : 1}`, stage, shape, usage);
     // A moved lay's taps read past the film's box: nothing an earlier film left there may show.
     if (place) for (const view of layer.layers) clearStampTarget(encoder, view);
     copyStampTextureBox(encoder, { texture: kept, x: 0, y: 0 }, { texture: layer.texture, x: film.box.x, y: film.box.y }, film.box);
@@ -170,13 +176,13 @@ export async function drawStampSheetsStill(surface: StampPaintSurface, composite
   if (surface.width !== program.width || surface.height !== program.height) {
     throw new Error(`stamp sheet: a ${program.width} × ${program.height} painting is shown on a surface its size, not ${surface.width} × ${surface.height}`);
   }
-  const photographs = await stampSheetsPhotographs(owner, composite);
+  const photographs = await stampSheetsPhotographs(owner, composite.sheets);
   const scope = owner.scope();
   try {
     await owner.checked('laying sheets\' films', () => {
       const { device } = scope, arena = createStampUniformArena(device, compositeSlots(composite));
-      const lays = stampSheetsLays(owner, device, arena, composite, photographs), { stage, compositors } = lays;
-      const painting = compositeTarget(owner, 'painting', stage, lays.painting, GPUTextureUsage.STORAGE_BINDING);
+      const lays = stampSheetsLays(owner, device, arena, composite.sheets, photographs), { stage, compositors } = lays;
+      const painting = stampSheetCompositeTarget(owner, 'painting', stage, lays.painting, GPUTextureUsage.STORAGE_BINDING);
       const encoder = device.createCommandEncoder();
       lays.lays[0].drawPaper(encoder, painting.view, 'paper', stage.width, stage.height);
       encodeStampSheetsSteps(owner, device, encoder, arena, composite, lays, painting.view, 'paper');
@@ -231,14 +237,14 @@ export type StampSheetsGround = 'paper' | 'clear';
 export async function readStampSheetsPicture(
   owner: StampPaintGpuOwner, composite: StampSheetsComposite, crop: StampPixelBox, ground: StampSheetsGround, costs?: StampPaintCostTally,
 ): Promise<StampSheetsPicture> {
-  const photographs = await stampSheetsPhotographs(owner, composite);
+  const photographs = await stampSheetsPhotographs(owner, composite.sheets);
   const scope = owner.scope();
   try {
     const backings: readonly StampPaintBacking[] = ground === 'paper' ? ['paper'] : ['white', 'black'];
     const copies = await owner.checked('reading sheets back as a picture', () => backings.map((backing) => {
       const { device } = scope, arena = createStampUniformArena(device, compositeSlots(composite) + 2);
-      const lays = stampSheetsLays(owner, device, arena, composite, photographs), { stage, compositors } = lays;
-      const painting = compositeTarget(owner, 'painting', stage, lays.painting, GPUTextureUsage.STORAGE_BINDING);
+      const lays = stampSheetsLays(owner, device, arena, composite.sheets, photographs), { stage, compositors } = lays;
+      const painting = stampSheetCompositeTarget(owner, 'painting', stage, lays.painting, GPUTextureUsage.STORAGE_BINDING);
       const pipeline = device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code: lightWgsl(compositors[0], stage) }) } });
       const usage = GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC;
       const measure = (box: StampPixelBox, name: string) => {

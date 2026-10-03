@@ -28,14 +28,12 @@ function stampSheetFilmStore(owner: StampPaintGpuOwner): StampGpuCacheStore<Stam
   return made;
 }
 
-const KEPT_USAGE = GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING;
-
 /** Keeps each of `films` (a stage-sized film and the box painted in it) under `key`, copied in `encoder`. */
 export function keepStampSheetFilms(owner: StampPaintGpuOwner, encoder: GPUCommandEncoder, key: string, films: readonly { texture: GPUTexture; box: StampPixelBox | null }[]): StampSheetFilmKept[] {
-  const store = stampSheetFilmStore(owner);
+  const store = stampSheetFilmStore(owner), keptUsage = GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING;
   return films.map(({ texture, box }, f) => {
     const filmKey = `${key}|film${f}`, layers = texture.depthOrArrayLayers;
-    const made = store.make(filmKey, encoder, box ? [{ width: box.w, height: box.h, layers, format: texture.format, usage: KEPT_USAGE }] : [], { box, layers });
+    const made = store.make(filmKey, encoder, box ? [{ width: box.w, height: box.h, layers, format: texture.format, usage: keptUsage }] : [], { box, layers });
     if (box) copyStampTextureBox(encoder, { texture, x: box.x, y: box.y }, { texture: made.textures[0], x: 0, y: 0 }, box);
     return { key: filmKey, box };
   });

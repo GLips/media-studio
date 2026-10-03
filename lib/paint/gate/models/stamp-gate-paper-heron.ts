@@ -1,12 +1,13 @@
-// stamp-gate-paper-heron.ts: the gate's paper heron (ENGINE 9, test 6, its sheets: no rig yet), a heron whose body lies
-// on the scene's paper, whose wing is a cut-out of a warm paper, and whose wing tip is a cut-out of a cool one inside
-// it, a feather left on it. Posed before painting, the body's paint is repainted on still paper; the wing's sheets
-// move whole, paper and all. What the case measures of its frames is here, pure: where each part's paper went.
+// stamp-gate-paper-heron.ts: the gate's paper heron (ENGINE 9, test 6's sheets; the rigged one built from it is
+// stamp-gate-shots.ts'), a heron whose body lies on the scene's paper, whose wing is a cut-out of a warm paper, and
+// whose wing tip is a cut-out of a cool one inside it, a feather left on it. Posed before painting, the body's paint is
+// repainted on still paper; the wing's sheets move whole, paper and all. What the cases measure of their frames is
+// here, pure: where each part's paper went.
 
 import { paintSimilarityOf, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import meadow from '#lib/paint/document/models/meadow.painting.ts';
-import type { BrushRef, Hex, Mix, Paper, PaintingDocument, Region } from '#lib/paint/document/models/painting-document.ts';
-import type { PaintingPoses } from '#lib/paint/document/models/painting-pose.ts';
+import type { BrushRef, Hex, Layer, LayerNode, Mix, Paper, PaintingDocument, Region, Wetness } from '#lib/paint/document/models/painting-document.ts';
+import { paintingSimilarityPose, type PaintingPoses } from '#lib/paint/document/models/painting-pose.ts';
 import type { PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 
@@ -16,48 +17,62 @@ const ROUND: BrushRef = { style: 'gate', brush: 'round' };
 const { ultramarine, burntUmber, cerulean, quinacridoneRose } = WATERCOLOUR_PIGMENTS;
 
 /**
- * Three papers, each its grain at its own scale, so one's tooth doesn't line up with another's: the root's a grain
- * texel a pixel, the wing's and tip's coarser.
+ * A paper of `color`, its grain a texel every `texelsPx` px: the heron's three papers each at their own scale, so
+ * one's tooth doesn't line up with another's.
  */
-const paperOf = (color: Hex, texelsPx: number): Paper => ({ color, grain: { image: GRAIN, scale: (64 * texelsPx) / PAPER_HERON.width, depth: 0.9 }, absorbency: 0.37 });
-const ROOT_PAPER = paperOf('#f3eee2', 1);
-const WING_PAPER = paperOf('#ecd4ad', 1.43);
-const TIP_PAPER = paperOf('#cad8e4', 1.9);
+export const stampGateHeronPaper = (color: Hex, texelsPx: number): Paper => ({ color, grain: { image: GRAIN, scale: (64 * texelsPx) / PAPER_HERON.width, depth: 0.9 }, absorbency: 0.37 });
+const ROOT_PAPER = stampGateHeronPaper('#f3eee2', 1);
+const WING_PAPER = stampGateHeronPaper('#ecd4ad', 1.43);
+const TIP_PAPER = stampGateHeronPaper('#cad8e4', 1.9);
 
-const polygon = (...xy: number[]): Region => ({ kind: 'polygon', rings: [xy.flatMap((v, i) => (i % 2 ? [] : [{ x: v, y: xy[i + 1] }]))] });
-const fill = (key: string, region: Region, mix: Mix, water: number) =>
-  ({ key: `${key}-flood`, kind: 'fill', area: { region }, brush: ROUND, diameterPx: 18, seed: key, charge: { kind: 'paint', mix, water } } as const);
+export const stampGateHeronPolygon = (...xy: number[]): Region => ({ kind: 'polygon', rings: [xy.flatMap((v, i) => (i % 2 ? [] : [{ x: v, y: xy[i + 1] }]))] });
 
-const layer = (key: string, application: ReturnType<typeof fill>) => ({ key, washes: [{ key: `${key}-wash`, applications: [application] }] });
+/** A layer `key` of one wash flooding `region` with `mix` at `water`, in the gate's round, once what's under it is `on`. */
+export const stampGateHeronLayer = (key: string, region: Region, mix: Mix, water: number, on?: Wetness): Layer => ({
+  key, washes: [{ key: `${key}-wash`, applications: [{ key: `${key}-flood`, kind: 'fill', area: { region }, brush: ROUND, diameterPx: 18, seed: key, charge: { kind: 'paint', mix, water }, ...(on && { on }) }] }],
+});
+
+/** The vane's outline, document px: the wing's paint at rest. */
+export const STAMP_GATE_HERON_VANE = [98, 40, 146, 26, 160, 48, 114, 70] as const;
+/** The body's ellipse at rest, document px. */
+export const STAMP_GATE_HERON_BODY = { center: { x: 66, y: 60 }, radiusX: 36, radiusY: 22 } as const;
 
 /**
- * Water across the foot of the sheet; and a `heron` group: its `body` on the root's paper, its `wing` an own sheet of
- * warm paper holding a `vane` and a `tip`, the tip an own sheet of cool paper inside the wing's, its `feather` on it.
+ * The paper heron: water across the sheet's foot, and a `heron` group: its `body` on the root's paper, `between` over
+ * it, its `wing` an own sheet of warm paper holding a `vane` and a `tip` (an own sheet of cool paper, its `feather` on
+ * it), and `after` over them all.
  */
+export function stampGatePaperHeronDocument(between: readonly LayerNode[] = [], after: readonly LayerNode[] = []): PaintingDocument {
+  return {
+    widthPx: PAPER_HERON.width, heightPx: PAPER_HERON.height, paper: ROOT_PAPER, medium: 'watercolour',
+    layers: [
+      stampGateHeronLayer('water', stampGateHeronPolygon(0, 116, 200, 116, 200, 140, 0, 140), { parts: [{ pigment: cerulean, amount: 1 }], strength: 0.45 }, 0.8),
+      {
+        key: 'heron',
+        children: [
+          stampGateHeronLayer('body', { kind: 'ellipse', ...STAMP_GATE_HERON_BODY }, { parts: [{ pigment: burntUmber, amount: 1 }], strength: 0.7 }, 0.7),
+          ...between,
+          {
+            key: 'wing', sheet: { kind: 'own', paper: WING_PAPER },
+            children: [
+              stampGateHeronLayer('vane', stampGateHeronPolygon(...STAMP_GATE_HERON_VANE), { parts: [{ pigment: ultramarine, amount: 1 }], strength: 0.6 }, 0.7),
+              {
+                key: 'tip', sheet: { kind: 'own', paper: TIP_PAPER },
+                children: [stampGateHeronLayer('feather', stampGateHeronPolygon(148, 30, 170, 20, 176, 34, 156, 42), { parts: [{ pigment: quinacridoneRose, amount: 1 }], strength: 0.6 }, 0.6)],
+              },
+            ],
+          },
+        ],
+      },
+      ...after,
+    ],
+  };
+}
+
+/** The paper heron (stampGatePaperHeronDocument's, nothing added). */
 export const STAMP_GATE_PAPER_HERON: PaintingSourceModule = {
   default: function gatePaperHeron(): PaintingDocument {
-    return {
-      widthPx: PAPER_HERON.width, heightPx: PAPER_HERON.height, paper: ROOT_PAPER, medium: 'watercolour',
-      layers: [
-        layer('water', fill('water', polygon(0, 116, 200, 116, 200, 140, 0, 140), { parts: [{ pigment: cerulean, amount: 1 }], strength: 0.45 }, 0.8)),
-        {
-          key: 'heron',
-          children: [
-            layer('body', fill('body', { kind: 'ellipse', center: { x: 66, y: 60 }, radiusX: 36, radiusY: 22 }, { parts: [{ pigment: burntUmber, amount: 1 }], strength: 0.7 }, 0.7)),
-            {
-              key: 'wing', sheet: { kind: 'own', paper: WING_PAPER },
-              children: [
-                layer('vane', fill('vane', polygon(98, 40, 146, 26, 160, 48, 114, 70), { parts: [{ pigment: ultramarine, amount: 1 }], strength: 0.6 }, 0.7)),
-                {
-                  key: 'tip', sheet: { kind: 'own', paper: TIP_PAPER },
-                  children: [layer('feather', fill('feather', polygon(148, 30, 170, 20, 176, 34, 156, 42), { parts: [{ pigment: quinacridoneRose, amount: 1 }], strength: 0.6 }, 0.6))],
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    };
+    return stampGatePaperHeronDocument();
   },
 };
 
@@ -68,7 +83,7 @@ export const STAMP_GATE_HERON_MOVE = { x: 17, y: 9 } as const;
 export const STAMP_GATE_HERON_TURNED = paintSimilarityOf({ x: 0, y: 0, rotation: 0.25, scale: 1.15 }, { x: 104, y: 56 });
 
 /** The paper heron's poses with its `heron` group posed by `pose`: its body's marks and its wing's sheets all follow. */
-export const stampGatePaperHeronPoses = (pose: PaintSimilarity): PaintingPoses => new Map([['heron', pose]]);
+export const stampGatePaperHeronPoses = (pose: PaintSimilarity): PaintingPoses => new Map([['heron', paintingSimilarityPose(pose)]]);
 
 /** The heron moved by STAMP_GATE_HERON_MOVE. */
 export const stampGatePaperHeronMoved = () => stampGatePaperHeronPoses({ ma: 1, mb: 0, kx: STAMP_GATE_HERON_MOVE.x, ky: STAMP_GATE_HERON_MOVE.y });
