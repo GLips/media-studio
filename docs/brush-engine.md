@@ -6,6 +6,8 @@ painted brush comes to the app's own, the studies a person judges, and the gate 
 feature under `lib/paint/`, each importing only those below it:
 
 ```
+shot               → document, animation, rig, three-layers, painting
+document           → style, painting, materials, brush
 animation          → painting
 rig                → painting
 brush-fidelity     → brush-packs, photoshop-brushes, procreate-brushes, painting, brush
@@ -334,6 +336,21 @@ pictures through posed triangles (a group through its skin mesh, a cel through i
 for renderer and measures alike. `paint-rig-piece-meshes.ts` draws them on the GPU as three.js meshes whose posed
 vertices the lens's motion layer follows; `paint-rig-pieces-gpu.ts` draws them for a Node tool and reads them back.
 A rig's files, poses and clocks stay with the projects that use them.
+
+**document** is the painting language a source writes, which docs/painting-authoring.md teaches. A `*.painting.ts`
+source's factory returns a `PaintingDocument` (`painting-document.ts`: a paper, a medium and a tree of layers, washes
+and applications), its values held to its schema (`painting-properties.ts`). `painting()` (`painting-source.ts`)
+evaluates a source, memoised by its values, and refuses a document with any error. `painting-document-check.ts` checks
+one without the GPU, every problem a record naming its owner's key, field and footprint (`painting-problem.ts`), in
+stages: values, shape and keys, the papers, layers, washes and applications (`painting-application-check.ts`,
+`painting-region-check.ts`, `painting-mix-check.ts`), then each sheet's rules (`painting-sheet-check.ts`).
+`painting-sheets.ts` finds a document's sheets and the medium each one's water dries by; `painting-sheet-program.ts`
+is each sheet's order and clock, the one order the checks, the evaluation diff (`painting-evaluation-diff.ts`) and a
+solver read. Nothing here paints, and the checks never touch the GPU.
+
+**shot** is what a scene puts on screen from evaluations: `layersOf` selects an evaluation's layers and groups on a
+plane, keeping an own sheet whole, `bracket` and `dissolve` blend two (`shot-selection.ts`), and
+`PaintedShotProps` (`shot-props.ts`) is the shot itself, its planes, motion, rigs and camera in the engine's shapes.
 
 **procreate-brushes** reads a Procreate brush's settings into a `StampBrush` (`procreate-brush.ts`, by the constants
 of `procreate-reading.ts`), and the stroke Procreate draws its previews along. Its `engine/` reads binary plists and
