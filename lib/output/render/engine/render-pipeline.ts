@@ -4,7 +4,7 @@
 // (VideoFormat.transparent) delivers as WebM and HEVC with alpha instead of MP4.
 //
 // Progress goes to stderr; each function returns what it made, for the command to print on stdout.
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import { rasterizeSvgs } from '#lib/platform/raster/engine/html-raster.ts';
 import { framingProblems, takeFitWarnings } from '#lib/output/picture-checks/models/framing-check.ts';
@@ -489,7 +489,7 @@ export async function joinVideoSlices(session: RenderSession, { dir, out }: { di
 /**
  * Renders each frame at `times`, then in one tab after others and among neighbours in concurrent tabs: a frame that
  * isn't a pure function of time differs. Equal is over 50 dB PSNR (a GPU rounds each draw apart), from PNGs (JPEG
- * hides a ±1). Times a frame too.
+ * hides a ±1). Times a frame too; keeps each differing frame beside its lone render in out/check/repeatable/.
  */
 export async function checkFramesRepeatable(session: RenderSession, times: number[]): Promise<{ ok: boolean; report: string[] }> {
   if (!times.length || times.some((t) => !Number.isFinite(t))) throw new Error('give times in seconds, e.g. 2,8.5');
@@ -500,6 +500,9 @@ export async function checkFramesRepeatable(session: RenderSession, times: numbe
   if (bad !== undefined) throw new Error(`${bad / fps}s is outside the video`);
   const inVideo = (f: number) => f >= 0 && f < durationInFrames;
   let frameMs = 0;
+  // Each time's worst render, kept beside its lone one wherever they differ at all, to look at.
+  const kept = join(outDirFor(session), 'check', 'repeatable');
+  rmSync(kept, { recursive: true, force: true });
   const worst = await withStudioTemp('repeatable', async (dir) => {
     const fresh = new Map<number, Awaited<ReturnType<typeof session.renderStills>>>();
     for (const [i, f] of frames.entries()) fresh.set(f, await session.renderStills(join(dir, `fresh-${i}`), [f], { lossless: true }));
@@ -516,15 +519,22 @@ export async function checkFramesRepeatable(session: RenderSession, times: numbe
     frameMs = (performance.now() - replayStarted) / order.length;
     const tabs = Math.max(2, session.workersFor(composition));
     const together = await session.renderStills(join(dir, 'together'), frames.flatMap((f) => [-2, -1, 0, 1, 2].map((d) => f + d)).filter(inVideo), { tabs, lossless: true });
-    const worst = new Map<number, number>();
-    const compare = (f: number, file: string) => {
+    const worstRender = new Map<number, { db: number; file: string; how: string }>();
+    const compare = (f: number, file: string, how: string) => {
       const { stderr } = measureWithFfmpeg(['-i', fresh.get(f)!.fileFor(f), '-i', file, '-lavfi', 'psnr', '-f', 'null', '-']);
-      const psnr = Number(/average:(\S+)/.exec(stderr)![1].replace('inf', 'Infinity'));
-      worst.set(f, Math.min(worst.get(f) ?? Infinity, psnr));
+      const db = Number(/average:(\S+)/.exec(stderr)![1].replace('inf', 'Infinity'));
+      const was = worstRender.get(f);
+      if (!was || db < was.db) worstRender.set(f, { db, file, how });
     };
-    for (const [i, f] of order.entries()) if (fresh.has(f)) compare(f, replay.fileFor(i));
-    for (const f of frames) compare(f, together.fileFor(f));
-    return worst;
+    for (const [i, f] of order.entries()) if (fresh.has(f)) compare(f, replay.fileFor(i), `replay-${i}${i ? `-after-${order[i - 1]}` : ''}`);
+    for (const f of frames) compare(f, together.fileFor(f), `among-${tabs}-tabs`);
+    for (const [f, { db, file, how }] of worstRender) {
+      if (db === Infinity) continue;
+      mkdirSync(kept, { recursive: true });
+      copyFileSync(fresh.get(f)!.fileFor(f), join(kept, `frame-${f}-alone.png`));
+      copyFileSync(file, join(kept, `frame-${f}-${how}.png`));
+    }
+    return new Map([...worstRender].map(([f, { db }]) => [f, db]));
   });
   const report = frames.map((f) => {
     const db = worst.get(f)!;
@@ -533,5 +543,6 @@ export async function checkFramesRepeatable(session: RenderSession, times: numbe
   report.push(`  lens ${session.lens}: ${Math.round(frameMs)} ms a frame, drawn in one tab`);
   const ok = frames.every((f) => worst.get(f)! > 50);
   report.push(ok ? 'repeatable ✓' : 'not repeatable: something in those frames depends on what the tab drew before, or on the tabs drawing beside it');
+  if ([...worst.values()].some((db) => db !== Infinity)) report.push(`  each differing frame, alone and at its worst: ${kept}`);
   return { ok, report };
 }

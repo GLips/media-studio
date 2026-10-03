@@ -902,9 +902,6 @@
       "const composition = await session.compositionFor(profiled, browser);": 1,
       "const composition = await session.compositionFor(inputProps, browser);": 1
     },
-    "lib/output/render/engine/render-pipeline.ts": {
-      "const worst = new Map<number, number>();": 1
-    },
     "lib/output/render/engine/render-session.ts": {
       "const composition = await compositionFor(inputProps, browser);": 1
     },
@@ -948,9 +945,6 @@
   "eslint(no-unused-vars)": {
     "lib/output/picture-checks/models/framing-check.ts": {
       "return spans.map(({ last: _, ...s }) => s);": 1
-    },
-    "lib/output/render/engine/render-pipeline.ts": {
-      "import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';": 1
     },
     "lib/output/review/models/review-notes.ts": {
       "const first = note.frame, last = note.end ?? note.frame, { fps } = sources;": 1
