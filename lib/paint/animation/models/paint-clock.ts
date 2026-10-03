@@ -93,6 +93,9 @@ export function paintPlayClockProblem(clock: PaintPlayClock): string | null {
 export const paintNodeClockStep = (clock: PaintNodeClock): PaintSceneStep =>
   'hold' in clock ? { kind: 'hold', frames: clock.hold } : { kind: 'freeze', time: sceneSeconds(clock.freeze) };
 
+/** A node's `clock` as steps: none for no clock, or one paintNodeClockProblem refuses (it's reported apart). */
+export const paintNodeClockSteps = (clock: PaintNodeClock | undefined): PaintSceneStep[] => (clock && !paintNodeClockProblem(clock) ? [paintNodeClockStep(clock)] : []);
+
 /** `clock` compiled under its node's steps (ancestors' outermost); check it first with paintPlayClockProblem. */
 export function compilePaintPlayClock(clock: PaintPlayClock, node: readonly PaintSceneStep[]): CompiledPaintPlayClock {
   const scene: readonly PaintSceneStep[] = clock.hold === undefined ? node : [...node, { kind: 'hold', frames: clock.hold }];

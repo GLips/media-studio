@@ -3,7 +3,7 @@
 // lay; a warp never does, which is why only what follows a group's outermost bend becomes its lay.
 
 import type { StampGroupPlacement } from '#lib/paint/painting/models/stamp-group-motion.ts';
-import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import { stampPolygonBox, type StampBox, type StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 
 /** p ↦ (ma + i·mb)·p + (kx + i·ky), in the painting's y-down px. */
 export type PaintSimilarity = { readonly ma: number; readonly mb: number; readonly kx: number; readonly ky: number };
@@ -23,6 +23,10 @@ export const paintSimilarityAfter = (outer: PaintSimilarity, inner: PaintSimilar
 });
 
 export const paintSimilarityApply = ({ ma, mb, kx, ky }: PaintSimilarity, p: StampPoint): StampPoint => ({ x: ma * p.x - mb * p.y + kx, y: mb * p.x + ma * p.y + ky });
+
+/** The box round `box` (x0..x1, y0..y1) as `s` lays it: its four corners mapped. */
+export const paintSimilarityBox = (s: PaintSimilarity, { x0, y0, x1, y1 }: StampBox): StampBox =>
+  stampPolygonBox([{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x0, y: y1 }, { x: x1, y: y1 }].map((corner) => paintSimilarityApply(s, corner)));
 
 /** The map undoing `s`; its scale must not be 0. */
 export function paintSimilarityInverse({ ma, mb, kx, ky }: PaintSimilarity): PaintSimilarity {

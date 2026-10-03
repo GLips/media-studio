@@ -171,7 +171,7 @@ async function checkRebase(): Promise<StampGateWashCheck> {
 /** Sheet case `id`'s checks. */
 export async function checkStampGateSheetCase(id: StampGateSheetId): Promise<StampGateWashCheck[]> {
   if (id === 'schedule/forward') return checkForward();
-  if (id === 'sheet/wet-contact') return [...await checkWetContact(), await checkStampGateRiggedWetContact()];
+  if (id === 'sheet/wet-contact') return [...await checkWetContact(), ...await checkStampGateRiggedWetContact()];
   if (id === 'schedule/reductions') return [...await checkStampGateReductions(), await checkRebase()];
   if (id === 'paper/heron') return [...await checkPaperHeron(), ...await checkStampGateRiggedHeron()];
   if (id === 'schedule/clocks') return checkStampGateClocks();

@@ -9,18 +9,21 @@
 
 import { buildPaintCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
 import type { PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
-import { paintNodeClockProblem, paintNodeClockStep, paintNodeTimeAt, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
+import { paintNodeClockProblem, paintNodeClockSteps, paintNodeTimeAt, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
 import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import type { LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import { paintMoment, type PaintMoment, type StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
 import { compileShotMotion, type CompiledShotMotion, type ShotMotionPlane } from './shot-motion.ts';
-import { shotOccurrencePlane } from './shot-occurrences.ts';
-import { shotPresentationAt, type OccurrenceKey, type PaintedShotProps, type PictureSource, type PlaneProps, type PresentationValue, type ThreeSource } from './shot-props.ts';
+import { shotOccurrencePlane, shotPlaneOccurrences, type ShotOccurrence } from './shot-occurrences.ts';
+import { shotDrawableOrder } from './shot-plan.ts';
+import {
+  shotPresentationAt, type InstancedPlaneProps, type OccurrenceKey, type PaintedShotProps, type PictureSource, type PlaneProps, type PresentationValue, type ThreeSource,
+} from './shot-props.ts';
 import { shotCameraPlanes } from './shot-reach.ts';
 import { compileShotRig, type CompiledShotRig } from './shot-rigs.ts';
-import { paintedSourceProblems, paintedSourceSelection, shotPlaneOccurrences, type PaintedSource, type ShotOccurrence } from './shot-selection.ts';
+import { paintedSourceProblems, paintedSourceSelection, type PaintedSource } from './shot-selection.ts';
 import { shotVisibilityProblems } from './shot-visibility.ts';
 
 /** Where a painted plane lies: a lay for all time (null: document px are plane px), or one read at each moment. */
@@ -28,7 +31,7 @@ export type ShotPlaneLay =
   | { readonly kind: 'still'; readonly lay: StampGroupLay | null }
   | { readonly kind: 'moving'; readonly lay: (moment: PaintMoment) => StampGroupLay; readonly reach: StampBox | null };
 
-type ShotPlaneCommon = { readonly id: string; readonly depth: number; readonly canvas: number; readonly clock: readonly PaintSceneStep[] };
+type ShotPlaneCommon = { readonly id: string; readonly depth: number; readonly canvas: number };
 
 /**
  * A painted plane compiled: its source, read at its source clock's moment (`sourceClock`); its lay; its first
@@ -46,11 +49,13 @@ export type CompiledShotPlane =
   | (ShotPlaneCommon & { readonly kind: 'three'; readonly source: ThreeSource });
 
 /**
- * A shot compiled: its planes far to near (ties in written order), the back first; how many canvases it draws in;
- * its motion, rigs and visibility by occurrence; its camera.
+ * A shot compiled: its planes far to near (shotDrawableOrder), the back first, and as `written`, which a frame orders
+ * with its items; how many canvases it draws in; its motion (each plane's clock in its planeClocks), rigs and
+ * visibility by occurrence; its camera.
  */
 export type CompiledPaintedShot = {
   readonly planes: readonly CompiledShotPlane[];
+  readonly written: readonly (PlaneProps | InstancedPlaneProps)[];
   readonly canvases: number;
   readonly motion: CompiledShotMotion;
   readonly rigs: ReadonlyMap<OccurrenceKey, CompiledShotRig>;
@@ -95,7 +100,7 @@ function canvasOrderProblems(planes: readonly CompiledShotPlane[], canvases: rea
 function compilePaintedPlane(
   props: PlaneProps, source: PresentationValue<PaintedSource>, common: ShotPlaneCommon, back: boolean, fps: number, problems: PaintingProblem[],
 ): CompiledShotPaintedPlane | null {
-  const sourceClock = props.sourceClock && !paintNodeClockProblem(props.sourceClock) ? [paintNodeClockStep(props.sourceClock)] : [];
+  const sourceClock = paintNodeClockSteps(props.sourceClock);
   const first = shotPresentationAt(source, paintNodeTimeAt(sourceClock, paintMoment(0), fps));
   const sourceProblems = paintedSourceProblems(props.id, first);
   problems.push(...sourceProblems);
@@ -130,13 +135,20 @@ function compileShotRigs(rigs: NonNullable<PaintedShotProps['rigs']>, planes: re
   return compiled;
 }
 
-/** Why `visibility` can't be drawn beyond its names and constants: on the back, a picture plane or a three plane. */
-function visibilityPlaneProblems(visibility: NonNullable<PaintedShotProps['visibility']>, planes: readonly CompiledShotPlane[]): PaintingProblem[] {
-  return Object.keys(visibility).flatMap((key) => {
-    const plane = planes.find(({ id }) => id === key);
-    if (!plane) return [];
-    if (plane.kind !== 'painted') return [shotError(key, 'visibility', `is a ${plane.kind} plane: its visibility isn't drawn; fade what its source draws`)];
-    return plane.back ? [shotError(key, 'visibility', 'is the back, shown wherever the frame is: fade a nearer plane or its occurrences')] : [];
+/**
+ * Why `visibility` can't be drawn beyond its names and constants: on the back, a picture plane or a three plane, or
+ * between 0 and 1 inside a rig drawn as pieces (`rigs`), whose layers show whole or not at all.
+ */
+function visibilityPlaneProblems(visibility: NonNullable<PaintedShotProps['visibility']>, planes: readonly CompiledShotPlane[], rigs: ReadonlyMap<OccurrenceKey, CompiledShotRig>): PaintingProblem[] {
+  return Object.entries(visibility).flatMap(([key, value]) => {
+    const plane = planes.find(({ id }) => id === shotOccurrencePlane(key));
+    if (plane && plane.id === key) {
+      if (plane.kind !== 'painted') return [shotError(key, 'visibility', `is a ${plane.kind} plane: its visibility isn't drawn; fade what its source draws`)];
+      return plane.back ? [shotError(key, 'visibility', 'is the back, shown wherever the frame is: fade a nearer plane or its occurrences')] : [];
+    }
+    const rigged = plane?.kind === 'painted' && plane.occurrences.find((occurrence) => occurrence.key === key)?.groups.find((group) => rigs.get(group)?.pieces);
+    if (!rigged || typeof value !== 'number' || value === 0 || value === 1) return [];
+    return [shotError(key, 'visibility', `is ${value}, inside ${rigged}, drawn as pieces: a layer or group there shows (1) or doesn't (0)`)];
   });
 }
 
@@ -147,6 +159,9 @@ function visibilityPlaneProblems(visibility: NonNullable<PaintedShotProps['visib
 export function compilePaintedShot(props: PaintedShotProps, canvases: readonly string[]): { readonly shot: CompiledPaintedShot | null; readonly problems: readonly PaintingProblem[] } {
   const problems: PaintingProblem[] = [], fps = props.camera.animationFps ?? PAINT_ANIMATION_FPS;
   if (props.warm) problems.push(shotError('shot', 'warm', "warming isn't done yet (ENGINE slice 6): the shot solves each frame's films as it draws it"));
+  canvases.forEach((name, index) => {
+    if (canvases.indexOf(name) !== index) problems.push(shotError('shot', 'canvas', `names two of its canvases ${name}: each PaintedShotCanvas takes a name of its own`));
+  });
   const ids = new Set<string>();
   for (const plane of props.planes) {
     if (ids.has(plane.id)) problems.push(shotError(plane.id, 'id', 'names two planes'));
@@ -154,12 +169,12 @@ export function compilePaintedShot(props: PaintedShotProps, canvases: readonly s
     problems.push(...planePropsProblems(plane, canvases));
   }
   if (problems.length) return { shot: null, problems };
-  const written = props.planes.flatMap((plane) => (plane.kind === 'instanced' ? [] : [plane]));
-  if (!written.length) return { shot: null, problems: [shotError('shot', 'planes', 'has no planes: a shot draws its back at least')] };
-  const sorted = written.toSorted((a, b) => b.depth - a.depth);
-  const planes = sorted.flatMap((plane, index): CompiledShotPlane[] => {
-    const canvas = plane.canvas === undefined ? 0 : canvases.indexOf(plane.canvas), clock = plane.clock && !paintNodeClockProblem(plane.clock) ? [paintNodeClockStep(plane.clock)] : [];
-    const common = { id: plane.id, depth: plane.depth, canvas, clock };
+  // Instanced planes were refused above, so every drawable is a plane, and the farthest is the back.
+  const written = new Map(props.planes.flatMap((plane) => (plane.kind === 'instanced' ? [] : [[plane.id, plane] as const])));
+  if (!written.size) return { shot: null, problems: [shotError('shot', 'planes', 'has no planes: a shot draws its back at least')] };
+  const planes = shotDrawableOrder(props.planes, new Map()).flatMap((drawable, index): CompiledShotPlane[] => {
+    const plane = written.get(drawable.plane)!, canvas = plane.canvas === undefined ? 0 : canvases.indexOf(plane.canvas);
+    const common = { id: plane.id, depth: plane.depth, canvas };
     const { source } = plane;
     if (typeof source !== 'function' && source.kind === 'picture') return [{ ...common, kind: 'picture', source }];
     if (typeof source !== 'function' && source.kind === 'three') return [{ ...common, kind: 'three', source }];
@@ -173,9 +188,9 @@ export function compilePaintedShot(props: PaintedShotProps, canvases: readonly s
   const rigs = compileShotRigs(props.rigs ?? {}, planes, problems);
   const occurrences = new Map(planes.flatMap((plane) => (plane.kind === 'painted' ? [[plane.id, plane.occurrences.map(({ key }) => key)] as const] : [])));
   const visibility = props.visibility ?? {};
-  problems.push(...shotVisibilityProblems(visibility, props.planes, occurrences), ...visibilityPlaneProblems(visibility, planes));
+  problems.push(...shotVisibilityProblems(visibility, props.planes, occurrences), ...visibilityPlaneProblems(visibility, planes, rigs));
   const motionPlanes = planes.map((plane): ShotMotionPlane => ({
-    id: plane.id, kind: plane.kind, clock: written.find(({ id }) => id === plane.id)!.clock, movingLay: plane.kind === 'painted' && plane.lay.kind === 'moving',
+    id: plane.id, kind: plane.kind, clock: paintNodeClockSteps(written.get(plane.id)!.clock), movingLay: plane.kind === 'painted' && plane.lay.kind === 'moving',
     occurrences: plane.kind === 'painted' ? plane.occurrences : [],
   }));
   const motion = compileShotMotion(motionPlanes, props.motion, new Set(rigs.keys()), fps);
@@ -186,7 +201,7 @@ export function compilePaintedShot(props: PaintedShotProps, canvases: readonly s
   if (!built.ok) return { shot: null, problems: built.problems.map((message) => shotError('camera', '', message)) };
   return {
     shot: {
-      planes, canvases: Math.max(1, canvases.length), motion: motion.motion, rigs, visibility: new Map(Object.entries(visibility)), camera: built.camera,
+      planes, written: props.planes, canvases: Math.max(1, canvases.length), motion: motion.motion, rigs, visibility: new Map(Object.entries(visibility)), camera: built.camera,
     },
     problems,
   };

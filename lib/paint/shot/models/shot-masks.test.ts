@@ -3,10 +3,9 @@ import { test } from 'node:test';
 import type { PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
 import { painting } from '#lib/paint/document/models/painting-source.ts';
 import { shotMaskCheck, shotPathInkedLength, shotPathMaskCapsules, shotPathMaskCover } from './shot-masks.ts';
-import { shotOccurrenceKey } from './shot-occurrences.ts';
+import { paintedSourceNodeKeys, shotOccurrenceKey } from './shot-occurrences.ts';
 import type { InstancedPlaneProps, PlaneMask, PlaneProps } from './shot-props.ts';
 import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
-import { paintedSourceNodeKeys } from './shot-selection.ts';
 
 test('a path mask reveals inked length: a pen-up adds none, a dot shows once reached, the band keeps its width to where the reveal ends', () => {
   const subpaths = [[{ x: 0, y: 0 }, { x: 10, y: 0 }], [{ x: 100, y: 0 }], [{ x: 20, y: 0 }, { x: 20, y: 10 }, { x: 20, y: 30 }], [{ x: 24, y: 32 }]];

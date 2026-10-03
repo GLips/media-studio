@@ -116,22 +116,27 @@ export type StampGroupTravel = { readonly travel: StampWarpMap; readonly key: st
 
 const groupPoseKey = ({ lay, warp }: StampGroupPose) => JSON.stringify([lay, warp && [warp.key, warp.cell]]);
 
+/** Where something lies at one end of a span: its map from rest (null: where it was painted), and the key naming it. */
+export type StampTravelEnd = { readonly map: StampWarpMap | null; readonly key: string };
+
 /**
- * A group's motion from lying as `from` to lying as `to` (stampGroupSceneMap at each); null for one posed alike at both.
- * A plane's motion layer reads it per group, an old painting's and a shot's occurrence's alike.
+ * The motion from lying as `from` to lying as `to`; null for one keyed alike at both. The one producer of travel: an
+ * old painting's groups (stampGroupTravel) and a shot's sheets and films each call it, so advected paper hooks here.
  */
-export function stampGroupTravel(from: StampGroupPose, to: StampGroupPose): StampGroupTravel | null {
-  const fromKey = groupPoseKey(from), toKey = groupPoseKey(to);
-  if (fromKey === toKey) return null;
-  const mapFrom = stampGroupSceneMap(from), mapTo = stampGroupSceneMap(to);
+export function stampTravel(from: StampTravelEnd, to: StampTravelEnd): StampGroupTravel | null {
+  if (from.key === to.key) return null;
   return {
-    key: `${fromKey}>${toKey}`,
+    key: `${from.key}>${to.key}`,
     travel: (rest) => {
-      const a = mapFrom?.(rest) ?? rest, b = mapTo?.(rest) ?? rest;
+      const a = from.map?.(rest) ?? rest, b = to.map?.(rest) ?? rest;
       return { x: b.x - a.x, y: b.y - a.y };
     },
   };
 }
+
+/** A group's motion from lying as `from` to lying as `to` (stampGroupSceneMap at each): a plane's motion layer reads it per group. */
+export const stampGroupTravel = (from: StampGroupPose, to: StampGroupPose): StampGroupTravel | null =>
+  stampTravel({ map: stampGroupSceneMap(from), key: groupPoseKey(from) }, { map: stampGroupSceneMap(to), key: groupPoseKey(to) });
 
 /**
  * Each of `painting`'s groups' motion over `span`, null for one posed alike at both ends: the one producer of a

@@ -37,15 +37,14 @@ import {
 } from './stamp-wet-stages.ts';
 import { STAMP_WET_FIELD_FORMATS, stampWetField } from './stamp-wet-field.ts';
 import {
-  STAMP_GLOW_OCCLUSION, STAMP_GLOW_SOURCE, STAMP_PLANE_LIGHT, STAMP_PLANE_PICTURE, stampGlowOcclusionWgsl, stampGlowSourceWgsl,
-  stampPlaneLightWgsl, stampPlanePictureLayerCount, stampPlanePictureLayers, stampPlanePictureLayersKey, stampPlanePictureWgsl,
+  STAMP_GLOW_OCCLUSION, STAMP_GLOW_SOURCE, stampGlowOcclusionWgsl, stampGlowSourceWgsl, stampPlanePictureLayers,
   type StampPlanePictureLayers,
 } from './stamp-paint-plane-passes.ts';
-import { lensGaussianReach, lensSigmaStepped } from '#lib/picture/lens/models/lens-focus.ts';
 import { createLensCompositor, type LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { stampWarpCells, stampWarpTriangles, STAMP_WARP_MOST_CELLS } from '../models/stamp-group-warp.ts';
 import { createStampLatticePass, STAMP_LATTICE_VERTEX_FLOATS } from './stamp-lattice-pass.ts';
+import { createStampPlanePictures, type StampPlanePicture } from './stamp-plane-picture-pass.ts';
 import {
   stampFramePlan, stampFramePlanExposed, stampFramePlanMotion, stampGroupSceneMap, type StampGroupFrame, type StampGroupTravel, type StampMotionSpan, type StampPosedMoment,
 } from '../models/stamp-frame-plan.ts';
@@ -62,9 +61,10 @@ import { copyStampLayerForReadback, readStampLayerCopy, type StampLayerReadback 
 
 /**
  * The uniform slots a plane takes besides its groups': its paper (white) and black, a light pass, its picture, its
- * defocus (two passes) and its composite. A renderer measuring its backings at load takes four, fewer than one plane's.
+ * defocus (two passes) and its composite. The first frame laying a clear plane measures the backings' light in four more.
  */
 const PLANE_SLOTS = 7;
+const BACKING_SLOTS = 4;
 /** The uniform slots a frame's bloom takes: a gaussian's two passes. */
 const BLOOM_SLOTS = 2;
 
@@ -306,7 +306,7 @@ function rendererOnSurface({
   const passSlots = (pass: CompiledStampPass) => stampDepositUniformSlots(compositor, { wash: pass.kind === 'wash', deposits: stampPassDeposits(pass).length });
   // Each group's lays (on paper or white and, on a clear plane, on black), glow occlusion and source; each plane's and
   // the bloom's.
-  const frameSlots = (1 + planes.nearer.length) * PLANE_SLOTS + BLOOM_SLOTS + painting.groups.reduce((sum, group) => sum + 4 + group.passes.reduce((n, pass) => n + passSlots(pass), 0), 0);
+  const frameSlots = (1 + planes.nearer.length) * PLANE_SLOTS + BACKING_SLOTS + BLOOM_SLOTS + painting.groups.reduce((sum, group) => sum + 4 + group.passes.reduce((n, pass) => n + passSlots(pass), 0), 0);
   // Drawing the brushed masks at load takes the same slots, four a mark: its stamps and dual's, its cover's two.
   const slotsPerFrame = Math.max(frameSlots, 4 * brushedMasks.reduce((sum, { marks }) => sum + marks.length, 0));
   const asWritten = new Map(painting.groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass).map((deposit) => [deposit.id, deposit] as const))));
@@ -554,15 +554,11 @@ function rendererOnSurface({
     }
     return planeTargets.get(key)!;
   };
-  const stageBox: Box = { x: 0, y: 0, w: width, h: height };
   // The frame's lens: composites the planes' pictures, blooms what glows and writes the frame (lens-compositor.ts).
   const lensGpu = createLensCompositor(owner.webgpu, { ...frame, blurExtent: stampLensSourcesBlurExtent(stage, sources) });
   const sourceLayers = createStampLensSourceLayers(owner, { stage, lens: lensGpu, sources });
 
-  /** A picture on the device: its layers (by its kind), its texture, and its box in stage texels. */
-  type StampPictureNote = StampPlanePictureLayers & { readonly box: Box };
-  type StampPlanePicture = StampPictureNote & { readonly texture: GPUTexture };
-  const pictures = owner.cache.store<StampPictureNote>('picture'), blurredPictures = owner.cache.store<StampPictureNote>('blurred');
+  const planePictures = createStampPlanePictures(owner, { stage, arena: uniforms });
   /** The plane's emission as its groups glow, stage-sized: cleared for each plane that glows. */
   const emissionTarget = () => planeTarget('emission', width, height, 1);
   /**
@@ -570,33 +566,6 @@ function rendererOnSurface({
    * pixel's travel over the shutter, painting px, as its nearest paint moves. Cleared for each plane whose groups travel.
    */
   const motionTarget = () => planeTarget('motion', width, height, 1);
-  /** The painting's linear light over `box` (stage texels) into array layer `layer` of `into`, from its first texel. */
-  function measureLight(encoder: GPUCommandEncoder, box: Box, into: GPUTextureView, layer: number) {
-    dispatch(encoder, planePipeline('light', () => stampPlaneLightWgsl(compositor, STAMP_WORKGROUP)), [slot((views) => {
-      const put = gpuUniformWriter(STAMP_PLANE_LIGHT, views);
-      put('origin', [box.x, box.y]);
-      put('extent', [box.w, box.h]);
-      put('layer', layer);
-    }), targets.painting.view, into], box.w, box.h);
-  }
-  /**
-   * The measuring backings' own light, white at layer 0 and black at 1: this renderer's, measured once as it's made
-   * (measureBackings), since they never change. A plain backing lays alike at every texel, so one texel holds it.
-   */
-  const backingLight = planes.nearer.some((plane) => plane.kind === 'painted')
-    ? device.createTexture({ size: [1, 1, 2], format: 'rgba16float', usage: STORAGE | GPUTextureUsage.TEXTURE_BINDING })
-    : null;
-  /** Measures backingLight, submitted on its own so no frame can be drawn before it. */
-  function measureBackings(light: GPUTexture) {
-    uniforms.reset();
-    const encoder = device.createCommandEncoder(), corner: Box = { x: 0, y: 0, w: 1, h: 1 };
-    for (const [layer, backing] of (['white', 'black'] as const).entries()) {
-      drawPaper(encoder, backing, 1, 1);
-      measureLight(encoder, corner, stampArrayView(light), layer);
-    }
-    uniforms.flush();
-    device.queue.submit([encoder.finish()]);
-  }
   /**
    * Adds group `groupFrame`'s glow over `laid` (its box, and its rest map for a moved group) to the plane's emission:
    * its light past the glow's threshold, as much as it covers.
@@ -625,38 +594,24 @@ function rendererOnSurface({
     }), null, emissionTarget().view, targets.layer.view, ...(laid.rest ? [laid.rest] : [])], laid.box.w, laid.box.h);
   }
   /**
-   * Paints a plane's groups (`planeGroups`) as `kind` and resolves them into its picture, kept under `key`: a paper
-   * picture over the stage, on the painting's paper; a film over what its groups were laid over (stage texels), laid
-   * on white and again on black, from the films the first lay kept. Null for none.
+   * Paints a plane's groups (`planeGroups`) as `kind` and resolves them into its picture, kept under `key`
+   * (stamp-plane-picture-pass.ts): a paper picture on the painting's paper, a film on white and again on black, from
+   * the films the first lay kept. Null for none.
    */
   function paintPicture(encoder: GPUCommandEncoder, planeGroups: readonly number[], kind: StampPlanePictureLayers['kind'], { groups, motion: planeMotion, whole, frameTrace }: StampPlaneDraw, key: string): StampPlanePicture | null {
     const shown = planeGroups.filter((index) => groups[index].visibility);
     const travelling = !!planeMotion && shown.some((index) => planeMotion.travels[index]);
     const layers = stampPlanePictureLayers(kind, { emits: shown.some((index) => groups[index].glow), travels: travelling });
-    const first = layers.kind === 'film' ? 'white' : 'paper';
-    drawPaper(encoder, first);
-    if (layers.emission !== null) clearStampTarget(encoder, emissionTarget().view);
-    if (travelling) clearStampTarget(encoder, motionTarget().view);
     const motion = travelling && planeMotion ? { into: motionTarget().view, travels: planeMotion.travels, cover: stampMotionCover(planeMotion.span) } : undefined;
-    const laidBox = layPlaneGroups(encoder, planeGroups, groups, { whole, frameTrace, backing: first, motion });
-    const box = layers.kind === 'film' ? laidBox : stageBox;
-    if (!box) return null;
-    const note: StampPictureNote = { ...layers, box };
-    const [texture] = pictures.make(key, encoder, [{ width: box.w, height: box.h, layers: stampPlanePictureLayerCount(layers), format: 'rgba16float', usage: STORAGE | GPUTextureUsage.TEXTURE_BINDING }], note).textures;
-    if (layers.kind === 'film') {
-      // Between the lays the picture's colour layer holds the light on white over its box; the picture pass replaces it.
-      measureLight(encoder, box, stampArrayView(texture), 0);
-      drawPaper(encoder, 'black');
-      layPlaneGroups(encoder, planeGroups, groups, { whole, backing: 'black' });
-    }
-    const pipeline = planePipeline(`picture|${stampPlanePictureLayersKey(layers)}`, () => stampPlanePictureWgsl(compositor, layers, STAMP_WORKGROUP));
-    dispatch(encoder, pipeline, [slot((views) => {
-      const put = gpuUniformWriter(STAMP_PLANE_PICTURE, views);
-      put('origin', [box.x, box.y]);
-      put('extent', [box.w, box.h]);
-      put('visibility', 1);
-    }), targets.painting.view, layers.emission !== null ? emissionTarget().view : null, stampArrayView(texture), layers.kind === 'film' ? stampArrayView(backingLight!) : null, layers.motion !== null ? motionTarget().view : null], box.w, box.h);
-    return { ...note, texture };
+    return planePictures.paint(encoder, {
+      key, compositor, painting: targets.painting.view, layers, visibility: 1,
+      emission: layers.emission !== null ? emissionTarget().view : null, motion: travelling ? motionTarget().view : null,
+      paper: (backing, w, h) => drawPaper(encoder, backing, w, h),
+      lay: (backing) => {
+        drawPaper(encoder, backing);
+        return backing === 'black' ? layPlaneGroups(encoder, planeGroups, groups, { whole, backing }) : layPlaneGroups(encoder, planeGroups, groups, { whole, frameTrace, backing, motion });
+      },
+    });
   }
   /**
    * Lays `planeGroups` onto the painting as `groups` says, a reserve or lift showing `backing`. The first lay (on
@@ -698,34 +653,19 @@ function rendererOnSurface({
     }
     return laidBox;
   }
-  /** `picture` (under `key`) defocused by `sigma`, plane px: kept under its key and the stepped sigma. */
-  function blurredPicture(encoder: GPUCommandEncoder, picture: StampPlanePicture, key: string, sigma: number): StampPlanePicture {
-    const stepped = lensSigmaStepped(sigma), blurredKey = `${key}|${stepped}`;
-    const found = blurredPictures.find(blurredKey, encoder);
-    if (found) return { ...found.note, texture: found.textures[0] };
-    const { texture: sharp, box: sharpBox, ...layers } = picture;
-    const box = stampStageTexelsGrown(stage, sharpBox, lensGaussianReach(stepped)), count = sharp.depthOrArrayLayers;
-    const note: StampPictureNote = { ...layers, box };
-    const [texture] = blurredPictures.make(blurredKey, encoder, [{ width: box.w, height: box.h, layers: count, format: 'rgba16float', usage: STORAGE | GPUTextureUsage.TEXTURE_BINDING }], note).textures;
-    lensGpu.gaussian(encoder, { source: stampArrayView(sharp), into: stampArrayView(texture), layers: count, sigma: stepped, read: sharpBox, sourceAt: sharpBox, box });
-    return { ...note, texture };
-  }
   /**
    * A plane's picture this frame (its id, `planeGroups` and `kind`), defocused as `look` says, from the device's cache
    * where it's kept; null for none. A film whose groups are all hidden is nothing, drawn or looked up.
    */
   function planePicture(encoder: GPUCommandEncoder, plane: { id: string; groups: readonly number[] }, kind: StampPlanePictureLayers['kind'], look: StampPlaneLook, planeDraw: StampPlaneDraw): StampPlanePicture | null {
     if (kind === 'film' && plane.groups.every((index) => !planeDraw.groups[index].visibility)) return null;
-    const key = pictureKey(plane, planeDraw), found = planeDraw.whole ? null : pictures.find(key, encoder);
-    let picture: StampPlanePicture | null;
-    if (found) {
-      const restored = span('stamp paint picture restore');
-      picture = { ...found.note, texture: found.textures[0] };
-      restored();
-    } else picture = paintPicture(encoder, plane.groups, kind, planeDraw, key);
+    const key = pictureKey(plane, planeDraw), found = planeDraw.whole ? null : planePictures.find(key, encoder);
+    // Counted by the gate: a held frame restores its pictures rather than painting them.
+    if (found) span('stamp paint picture restore')();
+    const picture = found ?? paintPicture(encoder, plane.groups, kind, planeDraw, key);
     if (!picture) return null;
     // A plane's defocus is frame px: on its picture, it's that over the view's scale.
-    return look.defocus ? blurredPicture(encoder, picture, key, look.defocus / Math.hypot(look.view.ma, look.view.mb)) : picture;
+    return look.defocus ? planePictures.blurred(encoder, lensGpu, picture, key, look.defocus / Math.hypot(look.view.ma, look.view.mb)) : picture;
   }
   // Each group's film, kept on the device so a frame laying it elsewhere copies it back rather than painting it again
   // (stamp-paint-gpu-cache.ts). A film starts clear and reads nothing laid before it, so it's a function of its plan's
@@ -937,7 +877,6 @@ function rendererOnSurface({
   uniforms.flush();
   device.queue.submit([brushedEncoder.finish()]);
   done();
-  if (backingLight) measureBackings(backingLight);
 
   // A painting whose inputs change in the same commit as its time is disposed before its last draw is asked for.
   let disposed = false;
@@ -1023,8 +962,7 @@ function rendererOnSurface({
       // Destroyed once submitted work is done with them; the owner and its targets stay for the next painting.
       for (const { bank } of banks.values()) bank.destroy();
       films.dispose();
-      pictures.dispose();
-      blurredPictures.dispose();
+      planePictures.dispose();
       lensGpu.dispose();
       scope.destroy();
     },

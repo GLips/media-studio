@@ -63,6 +63,9 @@ export function stampRingArea(ring: readonly StampPoint[]): number {
   return twice / 2;
 }
 
+/** `box` grown by `by` px each way. */
+export const stampBoxGrown = ({ x0, y0, x1, y1 }: StampBox, by: number): StampBox => ({ x0: x0 - by, y0: y0 - by, x1: x1 + by, y1: y1 + by });
+
 /** The box round `polygon`, grown by `pad` px each way. */
 export function stampPolygonBox(polygon: readonly StampPoint[], pad = 0): StampBox {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;

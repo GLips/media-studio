@@ -58,6 +58,10 @@ function paintingNodeSheet(node: LayerNode, medium: MediumName, parent: Painting
 /** A sheet as problems and summaries name it: "the root's sheet", "heron's own sheet". */
 export const paintingSheetName = (sheet: PaintingSheet) => (sheet.owner === null ? "the root's sheet" : `${sheet.owner}'s own sheet`);
 
+/** Whether `sheet` lies in group `group`: owned by it or by a node under it. The root's lies in none. */
+export const paintingSheetInGroup = (tree: PaintingTree, sheet: PaintingSheet, group: Key): boolean =>
+  sheet.owner !== null && (sheet.owner === group || tree.byKey.get(sheet.owner)!.groups.includes(group));
+
 /** Whether `node` is a group: what it holds says, as the types do. */
 export const isPaintingGroup = (node: LayerNode): node is LayerGroup => Array.isArray(node.children);
 

@@ -1,14 +1,16 @@
 // stamp-gate-shots.ts: the gate's shots (ENGINE 9, tests 6 and 7 drawn through a PaintedShot): the rigged heron, the
 // paper heron with a neck skinned to its body on the scene's sheet (a lowered neck its second cel), its wing a cel
-// moving its own sheet whole, and a clump of reeds whose group owns its sheet, drawn as pieces; and the wet-contact
-// sheet with its heron's foot posed by a rig. Each shot's poses are a table by scene second, so its baseline's inputs name them. What the cases measure of
-// their frames is here, pure.
+// moving its own sheet whole, and a clump of reeds whose group owns its sheet, drawn as pieces, also boiling; and the
+// wet-contact sheet with its heron's foot posed by a rig, also painted in as it plays. Each shot's poses are a table
+// by scene second, so its baseline's inputs name them. What the cases measure of their frames is here, pure.
 
 import { compilePaintingSelection } from '#lib/paint/document/models/painting-document-compile.ts';
 import type { LayerNode, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
 import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
 import { painting, type PaintingEvaluation, type PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
+import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
+import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
@@ -37,6 +39,8 @@ const WING_PIVOT = { x: 100, y: 50 } as const;
 const REED_A = [14, 134, 20, 98, 28, 98, 26, 134] as const;
 const REED_B = [18, 128, 38, 96, 46, 100, 28, 132] as const;
 const REED_HINGE = { x: 24, y: 128 } as const;
+/** How far inside the swung reed's outline its paint is measured, px: clear of its edge's bleed. */
+const REED_INSET = 1.5;
 
 const neck: LayerNode = stampGateHeronLayer('neck', stampGateHeronPolygon(...NECK), { parts: [{ pigment: burntUmber, amount: 1 }], strength: 0.55 }, 0.7);
 // Painted once the neck is dry, as a later cel is: hidden, a cel's water would leave what it did to the body showing.
@@ -126,14 +130,32 @@ export const stampGateRiggedHeronShot = (reedsRigged = true): PaintedShotProps =
   visibility: { 'paper/heron': ({ at }) => riggedHeronVisibility(at) },
 });
 
+/** Two frames of consecutive boil epochs of the boiling heron, scene seconds, mid-frame: both before it moves. */
+export const STAMP_GATE_HERON_BOIL_AT = [1.5 / PAINT_ANIMATION_FPS, 2.5 / PAINT_ANIMATION_FPS] as const;
+
+/** The rigged heron boiling every frame, its wobble on the heron's group, whose rig takes it. */
+export const stampGateBoilingHeronShot = (): PaintedShotProps => ({
+  ...stampGateRiggedHeronShot(), motion: { nodes: [{ id: 'paper/heron', marks: { boil: { every: 1 } } }], plays: [] },
+});
+
+const FOOT_RIG: readonly RigPart[] = [{ id: 'leg', z: 0, parent: null, cels: ['foot'] }];
+
 /** The wet-contact shot: the shallows and the heron, its foot the one part of its rig. */
-export const stampGateWetContactShot = (): PaintedShotProps =>
-  oneSheetShot('pond', painting(STAMP_GATE_WET_CONTACT), ['shallows', 'heron'], { heron: [{ id: 'leg', z: 0, parent: null, cels: ['foot'] }] }, FOOT_POSES);
+export const stampGateWetContactShot = (): PaintedShotProps => oneSheetShot('pond', painting(STAMP_GATE_WET_CONTACT), ['shallows', 'heron'], { heron: FOOT_RIG }, FOOT_POSES);
+
+/** The painting-in shot's frames: before the foot's first stroke, so its cel is clear, and posed once it's painted. */
+export const STAMP_GATE_PAINTING_IN_AT = { unpainted: 0.25, posed: STAMP_GATE_WET_CONTACT_AT.posed } as const;
+
+/** The wet-contact shot painted in as it plays: each frame shows the sheet's paint as far as its own moment. */
+export function stampGateWetContactPaintingInShot(): PaintedShotProps {
+  const evaluation = painting(STAMP_GATE_WET_CONTACT);
+  return { ...stampGateWetContactShot(), planes: [{ id: 'pond', depth: 1, source: ({ at }: PaintMoment) => layersOf(evaluation, ['shallows', 'heron'], { at }) }] };
+}
 
 /** Each shot baseline: its shot, the frame it shows, and its sources and poses as its inputs name them. */
 const SHOT_BASELINES: Readonly<Record<StampGateShotId, { shot: () => PaintedShotProps; at: number; evaluation: () => PaintingEvaluation; rigs: Readonly<Record<string, readonly RigPart[]>>; poses: StampGatePoseTable }>> = {
   'shot/paper-heron': { shot: stampGateRiggedHeronShot, at: STAMP_GATE_RIGGED_HERON_AT.posed, evaluation: () => painting(STAMP_GATE_RIGGED_HERON), rigs: { heron: HERON_PARTS, reeds: REED_PARTS }, poses: HERON_POSES },
-  'shot/wet-contact': { shot: stampGateWetContactShot, at: STAMP_GATE_WET_CONTACT_AT.posed, evaluation: () => painting(STAMP_GATE_WET_CONTACT), rigs: { heron: [{ id: 'leg', z: 0, parent: null, cels: ['foot'] }] }, poses: FOOT_POSES },
+  'shot/wet-contact': { shot: stampGateWetContactShot, at: STAMP_GATE_WET_CONTACT_AT.posed, evaluation: () => painting(STAMP_GATE_WET_CONTACT), rigs: { heron: FOOT_RIG }, poses: FOOT_POSES },
 };
 
 /** Shot baseline `id`'s shot and the scene second its frame shows. */
@@ -178,34 +200,17 @@ export function stampGateRiggedHeronWindows(width: number, height: number): { bo
 }
 
 /**
- * How near a reed's outline a pixel's centre lies to be its edge, px: where its paint thins below its card's cover, so
- * pieces laid by their alpha may differ from their sheet laid as itself (ENGINE 6.5, contract limit 5).
+ * How many texels of the swung reed's paint at rest, well inside its outline, differ by over 2 levels between the
+ * rigged heron's `rest` and `swung` frames (RGB bytes, `width` px wide): none where its pieces weren't drawn or posed.
  */
-const REED_EDGE = 1.5;
-
-/** How far `p` lies from segment `a`–`b`. */
-function segmentDistance(p: StampPoint, a: StampPoint, b: StampPoint): number {
-  const dx = b.x - a.x, dy = b.y - a.y, along = Math.min(1, Math.max(0, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy)));
-  return Math.hypot(p.x - a.x - along * dx, p.y - a.y - along * dy);
-}
-
-/**
- * How the rigged heron's reeds at rest, drawn as pieces (`pieces`, RGB bytes) differ from their sheet laid unrigged
- * (`painted`), over a `width`-px-wide frame: the most a channel differs within REED_EDGE of either reed's outline, and
- * anywhere else.
- */
-export function stampGateReedsAtRest(pieces: ArrayLike<number>, painted: ArrayLike<number>, width: number): { edge: number; elsewhere: number } {
-  const outlines = [REED_A, REED_B].flatMap((polygon) => Array.from({ length: polygon.length / 2 }, (_, i) => [
-    { x: polygon[2 * i], y: polygon[2 * i + 1] }, { x: polygon[(2 * i + 2) % polygon.length], y: polygon[(2 * i + 3) % polygon.length] },
-  ] as const));
-  let edge = 0, elsewhere = 0;
-  for (let i = 0; i < pieces.length; i++) {
-    const d = Math.abs(pieces[i] - painted[i]), texel = Math.floor(i / 3), p = { x: (texel % width) + 0.5, y: Math.floor(texel / width) + 0.5 };
-    if (!d) continue;
-    if (outlines.some(([a, b]) => segmentDistance(p, a, b) <= REED_EDGE)) edge = Math.max(edge, d);
-    else elsewhere = Math.max(elsewhere, d);
+export function stampGateReedSwung(rest: ArrayLike<number>, swung: ArrayLike<number>, width: number): number {
+  let changed = 0;
+  for (let texel = 0; texel < rest.length / 3; texel++) {
+    const p = { x: (texel % width) + 0.5, y: Math.floor(texel / width) + 0.5 };
+    if (!insidePolygon(p, REED_B, REED_INSET)) continue;
+    if ([0, 1, 2].some((c) => Math.abs(rest[3 * texel + c] - swung[3 * texel + c]) > 2)) changed++;
   }
-  return { edge, elsewhere };
+  return changed;
 }
 
 /**

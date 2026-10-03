@@ -9,7 +9,7 @@
 
 import type { StampGroupPlacement } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import type { CompiledStampGroup } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
-import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import { stampBoxGrown, type StampBox, type StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { paintGroupPaintedBox, type CompiledPaintLevel, type PaintMotion } from './paint-motion-compile.ts';
 
 /** Where a group's paint can lie anywhere in the shot (null: it paints nothing), or why that can't be bounded. */
@@ -37,8 +37,6 @@ const farthest = ({ x0, x1, y0, y1 }: StampBox, from: StampPoint) => Math.max(..
  * |p − c|·(|s − 1| + s·|θ|), since |e^{iθ} − 1| ≤ |θ|.
  */
 const placementShift = (range: PlacementRange, pivot: StampPoint, box: StampBox) => range.offset + farthest(box, pivot) * (range.stretch + range.scale * range.turn);
-
-const grown = ({ x0, x1, y0, y1 }: StampBox, by: number): StampBox => ({ x0: x0 - by, x1: x1 + by, y0: y0 - by, y1: y1 + by });
 
 /** The most `level`'s own bend and placement move a point of `box`, its pins left out for a live node's own level. */
 export function paintLevelShift(level: CompiledPaintLevel, box: StampBox, withPins: boolean): number {
@@ -81,12 +79,12 @@ export function paintGroupLaidReach(group: CompiledStampGroup, motion: PaintMoti
   let box = paintGroupPaintedBox(group);
   if (!box) return { kind: 'bounded', box: null };
   if (node && motion) {
-    if (node.marks.kind === 'wobble') box = grown(box, node.marks.wobble.amount);
+    if (node.marks.kind === 'wobble') box = stampBoxGrown(box, node.marks.wobble.amount);
     for (const [depth, id] of node.levels.entries()) {
       const level = motion.nodes.get(id)!;
-      box = grown(box, paintLevelShift(level, box, depth > 0 || node.marks.kind !== 'live'));
+      box = stampBoxGrown(box, paintLevelShift(level, box, depth > 0 || node.marks.kind !== 'live'));
     }
   }
-  if (group.motion) box = grown(box, placementShift(placementRange(group.motion.keys), group.motion.pivot ?? { x: 0, y: 0 }, box));
-  return { kind: 'bounded', box: grown(box, REACH_SLACK) };
+  if (group.motion) box = stampBoxGrown(box, placementShift(placementRange(group.motion.keys), group.motion.pivot ?? { x: 0, y: 0 }, box));
+  return { kind: 'bounded', box: stampBoxGrown(box, REACH_SLACK) };
 }

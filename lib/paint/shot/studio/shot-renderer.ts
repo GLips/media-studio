@@ -15,20 +15,22 @@ import { STAMP_REST_LOOK, type StampLaidSourcePlane, type StampPlaneLook } from 
 import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { createStampLensFrames, createStampLensSourceLayers, stampLensSourcesBlurExtent, type StampSourceRenders } from '#lib/paint/painting/studio/stamp-lens-source-layers.ts';
 import { stampLensSourceExposureOf, type StampLensSource, type StampLensSourceExposure } from '#lib/paint/painting/studio/stamp-lens-source.ts';
-import type { StampPaintDevice } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import type { StampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 import { loadStampPictureSources } from '#lib/paint/painting/studio/stamp-picture-sources.ts';
-import { createStampUniformArena, type StampUniformArena } from '#lib/paint/painting/studio/stamp-uniform-arena.ts';
+import { createStampGrowingUniformArena } from '#lib/paint/painting/studio/stamp-uniform-arena.ts';
 import { loadPaintedThreeSources, type PaintedThreeTexturesSupplied } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
 import { lensExposures } from '#lib/picture/lens/models/lens-exposures.ts';
 import { LENS_REFERENCE_EXPOSURES, type LensMode } from '#lib/picture/lens/models/lens-mode.ts';
 import { shutterMomentAt, shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import { createLensCompositor, type LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
 import type { CompiledPaintedShot, CompiledShotPaintedPlane, CompiledShotPlane } from '../models/shot-compile.ts';
+import type { PlaneInstance } from '../models/shot-props.ts';
 import { shotNodePoseAt } from '../models/shot-frame-plan.ts';
+import { shotDrawableOrder } from '../models/shot-plan.ts';
+import type { ShotMomentAt } from '../models/shot-sheet-lays.ts';
 import { createShotGroupFade } from './shot-group-pass.ts';
-import { createShotPaintedPlanes, type ShotMomentAt, type ShotPlaneMoment, type ShotPlaneSolved } from './shot-painted-plane.ts';
+import { createShotPaintedPlanes, type ShotPlaneMoment, type ShotPlaneSolved } from './shot-painted-plane.ts';
 import { createShotRigPictures, createShotRigPiecesDrawer } from './shot-rig-pieces.ts';
 import { createShotSheetsLayer } from './shot-sheets-lay.ts';
 
@@ -44,40 +46,10 @@ export type PaintedShotRenderer = {
 };
 
 const SHOT_NO_PAINTED_TEXTURES: PaintedThreeTexturesSupplied = { handles: [], update: () => Promise.resolve() };
+const SHOT_NO_ITEMS = new Map<string, readonly PlaneInstance[]>();
 
-/** How many uniform slots a shot's arena starts with; it grows by doubling. */
+/** How many uniform slots a shot's arena starts with; it grows as a frame's rigs and fades need. */
 const SHOT_UNIFORM_SLOTS = 512;
-
-/**
- * An arena that grows as a submit needs: each full one is kept with its slots until the next reset, and a new one
- * twice its size takes the rest. A frame's slots can't be counted before its rigs and fades are known.
- */
-function createShotUniformArena(device: StampPaintDevice): StampUniformArena {
-  let size = SHOT_UNIFORM_SLOTS, used = 0;
-  const full: StampUniformArena[] = [];
-  let current = createStampUniformArena(device, size);
-  return {
-    slot: (fill) => {
-      if (used === size) {
-        full.push(current);
-        size *= 2;
-        current = createStampUniformArena(device, size);
-        used = 0;
-      }
-      used++;
-      return current.slot(fill);
-    },
-    flush: () => {
-      for (const arena of full) arena.flush();
-      current.flush();
-    },
-    reset: () => {
-      full.length = 0;
-      current.reset();
-      used = 0;
-    },
-  };
-}
 
 /** One exposure of a frame: its lens, the moment its planes lie at, its shutter's ends when it gathers motion, and the sources' exposure. */
 type ShotExposure = ShotMomentAt & { readonly lens: ReturnType<typeof paintCameraLensAt>; readonly exposure: (StampLensSourceExposure & { readonly count: number }) | null };
@@ -108,7 +80,8 @@ const eachInTurn = <T,>(items: Iterable<T>, run: (item: T) => Promise<void>): Pr
  * size; the first opaque, the rest premultiplied.
  */
 export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfaces: readonly StampPaintSurface[], shot: CompiledPaintedShot, { brushOf, costs }: PaintedShotRendererOptions): Promise<PaintedShotRenderer> {
-  const { camera } = shot, { stage } = camera, device = owner.webgpu;
+  // Paint passes go through the owner's caching device; the lens and picture sources take the device itself.
+  const { camera } = shot, { stage } = camera, { device, webgpu } = owner;
   if (surfaces.length !== shot.canvases) throw new Error(`shot: drawn into ${surfaces.length} canvases, and it names ${shot.canvases}`);
   surfaces.forEach((surface, index) => {
     if (surface.width !== stage.frame.width || surface.height !== stage.frame.height) {
@@ -117,7 +90,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
     const alphaMode = index === 0 ? 'opaque' : 'premultiplied';
     if (surface.alphaMode !== alphaMode) throw new Error(`shot: canvas ${index}'s surface is ${surface.alphaMode}; ${index === 0 ? 'the first, holding the back, is opaque' : 'a later one is laid premultiplied over the page'}`);
   });
-  const arena = createShotUniformArena(device);
+  const arena = createStampGrowingUniformArena(device, SHOT_UNIFORM_SLOTS);
   // Let go of last made first: three's sources before the textures they sample.
   const made: { dispose: () => void }[] = [];
   const release = () => {
@@ -127,28 +100,28 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
     const threeSources = shot.planes.flatMap((plane) => (plane.kind === 'three' ? [{ id: plane.id, build: plane.source.build }] : []));
     const three = threeSources.length ? await loadPaintedThreeSources(owner, camera, threeSources, SHOT_NO_PAINTED_TEXTURES) : null;
     if (three) made.push(three);
-    const pictures = loadStampPictureSources(device, new Map(shot.planes.flatMap((plane) => (plane.kind === 'picture' ? [[plane.id, plane.source.pictureAt] as const] : []))));
+    const pictures = loadStampPictureSources(webgpu, new Map(shot.planes.flatMap((plane) => (plane.kind === 'picture' ? [[plane.id, plane.source.pictureAt] as const] : []))));
     made.push(pictures);
     const sources = new Map<string, StampLensSource>([...(three?.sources ?? []), ...pictures.sources]);
     const piecesDrawer = [...shot.rigs.values()].some(({ pieces }) => pieces) ? await createShotRigPiecesDrawer(owner, stage) : null;
     if (piecesDrawer) made.push(piecesDrawer);
-    const layer = createShotSheetsLayer(owner, device, { stage, arena, fade: createShotGroupFade(owner, device, arena) });
+    const layer = createShotSheetsLayer(owner, { stage, arena, fade: createShotGroupFade(owner, arena) });
     const planes = createShotPaintedPlanes(owner, { shot, stage, brushOf, costs, arena, layer, rigPictures: createShotRigPictures(owner, costs), piecesDrawer });
+    made.push(planes);
     const canvases = surfaces.map((surface, index) => {
-      const shown = shot.planes.filter((plane) => plane.canvas === index), ids = new Set(shown.map(({ id }) => id));
-      const own = new Map([...sources].filter(([id]) => ids.has(id)));
-      const lens = createLensCompositor(device, { ...stage.frame, blurExtent: stampLensSourcesBlurExtent(stage, own) });
+      const own = new Map([...sources].filter(([id]) => shot.planes.some((plane) => plane.id === id && plane.canvas === index)));
+      const lens = createLensCompositor(webgpu, { ...stage.frame, blurExtent: stampLensSourcesBlurExtent(stage, own) });
       made.push(lens);
-      return { surface, index, planes: shown, lens, frames: createStampLensFrames(lens), sourceLayers: createStampLensSourceLayers(owner, { stage, lens, sources: own }), glowed: false };
+      return { surface, index, lens, frames: createStampLensFrames(lens), sourceLayers: createStampLensSourceLayers(owner, { stage, lens, sources: own }), glowed: false };
     });
-    const back = shot.planes[0];
+    const back = shot.planes[0], planeOf = new Map(shot.planes.map((plane) => [plane.id, plane]));
 
     /** A picture plane's look: its view after its node's placement within it, at the moment and the shutter's ends. */
     const pictureLook = (id: string, look: StampPlaneLook, { at, shutter }: ShotMomentAt): StampPlaneLook => {
       const node = shot.motion.nodes.get(id);
       if (!node) return look;
       const placed = (view: StampPlaneLook['view'], m: PaintMoment) => {
-        const pose = shotNodePoseAt(node, m, shot.motion.animationFps);
+        const pose = shotNodePoseAt(node, m, shot.motion.animationFps, true);
         if (pose.kind !== 'similarity') throw new Error(`shot: picture plane ${id}'s node bends it (${pose.text}); its node only places it`);
         return paintSimilarityAfter(view, pose.map);
       };
@@ -160,14 +133,17 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
       arena.reset();
       layer.reserve([...moments.values()].map(({ frame }) => frame));
       const encoder = device.createCommandEncoder(), lensFrame = exposure.lens, fast = !exposure.exposure;
+      // The exposure's drawables far to near. Instanced planes are refused as the shot loads: no items yet.
+      const drawn = shotDrawableOrder(shot.written, SHOT_NO_ITEMS).flatMap((drawable) => (drawable.kind === 'plane' ? [planeOf.get(drawable.plane)!] : []));
       for (const canvas of canvases) {
         const rendered = renders[canvas.index], lookOf = (id: string) => lensFrame.planes.get(id) ?? STAMP_REST_LOOK;
-        const glowing = canvas.planes.some((plane) => moments.get(plane.id)?.emits);
-        const moving = fast && (canvas.planes.some((plane) => moments.get(plane.id)?.travels || lookOf(plane.id).shutter) || rendered.moved.size > 0);
-        const layers = canvas.planes.flatMap((plane): LensLayer[] => {
+        const shown = drawn.filter((plane) => plane.canvas === canvas.index), planOf = (plane: CompiledShotPlane) => moments.get(plane.id)?.plan;
+        const glowing = shown.some((plane) => planOf(plane)?.emits);
+        const moving = fast && (shown.some((plane) => planOf(plane)?.travels || lookOf(plane.id).shutter) || rendered.moved.size > 0);
+        const layers = shown.flatMap((plane): LensLayer[] => {
           const isBack = plane === back, look = lookOf(plane.id);
           if (plane.kind === 'painted') {
-            const laid = planes.picture(encoder, canvas.lens, moments.get(plane.id)!, look, isBack);
+            const laid = planes.picture(encoder, canvas.lens, moments.get(plane.id)!, look);
             return laid ? [laid] : [];
           }
           const source: StampLaidSourcePlane = plane.kind === 'three' ? { id: plane.id, kind: 'three' } : { id: plane.id, kind: 'picture', extent: plane.source.extent };

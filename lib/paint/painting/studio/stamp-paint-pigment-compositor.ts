@@ -568,7 +568,9 @@ ${bandWgsl}
 fn layCard(pixel: vec2u, color: vec3f, cover: f32) {
   for (var i = 0u; i < BAND_VEC4S; i++) { textureStore(painting, pixel, i, mix(textureLoad(painting, pixel, i), paperReflectance(i, color), cover)); }
   for (var r = 0u; r < ${underLayers}u; r++) { textureStore(painting, pixel, BAND_VEC4S + r, textureLoad(painting, pixel, BAND_VEC4S + r) * (1.0 - cover)); }
-}
+}`,
+    picture: /* wgsl */ `
+${bandWgsl}
 ${STAMP_REFLECTANCE_READING_WGSL}
 // A picture's premultiplied linear \`light\` laid over what's there by its alpha \`cover\`, band by band: its own
 // spectrum is the paper's moved to read as its colour, so a reflectance's linear reading lays it exactly.

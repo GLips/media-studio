@@ -13,7 +13,7 @@ import type { StampSheetCompositeStep } from '../models/stamp-sheet-program.ts';
 import { stampCanonicalJson } from '../models/stamp-sheet-state-key.ts';
 import { stampBoxUnion } from '../models/stamp-stage.ts';
 import type { StampPaintGpuOwner } from './stamp-paint-gpu-owner.ts';
-import { readStampSheetsPicture, type StampSheetKeptFilms, type StampSheetsPicture } from './stamp-sheet-composite.ts';
+import { readStampSheetsPicture, type StampSheetKeptFilms, type StampSheetsComposite, type StampSheetsGround, type StampSheetsPicture } from './stamp-sheet-composite.ts';
 import { readStampSheetFilm } from './stamp-sheet-films.ts';
 
 /** How many bytes of read-back films each device keeps, the least recently read given up first. */
@@ -101,4 +101,15 @@ export function readStampFilmPicture(owner: StampPaintGpuOwner, sheet: StampShee
     const composite = { sheets: [{ ...sheet, place: null }], steps: [...card, { kind: 'film', sheet: 0, film } as const] };
     return readStampSheetsPicture(owner, composite, crop, backing === 'sheet' && edge === 'document' ? 'paper' : 'clear', costs);
   }, costs);
+}
+
+/**
+ * `composite`'s picture over `crop` on `ground` (readStampSheetsPicture), kept with the films read back under `key`,
+ * which names everything that makes its pixels: the films' keys, which steps lay them and the crop. A rig's cels and
+ * pieces are read so, once per set of films.
+ */
+export function readStampSheetsPictureKept(
+  owner: StampPaintGpuOwner, key: string, composite: StampSheetsComposite, crop: StampPixelBox, ground: StampSheetsGround, costs?: StampPaintCostTally,
+): Promise<StampSheetsPicture> {
+  return keptStampFilmReadback(owner, `sheets picture ${key} ${ground} ${crop.x},${crop.y},${crop.w},${crop.h}`, () => readStampSheetsPicture(owner, composite, crop, ground, costs), costs);
 }

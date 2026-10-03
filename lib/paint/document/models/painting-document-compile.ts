@@ -107,6 +107,24 @@ export type PaintingSheetCompiled = {
  */
 export type PaintingSelectionCompiled = { readonly tree: PaintingTree; readonly sheets: readonly PaintingSheetCompiled[]; readonly steps: readonly StampSheetCompositeStep[] };
 
+/** The node a composite step paints for: a card's sheet's owner, a film's layer. */
+export function paintingStepNode({ tree, sheets }: PaintingSelectionCompiled, step: StampSheetCompositeStep): NodeKey {
+  const { sheet, layers } = sheets[step.sheet];
+  // A card is an own sheet's: the root's paper is the ground, laid apart, never a step.
+  return step.kind === 'card' ? sheet.owner! : tree.layers[layers[step.film]].node.key;
+}
+
+/**
+ * The composite steps (indices in `compiled.steps`) painting what `key` holds: films of the layers it is or holds, and
+ * cards of sheets owned by it or by a node under it.
+ */
+export function paintingNodeSteps(compiled: PaintingSelectionCompiled, key: NodeKey): number[] {
+  return compiled.steps.flatMap((step, index) => {
+    const node = paintingStepNode(compiled, step);
+    return node === key || compiled.tree.byKey.get(node)!.groups.includes(key) ? [index] : [];
+  });
+}
+
 /**
  * What a selection's compile is told: `layers`, the layers and groups selected (all when left out); `reseed`, boil
  * epochs by the key of the layer or group boiling (ENGINE 4.6), the innermost naming a layer winning. A reseeded

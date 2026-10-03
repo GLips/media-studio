@@ -1,6 +1,7 @@
 // stamp-uniform-arena.ts: the uniforms of the work one submit carries, a slot a pass at the offsets WebGPU binds at,
 // filled on the CPU as the work is encoded and uploaded once before it's submitted. A painting's frame, its load's
-// own submits and a solve's many alike take theirs from an arena sized for the most one submit encodes.
+// own submits and a solve's many alike take theirs from an arena sized for the most one submit encodes. A shot's
+// frame, whose passes hang on rigs, fades and poses known only as it's encoded, takes a growing one.
 
 import type { GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import type { StampPaintDevice } from './stamp-paint-gpu.ts';
@@ -38,6 +39,37 @@ export function createStampUniformArena(device: StampPaintDevice, slots: number)
       if (used) device.queue.writeBuffer(buffer, 0, staging, 0, used * STAMP_UNIFORM_SLOT);
     },
     reset: () => {
+      used = 0;
+    },
+  };
+}
+
+/**
+ * An arena on `device` growing as a submit needs, from `slots`: a full one is kept until the next reset and one twice
+ * its size takes the rest, so soon one arena holds a whole submit. For a frame whose slots aren't known before it's
+ * encoded. Arenas outgrown stay on the device until its owner goes.
+ */
+export function createStampGrowingUniformArena(device: StampPaintDevice, slots: number): StampUniformArena {
+  let size = Math.max(1, slots), used = 0, current = createStampUniformArena(device, size);
+  const full: StampUniformArena[] = [];
+  return {
+    slot: (fill) => {
+      if (used === size) {
+        full.push(current);
+        size *= 2;
+        current = createStampUniformArena(device, size);
+        used = 0;
+      }
+      used++;
+      return current.slot(fill);
+    },
+    flush: () => {
+      for (const arena of full) arena.flush();
+      current.flush();
+    },
+    reset: () => {
+      full.length = 0;
+      current.reset();
       used = 0;
     },
   };

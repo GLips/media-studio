@@ -13,7 +13,7 @@ import type { StampGroupGlow } from '#lib/paint/painting/models/stamp-paint-fram
 import { stampBoxUnion, stampStageTexelsWithin, stampStageWgsl, type StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { createStampLatticePass, STAMP_LATTICE_VERTEX_FLOATS, type StampLatticePass, type StampLatticeSpan } from '#lib/paint/painting/studio/stamp-lattice-pass.ts';
 import { stampPaintTargetWgsl, type StampPaintCompositor, type StampPaintTarget } from '#lib/paint/painting/studio/stamp-paint-compositor.ts';
-import { copyStampTextureBox, dispatchStampCompute, STAMP_WORKGROUP, stampPaintSamplers, type StampPaintDevice } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
+import { copyStampTextureBox, dispatchStampCompute, STAMP_WORKGROUP, stampPaintSamplers } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { STAMP_NO_REST, type StampPaintBacking } from '#lib/paint/painting/studio/stamp-paint-lay-pass.ts';
 import { STAMP_GLOW_SOURCE, stampGlowSourceWgsl } from '#lib/paint/painting/studio/stamp-paint-plane-passes.ts';
@@ -21,11 +21,8 @@ import { stampSheetEdge, type StampSheetsLays } from '#lib/paint/painting/studio
 import { keptStampSheetFilm, type StampSheetFilmKept } from '#lib/paint/painting/studio/stamp-sheet-films.ts';
 import type { StampUniformArena } from '#lib/paint/painting/studio/stamp-uniform-arena.ts';
 import type { ShotLattice } from '../models/shot-lattice.ts';
-import type { ShotFadeSpan, ShotStepLay } from '../models/shot-sheet-lays.ts';
+import type { ShotFadeSpan, ShotGroundLay, ShotStepFrame } from '../models/shot-sheet-lays.ts';
 import { shotPlainFaded, type ShotFadedTarget, type ShotGroupFade, type ShotGroupKept } from './shot-group-pass.ts';
-
-/** A step as one moment lays it: its lay, a film's opacity (its layer's visibility) and the glow its layer gives. */
-export type ShotStepFrame = { readonly lay: ShotStepLay; readonly opacity: number; readonly glow: StampGroupGlow | null };
 
 /** A rig's pieces as drawn this moment, stage-sized: their premultiplied linear colour, their motion, and the stage texels they cover. */
 export type ShotPiecesDrawn = { readonly colour: GPUTextureView; readonly motion: GPUTextureView; readonly box: StampPixelBox };
@@ -40,7 +37,7 @@ export type ShotSheetsLayFrame = {
   readonly lays: StampSheetsLays;
   readonly films: readonly (readonly StampSheetFilmKept[])[];
   readonly steps: readonly (ShotStepFrame | null)[];
-  readonly ground: { readonly kind: 'stage' } | { readonly kind: 'placed'; readonly lattice: ShotLattice } | null;
+  readonly ground: ShotGroundLay;
   readonly fades: readonly ShotFadeSpan[];
   readonly pieces: ReadonlyMap<string, ShotPiecesDrawn>;
 };
@@ -64,7 +61,7 @@ const piecesLayWgsl = (compositor: StampPaintCompositor, stage: StampStage, trac
 ${stampStageWgsl(stage)}
 ${stampPaintTargetWgsl('painting', 2, compositor.targets.painting, 'read_write')}
 ${GPU_SRGB_WGSL}
-${compositor.card}
+${compositor.picture}
 ${SHOT_PIECES_LAY.wgsl}
 @group(0) @binding(0) var<uniform> u: PiecesLay;
 @group(0) @binding(1) var pieces: texture_2d<f32>;
@@ -89,8 +86,8 @@ const layerTargetKind = (shape: StampPaintTarget) => (shape.kind === 'array' ? `
 const latticeFloats = ({ triangles }: ShotLattice) => (triangles.length / 4) * STAMP_LATTICE_VERTEX_FLOATS;
 
 /** Lays of painted planes on `owner`'s device onto `stage`, each pass's uniform from `arena`, fading through `fade`. */
-export function createShotSheetsLayer(owner: StampPaintGpuOwner, device: StampPaintDevice, { stage, arena, fade }: { stage: StampStage; arena: StampUniformArena; fade: ShotGroupFade }) {
-  const { margin } = stage, linearClamp = stampPaintSamplers(device).linearClamp;
+export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena, fade }: { stage: StampStage; arena: StampUniformArena; fade: ShotGroupFade }) {
+  const { device } = owner, { margin } = stage, linearClamp = stampPaintSamplers(device).linearClamp;
   const passes = new Map<string, StampLatticePass>();
   const passOf = (shape: StampPaintTarget) => {
     const key = layerTargetKind(shape);
@@ -116,13 +113,7 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, device: StampPa
     }
     return held;
   };
-  const pipelines = new Map<string, GPUComputePipeline>();
-  // Keyed by their code: two documents' compositors may differ in more than their targets.
-  const pipelineOf = (code: string) => {
-    let pipeline = pipelines.get(code);
-    if (!pipeline) pipelines.set(code, (pipeline = device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }) } })));
-    return pipeline;
-  };
+  const pipelineOf = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }) } });
 
   /** Stages `lattice` in its sheet's pass: its span and the stage texels it reaches. */
   function stageLattice(shape: StampPaintTarget, lattice: ShotLattice): ShotStagedLattice {
@@ -201,8 +192,10 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, device: StampPa
       }
       const fadeTargets = [into.painting, ...[into.emission, into.motion].flatMap((texture) => (texture ? [shotPlainFaded(texture)] : []))];
       const open: { span: ShotFadeSpan; kept: ShotGroupKept }[] = [];
+      // A span at full visibility would mix back exactly what it laid: it's laid in place, nothing kept.
+      const fading = frame.fades.filter(({ visibility }) => visibility < 1);
       frame.steps.forEach((step, index) => {
-        for (const span of frame.fades) if (span.first === index) open.push({ span, kept: fade.keep(encoder, fadeTargets, open.length) });
+        for (const span of fading) if (span.first === index) open.push({ span, kept: fade.keep(encoder, fadeTargets, open.length) });
         const staging = staged.steps[index];
         if (step && step.lay.kind === 'pieces') {
           const drawn = frame.pieces.get(step.lay.rig);
@@ -245,12 +238,3 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, device: StampPa
 }
 
 export type ShotSheetsLayer = ReturnType<typeof createShotSheetsLayer>;
-
-/** The uniform slots laying `frame` once may take: paper and ground, a lay or card and its edge's joins a step, a glow, fades' mixes. */
-export function shotSheetsLaySlots(frame: ShotSheetsLayFrame): number {
-  const stepSlots = (step: ShotSheetsLayFrame['steps'][number]) => {
-    if (!step) return 0;
-    return step.lay.kind === 'card' ? 1 + frame.films[step.lay.sheet].length : 2;
-  };
-  return 2 + frame.steps.reduce((sum, step) => sum + stepSlots(step), 0) + 3 * frame.fades.length;
-}

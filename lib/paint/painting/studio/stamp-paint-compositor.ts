@@ -86,11 +86,15 @@ export type StampPaintCompositor = {
   paper: string;
   /**
    * `layCard(pixel, color, cover)`: paper of `color` (gamma-encoded) over what's there by `cover` 0..1: an own sheet's
-   * card (ENGINE 5.4). `layPicture(pixel, light, cover)`: premultiplied linear light over what's there by its alpha
-   * `cover` (0 < cover ≤ 1), reading as `light` plus what's there by 1 − cover: a rig's pieces (ENGINE 6.5). Both
-   * read and write `painting`; the includer declares GPU_SRGB_WGSL.
+   * card (ENGINE 5.4). Reads and writes `painting`; the includer declares GPU_SRGB_WGSL.
    */
   card: string;
+  /**
+   * `layPicture(pixel, light, cover)`: premultiplied linear light over what's there by its alpha `cover` (0 < cover ≤
+   * 1), reading as `light` plus what's there by 1 − cover: a rig's pieces (ENGINE 6.5). Reads and writes `painting`;
+   * the includer declares GPU_SRGB_WGSL.
+   */
+  picture: string;
   /**
    * What the painting shows at a pixel, read from `painting` alone: `screenColor(pixel)` gamma-encoded, as a still is
    * output, and `linearLight(pixel)` within 0..1, as a plane's picture holds it (stamp-paint-plane-passes.ts).
@@ -280,7 +284,8 @@ fn layGroup(pixel: vec2u, glaze: bool, opacity: f32) {
     },
     paper: /* wgsl */ `fn layPaper(pixel: vec2u, color: vec3f) { textureStore(painting, pixel, vec4f(color, 1.0)); }`,
     card: /* wgsl */ `
-fn layCard(pixel: vec2u, color: vec3f, cover: f32) { textureStore(painting, pixel, mix(textureLoad(painting, pixel), vec4f(color, 1.0), cover)); }
+fn layCard(pixel: vec2u, color: vec3f, cover: f32) { textureStore(painting, pixel, mix(textureLoad(painting, pixel), vec4f(color, 1.0), cover)); }`,
+    picture: /* wgsl */ `
 fn layPicture(pixel: vec2u, light: vec3f, cover: f32) {
   let behind = srgbDecoded(clamp(textureLoad(painting, pixel).rgb, vec3f(0.0), vec3f(1.0)));
   textureStore(painting, pixel, vec4f(srgbEncoded(clamp(light + (1.0 - cover) * behind, vec3f(0.0), vec3f(1.0))), 1.0));

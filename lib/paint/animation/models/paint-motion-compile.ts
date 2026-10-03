@@ -13,7 +13,7 @@ import { stampDepositMeasuredSupport } from '#lib/paint/painting/models/stamp-ti
 import { PAINT_BOIL_WOBBLE, paintBoilWobbleProblem, type PaintBoilWobble } from './paint-boil-displacement.ts';
 import { paintChannelConflicts, type PaintChannelWriter } from './paint-channels.ts';
 import {
-  compilePaintPlayClock, paintLaneByStart, paintNodeClockProblem, paintNodeClockStep, paintPlayClockProblem, paintPlayInterval,
+  compilePaintPlayClock, paintLaneByStart, paintNodeClockProblem, paintNodeClockSteps, paintPlayClockProblem, paintPlayInterval,
   type CompiledPaintPlay, type PaintLane, type PaintNodeClock, type PaintPlayClock, type PaintSceneStep,
 } from './paint-clock.ts';
 import {
@@ -129,29 +129,40 @@ export function paintGroupPaintedBox(group: CompiledStampGroup): StampBox | null
   return x0 <= x1 ? { x0: x0 - PAINTED_BOX_PAD, y0: y0 - PAINTED_BOX_PAD, x1: x1 + PAINTED_BOX_PAD, y1: y1 + PAINTED_BOX_PAD } : null;
 }
 
+/** A boil's marks compiled: wobbled or re-seeded every `every` frames. */
+export type CompiledPaintBoil = Extract<CompiledPaintMarks, { kind: 'wobble' | 'reseed' }>;
+
+/**
+ * `boil` compiled, its wobble's amount and scale PAINT_BOIL_WOBBLE's where left out, and what's wrong with it, in words
+ * its node's id goes before: a painting's node and a shot's alike.
+ */
+export function compilePaintBoil(boil: PaintBoilMarks): { readonly marks: CompiledPaintBoil; readonly problems: readonly string[] } {
+  const { every, reseed } = boil, problems: string[] = [];
+  if (!(Number.isInteger(every) && every >= 1)) problems.push(`boils every ${every} frames, not a whole number from 1`);
+  if (reseed) return { marks: { kind: 'reseed', every }, problems };
+  const wobble = { amount: boil.amount ?? PAINT_BOIL_WOBBLE.amount, scale: boil.scale ?? PAINT_BOIL_WOBBLE.scale };
+  const problem = paintBoilWobbleProblem(wobble);
+  if (problem) problems.push(problem);
+  return { marks: { kind: 'wobble', every, wobble }, problems };
+}
+
 function compileMarks(node: PaintMotionNode, group: CompiledStampGroup, problems: string[]): CompiledPaintMarks {
   const marks = node.marks ?? 'stuck';
   if (marks === 'stuck') return { kind: 'stuck' };
   if ('live' in marks) return { kind: 'live', poser: marks.live, kept: new Map() };
-  const { every, reseed } = marks.boil;
-  if (!(Number.isInteger(every) && every >= 1)) problems.push(`${node.id} boils every ${every} frames, not a whole number from 1`);
-  if (reseed) {
-    if (!group.boil) problems.push(`${node.id} re-seeds its marks, but its group is compiled without a boil to re-seed by; give the group a boil`);
-    return { kind: 'reseed', every };
-  }
-  const wobble = { amount: marks.boil.amount ?? PAINT_BOIL_WOBBLE.amount, scale: marks.boil.scale ?? PAINT_BOIL_WOBBLE.scale };
-  const problem = paintBoilWobbleProblem(wobble);
-  if (problem) problems.push(`${node.id}: ${problem}`);
-  return { kind: 'wobble', every, wobble };
+  const boil = compilePaintBoil(marks.boil);
+  problems.push(...boil.problems.map((problem) => `${node.id}: ${problem}`));
+  if (boil.marks.kind === 'reseed' && !group.boil) problems.push(`${node.id} re-seeds its marks, but its group is compiled without a boil to re-seed by; give the group a boil`);
+  return boil.marks;
 }
 
 /** Why `glow` can't be drawn, or null. */
 export const paintGlowProblem = ({ amount, threshold }: StampGroupGlow) =>
   amount >= 0 && Number.isFinite(amount) && threshold >= 0 && threshold <= 1 ? null : `its glow needs an amount of 0 or more and a threshold in 0..1, not ${amount} and ${threshold}`;
 
-/** The glow `levels` give their first: the nearest that says, `'none'` none. */
-function inheritedGlow(levels: readonly string[], byId: ReadonlyMap<string, PaintMotionNode>): StampGroupGlow | null {
-  const glow = levels.map((id) => byId.get(id)?.glow).find((said) => said !== undefined);
+/** The glow `levels` give their first: the nearest whose `glowOf` says, `'none'` none. A painting's nodes and a shot's alike. */
+export function paintInheritedGlow(levels: readonly string[], glowOf: (id: string) => StampGroupGlow | 'none' | undefined): StampGroupGlow | null {
+  const glow = levels.map(glowOf).find((said) => said !== undefined);
   return glow && glow !== 'none' && !paintGlowProblem(glow) ? glow : null;
 }
 
@@ -210,8 +221,8 @@ function compileNodes(painting: CompiledStampPaint, nodes: readonly PaintMotionN
     if (glow) problems.push(`${node.id}: ${glow}`);
     const lanes = paintLevelLanes(node.id, node.pins, problems);
     compiled.set(node.id, {
-      id: node.id, glow: inheritedGlow(levels, byId), group, levels, pivot: node.pivot ?? { x: 0, y: 0 }, phase: paintIdPhase(node.id),
-      clock: levels.toReversed().flatMap((id) => { const clock = byId.get(id)?.clock; return clock && !paintNodeClockProblem(clock) ? [paintNodeClockStep(clock)] : []; }),
+      id: node.id, glow: paintInheritedGlow(levels, (id) => byId.get(id)?.glow), group, levels, pivot: node.pivot ?? { x: 0, y: 0 }, phase: paintIdPhase(node.id),
+      clock: levels.toReversed().flatMap((id) => paintNodeClockSteps(byId.get(id)?.clock)),
       marks: compileMarks(node, group, problems),
       ...lanes,
     });

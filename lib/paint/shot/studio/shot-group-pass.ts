@@ -8,7 +8,7 @@
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import type { StampPixelBox } from '#lib/paint/painting/models/stamp-blur-region.ts';
 import { stampPaintTargetWgsl, type StampPaintTarget } from '#lib/paint/painting/studio/stamp-paint-compositor.ts';
-import { dispatchStampCompute, STAMP_WORKGROUP, type StampPaintDevice } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
+import { dispatchStampCompute, STAMP_WORKGROUP } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import type { StampUniformArena } from '#lib/paint/painting/studio/stamp-uniform-arena.ts';
 
@@ -43,17 +43,12 @@ export type ShotFadedTarget = { readonly texture: GPUTexture; readonly shape: St
 export type ShotGroupKept = readonly { readonly target: ShotFadedTarget; readonly kept: GPUTextureView }[];
 
 /**
- * Group fades on `device`, keeping what a span lays over in targets of `owner`'s, `depth` deep where spans nest; each
+ * Group fades on `owner`'s device, keeping what a span lays over in its targets, `depth` deep where spans nest; each
  * mix's uniform from `arena`.
  */
-export function createShotGroupFade(owner: StampPaintGpuOwner, device: StampPaintDevice, arena: StampUniformArena) {
-  const pipelines = new Map<string, GPUComputePipeline>();
-  const pipelineOf = (shape: StampPaintTarget) => {
-    const key = JSON.stringify(shape);
-    let pipeline = pipelines.get(key);
-    if (!pipeline) pipelines.set(key, (pipeline = device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code: groupFadeWgsl(shape) }) } })));
-    return pipeline;
-  };
+export function createShotGroupFade(owner: StampPaintGpuOwner, arena: StampUniformArena) {
+  const { device } = owner;
+  const pipelineOf = (shape: StampPaintTarget) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code: groupFadeWgsl(shape) }) } });
   return {
     /** Keeps each of `targets` as it stands at this point in `encoder`, for a span `depth` spans deep. */
     keep(encoder: GPUCommandEncoder, targets: readonly ShotFadedTarget[], depth: number): ShotGroupKept {

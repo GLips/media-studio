@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import type { Layer, PaintingDocument, Paper, Sheet } from '#lib/paint/document/models/painting-document.ts';
 import { painting } from '#lib/paint/document/models/painting-source.ts';
 import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
-import { dissolve, paintedSourceNodeKeys, paintedSourceProblems, paintedSourceShares, type PaintedSource } from './shot-selection.ts';
+import { paintedSourceNodeKeys } from './shot-occurrences.ts';
+import { dissolve, paintedSourceProblems, paintedSourceShares, type PaintedSource } from './shot-selection.ts';
 
 const ROOT_PAPER: Paper = { color: '#f4f2ed', absorbency: 0.5 };
 const HERON_PAPER: Paper = { color: '#efe9dc', absorbency: 0.4 };

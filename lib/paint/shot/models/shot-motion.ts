@@ -6,24 +6,24 @@
 // A writer beside the plays: a plane laid by a callback places its plane node ('place') for all time, so a place play
 // on that node clashes. A rigged group's node takes no pins, sway or flutter: its rig deforms all it holds.
 
-import { PAINT_BOIL_WOBBLE, paintBoilWobbleProblem, type PaintBoilWobble } from '#lib/paint/animation/models/paint-boil-displacement.ts';
+import type { PaintBoilWobble } from '#lib/paint/animation/models/paint-boil-displacement.ts';
 import { paintChannelConflicts, type PaintChannelWriter } from '#lib/paint/animation/models/paint-channels.ts';
-import { paintNodeClockProblem, paintNodeClockStep, paintPlayClockProblem, sceneSeconds, type PaintNodeClock, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
+import { paintNodeClockProblem, paintNodeClockSteps, paintPlayClockProblem, sceneSeconds, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
 import { paintIdPhase, paintMotionClipProblem } from '#lib/paint/animation/models/paint-motion-clips.ts';
 import {
-  filePaintLevelPlay, paintGlowProblem, paintLevelLanes, paintLevelLanesSorted, type CompiledPaintLevel, type PaintLevelLanes,
+  compilePaintBoil, filePaintLevelPlay, paintGlowProblem, paintInheritedGlow, paintLevelLanes, paintLevelLanesSorted, type CompiledPaintLevel, type PaintLevelLanes,
 } from '#lib/paint/animation/models/paint-motion-compile.ts';
 import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import type { StampGroupGlow } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { OccurrenceKey, OccurrenceMotionNode, PaintedShotProps } from './shot-props.ts';
-import type { ShotOccurrence } from './shot-selection.ts';
+import type { ShotOccurrence } from './shot-occurrences.ts';
 
 /**
- * A plane as motion reads it: its id and `clock`; `kind`, whether it paints (only a painted plane's node may bend or
+ * A plane as motion reads it: its id and its clock's steps (paintNodeClockSteps, checked as it loads); `kind`, whether it paints (only a painted plane's node may bend or
  * boil, a picture plane's only places); whether a callback lays it; and, painted, its occurrences.
  */
 export type ShotMotionPlane = {
-  readonly id: string; readonly kind: 'painted' | 'picture' | 'three'; readonly clock?: PaintNodeClock; readonly movingLay: boolean;
+  readonly id: string; readonly kind: 'painted' | 'picture' | 'three'; readonly clock: readonly PaintSceneStep[]; readonly movingLay: boolean;
   readonly occurrences: readonly ShotOccurrence[];
 };
 
@@ -62,13 +62,9 @@ const motionError = (owner: string, message: string) => paintingProblem('error',
 function compileShotMarks(node: OccurrenceMotionNode, problems: PaintingProblem[]): CompiledShotMarks {
   const marks = node.marks ?? 'stuck';
   if (marks === 'stuck') return { kind: 'stuck' };
-  const { every, reseed } = marks.boil;
-  if (!(Number.isInteger(every) && every >= 1)) problems.push(motionError(node.id, `boils every ${every} frames, not a whole number from 1`));
-  if (reseed) return { kind: 'reseed', every };
-  const wobble = { amount: marks.boil.amount ?? PAINT_BOIL_WOBBLE.amount, scale: marks.boil.scale ?? PAINT_BOIL_WOBBLE.scale };
-  const problem = paintBoilWobbleProblem(wobble);
-  if (problem) problems.push(motionError(node.id, problem));
-  return { kind: 'wobble', every, wobble };
+  const boil = compilePaintBoil(marks.boil);
+  problems.push(...boil.problems.map((problem) => motionError(node.id, problem)));
+  return boil.marks;
 }
 
 /** Where each name a node may take lies: its plane and its enclosing group occurrences, outermost first. */
@@ -117,11 +113,7 @@ export function compileShotMotion(
     const glowProblem = node.glow && node.glow !== 'none' && paintGlowProblem(node.glow);
     if (glowProblem) problems.push(motionError(node.id, glowProblem));
   }
-  const planeClocks = new Map(planes.map((plane) => {
-    const problem = plane.clock && paintNodeClockProblem(plane.clock);
-    if (problem) problems.push(paintingProblem('error', plane.id, 'clock', problem));
-    return [plane.id, plane.clock && !problem ? [paintNodeClockStep(plane.clock)] : []] as const;
-  }));
+  const planeClocks = new Map(planes.map(({ id, clock }) => [id, clock]));
   // A node's line, nearest first: itself, the enclosing groups that have nodes, then its plane's node.
   const lineOf = (id: string): string[] => {
     const site = sites.get(id)!;
@@ -129,18 +121,14 @@ export function compileShotMotion(
   };
   const lanes = new Map<string, PaintLevelLanes>(), compiled = new Map<string, Omit<CompiledShotNode, keyof PaintLevelLanes>>();
   for (const node of written.values()) {
-    const line = lineOf(node.id), site = sites.get(node.id)!, stepsOf = (id: string) => {
-      const clock = written.get(id)?.clock;
-      return clock && !paintNodeClockProblem(clock) ? [paintNodeClockStep(clock)] : [];
-    };
-    const glow = line.map((id) => written.get(id)?.glow).find((said) => said !== undefined);
+    const line = lineOf(node.id), site = sites.get(node.id)!;
     const lineProblems: string[] = [];
     lanes.set(node.id, paintLevelLanes(node.id, node.pins, lineProblems));
     problems.push(...lineProblems.map((message) => motionError(node.id, message)));
     compiled.set(node.id, {
       id: node.id, plane: site.plane.id, parent: line[1] ?? null, pivot: node.pivot ?? { x: 0, y: 0 }, phase: paintIdPhase(node.id),
-      clock: [...planeClocks.get(site.plane.id)!, ...line.toReversed().flatMap(stepsOf)],
-      marks: compileShotMarks(node, problems), glow: glow && glow !== 'none' && !paintGlowProblem(glow) ? glow : null,
+      clock: [...site.plane.clock, ...line.toReversed().flatMap((id) => paintNodeClockSteps(written.get(id)?.clock))],
+      marks: compileShotMarks(node, problems), glow: paintInheritedGlow(line, (id) => written.get(id)?.glow),
     });
   }
   const writers: PaintChannelWriter[] = [];

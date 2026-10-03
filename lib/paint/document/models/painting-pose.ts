@@ -4,8 +4,9 @@
 // deposit, area and prewet carry a similarity back to rest (StampRestMap), the best fit under a warp, where the solver
 // reads fields and noise. Anchored clips, reserves and resists stay. An entry's pose text is in its state key.
 import { stampFrozenMarks, type FrozenStampMarks } from '#lib/paint/brush/models/stamp-placement.ts';
+import { paintWarpChainKey, paintWarpChainMap, type PaintDeform } from '#lib/paint/animation/models/paint-deform.ts';
 import {
-  PAINT_SIMILARITY_IDENTITY, paintSimilarityAfter, paintSimilarityApply, paintSimilarityInverse, paintSimilarityScale, type PaintSimilarity,
+  PAINT_SIMILARITY_IDENTITY, paintSimilarityAfter, paintSimilarityApply, paintSimilarityInverse, paintSimilarityOf, paintSimilarityScale, type PaintSimilarity,
 } from '#lib/paint/animation/models/paint-similarity.ts';
 import type { CompiledStampArea } from '#lib/paint/painting/models/stamp-area.ts';
 import type { CompiledStampBoundary } from '#lib/paint/painting/models/stamp-area-boundaries.ts';
@@ -41,6 +42,19 @@ export const paintingPoseText = (pose: PaintingNodePose) => (pose.kind === 'simi
 
 /** `pose` as a map of points. */
 export const paintingPoseMap = (pose: PaintingNodePose): StampWarpMap => (pose.kind === 'warp' ? pose.map : (point) => paintSimilarityApply(pose.map, point));
+
+/**
+ * `steps` (innermost first) as one pose: a similarity while every step places, else a warp named by its chain's key
+ * after `text`, which says whose steps they are where two owners' chains could key alike.
+ */
+export function paintingDeformsPose(steps: readonly PaintDeform[], text = ''): PaintingNodePose {
+  let similarity = PAINT_SIMILARITY_IDENTITY;
+  for (const step of steps) {
+    if (step.kind !== 'place') return { kind: 'warp', map: paintWarpChainMap(steps), text: `${text}${paintWarpChainKey(steps)}` };
+    similarity = paintSimilarityAfter(paintSimilarityOf(step.placement, step.pivot), similarity);
+  }
+  return paintingSimilarityPose(similarity);
+}
 
 /** `outer` after `inner`, one pose: a similarity while both are; a pose at rest leaves the other as it is. */
 export function paintingPoseAfter(outer: PaintingNodePose, inner: PaintingNodePose): PaintingNodePose {

@@ -6,13 +6,11 @@
 // ownership, posed by skin (shotRigPieces). Otherwise its cels' marks are posed before painting (shotRigCelPoses): a
 // rest cel by its skin mesh where it has one, any other by its part's rigid map; a cel owning a sheet moves it whole.
 
-import { paintPlacementIsRest, paintPlacementRounded, paintRatioSteps, paintWarpChainKey, paintWarpChainMap, type PaintDeform } from '#lib/paint/animation/models/paint-deform.ts';
-import { PAINT_SIMILARITY_IDENTITY, paintSimilarityAfter, paintSimilarityOf } from '#lib/paint/animation/models/paint-similarity.ts';
+import { paintPlacementIsRest, paintPlacementRounded, paintRatioSteps, type PaintDeform } from '#lib/paint/animation/models/paint-deform.ts';
 import type { NodeKey } from '#lib/paint/document/models/painting-document.ts';
-import type { PaintingSelectionCompiled } from '#lib/paint/document/models/painting-document-compile.ts';
-import { PAINTING_REST_POSE, paintingPoseText, paintingSimilarityPose, type PaintingNodePose } from '#lib/paint/document/models/painting-pose.ts';
+import { PAINTING_REST_POSE, paintingDeformsPose, paintingPoseMap, paintingPoseText, type PaintingNodePose } from '#lib/paint/document/models/painting-pose.ts';
 import { paintingProblem, isPaintingFinitePoint, isPaintingPositive, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
-import type { PaintingTree } from '#lib/paint/document/models/painting-tree.ts';
+import { paintingSheetInGroup, type PaintingTree } from '#lib/paint/document/models/painting-tree.ts';
 import type { StampWarpMap } from '#lib/paint/painting/models/stamp-group-warp.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
@@ -111,8 +109,7 @@ export function compileShotRig(occurrence: OccurrenceKey, plane: string, tree: P
   if (pieces) {
     // A cel's paint is read off the group's sheet: one on the root's (a `scene` layer) isn't on it.
     for (const layer of under) {
-      const { sheet } = tree.byKey.get(layer)!, owner = sheet.owner;
-      if (owner !== group && !(owner !== null && tree.byKey.get(owner)!.groups.includes(group))) {
+      if (!paintingSheetInGroup(tree, tree.byKey.get(layer)!.sheet, group)) {
         problems.push(rigError(shotOccurrenceKey(plane, layer), '', `lies on the root's sheet, and ${group} owns its sheet: a cel of a rig drawn as pieces lies on its group's sheet`));
       }
     }
@@ -179,33 +176,25 @@ export function shotRigHiddenCels(rig: CompiledShotRig, pose: Readonly<Record<st
 
 /**
  * `rig` posed by `pose` (shotRigPoseProblem's checked): each part's own bend and placement about its pivot, then its
- * parent's, and so up, a root turning about `groupPivot`; a bend along its part's axis in `axes`.
+ * parent's, and so up, a root turning about `groupPivot`; a bend along its part's axis in `axes`. `wobble`, its group
+ * node's boil as laid, goes first: the rest picture boiled, then cut and posed (ENGINE 6.5).
  */
-export function shotRigPosed(rig: CompiledShotRig, pose: Readonly<Record<string, RigPartPose>>, groupPivot: StampPoint, axes: ReadonlyMap<string, ShotRigAxis>): ShotRigPosed {
+export function shotRigPosed(
+  rig: CompiledShotRig, pose: Readonly<Record<string, RigPartPose>>, groupPivot: StampPoint, axes: ReadonlyMap<string, ShotRigAxis>, wobble: PaintDeform | null,
+): ShotRigPosed {
   const maps = new Map<string, PaintingNodePose>();
   for (const part of rig.parts) {
-    const steps: PaintDeform[] = [];
+    const steps: PaintDeform[] = wobble ? [wobble] : [];
     for (const level of rig.lines.get(part.id)!) {
       const { x = 0, y = 0, rotation = 0, bend = 0 } = pose[level.id] ?? {}, pivot = shotRigPartPivot(level, groupPivot), angleSteps = paintRatioSteps(bend);
       if (angleSteps !== 0) steps.push({ owner: level.id, kind: 'sway', root: pivot, ...axes.get(level.id)!, angleSteps });
       const placement = paintPlacementRounded({ x, y, rotation });
       if (!paintPlacementIsRest(placement)) steps.push({ owner: level.id, kind: 'place', placement, pivot });
     }
-    if (steps.every((step) => step.kind === 'place')) {
-      const similarity = steps.reduce((inner, step) => (step.kind === 'place' ? paintSimilarityAfter(paintSimilarityOf(step.placement, step.pivot), inner) : inner), PAINT_SIMILARITY_IDENTITY);
-      maps.set(part.id, paintingSimilarityPose(similarity));
-    } else maps.set(part.id, { kind: 'warp', map: paintWarpChainMap(steps), text: `${rig.text}:${part.id}:${paintWarpChainKey(steps)}` });
+    maps.set(part.id, paintingDeformsPose(steps, `${rig.text}:${part.id}:`));
   }
   return { maps, shown: shotRigShownCels(rig, pose) };
 }
-
-const mapOfPose = (pose: PaintingNodePose): StampWarpMap => {
-  if (pose.kind === 'warp') return pose.map;
-  const { ma, mb, kx, ky } = pose.map;
-  return ({ x, y }) => ({ x: ma * x - mb * y + kx, y: mb * x + ma * y + ky });
-};
-
-const poseText = (pose: PaintingNodePose) => (pose.kind === 'warp' ? pose.text : stampCanonicalJson(pose.map));
 
 /** A cel layer's skin: its cuts (parts in the rig's order) and each of its groups with its mesh, back to front. */
 export type ShotRigSkin = { readonly cuts: PaintRigCutLayer; readonly groups: readonly { readonly group: PaintRigSkinGroup; readonly mesh: PaintRigSkinMesh }[] };
@@ -229,13 +218,13 @@ export function shotRigCelPoses(rig: CompiledShotRig, posed: ShotRigPosed, skin:
   const resting = [...posed.maps.values()].every((pose) => paintingPoseText(pose) === PAINTING_REST_POSE);
   for (const { group, mesh } of resting ? [] : skin.groups) {
     if (group.members.length < 2) continue;
-    const triangles = paintRigSkinTriangles(mesh, (k) => mapOfPose(byPart(k))), onMesh = paintRigSkinRestMap(mesh, triangles);
+    const triangles = paintRigSkinTriangles(mesh, (k) => paintingPoseMap(byPart(k))), onMesh = paintRigSkinRestMap(mesh, triangles);
     for (const k of group.members) {
-      const rigid = mapOfPose(byPart(k));
+      const rigid = paintingPoseMap(byPart(k));
       skinned.set(rig.parts[k].id, (rest) => onMesh(rest) ?? rigid(rest));
     }
   }
-  const allTexts = rig.parts.map((part) => `${part.id}=${poseText(posed.maps.get(part.id)!)}`).join(';');
+  const allTexts = rig.parts.map((part) => `${part.id}=${paintingPoseText(posed.maps.get(part.id)!)}`).join(';');
   for (const [cel, partId] of rig.celPart) {
     const part = rig.parts.find(({ id }) => id === partId)!, map = skinned.get(partId);
     // A skin mesh covers its part's rest cel alone: a swapped-in cel moves rigidly with its part.
@@ -243,6 +232,19 @@ export function shotRigCelPoses(rig: CompiledShotRig, posed: ShotRigPosed, skin:
     else poses.set(cel, posed.maps.get(partId)!);
   }
   return poses;
+}
+
+/**
+ * A rig as a frame finds it, from its rest cels (one picture a part, its first cel, in part order) as the whole
+ * selection paints them unposed: the axes its parts bend along, and a marks rig's skin. Found from all the paint, not a
+ * timed prefix's, so a rig painted in over time poses alike throughout.
+ */
+export type ShotRigFound = { readonly rig: CompiledShotRig; readonly axes: ReadonlyMap<string, ShotRigAxis>; readonly skin: ShotRigSkin | null };
+
+/** `rig` found over `cels`, its parts' rest cels, its roots turning about `groupPivot`. */
+export function shotRigFound(rig: CompiledShotRig, groupPivot: StampPoint, cels: readonly PaintRigPicture[]): ShotRigFound {
+  const axes = new Map(rig.parts.map((part, k) => [part.id, shotRigPartAxis(shotRigPartPivot(part, groupPivot), cels[k])] as const));
+  return { rig, axes, skin: rig.pieces ? null : shotRigSkin(rig, cels).skin };
 }
 
 /** A skin joint's band at one pose: how far its triangles stretch, for a warning when one folds (ENGINE 6.5). */
@@ -262,7 +264,7 @@ export const shotRigPiecePictures = (picture: PaintRigPicture, skin: ShotRigSkin
 export function shotRigPieces(posed: ShotRigPosed, pictures: readonly PaintRigPicture[], skin: ShotRigSkin): { pieces: PaintRigPiece[]; stretches: ShotRigStretch[] } {
   const pieces: PaintRigPiece[] = [], stretches: ShotRigStretch[] = [], { parts } = skin.cuts;
   skin.groups.forEach(({ mesh }, g) => {
-    const triangles = paintRigSkinTriangles(mesh, (k) => mapOfPose(posed.maps.get(parts[k].id)!));
+    const triangles = paintRigSkinTriangles(mesh, (k) => paintingPoseMap(posed.maps.get(parts[k].id)!));
     for (const [child, band] of mesh.bands) stretches.push({ joint: parts[child].id, ...paintRigBandStretch(triangles, band) });
     pieces.push({ picture: pictures[g], triangles });
   });
@@ -279,17 +281,5 @@ export function shotRigPiecesPlaced(pieces: readonly PaintRigPiece[], map: Stamp
       placed[v + 1] = at.y;
     }
     return { picture, triangles: placed };
-  });
-}
-
-/**
- * The composite steps (indices in `compiled.steps`) painting cel `cel` of a rig: films of the layers it is or holds,
- * and cards of sheets owned by it or by a node under it. A pieces group's own card is no cel's.
- */
-export function shotRigCelSteps(compiled: PaintingSelectionCompiled, cel: NodeKey): number[] {
-  const { tree, sheets, steps } = compiled, under = (key: NodeKey) => key === cel || tree.byKey.get(key)!.groups.includes(cel);
-  return steps.flatMap((step, index) => {
-    const key = step.kind === 'card' ? sheets[step.sheet].sheet.owner! : tree.layers[sheets[step.sheet].layers[step.film]].node.key;
-    return under(key) ? [index] : [];
   });
 }

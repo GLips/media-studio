@@ -3,12 +3,11 @@
 // a description; nothing is solved until a shot draws it. A shot's load holds each plane's source to what a shot can
 // draw (paintedSourceProblems) and reports every problem with its plane's, so the constructors build without judging.
 
-import type { AnyApplication, Key, NodeKey } from '#lib/paint/document/models/painting-document.ts';
+import type { AnyApplication, Key } from '#lib/paint/document/models/painting-document.ts';
 import { paintingField, paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import type { LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
 import { paintingLayersUnder, paintingSheetName, type PaintingNodePlace, type PaintingTree } from '#lib/paint/document/models/painting-tree.ts';
 import { shotOccurrenceKey } from './shot-occurrences.ts';
-import type { OccurrenceKey } from './shot-props.ts';
 
 /**
  * Two finished selections' plane pictures interpolated linearly, `k` 0..1 from a to b, in their native form: opaque
@@ -123,17 +122,6 @@ export function paintedSourceSelection(source: PaintedSource): { readonly select
 }
 
 /**
- * The layer and group keys `source` shows, each once: a selection's keys and every node under them in document order,
- * then what a dissolve's other side adds. Both sides of a dissolve share their keys' occurrences, moved alike; a
- * plane's occurrences are these through shotOccurrenceKey.
- */
-export function paintedSourceNodeKeys(source: PaintedSource): NodeKey[] {
-  if (source.kind === 'dissolve') return [...new Set([...paintedSourceNodeKeys(source.a), ...paintedSourceNodeKeys(source.b)])];
-  const chosen = new Set(source.layers);
-  return source.painting.tree.nodes.filter(({ node, groups }) => chosen.has(node.key) || groups.some((group) => chosen.has(group))).map(({ node }) => node.key);
-}
-
-/**
  * The authored levels either side of `value` and how far between them it sits, `k` 0..1: on a level, or past either
  * end, both ends are that level and `k` is 0. `levels` ascend.
  */
@@ -147,25 +135,4 @@ export function bracket(value: number, levels: readonly number[]): { readonly lo
   if (levels[upper] === value || upper === 0) return { lower: levels[upper], upper: levels[upper], k: 0 };
   const below = levels[upper - 1], above = levels[upper];
   return { lower: below, upper: above, k: (value - below) / (above - below) };
-}
-
-/**
- * One occurrence a painted plane shows: its name, the document node it is, whether a layer or a group, and the group
- * occurrences enclosing it on its plane, outermost first. A group the selection starts inside isn't one.
- */
-export type ShotOccurrence = { readonly key: OccurrenceKey; readonly node: NodeKey; readonly kind: 'layer' | 'group'; readonly groups: readonly OccurrenceKey[] };
-
-/** Where `key` sits in the first of a dissolve's ends to hold it. */
-function placeOf(source: PaintedSource, key: NodeKey): PaintingNodePlace | undefined {
-  if (source.kind === 'layers') return source.painting.tree.byKey.get(key);
-  return placeOf(source.a, key) ?? placeOf(source.b, key);
-}
-
-/** Every occurrence plane `plane` shows of `source`, in document order (paintedSourceNodeKeys). */
-export function shotPlaneOccurrences(plane: string, source: PaintedSource): ShotOccurrence[] {
-  const keys = paintedSourceNodeKeys(source), shown = new Set(keys);
-  return keys.map((key) => {
-    const place = placeOf(source, key)!;
-    return { key: shotOccurrenceKey(plane, key), node: key, kind: place.kind, groups: place.groups.filter((group) => shown.has(group)).map((group) => shotOccurrenceKey(plane, group)) };
-  });
 }

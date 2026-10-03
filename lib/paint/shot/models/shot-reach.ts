@@ -8,10 +8,10 @@
 
 import { paintLevelShift } from '#lib/paint/animation/models/paint-motion-reach.ts';
 import type { PaintCameraPlaneOptions } from '#lib/paint/animation/models/paint-camera.ts';
-import { paintSimilarityApply, paintSimilarityOf } from '#lib/paint/animation/models/paint-similarity.ts';
+import { paintSimilarityBox, paintSimilarityOf } from '#lib/paint/animation/models/paint-similarity.ts';
 import { paintingBoxUnion, paintingNodeBox } from '#lib/paint/document/models/painting-footprint.ts';
 import type { StampPlaneExtent } from '#lib/paint/painting/models/stamp-plane.ts';
-import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
+import { stampBoxGrown, type StampBox } from '#lib/paint/painting/models/stamp-region.ts';
 import type { CompiledShotPaintedPlane, CompiledShotPlane } from './shot-compile.ts';
 import type { CompiledShotMotion, CompiledShotNode } from './shot-motion.ts';
 import type { OccurrenceKey } from './shot-props.ts';
@@ -21,8 +21,6 @@ import type { OccurrenceKey } from './shot-props.ts';
  * lay's bilinear read. Wider than any the gate's sheets paint.
  */
 export const SHOT_PAINT_SPREAD = 48;
-
-const grown = ({ x0, y0, x1, y1 }: StampBox, by: number): StampBox => ({ x0: x0 - by, y0: y0 - by, x1: x1 + by, y1: y1 + by });
 
 const clipped = (box: StampBox, { x0, y0, x1, y1 }: StampBox): StampBox | undefined => {
   const met = { x0: Math.max(box.x0, x0), y0: Math.max(box.y0, y0), x1: Math.min(box.x1, x1), y1: Math.min(box.y1, y1) };
@@ -38,7 +36,7 @@ export function shotNodeShift(node: CompiledShotNode, box: StampBox): number {
 export function shotNodeLineGrown(motion: CompiledShotMotion, id: string | undefined, box: StampBox): StampBox {
   let reached = box;
   for (let node = id === undefined ? undefined : motion.nodes.get(id); node; node = node.parent === null ? undefined : motion.nodes.get(node.parent)) {
-    reached = grown(reached, shotNodeShift(node, reached));
+    reached = stampBoxGrown(reached, shotNodeShift(node, reached));
   }
   return reached;
 }
@@ -49,7 +47,7 @@ function paintedReach(plane: CompiledShotPaintedPlane, motion: CompiledShotMotio
   let reach: StampBox | undefined;
   for (const occurrence of plane.occurrences) {
     if (occurrence.kind !== 'layer') continue;
-    const place = painting.tree.byKey.get(occurrence.node)!, stated = paintingNodeBox(place.node), held = stated && clipped(grown(stated, SHOT_PAINT_SPREAD), documentBox);
+    const place = painting.tree.byKey.get(occurrence.node)!, stated = paintingNodeBox(place.node), held = stated && clipped(stampBoxGrown(stated, SHOT_PAINT_SPREAD), documentBox);
     if (held) reach = paintingBoxUnion(reach, shotNodeLineGrown(motion, motion.nearest.get(occurrence.key), held));
   }
   if (ground === 'paper') reach = paintingBoxUnion(reach, shotNodeLineGrown(motion, motion.nodes.has(plane.id) ? plane.id : undefined, documentBox));
@@ -65,10 +63,7 @@ function paintedExtent(plane: CompiledShotPaintedPlane, motion: CompiledShotMoti
   if (!reach) return { kind: 'empty' };
   const { lay } = plane.lay;
   if (!lay) return { kind: 'box', box: reach };
-  const map = paintSimilarityOf(lay.placement, lay.pivot);
-  const corners = [{ x: reach.x0, y: reach.y0 }, { x: reach.x1, y: reach.y0 }, { x: reach.x0, y: reach.y1 }, { x: reach.x1, y: reach.y1 }].map((corner) => paintSimilarityApply(map, corner));
-  const xs = corners.map(({ x }) => x), ys = corners.map(({ y }) => y);
-  return { kind: 'box', box: { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) } };
+  return { kind: 'box', box: paintSimilarityBox(paintSimilarityOf(lay.placement, lay.pivot), reach) };
 }
 
 /** The camera build's planes for a shot's `planes`: each painted plane a picture plane held as far as its reach. */
