@@ -2,5 +2,6 @@
   "lib/paint/style": "A style's brushes come from the packs imported into it.",
   "lib/paint/brush-fidelity": "A sheet reads an imported pack from disk and resolves its brushes, the ones it scores.",
   "lib/paint/studies": "A study's page loads a pack's brushes from where Node served it.",
-  "lib/paint/gate": "The gate's private run paints brushes read from an imported pack, resolved as a pack's brushes always are."
+  "lib/paint/gate": "The gate's private run paints brushes read from an imported pack, resolved as a pack's brushes always are.",
+  "lib/paint/document": "A painting source's still is painted on a page that loads the packs' brushes and paper from where Node served them."
 }

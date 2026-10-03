@@ -10,7 +10,7 @@ import { withBrowserModulePage } from '#lib/platform/browser/engine/browser-modu
 import { wetPassageSheetHtml, type WetPassageSheetColumn, type WetPassageSheetNotes } from '../models/wet-passage-sheet-html.ts';
 import type { WetAnimationPainted } from '../models/wet-animations.ts';
 import type { WetPassageBrushes, WetPassagePainted, WetPassageSheetMedium } from '../models/wet-passages.ts';
-import { readWorkspacePigmentStyle } from './workspace-pigment-style.ts';
+import { readWorkspacePigmentStyle } from '#lib/paint/style/engine/workspace-pigment-style.ts';
 
 const SHEET_PAGE = fileURLToPath(new URL('../studio/wet-passage-sheet-page.ts', import.meta.url));
 

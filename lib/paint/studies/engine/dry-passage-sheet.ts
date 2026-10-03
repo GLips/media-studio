@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { withBrowserModulePage } from '#lib/platform/browser/engine/browser-module-page.ts';
 import { DRY_PASSAGE_CELL, DRY_PASSAGE_PAINTING_WIDTH, type DryPassageBrushes, type DryPassagePainted, type DryPassageSheetMedium } from '../models/dry-passages.ts';
-import { readWorkspacePigmentStyle } from './workspace-pigment-style.ts';
+import { readWorkspacePigmentStyle } from '#lib/paint/style/engine/workspace-pigment-style.ts';
 
 const SHEET_PAGE = fileURLToPath(new URL('../studio/dry-passage-sheet-page.ts', import.meta.url));
 

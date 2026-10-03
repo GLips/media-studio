@@ -11,17 +11,17 @@ checking. The types are the contract: `lib/paint/document/models/painting-docume
 Built: sources and `painting()`; property schemas and values; every check made without solving (Checking); a
 document's tree, its sheets and each sheet's order (`painting-tree.ts`, `painting-sheet-program.ts`); the evaluation
 diff; `layersOf`, `bracket` and `dissolve`, and the problems a shot's load reports in a plane's selection
-(`paintedSourceProblems`); the shot's types; `studio paint check` and `studio paint diff`. The shot's presentation
-is built as models in `lib/paint/shot/models/`, checked but not yet drawn: a dissolve's weighted selections, the
-drawable order (`shot-plan.ts`), a path mask's reveal by inked length and the `alphaOf` graph (`shot-masks.ts`),
-instanced items' batches and travel (`shot-instances.ts`), pin and cover lays through the camera and a pin's
-measured centres (`shot-placement.ts`), visibility's checks and the groups it isolates (`shot-visibility.ts`), a
-warm span's frames and moments (`shot-warm.ts`), and the cost report (`shot-cost-report.ts`, tabled by
-`studio profile --costs`). Not yet built: the solver that paints a document, `<PaintedShot>` and
-`<PaintedShotCanvas>`, the passes drawing masks, items and pins, and `studio paint check --solve`. Until they land, a
-project can write and check its sources and build its `PaintedShotProps`, but nothing shows them. **NEW** marks
-behaviour the brush engine (the recipe path, docs/brush-engine.md) lacks too; unmarked behaviour is how it already
-paints.
+(`paintedSourceProblems`); the shot's types; `studio paint check` and `studio paint diff`; and the solver, for a
+document's root sheet with unclocked washes, seen through `studio paint still` and `studio paint check --solve`. The
+shot's presentation is built as models in `lib/paint/shot/models/`, checked but not yet drawn: a dissolve's weighted
+selections, the drawable order (`shot-plan.ts`), a path mask's reveal by inked length and the `alphaOf` graph
+(`shot-masks.ts`), instanced items' batches and travel (`shot-instances.ts`), pin and cover lays through the camera
+and a pin's measured centres (`shot-placement.ts`), visibility's checks and the groups it isolates
+(`shot-visibility.ts`), a warm span's frames and moments (`shot-warm.ts`), and the cost report (`shot-cost-report.ts`,
+tabled by `studio profile --costs`). Not yet built: clocked washes and own sheets in the solver, `<PaintedShot>` and
+`<PaintedShotCanvas>`, and the passes drawing masks, items and pins. Until they land, a project can write, check and
+see its sources as stills and build its `PaintedShotProps`, but no scene shows them. **NEW** marks behaviour the brush
+engine (the recipe path, docs/brush-engine.md) lacks too; unmarked behaviour is how it already paints.
 
 ## The model
 
@@ -53,14 +53,15 @@ later wash of the same layer. A pale cloud sits in a layer of its own. The scene
 push, raises the hill on sixes, and drifts the cloud.
 
 The source is `lib/paint/document/models/meadow.painting.ts`; read it whole before writing your own. Its spec checks
-it clean, and `node cli/studio.ts paint check lib/paint/document/models/meadow.painting.ts` prints its summary. It
+it clean, `node cli/studio.ts paint check lib/paint/document/models/meadow.painting.ts` prints its summary, and
+`node cli/studio.ts paint still lib/paint/document/models/meadow.painting.ts` paints it to `meadow.png`. It
 exports `properties`, one quantised number (`hillTopPx`, 150..260 px on a 10 px step), and a default factory
 `meadow({ hillTopPx })` returning a 640 × 360 px watercolour document on a cotton paper (`vvds-watercolor-canvas-3`
 grain, absorbency 0.5) with two layers:
 
-- `landscape`: wash `sky` holds `sky-flood` (a fill of the sky's box at water 0.85 through the even `wash` brush) and
-  `treeline` (a swelling stroke `on: 'wet'`, clipped to the sky, at water 0.6); wash `hill` holds `hill-flood`, a fill
-  of a swell peaking at `hillTopPx`.
+- `landscape`: wash `sky` holds `sky-flood` (a fill of the sky's box at water 0.85 through the even `detail` brush)
+  and `treeline` (a swelling stroke `on: 'wet'` through the `charge` round, clipped to the sky, at water 0.6); wash
+  `hill` holds `hill-flood`, a fill through the `wash` brush of a swell peaking at `hillTopPx`.
 - `cloud`: wash `cloud-wash` holds one feathered ellipse at strength 0.15.
 
 The scene, as a project would write it (`scenes/meadow.tsx`, with its source in `scenes/meadow/`):
@@ -115,10 +116,10 @@ What lands, and why it looks as it does:
 
 | Application | Lands at (model s) | Why then | What you see |
 |---|---|---|---|
-| `sky-flood` | 0 | first, no `on` | flat blue wash, walled by its crisp outline, wetness 0.85 wherever the even `wash` brush touched |
+| `sky-flood` | 0 | first, no `on` | flat blue wash, walled by its crisp outline, wetness 0.85 wherever the even `detail` brush touched |
 | `treeline` | 0 | `on: 'wet'` holds at once: its core lies on the flood's full contact, all of it above watercolour's shiny 0.7 | earth paint feathers into the wet sky, about 0.5 × 26 ÷ 2 = 6.5 px sigma: a soft treeline. Its water 0.6 leaves the sky's 0.85 as it was |
-| `hill-flood` | 204 | a later wash of `landscape` starts once the layer's earlier washes have set: the sky's 0.85 water at watercolour's 240 s a full wash, absorbency 0.5 | earth fill with a crisp edge; where it crosses the sky it lands by watercolour's layering law (below) |
-| the cloud's fill | 204 | next in the root sheet's order, at its predecessor's time: a layer boundary dries nothing, but the sky under it has set and the hill's wet flood lies below it | a pale feathered ellipse, its own film glazed over the sky |
+| `hill-flood` | 203.901 | a later wash of `landscape` starts on the first 1 ms step once the layer's earlier washes have set: the sky's 0.85 water at watercolour's 240 s a full wash, absorbency 0.5, set by 203.9 s | earth fill with a crisp edge; where it crosses the sky it lands by watercolour's layering law (below) |
+| the cloud's fill | 203.901 | next in the root sheet's order, at its predecessor's time: a layer boundary dries nothing, but the sky under it has set and the hill's wet flood lies below it | a pale feathered ellipse, its own film glazed over the sky |
 
 Within one layer, a later wash over set paint lands by the medium's layering law. Watercolour mixes with pickup 0.5:
 where the sky covers fully, the hill keeps half the sky's films and replaces half. That reads as a blend, not an
@@ -194,7 +195,8 @@ is a scene helper, which a model can't import.
   take the wetter, never the sum.
 - So a flood's wetness follows its contact: full up to a crisp or feathered wall, falling across a feather's or
   bleed's ramp, and lower in grain holes a textured brush skips. Gate later work on floods laid with an even brush
-  (`wash`); a mottled one (`filler`) leaves paper below shiny.
+  (watercolour's `detail`, laid big); a textured one (`wash`, `filler`) lands its water in flecks, a third of the
+  meadow's sky below shiny under `wash`, so an `on: 'wet'` into it can't hold.
 - A lift soaks it up at once: `now × (1 − contact × strength)`. An `on` after a lift reads the paper drier.
 - Between applications wetness only falls, at (0.5 + absorbency) ÷ drying per model second, by the medium of the
   sheet the water is on (the node that declared the sheet: the document's medium for the root). A 0.85 watercolour
@@ -437,7 +439,7 @@ sheet a crayon node declared is refused: crayon keeps no wet history.
     scene 0 shows finished from the first frame. A 0.9 flood at dryingScale 0.025 with origin −3.25 s is 130 model s
     old at scene 0, and damp from scene 0.05 s.
   - `origin: 'set'` starts the wash when every earlier clocked wash of its layer has set, found at solve (printed by
-    `studio paint check --solve`, with the solver). A fixed `at` stays an absolute scene second, checked at solve.
+    `studio paint check --solve` once the solver takes clocked washes). A fixed `at` stays an absolute scene second, checked at solve.
   - `'instant'`: the first application lands at the start, each untimed one at its predecessor's scene time. Each
     application runs wet within itself, then the whole sheet sets before the next lands, so `on: 'dry'` holds at once
     and `wet`, `damp` and blooms over earlier paint are unreachable. The wash sets at its last application's scene
@@ -462,7 +464,7 @@ sheet a crayon node declared is refused: crayon keeps no wet history.
   A wash after a `never` wash can't start, nor, on a sheet whose clock is `never`, one after any wet wash.
 - **Across layers** (**NEW**): layers on one sheet share its order and water. Their clocked washes interleave by
   time: a later layer's application at 2 s lands before an earlier layer's at 3 s, into whatever is wet. To have a
-  layer meet another dry, start it once the other has set (`studio paint check --solve` will print set times) or give
+  layer meet another dry, start it once the other has set (`studio paint check --solve` prints set times) or give
   its first application `on: 'dry'`. A layer boundary dries nothing.
 - **Showing a wash partway**: a selection's `at` shows its sheet's clocked applications scheduled at or before it,
   every layer's film finished there: `layersOf(p, ['landscape'], { at: moment.at })`. Each step shows dry while the
@@ -473,7 +475,7 @@ sheet a crayon node declared is refused: crayon keeps no wet history.
   dissolve levels. It reports what it solved and kept, and promises no residency: a span whose films outgrow the
   cache's budget evicts its beginning, and those frames solve again. Warm spans that fit. To time a scene beat to a
   landing, fix that application's `at` from a constant both the factory and the scene import; `studio paint check
-  <source> --solve` will print every application's landing time.
+  <source> --solve` prints every application's landing time.
 - **A drop landing in a wash** at a scene second: a timed water application on that wash's sheet with `at` (a bloom,
   if wanted), in the wash or a clocked layer of its own at the sheet's `dryingScale`, then its paint as the next
   application without `on`, so the bloom's label still checks water alone. A bloom rewets its footprint, so a later
@@ -511,7 +513,7 @@ shows what a property step re-solves; the cost report counts what each frame and
 | # | Look | Write | Watch for |
 |---|---|---|---|
 | 1 | graded sky | a flood whose `mix` is a field: `{kind: 'linear', from: {x, y, value: ZENITH}, to: {x, y, value: HORIZON}}` | grades pigment amounts, never colour; more stops are more applications |
-| 2 | wet-in-wet charge | flood at water 0.85+ with an even brush, then an application `on: 'wet'` of paint strokes | its core on the flood's full contact |
+| 2 | wet-in-wet charge | flood at water 0.85+ with an even brush (watercolour's `detail`), then an application `on: 'wet'` of paint strokes | its core on the flood's full contact |
 | 3 | bloom | after the flood, `{effect: 'bloom', on: 'damp'}` water stamps, water 1 | needs surplus > 0.08 over open paint; under `never`, `on: 'wet'` |
 | 4 | backrun | `{effect: 'bloom', on: 'damp'}`: one water stroke along the junction | both sides must be damp at once; `on: 'wet'` gives softer scallops |
 | 5 | soften one edge | a water stroke, water 0.3, along the edge, `on: 'wet'` | write it before anything waits for `dry` |
@@ -610,7 +612,7 @@ is what a stroke point's pressure moves (crayon's medium also decides how pressu
 
 | Style | Brush | Lays | For | Pressure |
 |---|---|---|---|---|
-| `watercolor` | `wash` | wet | an even, lightly textured body with soft ends: floods later work waits on | size, opacity, flow |
+| `watercolor` | `wash` | wet | a lightly textured body with soft ends: floods nothing waits on, as its texture lands water in flecks | size, opacity, flow |
 | | `filler` | wet | a big, open, mottled glaze that keeps paper showing | size, opacity, flow |
 | | `wet` | wet | cloudy wet-in-wet with soft edges; sky bands melting together | size, opacity, flow |
 | | `blend` | wet | a soft, feathered wash | size, opacity, flow |
@@ -624,7 +626,7 @@ is what a stroke point's pressure moves (crayon's medium also decides how pressu
 | | `splashes` | wet | clean round drops of mixed size | size, opacity, flow |
 | | `pencil` | dry | a grainy, broken line | size, flow |
 | | `ink` | wet | a crisp, opaque, tapered line: dark accents, birds | size, flow |
-| | `detail` | wet | a smooth tapered line holding at 4–12 px | size, opacity, flow |
+| | `detail` | wet | a smooth tapered line holding at 4–12 px; laid big, the even flood later work waits on | size, opacity, flow |
 | `gouache` | `wash` | wet | a smooth body for floods: a toned ground, each element's flat block | size |
 | | `flat` | wet | a broad flat over a block: shade, cloth lights | size |
 | | `thick` | wet | dense and opaque, a crisp edge | size, flow |
@@ -777,13 +779,40 @@ What the check says today, and what to do:
 | `rain.depths.far: 2.5 isn't nearer than the back, street at depth 2` / `rain: two items are called a at 2.04 s` / `label.lay.points: both pin 40, 40: two points set a scale and turn only apart` | an instanced plane at load and its items each frame (`shotInstancedPlaneProblems`, `shotInstanceProblems`); a pin or cover (`shotPlacementProblems`) | keep items nearer than the back; one key an item |
 | `meadow/hil.visibility: names no plane or occurrence of this shot` / `rain/drop-3.visibility: fades an item of rain, which isn't an occurrence: …` / `meadow/sky.visibility: 1.2 at 3 s; visibility is within 0..1` / `shot.warm: 2..1 isn't a span of scene seconds: …` | the shot's `visibility` (`shotVisibilityProblems` at load, `shotVisibilityProblem` each frame) and `warm` (`shotWarmProblems`) | name an occurrence; fade an item by its own `visibility` |
 
-With the solver (`studio paint check --solve`, not yet built), the solve adds: an `on` that can't hold where it's
-scheduled (`treeline: unreachable from this committed prefix: on 'wet' held over at most 81% of its core (needs 95%),
-at model 0 s`); a clocked wash starting while an earlier one is wet (`hill starts at 2 s while sky is still wet until
-5.1 s`); a bloom with nothing to act on (`sky.applications[3] won't bloom: no open paint on workable paper under its
-core`); and, per frame and warmed span, the cost report (evaluations, cache hits and misses, solves by sheet from the
-first application re-run, decisions reused, uploads, bytes kept), which `studio profile --costs` tables. With
-`<PaintedShot>`, a shot adds its own: a bad
+`studio paint check <source> --solve [--out <dir>]` then solves the root sheet on the GPU (run it under the GPU lock)
+and prints, in the sheet's order, each wash's start and when what it wetted had set, and each application's landing
+time with the `on` it waited for. It writes the painting to `<dir>/painting.png` and each layer's film alone over the
+paper to `<dir>/films/<layer>.png` (`<dir>` is `<source>.solve` by default). `studio paint still <source> [--set …]
+[--out <file>]` checks and solves the same way and writes only the painting, the document's size (`<source>.png`).
+
+```
+$ node cli/studio.ts paint check lib/paint/document/models/meadow.painting.ts --solve
+…
+sky (landscape): starts at 0 s
+  sky-flood: lands at 0 s
+  treeline: lands at 0 s (on 'wet')
+  sky: set by 203.9 s
+hill (landscape): starts at 203.901 s
+  hill-flood: lands at 203.901 s
+  hill: set by 323.842 s
+cloud-wash (cloud): starts at 203.901 s
+  cloud-wash.applications[0]: lands at 203.901 s
+  cloud-wash: set by 356.501 s
+```
+
+A refusal prints alone, after the check's summary, and fails the run. What the solve says, and what to do:
+
+| Message | When | Do |
+|---|---|---|
+| `treeline: unreachable from this committed prefix: on 'wet' held over at most 59% of its core (needs 95%), at model 0 s [0,197 → 640,261]; not shiny at its predecessor's time. Unscheduled after it: hill-flood, cloud-wash.applications[0]` (the meadow's sky flooded through `wash`) | its `on` never holds over 95% of its core from its predecessor's time on. The boxes, in 32 px cells, are where it failed; `never wetted on this sheet` when its core met no water, `sets before the rest turns matte` for a `damp` that can't hold. It fails the solve | flood wetter or with an even brush, move the application onto the flood, or drop the `on` |
+| `sky.applications[3] won't bloom: no open paint on workable paper under its core` | a bloom with nothing to act on where it lands; fails the solve | bloom over a wash still open, or drop `effect` |
+| `drop: its core is empty: nothing of it reaches paper` (warning) | its clips, resists or reserves leave none of it on paper; it lands at its predecessor's time | widen its clips, or drop it |
+| `treeline: decided within rounding of on 'wet'; another GPU may place it a step apart` (warning) | its `on` holds by a hair | wetter or drier, by a little |
+| `painting: meadow's wash hill is clocked, and the solver paints unclocked washes so far` / `painting: meadow paints on heron's own sheet, and the solver paints only the root's sheet so far` | what this solver doesn't paint yet | check it without `--solve` |
+
+With `<PaintedShot>`, the solve adds a clocked wash starting while an earlier one is wet (`hill starts at 2 s while
+sky is still wet until 5.1 s`) and, per frame and warmed span, the cost report (evaluations, cache hits and misses,
+solves by sheet from the first application re-run, decisions reused, uploads, bytes kept); a shot adds its own: a bad
 rig (`meadow/heron is rigged: it takes no pins, sway or flutter`, `heron's layer eye lies in no part's cels`), a pose
 folding paint (warning), a plane whose selection changes (`plane meadow showed landscape, cloud at load and landscape
 now`), the camera build's problems and `paintChannelConflicts`' channel conflicts.

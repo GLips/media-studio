@@ -1,15 +1,15 @@
-// workspace-pigment-style.ts: a workspace style read from disk for a study sheet that paints in pigment, its packs as
-// served to the sheet's page. Each sheet picks its own brushes and adjusts its paper; the reading is shared.
+// workspace-pigment-style.ts: a workspace style read from disk for a page that paints in pigment (a study sheet, a
+// painting source's still), its packs as served to the page. Each page picks its own brushes; the reading is shared.
 
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { readServedStampPaintPack } from '#lib/paint/brush-packs/engine/stamp-paint-pack-files.ts';
 import { stampPaintPackKey, type StampPaintPackUrls } from '#lib/paint/brush-packs/models/stamp-paint-pack-urls.ts';
 import type { StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { StampPigmentMixing } from '#lib/paint/painting/models/stamp-pigment-paint.ts';
-import { importStampPaintStyle } from '#lib/paint/style/engine/style-probe-medium.ts';
-import { resolveStampPaintStyle } from '#lib/paint/style/models/style.ts';
+import { resolveStampPaintStyle } from '../models/style.ts';
+import { importStampPaintStyle } from './style-probe-medium.ts';
 
-/** A workspace style painting in pigment, as a study sheet's page paints with it. `brushOf` throws for a brush it lacks. */
+/** A workspace style painting in pigment, as a page paints with it. `brushOf` throws for a brush it lacks. */
 export type WorkspacePigmentStyle = { brushOf: (brush: string) => StampBrush; paper: StampPaintPaper; mixing: StampPigmentMixing; packUrls: StampPaintPackUrls };
 
 /** `name`, a style in `stylesDir`, which `sheet` (named in errors) needs to paint in pigment. */

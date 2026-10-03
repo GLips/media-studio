@@ -1,6 +1,7 @@
 // meadow.painting.ts: a watercolour sky painted wet-in-wet with a treeline charged into it while it shines, then,
 // once it has set, a hill laid over it in a second wash of the same layer; and a cloud in a layer of its own, free
-// to drift. One paper, one brush, three mixes. The worked example of docs/painting-authoring.md, checked by its spec.
+// to drift. One paper, three brushes, three mixes. The worked example of docs/painting-authoring.md, checked by its
+// spec and painted by `studio paint still`.
 
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import type { BrushRef, Clip, Mix, PaintingDocument, Paper, Ring, Subpath } from '#lib/paint/document/models/painting-document.ts';
@@ -24,7 +25,14 @@ const COTTON: Paper = {
   grain: { image: { style: 'watercolor', pack: 'vvds', file: 'papers/vvds-watercolor-canvas-3.grain.png' }, scale: 1, depth: 0.35 },
   absorbency: 0.5,
 };
-/** An even brush: a flood that later work waits on wets its whole footprint. */
+/**
+ * The style's even brush: its flood's water lands whole, so the treeline charged into it reads it shiny throughout.
+ * The wash brush's texture leaves water in flecks, a third of them below shiny: no flood to wait on.
+ */
+const EVEN: BrushRef = { style: 'watercolor', brush: 'detail' };
+/** The round the style drops into a wet wash. */
+const CHARGE: BrushRef = { style: 'watercolor', brush: 'charge' };
+/** The wash brush, for floods nothing waits on. */
 const WASH: BrushRef = { style: 'watercolor', brush: 'wash' };
 
 const SKY: Ring = [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: SKY_FOOT }, { x: 0, y: SKY_FOOT }];
@@ -60,11 +68,11 @@ export default function meadow({ hillTopPx }: PropertyValues<typeof properties>)
             applications: [
               {
                 key: 'sky-flood', kind: 'fill', area: { region: { kind: 'polygon', rings: [SKY] } },
-                brush: WASH, diameterPx: 90, seed: 'sky-flood', charge: { kind: 'paint', mix: SKY_BLUE, water: 0.85 },
+                brush: EVEN, diameterPx: 90, seed: 'sky-flood', charge: { kind: 'paint', mix: SKY_BLUE, water: 0.85 },
               },
               {
                 key: 'treeline', on: 'wet', kind: 'stroke', subpaths: [TREELINE], hand: { profile: 'swell', wobble: { position: 0.2 } },
-                clips: [IN_SKY], brush: WASH, diameterPx: 26, seed: 'treeline', charge: { kind: 'paint', mix: EARTH, water: 0.6 },
+                clips: [IN_SKY], brush: CHARGE, diameterPx: 26, seed: 'treeline', charge: { kind: 'paint', mix: EARTH, water: 0.6 },
               },
             ],
           },
