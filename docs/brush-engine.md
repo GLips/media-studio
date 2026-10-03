@@ -98,8 +98,10 @@ refused. Cost at 1080p: about 0.3 ms of load a mark, and a frame reads it as it 
 
 Wet paint is a wash, a passage with a wetness history (`group.passage` in a medium with `'wet-history'`, unless it
 says `wetHistory: false`): its deposits paint, wet (`water`, `stampSoften`, `stampBloom`) or lift, and it can `wait`
-in painting time, which only its waits advance. `stamp-wetness.ts` works out, once as a painting loads, when each
-lands and how long each wait lasts, in closed form; where water lands is per pixel, on the GPU, in each wash's wet
+in painting time, which only its waits advance. `compileStampWetness` (`stamp-wash-waits.ts`) works out, once as a
+painting loads, when each lands and how long each wait lasts, in closed form by the laws in `stamp-wetness.ts`; each
+wash's ledger (`stamp-wash-ledger.ts`) keeps what its deposits find and its dryings at the times it's given. Where
+water lands is per pixel, on the GPU, in each wash's wet
 field (`studio/stamp-wet-field.ts`), in draw order, in the pass that resolves the deposit. For a deposit its stages
 read, the same pass leaves its landing (its water's contact, the paper it found and the wetness it leaves) as far
 round its box as they read (`landingReach`); they read the paper only from there. A boil's epoch and live marks each

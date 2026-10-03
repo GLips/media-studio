@@ -9,7 +9,8 @@ import type { CompiledStampDeposit, CompiledStampPaint, CompiledStampPass } from
 import type { CompiledStampWashWait, StampWaitEffect, StampWashWait, StampWetEffectKind } from './stamp-wash-effects.ts';
 import { stampBloomBound } from './stamp-wet-bloom.ts';
 import { stampDryingRimBound } from './stamp-wet-rim.ts';
-import { stampWaitDeposits, type StampWashWaitRecord, type StampWetFinds, type StampWetness } from './stamp-wetness.ts';
+import { stampWaitDeposits } from './stamp-wash-waits.ts';
+import type { StampWashWaitRecord, StampWetFinds, StampWetness } from './stamp-wetness.ts';
 
 /**
  * A wait: what it waits for and judged, what it stood before (the effect that asked, else its one deposit), its

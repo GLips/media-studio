@@ -3,7 +3,8 @@
 
 import { stampPassDeposits, type CompiledStampDeposit, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
-import { compileStampWetness, stampPaintMedia, type StampWetness } from '#lib/paint/painting/models/stamp-wetness.ts';
+import { stampPaintMedia, type StampWetness } from '#lib/paint/painting/models/stamp-wetness.ts';
+import { compileStampWetness } from '#lib/paint/painting/models/stamp-wash-waits.ts';
 import { stampRoundTipsOf } from '#lib/paint/painting/models/stamp-tip-support.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { requestStudioGpuDevice } from '#lib/platform/gpu/studio/gpu-device-owner.ts';

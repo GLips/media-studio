@@ -5,7 +5,8 @@ import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#l
 import { compileStampPaintRecipe } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampPaintEnvironment, StampPassageOptions, StampPassageScope } from './stamp-paint-recipe-types.ts';
-import { compileStampWetness, stampPaintMedia } from './stamp-wetness.ts';
+import { stampPaintMedia } from './stamp-wetness.ts';
+import { compileStampWetness } from './stamp-wash-waits.ts';
 import { stampRoundTipsOf, stampRoundTipStatedProfile } from './stamp-tip-support.ts';
 import { stampDryingRimBound } from './stamp-wet-rim.ts';
 import type { StampFloodEdge } from './stamp-fill.ts';
@@ -80,13 +81,13 @@ test("a seconds wait the whole wash has set by closes the same drying as wait('s
     stroke(wash, 'a');
     wait(wash);
     stroke(wash, 'b');
-  })).dryings.map(({ id, deposits, closes }) => [id, deposits.map((deposit) => deposit.id), closes === 'end' ? 'end' : closes.until]);
+  })).dryings.map(({ id, deposits, closes }) => [id, deposits.map((deposit) => deposit.id), closes]);
   const set = dried(washOf((wash) => {
     stroke(wash, 'a');
     wash.wait('set');
   })).wetness.washes.values().next().value!.duration;
   assert.deepEqual(dryingsOf((wash) => wash.wait('set')), [['g/w', ['g/w/a'], 'set'], ['g/w|dry1', ['g/w/b'], 'end']]);
-  assert.deepEqual(dryingsOf((wash) => wash.wait({ seconds: set + 1 })), [['g/w', ['g/w/a'], { seconds: set + 1 }], ['g/w|dry1', ['g/w/b'], 'end']]);
+  assert.deepEqual(dryingsOf((wash) => wash.wait({ seconds: set + 1 })), [['g/w', ['g/w/a'], 'set'], ['g/w|dry1', ['g/w/b'], 'end']]);
   // Still workable, though past damp: the two strokes dry together at the end.
   assert.deepEqual(dryingsOf((wash) => wash.wait({ seconds: set - 1 })), [['g/w', ['g/w/a', 'g/w/b'], 'end']]);
 });

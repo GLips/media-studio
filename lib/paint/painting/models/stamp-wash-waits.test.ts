@@ -5,7 +5,8 @@ import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#l
 import { compileStampPaintRecipe, stampPassDeposits, type CompiledStampPass } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampPaintEnvironment, StampPassageOptions, StampPassageScope } from './stamp-paint-recipe-types.ts';
-import { compileStampWetness, stampDrying, type StampWetness, stampPaintMedia } from './stamp-wetness.ts';
+import { stampDrying, type StampWetness, stampPaintMedia } from './stamp-wetness.ts';
+import { compileStampWetness } from './stamp-wash-waits.ts';
 import { stampRoundTipsOf, stampRoundTipStatedProfile } from './stamp-tip-support.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 

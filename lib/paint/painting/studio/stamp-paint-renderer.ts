@@ -21,7 +21,8 @@ import {
 } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampPaintPaper } from '../models/stamp-paint-recipe-types.ts';
 import { stampGrainDepthSourceIn } from '../models/stamp-pigment-paint.ts';
-import { compileStampWetness, stampDepositWalled, STAMP_WET_PAPER_WGSL, type StampPaintMedia, type StampWashDrying, type StampWetLanding, type StampWetness } from '../models/stamp-wetness.ts';
+import { stampDepositWalled, STAMP_WET_PAPER_WGSL, type StampPaintMedia, type StampWashDrying, type StampWetLanding, type StampWetness } from '../models/stamp-wetness.ts';
+import { compileStampWetness } from '../models/stamp-wash-waits.ts';
 import { STAMP_RESIST_TOOTH, stampPaintingBrushedMasks, type CompiledStampBrushedMask, type CompiledStampMarkPlacement } from '../models/stamp-brushed-mask.ts';
 import { stampWetReport, stampWetReportStrictFailures, stampWetReportWarnings } from '../models/stamp-wet-report.ts';
 import { STAMP_WET_LAND_WGSL, stampDepositionLaw } from '../models/stamp-wet-landing.ts';

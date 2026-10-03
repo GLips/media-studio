@@ -20,7 +20,8 @@ import { STAMP_TIP_TOUCH_WGSL } from '#lib/paint/painting/models/stamp-wet-conta
 import { STAMP_GRID_AT_WGSL, STAMP_POLYGON_DISTANCE_WGSL, STAMP_REGION_WGSL } from '#lib/paint/painting/models/stamp-region.ts';
 import { STAMP_AREA_COVERAGE_WGSL } from '#lib/paint/painting/models/stamp-area.ts';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
-import { compileStampWetness, STAMP_LANDED_WETNESS_WGSL, STAMP_WET_PAPER_WGSL, stampPaintMedia } from '#lib/paint/painting/models/stamp-wetness.ts';
+import { STAMP_LANDED_WETNESS_WGSL, STAMP_WET_PAPER_WGSL, stampPaintMedia } from '#lib/paint/painting/models/stamp-wetness.ts';
+import { compileStampWetness } from '#lib/paint/painting/models/stamp-wash-waits.ts';
 import { stampRoundTipsOf } from '#lib/paint/painting/models/stamp-tip-support.ts';
 import { requestStudioGpuDevice } from '#lib/platform/gpu/studio/gpu-device-owner.ts';
 import { STAMP_WET_FLOW_STAGE } from '#lib/paint/painting/studio/stamp-wet-flow.ts';
