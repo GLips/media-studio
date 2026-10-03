@@ -201,28 +201,28 @@
     "solved/forward": {
       "file": "solved/forward.png",
       "output": "f0003f7c4e327d9e25299197504d478b1343f240457c5e2663bf37768ec463f8",
-      "inputs": "225390a517857f622f849977250fccd8bf441ff08d660a980b3c444f864b335a",
-      "reason": "vid-157 sheets: a solved still's inputs are every sheet's program, the composite's steps and its poses; paper-heron: a heron whose body lies on the scene's grained paper and whose wing and wing tip are nested cut-outs of warm and cool papers, turned 0.25 rad and grown 1.15 about its middle",
+      "inputs": "70e1c844b4e123d1916bd6b6fd915e51bf0c39eb49179a5da2c6a82d77e6be39",
+      "reason": "vid-157 sheets review: a sheet program carries its edge (document or union), and poses are keyed by node key (the paper heron's by 'heron'), so each solved still's inputs text changes; images unchanged",
       "accepted": "2026-10-03",
-      "acceptedOver": "88ba41d2",
+      "acceptedOver": "ce669f0a",
       "adapter": "apple metal-3"
     },
     "solved/paper-heron": {
       "file": "solved/paper-heron.png",
       "output": "e1a527af83dafb333807a02864dfbeef5abc25c8d3472d4af45f2698fe21cc91",
-      "inputs": "3de4e8da79cc9c142ec3831cd0808be14b81f26964f16421214dfbceb5c8de45",
-      "reason": "vid-157 sheets: a solved still's inputs are every sheet's program, the composite's steps and its poses; paper-heron: a heron whose body lies on the scene's grained paper and whose wing and wing tip are nested cut-outs of warm and cool papers, turned 0.25 rad and grown 1.15 about its middle",
+      "inputs": "eae8017efcad699a90fef8988d53c1b0f64c07f4362611b95ba9790807908d1f",
+      "reason": "vid-157 sheets review: a sheet program carries its edge (document or union), and poses are keyed by node key (the paper heron's by 'heron'), so each solved still's inputs text changes; images unchanged",
       "accepted": "2026-10-03",
-      "acceptedOver": "88ba41d2",
+      "acceptedOver": "ce669f0a",
       "adapter": "apple metal-3"
     },
     "solved/wet-contact": {
       "file": "solved/wet-contact.png",
       "output": "1757cfbd705b4cbbe3a942a00a517621b1e0dff08617dcf746cc80a9acf6fecd",
-      "inputs": "d882709693ce4b54a71ec74c1ca40593c125c77204d3f263bb7e1756d38a582d",
-      "reason": "vid-157 sheets: a solved still's inputs are every sheet's program, the composite's steps and its poses; paper-heron: a heron whose body lies on the scene's grained paper and whose wing and wing tip are nested cut-outs of warm and cool papers, turned 0.25 rad and grown 1.15 about its middle",
+      "inputs": "44204d960c19aaf02397b652a06ef92a5641dc4b539cd0ec62e01a70c97b3b19",
+      "reason": "vid-157 sheets review: a sheet program carries its edge (document or union), and poses are keyed by node key (the paper heron's by 'heron'), so each solved still's inputs text changes; images unchanged",
       "accepted": "2026-10-03",
-      "acceptedOver": "88ba41d2",
+      "acceptedOver": "ce669f0a",
       "adapter": "apple metal-3"
     }
   }

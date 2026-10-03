@@ -2,8 +2,8 @@
 // the solve's last key, each cropped to where it was painted; and what reads them: a composite of sheets
 // (stamp-sheet-composite.ts), and a film's texels read back.
 //
-// A kept film can be given up to the cache's budget like any other: reading one that's gone is refused by its key,
-// and solving the sheet again keeps it anew.
+// A kept film can be given up to the cache's budget like any other unless a reader holds it: reading one that's gone
+// is refused by its key, and solving the sheet again keeps it anew.
 
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import { copyStampLayerForReadback, readStampLayerCopy, type StampLayerReadback } from './stamp-layer-readback.ts';
@@ -41,8 +41,30 @@ export function keepStampSheetFilms(owner: StampPaintGpuOwner, encoder: GPUComma
   });
 }
 
-/** Whether every one of `films` painted somewhere is still kept on `owner`'s device. */
-export const stampSheetFilmsHeld = (owner: StampPaintGpuOwner, films: readonly StampSheetFilmKept[]) => films.every(({ key, box }) => !box || stampSheetFilmStore(owner).has(key));
+/** The `films` films kept under `key` (keepStampSheetFilms'), or null unless every one still is. */
+export function keptStampSheetFilms(owner: StampPaintGpuOwner, key: string, films: number): StampSheetFilmKept[] | null {
+  const store = stampSheetFilmStore(owner), kept = Array.from({ length: films }, (_, f) => ({ key: `${key}|film${f}`, note: store.peek(`${key}|film${f}`) }));
+  return kept.every(({ note }) => note) ? kept.map(({ key: filmKey, note }) => ({ key: filmKey, box: note!.box })) : null;
+}
+
+/**
+ * Keeps `films` from the cache's eviction until the returned release runs: a reader holds a solve's films from the
+ * solve's end until it has encoded what reads them, as other solves may make entries meanwhile. Throws for a film
+ * already given up.
+ */
+export function holdStampSheetFilms(owner: StampPaintGpuOwner, films: readonly StampSheetFilmKept[]): () => void {
+  const store = stampSheetFilmStore(owner), releases: (() => void)[] = [];
+  const release = () => releases.splice(0).forEach((each) => each());
+  for (const { key } of films) {
+    const held = store.hold(key);
+    if (!held) {
+      release();
+      throw new Error(`stamp sheet: film ${key} was given up before it was held (its cache's budget is smaller than one solve's films)`);
+    }
+    releases.push(held);
+  }
+  return release;
+}
 
 /** `film`'s texture as kept, used by `encoder`; null for a film painted nowhere. Throws once the cache gave it up. */
 export function keptStampSheetFilm(owner: StampPaintGpuOwner, film: StampSheetFilmKept, encoder: GPUCommandEncoder): GPUTexture | null {

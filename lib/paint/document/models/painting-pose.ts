@@ -3,7 +3,7 @@
 // puts it, scaled and turned, keeping where it was placed (its noise's seed); an area maps as its outline. Fields
 // aren't mapped: a posed deposit, area and prewet carry the map back to rest (StampRestMap), where the solver reads
 // fields, ragged noise and a flood's local scale. Anchored clips, reserves and resists stay. An entry's `pose`, its
-// map's canonical text, is in its state key.
+// map's text, is in its state key.
 //
 // Negative space: similarities only. Pins and skin map marks by meshes, which come with the shot's rigs.
 import { stampFrozenMarks, type FrozenStampMarks } from '#lib/paint/brush/models/stamp-placement.ts';
@@ -16,30 +16,32 @@ import type { CompiledStampBrushedMask } from '#lib/paint/painting/models/stamp-
 import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import type { CompiledStampDeposit, CompiledStampMask } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampEdge, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import type { StampRestMap } from '#lib/paint/painting/models/stamp-rest-map.ts';
+import type { StampRestMap, StampSheetPlace } from '#lib/paint/painting/models/stamp-rest-map.ts';
 import type { StampSheetEntry, StampSheetPrewet, StampSheetProgram } from '#lib/paint/painting/models/stamp-sheet-program.ts';
 import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
+import type { NodeKey } from './painting-document.ts';
+import type { PaintingTree } from './painting-tree.ts';
 
-/** Each node's map by its ordinal in `PaintingTree.nodes`, in its parent's frame; a node left out stands at rest. */
-export type PaintingPoses = ReadonlyMap<number, PaintSimilarity>;
+/** Each posed node's map by its key, in its parent's frame; a node left out stands at rest. */
+export type PaintingPoses = ReadonlyMap<NodeKey, PaintSimilarity>;
 
-/** The canonical text of `map`, as an entry's `pose` holds it. */
-export const paintingPoseText = (map: PaintSimilarity) => stampCanonicalJson(map);
+/** An entry's `pose` at rest: the canonical text of the identity, as an entry's `pose` holds its map's. */
+export const PAINTING_REST_POSE = stampCanonicalJson(PAINT_SIMILARITY_IDENTITY);
 
-/** An entry's `pose` at rest. */
-export const PAINTING_REST_POSE = paintingPoseText(PAINT_SIMILARITY_IDENTITY);
+/** The map `chain` (ordinals in `tree.nodes`, outermost first) poses by under `poses`. */
+export const paintingChainMap = (tree: PaintingTree, chain: readonly number[], poses: PaintingPoses): PaintSimilarity =>
+  chain.reduce((map, node) => paintSimilarityAfter(map, poses.get(tree.nodes[node].node.key) ?? PAINT_SIMILARITY_IDENTITY), PAINT_SIMILARITY_IDENTITY);
 
-/** The map `chain` (node ordinals, outermost first) poses its marks by. */
-export const paintingChainMap = (chain: readonly number[], poses: PaintingPoses): PaintSimilarity =>
-  chain.reduce((map, node) => paintSimilarityAfter(map, poses.get(node) ?? PAINT_SIMILARITY_IDENTITY), PAINT_SIMILARITY_IDENTITY);
+const wordsOf = ({ ma, mb, kx, ky }: PaintSimilarity) => [ma, mb, kx, ky] as const;
+
+/** `map` as a pass reads a placed sheet's: its words, and its inverse's, back to where the sheet was painted. */
+export const paintingSheetPlace = (map: PaintSimilarity): StampSheetPlace => ({ laid: wordsOf(map), rest: wordsOf(paintSimilarityInverse(map)) });
 
 /** A pose's map, as the marks it moves read it: the map, how it scales and turns, and its words back to rest. */
 type PaintingMap = { readonly map: PaintSimilarity; readonly scale: number; readonly turn: number; readonly rest: StampRestMap; readonly tag: string };
 
-function paintingMapOf(map: PaintSimilarity, text: string): PaintingMap {
-  const back = paintSimilarityInverse(map);
-  return { map, scale: paintSimilarityScale(map), turn: Math.atan2(map.mb, map.ma), rest: [back.ma, back.mb, back.kx, back.ky], tag: `posed${text}` };
-}
+const paintingMapOf = (map: PaintSimilarity, text: string): PaintingMap =>
+  ({ map, scale: paintSimilarityScale(map), turn: Math.atan2(map.mb, map.ma), rest: paintingSheetPlace(map).rest, tag: `posed${text}` });
 
 const mappedPoint = <P extends StampPoint>(point: P, { map }: PaintingMap): P => ({ ...point, ...paintSimilarityApply(map, point) });
 
@@ -115,11 +117,12 @@ export const PAINTING_POSES_KEPT = 64;
 const posesKept = new WeakMap<StampSheetProgram, Map<string, StampSheetProgram>>();
 
 /**
- * `program` with each entry posed by its chain's map in `poses`, each wash's prewet by its first entry's. Kept by its
- * maps (PAINTING_POSES_KEPT a program): a pose met again is the one made before, counted into `costs` as a pose hit.
+ * `program` (compiled from `tree`) with each entry posed by its chain's map in `poses`, each wash's prewet by its first
+ * entry's. Kept by its maps (PAINTING_POSES_KEPT a program), a pose met again counted as a pose hit. Kept per program
+ * object, so poses are met again only through one compile (compilePaintingSelection's memo).
  */
-export function paintingSheetPosed(program: StampSheetProgram, poses: PaintingPoses, costs?: StampPaintCostTally): StampSheetProgram {
-  const maps = program.entries.map((entry) => paintingChainMap(entry.chain, poses)), texts = maps.map(paintingPoseText);
+export function paintingSheetPosed(tree: PaintingTree, program: StampSheetProgram, poses: PaintingPoses, costs?: StampPaintCostTally): StampSheetProgram {
+  const maps = program.entries.map((entry) => paintingChainMap(tree, entry.chain, poses)), texts = maps.map((map) => stampCanonicalJson(map));
   if (texts.every((text) => text === PAINTING_REST_POSE)) return program;
   let kept = posesKept.get(program);
   if (!kept) posesKept.set(program, (kept = new Map<string, StampSheetProgram>()));

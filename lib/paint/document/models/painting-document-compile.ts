@@ -85,22 +85,29 @@ function compilePaintingSheet(evaluation: PaintingEvaluation, order: PaintingShe
     };
   });
   return {
-    name: `${evaluation.source}, ${paintingSheetName(order.sheet)}`, width: paintingDocument.widthPx, height: paintingDocument.heightPx, paper: order.sheet.paper, water: PAINT_MEDIA[order.sheet.water],
+    name: `${evaluation.source}, ${paintingSheetName(order.sheet)}`, width: paintingDocument.widthPx, height: paintingDocument.heightPx, paper: order.sheet.paper, edge: order.sheet.edge, water: PAINT_MEDIA[order.sheet.water],
     films, washes, entries, head: stampCanonicalJson(paintingSheetHead(paintingDocument, order)),
   };
 }
 
 /**
  * One sheet a selection paints: its record, the layers on it the selection holds (ordinals in `PaintingTree.layers`,
- * back to front, film f being the f-th), and its program at rest.
+ * back to front, film f being the f-th), the nodes moving it whole (PaintingSheetOrder's `ownerChain`), and its
+ * program at rest.
  */
-export type PaintingSheetCompiled = { readonly sheet: PaintingSheet; readonly layers: readonly number[]; readonly program: StampSheetProgram };
+export type PaintingSheetCompiled = {
+  readonly sheet: PaintingSheet; readonly layers: readonly number[]; readonly ownerChain: readonly number[]; readonly program: StampSheetProgram;
+};
 
 /**
- * What a selection paints: the root's sheet first, its paper the ground whether or not the selection holds a layer on
- * it, then each own sheet it holds a layer of, in document order; and its composite's steps.
+ * What a selection paints: the tree it was compiled from, which its chains' ordinals index; the root's sheet first,
+ * its paper the ground whether or not the selection holds a layer on it, then each own sheet it holds a layer of, in
+ * document order; and its composite's steps.
  */
-export type PaintingSelectionCompiled = { readonly sheets: readonly PaintingSheetCompiled[]; readonly steps: readonly StampSheetCompositeStep[] };
+export type PaintingSelectionCompiled = { readonly tree: PaintingTree; readonly sheets: readonly PaintingSheetCompiled[]; readonly steps: readonly StampSheetCompositeStep[] };
+
+/** What a selection's compile is told: `layers`, the layers and groups selected (all when left out). */
+export type PaintingSelectionCompileOptions = { readonly layers?: readonly NodeKey[] };
 
 /**
  * The layers `keys` name (layers, and every layer under a group), as ordinals in `tree.layers`; every layer when
@@ -122,12 +129,12 @@ export function paintingSelectedLayers(tree: PaintingTree, keys?: readonly NodeK
 const compiledSelections = new WeakMap<PaintingEvaluation, WeakMap<PaintingBrushOf, Map<string, PaintingSelectionCompiled>>>();
 
 /**
- * The layers of `evaluation` that `keys` select (all when left out), each sheet they lie on compiled to its program
- * at rest, brushes by `brushOf`. An own sheet's card comes where its owner does, before anything under it, a nested
- * sheet's inside its parent's run; each film where its layer does. Memoised per selection.
+ * The selected layers of `evaluation`, each sheet they lie on compiled at rest. A film comes where its layer does in
+ * document order; a card where its owner does, before every node under it, so a nested sheet lies on its parent's
+ * card and a scene layer under the owner glazes over it. Memoised per `brushOf`.
  */
-export function compilePaintingSelection(evaluation: PaintingEvaluation, brushOf: PaintingBrushOf, keys?: readonly NodeKey[]): PaintingSelectionCompiled {
-  const selected = paintingSelectedLayers(evaluation.tree, keys), key = [...selected].toSorted((a, b) => a - b).join(',');
+export function compilePaintingSelection(evaluation: PaintingEvaluation, brushOf: PaintingBrushOf, { layers }: PaintingSelectionCompileOptions = {}): PaintingSelectionCompiled {
+  const selected = paintingSelectedLayers(evaluation.tree, layers), key = [...selected].toSorted((a, b) => a - b).join(',');
   let byBrushes = compiledSelections.get(evaluation);
   if (!byBrushes) compiledSelections.set(evaluation, (byBrushes = new WeakMap<PaintingBrushOf, Map<string, PaintingSelectionCompiled>>()));
   let bySelection = byBrushes.get(brushOf);
@@ -143,7 +150,7 @@ function compileSelectedLayers(evaluation: PaintingEvaluation, brushOf: Painting
   const { tree } = evaluation;
   const sheets = paintingSheetOrders(tree, selected).flatMap((order, s): PaintingSheetCompiled[] => (s > 0 && order.layers.length === 0
     ? []
-    : [{ sheet: order.sheet, layers: order.layers.map(({ layer }) => layer), program: compilePaintingSheet(evaluation, order, brushOf) }]));
+    : [{ sheet: order.sheet, layers: order.layers.map(({ layer }) => layer), ownerChain: order.ownerChain, program: compilePaintingSheet(evaluation, order, brushOf) }]));
   const steps = tree.nodes.flatMap((place): StampSheetCompositeStep[] => {
     const sheet = sheets.findIndex((compiled) => compiled.sheet === place.sheet);
     if (sheet < 0) return [];
@@ -152,5 +159,5 @@ function compileSelectedLayers(evaluation: PaintingEvaluation, brushOf: Painting
     if (film >= 0) placed.push({ kind: 'film', sheet, film });
     return placed;
   });
-  return { sheets, steps };
+  return { tree, sheets, steps };
 }

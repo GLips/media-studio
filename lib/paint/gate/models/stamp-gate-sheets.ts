@@ -3,6 +3,7 @@
 // appended application, a posed group or a separate sheet may change, and the reductions to exact integer totals.
 // Three are accepted by eye (STAMP_GATE_SOLVED_IDS). Every brush a gate document names is the gate's round.
 
+import type { PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import meadow from '#lib/paint/document/models/meadow.painting.ts';
 import { compilePaintingSelection, type PaintingSelectionCompiled } from '#lib/paint/document/models/painting-document-compile.ts';
 import { paintingSheetPosed, type PaintingPoses } from '#lib/paint/document/models/painting-pose.ts';
@@ -155,9 +156,9 @@ export const STAMP_GATE_HERON_POSE = { ma: 1, mb: 0, kx: 24, ky: -6 } as const;
 export const STAMP_GATE_HERON_AWAY = { ma: 1, mb: 0, kx: 0, ky: -70 } as const;
 
 /** The wet-contact sheet's program with its heron posed by `pose`, as the shot poses a group (painting-pose.ts). */
-export function stampGateHeronPosed(pose: typeof STAMP_GATE_HERON_POSE | typeof STAMP_GATE_HERON_AWAY): StampSheetProgram {
-  const heron = painting(STAMP_GATE_WET_CONTACT).tree.nodes.findIndex(({ node }) => node.key === 'heron');
-  return paintingSheetPosed(stampGateSheetProgram(STAMP_GATE_WET_CONTACT), new Map([[heron, pose]]));
+export function stampGateHeronPosed(pose: PaintSimilarity): StampSheetProgram {
+  const evaluation = painting(STAMP_GATE_WET_CONTACT), { program } = compilePaintingSelection(evaluation, stampGateSheetBrushOf).sheets[0];
+  return paintingSheetPosed(evaluation.tree, program, new Map([['heron', pose]]));
 }
 /** Where the foot's charge touches at rest, document px; and a stretch of the shallows far from it. */
 export const STAMP_GATE_FOOT_BOX = { x: 64, y: 74, w: 34, h: 24 } as const;

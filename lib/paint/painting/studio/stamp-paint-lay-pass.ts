@@ -7,9 +7,9 @@
 import { gpuUniformLayout, gpuUniformStruct, gpuUniformWriter, type GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { GPU_FULL_FRAME_WGSL, GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
-import { stampPlacementInverseWords, type StampGroupPlacement } from '../models/stamp-group-motion.ts';
 import { STAMP_OPAQUE_COVER } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampPaintPaper } from '../models/stamp-paint-recipe-types.ts';
+import { STAMP_REST_POINT_WGSL, type StampRestMap } from '../models/stamp-rest-map.ts';
 import { stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 import { stampPaintTargetWgsl, type StampPaintCompositor } from './stamp-paint-compositor.ts';
 import { dispatchStampCompute, STAMP_WORKGROUP, type StampPaintDevice, type StampPaintImage } from './stamp-paint-gpu.ts';
@@ -165,18 +165,17 @@ fn unionAt(t: vec2i) -> f32 {
   layCard(pixel, paperColor(image, photographSampler, u.paper, at), cover);
 }`;
 
-const STAMP_LAY_PLACE = gpuUniformLayout('Place', [['undo', 'vec4f'], ['extent', 'vec2u']]);
-// Each stage texel's rest point under a placement: where the paint laid there was painted, by the map undoing it.
+const STAMP_LAY_PLACE = gpuUniformLayout('Place', [['rest', 'vec4f'], ['extent', 'vec2u']]);
+// Each stage texel's rest point under a placed sheet's rest map: where the paint laid there was painted.
 const placeRestWgsl = (stage: StampStage) => /* wgsl */ `
 ${stampStageWgsl(stage)}
+${STAMP_REST_POINT_WGSL}
 ${STAMP_LAY_PLACE.wgsl}
 @group(0) @binding(0) var<uniform> u: Place;
 @group(0) @binding(1) var rest: texture_storage_2d<rg32float, write>;
 @compute @workgroup_size(${STAMP_WORKGROUP}, ${STAMP_WORKGROUP}) fn place(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
-  let p = stagePoint(vec2i(id.xy));
-  let m = u.undo;
-  textureStore(rest, id.xy, vec4f(m.x * p.x - m.y * p.y + m.z, m.y * p.x + m.x * p.y + m.w, 0.0, 1.0));
+  textureStore(rest, id.xy, vec4f(restPoint(u.rest, stagePoint(vec2i(id.xy))), 0.0, 1.0));
 }`;
 
 /**
@@ -287,13 +286,13 @@ export function createStampPaintLay(device: StampPaintDevice, arena: StampUnifor
         photograph?.view ?? blank, lay.painting, sampler, lay.edge, lay.rest ?? blank,
       ], box.w, box.h);
     },
-    /** Writes into `rest` (rg32float, the stage's size) each stage texel's rest point under `placement`, about the origin. */
-    drawPlacedRest(encoder: GPUCommandEncoder, rest: GPUTextureView, placement: StampGroupPlacement) {
+    /** Writes into `rest` (rg32float, the stage's size) each stage texel's rest point under `map`. */
+    drawPlacedRest(encoder: GPUCommandEncoder, rest: GPUTextureView, map: StampRestMap) {
       placeRest ??= compute(placeRestWgsl(stage));
       dispatchStampCompute(device, encoder, placeRest, [
         arena.slot((views) => {
           const put = gpuUniformWriter(STAMP_LAY_PLACE, views);
-          put('undo', stampPlacementInverseWords(placement));
+          put('rest', map);
           put('extent', [stage.width, stage.height]);
         }),
         rest,

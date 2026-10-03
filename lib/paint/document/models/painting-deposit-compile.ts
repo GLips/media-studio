@@ -25,7 +25,11 @@ import { StampSheetRefusal } from '#lib/paint/painting/models/stamp-sheet-refusa
 import { compilePaintingArea, paintingOuterRings, paintingRegionRings } from './painting-area-compile.ts';
 import type { AnyApplication, Amount, BrushRef, Charge, FillGeometry, Footprint, MarkFootprint, Mix, MixPart, Resist, Subpath } from './painting-document.ts';
 
-/** The brush a document's ref names, resolved from its style; throws for one it lacks. */
+/**
+ * The brush a document's ref names, resolved from its style; throws for one it lacks. Compiles are kept by its
+ * identity (compilePaintingSelection), and poses by the programs they make: hold one for an evaluation's life, or
+ * every call compiles and poses anew.
+ */
 export type PaintingBrushOf = (ref: BrushRef) => StampBrush;
 
 /** A part's pigment: a hex is a colour standing for a pigment of its own, fitted as its medium fits a colour. */

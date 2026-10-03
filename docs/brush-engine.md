@@ -147,19 +147,23 @@ key (`stamp-sheet-films.ts`), which a still lays as the renderer lays a painting
 before it reads them. A solve holds the device's FIFO lease (`stamp-solve-lease.ts`) from its first encode to its
 last readback, never holds an encoder across an await, and counts into a `StampPaintCostTally` when given one (its
 solve, decisions made and reused, readbacks, warnings). The renderer and the solver read a layered target back through
-`stamp-layer-readback.ts`. A solve ending where a kept one did, its films still held, is that solve: a pose met again
-solves nothing. It solves any sheet, unclocked; the gate's `schedule/` and `sheet/` cases hold it to the wet laws'
-closed forms. `stamp-sheet-composite.ts` lays a selection's solved sheets as one picture (ENGINE 5.4): the root's
-paper as the ground, then each film in document order, an own sheet's card (its paper, wherever the union of its films'
-coverage reaches half, by `STAMP_OPAQUE_COVER`) before anything under its owner. Each sheet lays with its own
-compositor and lay, so one device holds several papers; a sheet its owner's chain poses lays through a rest texture,
-films and edge sampled at the rest point (`drawPlacedRest`), so its grain moves with it. The edge is the films' union,
-cached under their keys (producer `edge`). `stamp-film-readback.ts` reads a solved film back for a rig and its tools
-(ENGINE 5.1): its coverage, document-sized, or its picture, premultiplied linear, laid clear or on its sheet's paper
-and edge (the root's paper over the document, an own sheet's card over its union). A clear picture is laid over white
-and over black and read as the two-point reading against each backing's light, so laid back over any ground it shows
-as it did on paper. Each readback is kept per device under its film's key and backing, `STAMP_FILM_READBACK_BYTES` in
-all, the least recently read given up first.
+`stamp-layer-readback.ts`. A solve whose every decision is remembered and whose films are still kept under its last
+key is that solve (`keptStampSheetFilms`): a pose met again solves nothing. Whoever draws or reads films holds them
+(`holdStampSheetFilms`) until it's done, so another solve making room in the cache can't give them up. It solves any
+sheet, unclocked; the gate's `schedule/` and `sheet/` cases hold it to the wet laws' closed forms.
+`stamp-sheet-composite.ts` lays a selection's solved sheets as one picture (ENGINE 5.4): the root's paper as the
+ground, then each film where its layer comes in document order, and an own sheet's card (its paper, wherever the union
+of its films' coverage reaches half, by `STAMP_OPAQUE_COVER`) where its owner comes, before every node under it, so a
+nested sheet lies on its parent's card and a scene layer under the owner glazes over the card. Each sheet lays with its
+own compositor and lay, so one device holds several papers; a sheet its owner's chain poses lays through a rest
+texture, films and edge sampled at the rest point (`drawPlacedRest`, by the map's words and its inverse's,
+`StampSheetPlace`), so its grain moves with it. The edge is the films' union, cached under their keys (producer
+`edge`). `stamp-film-readback.ts` reads a solved film back for a rig and its tools (ENGINE 5.1): its coverage,
+document-sized, or its picture, premultiplied linear, laid clear or on its sheet's paper and edge (the root's paper
+over the document, an own sheet's card over its union, as its program's `edge` says). A clear picture is laid over
+white and over black and read as the two-point reading against each backing's light, so laid back over any ground it
+shows as it did on paper. Each readback is kept per device under its film's key and backing,
+`STAMP_FILM_READBACK_BYTES` in all, the least recently read given up first, counted as film readback hits and misses.
 
 **Capabilities.** A `PaintMedium` declares what it can do besides lay paint (`PaintCapability`): `'wet-history'`,
 `'wet-conditions'`, `'water'`, `'lift'`, `'burnish'`. Watercolour and gouache declare the first four; crayon `lift`
@@ -395,14 +399,15 @@ evaluation diff (`painting-evaluation-diff.ts`) and the solver read. The checks 
 `painting-document-compile.ts` compiles a selection of an evaluation's layers to one solver program per sheet they
 lie on, each application through `painting-deposit-compile.ts` and `painting-area-compile.ts`, and the composite's
 steps, each selection compiled once per evaluation and brushes; `painting-pose.ts` poses a program before it's solved,
-each pose kept per program; `studio/painting-sheets-solve.ts` solves a selection's sheets and places each own sheet by
-its owner's chain; `studio/painting-film-readback.ts` reads a selected layer's finished film back, its coverage
-(`stampFilmCoverage`) or its picture (`stampFilmPicture`); `engine/painting-still.ts` resolves its
+each pose kept per program; `studio/painting-sheets-solve.ts` solves a selection's sheets, holding their films until
+its caller releases them, and places each own sheet by its owner chain's map; `studio/painting-film-readback.ts` reads
+a selected layer's finished film back (a `LayerSelection`, `painting-selection.ts`), its coverage
+(`paintingFilmCoverage`) or its picture (`paintingFilmPicture`); `engine/painting-still.ts` resolves its
 brushes and papers from `work/styles/` and has `studio/painting-still-page.ts` solve and lay it, for `studio paint
 still` and `studio paint check --solve`.
 
-**shot** is what a scene puts on screen from evaluations: `layersOf` selects an evaluation's layers and groups on a
-plane, `bracket` and `dissolve` blend two, `paintedSourceShares` weighs the selections a dissolve blends (linear in
+**shot** is what a scene puts on screen from evaluations: a plane shows a `LayerSelection` (`layersOf`, the
+document's, as a film readback reads one), `bracket` and `dissolve` blend two, `paintedSourceShares` weighs the selections a dissolve blends (linear in
 each form a plane's picture takes, so one weighted sum), and `paintedSourceProblems` is what a shot's load refuses in
 a plane's selection, an own sheet split among them (`shot-selection.ts`); and `PaintedShotProps` (`shot-props.ts`)
 is the shot itself, its planes, motion, rigs and camera in the engine's shapes. A drawable is named by plane id or

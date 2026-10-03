@@ -6,7 +6,7 @@ import { lensSigmaStepped } from '#lib/picture/lens/models/lens-focus.ts';
 import { shotDrawSteps, shotInstanceProblems, shotInstanceTravel, shotInstancedPlaneProblems } from './shot-instances.ts';
 import { shotDrawableOrder } from './shot-plan.ts';
 import type { InstancedPlaneProps, PlaneInstance, PlaneProps } from './shot-props.ts';
-import { layersOf } from './shot-selection.ts';
+import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
 
 /** One drop of rain. */
 const drops = painting({

@@ -3,8 +3,9 @@
 // (stamp-paint-gpu-owner.ts) holds it, so every painting and output on the device shares the budget; each renderer keeps
 // its entries in stores of its own, given up when it's disposed.
 //
-// An entry the frame being encoded uses is never given up: destroying a texture an unsubmitted encoder reads is an
-// error. Past the budget the least recently used of the rest go; a frame's own needs may overrun it meanwhile.
+// An entry the frame being encoded uses, or one a reader holds, is never given up: destroying a texture an unsubmitted
+// encoder reads is an error. Past the budget the least recently used of the rest go; a frame's own needs may overrun
+// it meanwhile.
 
 import type { StampPaintDevice } from './stamp-paint-gpu.ts';
 
@@ -24,10 +25,12 @@ export type StampGpuCacheEntry<Note> = { readonly textures: readonly GPUTexture[
 export type StampGpuCacheStore<Note> = {
   /** The entry under `key`, as used by `encoder`'s frame; null for none. */
   find: (key: string, encoder: GPUCommandEncoder) => StampGpuCacheEntry<Note> | null;
-  /** Whether an entry is held under `key`, using none: what a frame encoded later finds unless the budget gives it up. */
-  has: (key: string) => boolean;
   /** A new entry under `key`, used by `encoder`'s frame: textures made as `textures` says, for the caller to fill. */
   make: (key: string, encoder: GPUCommandEncoder, textures: readonly StampGpuCacheTexture[], note: Note) => StampGpuCacheEntry<Note>;
+  /** The note of the entry under `key`, without using it; null for none. */
+  peek: (key: string) => Note | null;
+  /** Keeps the entry under `key` from being given up until the returned release runs; null for no entry. */
+  hold: (key: string) => (() => void) | null;
   /** Gives up every entry, once the frames that read them are submitted. */
   dispose: () => void;
 };
@@ -44,7 +47,7 @@ export type StampPaintGpuCache = {
  * An entry as its store holds it. Its store's map is the one place it lives, note and all, so `forget` takes all of
  * it at once; eviction reaches it through the cache's set of stores.
  */
-type StampGpuCacheHeld = { textures: GPUTexture[]; bytes: number; used: number; encoder: GPUCommandEncoder; forget: () => void };
+type StampGpuCacheHeld = { textures: GPUTexture[]; bytes: number; used: number; encoder: GPUCommandEncoder; holds: number; forget: () => void };
 
 const TEXEL_BYTES: Partial<Record<GPUTextureFormat, number>> = { r8unorm: 1, r16float: 2, rg16float: 4, rgba8unorm: 4, rgba16float: 8, r32float: 4, rgba32float: 16 };
 
@@ -64,10 +67,10 @@ function forgetStampGpuCacheStore(store: ReadonlyMap<string, StampGpuCacheHeld>)
 export function stampPaintGpuCache(device: StampPaintDevice): StampPaintGpuCache {
   const stores = new Set<ReadonlyMap<string, StampGpuCacheHeld>>();
   let heldBytes = 0, clock = 0;
-  /** Gives up the least recently used entries `encoder`'s frame doesn't use until `more` bytes fit, or none is left. */
+  /** Gives up the least recently used entries `encoder`'s frame doesn't use and no reader holds until `more` bytes fit, or none is left. */
   const room = (more: number, encoder: GPUCommandEncoder) => {
     const givable: StampGpuCacheHeld[] = [];
-    for (const store of stores) for (const entry of store.values()) if (entry.encoder !== encoder) givable.push(entry);
+    for (const store of stores) for (const entry of store.values()) if (entry.encoder !== encoder && entry.holds === 0) givable.push(entry);
     for (const entry of givable.toSorted((a, b) => a.used - b.used)) {
       if (heldBytes + more <= STAMP_GPU_CACHE_BUDGET) return;
       entry.forget();
@@ -86,7 +89,6 @@ export function stampPaintGpuCache(device: StampPaintDevice): StampPaintGpuCache
           found.encoder = encoder;
           return { textures: found.textures, note: found.note };
         },
-        has: (key) => held.has(key),
         make: (key, encoder, textures, note) => {
           held.get(key)?.forget();
           const bytes = textures.reduce((sum, texture) => sum + textureBytes(texture), 0);
@@ -97,9 +99,18 @@ export function stampPaintGpuCache(device: StampPaintDevice): StampPaintGpuCache
             heldBytes -= bytes;
             for (const texture of made) texture.destroy();
           };
-          held.set(key, { textures: made, bytes, used: ++clock, encoder, note, forget });
+          held.set(key, { textures: made, bytes, used: ++clock, encoder, holds: 0, note, forget });
           heldBytes += bytes;
           return { textures: made, note };
+        },
+        peek: (key) => held.get(key)?.note ?? null,
+        hold: (key) => {
+          const found = held.get(key);
+          if (!found) return null;
+          found.holds++;
+          return () => {
+            found.holds--;
+          };
         },
         dispose: () => {
           forgetStampGpuCacheStore(held);

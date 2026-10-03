@@ -3,10 +3,11 @@
 // it, a feather left on it. Posed before painting, the body's paint is repainted on still paper; the wing's sheets
 // move whole, paper and all. What the case measures of its frames is here, pure: where each part's paper went.
 
+import { paintSimilarityOf, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import meadow from '#lib/paint/document/models/meadow.painting.ts';
 import type { BrushRef, Hex, Mix, Paper, PaintingDocument, Region } from '#lib/paint/document/models/painting-document.ts';
 import type { PaintingPoses } from '#lib/paint/document/models/painting-pose.ts';
-import { painting, type PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
+import type { PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 
 const PAPER_HERON = { width: 200, height: 140 } as const;
@@ -63,23 +64,11 @@ export const STAMP_GATE_PAPER_HERON: PaintingSourceModule = {
 /** The heron moved between the case's two frames, document px (ENGINE test 6). */
 export const STAMP_GATE_HERON_MOVE = { x: 17, y: 9 } as const;
 
-/** A similarity turning by `turn` and scaling by `scale` about `centre`, as the pose maps compose (paint-similarity.ts). */
-const turnedAbout = (turn: number, scale: number, centre: { x: number; y: number }) => {
-  const ma = scale * Math.cos(turn), mb = scale * Math.sin(turn);
-  return { ma, mb, kx: centre.x - (ma * centre.x - mb * centre.y), ky: centre.y - (mb * centre.x + ma * centre.y) };
-};
-
 /** The heron turned and grown about its middle: what its similarity check and its solved still pose it by. */
-export const STAMP_GATE_HERON_TURNED = turnedAbout(0.25, 1.15, { x: 104, y: 56 });
-
-/** `pose`'s image of `p`. */
-export const stampGatePosedPoint = ({ ma, mb, kx, ky }: typeof STAMP_GATE_HERON_TURNED, p: { x: number; y: number }) => ({ x: ma * p.x - mb * p.y + kx, y: mb * p.x + ma * p.y + ky });
+export const STAMP_GATE_HERON_TURNED = paintSimilarityOf({ x: 0, y: 0, rotation: 0.25, scale: 1.15 }, { x: 104, y: 56 });
 
 /** The paper heron's poses with its `heron` group posed by `pose`: its body's marks and its wing's sheets all follow. */
-export function stampGatePaperHeronPoses(pose: typeof STAMP_GATE_HERON_TURNED): PaintingPoses {
-  const heron = painting(STAMP_GATE_PAPER_HERON).tree.nodes.findIndex(({ node }) => node.key === 'heron');
-  return new Map([[heron, pose]]);
-}
+export const stampGatePaperHeronPoses = (pose: PaintSimilarity): PaintingPoses => new Map([['heron', pose]]);
 
 /** The heron moved by STAMP_GATE_HERON_MOVE. */
 export const stampGatePaperHeronMoved = () => stampGatePaperHeronPoses({ ma: 1, mb: 0, kx: STAMP_GATE_HERON_MOVE.x, ky: STAMP_GATE_HERON_MOVE.y });

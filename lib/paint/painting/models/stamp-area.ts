@@ -10,7 +10,7 @@
 import { compileStampBoundaries, STAMP_BOUNDARY_WGSL, stampBoundariesReach, stampBoundaryShift, type CompiledStampBoundary, type StampBoundaries } from './stamp-area-boundaries.ts';
 import { seededRandom } from '#lib/picture/motion/models/random.ts';
 import type { CompiledStampMask } from './stamp-paint-recipe-compile.ts';
-import { STAMP_REST_IDENTITY, stampRestPoint, type StampRestMap } from './stamp-rest-map.ts';
+import { STAMP_REST_IDENTITY, stampSimilarityPoint, type StampRestMap } from './stamp-rest-map.ts';
 import { checkedStampPolygon, STAMP_RINGED_COUNT, stampEdgeReach, stampEdgeWidth, stampPolygonBox, stampPolygonDistance, stampRingsDistance, type StampBox, type StampEdge, type StampPoint, type StampRegion } from './stamp-region.ts';
 
 /**
@@ -99,7 +99,7 @@ export function stampEdgeCoverage(sd: number, width: number): number {
 
 /** How much of (x, y) `area` covers, 0..1: twin of areaCoverageAt in STAMP_AREA_COVERAGE_WGSL. */
 export function stampAreaCoverageAt(area: CompiledStampArea, x: number, y: number): number {
-  const ragged = area.edge?.ragged, q = stampRestPoint(area.rest ?? STAMP_REST_IDENTITY, x, y);
+  const ragged = area.edge?.ragged, q = stampSimilarityPoint(area.rest ?? STAMP_REST_IDENTITY, x, y);
   const moved = ragged && ragged.scale > 0 ? ragged.amount * stampEdgeNoise(q.x / ragged.scale, q.y / ragged.scale, area.seed) : 0;
   const sd = stampAreaDistance(area, x, y);
   const { open, feather } = area.boundaries ? stampBoundaryShift(area.boundaries, sd, x, y) : { open: 0, feather: 0 };

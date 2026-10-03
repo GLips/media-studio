@@ -4,7 +4,8 @@ import type { PaintingDocument } from '#lib/paint/document/models/painting-docum
 import { painting } from '#lib/paint/document/models/painting-source.ts';
 import { shotOccurrenceKey } from './shot-occurrences.ts';
 import type { InstancedPlaneProps, PlaneProps } from './shot-props.ts';
-import { layersOf, paintedSourceNodeKeys } from './shot-selection.ts';
+import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
+import { paintedSourceNodeKeys } from './shot-selection.ts';
 import { shotIsolatedGroups, shotVisibilityProblem, shotVisibilityProblems } from './shot-visibility.ts';
 
 /** A layer of one stroke, keyed `key`. */

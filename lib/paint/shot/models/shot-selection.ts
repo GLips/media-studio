@@ -1,32 +1,13 @@
-// shot-selection.ts: what a plane of a shot shows of a painting: some of an evaluation's layers and groups, finished
-// and composed in document order, or two such blended. A selection is a description; nothing is solved until a shot
-// draws it. A shot's load holds each plane's source to what a shot can draw (paintedSourceProblems) and reports every
-// problem with its plane's, so the constructors here build without judging.
+// shot-selection.ts: what a plane of a shot shows of a painting: a selection of an evaluation's layers and groups
+// (painting-selection.ts's LayerSelection, finished and composed in document order), or two such blended. A source is
+// a description; nothing is solved until a shot draws it. A shot's load holds each plane's source to what a shot can
+// draw (paintedSourceProblems) and reports every problem with its plane's, so the constructors build without judging.
 
 import type { AnyApplication, Key, NodeKey } from '#lib/paint/document/models/painting-document.ts';
 import { paintingField, paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
-import type { PaintingEvaluation } from '#lib/paint/document/models/painting-source.ts';
+import type { LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
 import { paintingLayersUnder, paintingSheetName, type PaintingNodePlace, type PaintingTree } from '#lib/paint/document/models/painting-tree.ts';
 import { shotOccurrenceKey } from './shot-occurrences.ts';
-
-/**
- * Under a selection: the root sheet's paper, or nothing. Left out: paper on a shot's back plane, nothing nearer. Paint
- * keeps its sheet's grain either way; this decides only whether the paper itself is drawn.
- */
-export type SelectionGround = 'paper' | 'transparent';
-
-/**
- * Layers or groups of one evaluation, finished and composed in document order, in document px. The selected layers of
- * one sheet are painted as one history; layers it leaves out aren't painted into it. `at`: the scene second whose
- * scheduled prefix its clocked washes show (every application when left out). An own sheet's layers go together.
- */
-export type LayerSelection = {
-  readonly kind: 'layers';
-  readonly painting: PaintingEvaluation;
-  readonly layers: readonly NodeKey[];
-  readonly ground?: SelectionGround;
-  readonly at?: number;
-};
 
 /**
  * Two finished selections' plane pictures interpolated linearly, `k` 0..1 from a to b, in their native form: opaque
@@ -36,14 +17,6 @@ export type LayerSelection = {
 export type Dissolve = { readonly kind: 'dissolve'; readonly a: PaintedSource; readonly b: PaintedSource; readonly k: number };
 
 export type PaintedSource = LayerSelection | Dissolve;
-
-/** `layers` of `evaluation` as a plane's source, with `ground` and `at`. */
-export function layersOf(
-  evaluation: PaintingEvaluation, layers: readonly NodeKey[], options: { readonly ground?: SelectionGround; readonly at?: number } = {},
-): LayerSelection {
-  const { ground, at } = options;
-  return { kind: 'layers', painting: evaluation, layers, ...(ground && { ground }), ...(at !== undefined && { at }) };
-}
 
 /** `a` blended toward `b` by `k` 0..1, as one source. */
 export function dissolve(a: PaintedSource, b: PaintedSource, k: number): Dissolve {

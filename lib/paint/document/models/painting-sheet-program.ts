@@ -38,10 +38,15 @@ export type PaintingSheetEntry = {
  */
 export type PaintingSheetClock = { readonly kind: 'none' } | { readonly kind: 'scale'; readonly scale: number; readonly origin: number } | { readonly kind: 'instant' } | { readonly kind: 'never' };
 
-/** A sheet's order: its record, its clock, the layers on it back to front, and its entries. */
+/**
+ * A sheet's order: its record, its clock, the layers on it back to front, and its entries; `ownerChain`, the nodes
+ * whose poses move the finished sheet, paper and all (ENGINE 5.3): its owner and every group enclosing it, as node
+ * ordinals outermost first, none for the root's.
+ */
 export type PaintingSheetOrder = {
   readonly sheet: PaintingSheet;
   readonly clock: PaintingSheetClock;
+  readonly ownerChain: readonly number[];
   readonly layers: readonly PaintingSheetLayer[];
   readonly entries: readonly PaintingSheetEntry[];
 };
@@ -97,15 +102,22 @@ export function paintingSheetWashes(tree: PaintingTree, order: Pick<PaintingShee
   });
 }
 
+const nodeOrdinals = (tree: PaintingTree, keys: readonly string[]) => keys.map((key) => tree.nodes.indexOf(tree.byKey.get(key)!));
+
 /**
  * The nodes posing `place`'s marks on `sheet` before painting, as node ordinals outermost first: those below the
  * sheet's owner (below the document's top for the root's) down to the layer itself. Everything from the owner up
- * moves the finished sheet instead.
+ * moves the finished sheet instead (paintingSheetOwnerChain).
  */
 function paintingSheetChain(tree: PaintingTree, sheet: PaintingSheet, place: PaintingLayerPlace): number[] {
   if (sheet.owner === place.node.key) return [];
   const below = sheet.owner === null ? 0 : place.groups.indexOf(sheet.owner) + 1;
-  return [...place.groups.slice(below), place.node.key].map((key) => tree.nodes.indexOf(tree.byKey.get(key)!));
+  return nodeOrdinals(tree, [...place.groups.slice(below), place.node.key]);
+}
+
+/** The nodes moving `sheet` whole: its owner and every group enclosing it, node ordinals outermost first. */
+function paintingSheetOwnerChain(tree: PaintingTree, sheet: PaintingSheet): number[] {
+  return sheet.owner === null ? [] : nodeOrdinals(tree, [...tree.byKey.get(sheet.owner)!.groups, sheet.owner]);
 }
 
 /**
@@ -126,7 +138,7 @@ export function paintingSheetOrders(tree: PaintingTree, selected?: ReadonlySet<n
       });
     });
     // toSorted is stable: ties keep document order.
-    const order = { sheet, layers, entries: [...unclocked, ...clocked.toSorted((a, b) => (a.orderTime ?? 0) - (b.orderTime ?? 0))] };
+    const order = { sheet, ownerChain: paintingSheetOwnerChain(tree, sheet), layers, entries: [...unclocked, ...clocked.toSorted((a, b) => (a.orderTime ?? 0) - (b.orderTime ?? 0))] };
     const wet = paintingSheetWashes(tree, order).map(({ node }) => node).filter(isPaintingClockedWetWash);
     return { ...order, clock: paintingSheetClock(wet, Math.min(...starts)) };
   });

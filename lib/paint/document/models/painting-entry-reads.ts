@@ -21,9 +21,9 @@ export const paintingSheetHead = (paintingDocument: PaintingDocument, order: Pai
 export type PaintingEntryRead = { readonly datum: PaintingDatum; readonly owners: Readonly<Record<'layer' | 'wash' | 'application', string>> };
 
 /**
- * What each entry of `order` brings to its solve, keys left out (a `clipTo` by the clipped wash's place): its layer's
- * film at the layer's first entry, its wash's fields at the wash's first, then its application and where it stands.
- * `lastOfWash` makes an application added or dropped at a wash's end read.
+ * What each entry of `order` brings to its solve, keys left out (a `clipTo` by its wash's place): its layer's film at
+ * its first entry, its wash's fields at the wash's first, its application and where it stands. Not its chain:
+ * ordinals shift with any node added earlier, and a chain reaches the key as its pose's text.
  */
 export function paintingEntryReads(tree: PaintingTree, order: PaintingSheetOrder): PaintingEntryRead[] {
   const seen = new Set<string>();
@@ -38,7 +38,7 @@ export function paintingEntryReads(tree: PaintingTree, order: PaintingSheetOrder
       wash: firstOfWash ? { ...wash, key: undefined, clipTo, applications: undefined } : undefined,
       application: { ...application, key: undefined },
       place: {
-        layer: entry.layer, wash: entry.wash, application: entry.application, chain: entry.chain, orderTime: entry.orderTime, medium: place.medium,
+        layer: entry.layer, wash: entry.wash, application: entry.application, orderTime: entry.orderTime, medium: place.medium,
         lastOfWash: order.entries.findIndex((other, j) => j > k && other.layer === entry.layer && other.wash === entry.wash) < 0,
       },
     };

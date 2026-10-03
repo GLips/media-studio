@@ -1,12 +1,15 @@
 // stamp-sheet-composite.ts: the films of several sheets laid as one picture (ENGINE 5.4, 5.5). The root sheet's paper
 // is the ground; then, back to front, each film by its own sheet's lay (its compositor, its paper's colour baked in,
 // and its photograph), and an own sheet's card where its owner comes: its paper laid as far as the union of its
-// films' coverage reaches, cover = min(1, STAMP_OPAQUE_COVER × union). A placed sheet's films, card and paper are laid
-// moved by a similarity, so its grain travels with it. A card's union (its edge) is kept in the device's cache under
-// its films' keys.
+// films' coverage reaches, cover = min(1, STAMP_OPAQUE_COVER × union). A placed sheet is laid moved by a similarity,
+// its grain travelling with it. A card's union (its edge) is cached under its films' keys.
+//
+// Whoever solved a composite's films holds them until it's laid (holdStampSheetFilms): another solve meanwhile may
+// make entries past the cache's budget.
 
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
-import type { StampGroupPlacement } from '../models/stamp-group-motion.ts';
+import type { StampPaintCostTally } from '../models/stamp-paint-costs.ts';
+import { stampSimilarityPoint, type StampSheetPlace } from '../models/stamp-rest-map.ts';
 import { stampSheetMixedPainting, type StampSheetCompositeStep, type StampSheetProgram } from '../models/stamp-sheet-program.ts';
 import { stampBoxUnion, stampStage, stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 import { copyStampLayerForReadback, readStampLayerCopy, type StampLayerReadback } from './stamp-layer-readback.ts';
@@ -22,11 +25,11 @@ import { createStampUniformArena, type StampUniformArena } from './stamp-uniform
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 
-/**
- * A sheet as a composite lays it: its program, the films a solve of it kept (film f its program's), and `place`, the
- * placement about the origin its films, card and paper are laid by: null where they were painted.
- */
-export type StampSheetLaid = { program: StampSheetProgram; films: readonly StampSheetFilmKept[]; place: StampGroupPlacement | null };
+/** A sheet's films as a solve kept them: its program, and film f of it kept as `films[f]`. */
+export type StampSheetKeptFilms = { readonly program: StampSheetProgram; readonly films: readonly StampSheetFilmKept[] };
+
+/** A sheet as a composite lays it: its kept films, and `place`, where its films, card and paper lie; null where they were painted. */
+export type StampSheetLaid = StampSheetKeptFilms & { readonly place: StampSheetPlace | null };
 
 /**
  * Sheets laid as one picture: the root's first, its paper the ground when one is laid; the steps laying them, back
@@ -84,10 +87,12 @@ function stampSheetEdge(owner: StampPaintGpuOwner, device: StampPaintDevice, enc
   return { view, box };
 }
 
-/** `box` (stage texels) laid by `place`: the stage texels its moved corners span, a texel round for the bilinear taps, held to the stage. */
-function placedBox(stage: StampStage, box: StampPixelBox, { x, y, rotation, scale }: StampGroupPlacement): StampPixelBox | null {
-  const cos = Math.cos(rotation) * scale, sin = Math.sin(rotation) * scale, m = stage.margin;
-  const corners = [[box.x, box.y], [box.x + box.w, box.y], [box.x, box.y + box.h], [box.x + box.w, box.y + box.h]].map(([u, v]) => [cos * (u - m) - sin * (v - m) + x + m, sin * (u - m) + cos * (v - m) + y + m]);
+/** `box` (stage texels) laid by `place`: the stage texels its laid corners span, a texel round for the bilinear taps, held to the stage. */
+function placedBox(stage: StampStage, box: StampPixelBox, place: StampSheetPlace): StampPixelBox | null {
+  const m = stage.margin, corners = [[box.x, box.y], [box.x + box.w, box.y], [box.x, box.y + box.h], [box.x + box.w, box.y + box.h]].map(([u, v]) => {
+    const laid = stampSimilarityPoint(place.laid, u - m, v - m);
+    return [laid.x + m, laid.y + m];
+  });
   const x0 = Math.max(0, Math.floor(Math.min(...corners.map(([u]) => u))) - 1), y0 = Math.max(0, Math.floor(Math.min(...corners.map(([, v]) => v))) - 1);
   const x1 = Math.min(stage.width, Math.ceil(Math.max(...corners.map(([u]) => u))) + 1), y1 = Math.min(stage.height, Math.ceil(Math.max(...corners.map(([, v]) => v))) + 1);
   return x1 > x0 && y1 > y0 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
@@ -138,7 +143,7 @@ function encodeStampSheetsSteps(
     if (!place) return null;
     const rest = owner.target(`sheet composite rest ${s}`, { size: [stage.width, stage.height], format: 'rg32float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING });
     const view = rest.createView();
-    lays[s].drawPlacedRest(encoder, view, place);
+    lays[s].drawPlacedRest(encoder, view, place.rest);
     return view;
   });
   for (const step of composite.steps) {
@@ -214,16 +219,22 @@ export type StampSheetsPicture = { readonly x0: number; readonly y0: number; rea
 /** A composite's light over a crop on one ground, and that ground's own light, measured where nothing lies on it. */
 type StampSheetsLight = { light: StampLayerReadback; ground: StampLayerReadback };
 
+/** What a composite read back is laid on: the root's paper, opaque; or nothing, its paint and cards measured clear. */
+export type StampSheetsGround = 'paper' | 'clear';
+
 /**
- * `composite` read back over `crop` (stage texels) as a premultiplied picture: laid on the root's paper when `ground`
- * (opaque), else measured on white and on black, the light over each backing taken as C + T·b per channel (the plane
- * passes' reading, stampPlanePictureWgsl), each backing's own light measured before anything lies on it.
+ * `composite` read back over `crop` (stage texels) as a premultiplied picture on `ground`: on the root's paper, or
+ * clear, measured on white and on black, the light over each backing taken as C + T·b per channel (the plane passes'
+ * reading, stampPlanePictureWgsl), each backing's own light measured before anything lies on it. Each backing's
+ * readback is counted into `costs`.
  */
-export async function readStampSheetsPicture(owner: StampPaintGpuOwner, composite: StampSheetsComposite, crop: StampPixelBox, ground: boolean): Promise<StampSheetsPicture> {
+export async function readStampSheetsPicture(
+  owner: StampPaintGpuOwner, composite: StampSheetsComposite, crop: StampPixelBox, ground: StampSheetsGround, costs?: StampPaintCostTally,
+): Promise<StampSheetsPicture> {
   const photographs = await stampSheetsPhotographs(owner, composite);
   const scope = owner.scope();
   try {
-    const backings: readonly StampPaintBacking[] = ground ? ['paper'] : ['white', 'black'];
+    const backings: readonly StampPaintBacking[] = ground === 'paper' ? ['paper'] : ['white', 'black'];
     const copies = await owner.checked('reading sheets back as a picture', () => backings.map((backing) => {
       const { device } = scope, arena = createStampUniformArena(device, compositeSlots(composite) + 2);
       const lays = stampSheetsLays(owner, device, arena, composite, photographs), { stage, compositors } = lays;
@@ -249,13 +260,14 @@ export async function readStampSheetsPicture(owner: StampPaintGpuOwner, composit
       return { lightCopy, groundCopy };
     }));
     const [onWhite, onBlack = onWhite]: StampSheetsLight[] = await Promise.all(copies.map(async ({ lightCopy, groundCopy }) => ({ light: await readStampLayerCopy(lightCopy), ground: await readStampLayerCopy(groundCopy) })));
+    costs?.count('readbacks', backings.length);
     const rgba = new Float32Array(crop.w * crop.h * 4);
     for (let i = 0; i < crop.w * crop.h; i++) {
       const at = i * 4;
       let through = 0;
       for (let c = 0; c < 3; c++) {
         const black = onBlack.ground.values[c], gap = onWhite.ground.values[c] - black;
-        const t = ground ? 0 : Math.min(1, Math.max(0, (onWhite.light.values[at + c] - onBlack.light.values[at + c]) / gap));
+        const t = ground === 'paper' ? 0 : Math.min(1, Math.max(0, (onWhite.light.values[at + c] - onBlack.light.values[at + c]) / gap));
         rgba[at + c] = Math.max(0, onBlack.light.values[at + c] - t * black);
         through += t / 3;
       }

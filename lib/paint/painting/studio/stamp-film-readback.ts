@@ -1,9 +1,11 @@
 // stamp-film-readback.ts: a solved film read back to the CPU (ENGINE 5.1): its coverage as a document-sized array, or
 // its picture, premultiplied linear RGBA laid clear or on its sheet's paper and edge. Each is kept per device under
 // everything that makes its pixels, the film's key (its solve's last key, finished or open, and its index) first, so
-// a rig reading a cel every frame reads it back once.
+// a rig reading a cel every frame reads it back once. A selection's layer is read through these by
+// lib/paint/document's painting-film-readback.ts, which compiles and solves it first.
 //
-// A sheet's stage is its document, no margin: a film's box is in document px.
+// A sheet's stage is its document, no margin: a film's box is in document px. The films read must be held by the
+// caller until the read resolves (holdStampSheetFilms).
 
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { StampPaintCostTally } from '../models/stamp-paint-costs.ts';
@@ -11,7 +13,7 @@ import type { StampSheetCompositeStep } from '../models/stamp-sheet-program.ts';
 import { stampCanonicalJson } from '../models/stamp-sheet-state-key.ts';
 import { stampBoxUnion } from '../models/stamp-stage.ts';
 import type { StampPaintGpuOwner } from './stamp-paint-gpu-owner.ts';
-import { readStampSheetsPicture, type StampSheetLaid, type StampSheetsPicture } from './stamp-sheet-composite.ts';
+import { readStampSheetsPicture, type StampSheetKeptFilms, type StampSheetsPicture } from './stamp-sheet-composite.ts';
 import { readStampSheetFilm } from './stamp-sheet-films.ts';
 
 /** How many bytes of read-back films each device keeps, the least recently read given up first. */
@@ -23,9 +25,6 @@ export const STAMP_FILM_READBACK_BYTES = 256 * 2 ** 20;
  */
 export type StampFilmBacking = 'clear' | 'sheet';
 
-/** Where a sheet's paper lies: the root's covers the document; an own sheet's, its films' union (ENGINE 5.2). */
-export type StampSheetEdgeKind = 'document' | 'union';
-
 type StampFilmReadbackKept = { value: Promise<Float32Array | StampSheetsPicture>; bytes: number };
 const keptOn = new WeakMap<StampPaintGpuOwner, Map<string, StampFilmReadbackKept>>();
 
@@ -34,7 +33,7 @@ function keptStampFilmReadback<T extends Float32Array | StampSheetsPicture>(owne
   let kept = keptOn.get(owner);
   if (!kept) keptOn.set(owner, (kept = new Map<string, StampFilmReadbackKept>()));
   const known = kept.get(key);
-  costs?.count(known ? 'picture hits' : 'picture misses');
+  costs?.count(known ? 'film readback hits' : 'film readback misses');
   if (known) {
     kept.delete(key);
     kept.set(key, known);
@@ -68,7 +67,7 @@ async function readStampFilmKept<T extends Float32Array | StampSheetsPicture>(he
 }
 
 /** Film `film` of `sheet`'s coverage (its layer 0's x) over the whole document, row by row; 0 where it never painted. */
-export function readStampFilmCoverage(owner: StampPaintGpuOwner, sheet: StampSheetLaid, film: number, costs?: StampPaintCostTally): Promise<Float32Array> {
+export function readStampFilmCoverage(owner: StampPaintGpuOwner, sheet: StampSheetKeptFilms, film: number, costs?: StampPaintCostTally): Promise<Float32Array> {
   const kept = sheet.films[film], { width, height } = sheet.program;
   return keptStampFilmReadback(owner, `coverage ${kept.key}`, async () => {
     const coverage = new Float32Array(width * height), read = await readStampSheetFilm(owner, kept);
@@ -85,13 +84,11 @@ export function readStampFilmCoverage(owner: StampPaintGpuOwner, sheet: StampShe
 const emptyPicture = (): StampSheetsPicture => ({ x0: 0, y0: 0, w: 0, h: 0, rgba: new Float32Array(0) });
 
 /**
- * Film `film` of `sheet` (placed nowhere) as a premultiplied linear picture laid on `backing`, its sheet's edge
- * `edge`: over the film's paint box when clear, else over its paper's extent; empty where that's nothing.
+ * Film `film` of `sheet`, where it was painted, as a premultiplied linear picture laid on `backing`: over the film's
+ * paint box when clear, else over its paper's extent (its program's edge); empty where that's nothing.
  */
-export function readStampFilmPicture(
-  owner: StampPaintGpuOwner, sheet: StampSheetLaid, film: number, { backing, edge }: { backing: StampFilmBacking; edge: StampSheetEdgeKind }, costs?: StampPaintCostTally,
-): Promise<StampSheetsPicture> {
-  const { program, films } = sheet, kept = films[film];
+export function readStampFilmPicture(owner: StampPaintGpuOwner, sheet: StampSheetKeptFilms, film: number, backing: StampFilmBacking, costs?: StampPaintCostTally): Promise<StampSheetsPicture> {
+  const { program, films } = sheet, kept = films[film], { edge } = program;
   const document: StampPixelBox = { x: 0, y: 0, w: program.width, h: program.height };
   const union = films.reduce<StampPixelBox | null>((all, { box }) => stampBoxUnion(all, box), null);
   const paper = edge === 'document' ? document : union, crop = backing === 'clear' ? kept.box : paper;
@@ -100,10 +97,8 @@ export function readStampFilmPicture(
   const key = `picture ${kept.key} ${backed} ${crop ? `${crop.x},${crop.y},${crop.w},${crop.h}` : 'none'}`;
   return keptStampFilmReadback(owner, key, async () => {
     if (!crop) return emptyPicture();
-    const steps: StampSheetCompositeStep[] = backing === 'sheet' && edge === 'union' ? [{ kind: 'card', sheet: 0 }] : [];
-    steps.push({ kind: 'film', sheet: 0, film });
-    const picture = await readStampSheetsPicture(owner, { sheets: [{ ...sheet, place: null }], steps }, crop, backing === 'sheet' && edge === 'document');
-    costs?.count('readbacks', backing === 'sheet' && edge === 'document' ? 1 : 2);
-    return picture;
+    const card: StampSheetCompositeStep[] = backing === 'sheet' && edge === 'union' ? [{ kind: 'card', sheet: 0 }] : [];
+    const composite = { sheets: [{ ...sheet, place: null }], steps: [...card, { kind: 'film', sheet: 0, film } as const] };
+    return readStampSheetsPicture(owner, composite, crop, backing === 'sheet' && edge === 'document' ? 'paper' : 'clear', costs);
   }, costs);
 }

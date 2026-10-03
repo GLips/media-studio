@@ -15,7 +15,7 @@ diff; `layersOf`, `bracket` and `dissolve`, and the problems a shot's load repor
 every sheet of a document with unclocked washes, each own sheet laid as a cut-out of its paper, seen through `studio
 paint still` and `studio paint check --solve`; posing before painting by a similarity (a place, a turn, a scale), the
 marks mapped and their fields, ragged edges and noise read where they were planned; and a layer's finished film read
-back, its coverage or its picture (`stampFilmCoverage`, `stampFilmPicture`). The
+back, its coverage or its picture (`paintingFilmCoverage`, `paintingFilmPicture`). The
 shot's presentation is built as models in `lib/paint/shot/models/`, checked but not yet drawn: a dissolve's weighted
 selections, the drawable order (`shot-plan.ts`), a path mask's reveal by inked length and the `alphaOf` graph
 (`shot-masks.ts`), instanced items' batches and travel (`shot-instances.ts`), pin and cover lays through the camera
@@ -181,8 +181,8 @@ and `#lib/paint/document/models/painting-properties.ts`, and pigments from
 `#lib/paint/materials/models/paint-watercolour-pigments.ts`; a scene imports `painting`, `layersOf`, `bracket`,
 `dissolve` and the shot's types from `#studio`. A test, or a shot built in a `*-model.ts`, runs in plain Node, which
 can't load `#studio`: it imports `painting` and `checkPaintingSource` from
-`#lib/paint/document/models/painting-source.ts`, and `layersOf`, `bracket`, `dissolve` and `paintedSourceProblems` from
-`#lib/paint/shot/models/shot-selection.ts`. A source one scene uses sits in that scene's folder
+`#lib/paint/document/models/painting-source.ts`, `layersOf` from `#lib/paint/document/models/painting-selection.ts`,
+and `bracket`, `dissolve` and `paintedSourceProblems` from `#lib/paint/shot/models/shot-selection.ts`. A source one scene uses sits in that scene's folder
 (`scenes/meadow/meadow.painting.ts`); one several scenes share is listed in `project.ts`'s `shared`, and the styles its
 brushes name in its `styles` (docs/private-styles.md). Lint lets any `*.painting.ts` default-export its factory, and
 holds it to a model's imports (no `#studio`, no I/O), since `studio paint check` loads it in plain Node. A helper
@@ -788,12 +788,12 @@ What the check says today, and what to do:
 `studio paint check <source> --solve [--out <dir>]` then solves every sheet on the GPU (run it under the GPU lock)
 and prints, in each sheet's order (under the sheet's name when there are several), each wash's start and when what it
 wetted had set, and each application's landing time with the `on` it waited for. It writes the painting to
-`<dir>/painting.png` and each layer's film on its sheet's paper and edge (`stampFilmPicture`: the root's paper, or an
+`<dir>/painting.png` and each layer's film on its sheet's paper and edge (`paintingFilmPicture`: the root's paper, or an
 own sheet's card, clear past it) to `<dir>/films/<layer>.png` (`<dir>` is `<source>.solve` by default). `studio
 paint still <source> [--set …] [--out <file>]` checks and solves the same way and writes only the painting, the
 document's size (`<source>.png`). Both end on what the solve cost: solves, entries run, decisions made and reused (a
-decision is remembered by its prefix's key), films kept from an earlier solve or painted, pictures read back, and
-readbacks.
+decision is remembered by its prefix's key), films kept from an earlier solve or painted, films' pictures read back
+or kept from an earlier read, and readbacks.
 
 ```
 $ node cli/studio.ts paint check lib/paint/document/models/meadow.painting.ts --solve
@@ -808,7 +808,7 @@ hill (landscape): starts at 203.901 s
 cloud-wash (cloud): starts at 203.901 s
   cloud-wash.applications[0]: lands at 203.901 s
   cloud-wash: set by 356.501 s
-costs: 1 solves, 4 entries run, 4 decisions made, 4 film hits, 2 film misses, 2 picture misses, 10 readbacks
+costs: 1 solves, 4 entries run, 4 decisions made, 4 film hits, 2 film misses, 2 film readback misses, 10 readbacks
 ```
 
 A refusal prints alone, after the check's summary, and fails the run. What the solve says, and what to do:

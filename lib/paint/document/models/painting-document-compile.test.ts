@@ -91,7 +91,7 @@ test("a selection's sheets: an own sheet's card before all under its owner, a ne
   assert.deepEqual(all.sheets.map(({ sheet, program }) => [sheet.owner, program.films.map(({ name }) => name)]), [[null, ['water', 'body', 'shadow']], ['wing', ['vane']], ['tip', ['feather']]]);
   assert.deepEqual(all.steps.map((step) => (step.kind === 'card' ? `card ${step.sheet}` : `${step.sheet}/${step.film}`)), ['0/0', '0/1', 'card 1', 'card 2', '2/0', '1/0', '0/2']);
   // The root's sheet is always there, its paper the ground; a selection paints its own layers as a painting of their own.
-  const wing = compilePaintingSelection(heron, brushOf, ['wing']);
+  const wing = compilePaintingSelection(heron, brushOf, { layers: ['wing'] });
   assert.deepEqual(wing.sheets.map(({ sheet, layers }) => [sheet.owner, layers]), [[null, [4]], ['wing', [3]], ['tip', [2]]]);
   assert.deepEqual(wing.sheets[0].program.entries.map(({ chain }) => chain), [[1, 3, 7]]);
 });

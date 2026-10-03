@@ -2,10 +2,12 @@
 // brushes and solved on devices of their own, their decisions and kept films read back; their stills for the solved
 // baselines; and the reductions run alone over textures written here.
 
+import { paintSimilarityApply, paintSimilarityScale } from '#lib/paint/animation/models/paint-similarity.ts';
 import * as meadowSource from '#lib/paint/document/models/meadow.painting.ts';
 import { compilePaintingSelection, type PaintingSelectionCompiled } from '#lib/paint/document/models/painting-document-compile.ts';
+import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
 import { painting, type PaintingEvaluation } from '#lib/paint/document/models/painting-source.ts';
-import { stampFilmCoverage } from '#lib/paint/document/studio/painting-film-readback.ts';
+import { paintingFilmCoverage } from '#lib/paint/document/studio/painting-film-readback.ts';
 import { solvePaintingSheets, type PaintingSheetsSolved } from '#lib/paint/document/studio/painting-sheets-solve.ts';
 import { createStampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import type { StampSheetProgram } from '#lib/paint/painting/models/stamp-sheet-program.ts';
@@ -18,7 +20,7 @@ import { solveStampSheet, type StampSheetSolved, type StampSheetSolveOptions } f
 import type { StampGateLayer, StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import {
   STAMP_GATE_HERON_MOVE, STAMP_GATE_HERON_TURNED, STAMP_GATE_PAPER_HERON, stampGateCoveredWithin, stampGateCoverageMass, stampGateHighPass, stampGatePaperHeronMoved, stampGatePaperHeronPoses,
-  stampGatePeakShift, stampGatePosedPoint,
+  stampGatePeakShift,
 } from '../models/stamp-gate-paper-heron.ts';
 import {
   checkStampGateTimes, STAMP_GATE_FAR_SHALLOWS, STAMP_GATE_FOOT_BOX, STAMP_GATE_FORWARD, STAMP_GATE_HERON_AWAY, STAMP_GATE_HERON_POSE, STAMP_GATE_NEVER_WETTED, STAMP_GATE_NEVER_WETTED_MESSAGE, STAMP_GATE_REBASE, STAMP_GATE_SHEET_IDS,
@@ -152,24 +154,27 @@ async function checkPaperHeron(): Promise<StampGateWashCheck[]> {
   const { widthPx: width, heightPx: height } = evaluation.document, whole = { x: 0, y: 0, w: width, h: height };
   const body = paperHeronFilm(evaluation, compiled, 'body');
   return withSheetOwner(async (owner) => {
-    const costs = createStampPaintCostTally(), reader = { owner, brushOf: stampGateSheetBrushOf, costs }, selection = { painting: evaluation };
-    const rest = await solvePaintingSheets(owner, evaluation, compiled);
-    const moved = await solvePaintingSheets(owner, evaluation, compiled, { poses: stampGatePaperHeronMoved() });
-    const turned = await solvePaintingSheets(owner, evaluation, compiled, { poses: stampGatePaperHeronPoses(STAMP_GATE_HERON_TURNED) });
+    const costs = createStampPaintCostTally(), reader = { owner, brushOf: stampGateSheetBrushOf, costs }, selection = layersOf(evaluation, ['heron']);
+    const rest = await solvePaintingSheets(owner, compiled);
+    const moved = await solvePaintingSheets(owner, compiled, { poses: stampGatePaperHeronMoved() });
+    const turned = await solvePaintingSheets(owner, compiled, { poses: stampGatePaperHeronPoses(STAMP_GATE_HERON_TURNED) });
     const coverage = async (values: Promise<Float32Array>) => ({ width, height, values: await values });
     const filmCoverage = (solved: PaintingSheetsSolved, { sheet, film }: { sheet: number; film: number }) => coverage(readStampFilmCoverage(owner, solved.composite.sheets[sheet], film));
     const [restBody, movedBody, turnedBody] = await Promise.all([rest, moved, turned].map((solved) => filmCoverage(solved, body)));
+    turned.release();
     costs.take();
-    const restVane = await coverage(stampFilmCoverage(reader, selection, 'vane'));
-    await stampFilmCoverage(reader, selection, 'vane');
+    const restVane = await coverage(paintingFilmCoverage(reader, selection, 'vane'));
+    await paintingFilmCoverage(reader, selection, 'vane');
     const read = costs.take().counts;
-    const [before, after] = await Promise.all([rest, moved].map(({ composite }) => readStampSheetsPicture(owner, composite, whole, true)));
+    const [before, after] = await Promise.all([rest, moved].map(({ composite }) => readStampSheetsPicture(owner, composite, whole, 'paper')));
+    rest.release();
+    moved.release();
     const [a, b] = [before, after].map(({ rgba }) => stampGateHighPass(rgba, width, height));
     const bodyWindow = stampGateCoveredWithin({ width, height, values: restBody.values.map((v, i) => Math.min(v, movedBody.values[i])) }, 0.95, 3);
     const bodyShift = stampGatePeakShift(a, b, bodyWindow), wingShift = stampGatePeakShift(a, b, stampGateCoveredWithin(restVane, 0.95, 3));
     const [from, to] = [stampGateCoverageMass(restBody), stampGateCoverageMass(turnedBody)];
-    const wanted = from.centre && stampGatePosedPoint(STAMP_GATE_HERON_TURNED, from.centre), grown = to.total / from.total;
-    const off = wanted && to.centre ? Math.hypot(to.centre.x - wanted.x, to.centre.y - wanted.y) : Infinity, scale = Math.hypot(STAMP_GATE_HERON_TURNED.ma, STAMP_GATE_HERON_TURNED.mb);
+    const wanted = from.centre && paintSimilarityApply(STAMP_GATE_HERON_TURNED, from.centre), grown = to.total / from.total;
+    const off = wanted && to.centre ? Math.hypot(to.centre.x - wanted.x, to.centre.y - wanted.y) : Infinity, scale = paintSimilarityScale(STAMP_GATE_HERON_TURNED);
     return [
       {
         id: `${id}: grain`, passed: bodyShift.x === 0 && bodyShift.y === 0 && wingShift.x === STAMP_GATE_HERON_MOVE.x && wingShift.y === STAMP_GATE_HERON_MOVE.y,
@@ -180,8 +185,8 @@ async function checkPaperHeron(): Promise<StampGateWashCheck[]> {
         detail: `the body's paint centred ${off.toFixed(3)} px from where the pose puts it (past 0.5 fails); its area grown ×${grown.toFixed(3)}, the pose's scale squared ×${(scale ** 2).toFixed(3)} (past 5% off fails)`,
       },
       {
-        id: `${id}: readbacks kept`, passed: read.get('readbacks') === 1 && read.get('picture hits') === 1,
-        detail: `the vane's coverage read twice: ${read.get('readbacks') ?? 0} readback, ${read.get('picture hits') ?? 0} kept`,
+        id: `${id}: readbacks kept`, passed: read.get('readbacks') === 1 && read.get('film readback hits') === 1,
+        detail: `the vane's coverage read twice: ${read.get('readbacks') ?? 0} readback, ${read.get('film readback hits') ?? 0} kept`,
       },
     ];
   });
@@ -208,8 +213,9 @@ export async function checkStampGateSheetCase(id: StampGateSheetId): Promise<Sta
 export function paintStampGateSolved(id: StampGateSolvedId): Promise<string> {
   const { evaluation, compiled, poses } = stampGateSolvedStill(id), { widthPx: width, heightPx: height } = evaluation.document;
   return withGateSurface({ width, height }, sheetImageUrl, async (surface, frame) => {
-    const { composite } = await solvePaintingSheets(surface.owner, evaluation, compiled, { poses });
+    const { composite, release } = await solvePaintingSheets(surface.owner, compiled, { poses });
     await drawStampSheetsStill(surface, composite);
+    release();
     await surface.owner.device.queue.onSubmittedWorkDone();
     const rgba = frame(), rgb = new Uint8Array(width * height * 3);
     for (let i = 0; i < width * height; i++) rgb.set(rgba.subarray(i * 4, i * 4 + 3), i * 3);

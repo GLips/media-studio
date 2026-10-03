@@ -52,8 +52,8 @@ export type StampSheetAnchors = { within: ReadonlySet<number>; masks: ReadonlySe
 
 /**
  * One application in its sheet's order: its deposit, as posed; the medium its paint lands by (its film's, spread held
- * to its own cap); what it waits for; the group ordinals posing it, outermost first; `datum`, canonical text of all
- * it reads at rest, compiled marks too (ENGINE 4.2); `pose`, canonical text of the map posing it.
+ * to its own cap); what it waits for; the node ordinals posing it, outermost first, its layer's among them; `datum`,
+ * the text of all it reads at rest, marks too (ENGINE 4.2); `pose`, the text of the map posing it.
  */
 export type StampSheetEntry = {
   wash: number; name: string; deposit: CompiledStampDeposit; medium: PaintMedium; on: StampSheetWetness | null; bloom: boolean;
@@ -61,12 +61,12 @@ export type StampSheetEntry = {
 };
 
 /**
- * A sheet program, unclocked: its name (its source and sheet, for a cost report), the document's size, the sheet's
- * paper and the medium its water dries by, its films back to front, washes and entries in order, and `head`, the
- * canonical text of its incoming state (K₀).
+ * A sheet program, unclocked: its name (for a cost report), size, paper, where that lies (`document`, the root's;
+ * `union`, a card, as far as its films' paint reaches), the medium its water dries by, its films, washes and entries,
+ * and `head`, the text of its incoming state (K₀). No solve reads the edge, so the head leaves it out.
  */
 export type StampSheetProgram = {
-  name: string; width: number; height: number; paper: StampPaintPaper; water: PaintMedium;
+  name: string; width: number; height: number; paper: StampPaintPaper; edge: 'document' | 'union'; water: PaintMedium;
   films: readonly StampSheetFilm[]; washes: readonly StampSheetWash[]; entries: readonly StampSheetEntry[]; head: string;
 };
 

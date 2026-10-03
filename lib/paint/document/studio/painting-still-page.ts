@@ -2,7 +2,7 @@
 // withBrowserModulePage). The source, bundled in as `@painting-source`, is evaluated at the values handed in, every
 // sheet compiled with the brushes Node resolved from the styles, each solved on the GPU, and laid as one painting on
 // the root's paper, each own sheet's card under its films; then, when asked, each film's picture on its sheet's paper
-// and edge (stampFilmPicture). Images are served at /files/ (stamp-paint-pack-urls.ts).
+// and edge (paintingFilmPicture). Images are served at /files/ (stamp-paint-pack-urls.ts).
 
 import * as paintingSource from '@painting-source';
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
@@ -16,11 +16,12 @@ import { drawStampSheetsStill, type StampSheetsPicture } from '#lib/paint/painti
 import { compilePaintingSelection } from '../models/painting-document-compile.ts';
 import type { BrushRef } from '../models/painting-document.ts';
 import { paintingValuesFromText } from '../models/painting-properties.ts';
+import { layersOf } from '../models/painting-selection.ts';
 import { paintingSolveCostsLine, paintingSolveLines } from '../models/painting-solve-report.ts';
 import type { PaintingStill, PaintingStillOutcome, PaintingStillRequest } from '../models/painting-still-request.ts';
 import { painting } from '../models/painting-source.ts';
 import { paintingSheetName } from '../models/painting-tree.ts';
-import { stampFilmPicture } from './painting-film-readback.ts';
+import { paintingFilmPicture } from './painting-film-readback.ts';
 import { solvePaintingSheets } from './painting-sheets-solve.ts';
 
 /** `picture` (premultiplied linear light) as an sRGB PNG data URL `width` × `height`, clear where it doesn't reach. */
@@ -54,12 +55,14 @@ async function paintingStillOf({ texts, brushes, packUrls, films }: PaintingStil
   try {
     const surface = await createStampPaintSurface(owner, { canvas, width, height });
     try {
-      const costs = createStampPaintCostTally(), { solved, composite } = await solvePaintingSheets(owner, evaluation, compiled, { costs });
+      const costs = createStampPaintCostTally(), { solved, composite, release } = await solvePaintingSheets(owner, compiled, { costs });
       await drawStampSheetsStill(surface, composite);
+      release();
       copy.getContext('2d')!.drawImage(canvas, 0, 0);
       const png = copy.toDataURL('image/png');
       const reader = { owner, brushOf, costs }, layers = films ? evaluation.tree.layers.map(({ node }) => node.key) : [];
-      const filmPngs = await Promise.all(layers.map(async (layer) => ({ name: layer, png: paintingPicturePng(await stampFilmPicture(reader, { painting: evaluation }, layer, 'sheet'), width, height) })));
+      const selection = layersOf(evaluation, evaluation.document.layers.map(({ key }) => key));
+      const filmPngs = await Promise.all(layers.map(async (layer) => ({ name: layer, png: paintingPicturePng(await paintingFilmPicture(reader, selection, layer, 'sheet'), width, height) })));
       const several = compiled.sheets.filter(({ program }) => program.entries.length > 0).length > 1;
       const lines = compiled.sheets.flatMap(({ sheet, program }, s) => {
         if (program.entries.length === 0) return [];

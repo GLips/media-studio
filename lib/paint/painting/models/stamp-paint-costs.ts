@@ -10,7 +10,8 @@
  */
 export const STAMP_PAINT_COST_NAMES = [
   'evaluations made', 'evaluation memo hits', 'poses made', 'pose hits', 'solves', 'entries run', 'decisions made', 'decisions reused',
-  'film hits', 'film misses', 'picture hits', 'picture misses', 'checkpoint hits', 'checkpoint misses', 'evictions', 'readbacks', 'bytes uploaded',
+  'film hits', 'film misses', 'picture hits', 'picture misses', 'film readback hits', 'film readback misses', 'checkpoint hits', 'checkpoint misses',
+  'evictions', 'readbacks', 'bytes uploaded',
 ] as const;
 
 export type StampPaintCostName = (typeof STAMP_PAINT_COST_NAMES)[number];

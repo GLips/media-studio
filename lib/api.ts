@@ -136,7 +136,8 @@ export { paintedThreeColorNode } from '#lib/paint/three-layers/studio/painted-th
 export { checkPaintingSource, painting, type PaintingEvaluation, type PaintingFactory, type PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
 export type { PropertySchema, PropertySpec, PropertyValues } from '#lib/paint/document/models/painting-properties.ts';
 export type { PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
-export { bracket, dissolve, layersOf, type Dissolve, type LayerSelection, type PaintedSource, type SelectionGround } from '#lib/paint/shot/models/shot-selection.ts';
+export { layersOf, type LayerSelection, type SelectionGround } from '#lib/paint/document/models/painting-selection.ts';
+export { bracket, dissolve, type Dissolve, type PaintedSource } from '#lib/paint/shot/models/shot-selection.ts';
 // A path mask's whole inked length: the `revealPx` that shows all of it.
 export { shotPathInkedLength } from '#lib/paint/shot/models/shot-masks.ts';
 export type {
