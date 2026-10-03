@@ -131,3 +131,13 @@ export { StampPainting } from '#lib/paint/style/studio/stamp-painting.tsx';
 export type { StampPictureAt, StampPictureRgba, StampPlane, StampPlaneSource } from '#lib/paint/painting/models/stamp-plane.ts';
 export type { PaintedThree, PaintedThreeOffscreenPass, PaintedThreeSource, PaintedThreeSourceScene, PaintedThreeSourceTools, PaintedThreeTexture } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
 export { paintedThreeColorNode } from '#lib/paint/three-layers/studio/painted-three-material.ts';
+// Painting sources (docs/painting-authoring.md): a `*.painting.ts` factory returns a PaintingDocument, whose types a
+// source imports from lib/paint/document/models/painting-document.ts. A scene evaluates it and selects its layers.
+export { checkPaintingSource, painting, type PaintingEvaluation, type PaintingFactory, type PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
+export type { PropertySchema, PropertySpec, PropertyValues } from '#lib/paint/document/models/painting-properties.ts';
+export type { PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
+export { bracket, dissolve, layersOf, type Dissolve, type LayerSelection, type PaintedSource, type SelectionGround } from '#lib/paint/shot/models/shot-selection.ts';
+export type {
+  CoverFrame, InstancedPlaneProps, OccurrenceKey, OccurrenceMotionNode, OccurrenceRig, PaintedShotProps, PaintedTexture, PictureSource, PinPoint, PlaneInstance,
+  PlaneLay, PlaneMask, PlaneProps, PresentationValue, RigPart, RigPartPose, ScreenPin, ThreeSource,
+} from '#lib/paint/shot/models/shot-props.ts';

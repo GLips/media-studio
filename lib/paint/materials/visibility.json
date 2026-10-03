@@ -3,5 +3,6 @@
   "lib/paint/gate": "The GPU gate runs paint's WGSL and paints in pigment, held to accepted baselines and its Kubelka–Munk to the CPU's.",
   "lib/paint/style": "A style that paints in pigment names its medium and the pigments its paintings mix.",
   "lib/paint/brush-packs": "A pack's palettes and papers name their colours as a painting does.",
-  "lib/paint/studies": "A study's passages are painted in colours and mixtures."
+  "lib/paint/studies": "A study's passages are painted in colours and mixtures.",
+  "lib/paint/document": "A document names its media and mixes its pigments, checked as the medium and paintMixtureProblem hold them."
 }
