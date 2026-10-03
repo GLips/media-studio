@@ -35,7 +35,9 @@ on main until he does.
   format. There is no standalone JSON authoring.
 - **A sheet is one painting**: one paper, one grain, one cut edge, one wet history. An element on its own sheet is a
   cut-out whose grain travels with it. An element on a shared sheet is painted into that sheet's painting at its
-  current pose, so its grain stays still, and it mingles or glazes by the ordinary wet vocabulary.
+  current pose, so its grain stays still, and it mingles or glazes by the ordinary wet vocabulary. Layer and group
+  boundaries don't dry a sheet: its applications run as one sheet program with one wet field, each layer keeping
+  its own film.
 - **Posing is group poses from the scene.** On an own sheet a pose moves finished paint; on a shared sheet it moves
   the group's deposits before the sheet re-solves. Parts, `brushSpace` and part-subtree targets don't exist.
 - **Scheduling is forward.** Applications run in authored order, each at the earliest time its `on:` holds over its
@@ -64,6 +66,10 @@ against this phase while the solver is built.
   the problem record; declare it in `lint/policy/studio-tree.ts` at the layer the spec's composition needs.
 - Validation reports owner key, field and footprint for every rule in ENGINE §2.
 - `studio paint check <source>` evaluates a source at its default (or given) property values and prints problems.
+- The sheet-order model (entries, order times, group chains, the program's clock) is a pure model here, so the
+  solver consumes it rather than inventing it.
+- The evaluation diff and `studio paint diff` belong here too: what changed between two evaluations, and which
+  sheet entries downstream of it must re-solve.
 - The worked example in `docs/painting-authoring.md` is a real, checked source.
 
 ### Affected surface area
@@ -73,15 +79,15 @@ against this phase while the solver is built.
 The spec's types import main's camera, clock, warp and rig types; keep those imports rather than re-declaring them.
 
 ### Acceptance criteria
-- ENGINE test 1 passes (a table of broken documents, each to its exact problem).
+- ENGINE tests 1 (a table of broken documents, each to its exact problem) and 2 (the evaluation diff).
 - The worked example and the four cold-author paintings' sources check clean or fail only on what they really got
   wrong.
 
 ## Phase 2: Compiler and wash solver (near-term)
 
 ### Goal
-A checked document renders: compiled to deposits and masks, solved wash by wash on the GPU with forward scheduling
-against real wet state, on the root sheet.
+A checked document renders: compiled to deposits and masks, solved as a sheet program on the GPU with forward
+scheduling against real wet state, on the root sheet, including one shared-sheet wet-contact case.
 
 ### Motivation
 This is the engine half of the language and the critical path: everything visible depends on it.
@@ -89,12 +95,16 @@ This is the engine half of the language and the critical path: everything visibl
 ### Key decisions
 - The compiler emits the renderer's existing deposit and mask forms (`CompiledStampDeposit`, `CompiledStampMask`)
   under its own document form, not `CompiledStampPaint`, whose wash schedule carries waits.
-- The wash solver is a new module beside `stamp-paint-renderer.ts`, calling stages extracted from it (renderer-map
-  seams S1–S10: deposit drawing, deposit bank, region textures, the wash ledger, the uniform arena, film copies,
-  `compositorFor`, scratch reserve). The old renderer calls the same extracted modules.
-- The scheduler reads wetness over each application's effective core with GPU reductions, replacing the closed-form
-  wait estimate for the new path only.
-- Results are cached per wash by solve key (resolved inputs and upstream dependencies).
+- The solver is a new module beside `stamp-paint-renderer.ts`, calling the stages the extract slice already pulled
+  out of it (deposit drawing and its `wash`, deposit bank, region and brushed-mask textures, the wash ledger, the
+  uniform arena, box copies, the compositor choice, scratch reserve). The old renderer calls the same modules.
+- The scheduler reads wetness over each application's effective core with overflow-safe hierarchical GPU
+  reductions (two-word totals), replacing the closed-form wait estimate for the new path only.
+- Cache identity is a chain of application-state keys, each layer's pigment-slot schema entering at its first
+  entry. Schedule decisions are cached by the physical inputs they read; a changed pose or reseed schedules again.
+- A device-wide solve lease serialises solves on shared scratch; no encoder stays unsubmitted across an await.
+- Rim ownership is causal on the new path: an application's own wet edges are decided at landing, so a later
+  application never changes an earlier checkpoint. The old path keeps its rule.
 
 ### Affected surface area
 `lib/paint/painting/studio/` (renderer, wet stages, compositors), `lib/paint/painting/models/` (wetness, stage,
@@ -118,7 +128,7 @@ Several papers in one renderer (phase 4): paper grain is bound once per renderer
 compositor today.
 
 ### Acceptance criteria
-- ENGINE tests 2 and 3 (evaluation diff; `schedule/forward`, render accepted by eye).
+- ENGINE test 3 (`schedule/forward`, render accepted by eye, append-only checkpoints) and the reduction test.
 - The old path's gate cases still pass, judged by eye if anything moved.
 - The worked example renders through `studio paint` (or the phase's still command).
 
