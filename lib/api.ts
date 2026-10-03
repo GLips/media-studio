@@ -137,6 +137,8 @@ export { checkPaintingSource, painting, type PaintingEvaluation, type PaintingFa
 export type { PropertySchema, PropertySpec, PropertyValues } from '#lib/paint/document/models/painting-properties.ts';
 export type { PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 export { bracket, dissolve, layersOf, type Dissolve, type LayerSelection, type PaintedSource, type SelectionGround } from '#lib/paint/shot/models/shot-selection.ts';
+// A path mask's whole inked length: the `revealPx` that shows all of it.
+export { shotPathInkedLength } from '#lib/paint/shot/models/shot-masks.ts';
 export type {
   CoverFrame, InstancedPlaneProps, OccurrenceKey, OccurrenceMotionNode, OccurrenceRig, PaintedShotProps, PaintedTexture, PictureSource, PinPoint, PlaneInstance,
   PlaneLay, PlaneMask, PlaneProps, PresentationValue, RigPart, RigPartPose, ScreenPin, ThreeSource,
