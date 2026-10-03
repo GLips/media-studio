@@ -109,6 +109,45 @@ export function paintedSourceProblems(plane: string, source: PaintedSource, fiel
   return [...k, ...paintedSourceProblems(plane, source.a, paintingField(field, 'a')), ...paintedSourceProblems(plane, source.b, paintingField(field, 'b'))];
 }
 
+/** One selection a plane's source blends, and its weight in the plane's picture. */
+export type PaintedSourceShare = { readonly selection: LayerSelection; readonly weight: number };
+
+const sameSelection = (a: LayerSelection, b: LayerSelection) =>
+  a.painting === b.painting && a.ground === b.ground && a.at === b.at && a.layers.length === b.layers.length && a.layers.every((key, i) => key === b.layers[i]);
+
+/**
+ * The selections `source` blends, weights summing to 1: `dissolve(a, b, k)` weighs a by 1 − k and b by k, nested ones
+ * multiplying. A dissolve is linear in each form a plane's picture takes, so this weighted sum is the nested blends.
+ * A weight of 0 is dropped (`k` at 0 or 1 solves one side); equal selections merge.
+ */
+export function paintedSourceShares(source: PaintedSource): PaintedSourceShare[] {
+  const shares: { selection: LayerSelection; weight: number }[] = [];
+  const visit = (at: PaintedSource, weight: number) => {
+    if (weight === 0) return;
+    if (at.kind === 'dissolve') {
+      visit(at.a, weight * (1 - at.k));
+      visit(at.b, weight * at.k);
+      return;
+    }
+    const same = shares.find(({ selection }) => sameSelection(selection, at));
+    if (same) same.weight += weight;
+    else shares.push({ selection: at, weight });
+  };
+  visit(source, 1);
+  return shares;
+}
+
+/**
+ * The layer and group keys `source` shows, each once: a selection's keys and every node under them in document order,
+ * then what a dissolve's other side adds. Both sides of a dissolve share their keys' occurrences, moved alike; a
+ * plane's occurrence keys are these after `<plane id>/`.
+ */
+export function paintedSourceNodeKeys(source: PaintedSource): NodeKey[] {
+  if (source.kind === 'dissolve') return [...new Set([...paintedSourceNodeKeys(source.a), ...paintedSourceNodeKeys(source.b)])];
+  const chosen = new Set(source.layers);
+  return source.painting.tree.nodes.filter(({ node, groups }) => chosen.has(node.key) || groups.some((group) => chosen.has(group))).map(({ node }) => node.key);
+}
+
 /**
  * The authored levels either side of `value` and how far between them it sits, `k` 0..1: on a level, or past either
  * end, both ends are that level and `k` is 0. `levels` ascend.

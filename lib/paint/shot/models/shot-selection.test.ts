@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Layer, PaintingDocument, Paper, Sheet } from '#lib/paint/document/models/painting-document.ts';
 import { painting } from '#lib/paint/document/models/painting-source.ts';
-import { dissolve, layersOf, paintedSourceProblems } from './shot-selection.ts';
+import { dissolve, layersOf, paintedSourceNodeKeys, paintedSourceProblems, paintedSourceShares, type PaintedSource } from './shot-selection.ts';
 
 const ROOT_PAPER: Paper = { color: '#f4f2ed', absorbency: 0.5 };
 const HERON_PAPER: Paper = { color: '#efe9dc', absorbency: 0.4 };
@@ -43,4 +43,13 @@ test('a shot keeps an own sheet whole and refuses what no plane could draw, ever
     'front.source.b.layers[0]: names neck-wash, which is a wash: it selects layers and groups',
     'front.source.b.layers[1]: names reeds, which is unknown in pond',
   ]);
+});
+
+const weights = (source: PaintedSource) => paintedSourceShares(source).map(({ selection, weight }) => [selection.layers.join(), weight]);
+
+test("a dissolve weighs the selections it blends, a level asked twice as one and a side at k's end as none", () => {
+  const sky = layersOf(pond, ['sky']), heron = layersOf(pond, ['heron']);
+  assert.deepEqual(weights(dissolve(sky, dissolve(heron, layersOf(pond, ['sky']), 0.5), 0.25)), [['sky', 0.875], ['heron', 0.125]]);
+  assert.deepEqual(weights(dissolve(sky, heron, 0)), [['sky', 1]]);
+  assert.deepEqual(paintedSourceNodeKeys(dissolve(sky, heron, 0.5)), ['sky', 'heron', 'body', 'neck', 'shadow']);
 });
