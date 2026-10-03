@@ -29,6 +29,69 @@ ${GPU_FULL_FRAME_WGSL}
 
 export type StampPaintImage = { texture: GPUTexture; view: GPUTextureView; width: number; height: number };
 
+/** A compute pass's workgroup is 8 × 8 texels. */
+export const STAMP_WORKGROUP = 8;
+
+/** Binds each of `resources` at its index; a null is a binding the pipeline doesn't have. */
+export const stampBindGroup = (device: StampPaintDevice, pipeline: GPURenderPipeline | GPUComputePipeline, resources: readonly (GPUBindingResource | null)[]) =>
+  device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: resources.flatMap((resource, binding) => (resource ? [{ binding, resource }] : [])) });
+
+/** `pipeline` over `w` × `h` texels in a compute pass of its own, then `after`: more work in the same pass. */
+export function dispatchStampCompute(
+  device: StampPaintDevice, encoder: GPUCommandEncoder, pipeline: GPUComputePipeline, resources: readonly (GPUBindingResource | null)[], w: number, h: number,
+  after?: (pass: GPUComputePassEncoder) => void,
+) {
+  const pass = encoder.beginComputePass();
+  pass.setPipeline(pipeline);
+  pass.setBindGroup(0, stampBindGroup(device, pipeline, resources));
+  pass.dispatchWorkgroups(Math.ceil(w / STAMP_WORKGROUP), Math.ceil(h / STAMP_WORKGROUP));
+  after?.(pass);
+  pass.end();
+}
+
+/** Clears all of `view` to zero. */
+export const clearStampTarget = (encoder: GPUCommandEncoder, view: GPUTextureView) => encoder.beginRenderPass({ colorAttachments: [{ view, loadOp: 'clear', storeOp: 'store' }] }).end();
+
+/** `texture` viewed as an array, as a pass binds a plain target and an array one alike. */
+export const stampArrayView = (texture: GPUTexture) => texture.createView({ dimension: '2d-array' });
+
+/** `data` in a new buffer of `usage` (and COPY_DST) on `device`, in whole words, 16 bytes at least. */
+export function stampPaintBuffer(device: StampPaintDevice, data: Float32Array | Uint16Array | Uint32Array, usage: number): GPUBuffer {
+  const bytes = Math.ceil(data.byteLength / 4) * 4;
+  const made = device.createBuffer({ size: Math.max(16, bytes), usage: usage | GPUBufferUsage.COPY_DST });
+  device.queue.writeBuffer(made, 0, data.buffer, data.byteOffset, bytes);
+  return made;
+}
+
+/** The samplers stamp painting reads through, made once a device: it caches samplers by descriptor. */
+export function stampPaintSamplers(device: StampPaintDevice) {
+  return {
+    linearClamp: device.createSampler({ magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear' }),
+    // For a tip resampled anisotropically (StampBrushTip's sampling): squashing blurs it only across the squash.
+    anisotropicClamp: device.createSampler({ magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear', maxAnisotropy: 16 }),
+    // Tiles repeat, as Photoshop's patterns do (a probe's ramp reads x mod its width): a grain that isn't seamless
+    // shows its seam, as it does there.
+    tile: device.createSampler({ magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear', addressModeU: 'repeat', addressModeV: 'repeat' }),
+    // A grain that tiles mirrored (StampBrushGrain's tiling) never shows a seam.
+    mirrorTile: device.createSampler({ magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear', addressModeU: 'mirror-repeat', addressModeV: 'mirror-repeat' }),
+  };
+}
+export type StampPaintSamplers = ReturnType<typeof stampPaintSamplers>;
+
+/** A texel of a texture: where a box copy reads or writes from. */
+export type StampTextureAt = { texture: GPUTexture; x: number; y: number };
+
+/**
+ * Copies `size` texels of every array layer from `from` to `to`: a film kept or restored, a checkpoint, the layer as
+ * a deposit found it. The two share a format and layer count.
+ */
+export function copyStampTextureBox(encoder: GPUCommandEncoder, from: StampTextureAt, to: StampTextureAt, size: { w: number; h: number }) {
+  encoder.copyTextureToTexture(
+    { texture: from.texture, origin: { x: from.x, y: from.y, z: 0 } }, { texture: to.texture, origin: { x: to.x, y: to.y, z: 0 } },
+    [size.w, size.h, from.texture.depthOrArrayLayers],
+  );
+}
+
 /** Each image at `urls`, decoded as stored: no colour conversion, no premultiplying. */
 export function fetchStampPaintBitmaps(urls: readonly string[]): Promise<ImageBitmap[]> {
   return Promise.all(urls.map(async (url) => {

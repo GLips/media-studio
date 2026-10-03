@@ -37,15 +37,18 @@ export const STAMP_WET_SCALE = gpuUniformLayout('WetScale', [['lattice', 'vec4f'
 
 /**
  * A wash deposit landing over its box (origin, extent), found over the box its stages read (foundOrigin, foundExtent):
- * how its paper dries (rate, openTime, damp), its tool's local scale, painting second, water, lift (negative for none), held wetness (stampFloodHeldWetness), diameter.
+ * how its paper dries (stampDryingWords), its tool's local scale, painting second, water, lift (negative for none), held wetness (stampFloodHeldWetness), diameter.
  */
 export const STAMP_WET_LAND = gpuUniformLayout('WetLand', [
   ['origin', 'vec2u'], ['extent', 'vec2u'], ['foundOrigin', 'vec2u'], ['foundExtent', 'vec2u'], ['drying', 'vec4f'],
   ['scale', gpuUniformStruct(STAMP_WET_SCALE)], ['tau', 'f32'], ['water', 'f32'], ['lift', 'f32'], ['held', 'f32'], ['diameter', 'f32'],
 ]);
 
-/** How `drying` dries paper, as STAMP_WET_PAPER_WGSL reads it: rate, openTime and damp. */
-export const stampDryingWords = ({ rate, openTime, damp }: StampDrying): [number, number, number, number] => [rate, openTime, damp, 0];
+/**
+ * How `drying` dries paper: rate, openTime and damp, as STAMP_WET_PAPER_WGSL reads them, then shiny, the sheen a
+ * reduction over the field judges shiny paper by.
+ */
+export const stampDryingWords = ({ rate, openTime, damp, shiny }: StampDrying): [number, number, number, number] => [rate, openTime, damp, shiny];
 
 /**
  * Writes STAMP_WET_LAND for `deposit` landing over `box` as `landing` says, the paper found over `found` (the box
