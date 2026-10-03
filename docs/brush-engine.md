@@ -355,14 +355,19 @@ GPU.
 plane, `bracket` and `dissolve` blend two, `paintedSourceShares` weighs the selections a dissolve blends (linear in
 each form a plane's picture takes, so one weighted sum), and `paintedSourceProblems` is what a shot's load refuses in
 a plane's selection, an own sheet split among them (`shot-selection.ts`); and `PaintedShotProps` (`shot-props.ts`)
-is the shot itself, its planes, motion, rigs and camera in the engine's shapes. Its presentation, as models the
-passes will draw from: a path mask's capsules for the first `revealPx` of inked length, pen-ups adding none, and
-the `alphaOf` graph, checked acyclic and sorted so each read plane composites first (`shot-masks.ts`); an instanced
-plane's items depth-sorted with the planes, planes first on ties, batched by variant and stepped sigma, and paired
-by key across the shutter (`shot-instances.ts`); pin and cover lays found through the inverse of the camera's plane
-view at their `at`, and a DOM box's centre in frame px (`shot-placement.ts`); and the cost report a frame and a warm
-tally, the warnings met noted in it (`shot-cost-report.ts`). The report goes out through `picture/profiling`'s costs channel, which knows nothing
-of paint, so `studio profile --costs` tables any drawing's counts.
+is the shot itself, its planes, motion, rigs and camera in the engine's shapes. A drawable is named by plane id or
+occurrence key, `<plane>/<key>` (`shot-occurrences.ts`), and every frame draws its planes and instanced items far
+to near, planes first on ties (`shot-plan.ts`). Its presentation, as models the passes will draw from: a path
+mask's capsules for the first `revealPx` of inked length, pen-ups adding none, and the `alphaOf` graph, checked
+acyclic and sorted so each read plane composites first (`shot-masks.ts`); an instanced plane's items batched by
+variant and stepped sigma, and paired by key across the shutter (`shot-instances.ts`); pin and cover lays found
+through the inverse of the camera's plane view at their `at` (`paintPlaneViewAt`, `paintSimilarityThrough`), and a
+DOM box's centre in frame px (`shot-placement.ts`); visibility's keys and range, and the group occurrences that
+composite on their own (`shot-visibility.ts`); the frames and held moments a `warm` span reads (`shot-warm.ts`); and
+the cost report. Its counts are painting's (`painting/models/stamp-paint-costs.ts`, one set of names the document,
+solver, caches and shot all count into); the shot logs a frame's and a warm's under its labels
+(`shot-cost-report.ts`) through `picture/profiling`'s costs channel, which knows nothing of paint, so
+`studio profile --costs` tables any drawing's counts.
 
 **procreate-brushes** reads a Procreate brush's settings into a `StampBrush` (`procreate-brush.ts`, by the constants
 of `procreate-reading.ts`), and the stroke Procreate draws its previews along. Its `engine/` reads binary plists and

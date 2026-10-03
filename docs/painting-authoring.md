@@ -12,14 +12,16 @@ Built: sources and `painting()`; property schemas and values; every check made w
 document's tree, its sheets and each sheet's order (`painting-tree.ts`, `painting-sheet-program.ts`); the evaluation
 diff; `layersOf`, `bracket` and `dissolve`, and the problems a shot's load reports in a plane's selection
 (`paintedSourceProblems`); the shot's types; `studio paint check` and `studio paint diff`. The shot's presentation
-is built as models in `lib/paint/shot/models/`, checked but not yet drawn: a dissolve's weighted selections, a path
-mask's reveal by inked length and the `alphaOf` graph (`shot-masks.ts`), instanced items' depth order, batches and
-travel (`shot-instances.ts`), pin and cover lays through the camera and a pin's measured centres
-(`shot-placement.ts`), and the cost report (`shot-cost-report.ts`, tabled by `studio profile --costs`). Not yet built:
-the solver that paints a document, `<PaintedShot>` and `<PaintedShotCanvas>`, the passes drawing masks, items and
-pins, and `studio paint check --solve`. Until they land, a project can write and check its sources and build its
-`PaintedShotProps`, but nothing shows them. **NEW** marks behaviour the brush engine (the recipe path, docs/brush-engine.md) lacks too; unmarked
-behaviour is how it already paints.
+is built as models in `lib/paint/shot/models/`, checked but not yet drawn: a dissolve's weighted selections, the
+drawable order (`shot-plan.ts`), a path mask's reveal by inked length and the `alphaOf` graph (`shot-masks.ts`),
+instanced items' batches and travel (`shot-instances.ts`), pin and cover lays through the camera and a pin's
+measured centres (`shot-placement.ts`), visibility's checks and the groups it isolates (`shot-visibility.ts`), a
+warm span's frames and moments (`shot-warm.ts`), and the cost report (`shot-cost-report.ts`, tabled by
+`studio profile --costs`). Not yet built: the solver that paints a document, `<PaintedShot>` and
+`<PaintedShotCanvas>`, the passes drawing masks, items and pins, and `studio paint check --solve`. Until they land, a
+project can write and check its sources and build its `PaintedShotProps`, but nothing shows them. **NEW** marks
+behaviour the brush engine (the recipe path, docs/brush-engine.md) lacks too; unmarked behaviour is how it already
+paints.
 
 ## The model
 
@@ -771,8 +773,9 @@ What the check says today, and what to do:
 | `property hillTopPx.value: hillTopPx = 205 is off its step 10` | an unquantised value | quantise in the scene |
 | `document.layers[0]…: meadow isn't pure: two calls differ at layers[0]…` | the factory reads something besides its values | make it pure |
 | `back/stem: lies on flower's own sheet: select flower, or all its sheet's layers, on one plane` / `back.source.layers[0]: names hil, which is unknown in meadow` / `back/neck: is selected twice, through heron and neck` / `back.source.k: 1.5 isn't within 0..1` | a plane's source, as the shot's load reports it (`paintedSourceProblems`) | select it whole; fix keys |
-| `meadow.masks[0].drawable: reads rain, whose mask reads meadow/sky` / `front.masks[1].drawable: names rain/drop, but rain's items aren't occurrences: read rain` / `photo.masks: masks cut painted films, and a picture plane has none` / `title.masks[0].widthPx: 0; a band's width is above 0` | a plane's masks, as the shot's load reports them (`shotMaskGraph`) | break the chain; read the plane; mask a painted plane |
+| `meadow.masks[0].drawable: reads rain, whose mask reads meadow/sky` / `front.masks[1].drawable: names rain/drop, but rain's items aren't occurrences: read rain` / `photo.masks: masks cut painted films, and a picture plane has none` / `title.masks[0].widthPx: 0; a band's width is above 0` | a plane's masks, as the shot's load reports them (`shotMaskCheck`) | break the chain; read the plane; mask a painted plane |
 | `rain.depths.far: 2.5 isn't nearer than the back, street at depth 2` / `rain: two items are called a at 2.04 s` / `label.lay.points: both pin 40, 40: two points set a scale and turn only apart` | an instanced plane at load and its items each frame (`shotInstancedPlaneProblems`, `shotInstanceProblems`); a pin or cover (`shotPlacementProblems`) | keep items nearer than the back; one key an item |
+| `meadow/hil.visibility: names no plane or occurrence of this shot` / `rain/drop-3.visibility: fades an item of rain, which isn't an occurrence: …` / `meadow/sky.visibility: 1.2 at 3 s; visibility is within 0..1` / `shot.warm: 2..1 isn't a span of scene seconds: …` | the shot's `visibility` (`shotVisibilityProblems` at load, `shotVisibilityProblem` each frame) and `warm` (`shotWarmProblems`) | name an occurrence; fade an item by its own `visibility` |
 
 With the solver (`studio paint check --solve`, not yet built), the solve adds: an `on` that can't hold where it's
 scheduled (`treeline: unreachable from this committed prefix: on 'wet' held over at most 81% of its core (needs 95%),
