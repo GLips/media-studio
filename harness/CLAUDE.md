@@ -10,9 +10,9 @@ against its references. One file per rig, run as `node harness/<rig>.ts <verb>` 
 - `stamp-paint-guard.ts` (`npm run brushes:guard -- fingerprint|brushes|reports`): holds a restructuring of the brush
   engine to painting nothing visibly differently, brush by brush: stamp fingerprints, brush snapshots and sheet-report
   diffs, each to a tolerance.
-- `stamp-paint-gate.ts` (`npm run stamp:gate -- run|update <ids> --reason …|accept <ids>|staged|private …`): the GPU
-  renderer held to accepted formula grids and paintings (fixtures in `fixtures/stamp-paint/`); pre-commit runs
-  `staged`.
+- `stamp-paint-gate.ts` (`npm run stamp:gate [-- run|update <ids> --reason …|accept <ids>|staged|private …]`): the
+  GPU renderer held to accepted formula grids and paintings (fixtures in `fixtures/stamp-paint/`); bare, it runs the
+  gate; pre-commit runs `staged`.
 
 - An entry point stays thin: argument parsing and wiring over `lib/`'s `engine` and `models`, run through
   `run-harness-command.ts`. The machinery lives in `lib/`. It has `cli/`'s import rights (`lint/policy/studio-tree.ts`).

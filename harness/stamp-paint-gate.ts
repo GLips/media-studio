@@ -1,4 +1,4 @@
-// node harness/stamp-paint-gate.ts run (npm run stamp:gate -- run): the GPU gate (lib/paint/gate). It
+// node harness/stamp-paint-gate.ts [run] (npm run stamp:gate, run by default): the GPU gate (lib/paint/gate). It
 // runs the renderer's formulas, paints synthetic paintings and traces a resolve on the GPU, and holds each to its
 // accepted baseline (harness/fixtures/stamp-paint/), its CPU twin or its frame. `update <ids> --reason` writes
 // candidates with their differences; `accept <ids>` replaces the baselines with them. `staged` is what pre-commit runs; it runs `staged-tree` inside the written-out index.
@@ -106,5 +106,6 @@ const privateCommand = defineCommand({
 
 await runHarnessCommand(defineCommand({
   meta: { name: 'stamp-paint-gate', description: "The GPU gate: stamp paint's formulas, paintings and traces held to accepted baselines" },
+  default: 'run',
   subCommands: { run: runCommand, update: updateCommand, accept: acceptCommand, staged: stagedCommand, 'staged-tree': stagedTreeCommand, private: privateCommand },
 }));
