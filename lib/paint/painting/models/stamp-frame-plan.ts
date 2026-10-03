@@ -86,8 +86,11 @@ export function stampFramePlanExposed(
   });
 }
 
+/** Where a group lies and bends, as a frame draws it: all a group's travel reads of a frame. */
+export type StampGroupPose = Pick<StampGroupFrame, 'lay' | 'warp'>;
+
 /** Where `frame` lays a point of its group's layer (rest space) in the scene: its warp, then its placement; null where it lies as painted. */
-export function stampGroupSceneMap({ lay, warp }: Pick<StampGroupFrame, 'lay' | 'warp'>): StampWarpMap | null {
+export function stampGroupSceneMap({ lay, warp }: StampGroupPose): StampWarpMap | null {
   const placed = lay && stampPlacementWarpMap(lay.placement, lay.pivot);
   if (!warp) return placed;
   return placed ? (rest) => placed(warp.map(rest)) : warp.map;
@@ -111,7 +114,24 @@ export type StampMotionSpan =
  */
 export type StampGroupTravel = { readonly travel: StampWarpMap; readonly key: string };
 
-const groupPoseKey = ({ lay, warp }: StampGroupFrame) => JSON.stringify([lay, warp && [warp.key, warp.cell]]);
+const groupPoseKey = ({ lay, warp }: StampGroupPose) => JSON.stringify([lay, warp && [warp.key, warp.cell]]);
+
+/**
+ * A group's motion from lying as `from` to lying as `to` (stampGroupSceneMap at each); null for one posed alike at both.
+ * A plane's motion layer reads it per group, an old painting's and a shot's occurrence's alike.
+ */
+export function stampGroupTravel(from: StampGroupPose, to: StampGroupPose): StampGroupTravel | null {
+  const fromKey = groupPoseKey(from), toKey = groupPoseKey(to);
+  if (fromKey === toKey) return null;
+  const mapFrom = stampGroupSceneMap(from), mapTo = stampGroupSceneMap(to);
+  return {
+    key: `${fromKey}>${toKey}`,
+    travel: (rest) => {
+      const a = mapFrom?.(rest) ?? rest, b = mapTo?.(rest) ?? rest;
+      return { x: b.x - a.x, y: b.y - a.y };
+    },
+  };
+}
 
 /**
  * Each of `painting`'s groups' motion over `span`, null for one posed alike at both ends: the one producer of a
@@ -122,16 +142,5 @@ export function stampFramePlanMotion(painting: CompiledStampPaint, held: { t: nu
   const [start, end] = span.kind === 'shutter' ? [span.open, span.close] : [span.from, span.to];
   const started = stampFramePlanExposed(painting, held, { t: start.at, state: start.state });
   const ended = stampFramePlanExposed(painting, held, { t: end.at, state: end.state });
-  return started.map((from, index) => {
-    const to = ended[index];
-    if (groupPoseKey(from) === groupPoseKey(to)) return null;
-    const mapFrom = stampGroupSceneMap(from), mapTo = stampGroupSceneMap(to);
-    return {
-      key: `${groupPoseKey(from)}>${groupPoseKey(to)}`,
-      travel: (rest) => {
-        const a = mapFrom?.(rest) ?? rest, b = mapTo?.(rest) ?? rest;
-        return { x: b.x - a.x, y: b.y - a.y };
-      },
-    };
-  });
+  return started.map((from, index) => stampGroupTravel(from, ended[index]));
 }

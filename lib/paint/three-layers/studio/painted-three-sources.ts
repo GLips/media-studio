@@ -1,8 +1,8 @@
-// painted-three-sources.ts: three.js in a painted scene, on the device its stamp renderer draws on and that device's
-// one three.js renderer (gpu-device-owner.ts). Each three source is a plane of the scene's camera and a lens source of
-// the renderer's (stamp-lens-source.ts): its scene is rendered through the camera's shot camera (paint-camera-world.ts)
-// into a texture of ours, the frame grown by the plane's defocus margin. Painted textures, paintings a material reads,
-// are drawn first, once a frame.
+// painted-three-sources.ts: three.js in a painted scene, on its device's one three.js renderer (gpu-device-owner.ts).
+// Each three source is a plane of the scene's camera and a lens source (stamp-lens-source.ts): its scene is rendered
+// through the camera's shot camera (paint-camera-world.ts) into a texture of ours, the frame grown by the plane's
+// defocus margin. Painted textures, paintings a material reads, are supplied as handles and brought up to each frame
+// first (`loadPaintedThreeSources`); `loadPaintedThree` paints them with old renderers.
 //
 // Texture contracts: a source's texture is rgba16float premultiplied linear colour (normal blending over a clear
 // target premultiplies), its motion texture the lens's motion layer (lens-three-motion.ts); a painted texture is
@@ -21,7 +21,7 @@ import { paintMoment, type PaintMoment, type StampPaintFrameAt } from '#lib/pain
 import type { StampLensSource, StampLensSourceExposure } from '#lib/paint/painting/studio/stamp-lens-source.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
-import { createStampPaintRenderer, type StampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
+import { createStampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
 import { createStampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 
 /** A source's multisampling: its edges antialiased, resolved the same each time (vid-129). */
@@ -74,23 +74,74 @@ export type PaintedThreeLoaded = {
   dispose: () => void;
 };
 
+/**
+ * A painted texture a material reads, by id: rgba16float, gamma-encoded and opaque. Whoever supplies it draws it and
+ * lets it go, after the sources loaded over it.
+ */
+export type PaintedThreeTextureHandle = { readonly id: string; readonly texture: GPUTexture };
+
+/**
+ * The painted textures three's sources read: their handles, and `update`, which brings them all up to frame time `t`,
+ * called once a frame before any source renders.
+ */
+export type PaintedThreeTexturesSupplied = { readonly handles: readonly PaintedThreeTextureHandle[]; readonly update: (t: number) => Promise<void> };
+
 /** `step` over `items` one after another: each load awaits, and the device's asynchronous checks run one at a time. */
 async function oneAfterAnother<T, R>(items: readonly T[], step: (item: T) => Promise<R>): Promise<R[]> {
   return items.reduce<Promise<R[]>>(async (before, item) => [...await before, await step(item)], Promise.resolve([]));
 }
 
 /**
- * Loads `three` on `owner`'s device for `camera`'s three planes, a source for each and none else. Refuses a source
- * with no three plane in the camera, and a three plane with no source.
+ * Loads `three` on `owner`'s device for `camera`'s three planes, its painted textures each drawn by an old renderer of
+ * its compiled painting. Refuses as loadPaintedThreeSources does.
  */
 export async function loadPaintedThree(owner: StampPaintGpuOwner, camera: PaintCamera, three: PaintedThree, profile: FrameProfileStart | null): Promise<PaintedThreeLoaded> {
+  // Let go of last made first, the textures after the renderers drawing into them.
+  const made: { dispose: () => void }[] = [], owned: GPUTexture[] = [];
+  const release = () => {
+    for (const thing of made.splice(0).toReversed()) thing.dispose();
+    for (const texture of owned.splice(0)) texture.destroy();
+  };
+  try {
+    const painted = await oneAfterAnother(three.paintedTextures ?? [], async (texture) => {
+      const target = owner.webgpu.createTexture({ size: [texture.width, texture.height], format: 'rgba16float', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC });
+      owned.push(target);
+      const surface = await createStampPaintSurface(owner, { frame: target });
+      made.push(surface);
+      const renderer = await createStampPaintRenderer(surface, texture.painting, { profile });
+      made.push(renderer);
+      return { texture, renderer, handle: { id: texture.id, texture: target } };
+    });
+    const update = async (t: number) => {
+      await Promise.all(painted.map(({ texture, renderer }) => renderer.draw({ kind: 'once', t, state: texture.frameAt?.(paintMoment(t)) })));
+    };
+    const loaded = await loadPaintedThreeSources(owner, camera, three.sources, { handles: painted.map(({ handle }) => handle), update });
+    return {
+      sources: loaded.sources,
+      dispose: () => {
+        loaded.dispose();
+        release();
+      },
+    };
+  } catch (error) {
+    release();
+    throw error;
+  }
+}
+
+/**
+ * Loads `sources` on `owner`'s device for `camera`'s three planes, a source for each and none else, their materials
+ * reading the `supplied` painted textures. Refuses a source with no three plane in the camera, and a three plane with
+ * no source.
+ */
+export async function loadPaintedThreeSources(owner: StampPaintGpuOwner, camera: PaintCamera, sources: readonly PaintedThreeSource[], supplied: PaintedThreeTexturesSupplied): Promise<PaintedThreeLoaded> {
   const threePlanes = new Map(camera.planes.flatMap((plane) => (plane.kind === 'three' ? [[plane.id, plane] as const] : [])));
-  const sourced = three.sources.map((source) => {
+  const sourced = sources.map((source) => {
     const plane = threePlanes.get(source.id);
     if (!plane) throw new Error(`painted three: source ${source.id} isn't a three plane of the camera`);
     return { source, plane };
   });
-  const ids = new Set(three.sources.map(({ id }) => id));
+  const ids = new Set(sources.map(({ id }) => id));
   for (const id of threePlanes.keys()) if (!ids.has(id)) throw new Error(`painted three: the camera's three plane ${id} has no source`);
 
   const { webgpu } = owner, { frame } = camera.stage;
@@ -106,24 +157,15 @@ export async function loadPaintedThree(owner: StampPaintGpuOwner, camera: PaintC
     return texture;
   };
   try {
-    const painted = await oneAfterAnother(three.paintedTextures ?? [], async (texture): Promise<{ texture: PaintedThreeTexture; renderer: StampPaintRenderer; frame: GPUTexture }> => {
-      const target = ownTexture(texture.width, texture.height);
-      const surface = await createStampPaintSurface(owner, { frame: target });
-      made.push(surface);
-      const renderer = await createStampPaintRenderer(surface, texture.painting, { profile });
-      made.push(renderer);
-      return { texture, renderer, frame: target };
-    });
-
     const world = paintCameraWorld(camera.stage, { fov: camera.fov });
     // Asked for outside the load's check: the owner makes its renderer in an asynchronous check of its own.
     const { renderer, targetInto } = await owner.three();
     const loaded = await owner.checkedAsync('loading three.js sources', async () => {
       // Made after three's renderer, so let go of before it: an ExternalTexture's dispose tells its renderer.
-      const textures = new Map(painted.map(({ texture, frame: paintedFrame }) => {
-        const external = new ExternalTexture(paintedFrame);
+      const textures = new Map(supplied.handles.map(({ id, texture }) => {
+        const external = new ExternalTexture(texture);
         made.push(external);
-        return [texture.id, external] as const;
+        return [id, external] as const;
       }));
       return oneAfterAnother(sourced, async ({ source, plane: { depth, margin } }) => {
         const built = source.build({ world, plane: paintWorldPlane(world, depth), textures });
@@ -156,7 +198,7 @@ export async function loadPaintedThree(owner: StampPaintGpuOwner, camera: PaintC
     let paintedFor: number | null = null;
     const render = async ({ built, shotAt, camera: threeCamera, target, motion }: (typeof loaded)[number], t: number, exposure: StampLensSourceExposure | null) => {
       if (paintedFor !== t) {
-        await Promise.all(painted.map(({ texture, renderer: paintedRenderer }) => paintedRenderer.draw({ kind: 'once', t, state: texture.frameAt?.(paintMoment(t)) })));
+        await supplied.update(t);
         paintedFor = t;
       }
       const at = exposure?.at ?? t, pose = paintCameraPoseAt(camera, paintMoment(at, t)), focus = exposure && paintCameraFocusAt(camera, paintMoment(at, t));

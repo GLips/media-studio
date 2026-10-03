@@ -284,7 +284,8 @@ and where paint may land, the rim open wherever it isn't bare paper at the grain
 gives one for a `PaintMoment` (`stamp-paint-frame-state.ts`, `StampPaintFrameAt`): `at`, the second an exposure sees,
 within the frame shown at `frame`. A `fast` frame through a lens takes its `shutter`, the states as it opens and closes;
 an `exposure` frame is one of a reference frame's. Each group's travel over a `StampMotionSpan` is rasterised through
-its lattice into its plane picture's motion layer: the shutter's (`stampFramePlanMotion`, `shutter`), which the lens
+its lattice into its plane picture's motion layer: the shutter's (`stampFramePlanMotion`, `shutter`, each group's
+by `stampGroupTravel` between how it lies at the two ends, which a shot calls per occurrence too), which the lens
 gathers, or frame to frame (`transport`, over a travelling group's whole region), which paper advection asks for
 with `renderer.transport({ t, state, from, to })`, apart from any lens. It holds
 each group's:
@@ -330,7 +331,9 @@ an error. A frame held on twos gives every group the keys it had, so it repaints
   warping and fading with its group; as on one sheet over white and black, and close to it over other paint (see
   Planes on the GPU). A three
   plane is a lens source (`stamp-lens-source.ts`): a picture and motion layer rendered for each frame and exposure,
-  which three.js fills (`painted-three-sources.ts`) and any other renderer can. A painted plane's picture doesn't depend on the camera and is kept on the device while
+  which three.js fills (`painted-three-sources.ts`: `loadPaintedThreeSources` over painted textures supplied as
+  handles with a hook drawing them each frame, `loadPaintedThree` supplying them from old renderers) and any other
+  renderer can. A painted plane's picture doesn't depend on the camera and is kept on the device while
   its groups hold. The camera is one description: its plays key `move` (pan, dolly, zoom, roll) and `focus` (focus
   depth, aperture), plus `fov` and a lens with one `bloom`. `paintCameraLensAt` gives each plane's view (a
   similarity) and defocus (a thin lens's circle of confusion, as gaussian sigma) at a time. The build proves every
