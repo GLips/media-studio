@@ -11,10 +11,14 @@ checking. The types are the contract: `lib/paint/document/models/painting-docume
 Built: sources and `painting()`; property schemas and values; every check made without solving (Checking); a
 document's tree, its sheets and each sheet's order (`painting-tree.ts`, `painting-sheet-program.ts`); the evaluation
 diff; `layersOf`, `bracket` and `dissolve`, and the problems a shot's load reports in a plane's selection
-(`paintedSourceProblems`); the shot's types; `studio paint check` and `studio paint diff`. Not yet built:
-the solver that paints a document, `<PaintedShot>` and `<PaintedShotCanvas>`, `studio paint check --solve`, and the
-cost report. Until they land, a project can write and check its sources and build its `PaintedShotProps`, but nothing
-shows them. **NEW** marks behaviour the brush engine (the recipe path, docs/brush-engine.md) lacks too; unmarked
+(`paintedSourceProblems`); the shot's types; `studio paint check` and `studio paint diff`. The shot's presentation
+is built as models in `lib/paint/shot/models/`, checked but not yet drawn: a dissolve's weighted selections, a path
+mask's reveal by inked length and the `alphaOf` graph (`shot-masks.ts`), instanced items' depth order, batches and
+travel (`shot-instances.ts`), pin and cover lays through the camera and a pin's measured centres
+(`shot-placement.ts`), and the cost report (`shot-cost-report.ts`, tabled by `studio profile --costs`). Not yet built:
+the solver that paints a document, `<PaintedShot>` and `<PaintedShotCanvas>`, the passes drawing masks, items and
+pins, and `studio paint check --solve`. Until they land, a project can write and check its sources and build its
+`PaintedShotProps`, but nothing shows them. **NEW** marks behaviour the brush engine (the recipe path, docs/brush-engine.md) lacks too; unmarked
 behaviour is how it already paints.
 
 ## The model
@@ -497,7 +501,8 @@ stamps laid; nothing caps the marks in an application. A moving element repaints
 order at each pose: put moving elements late in the document (in front), or on own sheets. Quantise properties with
 `step` and hold planes so each distinct value is reused, and warm the span a scene plays. A hundred timed
 applications are a hundred prefixes if a scene shows each: hold the plane, or show fewer steps. `studio paint diff`
-shows what a property step re-solves; the cost report, with the solver, will count what a span solved.
+shows what a property step re-solves; the cost report counts what each frame and warmed span solved:
+`studio profile <project> --frames a:b --costs` tables it frame by frame, a run of frames costing alike as one line.
 
 ## Recipes
 
@@ -575,9 +580,9 @@ plane's paint must cover what the camera shows of it: the camera build reports a
 | rig | `rigs: {[group occurrence]: {parts, pose}}` (Reference) | a rigged node takes place, clock, glow and boil, not pins, sway or flutter. On a sheet the group or a cel owns, paint, paper and edge bend as pieces (**NEW** in shots); otherwise the cels' marks are posed before painting (**NEW**) |
 | moving lay | `lay: (m) => …`, `reach?` (the stage box it stays in) | without `reach` the camera checks it as reaching everywhere |
 | pin to HTML | `lay: {kind: 'pin', points: [{sourcePx, element}], at?}`, one point or two | one moves the plane; two also scale and turn it. Measured in frame px once laid out and on resize, nothing drawn until then, checked where it lies (**NEW**). Hold the refs in the scene component (`useRef`) and memoise the shot on them |
-| cover the frame | `lay: {kind: 'cover', box, at?}` | scales the box about its centre through the shot's own camera (**NEW**) |
+| cover the frame | `lay: {kind: 'cover', box, at?}` | centres the box where the frame's centre lies and scales it about its centre, unturned, until it holds the frame's corners, through the shot's own camera at `at` (**NEW**). A rolled camera grows the box to hold its turned frame |
 | hold | plane `clock: {hold: n}` | every callback reads the held moment, floored to the hold's grid; the camera still moves through the shutter |
-| masks | `path` (a band `widthPx` wide in all, round ends, `softPx` 0; `revealPx` 0 shows nothing), `alphaOf` (another drawable's coverage, partial alpha included, where it lies this frame) | both **NEW**. They cut the plane's paint and the own-sheet paper it shapes; the ground stays whole. To leave a layer unmasked, put it on a second plane at the same depth |
+| masks | `path` (a band `widthPx` wide in all, round ends, `softPx` 0 or a ramp that far inside its edge; `revealPx` 0 shows nothing, `shotPathInkedLength(subpaths)` all of it), `alphaOf` (another drawable's coverage, partial alpha included, where it lies this frame: a plane by id, any kind, or a painted plane's occurrence; an instanced plane's items are read through their plane) | both **NEW**, on painted planes only. They cut the plane's paint and the own-sheet paper it shapes; the ground stays whole. To leave a layer unmasked, put it on a second plane at the same depth. No mask reads its own plane, through any chain |
 | instances | `{kind: 'instanced', depths: {near, far}, variants, instances(m), reach?}` | each item lays its variant as a plane at its depth (`lay` from the variant's document px; clear outside its paint), depth-sorted with every drawable, planes first on ties, all nearer than the back. A key is one item's lifetime: the same key at the shutter's two ends blurs the item along its own travel; a key missing at either end draws it unblurred; a recycled item takes a new key. Items take no motion nodes (**NEW**) |
 | dissolve | `dissolve(a, b, k)`, nestable | blends the two pictures in the plane's own form (the back's opaque colour, a nearer plane's colour and transmittance, premultiplied RGBA on a later canvas), never their pigment; its occurrences are both sides', moved alike; no rigs inside (**NEW**) |
 | three.js | `{kind: 'three', build}`; `paintedTextures: [{id, source, widthPx, heightPx}]` on the shot | the three-layers feature's: posed at each moment (once at 0 as it loads), and may draw offscreen passes (a reflection, a ground) before its scene; it reads painted textures by id |
@@ -766,13 +771,16 @@ What the check says today, and what to do:
 | `property hillTopPx.value: hillTopPx = 205 is off its step 10` | an unquantised value | quantise in the scene |
 | `document.layers[0]…: meadow isn't pure: two calls differ at layers[0]…` | the factory reads something besides its values | make it pure |
 | `back/stem: lies on flower's own sheet: select flower, or all its sheet's layers, on one plane` / `back.source.layers[0]: names hil, which is unknown in meadow` / `back/neck: is selected twice, through heron and neck` / `back.source.k: 1.5 isn't within 0..1` | a plane's source, as the shot's load reports it (`paintedSourceProblems`) | select it whole; fix keys |
+| `meadow.masks[0].drawable: reads rain, whose mask reads meadow/sky` / `front.masks[1].drawable: names rain/drop, but rain's items aren't occurrences: read rain` / `photo.masks: masks cut painted films, and a picture plane has none` / `title.masks[0].widthPx: 0; a band's width is above 0` | a plane's masks, as the shot's load reports them (`shotMaskGraph`) | break the chain; read the plane; mask a painted plane |
+| `rain.depths.far: 2.5 isn't nearer than the back, street at depth 2` / `rain: two items are called a at 2.04 s` / `label.lay.points: both pin 40, 40: two points set a scale and turn only apart` | an instanced plane at load and its items each frame (`shotInstancedPlaneProblems`, `shotInstanceProblems`); a pin or cover (`shotPlacementProblems`) | keep items nearer than the back; one key an item |
 
 With the solver (`studio paint check --solve`, not yet built), the solve adds: an `on` that can't hold where it's
 scheduled (`treeline: unreachable from this committed prefix: on 'wet' held over at most 81% of its core (needs 95%),
 at model 0 s`); a clocked wash starting while an earlier one is wet (`hill starts at 2 s while sky is still wet until
 5.1 s`); a bloom with nothing to act on (`sky.applications[3] won't bloom: no open paint on workable paper under its
 core`); and, per frame and warmed span, the cost report (evaluations, cache hits and misses, solves by sheet from the
-first application re-run, decisions reused, uploads, bytes kept). With `<PaintedShot>`, a shot adds its own: a bad
+first application re-run, decisions reused, uploads, bytes kept), which `studio profile --costs` tables. With
+`<PaintedShot>`, a shot adds its own: a bad
 rig (`meadow/heron is rigged: it takes no pins, sway or flutter`, `heron's layer eye lies in no part's cels`), a pose
 folding paint (warning), a plane whose selection changes (`plane meadow showed landscape, cloud at load and landscape
 now`), the camera build's problems and `paintChannelConflicts`' channel conflicts.

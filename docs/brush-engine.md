@@ -6,7 +6,7 @@ painted brush comes to the app's own, the studies a person judges, and the gate 
 feature under `lib/paint/`, each importing only those below it:
 
 ```
-shot               → document, animation, rig, three-layers, painting
+shot               → document, animation, rig, three-layers, painting, picture/lens, picture/profiling
 document           → style, painting, materials, brush
 animation          → painting
 rig                → painting
@@ -352,9 +352,17 @@ evaluation diff (`painting-evaluation-diff.ts`) and a solver read. Nothing here 
 GPU.
 
 **shot** is what a scene puts on screen from evaluations: `layersOf` selects an evaluation's layers and groups on a
-plane, `bracket` and `dissolve` blend two, and `paintedSourceProblems` is what a shot's load refuses in a plane's
-selection, an own sheet split among them (`shot-selection.ts`); and
-`PaintedShotProps` (`shot-props.ts`) is the shot itself, its planes, motion, rigs and camera in the engine's shapes.
+plane, `bracket` and `dissolve` blend two, `paintedSourceShares` weighs the selections a dissolve blends (linear in
+each form a plane's picture takes, so one weighted sum), and `paintedSourceProblems` is what a shot's load refuses in
+a plane's selection, an own sheet split among them (`shot-selection.ts`); and `PaintedShotProps` (`shot-props.ts`)
+is the shot itself, its planes, motion, rigs and camera in the engine's shapes. Its presentation, as models the
+passes will draw from: a path mask's capsules for the first `revealPx` of inked length, pen-ups adding none, and
+the `alphaOf` graph, checked acyclic and sorted so each read plane composites first (`shot-masks.ts`); an instanced
+plane's items depth-sorted with the planes, planes first on ties, batched by variant and stepped sigma, and paired
+by key across the shutter (`shot-instances.ts`); pin and cover lays found through the inverse of the camera's plane
+view at their `at`, and a DOM box's centre in frame px (`shot-placement.ts`); and the cost report a frame and a warm
+tally, the warnings met noted in it (`shot-cost-report.ts`). The report goes out through `picture/profiling`'s costs channel, which knows nothing
+of paint, so `studio profile --costs` tables any drawing's counts.
 
 **procreate-brushes** reads a Procreate brush's settings into a `StampBrush` (`procreate-brush.ts`, by the constants
 of `procreate-reading.ts`), and the stroke Procreate draws its previews along. Its `engine/` reads binary plists and

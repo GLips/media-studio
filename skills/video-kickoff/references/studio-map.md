@@ -95,7 +95,7 @@ scene's `expect` says what must be on screen while a word is spoken:
 - `camera`: cameras over captures (`camFit`, `camAt`, `lerpCam`) and views, which map page rects to the frame.
 - `measurement`: the probe that measures each frame (highlights, clicks, tags, the caption, tagged motion) for the
   checks, and piece tracks read from a scene's model without a render.
-- `profiling`: how drawing code offers its work to `studio profile` to be timed.
+- `profiling`: how drawing code offers its work to `studio profile` to be timed, and its costs to be counted (`--costs`).
 - `video`: `defineVideo`, the scene clock, and a timed video's scenes bound to where the timeline placed them.
 - `stills`: `defineStills`, the sizes stills render at, and the check a still must pass.
 - `composition`: the Remotion root and the composition that plays a project's scenes, voice and captions.
