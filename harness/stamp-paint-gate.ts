@@ -1,7 +1,7 @@
 // node harness/stamp-paint-gate.ts run (npm run stamp:gate -- run): the GPU gate (lib/paint/gate). It
 // runs the renderer's formulas, paints synthetic paintings and traces a resolve on the GPU, and holds each to its
 // accepted baseline (harness/fixtures/stamp-paint/), its CPU twin or its frame. `update <ids> --reason` writes
-// candidates with their differences; `accept <ids>` replaces the baselines with them. `staged` is what pre-commit runs; it runs `staged-tree` inside the written-out index.
+// candidates with their differences; `accept <ids>` replaces the baselines with them. `pushed` is what pre-push runs; it runs `tree` inside each pushed commit, written out.
 // `private run|update|accept` does the same for pack brushes, into the workspace's work/validation/stamp-paint/.
 import { defineCommand } from 'citty';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { acceptStampGateCandidates, STAMP_GATE_PUBLIC_STORE } from '#lib/paint/gate/engine/stamp-gate-store.ts';
 import { runStampGatePrivate, updateStampGatePrivate, type StampGatePrivateBrush } from '#lib/paint/gate/engine/stamp-gate-private.ts';
 import { STAMP_GATE_PRIVATE_FLAT_CASES } from '#lib/paint/gate/models/stamp-gate-private-cases.ts';
-import { runStagedStampGate } from '#lib/paint/gate/engine/stamp-gate-staged.ts';
+import { runPushedStampGate, stampGatePushedCommits } from '#lib/paint/gate/engine/stamp-gate-pushed.ts';
 import { stampGateImportedFiles, stampGateReachedBy } from '#lib/paint/gate/engine/stamp-gate-reach.ts';
 import { runStampGate, STAMP_GATE_PAGE, stampGateBaselineIds, updateStampGate, type StampGateCheck } from '#lib/paint/gate/engine/stamp-gate.ts';
 import { STUDIO_STYLES_DIR, STUDIO_WORKSPACE_DIR } from '#lib/platform/project/engine/studio-project.ts';
@@ -66,24 +66,27 @@ const acceptCommand = defineCommand({
   },
 });
 
-const stagedCommand = defineCommand({
-  meta: { name: 'staged', description: "Pre-commit's gate: write out the index and run its own staged-tree verb on it, all within its deadline." },
+const pushedCommand = defineCommand({
+  meta: { name: 'pushed', description: "Pre-push's gate: pre-push's stdin names the pushed refs; each pushed commit is written out and its own tree verb runs on it, each within its deadline." },
   run() {
-    const { passed, seconds } = runStagedStampGate(process.cwd());
-    if (!passed) console.log(`stamp gate: FAILED on the staged tree after ${seconds.toFixed(1)} s`);
-    if (!passed) process.exitCode = 1;
+    const root = process.cwd();
+    for (const { sha, paths } of stampGatePushedCommits(root, readFileSync(0, 'utf8'))) {
+      const { passed, seconds } = runPushedStampGate(root, sha, paths);
+      if (!passed) console.log(`stamp gate: FAILED on ${sha.slice(0, 8)} after ${seconds.toFixed(1)} s`);
+      if (!passed) process.exitCode = 1;
+    }
   },
 });
 
-const stagedTreeCommand = defineCommand({
-  meta: { name: 'staged-tree', description: 'Run inside a written-out index by staged: the staged paths, NUL-separated, on stdin; runs the gate when one of them is a file it imports or reads.' },
+const treeCommand = defineCommand({
+  meta: { name: 'tree', description: 'Run inside a written-out commit by pushed: the paths it carries, NUL-separated, on stdin; runs the gate when one of them is a file it imports or reads.' },
   async run() {
-    const staged = readFileSync(0, 'utf8').split('\0').filter(Boolean);
-    const reached = stampGateReachedBy(staged, await stampGateImportedFiles(process.cwd(), STAMP_GATE_PAGE));
+    const carried = readFileSync(0, 'utf8').split('\0').filter(Boolean);
+    const reached = stampGateReachedBy(carried, await stampGateImportedFiles(process.cwd(), STAMP_GATE_PAGE));
     if (!reached.length) return;
     const started = performance.now();
     report(await runStampGate(STAMP_GATE_PUBLIC_STORE));
-    console.log(`stamp gate: ran in ${((performance.now() - started) / 1000).toFixed(1)} s on the staged tree for ${reached.slice(0, 3).join(', ')}${reached.length > 3 ? ', …' : ''}`);
+    console.log(`stamp gate: ran in ${((performance.now() - started) / 1000).toFixed(1)} s on the pushed tree for ${reached.slice(0, 3).join(', ')}${reached.length > 3 ? ', …' : ''}`);
   },
 });
 
@@ -106,5 +109,5 @@ const privateCommand = defineCommand({
 
 await runHarnessCommand(defineCommand({
   meta: { name: 'stamp-paint-gate', description: "The GPU gate: stamp paint's formulas, paintings and traces held to accepted baselines" },
-  subCommands: { run: runCommand, update: updateCommand, accept: acceptCommand, staged: stagedCommand, 'staged-tree': stagedTreeCommand, private: privateCommand },
+  subCommands: { run: runCommand, update: updateCommand, accept: acceptCommand, pushed: pushedCommand, tree: treeCommand, private: privateCommand },
 }));

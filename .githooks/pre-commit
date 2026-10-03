@@ -1,7 +1,7 @@
 #!/bin/sh
-# The pre-commit gate: check:arch; the GPU gate over what this commit holds, when a staged file is one it imports or
-# reads; then the typecheck and the tests of what a clean clone holds, then the web app's typecheck and lint (oxlint
-# over every file, against the baseline). Those last two read the working tree, not the index.
+# The pre-commit gate: check:arch; then the typecheck and the tests of what a clean clone holds, then the web app's
+# typecheck and lint (oxlint over every file, against the baseline). Those last two read the working tree, not the
+# index. The GPU gate isn't here: it takes minutes on the one shared adapter, so pre-push runs it.
 # Each runs on its own, so one failure doesn't hide the next, and any failure refuses the commit. `npm install`
 # switches it on (package.json's prepare sets core.hooksPath to .githooks, for every worktree of the clone).
 #
@@ -11,8 +11,6 @@
 failed=''
 # check:arch reads the index git hands this hook: a partial or `-a` commit's own.
 npm run -s check:arch || failed="$failed check:arch"
-# The GPU gate paints the staged tree (harness/stamp-paint-gate.ts staged): no adapter or a timeout fails it too.
-npm run -s stamp:gate -- staged || failed="$failed stamp:gate"
 
 # Git exports GIT_DIR, GIT_INDEX_FILE and its -c settings to a hook. A test's throwaway repo must never see them, or
 # its git init, config and commit land in this repository.

@@ -120,7 +120,7 @@ scene's `expect` says what must be on screen while a word is spoken:
 - `brush-fidelity`: how close a painted brush comes to its app's own, measured, scored and fitted
   (`npm run brushes:sheet`).
 - `studies`: wet and dry passages, fill and stroke-hand sheets, painted for a person to judge.
-- `gate`: holds the GPU renderer to accepted output (`npm run stamp:gate`), run by pre-commit.
+- `gate`: holds the GPU renderer to accepted output (`npm run stamp:gate`), run by pre-push.
 
 **footage**: what's filmed or generated.
 - `capture`: a site filmed as named shots, stills and takes (`studio capture`, `studio probe`), shown in a scene
