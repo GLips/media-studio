@@ -317,14 +317,15 @@ pictures, three sources and the composite are rgba16float, premultiplied linear;
 rgba16float, gamma-encoded and opaque, decoded by `paintedThreeColorNode`. A glowing frame drawn without a lens is
 refused.
 
-**rig** is a painted rig's geometry: layers (whole paintings at rest) cut into parts that meet at skin joints or
-hinges, and their feet. `paint-rig-cuts.ts` holds a layer's parts with each joint resolved to its parent's index (a
-part whose parent isn't on the layer is loose, a group of its own), and resolves drawn regions into which part owns
-each texel, splitting an overlap across a skin joint on the joint's line; `paint-rig-painted-coverage.ts` reads a
-sheet's paint against its blank paper, so the paint's edge is the silhouette. `paint-rig-skin.ts` meshes a layer's
-skin-joined parts and poses the mesh by rotation-blend skinning, each vertex turning by its share of a joint's angle,
-from each part's rest-to-posed map; it measures folds across a joint's band. `paint-rig-rasterise.ts` draws posed
-triangles on the CPU. `paint-rig-contact.ts` gives a foot's contact shadow and its drift by the least-moved contact.
+**rig** is a painted rig's geometry and its drawing: layers (whole paintings at rest) cut into parts that meet at
+skin joints or hinges. `paint-rig-cuts.ts` holds a layer's parts with each joint resolved to its parent's index (a
+part whose parent isn't on the layer is loose, a group of its own) and which part owns each texel; how a painter's
+drawn regions become that is the painting tool's. `paint-rig-skin.ts` meshes a layer's skin-joined parts and poses
+the mesh by rotation-blend skinning, each vertex turning by its share of a joint's angle, from each part's
+rest-to-posed map; it measures folds across a joint's band. `paint-rig-pieces.ts` is what a posed rig is drawn from:
+pictures through posed triangles (a group through its skin mesh, a cel through its lattice), posed on the CPU once
+for renderer and measures alike. `paint-rig-piece-meshes.ts` draws them on the GPU as three.js meshes whose posed
+vertices the lens's motion layer follows; `paint-rig-pieces-gpu.ts` draws them for a Node tool and reads them back.
 A rig's files, poses and clocks stay with the projects that use them.
 
 **procreate-brushes** reads a Procreate brush's settings into a `StampBrush` (`procreate-brush.ts`, by the constants

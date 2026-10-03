@@ -129,5 +129,5 @@ export { StampPainting } from '#lib/paint/style/studio/stamp-painting.tsx';
 // A scene as planes: each a depth and a source, painted groups (on paper at the back, clear film nearer), a picture
 // worked out per moment, or three.js, seen through one camera; StampPainting takes the camera and the sources.
 export type { StampPictureAt, StampPictureRgba, StampPlane, StampPlaneSource } from '#lib/paint/painting/models/stamp-plane.ts';
-export type { PaintedThree, PaintedThreeSource, PaintedThreeSourceScene, PaintedThreeSourceTools, PaintedThreeTexture } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
+export type { PaintedThree, PaintedThreeOffscreenPass, PaintedThreeSource, PaintedThreeSourceScene, PaintedThreeSourceTools, PaintedThreeTexture } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
 export { paintedThreeColorNode } from '#lib/paint/three-layers/studio/painted-three-material.ts';

@@ -8,7 +8,7 @@
 // target premultiplies), its motion texture the lens's motion layer (lens-three-motion.ts); a painted texture is
 // rgba16float, gamma-encoded and opaque, decoded by paintedThreeColorNode.
 
-import { ExternalTexture, PerspectiveCamera, type Scene } from 'three/webgpu';
+import { ExternalTexture, PerspectiveCamera, type Camera, type RenderTarget, type Scene } from 'three/webgpu';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { shotCameraGrown, type ShotCamera } from '#lib/picture/shot-camera/models/shot-camera.ts';
 import { shotCameraExposed, shotLensOfFocus } from '#lib/picture/lens/models/lens-focus.ts';
@@ -17,7 +17,7 @@ import { createLensThreeMotion, LENS_THREE_MOTION_NAME } from '#lib/picture/lens
 import { setThreeShotCamera } from '#lib/picture/shot-camera/studio/three-shot-camera.ts';
 import { paintCameraShotAt, paintCameraWorld, paintWorldPlane, type PaintCameraWorld, type PaintWorldPlane } from '#lib/paint/animation/models/paint-camera-world.ts';
 import { PAINT_CAMERA_REST, paintCameraFocusAt, paintCameraPoseAt, type PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
-import { paintMoment, type StampPaintFrameAt } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import { paintMoment, type PaintMoment, type StampPaintFrameAt } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampLensSource, StampLensSourceExposure } from '#lib/paint/painting/studio/stamp-lens-source.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
@@ -47,10 +47,19 @@ export type PaintedThreeTexture = {
 export type PaintedThreeSourceTools = { world: PaintCameraWorld; plane: PaintWorldPlane; textures: ReadonlyMap<string, ExternalTexture> };
 
 /**
- * A source's scene, built once at load; `poseAt` poses it at scene time t. Materials are opaque, or NormalBlending
- * transparent: the render stays premultiplied.
+ * A scene a source renders into a target of its own before its own scene, each time it renders, for its materials to
+ * sample (a reflection drawn offscreen, say). No motion layer: what it shows moves only as what samples it does.
  */
-export type PaintedThreeSourceScene = { scene: Scene; poseAt: (t: number) => void; dispose: () => void };
+export type PaintedThreeOffscreenPass = { readonly scene: Scene; readonly camera: Camera; readonly target: RenderTarget };
+
+/**
+ * A source's scene, built once at load; `poseAt` poses it at a moment (a frame's own, or a shutter moment within it,
+ * whose frame says what's shown), and `offscreen`, its passes, render after it's posed for the frame. Materials are
+ * opaque, or NormalBlending transparent: the render stays premultiplied.
+ */
+export type PaintedThreeSourceScene = {
+  scene: Scene; poseAt: (moment: PaintMoment) => void; offscreen?: readonly PaintedThreeOffscreenPass[]; dispose: () => void;
+};
 
 /** A three plane's source: `id` the plane's in the camera, `build` its scene. */
 export type PaintedThreeSource = { id: string; build: (tools: PaintedThreeSourceTools) => PaintedThreeSourceScene };
@@ -128,6 +137,10 @@ export async function loadPaintedThree(owner: StampPaintGpuOwner, camera: PaintC
         const target = targetInto([{ name: 'output', texture }, { name: LENS_THREE_MOTION_NAME, texture: motionTexture }], { samples: PAINTED_THREE_SAMPLES });
         made.push(target);
         const motion = createLensThreeMotion({ width: w, height: h, distanceUnit: world.depthUnit });
+        await oneAfterAnother(built.offscreen ?? [], (pass) => {
+          renderer.setRenderTarget(pass.target);
+          return renderer.compileAsync(pass.scene, pass.camera);
+        });
         renderer.setRenderTarget(target);
         renderer.setMRT(motion.mrt);
         await renderer.compileAsync(built.scene, threeCamera);
@@ -159,13 +172,17 @@ export async function loadPaintedThree(owner: StampPaintGpuOwner, camera: PaintC
         let moved = false;
         if (shutter > 0) {
           for (const [moment, when] of [['open', opens], ['close', opens + shutter]] as const) {
-            built.poseAt(when);
+            built.poseAt(paintMoment(when, t));
             setThreeShotCamera(threeCamera, shotAt(paintCameraPoseAt(camera, paintMoment(when, t))));
             motion.record(moment, built.scene, threeCamera);
           }
           moved = motion.moved(built.scene);
         }
-        built.poseAt(at);
+        built.poseAt(paintMoment(at, t));
+        for (const pass of built.offscreen ?? []) {
+          renderer.setRenderTarget(pass.target);
+          renderer.render(pass.scene, pass.camera);
+        }
         setThreeShotCamera(threeCamera, seen(shotAt(pose)));
         renderer.setMRT(motion.mrt);
         renderer.setRenderTarget(target);
