@@ -13,7 +13,7 @@ import { STAMP_WET_LIFT_WGSL } from '../models/stamp-wet-lift.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import { stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
-import type { StampLoadedWetStage, StampWetDepositMoment, StampWetStage, StampWetStageContext } from './stamp-wet-stages.ts';
+import { stampWetStageExtentOf, type StampLoadedWetStage, type StampWetDepositMoment, type StampWetStage, type StampWetStageContext, type StampWetStageExtent } from './stamp-wet-stages.ts';
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { encodeStampWetTransportSteps, stampWetSpreads, stampWetTransportGate, type StampWetTransportStep } from './stamp-wet-transport.ts';
 
@@ -372,8 +372,8 @@ function loadBloom({ device, layer, footprint, field, wash, stage }: StampWetSta
   const gate = stampWetTransportGate(device);
 
   let scratch: BloomScratch | null = null, layers = 1;
-  /** Grows the scratch to hold a box as big as `box` and `atLeast` layers: only as a bank plans, between frames. */
-  const grow = ({ w, h }: { w: number; h: number }, atLeast: number) => {
+  /** Grows the scratch to hold a box as big as `extent`'s and its layers. */
+  const reserve = ({ w, h, layers: atLeast }: StampWetStageExtent) => {
     if (scratch && w <= scratch.w && h <= scratch.h && atLeast <= layers) return;
     const size = { w: Math.max(w, scratch?.w ?? 0), h: Math.max(h, scratch?.h ?? 0) };
     layers = Math.max(layers, atLeast);
@@ -393,7 +393,7 @@ function loadBloom({ device, layer, footprint, field, wash, stage }: StampWetSta
 
   const encode = (encoder: GPUCommandEncoder, plan: BloomPlan, { deposit, landing, box, seed }: StampWetDepositMoment): StampPixelBox => {
     const { wetting } = landing.medium;
-    if (!scratch || box.w > scratch.w || box.h > scratch.h) throw new Error(`stamp paint: the bloom stage was given ${deposit.id}'s box, past what its bank planned`);
+    if (!scratch || box.w > scratch.w || box.h > scratch.h) throw new Error(`stamp paint: the bloom stage was given ${deposit.id}'s box, past the scratch reserved for it`);
     const words = new ArrayBuffer(BLOOM.words * 4);
     const put = gpuUniformWriter(BLOOM, { floats: new Float32Array(words), ints: new Int32Array(words), words: new Uint32Array(words) });
     put('origin', [box.x, box.y]);
@@ -452,12 +452,14 @@ function loadBloom({ device, layer, footprint, field, wash, stage }: StampWetSta
     };
   };
   return {
-    plan: ({ device: on, wetness, boxOf }) => {
-      const plans = new Map([...wetness.landings].flatMap(([deposit, landing]): [CompiledStampDeposit, BloomPlan][] => {
+    reserve,
+    plan: ({ device: on, landings, boxOf }) => {
+      const extents: StampWetStageExtent[] = [];
+      const plans = new Map([...landings].flatMap(([deposit, landing]): [CompiledStampDeposit, BloomPlan][] => {
         const { sigma } = stampBloomBound(deposit, landing), box = boxOf(deposit);
         if (sigma === null || !box) return [];
         const layered = wash.layersOf(deposit), carry = STAMP_BLOOM_CARRY_SPREAD * sigma;
-        grow(box, layered);
+        extents.push({ w: box.w, h: box.h, layers: layered });
         const uniform = on.createBuffer({ size: BLOOM.words * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
         // Sized for the widest its water could spread: its paper is narrowed to its own (BloomSizing's ratio).
         // The water spreads from values[0]; the band, laid in values[1], spreads back there; what's sent spreads in values[0].
@@ -467,6 +469,7 @@ function loadBloom({ device, layer, footprint, field, wash, stage }: StampWetSta
         return [[deposit, { bound: sigma, pipelines: pipelinesOf(deposit), uniform, spreads }]];
       }));
       return {
+        extent: stampWetStageExtentOf(extents),
         encode: (encoder, moment) => {
           const plan = plans.get(moment.deposit);
           return plan ? encode(encoder, plan, moment) : null;

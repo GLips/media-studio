@@ -48,8 +48,9 @@ import type { StampPaintSurface } from './stamp-paint-surface.ts';
 import { stampLensSourceExposureOf, type StampLensSource, type StampLensSourceExposure } from './stamp-lens-source.ts';
 import { checkStampLensSources, createStampLensFrames, createStampLensSourceLayers, stampLensSourcesBlurExtent, type StampSourceRenders } from './stamp-lens-source-layers.ts';
 import { gpuUniformLayout, gpuUniformStruct, gpuUniformWriter, type GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
+import { STAMP_WET_STAGES } from './stamp-wet-stage-list.ts';
 import {
-  STAMP_WET_STAGES, stampWetStageReach, type StampLoadedWetStage, type StampWetBank, type StampWetDepositMoment, type StampWetDryingMoment, type StampWetStage,
+  planStampWetStage, stampWetStageReach, type StampLoadedWetStage, type StampWetBank, type StampWetDepositMoment, type StampWetDryingMoment, type StampWetStage,
   type StampWetStageContext, type StampWetStagePlan, type StampWetWall,
 } from './stamp-wet-stages.ts';
 import { STAMP_WET_FIELD_FORMATS, STAMP_WET_PREPARE, putStampWetLand, stampDryingWords, stampWetField, stampWetScales, type StampWetScales } from './stamp-wet-field.ts';
@@ -1239,9 +1240,12 @@ function rendererOnSurface({
     loaded = span('stamp paint wet stages load');
     const stages: PlannedWetStage[] = [];
     if (wetness?.landings.size) {
-      const bank: StampWetBank = { device: on, painting: { ...painting, groups }, wetness, boxOf, wallOf: (deposit) => stampDepositWall(regions, deposit, margin) };
+      const bank: StampWetBank = {
+        device: on, landings: wetness.landings, dryings: [...wetness.washes.values()].flatMap((record) => record.dryings), boxOf,
+        wallOf: (deposit) => stampDepositWall(regions, deposit, margin),
+      };
       for (const wetStage of wetStageRunners()) {
-        stages.push(wetStage.after === 'deposit' ? { after: 'deposit', running: wetStage.running.plan(bank) } : { after: 'drying', running: wetStage.running.plan(bank) });
+        stages.push(wetStage.after === 'deposit' ? { after: 'deposit', running: planStampWetStage(wetStage.running, bank) } : { after: 'drying', running: planStampWetStage(wetStage.running, bank) });
       }
     }
     loaded();
@@ -1461,7 +1465,6 @@ function rendererOnSurface({
     wetRunners ??= wetStages.map((wetStage): LoadedWetStage => {
       const context: StampWetStageContext = {
         device, stage, layer: targets.layer, wash: stageWash!, footprint: targets.footprint!, fresh: targets.fresh!, field: wetField!.views,
-        paperDepth: paper.grain?.depth ?? 0,
       };
       return wetStage.after === 'deposit' ? { after: 'deposit', running: wetStage.load(context) } : { after: 'drying', running: wetStage.load(context) };
     });
@@ -2433,7 +2436,7 @@ function rendererOnSurface({
     resolveDeposit(encoder, deposit, loadedDeposit, pass, paintAt, blurred, box, frameTrace, (into) => wetField!.land(into, uniform, scales.buffer, touch!.view, footprint!.view, found, staged));
     const seed = paintPigmentSeed(stampBoilSeed(identity.id, epoch));
     let painted: Box = box;
-    for (const wet of stages) painted = unionOf(painted, wet.encode(encoder, { deposit, pass, landing, box, seed }))!;
+    for (const wet of stages) painted = unionOf(painted, wet.encode(encoder, { deposit, landing, box, seed, paperDepth: paper.grain?.depth ?? 0 }))!;
     return painted;
   }
 

@@ -106,7 +106,7 @@ field (`studio/stamp-wet-field.ts`), in draw order, in the pass that resolves th
 read, the same pass leaves its landing (its water's contact, the paper it found and the wetness it leaves) as far
 round its box as they read (`landingReach`); they read the paper only from there. A boil's epoch and live marks each
 have their own wetness, worked out from the marks they draw. The pigment compositor's `landDeposit` lays each deposit by the
-laws in `stamp-wet-landing.ts` and `stamp-wet-lift.ts`, and `studio/stamp-wet-stages.ts` lists what then works over
+laws in `stamp-wet-landing.ts` and `stamp-wet-lift.ts`, and `studio/stamp-wet-stage-list.ts` lists what then works over
 the neighbourhood: the flow stage (`stamp-wet-flow.ts`), where a deposit's fresh paint feathers into water on the
 paper and the workable paint its water stirs evens out, or paint runs back into a lift, and the drying rim
 (`stamp-wet-rim.ts`) at each of a wash's dryings. The dryings come from the resolved wetness, not the waits'

@@ -1,23 +1,20 @@
 // stamp-wet-stages.ts: what a wash does beyond the pixel it lands on. A deposit lands per pixel (the compositor's
 // landDeposit); a stage then works over the neighbourhood of its group's layer: paint running into water, a bloom,
-// a drying rim. The renderer runs every stage, in the order listed, after each wash deposit it lands or as each of a
-// wash's dryings ends.
+// a drying rim. Every stage (stamp-wet-stage-list.ts) runs, in the order listed, after each wash deposit lands or as
+// each of a wash's dryings ends.
 //
 // Warning: a stage keeps nothing from one moment to the next but what it writes into the group's layer, which is
 // all a group's film keeps, and reads the paper only from its wash's wet field (stamp-wet-field.ts; a deposit's, its
 // landing).
 
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
-import type { StampWashDrying, StampWetLanding, StampWetness } from '../models/stamp-wetness.ts';
-import type { CompiledStampDeposit, CompiledStampPaint, CompiledStampPass } from '../models/stamp-paint-recipe-compile.ts';
+import type { StampWashDrying, StampWetLanding } from '../models/stamp-wetness.ts';
+import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { StampStage } from '../models/stamp-stage.ts';
 import type { StampWashLayer } from './stamp-paint-compositor.ts';
 import type { StampPaintDevice } from './stamp-paint-gpu.ts';
 import type { StampWetFieldViews } from './stamp-wet-field.ts';
-import { STAMP_BLOOM_STAGE } from './stamp-wet-bloom.ts';
-import { STAMP_WET_FLOW_STAGE } from './stamp-wet-flow.ts';
-import { STAMP_DRYING_RIM_STAGE } from './stamp-wet-rim.ts';
 
 /**
  * What a stage is given as the renderer loads, whatever it paints: `layer`, the group layer, kept as `wash` says;
@@ -33,18 +30,17 @@ export type StampWetStageContext = {
   footprint: { texture: GPUTexture; view: GPUTextureView };
   fresh: { texture: GPUTexture; view: GPUTextureView; layers: readonly GPUTextureView[] };
   field: StampWetFieldViews;
-  /** How deep the paper's tooth takes paint (its grain's depth), 0 for a paper without. */
-  paperDepth: number;
 };
 
 /**
- * A set of deposits a stage plans for (the painting as written, a boil's epoch, live marks), each wetted as its own
- * `wetness` lands it. `device` makes what's theirs, freed with them.
+ * A set of deposits a stage plans for (a painting as written, a boil's epoch, live marks, a solve's), each wash
+ * deposit landing as `landings` says, its washes drying as `dryings` (in painting order) say. `device` makes what's
+ * theirs, freed with them.
  */
 export type StampWetBank = {
   device: StampPaintDevice;
-  painting: CompiledStampPaint;
-  wetness: StampWetness;
+  landings: ReadonlyMap<CompiledStampDeposit, StampWetLanding>;
+  dryings: readonly StampWashDrying[];
   /** The pixels a wash deposit's whole box covers, every stamp shown: the most any of its moments' boxes is. */
   boxOf: (deposit: CompiledStampDeposit) => StampPixelBox | null;
   /**
@@ -59,23 +55,32 @@ export type StampWetBank = {
 export type StampWetWall = { view: GPUTextureView; box: StampPixelBox };
 
 /**
- * A wash deposit of a bank landed over `box`, its footprint holding the share of its stroke that landed (r, its
- * water's touch is times it), where paint may land (g), and the paper's tooth and its mean (ba); the wet field's
- * landing holds what its water found and left. `seed` is its boil epoch's.
+ * A wash deposit landed over `box`, its footprint holding the share of its stroke that landed (r), where paint may
+ * land (g), and the paper's tooth and its mean (ba). `seed` is its boil epoch's; `paperDepth`, its paper grain's
+ * depth, 0 for none.
  */
-export type StampWetDepositMoment = { deposit: CompiledStampDeposit; pass: CompiledStampPass; landing: StampWetLanding; box: StampPixelBox; seed: number };
+export type StampWetDepositMoment = { deposit: CompiledStampDeposit; landing: StampWetLanding; box: StampPixelBox; seed: number; paperDepth: number };
 
-/** One of a wash's dryings done (its StampWashRecord's); `seed` as a deposit moment's, of the drying's ID. */
+/** One of a wash's dryings done; `seed` as a deposit moment's, of the drying's ID. */
 export type StampWetDryingMoment = { drying: StampWashDrying; seed: number };
 
+/** Scratch a stage's encodes work in: as wide and tall as their boxes, holding as many layers as their groups' films. */
+export type StampWetStageExtent = { w: number; h: number; layers: number };
+
 /**
- * A stage as the renderer holds it once loaded: its pipelines and scratch, shared by every bank. `plan` readies it
- * for a bank's deposits as the bank loads, between frames, growing its scratch to their boxes (StampWetBank's boxOf).
+ * A stage as loaded: its pipelines and scratch, shared by every bank. `plan` readies it for a bank's deposits,
+ * making nothing its encodes share. `reserve` grows the scratch to hold `extent`, destroying the scratch before: only
+ * before any encode needing it, and never between an encode and its submit (planStampWetStage, or a solve's start).
  */
-export type StampLoadedWetStage<Moment> = { plan: (bank: StampWetBank) => StampWetStagePlan<Moment> };
+export type StampLoadedWetStage<Moment> = {
+  plan: (bank: StampWetBank) => StampWetStagePlan<Moment>;
+  reserve: (extent: StampWetStageExtent) => void;
+};
 
 /** A stage planned for a bank, encoding at its moments. */
 export type StampWetStagePlan<Moment> = {
+  /** The most scratch its encodes need (null for none): what reserve must hold before it encodes. */
+  extent: StampWetStageExtent | null;
   /** Adds its work to a frame's encoder and returns the pixels it changed (null for none), which the group is laid over. */
   encode: (encoder: GPUCommandEncoder, moment: Moment) => StampPixelBox | null;
   /** Whether it rims `deposit`'s wet edge itself, so the brush's own wet edge would rim it twice. */
@@ -101,8 +106,20 @@ export type StampWetStage = { id: string } & (
   | { after: 'drying'; load: (context: StampWetStageContext) => StampLoadedWetStage<StampWetDryingMoment> }
 );
 
-/** Every stage, in the order each moment runs them. */
-export const STAMP_WET_STAGES: readonly StampWetStage[] = [STAMP_WET_FLOW_STAGE, STAMP_BLOOM_STAGE, STAMP_DRYING_RIM_STAGE];
+/** `stage` planned for `bank`, its scratch grown to hold the plan: as a bank loads, between frames. */
+export function planStampWetStage<Moment>(stage: StampLoadedWetStage<Moment>, bank: StampWetBank): StampWetStagePlan<Moment> {
+  const plan = stage.plan(bank);
+  if (plan.extent) stage.reserve(plan.extent);
+  return plan;
+}
+
+/** The least extent holding each of `extents` (null for none). */
+export function stampWetStageExtentOf(extents: Iterable<StampWetStageExtent | null>): StampWetStageExtent | null {
+  return [...extents].reduce<StampWetStageExtent | null>((most, extent) => {
+    if (!extent) return most;
+    return most ? { w: Math.max(extent.w, most.w), h: Math.max(extent.h, most.h), layers: Math.max(extent.layers, most.layers) } : extent;
+  }, null);
+}
 
 /** How far past `deposit`'s stamps, carrying `water`, any of `stages` reaches, px: what it finds' margin and its resolve's. */
 export const stampWetStageReach = (stages: readonly StampWetStage[], deposit: CompiledStampDeposit, medium: PaintMedium, water: number) =>

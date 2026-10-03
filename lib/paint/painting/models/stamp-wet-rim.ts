@@ -43,7 +43,7 @@ export const stampDryingRimWetShare = (wettest: number, damp: number) => Math.mi
  * `damp`, its `wetShare` (from its `wettest`) and widest `band`, px, by its widest tool. The band sizes the stage's
  * kernels; the GPU works the real one out. A lift, or dry water on dry paper, isn't the water's size.
  */
-export function stampDryingRimBound(drying: Pick<StampWashDrying, 'deposits' | 'wettest'>, wetness: StampWetness) {
+export function stampDryingRimBound(drying: Pick<StampWashDrying, 'deposits' | 'wettest'>, wetness: Pick<StampWetness, 'landings'>) {
   const painted = drying.deposits.filter((deposit) => deposit.action.kind === 'paint');
   const landed = drying.deposits.flatMap((deposit) => {
     const landing = wetness.landings.get(deposit);

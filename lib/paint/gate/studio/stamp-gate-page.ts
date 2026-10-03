@@ -27,7 +27,8 @@ import { requestStudioGpuDevice } from '#lib/platform/gpu/studio/gpu-device-owne
 import { STAMP_WET_FLOW_STAGE } from '#lib/paint/painting/studio/stamp-wet-flow.ts';
 import { STAMP_BLOOM_STAGE } from '#lib/paint/painting/studio/stamp-wet-bloom.ts';
 import { STAMP_DRYING_RIM_STAGE } from '#lib/paint/painting/studio/stamp-wet-rim.ts';
-import { STAMP_WET_STAGES } from '#lib/paint/painting/studio/stamp-wet-stages.ts';
+import { STAMP_WET_STAGES } from '#lib/paint/painting/studio/stamp-wet-stage-list.ts';
+import { planStampWetStage } from '#lib/paint/painting/studio/stamp-wet-stages.ts';
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { StampBrush, StampBrushAsset } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { StampBrushProbeMedium } from '#lib/paint/brush-packs/models/stamp-brush-profile-probes.ts';
@@ -401,7 +402,7 @@ async function checkStampGateFlowCase(id: string): Promise<StampGateWashCheck> {
   const { medium: name, kind } = stampGateFlowCase(id), medium = PAINT_MEDIA[name];
   const painting = stampGateFlowPainting(kind), pass = painting.groups[0].passes[0], deposit = stampPassDeposits(pass)[1];
   const { before, after } = await runStampGateStage(id, painting, medium, { ...STAMP_GATE_FLOW_SIZE, ...stampGateFlowLayer(kind), field: stampGateFlowField() }, ({ context, bank, land }, encoder) => {
-    STAMP_WET_FLOW_STAGE.load(context).plan(bank).encode(encoder, land(encoder, deposit));
+    planStampWetStage(STAMP_WET_FLOW_STAGE.load(context), bank).encode(encoder, land(encoder, deposit));
   });
   return checkStampGateFlow(id, before, after);
 }
@@ -424,7 +425,7 @@ async function checkStampGateStripeCase(id: string): Promise<StampGateWashCheck>
       const painting = stampGateStripePainting(rim), pass = painting.groups[0].passes[0];
       let ownsEdges = false;
       const { before, after } = await runStampGateStage(id, painting, medium, { ...STAMP_GATE_STRIPE_SIZE, ...stampGateStripeLayer(), field: stripeField(painting, medium) }, ({ context, bank, wetness }, encoder) => {
-        const planned = STAMP_DRYING_RIM_STAGE.load(context).plan(bank), [drying] = wetness.washes.get(pass)!.dryings;
+        const planned = planStampWetStage(STAMP_DRYING_RIM_STAGE.load(context), bank), [drying] = wetness.washes.get(pass)!.dryings;
         ownsEdges = drying.deposits.every((deposit) => planned.ownsWetEdges?.(deposit) ?? false);
         planned.encode(encoder, { drying, seed: 0 });
       });
@@ -435,10 +436,10 @@ async function checkStampGateStripeCase(id: string): Promise<StampGateWashCheck>
   const painting = stampGateStripePainting(), pass = painting.groups[0].passes[0], drop = stampPassDeposits(pass).at(-1)!;
   const { before, after } = await runStampGateStage(id, painting, medium, { ...STAMP_GATE_STRIPE_SIZE, ...stampGateStripeLayer(), field: stripeField(painting, medium) }, ({ context, bank, wetness, land }, encoder) => {
     if (stage === 'rim') {
-      STAMP_DRYING_RIM_STAGE.load(context).plan(bank).encode(encoder, { drying: wetness.washes.get(pass)!.dryings[0], seed: 0 });
+      planStampWetStage(STAMP_DRYING_RIM_STAGE.load(context), bank).encode(encoder, { drying: wetness.washes.get(pass)!.dryings[0], seed: 0 });
       return;
     }
-    STAMP_BLOOM_STAGE.load(context).plan(bank).encode(encoder, land(encoder, drop));
+    planStampWetStage(STAMP_BLOOM_STAGE.load(context), bank).encode(encoder, land(encoder, drop));
   });
   return checkStampGateStripe(id, before, after);
 }
