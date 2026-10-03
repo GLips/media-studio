@@ -40,9 +40,19 @@ export type StampSheetPrewet = {
 
 /**
  * A wash: its film (an index into `films`), its name, its prewet (null for none), its rim's strength 0..2, the earlier
- * wash of its film whose paint clips it (an index into `washes`, null for none), and whether it touches water at all.
+ * wash of its film whose paint clips it (an index into `washes`, null for none), whether it touches water at all, and
+ * its clock's origin: a scene second, `'set'`, or null for an unclocked wash.
  */
-export type StampSheetWash = { film: number; name: string; prewet: StampSheetPrewet | null; rim: number; clipTo: number | null; wetHistory: boolean };
+export type StampSheetWash = {
+  film: number; name: string; prewet: StampSheetPrewet | null; rim: number; clipTo: number | null; wetHistory: boolean; origin: number | 'set' | null;
+};
+
+/**
+ * A sheet's one clock (ENGINE 4.1), once a clocked wet wash paints it: `scale`, a model second taking `scale` scene
+ * seconds from `origin` (S) at its unclocked run's end; `instant`, the sheet set before each clocked application;
+ * `never`, nothing drying. `none`: model time only, clocked scene times their order times.
+ */
+export type StampSheetClock = { kind: 'none' } | { kind: 'scale'; scale: number; origin: number } | { kind: 'instant' } | { kind: 'never' };
 
 /**
  * What an entry leaves on the paper when posed: which of its deposit's `within` areas (by index), and which masks of
@@ -51,22 +61,23 @@ export type StampSheetWash = { film: number; name: string; prewet: StampSheetPre
 export type StampSheetAnchors = { within: ReadonlySet<number>; masks: ReadonlySet<CompiledStampMask> };
 
 /**
- * One application in its sheet's order: its deposit, as posed; the medium its paint lands by (its film's, spread held
- * to its own cap); what it waits for; the node ordinals posing it, outermost first, its layer's among them; `datum`,
- * the text of all it reads at rest, marks too (ENGINE 4.2); `pose`, the text of the map posing it.
+ * One application in its sheet's order: its deposit, as posed; its paint's medium (its film's, spread held to its
+ * own cap); what it waits for; the node ordinals posing it, outermost first, its layer's among them; its order time
+ * and fixed `at`, scene s (null when unclocked or untimed); `datum`, the text of all it reads at rest, marks too
+ * (ENGINE 4.2); `pose`, the text of the map posing it.
  */
 export type StampSheetEntry = {
   wash: number; name: string; deposit: CompiledStampDeposit; medium: PaintMedium; on: StampSheetWetness | null; bloom: boolean;
-  chain: readonly number[]; anchors: StampSheetAnchors; datum: string; pose: string;
+  chain: readonly number[]; orderTime: number | null; at: number | null; anchors: StampSheetAnchors; datum: string; pose: string;
 };
 
 /**
- * A sheet program, unclocked: its name (for a cost report), size, paper, where that lies (`document`, the root's;
- * `union`, a card, as far as its films' paint reaches), the medium its water dries by, its films, washes and entries,
+ * A sheet program: its name (for a cost report), size, paper, where that lies (`document`, the root's; `union`, a
+ * card, as far as its films' paint reaches), the medium its water dries by, its clock, its films, washes and entries,
  * and `head`, the text of its incoming state (K₀). No solve reads the edge, so the head leaves it out.
  */
 export type StampSheetProgram = {
-  name: string; width: number; height: number; paper: StampPaintPaper; edge: 'document' | 'union'; water: PaintMedium;
+  name: string; width: number; height: number; paper: StampPaintPaper; edge: 'document' | 'union'; water: PaintMedium; clock: StampSheetClock;
   films: readonly StampSheetFilm[]; washes: readonly StampSheetWash[]; entries: readonly StampSheetEntry[]; head: string;
 };
 

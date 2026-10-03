@@ -95,3 +95,12 @@ test("a selection's sheets: an own sheet's card before all under its owner, a ne
   assert.deepEqual(wing.sheets.map(({ sheet, layers }) => [sheet.owner, layers]), [[null, [4]], ['wing', [3]], ['tip', [2]]]);
   assert.deepEqual(wing.sheets[0].program.entries.map(({ chain }) => chain), [[1, 3, 7]]);
 });
+
+test("a boil epoch reseeds its layer's marks and keys alone: each epoch lays them anew, the same epoch alike", () => {
+  const evaluation = painting(meadow), hill = evaluation.tree.layers.findIndex(({ node }) => node.key === 'landscape');
+  const rootOf = (reseed?: ReadonlyMap<number, number>) => compilePaintingSelection(evaluation, brushOf, { reseed }).sheets[0].program;
+  const still = rootOf(), boiled = rootOf(new Map([[hill, 1]])), again = rootOf(new Map([[hill, 1]]));
+  assert.deepEqual(boiled.entries.map(({ datum }, k) => datum === still.entries[k].datum), [false, false, false, true]);
+  assert.notEqual(boiled.entries[0].deposit.id, still.entries[0].deposit.id);
+  assert.deepEqual(again.entries.map(({ datum }) => datum), boiled.entries.map(({ datum }) => datum));
+});

@@ -118,9 +118,12 @@ export function loadStampSheetSolve(owner: StampPaintGpuOwner, device: StampPain
   const encoder = device.createCommandEncoder();
   const brushed = encodeStampBrushedMasks(device, encoder, drawing, brushedMasks, brushes.marks, tooth);
   const made = encodeStampRegionTextures(device, encoder, { stage, blank: targets.blank.view }, { coverages, fluids, brushed });
-  // Clean films, dry paper everywhere and nothing seen since a drying: each prewet lands at its wash's start.
-  targets.clear(encoder);
-  field.prepare(encoder, arena.slot((views) => putStampWetPrepare(views, { stage, preparation: null })), null, null);
+  /** Clean films, dry paper everywhere and nothing seen since a drying: each prewet lands at its wash's start. */
+  const restart = (into: GPUCommandEncoder) => {
+    targets.clear(into);
+    field.prepare(into, arena.slot((views) => putStampWetPrepare(views, { stage, preparation: null })), null, null);
+  };
+  restart(encoder);
   arena.flush();
   device.queue.submit([encoder.finish()]);
   arena.reset();
@@ -131,7 +134,7 @@ export function loadStampSheetSolve(owner: StampPaintGpuOwner, device: StampPain
   const barrierOf = (deposit: CompiledStampDeposit) => (deposit.kind === 'flood' ? regions.barriers.get(deposit) : regions.withins.get(deposit)) ?? null;
   const walls = new WeakMap<StampRegionTexture, StampWetWall>();
   return {
-    stage, compositor, targets, arena, field, drawing, stages, bank, tooth, layouts, wetReach,
+    stage, compositor, targets, arena, field, drawing, stages, bank, tooth, layouts, wetReach, restart,
     reductions: stampSheetReductions(device, arena, { core: targets.core.view, clip: targets.clip.view, paper: targets.paper.view, open: targets.open.view, blank: targets.blank.view }),
     passes: stampSheetFieldPasses(device, stage, arena, { paper: targets.paper.view, rim: targets.rim.view, open: targets.open.view, blank: targets.blank.view }),
     /** The proxies `deposit`'s water lands as in other films: none for a deposit giving no water by the wash law. */

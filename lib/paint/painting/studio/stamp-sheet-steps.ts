@@ -28,13 +28,13 @@ export type StampSheetPrepare = (encoder: GPUCommandEncoder) => void;
  * The field's time base as a solve's state holds it: `base()`, now; `after(encoder, tau)`, `tau` after the base as the
  * GPU holds it, the base moved first in `encoder` (stampSheetRebased) when `tau` is far past it.
  */
-export type StampSheetClock = { base: () => number; after: (encoder: GPUCommandEncoder, tau: number) => number };
+export type StampSheetTimeBase = { base: () => number; after: (encoder: GPUCommandEncoder, tau: number) => number };
 
 /**
  * A solve's steps on `owner` through `device` (its scope's), over `gpu`, the paper drying as `drying` says and its
  * times read through `clock`; readbacks counted into `costs`.
  */
-export function createStampSheetSteps(owner: StampPaintGpuOwner, device: StampPaintDevice, gpu: StampSheetSolveGpu, drying: StampDrying, clock: StampSheetClock, costs: StampPaintCostTally | null) {
+export function createStampSheetSteps(owner: StampPaintGpuOwner, device: StampPaintDevice, gpu: StampSheetSolveGpu, drying: StampDrying, clock: StampSheetTimeBase, costs: StampPaintCostTally | null) {
   const { after } = clock;
   const words = (count: number): StampSheetWords => ({
     count,

@@ -21,19 +21,22 @@ import { PAINTING_REST_POSE, paintingChainMap, paintingSheetPlace, paintingSheet
  */
 export type PaintingSheetsSolved = { readonly solved: readonly StampSheetSolved[]; readonly composite: StampSheetsComposite; readonly release: () => void };
 
-/** What a selection's solve is told: the poses moving its nodes (all at rest when left out), and where costs count. */
-export type PaintingSheetsSolveOptions = { readonly poses?: PaintingPoses; readonly costs?: StampPaintCostTally };
+/**
+ * What a selection's solve is told: the poses moving its nodes (all at rest when left out), the scene second whose
+ * prefix each sheet shows (all of it when left out), and where costs count.
+ */
+export type PaintingSheetsSolveOptions = { readonly poses?: PaintingPoses; readonly at?: number; readonly costs?: StampPaintCostTally };
 
 /**
  * Each of `compiled`'s sheets posed by `poses` and solved on `owner`, one after another, its films held; and the
  * composite laying them, each own sheet placed by its owner chain's map.
  */
 export async function solvePaintingSheets(
-  owner: StampPaintGpuOwner, compiled: PaintingSelectionCompiled, { poses = new Map(), costs }: PaintingSheetsSolveOptions = {},
+  owner: StampPaintGpuOwner, compiled: PaintingSelectionCompiled, { poses = new Map(), at, costs }: PaintingSheetsSolveOptions = {},
 ): Promise<PaintingSheetsSolved> {
   const holds: (() => void)[] = [], release = () => holds.splice(0).forEach((letGo) => letGo());
   // The device's lease runs the solves in turn, and each hold runs as its solve settles, before the next one starts.
-  const settled = await Promise.allSettled(compiled.sheets.map(({ program }) => solveStampSheet(owner, paintingSheetPosed(compiled.tree, program, poses, costs), { costs }).then((done) => {
+  const settled = await Promise.allSettled(compiled.sheets.map(({ program }) => solveStampSheet(owner, paintingSheetPosed(compiled.tree, program, poses, costs), { costs, ...(at !== undefined && { at }) }).then((done) => {
     holds.push(holdStampSheetFilms(owner, done.films));
     return done;
   })));

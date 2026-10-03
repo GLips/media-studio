@@ -1,18 +1,16 @@
 // stamp-sheet-schedule.ts: the forward scheduler's decisions, in f64 on the CPU, from the GPU's reductions over an
-// application's core. Model time runs on a 1 ms grid anchored at each
-// application's predecessor. A solve's state (StampSheetSolveState) moves on by the transitions here.
+// application's core: model time on a 1 ms grid anchored at each predecessor, and its scene times (ENGINE 3.5). A
+// solve's state moves on by the transitions here.
 //
-// The laws, per texel wetted to level ℓ at a, drying at rate r with open time o, sheen shiny h and damp d: wet while
-// τ < U = a + (ℓ − h)/r; matte from L = a + (ℓ − d)/r; set from Z = a + o + ℓ/r. `on` holds over 95% of the core's
-// weight ('dry' over all of it), checked again by the field's own law at the decided time.
-//
-// Negative space: no clock. Under `never` (r = 0) nothing here is defined.
+// The laws, per texel wetted to ℓ at a, drying at rate r with open time o, sheen shiny h and damp d: wet while
+// τ < U = a + (ℓ − h)/r; matte from L = a + (ℓ − d)/r; set from Z = a + o + ℓ/r; under `never` (r = 0), U and Z are
+// +∞ where ℓ > 0, L −∞ where ℓ ≤ d, else +∞. `on` holds over 95% of the core's weight (`dry`, all).
 
 import { STAMP_BLOOM_SURPLUS } from './stamp-wet-bloom.ts';
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { StampPixelBox } from './stamp-blur-region.ts';
 import type { StampBox } from './stamp-region.ts';
-import type { StampSheetWetness } from './stamp-sheet-program.ts';
+import type { StampSheetClock, StampSheetWetness } from './stamp-sheet-program.ts';
 import { stampBoxUnion } from './stamp-stage.ts';
 import type { StampWetting } from './stamp-wash-ledger.ts';
 import { stampWetnessAt, stampWorkableAt, type StampDrying, type StampWashDrying, type StampWetLanding } from './stamp-wetness.ts';
@@ -38,14 +36,24 @@ export const STAMP_SHEET_REBASE = 2 ** 13;
 /** Water a bloom must bring over the paper's wetness to spread: the bloom stage's least surplus. */
 export const STAMP_SHEET_BLOOM_SURPLUS = STAMP_BLOOM_SURPLUS.least;
 
+/** A moment of a solve: model s, and the scene second it maps to (null off the sheet's clock: its unclocked run). */
+export type StampSheetMoment = { tau: number; scene: number | null };
+
 /**
- * What a solve decided for an entry, model s: τ0, the earliest it could land; when it landed; whether a drying closed
- * as its wash started (before its prewet) and as it landed; for its wash's last, when all its wash wetted has set
- * (null for another entry, or a wash that wetted nothing); and what its author should hear.
+ * What a solve decided for an entry: its wash's start, for the wash's first (null else); τ0, the earliest it could
+ * land; when it landed, and its scene second; whether a drying closed as its wash started and as it landed; for the
+ * wash's last, when all it touched has set (null else, or without water); its warnings.
  */
 export type StampSheetDecision = {
-  tau0: number; tau: number; closes: { start: boolean; landing: boolean }; washSet: number | null; warnings: readonly string[];
+  start: StampSheetMoment | null; tau0: number; tau: number; scene: number | null; closes: { start: boolean; landing: boolean };
+  washSet: StampSheetMoment | null; warnings: readonly string[];
 };
+
+/** The scene second model time `tau` maps to on a `scale` clock whose clocked run starts at model time `start` (τc). */
+export const stampSheetSceneAt = (clock: Extract<StampSheetClock, { kind: 'scale' }>, start: number, tau: number) => clock.origin + (tau - start) * clock.scale;
+
+/** The model time scene second `scene` maps to on a `scale` clock whose clocked run starts at model time `start`. */
+export const stampSheetModelAt = (clock: Extract<StampSheetClock, { kind: 'scale' }>, start: number, scene: number) => start + (scene - clock.origin) / clock.scale;
 
 /** The earliest time at or after `x` on the 1 ms grid anchored at `tau0`; `tau0` itself when `x` isn't past it. */
 export function stampSheetGrid(tau0: number, x: number): number {
@@ -235,20 +243,33 @@ export type StampSheetWater = {
 };
 
 /**
- * A solve's state between steps, all a checkpoint keeps beside its films and clip bases (ENGINE 4.5): the field's
- * time base and the last decided τ (model s); each film's painted box and each wash's wetted boxes (stage texels);
- * the paper touched since the last drying, whether anything landed there, and when it sets (-Infinity unread); its water.
+ * A solve's state between steps, all a checkpoint keeps beside its GPU state (ENGINE 4.5): the time base, the last τ
+ * and its scene second; τc (null before the clocked run); each film's painted box, each wash's touched boxes, the box
+ * water touched; the paper touched since the last drying, whether anything landed there, when it sets (-Infinity
+ * unread); water.
  */
 export type StampSheetSolveState = {
-  base: number; tau: number; painted: readonly (StampPixelBox | null)[]; wetted: readonly (readonly StampPixelBox[])[];
+  base: number; tau: number; scene: number | null; clockStart: number | null;
+  painted: readonly (StampPixelBox | null)[]; touched: readonly (readonly StampPixelBox[])[]; field: StampPixelBox | null;
   since: StampPixelBox | null; landedSince: boolean; knownSetAt: number; water: StampSheetWater;
 };
 
 /** A solve's state before anything lands: `films` films and `washes` washes, on dry paper at 0 s. */
 export const stampSheetSolveStart = (films: number, washes: number): StampSheetSolveState => ({
-  base: 0, tau: 0, painted: Array.from({ length: films }, () => null), wetted: Array.from({ length: washes }, () => []),
+  base: 0, tau: 0, scene: null, clockStart: null, painted: Array.from({ length: films }, () => null), touched: Array.from({ length: washes }, () => []), field: null,
   since: null, landedSince: false, knownSetAt: -Infinity, water: { wettings: [], since: [], wettest: 0, dryings: 0 },
 });
+
+/**
+ * `state`, kept by a program sharing this one's prefix, for one of `films` films and `washes` washes: those the prefix
+ * never reached unpainted and untouched.
+ */
+export const stampSheetStateResized = (state: StampSheetSolveState, films: number, washes: number): StampSheetSolveState => ({
+  ...state, painted: Array.from({ length: films }, (_, f) => state.painted[f] ?? null), touched: Array.from({ length: washes }, (_, w) => state.touched[w] ?? []),
+});
+
+/** `state` entering its clocked run: its clock starting at its last τ, the end of its unclocked run, at scene `scene`. */
+export const stampSheetClockStarted = (state: StampSheetSolveState, scene: number | null): StampSheetSolveState => ({ ...state, clockStart: state.tau, scene });
 
 /** `state` with its time base moved up by whole seconds once `tau` is STAMP_SHEET_REBASE past it, and the move (0 for none). */
 export function stampSheetRebased(state: StampSheetSolveState, tau: number): { state: StampSheetSolveState; shift: number } {
@@ -257,8 +278,12 @@ export function stampSheetRebased(state: StampSheetSolveState, tau: number): { s
   return { state: { ...state, base: state.base + shift }, shift };
 }
 
-/** `state` with `tau` decided. */
-export const stampSheetDecided = (state: StampSheetSolveState, tau: number): StampSheetSolveState => ({ ...state, tau });
+/** `state` with `moment` decided. */
+export const stampSheetDecided = (state: StampSheetSolveState, { tau, scene }: StampSheetMoment): StampSheetSolveState => ({ ...state, tau, scene });
+
+/** `state` once a direct application of wash `wash` has drawn over `box` (stage texels; null off the stage): no water. */
+export const stampSheetDrawn = (state: StampSheetSolveState, wash: number, box: StampPixelBox | null): StampSheetSolveState =>
+  (box ? { ...state, touched: state.touched.with(wash, [...state.touched[wash], box]) } : state);
 
 /** `state` with film `film` painted over `box` too (null for nowhere). */
 export const stampSheetPainted = (state: StampSheetSolveState, film: number, box: StampPixelBox | null): StampSheetSolveState =>
@@ -294,7 +319,7 @@ export function stampSheetLanded(state: StampSheetSolveState, landed: {
   const { entry, wash, landing, support, lifts, held, box } = landed, { water } = state, lays = landing.water > 0 && !lifts;
   return {
     ...state, knownSetAt: -Infinity,
-    ...(box && { since: stampBoxUnion(state.since, box), landedSince: true, wetted: state.wetted.with(wash, [...state.wetted[wash], box]) }),
+    ...(box && { since: stampBoxUnion(state.since, box), landedSince: true, touched: state.touched.with(wash, [...state.touched[wash], box]), field: stampBoxUnion(state.field, box) }),
     water: {
       ...water, since: [...water.since, { entry, landing }],
       ...(lays && { wettings: [...water.wettings, { at: landing.tau, level: landing.water, box: support }], wettest: Math.max(water.wettest, Math.min(1, landing.water), held) }),
@@ -306,7 +331,7 @@ export function stampSheetLanded(state: StampSheetSolveState, landed: {
 export function stampSheetPrewetted(state: StampSheetSolveState, prewet: { wash: number; at: number; level: number; box: StampPixelBox }): StampSheetSolveState {
   const { wash, at, level, box } = prewet, { water } = state;
   return {
-    ...state, since: stampBoxUnion(state.since, box), wetted: state.wetted.with(wash, [...state.wetted[wash], box]),
+    ...state, since: stampBoxUnion(state.since, box), touched: state.touched.with(wash, [...state.touched[wash], box]), field: stampBoxUnion(state.field, box),
     water: { ...water, wettings: [...water.wettings, { at, level, box: pixelBoxOf(box) }], wettest: Math.max(water.wettest, Math.min(1, level)) },
   };
 }
@@ -334,27 +359,51 @@ export function stampSheetClosed(state: StampSheetSolveState, at: number, closes
   };
 }
 
-/** A model time as messages print it: to the millisecond. */
+/** A model time or a scene second as messages print it: to the millisecond. */
 export const stampSheetSeconds = (tau: number) => `${Number(tau.toFixed(3))} s`;
 
-/** Why an application can't be reached, the one clause its failure gives: water it never met, or its rule's own. */
-function unreachableReason(on: StampSheetWetness, totals: Pick<StampSheetTotals, 'weight' | 'never'>): string {
+/**
+ * How the paper dries for an entry as it's decided: `drying`, by its laws; `instant`, set before each clocked entry;
+ * `never`, not at all. An entry of the unclocked run dries by its laws under any clock but `never`.
+ */
+export type StampSheetRegime = 'drying' | 'instant' | 'never';
+
+/** Why an application can't be reached, the one clause its failure gives: water it never met, its sheet's clock, or its rule's own. */
+function unreachableReason(on: StampSheetWetness, totals: Pick<StampSheetTotals, 'weight' | 'never'>, regime: StampSheetRegime): string {
   if (totals.never > (1 - STAMP_SHEET_SHARE) * totals.weight) return 'never wetted on this sheet';
+  if (regime === 'instant') return 'settled before it (`instant`)';
+  if (regime === 'never' && on !== 'wet') return 'nothing dries (`never`)';
   return on === 'wet' ? "not shiny at its predecessor's time" : 'sets before the rest turns matte';
 }
 
 /**
  * An unreachable application's problem: its rule, the most of its core that held it (an upper bound), when, where it
- * failed, why, and the applications of its sheet left unscheduled.
+ * failed, why (as the paper dries under `regime`), and the applications of its sheet left unscheduled.
  */
 export function stampSheetUnreachable(
-  name: string, on: StampSheetWetness, at: { tau: number; held: number; totals: Pick<StampSheetTotals, 'weight' | 'never'> }, boxes: readonly StampBox[], unscheduled: readonly string[],
+  name: string, on: StampSheetWetness, at: { tau: number; held: number; totals: Pick<StampSheetTotals, 'weight' | 'never'> }, boxes: readonly StampBox[],
+  unscheduled: readonly string[], regime: StampSheetRegime,
 ): string {
   const share = Math.round((100 * at.held) / Math.max(1, at.totals.weight));
   const where = boxes.map(({ x0, y0, x1, y1 }) => `[${x0},${y0} → ${x1},${y1}]`).join(' ');
   const left = unscheduled.length ? `. Unscheduled after it: ${unscheduled.join(', ')}` : '';
-  return `${name}: unreachable from this committed prefix: on '${on}' held over at most ${share}% of its core (needs ${STAMP_SHEET_SHARE * 100}%), at model ${stampSheetSeconds(at.tau)} ${where}; ${unreachableReason(on, at.totals)}${left}`;
+  return `${name}: unreachable from this committed prefix: on '${on}' held over at most ${share}% of its core (needs ${STAMP_SHEET_SHARE * 100}%), at model ${stampSheetSeconds(at.tau)} ${where}; ${unreachableReason(on, at.totals, regime)}${left}`;
 }
+
+/** A wash whose numeric origin comes before its layer's earlier washes have set: scene seconds both. */
+export const stampSheetStartsWet = (wash: string, origin: number, earlier: string, until: number) =>
+  `${wash} starts at ${stampSheetSeconds(origin)} while ${earlier} is still wet until ${stampSheetSeconds(until)}`;
+
+/** A wash after an earlier wash of its layer whose paper holds water, on a sheet that never dries. */
+export const stampSheetNeverSets = (wash: string, earlier: string) => `${wash} follows ${earlier}, under which the sheet never dries`;
+
+/** A fixed `at` before the scene second its program predecessor landed at. */
+export const stampSheetAtTooEarly = (name: string, at: number, predecessor: number) =>
+  `${name}: fixed at ${stampSheetSeconds(at)} precedes its predecessor at ${stampSheetSeconds(predecessor)}`;
+
+/** A fixed `at` where its `on` doesn't hold: the share of its core it holds over there, an upper bound for `damp`. */
+export const stampSheetAtFails = (name: string, at: number, on: StampSheetWetness, share: number) =>
+  `${name}: at ${stampSheetSeconds(at)}, on '${on}' holds over ${Math.round(100 * share)}% of its core there`;
 
 export const stampSheetEmptyCore = (name: string) => `${name}: its core is empty: nothing of it reaches paper`;
 

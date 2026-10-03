@@ -23,15 +23,18 @@ const STILL_PAGE = fileURLToPath(new URL('../studio/painting-still-page.ts', imp
  */
 export type PaintingStillRun = { readonly problems: readonly PaintingProblem[]; readonly still: PaintingStill | null; readonly refused: string | null };
 
-/** The source at `file` at the values `texts` give by name, painted against this machine's styles; `films`: each alone too. */
-export async function paintPaintingSourceStill(file: string, texts: Readonly<Record<string, string>>, { films }: { films: boolean }): Promise<PaintingStillRun> {
+/**
+ * The source at `file` at the values `texts` give by name, painted against this machine's styles; `films`: each alone
+ * too; `at`: only the prefix landing by that scene second (null for all of it).
+ */
+export async function paintPaintingSourceStill(file: string, texts: Readonly<Record<string, string>>, { films, at }: { films: boolean; at: number | null }): Promise<PaintingStillRun> {
   const { problems, evaluation } = await checkPaintingSourceFile(file, texts);
   if (!evaluation) return { problems, still: null, refused: null };
   const refs = paintingBrushRefs(evaluation.tree), papers = evaluation.tree.sheets.map(({ paper }) => paper);
   const names = new Set([...refs.map(({ style }) => style), ...papers.flatMap(({ image, grain }) => [image, grain?.image].flatMap((asset) => (asset ? [asset.style] : [])))]);
   const styles = new Map(await Promise.all([...names].map(async (name) => [name, await readWorkspacePigmentStyle(STUDIO_STYLES_DIR, name, 'paint still')] as const)));
   const request: PaintingStillRequest = {
-    texts, films,
+    texts, films, at,
     brushes: Object.fromEntries(refs.map(({ style, brush }) => [`${style}/${brush}`, styles.get(style)!.brushOf(brush)])),
     packUrls: Object.fromEntries([...styles.values()].flatMap(({ packUrls }) => Object.entries(packUrls))),
   };

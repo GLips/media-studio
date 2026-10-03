@@ -6,10 +6,12 @@ import type { StampPaintPackUrls } from '#lib/paint/brush-packs/models/stamp-pai
 
 /**
  * What a still's page is handed: the property values as `--set` wrote them, each brush the document names by
- * `<style>/<brush>`, the packs' URLs, and whether to show each film on its sheet's paper and edge too.
+ * `<style>/<brush>`, the packs' URLs, whether to show each film on its sheet's paper and edge too, and the scene
+ * second whose prefix to paint (null for all of it).
  */
 export type PaintingStillRequest = {
   readonly texts: Readonly<Record<string, string>>; readonly brushes: Readonly<Record<string, StampBrush>>; readonly packUrls: StampPaintPackUrls; readonly films: boolean;
+  readonly at: number | null;
 };
 
 /**

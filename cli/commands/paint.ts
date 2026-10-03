@@ -3,6 +3,14 @@
 import { defineCommand, type ArgsDef } from 'citty';
 import { refuseUnknownCommandFlags } from '../command-flags.ts';
 
+/** `--at`'s scene second, null when it's left out. */
+function sceneSecondFlag(text: string | undefined): number | null {
+  if (text === undefined) return null;
+  const at = Number(text);
+  if (text.trim() === '' || !Number.isFinite(at)) throw new Error(`--at takes a scene second, not "${text}"`);
+  return at;
+}
+
 /** `--<flag>`'s `a=1,b=true` by name, as text: the source's schema reads each value. */
 function flagValues(flag: 'set' | 'to', list: string | undefined): Record<string, string> {
   return Object.fromEntries((list ?? '').split(',').filter(Boolean).map((pair) => {
@@ -30,6 +38,7 @@ const checkPaintArgs = {
   set: { type: 'string', valueHint: 'hillTopPx=210,dusk=true', description: 'Property values, held to their schema like any other (an off-step value is an error)' },
   solve: { type: 'boolean', description: 'With no error, solve every sheet on the GPU (under the GPU lock): print each wash\'s start and set times and each application\'s landing time, sheet by sheet, and write the painting, and each film on its sheet\'s paper and edge, as PNGs' },
   out: { type: 'string', valueHint: 'meadow.solve', description: 'Where --solve writes painting.png and films/<layer>.png (default: <source>.solve in the current directory)' },
+  at: { type: 'string', valueHint: '3.5', description: 'With --solve, solve only what lands by this scene second: the unclocked run and each clocked application landing by it (default: everything)' },
 } as const satisfies ArgsDef;
 
 const checkPaintCommand = defineCommand({
@@ -41,7 +50,8 @@ const checkPaintCommand = defineCommand({
   run: ({ args, rawArgs }) => {
     // Read before the verb runs: a malformed flag is the command's to refuse in a line, not a source's stack.
     refuseUnknownCommandFlags(rawArgs, checkPaintArgs);
-    const set = flagValues('set', args.set);
+    const set = flagValues('set', args.set), at = sceneSecondFlag(args.at);
+    if (at !== null && !args.solve) throw new Error('--at picks the prefix a solve paints: give --solve too');
     return withPaintSourceStack(async () => {
       const { paintingProblemText, paintingErrors } = await import('#lib/paint/document/models/painting-problem.ts');
       const { paintingEvaluationSummary } = await import('#lib/paint/document/models/painting-summary.ts');
@@ -57,7 +67,7 @@ const checkPaintCommand = defineCommand({
       }
       if (!args.solve) return;
       const { paintPaintingSourceStill, paintingSourceStem, writePaintingSolveImages } = await import('#lib/paint/document/engine/painting-still.ts');
-      const { still, refused } = await paintPaintingSourceStill(args.source, set, { films: true });
+      const { still, refused } = await paintPaintingSourceStill(args.source, set, { films: true, at });
       if (!still) {
         console.error(`paint check: ${refused}`);
         process.exitCode = 1;
@@ -74,6 +84,7 @@ const stillPaintArgs = {
   source: { type: 'positional', required: true, description: 'The *.painting.ts module' },
   set: { type: 'string', valueHint: 'hillTopPx=210,dusk=true', description: 'Property values, held to their schema like any other' },
   out: { type: 'string', valueHint: 'meadow.png', description: 'The PNG to write (default: <source>.png in the current directory)' },
+  at: { type: 'string', valueHint: '3.5', description: 'Paint only what lands by this scene second: the unclocked run and each clocked application landing by it, finished (default: everything)' },
 } as const satisfies ArgsDef;
 
 const stillPaintCommand = defineCommand({
@@ -84,11 +95,11 @@ const stillPaintCommand = defineCommand({
   args: stillPaintArgs,
   run: ({ args, rawArgs }) => {
     refuseUnknownCommandFlags(rawArgs, stillPaintArgs);
-    const set = flagValues('set', args.set);
+    const set = flagValues('set', args.set), at = sceneSecondFlag(args.at);
     return withPaintSourceStack(async () => {
       const { paintingProblemText, paintingErrors } = await import('#lib/paint/document/models/painting-problem.ts');
       const { paintPaintingSourceStill, paintingSourceStem, writePaintingStillPng } = await import('#lib/paint/document/engine/painting-still.ts');
-      const { problems, still, refused } = await paintPaintingSourceStill(args.source, set, { films: false });
+      const { problems, still, refused } = await paintPaintingSourceStill(args.source, set, { films: false, at });
       for (const problem of problems) console.log(paintingProblemText(problem));
       if (!still) {
         const errors = paintingErrors(problems).length;

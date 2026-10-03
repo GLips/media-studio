@@ -76,9 +76,21 @@ fn addWide(at: u32, value: u32) {
   let old = atomicAdd(&words[at], value);
   if (old > 0xffffffffu - value) { atomicAdd(&words[at + 1u], 1u); }
 }
-// When a texel wetted to \`field.x\` at \`field.y\` turns matte (L) and sets (Z), after the base.
-fn matteAt(field: vec4f) -> f32 { return field.y + (field.x - u.drying.z) / u.drying.x; }
-fn setAt(field: vec4f) -> f32 { return field.y + u.drying.y + field.x / u.drying.x; }
+// +∞, made at run time: a constant expression overflowing f32 doesn't compile, and WGSL leaves x / 0 undefined.
+fn infinity() -> f32 {
+  var bits = 0x7f800000u;
+  return bitcast<f32>(bits);
+}
+// When a texel wetted to \`field.x\` at \`field.y\` turns matte (L) and sets (Z), after the base. On a sheet that
+// never dries (rate 0) a wetted texel never sets, and is matte from the start if no wetter than damp, else never.
+fn matteAt(field: vec4f) -> f32 {
+  if (u.drying.x <= 0.0) { return select(infinity(), -infinity(), field.x <= u.drying.z); }
+  return field.y + (field.x - u.drying.z) / u.drying.x;
+}
+fn setAt(field: vec4f) -> f32 {
+  if (u.drying.x <= 0.0) { return infinity(); }
+  return field.y + u.drying.y + field.x / u.drying.x;
+}
 fn isDamp(field: vec4f, at: WetPaper) -> bool { return field.x > 0.0 && at.wetness <= u.drying.z && at.workable > 0.0; }
 fn inBox(id: vec3u) -> bool { return all(id.xy < u.extent); }
 

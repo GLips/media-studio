@@ -4,8 +4,8 @@
 // bind it once, as they load.
 //
 // Warning: targets outlast a solve, and nothing a solve reads may be an earlier one's. Its start clears the films
-// (`clear`), its field's prepare the paper and rim; the open mask is cleared before each marking, the clip written at
-// each wash's start; each deposit rewrites its scratch (mask, cap, blurs, footprint, fresh, core).
+// (`clear`), its field's prepare the paper and rim, or a checkpoint writes them; the open mask is cleared before each
+// marking, the clip written at each wash's start (stamp-sheet-clips.ts); each deposit rewrites its scratch.
 
 import type { StampStage } from '../models/stamp-stage.ts';
 import type { StampPaintCompositor } from './stamp-paint-compositor.ts';
@@ -54,8 +54,8 @@ export function createStampSheetTargets(owner: StampPaintGpuOwner, stage: StampS
     core: plain('core', width, height, 'r16float', RENDER),
     footprint: plain('footprint', width, height, 'rgba16float', STORAGE),
     fresh: layered('fresh', STORAGE),
-    paper: plain('paper', width, height, STAMP_WET_FIELD_FORMATS.paper, STORAGE),
-    rim: plain('rim', width, height, STAMP_WET_FIELD_FORMATS.rim, STORAGE | RENDER),
+    paper: plain('paper', width, height, STAMP_WET_FIELD_FORMATS.paper, STORAGE | COPIED),
+    rim: plain('rim', width, height, STAMP_WET_FIELD_FORMATS.rim, STORAGE | RENDER | COPIED),
     landing: plain('landing', width, height, STAMP_WET_FIELD_FORMATS.landing, STORAGE),
     scale: plain('scale', width, height, STAMP_WET_FIELD_FORMATS.scale, STORAGE),
     open: plain('open', width, height, 'r32float', STORAGE | RENDER),
@@ -63,7 +63,9 @@ export function createStampSheetTargets(owner: StampPaintGpuOwner, stage: StampS
     press: compositor.reads.press ? plain('press', width, height, 'r16float', RENDER) : null,
     before: compositor.reads.before ? layered('before', GPUTextureUsage.COPY_DST) : null,
     /** Wash `w`'s clip base kept (stampSheetFieldPasses' clipBase), for a later wash clipping to it; written whole. */
-    savedClip: (w: number) => plain(`clip base ${w}`, width, height, 'rgba16float', STORAGE),
+    savedClip: (w: number) => plain(`clip base ${w}`, width, height, 'rgba16float', STORAGE | RENDER | COPIED),
+    /** Wash `w`'s clip coverage while another wash's entries land in the clip target. */
+    clipCoverage: (w: number) => plain(`clip coverage ${w}`, width, height, 'rgba16float', RENDER | COPIED),
     /** Clears what a solve reads before it writes: every film, and no film in the working layer. */
     clear(encoder: GPUCommandEncoder) {
       for (const film of filmTargets) for (const view of film.layers) clearStampTarget(encoder, view);

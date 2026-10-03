@@ -1,19 +1,22 @@
 // stamp-paint-gpu-cache.ts: what a device keeps between frames, under one budget: textures, each entry made by one
-// producer (a group's film, a plane's picture, a picture blurred) under a key naming what it holds. The device's owner
-// (stamp-paint-gpu-owner.ts) holds it, so every painting and output on the device shares the budget; each renderer keeps
-// its entries in stores of its own, given up when it's disposed.
+// producer (a group's film, a plane's picture, a picture blurred, a sheet solve's checkpoint) under a key naming what
+// it holds. The device's owner (stamp-paint-gpu-owner.ts) holds it, so every painting and output on the device shares
+// the budget; each renderer keeps its entries in stores of its own, given up when it's disposed.
 //
-// An entry the frame being encoded uses, or one a reader holds, is never given up: destroying a texture an unsubmitted
-// encoder reads is an error. Past the budget the least recently used of the rest go; a frame's own needs may overrun
-// it meanwhile.
+// An entry the frame being encoded uses, or one a reader or solve holds, is never given up: destroying a texture an
+// unsubmitted encoder reads is an error. Past the budget checkpoints go first, then the least recently used of the
+// rest; a frame's own needs may overrun it meanwhile.
 
 import type { StampPaintDevice } from './stamp-paint-gpu.ts';
 
 /** The most a device's cache holds once a frame's own entries are counted out, bytes: a 1080p scene's planes and films. */
 export const STAMP_GPU_CACHE_BUDGET = 768 * 1024 * 1024;
 
-/** What makes an entry: a group's painted layer, a plane's picture, a picture blurred, or an own sheet's edge. */
-export type StampGpuCacheProducer = 'film' | 'picture' | 'blurred' | 'edge';
+/**
+ * What makes an entry: a group's painted layer, a plane's picture, a picture blurred, an own sheet's edge, or a sheet
+ * solve's checkpoint.
+ */
+export type StampGpuCacheProducer = 'film' | 'picture' | 'blurred' | 'edge' | 'checkpoint';
 
 /** A texture an entry holds: `layers` array layers of `width` × `height` in `format`. */
 export type StampGpuCacheTexture = { width: number; height: number; layers: number; format: GPUTextureFormat; usage: GPUTextureUsageFlags };
@@ -47,9 +50,14 @@ export type StampPaintGpuCache = {
  * An entry as its store holds it. Its store's map is the one place it lives, note and all, so `forget` takes all of
  * it at once; eviction reaches it through the cache's set of stores.
  */
-type StampGpuCacheHeld = { textures: GPUTexture[]; bytes: number; used: number; encoder: GPUCommandEncoder; holds: number; forget: () => void };
+type StampGpuCacheHeld = {
+  textures: GPUTexture[]; bytes: number; used: number; encoder: GPUCommandEncoder; holds: number; producer: StampGpuCacheProducer; forget: () => void;
+};
 
 const TEXEL_BYTES: Partial<Record<GPUTextureFormat, number>> = { r8unorm: 1, r16float: 2, rg16float: 4, rgba8unorm: 4, rgba16float: 8, r32float: 4, rgba32float: 16 };
+
+/** The order the cache gives entries up in: checkpoints first, as a solve can always run again from an earlier one. */
+const evictionRank = (entry: StampGpuCacheHeld) => (entry.producer === 'checkpoint' ? 0 : 1);
 
 function textureBytes({ width, height, layers, format }: StampGpuCacheTexture): number {
   const texel = TEXEL_BYTES[format];
@@ -67,18 +75,18 @@ function forgetStampGpuCacheStore(store: ReadonlyMap<string, StampGpuCacheHeld>)
 export function stampPaintGpuCache(device: StampPaintDevice): StampPaintGpuCache {
   const stores = new Set<ReadonlyMap<string, StampGpuCacheHeld>>();
   let heldBytes = 0, clock = 0;
-  /** Gives up the least recently used entries `encoder`'s frame doesn't use and no reader holds until `more` bytes fit, or none is left. */
+  /** Gives up entries `encoder`'s frame doesn't use and nobody holds until `more` bytes fit (evictionRank's, then the least recently used), or none is left. */
   const room = (more: number, encoder: GPUCommandEncoder) => {
     const givable: StampGpuCacheHeld[] = [];
     for (const store of stores) for (const entry of store.values()) if (entry.encoder !== encoder && entry.holds === 0) givable.push(entry);
-    for (const entry of givable.toSorted((a, b) => a.used - b.used)) {
+    for (const entry of givable.toSorted((a, b) => evictionRank(a) - evictionRank(b) || a.used - b.used)) {
       if (heldBytes + more <= STAMP_GPU_CACHE_BUDGET) return;
       entry.forget();
     }
   };
   return {
-    // The producer names the store for its caller; keys need no prefix, as each store's map is its own.
-    store: <Note>(_producer: StampGpuCacheProducer): StampGpuCacheStore<Note> => {
+    // Keys need no prefix, as each store's map is its own.
+    store: <Note>(producer: StampGpuCacheProducer): StampGpuCacheStore<Note> => {
       const held = new Map<string, StampGpuCacheHeld & { note: Note }>();
       stores.add(held);
       return {
@@ -99,7 +107,7 @@ export function stampPaintGpuCache(device: StampPaintDevice): StampPaintGpuCache
             heldBytes -= bytes;
             for (const texture of made) texture.destroy();
           };
-          held.set(key, { textures: made, bytes, used: ++clock, encoder, holds: 0, note, forget });
+          held.set(key, { textures: made, bytes, used: ++clock, encoder, holds: 0, producer, note, forget });
           heldBytes += bytes;
           return { textures: made, note };
         },

@@ -1,7 +1,7 @@
-// stamp-gate-sheets.ts: the gate's sheet solves (ENGINE 9, tests 3, 6's sheets, 7 and 8, unclocked): painting
-// documents compiled and solved forward on the GPU, held to the wet laws' closed forms on the 1 ms grid, to what an
-// appended application, a posed group or a separate sheet may change, and the reductions to exact integer totals.
-// Three are accepted by eye (STAMP_GATE_SOLVED_IDS). Every brush a gate document names is the gate's round.
+// stamp-gate-sheets.ts: the gate's sheet solves (ENGINE 9, tests 3, 6's sheets, 7 and 8): painting documents
+// compiled and solved forward on the GPU, held to the wet laws' closed forms on the 1 ms grid, to what an appended
+// application, a posed group or a separate sheet may change, and the reductions to exact integer totals. Three are
+// accepted by eye (STAMP_GATE_SOLVED_IDS). Every brush a gate document names is the gate's round.
 
 import type { PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import meadow from '#lib/paint/document/models/meadow.painting.ts';
@@ -47,23 +47,24 @@ export const STAMP_GATE_SHEET_IMAGES = {
 export const stampGateSheetProgram = <S extends PropertySchema>(source: PaintingSourceModule<S>, values: Partial<PropertyValues<S>> = {}) =>
   compilePaintingSelection(painting(source, values), stampGateSheetBrushOf).sheets[0].program;
 
-const GATE_ROUND: BrushRef = { style: 'gate', brush: 'round' };
+/** The gate sheets' brush as their documents name it, and the two mixes they paint in. */
+export const STAMP_GATE_ROUND_REF: BrushRef = { style: 'gate', brush: 'round' };
 const { cerulean, ultramarine, burntSienna } = WATERCOLOUR_PIGMENTS;
-const POOL = { parts: [{ pigment: cerulean, amount: 1 }, { pigment: ultramarine, amount: 0.3 }], strength: 0.5 };
-const EARTH = { parts: [{ pigment: burntSienna, amount: 1 }], strength: 0.8 };
+export const STAMP_GATE_POOL_MIX = { parts: [{ pigment: cerulean, amount: 1 }, { pigment: ultramarine, amount: 0.3 }], strength: 0.5 };
+export const STAMP_GATE_EARTH_MIX = { parts: [{ pigment: burntSienna, amount: 1 }], strength: 0.8 };
 
 /**
  * A paper whose drying rate puts no closed-form time on the 1 ms grid: a decision a step off its closed form is the
  * solver's, never a tie f32 broke.
  */
-const SHEET_PAPER = { color: '#ffffff', absorbency: 0.37 } as const;
-const DRYING = stampDrying(PAINT_MEDIA.watercolour.wetting, SHEET_PAPER);
+export const STAMP_GATE_SHEET_PAPER = { color: '#ffffff', absorbency: 0.37 } as const;
+export const STAMP_GATE_SHEET_DRYING = stampDrying(PAINT_MEDIA.watercolour.wetting, STAMP_GATE_SHEET_PAPER);
 
-const rectangle = (x0: number, y0: number, x1: number, y1: number): Region => ({ kind: 'polygon', rings: [[{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }]] });
-const line = (...xy: number[]): Subpath => xy.flatMap((v, i) => (i % 2 ? [] : [{ x: v, y: xy[i + 1] }]));
+export const stampGateRectangle = (x0: number, y0: number, x1: number, y1: number): Region => ({ kind: 'polygon', rings: [[{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }]] });
+export const stampGateLine = (...xy: number[]): Subpath => xy.flatMap((v, i) => (i % 2 ? [] : [{ x: v, y: xy[i + 1] }]));
 
 const FORWARD = { width: 160, height: 120 } as const;
-const FLOOD_WATER = 0.85;
+export const STAMP_GATE_FLOOD_WATER = 0.85;
 
 const forwardProperties = { appended: { type: 'boolean', default: false } } as const satisfies PropertySchema;
 
@@ -75,17 +76,17 @@ export const STAMP_GATE_FORWARD: PaintingSourceModule<typeof forwardProperties> 
   properties: forwardProperties,
   default: function gateForward({ appended }: PropertyValues<typeof forwardProperties>): PaintingDocument {
     return {
-      widthPx: FORWARD.width, heightPx: FORWARD.height, paper: SHEET_PAPER, medium: 'watercolour',
+      widthPx: FORWARD.width, heightPx: FORWARD.height, paper: STAMP_GATE_SHEET_PAPER, medium: 'watercolour',
       layers: [{
         key: 'pond',
         washes: [{
           key: 'pool',
           applications: [
-            { key: 'flood', kind: 'fill', area: { region: rectangle(16, 16, 144, 104) }, brush: GATE_ROUND, diameterPx: 24, seed: 'flood', charge: { kind: 'paint', mix: POOL, water: FLOOD_WATER } },
-            { key: 'charge', on: 'wet', kind: 'stroke', subpaths: [line(36, 40, 48, 60, 40, 80)], brush: GATE_ROUND, diameterPx: 10, seed: 'charge', charge: { kind: 'paint', mix: EARTH, water: 0.6 } },
-            { key: 'bloom', on: 'damp', effect: 'bloom', kind: 'stamps', placements: [{ x: 96, y: 60 }], brush: GATE_ROUND, diameterPx: 20, seed: 'bloom', charge: { kind: 'water', water: 0.95 } },
-            { key: 'scrub', on: 'dry', kind: 'stroke', subpaths: [line(126, 32, 128, 88)], brush: GATE_ROUND, diameterPx: 10, seed: 'scrub', charge: { kind: 'lift', strength: 0.6 } },
-            ...(appended ? [{ key: 'veil', kind: 'stroke', subpaths: [line(24, 96, 136, 96)], brush: GATE_ROUND, diameterPx: 12, seed: 'veil', charge: { kind: 'paint', mix: POOL, water: 0.5 } } as const] : []),
+            { key: 'flood', kind: 'fill', area: { region: stampGateRectangle(16, 16, 144, 104) }, brush: STAMP_GATE_ROUND_REF, diameterPx: 24, seed: 'flood', charge: { kind: 'paint', mix: STAMP_GATE_POOL_MIX, water: STAMP_GATE_FLOOD_WATER } },
+            { key: 'charge', on: 'wet', kind: 'stroke', subpaths: [stampGateLine(36, 40, 48, 60, 40, 80)], brush: STAMP_GATE_ROUND_REF, diameterPx: 10, seed: 'charge', charge: { kind: 'paint', mix: STAMP_GATE_EARTH_MIX, water: 0.6 } },
+            { key: 'bloom', on: 'damp', effect: 'bloom', kind: 'stamps', placements: [{ x: 96, y: 60 }], brush: STAMP_GATE_ROUND_REF, diameterPx: 20, seed: 'bloom', charge: { kind: 'water', water: 0.95 } },
+            { key: 'scrub', on: 'dry', kind: 'stroke', subpaths: [stampGateLine(126, 32, 128, 88)], brush: STAMP_GATE_ROUND_REF, diameterPx: 10, seed: 'scrub', charge: { kind: 'lift', strength: 0.6 } },
+            ...(appended ? [{ key: 'veil', kind: 'stroke', subpaths: [stampGateLine(24, 96, 136, 96)], brush: STAMP_GATE_ROUND_REF, diameterPx: 12, seed: 'veil', charge: { kind: 'paint', mix: STAMP_GATE_POOL_MIX, water: 0.5 } } as const] : []),
           ],
         }],
       }],
@@ -95,16 +96,16 @@ export const STAMP_GATE_FORWARD: PaintingSourceModule<typeof forwardProperties> 
 
 /** The forward entries' times by the closed forms: flood and charge at once, the bloom when the flood turns matte, the scrub when it sets. */
 export function stampGateForwardTimes(): number[] {
-  const matte = stampSheetGrid(0, (FLOOD_WATER - DRYING.damp) / DRYING.rate);
-  return [0, 0, matte, stampSheetGrid(matte, DRYING.openTime + FLOOD_WATER / DRYING.rate)];
+  const matte = stampSheetGrid(0, (STAMP_GATE_FLOOD_WATER - STAMP_GATE_SHEET_DRYING.damp) / STAMP_GATE_SHEET_DRYING.rate);
+  return [0, 0, matte, stampSheetGrid(matte, STAMP_GATE_SHEET_DRYING.openTime + STAMP_GATE_FLOOD_WATER / STAMP_GATE_SHEET_DRYING.rate)];
 }
 
 /** One damp application on paper nothing wetted. */
 export const STAMP_GATE_NEVER_WETTED: PaintingSourceModule = {
   default: function gateNeverWetted(): PaintingDocument {
     return {
-      widthPx: 96, heightPx: 64, paper: SHEET_PAPER, medium: 'watercolour',
-      layers: [{ key: 'sheet', washes: [{ key: 'dry', applications: [{ key: 'early', on: 'damp', kind: 'stroke', subpaths: [line(20, 32, 76, 32)], brush: GATE_ROUND, diameterPx: 12, seed: 'early', charge: { kind: 'paint', mix: EARTH, water: 0.5 } }] }] }],
+      widthPx: 96, heightPx: 64, paper: STAMP_GATE_SHEET_PAPER, medium: 'watercolour',
+      layers: [{ key: 'sheet', washes: [{ key: 'dry', applications: [{ key: 'early', on: 'damp', kind: 'stroke', subpaths: [stampGateLine(20, 32, 76, 32)], brush: STAMP_GATE_ROUND_REF, diameterPx: 12, seed: 'early', charge: { kind: 'paint', mix: STAMP_GATE_EARTH_MIX, water: 0.5 } }] }] }],
     };
   },
 };
@@ -116,35 +117,46 @@ export const STAMP_GATE_NEVER_WETTED_MESSAGE =
 const WET_CONTACT = { width: 160, height: 120 } as const;
 const SHALLOWS_WATER = 0.75;
 const FOOT_WATER = 1;
-const FOOT = line(70, 80, 80, 92, 92, 80);
+const FOOT = stampGateLine(70, 80, 80, 92, 92, 80);
+/**
+ * The sheet's drying scale and the foot's two times, scene seconds: the charge lands while the shallows shine (matte
+ * by 1.65 s), the glaze once they and the charge's wetter water have set (by 3.1 s and 4.6 s).
+ */
+const WET_CONTACT_SCALE = 0.015;
+const FOOT_CHARGE_AT = 0.5;
+const FOOT_GLAZE_AT = 6;
 
 const wetContactProperties = { heron: { type: 'boolean', default: true }, apart: { type: 'boolean', default: false } } as const satisfies PropertySchema;
 
 /**
- * Shallows flooded across the foot of the sheet, and, `heron`, a rigged heron group whose foot charges across their
- * edge while they shine, letting their paint walk out into its water, and glazes once all under it has set (`on:
- * 'dry'`), on one sheet; `apart`, the shallows and the heron each on an own sheet.
+ * Shallows flooded across the foot of the sheet from scene second 0, and, `heron`, a rigged heron group whose foot
+ * charges across their edge at 0.5 s while they shine, its water letting their paint walk out into it, and glazes at
+ * 6 s once all under it has set (`on: 'dry'`), on one sheet (ENGINE 4.1's example); `apart`, the shallows and the
+ * heron each on an own sheet at the same scale.
  */
 export const STAMP_GATE_WET_CONTACT: PaintingSourceModule<typeof wetContactProperties> = {
   properties: wetContactProperties,
   default: function gateWetContact({ heron, apart }: PropertyValues<typeof wetContactProperties>): PaintingDocument {
-    const sheet = apart ? { sheet: { kind: 'own', paper: SHEET_PAPER } } as const : {};
+    const sheet = apart ? { sheet: { kind: 'own', paper: STAMP_GATE_SHEET_PAPER, dryingScale: WET_CONTACT_SCALE } } as const : {};
     const shallows = {
       key: 'shallows', ...sheet,
-      washes: [{ key: 'shallows-wash', applications: [{ key: 'flood', kind: 'fill', area: { region: rectangle(0, 84, 160, 120) }, brush: GATE_ROUND, diameterPx: 24, seed: 'shallows', charge: { kind: 'paint', mix: POOL, water: SHALLOWS_WATER } }] }],
+      washes: [{
+        key: 'shallows-wash', clock: { origin: 0 },
+        applications: [{ key: 'flood', kind: 'fill', area: { region: stampGateRectangle(0, 84, 160, 120) }, brush: STAMP_GATE_ROUND_REF, diameterPx: 24, seed: 'shallows', charge: { kind: 'paint', mix: STAMP_GATE_POOL_MIX, water: SHALLOWS_WATER } }],
+      }],
     } as const;
     const foot = {
       key: 'foot',
       washes: [{
-        key: 'foot-wash',
+        key: 'foot-wash', clock: { origin: FOOT_CHARGE_AT },
         applications: [
-          { key: 'charge', kind: 'stroke', subpaths: [FOOT], brush: GATE_ROUND, diameterPx: 10, seed: 'foot', charge: { kind: 'paint', mix: EARTH, water: FOOT_WATER } },
-          { key: 'glaze', on: 'dry', kind: 'stroke', subpaths: [FOOT], brush: GATE_ROUND, diameterPx: 14, seed: 'glaze', charge: { kind: 'paint', mix: { ...EARTH, strength: 0.5 }, water: 0.4 } },
+          { key: 'charge', at: FOOT_CHARGE_AT, kind: 'stroke', subpaths: [FOOT], brush: STAMP_GATE_ROUND_REF, diameterPx: 10, seed: 'foot', charge: { kind: 'paint', mix: STAMP_GATE_EARTH_MIX, water: FOOT_WATER } },
+          { key: 'glaze', at: FOOT_GLAZE_AT, on: 'dry', kind: 'stroke', subpaths: [FOOT], brush: STAMP_GATE_ROUND_REF, diameterPx: 14, seed: 'glaze', charge: { kind: 'paint', mix: { ...STAMP_GATE_EARTH_MIX, strength: 0.5 }, water: 0.4 } },
         ],
       }],
     } as const;
     return {
-      widthPx: WET_CONTACT.width, heightPx: WET_CONTACT.height, paper: SHEET_PAPER, medium: 'watercolour',
+      widthPx: WET_CONTACT.width, heightPx: WET_CONTACT.height, paper: STAMP_GATE_SHEET_PAPER, medium: 'watercolour', ...(!apart && { dryingScale: WET_CONTACT_SCALE }),
       layers: heron ? [shallows, { key: 'heron', ...sheet, children: [foot] }] : [shallows],
     };
   },
@@ -164,12 +176,9 @@ export function stampGateHeronPosed(pose: PaintSimilarity): StampSheetProgram {
 export const STAMP_GATE_FOOT_BOX = { x: 64, y: 74, w: 34, h: 24 } as const;
 export const STAMP_GATE_FAR_SHALLOWS = { x: 0, y: 92, w: 32, h: 28 } as const;
 
-/**
- * The wet-contact entries' times by the closed forms: the shallows and the foot's charge at once, the glaze once all
- * under it has set, the charge's wetter water last.
- */
+/** The wet-contact entries' times, model seconds: each its scene second's on the clock run from the shallows' 0 s. */
 export function stampGateWetContactTimes(): number[] {
-  return [0, 0, stampSheetGrid(0, DRYING.openTime + Math.max(SHALLOWS_WATER, FOOT_WATER) / DRYING.rate)];
+  return [0, FOOT_CHARGE_AT / WET_CONTACT_SCALE, FOOT_GLAZE_AT / WET_CONTACT_SCALE];
 }
 
 /** The still solved baseline `id` draws: an evaluation, every layer of it compiled, and the poses it holds. */
@@ -204,8 +213,8 @@ const REBASE_PAPER = { color: '#ffffff', absorbency: 0 } as const;
 /** Washes of one layer each flooding the same square once the last has set, past 2¹³ s, then one damp application. */
 export const STAMP_GATE_REBASE: PaintingSourceModule = {
   default: function gateRebase(): PaintingDocument {
-    const flood = (w: number) => ({ key: `flood${w}`, kind: 'fill', area: { region: rectangle(8, 8, 56, 56) }, brush: GATE_ROUND, diameterPx: 16, seed: `flood${w}`, charge: { kind: 'paint', mix: POOL, water: REBASE_LEVEL } } as const);
-    const late = { key: 'late', on: 'damp', kind: 'stamps', placements: [{ x: 32, y: 32 }], brush: GATE_ROUND, diameterPx: 12, seed: 'late', charge: { kind: 'paint', mix: EARTH, water: 0.2 } } as const;
+    const flood = (w: number) => ({ key: `flood${w}`, kind: 'fill', area: { region: stampGateRectangle(8, 8, 56, 56) }, brush: STAMP_GATE_ROUND_REF, diameterPx: 16, seed: `flood${w}`, charge: { kind: 'paint', mix: STAMP_GATE_POOL_MIX, water: REBASE_LEVEL } } as const);
+    const late = { key: 'late', on: 'damp', kind: 'stamps', placements: [{ x: 32, y: 32 }], brush: STAMP_GATE_ROUND_REF, diameterPx: 12, seed: 'late', charge: { kind: 'paint', mix: STAMP_GATE_EARTH_MIX, water: 0.2 } } as const;
     return {
       widthPx: 64, heightPx: 64, paper: REBASE_PAPER, medium: 'watercolour',
       layers: [{ key: 'stack', washes: Array.from({ length: REBASE_WASHES }, (_, w) => ({ key: `wash${w}`, applications: w === REBASE_WASHES - 1 ? [flood(w), late] : [flood(w)] })) }],

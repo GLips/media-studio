@@ -218,11 +218,11 @@
     },
     "solved/wet-contact": {
       "file": "solved/wet-contact.png",
-      "output": "1757cfbd705b4cbbe3a942a00a517621b1e0dff08617dcf746cc80a9acf6fecd",
-      "inputs": "44204d960c19aaf02397b652a06ef92a5641dc4b539cd0ec62e01a70c97b3b19",
-      "reason": "vid-157 sheets review: a sheet program carries its edge (document or union), and poses are keyed by node key (the paper heron's by 'heron'), so each solved still's inputs text changes; images unchanged",
+      "output": "885f09a77450e573c6a0e08467514feadd8b38157a820dedf5dcb3554cd3fda7",
+      "inputs": "92e987706d7029656d475ed99589797cb6fe0985b5fbde672f89e43fd83ad469",
+      "reason": "vid-157 clocks: a program carries its sheet's clock and each entry its order time and fixed at; wet-contact is clocked (shallows from 0 s, the foot's charge at 0.5 s and glaze at 6 s, drying scale 0.015)",
       "accepted": "2026-10-03",
-      "acceptedOver": "ce669f0a",
+      "acceptedOver": "690213d6",
       "adapter": "apple metal-3"
     }
   }

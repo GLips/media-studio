@@ -1,10 +1,8 @@
-// painting-film-readback.ts: a selected layer's film, finished at rest, read back as the rig and tools read it (ENGINE
-// 5.1): `paintingFilmCoverage` and `paintingFilmPicture`. The selection compiles to the programs its sheets run; the
-// layer's sheet is solved (a prefix already solved, its films kept, paints nothing) and its films held while its film
-// is read back through painting's readbacks (stamp-film-readback.ts), kept per device by what makes its pixels.
-//
-// Negative space: no prefix. Every wash is unclocked so far, so a selection shows every application, and one naming
-// an `at` is refused rather than read as if it hadn't.
+// painting-film-readback.ts: a selected layer's film, at rest through the selection's prefix, read back as the rig and
+// tools read it (ENGINE 5.1): `paintingFilmCoverage` and `paintingFilmPicture`. The selection compiles to the programs
+// its sheets run; the layer's sheet is solved (a prefix already solved, its films kept, paints nothing) and its films
+// held while its film is read back through painting's readbacks (stamp-film-readback.ts), kept per device by what
+// makes its pixels.
 
 import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { readStampFilmCoverage, readStampFilmPicture, type StampFilmBacking } from '#lib/paint/painting/studio/stamp-film-readback.ts';
@@ -24,18 +22,17 @@ import type { LayerSelection } from '../models/painting-selection.ts';
 export type PaintingFilmReader = { readonly owner: StampPaintGpuOwner; readonly brushOf: PaintingBrushOf; readonly costs?: StampPaintCostTally };
 
 /**
- * `read` of `layer`'s film in `selection`, its sheet solved finished at rest and its films held until the read
- * resolves. Throws on a layer the selection doesn't hold.
+ * `read` of `layer`'s film in `selection`, its sheet solved at rest through the selection's `at` (finished, all of it
+ * when left out) and its films held until the read resolves. Throws on a layer the selection doesn't hold.
  */
 async function readPaintingFilm<T>(
   { owner, brushOf, costs }: PaintingFilmReader, { painting, layers, at }: LayerSelection, layer: LayerKey, read: (sheet: StampSheetKeptFilms, film: number) => Promise<T>,
 ): Promise<T> {
-  if (at !== undefined) throw new Error(`painting: ${painting.source}'s films are read finished; a selection at ${at} s isn't read back yet`);
   const place = painting.tree.byKey.get(layer);
   if (!place || place.kind !== 'layer') throw new Error(`painting: ${painting.source} has no layer ${layer}`);
   const ordinal = painting.tree.layers.indexOf(place), compiled = compilePaintingSelection(painting, brushOf, { layers }).sheets.find((each) => each.layers.includes(ordinal));
   if (!compiled) throw new Error(`painting: ${layer} isn't among the layers selected from ${painting.source}`);
-  const { films } = await solveStampSheet(owner, compiled.program, { costs });
+  const { films } = await solveStampSheet(owner, compiled.program, { costs, ...(at !== undefined && { at }) });
   const release = holdStampSheetFilms(owner, films);
   try {
     return await read({ program: compiled.program, films }, compiled.layers.indexOf(ordinal));

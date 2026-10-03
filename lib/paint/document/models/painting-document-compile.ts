@@ -1,15 +1,16 @@
 // painting-document-compile.ts: a selection of an evaluation's layers as the programs the wash solver runs
 // (stamp-sheet-program.ts), one per sheet they lie on (ENGINE 4.1): a film per selected layer with its slots, washes
-// and applications in the sheet's order, each deposit planned at rest, with the canonical text of what each entry
-// reads (ENGINE 4.2) and of the sheet's head, from which a solve chains its state keys; and the steps compositing them
-// (ENGINE 5.4). Keys name things in messages only: deposits are named by ordinals and seeded by their tips. Posing
-// comes after (painting-pose.ts).
+// and applications in the sheet's order with their order times, the sheet's clock, each deposit planned at rest, with
+// the canonical text of what each entry reads (ENGINE 4.2) and of the sheet's head, from which a solve chains its
+// state keys; and the steps compositing them (ENGINE 5.4). Keys name things in messages only: deposits are named by
+// ordinals and seeded by their tips. Posing comes after (painting-pose.ts).
 //
-// Negative space: unclocked only, the solver's limit so far. A clocked wash is refused by name, not painted wrong.
+// Negative space: a lift in a direct wash, the solver's limit so far, is refused by name, not painted wrong.
+
 import { PAINT_MEDIA, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { PaintMixturePigment } from '#lib/paint/materials/models/paint-pigment.ts';
 import { stampBrushedMasksUnder } from '#lib/paint/painting/models/stamp-brushed-mask.ts';
-import type { CompiledStampDeposit } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
+import { stampBoilSeed, type CompiledStampDeposit } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampSheetCompositeStep, StampSheetEntry, StampSheetFilm, StampSheetPrewet, StampSheetProgram, StampSheetWash } from '#lib/paint/painting/models/stamp-sheet-program.ts';
 import { StampSheetRefusal } from '#lib/paint/painting/models/stamp-sheet-refusal.ts';
 import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
@@ -19,6 +20,7 @@ import type { AnyApplication, NodeKey, Prewet, Wash } from './painting-document.
 import { paintingEntryReads, paintingSheetHead } from './painting-entry-reads.ts';
 import { PAINTING_REST_POSE } from './painting-pose.ts';
 import { paintingApplicationOwner } from './painting-problem.ts';
+import { paintingReseeded } from './painting-reseed.ts';
 import { paintingSheetOrders, paintingSheetWashes, type PaintingSheetOrder } from './painting-sheet-program.ts';
 import type { PaintingEvaluation } from './painting-source.ts';
 import { paintingLayersUnder, paintingSheetName, type PaintingSheet, type PaintingTree } from './painting-tree.ts';
@@ -44,16 +46,13 @@ const paintingEntryMarks = (deposit: CompiledStampDeposit, prewet: StampSheetPre
 });
 
 /**
- * `order`, a sheet's order in `evaluation`, as its program at rest, brushes resolved by `brushOf`. Refuses what the
- * solver can't paint so far: a clocked wash, a lift in a direct wash.
+ * `order`, a sheet's order in `evaluation`, as its program at rest, brushes resolved by `brushOf`, its boiling layers
+ * reseeded by `reseed` (PaintingSelectionCompileOptions'). Refuses what the solver can't paint so far: a lift in a
+ * direct wash.
  */
-function compilePaintingSheet(evaluation: PaintingEvaluation, order: PaintingSheetOrder, brushOf: PaintingBrushOf): StampSheetProgram {
+function compilePaintingSheet(evaluation: PaintingEvaluation, order: PaintingSheetOrder, brushOf: PaintingBrushOf, reseed: ReadonlyMap<number, number> | undefined): StampSheetProgram {
   const { document: paintingDocument, tree } = evaluation;
-  const clocked = order.entries.find(({ orderTime }) => orderTime !== null);
-  if (clocked) {
-    const wash = tree.layers[order.layers[clocked.layer].layer].node.washes[clocked.wash];
-    throw new StampSheetRefusal(`painting: ${evaluation.source}'s wash ${wash.key} is clocked, and the solver paints unclocked washes so far`);
-  }
+  const epochOf = (sheetLayer: number) => reseed?.get(order.layers[sheetLayer].layer) ?? 0;
   const reads = paintingEntryReads(tree, order);
   const sheetWashes = paintingSheetWashes(tree, order);
   const washIndex = new Map(sheetWashes.map(({ layer, wash }, w) => [`${layer}/${wash}`, w]));
@@ -68,25 +67,28 @@ function compilePaintingSheet(evaluation: PaintingEvaluation, order: PaintingShe
   const washes = sheetWashes.map(({ layer, wash, place, node }): StampSheetWash => {
     // A checked document clips only to an earlier wash with applications, so it's on this sheet.
     const wet = node.wetHistory !== false, clipTo = node.clipTo === undefined ? null : washIndex.get(`${layer}/${place.node.washes.findIndex(({ key }) => key === node.clipTo)}`)!;
-    const prewet = wet && node.prewet ? compilePaintingPrewet(node.prewet, `${layer}/${wash}/prewet`, node.key, brushOf) : null;
-    return { film: layer, name: node.key, prewet, rim: wet ? node.rim ?? 1 : 0, clipTo, wetHistory: wet };
+    const epoch = epochOf(layer), id = stampBoilSeed(`${layer}/${wash}/prewet`, epoch);
+    const prewet = wet && node.prewet ? compilePaintingPrewet(paintingReseeded(node.prewet, epoch), id, node.key, brushOf) : null;
+    return { film: layer, name: node.key, prewet, rim: wet ? node.rim ?? 1 : 0, clipTo, wetHistory: wet, origin: node.clock?.origin ?? null };
   });
   const entries = order.entries.map((entry, k): StampSheetEntry => {
-    const wash: Wash = tree.layers[order.layers[entry.layer].layer].node.washes[entry.wash];
-    const application: AnyApplication = wash.applications[entry.application];
+    const wash: Wash = tree.layers[order.layers[entry.layer].layer].node.washes[entry.wash], epoch = epochOf(entry.layer);
+    const application: AnyApplication = paintingReseeded(wash.applications[entry.application], epoch);
     const w = washIndex.get(`${entry.layer}/${entry.wash}`)!, owner = paintingApplicationOwner(wash, application, entry.application);
-    const { deposit, anchors } = compilePaintingDeposit(application, owner, { id: `${entry.layer}/${entry.wash}/${entry.application}`, wet: washes[w].wetHistory, brushOf });
+    const id = stampBoilSeed(`${entry.layer}/${entry.wash}/${entry.application}`, epoch);
+    const { deposit, anchors } = compilePaintingDeposit(application, owner, { id, wet: washes[w].wetHistory, brushOf });
     const { medium } = films[entry.layer], { charge } = application, firstOfWash = order.entries.findIndex((other) => other.layer === entry.layer && other.wash === entry.wash) === k;
     const capped = charge.kind === 'paint' && charge.maxSpreadPx !== undefined ? paintingCappedMedium(medium, charge.maxSpreadPx, application.diameterPx) : medium;
     const marks = paintingEntryMarks(deposit, firstOfWash ? washes[w].prewet : null);
     return {
       wash: w, name: owner, deposit, medium: capped, on: 'on' in application ? application.on ?? null : null, bloom: 'effect' in application && application.effect === 'bloom',
-      chain: entry.chain, anchors, datum: stampCanonicalJson({ reads: reads[k].datum, marks }), pose: PAINTING_REST_POSE,
+      chain: entry.chain, orderTime: entry.orderTime, at: application.at ?? null, anchors,
+      datum: stampCanonicalJson({ reads: reads[k].datum, marks, boil: epoch || undefined }), pose: PAINTING_REST_POSE,
     };
   });
   return {
     name: `${evaluation.source}, ${paintingSheetName(order.sheet)}`, width: paintingDocument.widthPx, height: paintingDocument.heightPx, paper: order.sheet.paper, edge: order.sheet.edge, water: PAINT_MEDIA[order.sheet.water],
-    films, washes, entries, head: stampCanonicalJson(paintingSheetHead(paintingDocument, order)),
+    clock: order.clock, films, washes, entries, head: stampCanonicalJson(paintingSheetHead(paintingDocument, order)),
   };
 }
 
@@ -106,8 +108,12 @@ export type PaintingSheetCompiled = {
  */
 export type PaintingSelectionCompiled = { readonly tree: PaintingTree; readonly sheets: readonly PaintingSheetCompiled[]; readonly steps: readonly StampSheetCompositeStep[] };
 
-/** What a selection's compile is told: `layers`, the layers and groups selected (all when left out). */
-export type PaintingSelectionCompileOptions = { readonly layers?: readonly NodeKey[] };
+/**
+ * What a selection's compile is told: `layers`, the layers and groups selected (all when left out); `reseed`, each
+ * boiling layer's epoch by its ordinal in the tree's layers (ENGINE 4.6), every seed of its applications suffixed for
+ * it and its entries keyed by it, a layer left out, or at 0, as written.
+ */
+export type PaintingSelectionCompileOptions = { readonly layers?: readonly NodeKey[]; readonly reseed?: ReadonlyMap<number, number> };
 
 /**
  * The layers `keys` name (layers, and every layer under a group), as ordinals in `tree.layers`; every layer when
@@ -131,26 +137,30 @@ const compiledSelections = new WeakMap<PaintingEvaluation, WeakMap<PaintingBrush
 /**
  * The selected layers of `evaluation`, each sheet they lie on compiled at rest. A film comes where its layer does in
  * document order; a card where its owner does, before every node under it, so a nested sheet lies on its parent's
- * card and a scene layer under the owner glazes over it. Memoised per `brushOf`.
+ * card and a scene layer under the owner glazes over it. Memoised per `brushOf`, selection and epochs.
  */
-export function compilePaintingSelection(evaluation: PaintingEvaluation, brushOf: PaintingBrushOf, { layers }: PaintingSelectionCompileOptions = {}): PaintingSelectionCompiled {
-  const selected = paintingSelectedLayers(evaluation.tree, layers), key = [...selected].toSorted((a, b) => a - b).join(',');
+export function compilePaintingSelection(evaluation: PaintingEvaluation, brushOf: PaintingBrushOf, { layers, reseed }: PaintingSelectionCompileOptions = {}): PaintingSelectionCompiled {
+  const selected = paintingSelectedLayers(evaluation.tree, layers);
+  const epochs = [...(reseed ?? [])].filter(([, epoch]) => epoch !== 0).toSorted(([a], [b]) => a - b);
+  const key = `${[...selected].toSorted((a, b) => a - b).join(',')}|${epochs.map(([layer, epoch]) => `${layer}@${epoch}`).join(',')}`;
   let byBrushes = compiledSelections.get(evaluation);
   if (!byBrushes) compiledSelections.set(evaluation, (byBrushes = new WeakMap<PaintingBrushOf, Map<string, PaintingSelectionCompiled>>()));
   let bySelection = byBrushes.get(brushOf);
   if (!bySelection) byBrushes.set(brushOf, (bySelection = new Map<string, PaintingSelectionCompiled>()));
   const known = bySelection.get(key);
   if (known) return known;
-  const compiled = compileSelectedLayers(evaluation, brushOf, selected);
+  const compiled = compileSelectedLayers(evaluation, brushOf, selected, reseed);
   bySelection.set(key, compiled);
   return compiled;
 }
 
-function compileSelectedLayers(evaluation: PaintingEvaluation, brushOf: PaintingBrushOf, selected: ReadonlySet<number>): PaintingSelectionCompiled {
+function compileSelectedLayers(
+  evaluation: PaintingEvaluation, brushOf: PaintingBrushOf, selected: ReadonlySet<number>, reseed: ReadonlyMap<number, number> | undefined,
+): PaintingSelectionCompiled {
   const { tree } = evaluation;
   const sheets = paintingSheetOrders(tree, selected).flatMap((order, s): PaintingSheetCompiled[] => (s > 0 && order.layers.length === 0
     ? []
-    : [{ sheet: order.sheet, layers: order.layers.map(({ layer }) => layer), ownerChain: order.ownerChain, program: compilePaintingSheet(evaluation, order, brushOf) }]));
+    : [{ sheet: order.sheet, layers: order.layers.map(({ layer }) => layer), ownerChain: order.ownerChain, program: compilePaintingSheet(evaluation, order, brushOf, reseed) }]));
   const steps = tree.nodes.flatMap((place): StampSheetCompositeStep[] => {
     const sheet = sheets.findIndex((compiled) => compiled.sheet === place.sheet);
     if (sheet < 0) return [];
