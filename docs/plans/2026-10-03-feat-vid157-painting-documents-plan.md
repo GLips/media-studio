@@ -120,7 +120,7 @@ frame plan), `lib/platform/gpu/`, the stamp gate.
 - Each land overwrites the landing, prepare and dried clear the rim, clip clears for every unclipped pass: the core
   sampling pass needs its own target.
 - New shaders sample with explicit gradients from the vertex (`textureSampleGrad`, vid-158); reductions use integer
-  atomics only; decided schedules are stored by solve key, since each Remotion tab decides its own.
+  atomics only; decided schedules are cached by the inputs they read, since each Remotion tab decides its own.
 - Every extraction is checked against `npm run stamp:gate`, judged by eye.
 
 ### Considered but deferred
@@ -143,7 +143,8 @@ Prefix renders never mutate resumable state; checkpoints keep all persistent sta
 ## Phase 4: Sheets (mid-term)
 
 ### Goal
-Several papers in one renderer, own-sheet edges, nested sheets, `joins`, and posing before painting on shared
+Several papers in one renderer, own-sheet edges, nested sheets, elements entering a shared sheet's program at their
+pose, and posing before painting on shared
 sheets with its cache. vid-151's done-when: the heron in each paper mode, a nested case, grain visibly still on the
 scene's sheet (ENGINE test 6).
 
@@ -158,7 +159,7 @@ painted textures for three.js objects.
 
 ### Goal
 Dissolve and `bracket`, masks (path and `alphaOf`), instanced planes, pin and cover lays with the DOM adapter,
-visibility, the cost report, `studio paint diff`. ENGINE test 5 through `studio repeatable`.
+visibility, the cost report. ENGINE test 5 through `studio repeatable`.
 
 ## Phase 7: Test scenes (far-term)
 
