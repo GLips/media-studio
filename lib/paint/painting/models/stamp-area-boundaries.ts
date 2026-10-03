@@ -5,7 +5,7 @@
 // past the stretch's ends, so two stretches meet at a point with no notch. stampAreaCoverageAt and areaCoverage in
 // WGSL read it, twins the gate holds together.
 
-import { stampPolygonDistance, type StampPoint } from './stamp-region.ts';
+import { stampRingsDistance, type StampPoint } from './stamp-region.ts';
 
 /**
  * `keep`: the edge holds as the within draws it. `feather`: coverage falls off over `reach` px inside the stretch,
@@ -43,16 +43,16 @@ export function stampPolylineDistance(path: readonly StampPoint[], x: number, y:
 }
 
 /**
- * `boundaries` checked against `polygon`, the outline they lie on, for `what`. Throws on a stretch of fewer than two
- * finite points, a point off the outline, a kept stretch given a reach or a treated one without a positive one, or two
+ * `boundaries` checked against `rings`, the outline they lie on, for `what`. Throws on a stretch of fewer than two
+ * finite points, a point off every ring, a kept stretch given a reach or a treated one without a positive one, or two
  * stretches running along each other with different treatments.
  */
-export function compileStampBoundaries(boundaries: StampBoundaries, polygon: readonly StampPoint[], what: string): CompiledStampBoundary[] {
+export function compileStampBoundaries(boundaries: StampBoundaries, rings: readonly (readonly StampPoint[])[], what: string): CompiledStampBoundary[] {
   const entries = Object.entries(boundaries);
   for (const [name, { path, treatment, reach }] of entries) {
     const label = `${what}'s boundary ${name}`;
     if (path.length < 2 || !path.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y))) throw new Error(`stamp paint: ${label} needs at least two finite points`);
-    const off = path.find(({ x, y }) => Math.abs(stampPolygonDistance(polygon, x, y)) > STAMP_BOUNDARY_ON_OUTLINE);
+    const off = path.find(({ x, y }) => Math.abs(stampRingsDistance(rings, x, y)) > STAMP_BOUNDARY_ON_OUTLINE);
     if (off) throw new Error(`stamp paint: ${label} has a point at ${off.x}, ${off.y} off its area's outline; a boundary is a stretch of the outline, its points on it`);
     if (treatment === 'keep' && reach !== undefined) throw new Error(`stamp paint: ${label} is kept, and a kept edge has no reach`);
     if (treatment !== 'keep' && !(reach !== undefined && reach > 0 && Number.isFinite(reach))) throw new Error(`stamp paint: ${label} is a ${treatment}, which needs a positive reach, px`);

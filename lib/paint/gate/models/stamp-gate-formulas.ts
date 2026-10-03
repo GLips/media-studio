@@ -19,7 +19,7 @@ import { stampLandedWetness, stampWetnessAt, stampWorkableAt } from '#lib/paint/
 import { stampBloomSigma } from '#lib/paint/painting/models/stamp-wet-bloom.ts';
 import { stampDryingRimBand, stampDryingRimWetShare } from '#lib/paint/painting/models/stamp-wet-rim.ts';
 import type { CompiledStampBoundary } from '#lib/paint/painting/models/stamp-area-boundaries.ts';
-import { stampDistanceGrid, stampGridAt, stampPolygonBox, stampPolygonDistance, stampRegionPolygon, type StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import { STAMP_RINGED_COUNT, stampDistanceGrid, stampGridAt, stampPolygonBox, stampPolygonDistance, stampRegionPolygon, stampRingsDistance, stampRingsLayout, type StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { stampGateWetLawGrids, type StampGatePropertyResult } from './stamp-gate-wet-laws.ts';
 
 /**
@@ -177,6 +177,20 @@ function twinGrids(): StampGateFormulaGrid[] {
     }
     return first;
   });
+  // A region of rings read even-odd: the square, a hole in it, an island in the hole, and a ring beside the square.
+  const rings: StampPoint[][] = [
+    [...TWIN_POLYGONS[0]], [{ x: 60, y: 50 }, { x: 60, y: 110 }, { x: 140, y: 110 }, { x: 140, y: 50 }],
+    [{ x: 90, y: 70 }, { x: 110, y: 70 }, { x: 110, y: 90 }, { x: 90, y: 90 }], [{ x: 200, y: 20 }, { x: 260, y: 20 }, { x: 260, y: 80 }, { x: 200, y: 80 }],
+  ];
+  const ringsFirst = points.length / 2, laidRings = stampRingsLayout(rings);
+  for (const { x, y } of laidRings) points.push(x, y);
+  const ringsDistance = [10.25, 40.5, 75.75, 100.25, 125.5, 190.5, 230.75].flatMap((x) => [30.25, 60.5, 80.25, 100.75, 130.5].map((y) => ({
+    label: `rings at ${x},${y}`, inputs: [x, y, ringsFirst, laidRings.length], expected: stampRingsDistance(rings, x, y),
+  })));
+  const ringedArea = { polygon: rings[0], rings, edge: { soft: 4 }, inset: 1.5, seed: 99 };
+  const ringedCoverage = [55.25, 58.5, 61.75, 64.5, 88.25, 91.5, 95.75].flatMap((x) => [60.5, 80.25].map((y) => ({
+    label: `ringed area at ${x},${y}`, inputs: [x, y, ringsFirst, laidRings.length, 1.5, 0, 0, 4, 99, 0, 0], expected: stampAreaCoverageAt(ringedArea, x, y),
+  })));
   const at = [-10.25, 0.25, 60.75, 150.25, 199.75, 250.25, 410.75];
   const polygonDistance = TWIN_POLYGONS.flatMap((polygon, k) => at.flatMap((x) => at.map((y) => ({
     label: `polygon ${k} at ${x},${y}`, inputs: [x, y, firsts[k], polygon.length], expected: stampPolygonDistance(polygon, x, y),
@@ -257,6 +271,8 @@ function twinGrids(): StampGateFormulaGrid[] {
     twinGrid('kubelkaMunkOver', 'kubelkaMunkOver(kubelkaMunkFilm(vec4f(x(0)), vec4f(x(1))), vec4f(x(2))).x', 3, film),
     twinGrid('kubelkaMunkFilm T', 'kubelkaMunkFilm(vec4f(x(0)), vec4f(x(1))).T.x', 2, filmT),
     twinGrid('polygonDistance', 'polygonDistance(vec2f(x(0), x(1)), u32(x(2)), u32(x(3)))', 4, polygonDistance, { points: new Float32Array(points) }),
+    twinGrid('ringsDistance', 'ringsDistance(vec2f(x(0), x(1)), u32(x(2)), u32(x(3)))', 4, ringsDistance, { points: new Float32Array(points) }),
+    twinGrid('areaCoverage rings', AREA_COVERAGE_CALL.replace('u32(x(3))', `u32(x(3)) | ${STAMP_RINGED_COUNT}u`), 11, ringedCoverage, { points: new Float32Array(points), boundaries: new Float32Array(boundaryFloats) }),
     twinGrid('areaCoverage', AREA_COVERAGE_CALL, 11, areaCoverage, { points: new Float32Array(points), boundaries: new Float32Array(boundaryFloats) }),
     twinGrid('areaCoverage boundaries', AREA_COVERAGE_CALL, 11, boundaryCoverage, { points: new Float32Array(points), boundaries: new Float32Array(boundaryFloats) }),
     twinGrid('gridAt', `gridAt(vec2f(x(0), x(1)), vec3f(${distance.x0}, ${distance.y0}, ${distance.cell}), vec2u(${distance.columns}u, ${distance.rows}u), 0u)`, 2, gridAt, { grid: distance.values }),

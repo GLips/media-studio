@@ -16,7 +16,8 @@ export type StampWetting = { at: number; level: number; box: StampBox | null };
 export type StampWashLedgerOptions = {
   /** The wash's ID: its first drying's, and the stem of each later one's, which seed their rims. */
   id: string;
-  medium: PaintMedium;
+  /** The medium a deposit's paint lands by: its group's. */
+  mediumOf: (deposit: CompiledStampDeposit) => PaintMedium;
   drying: StampDrying;
   /** The water its preparation lays at painting second 0; null for dry paper. */
   preparation: StampWetting | null;
@@ -36,6 +37,8 @@ export type StampWashLedger = {
    * whole wash has `set`, or at its `end`. Nothing landed since, no drying.
    */
   dry: (tau: number, closes: StampWashDrying['closes'], rim: number) => void;
+  /** Clean water laid as `wetting` says, with no deposit: a later wash's prewet. */
+  wet: (wetting: StampWetting) => void;
   /** The water laid so far whose box meets any of `boxes`; all of it when left out. */
   wettings: (boxes?: readonly StampBox[]) => readonly StampWetting[];
   landings: ReadonlyMap<CompiledStampDeposit, StampWetLanding>;
@@ -47,7 +50,7 @@ export type StampWashLedger = {
  * A ledger for one wash on `options.medium`'s water, drying as `options.drying` says. Painting time only moves
  * forward: a landing or drying before the last refused.
  */
-export function createStampWashLedger({ id, medium, drying, preparation, waterOf, supportOf, reachOf }: StampWashLedgerOptions): StampWashLedger {
+export function createStampWashLedger({ id, mediumOf, drying, preparation, waterOf, supportOf, reachOf }: StampWashLedgerOptions): StampWashLedger {
   const wettings: StampWetting[] = preparation ? [preparation] : [];
   const landings = new Map<CompiledStampDeposit, StampWetLanding>(), dryings: StampWashDrying[] = [];
   let now = 0, since: CompiledStampDeposit[] = [];
@@ -66,7 +69,7 @@ export function createStampWashLedger({ id, medium, drying, preparation, waterOf
       const reach = support && grown(support, reachOf(deposit, water));
       const under = meeting(reach ? [reach] : []);
       const landing: StampWetLanding = {
-        tau, water, medium, drying,
+        tau, water, medium: mediumOf(deposit), drying,
         finds: {
           wet: under.some(({ level, at }) => stampWetnessAt(level, at, tau, drying) > 0),
           workable: under.some(({ level, at }) => stampWorkableAt(level, at, tau, drying) > 0),
@@ -79,6 +82,11 @@ export function createStampWashLedger({ id, medium, drying, preparation, waterOf
       }
       since.push(deposit);
       return landing;
+    },
+    wet: (wetting) => {
+      advance(wetting.at);
+      wettings.push(wetting);
+      wettest = Math.max(wettest, Math.min(1, wetting.level));
     },
     dry: (tau, closes, rim) => {
       advance(tau);

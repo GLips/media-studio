@@ -208,8 +208,10 @@ export function paintPigmentFromColor(color: PaintHex, medium: PaintMedium, band
 
 /**
  * A named pigment as `medium` paints it: its appearance in a glaze medium; in a masstone one its over-white colour as
- * masstone, since a glaze's fit scatters almost nothing and greys as white is mixed in.
+ * masstone, since a glaze's fit scatters almost nothing and greys as white is mixed in. A colour standing for a
+ * pigment (`fitted: 'color'`) is fitted as a colour in either.
  */
 export function paintPigmentInMedium(appearance: PaintPigmentAppearance, medium: PaintMedium, bands: PaintBands): PaintPigment {
+  if (appearance.fitted === 'color') return paintPigmentFromColor(appearance.overWhite, medium, bands, { id: appearance.id, name: appearance.name });
   return medium.color.kind === 'glaze' ? paintPigmentFromAppearance(appearance, bands) : paintPigmentFromColor(appearance.overWhite, medium, bands, appearance);
 }

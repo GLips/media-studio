@@ -84,7 +84,7 @@ function ownColor(material: CompiledStampKeyedMaterial): StampPaintColor | Compi
 }
 
 /** A field's values mapped, its geometry kept. */
-function mapStampPaintField<T, U>(field: StampSeededPaintField<T>, map: (value: T) => U): StampSeededPaintField<U> {
+export function mapStampPaintField<T, U>(field: StampSeededPaintField<T>, map: (value: T) => U): StampSeededPaintField<U> {
   if (field.kind === 'constant') return { kind: 'constant', value: map(field.value) };
   if (field.kind === 'linear') return { kind: 'linear', from: { ...field.from, value: map(field.from.value) }, to: { ...field.to, value: map(field.to.value) } };
   if (field.kind === 'noise') return { ...field, a: map(field.a), b: map(field.b) };

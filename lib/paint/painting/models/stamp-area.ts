@@ -10,7 +10,7 @@
 import { compileStampBoundaries, STAMP_BOUNDARY_WGSL, stampBoundariesReach, stampBoundaryShift, type CompiledStampBoundary, type StampBoundaries } from './stamp-area-boundaries.ts';
 import { seededRandom } from '#lib/picture/motion/models/random.ts';
 import type { CompiledStampMask } from './stamp-paint-recipe-compile.ts';
-import { checkedStampPolygon, stampDistanceGrid, stampEdgeReach, stampEdgeWidth, stampPolygonBox, stampPolygonDistance, type StampBox, type StampEdge, type StampPoint, type StampRegion } from './stamp-region.ts';
+import { checkedStampPolygon, STAMP_RINGED_COUNT, stampEdgeReach, stampEdgeWidth, stampPolygonBox, stampPolygonDistance, stampRingsDistance, type StampBox, type StampEdge, type StampPoint, type StampRegion } from './stamp-region.ts';
 
 /**
  * An area of the painting with an edge: `region`, its edge a 1-px antialiased line unless it's soft or ragged
@@ -24,28 +24,44 @@ export const stampRegionSeed = (id: string) => Math.floor(seededRandom(`${id}|re
 /** Where an application's deposits may land: an area, its named stretches kept, feathered or merged (StampBoundary). */
 export type StampWithin = StampArea & { boundaries?: StampBoundaries };
 
+/** A within whose region is closed rings read even-odd (a ring inside another a hole), as a painting document gives one. */
+export type StampRingedWithin = Omit<StampWithin, 'region'> & { rings: readonly (readonly StampPoint[])[] };
+
 /**
  * An area checked: its region traced, its edge, its inset (absent for none), its ragged edge's seed (stampRegionSeed
- * of its owner's ID), and a within's feathered and merged stretches (absent for none).
+ * of its owner's ID), and a within's feathered and merged stretches (absent for none). `rings`, for a region of more
+ * than one ring, read even-odd: `polygon` is then its first, and no reader takes it alone.
  */
-export type CompiledStampArea = { polygon: readonly StampPoint[]; edge?: StampEdge; inset?: number; seed: number; boundaries?: readonly CompiledStampBoundary[] };
+export type CompiledStampArea = {
+  polygon: readonly StampPoint[]; rings?: readonly (readonly StampPoint[])[]; edge?: StampEdge; inset?: number; seed: number;
+  boundaries?: readonly CompiledStampBoundary[];
+};
 
 /**
  * `area` checked and traced for `what` (a mask's or a pass's full ID), its ragged edge seeded from `what`. Throws on a
- * region that isn't a shape, a negative soft width, a ragged edge without a positive scale, a negative inset, or a
- * boundary compileStampBoundaries refuses.
+ * region (or a ring) that isn't a shape, a negative soft width, a ragged edge without a positive scale, a negative
+ * inset, or a boundary compileStampBoundaries refuses.
  */
-export function compileStampArea({ region, edge, inset = 0, boundaries }: StampWithin, what: string): CompiledStampArea {
-  const { soft = 0, ragged } = edge ?? {};
+export function compileStampArea(area: StampWithin | StampRingedWithin, what: string): CompiledStampArea {
+  const { edge, inset = 0, boundaries } = area, { soft = 0, ragged } = edge ?? {};
   if (!(soft >= 0) || (ragged && !(ragged.amount >= 0 && ragged.scale > 0))) throw new Error(`stamp paint: ${what}'s edge needs a soft width of 0 or more, and a ragged amount of 0 or more at a positive scale`);
   if (!(inset >= 0 && Number.isFinite(inset))) throw new Error(`stamp paint: ${what} is inset ${inset} px, and an area is inset a finite 0 or more`);
-  const polygon = checkedStampPolygon(region, what), treated = boundaries && compileStampBoundaries(boundaries, polygon, what);
-  return { polygon, ...(edge && { edge }), ...(inset > 0 && { inset }), seed: stampRegionSeed(what), ...(treated?.length && { boundaries: treated }) };
+  const rings = 'rings' in area ? area.rings.map((points) => checkedStampPolygon({ kind: 'polygon', points }, what)) : [checkedStampPolygon(area.region, what)];
+  if (!rings.length) throw new Error(`stamp paint: ${what}'s region has no rings`);
+  const treated = boundaries && compileStampBoundaries(boundaries, rings, what);
+  return {
+    polygon: rings[0], ...(rings.length > 1 && { rings }), ...(edge && { edge }), ...(inset > 0 && { inset }), seed: stampRegionSeed(what),
+    ...(treated?.length && { boundaries: treated }),
+  };
 }
 
 /** The box beyond which `area` covers nothing: its outline's, grown by how far its edge reaches and merges open, less its inset, and a pixel. */
 export const stampAreaBox = (area: CompiledStampArea): StampBox =>
-  stampPolygonBox(area.polygon, stampEdgeReach(area.edge) + stampBoundariesReach(area.boundaries) - (area.inset ?? 0) + 1);
+  stampPolygonBox(area.rings ? area.rings.flat() : area.polygon, stampEdgeReach(area.edge) + stampBoundariesReach(area.boundaries) - (area.inset ?? 0) + 1);
+
+/** How far (x, y) is inside `area`'s outline, px, negative outside: its rings' when it has several. */
+export const stampAreaDistance = (area: CompiledStampArea, x: number, y: number) =>
+  (area.rings ? stampRingsDistance(area.rings, x, y) : stampPolygonDistance(area.polygon, x, y));
 
 /** The PCG hash tipNoiseAt is built on, in u32 arithmetic. */
 function pcgHash(v: number): number {
@@ -81,41 +97,24 @@ export function stampEdgeCoverage(sd: number, width: number): number {
 export function stampAreaCoverageAt(area: CompiledStampArea, x: number, y: number): number {
   const ragged = area.edge?.ragged;
   const moved = ragged && ragged.scale > 0 ? ragged.amount * stampEdgeNoise(x / ragged.scale, y / ragged.scale, area.seed) : 0;
-  const sd = stampPolygonDistance(area.polygon, x, y);
+  const sd = stampAreaDistance(area, x, y);
   const { open, feather } = area.boundaries ? stampBoundaryShift(area.boundaries, sd, x, y) : { open: 0, feather: 0 };
   return stampEdgeCoverage(sd + open - feather / 2 - (area.inset ?? 0) + moved, Math.max(stampEdgeWidth(area.edge), feather));
 }
 
 /**
- * stampAreaCoverageAt over a grid: `columns` × `rows` points `step` px apart from (x0, y0), row by row, its distances
- * from one stampDistanceGrid (to f32, as the GPU reads them) rather than a polygon walk a point.
- */
-export function stampAreaCoverageGrid(area: CompiledStampArea, x0: number, y0: number, step: number, columns: number, rows: number): Float32Array {
-  const values = new Float32Array(columns * rows);
-  if (!columns || !rows) return values;
-  const { values: distances } = stampDistanceGrid(area.polygon, { x0, y0, x1: x0 + (columns - 1) * step, y1: y0 + (rows - 1) * step }, step);
-  const ragged = area.edge?.ragged, width = stampEdgeWidth(area.edge);
-  for (let b = 0; b < rows; b++) {
-    for (let a = 0; a < columns; a++) {
-      const x = x0 + a * step, y = y0 + b * step;
-      const moved = ragged && ragged.scale > 0 ? ragged.amount * stampEdgeNoise(x / ragged.scale, y / ragged.scale, area.seed) : 0;
-      values[b * columns + a] = stampEdgeCoverage(distances[b * columns + a] - (area.inset ?? 0) + moved, width);
-    }
-  }
-  return values;
-}
-
-/**
  * An area's coverage per pixel in WGSL, after STAMP_REGION_WGSL and STAMP_POLYGON_DISTANCE_WGSL: the polygon's `count`
- * points from `first`, its inset, its ragged amount and scale (scale 0 for none), its edge's width and seed, and its
- * `boundaryCount` treated stretches from `boundaryFirst` (STAMP_BOUNDARY_WGSL's `boundaries`).
+ * points from `first` (a stampRingsLayout run when `count` has STAMP_RINGED_COUNT set), its inset, its ragged amount
+ * and scale (scale 0 for none), its edge's width and seed, and its `boundaryCount` treated stretches from
+ * `boundaryFirst` (STAMP_BOUNDARY_WGSL's `boundaries`).
  */
 export const STAMP_AREA_COVERAGE_WGSL = /* wgsl */ `
 ${STAMP_BOUNDARY_WGSL}
 fn areaCoverage(p: vec2f, first: u32, count: u32, inset: f32, ragged: vec2f, width: f32, seed: u32, boundaryFirst: u32, boundaryCount: u32) -> f32 {
   var moved = 0.0;
   if (ragged.y > 0.0) { moved = ragged.x * edgeNoise(p.x / ragged.y, p.y / ragged.y, seed); }
-  let sd = polygonDistance(p, first, count);
+  var sd: f32;
+  if ((count & ${STAMP_RINGED_COUNT}u) != 0u) { sd = ringsDistance(p, first, count & ${STAMP_RINGED_COUNT - 1}u); } else { sd = polygonDistance(p, first, count); }
   let shift = boundaryShift(p, sd, boundaryFirst, boundaryCount);
   return edgeCoverage(sd + shift.x - 0.5 * shift.y - inset + moved, max(width, shift.y));
 }`;

@@ -54,20 +54,20 @@ function documentChanges(a: PaintingDocument, b: PaintingDocument): string[] {
  * What a sheet's every solve starts from (ENGINE 4.2's K₀): the document's size, the paper's solve half, its water
  * and its clock. Neither its edge nor its paper's colour is solved.
  */
-const sheetHead = (paintingDocument: PaintingDocument, order: PaintingSheetOrder): PaintingDatum => ({
+export const paintingSheetHead = (paintingDocument: PaintingDocument, order: PaintingSheetOrder): PaintingDatum => ({
   widthPx: paintingDocument.widthPx, heightPx: paintingDocument.heightPx, grain: order.sheet.paper.grain, absorbency: order.sheet.paper.absorbency,
   water: order.sheet.water, clock: order.clock,
 });
 
 /** An entry as its solve reads it, and the owners its datum's first parts name in a path. */
-type EntryRead = { readonly datum: PaintingDatum; readonly owners: Readonly<Record<'layer' | 'wash' | 'application', string>> };
+export type PaintingEntryRead = { readonly datum: PaintingDatum; readonly owners: Readonly<Record<'layer' | 'wash' | 'application', string>> };
 
 /**
  * What each entry of `order` brings to its solve, keys left out (a `clipTo` by the clipped wash's place): its layer's
  * film at the layer's first entry, its wash's fields at the wash's first, then its application and where it stands.
  * `lastOfWash` makes an application added or dropped at a wash's end read.
  */
-function entryReads(tree: PaintingTree, order: PaintingSheetOrder): EntryRead[] {
+export function paintingEntryReads(tree: PaintingTree, order: PaintingSheetOrder): PaintingEntryRead[] {
   const seen = new Set<string>();
   return order.entries.map((entry, k) => {
     const { slots, layer: ordinal } = order.layers[entry.layer], place = tree.layers[ordinal], wash: Wash = place.node.washes[entry.wash];
@@ -89,7 +89,7 @@ function entryReads(tree: PaintingTree, order: PaintingSheetOrder): EntryRead[] 
 }
 
 /** Where `path`, a path within an entry's datum, lies by its owner: `water.slots.palette[1]`, `hill-flood.area…`. */
-function ownedPath({ owners }: EntryRead, path: string): { readonly owner: string; readonly path: string } {
+function ownedPath({ owners }: PaintingEntryRead, path: string): { readonly owner: string; readonly path: string } {
   const [part, ...rest] = path.split('.'), inner = rest.join('.');
   const owner = part === 'layer' || part === 'wash' ? owners[part] : owners.application;
   return { owner, path: inner ? `${owner}.${inner}` : owner };
@@ -109,8 +109,8 @@ function washChange(path: string | undefined, cause: string | undefined): Painti
 export function paintingEvaluationDiff(a: PaintingEvaluation, b: PaintingEvaluation): PaintingEvaluationDiff {
   const before = paintingSheetOrders(a.tree), after = paintingSheetOrders(b.tree);
   const washes = after.flatMap((order, s) => {
-    const earlier = before.at(s), then = earlier ? entryReads(a.tree, earlier) : [], now = entryReads(b.tree, order);
-    const headSame = earlier && paintingFirstDifference(sheetHead(a.document, earlier), sheetHead(b.document, order), '', 'identity') === null;
+    const earlier = before.at(s), then = earlier ? paintingEntryReads(a.tree, earlier) : [], now = paintingEntryReads(b.tree, order);
+    const headSame = earlier && paintingFirstDifference(paintingSheetHead(a.document, earlier), paintingSheetHead(b.document, order), '', 'identity') === null;
     let from = headSame ? null : paintingSheetName(order.sheet);
     const content = new Map<string, string>(), upstream = new Map<string, string>();
     order.entries.forEach((entry, k) => {

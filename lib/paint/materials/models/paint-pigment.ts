@@ -50,6 +50,11 @@ export type PaintPigmentAppearance = Partial<PaintPigmentHabits> & {
    * thins, which its swatch alone can't say. Where a swatch and its tint disagree, the fit splits the difference.
    */
   tint?: { color: PaintHex; strength: number };
+  /**
+   * `color`: a colour standing for a pigment rather than a described swatch, fitted as each medium fits a colour
+   * (paintPigmentFromColor at `overWhite`), so a hex in a mixture lays as the same hex laid alone.
+   */
+  fitted?: 'color';
 };
 
 /** A reflectance held inside (0, 1), where the inversions are defined. */

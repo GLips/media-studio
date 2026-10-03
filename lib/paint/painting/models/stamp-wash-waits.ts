@@ -43,7 +43,7 @@ export function compileStampWetness(
       prepared = { at: 0, level: Math.max(first, second), box: stampPolygonBox(preparation.polygon) };
     }
     const ledger = createStampWashLedger({
-      id: pass.id, medium, drying, preparation: prepared, waterOf: media.waterOf, supportOf, reachOf: (deposit, water) => margin(deposit, medium, water),
+      id: pass.id, mediumOf: () => medium, drying, preparation: prepared, waterOf: media.waterOf, supportOf, reachOf: (deposit, water) => margin(deposit, medium, water),
     });
     let tau = 0;
     const waits: StampWashWaitRecord[] = [];

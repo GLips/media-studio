@@ -10,7 +10,7 @@ import { STAMP_AREA_COVERAGE_WGSL, stampAreaBox, type CompiledStampArea } from '
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { CompiledStampBrushedMask } from '../models/stamp-brushed-mask.ts';
 import type { CompiledStampMask } from '../models/stamp-paint-recipe-compile.ts';
-import { STAMP_POLYGON_DISTANCE_WGSL, STAMP_REGION_WGSL, stampEdgeWidth, type StampBox, type StampPoint } from '../models/stamp-region.ts';
+import { STAMP_POLYGON_DISTANCE_WGSL, STAMP_REGION_WGSL, STAMP_RINGED_COUNT, stampEdgeWidth, stampRingsLayout, type StampBox, type StampPoint } from '../models/stamp-region.ts';
 import { stampBoxUnion, stampRegionTexelWords, type StampStage } from '../models/stamp-stage.ts';
 import { stampBindGroup, stampPaintBuffer, type StampPaintDevice } from './stamp-paint-gpu.ts';
 import { STAMP_UNIFORM_SLOT } from './stamp-uniform-arena.ts';
@@ -104,6 +104,16 @@ export function encodeStampRegionTextures(
     }
     return placed.get(polygon)!;
   };
+  // A ringed area's points as ringsDistance reads them, its count flagged.
+  const laidRings = new Map<readonly (readonly StampPoint[])[], [number, number]>();
+  const areaPointsOf = (area: CompiledStampArea): [number, number] => {
+    if (!area.rings) return pointsOf(area.polygon);
+    if (!laidRings.has(area.rings)) {
+      const [first, count] = pointsOf(stampRingsLayout(area.rings));
+      laidRings.set(area.rings, [first, (STAMP_RINGED_COUNT + count) >>> 0]);
+    }
+    return laidRings.get(area.rings)!;
+  };
   const opWords: { floats: number[]; words: number[]; inset: number; boundaries: [number, number] }[] = [];
   // A within's treated stretches, each a vec4f: its path's first point and count in `points`, merge or feather, reach.
   const boundaryFloats: number[] = [];
@@ -122,7 +132,7 @@ export function encodeStampRegionTextures(
   };
   /** An op of the fluid, over its area or everywhere, or a brushed mask's coverage (`source`), as a MaskOp. */
   const opOf = (kind: 'mask' | 'unmask' | 'clip' | 'source', amount: number, area: CompiledStampArea | null) => {
-    const [first, count] = area ? pointsOf(area.polygon) : [0, 0], reach = area ? stampAreaBox(area) : null, ragged = area?.edge?.ragged;
+    const [first, count] = area ? areaPointsOf(area) : [0, 0], reach = area ? stampAreaBox(area) : null, ragged = area?.edge?.ragged;
     opWords.push({
       floats: [reach?.x0 ?? 0, reach?.y0 ?? 0, reach?.x1 ?? 0, reach?.y1 ?? 0, ragged?.amount ?? 0, ragged?.scale ?? 0, stampEdgeWidth(area?.edge), amount],
       words: [first, count, { mask: 0, unmask: 1, clip: 2, source: 3 }[kind], area?.seed ?? 0],

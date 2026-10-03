@@ -42,7 +42,7 @@ const [first, under, apart] = stampPassDeposits(painting.groups[0].passes[0]);
 const media = stampPaintMedia(stampMixedPainting(painting), () => watercolour), tips = stampRoundTipsOf();
 const drying = stampDrying(watercolour.wetting, painting.paper);
 const ledger = () => createStampWashLedger({
-  id: 'g/w', medium: watercolour, drying, preparation: null, waterOf: media.waterOf, supportOf: (deposit) => stampDepositSupport(deposit, tips(deposit)), reachOf: () => 0,
+  id: 'g/w', mediumOf: () => watercolour, drying, preparation: null, waterOf: media.waterOf, supportOf: (deposit) => stampDepositSupport(deposit, tips(deposit)), reachOf: () => 0,
 });
 /** Painting seconds after which the first drop's water has set. */
 const setAfter = media.waterOf(first) / drying.rate + drying.openTime;

@@ -103,7 +103,7 @@ export function stampSegmentDistanceSquared(segments: StampSegments, k: number, 
 }
 
 /** Whether (x, y) lies inside `polygon` (even-odd): the crossings of its row past x, odd. */
-function stampPolygonInside(polygon: readonly StampPoint[], x: number, y: number): boolean {
+export function stampPolygonInside(polygon: readonly StampPoint[], x: number, y: number): boolean {
   let inside = false;
   for (let k = 0, n = polygon.length; k < n; k++) {
     const a = polygon[k], b = polygon[(k + 1) % n];
@@ -300,14 +300,24 @@ export function stampGridAt(grid: StampGrid, x: number, y: number): number {
 }
 
 /**
+ * Rings laid out for ringsDistance: each ring's point count as a header point (count, 0), then its points. An area
+ * whose points are such a run has STAMP_RINGED_COUNT set in its count.
+ */
+export const stampRingsLayout = (rings: readonly (readonly StampPoint[])[]): StampPoint[] => rings.flatMap((ring) => [{ x: ring.length, y: 0 }, ...ring]);
+
+/** The high bit of an area's point count: set, its points are a stampRingsLayout run rather than one polygon. */
+export const STAMP_RINGED_COUNT = 0x80000000;
+
+/**
  * stampPolygonDistance in WGSL: the polygon's `count` points from `first` in the storage array `points`, which the
  * shader including it declares. Twins, both at runtime: the CPU's lays out a fill's grids, the GPU's reads regions per
- * pixel; the GPU gate holds them together.
+ * pixel; the GPU gate holds them together. ringsDistance twins stampRingsDistance over a stampRingsLayout run of
+ * `total` points from `first`.
  */
 export const STAMP_POLYGON_DISTANCE_WGSL = /* wgsl */ `
-fn polygonDistance(p: vec2f, first: u32, count: u32) -> f32 {
-  var nearest = 1e30;
-  var inside = false;
+struct RingReach { nearest: f32, inside: bool }
+fn ringReach(p: vec2f, first: u32, count: u32, was: RingReach) -> RingReach {
+  var reach = was;
   var j = first + count - 1u;
   for (var i = first; i < first + count; i++) {
     let a = points[j];
@@ -316,11 +326,25 @@ fn polygonDistance(p: vec2f, first: u32, count: u32) -> f32 {
     let q = p - a;
     let along = clamp(dot(q, e) / max(dot(e, e), 1e-12), 0.0, 1.0);
     let d = q - e * along;
-    nearest = min(nearest, dot(d, d));
-    if ((a.y > p.y) != (b.y > p.y) && p.x < a.x + (p.y - a.y) / (b.y - a.y) * e.x) { inside = !inside; }
+    reach.nearest = min(reach.nearest, dot(d, d));
+    if ((a.y > p.y) != (b.y > p.y) && p.x < a.x + (p.y - a.y) / (b.y - a.y) * e.x) { reach.inside = !reach.inside; }
     j = i;
   }
-  return select(-sqrt(nearest), sqrt(nearest), inside);
+  return reach;
+}
+fn polygonDistance(p: vec2f, first: u32, count: u32) -> f32 {
+  let reach = ringReach(p, first, count, RingReach(1e30, false));
+  return select(-sqrt(reach.nearest), sqrt(reach.nearest), reach.inside);
+}
+fn ringsDistance(p: vec2f, first: u32, total: u32) -> f32 {
+  var reach = RingReach(1e30, false);
+  var at = first;
+  while (at < first + total) {
+    let count = u32(points[at].x);
+    reach = ringReach(p, at + 1u, count, reach);
+    at += count + 1u;
+  }
+  return select(-sqrt(reach.nearest), sqrt(reach.nearest), reach.inside);
 }`;
 
 /**
