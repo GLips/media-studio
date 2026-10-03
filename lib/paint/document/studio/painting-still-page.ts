@@ -6,14 +6,16 @@
 import * as paintingSource from '@painting-source';
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampPaintPackAssetUrl } from '#lib/paint/brush-packs/models/stamp-paint-pack-urls.ts';
-import { StampSheetRefusal } from '#lib/paint/painting/models/stamp-sheet-schedule.ts';
+import { createStampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
+import { StampSheetRefusal } from '#lib/paint/painting/models/stamp-sheet-refusal.ts';
 import { createStampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { createStampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 import { drawStampSheetStill, type StampSheetFilmKept } from '#lib/paint/painting/studio/stamp-sheet-films.ts';
 import { solveStampSheet } from '#lib/paint/painting/studio/stamp-sheet-solver.ts';
 import { compilePaintingRootSheet } from '../models/painting-document-compile.ts';
 import { paintingValuesFromText } from '../models/painting-properties.ts';
-import { paintingSolveLines, type PaintingStill, type PaintingStillOutcome, type PaintingStillRequest } from '../models/painting-solve-report.ts';
+import { paintingSolveCostsLine, paintingSolveLines } from '../models/painting-solve-report.ts';
+import type { PaintingStill, PaintingStillOutcome, PaintingStillRequest } from '../models/painting-still-request.ts';
 import { painting } from '../models/painting-source.ts';
 
 /** The source's still, as `request` asks for it. Throws what the solve refuses: an application it can't land. */
@@ -31,7 +33,7 @@ async function paintingStillOf({ texts, brushes, packUrls, films }: PaintingStil
   try {
     const surface = await createStampPaintSurface(owner, { canvas, width, height });
     try {
-      const solved = await solveStampSheet(owner, program);
+      const costs = createStampPaintCostTally(), solved = await solveStampSheet(owner, program, { costs });
       /** `kept` laid on the surface, as a PNG: copied out before anything draws again. */
       const shown = async (kept: readonly StampSheetFilmKept[]) => {
         await drawStampSheetStill(surface, program, kept);
@@ -49,7 +51,7 @@ async function paintingStillOf({ texts, brushes, packUrls, films }: PaintingStil
         pngs.push({ name, png: await shown(only(f)) });
         return pngs;
       }, Promise.resolve([]));
-      return { png, films: filmPngs, lines: paintingSolveLines(program, solved.decisions) };
+      return { png, films: filmPngs, lines: paintingSolveLines(program, solved.decisions), costs: paintingSolveCostsLine(costs.take()) };
     } finally {
       surface.dispose();
     }

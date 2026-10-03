@@ -2,13 +2,14 @@
 // A step is encoded and submitted inside one of the owner's checks, its uniforms flushed before the submit and the
 // arena reset after; a readback's mapping is awaited outside it, so no encoder is held across an await.
 //
-// The field keeps times after a base (ENGINE 3.4): as a step's time runs STAMP_SHEET_REBASE past it, the base moves
-// up by whole seconds in that step, before anything reads it, so f32 spacing near the work stays under the 1 ms grid.
+// The field keeps times after a base (ENGINE 3.4), which the solve's state holds: a step reads a time through its
+// clock, which moves the base up in that step, before anything reads it, once the time runs far past it.
 
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
+import type { StampBox } from '../models/stamp-region.ts';
+import type { StampPaintCostTally } from '../models/stamp-paint-costs.ts';
 import {
-  STAMP_DAMP_HISTOGRAM_WORDS, STAMP_SHEET_REBASE, STAMP_SHEET_TOTALS, stampDampHistogram, stampSheetFailureBoxes, stampSheetTotals,
-  type StampDampHistogram, type StampSheetFailureBox, type StampSheetTotals,
+  STAMP_DAMP_HISTOGRAM_WORDS, STAMP_SHEET_TOTALS, stampDampHistogram, stampSheetFailureBoxes, stampSheetTotals, type StampDampHistogram, type StampSheetTotals,
 } from '../models/stamp-sheet-schedule.ts';
 import type { StampSheetWetness } from '../models/stamp-sheet-program.ts';
 import type { StampDrying } from '../models/stamp-wetness.ts';
@@ -23,10 +24,18 @@ type StampSheetWords = { count: number; storage: GPUBuffer; read: GPUBuffer };
 /** Work a probe encodes before its reduction: the core's touch, the open-paint mask. */
 export type StampSheetPrepare = (encoder: GPUCommandEncoder) => void;
 
-/** A solve's steps on `owner` through `device` (its scope's), over `gpu`, the paper drying as `drying` says. */
-export function createStampSheetSteps(owner: StampPaintGpuOwner, device: StampPaintDevice, gpu: StampSheetSolveGpu, drying: StampDrying) {
-  let base = 0;
-  const stats = { readbacks: 0 };
+/**
+ * The field's time base as a solve's state holds it: `base()`, now; `after(encoder, tau)`, `tau` after the base as the
+ * GPU holds it, the base moved first in `encoder` (stampSheetRebased) when `tau` is far past it.
+ */
+export type StampSheetClock = { base: () => number; after: (encoder: GPUCommandEncoder, tau: number) => number };
+
+/**
+ * A solve's steps on `owner` through `device` (its scope's), over `gpu`, the paper drying as `drying` says and its
+ * times read through `clock`; readbacks counted into `costs`.
+ */
+export function createStampSheetSteps(owner: StampPaintGpuOwner, device: StampPaintDevice, gpu: StampSheetSolveGpu, drying: StampDrying, clock: StampSheetClock, costs: StampPaintCostTally | null) {
+  const { after } = clock;
   const words = (count: number): StampSheetWords => ({
     count,
     storage: device.createBuffer({ size: count * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST }),
@@ -34,16 +43,6 @@ export function createStampSheetSteps(owner: StampPaintGpuOwner, device: StampPa
   });
   const whole = stampSheetFailureGrid({ x: 0, y: 0, w: gpu.stage.width, h: gpu.stage.height });
   const buffers = { totals: words(STAMP_SHEET_TOTALS.words), histogram: words(STAMP_DAMP_HISTOGRAM_WORDS), cells: words(whole.columns * whole.rows) };
-
-  /** `tau` (model s) after the base as the GPU holds it, the base moved first in `encoder` when `tau` is far past it. */
-  const after = (encoder: GPUCommandEncoder, tau: number) => {
-    if (tau - base >= STAMP_SHEET_REBASE) {
-      const shift = Math.floor(tau - base);
-      gpu.passes.rebase(encoder, shift);
-      base += shift;
-    }
-    return Math.fround(tau - base);
-  };
 
   /** Encodes `work` and submits it, named `what` in a GPU error. Resolves what it returns once WebGPU has checked it. */
   const step = <T,>(what: string, work: (encoder: GPUCommandEncoder) => T): Promise<T> => owner.checked(what, () => {
@@ -65,14 +64,12 @@ export function createStampSheetSteps(owner: StampPaintGpuOwner, device: StampPa
     await buffer.read.mapAsync(GPUMapMode.READ);
     const read = new Uint32Array(buffer.read.getMappedRange().slice(0));
     buffer.read.unmap();
-    stats.readbacks++;
+    costs?.count('readbacks');
     return read;
   };
 
   return {
-    step, after, stats,
-    /** The time base now, model s. */
-    base: () => base,
+    step,
     /** `core`'s totals at `tau`, `prepare` encoded first; able to bloom by water `bloom` (null for no bloom sum). */
     async totalsAt(core: StampSheetCore, tau: number, prepare: StampSheetPrepare | null, bloom: number | null): Promise<StampSheetTotals> {
       const read = await readback(`reading a core at ${tau} s`, buffers.totals, (encoder) => {
@@ -80,7 +77,7 @@ export function createStampSheetSteps(owner: StampPaintGpuOwner, device: StampPa
         prepare?.(encoder);
         gpu.reductions.totals(encoder, buffers.totals.storage, probe, bloom);
       });
-      return stampSheetTotals(read, base);
+      return stampSheetTotals(read, clock.base());
     },
     /** A damp histogram of `core` from `tau0`, bins `width` steps wide from step `start`. */
     async histogramAt(core: StampSheetCore, tau0: number, start: number, width: number): Promise<StampDampHistogram> {
@@ -90,7 +87,7 @@ export function createStampSheetSteps(owner: StampPaintGpuOwner, device: StampPa
       return stampDampHistogram(read, start, width);
     },
     /** Where `on` fails over `core` at `tau`: the boxes of its failing cells, document px. */
-    async failureAt(core: StampSheetCore, tau: number, on: StampSheetWetness): Promise<StampSheetFailureBox[]> {
+    async failureAt(core: StampSheetCore, tau: number, on: StampSheetWetness): Promise<StampBox[]> {
       const read = await readback(`mapping where a core fails at ${tau} s`, buffers.cells, (encoder) => {
         gpu.reductions.failure(encoder, buffers.cells.storage, { core, tau: after(encoder, tau), drying }, on);
       });
@@ -103,7 +100,7 @@ export function createStampSheetSteps(owner: StampPaintGpuOwner, device: StampPa
       const read = await readback('reading when boxes set', buffers.totals, (encoder) => {
         for (const box of boxes) gpu.reductions.boxLatest(encoder, buffers.totals.storage, box, drying);
       });
-      return stampSheetTotals(read, base).boxLatestSet;
+      return stampSheetTotals(read, clock.base()).boxLatestSet;
     },
   };
 }

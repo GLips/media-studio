@@ -14,7 +14,7 @@
 
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { paintMixtureAmounts } from '#lib/paint/materials/models/paint-mixture.ts';
-import type { PaintPigmentAppearance } from '#lib/paint/materials/models/paint-pigment.ts';
+import type { PaintMixturePigment, PaintPigmentAppearance } from '#lib/paint/materials/models/paint-pigment.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { stampLinearDynamics } from '#lib/paint/brush/models/stamp-brush.ts';
 import { PAINT_ANIMATION_FPS, type StampGroupBoil, type StampGroupMotion, type StampGroupPaper } from '#lib/paint/painting/models/stamp-group-motion.ts';
@@ -166,7 +166,7 @@ export const STAMP_GATE_RECOLOUR_KEYS = [0.2, 1.2] as const;
 /** The mixture halfway from `a` to `b`: each pigment's absolute amount eased, as a keyed material eases between keys. */
 function halfwayMixture(a: PaintMaterial, b: PaintMaterial): PaintMaterial {
   if (a.kind !== 'mixture' || b.kind !== 'mixture') throw new Error('stamp gate: the recolour eases mixtures');
-  const amounts = new Map<PaintPigmentAppearance, number>();
+  const amounts = new Map<PaintMixturePigment, number>();
   for (const { pigment, amount } of [...paintMixtureAmounts(a), ...paintMixtureAmounts(b)]) amounts.set(pigment, (amounts.get(pigment) ?? 0) + amount / 2);
   const parts = [...amounts].map(([pigment, amount]) => ({ pigment, amount }));
   return { kind: 'mixture', parts, strength: parts.reduce((sum, { amount }) => sum + amount, 0) };

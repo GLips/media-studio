@@ -9,7 +9,7 @@
 import { paintPigmentFromColor, paintPigmentInMedium, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import { paintMixtureComponents } from '#lib/paint/materials/models/paint-mixture.ts';
 import { paintPigmentSeed } from '#lib/paint/materials/models/paint-paper.ts';
-import type { PaintPigment, PaintPigmentAppearance } from '#lib/paint/materials/models/paint-pigment.ts';
+import type { PaintMixturePigment, PaintPigment } from '#lib/paint/materials/models/paint-pigment.ts';
 import type { PaintBands } from '#lib/paint/materials/models/paint-spectrum.ts';
 import type { PlacedStamp } from '#lib/paint/brush/models/stamp-placement.ts';
 import { stampPaintFieldEnds } from './stamp-paint-field.ts';
@@ -20,9 +20,10 @@ import type { PaintMaterial, StampPaintColor } from '#lib/paint/materials/models
 
 /**
  * Paint as pigment in a `medium`, mixed and dried with Kubelka–Munk. `pigments`, keyed by id, are the ones a mixture
- * may name; a colour is fitted as a pigment of its own, and a medium lightened with white brings its white.
+ * may name: a style's described swatches, or a sheet's colours standing for pigments too; a colour a material names
+ * is fitted as a pigment of its own, and a medium lightened with white brings its white.
  */
-export type StampPigmentMixing<P extends Readonly<Record<string, PaintPigmentAppearance>> = Readonly<Record<string, PaintPigmentAppearance>>> = {
+export type StampPigmentMixing<P extends Readonly<Record<string, PaintMixturePigment>> = Readonly<Record<string, PaintMixturePigment>>> = {
   kind: 'pigment';
   medium: PaintMedium;
   pigments: P;

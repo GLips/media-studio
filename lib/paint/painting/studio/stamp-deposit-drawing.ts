@@ -510,11 +510,11 @@ export function createStampDepositDrawing(device: StampPaintDevice, { stage, com
     },
     drawStamps,
     /**
-     * Lays `deposit`'s touch over `box` into the wet targets' touch, as its draw does: where its water reaches before
-     * the paper hardens it, for a schedule reading its core.
+     * Lays `deposit`'s touch over `box` into `into` (r16float, the stage's size, cleared first), as its draw lays it:
+     * where its water reaches before the paper hardens it, for a schedule reading its core.
      */
-    drawTouch(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loaded: StampLoadedDeposit, box: StampPixelBox) {
-      layMaxStamps(encoder, touchPipeline!, wetTargets!.touch, deposit, loaded, box);
+    drawTouch(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loaded: StampLoadedDeposit, box: StampPixelBox, into: GPUTextureView) {
+      layMaxStamps(encoder, touchPipeline!, into, deposit, loaded, box);
     },
     /** Writes into a Deposit at `views` what a brushed mask's mark's coverage resolves with on `tooth`, its flags too. */
     writeMarkCoverage(views: GpuUniformViews, marks: StampLoadedMarks, grainOffset: CompiledStampDeposit['grainOffset'], tooth: StampPaperTooth | null) {

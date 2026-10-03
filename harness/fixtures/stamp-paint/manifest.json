@@ -201,19 +201,19 @@
     "solved/forward": {
       "file": "solved/forward.png",
       "output": "f0003f7c4e327d9e25299197504d478b1343f240457c5e2663bf37768ec463f8",
-      "inputs": "3037f96721011914edca0b4b9ecc90f0297cb10ae55e7b123418b271d0ec9dd8",
-      "reason": "vid-157: the sheet solver's first solved stills — a flood with a wet charge, a damp bloom and a dry scrub; a heron's foot charged across wet shallows, glazed once set",
+      "inputs": "dfcf078e0da13e65d61af3e907380404338818b42abc94232d3d0a81b1fbf2d9",
+      "reason": "vid-157 solver review: a state key reads its entry's {reads, marks} datum and its pose; a solve's films are cleared at its start and finished films settled; targets at the stage size through the owner; proxies only into films with a wet history",
       "accepted": "2026-10-03",
-      "acceptedOver": "28c6ba9c",
+      "acceptedOver": "bf5b7e92",
       "adapter": "apple metal-3"
     },
     "solved/wet-contact": {
       "file": "solved/wet-contact.png",
       "output": "1757cfbd705b4cbbe3a942a00a517621b1e0dff08617dcf746cc80a9acf6fecd",
-      "inputs": "3b06ff151d7c2a2690d6fb262fe120c02d45306a6a9deaca3c023324d38eda6e",
-      "reason": "vid-157: the sheet solver's first solved stills — a flood with a wet charge, a damp bloom and a dry scrub; a heron's foot charged across wet shallows, glazed once set",
+      "inputs": "9abaaade53748582900c9334d9ecbb5623a124217208e32dabfc6dd99c524068",
+      "reason": "vid-157 solver review: a state key reads its entry's {reads, marks} datum and its pose; a solve's films are cleared at its start and finished films settled; targets at the stage size through the owner; proxies only into films with a wet history",
       "accepted": "2026-10-03",
-      "acceptedOver": "28c6ba9c",
+      "acceptedOver": "bf5b7e92",
       "adapter": "apple metal-3"
     }
   }

@@ -1,8 +1,7 @@
 // studio paint: painting sources (`*.painting.ts`, docs/painting-authoring.md): checked, compared, and solved on the
 // GPU to be seen.
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
 import { defineCommand, type ArgsDef } from 'citty';
+import { refuseUnknownCommandFlags } from '../command-flags.ts';
 
 /** `--<flag>`'s `a=1,b=true` by name, as text: the source's schema reads each value. */
 function flagValues(flag: 'set' | 'to', list: string | undefined): Record<string, string> {
@@ -12,23 +11,6 @@ function flagValues(flag: 'set' | 'to', list: string | undefined): Record<string
     return [name, pair.slice(at + 1).trim()];
   }));
 }
-
-/** Throws on a flag `args` doesn't define: citty would drop it, and a misspelt `--set` would paint the defaults. */
-function refuseUnknownFlags(rawArgs: readonly string[], args: ArgsDef) {
-  const flags = Object.entries(args).flatMap(([name, def]) => (def.type === 'positional' ? [] : [name]));
-  for (const arg of rawArgs) {
-    const name = arg.startsWith('--') ? arg.slice(2).split('=')[0] : null;
-    if (name !== null && !flags.includes(name)) throw new Error(`--${name} isn't a flag of this command; it takes ${flags.map((flag) => `--${flag}`).join(', ')}`);
-  }
-}
-
-/** A still's PNG, as its page hands it back (a data URL), written to `file`. */
-function writeStillPng(file: string, url: string) {
-  writeFileSync(file, Buffer.from(url.slice(url.indexOf(',') + 1), 'base64'));
-}
-
-/** A source file's name without `.painting.ts`: its outputs' default stem. */
-const paintingStem = (file: string) => basename(file).replace(/\.painting\.ts$/, '').replace(/\.ts$/, '');
 
 /**
  * Runs a paint verb, a throw printed whole and failing the run: a throw from a source's import or factory is the
@@ -58,7 +40,7 @@ const checkPaintCommand = defineCommand({
   args: checkPaintArgs,
   run: ({ args, rawArgs }) => {
     // Read before the verb runs: a malformed flag is the command's to refuse in a line, not a source's stack.
-    refuseUnknownFlags(rawArgs, checkPaintArgs);
+    refuseUnknownCommandFlags(rawArgs, checkPaintArgs);
     const set = flagValues('set', args.set);
     return withPaintSourceStack(async () => {
       const { paintingProblemText, paintingErrors } = await import('#lib/paint/document/models/painting-problem.ts');
@@ -74,19 +56,16 @@ const checkPaintCommand = defineCommand({
         return;
       }
       if (!args.solve) return;
-      const { paintPaintingSourceStill } = await import('#lib/paint/document/engine/painting-still.ts');
+      const { paintPaintingSourceStill, paintingSourceStem, writePaintingSolveImages } = await import('#lib/paint/document/engine/painting-still.ts');
       const { still, refused } = await paintPaintingSourceStill(args.source, set, { films: true });
       if (!still) {
         console.error(`paint check: ${refused}`);
         process.exitCode = 1;
         return;
       }
-      for (const line of still.lines) console.log(line);
-      const out = args.out ?? `${paintingStem(args.source)}.solve`;
-      mkdirSync(join(out, 'films'), { recursive: true });
-      writeStillPng(join(out, 'painting.png'), still.png);
-      for (const { name, png } of still.films) writeStillPng(join(out, 'films', `${name}.png`), png);
-      console.error(`paint check: wrote ${join(out, 'painting.png')} and ${still.films.length} films in ${join(out, 'films')}`);
+      for (const line of [...still.lines, still.costs]) console.log(line);
+      const wrote = writePaintingSolveImages(still, args.out ?? `${paintingSourceStem(args.source)}.solve`);
+      console.error(`paint check: wrote ${wrote.painting} and ${still.films.length} films in ${wrote.films}`);
     });
   },
 });
@@ -104,11 +83,11 @@ const stillPaintCommand = defineCommand({
   },
   args: stillPaintArgs,
   run: ({ args, rawArgs }) => {
-    refuseUnknownFlags(rawArgs, stillPaintArgs);
+    refuseUnknownCommandFlags(rawArgs, stillPaintArgs);
     const set = flagValues('set', args.set);
     return withPaintSourceStack(async () => {
       const { paintingProblemText, paintingErrors } = await import('#lib/paint/document/models/painting-problem.ts');
-      const { paintPaintingSourceStill } = await import('#lib/paint/document/engine/painting-still.ts');
+      const { paintPaintingSourceStill, paintingSourceStem, writePaintingStillPng } = await import('#lib/paint/document/engine/painting-still.ts');
       const { problems, still, refused } = await paintPaintingSourceStill(args.source, set, { films: false });
       for (const problem of problems) console.log(paintingProblemText(problem));
       if (!still) {
@@ -117,9 +96,9 @@ const stillPaintCommand = defineCommand({
         process.exitCode = 1;
         return;
       }
-      const out = args.out ?? `${paintingStem(args.source)}.png`;
-      writeStillPng(out, still.png);
-      console.error(`paint still: wrote ${out}`);
+      const out = args.out ?? `${paintingSourceStem(args.source)}.png`;
+      writePaintingStillPng(out, still.png);
+      console.error(`paint still: wrote ${out}; ${still.costs}`);
     });
   },
 });
@@ -138,7 +117,7 @@ const diffPaintCommand = defineCommand({
   },
   args: diffPaintArgs,
   run: ({ args, rawArgs }) => {
-    refuseUnknownFlags(rawArgs, diffPaintArgs);
+    refuseUnknownCommandFlags(rawArgs, diffPaintArgs);
     const set = flagValues('set', args.set), to = flagValues('to', args.to);
     return withPaintSourceStack(async () => {
       const { diffPaintingSourceFiles } = await import('#lib/paint/document/engine/painting-source-load.ts');

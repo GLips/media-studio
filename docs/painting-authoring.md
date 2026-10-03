@@ -59,9 +59,10 @@ exports `properties`, one quantised number (`hillTopPx`, 150..260 px on a 10 px 
 `meadow({ hillTopPx })` returning a 640 × 360 px watercolour document on a cotton paper (`vvds-watercolor-canvas-3`
 grain, absorbency 0.5) with two layers:
 
-- `landscape`: wash `sky` holds `sky-flood` (a fill of the sky's box at water 0.85 through the even `detail` brush)
-  and `treeline` (a swelling stroke `on: 'wet'` through the `charge` round, clipped to the sky, at water 0.6); wash
-  `hill` holds `hill-flood`, a fill through the `wash` brush of a swell peaking at `hillTopPx`.
+- `landscape`: wash `sky` holds `sky-flood` (a fill of the sky's box, run 30 px past the paper's edges, at water
+  0.85 through the even `detail` brush) and `treeline` (a swelling stroke `on: 'wet'` through the `charge` round,
+  clipped to the sky, at water 0.6); wash `hill` holds `hill-flood`, a fill through the `wash` brush of a swell peaking
+  at `hillTopPx`, closed past the paper's sides and bottom.
 - `cloud`: wash `cloud-wash` holds one feathered ellipse at strength 0.15.
 
 The scene, as a project would write it (`scenes/meadow.tsx`, with its source in `scenes/meadow/`):
@@ -254,7 +255,7 @@ strength × contact, so pressure changes it only through what the brush binds to
 
 | | Reserve (masking fluid) | Resist (wax) | Lift |
 |---|---|---|---|
-| Written | `reserves: [footprint, …]` on an application or a wash's `prewet` | `resists: [{footprints, amount}]` on an application | a lift application |
+| Written | `reserves: [footprint, …]` on an application or a wash's `prewet` | `resists: [{footprints, amount}]` on an application, each footprint marks (a stroke or stamps through a tip): the brush's grain is what catches the peaks, and a region has none | a lift application |
 | Acts on | that application (or prewet): paint, water or lift | that application's contact on the paper's peaks | its own layer's paint under it, and the sheet's water |
 | Effect | excludes this application's deposition and transport: nothing of it lands there, its paint doesn't walk in, its core leaves it out. It does not remove water or paint already present | it keeps 1 − `amount` of contact on peaks; valleys still take paint; `on` judges the contact left | takes up to `strength` of what's liftable |
 | Paint already there | untouched by this application; other applications' water still moves it | untouched | removed, leaving a stain |
@@ -672,7 +673,9 @@ how far its paint walks, the rim's band, the cost, and the narrowest part it rea
 object: `{kind: 'backAndForth' | 'zigzag' | 'shading', turns?: 'eased' | 'pressed'}` (how it turns back), `{kind:
 'hatch'}`, `{kind: 'crossHatch'}`, `{kind: 'scribble'}`, `{kind: 'contour'}`, or `{kind: 'guided', guides: [{id,
 path}]}`. `spacing` diameters between rows (the pattern's own); `variation` 0..1 (0.3); `reach`: `'inside'` (marks'
-edges meet the outline; the default) or `{past: n}` diameters beyond it, for a clip to trim.
+edges meet the outline; the default) or `{past: n}` diameters beyond it, for a clip to trim. A flood's tip breaks
+along its outline, leaving a few bare specks rimmed with paint: a wash meant to reach the paper's edge runs its outline
+past it (the meadow's, 30 px), so they fall off the paper.
 
 **Lay**: a point p of the document lands at `pivot + (x, y) + R(rotation) · scale · (p − pivot)` frame px, then the
 camera shows its plane. No mirror: scale is positive. A box (`reach`, `cover`) is `{x0, y0, x1, y1}`.
@@ -767,7 +770,7 @@ What the check says today, and what to do:
 | `sky-wash.applications: lays water on card's own sheet, whose medium crayon keeps no wet history` | a wet wash on a crayon-declared sheet | a watercolour or gouache sheet |
 | `lines.wetHistory: needs wetHistory: false: crayon keeps no wet history` / `a.charge.water: needs 'water', which crayon doesn't declare` / `a.charge.water: water needs a wet history: its wash says wetHistory: false` | a capability the medium or wash lacks | change medium or technique |
 | `drop.effect: lays paint; a bloom is water` / `drop.effect: won't bloom: gouache spreads 0.1 d, so its largest bloom is 0.3 px` | `effect: 'bloom'` that certainly can't act | a water charge, a bigger tip, or no label |
-| `sky.key: is used twice, by a layer and a wash` / `hill.clipTo: names sky, which isn't an earlier wash of landscape` | bad keys | fix keys |
+| `sky.key: is used twice, by a layer and a wash` / `hill.clipTo: names sky, which isn't an earlier wash of landscape` / `hill.clipTo: names sky, which lays nothing, so nothing of this wash would land` | bad keys | fix keys |
 | `hill.applications[0].area.boundaries[0].path: a boundary strays more than 1 px from its outline` | a boundary off its outline | snap the path |
 | `a.charge.mix: its strength 1.2 isn't within 0..1` / `b.charge.mix: it names ultramarine twice` | a bad mix | fix the mix |
 | `landscape.washes: mixes 13 pigments; a layer holds 12: split it into two layers` | too many pigments in one film | split the layer |
@@ -784,6 +787,8 @@ and prints, in the sheet's order, each wash's start and when what it wetted had 
 time with the `on` it waited for. It writes the painting to `<dir>/painting.png` and each layer's film alone over the
 paper to `<dir>/films/<layer>.png` (`<dir>` is `<source>.solve` by default). `studio paint still <source> [--set …]
 [--out <file>]` checks and solves the same way and writes only the painting, the document's size (`<source>.png`).
+Both end on what the solve cost: solves, entries run, decisions made and reused (a decision is remembered by its
+prefix's key), and readbacks.
 
 ```
 $ node cli/studio.ts paint check lib/paint/document/models/meadow.painting.ts --solve
@@ -798,6 +803,7 @@ hill (landscape): starts at 203.901 s
 cloud-wash (cloud): starts at 203.901 s
   cloud-wash.applications[0]: lands at 203.901 s
   cloud-wash: set by 356.501 s
+costs: 1 solves, 4 entries run, 4 decisions made, 8 readbacks
 ```
 
 A refusal prints alone, after the check's summary, and fails the run. What the solve says, and what to do:

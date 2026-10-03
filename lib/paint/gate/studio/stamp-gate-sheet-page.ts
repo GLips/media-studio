@@ -3,7 +3,7 @@
 // baselines; and the reductions run alone over textures written here.
 
 import * as meadowSource from '#lib/paint/document/models/meadow.painting.ts';
-import { painting } from '#lib/paint/document/models/painting-source.ts';
+import { createStampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import type { StampSheetProgram } from '#lib/paint/painting/models/stamp-sheet-program.ts';
 import { STAMP_SHEET_REBASE } from '#lib/paint/painting/models/stamp-sheet-schedule.ts';
 import { createStampPaintGpuOwner, type StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
@@ -12,7 +12,7 @@ import { solveStampSheet, type StampSheetSolved, type StampSheetSolveOptions } f
 import type { StampGateLayer, StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import {
   checkStampGateTimes, STAMP_GATE_FAR_SHALLOWS, STAMP_GATE_FOOT_BOX, STAMP_GATE_FORWARD, STAMP_GATE_HERON_AWAY, STAMP_GATE_HERON_POSE, STAMP_GATE_NEVER_WETTED, STAMP_GATE_NEVER_WETTED_MESSAGE, STAMP_GATE_REBASE, STAMP_GATE_SHEET_IDS,
-  STAMP_GATE_SHEET_IMAGES, STAMP_GATE_WET_CONTACT, stampGateFilmCentre, stampGateFilmDifference, stampGateFilmsEqual, stampGateForwardTimes, stampGateRebaseTimes, stampGateSheetProgram,
+  STAMP_GATE_SHEET_IMAGES, STAMP_GATE_WET_CONTACT, stampGateFilmCentre, stampGateFilmDifference, stampGateFilmsEqual, stampGateForwardTimes, stampGateHeronPosed, stampGateRebaseTimes, stampGateSheetProgram,
   stampGateSolvedProgram, stampGateWetContactTimes, type StampGateFilm,
   type StampGateSheetId, type StampGateSolvedId,
 } from '../models/stamp-gate-sheets.ts';
@@ -84,27 +84,27 @@ async function checkForward(): Promise<StampGateWashCheck[]> {
 /**
  * sheet/wet-contact: the foot's charge reaches the wet shallows' film under it and nowhere far from it (against the
  * foot lifted clear of them); the glaze waits until all under it has set; a second pose moves the foot's paint by the
- * pose, the flood's decision remembered.
+ * pose, the flood's decision reused.
  */
 async function checkWetContact(): Promise<StampGateWashCheck[]> {
   const id = 'sheet/wet-contact', program = stampGateSheetProgram(STAMP_GATE_WET_CONTACT), names = program.entries.map(({ name }) => name);
-  const heron = painting(STAMP_GATE_WET_CONTACT).tree.groups.findIndex(({ node }) => node.key === 'heron');
-  const charged = { through: 2, finish: false };
+  const charged = { through: 2, finish: false }, costs = createStampPaintCostTally();
   return withSheetOwner(async (owner) => {
     const rest = await solvedFilms(owner, program);
-    const posed = await solvedFilms(owner, program, { poses: new Map([[heron, STAMP_GATE_HERON_POSE]]) });
-    const touching = await solvedFilms(owner, program, charged), away = await solvedFilms(owner, program, { ...charged, poses: new Map([[heron, STAMP_GATE_HERON_AWAY]]) });
+    const posed = await solvedFilms(owner, stampGateHeronPosed(STAMP_GATE_HERON_POSE), { costs });
+    const reused = costs.take().counts.get('decisions reused') ?? 0;
+    const touching = await solvedFilms(owner, program, charged), away = await solvedFilms(owner, stampGateHeronPosed(STAMP_GATE_HERON_AWAY), charged);
     const under = stampGateFilmDifference(touching.films[0], away.films[0], STAMP_GATE_FOOT_BOX), far = stampGateFilmDifference(touching.films[0], away.films[0], STAMP_GATE_FAR_SHALLOWS);
     const [from, to] = [stampGateFilmCentre(rest.films[1], 0), stampGateFilmCentre(posed.films[1], 0)];
     const moved = from && to && { x: to.x - from.x, y: to.y - from.y };
-    const shifted = !!moved && Math.hypot(moved.x - STAMP_GATE_HERON_POSE.x, moved.y - STAMP_GATE_HERON_POSE.y) <= 0.25;
+    const shifted = !!moved && Math.hypot(moved.x - STAMP_GATE_HERON_POSE.kx, moved.y - STAMP_GATE_HERON_POSE.ky) <= 0.25;
     return [
       { id: `${id}: mingles`, passed: under > 0.01 && far === 0, detail: `the shallows' film moved by up to ${under.toFixed(4)} under the foot, ${far} far from it` },
       checkStampGateTimes(`${id}: glaze set`, rest.solved.decisions, stampGateWetContactTimes(), names),
       checkStampGateTimes(`${id}: posed`, posed.solved.decisions, stampGateWetContactTimes(), names),
       {
-        id: `${id}: pose`, passed: shifted && posed.solved.stats.remembered === 1,
-        detail: `the foot's paint moved ${moved ? `${moved.x.toFixed(3)}, ${moved.y.toFixed(3)}` : 'nowhere'} px, posed ${STAMP_GATE_HERON_POSE.x}, ${STAMP_GATE_HERON_POSE.y}; ${posed.solved.stats.remembered} decision remembered`,
+        id: `${id}: pose`, passed: shifted && reused === 1,
+        detail: `the foot's paint moved ${moved ? `${moved.x.toFixed(3)}, ${moved.y.toFixed(3)}` : 'nowhere'} px, posed ${STAMP_GATE_HERON_POSE.kx}, ${STAMP_GATE_HERON_POSE.ky}; ${reused} decision reused`,
       },
     ];
   });

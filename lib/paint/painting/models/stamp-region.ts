@@ -299,6 +299,23 @@ export function stampGridAt(grid: StampGrid, x: number, y: number): number {
   return (at(0, 0) * (1 - fu) + at(1, 0) * fu) * (1 - fv) + (at(0, 1) * (1 - fu) + at(1, 1) * fu) * fv;
 }
 
+/** The union of `grids` at the finest's cell: each point the least any grid holding it gives, 1 where none does. */
+export function stampGridUnion(grids: readonly StampGrid[]): StampGrid {
+  if (grids.length === 1) return grids[0];
+  const cell = Math.min(...grids.map((grid) => grid.cell));
+  const x0 = Math.min(...grids.map((grid) => grid.x0)), y0 = Math.min(...grids.map((grid) => grid.y0));
+  const x1 = Math.max(...grids.map((grid) => grid.x0 + (grid.columns - 1) * grid.cell)), y1 = Math.max(...grids.map((grid) => grid.y0 + (grid.rows - 1) * grid.cell));
+  const columns = Math.ceil((x1 - x0) / cell) + 1, rows = Math.ceil((y1 - y0) / cell) + 1, values = new Float32Array(columns * rows);
+  for (let j = 0; j < rows; j++) {
+    for (let i = 0; i < columns; i++) {
+      const x = x0 + i * cell, y = y0 + j * cell;
+      const holding = grids.filter((grid) => x >= grid.x0 && y >= grid.y0 && x <= grid.x0 + (grid.columns - 1) * grid.cell && y <= grid.y0 + (grid.rows - 1) * grid.cell);
+      values[j * columns + i] = holding.length ? Math.min(...holding.map((grid) => stampGridAt(grid, x, y))) : 1;
+    }
+  }
+  return { x0, y0, cell, columns, rows, values };
+}
+
 /**
  * Rings laid out for ringsDistance: each ring's point count as a header point (count, 0), then its points. An area
  * whose points are such a run has STAMP_RINGED_COUNT set in its count.

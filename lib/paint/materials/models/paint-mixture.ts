@@ -10,10 +10,10 @@
 
 import { kubelkaMunkFilm, kubelkaMunkOpaque, kubelkaMunkOver } from './paint-kubelka-munk.ts';
 import { paintPigmentInMedium, type PaintMedium } from './paint-medium.ts';
-import type { PaintPigment, PaintPigmentAppearance } from './paint-pigment.ts';
+import type { PaintMixturePigment, PaintPigment } from './paint-pigment.ts';
 import type { PaintBands, PaintBandValues } from './paint-spectrum.ts';
 
-export type PaintMixturePart = { pigment: PaintPigmentAppearance; amount: number };
+export type PaintMixturePart = { pigment: PaintMixturePigment; amount: number };
 export type PaintMixture = { parts: readonly PaintMixturePart[]; strength: number };
 
 /** One pigment of a paint as laid: how much of it a full stroke lays, in unit films. */
@@ -37,7 +37,7 @@ export function paintMixtureProblem({ parts, strength }: PaintMixture): string |
  * Each pigment's absolute amount (its share of the parts times the strength): what a gradient between two mixtures
  * interpolates, never proportions and strength apart, which disagree where the ends' strengths differ.
  */
-export function paintMixtureAmounts({ parts, strength }: PaintMixture): { pigment: PaintPigmentAppearance; amount: number }[] {
+export function paintMixtureAmounts({ parts, strength }: PaintMixture): { pigment: PaintMixturePigment; amount: number }[] {
   const total = parts.reduce((sum, { amount }) => sum + amount, 0);
   return parts.filter(({ amount }) => amount > 0).map(({ pigment, amount }) => ({ pigment, amount: (strength * amount) / total }));
 }

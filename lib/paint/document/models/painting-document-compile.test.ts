@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import { stampSheetEntryKey, stampSheetHeadKey } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
 import { stampRoundTipStatedProfile } from '#lib/paint/painting/models/stamp-tip-support.ts';
 import { compilePaintingRootSheet } from './painting-document-compile.ts';
 import type { PaintingDocument } from './painting-document.ts';
@@ -46,4 +47,22 @@ test('a fill with an island in its hole floods both outer rings as one deposit, 
   assert.ok(ringed.kind === 'flood');
   assert.equal(ringed.flood.barrier.rings?.length, 3);
   assert.ok(ringed.stamps.length > outline.stamps.length, 'the island is flooded besides the outline');
+});
+
+const strokedDocument = (profile: (along: number) => number): PaintingDocument => ({
+  widthPx: 200, heightPx: 120, paper: { color: '#ffffff', absorbency: 0.5 }, medium: 'watercolour',
+  layers: [{ key: 'ink', washes: [{ key: 'line', applications: [{
+    kind: 'stroke', subpaths: [[{ x: 20, y: 60 }, { x: 180, y: 60 }]], hand: { profile },
+    brush: { style: 'watercolor', brush: 'wash' }, diameterPx: 16, seed: 'line', charge: { kind: 'paint', mix: { parts: [{ pigment: '#223344', amount: 1 }], strength: 0.8 } },
+  }] }] }],
+});
+
+test("a stroke's hand curve enters its key through the stamps it lays: two curves, two keys; the same curve, one", async () => {
+  const keyOf = async (profile: (along: number) => number) => {
+    const program = compilePaintingRootSheet(painting({ default: () => strokedDocument(profile) }), brushOf);
+    return stampSheetEntryKey(await stampSheetHeadKey(program.head), program.entries[0]);
+  };
+  const [rising, falling, risingAgain] = await Promise.all([keyOf((along) => 0.2 + 0.8 * along), keyOf((along) => 1 - 0.8 * along), keyOf((along) => 0.2 + 0.8 * along)]);
+  assert.notEqual(rising, falling);
+  assert.equal(rising, risingAgain);
 });

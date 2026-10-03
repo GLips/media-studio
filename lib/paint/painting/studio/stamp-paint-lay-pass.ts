@@ -42,7 +42,7 @@ export const STAMP_NO_REST = -65536;
 // \`paper\` is the paper under a group, read where a scene pixel is (groupGroundAt, fixed to the stage) unless the group
 // carries its own as it moves or warps (StampGroupPaper, \`paperFromRest\`): then where its texel was painted.
 // \`backing\` (STAMP_PAINT_BACKING_WORDS): what a reserve or lift shows, the paper or a clear plane's measuring backing.
-export const STAMP_LAY_GROUP = gpuUniformLayout('Group', [
+const STAMP_LAY_GROUP = gpuUniformLayout('Group', [
   ['opacity', 'f32'], ['glaze', 'u32'], ['origin', 'vec2u'], ['extent', 'vec2u'], ['group', 'u32'], ['paper', gpuUniformStruct(PAPER)], ['paperFromRest', 'u32'],
   ['backing', 'u32'],
 ]);
@@ -51,7 +51,7 @@ export const STAMP_LAY_GROUP = gpuUniformLayout('Group', [
  * on each, stamp-paint-plane-passes.ts), no photograph.
  */
 export type StampPaintBacking = 'paper' | 'white' | 'black';
-export const STAMP_PAINT_BACKING_WORDS = { paper: 0, white: 1, black: 2 } as const satisfies Record<StampPaintBacking, number>;
+const STAMP_PAINT_BACKING_WORDS = { paper: 0, white: 1, black: 2 } as const satisfies Record<StampPaintBacking, number>;
 /** Where the moved group pass binds the rest point of each scene pixel, past any compositor's own bindings. */
 const GROUP_REST_BINDING = 16;
 const groupWgsl = (compositor: StampPaintCompositor, moved: boolean, stage: StampStage) => {
@@ -180,7 +180,6 @@ export function createStampPaintLay(device: StampPaintDevice, arena: StampUnifor
   };
   const groupResources = compositor.group.resources({ photograph: photograph?.view ?? blank, sampler });
   return {
-    writePaper,
     /** `backing` over `painting`'s first `w` × `h` texels. */
     drawPaper(encoder: GPUCommandEncoder, painting: GPUTextureView, backing: StampPaintBacking, w: number, h: number) {
       dispatchStampCompute(device, encoder, pipelines.paper, [arena.slot((views) => writePaper(views, 0, backing)), photograph?.view ?? blank, painting, sampler], w, h);

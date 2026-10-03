@@ -10,6 +10,7 @@ import { stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 import { gpuUniformLayout, gpuUniformStruct } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { stampPaintTargetWgsl, type StampPaintCompositor, type StampPaintTarget } from './stamp-paint-compositor.ts';
 import { STAMP_WORKGROUP } from './stamp-paint-gpu.ts';
+import { STAMP_REGION_AT_WGSL } from './stamp-region-textures.ts';
 import { STAMP_GRAIN, STAMP_GRAIN_WGSL } from './stamp-deposit-stamp-wgsl.ts';
 
 /** A deposit's resolve uniform. Its compositor's PaintDeposit has a slot of its own, `paint`, as this one is full. */
@@ -168,12 +169,7 @@ fn traced(slot: u32, value: f32) {
 @group(0) @binding(15) var<uniform> k: Keep;
 @group(0) @binding(16) var within: texture_2d<f32>;
 @group(0) @binding(17) var<uniform> paint: ${compositor.deposit.layout.name};
-// A region texture's value at a texel, its box's x, y, width and height in the stage's texels: none outside it.
-fn regionAt(region: texture_2d<f32>, box: vec4f, pixel: vec2u) -> f32 {
-  let q = vec2f(pixel) - box.xy;
-  if (any(q < vec2f(0.0)) || any(q >= box.zw)) { return 0.0; }
-  return textureLoad(region, vec2u(q), 0).r;
-}
+${STAMP_REGION_AT_WGSL}
 ${STAMP_TEXTURIZED_WGSL}
 
 // Where the mask stands above its blur, as steeply as the edge's sharpness says.

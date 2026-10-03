@@ -71,6 +71,17 @@ export const STAMP_REGION_FORMAT = 'r16float', STAMP_REGION_TEXEL_BYTES = 2;
 /** A region worked out at load: its texture, and its box in painting points. */
 export type StampRegionTexture = { view: GPUTextureView; box: StampPixelBox };
 
+/**
+ * `regionAt(region, box, pixel)`: a region texture's value at a stage texel, `box` its x, y, width and height in the
+ * stage's texels (stampRegionTexelWords): none outside it.
+ */
+export const STAMP_REGION_AT_WGSL = /* wgsl */ `
+fn regionAt(region: texture_2d<f32>, box: vec4f, pixel: vec2u) -> f32 {
+  let q = vec2f(pixel) - box.xy;
+  if (any(q < vec2f(0.0)) || any(q >= box.zw)) { return 0.0; }
+  return textureLoad(region, vec2u(q), 0).r;
+}`;
+
 /** An area's coverage on no fluid, clipped to each of `clips`: a flood's barrier, a `within`, a wash's preparation. */
 export type StampRegionCoverage = { area: CompiledStampArea; clips: readonly CompiledStampArea[] };
 

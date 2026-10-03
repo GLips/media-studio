@@ -125,18 +125,26 @@ of either end, its amount graded on the GPU. A passage without a history lands a
 (`stamp-sheet-program.ts`, compiled by `lib/paint/document`) is a film per layer, a wash per wash and each application
 a deposit planned at rest. `solveStampSheet` (`studio/stamp-sheet-solver.ts`) runs it beside the renderer, on the
 stages the renderer calls (the deposit drawing, the wet stages, the lay pass). Each application's time is decided
-against the paper the ones before it left: the GPU sums over its core (its touch, off its fluid, within its regions,
-inside its clip base) in integer atomics, two-word totals and 4096-bin damp histograms (`stamp-sheet-reductions.ts`),
+against the paper the ones before it left: the GPU sums over its core (where its touch reaches 0.5, each texel
+weighing its touch times the share it may land there: off its fluid, within its regions, inside its clip base) in
+integer atomics, two-word totals and 4096-bin damp histograms (`stamp-sheet-reductions.ts`),
 and the CPU decides in f64 on a 1 ms grid (`stamp-sheet-schedule.ts`, `stamp-sheet-decide.ts`), checked again by the
 field's own law. An `on` that can't hold, or a bloom with nothing to act on, is a `StampSheetRefusal`, its message
 the author's. Then it lands into the one wet field and its film; its water reaches other films' paint through a
-proxy; a drying closes once everything since the last has set, rimming each film that painted in it. The field keeps
-times after a base it moves up past 2¹³ s. Keys chain from the program's head through each entry as posed
-(`stamp-sheet-state-key.ts`), so a decision is remembered by its prefix, and a solve's films are kept, cropped, in the
-device's cache under its last key (`stamp-sheet-films.ts`), which a still lays as the renderer lays a painting. A
-solve holds the device's FIFO lease (`stamp-solve-lease.ts`) from its first encode to its last readback, and never
-holds an encoder across an await. It solves the root's sheet, unclocked, each group posed by a translation; the
-gate's `schedule/` and `sheet/` cases hold it to the wet laws' closed forms.
+proxy, though only into films that keep a wet history (a direct film has no open channel); a drying closes once
+everything since the last has set, rimming each film that painted in it, and at the end every wet film's open paint
+settles. The field keeps times after a base it moves up past 2¹³ s. It solves a posed program: `paintingSheetPosed`
+(`lib/paint/document/models/painting-pose.ts`) moves each entry's deposit by its group chain's map, anchored clips,
+reserves and resists staying, by translations only so far. Keys chain from the program's head through each entry's
+datum (what it reads of the document, with the marks it compiled to) and its pose's text (`stamp-sheet-state-key.ts`),
+so a decision is remembered by its prefix, and a solve's films are kept, cropped, in the device's cache under its last
+key (`stamp-sheet-films.ts`), which a still lays as the renderer lays a painting. Its targets are the device owner's
+(`owner.target`, named `sheet …`, at the stage's size), shared by every solve that size, so a solve clears its films
+before it reads them. A solve holds the device's FIFO lease (`stamp-solve-lease.ts`) from its first encode to its
+last readback, never holds an encoder across an await, and counts into a `StampPaintCostTally` when given one (its
+solve, decisions made and reused, readbacks, warnings). The renderer and the solver read a layered target back through
+`stamp-layer-readback.ts`. It solves the root's sheet, unclocked; the gate's `schedule/` and `sheet/` cases hold it to
+the wet laws' closed forms.
 
 **Capabilities.** A `PaintMedium` declares what it can do besides lay paint (`PaintCapability`): `'wet-history'`,
 `'wet-conditions'`, `'water'`, `'lift'`, `'burnish'`. Watercolour and gouache declare the first four; crayon `lift`

@@ -12,11 +12,12 @@ import { stampFirmStroke, type StampBrush, type StampBrushMeasuredProfile } from
 import {
   stampBrushEdgeOffsetMean, stampBrushEdgeReach, stampBrushMeasuredProfile, stampBrushProfileRange, type StampBrushEdgeReach,
 } from '#lib/paint/brush/models/stamp-brush-profile.ts';
-import { placeStrokeStamps, type PlacedStamp, type StampStrokePoint } from '#lib/paint/brush/models/stamp-placement.ts';
+import { placeStrokeStamps, stampFrozenMarks, type PlacedStamp, type StampStrokePoint } from '#lib/paint/brush/models/stamp-placement.ts';
 import type { CompiledStampArea } from './stamp-area.ts';
 import { planStampFloodRuns, type StampFloodReach, type StampFloodRuns } from './stamp-fill-plan.ts';
 import { stampRowFrame, stampRowSpans, type StampFillReach, type StampFillStrokes, type StampRowFrame } from './stamp-fill-strokes.ts';
-import { stampRegionPolygon, type StampGrid, type StampPoint, type StampRegion } from './stamp-region.ts';
+import type { CompiledStampDeposit, CompiledStampFlood } from './stamp-paint-recipe-compile.ts';
+import { stampGridUnion, stampRegionPolygon, type StampGrid, type StampPoint, type StampRegion } from './stamp-region.ts';
 
 /**
  * Rows a quarter diameter apart, at most: close enough that a tip's own falloff doesn't band. A dry brush's flood and
@@ -146,4 +147,18 @@ function rowSegments({ top, bottom, painting }: StampRowFrame, step: number, spa
   const segments: StampStrokePoint[][] = [];
   for (let y = top + step / 2; y < bottom; y += step) for (const [a, b] of spans(y)) segments.push([painting(a, y), painting(b, y)]);
   return segments;
+}
+
+/**
+ * A fill of several outer rings as one deposit: `parts`, each ring's laid by its own placement, their stamps joined in
+ * order; a flood stopped at `area` (the ringed area, so holes stay bare), its local scale the union of theirs.
+ */
+export function stampFillPartsJoined(parts: readonly CompiledStampDeposit[], area: CompiledStampArea): CompiledStampDeposit {
+  const [first] = parts;
+  const joined = parts.length === 1 ? first : {
+    ...first, stamps: stampFrozenMarks(parts.flatMap(({ stamps }) => stamps)), dualStamps: stampFrozenMarks(parts.flatMap(({ dualStamps }) => dualStamps)),
+  };
+  if (first.kind !== 'flood') return joined;
+  const flood: CompiledStampFlood = { ...first.flood, barrier: area, scale: stampGridUnion(parts.flatMap((part) => (part.kind === 'flood' ? [part.flood.scale] : []))) };
+  return { ...joined, kind: 'flood', flood };
 }

@@ -198,6 +198,10 @@ export function checkPaintingApplication(list: PaintingProblemList, owner: strin
   application.reserves?.forEach((footprint, i) => checkPaintingFootprint(list, owner, `reserves[${i}]`, footprint, setting.styles));
   application.resists?.forEach(({ footprints, amount }, i) => {
     if (!isPaintingShare(amount)) list.error(owner, `resists[${i}].amount`, `${amount} isn't within 0..1`, box);
-    footprints.forEach((footprint, j) => checkPaintingFootprint(list, owner, `resists[${i}].footprints[${j}]`, footprint, setting.styles));
+    footprints.forEach((footprint: Footprint, j) => {
+      // The types give wax marks only; a JS source may still write a region.
+      if (footprint.kind === 'region') list.error(owner, `resists[${i}].footprints[${j}]`, "is a region, and wax is laid by a brush's marks: give it a stroke or stamps", box);
+      else checkPaintingFootprint(list, owner, `resists[${i}].footprints[${j}]`, footprint, setting.styles);
+    });
   });
 }

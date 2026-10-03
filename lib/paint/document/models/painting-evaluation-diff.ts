@@ -3,12 +3,12 @@
 // each wash `same`, changed in its own `content`, or `upstream` of a change earlier on its sheet. It's how an author
 // learns what a property costs before warming it. It compares documents: posed marks and reseeds aren't in it.
 
-import type { AnyApplication, LayerKey, LayerNode, PaintingDocument, Wash, WashKey } from './painting-document.ts';
+import type { LayerKey, LayerNode, PaintingDocument, WashKey } from './painting-document.ts';
 import { paintingFirstDifference, type PaintingDatum } from './painting-document-difference.ts';
-import { paintingApplicationOwner } from './painting-problem.ts';
-import { paintingSheetOrders, paintingSheetWashes, type PaintingSheetOrder } from './painting-sheet-program.ts';
+import { paintingEntryReads, paintingSheetHead, type PaintingEntryRead } from './painting-entry-reads.ts';
+import { paintingSheetOrders, paintingSheetWashes } from './painting-sheet-program.ts';
 import type { PaintingEvaluation } from './painting-source.ts';
-import { isPaintingGroup, paintingSheetName, type PaintingTree } from './painting-tree.ts';
+import { isPaintingGroup, paintingSheetName } from './painting-tree.ts';
 
 /** A wash's change: none; in its own applications or fields (the first differing path); or after a change on its sheet. */
 export type PaintingWashChange =
@@ -48,44 +48,6 @@ function documentChanges(a: PaintingDocument, b: PaintingDocument): string[] {
   };
   visit(a.layers, b.layers, 'layers');
   return changes;
-}
-
-/**
- * What a sheet's every solve starts from (ENGINE 4.2's K₀): the document's size, the paper's solve half, its water
- * and its clock. Neither its edge nor its paper's colour is solved.
- */
-export const paintingSheetHead = (paintingDocument: PaintingDocument, order: PaintingSheetOrder): PaintingDatum => ({
-  widthPx: paintingDocument.widthPx, heightPx: paintingDocument.heightPx, grain: order.sheet.paper.grain, absorbency: order.sheet.paper.absorbency,
-  water: order.sheet.water, clock: order.clock,
-});
-
-/** An entry as its solve reads it, and the owners its datum's first parts name in a path. */
-export type PaintingEntryRead = { readonly datum: PaintingDatum; readonly owners: Readonly<Record<'layer' | 'wash' | 'application', string>> };
-
-/**
- * What each entry of `order` brings to its solve, keys left out (a `clipTo` by the clipped wash's place): its layer's
- * film at the layer's first entry, its wash's fields at the wash's first, then its application and where it stands.
- * `lastOfWash` makes an application added or dropped at a wash's end read.
- */
-export function paintingEntryReads(tree: PaintingTree, order: PaintingSheetOrder): PaintingEntryRead[] {
-  const seen = new Set<string>();
-  return order.entries.map((entry, k) => {
-    const { slots, layer: ordinal } = order.layers[entry.layer], place = tree.layers[ordinal], wash: Wash = place.node.washes[entry.wash];
-    const application: AnyApplication = wash.applications[entry.application];
-    const washId = `${entry.layer}/${entry.wash}`, firstOfLayer = !seen.has(`${entry.layer}`), firstOfWash = !seen.has(washId);
-    seen.add(`${entry.layer}`).add(washId);
-    const clipTo = wash.clipTo === undefined ? undefined : place.node.washes.findIndex(({ key }) => key === wash.clipTo);
-    const datum = {
-      layer: firstOfLayer ? { slots } : undefined,
-      wash: firstOfWash ? { ...wash, key: undefined, clipTo, applications: undefined } : undefined,
-      application: { ...application, key: undefined },
-      place: {
-        layer: entry.layer, wash: entry.wash, application: entry.application, chain: entry.chain, orderTime: entry.orderTime, medium: place.medium,
-        lastOfWash: order.entries.findIndex((other, j) => j > k && other.layer === entry.layer && other.wash === entry.wash) < 0,
-      },
-    };
-    return { datum, owners: { layer: place.node.key, wash: wash.key, application: paintingApplicationOwner(wash, application, entry.application) } };
-  });
 }
 
 /** Where `path`, a path within an entry's datum, lies by its owner: `water.slots.palette[1]`, `hill-flood.area…`. */

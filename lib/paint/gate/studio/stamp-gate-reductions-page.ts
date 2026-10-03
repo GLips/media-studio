@@ -45,7 +45,7 @@ async function wordsFrom(device: GPUDevice, count: number, work: (encoder: GPUCo
 /** The reductions over `paper` (and a whole touch of `size`²), each pass's uniform its own slot. */
 function reductionsOver(device: GPUDevice, encoder: GPUCommandEncoder, size: number, paper: GPUTextureView) {
   const arena = createStampUniformArena(device, 1);
-  const textures: StampSheetReduceTextures = { touch: wholeTouch(device, encoder, size), clip: single(device, 'rgba16float'), paper, open: single(device, 'r32float'), blank: single(device, 'r8unorm') };
+  const textures: StampSheetReduceTextures = { core: wholeTouch(device, encoder, size), clip: single(device, 'rgba16float'), paper, open: single(device, 'r32float'), blank: single(device, 'r8unorm') };
   return { arena, reductions: stampSheetReductions(device, arena, textures) };
 }
 

@@ -3,8 +3,10 @@
 // keys mean equal state on any machine that solves them; nothing of a key enters a solve.
 //
 // Canonical JSON: object keys sorted, numbers as JS prints them (shortest round trip), undefined and functions left
-// out (a function's work is in what it made: a hand's curve in the stamps it placed), typed arrays, Sets and Maps as
-// arrays.
+// out, typed arrays, Sets and Maps as arrays. A function is dropped, so whatever it decides must enter a key as what it
+// made: an entry's datum holds its compiled marks beside the document (a hand's curve is in the stamps it placed).
+
+import type { StampSheetEntry } from './stamp-sheet-program.ts';
 
 /** What a key may read: a document's data, a compiled deposit's, typed arrays and collections of them. */
 export type StampCanonicalDatum =
@@ -44,5 +46,5 @@ export async function stampSheetHash(text: string): Promise<string> {
 /** K₀: the key of a program's incoming state, from its head's canonical text. */
 export const stampSheetHeadKey = (head: string) => stampSheetHash(`head\n${head}`);
 
-/** Kₖ: the key after an entry, from the key before it and the entry's canonical text as read. */
-export const stampSheetEntryKey = (before: string, entry: string) => stampSheetHash(`${before}\n${entry}`);
+/** Kₖ: the key after an entry, from the key before it and the entry as read: its datum at rest and the map posing it. */
+export const stampSheetEntryKey = (before: string, entry: Pick<StampSheetEntry, 'datum' | 'pose'>) => stampSheetHash(`${before}\n${entry.datum}\n${entry.pose}`);

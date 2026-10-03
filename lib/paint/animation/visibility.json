@@ -1,5 +1,6 @@
 {
   "lib/paint/three-layers": "A three.js source is rendered through the paint camera: its perspective camera, pose and planes, in the world the planes share.",
   "lib/paint/style": "StampPainting shows a painting's planes as its camera looks at each frame.",
-  "lib/paint/shot": "A shot's camera, clocks, motion nodes and plays are the animation feature's, over occurrences."
+  "lib/paint/shot": "A shot's camera, clocks, motion nodes and plays are the animation feature's, over occurrences.",
+  "lib/paint/document": "A sheet program is posed before its solve by each group's map, a similarity (painting-pose.ts)."
 }

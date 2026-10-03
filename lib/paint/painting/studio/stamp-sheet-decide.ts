@@ -7,10 +7,11 @@
 
 import {
   STAMP_SHEET_SHARE, STAMP_SHEET_STEP, STAMP_SHEET_VERIFY_STEPS, stampDampFirstStep, stampDampFirstWidth, stampDampStep, stampSheetEmptyCore, stampSheetGrid,
-  StampSheetRefusal, stampSheetHeld, stampSheetHolds, stampSheetNearRounding, stampSheetUnreachable, stampSheetVerifyFault, stampSheetWithinRounding, stampSheetWontBloom,
+  stampSheetHeld, stampSheetHolds, stampSheetNearRounding, stampSheetUnreachable, stampSheetVerifyFault, stampSheetWithinRounding, stampSheetWontBloom,
   type StampSheetTotals,
 } from '../models/stamp-sheet-schedule.ts';
 import type { StampSheetWetness } from '../models/stamp-sheet-program.ts';
+import { StampSheetRefusal } from '../models/stamp-sheet-refusal.ts';
 import type { StampSheetCore } from './stamp-sheet-reductions.ts';
 import type { StampSheetPrepare, StampSheetSteps } from './stamp-sheet-steps.ts';
 

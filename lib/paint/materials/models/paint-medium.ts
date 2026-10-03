@@ -6,7 +6,9 @@
 // A brush (StampBrush) says how paint is laid down; the paint (pigment in a medium) how it combines and dries.
 
 import { kubelkaMunkFromAppearance } from './paint-kubelka-munk.ts';
-import { paintHeldReflectance, paintPigmentFromAppearance, paintPigmentHabits, type PaintHex, type PaintPigment, type PaintPigmentAppearance, type PaintPigmentHabits } from './paint-pigment.ts';
+import {
+  paintHeldReflectance, paintPigmentFromAppearance, paintPigmentHabits, type PaintHex, type PaintMixturePigment, type PaintPigment, type PaintPigmentAppearance, type PaintPigmentHabits,
+} from './paint-pigment.ts';
 import { paintHexToLinear, type PaintBands } from './paint-spectrum.ts';
 
 /** How a medium lightens a paint: `water` thins its film so the paper shows; `white` mixes white in, at full body. */
@@ -209,9 +211,10 @@ export function paintPigmentFromColor(color: PaintHex, medium: PaintMedium, band
 /**
  * A named pigment as `medium` paints it: its appearance in a glaze medium; in a masstone one its over-white colour as
  * masstone, since a glaze's fit scatters almost nothing and greys as white is mixed in. A colour standing for a
- * pigment (`fitted: 'color'`) is fitted as a colour in either.
+ * pigment (PaintColorPigment) is fitted as a colour in either.
  */
-export function paintPigmentInMedium(appearance: PaintPigmentAppearance, medium: PaintMedium, bands: PaintBands): PaintPigment {
-  if (appearance.fitted === 'color') return paintPigmentFromColor(appearance.overWhite, medium, bands, { id: appearance.id, name: appearance.name });
+export function paintPigmentInMedium(pigment: PaintMixturePigment, medium: PaintMedium, bands: PaintBands): PaintPigment {
+  if ('color' in pigment) return paintPigmentFromColor(pigment.color, medium, bands, { id: pigment.id, name: pigment.name });
+  const appearance = pigment;
   return medium.color.kind === 'glaze' ? paintPigmentFromAppearance(appearance, bands) : paintPigmentFromColor(appearance.overWhite, medium, bands, appearance);
 }

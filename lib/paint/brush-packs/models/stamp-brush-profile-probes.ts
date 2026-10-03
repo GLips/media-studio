@@ -81,7 +81,7 @@ export const STAMP_BRUSH_PROBE_BARE_MEDIUM: StampBrushProbeMedium = { paper: { c
  */
 export function stampBrushProbePaint(mixing: StampPaintMixing): PaintMaterial {
   const pigments = mixing.kind === 'pigment' ? Object.values(mixing.pigments) : [];
-  const darkest = pigments.map((pigment) => ({ pigment, lightness: paintLinearToLab(paintHexToLinear(pigment.overWhite))[0] })).toSorted((a, b) => a.lightness - b.lightness)[0];
+  const darkest = pigments.map((pigment) => ({ pigment, lightness: paintLinearToLab(paintHexToLinear('color' in pigment ? pigment.color : pigment.overWhite))[0] })).toSorted((a, b) => a.lightness - b.lightness)[0];
   return darkest ? { kind: 'mixture', parts: [{ pigment: darkest.pigment, amount: 1 }], strength: 1 } : STAMP_BRUSH_PROBE_BARE_MEDIUM.paint;
 }
 

@@ -180,17 +180,20 @@ export type WaterCharge = { readonly kind: 'water'; readonly water: number };
 export type LiftCharge = { readonly kind: 'lift'; readonly strength: number };
 export type Charge = PaintCharge | WaterCharge | LiftCharge;
 
+/** The footprint of explicit marks laid through a tip: masking fluid brushed on, or wax. */
+export type MarkFootprint = Tip & (StrokeGeometry | StampsGeometry) & { readonly anchor?: 'paper' };
+
 /**
- * Where masking fluid or wax lies: a region with a crisp or feathered edge, or the footprint of explicit marks.
+ * Where masking fluid lies: a region with a crisp or feathered edge, or the footprint of explicit marks.
  * `anchor: 'paper'` keeps it still on the sheet while a scene poses its layer; left out, it moves with the layer.
  */
-export type Footprint = (
-  | { readonly kind: 'region'; readonly region: Region; readonly edge?: Exclude<Edge, { readonly kind: 'bleed' }> }
-  | (Tip & (StrokeGeometry | StampsGeometry))
-) & { readonly anchor?: 'paper' };
+export type Footprint = ({ readonly kind: 'region'; readonly region: Region; readonly edge?: Exclude<Edge, { readonly kind: 'bleed' }>; readonly anchor?: 'paper' }) | MarkFootprint;
 
-/** Wax on the paper's peaks: the application keeps 1 − `amount` of its contact there. Protects nothing outright. */
-export type Resist = { readonly footprints: readonly Footprint[]; readonly amount: number };
+/**
+ * Wax on the paper's peaks, laid by marks (a brush's grain is what catches the peaks; a region has none): the
+ * application keeps 1 − `amount` of its contact there. Protects nothing outright.
+ */
+export type Resist = { readonly footprints: readonly MarkFootprint[]; readonly amount: number };
 
 /**
  * One mark, or one run of marks, laid through one tip. `reserves`: masking fluid excluding this application's

@@ -1,16 +1,17 @@
 // painting-still.ts: a painting source solved and shown, for `studio paint still` and `studio paint check --solve`.
 // Checked first as `studio paint check` checks it; then its brushes and paper resolved from work/styles/ and handed,
 // with the values, to studio/painting-still-page.ts, which bundles the source in, solves its root sheet on the GPU and
-// returns the painting (and each film alone over the paper) as PNGs, with what the solve decided.
+// returns the painting (and each film alone over the paper) as PNGs, with what the solve decided; and those written.
 
-import { resolve } from 'node:path';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { withBrowserModulePage } from '#lib/platform/browser/engine/browser-module-page.ts';
 import { STUDIO_STYLES_DIR } from '#lib/platform/project/engine/studio-project.ts';
 import { readWorkspacePigmentStyle } from '#lib/paint/style/engine/workspace-pigment-style.ts';
 import { paintingBrushRefs } from '../models/painting-brush-refs.ts';
 import type { PaintingProblem } from '../models/painting-problem.ts';
-import type { PaintingStill, PaintingStillOutcome, PaintingStillRequest } from '../models/painting-solve-report.ts';
+import type { PaintingStill, PaintingStillOutcome, PaintingStillRequest } from '../models/painting-still-request.ts';
 import { checkPaintingSourceFile } from './painting-source-load.ts';
 
 const STILL_PAGE = fileURLToPath(new URL('../studio/painting-still-page.ts', import.meta.url));
@@ -38,4 +39,21 @@ export async function paintPaintingSourceStill(file: string, texts: Readonly<Rec
     (call) => call<PaintingStillOutcome>('drawPaintingStill', request),
   );
   return 'still' in outcome ? { problems, still: outcome.still, refused: null } : { problems, still: null, refused: outcome.refused };
+}
+
+/** A source file's name without `.painting.ts`: its outputs' default stem. */
+export const paintingSourceStem = (file: string) => basename(file).replace(/\.painting\.ts$/, '').replace(/\.ts$/, '');
+
+/** A still's PNG, as its page hands it back (a data URL), written to `file`. */
+export function writePaintingStillPng(file: string, url: string) {
+  writeFileSync(file, Buffer.from(url.slice(url.indexOf(',') + 1), 'base64'));
+}
+
+/** `still`'s painting and each film written under `out`: `painting.png` and `films/<layer>.png`. Where it wrote them. */
+export function writePaintingSolveImages(still: PaintingStill, out: string): { painting: string; films: string } {
+  const painting = join(out, 'painting.png'), films = join(out, 'films');
+  mkdirSync(films, { recursive: true });
+  writePaintingStillPng(painting, still.png);
+  for (const { name, png } of still.films) writePaintingStillPng(join(films, `${name}.png`), png);
+  return { painting, films };
 }

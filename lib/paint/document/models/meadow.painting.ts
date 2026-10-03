@@ -14,6 +14,11 @@ export const properties = {
 const W = 640, H = 360;
 /** Where the sky wash stops, px from the top; the hill always rises above it. */
 const SKY_FOOT = 262;
+/**
+ * How far past the paper's edge a wash meeting it runs, px, as a painter's would: a flood's tip breaks along its
+ * outline, and an outline on the edge would leave its bare specks there.
+ */
+const OFF_PAPER = 30;
 
 const { ultramarine, cerulean, burntSienna } = WATERCOLOUR_PIGMENTS;
 const SKY_BLUE: Mix = { parts: [{ pigment: ultramarine, amount: 1 }, { pigment: cerulean, amount: 0.5 }], strength: 0.45 };
@@ -35,7 +40,7 @@ const CHARGE: BrushRef = { style: 'watercolor', brush: 'charge' };
 /** The wash brush, for floods nothing waits on. */
 const WASH: BrushRef = { style: 'watercolor', brush: 'wash' };
 
-const SKY: Ring = [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: SKY_FOOT }, { x: 0, y: SKY_FOOT }];
+const SKY: Ring = [{ x: -OFF_PAPER, y: -OFF_PAPER }, { x: W + OFF_PAPER, y: -OFF_PAPER }, { x: W + OFF_PAPER, y: SKY_FOOT }, { x: -OFF_PAPER, y: SKY_FOOT }];
 const IN_SKY: Clip = { region: { kind: 'polygon', rings: [SKY] } };
 
 /** A slow, uneven line for the treeline, heavier where it dips, its whole core on the sky flood's shiny paper. */
@@ -44,13 +49,13 @@ const TREELINE: Subpath = Array.from({ length: 17 }, (_, i) => {
   return { x, y: SKY_FOOT - 50 + 6 * dip, pressure: 0.6 + 0.4 * dip };
 });
 
-/** The hill: a swell peaking at `topPx` a third of the way across, closed along the bottom edge. */
+/** The hill: a swell peaking at `topPx` a third of the way across, closed past the paper's sides and bottom. */
 function hillOutline(topPx: number): Ring {
   const ridge = Array.from({ length: 33 }, (_, i) => {
-    const x = (i * W) / 32, swell = 0.5 + 0.5 * Math.cos(2 * Math.PI * (x / W - 1 / 3));
+    const x = -OFF_PAPER + (i * (W + 2 * OFF_PAPER)) / 32, swell = 0.5 + 0.5 * Math.cos(2 * Math.PI * (x / W - 1 / 3));
     return { x, y: H - (H - topPx) * (0.7 + 0.3 * swell) };
   });
-  return [...ridge, { x: W, y: H }, { x: 0, y: H }];
+  return [...ridge, { x: W + OFF_PAPER, y: H + OFF_PAPER }, { x: -OFF_PAPER, y: H + OFF_PAPER }];
 }
 
 export default function meadow({ hillTopPx }: PropertyValues<typeof properties>): PaintingDocument {

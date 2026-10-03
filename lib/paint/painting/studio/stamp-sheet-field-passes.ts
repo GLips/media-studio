@@ -12,7 +12,8 @@ import { STAMP_PAINT_FIELD_SHARE, stampPaintFieldEnds, type StampSeededPaintFiel
 import { stampRegionTexelWords, stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 import { STAMP_LANDED_WETNESS_WGSL, STAMP_WET_PAPER_WGSL, type StampDrying } from '../models/stamp-wetness.ts';
 import { stampBindGroup, type StampPaintDevice } from './stamp-paint-gpu.ts';
-import type { StampRegionTexture } from './stamp-region-textures.ts';
+import { STAMP_REGION_AT_WGSL, type StampRegionTexture } from './stamp-region-textures.ts';
+import type { StampWashGroupLayer } from './stamp-paint-compositor.ts';
 import type { StampUniformArena } from './stamp-uniform-arena.ts';
 import { stampDryingWords } from './stamp-wet-field.ts';
 
@@ -32,9 +33,9 @@ ${layout.wgsl}
 @group(0) @binding(0) var<uniform> u: ${layout.name};
 fn boxed(id: vec3u) -> bool { return all(id.xy < u.extent); }`;
 
-// Each texel's paint set where the paper has settled since water last came: its open share none, as a landing would
-// leave it (landDeposit's settled).
-const settleWgsl = (moved: string, layers: number) => /* wgsl */ `${header(SHEET_FIELD)}
+// Each texel's paint set where the paper has settled since water last came (or everywhere, as a painting finishes):
+// its open share none, as a landing would leave it (landDeposit's settled).
+const settleWgsl = (moved: string, layers: number, everywhere: boolean) => /* wgsl */ `${header(SHEET_FIELD)}
 ${STAMP_WET_PAPER_WGSL}
 ${moved}
 @group(0) @binding(1) var paper: texture_2d<f32>;
@@ -42,7 +43,7 @@ ${moved}
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
   if (!boxed(id)) { return; }
   let p = u.origin + id.xy;
-  if (wetPaperAt(textureLoad(paper, p, 0), u.tau, u.drying.xyz).settled < ${(1 - 1e-4).toFixed(5)}) { return; }
+${everywhere ? '' : `  if (wetPaperAt(textureLoad(paper, p, 0), u.tau, u.drying.xyz).settled < ${(1 - 1e-4).toFixed(5)}) { return; }`}
   var v: array<vec4f, ${layers}>;
   for (var l = 0u; l < ${layers}u; l++) { v[l] = textureLoad(film, p, l); }
   let settled = washSettled(v);
@@ -93,11 +94,7 @@ ${STAMP_PAINT_FIELD_SHARE.wgsl}
 @group(0) @binding(2) var fluid: texture_2d<f32>;
 @group(0) @binding(3) var paper: texture_storage_2d<rgba32float, read_write>;
 @group(0) @binding(4) var rim: texture_storage_2d<rgba16float, read_write>;
-fn regionAt(r: texture_2d<f32>, box: vec4f, p: vec2u) -> f32 {
-  let q = vec2f(p) - box.xy;
-  if (any(q < vec2f(0.0)) || any(q >= box.zw)) { return 0.0; }
-  return textureLoad(r, vec2u(q), 0).r;
-}
+${STAMP_REGION_AT_WGSL}
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
   if (!boxed(id)) { return; }
   let p = u.origin + id.xy;
@@ -114,9 +111,6 @@ fn regionAt(r: texture_2d<f32>, box: vec4f, p: vec2u) -> f32 {
   textureStore(rim, p, seen);
 }`;
 
-/** How a film keeps its paint: its compositor's moved WGSL for it (StampWashLayer's movedWgsl) and its layers. */
-export type StampSheetFilmLayout = { moved: string; layers: number };
-
 /** A prewet as its pass lands it: its region (null for none on the stage), the fluid holding it off, its water. */
 export type StampSheetPrewetLanding = { region: StampRegionTexture; fluid: StampRegionTexture | null; water: StampSeededPaintField<number> };
 
@@ -127,14 +121,16 @@ export type StampSheetFieldTargets = { paper: GPUTextureView; rim: GPUTextureVie
 export function stampSheetFieldPasses(device: StampPaintDevice, stage: StampStage, arena: StampUniformArena, targets: StampSheetFieldTargets) {
   const compile = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }), entryPoint: 'run' } });
   const rebase = compile(rebaseWgsl), prewet = compile(prewetWgsl(stage)), clipBase = compile(clipBaseWgsl);
-  const perLayout = new Map<string, { settle: GPUComputePipeline; open: GPUComputePipeline }>();
-  /** A film's pipelines, by how its paint lies (its moved WGSL and layer count): films alike share them. */
-  const filmPipelines = ({ moved, layers }: StampSheetFilmLayout) => {
-    const key = `${layers}|${moved}`;
-    if (!perLayout.has(key)) perLayout.set(key, { settle: compile(settleWgsl(moved, layers)), open: compile(openWgsl(moved, layers)) });
+  const perLayout = new Map<string, { settle: GPUComputePipeline; settleAll: GPUComputePipeline; open: GPUComputePipeline }>();
+  /** A film's pipelines, by how its paint lies (its group's moved WGSL and layer count): films alike share them. */
+  const filmPipelines = ({ movedWgsl, layers }: StampWashGroupLayer) => {
+    const key = `${layers}|${movedWgsl}`;
+    if (!perLayout.has(key)) {
+      perLayout.set(key, { settle: compile(settleWgsl(movedWgsl, layers, false)), settleAll: compile(settleWgsl(movedWgsl, layers, true)), open: compile(openWgsl(movedWgsl, layers)) });
+    }
     return perLayout.get(key)!;
   };
-  const run = (encoder: GPUCommandEncoder, pipeline: GPUComputePipeline, resources: GPUBindingResource[], box: StampPixelBox) => {
+  const run = (encoder: GPUCommandEncoder, pipeline: GPUComputePipeline, resources: (GPUBindingResource | null)[], box: StampPixelBox) => {
     const pass = encoder.beginComputePass();
     pass.setPipeline(pipeline);
     pass.setBindGroup(0, stampBindGroup(device, pipeline, resources));
@@ -153,11 +149,16 @@ export function stampSheetFieldPasses(device: StampPaintDevice, stage: StampStag
   });
   return {
     /** Settles `film`'s paint (laid out as `layout`) over `box` where the paper has, at `tau` after the base. */
-    settle(encoder: GPUCommandEncoder, film: GPUTextureView, layout: StampSheetFilmLayout, box: StampPixelBox, tau: number, drying: StampDrying) {
+    settle(encoder: GPUCommandEncoder, film: GPUTextureView, layout: StampWashGroupLayer, box: StampPixelBox, tau: number, drying: StampDrying) {
       run(encoder, filmPipelines(layout).settle, [fieldSlot(box, { tau, drying }), targets.paper, film], box);
     },
+    /** Settles all of `film`'s paint over `box`, as its painting finishes (ENGINE 4.4). */
+    settleAll(encoder: GPUCommandEncoder, film: GPUTextureView, layout: StampWashGroupLayer, box: StampPixelBox) {
+      // The paper isn't read, so it's not in this pipeline's layout.
+      run(encoder, filmPipelines(layout).settleAll, [fieldSlot(box, {}), null, film], box);
+    },
     /** Marks in the open mask where `film` (laid out as `layout`) holds open paint over `box`. */
-    markOpen(encoder: GPUCommandEncoder, film: GPUTextureView, layout: StampSheetFilmLayout, box: StampPixelBox) {
+    markOpen(encoder: GPUCommandEncoder, film: GPUTextureView, layout: StampWashGroupLayer, box: StampPixelBox) {
       run(encoder, filmPipelines(layout).open, [fieldSlot(box, {}), film, targets.open], box);
     },
     /** Moves every stored time back `shift` s over the whole stage. */

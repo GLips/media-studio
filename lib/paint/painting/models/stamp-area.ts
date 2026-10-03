@@ -24,13 +24,16 @@ export const stampRegionSeed = (id: string) => Math.floor(seededRandom(`${id}|re
 /** Where an application's deposits may land: an area, its named stretches kept, feathered or merged (StampBoundary). */
 export type StampWithin = StampArea & { boundaries?: StampBoundaries };
 
-/** A within whose region is closed rings read even-odd (a ring inside another a hole), as a painting document gives one. */
-export type StampRingedWithin = Omit<StampWithin, 'region'> & { rings: readonly (readonly StampPoint[])[] };
+/**
+ * A within as a painting document gives one: its region closed rings read even-odd (a ring inside another a hole),
+ * its inset negative for an edge ramped past its line (a bleed), and its ragged edge's seed its own.
+ */
+export type StampRingedWithin = Omit<StampWithin, 'region'> & { rings: readonly (readonly StampPoint[])[]; seed: number };
 
 /**
- * An area checked: its region traced, its edge, its inset (absent for none), its ragged edge's seed (stampRegionSeed
- * of its owner's ID), and a within's feathered and merged stretches (absent for none). `rings`, for a region of more
- * than one ring, read even-odd: `polygon` is then its first, and no reader takes it alone.
+ * An area checked: its region traced, its edge, its inset (absent for none; negative ramps its edge past its line),
+ * its ragged edge's seed, and a within's feathered and merged stretches (absent for none). `rings`, for a region of
+ * more than one ring, read even-odd: `polygon` is then its first, and no reader takes it alone.
  */
 export type CompiledStampArea = {
   polygon: readonly StampPoint[]; rings?: readonly (readonly StampPoint[])[]; edge?: StampEdge; inset?: number; seed: number;
@@ -38,19 +41,19 @@ export type CompiledStampArea = {
 };
 
 /**
- * `area` checked and traced for `what` (a mask's or a pass's full ID), its ragged edge seeded from `what`. Throws on a
- * region (or a ring) that isn't a shape, a negative soft width, a ragged edge without a positive scale, a negative
- * inset, or a boundary compileStampBoundaries refuses.
+ * `area` checked and traced for `what` (a mask's or a pass's full ID), its ragged edge seeded from `what` unless it
+ * brings its own. Throws on a region (or a ring) that isn't a shape, a negative soft width, a ragged edge without a
+ * positive scale, a recipe's negative inset, or a boundary compileStampBoundaries refuses.
  */
 export function compileStampArea(area: StampWithin | StampRingedWithin, what: string): CompiledStampArea {
-  const { edge, inset = 0, boundaries } = area, { soft = 0, ragged } = edge ?? {};
+  const { edge, inset = 0, boundaries } = area, { soft = 0, ragged } = edge ?? {}, ringed = 'rings' in area;
   if (!(soft >= 0) || (ragged && !(ragged.amount >= 0 && ragged.scale > 0))) throw new Error(`stamp paint: ${what}'s edge needs a soft width of 0 or more, and a ragged amount of 0 or more at a positive scale`);
-  if (!(inset >= 0 && Number.isFinite(inset))) throw new Error(`stamp paint: ${what} is inset ${inset} px, and an area is inset a finite 0 or more`);
-  const rings = 'rings' in area ? area.rings.map((points) => checkedStampPolygon({ kind: 'polygon', points }, what)) : [checkedStampPolygon(area.region, what)];
+  if (!(Number.isFinite(inset) && (ringed || inset >= 0))) throw new Error(`stamp paint: ${what} is inset ${inset} px, and an area is inset a finite 0 or more`);
+  const rings = ringed ? area.rings.map((points) => checkedStampPolygon({ kind: 'polygon', points }, what)) : [checkedStampPolygon(area.region, what)];
   if (!rings.length) throw new Error(`stamp paint: ${what}'s region has no rings`);
   const treated = boundaries && compileStampBoundaries(boundaries, rings, what);
   return {
-    polygon: rings[0], ...(rings.length > 1 && { rings }), ...(edge && { edge }), ...(inset > 0 && { inset }), seed: stampRegionSeed(what),
+    polygon: rings[0], ...(rings.length > 1 && { rings }), ...(edge && { edge }), ...(inset !== 0 && { inset }), seed: ringed ? area.seed : stampRegionSeed(what),
     ...(treated?.length && { boundaries: treated }),
   };
 }
@@ -60,7 +63,7 @@ export const stampAreaBox = (area: CompiledStampArea): StampBox =>
   stampPolygonBox(area.rings ? area.rings.flat() : area.polygon, stampEdgeReach(area.edge) + stampBoundariesReach(area.boundaries) - (area.inset ?? 0) + 1);
 
 /** How far (x, y) is inside `area`'s outline, px, negative outside: its rings' when it has several. */
-export const stampAreaDistance = (area: CompiledStampArea, x: number, y: number) =>
+const stampAreaDistance = (area: CompiledStampArea, x: number, y: number) =>
   (area.rings ? stampRingsDistance(area.rings, x, y) : stampPolygonDistance(area.polygon, x, y));
 
 /** The PCG hash tipNoiseAt is built on, in u32 arithmetic. */

@@ -5,13 +5,16 @@
 
 import meadow from '#lib/paint/document/models/meadow.painting.ts';
 import { compilePaintingRootSheet } from '#lib/paint/document/models/painting-document-compile.ts';
+import { paintingSheetPosed } from '#lib/paint/document/models/painting-pose.ts';
 import type { BrushRef, PaintingDocument, Region, Subpath } from '#lib/paint/document/models/painting-document.ts';
 import type { PropertySchema, PropertyValues } from '#lib/paint/document/models/painting-properties.ts';
 import { painting, type PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import type { StampPixelBox } from '#lib/paint/painting/models/stamp-blur-region.ts';
+import type { StampSheetProgram } from '#lib/paint/painting/models/stamp-sheet-program.ts';
 import { stampSheetGrid, stampSheetSeconds, type StampSheetDecision } from '#lib/paint/painting/models/stamp-sheet-schedule.ts';
+import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
 import { stampDrying } from '#lib/paint/painting/models/stamp-wetness.ts';
 import { stampGateSlotAmounts, type StampGateLayer, type StampGateWashCheck } from './stamp-gate-layer.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, type StampGateImage } from './stamp-gate-paintings.ts';
@@ -144,10 +147,16 @@ export const STAMP_GATE_WET_CONTACT: PaintingSourceModule<typeof wetContactPrope
   },
 };
 
-/** The heron's second pose, document px: still across the shallows' edge. */
-export const STAMP_GATE_HERON_POSE = { x: 24, y: -6 } as const;
+/** The heron's second pose, a similarity that only moves it, document px: still across the shallows' edge. */
+export const STAMP_GATE_HERON_POSE = { ma: 1, mb: 0, kx: 24, ky: -6 } as const;
 /** A pose lifting the heron's foot clear of the shallows, onto paper nothing wetted. */
-export const STAMP_GATE_HERON_AWAY = { x: 0, y: -70 } as const;
+export const STAMP_GATE_HERON_AWAY = { ma: 1, mb: 0, kx: 0, ky: -70 } as const;
+
+/** The wet-contact sheet's program with its heron posed by `pose`, as the shot poses a group (painting-pose.ts). */
+export function stampGateHeronPosed(pose: typeof STAMP_GATE_HERON_POSE | typeof STAMP_GATE_HERON_AWAY): StampSheetProgram {
+  const heron = painting(STAMP_GATE_WET_CONTACT).tree.groups.findIndex(({ node }) => node.key === 'heron');
+  return paintingSheetPosed(stampGateSheetProgram(STAMP_GATE_WET_CONTACT), new Map([[heron, pose]]));
+}
 /** Where the foot's charge touches at rest, document px; and a stretch of the shallows far from it. */
 export const STAMP_GATE_FOOT_BOX = { x: 64, y: 74, w: 34, h: 24 } as const;
 export const STAMP_GATE_FAR_SHALLOWS = { x: 0, y: 92, w: 32, h: 28 } as const;
@@ -164,7 +173,7 @@ export function stampGateWetContactTimes(): number[] {
 export const stampGateSolvedProgram = (id: StampGateSolvedId) => (id === 'solved/forward' ? stampGateSheetProgram(STAMP_GATE_FORWARD) : stampGateSheetProgram(STAMP_GATE_WET_CONTACT));
 
 /** What solved baseline `id` is drawn from, as text: its program and the images it loads. */
-export const stampGateSolvedInputs = (id: StampGateSolvedId) => JSON.stringify({ program: stampGateSolvedProgram(id), images: STAMP_GATE_SHEET_IMAGES });
+export const stampGateSolvedInputs = (id: StampGateSolvedId) => stampCanonicalJson({ program: stampGateSolvedProgram(id), images: STAMP_GATE_SHEET_IMAGES });
 
 const REBASE_WASHES = 22;
 /**

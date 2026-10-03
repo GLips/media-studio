@@ -76,8 +76,11 @@ export type StampPaintCompositor = {
      */
     cover: string;
   };
-  /** For a compositor that lays washes, how a wash group's layer is kept, for the stages that move its paint. */
-  wash?: StampWashLayer;
+  /**
+   * For a compositor that lays washes, how a wash group's layer is kept, for the stages that move its paint: by a
+   * deposit, or by `group(index)` (a sheet solve's film f is its group f).
+   */
+  wash?: StampWashLayer & { group: (index: number) => StampWashGroupLayer };
   /** `layPaper(pixel, color)`, `color` gamma-encoded. */
   paper: string;
   /**
@@ -108,6 +111,9 @@ export type StampWashLayer = {
    */
   holdWgsl: (deposit: CompiledStampDeposit) => string;
 };
+
+/** One wash group's layer: layersOf, movedWgsl and holdWgsl for any deposit of it. */
+export type StampWashGroupLayer = { layers: number; movedWgsl: string; holdWgsl: string };
 
 const BLENDS: readonly StampBlend[] = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'colorBurn'];
 

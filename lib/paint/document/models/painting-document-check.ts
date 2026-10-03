@@ -72,8 +72,10 @@ function checkPaintingTreeAndKeys(list: PaintingProblemList, paintingDocument: P
     node.washes.forEach((wash, w) => {
       const washOwner = typeof wash.key === 'string' && wash.key ? wash.key : `${owner}.washes[${w}]`;
       claim(wash.key, washOwner, 'a wash', paintingWashBox(wash));
-      if (wash.clipTo !== undefined && !node.washes.slice(0, w).some(({ key }) => key === wash.clipTo)) {
-        list.error(washOwner, 'clipTo', `names ${wash.clipTo}, which isn't an earlier wash of ${owner}`, paintingWashBox(wash));
+      const clippedTo = wash.clipTo === undefined ? undefined : node.washes.slice(0, w).find(({ key }) => key === wash.clipTo);
+      if (wash.clipTo !== undefined && !clippedTo) list.error(washOwner, 'clipTo', `names ${wash.clipTo}, which isn't an earlier wash of ${owner}`, paintingWashBox(wash));
+      else if (clippedTo && isPaintingList(clippedTo.applications) && !clippedTo.applications.length) {
+        list.error(washOwner, 'clipTo', `names ${wash.clipTo}, which lays nothing, so nothing of this wash would land`, paintingWashBox(wash));
       }
       if (!isPaintingList(wash.applications)) {
         list.error(washOwner, 'applications', 'a wash needs its applications', paintingWashBox(wash));

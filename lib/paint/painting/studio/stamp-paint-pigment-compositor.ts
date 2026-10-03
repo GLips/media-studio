@@ -17,7 +17,7 @@ import { STAMP_PIGMENT_GROUP_SLOTS, stampPigmentAmountsAt, stampPigmentGroupLaye
 import { STAMP_WET_LIFT_WGSL, stampLiftPigmentResidueShare, stampLiftResidueWgsl, stampLiftKnockoutKeep } from '../models/stamp-wet-lift.ts';
 import { STAMP_OPAQUE_COVER, type CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
-import type { StampPaintCompositor } from './stamp-paint-compositor.ts';
+import type { StampPaintCompositor, StampWashGroupLayer } from './stamp-paint-compositor.ts';
 import type { StampPaintDevice } from './stamp-paint-gpu.ts';
 import { gpuUniformLayout, gpuUniformWriter, type GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 
@@ -309,6 +309,36 @@ fn liftedUnder(i: u32, covered: vec4f, behind: array<vec4f, UNDER_LAYERS>, left:
     return group;
   };
 
+  /** Group `g`'s wash layer: its layers, moved WGSL and hold WGSL, made once. */
+  const washGroups = new Map<number, StampWashGroupLayer>();
+  const washGroup = (g: number): StampWashGroupLayer => {
+    const known = washGroups.get(g);
+    if (known) return known;
+    const group = paint.groups[g], medium = mediumOfGroup(g);
+    // Per channel of the group's layers: its pigment's granulation, flocculation and seed; none for coverage and the open share.
+    const habits = Array.from({ length: group.paintLayers * 4 }, (_, channel) => {
+      const pigment = group.palette[channel - 1];
+      return pigment && channel > 0 ? [pigment.granulation * medium.granulation, pigment.flocculation, paintPigmentSeed(pigment.id)] : [0, 0, 0];
+    });
+    const holdWgsl = /* wgsl */ `
+${PAINT_PAPER_WGSL}
+const WASH_HABITS = array<vec3f, ${habits.length}>(${habits.map((habit) => `vec3f(${habit.map(f32).join(', ')})`).join(', ')});
+fn washHold(l: u32, at: vec2f, tooth: vec2f, depth: f32, held: vec4f) -> vec4f {
+  let h = 1.0 - tooth.x;
+  let meanHeight = 1.0 - tooth.y;
+  let valley = paintValley(h, meanHeight);
+  var hold = vec4f(1.0);
+  for (var i = 0u; i < 4u; i++) {
+    let habit = WASH_HABITS[4u * l + i];
+    hold[i] = max(0.0, ${contactOf(medium, 'depth', 'habit.x', `held[i] / ${f32(medium.body)}`, '1.0', '0.0')} * paintClumps(habit.y, at.x, at.y, u32(habit.z)));
+  }
+  return hold;
+}`;
+    const made = { layers: group.paintLayers, movedWgsl: stampWashMovedWgsl(group.paintLayers, medium.body), holdWgsl };
+    washGroups.set(g, made);
+    return made;
+  };
+
   return {
     targets: { layer: { kind: 'array', layers }, painting: { kind: 'array', layers: V + underLayers } },
     readsStampTints: false,
@@ -446,33 +476,10 @@ ${dispatched('landDeposit', 'pixel: vec2u, coverage: f32, rims: vec2f, tooth: ve
       resources: ({ wet }) => [{ buffer: components }, ...(wet ? [{ buffer: residueShares }] : [])],
     },
     wash: {
-      layersOf: (deposit) => paint.groups[groupOf(deposit)].paintLayers,
-      movedWgsl: (deposit) => {
-        const group = groupOf(deposit);
-        return stampWashMovedWgsl(paint.groups[group].paintLayers, mediumOfGroup(group).body);
-      },
-      holdWgsl: (deposit) => {
-        const group = paint.groups[groupOf(deposit)], medium = media[group.medium];
-        // Per channel of the group's layers: its pigment's granulation, flocculation and seed; none for coverage and the open share.
-        const habits = Array.from({ length: group.paintLayers * 4 }, (_, channel) => {
-          const pigment = group.palette[channel - 1];
-          return pigment && channel > 0 ? [pigment.granulation * medium.granulation, pigment.flocculation, paintPigmentSeed(pigment.id)] : [0, 0, 0];
-        });
-        return /* wgsl */ `
-${PAINT_PAPER_WGSL}
-const WASH_HABITS = array<vec3f, ${habits.length}>(${habits.map((habit) => `vec3f(${habit.map(f32).join(', ')})`).join(', ')});
-fn washHold(l: u32, at: vec2f, tooth: vec2f, depth: f32, held: vec4f) -> vec4f {
-  let h = 1.0 - tooth.x;
-  let meanHeight = 1.0 - tooth.y;
-  let valley = paintValley(h, meanHeight);
-  var hold = vec4f(1.0);
-  for (var i = 0u; i < 4u; i++) {
-    let habit = WASH_HABITS[4u * l + i];
-    hold[i] = max(0.0, ${contactOf(medium, 'depth', 'habit.x', `held[i] / ${f32(medium.body)}`, '1.0', '0.0')} * paintClumps(habit.y, at.x, at.y, u32(habit.z)));
-  }
-  return hold;
-}`;
-      },
+      group: washGroup,
+      layersOf: (deposit) => washGroup(groupOf(deposit)).layers,
+      movedWgsl: (deposit) => washGroup(groupOf(deposit)).movedWgsl,
+      holdWgsl: (deposit) => washGroup(groupOf(deposit)).holdWgsl,
     },
     group: {
       cover: `fn groupCover(layer0: vec4f, glaze: bool) -> f32 { return min(1.0, max(layer0.x, 0.0) * select(${STAMP_OPAQUE_COVER.toFixed(1)}, 1.0, glaze)); }`,

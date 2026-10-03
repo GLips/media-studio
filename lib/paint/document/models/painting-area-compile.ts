@@ -41,12 +41,11 @@ function stampBoundaryOf({ path, edge }: Boundary): StampBoundary {
 export const paintingStampBoundaries = (boundaries: readonly Boundary[] | undefined): StampBoundaries | undefined =>
   (boundaries?.length ? Object.fromEntries(boundaries.map((boundary, i) => [`boundaries[${i}]`, stampBoundaryOf(boundary)])) : undefined);
 
-/**
- * `area` compiled, `what` naming it in errors: its rings, its outline's edge and its stretches. A bleed's ramp is
- * centred past the line, the one inset compileStampArea doesn't take, so it's set after.
- */
+/** `area` compiled, `what` naming it in errors: its rings, its outline's edge and its stretches, its roughness seeded by its own seed. */
 export function compilePaintingArea({ region, edge, boundaries }: EdgedRegion, what: string): CompiledStampArea {
   const stamped = paintingStampEdge(edge), treated = paintingStampBoundaries(boundaries);
-  const compiled = compileStampArea({ rings: paintingRegionRings(region), ...(stamped.edge && { edge: stamped.edge }), inset: Math.max(0, stamped.inset), ...(treated && { boundaries: treated }) }, what);
-  return { ...compiled, ...(stamped.inset < 0 && { inset: stamped.inset }), seed: edge?.roughness ? stampRegionSeed(edge.roughness.seed) : 0 };
+  return compileStampArea({
+    rings: paintingRegionRings(region), ...(stamped.edge && { edge: stamped.edge }), inset: stamped.inset, ...(treated && { boundaries: treated }),
+    seed: edge?.roughness ? stampRegionSeed(edge.roughness.seed) : 0,
+  }, what);
 }

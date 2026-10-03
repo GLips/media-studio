@@ -15,6 +15,7 @@ import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import { STAMP_LANDED_WETNESS_WGSL, STAMP_WET_CONTACT_WGSL, STAMP_WET_PAPER_WGSL, stampFloodHeldWetness, type StampDrying, type StampWetLanding } from '../models/stamp-wetness.ts';
 import type { StampPaintDevice } from './stamp-paint-gpu.ts';
+import { STAMP_REGION_AT_WGSL } from './stamp-region-textures.ts';
 import { stampRegionTexelWords, stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 import { gpuUniformLayout, gpuUniformStruct, gpuUniformWriter, type GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 
@@ -99,11 +100,7 @@ ${STAMP_PAINT_FIELD_SHARE.wgsl}
 @group(0) @binding(1) var region: texture_2d<f32>;
 @group(0) @binding(2) var fluid: texture_2d<f32>;
 @group(0) @binding(3) var paper: texture_storage_2d<rgba32float, write>;
-fn regionAt(r: texture_2d<f32>, box: vec4f, p: vec2u) -> f32 {
-  let q = vec2f(p) - box.xy;
-  if (any(q < vec2f(0.0)) || any(q >= box.zw)) { return 0.0; }
-  return textureLoad(r, vec2u(q), 0).r;
-}
+${STAMP_REGION_AT_WGSL}
 // An earlier pass's paint has set: the paper starts settled, as wet as its preparation lays it.
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.size)) { return; }

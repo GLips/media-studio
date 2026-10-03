@@ -51,13 +51,13 @@ import {
 import type { StampGroupMarks, StampPaintFrameState } from '../models/stamp-paint-frame-state.ts';
 import { STAMP_REST_LOOK, stampSinglePlane, type StampLaidPlanes, type StampLensFrame, type StampPlaneLook } from '../models/stamp-plane.ts';
 import { stampBoxUnion, stampStage, stampStageTexelsGrown, stampStageTexelsWithin, stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
-import { gpuHalfValue } from '#lib/platform/gpu/models/gpu-half-float.ts';
 import { bindStampPaintBrushes, loadStampDepositBank, type StampDepositToLoad, type StampLoadedDeposit, type StampPaintBrushes } from './stamp-deposit-bank.ts';
 import { createStampDepositDrawing, stampDepositUniformSlots, stampPaperTooth, type StampDepositDraw, type StampDepositTargets, type StampWashStart } from './stamp-deposit-drawing.ts';
 import { STAMP_TRACE_ACCUMULATOR, STAMP_TRACE_SLOTS } from './stamp-deposit-resolve-wgsl.ts';
 import { createStampPaintLay, STAMP_NO_REST, stampPaintOutputWgsl, type StampPaintBacking } from './stamp-paint-lay-pass.ts';
 import { encodeStampRegionTextures, type StampRegionCoverage, type StampRegionTexture } from './stamp-region-textures.ts';
 import { encodeStampBrushedMasks } from './stamp-brushed-mask-textures.ts';
+import { copyStampLayerForReadback, readStampLayerCopy, type StampLayerReadback } from './stamp-layer-readback.ts';
 
 /**
  * The uniform slots a plane takes besides its groups': its paper (white) and black, a light pass, its picture, its
@@ -233,12 +233,6 @@ export type StampPaintRenderer = {
   /** How wet each wash deposit lands, worked out as it loaded, brushed masks measured; null for a painting in flat colour. */
   wetness: StampWetness | null;
 };
-
-/**
- * A group's layer as read back: `layers` of rgba16float, each `width` × `height` (the stage's), in `values` layer by
- * layer, row by row, four channels a texel. For pigment, layer 0's first channel is coverage and each other channel a pigment's amount.
- */
-export type StampLayerReadback = { width: number; height: number; layers: number; values: Float32Array };
 
 export type StampPaintRendererOptions = {
   /** Times the load's parts, for `studio profile`. */
@@ -1098,28 +1092,14 @@ function rendererOnSurface({
     },
     readLayer: async (paintFrame) => {
       if (disposed) throw new Error('stamp paint: a disposed renderer reads back nothing');
-      const layers = targets.layer.layers.length, rowBytes = Math.ceil((width * 8) / 256) * 256;
-      const read = owner.device.createBuffer({ size: rowBytes * height * layers, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
-      try {
-        const renders = await renderSources(paintFrame);
-        await owner.checked(`reading back the layer at ${paintFrame.t} s`, () => {
-          const encoder = draw(paintFrame, renders, { whole: true });
-          encoder.copyTextureToBuffer({ texture: targets.layer.texture }, { buffer: read, bytesPerRow: rowBytes, rowsPerImage: height }, [width, height, layers]);
-          queue.submit([encoder.finish()]);
-        });
-        await read.mapAsync(GPUMapMode.READ);
-        const halves = new Uint16Array(read.getMappedRange()), values = new Float32Array(width * height * 4 * layers);
-        for (let l = 0; l < layers; l++) {
-          for (let y = 0; y < height; y++) {
-            const from = (l * height + y) * (rowBytes / 2), to = (l * height + y) * width * 4;
-            for (let i = 0; i < width * 4; i++) values[to + i] = gpuHalfValue(halves[from + i]);
-          }
-        }
-        read.unmap();
-        return { width, height, layers, values };
-      } finally {
-        read.destroy();
-      }
+      const renders = await renderSources(paintFrame);
+      const copy = await owner.checked(`reading back the layer at ${paintFrame.t} s`, () => {
+        const encoder = draw(paintFrame, renders, { whole: true });
+        const copied = copyStampLayerForReadback(owner.device, encoder, targets.layer.texture, { x: 0, y: 0, w: width, h: height });
+        queue.submit([encoder.finish()]);
+        return copied;
+      });
+      return readStampLayerCopy(copy);
     },
     finish: () => (disposed ? Promise.resolve() : queue.onSubmittedWorkDone()),
     dispose() {

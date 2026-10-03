@@ -1,15 +1,21 @@
-// stamp-sheet-schedule.ts: the forward scheduler's decisions, in f64 on the CPU, from what the GPU reduced over an
-// application's core (studio/stamp-sheet-reductions.ts). Model time runs on a 1 ms grid anchored at each
-// application's predecessor.
+// stamp-sheet-schedule.ts: the forward scheduler's decisions, in f64 on the CPU, from the GPU's reductions over an
+// application's core. Model time runs on a 1 ms grid anchored at each
+// application's predecessor. A solve's state (StampSheetSolveState) moves on by the transitions here.
 //
 // The laws, per texel wetted to level ℓ at a, drying at rate r with open time o, sheen shiny h and damp d: wet while
 // τ < U = a + (ℓ − h)/r; matte from L = a + (ℓ − d)/r; set from Z = a + o + ℓ/r. `on` holds over 95% of the core's
 // weight ('dry' over all of it), checked again by the field's own law at the decided time.
 //
-// Negative space: no clock. Under `never` (r = 0) nothing here is defined; the unclocked run never meets one.
+// Negative space: no clock. Under `never` (r = 0) nothing here is defined.
 
 import { STAMP_BLOOM_SURPLUS } from './stamp-wet-bloom.ts';
+import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
+import type { StampPixelBox } from './stamp-blur-region.ts';
+import type { StampBox } from './stamp-region.ts';
 import type { StampSheetWetness } from './stamp-sheet-program.ts';
+import { stampBoxUnion } from './stamp-stage.ts';
+import type { StampWetting } from './stamp-wash-ledger.ts';
+import { stampWetnessAt, stampWorkableAt, type StampDrying, type StampWashDrying, type StampWetLanding } from './stamp-wetness.ts';
 
 /** The grid model time is decided on, s. */
 export const STAMP_SHEET_STEP = 0.001;
@@ -31,12 +37,6 @@ export const STAMP_SHEET_FAILURE_BOXES = 4;
 export const STAMP_SHEET_REBASE = 2 ** 13;
 /** Water a bloom must bring over the paper's wetness to spread: the bloom stage's least surplus. */
 export const STAMP_SHEET_BLOOM_SURPLUS = STAMP_BLOOM_SURPLUS.least;
-
-/**
- * What a solve won't paint as written: the document's to change, not an engine fault. Its message is the author's,
- * so a tool prints it alone, without a stack.
- */
-export class StampSheetRefusal extends Error {}
 
 /**
  * What a solve decided for an entry, model s: τ0, the earliest it could land; when it landed; whether a drying closed
@@ -180,18 +180,16 @@ export async function stampDampFirstStep(
   return { step: await search(first), most };
 }
 
-/** A box in document px, its corners inclusive of its first and exclusive of its last. */
-export type StampSheetFailureBox = { x0: number; y0: number; x1: number; y1: number };
-
-const boxArea = (b: StampSheetFailureBox) => (b.x1 - b.x0) * (b.y1 - b.y0);
-const boxUnion = (a: StampSheetFailureBox, b: StampSheetFailureBox) => ({ x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) });
+const boxArea = (b: StampBox) => (b.x1 - b.x0) * (b.y1 - b.y0);
+const boxUnion = (a: StampBox, b: StampBox) => ({ x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) });
 
 /**
  * The marked cells of a failure map (`columns` × `rows`, row by row, cells STAMP_SHEET_FAILURE_CELL px from (x, y)):
- * each connected run's box, merged two at a time (the pair growing least) down to STAMP_SHEET_FAILURE_BOXES.
+ * each connected run's box in document px, merged two at a time (the pair growing least) down to
+ * STAMP_SHEET_FAILURE_BOXES.
  */
-export function stampSheetFailureBoxes(cells: Uint32Array, columns: number, rows: number, origin: { x: number; y: number }, limit: { width: number; height: number }): StampSheetFailureBox[] {
-  const seen = new Uint8Array(columns * rows), boxes: StampSheetFailureBox[] = [];
+export function stampSheetFailureBoxes(cells: Uint32Array, columns: number, rows: number, origin: { x: number; y: number }, limit: { width: number; height: number }): StampBox[] {
+  const seen = new Uint8Array(columns * rows), boxes: StampBox[] = [];
   for (let start = 0; start < columns * rows; start++) {
     if (!cells[start] || seen[start]) continue;
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -227,6 +225,115 @@ export function stampSheetFailureBoxes(cells: Uint32Array, columns: number, rows
   return boxes.toSorted((p, q) => p.y0 - q.y0 || p.x0 - q.x0);
 }
 
+/**
+ * What water a solve has laid, as the ledger keeps a wash's (stamp-wash-ledger.ts) for a whole sheet: every wetting
+ * (a prewet's or a landing's), the entries landed by the wash law since the last drying with their landings, the
+ * wettest the paper has stood since, and how many dryings have closed.
+ */
+export type StampSheetWater = {
+  wettings: readonly StampWetting[]; since: readonly { entry: number; landing: StampWetLanding }[]; wettest: number; dryings: number;
+};
+
+/**
+ * A solve's state between steps, all a checkpoint keeps beside its films and clip bases (ENGINE 4.5): the field's
+ * time base and the last decided τ (model s); each film's painted box and each wash's wetted boxes (stage texels);
+ * the paper touched since the last drying, whether anything landed there, and when it sets (-Infinity unread); its water.
+ */
+export type StampSheetSolveState = {
+  base: number; tau: number; painted: readonly (StampPixelBox | null)[]; wetted: readonly (readonly StampPixelBox[])[];
+  since: StampPixelBox | null; landedSince: boolean; knownSetAt: number; water: StampSheetWater;
+};
+
+/** A solve's state before anything lands: `films` films and `washes` washes, on dry paper at 0 s. */
+export const stampSheetSolveStart = (films: number, washes: number): StampSheetSolveState => ({
+  base: 0, tau: 0, painted: Array.from({ length: films }, () => null), wetted: Array.from({ length: washes }, () => []),
+  since: null, landedSince: false, knownSetAt: -Infinity, water: { wettings: [], since: [], wettest: 0, dryings: 0 },
+});
+
+/** `state` with its time base moved up by whole seconds once `tau` is STAMP_SHEET_REBASE past it, and the move (0 for none). */
+export function stampSheetRebased(state: StampSheetSolveState, tau: number): { state: StampSheetSolveState; shift: number } {
+  if (tau - state.base < STAMP_SHEET_REBASE) return { state, shift: 0 };
+  const shift = Math.floor(tau - state.base);
+  return { state: { ...state, base: state.base + shift }, shift };
+}
+
+/** `state` with `tau` decided. */
+export const stampSheetDecided = (state: StampSheetSolveState, tau: number): StampSheetSolveState => ({ ...state, tau });
+
+/** `state` with film `film` painted over `box` too (null for nowhere). */
+export const stampSheetPainted = (state: StampSheetSolveState, film: number, box: StampPixelBox | null): StampSheetSolveState =>
+  (box ? { ...state, painted: state.painted.with(film, stampBoxUnion(state.painted[film], box)) } : state);
+
+const pixelBoxOf = ({ x, y, w, h }: StampPixelBox): StampBox => ({ x0: x, y0: y, x1: x + w, y1: y + h });
+
+const boxesMeet = (a: StampBox | null, b: StampBox) => !!a && a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+
+/**
+ * What a landing at `tau` finds within `reach` px of its `support` (null for none): wet or workable paper by the
+ * closed form over the water laid there, each wetting taken to wet all of its box.
+ */
+export function stampSheetLandingAt(
+  water: StampSheetWater, tau: number, landing: { water: number; medium: PaintMedium; support: StampBox | null; reach: number }, drying: StampDrying,
+): StampWetLanding {
+  const { support, reach } = landing, within = support && { x0: support.x0 - reach, y0: support.y0 - reach, x1: support.x1 + reach, y1: support.y1 + reach };
+  const under = within ? water.wettings.filter(({ box }) => boxesMeet(box, within)) : [];
+  return {
+    tau, water: landing.water, medium: landing.medium, drying,
+    finds: { wet: under.some(({ level, at }) => stampWetnessAt(level, at, tau, drying) > 0), workable: under.some(({ level, at }) => stampWorkableAt(level, at, tau, drying) > 0) },
+  };
+}
+
+/**
+ * `state` once `entry` of wash `wash` has landed by the wash law as `landing` says: its water over `support` unless it
+ * lifts, holding the paper as wet as `held` at most; `box`, its stage texels (null off the stage). What's known of
+ * when the paper sets is forgotten: a lift can bring that sooner.
+ */
+export function stampSheetLanded(state: StampSheetSolveState, landed: {
+  entry: number; wash: number; landing: StampWetLanding; support: StampBox | null; lifts: boolean; held: number; box: StampPixelBox | null;
+}): StampSheetSolveState {
+  const { entry, wash, landing, support, lifts, held, box } = landed, { water } = state, lays = landing.water > 0 && !lifts;
+  return {
+    ...state, knownSetAt: -Infinity,
+    ...(box && { since: stampBoxUnion(state.since, box), landedSince: true, wetted: state.wetted.with(wash, [...state.wetted[wash], box]) }),
+    water: {
+      ...water, since: [...water.since, { entry, landing }],
+      ...(lays && { wettings: [...water.wettings, { at: landing.tau, level: landing.water, box: support }], wettest: Math.max(water.wettest, Math.min(1, landing.water), held) }),
+    },
+  };
+}
+
+/** `state` once wash `wash`'s prewet has laid clean water as wet as `level` at `at` over `box` (stage texels). */
+export function stampSheetPrewetted(state: StampSheetSolveState, prewet: { wash: number; at: number; level: number; box: StampPixelBox }): StampSheetSolveState {
+  const { wash, at, level, box } = prewet, { water } = state;
+  return {
+    ...state, since: stampBoxUnion(state.since, box), wetted: state.wetted.with(wash, [...state.wetted[wash], box]),
+    water: { ...water, wettings: [...water.wettings, { at, level, box: pixelBoxOf(box) }], wettest: Math.max(water.wettest, Math.min(1, level)) },
+  };
+}
+
+/** Whether to read back when all landed since the last drying sets, to know if it has by `at`: once something has landed, and `at` could be past it. */
+export const stampSheetMaySetBy = (state: StampSheetSolveState, at: number) => state.landedSince && at >= state.knownSetAt;
+
+/** `state` knowing all landed since the last drying sets at `at` (null for nothing wetted there). */
+export const stampSheetSetKnown = (state: StampSheetSolveState, at: number | null): StampSheetSolveState => ({ ...state, knownSetAt: at ?? -Infinity });
+
+/**
+ * A drying as a solve closes it: its ordinal among the sheet's, the entries landed in it with their landings, when
+ * and why it closed, and the wettest its paper stood.
+ */
+export type StampSheetClosure = { ordinal: number; since: StampSheetWater['since']; at: number; closes: StampWashDrying['closes']; wettest: number };
+
+/** `state` with the drying of all landed since the last closed at `at`, and that drying: null when nothing landed by the wash law. */
+export function stampSheetClosed(state: StampSheetSolveState, at: number, closes: StampWashDrying['closes'], drying: StampDrying): { state: StampSheetSolveState; closed: StampSheetClosure | null } {
+  const { water } = state, closed = water.since.length ? { ordinal: water.dryings, since: water.since, at, closes, wettest: water.wettest } : null;
+  // The next drying starts from the wettest any water laid so far still stands.
+  const standing = Math.min(1, Math.max(0, ...water.wettings.map(({ level, at: laid }) => stampWetnessAt(level, laid, at, drying))));
+  return {
+    state: { ...state, since: null, landedSince: false, knownSetAt: -Infinity, water: { ...water, since: [], wettest: standing, dryings: water.dryings + (closed ? 1 : 0) } },
+    closed,
+  };
+}
+
 /** A model time as messages print it: to the millisecond. */
 export const stampSheetSeconds = (tau: number) => `${Number(tau.toFixed(3))} s`;
 
@@ -241,7 +348,7 @@ function unreachableReason(on: StampSheetWetness, totals: Pick<StampSheetTotals,
  * failed, why, and the applications of its sheet left unscheduled.
  */
 export function stampSheetUnreachable(
-  name: string, on: StampSheetWetness, at: { tau: number; held: number; totals: Pick<StampSheetTotals, 'weight' | 'never'> }, boxes: readonly StampSheetFailureBox[], unscheduled: readonly string[],
+  name: string, on: StampSheetWetness, at: { tau: number; held: number; totals: Pick<StampSheetTotals, 'weight' | 'never'> }, boxes: readonly StampBox[], unscheduled: readonly string[],
 ): string {
   const share = Math.round((100 * at.held) / Math.max(1, at.totals.weight));
   const where = boxes.map(({ x0, y0, x1, y1 }) => `[${x0},${y0} → ${x1},${y1}]`).join(' ');

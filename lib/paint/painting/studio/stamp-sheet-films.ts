@@ -5,17 +5,16 @@
 // A kept film can be given up to the cache's budget like any other: reading one that's gone is refused by its key,
 // and solving the sheet again keeps it anew.
 
-import { gpuHalfValue } from '#lib/platform/gpu/models/gpu-half-float.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import { stampSheetMixedPainting, type StampSheetProgram } from '../models/stamp-sheet-program.ts';
 import { stampStage, type StampStage } from '../models/stamp-stage.ts';
+import { copyStampLayerForReadback, readStampLayerCopy, type StampLayerReadback } from './stamp-layer-readback.ts';
 import type { StampPaintTarget } from './stamp-paint-compositor.ts';
 import { stampPaintCompositorFor } from './stamp-paint-compositor-for.ts';
 import type { StampGpuCacheStore } from './stamp-paint-gpu-cache.ts';
-import { copyStampTextureBox, stampBindGroup, stampPaintSamplers, type StampPaintDevice } from './stamp-paint-gpu.ts';
+import { copyStampTextureBox, stampBindGroup, stampPaintSamplers } from './stamp-paint-gpu.ts';
 import type { StampPaintGpuOwner } from './stamp-paint-gpu-owner.ts';
 import { createStampPaintLay, stampPaintOutputWgsl } from './stamp-paint-lay-pass.ts';
-import type { StampLayerReadback } from './stamp-paint-renderer.ts';
 import type { StampPaintSurface } from './stamp-paint-surface.ts';
 import { createStampUniformArena } from './stamp-uniform-arena.ts';
 
@@ -56,10 +55,10 @@ function keptStampSheetFilm(owner: StampPaintGpuOwner, film: StampSheetFilmKept,
   return kept.textures[0] ?? null;
 }
 
-/** A target of `stage`'s size shaped as `shape`, sampled and `usage`. */
-function stillTarget(device: StampPaintDevice, stage: StampStage, shape: StampPaintTarget, usage: number) {
+/** `owner`'s target `name` of `stage`'s size shaped as `shape`, sampled and `usage`: a still overwrites all it reads of it. */
+function stillTarget(owner: StampPaintGpuOwner, name: string, stage: StampStage, shape: StampPaintTarget, usage: number) {
   const layers = shape.kind === 'array' ? shape.layers : 1;
-  const texture = device.createTexture({ size: [stage.width, stage.height, layers], format: 'rgba16float', usage: usage | GPUTextureUsage.TEXTURE_BINDING });
+  const texture = owner.target(`sheet still ${name}`, { size: [stage.width, stage.height, layers], format: 'rgba16float', usage: usage | GPUTextureUsage.TEXTURE_BINDING });
   return { texture, view: texture.createView({ dimension: shape.kind === 'array' ? '2d-array' : '2d' }) };
 }
 
@@ -69,17 +68,17 @@ export async function drawStampSheetStill(surface: StampPaintSurface, program: S
   if (surface.width !== program.width || surface.height !== program.height) {
     throw new Error(`stamp sheet: a ${program.width} × ${program.height} sheet is shown on a surface its size, not ${surface.width} × ${surface.height}`);
   }
-  const choice = stampPaintCompositorFor(stampSheetMixedPainting(program, program.entries.map(({ deposit }) => deposit)));
+  const choice = stampPaintCompositorFor(stampSheetMixedPainting(program));
   const [photograph = null] = program.paper.image ? await owner.images([{ asset: program.paper.image, kind: 'photograph' }]) : [];
   const scope = owner.scope();
   try {
     await owner.checked('laying a sheet\'s films', () => {
       const { device } = scope, compositor = choice.compositorOn(device), stage = stampStage(program);
       const arena = createStampUniformArena(device, 1 + films.length);
-      const blank = device.createTexture({ size: [1, 1], format: 'r8unorm', usage: GPUTextureUsage.TEXTURE_BINDING });
+      const blank = owner.target('sheet blank', { size: [1, 1], format: 'r8unorm', usage: GPUTextureUsage.TEXTURE_BINDING });
       const lay = createStampPaintLay(device, arena, { stage, compositor, paper: program.paper, photograph, blank: blank.createView(), sampler: stampPaintSamplers(device).mirrorTile });
-      const painting = stillTarget(device, stage, compositor.targets.painting, GPUTextureUsage.STORAGE_BINDING);
-      const layer = stillTarget(device, stage, compositor.targets.layer, GPUTextureUsage.COPY_DST);
+      const painting = stillTarget(owner, 'painting', stage, compositor.targets.painting, GPUTextureUsage.STORAGE_BINDING);
+      const layer = stillTarget(owner, 'layer', stage, compositor.targets.layer, GPUTextureUsage.COPY_DST);
       const encoder = device.createCommandEncoder();
       lay.drawPaper(encoder, painting.view, 'paper', stage.width, stage.height);
       films.forEach((film, f) => {
@@ -107,27 +106,11 @@ export async function drawStampSheetStill(surface: StampPaintSurface, program: S
 export async function readStampSheetFilm(owner: StampPaintGpuOwner, film: StampSheetFilmKept): Promise<StampLayerReadback | null> {
   const { box } = film;
   if (!box) return null;
-  const rowBytes = Math.ceil((box.w * 8) / 256) * 256;
-  const read = await owner.checked(`reading back film ${film.key}`, () => {
+  const copy = await owner.checked(`reading back film ${film.key}`, () => {
     const encoder = owner.device.createCommandEncoder();
-    const kept = keptStampSheetFilm(owner, film, encoder)!;
-    const buffer = owner.device.createBuffer({ size: rowBytes * box.h * kept.depthOrArrayLayers, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
-    encoder.copyTextureToBuffer({ texture: kept }, { buffer, bytesPerRow: rowBytes, rowsPerImage: box.h }, [box.w, box.h, kept.depthOrArrayLayers]);
+    const copied = copyStampLayerForReadback(owner.device, encoder, keptStampSheetFilm(owner, film, encoder)!, { x: 0, y: 0, w: box.w, h: box.h });
     owner.device.queue.submit([encoder.finish()]);
-    return { buffer, layers: kept.depthOrArrayLayers };
+    return copied;
   });
-  try {
-    await read.buffer.mapAsync(GPUMapMode.READ);
-    const halves = new Uint16Array(read.buffer.getMappedRange()), values = new Float32Array(box.w * box.h * 4 * read.layers);
-    for (let l = 0; l < read.layers; l++) {
-      for (let y = 0; y < box.h; y++) {
-        const from = (l * box.h + y) * (rowBytes / 2), to = (l * box.h + y) * box.w * 4;
-        for (let i = 0; i < box.w * 4; i++) values[to + i] = gpuHalfValue(halves[from + i]);
-      }
-    }
-    read.buffer.unmap();
-    return { width: box.w, height: box.h, layers: read.layers, values };
-  } finally {
-    read.buffer.destroy();
-  }
+  return readStampLayerCopy(copy);
 }
