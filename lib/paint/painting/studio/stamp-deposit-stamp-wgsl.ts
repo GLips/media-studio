@@ -64,7 +64,8 @@ struct Covered { @location(0) mask: vec4f, @location(1) cap: vec4f }
 struct Stamp { @location(0) mask: vec4f, @location(1) cap: vec4f, @location(2) tintA: vec4f, @location(3) tintB: vec4f }
 ${STAMP_GRAIN_WGSL}
 ${STAMP_TURNED_WGSL}
-// \`rest\`: where the stamp was placed, which seeds its noise, so a stamp a pose moved keeps its tip's.
+// \`rest\`: where the stamp was placed, which seeds its noise and places its rolling grain, so a stamp a pose moved
+// keeps its tip's, and a copy round a wrapping sheet's seam lays as its stamp does.
 @vertex fn place(@builtin(vertex_index) i: u32, @location(0) stamp: vec4f, @location(1) more: vec4f, @location(2) tint: vec4f, @location(3) last: vec4f, @location(4) rest: vec2f) -> Corner {
   let pair = u.hull[i / 2u];
   let corner = select(pair.xy, pair.zw, (i & 1u) == 1u);
@@ -88,7 +89,7 @@ ${STAMP_TURNED_WGSL}
   // A rolling grain turns with the stamp, grows with its size by zoom and travels the canvas by movement: at
   // movement 1 and constant size it lies still; as size or direction change it slides, a rolling grain's streak.
   let size = u.grain.place.xy * pow(stamp.z / u.diameter, u.zoom);
-  let grainUv = turned(local, -more.z) / size + u.movement * stamp.xy / u.grain.place.xy + u.grain.place.zw;
+  let grainUv = turned(local, -more.z) / size + u.movement * rest / u.grain.place.xy + u.grain.place.zw;
   let grainGrad = vec4f(turned(vec2f(1.0, 0.0), -more.z) / size, turned(vec2f(0.0, 1.0), -more.z) / size);
   // A glaze or a build lays flow × opacity toward full; a buildToOpacity lays its flow toward its own opacity.
   let full = u.towardFull == 1u;
@@ -195,7 +196,7 @@ fn laidInOrder(p: vec2f, tinted: bool) -> Laid {
     if (u.rolling == 1u) {
       let grainTurn = stamps[at + 6u];
       let size = u.grain.place.xy * pow(z / u.diameter, u.zoom);
-      let grainUv = turned(local, -grainTurn) / size + u.movement * xy / u.grain.place.xy + u.grain.place.zw;
+      let grainUv = turned(local, -grainTurn) / size + u.movement * vec2f(stamps[at + 12u], stamps[at + 13u]) / u.grain.place.xy + u.grain.place.zw;
       let raw = textureSampleGrad(grain, tile, grainUv, turned(vec2f(1.0, 0.0), -grainTurn) / size, turned(vec2f(0.0, 1.0), -grainTurn) / size).r;
       a = grained(a, raw, mean, u.grain, stamps[at + 10u]);
     }

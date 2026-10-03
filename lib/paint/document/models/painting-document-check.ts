@@ -38,6 +38,8 @@ function checkPaintingTreeAndKeys(list: PaintingProblemList, paintingDocument: P
   const medium: string = paintingDocument.medium;
   if (!isMedium(medium)) list.error('document', 'medium', `'${medium}' isn't a medium: ${Object.keys(PAINT_MEDIA).join(', ')}`);
   if (!paintingDocument.paper) list.error('document', 'paper', 'a document needs its paper');
+  const wrap: unknown = paintingDocument.wrap;
+  if (wrap !== undefined && wrap !== 'x') list.error('document', 'wrap', `${JSON.stringify(wrap)} isn't a wrap: 'x' meets the left edge to the right`);
   if (!isPaintingList(paintingDocument.layers)) {
     list.error('document', 'layers', 'a document needs its layers, back to front');
     return;
@@ -217,11 +219,17 @@ export function checkPaintingDocument(paintingDocument: PaintingDocument, styles
   checkPaintingTreeAndKeys(list, paintingDocument);
   if (list.hasErrors) return { problems: list.problems, tree: null };
   const tree = paintingTree(paintingDocument);
+  // A photograph is laid over the frame as it is, so a wrapped document's meets itself at the seam.
+  const photographWraps = (owner: string, field: string, { image }: Paper) => {
+    if (paintingDocument.wrap && image) list.warn(owner, paintingField(field, 'image'), 'is a photograph on a wrapped document: its left and right edges meet at the seam, a join unless it tiles across');
+  };
   checkPaper(list, 'document', 'paper', paintingDocument.paper, styles);
+  photographWraps('document', 'paper', paintingDocument.paper);
   checkDryingScale(list, 'document', 'dryingScale', paintingDocument.dryingScale);
   for (const place of tree.nodes) {
     const { node } = place;
     if (node.sheet?.kind === 'own') checkPaper(list, node.key, 'sheet.paper', node.sheet.paper, styles);
+    if (node.sheet?.kind === 'own') photographWraps(node.key, 'sheet.paper', node.sheet.paper);
     if (node.sheet?.kind === 'own') checkDryingScale(list, node.key, 'sheet.dryingScale', node.sheet.dryingScale);
     if (place.kind === 'group' && place.node.children.length === 0) list.warn(node.key, 'children', 'holds nothing');
     if (place.kind === 'layer') checkLayer(list, place, styles);

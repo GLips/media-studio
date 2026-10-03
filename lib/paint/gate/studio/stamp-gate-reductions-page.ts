@@ -7,6 +7,7 @@ import {
   STAMP_DAMP_HISTOGRAM_WORDS, STAMP_SHEET_SHARE, STAMP_SHEET_TOTALS, STAMP_SHEET_WEIGHT, stampDampFirstStep, stampDampFirstWidth, stampDampHistogram, stampDampStep, stampSheetTotals,
 } from '#lib/paint/painting/models/stamp-sheet-schedule.ts';
 import { stampDrying } from '#lib/paint/painting/models/stamp-wetness.ts';
+import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { stampSheetReductions, type StampSheetCore, type StampSheetReduceTextures } from '#lib/paint/painting/studio/stamp-sheet-reductions.ts';
 import { createStampUniformArena } from '#lib/paint/painting/studio/stamp-uniform-arena.ts';
 import { requestStudioGpuDevice } from '#lib/platform/gpu/studio/gpu-device-owner.ts';
@@ -46,7 +47,7 @@ async function wordsFrom(device: GPUDevice, count: number, work: (encoder: GPUCo
 function reductionsOver(device: GPUDevice, encoder: GPUCommandEncoder, size: number, paper: GPUTextureView) {
   const arena = createStampUniformArena(device, 1);
   const textures: StampSheetReduceTextures = { core: wholeTouch(device, encoder, size), clip: single(device, 'rgba16float'), paper, open: single(device, 'r32float'), blank: single(device, 'r8unorm') };
-  return { arena, reductions: stampSheetReductions(device, arena, textures) };
+  return { arena, reductions: stampSheetReductions(device, stampStage({ width: size, height: size }), arena, textures) };
 }
 
 const wholeCore = (size: number): StampSheetCore => ({ box: { x: 0, y: 0, w: size, h: size }, fluid: null, within: null, clipped: false });

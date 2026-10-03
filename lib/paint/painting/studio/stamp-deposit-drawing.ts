@@ -19,7 +19,7 @@ import { stampPaintFieldEnds } from '../models/stamp-paint-field.ts';
 import type { StampSeededPaintField } from '../models/stamp-paint-field.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampPaintPaper } from '../models/stamp-paint-recipe-types.ts';
-import { stampBoxUnion, stampRegionTexelWords, stampStageTexelsGrown, type StampStage } from '../models/stamp-stage.ts';
+import { stampBoxUnion, stampRegionTexelWords, stampStageTexelsGrown, stampStageTile, type StampStage } from '../models/stamp-stage.ts';
 import { STAMP_TIP_HULL_SIDES, type StampTipHull } from '../models/stamp-tip-hull.ts';
 import type { StampTipFootprint } from '../models/stamp-tip-support.ts';
 import { stampTipFullContact } from '../models/stamp-wet-contact.ts';
@@ -68,11 +68,15 @@ export type StampDepositDrawingOptions = {
 /** The paper's tooth as paint lands on it: its grain `image`, tiled `tile` px and read at mip `lod`, taking paint `depth` deep. */
 export type StampPaperTooth = { image: StampPaintImage; tile: readonly [number, number]; lod: number; depth: number };
 
-/** `paper`'s tooth (null for none), its image by `image`: its size goes by `frame`, so a margin leaves it as it was. */
-export function stampPaperTooth(paper: StampPaintPaper, image: (asset: StampBrushAsset) => StampPaintImage, frame: { width: number }): StampPaperTooth | null {
+/**
+ * `paper`'s tooth on `stage` (null for none), its image by `image`: its size goes by the frame, so a margin leaves it as
+ * it was, and its mirrored tiles fit a wrapping stage's wrap whole.
+ */
+export function stampPaperTooth(paper: StampPaintPaper, image: (asset: StampBrushAsset) => StampPaintImage, stage: StampStage): StampPaperTooth | null {
   if (!paper.grain) return null;
-  const grain = image(paper.grain.image), size = paper.grain.scale * frame.width;
-  return { image: grain, tile: [size, size * (grain.height / grain.width)], lod: stampGrainLod(grain, size), depth: paper.grain.depth };
+  const grain = image(paper.grain.image), size = paper.grain.scale * stage.frame.width;
+  const tile = stampStageTile(stage, [size, size * (grain.height / grain.width)], true);
+  return { image: grain, tile, lod: stampGrainLod(grain, tile[0]), depth: paper.grain.depth };
 }
 
 /**
@@ -113,12 +117,15 @@ export function stampDepositUniformSlots(compositor: StampPaintCompositor, { was
 /** A flag of a deposit's resolve (STAMP_DEPOSIT_FLAGS). */
 type StampCoverageFlag = keyof typeof STAMP_DEPOSIT_FLAGS;
 
-/** A layer's canvas grain's tile (a share of its stamps' diameter across), offset and mip level, written as a Grain at `at`. */
-function writeStampCanvasGrain(views: GpuUniformViews, at: number, layer: StampActiveLayer<StampPaintImage> | undefined, offset: readonly [number, number]) {
+/**
+ * A layer's canvas grain's tile (a share of its stamps' diameter across, fitting a wrapping `stage`'s wrap whole),
+ * offset and mip level, written as a Grain at `at`.
+ */
+function writeStampCanvasGrain(views: GpuUniformViews, at: number, stage: StampStage, layer: StampActiveLayer<StampPaintImage> | undefined, offset: readonly [number, number]) {
   const grain = layer?.canvasGrain;
   if (!grain) return;
-  const size = grain.scale * layer.diameter;
-  writeStampGrain(views, at, grain, [size, size * (grain.image.height / grain.image.width)], offset, stampGrainLod(grain.image, size));
+  const size = grain.scale * layer.diameter, tile = stampStageTile(stage, [size, size * (grain.image.height / grain.image.width)], grain.tiling === 'mirror');
+  writeStampGrain(views, at, grain, tile, offset, stampGrainLod(grain.image, tile[0]));
 }
 
 /** What of STAMP_DEPOSIT_FLAGS `marks`' own coverage resolves with on `tooth`: its grains, dual and pooling, and the paper. */
@@ -388,8 +395,8 @@ export function createStampDepositDrawing(device: StampPaintDevice, { stage, com
   const writeCoverage = (views: GpuUniformViews, marks: StampLoadedMarks, grainOffset: CompiledStampDeposit['grainOffset'], resolveOrder: number, washRims: boolean, tooth: StampPaperTooth | null) => {
     const { brush, active } = marks, put = gpuUniformWriter(STAMP_DEPOSIT, views);
     put('view', [width, height, tooth?.tile[0] ?? 1, tooth?.tile[1] ?? 1]);
-    writeStampCanvasGrain(views, STAMP_DEPOSIT.at.grain, active.main, grainOffset.main);
-    writeStampCanvasGrain(views, STAMP_DEPOSIT.at.dualGrain, active.dual, grainOffset.dual);
+    writeStampCanvasGrain(views, STAMP_DEPOSIT.at.grain, stage, active.main, grainOffset.main);
+    writeStampCanvasGrain(views, STAMP_DEPOSIT.at.dualGrain, stage, active.dual, grainOffset.dual);
     put('paperDepth', tooth?.depth ?? 0);
     put('paperLod', tooth?.lod ?? 0);
     put('dualBlend', brush.dual ? stampDualModeIndex(brush.dual.blend) : 0);
@@ -451,6 +458,7 @@ export function createStampDepositDrawing(device: StampPaintDevice, { stage, com
         put('within', stampRegionTexelWords(within?.region?.box, margin));
         put('bodyReach', STAMP_WET_BODY_REACH * deposit.diameter);
         put('rest', deposit.rest ?? STAMP_REST_IDENTITY);
+        put('wrapFrom', deposit.wrapFrom ?? 0);
         if (deposit.kind !== 'flood') return;
         const ends = stampPaintFieldEnds(deposit.flood.load);
         put('load', ends.geometry);

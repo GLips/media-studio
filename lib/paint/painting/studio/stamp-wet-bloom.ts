@@ -29,10 +29,12 @@ const STAMP_BLOOM_SEND_FLOOR = 0.2;
 
 /**
  * A bloom: its box, seed and diameter; the medium's spread, damp and shiny (PaintSheen); the widest its water could
- * spread (stampBloomBound), which its spreads are sized by.
+ * spread (stampBloomBound), which its spreads are sized by; and on a wrapping stage, the x its front is keyed within a
+ * wrap of (its deposit's wrapFrom), so a copy past the seam blooms as it does.
  */
 const BLOOM = gpuUniformLayout('Bloom', [
   ['origin', 'vec2u'], ['extent', 'vec2u'], ['seed', 'u32'], ['damp', 'f32'], ['shine', 'f32'], ['spread', 'f32'], ['diameter', 'f32'], ['bound', 'f32'],
+  ['wrapFrom', 'f32'],
 ]);
 
 /**
@@ -268,12 +270,15 @@ fn waterRound(local: vec2i, sigma: f32) -> BloomWater {
   let sigma = sigmaAt(p);
   let water = waterRound(local, sigma);
   let before = wetnessBeforeAt(p);
-  let at = bloomFront(stagePoint(p), water, bloomGrip(before, u.damp, u.shine), u.seed, sigma);
+  // The front is keyed where its deposit was planned (\`keyed\`); where it stalled is read back here.
+  let here = stagePoint(p);
+  let keyed = stageUnwrapped(here, u.wrapFrom);
+  let at = bloomFront(keyed, water, bloomGrip(before, u.damp, u.shine), u.seed, sigma);
   let streak = bloomStreak(at.foot, at.d, u.seed, sigma);
   let allowed = clamp(textureLoad(footprint, p, 0).g, 0.0, 1.0);
   var paint: array<vec4f, ${layers}>;
   for (var l = 0; l < ${layers}; l++) { paint[l] = textureLoad(layer, p, l, 0); }
-  let open = bloomPastFront(waterAt(vec2i(floor(at.past)) + STAGE_MARGIN - vec2i(u.origin)));
+  let open = bloomPastFront(waterAt(vec2i(floor(at.past + here - keyed)) + STAGE_MARGIN - vec2i(u.origin)));
   let line = bloomFrontLine(at.held, bloomMerging(before, u.damp, u.shine));
   let weight = bloomBand(at.d, line, streak) * allowed * contactAt(p) * bloomLipPaint(coverageRound(p)) * open * bloomInside(water.inWash);
   let free = liftFree(workableAt(p), washOpen(paint));
@@ -405,6 +410,7 @@ function loadBloom({ device, layer, footprint, field, wash, stage }: StampWetSta
     put('spread', wetting.spread);
     put('diameter', deposit.diameter);
     put('bound', plan.bound);
+    put('wrapFrom', deposit.wrapFrom ?? 0);
     device.queue.writeBuffer(plan.uniform, 0, words);
     plan.spreads.write(box);
 

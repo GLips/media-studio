@@ -310,7 +310,7 @@ function rendererOnSurface({
   // Drawing the brushed masks at load takes the same slots, four a mark: its stamps and dual's, its cover's two.
   const slotsPerFrame = Math.max(frameSlots, 4 * brushedMasks.reduce((sum, { marks }) => sum + marks.length, 0));
   const asWritten = new Map(painting.groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass).map((deposit) => [deposit.id, deposit] as const))));
-  const paperTooth = stampPaperTooth(paper, image, frame);
+  const paperTooth = stampPaperTooth(paper, image, stage);
 
   /**
    * `groups`' deposits on the GPU, and what they're drawn with, their washes landing as `wetness` says: the painting

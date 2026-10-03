@@ -18,8 +18,8 @@ import { STAMP_REST_IDENTITY, STAMP_REST_POINT_WGSL, type StampRestMap } from '.
 
 // A state of the masking fluid over its box: the state it's built on (`parent`, width 0 for none), then `opCount` ops
 // from `firstOp`: a mask joins its area by max, an unmask lifts its amount (everywhere for `count` 0), a clip keeps
-// only its area (an application's `within`). An op's area is worked out only within its `reach`.
-const MASK_STEP = gpuUniformLayout('MaskStep', [['box', 'vec4f'], ['parent', 'vec4f'], ['source', 'vec4f'], ['firstOp', 'u32'], ['opCount', 'u32']]);
+// only its area. An op's area, worked within its `reach`, joins its copies `wrap` px apart.
+const MASK_STEP = gpuUniformLayout('MaskStep', [['box', 'vec4f'], ['parent', 'vec4f'], ['source', 'vec4f'], ['firstOp', 'u32'], ['opCount', 'u32'], ['wrap', 'f32']]);
 /** A MaskOp's words: its fifteen, padded to its rest map's vec4f alignment, and that map's four. */
 const MASK_OP_WORDS = 20;
 const MASK_STEP_WGSL = /* wgsl */ `
@@ -52,7 +52,16 @@ ${STAMP_AREA_COVERAGE_WGSL}
       if (all(s >= vec2f(0.0)) && all(s < u.source.zw)) { r = textureLoad(source, vec2u(s), 0).r; }
     } else if (op.count > 0u) {
       r = 0.0;
-      if (all(p >= op.reach.xy) && all(p <= op.reach.zw)) { r = areaCoverageAt(p, restPoint(op.rest, p), op.first, op.count, op.inset, op.ragged, op.width, op.seed, op.boundaryFirst, op.boundaryCount); }
+      var k = 0.0;
+      var last = 0.0;
+      if (u.wrap > 0.0) {
+        k = ceil((p.x - op.reach.z) / u.wrap);
+        last = floor((p.x - op.reach.x) / u.wrap);
+      }
+      for (; k <= last; k += 1.0) {
+        let q = vec2f(p.x - k * u.wrap, p.y);
+        if (all(q >= op.reach.xy) && all(q <= op.reach.zw)) { r = max(r, areaCoverageAt(q, restPoint(op.rest, q), op.first, op.count, op.inset, op.ragged, op.width, op.seed, op.boundaryFirst, op.boundaryCount)); }
+      }
     }
     if (op.kind == 2u) { fluid *= r; } else { fluid = select(fluid * (1.0 - op.amount * r), max(fluid, r), op.kind == 0u || op.kind == 3u); }
   }
@@ -107,7 +116,7 @@ export type StampRegionTextures = { coverages: readonly (StampRegionTexture | nu
 export function encodeStampRegionTextures(
   on: StampPaintDevice, encoder: GPUCommandEncoder, { stage, blank }: { stage: StampStage; blank: GPUTextureView }, request: StampRegionTextureRequest,
 ): StampRegionTextures {
-  const { frame, margin } = stage;
+  const { frame, margin, wrap } = stage;
   // Every polygon once and every op of the fluid, in storage buffers.
   const points: number[] = [], placed = new Map<readonly StampPoint[], [number, number]>();
   const pointsOf = (polygon: readonly StampPoint[]) => {
@@ -138,10 +147,19 @@ export function encodeStampRegionTextures(
   type Step = { box: StampPixelBox; parent: Step | null; source: StampRegionTexture | null; firstOp: number; opCount: number };
   const steps: Step[] = [];
   // A region's box is in painting points, held to the stage.
-  const inPainting = (box: StampBox): StampPixelBox | null => {
+  const held = (box: StampBox): StampPixelBox | null => {
     const x = Math.max(-margin, Math.floor(box.x0)), y = Math.max(-margin, Math.floor(box.y0));
     const w = Math.min(frame.width + margin, Math.ceil(box.x1)) - x, h = Math.min(frame.height + margin, Math.ceil(box.y1)) - y;
     return w > 0 && h > 0 ? { x, y, w, h } : null;
+  };
+  // On a wrapping stage, with each copy of it a whole number of wraps away that's on the stage.
+  const inPainting = (box: StampBox): StampPixelBox | null => {
+    if (!wrap) return held(box);
+    let found: StampPixelBox | null = null;
+    for (let k = Math.ceil((-margin - box.x1) / wrap); k <= Math.floor((frame.width + margin - box.x0) / wrap); k++) {
+      found = stampBoxUnion(found, held({ ...box, x0: box.x0 + k * wrap, x1: box.x1 + k * wrap }));
+    }
+    return found;
   };
   /** An op of the fluid, over its area or everywhere, or a brushed mask's coverage (`source`), as a MaskOp. */
   const opOf = (kind: 'mask' | 'unmask' | 'clip' | 'source', amount: number, area: CompiledStampArea | null) => {
@@ -255,6 +273,7 @@ export function encodeStampRegionTextures(
       put('source', stampRegionTexelWords(step.source?.box, 0));
       put('firstOp', step.firstOp);
       put('opCount', step.opCount);
+      put('wrap', wrap);
       const pass = encoder.beginRenderPass({ colorAttachments: [{ view: made.get(step)!.view, loadOp: 'clear', storeOp: 'store' }] });
       pass.setPipeline(pipeline);
       pass.setBindGroup(0, stampBindGroup(on, pipeline, [

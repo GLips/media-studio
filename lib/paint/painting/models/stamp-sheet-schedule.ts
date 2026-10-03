@@ -279,9 +279,9 @@ const boxArea = (b: StampBox) => (b.x1 - b.x0) * (b.y1 - b.y0);
 const boxUnion = (a: StampBox, b: StampBox) => ({ x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) });
 
 /**
- * The marked cells of a failure map (`columns` × `rows`, row by row, cells STAMP_SHEET_FAILURE_CELL px from (x, y)):
- * each connected run's box in document px, merged two at a time (the pair growing least) down to
- * STAMP_SHEET_FAILURE_BOXES.
+ * The marked cells of a failure map (`columns` × `rows`, row by row, cells STAMP_SHEET_FAILURE_CELL px from `origin`,
+ * document px): each connected run's box within the document (`limit`), merged two at a time (the pair growing least)
+ * down to STAMP_SHEET_FAILURE_BOXES. A run wholly past the document (in a wrapped sheet's halo) has none.
  */
 export function stampSheetFailureBoxes(cells: Uint32Array, columns: number, rows: number, origin: { x: number; y: number }, limit: { width: number; height: number }): StampBox[] {
   const seen = new Uint8Array(columns * rows), boxes: StampBox[] = [];
@@ -301,10 +301,11 @@ export function stampSheetFailureBoxes(cells: Uint32Array, columns: number, rows
       }
     }
     const cell = STAMP_SHEET_FAILURE_CELL;
-    boxes.push({
+    const box = {
       x0: Math.max(0, origin.x + x0 * cell), y0: Math.max(0, origin.y + y0 * cell),
       x1: Math.min(limit.width, origin.x + (x1 + 1) * cell), y1: Math.min(limit.height, origin.y + (y1 + 1) * cell),
-    });
+    };
+    if (box.x1 > box.x0 && box.y1 > box.y0) boxes.push(box);
   }
   while (boxes.length > STAMP_SHEET_FAILURE_BOXES) {
     let best = { a: 0, b: 1, growth: Infinity };

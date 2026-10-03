@@ -320,7 +320,8 @@ export type LayerNode = Layer | LayerGroup;
 
 /**
  * Any size; (0, 0) is its top-left corner. `paper` is the root's own sheet, the whole document rectangle, drying at
- * `dryingScale` (1) once a clocked wet wash on it starts its clock.
+ * `dryingScale` (1) once a clocked wet wash on it starts its clock. `wrap: 'x'`: its left edge meets its right, as
+ * round a cylinder, so paper, marks and wet stages run on across the seam on every sheet.
  */
 export type PaintingDocument = {
   readonly widthPx: number;
@@ -328,6 +329,7 @@ export type PaintingDocument = {
   readonly paper: Paper;
   readonly medium: MediumName;
   readonly dryingScale?: DryingScale;
+  readonly wrap?: 'x';
   /** Back to front. */
   readonly layers: readonly LayerNode[];
 };

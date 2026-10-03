@@ -9,12 +9,12 @@ import type { PaintingSheetOrder } from './painting-sheet-program.ts';
 import type { PaintingTree } from './painting-tree.ts';
 
 /**
- * What a sheet's every solve starts from (ENGINE 4.2's K₀): the document's size, the paper's solve half, its water
- * and its clock. Neither its edge nor its paper's colour is solved.
+ * What a sheet's every solve starts from (ENGINE 4.2's K₀): the document's size and wrap, the paper's solve half, its
+ * water and its clock. Neither its edge nor its paper's colour is solved.
  */
 export const paintingSheetHead = (paintingDocument: PaintingDocument, order: PaintingSheetOrder): PaintingDatum => ({
   widthPx: paintingDocument.widthPx, heightPx: paintingDocument.heightPx, grain: order.sheet.paper.grain, absorbency: order.sheet.paper.absorbency,
-  water: order.sheet.water, clock: order.clock,
+  water: order.sheet.water, clock: order.clock, wrap: paintingDocument.wrap,
 });
 
 /** An entry as its solve reads it, and the owners its datum's first parts name in a path. */

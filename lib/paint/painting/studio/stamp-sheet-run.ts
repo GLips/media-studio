@@ -20,7 +20,7 @@ import {
 import { stampSheetWashSpans, type StampSheetProgram } from '../models/stamp-sheet-program.ts';
 import { StampSheetRefusal } from '../models/stamp-sheet-refusal.ts';
 import { STAMP_REST_IDENTITY } from '../models/stamp-rest-map.ts';
-import { stampBoxUnion } from '../models/stamp-stage.ts';
+import { stampBoxUnion, stampStageTexelsOf } from '../models/stamp-stage.ts';
 import { stampDepositSupport } from '../models/stamp-tip-support.ts';
 import { stampDryingRimCoversLanding } from '../models/stamp-wet-rim.ts';
 import { stampFloodHeldWetness, type StampDrying, type StampWashDrying, type StampWetLanding } from '../models/stamp-wetness.ts';
@@ -144,12 +144,12 @@ export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevic
       if (closes) close(encoder, start.tau, 'set');
       clips.start(encoder, w);
       if (!prewet || !region) return;
-      settleUnder(encoder, region.box, at, null);
-      passes.prewet(encoder, { region, fluid: gpu.fluidOf(prewet.held), water: prewet.water, rest: prewet.rest ?? STAMP_REST_IDENTITY }, at, drying);
+      settleUnder(encoder, stampStageTexelsOf(gpu.stage, region.box), at, null);
+      passes.prewet(encoder, { region, fluid: gpu.fluidOf(prewet.held), water: prewet.water, rest: prewet.rest ?? STAMP_REST_IDENTITY, wrapFrom: prewet.wrapFrom ?? 0 }, at, drying);
     });
     if (!prewet || !region) return;
     const ends = stampPaintFieldEnds(prewet.water);
-    state = stampSheetPrewetted(state, { wash: w, at: start.tau, level: Math.max(ends.first, ends.second), box: region.box });
+    state = stampSheetPrewetted(state, { wash: w, at: start.tau, level: Math.max(ends.first, ends.second), box: stampStageTexelsOf(gpu.stage, region.box) });
   };
 
   /**

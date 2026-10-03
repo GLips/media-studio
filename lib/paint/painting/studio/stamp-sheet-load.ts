@@ -12,7 +12,7 @@ import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { CompiledStampBrushedMask } from '../models/stamp-brushed-mask.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampSheetProgram } from '../models/stamp-sheet-program.ts';
-import { stampBoxUnion, stampStage } from '../models/stamp-stage.ts';
+import { stampBoxUnion, stampStage, stampStageTexelsOf } from '../models/stamp-stage.ts';
 import { stampDepositWashLaw } from '../models/stamp-wet-landing.ts';
 import { stampDepositWalled, type StampPaintMedia } from '../models/stamp-wetness.ts';
 import { encodeStampBrushedMasks } from './stamp-brushed-mask-textures.ts';
@@ -30,9 +30,13 @@ import { putStampWetPrepare, stampWetField } from './stamp-wet-field.ts';
 import { STAMP_WET_STAGES } from './stamp-wet-stage-list.ts';
 import { stampWetStageReach, type StampWetWall } from './stamp-wet-stages.ts';
 
-/** What a solve loads from: its program as posed, its compositor and media, its brushes and brushed masks. */
+/**
+ * What a solve loads from: its program as posed (banded when it wraps, stamp-sheet-wrap.ts), the halo its stage holds
+ * past each side (0 for a sheet that doesn't wrap), its compositor and media, its brushes and brushed masks.
+ */
 export type StampSheetLoadInput = {
-  program: StampSheetProgram; compositor: StampPaintCompositor; media: StampPaintMedia<PaintMedium>; brushes: StampPaintBrushes; brushedMasks: readonly CompiledStampBrushedMask[];
+  program: StampSheetProgram; halo: number; compositor: StampPaintCompositor; media: StampPaintMedia<PaintMedium>; brushes: StampPaintBrushes;
+  brushedMasks: readonly CompiledStampBrushedMask[];
 };
 
 /** A deposit's water as it lands in `film`, another film than its own: `proxy` stands for it there. */
@@ -43,8 +47,8 @@ const stampSheetSlots = (films: number, marks: number) => Math.max(128, 64 + 2 *
 
 /** `input`'s solve loaded through `device` (a scope of the solve's own) on `owner`'s targets, its first work submitted. */
 export function loadStampSheetSolve(owner: StampPaintGpuOwner, device: StampPaintDevice, input: StampSheetLoadInput) {
-  const { program, compositor, media, brushes, brushedMasks } = input;
-  const stage = stampStage({ width: program.width, height: program.height });
+  const { program, halo, compositor, media, brushes, brushedMasks } = input;
+  const stage = stampStage({ width: program.width, height: program.height }, halo, program.wrap === 'x');
   const posed = program.entries.map(({ deposit }) => deposit), prewets = program.washes.map(({ prewet }) => prewet);
   const wash = compositor.wash;
   if (!wash) throw new Error('stamp sheet: a sheet solve paints in pigment, whose compositor lays washes');
@@ -114,7 +118,7 @@ export function loadStampSheetSolve(owner: StampPaintGpuOwner, device: StampPain
   }));
   const prewetAreas = coverageOf(prewets.flatMap((prewet, w) => (prewet ? [[w, { area: prewet.area, clips: [] }] as const] : [])));
   const fluids = [...posed.flatMap(({ mask }) => (mask ? [mask] : [])), ...prewets.flatMap((prewet) => (prewet?.held ? [prewet.held] : []))];
-  const tooth = stampPaperTooth(program.paper, brushes.image, stage.frame);
+  const tooth = stampPaperTooth(program.paper, brushes.image, stage);
   const encoder = device.createCommandEncoder();
   const brushed = encodeStampBrushedMasks(device, encoder, drawing, brushedMasks, brushes.marks, tooth);
   const made = encodeStampRegionTextures(device, encoder, { stage, blank: targets.blank.view }, { coverages, fluids, brushed });
@@ -132,10 +136,11 @@ export function loadStampSheetSolve(owner: StampPaintGpuOwner, device: StampPain
 
   /** The region `deposit` lands within: a flood's barrier, else its `within`; null for none or off the stage. */
   const barrierOf = (deposit: CompiledStampDeposit) => (deposit.kind === 'flood' ? regions.barriers.get(deposit) : regions.withins.get(deposit)) ?? null;
+  // A wall's box is in stage texels, a region's in painting points.
   const walls = new WeakMap<StampRegionTexture, StampWetWall>();
   return {
     stage, compositor, targets, arena, field, drawing, stages, bank, tooth, layouts, wetReach, restart,
-    reductions: stampSheetReductions(device, arena, { core: targets.core.view, clip: targets.clip.view, paper: targets.paper.view, open: targets.open.view, blank: targets.blank.view }),
+    reductions: stampSheetReductions(device, stage, arena, { core: targets.core.view, clip: targets.clip.view, paper: targets.paper.view, open: targets.open.view, blank: targets.blank.view }),
     passes: stampSheetFieldPasses(device, stage, arena, { paper: targets.paper.view, rim: targets.rim.view, open: targets.open.view, blank: targets.blank.view }),
     /** The proxies `deposit`'s water lands as in other films: none for a deposit giving no water by the wash law. */
     proxiesOf: (deposit: CompiledStampDeposit): readonly StampSheetProxy[] => proxies.get(deposit) ?? [],
@@ -151,7 +156,7 @@ export function loadStampSheetSolve(owner: StampPaintGpuOwner, device: StampPain
     wallOf: (deposit: CompiledStampDeposit): StampWetWall | null => {
       const region = stampDepositWalled(deposit) ? barrierOf(deposit) : regions.withins.get(deposit) ?? null;
       if (!region) return null;
-      if (!walls.has(region)) walls.set(region, { view: region.view, box: region.box });
+      if (!walls.has(region)) walls.set(region, { view: region.view, box: stampStageTexelsOf(stage, region.box) });
       return walls.get(region)!;
     },
   };

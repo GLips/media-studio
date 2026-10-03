@@ -321,6 +321,8 @@ fn liftedUnder(i: u32, covered: vec4f, behind: array<vec4f, UNDER_LAYERS>, left:
       const pigment = group.palette[channel - 1];
       return pigment && channel > 0 ? [pigment.granulation * medium.granulation, pigment.flocculation, paintPigmentSeed(pigment.id)] : [0, 0, 0];
     });
+    // Looks wrong: STAGE_WRAP is never declared here. Every shader holding this holds its stage's WGSL (stampStageWgsl),
+    // so a pigment's clumps meet themselves at a wrapping sheet's seam.
     const holdWgsl = /* wgsl */ `
 ${PAINT_PAPER_WGSL}
 const WASH_HABITS = array<vec3f, ${habits.length}>(${habits.map((habit) => `vec3f(${habit.map(f32).join(', ')})`).join(', ')});
@@ -331,7 +333,7 @@ fn washHold(l: u32, at: vec2f, tooth: vec2f, depth: f32, held: vec4f) -> vec4f {
   var hold = vec4f(1.0);
   for (var i = 0u; i < 4u; i++) {
     let habit = WASH_HABITS[4u * l + i];
-    hold[i] = max(0.0, ${contactOf(medium, 'depth', 'habit.x', `held[i] / ${f32(medium.body)}`, '1.0', '0.0')} * paintClumps(habit.y, at.x, at.y, u32(habit.z)));
+    hold[i] = max(0.0, ${contactOf(medium, 'depth', 'habit.x', `held[i] / ${f32(medium.body)}`, '1.0', '0.0')} * paintClumpsWrapped(habit.y, at.x, at.y, u32(habit.z), STAGE_WRAP));
   }
   return hold;
 }`;
@@ -347,6 +349,7 @@ fn washHold(l: u32, at: vec2f, tooth: vec2f, depth: f32, held: vec4f) -> vec4f {
     reads: { press: media.some(({ paperContact }) => paperContact.kind === 'peaks'), before: media.some(({ layering }) => layering.kind === 'stacks') ? { reach: STACKED_FILL_REACH } : null },
     deposit: {
       layout: PIGMENT_PAINT_DEPOSIT,
+      // STAGE_WRAP, as washHold's: the resolve holding this holds its stage's WGSL.
       wgsl: /* wgsl */ `
 ${PAINT_PAPER_WGSL}
 struct PigmentComponent { slot: u32, seed: u32, granulation: f32, flocculation: f32 }
@@ -377,7 +380,7 @@ fn incomingAt${s}(tooth: vec2f, at: vec2f, press: f32, filled: f32) -> array<vec
     let pair = paint.amounts[i / 2u];
     let ends = select(pair.xy, pair.zw, (i & 1u) == 1u);
     let amount = ends.x + (ends.y - ends.x) * graded;
-    let share = max(0.0, ${layContactOf(medium)} * paintClumps(c.flocculation, at.x, at.y, c.seed));
+    let share = max(0.0, ${layContactOf(medium)} * paintClumpsWrapped(c.flocculation, at.x, at.y, c.seed, STAGE_WRAP));
     let channel = c.slot + 1u;
     incoming[channel / 4u][channel % 4u] += amount * share;
   }

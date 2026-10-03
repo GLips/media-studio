@@ -219,28 +219,28 @@
     "solved/forward": {
       "file": "solved/forward.png",
       "output": "f0003f7c4e327d9e25299197504d478b1343f240457c5e2663bf37768ec463f8",
-      "inputs": "fdd8a73f8c32e7eeb52087cbe8920dda6f7a1b578eeb8b4d8285799817148242",
-      "reason": "vid-157 clocks landed on sheets: each sheet program carries both its edge and its clock, so each solved still's inputs text changes; wet-contact is clocked (shallows from 0 s, the foot's charge at 0.5 s and glaze at 6 s, drying scale 0.015)",
+      "inputs": "fbe94e799b1ad0c3afcb37996ebfc7f4336eb954b0ab2f89c0ad8ea05c3fa522",
+      "reason": "vid-157 three-textures: each sheet program carries its document's wrap (null for these, which don't wrap), so each solved still's inputs text changes; the sheet code reads a stage's margin where it assumed none; images unchanged",
       "accepted": "2026-10-03",
-      "acceptedOver": "a5ab9ff5",
+      "acceptedOver": "34622a69",
       "adapter": "apple metal-3"
     },
     "solved/paper-heron": {
       "file": "solved/paper-heron.png",
       "output": "e1a527af83dafb333807a02864dfbeef5abc25c8d3472d4af45f2698fe21cc91",
-      "inputs": "57a44d3bab3bd5969fa485b26b65d5d9867e45395f2933e556e08dc06ad587c6",
-      "reason": "vid-157 clocks landed on sheets: each sheet program carries both its edge and its clock, so each solved still's inputs text changes; wet-contact is clocked (shallows from 0 s, the foot's charge at 0.5 s and glaze at 6 s, drying scale 0.015)",
+      "inputs": "49949104b1e2175f3c18cd0db8871f221cad5c1e791f6b0cb2ed4f06194071bc",
+      "reason": "vid-157 three-textures: each sheet program carries its document's wrap (null for these, which don't wrap), so each solved still's inputs text changes; the sheet code reads a stage's margin where it assumed none; images unchanged",
       "accepted": "2026-10-03",
-      "acceptedOver": "a5ab9ff5",
+      "acceptedOver": "34622a69",
       "adapter": "apple metal-3"
     },
     "solved/wet-contact": {
       "file": "solved/wet-contact.png",
       "output": "885f09a77450e573c6a0e08467514feadd8b38157a820dedf5dcb3554cd3fda7",
-      "inputs": "a9e001dda2f6113a72d77389eb9722cdf97674b7feac36cc34d8eed8cf599048",
-      "reason": "vid-157 clocks landed on sheets: each sheet program carries both its edge and its clock, so each solved still's inputs text changes; wet-contact is clocked (shallows from 0 s, the foot's charge at 0.5 s and glaze at 6 s, drying scale 0.015)",
+      "inputs": "91e212a617b20ad53e7e73e8e94fe815040dff211df69a53a9c8f7538fb707cb",
+      "reason": "vid-157 three-textures: each sheet program carries its document's wrap (null for these, which don't wrap), so each solved still's inputs text changes; the sheet code reads a stage's margin where it assumed none; images unchanged",
       "accepted": "2026-10-03",
-      "acceptedOver": "a5ab9ff5",
+      "acceptedOver": "34622a69",
       "adapter": "apple metal-3"
     }
   }

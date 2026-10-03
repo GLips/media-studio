@@ -92,7 +92,8 @@ export function createStampSheetSteps(owner: StampPaintGpuOwner, device: StampPa
         gpu.reductions.failure(encoder, buffers.cells.storage, { core, tau: after(encoder, tau), drying }, on);
       });
       const { columns, rows } = stampSheetFailureGrid(core.box);
-      return stampSheetFailureBoxes(read, columns, rows, { x: core.box.x, y: core.box.y }, gpu.stage.frame);
+      const { margin, frame } = gpu.stage;
+      return stampSheetFailureBoxes(read, columns, rows, { x: core.box.x - margin, y: core.box.y - margin }, frame);
     },
     /** The latest anything wetted in `boxes` sets, model s; null where nothing is. */
     async latestSetOver(boxes: readonly StampPixelBox[]): Promise<number | null> {

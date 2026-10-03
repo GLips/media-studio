@@ -87,7 +87,7 @@ function compilePaintingSheet(evaluation: PaintingEvaluation, order: PaintingShe
   });
   return {
     name: `${evaluation.source}, ${paintingSheetName(order.sheet)}`, width: paintingDocument.widthPx, height: paintingDocument.heightPx, paper: order.sheet.paper, edge: order.sheet.edge, water: PAINT_MEDIA[order.sheet.water],
-    clock: order.clock, films, washes, entries, head: stampCanonicalJson(paintingSheetHead(paintingDocument, order)),
+    clock: order.clock, wrap: paintingDocument.wrap ?? null, films, washes, entries, head: stampCanonicalJson(paintingSheetHead(paintingDocument, order)),
   };
 }
 

@@ -36,6 +36,8 @@ export type StampSheetPrewet = {
   area: CompiledStampArea; water: StampSeededPaintField<number>; held: CompiledStampMask | null; anchored: ReadonlySet<CompiledStampMask>;
   /** For a prewet a pose moved, the map back to where it was planned, where its water's field is read; absent where it lies. */
   rest?: StampRestMap;
+  /** On a sheet that wraps, the x its water's field is read within a wrap of (stamp-sheet-wrap.ts); absent elsewhere. */
+  wrapFrom?: number;
 };
 
 /**
@@ -73,12 +75,12 @@ export type StampSheetEntry = {
 
 /**
  * A sheet program: its name (for a cost report), size, paper, where that lies (`document`, the root's; `union`, a
- * card, as far as its films' paint reaches), the medium its water dries by, its clock, its films, washes and entries,
- * and `head`, the text of its incoming state (K₀). No solve reads the edge, so the head leaves it out.
+ * card, as far as its films' paint reaches), the medium its water dries by, its clock, its document's `wrap`, its
+ * films, washes and entries, and `head`, its incoming state's text (K₀). No solve reads the edge: the head omits it.
  */
 export type StampSheetProgram = {
   name: string; width: number; height: number; paper: StampPaintPaper; edge: 'document' | 'union'; water: PaintMedium; clock: StampSheetClock;
-  films: readonly StampSheetFilm[]; washes: readonly StampSheetWash[]; entries: readonly StampSheetEntry[]; head: string;
+  wrap: 'x' | null; films: readonly StampSheetFilm[]; washes: readonly StampSheetWash[]; entries: readonly StampSheetEntry[]; head: string;
 };
 
 /**

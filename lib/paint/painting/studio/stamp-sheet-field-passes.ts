@@ -9,7 +9,7 @@
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import { STAMP_PAINT_FIELD_SHARE, stampPaintFieldEnds, type StampSeededPaintField } from '../models/stamp-paint-field.ts';
-import { stampRegionTexelWords, stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
+import { stampRegionTexelWords, stampStageTexelsOf, stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 import { STAMP_LANDED_WETNESS_WGSL, STAMP_WET_PAPER_WGSL, type StampDrying } from '../models/stamp-wetness.ts';
 import { stampBindGroup, type StampPaintDevice } from './stamp-paint-gpu.ts';
 import { STAMP_REGION_AT_WGSL, type StampRegionTexture } from './stamp-region-textures.ts';
@@ -25,11 +25,11 @@ const SHEET_FIELD = gpuUniformLayout('SheetField', [['origin', 'vec2u'], ['exten
 
 /**
  * A prewet over the box: its region's and fluid's boxes (stage texels), its water's field (STAMP_PAINT_FIELD_SHARE's),
- * read at each pixel's rest point under `rest`.
+ * read at each pixel's rest point under `rest`, within a wrap of `wrapFrom` first on a wrapping stage.
  */
 const SHEET_PREWET = gpuUniformLayout('SheetPrewet', [
   ['origin', 'vec2u'], ['extent', 'vec2u'], ['drying', 'vec4f'], ['region', 'vec4f'], ['fluid', 'vec4f'], ['geometry', 'vec4f'], ['rest', 'vec4f'], ['ends', 'vec2f'],
-  ['tau', 'f32'], ['kind', 'i32'],
+  ['tau', 'f32'], ['kind', 'i32'], ['wrapFrom', 'f32'],
 ]);
 
 const header = (layout: { wgsl: string; name: string }) => /* wgsl */ `
@@ -106,7 +106,7 @@ ${STAMP_REGION_AT_WGSL}
   let field = textureLoad(paper, p);
   let found = wetPaperAt(field, u.tau, u.drying.xyz);
   let contact = regionAt(region, u.region, p) * (1.0 - regionAt(fluid, u.fluid, p));
-  let water = mix(u.ends.x, u.ends.y, paintFieldShare(restPoint(u.rest, stagePoint(vec2i(p))), u.kind, u.geometry));
+  let water = mix(u.ends.x, u.ends.y, paintFieldShare(restPoint(u.rest, stageUnwrapped(stagePoint(vec2i(p)), u.wrapFrom)), u.kind, u.geometry));
   let now = found.wetness;
   let next = landedWetness(now, contact, water, -1.0);
   let settled = select(select(field.z, 1.0, found.workable <= 0.0), 0.0, contact > 0.0 && water > 0.0);
@@ -118,9 +118,12 @@ ${STAMP_REGION_AT_WGSL}
 
 /**
  * A prewet as its pass lands it: its region, the fluid holding it off (null for none on the stage), its water, and
- * the map back to where it was planned, where its water's field is read.
+ * the map back to where it was planned, where its water's field is read (within a wrap of `wrapFrom` on a wrapping
+ * stage, else 0).
  */
-export type StampSheetPrewetLanding = { region: StampRegionTexture; fluid: StampRegionTexture | null; water: StampSeededPaintField<number>; rest: StampRestMap };
+export type StampSheetPrewetLanding = {
+  region: StampRegionTexture; fluid: StampRegionTexture | null; water: StampSeededPaintField<number>; rest: StampRestMap; wrapFrom: number;
+};
 
 /** What the passes write: the field's paper and rim, the open-paint mask; `blank` for a fluid of none. */
 export type StampSheetFieldTargets = { paper: GPUTextureView; rim: GPUTextureView; open: GPUTextureView; blank: GPUTextureView };
@@ -182,19 +185,20 @@ export function stampSheetFieldPasses(device: StampPaintDevice, stage: StampStag
     },
     /** Lands `landing`'s clean water at `tau` after the base, the paper drying as `drying` says. */
     prewet(encoder: GPUCommandEncoder, landing: StampSheetPrewetLanding, tau: number, drying: StampDrying) {
-      const { region, fluid, water, rest } = landing, box = region.box, ends = stampPaintFieldEnds(water);
+      const { region, fluid, water, rest, wrapFrom } = landing, box = stampStageTexelsOf(stage, region.box), ends = stampPaintFieldEnds(water);
       const uniform = arena.slot((views) => {
         const put = gpuUniformWriter(SHEET_PREWET, views);
         put('origin', [box.x, box.y]);
         put('extent', [box.w, box.h]);
         put('drying', stampDryingWords(drying));
-        put('region', stampRegionTexelWords(region.box, 0));
-        put('fluid', stampRegionTexelWords(fluid?.box, 0));
+        put('region', stampRegionTexelWords(region.box, stage.margin));
+        put('fluid', stampRegionTexelWords(fluid?.box, stage.margin));
         put('geometry', ends.geometry);
         put('rest', rest);
         put('ends', [ends.first, ends.second]);
         put('tau', tau);
         put('kind', ends.kind);
+        put('wrapFrom', wrapFrom);
       });
       run(encoder, prewet, [uniform, region.view, fluid?.view ?? targets.blank, targets.paper, targets.rim], box);
     },

@@ -13,7 +13,7 @@ import {
   STAMP_SHEET_BINS, STAMP_SHEET_BLOOM_SURPLUS, STAMP_SHEET_CORE_CONTACT, STAMP_SHEET_FAILURE_CELL, STAMP_SHEET_TOTALS, STAMP_SHEET_WEIGHT,
 } from '../models/stamp-sheet-schedule.ts';
 import type { StampSheetWetness } from '../models/stamp-sheet-program.ts';
-import { stampRegionTexelWords } from '../models/stamp-stage.ts';
+import { stampRegionTexelWords, type StampStage } from '../models/stamp-stage.ts';
 import { STAMP_WET_PAPER_WGSL, type StampDrying } from '../models/stamp-wetness.ts';
 import { stampBindGroup, type StampPaintDevice } from './stamp-paint-gpu.ts';
 import { STAMP_REGION_AT_WGSL, type StampRegionTexture } from './stamp-region-textures.ts';
@@ -184,8 +184,8 @@ const coreFlags = ({ fluid, within, clipped }: StampSheetCore) => (fluid ? FLAGS
 
 type StampSheetReduceWriter = ReturnType<typeof gpuUniformWriter<typeof REDUCE.fields>>;
 
-/** The reductions on `device`, each pass's uniform from `arena`, reading `textures`. */
-export function stampSheetReductions(device: StampPaintDevice, arena: StampUniformArena, textures: StampSheetReduceTextures) {
+/** The reductions on `device` over `stage`'s texels (its regions' boxes in painting points), each pass's uniform from `arena`, reading `textures`. */
+export function stampSheetReductions(device: StampPaintDevice, { margin }: StampStage, arena: StampUniformArena, textures: StampSheetReduceTextures) {
   const module = device.createShaderModule({ code: REDUCE_WGSL });
   const pipeline = (entryPoint: string) => device.createComputePipeline({ layout: 'auto', compute: { module, entryPoint } });
   const pipelines = { totals: pipeline('totals'), boxLatest: pipeline('boxLatest'), histogram: pipeline('histogram'), failure: pipeline('failure') };
@@ -197,8 +197,8 @@ export function stampSheetReductions(device: StampPaintDevice, arena: StampUnifo
       put('origin', [box.x, box.y]);
       put('extent', [box.w, box.h]);
       put('drying', stampDryingWords(drying));
-      put('fluid', stampRegionTexelWords(fluid?.box, 0));
-      put('within', stampRegionTexelWords(within?.region?.box, 0));
+      put('fluid', stampRegionTexelWords(fluid?.box, margin));
+      put('within', stampRegionTexelWords(within?.region?.box, margin));
       put('tau', tau);
       put('flags', coreFlags(core));
       more(put);

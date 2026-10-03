@@ -36,9 +36,9 @@ export const STAMP_WET_PREPARE = gpuUniformLayout('WetPrepare', [
 
 /**
  * Where a deposit's tool's local scale is read in the scale buffer (StampWetScale), by STAMP_GRID_AT_WGSL, at each
- * pixel's rest point under `rest`.
+ * pixel's rest point under `rest`, read within a wrap of `wrapFrom` first on a wrapping stage.
  */
-export const STAMP_WET_SCALE = gpuUniformLayout('WetScale', [['lattice', 'vec4f'], ['rest', 'vec4f'], ['size', 'vec2u'], ['first', 'u32']]);
+export const STAMP_WET_SCALE = gpuUniformLayout('WetScale', [['lattice', 'vec4f'], ['rest', 'vec4f'], ['size', 'vec2u'], ['first', 'u32'], ['wrapFrom', 'f32']]);
 
 /**
  * A wash deposit landing over its box (origin, extent), found over the box its stages read (foundOrigin, foundExtent):
@@ -163,7 +163,7 @@ ${STAMP_GRID_AT_WGSL}
 @group(0) @binding(2) var touch: texture_2d<f32>;
 @group(0) @binding(3) var footprint: texture_2d<f32>;
 ${STAMP_REST_POINT_WGSL}
-fn scaleAt(p: vec2u) -> f32 { return gridAt(restPoint(u.scale.rest, stagePoint(vec2i(p))), u.scale.lattice.xyz, u.scale.size, u.scale.first); }`;
+fn scaleAt(p: vec2u) -> f32 { return gridAt(restPoint(u.scale.rest, stageUnwrapped(stagePoint(vec2i(p)), u.scale.wrapFrom)), u.scale.lattice.xyz, u.scale.size, u.scale.first); }`;
 
 // A deposit's water landed over the found box (its box, for a deposit no stage reads): the field advanced over its
 // box and, for its stages, the landing over the found box and the tool's local scale over its box. Each pixel reads
@@ -192,22 +192,22 @@ export type StampWetFieldViews = { paper: GPUTextureView; rim: GPUTextureView; l
 
 /**
  * Where a deposit's tool's local scale is read (STAMP_GRID_AT_WGSL over a scale buffer): a flood's plan's, its narrow
- * parts laid smaller, read where it was planned (`rest`); anyone else's reads 1 everywhere.
+ * parts laid smaller, read where it was planned (`rest`, within a wrap of `wrapFrom`); anyone else's reads 1 everywhere.
  */
-export type StampWetScale = { lattice: [number, number, number, number]; rest: StampRestMap; size: [number, number]; first: number };
+export type StampWetScale = { lattice: [number, number, number, number]; rest: StampRestMap; size: [number, number]; first: number; wrapFrom: number };
 
 /** Every flood's scale grid of `deposits` in one buffer, after a grid of ones for every other deposit. */
 export function stampWetScales(device: StampPaintDevice, deposits: Iterable<CompiledStampDeposit>) {
   const grids = new Map<CompiledStampDeposit, StampGrid>();
   for (const deposit of deposits) if (deposit.kind === 'flood') grids.set(deposit, deposit.flood.scale);
-  const ones: StampWetScale = { lattice: [0, 0, 1e9, 0], rest: STAMP_REST_IDENTITY, size: [2, 2], first: 0 };
+  const ones: StampWetScale = { lattice: [0, 0, 1e9, 0], rest: STAMP_REST_IDENTITY, size: [2, 2], first: 0, wrapFrom: 0 };
   const values = new Float32Array(4 + [...grids.values()].reduce((sum, grid) => sum + grid.values.length, 0));
   values.fill(1, 0, 4);
   const at = new Map<CompiledStampDeposit, StampWetScale>();
   let first = 4;
   for (const [deposit, { x0, y0, cell, columns, rows, values: own }] of grids) {
     values.set(own, first);
-    at.set(deposit, { lattice: [x0, y0, cell, 0], rest: deposit.rest ?? STAMP_REST_IDENTITY, size: [columns, rows], first });
+    at.set(deposit, { lattice: [x0, y0, cell, 0], rest: deposit.rest ?? STAMP_REST_IDENTITY, size: [columns, rows], first, wrapFrom: deposit.wrapFrom ?? 0 });
     first += own.length;
   }
   const buffer = device.createBuffer({ size: values.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });

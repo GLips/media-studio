@@ -31,10 +31,10 @@ export const STAMP_DEPOSIT_FLAGS = {
 /**
  * Where a deposit's paint is kept, beside its Deposit (whose slot is full): its fluid's and `within`'s boxes (x, y,
  * width, height), a fill's load field (STAMP_PAINT_FIELD_SHARE); how far round a pixel its stroke's body is looked
- * for (strokeBodyAt); and the map back to where it was planned (StampRestMap), where fields and clumps are read.
+ * for (strokeBodyAt); the map back to where it was planned (StampRestMap); and `wrapFrom` (stageUnwrapped).
  */
 export const STAMP_DEPOSIT_KEEP = gpuUniformLayout('Keep', [
-  ['fluid', 'vec4f'], ['within', 'vec4f'], ['load', 'vec4f'], ['rest', 'vec4f'], ['loadEnds', 'vec2f'], ['loadKind', 'i32'], ['bodyReach', 'f32'],
+  ['fluid', 'vec4f'], ['within', 'vec4f'], ['load', 'vec4f'], ['rest', 'vec4f'], ['loadEnds', 'vec2f'], ['loadKind', 'i32'], ['bodyReach', 'f32'], ['wrapFrom', 'f32'],
 ]);
 /**
  * A wash deposit's landing (StampWetLanding): how its paper dries (stampDryingWords), its painting second, its
@@ -195,10 +195,11 @@ fn strokeBodyAt(pixel: vec2u, here: f32, reach: f32) -> f32 {
 @compute @workgroup_size(${STAMP_WORKGROUP}, ${STAMP_WORKGROUP}) fn deposit(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
   // \`pixel\` is the stage's texel, \`at\` its centre as a painting point, where the paper's tooth and the canvas grains
-  // are read; \`rest\` where it was planned, where the paint's fields and clumps are.
+  // are read; \`rest\` where it was planned, where the paint's fields and clumps are (on a wrapping stage, within the
+  // wrap it was planned in, so its copies past the seam read as it does).
   let pixel = u.origin + id.xy;
   let at = stagePoint(vec2i(pixel));
-  let rest = restPoint(k.rest, at);
+  let rest = restPoint(k.rest, stageUnwrapped(at, k.wrapFrom));
   tracedPixel = pixel;
   // Each layer's stroke as its accumulation resolves it: a glaze's from its densest stamp (the cap's blue or alpha)
   // toward the build held under its cap (red or green).

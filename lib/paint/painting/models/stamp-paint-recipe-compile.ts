@@ -66,6 +66,11 @@ type CompiledStampDepositCommon<A extends CompiledStampAction> = {
    * fields, a flood's local scale and its pigment's clumps are read there. Absent: where it lies.
    */
   rest?: StampRestMap;
+  /**
+   * On a sheet that wraps, the x its pixels are read within a wrap of, before `rest` (stamp-sheet-wrap.ts): its copies
+   * past the seam read its fields as it does. Absent elsewhere.
+   */
+  wrapFrom?: number;
 };
 
 /**
