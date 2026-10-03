@@ -168,7 +168,10 @@ likes; its factory reads nothing but its values and imports. For seeded randomne
 `#lib/picture/motion/models/random.ts`. A source imports its types from `#lib/paint/document/models/painting-document.ts`
 and `#lib/paint/document/models/painting-properties.ts`, and pigments from
 `#lib/paint/materials/models/paint-watercolour-pigments.ts`; a scene imports `painting`, `layersOf`, `bracket`,
-`dissolve` and the shot's types from `#studio`. A source one scene uses sits in that scene's folder
+`dissolve` and the shot's types from `#studio`. A test, or a shot built in a `*-model.ts`, runs in plain Node, which
+can't load `#studio`: it imports `painting` and `checkPaintingSource` from
+`#lib/paint/document/models/painting-source.ts`, and `layersOf`, `bracket`, `dissolve` and `paintedSourceProblems` from
+`#lib/paint/shot/models/shot-selection.ts`. A source one scene uses sits in that scene's folder
 (`scenes/meadow/meadow.painting.ts`); one several scenes share is listed in `project.ts`'s `shared`, and the styles its
 brushes name in its `styles` (docs/private-styles.md). Lint lets any `*.painting.ts` default-export its factory, and
 holds it to a model's imports (no `#studio`, no I/O), since `studio paint check` loads it in plain Node. A helper
@@ -735,7 +738,8 @@ landscape/hill: content, first at hill-flood.area.region.rings[0][0].y
 cloud/cloud-wash: upstream, after hill-flood
 ```
 
-In a test, `checkPaintingSource(source, values?, styles?)` (`#studio`) returns the same problems as records
+In a test, `checkPaintingSource(source, values?, styles?)` (`#lib/paint/document/models/painting-source.ts`) returns
+the same problems as records
 `{severity, owner, field, path, message, footprint?}`, and calls the factory twice to name one that isn't pure.
 `painting(source, values)` throws every error as one, naming its source; errors thrown inside a factory keep their TS
 stack. `paintingEvaluationDiff(a, b)` (`lib/paint/document/models/painting-evaluation-diff.ts`) is the diff as data.
