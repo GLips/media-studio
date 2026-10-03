@@ -789,10 +789,11 @@ What the check says today, and what to do:
 and prints, in each sheet's order (under the sheet's name when there are several), each wash's start and when what it
 wetted had set, and each application's landing time with the `on` it waited for. It writes the painting to
 `<dir>/painting.png` and each layer's film on its sheet's paper and edge (`stampFilmPicture`: the root's paper, or an
-own sheet's card, clear past it) to `<dir>/films/<layer>.png` (`<dir>` is `<source>.solve` by default). `studio paint still <source> [--set …]
-[--out <file>]` checks and solves the same way and writes only the painting, the document's size (`<source>.png`).
-Both end on what the solve cost: solves, entries run, decisions made and reused (a decision is remembered by its
-prefix's key), and readbacks.
+own sheet's card, clear past it) to `<dir>/films/<layer>.png` (`<dir>` is `<source>.solve` by default). `studio
+paint still <source> [--set …] [--out <file>]` checks and solves the same way and writes only the painting, the
+document's size (`<source>.png`). Both end on what the solve cost: solves, entries run, decisions made and reused (a
+decision is remembered by its prefix's key), films kept from an earlier solve or painted, pictures read back, and
+readbacks.
 
 ```
 $ node cli/studio.ts paint check lib/paint/document/models/meadow.painting.ts --solve
@@ -807,7 +808,7 @@ hill (landscape): starts at 203.901 s
 cloud-wash (cloud): starts at 203.901 s
   cloud-wash.applications[0]: lands at 203.901 s
   cloud-wash: set by 356.501 s
-costs: 1 solves, 4 entries run, 4 decisions made, 8 readbacks
+costs: 1 solves, 4 entries run, 4 decisions made, 4 film hits, 2 film misses, 2 picture misses, 10 readbacks
 ```
 
 A refusal prints alone, after the check's summary, and fails the run. What the solve says, and what to do:
