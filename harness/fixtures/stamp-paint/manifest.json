@@ -201,19 +201,19 @@
     "shot/paper-heron": {
       "file": "shot/paper-heron.png",
       "output": "4d0a6b4c84254efc7f1c019eee7e619786192a4c659fcd671f9936373085f77a",
-      "inputs": "3fedc09b32bd22e0ec7e1e95415c1a4e901cb1f8c10af1340b516ed54d84460c",
-      "reason": "vid-157 shot: ENGINE test 6 through a PaintedShot (the paper heron rigged: neck bent through skin on the scene's sheet, wing raised on its own sheet, a reed swung as pieces) and test 7 posed by its rig (the wet-contact foot), first accepted by eye",
+      "inputs": "0ffe82bf74d542cd07df5ed5944b06783862f43732a234e993d2ca04579dc96e",
+      "reason": "re-keyed on three-textures landing over the shot: each sheet program now carries wrap (null here), so the shots' inputs changed; images unchanged",
       "accepted": "2026-10-03",
-      "acceptedOver": "34622a69",
+      "acceptedOver": "84b1fb41",
       "adapter": "apple metal-3"
     },
     "shot/wet-contact": {
       "file": "shot/wet-contact.png",
       "output": "83eb90cc4ece6c4841fe84f1d6b58d017d8e1e5886be99ff800e253adb1de79a",
-      "inputs": "f9d76eccad44737e7f73cbf481482a33586062e9fe56b34e79eb6f1d96023d78",
-      "reason": "vid-157 shot: ENGINE test 6 through a PaintedShot (the paper heron rigged: neck bent through skin on the scene's sheet, wing raised on its own sheet, a reed swung as pieces) and test 7 posed by its rig (the wet-contact foot), first accepted by eye",
+      "inputs": "1ce5fdc87d214f900b846faf2259cbd88485b04939cafc78b2e0d5c20b8c30e0",
+      "reason": "re-keyed on three-textures landing over the shot: each sheet program now carries wrap (null here), so the shots' inputs changed; images unchanged",
       "accepted": "2026-10-03",
-      "acceptedOver": "34622a69",
+      "acceptedOver": "84b1fb41",
       "adapter": "apple metal-3"
     },
     "solved/forward": {

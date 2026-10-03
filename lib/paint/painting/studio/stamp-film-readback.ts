@@ -108,7 +108,7 @@ export function readStampFilmPicture(owner: StampPaintGpuOwner, sheet: StampShee
  * pieces are read so, once per set of films.
  */
 export function readStampSheetsPictureKept(
-  owner: StampPaintGpuOwner, key: string, composite: StampSheetsComposite, crop: StampPixelBox, ground: StampSheetsGround, costs?: StampPaintCostTally,
+  owner: StampPaintGpuOwner, key: string, composite: StampSheetsComposite, crop: StampPointBox, ground: StampSheetsGround, costs?: StampPaintCostTally,
 ): Promise<StampSheetsPicture> {
   return keptStampFilmReadback(owner, `sheets picture ${key} ${ground} ${crop.x},${crop.y},${crop.w},${crop.h}`, () => readStampSheetsPicture(owner, composite, crop, ground, costs), costs);
 }

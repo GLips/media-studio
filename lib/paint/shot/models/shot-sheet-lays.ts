@@ -15,10 +15,9 @@ import {
 } from '#lib/paint/document/models/painting-pose.ts';
 import type { LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
 import { paintingSheetInGroup, type PaintingSheet, type PaintingTree } from '#lib/paint/document/models/painting-tree.ts';
-import type { StampPixelBox } from '#lib/paint/painting/models/stamp-blur-region.ts';
 import type { PaintMoment, StampGroupGlow } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampBoxGrown, type StampBox } from '#lib/paint/painting/models/stamp-region.ts';
-import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
+import type { StampPointBox, StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { PaintRigPicture, PaintRigPiece } from '#lib/paint/rig/models/paint-rig-pieces.ts';
 import type { CompiledPaintedShot, CompiledShotPaintedPlane } from './shot-compile.ts';
 import { shotPlaneLayAt, shotPlanePlaceAt, shotPlanePosesAt, shotRigPosedAt, shotRigPoseAt, shotVisibilityAt } from './shot-frame-plan.ts';
@@ -190,7 +189,7 @@ export function shotPiecesPlaced(plan: ShotPiecesPlan, skin: ShotRigSkin, pictur
 }
 
 /** A solved film as a plan reads it: where it painted (document px, a sheet's stage being its document; null for nowhere) and the key naming its pixels. */
-export type ShotFilmSolved = { readonly box: StampPixelBox | null; readonly key: string };
+export type ShotFilmSolved = { readonly box: StampPointBox | null; readonly key: string };
 
 /**
  * What a painted plane's moments are planned from: its shot and plane; the selection drawn this frame, its compile,

@@ -10,7 +10,7 @@ import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu
 import { GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 import type { StampPixelBox } from '#lib/paint/painting/models/stamp-blur-region.ts';
 import type { StampGroupGlow } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
-import { stampBoxUnion, stampStageTexelsWithin, stampStageWgsl, type StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
+import { stampBoxUnion, stampStageTexelsOf, stampStageTexelsWithin, stampStageWgsl, type StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { createStampLatticePass, STAMP_LATTICE_VERTEX_FLOATS, type StampLatticePass, type StampLatticeSpan } from '#lib/paint/painting/studio/stamp-lattice-pass.ts';
 import { stampPaintTargetWgsl, type StampPaintCompositor, type StampPaintTarget } from '#lib/paint/painting/studio/stamp-paint-compositor.ts';
 import { copyStampTextureBox, dispatchStampCompute, STAMP_WORKGROUP, stampPaintSamplers } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
@@ -128,7 +128,7 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
     if (!kept || !film.box) return null;
     const shape = frame.lays.compositors[sheet].targets.layer, target = layerOf(shape, frame.document.width, frame.document.height);
     if (target.written) copyStampTextureBox(encoder, { texture: target.zeros, x: 0, y: 0 }, { texture: target.texture, x: target.written.x, y: target.written.y }, target.written);
-    const at = { x: film.box.x + margin, y: film.box.y + margin, w: film.box.w, h: film.box.h };
+    const at = stampStageTexelsOf(stage, film.box);
     copyStampTextureBox(encoder, { texture: kept, x: 0, y: 0 }, { texture: target.texture, x: at.x, y: at.y }, at);
     target.written = at;
     return target.texture.createView({ dimension: shape.kind === 'array' ? '2d-array' : '2d' });
@@ -209,7 +209,7 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
             const edge = stampSheetEdge(owner, device, encoder, arena, films[lay.sheet]);
             if (edge) {
               pass.draw(encoder, span, { rest: 'region', motion: !!traced }, { rest: restView, motion: traced, source: null });
-              lays[lay.sheet].layCard(encoder, { edge: edge.view, edgeBox: { ...edge.box, x: edge.box.x + margin, y: edge.box.y + margin }, painting, box, rest: restView });
+              lays[lay.sheet].layCard(encoder, { edge: edge.view, edgeBox: stampStageTexelsOf(stage, edge.box), painting, box, rest: restView });
               laid = stampBoxUnion(laid, box);
             }
           } else if (step.opacity > 0) {

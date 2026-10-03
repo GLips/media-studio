@@ -8,10 +8,9 @@
 import { OrthographicCamera, Scene } from 'three/webgpu';
 import type { NodeKey } from '#lib/paint/document/models/painting-document.ts';
 import { paintingNodeSteps, type PaintingSelectionCompiled } from '#lib/paint/document/models/painting-document-compile.ts';
-import type { StampPixelBox } from '#lib/paint/painting/models/stamp-blur-region.ts';
 import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
-import { stampBoxUnion, stampStageTexelsWithin, type StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
+import { stampBoxUnion, stampStageTexelsWithin, type StampPointBox, type StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { readStampSheetsPictureKept } from '#lib/paint/painting/studio/stamp-film-readback.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import type { StampSheetsComposite } from '#lib/paint/painting/studio/stamp-sheet-composite.ts';
@@ -31,7 +30,7 @@ export type ShotRigRestCels = ReadonlyMap<NodeKey, PaintRigPicture>;
 
 const EMPTY: PaintRigPicture = { x0: 0, y0: 0, w: 0, h: 0, rgba: new Float32Array(0) };
 
-const boxOf = (films: readonly StampSheetFilmKept[]) => films.reduce<StampPixelBox | null>((union, { box }) => stampBoxUnion(union, box), null);
+const boxOf = (films: readonly StampSheetFilmKept[]) => films.reduce<StampPointBox | null>((union, { box }) => stampBoxUnion(union, box), null);
 
 /** What `make` makes from `from`, made once while `made` keeps it. */
 function derivedOf<K, T>(made: { get: (key: K) => T | undefined; set: (key: K, value: T) => void }, from: K, make: () => T): T {
@@ -64,7 +63,7 @@ export function createShotRigPictures(owner: StampPaintGpuOwner, costs?: StampPa
       sheets: compiled.sheets.map(({ program }, s) => ({ program, films: films[s], place: null })),
       steps: laid.map((step) => (step.kind === 'card' ? step : { ...step, film: remap[step.sheet][step.film] })),
     };
-    const crop = laid.reduce<StampPixelBox | null>((union, step) => stampBoxUnion(union, step.kind === 'card' ? boxOf(films[step.sheet]) : solved.films[step.sheet][step.film].box), null);
+    const crop = laid.reduce<StampPointBox | null>((union, step) => stampBoxUnion(union, step.kind === 'card' ? boxOf(films[step.sheet]) : solved.films[step.sheet][step.film].box), null);
     if (!crop) return Promise.resolve(EMPTY);
     const key = laid.map((step) => {
       if (step.kind === 'film') return solved.films[step.sheet][step.film].key;
