@@ -59,7 +59,7 @@ export type PaintRigOverlapZone = { readonly radius: number } | { readonly polyg
 
 /** A part's region of a layer as drawn by hand, in the layer's px; a hinge's with its overlap, if it was given one. */
 export type PaintRigDrawnCut =
-  | { readonly part: Exclude<PaintRigCutDeclaration, { readonly joint: 'hinge' }>; readonly polygon: readonly StampPoint[] }
+  | { readonly part: Exclude<PaintRigCutDeclaration, { readonly joint: 'hinge' }>; readonly polygon: readonly StampPoint[]; readonly overlap?: never }
   | { readonly part: Extract<PaintRigCutDeclaration, { readonly joint: 'hinge' }>; readonly polygon: readonly StampPoint[]; readonly overlap: PaintRigOverlapZone | null };
 
 /** A layer's cuts resolved from drawn regions, with `region`, the regions' union as drawn, before the paint clips it. */
