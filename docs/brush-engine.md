@@ -175,7 +175,9 @@ document-sized, or its picture, premultiplied linear, laid clear or on its sheet
 over the document, an own sheet's card over its union, as its program's `edge` says). A clear picture is laid over
 white and over black and read as the two-point reading against each backing's light, so laid back over any ground it
 shows as it did on paper. Each readback is kept per device under its film's key and backing,
-`STAMP_FILM_READBACK_BYTES` in all, the least recently read given up first, counted as film readback hits and misses.
+`STAMP_FILM_READBACK_BYTES` in all, the least recently read given up first, counted as film readback hits and misses;
+a composite's picture is kept alike under a key naming its films, steps and cards' papers (`readStampSheetsPictureKept`),
+as a shot's rigs read their cels and pieces.
 
 **Capabilities.** A `PaintMedium` declares what it can do besides lay paint (`PaintCapability`): `'wet-history'`,
 `'wet-conditions'`, `'water'`, `'lift'`, `'burnish'`. Watercolour and gouache declare the first four; crayon `lift`
@@ -301,7 +303,8 @@ gives one for a `PaintMoment` (`stamp-paint-frame-state.ts`, `StampPaintFrameAt`
 within the frame shown at `frame`. A `fast` frame through a lens takes its `shutter`, the states as it opens and closes;
 an `exposure` frame is one of a reference frame's. Each group's travel over a `StampMotionSpan` is rasterised through
 its lattice into its plane picture's motion layer: the shutter's (`stampFramePlanMotion`, `shutter`, each group's
-by `stampGroupTravel` between how it lies at the two ends, which a shot calls per occurrence too), which the lens
+by `stampGroupTravel` between how it lies at the two ends; `stampTravel` under it is the one producer of travel, which a
+shot's lattices call per vertex too), which the lens
 gathers, or frame to frame (`transport`, over a travelling group's whole region), which paper advection asks for
 with `renderer.transport({ t, state, from, to })`, apart from any lens. It holds
 each group's:
@@ -433,17 +436,22 @@ as they load, every problem at once: planes far to near, each painted plane's oc
 (read through its `sourceClock`), the rigs, visibility and motion over them, and the camera built over each plane's
 reach (`shot-reach.ts`). Motion (`shot-motion.ts`) hangs each node from its nearest enclosing node, a paintless
 group's too, its clock chained under its parents' and the plane's `clock`. `shot-frame-plan.ts` reads a plane at one
-moment: its selection at its source moment, its node poses, boil epochs, visibility and rig poses. A rig
-(`shot-rigs.ts`) whose group owns its sheet is drawn as pieces: a cel layer of its shown cels
-(`paint-rig-cel-layer.ts`), cut by ownership and posed through three.js meshes into colour and motion
-(`studio/shot-rig-pieces.ts`); any other rig poses its cels' marks before the solve, a skinned cel by its skin mesh.
-A hidden cel stays in its sheet's program and isn't laid, so a cel swap re-solves nothing. `studio/shot-renderer.ts`
-solves each painted plane once a frame (`studio/shot-painted-plane.ts`, through `painting-sheets-solve.ts`), then at
-each exposure lays its sheets through lattices (`shot-sheet-lays.ts`, `shot-lattice.ts`, laid by
-`studio/shot-sheets-lay.ts` over `stamp-lattice-pass.ts`): ground, then each card and film where its owners and the
-plane's place put it, a pieces rig's picture at its card by the compositor's `layPicture`, a faded group's span mixed
-back by its visibility (`studio/shot-group-pass.ts`). Picture and three planes are the old path's sources, laid
-through `stamp-lens-source-layers.ts`; they read no painted textures yet.
+moment: its selection at its source moment, its node poses (boil wobble out of the poses marks solve under, in the
+ones the lay reads), boil epochs, visibility and rig poses. A rig (`shot-rigs.ts`) is found over its cels as all the
+selection's paint makes them unposed, whatever a timed prefix has painted yet. One whose group owns its sheet is
+drawn as pieces: a cel layer of its shown cels (`paint-rig-cel-layer.ts`), cut by ownership and posed through
+three.js meshes into colour and motion (`studio/shot-rig-pieces.ts`); any other rig poses its cels' marks before the
+solve, a skinned cel by its skin mesh. A hidden cel stays in its sheet's program and isn't laid, so a cel swap
+re-solves nothing. `studio/shot-renderer.ts` solves each painted plane once a frame (`studio/shot-painted-plane.ts`,
+through `painting-sheets-solve.ts`); then each exposure orders its drawables (`shot-plan.ts`) and plans each plane's
+moment purely (`shotPlaneLayPlan`, `shot-sheet-lays.ts`): its steps through lattices (`shot-lattice.ts`), its ground,
+its pieces rigs posed, the spans of the group occurrences that composite on their own (`shot-visibility.ts`), and a
+key naming all of it. `studio/shot-sheets-lay.ts` lays it over `stamp-lattice-pass.ts`: ground, then each card and
+film where its owners and the plane's place put it, a pieces rig's picture at its card by the compositor's
+`layPicture`, a faded group's span mixed back by its visibility (`studio/shot-group-pass.ts`). The plane's picture is
+the old renderer's pass (`painting/studio/stamp-plane-picture-pass.ts`), kept in the device's cache under the plan's
+key. Picture and three planes are the old path's sources, laid through `stamp-lens-source-layers.ts`; they read no
+painted textures yet.
 
 Its presentation, as models the passes will draw from, refused by a shot's load until they're drawn: a path
 mask's capsules for the first `revealPx` of inked length, pen-ups adding none, and the `alphaOf` graph, checked
@@ -498,9 +506,10 @@ moved, the grain under its body's paint stays and its wing's cut-out takes its o
 lands where the pose puts it), and three stills (`solved/`) accepted by eye. The shot's cases (`stamp-gate-shots.ts`)
 draw through the shot's renderer: a rigged paper heron, its neck skinned to its body on the scene's sheet, bent, then
 swapped to its lowered cel with nothing solved, then faded halfway as one group, lying between it shown and hidden
-with nothing solved, and reeds owning their sheet drawn as pieces, matching that sheet laid unrigged at rest away from
-a 1.5 px edge band; and the wet-contact foot posed by a rig, resuming its sheet's
-solve from its checkpoints. Each shot's frame is a baseline (`shot/`) accepted by eye. Pre-commit runs it on the staged tree when a
+with nothing solved, and reeds owning their sheet drawn as pieces, solving at rest as unrigged and swinging when
+posed; the heron boiling, its wobble moving finished paint with nothing solved; and the wet-contact foot posed by a
+rig, resuming its sheet's solve from its checkpoints, and painted in as the shot plays, its rig drawing before the
+foot's first stroke. Each shot's frame is a baseline (`shot/`) accepted by eye. Pre-commit runs it on the staged tree when a
 path it covers changes; no adapter, a timeout
 or a difference fails the commit. Public baselines live in `harness/fixtures/stamp-paint/`, a pack's brushes' in
 `work/validation/stamp-paint/` (`stamp:gate -- private run`). A baseline changes only by `update <ids> --reason …`,
