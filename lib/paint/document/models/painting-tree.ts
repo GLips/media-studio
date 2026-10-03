@@ -1,7 +1,7 @@
-// painting-sheets.ts: the tree of a PaintingDocument resolved: each layer and group with the groups enclosing it, the
-// medium it paints in and the sheet it lies on. A sheet is one painting (one paper, one cut edge); the root's covers
-// the document, an own sheet's lies as far as its layers' paint does. The checks read media from here; the compiler
-// and the solver read the sheets.
+// painting-tree.ts: the tree of a PaintingDocument resolved: each layer and group with the groups enclosing it, the
+// medium it paints in and the sheet it lies on, and the document's sheets. A sheet is one painting (one paper, one cut
+// edge); the root's covers the document, an own sheet's lies as far as its layers' paint does. The checks read media
+// from here; each sheet's order, the compiler and the solver read its layers, groups and sheets.
 
 import type { GroupKey, Key, Layer, LayerGroup, LayerNode, MediumName, Paper, PaintingDocument } from './painting-document.ts';
 
@@ -27,13 +27,19 @@ export type PaintingNodePlace =
   | (PaintingNodePlaceCommon & { readonly kind: 'group'; readonly node: LayerGroup });
 
 export type PaintingLayerPlace = Extract<PaintingNodePlace, { readonly kind: 'layer' }>;
+export type PaintingGroupPlace = Extract<PaintingNodePlace, { readonly kind: 'group' }>;
 
-/** Every sheet, the root's first and then each own sheet in document order, and every node in document order. */
-export type PaintingSheets = {
+/**
+ * A document's tree: every sheet, the root's first and then each own sheet in document order; every node in document
+ * order, and by key; its layers (back to front) and its groups, each in document order. An ordinal of a layer or a
+ * group indexes `layers` or `groups`.
+ */
+export type PaintingTree = {
   readonly sheets: readonly PaintingSheet[];
   readonly nodes: readonly PaintingNodePlace[];
   readonly byKey: ReadonlyMap<Key, PaintingNodePlace>;
   readonly layers: readonly PaintingLayerPlace[];
+  readonly groups: readonly PaintingGroupPlace[];
 };
 
 /** The sheet `node` lies on: its parent's, the root's for `scene`, or a new one of its own. */
@@ -54,7 +60,7 @@ export const isPaintingGroup = (node: LayerNode): node is LayerGroup => Array.is
  * Medium is inherited likewise.
  * Expects a tree whose shape and keys are checked (painting-document-check.ts).
  */
-export function paintingSheets(paintingDocument: PaintingDocument): PaintingSheets {
+export function paintingTree(paintingDocument: PaintingDocument): PaintingTree {
   const root: PaintingSheet = { owner: null, paper: paintingDocument.paper, edge: 'document', water: paintingDocument.medium };
   const sheets: PaintingSheet[] = [root];
   const nodes: PaintingNodePlace[] = [];
@@ -76,11 +82,12 @@ export function paintingSheets(paintingDocument: PaintingDocument): PaintingShee
     nodes,
     byKey: new Map(nodes.map((place) => [place.node.key, place])),
     layers: nodes.filter((place): place is PaintingLayerPlace => place.kind === 'layer'),
+    groups: nodes.filter((place): place is PaintingGroupPlace => place.kind === 'group'),
   };
 }
 
 /** The layers `place` holds: itself for a layer; every layer below it for a group. */
-export function paintingLayersUnder(sheets: PaintingSheets, place: PaintingNodePlace): PaintingLayerPlace[] {
+export function paintingLayersUnder(tree: PaintingTree, place: PaintingNodePlace): PaintingLayerPlace[] {
   if (place.kind === 'layer') return [place];
-  return sheets.layers.filter(({ groups }) => groups.includes(place.node.key));
+  return tree.layers.filter(({ groups }) => groups.includes(place.node.key));
 }

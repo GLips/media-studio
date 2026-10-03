@@ -21,9 +21,10 @@ const ID = 'scene-ownership';
  * Roles a scene's code can reach, and so roles held to this check. An unclassified file is here too: a scene already
  * reaching one (baselined) mustn't become a silent path into another scene.
  */
-const SCENE_REACHABLE = new Set(['scene', 'scene-helper', 'model', 'shared', 'timeline', 'sfx', 'brand', 'unclassified']);
-/** Roles any scene-reachable file may import. */
+const SCENE_REACHABLE = new Set(['scene', 'scene-helper', 'model', 'painting-source', 'shared', 'timeline', 'sfx', 'brand', 'unclassified']);
+/** Roles any scene-reachable file may import, and a painting source project.ts shares. */
 const OPEN_TARGETS = new Set(['shared', 'timeline', 'sfx', 'media', 'generated', 'brand']);
+const isOpenTarget = (role: ProjectRole) => OPEN_TARGETS.has(role.role) || (role.role === 'painting-source' && role.scene === undefined);
 
 const sceneOf = (role: ProjectRole) => ('scene' in role ? role.scene : undefined);
 
@@ -37,7 +38,7 @@ export const sceneOwnershipCheck: StructuralCheck = {
       for (const edge of context.edgesFrom(file)) {
         if (edge.target.kind !== 'module') continue;
         const to = context.positionOf(edge.target.path);
-        if (to.kind !== 'project' || to.project !== from.project || OPEN_TARGETS.has(to.role)) continue;
+        if (to.kind !== 'project' || to.project !== from.project || isOpenTarget(to)) continue;
         const own = sceneOf(from), theirs = sceneOf(to);
         if (own !== undefined && own === theirs) continue;
         let message: string;

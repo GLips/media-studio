@@ -6,9 +6,9 @@
 import type { AnyApplication, LayerKey, LayerNode, PaintingDocument, Wash, WashKey } from './painting-document.ts';
 import { paintingFirstDifference, type PaintingDatum } from './painting-document-difference.ts';
 import { paintingApplicationOwner } from './painting-problem.ts';
-import { paintingSheetOrders, paintingSheetWashes, type PaintingSheetEntry, type PaintingSheetOrder } from './painting-sheet-program.ts';
-import { isPaintingGroup, paintingSheetName, type PaintingSheets } from './painting-sheets.ts';
+import { paintingSheetOrders, paintingSheetWashes, type PaintingSheetOrder } from './painting-sheet-program.ts';
 import type { PaintingEvaluation } from './painting-source.ts';
+import { isPaintingGroup, paintingSheetName, type PaintingTree } from './painting-tree.ts';
 
 /** A wash's change: none; in its own applications or fields (the first differing path); or after a change on its sheet. */
 export type PaintingWashChange =
@@ -39,48 +39,60 @@ function documentChanges(a: PaintingDocument, b: PaintingDocument): string[] {
     if (found !== null) changes.push(found);
   };
   for (const field of ['widthPx', 'heightPx', 'medium', 'paper'] as const) compare(a[field], b[field], field);
-  const visit = (x: readonly LayerNode[], y: readonly LayerNode[], path: string) => y.forEach((node, i) => {
-    const at = `${path}[${i}]`, before = x.at(i);
-    compare(before ? nodeFrame(before) : null, nodeFrame(node), at);
-    if (before && isPaintingGroup(before) && isPaintingGroup(node)) visit(before.children, node.children, `${at}.children`);
-  });
+  const visit = (x: readonly LayerNode[], y: readonly LayerNode[], path: string) => {
+    for (let i = 0; i < Math.max(x.length, y.length); i++) {
+      const at = `${path}[${i}]`, before = x.at(i), after = y.at(i);
+      compare(before ? nodeFrame(before) : null, after ? nodeFrame(after) : null, at);
+      if (before && after && isPaintingGroup(before) && isPaintingGroup(after)) visit(before.children, after.children, `${at}.children`);
+    }
+  };
   visit(a.layers, b.layers, 'layers');
   return changes;
 }
 
-/** What a sheet's every solve starts from: the document's size, the paper's solve half, its water and its clock. */
+/**
+ * What a sheet's every solve starts from (ENGINE 4.2's K₀): the document's size, the paper's solve half, its water
+ * and its clock. Neither its edge nor its paper's colour is solved.
+ */
 const sheetHead = (paintingDocument: PaintingDocument, order: PaintingSheetOrder): PaintingDatum => ({
   widthPx: paintingDocument.widthPx, heightPx: paintingDocument.heightPx, grain: order.sheet.paper.grain, absorbency: order.sheet.paper.absorbency,
-  water: order.sheet.water, clock: order.clock, edge: order.sheet.edge,
+  water: order.sheet.water, clock: order.clock,
 });
 
+/** An entry as its solve reads it, and the owners its datum's first parts name in a path. */
+type EntryRead = { readonly datum: PaintingDatum; readonly owners: Readonly<Record<'layer' | 'wash' | 'application', string>> };
+
 /**
- * What an entry brings to its solve: its application and wash without keys (a `clipTo` by the clipped wash's place),
- * where it stands in its sheet's order (its layer by its place among the sheet's layers) and its layer's medium.
+ * What each entry of `order` brings to its solve, keys left out (a `clipTo` by the clipped wash's place): its layer's
+ * film at the layer's first entry, its wash's fields at the wash's first, then its application and where it stands.
+ * `lastOfWash` makes an application added or dropped at a wash's end read.
  */
-function entryDatum(sheets: PaintingSheets, layers: readonly number[], entry: PaintingSheetEntry): PaintingDatum {
-  const place = sheets.layers[entry.layer], wash: Wash = place.node.washes[entry.wash];
-  const application: AnyApplication = wash.applications[entry.application];
-  const clipTo = wash.clipTo === undefined ? undefined : place.node.washes.findIndex(({ key }) => key === wash.clipTo);
-  return {
-    application: { ...application, key: undefined },
-    wash: { ...wash, key: undefined, clipTo, applications: wash.applications.length },
-    place: { layer: layers.indexOf(entry.layer), wash: entry.wash, application: entry.application, chain: entry.chain, orderTime: entry.orderTime, medium: place.medium },
-  };
+function entryReads(tree: PaintingTree, order: PaintingSheetOrder): EntryRead[] {
+  const seen = new Set<string>();
+  return order.entries.map((entry, k) => {
+    const { slots, layer: ordinal } = order.layers[entry.layer], place = tree.layers[ordinal], wash: Wash = place.node.washes[entry.wash];
+    const application: AnyApplication = wash.applications[entry.application];
+    const washId = `${entry.layer}/${entry.wash}`, firstOfLayer = !seen.has(`${entry.layer}`), firstOfWash = !seen.has(washId);
+    seen.add(`${entry.layer}`).add(washId);
+    const clipTo = wash.clipTo === undefined ? undefined : place.node.washes.findIndex(({ key }) => key === wash.clipTo);
+    const datum = {
+      layer: firstOfLayer ? { slots } : undefined,
+      wash: firstOfWash ? { ...wash, key: undefined, clipTo, applications: undefined } : undefined,
+      application: { ...application, key: undefined },
+      place: {
+        layer: entry.layer, wash: entry.wash, application: entry.application, chain: entry.chain, orderTime: entry.orderTime, medium: place.medium,
+        lastOfWash: order.entries.findIndex((other, j) => j > k && other.layer === entry.layer && other.wash === entry.wash) < 0,
+      },
+    };
+    return { datum, owners: { layer: place.node.key, wash: wash.key, application: paintingApplicationOwner(wash, application, entry.application) } };
+  });
 }
 
-/** The layers `order` paints, by their index in `PaintingSheets.layers`, in the order they first come. */
-const orderLayers = (order: PaintingSheetOrder) => [...new Set(order.entries.map(({ layer }) => layer))];
-
-/** `path` within an entry's datum, named from its owner: `hill-flood.area…`, `hill.clock…`. */
-function ownedPath(sheets: PaintingSheets, entry: PaintingSheetEntry, path: string): string {
-  const wash = sheets.layers[entry.layer].node.washes[entry.wash];
-  const owner = paintingApplicationOwner(wash, wash.applications[entry.application], entry.application);
-  const [part, ...rest] = path.split('.');
-  const inner = rest.join('.');
-  if (part === 'wash') return inner ? `${wash.key}.${inner}` : wash.key;
-  if (part === 'place') return `${owner}.${inner}`;
-  return inner ? `${owner}.${inner}` : owner;
+/** Where `path`, a path within an entry's datum, lies by its owner: `water.slots.palette[1]`, `hill-flood.area…`. */
+function ownedPath({ owners }: EntryRead, path: string): { readonly owner: string; readonly path: string } {
+  const [part, ...rest] = path.split('.'), inner = rest.join('.');
+  const owner = part === 'layer' || part === 'wash' ? owners[part] : owners.application;
+  return { owner, path: inner ? `${owner}.${inner}` : owner };
 }
 
 /** A wash's change from the first path that differs in it, or else the change upstream of it on its sheet. */
@@ -95,23 +107,24 @@ function washChange(path: string | undefined, cause: string | undefined): Painti
  * conservative, never a missed change.
  */
 export function paintingEvaluationDiff(a: PaintingEvaluation, b: PaintingEvaluation): PaintingEvaluationDiff {
-  const before = paintingSheetOrders(a.sheets), after = paintingSheetOrders(b.sheets);
+  const before = paintingSheetOrders(a.tree), after = paintingSheetOrders(b.tree);
   const washes = after.flatMap((order, s) => {
-    const earlier = before.at(s), layersBefore = earlier ? orderLayers(earlier) : [], layersAfter = orderLayers(order);
+    const earlier = before.at(s), then = earlier ? entryReads(a.tree, earlier) : [], now = entryReads(b.tree, order);
     const headSame = earlier && paintingFirstDifference(sheetHead(a.document, earlier), sheetHead(b.document, order), '', 'identity') === null;
     let from = headSame ? null : paintingSheetName(order.sheet);
     const content = new Map<string, string>(), upstream = new Map<string, string>();
     order.entries.forEach((entry, k) => {
-      const id = `${entry.layer}/${entry.wash}`, then = earlier?.entries.at(k);
+      const id = `${entry.layer}/${entry.wash}`, paired = then.at(k);
       if (from !== null && !upstream.has(id)) upstream.set(id, from);
-      const path = then ? paintingFirstDifference(entryDatum(a.sheets, layersBefore, then), entryDatum(b.sheets, layersAfter, entry), '', 'identity') : 'application';
+      const path = paired ? paintingFirstDifference(paired.datum, now[k].datum, '', 'identity') : 'application';
       if (path === null) return;
-      if (!content.has(id)) content.set(id, ownedPath(b.sheets, entry, path));
-      from ??= ownedPath(b.sheets, entry, 'application');
+      const owned = ownedPath(now[k], path);
+      if (!content.has(id)) content.set(id, owned.path);
+      from ??= owned.owner;
     });
-    return paintingSheetWashes(b.sheets, order.entries).map(({ layer, wash, node }) => {
-      const id = `${layer}/${wash}`, path = content.get(id), cause = upstream.get(id);
-      return { layer: b.sheets.layers[layer].node.key, wash: node.key, change: washChange(path, cause) };
+    return paintingSheetWashes(b.tree, order).map(({ layer, wash, place, node }) => {
+      const id = `${layer}/${wash}`;
+      return { layer: place.node.key, wash: node.key, change: washChange(content.get(id), upstream.get(id)) };
     });
   });
   return { document: documentChanges(a.document, b.document), washes };

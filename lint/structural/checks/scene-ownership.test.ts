@@ -76,3 +76,19 @@ test("a shared list is read as written: an entry built at runtime, or outside th
     'work/projects/q/project.ts:shared unreadable',
   ]);
 });
+
+test("a painting source is its scene's, beside it or in its folder, or every scene's when project.ts shares it", () => {
+  const findings = runCheckOnFiles('scene-ownership', {
+    'work/projects/p/project.ts': "export default { capability: 'silent', shared: ['paintings/pond.painting.ts'] };\n",
+    'work/projects/p/scenes/meadow/meadow.painting.ts': 'export default () => ({});\n',
+    // Legal: its own source, and the shared one.
+    'work/projects/p/scenes/meadow.tsx': "import meadow from './meadow/meadow.painting.ts';\nimport pond from '../paintings/pond.painting.ts';\n",
+    // Adversarial: another scene's source, and a shared source reaching back into a scene's.
+    'work/projects/p/scenes/finale.tsx': "import meadow from './meadow/meadow.painting.ts';\n",
+    'work/projects/p/paintings/pond.painting.ts': "import meadow from '../scenes/meadow/meadow.painting.ts';\nexport default meadow;\n",
+  });
+  assert.deepEqual(caught(findings), [
+    'work/projects/p/paintings/pond.painting.ts:../scenes/meadow/meadow.painting.ts',
+    'work/projects/p/scenes/finale.tsx:./meadow/meadow.painting.ts',
+  ]);
+});

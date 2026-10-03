@@ -1,8 +1,9 @@
 // painting-problem.ts: what a check of a painting source finds. Each problem names its owner (a document key, an
-// unkeyed application as `<wash>.applications[i]`, `property <name>`, or `document`), the field within it, and the
-// footprint it's about, so `studio paint check` and a failing render say where to look, by key and on the paper.
+// unkeyed application as `<wash>.applications[i]`, `property <name>`, `document`, or a shot's plane or occurrence),
+// the field within it, and the footprint it's about, so `studio paint check` and a failing render say where to look,
+// by key and on the paper. Also the small predicates every check stage reads values with.
 
-import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
+import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import type { AnyApplication, Wash } from './painting-document.ts';
 
 export type PaintingProblemSeverity = 'error' | 'warning';
@@ -13,12 +14,26 @@ export type PaintingProblemSeverity = 'error' | 'warning';
  */
 export const isPaintingList = <T>(value: readonly T[] | undefined): value is readonly T[] => Array.isArray(value);
 
+/** A 0..1 share. */
+export const isPaintingShare = (value: number) => value >= 0 && value <= 1;
+
+/** A finite length or scale above 0. */
+export const isPaintingPositive = (value: number) => value > 0 && Number.isFinite(value);
+
+export const isPaintingFinitePoint = ({ x, y }: StampPoint) => Number.isFinite(x) && Number.isFinite(y);
+
+/** A colour as a document writes one: `#rrggbb`. */
+export const isPaintingHexColor = (text: string) => /^#[0-9a-f]{6}$/i.test(text);
+
 /** An application's name in problems: its key, or `<wash>.applications[i]`. */
 export const paintingApplicationOwner = (wash: Wash, application: AnyApplication, i: number) => application.key ?? `${wash.key}.applications[${i}]`;
 
+/** `field` within its owner, after `prefix`: `area` and `region` make `area.region`. */
+export const paintingField = (prefix: string, field: string) => (prefix && field ? `${prefix}.${field}` : prefix || field);
+
 /**
  * One problem. `path` is `<owner>.<field>`, `hill.applications[1].area.region.rings[0]`. `footprint` is the box of the
- * geometry it's about, in document px; none for a property, the document's shape or a key.
+ * geometry it's about, in document px; none for a property, the document's shape, a key or a shot's selection.
  */
 export type PaintingProblem = {
   readonly severity: PaintingProblemSeverity;
@@ -33,9 +48,8 @@ export type PaintingProblem = {
 export function paintingProblem(
   severity: PaintingProblemSeverity, owner: string, field: string, message: string, footprint?: StampBox | null,
 ): PaintingProblem {
-  const path = field ? `${owner}.${field}` : owner;
   const box = footprint && [footprint.x0, footprint.y0, footprint.x1, footprint.y1].every(Number.isFinite) ? footprint : undefined;
-  return { severity, owner, field, path, message, ...(box && { footprint: box }) };
+  return { severity, owner, field, path: paintingField(owner, field), message, ...(box && { footprint: box }) };
 }
 
 export const paintingErrors = (problems: readonly PaintingProblem[]) => problems.filter(({ severity }) => severity === 'error');
@@ -68,10 +82,4 @@ export function paintingProblemsError(source: string, problems: readonly Paintin
   const errors = paintingErrors(problems);
   const count = errors.length === 1 ? 'a problem' : `${errors.length} problems`;
   return new Error(`painting ${source} has ${count}:\n${errors.map((problem) => `  ${paintingProblemText(problem)}`).join('\n')}`);
-}
-
-/** The box holding both, either possibly absent. */
-export function paintingBoxUnion(a: StampBox | undefined, b: StampBox | undefined): StampBox | undefined {
-  if (!a || !b) return a ?? b;
-  return { x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) };
 }

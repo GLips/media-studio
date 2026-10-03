@@ -221,15 +221,16 @@ export type Wetness = 'wet' | 'damp' | 'dry';
 type Labelled = (Deposit & { readonly effect?: undefined }) | (Deposit<WaterCharge> & { readonly effect: 'bloom' });
 
 /**
- * A deposit landing at the earliest painting time at or after its predecessor's at which `on` holds; without `on`, at
- * its predecessor's time, into whatever is still open. `key` names it in problems and reports; left out, problems name
- * it `<wash>.applications[i]`.
+ * A deposit landing at the earliest painting time at or after its predecessor's in its sheet's order at which `on`
+ * holds; without `on`, at its predecessor's time, into whatever is still open. `key` names it in problems and reports;
+ * left out, problems name it `<wash>.applications[i]`.
  */
 export type Application = Labelled & { readonly key?: ApplicationKey; readonly on?: Wetness; readonly at?: never };
 
 /**
- * In a clocked wash an application may fix `at`, a scene second at or after the wash's start. It never moves; if
- * `on` fails there, it's an error. On a shared sheet it lands among other washes' applications by that time.
+ * In a clocked wash an application may fix `at`, a scene second at or after the wash's start and its predecessor's
+ * landing. It never moves; if `on` fails there, it's an error. On a shared sheet it lands among other washes'
+ * applications by that time.
  */
 export type TimedApplication = Labelled & { readonly key?: ApplicationKey; readonly on?: Wetness; readonly at?: number };
 

@@ -4,16 +4,24 @@
 // comparison and the compiler read one order. Entries name layers, washes and groups by ordinal: keys never reach a
 // solve.
 
-import type { AnyApplication, Layer, Wash } from './painting-document.ts';
-import type { PaintingSheet, PaintingSheets } from './painting-sheets.ts';
+import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
+import type { AnyApplication, Layer, MediumName, Wash } from './painting-document.ts';
+import { paintingLayerSlots, type PaintingPigmentSlots } from './painting-pigment-slots.ts';
+import type { PaintingLayerPlace, PaintingSheet, PaintingTree } from './painting-tree.ts';
 
 /** A clocked wash's start and each application's order time, in scene seconds; both null in an unclocked wash. */
 export type PaintingWashOrderTimes = { readonly start: number | null; readonly times: readonly (number | null)[] };
 
 /**
- * One application in its sheet's order: its layer (an index into `PaintingSheets.layers`), wash and application
- * ordinals, `chain`, the groups between the sheet's owner and its layer (ordinals among the document's groups,
- * outermost first), whose poses move its marks before painting, and its order time (null in the unclocked run).
+ * One layer a sheet's order paints, back to front: `layer`, its ordinal in `PaintingTree.layers`; the medium its paint
+ * lands by; its film's layout.
+ */
+export type PaintingSheetLayer = { readonly layer: number; readonly medium: MediumName; readonly slots: PaintingPigmentSlots };
+
+/**
+ * One application in its sheet's order: its layer (an index into its order's `layers`), wash and application
+ * ordinals; `chain`, the groups between the sheet's owner and its layer (indexes into `PaintingTree.groups`, outermost
+ * first), whose poses move its marks before painting; and its order time (null in the unclocked run).
  */
 export type PaintingSheetEntry = {
   readonly layer: number;
@@ -24,70 +32,87 @@ export type PaintingSheetEntry = {
 };
 
 /**
- * The one clock a sheet's clocked wet washes share: `scale` maps model time to scene time from `origin`, the earliest
- * of their numeric origins; `none` when no clocked wet wash paints the sheet.
+ * The one clock a sheet's clocked wet washes share: `scale` maps model time to scene time from `origin`, where its
+ * clocked run starts: the earliest start of the clocked washes painting the sheet. `none` when no clocked wet wash does.
  */
 export type PaintingSheetClock = { readonly kind: 'none' } | { readonly kind: 'scale'; readonly scale: number; readonly origin: number } | { readonly kind: 'instant' } | { readonly kind: 'never' };
 
-export type PaintingSheetOrder = { readonly sheet: PaintingSheet; readonly clock: PaintingSheetClock; readonly entries: readonly PaintingSheetEntry[] };
+/** A sheet's order: its record, its clock, the layers on it back to front, and its entries. */
+export type PaintingSheetOrder = {
+  readonly sheet: PaintingSheet;
+  readonly clock: PaintingSheetClock;
+  readonly layers: readonly PaintingSheetLayer[];
+  readonly entries: readonly PaintingSheetEntry[];
+};
 
 /** Whether `wash` reads and writes its sheet's water and keeps a clock with it. */
 export const isPaintingClockedWetWash = (wash: Wash) => wash.clock !== undefined && wash.wetHistory !== false;
 
 /**
  * Each wash of `layer` with its order times: a clocked wash starts at its numeric origin, or under `'set'` at the
- * latest order time of the layer's earlier clocked washes (null if it has none, which validation refuses); each
- * application takes its fixed `at`, else its predecessor's time, the first the wash's start.
+ * latest start or order time of the layer's earlier clocked washes (null if it has none, which validation refuses);
+ * each application takes its fixed `at`, else its predecessor's time, the first the wash's start.
  */
 export function paintingWashOrderTimes(layer: Layer): PaintingWashOrderTimes[] {
   let latest: number | null = null;
+  const reach = (time: number | null) => {
+    if (time !== null) latest = Math.max(latest ?? time, time);
+  };
   return layer.washes.map((wash) => {
     const applications: readonly AnyApplication[] = wash.applications;
     if (!wash.clock) return { start: null, times: applications.map(() => null) };
     const start = wash.clock.origin === 'set' ? latest : wash.clock.origin;
     let previous = start;
     const times = applications.map(({ at }) => (previous = at ?? previous));
-    for (const time of times) if (time !== null) latest = Math.max(latest ?? time, time);
+    // An empty clocked wash still starts, and a later `'set'` wash waits for it.
+    [start, ...times].forEach(reach);
     return { start, times };
   });
 }
 
-/** The clock of the sheet whose clocked wet washes, in its order, are `washes`: the first one's. */
-function paintingSheetClock(washes: readonly Wash[]): PaintingSheetClock {
-  const first = washes[0]?.clock;
+/**
+ * The clock of a sheet whose clocked wet washes, in its order, are `wet`: the first one's, its scale run from
+ * `origin`, the earliest start among the sheet's clocked washes.
+ */
+function paintingSheetClock(wet: readonly Wash[], origin: number): PaintingSheetClock {
+  const first = wet[0]?.clock;
   if (!first) return { kind: 'none' };
   if (first.dryingScale === 'instant' || first.dryingScale === 'never') return { kind: first.dryingScale };
-  const origins = washes.flatMap(({ clock }) => (typeof clock?.origin === 'number' ? [clock.origin] : []));
-  return { kind: 'scale', scale: first.dryingScale, origin: Math.min(...origins) };
+  return { kind: 'scale', scale: first.dryingScale, origin };
 }
 
+/** A wash an order paints: its layer and wash ordinals as its entries give them, its layer's place, and itself. */
+export type PaintingSheetWash = { readonly layer: number; readonly wash: number; readonly place: PaintingLayerPlace; readonly node: Wash };
+
 /** The washes `order` paints, each once, in the order their first applications come. */
-export function paintingSheetWashes(sheets: PaintingSheets, order: readonly PaintingSheetEntry[]): { readonly layer: number; readonly wash: number; readonly node: Wash }[] {
+export function paintingSheetWashes(tree: PaintingTree, order: Pick<PaintingSheetOrder, 'layers' | 'entries'>): PaintingSheetWash[] {
   const seen = new Set<string>();
-  return order.flatMap(({ layer, wash }) => {
+  return order.entries.flatMap(({ layer, wash }) => {
     const id = `${layer}/${wash}`;
     if (seen.has(id)) return [];
     seen.add(id);
-    return [{ layer, wash, node: sheets.layers[layer].node.washes[wash] }];
+    const place = tree.layers[order.layers[layer].layer];
+    return [{ layer, wash, place, node: place.node.washes[wash] }];
   });
 }
 
-/** Every sheet's order and clock, the root's first. Expects a document whose washes and clocks are checked. */
-export function paintingSheetOrders(sheets: PaintingSheets): PaintingSheetOrder[] {
-  const groups = sheets.nodes.flatMap(({ kind, node }) => (kind === 'group' ? [node.key] : []));
-  return sheets.sheets.map((sheet) => {
-    const unclocked: PaintingSheetEntry[] = [], clocked: PaintingSheetEntry[] = [];
-    sheets.layers.forEach((place, layer) => {
+/** Every sheet's order and clock, the root's first. Expects a document whose washes, clocks and mixes are checked. */
+export function paintingSheetOrders(tree: PaintingTree): PaintingSheetOrder[] {
+  return tree.sheets.map((sheet) => {
+    const layers: PaintingSheetLayer[] = [], unclocked: PaintingSheetEntry[] = [], clocked: PaintingSheetEntry[] = [], starts: number[] = [];
+    tree.layers.forEach((place, ordinal) => {
       if (place.sheet !== sheet) return;
+      const layer = layers.push({ layer: ordinal, medium: place.medium, slots: paintingLayerSlots(place.node, PAINT_MEDIA[place.medium]) }) - 1;
       const below = sheet.owner === null ? 0 : place.groups.indexOf(sheet.owner) + 1;
-      const chain = sheet.owner === place.node.key ? [] : place.groups.slice(below).map((key) => groups.indexOf(key));
-      paintingWashOrderTimes(place.node).forEach(({ times }, wash) => times.forEach((orderTime, application) => {
-        (orderTime === null ? unclocked : clocked).push({ layer, wash, application, chain, orderTime });
-      }));
+      const chain = sheet.owner === place.node.key ? [] : place.groups.slice(below).map((key) => tree.groups.findIndex(({ node }) => node.key === key));
+      paintingWashOrderTimes(place.node).forEach(({ start, times }, wash) => {
+        if (start !== null && times.length > 0) starts.push(start);
+        times.forEach((orderTime, application) => (orderTime === null ? unclocked : clocked).push({ layer, wash, application, chain, orderTime }));
+      });
     });
     // toSorted is stable: ties keep document order.
-    const entries = [...unclocked, ...clocked.toSorted((a, b) => (a.orderTime ?? 0) - (b.orderTime ?? 0))];
-    const wet = paintingSheetWashes(sheets, entries).map(({ node }) => node).filter(isPaintingClockedWetWash);
-    return { sheet, clock: paintingSheetClock(wet), entries };
+    const order = { sheet, layers, entries: [...unclocked, ...clocked.toSorted((a, b) => (a.orderTime ?? 0) - (b.orderTime ?? 0))] };
+    const wet = paintingSheetWashes(tree, order).map(({ node }) => node).filter(isPaintingClockedWetWash);
+    return { ...order, clock: paintingSheetClock(wet, Math.min(...starts)) };
   });
 }

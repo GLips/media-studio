@@ -44,15 +44,23 @@ export function stampRegionPolygon(region: StampRegion): readonly StampPoint[] {
  */
 export function checkedStampPolygon(region: StampRegion, what: string): readonly StampPoint[] {
   const polygon = stampRegionPolygon(region);
-  let twiceArea = 0;
-  polygon.forEach((a, i) => {
-    const b = polygon[(i + 1) % polygon.length];
-    twiceArea += a.x * b.y - b.x * a.y;
-  });
-  if (polygon.length < 3 || !polygon.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y)) || !twiceArea) {
+  if (polygon.length < 3 || !polygon.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y)) || !stampRingArea(polygon)) {
     throw new Error(`stamp paint: ${what}'s region isn't a shape: it needs at least 3 finite points enclosing some area`);
   }
   return polygon;
+}
+
+/**
+ * A closed ring's signed area, px² (shoelace): positive when it turns clockwise on screen (y down), as
+ * stampGridContours walks an outer loop; negative the other way.
+ */
+export function stampRingArea(ring: readonly StampPoint[]): number {
+  let twice = 0;
+  ring.forEach((a, i) => {
+    const b = ring[(i + 1) % ring.length];
+    twice += a.x * b.y - b.x * a.y;
+  });
+  return twice / 2;
 }
 
 /** The box round `polygon`, grown by `pad` px each way. */
@@ -107,12 +115,48 @@ function stampPolygonInside(polygon: readonly StampPoint[], x: number, y: number
 /** Each polygon's segments, made once: a region's distance is read per pixel by gates and figures. */
 const segmentsOfPolygon = new WeakMap<readonly StampPoint[], StampSegments>();
 
-/** How far (x, y) is from `polygon`'s outline, positive inside it (even-odd), negative outside. */
-export function stampPolygonDistance(polygon: readonly StampPoint[], x: number, y: number): number {
+/** The square of how far (x, y) is from `polygon`'s outline. */
+function stampOutlineDistanceSquared(polygon: readonly StampPoint[], x: number, y: number): number {
   const segments = segmentsOfPolygon.get(polygon) ?? segmentsOfPolygon.set(polygon, stampSegmentsOf(polygon)).get(polygon)!;
   let nearest = Infinity;
   for (let k = 0; k < polygon.length; k++) nearest = Math.min(nearest, stampSegmentDistanceSquared(segments, k, x, y));
-  return stampPolygonInside(polygon, x, y) ? Math.sqrt(nearest) : -Math.sqrt(nearest);
+  return nearest;
+}
+
+/** How far (x, y) is from `polygon`'s outline, positive inside it (even-odd), negative outside. */
+export function stampPolygonDistance(polygon: readonly StampPoint[], x: number, y: number): number {
+  const nearest = Math.sqrt(stampOutlineDistanceSquared(polygon, x, y));
+  return stampPolygonInside(polygon, x, y) ? nearest : -nearest;
+}
+
+/**
+ * How far (x, y) is from the outline of a region of `rings`, every ring's segments, positive inside it, negative
+ * outside. The rings read even-odd: one inside another is a hole, one inside a hole an island.
+ */
+export function stampRingsDistance(rings: readonly (readonly StampPoint[])[], x: number, y: number): number {
+  let nearest = Infinity, inside = false;
+  for (const ring of rings) {
+    nearest = Math.min(nearest, stampOutlineDistanceSquared(ring, x, y));
+    if (stampPolygonInside(ring, x, y)) inside = !inside;
+  }
+  return inside ? Math.sqrt(nearest) : -Math.sqrt(nearest);
+}
+
+/** The side of line a→b point p lies on: positive one way, negative the other, 0 on it. */
+const sideOfLine = (a: StampPoint, b: StampPoint, p: StampPoint) => (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+
+/** Whether closed rings `a` and `b` cross: a segment of each strictly crosses one of the other. Touching isn't crossing. */
+export function stampRingsCross(a: readonly StampPoint[], b: readonly StampPoint[]): boolean {
+  const boxA = stampPolygonBox(a), boxB = stampPolygonBox(b);
+  if (boxA.x1 < boxB.x0 || boxB.x1 < boxA.x0 || boxA.y1 < boxB.y0 || boxB.y1 < boxA.y0) return false;
+  for (let i = 0; i < a.length; i++) {
+    const p = a[i], q = a[(i + 1) % a.length];
+    for (let j = 0; j < b.length; j++) {
+      const r = b[j], s = b[(j + 1) % b.length];
+      if (sideOfLine(p, q, r) * sideOfLine(p, q, s) < 0 && sideOfLine(r, s, p) * sideOfLine(r, s, q) < 0) return true;
+    }
+  }
+  return false;
 }
 
 /**

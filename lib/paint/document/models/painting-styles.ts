@@ -5,6 +5,7 @@
 
 import type { StampBrushAsset, StampBrushMedia } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { BundledStampPaintStyles } from '#lib/paint/style/models/style.ts';
+import type { BrushRef } from './painting-document.ts';
 
 /** One style as a document is checked against it: its brushes by its own names, and its files by `<pack>/<file>`. */
 export type PaintingStyleEntry = { readonly brushes: ReadonlyMap<string, StampBrushMedia>; readonly files: ReadonlySet<string> };
@@ -25,3 +26,6 @@ export function paintingAssetProblem(styles: PaintingStyleCatalogue, asset: Stam
   if (!entry) return `names style ${asset.style}, which isn't one of ${[...styles.keys()].join(', ')}`;
   return entry.files.has(`${asset.pack}/${asset.file}`) ? null : `${asset.pack}/${asset.file} isn't among ${asset.style}'s imported pack files`;
 }
+
+/** Whether `brush` lays wet or dry in `styles`; undefined when no catalogue is known, or it doesn't name the brush. */
+export const paintingBrushMedia = (styles: PaintingStyleCatalogue | undefined, brush: BrushRef): StampBrushMedia | undefined => styles?.get(brush.style)?.brushes.get(brush.brush);

@@ -15,7 +15,7 @@ import {
   stampEdgeContourField, stampFootprintExtent, stampFootprintKeepsIn, stampMarkReach, stampMarkSupport, stampOutlineOf, type StampFootprint, type StampMarkHeading,
 } from './stamp-footprint.ts';
 import {
-  stampDistanceGrid, stampGridAt, stampGridContours, stampGridLocalMax, stampPolygonBox, stampPolygonDistance, stampRegionPolygon, type StampDistanceGrid, type StampPoint, type StampRegion,
+  stampDistanceGrid, stampGridAt, stampGridContours, stampGridLocalMax, stampPolygonBox, stampRegionPolygon, stampRingsDistance, type StampDistanceGrid, type StampPoint, type StampRegion,
 } from './stamp-region.ts';
 
 /** How a strokes fill lays its marks: in rows, in rings round the outline, or shaped by guides. */
@@ -110,6 +110,30 @@ export const STAMP_FILL_PATTERNS: Record<StampFillPattern['kind'], { spacing: nu
   guided: { spacing: 1.2, hand: HATCH_HAND },
 };
 
+/** Why `reach` can't be laid, or null: it's `inside`, or a finite 0 or more diameters past the outline. */
+export function stampFillReachProblem(reach: StampFillReach): string | null {
+  if (reach === 'inside' || (reach.past >= 0 && Number.isFinite(reach.past))) return null;
+  return `reaches 'inside' or a finite 0 or more diameters past its outline, not ${reach.past}`;
+}
+
+/**
+ * Why `strokes` can't lay a fill, or null: a pattern it doesn't know or turns it can't make, a spacing (its pattern's
+ * own when left out) not a finite one above 0, a variation outside 0..1, or a reach it can't lay.
+ */
+export function stampFillStrokesProblem(strokes: StampFillStrokes): string | null {
+  // A JS source can name any pattern or turn; the types cover only the ones there are.
+  const kind: string | undefined = strokes.pattern?.kind;
+  if (kind === undefined || !Object.hasOwn(STAMP_FILL_PATTERNS, kind)) {
+    return `${kind === undefined ? 'a pattern needs its kind' : `'${kind}' isn't a pattern`}: ${Object.keys(STAMP_FILL_PATTERNS).join(', ')}`;
+  }
+  const turns: string | undefined = 'turns' in strokes.pattern ? strokes.pattern.turns : undefined;
+  if (turns !== undefined && turns !== 'eased' && turns !== 'pressed') return `its pattern turns '${turns}', not eased or pressed`;
+  const { variation = 0.3, reach = 'inside' } = strokes, { spacing } = { ...STAMP_FILL_PATTERNS[strokes.pattern.kind], ...strokes };
+  if (!(spacing > 0 && Number.isFinite(spacing))) return `its spacing ${spacing} isn't a finite one above 0`;
+  if (!(variation >= 0 && variation <= 1)) return `its variation ${variation} isn't within 0..1`;
+  return stampFillReachProblem(reach);
+}
+
 /** A cross-hatch's second layer turns this far from the first: square reads as a grid, not a hand's. */
 const CROSS_HATCH_TURN = Math.PI / 3;
 
@@ -129,10 +153,10 @@ export type StampFillMarkSize = { diameter: number; offset: number; edge: StampB
  */
 export function stampFillMarks(region: StampRegion, size: StampFillMarkSize, direction: number, strokes: StampFillStrokes, seed: string): StampFillMark[] {
   const { diameter } = size;
+  const problem = stampFillStrokesProblem(strokes);
+  if (problem) throw new Error(`stamp paint: a strokes fill can't be laid: ${problem}`);
   const { pattern, variation = 0.3, reach = 'inside' } = strokes;
   const { spacing, hand } = { ...STAMP_FILL_PATTERNS[pattern.kind], ...strokes };
-  if (!(spacing > 0) || !(variation >= 0 && variation <= 1)) throw new Error(`stamp paint: a strokes fill needs a positive spacing and a variation of 0..1, not ${spacing} and ${variation}`);
-  if (reach !== 'inside' && !(reach.past >= 0 && Number.isFinite(reach.past))) throw new Error(`stamp paint: a strokes fill reaches a finite 0 or more diameters past its outline, not ${reach.past}`);
   const room = strokeRoom(region, size, reach), random = seededRandom(`${seed}|fill strokes`);
   const step = spacing * diameter;
   // A row of marks that turn back, or a scribble's loops, heads either way along it.
@@ -393,7 +417,8 @@ const GUIDE_POINTS = 2000;
  * between its pair, drawn from its key. A pair's marks read only their two guides, so adding one leaves them be.
  */
 function guidedMarks(room: StrokeRoom, guides: StampFillGuides['guides'], diameter: number, step: number, variation: number, seed: string): LaidMark[] {
-  checkGuides(room.polygon, guides);
+  const found = stampFillGuidesProblem([room.polygon], guides);
+  if (found) throw new Error(`stamp paint: a guided fill's ${found.problem}`);
   const marks: LaidMark[] = [];
   for (let g = 0; g + 1 < guides.length; g++) {
     const pair = `${guides[g].id}~${guides[g + 1].id}`, [from, to] = [guides[g].path, guides[g + 1].path];
@@ -412,28 +437,42 @@ function guidedMarks(room: StrokeRoom, guides: StampFillGuides['guides'], diamet
   return marks;
 }
 
-/** Refuses guides that can't lay a fill: fewer than two, one ending inside the shape, or one running against the last. */
-function checkGuides(polygon: readonly StampPoint[], guides: StampFillGuides['guides']) {
-  if (guides.length < 2) throw new Error(`stamp paint: a guided fill needs at least two guides to lay marks between, not ${guides.length}`);
-  stampCheckedGuides(guides, 'a guided fill');
-  guides.forEach(({ id, path }, g) => {
-    for (const end of [path[0], path.at(-1)!]) {
-      if (stampPolygonDistance(polygon, end.x, end.y) > 0) throw new Error(`stamp paint: a guided fill's guide ${id} ends inside the region at ${end.x}, ${end.y}; guides span the shape, from outside it to outside it`);
-    }
-    if (g === 0) return;
-    const [ax, ay] = guideWay(guides[g - 1].path), [bx, by] = guideWay(path);
-    if (ax * bx + ay * by <= 0) throw new Error(`stamp paint: a guided fill's guide ${id} runs against guide ${guides[g - 1].id}; guides all run the same way`);
-  });
+/** What's wrong with a fill's guides: the guide at fault (its index; null for the list), and why. */
+export type StampGuidesProblem = { readonly guide: number | null; readonly problem: string };
+
+/** Why `guides` can't be guides, or null: each needs an ID of its own (non-empty, no "|", "/" or "~") and two finite points or more. */
+export function stampGuidesProblem(guides: readonly StampGuide[]): StampGuidesProblem | null {
+  const ids = new Set<string>();
+  for (const [guide, { id, path }] of guides.entries()) {
+    if (!id || /[|/~]/.test(id) || ids.has(id)) return { guide, problem: `guide ${JSON.stringify(id)} needs an ID of its own: non-empty, unique, no "|", "/" or "~"` };
+    ids.add(id);
+    if (path.length < 2 || !path.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y))) return { guide, problem: `guide ${id} needs at least two finite points` };
+  }
+  return null;
 }
 
-/** `guides` refused, for `what`, unless each has a unique ID (non-empty, no "|", "/" or "~") and two finite points or more. */
-export function stampCheckedGuides(guides: readonly StampGuide[], what: string): readonly StampGuide[] {
-  const ids = new Set<string>();
-  for (const { id, path } of guides) {
-    if (!id || /[|/~]/.test(id) || ids.has(id)) throw new Error(`stamp paint: ${what}'s guide ${JSON.stringify(id)} needs an ID of its own: non-empty, unique, no "|", "/" or "~"`);
-    ids.add(id);
-    if (path.length < 2 || !path.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y))) throw new Error(`stamp paint: ${what}'s guide ${id} needs at least two finite points`);
+/**
+ * Why `guides` can't lay a guided fill over the region of `rings` (read even-odd), or null: fewer than two, a guide
+ * that isn't one (stampGuidesProblem), one ending inside the region, or one running against the last.
+ */
+export function stampFillGuidesProblem(rings: readonly (readonly StampPoint[])[], guides: readonly StampGuide[]): StampGuidesProblem | null {
+  if (guides.length < 2) return { guide: null, problem: `a guided fill needs at least two guides to lay marks between, not ${guides.length}` };
+  const listed = stampGuidesProblem(guides);
+  if (listed) return listed;
+  for (const [guide, { id, path }] of guides.entries()) {
+    const inside = [path[0], path.at(-1)!].find(({ x, y }) => stampRingsDistance(rings, x, y) > 0);
+    if (inside) return { guide, problem: `guide ${id} ends inside the region at ${inside.x}, ${inside.y}: guides span the shape, from outside it to outside it` };
+    if (guide === 0) continue;
+    const [ax, ay] = guideWay(guides[guide - 1].path), [bx, by] = guideWay(path);
+    if (ax * bx + ay * by <= 0) return { guide, problem: `guide ${id} runs against guide ${guides[guide - 1].id}: guides all run the same way` };
   }
+  return null;
+}
+
+/** `guides` refused, for `what`, unless each is a guide (stampGuidesProblem). */
+export function stampCheckedGuides(guides: readonly StampGuide[], what: string): readonly StampGuide[] {
+  const found = stampGuidesProblem(guides);
+  if (found) throw new Error(`stamp paint: ${what}'s ${found.problem}`);
   return guides;
 }
 

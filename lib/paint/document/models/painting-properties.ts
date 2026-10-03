@@ -94,3 +94,16 @@ export function paintingPropertyValues(schema: PropertySchema, values: Readonly<
 export function paintingValuesKey(values: PaintingPropertyRecord): string {
   return JSON.stringify(Object.keys(values).toSorted().map((name) => [name, values[name]]));
 }
+
+/**
+ * Values written as text (a command line's `name=value`) read by `schema`: a number property's as a number, a
+ * boolean's as true or false where they read so. Anything else stays text, for paintingValueProblems to refuse by name.
+ */
+export function paintingValuesFromText(schema: PropertySchema, texts: Readonly<Record<string, string>>): PaintingPropertyRecord {
+  return Object.fromEntries(Object.entries(texts).map(([name, text]): [string, PaintingPropertyValue] => {
+    const type = Object.hasOwn(schema, name) ? schema[name].type : undefined;
+    if (type === 'number' && text.trim() !== '' && Number.isFinite(Number(text))) return [name, Number(text)];
+    if (type === 'boolean' && (text === 'true' || text === 'false')) return [name, text === 'true'];
+    return [name, text];
+  }));
+}

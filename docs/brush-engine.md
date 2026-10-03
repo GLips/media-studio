@@ -343,13 +343,17 @@ and applications), its values held to its schema (`painting-properties.ts`). `pa
 evaluates a source, memoised by its values, and refuses a document with any error. `painting-document-check.ts` checks
 one without the GPU, every problem a record naming its owner's key, field and footprint (`painting-problem.ts`), in
 stages: values, shape and keys, the papers, layers, washes and applications (`painting-application-check.ts`,
-`painting-region-check.ts`, `painting-mix-check.ts`), then each sheet's rules (`painting-sheet-check.ts`).
-`painting-sheets.ts` finds a document's sheets and the medium each one's water dries by; `painting-sheet-program.ts`
-is each sheet's order and clock, the one order the checks, the evaluation diff (`painting-evaluation-diff.ts`) and a
-solver read. Nothing here paints, and the checks never touch the GPU.
+`painting-region-check.ts`, `painting-mix-check.ts`), then each sheet's rules (`painting-sheet-check.ts`) and each
+layer's pigments. Where a rule is the engine's (a fill's guides and strokes, ring geometry, a deposit's water) the
+check calls the engine's own problem function. A problem's box comes from `painting-footprint.ts`.
+`painting-tree.ts` resolves a document's tree: its sheets, and each node's medium and sheet; `painting-sheet-program.ts`
+is each sheet's order, its layers' films (`painting-pigment-slots.ts`) and its clock, the one order the checks, the
+evaluation diff (`painting-evaluation-diff.ts`) and a solver read. Nothing here paints, and the checks never touch the
+GPU.
 
 **shot** is what a scene puts on screen from evaluations: `layersOf` selects an evaluation's layers and groups on a
-plane, keeping an own sheet whole, `bracket` and `dissolve` blend two (`shot-selection.ts`), and
+plane, `bracket` and `dissolve` blend two, and `paintedSourceProblems` is what a shot's load refuses in a plane's
+selection, an own sheet split among them (`shot-selection.ts`); and
 `PaintedShotProps` (`shot-props.ts`) is the shot itself, its planes, motion, rigs and camera in the engine's shapes.
 
 **procreate-brushes** reads a Procreate brush's settings into a `StampBrush` (`procreate-brush.ts`, by the constants

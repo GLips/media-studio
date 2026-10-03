@@ -1,11 +1,12 @@
 // shot-selection.ts: what a plane of a shot shows of a painting: some of an evaluation's layers and groups, finished
 // and composed in document order, or two such blended. A selection is a description; nothing is solved until a shot
-// draws it. layersOf refuses what no shot could draw: keys the evaluation lacks, a key selected twice, an own sheet
-// split from its owner.
+// draws it. A shot's load holds each plane's source to what a shot can draw (paintedSourceProblems) and reports every
+// problem with its plane's, so the constructors here build without judging.
 
 import type { AnyApplication, Key, NodeKey } from '#lib/paint/document/models/painting-document.ts';
-import { paintingLayersUnder, type PaintingNodePlace, type PaintingSheets } from '#lib/paint/document/models/painting-sheets.ts';
+import { paintingField, paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import type { PaintingEvaluation } from '#lib/paint/document/models/painting-source.ts';
+import { paintingLayersUnder, paintingSheetName, type PaintingNodePlace, type PaintingTree } from '#lib/paint/document/models/painting-tree.ts';
 
 /**
  * Under a selection: the root sheet's paper, or nothing. Left out: paper on a shot's back plane, nothing nearer. Paint
@@ -35,9 +36,22 @@ export type Dissolve = { readonly kind: 'dissolve'; readonly a: PaintedSource; r
 
 export type PaintedSource = LayerSelection | Dissolve;
 
+/** `layers` of `evaluation` as a plane's source, with `ground` and `at`. */
+export function layersOf(
+  evaluation: PaintingEvaluation, layers: readonly NodeKey[], options: { readonly ground?: SelectionGround; readonly at?: number } = {},
+): LayerSelection {
+  const { ground, at } = options;
+  return { kind: 'layers', painting: evaluation, layers, ...(ground && { ground }), ...(at !== undefined && { at }) };
+}
+
+/** `a` blended toward `b` by `k` 0..1, as one source. */
+export function dissolve(a: PaintedSource, b: PaintedSource, k: number): Dissolve {
+  return { kind: 'dissolve', a, b, k };
+}
+
 /** What a document key names other than a layer or group, for the message refusing it. */
-function nonNodeKind(sheets: PaintingSheets, key: Key): string | null {
-  for (const { node } of sheets.layers) {
+function nonNodeKind(tree: PaintingTree, key: Key): string | null {
+  for (const { node } of tree.layers) {
     for (const wash of node.washes) {
       if (wash.key === key) return 'a wash';
       const applications: readonly AnyApplication[] = wash.applications;
@@ -47,46 +61,52 @@ function nonNodeKind(sheets: PaintingSheets, key: Key): string | null {
   return null;
 }
 
-/** The selected keys' places, each key known and naming a layer or group. Throws naming the first that isn't. */
-function selectedPlaces(evaluation: PaintingEvaluation, keys: readonly Key[]): PaintingNodePlace[] {
-  return keys.map((key) => {
-    const place = evaluation.sheets.byKey.get(key);
-    if (place) return place;
-    const kind = nonNodeKind(evaluation.sheets, key);
-    throw new Error(`layersOf names ${key}, which ${kind ? `is ${kind}: it selects layers and groups` : `is unknown in ${evaluation.source}`}`);
+/**
+ * Problems in a selection of plane `plane`, at `field` in it: nothing selected, an `at` that isn't a scene second, a
+ * key naming no layer or group, a layer selected twice (by itself and through its group, say), or an own sheet's
+ * layer selected without its owner and the rest of that sheet's layers.
+ */
+function selectionProblems(plane: string, field: string, { painting: evaluation, layers, at }: LayerSelection): PaintingProblem[] {
+  const problems: PaintingProblem[] = [], error = (owner: string, within: string, message: string) => problems.push(paintingProblem('error', owner, within, message));
+  if (layers.length === 0) error(plane, paintingField(field, 'layers'), `selects nothing of ${evaluation.source}: name its layers or groups`);
+  if (at !== undefined && !Number.isFinite(at)) error(plane, paintingField(field, 'at'), `${at} isn't a finite scene second`);
+  const { tree } = evaluation, places: PaintingNodePlace[] = [];
+  layers.forEach((key, i) => {
+    const place = tree.byKey.get(key);
+    if (place) places.push(place);
+    else {
+      const kind = nonNodeKind(tree, key);
+      error(plane, paintingField(field, `layers[${i}]`), `names ${key}, which ${kind ? `is ${kind}: it selects layers and groups` : `is unknown in ${evaluation.source}`}`);
+    }
   });
+  const chosen = new Map<Key, Key>();
+  for (const place of places) {
+    for (const { node } of paintingLayersUnder(tree, place)) {
+      const before = chosen.get(node.key);
+      if (before !== undefined) error(`${plane}/${node.key}`, '', `is selected twice, through ${before} and ${place.node.key}`);
+      else chosen.set(node.key, place.node.key);
+    }
+  }
+  const covered = (owner: Key) => places.some(({ node, kind }) => node.key === owner || (kind === 'group' && tree.byKey.get(owner)?.groups.includes(node.key)));
+  for (const sheet of tree.sheets) {
+    if (sheet.owner === null || covered(sheet.owner)) continue;
+    const onIt = tree.layers.filter((place) => place.sheet === sheet).map(({ node }) => node.key);
+    const picked = onIt.filter((key) => chosen.has(key));
+    if (picked.length > 0 && picked.length < onIt.length) {
+      error(`${plane}/${picked[0]}`, '', `lies on ${paintingSheetName(sheet)}: select ${sheet.owner}, or all its sheet's layers, on one plane`);
+    }
+  }
+  return problems;
 }
 
 /**
- * `layers` of `evaluation` as a plane's source, with `ground` and `at`. Throws when a key is unknown or names no layer
- * or group, a layer is selected twice (by itself and through its group, say), or a layer on an own sheet is selected
- * without its sheet's owner and without the rest of that sheet's layers.
+ * Every problem in `source`, the source of plane `plane`, that keeps a shot from drawing it: a selection's
+ * (selectionProblems) and a dissolve's `k` outside 0..1, either side's in turn. A shot's load reports them all.
  */
-export function layersOf(
-  evaluation: PaintingEvaluation, layers: readonly NodeKey[], options: { readonly ground?: SelectionGround; readonly at?: number } = {},
-): LayerSelection {
-  if (layers.length === 0) throw new Error(`layersOf selects nothing of ${evaluation.source}: name its layers or groups`);
-  const { ground, at } = options;
-  if (at !== undefined && !Number.isFinite(at)) throw new Error(`layersOf's at ${at} isn't a finite scene second`);
-  const places = selectedPlaces(evaluation, layers);
-  const chosen = new Map<Key, Key>();
-  for (const place of places) {
-    for (const { node } of paintingLayersUnder(evaluation.sheets, place)) {
-      const before = chosen.get(node.key);
-      if (before !== undefined) throw new Error(`layersOf selects ${node.key} twice: through ${before} and ${place.node.key}`);
-      chosen.set(node.key, place.node.key);
-    }
-  }
-  const covered = (owner: Key) => places.some(({ node, kind }) => node.key === owner || (kind === 'group' && evaluation.sheets.byKey.get(owner)?.groups.includes(node.key)));
-  for (const sheet of evaluation.sheets.sheets) {
-    if (sheet.owner === null || covered(sheet.owner)) continue;
-    const onIt = evaluation.sheets.layers.filter((place) => place.sheet === sheet).map(({ node }) => node.key);
-    const picked = onIt.filter((key) => chosen.has(key));
-    if (picked.length > 0 && picked.length < onIt.length) {
-      throw new Error(`layersOf: ${picked[0]} lies on ${sheet.owner}'s own sheet: select ${sheet.owner}, or all its sheet's layers, together`);
-    }
-  }
-  return { kind: 'layers', painting: evaluation, layers, ...(ground && { ground }), ...(at !== undefined && { at }) };
+export function paintedSourceProblems(plane: string, source: PaintedSource, field = 'source'): PaintingProblem[] {
+  if (source.kind === 'layers') return selectionProblems(plane, field, source);
+  const k = source.k >= 0 && source.k <= 1 ? [] : [paintingProblem('error', plane, paintingField(field, 'k'), `${source.k} isn't within 0..1`)];
+  return [...k, ...paintedSourceProblems(plane, source.a, paintingField(field, 'a')), ...paintedSourceProblems(plane, source.b, paintingField(field, 'b'))];
 }
 
 /**
@@ -103,10 +123,4 @@ export function bracket(value: number, levels: readonly number[]): { readonly lo
   if (levels[upper] === value || upper === 0) return { lower: levels[upper], upper: levels[upper], k: 0 };
   const below = levels[upper - 1], above = levels[upper];
   return { lower: below, upper: above, k: (value - below) / (above - below) };
-}
-
-/** `a` blended toward `b` by `k` 0..1, as one source. */
-export function dissolve(a: PaintedSource, b: PaintedSource, k: number): Dissolve {
-  if (!(k >= 0 && k <= 1)) throw new Error(`dissolve's k ${k} isn't within 0..1`);
-  return { kind: 'dissolve', a, b, k };
 }

@@ -6,9 +6,10 @@
 // of `Math`). Seed randomness with
 // lib/picture/motion/models/random.ts; take time from the scene.
 //
-// Held: lib's `models` and `studio` code, private styles, and a project's scenes, helpers, models, shared modules,
-// timeline, video, stills and brand. Not held: `engine` code, which never draws, so profiling a render lives there;
-// a project's capture, tools and review; specs; and FRAME_PROFILER, which times a frame's work from inside the page.
+// Held: lib's `models` and `studio` code, private styles, and a project's scenes, helpers, models, painting sources,
+// shared modules, timeline, video, stills and brand. Not held: `engine` code, which never draws, so profiling a render
+// lives there; a project's capture, tools and review; specs; and FRAME_PROFILER, which times a frame's work from
+// inside the page.
 
 import type { StudioPosition } from '../../policy/studio-tree.ts';
 import { walkAst, type AstNode } from '../source-tree.ts';
@@ -31,7 +32,7 @@ const TYPE_ONLY = new Set([
   'TSTypeParameterInstantiation', 'TSTypeParameterDeclaration', 'TSDeclareFunction', 'TSImportType',
 ]);
 
-const PIXEL_PROJECT_ROLES = new Set(['scene', 'scene-helper', 'model', 'shared', 'timeline', 'video', 'stills', 'brand']);
+const PIXEL_PROJECT_ROLES = new Set(['scene', 'scene-helper', 'model', 'painting-source', 'shared', 'timeline', 'video', 'stills', 'brand']);
 const reachesPixels = (position: StudioPosition) =>
   position.kind === 'models' || position.kind === 'studio' || position.kind === 'style' || position.kind === 'brand-kit' ||
   (position.kind === 'project' && PIXEL_PROJECT_ROLES.has(position.role));

@@ -9,8 +9,9 @@ checking. The types are the contract: `lib/paint/document/models/painting-docume
 ## What's built
 
 Built: sources and `painting()`; property schemas and values; every check made without solving (Checking); a
-document's sheets and each sheet's order (`painting-sheets.ts`, `painting-sheet-program.ts`); the evaluation diff;
-`layersOf`, `bracket` and `dissolve`; the shot's types; `studio paint check` and `studio paint diff`. Not yet built:
+document's tree, its sheets and each sheet's order (`painting-tree.ts`, `painting-sheet-program.ts`); the evaluation
+diff; `layersOf`, `bracket` and `dissolve`, and the problems a shot's load reports in a plane's selection
+(`paintedSourceProblems`); the shot's types; `studio paint check` and `studio paint diff`. Not yet built:
 the solver that paints a document, `<PaintedShot>` and `<PaintedShotCanvas>`, `studio paint check --solve`, and the
 cost report. Until they land, a project can write and check its sources and build its `PaintedShotProps`, but nothing
 shows them. **NEW** marks behaviour the brush engine (the recipe path, docs/brush-engine.md) lacks too; unmarked
@@ -169,7 +170,8 @@ and `#lib/paint/document/models/painting-properties.ts`, and pigments from
 `#lib/paint/materials/models/paint-watercolour-pigments.ts`; a scene imports `painting`, `layersOf`, `bracket`,
 `dissolve` and the shot's types from `#studio`. A source one scene uses sits in that scene's folder
 (`scenes/meadow/meadow.painting.ts`); one several scenes share is listed in `project.ts`'s `shared`, and the styles its
-brushes name in its `styles` (docs/private-styles.md). Lint lets any `*.painting.ts` default-export its factory.
+brushes name in its `styles` (docs/private-styles.md). Lint lets any `*.painting.ts` default-export its factory, and
+holds it to a model's imports (no `#studio`, no I/O), since `studio paint check` loads it in plain Node.
 
 ## Water
 
@@ -323,9 +325,11 @@ A sheet's grain is baked where its paint lies. Paint on a nearer plane, or on an
 was painted on over the back plane's paper, which the camera moves differently. For grain that stays still under a
 moving element, keep the element on the back plane's document.
 
-`paintingSheets(document)` (`painting-sheets.ts`) gives a document's sheets, each `{owner, paper, edge, water}` (`water`
-the medium its water dries by), and each node's sheet; `paintingSheetOrders` (`painting-sheet-program.ts`) gives each
-sheet's order and clock, the one order the checks, the diff and the solver read.
+`paintingTree(document)` (`painting-tree.ts`) gives a document's sheets, each `{owner, paper, edge, water}` (`water`
+the medium its water dries by; `owner` null for the root's), and each node's sheet; `paintingSheetOrders`
+(`painting-sheet-program.ts`) gives each sheet's order, its layers with their films' pigment slots, and its clock, the
+one order the checks, the diff and the solver read. A sheet's clock runs from the earliest start among its clocked
+washes, a direct one's too.
 
 ## Units
 
@@ -701,7 +705,7 @@ picture before the rig bends it; on shared paper, the posed film. No mirrors.
 
 ## Checking and diagnostics
 
-`studio paint check <source> [--prop name=value …]` evaluates a source at its defaults, or at the values `--prop`
+`studio paint check <source> [--set name=value,…]` evaluates a source at its defaults, or at the values `--set`
 gives, each held to its schema like any other (an off-step value is an error), and prints every problem it finds
 without the GPU, one a line: `<owner>.<field>: <message> [x0,y0 → x1,y1]`, the box (document px) of the geometry the
 problem is about, grown by half its brush, and `warning: ` before a warning. Brushes and paper assets are checked
@@ -715,11 +719,12 @@ meadow (hillTopPx 200): 640 × 360 px, watercolour, on #f4f2ed paper
 paint check: 0 errors, 0 warnings
 ```
 
-`studio paint diff <source> [<edited copy>] [--prop name=value …] [--to name=value …]` compares two evaluations: the
-source at `--prop` against itself at `--prop` with `--to` on top, or against an edited copy. It prints the document
+`studio paint diff <source> [<edited copy>] [--set name=value,…] [--to name=value,…]` compares two evaluations: the
+source at `--set` against itself at `--set` with `--to` on top, or against an edited copy. It prints the document
 fields that differ (paper colour among them, which re-solves nothing), then each wash in its sheet's order: `same`,
 `content` (it changed itself, at the first path that differs), or `upstream` (something earlier on its sheet changed).
-Keys never count. So you see what a property step re-solves before warming it:
+A pigment a later wash brings changes its layer's film, so it reads at the layer's first application
+(`water.slots.palette`). Keys never count. So you see what a property step re-solves before warming it:
 
 ```
 $ node cli/studio.ts paint diff lib/paint/document/models/meadow.painting.ts --to hillTopPx=210
@@ -754,7 +759,7 @@ What the check says today, and what to do:
 | `a.brush.brush: watercolor has no brush mop: its brushes are wash, filler, …` | a brush or paper asset the style lacks | name one it has |
 | `property hillTopPx.value: hillTopPx = 205 is off its step 10` | an unquantised value | quantise in the scene |
 | `document.layers[0]…: meadow isn't pure: two calls differ at layers[0]…` | the factory reads something besides its values | make it pure |
-| `layersOf: stem lies on flower's own sheet: select flower, or all its sheet's layers, together` / `layersOf names hil, which is unknown in meadow` / `layersOf selects neck twice: through heron and neck` | thrown by `layersOf` | select it whole; fix keys |
+| `back/stem: lies on flower's own sheet: select flower, or all its sheet's layers, on one plane` / `back.source.layers[0]: names hil, which is unknown in meadow` / `back/neck: is selected twice, through heron and neck` / `back.source.k: 1.5 isn't within 0..1` | a plane's source, as the shot's load reports it (`paintedSourceProblems`) | select it whole; fix keys |
 
 With the solver (`studio paint check --solve`, not yet built), the solve adds: an `on` that can't hold where it's
 scheduled (`treeline: unreachable from this committed prefix: on 'wet' held over at most 81% of its core (needs 95%),

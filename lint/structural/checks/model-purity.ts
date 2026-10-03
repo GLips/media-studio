@@ -1,7 +1,7 @@
 // ─── (c) Model purity ─────────────────────────────────────────────────
 //
-// A model (a lib feature's `models/`, a project's `x-model.ts`, and its `timeline.ts`)
-// loads in plain Node with no browser or I/O code behind it. From each model,
+// A model (a lib feature's `models/`, a project's `x-model.ts`, its painting sources and its
+// `timeline.ts`) loads in plain Node with no browser or I/O code behind it. From each model,
 // every runtime import is followed transitively through first-party code, and a
 // chain is refused where it reaches render or Node-side code (a feature's
 // `studio/`, and `#studio`; its `engine/`; cli; harness; a scene), a package beyond the allowlist, a
@@ -37,10 +37,10 @@ const GLOBAL_OBJECTS = new Set(['globalThis', 'self']);
 /** Positions a model may pass through: pure until shown otherwise, and scanned in turn. */
 const isScannable = (position: StudioPosition) =>
   position.kind === 'models' ||
-  (position.kind === 'project' && ['model', 'timeline', 'shared', 'unclassified', 'media', 'sfx', 'brand'].includes(position.role));
+  (position.kind === 'project' && ['model', 'painting-source', 'timeline', 'shared', 'unclassified', 'media', 'sfx', 'brand'].includes(position.role));
 
 const isModel = (position: StudioPosition) =>
-  position.kind === 'models' || (position.kind === 'project' && (position.role === 'model' || position.role === 'timeline'));
+  position.kind === 'models' || (position.kind === 'project' && ['model', 'painting-source', 'timeline'].includes(position.role));
 /** A model's spec is its evaluator, run by `node --test`: it may use node:test and fixtures, and isn't loaded as a model. */
 const isSpec = (path: string) => /\.test\.tsx?$/.test(path);
 

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Layer, PaintingDocument, Paper, Sheet } from '#lib/paint/document/models/painting-document.ts';
 import { painting } from '#lib/paint/document/models/painting-source.ts';
-import { layersOf } from './shot-selection.ts';
+import { dissolve, layersOf, paintedSourceProblems } from './shot-selection.ts';
 
 const ROOT_PAPER: Paper = { color: '#f4f2ed', absorbency: 0.5 };
 const HERON_PAPER: Paper = { color: '#efe9dc', absorbency: 0.4 };
@@ -29,20 +29,18 @@ const pond = painting({
   },
 });
 
-test("a document's sheets: the root's over the document, an own sheet edged by its paint and drying by its owner's medium, `scene` back on the root's", () => {
-  assert.deepEqual(pond.sheets.sheets, [
-    { owner: null, paper: ROOT_PAPER, edge: 'document', water: 'watercolour' }, { owner: 'heron', paper: HERON_PAPER, edge: 'union', water: 'gouache' },
-  ]);
-  assert.deepEqual(pond.sheets.layers.map(({ node, sheet, groups }) => [node.key, sheet.owner, groups]), [
-    ['sky', null, []], ['body', 'heron', ['heron']], ['neck', 'heron', ['heron']], ['shadow', null, ['heron']],
-  ]);
-});
+/** A plane's problems as `<path>: <message>`. */
+const problemsOf = (...args: Parameters<typeof paintedSourceProblems>) => paintedSourceProblems(...args).map(({ path, message }) => `${path}: ${message}`);
 
-test('layersOf keeps an own sheet whole and refuses what no plane could draw', () => {
-  assert.deepEqual(layersOf(pond, ['body', 'neck', 'shadow'], { at: 2 }).layers, ['body', 'neck', 'shadow']);
-  assert.deepEqual(layersOf(pond, ['shadow']).layers, ['shadow']);
-  assert.throws(() => layersOf(pond, ['neck']), { message: "layersOf: neck lies on heron's own sheet: select heron, or all its sheet's layers, together" });
-  assert.throws(() => layersOf(pond, ['heron', 'neck']), { message: 'layersOf selects neck twice: through heron and neck' });
-  assert.throws(() => layersOf(pond, ['neck-wash']), { message: 'layersOf names neck-wash, which is a wash: it selects layers and groups' });
-  assert.throws(() => layersOf(pond, ['reeds']), { message: 'layersOf names reeds, which is unknown in pond' });
+test('a shot keeps an own sheet whole and refuses what no plane could draw, every problem at once', () => {
+  assert.deepEqual(problemsOf('front', layersOf(pond, ['body', 'neck', 'shadow'], { at: 2 })), []);
+  assert.deepEqual(problemsOf('front', layersOf(pond, ['shadow'])), []);
+  assert.deepEqual(problemsOf('front', layersOf(pond, ['neck'])), ["front/neck: lies on heron's own sheet: select heron, or all its sheet's layers, on one plane"]);
+  assert.deepEqual(problemsOf('front', dissolve(layersOf(pond, ['heron', 'neck']), layersOf(pond, ['neck-wash', 'reeds'], { at: Number.NaN }), 1.5)), [
+    'front.source.k: 1.5 isn\'t within 0..1',
+    'front/neck: is selected twice, through heron and neck',
+    'front.source.b.at: NaN isn\'t a finite scene second',
+    'front.source.b.layers[0]: names neck-wash, which is a wash: it selects layers and groups',
+    'front.source.b.layers[1]: names reeds, which is unknown in pond',
+  ]);
 });

@@ -6,21 +6,21 @@ import { paintingEvaluationDiff } from './painting-evaluation-diff.ts';
 import { painting } from './painting-source.ts';
 
 const BRUSH = { style: 'watercolor', brush: 'wash' } as const;
-const touch = (seed: string, key?: string, profile?: (u: number) => number): Application => ({
+const touch = (seed: string, key?: string, profile?: (u: number) => number, pigment: Hex = '#3a4a6b'): Application => ({
   ...(key && { key }), kind: 'stroke', subpaths: [[{ x: 20, y: 60 }, { x: 180, y: 70 }]], ...(profile && { hand: { profile } }), brush: BRUSH, diameterPx: 24, seed,
-  charge: { kind: 'paint', mix: { parts: [{ pigment: '#3a4a6b', amount: 1 }], strength: 0.6 } },
+  charge: { kind: 'paint', mix: { parts: [{ pigment, amount: 1 }], strength: 0.6 } },
 });
 
-type PondChoices = { readonly chargeKey?: string; readonly chargeSeed?: string; readonly curve?: (u: number) => number; readonly paper?: Hex };
+type PondChoices = { readonly chargeKey?: string; readonly chargeSeed?: string; readonly curve?: (u: number) => number; readonly paper?: Hex; readonly glaze?: Hex };
 /** A pool flooded and charged, glazed in a later wash, and reeds in a layer of their own: each variant its own source. */
-const pondSource = ({ chargeKey = 'charge', chargeSeed = 'charge', curve = Math.sqrt, paper = '#f4f2ed' }: PondChoices) => painting({
+const pondSource = ({ chargeKey = 'charge', chargeSeed = 'charge', curve = Math.sqrt, paper = '#f4f2ed', glaze = '#3a4a6b' }: PondChoices) => painting({
   default: function pond(): PaintingDocument {
     return {
       widthPx: 200, heightPx: 120, paper: { color: paper, absorbency: 0.5 }, medium: 'watercolour', layers: [
         {
           key: 'water', washes: [
             { key: 'pool', applications: [touch('flood', 'flood'), touch(chargeSeed, chargeKey, curve)] },
-            { key: 'pool-glaze', applications: [touch('glaze')] },
+            { key: 'pool-glaze', applications: [touch('glaze', undefined, undefined, glaze)] },
           ],
         },
         { key: 'reeds', washes: [{ key: 'reed-wash', applications: [touch('reeds')] }] },
@@ -52,4 +52,12 @@ test('keys and paper colour re-solve nothing; a seed or a recreated curve re-sol
   assert.deepEqual([recoloured.document, changes(recoloured)], [['paper.color'], same]);
   assert.deepEqual(changes(paintingEvaluationDiff(base, pondSource({ chargeSeed: 'charge-2' }))), chargeChanged('charge.seed'));
   assert.deepEqual(changes(paintingEvaluationDiff(base, pondSource({ curve: (u) => Math.sqrt(u) }))), chargeChanged('charge.hand.profile'));
+});
+
+test("a pigment a later wash brings changes its layer's film from the layer's first application on", () => {
+  assert.deepEqual(changes(paintingEvaluationDiff(pondSource({}), pondSource({ glaze: '#7a4a2b' }))), [
+    ['pool', { kind: 'content', path: 'water.slots.palette' }],
+    ['pool-glaze', { kind: 'content', path: 'pool-glaze.applications[0].charge.mix.parts[0].pigment' }],
+    ['reed-wash', { kind: 'upstream', from: 'water' }],
+  ]);
 });
