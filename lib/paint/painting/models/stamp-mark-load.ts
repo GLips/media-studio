@@ -16,9 +16,9 @@ type StampMarks = FrozenStampMarks;
 
 /**
  * Floats per stamp in the instance buffer: x, y, diameter, rotation, then alpha, blur, grain turn and flips (x 1, y 2),
- * then opacity, roundness, grain depth and pressure.
+ * then opacity, roundness, grain depth and pressure, then where it was placed (its x and y, unless a pose moved it).
  */
-export const STAMP_FLOATS = 12;
+export const STAMP_FLOATS = 14;
 /** Floats per stamp in the tint buffer, for a brush with colour dynamics: hue, saturation, lightness, secondary. */
 export const TINT_FLOATS = 4;
 /** Pixels a side of the tiles an `ordered` layer's stamps are binned by (stampMarksOrderedBins). */
@@ -29,7 +29,10 @@ const instanceFloats = new WeakMap<StampMarks, Map<StampGrainDepthSource, Float3
 export const stampInstanceFloats = (marks: StampMarks, source: StampGrainDepthSource) => rememberedFor(instanceFloats, marks, source, () => {
   const floats = new Float32Array(marks.length * STAMP_FLOATS);
   marks.forEach((s, i) => floats.set(
-    [s.x, s.y, s.diameter, s.rotation, s.alpha, s.blur, s.grainTurn, (s.flipX ? 1 : 0) + (s.flipY ? 2 : 0), s.opacity, s.roundness, stampGrainDepthBy(s, source), s.pressure], i * STAMP_FLOATS,
+    [
+      s.x, s.y, s.diameter, s.rotation, s.alpha, s.blur, s.grainTurn, (s.flipX ? 1 : 0) + (s.flipY ? 2 : 0), s.opacity, s.roundness, stampGrainDepthBy(s, source), s.pressure,
+      s.rest?.x ?? s.x, s.rest?.y ?? s.y,
+    ], i * STAMP_FLOATS,
   ));
   return floats;
 });

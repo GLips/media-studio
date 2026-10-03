@@ -1,24 +1,23 @@
-// painting-pose.ts: a sheet program posed before it's solved (ENGINE 5.3). Each entry's marks are mapped by its
-// chain's map: its groups' maps, each in its parent's frame, composed outermost first. Clips, reserves and resists
-// anchored to the paper stay. Each posed entry carries its map's canonical text in `pose`, which its state key reads
-// beside its datum: equal maps, equal keys.
+// painting-pose.ts: a sheet program posed before it's solved (ENGINE 5.3). Each entry's marks, planned at rest, are
+// mapped by its chain's map (its nodes' maps, each in its parent's frame, outermost first). A stamp goes where the map
+// puts it, scaled and turned, keeping where it was placed (its noise's seed); an area maps as its outline. Fields
+// aren't mapped: a posed deposit, area and prewet carry the map back to rest (StampRestMap), where the solver reads
+// fields, ragged noise and a flood's local scale. Anchored clips, reserves and resists stay. An entry's `pose`, its
+// map's canonical text, is in its state key.
 //
-// So far a map is a move of the deposit's geometry. The shot's slice replaces this with marks mapped by any
-// similarity and fields read at rest coordinates. Negative space: a noise field and a ragged edge stay where the
-// paper is, unmoved.
-
+// Negative space: similarities only. Pins and skin map marks by meshes, which come with the shot's rigs.
 import { stampFrozenMarks, type FrozenStampMarks } from '#lib/paint/brush/models/stamp-placement.ts';
-import { PAINT_SIMILARITY_IDENTITY, paintSimilarityAfter, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
+import {
+  PAINT_SIMILARITY_IDENTITY, paintSimilarityAfter, paintSimilarityApply, paintSimilarityInverse, paintSimilarityScale, type PaintSimilarity,
+} from '#lib/paint/animation/models/paint-similarity.ts';
 import type { CompiledStampArea } from '#lib/paint/painting/models/stamp-area.ts';
 import type { CompiledStampBoundary } from '#lib/paint/painting/models/stamp-area-boundaries.ts';
 import type { CompiledStampBrushedMask } from '#lib/paint/painting/models/stamp-brushed-mask.ts';
-import type { CompiledStampAction } from '#lib/paint/painting/models/stamp-paint-action.ts';
-import type { StampSeededPaintField } from '#lib/paint/painting/models/stamp-paint-field.ts';
-import type { CompiledStampDeposit, CompiledStampMask } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
-import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import type { StampSheetEntry, StampSheetPrewet, StampSheetProgram } from '#lib/paint/painting/models/stamp-sheet-program.ts';
-import { StampSheetRefusal } from '#lib/paint/painting/models/stamp-sheet-refusal.ts';
 import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
+import type { CompiledStampDeposit, CompiledStampMask } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
+import type { StampEdge, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import type { StampRestMap } from '#lib/paint/painting/models/stamp-rest-map.ts';
+import type { StampSheetEntry, StampSheetPrewet, StampSheetProgram } from '#lib/paint/painting/models/stamp-sheet-program.ts';
 import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
 
 /** Each node's map by its ordinal in `PaintingTree.nodes`, in its parent's frame; a node left out stands at rest. */
@@ -34,81 +33,82 @@ export const PAINTING_REST_POSE = paintingPoseText(PAINT_SIMILARITY_IDENTITY);
 export const paintingChainMap = (chain: readonly number[], poses: PaintingPoses): PaintSimilarity =>
   chain.reduce((map, node) => paintSimilarityAfter(map, poses.get(node) ?? PAINT_SIMILARITY_IDENTITY), PAINT_SIMILARITY_IDENTITY);
 
-/** A move, document px. */
-type PaintingMove = { readonly x: number; readonly y: number };
+/** A pose's map, as the marks it moves read it: the map, how it scales and turns, and its words back to rest. */
+type PaintingMap = { readonly map: PaintSimilarity; readonly scale: number; readonly turn: number; readonly rest: StampRestMap; readonly tag: string };
 
-const movedPoint = <P extends StampPoint>(point: P, { x, y }: PaintingMove): P => ({ ...point, x: point.x + x, y: point.y + y });
+function paintingMapOf(map: PaintSimilarity, text: string): PaintingMap {
+  const back = paintSimilarityInverse(map);
+  return { map, scale: paintSimilarityScale(map), turn: Math.atan2(map.mb, map.ma), rest: [back.ma, back.mb, back.kx, back.ky], tag: `posed${text}` };
+}
 
-const movedStamps = (stamps: FrozenStampMarks, by: PaintingMove) => stampFrozenMarks(stamps.map((stamp) => movedPoint(stamp, by)));
+const mappedPoint = <P extends StampPoint>(point: P, { map }: PaintingMap): P => ({ ...point, ...paintSimilarityApply(map, point) });
 
-const movedBoundary = (boundary: CompiledStampBoundary, by: PaintingMove): CompiledStampBoundary => ({ ...boundary, path: boundary.path.map((point) => movedPoint(point, by)) });
+/** A stamp where the map puts it, scaled and turned with it, its rest point where it was placed. */
+const mappedStamps = (stamps: FrozenStampMarks, by: PaintingMap) => stampFrozenMarks(stamps.map((stamp) => ({
+  ...mappedPoint(stamp, by), tint: stamp.tint, diameter: stamp.diameter * by.scale, rotation: stamp.rotation + by.turn, grainTurn: stamp.grainTurn + by.turn,
+  rest: stamp.rest ?? Object.freeze({ x: stamp.x, y: stamp.y }),
+})));
 
-/** `area` moved by `by`: its outline, its rings and its treated stretches. */
-function movedArea(area: CompiledStampArea, by: PaintingMove): CompiledStampArea {
-  const rings = area.rings?.map((ring) => ring.map((point) => movedPoint(point, by)));
+const mappedBoundary = (boundary: CompiledStampBoundary, by: PaintingMap): CompiledStampBoundary =>
+  ({ ...boundary, path: boundary.path.map((point) => mappedPoint(point, by)), reach: boundary.reach * by.scale });
+
+/** `edge`'s widths scaled; its ragged noise keeps its scale, read at rest. */
+const mappedEdge = ({ soft, ragged }: StampEdge, { scale }: PaintingMap): StampEdge =>
+  ({ ...(soft !== undefined && { soft: soft * scale }), ...(ragged && { ragged: { amount: ragged.amount * scale, scale: ragged.scale } }) });
+
+/** `area` mapped: its outline, rings and treated stretches, its widths scaled, its ragged noise read back at rest. */
+function mappedArea(area: CompiledStampArea, by: PaintingMap): CompiledStampArea {
+  const rings = area.rings?.map((ring) => ring.map((point) => mappedPoint(point, by)));
   return {
-    ...area, polygon: rings?.[0] ?? area.polygon.map((point) => movedPoint(point, by)), ...(rings && { rings }),
-    ...(area.boundaries && { boundaries: area.boundaries.map((boundary) => movedBoundary(boundary, by)) }),
+    ...area, polygon: rings?.[0] ?? area.polygon.map((point) => mappedPoint(point, by)), ...(rings && { rings }),
+    ...(area.edge && { edge: mappedEdge(area.edge, by) }), ...(area.inset !== undefined && { inset: area.inset * by.scale }),
+    ...(area.boundaries && { boundaries: area.boundaries.map((boundary) => mappedBoundary(boundary, by)) }), rest: by.rest,
   };
 }
 
-/** A field's geometry moved by `by`; a noise field, texture rather than place, stays. */
-function movedField<T>(field: StampSeededPaintField<T>, by: PaintingMove): StampSeededPaintField<T> {
-  if (field.kind === 'linear') return { ...field, from: movedPoint(field.from, by), to: movedPoint(field.to, by) };
-  if (field.kind === 'radial') return { ...field, center: movedPoint(field.center, by) };
-  return field;
-}
-
-/** `action` moved by `by`: a paint's material field, which a linear or radial one lays by place. */
-const movedAction = (action: CompiledStampAction, by: PaintingMove): CompiledStampAction => (action.kind === 'paint' ? { ...action, material: movedField(action.material, by) } : action);
-
-/** What a moved op's ID gains, so it's another op than the one at rest. */
-const moveTag = ({ x, y }: PaintingMove) => `moved${x},${y}`;
-
-const movedBrushed = (brushed: CompiledStampBrushedMask, by: PaintingMove): CompiledStampBrushedMask => ({
-  ...brushed, id: `${brushed.id}|${moveTag(by)}`,
-  marks: brushed.marks.map((mark) => ({ ...mark, stamps: movedStamps(mark.stamps, by), dualStamps: movedStamps(mark.dualStamps, by) })),
+const mappedBrushed = (brushed: CompiledStampBrushedMask, by: PaintingMap): CompiledStampBrushedMask => ({
+  ...brushed, id: `${brushed.id}|${by.tag}`,
+  marks: brushed.marks.map((mark) => ({ ...mark, diameter: mark.diameter * by.scale, stamps: mappedStamps(mark.stamps, by), dualStamps: mappedStamps(mark.dualStamps, by) })),
 });
 
 /**
- * A fluid's ops moved by `by`, each once (`moved` keeps them), those in `anchored` staying: a state of the fluid is one
- * object, which the solver works out once, so entries moved alike share what's moved.
+ * A fluid's ops mapped by `by`, each once (`mapped` keeps them), those in `anchored` staying: a state of the fluid is
+ * one object, which the solver works out once, so entries posed alike share what's mapped.
  */
-function fluidMover(by: PaintingMove, anchored: ReadonlySet<CompiledStampMask>, moved: Map<CompiledStampMask, CompiledStampMask>) {
-  const move = (mask: CompiledStampMask | null): CompiledStampMask | null => {
+function fluidMapper(by: PaintingMap, anchored: ReadonlySet<CompiledStampMask>, mapped: Map<CompiledStampMask, CompiledStampMask>) {
+  const map = (mask: CompiledStampMask | null): CompiledStampMask | null => {
     if (!mask) return null;
-    const known = moved.get(mask);
+    const known = mapped.get(mask);
     if (known) return known;
-    const under = move(mask.under), still = anchored.has(mask), id = still ? mask.id : `${mask.id}|${moveTag(by)}`;
+    const under = map(mask.under), still = anchored.has(mask), id = still ? mask.id : `${mask.id}|${by.tag}`;
     let next: CompiledStampMask;
-    if (mask.kind === 'mask') next = { ...mask, id, under, area: still ? mask.area : movedArea(mask.area, by) };
-    else if (mask.kind === 'brushed') next = { ...mask, id, under, brushed: still ? mask.brushed : movedBrushed(mask.brushed, by) };
-    else next = { ...mask, id, under, area: mask.area && !still ? movedArea(mask.area, by) : mask.area };
-    moved.set(mask, next);
+    if (mask.kind === 'mask') next = { ...mask, id, under, area: still ? mask.area : mappedArea(mask.area, by) };
+    else if (mask.kind === 'brushed') next = { ...mask, id, under, brushed: still ? mask.brushed : mappedBrushed(mask.brushed, by) };
+    else next = { ...mask, id, under, area: mask.area && !still ? mappedArea(mask.area, by) : mask.area };
+    mapped.set(mask, next);
     return next;
   };
-  return move;
+  return map;
 }
 
-/** `entry`'s deposit moved by `by`: its stamps, its paint's field, a flood's barrier, scale and load, its areas and fluid, all but its anchors. */
-function movedDeposit(entry: StampSheetEntry, by: PaintingMove, moveFluid: (mask: CompiledStampMask | null) => CompiledStampMask | null): CompiledStampDeposit {
+/**
+ * `entry`'s deposit mapped by `by`: its stamps, size, areas and fluid, all but its anchors, and a flood's barrier;
+ * its fields and a flood's scale read back at rest.
+ */
+function mappedDeposit(entry: StampSheetEntry, by: PaintingMap, mapFluid: (mask: CompiledStampMask | null) => CompiledStampMask | null): CompiledStampDeposit {
   const { deposit, anchors } = entry;
   const common = {
-    ...deposit,
-    stamps: movedStamps(deposit.stamps, by), dualStamps: movedStamps(deposit.dualStamps, by), action: movedAction(deposit.action, by), mask: moveFluid(deposit.mask),
-    ...(deposit.within && { within: deposit.within.map((area, k) => (anchors.within.has(k) ? area : movedArea(area, by))) }),
+    ...deposit, diameter: deposit.diameter * by.scale, rest: by.rest,
+    stamps: mappedStamps(deposit.stamps, by), dualStamps: mappedStamps(deposit.dualStamps, by), mask: mapFluid(deposit.mask),
+    ...(deposit.within && { within: deposit.within.map((area, k) => (anchors.within.has(k) ? area : mappedArea(area, by))) }),
   };
   if (deposit.kind !== 'flood') return common;
-  const { flood } = deposit;
-  return {
-    ...common, kind: 'flood',
-    flood: { ...flood, barrier: movedArea(flood.barrier, by), scale: { ...flood.scale, x0: flood.scale.x0 + by.x, y0: flood.scale.y0 + by.y }, load: movedField(flood.load, by) },
-  };
+  return { ...common, kind: 'flood', flood: { ...deposit.flood, barrier: mappedArea(deposit.flood.barrier, by) } };
 }
 
-/** `prewet` moved by `by`, its held fluid's ops moved but those anchored. */
-const movedPrewet = (prewet: StampSheetPrewet, by: PaintingMove, moveFluid: (mask: CompiledStampMask | null) => CompiledStampMask | null): StampSheetPrewet =>
-  ({ ...prewet, area: movedArea(prewet.area, by), water: movedField(prewet.water, by), held: moveFluid(prewet.held) });
+/** `prewet` mapped by `by`, its held fluid's ops mapped but those anchored, its water read back at rest. */
+const mappedPrewet = (prewet: StampSheetPrewet, by: PaintingMap, mapFluid: (mask: CompiledStampMask | null) => CompiledStampMask | null): StampSheetPrewet =>
+  ({ ...prewet, area: mappedArea(prewet.area, by), held: mapFluid(prewet.held), rest: by.rest });
 
 /** How many poses of one program are kept, the oldest forgotten first: as many as a shot's frames tend to revisit. */
 export const PAINTING_POSES_KEPT = 64;
@@ -117,7 +117,6 @@ const posesKept = new WeakMap<StampSheetProgram, Map<string, StampSheetProgram>>
 /**
  * `program` with each entry posed by its chain's map in `poses`, each wash's prewet by its first entry's. Kept by its
  * maps (PAINTING_POSES_KEPT a program): a pose met again is the one made before, counted into `costs` as a pose hit.
- * Refuses a map that turns or scales: the solver poses by moves so far.
  */
 export function paintingSheetPosed(program: StampSheetProgram, poses: PaintingPoses, costs?: StampPaintCostTally): StampSheetProgram {
   const maps = program.entries.map((entry) => paintingChainMap(entry.chain, poses)), texts = maps.map(paintingPoseText);
@@ -135,23 +134,20 @@ export function paintingSheetPosed(program: StampSheetProgram, poses: PaintingPo
 
 /** `program` with entry k posed by `maps[k]`, whose canonical text is `texts[k]`. */
 function paintingSheetPosedBy(program: StampSheetProgram, maps: readonly PaintSimilarity[], texts: readonly string[]): StampSheetProgram {
-  const movedFluid = new Map<string, Map<CompiledStampMask, CompiledStampMask>>();
-  const moverFor = (by: PaintingMove, anchored: ReadonlySet<CompiledStampMask>) => {
-    const tag = moveTag(by);
-    if (!movedFluid.has(tag)) movedFluid.set(tag, new Map());
-    return fluidMover(by, anchored, movedFluid.get(tag)!);
+  const mappedFluid = new Map<string, Map<CompiledStampMask, CompiledStampMask>>();
+  const mapperFor = (by: PaintingMap, anchored: ReadonlySet<CompiledStampMask>) => {
+    if (!mappedFluid.has(by.tag)) mappedFluid.set(by.tag, new Map());
+    return fluidMapper(by, anchored, mappedFluid.get(by.tag)!);
   };
   const posed = program.entries.map((entry, k) => {
-    const map = maps[k], pose = texts[k];
-    if (map.ma !== 1 || map.mb !== 0) throw new StampSheetRefusal(`painting: ${entry.name} is posed by a turn or a scale, and the solver poses by moves only so far`);
-    const by = { x: map.kx, y: map.ky };
-    if (by.x === 0 && by.y === 0) return { entry: { ...entry, pose }, by };
-    return { entry: { ...entry, deposit: movedDeposit(entry, by, moverFor(by, entry.anchors.masks)), pose }, by };
+    const pose = texts[k];
+    if (pose === PAINTING_REST_POSE) return { entry: { ...entry, pose }, by: null };
+    const by = paintingMapOf(maps[k], pose);
+    return { entry: { ...entry, deposit: mappedDeposit(entry, by, mapperFor(by, entry.anchors.masks)), pose }, by };
   });
   const washes = program.washes.map((wash, w) => {
-    const first = posed.find(({ entry }) => entry.wash === w);
-    if (!wash.prewet || !first || (first.by.x === 0 && first.by.y === 0)) return wash;
-    return { ...wash, prewet: movedPrewet(wash.prewet, first.by, moverFor(first.by, wash.prewet.anchored)) };
+    const by = posed.find(({ entry }) => entry.wash === w)?.by;
+    return wash.prewet && by ? { ...wash, prewet: mappedPrewet(wash.prewet, by, mapperFor(by, wash.prewet.anchored)) } : wash;
   });
   return { ...program, washes, entries: posed.map(({ entry }) => entry) };
 }

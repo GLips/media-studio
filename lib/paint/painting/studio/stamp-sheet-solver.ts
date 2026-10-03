@@ -19,6 +19,7 @@ import {
 } from '../models/stamp-sheet-schedule.ts';
 import { stampSheetMixedPainting, type StampSheetProgram } from '../models/stamp-sheet-program.ts';
 import { stampSheetEntryKey, stampSheetHeadKey } from '../models/stamp-sheet-state-key.ts';
+import { STAMP_REST_IDENTITY } from '../models/stamp-rest-map.ts';
 import { stampBoxUnion } from '../models/stamp-stage.ts';
 import { stampDepositSupport } from '../models/stamp-tip-support.ts';
 import { stampDryingRimCoversLanding } from '../models/stamp-wet-rim.ts';
@@ -204,7 +205,7 @@ function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevice, { pr
     const region = gpu.prewetRegion(w);
     if (!prewet || !region) return;
     settleUnder(encoder, region.box, at, null);
-    passes.prewet(encoder, { region, fluid: gpu.fluidOf(prewet.held), water: prewet.water }, at, drying);
+    passes.prewet(encoder, { region, fluid: gpu.fluidOf(prewet.held), water: prewet.water, rest: prewet.rest ?? STAMP_REST_IDENTITY }, at, drying);
   };
 
   /**

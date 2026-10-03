@@ -4,6 +4,7 @@
 
 import { STAMP_ACCUMULATION_RESOLVE_WGSL, STAMP_RESOLVE_PLANS, stampResolveOrdersWgsl } from '../models/stamp-deposit-stages.ts';
 import { STAMP_PAINT_FIELD_SHARE } from '../models/stamp-paint-field.ts';
+import { STAMP_REST_POINT_WGSL } from '../models/stamp-rest-map.ts';
 import { STAMP_WET_PAPER_WGSL } from '../models/stamp-wetness.ts';
 import { STAMP_WET_LAND_WGSL } from '../models/stamp-wet-landing.ts';
 import { stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
@@ -29,11 +30,11 @@ export const STAMP_DEPOSIT_FLAGS = {
 
 /**
  * Where a deposit's paint is kept, beside its Deposit (whose slot is full): its fluid's and `within`'s boxes (x, y,
- * width, height), and a fill's load field (STAMP_PAINT_FIELD_SHARE); how far round a pixel its stroke's body is
- * looked for, where its coverage hardens (strokeBodyAt).
+ * width, height), a fill's load field (STAMP_PAINT_FIELD_SHARE); how far round a pixel its stroke's body is looked
+ * for (strokeBodyAt); and the map back to where it was planned (StampRestMap), where fields and clumps are read.
  */
 export const STAMP_DEPOSIT_KEEP = gpuUniformLayout('Keep', [
-  ['fluid', 'vec4f'], ['within', 'vec4f'], ['load', 'vec4f'], ['loadEnds', 'vec2f'], ['loadKind', 'i32'], ['bodyReach', 'f32'],
+  ['fluid', 'vec4f'], ['within', 'vec4f'], ['load', 'vec4f'], ['rest', 'vec4f'], ['loadEnds', 'vec2f'], ['loadKind', 'i32'], ['bodyReach', 'f32'],
 ]);
 /**
  * A wash deposit's landing (StampWetLanding): how its paper dries (stampDryingWords), its painting second, its
@@ -71,7 +72,7 @@ const WET_HARDEN_COVER_WGSL = /* wgsl */ `let landing = wetLandingAt(pixel);
 // stroke its landing (hardening, dual, grain, tooth) kept, before opacity, load and colour; where paint may land; the
 // paper's tooth. The flow lands its water by that share, so grain holes stay dry; a stroke faded to no
 // pigment still wets the paper.
-const WET_LAND_WGSL = /* wgsl */ `landDeposit(pixel, coverage, rims, tooth, at, reserved, landing);
+const WET_LAND_WGSL = /* wgsl */ `landDeposit(pixel, coverage, rims, tooth, rest, reserved, landing);
   let landedPaint = clamp(m, 0.0, 1.0);
   let strokeMost = max(max(strokeBuilt, raw.r), landedPaint);
   let landedShare = select(0.0, landedPaint * toothKept / strokeMost, strokeMost > 0.0);
@@ -138,6 +139,7 @@ ${STAMP_RESOLVE_STAGES_WGSL}
 ${STAMP_DEPOSIT_KEEP.wgsl}
 ${STAMP_TRACE_CROP.wgsl}
 ${STAMP_PAINT_FIELD_SHARE.wgsl}
+${STAMP_REST_POINT_WGSL}
 ${STAMP_WET_LAND_WGSL}
 ${wet ? `${WET_WGSL}\n${stampPaintTargetWgsl('fresh', 21, compositor.targets.layer, 'write')}\n${compositor.deposit.wet}` : ''}
 ${compositor.reads.press ? PRESS_AT_WGSL : ''}
@@ -192,9 +194,11 @@ fn strokeBodyAt(pixel: vec2u, here: f32, reach: f32) -> f32 {
 
 @compute @workgroup_size(${STAMP_WORKGROUP}, ${STAMP_WORKGROUP}) fn deposit(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
-  // \`pixel\` is the stage's texel, \`at\` its centre as a painting point: what every grain, field and noise reads.
+  // \`pixel\` is the stage's texel, \`at\` its centre as a painting point, where the paper's tooth and the canvas grains
+  // are read; \`rest\` where it was planned, where the paint's fields and clumps are.
   let pixel = u.origin + id.xy;
   let at = stagePoint(vec2i(pixel));
+  let rest = restPoint(k.rest, at);
   tracedPixel = pixel;
   // Each layer's stroke as its accumulation resolves it: a glaze's from its densest stamp (the cap's blue or alpha)
   // toward the build held under its cap (red or green).
@@ -252,7 +256,7 @@ fn strokeBodyAt(pixel: vec2u, here: f32, reach: f32) -> f32 {
   }
   // A fill's load is how much paint it lays: burnt edges and a clip base alike.
   if ((u.flags & FLOOD) != 0u) {
-    let load = clamp(mix(k.loadEnds.x, k.loadEnds.y, paintFieldShare(at, k.loadKind, k.load)), 0.0, 1.0);
+    let load = clamp(mix(k.loadEnds.x, k.loadEnds.y, paintFieldShare(rest, k.loadKind, k.load)), 0.0, 1.0);
     keep *= load;
     reach *= load;
   }
@@ -270,7 +274,7 @@ fn strokeBodyAt(pixel: vec2u, here: f32, reach: f32) -> f32 {
   // A burnt rim burns into paint already there, the group's or the deposit's own (its stamps laid over one another).
   let burnable = max(layerCoverage(pixel), clamp(m, 0.0, 1.0)) * keep * u.opacity;
   let rims = vec2f(clamp(burnt, 0.0, 1.0) * burnable, clamp(dualBurnt, 0.0, 1.0) * burnable);
-  ${wet ? WET_LAND_WGSL : `layDeposit(pixel, coverage, rims, tooth, at, ${compositor.reads.press ? 'pressAt(pixel)' : '1.0'});`}
+  ${wet ? WET_LAND_WGSL : `layDeposit(pixel, coverage, rims, tooth, rest, ${compositor.reads.press ? 'pressAt(pixel)' : '1.0'});`}
   // The clip base is r. A clipped pass reads it and lays its own paint's in g, a base for a wash clipping to it.
   if ((u.flags & CLIPS) != 0u) {
     let laid = vec4f(coverage) + clipped * (1.0 - coverage);

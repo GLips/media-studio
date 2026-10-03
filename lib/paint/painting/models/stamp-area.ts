@@ -10,6 +10,7 @@
 import { compileStampBoundaries, STAMP_BOUNDARY_WGSL, stampBoundariesReach, stampBoundaryShift, type CompiledStampBoundary, type StampBoundaries } from './stamp-area-boundaries.ts';
 import { seededRandom } from '#lib/picture/motion/models/random.ts';
 import type { CompiledStampMask } from './stamp-paint-recipe-compile.ts';
+import { STAMP_REST_IDENTITY, stampRestPoint, type StampRestMap } from './stamp-rest-map.ts';
 import { checkedStampPolygon, STAMP_RINGED_COUNT, stampEdgeReach, stampEdgeWidth, stampPolygonBox, stampPolygonDistance, stampRingsDistance, type StampBox, type StampEdge, type StampPoint, type StampRegion } from './stamp-region.ts';
 
 /**
@@ -31,13 +32,13 @@ export type StampWithin = StampArea & { boundaries?: StampBoundaries };
 export type StampRingedWithin = Omit<StampWithin, 'region'> & { rings: readonly (readonly StampPoint[])[]; seed: number };
 
 /**
- * An area checked: its region traced, its edge, its inset (absent for none; negative ramps its edge past its line),
- * its ragged edge's seed, and a within's feathered and merged stretches (absent for none). `rings`, for a region of
- * more than one ring, read even-odd: `polygon` is then its first, and no reader takes it alone.
+ * An area checked: its region traced, its edge, its inset (negative ramps its edge past its line), its ragged edge's
+ * seed, and a within's feathered and merged stretches. `rings`, for more than one ring, read even-odd: `polygon` is
+ * then its first, never read alone. `rest`, for a posed area, maps back to where its ragged noise is read.
  */
 export type CompiledStampArea = {
   polygon: readonly StampPoint[]; rings?: readonly (readonly StampPoint[])[]; edge?: StampEdge; inset?: number; seed: number;
-  boundaries?: readonly CompiledStampBoundary[];
+  boundaries?: readonly CompiledStampBoundary[]; rest?: StampRestMap;
 };
 
 /**
@@ -96,10 +97,10 @@ export function stampEdgeCoverage(sd: number, width: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/** How much of (x, y) `area` covers, 0..1: twin of areaCoverage in STAMP_AREA_COVERAGE_WGSL. */
+/** How much of (x, y) `area` covers, 0..1: twin of areaCoverageAt in STAMP_AREA_COVERAGE_WGSL. */
 export function stampAreaCoverageAt(area: CompiledStampArea, x: number, y: number): number {
-  const ragged = area.edge?.ragged;
-  const moved = ragged && ragged.scale > 0 ? ragged.amount * stampEdgeNoise(x / ragged.scale, y / ragged.scale, area.seed) : 0;
+  const ragged = area.edge?.ragged, q = stampRestPoint(area.rest ?? STAMP_REST_IDENTITY, x, y);
+  const moved = ragged && ragged.scale > 0 ? ragged.amount * stampEdgeNoise(q.x / ragged.scale, q.y / ragged.scale, area.seed) : 0;
   const sd = stampAreaDistance(area, x, y);
   const { open, feather } = area.boundaries ? stampBoundaryShift(area.boundaries, sd, x, y) : { open: 0, feather: 0 };
   return stampEdgeCoverage(sd + open - feather / 2 - (area.inset ?? 0) + moved, Math.max(stampEdgeWidth(area.edge), feather));
@@ -107,15 +108,18 @@ export function stampAreaCoverageAt(area: CompiledStampArea, x: number, y: numbe
 
 /**
  * An area's coverage per pixel in WGSL, after STAMP_REGION_WGSL and STAMP_POLYGON_DISTANCE_WGSL: the polygon's `count`
- * points from `first` (a stampRingsLayout run when `count` has STAMP_RINGED_COUNT set), its inset, its ragged amount
- * and scale (scale 0 for none), its edge's width and seed, and its `boundaryCount` treated stretches from
- * `boundaryFirst` (STAMP_BOUNDARY_WGSL's `boundaries`).
+ * points from `first` (a stampRingsLayout run when `count` has STAMP_RINGED_COUNT set), its inset, ragged amount and
+ * scale (0 for none), edge width and seed, and `boundaryCount` stretches from `boundaryFirst`. `areaCoverageAt`
+ * reads the ragged noise at `q`, p's rest point.
  */
 export const STAMP_AREA_COVERAGE_WGSL = /* wgsl */ `
 ${STAMP_BOUNDARY_WGSL}
 fn areaCoverage(p: vec2f, first: u32, count: u32, inset: f32, ragged: vec2f, width: f32, seed: u32, boundaryFirst: u32, boundaryCount: u32) -> f32 {
+  return areaCoverageAt(p, p, first, count, inset, ragged, width, seed, boundaryFirst, boundaryCount);
+}
+fn areaCoverageAt(p: vec2f, q: vec2f, first: u32, count: u32, inset: f32, ragged: vec2f, width: f32, seed: u32, boundaryFirst: u32, boundaryCount: u32) -> f32 {
   var moved = 0.0;
-  if (ragged.y > 0.0) { moved = ragged.x * edgeNoise(p.x / ragged.y, p.y / ragged.y, seed); }
+  if (ragged.y > 0.0) { moved = ragged.x * edgeNoise(q.x / ragged.y, q.y / ragged.y, seed); }
   var sd: f32;
   if ((count & ${STAMP_RINGED_COUNT}u) != 0u) { sd = ringsDistance(p, first, count & ${STAMP_RINGED_COUNT - 1}u); } else { sd = polygonDistance(p, first, count); }
   let shift = boundaryShift(p, sd, boundaryFirst, boundaryCount);

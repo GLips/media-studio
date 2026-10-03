@@ -14,6 +14,7 @@ import type { CompiledStampPaintAction } from './stamp-paint-action.ts';
 import type { CompiledStampDeposit, CompiledStampMask, StampMixedPainting, StampMixedPass } from './stamp-paint-recipe-compile.ts';
 import type { StampPigmentMixing } from './stamp-pigment-paint.ts';
 import type { StampPaintPaper } from './stamp-paint-recipe-types.ts';
+import type { StampRestMap } from './stamp-rest-map.ts';
 
 /** What an entry waits for over its core before it lands (StampSheetEntry's `on`). */
 export type StampSheetWetness = 'wet' | 'damp' | 'dry';
@@ -31,7 +32,11 @@ export type StampSheetFilm = { medium: PaintMedium; mixing: StampPigmentMixing; 
  * Clean water laid evenly at a wash's start over `area`, `water` 0..1 by place, held off where `held` masks it; the
  * masks of `held` that stay on the paper when its layer is posed, `anchored`.
  */
-export type StampSheetPrewet = { area: CompiledStampArea; water: StampSeededPaintField<number>; held: CompiledStampMask | null; anchored: ReadonlySet<CompiledStampMask> };
+export type StampSheetPrewet = {
+  area: CompiledStampArea; water: StampSeededPaintField<number>; held: CompiledStampMask | null; anchored: ReadonlySet<CompiledStampMask>;
+  /** For a prewet a pose moved, the map back to where it was planned, where its water's field is read; absent where it lies. */
+  rest?: StampRestMap;
+};
 
 /**
  * A wash: its film (an index into `films`), its name, its prewet (null for none), its rim's strength 0..2, the earlier

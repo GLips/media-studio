@@ -64,7 +64,8 @@ struct Covered { @location(0) mask: vec4f, @location(1) cap: vec4f }
 struct Stamp { @location(0) mask: vec4f, @location(1) cap: vec4f, @location(2) tintA: vec4f, @location(3) tintB: vec4f }
 ${STAMP_GRAIN_WGSL}
 ${STAMP_TURNED_WGSL}
-@vertex fn place(@builtin(vertex_index) i: u32, @location(0) stamp: vec4f, @location(1) more: vec4f, @location(2) tint: vec4f, @location(3) last: vec4f) -> Corner {
+// \`rest\`: where the stamp was placed, which seeds its noise, so a stamp a pose moved keeps its tip's.
+@vertex fn place(@builtin(vertex_index) i: u32, @location(0) stamp: vec4f, @location(1) more: vec4f, @location(2) tint: vec4f, @location(3) last: vec4f, @location(4) rest: vec2f) -> Corner {
   let pair = u.hull[i / 2u];
   let corner = select(pair.xy, pair.zw, (i & 1u) == 1u);
   let flips = u32(more.w);
@@ -93,7 +94,7 @@ ${STAMP_TURNED_WGSL}
   let full = u.towardFull == 1u;
   // Noise goes by the tip's pixels at the stamp's width (tipNoiseAt), so it keeps its grain as a stamp shrinks.
   let grow = select(1.0, stamp.z / u.pressed.w, u.pressed.w > 0.0);
-  return Corner(vec4f(at.x, -at.y, 0.0, 1.0), uv, select(more.x, more.x * opacity, full), tipGrad, grainUv, tint, select(opacity, 1.0, full), last.z, uv * stamp.z * u.span, stampNoiseSeed(stamp.xy), last.w, grow, grainGrad);
+  return Corner(vec4f(at.x, -at.y, 0.0, 1.0), uv, select(more.x, more.x * opacity, full), tipGrad, grainUv, tint, select(opacity, 1.0, full), last.z, uv * stamp.z * u.span, stampNoiseSeed(rest), last.w, grow, grainGrad);
 }
 // A stamp's paint (x) and its cap (y): the paint without its tip, how far a glaze's stroke may build there. A rolling
 // grain, carried by the stamp, cuts each one.
@@ -189,7 +190,7 @@ fn laidInOrder(p: vec2f, tinted: bool) -> Laid {
     if (u.pressed.x > 0.0) { a = pressedTip(a, touches, stamps[at + 11u], u.pressed.x, u.pressed.y, u.pressed.z, select(1.0, z / u.pressed.w, u.pressed.w > 0.0)); }
     if (u.noise > 0.0) {
       let noiseAt = max(floor(uv * z * u.span), vec2f(0.0));
-      a = tipNoise(a, tipNoiseAt(u32(noiseAt.x), u32(noiseAt.y), stampNoiseSeed(xy)), u.noise);
+      a = tipNoise(a, tipNoiseAt(u32(noiseAt.x), u32(noiseAt.y), stampNoiseSeed(vec2f(stamps[at + 12u], stamps[at + 13u]))), u.noise);
     }
     if (u.rolling == 1u) {
       let grainTurn = stamps[at + 6u];

@@ -14,19 +14,21 @@ import { STAMP_POLYGON_DISTANCE_WGSL, STAMP_REGION_WGSL, STAMP_RINGED_COUNT, sta
 import { stampBoxUnion, stampRegionTexelWords, type StampStage } from '../models/stamp-stage.ts';
 import { stampBindGroup, stampPaintBuffer, type StampPaintDevice } from './stamp-paint-gpu.ts';
 import { STAMP_UNIFORM_SLOT } from './stamp-uniform-arena.ts';
+import { STAMP_REST_IDENTITY, STAMP_REST_POINT_WGSL, type StampRestMap } from '../models/stamp-rest-map.ts';
 
 // A state of the masking fluid over its box: the state it's built on (`parent`, width 0 for none), then `opCount` ops
 // from `firstOp`: a mask joins its area by max, an unmask lifts its amount (everywhere for `count` 0), a clip keeps
 // only its area (an application's `within`). An op's area is worked out only within its `reach`.
 const MASK_STEP = gpuUniformLayout('MaskStep', [['box', 'vec4f'], ['parent', 'vec4f'], ['source', 'vec4f'], ['firstOp', 'u32'], ['opCount', 'u32']]);
-/** A MaskOp's words: its fifteen, padded to its vec4f's alignment. */
-const MASK_OP_WORDS = 16;
+/** A MaskOp's words: its fifteen, padded to its rest map's vec4f alignment, and that map's four. */
+const MASK_OP_WORDS = 20;
 const MASK_STEP_WGSL = /* wgsl */ `
 ${COVERAGE_FORMULAS_WGSL}
 ${STAMP_REGION_WGSL}
+${STAMP_REST_POINT_WGSL}
 ${GPU_FULL_FRAME_WGSL}
 ${MASK_STEP.wgsl}
-struct MaskOp { reach: vec4f, ragged: vec2f, width: f32, amount: f32, first: u32, count: u32, kind: u32, seed: u32, inset: f32, boundaryFirst: u32, boundaryCount: u32 }
+struct MaskOp { reach: vec4f, ragged: vec2f, width: f32, amount: f32, first: u32, count: u32, kind: u32, seed: u32, inset: f32, boundaryFirst: u32, boundaryCount: u32, rest: vec4f }
 @group(0) @binding(0) var<uniform> u: MaskStep;
 @group(0) @binding(1) var<storage, read> points: array<vec2f>;
 @group(0) @binding(2) var parent: texture_2d<f32>;
@@ -50,7 +52,7 @@ ${STAMP_AREA_COVERAGE_WGSL}
       if (all(s >= vec2f(0.0)) && all(s < u.source.zw)) { r = textureLoad(source, vec2u(s), 0).r; }
     } else if (op.count > 0u) {
       r = 0.0;
-      if (all(p >= op.reach.xy) && all(p <= op.reach.zw)) { r = areaCoverage(p, op.first, op.count, op.inset, op.ragged, op.width, op.seed, op.boundaryFirst, op.boundaryCount); }
+      if (all(p >= op.reach.xy) && all(p <= op.reach.zw)) { r = areaCoverageAt(p, restPoint(op.rest, p), op.first, op.count, op.inset, op.ragged, op.width, op.seed, op.boundaryFirst, op.boundaryCount); }
     }
     if (op.kind == 2u) { fluid *= r; } else { fluid = select(fluid * (1.0 - op.amount * r), max(fluid, r), op.kind == 0u || op.kind == 3u); }
   }
@@ -125,7 +127,7 @@ export function encodeStampRegionTextures(
     }
     return laidRings.get(area.rings)!;
   };
-  const opWords: { floats: number[]; words: number[]; inset: number; boundaries: [number, number] }[] = [];
+  const opWords: { floats: number[]; words: number[]; inset: number; boundaries: [number, number]; rest: StampRestMap }[] = [];
   // A within's treated stretches, each a vec4f: its path's first point and count in `points`, merge or feather, reach.
   const boundaryFloats: number[] = [];
   const boundariesOf = (area: CompiledStampArea | null): [number, number] => {
@@ -149,6 +151,7 @@ export function encodeStampRegionTextures(
       words: [first, count, { mask: 0, unmask: 1, clip: 2, source: 3 }[kind], area?.seed ?? 0],
       inset: area?.inset ?? 0,
       boundaries: boundariesOf(area),
+      rest: area?.rest ?? STAMP_REST_IDENTITY,
     });
   };
   /** A step drawing the next `opCount` ops over `box`, on `parent`'s state, a `source` op reading `source`. */
@@ -231,11 +234,12 @@ export function encodeStampRegionTextures(
   }));
   if (steps.length) {
     const opBytes = new ArrayBuffer(Math.max(1, opWords.length) * MASK_OP_WORDS * 4), opFloats = new Float32Array(opBytes), opInts = new Uint32Array(opBytes);
-    opWords.forEach(({ floats, words, inset, boundaries }, i) => {
+    opWords.forEach(({ floats, words, inset, boundaries, rest }, i) => {
       opFloats.set(floats, i * MASK_OP_WORDS);
       opInts.set(words, i * MASK_OP_WORDS + floats.length);
       opFloats[i * MASK_OP_WORDS + floats.length + words.length] = inset;
       opInts.set(boundaries, i * MASK_OP_WORDS + floats.length + words.length + 1);
+      opFloats.set(rest, i * MASK_OP_WORDS + 16);
     });
     const pointBuffer = stampPaintBuffer(on, new Float32Array(points.length ? points : [0, 0]), GPUBufferUsage.STORAGE);
     const opBuffer = stampPaintBuffer(on, opFloats, GPUBufferUsage.STORAGE), boundaryBuffer = stampPaintBuffer(on, new Float32Array(boundaryFloats.length ? boundaryFloats : [0, 0, 0, 0]), GPUBufferUsage.STORAGE);

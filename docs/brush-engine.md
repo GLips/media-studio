@@ -134,8 +134,12 @@ the author's. Then it lands into the one wet field and its film; its water reach
 proxy, though only into films that keep a wet history (a direct film has no open channel); a drying closes once
 everything since the last has set, rimming each film that painted in it, and at the end every wet film's open paint
 settles. The field keeps times after a base it moves up past 2¹³ s. It solves a posed program: `paintingSheetPosed`
-(`lib/paint/document/models/painting-pose.ts`) moves each entry's deposit by its group chain's map, anchored clips,
-reserves and resists staying, by translations only so far. Keys chain from the program's head through each entry's
+(`lib/paint/document/models/painting-pose.ts`) maps each entry's marks by its chain's similarity, anchored clips,
+reserves and resists staying: stamps placed, scaled and turned, areas by their outlines, widths scaled. What travels
+with the paint is read where it was planned: a posed deposit, area and prewet carry `rest` (`StampRestMap`,
+`stamp-rest-map.ts`), the map back to rest, and a stamp its rest point, where its tip noise is seeded; the resolve
+reads the fill's load field, pigment clumps and a flood's local scale there, the region pass a ragged edge's noise,
+the prewet its water. The paper's tooth and grain are read where they lie. Keys chain from the program's head through each entry's
 datum (what it reads of the document, with the marks it compiled to) and its pose's text (`stamp-sheet-state-key.ts`),
 so a decision is remembered by its prefix, and a solve's films are kept, cropped, in the device's cache under its last
 key (`stamp-sheet-films.ts`), which a still lays as the renderer lays a painting. Its targets are the device owner's

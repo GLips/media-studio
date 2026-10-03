@@ -16,15 +16,19 @@ import { STAMP_REGION_AT_WGSL, type StampRegionTexture } from './stamp-region-te
 import type { StampWashGroupLayer } from './stamp-paint-compositor.ts';
 import type { StampUniformArena } from './stamp-uniform-arena.ts';
 import { stampDryingWords } from './stamp-wet-field.ts';
+import { STAMP_REST_POINT_WGSL, type StampRestMap } from '../models/stamp-rest-map.ts';
 
 const WORKGROUP = 8;
 
 /** A pass over the box at `origin`, `extent` texels: the paper's drying, the time after the base, a rebase's shift, a clip base's channel. */
 const SHEET_FIELD = gpuUniformLayout('SheetField', [['origin', 'vec2u'], ['extent', 'vec2u'], ['drying', 'vec4f'], ['tau', 'f32'], ['shift', 'f32'], ['channel', 'u32']]);
 
-/** A prewet over the box: its region's and fluid's boxes (stage texels), its water's field (STAMP_PAINT_FIELD_SHARE's). */
+/**
+ * A prewet over the box: its region's and fluid's boxes (stage texels), its water's field (STAMP_PAINT_FIELD_SHARE's),
+ * read at each pixel's rest point under `rest`.
+ */
 const SHEET_PREWET = gpuUniformLayout('SheetPrewet', [
-  ['origin', 'vec2u'], ['extent', 'vec2u'], ['drying', 'vec4f'], ['region', 'vec4f'], ['fluid', 'vec4f'], ['geometry', 'vec4f'], ['ends', 'vec2f'],
+  ['origin', 'vec2u'], ['extent', 'vec2u'], ['drying', 'vec4f'], ['region', 'vec4f'], ['fluid', 'vec4f'], ['geometry', 'vec4f'], ['rest', 'vec4f'], ['ends', 'vec2f'],
   ['tau', 'f32'], ['kind', 'i32'],
 ]);
 
@@ -90,6 +94,7 @@ ${stampStageWgsl(stage)}
 ${STAMP_WET_PAPER_WGSL}
 ${STAMP_LANDED_WETNESS_WGSL}
 ${STAMP_PAINT_FIELD_SHARE.wgsl}
+${STAMP_REST_POINT_WGSL}
 @group(0) @binding(1) var region: texture_2d<f32>;
 @group(0) @binding(2) var fluid: texture_2d<f32>;
 @group(0) @binding(3) var paper: texture_storage_2d<rgba32float, read_write>;
@@ -101,7 +106,7 @@ ${STAMP_REGION_AT_WGSL}
   let field = textureLoad(paper, p);
   let found = wetPaperAt(field, u.tau, u.drying.xyz);
   let contact = regionAt(region, u.region, p) * (1.0 - regionAt(fluid, u.fluid, p));
-  let water = mix(u.ends.x, u.ends.y, paintFieldShare(stagePoint(vec2i(p)), u.kind, u.geometry));
+  let water = mix(u.ends.x, u.ends.y, paintFieldShare(restPoint(u.rest, stagePoint(vec2i(p))), u.kind, u.geometry));
   let now = found.wetness;
   let next = landedWetness(now, contact, water, -1.0);
   let settled = select(select(field.z, 1.0, found.workable <= 0.0), 0.0, contact > 0.0 && water > 0.0);
@@ -111,8 +116,11 @@ ${STAMP_REGION_AT_WGSL}
   textureStore(rim, p, seen);
 }`;
 
-/** A prewet as its pass lands it: its region (null for none on the stage), the fluid holding it off, its water. */
-export type StampSheetPrewetLanding = { region: StampRegionTexture; fluid: StampRegionTexture | null; water: StampSeededPaintField<number> };
+/**
+ * A prewet as its pass lands it: its region, the fluid holding it off (null for none on the stage), its water, and
+ * the map back to where it was planned, where its water's field is read.
+ */
+export type StampSheetPrewetLanding = { region: StampRegionTexture; fluid: StampRegionTexture | null; water: StampSeededPaintField<number>; rest: StampRestMap };
 
 /** What the passes write: the field's paper and rim, the open-paint mask; `blank` for a fluid of none. */
 export type StampSheetFieldTargets = { paper: GPUTextureView; rim: GPUTextureView; open: GPUTextureView; blank: GPUTextureView };
@@ -174,7 +182,7 @@ export function stampSheetFieldPasses(device: StampPaintDevice, stage: StampStag
     },
     /** Lands `landing`'s clean water at `tau` after the base, the paper drying as `drying` says. */
     prewet(encoder: GPUCommandEncoder, landing: StampSheetPrewetLanding, tau: number, drying: StampDrying) {
-      const { region, fluid, water } = landing, box = region.box, ends = stampPaintFieldEnds(water);
+      const { region, fluid, water, rest } = landing, box = region.box, ends = stampPaintFieldEnds(water);
       const uniform = arena.slot((views) => {
         const put = gpuUniformWriter(SHEET_PREWET, views);
         put('origin', [box.x, box.y]);
@@ -183,6 +191,7 @@ export function stampSheetFieldPasses(device: StampPaintDevice, stage: StampStag
         put('region', stampRegionTexelWords(region.box, 0));
         put('fluid', stampRegionTexelWords(fluid?.box, 0));
         put('geometry', ends.geometry);
+        put('rest', rest);
         put('ends', [ends.first, ends.second]);
         put('tau', tau);
         put('kind', ends.kind);

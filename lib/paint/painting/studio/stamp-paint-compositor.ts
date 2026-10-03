@@ -44,7 +44,8 @@ export type StampPaintCompositor = {
     /**
      * Its bindings from 24; `paperKept(tooth, mean, depth)`, `layerCoverage(pixel)` and `layDeposit(pixel, coverage,
      * rims, tooth, at, press)`: `rims` the main and dual burnt rims apart, `tooth` the paper's paint here and its mean,
-     * `press` 0..1 drawn, PAINT_DRY_BURNISHED_PRESS burnished, 1 unread.
+     * `at` the point its paint was planned at (its fields and clumps read there), `press` 0..1 drawn,
+     * PAINT_DRY_BURNISHED_PRESS burnished, 1 unread.
      */
     wgsl: string;
     /**

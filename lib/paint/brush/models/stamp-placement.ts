@@ -55,6 +55,8 @@ export type PlacedStamp = {
   grainDepthByPressure: number;
   /** The pen's pressure at it, 0..1, as its taper lets it through: what a pressed tip touches by. */
   pressure: number;
+  /** Where it was placed, once a pose has moved it (ENGINE 5.3): what its tip's noise is seeded by. Absent: where it lies. */
+  rest?: { readonly x: number; readonly y: number };
   /**
    * How its colour moves from its deposit's (StampBrushColorDynamics): hue as a share of the wheel, saturation and
    * lightness each −1..1, and the share of the deposit's secondary colour, 0..1. Zero for a brush without them.

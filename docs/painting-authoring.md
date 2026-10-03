@@ -13,7 +13,9 @@ document's tree, its sheets and each sheet's order (`painting-tree.ts`, `paintin
 diff; `layersOf`, `bracket` and `dissolve`, and the problems a shot's load reports in a plane's selection
 (`paintedSourceProblems`); the shot's types; `studio paint check` and `studio paint diff`; and the solver, for
 every sheet of a document with unclocked washes, each own sheet laid as a cut-out of its paper, seen through `studio
-paint still` and `studio paint check --solve`. The
+paint still` and `studio paint check --solve`; posing before painting by a similarity (a place, a turn, a scale), the
+marks mapped and their fields, ragged edges and noise read where they were planned; and a layer's finished film read
+back, its coverage or its picture (`stampFilmCoverage`, `stampFilmPicture`). The
 shot's presentation is built as models in `lib/paint/shot/models/`, checked but not yet drawn: a dissolve's weighted
 selections, the drawable order (`shot-plan.ts`), a path mask's reveal by inked length and the `alphaOf` graph
 (`shot-masks.ts`), instanced items' batches and travel (`shot-instances.ts`), pin and cover lays through the camera

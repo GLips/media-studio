@@ -19,6 +19,7 @@ import type { StampMark } from './stamp-marks.ts';
 import { checkedStampIdSegment, stampDepositNameText } from './stamp-deposit-identity.ts';
 import type { StampDepositWithin, StampPaintPaper, StampPaintRecipe, StampPaintRecipeDeposit, StampPaintRecipeGroup, StampPaintRecipeMask, StampPaintRecipeResist } from './stamp-paint-recipe-types.ts';
 import { checkedStampRim, compileStampWashWait, type CompiledStampWash, type CompiledStampWashStep } from './stamp-wash-effects.ts';
+import type { StampRestMap } from './stamp-rest-map.ts';
 
 /**
  * The fluid a deposit lands under: its latest op over the fluid before it, null for none. Deposits under the same
@@ -60,6 +61,11 @@ type CompiledStampDepositCommon<A extends CompiledStampAction> = {
   stamps: FrozenStampMarks;
   /** The brush's dual stamps, placed by its own settings along the same stroke, in the order laid; none without one. */
   dualStamps: FrozenStampMarks;
+  /**
+   * For a deposit a pose moved (ENGINE 5.3), the map back to where it was planned: its paint's and a flood's load
+   * fields, a flood's local scale and its pigment's clumps are read there. Absent: where it lies.
+   */
+  rest?: StampRestMap;
 };
 
 /**

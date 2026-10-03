@@ -38,6 +38,7 @@ import type { StampRegionTexture } from './stamp-region-textures.ts';
 import { STAMP_UNIFORM_SLOT, type StampUniformArena } from './stamp-uniform-arena.ts';
 import { putStampWetLand, putStampWetPrepare, stampDryingWords, type StampWetField } from './stamp-wet-field.ts';
 import type { StampLoadedWetStages, StampWetStage, StampWetStageContext, StampWetStagePlans } from './stamp-wet-stages.ts';
+import { STAMP_REST_IDENTITY } from '../models/stamp-rest-map.ts';
 
 export type StampDepositTarget = { texture: GPUTexture; view: GPUTextureView };
 
@@ -163,7 +164,7 @@ export function createStampDepositDrawing(device: StampPaintDevice, { stage, com
   const stampVertex = (tintStride: number): GPUVertexState => ({
     module: stampModule,
     buffers: [
-      { arrayStride: STAMP_FLOATS * 4, stepMode: 'instance', attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x4' }, { shaderLocation: 1, offset: 16, format: 'float32x4' }, { shaderLocation: 3, offset: 32, format: 'float32x4' }] },
+      { arrayStride: STAMP_FLOATS * 4, stepMode: 'instance', attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x4' }, { shaderLocation: 1, offset: 16, format: 'float32x4' }, { shaderLocation: 3, offset: 32, format: 'float32x4' }, { shaderLocation: 4, offset: 48, format: 'float32x2' }] },
       { arrayStride: tintStride, stepMode: 'instance', attributes: [{ shaderLocation: 2, offset: 0, format: 'float32x4' }] },
     ],
   });
@@ -449,6 +450,7 @@ export function createStampDepositDrawing(device: StampPaintDevice, { stage, com
         put('fluid', stampRegionTexelWords(fluid?.box, margin));
         put('within', stampRegionTexelWords(within?.region?.box, margin));
         put('bodyReach', STAMP_WET_BODY_REACH * deposit.diameter);
+        put('rest', deposit.rest ?? STAMP_REST_IDENTITY);
         if (deposit.kind !== 'flood') return;
         const ends = stampPaintFieldEnds(deposit.flood.load);
         put('load', ends.geometry);
