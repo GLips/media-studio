@@ -12,16 +12,17 @@ Built: sources and `painting()`; property schemas and values; every check made w
 document's tree, its sheets and each sheet's order (`painting-tree.ts`, `painting-sheet-program.ts`); the evaluation
 diff; `layersOf`, `bracket` and `dissolve`, and the problems a shot's load reports in a plane's selection
 (`paintedSourceProblems`); the shot's types; `studio paint check` and `studio paint diff`; and the solver, for
-every sheet of a document with unclocked washes, each own sheet laid as a cut-out of its paper, seen through `studio
-paint still` and `studio paint check --solve`; posing before painting by a similarity (a place, a turn, a scale), the
-marks mapped and their fields, ragged edges and noise read where they were planned; and a layer's finished film read
-back, its coverage or its picture (`paintingFilmCoverage`, `paintingFilmPicture`). The
+every sheet of a document, clocked washes and their prefixes included, each own sheet laid as a cut-out of its paper,
+seen through `studio paint still` and `studio paint check --solve`, each at a scene second with `--at`; posing before
+painting by a similarity (a place, a turn, a scale), the marks mapped and their fields, ragged edges and noise read
+where they were planned; and a layer's film read back through a selection's prefix, its coverage or its picture
+(`paintingFilmCoverage`, `paintingFilmPicture`). The
 shot's presentation is built as models in `lib/paint/shot/models/`, checked but not yet drawn: a dissolve's weighted
 selections, the drawable order (`shot-plan.ts`), a path mask's reveal by inked length and the `alphaOf` graph
 (`shot-masks.ts`), instanced items' batches and travel (`shot-instances.ts`), pin and cover lays through the camera
 and a pin's measured centres (`shot-placement.ts`), visibility's checks and the groups it isolates
 (`shot-visibility.ts`), a warm span's frames and moments (`shot-warm.ts`), and the cost report (`shot-cost-report.ts`,
-tabled by `studio profile --costs`). Not yet built: clocked washes in the solver, `<PaintedShot>` and
+tabled by `studio profile --costs`). Not yet built: `<PaintedShot>` and
 `<PaintedShotCanvas>`, and the passes drawing masks, items and pins. Until they land, a project can write, check and
 see its sources as stills and build its `PaintedShotProps`, but no scene shows them. **NEW** marks behaviour the brush
 engine (the recipe path, docs/brush-engine.md) lacks too; unmarked behaviour is how it already paints.
@@ -837,15 +838,17 @@ What the check says today, and what to do:
 | `rain.depths.far: 2.5 isn't nearer than the back, street at depth 2` / `rain: two items are called a at 2.04 s` / `label.lay.points: both pin 40, 40: two points set a scale and turn only apart` | an instanced plane at load and its items each frame (`shotInstancedPlaneProblems`, `shotInstanceProblems`); a pin or cover (`shotPlacementProblems`) | keep items nearer than the back; one key an item |
 | `meadow/hil.visibility: names no plane or occurrence of this shot` / `rain/drop-3.visibility: fades an item of rain, which isn't an occurrence: …` / `meadow/sky.visibility: 1.2 at 3 s; visibility is within 0..1` / `shot.warm: 2..1 isn't a span of scene seconds: …` | the shot's `visibility` (`shotVisibilityProblems` at load, `shotVisibilityProblem` each frame) and `warm` (`shotWarmProblems`) | name an occurrence; fade an item by its own `visibility` |
 
-`studio paint check <source> --solve [--out <dir>]` then solves every sheet on the GPU (run it under the GPU lock)
-and prints, in each sheet's order (under the sheet's name when there are several), each wash's start and when what it
-wetted had set, and each application's landing time with the `on` it waited for. It writes the painting to
-`<dir>/painting.png` and each layer's film on its sheet's paper and edge (`paintingFilmPicture`: the root's paper, or an
-own sheet's card, clear past it) to `<dir>/films/<layer>.png` (`<dir>` is `<source>.solve` by default). `studio
-paint still <source> [--set …] [--out <file>]` checks and solves the same way and writes only the painting, the
-document's size (`<source>.png`). Both end on what the solve cost: solves, entries run, decisions made and reused (a
-decision is remembered by its prefix's key), films kept from an earlier solve or painted, films' pictures read back
-or kept from an earlier read, and readbacks.
+`studio paint check <source> --solve [--at <s>] [--out <dir>]` then solves every sheet on the GPU (run it under the
+GPU lock) and prints, in each sheet's order (under the sheet's name when there are several), each wash's start and
+when what it wetted had set, and each application's landing time with the `on` it waited for: model seconds in the
+unclocked run, scene seconds with model time beside once the clock runs. `--at` solves the prefix shown at that scene
+second, as a selection's `at` does, finished. It writes the painting to `<dir>/painting.png` and each layer's film on
+its sheet's paper and edge (`paintingFilmPicture`: the root's paper, or an own sheet's card, clear past it) to
+`<dir>/films/<layer>.png` (`<dir>` is `<source>.solve` by default). `studio paint still <source> [--set …] [--at <s>]
+[--out <file>]` checks and solves the same way and writes only the painting, the document's size (`<source>.png`).
+Both end on what the solve cost: solves, entries run, decisions made and reused (a decision is remembered by its
+prefix's key), films and checkpoints found or not, films' pictures read back or kept from an earlier read, and
+readbacks.
 
 ```
 $ node cli/studio.ts paint check lib/paint/document/models/meadow.painting.ts --solve
@@ -863,6 +866,23 @@ cloud-wash (cloud): starts at 203.901 s
 costs: 1 solves, 4 entries run, 4 decisions made, 4 film hits, 2 film misses, 2 film readback misses, 10 readbacks
 ```
 
+A pond clocked from 0 s on a sheet at `dryingScale: 0.02`, reeds charged in `on: 'wet'`, a glint lifted `on: 'dry'` at
+6 s, then ripples at `origin: 'set'`:
+
+```
+pond (water): starts at scene 0 s (model 0 s)
+  pond-flood: lands at scene 0 s (model 0 s)
+  reeds: lands at scene 0 s (model 0 s) (on 'wet')
+  glint: lands at scene 6 s (model 300 s) (on 'dry')
+  pond: set by scene 4.078 s (model 203.9 s)
+ripples (water): starts at scene 6 s (model 300 s)
+  ripple: lands at scene 6 s (model 300 s)
+  ripples: set by scene 8.399 s (model 419.941 s)
+```
+
+The ripples wait for the glint before them in the order, not only for the pond to set. A wet wash on a sheet whose
+clock is `never` ends `never sets`.
+
 A refusal prints alone, after the check's summary, and fails the run. What the solve says, and what to do:
 
 | Message | When | Do |
@@ -871,10 +891,13 @@ A refusal prints alone, after the check's summary, and fails the run. What the s
 | `sky.applications[3] won't bloom: no open paint on workable paper under its core` | a bloom with nothing to act on where it lands; fails the solve | bloom over a wash still open, or drop `effect` |
 | `drop: its core is empty: nothing of it reaches paper` (warning) | its clips, resists or reserves leave none of it on paper; it lands at its predecessor's time | widen its clips, or drop it |
 | `treeline: decided within rounding of on 'wet'; another GPU may place it a step apart` (warning) | its `on` holds by a hair | wetter or drier, by a little |
-| `painting: meadow's wash hill is clocked, and the solver paints unclocked washes so far` | what this solver doesn't paint yet | check it without `--solve` |
+| `glint: unreachable … settled before it (\`instant\`)` / `bloom: unreachable … nothing dries (\`never\`)` | under `instant` the sheet has set before each clocked application, so `wet` and `damp` over earlier paint can't hold; under `never` it stays as it landed, judged at the predecessor's time alone | drop the `on`, or give the sheet a numeric `dryingScale` |
+| `hill starts at 2 s while sky is still wet until 5.1 s` | a numeric `origin` before its layer's earlier washes have set | a later `origin`, or `'set'` |
+| `glaze: fixed at 1 s precedes its predecessor at 3.448 s` | the application before it waited on its `on` past this one's `at` | a later `at`, or an earlier wait |
+| `glaze: at 6 s, on 'dry' holds over 80% of its core there` | a fixed `at` whose `on` doesn't hold then (for `damp`, an upper bound) | move the `at`, or drop the `on` |
+| `painting: glint lifts in a wash without wet history, and the solver lifts only in a wet wash so far` | what this solver doesn't paint yet | lift in a wet wash, or check it without `--solve` |
 
-With `<PaintedShot>`, the solve adds a clocked wash starting while an earlier one is wet (`hill starts at 2 s while
-sky is still wet until 5.1 s`) and, per frame and warmed span, the cost report (evaluations, cache hits and misses,
+With `<PaintedShot>`, the solve adds, per frame and warmed span, the cost report (evaluations, cache hits and misses,
 solves by sheet from the first application re-run, decisions reused, uploads, bytes kept); a shot adds its own: a bad
 rig (`meadow/heron is rigged: it takes no pins, sway or flutter`, `heron's layer eye lies in no part's cels`), a pose
 folding paint (warning), a plane whose selection changes (`plane meadow showed landscape, cloud at load and landscape

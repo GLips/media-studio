@@ -142,15 +142,24 @@ reads the fill's load field, pigment clumps and a flood's local scale there, the
 the prewet its water. The paper's tooth and grain are read where they lie. Keys chain from the program's head through each entry's
 datum (what it reads of the document, with the marks it compiled to) and its pose's text (`stamp-sheet-state-key.ts`),
 so a decision is remembered by its prefix, and a solve's films are kept, cropped, in the device's cache under its last
-key (`stamp-sheet-films.ts`), which a still lays as the renderer lays a painting. Its targets are the device owner's
+key (`stamp-sheet-films.ts`), which a still lays as the renderer lays a painting. The run of entries is
+`stamp-sheet-run.ts`, on the program's clock: a `scale` maps model time to scene seconds from S at τc, the unclocked
+run's end, so a numeric origin or fixed `at` maps back; `instant` sets the sheet before each clocked entry; `never`
+dries nothing (its drying's rate 0, the WGSL's set times infinite). A solve may stop at a prefix: `through` entries,
+or those landing by a scene second `at`, finished unless asked not to. An entry decided past `at` doesn't land, and a
+wash it started is undone from the checkpoint before it. Checkpoints (`stamp-sheet-checkpoints.ts`, the cache's
+producer `checkpoint`, given up first) keep every film over its paint box, the field's paper and rim, the clip
+coverages later entries read (`stamp-sheet-clips.ts`, one clip target holding one wash's at a time) and the CPU state,
+before each wash's first entry, the first posed one, and where a prefix stops, unfinished; a solve resumes from the
+latest its prefix has. Its targets are the device owner's
 (`owner.target`, named `sheet …`, at the stage's size), shared by every solve that size, so a solve clears its films
 before it reads them. A solve holds the device's FIFO lease (`stamp-solve-lease.ts`) from its first encode to its
 last readback, never holds an encoder across an await, and counts into a `StampPaintCostTally` when given one (its
-solve, decisions made and reused, readbacks, warnings). The renderer and the solver read a layered target back through
-`stamp-layer-readback.ts`. A solve whose every decision is remembered and whose films are still kept under its last
+solve and where it resumed, decisions made and reused, films and checkpoints found or not, readbacks, warnings). The
+renderer and the solver read a layered target back through `stamp-layer-readback.ts`. A solve whose every decision is remembered and whose films are still kept under its last
 key is that solve (`keptStampSheetFilms`): a pose met again solves nothing. Whoever draws or reads films holds them
 (`holdStampSheetFilms`) until it's done, so another solve making room in the cache can't give them up. It solves any
-sheet, unclocked; the gate's `schedule/` and `sheet/` cases hold it to the wet laws' closed forms.
+sheet, clocked or not; the gate's `schedule/` and `sheet/` cases hold it to the wet laws' closed forms.
 `stamp-sheet-composite.ts` lays a selection's solved sheets as one picture (ENGINE 5.4): the root's paper as the
 ground, then each film where its layer comes in document order, and an own sheet's card (its paper, wherever the union
 of its films' coverage reaches half, by `STAMP_OPAQUE_COVER`) where its owner comes, before every node under it, so a
@@ -397,11 +406,12 @@ check calls the engine's own problem function. A problem's box comes from `paint
 is each sheet's order, its layers' films (`painting-pigment-slots.ts`) and its clock, the one order the checks, the
 evaluation diff (`painting-evaluation-diff.ts`) and the solver read. The checks never touch the GPU.
 `painting-document-compile.ts` compiles a selection of an evaluation's layers to one solver program per sheet they
-lie on, each application through `painting-deposit-compile.ts` and `painting-area-compile.ts`, and the composite's
-steps, each selection compiled once per evaluation and brushes; `painting-pose.ts` poses a program before it's solved,
+lie on, its clock and order times with it, each application through `painting-deposit-compile.ts` and
+`painting-area-compile.ts`, a boiling layer's seeds suffixed for its epoch (`painting-reseed.ts`), and the composite's
+steps, each selection compiled once per evaluation, brushes and epochs; `painting-pose.ts` poses a program before it's solved,
 each pose kept per program; `studio/painting-sheets-solve.ts` solves a selection's sheets, holding their films until
 its caller releases them, and places each own sheet by its owner chain's map; `studio/painting-film-readback.ts` reads
-a selected layer's finished film back (a `LayerSelection`, `painting-selection.ts`), its coverage
+a selected layer's film back through its prefix (a `LayerSelection`, `painting-selection.ts`), its coverage
 (`paintingFilmCoverage`) or its picture (`paintingFilmPicture`); `engine/painting-still.ts` resolves its
 brushes and papers from `work/styles/` and has `studio/painting-still-page.ts` solve and lay it, for `studio paint
 still` and `studio paint check --solve`.
@@ -456,9 +466,10 @@ reading registered for fitting (`brush-readings.ts`). `npm run brushes:sheet`, `
 each runtime twin against its CPU side, synthetic paintings that walk every path the renderer takes, and a traced
 resolve against its frame; `media/mixed` holds each group of a three-medium painting to itself painted alone in its
 own medium (max 0), and gouache glazed over a dark watercolour wash to covering it. The sheet solver's cases
-(`stamp-gate-sheets.ts`) solve documents compiled with the gate's round: each decision on its closed form, an
-appended application changing no earlier film, a foot's charge mingling only where it touches wet shallows and not
-at all from an own sheet, the reductions exact at 8192², a heron's paper (`paper/heron`, `stamp-gate-paper-heron.ts`:
+(`stamp-gate-sheets.ts`, `stamp-gate-clocks.ts`) solve documents compiled with the gate's round: each decision on its
+closed form, scene seconds too on a clock at a scale, `instant` or `never`, an appended application changing no
+earlier film, a foot's charge mingling only where it touches wet shallows and not at all from an own sheet, each
+prefix played forward matching a fresh solve of it, the reductions exact at 8192², a heron's paper (`paper/heron`, `stamp-gate-paper-heron.ts`:
 moved, the grain under its body's paint stays and its wing's cut-out takes its own along; turned and grown, its body
 lands where the pose puts it), and three stills (`solved/`) accepted by eye. Pre-commit runs it on the staged tree when a
 path it covers changes; no adapter, a timeout
