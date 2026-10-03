@@ -1664,9 +1664,6 @@
     "lib/footage/generation/engine/generated-image.test.ts": {
       "assert.equal((Object.values(provenance)[0] as any).requestId, 'gen-img-1');": 1
     },
-    "lib/output/render/engine/frame-profiling.ts": {
-      "if (text.startsWith(FRAME_PROFILE_LOG_PREFIX)) entries.push(JSON.parse(text.slice(FRAME_PROFILE_LOG_PREFIX.length)));": 1
-    },
     "lib/picture/reel/models/ticker-layout.test.ts": {
       "const even = line('MOTAV', Array(5).fill({ wght: 437, wdth: 81.5 }));": 1
     },
@@ -1904,8 +1901,7 @@
       "const spreadOf = (vs: number[]) => Math.max(...vs) - Math.min(...vs);": 1
     },
     "lib/output/render/engine/frame-profiling.ts": {
-      "export async function profileFrames(session: RenderSession, { from, end }: { from: number; end: number }): Promise<FrameProfileReport> {": 1,
-      "export function formatFrameProfile(report: FrameProfileReport): string[] {": 1
+      "export async function profileFrames(session: RenderSession, { from, end }: { from: number; end: number }): Promise<FrameProfileReport> {": 1
     },
     "lib/output/render/engine/render-pipeline.ts": {
       "function judgeCheckedFrames(session: RenderSession, sink: ReturnType<typeof artifactSink>, timeline: TimelineReport, span: { first: number; last: number }): ProjectCheck {": 1,

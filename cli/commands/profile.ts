@@ -5,13 +5,14 @@ import { openStudioRenderSession, renderLensArg, renderWorkersArg, studioProject
 export default defineCommand({
   meta: {
     name: 'profile',
-    description: "Renders a span of frames three times and says where each frame's time goes: the drawing code that offers its work to be timed (a stamp painting's draw, waited for on the GPU, and its load), in one tab with no screenshot; then each frame's whole render as JPEGs, steady state, in one tab and in the render's tabs. Prints the GPU backends it ran on (WebGL's renderer and WebGPU's adapter).",
+    description: "Renders a span of frames three times and says where each frame's time goes: the drawing code that offers its work to be timed (a stamp painting's draw, waited for on the GPU, and its load), in one tab with no screenshot; then each frame's whole render as JPEGs, steady state, in one tab and in the render's tabs. Prints the GPU backends it ran on (WebGL's renderer and WebGPU's adapter). With --costs, also what the drawing counted each frame cost (a painted shot's evaluations, solves, cache hits and misses, readbacks, bytes).",
   },
   args: {
     project: studioProjectArg,
     frames: { type: 'string', required: true, valueHint: '330:404', description: 'The first and last frame to profile (inclusive)' },
     workers: renderWorkersArg,
     lens: renderLensArg,
+    costs: { type: 'boolean', default: false, description: 'Also table what drawing code counted each profiled frame cost, frame by frame' },
   },
   async run({ args }) {
     const range = args.frames.split(':').map(Number);
@@ -20,6 +21,7 @@ export default defineCommand({
     }
     const { profileFrames, formatFrameProfile } = await import('#lib/output/render/engine/frame-profiling.ts');
     const session = await openStudioRenderSession(args.project, { workers: args.workers, lens: args.lens });
-    for (const line of formatFrameProfile(await profileFrames(session, { from: range[0], end: range[1] + 1 }))) console.log(line);
+    const report = await profileFrames(session, { from: range[0], end: range[1] + 1 });
+    for (const line of formatFrameProfile(report, { costs: args.costs })) console.log(line);
   },
 });

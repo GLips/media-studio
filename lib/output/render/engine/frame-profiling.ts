@@ -5,11 +5,15 @@
 //     (lib/picture/profiling/studio/frame-profile.ts), each piece waited for on the GPU, and logging it to the console.
 //   - the whole render: the span rendered unprofiled to JPEGs, as a delivery render's frames are, in one tab and in
 //     the session's tabs, timed here from the frames' arrival. Its first frame, which loads everything, is left out.
+// The profiled render also logs what drawing code counts it cost (solves, cache hits); `--costs` tables them.
 import { renderFrames, type HeadlessBrowser } from '@remotion/renderer';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { RENDER_CHROMIUM } from '#lib/platform/browser/engine/render-browser.ts';
 import type { RenderSession } from './render-session.ts';
-import { FRAME_PROFILE_LOG_PREFIX, type FrameProfileEntry } from '#lib/picture/profiling/models/frame-profile-entry.ts';
+import { frameCostsTable } from '#lib/picture/profiling/models/frame-costs-table.ts';
+import {
+  FRAME_PROFILE_LOG_PREFIX, isFrameCostsEntry, type FrameCostsEntry, type FrameProfileEntry, type FrameProfileLine,
+} from '#lib/picture/profiling/models/frame-profile-entry.ts';
 
 /** Milliseconds, over the span's frames. */
 export type FrameTimeSpread = { median: number; p90: number; max: number };
@@ -24,6 +28,8 @@ export type FrameProfileReport = {
   loads: { label: string; ms: number[] }[];
   /** A frame's whole render, steady state: wall-clock per frame, in `tabs` at once. */
   whole: { tabs: number; msPerFrame: number }[];
+  /** What the profiled frames' drawing counted it cost, as logged. */
+  costs: FrameCostsEntry[];
 };
 
 function spreadOf(values: number[]): FrameTimeSpread {
@@ -36,7 +42,7 @@ function spreadOf(values: number[]): FrameTimeSpread {
 export async function profileFrames(session: RenderSession, { from, end }: { from: number; end: number }): Promise<FrameProfileReport> {
   const frames = Array.from({ length: end - from }, (_, i) => from + i);
   if (frames.length < 2) throw new Error('profile at least 2 frames: the first loads everything and is left out of the whole render');
-  const entries: FrameProfileEntry[] = [];
+  const lines: FrameProfileLine[] = [];
   const profiled = session.props({ profile: true });
 
   const composition = await session.inBrowser('profiled frames', async (browser) => {
@@ -47,7 +53,8 @@ export async function profileFrames(session: RenderSession, { from, end }: { fro
       // Quiet, so the entries are read, not echoed (frame-profiler.tsx says how they're logged to allow it).
       concurrency: 1, imageFormat: 'none', frames, logLevel: 'error', onStart: () => {}, onFrameUpdate: () => {},
       onBrowserLog: ({ text }) => {
-        if (text.startsWith(FRAME_PROFILE_LOG_PREFIX)) entries.push(JSON.parse(text.slice(FRAME_PROFILE_LOG_PREFIX.length)));
+        // SAFETY: frame-profiler.tsx alone logs behind this prefix, and only a FrameProfileLine's JSON.
+        if (text.startsWith(FRAME_PROFILE_LOG_PREFIX)) lines.push(JSON.parse(text.slice(FRAME_PROFILE_LOG_PREFIX.length)) as FrameProfileLine);
       },
     }));
     return { result: composition, workers: 1 };
@@ -69,6 +76,7 @@ export async function profileFrames(session: RenderSession, { from, end }: { fro
   const tabs = session.workersFor(composition);
   const whole = [await wholeIn(1), ...(tabs > 1 ? [await wholeIn(tabs)] : [])];
 
+  const entries = lines.filter((line): line is FrameProfileEntry => !isFrameCostsEntry(line));
   const labels = [...new Set(entries.map((e) => e.label))];
   const isLoad = (label: string) => label.endsWith(' load');
   return {
@@ -81,25 +89,30 @@ export async function profileFrames(session: RenderSession, { from, end }: { fro
     }),
     loads: labels.filter(isLoad).map((label) => ({ label, ms: entries.filter((e) => e.label === label).map((e) => e.ms) })),
     whole,
+    costs: lines.filter(isFrameCostsEntry),
   };
 }
 
+const ms = (n: number) => `${n.toFixed(1)} ms`;
+
 /** A load's times: each, when there are few; else the first (which fills caches) apart from the spread of the rest. */
-function formatLoads(times: readonly number[], ms: (n: number) => string): string {
+function formatLoads(times: readonly number[]): string {
   if (times.length <= 3) return times.map(ms).join(', ');
   const { median, p90, max } = spreadOf(times.slice(1));
   return `${times.length} loads: the first ${ms(times[0])}, then median ${ms(median)}, p90 ${ms(p90)}, max ${ms(max)}`;
 }
 
-export function formatFrameProfile(report: FrameProfileReport): string[] {
-  const ms = (n: number) => `${n.toFixed(1)} ms`;
+/** `report` as lines to print; with `costs`, what the drawing counted it cost follows, frame by frame. */
+export function formatFrameProfile(report: FrameProfileReport, { costs = false }: { costs?: boolean } = {}): string[] {
   const { frames, size, gpu } = report;
+  const costLines = report.costs.length ? frameCostsTable(report.costs) : ['  nothing in these frames counts its costs'];
   return [
     `frames ${frames.from}–${frames.end - 1} at ${size.width}×${size.height}, GPU ${gpu}`,
     'drawing, per frame, waited for on the GPU (1 tab, no screenshot):',
     ...(report.drawn.length ? report.drawn.map(({ label, frames: n, spread: s }) => `  ${label}: median ${ms(s.median)}, p90 ${ms(s.p90)}, max ${ms(s.max)} over ${n} frames`) : ['  nothing in these frames offers its work to be timed']),
-    ...report.loads.map(({ label, ms: times }) => `  ${label}: ${formatLoads(times, ms)}`),
+    ...report.loads.map(({ label, ms: times }) => `  ${label}: ${formatLoads(times)}`),
     'whole render, per frame, steady state (JPEG frames, no encode):',
     ...report.whole.map(({ tabs, msPerFrame }) => `  ${tabs} tab${tabs > 1 ? 's' : ''}: ${ms(msPerFrame)}`),
+    ...(costs ? ['costs, as the profiled drawing counted them:', ...costLines] : []),
   ];
 }
