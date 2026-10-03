@@ -27,29 +27,30 @@ const positionsOf = (count: number): Positions => {
 /** Each self-moving geometry's three position attributes, by geometry: the only way to make one. */
 const selfMovingPositions = new WeakMap<BufferGeometry, { now: Positions; open: Positions; close: Positions }>();
 
-/** A geometry whose vertices move of themselves, and `positions`, its posed points' array (x, y, z each) to write. */
-export type LensThreeSelfMovingGeometry = { readonly geometry: BufferGeometry; readonly positions: (count: number) => Float32Array };
+/** A self-moving geometry sized for some count of vertices; `made` when it's new, to be set on its mesh. */
+export type LensThreeSelfMovingSized = { readonly geometry: BufferGeometry; readonly positions: Float32Array; readonly made: boolean };
 
 /**
- * A geometry that moves of itself: `positions(count)` hands back its `position` array for `count` vertices, its open
- * and close positions (which `record` fills) remade with it when the count changes, the old buffers let go.
+ * A geometry that moves of itself: `sized(count)` hands back one for `count` vertices and its `position` array to
+ * write the posed points in (x, y, z each), its open and close positions beside it for `record`. A new count makes a
+ * new geometry, the old one disposed: three won't free a disposed geometry's buffers again once it's drawn anew.
  */
-export function createLensThreeSelfMovingGeometry(): LensThreeSelfMovingGeometry {
-  const geometry = new BufferGeometry();
+export function createLensThreeSelfMovingGeometry(): { readonly sized: (count: number) => LensThreeSelfMovingSized; readonly dispose: () => void } {
+  let geometry: BufferGeometry | null = null;
   return {
-    geometry,
-    positions: (count) => {
-      const held = selfMovingPositions.get(geometry);
-      if (held?.now.attribute.count === count) return held.now.array;
-      // Disposing frees every attribute's GPU buffer; three makes them again on the next draw.
-      if (held) geometry.dispose();
+    sized: (count) => {
+      const held = geometry && selfMovingPositions.get(geometry);
+      if (geometry && held?.now.attribute.count === count) return { geometry, positions: held.now.array, made: false };
+      geometry?.dispose();
+      geometry = new BufferGeometry();
       const made = { now: positionsOf(count), open: positionsOf(count), close: positionsOf(count) };
       geometry.setAttribute('position', made.now.attribute);
       geometry.setAttribute(LENS_THREE_OPEN_POSITION, made.open.attribute);
       geometry.setAttribute(LENS_THREE_CLOSE_POSITION, made.close.attribute);
       selfMovingPositions.set(geometry, made);
-      return made.now.array;
+      return { geometry, positions: made.now.array, made: true };
     },
+    dispose: () => geometry?.dispose(),
   };
 }
 

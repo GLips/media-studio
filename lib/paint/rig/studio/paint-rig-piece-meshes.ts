@@ -12,7 +12,7 @@ import {
 } from 'three/webgpu';
 import { attribute, max, texture } from 'three/tsl';
 import { gpuHalfBitsOf } from '#lib/platform/gpu/models/gpu-half-float.ts';
-import { createLensThreeSelfMovingGeometry, type LensThreeSelfMovingGeometry } from '#lib/picture/lens/studio/lens-three-motion.ts';
+import { createLensThreeSelfMovingGeometry } from '#lib/picture/lens/studio/lens-three-motion.ts';
 import type { PaintRigPicture, PaintRigPiece } from '../models/paint-rig-pieces.ts';
 
 /** The attribute a piece's vertices carry their rest point in, as a uv over its picture. */
@@ -50,7 +50,7 @@ export function createPaintRigPictureTextures(): PaintRigPictureTextures {
   };
 }
 
-type PieceMesh = { readonly mesh: Mesh<BufferGeometry, MeshBasicNodeMaterial>; readonly moving: LensThreeSelfMovingGeometry };
+type PieceMesh = { readonly mesh: Mesh<BufferGeometry, MeshBasicNodeMaterial>; readonly moving: ReturnType<typeof createLensThreeSelfMovingGeometry> };
 
 /** A mesh drawing `made` through whatever triangles it's given. */
 function pieceMesh(made: DataTexture): PieceMesh {
@@ -59,16 +59,19 @@ function pieceMesh(made: DataTexture): PieceMesh {
   const material = new MeshBasicNodeMaterial({ transparent: true, blending: NormalBlending, depthTest: false, depthWrite: false, side: DoubleSide });
   material.colorNode = sampled.rgb.div(max(sampled.a, 1e-4));
   material.opacityNode = sampled.a;
-  const moving = createLensThreeSelfMovingGeometry(), mesh = new Mesh(moving.geometry, material);
+  // The geometry is set by setTriangles before the mesh is first drawn.
+  const moving = createLensThreeSelfMovingGeometry(), mesh = new Mesh(undefined, material);
   mesh.frustumCulled = false;
   return { mesh, moving };
 }
 
 /** Writes `triangles` into `mesh`'s geometry: posed points as positions, rest points as uvs over `picture`. */
-function setTriangles({ mesh: { geometry }, moving }: PieceMesh, { x0, y0, w, h }: PaintRigPicture, triangles: Float32Array) {
-  const count = triangles.length / 4, positions = moving.positions(count);
-  // positions() remakes the geometry's buffers when the count changes; the rest uvs follow it.
-  if (geometry.getAttribute(REST_UV)?.count !== count) geometry.setAttribute(REST_UV, new BufferAttribute(new Float32Array(count * 2), 2));
+function setTriangles({ mesh, moving }: PieceMesh, { x0, y0, w, h }: PaintRigPicture, triangles: Float32Array) {
+  const count = triangles.length / 4, { geometry, positions, made } = moving.sized(count);
+  if (made) {
+    geometry.setAttribute(REST_UV, new BufferAttribute(new Float32Array(count * 2), 2));
+    mesh.geometry = geometry;
+  }
   const position = geometry.getAttribute('position'), rest = geometry.getAttribute(REST_UV), uvs = rest.array;
   for (let v = 0; v < count; v++) {
     positions[3 * v] = triangles[4 * v];
@@ -109,8 +112,8 @@ export function createPaintRigPieceMeshes(shared?: PaintRigPictureTextures): Pai
       for (const [picture, { mesh }] of made) if (!shown.has(picture)) mesh.visible = false;
     },
     dispose: () => {
-      for (const { mesh } of made.values()) {
-        mesh.geometry.dispose();
+      for (const { mesh, moving } of made.values()) {
+        moving.dispose();
         mesh.material.dispose();
       }
       if (!shared) textures.dispose();
