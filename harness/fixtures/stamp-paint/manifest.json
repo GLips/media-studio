@@ -242,6 +242,15 @@
       "accepted": "2026-10-03",
       "acceptedOver": "34622a69",
       "adapter": "apple metal-3"
+    },
+    "texture/wrapped-cylinder": {
+      "file": "texture/wrapped-cylinder.png",
+      "output": "4cba7695e90a9c528f0ebac157edbb25672fc32204a3cd9d8da5ebce725b8a03",
+      "inputs": "4eaa2d5b5e0891f9c8a0a4103a45dd7fd7c6a53e213a95f5b19d08ee38d34a09",
+      "reason": "a wrapped painting (wrap: 'x') drawn as a shot's painted texture and read by a three.js cylinder, its seam turned to the camera; below, the texture flat, rolled half its width: the flood, its bloom, the band and the paper's grain run on across the seam",
+      "accepted": "2026-10-03",
+      "acceptedOver": "34622a69",
+      "adapter": "apple metal-3"
     }
   }
 }

@@ -1,3 +1,3 @@
 {
-  "lib/paint/gate": "The gate draws its rigged heron and wet-contact shots through the shot's renderer, held to baselines and to what their rigs move."
+  "lib/paint/gate": "The gate draws its rigged heron and wet-contact shots through the shot's renderer, held to baselines and to what their rigs move; and a wrapped painting as a shot's painted texture on a three.js cylinder, held to its baseline and to a seam no rougher than its paint."
 }
