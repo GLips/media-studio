@@ -7,11 +7,10 @@ import { COVERAGE_FORMULAS_WGSL } from '#lib/paint/brush/models/coverage-formula
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { GPU_FULL_FRAME_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 import { STAMP_AREA_COVERAGE_WGSL, stampAreaBox, type CompiledStampArea } from '../models/stamp-area.ts';
-import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { CompiledStampBrushedMask } from '../models/stamp-brushed-mask.ts';
 import type { CompiledStampMask } from '../models/stamp-paint-recipe-compile.ts';
 import { STAMP_POLYGON_DISTANCE_WGSL, STAMP_REGION_WGSL, STAMP_RINGED_COUNT, stampEdgeWidth, stampRingsLayout, type StampBox, type StampPoint } from '../models/stamp-region.ts';
-import { stampBoxUnion, stampRegionTexelWords, type StampStage } from '../models/stamp-stage.ts';
+import { stampBoxUnion, stampPointBox, stampPointBoxWords, type StampPointBox, type StampStage } from '../models/stamp-stage.ts';
 import { stampBindGroup, stampPaintBuffer, type StampPaintDevice } from './stamp-paint-gpu.ts';
 import { STAMP_UNIFORM_SLOT } from './stamp-uniform-arena.ts';
 import { STAMP_REST_IDENTITY, STAMP_REST_POINT_WGSL, type StampRestMap } from '../models/stamp-rest-map.ts';
@@ -80,7 +79,7 @@ export const STAMP_REGION_BUDGET = 512 * 1024 * 1024;
 export const STAMP_REGION_FORMAT = 'r16float', STAMP_REGION_TEXEL_BYTES = 2;
 
 /** A region worked out at load: its texture, and its box in painting points. */
-export type StampRegionTexture = { view: GPUTextureView; box: StampPixelBox };
+export type StampRegionTexture = { view: GPUTextureView; box: StampPointBox };
 
 /**
  * `regionAt(region, box, pixel)`: a region texture's value at a stage texel, `box` its x, y, width and height in the
@@ -144,18 +143,18 @@ export function encodeStampRegionTextures(
     for (const { path, treatment, reach } of treated) boundaryFloats.push(...pointsOf(path), treatment === 'merge' ? 1 : 0, reach);
     return [first, treated.length];
   };
-  type Step = { box: StampPixelBox; parent: Step | null; source: StampRegionTexture | null; firstOp: number; opCount: number };
+  type Step = { box: StampPointBox; parent: Step | null; source: StampRegionTexture | null; firstOp: number; opCount: number };
   const steps: Step[] = [];
   // A region's box is in painting points, held to the stage.
-  const held = (box: StampBox): StampPixelBox | null => {
+  const held = (box: StampBox): StampPointBox | null => {
     const x = Math.max(-margin, Math.floor(box.x0)), y = Math.max(-margin, Math.floor(box.y0));
     const w = Math.min(frame.width + margin, Math.ceil(box.x1)) - x, h = Math.min(frame.height + margin, Math.ceil(box.y1)) - y;
-    return w > 0 && h > 0 ? { x, y, w, h } : null;
+    return w > 0 && h > 0 ? stampPointBox({ x, y, w, h }) : null;
   };
   // On a wrapping stage, with each copy of it a whole number of wraps away that's on the stage.
-  const inPainting = (box: StampBox): StampPixelBox | null => {
+  const inPainting = (box: StampBox): StampPointBox | null => {
     if (!wrap) return held(box);
-    let found: StampPixelBox | null = null;
+    let found: StampPointBox | null = null;
     for (let k = Math.ceil((-margin - box.x1) / wrap); k <= Math.floor((frame.width + margin - box.x0) / wrap); k++) {
       found = stampBoxUnion(found, held({ ...box, x0: box.x0 + k * wrap, x1: box.x1 + k * wrap }));
     }
@@ -173,7 +172,7 @@ export function encodeStampRegionTextures(
     });
   };
   /** A step drawing the next `opCount` ops over `box`, on `parent`'s state, a `source` op reading `source`. */
-  const maskStep = (box: StampPixelBox, parent: Step | null, opCount: number, source: StampRegionTexture | null = null): Step => {
+  const maskStep = (box: StampPointBox, parent: Step | null, opCount: number, source: StampRegionTexture | null = null): Step => {
     const step = { box, parent, source, firstOp: opWords.length, opCount };
     steps.push(step);
     return step;
@@ -210,7 +209,7 @@ export function encodeStampRegionTextures(
   };
   /** A step drawing `run` on `parent`'s state; a brushed mask off the painting masks nothing. */
   const runStep = (run: readonly CompiledStampMask[], parent: Step | null): Step | null => {
-    let box: StampPixelBox | null = parent?.box ?? null, source: StampRegionTexture | null = null;
+    let box: StampPointBox | null = parent?.box ?? null, source: StampRegionTexture | null = null;
     for (const op of run) {
       if (op.kind === 'mask') box = stampBoxUnion(box, inPainting(stampAreaBox(op.area)));
       if (op.kind === 'brushed') source = brushedRegion(op.brushed);
@@ -268,9 +267,9 @@ export function encodeStampRegionTextures(
     steps.forEach((step, i) => {
       const at = i * STAMP_UNIFORM_SLOT, n = STAMP_UNIFORM_SLOT / 4;
       const put = gpuUniformWriter(MASK_STEP, { floats: new Float32Array(words, at, n), ints: new Int32Array(words, at, n), words: new Uint32Array(words, at, n) });
-      put('box', stampRegionTexelWords(step.box, 0));
-      put('parent', stampRegionTexelWords(step.parent?.box, 0));
-      put('source', stampRegionTexelWords(step.source?.box, 0));
+      put('box', stampPointBoxWords(step.box));
+      put('parent', stampPointBoxWords(step.parent?.box));
+      put('source', stampPointBoxWords(step.source?.box));
       put('firstOp', step.firstOp);
       put('opCount', step.opCount);
       put('wrap', wrap);

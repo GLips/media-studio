@@ -114,6 +114,15 @@ const brokenSources: readonly { readonly name: string; readonly check: () => rea
     ], 'watercolour', 'never'))),
     expect: { severity: 'error', path: 'hill.clock', message: "follows sky on the root's sheet, which never dries" },
   },
+  {
+    name: 'a wrapped document whose grain is laid at half its scale',
+    check: () => {
+      const grain = { image: { style: 'watercolor', pack: 'vvds', file: 'papers/vvds-watercolor-canvas-3.grain.png' }, scale: 1, depth: 0.35 };
+      const sky = layer('sky', [{ key: 'sky-wash', applications: [flood({ key: 'sky-flood', water: 0.85 })] }]);
+      return checkPaintingSource(sourceOf({ ...documentOf([sky]), wrap: 'x', paper: { color: '#f4f2ed', absorbency: 0.5, grain } }));
+    },
+    expect: { severity: 'warning', path: 'document.paper.grain.scale', message: 'is laid at 0.5 on a wrapped document: its mirrored tiles fit the width in whole pairs, 1 ÷ 2n of it (0.5, 0.25, 0.167…)' },
+  },
 ];
 
 test('each broken source is refused with its one exact problem', () => {

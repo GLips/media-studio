@@ -76,10 +76,10 @@ export type PaintedThreeLoaded = {
 };
 
 /**
- * A painted texture a material reads, by id: rgba16float, gamma-encoded and opaque; `wrap: 'x'` when its painting
- * wraps, so u repeats. Whoever supplies it draws it and lets it go, after the sources loaded over it.
+ * A painted texture a material reads, by id: rgba16float, gamma-encoded and opaque; `wrap` 'x' when its painting
+ * wraps, so u repeats, else null. Whoever supplies it draws it and lets it go, after the sources loaded over it.
  */
-export type PaintedThreeTextureHandle = { readonly id: string; readonly texture: GPUTexture; readonly wrap?: 'x' };
+export type PaintedThreeTextureHandle = { readonly id: string; readonly texture: GPUTexture; readonly wrap: 'x' | null };
 
 /**
  * The painted textures three's sources read: their handles, and `update`, which brings them all up to frame time `t`,
@@ -111,7 +111,8 @@ export async function loadPaintedThree(owner: StampPaintGpuOwner, camera: PaintC
       made.push(surface);
       const renderer = await createStampPaintRenderer(surface, texture.painting, { profile });
       made.push(renderer);
-      return { texture, renderer, handle: { id: texture.id, texture: target } };
+      // An old renderer paints a sheet flat: none wraps.
+      return { texture, renderer, handle: { id: texture.id, texture: target, wrap: null } };
     });
     const update = async (t: number) => {
       await Promise.all(painted.map(({ texture, renderer }) => renderer.draw({ kind: 'once', t, state: texture.frameAt?.(paintMoment(t)) })));

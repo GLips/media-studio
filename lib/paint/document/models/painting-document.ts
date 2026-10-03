@@ -41,8 +41,8 @@ export type Ring = readonly StampPoint[];
 
 /**
  * `polygon`: its rings read even-odd, so a ring inside another is a hole, one inside a hole an island, and rings side
- * by side a union; rings never cross (compute an overlap's union in TS). Curves arrive flattened: the source owns
- * tolerance. Paint outside the document rectangle is clipped away.
+ * by side a union; rings never cross (compute an overlap's union in TS). Curves arrive flattened. Paint outside the
+ * document rectangle is clipped away, except across x on a document that wraps (`wrap: 'x'`): it comes round.
  */
 export type Region =
   | { readonly kind: 'polygon'; readonly rings: readonly Ring[] }

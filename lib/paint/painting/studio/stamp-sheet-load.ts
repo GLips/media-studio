@@ -12,7 +12,8 @@ import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { CompiledStampBrushedMask } from '../models/stamp-brushed-mask.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampSheetProgram } from '../models/stamp-sheet-program.ts';
-import { stampBoxUnion, stampStage, stampStageTexelsOf } from '../models/stamp-stage.ts';
+import { stampBoxUnion, stampStageTexelsOf, type StampStage } from '../models/stamp-stage.ts';
+import { stampSheetWetReach } from '../models/stamp-wet-reach.ts';
 import { stampDepositWashLaw } from '../models/stamp-wet-landing.ts';
 import { stampDepositWalled, type StampPaintMedia } from '../models/stamp-wetness.ts';
 import { encodeStampBrushedMasks } from './stamp-brushed-mask-textures.ts';
@@ -28,14 +29,14 @@ import { createStampSheetTargets } from './stamp-sheet-targets.ts';
 import { createStampUniformArena } from './stamp-uniform-arena.ts';
 import { putStampWetPrepare, stampWetField } from './stamp-wet-field.ts';
 import { STAMP_WET_STAGES } from './stamp-wet-stage-list.ts';
-import { stampWetStageReach, type StampWetWall } from './stamp-wet-stages.ts';
+import type { StampWetWall } from './stamp-wet-stages.ts';
 
 /**
- * What a solve loads from: its program as posed (banded when it wraps, stamp-sheet-wrap.ts), the halo its stage holds
- * past each side (0 for a sheet that doesn't wrap), its compositor and media, its brushes and brushed masks.
+ * What a solve loads from: its program as posed and painted, and the stage it's painted on (stampSheetSolvePlan's:
+ * banded on a halo when it wraps), its compositor and media, its brushes and brushed masks.
  */
 export type StampSheetLoadInput = {
-  program: StampSheetProgram; halo: number; compositor: StampPaintCompositor; media: StampPaintMedia<PaintMedium>; brushes: StampPaintBrushes;
+  program: StampSheetProgram; stage: StampStage; compositor: StampPaintCompositor; media: StampPaintMedia<PaintMedium>; brushes: StampPaintBrushes;
   brushedMasks: readonly CompiledStampBrushedMask[];
 };
 
@@ -47,8 +48,7 @@ const stampSheetSlots = (films: number, marks: number) => Math.max(128, 64 + 2 *
 
 /** `input`'s solve loaded through `device` (a scope of the solve's own) on `owner`'s targets, its first work submitted. */
 export function loadStampSheetSolve(owner: StampPaintGpuOwner, device: StampPaintDevice, input: StampSheetLoadInput) {
-  const { program, halo, compositor, media, brushes, brushedMasks } = input;
-  const stage = stampStage({ width: program.width, height: program.height }, halo, program.wrap === 'x');
+  const { program, stage, compositor, media, brushes, brushedMasks } = input;
   const posed = program.entries.map(({ deposit }) => deposit), prewets = program.washes.map(({ prewet }) => prewet);
   const wash = compositor.wash;
   if (!wash) throw new Error('stamp sheet: a sheet solve paints in pigment, whose compositor lays washes');
@@ -82,8 +82,7 @@ export function loadStampSheetSolve(owner: StampPaintGpuOwner, device: StampPain
 
   // A deposit's water reaches into every film's paint, so its box is as wide as its stages reach in any film's medium.
   const filmMedia = [...new Set(program.films.map(({ medium }) => medium))];
-  const wetReach = (deposit: CompiledStampDeposit, medium: PaintMedium, water: number) =>
-    Math.max(stampWetStageReach(STAMP_WET_STAGES, deposit, medium, water), ...filmMedia.map((other) => stampWetStageReach(STAMP_WET_STAGES, deposit, other, water)));
+  const wetReach = (deposit: CompiledStampDeposit, medium: PaintMedium, water: number) => stampSheetWetReach(filmMedia, deposit, medium, water);
   const bank = loadStampDepositBank(device, { stage, tipFootprint: brushes.tipFootprint, compositor, wetReach }, posed.map((deposit, k) => {
     const entry = program.entries[k];
     return {

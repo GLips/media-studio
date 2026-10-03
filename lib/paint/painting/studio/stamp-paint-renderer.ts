@@ -50,7 +50,7 @@ import {
 } from '../models/stamp-frame-plan.ts';
 import type { StampGroupMarks, StampPaintFrameState } from '../models/stamp-paint-frame-state.ts';
 import { STAMP_REST_LOOK, stampSinglePlane, type StampLaidPlanes, type StampLensFrame, type StampPlaneLook } from '../models/stamp-plane.ts';
-import { stampBoxUnion, stampStage, stampStageTexelsGrown, stampStageTexelsWithin, type StampStage } from '../models/stamp-stage.ts';
+import { stampBoxUnion, stampStage, stampStageTexelsGrown, stampStageTexelsOf, stampStageTexelsWithin, type StampStage } from '../models/stamp-stage.ts';
 import { bindStampPaintBrushes, loadStampDepositBank, type StampDepositToLoad, type StampLoadedDeposit, type StampPaintBrushes } from './stamp-deposit-bank.ts';
 import { createStampDepositDrawing, stampDepositUniformSlots, stampPaperTooth, type StampDepositDraw, type StampDepositTargets, type StampWashStart } from './stamp-deposit-drawing.ts';
 import { STAMP_TRACE_ACCUMULATOR, STAMP_TRACE_SLOTS } from './stamp-deposit-resolve-wgsl.ts';
@@ -342,7 +342,7 @@ function rendererOnSurface({
     if (wetness?.landings.size) {
       const bank: StampWetBank = {
         device: on, landings: wetness.landings, dryings: [...wetness.washes.values()].flatMap((record) => record.dryings), boxOf,
-        wallOf: (deposit) => stampDepositWall(regions, deposit, margin),
+        wallOf: (deposit) => stampDepositWall(regions, deposit, stage),
       };
       stages = planStampWetStages(loadedWetStages(), bank);
     }
@@ -980,13 +980,13 @@ const barrierOf = (regions: LoadedRegions, deposit: CompiledStampDeposit) =>
   (deposit.kind === 'flood' ? regions.barriers.get(deposit) : regions.withins.get(deposit)) ?? null;
 const stageWalls = new WeakMap<StampRegionTexture, StampWetWall>();
 /**
- * The wall `deposit` dries against (StampWetBank's wallOf), its box in stage texels, `margin` past its painting
- * point's: its barrier if walled (stampDepositWalled), else its `within`. One wall a region, so a drying's walls dedupe.
+ * The wall `deposit` dries against (StampWetBank's wallOf), its box in `stage`'s texels: its barrier if walled
+ * (stampDepositWalled), else its `within`. One wall a region, so a drying's walls dedupe.
  */
-function stampDepositWall(regions: LoadedRegions, deposit: CompiledStampDeposit, margin: number): StampWetWall | null {
+function stampDepositWall(regions: LoadedRegions, deposit: CompiledStampDeposit, stage: StampStage): StampWetWall | null {
   const region = stampDepositWalled(deposit) ? barrierOf(regions, deposit) : regions.withins.get(deposit) ?? null;
   if (!region) return null;
-  if (!stageWalls.has(region)) stageWalls.set(region, { view: region.view, box: { ...region.box, x: region.box.x + margin, y: region.box.y + margin } });
+  if (!stageWalls.has(region)) stageWalls.set(region, { view: region.view, box: stampStageTexelsOf(stage, region.box) });
   return stageWalls.get(region)!;
 }
 

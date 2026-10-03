@@ -180,11 +180,13 @@ a composite's picture is kept alike under a key naming its films, steps and card
 as a shot's rigs read their cels and pieces.
 
 **Wrapped sheets.** A document saying `wrap: 'x'` meets its left edge to its right on every sheet, as round a
-cylinder (`stamp-sheet-wrap.ts`); its program carries `wrap`, its head naming it only when set. Such a sheet is
-solved banded: on a stage whose margin is a halo (`stampStage(frame, halo, true)`), as far as any mark may lay paint
-or carry water past its place (`stampSheetWrapHalo`, pure, its head `stampSheetWrapHead` so K₀ keys it apart), every
-deposit's and brushed mask's stamps copied a whole number of wraps away as far as a stamp on the halo's edge reaches
-(`stampSheetWrapped`), and every area copied `wrap` px apart as the region textures draw it. A copy keeps its stamp's
+cylinder (`stamp-sheet-wrap.ts`); its program carries `wrap`, its head naming it only when set. Its solve's plan
+(`stampSheetSolvePlan`, pure: stage, K₀'s head, the program painted) bands it: on a stage whose margin is a halo
+(`stampStage(frame, halo, 'x')`), the farthest any mark may lay paint or carry water past its place
+(`stampSheetWrapHalo`, the wet reach `stampSheetWetReach` as the load boxes it) rounded up to a power of two, in K₀,
+so an edit widening the widest reach a little keeps the key and one past a power of two re-keys the sheet whole; every
+deposit's and brushed mask's stamps copied a whole number of wraps away as far as a stamp on the halo's edge reaches,
+and every area copied `wrap` px apart as the region textures draw it. A copy keeps its stamp's
 `rest`, where its tip noise and rolling grain are read, and its deposit or prewet its `wrapFrom`: the resolve reads
 its load field, clumps and flood scale within the wrap centred on where it was planned (`stageUnwrapped`, with
 STAGE_WRAP, in `stampStageWgsl`), so a copy's pixels read as its own. The paper repeats with it: tooth and grain
@@ -192,8 +194,11 @@ tiles fitted to a whole number round the wrap, mirrored ones in pairs, aspect ke
 noise and pigment clumps on whole cells (`paintNoiseWrapped`, `paintClumpsWrapped`). Films are kept cropped to the
 frame and a refusal's boxes name only what lies in it: the halo is painted so paint by the seam finds its
 neighbours, and never kept. Negative space: y doesn't wrap; a deposit wider than the wrap reads its fields within the one wrap
-round its middle, so a field running along it jumps where that ends; a paper photograph is laid as it is and meets
-itself at the seam (the check warns); and the composite moves an own sheet its owner chain poses whole, unwrapped.
+round its middle, so a field running along it jumps where that ends; the halo bounds one entry's reach, and at the
+stage's edge a flow meets a wall, not paint going on round, so a long chain of wet-in-wet entries across the seam may
+drift there; a paper photograph is laid as it is and meets itself at the seam, and a grain tile fitted far off its
+authored size is warned of (both by `checkPaintingDocument`); and the composite moves an own sheet its owner chain
+poses whole, unwrapped.
 
 **Capabilities.** A `PaintMedium` declares what it can do besides lay paint (`PaintCapability`): `'wet-history'`,
 `'wet-conditions'`, `'water'`, `'lift'`, `'burnish'`. Watercolour and gouache declare the first four; crayon `lift`
@@ -479,10 +484,12 @@ and the cost report. Visibility's keys and range, and the group occurrences that
 (`shot-visibility.ts`), are drawn. The cost report's counts are painting's (`painting/models/stamp-paint-costs.ts`, one set of names the document,
 solver, caches and shot all count into); the shot logs a frame's and a warm's under its labels
 (`shot-cost-report.ts`) through `picture/profiling`'s costs channel, which knows nothing of paint, so
-`studio profile --costs` tables any drawing's counts. Its painted textures (ENGINE 6.3) are checked in
-`shot-painted-texture-checks.ts` (`shotPaintedTexturesProblems`: an id each, whole px, each source at moment 0 as a
-plane's is, never on a transparent ground, never blending a painting that wraps with one that doesn't) and drawn by
-`studio/shot-painted-textures.ts` (`createShotPaintedTextures`, the handles `loadPaintedThreeSources` reads): each
+`studio profile --costs` tables any drawing's counts. Its painted textures (ENGINE 6.3) are compiled in
+`shot-painted-texture-compile.ts` (`compileShotPaintedTextures`: an id each, whole px, each source at moment 0 as a
+plane's is, never on a transparent ground, never blending a painting that wraps with one that doesn't; whether it
+wraps held from moment 0, a callback's source checked again each frame by `compiledPaintedTextureSourceAt`) and the
+compiled ones drawn by `studio/shot-painted-textures.ts` (`createShotPaintedTextures`, the handles
+`loadPaintedThreeSources` reads, each saying whether it wraps): each
 selection a texture's source reads at the moment solved, laid on its paper at its document's size, box-resampled to
 the texture's, summed by its dissolve weight in linear light, then gamma-encoded; a texture whose selections and
 weights haven't changed isn't drawn again. Painted textures have no mipmaps.
@@ -532,10 +539,13 @@ with nothing solved, and reeds owning their sheet drawn as pieces, solving at re
 posed; the heron boiling, its wobble moving finished paint with nothing solved; and the wet-contact foot posed by a
 rig, resuming its sheet's solve from its checkpoints, and painted in as the shot plays, its rig drawing before the
 foot's first stroke. Each shot's frame is a baseline (`shot/`) accepted by eye. Its painted texture
-(`texture/wrapped-cylinder`, `stamp-gate-textures.ts`): a wrapped painting, a flood and an earth band run across its
-seam and a bloom dropped on it, drawn by `createShotPaintedTextures` onto a three.js cylinder through the three-source
-loader, its seam turned to the camera above the texture laid flat and rolled half its width, accepted by eye and held
-to a seam no rougher than the roughest column step within 12 of it. Pre-commit runs it on the staged tree when a
+(`texture/wrapped-cylinder`, `stamp-gate-textures.ts`): two wrapped paintings, a flood and an earth band run across
+their seam and a bloom dropped on it, their bands apart, dissolved halfway and drawn at half their size by
+`createShotPaintedTextures`, so the resample averages across the seam and the sum weighs both, onto a three.js
+cylinder through the three-source loader, its seam turned to the camera above the texture laid flat at 2 px a texel
+and rolled half its width, accepted by eye and held to a seam no rougher than the roughest texel column step within
+12 of it. Frame families (solved sheets, shots, painted textures) are rows of `STAMP_GATE_FRAME_FAMILIES` in
+`stamp-gate.ts`: IDs, page function, frame size and inputs, so a new family is one row. Pre-commit runs it on the staged tree when a
 path it covers changes; no adapter, a timeout
 or a difference fails the commit. Public baselines live in `harness/fixtures/stamp-paint/`, a pack's brushes' in
 `work/validation/stamp-paint/` (`stamp:gate -- private run`). A baseline changes only by `update <ids> --reason …`,

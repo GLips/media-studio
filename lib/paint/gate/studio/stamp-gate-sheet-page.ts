@@ -12,6 +12,7 @@ import { solvePaintingSheets, type PaintingSheetsSolved } from '#lib/paint/docum
 import { createStampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { STAMP_SHEET_REBASE } from '#lib/paint/painting/models/stamp-sheet-schedule.ts';
 import type { StampSheetProgram } from '#lib/paint/painting/models/stamp-sheet-program.ts';
+import { stampPointBox } from '#lib/paint/painting/models/stamp-stage.ts';
 import { readStampFilmCoverage } from '#lib/paint/painting/studio/stamp-film-readback.ts';
 import { drawStampSheetsStill, readStampSheetsPicture } from '#lib/paint/painting/studio/stamp-sheet-composite.ts';
 import { solveStampSheet } from '#lib/paint/painting/studio/stamp-sheet-solver.ts';
@@ -119,7 +120,7 @@ function paperHeronFilm(evaluation: PaintingEvaluation, compiled: PaintingSelect
  */
 async function checkPaperHeron(): Promise<StampGateWashCheck[]> {
   const id = 'paper/heron', evaluation = painting(STAMP_GATE_PAPER_HERON), compiled = compilePaintingSelection(evaluation, stampGateSheetBrushOf);
-  const { widthPx: width, heightPx: height } = evaluation.document, whole = { x: 0, y: 0, w: width, h: height };
+  const { widthPx: width, heightPx: height } = evaluation.document, whole = stampPointBox({ x: 0, y: 0, w: width, h: height });
   const body = paperHeronFilm(evaluation, compiled, 'body');
   return withStampGateSheetOwner(async (owner) => {
     const costs = createStampPaintCostTally(), reader = { owner, brushOf: stampGateSheetBrushOf, costs }, selection = layersOf(evaluation, ['heron']);

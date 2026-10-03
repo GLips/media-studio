@@ -7,11 +7,10 @@
 // A sheet's stage is its document, no margin: a film's box is in document px. The films read must be held by the
 // caller until the read resolves (holdStampSheetFilms).
 
-import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { StampPaintCostTally } from '../models/stamp-paint-costs.ts';
 import type { StampSheetCompositeStep } from '../models/stamp-sheet-program.ts';
 import { stampCanonicalJson } from '../models/stamp-sheet-state-key.ts';
-import { stampBoxUnion } from '../models/stamp-stage.ts';
+import { stampBoxUnion, stampPointBox, type StampPointBox } from '../models/stamp-stage.ts';
 import type { StampPaintGpuOwner } from './stamp-paint-gpu-owner.ts';
 import { readStampSheetsPicture, type StampSheetKeptFilms, type StampSheetsComposite, type StampSheetsGround, type StampSheetsPicture } from './stamp-sheet-composite.ts';
 import { readStampSheetFilm } from './stamp-sheet-films.ts';
@@ -89,8 +88,8 @@ const emptyPicture = (): StampSheetsPicture => ({ x0: 0, y0: 0, w: 0, h: 0, rgba
  */
 export function readStampFilmPicture(owner: StampPaintGpuOwner, sheet: StampSheetKeptFilms, film: number, backing: StampFilmBacking, costs?: StampPaintCostTally): Promise<StampSheetsPicture> {
   const { program, films } = sheet, kept = films[film], { edge } = program;
-  const document: StampPixelBox = { x: 0, y: 0, w: program.width, h: program.height };
-  const union = films.reduce<StampPixelBox | null>((all, { box }) => stampBoxUnion(all, box), null);
+  const document = stampPointBox({ x: 0, y: 0, w: program.width, h: program.height });
+  const union = films.reduce<StampPointBox | null>((all, { box }) => stampBoxUnion(all, box), null);
   const paper = edge === 'document' ? document : union, crop = backing === 'clear' ? kept.box : paper;
   // The backing's identity: its paper, and for a card the films its edge joins.
   const backed = backing === 'clear' ? 'clear' : `sheet ${stampCanonicalJson(program.paper)} ${edge === 'union' ? films.map(({ key }) => key).join('+') : 'document'}`;

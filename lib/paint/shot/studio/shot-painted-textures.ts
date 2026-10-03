@@ -1,5 +1,6 @@
-// shot-painted-textures.ts: a shot's painted textures (ENGINE 6.3) drawn for its three sources, each a handle
-// loadPaintedThreeSources reads, brought up to a frame's moment by `update`. A texture's source is read at the moment;
+// shot-painted-textures.ts: a shot's compiled painted textures (ENGINE 6.3, compileShotPaintedTextures) drawn for its
+// three sources, each a handle loadPaintedThreeSources reads, brought up to a frame's moment by `update`. A texture's
+// source is read at the moment;
 // each selection it blends is solved (solvePaintingSheets), laid on its paper at the document's size
 // (drawStampSheetsStill), resampled to the texture's size and summed by its weight in linear light, so a dissolve
 // blends opaque colour; then gamma-encoded into the handle, as paintedThreeColorNode decodes it. A painting that wraps
@@ -21,9 +22,8 @@ import { createStampUniformArena } from '#lib/paint/painting/studio/stamp-unifor
 import type { PaintedThreeTextureHandle, PaintedThreeTexturesSupplied } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { GPU_FULL_FRAME_WGSL, GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
-import { paintedSourceWrap, paintedTextureSourceAt, paintedTextureSourceProblems, shotPaintedTexturesProblems } from '../models/shot-painted-texture-checks.ts';
-import type { PaintedTexture } from '../models/shot-props.ts';
-import { paintedSourceShares, type PaintedSourceShare } from '../models/shot-selection.ts';
+import { compiledPaintedTextureSourceAt, type CompiledShotPaintedTexture } from '../models/shot-painted-texture-compile.ts';
+import { paintedSourceShares, samePaintedSourceShares, type PaintedSourceShare } from '../models/shot-selection.ts';
 
 /** What a shot's painted textures are painted with: its brushes, and where their solves count. */
 export type ShotPaintedTexturesOptions = { readonly brushOf: PaintingBrushOf; readonly costs?: StampPaintCostTally };
@@ -33,8 +33,7 @@ export type ShotPaintedTextures = PaintedThreeTexturesSupplied & { readonly disp
 
 /** A texture as it's drawn: its handle, the sum laid into it, and the shares it was last drawn from (null: never drawn). */
 type ShotPaintedTextureSlot = {
-  readonly texture: PaintedTexture;
-  readonly wrap: 'x' | null;
+  readonly texture: CompiledShotPaintedTexture;
   readonly handle: PaintedThreeTextureHandle;
   readonly light: GPUTexture;
   last: readonly PaintedSourceShare[] | null;
@@ -75,14 +74,6 @@ ${GPU_SRGB_WGSL}
 
 const SHOT_TEXTURE_SUM: GPUBlendState = { color: { operation: 'add', srcFactor: 'one', dstFactor: 'one' }, alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one' } };
 
-/** Two reads of a source the same: the same selections, by painting, layers, ground and prefix, at the same weights. */
-function sameShotTextureShares(a: readonly PaintedSourceShare[], b: readonly PaintedSourceShare[]): boolean {
-  return a.length === b.length && a.every(({ selection: s, weight }, i) => {
-    const { selection: t } = b[i];
-    return weight === b[i].weight && s.painting === t.painting && s.ground === t.ground && s.at === t.at && s.layers.length === t.layers.length && s.layers.every((key, k) => key === t.layers[k]);
-  });
-}
-
 /** `step` over `items` one after another, each awaited before the next starts. */
 const eachShotTextureInTurn = <T,>(items: readonly T[], step: (item: T, index: number) => Promise<void>): Promise<void> =>
   items.reduce(async (before, item, index) => {
@@ -91,14 +82,19 @@ const eachShotTextureInTurn = <T,>(items: readonly T[], step: (item: T, index: n
   }, Promise.resolve());
 
 /**
- * `textures` drawn on `owner`'s device for a shot's three sources, each read at moment 0 for whether it wraps.
- * Refuses textures shotPaintedTexturesProblems finds an error in, and, as `update` reads a callback, a source with
- * one at that moment or wrapping otherwise than at 0.
+ * Compiled `textures` drawn on `owner`'s device for a shot's three sources. Refuses, as `update` reads a callback, a
+ * source with an error at that moment (compiledPaintedTextureSourceAt).
  */
-export function createShotPaintedTextures(owner: StampPaintGpuOwner, textures: readonly PaintedTexture[], { brushOf, costs }: ShotPaintedTexturesOptions): ShotPaintedTextures {
-  const errors = paintingErrors(shotPaintedTexturesProblems(textures));
-  if (errors.length) throw new Error(`shot: its painted textures can't be drawn: ${errors.map(paintingProblemText).join('; ')}`);
+export function createShotPaintedTextures(owner: StampPaintGpuOwner, textures: readonly CompiledShotPaintedTexture[], { brushOf, costs }: ShotPaintedTexturesOptions): ShotPaintedTextures {
   const { webgpu, device } = owner, usage = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT;
+  const resampleModule = device.createShaderModule({ code: SHOT_TEXTURE_RESAMPLE_WGSL }), encodeModule = device.createShaderModule({ code: SHOT_TEXTURE_ENCODE_WGSL });
+  const resample = device.createRenderPipeline({ layout: 'auto', vertex: { module: resampleModule }, fragment: { module: resampleModule, targets: [{ format: 'rgba32float', blend: SHOT_TEXTURE_SUM }] } });
+  const encode = device.createRenderPipeline({ layout: 'auto', vertex: { module: encodeModule }, fragment: { module: encodeModule, targets: [{ format: 'rgba16float' }] } });
+  // A wrapped painting is read repeating across x, so a texel by the seam averages paint from both its edges.
+  const along = {
+    x: device.createSampler({ magFilter: 'linear', minFilter: 'linear', addressModeU: 'repeat' }),
+    flat: device.createSampler({ magFilter: 'linear', minFilter: 'linear', addressModeU: 'clamp-to-edge' }),
+  };
   // Let go of on dispose: the handles, each texture's sum, and a picture a painting's size.
   const owned: GPUTexture[] = [], pictures = new Map<string, Promise<{ view: GPUTextureView; surface: StampPaintSurface }>>();
   const own = (width: number, height: number, format: GPUTextureFormat) => {
@@ -117,14 +113,13 @@ export function createShotPaintedTextures(owner: StampPaintGpuOwner, textures: r
     return made;
   };
   const arena = createStampUniformArena(device, 1);
-  const drawn = textures.map((texture): ShotPaintedTextureSlot => {
-    const wrap = paintedSourceWrap(paintedTextureSourceAt(texture, paintMoment(0))) === 'x' ? 'x' : null;
-    const handle: PaintedThreeTextureHandle = { id: texture.id, texture: own(texture.widthPx, texture.heightPx, 'rgba16float'), ...(wrap && { wrap }) };
-    return { texture, wrap, handle, light: own(texture.widthPx, texture.heightPx, 'rgba32float'), last: null };
-  });
+  const drawn = textures.map((texture): ShotPaintedTextureSlot => ({
+    texture, handle: { id: texture.id, texture: own(texture.widthPx, texture.heightPx, 'rgba16float'), wrap: texture.wrap },
+    light: own(texture.widthPx, texture.heightPx, 'rgba32float'), last: null,
+  }));
 
   /** One share's selection solved, laid on its paper and summed by its weight into `light`, cleared first when `first`. */
-  const sumShare = async ({ texture, wrap, light }: ShotPaintedTextureSlot, { selection, weight }: PaintedSourceShare, first: boolean) => {
+  const sumShare = async ({ texture, light }: ShotPaintedTextureSlot, { selection, weight }: PaintedSourceShare, first: boolean) => {
     const compiled = compilePaintingSelection(selection.painting, brushOf, { layers: selection.layers });
     const { width, height } = compiled.sheets[0].program, picture = await pictureOf(width, height);
     const { composite, release } = await solvePaintingSheets(owner, compiled, { ...(costs && { costs }), ...(selection.at !== undefined && { at: selection.at }) });
@@ -134,9 +129,6 @@ export function createShotPaintedTextures(owner: StampPaintGpuOwner, textures: r
       release();
     }
     await owner.checked(`summing painted texture ${texture.id}`, () => {
-      const module = device.createShaderModule({ code: SHOT_TEXTURE_RESAMPLE_WGSL });
-      const pipeline = device.createRenderPipeline({ layout: 'auto', vertex: { module }, fragment: { module, targets: [{ format: 'rgba32float', blend: SHOT_TEXTURE_SUM }] } });
-      const along = device.createSampler({ magFilter: 'linear', minFilter: 'linear', addressModeU: wrap ? 'repeat' : 'clamp-to-edge' });
       const taps = [width / texture.widthPx, height / texture.heightPx].map((ratio) => Math.min(SHOT_TEXTURE_MOST_TAPS, Math.max(1, Math.ceil(ratio))));
       const slot = arena.slot((views) => {
         const put = gpuUniformWriter(SHOT_TEXTURE_RESAMPLE, views);
@@ -146,8 +138,8 @@ export function createShotPaintedTextures(owner: StampPaintGpuOwner, textures: r
       });
       const encoder = device.createCommandEncoder();
       const pass = encoder.beginRenderPass({ colorAttachments: [{ view: light.createView(), loadOp: first ? 'clear' : 'load', clearValue: [0, 0, 0, 0], storeOp: 'store' }] });
-      pass.setPipeline(pipeline);
-      pass.setBindGroup(0, stampBindGroup(device, pipeline, [slot, picture.view, along]));
+      pass.setPipeline(resample);
+      pass.setBindGroup(0, stampBindGroup(device, resample, [slot, picture.view, texture.wrap ? along.x : along.flat]));
       pass.draw(3);
       pass.end();
       arena.flush();
@@ -157,22 +149,16 @@ export function createShotPaintedTextures(owner: StampPaintGpuOwner, textures: r
   };
 
   const drawAt = async (slot: ShotPaintedTextureSlot, moment: PaintMoment) => {
-    const { texture, wrap, handle, light } = slot, source = paintedTextureSourceAt(texture, moment);
-    if (typeof texture.source === 'function') {
-      const problems = paintingErrors(paintedTextureSourceProblems(texture.id, source));
-      if (problems.length) throw new Error(`shot: painted texture ${texture.id} at ${moment.at} s: ${problems.map(paintingProblemText).join('; ')}`);
-      if ((paintedSourceWrap(source) === 'x' ? 'x' : null) !== wrap) throw new Error(`shot: painted texture ${texture.id} ${wrap ? 'wraps' : "doesn't wrap"} at 0 s, and its source at ${moment.at} s ${wrap ? "doesn't" : 'does'}`);
-    }
+    const { texture, handle, light } = slot, { source, problems } = compiledPaintedTextureSourceAt(texture, moment), errors = paintingErrors(problems);
+    if (errors.length) throw new Error(`shot: painted texture ${texture.id} at ${moment.at} s: ${errors.map(paintingProblemText).join('; ')}`);
     const shares = paintedSourceShares(source);
-    if (slot.last && sameShotTextureShares(slot.last, shares)) return;
+    if (slot.last && samePaintedSourceShares(slot.last, shares)) return;
     await eachShotTextureInTurn(shares, (share, s) => sumShare(slot, share, s === 0));
     await owner.checked(`encoding painted texture ${texture.id}`, () => {
-      const module = device.createShaderModule({ code: SHOT_TEXTURE_ENCODE_WGSL });
-      const pipeline = device.createRenderPipeline({ layout: 'auto', vertex: { module }, fragment: { module, targets: [{ format: 'rgba16float' }] } });
       const encoder = device.createCommandEncoder();
       const pass = encoder.beginRenderPass({ colorAttachments: [{ view: handle.texture.createView(), loadOp: 'clear', storeOp: 'store' }] });
-      pass.setPipeline(pipeline);
-      pass.setBindGroup(0, stampBindGroup(device, pipeline, [light.createView()]));
+      pass.setPipeline(encode);
+      pass.setBindGroup(0, stampBindGroup(device, encode, [light.createView()]));
       pass.draw(3);
       pass.end();
       device.queue.submit([encoder.finish()]);

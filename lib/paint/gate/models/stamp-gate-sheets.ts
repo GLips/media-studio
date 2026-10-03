@@ -13,7 +13,7 @@ import type { PropertySchema, PropertyValues } from '#lib/paint/document/models/
 import { painting, type PaintingEvaluation, type PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
-import type { StampPixelBox } from '#lib/paint/painting/models/stamp-blur-region.ts';
+import type { StampPointBox } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { StampSheetProgram } from '#lib/paint/painting/models/stamp-sheet-program.ts';
 import { stampSheetGrid, stampSheetSeconds, type StampSheetDecision } from '#lib/paint/painting/models/stamp-sheet-schedule.ts';
 import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
@@ -241,17 +241,17 @@ export function checkStampGateTimes(id: string, decisions: readonly StampSheetDe
   };
 }
 
-/** A film as a solve kept it: the stage texels it covers (null for none) and its texels there. */
-export type StampGateFilm = { box: StampPixelBox | null; layer: StampGateLayer | null };
+/** A film as a solve kept it: the painting points it covers (null for none) and its texels there. */
+export type StampGateFilm = { box: StampPointBox | null; layer: StampGateLayer | null };
 
-/** A film's channel `c` of layer `l` at stage texel (x, y): 0 outside its box. */
+/** A film's channel `c` of layer `l` at painting point (x, y): 0 outside its box. */
 function stampGateFilmValue({ box, layer }: StampGateFilm, x: number, y: number, l: number, c: number): number {
   if (!box || !layer || x < box.x || y < box.y || x >= box.x + box.w || y >= box.y + box.h) return 0;
   return layer.values[((l * box.h + (y - box.y)) * box.w + (x - box.x)) * 4 + c];
 }
 
-/** The largest difference between two films' texels over stage texels `within` (where neither holds paint reads 0). */
-export function stampGateFilmDifference(a: StampGateFilm, b: StampGateFilm, within: StampPixelBox): number {
+/** The largest difference between two films' texels over painting points `within` (where neither holds paint reads 0). */
+export function stampGateFilmDifference(a: StampGateFilm, b: StampGateFilm, within: Pick<StampPointBox, 'x' | 'y' | 'w' | 'h'>): number {
   const layers = Math.max(a.layer?.layers ?? 0, b.layer?.layers ?? 0);
   let most = 0;
   for (let y = within.y; y < within.y + within.h; y++) {
@@ -262,7 +262,7 @@ export function stampGateFilmDifference(a: StampGateFilm, b: StampGateFilm, with
   return most;
 }
 
-/** The centre of `slot`'s pigment in `film`, stage texels; null for a film holding none. */
+/** The centre of `slot`'s pigment in `film`, painting points; null for a film holding none. */
 export function stampGateFilmCentre({ box, layer }: StampGateFilm, slot: number): { x: number; y: number } | null {
   if (!box || !layer) return null;
   const amounts = stampGateSlotAmounts(layer, slot);

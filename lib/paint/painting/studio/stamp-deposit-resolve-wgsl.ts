@@ -72,7 +72,7 @@ const WET_HARDEN_COVER_WGSL = /* wgsl */ `let landing = wetLandingAt(pixel);
 // stroke its landing (hardening, dual, grain, tooth) kept, before opacity, load and colour; where paint may land; the
 // paper's tooth. The flow lands its water by that share, so grain holes stay dry; a stroke faded to no
 // pigment still wets the paper.
-const WET_LAND_WGSL = /* wgsl */ `landDeposit(pixel, coverage, rims, tooth, rest, reserved, landing);
+const WET_LAND_WGSL = /* wgsl */ `landDeposit(pixel, coverage, rims, tooth, rest, reserved, landing, STAGE_WRAP);
   let landedPaint = clamp(m, 0.0, 1.0);
   let strokeMost = max(max(strokeBuilt, raw.r), landedPaint);
   let landedShare = select(0.0, landedPaint * toothKept / strokeMost, strokeMost > 0.0);
@@ -275,7 +275,7 @@ fn strokeBodyAt(pixel: vec2u, here: f32, reach: f32) -> f32 {
   // A burnt rim burns into paint already there, the group's or the deposit's own (its stamps laid over one another).
   let burnable = max(layerCoverage(pixel), clamp(m, 0.0, 1.0)) * keep * u.opacity;
   let rims = vec2f(clamp(burnt, 0.0, 1.0) * burnable, clamp(dualBurnt, 0.0, 1.0) * burnable);
-  ${wet ? WET_LAND_WGSL : `layDeposit(pixel, coverage, rims, tooth, rest, ${compositor.reads.press ? 'pressAt(pixel)' : '1.0'});`}
+  ${wet ? WET_LAND_WGSL : `layDeposit(pixel, coverage, rims, tooth, rest, ${compositor.reads.press ? 'pressAt(pixel)' : '1.0'}, STAGE_WRAP);`}
   // The clip base is r. A clipped pass reads it and lays its own paint's in g, a base for a wash clipping to it.
   if ((u.flags & CLIPS) != 0u) {
     let laid = vec4f(coverage) + clipped * (1.0 - coverage);

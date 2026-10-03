@@ -16,7 +16,7 @@ import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import { STAMP_LANDED_WETNESS_WGSL, STAMP_WET_CONTACT_WGSL, STAMP_WET_PAPER_WGSL, stampFloodHeldWetness, type StampDrying, type StampWetLanding } from '../models/stamp-wetness.ts';
 import type { StampPaintDevice } from './stamp-paint-gpu.ts';
 import { STAMP_REGION_AT_WGSL } from './stamp-region-textures.ts';
-import { stampRegionTexelWords, stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
+import { stampRegionTexelWords, stampStageWgsl, type StampPointBox, type StampStage } from '../models/stamp-stage.ts';
 import { gpuUniformLayout, gpuUniformStruct, gpuUniformWriter, type GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { STAMP_REST_IDENTITY, STAMP_REST_POINT_WGSL, type StampRestMap } from '../models/stamp-rest-map.ts';
 
@@ -80,7 +80,7 @@ export function putStampWetLand(views: GpuUniformViews, moment: {
  * A wash's preparation as its start reads it: its `wetness` over its `region`, held off where `fluid` masks it, each
  * region (painting points) null for none on the stage.
  */
-export type StampWetPreparation = { wetness: StampSeededPaintField<number>; region: StampPixelBox | null; fluid: StampPixelBox | null };
+export type StampWetPreparation = { wetness: StampSeededPaintField<number>; region: StampPointBox | null; fluid: StampPointBox | null };
 
 /** Writes STAMP_WET_PREPARE for a wash starting on `stage`: on dry paper (`preparation` null), or its preparation. */
 export function putStampWetPrepare(views: GpuUniformViews, { stage, preparation }: { stage: StampStage; preparation: StampWetPreparation | null }) {
@@ -88,8 +88,8 @@ export function putStampWetPrepare(views: GpuUniformViews, { stage, preparation 
   put('size', [stage.width, stage.height]);
   if (!preparation) return;
   const ends = stampPaintFieldEnds(preparation.wetness);
-  put('region', stampRegionTexelWords(preparation.region, stage.margin));
-  put('fluid', stampRegionTexelWords(preparation.fluid, stage.margin));
+  put('region', stampRegionTexelWords(preparation.region, stage));
+  put('fluid', stampRegionTexelWords(preparation.fluid, stage));
   put('geometry', ends.geometry);
   put('ends', [ends.first, ends.second]);
   put('kind', ends.kind);

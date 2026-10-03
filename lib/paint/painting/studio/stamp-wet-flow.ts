@@ -8,8 +8,8 @@
 // Negative space: nothing moves across washes, or where paint has set (its open share none), however wet again,
 // but by a lift's rewetting. Crayon's spread is 0: it loads nothing.
 
-import { STAMP_WET_FLOW_WGSL, stampWetFlowSigma } from '../models/stamp-wet-flow.ts';
-import { stampWetTransportReach, stampWetTransportStrides } from '../models/stamp-wet-transport.ts';
+import { STAMP_WET_FLOW_WGSL, stampWetFlowReach, stampWetFlowSigma } from '../models/stamp-wet-flow.ts';
+import { stampWetTransportStrides } from '../models/stamp-wet-transport.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import { stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 import { stampWetStageExtentOf, type StampLoadedWetStage, type StampWetDepositMoment, type StampWetStage, type StampWetStageContext, type StampWetStageExtent } from './stamp-wet-stages.ts';
@@ -131,7 +131,7 @@ fn coveredAt(p: vec2i) -> f32 { return textureLoad(paint, p, 0, 0).x; }
   let p = vec2i(f.origin + id.xy);
   let held = textureLoad(paint, p, f.chunk, 0);
   let landed = textureLoad(footprint, p, 0);
-  let hold = washHold(f.chunk, stagePoint(p), landed.ba, f.depth, held);
+  let hold = washHold(f.chunk, stagePoint(p), landed.ba, f.depth, held, STAGE_WRAP);
   textureStore(holdOut, id.xy, max(hold, vec4f(${LEAST_HOLD.toFixed(3)})) * max(landed.g, 0.001));
 }
 
@@ -214,7 +214,7 @@ export const STAMP_WET_FLOW_SCRATCH_BYTES = 8 + 4 + 8 + 2 * 8 + 2 * 2 * 16;
 export const STAMP_WET_FLOW_STAGE = {
   id: 'flow',
   after: 'deposit',
-  reach: (deposit, medium) => stampWetTransportReach(stampWetFlowSigma(deposit, medium)),
+  reach: stampWetFlowReach,
   load: loadFlow,
 } satisfies StampWetStage;
 

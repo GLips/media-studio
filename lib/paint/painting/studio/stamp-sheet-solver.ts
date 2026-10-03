@@ -7,14 +7,12 @@
 // before each wash's first entry, the first posed one, and where an unfinished prefix stops. A known prefix with kept
 // films solves nothing; else a solve runs on from its latest checkpoint.
 
-import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import { stampBrushedMasksUnder } from '../models/stamp-brushed-mask.ts';
 import type { StampPaintCostTally } from '../models/stamp-paint-costs.ts';
-import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampSheetDecision } from '../models/stamp-sheet-schedule.ts';
 import { stampSheetMixedPainting, stampSheetWashSpans, type StampSheetProgram } from '../models/stamp-sheet-program.ts';
 import { stampSheetEntryKey, stampSheetHeadKey } from '../models/stamp-sheet-state-key.ts';
-import { stampSheetWrapHalo, stampSheetWrapHead, stampSheetWrapped } from '../models/stamp-sheet-wrap.ts';
+import { stampSheetSolvePlan } from '../models/stamp-sheet-wrap.ts';
 import { stampDrying } from '../models/stamp-wetness.ts';
 import { bindStampPaintBrushes } from './stamp-deposit-bank.ts';
 import { stampPaintCompositorFor } from './stamp-paint-compositor-for.ts';
@@ -23,8 +21,6 @@ import { keepStampSheetFilms, keptStampSheetFilms, type StampSheetFilmKept } fro
 import { loadStampSheetSolve } from './stamp-sheet-load.ts';
 import { stampSheetRun, type StampSheetRun } from './stamp-sheet-run.ts';
 import { withStampSolveLease } from './stamp-solve-lease.ts';
-import { STAMP_WET_STAGES } from './stamp-wet-stage-list.ts';
-import { stampWetStageReach } from './stamp-wet-stages.ts';
 
 export type StampSheetSolveOptions = {
   /** How many entries are solved, from the first: all of them when left out. */
@@ -79,9 +75,6 @@ async function stampSheetKeys(head: string, entries: StampSheetProgram['entries'
   return chain([await stampSheetHeadKey(head)]);
 }
 
-/** How far a deposit's wet stages carry its water, as its load boxes it: what a wrapped sheet's halo reaches. */
-const stampSheetWetReach = (deposit: CompiledStampDeposit, medium: PaintMedium, water: number) => stampWetStageReach(STAMP_WET_STAGES, deposit, medium, water);
-
 /**
  * What's remembered of a prefix of `limit` entries keyed `keys`, ending at scene second `at` (undefined for none):
  * the decisions known from its start, and where it stops when that's known (null while an entry must be decided).
@@ -103,9 +96,9 @@ async function solveLeased(owner: StampPaintGpuOwner, planned: StampSheetProgram
   if (at !== undefined && !Number.isFinite(at)) throw new Error(`stamp sheet: a prefix ends at a finite scene second, not ${at}`);
   // An entry's scene time is never before its order time, by which the clocked run is sorted: none past one ordered after `at` lands by it.
   const limit = Math.min(through ?? all, at === undefined ? all : entries.filter(({ orderTime }) => orderTime === null || orderTime <= at).length);
-  // A sheet that wraps is solved banded (stamp-sheet-wrap.ts), its halo in K₀; its films are kept cropped to the frame.
-  const halo = planned.wrap ? stampSheetWrapHalo(planned, stampSheetWetReach) : 0;
-  const keys = await stampSheetKeys(halo ? stampSheetWrapHead(planned.head, halo) : planned.head, entries, limit);
+  // A sheet that wraps is solved banded on a stage holding its halo, in K₀ (stamp-sheet-wrap.ts); its films are kept cropped to the frame.
+  const plan = stampSheetSolvePlan(planned);
+  const keys = await stampSheetKeys(plan.head, entries, limit);
   const finished = finish ?? (at !== undefined || (through ?? all) === all);
   const filmKey = (k: number) => `${keys[k]}|${finished ? 'finished' : 'open'}`;
   const known = stampSheetRemembered(keys, limit, at);
@@ -113,7 +106,7 @@ async function solveLeased(owner: StampPaintGpuOwner, planned: StampSheetProgram
   costs?.count(kept ? 'film hits' : 'film misses', planned.films.length);
   if (kept) return { key: keys[known.stop!], through: known.stop!, finished, films: kept, decisions: known.decisions };
 
-  const program = halo ? stampSheetWrapped(planned, halo) : planned;
+  const program = plan.painted();
   const choice = stampPaintCompositorFor(stampSheetMixedPainting(program));
   if (!choice.wet) throw new Error('stamp sheet: a sheet solve paints in pigment, its films each in a medium');
   const posed = program.entries.map(({ deposit }) => deposit);
@@ -122,7 +115,7 @@ async function solveLeased(owner: StampPaintGpuOwner, planned: StampSheetProgram
   const scope = owner.scope();
   try {
     const gpu = await owner.checked('loading a sheet solve', () => loadStampSheetSolve(owner, scope.device, {
-      program, halo, compositor: choice.compositorOn(scope.device), media: choice.media, brushes, brushedMasks,
+      program, stage: plan.stage, compositor: choice.compositorOn(scope.device), media: choice.media, brushes, brushedMasks,
     }));
     // `never` dries nothing on the sheet, its unclocked run included.
     const drying = { ...stampDrying(program.water.wetting, program.paper), ...(program.clock.kind === 'never' && { rate: 0 }) };

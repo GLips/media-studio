@@ -191,8 +191,8 @@ export function stampSheetFieldPasses(device: StampPaintDevice, stage: StampStag
         put('origin', [box.x, box.y]);
         put('extent', [box.w, box.h]);
         put('drying', stampDryingWords(drying));
-        put('region', stampRegionTexelWords(region.box, stage.margin));
-        put('fluid', stampRegionTexelWords(fluid?.box, stage.margin));
+        put('region', stampRegionTexelWords(region.box, stage));
+        put('fluid', stampRegionTexelWords(fluid?.box, stage));
         put('geometry', ends.geometry);
         put('rest', rest);
         put('ends', [ends.first, ends.second]);

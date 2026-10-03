@@ -454,8 +454,8 @@ export function createStampDepositDrawing(device: StampPaintDevice, { stage, com
       targets.cap.view, mirrorTile,
       slot((views) => {
         const put = gpuUniformWriter(STAMP_DEPOSIT_KEEP, views);
-        put('fluid', stampRegionTexelWords(fluid?.box, margin));
-        put('within', stampRegionTexelWords(within?.region?.box, margin));
+        put('fluid', stampRegionTexelWords(fluid?.box, stage));
+        put('within', stampRegionTexelWords(within?.region?.box, stage));
         put('bodyReach', STAMP_WET_BODY_REACH * deposit.diameter);
         put('rest', deposit.rest ?? STAMP_REST_IDENTITY);
         put('wrapFrom', deposit.wrapFrom ?? 0);

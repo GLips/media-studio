@@ -89,6 +89,10 @@ export type PaintedSourceShare = { readonly selection: LayerSelection; readonly 
 const sameSelection = (a: LayerSelection, b: LayerSelection) =>
   a.painting === b.painting && a.ground === b.ground && a.at === b.at && a.layers.length === b.layers.length && a.layers.every((key, i) => key === b.layers[i]);
 
+/** Whether two reads of sources (paintedSourceShares) blend the same selections at the same weights, in one order. */
+export const samePaintedSourceShares = (a: readonly PaintedSourceShare[], b: readonly PaintedSourceShare[]) =>
+  a.length === b.length && a.every(({ selection, weight }, i) => weight === b[i].weight && sameSelection(selection, b[i].selection));
+
 /**
  * The selections `source` blends, weights summing to 1: `dissolve(a, b, k)` weighs a by 1 − k and b by k, nested ones
  * multiplying. A dissolve is linear in each form a plane's picture takes, so this weighted sum is the nested blends.

@@ -1,25 +1,23 @@
-// stamp-sheet-wrap.ts: a sheet that wraps (`wrap: 'x'`) as its solve paints it. Its stage holds a halo past the
-// frame (its margin), and every mark is copied a wrap left and right as far as the halo reaches, so paint by one edge
-// meets what lies past the other. Only the frame is kept. A copy reads its noise, grain and fields as its stamp does
-// (`rest`, `wrapFrom`). Areas are copied by the region textures, not here.
+// stamp-sheet-wrap.ts: how a sheet's solve paints it (stampSheetSolvePlan), a wrapped one (`wrap: 'x'`) banded: a
+// halo past the frame, every mark copied a wrap left and right as far as it reaches, so paint by one edge meets what
+// lies past the other; only the frame is kept. A copy reads noise, grain and fields as its stamp (`rest`, `wrapFrom`).
 //
 // Negative space: y doesn't wrap. A deposit wider than the wrap reads its fields within the one wrap round its
-// middle, so a field running along it jumps where that ends.
+// middle, so a field jumps where that ends. The halo bounds one entry's reach: at the stage's edge a flow meets a
+// wall, so a long chain of wet-in-wet entries across the seam may drift into a faint seam.
 
 import { stampBristleTipSpan } from '#lib/paint/brush/models/stamp-bristle-tip.ts';
 import type { StampBrush, StampBrushLayer } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampFrozenMarks, type FrozenStampMarks } from '#lib/paint/brush/models/stamp-placement.ts';
-import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import { stampAreaBox } from './stamp-area.ts';
-import type { CompiledStampBrushedMask } from './stamp-brushed-mask.ts';
+import { stampBrushedMasksUnder } from './stamp-brushed-mask.ts';
 import { stampActiveLayers } from './stamp-deposit-stages.ts';
 import { stampDepositWater } from './stamp-paint-action.ts';
 import type { CompiledStampDeposit, CompiledStampMask } from './stamp-paint-recipe-compile.ts';
 import type { StampSheetProgram, StampSheetPrewet } from './stamp-sheet-program.ts';
 import { stampCanonicalJson } from './stamp-sheet-state-key.ts';
-
-/** How far past its stamps' places a deposit's water carries in `medium` with `water` to give, px (stampWetStageReach). */
-export type StampSheetWetReach = (deposit: CompiledStampDeposit, medium: PaintMedium, water: number) => number;
+import { stampStage, type StampStage } from './stamp-stage.ts';
+import { stampSheetWetReach } from './stamp-wet-reach.ts';
 
 /**
  * How far one of `marks`' stamps may lay paint from its place, px, drawn with `brush`'s tip (its dual's for a dual's):
@@ -39,39 +37,30 @@ function stampMarksReach(marks: { brush: StampBrush; diameter: number; stamps: F
   return tips + (sigma > 0 ? 3 * sigma : 2);
 }
 
+/** The least halo a wrapped sheet is solved with, px. */
+const STAMP_SHEET_LEAST_HALO = 16;
+
 const halos = new WeakMap<StampSheetProgram, number>();
 
 /**
- * The halo a wrapped `program` is solved with, px, even: the farthest any of its marks may lay paint or carry water
- * past its place (`wetReach` in its own medium or any film's, as its load boxes it), so whatever reaches the frame
- * across the seam is on the stage. Pure, so it enters the solve's K₀ before anything loads.
+ * The halo a wrapped `program` is solved with, px: the farthest any mark may lay paint or carry water past its place
+ * (stampSheetWetReach), rounded up to a power of two. It's in K₀: rounding keeps an edit or pose widening the widest
+ * reach a little from re-keying the sheet; one past a power of two re-keys it.
  */
-export function stampSheetWrapHalo(program: StampSheetProgram, wetReach: StampSheetWetReach): number {
+export function stampSheetWrapHalo(program: StampSheetProgram): number {
   const known = halos.get(program);
   if (known !== undefined) return known;
   const media = [...new Set(program.films.map(({ medium }) => medium))];
   let most = 0;
   for (const { deposit, medium, wash } of program.entries) {
     const water = stampDepositWater(deposit, program.films[program.washes[wash].film].medium);
-    most = Math.max(most, stampMarksReach(deposit) + Math.max(...[medium, ...media].map((each) => wetReach(deposit, each, water))));
+    most = Math.max(most, stampMarksReach(deposit) + stampSheetWetReach(media, deposit, medium, water));
   }
-  const masks = [...program.entries.map(({ deposit }) => deposit.mask), ...program.washes.map(({ prewet }) => prewet?.held ?? null)];
-  for (const brushed of stampSheetBrushedUnder(masks)) for (const mark of brushed.marks) most = Math.max(most, stampMarksReach(mark));
-  const halo = 2 * Math.max(1, Math.ceil(most / 2));
+  const masks = [...program.entries.map(({ deposit }) => deposit.mask), ...program.washes.map(({ prewet }) => prewet?.held)];
+  for (const brushed of stampBrushedMasksUnder(masks)) for (const mark of brushed.marks) most = Math.max(most, stampMarksReach(mark));
+  const halo = Math.max(STAMP_SHEET_LEAST_HALO, 2 ** Math.ceil(Math.log2(Math.max(1, most))));
   halos.set(program, halo);
   return halo;
-}
-
-/** Every brushed mask under `masks`' states, each once. */
-function stampSheetBrushedUnder(masks: readonly (CompiledStampMask | null)[]): Set<CompiledStampBrushedMask> {
-  const found = new Set<CompiledStampBrushedMask>(), seen = new Set<CompiledStampMask>();
-  for (let mask of masks) {
-    for (; mask && !seen.has(mask); mask = mask.under) {
-      seen.add(mask);
-      if (mask.kind === 'brushed') found.add(mask.brushed);
-    }
-  }
-  return found;
 }
 
 /**
@@ -101,31 +90,38 @@ function stampMarksSpan(marks: FrozenStampMarks, into: [number, number]) {
   }
 }
 
-/** The head (K₀'s text) of a wrapped sheet `head` solved with `halo`: its states keyed apart from any other halo's. */
-export const stampSheetWrapHead = (head: string, halo: number) => stampCanonicalJson({ wrapped: head, halo });
-
-const banded = new WeakMap<StampSheetProgram, { halo: number; program: StampSheetProgram }>();
-
 /**
- * `program` (one that wraps) as its solve paints it, `halo` px past each side: its marks copied round the seam, each
- * deposit and prewet reading its fields within a wrap of where it was planned, its head stampSheetWrapHead's. Made
- * once a program and halo, so what loading remembers by its marks is met again.
+ * How `program` is solved: on `stage`, its states keyed from `head` (K₀'s text), painting `painted()`'s marks. A sheet
+ * that doesn't wrap is solved as it is; one that wraps, banded on a stage its halo past each side, keyed apart from
+ * any other halo's. `painted` is made only when the sheet is painted, not when its films are known.
  */
-export function stampSheetWrapped(program: StampSheetProgram, halo: number): StampSheetProgram {
-  const known = banded.get(program);
-  if (known?.halo === halo) return known.program;
-  const made = stampSheetBanded(program, halo);
-  banded.set(program, { halo, program: made });
-  return made;
+export type StampSheetSolvePlan = { readonly stage: StampStage; readonly head: string; readonly painted: () => StampSheetProgram };
+
+export function stampSheetSolvePlan(program: StampSheetProgram): StampSheetSolvePlan {
+  if (program.wrap !== 'x') return { stage: stampStage(program), head: program.head, painted: () => program };
+  const halo = stampSheetWrapHalo(program);
+  return { stage: stampStage(program, halo, 'x'), head: stampSheetWrapHead(program, halo), painted: () => stampSheetBanded(program, halo) };
 }
 
+/** K₀'s text for wrapped `program` solved with `halo`: its states keyed apart from any other halo's. */
+const stampSheetWrapHead = (program: StampSheetProgram, halo: number) => stampCanonicalJson({ wrapped: program.head, halo });
+
+const banded = new WeakMap<StampSheetProgram, StampSheetProgram>();
+
+/**
+ * `program` (one that wraps) as its solve paints it, `halo` (its stampSheetWrapHalo) px past each side: its marks
+ * copied round the seam, each deposit and prewet reading its fields within a wrap of where it was planned. Made once a
+ * program, so what loading remembers by its marks is met again; its head is the plan's.
+ */
 function stampSheetBanded(program: StampSheetProgram, halo: number): StampSheetProgram {
+  const known = banded.get(program);
+  if (known) return known;
   const wrap = program.width, reach = 2 * halo;
   const wrapped = new Map<CompiledStampMask, CompiledStampMask>();
   const fluid = (mask: CompiledStampMask | null): CompiledStampMask | null => {
     if (!mask) return null;
-    const known = wrapped.get(mask);
-    if (known) return known;
+    const seen = wrapped.get(mask);
+    if (seen) return seen;
     const under = fluid(mask.under);
     const next: CompiledStampMask = mask.kind === 'brushed'
       ? { ...mask, under, brushed: { ...mask.brushed, marks: mask.brushed.marks.map((mark) => ({ ...mark, stamps: stampMarksWrapped(mark.stamps, wrap, reach), dualStamps: stampMarksWrapped(mark.dualStamps, wrap, reach) })) } }
@@ -151,10 +147,12 @@ function stampSheetBanded(program: StampSheetProgram, halo: number): StampSheetP
     const { x0, x1 } = stampAreaBox(planned.area);
     return { ...planned, held: fluid(planned.held), anchored: new Set([...planned.anchored].map((mask) => fluid(mask)!)), wrapFrom: stampWrapFrom(x0, x1, wrap) };
   };
-  return {
+  const made: StampSheetProgram = {
     ...program,
     washes: program.washes.map((wash) => ({ ...wash, prewet: wash.prewet && prewet(wash.prewet) })),
     entries: program.entries.map((entry) => ({ ...entry, deposit: deposit(entry.deposit) })),
-    head: stampSheetWrapHead(program.head, halo),
+    head: stampSheetWrapHead(program, halo),
   };
+  banded.set(program, made);
+  return made;
 }

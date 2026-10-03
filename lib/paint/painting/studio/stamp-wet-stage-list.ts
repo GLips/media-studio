@@ -6,5 +6,5 @@ import { STAMP_WET_FLOW_STAGE } from './stamp-wet-flow.ts';
 import { STAMP_DRYING_RIM_STAGE } from './stamp-wet-rim.ts';
 import type { StampWetStage } from './stamp-wet-stages.ts';
 
-/** Every stage, in the order each moment runs them. */
+/** Every stage, in the order each moment runs them. One run after a deposit adds its reach to stampWetDepositReach too. */
 export const STAMP_WET_STAGES: readonly StampWetStage[] = [STAMP_WET_FLOW_STAGE, STAMP_BLOOM_STAGE, STAMP_DRYING_RIM_STAGE];

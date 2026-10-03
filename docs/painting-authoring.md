@@ -25,7 +25,7 @@ holds as one; rigs (Composition), a cel swap re-solving nothing; and per-plane `
 as models, checked but not yet drawn, so a shot naming them is refused as it loads: dissolves between their ends,
 path and `alphaOf` masks (`shot-masks.ts`), instanced planes (`shot-instances.ts`), pin and cover lays
 (`shot-placement.ts`), `warm` (`shot-warm.ts`) and the cost report (`shot-cost-report.ts`). Painted textures for
-three.js objects are checked and drawn for a three source (`shotPaintedTexturesProblems`, `createShotPaintedTextures`)
+three.js objects are compiled and drawn for a three source (`compileShotPaintedTextures`, `createShotPaintedTextures`)
 but not yet handed one by a shot, so a shot naming `paintedTextures` is refused too. **NEW** marks behaviour the brush
 engine (the recipe path, docs/brush-engine.md) lacks too; unmarked behaviour is how it already paints.
 
@@ -203,12 +203,20 @@ Its left edge meets its right on every sheet, so a stroke or flood running off o
 water and wet stages (a bloom, a rim, a flood's spread) carrying across, and the paper's tooth, grain and a pigment's
 clumps run on unbroken. Write marks past the edge in plain px: a band from x 170 to 342 on a 256 px document runs
 across the seam, its last 86 px landing from x 0; a bloom dropped at x 252 opens on both sides. A mark lands where
-it lies and a width either side, so nothing needs painting twice. Grain tiles are fitted to a whole number round the
-width, so a grain's scale moves a little to meet itself.
+it lies and a width either side, so nothing needs painting twice. The paper's grain tiles mirrored, and a mirrored
+tile meets itself only after its mirror, so it's fitted to the width in whole pairs: a grain `scale` is laid at the
+nearest of 1 ÷ 2n (0.5, 0.25, 0.167, …). Scale 1, the styles' own, is laid at 0.5, half as wide; pick one of those
+values, and the check warns when the grain is laid more than a tenth off its scale.
+
+A wrapped sheet is painted with a margin past each side, wide enough for its widest mark and the water it carries,
+rounded up to a power of two, and that width is part of its solve's key. So an edit that widens a brush or adds water
+a little keeps every earlier wash's solve; one that carries the widest reach past the next power of two re-solves the
+whole sheet, and `studio paint diff` says so.
 
 What doesn't wrap: y, whose edges clip as ever; a paper `image` (a photograph), laid as it is, so it meets itself at
-the seam unless it tiles across (the check warns); and a deposit wider than the document, whose fields (a fill's
-load, a ragged edge's noise) jump where the one wrap round its middle ends. Wrapping is for a painting shown on a
+the seam unless it tiles across (the check warns); a deposit wider than the document, whose fields (a fill's load, a
+ragged edge's noise) jump where the one wrap round its middle ends; and a long chain of wet-in-wet washes across the
+seam, whose water the margin holds one wash at a time, so a faint seam may show after several. Wrapping is for a painting shown on a
 three.js surface as a painted texture (Composition); on a flat plane it paints as any other, its seam at its edges.
 
 ## Water
@@ -838,7 +846,9 @@ source at `--set` against itself at `--set` with `--to` on top, or against an ed
 fields that differ (paper colour among them, which re-solves nothing), then each wash in its sheet's order: `same`,
 `content` (it changed itself, at the first path that differs), or `upstream` (something earlier on its sheet changed).
 A pigment a later wash brings changes its layer's film, so it reads at the layer's first application
-(`water.slots.palette`). Keys never count. So you see what a property step re-solves before warming it:
+(`water.slots.palette`). On a wrapped document a change moving a sheet's margin past its power of two (Wrapping)
+re-solves the sheet from its first wash, each reading `upstream`; the diff reads the brushes for that, as a still
+does. Keys never count. So you see what a property step re-solves before warming it:
 
 ```
 $ node cli/studio.ts paint diff lib/paint/document/models/meadow.painting.ts --to hillTopPx=210
@@ -876,12 +886,12 @@ What the check says today, and what to do:
 | `a.brush.brush: watercolor has no brush mop: its brushes are wash, filler, …` | a brush or paper asset the style lacks | name one it has |
 | `property hillTopPx.value: hillTopPx = 205 is off its step 10` | an unquantised value | quantise in the scene |
 | `document.layers[0]…: meadow isn't pure: two calls differ at layers[0]…` | the factory reads something besides its values | make it pure |
-| `document.wrap: "y" isn't a wrap: 'x' meets the left edge to the right` / `document.paper.image: is a photograph on a wrapped document: its left and right edges meet at the seam, …` (warning) | a wrap that isn't `'x'`; a photograph on a document that wraps | `'x'` or none; a photograph that tiles across, or grain alone |
+| `document.wrap: "y" isn't a wrap: 'x' meets the left edge to the right` / `document.paper.image: is a photograph on a wrapped document: its left and right edges meet at the seam, …` / `document.paper.grain.scale: is laid at 0.5 on a wrapped document: its mirrored tiles fit the width in whole pairs, …` (warnings) | a wrap that isn't `'x'`; a photograph on a document that wraps; a grain whose scale is far from 1 ÷ 2n | `'x'` or none; a photograph that tiles across, or grain alone; a grain scale of 0.5, 0.25, … |
 | `back/stem: lies on flower's own sheet: select flower, or all its sheet's layers, on one plane` / `back.source.layers[0]: names hil, which is unknown in meadow` / `back/neck: is selected twice, through heron and neck` / `back.source.k: 1.5 isn't within 0..1` | a plane's source, as the shot's load reports it (`paintedSourceProblems`) | select it whole; fix keys |
 | `meadow.masks[0].drawable: reads rain, whose mask reads meadow/sky` / `front.masks[1].drawable: names rain/drop, but rain's items aren't occurrences: read rain` / `photo.masks: masks cut painted films, and a picture plane has none` / `title.masks[0].widthPx: 0; a band's width is above 0` | a plane's masks, as the shot's load reports them (`shotMaskCheck`) | break the chain; read the plane; mask a painted plane |
 | `rain.depths.far: 2.5 isn't nearer than the back, street at depth 2` / `rain: two items are called a at 2.04 s` / `label.lay.points: both pin 40, 40: two points set a scale and turn only apart` | an instanced plane at load and its items each frame (`shotInstancedPlaneProblems`, `shotInstanceProblems`); a pin or cover (`shotPlacementProblems`) | keep items nearer than the back; one key an item |
 | `meadow/hil.visibility: names no plane or occurrence of this shot` / `rain/drop-3.visibility: fades an item of rain, which isn't an occurrence: …` / `meadow/sky.visibility: 1.2 at 3 s; visibility is within 0..1` / `shot.warm: 2..1 isn't a span of scene seconds: …` | the shot's `visibility` (`shotVisibilityProblems` at load, `shotVisibilityProblem` each frame) and `warm` (`shotWarmProblems`) | name an occurrence; fade an item by its own `visibility` |
-| `label.id: names two painted textures: an id names one` / `label.widthPx: is 0: a painted texture is whole px above 0` / `label.source: selects on a transparent ground: a painted texture is opaque, …` / `label.source: blends a painting that wraps with one that doesn't: …` | the shot's painted textures at load (`shotPaintedTexturesProblems`, each source at moment 0 and a callback's again each frame) | one id a texture; leave `ground` out; wrap every painting a texture blends, or none |
+| `label.id: names two painted textures: an id names one` / `label.widthPx: is 0: a painted texture is whole px above 0` / `label.source: selects on a transparent ground: a painted texture is opaque, …` / `label.source: blends a painting that wraps with one that doesn't: …` | the shot's painted textures at load (`compileShotPaintedTextures`, each source at moment 0) and a callback's again each frame (`compiledPaintedTextureSourceAt`, which also refuses one wrapping otherwise than at 0) | one id a texture; leave `ground` out; wrap every painting a texture blends, or none |
 
 `studio paint check <source> --solve [--at <s>] [--out <dir>]` then solves every sheet on the GPU (run it under the
 GPU lock) and prints, in each sheet's order (under the sheet's name when there are several), each wash's start and

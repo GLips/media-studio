@@ -80,10 +80,10 @@ fn washMoved(now: array<vec4f, ${layers}>, wasPigment: f32) -> array<vec4f, ${la
  * where two washes meet they mix rather than one replacing the other.
  */
 const mixedLay = (pickup: number, s: string) => /* wgsl */ `
-fn layDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32) {
+fn layDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32, wrap: f32) {
   let cover = clamp(coverage + max(rims.x, rims.y), 0.0, 1.0);
   if (cover <= 0.0) { return; }
-  let incoming = incomingAt${s}(tooth, at, press, 0.0);
+  let incoming = incomingAt${s}(tooth, at, press, 0.0, wrap);
   let under = textureLoad(layer, pixel, 0u).x;
   let rate = cover * (1.0 - ${f32(pickup)} * under);
   for (var l = 0u; l < LAYERS; l++) {
@@ -117,7 +117,7 @@ fn heldAround${s}(pixel: vec2u) -> f32 {
   }
   return held / 9.0;
 }
-fn layDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32) {
+fn layDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32, wrap: f32) {
   let cover = clamp(coverage + max(rims.x, rims.y), 0.0, 1.0);
   if (cover <= 0.0) { return; }
   var was: array<vec4f, LAYERS>;
@@ -126,7 +126,7 @@ fn layDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: ve
     was[l] = textureLoad(layer, pixel, l);
     if (!isKnockoutLayer(l)) { held += dot(was[l], pigmentMask(l)); }
   }
-  let incoming = incomingAt${s}(tooth, at, press, heldAround${s}(pixel) / ${f32(holds * body)} * ${f32(fill)});
+  let incoming = incomingAt${s}(tooth, at, press, heldAround${s}(pixel) / ${f32(holds * body)} * ${f32(fill)}, wrap);
   var added = 0.0;
   for (var l = 0u; l < LAYERS; l++) { if (!isKnockoutLayer(l)) { added += cover * dot(incoming[l], pigmentMask(l)); } }
   // What's there gives way only as far as the stroke's own wax overfills the tooth.
@@ -321,19 +321,17 @@ fn liftedUnder(i: u32, covered: vec4f, behind: array<vec4f, UNDER_LAYERS>, left:
       const pigment = group.palette[channel - 1];
       return pigment && channel > 0 ? [pigment.granulation * medium.granulation, pigment.flocculation, paintPigmentSeed(pigment.id)] : [0, 0, 0];
     });
-    // Looks wrong: STAGE_WRAP is never declared here. Every shader holding this holds its stage's WGSL (stampStageWgsl),
-    // so a pigment's clumps meet themselves at a wrapping sheet's seam.
     const holdWgsl = /* wgsl */ `
 ${PAINT_PAPER_WGSL}
 const WASH_HABITS = array<vec3f, ${habits.length}>(${habits.map((habit) => `vec3f(${habit.map(f32).join(', ')})`).join(', ')});
-fn washHold(l: u32, at: vec2f, tooth: vec2f, depth: f32, held: vec4f) -> vec4f {
+fn washHold(l: u32, at: vec2f, tooth: vec2f, depth: f32, held: vec4f, wrap: f32) -> vec4f {
   let h = 1.0 - tooth.x;
   let meanHeight = 1.0 - tooth.y;
   let valley = paintValley(h, meanHeight);
   var hold = vec4f(1.0);
   for (var i = 0u; i < 4u; i++) {
     let habit = WASH_HABITS[4u * l + i];
-    hold[i] = max(0.0, ${contactOf(medium, 'depth', 'habit.x', `held[i] / ${f32(medium.body)}`, '1.0', '0.0')} * paintClumpsWrapped(habit.y, at.x, at.y, u32(habit.z), STAGE_WRAP));
+    hold[i] = max(0.0, ${contactOf(medium, 'depth', 'habit.x', `held[i] / ${f32(medium.body)}`, '1.0', '0.0')} * paintClumpsWrapped(habit.y, at.x, at.y, u32(habit.z), wrap));
   }
   return hold;
 }`;
@@ -349,7 +347,6 @@ fn washHold(l: u32, at: vec2f, tooth: vec2f, depth: f32, held: vec4f) -> vec4f {
     reads: { press: media.some(({ paperContact }) => paperContact.kind === 'peaks'), before: media.some(({ layering }) => layering.kind === 'stacks') ? { reach: STACKED_FILL_REACH } : null },
     deposit: {
       layout: PIGMENT_PAINT_DEPOSIT,
-      // STAGE_WRAP, as washHold's: the resolve holding this holds its stage's WGSL.
       wgsl: /* wgsl */ `
 ${PAINT_PAPER_WGSL}
 struct PigmentComponent { slot: u32, seed: u32, granulation: f32, flocculation: f32 }
@@ -368,8 +365,9 @@ fn isKnockoutLayer(l: u32) -> bool { return paint.knockoutLayer != 0u && l == pa
 ${groupMediaWgsl}
 ${eachMedium((medium, s) => /* wgsl */ `
 // A full stroke's pigment amounts here, graded between its material's ends by amount, where the paper's tooth and
-// each pigment's habits put them: a dry medium's as hard as it's \`press\`ed, the tooth \`filled\` so far by wax.
-fn incomingAt${s}(tooth: vec2f, at: vec2f, press: f32, filled: f32) -> array<vec4f, LAYERS> {
+// each pigment's habits put them: a dry medium's as hard as it's \`press\`ed, the tooth \`filled\` so far by wax; its
+// clumps repeating every \`wrap\` px across (0 for none).
+fn incomingAt${s}(tooth: vec2f, at: vec2f, press: f32, filled: f32, wrap: f32) -> array<vec4f, LAYERS> {
   let h = 1.0 - tooth.x;
   let meanHeight = 1.0 - tooth.y;
   let valley = paintValley(h, meanHeight);
@@ -380,14 +378,14 @@ fn incomingAt${s}(tooth: vec2f, at: vec2f, press: f32, filled: f32) -> array<vec
     let pair = paint.amounts[i / 2u];
     let ends = select(pair.xy, pair.zw, (i & 1u) == 1u);
     let amount = ends.x + (ends.y - ends.x) * graded;
-    let share = max(0.0, ${layContactOf(medium)} * paintClumpsWrapped(c.flocculation, at.x, at.y, c.seed, STAGE_WRAP));
+    let share = max(0.0, ${layContactOf(medium)} * paintClumpsWrapped(c.flocculation, at.x, at.y, c.seed, wrap));
     let channel = c.slot + 1u;
     incoming[channel / 4u][channel % 4u] += amount * share;
   }
   return incoming;
 }
 ${medium.layering.kind === 'stacks' ? stackedLay(medium.layering, medium.body, s) : mixedLay(medium.pickup, s)}`)}
-${dispatched('layDeposit', 'pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32', 'pixel, coverage, rims, tooth, at, press')}`,
+${dispatched('layDeposit', 'pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32, wrap: f32', 'pixel, coverage, rims, tooth, at, press, wrap')}`,
       wet: /* wgsl */ `
 ${STAMP_WET_LIFT_WGSL}
 @group(0) @binding(25) var<storage, read> residueShares: array<vec4f>;
@@ -413,7 +411,7 @@ fn noneFresh${s}(pixel: vec2u) {
 // sets the open share to none wherever the paper has settled since it last took water, so whatever reads it after
 // (this landing, the stages, a later landing) reads the paint there as set. Every pixel of the box writes \`fresh\`,
 // none where nothing was laid: the flow reads it there too, where water may land without paint.
-fn landDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, reserved: f32, wet: WetLanding) {
+fn landDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, reserved: f32, wet: WetLanding, wrap: f32) {
   let cover = clamp(coverage + max(rims.x, rims.y), 0.0, 1.0);
   if (paint.knockout != 0u) {
     knockOut${s}(pixel, cover, reserved, wet);
@@ -454,7 +452,7 @@ fn landDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: v
     return;
   }
   // A wash's paint is drawn at a firm hand's pressure, the tooth as the paper's own.
-  let incoming = incomingAt${s}(tooth, at, 1.0, 0.0);
+  let incoming = incomingAt${s}(tooth, at, 1.0, 0.0, wrap);
   var kept = 0.0;
   var gained = 0.0;
   for (var l = 0u; l < LAYERS; l++) {
@@ -471,7 +469,7 @@ fn landDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: v
   now[o.x][o.y] = wetLandOpen(open, kept, gained);
   for (var l = 0u; l < LAYERS; l++) { if (!isKnockoutLayer(l)) { textureStore(layer, pixel, l, now[l]); } }
 }`)}
-${dispatched('landDeposit', 'pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, reserved: f32, wet: WetLanding', 'pixel, coverage, rims, tooth, at, reserved, wet')}`,
+${dispatched('landDeposit', 'pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, reserved: f32, wet: WetLanding, wrap: f32', 'pixel, coverage, rims, tooth, at, reserved, wet, wrap')}`,
       writerFor: (deposit) => {
         const writer = writers.get(deposit);
         if (!writer) throw new Error(`stamp paint: ${deposit.id} isn't in the painting its pigment compositor was made for`);

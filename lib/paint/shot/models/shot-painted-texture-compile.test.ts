@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import type { PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
 import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
 import { painting } from '#lib/paint/document/models/painting-source.ts';
-import { paintedSourceWrap, shotPaintedTexturesProblems } from './shot-painted-texture-checks.ts';
+import { paintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import { compiledPaintedTextureSourceAt, compileShotPaintedTextures } from './shot-painted-texture-compile.ts';
 import type { PaintedTexture } from './shot-props.ts';
 import { dissolve } from './shot-selection.ts';
 
@@ -25,14 +26,18 @@ const canTexture = (id: string, source: PaintedTexture['source']): PaintedTextur
 
 test('a painted texture repeats across u as its paintings wrap, and is refused one blending a wrap with none, a clear ground or a reused id', () => {
   const [wrapped, flat] = [canLabel(true), canLabel(false)];
-  assert.equal(paintedSourceWrap(layersOf(wrapped, ['band'])), 'x');
-  assert.equal(paintedSourceWrap(dissolve(layersOf(flat, ['band']), layersOf(flat, ['band']), 0.5)), null);
+  const drawn = compileShotPaintedTextures([canTexture('label', layersOf(wrapped, ['band'])), canTexture('plain', () => dissolve(layersOf(flat, ['band']), layersOf(flat, ['band']), 0.5))]);
+  assert.deepEqual(drawn.textures?.map(({ id, wrap }) => [id, wrap]), [['label', 'x'], ['plain', null]]);
+  // How a texture wraps is held from moment 0: a callback turning to a flat painting later is refused there.
+  const [turning] = compileShotPaintedTextures([canTexture('turn', (moment) => layersOf(moment.at < 1 ? wrapped : flat, ['band']))]).textures!;
+  assert.deepEqual(compiledPaintedTextureSourceAt(turning, paintMoment(2)).problems.map(({ message }) => message), ["wraps at 0 s, and at 2 s doesn't: a texture repeats across u or doesn't, for all time"]);
   // Mixed even where the dissolve's weight leaves one side out: a later moment may weigh it in.
-  const problems = shotPaintedTexturesProblems([
+  const refused = compileShotPaintedTextures([
     canTexture('can', () => dissolve(layersOf(wrapped, ['band']), layersOf(flat, ['band']), 0)),
     canTexture('can', layersOf(wrapped, ['band'], { ground: 'transparent' })),
-  ]).map(({ path, message }) => `${path}: ${message}`);
-  assert.deepEqual(problems, [
+  ]);
+  assert.equal(refused.textures, null);
+  assert.deepEqual(refused.problems.map(({ path, message }) => `${path}: ${message}`), [
     "can.source: blends a painting that wraps with one that doesn't: a texture repeats across u or doesn't",
     'can.id: names two painted textures: an id names one',
     "can.source: selects on a transparent ground: a painted texture is opaque, shown on its paintings' paper",

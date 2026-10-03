@@ -9,7 +9,7 @@
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { CompiledStampDeposit } from './stamp-paint-recipe-compile.ts';
 import { STAMP_WET_LIFT_WGSL } from './stamp-wet-lift.ts';
-import { STAMP_WET_TRANSPORT_WGSL } from './stamp-wet-transport.ts';
+import { STAMP_WET_TRANSPORT_WGSL, stampWetTransportReach } from './stamp-wet-transport.ts';
 
 /**
  * The furthest wet paint runs back into a lift, as a sigma in px: a broad lift on a flooded sheet would otherwise
@@ -26,6 +26,9 @@ export function stampWetFlowSigma(deposit: CompiledStampDeposit, medium: PaintMe
   const { spread } = medium.wetting;
   return deposit.action.kind === 'lift' ? Math.min(STAMP_LIFT_RUN_BACK_MOST_SIGMA, (spread * deposit.diameter) / 3) : (spread * deposit.diameter) / 2;
 }
+
+/** How far past its stamps a deposit's flow moves paint in `medium`, px: its transport's reach at its sigma. */
+export const stampWetFlowReach = (deposit: CompiledStampDeposit, medium: PaintMedium) => stampWetTransportReach(stampWetFlowSigma(deposit, medium));
 
 /** The flow's laws, per pixel pair and pass; the stage reads potentials and the transport's ways and runs them. */
 export const STAMP_WET_FLOW_WGSL = /* wgsl */ `${STAMP_WET_LIFT_WGSL}

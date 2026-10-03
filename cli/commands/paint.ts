@@ -124,7 +124,7 @@ const diffPaintArgs = {
 const diffPaintCommand = defineCommand({
   meta: {
     name: 'diff',
-    description: "What a solve would redo between two evaluations: a source at --set and at --set with --to on top, or a source and an edited copy (--set on both, --to on the second). Prints the document's fields that differ (paper colour among them, which re-solves nothing), then each wash in its sheet's order: `same`, `content` at the first path that differs in it, or `upstream` after the first change earlier on its sheet. Keys never count. A side with an error prints its problems instead; then it fails.",
+    description: "What a solve would redo between two evaluations: a source at --set and at --set with --to on top, or a source and an edited copy (--set on both, --to on the second). Prints the document's fields that differ (paper colour among them, which re-solves nothing), then each wash in its sheet's order: `same`, `content` at the first path that differs in it, or `upstream` after the first change earlier on its sheet; on a wrapped document, a sheet whose margin moves past its power of two reads `upstream` from its start. Keys never count. A side with an error prints its problems instead; then it fails.",
   },
   args: diffPaintArgs,
   run: ({ args, rawArgs }) => {

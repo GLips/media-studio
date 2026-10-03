@@ -185,7 +185,7 @@ const coreFlags = ({ fluid, within, clipped }: StampSheetCore) => (fluid ? FLAGS
 type StampSheetReduceWriter = ReturnType<typeof gpuUniformWriter<typeof REDUCE.fields>>;
 
 /** The reductions on `device` over `stage`'s texels (its regions' boxes in painting points), each pass's uniform from `arena`, reading `textures`. */
-export function stampSheetReductions(device: StampPaintDevice, { margin }: StampStage, arena: StampUniformArena, textures: StampSheetReduceTextures) {
+export function stampSheetReductions(device: StampPaintDevice, stage: StampStage, arena: StampUniformArena, textures: StampSheetReduceTextures) {
   const module = device.createShaderModule({ code: REDUCE_WGSL });
   const pipeline = (entryPoint: string) => device.createComputePipeline({ layout: 'auto', compute: { module, entryPoint } });
   const pipelines = { totals: pipeline('totals'), boxLatest: pipeline('boxLatest'), histogram: pipeline('histogram'), failure: pipeline('failure') };
@@ -197,8 +197,8 @@ export function stampSheetReductions(device: StampPaintDevice, { margin }: Stamp
       put('origin', [box.x, box.y]);
       put('extent', [box.w, box.h]);
       put('drying', stampDryingWords(drying));
-      put('fluid', stampRegionTexelWords(fluid?.box, margin));
-      put('within', stampRegionTexelWords(within?.region?.box, margin));
+      put('fluid', stampRegionTexelWords(fluid?.box, stage));
+      put('within', stampRegionTexelWords(within?.region?.box, stage));
       put('tau', tau);
       put('flags', coreFlags(core));
       more(put);

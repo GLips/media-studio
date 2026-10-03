@@ -1,23 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampSheetEntryKey, stampSheetHeadKey } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
-import { stampSheetWrapHalo, stampSheetWrapped } from '#lib/paint/painting/models/stamp-sheet-wrap.ts';
-import { stampRoundTipStatedProfile } from '#lib/paint/painting/models/stamp-tip-support.ts';
+import { stampSheetSolvePlan, stampSheetWrapHalo } from '#lib/paint/painting/models/stamp-sheet-wrap.ts';
 import { compilePaintingSelection } from './painting-document-compile.ts';
 import type { Layer, PaintingDocument } from './painting-document.ts';
 import { painting, type PaintingEvaluation } from './painting-source.ts';
+import { paintingTestBrushOf } from './painting-test-brush.ts';
 import * as meadow from './meadow.painting.ts';
 
-const wash: StampBrush = {
-  profile: STAMP_BRUSH_UNMEASURED, name: 'wash', blend: 'normal', media: 'wet', accumulation: { kind: 'glaze', build: 0 },
-  tip: { image: { style: 'watercolor', pack: 'vvds', file: 'tips/round.png' }, roundness: 1, sampling: 'isotropic' },
-  spacing: 0.1, stepping: 'spread', dynamics: stampLinearDynamics({}), scatter: { count: 1, radius: 0, lateral: 0 },
-  rotation: { angle: 0, randomStart: false }, flip: { x: false, y: false }, blur: { amount: 0, jitter: 0 },
-  taper: { start: 0, end: 0, size: 1, opacity: 1, shape: 0, pressure: 0 }, falloff: 0, flow: 1,
-};
-wash.profile = stampRoundTipStatedProfile(wash);
-const brushOf = () => wash;
+const brushOf = paintingTestBrushOf;
 /** `evaluation`'s root sheet as its program, every layer selected. */
 const rootProgram = (evaluation: PaintingEvaluation) => compilePaintingSelection(evaluation, brushOf).sheets[0].program;
 
@@ -117,9 +108,11 @@ test("banded for its solve, a stroke run past a wrapped sheet's seam lays its co
   // Across the seam of a 200 px sheet, from 150 to 260.
   const program = rootProgram(painting({ default: () => ({ ...strokedDocument(() => 1, [150, 260]), wrap: 'x' }) }));
   assert.equal(program.wrap, 'x');
-  const halo = stampSheetWrapHalo(program, () => 0);
-  assert.ok(halo % 2 === 0 && halo >= 8 * Math.SQRT2 + 2, `a halo of ${halo} px reaches a 16 px stamp's turned corner and its edge`);
-  const planned = program.entries[0].deposit, banded = stampSheetWrapped(program, halo).entries[0].deposit;
+  const halo = stampSheetWrapHalo(program), plan = stampSheetSolvePlan(program);
+  // A power of two, so a pose or edit widening the widest reach a little keeps the sheet's key.
+  assert.ok(Number.isInteger(Math.log2(halo)) && halo >= 8 * Math.SQRT2 + 2, `a halo of ${halo} px reaches a 16 px stamp's turned corner and its edge`);
+  assert.deepEqual([plan.stage.margin, plan.stage.wrap], [halo, 200]);
+  const planned = program.entries[0].deposit, banded = plan.painted().entries[0].deposit;
   // Each stamp, then its copies: past the seam they're a wrap back, within the frame; each keeps where it was placed.
   const originals = banded.stamps.filter((stamp) => stamp.rest === undefined);
   assert.deepEqual(originals.map(({ x }) => x), planned.stamps.map(({ x }) => x));
@@ -127,5 +120,6 @@ test("banded for its solve, a stroke run past a wrapped sheet's seam lays its co
   assert.ok(copies.some(({ x, rest }) => rest!.x > 200 && x === rest!.x - 200 && x >= 0), 'the run past the seam is copied into the frame');
   assert.ok(copies.every(({ x, rest }) => Math.abs(x - rest!.x) % 200 === 0 && x > -2 * halo && x < 200 + 2 * halo));
   assert.equal(banded.wrapFrom, (planned.stamps[0].x + planned.stamps.at(-1)!.x) / 2 - 100);
-  assert.notEqual(stampSheetWrapped(program, halo).head, program.head);
+  assert.notEqual(plan.head, program.head);
+  assert.equal(plan.painted().head, plan.head);
 });

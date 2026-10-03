@@ -43,13 +43,13 @@ export type StampPaintCompositor = {
     layout: GpuUniformLayout<readonly GpuUniformField[]>;
     /**
      * Its bindings from 24; `paperKept(tooth, mean, depth)`, `layerCoverage(pixel)` and `layDeposit(pixel, coverage,
-     * rims, tooth, at, press)`: `rims` the main and dual burnt rims apart, `tooth` the paper's paint here and its mean,
-     * `at` the point its paint was planned at (its fields and clumps read there), `press` 0..1 drawn,
-     * PAINT_DRY_BURNISHED_PRESS burnished, 1 unread.
+     * rims, tooth, at, press, wrap)`: `rims` the burnt rims, main and dual, `tooth` the paper's paint here and its
+     * mean, `at` where its paint was planned (its fields and clumps read there), `press` 0..1 drawn,
+     * PAINT_DRY_BURNISHED_PRESS burnished, 1 unread, `wrap` the stage's STAGE_WRAP.
      */
     wgsl: string;
     /**
-     * For a compositor that lays washes: `landDeposit(pixel, coverage, rims, tooth, at, reserved, wet)`, a wash's deposit laid as
+     * For a compositor that lays washes: `landDeposit(pixel, coverage, rims, tooth, at, reserved, wet, wrap)`, a wash's deposit laid as
      * its WetLanding says, coverage hardened already; `reserved`, what masking fluid held off it (a knockout's reserve). The renderer declares WetLanding (with `settled`), the landing
      * laws (stamp-wet-landing.ts), and WET_PAINT, WET_WATER and WET_LIFT. Absent, a painting with a wash is refused.
      */
@@ -117,9 +117,10 @@ export type StampWashLayer = {
    */
   movedWgsl: (deposit: CompiledStampDeposit) => string;
   /**
-   * WGSL for `deposit`'s group: `washHold(l, at, tooth, depth, held)`, how much of each of layer `l`'s channels the
-   * paper holds at `at` against its mean (1), as the compositor lays paint there; `tooth` the paper's paint here and
-   * its mean, `depth` the paper's, `held` the layer's amounts. Moved paint evens out per unit of it.
+   * WGSL for `deposit`'s group: `washHold(l, at, tooth, depth, held, wrap)`, how much of each of layer `l`'s channels
+   * the paper holds at `at` against its mean (1), as the compositor lays paint there; `tooth` the paper's paint here and
+   * its mean, `depth` the paper's, `held` the layer's amounts, `wrap` the stage's STAGE_WRAP. Moved paint evens out per
+   * unit of it.
    */
   holdWgsl: (deposit: CompiledStampDeposit) => string;
 };
@@ -249,7 +250,7 @@ fn layerCoverage(pixel: vec2u) -> f32 { return textureLoad(layer, pixel).a; }
 fn depositPaint(under: vec4f, color: vec3f, blend: i32, coverage: f32) -> vec4f {
   return laidOver(under, vec4f(color, 1.0) * clamp(coverage, 0.0, 1.0), blend);
 }
-fn layDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32) {
+fn layDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32, wrap: f32) {
   var color = paint.color;
   if (paint.tinted == 1u) { color = tinted(color, pixel); }
   var over = depositPaint(textureLoad(layer, pixel), color, paint.blend, coverage);

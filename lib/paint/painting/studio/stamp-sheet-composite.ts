@@ -11,7 +11,7 @@ import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { StampPaintCostTally } from '../models/stamp-paint-costs.ts';
 import { stampSimilarityPoint, type StampSheetPlace } from '../models/stamp-rest-map.ts';
 import { stampSheetMixedPainting, type StampSheetCompositeStep, type StampSheetProgram } from '../models/stamp-sheet-program.ts';
-import { stampBoxUnion, stampStage, stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
+import { stampBoxUnion, stampStage, stampStageTexelsOf, stampStageWgsl, type StampPointBox, type StampStage } from '../models/stamp-stage.ts';
 import { copyStampLayerForReadback, readStampLayerCopy, type StampLayerReadback } from './stamp-layer-readback.ts';
 import { stampPaintTargetWgsl, type StampPaintCompositor, type StampPaintTarget } from './stamp-paint-compositor.ts';
 import { stampPaintCompositorFor } from './stamp-paint-compositor-for.ts';
@@ -37,8 +37,8 @@ export type StampSheetLaid = StampSheetKeptFilms & { readonly place: StampSheetP
  */
 export type StampSheetsComposite = { sheets: readonly StampSheetLaid[]; steps: readonly StampSheetCompositeStep[] };
 
-/** A kept edge's note: the stage texels its union covers. */
-type StampSheetEdgeNote = { box: StampPixelBox };
+/** A kept edge's note: the painting points its union covers. */
+type StampSheetEdgeNote = { box: StampPointBox };
 const edgeStores = new WeakMap<StampPaintGpuOwner, StampGpuCacheStore<StampSheetEdgeNote>>();
 
 const STAMP_SHEET_EDGE = gpuUniformLayout('EdgeFilm', [['origin', 'vec2u'], ['extent', 'vec2u']]);
@@ -55,15 +55,15 @@ ${STAMP_SHEET_EDGE.wgsl}
   textureStore(edge, at, vec4f(max(textureLoad(edge, at).r, max(textureLoad(film, id.xy, 0, 0).x, 0.0))));
 }`;
 
-/** A sheet's edge as a card reads it: the union of its films' coverage (r32float) over `box`, document px. */
-export type StampSheetEdge = { view: GPUTextureView; box: StampPixelBox };
+/** A sheet's edge as a card reads it: the union of its films' coverage (r32float) over `box`, painting points. */
+export type StampSheetEdge = { view: GPUTextureView; box: StampPointBox };
 
 /**
  * The union of `films`' coverage, used by `encoder`'s work: kept under their keys, so a sheet whose films haven't
  * changed joins them no more. Null for films painted nowhere.
  */
 export function stampSheetEdge(owner: StampPaintGpuOwner, device: StampPaintDevice, encoder: GPUCommandEncoder, arena: StampUniformArena, films: readonly StampSheetFilmKept[]): StampSheetEdge | null {
-  const box = films.reduce<StampPixelBox | null>((union, { box: painted }) => stampBoxUnion(union, painted), null);
+  const box = films.reduce<StampPointBox | null>((union, { box: painted }) => stampBoxUnion(union, painted), null);
   if (!box) return null;
   let store = edgeStores.get(owner);
   if (!store) edgeStores.set(owner, (store = owner.cache.store<StampSheetEdgeNote>('edge')));
@@ -155,17 +155,19 @@ function encodeStampSheetsSteps(
   for (const step of composite.steps) {
     const { films, place } = composite.sheets[step.sheet], rest = rests[step.sheet];
     if (step.kind === 'card') {
-      const edge = stampSheetEdge(owner, device, encoder, arena, films), box = edge && (place ? placedBox(stage, edge.box, place) : edge.box);
-      if (edge && box) lays[step.sheet].layCard(encoder, { edge: edge.view, edgeBox: edge.box, painting, box, rest });
+      const edge = stampSheetEdge(owner, device, encoder, arena, films), edgeBox = edge && stampStageTexelsOf(stage, edge.box);
+      const box = edgeBox && (place ? placedBox(stage, edgeBox, place) : edgeBox);
+      if (edge && edgeBox && box) lays[step.sheet].layCard(encoder, { edge: edge.view, edgeBox, painting, box, rest });
       continue;
     }
-    const film = films[step.film], kept = keptStampSheetFilm(owner, film, encoder), box = film.box && (place ? placedBox(stage, film.box, place) : film.box);
-    if (!kept || !film.box || !box) continue;
+    const film = films[step.film], kept = keptStampSheetFilm(owner, film, encoder), filmBox = film.box && stampStageTexelsOf(stage, film.box);
+    const box = filmBox && (place ? placedBox(stage, filmBox, place) : filmBox);
+    if (!kept || !filmBox || !box) continue;
     const shape = compositors[step.sheet].targets.layer, usage = GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT;
     const layer = stampSheetCompositeTarget(owner, `layer ${shape.kind === 'array' ? shape.layers : 1}`, stage, shape, usage);
     // A moved lay's taps read past the film's box: nothing an earlier film left there may show.
     if (place) for (const view of layer.layers) clearStampTarget(encoder, view);
-    copyStampTextureBox(encoder, { texture: kept, x: 0, y: 0 }, { texture: layer.texture, x: film.box.x, y: film.box.y }, film.box);
+    copyStampTextureBox(encoder, { texture: kept, x: 0, y: 0 }, { texture: layer.texture, x: filmBox.x, y: filmBox.y }, filmBox);
     lays[step.sheet].layGroup(encoder, { layer: layer.view, painting, index: step.film, opacity: 1, glaze: true, box, backing: ground, rest, paperFromRest: true });
   }
 }
@@ -217,7 +219,7 @@ ${STAMP_SHEET_LIGHT.wgsl}
 }`;
 
 /**
- * Premultiplied linear-light RGBA over `w` × `h` stage texels from (x0, y0), alpha its coverage: the shape a rig's
+ * Premultiplied linear-light RGBA over `w` × `h` px from painting point (x0, y0), alpha its coverage: the shape a rig's
  * picture takes (PaintRigPicture), which this feature can't name.
  */
 export type StampSheetsPicture = { readonly x0: number; readonly y0: number; readonly w: number; readonly h: number; readonly rgba: Float32Array };
@@ -229,13 +231,13 @@ type StampSheetsLight = { light: StampLayerReadback; ground: StampLayerReadback 
 export type StampSheetsGround = 'paper' | 'clear';
 
 /**
- * `composite` read back over `crop` (stage texels) as a premultiplied picture on `ground`: on the root's paper, or
+ * `composite` read back over `crop` (painting points) as a premultiplied picture on `ground`: on the root's paper, or
  * clear, measured on white and on black, the light over each backing taken as C + T·b per channel (the plane passes'
  * reading, stampPlanePictureWgsl), each backing's own light measured before anything lies on it. Each backing's
  * readback is counted into `costs`.
  */
 export async function readStampSheetsPicture(
-  owner: StampPaintGpuOwner, composite: StampSheetsComposite, crop: StampPixelBox, ground: StampSheetsGround, costs?: StampPaintCostTally,
+  owner: StampPaintGpuOwner, composite: StampSheetsComposite, crop: StampPointBox, ground: StampSheetsGround, costs?: StampPaintCostTally,
 ): Promise<StampSheetsPicture> {
   const photographs = await stampSheetsPhotographs(owner, composite.sheets);
   const scope = owner.scope();
@@ -258,9 +260,9 @@ export async function readStampSheetsPicture(
       };
       const encoder = device.createCommandEncoder();
       lays.lays[0].drawPaper(encoder, painting.view, backing, stage.width, stage.height);
-      const groundCopy = measure({ x: crop.x, y: crop.y, w: 1, h: 1 }, 'ground');
+      const texels = stampStageTexelsOf(stage, crop), groundCopy = measure({ x: texels.x, y: texels.y, w: 1, h: 1 }, 'ground');
       encodeStampSheetsSteps(owner, device, encoder, arena, composite, lays, painting.view, backing);
-      const lightCopy = measure(crop, 'light');
+      const lightCopy = measure(texels, 'light');
       arena.flush();
       device.queue.submit([encoder.finish()]);
       return { lightCopy, groundCopy };
@@ -279,8 +281,7 @@ export async function readStampSheetsPicture(
       }
       rgba[at + 3] = 1 - through;
     }
-    const { margin } = stampStage(composite.sheets[0].program);
-    return { x0: crop.x - margin, y0: crop.y - margin, w: crop.w, h: crop.h, rgba };
+    return { x0: crop.x, y0: crop.y, w: crop.w, h: crop.h, rgba };
   } finally {
     scope.destroy();
   }

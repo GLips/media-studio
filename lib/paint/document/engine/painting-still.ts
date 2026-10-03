@@ -9,11 +9,10 @@ import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { withBrowserModulePage } from '#lib/platform/browser/engine/browser-module-page.ts';
 import { STUDIO_STYLES_DIR } from '#lib/platform/project/engine/studio-project.ts';
-import { readWorkspacePigmentStyle } from '#lib/paint/style/engine/workspace-pigment-style.ts';
 import { paintingBrushRefs } from '../models/painting-brush-refs.ts';
 import type { PaintingProblem } from '../models/painting-problem.ts';
 import type { PaintingStill, PaintingStillOutcome, PaintingStillRequest } from '../models/painting-still-request.ts';
-import { checkPaintingSourceFile } from './painting-source-load.ts';
+import { checkPaintingSourceFile, paintingStylesBrushOf, readPaintingSourceStyles } from './painting-source-load.ts';
 
 const STILL_PAGE = fileURLToPath(new URL('../studio/painting-still-page.ts', import.meta.url));
 
@@ -30,12 +29,10 @@ export type PaintingStillRun = { readonly problems: readonly PaintingProblem[]; 
 export async function paintPaintingSourceStill(file: string, texts: Readonly<Record<string, string>>, { films, at }: { films: boolean; at: number | null }): Promise<PaintingStillRun> {
   const { problems, evaluation } = await checkPaintingSourceFile(file, texts);
   if (!evaluation) return { problems, still: null, refused: null };
-  const refs = paintingBrushRefs(evaluation.tree), papers = evaluation.tree.sheets.map(({ paper }) => paper);
-  const names = new Set([...refs.map(({ style }) => style), ...papers.flatMap(({ image, grain }) => [image, grain?.image].flatMap((asset) => (asset ? [asset.style] : [])))]);
-  const styles = new Map(await Promise.all([...names].map(async (name) => [name, await readWorkspacePigmentStyle(STUDIO_STYLES_DIR, name, 'paint still')] as const)));
+  const styles = await readPaintingSourceStyles([evaluation], 'paint still'), brushOf = paintingStylesBrushOf(styles);
   const request: PaintingStillRequest = {
     texts, films, at,
-    brushes: Object.fromEntries(refs.map(({ style, brush }) => [`${style}/${brush}`, styles.get(style)!.brushOf(brush)])),
+    brushes: Object.fromEntries(paintingBrushRefs(evaluation.tree).map((ref) => [`${ref.style}/${ref.brush}`, brushOf(ref)])),
     packUrls: Object.fromEntries([...styles.values()].flatMap(({ packUrls }) => Object.entries(packUrls))),
   };
   const outcome = await withBrowserModulePage(

@@ -7,17 +7,17 @@
 // is refused by its key, and solving the sheet again keeps it anew.
 
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
-import { stampStageFramed, type StampStage } from '../models/stamp-stage.ts';
+import { stampStageFramed, stampStageTexelsOf, type StampPointBox, type StampStage } from '../models/stamp-stage.ts';
 import { copyStampLayerForReadback, readStampLayerCopy, type StampLayerReadback } from './stamp-layer-readback.ts';
 import type { StampGpuCacheStore } from './stamp-paint-gpu-cache.ts';
 import { copyStampTextureBox } from './stamp-paint-gpu.ts';
 import type { StampPaintGpuOwner } from './stamp-paint-gpu-owner.ts';
 
 /** A kept film's note: the painting points within the frame it was painted over (null for none), cropped to, and its layers. */
-type StampSheetFilmNote = { box: StampPixelBox | null; layers: number };
+type StampSheetFilmNote = { box: StampPointBox | null; layers: number };
 
 /** A film a solve kept: its key in the cache, and the box of painting points it holds (null for a film painted nowhere in the frame). */
-export type StampSheetFilmKept = { key: string; box: StampPixelBox | null };
+export type StampSheetFilmKept = { key: string; box: StampPointBox | null };
 
 const stores = new WeakMap<StampPaintGpuOwner, StampGpuCacheStore<StampSheetFilmNote>>();
 
@@ -41,7 +41,7 @@ export function keepStampSheetFilms(
   return films.map(({ texture, box: painted }, f) => {
     const filmKey = `${key}|film${f}`, layers = texture.depthOrArrayLayers, box = painted && stampStageFramed(stage, painted);
     const made = store.make(filmKey, encoder, box ? [{ width: box.w, height: box.h, layers, format: texture.format, usage: keptUsage }] : [], { box, layers });
-    if (box) copyStampTextureBox(encoder, { texture, x: box.x + stage.margin, y: box.y + stage.margin }, { texture: made.textures[0], x: 0, y: 0 }, box);
+    if (box) copyStampTextureBox(encoder, { texture, ...stampStageTexelsOf(stage, box) }, { texture: made.textures[0], x: 0, y: 0 }, box);
     return { key: filmKey, box };
   });
 }

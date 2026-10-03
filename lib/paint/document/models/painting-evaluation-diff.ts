@@ -1,14 +1,18 @@
 // painting-evaluation-diff.ts: what changed between two evaluations of a painting (two property values, or a source
 // before and after an edit), read over each sheet's order as a solve would: the document fields that differ, then
 // each wash `same`, changed in its own `content`, or `upstream` of a change earlier on its sheet. It's how an author
-// learns what a property costs before warming it. It compares documents: posed marks and reseeds aren't in it.
+// learns what a property costs before warming it. It compares documents at rest: posed marks and reseeds aren't in
+// it. A wrapped sheet's halo is in its K₀, so it's compared too, read through the brushes it compiles with.
 
+import { stampSheetWrapHalo } from '#lib/paint/painting/models/stamp-sheet-wrap.ts';
+import { compilePaintingSelection } from './painting-document-compile.ts';
+import type { PaintingBrushOf } from './painting-deposit-compile.ts';
 import type { LayerKey, LayerNode, PaintingDocument, WashKey } from './painting-document.ts';
 import { paintingFirstDifference, type PaintingDatum } from './painting-document-difference.ts';
 import { paintingEntryReads, paintingSheetHead, type PaintingEntryRead } from './painting-entry-reads.ts';
 import { paintingSheetOrders, paintingSheetWashes } from './painting-sheet-program.ts';
 import type { PaintingEvaluation } from './painting-source.ts';
-import { isPaintingGroup, paintingSheetName } from './painting-tree.ts';
+import { isPaintingGroup, paintingSheetName, type PaintingSheet } from './painting-tree.ts';
 
 /** A wash's change: none; in its own applications or fields (the first differing path); or after a change on its sheet. */
 export type PaintingWashChange =
@@ -64,15 +68,31 @@ function washChange(path: string | undefined, cause: string | undefined): Painti
 }
 
 /**
+ * Each of `evaluation`'s sheets' halo as its solve keys it (stampSheetWrapHalo), or null for a document that doesn't
+ * wrap or a sheet holding nothing. Throws for a wrapped document without `brushOf`.
+ */
+function paintingSheetHalos(evaluation: PaintingEvaluation, brushOf: PaintingBrushOf | null): (sheet: PaintingSheet) => number | null {
+  if (evaluation.document.wrap !== 'x') return () => null;
+  if (!brushOf) throw new Error("a wrapped document's diff reads its halos through its brushes, and none were given");
+  const { sheets } = compilePaintingSelection(evaluation, brushOf);
+  return (sheet) => {
+    const compiled = sheets.find((each) => each.sheet === sheet);
+    return compiled ? stampSheetWrapHalo(compiled.program) : null;
+  };
+}
+
+/**
  * What changed from `a` to `b`. Entries pair by their place in each sheet's order, so an entry added or removed
  * changes every later one. Functions (a hand's pressure curve) compare by identity: a recreated one reads `content`,
- * conservative, never a missed change.
+ * never a missed change. `brushOf`: a wrapped document's brushes (null when neither wraps), its halos read through.
  */
-export function paintingEvaluationDiff(a: PaintingEvaluation, b: PaintingEvaluation): PaintingEvaluationDiff {
+export function paintingEvaluationDiff(a: PaintingEvaluation, b: PaintingEvaluation, brushOf: PaintingBrushOf | null): PaintingEvaluationDiff {
   const before = paintingSheetOrders(a.tree), after = paintingSheetOrders(b.tree);
+  const halosBefore = paintingSheetHalos(a, brushOf), halosAfter = paintingSheetHalos(b, brushOf);
   const washes = after.flatMap((order, s) => {
     const earlier = before.at(s), then = earlier ? paintingEntryReads(a.tree, earlier) : [], now = paintingEntryReads(b.tree, order);
-    const headSame = earlier && paintingFirstDifference(paintingSheetHead(a.document, earlier), paintingSheetHead(b.document, order), '', 'identity') === null;
+    const headSame = earlier && halosBefore(earlier.sheet) === halosAfter(order.sheet)
+      && paintingFirstDifference(paintingSheetHead(a.document, earlier), paintingSheetHead(b.document, order), '', 'identity') === null;
     let from = headSame ? null : paintingSheetName(order.sheet);
     const content = new Map<string, string>(), upstream = new Map<string, string>();
     order.entries.forEach((entry, k) => {

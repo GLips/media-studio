@@ -9,7 +9,7 @@ import { GPU_FULL_FRAME_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import { STAMP_RESIST_TOOTH, type CompiledStampBrushedMask, type CompiledStampMarkPlacement } from '../models/stamp-brushed-mask.ts';
 import { STAMP_ACCUMULATION_RESOLVE_WGSL } from '../models/stamp-deposit-stages.ts';
-import { stampBoxUnion, stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
+import { stampBoxUnion, stampPointBox, stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 import { loadStampMarks, stampMarksBox } from './stamp-deposit-bank.ts';
 import type { StampDepositDrawing, StampPaperTooth } from './stamp-deposit-drawing.ts';
 import { STAMP_DEPOSIT, STAMP_DEPOSIT_FLAGS_WGSL, STAMP_RESOLVE_STAGES_WGSL, STAMP_TEXTURIZED_WGSL } from './stamp-deposit-resolve-wgsl.ts';
@@ -104,7 +104,7 @@ export function encodeStampBrushedMasks(
     const texture = on.createTexture({ size: [box.w, box.h], format: STAMP_REGION_FORMAT, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
     const view = texture.createView();
     // Drawn on the stage's texels, kept as a region is, in painting points.
-    textures.set(mask, { view, box: { x: box.x - stage.margin, y: box.y - stage.margin, w: box.w, h: box.h } });
+    textures.set(mask, { view, box: stampPointBox({ x: box.x - stage.margin, y: box.y - stage.margin, w: box.w, h: box.h }) });
     clearStampTarget(encoder, view);
     for (const mark of mask.marks) {
       const markLoaded = loaded.get(mark)!, reach = markBox(mark);
