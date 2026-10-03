@@ -171,7 +171,9 @@ and `#lib/paint/document/models/painting-properties.ts`, and pigments from
 `dissolve` and the shot's types from `#studio`. A source one scene uses sits in that scene's folder
 (`scenes/meadow/meadow.painting.ts`); one several scenes share is listed in `project.ts`'s `shared`, and the styles its
 brushes name in its `styles` (docs/private-styles.md). Lint lets any `*.painting.ts` default-export its factory, and
-holds it to a model's imports (no `#studio`, no I/O), since `studio paint check` loads it in plain Node.
+holds it to a model's imports (no `#studio`, no I/O), since `studio paint check` loads it in plain Node. A helper
+module it imports is a model too, so it is named `*-model.ts` (`scenes/meadow/hill-routes-model.ts`); a plain helper
+is a scene helper, which a model can't import.
 
 ## Water
 
