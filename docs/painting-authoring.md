@@ -15,8 +15,8 @@ diff; `layersOf`, `bracket` and `dissolve`, and the problems a shot's load repor
 every sheet of a document, clocked washes and their prefixes included, each own sheet laid as a cut-out of its paper,
 seen through `studio paint still` and `studio paint check --solve`, each at a scene second with `--at`; posing before
 painting by a similarity (a place, a turn, a scale), the marks mapped and their fields, ragged edges and noise read
-where they were planned; and a layer's film read back through a selection's prefix, its coverage or its picture
-(`paintingFilmCoverage`, `paintingFilmPicture`).
+where they were planned; a document that wraps across x (`wrap: 'x'`); and a layer's film read back through a
+selection's prefix, its coverage or its picture (`paintingFilmCoverage`, `paintingFilmPicture`).
 
 `<PaintedShot>` and `<PaintedShotCanvas>` draw a shot in a scene: painted, picture and three planes far to near
 under the camera and its lens, on one canvas or several among HTML; occurrences and their motion (nodes hang from
@@ -25,8 +25,9 @@ holds as one; rigs (Composition), a cel swap re-solving nothing; and per-plane `
 as models, checked but not yet drawn, so a shot naming them is refused as it loads: dissolves between their ends,
 path and `alphaOf` masks (`shot-masks.ts`), instanced planes (`shot-instances.ts`), pin and cover lays
 (`shot-placement.ts`), `warm` (`shot-warm.ts`) and the cost report (`shot-cost-report.ts`). Painted textures for
-three.js objects (`paintedTextures`) are refused too. **NEW** marks behaviour the brush engine (the recipe path,
-docs/brush-engine.md) lacks too; unmarked behaviour is how it already paints.
+three.js objects are checked and drawn for a three source (`shotPaintedTexturesProblems`, `createShotPaintedTextures`)
+but not yet handed one by a shot, so a shot naming `paintedTextures` is refused too. **NEW** marks behaviour the brush
+engine (the recipe path, docs/brush-engine.md) lacks too; unmarked behaviour is how it already paints.
 
 ## The model
 
@@ -146,7 +147,7 @@ places, and so how many solves, a second, and `warm` solves them before the firs
 ## The document
 
 ```
-PaintingDocument {widthPx, heightPx, paper, medium, dryingScale?, layers}
+PaintingDocument {widthPx, heightPx, paper, medium, dryingScale?, wrap?, layers}
 └─ layers: LayerNode[]            back to front
    ├─ LayerGroup {key, sheet?, medium?, children: LayerNode[]}
    └─ Layer {key, sheet?, medium?, washes: Wash[]}
@@ -161,6 +162,7 @@ PaintingDocument {widthPx, heightPx, paper, medium, dryingScale?, layers}
 | `paper` | `Paper` | The root's own sheet: `{color, image?, grain?: {image, scale, depth}, absorbency}`. |
 | `medium` | `'watercolour' \| 'gouache' \| 'crayon'` | Default for every layer; a layer or group may override. Not per wash. |
 | `dryingScale` | `number \| 'instant' \| 'never'` | The root sheet's: scene seconds per model second once a clocked wet wash starts its clock (Time). 1 when left out. An own sheet states its own. |
+| `wrap` | `'x'` | **NEW**: the left edge meets the right, as round a cylinder, on every sheet (Wrapping). Left out, nothing wraps. |
 | `layers` | `LayerNode[]` | Back to front. |
 | an application's `brush` | `{style, brush}` | A style's own brush name (Reference). The style is spelt `'watercolor'`, the medium `'watercolour'`. |
 | a paint charge's `mix` | `Mix \| Field<Mix>` | `{parts: [{pigment, amount}], strength}`; a pigment is an appearance from `WATERCOLOUR_PIGMENTS` or a hex. |
@@ -193,6 +195,21 @@ brushes name in its `styles` (docs/private-styles.md). Lint lets any `*.painting
 holds it to a model's imports (no `#studio`, no I/O), since `studio paint check` loads it in plain Node. A helper
 module it imports is a model too, so it is named `*-model.ts` (`scenes/meadow/hill-routes-model.ts`); a plain helper
 is a scene helper, which a model can't import.
+
+### Wrapping
+
+`wrap: 'x'` (**NEW**) paints a document as round a cylinder: a label, a lamp shade, a panorama a camera turns in.
+Its left edge meets its right on every sheet, so a stroke or flood running off one side comes back on the other, its
+water and wet stages (a bloom, a rim, a flood's spread) carrying across, and the paper's tooth, grain and a pigment's
+clumps run on unbroken. Write marks past the edge in plain px: a band from x 170 to 342 on a 256 px document runs
+across the seam, its last 86 px landing from x 0; a bloom dropped at x 252 opens on both sides. A mark lands where
+it lies and a width either side, so nothing needs painting twice. Grain tiles are fitted to a whole number round the
+width, so a grain's scale moves a little to meet itself.
+
+What doesn't wrap: y, whose edges clip as ever; a paper `image` (a photograph), laid as it is, so it meets itself at
+the seam unless it tiles across (the check warns); and a deposit wider than the document, whose fields (a fill's
+load, a ragged edge's noise) jump where the one wrap round its middle ends. Wrapping is for a painting shown on a
+three.js surface as a painted texture (Composition); on a flat plane it paints as any other, its seam at its edges.
 
 ## Water
 
@@ -646,7 +663,7 @@ plane's paint must cover what the camera shows of it: the camera build reports a
 | masks | `path` (a band `widthPx` wide in all, round ends, `softPx` 0 or a ramp that far inside its edge; `revealPx` 0 shows nothing, `shotPathInkedLength(subpaths)` all of it), `alphaOf` (another drawable's coverage, partial alpha included, where it lies this frame: a plane by id, any kind, or a painted plane's occurrence; an instanced plane's items are read through their plane) | both **NEW**, on painted planes only. They cut the plane's paint and the own-sheet paper it shapes; the ground stays whole. To leave a layer unmasked, put it on a second plane at the same depth. No mask reads its own plane, through any chain |
 | instances | `{kind: 'instanced', depths: {near, far}, variants, instances(m), reach?}` | each item lays its variant as a plane at its depth (`lay` from the variant's document px; clear outside its paint), depth-sorted with every drawable, planes first on ties, all nearer than the back. A key is one item's lifetime: the same key at the shutter's two ends blurs the item along its own travel; a key missing at either end draws it unblurred; a recycled item takes a new key. Items take no motion nodes (**NEW**) |
 | dissolve | `dissolve(a, b, k)`, nestable | blends the two pictures in the plane's own form (the back's opaque colour, a nearer plane's colour and transmittance, premultiplied RGBA on a later canvas), never their pigment; its occurrences are both sides', moved alike; no rigs inside (**NEW**) |
-| three.js | `{kind: 'three', build}`; `paintedTextures: [{id, source, widthPx, heightPx}]` on the shot | the three-layers feature's: posed at each moment (once at 0 as it loads), and may draw offscreen passes (a reflection, a ground) before its scene; it reads painted textures by id |
+| three.js | `{kind: 'three', build}`; `paintedTextures: [{id, source, widthPx, heightPx}]` on the shot | the three-layers feature's: posed at each moment (once at 0 as it loads), and may draw offscreen passes (a reflection, a ground) before its scene; it reads painted textures by id (Painted textures) |
 | picture | `{kind: 'picture', extent, pictureAt}` | a `StampPlaneSource`'s: premultiplied, its `box` in stage texels (the margin included), never mutated once handed over; return the same object while it's still |
 | HTML among canvases | `<PaintedShot>` children: HTML and `<PaintedShotCanvas name="…"/>`, stacked in DOM order | one device shared; every canvas is the whole frame, clear where nothing is painted, taking no pointer events. When any exists, every plane names one and several may share one; the back's is the first, and a later canvas holds only planes nearer than an earlier's (**NEW**) |
 
@@ -654,6 +671,29 @@ plane's paint must cover what the camera shows of it: the camera build reports a
 Rules that keep it cheap and correct: presentation never adds paint; warps of finished paint can't reveal paint that
 was never laid; paint on separate sheets or planes never joins another's wet history by overlapping it, while layers
 on one sheet share it; presentation of one layer acts on its own film, never on what its water did to others.
+
+### Painted textures
+
+A three.js object wears a painting through the shot's `paintedTextures`: each `{id, source, widthPx, heightPx}`,
+its `source` any plane's painted source (`layersOf`, `bracket`, `dissolve`, or a callback of the moment). A texture
+is the selection laid on its paintings' paper at their document size, then resampled to `widthPx` × `heightPx`;
+match the two unless the object shows it smaller. It is opaque, so its selections stay on paper (no `ground:
+'transparent'`). A dissolve blends opaque colour in linear light, as a back plane's does. A build reads one by id:
+
+```ts
+build: ({ plane, textures }) => {
+  const material = new MeshBasicNodeMaterial();
+  material.colorNode = paintedThreeColorNode(textures.get('label')!);
+  …
+}
+```
+
+`paintedThreeColorNode` (`#lib/paint/three-layers/studio/painted-three-material.ts`) decodes the texture, which is
+gamma-encoded, to the linear colour three.js lights and outputs. Its u runs along the document's x and its v up the
+mesh, so uv (0, 0) is the painting's bottom left. A texture whose paintings say `wrap: 'x'` (Wrapping) repeats across u,
+so on a `CylinderGeometry`, whose u runs once round, no seam shows; every painting a texture blends wraps or none
+does. A texture is drawn again only when its selections or their weights change, so a still selection costs one
+solve. It has no mipmaps: an object showing it far smaller than its size shimmers as it moves.
 
 ## Reference
 
@@ -836,10 +876,12 @@ What the check says today, and what to do:
 | `a.brush.brush: watercolor has no brush mop: its brushes are wash, filler, …` | a brush or paper asset the style lacks | name one it has |
 | `property hillTopPx.value: hillTopPx = 205 is off its step 10` | an unquantised value | quantise in the scene |
 | `document.layers[0]…: meadow isn't pure: two calls differ at layers[0]…` | the factory reads something besides its values | make it pure |
+| `document.wrap: "y" isn't a wrap: 'x' meets the left edge to the right` / `document.paper.image: is a photograph on a wrapped document: its left and right edges meet at the seam, …` (warning) | a wrap that isn't `'x'`; a photograph on a document that wraps | `'x'` or none; a photograph that tiles across, or grain alone |
 | `back/stem: lies on flower's own sheet: select flower, or all its sheet's layers, on one plane` / `back.source.layers[0]: names hil, which is unknown in meadow` / `back/neck: is selected twice, through heron and neck` / `back.source.k: 1.5 isn't within 0..1` | a plane's source, as the shot's load reports it (`paintedSourceProblems`) | select it whole; fix keys |
 | `meadow.masks[0].drawable: reads rain, whose mask reads meadow/sky` / `front.masks[1].drawable: names rain/drop, but rain's items aren't occurrences: read rain` / `photo.masks: masks cut painted films, and a picture plane has none` / `title.masks[0].widthPx: 0; a band's width is above 0` | a plane's masks, as the shot's load reports them (`shotMaskCheck`) | break the chain; read the plane; mask a painted plane |
 | `rain.depths.far: 2.5 isn't nearer than the back, street at depth 2` / `rain: two items are called a at 2.04 s` / `label.lay.points: both pin 40, 40: two points set a scale and turn only apart` | an instanced plane at load and its items each frame (`shotInstancedPlaneProblems`, `shotInstanceProblems`); a pin or cover (`shotPlacementProblems`) | keep items nearer than the back; one key an item |
 | `meadow/hil.visibility: names no plane or occurrence of this shot` / `rain/drop-3.visibility: fades an item of rain, which isn't an occurrence: …` / `meadow/sky.visibility: 1.2 at 3 s; visibility is within 0..1` / `shot.warm: 2..1 isn't a span of scene seconds: …` | the shot's `visibility` (`shotVisibilityProblems` at load, `shotVisibilityProblem` each frame) and `warm` (`shotWarmProblems`) | name an occurrence; fade an item by its own `visibility` |
+| `label.id: names two painted textures: an id names one` / `label.widthPx: is 0: a painted texture is whole px above 0` / `label.source: selects on a transparent ground: a painted texture is opaque, …` / `label.source: blends a painting that wraps with one that doesn't: …` | the shot's painted textures at load (`shotPaintedTexturesProblems`, each source at moment 0 and a callback's again each frame) | one id a texture; leave `ground` out; wrap every painting a texture blends, or none |
 
 `studio paint check <source> --solve [--at <s>] [--out <dir>]` then solves every sheet on the GPU (run it under the
 GPU lock) and prints, in each sheet's order (under the sheet's name when there are several), each wash's start and
