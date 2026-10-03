@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import { paintRigCutParts, type PaintRigCutLayer } from './paint-rig-cuts.ts';
+import { paintRigCelLayer } from './paint-rig-cel-layer.ts';
+import { paintRigCutParts, type PaintRigCutLayer, type PaintRigTexelBox } from './paint-rig-cuts.ts';
 import { paintRigBandStretch, paintRigSkinGroups, paintRigSkinMesh, paintRigSkinTriangles } from './paint-rig-skin.ts';
 
 /** A limb 24 px wide and 84 tall: `upper` owns rows 0..42, `lower` (skin, `blend` px) the rest, its pivot at (12, 42). */
@@ -11,6 +12,8 @@ function limb(blend: number): PaintRigCutLayer {
   const parts = paintRigCutParts([{ id: 'upper', parent: null, z: 0 }, { id: 'lower', parent: 'upper', z: 0, joint: 'skin', blend, pivot: { x: 12, y: 42 } }]);
   return { id: 'side.limb', box, parts, owner, matte, overlaps: new Map() };
 }
+/** An opaque cel over `box`. */
+const cel = (box: PaintRigTexelBox) => ({ ...box, rgba: new Float32Array(box.w * box.h * 4).fill(1) });
 /** Rotation by `degrees` about `pivot`. */
 const turn = (degrees: number, pivot: StampPoint) => {
   const c = Math.cos((degrees * Math.PI) / 180), s = Math.sin((degrees * Math.PI) / 180);
@@ -45,3 +48,20 @@ test('a bend turns the band through an arc, folding only under a blend of about 
   assert.ok(Math.hypot(triangles[end] - far.x, triangles[end + 1] - far.y) < 1e-4);
 });
 
+
+test('a parent painted wide past its joint line keeps its paint far from the child\'s, as cels laid as one layer are', () => {
+  // A body 120 px wide, a neck 24 px wide rising from its middle; the body's cel runs past the neck's joint line.
+  const body = { x0: 0, y0: 40, w: 120, h: 40 }, neck = { x0: 48, y0: 0, w: 24, h: 60 };
+  const { cuts } = paintRigCelLayer('cels.body', [
+    { declaration: { id: 'body', parent: null, z: 1 }, picture: cel(body) },
+    { declaration: { id: 'neck', parent: 'body', z: 0, joint: 'skin', blend: 20, pivot: { x: 60, y: 50 } }, picture: cel(neck) },
+  ]);
+  const [group] = paintRigSkinGroups(cuts), mesh = paintRigSkinMesh(cuts, group), neckTurn = turn(-90, { x: 60, y: 50 });
+  const triangles = paintRigSkinTriangles(mesh, (k) => (k === 1 ? neckTurn : (p) => p));
+  let farthest = 0;
+  for (let v = 0; v < triangles.length; v += 4) {
+    const rest = { x: triangles[v + 2], y: triangles[v + 3] };
+    if (rest.y >= 40 && Math.abs(rest.x - 60) >= 12 + 30) farthest = Math.max(farthest, Math.hypot(triangles[v] - rest.x, triangles[v + 1] - rest.y));
+  }
+  assert.equal(farthest, 0);
+});

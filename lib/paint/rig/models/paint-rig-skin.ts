@@ -1,8 +1,8 @@
-// paint-rig-skin.ts: a layer's cut parts posed, purely. Parts joined by skin joints form one group, a triangle mesh
-// of 6 px cells over their texels; each vertex's share in a skin joint's child ramps linearly over `blend` px across
-// the joint line, and it is posed by rotation-blend skinning: it turns by its share of the joint's angle about the
-// joint's rest pivot, so a bend is a circular arc that keeps the limb's width. A hinge child starts its own group, a
-// rigid piece with its overlap, drawn above or below by z.
+// paint-rig-skin.ts: a layer's cut parts posed. Parts joined by skin joints form one group, a triangle mesh
+// of 6 px cells over their texels; each vertex's share in a skin joint's child ramps over `blend` px across the joint
+// line (a parent's fading away from the child's paint), and it is posed by rotation-blend skinning: it turns by its
+// share of the joint's angle about the joint's rest pivot, so a bend is a circular arc that keeps the limb's width. A
+// hinge child starts its own group, a rigid piece with its overlap, above or below by z.
 //
 // A mesh is data a renderer can take whole: triangles over a vertex grid, and each vertex's share in each joint.
 
@@ -120,9 +120,16 @@ export function paintRigSkinMesh(layer: PaintRigCutLayer, group: PaintRigSkinGro
     joints.forEach(({ child, parent, pivot, bone, blend }, n) => {
       // Across the joint the share is a linear ramp of the distance past the joint line (through the pivot, square to
       // the bone), so the joint's angle accrues evenly along the bone and the bend is a circular arc.
-      const past = (x - pivot.x) * bone.x + (y - pivot.y) * bone.y;
+      const past = (x - pivot.x) * bone.x + (y - pivot.y) * bone.y, ramp = Math.min(1, Math.max(0, past / blend + 0.5));
       let share = within(own, child) ? 1 : 0;
-      if (own === child || own === parent) share = Math.min(1, Math.max(0, past / blend + 0.5));
+      if (own === child) share = ramp;
+      if (own === parent) {
+        // The parent's paint follows the child only near the child's: a whole body painted round a neck's root must not
+        // swing with the neck. Where the two tile, every band vertex lies within blend / 2 of the child's paint, so the
+        // ramp there is whole; past that it fades over a further `blend`, gently enough not to crease.
+        const near = ramp > 0 ? nearest(box, x, y, 1.5 * blend, (t) => mover[t] >= 0 && within(mover[t], child)) : null;
+        share = near ? ramp * Math.min(1, 1.5 - near.distance / blend) : 0;
+      }
       shares[v * joints.length + n] = share;
       if (share > 0 && share < 1) blending[v] |= 1 << n;
     });

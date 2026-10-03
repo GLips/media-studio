@@ -320,7 +320,8 @@ refused.
 **rig** is a painted rig's geometry and its drawing: layers (whole paintings at rest) cut into parts that meet at
 skin joints or hinges. `paint-rig-cuts.ts` holds a layer's parts with each joint resolved to its parent's index (a
 part whose parent isn't on the layer is loose, a group of its own) and which part owns each texel; how a painter's
-drawn regions become that is the painting tool's. `paint-rig-skin.ts` meshes a layer's skin-joined parts and poses
+drawn regions become that is the painting tool's. `paint-rig-cel-layer.ts` lays parts painted on cels of their own
+and skinned to each other as one such layer, each cel keeping its z inside it. `paint-rig-skin.ts` meshes a layer's skin-joined parts and poses
 the mesh by rotation-blend skinning, each vertex turning by its share of a joint's angle, from each part's
 rest-to-posed map; it measures folds across a joint's band. `paint-rig-pieces.ts` is what a posed rig is drawn from:
 pictures through posed triangles (a group through its skin mesh, a cel through its lattice), posed on the CPU once
