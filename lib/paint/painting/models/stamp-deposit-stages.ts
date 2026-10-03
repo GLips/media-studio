@@ -1,5 +1,5 @@
-// stamp-deposit-stages.ts: how a deposit's coverage is built and resolved, as tables the GPU renderer
-// (stamp-paint-renderer.ts) generates its code from. What each accumulation does as a stamp lands and how it resolves;
+// stamp-deposit-stages.ts: how a deposit's coverage is built and resolved, as tables the GPU's deposit drawing
+// (stamp-deposit-stamp-wgsl.ts, stamp-deposit-resolve-wgsl.ts) generates its code from. What each accumulation does as a stamp lands and how it resolves;
 // which stages run, in which order; which of a brush's layers' stages are active; how far a stamp's blur reaches up
 // its tip's mips; and how the GPU lays a layer's stamps, by fixed blend or in order. An accumulation's lay and resolve
 // are WGSL, held to their accepted output by the GPU gate (docs/brush-engine.md).

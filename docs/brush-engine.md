@@ -52,7 +52,10 @@ and brush's; the GPU is the one renderer. A function keeps a CPU twin only where
 the tables. How the GPU lays a layer's stamps is a plan (`stampAccumulationPlan`): a fixed blend where stamp order can't change the build, and
 otherwise, for a `buildToOpacity` whose opacity falls (Photoshop never lowers what's built), each pixel walks its
 stamps in order and lays each by the table's `lay`. `studio/` is the WebGPU renderer, its uniform layout and the
-compositors.
+compositors. The renderer's stages stand apart for any driver to call: a bank loads deposits and binds their brushes
+(`stamp-deposit-bank.ts`), and the deposit drawing (`stamp-deposit-drawing.ts`, its WGSL in
+`stamp-deposit-stamp-wgsl.ts` and `stamp-deposit-resolve-wgsl.ts`) lays one, given its landing, stages, tooth and
+regions each draw.
 
 **Fills and forms.** A fill floods its region (`stamp-fill.ts`) or lays it in strokes (`stamp-fill-strokes.ts`): a
 pattern (`StampFillPattern`, each an object by `kind`) makes marks, `stampFillMarks`, each with a key and the patch a
@@ -76,7 +79,7 @@ the outline. They're geometry: a style decides how to paint them.
 edge (soft, ragged) and an inset. Its coverage is the region's signed distance less the inset, moved by the edge's
 noise, ramped over its width, so an inset moves the edge without offsetting the polygon (a narrow feature can vanish).
 The renderer works out each state of the fluid, each `within` and each wash's preparation once, as cropped textures
-(`stampAreaCoverageAt` is their coverage's CPU twin). A group's `standsBefore` compiles into one more mask over the fluid of each deposit of the groups it names,
+(`stamp-region-textures.ts`; `stampAreaCoverageAt` is their coverage's CPU twin). A group's `standsBefore` compiles into one more mask over the fluid of each deposit of the groups it names,
 last, so it joins their fluid by max and none of their unmasks lifts it; a knockout's fluid is left alone.
 A `within` may treat named stretches of its outline (`StampWithin.boundaries`, `stamp-area-boundaries.ts`): `keep`,
 `feather` (coverage falls from full `reach` px inside to none at the outline) or `merge` (the edge opens `reach` px
@@ -88,7 +91,8 @@ intersected with its ancestors', so a child's merge never opens an ancestor's cu
 
 **Brushed masks.** Fluid can be brushed on, `mask(id, { marks })`, and a group can lay wax, `resist(id, { marks,
 amount })` (`stamp-brushed-mask.ts`). A mark is placed from its key by the one path paint is (`placeStampDeposit`),
-so the same mark painted elsewhere lands the same footprint. The renderer draws each brushed mask once as it loads:
+so the same mark painted elsewhere lands the same footprint. The renderer draws each brushed mask once as it loads
+(`encodeStampBrushedMasks`):
 each mark's stamps resolved as a deposit's coverage is (builds, grain, dual, pooling), never pigment, joined by max
 into a texture a step of the fluid reads, and the wet field reads it per pixel, so water lands only where a sparse
 brush left paper open. Wax keeps only what catches the paper's peaks (`paintDryContact`, at the paper's depth)

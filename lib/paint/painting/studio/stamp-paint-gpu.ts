@@ -78,6 +78,9 @@ export function stampPaintSamplers(device: StampPaintDevice) {
 }
 export type StampPaintSamplers = ReturnType<typeof stampPaintSamplers>;
 
+/** A blend keeping, per channel, the most of what's there and what's laid: an order-free lay. */
+export const STAMP_MAX_BLEND: GPUBlendState = { color: { operation: 'max', srcFactor: 'one', dstFactor: 'one' }, alpha: { operation: 'max', srcFactor: 'one', dstFactor: 'one' } };
+
 /** A texel of a texture: where a box copy reads or writes from. */
 export type StampTextureAt = { texture: GPUTexture; x: number; y: number };
 

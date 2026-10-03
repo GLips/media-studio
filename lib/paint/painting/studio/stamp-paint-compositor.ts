@@ -16,6 +16,13 @@ import { gpuUniformLayout, gpuUniformWriter, type GpuUniformField, type GpuUnifo
 /** A texture the compositor keeps its paint in: four channels, or an array of `layers` of four. */
 export type StampPaintTarget = { kind: 'plain' } | { kind: 'array'; layers: number };
 
+/** The WGSL declaring a compositor's `target` as `name` at `binding`: storage with `access`, or sampled for null. */
+export function stampPaintTargetWgsl(name: string, binding: number, target: StampPaintTarget, access: 'read_write' | 'write' | null) {
+  const array = target.kind === 'array' ? '_array' : '';
+  const type = access ? `texture_storage_2d${array}<rgba16float, ${access}>` : `texture_2d${array}<f32>`;
+  return `@group(0) @binding(${binding}) var ${name}: ${type};`;
+}
+
 /**
  * A way of mixing paint: WGSL for four passes, each binding its own resources. The renderer declares `layer` and `painting` from `targets`; in the deposit pass `paint` (a
  * PaintDeposit) and `u.paperDepth`; in the group pass `u.group`, `u.paper` for `paperColor(image, sampler, u.paper,

@@ -40,6 +40,26 @@ export type StampStageTexels = { readonly x: number; readonly y: number; readonl
 /** The stage's extent in painting pixels: x0, y0 inclusive, x1, y1 exclusive. `0 - margin`, as -margin is -0 at 0. */
 export const stampStageExtent = ({ margin, frame }: StampStage) => ({ x0: 0 - margin, y0: 0 - margin, x1: frame.width + margin, y1: frame.height + margin });
 
+/** The stage's whole texels within painting points x0..x1, y0..y1, or null for none. */
+export function stampStageTexelsWithin({ width, height, margin }: StampStage, x0: number, y0: number, x1: number, y1: number): StampStageTexels | null {
+  const x = Math.max(0, Math.floor(x0) + margin), y = Math.max(0, Math.floor(y0) + margin);
+  const w = Math.min(width, Math.ceil(x1) + margin) - x, h = Math.min(height, Math.ceil(y1) + margin) - y;
+  return w > 0 && h > 0 ? { x, y, w, h } : null;
+}
+
+/** `box` grown by `by` texels each side, held to the stage. */
+export function stampStageTexelsGrown({ width, height }: StampStage, box: StampStageTexels, by: number): StampStageTexels {
+  const x = Math.max(0, box.x - by), y = Math.max(0, box.y - by);
+  return { x, y, w: Math.min(width, box.x + box.w + by) - x, h: Math.min(height, box.y + box.h + by) - y };
+}
+
+/** The least box holding `a` and `b`, in stage texels or painting points alike; either alone when the other is null. */
+export function stampBoxUnion(a: StampStageTexels | null, b: StampStageTexels | null): StampStageTexels | null {
+  if (!a || !b) return a ?? b;
+  const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+  return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
+}
+
 /**
  * WGSL for `stage`: STAGE_MARGIN, and stagePoint(texel), a stage texel's centre as a painting point. At margin 0 it's
  * the texel's centre exactly, so a margin of 0 draws as no stage did.

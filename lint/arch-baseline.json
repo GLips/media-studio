@@ -190,9 +190,6 @@
       "const settings = unarchiveKeyedPlist(brushset.read(`${folder}/Brush.archive`)) as ProcreateBrushSettings;": 1,
       "const hasDual = has(`${folder}/Sub01/Brush.archive`), dualSettings = hasDual ? unarchiveKeyedPlist(brushset.read(`${folder}/Sub01/Brush.archive`)) as ProcreateBrushSettings : undefined;": 1
     },
-    "lib/paint/painting/studio/stamp-paint-renderer.ts": {
-      "const stampPipelines = Object.fromEntries((['glaze', 'build'] as const).map((accumulation) => {": 1
-    },
     "lib/paint/photoshop-brushes/engine/photoshop-abr.ts": {
       "const items = readPhotoshopDescriptor(r).hierarchy as PhotoshopDescriptor[] | undefined;": 1,
       "out.presets = ((readPhotoshopDescriptor(r).Brsh ?? []) as PhotoshopDescriptor[]).map((descriptor) => ({ descriptor }));": 1,
@@ -757,9 +754,6 @@
     },
     "lib/paint/painting/models/stamp-tip-hull.ts": {
       "const snapToSquare = (v: number) => (Math.abs(v) < 1e-5 ? 0 : Math.abs(v - 1) < 1e-5 ? 1 : v);": 1
-    },
-    "lib/paint/painting/studio/stamp-paint-renderer.ts": {
-      "{ format: 'rgba16float', blend: maxBlend, writeMask: glaze ? (channel === 0 ? GPUColorWrite.RED | GPUColorWrite.BLUE : GPUColorWrite.GREEN | GPUColorWrite.ALPHA) : 0 },": 1
     },
     "lib/paint/photoshop-brushes/models/photoshop-preset.ts": {
       "const scriptKey = ({ key, id }: Named) => (id ? `S:${id}` : key.length === 4 && key !== 'flow' ? `C:${key}` : `S:${key}`);": 1
