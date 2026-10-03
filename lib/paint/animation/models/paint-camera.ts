@@ -10,8 +10,8 @@ import { LENS_DEFOCUS_LEAST, lensApertureSlide, lensDefocusSigned } from '#lib/p
 import type { LensExposure } from '#lib/picture/lens/models/lens-exposures.ts';
 import { shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
-import type { StampLensFrame, StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
-import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import type { StampLensFrame, StampPlaneExtent, StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
+import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { paintLaneClipAt, type PaintLane, type PaintPlayClock } from './paint-clock.ts';
 import { paintPxRounded, paintRatioRounded } from './paint-deform.ts';
@@ -60,19 +60,8 @@ export const PAINT_CAMERA_NEAREST = 1e-3;
  */
 export type PaintCameraLens = { readonly bloom: number; readonly shutter: number };
 
-/**
- * Where a picture plane can hold anything, which the camera keeps on the stage wherever it shows it: within `box`
- * (stage px), everywhere (it can't be bounded), or nowhere (empty). `unchecked`: the camera isn't told, and holds
- * nothing of it; `why` says who holds it instead.
- */
-export type PaintCameraExtent =
-  | { readonly kind: 'box'; readonly box: StampBox }
-  | { readonly kind: 'everywhere' }
-  | { readonly kind: 'empty' }
-  | { readonly kind: 'unchecked'; readonly why: string };
-
 /** A picture plane, `depth` units from the camera at rest: a picture on the stage, held as far as its `extent`. */
-export type PaintCameraPicturePlane = { readonly id: string; readonly depth: number; readonly kind: 'picture'; readonly extent: PaintCameraExtent };
+export type PaintCameraPicturePlane = { readonly id: string; readonly depth: number; readonly kind: 'picture'; readonly extent: StampPlaneExtent };
 
 /**
  * A three plane, `depth` units from the camera at rest: a three.js render, drawn each frame through the camera's

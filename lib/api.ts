@@ -126,8 +126,8 @@ export type { PaintPigmentAppearance } from '#lib/paint/materials/models/paint-p
 export { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 export { stampPaintStyle } from '#lib/paint/style/studio/stamp-paint-styles.ts';
 export { StampPainting } from '#lib/paint/style/studio/stamp-painting.tsx';
-// A painted scene as planes (vid-140): each a depth and a source, painted groups (on paper at the back, clear film nearer) or three.js,
-// seen through one camera; StampPainting takes the camera and the three.js sources.
-export type { StampPlane, StampPlaneSource } from '#lib/paint/painting/models/stamp-plane.ts';
+// A scene as planes: each a depth and a source, painted groups (on paper at the back, clear film nearer), a picture
+// worked out per moment, or three.js, seen through one camera; StampPainting takes the camera and the sources.
+export type { StampPictureAt, StampPictureRgba, StampPlane, StampPlaneSource } from '#lib/paint/painting/models/stamp-plane.ts';
 export type { PaintedThree, PaintedThreeSource, PaintedThreeSourceScene, PaintedThreeSourceTools, PaintedThreeTexture } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
 export { paintedThreeColorNode } from '#lib/paint/three-layers/studio/painted-three-material.ts';

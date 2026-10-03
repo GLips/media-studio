@@ -134,22 +134,29 @@ const shown = (box: Box): Box => inset({ ...box, x1: Math.min(box.x1, FRONT.x0) 
 const sameBox = (a: Rgba, b: Rgba, box: Box) => farthest(a, box, (i, c) => b[i + c]);
 
 /**
+ * Whether content a's patches show in `frame` as their colours, `clear` the same frame with the card all clear: each
+ * opaque one as itself in bytes, the half-white laid over what `clear` shows in linear light.
+ */
+export function checkStampGateCardColours(frame: Rgba, clear: Rgba): Omit<StampGateWashCheck, 'id'> {
+  const opaque = PATCHES_A.filter(({ alpha }) => alpha === 1), half = PATCHES_A.find(({ alpha }) => alpha < 1)!;
+  // Against the colour in bytes, as a screen shows it: the output's dither moves a pixel half a level either way.
+  const roundTrips = opaque.map(({ box, rgb }) => farthest(frame, shown(box), (_, c) => Math.round(255 * linearToSrgb(rgb[c]))));
+  const over = farthest(frame, shown(half.box), (i, c) => 255 * linearToSrgb(half.rgb[c] * half.alpha + srgbToLinear(clear[i + c] / 255) * (1 - half.alpha)));
+  return {
+    passed: Math.max(...roundTrips) <= STAMP_GATE_THREE_ROUND_TRIP && over <= STAMP_GATE_THREE_OVER,
+    detail: `opaque patches worst ${roundTrips.map((d) => d.toFixed(1)).join(', ')} levels (past ${STAMP_GATE_THREE_ROUND_TRIP} fails); half-white over the ground ${over.toFixed(1)} from linear over (past ${STAMP_GATE_THREE_OVER} fails)`,
+  };
+}
+
+/**
  * The checks of case `kind`, from its frames: `plain`, the planes with no card; `a`, `b`, `aAgain`, `clear` drawn in
  * turn on one renderer with content a, b, a and none; `bFresh`, content b on a renderer of its own.
  */
 export function checkStampGateThreePlane(kind: StampGateThreeKind, { plain, a, b, aAgain, clear, bFresh }: Record<'plain' | 'a' | 'b' | 'aAgain' | 'clear' | 'bFresh', Rgba>): StampGateWashCheck[] {
   const id = `three/${kind}`;
-  const opaque = PATCHES_A.filter(({ alpha }) => alpha === 1), half = PATCHES_A.find(({ alpha }) => alpha < 1)!;
-  // Against the colour in bytes, as a screen shows it: the output's dither moves a pixel half a level either way.
-  const roundTrips = opaque.map(({ box, rgb }) => farthest(a, shown(box), (_, c) => Math.round(255 * linearToSrgb(rgb[c]))));
-  const over = farthest(a, shown(half.box), (i, c) => 255 * linearToSrgb(half.rgb[c] * half.alpha + srgbToLinear(clear[i + c] / 255) * (1 - half.alpha)));
   const covered = sameBox(a, clear, FRONT_INSIDE);
   const untouched = stampGateFrameDifference(clear, plain), again = stampGateFrameDifference(a, aAgain), fresh = stampGateFrameDifference(b, bFresh);
-  return [{
-    id: `${id}: a three plane's colours show as rendered, opaque and half covering`,
-    passed: Math.max(...roundTrips) <= STAMP_GATE_THREE_ROUND_TRIP && over <= STAMP_GATE_THREE_OVER,
-    detail: `opaque patches worst ${roundTrips.map((d) => d.toFixed(1)).join(', ')} levels (past ${STAMP_GATE_THREE_ROUND_TRIP} fails); half-white over the ground ${over.toFixed(1)} from linear over (past ${STAMP_GATE_THREE_OVER} fails)`,
-  }, {
+  return [{ ...checkStampGateCardColours(a, clear), id: `${id}: a three plane's colours show as rendered, opaque and half covering` }, {
     id: `${id}: a nearer plane's opaque paint covers a three plane, and an all-clear one draws nothing`,
     passed: covered <= 1 && stampGateFramePasses(untouched),
     detail: `inside the front plane, with content a against all clear: max ${covered} (past 1 fails); all clear against no three plane: max ${untouched.max}, mean ${untouched.mean.toFixed(4)}`,

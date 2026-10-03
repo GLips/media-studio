@@ -18,6 +18,7 @@ import { STAMP_GATE_FLOW_IDS } from '../models/stamp-gate-flow.ts';
 import { STAMP_GATE_MEDIA_IDS } from '../models/stamp-gate-media.ts';
 import { STAMP_GATE_THREE_IDS } from '../models/stamp-gate-three-plane.ts';
 import { STAMP_GATE_THREE_STILL_ID } from '../models/stamp-gate-three-still.ts';
+import { STAMP_GATE_PICTURE_ID } from '../models/stamp-gate-picture-plane.ts';
 import { STAMP_GATE_TRANSPORT_ID } from '../models/stamp-gate-motion.ts';
 import { STAMP_GATE_PLANES_IDS, STAMP_GATE_STAGE_IDS } from '../models/stamp-gate-stage.ts';
 import { STAMP_GATE_LENS_IDS } from '../models/stamp-gate-lens.ts';
@@ -155,7 +156,7 @@ function checkTrace({ trace }: Collected): StampGateCheck {
 export async function runStampGate(store: string): Promise<StampGateCheck[]> {
   const collected = await collectStampGate(
     STAMP_GATE_PAINTING_IDS, STAMP_GATE_WASH_IDS, STAMP_GATE_ANIMATION_IDS, STAMP_GATE_FLOW_IDS, STAMP_GATE_STRIPE_IDS, STAMP_GATE_REGION_IDS, STAMP_GATE_MASK_IDS, STAMP_GATE_MEDIA_IDS,
-    [...STAMP_GATE_THREE_IDS, STAMP_GATE_THREE_STILL_ID], [...STAMP_GATE_STAGE_IDS, ...STAMP_GATE_PLANES_IDS, STAMP_GATE_TRANSPORT_ID, ...STAMP_GATE_LENS_IDS], STAMP_GATE_CONTACT_IDS,
+    [...STAMP_GATE_THREE_IDS, STAMP_GATE_THREE_STILL_ID, STAMP_GATE_PICTURE_ID], [...STAMP_GATE_STAGE_IDS, ...STAMP_GATE_PLANES_IDS, STAMP_GATE_TRANSPORT_ID, ...STAMP_GATE_LENS_IDS], STAMP_GATE_CONTACT_IDS,
   );
   return [
     ...formulaSubjects(collected).map((subject) => checkStampGateSubject(store, subject, collected.adapter)),

@@ -1,43 +1,78 @@
-// stamp-plane.ts: a painted scene as planes, each a depth and a source. A painted source is some of the painting's
-// groups: one picture, independent of the camera. A three source is a three.js render
-// handed in each frame. The renderer lays the pictures far to near, each where the camera puts it.
+// stamp-plane.ts: a scene as planes, each a depth and a source: some of the painting's groups (independent of the
+// camera), a picture handed in at each moment in the stage's texels however it was made, or a three.js render handed
+// in each frame through the camera. The renderer lays them far to near, each where the camera puts it.
 //
-// The farthest plane is paper to the stage's edge, the back. Every nearer painted plane is clear film, measured by
-// laying it on white and on black: over those two it shows as on one sheet, and between them it's a two-point
-// linearisation (stamp-paint-plane-passes.ts says where that's close). A group's knockout, lift or glaze reads only
-// its own plane's paint.
+// The back is opaque wherever the frame shows it: paper to the stage's edge, or a picture covering the frame. A nearer
+// painted plane is clear film, measured on white and on black: a two-point linearisation between them
+// (stamp-paint-plane-passes.ts says where that's close). A group's knockout, lift or glaze reads only its own plane.
 
 import type { LensFocus } from '#lib/picture/lens/models/lens-focus.ts';
 import type { CompiledStampPaint } from './stamp-paint-recipe-compile.ts';
+import type { StampBox } from './stamp-region.ts';
+import type { PaintMoment } from './stamp-paint-frame-state.ts';
+import type { StampStageTexels } from './stamp-stage.ts';
+
+/**
+ * Where a picture plane can hold anything, which a camera keeps on the stage wherever it shows it: within `box`
+ * (painting points), everywhere (it can't be bounded), or nowhere (empty). `unchecked`: the camera isn't told, and
+ * holds nothing of it; `why` says who holds it instead.
+ */
+export type StampPlaneExtent =
+  | { readonly kind: 'box'; readonly box: StampBox }
+  | { readonly kind: 'everywhere' }
+  | { readonly kind: 'empty' }
+  | { readonly kind: 'unchecked'; readonly why: string };
 
 /**
  * What a plane shows. `painted`: `groups` (ids of the painting's, laid in its order), on paper for the back and on
- * clear film nearer. `three`: a three.js render, premultiplied linear colour, handed in each frame.
+ * clear film nearer. `picture`: a picture source's, premultiplied linear colour, held as far as its `extent`. `three`:
+ * a three.js render, premultiplied linear colour.
  */
-export type StampPlaneSource = { readonly kind: 'painted'; readonly groups: readonly string[] } | { readonly kind: 'three' };
+export type StampPlaneSource =
+  | { readonly kind: 'painted'; readonly groups: readonly string[] }
+  | { readonly kind: 'picture'; readonly extent: StampPlaneExtent }
+  | { readonly kind: 'three' };
+
+/**
+ * A picture plane's picture: premultiplied linear RGBA, four floats a texel, row by row over `box`, whole texels
+ * within the stage (stamp-stage.ts).
+ */
+export type StampPictureRgba = { readonly box: StampStageTexels; readonly rgba: Float32Array };
+
+/**
+ * A picture plane's source: its picture at `moment` (a frame's own, or a shutter moment within it), or null for
+ * nothing. Warning: a picture handed back is never changed after; hand back the same one for a still plane, and it
+ * uploads once. Negative space: no motion of its own; a fast frame blurs it only as its plane moves.
+ */
+export type StampPictureAt = (moment: PaintMoment) => Promise<StampPictureRgba | null>;
 
 /** A plane `depth` units from the camera at rest (above 0; a camera's pan is measured at 1). */
 export type StampPlane = { readonly id: string; readonly depth: number; readonly source: StampPlaneSource };
 
-/** A picture plane as laid: the painting's `groups` it shows, their indices in the painting's order. */
-export type StampLaidPicturePlane = { readonly id: string; readonly kind: 'picture'; readonly groups: readonly number[] };
+/** A painted plane as laid: the painting's `groups` it shows, their indices in the painting's order. */
+export type StampLaidPaintedPlane = { readonly id: string; readonly kind: 'painted'; readonly groups: readonly number[] };
+/** A picture plane as laid: its picture is handed in at each moment. */
+export type StampLaidPicturePlane = { readonly id: string; readonly kind: 'picture' };
 /** A three plane as laid: its render is handed in each frame. */
 export type StampLaidThreePlane = { readonly id: string; readonly kind: 'three' };
+/** A plane whose picture a source hands in rather than the painting painting it. */
+export type StampLaidSourcePlane = StampLaidPicturePlane | StampLaidThreePlane;
 
 /**
- * A scene's planes as the renderer lays them, farthest first: the `back`, a picture on paper to the stage's edge,
- * then the `nearer`, pictures on clear film and three renders. `Extra` is what each plane carries besides (a depth).
+ * A scene's planes as the renderer lays them, farthest first: the `back`, opaque (painted on paper to the stage's
+ * edge, or a picture), then the `nearer`, painted film, pictures and three renders. `Extra` is what each plane carries
+ * besides (a depth).
  */
 export type StampLaidPlanes<Extra = unknown> = {
-  readonly back: StampLaidPicturePlane & Extra;
-  readonly nearer: readonly ((StampLaidPicturePlane | StampLaidThreePlane) & Extra)[];
+  readonly back: (StampLaidPaintedPlane | StampLaidPicturePlane) & Extra;
+  readonly nearer: readonly ((StampLaidPaintedPlane | StampLaidSourcePlane) & Extra)[];
 };
 
 /** The one plane a painting shown without a camera is: every group, on paper. */
 export const STAMP_SINGLE_PLANE_ID = 'painting';
 
 export const stampSinglePlane = (painting: CompiledStampPaint): StampLaidPlanes =>
-  ({ back: { id: STAMP_SINGLE_PLANE_ID, kind: 'picture', groups: painting.groups.map((_, i) => i) }, nearer: [] });
+  ({ back: { id: STAMP_SINGLE_PLANE_ID, kind: 'painted', groups: painting.groups.map((_, i) => i) }, nearer: [] });
 
 /** `planes`' ids and depths checked into `problems`: unique ids, depths above 0. */
 export function stampPlaneDepthProblems(planes: readonly { readonly id: string; readonly depth: number }[], problems: string[]): void {
@@ -50,31 +85,33 @@ export function stampPlaneDepthProblems(planes: readonly { readonly id: string; 
 }
 
 /**
- * `planes` checked over `painting` into `problems` and laid, farthest first, ties as declared: unique ids, depths
- * above 0, every group on exactly one picture plane, and the farthest a picture (a three source behind the paper would
- * never show). Null when there's no paper to build on; `problems` then says why.
+ * `planes` checked over `painting` (null for a scene that paints nothing) into `problems` and laid, farthest first,
+ * ties as declared: unique ids, depths above 0, every group on exactly one painted plane, and the farthest painted or
+ * a picture (a three source behind it would never show). Null when there's no back to build on; `problems` then says why.
  */
-export function stampScenePlanes(painting: CompiledStampPaint, planes: readonly StampPlane[], problems: string[]): StampLaidPlanes<{ readonly depth: number }> | null {
-  const indexOf = new Map(painting.groups.map(({ id }, i) => [id, i])), onPlane = new Map<string, string>();
+export function stampScenePlanes(painting: CompiledStampPaint | null, planes: readonly StampPlane[], problems: string[]): StampLaidPlanes<{ readonly depth: number }> | null {
+  const groups = painting?.groups ?? [];
+  const indexOf = new Map(groups.map(({ id }, i) => [id, i])), onPlane = new Map<string, string>();
   stampPlaneDepthProblems(planes, problems);
-  const laid = planes.toSorted((a, b) => b.depth - a.depth).map(({ id, depth, source }) => {
-    if (source.kind === 'three') return { id, depth, kind: 'three' as const };
+  const laid = planes.toSorted((a, b) => b.depth - a.depth).map(({ id, depth, source }): (StampLaidPaintedPlane | StampLaidSourcePlane) & { readonly depth: number } => {
+    if (source.kind !== 'painted') return { id, depth, kind: source.kind };
+    if (!painting) problems.push(`plane ${id} is painted, and the scene has no painting`);
     for (const group of source.groups) {
       if (!indexOf.has(group)) problems.push(`plane ${id} shows ${group}, which isn't a group of the painting`);
       else if (onPlane.has(group)) problems.push(`${group} is on plane ${onPlane.get(group)} and plane ${id}; a group is on one plane`);
       else onPlane.set(group, id);
     }
-    return { id, depth, kind: 'picture' as const, groups: source.groups.flatMap((group) => indexOf.get(group) ?? []).toSorted((a, b) => a - b) };
+    return { id, depth, kind: 'painted', groups: source.groups.flatMap((group) => indexOf.get(group) ?? []).toSorted((a, b) => a - b) };
   });
-  const missing = painting.groups.filter(({ id }) => !onPlane.has(id));
+  const missing = groups.filter(({ id }) => !onPlane.has(id));
   if (missing.length) problems.push(`${missing.map(({ id }) => id).join(', ')} ${missing.length > 1 ? 'are' : 'is'} on no plane`);
   const [back, ...nearer] = laid;
   if (!back) {
     problems.push('a scene needs a plane');
     return null;
   }
-  if (back.kind !== 'picture') {
-    problems.push(`the farthest plane, ${back.id}, must be painted, on paper to the stage's edge`);
+  if (back.kind === 'three') {
+    problems.push(`the farthest plane, ${back.id}, must be opaque to the frame's edge: painted, or a picture`);
     return null;
   }
   return { back, nearer };
@@ -97,6 +134,7 @@ export type StampPlaneLook = {
 
 /**
  * What a frame's lens does: each plane's look by id (a plane left out is at rest and sharp), and its bloom's sigma,
- * frame px. `focus`: what defocuses a source plane per pixel, its focus measured from the camera (null: sharp).
+ * frame px. `focus`: what defocuses a three plane per pixel by its texels' distances, its focus measured from the
+ * camera (null: sharp); a painted or picture plane defocuses by its look's `defocus`.
  */
 export type StampLensFrame = { readonly planes: ReadonlyMap<string, StampPlaneLook>; readonly bloom: number; readonly focus: LensFocus | null };

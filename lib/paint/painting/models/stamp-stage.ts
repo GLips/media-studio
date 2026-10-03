@@ -34,6 +34,9 @@ export function stampStage(frame: { readonly width: number; readonly height: num
   return Object.freeze({ frame: Object.freeze({ width, height }), margin, width: width + 2 * margin, height: height + 2 * margin }) as StampStage;
 }
 
+/** A box of the stage's whole texels: a point's texel is the point plus the margin. */
+export type StampStageTexels = { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
+
 /** The stage's extent in painting pixels: x0, y0 inclusive, x1, y1 exclusive. `0 - margin`, as -margin is -0 at 0. */
 export const stampStageExtent = ({ margin, frame }: StampStage) => ({ x0: 0 - margin, y0: 0 - margin, x1: frame.width + margin, y1: frame.height + margin });
 

@@ -9,14 +9,14 @@
 // scene's to keep on the stage.
 
 import { LENS_SIGMA_STEP, lensGaussianReach, lensSigmaStepped } from '#lib/picture/lens/models/lens-focus.ts';
-import { stampPlaneDepthProblems, stampScenePlanes, type StampLaidPlanes, type StampPlane } from '#lib/paint/painting/models/stamp-plane.ts';
+import { stampPlaneDepthProblems, stampScenePlanes, type StampLaidPlanes, type StampPlane, type StampPlaneExtent } from '#lib/paint/painting/models/stamp-plane.ts';
 import { stampStageExtent, type StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import {
   PAINT_CAMERA_NEAREST, PAINT_CAMERA_REST, paintCameraClipProblem, paintStageCentre,
-  type PaintCamera, type PaintCameraExtent, type PaintCameraFocusClip, type PaintCameraLens, type PaintCameraMoveClip, type PaintCameraPlane, type PaintCameraPlaneOptions, type PaintCameraPlay,
+  type PaintCamera, type PaintCameraFocusClip, type PaintCameraLens, type PaintCameraMoveClip, type PaintCameraPlane, type PaintCameraPlaneOptions, type PaintCameraPlay,
   type PaintCameraPose,
 } from './paint-camera.ts';
 import { paintChannelConflicts, type PaintChannelWriter } from './paint-channels.ts';
@@ -46,12 +46,15 @@ export type PaintCameraBuild =
   | { readonly ok: true; readonly camera: PaintCamera; readonly magnification: ReadonlyMap<string, number> }
   | { readonly ok: false; readonly problems: readonly string[] };
 
-/** A camera over a painting as written: its planes as the painting's, and the `motion` laying its groups (null for none). */
+/**
+ * A camera over a scene as written: its planes as the scene's, and the `motion` laying its painting's groups (null for
+ * none).
+ */
 export type PaintingCameraOptions = Omit<PaintCameraOptions, 'planes'> & { readonly planes: readonly StampPlane[]; readonly motion: PaintMotion | null };
 
 /**
  * What a StampPainting shows through, as buildPaintingCamera made it: the camera, and its planes laid for the renderer
- * (the same planes in the same order, each picture plane with the painting's groups it shows).
+ * (the same planes in the same order, each painted plane with the painting's groups it shows).
  */
 export type StampPaintingCamera = { readonly camera: PaintCamera; readonly planes: StampLaidPlanes };
 
@@ -126,7 +129,7 @@ const meet = (a: StampBox, b: StampBox): StampBox | null => {
 };
 
 /** Where a nearer plane's groups' paint can lie in the shot: everywhere when one can't be bounded. */
-function nearerPaintReach(painting: CompiledStampPaint, groups: readonly number[], motion: PaintMotion | null): PaintCameraExtent {
+function nearerPaintReach(painting: CompiledStampPaint, groups: readonly number[], motion: PaintMotion | null): StampPlaneExtent {
   let reach: StampBox | null = null;
   for (const index of groups) {
     const laid = paintGroupLaidReach(painting.groups[index], motion);
@@ -137,7 +140,7 @@ function nearerPaintReach(painting: CompiledStampPaint, groups: readonly number[
 }
 
 /** Why `extent` isn't one, or null: a box's bounds finite and ordered. */
-function extentBoxProblem(id: string, extent: PaintCameraExtent): string | null {
+function extentBoxProblem(id: string, extent: StampPlaneExtent): string | null {
   if (extent.kind !== 'box') return null;
   const { x0, x1, y0, y1 } = extent.box;
   return [x0, x1, y0, y1].every(Number.isFinite) && x0 <= x1 && y0 <= y1
@@ -152,7 +155,7 @@ const defocusGrowth = (sigma: number) => lensGaussianReach(lensSigmaStepped(sigm
  * Why a plane at `depth` can't hold what the camera shows of it in some span, or null. `extent`: where its picture
  * holds anything, beyond which it needs nothing held.
  */
-function extentProblem(stage: StampStage, { id, depth }: { id: string; depth: number }, extent: PaintCameraExtent, spans: readonly PoseSpan[], sigma: number): string | null {
+function extentProblem(stage: StampStage, { id, depth }: { id: string; depth: number }, extent: StampPlaneExtent, spans: readonly PoseSpan[], sigma: number): string | null {
   if (extent.kind === 'empty' || extent.kind === 'unchecked') return null;
   const stageBox = stampStageExtent(stage);
   for (const span of spans) {
@@ -221,23 +224,28 @@ export function buildPaintCamera(o: PaintCameraOptions): PaintCameraBuild {
 }
 
 /**
- * A camera over `painting`, its planes checked over it first (stampScenePlanes): the back holds paint everywhere, a
- * nearer picture plane wherever `motion` can lay its groups.
+ * A camera over a scene's planes, checked over `painting` first (stampScenePlanes; null for a scene that paints
+ * nothing): a painted back holds paint everywhere, a nearer painted plane wherever `motion` can lay its groups, and a
+ * picture plane as far as its source's extent.
  */
-export function buildPaintingCamera(painting: CompiledStampPaint, { planes: written, motion, ...o }: PaintingCameraOptions): PaintingCameraBuild {
+export function buildPaintingCamera(painting: CompiledStampPaint | null, { planes: written, motion, ...o }: PaintingCameraOptions): PaintingCameraBuild {
   const problems: string[] = [];
   const scene = stampScenePlanes(painting, written, problems);
   if (problems.length || !scene) return { ok: false, problems };
+  const extents = new Map(written.flatMap(({ id, source }) => (source.kind === 'picture' ? [[id, source.extent] as const] : [])));
   const { back, nearer } = scene;
   const built = buildPaintCamera({
     ...o,
-    planes: [
-      { id: back.id, depth: back.depth, kind: 'picture', extent: { kind: 'everywhere' } },
-      ...nearer.map((plane): PaintCameraPlaneOptions => {
-        const { id, depth } = plane;
-        return plane.kind === 'three' ? { id, depth, kind: 'three' } : { id, depth, kind: 'picture', extent: nearerPaintReach(painting, plane.groups, motion) };
-      }),
-    ],
+    planes: [back, ...nearer].map((plane): PaintCameraPlaneOptions => {
+      const { id, depth } = plane;
+      switch (plane.kind) {
+        case 'three': return { id, depth, kind: 'three' };
+        case 'picture': return { id, depth, kind: 'picture', extent: extents.get(id)! };
+        // stampScenePlanes refuses a painted plane without a painting.
+        case 'painted': return { id, depth, kind: 'picture', extent: plane === back ? { kind: 'everywhere' } : nearerPaintReach(painting!, plane.groups, motion) };
+        default: return plane satisfies never;
+      }
+    }),
   });
   return built.ok ? { ok: true, camera: { camera: built.camera, planes: scene }, magnification: built.magnification } : built;
 }

@@ -10,7 +10,7 @@ import { requestStudioGpuDevice } from '#lib/platform/gpu/studio/gpu-device-owne
 import { stampWashMovedWgsl } from '#lib/paint/painting/studio/stamp-paint-pigment-compositor.ts';
 import type { StampWetBank, StampWetDepositMoment, StampWetStageContext } from '#lib/paint/painting/studio/stamp-wet-stages.ts';
 import { putStampWetLand, STAMP_WET_FIELD_FORMATS, STAMP_WET_LAND, stampWetField, stampWetScales } from '#lib/paint/painting/studio/stamp-wet-field.ts';
-import { stampGateHalfBits, stampGateHalfValue } from '../models/stamp-gate-flow.ts';
+import { gpuHalfBits, gpuHalfValue } from '#lib/platform/gpu/models/gpu-half-float.ts';
 
 const STAMP_GATE_FLOW_HOLD_WGSL = /* wgsl */ `
 fn washHold(l: u32, at: vec2f, tooth: vec2f, depth: f32, held: vec4f) -> vec4f {
@@ -45,7 +45,7 @@ export async function runStampGateStage(
   try {
     const texture = (count: number, arrays: readonly Float32Array[]) => {
       const made = device.createTexture({ size: [width, height, count], format: 'rgba16float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST });
-      arrays.forEach((values, l) => device.queue.writeTexture({ texture: made, origin: [0, 0, l] }, Uint16Array.from(values, stampGateHalfBits), { bytesPerRow: width * 8, rowsPerImage: height }, [width, height, 1]));
+      arrays.forEach((values, l) => device.queue.writeTexture({ texture: made, origin: [0, 0, l] }, Uint16Array.from(values, gpuHalfBits), { bytesPerRow: width * 8, rowsPerImage: height }, [width, height, 1]));
       return made;
     };
     const arrayViews = (made: GPUTexture) => ({
@@ -59,12 +59,12 @@ export async function runStampGateStage(
       encoder.copyTextureToBuffer({ texture: layer }, { buffer, bytesPerRow: width * 8, rowsPerImage: height }, [width, height, layers]);
       device.queue.submit([encoder.finish()]);
       await buffer.mapAsync(GPUMapMode.READ);
-      return Float32Array.from(new Uint16Array(buffer.getMappedRange().slice(0)), stampGateHalfValue);
+      return Float32Array.from(new Uint16Array(buffer.getMappedRange().slice(0)), gpuHalfValue);
     };
     const fieldTexture = (format: GPUTextureFormat, values: Float32Array | null) => {
       const usage = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_DST;
       const made = device.createTexture({ size: [width, height], format, usage }), half = format === 'rgba16float';
-      if (values) device.queue.writeTexture({ texture: made }, half ? Uint16Array.from(values, stampGateHalfBits) : values, { bytesPerRow: width * (half ? 8 : 16) }, [width, height]);
+      if (values) device.queue.writeTexture({ texture: made }, half ? Uint16Array.from(values, gpuHalfBits) : values, { bytesPerRow: width * (half ? 8 : 16) }, [width, height]);
       return { texture: made, view: made.createView() };
     };
     const blank = device.createTexture({ size: [1, 1], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING });

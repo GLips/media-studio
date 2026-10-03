@@ -20,12 +20,17 @@ import {
 } from '../models/stamp-gate-three-still.ts';
 import type { StampGatePainting } from '../models/stamp-gate-paintings.ts';
 import {
+  checkStampGatePicture, STAMP_GATE_PICTURE_DEFOCUS_LENS, STAMP_GATE_PICTURE_ID, stampGatePictureCard, stampGatePictureGround, stampGatePictureOnlyPlanes, stampGatePicturePlanes,
+} from '../models/stamp-gate-picture-plane.ts';
+import { loadStampPictureSources } from '#lib/paint/painting/studio/stamp-picture-sources.ts';
+import { createStampSourcesRenderer } from '#lib/paint/painting/studio/stamp-sources-renderer.ts';
+import {
   checkStampGateFilmCache, checkStampGateMargin, checkStampGateOneSheet, checkStampGatePan, checkStampGatePictureCache, STAMP_GATE_PARALLAX_ORDER, STAMP_GATE_PLANES_IDS, STAMP_GATE_STAGE_IDS,
   STAMP_GATE_STAGE_MARGIN, stampGateInsetDifference, stampGateMarginSubjects, stampGateOneSheetPainting, stampGateOneSheetPlanes, stampGatePanPainting, stampGateParallaxPainting,
   stampGateParallaxTime, stampGatePlanesLens, stampGatePlanesOf, stampGatePlanesPainting,
 } from '../models/stamp-gate-stage.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
-import { stampGateHalfBits, stampGateHalfValue } from '../models/stamp-gate-flow.ts';
+import { gpuHalfBits, gpuHalfBitsOf, gpuHalfValue } from '#lib/platform/gpu/models/gpu-half-float.ts';
 import { drawn, drawnExposures, drawnImages, gateRenderer, withGateRenderer, withGateSurface } from './stamp-gate-page-surface.ts';
 import {
   checkStampGateMotion, checkStampGateTransport, STAMP_GATE_MOTION_SHUTTER, STAMP_GATE_MOTION_T, STAMP_GATE_TRANSPORT_ID, STAMP_GATE_TRANSPORT_STEP, stampGateMotionExposures, stampGateMotionFastLens, stampGateMotionPainting, stampGateMotionState, type StampGateMotionKind,
@@ -125,15 +130,16 @@ const motionGateFramesDrawn = (draws: (kind: StampGateMotionKind) => StampPaintF
  */
 export async function checkStampGateThreeCase(id: string): Promise<StampGateWashCheck[]> {
   if (id === STAMP_GATE_THREE_STILL_ID) return [await checkThreeStillFront()];
+  if (id === STAMP_GATE_PICTURE_ID) return checkPictureSource();
   const kind = id === 'three/defocus' ? 'flat' : stampGateThreeKind(id);
-  if (!kind) throw new Error(`stamp gate: no three-plane case ${JSON.stringify(id)}; the gate has ${[...STAMP_GATE_THREE_IDS, STAMP_GATE_THREE_STILL_ID].join(', ')}`);
+  if (!kind) throw new Error(`stamp gate: no three-plane case ${JSON.stringify(id)}; the gate has ${[...STAMP_GATE_THREE_IDS, STAMP_GATE_THREE_STILL_ID, STAMP_GATE_PICTURE_ID].join(', ')}`);
   const gate = stampGateThreePainting(kind), { width, height } = gate;
   return withGateSurface(gate, drawnImages(gate), async (surface, frame) => {
     const { device } = surface.owner;
     const usage = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC;
     const texture = device.createTexture({ size: [width, height], format: 'rgba16float', usage }), motion = device.createTexture({ size: [width, height], format: 'rgba16float', usage });
     // The card's texture is written before each frame, so its render does nothing, and nothing in it moves.
-    const card = { picture: { texture, motion, at: { x: 0, y: 0 } }, render: async () => ({ moved: false }) };
+    const card = { kind: 'three' as const, picture: { texture, motion, at: { x: 0, y: 0 } }, render: async () => ({ moved: false }) };
     const withCard = async <T,>(use: (renderer: StampPaintRenderer) => Promise<T>) => {
       const renderer = await gateRenderer(gate, surface, { planes: stampGateThreePlanes(gate.painting, { card: true }), sources: new Map([[STAMP_GATE_CARD, card]]) });
       try {
@@ -143,8 +149,8 @@ export async function checkStampGateThreeCase(id: string): Promise<StampGateWash
       }
     };
     const laid = (renderer: StampPaintRenderer, content: Float32Array | Float64Array, lens?: StampLensFrame) => {
-      device.queue.writeTexture({ texture }, Uint16Array.from(content, stampGateHalfBits), { bytesPerRow: width * 8 }, [width, height]);
-      device.queue.writeTexture({ texture: motion }, Uint16Array.from(stampGateThreeMotion(Float32Array.from(content)), stampGateHalfBits), { bytesPerRow: width * 8 }, [width, height]);
+      device.queue.writeTexture({ texture }, Uint16Array.from(content, gpuHalfBits), { bytesPerRow: width * 8 }, [width, height]);
+      device.queue.writeTexture({ texture: motion }, Uint16Array.from(stampGateThreeMotion(Float32Array.from(content)), gpuHalfBits), { bytesPerRow: width * 8 }, [width, height]);
       return drawn(renderer, frame, gate.t, undefined, lens);
     };
     const a = stampGateThreeContent('a');
@@ -165,6 +171,54 @@ export async function checkStampGateThreeCase(id: string): Promise<StampGateWash
 }
 
 /**
+ * The picture case (stamp-gate-picture-plane.ts), on one surface: the card as a picture plane and as a three plane of
+ * the same content, each sharp and defocused; then the scene of pictures alone with the card and without it.
+ */
+async function checkPictureSource(): Promise<StampGateWashCheck[]> {
+  const gate = stampGateThreePainting('flat'), { width, height } = gate;
+  return withGateSurface(gate, drawnImages(gate), async (surface, frame) => {
+    const { device } = surface.owner;
+    const sharpAndBlurred = async (options: StampPaintRendererOptions) => {
+      const renderer = await gateRenderer(gate, surface, options);
+      try {
+        return { sharp: await drawn(renderer, frame, gate.t), blurred: await drawn(renderer, frame, gate.t, undefined, STAMP_GATE_PICTURE_DEFOCUS_LENS) };
+      } finally {
+        renderer.dispose();
+      }
+    };
+    const pictureCard = stampGatePictureCard();
+    const asPicture = loadStampPictureSources(surface.owner.webgpu, new Map([[STAMP_GATE_CARD, async () => pictureCard]]));
+    const picture = await sharpAndBlurred({ planes: stampGatePicturePlanes(gate.painting), sources: asPicture.sources });
+    asPicture.dispose();
+
+    const usage = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC;
+    const texture = device.createTexture({ size: [width, height], format: 'rgba16float', usage }), motion = device.createTexture({ size: [width, height], format: 'rgba16float', usage });
+    const content = stampGateThreeContent('a');
+    device.queue.writeTexture({ texture }, gpuHalfBitsOf(content), { bytesPerRow: width * 8 }, [width, height]);
+    device.queue.writeTexture({ texture: motion }, gpuHalfBitsOf(stampGateThreeMotion(content)), { bytesPerRow: width * 8 }, [width, height]);
+    const card = { kind: 'three' as const, picture: { texture, motion, at: { x: 0, y: 0 } }, render: async () => ({ moved: false }) };
+    const three = await sharpAndBlurred({ planes: stampGateThreePlanes(gate.painting, { card: true }), sources: new Map([[STAMP_GATE_CARD, card]]) });
+    texture.destroy();
+    motion.destroy();
+
+    const ground = stampGatePictureGround();
+    const aloneDrawn = async (withCard: boolean) => {
+      const alone = loadStampPictureSources(surface.owner.webgpu, new Map([['ground', async () => ground], [STAMP_GATE_CARD, async () => (withCard ? pictureCard : null)]]));
+      const renderer = await createStampSourcesRenderer(surface, { stage: stampStage({ width, height }, 0), planes: stampGatePictureOnlyPlanes(), sources: alone.sources });
+      try {
+        await renderer.draw({ kind: 'once', t: 0 });
+        await renderer.finish();
+        return frame();
+      } finally {
+        renderer.dispose();
+        alone.dispose();
+      }
+    };
+    return checkStampGatePicture({ picture, three, alone: await aloneDrawn(true), aloneClear: await aloneDrawn(false) });
+  });
+}
+
+/**
  * The still-front case (stamp-gate-three-still.ts): the card's patch written once, still, before a stroke that moves;
  * drawn fast, as the reference's exposures and sharp.
  */
@@ -175,9 +229,9 @@ async function checkThreeStillFront(): Promise<StampGateWashCheck> {
     const usage = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC;
     const texture = device.createTexture({ size: [width, height], format: 'rgba16float', usage }), motion = device.createTexture({ size: [width, height], format: 'rgba16float', usage });
     const content = stampGateThreeStillContent();
-    device.queue.writeTexture({ texture }, Uint16Array.from(content, stampGateHalfBits), { bytesPerRow: width * 8 }, [width, height]);
-    device.queue.writeTexture({ texture: motion }, Uint16Array.from(stampGateThreeMotion(content), stampGateHalfBits), { bytesPerRow: width * 8 }, [width, height]);
-    const card = { picture: { texture, motion, at: { x: 0, y: 0 } }, render: async () => ({ moved: false }) };
+    device.queue.writeTexture({ texture }, Uint16Array.from(content, gpuHalfBits), { bytesPerRow: width * 8 }, [width, height]);
+    device.queue.writeTexture({ texture: motion }, Uint16Array.from(stampGateThreeMotion(content), gpuHalfBits), { bytesPerRow: width * 8 }, [width, height]);
+    const card = { kind: 'three' as const, picture: { texture, motion, at: { x: 0, y: 0 } }, render: async () => ({ moved: false }) };
     const drawnAs = async (draws: StampPaintFrame[]) => {
       const renderer = await gateRenderer(gate, surface, { planes: stampGateThreeStillPlanes(gate.painting), sources: new Map([[STAMP_GATE_CARD, card]]) });
       try {
@@ -202,7 +256,7 @@ async function readTransportLayer(device: GPUDevice, texture: GPUTexture): Promi
   device.queue.submit([encoder.finish()]);
   await read.mapAsync(GPUMapMode.READ);
   const halves = new Uint16Array(read.getMappedRange()), values = new Float32Array(texture.width * texture.height * 4);
-  for (let y = 0; y < texture.height; y++) for (let i = 0; i < texture.width * 4; i++) values[y * texture.width * 4 + i] = stampGateHalfValue(halves[y * (rowBytes / 2) + i]);
+  for (let y = 0; y < texture.height; y++) for (let i = 0; i < texture.width * 4; i++) values[y * texture.width * 4 + i] = gpuHalfValue(halves[y * (rowBytes / 2) + i]);
   read.destroy();
   return values;
 }

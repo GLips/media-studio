@@ -176,7 +176,7 @@ export async function loadPaintedThree(owner: StampPaintGpuOwner, camera: PaintC
       });
     };
     return {
-      sources: new Map(loaded.map((source) => [source.id, { picture: source.picture, render: (t, exposure) => render(source, t, exposure) }])),
+      sources: new Map(loaded.map((source) => [source.id, { kind: 'three' as const, picture: source.picture, render: (t, exposure) => render(source, t, exposure) }])),
       dispose: release,
     };
   } catch (error) {

@@ -1,11 +1,10 @@
-// stamp-painting.tsx: a stamp painting in a scene, its planes seen through a camera and three.js among them. It holds
-// the frame until the painting is on the GPU, then until WebGPU has checked each draw for errors (never for the
-// drawing itself: the screenshot waits for the GPU).
+// stamp-painting.tsx: a stamp painting in a scene, its planes seen through a camera, three.js and pictures among them;
+// or pictures and three.js alone through a camera, painting nothing. It holds the frame until the painting is on the
+// GPU, then until WebGPU has checked each draw for errors (not the drawing itself: the screenshot waits for the GPU).
 //
-// Each StampPainting owns its own device (stamp-paint-gpu-owner.ts) and canvas while mounted at one size: two
-// paintings on screen hold two devices and two GPU cache budgets. A new painting, camera or three object loads anew;
-// what changes within one painting goes through `frameAt`. In the reference lens mode (lens-mode.ts) a painting with a
-// camera draws each frame as exposures over its shutter and aperture.
+// Each StampPainting owns its device (stamp-paint-gpu-owner.ts) and canvas while mounted at one size: two on screen
+// hold two devices and two cache budgets. A new painting, camera or source loads anew; what changes within one goes
+// through `frameAt`. In the reference lens mode (lens-mode.ts) a camera's frame is exposures over shutter and aperture.
 
 import { useLayoutEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
@@ -24,23 +23,32 @@ import { useLensMode } from '#lib/picture/lens/studio/lens-mode-context.ts';
 import { paintCameraLensAt, type PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
 import type { StampPaintingCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
 import { createStampPaintGpuOwner, type StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
-import { createStampPaintRenderer, type StampPaintFrame, type StampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
+import { createStampPaintRenderer, type StampPaintFrame } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
+import { createStampSourcesRenderer, type StampSourcesRenderer } from '#lib/paint/painting/studio/stamp-sources-renderer.ts';
+import { loadStampPictureSources, type StampPictureSourcesLoaded } from '#lib/paint/painting/studio/stamp-picture-sources.ts';
+import type { StampLensSource } from '#lib/paint/painting/studio/stamp-lens-source.ts';
+import type { StampPictureAt } from '#lib/paint/painting/models/stamp-plane.ts';
 import { createStampPaintSurface, type StampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 import { loadPaintedThree, type PaintedThree, type PaintedThreeLoaded } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
 import { stampPaintAssetUrl } from './stamp-paint-styles.ts';
 
 /**
- * Draws `painting` at `t` seconds (a scene's `s.t`), each group in `frameAt(t)`'s state (other moments too, in the
- * reference lens mode), `width` by `height` px (the frame's unless given), over `box` (the whole frame unless given).
- * `camera` (buildPaintingCamera): its planes on a stage of those px; without one, one plane at rest. `three`: a
- * source per three plane. Memoise both.
+ * What a StampPainting shows: `painting`, its planes `camera`'s (buildPaintingCamera) or, without one, one plane at
+ * rest; or, with no painting, `camera`'s planes from their sources alone.
  */
-export function StampPainting({ painting, t, frameAt, camera: painted, three, width, height, box: given }: {
-  painting: CompiledStampPaint;
+export type StampPaintingShown = { painting: CompiledStampPaint; camera?: StampPaintingCamera } | { painting?: undefined; camera: StampPaintingCamera };
+
+/**
+ * Draws a painting or its sources at `t` seconds (a scene's `s.t`), each group in `frameAt(t)`'s state (other moments
+ * too, in the reference lens mode), `width` by `height` px (the frame's unless given), over `box` (the whole frame
+ * unless given). `three`: a source per three plane; `pictures`: one per picture plane (StampPictureAt). Memoise the
+ * camera and sources.
+ */
+export function StampPainting({ painting, t, frameAt, camera: painted, three, pictures, width, height, box: given }: StampPaintingShown & {
   t: number;
   frameAt?: StampPaintFrameAt;
-  camera?: StampPaintingCamera;
   three?: PaintedThree;
+  pictures?: ReadonlyMap<string, StampPictureAt>;
   width?: number;
   height?: number;
   box?: { x: number; y: number; w: number; h: number };
@@ -51,7 +59,7 @@ export function StampPainting({ painting, t, frameAt, camera: painted, three, wi
   if (camera && (camera.stage.frame.width !== w || camera.stage.frame.height !== h)) {
     throw new Error(`stamp painting: its camera's frame is ${camera.stage.frame.width} × ${camera.stage.frame.height}, and its pixels ${w} × ${h}`);
   }
-  if (three && !camera) throw new Error('stamp painting: three.js sources are planes of a camera, and it has none');
+  if ((three || pictures) && !camera) throw new Error('stamp painting: three.js and picture sources are planes of a camera, and it has none');
   const holder = useRef<HTMLDivElement>(null);
   const [gpu, setGpu] = useState<StampPaintingGpu | null>(null);
   const [scene, setScene] = useState<StampPaintingScene | null>(null);
@@ -100,7 +108,7 @@ export function StampPainting({ painting, t, frameAt, camera: painted, three, wi
       open = false;
     };
     const timedLoad = profile?.('stamp paint load');
-    const loading = gpu.loadScene({ painting, camera: painted, three, profile });
+    const loading = gpu.loadScene({ shown: painting ? { painting, camera: painted } : { camera: painted }, three, pictures, profile });
     // A load given up as its device goes may fail for want of the device; only a live one's failure is the frame's.
     loading.ready.then(() => {
       timedLoad?.();
@@ -116,7 +124,7 @@ export function StampPainting({ painting, t, frameAt, camera: painted, three, wi
       setScene(null);
       release();
     };
-  }, [gpu, painting, painted, three, profile, delayRender, continueRender, cancelRender]);
+  }, [gpu, painting, painted, three, pictures, profile, delayRender, continueRender, cancelRender]);
 
   useLayoutEffect(() => {
     if (!scene) return undefined;
@@ -172,9 +180,9 @@ type StampPaintingGpu = {
   dispose: () => Promise<void>;
 };
 
-type StampPaintingSceneLoad = { painting: CompiledStampPaint; camera?: StampPaintingCamera; three?: PaintedThree; profile: FrameProfileStart | null };
+type StampPaintingSceneLoad = { shown: StampPaintingShown; three?: PaintedThree; pictures?: ReadonlyMap<string, StampPictureAt>; profile: FrameProfileStart | null };
 
-/** A painting and its three.js loaded on a StampPaintingGpu, drawn a frame at a time. */
+/** A painting or its sources, and its three.js and pictures, loaded on a StampPaintingGpu, drawn a frame at a time. */
 type StampPaintingScene = {
   /** Resolves once loaded, or rejects with the load's error. */
   ready: Promise<void>;
@@ -218,16 +226,21 @@ async function createStampPaintingGpu(canvas: HTMLCanvasElement, width: number, 
 }
 
 /**
- * Loads `painting` and `three` on `owner`'s device, drawing to `surface`. Its tasks, the load first, run one at a time:
- * three's source textures and the painted ones are shared by every frame, so two frames at once would overwrite each
- * other's before the earlier composite read them.
+ * Loads `shown`, `three` and `pictures` on `owner`'s device, drawing to `surface`. Its tasks, the load first, run one
+ * at a time: the sources' textures and the painted ones are shared by every frame, so two frames at once would
+ * overwrite each other's before the earlier composite read them.
  */
-function loadStampPaintingScene(owner: StampPaintGpuOwner, surface: StampPaintSurface, { painting, camera, three, profile }: StampPaintingSceneLoad): StampPaintingScene {
-  let madeThree: PaintedThreeLoaded | null = null, made: StampPaintRenderer | null = null, disposed = false;
+function loadStampPaintingScene(owner: StampPaintGpuOwner, surface: StampPaintSurface, { shown, three, pictures, profile }: StampPaintingSceneLoad): StampPaintingScene {
+  const { camera } = shown;
+  let madeThree: PaintedThreeLoaded | null = null, madePictures: StampPictureSourcesLoaded | null = null, made: StampSourcesRenderer | null = null, disposed = false;
   const ready = (async () => {
     madeThree = three ? await loadPaintedThree(owner, camera!.camera, three, profile) : null;
+    madePictures = pictures ? loadStampPictureSources(owner.webgpu, pictures) : null;
+    const sources = new Map<string, StampLensSource>([...(madeThree?.sources ?? []), ...(madePictures?.sources ?? [])]);
     const stage = camera?.camera.stage ?? stampStage({ width: surface.width, height: surface.height });
-    made = await createStampPaintRenderer(surface, painting, { profile, stage, planes: camera?.planes, sources: madeThree?.sources });
+    made = shown.painting
+      ? await createStampPaintRenderer(surface, shown.painting, { profile, stage, planes: camera?.planes, sources })
+      : await createStampSourcesRenderer(surface, { stage, planes: shown.camera.planes, sources });
   })();
   // The tasks queued so far, settled either way: one's failure is its caller's, not the next task's.
   let queue: Promise<unknown> = ready.catch(() => {});
@@ -252,6 +265,7 @@ function loadStampPaintingScene(owner: StampPaintGpuOwner, surface: StampPaintSu
       disposed = true;
       disposing ??= queue.then(() => {
         made?.dispose();
+        madePictures?.dispose();
         return madeThree?.dispose();
       });
       return disposing;

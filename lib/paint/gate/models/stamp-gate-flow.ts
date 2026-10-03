@@ -107,23 +107,6 @@ export function stampGateFlowField(): { paper: Float32Array; rim: Float32Array }
   return { paper, rim: new Float32Array(paper.length) };
 }
 
-/** `v` as an IEEE half float's bits, rounded to nearest; the layer is written in half floats. */
-export function stampGateHalfBits(v: number): number {
-  const bits = new Uint32Array(new Float32Array([v]).buffer)[0];
-  const sign = (bits >>> 16) & 0x8000, exponent = ((bits >>> 23) & 0xff) - 112, mantissa = bits & 0x7fffff;
-  if (exponent <= 0) return sign;
-  if (exponent >= 31) return sign | 0x7c00;
-  // Rounding may carry into the exponent, which the bits then hold correctly.
-  return sign + ((exponent << 10) | (mantissa >> 13)) + ((mantissa >> 12) & 1);
-}
-
-/** An IEEE half float's bits as a number. */
-export function stampGateHalfValue(bits: number): number {
-  const sign = bits & 0x8000 ? -1 : 1, exponent = (bits >> 10) & 0x1f, mantissa = bits & 0x3ff;
-  if (exponent === 0) return sign * mantissa * 2 ** -24;
-  return exponent === 31 ? sign * Infinity : sign * (1 + mantissa / 1024) * 2 ** (exponent - 15);
-}
-
 /**
  * Whether the stage held flow case `id`'s layer, read back `before` and `after` it ran (array layer by array layer,
  * RGBA per pixel), to the properties; in crayon, whether it changed nothing.

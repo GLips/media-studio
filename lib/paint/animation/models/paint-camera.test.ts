@@ -5,10 +5,10 @@ import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#l
 import { stampRoundTipStatedProfile } from '#lib/paint/painting/models/stamp-tip-support.ts';
 import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
-import type { StampPlane } from '#lib/paint/painting/models/stamp-plane.ts';
+import type { StampPlane, StampPlaneExtent } from '#lib/paint/painting/models/stamp-plane.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import {
-  paintCameraLensAt, paintCameraPlay, paintPlaneSimilarity, paintStageCentre, type PaintCamera, type PaintCameraExtent, type PaintCameraMoveKey, type PaintCameraPlay, type PaintCameraPose,
+  paintCameraLensAt, paintCameraPlay, paintPlaneSimilarity, paintStageCentre, type PaintCamera, type PaintCameraMoveKey, type PaintCameraPlay, type PaintCameraPose,
 } from './paint-camera.ts';
 import { buildPaintCamera, buildPaintingCamera, type PaintCameraBuild, type PaintingCameraBuild } from './paint-camera-build.ts';
 import { paintMotionPlay, type PaintMotion, type PaintMotionNode } from './paint-motion-compile.ts';
@@ -64,7 +64,7 @@ test('the build names a group on no plane or two, and orders the planes farthest
   if (!built.ok) assert.fail(built.problems.join('\n'));
   const { camera, planes } = built.camera;
   assert.deepEqual(camera.planes.map(({ id, kind }) => `${id} ${kind}`), ['back picture', 'mid picture', 'near picture']);
-  assert.deepEqual([planes.back, ...planes.nearer].map((plane) => plane.kind === 'picture' && [plane.id, plane.groups]), [['back', [0]], ['mid', [1, 2]], ['near', [3]]]);
+  assert.deepEqual([planes.back, ...planes.nearer].map((plane) => plane.kind === 'painted' && [plane.id, plane.groups]), [['back', [0]], ['mid', [1, 2]], ['near', [3]]]);
 });
 
 test('the build refuses a pan that shows the back past the stage, holds a nearer plane only where it\'s painted, and a wider margin takes it', () => {
@@ -86,7 +86,7 @@ test('the build refuses a pan that shows the back past the stage, holds a nearer
 const marginOf = ({ planes }: PaintCamera) => planes.flatMap((plane) => (plane.kind === 'three' ? [plane.margin] : []));
 
 test('a camera builds from plane depths and extents alone, holding each picture as far as its extent, and refuses a box that isn\'t one', () => {
-  const whip = (extent: PaintCameraExtent) => buildPaintCamera({
+  const whip = (extent: StampPlaneExtent) => buildPaintCamera({
     stage, fov: 35, lens: { bloom: 0, shutter: 0 },
     planes: [{ id: 'near', depth: 1, kind: 'picture', extent }, { id: 'far', depth: 4, kind: 'picture', extent: { kind: 'everywhere' } }, { id: 'model', depth: 2, kind: 'three' }],
     plays: [move([{ at: 0 }, { at: 1, pan: { x: 300, y: 0 } }], { at: 0 }, 'whip')],
