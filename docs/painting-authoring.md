@@ -786,8 +786,8 @@ What the check says today, and what to do:
 `studio paint check <source> --solve [--out <dir>]` then solves every sheet on the GPU (run it under the GPU lock)
 and prints, in each sheet's order (under the sheet's name when there are several), each wash's start and when what it
 wetted had set, and each application's landing time with the `on` it waited for. It writes the painting to
-`<dir>/painting.png` and each layer's film alone over the root's paper, on its own sheet's card if it lies on one, to
-`<dir>/films/<layer>.png` (`<dir>` is `<source>.solve` by default). `studio paint still <source> [--set …]
+`<dir>/painting.png` and each layer's film on its sheet's paper and edge (`stampFilmPicture`: the root's paper, or an
+own sheet's card, clear past it) to `<dir>/films/<layer>.png` (`<dir>` is `<source>.solve` by default). `studio paint still <source> [--set …]
 [--out <file>]` checks and solves the same way and writes only the painting, the document's size (`<source>.png`).
 Both end on what the solve cost: solves, entries run, decisions made and reused (a decision is remembered by its
 prefix's key), and readbacks.

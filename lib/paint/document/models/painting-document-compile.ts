@@ -116,12 +116,31 @@ export function paintingSelectedLayers(tree: PaintingTree, keys?: readonly NodeK
 }
 
 /**
- * The layers of `evaluation` that `keys` select (all of them when left out), each sheet they lie on compiled to its
- * program at rest, brushes resolved by `brushOf`. An own sheet's card comes where its owner does, before anything
- * under it, a nested sheet's inside its parent's run; each film where its layer does.
+ * Compiled selections by evaluation, the brushes resolving them and the layers selected: one program a sheet while its
+ * evaluation lives, so the poses kept per program (painting-pose.ts) are met again.
+ */
+const compiledSelections = new WeakMap<PaintingEvaluation, WeakMap<PaintingBrushOf, Map<string, PaintingSelectionCompiled>>>();
+
+/**
+ * The layers of `evaluation` that `keys` select (all when left out), each sheet they lie on compiled to its program
+ * at rest, brushes by `brushOf`. An own sheet's card comes where its owner does, before anything under it, a nested
+ * sheet's inside its parent's run; each film where its layer does. Memoised per selection.
  */
 export function compilePaintingSelection(evaluation: PaintingEvaluation, brushOf: PaintingBrushOf, keys?: readonly NodeKey[]): PaintingSelectionCompiled {
-  const { tree } = evaluation, selected = paintingSelectedLayers(tree, keys);
+  const selected = paintingSelectedLayers(evaluation.tree, keys), key = [...selected].toSorted((a, b) => a - b).join(',');
+  let byBrushes = compiledSelections.get(evaluation);
+  if (!byBrushes) compiledSelections.set(evaluation, (byBrushes = new WeakMap<PaintingBrushOf, Map<string, PaintingSelectionCompiled>>()));
+  let bySelection = byBrushes.get(brushOf);
+  if (!bySelection) byBrushes.set(brushOf, (bySelection = new Map<string, PaintingSelectionCompiled>()));
+  const known = bySelection.get(key);
+  if (known) return known;
+  const compiled = compileSelectedLayers(evaluation, brushOf, selected);
+  bySelection.set(key, compiled);
+  return compiled;
+}
+
+function compileSelectedLayers(evaluation: PaintingEvaluation, brushOf: PaintingBrushOf, selected: ReadonlySet<number>): PaintingSelectionCompiled {
+  const { tree } = evaluation;
   const sheets = paintingSheetOrders(tree, selected).flatMap((order, s): PaintingSheetCompiled[] => (s > 0 && order.layers.length === 0
     ? []
     : [{ sheet: order.sheet, layers: order.layers.map(({ layer }) => layer), program: compilePaintingSheet(evaluation, order, brushOf) }]));

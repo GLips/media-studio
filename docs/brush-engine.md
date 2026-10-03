@@ -150,7 +150,12 @@ paper as the ground, then each film in document order, an own sheet's card (its 
 coverage reaches half, by `STAMP_OPAQUE_COVER`) before anything under its owner. Each sheet lays with its own
 compositor and lay, so one device holds several papers; a sheet its owner's chain poses lays through a rest texture,
 films and edge sampled at the rest point (`drawPlacedRest`), so its grain moves with it. The edge is the films' union,
-cached under their keys (producer `edge`).
+cached under their keys (producer `edge`). `stamp-film-readback.ts` reads a solved film back for a rig and its tools
+(ENGINE 5.1): its coverage, document-sized, or its picture, premultiplied linear, laid clear or on its sheet's paper
+and edge (the root's paper over the document, an own sheet's card over its union). A clear picture is laid over white
+and over black and read as the two-point reading against each backing's light, so laid back over any ground it shows
+as it did on paper. Each readback is kept per device under its film's key and backing, `STAMP_FILM_READBACK_BYTES` in
+all, the least recently read given up first.
 
 **Capabilities.** A `PaintMedium` declares what it can do besides lay paint (`PaintCapability`): `'wet-history'`,
 `'wet-conditions'`, `'water'`, `'lift'`, `'burnish'`. Watercolour and gouache declare the first four; crayon `lift`
@@ -382,8 +387,10 @@ is each sheet's order, its layers' films (`painting-pigment-slots.ts`) and its c
 evaluation diff (`painting-evaluation-diff.ts`) and the solver read. The checks never touch the GPU.
 `painting-document-compile.ts` compiles a selection of an evaluation's layers to one solver program per sheet they
 lie on, each application through `painting-deposit-compile.ts` and `painting-area-compile.ts`, and the composite's
-steps; `painting-pose.ts` poses a program before it's solved, each pose kept per program; `studio/painting-sheets-solve.ts`
-solves a selection's sheets and places each own sheet by its owner's chain; `engine/painting-still.ts` resolves its
+steps, each selection compiled once per evaluation and brushes; `painting-pose.ts` poses a program before it's solved,
+each pose kept per program; `studio/painting-sheets-solve.ts` solves a selection's sheets and places each own sheet by
+its owner's chain; `studio/painting-film-readback.ts` reads a selected layer's finished film back, its coverage
+(`stampFilmCoverage`) or its picture (`stampFilmPicture`); `engine/painting-still.ts` resolves its
 brushes and papers from `work/styles/` and has `studio/painting-still-page.ts` solve and lay it, for `studio paint
 still` and `studio paint check --solve`.
 
