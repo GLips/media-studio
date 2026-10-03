@@ -2,13 +2,14 @@
 // Each three source is a plane of the scene's camera and a lens source (stamp-lens-source.ts): its scene is rendered
 // through the camera's shot camera (paint-camera-world.ts) into a texture of ours, the frame grown by the plane's
 // defocus margin. Painted textures, paintings a material reads, are supplied as handles and brought up to each frame
-// first (`loadPaintedThreeSources`); `loadPaintedThree` paints them with old renderers.
+// first (`loadPaintedThreeSources`); `loadPaintedThree` paints them with old renderers. A handle that wraps is read
+// repeating across u.
 //
 // Texture contracts: a source's texture is rgba16float premultiplied linear colour (normal blending over a clear
 // target premultiplies), its motion texture the lens's motion layer (lens-three-motion.ts); a painted texture is
 // rgba16float, gamma-encoded and opaque, decoded by paintedThreeColorNode.
 
-import { ExternalTexture, PerspectiveCamera, type Camera, type RenderTarget, type Scene } from 'three/webgpu';
+import { ExternalTexture, PerspectiveCamera, RepeatWrapping, type Camera, type RenderTarget, type Scene } from 'three/webgpu';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { shotCameraGrown, type ShotCamera } from '#lib/picture/shot-camera/models/shot-camera.ts';
 import { shotCameraExposed, shotLensOfFocus } from '#lib/picture/lens/models/lens-focus.ts';
@@ -75,10 +76,10 @@ export type PaintedThreeLoaded = {
 };
 
 /**
- * A painted texture a material reads, by id: rgba16float, gamma-encoded and opaque. Whoever supplies it draws it and
- * lets it go, after the sources loaded over it.
+ * A painted texture a material reads, by id: rgba16float, gamma-encoded and opaque; `wrap: 'x'` when its painting
+ * wraps, so u repeats. Whoever supplies it draws it and lets it go, after the sources loaded over it.
  */
-export type PaintedThreeTextureHandle = { readonly id: string; readonly texture: GPUTexture };
+export type PaintedThreeTextureHandle = { readonly id: string; readonly texture: GPUTexture; readonly wrap?: 'x' };
 
 /**
  * The painted textures three's sources read: their handles, and `update`, which brings them all up to frame time `t`,
@@ -162,8 +163,9 @@ export async function loadPaintedThreeSources(owner: StampPaintGpuOwner, camera:
     const { renderer, targetInto } = await owner.three();
     const loaded = await owner.checkedAsync('loading three.js sources', async () => {
       // Made after three's renderer, so let go of before it: an ExternalTexture's dispose tells its renderer.
-      const textures = new Map(supplied.handles.map(({ id, texture }) => {
+      const textures = new Map(supplied.handles.map(({ id, texture, wrap }) => {
         const external = new ExternalTexture(texture);
+        if (wrap === 'x') external.wrapS = RepeatWrapping;
         made.push(external);
         return [id, external] as const;
       }));
