@@ -173,11 +173,11 @@
     },
     "painting/strokes-accumulations": {
       "file": "painting/strokes-accumulations.png",
-      "output": "503c98b218d197c10ca6a68d2d6cc699b123a918f712dfe006b16dc8da8bc2b0",
+      "output": "403e1849c66ddf1de8b708f6ea3ffa6c7667cf94476dc5b06374929641b5c69d",
       "inputs": "c853b474ac9e719f5f237fb0039d2f8c1b4713f66f070e308bd257d2578620c5",
-      "reason": "vid-119 over main a413b16 (vid-140): floods laid as strokes in rows within a barrier or lost edge, water landed per pixel in each wash's GPU wet field with closed-form waits, brush profiles bounding marks; a layer grain blend held to where the stroke has paint",
+      "reason": "vid-158: a stamp's tip and grain are sampled at gradients its vertex works out once (textureSampleGrad, scaled by its blur), not the fragment's own derivatives, which vary run to run on Apple GPUs; the blurred chisel's edges move a few levels",
       "accepted": "2026-10-03",
-      "acceptedOver": "afc2f970",
+      "acceptedOver": "6a7f8a1a",
       "adapter": "apple metal-3"
     },
     "painting/strokes-duals-edges": {

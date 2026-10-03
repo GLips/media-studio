@@ -127,7 +127,7 @@ ${STAMP_DRAW.wgsl}
 // A pressed tip's contact image, blank when the tip has none (StampBrushTip's pressed, and u.pressed: softness, its
 // range's low and high, and the diameter its contacts grow over, 0 for none).
 @group(0) @binding(5) var contact: texture_2d<f32>;
-struct Corner { @builtin(position) position: vec4f, @location(0) tipUv: vec2f, @location(1) alpha: f32, @location(2) blur: f32, @location(3) grainUv: vec2f, @location(4) tint: vec4f, @location(5) toward: f32, @location(6) grainDepth: f32, @location(7) noiseAt: vec2f, @location(8) @interpolate(flat) seed: u32, @location(9) @interpolate(flat) pressure: f32, @location(10) @interpolate(flat) grow: f32 }
+struct Corner { @builtin(position) position: vec4f, @location(0) tipUv: vec2f, @location(1) alpha: f32, @location(2) @interpolate(flat) tipGrad: vec4f, @location(3) grainUv: vec2f, @location(4) tint: vec4f, @location(5) toward: f32, @location(6) grainDepth: f32, @location(7) noiseAt: vec2f, @location(8) @interpolate(flat) seed: u32, @location(9) @interpolate(flat) pressure: f32, @location(10) @interpolate(flat) grow: f32, @location(11) @interpolate(flat) grainGrad: vec4f }
 struct Covered { @location(0) mask: vec4f, @location(1) cap: vec4f }
 struct Stamp { @location(0) mask: vec4f, @location(1) cap: vec4f, @location(2) tintA: vec4f, @location(3) tintB: vec4f }
 ${GRAIN_WGSL}
@@ -144,29 +144,35 @@ ${TURNED_WGSL}
   // rasterizer's top-left rule drops it on two sides, so a hull side on the square's edge (stampTipHull puts it there
   // exactly) is pushed out by a sliver of a pixel, whose clamped tip reads the edge texel.
   let edge = select(vec2f(0.0), vec2f(1.0), corner == vec2f(1.0)) - select(vec2f(0.0), vec2f(1.0), corner == vec2f(0.0));
-  let uv = corner + edge * ${STAMP_EDGE_SLIVER} / (vec2f(1.0, squash) * stamp.z * u.span);
-  let local = turned((uv - u.center) * vec2f(1.0, squash) * stamp.z * u.span * mirror, stamp.w);
+  let scale = vec2f(1.0, squash) * stamp.z * u.span * mirror;
+  let uv = corner + edge * ${STAMP_EDGE_SLIVER} / abs(scale);
+  let local = turned((uv - u.center) * scale, stamp.w);
+  // Tip and grain are sampled at their places' gradients over the painting, constant across a stamp (its place is
+  // affine in the pixel), as the ordered path samples them. Warning: a fragment's own derivatives aren't
+  // deterministic on Apple's GPUs: the same draw now and then lands a pixel a half-float step apart.
+  let tipGrad = vec4f(turned(vec2f(1.0, 0.0), -stamp.w) / scale, turned(vec2f(0.0, 1.0), -stamp.w) / scale) * exp2(more.y * ${STAMP_BLUR_LEVELS.toFixed(1)});
   let at = (stamp.xy + local + vec2f(STAGE_MARGIN)) / u.resolution * 2.0 - 1.0;
   // A rolling grain turns with the stamp, grows with its size by zoom and travels the canvas by movement: at
   // movement 1 and constant size it lies still; as size or direction change it slides, a rolling grain's streak.
   let size = u.grain.place.xy * pow(stamp.z / u.diameter, u.zoom);
   let grainUv = turned(local, -more.z) / size + u.movement * stamp.xy / u.grain.place.xy + u.grain.place.zw;
+  let grainGrad = vec4f(turned(vec2f(1.0, 0.0), -more.z) / size, turned(vec2f(0.0, 1.0), -more.z) / size);
   // A glaze or a build lays flow × opacity toward full; a buildToOpacity lays its flow toward its own opacity.
   let full = u.towardFull == 1u;
   // Noise goes by the tip's pixels at the stamp's width (tipNoiseAt), so it keeps its grain as a stamp shrinks.
   let grow = select(1.0, stamp.z / u.pressed.w, u.pressed.w > 0.0);
-  return Corner(vec4f(at.x, -at.y, 0.0, 1.0), uv, select(more.x, more.x * opacity, full), more.y * ${STAMP_BLUR_LEVELS.toFixed(1)}, grainUv, tint, select(opacity, 1.0, full), last.z, uv * stamp.z * u.span, stampNoiseSeed(stamp.xy), last.w, grow);
+  return Corner(vec4f(at.x, -at.y, 0.0, 1.0), uv, select(more.x, more.x * opacity, full), tipGrad, grainUv, tint, select(opacity, 1.0, full), last.z, uv * stamp.z * u.span, stampNoiseSeed(stamp.xy), last.w, grow, grainGrad);
 }
 // A stamp's paint (x) and its cap (y): the paint without its tip, how far a glaze's stroke may build there. A rolling
 // grain, carried by the stamp, cuts each one.
 fn covered(corner: Corner) -> vec2f {
-  var tipped = 1.0 - textureSampleBias(tip, tipClamp, corner.tipUv, corner.blur).r;
-  let touches = 1.0 - textureSampleBias(contact, tipClamp, corner.tipUv, corner.blur).r;
+  var tipped = 1.0 - textureSampleGrad(tip, tipClamp, corner.tipUv, corner.tipGrad.xy, corner.tipGrad.zw).r;
+  let touches = 1.0 - textureSampleGrad(contact, tipClamp, corner.tipUv, corner.tipGrad.xy, corner.tipGrad.zw).r;
   if (u.pressed.x > 0.0) { tipped = pressedTip(tipped, touches, corner.pressure, u.pressed.x, u.pressed.y, u.pressed.z, corner.grow); }
   if (u.noise > 0.0) { tipped = tipNoise(tipped, tipNoiseAt(u32(max(floor(corner.noiseAt.x), 0.0)), u32(max(floor(corner.noiseAt.y), 0.0)), corner.seed), u.noise); }
   var coverage = vec2f(tipped, 1.0);
   if (u.rolling == 1u) {
-    let raw = textureSample(grain, tile, corner.grainUv).r;
+    let raw = textureSampleGrad(grain, tile, corner.grainUv, corner.grainGrad.xy, corner.grainGrad.zw).r;
     let mean = grainMean(grain, tile);
     coverage = vec2f(grained(tipped, raw, mean, u.grain, corner.grainDepth), grained(1.0, raw, mean, u.grain, corner.grainDepth));
   }
@@ -188,8 +194,8 @@ fn covered(corner: Corner) -> vec2f {
 // Where the tool touched (tipTouch, stampTipTouch's twin in stamp-wet-contact.ts): the tip's paint,
 // pressed; no noise, grain, opacity or flow, which are paint. Kept by max.
 @fragment fn touchOf(corner: Corner) -> @location(0) vec4f {
-  let paint = 1.0 - textureSampleBias(tip, tipClamp, corner.tipUv, corner.blur).r;
-  let touches = 1.0 - textureSampleBias(contact, tipClamp, corner.tipUv, corner.blur).r;
+  let paint = 1.0 - textureSampleGrad(tip, tipClamp, corner.tipUv, corner.tipGrad.xy, corner.tipGrad.zw).r;
+  let touches = 1.0 - textureSampleGrad(contact, tipClamp, corner.tipUv, corner.tipGrad.xy, corner.tipGrad.zw).r;
   let pressed = select(1.0, pressedTip(1.0, touches, corner.pressure, u.pressed.x, u.pressed.y, u.pressed.z, corner.grow), u.pressed.x > 0.0);
   return vec4f(tipTouch(paint, pressed, u.fullContact));
 }
