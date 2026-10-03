@@ -4,10 +4,10 @@
 // or two.
 //
 // A small stamp reads a coarse mip, whose paint has spread, bilinearly, reaching a texel further. So the polygon
-// holds every level's paint up to the coarsest used, each texel grown by one.
+// holds every level's paint up to the coarsest used, each texel grown by one. It reads the very bytes the GPU samples
+// (stamp-tip-levels.ts): a texel holds paint where it isn't white.
 
-/** A mip level's paint: for each row, the first and last texel holding any, or null for a bare row. */
-export type StampTipLevel = { width: number; height: number; rows: readonly ([number, number] | null)[] };
+import type { StampTipLevel, StampTipLevels } from '#lib/paint/brush/models/stamp-tip-levels.ts';
 
 /** A convex polygon in the tip's UV square, counter-clockwise, as flat x, y pairs: at most STAMP_TIP_HULL_SIDES corners. */
 export type StampTipHull = Float32Array;
@@ -23,7 +23,7 @@ export const STAMP_TIP_HULL_SIDES = 8;
  * face STAMP_TIP_HULL_SIDES fixed directions (these include the square's own four, so it never leaves the square),
  * which is always convex and never smaller than the paint. A tip with no paint gets the whole square.
  */
-export function stampTipHull(levels: readonly StampTipLevel[], coarsest: number): StampTipHull {
+export function stampTipHull(levels: StampTipLevels, coarsest: number): StampTipHull {
   const normals = Array.from({ length: STAMP_TIP_HULL_SIDES }, (_, i) => {
     const angle = (i / STAMP_TIP_HULL_SIDES) * 2 * Math.PI;
     return [Math.cos(angle), Math.sin(angle)] as const;
@@ -32,7 +32,7 @@ export function stampTipHull(levels: readonly StampTipLevel[], coarsest: number)
   const include = (x: number, y: number) => normals.forEach(([nx, ny], i) => { reach[i] = Math.max(reach[i], x * nx + y * ny); });
   for (const level of levels.slice(0, coarsest + 1)) {
     const clampX = (x: number) => Math.min(1, Math.max(0, x / level.width)), clampY = (y: number) => Math.min(1, Math.max(0, y / level.height));
-    level.rows.forEach((span, y) => {
+    stampTipPaintRows(level).forEach((span, y) => {
       if (!span) return;
       // The texel's square, grown by a texel for the bilinear sample's reach, within the tip.
       for (const x of [clampX(span[0] - 1), clampX(span[1] + 2)]) for (const v of [clampY(y - 1), clampY(y + 2)]) include(x, v);
@@ -45,6 +45,19 @@ export function stampTipHull(levels: readonly StampTipLevel[], coarsest: number)
     return [snapToSquare((reach[i] * by - reach[(i + 1) % STAMP_TIP_HULL_SIDES] * ay) / det), snapToSquare((ax * reach[(i + 1) % STAMP_TIP_HULL_SIDES] - bx * reach[i]) / det)];
   });
   return new Float32Array(strictlyConvex(corners).flat());
+}
+
+/** For each of `level`'s rows, the first and last texel holding any paint, or null for a bare row. */
+function stampTipPaintRows({ width, height, texels }: StampTipLevel): ([number, number] | null)[] {
+  return Array.from({ length: height }, (_, y): [number, number] | null => {
+    let first = -1, last = -1;
+    for (let x = 0, at = y * width; x < width; x++, at++) {
+      if (texels[at] === 255) continue;
+      if (first < 0) first = x;
+      last = x;
+    }
+    return first < 0 ? null : [first, last];
+  });
 }
 
 /**

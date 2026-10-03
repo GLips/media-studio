@@ -2,8 +2,8 @@
 // what its marks' brush tips cover, grain and dual included, never pigment: each mark is placed from its key by the
 // one path paint built from it is (placeStampDeposit), so the same mark painted elsewhere lands the same stamps.
 //
-// Coverage is a GPU fact (tips are images): the renderer draws each brushed mask as it loads and reads it back on
-// the wetness's samples (stampCoverageSampleGrid), so water lands only on paper a sparse brush left open.
+// Coverage is a GPU fact (tips are images): the renderer draws each brushed mask as it loads, and each wash's wet
+// field reads it per pixel, so water lands only on paper a sparse brush left open.
 //
 // Resist is wax: laid on the paper's peaks as a dry stick catches them (paintDryContact), held through the rest of
 // its group, never lifted.

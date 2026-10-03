@@ -24,15 +24,6 @@ export function stampDepositionLaw(
 }
 
 /**
- * Whether a flood laid outside a wash carries water, and so stops at a hard edge on the dry paper (wetLandCover).
- * A dry-media brush never does; any other does if its medium's brush holds water. Flat colour has no medium but
- * floods as wet paint, a flood being a wet application; its soft-edged fill is a strokes one.
- */
-export function stampFloodCarriesWater(brush: Pick<StampBrush, 'media'>, medium: PaintMedium | null): boolean {
-  return brush.media !== 'dry' && (!medium || medium.wetting.brushWater > 0);
-}
-
-/**
  * Where a wash brush's water stops on dry paper, as a share of the stroke's body: about where its tip lays a third of
  * it, so a soft tip's thin fringe goes and its shoulder fills to the body, never past it.
  */

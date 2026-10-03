@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
-import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampMarkStamps, stampScatterMarks, type StampMark } from './stamp-marks.ts';
 import { stampMaterialSet, type StampMaterialSet } from './stamp-material-set.ts';
 import { compileStampPaintRecipe, stampPassDeposits } from './stamp-paint-recipe-compile.ts';
@@ -9,14 +9,15 @@ import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampPaintEnvironment, StampPassageScope } from './stamp-paint-recipe-types.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import { stampPolygonDistance, stampRegionPolygon, type StampRegion } from './stamp-region.ts';
-import { compileStampWetness, stampDrying } from './stamp-wetness.ts';
+import { compileStampWetness, stampDrying, stampPaintMedia } from './stamp-wetness.ts';
+import { stampRoundTipsOf, stampRoundTipStatedProfile } from './stamp-tip-support.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { stampCharge } from './stamp-wet-techniques.ts';
-import { stampStage } from './stamp-stage.ts';
 
 const WET: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: WATERCOLOUR_PIGMENTS } };
 
 const brush: StampBrush = {
+  profile: STAMP_BRUSH_UNMEASURED,
   name: 'Round',
   blend: 'normal',
   accumulation: { kind: 'glaze', build: 0 },
@@ -32,6 +33,7 @@ const brush: StampBrush = {
   falloff: 0,
   flow: 1,
 };
+brush.profile = stampRoundTipStatedProfile(brush);
 const field: StampRegion = { kind: 'polygon', points: [{ x: 100, y: 100 }, { x: 700, y: 100 }, { x: 700, y: 300 }, { x: 100, y: 300 }] };
 const color = (value: `#${string}`): PaintMaterial => ({ kind: 'color', color: value });
 const wells = stampMaterialSet({ blue: { material: color('#2244aa'), weight: 2 }, rose: color('#cc5577'), none: { material: color('#000000'), weight: 0 } });
@@ -107,10 +109,10 @@ test("a charge when damp waits for the paper under its touches, not for wetter p
   });
   const [pass] = painting.groups[0].passes;
   const { wetting } = PAINT_MEDIA.watercolour, paper = { color: '#ffffff' } as const;
-  const { waits: [local] } = compileStampWetness(painting, () => PAINT_MEDIA.watercolour, stampStage({ width: 800, height: 400 })).washes.get(pass)!;
+  const { waits: [local] } = compileStampWetness(painting, stampPaintMedia(painting, () => PAINT_MEDIA.watercolour), stampRoundTipsOf()).washes.get(pass)!;
   assert.deepEqual(local.step, { kind: 'wait', until: 'damp', under: { deposits: ['g/w/cool-0', 'g/w/cool-1', 'g/w/cool-2', 'g/w/cool-3'] }, effect: { kind: 'charge', id: 'g/w/cool' }, authored: true });
   // Until the sky's water under the touches is damp, not the puddle's, which is wetter.
   const { rate } = stampDrying(wetting, paper);
-  assert.ok(Math.abs(local.to - local.from - (wetting.brushWater - wetting.sheen.damp) / rate) < 1e-6);
+  assert.ok(Math.abs(local.to - local.from - (wetting.defaultWater - wetting.sheen.damp) / rate) < 1e-6);
   assert.ok((1 - wetting.sheen.damp) / rate - (local.to - local.from) > 1);
 });

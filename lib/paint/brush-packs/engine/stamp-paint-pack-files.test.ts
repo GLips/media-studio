@@ -13,9 +13,7 @@ const manifest = (files: readonly string[]) => ({
 
 /** Publishes a generation holding `file`, failing after writing it when asked. */
 function publish(root: string, file: string, fail = false) {
-  const archive = join(root, 'pack.zip');
-  writeFileSync(archive, '');
-  return replaceStampPaintPack({ archive, stylesDir: root, style: 'wash', pack: 'vvds' }, (generation) => {
+  return replaceStampPaintPack({ stylesDir: root, style: 'wash', pack: 'vvds' }, (generation) => {
     mkdirSync(join(generation, 'tips'), { recursive: true });
     writeFileSync(join(generation, file), file);
     if (fail) throw new Error('the archive ran out');
@@ -24,19 +22,19 @@ function publish(root: string, file: string, fail = false) {
   });
 }
 
-test('a failed import leaves the previous one readable, and a finished one replaces it whole while fidelity/ stays', () => withStudioTemp('pack-publish', (root) => {
-  const { dir } = publish(root, 'tips/a.png');
+test('a failed import leaves the previous one readable, and a finished one replaces it whole while fidelity/ stays', () => withStudioTemp('pack-publish', async (root) => {
+  const { dir } = await publish(root, 'tips/a.png');
   mkdirSync(join(dir, 'fidelity'));
   writeFileSync(join(dir, 'fidelity', 'report.json'), '{}');
   const first = readStampPaintPackGeneration(dir);
 
-  assert.throws(() => publish(root, 'tips/b.png', true), /the archive ran out/);
+  await assert.rejects(publish(root, 'tips/b.png', true), /the archive ran out/);
   const after = readStampPaintPackGeneration(dir);
   assert.equal(after.dir, first.dir);
   assert.deepEqual(after.manifest.files, ['tips/a.png']);
   assert.deepEqual(readdirSync(join(dir, 'generations')), [first.dir.split('/').at(-1)]);
 
-  publish(root, 'tips/c.png');
+  await publish(root, 'tips/c.png');
   const replaced = readStampPaintPackGeneration(dir);
   assert.deepEqual(replaced.manifest.files, ['tips/c.png']);
   assert.equal(readFileSync(join(replaced.dir, 'tips/c.png'), 'utf8'), 'tips/c.png');
@@ -44,14 +42,14 @@ test('a failed import leaves the previous one readable, and a finished one repla
   assert.equal(readFileSync(join(dir, 'fidelity', 'report.json'), 'utf8'), '{}');
 }));
 
-test("an import takes over a dead import's lock and refuses a live one's", () => withStudioTemp('pack-lock', (root) => {
+test("an import takes over a dead import's lock and refuses a live one's", () => withStudioTemp('pack-lock', async (root) => {
   const lock = join(root, 'wash', 'brushes', '.vvds.lock');
   mkdirSync(join(root, 'wash', 'brushes'), { recursive: true });
   writeFileSync(lock, `${spawnSync('true').pid} killed`);
-  publish(root, 'tips/a.png');
+  await publish(root, 'tips/a.png');
   assert.equal(existsSync(lock), false);
 
   writeFileSync(lock, `${process.pid} importing`);
-  assert.throws(() => publish(root, 'tips/b.png'), new RegExp(`process ${process.pid} is importing into vvds now`));
+  await assert.rejects(publish(root, 'tips/b.png'), new RegExp(`process ${process.pid} is importing into vvds now`));
   assert.equal(readFileSync(lock, 'utf8'), `${process.pid} importing`);
 }));

@@ -7,7 +7,8 @@ import { defineCommand } from 'citty';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { acceptStampGateCandidates, STAMP_GATE_PUBLIC_STORE } from '#lib/paint/gate/engine/stamp-gate-store.ts';
-import { runStampGatePrivate, updateStampGatePrivate } from '#lib/paint/gate/engine/stamp-gate-private.ts';
+import { runStampGatePrivate, updateStampGatePrivate, type StampGatePrivateBrush } from '#lib/paint/gate/engine/stamp-gate-private.ts';
+import { STAMP_GATE_PRIVATE_FLAT_CASES } from '#lib/paint/gate/models/stamp-gate-private-cases.ts';
 import { runStagedStampGate } from '#lib/paint/gate/engine/stamp-gate-staged.ts';
 import { stampGateImportedFiles, stampGateReachedBy } from '#lib/paint/gate/engine/stamp-gate-reach.ts';
 import { runStampGate, STAMP_GATE_PAGE, stampGateBaselineIds, updateStampGate, type StampGateCheck } from '#lib/paint/gate/engine/stamp-gate.ts';
@@ -15,11 +16,16 @@ import { STUDIO_STYLES_DIR, STUDIO_WORKSPACE_DIR } from '#lib/platform/project/e
 import { runHarnessCommand } from './run-harness-command.ts';
 
 const PRIVATE_STORE = join(STUDIO_WORKSPACE_DIR, 'validation', 'stamp-paint');
-const PRIVATE_BRUSHES = [
-  { style: 'watercolor', pack: 'kyle-watercolor', name: "Kyle's Real Watercolor - Medium Wash Slow" },
-  { style: 'watercolor', pack: 'kyle-watercolor', name: "Kyle's Real Watercolor - Opaque Thicker" },
-  { style: 'watercolor', pack: 'vvds', name: 'Main Watercolor Brush' },
-  { style: 'watercolor', pack: 'vvds', name: 'Super Wet Watercolor Brush' },
+// The flat cases hold the four the studio's paintings lean on; the wash case holds each in its style's medium and paper,
+// with two bristle brushes whose gaps the water mustn't bridge.
+const PRIVATE_ALL_CASES = [...STAMP_GATE_PRIVATE_FLAT_CASES, 'wash'] as const;
+const PRIVATE_BRUSHES: readonly StampGatePrivateBrush[] = [
+  { style: 'watercolor', pack: 'kyle-watercolor', name: "Kyle's Real Watercolor - Medium Wash Slow", cases: PRIVATE_ALL_CASES },
+  { style: 'watercolor', pack: 'kyle-watercolor', name: "Kyle's Real Watercolor - Opaque Thicker", cases: PRIVATE_ALL_CASES },
+  { style: 'watercolor', pack: 'vvds', name: 'Main Watercolor Brush', cases: PRIVATE_ALL_CASES },
+  { style: 'watercolor', pack: 'vvds', name: 'Super Wet Watercolor Brush', cases: PRIVATE_ALL_CASES },
+  { style: 'watercolor', pack: 'kyle-watercolor', name: "Kyle's Real Watercolor - Sparse Bristle", cases: ['wash'] },
+  { style: 'gouache', pack: 'kyle-gouache', name: "Kyle's Paintbox - Gouache Bristle Super Dry", cases: ['wash'] },
 ];
 
 function report(checks: readonly StampGateCheck[]) {

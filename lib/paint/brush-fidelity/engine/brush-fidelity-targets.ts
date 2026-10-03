@@ -5,7 +5,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  resolveStampPaintPackBrush, stampPaintPackDiameter, type PhotoshopPackBrush, type ProcreatePackBrush, type StampPaintPack,
+  readStampPaintPackBrushSource, stampPaintPackDiameter, type PhotoshopPackBrush, type ProcreatePackBrush, type StampPaintPack,
 } from '#lib/paint/brush-packs/models/stamp-paint-pack.ts';
 import { readServedStampPaintPack, readStampPaintPackDir, type ServedStampPaintPack } from '#lib/paint/brush-packs/engine/stamp-paint-pack-files.ts';
 import {
@@ -19,7 +19,7 @@ import { photoshopReferenceStrokePng, readPhotoshopReferenceStrokes } from './ph
 export function readBrushFidelityTargets(packDir: string, manifest: StampPaintPack): Record<string, BrushFidelityTarget> {
   // A captured item the pack didn't import (a skipped preset) is read as reaching its tip's corner alone.
   const reachOf = (item: string) => {
-    const read = resolveStampPaintPackBrush(manifest, item);
+    const read = readStampPaintPackBrushSource(manifest, item);
     return read ? stampBrushPaintReach(read.brush) : Math.SQRT1_2;
   };
   const references = readPhotoshopReferenceStrokes(packDir, reachOf);

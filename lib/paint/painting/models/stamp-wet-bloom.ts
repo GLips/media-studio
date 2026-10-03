@@ -3,9 +3,9 @@
 // only where the wash's paint reaches, further into wetter paper, stalling sooner in drier, merging open where the
 // paper is about as wet as the drop. Where it stalls its edge is lobed at two scales, and the paint it loosens inside
 // is carried there: a dark lip, crisp outside, the middle paler, feathered and streaked along the push. WGSL, driven by
-// studio/stamp-wet-bloom.ts, plus its CPU sizing.
+// studio/stamp-wet-bloom.ts, which sizes each bloom on the GPU (bloomDrive, bloomSigma) within the CPU's bound.
 
-import type { PaintMedium, PaintWetting } from '#lib/paint/materials/models/paint-medium.ts';
+import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { CompiledStampDeposit } from './stamp-paint-recipe-compile.ts';
 import type { StampWetLanding } from './stamp-wetness.ts';
 
@@ -24,6 +24,9 @@ export const STAMP_BLOOM_SURPLUS = { least: 0.08, full: 0.35 };
 /** The share of a pixel's loose paint the spreading water carries away to its front, at most. */
 export const STAMP_BLOOM_CARRY = 0.35;
 
+/** A bloom whose water spreads less than this, px, is too small to see: the CPU's bound and the GPU's sizing both drop it. */
+export const STAMP_BLOOM_LEAST_SIGMA = 0.5;
+
 /**
  * How far the water spreads, as a Gaussian's sigma in px: the medium's `spread` (in brush diameters) of the deposit's
  * `diameter`, as far as its most surplus drives it. The front stalls about one sigma past the drop.
@@ -33,72 +36,29 @@ export function stampBloomSigma(spread: number, diameter: number, surplus: numbe
 }
 
 /**
- * How far past its stamps a wash deposit's bloom can reach, px, before its wetness is known: three of the widest sigma
- * its water could drive. None for a deposit carrying no water (a lift) or a medium that doesn't spread.
+ * How far past its stamps a wash deposit carrying `water` can bloom, px, before its wetness is known: three of the
+ * widest sigma its water could drive, at its full diameter (a flood's narrow parts are laid smaller, never larger). None for a deposit carrying no water (a lift) or a medium that doesn't spread.
  */
-export function stampBloomReach(deposit: CompiledStampDeposit, medium: PaintMedium): number {
-  const { action } = deposit;
-  const water = action.kind === 'lift' ? 0 : action.water ?? medium.wetting.brushWater;
+export function stampBloomReach(deposit: CompiledStampDeposit, medium: PaintMedium, water: number): number {
   return water > 0 ? Math.ceil(3 * stampBloomSigma(medium.wetting.spread, deposit.diameter, 1)) : 0;
 }
 
 /**
- * How much of its surplus a landing's water pushes into paper as wet as `wettest`: all of it on damp paper, none on a
- * wash at or past `shiny` (PaintSheen), where water merges. A painter's "wait for the shine to go".
+ * Whether a wash `deposit` may bloom, judged before its water lands: water (not a lift) over STAMP_BLOOM_SURPLUS.least,
+ * in a medium that spreads, onto paint that may be workable (StampWetFinds), spreading at least STAMP_BLOOM_LEAST_SIGMA. If so the
+ * widest `sigma`, which sizes the stage's spreads (the GPU sizes the real bloom from the paper); if not, the first reason.
  */
-export function stampBloomBelowShine(wettest: number, { sheen: { shiny, damp } }: Pick<PaintWetting, 'sheen'>): number {
-  const t = Math.min(1, Math.max(0, (wettest - damp) / Math.max(1e-3, shiny - damp)));
-  return 1 - t * t * (3 - 2 * t);
-}
-
-/** How strongly a landing whose most surplus water, where paint is workable, is `surplus` blooms, 0..1. */
-function stampBloomDrive(surplus: number): number {
-  const { least, full } = STAMP_BLOOM_SURPLUS;
-  const t = Math.min(1, Math.max(0, (surplus - least) / (full - least)));
-  return t * t * (3 - 2 * t);
-}
-
-/**
- * Whether a wash deposit's `landing` blooms, and how: how strongly (`drive`, 0..1), by its most surplus water where the
- * paint is workable, and how far (`sigma`), by its most surplus there, in a medium's `wetting` and a brush `diameter`
- * wide. Null when it merges or lands on dry paper. It reads the paper as the stage's paperThroughout does.
- */
-export const stampBloomSizing = (landing: StampWetLanding, wetting: PaintWetting, diameter: number) => stampBloomVerdict(landing, wetting, diameter).sizing;
-
-/**
- * stampBloomSizing's answer, and when it's null, why: the first of the bloom's conditions to fail, in the order its
- * surplus is cut down (its water over the paper's, the paper's shine, the paint's workability), then its spread.
- */
-export function stampBloomVerdict({ before, after }: StampWetLanding, wetting: PaintWetting, diameter: number): { sizing: { drive: number; sigma: number }; reason: null } | { sizing: null; reason: string } {
-  const { columns, rows } = before.window, { wetness, workable } = before;
-  const at = (i: number, j: number) => Math.min(rows - 1, Math.max(0, j)) * columns + Math.min(columns - 1, Math.max(0, i));
-  // Each a bound on the next: the water's surplus, then past the shine, then where the paint is workable.
-  let raw = 0, unshined = 0, driven = 0, surplus = 0;
-  for (let j = 0; j + 1 < rows; j++) {
-    for (let i = 0; i + 1 < columns; i++) {
-      let wettest = 0;
-      for (let b = -1; b <= 2; b++) for (let a = -1; a <= 2; a++) wettest = Math.max(wettest, wetness[at(i + a, j + b)]);
-      const corners = [at(i, j), at(i + 1, j), at(i, j + 1), at(i + 1, j + 1)];
-      const throughout = Math.min(...corners.map((k) => workable[k]));
-      for (const k of corners) {
-        const over = Math.max(0, after.wetness[k] - wettest), lands = over * stampBloomBelowShine(wettest, wetting);
-        raw = Math.max(raw, over);
-        unshined = Math.max(unshined, lands);
-        driven = Math.max(driven, lands * throughout);
-        if (throughout > 0) surplus = Math.max(surplus, lands);
-      }
-    }
-  }
-  const drive = stampBloomDrive(driven), sigma = stampBloomSigma(wetting.spread, diameter, surplus);
-  if (drive > 0 && sigma >= 0.5) return { sizing: { drive, sigma }, reason: null };
-  const { least } = STAMP_BLOOM_SURPLUS;
+export function stampBloomBound(deposit: Pick<CompiledStampDeposit, 'action' | 'diameter'>, { water, medium, finds }: Pick<StampWetLanding, 'water' | 'medium' | 'finds'>): { sigma: number; reason: null } | { sigma: null; reason: string } {
+  const { least } = STAMP_BLOOM_SURPLUS, sigma = stampBloomSigma(medium.wetting.spread, deposit.diameter, water);
   const failed: readonly [boolean, string][] = [
-    [raw <= least, `its water is at most ${raw.toFixed(2)} wetter than the paper there, and a bloom needs over ${least}`],
-    [unshined <= least, 'the paper there still has its shine, so its water merges'],
-    [driven <= least, 'the paint there has set (or the paper was dry)'],
-    [wetting.spread <= 0, "its medium's water doesn't spread"],
+    [deposit.action.kind === 'lift', 'a lift brings no water'],
+    [water <= least, `its water is ${water.toFixed(2)}, and a bloom needs over ${least} more than the paper holds`],
+    [!finds.workable, 'the paint there has set (or the paper was dry)'],
+    [medium.wetting.spread <= 0, "its medium's water doesn't spread"],
+    [sigma < STAMP_BLOOM_LEAST_SIGMA, `its water spreads ${sigma.toFixed(2)} px at most, under ${STAMP_BLOOM_LEAST_SIGMA} px`],
   ];
-  return { sizing: null, reason: failed.find(([fails]) => fails)?.[1] ?? `its water spreads ${sigma.toFixed(2)} px, under half a pixel` };
+  const reason = failed.find(([fails]) => fails)?.[1];
+  return reason ? { sigma: null, reason } : { sigma, reason: null };
 }
 
 /**
@@ -135,6 +95,14 @@ const STAMP_BLOOM_LOBES = { big: 1.0, held: 0.9, share: 0.45, least: 5, most: 14
 /** The front and the carry, in WGSL. */
 export const STAMP_WET_BLOOM_WGSL = /* wgsl */ `
 const BLOOM_FRONT_LEVEL = 0.08;
+// How strongly a landing whose most surplus water, where paint is workable, is \`surplus\` blooms, 0..1.
+fn bloomDrive(surplus: f32) -> f32 {
+  return smoothstep(0.0, 1.0, clamp((surplus - ${STAMP_BLOOM_SURPLUS.least}) / ${(STAMP_BLOOM_SURPLUS.full - STAMP_BLOOM_SURPLUS.least).toFixed(3)}, 0.0, 1.0));
+}
+// stampBloomSigma: how far its water spreads, px, by its most surplus where paint is workable.
+fn bloomSigma(spread: f32, diameter: f32, surplus: f32) -> f32 {
+  return min(${STAMP_BLOOM_MOST_SIGMA.toFixed(1)}, 1.5 * spread * diameter * clamp(surplus, 0.0, 1.0));
+}
 // How far past the water's front, px, bloomPastFront reads the water.
 const BLOOM_PAST_FRONT = 2.0;
 // What drives a bloom: the water a deposit's brush leaves over what the paper held, where paint there still moves and
@@ -148,7 +116,7 @@ fn bloomMerging(before: f32, damp: f32, shine: f32) -> f32 {
   return smoothstep(0.0, 1.0, clamp((before - damp) / max(1e-3, shine - damp), 0.0, 1.0));
 }
 // Whether a bloom's water reaches a pixel at all: where the wash had water (\`before\`) and has any paint
-// (\`coverage\`). Not where the wetness lattice alone calls the paper wet: a soft brush's fringe wets cells it leaves
+// (\`coverage\`). Not where the paper alone is wet: a soft brush's fringe wets pixels it leaves next to
 // bare, and a bloom pushing paint there would leave the wash, a pale halo on the paper beside it. Negative space:
 // clean wet paper beside the paint takes no bloom either, as there's no paint there to push.
 fn bloomContact(before: f32, coverage: f32) -> f32 {

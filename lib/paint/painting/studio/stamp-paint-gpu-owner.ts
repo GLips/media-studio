@@ -1,16 +1,16 @@
 // stamp-paint-gpu-owner.ts: a studio device owner (gpu-device-owner.ts) with everything on it that outlasts a
-// painting: the images, each tip's mip levels and hulls, modules, pipelines and samplers, the targets, and the GPU
+// painting: the images, each tip's mip levels (made on the CPU, stamp-tip-levels.ts), modules, pipelines and samplers, the targets, and the GPU
 // cache (stamp-paint-gpu-cache.ts), whose one budget every painting and output on the device shares. Outputs
 // (stamp-paint-surface.ts) and three.js (the owner's one renderer) render on it too.
 //
 // A painting's buffers and textures go in a scope (StampPaintGpuScope) freed with it.
 
 import type { StampBrushAsset } from '#lib/paint/brush/models/stamp-brush.ts';
-import { stampTipHull, type StampTipHull, type StampTipLevel } from '../models/stamp-tip-hull.ts';
+import { stampTipLevels, type StampTipLevels } from '#lib/paint/brush/models/stamp-tip-levels.ts';
 import { stampPaintGpuCache, type StampPaintGpuCache } from './stamp-paint-gpu-cache.ts';
 import { createGpuDeviceOwner, type GpuDeviceOwner } from '#lib/platform/gpu/studio/gpu-device-owner.ts';
 import {
-  fetchStampPaintBitmaps, readStampTipLevels, type StampPaintDevice, type StampPaintImage, uploadStampPaintBitmaps, uploadStampPaintGreyImages,
+  decodeStampTipBitmap, fetchStampPaintBitmaps, type StampPaintDevice, type StampPaintImage, uploadStampPaintBitmaps, uploadStampTipLevels,
 } from './stamp-paint-gpu.ts';
 
 /** A painting's share of a device: what it makes through `device` is destroyed by `destroy`. */
@@ -24,14 +24,15 @@ export type StampPaintGpuOwner = GpuDeviceOwner & {
   device: StampPaintDevice;
   /** A new scope for one painting's buffers and textures. */
   scope: () => StampPaintGpuScope;
-  /** Each image at its asset, the paper's photograph in colour and the rest by their red channel; fetched once a device. */
-  images: (assets: readonly { asset: StampBrushAsset; channels: 'red' | 'colour' }[]) => Promise<StampPaintImage[]>;
-  /** An image drawn in memory under `key` (a bristle tip at a diameter), uploaded the first time it's asked for. */
+  /**
+   * Each image at its asset, fetched once a device: a tip (or a tip's contact) by its red channel, its mip levels made
+   * on the CPU; a grain by its red channel and the paper's photograph in colour, mipmapped on the GPU.
+   */
+  images: (assets: readonly { asset: StampBrushAsset; kind: StampPaintImageKind }[]) => Promise<StampPaintImage[]>;
+  /** A tip drawn in memory under `key` (a bristle tip at a diameter), its levels made and uploaded the first time it's asked for. */
   drawnImage: (key: string, draw: () => { size: number; pixels: Uint8Array }) => StampPaintImage;
-  /** `tip`'s paint at every mip level, read back once a device. */
-  tipLevels: (tip: StampPaintImage) => Promise<StampTipLevel[]>;
-  /** `tip`'s hull at mip level `coarsest`, once its levels are read (tipLevels). */
-  tipHull: (tip: StampPaintImage, coarsest: number) => StampTipHull;
+  /** The mip levels `tip` was uploaded with: a tip's from `images` or `drawnImage`. */
+  tipLevels: (tip: StampPaintImage) => StampTipLevels;
   /** What frames keep between them on the device, under one budget: films, pictures, pictures blurred. */
   cache: StampPaintGpuCache;
   /**
@@ -42,6 +43,9 @@ export type StampPaintGpuOwner = GpuDeviceOwner & {
   /** Frees all it holds, then the device and its three.js renderer; dispose what else draws on it first. */
   dispose: () => void;
 };
+
+/** What an image is to a painting: a tip, read on the CPU too; a grain, tiled; or the paper's photograph, in colour. */
+export type StampPaintImageKind = 'tip' | 'grain' | 'photograph';
 
 const assetKey = ({ style, pack, file }: StampBrushAsset) => `${style}/${pack}/${file}`;
 
@@ -56,49 +60,47 @@ export async function createStampPaintGpuOwner(imageUrl: (asset: StampBrushAsset
   const { device } = ownGpu;
   const images = new Map<string, Promise<StampPaintImage>>();
   const drawn = new Map<string, StampPaintImage>();
-  const levels = new Map<StampPaintImage, Promise<StampTipLevel[]>>(), levelsRead = new Map<StampPaintImage, StampTipLevel[]>();
-  const hulls = new Map<StampPaintImage, Map<number, StampTipHull>>();
+  const levels = new Map<StampPaintImage, StampTipLevels>();
   const targets = new Map<string, GPUTexture>();
   const cache = stampPaintGpuCache(device);
+  const tipImage = (tipLevels: StampTipLevels) => {
+    const image = uploadStampTipLevels(device, tipLevels);
+    levels.set(image, tipLevels);
+    return image;
+  };
 
   return {
     ...base, device, cache,
     scope: () => stampPaintGpuScope(device),
     images: (wanted) => {
-      const missing = wanted.filter(({ asset, channels }) => !images.has(`${channels}|${assetKey(asset)}`));
+      const missing = wanted.filter(({ asset, kind }) => !images.has(`${kind}|${assetKey(asset)}`));
       if (missing.length) {
         const bitmaps = fetchStampPaintBitmaps(missing.map(({ asset }) => imageUrl(asset)));
-        const uploaded = bitmaps.then((fetched) => checked('loading the brushes\' images onto the GPU', () => uploadStampPaintBitmaps(device, fetched.map((bitmap, i) => ({ bitmap, channels: missing[i].channels })))));
-        missing.forEach(({ asset, channels }, i) => images.set(`${channels}|${assetKey(asset)}`, uploaded.then((made) => made[i])));
+        const uploaded = bitmaps.then((fetched) => {
+          // Decoded before the check, which mustn't await; the tips' levels made with it.
+          const tipLevelsOf = new Map(fetched.flatMap((bitmap, i) => (missing[i].kind === 'tip' ? [[i, stampTipLevels(decodeStampTipBitmap(bitmap))] as const] : [])));
+          return checked('loading the brushes\' images onto the GPU', () => {
+            const textured = uploadStampPaintBitmaps(device, fetched.flatMap((bitmap, i) => (tipLevelsOf.has(i) ? [] : [{ bitmap, channels: missing[i].kind === 'photograph' ? 'colour' as const : 'red' as const }])));
+            return fetched.map((_, i) => {
+              const tip = tipLevelsOf.get(i);
+              return tip ? tipImage(tip) : textured.shift()!;
+            });
+          });
+        });
+        missing.forEach(({ asset, kind }, i) => images.set(`${kind}|${assetKey(asset)}`, uploaded.then((made) => made[i])));
       }
-      return Promise.all(wanted.map(({ asset, channels }) => images.get(`${channels}|${assetKey(asset)}`)!));
+      return Promise.all(wanted.map(({ asset, kind }) => images.get(`${kind}|${assetKey(asset)}`)!));
     },
     drawnImage: (key, draw) => {
       let image = drawn.get(key);
       if (!image) {
         const { size, pixels } = draw();
-        image = uploadStampPaintGreyImages(device, [{ width: size, height: size, pixels }])[0];
+        image = tipImage(stampTipLevels({ width: size, height: size, pixels }));
         drawn.set(key, image);
       }
       return image;
     },
-    tipLevels: (tip) => {
-      let read = levels.get(tip);
-      if (!read) {
-        read = readStampTipLevels(device, tip).then((tipLevels) => {
-          levelsRead.set(tip, tipLevels);
-          return tipLevels;
-        });
-        levels.set(tip, read);
-      }
-      return read;
-    },
-    tipHull: (tip, coarsest) => {
-      const byLevel = hulls.get(tip) ?? new Map<number, StampTipHull>();
-      hulls.set(tip, byLevel);
-      if (!byLevel.has(coarsest)) byLevel.set(coarsest, stampTipHull(levelsRead.get(tip)!, coarsest));
-      return byLevel.get(coarsest)!;
-    },
+    tipLevels: (tip) => levels.get(tip)!,
     target: (name, descriptor) => cached(targets, `${name}|${JSON.stringify(descriptor)}`, () => device.createTexture(descriptor)),
     dispose: () => {
       cache.dispose();

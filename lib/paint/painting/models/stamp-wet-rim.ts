@@ -2,15 +2,17 @@
 // loose pigment out to replace it, so a dried wash keeps a thin, darker line along its edge and a paler band inside
 // it. A wash rims at each drying (StampWashDrying, from its resolved wetness), the paint wetted since the last as
 // one domain (studio/stamp-wet-rim.ts): along its paint's edge, closed over the paper's grain, where that edge is
-// abrupt. The law is WGSL; the band's size is worked out on the CPU too, to size the stage's kernels.
+// abrupt. The law is WGSL; the CPU bounds the band (stampDryingRimBound), to size the stage's kernels.
 //
 // Negative space: a drying is the whole wash's, never a region's that has set while the rest is wet.
 
-import { STAMP_WET_CELL, stampWetGrid, type StampWashDrying, type StampWetness } from './stamp-wetness.ts';
-import { stampGridLocalMax, type StampGrid } from './stamp-region.ts';
+import type { StampWashDrying, StampWetness } from './stamp-wetness.ts';
 
 /** The widest band a rim draws pigment from, px: past it the kernels' taps grow and a real rim's band is no wider. */
 export const STAMP_DRYING_RIM_MOST_BAND = 32;
+
+/** A band narrower than this, px, can't reach a pixel or two: a rim no one sees, which neither the CPU nor the GPU lays. */
+export const STAMP_DRYING_RIM_LEAST_BAND = 1.5;
 
 /**
  * The most of its open pigment a pixel in the band gives up to the rim, where the wash was a standing puddle of paint
@@ -25,8 +27,9 @@ export const STAMP_DRYING_RIM_MOST_TAKE = 0.22;
 export const STAMP_DRYING_RIM_FREE_SPREAD = 0.6;
 
 /**
- * How wide a wash's rim band is, px: as far as its medium's paint spreads by itself (`spread`, in diameters of the
- * wash's brushes), as far above damp as the paper was wet (`wetShare`, 0..1), at most STAMP_DRYING_RIM_MOST_BAND.
+ * How wide a wash's rim band is at a point, px: as far as its medium's paint spreads by itself (`spread`, in diameters
+ * of the tools that touched it), as far above damp as the paper was wet (`wetShare`, 0..1), at most
+ * STAMP_DRYING_RIM_MOST_BAND.
  */
 export function stampDryingRimBand(spread: number, diameter: number, wetShare: number): number {
   return Math.min(STAMP_DRYING_RIM_MOST_BAND, spread * diameter * Math.min(1, Math.max(0, wetShare)));
@@ -36,48 +39,23 @@ export function stampDryingRimBand(spread: number, diameter: number, wetShare: n
 export const stampDryingRimWetShare = (wettest: number, damp: number) => Math.min(1, Math.max(0, (wettest - damp) / Math.max(1e-3, 1 - damp)));
 
 /**
- * The wettest each point of the lattice got over `drying`, over the windows its deposits' landings cover, or null for
- * a drying that landed nothing. Each point reads the wettest within a cell and a half, as a footprint averaged onto
- * the lattice dilutes the points along a wash's edge, where its rim is.
+ * The most `drying`'s rim can be, before any paint lands: its painted deposits (none, null), its medium's `spread` and
+ * `damp`, its `wetShare` (from its `wettest`) and widest `band`, px, by its widest tool. The band sizes the stage's
+ * kernels; the GPU works the real one out. A lift, or dry water on dry paper, isn't the water's size.
  */
-export function stampDryingWettest(drying: Pick<StampWashDrying, 'deposits'>, wetness: StampWetness): StampGrid | null {
-  const landings = drying.deposits.flatMap((deposit) => wetness.landings.get(deposit) ?? []);
-  if (!landings.length) return null;
-  const grids = landings.flatMap(({ before, after }) => [stampWetGrid(before, 'wetness'), stampWetGrid(after, 'wetness')]);
-  let i0 = Infinity, j0 = Infinity, i1 = -Infinity, j1 = -Infinity;
-  for (const g of grids) {
-    i0 = Math.min(i0, g.x0 / STAMP_WET_CELL);
-    j0 = Math.min(j0, g.y0 / STAMP_WET_CELL);
-    i1 = Math.max(i1, g.x0 / STAMP_WET_CELL + g.columns);
-    j1 = Math.max(j1, g.y0 / STAMP_WET_CELL + g.rows);
-  }
-  const columns = i1 - i0, rows = j1 - j0, values = new Float32Array(columns * rows);
-  for (const g of grids) {
-    const di = g.x0 / STAMP_WET_CELL - i0, dj = g.y0 / STAMP_WET_CELL - j0;
-    for (let j = 0; j < g.rows; j++) {
-      for (let i = 0; i < g.columns; i++) {
-        const k = (dj + j) * columns + di + i;
-        values[k] = Math.max(values[k], g.values[j * g.columns + i]);
-      }
-    }
-  }
-  return stampGridLocalMax({ x0: i0 * STAMP_WET_CELL, y0: j0 * STAMP_WET_CELL, cell: STAMP_WET_CELL, columns, rows, values }, STAMP_WET_CELL * 1.5);
-}
-
-/**
- * How the rim stage sizes `drying`'s rim in the medium its paint landed in: its wettest grid, its paint deposits, the
- * medium's spread, how far above damp it got, their mean diameter and the band, px; null for no paint. The wet report
- * reads the same, so it estimates what the stage would do.
- */
-export function stampDryingRimSizing(drying: Pick<StampWashDrying, 'deposits'>, wetness: StampWetness) {
-  const grid = stampDryingWettest(drying, wetness);
+export function stampDryingRimBound(drying: Pick<StampWashDrying, 'deposits' | 'wettest'>, wetness: StampWetness) {
   const painted = drying.deposits.filter((deposit) => deposit.action.kind === 'paint');
-  if (!grid || !painted.length) return null;
+  const landed = drying.deposits.flatMap((deposit) => {
+    const landing = wetness.landings.get(deposit);
+    return landing ? [{ deposit, landing }] : [];
+  });
+  if (!painted.length || !landed.length) return null;
+  const widest = landed.reduce((most, { deposit, landing }) =>
+    (deposit.action.kind === 'lift' || (landing.water <= 0 && !landing.finds.wet) ? most : Math.max(most, deposit.diameter)), 0);
   // A wash is one group's, so its paint is in one medium.
   const { spread, sheen: { damp } } = wetness.landings.get(painted[0])!.medium.wetting;
-  const wetShare = stampDryingRimWetShare(grid.values.reduce((most, value) => Math.max(most, value), 0), damp);
-  const diameter = painted.reduce((sum, deposit) => sum + deposit.diameter, 0) / painted.length;
-  return { grid, painted, spread, damp, wetShare, diameter, band: stampDryingRimBand(spread, diameter, wetShare) };
+  const wetShare = stampDryingRimWetShare(drying.wettest, damp);
+  return { painted, spread, damp, wetShare, band: stampDryingRimBand(spread, widest, wetShare) };
 }
 
 /**

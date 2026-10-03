@@ -10,7 +10,7 @@ import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-moti
 import { paintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { paintAnimationFrameStart, type AnimationFrame } from './paint-clock.ts';
 import { paintDeformMap, paintDeformShifts, paintWarpChainKey, paintWarpChainMap, type PaintWarpChain } from './paint-deform.ts';
-import { compilePaintMotion, type PaintMotion, type PaintMotionNode, type PaintMotionPlay } from './paint-motion-compile.ts';
+import { compilePaintMotion, paintGroupPaintedBox, type PaintMotion, type PaintMotionNode, type PaintMotionPlay } from './paint-motion-compile.ts';
 import { paintNodeWarpAt } from './paint-motion-frame.ts';
 
 /** A motion built: usable, or the problems that keep it from being. */
@@ -53,14 +53,15 @@ function mostMoving(chain: PaintWarpChain, rest: StampPoint): { name: string; sh
 export function paintMotionFolds(motion: PaintMotion, { from, to }: { from: number; to: number }): string[] {
   const fps = motion.animationFps, found: string[] = [];
   for (const node of motion.nodes.values()) {
-    if (!node.box) continue;
+    const box = paintGroupPaintedBox(node.group);
+    if (!box) continue;
     const checked = new Set<string>();
     for (let frame = Math.ceil(from * fps - 1e-6); frame / fps <= to; frame++) {
       // SAFETY: a whole frame number on the animation grid.
       const t = paintAnimationFrameStart(frame as AnimationFrame, fps), { warp } = paintNodeWarpAt(motion, node, paintMoment(t)), key = paintWarpChainKey(warp);
       if (!warp.length || checked.has(key)) continue;
       checked.add(key);
-      const { at, det } = paintWarpWorstFold(paintWarpChainMap(warp), node.box);
+      const { at, det } = paintWarpWorstFold(paintWarpChainMap(warp), box);
       if (det > 0) continue;
       const most = mostMoving(warp, at);
       found.push(`${node.id}: at ${t.toFixed(3)}s its warp folds near (${at.x.toFixed(0)}, ${at.y.toFixed(0)}), area ×${det.toFixed(2)}; ${most.name} moves paint there most (${most.shift.toFixed(1)} px)`);

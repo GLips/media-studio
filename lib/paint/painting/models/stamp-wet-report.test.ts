@@ -1,20 +1,21 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
-import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { compileStampPaintRecipe } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampPaintEnvironment, StampPassageScope, StampWell } from './stamp-paint-recipe-types.ts';
 import { assertStampWetEffects, stampWetReport, stampWetReportStrictFailures, stampWetReportWarnings } from './stamp-wet-report.ts';
-import { compileStampWetness } from './stamp-wetness.ts';
+import { compileStampWetness, stampDrying, stampPaintMedia } from './stamp-wetness.ts';
+import { stampRoundTipsOf, stampRoundTipStatedProfile } from './stamp-tip-support.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { stampDrawnLine, stampGradedWash } from './stamp-technique-catalogue.ts';
 import { stampBloom, stampCharge, stampBackrun } from './stamp-wet-techniques.ts';
-import { stampStage } from './stamp-stage.ts';
 
 const WET: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: WATERCOLOUR_PIGMENTS } };
 
 const brush: StampBrush = {
+  profile: STAMP_BRUSH_UNMEASURED,
   name: 'Round',
   blend: 'normal',
   accumulation: { kind: 'glaze', build: 0 },
@@ -30,6 +31,7 @@ const brush: StampBrush = {
   falloff: 0,
   flow: 1,
 };
+brush.profile = stampRoundTipStatedProfile(brush);
 const medium = PAINT_MEDIA.watercolour;
 const sky = { kind: 'polygon' as const, points: [{ x: 40, y: 40 }, { x: 760, y: 40 }, { x: 760, y: 360 }, { x: 40, y: 360 }] };
 
@@ -39,7 +41,7 @@ function reported(body: (wash: StampPassageScope) => void, strict?: boolean) {
     wash.fill('sky', { brush, size: 40, application: { kind: 'flood' }, region: sky, well: { paint: { kind: 'color', color: '#4466aa' } } });
     body(wash);
   }))));
-  return stampWetReport(painting, compileStampWetness(painting, () => medium, stampStage({ width: 800, height: 400 })));
+  return stampWetReport(painting, compileStampWetness(painting, stampPaintMedia(painting, () => medium), stampRoundTipsOf()));
 }
 
 test('a bloom into damp paint and a backrun along a junction act; the report gives their waits and the drying', () => {
@@ -48,9 +50,9 @@ test('a bloom into damp paint and a backrun along a junction act; the report giv
     stampBackrun(wash, 'edge', { along: [{ x: 500, y: 100 }, { x: 600, y: 300 }], brush, size: 24 });
   });
   const [wash] = report.washes;
-  assert.deepEqual(wash.effects.map(({ kind, id, acting }) => [kind, id, acting]), [['bloom', 'g/w/drop', 'all'], ['backrun', 'g/w/edge', 'all']]);
+  assert.deepEqual(wash.effects.map(({ kind, id, mayActing }) => [kind, id, mayActing]), [['bloom', 'g/w/drop', 'all'], ['backrun', 'g/w/edge', 'all']]);
   const [drop] = wash.effects[0].touches;
-  assert.ok(Math.abs(drop.wetness.most - medium.wetting.sheen.damp) < 1e-5 && drop.dryShare === 0);
+  assert.ok(drop.bloom.mayAct && drop.finds.workable);
   assert.deepEqual(wash.waits.map(({ under, effect }) => [under, effect?.id]), [['deposits', 'g/w/drop'], ['deposits', 'g/w/edge']]);
   assert.equal(wash.dryings.length, 1);
   assert.equal(wash.dryings[0].closes, 'end');
@@ -64,14 +66,15 @@ test("an operation's condition judges the paper under its own deposits, and one 
     wash.stroke('near', { brush, size: 30, path: [{ x: 500, y: 300 }, { x: 600, y: 320 }], well: { paint: { kind: 'color', color: '#224488' } }, when: 'shiny' });
   });
   const [first, second] = report.washes[0].waits;
-  assert.ok(first.seconds === 0 && first.alreadyDrier && first.wetness.before.most <= medium.wetting.sheen.shiny);
+  assert.ok(first.seconds === 0 && first.alreadyDrier && first.judged > 0);
   assert.ok(second.seconds === 0 && second.alreadyDrier);
   const wholeWash = reported((wash) => {
     wash.stroke('far', { brush, size: 30, path: [{ x: 100, y: 100 }, { x: 200, y: 120 }], well: { paint: { kind: 'color', color: '#224488' }, water: 1 } });
     wash.wait('shiny');
     wash.stroke('near', { brush, size: 30, path: [{ x: 500, y: 300 }, { x: 600, y: 320 }], well: { paint: { kind: 'color', color: '#224488' } } });
   }).washes[0].waits[0];
-  assert.ok(wholeWash.seconds > 0 && Math.abs(wholeWash.wetness.after.most - medium.wetting.sheen.shiny) < 1e-6);
+  const { rate } = stampDrying(medium.wetting, { color: '#ffffff' });
+  assert.ok(Math.abs(wholeWash.seconds - (1 - medium.wetting.sheen.shiny) / rate) < 1e-6);
 });
 
 test("an effect that certainly won't act is warned of, with the bloom stage's reason, and the strict check throws", () => {

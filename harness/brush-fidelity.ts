@@ -1,9 +1,10 @@
-// node harness/brush-fidelity.ts <sheet|fit|diagnose|hand|fills|probes> (npm run brushes:sheet / brushes:fit /
-// brushes:diagnose / brushes:hand / brushes:fills / brushes:probes): how close an imported pack's brushes paint to
+// node harness/brush-fidelity.ts <sheet|fit|diagnose|hand|fills|narrow-fills|probes> (npm run brushes:sheet /
+// brushes:fit / brushes:diagnose / brushes:hand / brushes:fills / brushes:narrow-fills / brushes:probes): how close an imported pack's brushes paint to
 // their targets, fitting an app's reading to close the gap, the per-brush diagnostic of a reading, how a brush answers
-// each stroke hand, how it fills a region, and a Photoshop probe run scored cell by cell against the GPU renderer's
-// stage trace (lib/paint/brush-fidelity/engine/brush-fidelity-sheet.ts, brush-reading-fit.ts,
-// brush-reading-diagnostic.ts, stamp-stroke-hand-sheet.ts, stamp-fill-sheet.ts, photoshop-probe-scoring.ts;
+// each stroke hand, how it fills a region, how a wet style's brushes flood narrow shapes, and a Photoshop probe run
+// scored cell by cell against the GPU renderer's stage trace (lib/paint/brush-fidelity/engine/brush-fidelity-sheet.ts,
+// brush-reading-fit.ts, brush-reading-diagnostic.ts, photoshop-probe-scoring.ts; lib/paint/studies/engine/
+// stamp-stroke-hand-sheet.ts, stamp-fill-sheet.ts, narrow-fill-sheet.ts;
 // docs/private-styles.md).
 import { defineCommand } from 'citty';
 import { readFileSync } from 'node:fs';
@@ -12,6 +13,7 @@ import { writeBrushFidelitySheet } from '#lib/paint/brush-fidelity/engine/brush-
 import { diagnoseBrushReading } from '#lib/paint/brush-fidelity/engine/brush-reading-diagnostic.ts';
 import { fitBrushReading } from '#lib/paint/brush-fidelity/engine/brush-reading-fit.ts';
 import { scorePhotoshopProbeRun } from '#lib/paint/brush-fidelity/engine/photoshop-probe-scoring.ts';
+import { writeNarrowFillSheet } from '#lib/paint/studies/engine/narrow-fill-sheet.ts';
 import { writeStampFillSheet } from '#lib/paint/studies/engine/stamp-fill-sheet.ts';
 import { writeStampStrokeHandSheet } from '#lib/paint/studies/engine/stamp-stroke-hand-sheet.ts';
 import type { PhotoshopProbeOpacity } from '#lib/paint/brush-fidelity/models/photoshop-probe-painting.ts';
@@ -149,6 +151,22 @@ const fillsCommand = defineCommand({
   },
 });
 
+const narrowFillsCommand = defineCommand({
+  meta: {
+    name: 'narrow-fills',
+    description: "The narrow-fill sheet: a pine, a far pine, a sliver and a tapering shadow face, each flooded at several diameters by a wet style's brushes on dry paper and cut to its outline beside them, a PNG per brush and another with the outlines drawn over it.",
+  },
+  args: {
+    style: { type: 'string', default: 'watercolor', description: 'The workspace style, work/styles/<style>/, painting in pigment' },
+    brush: { type: 'string', default: 'filler,wash', description: "The style's brushes to flood with, by their names in it (comma-separated)" },
+    out: { type: 'string', required: true, description: 'The folder to write the PNGs into' },
+  },
+  async run({ args }) {
+    const written = await writeNarrowFillSheet({ stylesDir: STUDIO_STYLES_DIR, style: args.style, brushes: listArg(args.brush) ?? [], out: resolve(args.out) });
+    for (const file of written) console.log(relative(STUDIO_ROOT, file));
+  },
+});
+
 const listArg = (value: string | undefined) => value?.split(',').map((s) => s.trim()).filter(Boolean);
 
 /** `--order` as one of the orders the GPU can resolve in: every stage once. */
@@ -211,5 +229,5 @@ const probesCommand = defineCommand({
 
 await runHarnessCommand(defineCommand({
   meta: { name: 'brush-fidelity', description: "How close an imported pack's brushes paint to their targets, fitting the importer to them, and Photoshop's probes scored stage by stage" },
-  subCommands: { sheet: sheetCommand, fit: fitCommand, diagnose: diagnoseCommand, hand: handCommand, fills: fillsCommand, probes: probesCommand },
+  subCommands: { sheet: sheetCommand, fit: fitCommand, diagnose: diagnoseCommand, hand: handCommand, fills: fillsCommand, 'narrow-fills': narrowFillsCommand, probes: probesCommand },
 }));

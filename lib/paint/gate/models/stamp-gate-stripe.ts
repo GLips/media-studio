@@ -5,7 +5,7 @@
 //
 // - every pigment channel's sum holds within STAMP_GATE_FLOW_TOLERANCE, and no pixel holds less than none;
 // - neither patch's pigment crosses the stripe, by any amount;
-// - crayon, which has no water, changes nothing; a medium that flows moves some paint;
+// - each medium moves some paint. Crayon refuses water ('water' capability), so it has no case here;
 // - rim strength 0 moves nothing, 2 more than 1.
 
 import { stampLinearDynamics } from '#lib/paint/brush/models/stamp-brush.ts';
@@ -14,7 +14,7 @@ import type { PaintPigmentAppearance } from '#lib/paint/materials/models/paint-p
 import { compileStampPaintRecipe, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
-import { STAMP_GATE_FLOW_TOLERANCE, STAMP_GATE_STAGE_ENVIRONMENT, type StampGateFlowMedium } from './stamp-gate-flow.ts';
+import { STAMP_GATE_FLOW_TOLERANCE, STAMP_GATE_STAGE_ENVIRONMENT } from './stamp-gate-flow.ts';
 import { stampGateBrush, stampGatePolygon } from './stamp-gate-paintings.ts';
 import type { StampGateWashCheck } from './stamp-gate-layer.ts';
 import { stampBloom } from '#lib/paint/painting/models/stamp-wet-techniques.ts';
@@ -29,9 +29,11 @@ const DROP = { x: 72, y: 64, diameter: 36 };
 const PATCH = { y0: 16, y1: 112, left: 16, right: 176 };
 
 export type StampGateStripeStage = 'bloom' | 'rim' | 'rim-strength';
+/** The media a stripe case runs in: those that take water. */
+type StampGateStripeMedium = 'watercolour' | 'gouache';
 const STAMP_GATE_RIM_STRENGTH_ID = 'stripe/rim-strength';
 export const STAMP_GATE_STRIPE_IDS = [
-  ...(['bloom', 'rim'] as const).flatMap((stage) => (['watercolour', 'gouache', 'crayon'] as const).map((medium) => `stripe/${stage}-${medium}`)),
+  ...(['bloom', 'rim'] as const).flatMap((stage) => (['watercolour', 'gouache'] as const).map((medium) => `stripe/${stage}-${medium}`)),
   STAMP_GATE_RIM_STRENGTH_ID,
 ];
 
@@ -39,12 +41,12 @@ export const STAMP_GATE_STRIPE_IDS = [
 export const STAMP_GATE_RIM_STRENGTHS = [0, 1, 2] as const;
 
 /** A stripe case's stage and medium, from its ID. */
-export function stampGateStripeCase(id: string): { stage: StampGateStripeStage; medium: StampGateFlowMedium } {
+export function stampGateStripeCase(id: string): { stage: StampGateStripeStage; medium: StampGateStripeMedium } {
   if (id === STAMP_GATE_RIM_STRENGTH_ID) return { stage: 'rim-strength', medium: 'watercolour' };
-  const match = /^stripe\/(bloom|rim)-(watercolour|gouache|crayon)$/.exec(id);
+  const match = /^stripe\/(bloom|rim)-(watercolour|gouache)$/.exec(id);
   if (!match) throw new Error(`stamp gate: no stripe case ${JSON.stringify(id)}; the gate runs ${STAMP_GATE_STRIPE_IDS.join(', ')}`);
   // SAFETY: the pattern admits only these words.
-  return { stage: match[1] as StampGateStripeStage, medium: match[2] as StampGateFlowMedium };
+  return { stage: match[1] as StampGateStripeStage, medium: match[2] as StampGateStripeMedium };
 }
 
 const BRUSH = stampGateBrush('Stripe', { flow: 1, spacing: 0.25, dynamics: stampLinearDynamics({}) });
@@ -82,6 +84,23 @@ export function stampGateStripeLayer(): { layer: Float32Array[]; footprint: Floa
     footprint.set([drop, x >= STRIPE.x0 && x < STRIPE.x1 ? 0 : 1, 0, 0], i);
   }
   return { layer, footprint };
+}
+
+/**
+ * The wash's wet field as the drop finds it (stamp-wet-field.ts, RGBA per pixel), as the floods left it: each patch
+ * standing wet from its flood's painting second (`left`, `right`), still unsettled; and what the drying saw there, as
+ * wet as can be, touched wholly by their 30 px tools.
+ */
+export function stampGateStripeField({ left, right }: { left: number; right: number }): { paper: Float32Array; rim: Float32Array } {
+  const { width, height } = STAMP_GATE_STRIPE_SIZE, size = width * height * 4;
+  const paper = new Float32Array(size), rim = new Float32Array(size);
+  for (let y = PATCH.y0; y < PATCH.y1; y++) for (let x = PATCH.left; x < PATCH.right; x++) {
+    if (x >= STRIPE.x0 && x < STRIPE.x1) continue;
+    const i = (y * width + x) * 4;
+    paper.set([1, x < STRIPE.x0 ? left : right, 0, 0], i);
+    rim.set([1, 1, 30, 0], i);
+  }
+  return { paper, rim };
 }
 
 /** How much a stage moved in all, and its worst pigment sum's drift and least pixel, `before` and `after` it ran. */
@@ -135,7 +154,7 @@ export function checkStampGateRimStrength(id: string, runs: readonly StampGateRi
  * RGBA per pixel), to the properties.
  */
 export function checkStampGateStripe(id: string, before: ArrayLike<number>, after: ArrayLike<number>): StampGateWashCheck {
-  const { width, height } = STAMP_GATE_STRIPE_SIZE, pixels = width * height, { medium } = stampGateStripeCase(id);
+  const { width, height } = STAMP_GATE_STRIPE_SIZE, pixels = width * height;
   // Channel 1 the left patch's pigment, 2 the right's, both in the first array layer.
   const sums = [1, 2].map((c) => ({ before: 0, after: 0, crossed: 0, c }));
   let least = Infinity, moved = 0;
@@ -158,9 +177,8 @@ export function checkStampGateStripe(id: string, before: ArrayLike<number>, afte
     ...(drift > STAMP_GATE_FLOW_TOLERANCE ? [`a pigment's sum drifted ${drift.toExponential(2)}`] : []),
     ...(least < 0 ? [`a pixel holds ${least}`] : []),
     ...(crossed > 0 ? [`a patch's pigment crossed the stripe, ${crossed} at most`] : []),
-    ...(medium === 'crayon' && moved > 0 ? [`in crayon it moved ${moved.toFixed(3)} in all`] : []),
     // So a stage that moves nothing can't pass.
-    ...(medium !== 'crayon' && moved === 0 ? ['nothing moved'] : []),
+    ...(moved === 0 ? ['nothing moved'] : []),
   ];
   return {
     id: `${id}: conserved, each pigment its own side`, passed: !problems.length,

@@ -5,7 +5,8 @@
 // - every pigment channel's sum holds within STAMP_GATE_FLOW_TOLERANCE;
 // - no pixel holds less than none;
 // - nothing changes on the closed stripe or past it;
-// - crayon, which has no water, changes nothing; a medium that flows moves some paint;
+// - crayon changes nothing; a medium that flows moves some paint. Crayon refuses water ('water' capability), so it
+//   runs paint and a lift only;
 // - after a lift, no paint runs onto paper the wash left bare (its coverage none).
 
 import { stampLinearDynamics } from '#lib/paint/brush/models/stamp-brush.ts';
@@ -31,11 +32,12 @@ const DISC = { x: 110, y: 96, radius: 30 };
 
 export type StampGateFlowMedium = 'watercolour' | 'gouache' | 'crayon';
 export type StampGateFlowKind = 'paint' | 'water' | 'lift';
-export const STAMP_GATE_FLOW_IDS = (['watercolour', 'gouache', 'crayon'] as const).flatMap((medium) => (['paint', 'water', 'lift'] as const).map((kind) => `flow/${medium}-${kind}`));
+export const STAMP_GATE_FLOW_IDS = (['watercolour', 'gouache', 'crayon'] as const).flatMap((medium) => (['paint', 'water', 'lift'] as const)
+  .filter((kind) => medium !== 'crayon' || kind !== 'water').map((kind) => `flow/${medium}-${kind}`));
 
 /** A flow case's medium and what its fresh deposit lays, from its ID. */
 export function stampGateFlowCase(id: string): { medium: StampGateFlowMedium; kind: StampGateFlowKind } {
-  const match = /^flow\/(watercolour|gouache|crayon)-(paint|water|lift)$/.exec(id);
+  const match = STAMP_GATE_FLOW_IDS.includes(id) && /^flow\/(watercolour|gouache|crayon)-(paint|water|lift)$/.exec(id);
   if (!match) throw new Error(`stamp gate: no flow case ${JSON.stringify(id)}; the gate runs ${STAMP_GATE_FLOW_IDS.join(', ')}`);
   // SAFETY: the pattern admits only these words.
   return { medium: match[1] as StampGateFlowMedium, kind: match[2] as StampGateFlowKind };
@@ -93,6 +95,16 @@ export function stampGateFlowLayer(kind: StampGateFlowKind): { layer: Float32Arr
     footprint.set([inDisc, x >= STRIPE.x0 && x < STRIPE.x1 ? 0 : 1, 0, 0], i);
   }
   return { layer, fresh, footprint };
+}
+
+/**
+ * The wash's wet field as the fresh deposit finds it (stamp-wet-field.ts, RGBA per pixel): its preparation wetting
+ * the whole case from painting second 0, unsettled, so the old paint is still workable. The flow reads no rim.
+ */
+export function stampGateFlowField(): { paper: Float32Array; rim: Float32Array } {
+  const { width, height } = STAMP_GATE_FLOW_SIZE, paper = new Float32Array(width * height * 4);
+  for (let i = 0; i < paper.length; i += 4) paper[i] = 1;
+  return { paper, rim: new Float32Array(paper.length) };
 }
 
 /** `v` as an IEEE half float's bits, rounded to nearest; the layer is written in half floats. */

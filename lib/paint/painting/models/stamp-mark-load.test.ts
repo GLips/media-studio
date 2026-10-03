@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { stampFrozenMarks, type PlacedStamp } from '#lib/paint/brush/models/stamp-placement.ts';
 import { stampBinsAppended, stampMarksOrderedBins } from './stamp-mark-load.ts';
+import { stampRoundTipFootprint } from './stamp-tip-support.ts';
 
 const stampAt = (x: number, y: number): PlacedStamp => ({
   x, y, diameter: 20, rotation: 0, roundness: 1, alpha: 1, opacity: 1, flipX: false, flipY: false, blur: 0, grainTurn: 0,
@@ -13,14 +14,21 @@ const tilesRead = (buffer: readonly number[], at: number, tiles: number) =>
   Array.from({ length: tiles }, (_, t) => buffer.slice(buffer[at + t], buffer[at + t + 1]));
 
 test('an ordered layer\'s bins read the same wherever in the bin buffer they land', () => {
-  const tilesX = 4, tilesY = 3, tiles = tilesX * tilesY;
+  const tilesX = 4, tilesY = 3, tiles = tilesX * tilesY, tip = stampRoundTipFootprint();
   const first = stampFrozenMarks([stampAt(10, 10), stampAt(70, 40)]);
   const second = stampFrozenMarks([stampAt(100, 80), stampAt(40, 40), stampAt(50, 45)]);
   const alone: number[] = [], shared: number[] = [];
-  stampBinsAppended(stampMarksOrderedBins(second, 1, tilesX, tilesY, 0), alone);
-  stampBinsAppended(stampMarksOrderedBins(first, 1, tilesX, tilesY, 0), shared);
-  const at = stampBinsAppended(stampMarksOrderedBins(second, 1, tilesX, tilesY, 0), shared);
+  stampBinsAppended(stampMarksOrderedBins(second, tip, tilesX, tilesY, 0), alone);
+  stampBinsAppended(stampMarksOrderedBins(first, tip, tilesX, tilesY, 0), shared);
+  const at = stampBinsAppended(stampMarksOrderedBins(second, tip, tilesX, tilesY, 0), shared);
   assert.ok(at > 0);
   assert.deepEqual(tilesRead(shared, at, tiles), tilesRead(alone, 0, tiles));
   assert.ok(tilesRead(alone, 0, tiles).some((tile) => tile.length > 1));
+});
+
+test('an ordered layer bins a stamp in every tile its tip reaches, an off-centre tip past its diameter', () => {
+  // The tip's image hangs from its corner on the stamp's place: at (16, 10) its paint runs to x 36, past the first tile.
+  const tip = { ...stampRoundTipFootprint(), center: [0, 0] as const };
+  const bins = stampMarksOrderedBins(stampFrozenMarks([stampAt(16, 10)]), tip, 2, 1, 0);
+  assert.deepEqual(tilesRead([...bins], 0, 2), [[0], [0]]);
 });

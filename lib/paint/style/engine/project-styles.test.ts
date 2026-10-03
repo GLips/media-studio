@@ -26,9 +26,7 @@ function washProject(styles: readonly string[]) {
   // style.ts is read with require, which caches it: write it before the first check.
   const writeStyle = (paper: object) => writeFileSync(join(style, 'style.ts'), `export default ${JSON.stringify({ packs, brushes, palette: { sky: '#88aacc' }, paper })};\n`);
   writeStyle({ color: '#f4efe4' });
-  const archive = join(root, 'pack.zip');
-  writeFileSync(archive, '');
-  const importPack = (pack: string, manifest: object, files: readonly string[]) => replaceStampPaintPack({ archive, stylesDir: join(root, 'work', 'styles'), style: 'wash', pack }, (generation) => {
+  const importPack = (pack: string, manifest: object, files: readonly string[]) => replaceStampPaintPack({ stylesDir: join(root, 'work', 'styles'), style: 'wash', pack }, (generation) => {
     for (const file of files) {
       mkdirSync(join(generation, file, '..'), { recursive: true });
       writeFileSync(join(generation, file), '');
@@ -39,9 +37,9 @@ function washProject(styles: readonly string[]) {
   return { project, importPack, writeStyle };
 }
 
-test('a named style stops the bundle until each pack is imported, whole, at the version the studio reads, then serves the images it paints with', () => {
+test('a named style stops the bundle until each pack is imported, whole, at the version the studio reads, then serves the images it paints with', async () => {
   const { project, importPack } = washProject(['wash']);
-  importPack('vvds', packManifest(['tips/wash-01.png', 'grains/paper.png'], {}), ['tips/wash-01.png']);
+  await importPack('vvds', packManifest(['tips/wash-01.png', 'grains/paper.png'], {}), ['tips/wash-01.png']);
   assert.throws(() => writeProjectStylesModule(project), {
     message: 'styles: wash can\'t paint until its packs are imported in work/styles/wash/ (brushes/ isn\'t in git, so each machine imports its own; docs/private-styles.md):\n'
       + '  brushes/vvds/grains/paper.png: VVDS Watercolor Studio, from Creative Market\n'
@@ -49,22 +47,22 @@ test('a named style stops the bundle until each pack is imported, whole, at the 
       + '  brushes.wash: vvds has no brush "Wet Wash"; import it again from VVDS Watercolor Studio, from Creative Market',
   });
 
-  importPack('vvds', packManifest(['tips/wash-01.png', 'grains/paper.png'], { 'Wet Wash': washBrush }), ['tips/wash-01.png', 'grains/paper.png']);
-  importPack('grain', packManifest([], {}, STAMP_PAINT_ASSETS_VERSION - 1), []);
+  await importPack('vvds', packManifest(['tips/wash-01.png', 'grains/paper.png'], { 'Wet Wash': washBrush }), ['tips/wash-01.png', 'grains/paper.png']);
+  await importPack('grain', packManifest([], {}, STAMP_PAINT_ASSETS_VERSION - 1), []);
   assert.throws(() => writeProjectStylesModule(project), {
     message: new RegExp(`  brushes/grain/: .*manifest\\.json: imported as version ${STAMP_PAINT_ASSETS_VERSION - 1}, and the studio reads version ${STAMP_PAINT_ASSETS_VERSION}; import it again with studio brushes import \\(Grain Pack, from the Grain shop\\)$`),
   });
 
-  importPack('grain', packManifest([], { Tooth: toothBrush }), []);
+  await importPack('grain', packManifest([], { Tooth: toothBrush }), []);
   const module = readFileSync(writeProjectStylesModule(project), 'utf8');
   assert.match(module, /^import image0_0 from "\.\.\/\.\.\/\.\.\/styles\/wash\/brushes\/vvds\/generations\/[^/]+\/tips\/wash-01\.png";$/m);
   assert.match(module, /^      "vvds\/tips\/wash-01\.png": image0_0,$/m);
 });
 
-test("a style's paper must be a file its pack's import wrote", () => {
+test("a style's paper must be a file its pack's import wrote", async () => {
   const { project, importPack, writeStyle } = washProject(['wash']);
-  importPack('vvds', packManifest(['papers/cold-press.png'], { 'Wet Wash': washBrush }), ['papers/cold-press.png']);
-  importPack('grain', packManifest([], { Tooth: toothBrush }), []);
+  await importPack('vvds', packManifest(['papers/cold-press.png'], { 'Wet Wash': washBrush }), ['papers/cold-press.png']);
+  await importPack('grain', packManifest([], { Tooth: toothBrush }), []);
   writeStyle({ color: '#f4efe4', image: { pack: 'vvds', file: 'papers/hot-press.png' }, grain: { image: { pack: 'paper', file: 'tooth.png' }, scale: 1, depth: 0.3 } });
   assert.throws(() => writeProjectStylesModule(project), {
     message: /  paper\.image: vvds has no file papers\/hot-press\.png; import it again from VVDS Watercolor Studio, from Creative Market\n  paper\.grain: names the pack paper, which isn't in packs$/,

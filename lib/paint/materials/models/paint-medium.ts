@@ -20,6 +20,13 @@ export type PaintLightening = { kind: 'water' } | { kind: 'white'; white: PaintP
 export type PaintLayering = { kind: 'mixes' } | PaintStackedLayering;
 export type PaintStackedLayering = { kind: 'stacks'; holds: number; fill: number };
 
+/**
+ * What a lift leaves however strong (stamp-wet-lift.ts). `staining`: a stain in the fibres, `films` deep, each
+ * pigment its staining share, held less while wet. `pressed`: wax pressed into the tooth, `share` of the coat however
+ * thick, every pigment and its white alike, wet or set.
+ */
+export type PaintLiftResidue = { kind: 'staining'; films: number } | { kind: 'pressed'; share: number };
+
 export type PaintMedium = {
   name: string;
   /**
@@ -30,8 +37,8 @@ export type PaintMedium = {
    */
   color: { kind: 'glaze'; hiding: number } | PaintMasstone;
   /**
-   * How thick a full load lays, in unit films. A unit film is one full watercolour wash, the depth a lift's stain is
-   * measured in (stamp-wet-lift.ts): gouache and crayon lay many, so their stain is a sliver of a stroke.
+   * How thick a full load lays, in unit films. A unit film is one full watercolour wash, the depth a staining
+   * liftResidue is measured in: gouache lays many, so its stain is a sliver of a stroke.
    */
   body: number;
   lightening: PaintLightening;
@@ -55,17 +62,18 @@ export type PaintMedium = {
    * isn't a loaded stroke: how much it takes is its own strength (stamp-wet-lift.ts).
    */
   pickup: number;
+  liftResidue: PaintLiftResidue;
   wetting: PaintWetting;
   /** What it can do besides lay paint (PaintCapability), each named here, never read off the numbers above. */
   capabilities: readonly PaintCapability[];
 };
 
 /**
- * What a medium can do besides lay paint, declared, as every medium has `wetting`, crayon's too. `wet-history`: its
- * paint lands into the paper's wetness (the wash law). `wet-conditions`: it has a sheen to wait for ('shiny',
- * 'damp'). `lift`: paint comes back up (a sponge, an eraser). `burnish`: pressed into every valley of the tooth.
+ * What a medium can do besides lay paint, declared, never read off its `wetting`. `wet-history`: its paint lands in
+ * the paper's wetness. `wet-conditions`: a sheen to wait for. `water`: a deposit may state its water (a zero
+ * defaultWater isn't a refusal). `lift`: paint comes back up (a sponge, an eraser). `burnish`: pressed into the tooth.
  */
-export type PaintCapability = 'wet-history' | 'wet-conditions' | 'lift' | 'burnish';
+export type PaintCapability = 'wet-history' | 'wet-conditions' | 'water' | 'lift' | 'burnish';
 
 /** Whether `medium` declares `capability`; flat colour (null, painting in no medium) declares none. */
 export const paintMediumCan = (medium: PaintMedium | null, capability: PaintCapability) => !!medium?.capabilities.includes(capability);
@@ -94,16 +102,20 @@ export type PaintWetting = {
   drying: number;
   /**
    * Seconds paint sets behind its water: it stays as workable as the paper was that long before. Watercolour's is
-   * none. An oil would be a brush carrying its liquid medium as water (brushWater 1), no spread, and an open time of days.
+   * none. An oil would be a brush carrying its liquid medium as water (defaultWater 1), no spread, and an open time
+   * of days.
    */
   openTime: number;
   /**
    * How much of set paint a lift works back up, 0..1, as loose as wet paint is at 1: gouache's binder redissolves,
-   * watercolour's gum less, and a dry medium's is what an eraser takes. Its pigments' staining then holds some.
+   * watercolour's gum less, and an eraser takes all of a dry medium's wax it reaches. Its liftResidue then stays.
    */
   rewetting: number;
-  /** How wet a loaded brush is, 0..1, where a deposit doesn't say. */
-  brushWater: number;
+  /**
+   * How wet a loaded brush is, 0..1, where a deposit doesn't say: read once, as the deposit compiles in the medium
+   * (stampDepositWater). A default only; no threshold reads it.
+   */
+  defaultWater: number;
   /** Where the paper's look changes as it dries (PaintSheen): what a wash's `wait('shiny')` and `wait('damp')` wait for. */
   sheen: PaintSheen;
 };
@@ -124,18 +136,19 @@ export const PAINT_MEDIA = {
   // first guess (vid-117): paint travels, a sheet dries in minutes, unstaining pigment lifts some way.
   watercolour: {
     name: 'watercolour', color: { kind: 'glaze', hiding: 0.02 }, body: 1, lightening: { kind: 'water' }, granulation: 0.7, paperContact: { kind: 'valleys', dryBrush: { tooth: 0.85 } }, layering: { kind: 'mixes' }, dryingScatter: 0.1, pickup: 0.5,
-    wetting: { spread: 0.5, drying: 240, openTime: 0, rewetting: 0.35, brushWater: 0.7, sheen: { shiny: 0.7, damp: 0.35 } },
-    capabilities: ['wet-history', 'wet-conditions', 'lift'],
+    liftResidue: { kind: 'staining', films: 0.6 },
+    wetting: { spread: 0.5, drying: 240, openTime: 0, rewetting: 0.35, defaultWater: 0.7, sheen: { shiny: 0.7, damp: 0.35 } },
+    capabilities: ['wet-history', 'wet-conditions', 'water', 'lift'],
   },
   // Tuned by eye (vid-109), not measured: a stroke mostly lays its own paint over wet paint, darks dry lighter and
   // matte, and a dark colour holds its hue into tints with white. A stroke is about twenty washes thick and one coat
   // of white nearly hides black, so a lift thins it toward the paper, paler as it goes (vid-122).
   gouache: {
     name: 'gouache', color: { kind: 'masstone', leastStrength: 0.05, cover: 0.9 }, body: 20, lightening: { kind: 'white', white: TITANIUM_WHITE }, granulation: 0.2,
-    paperContact: { kind: 'valleys' }, layering: { kind: 'mixes' }, dryingScatter: 0.4, pickup: 0.2,
+    paperContact: { kind: 'valleys' }, layering: { kind: 'mixes' }, dryingScatter: 0.4, pickup: 0.2, liftResidue: { kind: 'staining', films: 0.6 },
     // A first guess (vid-117): it barely travels, dries fast and re-dissolves once dry.
-    wetting: { spread: 0.1, drying: 120, openTime: 0, rewetting: 0.9, brushWater: 0.4, sheen: { shiny: 0.4, damp: 0.35 } },
-    capabilities: ['wet-history', 'wet-conditions', 'lift'],
+    wetting: { spread: 0.1, drying: 120, openTime: 0, rewetting: 0.9, defaultWater: 0.4, sheen: { shiny: 0.4, damp: 0.35 } },
+    capabilities: ['wet-history', 'wet-conditions', 'water', 'lift'],
   },
   // Tuned by eye (vid-109, vid-124), not measured: a firm hand skips the paper below 85% of its mean height; about
   // five layers fill the tooth. Wax lays about fifteen washes thick and one coat of white nearly hides black, so a
@@ -143,11 +156,11 @@ export const PAINT_MEDIA = {
   crayon: {
     name: 'crayon', color: { kind: 'masstone', leastStrength: 0.05, cover: 0.92 }, body: 15, lightening: { kind: 'white', white: { id: 'waxWhite', name: 'wax white', overWhite: '#f7f6f1', overBlack: '#9d9c97' } },
     granulation: 0, paperContact: { kind: 'peaks', tooth: 0.85 }, layering: { kind: 'stacks', holds: 4 / 3, fill: 0.6 }, dryingScatter: 0,
-    pickup: 0,
-    // No water and no spread. A lift is an eraser, taking the wax off the tooth's peaks but not what's pressed in (vid-117).
-    // Its sheen only times a wait: with no spread, no bloom or rim reads it.
-    wetting: { spread: 0, drying: 1, openTime: 0, rewetting: 0.85, brushWater: 0, sheen: { shiny: 0.7, damp: 0.35 } },
-    // Laid by its own law, pressure and tooth, never the wash's; its eraser lifts.
+    pickup: 0, liftResidue: { kind: 'pressed', share: 0.04 },
+    // No water and no spread. A lift is an eraser, taking all the wax it reaches but what's pressed in, a
+    // twenty-fifth of the coat: 0.6 films of a full one (vid-139). Its sheen only times a wait: no bloom or rim reads it.
+    wetting: { spread: 0, drying: 1, openTime: 0, rewetting: 1, defaultWater: 0, sheen: { shiny: 0.7, damp: 0.35 } },
+    // Laid by its own law, pressure and tooth, never the wash's; it takes no water; its eraser lifts.
     capabilities: ['lift', 'burnish'],
   },
 } as const satisfies Record<string, PaintMedium>;

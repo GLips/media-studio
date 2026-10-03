@@ -58,11 +58,13 @@ Everything is from `#studio`.
     group and fade it in by `visibility` in the frame state (see Animating a painting). `p.each(key, items, (q,
     item) => …)` paints per item, each named by its `id`, so adding or reordering items moves none of the others.
   - A **fill** covers a `region`, reaching its outline, laid by its `application`:
-    - `{ kind: 'flood' }`: solid inside, the brush's own edge at the outline, however small a spike. Outside a wash its
-      paper is dry, so wet paint stops there hard, keeping the tip's broken outline (a dry-media brush keeps its tip's
-      edge); for a soft edge, flood it in a wash into wetted paper (`preparation`), or in flat colour, which has no
-      washes, fill with strokes. It costs what its edge does, not its area. `reach: { past }` floods the region grown
-      by `past` diameters all round (a notch narrows, the shape isn't scaled), for a wash that runs past a clip.
+    - `{ kind: 'flood' }`: solid out to the outline, however narrow (a pine's tiers, a sliver), so it needs no `within`
+      to cut it. On dry paper wet paint stops hard at the outline, and a brush that reaches past it shows there; for a
+      soft edge, flood it in a wash into wetted paper (`preparation`), or in flat colour, which has no washes, fill with
+      strokes. A stroke charged into a narrow flood lands on the dry paper between its tiers: charge it with another
+      flood of the shape, graded across it (`well` or `load` as a field). It costs what its edge does, not its area.
+      `reach: { past }` floods the region grown by `past` diameters all round (a notch narrows, the shape isn't
+      scaled), for a wash that runs past a clip.
     - `{ kind: 'strokes', pattern, spacing?, variation?, hand?, reach? }`: real strokes of the brush, the marks
       and the paper between them showing. `pattern` is an object by `kind`: `'shading'`, `'zigzag'`, `'backAndForth'`,
       `'hatch'`, `'crossHatch'`, `'scribble'`, `'contour'` or `'guided'`; `spacing` is diameters between rows (over 1
@@ -172,10 +174,10 @@ Everything is from `#studio`.
   - **Marks**: a `StampMark` (`{ key, brush, diameter, geometry }`) paints with `p.mark`, placed from its key, so
     every use lands the same stamps. `stampScatterMarks(placement, { count, length, diameter, key })` lays out
     candidates; asking for more keeps the first ones where they were.
-  - **Will the bloom bloom?** `stampWetReport(painting, compileStampWetness(painting, mediumOf, size))`
-    (`mediumOf(group)`: the style's `mixing.medium`, or a group's own `mixing`'s) gives each wait's paper before and
-    after, and each bloom, backrun and damp charge's verdict, with why one won't act (the paint had set, the paper
-    still shone).
+  - **Will the bloom bloom?** `stampWetReport(painting, compileStampWetness(painting, media, tips))` (`media`:
+    each group's medium, `stampPaintMedia(painting, mediumOf)`; `tips`, its brushes' tips) gives each wait's span, and
+    each bloom, backrun and damp charge's verdict, with why one won't act (the paint had set, or the water spreads too
+    little).
     `assertStampWetEffects(report)` in the project's test throws on any that certainly won't. Eligible isn't visible:
     look at the render.
   - **`mixing: otherStyle.mixing`** paints a group in another style's medium and pigments, gouache butterflies in a
@@ -191,8 +193,8 @@ Everything is from `#studio`.
   shade). The ellipsoid is an assumption: check the shade reads right on a form that isn't egg-shaped.
 - `compileStampPaintRecipe(recipe)` at scene definition when the painting doesn't change. Where its shapes do (a
   cloud drifting through a wash, a shape morphing), compile it in render: deposits whose shape, brush, size and seed
-  are unchanged reuse their marks, so a rebuilt frame pays for what changed plus a reload of a few ms. It also loses
-  the checkpoints a still painting draws from, so prefer `motion` or keyed materials where they can express the change.
+  are unchanged reuse their marks, so a rebuilt frame pays for what changed plus a reload of a few ms, so
+  prefer `motion` or keyed materials where they can express the change.
 - **Colour that changes over the scene** (a sunset's sky): key the material rather than recompiling, as `motion` keys
   a group: `well: { paint: { kind: 'keys', keys: [{ at: 0.3, material: afternoon }, { at: 3.7, material: dusk }] } }`, in
   scene seconds. Between keys each pigment's amount eases (flat colour, its channels); a graded field's ends are each

@@ -8,15 +8,13 @@
 // Negative space: nothing moves across washes, or where paint has set (its open share none), however wet again,
 // but by a lift's rewetting. Crayon's spread is 0: it loads nothing.
 
-import { STAMP_GRID_AT_WGSL } from '../models/stamp-region.ts';
 import { STAMP_WET_FLOW_WGSL, stampWetFlowSigma } from '../models/stamp-wet-flow.ts';
 import { stampWetTransportReach, stampWetTransportStrides } from '../models/stamp-wet-transport.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
-import type { StampWetLanding } from '../models/stamp-wetness.ts';
 import { stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 import type { StampLoadedWetStage, StampWetDepositMoment, StampWetStage, StampWetStageContext } from './stamp-wet-stages.ts';
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
-import { putStampWetTransportSlot, stampWetTransportPipelines, stampWetTransportSlotBinding } from './stamp-wet-transport.ts';
+import { putStampWetTransportSlot, stampWetTransportOpenGate, stampWetTransportPipelines, stampWetTransportSlotBinding } from './stamp-wet-transport.ts';
 
 const WORKGROUP = 8;
 /** A uniform slot's bytes: WebGPU's minimum uniform offset alignment. */
@@ -24,14 +22,12 @@ const SLOT = 256;
 const ACTIONS = { paint: 0, water: 1, lift: 2 } as const;
 
 /**
- * One pass over a deposit's box (origin, extent): its landing's grids (lattice, size, where they start); the group
- * layer it moves (`chunk`); the stride, the last (0 for none), the variance before it and the axis (0 x, 1 y); its
- * sigma, water and the medium's rewetting; what it does; whether no exchange has run yet (`start`); the paper's depth.
+ * One pass over a deposit's box: the layer it moves (`chunk`); the stride, the last (0 for none), the variance before
+ * it, the axis (0 x, 1 y); sigma, rewetting, action; `start`; the paper's depth.
  */
 const FLOW_PASS = gpuUniformLayout('FlowPass', [
-  ['origin', 'vec2u'], ['extent', 'vec2u'], ['lattice', 'vec4f'], ['size', 'vec2u'], ['first', 'u32'], ['chunk', 'u32'],
-  ['stride', 'u32'], ['lastStride', 'u32'], ['before', 'f32'], ['axis', 'u32'], ['sigma', 'f32'], ['water', 'f32'], ['rewetting', 'f32'],
-  ['action', 'u32'], ['start', 'u32'], ['depth', 'f32'],
+  ['origin', 'vec2u'], ['extent', 'vec2u'], ['chunk', 'u32'], ['stride', 'u32'], ['lastStride', 'u32'], ['before', 'f32'], ['axis', 'u32'],
+  ['sigma', 'f32'], ['rewetting', 'f32'], ['action', 'u32'], ['start', 'u32'], ['depth', 'f32'],
 ]);
 /** The fields a pass sets for itself; the rest every pass of a deposit shares. */
 const FLOW_PASS_OWN = ['chunk', 'stride', 'lastStride', 'before', 'axis', 'start'] as const;
@@ -49,7 +45,6 @@ const flowWgsl = (layers: number, movedWgsl: string, holdWgsl: string, stage: St
 ${stampStageWgsl(stage)}
 ${FLOW_PASS.wgsl}
 ${STAMP_WET_FLOW_WGSL}
-${STAMP_GRID_AT_WGSL}
 ${movedWgsl}
 ${holdWgsl}
 const LAYERS = ${layers}u;
@@ -58,9 +53,12 @@ ${Object.entries(ACTIONS).map(([action, index]) => `const ${action.toUpperCase()
 @group(0) @binding(1) var paint: texture_2d_array<f32>;
 @group(0) @binding(2) var fresh: texture_2d_array<f32>;
 @group(0) @binding(3) var footprint: texture_2d<f32>;
-@group(0) @binding(4) var<storage, read> grid: array<f32>;
-// Per pixel, as the deposit left it: the paper's wetness as paint moves over it, how open it is to paint, how
-// stirred the paint already there is, and how lifted.
+// The deposit's landing (the wet field's): its water's contact, the paper as found, its wetness after; and the tool's
+// local scale.
+@group(0) @binding(13) var landing: texture_2d<f32>;
+@group(0) @binding(11) var scale: texture_2d<f32>;
+// Per pixel, as the deposit left it: how far paint runs over the paper, its wetness times the tool's local scale; how
+// open it is to paint, how stirred the paint already there is, and how lifted.
 @group(0) @binding(5) var paperOut: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(6) var paper: texture_2d<f32>;
 // Per pixel, its pigment before the flow, for washMoved.
@@ -77,9 +75,10 @@ ${Object.entries(ACTIONS).map(([action, index]) => `const ${action.toUpperCase()
 
 fn boxLocal(p: vec2i) -> vec2i { return p - vec2i(f.origin); }
 fn inBox(p: vec2i) -> bool { return all(boxLocal(p) >= vec2i(0)) && all(boxLocal(p) < vec2i(f.extent)); }
-// Layer \`l\` of the deposit's fresh paint at \`p\`, as its landing left it: only a paint deposit's, where it laid any.
+// Layer \`l\` of the deposit's fresh paint at \`p\`, as its landing left it (none where it laid none): only a paint
+// deposit's, as a lift or water lays none.
 fn freshAt(p: vec2i, l: u32) -> vec4f {
-  if (f.action != PAINT || textureLoad(footprint, p, 0).r <= 0.0) { return vec4f(0.0); }
+  if (f.action != PAINT) { return vec4f(0.0); }
   return textureLoad(fresh, p, l, 0);
 }
 // Population \`pop\` of the layer moved, as the deposit left it: the fresh paint (0), or the paint already there (1).
@@ -110,16 +109,16 @@ fn coveredAt(p: vec2i) -> f32 { return textureLoad(paint, p, 0, 0).x; }
   let own = washPigmentTotal(laid);
   let there = total - own;
   let open = select(0.0, clamp((washOpen(held) * total - own) / there, 0.0, 1.0), there > 0.0);
-  let at = stagePoint(p);
-  let points = f.size.x * f.size.y;
-  let wetness = gridAt(at, f.lattice.xyz, f.size, f.first);
-  let workable = gridAt(at, f.lattice.xyz, f.size, f.first + points);
-  let landed = textureLoad(footprint, p, 0);
+  let wet = textureLoad(landing, p, 0);
+  let contact = wet.x;
+  let workable = wet.z;
   let lift = f.action == LIFT;
-  let stirred = select(flowStirred(workable, open, landed.r), flowLiftStirred(workable, open, f.rewetting), lift);
-  // A water stroke's brush drags the paint along where it touches, however damp: there it moves as on flooded paper.
-  let wets = select(f.water, 1.0, f.action == WATER);
-  textureStore(paperOut, id.xy, vec4f(flowWetness(wetness, wets, landed.r), landed.g, stirred, select(0.0, landed.r, lift)));
+  // Paint runs back into a lift through the water it found, which the lift's brush soaks up as it lands.
+  let wetness = select(wet.w, wet.y, lift);
+  let stirred = select(flowStirred(workable, open, contact), flowLiftStirred(workable, open, f.rewetting), lift);
+  // Paint runs as far over paper as its wetness and the tool's local scale there let it: a pair's way takes the least
+  // of both, so a narrow branch of a broad flood trades as its own small strokes would, and still symmetrically.
+  textureStore(paperOut, id.xy, vec4f(wetness * textureLoad(scale, p, 0).r, textureLoad(footprint, p, 0).g, stirred, select(0.0, contact, lift)));
   textureStore(pigmentOut, id.xy, vec4f(total));
 }
 
@@ -202,8 +201,8 @@ fn coveredAt(p: vec2i) -> f32 { return textureLoad(paint, p, 0, 0).x; }
   for (var l = 0u; l < LAYERS; l++) { textureStore(layer, p, l, moved[l]); }
 }`;
 
-/** A deposit's diffusion as planned once the painting loads. */
-type FlowPlan = { first: number; layers: number; sigma: number; strides: { stride: number; before: number }[]; uniforms: GPUBuffer; slots: number; pipelines: FlowPipelines };
+/** A deposit's diffusion as planned once its bank loads. */
+type FlowPlan = { layers: number; sigma: number; strides: { stride: number; before: number }[]; uniforms: GPUBuffer; slots: number; pipelines: FlowPipelines };
 type FlowPipelines = Record<'prepare' | 'holds' | 'exchange' | 'settle' | 'close', GPUComputePipeline>;
 type FlowScratch = { w: number; h: number; textures: GPUTexture[]; paper: GPUTextureView; pigment: GPUTextureView; holds: GPUTextureView; paths: GPUTextureView[]; moved: GPUTextureView[] };
 
@@ -215,17 +214,11 @@ export const STAMP_WET_FLOW_STAGE = {
   id: 'flow',
   after: 'deposit',
   reach: (deposit, medium) => stampWetTransportReach(stampWetFlowSigma(deposit, medium)),
-  load: (context) => {
-    // Deposits that move paint: landing wet somewhere, or carrying water, in a medium that spreads.
-    const flowing = [...context.wetness.landings].filter(([deposit, landing]) => stampWetTransportStrides(stampWetFlowSigma(deposit, landing.medium)).length > 0
-      && (landing.water > 0 || landing.before.wetness.some((v) => v > 0)));
-    return flowing.length ? flowOnDevice(context, flowing) : { encode: () => null };
-  },
+  load: loadFlow,
 } satisfies StampWetStage;
 
-function flowOnDevice(context: StampWetStageContext, flowing: readonly (readonly [CompiledStampDeposit, StampWetLanding])[]): StampLoadedWetStage<StampWetDepositMoment> {
-  const { device, layer, footprint, fresh, grids, wash, paperDepth, stage } = context;
-  const transport = stampWetTransportPipelines(device);
+function loadFlow(context: StampWetStageContext): StampLoadedWetStage<StampWetDepositMoment> {
+  const { device, layer, footprint, fresh, field, wash, paperDepth, stage } = context;
   // Compiled per group, its holds being its palette's: groups alike share one.
   const pipelinesFor = new Map<string, FlowPipelines>();
   const pipelinesOf = (deposit: CompiledStampDeposit) => {
@@ -240,21 +233,14 @@ function flowOnDevice(context: StampWetStageContext, flowing: readonly (readonly
     return found;
   };
 
-  // Each deposit's passes, a uniform slot each: prepare and close, and per layer its holds, settle, and three a stride.
-  const planned = new Map(flowing.map(([deposit, { medium }]): [CompiledStampDeposit, FlowPlan] => {
-    const layers = wash.layersOf(deposit), sigma = stampWetFlowSigma(deposit, medium), strides = stampWetTransportStrides(sigma);
-    const slots = 2 + layers * (2 + 3 * strides.length);
-    const uniforms = device.createBuffer({ size: slots * SLOT, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    return [deposit, { first: grids.firsts.get(deposit)!, layers, sigma, strides, uniforms, slots, pipelines: pipelinesOf(deposit) }];
-  }));
-
   // Moves are full floats: this GPU's half-float stores truncate, and a dozen of them lost a tenth of a percent of
   // the pigment. The layer takes one half-float store a layer, in `settle`.
   let scratch: FlowScratch | null = null;
-  const reserve = ({ w, h }: { w: number; h: number }) => {
+  /** Grows the scratch to hold a box as big as `box`: only as a bank plans, between frames. */
+  const grow = ({ w, h }: { w: number; h: number }) => {
     if (scratch && w <= scratch.w && h <= scratch.h) return;
     const size = { w: Math.max(w, scratch?.w ?? 0), h: Math.max(h, scratch?.h ?? 0) };
-    // Reserved between frames: the frames that bound the old set are submitted, and destroy waits for them.
+    // The frames that bound the old set are submitted, and destroy waits for them.
     for (const texture of scratch?.textures ?? []) texture.destroy();
     const textures: GPUTexture[] = [];
     const view = (tw: number, th: number, count: number, format: GPUTextureFormat, dimension: GPUTextureViewDimension) => {
@@ -271,12 +257,10 @@ function flowOnDevice(context: StampWetStageContext, flowing: readonly (readonly
     };
   };
 
-  function encodeFlow(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, { landing, box }: StampWetDepositMoment) {
-    const plan = planned.get(deposit)!;
-    if (!scratch || box.w > scratch.w || box.h > scratch.h) throw new Error(`stamp paint: the flow stage was given ${deposit.id}'s box unreserved`);
+  function encodeFlow(encoder: GPUCommandEncoder, plan: FlowPlan, { deposit, landing, box }: StampWetDepositMoment) {
+    if (!scratch || box.w > scratch.w || box.h > scratch.h) throw new Error(`stamp paint: the flow stage was given ${deposit.id}'s box, past what its bank planned`);
     const { paper, pigment, holds, paths, moved } = scratch;
-    const { pipelines } = plan;
-    const { window } = landing.before;
+    const { pipelines } = plan, transport = stampWetTransportPipelines(device), open = { buffer: stampWetTransportOpenGate(device) };
     const data = new ArrayBuffer(plan.slots * SLOT);
     let slots = 0;
     /** The next pass's uniform slot: the fields every pass shares, then `own`. */
@@ -287,17 +271,13 @@ function flowOnDevice(context: StampWetStageContext, flowing: readonly (readonly
       });
       put('origin', [box.x, box.y]);
       put('extent', [box.w, box.h]);
-      put('lattice', [window.x0, window.y0, window.cell, 0]);
-      put('size', [window.columns, window.rows]);
-      put('first', plan.first);
       put('sigma', plan.sigma);
-      put('water', landing.water);
       put('rewetting', landing.medium.wetting.rewetting);
       put('action', ACTIONS[deposit.action.kind]);
       put('depth', paperDepth);
-      for (const field of FLOW_PASS_OWN) {
-        const value = own[field];
-        if (value !== undefined) put(field, value);
+      for (const name of FLOW_PASS_OWN) {
+        const value = own[name];
+        if (value !== undefined) put(name, value);
       }
       return { buffer: plan.uniforms, offset, size: FLOW_PASS.words * 4 };
     };
@@ -316,15 +296,15 @@ function flowOnDevice(context: StampWetStageContext, flowing: readonly (readonly
       pass.dispatchWorkgroups(Math.ceil(box.w / WORKGROUP), Math.ceil(box.h / WORKGROUP));
       pass.end();
     };
-    const laid: [number, GPUBindingResource][] = [[1, layer.view], [2, fresh.view], [3, footprint.view]];
-    dispatch(pipelines.prepare, slot({}), [...laid, [4, { buffer: grids.buffer }], [5, paper], [7, pigment]]);
+    const laid: [number, GPUBindingResource][] = [[1, layer.view], [2, fresh.view]];
+    dispatch(pipelines.prepare, slot({}), [...laid, [3, footprint.view], [5, paper], [7, pigment], [11, field.scale], [13, field.landing]]);
     for (let chunk = 0; chunk < plan.layers; chunk++) {
       dispatch(pipelines.holds, slot({ chunk }), [[1, layer.view], [3, footprint.view], [9, holds]]);
       let exchanges = 0;
       plan.strides.forEach(({ stride, before }, level) => {
         // This stride's ways are built from the last's, the two path textures taking turns.
         const [lastPath, path] = level % 2 ? [paths[0], paths[1]] : [paths[1], paths[0]];
-        dispatch(transport.ways, waysSlot(stride, level ? plan.strides[level - 1].stride : 0), [[1, paper], [2, lastPath], [3, path]]);
+        dispatch(transport.ways, waysSlot(stride, level ? plan.strides[level - 1].stride : 0), [[1, paper], [2, lastPath], [3, path], [4, open]]);
         for (const axis of [0, 1]) {
           dispatch(pipelines.exchange, slot({ chunk, stride, before, axis, start: exchanges === 0 ? 1 : 0 }), [
             ...laid, [6, paper], [10, holds], [12, path], [14, moved[exchanges % 2]], [15, moved[(exchanges + 1) % 2]],
@@ -340,7 +320,26 @@ function flowOnDevice(context: StampWetStageContext, flowing: readonly (readonly
   }
 
   return {
-    reserve,
-    encode: (encoder, moment) => (planned.has(moment.deposit) ? encodeFlow(encoder, moment.deposit, moment) : null),
+    plan: ({ device: on, wetness, boxOf }) => {
+      // Deposits that may move paint: carrying water, or landing where it may still be wet, in a medium that spreads.
+      // Each pass's slot a uniform: prepare and close, and per layer its holds, settle, and three a stride.
+      const planned = new Map([...wetness.landings].flatMap(([deposit, { medium, water, finds }]): [CompiledStampDeposit, FlowPlan][] => {
+        const sigma = stampWetFlowSigma(deposit, medium), strides = stampWetTransportStrides(sigma);
+        if (!strides.length || !(water > 0 || finds.wet)) return [];
+        const box = boxOf(deposit);
+        if (!box) return [];
+        grow(box);
+        const layers = wash.layersOf(deposit), slots = 2 + layers * (2 + 3 * strides.length);
+        const uniforms = on.createBuffer({ size: slots * SLOT, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+        return [[deposit, { layers, sigma, strides, uniforms, slots, pipelines: pipelinesOf(deposit) }]];
+      }));
+      return {
+        encode: (encoder, moment) => {
+          const plan = planned.get(moment.deposit);
+          return plan ? encodeFlow(encoder, plan, moment) : null;
+        },
+        landingReach: (deposit) => (planned.has(deposit) ? 0 : null),
+      };
+    },
   };
 }

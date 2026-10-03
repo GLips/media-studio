@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { compileStampPaintRecipe, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import { stampFrozenMarks, type PlacedStamp } from '#lib/paint/brush/models/stamp-placement.ts';
@@ -10,6 +10,7 @@ import type { StampPaintEnvironment } from '#lib/paint/painting/models/stamp-pai
 const FLAT: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'flat' } };
 
 const brush: StampBrush = {
+  profile: STAMP_BRUSH_UNMEASURED,
   name: 'Guarded',
   blend: 'normal',
   accumulation: { kind: 'glaze', build: 0 },

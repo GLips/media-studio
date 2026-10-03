@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampFramePlan } from './stamp-frame-plan.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import { compileStampPaintRecipe } from './stamp-paint-recipe-compile.ts';
@@ -13,6 +13,7 @@ import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercol
 const WET: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: WATERCOLOUR_PIGMENTS } };
 
 const brush: StampBrush = {
+  profile: STAMP_BRUSH_UNMEASURED,
   name: 'Round',
   blend: 'normal',
   accumulation: { kind: 'glaze', build: 0 },

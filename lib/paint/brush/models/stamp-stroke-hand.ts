@@ -97,15 +97,16 @@ export function handStampStroke(path: readonly StampStrokePoint[], hand: StampSt
 }
 
 /**
- * `path` with points added along each segment, the path's own kept, each carrying its segment's interpolated pressure.
- * A repeated point is dropped, since it would read as a turn; a lifted segment isn't split, since nothing lands on it
- * and its inner points would give a stamp step places to land.
+ * `path` with points added along each segment, the path's own kept, each interpolating its segment's pressure and
+ * scale (absent where neither end has one). A repeated point is dropped, since it would read as a turn; a lifted
+ * segment isn't split, since nothing lands on it and its inner points would give a stamp step places to land.
  */
 function resample(path: readonly StampStrokePoint[], diameter: number): StampStrokePoint[] {
   let total = 0;
   for (let i = 1; i < path.length; i++) total += Math.hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y);
   const step = Math.max(RESAMPLE_STEP * diameter, total / MAX_POINTS);
-  const points: StampStrokePoint[] = [{ x: path[0].x, y: path[0].y, pressure: path[0].pressure ?? 1 }];
+  const first = path[0];
+  const points: StampStrokePoint[] = [{ x: first.x, y: first.y, pressure: first.pressure ?? 1, ...(first.scale !== undefined && { scale: first.scale }) }];
   for (let i = 1; i < path.length; i++) {
     const a = path[i - 1], b = path[i], span = Math.hypot(b.x - a.x, b.y - a.y);
     if (span === 0 && !b.lift) continue;
@@ -114,6 +115,7 @@ function resample(path: readonly StampStrokePoint[], diameter: number): StampStr
       const t = k / pieces;
       points.push({
         x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t), pressure: lerp(a.pressure ?? 1, b.pressure ?? 1, t),
+        ...((a.scale ?? b.scale) !== undefined && { scale: lerp(a.scale ?? 1, b.scale ?? 1, t) }),
         ...(b.lift && { lift: true }),
       });
     }

@@ -345,6 +345,57 @@ export type StampBrushLayer<Image = StampBrushAsset> = StampBrushStamping<Image>
  */
 export type StampBrushMedia = 'wet' | 'dry';
 
+// A brush's measured footprint (vid-119): stamp-brush-profile.ts reads it, the importer measures it.
+
+/**
+ * A diameter's visible offsets, pixels from the centreline, each side's by heading (STAMP_BRUSH_PROFILE_HEADINGS of
+ * them): alike where the brush reads the same every way within its noise, else a squarish or lopsided tip's own.
+ */
+export type StampBrushEdgeSample = { left: readonly number[]; right: readonly number[] };
+
+/**
+ * A tip's support at a diameter: `reach[k]`, the farthest its paint lands from a stamp's place at any turn, in stamp
+ * diameters, drawn to level k (its hull over levels 0 to k). The rest picks k for a set of marks as the renderer does.
+ */
+export type StampTipSupport = { width: number; height: number; span: number; roundness: number; reach: readonly number[] };
+
+/**
+ * A diameter's support: its main tip's, and its dual's (drawn at the dual's scale), there exactly when the brush has a
+ * dual, as its pack's boundary checks.
+ */
+export type StampBrushSupportSample = { main: StampTipSupport; dual: StampTipSupport | null };
+
+/**
+ * A diameter's measurements. `edgeNoise` is the largest standard error of its edge's offsets, px, kept so whether they
+ * collapsed to one (within the tolerance or twice it) can be read back.
+ */
+export type StampBrushProfileSample = { diameter: number; edge: StampBrushEdgeSample; edgeNoise: number; support: StampBrushSupportSample };
+
+/**
+ * What a profile was measured from: the protocol, the brush's settings as read (stampBrushProfileSettingsHash), its
+ * images' bytes and the medium its probes paint in, its style's paper and paint (sha256 each, checked by the
+ * importer, as the images and the manifest are published together).
+ */
+export type StampBrushProfileKey = { protocol: number; settings: string; assets: string; medium: string };
+
+/** Where a profile was measured: a record, never part of its validity, as another machine reads the same numbers. */
+export type StampBrushProfileProvenance = { adapter: string; browser: string; renderer: string; seeds: readonly string[]; measuredAt: string };
+
+/** A brush's measured footprint, its samples in rising diameter: the first and last bound what it supports. */
+export type StampBrushMeasuredProfile = {
+  kind: 'measured'; key: StampBrushProfileKey; provenance: StampBrushProfileProvenance; samples: readonly StampBrushProfileSample[];
+};
+
+/**
+ * Whether a brush can plan a fill, settled once where it's resolved (its pack's and style's boundary, or a stated
+ * profile): measured, and current for its settings, protocol and style; refused, saying why; or unmeasured, a brush
+ * read from its source alone.
+ */
+export type StampBrushProfile = StampBrushMeasuredProfile | { kind: 'refused'; why: string } | { kind: 'unmeasured' };
+
+/** The profile of a brush read from its source alone, before its pack's measurement joins it. */
+export const STAMP_BRUSH_UNMEASURED: StampBrushProfile = { kind: 'unmeasured' };
+
 export type StampBrush<Image = StampBrushAsset> = StampBrushLayer<Image> & {
   /** Its name in its pack, as the manifest keys it. Part of no seed: renaming a brush changes no painting's randomness. */
   name: string;
@@ -363,7 +414,17 @@ export type StampBrush<Image = StampBrushAsset> = StampBrushLayer<Image> & {
    * edges and accumulation, and its stamps are `scale` times the main brush's diameter.
    */
   dual?: StampBrushLayer<Image> & { blend: StampDualBlend; scale: number };
+  /** Its footprint as its pack's import measured it (stamp-brush-profile.ts), or why it has none. */
+  profile: StampBrushProfile;
 };
+
+/**
+ * `brush` as it lays a firm stroke: untapered and unfading, as a fill's edge is and a profile's probes are, so
+ * its paint reaches the same way all along.
+ */
+export function stampFirmStroke<B extends StampBrush>(brush: B): B {
+  return { ...brush, taper: { ...brush.taper, start: 0, end: 0, size: 1, opacity: 1 }, falloff: 0 };
+}
 
 /**
  * An image a bound brush samples that no pack holds: a bristle tip's footprint or contact, drawn at a deposit's

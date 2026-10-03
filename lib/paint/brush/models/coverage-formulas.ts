@@ -125,9 +125,13 @@ export const stampDualBeforeGrain = (blend: StampDualBlend) => blend.family === 
  * passed one by one and a blend as its family's case.
  */
 const STAMP_COVERAGE_FUNCTIONS = {
-  /** Coverage `a` cut by grain paint `v` (1 keeps paint) at the grain's depth, by its blend. */
+  /**
+   * Coverage `a` cut by grain paint `v` (1 keeps paint) at the grain's depth, by its blend. A layer blend can paint
+   * where `a` has none (hard mix, lighten, colour dodge, divide), and a canvas grain resolves over its deposit's whole
+   * box, so it's held to where the stroke has paint; the texture blends lay none there already.
+   */
   grainCut: /* wgsl */ `fn grainCut(a: f32, v: f32, d: f32, mode: i32, layer: bool) -> f32 {
-  if (layer) { return a + d * (clamp(grainLayer(a, v, mode), 0.0, 1.0) - a); }
+  if (layer) { return select(0.0, a + d * (clamp(grainLayer(a, v, mode), 0.0, 1.0) - a), a > 0.0); }
   return grainTexture(a, v, d, mode);
 }`,
   /**

@@ -11,7 +11,8 @@ import type { PaintPigmentAppearance } from '#lib/paint/materials/models/paint-p
 import type { StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
 import type { StampPaintMixing, StampPigmentMixing } from '#lib/paint/painting/models/stamp-pigment-paint.ts';
-import { resolveStampPaintPackBrush, type StampPaintPack } from '#lib/paint/brush-packs/models/stamp-paint-pack.ts';
+import { resolveStampPaintPackBrush, stampPaintPackArchives, type StampPaintPack } from '#lib/paint/brush-packs/models/stamp-paint-pack.ts';
+import { stampBrushProbeMediumKey, stampBrushProbePaint, type StampBrushProbeMedium } from '#lib/paint/brush-packs/models/stamp-brush-profile-probes.ts';
 
 /** A style's style.ts: `export default { … } satisfies StampPaintStyle`. */
 export type StampPaintStyle = {
@@ -73,36 +74,47 @@ export type ResolvedStampPaintStyle<S extends StampPaintStyle = StampPaintStyle>
 };
 
 /** `style`'s mixing, as its resolved type says. */
-function mixingOf<S extends StampPaintStyle>(style: S): StampPaintStyleMixing<S> {
+export function stampPaintStyleMixing<S extends StampPaintStyle>(style: S): StampPaintStyleMixing<S> {
   const mixing: StampPaintMixing = style.paint ? { kind: 'pigment', medium: style.paint.medium, pigments: style.paint.pigments } : { kind: 'flat' };
   // SAFETY: where S has paint this is StampPigmentMixing of its very pigments; otherwise the type is any mixing.
   return mixing as StampPaintStyleMixing<S>;
 }
 
+/** The medium `style`, named `name`, probes its brushes in: its paper, its mixing and its strongest paint. */
+export function stampPaintStyleProbeMedium(name: string, style: StampPaintStyle): StampBrushProbeMedium {
+  const mixing = stampPaintStyleMixing(style);
+  return { paper: stampPaintStylePaper(name, style), mixing, paint: stampBrushProbePaint(mixing) };
+}
+
 /**
- * `style`, named `name`, with its brushes read from its packs' sources. Throws on a brush its pack lacks, which the
- * bundle's check (lib/paint/style/engine/project-styles.ts) has already refused, or a pigment keyed by
- * other than its id.
+ * `style`, named `name`, with its brushes read from its packs' sources, each brush's profile checked against the
+ * medium its style probes in now. Throws on a brush its pack lacks, which the bundle's check
+ * (lib/paint/style/engine/project-styles.ts) has already refused, or a pigment keyed by other than its id.
  */
 export function resolveStampPaintStyle<S extends StampPaintStyle>(name: string, style: S, packs: Readonly<Record<string, StampPaintPack>>): ResolvedStampPaintStyle<S> {
+  const medium = stampBrushProbeMediumKey(stampPaintStyleProbeMedium(name, style), stampPaintPackArchives(packs));
   const brushes = Object.fromEntries(Object.entries(style.brushes).map(([key, { pack, brush, media }]) => {
-    const found = packs[pack] && resolveStampPaintPackBrush(packs[pack], brush);
+    const found = packs[pack] && resolveStampPaintPackBrush(packs[pack], brush, medium);
     if (!found) throw new Error(`stamp paint: ${name}'s brush ${key} is ${pack}'s ${JSON.stringify(brush)}, which its manifest lacks`);
     return [key, { ...found.brush, media: media ?? style.packs[pack].media }];
   }));
-  const { color, image, grain } = style.paper;
-  const paper: StampPaintPaper = {
-    color,
-    ...(image && { image: { style: name, ...image } }),
-    ...(grain && { grain: { ...grain, image: { style: name, ...grain.image } } }),
-  };
   const misnamed = Object.entries(style.paint?.pigments ?? {}).find(([key, { id }]) => key !== id);
   if (misnamed) throw new Error(`stamp paint: ${name}'s pigment ${misnamed[0]} has the id ${misnamed[1].id}; key each pigment by its id`);
   // SAFETY: brushes has an entry for each of style.brushes' keys, mapped above.
   const resolved = brushes as ResolvedStampPaintStyle<S>['brushes'];
   return {
-    name, brushes: resolved, palette: style.palette, paper,
-    mixing: mixingOf(style),
+    name, brushes: resolved, palette: style.palette, paper: stampPaintStylePaper(name, style),
+    mixing: stampPaintStyleMixing(style),
+  };
+}
+
+/** What `style`, named `name`, paints on, its images its own packs'. */
+export function stampPaintStylePaper(name: string, style: StampPaintStyle): StampPaintPaper {
+  const { color, image, grain } = style.paper;
+  return {
+    color,
+    ...(image && { image: { style: name, ...image } }),
+    ...(grain && { grain: { ...grain, image: { style: name, ...grain.image } } }),
   };
 }
 

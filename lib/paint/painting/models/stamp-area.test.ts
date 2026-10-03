@@ -1,21 +1,20 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
-import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
-import { stampAreaCoverageAt, type StampWithin } from './stamp-area.ts';
-import { stampRegionSeed } from './stamp-fill.ts';
+import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import { stampAreaCoverageAt, stampRegionSeed, type StampWithin } from './stamp-area.ts';
 import { compileStampPaintRecipe, stampPassDeposits, type CompiledStampMask } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampPaintEnvironment, StampPaintScope } from './stamp-paint-recipe-types.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
-import { stampGridAt, type StampRegion } from './stamp-region.ts';
-import { compileStampWetness, stampWetGrid } from './stamp-wetness.ts';
+import type { StampRegion } from './stamp-region.ts';
+import { stampRoundTipStatedProfile } from './stamp-tip-support.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
-import { stampStage } from './stamp-stage.ts';
 
 const WET: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: WATERCOLOUR_PIGMENTS } };
 
 const brush: StampBrush = {
+  profile: STAMP_BRUSH_UNMEASURED,
   name: 'Round', blend: 'normal', media: 'wet',
   accumulation: { kind: 'buildToOpacity' },
   tip: { image: { style: 'test', pack: 'test', file: 'round.png' }, roundness: 1, sampling: 'isotropic' },
@@ -23,6 +22,7 @@ const brush: StampBrush = {
   rotation: { angle: 0, randomStart: false }, flip: { x: false, y: false }, blur: { amount: 0, jitter: 0 },
   taper: { start: 0, end: 0, size: 1, opacity: 1, shape: 0, pressure: 0 }, falloff: 0, flow: 0.5,
 };
+brush.profile = stampRoundTipStatedProfile(brush);
 const ochre: PaintMaterial = { kind: 'color', color: '#c8902f' };
 const square = (x0: number, y0: number, x1: number, y1: number): StampRegion => ({ kind: 'polygon', points: [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }] });
 const ids = (mask: CompiledStampMask | null): string[] => (mask ? [...ids(mask.under), mask.id] : []);
@@ -57,18 +57,13 @@ const range = (paint: StampPaintScope, standsBefore = ['far']) => {
   }));
 };
 
-test("a group standing before earlier groups reserves its shape from them, inset by its overlap, past any unmask of theirs, and their water doesn't land there", () => {
+test("a group standing before earlier groups reserves its shape from them, inset by its overlap, past any unmask of theirs", () => {
   const painting = compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => range(paint)));
   const [far, near] = painting.groups;
   const sky = stampPassDeposits(far.passes[0])[0], hill = stampPassDeposits(near.passes[0])[0];
   assert.deepEqual(ids(sky.mask), ['far/w/glint', 'far/w/open', 'near/stands-before']);
   assert.ok(sky.mask?.kind === 'mask' && sky.mask.area.inset === 3);
   assert.deepEqual(ids(hill.mask), []);
-
-  const wetness = compileStampWetness(painting, () => PAINT_MEDIA.watercolour, stampStage({ width: 200, height: 120 }));
-  const wet = stampWetGrid(wetness.landings.get(sky)!.after, 'wetness');
-  assert.equal(stampGridAt(wet, 100, 88), 0);
-  assert.equal(stampGridAt(wet, 24, 88), 1);
 });
 
 test('a group stands only before groups that exist, other than itself, painted before it', () => {

@@ -12,7 +12,7 @@ import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.
 import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { type StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
-import { STAMP_GATE_IMAGES, stampGateBrush, stampGatePolygon, type StampGatePainting } from './stamp-gate-paintings.ts';
+import { STAMP_GATE_IMAGES, stampGateBox, stampGateBrush, type StampGatePainting } from './stamp-gate-paintings.ts';
 import type { StampGateWashCase, StampGateWashMedium } from './stamp-gate-washes.ts';
 import type { StampGateWashCheck } from './stamp-gate-layer.ts';
 
@@ -61,7 +61,7 @@ function stampGateLiftColourPainting(medium: StampGateLiftColourMedium, dried: b
   const painting = compileStampPaintRecipe(stampPaintRecipe({ paper: PAPER, mixing: { kind: 'pigment', medium: PAINT_MEDIA[medium], pigments: W } }, (p) => p.group('tints', { composite: 'glaze', opacity: 1 }, (g) => g.passage('wash', {}, (wash) => {
     TINTS.forEach((t, r) => {
       const { y0, y1 } = ROW(r);
-      wash.fill(`tint-${r}`, { brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGatePolygon(4, y0, 196, y0, 196, y1, 4, y1), well: { paint: tint(t) } });
+      wash.fill(`tint-${r}`, { brush: ROUND, size: 30, application: { kind: 'flood' }, region: stampGateBox(4, y0, 196, y1), well: { paint: tint(t) } });
     });
     if (dried) wash.wait('set');
     STAMP_GATE_LIFT_STRENGTHS.forEach((strength, k) => {

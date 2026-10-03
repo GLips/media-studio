@@ -1,7 +1,9 @@
 // stamp-paint-action.ts: what a deposit does, as written and compiled: paint, and in a wash clean water or a lift.
-// Water rides on the action, so a dry pass's deposits, typed paint-only, can't carry any.
+// Stated water rides on the action, so a dry pass's deposits, typed paint-only, can't state any; each deposit's water,
+// stated or its medium's, is resolved once as it compiles in its medium (stampDepositWater).
 
 import { paintMixtureProblem } from '#lib/paint/materials/models/paint-mixture.ts';
+import { checkPaintCapability, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { StampBlend, StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { jitterStampStrokeColor } from './stamp-paint-color.ts';
 import { stampPaintFieldEnds, stampPaintFieldProblem, stampSeededPaintField, type StampPaintField, type StampSeededPaintField } from './stamp-paint-field.ts';
@@ -25,13 +27,34 @@ export type CompiledStampPaintAction = {
 };
 
 /**
- * What a wash's deposit does: paint carrying `water` (0..1; left out, its medium's PaintWetting.brushWater), clean
- * `water` wetting the paper, or a `lift` taking up paint, which carries none.
+ * What a wash's deposit does: paint carrying `water` as written (0..1; left out, its medium's, which stampDepositWater
+ * resolves), clean `water` wetting the paper, or a `lift` taking up paint, which carries none.
  */
 export type CompiledStampAction =
   | (CompiledStampPaintAction & { water?: number })
   | { kind: 'water'; water: number }
   | { kind: 'lift'; strength: number };
+
+/** Flat colour's water: in no medium its paint is wet, so a flood of it stops at its water's edge (wetLandCover). */
+const STAMP_FLAT_COLOUR_WATER = 1;
+
+/**
+ * How wet `deposit` leaves the paper its brush touches, 0..1, resolved once as it compiles in `medium` (null: flat
+ * colour): a lift's none, and a dry brush's paint none (crayon, a dry-brush drag), which refuses stated water; water
+ * it states, which a medium without 'water' refuses; else the medium's defaultWater. 0 is none.
+ */
+export function stampDepositWater(
+  { id, action, brush }: { id: string; action: CompiledStampAction; brush: Pick<StampBrush, 'media'> }, medium: PaintMedium | null,
+): number {
+  if (action.kind === 'lift') return 0;
+  if (action.kind === 'paint' && brush.media === 'dry') {
+    if (action.water !== undefined) throw new Error(`stamp paint: ${id} states water, but its brush is dry and carries none`);
+    return 0;
+  }
+  if (action.water === undefined) return medium ? medium.wetting.defaultWater : STAMP_FLAT_COLOUR_WATER;
+  checkPaintCapability(medium, 'water', `${id}'s water`);
+  return action.water;
+}
 
 const isMaterialField = (material: StampPaintMaterial): material is StampPaintField<StampKeyedMaterial> => material.kind === 'constant' || material.kind === 'linear' || material.kind === 'radial' || material.kind === 'noise';
 

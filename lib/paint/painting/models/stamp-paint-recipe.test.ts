@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { compileStampPaintRecipe, stampPassDeposits, type CompiledStampMask } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import type { StampRegion } from './stamp-region.ts';
+import { stampRoundTipStatedProfile } from './stamp-tip-support.ts';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { stampBloom, stampSoften } from './stamp-wet-techniques.ts';
@@ -14,6 +15,7 @@ import type { StampPaintEnvironment } from './stamp-paint-recipe-types.ts';
 const fluid = (mask: CompiledStampMask | null): string[] => (mask ? [...fluid(mask.under), mask.id] : []);
 
 const brush: StampBrush = {
+  profile: STAMP_BRUSH_UNMEASURED,
   name: 'Wet Wash',
   blend: 'normal',
   accumulation: { kind: 'glaze', build: 0 },
@@ -29,6 +31,7 @@ const brush: StampBrush = {
   falloff: 0,
   flow: 0.4,
 };
+brush.profile = stampRoundTipStatedProfile(brush);
 const ochre: PaintMaterial = { kind: 'color', color: '#c8902f' };
 const path = [{ x: 0, y: 0 }, { x: 300, y: 40 }, { x: 520, y: 10, pressure: 0.4 }];
 const sun: StampRegion = { kind: 'ellipse', x: 200, y: 100, radiusX: 40, radiusY: 40 };
@@ -138,9 +141,12 @@ test('a recipe that would seed or draw wrongly is refused when it compiles, nami
   });
   assert.throws(() => compileStampPaintRecipe(recipe), (error: Error) => error.message.includes(': sky') && !error.message.includes('sky/glaze/s1'));
 
-  const oneStroke = (settings: { size: number }) => () => compileStampPaintRecipe(stampPaintRecipe(FLAT, (paint) =>
+  const oneStroke = (settings: { size: number; path?: { x: number; y: number; scale?: number }[] }) => () => compileStampPaintRecipe(stampPaintRecipe(FLAT, (paint) =>
     paint.group('g', { composite: 'opaque' }, (group) => group.passage('p', {}, (pass) => pass.stroke('s', { brush, well: { paint: ochre }, path, ...settings })))));
   assert.throws(oneStroke({ size: 0 }), /g\/p\/s has diameter 0/);
+  // A scale of 0 would place stamps no distance apart, forever.
+  assert.throws(oneStroke({ size: 40, path: [{ x: 0, y: 0, scale: 0 }, { x: 100, y: 0 }] }), /g\/p\/s has a point whose scale isn't a finite positive number/);
+  assert.throws(oneStroke({ size: 40, path: [{ x: 0, y: 0 }, { x: 100, y: 0, scale: Number.NaN }] }), /scale isn't a finite positive/);
 });
 
 test('a stroke tapers at both ends however short, and turns with its direction from its first stamp', () => {
@@ -153,6 +159,15 @@ test('a stroke tapers at both ends however short, and turns with its direction f
   assert.equal(sizes[0], sizes.at(-1));
   assert.ok(sizes[0] < Math.max(...sizes), `${sizes}`);
   assert.ok(deposit.stamps.every((stamp) => Math.abs(stamp.rotation - Math.PI / 2) < 1e-9));
+});
+
+test("a hand-drawn stroke keeps its path's scale: a quarter-scale stroke lays quarter-size stamps", () => {
+  const still = { ...brush, dynamics: stampLinearDynamics({ size: { pressure: 0.5 }, opacity: { pressure: 0.5 } }), scatter: { count: 1, radius: 0, lateral: 0 } };
+  const sizesAt = (scale: number) => stampPassDeposits(compileStampPaintRecipe(stampPaintRecipe(FLAT, (paint) => paint.group('g', { composite: 'opaque' }, (group) =>
+    group.passage('p', {}, (pass) => pass.stroke('line', { brush: still, well: { paint: ochre }, size: 40, hand: {}, path: [{ x: 0, y: 0, scale }, { x: 400, y: 0, scale }] }))))).groups[0].passes[0])[0]
+    .stamps.map((stamp) => stamp.diameter);
+  const whole = sizesAt(1), quarter = sizesAt(0.25);
+  assert.ok(Math.abs(Math.max(...quarter) / Math.max(...whole) - 0.25) < 0.01, `${Math.max(...quarter)} against ${Math.max(...whole)}`);
 });
 
 test("a dual brush's stamps are its scale times the deposit's diameter, stroked or placed", () => {

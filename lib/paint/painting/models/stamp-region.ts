@@ -38,6 +38,23 @@ export function stampRegionPolygon(region: StampRegion): readonly StampPoint[] {
   });
 }
 
+/**
+ * `region` traced, `what` naming it: refused unless it's at least 3 finite points enclosing some area, as the
+ * distance a fill, mask or `within` reads is only defined for one.
+ */
+export function checkedStampPolygon(region: StampRegion, what: string): readonly StampPoint[] {
+  const polygon = stampRegionPolygon(region);
+  let twiceArea = 0;
+  polygon.forEach((a, i) => {
+    const b = polygon[(i + 1) % polygon.length];
+    twiceArea += a.x * b.y - b.x * a.y;
+  });
+  if (polygon.length < 3 || !polygon.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y)) || !twiceArea) {
+    throw new Error(`stamp paint: ${what}'s region isn't a shape: it needs at least 3 finite points enclosing some area`);
+  }
+  return polygon;
+}
+
 /** The box round `polygon`, grown by `pad` px each way. */
 export function stampPolygonBox(polygon: readonly StampPoint[], pad = 0): StampBox {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -47,17 +64,55 @@ export function stampPolygonBox(polygon: readonly StampPoint[], pad = 0): StampB
   return { x0: x0 - pad, y0: y0 - pad, x1: x1 + pad, y1: y1 + pad };
 }
 
+/**
+ * A polygon's segments, flat for hot loops: segment k's start (`ax`, `ay`), its run to the next point (`ex`, `ey`, the
+ * last closing to the first), and that run's squared length (1 for none).
+ */
+export type StampSegments = { ax: Float64Array; ay: Float64Array; ex: Float64Array; ey: Float64Array; length2: Float64Array };
+
+export function stampSegmentsOf(polygon: readonly StampPoint[]): StampSegments {
+  const n = polygon.length, ax = Float64Array.from(polygon, (a) => a.x), ay = Float64Array.from(polygon, (a) => a.y);
+  const ex = Float64Array.from(polygon, (a, k) => polygon[(k + 1) % n].x - a.x), ey = Float64Array.from(polygon, (a, k) => polygon[(k + 1) % n].y - a.y);
+  return { ax, ay, ex, ey, length2: Float64Array.from(polygon, (_, k) => ex[k] * ex[k] + ey[k] * ey[k] || 1) };
+}
+
+/**
+ * How far along segment k its point nearest (ax + px, ay + py) lies, as a share of it: that point's offset from it is
+ * then (px - ex·share, py - ey·share).
+ */
+export const stampSegmentShare = ({ ex, ey, length2 }: StampSegments, k: number, px: number, py: number) =>
+  Math.min(1, Math.max(0, (px * ex[k] + py * ey[k]) / length2[k]));
+
+/**
+ * The square of how far (x, y) lies from segment k: the one point-to-segment distance every reader of an outline
+ * takes. Squared, as the nearest of several is found by comparing these (two equidistant to a rounding of their roots
+ * still differ here).
+ */
+export function stampSegmentDistanceSquared(segments: StampSegments, k: number, x: number, y: number): number {
+  const px = x - segments.ax[k], py = y - segments.ay[k], along = stampSegmentShare(segments, k, px, py);
+  const ox = px - segments.ex[k] * along, oy = py - segments.ey[k] * along;
+  return ox * ox + oy * oy;
+}
+
+/** Whether (x, y) lies inside `polygon` (even-odd): the crossings of its row past x, odd. */
+function stampPolygonInside(polygon: readonly StampPoint[], x: number, y: number): boolean {
+  let inside = false;
+  for (let k = 0, n = polygon.length; k < n; k++) {
+    const a = polygon[k], b = polygon[(k + 1) % n];
+    if ((a.y > y) !== (b.y > y) && x < a.x + ((y - a.y) / (b.y - a.y)) * (b.x - a.x)) inside = !inside;
+  }
+  return inside;
+}
+
+/** Each polygon's segments, made once: a region's distance is read per pixel by gates and figures. */
+const segmentsOfPolygon = new WeakMap<readonly StampPoint[], StampSegments>();
+
 /** How far (x, y) is from `polygon`'s outline, positive inside it (even-odd), negative outside. */
 export function stampPolygonDistance(polygon: readonly StampPoint[], x: number, y: number): number {
-  let nearest = Infinity, inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const a = polygon[j], b = polygon[i];
-    const ex = b.x - a.x, ey = b.y - a.y, px = x - a.x, py = y - a.y;
-    const along = Math.min(1, Math.max(0, (px * ex + py * ey) / (ex * ex + ey * ey || 1)));
-    nearest = Math.min(nearest, (px - ex * along) ** 2 + (py - ey * along) ** 2);
-    if ((a.y > y) !== (b.y > y) && x < a.x + ((y - a.y) / (b.y - a.y)) * ex) inside = !inside;
-  }
-  return inside ? Math.sqrt(nearest) : -Math.sqrt(nearest);
+  const segments = segmentsOfPolygon.get(polygon) ?? segmentsOfPolygon.set(polygon, stampSegmentsOf(polygon)).get(polygon)!;
+  let nearest = Infinity;
+  for (let k = 0; k < polygon.length; k++) nearest = Math.min(nearest, stampSegmentDistanceSquared(segments, k, x, y));
+  return stampPolygonInside(polygon, x, y) ? Math.sqrt(nearest) : -Math.sqrt(nearest);
 }
 
 /**
@@ -66,12 +121,129 @@ export function stampPolygonDistance(polygon: readonly StampPoint[], x: number, 
  */
 export type StampGrid = { x0: number; y0: number; cell: number; columns: number; rows: number; values: Float32Array };
 
-/** `polygon`'s signed distance over `box`, on a grid of `cell` px. */
-export function stampDistanceGrid(polygon: readonly StampPoint[], box: StampBox, cell: number): StampGrid {
+/**
+ * A grid's points in tiles `side` points square, `columns` × `rows` of them row by row, each marked: 0 where the grid
+ * is read point by point, else wholly one value, 1 above every level a reader asks of it, 2 below.
+ */
+export type StampGridTiles = { side: number; columns: number; rows: number; far: Uint8Array };
+
+/**
+ * Each row of a `columns` × `rows` grid split at its `tiles`' edges into runs alike, left to right, rows in order:
+ * `visit(j, i0, i1, mark)` for points i0..i1 - 1 of row j, `mark` their tiles' (0 for the band's, read point by point).
+ */
+export function stampTileRuns(tiles: StampGridTiles, columns: number, rows: number, visit: (j: number, i0: number, i1: number, mark: number) => void): void {
+  const { side, far } = tiles;
+  for (let j = 0; j < rows; j++) {
+    const row = Math.floor(j / side) * tiles.columns;
+    for (let t = 0; t < tiles.columns;) {
+      const mark = far[row + t];
+      let end = t + 1;
+      while (end < tiles.columns && far[row + end] === mark) end++;
+      visit(j, t * side, Math.min(columns, end * side), mark);
+      t = end;
+    }
+  }
+}
+
+/**
+ * A polygon's signed distance on a grid, with the outline segment each grid point is nearest (-1 past its band), and
+ * its tiles past the band: 1 deep inside, 2 outside.
+ */
+export type StampDistanceGrid = StampGrid & { nearest: Int32Array; tiles: StampGridTiles };
+
+/** Grid points a side of the tiles stampDistanceGrid culls segments by, and tiles a side of the blocks it culls them for first. */
+const DISTANCE_TILE = 8, DISTANCE_BLOCK = 8;
+
+/**
+ * `polygon`'s signed distance over `box` on a `cell` px grid, as stampPolygonDistance gives it, in a narrow band: a
+ * tile wholly deeper than `farthest` px reads `farthest`, one wholly more than `outside` px out reads -`outside`,
+ * both nearest -1. Blocks, then tiles, test only segments that could be nearest.
+ */
+export function stampDistanceGrid(polygon: readonly StampPoint[], box: StampBox, cell: number, farthest = Infinity, outside = farthest): StampDistanceGrid {
   const columns = Math.ceil((box.x1 - box.x0) / cell) + 1, rows = Math.ceil((box.y1 - box.y0) / cell) + 1;
-  const values = new Float32Array(columns * rows);
-  for (let j = 0; j < rows; j++) for (let i = 0; i < columns; i++) values[j * columns + i] = stampPolygonDistance(polygon, box.x0 + i * cell, box.y0 + j * cell);
-  return { x0: box.x0, y0: box.y0, cell, columns, rows, values };
+  const values = new Float32Array(columns * rows), nearest = new Int32Array(columns * rows), n = polygon.length;
+  const segments = stampSegmentsOf(polygon);
+  // The segments of `from` (its first `count`) that could be nearest a point of the `side`-point square at (i, j),
+  // into `into`: those within its diagonal (a hair over) of its centre's nearest. How many, or -1 for a square wholly
+  // past the band, its limit in `limit` and whether inside in `deep`.
+  const centre = new Float64Array(n);
+  let limit = 0, deep = false;
+  const cull = (from: Int32Array, count: number, into: Int32Array, i: number, j: number, side: number) => {
+    const cx = box.x0 + (i + (side - 1) / 2) * cell, cy = box.y0 + (j + (side - 1) / 2) * cell, reach = Math.SQRT2 * (side - 1) * cell;
+    let closest = Infinity;
+    for (let c = 0; c < count; c++) closest = Math.min(closest, centre[c] = Math.sqrt(stampSegmentDistanceSquared(segments, from[c], cx, cy)));
+    // No point of the square is nearer the outline than its centre less half its diagonal, so one clear of the outline
+    // lies all on its centre's side.
+    const clear = closest - reach / 2;
+    deep = clear > Math.min(farthest, outside) && stampPolygonInside(polygon, cx, cy);
+    limit = deep ? farthest : outside;
+    if (clear > limit) return -1;
+    const bound = closest + reach + 1e-6 * (1 + reach);
+    let kept = 0;
+    for (let c = 0; c < count; c++) if (centre[c] <= bound) into[kept++] = from[c];
+    return kept;
+  };
+  // A square past the band has its tiles marked, filled after.
+  const tiles: StampGridTiles = { side: DISTANCE_TILE, columns: Math.ceil(columns / DISTANCE_TILE), rows: Math.ceil(rows / DISTANCE_TILE), far: new Uint8Array(0) };
+  tiles.far = new Uint8Array(tiles.columns * tiles.rows);
+  const fill = (i0: number, j0: number, side: number) => {
+    for (let tj = j0 / DISTANCE_TILE; tj < Math.min(tiles.rows, (j0 + side) / DISTANCE_TILE); tj++) {
+      tiles.far.fill(deep ? 1 : 2, tj * tiles.columns + i0 / DISTANCE_TILE, tj * tiles.columns + Math.min(tiles.columns, (i0 + side) / DISTANCE_TILE));
+    }
+  };
+  const all = Int32Array.from(polygon, (_, k) => k), inBlock = new Int32Array(n), inTile = new Int32Array(n), blockSide = DISTANCE_TILE * DISTANCE_BLOCK;
+  for (let bj = 0; bj < rows; bj += blockSide) {
+    for (let bi = 0; bi < columns; bi += blockSide) {
+      const blockCount = cull(all, n, inBlock, bi, bj, blockSide);
+      if (blockCount < 0) { fill(bi, bj, blockSide); continue; }
+      for (let tj = bj; tj < Math.min(rows, bj + blockSide); tj += DISTANCE_TILE) {
+        for (let ti = bi; ti < Math.min(columns, bi + blockSide); ti += DISTANCE_TILE) {
+          const tileCount = cull(inBlock, blockCount, inTile, ti, tj, DISTANCE_TILE);
+          if (tileCount < 0) { fill(ti, tj, DISTANCE_TILE); continue; }
+          for (let j = tj; j < Math.min(rows, tj + DISTANCE_TILE); j++) {
+            const y = box.y0 + j * cell, i1 = Math.min(columns, ti + DISTANCE_TILE);
+            for (let i = ti; i < i1; i++) {
+              const x = box.x0 + i * cell;
+              let least = Infinity, segment = 0;
+              for (let c = 0; c < tileCount; c++) {
+                const squared = stampSegmentDistanceSquared(segments, inTile[c], x, y);
+                if (squared < least) { least = squared; segment = inTile[c]; }
+              }
+              values[j * columns + i] = Math.sqrt(least);
+              nearest[j * columns + i] = segment;
+            }
+          }
+        }
+      }
+    }
+  }
+  // The band's points signed by each row's crossings: those at or before x are those not past it, as
+  // stampPolygonInside's x < crossing counts them. Past the band, a square's limit, signed: one clear of the outline
+  // lies all on its centre's side, as the crossings would find each point.
+  let crossings: number[] = [], before = 0;
+  stampTileRuns(tiles, columns, rows, (j, i0, i1, mark) => {
+    const y = box.y0 + j * cell;
+    if (i0 === 0) {
+      crossings = [];
+      before = 0;
+      for (let k = 0; k < n; k++) {
+        const a = polygon[k], b = polygon[(k + 1) % n];
+        if ((a.y > y) !== (b.y > y)) crossings.push(a.x + ((y - a.y) / (b.y - a.y)) * (b.x - a.x));
+      }
+      crossings.sort((a, b) => a - b);
+    }
+    if (mark) {
+      values.fill(mark === 1 ? farthest : -outside, j * columns + i0, j * columns + i1);
+      nearest.fill(-1, j * columns + i0, j * columns + i1);
+      return;
+    }
+    for (let i = i0; i < i1; i++) {
+      const x = box.x0 + i * cell;
+      while (before < crossings.length && crossings[before] <= x) before++;
+      if ((crossings.length - before) % 2 === 0) values[j * columns + i] = -values[j * columns + i];
+    }
+  });
+  return { x0: box.x0, y0: box.y0, cell, columns, rows, values, nearest, tiles };
 }
 
 /** `grid`'s value at (x, y), bilinear, held at its border. */
@@ -122,7 +294,7 @@ fn gridAt(p: vec2f, origin: vec3f, size: vec2u, first: u32) -> f32 {
 
 /**
  * The largest value of `grid` within `radius` px of each of its points: over a distance grid, how thick the region
- * is near there (the radius of the widest disc inside it, close by), which a flood's body narrows its edge to.
+ * is near there (the radius of the widest disc inside it, close by).
  */
 export function stampGridLocalMax(grid: StampGrid, radius: number): StampGrid {
   const { columns, rows, values } = grid, reach = Math.ceil(radius / grid.cell), within = (radius / grid.cell) ** 2;
@@ -144,11 +316,11 @@ export function stampGridLocalMax(grid: StampGrid, radius: number): StampGrid {
 }
 
 /**
- * Where `grid` crosses `level`, as closed loops (marching squares, each crossing placed linearly along its cell's
- * side). A loop that runs off the grid's border is left open, so callers pad the grid until its border lies below
- * the level. A saddle cell joins its crossings by the cell's mean, so loops never cross.
+ * Where `grid` crosses `level`, as closed loops (marching squares, crossings linear along cell sides). A loop off
+ * the border is left open, so callers pad the grid below the level. A saddle joins by the cell's mean, so loops
+ * never cross. A cell with every corner in `uniform` tiles marked alike (one side of the level) is skipped.
  */
-export function stampGridContours(grid: StampGrid, level: number): StampPoint[][] {
+export function stampGridContours(grid: StampGrid, level: number, uniform?: StampGridTiles): StampPoint[][] {
   const { columns, rows, values, x0, y0, cell } = grid;
   const at = (i: number, j: number) => values[j * columns + i] - level;
   // A crossing on a cell side, keyed by the side: horizontal sides (i, j)–(i+1, j) and vertical (i, j)–(i, j+1).
@@ -156,21 +328,37 @@ export function stampGridContours(grid: StampGrid, level: number): StampPoint[][
     const a = at(i, j), b = horizontal ? at(i + 1, j) : at(i, j + 1), t = a / (a - b);
     return horizontal ? { x: x0 + (i + t) * cell, y: y0 + j * cell } : { x: x0 + i * cell, y: y0 + (j + t) * cell };
   };
+  // A side's key: (j·columns + i)·2, + 1 for a vertical side.
   const key = (i: number, j: number, horizontal: boolean) => (j * columns + i) * 2 + (horizontal ? 0 : 1);
   // Each segment runs from one side to another, with the inside on its left, so loops chain head to tail.
-  const next = new Map<number, number>(), where = new Map<number, [number, number, boolean]>();
-  const segment = (from: [number, number, boolean], to: [number, number, boolean]) => {
-    const a = key(...from), b = key(...to);
-    next.set(a, b);
-    where.set(a, from);
-    where.set(b, to);
-  };
+  const next = new Map<number, number>();
+  const segment = (from: number, to: number) => next.set(from, to);
+  const above = (p: number) => (values[p] - level > 0 ? 1 : 0);
+  // The cells of a row with corners in tiles marked alike above and below (each tile column's shared mark, or 0), as
+  // tiles: a run of them is passed over but for its last cell, whose right corners lie in the next run.
+  const tiles = uniform ?? { side: columns, columns: 1, rows: Math.ceil(rows / columns), far: new Uint8Array(Math.ceil(rows / columns)) };
+  const shared = new Uint8Array(tiles.columns);
   for (let j = 0; j + 1 < rows; j++) {
-    for (let i = 0; i + 1 < columns; i++) {
-      const tl = at(i, j) > 0, tr = at(i + 1, j) > 0, br = at(i + 1, j + 1) > 0, bl = at(i, j + 1) > 0;
-      const top: [number, number, boolean] = [i, j, true], right: [number, number, boolean] = [i + 1, j, false];
-      const bottom: [number, number, boolean] = [i, j + 1, true], left: [number, number, boolean] = [i, j, false];
-      const code = (tl ? 8 : 0) | (tr ? 4 : 0) | (br ? 2 : 0) | (bl ? 1 : 0);
+    const upperTiles = Math.floor(j / tiles.side) * tiles.columns, lowerTiles = Math.floor((j + 1) / tiles.side) * tiles.columns;
+    for (let t = 0; t < tiles.columns; t++) shared[t] = tiles.far[upperTiles + t] === tiles.far[lowerTiles + t] ? tiles.far[upperTiles + t] : 0;
+    for (let t = 0; t < tiles.columns;) {
+      let end = t + 1;
+      while (end < tiles.columns && shared[end] === shared[t]) end++;
+      const i0 = shared[t] ? Math.max(t * tiles.side, end * tiles.side - 1) : t * tiles.side, i1 = Math.min(columns - 1, end * tiles.side);
+      if (i0 < i1) scan(j, i0, i1);
+      t = end;
+    }
+  }
+  // Cells i0..i1 - 1 of row j: each cell's left corners are the last one's right.
+  function scan(j: number, i0: number, i1: number) {
+    let upper = above(j * columns + i0), lower = above(j * columns + columns + i0);
+    for (let i = i0; i < i1; i++) {
+      const p = j * columns + i, upperRight = above(p + 1), lowerRight = above(p + columns + 1);
+      const code = (upper << 3) | (upperRight << 2) | (lowerRight << 1) | lower;
+      upper = upperRight;
+      lower = lowerRight;
+      if (code === 0 || code === 15) continue;
+      const top = key(i, j, true), right = key(i + 1, j, false), bottom = key(i, j + 1, true), left = key(i, j, false);
       const middle = (at(i, j) + at(i + 1, j) + at(i + 1, j + 1) + at(i, j + 1)) / 4 > 0;
       // Inside on the left, walking y down the screen: each case lists its segments.
       switch (code) {
@@ -199,8 +387,8 @@ export function stampGridContours(grid: StampGrid, level: number): StampPoint[][
     const loop: StampPoint[] = [];
     for (let k: number | undefined = start; k !== undefined && !seen.has(k); k = next.get(k)) {
       seen.add(k);
-      const [i, j, horizontal] = where.get(k)!;
-      loop.push(point(i, j, horizontal));
+      const side = k >> 1, i = side % columns;
+      loop.push(point(i, (side - i) / columns, (k & 1) === 0));
     }
     if (loop.length > 2) loops.push(loop);
   }
@@ -209,8 +397,7 @@ export function stampGridContours(grid: StampGrid, level: number): StampPoint[][
 
 /**
  * The per-pixel formulas a region is read by, in WGSL, included after COVERAGE_FORMULAS_WGSL (they call tipNoiseAt).
- * `edgeNoise` is what a ragged edge moves its outline by. `floodBody` is full only under the edge stroke's centre, so
- * the stroke's outer half meets the paper; where the region is too thin for the stroke, the body alone paints it.
+ * `edgeNoise` is what a ragged edge moves its outline by.
  */
 export const STAMP_REGION_WGSL = /* wgsl */ `
 fn edgeCoverage(sd: f32, width: f32) -> f32 { return smoothstep(0.0, 1.0, clamp(sd / width + 0.5, 0.0, 1.0)); }
@@ -227,12 +414,6 @@ fn edgeNoiseOctave(p: vec2f, seed: u32) -> f32 {
 }
 fn edgeNoise(x: f32, y: f32, seed: u32) -> f32 {
   return (edgeNoiseOctave(vec2f(x, y), seed) * 2.0 + edgeNoiseOctave(vec2f(x, y) * 2.3, seed ^ 0x5bd1e995u)) / 3.0;
-}
-fn floodBody(sd: f32, thickness: f32, c: f32) -> f32 {
-  let f = clamp((thickness - 0.5 * c) / (0.5 * c), 0.0, 1.0);
-  let lo = mix(0.2 * thickness, 0.5 * c, f);
-  let hi = max(lo + 1.0, mix(0.5 * thickness, c, f));
-  return smoothstep(lo, hi, sd);
 }`;
 
 /** Cells a grown outline's grid spans across its longer side, at most: its corners round to a few px of a sky's. */

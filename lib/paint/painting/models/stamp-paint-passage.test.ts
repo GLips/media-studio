@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { compileStampPaintRecipe, stampPassDeposits, type CompiledStampPaint } from './stamp-paint-recipe-compile.ts';
@@ -15,6 +15,7 @@ const brush: StampBrush = {
   spacing: 0.25, stepping: 'spread', dynamics: stampLinearDynamics({ size: { random: 0.3 }, rotation: { random: 0.5 } }), scatter: { count: 1, radius: 0, lateral: 0 },
   rotation: { angle: 0, randomStart: false }, flip: { x: false, y: false }, blur: { amount: 0, jitter: 0 },
   taper: { start: 0, end: 0, size: 1, opacity: 1, shape: 0, pressure: 0 }, falloff: 0, flow: 1,
+  profile: STAMP_BRUSH_UNMEASURED,
 };
 const paper = { color: '#ffffff' } as const;
 const blue = { kind: 'mixture', parts: [{ pigment: W.ultramarine, amount: 1 }], strength: 0.6 } as const;

@@ -4,36 +4,21 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { withBrowserModulePage } from '#lib/platform/browser/engine/browser-module-page.ts';
-import { resolveStampPaintStyle, type StampPaintStyle } from '#lib/paint/style/models/style.ts';
-import { stampPaintPackKey } from '#lib/paint/brush-packs/models/stamp-paint-pack-urls.ts';
 import { DRY_PASSAGE_CELL, DRY_PASSAGE_PAINTING_WIDTH, type DryPassageBrushes, type DryPassagePainted, type DryPassageSheetMedium } from '../models/dry-passages.ts';
-import { readServedStampPaintPack } from '#lib/paint/brush-packs/engine/stamp-paint-pack-files.ts';
+import { readWorkspacePigmentStyle } from './workspace-pigment-style.ts';
 
 const SHEET_PAGE = fileURLToPath(new URL('../studio/dry-passage-sheet-page.ts', import.meta.url));
 
 /** `name`, a workspace style in `stylesDir` painting in pigment, with `roles` naming its brush for each of the kit's. */
 async function dryPassageMedium(stylesDir: string, name: string, roles: Readonly<Record<keyof DryPassageBrushes, string>>): Promise<DryPassageSheetMedium> {
-  // SAFETY: a workspace style's style.ts default-exports a StampPaintStyle (`satisfies StampPaintStyle`), which the workspace typecheck holds.
-  const style = (await import(pathToFileURL(join(stylesDir, name, 'style.ts')).href) as { default: StampPaintStyle }).default;
-  const packs = Object.keys(style.packs).map((pack) => {
-    const { manifest, url } = readServedStampPaintPack(stylesDir, name, pack);
-    return { pack, manifest, url };
-  });
-  const resolved = resolveStampPaintStyle(name, style, Object.fromEntries(packs.map(({ pack, manifest }) => [pack, manifest])));
-  if (resolved.mixing.kind !== 'pigment') throw new Error(`dry passages: ${name} paints in flat colour, and the passages are drawn in pigment`);
-  const brushOf = (role: string) => {
-    const brush = resolved.brushes[role];
-    if (!brush) throw new Error(`dry passages: ${name} has no brush ${role}`);
-    return brush;
-  };
-  const { grain } = resolved.paper;
+  const { brushOf, paper, mixing, packUrls } = await readWorkspacePigmentStyle(stylesDir, name, 'dry passages');
+  const { grain } = paper;
   return {
     brushes: { stick: brushOf(roles.stick), side: brushOf(roles.side) },
-    paper: { ...resolved.paper, ...(grain && { grain: { ...grain, scale: (grain.scale * DRY_PASSAGE_PAINTING_WIDTH) / DRY_PASSAGE_CELL.width } }) },
-    mixing: resolved.mixing,
-    packUrls: Object.fromEntries(packs.map(({ pack, url }) => [stampPaintPackKey(name, pack), url])),
+    paper: { ...paper, ...(grain && { grain: { ...grain, scale: (grain.scale * DRY_PASSAGE_PAINTING_WIDTH) / DRY_PASSAGE_CELL.width } }) },
+    mixing, packUrls,
   };
 }
 

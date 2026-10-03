@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { StampMaterialSet } from './stamp-material-set.ts';
 import { compileStampPaintRecipe, stampCompiledPaintPrint, stampPassDeposits } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampPaintEnvironment, StampPaintRecipe, StampPaintRecipeDeposit, StampPaintRecipePass, StampPaintRecipeStep } from './stamp-paint-recipe-types.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import type { StampRegion } from './stamp-region.ts';
+import { stampRoundTipStatedProfile } from './stamp-tip-support.ts';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { stampBloom, stampCharge } from './stamp-wet-techniques.ts';
@@ -14,6 +15,7 @@ import { stampBloom, stampCharge } from './stamp-wet-techniques.ts';
 const WET: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: WATERCOLOUR_PIGMENTS } };
 
 const brush: StampBrush = {
+  profile: STAMP_BRUSH_UNMEASURED,
   name: 'Round',
   blend: 'normal',
   accumulation: { kind: 'glaze', build: 0 },
@@ -29,6 +31,7 @@ const brush: StampBrush = {
   falloff: 0,
   flow: 1,
 };
+brush.profile = stampRoundTipStatedProfile(brush);
 const field: StampRegion = { kind: 'polygon', points: [{ x: 100, y: 100 }, { x: 700, y: 100 }, { x: 700, y: 300 }, { x: 100, y: 300 }] };
 const color = (value: `#${string}`): PaintMaterial => ({ kind: 'color', color: value });
 const wells: StampMaterialSet = { kind: 'set', entries: [{ id: 'blue', material: color('#2244aa'), weight: 1 }, { id: 'rose', material: color('#cc5577'), weight: 1 }] };

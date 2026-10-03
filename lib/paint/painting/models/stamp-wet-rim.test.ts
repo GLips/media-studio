@@ -1,19 +1,20 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
-import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { compileStampPaintRecipe } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
-import type { StampPaintEnvironment, StampPassageScope } from './stamp-paint-recipe-types.ts';
-import { compileStampWetness } from './stamp-wetness.ts';
-import { stampStage } from './stamp-stage.ts';
-import { stampGridAt } from './stamp-region.ts';
-import { stampDryingWettest } from './stamp-wet-rim.ts';
+import type { StampPaintEnvironment, StampPassageOptions, StampPassageScope } from './stamp-paint-recipe-types.ts';
+import { compileStampWetness, stampPaintMedia } from './stamp-wetness.ts';
+import { stampRoundTipsOf, stampRoundTipStatedProfile } from './stamp-tip-support.ts';
+import { stampDryingRimBound } from './stamp-wet-rim.ts';
+import type { StampFloodEdge } from './stamp-fill.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 
 const WET: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: WATERCOLOUR_PIGMENTS } };
 
 const brush: StampBrush = {
+  profile: STAMP_BRUSH_UNMEASURED,
   name: 'Round',
   blend: 'normal',
   accumulation: { kind: 'glaze', build: 0 },
@@ -29,32 +30,34 @@ const brush: StampBrush = {
   falloff: 0,
   flow: 1,
 };
+brush.profile = stampRoundTipStatedProfile(brush);
 
 /** One wash painted by `body`, compiled. */
-const washOf = (body: (wash: StampPassageScope) => void) =>
-  compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => group.passage('w', {}, body))));
+const washOf = (body: (wash: StampPassageScope) => void, options: StampPassageOptions = {}) =>
+  compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => group.passage('w', options, body))));
 
 /** The wetness of `painting` in watercolour, and its one wash's dryings. */
 function dried(painting: ReturnType<typeof washOf>) {
-  const wetness = compileStampWetness(painting, () => PAINT_MEDIA.watercolour, stampStage({ width: 800, height: 400 }));
+  const wetness = compileStampWetness(painting, stampPaintMedia(painting, () => PAINT_MEDIA.watercolour), stampRoundTipsOf());
   return { wetness, dryings: wetness.washes.get(painting.groups[0].passes[0])!.dryings };
 }
 
-/** The wettest a one-drying wash painted by `body` in watercolour got. */
-function wettestOf(body: (wash: StampPassageScope) => void) {
-  const { wetness, dryings: [drying] } = dried(washOf(body));
-  return stampDryingWettest(drying, wetness);
+/** How a one-drying wash painted by `body` in watercolour bounds its rim, and its one drying. */
+function boundOf(body: (wash: StampPassageScope) => void, options: StampPassageOptions = {}) {
+  const { wetness, dryings: [drying] } = dried(washOf(body, options));
+  return { drying, bound: stampDryingRimBound(drying, wetness) };
 }
+const blue = { kind: 'color', color: '#336699' } as const;
+const region = { kind: 'ellipse', x: 200, y: 200, radiusX: 120, radiusY: 100 } as const;
 
-test('a puddle reads as wet as it was right up to its edge, and damp brushwork beside it as its own brush', () => {
-  const grid = wettestOf((wash) => {
-    wash.fill('puddle', { brush, size: 60, application: { kind: 'flood' }, region: { kind: 'ellipse', x: 200, y: 200, radiusX: 120, radiusY: 100 }, well: { paint: { kind: 'color', color: '#336699' }, water: 1 } });
-    wash.stroke('damp', { brush, size: 40, well: { paint: { kind: 'color', color: '#336699' }, water: 0.4 }, path: [{ x: 550, y: 200 }, { x: 700, y: 200 }] });
-  });
-  assert.ok(grid);
-  // Just inside the puddle's edge, where a footprint averaged onto the lattice would read half as wet.
-  assert.ok(stampGridAt(grid, 318, 200) > 0.95, `puddle edge ${stampGridAt(grid, 318, 200)}`);
-  assert.ok(Math.abs(stampGridAt(grid, 640, 200) - 0.4) < 0.05, `damp stroke ${stampGridAt(grid, 640, 200)}`);
+test('paint on paper prepared wet bounds a rim as wide as the tool that painted it, though it brought no more water, or none', () => {
+  const sheet = { kind: 'polygon' as const, points: [{ x: 0, y: 0 }, { x: 800, y: 0 }, { x: 800, y: 400 }, { x: 0, y: 400 }] };
+  for (const water of [1, 0]) {
+    const { bound } = boundOf((wash) => {
+      wash.fill('paint', { brush, size: 60, application: { kind: 'flood' }, region, well: { paint: blue, water } });
+    }, { preparation: { region: sheet } });
+    assert.ok(bound && bound.band > 10, `water ${water}: band ${bound?.band}`);
+  }
 });
 
 test("a wash dries at each wait('set') that follows paint, and at its end", () => {
@@ -88,6 +91,16 @@ test("a seconds wait the whole wash has set by closes the same drying as wait('s
   assert.deepEqual(dryingsOf((wash) => wash.wait({ seconds: set - 1 })), [['g/w', ['g/w/a', 'g/w/b'], 'end']]);
 });
 
+test("a drying after the wash has set stands only as wet as its own water, not an earlier drying's", () => {
+  const stroke = (wash: StampPassageScope, id: string, water: number, y: number) => wash.stroke(id, { brush, size: 40, well: { paint: blue, water }, path: [{ x: 100, y }, { x: 300, y }] });
+  const { dryings } = dried(washOf((wash) => {
+    stroke(wash, 'a', 1, 100);
+    wash.wait('set');
+    stroke(wash, 'b', 0.1, 300);
+  }));
+  assert.deepEqual(dryings.map(({ wettest }) => wettest), [1, 0.1]);
+});
+
 /** One wash at rim strength `rim` (the medium's when undefined) painted by `body`, compiled. */
 const rimmed = (rim: number | undefined, body: (wash: StampPassageScope) => void) =>
   compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => group.passage('w', { ...(rim !== undefined && { rim }) }, body))));
@@ -104,4 +117,12 @@ test("a wash's rim strength is every drying's, its end's too, unless a wait('set
   assert.deepEqual(dryings(undefined), [0, 1, 1]);
   assert.deepEqual(dryings(2), [0, 2, 2]);
   assert.throws(() => rimmed(2.5, (wash) => stroke(wash, 'a')), /rims at 2.5/);
+});
+
+test('a flood its barrier holds stands as wet as a puddle, though it carried less; lost, however little, it stands as wet as its own water', () => {
+  const wettest = (edge?: StampFloodEdge) => boundOf((wash) => {
+    wash.fill('flood', { brush, size: 60, application: { kind: 'flood', ...(edge && { edge }) }, region, well: { paint: blue, water: 0.7 } });
+  }).drying.wettest;
+  assert.equal(wettest(), 1);
+  for (const reach of [16, 1]) assert.ok(Math.abs(wettest({ kind: 'lost', reach }) - 0.7) < 1e-6, `lost over ${reach} px: ${wettest({ kind: 'lost', reach })}`);
 });

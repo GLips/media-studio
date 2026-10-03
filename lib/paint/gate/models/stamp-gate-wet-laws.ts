@@ -15,6 +15,8 @@ export const STAMP_GATE_WET_LAW_TOLERANCE = 1e-5;
 const COARSE = [0, 0.25, 0.5, 0.75, 1];
 const LANES = [0, 1, 2, 3];
 type Vec4 = readonly [number, number, number, number];
+/** A LiftResidue as the law reads it: films of a stain, share of a coat of wax, held while wet. */
+type Residue = readonly [number, number, number];
 
 /** A property's row, its inputs and what the check reads of them. */
 type LawRow = { label: string; inputs: readonly number[]; lane: number; was: Vec4; cover: number; bound: number };
@@ -45,22 +47,25 @@ const vec = (v: Vec4) => `(${v.join(', ')})`;
 
 /**
  * wetLift over layers whose four amounts are equal and stain more lane by lane, and over uneven amounts, some of them
- * none, staining alike, thicker than the fibres hold and thinner: each lane at every cover, strength and workability,
- * open, half set and set, set paint loosening by none, some and all.
+ * none, staining alike, thicker than the fibres hold and thinner: each lane at every cover,
+ * strength and workability, open, half set and set, set paint loosening by none, some and all; and wax, thick and faint.
  */
 function wetLiftGrid(): StampGateFormulaGrid {
-  const layers: readonly { was: Vec4; stain: Vec4; rising: boolean }[] = [
-    { was: [0.8, 0.8, 0.8, 0.8], stain: [0, 0.3, 0.6, 0.9], rising: true },
-    { was: [0.5, 1.5, 0.125, 0], stain: [0.25, 0.25, 0.25, 0.25], rising: false },
-    { was: [0.1, 0.2, 0.05, 0], stain: [0.5, 0.5, 0.5, 0.5], rising: false },
+  const fibres: Residue = [0.6, 0, 0.4], pressed: Residue = [0, 0.1, 1];
+  const layers: readonly { was: Vec4; stain: Vec4; residue: Residue; rising: boolean }[] = [
+    { was: [0.8, 0.8, 0.8, 0.8], stain: [0, 0.3, 0.6, 0.9], residue: fibres, rising: true },
+    { was: [0.5, 1.5, 0.125, 0], stain: [0.25, 0.25, 0.25, 0.25], residue: fibres, rising: false },
+    { was: [0.1, 0.2, 0.05, 0], stain: [0.5, 0.5, 0.5, 0.5], residue: fibres, rising: false },
+    { was: [4, 6, 1, 0], stain: [1, 1, 1, 1], residue: pressed, rising: false },
+    { was: [0.2, 0.1, 0.05, 0], stain: [1, 1, 1, 1], residue: pressed, rising: false },
   ];
-  const entries = layers.flatMap(({ was, stain, rising }) => COARSE.flatMap((cover) => COARSE.flatMap((strength) => COARSE.flatMap((workable) => [0, 0.5, 1].flatMap((open) => [0, 0.375, 1].flatMap((rewetting) => LANES.map((lane): LawRow => ({
-    label: `was ${vec(was)} stain ${vec(stain)} cover ${cover} strength ${strength} workable ${workable} open ${open} rewetting ${rewetting} lane ${lane}`,
-    inputs: [...was, was.reduce((a, b) => a + b, 0), cover, strength, workable, open, rewetting, ...stain, lane], lane, was, cover, bound: rising ? 1 : 0,
+  const entries = layers.flatMap(({ was, stain, residue, rising }) => COARSE.flatMap((cover) => COARSE.flatMap((strength) => COARSE.flatMap((workable) => [0, 0.5, 1].flatMap((open) => [0, 0.375, 1].flatMap((rewetting) => LANES.map((lane): LawRow => ({
+    label: `was ${vec(was)} stain ${vec(stain)} residue ${residue.join('/')} cover ${cover} strength ${strength} workable ${workable} open ${open} rewetting ${rewetting} lane ${lane}`,
+    inputs: [...was, was.reduce((a, b) => a + b, 0), cover, strength, workable, open, rewetting, ...stain, ...residue, lane], lane, was, cover, bound: rising ? 1 : 0,
   }))))))));
   // Rows come four lanes at a time, so a lane's neighbour below is the one staining less in the evenly laid layer,
   // and lane 0 the one every layer lays some of.
-  return propertyGrid('wetLift', 'wetLift(vec4f(x(0), x(1), x(2), x(3)), x(4), x(5), x(6), x(7), x(8), x(9), vec4f(x(10), x(11), x(12), x(13)))[u32(x(14))]', 15, entries, (row, out, gpu, i) => {
+  return propertyGrid('wetLift', 'wetLift(vec4f(x(0), x(1), x(2), x(3)), x(4), x(5), x(6), x(7), x(8), x(9), vec4f(x(10), x(11), x(12), x(13)), LiftResidue(x(14), x(15), x(16)))[u32(x(17))]', 18, entries, (row, out, gpu, i) => {
     const was = row.was[row.lane], strength = row.inputs[6];
     if (out > was + TOL) return `lifting added pigment (was ${was})`;
     if (out < -TOL) return 'lifting left less than none';

@@ -1,12 +1,13 @@
 // stamp-paint-gpu.ts: the WebGPU pieces the stamp-paint renderer is built from, on a studio device
-// (gpu-device-owner.ts): images as mipmapped textures, and a tip's paint read back from each of its mip levels.
+// (gpu-device-owner.ts): grains and papers as textures mipmapped on the GPU, and tips decoded for the CPU, whose
+// levels (stamp-tip-levels.ts) are uploaded as they are.
 //
 // Paint is held in half floats (rgba16float, rg16float): a glaze lays each stamp at a few thousandths of its flow,
 // which 8 bits would round away. The renderer's compute passes read and write those targets in place, which needs
 // read_write storage of rgba16float: the `texture-formats-tier2` feature.
 
 import { GPU_FULL_FRAME_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
-import type { StampTipLevel } from '../models/stamp-tip-hull.ts';
+import type { StampTipImage, StampTipLevels } from '#lib/paint/brush/models/stamp-tip-levels.ts';
 
 /**
  * What stamp painting makes its GPU resources through: a device, or a surface's cache or a painting's scope of one
@@ -37,11 +38,7 @@ export function fetchStampPaintBitmaps(urls: readonly string[]): Promise<ImageBi
   }));
 }
 
-/**
- * Uploads each bitmap as a mipmapped texture of its red channel alone (a grey tip or grain) or its colour (a paper),
- * closing it. A tip is sampled across a frame's whole stamp area, so a quarter of the bytes is a large part of a
- * frame's time.
- */
+/** Uploads each bitmap as a mipmapped texture of its red channel alone (a grain) or its colour (a paper), closing it. */
 export function uploadStampPaintBitmaps(device: StampPaintDevice, bitmaps: readonly { bitmap: ImageBitmap; channels: 'red' | 'colour' }[]): StampPaintImage[] {
   return mipmappedTextures(device, bitmaps.map(({ bitmap, channels }) => {
     const { width, height } = bitmap;
@@ -56,12 +53,29 @@ export function uploadStampPaintBitmaps(device: StampPaintDevice, bitmaps: reado
   }));
 }
 
-/** Uploads grey images drawn in memory (a bristle tip's), a byte a texel, as mipmapped textures of their red channel. */
-export function uploadStampPaintGreyImages(device: StampPaintDevice, images: readonly { width: number; height: number; pixels: Uint8Array }[]): StampPaintImage[] {
-  return mipmappedTextures(device, images.map(({ width, height, pixels }) => ({
-    width, height, format: 'r8unorm' as const,
-    fill: (texture: GPUTexture) => device.queue.writeTexture({ texture }, pixels, { bytesPerRow: width }, [width, height]),
-  })));
+/**
+ * `bitmap`'s red channel, a byte a texel, closing it: a tip as the CPU reads it. A pack's tip is an opaque grey PNG,
+ * decoded as stored (fetchStampPaintBitmaps), so the canvas neither converts its colour nor premultiplies it.
+ */
+export function decodeStampTipBitmap(bitmap: ImageBitmap): StampTipImage {
+  const { width, height } = bitmap;
+  const context = new OffscreenCanvas(width, height).getContext('2d', { willReadFrequently: true })!;
+  context.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  const rgba = context.getImageData(0, 0, width, height).data, pixels = new Uint8Array(width * height);
+  for (let i = 0; i < pixels.length; i++) pixels[i] = rgba[i * 4];
+  return { width, height, pixels };
+}
+
+/**
+ * A tip's texture of its red channel, each of `levels` written as its mip level as it is. A tip is sampled across a
+ * frame's whole stamp area, so a byte a texel, a quarter of rgba8's, is a large part of a frame's time.
+ */
+export function uploadStampTipLevels(device: StampPaintDevice, levels: StampTipLevels): StampPaintImage {
+  const { width, height } = levels[0];
+  const texture = device.createTexture({ size: [width, height], format: 'r8unorm', mipLevelCount: levels.length, usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+  levels.forEach((level, mipLevel) => device.queue.writeTexture({ texture, mipLevel }, level.texels, { bytesPerRow: level.width }, [level.width, level.height]));
+  return { texture, view: texture.createView(), width, height };
 }
 
 /**
@@ -81,7 +95,7 @@ function mipmappedTextures(device: StampPaintDevice, images: readonly { width: n
     const levels = Math.floor(Math.log2(Math.max(width, height))) + 1;
     const texture = device.createTexture({
       size: [width, height], format, mipLevelCount: levels,
-      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT,
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
     });
     fill(texture);
     for (let level = 1; level < levels; level++) {
@@ -97,34 +111,4 @@ function mipmappedTextures(device: StampPaintDevice, images: readonly { width: n
   });
   device.queue.submit([encoder.finish()]);
   return made;
-}
-
-/** A tip's paint at every mip level, read back from the GPU as it samples it: a texel holds paint where it isn't white. */
-export async function readStampTipLevels(device: StampPaintDevice, tip: StampPaintImage): Promise<StampTipLevel[]> {
-  const levels = tip.texture.mipLevelCount;
-  const encoder = device.createCommandEncoder();
-  const reads = Array.from({ length: levels }, (_, level) => {
-    const width = Math.max(1, tip.width >> level), height = Math.max(1, tip.height >> level);
-    // A copy's rows are padded to 256 bytes.
-    const row = Math.ceil(width / 256) * 256;
-    const buffer = device.createBuffer({ size: row * height, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
-    encoder.copyTextureToBuffer({ texture: tip.texture, mipLevel: level }, { buffer, bytesPerRow: row }, [width, height]);
-    return { width, height, row, buffer };
-  });
-  device.queue.submit([encoder.finish()]);
-  return Promise.all(reads.map(async ({ width, height, row, buffer }): Promise<StampTipLevel> => {
-    await buffer.mapAsync(GPUMapMode.READ);
-    const texels = new Uint8Array(buffer.getMappedRange());
-    const rows = Array.from({ length: height }, (_, y): [number, number] | null => {
-      let first = -1, last = -1;
-      for (let x = 0; x < width; x++) {
-        if (texels[y * row + x] === 255) continue;
-        if (first < 0) first = x;
-        last = x;
-      }
-      return first < 0 ? null : [first, last];
-    });
-    buffer.destroy();
-    return { width, height, rows };
-  }));
 }

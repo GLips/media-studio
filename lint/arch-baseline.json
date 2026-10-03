@@ -223,9 +223,6 @@
     "lib/paint/procreate-brushes/models/procreate-brush.ts": {
       "const points = (s[curve] as { points?: unknown[] } | null)?.points;": 1
     },
-    "lib/paint/style/engine/node-stamp-paint-styles.ts": {
-      "const style = (await import(pathToFileURL(join(dir, 'style.ts')).href) as { default: StampPaintStyle }).default;": 1
-    },
     "lib/paint/style/engine/project-styles.ts": {
       "const requireDefault = <T>(file: string) => (createRequire(file)(file) as { default: T }).default;": 1
     },
@@ -1840,9 +1837,6 @@
     },
     "lib/paint/brush-packs/engine/import-photoshop-pack.ts": {
       "return JSON.parse(JSON.stringify(preset, (key, value) => (key === 'dtipsErodibleTipHeightMap' ? undefined : value)));": 2
-    },
-    "lib/paint/style/engine/node-stamp-paint-styles.ts": {
-      "return Object.fromEntries(await Promise.all(names.map(async (name) => {": 1
     },
     "lib/picture/composition/studio/Root.tsx": {
       "construct: (target, args, newTarget) => Reflect.construct(target, args.length ? args : [pinned], newTarget),": 1,

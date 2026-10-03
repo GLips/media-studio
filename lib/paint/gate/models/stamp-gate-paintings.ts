@@ -10,7 +10,10 @@
 import { PAINT_MEDIA, paintMediumCan } from '#lib/paint/materials/models/paint-medium.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { PHOTOSHOP_POOLING } from '#lib/paint/brush/models/coverage-formulas.ts';
-import { stampLinearDynamics, type StampBrush, type StampBrushAsset, type StampBrushGrain, type StampBrushLayer, type StampGrainLook } from '#lib/paint/brush/models/stamp-brush.ts';
+import { stampBrushStatedProfile } from '#lib/paint/brush/models/stamp-brush-profile.ts';
+import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush, type StampBrushAsset, type StampBrushGrain, type StampBrushLayer, type StampGrainLook, type StampTipSupport } from '#lib/paint/brush/models/stamp-brush.ts';
+import { stampTipLevels } from '#lib/paint/brush/models/stamp-tip-levels.ts';
+import { stampTipFootprintOf, stampTipSupportOf } from '#lib/paint/painting/models/stamp-tip-support.ts';
 import { compileStampPaintRecipe, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import type { StampPaintEnvironment, StampPaintPaper, StampPassageOptions } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
@@ -34,6 +37,8 @@ export type StampGatePainting = {
 export const stampGateAsset = (file: string): StampBrushAsset => ({ style: 'gate', pack: 'gate', file });
 const color = (value: StampPaintColor): PaintMaterial => ({ kind: 'color', color: value });
 export const stampGatePolygon = (...xy: number[]): StampRegion => ({ kind: 'polygon', points: xy.flatMap((v, i) => (i % 2 ? [] : [{ x: v, y: xy[i + 1] }])) });
+/** The rectangle from (`x0`, `y0`) to (`x1`, `y1`), as a polygon. */
+export const stampGateBox = (x0: number, y0: number, x1: number, y1: number): StampRegion => stampGatePolygon(x0, y0, x1, y0, x1, y1, x0, y1);
 
 /** A texel hash to 0..1. */
 const hashed = (x: number, y: number) => {
@@ -73,7 +78,35 @@ const ROUND: StampBrushLayer = {
   rotation: { angle: 0, randomStart: false }, flip: { x: false, y: false }, blur: { amount: 0, jitter: 0 },
   taper: { start: 0, end: 0, size: 1, opacity: 1, shape: 0, pressure: 0 }, falloff: 0, flow: 0.5,
 };
-export const stampGateBrush = (name: string, layer: Partial<StampBrush> = {}): StampBrush => ({ ...ROUND, name, blend: 'normal', ...layer });
+
+/**
+ * Each drawn tip's visible offset, in diameters, stated from its drawing: where a lone stamp's paint falls to half its
+ * peak across its middle (round.png's smoothstep at 0.825 of its radius, contact.png's cone at half of it). A stroke's
+ * build spreading it further isn't counted: the gate holds the machinery, not the look.
+ */
+const STAMP_GATE_TIP_OFFSETS: Readonly<Record<string, number>> = { 'round.png': 0.4125, 'contact.png': 0.25 };
+
+/**
+ * A gate brush: ROUND with `layer` over it, profiled as stated (stampBrushStatedProfile) on a tip
+ * STAMP_GATE_TIP_OFFSETS names, a firm stroke building to full and its densest stamp its flow; on any other, none.
+ */
+export function stampGateBrush(name: string, layer: Partial<StampBrush> = {}): StampBrush {
+  const brush: StampBrush = { ...ROUND, name, blend: 'normal', profile: STAMP_BRUSH_UNMEASURED, ...layer };
+  const offset = 'image' in brush.tip ? STAMP_GATE_TIP_OFFSETS[brush.tip.image.file] : undefined;
+  if (offset === undefined) return brush;
+  const support = { main: stampGateTipSupport(brush.tip), dual: brush.dual ? stampGateTipSupport(brush.dual.tip) : null };
+  return { ...brush, profile: stampBrushStatedProfile(brush, offset, support) };
+}
+
+/** A gate tip's support, from the levels of its drawn image (STAMP_GATE_IMAGES), as the renderer uploads them. */
+function stampGateTipSupport(tip: StampBrush['tip']): StampTipSupport {
+  if (!('image' in tip)) throw new Error(`stamp gate: a stated profile needs a drawn tip, and ${JSON.stringify(tip)} is bristles`);
+  return stampTipSupportOf(stampTipFootprintOf(tip, ({ file }) => {
+    // SAFETY: a gate brush's tips are all drawn images of STAMP_GATE_IMAGES, by file name (stampGateBrush).
+    const { size, pixels } = STAMP_GATE_IMAGES[file as keyof typeof STAMP_GATE_IMAGES];
+    return stampTipLevels({ width: size, height: size, pixels });
+  }));
+}
 
 /** A canvas grain of `image`; spread with a rolling grain's settings, a rolling one. */
 const grain = (image: string, look: Partial<StampGrainLook> & Pick<StampGrainLook, 'blend'>): StampBrushGrain => ({

@@ -13,16 +13,14 @@ import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { procreateGrainNegated, procreateTipNegated, type ProcreateBrushSettings, type ProcreateBrushSource } from '#lib/paint/procreate-brushes/models/procreate-brush.ts';
 import {
-  STAMP_PAINT_ASSETS_VERSION, STAMP_PAINT_PACK_MANIFEST,
-  type ProcreatePackBrush, type StampPaintPack, type StampPaintPackPaper, type StampPaintPackPreview,
+  STAMP_PACK_GRAIN_MAX as GRAIN_MAX, STAMP_PACK_PAPER_MAX as PAPER_MAX, STAMP_PACK_TIP_MAX as TIP_MAX, STAMP_PAINT_ASSETS_VERSION, type ProcreatePackBrush, type StampPaintPackPaper, type StampPaintPackPreview, type StoredStampPaintPack,
 } from '../models/stamp-paint-pack.ts';
 import type { StampBrushSupportNote } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
 import { parseBinaryPlist, unarchiveKeyedPlist } from '#lib/paint/procreate-brushes/engine/binary-plist.ts';
 import { readProcreateComposite } from '#lib/paint/procreate-brushes/engine/procreate-canvas.ts';
 import {
-  fitWithin, replaceStampPaintPack, sha256OfFile, stampPackSlug as slugOf, STAMP_PACK_GRAIN_MAX as GRAIN_MAX, STAMP_PACK_PAPER_MAX as PAPER_MAX,
-  STAMP_PACK_TIP_MAX as TIP_MAX, writeStampPackPng as writeBrushImage, type ImportStampPaintPackOptions,
+  fitWithin, sha256OfFile, stampPackSlug as slugOf, writeStampPackPng as writeBrushImage, type ImportStampPaintPackOptions,
 } from './stamp-paint-pack-files.ts';
 import { openZipBytes, openZipFile, type ZipArchive } from '#lib/platform/zip/engine/zip-archive.ts';
 
@@ -35,8 +33,6 @@ const PROCREATE_ORIENTATION_TRANSPOSE: Readonly<Record<number, string>> = { 3: '
 /** Settings as JSON keeps them: numbers, booleans, strings and pressure curves; bytes and dates aren't a brush's painting. */
 const jsonSettings = (settings: ProcreateBrushSettings): ProcreateBrushSettings => Object.fromEntries(Object.entries(settings).filter(([key, value]) =>
   typeof value === 'number' || typeof value === 'boolean' || typeof value === 'string' || (key.endsWith('Curve') && value !== null && typeof value === 'object')));
-
-export type ImportedProcreatePack = { dir: string; manifest: StampPaintPack };
 
 /** Brushes in the order brushset.plist lists them, by folder, with the set's name. */
 function readBrushsetOrder(brushset: ZipArchive): { name: string; folders: string[] } {
@@ -95,12 +91,8 @@ function writePaper(bytes: Buffer, label: string, packDir: string, slug: string)
   return { image, grain, color };
 }
 
-/** Imports a Procreate pack, replacing what an import writes only once it has succeeded (replaceStampPaintPack). */
-export function importProcreatePack(options: ImportStampPaintPackOptions): ImportedProcreatePack {
-  return replaceStampPaintPack(options, (staging) => writePackAssets(options.archive, staging, options.style, options.pack));
-}
-
-function writePackAssets(archive: string, dir: string, style: string, pack: string): Omit<ImportedProcreatePack, 'dir'> {
+/** Writes a Procreate pack's images into `dir`, a new generation, and returns its manifest for the profiles to be measured into. */
+export function writeProcreatePackAssets({ archive, style, pack }: ImportStampPaintPackOptions, dir: string): StoredStampPaintPack {
   const outer = archive.endsWith('.brushset') ? undefined : openZipFile(archive);
   const brushsets = outer ? outer.names.filter((name) => name.endsWith('.brushset')) : [archive];
   if (!brushsets.length) throw new Error(`brushes import: ${archive} holds no .brushset`);
@@ -173,7 +165,7 @@ function writePackAssets(archive: string, dir: string, style: string, pack: stri
   }
   outer?.close();
 
-  const manifest: StampPaintPack = {
+  return {
     version: STAMP_PAINT_ASSETS_VERSION,
     app: 'procreate',
     files: [...files].toSorted(),
@@ -184,6 +176,4 @@ function writePackAssets(archive: string, dir: string, style: string, pack: stri
     palettes,
     papers,
   };
-  writeFileSync(join(dir, STAMP_PAINT_PACK_MANIFEST), `${JSON.stringify(manifest, null, 1)}\n`);
-  return { manifest };
 }

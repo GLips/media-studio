@@ -14,7 +14,7 @@ import { PAINT_PAPER_WGSL, paintPigmentSeed } from '#lib/paint/materials/models/
 import { paintHexToLinear } from '#lib/paint/materials/models/paint-spectrum.ts';
 import type { PaintMedium, PaintStackedLayering } from '#lib/paint/materials/models/paint-medium.ts';
 import { STAMP_PIGMENT_GROUP_SLOTS, stampPigmentAmountsAt, stampPigmentGroupLayers, type StampPigmentPaint, type StampPigmentUnderpaint } from '../models/stamp-pigment-paint.ts';
-import { STAMP_LIFT_STAIN_FIBRES, STAMP_LIFT_WET_STAIN_HOLD, STAMP_WET_LIFT_WGSL } from '../models/stamp-wet-lift.ts';
+import { STAMP_WET_LIFT_WGSL, stampLiftPigmentResidueShare, stampLiftResidueWgsl, stampLiftKnockoutKeep } from '../models/stamp-wet-lift.ts';
 import { STAMP_OPAQUE_COVER, type CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
 import type { StampPaintCompositor } from './stamp-paint-compositor.ts';
@@ -206,10 +206,10 @@ ${media.map((_, m) => `    case ${m === 0 ? '0u, default' : `${m}u`}: { ${name}$
     device.queue.writeBuffer(buffer, 0, data);
     return buffer;
   };
-  // Each group's palette's staining, laid out as its layer is: coverage's channel stains nothing.
-  const stainData = new Float32Array(Math.max(1, paint.groups.length) * layers * 4);
-  paint.groups.forEach(({ palette }, g) => palette.forEach(({ staining }, slot) => { stainData[g * layers * 4 + slot + 1] = staining; }));
-  const components = upload(componentData), palettes = upload(paletteData), stains = upload(stainData);
+  // Each group's palette's share of its medium's lift residue, laid out as its layer is: coverage's channel holds none.
+  const residueShareData = new Float32Array(Math.max(1, paint.groups.length) * layers * 4);
+  paint.groups.forEach(({ palette }, g) => palette.forEach(({ staining }, slot) => { residueShareData[g * layers * 4 + slot + 1] = stampLiftPigmentResidueShare(mediumOfGroup(g).liftResidue, staining); }));
+  const components = upload(componentData), palettes = upload(paletteData), residueShares = upload(residueShareData);
 
   const paperRgb = paintHexToLinear(paperColor);
   const bandWgsl = /* wgsl */ `
@@ -232,8 +232,8 @@ fn paperReflectance(i: u32, color: vec3f) -> vec4f {
 
   /**
    * The underpaint's pigments as constants (StampPigmentUnderpaint), and how a knockout's lifts thin them: each
-   * pigment's share in the fibres (wetLift's) keeps what its staining holds, between the knockout layer's three stainings; the
-   * rest goes as unstained paint. The paint changes as much as a film of the pigments behind does over the paper.
+   * pigment's share of its medium's residue (wetLift's) keeps what the knockout layer leaves of it
+   * (stampLiftKnockoutKeep); the rest goes as unstained paint. The paint changes as much as a film of the pigments behind does over the paper.
    */
   const underpaintWgsl = ({ pigments, media: pigmentMedia, slots, writes }: StampPigmentUnderpaint) => {
     const count = Math.max(1, pigments.length), bandsOf = (key: 'K' | 'S') => pigments.length
@@ -245,7 +245,10 @@ const UNDERPAINT = ${pigments.length}u;
 const UNDER_LAYERS = ${underLayers}u;
 const UNDER_K = array<vec4f, ${count * V}>(${bandsOf('K')});
 const UNDER_S = array<vec4f, ${count * V}>(${bandsOf('S')});
-const UNDER_STAINS = array<f32, ${count}>(${pigments.length ? pigments.map(({ staining }) => f32(staining)).join(', ') : '0.0'});
+${STAMP_WET_LIFT_WGSL}
+// What a lift leaves of each pigment's medium, and how much of a pigment's share of it the knockout layer keeps.
+const UNDER_RESIDUES = array<LiftResidue, ${count}>(${pigments.length ? pigmentMedia.map((m) => stampLiftResidueWgsl(media[m].liftResidue)).join(', ') : 'LiftResidue(0.0, 0.0, 1.0)'});
+const UNDER_KNOCKOUT_KEEP = array<vec4f, ${count}>(${pigments.length ? pigments.map(({ staining }, p) => `vec4f(${stampLiftKnockoutKeep(media[pigmentMedia[p]].liftResidue, staining).map(f32).join(', ')})`).join(', ') : 'vec4f(0.0)'});
 const UNDER_SLOTS = array<u32, ${slotWords.length}>(${slotWords.join(', ')});
 const UNDER_WRITES = array<u32, ${groupCount}>(${groupsOrNone.map((_, g) => (writes[g] ? '1u' : '0u')).join(', ')});
 // Each medium's pigments scatter as much more dry as it says.
@@ -260,19 +263,18 @@ fn underpaintOver(i: u32, films: array<vec4f, UNDER_LAYERS>, paper: vec4f) -> ve
   }
   return kubelkaMunkOver(kubelkaMunkFilm(absorb, ${media.map((medium, m) => `scatter[${m}] * ${f32(1 + medium.dryingScatter)}`).join(' + ')}), paper);
 }
-// \`behind\` after lifts leaving \`left\` of a thin film of staining 0, ½ and 1, each staining between them read off the
-// parabola through the three.
+// \`behind\` after lifts leaving \`left\` of a thin stain of staining 0, ½ and 1: each pigment's residue as much as the
+// knockout layer keeps of it, the rest as unstained paint.
 fn liftedUnderpaint(behind: array<vec4f, UNDER_LAYERS>, left: vec3f) -> array<vec4f, UNDER_LAYERS> {
   var after = behind;
-  // Every group behind counts as one film in the fibres, not only the lowest.
+  // A residue is of all the paint behind, every group's, not only the lowest's.
   var total = 0.0;
   for (var p = 0u; p < UNDERPAINT; p++) { total += behind[p / 4u][p % 4u]; }
-  let fibres = ${f32(STAMP_LIFT_STAIN_FIBRES)} / max(total, ${f32(STAMP_LIFT_STAIN_FIBRES)});
   for (var p = 0u; p < UNDERPAINT; p++) {
-    let s = UNDER_STAINS[p];
-    let kept = max(0.0, left.x * (2.0 * s - 1.0) * (s - 1.0) + left.y * 4.0 * s * (1.0 - s) + left.z * s * (2.0 * s - 1.0));
+    let keep = UNDER_KNOCKOUT_KEEP[p];
+    let kept = max(0.0, dot(left, keep.xyz) + keep.w);
     let w = behind[p / 4u][p % 4u];
-    let thin = w * fibres;
+    let thin = w * liftResidueShare(total, UNDER_RESIDUES[p]);
     after[p / 4u][p % 4u] = thin * kept + (w - thin) * left.x;
   }
   return after;
@@ -349,11 +351,12 @@ ${medium.layering.kind === 'stacks' ? stackedLay(medium.layering, medium.body, s
 ${dispatched('layDeposit', 'pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32', 'pixel, coverage, rims, tooth, at, press')}`,
       wet: /* wgsl */ `
 ${STAMP_WET_LIFT_WGSL}
-@group(0) @binding(25) var<storage, read> stains: array<vec4f>;
+@group(0) @binding(25) var<storage, read> residueShares: array<vec4f>;
 // A knockout layer: x, where its fluid held its brushes off, the paint behind never reaching (a cover: another
-// brush over the same fluid reserves no more); yzw, how much of a thin film behind of staining 0, ½ and 1 its lifts
+// brush over the same fluid reserves no more); yzw, how much of a thin stain behind of staining 0, ½ and 1 its lifts
 // took, each blot by wetLift as wet as it lands, taking its share of what the last left and holding its own share of
-// the stain. The group reads the pigments behind as it's laid (layGroup).
+// the stain. The lanes hold a stain's law whatever medium lifts; wax behind reads none of them (stampLiftKnockoutKeep).
+// The group reads the pigments behind as it's laid (layGroup).
 ${eachMedium((medium, s) => /* wgsl */ `
 fn knockOut${s}(pixel: vec2u, cover: f32, reserved: f32, wet: WetLanding) {
   let free = liftFree(wet.workable, 1.0);
@@ -361,26 +364,31 @@ fn knockOut${s}(pixel: vec2u, cover: f32, reserved: f32, wet: WetLanding) {
   if (max(reserved, take) <= 0.0) { return; }
   let was = textureLoad(layer, pixel, paint.knockoutLayer);
   // wetLift's \`was - take * (was - held)\` over \`was\`, its held share of a thin film being its stain's, as held as it's free.
-  let keeps = vec3f(1.0) - take * (vec3f(1.0) - mix(1.0, ${f32(STAMP_LIFT_WET_STAIN_HOLD)}, free) * vec3f(0.0, 0.5, 1.0));
+  let keeps = vec3f(1.0) - take * (vec3f(1.0) - mix(1.0, LIFT_WET_STAIN_HOLD, free) * vec3f(0.0, 0.5, 1.0));
   textureStore(layer, pixel, paint.knockoutLayer, vec4f(max(was.x, clamp(reserved, 0.0, 1.0)), vec3f(1.0) - (vec3f(1.0) - was.yzw) * keeps));
+}
+fn noneFresh${s}(pixel: vec2u) {
+  for (var l = 0u; l < LAYERS; l++) { if (!isKnockoutLayer(l)) { textureStore(fresh, pixel, l, vec4f(0.0)); } }
 }
 // Water leaves the pigment where it is: moving it is the neighbourhood's (stamp-wet-stages.ts). Every landing first
 // sets the open share to none wherever the paper has settled since it last took water, so whatever reads it after
-// (this landing, the stages, a later landing) reads the paint there as set.
+// (this landing, the stages, a later landing) reads the paint there as set. Every pixel of the box writes \`fresh\`,
+// none where nothing was laid: the flow reads it there too, where water may land without paint.
 fn landDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, reserved: f32, wet: WetLanding) {
   let cover = clamp(coverage + max(rims.x, rims.y), 0.0, 1.0);
   if (paint.knockout != 0u) {
     knockOut${s}(pixel, cover, reserved, wet);
+    noneFresh${s}(pixel);
     return;
   }
   var was: array<vec4f, LAYERS>;
   for (var l = 0u; l < LAYERS; l++) { was[l] = textureLoad(layer, pixel, l); }
   let o = vec2u(paint.open / 4u, paint.open % 4u);
-  // Settled only where every lattice point round it is: a stroke's edge lies between points, and the paint it laid
-  // there is as fresh as its body.
+  // Settled only where the paper had dried out and no water has come since (WetPaper's settled, 0 or 1).
   let settled = wet.settled >= ${f32(1 - 1e-4)};
   let open = select(was[o.x][o.y], 0.0, settled);
   if (cover <= 0.0 || wet.action == WET_WATER) {
+    noneFresh${s}(pixel);
     if (settled) {
       var kept = was[o.x];
       kept[o.y] = open;
@@ -398,7 +406,7 @@ fn landDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: v
     for (var l = 0u; l < LAYERS; l++) { if (!isKnockoutLayer(l)) { had += dot(was[l], pigmentMask(l)); } }
     for (var l = 0u; l < LAYERS; l++) {
       if (isKnockoutLayer(l)) { continue; }
-      now[l] = wetLift(was[l], had, cover, wet.strength, wet.workable, open, ${f32(medium.wetting.rewetting)}, stains[paint.group * LAYERS + l]);
+      now[l] = wetLift(was[l], had, cover, wet.strength, wet.workable, open, ${f32(medium.wetting.rewetting)}, residueShares[paint.group * LAYERS + l], ${stampLiftResidueWgsl(medium.liftResidue)});
       has += dot(now[l], pigmentMask(l));
     }
     now[0].x = under;
@@ -430,7 +438,7 @@ ${dispatched('landDeposit', 'pixel: vec2u, coverage: f32, rims: vec2f, tooth: ve
         if (!writer) throw new Error(`stamp paint: ${deposit.id} isn't in the painting its pigment compositor was made for`);
         return writer;
       },
-      resources: ({ wet }) => [{ buffer: components }, ...(wet ? [{ buffer: stains }] : [])],
+      resources: ({ wet }) => [{ buffer: components }, ...(wet ? [{ buffer: residueShares }] : [])],
     },
     wash: {
       layersOf: (deposit) => paint.groups[groupOf(deposit)].paintLayers,

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import { stampRoundTipStatedProfile } from './stamp-tip-support.ts';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
@@ -11,13 +12,17 @@ import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampPaintEnvironment, StampPaintRecipeDeposit, StampPassageOptions, StampPassageScope } from './stamp-paint-recipe-types.ts';
 import { stampBlot, stampChargedForm, stampDrawnLine, stampGradedWash, stampGuidedMarks, type StampFormFace } from './stamp-technique-catalogue.ts';
 
-const brush = (name: string): StampBrush => ({
-  name, blend: 'normal', accumulation: { kind: 'glaze', build: 0 },
-  tip: { image: { style: 's', pack: 'p', file: 'tip.png' }, roundness: 1, sampling: 'isotropic' },
-  spacing: 0.25, stepping: 'spread', dynamics: stampLinearDynamics({}), scatter: { count: 1, radius: 0, lateral: 0 },
-  rotation: { angle: 0, randomStart: false }, flip: { x: false, y: false }, blur: { amount: 0, jitter: 0 },
-  taper: { start: 0, end: 0, size: 1, opacity: 1, shape: 0, pressure: 0 }, falloff: 0, flow: 1,
-});
+const brush = (name: string): StampBrush => {
+  const unmeasured: StampBrush = {
+    name, blend: 'normal', accumulation: { kind: 'glaze', build: 0 },
+    tip: { image: { style: 's', pack: 'p', file: 'tip.png' }, roundness: 1, sampling: 'isotropic' },
+    spacing: 0.25, stepping: 'spread', dynamics: stampLinearDynamics({}), scatter: { count: 1, radius: 0, lateral: 0 },
+    rotation: { angle: 0, randomStart: false }, flip: { x: false, y: false }, blur: { amount: 0, jitter: 0 },
+    taper: { start: 0, end: 0, size: 1, opacity: 1, shape: 0, pressure: 0 }, falloff: 0, flow: 1,
+    profile: STAMP_BRUSH_UNMEASURED,
+  };
+  return { ...unmeasured, profile: stampRoundTipStatedProfile(unmeasured) };
+};
 const mixture = (pigment: keyof typeof W, amount = 0.3): PaintMaterial => ({ kind: 'mixture', parts: [{ pigment: W[pigment], amount }], strength: 0.6 });
 const WATERCOLOUR: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W } };
 const square = (x0: number, y0: number, x1: number, y1: number) => ({ kind: 'polygon' as const, points: [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }] });

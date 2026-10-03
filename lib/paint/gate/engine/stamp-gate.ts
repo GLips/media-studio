@@ -25,6 +25,7 @@ import { STAMP_GATE_STRIPE_IDS } from '../models/stamp-gate-stripe.ts';
 import { STAMP_GATE_WASH_IDS } from '../models/stamp-gate-washes.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { STAMP_GATE_REGION_IDS } from '../models/stamp-gate-regions.ts';
+import { STAMP_GATE_CONTACT_IDS } from '../models/stamp-gate-contact.ts';
 import { STAMP_GATE_MASK_IDS } from '../models/stamp-gate-masks.ts';
 import { readStampGateBaseline, stampGateFrame, stampGateInputsHash, writeStampGateCandidate, type StampGateOutput } from './stamp-gate-store.ts';
 
@@ -52,10 +53,10 @@ export const stampGateBaselineIds = () => [
   ...STAMP_GATE_PAINTING_IDS.map((id) => `painting/${id}`),
 ];
 
-/** Runs the page: every formula grid, the paintings named, the trace, and the wash, animation, flow, stripe, region, mask, media, three-plane, stage, planes and lens cases named. */
+/** Runs the page: every formula grid, the paintings named, the trace, and the wash, animation, flow, stripe, region, mask, media, three-plane, stage, planes, lens and contact cases named. */
 async function collectStampGate(
   paintings: readonly string[], washes: readonly string[] = [], animations: readonly string[] = [], flows: readonly string[] = [], stripes: readonly string[] = [], regions: readonly string[] = [],
-  masks: readonly string[] = [], media: readonly string[] = [], three: readonly string[] = [], stages: readonly string[] = [],
+  masks: readonly string[] = [], media: readonly string[] = [], three: readonly string[] = [], stages: readonly string[] = [], contacts: readonly string[] = [],
 ) {
   const grids = stampGateFormulaGrids();
   const gates = paintings.map((id) => ({ id, gate: stampGatePainting(id) }));
@@ -83,6 +84,7 @@ async function collectStampGate(
       cases<StampGateWashCheck>('checkStampGateMediaCase', media),
       cases<StampGateWashCheck>('checkStampGateThreeCase', three),
       cases<StampGateWashCheck>('checkStampGateStageCase', stages),
+      cases<StampGateWashCheck>('checkStampGateContactCase', contacts),
     ]);
     return { adapter, grids: grids.map((grid, g) => ({ grid, gpu: Float32Array.from(values[g]) })), frames, trace, washChecks: checks.flat() };
   });
@@ -149,11 +151,11 @@ function checkTrace({ trace }: Collected): StampGateCheck {
   };
 }
 
-/** The whole gate against the baselines in `store`: every formula, twin, property grid, painting, the trace, every wash, animation, flow, stripe, region, mask, media, three-plane, stage, planes and lens case. */
+/** The whole gate against the baselines in `store`: every formula, twin, property grid, painting, the trace, every wash, animation, flow, stripe, region, mask, media, three-plane, stage, planes, lens and contact case. */
 export async function runStampGate(store: string): Promise<StampGateCheck[]> {
   const collected = await collectStampGate(
     STAMP_GATE_PAINTING_IDS, STAMP_GATE_WASH_IDS, STAMP_GATE_ANIMATION_IDS, STAMP_GATE_FLOW_IDS, STAMP_GATE_STRIPE_IDS, STAMP_GATE_REGION_IDS, STAMP_GATE_MASK_IDS, STAMP_GATE_MEDIA_IDS,
-    [...STAMP_GATE_THREE_IDS, STAMP_GATE_THREE_STILL_ID], [...STAMP_GATE_STAGE_IDS, ...STAMP_GATE_PLANES_IDS, STAMP_GATE_TRANSPORT_ID, ...STAMP_GATE_LENS_IDS],
+    [...STAMP_GATE_THREE_IDS, STAMP_GATE_THREE_STILL_ID], [...STAMP_GATE_STAGE_IDS, ...STAMP_GATE_PLANES_IDS, STAMP_GATE_TRANSPORT_ID, ...STAMP_GATE_LENS_IDS], STAMP_GATE_CONTACT_IDS,
   );
   return [
     ...formulaSubjects(collected).map((subject) => checkStampGateSubject(store, subject, collected.adapter)),

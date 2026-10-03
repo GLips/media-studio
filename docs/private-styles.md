@@ -94,6 +94,15 @@ archive's hash, the previews, the zip's `.swatches` palettes, the papers (each w
 every setting that was approximated or dropped (`support`); the import prints a line per brush of those. Copy colours
 into `palette` and a paper into `paper` (`image` for its photograph, `grain` for its tooth) in style.ts.
 
+**Profiles.** Every import measures each brush's profile (vid-119) before it publishes: it paints probe strokes
+with the production renderer in the render browser and reads, by trace, how far past its diameter each side's paint
+visibly reaches (by heading where they differ), and how a raster pass builds up, at diameters from its smallest to
+128 px. The manifest's `profiles` keeps them by brush, keyed by a hash of the brush's settings, its images' bytes and
+the probe protocol (lib/paint/brush/models/stamp-brush-profile.ts), or says why a brush was refused. A brush resolved
+from the pack carries its profile; code that needs one refuses a brush without. `studio brushes import --style
+<name> --pack <pack>`, with no archive, imports the pack again from itself, measuring only the brushes whose key has
+changed. It takes some seconds a brush.
+
 **Judging the brushes.** `npm run brushes:sheet -- --style <name> --pack <pack>` paints each brush with the studio's GPU
 renderer along the stroke Procreate drew its preview with (one stamp, for a brush Procreate previews that way), at the
 diameter whose thickness matches the preview's, and sets it beside that preview. A brush without a preview (every

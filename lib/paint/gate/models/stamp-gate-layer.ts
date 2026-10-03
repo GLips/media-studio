@@ -7,6 +7,9 @@ export type StampGateLayer = { width: number; height: number; layers: number; va
 /** How far a pigment's total may drift from the same wash's without the ops under test: its layer's half-float rounding summed over a few thousand pixels. */
 export const STAMP_GATE_CONSERVED_TOLERANCE = 0.005;
 
+/** How far past a bound a pixel's amount may read: a half-float's step near the small amounts these bounds sit at. */
+export const STAMP_GATE_LAYER_TOLERANCE = 2e-3;
+
 /** `slot`'s amount at each pixel of `layer`. */
 export function stampGateSlotAmounts(layer: StampGateLayer, slot: number): Float32Array {
   const channel = slot + 1, l = channel >> 2, c = channel & 3, pixels = layer.width * layer.height;

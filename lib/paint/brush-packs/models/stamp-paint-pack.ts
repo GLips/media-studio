@@ -10,11 +10,20 @@ import { photoshopProbedRanges, photoshopUnprobedFields } from '#lib/paint/photo
 import {
   normalizePhotoshopBrush, photoshopTipAssetKind, type PhotoshopBrushSource, type PhotoshopTipAsset,
 } from '#lib/paint/photoshop-brushes/models/photoshop-brush.ts';
-import { parsePhotoshopDescriptor } from '#lib/paint/photoshop-brushes/models/photoshop-descriptor.ts';
+import { parsePhotoshopDescriptor, type PhotoshopDescriptor } from '#lib/paint/photoshop-brushes/models/photoshop-descriptor.ts';
 import { photoshopPaintablePreset, readPhotoshopPreset, type PhotoshopPresetTip } from '#lib/paint/photoshop-brushes/models/photoshop-preset.ts';
 import { normalizeProcreateBrush, type ProcreateBrushSource } from '#lib/paint/procreate-brushes/models/procreate-brush.ts';
-import type { StampBrush, StampBrushAsset, StampBrushSupportNote } from '#lib/paint/brush/models/stamp-brush.ts';
+import type {
+  StampBrush, StampBrushAsset, StampBrushEdgeSample, StampBrushMeasuredProfile, StampBrushProfile, StampBrushProfileKey, StampBrushProfileProvenance,
+  StampBrushProfileSample, StampBrushSupportNote, StampTipSupport,
+} from '#lib/paint/brush/models/stamp-brush.ts';
+import {
+  STAMP_BRUSH_PROFILE_HEADINGS, STAMP_BRUSH_PROFILE_PROTOCOL, stampBrushEvenEdge, stampBrushProfileSettingsHash,
+} from '#lib/paint/brush/models/stamp-brush-profile.ts';
 import type { StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
+
+/** Longest side of each stored image, in pixels: tips stamp at a few hundred, grains tile, papers span a frame. */
+export const STAMP_PACK_TIP_MAX = 512, STAMP_PACK_GRAIN_MAX = 1024, STAMP_PACK_PAPER_MAX = 2560;
 
 /**
  * The version of the imported assets this studio reads. An import writes it into each pack's manifest; when the
@@ -47,10 +56,25 @@ export type ProcreatePackBrush = { main: ProcreateBrushSource; dual?: ProcreateB
 export type PhotoshopPackBrush<Preset = PhotoshopBrushSource['preset']> = PhotoshopBrushSource<Preset> & { file: string; group?: string };
 
 /**
+ * A brush's profile as its import measured it, or why it couldn't be measured, kept with what it was measured from so
+ * the next import measures only what changed. One of another protocol is refused with no key, as its key's fields may
+ * differ: the next import measures it.
+ */
+export type StampPaintPackProfile = StampBrushMeasuredProfile | { kind: 'refused'; key: StampBrushProfileKey | null; why: string };
+
+/**
+ * A profile as the manifest stores it: a sample's edge as one offset where every heading and side reads alike, and
+ * so does every refusal it keeps.
+ */
+export type StoredStampPaintPackProfile = { key: StampBrushProfileKey } & (
+  | { kind: 'measured'; provenance: StampBrushProfileProvenance; samples: readonly (Omit<StampBrushProfileSample, 'edge'> & { edge: number | StampBrushEdgeSample })[] }
+  | { kind: 'refused'; why: string }
+);
+
+/**
  * `brushes/<pack>/manifest.json`, as the importer writes it. `files` lists every file it wrote (relative to the
- * pack's folder), which the bundle checks; `source` is the archive it came from; `skipped` says why each brush the
- * archive held wasn't imported. Each brush's source is its app's; previews, palettes and papers come only from a
- * Procreate pack.
+ * pack's folder), which the bundle checks; `skipped` says why each archive brush wasn't imported. Previews, palettes
+ * and papers come only from a Procreate pack. `profiles` is empty in a pack no import has measured.
  */
 export type StampPaintPack = {
   version: typeof STAMP_PAINT_ASSETS_VERSION;
@@ -60,9 +84,19 @@ export type StampPaintPack = {
   previews: Readonly<Record<string, StampPaintPackPreview>>;
   palettes: Readonly<Record<string, readonly StampPaintColor[]>>;
   papers: Readonly<Record<string, StampPaintPackPaper>>;
+  profiles: Readonly<Record<string, StampPaintPackProfile>>;
 } & (
   | { app: 'procreate'; brushes: Readonly<Record<string, ProcreatePackBrush>> }
   | { app: 'photoshop'; brushes: Readonly<Record<string, PhotoshopPackBrush>> }
+);
+
+/**
+ * A manifest as its file holds it, which readStampPaintPack reads: a Photoshop brush's preset as the .abr's
+ * descriptor. An importer writes its assets' part, and the profiles are measured from that.
+ */
+export type StoredStampPaintPack = Omit<StampPaintPack, 'app' | 'brushes' | 'profiles'> & { profiles?: Readonly<Record<string, StoredStampPaintPackProfile>> } & (
+  | { app: 'procreate'; brushes: Readonly<Record<string, ProcreatePackBrush>> }
+  | { app: 'photoshop'; brushes: Readonly<Record<string, PhotoshopPackBrush<PhotoshopDescriptor>>> }
 );
 
 // -- Parsing: each reader takes JSON as parsed and the path it sits at, and throws naming the first thing that's wrong --
@@ -103,6 +137,63 @@ const paper = (value: unknown, at: string): StampPaintPackPaper => {
   const p = record(value, at);
   return { image: text(p.image, `${at}.image`), grain: text(p.grain, `${at}.grain`), color: color(p.color, `${at}.color`) };
 };
+
+// The profile's readers take the object a field sits in, keyed by the fields they read, so only the shared readers
+// above take a bare value.
+const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+const finiteAt = <F extends string>(r: Readonly<Partial<Record<F, unknown>>>, field: F, at: string) => {
+  const value = r[field];
+  return isFiniteNumber(value) ? value : fail(`${at}.${field} isn't a number`);
+};
+const finitesAt = <F extends string>(r: Readonly<Partial<Record<F, unknown>>>, field: F, at: string) => list(r[field], `${at}.${field}`, (v, where) => (isFiniteNumber(v) ? v : fail(`${where} isn't a number`)));
+const headingsAt = <F extends string>(r: Readonly<Partial<Record<F, unknown>>>, field: F, at: string) => {
+  const read = finitesAt(r, field, at);
+  return read.length === STAMP_BRUSH_PROFILE_HEADINGS ? read : fail(`${at}.${field} holds ${read.length} headings, not ${STAMP_BRUSH_PROFILE_HEADINGS}`);
+};
+/** An edge as a profile reads it, each side by heading, from the one offset a manifest keeps where they're alike. */
+const edgeAt = <F extends string>(r: Readonly<Partial<Record<F, unknown>>>, field: F, at: string): StampBrushEdgeSample => {
+  const value = r[field];
+  if (isFiniteNumber(value)) return stampBrushEvenEdge(value);
+  const e = record(value, `${at}.${field}`);
+  return { left: headingsAt(e, 'left', `${at}.${field}`), right: headingsAt(e, 'right', `${at}.${field}`) };
+};
+const tipSupportAt = <F extends string>(r: Readonly<Partial<Record<F, unknown>>>, field: F, at: string): StampTipSupport => {
+  const t = record(r[field], `${at}.${field}`), where = `${at}.${field}`, reach = finitesAt(t, 'reach', where);
+  if (!reach.length) fail(`${where}.reach holds no levels`);
+  return { width: finiteAt(t, 'width', where), height: finiteAt(t, 'height', where), span: finiteAt(t, 'span', where), roundness: finiteAt(t, 'roundness', where), reach };
+};
+const profileSample = (s: Readonly<Partial<Record<'diameter' | 'edge' | 'edgeNoise' | 'support', unknown>>>, at: string): StampBrushProfileSample => {
+  const support = record(s.support, `${at}.support`);
+  return {
+    diameter: finiteAt(s, 'diameter', at), edge: edgeAt(s, 'edge', at), edgeNoise: finiteAt(s, 'edgeNoise', at),
+    support: { main: tipSupportAt(support, 'main', `${at}.support`), dual: support.dual === null ? null : tipSupportAt(support, 'dual', `${at}.support`) },
+  };
+};
+/** A stored profile, typed; one of another protocol refused by its key alone, as the rest may hold other fields. */
+function packProfile(p: Readonly<Partial<Record<'key' | 'kind' | 'why' | 'provenance' | 'samples', unknown>>>, at: string): StampPaintPackProfile {
+  const k = record(p.key, `${at}.key`), protocol = count(k.protocol, `${at}.key.protocol`);
+  if (protocol !== STAMP_BRUSH_PROFILE_PROTOCOL) return { kind: 'refused', key: null, why: `it was measured by protocol ${protocol}, and the studio reads ${STAMP_BRUSH_PROFILE_PROTOCOL}; import its pack again` };
+  const key = { protocol, settings: text(k.settings, `${at}.key.settings`), assets: text(k.assets, `${at}.key.assets`), medium: text(k.medium, `${at}.key.medium`) };
+  const kind = oneOf(p.kind, `${at}.kind`, ['measured', 'refused']);
+  if (kind === 'refused') return { kind, key, why: text(p.why, `${at}.why`) };
+  const v = record(p.provenance, `${at}.provenance`);
+  const provenance = {
+    adapter: text(v.adapter, `${at}.provenance.adapter`), browser: text(v.browser, `${at}.provenance.browser`), renderer: text(v.renderer, `${at}.provenance.renderer`),
+    seeds: list(v.seeds, `${at}.provenance.seeds`, text), measuredAt: text(v.measuredAt, `${at}.provenance.measuredAt`),
+  };
+  const samples = list(p.samples, `${at}.samples`, (sample, where) => profileSample(record(sample, where), where));
+  if (!samples.length || samples.some((sample, i) => i > 0 && sample.diameter <= samples[i - 1].diameter)) fail(`${at}.samples aren't diameters rising from at least one`);
+  return { kind, key, provenance, samples };
+}
+
+/** `edge` as the manifest stores it: one offset where every heading and side reads alike. */
+const storedEdge = ({ left, right }: StampBrushEdgeSample) => ([...left, ...right].every((v) => v === left[0]) ? left[0] : { left, right });
+
+/** `profile` as the manifest stores it (StoredStampPaintPackProfile), from a key that's current. */
+export function storedStampPaintPackProfile(profile: StampPaintPackProfile & { key: StampBrushProfileKey }): StoredStampPaintPackProfile {
+  if (profile.kind === 'refused') return profile;
+  return { ...profile, samples: profile.samples.map((sample) => Object.assign({}, sample, { edge: storedEdge(sample.edge) })) };
+}
 
 function procreateSource(value: unknown, at: string): ProcreateBrushSource {
   const s = record(value, at);
@@ -164,14 +255,39 @@ export function readStampPaintPack(value: unknown): StampPaintPack {
     previews: entries(m.previews, 'previews', preview),
     palettes: entries(m.palettes, 'palettes', (colors, at) => list(colors, at, color)),
     papers: entries(m.papers, 'papers', paper),
+    // A pack no import has measured holds none, and a consumer of a brush's profile refuses it.
+    profiles: m.profiles === undefined ? {} : entries(m.profiles, 'profiles', (v, at) => packProfile(record(v, at), at)),
   } as const;
   const app = oneOf(m.app, 'app', ['procreate', 'photoshop']);
   if (app === 'procreate') return { ...common, app, brushes: entries(m.brushes, 'brushes', procreateBrush) };
   return { ...common, app, brushes: entries(m.brushes, 'brushes', photoshopBrush) };
 }
 
-/** `name` read from its source into a StampBrush, and what didn't carry over; nothing when the pack lacks it. */
-export function resolveStampPaintPackBrush(pack: StampPaintPack, name: string): { brush: StampBrush; support: StampBrushSupportNote[] } | undefined {
+/**
+ * `brush`'s profile as its pack measured it, checked once, here: current for its settings as its source now reads, for
+ * `medium` (the key of the medium its style probes in, stampBrushProbeMediumKey) and for its dual; else refused, why.
+ */
+function stampPackBrushProfile(pack: StampPaintPack, brush: StampBrush, medium: string): StampBrushProfile {
+  const stored = pack.profiles[brush.name];
+  if (!stored) return { kind: 'refused', why: "its pack's import measured no profile for it; import its pack again" };
+  if (stored.kind === 'refused') return { kind: 'refused', why: stored.why };
+  if (stored.key.settings !== stampBrushProfileSettingsHash(brush)) return { kind: 'refused', why: 'it was measured from other settings than its source now reads as; import its pack again' };
+  if (stored.key.medium !== medium) return { kind: 'refused', why: "it was measured on other paper or paint than its style's now; import its pack again" };
+  if (stored.samples.some(({ support }) => !support.dual !== !brush.dual)) return { kind: 'refused', why: "its profile's support doesn't match whether it has a dual; import its pack again" };
+  return stored;
+}
+
+/**
+ * `name` read from its source into a StampBrush, its profile with it as its pack measured it in `medium`'s key
+ * (stampPackBrushProfile), and what didn't carry over; nothing when the pack lacks it.
+ */
+export function resolveStampPaintPackBrush(pack: StampPaintPack, name: string, medium: string): { brush: StampBrush; support: StampBrushSupportNote[] } | undefined {
+  const read = readStampPaintPackBrushSource(pack, name);
+  return read && { ...read, brush: { ...read.brush, profile: stampPackBrushProfile(pack, read.brush, medium) } };
+}
+
+/** `name` read from its source alone, as its profile is measured from; nothing when the pack lacks it. */
+export function readStampPaintPackBrushSource(pack: StampPaintPack, name: string): { brush: StampBrush; support: StampBrushSupportNote[] } | undefined {
   if (pack.app === 'procreate') {
     const source = pack.brushes[name];
     if (!source) return undefined;
@@ -198,9 +314,17 @@ function resolveEveryStampPaintPackBrush(pack: StampPaintPack): [string, { brush
   });
 }
 
-/** Every brush of `pack`, read from its source, by name. */
-export const resolveStampPaintPackBrushes = (pack: StampPaintPack): Record<string, StampBrush> =>
+/** Each pack's archive sha256 by its folder: what fixes its images' bytes (stampBrushProbeMediumKey). */
+export const stampPaintPackArchives = (packs: Readonly<Record<string, StampPaintPack>>): Record<string, string> =>
+  Object.fromEntries(Object.entries(packs).map(([pack, { source }]) => [pack, source.sha256]));
+
+/** Every brush of `pack` read from its source alone, by name, unmeasured: for a reader of its settings, not its profile. */
+export const readStampPaintPackBrushSources = (pack: StampPaintPack): Record<string, StampBrush> =>
   Object.fromEntries(resolveEveryStampPaintPackBrush(pack).map(([name, { brush }]) => [name, brush]));
+
+/** Every brush of `pack`, read from its source, by name, each with its profile as resolveStampPaintPackBrush gives it. */
+export const resolveStampPaintPackBrushes = (pack: StampPaintPack, medium: string): Record<string, StampBrush> =>
+  Object.fromEntries(resolveEveryStampPaintPackBrush(pack).map(([name, { brush }]) => [name, { ...brush, profile: stampPackBrushProfile(pack, brush, medium) }]));
 
 /**
  * What didn't carry over, brush by brush: the normalizer's notes, a Photoshop brush's settings past what the probes

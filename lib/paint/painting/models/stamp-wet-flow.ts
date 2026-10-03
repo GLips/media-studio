@@ -19,29 +19,21 @@ export const STAMP_LIFT_RUN_BACK_MOST_SIGMA = 16;
 
 /**
  * How far a deposit's paint moves on flooded paper, as a diffusion's sigma in px: its medium's spread of its diameter,
- * reaching about 2 sigma; a lift's run-back a third of that spread, at most STAMP_LIFT_RUN_BACK_MOST_SIGMA.
+ * reaching about 2 sigma; a lift's run-back a third of that spread, at most STAMP_LIFT_RUN_BACK_MOST_SIGMA. The most it
+ * moves: each pair goes by its landing's local scale (its `scale` grid), a flood's narrow parts less.
  */
 export function stampWetFlowSigma(deposit: CompiledStampDeposit, medium: PaintMedium): number {
   const { spread } = medium.wetting;
   return deposit.action.kind === 'lift' ? Math.min(STAMP_LIFT_RUN_BACK_MOST_SIGMA, (spread * deposit.diameter) / 3) : (spread * deposit.diameter) / 2;
 }
 
-/**
- * Where a deposit's water went: how wet the paper is as paint moves over it, as it was, or where the deposit's brush
- * touched (the coverage it laid), as wet as its water. The one definition every wet stage reads.
- */
-export const STAMP_WET_FLOW_WETNESS_WGSL = /* wgsl */ `
-fn flowWetness(before: f32, water: f32, coverage: f32) -> f32 {
-  return max(before, water * clamp(2.0 * coverage, 0.0, 1.0));
-}`;
-
 /** The flow's laws, per pixel pair and pass; the stage reads potentials and the transport's ways and runs them. */
 export const STAMP_WET_FLOW_WGSL = /* wgsl */ `${STAMP_WET_LIFT_WGSL}
 ${STAMP_WET_TRANSPORT_WGSL}
-${STAMP_WET_FLOW_WETNESS_WGSL}
-// How much of the paint already there the deposit's water moves: what never set (\`open\`, as workable), where it touched.
-fn flowStirred(workable: f32, open: f32, coverage: f32) -> f32 {
-  return liftFree(workable, open) * clamp(2.0 * coverage, 0.0, 1.0);
+// How much of the paint already there the deposit's water moves: what never set (\`open\`, as workable), as far as
+// its tool touched (its landing's contact).
+fn flowStirred(workable: f32, open: f32, contact: f32) -> f32 {
+  return liftFree(workable, open) * clamp(contact, 0.0, 1.0);
 }
 // How much of the paint round a lift runs back into it: as loose as the lift would find it (liftLoose).
 fn flowLiftStirred(workable: f32, open: f32, rewetting: f32) -> f32 {

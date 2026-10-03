@@ -5,14 +5,12 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { withBrowserModulePage } from '#lib/platform/browser/engine/browser-module-page.ts';
-import { resolveStampPaintStyle, type StampPaintStyle } from '#lib/paint/style/models/style.ts';
-import { stampPaintPackKey } from '#lib/paint/brush-packs/models/stamp-paint-pack-urls.ts';
 import { wetPassageSheetHtml, type WetPassageSheetColumn, type WetPassageSheetNotes } from '../models/wet-passage-sheet-html.ts';
 import type { WetAnimationPainted } from '../models/wet-animations.ts';
 import type { WetPassageBrushes, WetPassagePainted, WetPassageSheetMedium } from '../models/wet-passages.ts';
-import { readServedStampPaintPack } from '#lib/paint/brush-packs/engine/stamp-paint-pack-files.ts';
+import { readWorkspacePigmentStyle } from './workspace-pigment-style.ts';
 
 const SHEET_PAGE = fileURLToPath(new URL('../studio/wet-passage-sheet-page.ts', import.meta.url));
 
@@ -36,24 +34,8 @@ function isWetPassageSheetNotes(value: unknown): value is WetPassageSheetNotes {
 
 /** A medium's style, read from `stylesDir`, as the page paints with it. */
 async function wetPassageMedium(stylesDir: string, { style: name, brushes: roles }: (typeof WET_PASSAGE_MEDIA)[number]): Promise<WetPassageSheetMedium> {
-  // SAFETY: a workspace style's style.ts default-exports a StampPaintStyle (`satisfies StampPaintStyle`), which the workspace typecheck holds.
-  const style = (await import(pathToFileURL(join(stylesDir, name, 'style.ts')).href) as { default: StampPaintStyle }).default;
-  const packs = Object.keys(style.packs).map((pack) => {
-    const { manifest, url } = readServedStampPaintPack(stylesDir, name, pack);
-    return { pack, manifest, url };
-  });
-  const resolved = resolveStampPaintStyle(name, style, Object.fromEntries(packs.map(({ pack, manifest }) => [pack, manifest])));
-  if (resolved.mixing.kind !== 'pigment') throw new Error(`wet passages: ${name} paints in flat colour, and a wash is pigment's`);
-  const brushOf = (role: string) => {
-    const brush = resolved.brushes[role];
-    if (!brush) throw new Error(`wet passages: ${name} has no brush ${role}`);
-    return brush;
-  };
-  return {
-    brushes: { fill: brushOf(roles.fill), drop: brushOf(roles.drop), water: brushOf(roles.water), lift: brushOf(roles.lift) },
-    paper: resolved.paper, mixing: resolved.mixing,
-    packUrls: Object.fromEntries(packs.map(({ pack, url }) => [stampPaintPackKey(name, pack), url])),
-  };
+  const { brushOf, paper, mixing, packUrls } = await readWorkspacePigmentStyle(stylesDir, name, 'wet passages');
+  return { brushes: { fill: brushOf(roles.fill), drop: brushOf(roles.drop), water: brushOf(roles.water), lift: brushOf(roles.lift) }, paper, mixing, packUrls };
 }
 
 /**

@@ -213,6 +213,11 @@ const partsPaint = (parts: Parts): PaintMaterial => ({
  * coverage a little different by the pigments' granulation, and the rim and bloom may carry that, not amplify it.
  */
 export const STAMP_GATE_EFFECTS_SUNSET_TOLERANCE = 0.01;
+/**
+ * The least the effects must change the sky's coverage somewhere, so holding within the tolerance means something: a
+ * few times it. A flood's edge is hard on dry paper already, so its rim hardens a narrow fringe.
+ */
+const STAMP_GATE_EFFECTS_SUNSET_LEAST = 3 * STAMP_GATE_EFFECTS_SUNSET_TOLERANCE;
 
 /**
  * A sky puddled on dry paper, so it rims, its sun's glow stroked in and water dropped in at damp, a bloom, at an hour:
@@ -246,8 +251,8 @@ export function checkStampGateEffectsSunset(hours: readonly { on: ArrayLike<numb
   return {
     id: 'animation/effects-sunset: blooms and rims hold their shape as the colour changes',
     // An effect that changed no coverage would hold its shape trivially.
-    passed: peak > 0.05 && worst.every((max) => max <= STAMP_GATE_EFFECTS_SUNSET_TOLERANCE),
-    detail: `the effects change coverage by up to ${peak.toFixed(3)} (0.05 or less fails); against ${STAMP_GATE_EFFECTS_SUNSET_HOURS[0].hour}, ${worst.map((max, k) => `${STAMP_GATE_EFFECTS_SUNSET_HOURS[k + 1].hour} differs by ${max.toFixed(4)}`).join(', ')} (past ${STAMP_GATE_EFFECTS_SUNSET_TOLERANCE} fails)`,
+    passed: peak > STAMP_GATE_EFFECTS_SUNSET_LEAST && worst.every((max) => max <= STAMP_GATE_EFFECTS_SUNSET_TOLERANCE),
+    detail: `the effects change coverage by up to ${peak.toFixed(3)} (${STAMP_GATE_EFFECTS_SUNSET_LEAST} or less fails); against ${STAMP_GATE_EFFECTS_SUNSET_HOURS[0].hour}, ${worst.map((max, k) => `${STAMP_GATE_EFFECTS_SUNSET_HOURS[k + 1].hour} differs by ${max.toFixed(4)}`).join(', ')} (past ${STAMP_GATE_EFFECTS_SUNSET_TOLERANCE} fails)`,
   };
 }
 

@@ -64,7 +64,10 @@ export const stampWetTransportSlotBinding = (buffer: GPUBuffer, slot: number): G
 const PRELUDE = /* wgsl */ `
 ${TRANSPORT_PASS.wgsl}
 @group(0) @binding(0) var<uniform> t: TransportPass;
+@group(0) @binding(4) var<storage, read> gate: array<u32, 1>;
 fn inBox(q: vec2i) -> bool { return all(q >= vec2i(0)) && all(q < vec2i(t.extent)); }
+// The invocation's texel, or none past the box or with the gate shut.
+fn passTexel(id: vec3u) -> bool { return gate[0] != 0u && all(id.xy < t.extent); }
 `;
 
 // Each pixel's way a stride on: from the last stride's way from it and from the pixel that far short of this stride's
@@ -77,7 +80,7 @@ const WAYS_WGSL = /* wgsl */ `${PRELUDE}
 fn paperAt(q: vec2i) -> vec2f { return select(vec2f(0.0), textureLoad(paper, q, 0).xy, inBox(q)); }
 fn lastPathAt(q: vec2i) -> vec4f { return select(vec4f(0.0), textureLoad(lastPath, q, 0), inBox(q)); }
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
-  if (any(id.xy >= t.extent)) { return; }
+  if (!passTexel(id)) { return; }
   let q = vec2i(id.xy);
   var way: vec4f;
   if (t.lastStride == 0u) {
@@ -105,7 +108,7 @@ ${STAMP_WET_TRANSPORT_WGSL}
 @group(0) @binding(3) var spreadOut: texture_storage_2d_array<rgba32float, write>;
 fn pathAt(q: vec2i) -> vec4f { return select(vec4f(0.0), textureLoad(path, q, 0), inBox(q)); }
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
-  if (any(id.xy >= t.extent)) { return; }
+  if (!passTexel(id)) { return; }
   let q = vec2i(id.xy);
   let along = select(vec2i(0, 1), vec2i(1, 0), t.axis == 0u);
   let partners = array<vec2i, 2>(q - along * i32(t.stride), q + along * i32(t.stride));
@@ -165,10 +168,32 @@ export type StampWetSpread = { sigma: number; order: 'forward' | 'transposed'; l
 export type StampWetTransportStep = { pipeline: GPUComputePipeline; bindGroup: GPUBindGroup };
 
 /**
- * A stage's spreads, their uniform slots one after another in one buffer of their own (a buffer per plan, as two
- * plans encoded in one frame each write theirs before it's submitted).
+ * A gate: one u32 in a storage buffer, which a stage's sizing pass writes on the GPU. Every pass bound to it returns
+ * at once while it's 0, so a bloom or rim the paper doesn't call for costs near nothing.
  */
-export function stampWetSpreads(device: StampPaintDevice, spreads: readonly StampWetSpread[]) {
+export type StampWetTransportGate = GPUBuffer;
+
+/** A gate for whether a stage's passes run, shut until its sizing pass opens it. */
+export const stampWetTransportGate = (device: StampPaintDevice): StampWetTransportGate => device.createBuffer({ size: 4, usage: GPUBufferUsage.STORAGE });
+
+const opened = new WeakMap<StampPaintDevice, StampWetTransportGate>();
+/** A gate always open on `device`, for a stage whose passes always run. */
+export function stampWetTransportOpenGate(device: StampPaintDevice): StampWetTransportGate {
+  let gate = opened.get(device);
+  if (!gate) {
+    gate = device.createBuffer({ size: 4, usage: GPUBufferUsage.STORAGE, mappedAtCreation: true });
+    new Uint32Array(gate.getMappedRange())[0] = 1;
+    gate.unmap();
+    opened.set(device, gate);
+  }
+  return gate;
+}
+
+/**
+ * A stage's spreads, their uniform slots one after another in one buffer of their own (a buffer per plan, as two
+ * plans encoded in one frame each write theirs before it's submitted), each pass behind `gate`.
+ */
+export function stampWetSpreads(device: StampPaintDevice, spreads: readonly StampWetSpread[], gate: StampWetTransportGate) {
   const pipelines = stampWetTransportPipelines(device);
   const passes = spreads.map((spread) => stampWetSpreadPasses(spread.sigma, spread.order));
   const firsts = passes.map((_, s) => passes.slice(0, s).reduce((sum, list) => sum + list.length, 0));
@@ -188,7 +213,7 @@ export function stampWetSpreads(device: StampPaintDevice, spreads: readonly Stam
       return passes[s].map((pass, k) => {
         const uniform = stampWetTransportSlotBinding(uniforms, firsts[s] + k);
         const step = (pipeline: GPUComputePipeline, resources: GPUBindingResource[]): StampWetTransportStep => ({
-          pipeline, bindGroup: device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [uniform, ...resources].map((resource, binding) => ({ binding, resource })) }),
+          pipeline, bindGroup: device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [uniform, ...resources, { buffer: gate }].map((resource, binding) => ({ binding, resource })) }),
         });
         if (pass.kind === 'ways') {
           // Built from the last level's, the two path textures taking turns; straight from the paper, either serves.
@@ -205,7 +230,10 @@ export function stampWetSpreads(device: StampPaintDevice, spreads: readonly Stam
   };
 }
 
-/** Runs `steps` over a box `w` × `h`, a compute pass each. */
+/**
+ * Runs `steps` over a box `w` × `h`, a compute pass each. Gated passes are dispatched whole rather than indirectly:
+ * indirect dispatches whose counts the GPU wrote cost a first bloom several hundred ms on Metal.
+ */
 export function encodeStampWetTransportSteps(encoder: GPUCommandEncoder, steps: readonly StampWetTransportStep[], { w, h }: { w: number; h: number }) {
   for (const { pipeline, bindGroup } of steps) {
     const compute = encoder.beginComputePass();

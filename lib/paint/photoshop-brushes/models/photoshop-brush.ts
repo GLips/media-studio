@@ -21,7 +21,7 @@ import {
 } from './photoshop-preset.ts';
 import { PHOTOSHOP_READING } from './photoshop-reading.ts';
 import {
-  stampDynamicsOf, type StampBlend, type StampBrush, type StampBrushAsset, type StampBrushColorDynamics, type StampBrushLayer, type StampBrushSupportNote, type StampLayerTip,
+  STAMP_BRUSH_UNMEASURED, stampDynamicsOf, type StampBlend, type StampBrush, type StampBrushAsset, type StampBrushColorDynamics, type StampBrushLayer, type StampBrushSupportNote, type StampLayerTip,
   type StampDualBlend, type StampGrainBlend, type StampScaleResponse,
 } from '#lib/paint/brush/models/stamp-brush.ts';
 
@@ -499,7 +499,7 @@ export function normalizePhotoshopBrush(
   const note: Note = (level, setting, detail) => support.push({ level, setting, detail });
   const blend = readTool(source.preset, note);
   const color = readColorDynamics(source.preset.color, note, reading);
-  const brush: StampBrush = { name, blend, ...(color && { color }), ...readMainLayer(source, note, reading, context) };
+  const brush: StampBrush = { name, blend, ...(color && { color }), ...readMainLayer(source, note, reading, context), profile: STAMP_BRUSH_UNMEASURED };
   const { dual } = source.preset;
   if (dual) {
     const { tip } = dual;

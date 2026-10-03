@@ -11,14 +11,16 @@ import { pathToFileURL } from 'node:url';
 import { STUDIO_STYLES_DIR } from '#lib/platform/project/engine/studio-project.ts';
 import { readImportedStampPaintPack } from '#lib/paint/brush-packs/engine/stamp-paint-pack-files.ts';
 import { STAMP_PAINT_PACK_MANIFEST } from '#lib/paint/brush-packs/models/stamp-paint-pack.ts';
-import type { BundledStampPaintStyles, StampPaintStyle } from '../models/style.ts';
+import type { BundledStampPaintStyles } from '../models/style.ts';
+import { importStampPaintStyle } from './style-probe-medium.ts';
 
 /** Every workspace style, as a bundle would serve it, with every file its imported packs list. */
 async function readNodeStampPaintStyles(stylesDir: string): Promise<BundledStampPaintStyles> {
-  const names = existsSync(stylesDir) ? readdirSync(stylesDir).filter((name) => existsSync(join(stylesDir, name, 'style.ts'))) : [];
-  return Object.fromEntries(await Promise.all(names.map(async (name) => {
+  const names = existsSync(stylesDir) ? readdirSync(stylesDir) : [];
+  return Object.fromEntries((await Promise.all(names.map(async (name) => {
+    const style = await importStampPaintStyle(stylesDir, name);
+    if (!style) return [];
     const dir = join(stylesDir, name);
-    const style = (await import(pathToFileURL(join(dir, 'style.ts')).href) as { default: StampPaintStyle }).default;
     const imported = Object.keys(style.packs).flatMap((pack) => {
       const read = readImportedStampPaintPack(join(dir, 'brushes', pack));
       return read ? [{ pack, ...read }] : [];
@@ -27,8 +29,8 @@ async function readNodeStampPaintStyles(stylesDir: string): Promise<BundledStamp
     const manifests = new Map(imported.map(({ pack, dir: generation }) => [pack, readFileSync(join(generation, STAMP_PAINT_PACK_MANIFEST), 'utf8')]));
     const images = Object.fromEntries(imported.flatMap(({ pack, dir: generation, manifest }) =>
       manifest.files.map((file) => [`${pack}/${file}`, pathToFileURL(join(generation, file)).href])));
-    return [name, { style, manifests: Object.fromEntries([...manifests].map(([pack, json]) => [pack, JSON.parse(json)])), images }];
-  })));
+    return [[name, { style, manifests: Object.fromEntries([...manifests].map(([pack, json]) => [pack, JSON.parse(json)])), images }] as const];
+  }))).flat());
 }
 
 export default await readNodeStampPaintStyles(STUDIO_STYLES_DIR);

@@ -15,7 +15,7 @@ import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { compileStampPaintRecipe, stampPassDeposits, type CompiledStampDeposit, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import type { PlacedStamp } from '#lib/paint/brush/models/stamp-placement.ts';
-import { resolveStampPaintPackBrushes, type StampPaintPack } from '#lib/paint/brush-packs/models/stamp-paint-pack.ts';
+import { readStampPaintPackBrushSources, type StampPaintPack } from '#lib/paint/brush-packs/models/stamp-paint-pack.ts';
 import { readImportedStampPaintPack } from '#lib/paint/brush-packs/engine/stamp-paint-pack-files.ts';
 import { brushFidelityIdentityDifferences, brushFidelityOutcomeScore, type BrushFidelityReport } from '../models/brush-fidelity-report.ts';
 import { brushFidelityDiameter, brushFidelityPainting } from '../models/brush-fidelity-target.ts';
@@ -133,13 +133,13 @@ export type StampPaintBrushSnapshot = Record<string, Record<string, StampBrush>>
 
 /** Every imported pack's brushes as their sources read today, to diff against a later reading. */
 export const snapshotStampPaintBrushes = (stylesDir: string): StampPaintBrushSnapshot =>
-  Object.fromEntries(importedStampPaintPacks(stylesDir).map(({ id, pack }) => [id, resolveStampPaintPackBrushes(pack)]));
+  Object.fromEntries(importedStampPaintPacks(stylesDir).map(({ id, pack }) => [id, readStampPaintPackBrushSources(pack)]));
 
 /** Every brush of every imported pack of every style in `stylesDir`, printed one at a time: all at once is gigabytes. */
 export function* fingerprintStampPaintPacks(stylesDir: string): Generator<StampPaintBrushPrint> {
   for (const { id, dir, pack: manifest } of importedStampPaintPacks(stylesDir)) {
     const targets = readBrushFidelityTargets(dir, manifest), asTargeted = readBrushFidelityBrushes(manifest, targets);
-    for (const [name, brush] of Object.entries(resolveStampPaintPackBrushes(manifest))) {
+    for (const [name, brush] of Object.entries(readStampPaintPackBrushSources(manifest))) {
       // A preview's brush is painted at the diameter its fit starts from, before the GPU fits it; stamps scale with it.
       const sheet = brushFidelityPainting(asTargeted[name], targets[name], brushFidelityDiameter(targets[name]));
       yield { pack: id, brush: name, sheet: printStampPainting(sheet), probe: printStampPainting(probePainting(brush)) };

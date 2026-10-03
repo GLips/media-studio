@@ -1,5 +1,5 @@
-// stamp-mark-load.ts: what loading a painting onto the GPU works out from a deposit's placed marks (floats, reach,
-// plan, bins), once a set of marks: a recompiled painting shares its unchanged deposits' (stamp-deposit-placement.ts).
+// stamp-mark-load.ts: what loading a painting onto the GPU works out from a deposit's placed marks (floats, plan,
+// bins), once a set of marks: a recompiled painting shares its unchanged deposits' (stamp-deposit-placement.ts).
 //
 // Remembered weakly against the marks, so given up with them: right as FrozenStampMarks never change, and each key
 // holds all else its value reads. What's returned is shared by every renderer: copy it, never write it.
@@ -8,6 +8,8 @@ import { stampAccumulationPlan, type StampAccumulationPlan } from './stamp-depos
 import type { StampAccumulation } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { FrozenStampMarks } from '#lib/paint/brush/models/stamp-placement.ts';
 import { stampGrainDepthBy, type StampGrainDepthSource } from './stamp-pigment-paint.ts';
+import { stampMarksTipHull, stampPlacedSupportInto, type StampTipFootprint } from './stamp-tip-support.ts';
+import { rememberedFor, rememberedOnce } from './stamp-remembered.ts';
 
 /** A deposit's marks, or its dual's, as compiled: the key everything here is remembered by. */
 type StampMarks = FrozenStampMarks;
@@ -21,22 +23,6 @@ export const STAMP_FLOATS = 12;
 export const TINT_FLOATS = 4;
 /** Pixels a side of the tiles an `ordered` layer's stamps are binned by (stampMarksOrderedBins). */
 export const STAMP_ORDERED_TILE = 32;
-
-/** `make()` for `marks`, worked out the first time it's asked for. */
-function rememberedOnce<V>(cache: WeakMap<StampMarks, V>, marks: StampMarks, make: () => V): V {
-  let value = cache.get(marks);
-  if (value === undefined) cache.set(marks, (value = make()));
-  return value;
-}
-
-/** `make()` for `marks` under `key`, worked out the first time it's asked for. */
-function rememberedFor<K, V>(cache: WeakMap<StampMarks, Map<K, V>>, marks: StampMarks, key: K, make: () => V): V {
-  let byKey = cache.get(marks);
-  if (!byKey) cache.set(marks, (byKey = new Map<K, V>()));
-  let value = byKey.get(key);
-  if (value === undefined) byKey.set(key, (value = make()));
-  return value;
-}
 
 const instanceFloats = new WeakMap<StampMarks, Map<StampGrainDepthSource, Float32Array>>();
 /** `marks` as instance floats (STAMP_FLOATS each), their grain depth by pressure from `source` (stampGrainDepthSourceIn). */
@@ -60,49 +46,35 @@ const plans = new WeakMap<StampMarks, Map<StampAccumulation['kind'], StampAccumu
 /** How the GPU lays `marks` under `accumulation` (stampAccumulationPlan), which reads only its kind. */
 export const stampMarksPlan = (marks: StampMarks, accumulation: StampAccumulation) => rememberedFor(plans, marks, accumulation.kind, () => stampAccumulationPlan(accumulation, marks));
 
-/** What picks the coarsest tip level `marks` read: their smallest diameter, most blur and least roundness. */
-export type StampMarksExtremes = { smallest: number; blurred: number; roundest: number };
-const extremes = new WeakMap<StampMarks, StampMarksExtremes>();
-/** `marks`' extremes; with none, Infinity, 0 and 1. */
-export const stampMarksExtremes = (marks: StampMarks): StampMarksExtremes => rememberedOnce(extremes, marks, () => ({
-  smallest: marks.reduce((least, s) => Math.min(least, s.diameter), Infinity),
-  blurred: marks.reduce((most, s) => Math.max(most, s.blur), 0),
-  roundest: marks.reduce((least, s) => Math.min(least, s.roundness), 1),
-}));
-
-const reaches = new WeakMap<StampMarks, Map<number, readonly [number, number, number, number]>>();
-/**
- * Grows `into` (x0, y0, x1, y1) by where `marks` reach at `span`. A stamp's corners reach 0.75 of its tip image's
- * longer side (`span` diameters) from its centre, however it's turned.
- */
-export function stampMarksReach(marks: StampMarks, span: number, into: number[]) {
-  const [x0, y0, x1, y1] = rememberedFor(reaches, marks, span, () => {
-    let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
-    for (const s of marks) {
-      const r = s.diameter * span * 0.75;
-      a = Math.min(a, s.x - r); b = Math.min(b, s.y - r); c = Math.max(c, s.x + r); d = Math.max(d, s.y + r);
-    }
-    return [a, b, c, d] as const;
-  });
-  into[0] = Math.min(into[0], x0); into[1] = Math.min(into[1], y0); into[2] = Math.max(into[2], x1); into[3] = Math.max(into[3], y1);
-}
-
-const orderedBins = new WeakMap<StampMarks, Map<string, Uint32Array>>();
+const orderedBins = new WeakMap<StampMarks, Map<StampTipFootprint, Map<string, Uint32Array>>>();
 /**
  * An `ordered` layer's bins, as if at the bin buffer's start: per tile (STAMP_ORDERED_TILE texels, row by row, a
  * stamp's texel being its point plus the stage's `margin`) the entry its stamps start at, one past the last tile's,
  * then each tile's stamps reaching into it, by index in order. Laid further in, the table moves with it
  * (stampBinsAppended).
  */
-export const stampMarksOrderedBins = (marks: StampMarks, span: number, tilesX: number, tilesY: number, margin: number) => rememberedFor(orderedBins, marks, `${span} ${tilesX} ${tilesY} ${margin}`, () => {
-  const tiles = Array.from({ length: tilesX * tilesY }, (): number[] => []);
+export function stampMarksOrderedBins(marks: StampMarks, shape: StampTipFootprint, tilesX: number, tilesY: number, margin: number): Uint32Array {
+  const byTiles = rememberedFor(orderedBins, marks, shape, () => new Map<string, Uint32Array>());
+  return rememberedOnce(byTiles, `${tilesX} ${tilesY} ${margin}`, () => binsOf(marks, shape, tilesX, tilesY, margin));
+}
+
+/** Calls `visit` with each of `marks`' tiles its support reaches (stamp `i` in tile `t`), stamp by stamp, in order. */
+function eachStampTile(marks: StampMarks, shape: StampTipFootprint, tilesX: number, tilesY: number, margin: number, visit: (i: number, t: number) => void) {
   const tileOf = (v: number, count: number) => Math.min(count - 1, Math.max(0, Math.floor((v + margin) / STAMP_ORDERED_TILE)));
+  const hull = stampMarksTipHull(shape, marks);
   marks.forEach((s, i) => {
-    const r = s.diameter * span * 0.75;
-    for (let ty = tileOf(s.y - r, tilesY); ty <= tileOf(s.y + r, tilesY); ty++) {
-      for (let tx = tileOf(s.x - r, tilesX); tx <= tileOf(s.x + r, tilesX); tx++) tiles[ty * tilesX + tx].push(i);
+    const box = [Infinity, Infinity, -Infinity, -Infinity];
+    stampPlacedSupportInto(shape, hull, s, box);
+    for (let ty = tileOf(box[1], tilesY); ty <= tileOf(box[3], tilesY); ty++) {
+      for (let tx = tileOf(box[0], tilesX); tx <= tileOf(box[2], tilesX); tx++) visit(i, ty * tilesX + tx);
     }
   });
+}
+
+/** `marks`' bins as stampMarksOrderedBins lays them, each stamp in every tile its support reaches. */
+function binsOf(marks: StampMarks, shape: StampTipFootprint, tilesX: number, tilesY: number, margin: number): Uint32Array {
+  const tiles = Array.from({ length: tilesX * tilesY }, (): number[] => []);
+  eachStampTile(marks, shape, tilesX, tilesY, margin, (i, t) => tiles[t].push(i));
   const table: number[] = [];
   let entry = tiles.length + 1;
   for (const tile of tiles) {
@@ -111,7 +83,14 @@ export const stampMarksOrderedBins = (marks: StampMarks, span: number, tilesX: n
   }
   table.push(entry);
   return Uint32Array.from([...table, ...tiles.flat()]);
-});
+}
+
+/** How long `marks`' bins are (stampMarksOrderedBins), counted without laying them: what a painting's load is weighed by. */
+export function stampMarksOrderedBinsLength(marks: StampMarks, shape: StampTipFootprint, tilesX: number, tilesY: number, margin: number): number {
+  let entries = tilesX * tilesY + 1;
+  eachStampTile(marks, shape, tilesX, tilesY, margin, () => entries++);
+  return entries;
+}
 
 /** Appends `bins` (stampMarksOrderedBins) to `into`, its table moved to where it lands; returns where. */
 export function stampBinsAppended(bins: Uint32Array, into: number[]): number {

@@ -1,20 +1,19 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
-import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampPaintFieldAt, type StampPaintField } from './stamp-paint-field.ts';
 import { compileStampPaintRecipe, stampPassDeposits, type CompiledStampDeposit } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
-import { compileStampWetness, stampWetGrid } from './stamp-wetness.ts';
-import { stampGridAt } from './stamp-region.ts';
+import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
+import { stampRoundTipStatedProfile } from './stamp-tip-support.ts';
 import type { StampPaintEnvironment } from './stamp-paint-recipe-types.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
-import { stampStage } from './stamp-stage.ts';
 
 const WET: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: WATERCOLOUR_PIGMENTS } };
 
 const brush: StampBrush = {
+  profile: STAMP_BRUSH_UNMEASURED,
   name: 'Round',
   blend: 'normal',
   accumulation: { kind: 'glaze', build: 0 },
@@ -30,6 +29,7 @@ const brush: StampBrush = {
   falloff: 0,
   flow: 1,
 };
+brush.profile = stampRoundTipStatedProfile(brush);
 const blue: PaintMaterial = { kind: 'color', color: '#336699' }, rose: PaintMaterial = { kind: 'color', color: '#cc6688' };
 const path = [{ x: 20, y: 100 }, { x: 380, y: 120 }];
 
@@ -84,10 +84,8 @@ test("noise spreads smoothly over nearly all of its range, in a fill's load and 
   }
   assert.ok(Math.min(...values) < 0.22 && Math.max(...values) > 0.98, `range ${Math.min(...values)}..${Math.max(...values)}`);
   assert.ok(steepest < 0.1, `a pixel's step ${steepest}`);
-  // The paper lies as wet as the field before any paint lands, and each stroke stamp's opacity follows its load.
+  // Each stroke stamp's opacity follows its load.
   const [sky] = stampPassDeposits(pass);
-  const before = compileStampWetness(painting, () => PAINT_MEDIA.watercolour, stampStage({ width: 400, height: 300 })).landings.get(sky)!.before;
-  for (const [x, y] of [[96, 104], [200, 152], [304, 200]]) assert.ok(Math.abs(stampGridAt(stampWetGrid(before, 'wetness'), x, y) - stampPaintFieldAt(prepared, x, y)) < 1e-6);
   const opacities = sky.stamps.map(({ opacity }) => opacity);
   assert.ok(Math.min(...opacities) < 0.1 && Math.max(...opacities) > 0.9, `stamp opacities ${Math.min(...opacities)}..${Math.max(...opacities)}`);
 });

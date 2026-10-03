@@ -16,14 +16,12 @@ import { photoshopTagged, type PhotoshopDescriptor, type PhotoshopValue } from '
 import { drawPhotoshopErodibleTip } from '#lib/paint/photoshop-brushes/models/photoshop-erodible.ts';
 import { readPhotoshopPreset, type PhotoshopKnownTip } from '#lib/paint/photoshop-brushes/models/photoshop-preset.ts';
 import type { StampBrushAsset, StampBrushSupportNote } from '#lib/paint/brush/models/stamp-brush.ts';
-import { readStampPaintPack, STAMP_PAINT_ASSETS_VERSION, STAMP_PAINT_PACK_MANIFEST, type PhotoshopPackBrush, type StampPaintPack } from '../models/stamp-paint-pack.ts';
+import { STAMP_PACK_GRAIN_MAX, STAMP_PACK_TIP_MAX, STAMP_PAINT_ASSETS_VERSION, type PhotoshopPackBrush, type StoredStampPaintPack } from '../models/stamp-paint-pack.ts';
 import { displayName, readPhotoshopAbr, readPhotoshopTpl, type PhotoshopBrushFile } from '#lib/paint/photoshop-brushes/engine/photoshop-abr.ts';
 import {
-  replaceStampPaintPack, sha256OfFile, stampPackSlug, STAMP_PACK_GRAIN_MAX, STAMP_PACK_TIP_MAX, writeStampPackGray, type ImportStampPaintPackOptions,
+  sha256OfFile, stampPackSlug, writeStampPackGray, type ImportStampPaintPackOptions,
 } from './stamp-paint-pack-files.ts';
 import { openZipFile } from '#lib/platform/zip/engine/zip-archive.ts';
-
-export type ImportedPhotoshopPack = { dir: string; manifest: StampPaintPack };
 
 
 /** Whether a file inside a pack's zip is a Photoshop brush file, and not macOS's resource-fork shadow of one. */
@@ -59,12 +57,8 @@ function erodibleHeights(tip: PhotoshopDescriptor | undefined, gridSize: number,
   return bytes;
 }
 
-/** Imports a Photoshop pack, replacing what an import writes only once it has succeeded (replaceStampPaintPack). */
-export function importPhotoshopPack(options: ImportStampPaintPackOptions): ImportedPhotoshopPack {
-  return replaceStampPaintPack(options, (staging) => writePackAssets(options, staging));
-}
-
-function writePackAssets({ archive, style, pack }: ImportStampPaintPackOptions, dir: string): Omit<ImportedPhotoshopPack, 'dir'> {
+/** Writes a Photoshop pack's images into `dir`, a new generation, and returns its manifest for the profiles to be measured into. */
+export function writePhotoshopPackAssets({ archive, style, pack }: ImportStampPaintPackOptions, dir: string): StoredStampPaintPack {
   const brushFiles = readBrushFiles(archive);
   for (const sub of ['tips', 'grains']) mkdirSync(join(dir, sub), { recursive: true });
 
@@ -138,7 +132,7 @@ function writePackAssets({ archive, style, pack }: ImportStampPaintPackOptions, 
   }
   if (!Object.keys(brushes).length) throw new Error(`brushes import: ${archive} holds no brush presets`);
 
-  const stored = {
+  return {
     version: STAMP_PAINT_ASSETS_VERSION,
     app: 'photoshop',
     files: [...files].toSorted(),
@@ -149,6 +143,4 @@ function writePackAssets({ archive, style, pack }: ImportStampPaintPackOptions, 
     palettes: {},
     papers: {},
   };
-  writeFileSync(join(dir, STAMP_PAINT_PACK_MANIFEST), `${JSON.stringify(stored, null, 1)}\n`);
-  return { manifest: readStampPaintPack(stored) };
 }

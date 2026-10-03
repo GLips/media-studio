@@ -1,23 +1,28 @@
 // stamp-fill.ts: how a fill covers its region, flooded or in strokes (StampFillApplication).
 //
-// Wet paint's build converges inside a region, and only its edge shows the brush. So a flood is a body worked out
-// per pixel (floodBody) under one stroke of the real brush along the contour half a diameter inside, where its
-// stamps' edges touch the outline; a neck narrower than a diameter is the body's alone. The brush's dual is stamped
-// along the contour and in rows over the region.
+// Wet paint's build converges inside a region. So a flood is its brush's strokes laid as its plan (stamp-fill-plan.ts)
+// says, an edge contour at the brush's measured visible offset and ridges down what's narrower, so their paint ends on
+// the outline, and rows of the same strokes across the inside, half a visible width apart, so the inside builds an
+// even wash (stamp-flood-rows.ts: which way each runs, where it keeps in).
 //
 // A crayon or a pencil never converges: its marks and the paper between them are the look. So strokes are real
 // strokes of the brush in a pattern (stamp-fill-strokes.ts), a stroke deposit like any other.
 
-import { seededRandom } from '#lib/picture/motion/models/random.ts';
-import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
-import { placeStrokeStamps, type PlacedStamp, type StampStrokePoint } from '#lib/paint/brush/models/stamp-placement.ts';
-import { rowSpans, type StampFillReach, type StampFillStrokes } from './stamp-fill-strokes.ts';
+import { stampFirmStroke, type StampBrush, type StampBrushMeasuredProfile } from '#lib/paint/brush/models/stamp-brush.ts';
 import {
-  stampDistanceGrid, stampGridAt, stampGridContours, stampGridLocalMax, stampPolygonBox, stampRegionPolygon, type StampBox, type StampGrid, type StampPoint, type StampRegion,
-} from './stamp-region.ts';
+  stampBrushEdgeOffsetMean, stampBrushEdgeReach, stampBrushMeasuredProfile, stampBrushProfileRange, type StampBrushEdgeReach,
+} from '#lib/paint/brush/models/stamp-brush-profile.ts';
+import { placeStrokeStamps, type PlacedStamp, type StampStrokePoint } from '#lib/paint/brush/models/stamp-placement.ts';
+import type { CompiledStampArea } from './stamp-area.ts';
+import { planStampFloodRuns, type StampFloodReach, type StampFloodRuns } from './stamp-fill-plan.ts';
+import { stampRowFrame, stampRowSpans, type StampFillReach, type StampFillStrokes, type StampRowFrame } from './stamp-fill-strokes.ts';
+import { stampRegionPolygon, type StampGrid, type StampPoint, type StampRegion } from './stamp-region.ts';
 
-/** Rows of a flood's dual, a quarter diameter apart: close enough that a tip's own falloff doesn't band. */
-const DUAL_ROWS = 0.25;
+/**
+ * Rows a quarter diameter apart, at most: close enough that a tip's own falloff doesn't band. A dry brush's flood and
+ * any flood's dual run this close, as no wash of theirs converges at the wider pitch.
+ */
+const DENSE_ROWS = 0.25;
 
 /**
  * A region through `points`, closed and smoothed (a Catmull–Rom curve through each, `steps` points a span), for a
@@ -40,92 +45,105 @@ export function stampRegionOutline(region: StampRegion): StampStrokePoint[] {
   return [...polygon, polygon[0]].map(({ x, y }) => ({ x, y }));
 }
 
-/** A flood's body as the renderer lays it (STAMP_REGION_WGSL's floodBody). */
-export type StampFloodBody = {
-  /** The region, traced (stampRegionPolygon). */
-  polygon: readonly StampPoint[];
-  /** The body's box: the region's own. */
-  box: StampBox;
-  /** How thick the region is near each point (stampGridLocalMax of its distance), which narrows the body's edge. */
-  thickness: StampGrid;
-  /** Half the diameter: where the edge stroke runs inside the outline. */
-  inset: number;
-};
-
-/** A fill's stamps and body, placed once. */
-export type StampFloodPlacement = { body: StampFloodBody; stamps: PlacedStamp[]; dualStamps: PlacedStamp[] };
+/** How far `brush`'s firm stroke at `diameter` reaches toward every way by side, from its profile, as a fill keeps in by it. */
+export function stampBrushFillEdge(brush: StampBrush, diameter: number): StampBrushEdgeReach {
+  return stampBrushEdgeReach(stampBrushMeasuredProfile(brush), diameter, brush.name);
+}
 
 /**
- * Places a fill of `region` by `brush` at `diameter`: its body, its edge stroke (untapered and unfading, so the
- * contour is as dense at its end as its start) and its dual's stamps, along the contour and in rows along `direction`
- * (radians) wherever the region comes within half a diameter.
+ * How `brush` reaches as a fill plans with it: its profile's visible offset (both sides' mean over every heading, and
+ * toward every way by side, each at any diameter), and the least diameter a ridge narrows to, the smallest its profile
+ * holds. Refuses a brush with no current profile, or a diameter its profile doesn't hold.
+ */
+const stampBrushFillReach = (brush: StampBrush, profile: StampBrushMeasuredProfile, diameter: number): StampFloodReach => ({
+  offset: (d) => stampBrushEdgeOffsetMean(profile, d, brush.name),
+  edge: (d) => stampBrushEdgeReach(profile, d, brush.name),
+  diameter,
+  smallest: stampBrushProfileRange(profile).min,
+});
+
+/** Plans kept, the latest last: a painting floods one region by one brush for several pigments, each with its seed. */
+const STAMP_FLOOD_PLANS_KEPT = 64;
+const keptPlans = new Map<string, StampFloodRuns>();
+
+/** `polygon`'s plan for `brush` at `diameter`, remembered by their content: the plan depends on no seed. */
+function plannedStampFlood(polygon: readonly StampPoint[], brush: StampBrush, profile: StampBrushMeasuredProfile, diameter: number): StampFloodRuns {
+  const key = `${JSON.stringify(profile.key)}\n${brush.name}\n${diameter}\n${JSON.stringify(polygon)}`;
+  const plan = keptPlans.get(key) ?? planStampFloodRuns(polygon, stampBrushFillReach(brush, profile, diameter));
+  keptPlans.delete(key);
+  keptPlans.set(key, plan);
+  if (keptPlans.size > STAMP_FLOOD_PLANS_KEPT) keptPlans.delete(keptPlans.keys().next().value!);
+  return plan;
+}
+
+/** A flood placed: its strokes' stamps and its dual's; `scale`, its plan's local share of the diameter, which its flow, bloom and rim reach by point by point. */
+export type StampFloodPlacement = { scale: StampGrid; stamps: PlacedStamp[]; dualStamps: PlacedStamp[] };
+
+/**
+ * Places a flood of `region` by `brush` at `diameter`: each run of its plan a firm stroke (stampFirmStroke), as its
+ * profile was measured, then rows along `direction` (radians) or back, strokes too, and its dual's stamps along them
+ * all, so the edge's dual is the edge stroke's own and ends where a stroke's does.
  */
 export function placeStampFlood(region: StampRegion, brush: StampBrush, diameter: number, direction: number, seed: string): StampFloodPlacement {
-  const polygon = stampRegionPolygon(region), inset = diameter / 2;
-  // A quarter of the inset: the contour's corners are exact to a few pixels, which the brush's own edge hides.
-  const cell = Math.max(1, inset / 4);
-  const distance = stampDistanceGrid(polygon, stampPolygonBox(polygon, inset + 2 * cell), cell);
-  const edge = stampGridContours(distance, inset).flatMap((loop, i) =>
-    [...loop, loop[0]].map(({ x, y }, k): StampStrokePoint => (i > 0 && k === 0 ? { x, y, lift: true } : { x, y })));
-  const untapered = { ...brush, taper: { ...brush.taper, start: 0, end: 0, size: 1, opacity: 1 }, falloff: 0 };
-  const stamps = edge.length ? placeStrokeStamps(edge, untapered, diameter, seed) : [];
+  const polygon = stampRegionPolygon(region), profile = stampBrushMeasuredProfile(brush);
+  const { cell, keepsIn, rowTurned, scale, runs } = plannedStampFlood(polygon, brush, profile, diameter);
+  // Each row a stroke heading `direction`, or back where that turns a lopsided tip's shorter side to the nearer
+  // outline, kept in by its own footprint the way it heads.
+  const frame = stampRowFrame(polygon, direction), { left, right, painting } = frame;
+  const inside = (pitch: number) => rowSegments(frame, pitch, (y) => {
+    const turned = rowTurned(painting(left, y), painting(right, y)), heading = turned ? direction + Math.PI : direction;
+    const spans = stampRowSpans(frame, left - cell, right + cell, y, cell, (x, yy) => keepsIn(x, yy, heading));
+    return turned ? spans.map(([a, b]) => [b, a]) : spans;
+  });
+  // Half the visible width apart: the mean offset, as rows of the brush lay an even wash.
+  const pitch = Math.max(0.5, stampBrushEdgeOffsetMean(profile, diameter, brush.name)), dense = Math.max(1, DENSE_ROWS * diameter);
+  const strokes = [...runs.map(({ points }) => points), ...inside(brush.media === 'dry' ? Math.min(pitch, dense) : pitch)];
+  // Each its own stroke, so a short one still lays its stamps, which a lift's spacing would skip; all turned by the
+  // deposit's one start turn, as a stroke's stamps are, or rows heading alike would differ and meet in dark lines.
+  const firm = stampFirmStroke(brush), stamps = strokes.flatMap((points, r) => placeStrokeStamps(points, firm, diameter, `${seed}|${r}`, seed));
   let dualStamps: PlacedStamp[] = [];
   if (brush.dual) {
-    const rows = rowRuns(polygon, direction, Math.max(1, DUAL_ROWS * diameter), (points, y) => rowSpans(points, direction, y, inset + cell, cell, (x, yy) => stampGridAt(distance, x, yy) > -inset));
-    const path = edge.length && rows.length ? [...edge, { ...rows[0], lift: true }, ...rows.slice(1)] : [...edge, ...rows];
+    const path = [...runs.map(({ points }) => points), ...inside(dense)].flatMap((run) => run.map((point, k) => (k === 0 ? { ...point, lift: true } : point)));
     dualStamps = path.length ? placeStrokeStamps(path, brush.dual, diameter * brush.dual.scale, `${seed}|dual`) : [];
   }
-  const thickness = stampGridLocalMax(distance, inset);
-  return { body: { polygon, box: stampPolygonBox(polygon), thickness, inset }, stamps, dualStamps };
+  return { scale, stamps, dualStamps };
 }
 
 /**
- * A flood body's paint: its brush's converged build, read off a straight stroke (`probe`). Toward full it has built
- * to 1; a buildToOpacity to the strongest opacity a stamp brought. `densest`: a glaze's densest stamp, its cap too, as
- * a body has no tip to take off.
+ * A flood's edge. `barrier` (the default): a wall its paint and water stop at, as at dry paper, its water drying
+ * against it in a rim. `lost`: the region gives way over `reach` px past the outline, so the wash bleeds out and dries
+ * without a line. Only this says whether a flood is walled (stampDepositWalled).
  */
-export type StampFloodBodyLevels = { built: number; densest: number };
+export type StampFloodEdge = { kind: 'barrier' } | { kind: 'lost'; reach: number };
 
-export function stampFloodBodyLevels(towardFull: boolean, probe: readonly PlacedStamp[]): StampFloodBodyLevels {
-  const densest = probe.reduce((most, s) => Math.max(most, s.alpha * s.opacity), 0);
-  return { built: towardFull ? 1 : probe.reduce((most, s) => Math.max(most, s.opacity), 0), densest };
-}
+/**
+ * How a fill lays its paint. `flood`: its brush's strokes round the outline and in rows across it (placeStampFlood),
+ * its `edge` a barrier unless lost; `{ past }` floods the region grown that many diameters (stampGrownPolygon), for a
+ * `within` to cut. `strokes`: the brush's real strokes in a pattern, as a crayon fills (stampFillStrokePath).
+ */
+export type StampFillApplication = { kind: 'flood'; edge?: StampFloodEdge; reach?: StampFillReach } | ({ kind: 'strokes' } & StampFillStrokes);
 
-/** A straight stroke of `brush` four diameters long, for its converged build (stampFloodBodyLevels). */
-export function stampFloodProbe(brush: StampBrush, diameter: number, seed: string): PlacedStamp[] {
-  const untapered = { ...brush, taper: { ...brush.taper, start: 0, end: 0, size: 1, opacity: 1 }, falloff: 0 };
-  return placeStrokeStamps([{ x: 0, y: 0 }, { x: diameter * 4, y: 0 }], untapered, diameter, seed);
+/** The edge `application` floods to: a barrier unless it says otherwise. */
+export const stampFloodEdgeOf = (application: { edge?: StampFloodEdge }): StampFloodEdge => application.edge ?? { kind: 'barrier' };
+
+/**
+ * The barrier a flood of `polygon` stops at: its outline, a pixel's antialiasing wide, or ramping out over a lost
+ * edge's reach (an outset half the reach, as an area's soft edge is centred on its line). Refuses a reach that isn't
+ * finite and positive.
+ */
+export function stampFloodBarrier(polygon: readonly StampPoint[], edge: StampFloodEdge): CompiledStampArea {
+  if (edge.kind === 'barrier') return { polygon, seed: 0 };
+  const { reach } = edge;
+  if (!(reach > 0 && Number.isFinite(reach))) throw new Error(`stamp paint: a flood's lost edge reaches ${reach} px, and it reaches a finite distance over 0`);
+  return { polygon, edge: { soft: reach }, inset: -reach / 2, seed: 0 };
 }
 
 /**
- * How a fill lays its paint. `flood`: a converged body under the brush's edge (placeStampFlood), as wet paint floods a
- * shape; reaching `{ past }`, over the region grown that many diameters (stampGrownPolygon), so a `within` cuts it
- * solid to its own edge. `strokes`: real strokes of the brush in a pattern, as a crayon or a pencil fills one
- * (stampFillStrokePath).
+ * Rows `step` apart across `frame`'s region, each split into segments by `spans` (in the frame), every segment a start
+ * and an end in the painting, in the order `spans` gives them.
  */
-export type StampFillApplication = { kind: 'flood'; reach?: StampFillReach } | ({ kind: 'strokes' } & StampFillStrokes);
-
-/**
- * Rows `step` apart across `polygon` along `angle`, each split into runs by `spans` (in the rows' frame, where each
- * row is horizontal), joined back and forth into one path that lifts between runs.
- */
-function rowRuns(polygon: readonly StampPoint[], angle: number, step: number, spans: (local: readonly StampPoint[], y: number) => [number, number][]): StampStrokePoint[] {
-  const cos = Math.cos(angle), sin = Math.sin(angle);
-  const local = polygon.map(({ x, y }) => ({ x: x * cos + y * sin, y: -x * sin + y * cos }));
-  const toPainting = (x: number, y: number) => ({ x: x * cos - y * sin, y: x * sin + y * cos });
-  const top = Math.min(...local.map((p) => p.y)), bottom = Math.max(...local.map((p) => p.y));
-  const path: StampStrokePoint[] = [];
-  let rightward = true;
-  for (let y = top + step / 2; y < bottom; y += step) {
-    const runs = spans(local, y);
-    for (const [a, b] of rightward ? runs : runs.toReversed()) {
-      const [start, end] = rightward ? [a, b] : [b, a];
-      path.push({ ...toPainting(start, y), ...(path.length && { lift: true }) }, toPainting(end, y));
-    }
-    rightward = !rightward;
-  }
-  return path;
+function rowSegments({ top, bottom, painting }: StampRowFrame, step: number, spans: (y: number) => [number, number][]): StampStrokePoint[][] {
+  const segments: StampStrokePoint[][] = [];
+  for (let y = top + step / 2; y < bottom; y += step) for (const [a, b] of spans(y)) segments.push([painting(a, y), painting(b, y)]);
+  return segments;
 }
-
-/** A seed for a region's ragged edge from its ID, as a u32 the renderer's noise reads. */
-export const stampRegionSeed = (id: string) => Math.floor(seededRandom(`${id}|region`)() * 0x100000000) >>> 0;

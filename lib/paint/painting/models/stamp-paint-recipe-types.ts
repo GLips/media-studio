@@ -58,7 +58,7 @@ export type StampPaintMaterial = StampKeyedMaterial | StampPaintField<StampKeyed
 
 /**
  * What a brush is loaded from: a material, or a set picked from per mark (a raw op picks once, by its own ID), and in
- * a passage with wet history, how much water it carries (0..1; its medium's brushWater when left out). Clean water
+ * a passage with wet history, how much water it carries (0..1; its medium's defaultWater when left out). Clean water
  * says its own `amount`.
  */
 export type StampWell = { paint: StampPaintMaterial | StampMaterialSet; water?: number };

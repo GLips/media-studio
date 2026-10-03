@@ -65,16 +65,16 @@ function assertHardwareGpu({ gl, webgpu }: GpuBackends, when: 'before' | 'after'
 }
 
 /**
- * Runs `render` in a browser of its own, which it passes to Remotion as `puppeteerInstance`, and closes it after.
+ * Runs `render` in a browser of its own (Remotion's `puppeteerInstance`), told its GPU backends, and closes it after.
  * Refuses to start on software GL or WebGPU, and fails if the browser has fallen back to either by the end, since the
  * frames rendered after the fallback were. Returns what `render` did and the GPU backends it had.
  */
-export async function inRenderBrowser<T>(render: (browser: HeadlessBrowser) => Promise<T>): Promise<{ result: T; gpu: string }> {
+export async function inRenderBrowser<T>(render: (browser: HeadlessBrowser, gpu: string) => Promise<T>): Promise<{ result: T; gpu: string }> {
   const browser = await openBrowser('chrome', { chromiumOptions: RENDER_CHROMIUM });
   try {
     const before = await readGpuBackends(browser);
     assertHardwareGpu(before, 'before');
-    const result = await render(browser);
+    const result = await render(browser, describeGpu(before));
     assertHardwareGpu(await readGpuBackends(browser), 'after');
     return { result, gpu: describeGpu(before) };
   } finally {

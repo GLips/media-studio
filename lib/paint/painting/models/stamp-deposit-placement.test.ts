@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import { compileStampPaintRecipe, stampPassDeposits, type CompiledStampPaint } from './stamp-paint-recipe-compile.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import type { StampStrokeHand } from '#lib/paint/brush/models/stamp-stroke-hand.ts';
+import { stampRoundTipStatedProfile } from './stamp-tip-support.ts';
+import { stampAreaBox } from './stamp-area.ts';
 import type { StampPaintEnvironment } from './stamp-paint-recipe-types.ts';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
@@ -12,6 +14,7 @@ import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercol
 const WET: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: WATERCOLOUR_PIGMENTS } };
 
 const brush: StampBrush = {
+  profile: STAMP_BRUSH_UNMEASURED,
   name: 'Wet Wash',
   blend: 'normal',
   accumulation: { kind: 'glaze', build: 0 },
@@ -27,6 +30,7 @@ const brush: StampBrush = {
   falloff: 0,
   flow: 0.4,
 };
+brush.profile = stampRoundTipStatedProfile(brush);
 const ochre: PaintMaterial = { kind: 'color', color: '#c8902f' };
 
 /** A sky flooded over a fixed region, and a cloud stroked at `cloudX` with a hand pressing by `profile`. */
@@ -54,15 +58,17 @@ test('a hand\'s pressure curve is told apart by which function it is, as its con
 
 test('a brush edited in place, or a region, places by what it holds now, and what\'s placed can\'t be changed', () => {
   const flowing: StampBrush = { ...brush, flow: 1 };
+  flowing.profile = stampRoundTipStatedProfile(flowing);
   const region = { kind: 'polygon' as const, points: [{ x: 0, y: 0 }, { x: 300, y: 0 }, { x: 300, y: 100 }] };
   const flood = () => compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => paint.group('g', { composite: 'opaque' }, (group) => group.passage('p', { wetHistory: false }, (pass) => {
     pass.fill('f', { brush: flowing, well: { paint: ochre }, size: 40, application: { kind: 'flood' }, region });
   }))));
   const first = stampPassDeposits(flood().groups[0].passes[0])[0];
   flowing.flow = 0.2;
+  flowing.profile = stampRoundTipStatedProfile(flowing);
   region.points[2] = { x: 300, y: 200 };
   const edited = stampPassDeposits(flood().groups[0].passes[0])[0];
   assert.equal(edited.stamps[0].alpha, 0.2 * first.stamps[0].alpha);
-  assert.ok(edited.kind === 'flood' && first.kind === 'flood' && edited.flood.box.y1 > first.flood.box.y1 && first.flood.polygon[2].y === 100);
+  assert.ok(edited.kind === 'flood' && first.kind === 'flood' && stampAreaBox(edited.flood.barrier).y1 > stampAreaBox(first.flood.barrier).y1 && first.flood.barrier.polygon[2].y === 100);
   assert.throws(() => Object.assign(first.stamps[0], { x: 1 }), TypeError);
 });

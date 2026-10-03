@@ -87,7 +87,7 @@ export type { PaintMaterial, StampPaintColor } from '#lib/paint/materials/models
 export type { StampCondition, StampSheen, StampWaitEffect, StampWashWait, StampWetEffectKind } from '#lib/paint/painting/models/stamp-wash-effects.ts';
 export { stampMarkStamps, stampScatteredStrokePath, stampScatterMarks, type StampMark, type StampMarkAnchor, type StampMarkGeometry, type StampScatterAngle, type StampScatteredMark, type StampScatterOptions, type StampScatterPlacement } from '#lib/paint/painting/models/stamp-marks.ts';
 export { pickStampMaterial, stampMaterialSet, stampMaterialSetProblem, type StampMaterialSet, type StampMaterialSetEntry } from '#lib/paint/painting/models/stamp-material-set.ts';
-export { compileStampWetness, type StampWetRange } from '#lib/paint/painting/models/stamp-wetness.ts';
+export { compileStampWetness } from '#lib/paint/painting/models/stamp-wetness.ts';
 export { assertStampWetEffects, stampWetReport, stampWetReportStrictFailures, stampWetReportWarnings, type StampWetReport, type StampWetReportDrying, type StampWetReportEffect, type StampWetReportTouch, type StampWetReportWait, type StampWetReportWash } from '#lib/paint/painting/models/stamp-wet-report.ts';
 export { stampRegionOutline, stampSmoothRegion, type StampFillApplication } from '#lib/paint/painting/models/stamp-fill.ts';
 export { STAMP_FILL_PATTERNS, stampFillMarks, stampFillStrokePath, type StampFillGuides, type StampFillMark, type StampFillPattern, type StampFillReach, type StampFillStrokes, type StampFillTurns, type StampGuide } from '#lib/paint/painting/models/stamp-fill-strokes.ts';

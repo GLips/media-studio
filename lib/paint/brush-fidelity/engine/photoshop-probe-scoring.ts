@@ -15,7 +15,7 @@ import { cropPhotoshopCell } from '#lib/paint/photoshop-brushes/models/photoshop
 import type { PhotoshopCaptureCell, PhotoshopCaptureSheet } from '#lib/paint/photoshop-brushes/models/photoshop-capture-plan.ts';
 import type { PhotoshopProbe } from '#lib/paint/photoshop-brushes/models/photoshop-probes.ts';
 import type { StampResolveStage } from '#lib/paint/painting/models/stamp-deposit-stages.ts';
-import { STAMP_PACK_TIP_MAX } from '#lib/paint/brush-packs/engine/stamp-paint-pack-files.ts';
+import { STAMP_PACK_TIP_MAX } from '#lib/paint/brush-packs/models/stamp-paint-pack.ts';
 import { photoshopProbeCrop, photoshopProbeReach, type PhotoshopProbeCellRequest, type PhotoshopProbeCellTrace, type PhotoshopProbeOpacity, type PhotoshopProbePlane } from '../models/photoshop-probe-painting.ts';
 import { scorePhotoshopProbe, type PhotoshopProbeScore, type PhotoshopProbeStageOwner } from '../models/photoshop-probe-score.ts';
 

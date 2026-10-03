@@ -4,9 +4,9 @@
 // Randomness comes from IDs, never order: each deposit is seeded by its ID, so adding a stroke changes no other.
 
 import type { StampBlend, StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
-import type { FrozenStampMarks, StampTint } from '#lib/paint/brush/models/stamp-placement.ts';
-import { checkedStampPolygon, compileDeposit } from './stamp-deposit-compile.ts';
-import type { StampFloodBody, StampFloodBodyLevels } from './stamp-fill.ts';
+import type { FrozenStampMarks } from '#lib/paint/brush/models/stamp-placement.ts';
+import { compileDeposit } from './stamp-deposit-compile.ts';
+import type { StampFloodEdge } from './stamp-fill.ts';
 import { stampPaintFieldEnds, stampPaintFieldProblem, stampSeededPaintField, type StampSeededPaintField } from './stamp-paint-field.ts';
 import { compilePaintAction, compileWashAction, type CompiledStampAction, type CompiledStampPaintAction, type StampRecipeWashAction } from './stamp-paint-action.ts';
 import { compileStampArea, stampFluidHolder, stampStandsBeforeExclusions, type CompiledStampArea } from './stamp-area.ts';
@@ -14,6 +14,7 @@ import { compileStampBrushedMask, stampResistHolder, type CompiledStampBrushedMa
 import { compileStampGroupMotion, type CompiledStampGroupMotion, type StampGroupBoil, type StampGroupPaper } from './stamp-group-motion.ts';
 import { stampKeysSpan } from './stamp-scene-keys.ts';
 import type { StampPaintMixing, StampPigmentMixing } from './stamp-pigment-paint.ts';
+import { checkedStampPolygon, type StampGrid } from './stamp-region.ts';
 import type { StampMark } from './stamp-marks.ts';
 import { checkedStampIdSegment, stampDepositNameText } from './stamp-deposit-identity.ts';
 import type { StampDepositWithin, StampPaintPaper, StampPaintRecipe, StampPaintRecipeDeposit, StampPaintRecipeGroup, StampPaintRecipeMask, StampPaintRecipeResist } from './stamp-paint-recipe-types.ts';
@@ -34,11 +35,11 @@ export type CompiledStampMask = {
 } & ({ kind: 'mask'; area: CompiledStampArea } | { kind: 'brushed'; brushed: CompiledStampBrushedMask } | { kind: 'unmask'; amount: number; area: CompiledStampArea | null });
 
 /**
- * A flood's placed body (stamp-fill.ts). `tint`: what its brush's stamps average to
- * (stampExpectedTint), which the body lays as its stamps lay theirs, so where the edge stroke's stamps give out the
- * colour carries on rather than stepping back to the deposit's own.
+ * What a flood holds beside its stamps (stamp-fill.ts's StampFloodPlacement): `barrier`, the line its paint and water
+ * stop at (stampFloodBarrier), its water over all within it; `scale`, the local share of its diameter its water
+ * reaches by; and its load.
  */
-export type CompiledStampFlood = StampFloodBody & { load: StampSeededPaintField<number>; levels: StampFloodBodyLevels; tint: StampTint };
+export type CompiledStampFlood = { edge: StampFloodEdge; barrier: CompiledStampArea; scale: StampGrid; load: StampSeededPaintField<number> };
 
 type CompiledStampDepositCommon<A extends CompiledStampAction> = {
   /** `<group>/<pass>/<deposit>`, unique in the painting: the seed of every stamp in it. */
@@ -63,7 +64,7 @@ type CompiledStampDepositCommon<A extends CompiledStampAction> = {
 
 /**
  * A stroke's stamps overlap along its path (a fill laid in strokes is one); placed stamps each land alone; a flood is
- * a body under its edge stroke.
+ * strokes of its brush filling a region, stopped at its barrier.
  */
 export type CompiledStampDeposit<A extends CompiledStampAction = CompiledStampAction> = CompiledStampDepositCommon<A> & ({ kind: 'stroke' | 'stamps' } | { kind: 'flood'; flood: CompiledStampFlood });
 

@@ -59,8 +59,12 @@ hand lays it in, and `stampFillStrokePath` joins them, lifting between, into one
 forth, zigzag, shading, scribble) share one hand's random walk, so their keys are their order; a `contour`'s rings
 (inset level sets of the region's distance grid, closed) and a `guided` fill's marks (blended by arc length between
 consecutive authored cross-sections, keyed by the pair's guide IDs) draw from their own keys, so adding a guide
-anywhere leaves the other pairs' marks where they were. A flood's `reach` lays the region grown by its distance grid
-(`stampGrownPolygon`), not scaled. Every mark ends where its edge meets the outline unless its `reach` runs it past (`{ past }`, diameters
+anywhere leaves the other pairs' marks where they were. A flood (`placeStampFlood`) is its brush's strokes round the
+outline and in rows across it, landing within a barrier its `edge` (`StampFloodEdge`) makes: `barrier`, the default,
+the outline itself, a wall its paint and water stop at and its drying rim gathers against; `lost`, a ramp out over
+`reach` px past it, so the wash bleeds into wet paper and dries without a line. Only a barrier is a wall
+(`stampDepositWalled`), in the wet field's held wetness and the rim's walls alike. A flood's `reach` lays the region
+grown by its distance grid (`stampGrownPolygon`), not scaled. Every mark ends where its edge meets the outline unless its `reach` runs it past (`{ past }`, diameters
 its centres may lie outside: rows run out across and along the shape, guided marks' ends on past the outline, a
 contour's first ring out there), which only a clip (`clipTo`, `within`) trims. `stamp-form.ts` is a rounded form's
 guides (`stampRoundedForm`): over an ellipsoid, given or fitted to the outline by its moments (an artistic assumption, its depth the shorter radius), Lambert's law gives the shade's
@@ -70,9 +74,8 @@ the outline. They're geometry: a style decides how to paint them.
 **Areas.** A passage's `within`, an application's, masking fluid and an unmask act over a `StampArea` (`stamp-area.ts`): a region, its
 edge (soft, ragged) and an inset. Its coverage is the region's signed distance less the inset, moved by the edge's
 noise, ramped over its width, so an inset moves the edge without offsetting the polygon (a narrow feature can vanish).
-The renderer works out each state of the fluid and each `within` once, as cropped textures; the wetness compile reads
-the same coverage per sample (`stampAreaCoverageAt`, the GPU's twin), scanning an edge narrower than half a sample
-hard. A group's `standsBefore` compiles into one more mask over the fluid of each deposit of the groups it names,
+The renderer works out each state of the fluid, each `within` and each wash's preparation once, as cropped textures
+(`stampAreaCoverageAt` is their coverage's CPU twin). A group's `standsBefore` compiles into one more mask over the fluid of each deposit of the groups it names,
 last, so it joins their fluid by max and none of their unmasks lifts it; a knockout's fluid is left alone.
 A `within` may treat named stretches of its outline (`StampWithin.boundaries`, `stamp-area-boundaries.ts`): `keep`,
 `feather` (coverage falls from full `reach` px inside to none at the outline) or `merge` (the edge opens `reach` px
@@ -86,17 +89,20 @@ intersected with its ancestors', so a child's merge never opens an ancestor's cu
 amount })` (`stamp-brushed-mask.ts`). A mark is placed from its key by the one path paint is (`placeStampDeposit`),
 so the same mark painted elsewhere lands the same footprint. The renderer draws each brushed mask once as it loads:
 each mark's stamps resolved as a deposit's coverage is (builds, grain, dual, pooling), never pigment, joined by max
-into a texture a step of the fluid reads. It then averages that texture onto the wetness's 4 px samples and reads them
-back, and the wetness compile reads those samples where an area mask's polygon would be, so water lands only where a
-sparse brush left paper open. Wax keeps only what catches the paper's peaks (`paintDryContact`, at the paper's depth)
+into a texture a step of the fluid reads, and the wet field reads it per pixel, so water lands only where a sparse
+brush left paper open. Wax keeps only what catches the paper's peaks (`paintDryContact`, at the paper's depth)
 × `amount`; it lies over every deposit of its group declared after it, past every unmask and passage, and ends with
-the group. A knockout ignores it, as it does `standsBefore`. Only the painting as loaded is measured: live marks
-bringing a brushed mask of their own are refused. Cost at 1080p: about 0.3 ms of load a mark, and a frame reads it as it reads an
-area's.
+the group. A knockout ignores it, as it does `standsBefore`. Live marks bringing a brushed mask of their own are
+refused. Cost at 1080p: about 0.3 ms of load a mark, and a frame reads it as it reads an area's.
 
 Wet paint is a wash, a passage with a wetness history (`group.passage` in a medium with `'wet-history'`, unless it
-says `wetHistory: false`): its deposits paint, wet (`water`, `stampSoften`, `stampBloom`) or lift, and it can `wait` in painting time, which only its waits advance. `stamp-wetness.ts` works out, once as a painting
-loads, how wet the paper is where each lands, on coarse grids; the pigment compositor's `landDeposit` lays it by the
+says `wetHistory: false`): its deposits paint, wet (`water`, `stampSoften`, `stampBloom`) or lift, and it can `wait`
+in painting time, which only its waits advance. `stamp-wetness.ts` works out, once as a painting loads, when each
+lands and how long each wait lasts, in closed form; where water lands is per pixel, on the GPU, in each wash's wet
+field (`studio/stamp-wet-field.ts`), in draw order, in the pass that resolves the deposit. For a deposit its stages
+read, the same pass leaves its landing (its water's contact, the paper it found and the wetness it leaves) as far
+round its box as they read (`landingReach`); they read the paper only from there. A boil's epoch and live marks each
+have their own wetness, worked out from the marks they draw. The pigment compositor's `landDeposit` lays each deposit by the
 laws in `stamp-wet-landing.ts` and `stamp-wet-lift.ts`, and `studio/stamp-wet-stages.ts` lists what then works over
 the neighbourhood: the flow stage (`stamp-wet-flow.ts`), where a deposit's fresh paint feathers into water on the
 paper and the workable paint its water stirs evens out, or paint runs back into a lift, and the drying rim
@@ -107,10 +113,11 @@ read. A drying is the whole wash's, never a region's. A graded material lays eac
 of either end, its amount graded on the GPU. A passage without a history lands as it always has. Flat colour has no washes.
 
 **Capabilities.** A `PaintMedium` declares what it can do besides lay paint (`PaintCapability`): `'wet-history'`,
-`'wet-conditions'`, `'lift'`, `'burnish'`. Watercolour and gouache declare the first three; crayon `lift` (its eraser)
-and `burnish`; flat colour, in no medium, none. Every medium has `wetting` and a sheen, so nothing is read off them:
-`checkPaintCapability` is the one check, which the recipe makes as each operation is written (a burnish, a lift, a
-wait, a `when`, a wet technique, `wetHistory: false`), its message naming the medium. Which law lays a deposit is `stampDepositionLaw`, per
+`'wet-conditions'`, `'water'`, `'lift'`, `'burnish'`. Watercolour and gouache declare the first four; crayon `lift`
+(its eraser) and `burnish`; flat colour, in no medium, none. Every medium has `wetting` and a sheen, so nothing is
+read off them: `checkPaintCapability` is the one check, which the recipe makes as each operation is written (a
+burnish, a lift, a wait, a `when`, a wet technique, water a deposit states, `wetHistory: false`), its message naming
+the medium. Which law lays a deposit is `stampDepositionLaw`, per
 deposit: water, a lift, and paint from a wet brush in a medium with wet history land in the wash's history
 (`landDeposit`); any other paint, a dry-media brush's or crayon's in a wash too, is laid by the dry law (`layDeposit`:
 pressure, the tooth, a burnish).
@@ -121,10 +128,16 @@ catch only the peaks above it, their valleys left as bare as wet paint would set
 stays watercolour's (it glazes and mixes, stacking no wax). The gate's `wash/dry-brush` holds a dry stroke darker
 where the paper stands higher, and a wet one not. Gouache declares none, so its dry brush still settles.
 
+**Water.** A deposit's water is resolved once, as it compiles in its medium (`stampDepositWater`, kept as
+`StampPigmentDeposit.water`): a lift's none; water its action states, which a medium without `'water'` refuses (crayon
+does); else the medium's `wetting.defaultWater`. Flat colour, in no medium and with no washes, lays wet paint (1).
+The wetness history and a stage's reach read it; where a flood stops is its edge's, never its water's. In peaks contact the paper's tooth owns a stamp's grain
+response to pressure, the brush's set aside (`STAMP_PRESSURE_GRAIN_OWNER`).
+
 **Fields.** A material, a fill's load and a preparation's wetness are each a `StampPaintField`
 (`stamp-paint-field.ts`): constant, linear, radial, or noise, two octaves of seeded value noise at a feature size in
 painting pixels, their lattices turned off the painting's axes. Every reader reads one share (`paintFieldShare` on the
-GPU, its CPU twin for a strokes fill's stamp opacity and the wetness lattice). A noise field's seed is settled as the
+GPU, its CPU twin for a strokes fill's stamp opacity). A noise field's seed is settled as the
 recipe compiles (`stampSeededPaintField`): its own `seed`, a passage several deposits share, else the deposit's ID (a
 preparation's, its passage's), never a boil's epoch's.
 
@@ -133,7 +146,6 @@ seconds wait takes no `rim`: one that sets the paper closes its drying at the wa
 scales what each band pixel gives before the transport normalises it, so pigment stays conserved and the band and its
 eligibility are the medium's. At 0 the stage loads nothing for the drying but still owns its deposits' wet edges
 (`ownsWetEdges`), so their brushes' own rims stay off: a drying with no rim is a soft-edged wash, not a brush's ring.
-`stamp-paint-events.ts` is the painting in painting order, each deposit with the time it's settled by.
 
 **Media.** A painting in pigment has a mixing (a medium and the pigments its mixtures may name), and any group may
 name its own (`mixing` in its options, a style's `mixing`): gouache butterflies in a watercolour. Paper stays the
@@ -146,22 +158,25 @@ group's. Where media meet there's no new law: washes share no water, so a gouach
 wet or not, meets it set and stacks over it by Kubelka–Munk, a gouache film's scatter covering the dark under it as
 body colour does. A flat painting refuses a group naming a mixing.
 
-**Wet state.** The lattice holds the paper: per landing, its `wetness`, `workable` and `settled` (1 where the paper
-has dried since it last took water, and at a wash's start), uploaded once for the renderer and every stage. The paint's
+**Wet state.** Each wash's wet field holds the paper, per pixel: the level its water last went to and when, and
+whether it had dried out since (`settled`, 1 at a wash's start too). Every reader works out `wetness`, `workable` and
+`settled` at its own painting second (`wetPaperAt`, `stampWetnessAt` and `stampWorkableAt`'s twin). The paint's
 own history is in the group's layer: a group with a wash keeps, in its last channel, each pixel's open share, how
 much of its paint hasn't set, mixed by amount as paint lands or moves. Every landing first sets it to none where the
-paper has settled, over its whole box, which reaches two lattice cells past its window's points; so paint that dried
-and is wetted again moves or lifts only by the medium's rewetting.
+paper has settled, over its whole box; so paint that dried and is wetted again moves or lifts only by the medium's
+rewetting.
 - Landing (`wetLand`): on dry, set paper as `layDeposit` lays, toward the stroke less what the paint there picks up;
   on wet paper adding; between, as workable as the paper is. A wash brush's water hardens its tip's coverage to an
   edge (`wetLandCover`, smoothstep 0.15–0.45) as far as the paper is drier than the brush.
-- Each stage declares its static reach (`reach(deposit, medium)`); a deposit's landing window and its resolve box widen
-  by the most of them, as a boil's epoch lands as its deposit as written does.
+- Each stage declares its static reach (`reach(deposit, medium, water)`); a deposit's resolve box widens by the most of them, and
+  what it may find under it (`StampWetFinds`) is judged that far round.
 
 **The flow stage.** Two populations move: the deposit's fresh paint (what `landDeposit` laid, left in `fresh`),
 freely, and the paint already there, as far as the deposit's water stirs it (workable and open, where its brush
 touched). Each is a conserved diffusion of sigma = spread × diameter / 2 at full wetness, narrower as drier. Paper is as
-wet as it was, or as the brush's water where it touched, so paint on dry paper keeps a hard edge. A water stroke's
+wet as it was, or as the brush's water where it touched, so paint on dry paper keeps a hard edge. The brush's water
+touches by its contact (`stamp-wet-contact.ts`) times the share of its stroke that landed there, whatever pigment it
+carried; a flood's, within its barrier too, so a walled flood's stamps' fringe past its outline lies dry. A water stroke's
 brush drags paint along where it touches, however damp, so there paint moves as on flooded paper: a soften reaches
 its sigma rather than its water's share of it.
 - After a lift there's no fresh paint: the paint round it runs back in, as loose as the lift would find it, a pair
@@ -197,15 +212,17 @@ materials a generator picks from by key (`pickStampMaterial`); a deposit's own m
 **Waits.** A wash waits for a sheen state, `'shiny'` or `'damp'` (the medium's `PaintSheen` thresholds, which the
 bloom's merging reads too), or `'set'` (water gone and no paint workable, a drying: it rims), or for `{ seconds }` (a drying too, if the whole
 wash has set by its end).
-A shiny or damp `p.wait` judges the wettest lattice point of the whole wash (compiled `under: 'wash'`) or a region; an
-operation's or application's `when` judges its own deposits (`under: { deposits }`; a charge's touches together).
-Already past, it takes 0 s. A `when: 'set'` is a wash wait for `'set'` before the call. Every technique's `when`
-writes one, carrying the effect that asked for it (its spec's `effect`, a charge unless it says) and, when the author
-wrote it rather than the technique defaulting it, `authored`. `stamp-wet-report.ts` reads them: per wash each wait's
-paper before and after, each effect's touches with the paper under them and the bloom stage's own verdict
-(`stampBloomVerdict`, with its reason), and each drying's estimated band. The renderer lists, as it loads
-(`wetWarnings`), effects that certainly won't act and authored waits that do nothing (no paper, no water, or already
-drier: 0 s); a strict wash fails on them, and `assertStampWetEffects` throws on them for a test.
+A shiny or damp `p.wait` judges, in closed form, the wettest paper the wash's water could leave in the whole wash
+(compiled `under: 'wash'`) or a region; an operation's or application's `when` judges its own deposits (`under: {
+deposits }`, counting only water whose box meets theirs; a charge's touches together). Already past, it takes 0 s. A
+`when: 'set'` is a wash wait for `'set'` before the call. Every technique's `when` writes one, carrying the effect
+that asked for it (its spec's `effect`, a charge unless it says) and, when the author wrote it rather than the
+technique defaulting it, `authored`. `stamp-wet-report.ts` reads them: per wash each wait's span and how much water
+it judged, each effect's touches with what they may find under them and the bloom stage's own bound
+(`stampBloomBound`, with its reason), and each drying's widest band. Its verdicts are estimates: the GPU sizes each
+bloom and rim from the paper itself. The renderer lists, as it loads (`wetWarnings`), effects that certainly won't
+act and authored waits that do nothing (no paper, no water, or already drier: 0 s); a strict wash fails on them, and
+`assertStampWetEffects` throws on them for a test.
 
 **The transport.** Bloom and rim move what they move along the same ways, as a linear spread G (each pass
 symmetric, so the passes in reverse order are exactly Gᵀ) and a normalised scatter: N = Gᵀ(receiver weight),

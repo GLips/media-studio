@@ -3,15 +3,17 @@ import { test } from 'node:test';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { PAINT_BANDS } from '#lib/paint/materials/models/paint-spectrum.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
-import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { compileStampPaintRecipe } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampPaintMaterial } from './stamp-paint-recipe-types.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
-import { compileStampPigmentPaint, STAMP_PIGMENT_GROUP_SLOTS, stampGrainDepthIn, stampPigmentAmountsAt, type StampPigmentMixing } from './stamp-pigment-paint.ts';
+import { compileStampPigmentPaint, STAMP_PIGMENT_GROUP_SLOTS, stampGrainDepthIn, stampPigmentAmountsAt, stampPigmentGroupMedium, type StampPigmentMixing } from './stamp-pigment-paint.ts';
+import { stampPaintMedia } from './stamp-wetness.ts';
 import { placeStrokeStamps } from '#lib/paint/brush/models/stamp-placement.ts';
 
 const brush: StampBrush = {
+  profile: STAMP_BRUSH_UNMEASURED,
   name: 'Round', blend: 'normal', accumulation: { kind: 'buildToOpacity' },
   tip: { image: { style: 's', pack: 'p', file: 'tip.png' }, roundness: 1, sampling: 'isotropic' },
   spacing: 0.25, stepping: 'eachStamp', dynamics: stampLinearDynamics({}), scatter: { count: 1, radius: 0, lateral: 0 },
@@ -111,4 +113,22 @@ test('a group naming its own medium fits its palette in it, a pigment of one id 
   assert.notDeepEqual(wings.find(({ id }) => id === 'ultramarine')!.S, sky[0].S, 'fitted as masstone in gouache');
   // A medium is one object: a copy under the same name beside it, however alike, is refused rather than merged.
   assert.throws(() => compileStampPigmentPaint(painting, { ...gouache, medium: { ...PAINT_MEDIA.gouache } }, PAINT_BANDS), /two media are named gouache/);
+});
+
+test("a deposit's water resolves once in its medium: as written, else the medium's default, a lift none; crayon refuses any", () => {
+  const sienna: PaintMaterial = { kind: 'mixture', parts: [{ pigment: W.burntSienna, amount: 1 }], strength: 1 };
+  const washed = (water?: number) => compileStampPaintRecipe(stampPaintRecipe({ paper: { color: '#ffffff' }, mixing: watercolour }, (p) => p.group('g', { composite: 'glaze', opacity: 1 }, (g) => g.passage('w', {}, (wash) => {
+    wash.stamps('stated', { brush, well: { paint: sienna, ...(water !== undefined && { water }) }, size: 10, at: [{ x: 5, y: 5 }] });
+    wash.lift('lift', { kind: 'stamps', brush, size: 10, at: [{ x: 5, y: 5 }] });
+  }))));
+  const waters = (water: number | undefined, medium: StampPigmentMixing['medium']) => {
+    const painting = washed(water), paint = compileStampPigmentPaint(painting, { ...watercolour, medium }, PAINT_BANDS);
+    const media = stampPaintMedia(painting, (group) => stampPigmentGroupMedium(paint, painting, group));
+    return [...paint.deposits.keys()].map(media.waterOf);
+  };
+  assert.deepEqual(waters(undefined, PAINT_MEDIA.watercolour), [PAINT_MEDIA.watercolour.wetting.defaultWater, 0]);
+  assert.deepEqual(waters(undefined, PAINT_MEDIA.gouache), [PAINT_MEDIA.gouache.wetting.defaultWater, 0]);
+  assert.deepEqual(waters(0.25, PAINT_MEDIA.watercolour), [0.25, 0]);
+  assert.deepEqual(waters(undefined, PAINT_MEDIA.crayon), [0, 0]);
+  assert.throws(() => waters(0.25, PAINT_MEDIA.crayon), /g\/w\/stated's water needs 'water', which crayon doesn't declare/);
 });

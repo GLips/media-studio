@@ -14,6 +14,10 @@ import { PHOTOSHOP_POOLING, STAMP_DUAL_BLENDS, STAMP_GRAIN_BLENDS, stampDualMode
 import { STAMP_ACCUMULATION_KINDS, stampAccumulationIndex } from '#lib/paint/painting/models/stamp-deposit-stages.ts';
 import { STAMP_PAINT_FIELD_SHARE } from '#lib/paint/painting/models/stamp-paint-field.ts';
 import { stampAreaCoverageAt } from '#lib/paint/painting/models/stamp-area.ts';
+import { stampTipPressedShare, stampTipTouch } from '#lib/paint/painting/models/stamp-wet-contact.ts';
+import { stampLandedWetness, stampWetnessAt, stampWorkableAt } from '#lib/paint/painting/models/stamp-wetness.ts';
+import { stampBloomSigma } from '#lib/paint/painting/models/stamp-wet-bloom.ts';
+import { stampDryingRimBand, stampDryingRimWetShare } from '#lib/paint/painting/models/stamp-wet-rim.ts';
 import type { CompiledStampBoundary } from '#lib/paint/painting/models/stamp-area-boundaries.ts';
 import { stampDistanceGrid, stampGridAt, stampPolygonBox, stampPolygonDistance, stampRegionPolygon, type StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { stampGateWetLawGrids, type StampGatePropertyResult } from './stamp-gate-wet-laws.ts';
@@ -86,7 +90,6 @@ function renderingGrids(): StampGateFormulaGrid[] {
   // Regions, in painting pixels: distances and widths in eighths, points and geometry whole or in quarters.
   const edgeCoverage = steps(64).map((u) => u * 12 - 6).flatMap((sd) => [1, 4, 12.5].map((width) => ({ label: `sd ${sd} width ${width}`, inputs: [sd, width] })));
   const edgeNoise = [-3.5, 0, 0.25, 1.5, 7.75, 100.125].flatMap((x) => [-40.5, 0, 0.75, 3.25, 250.5].flatMap((y) => [0, 12345, 4000000].map((seed) => ({ label: `x ${x} y ${y} seed ${seed}`, inputs: [x, y, seed] }))));
-  const floodBody = steps(64).map((u) => u * 64 - 8).flatMap((sd) => [2, 10, 20, 37.5, 60].map((thickness) => ({ label: `sd ${sd} thickness ${thickness} c 25`, inputs: [sd, thickness, 25] })));
   const settle = UNIT.flatMap((h) => [0.25, 0.5].flatMap((mean) => COARSE.flatMap((depth) => [0, 0.5].flatMap((granulation) => [0.25, 1].map((load) => ({
     label: `h ${h} mean ${mean} depth ${depth} granulation ${granulation} load ${load}`, inputs: [h, mean, depth, granulation, load],
   }))))));
@@ -100,7 +103,6 @@ function renderingGrids(): StampGateFormulaGrid[] {
   return [
     baselineGrid('edgeCoverage', 'edgeCoverage(x(0), x(1))', 2, edgeCoverage),
     baselineGrid('edgeNoise', 'edgeNoise(x(0), x(1), u32(x(2)))', 3, edgeNoise),
-    baselineGrid('floodBody', 'floodBody(x(0), x(1), x(2))', 3, floodBody),
     baselineGrid('paintWetSettle', 'paintWetSettle(paintValley(x(0), x(1)), x(2), x(3), x(4))', 5, settle),
     baselineGrid('paintDryContact', 'paintDryContact(x(0), x(1), x(2), x(3), x(4), x(5))', 6, contact),
     baselineGrid('paintClumps', 'paintClumps(x(0), x(1), x(2), u32(x(3)))', 4, clumps),
@@ -208,7 +210,49 @@ function twinGrids(): StampGateFormulaGrid[] {
   const needsDual = STAMP_DUAL_BLENDS.flatMap((blend) => (stampDualNeedsDual(blend) ? UNIT : [1]).map((tip) => ({
     label: `${blendName(blend)} tip ${tip}`, inputs: [stampDualModeIndex(blend), blend.family === 'layer' ? 1 : 0, tip], expected: stampDualNeedsDual(blend) ? 1 : 0,
   })));
+  // A stamp's touch as the renderer's touch works it out: paint under, at and past where it
+  // touches fully, pressed and not, and a bare tip's.
+  const tipTouch = HALF.flatMap((paint) => [0, 0.5, 1].flatMap((pressed) => [0, 0.25, 0.5].map((full) => ({
+    label: `paint ${paint} pressed ${pressed} full ${full}`, inputs: [paint, pressed, full], expected: stampTipTouch(paint, pressed, full),
+  }))));
+  const tipPressedShare = HALF.flatMap((contact) => HALF.flatMap((pressure) => [0.16, 0.5].flatMap((softness) => [1, 2.5].map((grow) => ({
+    label: `contact ${contact} pressure ${pressure} softness ${softness} grow ${grow}`, inputs: [contact, pressure, softness, -0.2, 1.4, grow],
+    expected: stampTipPressedShare(contact, pressure, softness, -0.2, 1.4, grow),
+  })))));
+  // Where water lands, as the wet field and the flow work it out: paper drier and wetter than the water, touched not at
+  // all, partly and wholly, by paint and by lifts (the WGSL's negative lift is none).
+  const landedWetness = HALF.flatMap((now) => HALF.flatMap((contact) => COARSE.flatMap((water) => [null, 0.5, 1].map((lift) => ({
+    label: `now ${now} contact ${contact} water ${water} lift ${lift ?? 'none'}`, inputs: [now, contact, water, lift ?? -1], expected: stampLandedWetness(now, contact, water, lift),
+  })))));
+  // The paper a wet field's texel stands for, as the CPU's waits work it out in closed form: before, at and past its
+  // paint's open time and its water's drying out.
+  const drying = { rate: 0.25, openTime: 2, shiny: 0.75, damp: 0.375 };
+  const paperRows = HALF.flatMap((level) => [0, 1.5].flatMap((since) => [0, 1, 2.5, 4, 8, 16].map((tau) => ({ level, since, tau })))).filter(({ since, tau }) => tau >= since);
+  const wetPaper = (read: 'wetness' | 'workable') => paperRows.map(({ level, since, tau }) => ({
+    label: `level ${level} at ${since} tau ${tau}`, inputs: [level, since, tau, drying.rate, drying.openTime, drying.damp],
+    expected: read === 'wetness' ? stampWetnessAt(level, since, tau, drying) : stampWorkableAt(level, since, tau, drying),
+  }));
+  // The GPU's sizes for a bloom and a drying rim, which must stay within the CPU's bounds that size their kernels:
+  // spreads none to free, tools a pixel to wider than the most, shares past both ends.
+  const shares = [-0.25, ...HALF, 1.25];
+  const bloomSigma = [0, 0.25, 0.5, 1, 2].flatMap((spread) => [1, 8, 24.5, 64].flatMap((diameter) => shares.map((surplus) => ({
+    label: `spread ${spread} diameter ${diameter} surplus ${surplus}`, inputs: [spread, diameter, surplus], expected: stampBloomSigma(spread, diameter, surplus),
+  }))));
+  const dryingRimBand = [0, 0.25, 0.625, 1].flatMap((spread) => [1, 8, 40, 120].flatMap((diameter) => shares.map((wetShare) => ({
+    label: `spread ${spread} diameter ${diameter} wetShare ${wetShare}`, inputs: [spread, diameter, wetShare], expected: stampDryingRimBand(spread, diameter, wetShare),
+  }))));
+  const dryingRimWetShare = HALF.flatMap((wettest) => [0, 0.375, 0.75, 1].map((damp) => ({
+    label: `wettest ${wettest} damp ${damp}`, inputs: [wettest, damp], expected: stampDryingRimWetShare(wettest, damp),
+  })));
   return [
+    twinGrid('bloomSigma', 'bloomSigma(x(0), x(1), x(2))', 3, bloomSigma),
+    twinGrid('dryingRimBand', 'dryingRimBand(x(0), x(1), x(2))', 3, dryingRimBand),
+    twinGrid('dryingRimWetShare', 'dryingRimWetShare(x(0), x(1))', 2, dryingRimWetShare),
+    twinGrid('tipTouch', 'tipTouch(x(0), x(1), x(2))', 3, tipTouch),
+    twinGrid('landedWetness', 'landedWetness(x(0), x(1), x(2), x(3))', 4, landedWetness),
+    twinGrid('wetPaper wetness', 'wetPaperAt(vec4f(x(0), x(1), 0.0, 0.0), x(2), vec3f(x(3), x(4), x(5))).wetness', 6, wetPaper('wetness')),
+    twinGrid('wetPaper workable', 'wetPaperAt(vec4f(x(0), x(1), 0.0, 0.0), x(2), vec3f(x(3), x(4), x(5))).workable', 6, wetPaper('workable')),
+    twinGrid('pressedTip share', 'pressedTip(1.0, x(0), x(1), x(2), x(3), x(4), x(5))', 6, tipPressedShare),
     twinGrid('paintFieldShare', 'paintFieldShare(vec2f(x(0), x(1)), i32(x(2)), vec4f(x(3), x(4), x(5), x(6)))', 7, paintFieldShare),
     twinGrid('kubelkaMunkOver', 'kubelkaMunkOver(kubelkaMunkFilm(vec4f(x(0)), vec4f(x(1))), vec4f(x(2))).x', 3, film),
     twinGrid('kubelkaMunkFilm T', 'kubelkaMunkFilm(vec4f(x(0)), vec4f(x(1))).T.x', 2, filmT),

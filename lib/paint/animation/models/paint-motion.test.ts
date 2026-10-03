@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import { STAMP_BRUSH_PROFILE_PROTOCOL, stampBrushEvenEdge, stampBrushProfileSettingsHash } from '#lib/paint/brush/models/stamp-brush-profile.ts';
+import { stampRoundTipFootprint, stampTipSupportOf } from '#lib/paint/painting/models/stamp-tip-support.ts';
 import { stampGroupSceneFromLayer } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
@@ -14,12 +16,24 @@ import { buildPaintMotion, type PaintMotionBuild } from './paint-motion.ts';
 
 const FLAT: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'flat' } };
 
-const brush: StampBrush = {
+const plain: StampBrush = {
+  profile: STAMP_BRUSH_UNMEASURED,
   name: 'Round', blend: 'normal', accumulation: { kind: 'glaze', build: 0 },
   tip: { image: { style: 'wash', pack: 'vvds', file: 'tips/round.png' }, roundness: 1, sampling: 'isotropic' },
   spacing: 0.25, stepping: 'spread', dynamics: stampLinearDynamics({}), scatter: { count: 1, radius: 0, lateral: 0 },
   rotation: { angle: 0, randomStart: false }, flip: { x: false, y: false }, blur: { amount: 0, jitter: 0 },
   taper: { start: 0, end: 0, size: 1, opacity: 1, shape: 0, pressure: 0 }, falloff: 0, flow: 1,
+};
+// Measured as an import would: a hard round tip's support, from 8 to 16 px.
+const support = { main: stampTipSupportOf(stampRoundTipFootprint()), dual: null };
+const brush: StampBrush = {
+  ...plain,
+  profile: {
+    kind: 'measured',
+    key: { protocol: STAMP_BRUSH_PROFILE_PROTOCOL, settings: stampBrushProfileSettingsHash(plain), assets: '', medium: '' },
+    provenance: { adapter: 'test', browser: 'test', renderer: 'test', seeds: ['a'], measuredAt: '2026-10-01T00:00:00Z' },
+    samples: [{ diameter: 8, edge: stampBrushEvenEdge(4), edgeNoise: 0, support }, { diameter: 16, edge: stampBrushEvenEdge(8), edgeNoise: 0, support }],
+  },
 };
 
 /** A group painted as one diagonal stroke from `from` to `to`. */

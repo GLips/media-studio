@@ -2,11 +2,10 @@
 // operation's condition, and the schedule of a passage with wet history as compiled. A wet effect (a bloom's, a
 // charge's, a backrun's: stamp-wet-techniques.ts) is a condition that names what asked for it, for the wet report.
 
-import { checkedStampPolygon } from './stamp-deposit-compile.ts';
 import { stampDepositNameText, type StampDepositName } from './stamp-deposit-identity.ts';
 import type { CompiledStampDeposit, CompiledStampMask } from './stamp-paint-recipe-compile.ts';
 import type { StampSeededPaintField } from './stamp-paint-field.ts';
-import type { StampPoint, StampRegion } from './stamp-region.ts';
+import { checkedStampPolygon, type StampPoint, type StampRegion } from './stamp-region.ts';
 
 /** A sheen the paper may be waited for (PaintSheen): no wetter than its medium's `shiny`, or `damp`. */
 export type StampSheen = 'shiny' | 'damp';

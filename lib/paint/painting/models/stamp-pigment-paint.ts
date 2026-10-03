@@ -37,6 +37,9 @@ export type StampPaintMixing = { kind: 'flat' } | StampPigmentMixing;
  */
 export const STAMP_PIGMENT_GROUP_SLOTS = 12;
 
+/** A group mixing more than STAMP_PIGMENT_GROUP_SLOTS pigments: a painting that can't be laid as written. */
+export class StampPigmentSlotsExceeded extends Error {}
+
 /**
  * A pigment's amount at one end of a material over scene time: a full stroke's (unit films) at each key, eased
  * between them and held beyond (stamp-material-keys.ts); a single key for paint that doesn't change.
@@ -93,7 +96,7 @@ export type StampPigmentPaint = {
   media: readonly PaintMedium[];
   bands: PaintBands;
   groups: readonly StampPigmentGroup[];
-  /** Each deposit's group, by index, its components (none for water or a lift) and where its material grades. */
+  /** Each deposit's group, by index, its components (none for water or a lift), where its material grades. */
   deposits: ReadonlyMap<CompiledStampDeposit, StampPigmentDeposit>;
   /** What a knockout reads of the paint behind it; null in a painting where no group knocks out. */
   underpaint: StampPigmentUnderpaint | null;
@@ -112,7 +115,8 @@ export const STAMP_PIGMENT_UNDERPAINT_SLOTS = 16;
 /**
  * `knockout`: whether it's in its group's knockout, taking from the paint behind the group rather than laying its own.
  * `dryBrush`: whether its paint catches the paper's peaks as a dry brush does in its medium (PaintMedium's
- * `paperContact.dryBrush`): a dry-media brush in a medium that says how.
+ * `paperContact.dryBrush`): a dry-media brush in a medium that says how. Its water is the painting's media binding's
+ * (StampPaintMedia).
  */
 export type StampPigmentDeposit = { group: number; components: readonly StampPigmentComponent[]; grade: StampPigmentGrade; knockout: boolean; dryBrush: boolean };
 
@@ -205,7 +209,7 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
       });
     }
     if (palette.length > STAMP_PIGMENT_GROUP_SLOTS) {
-      throw new Error(`stamp paint: ${group.id} mixes ${palette.length} pigments, over the ${STAMP_PIGMENT_GROUP_SLOTS} a wash holds, counting every key and end of its materials; split it into two groups, or key fewer pigments (${palette.map(({ id }) => id).join(', ')})`);
+      throw new StampPigmentSlotsExceeded(`stamp paint: ${group.id} mixes ${palette.length} pigments, over the ${STAMP_PIGMENT_GROUP_SLOTS} a wash holds, counting every key and end of its materials; split it into two groups, or key fewer pigments (${palette.map(({ id }) => id).join(', ')})`);
     }
     const washes = group.passes.some((pass) => pass.kind === 'wash'), paintLayers = stampPigmentLayers(palette.length, washes);
     return { medium: index, palette, paintLayers, open: washes ? 4 * paintLayers - 1 : null, knockoutLayer: stampGroupKnocksOut(group) ? paintLayers : null };
@@ -222,17 +226,21 @@ export function stampPigmentGroupMedium(paint: StampPigmentPaint, painting: Comp
   return paint.media[paint.groups[g].medium];
 }
 
-/**
- * `stamp`'s share of its grain's depth in `medium` (null: flat paint). A medium that catches the paper's peaks reads
- * pressure against the tooth itself (paintDryContact), so the brush's grain depth by pressure, Photoshop's model of
- * the same, is set aside: kept, Kyle's Nupastel laid nothing at half pressure in crayon. A lift's stamps go alike.
- */
+/** `stamp`'s share of its grain's depth in `medium` (null: flat paint), pressure's share as STAMP_PRESSURE_GRAIN_OWNER says. */
 export const stampGrainDepthIn = (stamp: PlacedStamp, medium: PaintMedium | null): number => stampGrainDepthBy(stamp, stampGrainDepthSourceIn(medium));
 
-/** Where a stamp's grain depth by pressure comes from: the paper's tooth, or the brush (stampGrainDepthIn). */
+/** What owns a stamp's grain response to pressure: the paper's tooth, or the brush (STAMP_PRESSURE_GRAIN_OWNER). */
 export type StampGrainDepthSource = 'tooth' | 'brush';
-/** Where `medium` (null: flat paint) takes a stamp's grain depth by pressure from: the tooth where it catches the peaks. */
-export const stampGrainDepthSourceIn = (medium: PaintMedium | null): StampGrainDepthSource => (medium?.paperContact.kind === 'peaks' ? 'tooth' : 'brush');
+
+/**
+ * Crayon's grain policy, by the medium's paper contact: in 'peaks' contact the paper's tooth owns the pressure
+ * response (paintDryContact presses into it), so the brush's grain depth by pressure, Photoshop's model of the same,
+ * is set aside; kept, Kyle's Nupastel laid nothing at half pressure. In 'valleys' the brush owns it. A lift goes alike.
+ */
+export const STAMP_PRESSURE_GRAIN_OWNER = { peaks: 'tooth', valleys: 'brush' } as const satisfies Record<PaintMedium['paperContact']['kind'], StampGrainDepthSource>;
+
+/** What owns a stamp's grain response to pressure in `medium`; flat paint, touching no tooth, leaves it to the brush. */
+export const stampGrainDepthSourceIn = (medium: PaintMedium | null): StampGrainDepthSource => (medium ? STAMP_PRESSURE_GRAIN_OWNER[medium.paperContact.kind] : 'brush');
 /** `stamp`'s share of its grain's depth, its pressure's share taken from `source`. */
 export const stampGrainDepthBy = (stamp: PlacedStamp, source: StampGrainDepthSource): number =>
   stamp.grainDepth * (source === 'tooth' ? 1 : stamp.grainDepthByPressure);

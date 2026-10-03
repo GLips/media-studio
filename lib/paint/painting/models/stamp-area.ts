@@ -8,16 +8,18 @@
 // (stamp-area-boundaries.ts).
 
 import { compileStampBoundaries, STAMP_BOUNDARY_WGSL, stampBoundariesReach, stampBoundaryShift, type CompiledStampBoundary, type StampBoundaries } from './stamp-area-boundaries.ts';
-import { checkedStampPolygon } from './stamp-deposit-compile.ts';
-import { stampRegionSeed } from './stamp-fill.ts';
+import { seededRandom } from '#lib/picture/motion/models/random.ts';
 import type { CompiledStampMask } from './stamp-paint-recipe-compile.ts';
-import { stampEdgeReach, stampEdgeWidth, stampPolygonBox, stampPolygonDistance, type StampBox, type StampEdge, type StampPoint, type StampRegion } from './stamp-region.ts';
+import { checkedStampPolygon, stampDistanceGrid, stampEdgeReach, stampEdgeWidth, stampPolygonBox, stampPolygonDistance, type StampBox, type StampEdge, type StampPoint, type StampRegion } from './stamp-region.ts';
 
 /**
  * An area of the painting with an edge: `region`, its edge a 1-px antialiased line unless it's soft or ragged
  * (StampEdge), moved `inset` px inward (0 when left out) by its distance from the outline.
  */
 export type StampArea = { region: StampRegion; edge?: StampEdge; inset?: number };
+
+/** A seed for a region's ragged edge from its ID, as a u32 the renderer's noise reads. */
+export const stampRegionSeed = (id: string) => Math.floor(seededRandom(`${id}|region`)() * 0x100000000) >>> 0;
 
 /** Where an application's deposits may land: an area, its named stretches kept, feathered or merged (StampBoundary). */
 export type StampWithin = StampArea & { boundaries?: StampBoundaries };
@@ -82,6 +84,25 @@ export function stampAreaCoverageAt(area: CompiledStampArea, x: number, y: numbe
   const sd = stampPolygonDistance(area.polygon, x, y);
   const { open, feather } = area.boundaries ? stampBoundaryShift(area.boundaries, sd, x, y) : { open: 0, feather: 0 };
   return stampEdgeCoverage(sd + open - feather / 2 - (area.inset ?? 0) + moved, Math.max(stampEdgeWidth(area.edge), feather));
+}
+
+/**
+ * stampAreaCoverageAt over a grid: `columns` × `rows` points `step` px apart from (x0, y0), row by row, its distances
+ * from one stampDistanceGrid (to f32, as the GPU reads them) rather than a polygon walk a point.
+ */
+export function stampAreaCoverageGrid(area: CompiledStampArea, x0: number, y0: number, step: number, columns: number, rows: number): Float32Array {
+  const values = new Float32Array(columns * rows);
+  if (!columns || !rows) return values;
+  const { values: distances } = stampDistanceGrid(area.polygon, { x0, y0, x1: x0 + (columns - 1) * step, y1: y0 + (rows - 1) * step }, step);
+  const ragged = area.edge?.ragged, width = stampEdgeWidth(area.edge);
+  for (let b = 0; b < rows; b++) {
+    for (let a = 0; a < columns; a++) {
+      const x = x0 + a * step, y = y0 + b * step;
+      const moved = ragged && ragged.scale > 0 ? ragged.amount * stampEdgeNoise(x / ragged.scale, y / ragged.scale, area.seed) : 0;
+      values[b * columns + a] = stampEdgeCoverage(distances[b * columns + a] - (area.inset ?? 0) + moved, width);
+    }
+  }
+  return values;
 }
 
 /**

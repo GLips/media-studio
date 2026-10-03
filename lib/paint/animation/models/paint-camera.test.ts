@@ -1,7 +1,8 @@
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import { stampRoundTipStatedProfile } from '#lib/paint/painting/models/stamp-tip-support.ts';
 import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import type { StampPlane } from '#lib/paint/painting/models/stamp-plane.ts';
@@ -22,7 +23,9 @@ const brush: StampBrush = {
   spacing: 0.25, stepping: 'spread', dynamics: stampLinearDynamics({}), scatter: { count: 1, radius: 0, lateral: 0 },
   rotation: { angle: 0, randomStart: false }, flip: { x: false, y: false }, blur: { amount: 0, jitter: 0 },
   taper: { start: 0, end: 0, size: 1, opacity: 1, shape: 0, pressure: 0 }, falloff: 0, flow: 1,
+  profile: STAMP_BRUSH_UNMEASURED,
 };
+brush.profile = stampRoundTipStatedProfile(brush);
 
 /** A painting of one stroke per group, each across `box` corner to corner. */
 const paintingOf = (groups: readonly { id: string; box: StampBox }[]) => compileStampPaintRecipe(stampPaintRecipe({ paper: { color: '#ffffff' }, mixing: { kind: 'flat' } }, (paint) => {

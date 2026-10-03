@@ -10,7 +10,7 @@
 // and preview: unreported. Tilt, azimuth, speed: `inapplicable`; wet mixing: `unsupported`, left to wet-paint.
 
 import {
-  stampLinearDynamics, type StampBlend, type StampBrush, type StampBrushAsset, type StampBrushColorDynamics, type StampBrushLayer, type StampBrushSupportNote, type StampDualBlend, type StampGrainBlend,
+  STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBlend, type StampBrush, type StampBrushAsset, type StampBrushColorDynamics, type StampBrushLayer, type StampBrushSupportNote, type StampDualBlend, type StampGrainBlend,
 } from '#lib/paint/brush/models/stamp-brush.ts';
 import { STAMP_MIN_SPACING } from '#lib/paint/brush/models/stamp-placement.ts';
 import { PROCREATE_READING } from './procreate-reading.ts';
@@ -244,7 +244,7 @@ export function normalizeProcreateBrush(
   const blend = BRUSH_BLENDS[Number(main.settings.blendMode ?? 0)];
   if (!blend) support.push({ level: 'unsupported', setting: 'blendMode', detail: `the brush paints in ${blendName(Number(main.settings.blendMode))}; read as normal` });
   const color = readColorDynamics(main.settings);
-  const brush: StampBrush = { name, blend: blend ?? 'normal', ...(color && { color }), ...readLayer(main, '', support, reading) };
+  const brush: StampBrush = { name, blend: blend ?? 'normal', ...(color && { color }), ...readLayer(main, '', support, reading), profile: STAMP_BRUSH_UNMEASURED };
   if (dual) {
     const mode = Number(main.settings.dualBlendMode ?? 0);
     const dualBlend = DUAL_BLENDS[mode];

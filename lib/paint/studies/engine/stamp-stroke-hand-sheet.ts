@@ -9,6 +9,7 @@ import { withBrowserModulePage } from '#lib/platform/browser/engine/browser-modu
 import { resolveStampPaintPackBrushes } from '#lib/paint/brush-packs/models/stamp-paint-pack.ts';
 import { stampPaintPackKey } from '#lib/paint/brush-packs/models/stamp-paint-pack-urls.ts';
 import { readServedStampPaintPack } from '#lib/paint/brush-packs/engine/stamp-paint-pack-files.ts';
+import { readStampPaintStyleProbeMedium } from '#lib/paint/style/engine/style-probe-medium.ts';
 
 const SHEET_PAGE = fileURLToPath(new URL('../studio/stamp-stroke-hand-sheet-page.ts', import.meta.url));
 
@@ -17,7 +18,7 @@ export async function writeStampStrokeHandSheet({ stylesDir, style, pack, brushe
   stylesDir: string; style: string; pack: string; brushes: readonly string[]; diameter: number; out: string;
 }): Promise<string[]> {
   const { manifest, url } = readServedStampPaintPack(stylesDir, style, pack), packUrls = { [stampPaintPackKey(style, pack)]: url };
-  const painted = resolveStampPaintPackBrushes(manifest);
+  const painted = resolveStampPaintPackBrushes(manifest, (await readStampPaintStyleProbeMedium(stylesDir, style)).key);
   const missing = brushes.filter((name) => !painted[name]);
   if (missing.length) throw new Error(`stroke hand sheet: ${pack} has no brush ${missing.map((name) => JSON.stringify(name)).join(', ')}`);
   mkdirSync(out, { recursive: true });

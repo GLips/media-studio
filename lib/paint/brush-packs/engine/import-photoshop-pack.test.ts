@@ -5,19 +5,39 @@ import { test } from 'node:test';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { PHOTOSHOP_FIXTURE_ERODIBLE_HEIGHTS, photoshopAbrFixture } from '#lib/paint/photoshop-brushes/engine/photoshop-abr-fixture.ts';
 import { writePhotoshopAbr } from '#lib/paint/photoshop-brushes/engine/photoshop-abr.ts';
-import { readStampPaintPack, resolveStampPaintPackBrushes, stampPaintPackDiameter } from '../models/stamp-paint-pack.ts';
-import { importStampPaintPack } from './import-stamp-paint-pack.ts';
+import { readStampPaintPack, readStampPaintPackBrushSources, resolveStampPaintPackBrushes, stampPaintPackDiameter, type StoredStampPaintPack } from '../models/stamp-paint-pack.ts';
+import { stampBrushEdgeReach, stampBrushMeasuredProfile } from '#lib/paint/brush/models/stamp-brush-profile.ts';
+import { STAMP_BRUSH_PROBE_BARE_MEDIUM, stampBrushProbeMediumKey } from '../models/stamp-brush-profile-probes.ts';
+import { importStampPaintPack, reimportStampPaintPack, type StampPaintPackMeasuring } from './import-stamp-paint-pack.ts';
+import type { StampBrushProfileMeasurement } from './measure-stamp-brush-profiles.ts';
 import { readStampPaintPackGeneration } from './stamp-paint-pack-files.ts';
 
+/** An edge `left` px to its left and `right` to its right at every heading. */
+const sides = (left: number, right: number) => ({ left: Array.from({ length: 8 }, () => left), right: Array.from({ length: 8 }, () => right) });
+
+/** The browser's measuring stood in for: each brush measured alike but Pencil, refused, the names asked for kept in `asked`. */
+function standInMeasuring(asked: string[]): StampPaintPackMeasuring {
+  return {
+    medium: STAMP_BRUSH_PROBE_BARE_MEDIUM,
+    measure: async ({ brushes }) => Object.fromEntries(brushes.map(({ name }): [string, StampBrushProfileMeasurement] => {
+      asked.push(name);
+      if (name === 'Pencil') return [name, { kind: 'refused', why: 'its stroke lays nothing along its centre' }];
+      const provenance = { adapter: 'stand-in', browser: 'stand-in', renderer: 'stand-in', seeds: ['a'], measuredAt: '2026-10-01T00:00:00Z' };
+      const support = { main: { width: 64, height: 64, span: 1, roundness: 1, reach: [0.5, 0.52] }, dual: null };
+      return [name, { kind: 'measured', provenance, samples: [{ diameter: 8, edge: sides(3.25, 3.25), edgeNoise: 0, support }, { diameter: 128, edge: sides(50, 54), edgeNoise: 0, support }] }];
+    })),
+  };
+}
+
 test('importing an .abr writes the same pack layout a Procreate pack imports to, its generation replacing only what an import writes', () => {
-  withStudioTemp('abr-import', (dir) => {
+  return withStudioTemp('abr-import', async (dir) => {
     writeFileSync(join(dir, 'chalk.abr'), writePhotoshopAbr(photoshopAbrFixture()));
     const packDir = join(dir, 'styles/sketch/brushes/chalk');
     // Photoshop's captures and a drawn sheet sit beside the generations, so they stay.
     for (const kept of ['reference', 'fidelity']) mkdirSync(join(packDir, kept), { recursive: true });
     writeFileSync(join(packDir, 'reference/manifest.json'), '{}');
     writeFileSync(join(packDir, 'fidelity/report.json'), '{}');
-    const { manifest } = importStampPaintPack({ archive: join(dir, 'chalk.abr'), stylesDir: join(dir, 'styles'), style: 'sketch', pack: 'chalk' });
+    const { manifest } = await importStampPaintPack({ archive: join(dir, 'chalk.abr'), stylesDir: join(dir, 'styles'), style: 'sketch', pack: 'chalk' }, standInMeasuring([]));
     assert.equal(manifest.app, 'photoshop');
     assert.deepEqual(readdirSync(packDir).toSorted(), ['current', 'fidelity', 'generations', 'reference']);
     assert.equal(readFileSync(join(packDir, 'reference/manifest.json'), 'utf8'), '{}');
@@ -29,7 +49,7 @@ test('importing an .abr writes the same pack layout a Procreate pack imports to,
     for (const file of manifest.files) assert.ok(existsSync(join(generation.dir, file)), file);
     assert.deepEqual(manifest.previews, {});
     assert.deepEqual([stampPaintPackDiameter(manifest, 'Chalk'), stampPaintPackDiameter(manifest, 'Chalk (Wet)')], [48, 30]);
-    const brushes = resolveStampPaintPackBrushes(manifest), chalk = brushes.Chalk;
+    const brushes = readStampPaintPackBrushSources(manifest), chalk = brushes.Chalk;
     assert.equal(chalk.grain?.kind, 'canvas');
     assert.deepEqual(chalk.grain?.blend, { family: 'texture', mode: 'height' });
     assert.equal(chalk.grain?.scale, 4 / 48);
@@ -48,9 +68,9 @@ test('importing an .abr writes the same pack layout a Procreate pack imports to,
 });
 
 test("a manifest is read whole: a field of the wrong shape anywhere, or a tip's image of another kind than its tip, is refused", () => {
-  withStudioTemp('abr-manifest', (dir) => {
+  return withStudioTemp('abr-manifest', async (dir) => {
     writeFileSync(join(dir, 'chalk.abr'), writePhotoshopAbr(photoshopAbrFixture()));
-    importStampPaintPack({ archive: join(dir, 'chalk.abr'), stylesDir: join(dir, 'styles'), style: 'sketch', pack: 'chalk' });
+    await importStampPaintPack({ archive: join(dir, 'chalk.abr'), stylesDir: join(dir, 'styles'), style: 'sketch', pack: 'chalk' }, standInMeasuring([]));
     const stored = () => JSON.parse(readFileSync(join(readStampPaintPackGeneration(join(dir, 'styles/sketch/brushes/chalk')).dir, 'manifest.json'), 'utf8'));
     const refused = (change: (m: ReturnType<typeof stored>) => void, problem: RegExp) => {
       const m = stored();
@@ -61,5 +81,44 @@ test("a manifest is read whole: a field of the wrong shape anywhere, or a tip's 
     refused((m) => void (m.brushes.Chalk.pattern.width = 'wrong'), /brushes\.Chalk\.pattern\.width/);
     refused((m) => void (m.brushes.Chalk.tip.kind = 'round'), /brushes\.Chalk\.tip\.kind is "round", not one of sampled/);
     refused((m) => void (m.brushes.Pencil.preset.Brsh.Dmtr = { _unit: '#Pxl' }), /brushes\.Pencil\.preset\.Brsh\.Dmtr isn't a descriptor value/);
+  });
+});
+
+test('every import measures its brushes, and importing a pack again from itself measures only what changed', () => {
+  return withStudioTemp('abr-profiles', async (dir) => {
+    writeFileSync(join(dir, 'chalk.abr'), writePhotoshopAbr(photoshopAbrFixture()));
+    const place = { stylesDir: join(dir, 'styles'), style: 'sketch', pack: 'chalk' }, asked: string[] = [];
+    const first = await importStampPaintPack({ ...place, archive: join(dir, 'chalk.abr') }, standInMeasuring(asked));
+    assert.deepEqual(asked, ['Chalk', 'Chalk (Wet)', 'Pencil']);
+    // A style's brush carries its pack's profile, checked against the medium its style paints in now, or why it has none.
+    const brushes = resolveStampPaintPackBrushes(first.manifest, stampBrushProbeMediumKey(STAMP_BRUSH_PROBE_BARE_MEDIUM, {}));
+    // Heading down, its right side faces way 16 of 32, to the left.
+    assert.equal(stampBrushEdgeReach(stampBrushMeasuredProfile(brushes.Chalk), 128, 'Chalk').right[16], 54);
+    assert.deepEqual(brushes.Pencil.profile, { kind: 'refused', why: 'its stroke lays nothing along its centre' });
+    assert.throws(() => stampBrushMeasuredProfile(brushes.Pencil), /its stroke lays nothing along its centre/);
+    const elsewhere = resolveStampPaintPackBrushes(first.manifest, 'another paper').Chalk.profile;
+    assert.match(elsewhere.kind === 'refused' ? elsewhere.why : '', /other paper or paint/);
+
+    // Again from itself: a new generation of the same images, nothing to measure.
+    const before = readStampPaintPackGeneration(first.dir).dir, tip = readFileSync(join(before, 'tips/chalk.png'));
+    const again = await reimportStampPaintPack(place, standInMeasuring(asked)), after = readStampPaintPackGeneration(again.dir);
+    assert.equal(asked.length, 3);
+    assert.deepEqual(again.manifest.profiles, first.manifest.profiles);
+    assert.notEqual(after.dir, before);
+    assert.deepEqual(readFileSync(join(after.dir, 'tips/chalk.png')), tip);
+
+    // One brush's profile measured by an older protocol is stale, and only it is measured again.
+    const file = join(after.dir, 'manifest.json');
+    // SAFETY: the import has just written this manifest, and read it back whole.
+    const stored = JSON.parse(readFileSync(file, 'utf8')) as StoredStampPaintPack, chalk = again.manifest.profiles.Chalk;
+    assert.ok(chalk.kind === 'measured');
+    // Stored, an edge every heading and side reads alike is one offset.
+    assert.deepEqual(stored.profiles?.Chalk.kind === 'measured' && stored.profiles.Chalk.samples.map(({ edge }) => typeof edge), ['number', 'object']);
+    assert.throws(() => readStampPaintPack({ ...stored, profiles: { Chalk: { ...chalk, samples: chalk.samples.toReversed() } } }), /profiles\.Chalk\.samples aren't diameters rising/);
+    writeFileSync(file, JSON.stringify({ ...stored, profiles: { ...stored.profiles, Pencil: { ...again.manifest.profiles.Pencil, key: { ...again.manifest.profiles.Pencil.key, protocol: 99 } } } }));
+    const old = readStampPaintPackGeneration(join(dir, 'styles/sketch/brushes/chalk')).manifest.profiles.Pencil;
+    assert.match(old.kind === 'refused' ? old.why : '', /measured by protocol 99/);
+    await reimportStampPaintPack(place, standInMeasuring(asked));
+    assert.deepEqual(asked.slice(3), ['Pencil']);
   });
 });

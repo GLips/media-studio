@@ -1,18 +1,16 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { stampTipHull, type StampTipLevel } from './stamp-tip-hull.ts';
+import { stampTipLevels } from '#lib/paint/brush/models/stamp-tip-levels.ts';
+import { stampTipHull } from './stamp-tip-hull.ts';
 
-/** A tip `size` texels across painting an off-centre disc, and its levels down to one texel, each halving the disc. */
-function discTip(size: number): StampTipLevel[] {
-  const levels: StampTipLevel[] = [];
-  for (let w = size; w >= 1; w >>= 1) {
-    const cx = w * 0.4, cy = w * 0.55, r = Math.max(0.5, w * 0.3);
-    levels.push({ width: w, height: w, rows: Array.from({ length: w }, (_, y) => {
-      const half = Math.sqrt(Math.max(0, r * r - (y + 0.5 - cy) ** 2));
-      return half > 0 ? [Math.max(0, Math.floor(cx - half)), Math.min(w - 1, Math.ceil(cx + half) - 1)] : null;
-    }) });
+/** A tip `size` texels across painting an off-centre soft disc, white round it, and its levels as the GPU gets them. */
+function discTip(size: number) {
+  const pixels = new Uint8Array(size * size);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const d = Math.hypot(x + 0.5 - size * 0.4, y + 0.5 - size * 0.55) / (size * 0.3);
+    pixels[y * size + x] = Math.round(255 * Math.min(1, Math.max(0, d - 0.6) / 0.4));
   }
-  return levels;
+  return stampTipLevels({ width: size, height: size, pixels });
 }
 
 const inside = (hull: Float32Array, x: number, y: number) => {
@@ -28,10 +26,11 @@ test('a tip\'s hull holds every texel a stamp can sample paint from, within the 
   for (const coarsest of [0, 2, 4]) {
     const hull = stampTipHull(levels, coarsest);
     for (const level of levels.slice(0, coarsest + 1)) {
-      level.rows.forEach((span, y) => {
-        if (!span) return;
+      level.texels.forEach((texel, i) => {
+        if (texel === 255) return;
+        const tx = i % level.width, ty = Math.floor(i / level.width);
         // A bilinear sample reaches paint from a texel's neighbours: the texel grown by one, where it's in the tip.
-        for (const x of [span[0] - 1, span[1] + 2]) for (const v of [y - 1, y + 2]) {
+        for (const x of [tx - 1, tx + 2]) for (const v of [ty - 1, ty + 2]) {
           const u = Math.min(1, Math.max(0, x / level.width)), w = Math.min(1, Math.max(0, v / level.height));
           assert.ok(inside(hull, u, w), `level ${level.width}: ${u},${w} is outside the hull for coarsest ${coarsest}`);
         }
@@ -51,5 +50,5 @@ test('a tip\'s hull holds every texel a stamp can sample paint from, within the 
 });
 
 test('a bare tip is drawn as its whole square', () => {
-  assert.deepEqual([...stampTipHull([{ width: 4, height: 4, rows: [null, null, null, null] }], 0)], [0, 0, 1, 0, 1, 1, 0, 1]);
+  assert.deepEqual([...stampTipHull(stampTipLevels({ width: 4, height: 4, pixels: new Uint8Array(16).fill(255) }), 0)], [0, 0, 1, 0, 1, 1, 0, 1]);
 });

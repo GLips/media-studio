@@ -2,14 +2,12 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
-import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampMarkStamps, type StampMark } from './stamp-marks.ts';
 import { compileStampPaintRecipe, stampPassDeposits, type CompiledStampDeposit, type CompiledStampMask } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampPaintEnvironment } from './stamp-paint-recipe-types.ts';
 import { stampPaintingBrushedMasks } from './stamp-brushed-mask.ts';
-import { compileStampWetness, stampCoverageSampleGrid } from './stamp-wetness.ts';
-import { stampStage } from './stamp-stage.ts';
 
 const WET: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: WATERCOLOUR_PIGMENTS } };
 const brush: StampBrush = {
@@ -19,10 +17,10 @@ const brush: StampBrush = {
   spacing: 0.1, stepping: 'spread', dynamics: stampLinearDynamics({ size: { random: 0.3 } }), scatter: { count: 2, radius: 0.2, lateral: 0.2 },
   rotation: { angle: 0, randomStart: false }, flip: { x: false, y: false }, blur: { amount: 0, jitter: 0 },
   taper: { start: 0.2, end: 0.2, size: 0.3, opacity: 0.5, shape: 0, pressure: 0 }, falloff: 0, flow: 1,
+  profile: STAMP_BRUSH_UNMEASURED,
 };
 const mark = (key: string, x: number): StampMark => ({ key, brush, diameter: 20, geometry: { kind: 'stroke', path: [{ x, y: 40 }, { x: x + 60, y: 50 }], hand: { profile: 'swell', wobble: { pressure: 0.1, position: 0.2 } } } });
 const paint = { paint: { kind: 'color', color: '#336633' } } as const;
-const square = (x0: number, y0: number, x1: number, y1: number) => ({ kind: 'polygon' as const, points: [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }] });
 
 /** The brushed masks a deposit lands under, latest first. */
 const brushedOver = (deposit: CompiledStampDeposit) => {
@@ -67,24 +65,4 @@ test('wax holds through its group, past an unmask and out of a passage, but not 
   // Deposits under the same fluid and wax share one state of it, which the renderer works out once.
   assert.equal(later.mask, late.mask);
   assert.throws(() => compileStampPaintRecipe(stampPaintRecipe(WET, (p) => p.group('g', { composite: 'glaze', opacity: 1 }, (g) => g.resist('wax', { marks: [mark('wax', 20)], amount: 2 })))), /resists 2 of the paint/);
-});
-
-test('water over brushed fluid wets each lattice point by what the measured coverage leaves open, and unmeasured fluid is refused', () => {
-  const fluid = mark('fluid', 20);
-  const painting = compileStampPaintRecipe(stampPaintRecipe(WET, (p) => p.group('g', { composite: 'glaze', opacity: 1 }, (g) => g.passage('wash', {}, (wash) => {
-    wash.mask('fluid', { marks: [fluid] });
-    wash.water('water', { kind: 'fill', brush, size: 20, application: { kind: 'flood' }, region: square(0, 0, 160, 96) });
-  }))));
-  const [masked] = stampPaintingBrushedMasks(painting);
-  // Measured as the renderer would: wholly covered left of x = 64, half covered right of it, over rows 24 to 72.
-  const box = { x: 0, y: 24, w: 128, h: 48 }, grid = stampCoverageSampleGrid(box);
-  const values = Float32Array.from({ length: grid.columns * grid.rows }, (_, s) => ((grid.a0 + (s % grid.columns) - 1) * 4 < 64 ? 1 : 0.5));
-  const stage = stampStage({ width: 160, height: 96 });
-  const wetness = compileStampWetness(painting, () => PAINT_MEDIA.watercolour, stage, () => 0, new Map([[masked, { ...grid, values }]]));
-  const [landing] = wetness.landings.values(), { window, wetness: after } = landing.after;
-  const at = (x: number, y: number) => after[((y - window.y0) / window.cell) * window.columns + (x - window.x0) / window.cell] / landing.water;
-  assert.equal(at(32, 48), 0);
-  assert.ok(Math.abs(at(96, 48) - 0.5) < 1e-6);
-  assert.equal(at(96, 88), 1);
-  assert.throws(() => compileStampWetness(painting, () => PAINT_MEDIA.watercolour, stage), /g\/wash\/fluid is brushed on, and its coverage wasn't measured/);
 });

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import { compileStampPaintRecipe, stampPassDeposits } from './stamp-paint-recipe-compile.ts';
 import type { StampPaintEnvironment } from './stamp-paint-recipe-types.ts';
@@ -14,6 +14,7 @@ const nearest = <P extends { x: number; y: number }>(points: readonly P[], x: nu
   points.reduce((best, p) => (Math.hypot(p.x - x, p.y - y) < Math.hypot(best.x - x, best.y - y) ? p : best));
 
 const brush: StampBrush = {
+  profile: STAMP_BRUSH_UNMEASURED,
   name: 'Round', blend: 'normal', accumulation: { kind: 'glaze', build: 0 },
   tip: { image: { style: 's', pack: 'p', file: 'tip.png' }, roundness: 1, sampling: 'isotropic' },
   spacing: 0.1,

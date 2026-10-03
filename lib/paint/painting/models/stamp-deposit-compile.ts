@@ -7,27 +7,10 @@ import { placeStampDeposit } from './stamp-deposit-placement.ts';
 import type { StampFillApplication } from './stamp-fill.ts';
 import { stampPaintFieldProblem, stampSeededPaintField } from './stamp-paint-field.ts';
 import type { CompiledStampAction } from './stamp-paint-action.ts';
-import { stampGrownPolygon, stampRegionPolygon, type StampPoint, type StampRegion } from './stamp-region.ts';
+import { checkedStampPolygon, stampGrownPolygon, stampRegionPolygon } from './stamp-region.ts';
 import type { CompiledStampDeposit, CompiledStampMask } from './stamp-paint-recipe-compile.ts';
 import type { CompiledStampArea } from './stamp-area.ts';
 import type { StampPaintRecipeDeposit } from './stamp-paint-recipe-types.ts';
-
-/**
- * `region` traced, `what` naming it: refused unless it's at least 3 finite points enclosing some area, as the
- * distance a fill, mask or `within` reads is only defined for one.
- */
-export function checkedStampPolygon(region: StampRegion, what: string): readonly StampPoint[] {
-  const polygon = stampRegionPolygon(region);
-  let twiceArea = 0;
-  polygon.forEach((a, i) => {
-    const b = polygon[(i + 1) % polygon.length];
-    twiceArea += a.x * b.y - b.x * a.y;
-  });
-  if (polygon.length < 3 || !polygon.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y)) || !twiceArea) {
-    throw new Error(`stamp paint: ${what}'s region isn't a shape: it needs at least 3 finite points enclosing some area`);
-  }
-  return polygon;
-}
 
 /** How a fill of wet or dry media is laid unless it says: wet paint floods a shape; a crayon shades it in short strokes. */
 const STAMP_MEDIA_FILLS: Record<StampBrushMedia, StampFillApplication> = { wet: { kind: 'flood' }, dry: { kind: 'strokes', pattern: { kind: 'shading' } } };
@@ -45,6 +28,9 @@ export function compileDeposit<A extends CompiledStampAction>(
   if (!(diameter > 0) || !Number.isFinite(diameter)) throw new Error(`stamp paint: ${full} has diameter ${diameter}, and a stamp needs a positive one`);
   if (geometry.kind !== 'fill' && !(geometry.kind === 'stroke' ? geometry.path : geometry.at).length) throw new Error(`stamp paint: ${full} has no points to stamp`);
   if (geometry.kind === 'fill') checkedStampPolygon(geometry.region, full);
+  if (geometry.kind === 'stroke' && geometry.path.some(({ scale }) => scale !== undefined && !(scale > 0 && Number.isFinite(scale)))) {
+    throw new Error(`stamp paint: ${full} has a point whose scale isn't a finite positive number`);
+  }
   // Four draws place the grains, four jitter the colour. A boil's epoch draws only its grains afresh: colour is the
   // author's palette, which an epoch mustn't flicker; nor is it a mark's, so it's drawn from the deposit's own ID.
   const jitter = stampDepositDraws(full).slice(4);

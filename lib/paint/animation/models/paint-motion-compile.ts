@@ -1,7 +1,7 @@
 // paint-motion-compile.ts: a scene's motion as written (a node per group that moves, plays of clips on them) checked
 // and compiled over the painting it moves. What the painting already says is read from it, never restated: each
-// node's painted box (where folds are checked). Each node's plays are filed in lanes typed by what they write: a lane
-// per pin, its sway, its flutter, its placement.
+// group's painted box (where folds are checked: paintGroupPaintedBox). Each node's plays are filed in lanes typed by
+// what they write: a lane per pin, its sway, its flutter, its placement.
 //
 // Boiling is per group: strokes that should boil apart go in groups of their own.
 
@@ -9,6 +9,7 @@ import type { StampGroupPlacement } from '#lib/paint/painting/models/stamp-group
 import type { StampGroupGlow, StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampPassDeposits, type CompiledStampGroup, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import { stampDepositMeasuredSupport } from '#lib/paint/painting/models/stamp-tip-support.ts';
 import { PAINT_BOIL_WOBBLE, paintBoilWobbleProblem, type PaintBoilWobble } from './paint-boil-displacement.ts';
 import { paintChannelConflicts, type PaintChannelWriter } from './paint-channels.ts';
 import {
@@ -80,8 +81,7 @@ export type CompiledPaintMarks =
 
 /**
  * A node checked and compiled. `levels`: its id, then each ancestor's, nearest first. `clock`: its ancestors' steps
- * and its own, outermost first. `box`: its group's painted extent, rest px (null when it paints nothing). `glow`:
- * its own or its nearest ancestor's, null for none.
+ * and its own, outermost first. `glow`: its own or its nearest ancestor's, null for none.
  */
 export type CompiledPaintNode = {
   readonly id: string;
@@ -90,7 +90,6 @@ export type CompiledPaintNode = {
   readonly levels: readonly string[];
   readonly pivot: StampPoint;
   readonly phase: number;
-  readonly box: StampBox | null;
   readonly clock: readonly PaintSceneStep[];
   readonly marks: CompiledPaintMarks;
   readonly pins: ReadonlyMap<string, { readonly pin: CompiledPaintPin; readonly lane: PaintLane<PaintPinClip<string>> }>;
@@ -107,20 +106,19 @@ export type PaintMotion = {
   readonly remembered: { last?: { readonly at: number; readonly frame: number; readonly state: StampPaintFrameState } };
 };
 
-/** How far past its stamps' extent a group's paint may reach (bleeds, blooms), px. */
+/** How far past where its stamps can lay paint a group's paint may reach (bleeds, blooms), px. */
 const PAINTED_BOX_PAD = 8;
 
-/** Where `group`'s paint lies, rest px: every stamp's extent and every flood's box, padded; null when it has none. */
+/**
+ * Where `group`'s paint lies, rest px: its deposits' support as their brushes' profiles measured it
+ * (stampDepositMeasuredSupport, refusing a brush without one), padded; null when it has none.
+ */
 export function paintGroupPaintedBox(group: CompiledStampGroup): StampBox | null {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const deposit of group.passes.flatMap(stampPassDeposits)) {
-    for (const { x, y, diameter } of [...deposit.stamps, ...deposit.dualStamps]) {
-      x0 = Math.min(x0, x - diameter / 2); y0 = Math.min(y0, y - diameter / 2); x1 = Math.max(x1, x + diameter / 2); y1 = Math.max(y1, y + diameter / 2);
-    }
-    if (deposit.kind === 'flood') {
-      const { box } = deposit.flood;
-      x0 = Math.min(x0, box.x0); y0 = Math.min(y0, box.y0); x1 = Math.max(x1, box.x1); y1 = Math.max(y1, box.y1);
-    }
+    const box = stampDepositMeasuredSupport(deposit);
+    if (!box) continue;
+    x0 = Math.min(x0, box.x0); y0 = Math.min(y0, box.y0); x1 = Math.max(x1, box.x1); y1 = Math.max(y1, box.y1);
   }
   return x0 <= x1 ? { x0: x0 - PAINTED_BOX_PAD, y0: y0 - PAINTED_BOX_PAD, x1: x1 + PAINTED_BOX_PAD, y1: y1 + PAINTED_BOX_PAD } : null;
 }
@@ -191,7 +189,6 @@ function compileNodes(painting: CompiledStampPaint, nodes: readonly PaintMotionN
     }
     compiled.set(node.id, {
       id: node.id, glow: inheritedGlow(levels, byId), group, levels, pivot: node.pivot ?? { x: 0, y: 0 }, phase: paintIdPhase(node.id),
-      box: paintGroupPaintedBox(group),
       clock: levels.toReversed().flatMap((id) => { const clock = byId.get(id)?.clock; return clock && !paintNodeClockProblem(clock) ? [paintNodeClockStep(clock)] : []; }),
       marks: compileMarks(node, group, problems),
       pins, sway: [], flutter: [], place: [],

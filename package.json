@@ -21,6 +21,7 @@
     "brushes:diagnose": "node harness/brush-fidelity.ts diagnose",
     "brushes:hand": "node harness/brush-fidelity.ts hand",
     "brushes:fills": "node harness/brush-fidelity.ts fills",
+    "brushes:narrow-fills": "node harness/brush-fidelity.ts narrow-fills",
     "brushes:probes": "node harness/brush-fidelity.ts probes",
     "brushes:guard": "node harness/stamp-paint-guard.ts",
     "wet:passages": "node harness/wet-passage-sheet.ts paint",
