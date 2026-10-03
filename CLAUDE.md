@@ -39,3 +39,6 @@
 - The painting engine is in flux: renders may shift a little between runs and between commits, and that's fine. Don't
   chase byte-identical output or prove a change leaves images untouched. Judge by eye at delivery size, accept moved
   baselines when they look right, and save repeatability work for differences a viewer would notice.
+- Fix papercuts where you find them: a small bug in your path (a crash in a tool, an undersized buffer, a stale
+  message) gets fixed in your branch, not filed. File a ticket only for work that needs its own design or would
+  derail yours.
