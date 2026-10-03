@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
-import { compileStampPaintRecipe } from './stamp-paint-recipe-compile.ts';
+import { compileStampPaintRecipe, stampMixedPainting } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampPaintEnvironment, StampPassageOptions, StampPassageScope } from './stamp-paint-recipe-types.ts';
 import { stampPaintMedia } from './stamp-wetness.ts';
@@ -39,7 +39,7 @@ const washOf = (body: (wash: StampPassageScope) => void, options: StampPassageOp
 
 /** The wetness of `painting` in watercolour, and its one wash's dryings. */
 function dried(painting: ReturnType<typeof washOf>) {
-  const wetness = compileStampWetness(painting, stampPaintMedia(painting, () => PAINT_MEDIA.watercolour), stampRoundTipsOf());
+  const wetness = compileStampWetness(painting, stampPaintMedia(stampMixedPainting(painting), () => PAINT_MEDIA.watercolour), stampRoundTipsOf());
   return { wetness, dryings: wetness.washes.get(painting.groups[0].passes[0])!.dryings };
 }
 

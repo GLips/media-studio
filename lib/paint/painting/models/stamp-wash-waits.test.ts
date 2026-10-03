@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PAINT_MEDIA, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
-import { compileStampPaintRecipe, stampPassDeposits, type CompiledStampPass } from './stamp-paint-recipe-compile.ts';
+import { compileStampPaintRecipe, stampMixedPainting, stampPassDeposits, type CompiledStampPass } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampPaintEnvironment, StampPassageOptions, StampPassageScope } from './stamp-paint-recipe-types.ts';
 import { stampDrying, type StampWetness, stampPaintMedia } from './stamp-wetness.ts';
@@ -40,7 +40,7 @@ const sheet = { kind: 'polygon' as const, points: [{ x: 0, y: 0 }, { x: 800, y: 
 function washed(body: (wash: StampPassageScope) => void, options: StampPassageOptions = {}, medium: PaintMedium = watercolour) {
   const painting = compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => paint.group('g', { composite: 'glaze', opacity: 1 }, (group) => group.passage('w', options, body))));
   const pass = painting.groups[0].passes[0];
-  return { pass, wetness: compileStampWetness(painting, stampPaintMedia(painting, () => medium), stampRoundTipsOf()) };
+  return { pass, wetness: compileStampWetness(painting, stampPaintMedia(stampMixedPainting(painting), () => medium), stampRoundTipsOf()) };
 }
 /** The landing of `pass`'s deposit `id`. */
 const landing = (wetness: StampWetness, pass: CompiledStampPass, id: string) => wetness.landings.get(stampPassDeposits(pass).find((deposit) => deposit.id === `g/w/${id}`)!)!;

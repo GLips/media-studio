@@ -10,7 +10,7 @@
 
 import type { StampBlend } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampKeySpanAt, type StampKeyList } from '../models/stamp-scene-keys.ts';
-import { STAMP_OPAQUE_COVER, type CompiledStampDeposit, type CompiledStampPaint } from '../models/stamp-paint-recipe-compile.ts';
+import { STAMP_OPAQUE_COVER, type CompiledStampDeposit, type StampMixedPainting } from '../models/stamp-paint-recipe-compile.ts';
 import { gpuUniformLayout, gpuUniformWriter, type GpuUniformField, type GpuUniformLayout, type GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 
 /** A texture the compositor keeps its paint in: four channels, or an array of `layers` of four. */
@@ -181,7 +181,7 @@ function easedGammaColor(keys: StampKeyList<{ at: number }>, colors: readonly (r
  * pigments, a graded material or a wash: flat colour has no pigment to grade or water to carry it; and on a group on
  * its own paper: flat colour lays no paper under a group, so it has none to carry.
  */
-export function flatStampPaintCompositor(painting: CompiledStampPaint): StampPaintCompositor {
+export function flatStampPaintCompositor(painting: StampMixedPainting): StampPaintCompositor {
   const writers = new Map<CompiledStampDeposit, (views: GpuUniformViews, t: number) => void>();
   const cutOut = painting.groups.find((group) => group.paper === 'own');
   if (cutOut) throw new Error(`stamp paint: ${cutOut.id} lies on its own paper, and a group carries paper only in a style that paints in pigment`);

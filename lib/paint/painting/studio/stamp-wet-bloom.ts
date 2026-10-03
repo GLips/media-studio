@@ -15,6 +15,7 @@ import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.
 import { stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 import { stampWetStageExtentOf, type StampLoadedWetStage, type StampWetDepositMoment, type StampWetStage, type StampWetStageContext, type StampWetStageExtent } from './stamp-wet-stages.ts';
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
+import { destroyStampTexturesOnceSubmitted } from './stamp-paint-gpu.ts';
 import { encodeStampWetTransportSteps, stampWetSpreads, stampWetTransportGate, type StampWetTransportStep } from './stamp-wet-transport.ts';
 
 const WORKGROUP = 8;
@@ -377,8 +378,8 @@ function loadBloom({ device, layer, footprint, field, wash, stage }: StampWetSta
     if (scratch && w <= scratch.w && h <= scratch.h && atLeast <= layers) return;
     const size = { w: Math.max(w, scratch?.w ?? 0), h: Math.max(h, scratch?.h ?? 0) };
     layers = Math.max(layers, atLeast);
-    // The frames that bound the old set are submitted, and destroy waits for them.
-    for (const texture of scratch?.textures ?? []) texture.destroy();
+    // Work already encoded with the old set keeps it until its submit.
+    destroyStampTexturesOnceSubmitted(scratch?.textures ?? []);
     const textures: GPUTexture[] = [];
     const view = (format: GPUTextureFormat, depth?: number, taller = 0) => {
       const texture = device.createTexture({ size: [size.w, size.h + taller, depth ?? 1], format, usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING });

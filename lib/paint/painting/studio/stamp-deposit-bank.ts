@@ -18,6 +18,7 @@ import { stampGrainDepthSourceIn } from '../models/stamp-pigment-paint.ts';
 import { stampStageTexelsWithin, type StampStage } from '../models/stamp-stage.ts';
 import type { StampTipHull } from '../models/stamp-tip-hull.ts';
 import { stampMarksSupport, stampMarksTipHull, stampTipFootprintOf, type StampTipFootprint, type StampTipsOf } from '../models/stamp-tip-support.ts';
+import type { StampWashLaw } from '../models/stamp-wet-landing.ts';
 import type { StampPaintCompositor } from './stamp-paint-compositor.ts';
 import { stampPaintBuffer, type StampPaintDevice, type StampPaintImage } from './stamp-paint-gpu.ts';
 import type { StampPaintGpuOwner, StampPaintImageKind } from './stamp-paint-gpu-owner.ts';
@@ -100,8 +101,8 @@ export function stampMarksBox({ stage, tipFootprint }: StampMarksLoading, placed
   return stampStageTexelsWithin(stage, reach[0] - pad, reach[1] - pad, reach[2] + pad, reach[3] + pad);
 }
 
-/** A deposit the wash law lays: its group's `medium`, the `water` its brush carries, and its tool's local `scale` in `scales`. */
-export type StampDepositWash = { medium: PaintMedium; water: number; scale: StampWetScale; scales: GPUBuffer };
+/** A deposit the wash law lays (StampWashLaw), and its tool's local `scale` in `scales`. */
+export type StampDepositWash = StampWashLaw & { scale: StampWetScale; scales: GPUBuffer };
 
 /** A deposit as the GPU holds it: its marks, and what its fields say. */
 export type StampLoadedDeposit = StampLoadedMarks & {
@@ -115,10 +116,9 @@ export type StampLoadedDeposit = StampLoadedMarks & {
   box: StampPixelBox | null;
 };
 
-/** A deposit to load: itself and its `identity`, the brush bound for that, its group's `medium` and, laid by the wash law, its water. */
+/** A deposit to load: itself and its `identity`, the brush bound for that, its group's `medium`, and what the wash law lays it by (stampDepositWashLaw). */
 export type StampDepositToLoad = {
-  deposit: CompiledStampDeposit; identity: CompiledStampDeposit; brush: StampBrush<StampPaintImage>; medium: PaintMedium | null;
-  wash: { medium: PaintMedium; water: number } | null;
+  deposit: CompiledStampDeposit; identity: CompiledStampDeposit; brush: StampBrush<StampPaintImage>; medium: PaintMedium | null; wash: StampWashLaw | null;
 };
 
 export type StampDepositBankLoading = StampMarksLoading & {

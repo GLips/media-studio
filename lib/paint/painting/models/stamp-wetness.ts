@@ -8,7 +8,7 @@
 
 import type { PaintMedium, PaintWetting } from '#lib/paint/materials/models/paint-medium.ts';
 import { stampDepositWater } from './stamp-paint-action.ts';
-import { stampPassDeposits, type CompiledStampDeposit, type CompiledStampGroup, type CompiledStampPaint, type CompiledStampPass } from './stamp-paint-recipe-compile.ts';
+import type { CompiledStampDeposit, CompiledStampGroup, CompiledStampPass, StampMixedPainting } from './stamp-paint-recipe-compile.ts';
 import type { StampPaintPaper } from './stamp-paint-recipe-types.ts';
 import type { CompiledStampWashWait } from './stamp-wash-effects.ts';
 
@@ -135,7 +135,7 @@ export type StampPaintMedia<M extends PaintMedium | null = PaintMedium | null> =
 };
 
 /** `painting`'s media, each group's by `mediumOf`: every deposit's water resolved now, so a painting that can't be wet fails first. */
-export function stampPaintMedia<M extends PaintMedium | null>(painting: CompiledStampPaint, mediumOf: (group: Pick<CompiledStampGroup, 'id'>) => M): StampPaintMedia<M> {
-  const water = new Map(painting.groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass).map((deposit) => [deposit.id, stampDepositWater(deposit, mediumOf(group))] as const))));
+export function stampPaintMedia<M extends PaintMedium | null>(painting: StampMixedPainting, mediumOf: (group: Pick<CompiledStampGroup, 'id'>) => M): StampPaintMedia<M> {
+  const water = new Map(painting.groups.flatMap((group) => group.passes.flatMap((pass) => pass.deposits.map((deposit) => [deposit.id, stampDepositWater(deposit, mediumOf(group))] as const))));
   return { mediumOf, waterOf: (deposit) => water.get(deposit.id)! };
 }

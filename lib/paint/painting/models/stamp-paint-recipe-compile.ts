@@ -111,10 +111,35 @@ export type CompiledStampGroup = {
 };
 
 /** Whether `group` takes out of the paint behind it: its first pass is a knockout, as only a first may be. */
-export const stampGroupKnocksOut = ({ passes: [first] }: CompiledStampGroup) => first?.kind === 'wash' && first.knockout;
+export const stampGroupKnocksOut = ({ passes: [first] }: { passes: readonly ({ kind: 'dry' } | { kind: 'wash'; knockout: boolean })[] }) => first?.kind === 'wash' && first.knockout;
 
 /** A checked recipe with every stamp placed, its groups in the order they paint, and the paper and mixing it's painted in. */
 export type CompiledStampPaint = { paper: StampPaintPaper; mixing: StampPaintMixing; groups: readonly CompiledStampGroup[] };
+
+/**
+ * What a painting's paint is mixed from (stampPaintCompositorFor): its paper and mixing, and each group's passes and
+ * their deposits. A recipe's painting gives one (stampMixedPainting); a document's solve, holding no
+ * CompiledStampPaint, builds its own.
+ */
+export type StampMixedPainting = { paper: StampPaintPaper; mixing: StampPaintMixing; groups: readonly StampMixedGroup[] };
+/** A group as its paint is mixed: its ID, its own mixing (absent for the painting's), the paper it lies on, its passes. */
+export type StampMixedGroup = Pick<CompiledStampGroup, 'id' | 'mixing' | 'paper'> & { passes: readonly StampMixedPass[] };
+/** A pass as its paint is mixed: its ID and its deposits in painting order, a dry pass's all paint, a wash's knocking out or not. */
+export type StampMixedPass = { id: string } & (
+  | { kind: 'dry'; deposits: readonly CompiledStampDeposit<CompiledStampPaintAction>[] }
+  | { kind: 'wash'; knockout: boolean; deposits: readonly CompiledStampDeposit[] }
+);
+
+/** `painting` as its paint is mixed. */
+export const stampMixedPainting = ({ paper, mixing, groups }: CompiledStampPaint): StampMixedPainting => ({
+  paper, mixing,
+  groups: groups.map((group) => ({
+    id: group.id, mixing: group.mixing, paper: group.paper,
+    passes: group.passes.map((pass): StampMixedPass => (pass.kind === 'dry'
+      ? { id: pass.id, kind: 'dry', deposits: pass.deposits }
+      : { id: pass.id, kind: 'wash', knockout: pass.knockout, deposits: stampPassDeposits(pass) })),
+  })),
+});
 
 /**
  * Checks `recipe` and places every stamp. Throws on an ID used twice at one level (it would seed two deposits alike)

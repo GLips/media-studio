@@ -1,7 +1,7 @@
 // stamp-gate-stage.ts: a wet stage run alone for the GPU gate's page (stamp-gate-page.ts), over a layer and wet field
 // the gate writes (stamp-gate-flow.ts, stamp-gate-stripe.ts) on a device of its own, the layer read back around it.
 
-import { type CompiledStampDeposit, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
+import { stampMixedPainting, type CompiledStampDeposit, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import { stampPaintMedia, type StampWetness } from '#lib/paint/painting/models/stamp-wetness.ts';
 import { compileStampWetness } from '#lib/paint/painting/models/stamp-wash-waits.ts';
@@ -41,7 +41,7 @@ export async function runStampGateStage(
   run: (stage: StampGateStageRun, encoder: GPUCommandEncoder) => void,
 ): Promise<{ before: Float32Array; after: Float32Array }> {
   const { width, height } = written, layers = written.layer.length, stage = stampStage({ width, height });
-  const wetness = compileStampWetness(painting, stampPaintMedia(painting, () => medium), stampRoundTipsOf());
+  const wetness = compileStampWetness(painting, stampPaintMedia(stampMixedPainting(painting), () => medium), stampRoundTipsOf());
   const device = await requestStudioGpuDevice();
   try {
     const texture = (count: number, arrays: readonly Float32Array[]) => {

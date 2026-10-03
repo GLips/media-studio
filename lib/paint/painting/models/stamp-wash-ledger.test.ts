@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
-import { compileStampPaintRecipe, stampPassDeposits } from './stamp-paint-recipe-compile.ts';
+import { compileStampPaintRecipe, stampMixedPainting, stampPassDeposits } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampPaintEnvironment } from './stamp-paint-recipe-types.ts';
 import { createStampWashLedger } from './stamp-wash-ledger.ts';
@@ -39,7 +39,7 @@ const painting = compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => paint.
   wash.water('apart', drop(600, 300));
 }))));
 const [first, under, apart] = stampPassDeposits(painting.groups[0].passes[0]);
-const media = stampPaintMedia(painting, () => watercolour), tips = stampRoundTipsOf();
+const media = stampPaintMedia(stampMixedPainting(painting), () => watercolour), tips = stampRoundTipsOf();
 const drying = stampDrying(watercolour.wetting, painting.paper);
 const ledger = () => createStampWashLedger({
   id: 'g/w', medium: watercolour, drying, preparation: null, waterOf: media.waterOf, supportOf: (deposit) => stampDepositSupport(deposit, tips(deposit)), reachOf: () => 0,

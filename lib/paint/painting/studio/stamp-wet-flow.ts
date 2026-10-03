@@ -14,6 +14,7 @@ import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.
 import { stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 import { stampWetStageExtentOf, type StampLoadedWetStage, type StampWetDepositMoment, type StampWetStage, type StampWetStageContext, type StampWetStageExtent } from './stamp-wet-stages.ts';
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
+import { destroyStampTexturesOnceSubmitted } from './stamp-paint-gpu.ts';
 import { putStampWetTransportSlot, stampWetTransportOpenGate, stampWetTransportPipelines, stampWetTransportSlotBinding } from './stamp-wet-transport.ts';
 
 const WORKGROUP = 8;
@@ -240,8 +241,8 @@ function loadFlow(context: StampWetStageContext): StampLoadedWetStage<StampWetDe
   const reserve = ({ w, h }: StampWetStageExtent) => {
     if (scratch && w <= scratch.w && h <= scratch.h) return;
     const size = { w: Math.max(w, scratch?.w ?? 0), h: Math.max(h, scratch?.h ?? 0) };
-    // The frames that bound the old set are submitted, and destroy waits for them.
-    for (const texture of scratch?.textures ?? []) texture.destroy();
+    // Work already encoded with the old set keeps it until its submit.
+    destroyStampTexturesOnceSubmitted(scratch?.textures ?? []);
     const textures: GPUTexture[] = [];
     const view = (tw: number, th: number, count: number, format: GPUTextureFormat, dimension: GPUTextureViewDimension) => {
       const texture = device.createTexture({ size: [tw, th, count], format, usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING });

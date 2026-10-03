@@ -3,7 +3,7 @@
 
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import { PAINT_BANDS } from '#lib/paint/materials/models/paint-spectrum.ts';
-import type { CompiledStampPaint } from '../models/stamp-paint-recipe-compile.ts';
+import type { StampMixedPainting } from '../models/stamp-paint-recipe-compile.ts';
 import { compileStampPigmentPaint, stampPigmentGroupMedium } from '../models/stamp-pigment-paint.ts';
 import { stampPaintMedia, type StampPaintMedia } from '../models/stamp-wetness.ts';
 import { flatStampPaintCompositor, type StampPaintCompositor } from './stamp-paint-compositor.ts';
@@ -23,7 +23,7 @@ export type StampPaintCompositorChoice = { compositorOn: (device: StampPaintDevi
  * How `painting`'s mixing composites it, on its paper. Flat colour has no media, so it refuses a group naming a
  * mixing of its own, and lays no wash.
  */
-export function stampPaintCompositorFor(painting: CompiledStampPaint): StampPaintCompositorChoice {
+export function stampPaintCompositorFor(painting: StampMixedPainting): StampPaintCompositorChoice {
   const { mixing, paper } = painting;
   if (mixing.kind === 'pigment') {
     const paint = compileStampPigmentPaint(painting, mixing, PAINT_BANDS);

@@ -69,8 +69,8 @@ export type StampWetStageExtent = { w: number; h: number; layers: number };
 
 /**
  * A stage as loaded: its pipelines and scratch, shared by every bank. `plan` readies it for a bank's deposits,
- * making nothing its encodes share. `reserve` grows the scratch to hold `extent`, destroying the scratch before: only
- * before any encode needing it, and never between an encode and its submit (planStampWetStage, or a solve's start).
+ * making nothing its encodes share. `reserve` grows the scratch to hold `extent` (planStampWetStage, or once at a
+ * solve's start): encodes after it bind the new, and the old is destroyed once the encoder recording it is submitted.
  */
 export type StampLoadedWetStage<Moment> = {
   plan: (bank: StampWetBank) => StampWetStagePlan<Moment>;
@@ -106,12 +106,34 @@ export type StampWetStage = { id: string } & (
   | { after: 'drying'; load: (context: StampWetStageContext) => StampLoadedWetStage<StampWetDryingMoment> }
 );
 
-/** `stage` planned for `bank`, its scratch grown to hold the plan: as a bank loads, between frames. */
+/** `stage` planned for `bank`, its scratch grown to hold the plan. */
 export function planStampWetStage<Moment>(stage: StampLoadedWetStage<Moment>, bank: StampWetBank): StampWetStagePlan<Moment> {
   const plan = stage.plan(bank);
   if (plan.extent) stage.reserve(plan.extent);
   return plan;
 }
+
+/** A wash's stages as loaded, by when each runs, each list in the order STAMP_WET_STAGES gives. */
+export type StampLoadedWetStages = {
+  deposit: readonly StampLoadedWetStage<StampWetDepositMoment>[];
+  drying: readonly StampLoadedWetStage<StampWetDryingMoment>[];
+};
+
+/** A wash's stages planned for a bank, by when each runs. */
+export type StampWetStagePlans = {
+  deposit: readonly StampWetStagePlan<StampWetDepositMoment>[];
+  drying: readonly StampWetStagePlan<StampWetDryingMoment>[];
+};
+
+/** Each of `stages` planned for `bank` (planStampWetStage). */
+export const planStampWetStages = (stages: StampLoadedWetStages, bank: StampWetBank): StampWetStagePlans => ({
+  deposit: stages.deposit.map((stage) => planStampWetStage(stage, bank)),
+  drying: stages.drying.map((stage) => planStampWetStage(stage, bank)),
+});
+
+/** Whether any of `plans` rims `deposit`'s wet edge itself (ownsWetEdges), so its brush's own wet edges stand down. */
+export const stampWetStagesOwnWetEdges = (plans: StampWetStagePlans, deposit: CompiledStampDeposit) =>
+  [...plans.deposit, ...plans.drying].some((plan) => plan.ownsWetEdges?.(deposit));
 
 /** The least extent holding each of `extents` (null for none). */
 export function stampWetStageExtentOf(extents: Iterable<StampWetStageExtent | null>): StampWetStageExtent | null {

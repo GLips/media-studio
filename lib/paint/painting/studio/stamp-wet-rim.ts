@@ -15,6 +15,7 @@ import type { StampStage } from '../models/stamp-stage.ts';
 import { stampWetStageExtentOf, type StampLoadedWetStage, type StampWetDryingMoment, type StampWetStage, type StampWetStageContext, type StampWetStageExtent, type StampWetWall } from './stamp-wet-stages.ts';
 import { gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { STAMP_DRYING_RIM_FLOOD_FIRST_STEP, STAMP_DRYING_RIM_SIZING_BYTES, STAMP_DRYING_RIM_UNIFORM, stampDryingRimGroupPasses, stampDryingRimPasses } from './stamp-wet-rim-passes.ts';
+import { destroyStampTexturesOnceSubmitted } from './stamp-paint-gpu.ts';
 import { encodeStampWetTransportSteps, stampWetSpreads, stampWetTransportGate } from './stamp-wet-transport.ts';
 
 /**
@@ -73,8 +74,8 @@ function loadDryingRim({ device, stage, layer, wash, field }: StampWetStageConte
   const reserve = ({ w, h, layers: atLeast }: StampWetStageExtent) => {
     if (scratch && w <= scratch.w && h <= scratch.h && atLeast <= scratch.layers) return;
     const size = { w: Math.max(w, scratch?.w ?? 0), h: Math.max(h, scratch?.h ?? 0) }, layers = Math.max(atLeast, scratch?.layers ?? 1);
-    // The frames that bound the old set are submitted, and destroy waits for them.
-    for (const texture of scratch?.textures ?? []) texture.destroy();
+    // Work already encoded with the old set keeps it until its submit.
+    destroyStampTexturesOnceSubmitted(scratch?.textures ?? []);
     const textures: GPUTexture[] = [];
     // A one-layer array still binds as an array.
     const view = (format: GPUTextureFormat, depth?: number) => {

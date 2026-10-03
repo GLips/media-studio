@@ -11,7 +11,7 @@ import { PAINT_PAPER_WGSL } from '#lib/paint/materials/models/paint-paper.ts';
 import { COVERAGE_FORMULAS_WGSL } from '#lib/paint/brush/models/coverage-formulas.ts';
 import { STAMP_ACCUMULATION_LAY_WGSL, STAMP_ACCUMULATION_RESOLVE_WGSL } from '#lib/paint/painting/models/stamp-deposit-stages.ts';
 import { STAMP_PAINT_FIELD_SHARE } from '#lib/paint/painting/models/stamp-paint-field.ts';
-import { stampPassDeposits, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
+import { stampMixedPainting, stampPassDeposits, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { STAMP_WET_LAND_WGSL } from '#lib/paint/painting/models/stamp-wet-landing.ts';
 import { STAMP_WET_LIFT_WGSL } from '#lib/paint/painting/models/stamp-wet-lift.ts';
 import { STAMP_WET_BLOOM_WGSL } from '#lib/paint/painting/models/stamp-wet-bloom.ts';
@@ -409,7 +409,7 @@ async function checkStampGateFlowCase(id: string): Promise<StampGateWashCheck> {
 
 /** The stripe's wet field (stampGateStripeField), each patch wet from its flood's painting second in `medium`. */
 function stripeField(painting: CompiledStampPaint, medium: PaintMedium) {
-  const wetness = compileStampWetness(painting, stampPaintMedia(painting, () => medium), stampRoundTipsOf());
+  const wetness = compileStampWetness(painting, stampPaintMedia(stampMixedPainting(painting), () => medium), stampRoundTipsOf());
   const [left, right] = stampPassDeposits(painting.groups[0].passes[0]).filter((deposit) => deposit.kind === 'flood').map((deposit) => wetness.landings.get(deposit)!.tau);
   return stampGateStripeField({ left, right });
 }

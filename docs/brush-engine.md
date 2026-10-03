@@ -55,7 +55,7 @@ stamps in order and lays each by the table's `lay`. `studio/` is the WebGPU rend
 compositors. The renderer's stages stand apart for any driver to call: a bank loads deposits and binds their brushes
 (`stamp-deposit-bank.ts`), and the deposit drawing (`stamp-deposit-drawing.ts`, its WGSL in
 `stamp-deposit-stamp-wgsl.ts` and `stamp-deposit-resolve-wgsl.ts`) lays one, given its landing, stages, tooth and
-regions each draw.
+regions each draw; on the same targets it loads a wash's stages, starts the wash and closes each drying (its `wash`).
 
 **Fills and forms.** A fill floods its region (`stamp-fill.ts`) or lays it in strokes (`stamp-fill-strokes.ts`): a
 pattern (`StampFillPattern`, each an object by `kind`) makes marks, `stampFillMarks`, each with a key and the patch a
@@ -92,7 +92,7 @@ intersected with its ancestors', so a child's merge never opens an ancestor's cu
 **Brushed masks.** Fluid can be brushed on, `mask(id, { marks })`, and a group can lay wax, `resist(id, { marks,
 amount })` (`stamp-brushed-mask.ts`). A mark is placed from its key by the one path paint is (`placeStampDeposit`),
 so the same mark painted elsewhere lands the same footprint. The renderer draws each brushed mask once as it loads
-(`encodeStampBrushedMasks`):
+(`encodeStampBrushedMasks`, `stamp-brushed-mask-textures.ts`):
 each mark's stamps resolved as a deposit's coverage is (builds, grain, dual, pooling), never pigment, joined by max
 into a texture a step of the fluid reads, and the wet field reads it per pixel, so water lands only where a sparse
 brush left paper open. Wax keeps only what catches the paper's peaks (`paintDryContact`, at the paper's depth)

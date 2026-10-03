@@ -6,6 +6,8 @@
 import { paintMediumCan, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { CompiledStampAction } from './stamp-paint-action.ts';
+import type { CompiledStampDeposit } from './stamp-paint-recipe-compile.ts';
+import type { StampPaintMedia } from './stamp-wetness.ts';
 
 /**
  * Which law lays a deposit (`wash`, the compositor's landDeposit, into the paper's wetness: firm, as workable as the
@@ -21,6 +23,18 @@ export function stampDepositionLaw(
   if (deposit.action.kind !== 'paint') return 'wash';
   // A dry brush skips the tooth wherever it's laid, a crayon in a wash too.
   return deposit.brush.media !== 'dry' && paintMediumCan(medium, 'wet-history') ? 'wash' : 'dry';
+}
+
+/** What the wash law lays a deposit by: its group's `medium`, and the `water` its brush carries. */
+export type StampWashLaw = { medium: PaintMedium; water: number };
+
+/**
+ * What the wash law lays `deposit` (as written: a boil's epoch or live marks keep its brush and action) by, known
+ * before any painting second is: null where it's laid dry (stampDepositionLaw), or where there's no medium.
+ */
+export function stampDepositWashLaw(deposit: CompiledStampDeposit, medium: PaintMedium | null, history: boolean, media: Pick<StampPaintMedia, 'waterOf'>): StampWashLaw | null {
+  if (!medium || stampDepositionLaw(deposit, medium, history) !== 'wash') return null;
+  return { medium, water: media.waterOf(deposit) };
 }
 
 /**

@@ -53,6 +53,13 @@ export function stampStageTexelsGrown({ width, height }: StampStage, box: StampS
   return { x, y, w: Math.min(width, box.x + box.w + by) - x, h: Math.min(height, box.y + box.h + by) - y };
 }
 
+/**
+ * A region's box in painting points as a uniform's four words in stage texels, `margin` past (0 for a region's own
+ * texture); an empty box for none.
+ */
+export const stampRegionTexelWords = (box: StampStageTexels | null | undefined, margin: number): [number, number, number, number] =>
+  (box ? [box.x + margin, box.y + margin, box.w, box.h] : [0, 0, 0, 0]);
+
 /** The least box holding `a` and `b`, in stage texels or painting points alike; either alone when the other is null. */
 export function stampBoxUnion(a: StampStageTexels | null, b: StampStageTexels | null): StampStageTexels | null {
   if (!a || !b) return a ?? b;

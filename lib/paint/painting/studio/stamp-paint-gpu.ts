@@ -95,6 +95,18 @@ export function copyStampTextureBox(encoder: GPUCommandEncoder, from: StampTextu
   );
 }
 
+/**
+ * Destroys `textures` once the encoder being recorded is submitted, so work already encoded with them keeps them: a
+ * frame encodes and submits in one turn (a check's work never awaits), so a microtask runs past its submit, and
+ * destroy then waits for the GPU.
+ */
+export function destroyStampTexturesOnceSubmitted(textures: readonly GPUTexture[]) {
+  if (!textures.length) return;
+  queueMicrotask(() => {
+    for (const texture of textures) texture.destroy();
+  });
+}
+
 /** Each image at `urls`, decoded as stored: no colour conversion, no premultiplying. */
 export function fetchStampPaintBitmaps(urls: readonly string[]): Promise<ImageBitmap[]> {
   return Promise.all(urls.map(async (url) => {

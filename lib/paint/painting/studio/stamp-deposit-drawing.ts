@@ -3,8 +3,9 @@
 // wash deposit's touch too, or a dry one's pressure), compute passes blur it, and a compute pass resolves it; a wash
 // deposit's water lands in the wet field in that pass, and its deposit stages run after.
 //
-// What may change between draws is given with each: the landing and the stages planned for it, the paper's tooth,
-// the regions bounding it, its paint's time. Its targets are given once, and are the caller's to share or own.
+// What may change between draws is given with each: the landing and its planned stages, the paper's tooth, the
+// bounding regions, the paint's time. Targets are given once, the caller's to share or own; a wash's start, stages
+// and dryings use them too (`wash`).
 
 import type { StampBrushAsset } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampDualModeIndex } from '#lib/paint/brush/models/coverage-formulas.ts';
@@ -15,27 +16,30 @@ import { stampBlurRegion, type StampPixelBox } from '../models/stamp-blur-region
 import { STAMP_ACCUMULATIONS, stampAccumulationBuild, stampAccumulationIndex, type StampActiveLayer } from '../models/stamp-deposit-stages.ts';
 import { STAMP_FLOATS, STAMP_ORDERED_TILE, TINT_FLOATS } from '../models/stamp-mark-load.ts';
 import { stampPaintFieldEnds } from '../models/stamp-paint-field.ts';
+import type { StampSeededPaintField } from '../models/stamp-paint-field.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampPaintPaper } from '../models/stamp-paint-recipe-types.ts';
-import { stampStageTexelsGrown, stampBoxUnion, type StampStage } from '../models/stamp-stage.ts';
+import { stampBoxUnion, stampRegionTexelWords, stampStageTexelsGrown, type StampStage } from '../models/stamp-stage.ts';
 import { STAMP_TIP_HULL_SIDES, type StampTipHull } from '../models/stamp-tip-hull.ts';
 import type { StampTipFootprint } from '../models/stamp-tip-support.ts';
 import { stampTipFullContact } from '../models/stamp-wet-contact.ts';
-import type { StampWetLanding } from '../models/stamp-wetness.ts';
+import type { StampWashDrying, StampWetLanding } from '../models/stamp-wetness.ts';
 import type { StampBoundLayer, StampLoadedDeposit, StampLoadedMarks, StampLoadedPlan, StampPlacedMarks } from './stamp-deposit-bank.ts';
 import {
   STAMP_DEPOSIT, STAMP_DEPOSIT_FLAGS, STAMP_DEPOSIT_KEEP, STAMP_DEPOSIT_WET_OP, STAMP_TRACE_CROP, STAMP_WET_ACTIONS, STAMP_WET_BODY_REACH, stampDepositResolveWgsl,
 } from './stamp-deposit-resolve-wgsl.ts';
 import { STAMP_DRAW, STAMP_ORDERED_DRAW, stampDrawWgsl, stampGrainLod, stampOrderedDrawWgsl, writeStampGrain } from './stamp-deposit-stamp-wgsl.ts';
-import type { StampPaintCompositor } from './stamp-paint-compositor.ts';
+import type { StampPaintCompositor, StampWashLayer } from './stamp-paint-compositor.ts';
 import {
   copyStampTextureBox, dispatchStampCompute, STAMP_MAX_BLEND, STAMP_WORKGROUP, stampArrayView, stampBindGroup, stampPaintBuffer, stampPaintSamplers,
   type StampPaintDevice, type StampPaintImage,
 } from './stamp-paint-gpu.ts';
-import { stampRegionTexelWords, type StampRegionTexture } from './stamp-region-textures.ts';
+import type { StampRegionTexture } from './stamp-region-textures.ts';
 import { STAMP_UNIFORM_SLOT, type StampUniformArena } from './stamp-uniform-arena.ts';
-import { stampDryingWords, putStampWetLand, type StampWetField } from './stamp-wet-field.ts';
-import type { StampWetDepositMoment, StampWetStagePlan } from './stamp-wet-stages.ts';
+import { putStampWetLand, putStampWetPrepare, stampDryingWords, type StampWetField } from './stamp-wet-field.ts';
+import {
+  stampWetStagesOwnWetEdges, type StampLoadedWetStages, type StampWetStage, type StampWetStageContext, type StampWetStagePlans,
+} from './stamp-wet-stages.ts';
 
 export type StampDepositTarget = { texture: GPUTexture; view: GPUTextureView };
 
@@ -52,8 +56,8 @@ export type StampDepositTargets = {
   /** For one reading pressure (r16float), and what lay before (shaped as the layer). */
   press: GPUTextureView | null;
   before: StampDepositTarget | null;
-  /** For washes: the wet field, and each deposit's `touch` (r16float), `footprint` and `fresh`. */
-  wet: { field: StampWetField; touch: GPUTextureView; footprint: GPUTextureView; fresh: GPUTextureView } | null;
+  /** For washes: the wet field, and each deposit's `touch` (r16float), `footprint` and `fresh` (shaped as the layer). */
+  wet: { field: StampWetField; touch: GPUTextureView; footprint: StampDepositTarget; fresh: StampDepositTarget & { layers: readonly GPUTextureView[] } } | null;
 };
 
 /** What a drawing is made for: its stage, compositor and targets, the arena its passes' uniforms come from, and tips' footprints. */
@@ -79,8 +83,11 @@ export function stampPaperTooth(paper: StampPaintPaper, image: (asset: StampBrus
  */
 export type StampDepositBounds = { fluid: StampRegionTexture | null; within: { region: StampRegionTexture | null } | null; clipped: boolean };
 
-/** A wash deposit's landing, the deposit stages planned for it in order, whether one rims its drying, and their seed. */
-export type StampDepositWet = { landing: StampWetLanding; stages: readonly StampWetStagePlan<StampWetDepositMoment>[]; rimmedByStage: boolean; seed: number };
+/** A wash deposit's landing, the wash's stages planned for its bank (its deposit stages run after it), and their seed. */
+export type StampDepositWet = { landing: StampWetLanding; plans: StampWetStagePlans; seed: number };
+
+/** A wash's preparation as it starts: its wetness, and its region and the fluid holding it off, null for none on the stage. */
+export type StampWashStart = { wetness: StampSeededPaintField<number>; region: StampRegionTexture | null; fluid: StampRegionTexture | null };
 
 /** A traced draw's slots in `buffer` from `offset` (floats) over `crop` (painting points), its stages run in `order`. */
 export type StampDepositTraceAt = { buffer: GPUBuffer; offset: number; crop: StampPixelBox; order: number };
@@ -92,14 +99,14 @@ export type StampDepositTraceAt = { buffer: GPUBuffer; offset: number; crop: Sta
 export type StampDepositDraw = { paintAt: number; tooth: StampPaperTooth | null; bounds: StampDepositBounds; wet: StampDepositWet | null; trace: StampDepositTraceAt | null };
 
 /**
- * The uniform slots a deposit's draw takes: its stamps and dual's, two blur passes, its resolve, where it's kept, its
- * paint and its trace; then a wash deposit's touch, the paper it finds and its landing, or a dry one's pressure for a
- * compositor that reads it.
+ * The uniform slots drawing `deposits` together takes: a wash's start, then each deposit's stamps and dual's, two blur
+ * passes, its resolve, where it's kept, its paint and its trace; and a wash deposit's touch, the paper it finds and
+ * its landing, or a dry one's pressure for a compositor that reads it. A drying takes none.
  */
-export const stampDepositUniformSlots = (compositor: StampPaintCompositor, wash: boolean) => {
-  if (wash) return 11;
-  return compositor.reads.press ? 9 : 8;
-};
+export function stampDepositUniformSlots(compositor: StampPaintCompositor, { wash, deposits }: { wash: boolean; deposits: number }) {
+  if (wash) return 1 + deposits * 11;
+  return deposits * (compositor.reads.press ? 9 : 8);
+}
 
 /** A flag of a deposit's resolve (STAMP_DEPOSIT_FLAGS). */
 type StampCoverageFlag = keyof typeof STAMP_DEPOSIT_FLAGS;
@@ -123,7 +130,7 @@ const stampCoverageFlagWord = (flags: readonly StampCoverageFlag[]) => flags.red
 
 /** A drawing on `device`, its pipelines made now so a painting that can't draw fails as it loads. */
 export function createStampDepositDrawing(device: StampPaintDevice, { stage, compositor, targets, arena, tipFootprint }: StampDepositDrawingOptions) {
-  const { width, height, margin } = stage, { slot } = arena;
+  const { width, height, margin } = stage, { slot } = arena, wetTargets = targets.wet;
   const paintBytes = compositor.deposit.layout.words * 4;
   if (paintBytes > STAMP_UNIFORM_SLOT) throw new Error(`stamp paint: a compositor's ${compositor.deposit.layout.name} takes ${paintBytes} bytes, over a uniform slot's ${STAMP_UNIFORM_SLOT}`);
   if (targets.wet && !compositor.deposit.wet) throw new Error('stamp paint: the painting has washes, and its compositor lays none');
@@ -220,6 +227,8 @@ export function createStampDepositDrawing(device: StampPaintDevice, { stage, com
   const blurPipeline = device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code: gpuGaussianPassWgsl({ layers: 1, read: 'bilinear', workgroup: STAMP_WORKGROUP }) }) } });
   // The gaussian binds arrays; the mask's targets are plain.
   const maskArrays = { mask: stampArrayView(targets.mask.texture), blurA: stampArrayView(targets.blurA.texture), blurB: stampArrayView(targets.blurB.texture) };
+  /** How far round a texel a compositor reading what lay before reads it on `tooth`, px: its grain's reach. */
+  const beforeReachOf = (tooth: StampPaperTooth | null) => (targets.before && tooth ? (compositor.reads.before!.reach * tooth.tile[0]) / tooth.image.width : 0);
   const bindGroup = (pipeline: GPURenderPipeline | GPUComputePipeline, resources: (GPUBindingResource | null)[]) => stampBindGroup(device, pipeline, resources);
 
   /** What drawing `layer`'s stamps binds, the main brush's (`stampChannel` 0) or its dual's. */
@@ -398,7 +407,7 @@ export function createStampDepositDrawing(device: StampPaintDevice, { stage, com
     const { trace, tooth, wet, bounds: { fluid, within, clipped } } = draw, { active } = loaded;
     // Where a stage rims the deposit's drying (the drying rim, stamp-wet-rim.ts), a brush's own wet edges would rim
     // each stroke again. Its Procreate rim goes, and Photoshop's pooling keeps its body, not its peak.
-    const washRims = wet?.rimmedByStage ?? false;
+    const washRims = !!wet && stampWetStagesOwnWetEdges(wet.plans, deposit);
     const edgesOf = (layer?: StampActiveLayer<StampPaintImage>): [number, number, number, number] => (blurred && layer
       ? [washRims ? 0 : layer.rim?.rim ?? 0, layer.rim?.sharpness ?? 0, layer.burntEdge?.strength ?? 0, layer.burntEdge?.sharpness ?? 0] : [0, 0, 0, 0]);
     const mainGrain = active.main.canvasGrain, dualGrain = active.dual?.canvasGrain, tinted = loaded.tint !== null;
@@ -408,7 +417,6 @@ export function createStampDepositDrawing(device: StampPaintDevice, { stage, com
       // Only paint makes a clip base: water and a lift leave where a pass holds paint as it was.
       ...(clipped ? ['clipped' as const] : []), ...(!clipped && deposit.action.kind === 'paint' ? ['clips' as const] : []),
     ];
-    const beforeReach = targets.before && tooth ? (compositor.reads.before!.reach * tooth.tile[0]) / tooth.image.width : 0;
     dispatchStampCompute(device, encoder, depositPipeline(!!trace, !!wet), [
       slot((views) => {
         const put = writeCoverage(views, loaded, deposit.grainOffset, trace?.order ?? loaded.resolveOrder, washRims, tooth);
@@ -419,7 +427,7 @@ export function createStampDepositDrawing(device: StampPaintDevice, { stage, com
         put('origin', [box.x, box.y]);
         put('extent', [box.w, box.h]);
         put('press', deposit.action.kind === 'paint' && deposit.action.burnish ? PAINT_DRY_BURNISHED_PRESS - 1 : 0);
-        put('beforeReach', beforeReach);
+        put('beforeReach', beforeReachOf(tooth));
       }),
       targets.mask.view, blurred ? targets.blurB.view : targets.mask.view,
       mainGrain ? mainGrain.image.view : targets.blank.view,
@@ -457,7 +465,7 @@ export function createStampDepositDrawing(device: StampPaintDevice, { stage, com
         put('strength', action.kind === 'lift' ? action.strength : 0);
         put('action', STAMP_WET_ACTIONS[action.kind]);
       }),
-      wet && targets.wet!.footprint, wet && targets.wet!.fresh, !wet ? targets.press : null, !wet ? targets.before?.view ?? null : null,
+      wet && targets.wet!.footprint.view, wet && targets.wet!.fresh.view, !wet ? targets.press : null, !wet ? targets.before?.view ?? null : null,
       ...compositor.deposit.resources({ tints: { a: tinted ? targets.tints!.a : targets.blank.view, b: tinted ? targets.tints!.b : targets.blank.view }, wet: !!wet }),
     ], box.w, box.h, after);
   }
@@ -478,7 +486,7 @@ export function createStampDepositDrawing(device: StampPaintDevice, { stage, com
       if (!wet) {
         if (pressPipeline) layMaxStamps(encoder, pressPipeline, targets.press!, deposit, loaded, box);
         if (targets.before) {
-          const pad = Math.ceil(tooth ? (compositor.reads.before!.reach * tooth.tile[0]) / tooth.image.width : 0), read = stampStageTexelsGrown(stage, box, pad);
+          const read = stampStageTexelsGrown(stage, box, Math.ceil(beforeReachOf(tooth)));
           copyStampTextureBox(encoder, { texture: targets.layer.texture, x: read.x, y: read.y }, { texture: targets.before.texture, x: read.x, y: read.y }, read);
         }
       } else layMaxStamps(encoder, touchPipeline!, targets.wet!.touch, deposit, loaded, box);
@@ -487,21 +495,52 @@ export function createStampDepositDrawing(device: StampPaintDevice, { stage, com
         resolveDeposit(encoder, deposit, loaded, draw, blurred, box);
         return box;
       }
-      const { landing, stages, seed } = wet, wash = loaded.wash!, field = targets.wet!;
-      const reaches = stages.map((plan) => plan.landingReach?.(deposit) ?? null).filter((reach) => reach !== null);
+      const { landing, plans, seed } = wet, wash = loaded.wash!, field = targets.wet!;
+      const reaches = plans.deposit.map((plan) => plan.landingReach?.(deposit) ?? null).filter((reach) => reach !== null);
       // Its water lands in its resolve's pass, which leaves the footprint it reads, its landing as far round its box
       // as its stages read.
       const reach = reaches.length ? Math.max(...reaches) : 0, found = stampStageTexelsGrown(stage, box, reach);
       const uniform = slot((views) => putStampWetLand(views, { deposit, landing, box, found, scale: wash.scale }));
-      resolveDeposit(encoder, deposit, loaded, draw, blurred, box, (into) => field.field.land(into, uniform, wash.scales, field.touch, field.footprint, found, reaches.length > 0));
+      resolveDeposit(encoder, deposit, loaded, draw, blurred, box, (into) => field.field.land(into, uniform, wash.scales, field.touch, field.footprint.view, found, reaches.length > 0));
       let painted: StampPixelBox = box;
-      for (const plan of stages) painted = stampBoxUnion(painted, plan.encode(encoder, { deposit, landing, box, seed, paperDepth: tooth?.depth ?? 0 }))!;
+      for (const plan of plans.deposit) painted = stampBoxUnion(painted, plan.encode(encoder, { deposit, landing, box, seed, paperDepth: tooth?.depth ?? 0 }))!;
       return painted;
     },
     drawStamps,
     /** Writes into a Deposit at `views` what a brushed mask's mark's coverage resolves with on `tooth`, its flags too. */
     writeMarkCoverage(views: GpuUniformViews, marks: StampLoadedMarks, grainOffset: CompiledStampDeposit['grainOffset'], tooth: StampPaperTooth | null) {
       writeCoverage(views, marks, grainOffset, marks.resolveOrder, false, tooth)('flags', stampCoverageFlagWord(stampMarksCoverageFlags(marks, tooth)));
+    },
+    /** What it was made with, for work laying marks through it (encodeStampBrushedMasks). */
+    stage, arena, tipFootprint, targets,
+    /** A wash's moments besides its deposits', on the drawing's own layer and wet field; null with no wet targets. */
+    wash: wetTargets && {
+      /**
+       * `stages` loaded on the drawing's layer, footprint, fresh and wet field, `layer` saying how a deposit's paint
+       * lies in the layer: by when each runs. Plan them for each bank (planStampWetStages).
+       */
+      loadStages(stages: readonly StampWetStage[], layer: StampWashLayer): StampLoadedWetStages {
+        const context: StampWetStageContext = { device, stage, layer: targets.layer, wash: layer, footprint: wetTargets.footprint, fresh: wetTargets.fresh, field: wetTargets.field.views };
+        return {
+          deposit: stages.flatMap((wetStage) => (wetStage.after === 'deposit' ? [wetStage.load(context)] : [])),
+          drying: stages.flatMap((wetStage) => (wetStage.after === 'drying' ? [wetStage.load(context)] : [])),
+        };
+      },
+      /** Starts a wash: the field over the whole stage on dry paper, or on `preparation`, and nothing seen since a drying. */
+      prepare(encoder: GPUCommandEncoder, preparation: StampWashStart | null) {
+        const words = preparation && { wetness: preparation.wetness, region: preparation.region?.box ?? null, fluid: preparation.fluid?.box ?? null };
+        wetTargets.field.prepare(encoder, slot((views) => putStampWetPrepare(views, { stage, preparation: words })), preparation?.region?.view ?? null, preparation?.fluid?.view ?? null);
+      },
+      /**
+       * Closes `drying` once its last deposit is drawn: its stages (`plans.drying`), seeded by `seed`, then the field
+       * forgets what it saw, which they read. The stage texels they changed, or null for none.
+       */
+      dry(encoder: GPUCommandEncoder, drying: StampWashDrying, plans: StampWetStagePlans, seed: number): StampPixelBox | null {
+        let painted: StampPixelBox | null = null;
+        for (const plan of plans.drying) painted = stampBoxUnion(painted, plan.encode(encoder, { drying, seed }));
+        wetTargets.field.dried(encoder);
+        return painted;
+      },
     },
   };
 }
