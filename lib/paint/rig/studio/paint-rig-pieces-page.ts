@@ -3,16 +3,17 @@
 // as base64 of its f32 bytes.
 
 import { createGpuDeviceOwner, type GpuDeviceOwner } from '#lib/platform/gpu/studio/gpu-device-owner.ts';
+import type { PaintRigTexelBox } from '../models/paint-rig-cuts.ts';
 import type { PaintRigPicture } from '../models/paint-rig-pieces.ts';
 import { createPaintRigPiecesDrawer, type PaintRigPiecesDrawer } from './paint-rig-pieces-draw.ts';
 
 /** A picture the tool wrote to `/files/<file>`: its rgba as raw f32 bytes, its box here. */
-export type PaintRigPiecesPageSource = { readonly file: string; readonly x0: number; readonly y0: number; readonly w: number; readonly h: number };
+export type PaintRigPiecesPageSource = PaintRigTexelBox & { readonly file: string };
 
 /** One draw: each piece names its picture's file and carries its triangles (paintRigSkinTriangles' layout). */
 export type PaintRigPiecesPageDraw = {
   readonly pieces: readonly { readonly picture: PaintRigPiecesPageSource; readonly triangles: readonly number[] }[];
-  readonly box: { readonly x0: number; readonly y0: number; readonly w: number; readonly h: number };
+  readonly box: PaintRigTexelBox;
 };
 
 let drawing: { owner: GpuDeviceOwner; drawer: PaintRigPiecesDrawer } | null = null;

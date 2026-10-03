@@ -8,11 +8,11 @@
 // stays premultiplied, as painted-three-sources.ts asks.
 
 import {
-  BufferAttribute, BufferGeometry, ClampToEdgeWrapping, DataTexture, DoubleSide, Group, HalfFloatType, LinearFilter, Mesh, MeshBasicNodeMaterial, NormalBlending, RGBAFormat,
+  BufferAttribute, ClampToEdgeWrapping, DataTexture, DoubleSide, Group, HalfFloatType, LinearFilter, Mesh, MeshBasicNodeMaterial, NormalBlending, RGBAFormat, type BufferGeometry,
 } from 'three/webgpu';
 import { attribute, max, texture } from 'three/tsl';
 import { gpuHalfBitsOf } from '#lib/platform/gpu/models/gpu-half-float.ts';
-import { lensThreeMovesOfItself } from '#lib/picture/lens/studio/lens-three-motion.ts';
+import { createLensThreeSelfMovingGeometry, type LensThreeSelfMovingGeometry } from '#lib/picture/lens/studio/lens-three-motion.ts';
 import type { PaintRigPicture, PaintRigPiece } from '../models/paint-rig-pieces.ts';
 
 /** The attribute a piece's vertices carry their rest point in, as a uv over its picture. */
@@ -30,7 +30,7 @@ export type PaintRigPieceMeshes = {
 /** Pictures as textures, each uploaded once however many meshes draw it (a figure and its reflection). */
 export type PaintRigPictureTextures = { readonly of: (picture: PaintRigPicture) => DataTexture; readonly dispose: () => void };
 
-/** A texture three samples bilinearly for each picture, clear past its edge (it has a clear texel round its paint). */
+/** A texture three samples bilinearly for each picture, clamped at its edge: a mesh never reads past its picture's box. */
 export function createPaintRigPictureTextures(): PaintRigPictureTextures {
   const made = new Map<PaintRigPicture, DataTexture>();
   return {
@@ -50,7 +50,7 @@ export function createPaintRigPictureTextures(): PaintRigPictureTextures {
   };
 }
 
-type PieceMesh = Mesh<BufferGeometry, MeshBasicNodeMaterial>;
+type PieceMesh = { readonly mesh: Mesh<BufferGeometry, MeshBasicNodeMaterial>; readonly moving: LensThreeSelfMovingGeometry };
 
 /** A mesh drawing `made` through whatever triangles it's given. */
 function pieceMesh(made: DataTexture): PieceMesh {
@@ -59,21 +59,17 @@ function pieceMesh(made: DataTexture): PieceMesh {
   const material = new MeshBasicNodeMaterial({ transparent: true, blending: NormalBlending, depthTest: false, depthWrite: false, side: DoubleSide });
   material.colorNode = sampled.rgb.div(max(sampled.a, 1e-4));
   material.opacityNode = sampled.a;
-  const mesh: PieceMesh = new Mesh(new BufferGeometry(), material);
+  const moving = createLensThreeSelfMovingGeometry(), mesh = new Mesh(moving.geometry, material);
   mesh.frustumCulled = false;
-  return mesh;
+  return { mesh, moving };
 }
 
 /** Writes `triangles` into `mesh`'s geometry: posed points as positions, rest points as uvs over `picture`. */
-function setTriangles(mesh: PieceMesh, { x0, y0, w, h }: PaintRigPicture, triangles: Float32Array) {
-  const { geometry } = mesh, count = triangles.length / 4;
-  if (geometry.getAttribute('position')?.count !== count) {
-    geometry.setAttribute('position', new BufferAttribute(new Float32Array(count * 3), 3));
-    geometry.setAttribute(REST_UV, new BufferAttribute(new Float32Array(count * 2), 2));
-    lensThreeMovesOfItself(geometry);
-  }
-  const position = geometry.getAttribute('position'), rest = geometry.getAttribute(REST_UV);
-  const positions = position.array, uvs = rest.array;
+function setTriangles({ mesh: { geometry }, moving }: PieceMesh, { x0, y0, w, h }: PaintRigPicture, triangles: Float32Array) {
+  const count = triangles.length / 4, positions = moving.positions(count);
+  // positions() remakes the geometry's buffers when the count changes; the rest uvs follow it.
+  if (geometry.getAttribute(REST_UV)?.count !== count) geometry.setAttribute(REST_UV, new BufferAttribute(new Float32Array(count * 2), 2));
+  const position = geometry.getAttribute('position'), rest = geometry.getAttribute(REST_UV), uvs = rest.array;
   for (let v = 0; v < count; v++) {
     positions[3 * v] = triangles[4 * v];
     positions[3 * v + 1] = triangles[4 * v + 1];
@@ -100,20 +96,20 @@ export function createPaintRigPieceMeshes(shared?: PaintRigPictureTextures): Pai
         shown.add(picture);
         // A clear cel (a wing at rest behind the body) draws nothing, and a texture can't be empty.
         if (!picture.w || !picture.h) return;
-        let mesh = made.get(picture);
-        if (!mesh) {
-          mesh = pieceMesh(textures.of(picture));
-          made.set(picture, mesh);
-          object.add(mesh);
+        let piece = made.get(picture);
+        if (!piece) {
+          piece = pieceMesh(textures.of(picture));
+          made.set(picture, piece);
+          object.add(piece.mesh);
         }
-        setTriangles(mesh, picture, triangles);
-        mesh.renderOrder = order;
-        mesh.visible = true;
+        setTriangles(piece, picture, triangles);
+        piece.mesh.renderOrder = order;
+        piece.mesh.visible = true;
       });
-      for (const [picture, mesh] of made) if (!shown.has(picture)) mesh.visible = false;
+      for (const [picture, { mesh }] of made) if (!shown.has(picture)) mesh.visible = false;
     },
     dispose: () => {
-      for (const mesh of made.values()) {
+      for (const { mesh } of made.values()) {
         mesh.geometry.dispose();
         mesh.material.dispose();
       }

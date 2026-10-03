@@ -10,14 +10,15 @@ export type PaintRigCelPart = { readonly declaration: PaintRigCutDeclaration; re
 
 /**
  * `cels` laid as layer `id`: its picture the cels over one another by z (ties in the order given), each texel owned by
- * the topmost cel painting it, the matte their coverage together.
+ * the cel giving it most of its colour (an upper cel's faint edge leaves it to the paint beneath), the matte their
+ * coverage. A cel wholly under others owns nothing, and paintRigSkinMesh refuses to skin it.
  */
 export function paintRigCelLayer(id: string, cels: readonly PaintRigCelPart[]): { picture: PaintRigPicture; cuts: PaintRigCutLayer } {
   const painted = cels.filter(({ picture }) => picture.w > 0);
   if (!painted.length) throw new Error(`paint rig: layer ${id}'s cels are all clear`);
   const x0 = Math.min(...painted.map(({ picture }) => picture.x0)), y0 = Math.min(...painted.map(({ picture }) => picture.y0));
   const w = Math.max(...painted.map(({ picture }) => picture.x0 + picture.w)) - x0, h = Math.max(...painted.map(({ picture }) => picture.y0 + picture.h)) - y0;
-  const rgba = new Float32Array(w * h * 4), owner = new Int16Array(w * h).fill(-1), matte = new Float32Array(w * h);
+  const rgba = new Float32Array(w * h * 4), owner = new Int16Array(w * h).fill(-1), matte = new Float32Array(w * h), share = new Float32Array(w * h);
   const backToFront = cels.map((cel, k) => ({ ...cel, k })).toSorted((a, b) => a.declaration.z - b.declaration.z);
   for (const { picture, k } of backToFront) {
     for (let j = 0; j < picture.h; j++) for (let i = 0; i < picture.w; i++) {
@@ -25,7 +26,9 @@ export function paintRigCelLayer(id: string, cels: readonly PaintRigCelPart[]): 
       if (a <= 0) continue;
       const t = (picture.y0 - y0 + j) * w + picture.x0 - x0 + i, keep = 1 - a;
       for (let c = 0; c < 4; c++) rgba[4 * t + c] = picture.rgba[from + c] + rgba[4 * t + c] * keep;
-      owner[t] = k;
+      // Every cel beneath is dimmed alike by this one, so the owner beneath stays the most of them.
+      share[t] *= keep;
+      if (a > share[t]) { owner[t] = k; share[t] = a; }
       matte[t] = rgba[4 * t + 3];
     }
   }

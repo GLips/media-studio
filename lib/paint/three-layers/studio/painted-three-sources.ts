@@ -137,6 +137,8 @@ export async function loadPaintedThree(owner: StampPaintGpuOwner, camera: PaintC
         const target = targetInto([{ name: 'output', texture }, { name: LENS_THREE_MOTION_NAME, texture: motionTexture }], { samples: PAINTED_THREE_SAMPLES });
         made.push(target);
         const motion = createLensThreeMotion({ width: w, height: h, distanceUnit: world.depthUnit });
+        // Posed once first: a source may make its meshes as it poses, and they compile here, not in the first frame.
+        built.poseAt(paintMoment(0));
         await oneAfterAnother(built.offscreen ?? [], (pass) => {
           renderer.setRenderTarget(pass.target);
           return renderer.compileAsync(pass.scene, pass.camera);

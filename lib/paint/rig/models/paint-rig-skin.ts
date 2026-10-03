@@ -124,9 +124,9 @@ export function paintRigSkinMesh(layer: PaintRigCutLayer, group: PaintRigSkinGro
       let share = within(own, child) ? 1 : 0;
       if (own === child) share = ramp;
       if (own === parent) {
-        // The parent's paint follows the child only near the child's: a whole body painted round a neck's root must not
-        // swing with the neck. Where the two tile, every band vertex lies within blend / 2 of the child's paint, so the
-        // ramp there is whole; past that it fades over a further `blend`, gently enough not to crease.
+        // The parent's paint follows the child only near the child's: a body painted round a neck's root, or shoulders
+        // wider than the neck, must not swing with it. Within blend / 2 of the child's paint the ramp is whole; past
+        // that it fades over a further `blend`, gently enough not to crease.
         const near = ramp > 0 ? nearest(box, x, y, 1.5 * blend, (t) => mover[t] >= 0 && within(mover[t], child)) : null;
         share = near ? ramp * Math.min(1, 1.5 - near.distance / blend) : 0;
       }

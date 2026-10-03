@@ -7,13 +7,14 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { withBrowserModulePage } from '#lib/platform/browser/engine/browser-module-page.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
+import type { PaintRigTexelBox } from '../models/paint-rig-cuts.ts';
 import type { PaintRigPicture, PaintRigPiece } from '../models/paint-rig-pieces.ts';
 import type { PaintRigPiecesPageDraw, PaintRigPiecesPageSource } from '../studio/paint-rig-pieces-page.ts';
 
 const PAINT_RIG_PIECES_PAGE = fileURLToPath(new URL('../studio/paint-rig-pieces-page.ts', import.meta.url));
 
 /** Draws `pieces` in order over `box` (plane px): premultiplied linear, clear where none lie. */
-export type PaintRigPiecesGpuDraw = (pieces: readonly PaintRigPiece[], box: { x0: number; y0: number; w: number; h: number }) => Promise<PaintRigPicture>;
+export type PaintRigPiecesGpuDraw = (pieces: readonly PaintRigPiece[], box: PaintRigTexelBox) => Promise<PaintRigPicture>;
 
 /** Runs `use` with a draw on the render browser's GPU, its page and temp folder gone when `use` settles. */
 export function withPaintRigPiecesGpu<T>(use: (draw: PaintRigPiecesGpuDraw) => Promise<T>): Promise<T> {
@@ -29,7 +30,9 @@ export function withPaintRigPiecesGpu<T>(use: (draw: PaintRigPiecesGpuDraw) => P
       }
       return source;
     };
-    return use(async (pieces, box) => {
+    return use(async (pieces, { x0, y0, w, h }) => {
+      // Only the box's numbers: a picture handed in as the box would carry its whole rgba across.
+      const box = { x0, y0, w, h };
       const request: PaintRigPiecesPageDraw = { pieces: pieces.map(({ picture, triangles }) => ({ picture: sourceOf(picture), triangles: Array.from(triangles) })), box };
       const bytes = Buffer.from(await call<string>('paintRigDrawPieces', request), 'base64');
       return { ...box, rgba: new Float32Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)) };

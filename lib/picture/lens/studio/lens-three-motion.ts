@@ -2,12 +2,12 @@
 // each fragment's motion over the shutter in frame px, its distance, and its cover. Where the shutter opens and closes,
 // every object's world matrix and the camera are recorded, and a fragment's point is projected through both.
 //
-// A geometry whose vertices move of themselves (a posed mesh: positions written each moment) brings its own open and
-// close positions: it holds LENS_THREE_OPEN_POSITION and LENS_THREE_CLOSE_POSITION beside `position`, and `record`
-// copies its posed positions into them. Negative space: three's own skinning, morphs and instance matrices aren't
+// A geometry whose vertices move of themselves (a posed mesh: positions written each moment) is made by
+// createLensThreeSelfMovingGeometry, which keeps open and close positions beside `position`, always its size; `record`
+// copies the posed positions into them. Negative space: three's own skinning, morphs and instance matrices aren't
 // read, so a mesh deformed by those moves with its object alone.
 
-import { BufferAttribute, Matrix4, type BufferGeometry, type Camera, type NodeBuilder, type Object3D, type Scene } from 'three/webgpu';
+import { BufferAttribute, BufferGeometry, Matrix4, type Camera, type NodeBuilder, type Object3D, type Scene } from 'three/webgpu';
 import { attribute, Fn, mrt, output, positionLocal, positionView, uniform, varying, vec2, vec4 } from 'three/tsl';
 import { isThreeGeometryDrawable } from '#lib/platform/gpu/studio/studio-three-renderer.ts';
 
@@ -15,18 +15,42 @@ import { isThreeGeometryDrawable } from '#lib/platform/gpu/studio/studio-three-r
 export const LENS_THREE_MOTION_NAME = 'lensMotion';
 
 /** The attributes a self-moving geometry keeps its positions in as the shutter opens and closes. */
-export const LENS_THREE_OPEN_POSITION = 'lensOpenPosition';
-export const LENS_THREE_CLOSE_POSITION = 'lensClosePosition';
+const LENS_THREE_OPEN_POSITION = 'lensOpenPosition';
+const LENS_THREE_CLOSE_POSITION = 'lensClosePosition';
+
+/** A position attribute and its array, held as the Float32Array it was made with. */
+type Positions = { readonly attribute: BufferAttribute; readonly array: Float32Array };
+const positionsOf = (count: number): Positions => {
+  const array = new Float32Array(count * 3);
+  return { attribute: new BufferAttribute(array, 3), array };
+};
+/** Each self-moving geometry's three position attributes, by geometry: the only way to make one. */
+const selfMovingPositions = new WeakMap<BufferGeometry, { now: Positions; open: Positions; close: Positions }>();
+
+/** A geometry whose vertices move of themselves, and `positions`, its posed points' array (x, y, z each) to write. */
+export type LensThreeSelfMovingGeometry = { readonly geometry: BufferGeometry; readonly positions: (count: number) => Float32Array };
 
 /**
- * Makes `geometry` one that moves of itself: open and close positions beside its `position`, the same size, which
- * `record` fills. Call it again after replacing `position` with one of another size.
+ * A geometry that moves of itself: `positions(count)` hands back its `position` array for `count` vertices, its open
+ * and close positions (which `record` fills) remade with it when the count changes, the old buffers let go.
  */
-export function lensThreeMovesOfItself(geometry: BufferGeometry): void {
-  const { array, itemSize } = geometry.getAttribute('position');
-  for (const name of [LENS_THREE_OPEN_POSITION, LENS_THREE_CLOSE_POSITION]) {
-    if (geometry.getAttribute(name)?.array.length !== array.length) geometry.setAttribute(name, new BufferAttribute(new Float32Array(array), itemSize));
-  }
+export function createLensThreeSelfMovingGeometry(): LensThreeSelfMovingGeometry {
+  const geometry = new BufferGeometry();
+  return {
+    geometry,
+    positions: (count) => {
+      const held = selfMovingPositions.get(geometry);
+      if (held?.now.attribute.count === count) return held.now.array;
+      // Disposing frees every attribute's GPU buffer; three makes them again on the next draw.
+      if (held) geometry.dispose();
+      const made = { now: positionsOf(count), open: positionsOf(count), close: positionsOf(count) };
+      geometry.setAttribute('position', made.now.attribute);
+      geometry.setAttribute(LENS_THREE_OPEN_POSITION, made.open.attribute);
+      geometry.setAttribute(LENS_THREE_CLOSE_POSITION, made.close.attribute);
+      selfMovingPositions.set(geometry, made);
+      return made.now.array;
+    },
+  };
 }
 
 export type LensThreeMotion = {
@@ -46,10 +70,8 @@ export type LensThreeMotion = {
   still: () => void;
 };
 
-/** `object`'s geometry when it moves of itself, else null. */
-function selfMoving(object: Object3D): BufferGeometry | null {
-  return isThreeGeometryDrawable(object) && object.geometry.getAttribute(LENS_THREE_OPEN_POSITION) ? object.geometry : null;
-}
+/** `object`'s geometry's positions when it moves of itself, else undefined. */
+const selfMoving = (object: Object3D) => (isThreeGeometryDrawable(object) ? selfMovingPositions.get(object.geometry) : undefined);
 
 /** Whether two attributes hold the same numbers. */
 function sameArrays(a: ArrayLike<number>, b: ArrayLike<number>): boolean {
@@ -87,13 +109,11 @@ export function createLensThreeMotion({ width, height, distanceUnit }: { width: 
         const had = kept.get(object);
         if (had) had.copy(object.matrixWorld);
         else kept.set(object, object.matrixWorld.clone());
-        const geometry = selfMoving(object);
-        if (!geometry) return;
-        const into = geometry.getAttribute(moment === 'open' ? LENS_THREE_OPEN_POSITION : LENS_THREE_CLOSE_POSITION), { array } = geometry.getAttribute('position');
-        if (into.array.length !== array.length) throw new Error(`lens motion: a self-moving geometry's position holds ${array.length} numbers and its ${moment} position ${into.array.length}; call lensThreeMovesOfItself after resizing it`);
-        // SAFETY: lensThreeMovesOfItself made both moments' attributes Float32Arrays, and the size was checked above.
-        (into.array as Float32Array).set(array);
-        into.needsUpdate = true;
+        const positions = selfMoving(object);
+        if (!positions) return;
+        const into = moment === 'open' ? positions.open : positions.close;
+        into.array.set(positions.now.array);
+        into.attribute.needsUpdate = true;
       });
       (moment === 'open' ? openView : closeView).value.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
       moving.value = 1;
@@ -102,8 +122,8 @@ export function createLensThreeMotion({ width, height, distanceUnit }: { width: 
       let any = !openView.value.equals(closeView.value);
       scene.traverse((object) => {
         any ||= !opens.get(object)!.equals(closes.get(object)!);
-        const geometry = selfMoving(object);
-        if (geometry) any ||= !sameArrays(geometry.getAttribute(LENS_THREE_OPEN_POSITION).array, geometry.getAttribute(LENS_THREE_CLOSE_POSITION).array);
+        const positions = selfMoving(object);
+        if (positions) any ||= !sameArrays(positions.open.array, positions.close.array);
       });
       if (!any) moving.value = 0;
       return any;

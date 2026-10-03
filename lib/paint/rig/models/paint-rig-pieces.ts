@@ -65,7 +65,7 @@ export function paintRigSkinGroupPicture(picture: PaintRigPicture, cuts: PaintRi
 }
 
 /** The box of whole texels round where `pieces` are posed, a texel past each side; null for none. */
-export function paintRigPiecesBox(pieces: readonly PaintRigPiece[]): { x0: number; y0: number; w: number; h: number } | null {
+export function paintRigPiecesBox(pieces: readonly PaintRigPiece[]): PaintRigTexelBox | null {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const { triangles } of pieces) for (let v = 0; v < triangles.length; v += 4) {
     x0 = Math.min(x0, triangles[v]); x1 = Math.max(x1, triangles[v]); y0 = Math.min(y0, triangles[v + 1]); y1 = Math.max(y1, triangles[v + 1]);
