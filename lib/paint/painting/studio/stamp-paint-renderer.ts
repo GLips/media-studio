@@ -41,8 +41,8 @@ import { stampPigmentCompositor } from './stamp-paint-pigment-compositor.ts';
 import { type StampPaintDevice, type StampPaintImage } from './stamp-paint-gpu.ts';
 import type { StampPaintGpuScope, StampPaintImageKind } from './stamp-paint-gpu-owner.ts';
 import type { StampPaintSurface } from './stamp-paint-surface.ts';
-import type { StampLensSource, StampLensSourceExposure } from './stamp-lens-source.ts';
-import { checkStampLensSources, createStampLensSourceLayers, STAMP_REST_LOOK, stampLensSourcesBlurExtent, type StampSourceRenders } from './stamp-lens-source-layers.ts';
+import { stampLensSourceExposureOf, type StampLensSource, type StampLensSourceExposure } from './stamp-lens-source.ts';
+import { checkStampLensSources, createStampLensFrames, createStampLensSourceLayers, stampLensSourcesBlurExtent, type StampSourceRenders } from './stamp-lens-source-layers.ts';
 import { gpuUniformLayout, gpuUniformStruct, gpuUniformWriter, type GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import {
   STAMP_WET_STAGES, stampWetStageReach, type StampLoadedWetStage, type StampWetBank, type StampWetDepositMoment, type StampWetDryingMoment, type StampWetStage,
@@ -56,14 +56,14 @@ import {
 } from './stamp-paint-plane-passes.ts';
 import { lensGaussianReach, lensSigmaStepped } from '#lib/picture/lens/models/lens-focus.ts';
 import { GPU_GAUSSIAN_PASS, gpuGaussianPassWgsl } from '#lib/platform/gpu/models/gpu-gaussian.ts';
-import { createLensCompositor, type LensFrameExposures, type LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
+import { createLensCompositor, type LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { stampWarpCells, stampWarpTriangles, STAMP_WARP_MOST_CELLS } from '../models/stamp-group-warp.ts';
 import {
   stampFramePlan, stampFramePlanExposed, stampFramePlanMotion, stampGroupSceneMap, type StampGroupFrame, type StampGroupTravel, type StampMotionSpan, type StampPosedMoment,
 } from '../models/stamp-frame-plan.ts';
 import type { StampGroupMarks, StampPaintFrameState } from '../models/stamp-paint-frame-state.ts';
-import { stampSinglePlane, type StampLaidPlanes, type StampLensFrame, type StampPlaneLook } from '../models/stamp-plane.ts';
+import { STAMP_REST_LOOK, stampSinglePlane, type StampLaidPlanes, type StampLensFrame, type StampPlaneLook } from '../models/stamp-plane.ts';
 import { stampStage, stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 import { gpuHalfValue } from '#lib/platform/gpu/models/gpu-half-float.ts';
 import { GPU_FULL_FRAME_WGSL, GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
@@ -2511,16 +2511,7 @@ function rendererOnSurface({
     return painted;
   }
 
-  // The reference frame its exposures go into, from its first to its last.
-  let referenceFrame: LensFrameExposures | null = null;
-  /** The lens frame `paintFrame` draws into: its own for one exposure, else its reference frame's. */
-  function lensFrameOf(paintFrame: StampPaintFrame): LensFrameExposures {
-    if (paintFrame.kind !== 'exposure') return lensGpu.beginFrame(1);
-    const { index, count } = paintFrame.exposure;
-    if (index === 0) referenceFrame = lensGpu.beginFrame(count);
-    if (referenceFrame?.count !== count) throw new Error(`stamp paint: exposure ${index} of ${count} drawn into a paintFrame of ${referenceFrame?.count ?? 'none'}`);
-    return referenceFrame;
-  }
+  const lensFrameOf = createStampLensFrames(lensGpu);
 
   /**
    * Encodes `paintFrame`. `whole` paints every group afresh, keeping only the films a clear plane lays again: for a
@@ -2571,10 +2562,10 @@ function rendererOnSurface({
         // The back's painting reaches the frame's edge on its paper: it isn't clipped.
         return layerOf(planePicture(encoder, plane, index === 0 ? 'paper' : 'film', look, planeDraw), look, index > 0);
       });
-      const lensFrameExposures = lensFrameOf(paintFrame);
+      const { frame: lensFrameExposures, last } = lensFrameOf(paintFrame.kind === 'exposure' ? paintFrame.exposure : undefined);
       lensFrameExposures.exposure(encoder, layers, { glowing: glows, moving });
       // One bloom, of all that glows as the frame shows it, once its exposures are in.
-      if (paintFrame.kind !== 'exposure' || paintFrame.exposure.index === paintFrame.exposure.count - 1) {
+      if (last) {
         lensFrameExposures.develop(encoder, {
           bloom: lensFrame ? { sigma: lensFrame.bloom, strength: 1, glow: 'emission' } : null,
           into: surface.frameTexture().createView(), format, encoding: { kind: 'encoded', dithered },
@@ -2610,7 +2601,7 @@ function rendererOnSurface({
   }
 
   /** Renders each source plane for `paintFrame`, one after another. */
-  const renderSources = (paintFrame: StampPaintFrame) => sourceLayers.render(paintFrame.t, stampLensSourceExposureOf(paintFrame));
+  const renderSources = (paintFrame: StampPaintFrame) => sourceLayers.render(paintFrame.t, stampLensSourceExposureOf(paintFrame.kind === 'exposure' ? paintFrame.exposure : undefined));
 
   /**
    * Draws each brushed mask into a texture of its own over its marks' reach (none for one off the painting), each mark
@@ -2813,9 +2804,6 @@ const pictureKey = (plane: { id: string; groups: readonly number[] }, { groups, 
   const { paintKey, lay, warp, visibility, glow } = groups[index];
   return visibility ? [paintKey, lay, warp && [warp.key, warp.cell], visibility, glow, motion?.travels[index]?.key] : null;
 }), motion?.span ?? null]);
-/** The exposure a source renders `paintFrame` for: its own, or none for a frame of one. */
-export const stampLensSourceExposureOf = (paintFrame: StampPaintFrame): StampLensSourceExposure | null =>
-  (paintFrame.kind === 'exposure' ? { index: paintFrame.exposure.index, at: paintFrame.exposure.at, aperture: paintFrame.exposure.aperture } : null);
 const isRest = ({ view, defocus, shutter }: StampPlaneLook) => view.ma === 1 && view.mb === 0 && view.kx === 0 && view.ky === 0 && !defocus && !shutter;
 const clear = (encoder: GPUCommandEncoder, view: GPUTextureView) => encoder.beginRenderPass({ colorAttachments: [{ view, loadOp: 'clear', storeOp: 'store' }] }).end();
 const channel = (hex: string, i: number) => parseInt(hex.slice(i, i + 2), 16) / 255;

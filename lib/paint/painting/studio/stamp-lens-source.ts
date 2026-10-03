@@ -10,6 +10,10 @@ import type { StampStageTexels } from '../models/stamp-stage.ts';
 /** The exposure of a reference frame a source renders for: its `index`, its moment `at`, its point on the aperture. */
 export type StampLensSourceExposure = { readonly index: number; readonly at: number; readonly aperture: LensExposure['aperture'] };
 
+/** The exposure a source renders a paint frame for: its `exposure`'s, or none for a frame of one. */
+export const stampLensSourceExposureOf = (exposure: StampLensSourceExposure | undefined): StampLensSourceExposure | null =>
+  (exposure ? { index: exposure.index, at: exposure.at, aperture: exposure.aperture } : null);
+
 /**
  * Where a three source renders, the same textures every frame. `texture`: rgba16float premultiplied linear colour.
  * `motion`: the lens's motion layer (lens-passes.ts): travel over the shutter, frame px; distance, setting defocus;
@@ -19,8 +23,9 @@ export type StampLensSourceExposure = { readonly index: number; readonly at: num
 export type StampLensSourcePicture = { readonly texture: GPUTexture; readonly motion: GPUTexture; readonly at: { readonly x: number; readonly y: number } };
 
 /**
- * A picture source's picture: `texture`, rgba16float premultiplied linear colour, one layer, TEXTURE_BINDING, exactly
- * `box`'s size; `box`, where its texels lie on the stage. The source's own, read until the draw is submitted.
+ * A picture source's picture: `texture`, rgba16float premultiplied linear colour, one layer, TEXTURE_BINDING, its first
+ * texel at `box`'s corner, at least `box`'s size and clear past it; `box`, where its texels lie on the stage. The
+ * source's own, read until the draw is submitted.
  */
 export type StampLensPicture = { readonly texture: GPUTexture; readonly box: StampStageTexels };
 

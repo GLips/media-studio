@@ -232,7 +232,6 @@ export function buildPaintingCamera(painting: CompiledStampPaint | null, { plane
   const problems: string[] = [];
   const scene = stampScenePlanes(painting, written, problems);
   if (problems.length || !scene) return { ok: false, problems };
-  const extents = new Map(written.flatMap(({ id, source }) => (source.kind === 'picture' ? [[id, source.extent] as const] : [])));
   const { back, nearer } = scene;
   const built = buildPaintCamera({
     ...o,
@@ -240,7 +239,7 @@ export function buildPaintingCamera(painting: CompiledStampPaint | null, { plane
       const { id, depth } = plane;
       switch (plane.kind) {
         case 'three': return { id, depth, kind: 'three' };
-        case 'picture': return { id, depth, kind: 'picture', extent: extents.get(id)! };
+        case 'picture': return { id, depth, kind: 'picture', extent: plane.extent };
         // stampScenePlanes refuses a painted plane without a painting.
         case 'painted': return { id, depth, kind: 'picture', extent: plane === back ? { kind: 'everywhere' } : nearerPaintReach(painting!, plane.groups, motion) };
         default: return plane satisfies never;

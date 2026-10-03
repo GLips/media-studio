@@ -21,7 +21,7 @@ function paethPredictor(a: number, b: number, c: number) {
 }
 
 /** A PNG of `w` × `h` texels of colour type `colour`, each row filtered as `filters` says, at bit depth `depth`, interlaced if asked. */
-function png(w: number, h: number, colour: number, channels: number, texels: readonly number[], filters: readonly number[], { depth = 8, interlace = 0 } = {}) {
+function png(w: number, h: number, colour: number, channels: number, texels: readonly number[], filters: readonly number[], { depth = 8, interlace = 0, key = false } = {}) {
   const header = new Uint8Array(13), view = new DataView(header.buffer);
   view.setUint32(0, w);
   view.setUint32(4, h);
@@ -37,7 +37,7 @@ function png(w: number, h: number, colour: number, channels: number, texels: rea
       raw[y * (stride + 1) + 1 + i] = (x - predicted) & 255;
     }
   }
-  return new Uint8Array(Buffer.concat([Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header), chunk('IDAT', deflateSync(raw)), chunk('IEND', new Uint8Array(0))]));
+  return new Uint8Array(Buffer.concat([Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header), ...(key ? [chunk('tRNS', Uint8Array.of(0, 10, 0, 20, 0, 30))] : []), chunk('IDAT', deflateSync(raw)), chunk('IEND', new Uint8Array(0))]));
 }
 
 test('a PNG decodes to the RGBA it was written with, whatever its colour type and row filters', async () => {
@@ -57,5 +57,6 @@ test('a PNG decodes to the RGBA it was written with, whatever its colour type an
 test('a PNG past what the decoder reads is refused, not misread', async () => {
   await assert.rejects(decodePngRgba(png(1, 1, 6, 4, [1, 2, 3, 4], [0], { interlace: 1 }), 'interlaced'), /interlaced/);
   await assert.rejects(decodePngRgba(png(1, 1, 6, 4, [1, 2, 3, 4], [0], { depth: 16 }), 'deep'), /16-bit/);
+  await assert.rejects(decodePngRgba(png(1, 1, 2, 3, [10, 20, 30], [0], { key: true }), 'keyed'), /transparency key/);
   await assert.rejects(decodePngRgba(Uint8Array.from([1, 2, 3]), 'junk'), /junk isn't a PNG/);
 });

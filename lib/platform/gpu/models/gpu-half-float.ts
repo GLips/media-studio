@@ -1,12 +1,21 @@
 // gpu-half-float.ts: IEEE half floats, as an rgba16float texture holds them, written from and read into numbers.
 
-/** `values` as half floats' bits, rounded to nearest; one past the largest half is infinite, one below the least normal 0. */
+/**
+ * `values` as half floats' bits, rounded to nearest (ties up): past the largest half infinite, below the least normal
+ * subnormal (a faint premultiplied edge lives there), NaN a NaN.
+ */
 export function gpuHalfBitsOf(values: Float32Array): Uint16Array {
   const words = new Uint32Array(values.buffer, values.byteOffset, values.length), halves = new Uint16Array(values.length);
   for (let i = 0; i < words.length; i++) {
     const bits = words[i], sign = (bits >>> 16) & 0x8000, exponent = ((bits >>> 23) & 0xff) - 112, mantissa = bits & 0x7fffff;
-    if (exponent <= 0) halves[i] = sign;
+    if (exponent === 143 && mantissa) halves[i] = sign | 0x7e00;
     else if (exponent >= 31) halves[i] = sign | 0x7c00;
+    else if (exponent < -10) halves[i] = sign;
+    // Subnormal: the whole significand shifted down to units of 2^-24, rounded; rounding into the least normal is right.
+    else if (exponent <= 0) {
+      const shift = 14 - exponent, significand = mantissa | 0x800000;
+      halves[i] = sign + (significand >> shift) + ((significand >> (shift - 1)) & 1);
+    }
     // Rounding may carry into the exponent, which the bits then hold correctly.
     else halves[i] = sign + ((exponent << 10) | (mantissa >> 13)) + ((mantissa >> 12) & 1);
   }

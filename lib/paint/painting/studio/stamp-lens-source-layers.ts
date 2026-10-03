@@ -3,10 +3,10 @@
 // at rest, defocused per texel by its depth. A picture source's is in the stage's texels: it's defocused by its plane's
 // look, as a painted picture is, and laid where the look puts it, clear past its edge.
 
-import { LENS_DEFOCUS_LEAST, lensSigmaStepped, type LensFocus } from '#lib/picture/lens/models/lens-focus.ts';
-import type { LensCompositor, LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
+import { LENS_DEFOCUS_LEAST, lensGaussianReach, lensSigmaStepped, type LensFocus } from '#lib/picture/lens/models/lens-focus.ts';
+import type { LensCompositor, LensFrameExposures, LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
 import type { LensPictureLayers } from '#lib/picture/lens/studio/lens-passes.ts';
-import type { StampLaidPlanes, StampLaidSourcePlane, StampPlaneLook } from '../models/stamp-plane.ts';
+import { STAMP_REST_LOOK, type StampLaidPlanes, type StampLaidSourcePlane, type StampPlaneExtent, type StampPlaneLook } from '../models/stamp-plane.ts';
 import type { StampStage, StampStageTexels } from '../models/stamp-stage.ts';
 import type { StampPaintGpuOwner } from './stamp-paint-gpu-owner.ts';
 import type { StampLensPicture, StampLensSource, StampLensSourceExposure, StampPictureLensSource, StampThreeLensSource } from './stamp-lens-source.ts';
@@ -14,9 +14,6 @@ import type { StampLensPicture, StampLensSource, StampLensSourceExposure, StampP
 /** A source's render's layers: laid over by its alpha, as a paper picture is, with no emission. */
 const SOURCE_LAYERS: LensPictureLayers = { taken: null, emission: null, motion: null };
 const SOURCE_MOTION_LAYERS: LensPictureLayers = { ...SOURCE_LAYERS, motion: 1 };
-
-/** Rest: a plane where it's painted, sharp. */
-export const STAMP_REST_LOOK: StampPlaneLook = { view: { ma: 1, mb: 0, kx: 0, ky: 0 }, defocus: 0, distance: 1, shutter: null };
 
 /** What a frame's sources rendered: the three sources that moved over its shutter, and each picture source's picture. */
 export type StampSourceRenders = { readonly moved: ReadonlySet<string>; readonly pictures: ReadonlyMap<string, StampLensPicture | null> };
@@ -59,11 +56,20 @@ export function checkStampLensSources(planes: StampLaidPlanes, sources: Readonly
   }
 }
 
-/** Refuses a picture that isn't rgba16float, one sampled layer, its box's size, at whole texels within the stage. */
-function checkStampLensPicture(id: string, { texture, box }: StampLensPicture, { width, height }: StampStage) {
+/**
+ * Refuses a picture that isn't rgba16float, one sampled layer, at least its box's size, at whole texels within the
+ * stage and within its plane's `extent` (the camera kept that on the stage, not what lies past it).
+ */
+function checkStampLensPicture(id: string, { texture, box }: StampLensPicture, { width, height, margin }: StampStage, extent: StampPlaneExtent) {
   const whole = [box.x, box.y, box.w, box.h].every(Number.isInteger) && box.w > 0 && box.h > 0 && box.x >= 0 && box.y >= 0 && box.x + box.w <= width && box.y + box.h <= height;
-  if (!whole || texture.format !== 'rgba16float' || texture.depthOrArrayLayers !== 1 || !(texture.usage & GPUTextureUsage.TEXTURE_BINDING) || texture.width !== box.w || texture.height !== box.h) {
-    throw new Error(`stamp paint: picture plane ${id}'s picture must be rgba16float, one layer with TEXTURE_BINDING, ${box.w} × ${box.h} as its box at whole texels (${box.x}, ${box.y}) within the ${width} × ${height} stage says; it's ${texture.format}, ${texture.width} × ${texture.height}`);
+  if (!whole || texture.format !== 'rgba16float' || texture.depthOrArrayLayers !== 1 || !(texture.usage & GPUTextureUsage.TEXTURE_BINDING) || texture.width < box.w || texture.height < box.h) {
+    throw new Error(`stamp paint: picture plane ${id}'s picture must be rgba16float, one layer with TEXTURE_BINDING, at least ${box.w} × ${box.h} as its box at whole texels (${box.x}, ${box.y}) within the ${width} × ${height} stage says; it's ${texture.format}, ${texture.width} × ${texture.height}`);
+  }
+  if (extent.kind === 'empty') throw new Error(`stamp paint: picture plane ${id} is empty, and its source handed in a picture`);
+  if (extent.kind !== 'box') return;
+  const { x0, y0, x1, y1 } = extent.box;
+  if (box.x < Math.floor(x0) + margin || box.y < Math.floor(y0) + margin || box.x + box.w > Math.ceil(x1) + margin || box.y + box.h > Math.ceil(y1) + margin) {
+    throw new Error(`stamp paint: picture plane ${id}'s picture, ${box.w} × ${box.h} at texel (${box.x}, ${box.y}), reaches past its extent ${x0}..${x1} × ${y0}..${y1}`);
   }
 }
 
@@ -71,6 +77,21 @@ function checkStampLensPicture(id: string, { texture, box }: StampLensPicture, {
 export function stampLensSourcesBlurExtent({ width, height }: StampStage, sources: ReadonlyMap<string, StampLensSource>) {
   const threes = [...sources.values()].flatMap((source) => (source.kind === 'three' ? [source.picture.texture] : []));
   return { w: Math.max(width, ...threes.map(({ width: w }) => w)), h: Math.max(height, ...threes.map(({ height: h }) => h)) };
+}
+
+/**
+ * The lens frames a renderer's paint frames go into: a frame of its own for one that isn't an exposure, else its
+ * reference frame's, begun at its first exposure; `last` says it's done, to develop.
+ */
+export function createStampLensFrames(lens: LensCompositor) {
+  let referenceFrame: LensFrameExposures | null = null;
+  return (exposure: { readonly index: number; readonly count: number } | undefined): { frame: LensFrameExposures; last: boolean } => {
+    if (!exposure) return { frame: lens.beginFrame(1), last: true };
+    const { index, count } = exposure;
+    if (index === 0) referenceFrame = lens.beginFrame(count);
+    if (referenceFrame?.count !== count) throw new Error(`stamp paint: exposure ${index} of ${count} drawn into a paintFrame of ${referenceFrame?.count ?? 'none'}`);
+    return { frame: referenceFrame, last: index === count - 1 };
+  };
 }
 
 /** `texture` viewed as an array, as a gaussian pass binds a plain target and an array one alike. */
@@ -113,20 +134,24 @@ export function createStampLensSourceLayers(owner: StampPaintGpuOwner, { stage, 
   }
 
   /**
-   * Picture plane `id`'s picture laid by its `look`, defocused by it: blurred over the whole stage, clear past its
-   * spread, so one target a plane holds its picture whatever its box.
+   * Picture plane `id`'s picture laid by its `look`, defocused by it over its box grown by the blur's reach, into a
+   * stage-sized target cleared first: one target a plane, whatever its box.
    */
-  function pictureLayer(encoder: GPUCommandEncoder, id: string, picture: StampLensPicture, look: StampPlaneLook): LensLayer {
-    const laid = (view: GPUTextureView, box: StampStageTexels): LensLayer => ({
-      picture: view, layers: SOURCE_LAYERS, view: look.view, shutter: look.shutter, origin: { x: box.x - margin, y: box.y - margin }, size: box, clipped: true,
+  function pictureLayer(encoder: GPUCommandEncoder, id: string, { texture, box }: StampLensPicture, look: StampPlaneLook): LensLayer {
+    // Sized to the texture, not the box: the lens samples its picture over `size`, and past the box it's clear.
+    const laid = (view: GPUTextureView, at: StampStageTexels, size: { w: number; h: number }): LensLayer => ({
+      picture: view, layers: SOURCE_LAYERS, view: look.view, shutter: look.shutter, origin: { x: at.x - margin, y: at.y - margin }, size, clipped: true,
       distance: look.distance, distances: 'layer',
     });
     // A plane's defocus is frame px: on its picture, it's that over the view's scale.
     const sigma = look.defocus && lensSigmaStepped(look.defocus / Math.hypot(look.view.ma, look.view.mb));
-    if (!sigma) return laid(arrayView(picture.texture), picture.box);
-    const blurred = scratch(`picture ${id} blurred`, width, height, 1), stageBox = { x: 0, y: 0, w: width, h: height };
-    lens.gaussian(encoder, { source: arrayView(picture.texture), into: arrayView(blurred), layers: 1, sigma, read: picture.box, sourceAt: picture.box, box: stageBox });
-    return laid(arrayView(blurred), stageBox);
+    if (!sigma) return laid(arrayView(texture), box, { w: texture.width, h: texture.height });
+    const reach = lensGaussianReach(sigma), x = Math.max(0, box.x - reach), y = Math.max(0, box.y - reach);
+    const grown = { x, y, w: Math.min(width, box.x + box.w + reach) - x, h: Math.min(height, box.y + box.h + reach) - y };
+    const blurred = scratch(`picture ${id} blurred`, width, height, 1);
+    encoder.beginRenderPass({ colorAttachments: [{ view: blurred.createView(), loadOp: 'clear', storeOp: 'store' }] }).end();
+    lens.gaussian(encoder, { source: arrayView(texture), into: arrayView(blurred), layers: 1, sigma, read: box, sourceAt: box, box: grown });
+    return laid(arrayView(blurred), grown, { w: width, h: height });
   }
 
   /** Refuses a back picture that leaves some of the frame clear where `look` lays it. */
@@ -145,14 +170,13 @@ export function createStampLensSourceLayers(owner: StampPaintGpuOwner, { stage, 
         if ((await source.render(t, exposure)).moved) renders.moved.add(id);
         return renders;
       }
-      const picture = await source.render(t, exposure);
-      if (picture) checkStampLensPicture(id, picture, stage);
-      renders.pictures.set(id, picture);
+      renders.pictures.set(id, await source.render(t, exposure));
       return renders;
     }, Promise.resolve({ moved: new Set(), pictures: new Map() })),
     layer: (encoder, plane, renders, laying) => {
       if (plane.kind === 'three') return [threeLayer(encoder, plane.id, laying)];
       const picture = renders.pictures.get(plane.id) ?? null;
+      if (picture) checkStampLensPicture(plane.id, picture, stage, plane.extent);
       if (laying.back) checkBackCovers(plane.id, picture ?? { box: null }, laying.look);
       return picture ? [pictureLayer(encoder, plane.id, picture, laying.look)] : [];
     },

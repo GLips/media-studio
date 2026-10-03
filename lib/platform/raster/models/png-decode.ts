@@ -1,6 +1,7 @@
 // png-decode.ts: a PNG's pixels as 8-bit RGBA, exactly as written, in the browser and in Node alike (both inflate
 // through DecompressionStream). Straight alpha, no colour management: an image's bytes, not how a page would show it.
-// Negative space: 8-bit grey, grey-alpha, RGB and RGBA, not interlaced; anything else is refused, not converted.
+// Negative space: 8-bit grey, grey-alpha, RGB and RGBA, not interlaced, no transparency key; anything else is refused,
+// not converted.
 
 /** A decoded PNG: `w` × `h` texels of straight-alpha 8-bit RGBA, row by row. */
 export type PngRgba = { readonly w: number; readonly h: number; readonly data: Uint8Array };
@@ -35,6 +36,8 @@ export async function decodePngRgba(bytes: Uint8Array, name: string): Promise<Pn
     const length = view.getUint32(at), type = String.fromCharCode(...bytes.subarray(at + 4, at + 8)), body = bytes.subarray(at + 8, at + 8 + length);
     if (type === 'IHDR') header = { w: view.getUint32(at + 8), h: view.getUint32(at + 12), depth: body[8], colour: body[9], interlace: body[12] };
     else if (type === 'IDAT') idat.push(body);
+    // A transparency key would make some of an opaque type's texels clear: refused rather than read as opaque.
+    else if (type === 'tRNS') throw new Error(`png: ${name} has a transparency key (tRNS); only an alpha channel's transparency is read`);
     else if (type === 'IEND') break;
     at += 12 + length;
   }

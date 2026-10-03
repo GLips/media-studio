@@ -51,8 +51,8 @@ export type StampPlane = { readonly id: string; readonly depth: number; readonly
 
 /** A painted plane as laid: the painting's `groups` it shows, their indices in the painting's order. */
 export type StampLaidPaintedPlane = { readonly id: string; readonly kind: 'painted'; readonly groups: readonly number[] };
-/** A picture plane as laid: its picture is handed in at each moment. */
-export type StampLaidPicturePlane = { readonly id: string; readonly kind: 'picture' };
+/** A picture plane as laid: its picture is handed in at each moment, held within its `extent`. */
+export type StampLaidPicturePlane = { readonly id: string; readonly kind: 'picture'; readonly extent: StampPlaneExtent };
 /** A three plane as laid: its render is handed in each frame. */
 export type StampLaidThreePlane = { readonly id: string; readonly kind: 'three' };
 /** A plane whose picture a source hands in rather than the painting painting it. */
@@ -94,8 +94,12 @@ export function stampScenePlanes(painting: CompiledStampPaint | null, planes: re
   const indexOf = new Map(groups.map(({ id }, i) => [id, i])), onPlane = new Map<string, string>();
   stampPlaneDepthProblems(planes, problems);
   const laid = planes.toSorted((a, b) => b.depth - a.depth).map(({ id, depth, source }): (StampLaidPaintedPlane | StampLaidSourcePlane) & { readonly depth: number } => {
-    if (source.kind !== 'painted') return { id, depth, kind: source.kind };
-    if (!painting) problems.push(`plane ${id} is painted, and the scene has no painting`);
+    if (source.kind === 'three') return { id, depth, kind: 'three' };
+    if (source.kind === 'picture') return { id, depth, kind: 'picture', extent: source.extent };
+    if (!painting) {
+      problems.push(`plane ${id} is painted, and the scene has no painting`);
+      return { id, depth, kind: 'painted', groups: [] };
+    }
     for (const group of source.groups) {
       if (!indexOf.has(group)) problems.push(`plane ${id} shows ${group}, which isn't a group of the painting`);
       else if (onPlane.has(group)) problems.push(`${group} is on plane ${onPlane.get(group)} and plane ${id}; a group is on one plane`);
@@ -114,6 +118,7 @@ export function stampScenePlanes(painting: CompiledStampPaint | null, planes: re
     problems.push(`the farthest plane, ${back.id}, must be opaque to the frame's edge: painted, or a picture`);
     return null;
   }
+  if (back.kind === 'picture' && back.extent.kind !== 'everywhere') problems.push(`the farthest plane, ${back.id}, is a picture held ${back.extent.kind === 'box' ? 'within a box' : back.extent.kind}; the back's extent is everywhere`);
   return { back, nearer };
 }
 
@@ -131,6 +136,9 @@ export type StampPlaneLook = {
   readonly distance: number;
   readonly shutter: { readonly open: StampPlaneView; readonly close: StampPlaneView } | null;
 };
+
+/** Rest: a plane where it's painted, sharp. */
+export const STAMP_REST_LOOK: StampPlaneLook = { view: { ma: 1, mb: 0, kx: 0, ky: 0 }, defocus: 0, distance: 1, shutter: null };
 
 /**
  * What a frame's lens does: each plane's look by id (a plane left out is at rest and sharp), and its bloom's sigma,
