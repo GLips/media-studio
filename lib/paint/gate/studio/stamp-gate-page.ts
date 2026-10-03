@@ -51,9 +51,10 @@ import {
   checkStampGateFlow, STAMP_GATE_FLOW_SIZE, stampGateFlowCase, stampGateFlowField, stampGateFlowLayer, stampGateFlowPainting,
 } from '../models/stamp-gate-flow.ts';
 import { stampGatePrivatePainting, type StampGatePrivateCase } from '../models/stamp-gate-private-cases.ts';
-import { drawn, drawnImages, gateRenderer, withGateRenderer, withGateSurface } from './stamp-gate-page-surface.ts';
+import { drawn, drawnImages, gateRenderer, stampGateRgbBase64, withGateRenderer, withGateSurface } from './stamp-gate-page-surface.ts';
 import { checkStampGateStageCase, checkStampGateThreeCase } from './stamp-gate-stage-page.ts';
 import { checkStampGateSheetCase, paintStampGateSolved } from './stamp-gate-sheet-page.ts';
+import { paintStampGateShot } from './stamp-gate-shot-page.ts';
 import { checkStampGateRegion, stampGateRegionPaintings, type StampGateRegionId } from '../models/stamp-gate-regions.ts';
 import { checkStampGateContact, STAMP_GATE_CONTACT_IDS, stampGateContactPainting } from '../models/stamp-gate-contact.ts';
 import { checkStampGateMask, stampGateMaskPaintings, type StampGateMaskId } from '../models/stamp-gate-masks.ts';
@@ -145,11 +146,7 @@ function paintedFrame(gate: Omit<StampGatePainting, 'images'>, url: (asset: Stam
   return withGateRenderer(gate, url, async (renderer, frame) => {
     await renderer.draw({ kind: 'once', t: gate.t, state: gate.frameAt?.(gate.t) });
     await renderer.finish();
-    const rgba = frame(), rgb = new Uint8Array(gate.width * gate.height * 3);
-    for (let i = 0; i < gate.width * gate.height; i++) rgb.set(rgba.subarray(i * 4, i * 4 + 3), i * 3);
-    let binary = '';
-    for (let i = 0; i < rgb.length; i += 0x8000) binary += String.fromCharCode(...rgb.subarray(i, i + 0x8000));
-    return btoa(binary);
+    return stampGateRgbBase64(frame());
   });
 }
 
@@ -496,5 +493,5 @@ async function stampGateAdapter(): Promise<string> {
 Object.assign(globalThis, {
   runStampGateFormulas, paintStampGate, paintStampGatePrivate, traceStampGate, checkStampGateWash, checkStampGateAnimation, checkStampGateFlowCase, checkStampGateStripeCase, checkStampGateRegionCase,
   checkStampGateContactCase, checkStampGateMaskCase, checkStampGateMediaCase, checkStampGateThreeCase, checkStampGateStageCase, checkStampGateSheetCase, paintStampGateSolved,
-  stampGateAdapter,
+  paintStampGateShot, stampGateAdapter,
 });

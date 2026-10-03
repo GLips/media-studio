@@ -145,3 +145,4 @@ export type {
   CoverFrame, InstancedPlaneProps, OccurrenceKey, OccurrenceMotionNode, OccurrenceRig, PaintedShotProps, PaintedTexture, PictureSource, PinPoint, PlaneInstance,
   PlaneLay, PlaneMask, PlaneProps, PresentationValue, RigPart, RigPartPose, ScreenPin, ThreeSource,
 } from '#lib/paint/shot/models/shot-props.ts';
+export { PaintedShot, PaintedShotCanvas } from '#lib/paint/shot/studio/painted-shot.tsx';

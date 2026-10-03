@@ -26,8 +26,9 @@ import {
   stampGateSheetProgram, stampGateSolvedStill, stampGateWetContactTimes, type StampGateSheetId, type StampGateSolvedId,
 } from '../models/stamp-gate-sheets.ts';
 import { checkStampGateClocks } from './stamp-gate-clocks-page.ts';
-import { withGateSurface } from './stamp-gate-page-surface.ts';
+import { stampGateRgbBase64, withGateSurface } from './stamp-gate-page-surface.ts';
 import { checkStampGateReductions } from './stamp-gate-reductions-page.ts';
+import { checkStampGateRiggedHeron, checkStampGateRiggedWetContact } from './stamp-gate-shot-page.ts';
 import { stampGateRejection, stampGateSheetImageUrl, stampGateSolvedFilms, withStampGateSheetOwner } from './stamp-gate-sheet-owner.ts';
 
 /**
@@ -170,9 +171,9 @@ async function checkRebase(): Promise<StampGateWashCheck> {
 /** Sheet case `id`'s checks. */
 export async function checkStampGateSheetCase(id: StampGateSheetId): Promise<StampGateWashCheck[]> {
   if (id === 'schedule/forward') return checkForward();
-  if (id === 'sheet/wet-contact') return checkWetContact();
+  if (id === 'sheet/wet-contact') return [...await checkWetContact(), await checkStampGateRiggedWetContact()];
   if (id === 'schedule/reductions') return [...await checkStampGateReductions(), await checkRebase()];
-  if (id === 'paper/heron') return checkPaperHeron();
+  if (id === 'paper/heron') return [...await checkPaperHeron(), ...await checkStampGateRiggedHeron()];
   if (id === 'schedule/clocks') return checkStampGateClocks();
   throw new Error(`stamp gate: no sheet case ${JSON.stringify(id)}; the gate has ${STAMP_GATE_SHEET_IDS.join(', ')}`);
 }
@@ -185,10 +186,6 @@ export function paintStampGateSolved(id: StampGateSolvedId): Promise<string> {
     await drawStampSheetsStill(surface, composite);
     release();
     await surface.owner.device.queue.onSubmittedWorkDone();
-    const rgba = frame(), rgb = new Uint8Array(width * height * 3);
-    for (let i = 0; i < width * height; i++) rgb.set(rgba.subarray(i * 4, i * 4 + 3), i * 3);
-    let binary = '';
-    for (let i = 0; i < rgb.length; i += 0x8000) binary += String.fromCharCode(...rgb.subarray(i, i + 0x8000));
-    return btoa(binary);
+    return stampGateRgbBase64(frame());
   });
 }

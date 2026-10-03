@@ -29,6 +29,12 @@ export type ThreeSource = { readonly kind: 'three'; readonly build: PaintedThree
 /** A constant, or read per exposure at its moment: `at` the scene second seen, `frame` the frame shown. */
 export type PresentationValue<T> = T | ((moment: PaintMoment) => T);
 
+/** `value` at `moment`: a constant as it is, a callback called. */
+export function shotPresentationAt<T>(value: PresentationValue<T>, moment: PaintMoment): T {
+  // SAFETY: every T a shot presents (a source, a number, a rig's pose) is data, so a function is only ever the callback.
+  return typeof value === 'function' ? (value as (moment: PaintMoment) => T)(moment) : value;
+}
+
 /**
  * A drawable's name for motion, visibility, rigs and masks: a plane's id, or `<plane id>/<layer or group key>` for
  * one occurrence on it (shotOccurrenceKey). The same layer on two planes is two occurrences. Boil wobble and sway
@@ -74,7 +80,10 @@ export type PlaneLay =
 
 type PlaneCommon = {
   readonly id: string;
-  /** Holds the moment every callback of this plane reads: `{ hold: 2 }` draws on twos. The camera still moves. */
+  /**
+   * Holds the moment the plane's presentation and motion read (its lay, masks, instances, visibility, and every
+   * motion node on it): `{ hold: 2 }` moves on twos. The camera still moves; a source callback reads `sourceClock`.
+   */
   readonly clock?: PaintNodeClock;
   /**
    * The PaintedShotCanvas it draws in. When the shot has any, every plane names one; several may share one. The back
@@ -83,12 +92,17 @@ type PlaneCommon = {
   readonly canvas?: string;
 };
 
-/** A plane. `depth`: distance from the camera at rest, above 0, larger farther; 1 is the depth a pan is measured at. */
+/**
+ * A plane. `depth`: distance from the camera at rest, above 0, larger farther; 1 is the depth a pan is measured at.
+ * `sourceClock` holds the moment a `source` callback reads (its prefix, properties and dissolve weights): `{ hold: 6 }`
+ * repaints on sixes while `clock`, holding presentation and motion, runs on. Both start from the frame's moment.
+ */
 export type PlaneProps = PlaneCommon & PlaneLay & {
   readonly kind?: undefined;
   readonly depth: number;
   readonly masks?: readonly PlaneMask[];
   readonly source: PresentationValue<PaintedSource> | PictureSource | ThreeSource;
+  readonly sourceClock?: PaintNodeClock;
 };
 
 /**

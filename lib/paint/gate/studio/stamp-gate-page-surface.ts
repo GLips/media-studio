@@ -9,6 +9,17 @@ import { createStampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint
 import { createStampPaintSurface, type StampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 import type { StampGateImage, StampGatePainting } from '../models/stamp-gate-paintings.ts';
 
+/** A frame's RGBA bytes as RGB, as baselines hold them. */
+export const stampGateRgb = (rgba: Uint8ClampedArray) => rgba.filter((_, i) => i % 4 !== 3);
+
+/** A frame's RGBA bytes as its RGB bytes row by row, in base64: how the page hands a baseline's frame to the gate. */
+export function stampGateRgbBase64(rgba: Uint8ClampedArray): string {
+  const rgb = stampGateRgb(rgba);
+  let binary = '';
+  for (let i = 0; i < rgb.length; i += 0x8000) binary += String.fromCharCode(...rgb.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
 /** A grey image as a PNG data URL, lossless, so the GPU samples the bytes drawn. */
 export function imageUrl({ size, pixels }: StampGateImage): string {
   const canvas = Object.assign(document.createElement('canvas'), { width: size, height: size });

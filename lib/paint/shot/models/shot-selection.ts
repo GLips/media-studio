@@ -8,6 +8,7 @@ import { paintingField, paintingProblem, type PaintingProblem } from '#lib/paint
 import type { LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
 import { paintingLayersUnder, paintingSheetName, type PaintingNodePlace, type PaintingTree } from '#lib/paint/document/models/painting-tree.ts';
 import { shotOccurrenceKey } from './shot-occurrences.ts';
+import type { OccurrenceKey } from './shot-props.ts';
 
 /**
  * Two finished selections' plane pictures interpolated linearly, `k` 0..1 from a to b, in their native form: opaque
@@ -112,6 +113,16 @@ export function paintedSourceShares(source: PaintedSource): PaintedSourceShare[]
 }
 
 /**
+ * The one selection `source` draws, or why it can't be drawn: a dissolve between its ends blends two (ENGINE 10 slice
+ * 6). At k 0 or 1 it's the end shown.
+ */
+export function paintedSourceSelection(source: PaintedSource): { readonly selection: LayerSelection } | { readonly problem: string } {
+  const shares = paintedSourceShares(source);
+  if (shares.length !== 1) return { problem: `blends ${shares.length} selections: a dissolve between its ends isn't drawn yet (ENGINE slice 6), only at k 0 or 1` };
+  return { selection: shares[0].selection };
+}
+
+/**
  * The layer and group keys `source` shows, each once: a selection's keys and every node under them in document order,
  * then what a dissolve's other side adds. Both sides of a dissolve share their keys' occurrences, moved alike; a
  * plane's occurrences are these through shotOccurrenceKey.
@@ -136,4 +147,25 @@ export function bracket(value: number, levels: readonly number[]): { readonly lo
   if (levels[upper] === value || upper === 0) return { lower: levels[upper], upper: levels[upper], k: 0 };
   const below = levels[upper - 1], above = levels[upper];
   return { lower: below, upper: above, k: (value - below) / (above - below) };
+}
+
+/**
+ * One occurrence a painted plane shows: its name, the document node it is, whether a layer or a group, and the group
+ * occurrences enclosing it on its plane, outermost first. A group the selection starts inside isn't one.
+ */
+export type ShotOccurrence = { readonly key: OccurrenceKey; readonly node: NodeKey; readonly kind: 'layer' | 'group'; readonly groups: readonly OccurrenceKey[] };
+
+/** Where `key` sits in the first of a dissolve's ends to hold it. */
+function placeOf(source: PaintedSource, key: NodeKey): PaintingNodePlace | undefined {
+  if (source.kind === 'layers') return source.painting.tree.byKey.get(key);
+  return placeOf(source.a, key) ?? placeOf(source.b, key);
+}
+
+/** Every occurrence plane `plane` shows of `source`, in document order (paintedSourceNodeKeys). */
+export function shotPlaneOccurrences(plane: string, source: PaintedSource): ShotOccurrence[] {
+  const keys = paintedSourceNodeKeys(source), shown = new Set(keys);
+  return keys.map((key) => {
+    const place = placeOf(source, key)!;
+    return { key: shotOccurrenceKey(plane, key), node: key, kind: place.kind, groups: place.groups.filter((group) => shown.has(group)).map((group) => shotOccurrenceKey(plane, group)) };
+  });
 }
