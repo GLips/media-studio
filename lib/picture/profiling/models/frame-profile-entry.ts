@@ -11,17 +11,18 @@ export type FrameProfileEntry = { frame: number; label: string; ms: number };
 export type FrameCost = { readonly name: string; readonly value: number; readonly unit?: 'bytes' };
 
 /**
- * What `label`'s work cost in the video's `frame`, counted rather than timed: `counts` add up over frames (solves,
- * cache misses, bytes uploaded); `levels` are a state as the frame ends (bytes kept), of which a span reports the
- * most; `notes` say what a count can't (where a solve started).
+ * What some work cost, counted rather than timed: `counts` add up over frames (solves, cache misses, bytes uploaded);
+ * `levels` are a state as the frame ends (bytes kept), of which a span reports the most; `notes` say what a count
+ * can't (where a solve started).
  */
-export type FrameCostsEntry = {
-  readonly frame: number;
-  readonly label: string;
+export type FrameCosts = {
   readonly counts: readonly FrameCost[];
   readonly levels: readonly FrameCost[];
   readonly notes: readonly string[];
 };
+
+/** What `label`'s work cost in the video's `frame`. */
+export type FrameCostsEntry = FrameCosts & { readonly frame: number; readonly label: string };
 
 /** A line `studio profile` reads: a timing, or costs. */
 export type FrameProfileLine = FrameProfileEntry | FrameCostsEntry;

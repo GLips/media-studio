@@ -3,30 +3,16 @@
 // HTML element's centre, the frame's corners) is found through the view's inverse, as the camera stands at the lay's
 // own scene second. Also the DOM adapter's arithmetic: an element's measured box as a frame-px centre.
 
-import { paintCameraPoseAt, paintPlaneSimilarity, paintStageCentre, type PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
 import {
-  paintPlacementOfSimilarity, paintSimilarityApply, paintSimilarityInverse, paintSimilarityOf, type PaintSimilarity,
+  paintPlacementOfSimilarity, paintSimilarityApply, paintSimilarityInverse, paintSimilarityThrough, type PaintSimilarity,
 } from '#lib/paint/animation/models/paint-similarity.ts';
 import { isPaintingFinitePoint, paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
-import { paintMoment, type StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
-import { stampPolygonBox, type StampBox, type StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import type { StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import type { CoverFrame, ScreenPin } from './shot-props.ts';
 
-/** A plane `depth` deep as the camera shows it at scene second `at`: plane px to frame px. */
-export function shotPlaneViewAt(camera: PaintCamera, depth: number, at: number): PaintSimilarity {
-  return paintPlaneSimilarity(paintCameraPoseAt(camera, paintMoment(at)), depth, paintStageCentre(camera.stage));
-}
-
-const boxCorners = ({ x0, y0, x1, y1 }: StampBox): StampPoint[] => [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
-
-/** The box round `box` (document px) laid by `lay`: where it lies in plane px, the box a camera's reach check takes. */
-export function shotLaidBox({ placement, pivot }: StampGroupLay, box: StampBox): StampBox {
-  const laid = paintSimilarityOf(placement, pivot);
-  return stampPolygonBox(boxCorners(box).map((corner) => paintSimilarityApply(laid, corner)));
-}
-
 /**
- * The lay covering a frame `frame` px with `box` (document px), seen through `view` (shotPlaneViewAt at the cover's
+ * The lay covering a frame `frame` px with `box` (document px), seen through `view` (paintPlaneViewAt at the cover's
  * `at`): the box's centre on the frame centre's place and the box scaled about its centre, unturned, until it holds
  * every frame corner's place. A rolled camera's frame is turned on the plane, so the box grows to hold its corners.
  */
@@ -34,7 +20,8 @@ export function shotCoverLay(box: StampBox, view: PaintSimilarity, frame: { read
   const onPlane = paintSimilarityInverse(view), { width, height } = frame;
   const centre = paintSimilarityApply(onPlane, { x: width / 2, y: height / 2 }), pivot = { x: (box.x0 + box.x1) / 2, y: (box.y0 + box.y1) / 2 };
   const halfW = (box.x1 - box.x0) / 2, halfH = (box.y1 - box.y0) / 2;
-  const scale = Math.max(...boxCorners({ x0: 0, y0: 0, x1: width, y1: height }).map((corner) => {
+  const frameCorners = [{ x: 0, y: 0 }, { x: width, y: 0 }, { x: width, y: height }, { x: 0, y: height }];
+  const scale = Math.max(...frameCorners.map((corner) => {
     const at = paintSimilarityApply(onPlane, corner);
     return Math.max(Math.abs(at.x - centre.x) / halfW, Math.abs(at.y - centre.y) / halfH);
   }));
@@ -43,17 +30,13 @@ export function shotCoverLay(box: StampBox, view: PaintSimilarity, frame: { read
 
 /**
  * The lay putting a pin's document points (`sources`, sourcePx) on its elements' measured `centres` (frame px), seen
- * through `view` (shotPlaneViewAt at the pin's `at`): one point moves the plane; two move, scale and turn it, the
+ * through `view` (paintPlaneViewAt at the pin's `at`): one point moves the plane; two move, scale and turn it, the
  * similarity taking both. The centres are worked back to plane px through the view first.
  */
 export function shotPinLay(sources: readonly StampPoint[], centres: readonly StampPoint[], view: PaintSimilarity): StampGroupLay {
   const onPlane = paintSimilarityInverse(view), [to0, to1] = centres.map((centre) => paintSimilarityApply(onPlane, centre)), [from0, from1] = sources;
   if (!from1 || !to1) return { placement: { x: to0.x - from0.x, y: to0.y - from0.y, rotation: 0, scale: 1 }, pivot: from0 };
-  // m = (to1 − to0) / (from1 − from0), as complex numbers: the scale and turn taking one span onto the other.
-  const fx = from1.x - from0.x, fy = from1.y - from0.y, tx = to1.x - to0.x, ty = to1.y - to0.y, n = fx * fx + fy * fy;
-  const ma = (tx * fx + ty * fy) / n, mb = (ty * fx - tx * fy) / n;
-  const pinned: PaintSimilarity = { ma, mb, kx: to0.x - (ma * from0.x - mb * from0.y), ky: to0.y - (mb * from0.x + ma * from0.y) };
-  return { placement: paintPlacementOfSimilarity(pinned, from0), pivot: from0 };
+  return { placement: paintPlacementOfSimilarity(paintSimilarityThrough([from0, from1], [to0, to1]), from0), pivot: from0 };
 }
 
 /** What keeps plane `plane`'s pin or cover from ever laying it, found as the shot loads. */
@@ -90,10 +73,12 @@ export type ShotDomBox = { readonly left: number; readonly top: number; readonly
 
 /**
  * `element`'s centre in frame px, measured against `shot`, the PaintedShot element's box: the shot's element is
- * `frameWidth` frame px across, scaled to fill its box, so the page's px divide by that scale. Any transform above
- * it (a player's) scales both boxes alike and cancels.
+ * `frame` px, scaled to fill its box, so the page's px divide by that scale, each axis by its own should the fill
+ * stretch. Any transform above it (a player's) scales both boxes alike and cancels.
  */
-export function shotDomCentre(element: ShotDomBox, shot: ShotDomBox, frameWidth: number): StampPoint {
-  const scale = shot.width / frameWidth;
-  return { x: (element.left + element.width / 2 - shot.left) / scale, y: (element.top + element.height / 2 - shot.top) / scale };
+export function shotDomCentre(element: ShotDomBox, shot: ShotDomBox, frame: { readonly width: number; readonly height: number }): StampPoint {
+  return {
+    x: ((element.left + element.width / 2 - shot.left) * frame.width) / shot.width,
+    y: ((element.top + element.height / 2 - shot.top) * frame.height) / shot.height,
+  };
 }

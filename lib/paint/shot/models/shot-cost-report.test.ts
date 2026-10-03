@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { paintingProblem } from '#lib/paint/document/models/painting-problem.ts';
+import { paintingProblem, paintingProblemText } from '#lib/paint/document/models/painting-problem.ts';
+import { createStampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { frameCostsTable } from '#lib/picture/profiling/models/frame-costs-table.ts';
-import { createShotCostTally, SHOT_FRAME_COSTS_LABEL, shotCostsProfileEntry } from './shot-cost-report.ts';
+import { SHOT_FRAME_COSTS_LABEL, shotCostsProfileEntry } from './shot-cost-report.ts';
 
 test('a shot\'s costs table per frame, frames that cost alike as one line, a solve or warning noted under its frame, then the span', () => {
-  const tally = createShotCostTally();
+  const tally = createStampPaintCostTally();
   const frame = (n: number, count: (costs: typeof tally) => void) => {
     count(tally);
     return { frame: n, label: SHOT_FRAME_COSTS_LABEL, ...shotCostsProfileEntry(tally.take()) };
@@ -16,7 +17,7 @@ test('a shot\'s costs table per frame, frames that cost alike as one line, a sol
       costs.count('film misses', 2);
       costs.count('bytes uploaded', 4_000_000);
       costs.solved({ program: 'heron sheet', from: 'wash 0', entries: 3 });
-      costs.warned(paintingProblem('warning', 'treeline', 'on', "on 'wet' follows only applications at or below shiny 0.7: it can never hold"));
+      costs.warned(paintingProblemText(paintingProblem('warning', 'treeline', 'on', "on 'wet' follows only applications at or below shiny 0.7: it can never hold")));
       costs.retained(8_000_000);
     }),
     ...[1, 2].map((n) => frame(n, (costs) => {

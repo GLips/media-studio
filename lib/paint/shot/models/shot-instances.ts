@@ -1,31 +1,13 @@
 // shot-instances.ts: an instanced plane's items among a frame's drawables. Items are finished variants laid as planes
-// at their own depths, sorted with every plane far to near each frame; consecutive items of one variant at one stepped
-// defocus draw as one batch, and an item keyed alike at the shutter's two ends blurs along its own travel. Items
-// aren't occurrences: no motion nodes, rigs, visibility keys or masks reach them.
+// at their own depths, sorted with every plane far to near each frame (shot-plan.ts); consecutive items of one variant
+// at one stepped defocus draw as one batch, and an item keyed alike at the shutter's two ends blurs along its own
+// travel. Items aren't occurrences: no motion nodes, rigs, visibility keys or masks reach them.
 
 import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import { lensSigmaStepped } from '#lib/picture/lens/models/lens-focus.ts';
-import type { InstancedPlaneProps, PlaneInstance, PlaneProps } from './shot-props.ts';
+import type { ShotDrawable } from './shot-plan.ts';
+import type { InstancedPlaneProps, PlaneInstance } from './shot-props.ts';
 import { paintedSourceProblems } from './shot-selection.ts';
-
-/** One thing a frame draws: a plane, or one item of an instanced plane. */
-export type ShotDrawable =
-  | { readonly kind: 'plane'; readonly plane: string; readonly depth: number }
-  | { readonly kind: 'item'; readonly plane: string; readonly item: PlaneInstance };
-
-/**
- * A frame's drawables far to near: `planes` (the shot's, as written) and each instanced plane's `items` at the
- * frame's moment, by depth. On equal depths planes come first, in written order, then items, by their plane's written
- * order and then their own.
- */
-export function shotDrawables(planes: readonly (PlaneProps | InstancedPlaneProps)[], items: ReadonlyMap<string, readonly PlaneInstance[]>): ShotDrawable[] {
-  type Placed = { readonly drawable: ShotDrawable; readonly depth: number; readonly item: number; readonly written: number; readonly at: number };
-  const placed = planes.flatMap((plane, written): Placed[] => {
-    if (plane.kind !== 'instanced') return [{ drawable: { kind: 'plane', plane: plane.id, depth: plane.depth }, depth: plane.depth, item: 0, written, at: 0 }];
-    return (items.get(plane.id) ?? []).map((item, at) => ({ drawable: { kind: 'item', plane: plane.id, item }, depth: item.depth, item: 1, written, at }));
-  });
-  return placed.toSorted((a, b) => b.depth - a.depth || a.item - b.item || a.written - b.written || a.at - b.at).map(({ drawable }) => drawable);
-}
 
 /** A run of a frame's drawing: a plane, or consecutive items of one plane and variant blurred alike, drawn at once. */
 export type ShotDrawStep =
@@ -33,7 +15,7 @@ export type ShotDrawStep =
   | { readonly kind: 'items'; readonly plane: string; readonly variant: string; readonly sigma: number; readonly items: readonly PlaneInstance[] };
 
 /**
- * `drawables` (shotDrawables) as draws: consecutive items of one plane and variant whose defocus at their depths
+ * `drawables` (shotDrawableOrder) as draws: consecutive items of one plane and variant whose defocus at their depths
  * (`defocusOf`, frame px of sigma) steps to one sigma batch together, a variant's picture blurred once per stepped
  * sigma. Any other drawable between two items splits them.
  */

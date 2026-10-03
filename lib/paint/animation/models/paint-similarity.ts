@@ -38,3 +38,11 @@ export function paintPlacementOfSimilarity(s: PaintSimilarity, pivot: StampPoint
   const at = paintSimilarityApply(s, pivot);
   return { x: at.x - pivot.x, y: at.y - pivot.y, rotation: Math.atan2(s.mb, s.ma), scale: paintSimilarityScale(s) };
 }
+
+/** The similarity taking `from`'s two points onto `to`'s, a move, uniform scale and turn; `from`'s must differ. */
+export function paintSimilarityThrough([from0, from1]: readonly [StampPoint, StampPoint], [to0, to1]: readonly [StampPoint, StampPoint]): PaintSimilarity {
+  // m = (to1 − to0) / (from1 − from0), as complex numbers: the scale and turn taking one span onto the other.
+  const fx = from1.x - from0.x, fy = from1.y - from0.y, tx = to1.x - to0.x, ty = to1.y - to0.y, n = fx * fx + fy * fy;
+  const ma = (tx * fx + ty * fy) / n, mb = (ty * fx - tx * fy) / n;
+  return { ma, mb, kx: to0.x - (ma * from0.x - mb * from0.y), ky: to0.y - (mb * from0.x + ma * from0.y) };
+}

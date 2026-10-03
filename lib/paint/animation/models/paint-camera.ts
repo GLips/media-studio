@@ -157,6 +157,10 @@ export function paintPlaneSimilarity({ pan, dolly, zoom, roll }: PaintCameraPose
   return { ma, mb, kx: centre.x - (ma * centre.x - mb * centre.y) + (ca * shiftX - sa * shiftY), ky: centre.y - (mb * centre.x + ma * centre.y) + (sa * shiftX + ca * shiftY) };
 }
 
+/** How `camera` shows a plane at `depth` at moment `t`, plane px to frame px: paintPlaneSimilarity at its pose then. */
+export const paintPlaneViewAt = (camera: PaintCamera, depth: number, t: PaintMoment): PaintSimilarity =>
+  paintPlaneSimilarity(paintCameraPoseAt(camera, t), depth, paintStageCentre(camera.stage));
+
 /**
  * A plane's defocus, frame px of gaussian sigma: the lens's (lens-focus.ts) at the plane's distance from the camera,
  * depth − dolly, its focus focus − dolly away.

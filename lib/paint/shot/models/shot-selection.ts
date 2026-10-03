@@ -7,6 +7,7 @@ import type { AnyApplication, Key, NodeKey } from '#lib/paint/document/models/pa
 import { paintingField, paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import type { PaintingEvaluation } from '#lib/paint/document/models/painting-source.ts';
 import { paintingLayersUnder, paintingSheetName, type PaintingNodePlace, type PaintingTree } from '#lib/paint/document/models/painting-tree.ts';
+import { shotOccurrenceKey } from './shot-occurrences.ts';
 
 /**
  * Under a selection: the root sheet's paper, or nothing. Left out: paper on a shot's back plane, nothing nearer. Paint
@@ -83,7 +84,7 @@ function selectionProblems(plane: string, field: string, { painting: evaluation,
   for (const place of places) {
     for (const { node } of paintingLayersUnder(tree, place)) {
       const before = chosen.get(node.key);
-      if (before !== undefined) error(`${plane}/${node.key}`, '', `is selected twice, through ${before} and ${place.node.key}`);
+      if (before !== undefined) error(shotOccurrenceKey(plane, node.key), '', `is selected twice, through ${before} and ${place.node.key}`);
       else chosen.set(node.key, place.node.key);
     }
   }
@@ -93,7 +94,7 @@ function selectionProblems(plane: string, field: string, { painting: evaluation,
     const onIt = tree.layers.filter((place) => place.sheet === sheet).map(({ node }) => node.key);
     const picked = onIt.filter((key) => chosen.has(key));
     if (picked.length > 0 && picked.length < onIt.length) {
-      error(`${plane}/${picked[0]}`, '', `lies on ${paintingSheetName(sheet)}: select ${sheet.owner}, or all its sheet's layers, on one plane`);
+      error(shotOccurrenceKey(plane, picked[0]), '', `lies on ${paintingSheetName(sheet)}: select ${sheet.owner}, or all its sheet's layers, on one plane`);
     }
   }
   return problems;
@@ -140,7 +141,7 @@ export function paintedSourceShares(source: PaintedSource): PaintedSourceShare[]
 /**
  * The layer and group keys `source` shows, each once: a selection's keys and every node under them in document order,
  * then what a dissolve's other side adds. Both sides of a dissolve share their keys' occurrences, moved alike; a
- * plane's occurrence keys are these after `<plane id>/`.
+ * plane's occurrences are these through shotOccurrenceKey.
  */
 export function paintedSourceNodeKeys(source: PaintedSource): NodeKey[] {
   if (source.kind === 'dissolve') return [...new Set([...paintedSourceNodeKeys(source.a), ...paintedSourceNodeKeys(source.b)])];

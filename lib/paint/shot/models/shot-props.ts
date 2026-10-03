@@ -31,15 +31,16 @@ export type PresentationValue<T> = T | ((moment: PaintMoment) => T);
 
 /**
  * A drawable's name for motion, visibility, rigs and masks: a plane's id, or `<plane id>/<layer or group key>` for
- * one occurrence on it. The same layer on two planes is two occurrences. Boil wobble and sway phase follow it.
+ * one occurrence on it (shotOccurrenceKey). The same layer on two planes is two occurrences. Boil wobble and sway
+ * phase follow it.
  */
 export type OccurrenceKey = string;
 
 /**
- * A presentation mask: it cuts the plane's paint and any own sheet's paper that paint shapes, never the ground, and
- * re-solves nothing. `path`: shows paint within a band `widthPx` wide round the path's first `revealPx` of inked
- * length, document px, round-ended; 0 shows nothing. `alphaOf`: another drawable's coverage, partial alpha included,
- * where it lies this frame.
+ * A presentation mask, painted planes only: it cuts the plane's paint and the own-sheet paper it shapes, never the
+ * ground; it re-solves nothing. `path`: paint within a band `widthPx` wide in all (`softPx` ramping inward) round
+ * the first `revealPx` of inked length, document px, round-ended; `shotPathInkedLength` shows all. `alphaOf`: a
+ * plane's or painted occurrence's coverage as laid, partial alpha too.
  */
 export type PlaneMask =
   | { readonly kind: 'path'; readonly subpaths: readonly (readonly StampPoint[])[]; readonly widthPx: number; readonly revealPx: PresentationValue<number>; readonly softPx?: number }
@@ -55,7 +56,10 @@ export type PinPoint = { readonly sourcePx: StampPoint; readonly element: RefObj
  */
 export type ScreenPin = { readonly kind: 'pin'; readonly points: readonly [PinPoint] | readonly [PinPoint, PinPoint]; readonly at?: number };
 
-/** Scales `box` (document px) about its centre to cover the frame as the camera stands at scene second `at` (0). */
+/**
+ * Centres `box` (document px) where the frame's centre lies and scales it about its centre, unturned, until it covers
+ * the frame as the camera stands at scene second `at` (0). A rolled camera grows the box to hold its turned frame.
+ */
 export type CoverFrame = { readonly kind: 'cover'; readonly box: StampBox; readonly at?: number };
 
 /**

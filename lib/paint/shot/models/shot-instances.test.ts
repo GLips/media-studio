@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import type { PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
 import { painting } from '#lib/paint/document/models/painting-source.ts';
 import { lensSigmaStepped } from '#lib/picture/lens/models/lens-focus.ts';
-import { shotDrawables, shotDrawSteps, shotInstanceProblems, shotInstanceTravel, shotInstancedPlaneProblems } from './shot-instances.ts';
+import { shotDrawSteps, shotInstanceProblems, shotInstanceTravel, shotInstancedPlaneProblems } from './shot-instances.ts';
+import { shotDrawableOrder } from './shot-plan.ts';
 import type { InstancedPlaneProps, PlaneInstance, PlaneProps } from './shot-props.ts';
 import { layersOf } from './shot-selection.ts';
 
@@ -32,7 +33,7 @@ const plane = (id: string, depth: number): PlaneProps => ({ id, depth, source: l
 test('items sort with the planes far to near, planes first on a tie, and batch by plane, variant and stepped blur', () => {
   const rain = instanced('rain', [item('a', 2), item('b', 2), item('c', 2.5, 'big'), item('d', 1)]), mist = instanced('mist', [item('m', 2)]);
   const planes = [plane('street', 3), rain, plane('sign', 2), mist];
-  const drawables = shotDrawables(planes, new Map([['rain', rain.instances({ at: 0, frame: 0 })], ['mist', mist.instances({ at: 0, frame: 0 })]]));
+  const drawables = shotDrawableOrder(planes, new Map([['rain', rain.instances({ at: 0, frame: 0 })], ['mist', mist.instances({ at: 0, frame: 0 })]]));
   assert.deepEqual(drawables.map((drawable) => (drawable.kind === 'plane' ? drawable.plane : `${drawable.plane}:${drawable.item.key}`)), [
     'street', 'rain:c', 'sign', 'rain:a', 'rain:b', 'mist:m', 'rain:d',
   ]);

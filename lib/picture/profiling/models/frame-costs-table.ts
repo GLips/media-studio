@@ -1,10 +1,7 @@
 // frame-costs-table.ts: the costs a profiling render logged (FrameCostsEntry), tabled for `studio profile --costs`:
 // per label, each frame's costs, a run of frames that cost alike as one line, then the span's.
 
-import type { FrameCost, FrameCostsEntry } from './frame-profile-entry.ts';
-
-/** A frame's costs under one label, or a span's: counts summed, levels as given (a frame's summed, a span's most). */
-type FrameCostsTotal = { readonly counts: readonly FrameCost[]; readonly levels: readonly FrameCost[]; readonly notes: readonly string[] };
+import type { FrameCost, FrameCosts, FrameCostsEntry } from './frame-profile-entry.ts';
 
 /** `costs` merged by name in first-seen order, each name's values combined by `combine`. */
 function mergedCosts(costs: readonly FrameCost[], combine: (a: number, b: number) => number): FrameCost[] {
@@ -19,7 +16,7 @@ function mergedCosts(costs: readonly FrameCost[], combine: (a: number, b: number
 const sum = (a: number, b: number) => a + b;
 
 /** One frame's entries of a label as one: two paintings drawn in a frame add their counts and their levels alike. */
-const frameTotal = (entries: readonly FrameCostsEntry[]): FrameCostsTotal => ({
+const frameTotal = (entries: readonly FrameCostsEntry[]): FrameCosts => ({
   counts: mergedCosts(entries.flatMap(({ counts }) => counts), sum),
   levels: mergedCosts(entries.flatMap(({ levels }) => levels), sum),
   notes: entries.flatMap(({ notes }) => notes),
@@ -28,7 +25,7 @@ const frameTotal = (entries: readonly FrameCostsEntry[]): FrameCostsTotal => ({
 const costText = ({ name, value, unit }: FrameCost) => `${name} ${unit === 'bytes' ? `${(value / 1e6).toFixed(1)} MB` : value}`;
 
 /** `total` as one line's text: its non-zero counts, then its levels. */
-function totalText({ counts, levels }: FrameCostsTotal): string {
+function totalText({ counts, levels }: FrameCosts): string {
   const counted = counts.filter(({ value }) => value !== 0).map(costText).join(', ') || 'nothing counted';
   return levels.length ? `${counted}; ${levels.map(costText).join(', ')}` : counted;
 }
