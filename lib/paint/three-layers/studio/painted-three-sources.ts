@@ -9,17 +9,15 @@
 // target premultiplies), its motion texture the lens's motion layer (lens-three-motion.ts); a painted texture is
 // rgba16float, gamma-encoded and opaque, decoded by paintedThreeColorNode.
 
-import { ExternalTexture, PerspectiveCamera, RepeatWrapping, type Camera, type RenderTarget, type Scene } from 'three/webgpu';
+import { ExternalTexture, PerspectiveCamera, RepeatWrapping, type Camera, type RenderTarget, type Scene, type WebGPURenderer } from 'three/webgpu';
 import type { FrameSize } from '#lib/picture/frame/models/frame.ts';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
-import { shotCameraGrown, type ShotCamera } from '#lib/picture/shot-camera/models/shot-camera.ts';
-import { shotCameraExposed, shotLensOfFocus } from '#lib/picture/lens/models/lens-focus.ts';
 import { shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
-import { createLensThreeMotion, LENS_THREE_MOTION_NAME } from '#lib/picture/lens/studio/lens-three-motion.ts';
+import { createLensThreeMotion, LENS_THREE_MOTION_NAME, type LensThreeMotion } from '#lib/picture/lens/studio/lens-three-motion.ts';
 import { setThreeShotCamera } from '#lib/picture/shot-camera/studio/three-shot-camera.ts';
-import { paintCameraShotAt, paintCameraWorld, paintWorldPlane, type PaintCameraWorld, type PaintWorldPlane } from '#lib/paint/animation/models/paint-camera-world.ts';
-import { PAINT_CAMERA_REST, paintCameraFocusAt, paintCameraPoseAt, type PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
+import { paintCameraWorld, paintWorldPlane, type PaintCameraWorld, type PaintWorldPlane } from '#lib/paint/animation/models/paint-camera-world.ts';
+import type { PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
 import { paintMoment, type PaintMoment, type StampPaintFrameAt } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampLensSource, StampLensSourceExposure } from '#lib/paint/painting/studio/stamp-lens-source.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
@@ -27,7 +25,8 @@ import { stampWrapsAcross, type StampWrap } from '#lib/paint/painting/models/sta
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { createStampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
 import { createStampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
-import { createPaintedThreeShadowing, type PaintedThreeShadows } from './painted-three-shadows.ts';
+import { paintedThreeShotCamera } from '../models/painted-three-camera.ts';
+import { createPaintedThreeShadowsOn, type PaintedThreeShadows, type PaintedThreeShadowsOn } from './painted-three-shadows.ts';
 
 /** A source's multisampling: its edges antialiased, resolved the same each time (vid-129). */
 const PAINTED_THREE_SAMPLES = 4;
@@ -56,21 +55,27 @@ export type PaintedThreeTexture = {
 export type PaintedThreeSourceTools = { world: PaintCameraWorld; plane: PaintWorldPlane; textures: ReadonlyMap<string, ExternalTexture>; frame: FrameSize };
 
 /**
- * A scene a source renders into a target of its own before its own scene, each time it renders, for its materials to
- * sample (a reflection drawn offscreen, say). No motion layer: what it shows moves only as what samples it does.
+ * A scene a source renders through `camera` into a target of its own before its own scene, each render, for its
+ * materials to sample (a reflection, say). `follow` sets `camera` from `seen`, the camera the scene is about to draw
+ * through, leaving `seen` be (setThreeMirrorCamera). No motion layer: it moves only as what samples it does.
  */
-export type PaintedThreeOffscreenPass = { readonly scene: Scene; readonly camera: Camera; readonly target: RenderTarget };
+export type PaintedThreeOffscreenPass = {
+  readonly scene: Scene;
+  readonly camera: Camera;
+  readonly target: RenderTarget;
+  readonly follow?: (seen: PerspectiveCamera) => void;
+};
 
 /**
  * A source's scene, built once at load. A render poses it (`poseAt`: a frame's moment or a shutter moment in it),
- * sets the exposure's camera (seeing every layer) and hands it, untouched, to `offscreen` for the passes to draw
- * first, then draws the scene; `shadows` (painted-three-shadows.ts) turns shadow maps on throughout. Materials are
- * opaque or NormalBlending transparent: renders stay premultiplied.
+ * sets the exposure's camera (seeing every layer), draws the `offscreen` passes in order, each camera following it,
+ * then draws the scene; `shadows` (painted-three-shadows.ts) turns shadow maps on throughout. Materials are opaque or
+ * NormalBlending transparent: renders stay premultiplied.
  */
 export type PaintedThreeSourceScene = {
   scene: Scene;
   poseAt: (moment: PaintMoment) => void;
-  offscreen?: (camera: PerspectiveCamera) => readonly PaintedThreeOffscreenPass[];
+  offscreen?: readonly PaintedThreeOffscreenPass[];
   shadows?: PaintedThreeShadows;
   dispose: () => void;
 };
@@ -140,6 +145,42 @@ export async function loadPaintedThree(owner: StampPaintGpuOwner, camera: PaintC
   }
 }
 
+/** A loaded source, as drawn: its scene built, its shadows, the camera it draws through, its target and motion layer. */
+type PaintedThreeSourceDrawn = {
+  readonly built: PaintedThreeSourceScene;
+  readonly shadowsOn: PaintedThreeShadowsOn;
+  readonly camera: PerspectiveCamera;
+  readonly target: RenderTarget;
+  readonly motion: LensThreeMotion;
+};
+
+/**
+ * Draws `source` as posed and its camera set: its offscreen passes in order, each camera following the source's, then
+ * its scene into its target with the motion layer, shadows on as it asks; the renderer put back after. The load
+ * draws through here too, so whatever a render sets, the load's draw has set first.
+ */
+function drawPaintedThreeSource(renderer: WebGPURenderer, { built, shadowsOn, camera, target, motion }: PaintedThreeSourceDrawn): void {
+  // three draws a light's shadow map once a frame for each camera, its frames advanced by its animation loop, which
+  // a render here doesn't wait on: each render is a moment of its own, so a frame of its own. Dropped, a reference
+  // frame's exposures drawn within one animation frame keep the first one's shadows.
+  renderer.inspector.nodeFrame.update();
+  const restore = shadowsOn(renderer);
+  try {
+    for (const pass of built.offscreen ?? []) {
+      pass.follow?.(camera);
+      renderer.setRenderTarget(pass.target);
+      renderer.render(pass.scene, pass.camera);
+    }
+    renderer.setRenderTarget(target);
+    renderer.setMRT(motion.mrt);
+    renderer.render(built.scene, camera);
+  } finally {
+    renderer.setMRT(null);
+    renderer.setRenderTarget(null);
+    restore();
+  }
+}
+
 /**
  * Loads `sources` on `owner`'s device for `camera`'s three planes, a source for each and none else, their materials
  * reading the `supplied` painted textures. Refuses a source with no three plane in the camera, and a three plane with
@@ -184,14 +225,14 @@ export async function loadPaintedThreeSources(owner: StampPaintGpuOwner, camera:
         made.push(external);
         return [id, external] as const;
       }));
-      return gpuEachInTurn(sourced, async ({ source, plane: { depth, margin } }) => {
+      return sourced.map(({ source, plane: { depth, margin } }) => {
         // The frame grown on every side by the plane's margin, so its defocus has what lies past the frame's edge.
         const w = frame.width + 2 * margin, h = frame.height + 2 * margin;
         const built = source.build({ world, plane: paintWorldPlane(world, depth), textures, frame: { width: w, height: h } });
         made.push(built);
-        const shadowing = createPaintedThreeShadowing(source.id, built.scene, built.shadows);
-        const shotAt = (pose: Parameters<typeof paintCameraShotAt>[1]) => shotCameraGrown(paintCameraShotAt(world, pose), margin);
-        const threeCamera = setThreeShotCamera(new PerspectiveCamera(), shotAt(PAINT_CAMERA_REST));
+        const shadowsOn = createPaintedThreeShadowsOn(source.id, [built.scene, ...(built.offscreen ?? []).map(({ scene }) => scene)], built.shadows);
+        const shotAt = (moment: PaintMoment, aperture: StampLensSourceExposure['aperture'] | null = null) => paintedThreeShotCamera(camera, world, margin, moment, aperture);
+        const threeCamera = setThreeShotCamera(new PerspectiveCamera(), shotAt(paintMoment(0)));
         // Every layer, so an offscreen camera leaving a layer out hides what's on it from its pass alone.
         threeCamera.layers.enableAll();
         const texture = ownTexture(w, h), motionTexture = ownTexture(w, h);
@@ -199,41 +240,24 @@ export async function loadPaintedThreeSources(owner: StampPaintGpuOwner, camera:
         const target = targetInto([{ name: 'output', texture }, { name: LENS_THREE_MOTION_NAME, texture: motionTexture }], { samples: PAINTED_THREE_SAMPLES });
         made.push(target);
         const motion = createLensThreeMotion({ width: w, height: h, distanceUnit: world.depthUnit });
-        // Posed once first: a source may make its meshes as it poses, and they compile here, not in the first frame.
+        const loadedSource = { id: source.id, built, shadowsOn, shotAt, camera: threeCamera, target, motion, picture: { texture, motion: motionTexture, at: { x: -margin, y: -margin } } };
+        // Posed and drawn once at load, as a render draws it: a source may make its meshes as it poses, and they, its
+        // passes and its shadow maps make their pipelines here, not in the first frame.
         built.poseAt(paintMoment(0));
-        const restore = shadowing.on(renderer);
-        try {
-          await gpuEachInTurn(built.offscreen?.(threeCamera) ?? [], (pass) => {
-            renderer.setRenderTarget(pass.target);
-            return renderer.compileAsync(pass.scene, pass.camera);
-          });
-          renderer.setRenderTarget(target);
-          renderer.setMRT(motion.mrt);
-          await renderer.compileAsync(built.scene, threeCamera);
-        } finally {
-          renderer.setMRT(null);
-          renderer.setRenderTarget(null);
-          restore();
-        }
-        return { id: source.id, built, shadowing, shotAt, camera: threeCamera, target, motion, picture: { texture, motion: motionTexture, at: { x: -margin, y: -margin } } };
+        motion.still();
+        drawPaintedThreeSource(renderer, loadedSource);
+        return loadedSource;
       });
     });
 
     // The frame time the painted textures were last drawn for: they're held through a frame, so drawn once for all its sources and exposures.
     let paintedFor: number | null = null;
-    const render = async ({ built, shadowing, shotAt, camera: threeCamera, target, motion }: (typeof loaded)[number], t: number, exposure: StampLensSourceExposure | null) => {
+    const render = async (loadedSource: (typeof loaded)[number], t: number, exposure: StampLensSourceExposure | null) => {
       if (paintedFor !== t) {
         await supplied.update(t);
         paintedFor = t;
       }
-      const at = exposure?.at ?? t, pose = paintCameraPoseAt(camera, paintMoment(at, t)), focus = exposure && paintCameraFocusAt(camera, paintMoment(at, t));
-      // The exposure's camera: moved over the aperture by the world size of the paint camera's (frame px) opening.
-      const seen = (shot: ShotCamera) => {
-        if (!exposure) return shot;
-        const distance = focus && focus.focus - pose.dolly;
-        const lens = focus && distance ? shotLensOfFocus(shot, { focus: distance, aperture: focus.aperture }, distance * world.depthUnit) : null;
-        return shotCameraExposed(shot, lens, { aperture: exposure.aperture, pixel: [0, 0] });
-      };
+      const { built, shotAt, camera: threeCamera, motion } = loadedSource, at = exposure?.at ?? t;
       // A fast frame's motion over the camera's shutter, centred on t; a reference exposure's is its own exposure.
       const shutter = exposure ? 0 : camera.lens.shutter, opens = shutterOpensAt(t, shutter);
       return owner.checked(`three.js rendering a source at ${at} s`, () => {
@@ -242,30 +266,14 @@ export async function loadPaintedThreeSources(owner: StampPaintGpuOwner, camera:
         if (shutter > 0) {
           for (const [moment, when] of [['open', opens], ['close', opens + shutter]] as const) {
             built.poseAt(paintMoment(when, t));
-            setThreeShotCamera(threeCamera, shotAt(paintCameraPoseAt(camera, paintMoment(when, t))));
+            setThreeShotCamera(threeCamera, shotAt(paintMoment(when, t)));
             motion.record(moment, built.scene, threeCamera);
           }
           moved = motion.moved(built.scene);
         }
         built.poseAt(paintMoment(at, t));
-        setThreeShotCamera(threeCamera, seen(shotAt(pose)));
-        // three draws a light's shadow map once a frame for each camera, its frames advanced by its animation loop,
-        // which a render here doesn't wait on: each render is a moment of its own, so a frame of its own.
-        renderer.inspector.nodeFrame.update();
-        const restore = shadowing.on(renderer);
-        try {
-          for (const pass of built.offscreen?.(threeCamera) ?? []) {
-            renderer.setRenderTarget(pass.target);
-            renderer.render(pass.scene, pass.camera);
-          }
-          renderer.setMRT(motion.mrt);
-          renderer.setRenderTarget(target);
-          renderer.render(built.scene, threeCamera);
-        } finally {
-          renderer.setMRT(null);
-          renderer.setRenderTarget(null);
-          restore();
-        }
+        setThreeShotCamera(threeCamera, shotAt(paintMoment(at, t), exposure?.aperture));
+        drawPaintedThreeSource(renderer, loadedSource);
         return { moved };
       });
     };

@@ -422,16 +422,19 @@ an error. A frame held on twos gives every group the keys it had, so it repaints
   of its texels is defocused at its own distance, by depth (`lensDefocusWgsl`): a nearer texel spreads its blur over
   what's behind it, and a texel behind reaches one in front only as far as the sharper of the two blurs, so a sharp
   mug against a soft wall keeps its edge, the wall's blur fills in behind it, and neither gains or loses light there.
-  Each render poses the source's scene, sets the exposure's camera (every layer seen, a reference exposure's moved
-  over the aperture), advances three's node frame (three draws a shadow map once a frame per camera, and only its
-  animation loop advances frames otherwise), hands the camera to the scene's `offscreen` for passes it draws first
-  (`painted-three-mirror.ts` sets a planar mirror's camera from it), then draws the scene with its motion layer. A
+  Each render poses the source's scene, sets the exposure's camera (`painted-three-camera.ts`: every layer seen, a
+  reference exposure's moved over the aperture), advances three's node frame (three draws a shadow map once a frame
+  per camera, and only its animation loop advances frames otherwise), draws the scene's offscreen passes, each
+  camera following the scene's first (`three-mirror-camera.ts` sets a planar mirror's), then draws the scene with its
+  motion layer. The load draws it once the same way (`drawPaintedThreeSource`), so a render compiles nothing new. A
   scene asking for `shadows` has shadow maps on around its renders alone, the shared renderer put back after
-  (`painted-three-shadows.ts`): its directional and spot lights' maps filtered as percentage-closer soft shadows, a
-  blocker search setting each receiver's penumbra by the gap behind its blocker, so a contact stays tight and a cast
-  shadow softens. The search loads texels and the filter compares them, the first read a comparison so three binds
-  the map with a comparison sampler. A pass carries no motion layer, and a shadow on a still floor isn't blurred over
-  a fast frame's shutter (the motion layer follows surfaces); a reference exposure draws both at its own moment.
+  (`painted-three-shadows.ts`): its and its passes' directional and spot lights' maps filtered as percentage-closer
+  soft shadows. A blocker search, reaching as far as a blocker on the shadow camera's near plane could shade the
+  receiver, sets its penumbra by the gap behind its blockers, so a contact stays tight and a cast shadow softens, as
+  wide as the light makes it whatever the map's size. The search loads texels and the filter compares them, the first
+  read a comparison so three binds the map with a comparison sampler. A pass carries no motion layer, and a shadow on
+  a still floor isn't blurred over a fast frame's shutter (the motion layer follows surfaces); a reference exposure
+  draws both at its own moment.
 
 **Planes on the GPU** (`stamp-paint-renderer.ts`, `stamp-paint-plane-passes.ts`). One owner holds a device
 (`stamp-paint-gpu-owner.ts`, built on the studio's `gpu-device-owner.ts`, whose one three.js renderer the three
@@ -740,12 +743,17 @@ four frames in a row at the shot rate, it turning 3° a frame, laid side by side
 from frame to frame and seamless, where the same frames without the chain sparkle and break its bands. Its lit
 three.js shot (`shot/shadow`, `stamp-gate-three-lighting.ts`, drawn by `paintStampGateLighting`): two stands before a
 flat wall, each a floor tilted toward the camera with a red-capped post on it and a sun casting from high on the
-front right; the right stand asks for soft shadows and mirrors its post through `paintedThreeMirrorCamera`, its twin
-on the left asks for neither. The camera pans right 36 px and the posts slide as frames at 0 s and 1 s draw with the
-shutter open, laid side by side and accepted by eye. Its checks (`checkStampGateLightingCase`) read the floor through
-the stands' own geometry projected by the frame's camera: dark beside the foot, the shadow's edge there sharp and at
-least twice as wide down its far end; the twin's floor lit where its shadow would fall; and the cap's reflection
-within 3 px of the mirrored cap seen through the frame's camera, so a mirror left at rest fails as the camera pans.
+front right; the right stand asks for soft shadows and mirrors its post through `setThreeMirrorCamera`, its twin on
+the left asks for neither. The camera, focused on the stands, pans right 36 px and the posts slide: frames at 0 s
+and 1 s draw fast with the shutter open, and 1 s again as a reference frame, laid side by side and accepted by eye.
+Its checks (`checkStampGateLightingCase`) read the floor through the stands' own geometry projected by the camera:
+dark and sharp beside the foot, its edge halfway down where the post's side casts it, at least twice as wide down
+its far end, near the width the sun's angular radius gives; the twin's floor lit where its shadow would fall; and the
+cap's reflection within 3 px of the mirrored cap, so a mirror left at rest fails as the camera pans. Apart from the
+shot, the shadowed stand's source renders exposures from three points off the aperture's middle, each straight after
+one at 0 s in one animation frame (three's loop held, as a fast GPU renders a reference frame's exposures), read back
+as rendered: each one's shadow edge where the post stands then (an unadvanced node frame leaves the one before's,
+7 units off) and its reflection registered through the shifted lens (a mirror dropping the shift misses by 4 to 8 px).
 
 The reveal cases (`stamp-gate-reveals.ts`, `stamp-gate-reveals-page.ts`) hold a reveal to its CPU twin
 (`stampRevealShownAt`): a texel whose twin shows none, its neighbours too, matches the frame with all hidden, one

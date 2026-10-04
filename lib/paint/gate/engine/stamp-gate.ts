@@ -171,6 +171,7 @@ export function compareStampGateOutputs(id: string, output: StampGateOutput, bas
     return { passed: c.over === 0, detail: `${c.rows} rows, worst ${c.worst.toExponential(2)} at ${c.worstAt} (gpu ${c.gpu}, baseline ${c.expected}), ${c.over} past ${STAMP_GATE_FORMULA_TOLERANCE}` };
   }
   if (output.kind === 'frame' && baseline.kind === 'frame') {
+    if (output.width !== baseline.width || output.height !== baseline.height) return { passed: false, detail: `${output.width} × ${output.height}, its baseline ${baseline.width} × ${baseline.height}` };
     const d = stampGateFrameDifference(output.rgb, baseline.rgb);
     return { passed: stampGateFramePasses(d), detail: `max ${d.max}, mean ${d.mean.toFixed(4)}, ${(d.overTwo * 100).toFixed(3)}% past 2 levels` };
   }
@@ -182,7 +183,7 @@ export function compareStampGateOutputs(id: string, output: StampGateOutput, bas
  * compared. A difference names the baseline's GPU when it was drawn on another, as a new GPU may round differently.
  */
 export function checkStampGateSubject(store: string, { id, output, inputs }: StampGateSubject, adapter: string): StampGateCheck {
-  const accepted = readStampGateBaseline(store, id, output);
+  const accepted = readStampGateBaseline(store, id, output.kind);
   if (!accepted) return { id, passed: false, detail: `no baseline; run update ${id} --reason …, then accept` };
   const { baseline } = accepted;
   if (baseline.inputs !== inputs) return { id, passed: false, detail: `its inputs changed since its baseline was accepted (${baseline.accepted}, over ${baseline.acceptedOver}: ${baseline.reason}); run update ${id} --reason …` };
@@ -242,7 +243,7 @@ export async function updateStampGate(store: string, ids: readonly string[], rea
   const collected = await collectStampGate({ paintings, frames: new Set(ids), cases: {} });
   const subjects = [...formulaSubjects(collected), ...collected.frames].filter((subject) => ids.includes(subject.id));
   return subjects.map((subject) => {
-    const accepted = readStampGateBaseline(store, subject.id, subject.output);
+    const accepted = readStampGateBaseline(store, subject.id, subject.output.kind);
     const comparison = accepted ? compareStampGateOutputs(subject.id, subject.output, accepted.output).detail : 'no baseline before';
     return { id: subject.id, files: writeStampGateCandidate(store, subject.id, subject.output, { inputs: subject.inputs, reason, comparison, adapter: collected.adapter }), comparison };
   });

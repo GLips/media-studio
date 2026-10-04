@@ -10,6 +10,7 @@ import type { PaintedShotProps } from '#lib/paint/shot/models/shot-props.ts';
 import { createShotCanvasElements, createShotCanvasSurface, disposeShotCanvasSurface, type ShotCanvasElements, type ShotCanvasSurface } from '#lib/paint/shot/studio/shot-canvas.ts';
 import { createPaintedShotRenderer, type PaintedShotRenderer } from '#lib/paint/shot/studio/shot-renderer.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
+import type { LensMode } from '#lib/picture/lens/models/lens-mode.ts';
 import { STAMP_GATE_SHOT_FPS } from '../models/stamp-gate-shots.ts';
 import { stampGateSheetBrushOf } from '../models/stamp-gate-sheets.ts';
 import { stampGateCanvasBytes } from './stamp-gate-page-surface.ts';
@@ -40,20 +41,24 @@ export async function withGateShotRenderer<T>(
 /** A gate shot's frames, RGBA bytes; each frame's costs, in turn; and its warm's (nothing solved without a span). */
 export type StampGateShotFrames = { readonly frames: readonly Uint8ClampedArray[]; readonly costs: readonly StampPaintCosts[]; readonly warm: StampPaintCosts };
 
+/** A frame a gate shot draws: at a scene second, fast; or at `t` in a lens mode. */
+export type StampGateShotDraw = number | { readonly t: number; readonly mode: LensMode };
+
 /**
- * `props`' frames at scene seconds `times`, in turn, once its warm span (if any) is solved at STAMP_GATE_SHOT_FPS, in
- * no scene; `drawing` called as each frame begins, for a check splitting what else it hears by frame.
+ * `props`' frames as `draws` say, in turn, once its warm span (if any) is solved at STAMP_GATE_SHOT_FPS, in no scene;
+ * `drawing` called as each frame begins, for a check splitting what else it hears by frame.
  */
-export async function stampGateShotFrames(props: PaintedShotProps, times: readonly number[], drawing?: () => void): Promise<StampGateShotFrames> {
+export async function stampGateShotFrames(props: PaintedShotProps, draws: readonly StampGateShotDraw[], drawing?: () => void): Promise<StampGateShotFrames> {
   const { shot, problems } = compilePaintedShot(props, []);
   if (!shot) throw paintingProblemsError('stamp gate shot', problems);
   const canvas = createShotCanvasElements(), tally = createStampPaintCostTally();
   return withGateShotRenderer(shot, [canvas], async (renderer) => {
     await renderer.warm({ fps: STAMP_GATE_SHOT_FPS, sceneDur: null });
     const warm = tally.take(), costs: StampPaintCosts[] = [];
-    const frames = await gpuEachInTurn(times, async (t) => {
+    const frames = await gpuEachInTurn(draws, async (draw) => {
+      const { t, mode } = typeof draw === 'number' ? { t: draw, mode: 'fast' as const } : draw;
       drawing?.();
-      await renderer.draw(t, 'fast');
+      await renderer.draw(t, mode);
       await renderer.finish();
       const read = stampGateCanvasBytes(canvas.colour);
       costs.push(tally.take());

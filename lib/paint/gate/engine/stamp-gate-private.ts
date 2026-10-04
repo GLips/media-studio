@@ -68,7 +68,7 @@ export async function runStampGatePrivate(store: string, stylesDir: string, brus
 export async function updateStampGatePrivate(store: string, stylesDir: string, brushes: readonly StampGatePrivateBrush[], reason: string) {
   const { adapter, subjects } = await paintPrivate(stylesDir, brushes);
   return subjects.map((subject) => {
-    const accepted = readStampGateBaseline(store, subject.id, subject.output);
+    const accepted = readStampGateBaseline(store, subject.id, subject.output.kind);
     const comparison = accepted ? compareStampGateOutputs(subject.id, subject.output, accepted.output).detail : 'no baseline before';
     return { id: subject.id, comparison, files: writeStampGateCandidate(store, subject.id, subject.output, { inputs: subject.inputs, reason, comparison, adapter }) };
   });

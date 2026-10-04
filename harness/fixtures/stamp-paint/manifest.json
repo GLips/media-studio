@@ -281,11 +281,11 @@
     },
     "shot/shadow": {
       "file": "shot/shadow.png",
-      "output": "b00be277182cfb94704e97c57c432398cd54501969675555cea76008a381f23c",
-      "inputs": "c5703c80354eb4f9fa8f72d0bbe2c10aca376a230142f4b225e287a29ec1666f",
-      "reason": "New lit three.js shot: two stands, the right with soft shadows and a planar mirror following the panning camera, its twin with neither",
+      "output": "1d29eb936543ed0f33752d8fdc360de59aafe2579facf92315d2c7cd57f70673",
+      "inputs": "6233116732146ce024c65859171d4d053e428fee4bcd245fe06f6a3a2b48ab95",
+      "reason": "vid-157 three-lighting review: the lit shot gains a reference frame at 1 s (third frame), the lens focused on the stands (focus 1, aperture 4 px), and the sun's shadow camera fitted (near 170, far 280); the soft filter searches as far as a blocker on the near plane could shade, with 32 search and 32 filter taps",
       "accepted": "2026-10-04",
-      "acceptedOver": "78298e97",
+      "acceptedOver": "c8571725",
       "adapter": "apple metal-3"
     },
     "shot/wet-contact": {

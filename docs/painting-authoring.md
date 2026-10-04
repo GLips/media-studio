@@ -940,7 +940,7 @@ move and shutter show of it; a back painted short of that is refused, naming the
 | masks | `alphaOf` (another drawable's coverage, partial alpha included, where it lies this frame: a plane by id, painted, picture, three or instanced, or a painted plane's occurrence), `invert?` | **NEW**, on painted planes only. It cuts the plane's paint, glow and the own-sheet paper it shapes; the ground stays whole. A plane's masks multiply. To leave a layer unmasked, put it on a second plane at the same depth. No mask reads its own plane, through any chain. Paint shown over time, along a path or by a field, is the document's to say: a layer's or group's `reveal` (Time). `alphaOf` reads through both lays: a painted or picture drawable's coverage at the same plane px, the camera's parallax between their depths left out; a three plane's where its render shows it; an instanced plane's items where the camera shows them, sharp and still. A drawable's coverage is cut by its own plane's masks and visibility. A part inside a rig drawn as pieces isn't read apart: read the rig. A reader is laid anew only when what it reads changes: a painted plane's picture, a picture source's new picture, a three render's frame, an instanced plane's items moved, faded or repainted, a drawable's visibility. A dissolving plane's masks cut both ends alike, and reading one reads its ends' coverage blended as its picture is |
 | instances | `{kind: 'instanced', depths: {near, far}, variants, instances(m)}` | each item lays its variant as a plane at its depth (`lay` from the variant's document px; clear outside its paint), depth-sorted with every drawable, planes first on ties, all within `depths` and nearer than the back. A variant is solved and laid once, whole and centred on the stage (its document no larger), and every item showing it shares that picture; items lie anywhere through the lens. An item's defocus blurs that picture, and may spread it only as far as the stage leaves round the variant's document: paint a variant on a document tight round its paint. A key is one item's lifetime: the same key at the shutter's two ends blurs the item along its own travel; a key missing at either end draws it as if still on its plane, blurred only by the camera's move; a recycled item takes a new key. An item's `visibility` fades it, the plane's all of them. Items take no motion nodes (**NEW**) |
 | dissolve | `dissolve(a, b, k)`, nestable | blends the two pictures in the plane's own form (the back's opaque colour, a nearer plane's or a clear back's colour and transmittance, on any canvas), never their pigment; its glow and motion summed alike; its occurrences are both sides', moved alike; every end one document size on one ground; a rig on its plane needs its group cut alike in every end (the same layers in each cel), and each end is posed by the frame's one read of the pose and solved per pose (**NEW**) |
-| three.js | `{kind: 'three', build}`; `paintedTextures: [{id, source, widthPx, heightPx}]` on the shot | the three-layers feature's: posed at each moment (once at 0 as it loads), then handed the exposure's camera for offscreen passes drawn before its scene (a mirror following the shot, a ground); it may ask for soft shadows (`shadows`) and reads painted textures by id (Painted textures, Lighting a three scene) |
+| three.js | `{kind: 'three', build}`; `paintedTextures: [{id, source, widthPx, heightPx}]` on the shot | the three-layers feature's: posed at each moment (once at 0 as it loads), then its offscreen passes drawn before its scene (a mirror following the exposure's camera, a ground); it may ask for soft shadows (`shadows`) and reads painted textures by id (Painted textures, Lighting a three scene) |
 | picture | `{kind: 'picture', extent, pictureAt}` | a `StampPlaneSource`'s: premultiplied, its `box` in stage texels (the margin included), never mutated once handed over; return the same object while it's still |
 | HTML among canvases | `<PaintedShot>` children: HTML and `<PaintedShotCanvas name="…"/>`, stacked in DOM order | one device shared; every canvas is the whole frame, clear where nothing is painted, taking no pointer events. When any exists, every plane names one and several may share one; the back's is the first, and a later canvas holds only planes nearer than an earlier's (**NEW**). A canvas is positioned, so it paints over HTML that isn't, whatever their order: position HTML meant to lie over a canvas (`AbsoluteFill`, `position: 'relative'`). Canvases are fixed to the shot's element, so one nested in positioned wrappers still fills the frame; a transformed, filtered or contained wrapper between them (a transform that changes nothing yet included) is refused as the shot loads and at any frame it appears. A later canvas, and a clear back, is a glaze over the HTML and canvases behind it (**NEW**): the page shows C + T × behind per channel, so a violet wash over a yellow block turns it brown, as paint would. It's exact over white and a close fit elsewhere: a strong coloured glaze strays up to about 20 levels in a channel the HTML holds near black. Its multiply reaches only the shot's own HTML and canvases. Over nothing inside the shot, the page outside sees it through one alpha, the same in every channel: exact over white, but over a darker page it shows lighter and toward its filter's hue, by tens of levels for a strong glaze over near black. Over a dark page, put an opaque background behind a clear back inside the shot (on a wrapper holding its canvas, or an element covering the frame). A glaze is two canvas elements, the first multiplied over what's behind, so no wrapper between a later canvas and its shot may make a stacking context (opacity below 1, a blend mode, `isolation`, fixed or sticky position, a z-index on a positioned element or a flex or grid item, a clip path or mask): it would cut the glaze off from the HTML behind it, and it's refused as the shot loads and at any frame it appears |
 
@@ -1063,32 +1063,40 @@ or turned edge on, holds steady as it moves instead of shimmering; its paint the
 mipmapped texture's is. A texture not laid again keeps its chain. The gate's `shot/far-cylinder` shows the wrapped
 tile worn a quarter of its size round a turning cylinder.
 
-#### Lighting a three scene
+A material may read a texture three.js draws too: Lighting a three scene works a planar reflection, drawn offscreen
+each render and read at the floor's screen uv.
+
+### Lighting a three scene
 
 A three scene lights itself with three.js's lights. Its renderer is the device's one, shared by every three plane,
 so a scene's lighting choices hold for its own renders alone.
 
 **Shadows.** A scene asks for them beside its `scene`: `shadows: { softness }`. Directional and spot lights with
 `castShadow` cast, from meshes with `castShadow` onto meshes with `receiveShadow`, each through its own
-`shadow.camera`, `shadow.mapSize` and `shadow.bias`. Fit a directional light's orthographic box tight round what
-casts and receives: its map's texels spread over the box. `softness` is each such light's angular radius in degrees,
-0 to 20 (0, a hard edge, when left out), as `ThreeStage`'s `softShadows`: the penumbra widens with the gap behind
-the blocker, so a post's shadow is sharp at its foot and soft at its far end. A point light casts as three.js filters
-it, as hard far from its object as near it. Shadow maps are on for this scene's renders and put back after: another
-three plane that doesn't ask draws none. A fast frame and a reference exposure draw the same shadow; a moving
-object's shadow on a still floor isn't blurred over a fast frame's shutter (the motion layer follows surfaces, and
-the floor holds still), while each reference exposure draws it at its own moment.
+`shadow.camera`, `shadow.mapSize` and `shadow.bias`; the lights in its offscreen passes' scenes cast alike. Fit each
+light's shadow camera tight round what casts and receives: a directional light's box, as its map's texels spread
+over it, and its `near` and `far`. A soft shadow searches the map round each point as far as a blocker on `near`
+could shade it, so a `near` far short of the nearest caster spreads the search's taps thin and a small caster's
+shadow comes out hard. `softness` is each such light's angular radius in degrees, 0 to 20 (0, a hard edge, when
+left out), as `ThreeStage`'s `softShadows`: the penumbra widens with the gap behind the blocker, so a post's shadow
+is sharp at its foot and soft at its far end, as wide as the light makes it whatever the map's size. A point light
+casts as three.js filters it, as hard far from its object as near it. Each render turns shadow maps on or off as its
+scene asks, so a three plane that doesn't ask draws none, and puts the renderer's shadow settings back after for its
+other users. A fast frame and a reference exposure draw the same shadow, each exposure's map drawn anew at its own
+moment; a moving object's shadow on a still floor isn't blurred over a fast frame's shutter (the motion layer
+follows surfaces, and the floor holds still).
 
-**Offscreen passes.** `offscreen` is a function: each render hands it the camera the scene is about to draw through,
-posed and set for the exposure (a reference exposure's moved over the aperture), and draws the passes it returns,
-in order, before the scene. Return the same passes each time, and leave the camera as it is: set a camera of your own
-from it. A pass carries no motion layer: its picture blurs as the surface reading it moves, not as what it shows
-does. The scene's camera sees every layer, a pass's camera layer 0 alone unless told otherwise, so a mesh on layer 1
-shows in the scene and not in the pass. A pass that doesn't follow the shot ignores the camera.
+**Offscreen passes.** `offscreen` lists passes each render draws in order before the scene: each its `scene`
+through its `camera` into its `target`. A pass whose camera follows the shot gives `follow`, which each render calls
+first with the camera the scene is about to draw through, posed and set for the exposure (a reference exposure's
+moved over the aperture, its lens shifted): set the pass's camera from it, and leave it as it is. A pass carries no
+motion layer: its picture blurs as the surface reading it moves, not as what it shows does. The scene's camera sees
+every layer, a pass's camera layer 0 alone unless told otherwise, so a mesh on layer 1 shows in the scene and not
+in the pass.
 
 **A planar reflection.** A glossy floor reflecting what stands on it, under a soft sun. The mirror's picture is
 drawn at the size the scene renders (the tools' `frame`: the stage's frame grown by the plane's defocus margin), so
-the floor reads it at its own screen uv. `paintedThreeMirrorCamera(camera, plane, into)` sets `into` to see what
+the floor reads it at its own screen uv. `setThreeMirrorCamera(into, camera, plane)` sets `into` to see what
 `camera` sees mirrored in `plane` (its normal toward what it reflects), clipped at the mirror so nothing below it
 shows; its picture is flipped across x so it stays a camera three.js draws front faces through, and is read at
 `screenUV.flipX()`. Its projection carries the exposure's lens shift, so the reflection stays registered through a
@@ -1097,7 +1105,7 @@ reference render. Reading it down its mip chain blurs it as a rougher floor woul
 ```ts
 import { DirectionalLight, HalfFloatType, LinearMipmapLinearFilter, Mesh, MeshStandardNodeMaterial, PerspectiveCamera, Plane, PlaneGeometry, RenderTarget, Scene, Vector3 } from 'three/webgpu';
 import { float, screenUV, texture } from 'three/tsl';
-import { paintedThreeMirrorCamera, type PaintedThreeSourceScene, type PaintedThreeSourceTools } from '#studio';
+import { setThreeMirrorCamera, type PaintedThreeSourceScene, type PaintedThreeSourceTools } from '#studio';
 
 /** How rough the floor is, 0..1: how far down the mirror's mip chain it reads, and how strongly it reflects. */
 const ROUGHNESS = 0.3;
@@ -1117,17 +1125,20 @@ function glossyFloor({ plane, frame }: PaintedThreeSourceTools): PaintedThreeSou
   sun.position.set(centre.x + plane.length(300), centre.y + plane.length(600), centre.z + plane.length(400));
   sun.target.position.set(centre.x, centre.y, centre.z);
   sun.castShadow = true;
-  Object.assign(sun.shadow.camera, { left: -plane.length(450), right: plane.length(450), top: plane.length(450), bottom: -plane.length(450), far: plane.length(1600) });
+  // Fit round the floor and what stands on it, 200 high at most: from the sun, the nearest caster's top lies about
+  // 370 away and the floor's far corner 1040.
+  const box = plane.length(450);
+  Object.assign(sun.shadow.camera, { left: -box, right: box, top: box, bottom: -box, near: plane.length(350), far: plane.length(1100) });
   sun.shadow.mapSize.set(2048, 2048);
   scene.add(floor, sun, sun.target /* , what stands on the floor, casting */);
   const mirror = new PerspectiveCamera(), surface = new Plane(new Vector3(0, 1, 0), -centre.y);
   return {
     scene,
     poseAt: () => {},
-    offscreen: (camera) => [{ scene, camera: paintedThreeMirrorCamera(camera, surface, mirror), target }],
+    offscreen: [{ scene, camera: mirror, target, follow: (camera) => setThreeMirrorCamera(mirror, camera, surface) }],
     shadows: { softness: 4 },
     dispose: () => {
-      for (const each of [target, material, geometry]) each.dispose();
+      for (const each of [target, material, geometry, sun]) each.dispose();
     },
   };
 }

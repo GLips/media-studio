@@ -1,9 +1,10 @@
 // painted-three-shadows.ts: shadow maps for a three source that asks for them (PaintedThreeSourceScene.shadows), on
 // around that source's renders alone and put back after, as the renderer is the device's one.
 //
-// Soft shadows are percentage-closer soft shadows: a search of the map round the receiver finds how far its
-// blockers lie, and the penumbra widens with the gap behind them, so a contact stays tight and a cast shadow softens.
-// The noise turning each pixel's taps is fixed per pixel, so a fast frame and a reference exposure draw one shadow.
+// Soft shadows are percentage-closer soft shadows: a search round the receiver finds how far its blockers lie,
+// and the penumbra widens with the gap behind them, so a contact stays tight and a cast shadow softens. The search
+// reaches as far as a blocker on the shadow camera's near plane could shade. The taps' noise is fixed per pixel,
+// so a fast frame and a reference exposure draw one shadow.
 // Negative space: a reversed depth buffer would turn the search's comparison round; the studio's renderer has none.
 
 import { DirectionalLight, PCFShadowMap, SpotLight, Vector3, type DepthTexture, type LightShadow, type Node, type Scene, type TextureNode, type WebGPURenderer } from 'three/webgpu';
@@ -20,13 +21,14 @@ import {
  */
 export type PaintedThreeShadows = { readonly softness?: number };
 
-/** The widest a soft light may be, degrees: past it a penumbra outgrows any search of the map. */
+/**
+ * The widest a soft light may be, degrees. The search's disc grows with the light, its taps fixed: past this they
+ * lie too far apart to find a caster's edge.
+ */
 const PAINTED_THREE_SOFTNESS_MOST = 20;
 /** Taps finding a receiver's blockers (raw depth reads), then filtering its penumbra (each a hardware 2 × 2 comparison). */
-const PAINTED_THREE_SEARCH_TAPS = 16;
-const PAINTED_THREE_FILTER_TAPS = 24;
-/** How far round a receiver the search reaches at most, shadow-map texels: past it, blockers go unseen. */
-const PAINTED_THREE_SEARCH_MOST_TEXELS = 48;
+const PAINTED_THREE_SEARCH_TAPS = 32;
+const PAINTED_THREE_FILTER_TAPS = 32;
 
 /**
  * What three hands a light's shadow filter as it builds the light's shadow (ShadowNode's filterNode): `depthLayer`, the
@@ -63,8 +65,9 @@ function paintedThreeSoftShadowFilter(light: DirectionalLight | SpotLight, tange
     // search below loads texels, which takes no sampler.
     const own = layered(texture(depthTexture, shadowCoord.xy)).compare(receiver).toVar();
 
-    // Blockers anywhere from the shadow camera's near plane can shade the receiver: search as wide as one there would.
-    const search = uvPerUnit.mul(penumbra(near)).clamp(texel, texel.mul(PAINTED_THREE_SEARCH_MOST_TEXELS));
+    // The widest penumbra any blocker casts here is one's on the near plane: search that far, and a texel at the
+    // least, so a hard edge is antialiased as three's own filter does.
+    const search = uvPerUnit.mul(penumbra(near)).max(texel);
     const blockers = float(0).toVar(), blockersReach = float(0).toVar();
     Loop(PAINTED_THREE_SEARCH_TAPS, ({ i }) => {
       const tap = shadowCoord.xy.add(vogelDiskSample(i, int(PAINTED_THREE_SEARCH_TAPS), phi).mul(search)).mul(mapSize).clamp(vec2(0), mapSize.sub(1));
@@ -74,46 +77,46 @@ function paintedThreeSoftShadowFilter(light: DirectionalLight | SpotLight, tange
       blockers.addAssign(blocks);
       blockersReach.addAssign(distanceAt(depth).mul(blocks));
     });
-    // A texel's width at the least, so a hard edge is antialiased as three's own filter does.
+    // Blockers lie past the near plane, so their penumbra is never wider than the search: the shadow fades out
+    // within it rather than stepping to lit at its edge.
     const spread = uvPerUnit.mul(penumbra(blockersReach.div(blockers.max(1)))).max(texel);
     const lit = float(0).toVar();
     Loop(PAINTED_THREE_FILTER_TAPS, ({ i }) => {
       lit.addAssign(layered(texture(depthTexture, shadowCoord.xy.add(vogelDiskSample(i, int(PAINTED_THREE_FILTER_TAPS), phi).mul(spread)))).compare(receiver));
     });
-    // No blocker within the search: a blocker past it (or none) shades the receiver as the map alone says.
+    // No blocker found: lit, unless one too thin for the search's taps covers the receiver itself.
     return blockers.greaterThan(0).select(lit.div(PAINTED_THREE_FILTER_TAPS), own);
   });
 }
 
-/** How a source's renders take shadows: `on` sets the renderer as it asks, returning what puts it back as it was. */
-export type PaintedThreeShadowing = { readonly on: (renderer: WebGPURenderer) => () => void };
+/** Sets a renderer's shadow maps as a source asks, returning what puts them back as they were. */
+export type PaintedThreeShadowsOn = (renderer: WebGPURenderer) => () => void;
 
 /**
- * Shadows for source `id`'s `scene`, as `shadows` asks, or none when left out. Each casting directional or spot light
- * is given its soft filter before it first renders, so one a pose adds is soft too. Refuses a softness out of range.
+ * Shadows for source `id`'s renders of `scenes` (its own and its offscreen passes'), as `shadows` asks, or none when
+ * left out. Each casting directional or spot light in them is given its soft filter before it first renders, so one a
+ * pose adds is soft too. Refuses a softness out of range.
  */
-export function createPaintedThreeShadowing(id: string, scene: Scene, shadows: PaintedThreeShadows | undefined): PaintedThreeShadowing {
+export function createPaintedThreeShadowsOn(id: string, scenes: readonly Scene[], shadows: PaintedThreeShadows | undefined): PaintedThreeShadowsOn {
   const softness = shadows?.softness ?? 0;
   if (!(softness >= 0 && softness <= PAINTED_THREE_SOFTNESS_MOST)) {
     throw new Error(`painted three: source ${id}'s shadows.softness is a light's angular radius from 0 to ${PAINTED_THREE_SOFTNESS_MOST} degrees, not ${softness}`);
   }
   const tangent = Math.tan((softness * Math.PI) / 180), filtered = new WeakSet<DirectionalLight | SpotLight>();
-  const filterLights = () => scene.traverse((light) => {
+  const filterLights = (scene: Scene) => scene.traverse((light) => {
     if (!((light instanceof DirectionalLight || light instanceof SpotLight) && light.castShadow) || filtered.has(light)) return;
     // three reads a shadow's filterNode as it builds the light's shadow; @types/three leaves the field out.
     Object.assign(light.shadow, { filterNode: paintedThreeSoftShadowFilter(light, tangent) });
     filtered.add(light);
   });
-  return {
-    on: (renderer) => {
-      if (shadows) filterLights();
-      const { enabled, type } = renderer.shadowMap;
-      renderer.shadowMap.enabled = !!shadows;
-      renderer.shadowMap.type = PCFShadowMap;
-      return () => {
-        renderer.shadowMap.enabled = enabled;
-        renderer.shadowMap.type = type;
-      };
-    },
+  return (renderer) => {
+    if (shadows) for (const scene of scenes) filterLights(scene);
+    const { enabled, type } = renderer.shadowMap;
+    renderer.shadowMap.enabled = !!shadows;
+    renderer.shadowMap.type = PCFShadowMap;
+    return () => {
+      renderer.shadowMap.enabled = enabled;
+      renderer.shadowMap.type = type;
+    };
   };
 }
