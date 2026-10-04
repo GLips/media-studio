@@ -65,7 +65,7 @@ export function shotItemsCoverages(
     ]);
     let drawn: GPUTexture | undefined;
     const draw = () => {
-      const lens = lenses[plane.canvas], texture = owner.target(`shot items coverage ${plane.id}`, { size: [size.w, size.h], format: 'rgba16float', usage });
+      const lens = lenses[plane.canvas], texture = owner.target(`shot items coverage ${plane.id}`, { size: [size.w, size.h], format: 'rgba16float', usage }, encoder);
       // Alpha laid over alpha is the same in any order, so a variant's items can go together.
       const layers = [...plane.variants.values()].flatMap((variant) => {
         const step = { kind: 'items', plane: plane.id, variant: variant.name, sigma: 0, items: shown.filter((item) => item.variant === variant.name) } as const;

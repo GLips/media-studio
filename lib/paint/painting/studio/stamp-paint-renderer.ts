@@ -376,15 +376,16 @@ function rendererOnSurface({
 
   done();
   done = span('stamp paint targets load');
-  // Targets are the owner's, shared with every painting drawn on its device: a frame overwrites all it reads of them.
+  // Targets are the owner's, shared with every painting drawn on its device and held by this one's scope until it's
+  // disposed: a frame overwrites all it reads of them.
   const target = (name: string, w: number, h: number, usage: number, targetFormat: GPUTextureFormat = 'rgba16float') => {
-    const texture = owner.target(name, { size: [w, h], format: targetFormat, usage: usage | GPUTextureUsage.TEXTURE_BINDING });
+    const texture = scope.target(name, { size: [w, h], format: targetFormat, usage: usage | GPUTextureUsage.TEXTURE_BINDING });
     return { texture, view: texture.createView(), layers: [texture.createView()] };
   };
   /** A compositor's target, an array's layers each cleared through a view of its own. */
   const layered = (name: string, shape: StampPaintTarget, usage: number) => {
     if (shape.kind === 'plain') return target(name, width, height, usage);
-    const texture = owner.target(name, { size: [width, height, shape.layers], format: 'rgba16float', usage: usage | GPUTextureUsage.TEXTURE_BINDING });
+    const texture = scope.target(name, { size: [width, height, shape.layers], format: 'rgba16float', usage: usage | GPUTextureUsage.TEXTURE_BINDING });
     return {
       texture, view: texture.createView({ dimension: '2d-array' }),
       layers: Array.from({ length: shape.layers }, (_, layer) => texture.createView({ dimension: '2d', baseArrayLayer: layer, arrayLayerCount: 1 })),
@@ -404,7 +405,7 @@ function rendererOnSurface({
     blurA: target('blurA', halfW, halfH, STORAGE),
     blurB: target('blurB', halfW, halfH, STORAGE),
     clip: target('clip', width, height, STORAGE | RENDER | SAVED),
-    blank: target('blank', 1, 1, 0, 'r8unorm'),
+    blank: { texture: owner.blank('r8unorm'), view: owner.blank('r8unorm').createView() },
     // Only a painting with colour dynamics lays tints, and only for a compositor that reads them.
     tintA: laysTints ? target('tintA', width, height, RENDER) : null,
     tintB: laysTints ? target('tintB', width, height, RENDER) : null,
@@ -537,7 +538,7 @@ function rendererOnSurface({
   const planeTarget = (name: string, w: number, h: number, layers: number) => {
     const key = `${name}|${w}|${h}|${layers}`;
     if (!planeTargets.has(key)) {
-      const texture = owner.target(name, { size: [w, h, layers], format: 'rgba16float', usage: STORAGE | RENDER | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC });
+      const texture = scope.target(name, { size: [w, h, layers], format: 'rgba16float', usage: STORAGE | RENDER | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC });
       planeTargets.set(key, { texture, view: texture.createView({ dimension: layers > 1 ? '2d-array' : '2d' }), array: stampArrayView(texture) });
     }
     return planeTargets.get(key)!;

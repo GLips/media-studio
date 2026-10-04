@@ -143,14 +143,14 @@ export function createShotMaskPasses(owner: StampPaintGpuOwner, { stage, arena }
   return {
     /** A plane's mask, all shown: r32float over the stage, the lay's to multiply into. */
     begin(encoder: GPUCommandEncoder): GPUTexture {
-      const mask = owner.target('shot mask', { size: [width, height], format: 'r32float', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING });
+      const mask = owner.target('shot mask', { size: [width, height], format: 'r32float', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING }, encoder);
       fillShotTarget(encoder, mask.createView(), [1, 1, 1, 1]);
       return mask;
     },
     /** Takes `mask` times `coverage` (none: nothing covered), or what it leaves when `invert`. */
     coverage(encoder: GPUCommandEncoder, mask: GPUTexture, coverage: ShotMaskCoverage | null, invert: boolean) {
       if (!coverage && invert) return;
-      const source = coverage?.view ?? owner.target('shot mask nothing', { size: [1, 1], format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING }).createView();
+      const source = coverage?.view ?? owner.blank('rgba16float').createView();
       dispatchStampCompute(device, encoder, compute(COVERAGE_WGSL), [arena.slot((views) => {
         const put = gpuUniformWriter(SHOT_MASK_COVERAGE, views), map = coverage?.map;
         put('map', map ? [map.ma, map.mb, map.kx, map.ky] : [1, 0, 0, 0]);
@@ -160,10 +160,10 @@ export function createShotMaskPasses(owner: StampPaintGpuOwner, { stage, arena }
         put('invert', invert ? 1 : 0);
       }), mask.createView(), source], width, height);
     },
-    /** Where `reads` drawables' coverage gathers as a plane is laid: stage-sized, four to a layer of an array. */
-    coverageTarget(reads: number): GPUTexture {
+    /** Where `reads` drawables' coverage gathers as a plane is laid by `encoder`'s work: stage-sized, four to a layer of an array. */
+    coverageTarget(encoder: GPUCommandEncoder, reads: number): GPUTexture {
       const usage = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC;
-      return owner.target('shot coverage', { size: [width, height, shotCoverageLayers(reads)], format: 'rgba16float', usage });
+      return owner.target('shot coverage', { size: [width, height, shotCoverageLayers(reads)], format: 'rgba16float', usage }, encoder);
     },
     /** Starts each drawable's coverage in `coverage`: `whole[r]`, the back's ground showing wherever the frame does, or nothing. */
     startCoverage(encoder: GPUCommandEncoder, coverage: GPUTexture, whole: readonly boolean[]) {

@@ -107,8 +107,8 @@ export function createStampLensSourceLayers(owner: StampPaintGpuOwner, { stage, 
     else pictureSources.set(id, source);
   }
   const usage = GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC;
-  /** A scratch target of `layers` array layers, `w` × `h`, the owner's under `name`. */
-  const scratch = (name: string, w: number, h: number, layers: number) => owner.target(name, { size: [w, h, layers], format: 'rgba16float', usage });
+  /** A scratch target of `layers` array layers, `w` × `h`, the owner's under `name`, used by `encoder`'s work. */
+  const scratch = (encoder: GPUCommandEncoder, name: string, w: number, h: number, layers: number) => owner.target(name, { size: [w, h, layers], format: 'rgba16float', usage }, encoder);
 
   /**
    * A three source's picture for the lens and its box in frame px: its colour alone when sharp and the frame isn't
@@ -124,12 +124,12 @@ export function createStampLensSourceLayers(owner: StampPaintGpuOwner, { stage, 
     });
     const defocusing = focus !== null && focus.aperture >= LENS_DEFOCUS_LEAST;
     if (!defocusing && !moving) return laid(arrayView(texture), SOURCE_LAYERS);
-    const both = scratch(`source ${id}`, w, h, 2);
+    const both = scratch(encoder, `source ${id}`, w, h, 2);
     encoder.copyTextureToTexture({ texture }, { texture: both, origin: { x: 0, y: 0, z: 0 } }, [w, h, 1]);
     encoder.copyTextureToTexture({ texture: motion }, { texture: both, origin: { x: 0, y: 0, z: 1 } }, [w, h, 1]);
     const layers = moving ? SOURCE_MOTION_LAYERS : SOURCE_LAYERS;
     if (!defocusing) return laid(arrayView(both), layers);
-    const defocused = scratch(`source ${id} defocused`, w, h, 2);
+    const defocused = scratch(encoder, `source ${id} defocused`, w, h, 2);
     lens.defocus(encoder, { source: arrayView(both), into: arrayView(defocused), size: { w, h }, focus, most: 2 * focus.aperture });
     return laid(arrayView(defocused), layers);
   }
@@ -149,7 +149,7 @@ export function createStampLensSourceLayers(owner: StampPaintGpuOwner, { stage, 
     if (!sigma) return laid(arrayView(texture), box, { w: texture.width, h: texture.height });
     const reach = lensGaussianReach(sigma), x = Math.max(0, box.x - reach), y = Math.max(0, box.y - reach);
     const grown = { x, y, w: Math.min(width, box.x + box.w + reach) - x, h: Math.min(height, box.y + box.h + reach) - y };
-    const blurred = scratch(`picture ${id} blurred`, width, height, 1);
+    const blurred = scratch(encoder, `picture ${id} blurred`, width, height, 1);
     encoder.beginRenderPass({ colorAttachments: [{ view: blurred.createView(), loadOp: 'clear', storeOp: 'store' }] }).end();
     lens.gaussian(encoder, { source: arrayView(texture), into: arrayView(blurred), layers: 1, sigma, read: box, sourceAt: box, box: grown });
     return laid(arrayView(blurred), grown, { w: width, h: height });

@@ -24,13 +24,15 @@ export type StampPaintSolveCost = { readonly program: string; readonly from: str
 
 /**
  * A frame's or a warmed span's costs: every count by name, in STAMP_PAINT_COST_NAMES' order; every solve; the
- * warnings met, as `studio paint check` prints them; and the bytes the caches held at its end.
+ * warnings met, as `studio paint check` prints them; and at its end the bytes the device's cache kept between frames
+ * and those its targets took.
  */
 export type StampPaintCosts = {
   readonly counts: ReadonlyMap<StampPaintCostName, number>;
   readonly solves: readonly StampPaintSolveCost[];
   readonly warnings: readonly string[];
   readonly bytesRetained: number;
+  readonly targetBytes: number;
 };
 
 /**
@@ -42,8 +44,8 @@ export type StampPaintCostTally = {
   readonly solved: (solve: StampPaintSolveCost) => void;
   /** A warning met as the frame drew, printed: it fails nothing, so the report is where it's seen. */
   readonly warned: (text: string) => void;
-  /** The bytes the caches hold now: a level, the latest kept. */
-  readonly retained: (bytes: number) => void;
+  /** The bytes the device's cache holds now, `kept` between frames and its `targets`: levels, the latest kept. */
+  readonly retained: (bytes: { readonly kept: number; readonly targets: number }) => void;
   readonly take: () => StampPaintCosts;
   readonly counted: () => StampPaintCosts;
 };
@@ -51,7 +53,7 @@ export type StampPaintCostTally = {
 const noCosts = () => new Map(STAMP_PAINT_COST_NAMES.map((name) => [name, 0]));
 
 export function createStampPaintCostTally(): StampPaintCostTally {
-  let counts = noCosts(), solves: StampPaintSolveCost[] = [], warnings: string[] = [], bytesRetained = 0;
+  let counts = noCosts(), solves: StampPaintSolveCost[] = [], warnings: string[] = [], bytesRetained = 0, targetBytes = 0;
   const add = (name: StampPaintCostName, n: number) => counts.set(name, (counts.get(name) ?? 0) + n);
   return {
     count: (name, n = 1) => { add(name, n); },
@@ -61,10 +63,13 @@ export function createStampPaintCostTally(): StampPaintCostTally {
       add('entries run', solve.entries);
     },
     warned: (text) => { warnings.push(text); },
-    retained: (bytes) => { bytesRetained = bytes; },
-    counted: () => ({ counts, solves, warnings, bytesRetained }),
+    retained: ({ kept, targets }) => {
+      bytesRetained = kept;
+      targetBytes = targets;
+    },
+    counted: () => ({ counts, solves, warnings, bytesRetained, targetBytes }),
     take: () => {
-      const costs = { counts, solves, warnings, bytesRetained };
+      const costs = { counts, solves, warnings, bytesRetained, targetBytes };
       counts = noCosts();
       solves = [];
       warnings = [];

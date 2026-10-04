@@ -1543,5 +1543,5 @@ it (`back.source: is a clear back, and no HTML lies before the first canvas at t
 unmounted, named twice, or laying paint past the stage. In a profiling render the shot reports its costs per frame and
 for its warmed span (`studio profile <project> --costs`): evaluations made and memo hits, film and picture hits and
 misses, solves by sheet from the first application re-run, checkpoint hits, decisions reused, evictions, bytes
-uploaded (three.js's included), bytes kept, and warnings such as a pose folding paint or a warm running past its
-scene.
+uploaded (three.js's included), bytes kept and target bytes (the passes' working textures; both
+under the device's one cache budget), and warnings such as a pose folding paint or a warm running past its scene.

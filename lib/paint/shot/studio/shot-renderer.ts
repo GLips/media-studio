@@ -295,7 +295,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
       } finally {
         costs?.count('evictions', owner.cache.evictions() - evicted);
         costs?.count('bytes uploaded', owner.uploaded() - uploaded);
-        costs?.retained(owner.cache.bytes());
+        costs?.retained({ kept: owner.cache.bytes() - owner.cache.bytes('target'), targets: owner.cache.bytes('target') });
       }
     };
 

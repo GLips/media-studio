@@ -117,7 +117,7 @@ async function solveLeased(owner: StampPaintGpuOwner, planned: StampSheetProgram
   const brushes = await bindStampPaintBrushes(owner, { deposits: posed, marks: brushedMasks.flatMap(({ marks }) => marks), paper: program.paper });
   const scope = owner.scope();
   try {
-    const gpu = await owner.checked('loading a sheet solve', () => loadStampSheetSolve(owner, scope.device, {
+    const gpu = await owner.checked('loading a sheet solve', () => loadStampSheetSolve(owner, scope, {
       program, stage: plan.stage, compositor: choice.compositorOn(scope.device), media: choice.media, brushes, brushedMasks,
     }));
     // `never` dries nothing on the sheet, its unclocked run included.

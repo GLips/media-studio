@@ -1,9 +1,11 @@
 // stamp-paint-gpu-owner.ts: a studio device owner (gpu-device-owner.ts) with everything on it that outlasts a
-// painting: the images, each tip's mip levels (made on the CPU, stamp-tip-levels.ts), modules, pipelines and samplers, the targets, and the GPU
-// cache (stamp-paint-gpu-cache.ts), whose one budget every painting and output on the device shares. Outputs
-// (stamp-paint-surface.ts) and three.js (the owner's one renderer) render on it too.
+// painting: the images, each tip's mip levels (made on the CPU, stamp-tip-levels.ts), modules, pipelines and samplers,
+// and the GPU cache (stamp-paint-gpu-cache.ts), whose one budget every painting and output on the device shares, the
+// targets passes paint in among its entries. Outputs (stamp-paint-surface.ts) and three.js (the owner's one renderer)
+// render on it too.
 //
-// A painting's buffers and textures go in a scope (StampPaintGpuScope) freed with it.
+// A painting's buffers and textures go in a scope (StampPaintGpuScope) freed with it, and the targets it holds
+// across encoders are held by it.
 
 import type { StampBrushAsset } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampTipLevels, type StampTipLevels } from '#lib/paint/brush/models/stamp-tip-levels.ts';
@@ -13,8 +15,22 @@ import {
   decodeStampTipBitmap, fetchStampPaintBitmaps, type StampPaintDevice, type StampPaintImage, uploadStampPaintBitmaps, uploadStampTipLevels,
 } from './stamp-paint-gpu.ts';
 
-/** A painting's share of a device: what it makes through `device` is destroyed by `destroy`. */
-export type StampPaintGpuScope = { device: StampPaintDevice; destroy: () => void };
+/** What a pass asks of a target: `size` its width and height, and its array layers for an array; its format and usage. */
+export type StampPaintTargetRequest = {
+  readonly size: readonly [number, number] | readonly [number, number, number];
+  readonly format: GPUTextureFormat;
+  readonly usage: GPUTextureUsageFlags;
+};
+
+/** What a scope frees: what was made through `device`, by `destroy`. */
+type StampPaintGpuOwned = { device: StampPaintDevice; destroy: () => void };
+
+/**
+ * A painting's share of a device: what it makes through `device` is destroyed by `destroy`, and each target it takes
+ * (the owner's, StampPaintGpuOwner's `target`) is held from the cache's eviction until then: work across encoders, a
+ * solve's films and wet paper or a renderer's frames, paints in these.
+ */
+export type StampPaintGpuScope = StampPaintGpuOwned & { target: (name: string, shape: StampPaintTargetRequest) => GPUTexture };
 
 export type StampPaintGpuOwner = GpuDeviceOwner & {
   /**
@@ -33,13 +49,16 @@ export type StampPaintGpuOwner = GpuDeviceOwner & {
   drawnImage: (key: string, draw: () => { size: number; pixels: Uint8Array }) => StampPaintImage;
   /** The mip levels `tip` was uploaded with: a tip's from `images` or `drawnImage`. */
   tipLevels: (tip: StampPaintImage) => StampTipLevels;
-  /** What frames keep between them on the device, under one budget: films, pictures, pictures blurred. */
+  /** What frames keep between them on the device, under one budget: films, pictures, pictures blurred, targets. */
   cache: StampPaintGpuCache;
   /**
-   * The texture `descriptor` makes, made once a device for each `name` (its role) and shape: a painting's targets,
-   * shared by every painting and output of that size. A frame never depends on what an earlier one left in them.
+   * The texture for `name` (its role) as `shape` asks, used by `encoder`'s work: one a device for each role and
+   * shape, kept in the cache and given up to its budget once no frame being encoded uses it. A frame never depends on
+   * what an earlier one left in it; work spanning encoders takes targets through a scope.
    */
-  target: (name: string, descriptor: GPUTextureDescriptor) => GPUTexture;
+  target: (name: string, shape: StampPaintTargetRequest, encoder: GPUCommandEncoder) => GPUTexture;
+  /** A 1 × 1 texture of `format`, never written (zeros): what a pass binds where it reads nothing. One a format, for the owner's life. */
+  blank: (format: GPUTextureFormat) => GPUTexture;
   /** The bytes written and images copied to the device's queue since the owner was made, three.js's too: a cost report counts the change. */
   uploaded: () => number;
   /** Frees all it holds, then the device and its three.js renderer; dispose what else draws on it first. */
@@ -63,8 +82,11 @@ export async function createStampPaintGpuOwner(imageUrl: (asset: StampBrushAsset
   const images = new Map<string, Promise<StampPaintImage>>();
   const drawn = new Map<string, StampPaintImage>();
   const levels = new Map<StampPaintImage, StampTipLevels>();
-  const targets = new Map<string, GPUTexture>();
-  const cache = stampPaintGpuCache(device);
+  const blanks = new Map<GPUTextureFormat, GPUTexture>();
+  const cache = stampPaintGpuCache(device), targets = cache.store<null>('target');
+  /** `name`'s target shaped `shape`, as kept under `key`: found, or made for `encoder` (none: a holder's). */
+  const takeTarget = (key: string, { size: [width, height, layers = 1], format, usage }: StampPaintTargetRequest, encoder: GPUCommandEncoder | null) =>
+    (targets.find(key, encoder) ?? targets.make(key, encoder, [{ width, height, layers, format, usage }], null)).textures[0];
   const tipImage = (tipLevels: StampTipLevels) => {
     const image = uploadStampTipLevels(device, tipLevels);
     levels.set(image, tipLevels);
@@ -73,7 +95,22 @@ export async function createStampPaintGpuOwner(imageUrl: (asset: StampBrushAsset
 
   return {
     ...base, device, cache,
-    scope: () => stampPaintGpuScope(device),
+    scope: () => {
+      const owned = stampPaintGpuScope(device), holds = new Map<string, () => void>();
+      return {
+        device: owned.device,
+        target: (name, shape) => {
+          const key = stampPaintTargetKey(name, shape), texture = takeTarget(key, shape, null);
+          if (!holds.has(key)) holds.set(key, targets.hold(key)!);
+          return texture;
+        },
+        destroy: () => {
+          for (const release of holds.values()) release();
+          holds.clear();
+          owned.destroy();
+        },
+      };
+    },
     images: (wanted) => {
       const missing = wanted.filter(({ asset, kind }) => !images.has(`${kind}|${assetKey(asset)}`));
       if (missing.length) {
@@ -103,7 +140,8 @@ export async function createStampPaintGpuOwner(imageUrl: (asset: StampBrushAsset
       return image;
     },
     tipLevels: (tip) => levels.get(tip)!,
-    target: (name, descriptor) => cached(targets, `${name}|${JSON.stringify(descriptor)}`, () => device.createTexture(descriptor)),
+    target: (name, shape, encoder) => takeTarget(stampPaintTargetKey(name, shape), shape, encoder),
+    blank: (format) => cached(blanks, format, () => device.createTexture({ size: [1, 1], format, usage: GPUTextureUsage.TEXTURE_BINDING })),
     uploaded: queueWritten,
     dispose: () => {
       cache.dispose();
@@ -188,8 +226,11 @@ function cachingStampPaintDevice(raw: GPUDevice): StampPaintDevice {
   };
 }
 
+/** A target's key in the cache: its role and shape. */
+const stampPaintTargetKey = (name: string, { size, format, usage }: StampPaintTargetRequest) => `${name}|${size.join('x')}|${format}|${usage}`;
+
 /** `made`'s entry under `key`, made by `make` the first time. */
-function cached<T>(made: Map<string, T>, key: string, make: () => T): T {
+function cached<K, T>(made: Map<K, T>, key: K, make: () => T): T {
   let found = made.get(key);
   if (!found) {
     found = make();
@@ -202,7 +243,7 @@ function cached<T>(made: Map<string, T>, key: string, make: () => T): T {
  * `device` keeping every buffer and texture made through it, to destroy them together. One destroyed sooner (a boil
  * epoch's evicted bank) leaves the scope then, so a long scene's scope holds only what's live.
  */
-function stampPaintGpuScope(device: StampPaintDevice): StampPaintGpuScope {
+function stampPaintGpuScope(device: StampPaintDevice): StampPaintGpuOwned {
   const owned = new Set<{ destroy: () => void }>();
   const own = <T extends { destroy: () => void }>(resource: T) => {
     owned.add(resource);

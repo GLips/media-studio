@@ -10,11 +10,11 @@ import type { FrameCost, FrameCosts } from '#lib/picture/profiling/models/frame-
 export const SHOT_FRAME_COSTS_LABEL = 'stamp paint costs';
 export const SHOT_WARM_COSTS_LABEL = 'stamp paint warm costs';
 
-/** `costs` as the frame profiler logs them: every count in its printed order, the bytes kept, a note a solve or warning. */
-export function shotCostsProfileEntry({ counts, solves, warnings, bytesRetained }: StampPaintCosts): FrameCosts {
+/** `costs` as the frame profiler logs them: every count in its printed order, the bytes kept and in targets, a note a solve or warning. */
+export function shotCostsProfileEntry({ counts, solves, warnings, bytesRetained, targetBytes }: StampPaintCosts): FrameCosts {
   return {
     counts: [...counts].map(([name, value]): FrameCost => (name === 'bytes uploaded' ? { name, value, unit: 'bytes' } : { name, value })),
-    levels: [{ name: 'bytes retained', value: bytesRetained, unit: 'bytes' }],
+    levels: [{ name: 'bytes retained', value: bytesRetained, unit: 'bytes' }, { name: 'target bytes', value: targetBytes, unit: 'bytes' }],
     notes: [...solves.map(({ program, from, entries }) => `solved ${program} from ${from}: ${entries} ${entries === 1 ? 'entry' : 'entries'}`), ...warnings],
   };
 }

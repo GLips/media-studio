@@ -175,11 +175,11 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
     const frame: ShotSheetsLayFrame = { ...planned, pieces: drawn }, staged = layer.stage(frame, coverageOf), mask = layer.mask(encoder, staged);
     const layers = stampPlanePictureLayers(plane.opaqueBack ? 'paper' : 'film', { emits: plan.emits, travels: plan.travels, coverage: shotCoverageLayers(plan.reads.length) });
     const usage = GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT;
-    const target = stampSheetCompositeTarget(owner, 'shot painting', stage, lays.painting, usage | GPUTextureUsage.COPY_DST);
+    const target = stampSheetCompositeTarget(owner, 'shot painting', stage, lays.painting, usage | GPUTextureUsage.COPY_DST, encoder);
     const painting = { texture: target.texture, shape: lays.painting, view: target.view };
-    const plain = (name: string) => owner.target(name, { size: [width, height], format: 'rgba16float', usage });
+    const plain = (name: string) => owner.target(name, { size: [width, height], format: 'rgba16float', usage }, encoder);
     const emission = layers.emission !== null ? plain('shot emission') : null, motionTarget = layers.motion !== null ? plain('shot motion') : null;
-    const coverage = layer.coverageTarget(frame);
+    const coverage = layer.coverageTarget(encoder, frame);
     return pictures.paint(encoder, {
       key, compositor: lays.compositors[0], painting: painting.view, layers, emission: emission?.createView() ?? null, motion: motionTarget?.createView() ?? null,
       coverage: coverage?.createView({ dimension: '2d-array' }) ?? null, visibility: plan.visibility,

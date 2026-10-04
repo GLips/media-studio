@@ -173,7 +173,7 @@ export function stampSheetsLays(
   photographs: Awaited<ReturnType<typeof stampSheetsPhotographs>>, on?: StampStage,
 ): StampSheetsLays {
   const [first] = sheets, stage = on ?? stampStage(first.program), paperFrame = { width: first.program.width, height: first.program.height };
-  const blank = owner.target('sheet blank', { size: [1, 1], format: 'r8unorm', usage: GPUTextureUsage.TEXTURE_BINDING }).createView();
+  const blank = owner.blank('r8unorm').createView();
   const compositors = sheets.map(({ program }) => stampPaintCompositorFor(stampSheetMixedPainting(program)).compositorOn(device));
   const painting = compositors[0].targets.painting;
   compositors.forEach((compositor, s) => {
@@ -184,10 +184,13 @@ export function stampSheetsLays(
   return { stage, compositors, lays, painting };
 }
 
-/** `owner`'s target `name` of `stage`'s size shaped as `shape`, sampled and `usage`: whoever lays into it overwrites all it reads. */
-export function stampSheetCompositeTarget(owner: StampPaintGpuOwner, name: string, stage: StampStage, shape: StampPaintTarget, usage: number) {
+/**
+ * `owner`'s target `name` of `stage`'s size shaped as `shape`, sampled and `usage`, used by `encoder`'s work: whoever
+ * lays into it overwrites all it reads.
+ */
+export function stampSheetCompositeTarget(owner: StampPaintGpuOwner, name: string, stage: StampStage, shape: StampPaintTarget, usage: number, encoder: GPUCommandEncoder) {
   const layers = shape.kind === 'array' ? shape.layers : 1;
-  const texture = owner.target(`sheet composite ${name}`, { size: [stage.width, stage.height, layers], format: 'rgba16float', usage: usage | GPUTextureUsage.TEXTURE_BINDING });
+  const texture = owner.target(`sheet composite ${name}`, { size: [stage.width, stage.height, layers], format: 'rgba16float', usage: usage | GPUTextureUsage.TEXTURE_BINDING }, encoder);
   return { texture, view: texture.createView({ dimension: shape.kind === 'array' ? '2d-array' : '2d' }), layers: Array.from({ length: layers }, (_, layer) => texture.createView({ dimension: '2d', baseArrayLayer: layer, arrayLayerCount: 1 })) };
 }
 
@@ -204,7 +207,7 @@ function encodeStampSheetsSteps(
   const periodsOf = (s: number) => stampWrapPeriods(composite.sheets[s].program, composite.sheets[s].program.wrap);
   const rests = composite.sheets.map(({ place }, s) => {
     if (!place) return null;
-    const rest = owner.target(`sheet composite rest ${s}`, { size: [stage.width, stage.height], format: 'rg32float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING });
+    const rest = owner.target(`sheet composite rest ${s}`, { size: [stage.width, stage.height], format: 'rg32float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING }, encoder);
     const view = rest.createView();
     lays[s].drawPlacedRest(encoder, view, place.rest);
     return view;
@@ -223,7 +226,7 @@ function encodeStampSheetsSteps(
     const box = filmBox && (place ? placedBox(stage, filmBox, place) : filmBox);
     if (!kept || !filmBox || !box) continue;
     const shape = compositors[step.sheet].targets.layer, usage = GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT;
-    const layer = stampSheetCompositeTarget(owner, `layer ${shape.kind === 'array' ? shape.layers : 1}`, stage, shape, usage);
+    const layer = stampSheetCompositeTarget(owner, `layer ${shape.kind === 'array' ? shape.layers : 1}`, stage, shape, usage, encoder);
     // A moved lay's taps read past the film's box: nothing an earlier film left there may show.
     if (place) for (const view of layer.layers) clearStampTarget(encoder, view);
     copyStampTextureBox(encoder, { texture: kept, x: 0, y: 0 }, { texture: layer.texture, x: filmBox.x, y: filmBox.y }, filmBox);
@@ -244,8 +247,8 @@ export async function drawStampSheetsStill(surface: StampPaintSurface, composite
     await owner.checked('laying sheets\' films', () => {
       const { device } = scope, arena = createStampUniformArena(device, compositeSlots(composite));
       const lays = stampSheetsLays(owner, device, arena, composite.sheets, photographs), { stage, compositors } = lays;
-      const painting = stampSheetCompositeTarget(owner, 'painting', stage, lays.painting, GPUTextureUsage.STORAGE_BINDING);
       const encoder = device.createCommandEncoder();
+      const painting = stampSheetCompositeTarget(owner, 'painting', stage, lays.painting, GPUTextureUsage.STORAGE_BINDING, encoder);
       lays.lays[0].drawPaper(encoder, painting.view, 'paper', stage.width, stage.height);
       encodeStampSheetsSteps(owner, device, encoder, arena, composite, lays, painting.view, 'paper');
       const module = device.createShaderModule({ code: stampPaintOutputWgsl(compositors[0], surface.format.endsWith('8unorm'), stage) });
@@ -306,11 +309,13 @@ export async function readStampSheetsPicture(
     const copies = await owner.checked('reading sheets back as a picture', () => backings.map((backing) => {
       const { device } = scope, arena = createStampUniformArena(device, compositeSlots(composite) + 2);
       const lays = stampSheetsLays(owner, device, arena, composite.sheets, photographs), { stage, compositors } = lays;
-      const painting = stampSheetCompositeTarget(owner, 'painting', stage, lays.painting, GPUTextureUsage.STORAGE_BINDING);
+      const encoder = device.createCommandEncoder();
+      const painting = stampSheetCompositeTarget(owner, 'painting', stage, lays.painting, GPUTextureUsage.STORAGE_BINDING, encoder);
       const pipeline = device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code: lightWgsl(compositors[0], stage) }) } });
       const usage = GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC;
-      const measure = (box: StampPixelBox, name: string) => {
-        const light = owner.target(`sheet composite ${name} ${box.w}x${box.h}`, { size: [box.w, box.h], format: 'rgba16float', usage });
+      // Each crop's light is measured into a texture of the scope's, freed with it once read: a crop is any size.
+      const measure = (box: StampPixelBox) => {
+        const light = device.createTexture({ size: [box.w, box.h], format: 'rgba16float', usage });
         dispatchStampCompute(device, encoder, pipeline, [painting.view, arena.slot((views) => {
           const put = gpuUniformWriter(STAMP_SHEET_LIGHT, views);
           put('origin', [box.x, box.y]);
@@ -318,11 +323,10 @@ export async function readStampSheetsPicture(
         }), light.createView()], box.w, box.h);
         return copyStampLayerForReadback(device, encoder, light, { x: 0, y: 0, w: box.w, h: box.h });
       };
-      const encoder = device.createCommandEncoder();
       lays.lays[0].drawPaper(encoder, painting.view, backing, stage.width, stage.height);
-      const texels = stampStageTexelsOf(stage, crop), groundCopy = measure({ x: texels.x, y: texels.y, w: 1, h: 1 }, 'ground');
+      const texels = stampStageTexelsOf(stage, crop), groundCopy = measure({ x: texels.x, y: texels.y, w: 1, h: 1 });
       encodeStampSheetsSteps(owner, device, encoder, arena, composite, lays, painting.view, backing);
-      const lightCopy = measure(texels, 'light');
+      const lightCopy = measure(texels);
       arena.flush();
       device.queue.submit([encoder.finish()]);
       return { lightCopy, groundCopy };

@@ -157,7 +157,7 @@ export function createStampRevealPass(owner: StampPaintGpuOwner, device: StampPa
     cut(encoder: GPUCommandEncoder, arena: StampUniformArena, cutting: StampRevealCutting): GPUTextureView | null {
       const { links, box, size } = cutting;
       if (!links.length) return null;
-      const target = owner.target(`reveal cut ${size.width}x${size.height}`, { size: [size.width, size.height], format: 'r32float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING });
+      const target = owner.target('reveal cut', { size: [size.width, size.height], format: 'r32float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING }, encoder);
       const view = target.createView();
       links.forEach((link, i) => {
         const { reveal } = link, map = reveal.kind === 'strokes' ? arrivalOf(encoder, arena, { ...link, reveal }, cutting) : null;
@@ -183,7 +183,7 @@ export function createStampRevealPass(owner: StampPaintGpuOwner, device: StampPa
           }
         });
         // A strokes reveal reaching none of the target's texels reads an empty map: never reached.
-        const arrival = reveal.kind === 'strokes' ? [map?.view ?? owner.target('reveal no arrival', { size: [1, 1], format: 'rgba32uint', usage: GPUTextureUsage.TEXTURE_BINDING }).createView()] : [];
+        const arrival = reveal.kind === 'strokes' ? [map?.view ?? owner.blank('rgba32uint').createView()] : [];
         dispatchStampCompute(device, encoder, compute(cutWgsl(stage, reveal.kind)), [slot, view, ...arrival], box.w, box.h);
       });
       return view;

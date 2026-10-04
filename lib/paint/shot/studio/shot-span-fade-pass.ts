@@ -55,7 +55,7 @@ export function createShotSpanFade(owner: StampPaintGpuOwner, arena: StampUnifor
     keep(encoder: GPUCommandEncoder, targets: readonly ShotFadedTarget[], depth: number): ShotSpanKept {
       return targets.map((target, t) => {
         const { width, height, depthOrArrayLayers, format } = target.texture;
-        const kept = owner.target(`shot fade ${depth}|${t}`, { size: [width, height, depthOrArrayLayers], format, usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING });
+        const kept = owner.target(`shot fade ${depth}|${t}`, { size: [width, height, depthOrArrayLayers], format, usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING }, encoder);
         encoder.copyTextureToTexture({ texture: target.texture }, { texture: kept }, [width, height, depthOrArrayLayers]);
         return { target, kept: kept.createView({ dimension: target.shape.kind === 'array' ? '2d-array' : '2d' }) };
       });

@@ -20,8 +20,7 @@ import { encodeStampBrushedMasks } from './stamp-brushed-mask-textures.ts';
 import { loadStampDepositBank, type StampPaintBrushes } from './stamp-deposit-bank.ts';
 import { createStampDepositDrawing, stampPaperTooth, type StampDepositBounds } from './stamp-deposit-drawing.ts';
 import type { StampPaintCompositor, StampWashGroupLayer, StampWashLayer } from './stamp-paint-compositor.ts';
-import type { StampPaintDevice } from './stamp-paint-gpu.ts';
-import type { StampPaintGpuOwner } from './stamp-paint-gpu-owner.ts';
+import type { StampPaintGpuOwner, StampPaintGpuScope } from './stamp-paint-gpu-owner.ts';
 import { encodeStampRegionTextures, type StampRegionCoverage, type StampRegionTexture } from './stamp-region-textures.ts';
 import { stampSheetFieldPasses } from './stamp-sheet-field-passes.ts';
 import { stampSheetReductions } from './stamp-sheet-reductions.ts';
@@ -46,9 +45,9 @@ export type StampSheetProxy = { film: number; proxy: CompiledStampDeposit };
 /** Uniform slots one step of a solve may take: its brushed masks' marks at load, else a landing's and its films' settling. */
 const stampSheetSlots = (films: number, marks: number) => Math.max(128, 64 + 2 * films, 4 * marks + 16);
 
-/** `input`'s solve loaded through `device` (a scope of the solve's own) on `owner`'s targets, its first work submitted. */
-export function loadStampSheetSolve(owner: StampPaintGpuOwner, device: StampPaintDevice, input: StampSheetLoadInput) {
-  const { program, stage, compositor, media, brushes, brushedMasks } = input;
+/** `input`'s solve loaded through `scope` (the solve's own), on `owner`'s targets it holds, its first work submitted. */
+export function loadStampSheetSolve(owner: StampPaintGpuOwner, scope: StampPaintGpuScope, input: StampSheetLoadInput) {
+  const { device } = scope, { program, stage, compositor, media, brushes, brushedMasks } = input;
   const posed = program.entries.map(({ deposit }) => deposit), prewets = program.washes.map(({ prewet }) => prewet);
   const wash = compositor.wash;
   if (!wash) throw new Error('stamp sheet: a sheet solve paints in pigment, whose compositor lays washes');
@@ -67,7 +66,7 @@ export function loadStampSheetSolve(owner: StampPaintGpuOwner, device: StampPain
     layersOf: (deposit) => layoutOf(deposit).layers, movedWgsl: (deposit) => layoutOf(deposit).movedWgsl, holdWgsl: (deposit) => layoutOf(deposit).holdWgsl,
   };
 
-  const targets = createStampSheetTargets(owner, stage, compositor, program.films.length);
+  const targets = createStampSheetTargets(owner, scope, stage, compositor, program.films.length);
   const arena = createStampUniformArena(device, stampSheetSlots(program.films.length, brushedMasks.reduce((sum, { marks }) => sum + marks.length, 0)));
   const field = stampWetField(device, stage, { paper: targets.paper, rim: targets.rim, landing: targets.landing, scale: targets.scale }, targets.blank.view);
   const drawing = createStampDepositDrawing(device, {
