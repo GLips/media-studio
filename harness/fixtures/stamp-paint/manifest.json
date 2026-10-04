@@ -201,10 +201,10 @@
     "shot/cards": {
       "file": "shot/cards.png",
       "output": "d1c9d40f18d672fe1be7dbef3fdaa807ce753feb411260ef6ad25c79c1b268f1",
-      "inputs": "65b20611daff529eedb66804c635daf6fc4ad6d9c5c4cd53490b48f3ad6a3a7f",
-      "reason": "sheet-card: the cut-out cards, a hidden cel taking no paper and a leaf owning its card fading out with it",
+      "inputs": "a5e23a5025decba3608485d45f9b44edf4491d340ca6c6b5a019eabeb880f08a",
+      "reason": "sheet-card review: the collage gains a sitting view switched off until 3 s; a card counts each film as far as it shows, so the baseline's frame (the view off) is unchanged by eye",
       "accepted": "2026-10-04",
-      "acceptedOver": "78298e97",
+      "acceptedOver": "a30fbc0f",
       "adapter": "apple metal-3"
     },
     "shot/dissolve": {

@@ -97,7 +97,7 @@ function pathMaskProblems(plane: string, mask: number, { subpaths, widthPx, soft
 
 /**
  * A shot's alphaOf reads resolved: `order`, every plane id, each after the planes its masks read; `read`, every
- * drawable an alphaOf mask names (a group occurrence among them composites on its own, as a faded one does).
+ * drawable an alphaOf mask names, whose coverage its plane's lay gathers step by step as it's laid.
  */
 export type ShotMaskGraph = { readonly order: readonly string[]; readonly read: ReadonlySet<string> };
 

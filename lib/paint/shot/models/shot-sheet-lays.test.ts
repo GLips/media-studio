@@ -13,7 +13,7 @@ import { compilePaintedShot } from './shot-compile.ts';
 import { shotPlanePosesAt, shotPlaneSharesAt, shotRigGroupPivot, shotRigReader } from './shot-frame-plan.ts';
 import type { PaintedShotProps, RigPart } from './shot-props.ts';
 import { shotRigFound, type ShotRigCel, type ShotRigFound } from './shot-rigs.ts';
-import { shotPlaneLayPlan } from './shot-sheet-lays.ts';
+import { shotPlaneLayPlan, type ShotCardFilm } from './shot-sheet-lays.ts';
 
 const FPS = 24;
 
@@ -113,27 +113,33 @@ test('a layer inside a rig drawn as pieces shows whole or not at all: refused at
 
 const CARD_PAPER = { color: '#e9dfc8', absorbency: 0.5 } as const;
 
-/** A sky; a collage card holding a figure of two cels, `up` and `down`; and a leaf owning a sheet of its own. */
+/**
+ * A sky; a collage card holding a figure of two cels, `up` and `down`, and a `sitting` view of a `seat`; and a leaf
+ * owning a sheet of its own.
+ */
 const collage = painting({
   default: function collageDocument(): PaintingDocument {
-    const figure = { key: 'figure', children: [layer('up'), layer('down')] };
+    const figure = { key: 'figure', children: [layer('up'), layer('down')] }, sitting = { key: 'sitting', children: [layer('seat')] };
     return {
       widthPx: 320, heightPx: 240, paper: { color: '#f4f2ed', absorbency: 0.5 }, medium: 'watercolour',
-      layers: [layer('sky'), { key: 'collage', sheet: { kind: 'own', paper: CARD_PAPER }, children: [figure] }, { ...layer('leaf'), sheet: { kind: 'own', paper: CARD_PAPER } }],
+      layers: [layer('sky'), { key: 'collage', sheet: { kind: 'own', paper: CARD_PAPER }, children: [figure, sitting] }, { ...layer('leaf'), sheet: { kind: 'own', paper: CARD_PAPER } }],
     };
   },
 });
 
-test("a card is cut round its shown cels; an own sheet's owner fades card and paint as one, a layer on another's card its film", () => {
+const cardText = (films: readonly ShotCardFilm[]) => `card of ${films.map(({ film, shown }) => `${film} × ${shown}`).join(', ')}`;
+
+test("a card is cut round what shows, a fading layer's share thinned; an own sheet's owner fades card and paint as one", () => {
   const props: PaintedShotProps = {
     camera, planes: [{ id: 'front', depth: 1, source: layersOf(collage, ['sky', 'collage', 'leaf']) }],
     rigs: { 'front/figure': { parts: [{ id: 'figure', z: 0, parent: null, cels: ['up', 'down'] }], pose: {} } },
-    visibility: { 'front/leaf': 0.5, 'front/up': 0.5 },
+    visibility: { 'front/leaf': 0.5, 'front/up': 0.5, 'front/sitting': 0 },
   };
   const { plan } = planAt(props, paintMoment(0));
-  const laid = plan.steps.map((step) => step && (step.lay.kind === 'film' ? `${step.lay.layer} at ${step.opacity}` : step.lay.kind === 'card' && `card of ${step.lay.films.join(', ')}`));
-  assert.deepEqual(laid, ['sky at 1', 'card of 0', 'up at 0.5', null, 'card of 0', 'leaf at 1']);
-  assert.deepEqual(plan.fades, [{ node: 'leaf', first: 4, last: 5, visibility: 0.5 }]);
+  const laid = plan.steps.map((step) => step && (step.lay.kind === 'film' ? `${step.lay.layer} at ${step.opacity}` : step.lay.kind === 'card' && cardText(step.lay.films)));
+  // The hidden cel `down` and the view switched off cut no paper; `up` half shown counts half its coverage.
+  assert.deepEqual(laid, ['sky at 1', 'card of 0 × 0.5', 'up at 0.5', null, 'seat at 1', 'card of 0 × 1', 'leaf at 1']);
+  assert.deepEqual(plan.fades, [{ node: 'sitting', first: 4, last: 4, visibility: 0 }, { node: 'leaf', first: 5, last: 6, visibility: 0.5 }]);
 });
 
 test("a path mask's reveal moves its picture's key, never what it solves; a callback's reveal below 0 is refused at its frame", () => {

@@ -504,8 +504,10 @@ texel, or its paint centres on its pivot). One whose group owns its sheet is
 drawn as pieces: a cel layer of its shown cels (`paint-rig-cel-layer.ts`), cut by ownership and posed through
 three.js meshes into colour and motion (`studio/shot-rig-pieces.ts`); any other rig poses its cels' marks before the
 solve, a skinned cel by its skin mesh, its pose named by its skin's key (its rest cels' readback keys) as well as
-every part's map, since every rest cel shapes the mesh. A hidden cel stays in its sheet's program and isn't laid, so a cel swap
-re-solves nothing; a card is cut round its sheet's shown films alone, its edge their union, as a pieces rig's is.
+every part's map, since every rest cel shapes the mesh. A hidden cel stays in its sheet's program and isn't laid, so a
+cel swap re-solves nothing. A card is cut round its sheet's films, each counted as far as it shows (its layer's
+visibility times its groups' below the owner; a cel a rig hides, not at all), so a view switched off takes its paper,
+as a pieces rig's hidden cels do.
 `studio/shot-renderer.ts` solves each painted plane once a frame (`studio/shot-painted-plane.ts`,
 through `painting-sheets-solve.ts`), each selection a dissolve blends on its own; then each exposure orders its drawables (`shot-plan.ts`) and plans each plane's
 moment purely (`shotPlaneLayPlan`, `shot-sheet-lays.ts`): its steps through lattices (`shot-lattice.ts`), its ground,
@@ -513,7 +515,7 @@ its pieces rigs posed, the spans of the occurrences faded apart, groups and own 
 key naming all of it. `studio/shot-sheets-lay.ts` lays it over `stamp-lattice-pass.ts`: ground, then each card and
 film where its owners and the plane's place put it, a pieces rig's picture at its card by the compositor's
 `layPicture`, a faded group's or own sheet owner's span mixed back by its visibility, card and paint as one
-(`studio/shot-group-pass.ts`). The plane's picture is
+(`studio/shot-span-fade-pass.ts`). The plane's picture is
 the old renderer's pass (`painting/studio/stamp-plane-picture-pass.ts`), kept in the device's cache under the plan's
 key. A dissolve's selections are each laid, kept and blurred so, then summed by weight into a stage-sized picture
 (`studio/shot-dissolve-pass.ts`): every layer a plane's picture holds (opaque colour, colour and transmittance, glow,
@@ -658,8 +660,9 @@ reflection cut to the puddle and fading in; and the rain. Warmed, frames moving 
 visibility evaluate and solve nothing; the lamp's property step re-solves from the first entry the evaluation diff
 says it changes; the walker stepping back to a pose solves nothing; walking, the street's source reads a new moment
 each sixth frame while the walker re-solves every frame. The cards (`stamp-gate-cards.ts`) hold a collage card whose
-rigged figure hides its lying cel, drawing as the card painted without that cel, and a leaf owning its card faded
-halfway, lying between it shown and gone, and gone, drawing as the cards painted without it, with nothing solved.
+rigged figure hides its lying cel, and whose sitting view is switched off, each drawing as the card painted without
+it; and a leaf owning its card faded halfway, lying between it shown and gone, and gone, drawing as the cards painted
+without it, with nothing solved.
 Each shot's frame is a baseline (`shot/`) accepted by eye. `shot/page`
 (`stamp-gate-shot-dom-page.ts`) holds a shot's element on the page, scaled as a player shows it, and reads it through
 the DOM adapter: HTML behind the first canvas or not, a canvas in a wrapper at an identity transform refused; the

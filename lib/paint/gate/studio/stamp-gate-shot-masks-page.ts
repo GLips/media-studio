@@ -5,7 +5,7 @@
 
 import { CircleGeometry, Mesh, MeshBasicNodeMaterial, Scene } from 'three/webgpu';
 import type { ThreeSource } from '#lib/paint/shot/models/shot-props.ts';
-import { stampGateFrameDifference, stampGateFramePasses } from '../models/stamp-gate-frames.ts';
+import { stampGateFrameDifference, stampGateFrameDifferenceText as differenceText, stampGateFramePasses } from '../models/stamp-gate-frames.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import {
   STAMP_GATE_MASKS_AT, STAMP_GATE_MASKS_DISC, STAMP_GATE_MASKS_WING, stampGateLaidShare, stampGateMaskDiscBox, stampGateMaskDiscCentre, stampGateMaskedShot, stampGateNearDiscCentre, stampGateRevealSplit,
@@ -14,8 +14,6 @@ import {
 } from '../models/stamp-gate-shot-masks.ts';
 import { stampGateRgb } from './stamp-gate-page-surface.ts';
 import { stampGateShotFrames, stampGateSolvedText } from './stamp-gate-shot-frames.ts';
-
-const differenceText = (d: ReturnType<typeof stampGateFrameDifference>) => `max ${d.max}, mean ${d.mean.toFixed(4)}`;
 
 /** The masked shot as `shown` says, drawn at scene seconds `times`: each frame's RGB bytes, and its costs. */
 async function maskedFrames(shown: StampGateMaskedShot, times: readonly number[]) {

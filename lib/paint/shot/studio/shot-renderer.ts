@@ -34,7 +34,7 @@ import { shotDrawSteps, shotExposureItems, type CompiledShotInstancedPlane, type
 import { shotDrawableOrder } from '../models/shot-plan.ts';
 import type { ShotMomentAt } from '../models/shot-sheet-lays.ts';
 import { shotWarmCombinations, shotWarmFrames, shotWarmPastScene } from '../models/shot-warm.ts';
-import { createShotGroupFade } from './shot-group-pass.ts';
+import { createShotSpanFade } from './shot-span-fade-pass.ts';
 import { shotItemsCoverages, shotItemsLayer, type ShotItemsCoverage } from './shot-instance-passes.ts';
 import { createShotPaintedPlanes, type ShotPlaneMoment, type ShotPlaneSolved, type ShotSourceRead } from './shot-painted-plane.ts';
 import { createShotPaintedTextures } from './shot-painted-textures.ts';
@@ -151,7 +151,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
     const sources = new Map<string, StampLensSource>([...(three?.sources ?? []), ...pictures.sources]);
     const piecesDrawer = [...shot.rigs.values()].some(({ pieces }) => pieces) ? await createShotRigPiecesDrawer(owner, stage) : null;
     if (piecesDrawer) made.push(piecesDrawer);
-    const layer = createShotSheetsLayer(owner, { stage, arena, fade: createShotGroupFade(owner, arena) });
+    const layer = createShotSheetsLayer(owner, { stage, arena, fade: createShotSpanFade(owner, arena) });
     const planes = createShotPaintedPlanes(owner, { shot, stage, brushOf, costs, arena, layer, rigPictures: createShotRigPictures(owner, costs), piecesDrawer });
     made.push(planes);
     const canvases = surfaces.map((surface, index) => {

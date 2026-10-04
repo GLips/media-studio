@@ -41,9 +41,9 @@ export type StampSheetsComposite = { sheets: readonly StampSheetLaid[]; steps: r
 type StampSheetEdgeNote = { box: StampPointBox };
 const edgeStores = new WeakMap<StampPaintGpuOwner, StampGpuCacheStore<StampSheetEdgeNote>>();
 
-const STAMP_SHEET_EDGE = gpuUniformLayout('EdgeFilm', [['origin', 'vec2u'], ['extent', 'vec2u']]);
-// One film's coverage joined into its sheet's union by max: the film's texel 0 is its box's first, laid at `origin`
-// of the union's box.
+const STAMP_SHEET_EDGE = gpuUniformLayout('EdgeFilm', [['origin', 'vec2u'], ['extent', 'vec2u'], ['shown', 'f32']]);
+// One film's coverage, times how much it shows, joined into its sheet's union by max: the film's texel 0 is its box's
+// first, laid at `origin` of the union's box.
 const EDGE_WGSL = /* wgsl */ `
 ${STAMP_SHEET_EDGE.wgsl}
 @group(0) @binding(0) var<uniform> u: EdgeFilm;
@@ -52,27 +52,30 @@ ${STAMP_SHEET_EDGE.wgsl}
 @compute @workgroup_size(${STAMP_WORKGROUP}, ${STAMP_WORKGROUP}) fn join(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
   let at = u.origin + id.xy;
-  textureStore(edge, at, vec4f(max(textureLoad(edge, at).r, max(textureLoad(film, id.xy, 0, 0).x, 0.0))));
+  textureStore(edge, at, vec4f(max(textureLoad(edge, at).r, u.shown * max(textureLoad(film, id.xy, 0, 0).x, 0.0))));
 }`;
 
 /** A sheet's edge as a card reads it: the union of its films' coverage (r32float) over `box`, painting points. */
 export type StampSheetEdge = { view: GPUTextureView; box: StampPointBox };
 
+/** A film a card is cut round, and how much of its coverage the card counts (0..1; 1 for all of it). */
+export type StampSheetEdgeFilm = { readonly film: StampSheetFilmKept; readonly shown: number };
+
 /**
- * The union of `films`' coverage, used by `encoder`'s work: kept under their keys, so a sheet whose films haven't
- * changed joins them no more. Null for films painted nowhere.
+ * The union of `films`' coverage, each times how much it shows, used by `encoder`'s work: kept under their keys and
+ * shares, so a sheet whose films haven't changed joins them no more. Null for films painted nowhere.
  */
-export function stampSheetEdge(owner: StampPaintGpuOwner, device: StampPaintDevice, encoder: GPUCommandEncoder, arena: StampUniformArena, films: readonly StampSheetFilmKept[]): StampSheetEdge | null {
-  const box = films.reduce<StampPointBox | null>((union, { box: painted }) => stampBoxUnion(union, painted), null);
+export function stampSheetEdge(owner: StampPaintGpuOwner, device: StampPaintDevice, encoder: GPUCommandEncoder, arena: StampUniformArena, films: readonly StampSheetEdgeFilm[]): StampSheetEdge | null {
+  const box = films.reduce<StampPointBox | null>((union, { film }) => stampBoxUnion(union, film.box), null);
   if (!box) return null;
   let store = edgeStores.get(owner);
   if (!store) edgeStores.set(owner, (store = owner.cache.store<StampSheetEdgeNote>('edge')));
-  const key = films.map((film) => film.key).join('+'), found = store.find(key, encoder);
+  const key = films.map(({ film, shown }) => `${film.key}*${shown}`).join('+'), found = store.find(key, encoder);
   if (found) return { view: found.textures[0].createView(), box: found.note.box };
   const usage = GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING;
   const [texture] = store.make(key, encoder, [{ width: box.w, height: box.h, layers: 1, format: 'r32float', usage }], { box }).textures;
   const view = texture.createView(), join = device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code: EDGE_WGSL }) } });
-  for (const film of films) {
+  for (const { film, shown } of films) {
     if (!film.box) continue;
     const kept = keptStampSheetFilm(owner, film, encoder)!, { x, y, w, h } = film.box;
     dispatchStampCompute(device, encoder, join, [
@@ -80,6 +83,7 @@ export function stampSheetEdge(owner: StampPaintGpuOwner, device: StampPaintDevi
         const put = gpuUniformWriter(STAMP_SHEET_EDGE, views);
         put('origin', [x - box.x, y - box.y]);
         put('extent', [w, h]);
+        put('shown', shown);
       }),
       kept.createView({ dimension: '2d-array' }), view,
     ], w, h);
@@ -155,7 +159,7 @@ function encodeStampSheetsSteps(
   for (const step of composite.steps) {
     const { films, place } = composite.sheets[step.sheet], rest = rests[step.sheet];
     if (step.kind === 'card') {
-      const edge = stampSheetEdge(owner, device, encoder, arena, films), edgeBox = edge && stampStageTexelsOf(stage, edge.box);
+      const edge = stampSheetEdge(owner, device, encoder, arena, films.map((film) => ({ film, shown: 1 }))), edgeBox = edge && stampStageTexelsOf(stage, edge.box);
       const box = edgeBox && (place ? placedBox(stage, edgeBox, place) : edgeBox);
       if (edge && edgeBox && box) lays[step.sheet].layCard(encoder, { edge: edge.view, edgeBox, painting, box, rest });
       continue;

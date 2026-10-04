@@ -1,9 +1,9 @@
 // shot-sheet-lays.ts: how a painted plane lays its selection's sheets at one moment (ENGINE 5.3, 5.4, 6.2), purely.
 // Poses split at each sheet's owner: the owner's node and those enclosing it, then the plane's place, carry the sheet
 // whole; the nodes below it posed its marks before the solve, and a lattice carries the solved paint where they pose
-// it now. Each composite step becomes a lattice (a card over its sheet's shown films, a film over its paint); a sheet
-// drawn as pieces gives way to its pieces at its card. A faded group's or own sheet owner's span is mixed back by its
-// visibility. Masks lie where the plane does (ENGINE 6.3). The studio draws what shotPlaneLayPlan plans.
+// it now. Each composite step becomes a lattice (a card over its films as far as each shows, a film over its paint);
+// a sheet drawn as pieces gives way to its pieces at its card. A span faded apart is mixed back by its visibility.
+// Masks lie where the plane does (ENGINE 6.3). The studio draws what shotPlaneLayPlan plans.
 
 import { PAINT_SIMILARITY_IDENTITY, paintSimilarityBox, paintSimilarityInverse, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import type { NodeKey } from '#lib/paint/document/models/painting-document.ts';
@@ -59,22 +59,31 @@ export const shotSheetPlaceAt = (tree: PaintingTree, sheet: PaintingSheet, at: S
 export const shotLayerMarksAt = (tree: PaintingTree, layer: number, poses: PaintingPoses): PaintingNodePose => posedBy(shotLayerMarkKeys(tree, layer), poses);
 
 /**
+ * A film a card is cut round, and how much of its coverage the card counts, above 0: its layer's visibility times
+ * its groups' below the card's owner. The owner's own fade, and its enclosing groups', are its span's.
+ */
+export type ShotCardFilm = { readonly film: number; readonly shown: number };
+
+/**
  * How a step lays this moment: a card's paper over its sheet's `edge` (document px), cut round the sheet's films
- * `films` (those shown, painted somewhere); a film through its lattice; or a rig's pieces (`rig`, its group
+ * `films` (those showing, painted somewhere); a film through its lattice; or a rig's pieces (`rig`, its group
  * occurrence) in place of its group's sheet.
  */
 export type ShotStepLay =
-  | { readonly kind: 'card'; readonly sheet: number; readonly films: readonly number[]; readonly edge: StampBox; readonly lattice: ShotLattice }
+  | { readonly kind: 'card'; readonly sheet: number; readonly films: readonly ShotCardFilm[]; readonly edge: StampBox; readonly lattice: ShotLattice }
   | { readonly kind: 'film'; readonly sheet: number; readonly film: number; readonly layer: NodeKey; readonly lattice: ShotLattice }
   | { readonly kind: 'pieces'; readonly rig: string };
 
-/** A step as one moment lays it: its lay, a film's opacity (its layer's visibility) and the glow its layer gives. */
+/**
+ * A step as one moment lays it: its lay, a film's opacity and the glow its layer gives. A film's opacity is its
+ * layer's visibility, or 1 where its layer is faded apart, its own span fading it.
+ */
 export type ShotStepFrame = { readonly lay: ShotStepLay; readonly opacity: number; readonly glow: StampGroupGlow | null };
 
 /**
- * What a selection's lay at one moment reads: its compile; each film's painted box, document px (null: painted
- * nowhere); the poses its marks were solved under; the plane at the moment and the shutter's ends (null: none);
- * groups drawn as pieces, by key to their rig's occurrence; and cels a marks rig hides (shotRigHiddenCels).
+ * What a selection's lay at one moment reads: its compile; each film's painted box, document px (null: nowhere); the
+ * poses its marks were solved under; the plane at the moment and the shutter's ends (null: none); groups drawn as
+ * pieces, by key to their rig's occurrence; cels a marks rig hides (shotRigHiddenCels); each node's own visibility.
  */
 export type ShotSelectionLayInput = {
   readonly compiled: PaintingSelectionCompiled;
@@ -84,14 +93,15 @@ export type ShotSelectionLayInput = {
   readonly shutter: ShotShutterAt<ShotPlaneAt>;
   readonly pieces: ReadonlyMap<NodeKey, string>;
   readonly hidden: ReadonlySet<NodeKey>;
+  readonly visibilityOf: (node: NodeKey) => number;
 };
 
 /**
  * Each of the selection's steps as it lays at `input.at`: null for one with nothing to lay (a film painted nowhere, a
- * card of no shown paint, a step a rig's pieces stand in for, or one in a hidden cel). A card is cut round its sheet's
- * shown films; a pieces group's card is where its pieces go.
+ * card of no paint showing, a step a rig's pieces stand in for, or one in a hidden cel). A card is cut round each
+ * film as far as it shows; a pieces group's card lays its pieces.
  */
-export function shotSelectionStepLays({ compiled, filmBoxes, solved, at, shutter, pieces, hidden }: ShotSelectionLayInput): (ShotStepLay | null)[] {
+export function shotSelectionStepLays({ compiled, filmBoxes, solved, at, shutter, pieces, hidden, visibilityOf }: ShotSelectionLayInput): (ShotStepLay | null)[] {
   const { tree, sheets, steps } = compiled;
   const placeOf = (s: number) => {
     const { sheet } = sheets[s], place = (moment: ShotPlaneAt) => shotSheetPlaceAt(tree, sheet, moment);
@@ -106,8 +116,14 @@ export function shotSelectionStepLays({ compiled, filmBoxes, solved, at, shutter
     if (group !== undefined) return step.kind === 'card' && sheet.owner === group ? { kind: 'pieces', rig: pieces.get(group)! } : null;
     const placed = placeOf(step.sheet);
     if (step.kind === 'card') {
-      const films = sheets[step.sheet].layers.flatMap((layer, f) => (filmBoxes[step.sheet][f] && !unseen(tree.layers[layer].node.key) ? [f] : []));
-      const edge = films.reduce<StampBox | undefined>((union, f) => paintingBoxUnion(union, filmBoxes[step.sheet][f]!), undefined);
+      // A film counts as far as it shows, so a view switched off takes its paper as a hidden cel does, and one fading
+      // thins the paper its paint alone cut.
+      const films = sheets[step.sheet].layers.flatMap((layer, f): ShotCardFilm[] => {
+        if (!filmBoxes[step.sheet][f] || unseen(tree.layers[layer].node.key)) return [];
+        const shown = shotLayerMarkKeys(tree, layer).reduce((product, key) => product * visibilityOf(key), 1);
+        return shown > 0 ? [{ film: f, shown }] : [];
+      });
+      const edge = films.reduce<StampBox | undefined>((union, { film }) => paintingBoxUnion(union, filmBoxes[step.sheet][film]!), undefined);
       return edge ? { kind: 'card', sheet: step.sheet, films, edge, lattice: shotPlacedLattice(edge, placed.at, placed.shutter) } : null;
     }
     const box = filmBoxes[step.sheet][step.film];
@@ -325,22 +341,22 @@ export function shotPlaneLayPlan(input: ShotPlaneLayInput, moment: ShotMomentAt)
   const piecesRigs = rigs.filter(({ rig }) => rig.pieces);
   const pieces = piecesRigs.map((found) => shotPiecesPlan(input, found, moment, atMoment, shutterAt));
 
+  // What's inside a pieces rig shows whole or not at all in its pictures: it isn't composited apart.
+  const fadable = plane.occurrences.filter((occurrence) => !piecesRigs.some(({ rig }) => occurrence.groups.includes(rig.occurrence)));
+  const owners = new Set(compiled.sheets.flatMap(({ sheet: { owner } }) => (owner === null ? [] : [owner])));
+  const apart = shotFadedApart(fadable, visibilityOf, owners), fades = shotFadeSpans(compiled, apart);
+
   const hidden = new Set(rigs.filter(({ rig }) => !rig.pieces).flatMap(({ rig }) => shotRigHiddenCels(rig, read(rig, at).pose)));
   const filmBoxes = films.map((sheet) => sheet.map(({ box }): StampBox | null => box && { x0: box.x, y0: box.y, x1: box.x + box.w, y1: box.y + box.h }));
-  const lays = shotSelectionStepLays({ compiled, filmBoxes, solved, at: atMoment, shutter: shutterAt, pieces: new Map(piecesRigs.map(({ rig }) => [rig.group, rig.occurrence])), hidden });
-  // A layer owning its sheet is faded by its span, card and film as one: its film lays whole inside it.
-  const owners = new Set(compiled.sheets.flatMap(({ sheet: { owner } }) => (owner === null ? [] : [owner])));
+  const lays = shotSelectionStepLays({
+    compiled, filmBoxes, solved, at: atMoment, shutter: shutterAt, pieces: new Map(piecesRigs.map(({ rig }) => [rig.group, rig.occurrence])), hidden, visibilityOf,
+  });
   const steps = lays.map((lay): ShotStepFrame | null => {
     if (!lay) return null;
     if (lay.kind !== 'film') return { lay, opacity: 1, glow: null };
     const nearest = motion.nearest.get(shotOccurrenceKey(plane.id, lay.layer));
-    return { lay, opacity: owners.has(lay.layer) ? 1 : visibilityOf(lay.layer), glow: (nearest !== undefined && motion.nodes.get(nearest)?.glow) || null };
+    return { lay, opacity: apart.has(lay.layer) ? 1 : visibilityOf(lay.layer), glow: (nearest !== undefined && motion.nodes.get(nearest)?.glow) || null };
   });
-
-  // What's inside a pieces rig shows whole or not at all in its pictures: it isn't composited apart.
-  const fadable = plane.occurrences.filter((occurrence) => !piecesRigs.some(({ rig }) => occurrence.groups.includes(rig.occurrence)));
-  const fadableVisibility = new Map(fadable.map(({ key, node }) => [key, visibilityOf(node)]));
-  const fades = shotFadeSpans(compiled, new Map(shotFadedApart(fadable, fadableVisibility, owners).map(({ key, node }) => [node, fadableVisibility.get(key)!])));
 
   const { widthPx, heightPx } = selection.painting.document, groundKind = selection.ground ?? (plane.opaqueBack ? 'paper' : 'transparent');
   let ground: ShotGroundLay = null;
@@ -361,7 +377,7 @@ export function shotPlaneLayPlan(input: ShotPlaneLayInput, moment: ShotMomentAt)
   // the pictures. A path mask's subpaths and band are its plane's, the same all shot.
   const key = JSON.stringify([
     plane.id, plane.opaqueBack, compileId(compiled), films.map((sheet) => sheet.map((film) => film.key)), posesText(solved), planeAtText(atMoment),
-    shutterAt && [planeAtText(shutterAt.open), planeAtText(shutterAt.close)], [...hidden], steps.map((step) => step && [step.opacity, step.glow]), fades,
+    shutterAt && [planeAtText(shutterAt.open), planeAtText(shutterAt.close)], [...hidden], steps.map((step) => step && [step.opacity, step.glow, step.lay.kind === 'card' && step.lay.films]), fades,
     ground && (ground.kind === 'stage' ? 'stage' : ground.box), pieces.map((each) => [
       each.rig.occurrence, each.shown, each.steps, [...each.layers], piecesPoseText(each.at), each.shutter && [piecesPoseText(each.shutter.open), piecesPoseText(each.shutter.close)],
     ]), masks.map((mask) => (mask.kind === 'path' ? mask.revealPx : [mask.drawable, mask.invert])), reads.map(({ drawable }) => drawable), visibility, emits, travels,

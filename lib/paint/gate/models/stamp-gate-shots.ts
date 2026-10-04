@@ -18,7 +18,8 @@ import { stampCanonicalJson, type StampCanonicalDatum } from '#lib/paint/paintin
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import type { PaintedShotProps, RigPart, RigPartPose, ScreenPin } from '#lib/paint/shot/models/shot-props.ts';
 import { dissolve } from '#lib/paint/shot/models/shot-selection.ts';
-import { STAMP_GATE_CARDS, STAMP_GATE_CARDS_AT, STAMP_GATE_CARDS_LEAF, stampGateCardParts, stampGateCardsShot } from './stamp-gate-cards.ts';
+import { STAMP_GATE_CARDS, STAMP_GATE_CARDS_AT, STAMP_GATE_CARDS_LEAF, STAMP_GATE_CARDS_SITTING, stampGateCardParts, stampGateCardsShot } from './stamp-gate-cards.ts';
+import { STAMP_GATE_FRAME_TOLERANCE } from './stamp-gate-frames.ts';
 import {
   STAMP_GATE_HERON_BODY, STAMP_GATE_HERON_MIXES, STAMP_GATE_HERON_MOVE, STAMP_GATE_HERON_VANE, stampGateHeronLayer, stampGateInsidePolygon, stampGateHeronPaper, stampGateHeronPolygon,
   stampGatePaperHeronDocument, type StampGateHeronMixes,
@@ -38,7 +39,7 @@ export type StampGateShotId = (typeof STAMP_GATE_SHOT_IDS)[number];
 /**
  * The shot cases checked apart from any sheet case, each a page's checks of its shot's frames: the rain's items, a
  * dissolve drawn between its ends, a rigged one posed between its ends, a span warmed, the masked shot's cuts, the
- * rainy street's cost report, and the cards' hidden cel and fading owner.
+ * rainy street's cost report, and the cards' hidden cel, switched-off view and fading owner.
  */
 export const STAMP_GATE_SHOT_CASE_IDS = ['shot/rain', 'shot/dissolve', 'shot/rigged-dissolve', 'shot/warm', ...STAMP_GATE_SHOT_MASK_IDS, 'shot/rainy-street', 'shot/cards'] as const;
 export type StampGateShotCaseId = (typeof STAMP_GATE_SHOT_CASE_IDS)[number];
@@ -377,7 +378,7 @@ const SHOT_BASELINES: Readonly<Record<StampGateShotId, {
     shot: stampGateRainyStreetShot, at: STAMP_GATE_RAINY_STREET_AT.baseline, evaluations: stampGateRainyStreetEvaluations, rigs: {}, poses: [], extra: STAMP_GATE_RAINY_STREET_PRESENTATION,
   },
   'shot/cards': {
-    shot: stampGateCardsShot, at: STAMP_GATE_CARDS_AT.faded, evaluations: () => [painting(STAMP_GATE_CARDS)], rigs: { figure: stampGateCardParts(true) }, poses: [], extra: { leaf: STAMP_GATE_CARDS_LEAF },
+    shot: stampGateCardsShot, at: STAMP_GATE_CARDS_AT.faded, evaluations: () => [painting(STAMP_GATE_CARDS)], rigs: { figure: stampGateCardParts(true) }, poses: [], extra: { leaf: STAMP_GATE_CARDS_LEAF, sitting: STAMP_GATE_CARDS_SITTING },
   },
 };
 
@@ -447,6 +448,13 @@ export function stampGateFadeBetween(shown: ArrayLike<number>, faded: ArrayLike<
   }
   return { outside, apart, between };
 }
+
+/**
+ * Whether a fade's middle frame lies between its ends (stampGateFadeBetween's count): within the frame tolerance
+ * outside them everywhere, and inside them in every channel they differ in.
+ */
+export const stampGateFadeLiesBetween = ({ outside, apart, between }: ReturnType<typeof stampGateFadeBetween>) =>
+  outside <= STAMP_GATE_FRAME_TOLERANCE.max && apart > 0 && between === apart;
 
 /** The box of `width`-px-wide RGB frames `a` and `b`'s pixels differing past 2 levels, frame px, end exclusive; null where none do. */
 export function stampGateDifferenceBox(a: ArrayLike<number>, b: ArrayLike<number>, width: number): { x0: number; y0: number; x1: number; y1: number } | null {

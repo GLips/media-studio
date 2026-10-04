@@ -7,7 +7,7 @@
 
 import type { StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { STAMP_GATE_CARDS_AT, stampGateCardsShot } from '../models/stamp-gate-cards.ts';
-import { STAMP_GATE_FRAME_TOLERANCE, stampGateFrameDifference, type StampGateFrameDifference } from '../models/stamp-gate-frames.ts';
+import { STAMP_GATE_FRAME_TOLERANCE, stampGateFrameDifference, stampGateFrameDifferenceText, stampGateFramePasses } from '../models/stamp-gate-frames.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { STAMP_GATE_HERON_MOVE, stampGateHighPass, stampGatePeakShift } from '../models/stamp-gate-paper-heron.ts';
 import { STAMP_GATE_LONE_DROP_AT, STAMP_GATE_LONE_DROP_TRAVEL, STAMP_GATE_RAIN, stampGateLoneDropShot, stampGateRainShot } from '../models/stamp-gate-rain.ts';
@@ -15,9 +15,9 @@ import { STAMP_GATE_FAR_SHALLOWS } from '../models/stamp-gate-sheets.ts';
 import {
   STAMP_GATE_DISSOLVE_AT, STAMP_GATE_HERON_BOIL_AT, STAMP_GATE_HERON_NECKS, STAMP_GATE_HIDDEN_FOOT_AT, STAMP_GATE_PAINTING_IN_AT, STAMP_GATE_RIGGED_DISSOLVE_AT,
   STAMP_GATE_RIGGED_HERON_AT, STAMP_GATE_WARM, STAMP_GATE_WARMED_AT, STAMP_GATE_WET_CONTACT_AT, stampGateBoilingHeronShot, stampGateDifferenceBox, stampGateDissolveShot,
-  stampGateFadeBetween, stampGateHiddenFootShot, stampGateReedSwung, stampGateRiggedDissolveShot, stampGateRiggedDissolveSources, stampGateRiggedHeronShot,
-  stampGateRiggedHeronWindows, stampGateShallowsAloneShot, stampGateShotBaseline, stampGateWarmShot, stampGateWetContactPaintingInShot, stampGateWetContactShot,
-  type StampGateShotCaseId, type StampGateShotId,
+  stampGateFadeBetween, stampGateFadeLiesBetween, stampGateHiddenFootShot, stampGateReedSwung, stampGateRiggedDissolveShot, stampGateRiggedDissolveSources,
+  stampGateRiggedHeronShot, stampGateRiggedHeronWindows, stampGateShallowsAloneShot, stampGateShotBaseline, stampGateWarmShot, stampGateWetContactPaintingInShot,
+  stampGateWetContactShot, type StampGateShotCaseId, type StampGateShotId,
 } from '../models/stamp-gate-shots.ts';
 import { stampGateRgb, stampGateRgbBase64 } from './stamp-gate-page-surface.ts';
 import { stampGateShotFrames, stampGateSolvedText as solvedText } from './stamp-gate-shot-frames.ts';
@@ -61,7 +61,7 @@ export async function checkStampGateRiggedHeron(): Promise<StampGateWashCheck[]>
       detail: `the lowered neck shown changed ${boxText(swap)} (within ${boxText(necks)} wanted) and solved ${swapSolves.join(', ') || 'nothing'}`,
     },
     {
-      id: `${id}: group fade`, passed: fade.outside <= STAMP_GATE_FRAME_TOLERANCE.max && fade.apart > 0 && fade.between === fade.apart && !fadeSolves.length,
+      id: `${id}: group fade`, passed: stampGateFadeLiesBetween(fade) && !fadeSolves.length,
       detail: `the heron faded halfway strays ${fade.outside} levels outside it shown and hidden (${STAMP_GATE_FRAME_TOLERANCE.max} allowed), lies between them in ${fade.between} of the ${fade.apart} channels they differ in, and solved ${fadeSolves.join(', ') || 'nothing'}`,
     },
     {
@@ -153,7 +153,7 @@ async function checkStampGateRain(): Promise<StampGateWashCheck[]> {
 function dissolveHalfway(id: string, what: string, ends: readonly [Uint8ClampedArray, Uint8ClampedArray], between: Uint8ClampedArray): StampGateWashCheck {
   const lies = stampGateFadeBetween(stampGateRgb(ends[0]), stampGateRgb(between), stampGateRgb(ends[1]));
   return {
-    id, passed: lies.outside <= STAMP_GATE_FRAME_TOLERANCE.max && lies.apart > 0 && lies.between === lies.apart,
+    id, passed: stampGateFadeLiesBetween(lies),
     detail: `halfway, ${what} strays ${lies.outside} levels outside its two ends (${STAMP_GATE_FRAME_TOLERANCE.max} allowed), and lies between them in ${lies.between} of the ${lies.apart} channels they differ in`,
   };
 }
@@ -234,29 +234,34 @@ async function checkWarm(): Promise<StampGateWashCheck[]> {
   }];
 }
 
-const differenceText = ({ max, mean }: StampGateFrameDifference) => `max ${max}, mean ${mean.toFixed(4)}`;
+/** The cards shot painted as `painted` says, its one frame at scene second `at` as RGB bytes. */
+const cardsFrame = async (painted: Parameters<typeof stampGateCardsShot>[0], at: number) => stampGateRgb((await stampGateShotFrames(stampGateCardsShot(painted), [at])).frames[0]);
 
 /**
- * shot/cards: the collage card's hidden cel takes no paper, the card lying as it does with no such cel painted; the
- * leaf owning its card fades card and paint as one, halfway between shown and gone in every channel they differ in,
- * and gone, lying as the cards do painted without it; neither fade solves anything.
+ * shot/cards: the collage's hidden cel and its view switched off take no paper, each drawing as the card painted
+ * without it, and the view shown changes the frame; the leaf owning its card fades card and paint as one, halfway
+ * between shown and gone in every channel they differ in, gone drawing as the cards without it, solving nothing.
  */
 async function checkCards(): Promise<StampGateWashCheck[]> {
-  const { shown, faded, gone } = STAMP_GATE_CARDS_AT;
-  const { frames: [atShown, atFaded, atGone], costs: taken } = await stampGateShotFrames(stampGateCardsShot(), [shown, faded, gone]);
-  const { frames: [noDown] } = await stampGateShotFrames(stampGateCardsShot({ down: false }), [shown]);
-  const { frames: [noLeaf] } = await stampGateShotFrames(stampGateCardsShot({ leaf: false }), [gone]);
-  const hiddenCel = stampGateFrameDifference(stampGateRgb(atShown), stampGateRgb(noDown)), left = stampGateFrameDifference(stampGateRgb(atGone), stampGateRgb(noLeaf));
-  const fade = stampGateFadeBetween(stampGateRgb(atShown), stampGateRgb(atFaded), stampGateRgb(atGone)), fadeSolves = taken.slice(1).flatMap(solvedText);
-  const tolerance = STAMP_GATE_FRAME_TOLERANCE.max;
+  const { shown, faded, gone, sitting } = STAMP_GATE_CARDS_AT;
+  const { frames: [atShown, atFaded, atGone, atSitting], costs: taken } = await stampGateShotFrames(stampGateCardsShot(), [shown, faded, gone, sitting]);
+  const [noDown, noSitting, noLeaf] = [await cardsFrame({ down: false }, shown), await cardsFrame({ sitting: false }, shown), await cardsFrame({ leaf: false }, gone)];
+  const hiddenCel = stampGateFrameDifference(stampGateRgb(atShown), noDown), viewOff = stampGateFrameDifference(stampGateRgb(atShown), noSitting);
+  const { width } = stampGateCardsShot().camera.stage.frame, viewShown = stampGateDifferenceBox(stampGateRgb(atGone), stampGateRgb(atSitting), width);
+  const left = stampGateFrameDifference(stampGateRgb(atGone), noLeaf), fade = stampGateFadeBetween(stampGateRgb(atShown), stampGateRgb(atFaded), stampGateRgb(atGone));
+  const fadeSolves = taken.slice(1).flatMap(solvedText), allowed = `${STAMP_GATE_FRAME_TOLERANCE.max} levels allowed`;
   return [
     {
-      id: 'shot/cards: hidden cel', passed: hiddenCel.max <= tolerance,
-      detail: `the collage with its lying cel hidden lies ${differenceText(hiddenCel)} from it painted without that cel (${tolerance} allowed)`,
+      id: 'shot/cards: hidden cel', passed: stampGateFramePasses(hiddenCel),
+      detail: `the collage with its lying cel hidden lies ${stampGateFrameDifferenceText(hiddenCel)} from it painted without that cel (${allowed})`,
     },
     {
-      id: 'shot/cards: owner fade', passed: fade.outside <= tolerance && fade.apart > 0 && fade.between === fade.apart && left.max <= tolerance && !fadeSolves.length,
-      detail: `the leaf faded halfway strays ${fade.outside} levels outside it shown and gone (${tolerance} allowed) and lies between them in ${fade.between} of the ${fade.apart} channels they differ in; gone, it lies ${differenceText(left)} from the cards painted without it; fading solved ${fadeSolves.join(', ') || 'nothing'}`,
+      id: 'shot/cards: view off', passed: stampGateFramePasses(viewOff) && !!viewShown,
+      detail: `the collage with its sitting view switched off lies ${stampGateFrameDifferenceText(viewOff)} from it painted without the view (${allowed}); switched on, the view changed ${boxText(viewShown)}`,
+    },
+    {
+      id: 'shot/cards: owner fade', passed: stampGateFadeLiesBetween(fade) && stampGateFramePasses(left) && !fadeSolves.length,
+      detail: `the leaf faded halfway strays ${fade.outside} levels outside it shown and gone (${allowed}) and lies between them in ${fade.between} of the ${fade.apart} channels they differ in; gone, it lies ${stampGateFrameDifferenceText(left)} from the cards painted without it; fading solved ${fadeSolves.join(', ') || 'nothing'}`,
     },
   ];
 }

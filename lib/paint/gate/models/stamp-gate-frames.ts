@@ -27,6 +27,9 @@ export function stampGateFrameDifference(a: ArrayLike<number>, b: ArrayLike<numb
 
 export const stampGateFramePasses = (d: StampGateFrameDifference) => d.max <= STAMP_GATE_FRAME_TOLERANCE.max && d.mean <= STAMP_GATE_FRAME_TOLERANCE.mean;
 
+/** A difference as a check's detail reads it: its largest channel's levels and its mean. */
+export const stampGateFrameDifferenceText = ({ max, mean }: StampGateFrameDifference) => `max ${max}, mean ${mean.toFixed(4)}`;
+
 /** Two frames' difference as RGB bytes, 8 times over on white, so a level's difference shows. */
 export function stampGateFrameDiffImage(a: ArrayLike<number>, b: ArrayLike<number>): Uint8Array {
   return Uint8Array.from({ length: a.length }, (_, i) => Math.max(0, 255 - 8 * Math.abs(a[i] - b[i])));
