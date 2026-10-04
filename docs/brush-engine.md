@@ -494,9 +494,11 @@ key. A dissolve's selections are each laid, kept and blurred so, then summed by 
 (`studio/shot-dissolve-pass.ts`): every layer a plane's picture holds (opaque colour, colour and transmittance, glow,
 motion) is linear in what's laid, so the sum is the dissolve, never a pigment mix. Its ends paint one document size
 on one ground, and a rig on its plane is refused: pieces draw at once, and a rig is found over one selection. Picture
-and three planes are the old path's sources, laid through `stamp-lens-source-layers.ts`; they read no painted
-textures yet. An instanced plane (`shot-instances.ts`) reads its items at the exposure's moment and its
-shutter's ends, pairs them by key and looks each through the camera at its own depth. Each variant is compiled, solved
+and three planes are the old path's sources, laid through `stamp-lens-source-layers.ts`. Three planes read the shot's
+painted textures (`studio/shot-painted-textures.ts`): made by `createShotPaintedTextures` before
+`loadPaintedThreeSources` when the shot has a three plane and released after it, drawn by the loader's hook at each
+frame's moment before its sources render, and solved at each warm frame after the planes. An instanced plane
+(`shot-instances.ts`) reads its items at the exposure's moment and its shutter's ends, pairs them by key and looks each through the camera at its own depth. Each variant is compiled, solved
 and laid as a painted plane is, still and centred on the stage, its picture kept under its plan's key; an item whose
 blur would spread it past the stage round its document is refused as the frame reads it. A batch of items (one
 variant, one stepped sigma) lays that picture, blurred in its own px, through each item's view as the lens's items
@@ -537,15 +539,18 @@ evaluations a callback source makes or finds memoised are the change in `paintin
 synchronous read. The cost report's counts are painting's (`painting/models/stamp-paint-costs.ts`, one set of names the document,
 solver, caches and shot all count into); the shot logs a frame's and a warm's under its labels
 (`shot-cost-report.ts`) through `picture/profiling`'s costs channel, which knows nothing of paint, so
-`studio profile --costs` tables any drawing's counts. Its painted textures (ENGINE 6.3) are compiled in
+`studio profile --costs` tables any drawing's counts. Its painted textures (ENGINE 6.3) are compiled with its planes
+by `compilePaintedShot`, their problems reported beside the planes', onto `CompiledPaintedShot.paintedTextures`, in
 `shot-painted-texture-compile.ts` (`compileShotPaintedTextures`: an id each, whole px, each source at moment 0 as a
 plane's is, never on a transparent ground, never blending paintings that wrap otherwise than each other; how it
 wraps held from moment 0, a callback's source checked again each frame by `compiledPaintedTextureSourceAt`) and the
 compiled ones drawn by `studio/shot-painted-textures.ts` (`createShotPaintedTextures`, the handles
 `loadPaintedThreeSources` reads, each saying how it wraps, resampled through a sampler repeating as it does): each
 selection a texture's source reads at the moment solved, laid on its paper at its document's size, box-resampled to
-the texture's, summed by its dissolve weight in linear light, then gamma-encoded; a texture whose selections and
-weights haven't changed isn't drawn again. Painted textures have no mipmaps.
+the texture's, summed by its dissolve weight in linear light, then gamma-encoded. A texture whose selections and
+weights haven't changed isn't solved again, and one whose solves keep the films it was last laid from (their sheet keys,
+finished or open) isn't laid again, so a timed painting's frames between two landings lay one prefix once. A warm
+solves each texture at each warm frame reading other than the last, laying nothing. Painted textures have no mipmaps.
 
 **procreate-brushes** reads a Procreate brush's settings into a `StampBrush` (`procreate-brush.ts`, by the constants
 of `procreate-reading.ts`), and the stroke Procreate draws its previews along. Its `engine/` reads binary plists and
@@ -618,8 +623,14 @@ above the texture laid flat at 2 px a texel and rolled half its width; and `text
 both ways, a flood, a bloom and a crossed band across both seams and the corner, drawn at half its size, laid flat 2×2
 tiled with its seams in the middle, beside a three.js plane whose uv run to 2 each way. A case is a row of
 `STAMP_GATE_TEXTURE_CASES` (its texture, view, flat lay with its roll, seam axes and inputs; its frame and seam texels
-derived from them), the page adding only its three.js object. The family holds a texture itself, laid flat; the shot
-handing `paintedTextures` to its three sources is a `shot/` case's to hold. Frame families (solved sheets, shots, painted textures) are rows of `STAMP_GATE_FRAME_FAMILIES` in
+derived from them), the page adding only its three.js object. The family holds a texture itself, laid flat. A shot
+wearing one is a family of its own (`STAMP_GATE_SHOT_TEXTURE_CASES`, drawn by `paintStampGateShotTexture` through the
+shot's renderer): `shot/painted-cylinder`, a label wrapping x, a clocked flood across its seam and earth strokes timed
+at 1 s and 3 s, finished as the back plane and, through `paintedTextures`, round a cylinder in front, its seam to the
+camera, read at each frame's moment; drawn at 2 s and 4 s through one renderer and laid side by side, so the cylinder
+shows the first stroke, then both. Its checks (`checkStampGateShotTextureCase`): the 2 s frame solves the texture's own
+prefix beside the back's whole painting, the 4 s frame changes the cylinder and nothing else, and warmed over 2..4 s
+neither frame solves anything. Frame families (solved sheets, shots, painted textures) are rows of `STAMP_GATE_FRAME_FAMILIES` in
 `stamp-gate.ts`: IDs, page function, frame size and inputs, so a new family is one row. Pre-commit runs it on the staged tree when a
 path it covers changes; no adapter, a timeout
 or a difference fails the commit. Public baselines live in `harness/fixtures/stamp-paint/`, a pack's brushes' in

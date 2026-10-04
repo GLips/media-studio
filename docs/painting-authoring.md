@@ -25,11 +25,9 @@ their motion (nodes hang from their nearest enclosing node, a paintless group's 
 visibility, a group's fading all it holds as one; rigs (Composition), a cel swap re-solving nothing; instanced planes,
 many items sharing a few finished variants, each blurred along its own travel; path and `alphaOf` masks; per-plane
 `clock` and `sourceClock` holds; dissolves and `bracket`, each end solved and laid once and their pictures summed by
-weight; `warm`; and the cost report, each frame's and the warm's, in a profiling render. Painted textures for three.js
-objects are compiled and drawn for a three source
-(`compileShotPaintedTextures`, `createShotPaintedTextures`) but not yet handed one by a shot, so a shot naming
-`paintedTextures` is refused. **NEW** marks behaviour the brush engine (the recipe path, docs/brush-engine.md)
-lacks too; unmarked behaviour is how it already paints.
+weight; painted textures, paintings a three plane's objects wear, drawn at each frame's moment (Painted textures);
+`warm`; and the cost report, each frame's and the warm's, in a profiling render. **NEW** marks behaviour the brush
+engine (the recipe path, docs/brush-engine.md) lacks too; unmarked behaviour is how it already paints.
 
 ## The model
 
@@ -704,15 +702,97 @@ A three.js object wears a painting through the shot's `paintedTextures`: each `{
 its `source` any plane's painted source (`layersOf`, `bracket`, `dissolve`, or a callback of the moment). A texture
 is the selection laid on its paintings' paper at their document size, then resampled to `widthPx` × `heightPx`;
 match the two unless the object shows it smaller. It is opaque, so its selections stay on paper (no `ground:
-'transparent'`). A dissolve blends opaque colour in linear light, as a back plane's does. A build reads one by id:
+'transparent'`). A dissolve blends opaque colour in linear light, as a back plane's does. A callback is read at each
+frame's moment, before the three sources render, so the texture shows the frame's prefix as a plane's source does.
+
+A mug turning on a table, petals landing on its glaze as it turns. Its label wraps across x, so the seam never shows
+as it comes round, and its petals are timed applications. The label (`scenes/mug/mug-label.painting.ts`), its paper,
+brushes and mixes constants as in any source:
 
 ```ts
-build: ({ plane, textures }) => {
-  const material = new MeshBasicNodeMaterial();
-  material.colorNode = paintedThreeColorNode(textures.get('label')!);
-  …
+/** Scene seconds; the last, at 3.9 s, is centred on the seam, half on each edge. */
+const PETALS = [{ at: 1, x: 300, y: 150 }, { at: 2.5, x: 640, y: 230 }, { at: 3.9, x: 0, y: 180 }] as const;
+
+export default function mugLabel(): PaintingDocument {
+  return {
+    widthPx: 1024, heightPx: 384, wrap: 'x', paper: LABEL_PAPER, medium: 'watercolour', dryingScale: 0.025,
+    layers: [{
+      key: 'label',
+      washes: [{
+        key: 'glaze', clock: { origin: 0 },
+        applications: [
+          // From 600 past the right edge to 1500, back on the left to 476: its water crosses the seam. Narrower than the
+          // label, so its load doesn't jump where it meets itself; a bare stripe stays at 476..600.
+          { key: 'glaze', kind: 'fill', area: { region: { kind: 'polygon', rings: [[{ x: 600, y: 60 }, { x: 1500, y: 60 }, { x: 1500, y: 330 }, { x: 600, y: 330 }]] } },
+            brush: EVEN, diameterPx: 60, seed: 'glaze', charge: { kind: 'paint', mix: CELADON, water: 0.85 } },
+          ...PETALS.map(({ at, x, y }, i) => ({
+            key: `petal-${i}`, at, kind: 'stamps', placements: [{ x, y }], brush: ROUND, diameterPx: 44, seed: `petal-${i}`,
+            charge: { kind: 'paint', mix: ROSE, water: 0.7 },
+          }) as const),
+        ],
+      }],
+    }],
+  };
 }
 ```
+
+The scene's shot: the table as the back, the mug a three plane wearing the label, read at each frame's moment.
+
+```tsx
+import { CylinderGeometry, Mesh, MeshBasicNodeMaterial, Scene } from 'three/webgpu';
+import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
+import { layersOf, painting, paintedThreeColorNode, type PaintMoment, type PaintedShotProps } from '#studio';
+import mugLabel from './mug/mug-label.painting.ts';
+import * as table from './mug/table.painting.ts';
+
+const label = painting({ default: mugLabel });
+/** The label as painted by the moment: the glaze, and each petal landed by then. */
+const labelAt = ({ at }: PaintMoment) => layersOf(label, ['label'], { at });
+/** Round its middle the label's 1024 px, 384 px tall, so a texel is a frame px there. */
+const MUG = { radius: 163, height: 384 } as const;
+
+export const mugShot: PaintedShotProps = {
+  camera: { stage: stampStage({ width: 1280, height: 720 }, 2), fov: 30, lens: { bloom: 0, shutter: 1 / 48 }, plays: [] },
+  planes: [
+    { id: 'table', depth: 2, source: layersOf(painting(table), ['table']) },
+    {
+      id: 'mug', depth: 1,
+      source: {
+        kind: 'three',
+        build: ({ plane, textures }) => {
+          const material = new MeshBasicNodeMaterial();
+          material.colorNode = paintedThreeColorNode(textures.get('label')!);
+          const r = plane.length(MUG.radius), geometry = new CylinderGeometry(r, r, plane.length(MUG.height), 128, 1, true);
+          // Its front on the plane, its middle at the frame's.
+          const mesh = new Mesh(geometry, material), centre = plane.point({ x: 640, y: 360 });
+          mesh.position.set(centre.x, centre.y, centre.z - r);
+          const scene = new Scene();
+          scene.add(mesh);
+          return {
+            scene,
+            // A turn every 8 s: the seam (u 0) faces the camera at 0 s, the shutter blurring the turn.
+            poseAt: ({ at }) => {
+              mesh.rotation.y = (at / 8) * 2 * Math.PI;
+            },
+            dispose: () => {
+              geometry.dispose();
+              material.dispose();
+            },
+          };
+        },
+      },
+    },
+  ],
+  paintedTextures: [{ id: 'label', source: labelAt, widthPx: 1024, heightPx: 384 }],
+};
+```
+
+The glaze lands at 0 s and the petals at 1, 2.5 and 3.9 s, each into the glaze as wet as the sheet's `dryingScale`
+leaves it (Time). The last lands on the seam: a stamp by an edge lands by the other too, so it comes round whole.
+The label's sheet solves once a prefix, as a plane's does, and the texture is laid again only when its prefix changes:
+the frames between two landings show one lay. A shot's `warm` solves its textures with its planes, so frames in the
+span solve nothing. The gate's `shot/painted-cylinder` is this shot in small: a label finished as the back and worn by
+a cylinder in front, drawn at 2 s, between two timed strokes, and at 4 s, after both.
 
 `paintedThreeColorNode` (`#lib/paint/three-layers/studio/painted-three-material.ts`) decodes the texture, which is
 gamma-encoded, to the linear colour three.js lights and outputs. Its u runs along the document's x and its v up the
@@ -912,7 +992,7 @@ What the check says today, and what to do:
 | `rain.depths.far: 2.5 isn't nearer than the back, street at depth 2` / `rain.variants.drop: paints a 64 × 32 document, and the stage is 52 × 44: a variant is laid whole on the stage` / `rain.motion: is an instanced plane: its items take no nodes; …` / `rain: two items are called a at 2.04 s` / `rain: drop-3-0 at 1.04 s blurs drop 18 px past its document, and the stage leaves it 16: paint drop on a smaller document, or lay the item larger` | an instanced plane at load and its items each frame (`compileShotInstancedPlane`, `shotInstanceProblems`, `shotExposureItems`) | keep items nearer than the back; paint a variant no larger than the stage, its document tight round its paint; lay items by `instances`; one key an item |
 | `label.lay.points: both pin 40, 40: two points set a scale and turn only apart` / `label.lay.points[0].element: isn't mounted: …` / `label.lay.points[0].element: names title, the data-pin of 2 elements in the shot: a pin names one` / `label.lay: plane label's picture must hold what the camera shows of it, … widen the stage's margin` / `photo.lay: is a picture plane, which lies where its source puts it: …` | a pin or cover at load (`shotPlacementProblems`), a cover laid as the shot loads and a pin each frame where it's measured (`shotPinnedPlanes`); a lay on a picture or three plane | pin points apart; mount the element, one with its `data-pin`; keep within the stage's margin; move a picture plane by its node |
 | `meadow/hil.visibility: names no plane or occurrence of this shot` / `rain/drop-3.visibility: fades an item of rain, which isn't an occurrence: …` / `meadow/sky.visibility: 1.2 at 3 s; visibility is within 0..1` / `shot.warm: 2..1 isn't a span of scene seconds: …` | the shot's `visibility` (`shotVisibilityProblems` at load, `shotVisibilityProblem` each frame) and `warm` (`shotWarmProblems`) | name an occurrence; fade an item by its own `visibility` |
-| `label.id: names two painted textures: an id names one` / `label.widthPx: is 0: a painted texture is whole px above 0` / `label.source: selects on a transparent ground: a painted texture is opaque, …` / `label.source: blends paintings that wrap otherwise: …` | the shot's painted textures at load (`compileShotPaintedTextures`, each source at moment 0) and a callback's again each frame (`compiledPaintedTextureSourceAt`, which also refuses one wrapping otherwise than at 0) | one id a texture; leave `ground` out; wrap every painting a texture blends alike |
+| `label.id: names two painted textures: an id names one` / `label.widthPx: is 0: a painted texture is whole px above 0` / `label.source: selects on a transparent ground: a painted texture is opaque, …` / `label.source: blends paintings that wrap otherwise: …` | the shot's painted textures as it compiles (`compilePaintedShot`, each source at moment 0, beside its planes' problems) and a callback's again each frame (`compiledPaintedTextureSourceAt`, which also refuses one wrapping otherwise than at 0) | one id a texture; leave `ground` out; wrap every painting a texture blends alike |
 | `shot.warm: runs to 240 s; its scene ends at 8 s: warm counts scene seconds, not frames, and stops at the scene's end` (warning) | a `warm` past the end of the scene playing the shot, in the warm's costs (`shotWarmPastScene`) | write the span in scene seconds |
 | `back.source: paints a 160 × 120 document, and the plane's is 320 × 240: every selection a plane shows, …` / `front.source: lays a transparent ground, and the plane a default one: …` / `meadow.source: dissolves, and meadow/heron on it is rigged: dissolve planes can't be rigged` | a selection painting a document or laying a ground other than the plane's first; a dissolve on a rigged plane (`paintedPlaneBlendProblems`, at load and each frame for a callback source) | paint every end at one size on one ground; rig the subject on a plane of its own |
 
