@@ -1,27 +1,30 @@
 // stamp-gate-reveals.ts: the gate's reveals (docs/painting-authoring.md, Time), each frame held to the CPU twin of
 // what it shows (stampRevealShownAt): drawn mid-reveal, it matches the all-hidden frame wherever the twin shows
 // nothing and the all-shown frame wherever it shows all. The ink: a flood revealed by three strokes of mixed widths
-// and caps. The fields: a flood, a moon and a petal, revealed by a linear, a radial and a noise field. The nested
-// heron: its group and body each revealed, the body cut by both. The hidden foot: the wet-contact heron hidden
-// whole. The page (studio/stamp-gate-reveals-page.ts) draws them; what its checks measure is here.
+// and caps; wrapped, by one across its seam. The fields: a flood, a moon and a petal, revealed by a linear, a radial
+// and a noise field. The nested heron: its group and body each revealed, the body cut by both. The hidden foot: the
+// wet-contact heron hidden whole. The reeds: a rig drawn as pieces, revealed. The page
+// (studio/stamp-gate-reveals-page.ts) draws them; what its checks measure is here.
 
 import type { PaintingDocument, LayerNode, Reveal } from '#lib/paint/document/models/painting-document.ts';
 import type { PropertySchema, PropertyValues } from '#lib/paint/document/models/painting-properties.ts';
 import type { PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
-import { srgbToLinear } from '#lib/paint/materials/models/paint-spectrum.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { stampRevealShownAt } from '#lib/paint/painting/models/stamp-reveal.ts';
-import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
+import { stampStage, stampWrapPeriods } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { PaintedShotProps, PresentationValue } from '#lib/paint/shot/models/shot-props.ts';
 import type { PaintedSource } from '#lib/paint/shot/models/shot-selection.ts';
 import { STAMP_GATE_HERON_BODY, STAMP_GATE_HERON_MOVE, stampGatePaperHeronDocument } from './stamp-gate-paper-heron.ts';
+import { stampGateTexelDiffers } from './stamp-gate-frames.ts';
 import { STAMP_GATE_ROUND_REF, STAMP_GATE_SHEET_PAPER, STAMP_GATE_WET_CONTACT, stampGateRectangle } from './stamp-gate-sheets.ts';
+import { STAMP_GATE_REED_PARTS, STAMP_GATE_RIGGED_HERON } from './stamp-gate-shots.ts';
 
 /**
- * The reveal cases: strokes (mixed widths, caps, a crossing, uncovered paint, a soft ramp); fields (linear, radial,
- * noise, sought forward and back as stills); sheets (a shared root's film alone, nesting, own sheets' cards, the
- * ground); one painting through a still, a shot, HTML and a painted texture; and the clock and cache.
+ * The reveal cases: strokes (mixed widths, caps, a crossing, uncovered paint, a soft ramp, a wrap's seam); fields
+ * (linear, radial, noise, sought forward and back as stills); sheets (a shared root's film alone, nesting, own sheets'
+ * cards, the ground); one painting through a still, a shot, HTML, a painted texture and a rig's pieces; and the
+ * clock and cache.
  */
 export const STAMP_GATE_REVEAL_IDS = ['reveal/strokes', 'reveal/fields', 'reveal/sheets', 'reveal/surfaces', 'reveal/clock'] as const;
 export type StampGateRevealId = (typeof STAMP_GATE_REVEAL_IDS)[number];
@@ -95,6 +98,31 @@ export const STAMP_GATE_INK_RAMP = { x0: 30, x1: 90, y: 40 } as const;
 
 /** How far the ink shows at document point `p` at scene second `t`, its reveal `reveal`. */
 export const stampGateInkShownAt = (t: number, reveal: Reveal = INK_REVEAL) => (p: StampPoint) => stampRevealShownAt(reveal, p, t);
+
+/** The wrapped ink's reveal: a band from x 150 on across the right edge, wrapping to x 50 on the left, from 0 to 2 s. */
+const WRAPPED_REVEAL = { kind: 'strokes', strokes: [{ points: [{ x: 150, y: 70 }, { x: 250, y: 70 }], widthPx: 60, from: 0, to: 2 }] } as const satisfies Reveal;
+
+const wrappedProperties = { revealed: { type: 'boolean', default: true } } as const satisfies PropertySchema;
+
+/** A cerulean flood from x 140 across the right edge of a sheet wrapping x, to x 60 on its left, revealed (`revealed`) by WRAPPED_REVEAL. */
+export const STAMP_GATE_WRAPPED_INK: PaintingSourceModule<typeof wrappedProperties> = {
+  properties: wrappedProperties,
+  default: function gateRevealWrappedInk({ revealed }: PropertyValues<typeof wrappedProperties>): PaintingDocument {
+    return {
+      widthPx: SIZE.width, heightPx: SIZE.height, wrap: 'x', paper: STAMP_GATE_SHEET_PAPER, medium: 'watercolour',
+      layers: [floodLayer('ink', [140, 20, 260, 120], cerulean, 0.7, revealed ? WRAPPED_REVEAL : undefined)],
+    };
+  },
+};
+
+/** When the wrapped ink is read mid-reveal: its front past the seam, at x 25 on the left. */
+export const STAMP_GATE_WRAPPED_AT = 1.5;
+
+/** How far the wrapped ink shows at document point `p` at scene second `t`, its band reaching round the seam. */
+export const stampGateWrappedShownAt = (t: number) => (p: StampPoint) => stampRevealShownAt(WRAPPED_REVEAL, p, t, stampWrapPeriods(SIZE, 'x'));
+
+/** Where the wrapped ink's checks read the seam, document px: on the band's centreline just past the seam (shown mid-reveal), and past its front (not yet). */
+export const STAMP_GATE_WRAPPED_TEXELS = { pastSeam: { x: 10, y: 70 }, ahead: { x: 45, y: 70 } } as const satisfies Readonly<Record<string, StampPoint>>;
 
 // ---- the fields ----------------------------------------------------------------------------------------------------
 
@@ -230,7 +258,7 @@ export const STAMP_GATE_NESTED_MOVE: StampPoint = STAMP_GATE_HERON_MOVE;
 const HIDDEN: Reveal = { kind: 'field', base: { kind: 'constant', value: 1000 } };
 
 /** The wet-contact sheet, its heron (the foot that walked into the shallows' wet) hidden whole by a reveal. */
-export const STAMP_GATE_HIDDEN_FOOT: PaintingSourceModule = {
+export const STAMP_GATE_REVEAL_HIDDEN_FOOT: PaintingSourceModule = {
   default: function gateHiddenFoot(): PaintingDocument {
     const wetContact = STAMP_GATE_WET_CONTACT.default({ heron: true, apart: false });
     return { ...wetContact, layers: revealedNodes(wetContact.layers, { heron: HIDDEN }) };
@@ -238,7 +266,34 @@ export const STAMP_GATE_HIDDEN_FOOT: PaintingSourceModule = {
 };
 
 /** When the hidden foot is read: once its charge and glaze have both landed. */
-export const STAMP_GATE_HIDDEN_FOOT_AT = 8;
+export const STAMP_GATE_REVEAL_HIDDEN_FOOT_AT = 8;
+
+// ---- the reeds -----------------------------------------------------------------------------------------------------
+
+/** The reeds' reveal: a hard front rising out of the water, y 136 at 0 s to y 94 at 2 s. */
+const REEDS_REVEAL = { kind: 'field', base: { kind: 'linear', from: { x: 0, y: 136, value: 0 }, to: { x: 0, y: 94, value: 2 } } } as const satisfies Reveal;
+
+const reedsProperties = { revealed: { type: 'boolean', default: true } } as const satisfies PropertySchema;
+
+/** The rigged heron, its reeds (a group owning its sheet, so a rig of it is drawn as pieces) revealed by REEDS_REVEAL when `revealed`. */
+export const STAMP_GATE_REVEALED_REEDS: PaintingSourceModule<typeof reedsProperties> = {
+  properties: reedsProperties,
+  default: function gateRevealedReeds({ revealed }: PropertyValues<typeof reedsProperties>): PaintingDocument {
+    const heron = STAMP_GATE_RIGGED_HERON.default({});
+    return revealed ? { ...heron, layers: revealedNodes(heron.layers, { reeds: REEDS_REVEAL }) } : heron;
+  },
+};
+
+/** When the reeds are read mid-reveal: the front at y 115, through both reeds. */
+export const STAMP_GATE_REEDS_AT = 1;
+
+/** How far the reeds show at document point `p` at scene second `t`, at rest: their reveal's front, paint and card alike. */
+export const stampGateReedsShownAt = (t: number) => (p: StampPoint) => stampRevealShownAt(REEDS_REVEAL, p, t);
+
+/** A shot of the rigged heron's `source`, its reeds rigged at rest, so drawn as pieces. */
+export function stampGateRevealedReedsShot(source: PresentationValue<PaintedSource>): PaintedShotProps {
+  return { ...stampGateRevealShot(source), rigs: { 'sheet/reeds': { parts: STAMP_GATE_REED_PARTS, pose: () => ({}) } } };
+}
 
 // ---- shots ---------------------------------------------------------------------------------------------------------
 
@@ -258,16 +313,11 @@ export function stampGateRevealShot(source: PresentationValue<PaintedSource>, ho
 /** A frame's bytes, `channels` a texel (RGB, or premultiplied RGBA), `width` × `height`. */
 export type StampGateRevealFrame = { readonly bytes: ArrayLike<number>; readonly width: number; readonly height: number; readonly channels: 3 | 4 };
 
-const texelDiffers = (a: ArrayLike<number>, b: ArrayLike<number>, texel: number, channels: number) => {
-  for (let c = texel * channels; c < (texel + 1) * channels; c++) if (Math.abs(a[c] - b[c]) > 2) return true;
-  return false;
-};
-
 /** How many texels of two frames differ by over 2 levels in a channel. */
 export function stampGateTexelsChanged(a: StampGateRevealFrame, b: ArrayLike<number>, within: (p: StampPoint) => boolean = () => true): number {
   let changed = 0;
   for (let texel = 0; texel < a.width * a.height; texel++) {
-    if (within({ x: (texel % a.width) + 0.5, y: Math.floor(texel / a.width) + 0.5 }) && texelDiffers(a.bytes, b, texel, a.channels)) changed++;
+    if (within({ x: (texel % a.width) + 0.5, y: Math.floor(texel / a.width) + 0.5 }) && stampGateTexelDiffers(a.bytes, b, texel, a.channels)) changed++;
   }
   return changed;
 }
@@ -294,10 +344,10 @@ export function stampGateRevealSplit(
     const x = texel % width, y = Math.floor(texel / width);
     if (all(x, y, 0)) {
       split.hidden++;
-      if (texelDiffers(at.bytes, lo, texel, channels)) split.hiddenOff++;
+      if (stampGateTexelDiffers(at.bytes, lo, texel, channels)) split.hiddenOff++;
     } else if (all(x, y, 1)) {
       split.shown++;
-      if (texelDiffers(at.bytes, hi, texel, channels)) split.shownOff++;
+      if (stampGateTexelDiffers(at.bytes, hi, texel, channels)) split.shownOff++;
     } else split.between++;
   }
   return split;
@@ -309,25 +359,3 @@ export const stampGateRevealSplitText = ({ hidden, hiddenOff, shown, shownOff, b
 
 /** Whether a split held: none off, and some texels hidden and some shown. */
 export const stampGateRevealSplitHeld = ({ hidden, hiddenOff, shown, shownOff }: ReturnType<typeof stampGateRevealSplit>) => hidden > 0 && shown > 0 && hiddenOff === 0 && shownOff === 0;
-
-/**
- * How far frame `at` lays at document texel (x, y) of what `hi` lays over `lo`, in linear light (0 as `lo`, 1 as
- * `hi`): how far its reveal shows there, through the paint's own response to opacity, so monotone but not linear.
- */
-export function stampGateRevealShare(at: StampGateRevealFrame, lo: ArrayLike<number>, hi: ArrayLike<number>, { x, y }: StampPoint): number {
-  const texel = Math.floor(y) * at.width + Math.floor(x);
-  let laid = 0, whole = 0;
-  for (let c = texel * at.channels; c < texel * at.channels + 3; c++) {
-    const under = srgbToLinear(lo[c] / 255);
-    laid += Math.abs(srgbToLinear(at.bytes[c] / 255) - under);
-    whole += Math.abs(srgbToLinear(hi[c] / 255) - under);
-  }
-  return whole > 0 ? laid / whole : 0;
-}
-
-/** The largest change any texel's channel makes between two frames, levels. */
-export function stampGateLargestChange(a: ArrayLike<number>, b: ArrayLike<number>): number {
-  let largest = 0;
-  for (let i = 0; i < a.length; i++) largest = Math.max(largest, Math.abs(a[i] - b[i]));
-  return largest;
-}

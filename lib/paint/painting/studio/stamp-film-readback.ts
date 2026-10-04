@@ -8,6 +8,7 @@
 // caller until the read resolves (holdStampSheetFilms).
 
 import type { StampPaintCostTally } from '../models/stamp-paint-costs.ts';
+import { STAMP_FILMS_WHOLE } from '../models/stamp-reveal.ts';
 import type { StampSheetCompositeStep } from '../models/stamp-sheet-program.ts';
 import { stampCanonicalJson } from '../models/stamp-sheet-state-key.ts';
 import { stampBoxUnion, stampPointBox, type StampPointBox } from '../models/stamp-stage.ts';
@@ -97,7 +98,7 @@ export function readStampFilmPicture(owner: StampPaintGpuOwner, sheet: StampShee
   return keptStampFilmReadback(owner, key, async () => {
     if (!crop) return emptyPicture();
     const card: StampSheetCompositeStep[] = backing === 'sheet' && edge === 'union' ? [{ kind: 'card', sheet: 0 }] : [];
-    const composite = { sheets: [{ ...sheet, place: null }], steps: [...card, { kind: 'film', sheet: 0, film } as const] };
+    const composite = { sheets: [{ ...sheet, place: null, reveals: STAMP_FILMS_WHOLE }], steps: [...card, { kind: 'film', sheet: 0, film } as const] };
     return readStampSheetsPicture(owner, composite, crop, backing === 'sheet' && edge === 'document' ? 'paper' : 'clear', costs);
   }, costs);
 }

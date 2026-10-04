@@ -12,7 +12,7 @@ import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu
 import { GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 import type { StampPixelBox } from '#lib/paint/painting/models/stamp-blur-region.ts';
 import type { StampGroupGlow } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
-import { stampRevealLinksKey, type StampRevealLink } from '#lib/paint/painting/models/stamp-reveal.ts';
+import type { StampFilmRevealLinks } from '#lib/paint/painting/models/stamp-reveal.ts';
 import { stampBoxUnion, stampStageTexelsOf, stampStageTexelsWithin, stampStageWgsl, type StampStage, type StampWrapPeriods } from '#lib/paint/painting/models/stamp-stage.ts';
 import { createStampLatticePass, STAMP_LATTICE_VERTEX_FLOATS, type StampLatticePass, type StampLatticeSpan } from '#lib/paint/painting/studio/stamp-lattice-pass.ts';
 import { stampPaintTargetWgsl, type StampPaintCompositor, type StampPaintTarget } from '#lib/paint/painting/studio/stamp-paint-compositor.ts';
@@ -21,7 +21,7 @@ import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-
 import { STAMP_NO_REST, type StampPaintBacking } from '#lib/paint/painting/studio/stamp-paint-lay-pass.ts';
 import { STAMP_GLOW_SOURCE, stampGlowSourceWgsl } from '#lib/paint/painting/studio/stamp-paint-plane-passes.ts';
 import { createStampRevealPass } from '#lib/paint/painting/studio/stamp-reveal-pass.ts';
-import { stampSheetEdge, type StampSheetEdgeCuts, type StampSheetsLays } from '#lib/paint/painting/studio/stamp-sheet-composite.ts';
+import { stampSheetEdge, type StampSheetsLays } from '#lib/paint/painting/studio/stamp-sheet-composite.ts';
 import { keptStampSheetFilm, type StampSheetFilmKept } from '#lib/paint/painting/studio/stamp-sheet-films.ts';
 import type { StampUniformArena } from '#lib/paint/painting/studio/stamp-uniform-arena.ts';
 import type { ShotLattice } from '../models/shot-lattice.ts';
@@ -42,7 +42,7 @@ export type ShotSheetsLayFrame = {
   readonly document: { readonly width: number; readonly height: number; readonly periods: StampWrapPeriods };
   readonly lays: StampSheetsLays;
   readonly films: readonly (readonly StampSheetFilmKept[])[];
-  readonly reveals: readonly (readonly (readonly StampRevealLink[])[])[];
+  readonly reveals: readonly StampFilmRevealLinks[];
   readonly steps: readonly (ShotStepFrame | null)[];
   readonly ground: ShotGroundLay;
   readonly fades: readonly ShotFadeSpan[];
@@ -122,13 +122,16 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
     return pass;
   };
   const rest = () => owner.target('shot rest', { size: [stage.width, stage.height], format: 'rg32float', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING }).createView();
+  /** The size of the layer target a frame's films are copied into and cut over: its document a margin in, or the stage. */
+  const layerSize = ({ document }: ShotSheetsLayFrame) =>
+    ({ width: Math.max(stage.width, document.width + 2 * margin), height: Math.max(stage.height, document.height + 2 * margin) });
   /**
-   * The layer target a sheet of `shape` copies its films into, a margin in, big enough for `width` × `height`
-   * document px past the stage; and its texels last written, cleared before the next film is copied in.
+   * The layer target a sheet of `shape` copies `frame`'s films into (layerSize); and its texels last written, cleared
+   * before the next film is copied in.
    */
   const layers = new Map<string, { texture: GPUTexture; zeros: GPUTexture; written: StampPixelBox | null }>();
-  const layerOf = (shape: StampPaintTarget, width: number, height: number) => {
-    const w = Math.max(stage.width, width + 2 * margin), h = Math.max(stage.height, height + 2 * margin), count = shape.kind === 'array' ? shape.layers : 1;
+  const layerOf = (shape: StampPaintTarget, frame: ShotSheetsLayFrame) => {
+    const { width: w, height: h } = layerSize(frame), count = shape.kind === 'array' ? shape.layers : 1;
     const key = `${layerTargetKind(shape)}|${w}|${h}`;
     let held = layers.get(key);
     if (!held) {
@@ -155,38 +158,24 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
   function copyFilm(encoder: GPUCommandEncoder, frame: ShotSheetsLayFrame, sheet: number, film: StampSheetFilmKept) {
     const kept = keptStampSheetFilm(owner, film, encoder);
     if (!kept || !film.box) return null;
-    const shape = frame.lays.compositors[sheet].targets.layer, target = layerOf(shape, frame.document.width, frame.document.height);
+    const shape = frame.lays.compositors[sheet].targets.layer, target = layerOf(shape, frame);
     if (target.written) copyStampTextureBox(encoder, { texture: target.zeros, x: 0, y: 0 }, { texture: target.texture, x: target.written.x, y: target.written.y }, target.written);
     const at = stampStageTexelsOf(stage, film.box);
     copyStampTextureBox(encoder, { texture: kept, x: 0, y: 0 }, { texture: target.texture, x: at.x, y: at.y }, at);
     target.written = at;
-    return { view: target.texture.createView({ dimension: shape.kind === 'array' ? '2d-array' : '2d' }), at, size: { width: target.texture.width, height: target.texture.height } };
+    return { view: target.texture.createView({ dimension: shape.kind === 'array' ? '2d-array' : '2d' }), at };
   }
 
-  /** Sheet `sheet`'s film `film` cut by its reveals over `at`, texels of a layer target of `size`; null for one nothing cuts. */
-  const cutOf = (encoder: GPUCommandEncoder, frame: ShotSheetsLayFrame, sheet: number, film: number, at: StampPixelBox, size: { width: number; height: number }) =>
-    revealing.cut(encoder, arena, { links: frame.reveals[sheet][film], box: at, size, periods: frame.document.periods });
-
-  /** Sheet `sheet`'s films `shown` (its film indices, the edge's order) cut by their reveals as its edge joins them; none when nothing cuts any. */
-  function edgeCuts(encoder: GPUCommandEncoder, frame: ShotSheetsLayFrame, sheet: number, shown: readonly number[]): StampSheetEdgeCuts | undefined {
-    const reveals = shown.map((f) => frame.reveals[sheet][f]), films = frame.films[sheet];
-    if (!reveals.some((links) => links.length > 0)) return undefined;
-    const size = { width: Math.max(stage.width, frame.document.width + 2 * margin), height: Math.max(stage.height, frame.document.height + 2 * margin) };
-    return {
-      key: reveals.map(stampRevealLinksKey).join('|'),
-      cutOf: (i) => {
-        const f = shown[i], box = films[f].box && stampStageTexelsOf(stage, films[f].box), view = box && cutOf(encoder, frame, sheet, f, box, size);
-        return box && view ? { view, origin: [box.x, box.y] } : null;
-      },
-    };
-  }
+  /** Sheet `sheet`'s film `film` cut by its reveals over `at`, texels of its layer target; null for one nothing cuts. */
+  const cutOf = (encoder: GPUCommandEncoder, frame: ShotSheetsLayFrame, sheet: number, film: number, at: StampPixelBox) =>
+    revealing.cut(encoder, arena, { links: frame.reveals[sheet][film] ?? [], box: at, size: layerSize(frame), periods: frame.document.periods });
 
   /** Adds a film's glow over `box`, read through its lattice's rest map and cut by its reveals' `reveal`, to the plane's emission. */
   function addGlow(
     encoder: GPUCommandEncoder, compositor: StampPaintCompositor, painting: GPUTextureView, emission: GPUTexture, layer: GPUTextureView, restView: GPUTextureView,
     reveal: GPUTextureView | null, glow: StampGroupGlow, opacity: number, box: StampPixelBox,
   ) {
-    const pipeline = pipelineOf(stampGlowSourceWgsl(compositor, 'moved group', stage, STAMP_NO_REST, STAMP_WORKGROUP, reveal !== null));
+    const pipeline = pipelineOf(stampGlowSourceWgsl(compositor, 'moved group', stage, STAMP_NO_REST, STAMP_WORKGROUP, { revealed: reveal !== null }));
     dispatchStampCompute(device, encoder, pipeline, [arena.slot((views) => {
       const put = gpuUniformWriter(STAMP_GLOW_SOURCE, views);
       put('threshold', glow.threshold);
@@ -290,8 +279,9 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
         } else if (step && step.lay.kind !== 'pieces' && staging?.box) {
           const lay = step.lay, { pass, span, box } = staging, compositor = compositors[lay.sheet];
           if (lay.kind === 'card') {
-            const shown = lay.films.map(({ film }) => film);
-            const edge = stampSheetEdge(owner, device, encoder, arena, lay.films.map(({ film, shown: share }) => ({ film: films[lay.sheet][film], shown: share })), edgeCuts(encoder, frame, lay.sheet, shown));
+            const edge = stampSheetEdge(owner, device, encoder, arena, lay.films.map(({ film, shown }) => ({ film: films[lay.sheet][film], shown })), {
+              reveals: lay.films.map(({ film }) => frame.reveals[lay.sheet][film] ?? []), pass: revealing, stage, size: layerSize(frame), periods: frame.document.periods,
+            });
             if (edge) {
               const edgeBox = stampStageTexelsOf(stage, edge.box);
               pass.draw(encoder, span, { rest: 'region', motion: !!traced }, { rest: restView, motion: traced, source: null });
@@ -302,7 +292,7 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
           } else if (step.opacity > 0) {
             const copied = copyFilm(encoder, frame, lay.sheet, films[lay.sheet][lay.film]);
             if (copied) {
-              const { view: layer } = copied, reveal = cutOf(encoder, frame, lay.sheet, lay.film, copied.at, copied.size);
+              const { view: layer } = copied, reveal = cutOf(encoder, frame, lay.sheet, lay.film, copied.at);
               pass.draw(encoder, span, { rest: 'paint', motion: !!traced }, { rest: restView, motion: traced, source: layer });
               lays[lay.sheet].layGroup(encoder, {
                 layer, painting, index: lay.film, opacity: step.opacity, glaze: true, box, backing: into.backing, rest: restView, paperFromRest: true, mask: mask?.createView() ?? null, reveal,

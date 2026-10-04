@@ -115,7 +115,7 @@ const HERON_PARTS: readonly RigPart[] = [
 ];
 
 /** The reeds' rig, its group owning its sheet, so drawn as pieces: one reed hinged on the other. */
-const REED_PARTS: readonly RigPart[] = [
+export const STAMP_GATE_REED_PARTS: readonly RigPart[] = [
   { id: 'reed-a', z: 0, parent: null, cels: ['reed-a'] },
   { id: 'reed-b', z: 1, parent: 'reed-a', joint: 'hinge', pivot: REED_HINGE, cels: ['reed-b'] },
 ];
@@ -168,7 +168,7 @@ export function stampGateRiggedDissolveShot({ heard, warm }: { heard?: (group: s
   const day = painting(STAMP_GATE_RIGGED_HERON), dusk = painting(STAMP_GATE_DUSK_HERON), layers = ['water', 'heron', 'reeds'];
   const k = (at: number) => RIGGED_DISSOLVE_KS.findLast(({ from }) => from <= at)!.k;
   return {
-    ...oneSheetShot('paper', day, layers, { heron: HERON_PARTS, reeds: REED_PARTS }, RIGGED_DISSOLVE_POSES, heard),
+    ...oneSheetShot('paper', day, layers, { heron: HERON_PARTS, reeds: STAMP_GATE_REED_PARTS }, RIGGED_DISSOLVE_POSES, heard),
     planes: [{ id: 'paper', depth: 1, source: ({ at }: PaintMoment) => dissolve(layersOf(day, layers), layersOf(dusk, layers), k(at)) }],
     ...(warm && { warm }),
   };
@@ -213,7 +213,7 @@ function riggedHeronVisibility(at: number): number {
 
 /** The rigged heron's shot; `reedsRigged` false leaves the reeds unrigged, painted as their sheet paints them. */
 export const stampGateRiggedHeronShot = (reedsRigged = true): PaintedShotProps => ({
-  ...oneSheetShot('paper', painting(STAMP_GATE_RIGGED_HERON), ['water', 'heron', 'reeds'], { heron: HERON_PARTS, ...(reedsRigged && { reeds: REED_PARTS }) }, HERON_POSES),
+  ...oneSheetShot('paper', painting(STAMP_GATE_RIGGED_HERON), ['water', 'heron', 'reeds'], { heron: HERON_PARTS, ...(reedsRigged && { reeds: STAMP_GATE_REED_PARTS }) }, HERON_POSES),
   visibility: { 'paper/heron': ({ at }) => riggedHeronVisibility(at) },
 });
 
@@ -359,7 +359,7 @@ const SHOT_BASELINES: Readonly<Record<StampGateShotId, {
   shot: () => PaintedShotProps; at: number; evaluations: () => readonly PaintingEvaluation[]; rigs: Readonly<Record<string, readonly RigPart[]>>; poses: StampGatePoseTable;
   extra?: StampCanonicalDatum;
 }>> = {
-  'shot/paper-heron': { shot: stampGateRiggedHeronShot, at: STAMP_GATE_RIGGED_HERON_AT.posed, evaluations: () => [painting(STAMP_GATE_RIGGED_HERON)], rigs: { heron: HERON_PARTS, reeds: REED_PARTS }, poses: HERON_POSES },
+  'shot/paper-heron': { shot: stampGateRiggedHeronShot, at: STAMP_GATE_RIGGED_HERON_AT.posed, evaluations: () => [painting(STAMP_GATE_RIGGED_HERON)], rigs: { heron: HERON_PARTS, reeds: STAMP_GATE_REED_PARTS }, poses: HERON_POSES },
   'shot/wet-contact': { shot: stampGateWetContactShot, at: STAMP_GATE_WET_CONTACT_AT.posed, evaluations: () => [painting(STAMP_GATE_WET_CONTACT)], rigs: { heron: FOOT_RIG }, poses: FOOT_POSES },
   'shot/rain': { shot: stampGateRainShot, at: STAMP_GATE_RAIN.at.first, evaluations: () => [painting(STAMP_GATE_RAIN_PAINTING)], rigs: {}, poses: [], extra: STAMP_GATE_RAIN },
   'shot/dissolve': {
@@ -367,7 +367,7 @@ const SHOT_BASELINES: Readonly<Record<StampGateShotId, {
   },
   'shot/rigged-dissolve': {
     shot: stampGateRiggedDissolveShot, at: STAMP_GATE_RIGGED_DISSOLVE_AT.half, evaluations: () => [painting(STAMP_GATE_RIGGED_HERON), painting(STAMP_GATE_DUSK_HERON)],
-    rigs: { heron: HERON_PARTS, reeds: REED_PARTS }, poses: RIGGED_DISSOLVE_POSES, extra: { ks: RIGGED_DISSOLVE_KS },
+    rigs: { heron: HERON_PARTS, reeds: STAMP_GATE_REED_PARTS }, poses: RIGGED_DISSOLVE_POSES, extra: { ks: RIGGED_DISSOLVE_KS },
   },
   'shot/masks': {
     shot: () => stampGateMaskedShot(STAMP_GATE_MASKS_BASELINE.shown), at: STAMP_GATE_MASKS_BASELINE.at, evaluations: () => [painting(STAMP_GATE_TINTED_HERON), painting(STAMP_GATE_TINTED_HERON, { revealed: true })],

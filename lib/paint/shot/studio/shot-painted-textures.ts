@@ -11,7 +11,7 @@ import { compilePaintingSelection, type PaintingSelectionCompiled } from '#lib/p
 import { paintingErrors, paintingProblemText } from '#lib/paint/document/models/painting-problem.ts';
 import { solvePaintingSheets, type PaintingSheetsSolved } from '#lib/paint/document/studio/painting-sheets-solve.ts';
 import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
-import { stampRevealLinksKey } from '#lib/paint/painting/models/stamp-reveal.ts';
+import { stampSheetRevealsKey } from '#lib/paint/painting/models/stamp-reveal.ts';
 import { stampWrapsAcross, type StampAxis, type StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
 import { stampBindGroup } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
@@ -61,7 +61,7 @@ type ShotPaintedTextureSlot = {
 
 const shotTextureShareLaid = ({ compiled, weight, sheets }: ShotTextureShareSolved): ShotTextureShareLaid => ({
   compiled, weight,
-  films: sheets.solved.map(({ key, finished }, s) => `${key} ${finished ? 'finished' : 'open'} ${(sheets.composite.sheets[s].reveals ?? []).map(stampRevealLinksKey).join('|')}`).join('|'),
+  films: sheets.solved.map(({ key, finished }, s) => `${key} ${finished ? 'finished' : 'open'} ${stampSheetRevealsKey(sheets.composite.sheets[s].reveals)}`).join('|'),
 });
 
 const sameShotTextureLaid = (a: readonly ShotTextureShareLaid[], b: readonly ShotTextureShareLaid[]) =>

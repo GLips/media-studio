@@ -14,6 +14,7 @@ import { paintingEvaluationCounts } from '#lib/paint/document/models/painting-so
 import { solvePaintingSheetFilms } from '#lib/paint/document/studio/painting-sheets-solve.ts';
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
+import { STAMP_FILMS_WHOLE } from '#lib/paint/painting/models/stamp-reveal.ts';
 import { stampWrapPeriods, type StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { stampArrayView } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
@@ -144,7 +145,7 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
       // along and its skins are built over. Read back once per set of films.
       const rest = await solvePaintingSheetFilms(owner, compiled, { costs });
       try {
-        const films = { compiled, films: rest.solved.map((sheet) => sheet.films) };
+        const films = { compiled, films: rest.solved.map((sheet) => sheet.films), reveals: compiled.sheets.map(() => STAMP_FILMS_WHOLE) };
         restCels = new Map(await Promise.all(rigs.map(async (rig) => [rig.occurrence, await rigPictures.restCels(films, rig)] as const)));
       } finally {
         rest.release();

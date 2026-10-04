@@ -88,6 +88,6 @@ test("on a wrapped sheet, a later wash widening the halo past its power of two r
 
 test('a reveal edit recomposes only: every wash is the same', () => {
   const diff = paintingEvaluationDiff(pondSource({}), pondSource({ revealTo: 3 }), null);
-  assert.deepEqual([diff.document, diff.recompose], [[], ['water.reveal.strokes[0].to']]);
+  assert.deepEqual([diff.document, diff.reveals], [[], ['water.reveal.strokes[0].to']]);
   assert.ok(changes(diff).every(([, change]) => typeof change === 'object' && change.kind === 'same'));
 });

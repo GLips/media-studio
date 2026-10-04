@@ -26,6 +26,14 @@ test('where strokes cross, the earliest to arrive shows the texel', () => {
   assert.deepEqual([shown(reveal, 50.5, 50.5, 0.6), shown(reveal, 50.5, 20.5, 0.6), shown(reveal, 50.5, 20.5, 3.5)], [1, 0, 1]);
 });
 
+test('bands meeting edge to edge between texel centres cover the texel they share whole once both have arrived', () => {
+  // Their shared edge at y = 60.25: the texel centred on 60.5 is a quarter the first's, three quarters the second's.
+  const above: StampRevealStroke = { ...ALONG, points: [{ x: 0, y: 50.25 }, { x: 100, y: 50.25 }] };
+  const below: StampRevealStroke = { points: [{ x: 0, y: 70.25 }, { x: 100, y: 70.25 }], widthPx: 20, from: 2, to: 3 };
+  const reveal = strokes(above, below);
+  assert.deepEqual([shown(reveal, 50.5, 60.5, 1.5), shown(reveal, 50.5, 60.5, 2.75), shown(reveal, 50.5, 60.5, Infinity)], [0.25, 1, 1]);
+});
+
 test('softS ramps a texel in over its seconds; a field arrives at its base plus its delay', () => {
   const soft = { ...strokes(ALONG), softS: 1 };
   assert.ok(Math.abs(shown(soft, 50.5, 50.5, 1) - 0.5) < 0.02);

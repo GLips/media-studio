@@ -14,7 +14,7 @@ import type { CompiledStampBrushedMask } from '#lib/paint/painting/models/stamp-
 import type { StampWarpMap } from '#lib/paint/painting/models/stamp-group-warp.ts';
 import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import type { CompiledStampDeposit, CompiledStampMask } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
-import type { StampEdge, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import type { StampBox, StampEdge, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import type { StampRestMap, StampSheetPlace } from '#lib/paint/painting/models/stamp-rest-map.ts';
 import type { StampSheetEntry, StampSheetPrewet, StampSheetProgram } from '#lib/paint/painting/models/stamp-sheet-program.ts';
 import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
@@ -93,6 +93,26 @@ export function paintingFitSimilarity(points: readonly StampPoint[], map: StampW
   // Points all at one place only move: nothing says how they turn or scale.
   const ma = spread > 0 ? a / spread : 1, mb = spread > 0 ? b / spread : 0;
   return { ma, mb, kx: px - (ma * rx - mb * ry), ky: py - (mb * rx + ma * ry) };
+}
+
+/** Points a side of the grid a warp's stand-in similarity is fit over: the box's corners, edge midpoints and centre among them. */
+const POSE_FIT_GRID = 5;
+
+/**
+ * The similarity standing for `pose` over `box` (rest px): itself, or under a warp the best fit (paintingFitSimilarity)
+ * over a grid across the box, with how far the warp strays from it there, px. A shot's lattice and a reveal read a
+ * bent film alike through it.
+ */
+export function paintingPoseFitOver(pose: PaintingNodePose, { x0, y0, x1, y1 }: StampBox): { readonly fit: PaintSimilarity; readonly stray: number } {
+  if (pose.kind === 'similarity') return { fit: pose.map, stray: 0 };
+  const points: StampPoint[] = [], last = POSE_FIT_GRID - 1;
+  for (let j = 0; j <= last; j++) for (let i = 0; i <= last; i++) points.push({ x: x0 + ((x1 - x0) * i) / last, y: y0 + ((y1 - y0) * j) / last });
+  const fit = paintingFitSimilarity(points, pose.map);
+  const stray = Math.max(...points.map((point) => {
+    const bent = pose.map(point), fitted = paintSimilarityApply(fit, point);
+    return Math.hypot(bent.x - fitted.x, bent.y - fitted.y);
+  }));
+  return { fit, stray };
 }
 
 /** How far apart a warp's outline points are before it maps them, px: a curve bends between them by little more. */

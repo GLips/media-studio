@@ -2,16 +2,16 @@
 // shows (stamp-reveal.ts). A lay takes each texel's opacity times it before compositing, so a reveal cuts pigment
 // before it becomes colour; an own sheet's edge joins its films' coverage cut alike, so its card follows its paint.
 //
-// A strokes reveal's arrivals are drawn once into a map (rgba32float: first, cover, full, seconds per px), kept in the
-// device's cache under the reveal, where it lies and the texels it covers; each cut reads the map at its time. A
-// field's arrivals are read where they're needed, no map.
+// A strokes reveal's arrivals are drawn once into a map (rgba32uint: first, full and seconds per px as f32 bits, the
+// first band's cover and the union's as unorm16s), kept in the device's cache under the reveal, where it lies and the
+// texels it covers; each cut reads the map at its time. A field's arrivals are read where they're needed, no map.
 
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import { stampPaintFieldEnds } from '../models/stamp-paint-field.ts';
 import { STAMP_REST_POINT_WGSL } from '../models/stamp-rest-map.ts';
 import {
-  STAMP_REVEAL_ARRIVAL_WGSL, STAMP_REVEAL_SEGMENT_FLOATS, STAMP_REVEAL_TILE, STAMP_REVEAL_WGSL, stampRevealKey, stampRevealSegments, stampRevealTiles,
+  STAMP_REVEAL_ARRIVAL_SHOWN_WGSL, STAMP_REVEAL_ARRIVAL_WGSL, STAMP_REVEAL_SEGMENT_FLOATS, STAMP_REVEAL_TILE, STAMP_REVEAL_WGSL, stampRevealKey, stampRevealSegments, stampRevealTiles,
   type StampReveal, type StampRevealLink,
 } from '../models/stamp-reveal.ts';
 import { stampStageTexelsWithin, stampStageWgsl, type StampStage, type StampWrapPeriods } from '../models/stamp-stage.ts';
@@ -30,7 +30,7 @@ ${ARRIVAL.wgsl}
 @group(0) @binding(1) var<storage, read> segments: array<vec4f>;
 @group(0) @binding(2) var<storage, read> spans: array<u32>;
 @group(0) @binding(3) var<storage, read> listed: array<u32>;
-@group(0) @binding(4) var arrival: texture_storage_2d<rgba32float, write>;
+@group(0) @binding(4) var arrival: texture_storage_2d<rgba32uint, write>;
 ${STAMP_REVEAL_ARRIVAL_WGSL}
 @compute @workgroup_size(${STAMP_WORKGROUP}, ${STAMP_WORKGROUP}) fn revealArrival(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
@@ -53,12 +53,12 @@ ${STAMP_REVEAL_WGSL}
 ${CUT.wgsl}
 @group(0) @binding(0) var<uniform> u: RevealCut;
 @group(0) @binding(1) var cut: texture_storage_2d<r32float, read_write>;
-${kind === 'strokes' ? /* wgsl */ `@group(0) @binding(2) var arrival: texture_2d<f32>;
+${kind === 'strokes' ? /* wgsl */ `@group(0) @binding(2) var arrival: texture_2d<u32>;
+${STAMP_REVEAL_ARRIVAL_SHOWN_WGSL}
 fn shownAt(texel: vec2i) -> f32 {
   let m = texel - vec2i(u.mapOrigin);
   if (any(m < vec2i(0)) || any(m >= vec2i(u.mapExtent))) { return 0.0; }
-  let a = textureLoad(arrival, vec2u(m), 0);
-  return max(a.y * revealRamp(u.at, a.x, a.w, u.softS), revealRamp(u.at, a.z, a.w, u.softS));
+  return revealArrivalShown(textureLoad(arrival, vec2u(m), 0), u.at, u.softS);
 }` : /* wgsl */ `
 fn arrivalAt(p: vec2f) -> f32 {
   let r = restPoint(u.toRest, p);
@@ -132,7 +132,7 @@ export function createStampRevealPass(owner: StampPaintGpuOwner, device: StampPa
     const within = count > 0 ? stampStageTexelsWithin({ ...stage, width: size.width, height: size.height }, x0, y0, x1, y1) : null;
     if (!within) return null;
     const box = { x: within.x, y: within.y, w: within.w, h: within.h }, usage = GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING;
-    const [texture] = arrivals.make(key, encoder, [{ width: box.w, height: box.h, layers: 1, format: 'rgba32float', usage }], { box }).textures;
+    const [texture] = arrivals.make(key, encoder, [{ width: box.w, height: box.h, layers: 1, format: 'rgba32uint', usage }], { box }).textures;
     const tiles = stampRevealTiles(segments, { x: box.x - stage.margin, y: box.y - stage.margin, w: box.w, h: box.h });
     const lists = [segments, tiles.spans, tiles.listed].map((data) => stampPaintBuffer(device, data, GPUBufferUsage.STORAGE));
     spent.push(...lists);
@@ -183,7 +183,7 @@ export function createStampRevealPass(owner: StampPaintGpuOwner, device: StampPa
           }
         });
         // A strokes reveal reaching none of the target's texels reads an empty map: never reached.
-        const arrival = reveal.kind === 'strokes' ? [map?.view ?? owner.target('reveal no arrival', { size: [1, 1], format: 'rgba32float', usage: GPUTextureUsage.TEXTURE_BINDING }).createView()] : [];
+        const arrival = reveal.kind === 'strokes' ? [map?.view ?? owner.target('reveal no arrival', { size: [1, 1], format: 'rgba32uint', usage: GPUTextureUsage.TEXTURE_BINDING }).createView()] : [];
         dispatchStampCompute(device, encoder, compute(cutWgsl(stage, reveal.kind)), [slot, view, ...arrival], box.w, box.h);
       });
       return view;

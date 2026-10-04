@@ -10,7 +10,6 @@ import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
 import type { PaintingDocument, Reveal } from '#lib/paint/document/models/painting-document.ts';
 import type { PropertySchema, PropertyValues } from '#lib/paint/document/models/painting-properties.ts';
 import { painting, type PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
-import { srgbToLinear } from '#lib/paint/materials/models/paint-spectrum.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampPictureRgba } from '#lib/paint/painting/models/stamp-plane.ts';
@@ -18,6 +17,7 @@ import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-regi
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { InstancedPlaneProps, PaintedShotProps, PlaneInstance, PlaneProps, ThreeSource } from '#lib/paint/shot/models/shot-props.ts';
 import { dissolve } from '#lib/paint/shot/models/shot-selection.ts';
+import { stampGateTexelDiffers } from './stamp-gate-frames.ts';
 import { STAMP_GATE_HERON_VANE, stampGateHeronLayer, stampGateHeronPolygon, stampGateInsidePolygon, stampGatePaperHeronDocument } from './stamp-gate-paper-heron.ts';
 
 /**
@@ -162,8 +162,6 @@ export const STAMP_GATE_MASKS_PRESENTATION = { reveal: MASKS_REVEAL, tint: { dra
 /** Where the heron's wing and its tip lie, frame px, end exclusive: their outlines' box grown by their paint's bleed. */
 export const STAMP_GATE_MASKS_WING: StampBox = { x0: 90, y0: 12, x1: 184, y1: 78 };
 
-const differs = (a: ArrayLike<number>, b: ArrayLike<number>, texel: number) => [0, 1, 2].some((c) => Math.abs(a[3 * texel + c] - b[3 * texel + c]) > 2);
-
 /** Whether frame px `p` lies well inside the vane, 5 px in. */
 export const stampGateWellInsideVane = (p: StampPoint) => stampGateInsidePolygon(p, STAMP_GATE_HERON_VANE, 5);
 
@@ -175,7 +173,7 @@ export const stampGateWellInsideVane = (p: StampPoint) => stampGateInsidePolygon
 export function stampGateTintSplit(cut: ArrayLike<number>, bare: ArrayLike<number>, width: number, box: StampBox): { inside: number; outside: number; beyond: number; vane: number; vaneAll: number } {
   let inside = 0, outside = 0, beyond = 0, vane = 0, vaneAll = 0;
   for (let texel = 0; texel < cut.length / 3; texel++) {
-    const x = texel % width, y = Math.floor(texel / width), within = x >= box.x0 && x < box.x1 && y >= box.y0 && y < box.y1, changed = differs(cut, bare, texel);
+    const x = texel % width, y = Math.floor(texel / width), within = x >= box.x0 && x < box.x1 && y >= box.y0 && y < box.y1, changed = stampGateTexelDiffers(cut, bare, texel, 3);
     const inVane = stampGateWellInsideVane({ x: x + 0.5, y: y + 0.5 });
     if (!within) beyond++;
     if (changed && within) inside++;
@@ -192,19 +190,3 @@ export function stampGateNearDiscCentre(at: number, radius: number): (p: StampPo
   return (p) => Math.hypot(p.x - centre.x, p.y - centre.y) <= radius;
 }
 
-/**
- * How much frame `cut` lays where `within` holds, as a share of what `uncut` lays there, both over `bare` (RGB bytes,
- * `width` px wide), in linear light: a mask's tint, 1 where it read whole coverage, 0 where none.
- */
-export function stampGateLaidShare(cut: ArrayLike<number>, uncut: ArrayLike<number>, bare: ArrayLike<number>, width: number, within: (p: StampPoint) => boolean): number {
-  let laid = 0, whole = 0;
-  for (let texel = 0; texel < cut.length / 3; texel++) {
-    if (!within({ x: (texel % width) + 0.5, y: Math.floor(texel / width) + 0.5 })) continue;
-    for (let c = 3 * texel; c < 3 * texel + 3; c++) {
-      const under = srgbToLinear(bare[c] / 255);
-      laid += Math.abs(srgbToLinear(cut[c] / 255) - under);
-      whole += Math.abs(srgbToLinear(uncut[c] / 255) - under);
-    }
-  }
-  return whole > 0 ? laid / whole : 0;
-}

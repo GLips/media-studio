@@ -33,7 +33,7 @@ function stampMarksTipReach(marks: FrozenStampMarks, brush: Pick<StampBrushLayer
 }
 
 /** How far past its stamps' places `marks` (a deposit's or a brushed mask's) may lay paint, its edges' blur included, px. */
-function stampMarksReach(marks: { brush: StampBrush; diameter: number; stamps: FrozenStampMarks; dualStamps: FrozenStampMarks }): number {
+export function stampMarksReach(marks: { brush: StampBrush; diameter: number; stamps: FrozenStampMarks; dualStamps: FrozenStampMarks }): number {
   const sigma = stampActiveLayers(marks.brush, marks.diameter).edgeSigma;
   const tips = Math.max(stampMarksTipReach(marks.stamps, marks.brush), marks.brush.dual ? stampMarksTipReach(marks.dualStamps, marks.brush.dual) : 0);
   return tips + (sigma > 0 ? 3 * sigma : 2);

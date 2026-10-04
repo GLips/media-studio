@@ -565,14 +565,18 @@ A layer's or group's `reveal` (**NEW**) says where its finished paint shows, and
 texel, in the scene seconds a selection's `at` counts. At `at`, a texel shows once its arrival has passed, ramping in
 over the reveal's `softS` seconds (0: at once, the front antialiased over a px). Left out, `at` shows every reveal
 whole. A reveal is presentation: scheduling, the water, the solve and its checkpoints never see it, so a reveal edit
-re-solves nothing (the evaluation diff names it `recompose`), and an `at` moving through a reveal re-solves nothing
-but the clocked prefixes it crosses.
+re-solves nothing (the evaluation diff lists it under its reveals), and an `at` moving through a reveal re-solves
+nothing but the clocked prefixes it crosses.
 
 - **Strokes**: `{kind: 'strokes', strokes, softS?}`, each stroke `{points, widthPx, from, to, cap?}`: a band `widthPx`
   wide round `points` (document px, joints round), its front advancing along them by arclength at constant speed,
   at the first point at `from`, the last at `to`. `cap: 'round'` (left out) reaches half the width past each end and
-  arrives there with the end; `'flat'` stops square at it. Where bands cross, the earliest arrival shows the texel. A
-  texel no band covers never shows. An eased pull is its path cut into pieces, each with its own `from` and `to`.
+  arrives there with the end; `'flat'` stops square at it. Where bands cross, the earliest arrival shows the texel.
+  Bands that have arrived cover a texel as their union, so bands laid edge to edge, or a path cut into pieces, close
+  up with no seam (a texel's union reads its eight earliest partial bands). A texel no band covers never shows. An
+  eased pull is its path cut into pieces, each at its stretch's pace: `paintingEasedRevealStrokes(points, {widthPx,
+  from, to, ease, piecesPerSecond?, cap?})` (`#lib/paint/document/models/painting-reveal.ts`) cuts one, 30 pieces a
+  second (a piece a frame at 30 fps) unless told otherwise.
 - **Field**: `{kind: 'field', base, delay?, softS?}`: each texel arrives at `base` plus `delay`, each a `Field<number>`
   of scene seconds (constant, linear, radial or noise, Reference; a noise field names its `seed`), wherever paint lies:
   a flood rising, a moon filling out, a petal's colour coming in blotches.
@@ -591,12 +595,14 @@ but the clocked prefixes it crosses.
   can a reveal show a lift taking paint up, or water moving it. For marks that must arrive in order where they
   overlap, give each its own layer and reveal; for paint whose arrival changes what it meets, time the applications
   (`at` on a clocked wash) and show the prefix.
-- **Band widths**: share each path as a TS constant between the application and its reveal, and size the band with
-  `paintingRevealBandPx(application, medium, {wet?, sheetMedia?})` (`#lib/paint/document/models/painting-reveal.ts`):
-  the paint's span (its widest diameter and its wobble), its tip's floor, and in a wet wash (`wet`, true when left
-  out) as far as its water carries paint in its medium or any of `sheetMedia`, the films it lands in. It's
-  conservative: a band that wide never trims the stroke's own fringe. A straight edge needs no band: a linear field
-  across it leaves the film its own fringe (recipe 35).
+- **Band widths**: share each path as a TS constant between the application and its reveal. A band too narrow trims
+  the paint at its edge. `paintingRevealBandPx(application, medium, {brushOf, wet?, sheetMedia?})`
+  (`#lib/paint/document/models/painting-reveal.ts`) measures the band a stroke application needs round its own
+  subpaths: its stamps as compiled, scatter, wobble and a tip's span, blur and dual among them, at their farthest
+  from the path, and in a wet wash (`wet`, true when left out) as far as its water carries paint in its medium or
+  any of `sheetMedia`, the films it lands in. A band that wide never trims the stroke's own paint. It reads the
+  brush, which a painting source can't resolve: hold the source's width to it in a test (recipe 26). A straight edge
+  needs no band: a linear field across it leaves the film its own fringe (recipe 35).
 - **Held sources step it**: a reveal is part of the sampled painting, so a plane's `sourceClock: {hold: 6}` steps it on
   sixes with everything else its source reads. For a smooth reveal over stepped properties, leave `sourceClock`
   unheld, quantise the properties, and pass the continuous `moment.at` (recipe 36).
@@ -705,7 +711,7 @@ shows what a property step re-solves; the cost report counts what each frame and
 | 23 | falling rain | an instanced plane: drop variants, `instances(m)` placing each under a lasting key | finished paint moving: no wet interaction; each drop blurs along its own fall |
 | 24 | collage cut-out sliding | the layer with `sheet: {kind: 'own', paper}`; motion on its occurrence | its grain travels with it, as paper does |
 | 25 | paint drifting over still paper | the layer left on its parent's sheet; motion on its occurrence, held | a solve per distinct pose, from its first application on |
-| 26 | ink drawn on the beat | the ink layer's `reveal: {kind: 'strokes', strokes}`, its paths shared with its application, a stroke per beat; plane source `(m) => layersOf(p, keys, {at: m.at})` (below) | the overlap limit: where strokes cross in one film, the crossing shows with the first band; band widths from `paintingRevealBandPx` |
+| 26 | ink drawn on the beat | the ink layer's `reveal: {kind: 'strokes', strokes}`, its paths shared with its application, a stroke per beat; plane source `(m) => layersOf(p, keys, {at: m.at})` (below) | the overlap limit: where strokes cross in one film, the crossing shows with the first band; band widths held to `paintingRevealBandPx` in a test |
 | 27 | animated property, smooth | `bracket(v, LEVELS)` → `dissolve(layersOf(lower), layersOf(upper), k)` | ghosting where edges move between levels |
 | 28 | one painting, two places | two planes selecting the same evaluation and layers | each is its own occurrence |
 | 29 | a drawing appearing stroke by stroke | a direct wash with `clock: {origin}` and an `at` per application, on any sheet: a direct wash has no say in its drying | or a reveal over the finished drawing (recipe 26), which pens each stroke along its length |
@@ -738,19 +744,18 @@ Recipe 26, a skyline inked a stroke a beat from the `ink` cue, each stroke drawn
 application's and the reveal's; the band holds all the pen lays:
 
 ```ts
-import type { Application, PaintingDocument, Reveal, Subpath } from '#lib/paint/document/models/painting-document.ts';
-import { paintingRevealBandPx } from '#lib/paint/document/models/painting-reveal.ts';
+import type { DirectApplication, PaintingDocument, Reveal, Subpath } from '#lib/paint/document/models/painting-document.ts';
 import { sceneCueSeconds } from '#lib/timing/timeline/models/scene-cue-seconds.ts';
 import { timeline } from '../../timeline.ts';
 
 const CLOCK = timeline.clock('city'), CUE = sceneCueSeconds(CLOCK);
 const SKYLINE: readonly Subpath[] = [/* one path a pen-down, in the order they're inked */];
-const LINES: Application = {
+export const LINES = {
   key: 'lines', kind: 'stroke', subpaths: SKYLINE, brush: { style: 'watercolor', brush: 'ink' }, diameterPx: 6, seed: 'lines',
   charge: { kind: 'paint', mix: { parts: [{ pigment: '#0b1024', amount: 1 }], strength: 1 } },
-};
-/** A direct wash: its ink carries no water past its stamps. */
-const BAND = paintingRevealBandPx(LINES, 'watercolour', { wet: false });
+} satisfies DirectApplication;
+/** The band round each path, px: held to the pen's paint by ink.test.ts. */
+export const BAND = 14;
 const INKED: Reveal = {
   kind: 'strokes',
   strokes: SKYLINE.map((points, i) => ({ points, widthPx: BAND, from: CUE.ink + i * CLOCK.spb, to: CUE.ink + (i + 0.5) * CLOCK.spb })),
@@ -765,7 +770,23 @@ export default function ink(): PaintingDocument {
 ```
 
 Its plane, the module imported as `ink`, reads each frame's moment: `{id: 'ink', depth: 1, source: (m) =>
-layersOf(painting(ink), ['ink'], {at: m.at})}`.
+layersOf(painting(ink), ['ink'], {at: m.at})}`. Its test resolves the pen's brush from the workspace's style, as a
+still does, and holds the band to all the pen lays (a direct wash: its ink carries no water past its stamps):
+
+```ts
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { paintingStylesBrushOf, readPaintingSourceStyles } from '#lib/paint/document/engine/painting-source-load.ts';
+import { paintingRevealBandPx } from '#lib/paint/document/models/painting-reveal.ts';
+import { painting } from '#lib/paint/document/models/painting-source.ts';
+import * as ink from './ink.painting.ts';
+
+test('the band holds all the pen lays', async () => {
+  const brushOf = paintingStylesBrushOf(await readPaintingSourceStyles([painting(ink)], 'the ink band'));
+  assert.ok(ink.BAND >= paintingRevealBandPx(ink.LINES, 'watercolour', { brushOf, wet: false }));
+});
+```
+
 Where two of its strokes cross, the crossing shows the moment the first band reaches it, the second stroke's ink
 included: one film can't hold back paint a band already shows. A stroke that must be seen crossing another goes on a
 layer of its own with its own reveal.
@@ -1032,9 +1053,9 @@ name different pigments in any order, a missing one being 0, and an amount may b
 
 **Reveals** (`Reveal`, scene seconds and document px; Time: Reveals): `{kind: 'strokes', strokes: [{points, widthPx,
 from, to, cap?: 'round' | 'flat'}], softS?}` or `{kind: 'field', base, delay?, softS?}`, `base` and `delay` fields of
-seconds. `paintingRevealBandPx(application, medium, {wet?, sheetMedia?})`
-(`#lib/paint/document/models/painting-reveal.ts`): the px a strokes reveal's band needs to hold all `application` lays
-round the path the two share.
+seconds. In `#lib/paint/document/models/painting-reveal.ts`: `paintingEasedRevealStrokes(points, {widthPx, from, to,
+ease, piecesPerSecond?, cap?})`, an eased pull as strokes; `paintingRevealBandPx(application, medium, {brushOf, wet?,
+sheetMedia?})`, the px a strokes reveal's band needs to hold all a stroke `application` lays round its subpaths.
 
 **Hand** (`StampStrokeHand`): `profile`: `'taper'` (light, firm, light), `'pressFlick'` (pressed, then flicked off),
 `'swell'` (thin, full, thin), `'drag'` (steady, lifting over its last fifth), or a curve `(u) => pressure` over the
@@ -1131,9 +1152,9 @@ paint check: 0 errors, 0 warnings
 
 `studio paint diff <source> [<edited copy>] [--set name=value,…] [--to name=value,…]` compares two evaluations: the
 source at `--set` against itself at `--set` with `--to` on top, or against an edited copy. It prints the document
-fields that differ (paper colour among them, which re-solves nothing), each reveal that differs (`ink.reveal.strokes[2].to
-differs: recompose only, nothing solves`), then each wash in its sheet's order: `same`,
-`content` (it changed itself, at the first path that differs), or `upstream` (something earlier on its sheet changed).
+fields that differ (paper colour among them, which re-solves nothing), then each wash in its sheet's order: `same`,
+`content` (it changed itself, at the first path that differs), or `upstream` (something earlier on its sheet changed);
+then each reveal that differs (`ink.reveal.strokes[2].to differs: recompose only, nothing solves`).
 A pigment a later wash brings changes its layer's film, so it reads at the layer's first application
 (`water.slots.palette`). On a wrapped document a change moving a sheet's margin past its power of two (Wrapping)
 re-solves the sheet from its first wash, each reading `upstream`; the diff reads the brushes for that, as a still

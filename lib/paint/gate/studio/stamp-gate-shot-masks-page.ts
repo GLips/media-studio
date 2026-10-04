@@ -5,10 +5,10 @@
 
 import { CircleGeometry, Mesh, MeshBasicNodeMaterial, Scene } from 'three/webgpu';
 import type { ThreeSource } from '#lib/paint/shot/models/shot-props.ts';
-import { stampGateFrameDifference, stampGateFrameDifferenceText as differenceText, stampGateFramePasses } from '../models/stamp-gate-frames.ts';
+import { stampGateFrameDifference, stampGateFrameDifferenceText as differenceText, stampGateFramePasses, stampGateLaidShare } from '../models/stamp-gate-frames.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import {
-  STAMP_GATE_MASKS_AT, STAMP_GATE_MASKS_DISC, STAMP_GATE_MASKS_WING, stampGateLaidShare, stampGateMaskDiscBox, stampGateMaskDiscCentre, stampGateMaskedShot, stampGateNearDiscCentre,
+  STAMP_GATE_MASKS_AT, STAMP_GATE_MASKS_DISC, STAMP_GATE_MASKS_WING, stampGateMaskDiscBox, stampGateMaskDiscCentre, stampGateMaskedShot, stampGateNearDiscCentre,
   stampGateTintSplit, stampGateWellInsideVane,
   type StampGateMaskedShot, type StampGateShotMaskId,
 } from '../models/stamp-gate-shot-masks.ts';
@@ -103,7 +103,7 @@ async function checkAlphaOfPainted(): Promise<StampGateWashCheck[]> {
   const differences = kept.frames.map((frame, i) => stampGateFrameDifference(frame, alone[i])), misses = kept.costs.map(({ counts }) => counts.get('picture misses') ?? 0);
   const tinted = await Promise.all((['unmasked', 'half', 'dissolving'] as const).map(async (heron) => {
     const [[bare], [cut], [uncut]] = await Promise.all((['none', 'heron', 'uncut'] as const).map(async (tint) => (await maskedFrames({ heron, tint }, [0])).frames));
-    return stampGateLaidShare(cut, uncut, bare, width, stampGateWellInsideVane);
+    return stampGateLaidShare(cut, uncut, bare, { width, channels: 3 }, stampGateWellInsideVane);
   }));
   const [unfaded, faded, dissolving] = tinted, share = unfaded > 0 ? faded / unfaded : 0, dissolvedShare = unfaded > 0 ? dissolving / unfaded : 0;
   return [
@@ -131,7 +131,7 @@ const discFrame = async (shown: Omit<StampGateMaskedShot, 'heron'>) => (await ma
 /** How much the tint cut to the disc lays near the disc's centre, `radius` px, as a share of the tint uncut, the disc shown as `shown`. */
 async function discTintShare(shown: Omit<StampGateMaskedShot, 'heron' | 'tint'>, width: number, radius: number) {
   const [bare, cut, uncut] = await Promise.all((['none', 'disc', 'uncut'] as const).map((tint) => discFrame({ ...shown, tint })));
-  return stampGateLaidShare(cut, uncut, bare, width, stampGateNearDiscCentre(0, radius));
+  return stampGateLaidShare(cut, uncut, bare, { width, channels: 3 }, stampGateNearDiscCentre(0, radius));
 }
 
 /** Frames held: the first two (within a hold) alike, the last (past it) not. */
@@ -149,7 +149,7 @@ async function checkSources(): Promise<StampGateWashCheck[]> {
     discFrame({ tint: 'none' }), discFrame({ disc: 'picture', tint: 'none' }), discFrame({ disc: 'picture', discVisibility: 0.5, tint: 'none' }),
     discFrame({ disc: THREE_DISC, discVisibility: 0, tint: 'disc' }),
   ]);
-  const drawnShare = stampGateLaidShare(half, whole, empty, width, stampGateNearDiscCentre(0, wellInside)), asEmpty = stampGateFrameDifference(hidden, empty);
+  const drawnShare = stampGateLaidShare(half, whole, empty, { width, channels: 3 }, stampGateNearDiscCentre(0, wellInside)), asEmpty = stampGateFrameDifference(hidden, empty);
   const [wholeTint, halfTint, spotTint, halfSpotTint] = await Promise.all([
     discTintShare({ disc: 'picture' }, width, wellInside), discTintShare({ disc: 'picture', discVisibility: 0.5 }, width, wellInside),
     discTintShare({ disc: 'spot' }, width, spotInside), discTintShare({ disc: 'spot', discVisibility: 0.5 }, width, spotInside),

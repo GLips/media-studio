@@ -572,7 +572,7 @@ function rendererOnSurface({
    */
   function addGlow(encoder: GPUCommandEncoder, { group, glow, visibility }: StampGroupFrame, laid: { box: Box; rest: GPUTextureView | null }) {
     const cover = laid.rest ? 'moved group' : 'group';
-    const pipeline = planePipeline(`glow|${cover}`, () => stampGlowSourceWgsl(compositor, cover, stage, STAMP_NO_REST, STAMP_WORKGROUP));
+    const pipeline = planePipeline(`glow|${cover}`, () => stampGlowSourceWgsl(compositor, cover, stage, STAMP_NO_REST, STAMP_WORKGROUP, { revealed: false }));
     dispatch(encoder, pipeline, [slot((views) => {
       const put = gpuUniformWriter(STAMP_GLOW_SOURCE, views);
       put('threshold', glow!.threshold);

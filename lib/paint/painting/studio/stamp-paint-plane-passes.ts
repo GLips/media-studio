@@ -10,6 +10,7 @@
 import type { StampStage } from '../models/stamp-stage.ts';
 import { stampStageWgsl } from '../models/stamp-stage.ts';
 import { type StampPaintCompositor, type StampPaintTarget } from './stamp-paint-compositor.ts';
+import type { StampLayVariant } from './stamp-paint-lay-pass.ts';
 import { stampRevealAtWgsl } from './stamp-reveal-pass.ts';
 import { gpuUniformLayout } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
@@ -36,7 +37,7 @@ const STAMP_LAID_COVER_REVEAL_BINDING = 5;
  * group, its rest map at 4, read bilinearly at the rest point its lattice shows. `revealed`: each layer texel's cover
  * times its reveals' cut, bound at 5. A glow and a shot's alphaOf coverage read it alike.
  */
-export function stampLaidCoverWgsl(compositor: StampPaintCompositor, cover: StampLaidGroupCover, noRest: number, glaze: string, revealed = false) {
+export function stampLaidCoverWgsl(compositor: StampPaintCompositor, cover: StampLaidGroupCover, noRest: number, glaze: string, { revealed }: Pick<StampLayVariant, 'revealed'>) {
   const { layer } = compositor.targets;
   const firstLayer = (texel: string) => (layer.kind === 'array' ? `textureLoad(source, ${texel}, 0u, 0)` : `textureLoad(source, ${texel}, 0)`);
   const cut = (texel: string) => (revealed ? ` * revealAt(${texel})` : '');
@@ -69,7 +70,9 @@ ${coverAt}`;
  * The glow source pass's WGSL for `compositor` on `stage`: binds its uniform (0), the painting (1), the plane's
  * emission, added to (2), and the group's cover (stampLaidCoverWgsl), cut by its reveals when `revealed`.
  */
-export function stampGlowSourceWgsl(compositor: StampPaintCompositor, cover: StampLaidGroupCover, stage: StampStage, noRest: number, workgroup: number, revealed = false) {
+export function stampGlowSourceWgsl(
+  compositor: StampPaintCompositor, cover: StampLaidGroupCover, stage: StampStage, noRest: number, workgroup: number, variant: Pick<StampLayVariant, 'revealed'>,
+) {
   return /* wgsl */ `
 ${stampStageWgsl(stage)}
 ${GPU_SRGB_WGSL}
@@ -78,7 +81,7 @@ ${STAMP_GLOW_SOURCE.wgsl}
 @group(0) @binding(1) var painting: ${targetType(compositor.targets.painting)};
 @group(0) @binding(2) var emission: texture_storage_2d<rgba16float, read_write>;
 ${compositor.output}
-${stampLaidCoverWgsl(compositor, cover, noRest, 'u.glaze == 1u', revealed)}
+${stampLaidCoverWgsl(compositor, cover, noRest, 'u.glaze == 1u', variant)}
 @compute @workgroup_size(${workgroup}, ${workgroup}) fn glowSource(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
   let pixel = u.origin + id.xy;
@@ -101,7 +104,7 @@ ${stampStageWgsl(stage)}
 ${STAMP_GLOW_OCCLUSION.wgsl}
 @group(0) @binding(0) var<uniform> u: GlowOcclusion;
 @group(0) @binding(2) var emission: texture_storage_2d<rgba16float, read_write>;
-${stampLaidCoverWgsl(compositor, cover, noRest, 'false')}
+${stampLaidCoverWgsl(compositor, cover, noRest, 'false', { revealed: false })}
 @compute @workgroup_size(${workgroup}, ${workgroup}) fn glowOcclusion(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
   let pixel = u.origin + id.xy;

@@ -6,7 +6,6 @@
 // new one adds its reach here. The drying rim runs at a drying, within what was wetted.
 
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
-import type { CompiledStampDeposit } from './stamp-paint-recipe-compile.ts';
 import { stampBloomReach } from './stamp-wet-bloom.ts';
 import { stampWetFlowReach, type StampWetCarrier } from './stamp-wet-flow.ts';
 
@@ -18,5 +17,5 @@ export const stampWetDepositReach = (deposit: StampWetCarrier, medium: PaintMedi
  * How far `deposit`'s water carries on a sheet whose films are in `media`, px: in its own `medium` or any film's, as
  * its water lands in every film's paint.
  */
-export const stampSheetWetReach = (media: readonly PaintMedium[], deposit: CompiledStampDeposit, medium: PaintMedium, water: number) =>
+export const stampSheetWetReach = (media: readonly PaintMedium[], deposit: StampWetCarrier, medium: PaintMedium, water: number) =>
   Math.max(...[medium, ...media].map((each) => stampWetDepositReach(deposit, each, water)));

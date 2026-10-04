@@ -24,13 +24,14 @@ import { createShotPaintedTextures } from '#lib/paint/shot/studio/shot-painted-t
 import { createPaintedShotRenderer } from '#lib/paint/shot/studio/shot-renderer.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
 import { GPU_FULL_FRAME_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
-import { stampGateFrameDifference, stampGateFramePasses, type StampGateFrameDifference } from '../models/stamp-gate-frames.ts';
+import { stampGateFrameDifference, stampGateFramePasses, stampGateLaidShare, type StampGateFrameDifference } from '../models/stamp-gate-frames.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import {
-  STAMP_GATE_FIELD_COLUMNS, STAMP_GATE_FIELD_SEEKS, STAMP_GATE_FIELDS, STAMP_GATE_HIDDEN_FOOT, STAMP_GATE_HIDDEN_FOOT_AT, STAMP_GATE_INK, STAMP_GATE_INK_AT, STAMP_GATE_INK_RAMP,
-  STAMP_GATE_INK_TEXELS, STAMP_GATE_NESTED_AT, STAMP_GATE_NESTED_HERON, STAMP_GATE_NESTED_MOVE, STAMP_GATE_REVEAL_ENDS, STAMP_GATE_REVEAL_IDS, stampGateFieldShownAt, stampGateInkShownAt,
-  stampGateLargestChange, stampGateNestedClass, stampGateNestedPart, stampGateNestedShownAt, stampGateRevealShare, stampGateRevealShot, stampGateRevealSplit, stampGateRevealSplitHeld,
-  stampGateRevealSplitText, stampGateTexelsChanged, type StampGateRevealFrame, type StampGateRevealId,
+  STAMP_GATE_FIELD_COLUMNS, STAMP_GATE_FIELD_SEEKS, STAMP_GATE_FIELDS, STAMP_GATE_INK, STAMP_GATE_INK_AT, STAMP_GATE_INK_RAMP, STAMP_GATE_INK_TEXELS, STAMP_GATE_NESTED_AT,
+  STAMP_GATE_NESTED_HERON, STAMP_GATE_NESTED_MOVE, STAMP_GATE_REEDS_AT, STAMP_GATE_REVEAL_ENDS, STAMP_GATE_REVEAL_HIDDEN_FOOT, STAMP_GATE_REVEAL_HIDDEN_FOOT_AT, STAMP_GATE_REVEAL_IDS,
+  STAMP_GATE_REVEALED_REEDS, STAMP_GATE_WRAPPED_AT, STAMP_GATE_WRAPPED_INK, STAMP_GATE_WRAPPED_TEXELS, stampGateFieldShownAt, stampGateInkShownAt, stampGateNestedClass,
+  stampGateNestedPart, stampGateNestedShownAt, stampGateReedsShownAt, stampGateRevealedReedsShot, stampGateRevealShot, stampGateRevealSplit, stampGateRevealSplitHeld,
+  stampGateRevealSplitText, stampGateTexelsChanged, stampGateWrappedShownAt, type StampGateRevealFrame, type StampGateRevealId,
 } from '../models/stamp-gate-reveals.ts';
 import { STAMP_GATE_WET_CONTACT, STAMP_GATE_FAR_SHALLOWS, STAMP_GATE_FOOT_BOX, stampGateSheetBrushOf } from '../models/stamp-gate-sheets.ts';
 import { stampGateRgb, withGateSurface } from './stamp-gate-page-surface.ts';
@@ -152,6 +153,10 @@ async function inkTextureLevels(times: readonly number[]) {
 
 const shareText = (share: number) => share.toFixed(3);
 
+/** How far `frame` lays at document texel `p` of what `whole` lays over `lo`, in linear light (stampGateLaidShare). */
+const shareAt = (frame: StampGateRevealFrame, lo: StampGateRevealFrame, whole: StampGateRevealFrame, p: StampPoint) =>
+  stampGateLaidShare(frame.bytes, whole.bytes, lo.bytes, frame, (q) => Math.floor(q.x) === Math.floor(p.x) && Math.floor(q.y) === Math.floor(p.y));
+
 /** How many of `frame`'s texels lie where `within` holds. */
 function texelsWhere({ width, height }: StampGateRevealFrame, within: (p: StampPoint) => boolean): number {
   let count = 0;
@@ -160,15 +165,29 @@ function texelsWhere({ width, height }: StampGateRevealFrame, within: (p: StampP
 }
 
 /**
- * reveal/strokes: the ink at three times and fully revealed, held to its twin; the round cap reaching past its stroke's
- * end and the flat one stopping at it; the crossing shown by the first stroke to reach it; paint no stroke covers
- * never shown; and the first stroke's soft ramp falling from shown to hidden along it, behind its front.
+ * A band across a wrapped sheet's seam: mid-reveal, held to its twin read round the seam, the band shown just past the
+ * seam on the left and not yet ahead of its front.
+ */
+async function checkWrapSeam(): Promise<StampGateWashCheck> {
+  const ink = painting(STAMP_GATE_WRAPPED_INK), t = STAMP_GATE_WRAPPED_AT, { pastSeam, ahead } = STAMP_GATE_WRAPPED_TEXELS;
+  const { frames: [atLo, atMid, whole] } = await revealStills([...stillsAt(ink, [LO, t]), ...stillsAt(painting(STAMP_GATE_WRAPPED_INK, { revealed: false }), [HI])]);
+  const split = stampGateRevealSplit(atMid, atLo.bytes, whole.bytes, stampGateWrappedShownAt(t), 1), past = shareAt(atMid, atLo, whole, pastSeam), early = shareAt(atMid, atLo, whole, ahead);
+  return {
+    id: 'reveal/strokes: wrap seam', passed: stampGateRevealSplitHeld(split) && past >= 0.97 && early <= 0.03,
+    detail: `at ${t} s ${stampGateRevealSplitText(split)}; past the seam on the left the band shows ${shareText(past)} (1 wanted), ahead of its front ${shareText(early)} (0 wanted)`,
+  };
+}
+
+/**
+ * reveal/strokes: the ink at three times and fully revealed, held to its twin; round and flat caps; the crossing shown
+ * by the first stroke to reach it; paint no stroke covers never shown; the first stroke's soft ramp falling from shown
+ * to hidden behind its front; and a band across a wrapped sheet's seam.
  */
 async function checkStrokes(): Promise<StampGateWashCheck[]> {
   const { early, mid, late } = STAMP_GATE_INK_AT, times = [early, mid, late, HI], ink = painting(STAMP_GATE_INK);
   const { frames: [atLo, ...drawn] } = await revealStills(stillsAt(ink, [LO, ...times]));
   const { frames: [whole] } = await revealStills(stillsAt(painting(STAMP_GATE_INK, { reveal: 'none' }), [HI]));
-  const atHi = drawn[3], share = (frame: StampGateRevealFrame, p: StampPoint) => stampGateRevealShare(frame, atLo.bytes, whole.bytes, p);
+  const atHi = drawn[3], share = (frame: StampGateRevealFrame, p: StampPoint) => shareAt(frame, atLo, whole, p);
   const splits = times.map((t, i) => ({ t, split: stampGateRevealSplit(drawn[i], atLo.bytes, whole.bytes, stampGateInkShownAt(t), 1) }));
   const bare = stampGateTexelsChanged(atLo, Uint8Array.from({ length: atLo.bytes.length }, (_, i) => atLo.bytes[i % 3]));
   const { roundEnd, flatEnd, crossing, secondOnly, uncovered } = STAMP_GATE_INK_TEXELS, painted = (p: StampPoint) => stampGateTexelsChanged(whole, atLo.bytes, (q) => Math.floor(q.x) === p.x && Math.floor(q.y) === p.y) === 1;
@@ -196,6 +215,7 @@ async function checkStrokes(): Promise<StampGateWashCheck[]> {
       id: 'reveal/strokes: soft ramp', passed: rising && ramp[0] >= 0.97 && ramp.at(-1)! <= 0.03 && within >= 8,
       detail: `at ${early} s along the first stroke from x ${STAMP_GATE_INK_RAMP.x0} to ${STAMP_GATE_INK_RAMP.x1}, it shows ${ramp.map(shareText).join(' ')}: ${rising ? 'falling' : 'not falling'} toward its front, ${within} texels part shown (8 at least wanted)`,
     },
+    await checkWrapSeam(),
   ];
 }
 
@@ -280,7 +300,7 @@ async function checkSheets(): Promise<StampGateWashCheck[]> {
  * the root's paper, which differs under the foot from the shallows painted alone, and nowhere far from it.
  */
 async function checkHiddenFoot(): Promise<StampGateWashCheck> {
-  const at = STAMP_GATE_HIDDEN_FOOT_AT, evaluation = painting(STAMP_GATE_HIDDEN_FOOT), { widthPx: width, heightPx: height } = evaluation.document;
+  const at = STAMP_GATE_REVEAL_HIDDEN_FOOT_AT, evaluation = painting(STAMP_GATE_REVEAL_HIDDEN_FOOT), { widthPx: width, heightPx: height } = evaluation.document;
   const { cut, film } = await withGateSurface({ width, height }, stampGateSheetImageUrl, async ({ owner }) => {
     const { composite, release } = await solvePaintingSheets(owner, compilePaintingSelection(evaluation, stampGateSheetBrushOf), { at });
     try {
@@ -305,10 +325,18 @@ function surfaceCheck(surface: string, [atLo, atMid]: readonly StampGateRevealFr
   return { id: `reveal/surfaces: ${surface}`, passed: stampGateRevealSplitHeld(split) && extra.passed, detail: `at ${STAMP_GATE_INK_AT.mid} s ${stampGateRevealSplitText(split)}${extra.detail}` };
 }
 
+/** The rigged heron's reeds, a rig drawn as pieces, through the shot at `times`; and unrevealed, fully shown. */
+async function reedsPieces(times: readonly number[]) {
+  const reeds = painting(STAMP_GATE_REVEALED_REEDS), keys = ['water', 'heron', 'reeds'];
+  const { frames } = await revealShotFrames(stampGateRevealedReedsShot(({ at }) => layersOf(reeds, keys, { at })), times);
+  const [whole] = (await revealShotFrames(stampGateRevealedReedsShot(layersOf(painting(STAMP_GATE_REVEALED_REEDS, { revealed: false }), keys)), [HI])).frames;
+  return { frames, whole };
+}
+
 /**
  * reveal/surfaces: the ink revealed through a still, a shot, a clear back over HTML and a painted texture, each held
  * to the twin against its own ends; over HTML, all hidden lays nothing, not even light let through; the texture laid
- * and re-mipped as its reveal moves.
+ * and re-mipped as its reveal moves; and a rig's reeds, drawn as pieces, their paint and card cut alike.
  */
 async function checkSurfaces(): Promise<StampGateWashCheck[]> {
   const ink = painting(STAMP_GATE_INK), whole = painting(STAMP_GATE_INK, { reveal: 'none' }), times = [LO, STAMP_GATE_INK_AT.mid, HI];
@@ -319,6 +347,7 @@ async function checkSurfaces(): Promise<StampGateWashCheck[]> {
   const textured = await inkTextureLevels(times), [loLevels, midLevels, hiLevels] = textured.levels;
   const laidClear = Array.from(clear[0].bytes).reduce((most, v, i) => (i % 4 === 3 ? Math.max(most, v) : most), 0);
   const remipped = [loLevels, hiLevels].map(({ half }) => stampGateTexelsChanged(midLevels.half, half.bytes));
+  const pieces = await reedsPieces([LO, STAMP_GATE_REEDS_AT]), piecesSplit = stampGateRevealSplit(pieces.frames[1], pieces.frames[0].bytes, pieces.whole.bytes, stampGateReedsShownAt(STAMP_GATE_REEDS_AT), 1);
   return [
     surfaceCheck('still', stills.frames, stills.frames[3], 1),
     surfaceCheck('shot', shot.frames, shotWhole, 1),
@@ -326,6 +355,7 @@ async function checkSurfaces(): Promise<StampGateWashCheck[]> {
     surfaceCheck('texture', textured.levels.map(({ base }) => base), textured.whole, 1, {
       passed: remipped.every((changed) => changed > 0), detail: `; its level 1 at ${STAMP_GATE_INK_AT.mid} s differs from it all hidden in ${remipped[0]} texels and all shown in ${remipped[1]} (re-mipped as it moves)`,
     }),
+    { id: 'reveal/surfaces: pieces', passed: stampGateRevealSplitHeld(piecesSplit), detail: `the reeds drawn as pieces, at ${STAMP_GATE_REEDS_AT} s ${stampGateRevealSplitText(piecesSplit)}` },
   ];
 }
 
@@ -342,8 +372,8 @@ async function checkClock(): Promise<StampGateWashCheck[]> {
   const held = (await revealShotFrames(stampGateRevealShot(revealed, HOLD), HELD_TIMES)).frames;
   const within = stampGateFrameDifference(held[0].bytes, held[1].bytes), past = stampGateTexelsChanged(held[1], held[2].bytes);
   const smooth = await revealShotFrames(stampGateRevealShot(revealed), [LO, HI, ...FRAME_TIMES]), [atLo, atHi, ...frames] = smooth.frames;
-  const steps = frames.slice(1).map((frame, i) => ({ changed: stampGateTexelsChanged(frame, frames[i].bytes), largest: stampGateLargestChange(frame.bytes, frames[i].bytes) }));
-  const range = stampGateLargestChange(atLo.bytes, atHi.bytes), smoothSolved = smooth.costs.slice(3).flatMap(stampGateSolvedText);
+  const steps = frames.slice(1).map((frame, i) => ({ changed: stampGateTexelsChanged(frame, frames[i].bytes), largest: stampGateFrameDifference(frame.bytes, frames[i].bytes).max }));
+  const range = stampGateFrameDifference(atLo.bytes, atHi.bytes).max, smoothSolved = smooth.costs.slice(3).flatMap(stampGateSolvedText);
   const edit = await revealStills([{ evaluation: ink, at: STAMP_GATE_INK_AT.mid }, { evaluation: painting(STAMP_GATE_INK, { reveal: 'slow' }), at: STAMP_GATE_INK_AT.mid }]);
   const editSolved = stampGateSolvedText(edit.costs[1]), edited = stampGateTexelsChanged(edit.frames[1], edit.frames[0].bytes);
   const heron = painting(STAMP_GATE_NESTED_HERON), poses: PaintingPoses = new Map([['heron', paintingSimilarityPose({ ma: 1, mb: 0, kx: STAMP_GATE_NESTED_MOVE.x, ky: STAMP_GATE_NESTED_MOVE.y })]]);

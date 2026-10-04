@@ -84,10 +84,19 @@ const GROUP_REST_BINDING = 16;
 const GROUP_MASK_BINDING = 17;
 /** Where a revealed group pass binds its reveals' cut (r32float over its layer's texels, stamp-reveal-pass.ts), after the mask. */
 const GROUP_REVEAL_BINDING = 18;
+/**
+ * Which of a lay's shader variants: `moved`, read through a lattice's rest map; `masked`, cut by a shot's presentation
+ * mask; `revealed`, cut by its film's reveals. stampLayVariantKey names a variant's pipeline.
+ */
+export type StampLayVariant = { readonly moved: boolean; readonly masked: boolean; readonly revealed: boolean };
+
+/** `variant` as the key its pipeline is kept under. */
+export const stampLayVariantKey = ({ moved, masked, revealed }: StampLayVariant) => `${moved ? 'moved' : 'still'}|${masked ? 'masked' : 'whole'}|${revealed ? 'revealed' : 'shown'}`;
+
 // `masked`: each pixel's opacity is the group's times a shot's presentation mask there, so a mask cuts paint as
 // visibility fades it. `revealed`: each texel of the layer is laid at its opacity times its reveals' cut, a moved
 // lay's taps each at their own, so a reveal cuts the finished film before it becomes colour.
-const groupWgsl = (compositor: StampPaintCompositor, moved: boolean, stage: StampStage, masked: boolean, revealed: boolean) => {
+const groupWgsl = (compositor: StampPaintCompositor, stage: StampStage, { moved, masked, revealed }: StampLayVariant) => {
   const { layer, painting } = compositor.targets;
   const layerAt = (texel: string) => (layer.kind === 'array' ? `textureLoad(layer, ${texel}, l, 0)` : `textureLoad(layer, ${texel}, 0)`);
   const paintingAt = painting.kind === 'array' ? 'textureLoad(painting, pixel, i)' : 'textureLoad(painting, pixel)';
@@ -288,11 +297,12 @@ export function createStampPaintLay(device: StampPaintDevice, arena: StampUnifor
   const compute = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }) } });
   const pipelines = { paper: compute(paperWgsl(compositor, stage)) };
   // The still unmasked group pass is made now, as every lay takes it; the others when first asked.
-  const groups = new Map<string, GPUComputePipeline>([['false|false|false', compute(groupWgsl(compositor, false, stage, false, false))]]);
-  const groupPipeline = (moved: boolean, masked: boolean, revealed: boolean) => {
-    const key = `${moved}|${masked}|${revealed}`;
+  const still: StampLayVariant = { moved: false, masked: false, revealed: false };
+  const groups = new Map<string, GPUComputePipeline>([[stampLayVariantKey(still), compute(groupWgsl(compositor, stage, still))]]);
+  const groupPipeline = (variant: StampLayVariant) => {
+    const key = stampLayVariantKey(variant);
     let made = groups.get(key);
-    if (!made) groups.set(key, (made = compute(groupWgsl(compositor, moved, stage, masked, revealed))));
+    if (!made) groups.set(key, (made = compute(groupWgsl(compositor, stage, variant))));
     return made;
   };
   const cards = new Map<boolean, GPUComputePipeline>();
@@ -343,7 +353,7 @@ export function createStampPaintLay(device: StampPaintDevice, arena: StampUnifor
     /** Lays a group as `lay` says. */
     layGroup(encoder: GPUCommandEncoder, lay: StampGroupLay) {
       const { box, rest } = lay, mask = lay.mask ?? null, reveal = lay.reveal ?? null;
-      const pipeline = groupPipeline(rest !== null, mask !== null, reveal !== null);
+      const pipeline = groupPipeline({ moved: rest !== null, masked: mask !== null, revealed: reveal !== null });
       // The moved pass binds the rest points past the compositor's own bindings, at GROUP_REST_BINDING, a masked one
       // its mask after them and a revealed one its cut after that.
       const restBinding = rest || mask || reveal ? [...Array<null>(GROUP_REST_BINDING - 3 - groupResources.length).fill(null), rest, mask, reveal] : [];

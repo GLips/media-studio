@@ -23,13 +23,13 @@ export type PaintingWashChange =
 
 /**
  * `document`: the paths outside any wash that differ, first per field (paper colour is here and re-solves nothing).
- * `washes`: the second evaluation's washes in each sheet's order, the root's sheet first. `recompose`: each node whose
- * reveal differs, at its first differing path (`ink.reveal.strokes[2].to`): laid anew, solving nothing.
+ * `washes`: the second evaluation's washes in each sheet's order, the root's sheet first. `reveals`: each node whose
+ * reveal differs, at its first differing path (`ink.reveal.strokes[2].to`): recomposed, solving nothing.
  */
 export type PaintingEvaluationDiff = {
   readonly document: readonly string[];
   readonly washes: readonly { readonly layer: LayerKey; readonly wash: WashKey; readonly change: PaintingWashChange }[];
-  readonly recompose: readonly string[];
+  readonly reveals: readonly string[];
 };
 
 /** What a node is outside its washes, reveal and keys: what it is, its medium and sheet, and what it holds. */
@@ -48,19 +48,19 @@ function pushFirstDifference(into: string[], x: PaintingDatum, y: PaintingDatum,
  * The first differing path of each field outside the washes, keys left out (keys never reach a solve); and of each
  * node's reveal, named by the second's key, which recomposes only.
  */
-function documentChanges(a: PaintingDocument, b: PaintingDocument): { readonly document: string[]; readonly recompose: string[] } {
-  const changes: string[] = [], recompose: string[] = [];
+function documentChanges(a: PaintingDocument, b: PaintingDocument): { readonly document: string[]; readonly reveals: string[] } {
+  const changes: string[] = [], reveals: string[] = [];
   for (const field of ['widthPx', 'heightPx', 'medium', 'paper', 'dryingScale', 'wrap'] as const) pushFirstDifference(changes, a[field], b[field], field);
   const visit = (x: readonly LayerNode[], y: readonly LayerNode[], path: string) => {
     for (let i = 0; i < Math.max(x.length, y.length); i++) {
       const at = `${path}[${i}]`, before = x.at(i), after = y.at(i);
       pushFirstDifference(changes, before ? nodeFrame(before) : null, after ? nodeFrame(after) : null, at);
-      if (before && after) pushFirstDifference(recompose, before.reveal, after.reveal, `${after.key}.reveal`);
+      if (before && after) pushFirstDifference(reveals, before.reveal, after.reveal, `${after.key}.reveal`);
       if (before && after && isPaintingGroup(before) && isPaintingGroup(after)) visit(before.children, after.children, `${at}.children`);
     }
   };
   visit(a.layers, b.layers, 'layers');
-  return { document: changes, recompose };
+  return { document: changes, reveals };
 }
 
 /** Where `path`, a path within an entry's datum, lies by its owner: `water.slots.palette[1]`, `hill-flood.area…`. */
@@ -131,6 +131,6 @@ function washChangeText(change: PaintingWashChange): string {
 export function paintingEvaluationDiffLines(diff: PaintingEvaluationDiff): string[] {
   return [
     ...diff.document.map((path) => `document: ${path} differs`), ...diff.washes.map(({ layer, wash, change }) => `${layer}/${wash}: ${washChangeText(change)}`),
-    ...diff.recompose.map((path) => `${path} differs: recompose only, nothing solves`),
+    ...diff.reveals.map((path) => `${path} differs: recompose only, nothing solves`),
   ];
 }

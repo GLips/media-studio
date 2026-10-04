@@ -14,7 +14,7 @@ import { stampStageWgsl, type StampStage, type StampStageTexels } from '#lib/pai
 import type { StampPaintCompositor } from '#lib/paint/painting/studio/stamp-paint-compositor.ts';
 import { dispatchStampCompute, STAMP_WORKGROUP } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
-import { STAMP_BILINEAR_OR_ZERO_WGSL, STAMP_CARD_UNION_WGSL, STAMP_NO_REST } from '#lib/paint/painting/studio/stamp-paint-lay-pass.ts';
+import { STAMP_BILINEAR_OR_ZERO_WGSL, STAMP_CARD_UNION_WGSL, STAMP_NO_REST, type StampLayVariant } from '#lib/paint/painting/studio/stamp-paint-lay-pass.ts';
 import { stampLaidCoverWgsl } from '#lib/paint/painting/studio/stamp-paint-plane-passes.ts';
 import type { StampPlanePicture } from '#lib/paint/painting/studio/stamp-plane-picture-pass.ts';
 import type { StampUniformArena } from '#lib/paint/painting/studio/stamp-uniform-arena.ts';
@@ -88,9 +88,9 @@ const SHOT_COVER = gpuUniformLayout('ShotCover', [
 // A step's cover over the coverage in layer `layer` of (1), for each drawable `member` marks: a + (1 − a) · cover, cut
 // by the mask (2) as its paint was. Bound: a film's layer (3), rest map (4) and reveals' cut (5); a card's union (4)
 // and rest map (5); pieces' render (3); a ground's rest map (4).
-function coverWgsl(kind: ShotCoverKind, masked: boolean, revealed: boolean, stage: StampStage, compositor: StampPaintCompositor | null) {
+function coverWgsl(kind: ShotCoverKind, { masked, revealed }: Pick<StampLayVariant, 'masked' | 'revealed'>, stage: StampStage, compositor: StampPaintCompositor | null) {
   const declared = {
-    film: () => stampLaidCoverWgsl(compositor!, 'moved group', STAMP_NO_REST, 'true', revealed),
+    film: () => stampLaidCoverWgsl(compositor!, 'moved group', STAMP_NO_REST, 'true', { revealed }),
     card: () => `@group(0) @binding(4) var edge: texture_2d<f32>;\n@group(0) @binding(5) var rest: texture_2d<f32>;\n${STAMP_BILINEAR_OR_ZERO_WGSL}\n${STAMP_CARD_UNION_WGSL}`,
     pieces: () => '@group(0) @binding(3) var pieces: texture_2d<f32>;',
     ground: () => '@group(0) @binding(4) var rest: texture_2d<f32>;',
@@ -192,7 +192,8 @@ export function createShotMaskPasses(owner: StampPaintGpuOwner, { stage, arena }
     /** Lays `step`'s cover, cut by `mask` (null: none), over each drawable's in `coverage` that `takes` (one a read) marks. */
     cover(encoder: GPUCommandEncoder, coverage: GPUTexture, takes: readonly boolean[], step: ShotCoverStep, mask: GPUTexture | null) {
       const { box } = step, edgeBox = step.kind === 'card' ? step.edgeBox : null;
-      const pipeline = compute(coverWgsl(step.kind, mask !== null, step.kind === 'film' && step.reveal !== null, stage, step.kind === 'film' ? step.compositor : null));
+      const variant = { masked: mask !== null, revealed: step.kind === 'film' && step.reveal !== null };
+      const pipeline = compute(coverWgsl(step.kind, variant, stage, step.kind === 'film' ? step.compositor : null));
       for (const { layer, member } of shotCoverageMembers(takes)) {
         dispatchStampCompute(device, encoder, pipeline, [
           arena.slot((views) => {

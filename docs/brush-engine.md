@@ -173,12 +173,13 @@ texture, films and edge sampled at the rest point (`drawPlacedRest`, by the map'
 `edge`). A film a reveal cuts (a document's `reveal`, `stamp-reveal.ts`) is laid through `studio/stamp-reveal-pass.ts`:
 an r32float cut over the layer target, each texel's share shown at the selection's time, which the lay takes into
 its opacity before compositing (pigment, before colour) and the card's union takes into that film's coverage, so the
-paper follows the revealed paint. A strokes reveal's arrivals (first arrival and its cover, the first at full cover,
-seconds per px) are drawn once into an rgba32float map over the box its bands reach, from tile lists of segments, and
+paper follows the revealed paint. A strokes reveal's arrivals (first arrival and its cover, the first at full cover
+and the cover its arrived bands' union reaches, seconds per px) are drawn once into an rgba32uint map over the box its
+bands reach, from tile lists of segments, and
 kept under producer `arrival` by the reveal, its mapping, wrap and resolution; a field's are read where they're needed.
 The cuts multiply, a group's over its descendants', and each is read where its node's marks were solved: posed paint
 carries its reveal (a warp by its fitted similarity). The root's ground is never cut; the solve, its checkpoints and
-the water never see a reveal, so the evaluation diff names a reveal edit `recompose`. `stamp-film-readback.ts` reads a solved film back for a rig and its tools (ENGINE 5.1): its coverage,
+the water never see a reveal, so the evaluation diff lists a reveal edit under its `reveals`, recomposing only. `stamp-film-readback.ts` reads a solved film back for a rig and its tools (ENGINE 5.1): its coverage,
 document-sized, or its picture, premultiplied linear, laid clear or on its sheet's paper and edge (the root's paper
 over the document, an own sheet's card over its union, as its program's `edge` says). A clear picture is laid over
 white and over black and read as the two-point reading against each backing's light, so laid back over any ground it

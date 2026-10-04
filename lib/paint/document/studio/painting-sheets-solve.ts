@@ -13,7 +13,7 @@ import { holdStampSheetFilms } from '#lib/paint/painting/studio/stamp-sheet-film
 import { solveStampSheet, type StampSheetSolved } from '#lib/paint/painting/studio/stamp-sheet-solver.ts';
 import type { PaintingSelectionCompiled } from '../models/painting-document-compile.ts';
 import { PAINTING_REST_POSE, paintingChainPose, paintingPoseText, paintingSheetPlace, paintingSheetPosed, type PaintingPoses } from '../models/painting-pose.ts';
-import { paintingFilmReveals, paintingRevealLinks } from '../models/painting-reveal.ts';
+import { paintingRevealLinksOf } from '../models/painting-reveal.ts';
 
 /**
  * A selection's sheets solved: each one's solve, at its index in the compiled selection; their composite; and
@@ -57,15 +57,14 @@ export async function solvePaintingSheetFilms(
  * composite places a sheet by a similarity, and only a shot lays one through a warp (shot-sheets-lay.ts).
  */
 export async function solvePaintingSheets(owner: StampPaintGpuOwner, compiled: PaintingSelectionCompiled, options: PaintingSheetsSolveOptions = {}): Promise<PaintingSheetsSolved> {
-  const { solved, release } = await solvePaintingSheetFilms(owner, compiled, options), poses = options.poses ?? new Map(), filmReveals = paintingFilmReveals(compiled);
+  const { solved, release } = await solvePaintingSheetFilms(owner, compiled, options), poses = options.poses ?? new Map(), reveals = paintingRevealLinksOf(compiled, poses, options.at);
   const sheets = compiled.sheets.map(({ program, ownerChain }, s) => {
     const pose = paintingChainPose(compiled.tree, ownerChain, poses);
     if (pose.kind === 'warp') {
       release();
       throw new Error(`painting: ${program.name} is placed by a warp (${pose.text}); a still lays a sheet moved by a similarity only`);
     }
-    const reveals = filmReveals[s].map((film) => paintingRevealLinks(compiled.tree, film, poses, options.at ?? Infinity));
-    return { program, films: solved[s].films, place: paintingPoseText(pose) === PAINTING_REST_POSE ? null : paintingSheetPlace(pose.map), reveals };
+    return { program, films: solved[s].films, place: paintingPoseText(pose) === PAINTING_REST_POSE ? null : paintingSheetPlace(pose.map), reveals: reveals[s] };
   });
   return { solved, composite: { sheets, steps: compiled.steps }, release };
 }

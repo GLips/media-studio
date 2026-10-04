@@ -11,8 +11,8 @@ import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { StampPaintCostTally } from '../models/stamp-paint-costs.ts';
 import { stampSimilarityPoint, type StampSheetPlace } from '../models/stamp-rest-map.ts';
 import { stampSheetMixedPainting, type StampSheetCompositeStep, type StampSheetProgram } from '../models/stamp-sheet-program.ts';
-import { stampRevealLinksKey, type StampRevealLink } from '../models/stamp-reveal.ts';
-import { stampBoxUnion, stampStage, stampStageTexelsOf, stampStageWgsl, stampWrapPeriods, type StampPointBox, type StampStage } from '../models/stamp-stage.ts';
+import { stampSheetRevealsKey, type StampFilmRevealLinks } from '../models/stamp-reveal.ts';
+import { stampBoxUnion, stampStage, stampStageTexelsOf, stampStageWgsl, stampWrapPeriods, type StampPointBox, type StampStage, type StampWrapPeriods } from '../models/stamp-stage.ts';
 import { copyStampLayerForReadback, readStampLayerCopy, type StampLayerReadback } from './stamp-layer-readback.ts';
 import { stampPaintTargetWgsl, type StampPaintCompositor, type StampPaintTarget } from './stamp-paint-compositor.ts';
 import { stampPaintCompositorFor } from './stamp-paint-compositor-for.ts';
@@ -20,7 +20,7 @@ import type { StampGpuCacheStore } from './stamp-paint-gpu-cache.ts';
 import { clearStampTarget, copyStampTextureBox, dispatchStampCompute, STAMP_WORKGROUP, stampBindGroup, stampPaintSamplers, type StampPaintDevice } from './stamp-paint-gpu.ts';
 import type { StampPaintGpuOwner } from './stamp-paint-gpu-owner.ts';
 import { createStampPaintLay, stampPaintOutputWgsl, type StampPaintBacking, type StampPaintLay } from './stamp-paint-lay-pass.ts';
-import { createStampRevealPass, stampRevealAtWgsl, stampRevealSlots } from './stamp-reveal-pass.ts';
+import { createStampRevealPass, stampRevealAtWgsl, stampRevealSlots, type StampRevealPass } from './stamp-reveal-pass.ts';
 import type { StampPaintSurface } from './stamp-paint-surface.ts';
 import { keptStampSheetFilm, type StampSheetFilmKept } from './stamp-sheet-films.ts';
 import { createStampUniformArena, type StampUniformArena } from './stamp-uniform-arena.ts';
@@ -32,9 +32,9 @@ export type StampSheetKeptFilms = { readonly program: StampSheetProgram; readonl
 
 /**
  * A sheet as a composite lays it: its kept films; `place`, where its films, card and paper lie (null: where they were
- * painted); and `reveals`, each film's, outermost first (none cut any when left out).
+ * painted); and `reveals`, each film's, outermost first (STAMP_FILMS_WHOLE for a readback, read as painted).
  */
-export type StampSheetLaid = StampSheetKeptFilms & { readonly place: StampSheetPlace | null; readonly reveals?: readonly (readonly StampRevealLink[])[] };
+export type StampSheetLaid = StampSheetKeptFilms & { readonly place: StampSheetPlace | null; readonly reveals: StampFilmRevealLinks };
 
 /**
  * Sheets laid as one picture: the root's first, its paper the ground when one is laid; the steps laying them, back
@@ -70,44 +70,50 @@ export type StampSheetEdge = { view: GPUTextureView; box: StampPointBox };
 export type StampSheetEdgeFilm = { readonly film: StampSheetFilmKept; readonly shown: number };
 
 /**
- * A sheet's films' reveals as its edge joins them: `key` naming them all (stampRevealLinksKey's, a film each), and
- * `cutOf`, film f's cut (StampRevealPass's; f indexing the edge's films) and the cut's texel its box's first lies at,
- * made as it's asked for; null for a film nothing cuts.
+ * How a sheet's films are cut as its edge joins them: their `reveals`, in the edge's films' order; the `pass` cutting
+ * them, on `stage`; and the `size` of the layer target a cut is made over and the `periods` the document wraps by
+ * (StampRevealCutting's).
  */
-export type StampSheetEdgeCuts = {
-  readonly key: string;
-  readonly cutOf: (film: number) => { readonly view: GPUTextureView; readonly origin: readonly [number, number] } | null;
+export type StampSheetEdgeCutting = {
+  readonly reveals: StampFilmRevealLinks;
+  readonly pass: StampRevealPass;
+  readonly stage: StampStage;
+  readonly size: { readonly width: number; readonly height: number };
+  readonly periods: StampWrapPeriods;
 };
 
 /**
- * The union of `films`' coverage, each times how much it shows and cut by its reveals when `cuts` says, used by
- * `encoder`'s work: kept under their keys, shares and reveals, so a sheet whose films haven't changed joins them no
- * more. Null for films painted nowhere.
+ * The union of `films`' coverage, each times how much it shows and cut by its reveals (`cutting`), used by `encoder`'s
+ * work: kept under their keys, shares and reveals, so a sheet whose films haven't changed joins them no more. Null for
+ * films painted nowhere.
  */
 export function stampSheetEdge(
-  owner: StampPaintGpuOwner, device: StampPaintDevice, encoder: GPUCommandEncoder, arena: StampUniformArena, films: readonly StampSheetEdgeFilm[], cuts?: StampSheetEdgeCuts,
+  owner: StampPaintGpuOwner, device: StampPaintDevice, encoder: GPUCommandEncoder, arena: StampUniformArena, films: readonly StampSheetEdgeFilm[],
+  { reveals, pass, stage, size, periods }: StampSheetEdgeCutting,
 ): StampSheetEdge | null {
   const box = films.reduce<StampPointBox | null>((union, { film }) => stampBoxUnion(union, film.box), null);
   if (!box) return null;
   let store = edgeStores.get(owner);
   if (!store) edgeStores.set(owner, (store = owner.cache.store<StampSheetEdgeNote>('edge')));
-  const key = `${films.map(({ film, shown }) => `${film.key}*${shown}`).join('+')}${cuts ? ` cut ${cuts.key}` : ''}`, found = store.find(key, encoder);
+  const cut = reveals.some((links) => links.length > 0), key = `${films.map(({ film, shown }) => `${film.key}*${shown}`).join('+')}${cut ? ` cut ${stampSheetRevealsKey(reveals)}` : ''}`;
+  const found = store.find(key, encoder);
   if (found) return { view: found.textures[0].createView(), box: found.note.box };
   const usage = GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING;
   const [texture] = store.make(key, encoder, [{ width: box.w, height: box.h, layers: 1, format: 'r32float', usage }], { box }).textures;
   const view = texture.createView(), join = (revealed: boolean) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code: edgeWgsl(revealed) }) } });
   films.forEach(({ film, shown }, f) => {
     if (!film.box) return;
-    const kept = keptStampSheetFilm(owner, film, encoder)!, { x, y, w, h } = film.box, cut = cuts?.cutOf(f) ?? null;
-    dispatchStampCompute(device, encoder, join(cut !== null), [
+    const kept = keptStampSheetFilm(owner, film, encoder)!, { x, y, w, h } = film.box, texels = stampStageTexelsOf(stage, film.box);
+    const reveal = pass.cut(encoder, arena, { links: reveals[f] ?? [], box: texels, size, periods });
+    dispatchStampCompute(device, encoder, join(reveal !== null), [
       arena.slot((views) => {
         const put = gpuUniformWriter(STAMP_SHEET_EDGE, views);
         put('origin', [x - box.x, y - box.y]);
         put('extent', [w, h]);
         put('shown', shown);
-        if (cut) put('cutOrigin', [cut.origin[0], cut.origin[1]]);
+        put('cutOrigin', [texels.x, texels.y]);
       }),
-      kept.createView({ dimension: '2d-array' }), view, cut?.view ?? null,
+      kept.createView({ dimension: '2d-array' }), view, reveal,
     ], w, h);
   });
   return { view, box };
@@ -125,7 +131,7 @@ function placedBox(stage: StampStage, box: StampPixelBox, place: StampSheetPlace
 }
 
 /** The uniform slots cutting `sheet`'s film `film` by its reveals may take. */
-const revealSlots = (sheet: StampSheetLaid, film: number) => stampRevealSlots(sheet.reveals?.[film] ?? []);
+const revealSlots = (sheet: StampSheetLaid, film: number) => stampRevealSlots(sheet.reveals[film] ?? []);
 
 /**
  * How many uniform slots laying `composite` may take: the ground, a rest map a sheet, a card and its edge's joins
@@ -181,11 +187,7 @@ function encodeStampSheetsSteps(
   { stage, compositors, lays }: StampSheetsLays, painting: GPUTextureView, ground: StampPaintBacking,
 ) {
   const revealing = createStampRevealPass(owner, device, stage), size = { width: stage.width, height: stage.height };
-  /** Sheet `s`'s film `f` cut by its reveals over `box`, its stage texels; null for one nothing cuts. */
-  const cutOf = (s: number, f: number, box: StampPixelBox) => {
-    const { program, reveals } = composite.sheets[s];
-    return revealing.cut(encoder, arena, { links: reveals?.[f] ?? [], box, size, periods: stampWrapPeriods(program, program.wrap) });
-  };
+  const periodsOf = (s: number) => stampWrapPeriods(composite.sheets[s].program, composite.sheets[s].program.wrap);
   const rests = composite.sheets.map(({ place }, s) => {
     if (!place) return null;
     const rest = owner.target(`sheet composite rest ${s}`, { size: [stage.width, stage.height], format: 'rg32float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING });
@@ -196,14 +198,9 @@ function encodeStampSheetsSteps(
   for (const step of composite.steps) {
     const { films, place, reveals } = composite.sheets[step.sheet], rest = rests[step.sheet];
     if (step.kind === 'card') {
-      const cuts = reveals?.some((links) => links.length > 0) ? {
-        key: reveals.map(stampRevealLinksKey).join('|'),
-        cutOf: (f: number) => {
-          const box = films[f].box && stampStageTexelsOf(stage, films[f].box), view = box && cutOf(step.sheet, f, box);
-          return box && view ? { view, origin: [box.x, box.y] as const } : null;
-        },
-      } : undefined;
-      const edge = stampSheetEdge(owner, device, encoder, arena, films.map((film) => ({ film, shown: 1 })), cuts), edgeBox = edge && stampStageTexelsOf(stage, edge.box);
+      const edgeFilms = films.map((film) => ({ film, shown: 1 }));
+      const edge = stampSheetEdge(owner, device, encoder, arena, edgeFilms, { reveals, pass: revealing, stage, size, periods: periodsOf(step.sheet) });
+      const edgeBox = edge && stampStageTexelsOf(stage, edge.box);
       const box = edgeBox && (place ? placedBox(stage, edgeBox, place) : edgeBox);
       if (edge && edgeBox && box) lays[step.sheet].layCard(encoder, { edge: edge.view, edgeBox, painting, box, rest });
       continue;
@@ -216,7 +213,7 @@ function encodeStampSheetsSteps(
     // A moved lay's taps read past the film's box: nothing an earlier film left there may show.
     if (place) for (const view of layer.layers) clearStampTarget(encoder, view);
     copyStampTextureBox(encoder, { texture: kept, x: 0, y: 0 }, { texture: layer.texture, x: filmBox.x, y: filmBox.y }, filmBox);
-    const reveal = cutOf(step.sheet, step.film, filmBox);
+    const reveal = revealing.cut(encoder, arena, { links: reveals[step.film] ?? [], box: filmBox, size, periods: periodsOf(step.sheet) });
     lays[step.sheet].layGroup(encoder, { layer: layer.view, painting, index: step.film, opacity: 1, glaze: true, box, backing: ground, rest, paperFromRest: true, reveal });
   }
 }

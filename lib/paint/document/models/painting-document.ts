@@ -258,7 +258,7 @@ export type AnyApplication = Application | TimedApplication | DirectApplication 
 /**
  * One stroke of a reveal: a band `widthPx` wide round `points` (document px), its front moving along them at constant
  * speed from scene second `from` to `to`. `cap` `'round'` (left out) reaches half the width past each end; `'flat'`
- * stops square. Share a path with its application as a TS constant; paintingRevealBandPx gives a width holding it.
+ * stops square. Share a path with its application as a TS constant; hold its width to paintingRevealBandPx in a test.
  */
 export type RevealStroke = StampRevealStroke;
 

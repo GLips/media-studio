@@ -7,11 +7,11 @@
 // A lattice whose maps are all similarities is one cell, exact; a warp's is cells STAMP_WARP_CELL apart. A vertex's
 // travel is stampTravel's, the one producer an old painting's groups share.
 
-import { paintSimilarityApply, paintSimilarityBox, paintSimilarityInverse, paintSimilarityScale } from '#lib/paint/animation/models/paint-similarity.ts';
-import { paintingFitSimilarity, paintingPoseMap, paintingPoseText, type PaintingNodePose } from '#lib/paint/document/models/painting-pose.ts';
+import { paintSimilarityBox, paintSimilarityInverse, paintSimilarityScale } from '#lib/paint/animation/models/paint-similarity.ts';
+import { paintingPoseFitOver, paintingPoseMap, paintingPoseText, type PaintingNodePose } from '#lib/paint/document/models/painting-pose.ts';
 import { stampTravel, type StampTravelEnd } from '#lib/paint/painting/models/stamp-frame-plan.ts';
 import { STAMP_WARP_CELL, stampWarpCells, stampWarpTriangles, type StampWarpMap } from '#lib/paint/painting/models/stamp-group-warp.ts';
-import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
 
 /**
  * A lattice: its triangles, four floats a vertex (where it lies, plane px; where it's read, sheet px), and each
@@ -71,13 +71,6 @@ export function shotPlacedLattice(box: StampBox, at: PaintingNodePose, shutter: 
   return shotLatticeOver(grownBox(boxOf(box), warped ? 0 : 1), warped, paintingPoseMap(at), null, travelOf(shutter, poseEnd));
 }
 
-/** The grid of points a bending map is fit over: `box`'s corners, centre and edge midpoints, and a 4 × 4 grid within. */
-function fitPoints({ x0, y0, x1, y1 }: StampBox): StampPoint[] {
-  const points: StampPoint[] = [];
-  for (let j = 0; j <= 4; j++) for (let i = 0; i <= 4; i++) points.push({ x: x0 + ((x1 - x0) * i) / 4, y: y0 + ((y1 - y0) * j) / 4 });
-  return points;
-}
-
 /** Where a sheet at `each` lays a rest point: its marks' pose, then its place. */
 function sheetAtMap(each: ShotSheetAt): StampWarpMap {
   const place = paintingPoseMap(each.place), marks = paintingPoseMap(each.marks);
@@ -94,13 +87,8 @@ const sheetEnd = (each: ShotSheetAt): StampTravelEnd => ({ map: sheetAtMap(each)
 export function shotFilmLattice(box: StampBox, solved: PaintingNodePose, at: ShotSheetAt, shutter: ShotShutterAt<ShotSheetAt>, fitBox: StampBox | undefined): ShotLattice {
   const text = paintingPoseText(solved), still = (each: ShotSheetAt) => paintingPoseText(each.marks) === text;
   if (still(at) && (!shutter || (still(shutter.open) && still(shutter.close)))) return shotPlacedLattice(box, at.place, shutter && { open: shutter.open.place, close: shutter.close.place });
-  const solvedMap = paintingPoseMap(solved), points = fitPoints(fitBox ?? box);
-  const fit = solved.kind === 'similarity' ? solved.map : paintingFitSimilarity(points, solvedMap);
-  // How far the bend strays from its fit, so the rest box holds all the solved paint came from.
-  const stray = solved.kind === 'similarity' ? 0 : Math.max(...points.map((point) => {
-    const bent = solvedMap(point), fitted = paintSimilarityApply(fit, point);
-    return Math.hypot(bent.x - fitted.x, bent.y - fitted.y);
-  }));
+  // The bend's stray from its fit grows the rest box to hold all the solved paint came from.
+  const solvedMap = paintingPoseMap(solved), { fit, stray } = paintingPoseFitOver(solved, fitBox ?? box);
   const rest = paintSimilarityBox(paintSimilarityInverse(fit), box), pad = (stray + 1) / paintSimilarityScale(fit) + 1;
   const warped = isWarp(solved, at.place, at.marks, ...(shutter ? [shutter.open.place, shutter.open.marks, shutter.close.place, shutter.close.marks] : []));
   return shotLatticeOver(grownBox(boxOf(rest), pad), warped, sheetAtMap(at), solvedMap, travelOf(shutter, sheetEnd));

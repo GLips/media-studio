@@ -8,7 +8,7 @@
 import { PAINT_SIMILARITY_IDENTITY, paintSimilarityBox, paintSimilarityInverse, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import type { NodeKey } from '#lib/paint/document/models/painting-document.ts';
 import { paintingNodeSteps, paintingStepNode, type PaintingSelectionCompiled } from '#lib/paint/document/models/painting-document-compile.ts';
-import { paintingFilmReveals, paintingRevealLinks } from '#lib/paint/document/models/painting-reveal.ts';
+import { paintingRevealLinksOf } from '#lib/paint/document/models/painting-reveal.ts';
 import { paintingBoxUnion, paintingNodeBox } from '#lib/paint/document/models/painting-footprint.ts';
 import {
   PAINTING_REST_POSE, paintingPoseAfter, paintingPoseMap, paintingPoseText, paintingSimilarityPose, type PaintingNodePose, type PaintingPoses,
@@ -16,7 +16,7 @@ import {
 import type { LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
 import { paintingSheetInGroup, type PaintingSheet, type PaintingTree } from '#lib/paint/document/models/painting-tree.ts';
 import type { PaintMoment, StampGroupGlow } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
-import type { StampRevealLink } from '#lib/paint/painting/models/stamp-reveal.ts';
+import type { StampFilmRevealLinks } from '#lib/paint/painting/models/stamp-reveal.ts';
 import { stampBoxGrown, type StampBox } from '#lib/paint/painting/models/stamp-region.ts';
 import type { StampPointBox, StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { PaintRigPicture, PaintRigPiece } from '#lib/paint/rig/models/paint-rig-pieces.ts';
@@ -210,7 +210,7 @@ export function shotPiecesPlaced(plan: ShotPiecesPlan, skin: ShotRigSkin, pictur
 }
 
 /** An alphaOf mask: the drawable whose laid coverage it reads, and whether it shows where that drawable isn't. */
-export type ShotMaskAt = { readonly kind: 'alphaOf'; readonly drawable: OccurrenceKey; readonly invert: boolean };
+export type ShotMaskAt = { readonly drawable: OccurrenceKey; readonly invert: boolean };
 
 /**
  * A drawable of a plane that another plane's alphaOf mask reads: the steps whose lay covers it (its node's; all of
@@ -220,7 +220,7 @@ export type ShotPlaneRead = { readonly drawable: OccurrenceKey; readonly steps: 
 
 /** `plane`'s masks: the same every moment. */
 const shotMasksOf = ({ plane }: Pick<ShotPlaneLayInput, 'plane'>): ShotMaskAt[] =>
-  plane.masks.map(({ drawable, invert }) => ({ kind: 'alphaOf', drawable, invert: invert ?? false }));
+  plane.masks.map(({ drawable, invert }) => ({ drawable, invert: invert ?? false }));
 
 /** What of `input`'s plane the shot's alphaOf masks read: each drawable's steps in its compile, the plane's being all of them. */
 function shotPlaneReads({ shot, plane, compiled }: Pick<ShotPlaneLayInput, 'shot' | 'plane' | 'compiled'>): ShotPlaneRead[] {
@@ -258,7 +258,7 @@ export type ShotPlaneLayInput = {
 export type ShotPlaneLayPlan = {
   readonly key: string;
   readonly steps: readonly (ShotStepFrame | null)[];
-  readonly reveals: readonly (readonly (readonly StampRevealLink[])[])[];
+  readonly reveals: readonly StampFilmRevealLinks[];
   readonly fades: readonly ShotFadeSpan[];
   readonly ground: ShotGroundLay;
   readonly pieces: readonly ShotPiecesPlan[];
@@ -346,7 +346,7 @@ export function shotPlaneLayPlan(input: ShotPlaneLayInput, moment: ShotMomentAt)
     }
   }
 
-  const filmReveals = paintingFilmReveals(compiled), reveals = filmReveals.map((sheet) => sheet.map((film) => paintingRevealLinks(compiled.tree, film, solved, selection.at ?? Infinity)));
+  const reveals = paintingRevealLinksOf(compiled, solved, selection.at);
   const masks = shotMasksOf(input), reads = shotPlaneReads(input);
   const visibility = plane.opaqueBack ? 1 : shotVisibilityAt(shot, plane.id, plane.id, at), emits = steps.some((step) => step?.glow && step.opacity > 0);
   const travels = !!shutter && ((ground?.kind === 'placed' && latticeTravels(ground.lattice)) || steps.some((step) => step && step.lay.kind !== 'pieces' && latticeTravels(step.lay.lattice)) || pieces.some((each) => each.travels));

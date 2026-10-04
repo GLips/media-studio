@@ -4,6 +4,7 @@
 
 import { paintingSolveLines } from '#lib/paint/document/models/painting-solve-report.ts';
 import { createStampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
+import { STAMP_FILMS_WHOLE } from '#lib/paint/painting/models/stamp-reveal.ts';
 import type { StampSheetProgram } from '#lib/paint/painting/models/stamp-sheet-program.ts';
 import { stampSheetEmptyCore, stampSheetGrid } from '#lib/paint/painting/models/stamp-sheet-schedule.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
@@ -25,7 +26,7 @@ const ID = 'schedule/clocks';
 const namesOf = ({ entries }: StampSheetProgram) => entries.map(({ name }) => name);
 /** A root sheet's kept `films` as a composite of it alone, at rest on its paper. */
 const aloneOnPaper = (program: StampSheetProgram, films: readonly StampSheetFilmKept[]): StampSheetsComposite =>
-  ({ sheets: [{ program, films, place: null }], steps: program.films.map((_, film) => ({ kind: 'film', sheet: 0, film }) as const) });
+  ({ sheets: [{ program, films, place: null, reveals: STAMP_FILMS_WHOLE }], steps: program.films.map((_, film) => ({ kind: 'film', sheet: 0, film }) as const) });
 const refusedAs = (refused: string | null, { starts, ends }: { starts: string; ends: string }) => !!refused && refused.startsWith(starts) && refused.endsWith(ends);
 
 /** The pool on a scale: every moment its closed form's, scene seconds from τc. */

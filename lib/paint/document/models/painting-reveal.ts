@@ -1,33 +1,33 @@
 // painting-reveal.ts: a document's reveals as a selection's lays read them (docs/painting-authoring.md, Time). A film
 // is cut by its layer's reveal and every enclosing group's, multiplied. Each is read in its node's frame: a node posed
 // on a sheet it doesn't own carries its reveal with its marks, while one at or above the sheet's owner moves the
-// finished sheet, so its reveal is read where the sheet was painted. And how wide a strokes reveal's band must be to
-// show all an application lays.
+// finished sheet, so its reveal is read where the sheet was painted. And for authors: an eased pull as reveal strokes,
+// and how wide a band must be to show all an application lays.
 
 import { PAINT_SIMILARITY_IDENTITY, paintSimilarityInverse, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
-import { stampRevealSampleAt, type StampRevealLink } from '#lib/paint/painting/models/stamp-reveal.ts';
-import { STAMP_FLAT_TIP_FLOOR } from '#lib/paint/painting/models/stamp-tip-support.ts';
-import { stampWetDepositReach } from '#lib/paint/painting/models/stamp-wet-reach.ts';
+import { stampPolylineDistance } from '#lib/paint/painting/models/stamp-area-boundaries.ts';
+import { stampDepositWater } from '#lib/paint/painting/models/stamp-paint-action.ts';
+import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import { stampRevealPathLength, stampRevealSampleAt, type StampFilmRevealLinks, type StampRevealCap } from '#lib/paint/painting/models/stamp-reveal.ts';
+import { stampMarksReach } from '#lib/paint/painting/models/stamp-sheet-wrap.ts';
+import { stampSheetWetReach } from '#lib/paint/painting/models/stamp-wet-reach.ts';
+import { compilePaintingDeposit, type PaintingBrushOf } from './painting-deposit-compile.ts';
 import { paintingCappedMedium, type PaintingSelectionCompiled } from './painting-document-compile.ts';
-import type { AnyApplication, MediumName, NodeKey, Reveal } from './painting-document.ts';
-import { paintingLargestDiameter, paintingNodeBox } from './painting-footprint.ts';
-import { paintingFitSimilarity, paintingPoseAfter, paintingPoseMap, paintingSimilarityPose, type PaintingNodePose, type PaintingPoses } from './painting-pose.ts';
-import type { PaintingTree } from './painting-tree.ts';
+import type { AnyApplication, MediumName, NodeKey, Reveal, RevealStroke } from './painting-document.ts';
+import { paintingNodeBox } from './painting-footprint.ts';
+import { paintingPoseAfter, paintingPoseFitOver, paintingSimilarityPose, type PaintingPoses } from './painting-pose.ts';
 
 /**
  * A reveal cutting a film: its node's, and the nodes posing the film's marks from below its sheet's owner down to
  * that node, outermost first (none for a node moving the finished sheet, or the sheet's owner).
  */
-export type PaintingFilmReveal = { readonly node: NodeKey; readonly reveal: Reveal; readonly posedBy: readonly NodeKey[] };
+type PaintingFilmReveal = { readonly node: NodeKey; readonly reveal: Reveal; readonly posedBy: readonly NodeKey[] };
 
-/** Each film's reveals, by sheet and film, outermost first. */
-export type PaintingFilmReveals = readonly (readonly (readonly PaintingFilmReveal[])[])[];
-
-const filmReveals = new WeakMap<PaintingSelectionCompiled, PaintingFilmReveals>();
+const filmReveals = new WeakMap<PaintingSelectionCompiled, readonly (readonly (readonly PaintingFilmReveal[])[])[]>();
 
 /** The reveals cutting each film `compiled` lays, by sheet and film: its layer's line's, outermost first; none for a film none cuts. */
-export function paintingFilmReveals(compiled: PaintingSelectionCompiled): PaintingFilmReveals {
+function paintingFilmReveals(compiled: PaintingSelectionCompiled) {
   const known = filmReveals.get(compiled);
   if (known) return known;
   const { tree } = compiled;
@@ -42,52 +42,93 @@ export function paintingFilmReveals(compiled: PaintingSelectionCompiled): Painti
   return made;
 }
 
-/** Whether any film `compiled` lays is cut by a reveal. */
-export const paintingSelectionReveals = (compiled: PaintingSelectionCompiled) => paintingFilmReveals(compiled).some((sheet) => sheet.some((film) => film.length > 0));
-
 const REST = paintingSimilarityPose(PAINT_SIMILARITY_IDENTITY);
 const wordsOf = ({ ma, mb, kx, ky }: PaintSimilarity) => [ma, mb, kx, ky] as const;
 
-/** How many points a side a warp's stand-in similarity is fit over, across its node's box. */
-const FIT_GRID = 5;
-
 /**
- * The similarity standing for `pose` over `node`'s paint: itself, or under a warp the best fit over a grid across the
- * box of what the node lays (fields aren't warped: a posed deposit's way back to rest is a fit too).
+ * Each film `compiled` lays cut by its reveals at scene second `at` (Infinity, left out: fully revealed), by sheet:
+ * each reveal with the similarity taking a film point back to its node's rest point (a warp's fit over the layer's
+ * paint, as the shot's lattice fits it) under `poses`, and the time it shows at (stampRevealSampleAt).
  */
-function paintingRevealPoseFit(tree: PaintingTree, node: NodeKey, pose: PaintingNodePose): PaintSimilarity {
-  if (pose.kind === 'similarity') return pose.map;
-  const box = paintingNodeBox(tree.byKey.get(node)!.node);
-  if (!box) return PAINT_SIMILARITY_IDENTITY;
-  const points = Array.from({ length: FIT_GRID * FIT_GRID }, (_, k) => ({
-    x: box.x0 + ((box.x1 - box.x0) * (k % FIT_GRID)) / (FIT_GRID - 1), y: box.y0 + ((box.y1 - box.y0) * Math.floor(k / FIT_GRID)) / (FIT_GRID - 1),
+export function paintingRevealLinksOf(compiled: PaintingSelectionCompiled, poses: PaintingPoses, at = Infinity): StampFilmRevealLinks[] {
+  const { tree } = compiled;
+  return paintingFilmReveals(compiled).map((sheet, s) => sheet.map((film, f) => {
+    const box = paintingNodeBox(tree.layers[compiled.sheets[s].layers[f]].node);
+    return film.map(({ reveal, posedBy }) => {
+      const pose = posedBy.reduce((outer, key) => paintingPoseAfter(outer, poses.get(key) ?? REST), REST);
+      // A layer laying nothing has no film to cut: any similarity stands.
+      const toFilm = box ? paintingPoseFitOver(pose, box).fit : PAINT_SIMILARITY_IDENTITY, toRest = paintSimilarityInverse(toFilm);
+      return { reveal, toRest: wordsOf(toRest), toFilm: wordsOf(toFilm), at: stampRevealSampleAt(reveal, Math.hypot(toRest.ma, toRest.mb), at) };
+    });
   }));
-  return paintingFitSimilarity(points, paintingPoseMap(pose));
 }
 
-/**
- * `reveals` (a film's, paintingFilmReveals') as a pass reads them at scene second `at` (Infinity: fully revealed), the
- * film's marks posed by `poses` as they were painted: each with the similarity taking a film point back to its node's
- * rest point, and the time it shows at (stampRevealSampleAt).
- */
-export function paintingRevealLinks(tree: PaintingTree, reveals: readonly PaintingFilmReveal[], poses: PaintingPoses, at: number): StampRevealLink[] {
-  return reveals.map(({ node, reveal, posedBy }) => {
-    const pose = posedBy.reduce((outer, key) => paintingPoseAfter(outer, poses.get(key) ?? REST), REST);
-    const toFilm = paintingRevealPoseFit(tree, node, pose), toRest = paintSimilarityInverse(toFilm);
-    return { reveal, toRest: wordsOf(toRest), toFilm: wordsOf(toFilm), at: stampRevealSampleAt(reveal, Math.hypot(toRest.ma, toRest.mb), at) };
-  });
+/** `points` from `s0` to `s1` px along them. */
+function pathBetween(points: readonly StampPoint[], s0: number, s1: number): StampPoint[] {
+  const out: StampPoint[] = [];
+  let along = 0;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1], b = points[i], span = Math.hypot(b.x - a.x, b.y - a.y);
+    const at = (s: number) => ({ x: a.x + ((b.x - a.x) * (s - along)) / span, y: a.y + ((b.y - a.y) * (s - along)) / span });
+    if (span > 0 && along + span > s0 && along < s1) {
+      if (out.length === 0) out.push(at(Math.max(s0, along)));
+      out.push(at(Math.min(s1, along + span)));
+    }
+    along += span;
+  }
+  return out;
 }
 
+/** How an eased pull runs: its band, its scene seconds, where `ease` (0..1 to 0..1) puts its front, and how finely it's cut. */
+export type PaintingEasedReveal = {
+  readonly widthPx: number;
+  readonly from: number;
+  readonly to: number;
+  readonly ease: (u: number) => number;
+  /** Pieces a second (30): one a frame at 30 fps puts the front where the ease does every frame. */
+  readonly piecesPerSecond?: number;
+  readonly cap?: StampRevealCap;
+};
+
+/** Pieces shorter than this, px, are dropped: an ease that barely moves the front there adds nothing. */
+const EASED_PIECE_LEAST_PX = 0.5;
+
 /**
- * How wide a strokes reveal's band must be, px, to show all `application` lays round a path they share: its widest
- * diameter and wobble, a tip's floor each side, and when `wet` the furthest its water carries paint in its `medium`
- * (spread held to `maxSpreadPx`) or any of `sheetMedia`, the films it lands in.
+ * `points` revealed by a band pulled from `from` to `to` with its front where `ease` puts it: a reveal stroke's front
+ * runs at constant speed, so the path is cut into pieces, each at its stretch's pace. `cap` applies to the pull's two
+ * ends; the joins between pieces are round, so they close up.
  */
-export function paintingRevealBandPx(application: AnyApplication, medium: MediumName, { wet = true, sheetMedia = [] }: { wet?: boolean; sheetMedia?: readonly MediumName[] } = {}): number {
-  const diameter = paintingLargestDiameter(application, application.diameterPx), { charge } = application, own = PAINT_MEDIA[medium];
-  const wobble = application.kind === 'stroke' ? application.hand?.wobble?.position ?? 0 : 0;
+export function paintingEasedRevealStrokes(points: readonly StampPoint[], { widthPx, from, to, ease, piecesPerSecond = 30, cap }: PaintingEasedReveal): RevealStroke[] {
+  const length = stampRevealPathLength(points), over = to - from, pieces = Math.max(1, Math.ceil(over * piecesPerSecond));
+  const strokes = Array.from({ length: pieces }, (_, k): RevealStroke => ({
+    points: pathBetween(points, length * ease(k / pieces), length * ease((k + 1) / pieces)), widthPx, from: from + (over * k) / pieces, to: from + (over * (k + 1)) / pieces,
+  })).filter((piece) => stampRevealPathLength(piece.points) >= EASED_PIECE_LEAST_PX);
+  // Only the pull's ends square: where pieces join at a bend, round ends close the wedge square ones would leave open.
+  if (cap === 'flat' && strokes.length > 0) {
+    strokes[0] = { ...strokes[0], cap };
+    strokes[strokes.length - 1] = { ...strokes[strokes.length - 1], cap };
+  }
+  return strokes;
+}
+
+/** How a band is sized: the brushes `application` names, whether its wash is wet, and the media of the films its water lands in. */
+export type PaintingRevealBandSetting = { readonly brushOf: PaintingBrushOf; readonly wet?: boolean; readonly sheetMedia?: readonly MediumName[] };
+
+/**
+ * The band, px, a strokes reveal needs to show all stroke `application` lays round its subpaths: its compiled stamps'
+ * farthest reach, and when `wet` (true, left out) as far as its water carries paint in `medium` or any of
+ * `sheetMedia`. A painting source can't resolve a brush: hold its widths to this in a test.
+ */
+export function paintingRevealBandPx(
+  application: AnyApplication & { readonly kind: 'stroke' }, medium: MediumName, { brushOf, wet = true, sheetMedia = [] }: PaintingRevealBandSetting,
+): number {
+  const { deposit } = compilePaintingDeposit(application, application.key ?? 'band', { id: 'band', wet, brushOf });
+  let farthest = 0;
+  for (const marks of [deposit.stamps, deposit.dualStamps]) {
+    for (const { x, y } of marks) farthest = Math.max(farthest, Math.min(...application.subpaths.map((path) => stampPolylineDistance(path, x, y))));
+  }
+  const { charge } = application, own = PAINT_MEDIA[medium];
   const capped = charge.kind === 'paint' && charge.maxSpreadPx !== undefined ? paintingCappedMedium(own, charge.maxSpreadPx, application.diameterPx) : own;
-  const water = charge.kind === 'lift' ? 0 : charge.water ?? own.wetting.defaultWater, carrier = { action: { kind: charge.kind }, diameter };
-  const carried = wet ? Math.max(...[capped, ...sheetMedia.map((name) => PAINT_MEDIA[name])].map((each) => stampWetDepositReach(carrier, each, water))) : 0;
-  return Math.ceil(diameter * (1 + 2 * wobble) + 2 * carried + 2 * STAMP_FLAT_TIP_FLOOR);
+  const carried = wet ? stampSheetWetReach(sheetMedia.map((name) => PAINT_MEDIA[name]), deposit, capped, stampDepositWater(deposit, capped)) : 0;
+  return Math.ceil(2 * (farthest + stampMarksReach(deposit) + carried));
 }

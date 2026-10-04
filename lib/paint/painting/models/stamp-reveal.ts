@@ -1,9 +1,9 @@
 // stamp-reveal.ts: finished paint shown over time, as a document's reveal cuts it (docs/painting-authoring.md, Time).
 // A reveal gives each texel an arrival time: strokes advance along their paths by arclength at constant speed, each
-// from its `from` to its `to`, the earliest arrival winning where they cross; a field reads it off fields, base plus
-// delay. A texel shows its covered share once the time passes its arrival, ramped over `softS` seconds and one texel
-// of the front's travel; a texel no stroke covers never shows. Here are the checks, the plan the GPU pass reads
-// (stamp-reveal-pass.ts) and the arithmetic's CPU twin, which the GPU gate holds the pass to.
+// from its `from` to its `to`, the earliest winning where they cross; a field reads it off fields, base plus delay.
+// A texel shows its covered share once the time passes its arrival, ramped over `softS` seconds and a texel of the
+// front's travel; arrived bands cover it as their union, so bands meeting edge to edge leave no seam. Here are the
+// checks, the plan the GPU pass reads (stamp-reveal-pass.ts) and its CPU twin, which the GPU gate holds the pass to.
 
 import { STAMP_PAINT_FIELD_SHARE, stampPaintFieldAt, stampPaintFieldEnds, stampPaintFieldProblem, type StampSeededPaintField } from './stamp-paint-field.ts';
 import type { StampPoint } from './stamp-region.ts';
@@ -132,82 +132,204 @@ export function stampRevealSegments(strokes: readonly StampRevealStroke[], toFil
   return Float32Array.from(out);
 }
 
-/** What a texel's candidates come to: the earliest arrival and its cover, the earliest at full cover, and the first's seconds per px. */
-export type StampRevealArrival = { readonly first: number; readonly cover: number; readonly full: number; readonly perPx: number };
-
-/** No stroke covers it. */
-const UNREACHED: StampRevealArrival = { first: STAMP_REVEAL_NEVER, cover: 0, full: STAMP_REVEAL_NEVER, perPx: 1 };
+/**
+ * What a texel's bands come to: the earliest arrival, its band's cover and seconds per px; and `total`, the union of
+ * the bands reaching it, whole from `full`, once the last of them it needs has arrived.
+ */
+export type StampRevealArrival = { readonly first: number; readonly cover: number; readonly full: number; readonly total: number; readonly perPx: number };
 
 /**
- * The arrival at film point (x, y) over segments `indices` of `segments`: each segment's cover there (its band's edge
- * antialiased over a px, a flat end's square too) and its arrival where the point projects onto it. The earliest
- * arrival wins, the fuller cover breaking a tie; the earliest at full cover is kept beside it.
+ * The bands partly covering a texel that its union reads, earliest first; a later one goes unread. Bands meeting edge
+ * to edge give a texel two or three; a pile of short round pieces may give more, all overlapping.
+ */
+export const STAMP_REVEAL_KEPT = 8;
+
+/**
+ * Points a side a texel's union is read at: its total is a share of these, so an edge it reads steps by 1/8 at
+ * worst. Only texels two bands reach partly pay for it: a band's edge, and where bands meet.
+ */
+const UNION_GRID = 8;
+
+/**
+ * Segment `k` of `segments` at film point (x, y): its cover there (its band's edge antialiased over a px, a flat
+ * end's square too), whether the point lies inside its band, and how far along it the point projects.
+ */
+function revealSegmentAt(segments: Float32Array, k: number, x: number, y: number) {
+  const s = k * STAMP_REVEAL_SEGMENT_FLOATS;
+  const ax = segments[s], ay = segments[s + 1], dx = segments[s + 2] - ax, dy = segments[s + 3] - ay, half = segments[s + 4], flags = segments[s + 7];
+  const span = Math.hypot(dx, dy), ux = dx / span, uy = dy / span, px = x - ax, py = y - ay, u = px * ux + py * uy;
+  const along = Math.min(span, Math.max(0, u)), across = Math.abs(px * uy - py * ux);
+  let distance = Math.hypot(px - ux * along, py - uy * along), axial = 1, past = false;
+  if ((flags & FLAT_START) !== 0 && u < 0) {
+    distance = across;
+    axial = Math.min(1, Math.max(0, 0.5 + u));
+    past = true;
+  }
+  if ((flags & FLAT_END) !== 0 && u > span) {
+    distance = across;
+    axial = Math.min(1, Math.max(0, 0.5 + span - u));
+    past = true;
+  }
+  return { cover: Math.min(1, Math.max(0, half - distance + 0.5)) * axial, holds: !past && distance <= half, along };
+}
+
+/** A band partly covering a texel: when it arrives there, its cover, and its segment. */
+type RevealKept = { at: number; cover: number; k: number };
+
+/**
+ * `kept` (earliest first, partly covering the texel at film point (x, y)) and `solid`, the earliest band covering it
+ * whole: their union read at UNION_GRID² points, each held from the earliest band holding it.
+ */
+function revealUnion(segments: Float32Array, kept: readonly RevealKept[], solid: number, x: number, y: number): { full: number; total: number } {
+  const live = kept.filter(({ at }) => at < solid);
+  if (live.length === 0) return solid < STAMP_REVEAL_NEVER ? { full: solid, total: 1 } : { full: STAMP_REVEAL_NEVER, total: 0 };
+  if (live.length === 1 && solid === STAMP_REVEAL_NEVER) return { full: live[0].at, total: live[0].cover };
+  let held = 0, latest = -STAMP_REVEAL_NEVER;
+  for (let j = 0; j < UNION_GRID; j++) {
+    for (let i = 0; i < UNION_GRID; i++) {
+      const qx = x + (i + 0.5) / UNION_GRID - 0.5, qy = y + (j + 0.5) / UNION_GRID - 0.5;
+      const at = live.find(({ k }) => revealSegmentAt(segments, k, qx, qy).holds)?.at ?? solid;
+      if (at < STAMP_REVEAL_NEVER) {
+        held++;
+        latest = Math.max(latest, at);
+      }
+    }
+  }
+  if (held === 0) return { full: STAMP_REVEAL_NEVER, total: 0 };
+  return { full: latest, total: solid < STAMP_REVEAL_NEVER ? 1 : held / UNION_GRID ** 2 };
+}
+
+/**
+ * The arrival at film point (x, y) over segments `indices` of `segments`. The earliest is first, the fuller cover
+ * breaking a tie; the union of all that reach it (the STAMP_REVEAL_KEPT earliest partial bands, and the earliest whole
+ * one) is its total, arriving with the last it needs. So bands laid edge to edge close up wherever they meet.
  */
 export function stampRevealArrivalAt(segments: Float32Array, indices: Iterable<number>, x: number, y: number): StampRevealArrival {
-  let { first, cover, full, perPx } = UNREACHED;
+  let first = STAMP_REVEAL_NEVER, cover = 0, perPx = 1, solid = STAMP_REVEAL_NEVER;
+  const kept: RevealKept[] = [];
   for (const k of indices) {
-    const s = k * STAMP_REVEAL_SEGMENT_FLOATS;
-    const ax = segments[s], ay = segments[s + 1], dx = segments[s + 2] - ax, dy = segments[s + 3] - ay, half = segments[s + 4], flags = segments[s + 7];
-    const span = Math.hypot(dx, dy), ux = dx / span, uy = dy / span, px = x - ax, py = y - ay, u = px * ux + py * uy;
-    const along = Math.min(span, Math.max(0, u)), across = Math.abs(px * uy - py * ux);
-    let distance = Math.hypot(px - ux * along, py - uy * along), axial = 1;
-    if ((flags & FLAT_START) !== 0 && u < 0) {
-      distance = across;
-      axial = Math.min(1, Math.max(0, 0.5 + u));
-    }
-    if ((flags & FLAT_END) !== 0 && u > span) {
-      distance = across;
-      axial = Math.min(1, Math.max(0, 0.5 + span - u));
-    }
-    const c = Math.min(1, Math.max(0, half - distance + 0.5)) * axial;
+    const { cover: c, along } = revealSegmentAt(segments, k, x, y);
     if (c <= 0) continue;
-    const arrival = segments[s + 5] + segments[s + 6] * along;
+    const s = k * STAMP_REVEAL_SEGMENT_FLOATS, arrival = segments[s + 5] + segments[s + 6] * along;
     if (arrival < first || (arrival === first && c > cover)) {
       first = arrival;
       cover = c;
       perPx = segments[s + 6];
     }
-    if (c >= 1 && arrival < full) full = arrival;
+    if (c >= 1) {
+      solid = Math.min(solid, arrival);
+      continue;
+    }
+    if (arrival >= solid || (kept.length === STAMP_REVEAL_KEPT && arrival >= kept[STAMP_REVEAL_KEPT - 1].at)) continue;
+    // After every kept band arriving no later: ties keep the order they're listed in, as the WGSL twin's do.
+    const at = kept.findIndex((each) => each.at > arrival);
+    kept.splice(at === -1 ? kept.length : at, 0, { at: arrival, cover: c, k });
+    if (kept.length > STAMP_REVEAL_KEPT) kept.pop();
   }
-  return { first, cover, full, perPx };
+  return { first, cover, perPx, ...revealUnion(segments, kept, solid, x, y) };
 }
 
-/** The arrival's WGSL twin over the segments a pass's tile lists: `revealArrivalAt(p, first, count)` → (first, cover, full, perPx). */
+/**
+ * The arrival's WGSL twin over the segments a pass's tile lists: `revealArrivalAt(p, first, count)`, packed as an
+ * arrival map's texel (rgba32uint: first, full and seconds per px as their f32 bits; cover and total as unorm16s).
+ */
 export const STAMP_REVEAL_ARRIVAL_WGSL = /* wgsl */ `
-fn revealArrivalAt(p: vec2f, start: u32, count: u32) -> vec4f {
+const REVEAL_KEPT = ${STAMP_REVEAL_KEPT}u;
+const REVEAL_UNION_GRID = ${UNION_GRID}u;
+struct RevealSegmentAt { cover: f32, holds: bool, along: f32 }
+fn revealSegmentAt(k: u32, p: vec2f) -> RevealSegmentAt {
+  let ends = segments[2u * k];
+  let rest = segments[2u * k + 1u];
+  let a = ends.xy;
+  let d = ends.zw - a;
+  let span = length(d);
+  let dir = d / span;
+  let q = p - a;
+  let u = dot(q, dir);
+  let along = clamp(u, 0.0, span);
+  let across = abs(q.x * dir.y - q.y * dir.x);
+  var distance = length(q - dir * along);
+  var axial = 1.0;
+  var past = false;
+  let flags = u32(rest.w);
+  if ((flags & ${FLAT_START}u) != 0u && u < 0.0) { distance = across; axial = clamp(0.5 + u, 0.0, 1.0); past = true; }
+  if ((flags & ${FLAT_END}u) != 0u && u > span) { distance = across; axial = clamp(0.5 + span - u, 0.0, 1.0); past = true; }
+  return RevealSegmentAt(clamp(rest.x - distance + 0.5, 0.0, 1.0) * axial, !past && distance <= rest.x, along);
+}
+fn revealArrivalAt(p: vec2f, start: u32, count: u32) -> vec4u {
   var first = REVEAL_NEVER;
   var cover = 0.0;
-  var full = REVEAL_NEVER;
   var perPx = 1.0;
-  for (var n = 0u; n < count; n++) {
-    let k = listed[start + n];
-    let ends = segments[2u * k];
+  var solid = REVEAL_NEVER;
+  var keptAt: array<f32, REVEAL_KEPT>;
+  var keptCover: array<f32, REVEAL_KEPT>;
+  var keptK: array<u32, REVEAL_KEPT>;
+  var n = 0u;
+  for (var m = 0u; m < count; m++) {
+    let k = listed[start + m];
+    let at = revealSegmentAt(k, p);
+    if (at.cover <= 0.0) { continue; }
     let rest = segments[2u * k + 1u];
-    let a = ends.xy;
-    let d = ends.zw - a;
-    let span = length(d);
-    let dir = d / span;
-    let q = p - a;
-    let u = dot(q, dir);
-    let along = clamp(u, 0.0, span);
-    let across = abs(q.x * dir.y - q.y * dir.x);
-    var distance = length(q - dir * along);
-    var axial = 1.0;
-    let flags = u32(rest.w);
-    if ((flags & ${FLAT_START}u) != 0u && u < 0.0) { distance = across; axial = clamp(0.5 + u, 0.0, 1.0); }
-    if ((flags & ${FLAT_END}u) != 0u && u > span) { distance = across; axial = clamp(0.5 + span - u, 0.0, 1.0); }
-    let c = clamp(rest.x - distance + 0.5, 0.0, 1.0) * axial;
-    if (c <= 0.0) { continue; }
-    let arrival = rest.y + rest.z * along;
-    if (arrival < first || (arrival == first && c > cover)) { first = arrival; cover = c; perPx = rest.z; }
-    if (c >= 1.0 && arrival < full) { full = arrival; }
+    let arrival = rest.y + rest.z * at.along;
+    if (arrival < first || (arrival == first && at.cover > cover)) { first = arrival; cover = at.cover; perPx = rest.z; }
+    if (at.cover >= 1.0) { solid = min(solid, arrival); continue; }
+    if (arrival >= solid || (n == REVEAL_KEPT && arrival >= keptAt[REVEAL_KEPT - 1u])) { continue; }
+    var i = min(n, REVEAL_KEPT - 1u);
+    while (i > 0u && keptAt[i - 1u] > arrival) {
+      keptAt[i] = keptAt[i - 1u];
+      keptCover[i] = keptCover[i - 1u];
+      keptK[i] = keptK[i - 1u];
+      i--;
+    }
+    keptAt[i] = arrival;
+    keptCover[i] = at.cover;
+    keptK[i] = k;
+    n = min(n + 1u, REVEAL_KEPT);
   }
-  return vec4f(first, cover, full, perPx);
+  var live = 0u;
+  while (live < n && keptAt[live] < solid) { live++; }
+  var full = REVEAL_NEVER;
+  var total = 0.0;
+  if (live == 0u) {
+    if (solid < REVEAL_NEVER) { full = solid; total = 1.0; }
+  } else if (live == 1u && solid == REVEAL_NEVER) {
+    full = keptAt[0];
+    total = keptCover[0];
+  } else {
+    var held = 0u;
+    var latest = -REVEAL_NEVER;
+    for (var j = 0u; j < REVEAL_UNION_GRID; j++) {
+      for (var i = 0u; i < REVEAL_UNION_GRID; i++) {
+        let q = p + (vec2f(f32(i), f32(j)) + 0.5) / f32(REVEAL_UNION_GRID) - 0.5;
+        var at = solid;
+        for (var m = 0u; m < live; m++) {
+          if (revealSegmentAt(keptK[m], q).holds) { at = keptAt[m]; break; }
+        }
+        if (at < REVEAL_NEVER) { held++; latest = max(latest, at); }
+      }
+    }
+    if (held > 0u) {
+      full = latest;
+      total = select(f32(held) / f32(REVEAL_UNION_GRID * REVEAL_UNION_GRID), 1.0, solid < REVEAL_NEVER);
+    }
+  }
+  return vec4u(bitcast<u32>(first), bitcast<u32>(full), bitcast<u32>(perPx), pack2x16unorm(vec2f(cover, total)));
 }`;
 
-/** How far a texel with `arrival` shows at `t`, `softS` its reveal's: its first cover once reached, all of it once fully covered. */
-export const stampRevealArrivalShown = ({ first, cover, full, perPx }: StampRevealArrival, t: number, softS: number) =>
-  Math.max(cover * stampRevealRamp(t, first, perPx, softS), stampRevealRamp(t, full, perPx, softS));
+/** How far an arrival map's texel `a` (STAMP_REVEAL_ARRIVAL_WGSL's) shows at `t`: the WGSL twin of stampRevealArrivalShown. */
+export const STAMP_REVEAL_ARRIVAL_SHOWN_WGSL = /* wgsl */ `
+fn revealArrivalShown(a: vec4u, t: f32, softS: f32) -> f32 {
+  let covers = unpack2x16unorm(a.w);
+  let perPx = bitcast<f32>(a.z);
+  return max(covers.x * revealRamp(t, bitcast<f32>(a.x), perPx, softS), covers.y * revealRamp(t, bitcast<f32>(a.y), perPx, softS));
+}`;
+
+/**
+ * How far a texel with `arrival` shows at `t`, `softS` its reveal's: its first band's cover once that arrives, the
+ * union of its bands once the last it needs has. The GPU keeps both covers to 16 bits.
+ */
+export const stampRevealArrivalShown = ({ first, cover, full, total, perPx }: StampRevealArrival, t: number, softS: number) =>
+  Math.max(cover * stampRevealRamp(t, first, perPx, softS), total * stampRevealRamp(t, full, perPx, softS));
 
 /** A field reveal's arrival at rest point (x, y): its base's value plus its delay's. */
 export const stampRevealFieldArrival = (reveal: Extract<StampReveal, { kind: 'field' }>, x: number, y: number) =>
@@ -228,13 +350,13 @@ export function stampRevealFieldShown(reveal: Extract<StampReveal, { kind: 'fiel
 
 /**
  * How far `reveal` shows at document point `point` at scene second `t` (Infinity: fully revealed), on paint lying
- * where it was planned: the CPU twin of the pass, which reads a texel's centre at the time it samples. A strokes
- * reveal reads every segment.
+ * where it was planned in a document wrapping by `periods` (none when left out): the CPU twin of the pass, which reads
+ * a texel's centre at the time it samples. A strokes reveal reads every segment.
  */
-export function stampRevealShownAt(reveal: StampReveal, point: StampPoint, t: number): number {
+export function stampRevealShownAt(reveal: StampReveal, point: StampPoint, t: number, periods: StampWrapPeriods = { x: 0, y: 0 }): number {
   const identity: StampSimilarityWords = [1, 0, 0, 0], sampled = stampRevealSampleAt(reveal, 1, t);
   if (reveal.kind === 'field') return stampRevealFieldShown(reveal, identity, point.x, point.y, sampled);
-  const segments = stampRevealSegments(reveal.strokes, identity, { x: 0, y: 0 });
+  const segments = stampRevealSegments(reveal.strokes, identity, periods);
   const all = Array.from({ length: segments.length / STAMP_REVEAL_SEGMENT_FLOATS }, (_, k) => k);
   return stampRevealArrivalShown(stampRevealArrivalAt(segments, all, point.x, point.y), sampled, reveal.softS ?? 0);
 }
@@ -303,6 +425,15 @@ export function stampRevealKey(reveal: StampReveal): string {
 /** What `links` cut a film by, as a key: each reveal, where it lies and the time it's shown at. */
 export const stampRevealLinksKey = (links: readonly StampRevealLink[]) =>
   links.map(({ reveal, toRest, at }) => `${stampRevealKey(reveal)}@${toRest.join(',')}@${at}`).join('*');
+
+/** A sheet's films' reveals, by film: a film with none, or past the list's end, is read whole. */
+export type StampFilmRevealLinks = readonly (readonly StampRevealLink[])[];
+
+/** Films read whole, as painted: a readback's, a rest cel's. Displays pass the selection's links. */
+export const STAMP_FILMS_WHOLE: StampFilmRevealLinks = [];
+
+/** What a sheet's films are cut by, as a key: each film's links (stampRevealLinksKey's). */
+export const stampSheetRevealsKey = (reveals: StampFilmRevealLinks) => reveals.map(stampRevealLinksKey).join('|');
 
 // ---- tiles ---------------------------------------------------------------------------------------------------------
 

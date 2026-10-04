@@ -56,7 +56,7 @@ type StampGpuCacheHeld = {
   textures: GPUTexture[]; bytes: number; used: number; encoder: GPUCommandEncoder; holds: number; producer: StampGpuCacheProducer; forget: () => void;
 };
 
-const TEXEL_BYTES: Partial<Record<GPUTextureFormat, number>> = { r8unorm: 1, r16float: 2, rg16float: 4, rgba8unorm: 4, rgba16float: 8, r32float: 4, rgba32float: 16 };
+const TEXEL_BYTES: Partial<Record<GPUTextureFormat, number>> = { r8unorm: 1, r16float: 2, rg16float: 4, rgba8unorm: 4, rgba16float: 8, r32float: 4, rgba32float: 16, rgba32uint: 16 };
 
 /** The order the cache gives entries up in: checkpoints first, as a solve can always run again from an earlier one. */
 const evictionRank = (entry: StampGpuCacheHeld) => (entry.producer === 'checkpoint' ? 0 : 1);
