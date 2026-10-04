@@ -73,7 +73,8 @@ export type StampPaintCompositor = {
     resources: (paper: { photograph: GPUTextureView; sampler: GPUSampler }) => GPUBindingResource[];
     /**
      * `groupCover(layer0, glaze)`: how much of a pixel a group's layer covers as laid, 0..1 before its opacity, from its
-     * first layer's texel alone. A glow weighs the light it takes by it. Binds nothing.
+     * first layer's texel alone. An opaque group dims the glow under it by it, and a shot's alphaOf mask reads it.
+     * Binds nothing.
      */
     cover: string;
   };

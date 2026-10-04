@@ -183,9 +183,11 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
       key, compositor: lays.compositors[0], painting: painting.view, layers, emission: emission?.createView() ?? null, motion: motionTarget?.createView() ?? null,
       coverage: coverage?.createView({ dimension: '2d-array' }) ?? null, visibility: plan.visibility,
       paper: (backing, w, h) => lays.lays[0].drawPaper(encoder, painting.view, backing, w, h),
+      // A glow is the light a film adds over the paint under it, so a clear plane glows on black: on white, light
+      // paint over nothing would add nothing, and paint there takes white's light away.
       lay: (backing) => layer.lay(encoder, frame, staged, backing === 'black'
-        ? { painting, backing, emission: null, motion: null, mask, coverage: null }
-        : { painting, backing, emission, motion: motionTarget, mask, coverage }),
+        ? { painting, backing, emission, motion: null, mask, coverage: null }
+        : { painting, backing, emission: backing === 'paper' ? emission : null, motion: motionTarget, mask, coverage }),
     });
   }
 

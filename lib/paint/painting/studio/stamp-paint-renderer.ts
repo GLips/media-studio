@@ -24,22 +24,19 @@ import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { StampTipsOf } from '../models/stamp-tip-support.ts';
 import { type StampPaintCompositor, type StampPaintTarget, type StampWashLayer } from './stamp-paint-compositor.ts';
 import { stampPaintCompositorFor } from './stamp-paint-compositor-for.ts';
-import { clearStampTarget, copyStampTextureBox, dispatchStampCompute, STAMP_WORKGROUP, stampArrayView, stampBindGroup, stampPaintSamplers, type StampPaintDevice } from './stamp-paint-gpu.ts';
+import { clearStampTarget, copyStampTextureBox, stampArrayView, stampBindGroup, stampPaintSamplers, type StampPaintDevice } from './stamp-paint-gpu.ts';
 import { createStampUniformArena } from './stamp-uniform-arena.ts';
 import type { StampPaintGpuScope } from './stamp-paint-gpu-owner.ts';
 import type { StampPaintSurface } from './stamp-paint-surface.ts';
 import { stampLensSourceExposureOf, type StampLensSource, type StampLensSourceExposure } from './stamp-lens-source.ts';
 import { checkStampLensSources, createStampLensFrames, createStampLensSourceLayers, stampLensSourcesBlurExtent, type StampSourceRenders } from './stamp-lens-source-layers.ts';
-import { gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { STAMP_WET_STAGES } from './stamp-wet-stage-list.ts';
 import {
   planStampWetStages, stampWetStageReach, stampWetStagesOwnWetEdges, type StampLoadedWetStages, type StampWetBank, type StampWetStage, type StampWetStagePlans, type StampWetWall,
 } from './stamp-wet-stages.ts';
 import { STAMP_WET_FIELD_FORMATS, stampWetField } from './stamp-wet-field.ts';
-import {
-  STAMP_GLOW_OCCLUSION, STAMP_GLOW_SOURCE, stampGlowOcclusionWgsl, stampGlowSourceWgsl, stampPlanePictureLayers,
-  type StampPlanePictureLayers,
-} from './stamp-paint-plane-passes.ts';
+import { stampPlanePictureLayers, type StampPlanePictureLayers } from './stamp-paint-plane-passes.ts';
+import { createStampPlaneGlows } from './stamp-plane-glow-pass.ts';
 import { createLensCompositor, type LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { stampWarpCells, stampWarpTriangles, STAMP_WARP_MOST_CELLS } from '../models/stamp-group-warp.ts';
@@ -54,7 +51,7 @@ import { stampBoxUnion, stampStage, stampStageTexelsGrown, stampStageTexelsOf, s
 import { bindStampPaintBrushes, loadStampDepositBank, type StampDepositToLoad, type StampLoadedDeposit, type StampPaintBrushes } from './stamp-deposit-bank.ts';
 import { createStampDepositDrawing, stampDepositUniformSlots, stampPaperTooth, type StampDepositDraw, type StampDepositTargets, type StampWashStart } from './stamp-deposit-drawing.ts';
 import { STAMP_TRACE_ACCUMULATOR, STAMP_TRACE_SLOTS } from './stamp-deposit-resolve-wgsl.ts';
-import { createStampPaintLay, STAMP_NO_REST, stampPaintOutputWgsl, type StampPaintBacking } from './stamp-paint-lay-pass.ts';
+import { createStampPaintLay, stampPaintOutputWgsl, type StampPaintBacking } from './stamp-paint-lay-pass.ts';
 import { encodeStampRegionTextures, type StampRegionCoverage, type StampRegionTexture } from './stamp-region-textures.ts';
 import { encodeStampBrushedMasks } from './stamp-brushed-mask-textures.ts';
 import { copyStampLayerForReadback, readStampLayerCopy, type StampLayerReadback } from './stamp-layer-readback.ts';
@@ -304,9 +301,9 @@ function rendererOnSurface({
 
   // A frame's uniform slots: each pass's, a wash's start and its deposits'. A boil's epoch has its group's deposits.
   const passSlots = (pass: CompiledStampPass) => stampDepositUniformSlots(compositor, { wash: pass.kind === 'wash', deposits: stampPassDeposits(pass).length });
-  // Each group's lays (on paper or white and, on a clear plane, on black), glow occlusion and source; each plane's and
-  // the bloom's.
-  const frameSlots = (1 + planes.nearer.length) * PLANE_SLOTS + BACKING_SLOTS + BLOOM_SLOTS + painting.groups.reduce((sum, group) => sum + 4 + group.passes.reduce((n, pass) => n + passSlots(pass), 0), 0);
+  // Each group's lays (on paper or white and, on a clear plane, on black), glow occlusion, the light kept before it
+  // glows and its glow; each plane's and the bloom's.
+  const frameSlots = (1 + planes.nearer.length) * PLANE_SLOTS + BACKING_SLOTS + BLOOM_SLOTS + painting.groups.reduce((sum, group) => sum + 5 + group.passes.reduce((n, pass) => n + passSlots(pass), 0), 0);
   // Drawing the brushed masks at load takes the same slots, four a mark: its stamps and dual's, its cover's two.
   const slotsPerFrame = Math.max(frameSlots, 4 * brushedMasks.reduce((sum, { marks }) => sum + marks.length, 0));
   const asWritten = new Map(painting.groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass).map((deposit) => [deposit.id, deposit] as const))));
@@ -355,11 +352,10 @@ function rendererOnSurface({
   done = span('stamp paint pipelines load');
 
   // Each frame's uniforms, and each of the load's own submits'.
-  const uniforms = createStampUniformArena(device, slotsPerFrame), { slot } = uniforms;
+  const uniforms = createStampUniformArena(device, slotsPerFrame);
 
   const { linearClamp, mirrorTile } = stampPaintSamplers(device);
 
-  const computePipeline = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }) } });
   // Each frame's lattices, their vertices uploaded with its uniforms, in room grown for the most a frame lays (latticeRoom).
   const latticePass = createStampLatticePass(device, { layer: compositor.targets.layer, stage, sampler: linearClamp });
   /** Each scene pixel's rest point under a moved or warped group's lattice, made the first time a frame moves or warps one. */
@@ -434,9 +430,6 @@ function rendererOnSurface({
   const depositDrawing = createStampDepositDrawing(device, { stage, compositor, targets: depositTargets, arena: uniforms, tipFootprint });
 
   const bindGroup = (pipeline: GPURenderPipeline | GPUComputePipeline, resources: (GPUBindingResource | null)[]) => stampBindGroup(device, pipeline, resources);
-  /** `pipeline` over `w` x `h`. */
-  const dispatch = (encoder: GPUCommandEncoder, pipeline: GPUComputePipeline, resources: (GPUBindingResource | null)[], w: number, h: number) =>
-    dispatchStampCompute(device, encoder, pipeline, resources, w, h);
 
   // A wet stage asks the compositor about the deposits it knows; an epoch's or live marks' own are painted as the
   // deposit as written.
@@ -494,11 +487,11 @@ function rendererOnSurface({
   /** Each warped group's last lattice, by its index: a frame warping it alike over the same box samples its map no more. */
   const lattices = new Map<number, { key: string; triangles: Float32Array }>();
   /**
-   * Lays group `index`'s layer over `painted` onto the painting at its frame's visibility, resampled where its warp
-   * and placement put it, its own paper read where it's painted, a reserve or lift showing `backing`. `traced`: its
-   * travel goes into its plane's motion where its paint lies. Returns the stage box and rest map (moved), or null.
+   * Lays group `index`'s layer over `painted` at its frame's visibility, resampled where its warp and placement put
+   * it, its own paper read where painted, a reserve or lift showing `backing`. `traced`: its travel goes into its
+   * plane's motion. `glowing`: the light under it is kept first. Returns the stage box and rest map (moved), or null.
    */
-  function layGroup(encoder: GPUCommandEncoder, index: number, groupFrame: StampGroupFrame, painted: Box, backing: StampPaintBacking, traced: StampTracedMotion | null): { box: Box; rest: GPUTextureView | null } | null {
+  function layGroup(encoder: GPUCommandEncoder, index: number, groupFrame: StampGroupFrame, painted: Box, backing: StampPaintBacking, traced: StampTracedMotion | null, glowing: boolean): { box: Box; rest: GPUTextureView | null } | null {
     const { group, lay: laidAt, warp, visibility } = groupFrame;
     let box: Box | null = painted, rest: GPUTextureView | null = null;
     const map = stampGroupSceneMap(groupFrame);
@@ -529,6 +522,7 @@ function rendererOnSurface({
       // A still group's lattice is drawn for its motion alone: it's laid where it's painted.
       if (map) rest = latticeRest.view;
     }
+    if (glowing) planeGlows.before(encoder, compositor, targets.painting.view, box);
     lay.layGroup(encoder, {
       layer: targets.layer.view, painting: targets.painting.view, index, opacity: group.opacity * visibility, glaze: group.composite === 'glaze', box, backing,
       rest, paperFromRest: group.paper === 'own',
@@ -538,12 +532,7 @@ function rendererOnSurface({
 
   // Planes (stamp-plane.ts). A painted plane's picture is kept on the device under what it shows, and its defocus
   // under that and its sigma; a source plane's texture is handed in, defocused each frame it's blurred. Every picture
-  // box here is in the stage's texels. Pipelines and targets are made when a frame first asks.
-  const planePipelines = new Map<string, GPUComputePipeline>();
-  const planePipeline = (key: string, code: () => string) => {
-    if (!planePipelines.has(key)) planePipelines.set(key, computePipeline(code()));
-    return planePipelines.get(key)!;
-  };
+  // box here is in the stage's texels. Targets are made when a frame first asks.
   const planeTargets = new Map<string, { texture: GPUTexture; view: GPUTextureView; array: GPUTextureView }>();
   /** A scratch target of `layers` array layers, `w` × `h`, as a storage array, a sampled array and a render target. */
   const planeTarget = (name: string, w: number, h: number, layers: number) => {
@@ -559,6 +548,7 @@ function rendererOnSurface({
   const sourceLayers = createStampLensSourceLayers(owner, { stage, lens: lensGpu, sources });
 
   const planePictures = createStampPlanePictures(owner, { stage, arena: uniforms });
+  const planeGlows = createStampPlaneGlows(owner, { stage, arena: uniforms });
   /** The plane's emission as its groups glow, stage-sized: cleared for each plane that glows. */
   const emissionTarget = () => planeTarget('emission', width, height, 1);
   /**
@@ -566,33 +556,6 @@ function rendererOnSurface({
    * pixel's travel over the shutter, painting px, as its nearest paint moves. Cleared for each plane whose groups travel.
    */
   const motionTarget = () => planeTarget('motion', width, height, 1);
-  /**
-   * Adds group `groupFrame`'s glow over `laid` (its box, and its rest map for a moved group) to the plane's emission:
-   * its light past the glow's threshold, as much as it covers.
-   */
-  function addGlow(encoder: GPUCommandEncoder, { group, glow, visibility }: StampGroupFrame, laid: { box: Box; rest: GPUTextureView | null }) {
-    const cover = laid.rest ? 'moved group' : 'group';
-    const pipeline = planePipeline(`glow|${cover}`, () => stampGlowSourceWgsl(compositor, cover, stage, STAMP_NO_REST, STAMP_WORKGROUP, { revealed: false }));
-    dispatch(encoder, pipeline, [slot((views) => {
-      const put = gpuUniformWriter(STAMP_GLOW_SOURCE, views);
-      put('threshold', glow!.threshold);
-      put('strength', glow!.amount * group.opacity * visibility);
-      put('glaze', group.composite === 'glaze' ? 1 : 0);
-      put('origin', [laid.box.x, laid.box.y]);
-      put('extent', [laid.box.w, laid.box.h]);
-    }), targets.painting.view, emissionTarget().view, targets.layer.view, ...(laid.rest ? [laid.rest] : [])], laid.box.w, laid.box.h);
-  }
-  /** Takes opaque group `groupFrame`'s cover over `laid` out of the plane's emission so far, as its paint covers the light. */
-  function occludeGlow(encoder: GPUCommandEncoder, { group, visibility }: StampGroupFrame, laid: { box: Box; rest: GPUTextureView | null }) {
-    const cover = laid.rest ? 'moved group' : 'group';
-    const pipeline = planePipeline(`glow occlusion|${cover}`, () => stampGlowOcclusionWgsl(compositor, cover, stage, STAMP_NO_REST, STAMP_WORKGROUP));
-    dispatch(encoder, pipeline, [slot((views) => {
-      const put = gpuUniformWriter(STAMP_GLOW_OCCLUSION, views);
-      put('strength', group.opacity * visibility);
-      put('origin', [laid.box.x, laid.box.y]);
-      put('extent', [laid.box.w, laid.box.h]);
-    }), null, emissionTarget().view, targets.layer.view, ...(laid.rest ? [laid.rest] : [])], laid.box.w, laid.box.h);
-  }
   /**
    * Paints a plane's groups (`planeGroups`) as `kind` and resolves them into its picture, kept under `key`
    * (stamp-plane-picture-pass.ts): a paper picture on the painting's paper, a film on white and again on black, from
@@ -614,14 +577,17 @@ function rendererOnSurface({
     });
   }
   /**
-   * Lays `planeGroups` onto the painting as `groups` says, a reserve or lift showing `backing`. The first lay (on
-   * paper or white) adds what glows, paints each film it can't restore and traces `motion`; the lay on black restores
-   * the films the first kept. Returns the union of its groups' laid boxes (stage texels); null for none.
+   * Lays `planeGroups` as `groups` says, a reserve or lift showing `backing`. The first lay (paper or white) paints
+   * each film it can't restore and traces `motion`; the lay on black restores what the first kept. The lay on paper
+   * or black glows. Returns the union of the laid boxes (stage texels); null for none.
    */
   function layPlaneGroups(encoder: GPUCommandEncoder, planeGroups: readonly number[], groups: readonly StampGroupFrame[], { whole, frameTrace, backing, motion }: {
     whole: boolean; frameTrace?: FrameTrace; backing: StampPaintBacking; motion?: { into: GPUTextureView; travels: readonly (StampGroupTravel | null)[]; cover: StampMotionCover };
   }): Box | null {
     const again = backing === 'black';
+    // A glow is the light a group adds over the paint under it, so a clear plane glows on black: on white, light paint
+    // over nothing would add nothing, and paint there takes white's light away.
+    const glowing = backing !== 'white';
     // A whole frame paints each film once, so its trace sees each deposit once: a clear plane keeps its films for the
     // lay on black, which restores them onto a cleared layer so a read-back layer holds what painting would.
     const keeps = !whole || backing !== 'paper';
@@ -640,13 +606,17 @@ function rendererOnSurface({
       if (!painted) continue;
       // Paint hides what moves under it, so a still group writes its stillness; a region carries only what travels.
       const traces = motion && !again && (motion.cover === 'paint' || motion.travels[index]);
-      const laid = layGroup(encoder, index, groupFrame, painted, backing, traces ? { into: motion.into, travel: motion.travels[index], cover: motion.cover } : null);
+      const glow = glowing ? groupFrame.glow : null;
+      const laid = layGroup(encoder, index, groupFrame, painted, backing, traces ? { into: motion.into, travel: motion.travels[index], cover: motion.cover } : null, !!glow);
       if (!laid) continue;
       // Before the next group: the layer and the lattice's rest map are this group's until the next one is laid. A
       // glaze leaves the glow under it: dimming it by its tint would take its spectral transmittance.
-      if (!again && glowed && groupFrame.group.composite === 'opaque') occludeGlow(encoder, groupFrame, laid);
-      if (groupFrame.glow && !again) {
-        addGlow(encoder, groupFrame, laid);
+      const { group, visibility } = groupFrame;
+      if (glowing && glowed && group.composite === 'opaque') {
+        planeGlows.occlude(encoder, compositor, emissionTarget().view, { layer: targets.layer.view, rest: laid.rest }, laid.box, group.opacity * visibility);
+      }
+      if (glow) {
+        planeGlows.add(encoder, compositor, targets.painting.view, emissionTarget().view, laid.box, glow);
         glowed = true;
       }
       laidBox = stampBoxUnion(laidBox, laid.box);

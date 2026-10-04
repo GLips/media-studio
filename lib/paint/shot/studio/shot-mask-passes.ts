@@ -1,6 +1,6 @@
 // shot-mask-passes.ts: a painted plane's presentation masks on the GPU (ENGINE 6.3). Before its sheets are laid, its
 // masks multiply into one factor over the stage, 1 where all shows: each alphaOf mask's drawable's laid coverage. The
-// lay takes each film's opacity, card's union and pieces picture times it, the emission after, never the ground.
+// lay takes each film's opacity, card's union and pieces picture times it, glow and all, never the ground.
 //
 // The lay also gathers what other planes' alphaOf masks read of this one: each step's cover, a channel per drawable
 // read, four to a layer of one array, mixed by group fades as paint is. Its picture keeps those layers
@@ -65,18 +65,6 @@ ${STAMP_BILINEAR_OR_ZERO_WGSL}
   var shown = clamp(dot(stampBilinearOrZero(source, s, u.extent), u.channel), 0.0, 1.0);
   if (u.invert == 1u) { shown = 1.0 - shown; }
   textureStore(mask, id.xy, textureLoad(mask, id.xy) * shown);
-}`;
-
-const SHOT_MASK_SCALE = gpuUniformLayout('ShotMaskScale', [['stage', 'vec2u']]);
-// A plain target (1) taken times the mask (2): a plane's emission, once its glows are added.
-const SCALE_WGSL = /* wgsl */ `
-${SHOT_MASK_SCALE.wgsl}
-@group(0) @binding(0) var<uniform> u: ShotMaskScale;
-@group(0) @binding(1) var scaled: texture_storage_2d<rgba16float, read_write>;
-@group(0) @binding(2) var mask: texture_2d<f32>;
-@compute @workgroup_size(${STAMP_WORKGROUP}, ${STAMP_WORKGROUP}) fn maskScale(@builtin(global_invocation_id) id: vec3u) {
-  if (any(id.xy >= u.stage)) { return; }
-  textureStore(scaled, id.xy, textureLoad(scaled, id.xy) * textureLoad(mask, id.xy, 0).r);
 }`;
 
 /** What a step lays that a coverage gathers: a film through its rest map, a card's union, a rig's pieces, or a placed ground's reach. */
@@ -171,11 +159,6 @@ export function createShotMaskPasses(owner: StampPaintGpuOwner, { stage, arena }
         put('stage', [width, height]);
         put('invert', invert ? 1 : 0);
       }), mask.createView(), source], width, height);
-    },
-    /** Takes `target` (a plain rgba16float stage target, a plane's emission) times `mask`. */
-    scale(encoder: GPUCommandEncoder, target: GPUTexture, mask: GPUTexture) {
-      const slot = arena.slot((views) => gpuUniformWriter(SHOT_MASK_SCALE, views)('stage', [width, height]));
-      dispatchStampCompute(device, encoder, compute(SCALE_WGSL), [slot, target.createView(), mask.createView()], width, height);
     },
     /** Where `reads` drawables' coverage gathers as a plane is laid: stage-sized, four to a layer of an array. */
     coverageTarget(reads: number): GPUTexture {

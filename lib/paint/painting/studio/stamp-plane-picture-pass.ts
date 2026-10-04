@@ -22,10 +22,10 @@ import type { StampUniformArena } from './stamp-uniform-arena.ts';
 export type StampPlanePicture = StampPlanePictureLayers & { readonly box: StampPixelBox; readonly texture: GPUTexture };
 
 /**
- * A plane laid into its picture under `key`: its compositor, painting (a storage view), layers, emission and motion
- * targets (cleared here), coverage array and visibility. `paper` lays a backing over the painting's first `w` × `h`
- * texels; `lay` lays the plane on `backing`, returning the stage texels laid (null: none). Only its first lay writes
- * glow, motion and coverage.
+ * A plane laid into its picture under `key`: its compositor, painting (storage), layers, emission and motion targets
+ * (cleared here), coverage and visibility. `paper` lays a backing over the first `w` × `h` texels; `lay` lays the
+ * plane on `backing`, returning the stage texels laid (null: none). The first lay writes motion and coverage; the
+ * lay on paper or black, glow.
  */
 export type StampPlanePictureLay = {
   readonly key: string;
