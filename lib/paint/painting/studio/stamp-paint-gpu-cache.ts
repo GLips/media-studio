@@ -13,10 +13,10 @@ import type { StampPaintDevice } from './stamp-paint-gpu.ts';
 export const STAMP_GPU_CACHE_BUDGET = 768 * 1024 * 1024;
 
 /**
- * What makes an entry: a group's painted layer, a plane's picture, a picture blurred, an own sheet's edge, or a sheet
- * solve's checkpoint.
+ * What makes an entry: a group's painted layer, a plane's picture, a picture blurred, an own sheet's edge, a drawable's
+ * laid coverage (what a shot's alphaOf mask reads), or a sheet solve's checkpoint.
  */
-export type StampGpuCacheProducer = 'film' | 'picture' | 'blurred' | 'edge' | 'checkpoint';
+export type StampGpuCacheProducer = 'film' | 'picture' | 'blurred' | 'edge' | 'coverage' | 'checkpoint';
 
 /** A texture an entry holds: `layers` array layers of `width` × `height` in `format`. */
 export type StampGpuCacheTexture = { width: number; height: number; layers: number; format: GPUTextureFormat; usage: GPUTextureUsageFlags };

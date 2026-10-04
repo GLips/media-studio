@@ -107,12 +107,13 @@ export function createStampPlanePictures(owner: StampPaintGpuOwner, { stage, are
     },
     /**
      * `picture` (kept under `key`) defocused by `sigma` stage px through `lens`, kept under its key and the stepped
-     * sigma, its box grown by the blur's reach; the picture itself where the sigma steps to nothing.
+     * sigma, its box grown by the blur's reach; the picture itself where the sigma steps to nothing. `fresh`: the
+     * picture was laid anew under a key it was kept under before, so what was blurred of it then is stale.
      */
-    blurred(encoder: GPUCommandEncoder, lens: Pick<LensCompositor, 'gaussian'>, picture: StampPlanePicture, key: string, sigma: number): StampPlanePicture {
+    blurred(encoder: GPUCommandEncoder, lens: Pick<LensCompositor, 'gaussian'>, picture: StampPlanePicture, key: string, sigma: number, fresh = false): StampPlanePicture {
       const stepped = lensSigmaStepped(sigma), blurredKey = `${key}|${stepped}`;
       if (!stepped) return picture;
-      const found = blurred.find(blurredKey, encoder);
+      const found = fresh ? null : blurred.find(blurredKey, encoder);
       if (found) return { ...found.note, texture: found.textures[0] };
       const { texture: sharp, box: sharpBox, ...layers } = picture;
       const box = stampStageTexelsGrown(stage, sharpBox, lensGaussianReach(stepped)), count = sharp.depthOrArrayLayers, note: StampPictureNote = { ...layers, box };

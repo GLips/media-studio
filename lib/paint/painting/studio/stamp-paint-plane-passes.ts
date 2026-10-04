@@ -29,9 +29,10 @@ const targetType = (target: StampPaintTarget) => (target.kind === 'array' ? 'tex
 
 /**
  * `coverAt(pixel)`, a laid group's cover as `glaze` (WGSL) says it's composited: its layer bound at 3 and, for a moved
- * group, its rest map at 4, its cover then read bilinearly at the rest point its lattice shows.
+ * group, its rest map at 4, its cover then read bilinearly at the rest point its lattice shows. A glow and a shot's
+ * coverage for alphaOf masks read it alike.
  */
-function laidCoverWgsl(compositor: StampPaintCompositor, cover: StampLaidGroupCover, noRest: number, glaze: string) {
+export function stampLaidCoverWgsl(compositor: StampPaintCompositor, cover: StampLaidGroupCover, noRest: number, glaze: string) {
   const { layer } = compositor.targets;
   const firstLayer = (texel: string) => (layer.kind === 'array' ? `textureLoad(source, ${texel}, 0u, 0)` : `textureLoad(source, ${texel}, 0)`);
   // A rest map's value where no lattice covers a pixel: STAMP_NO_REST, halved as the group pass tests it.
@@ -60,7 +61,7 @@ ${coverAt}`;
 
 /**
  * The glow source pass's WGSL for `compositor` on `stage`: binds its uniform (0), the painting (1), the plane's
- * emission, added to (2), and the group's cover (laidCoverWgsl).
+ * emission, added to (2), and the group's cover (stampLaidCoverWgsl).
  */
 export function stampGlowSourceWgsl(compositor: StampPaintCompositor, cover: StampLaidGroupCover, stage: StampStage, noRest: number, workgroup: number) {
   return /* wgsl */ `
@@ -71,7 +72,7 @@ ${STAMP_GLOW_SOURCE.wgsl}
 @group(0) @binding(1) var painting: ${targetType(compositor.targets.painting)};
 @group(0) @binding(2) var emission: texture_storage_2d<rgba16float, read_write>;
 ${compositor.output}
-${laidCoverWgsl(compositor, cover, noRest, 'u.glaze == 1u')}
+${stampLaidCoverWgsl(compositor, cover, noRest, 'u.glaze == 1u')}
 @compute @workgroup_size(${workgroup}, ${workgroup}) fn glowSource(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
   let pixel = u.origin + id.xy;
@@ -86,7 +87,7 @@ ${laidCoverWgsl(compositor, cover, noRest, 'u.glaze == 1u')}
 
 /**
  * The glow occlusion pass's WGSL: binds its uniform (0), the plane's emission, scaled (2), and the group's cover
- * (laidCoverWgsl). Emission so far on a plane dims by what a later opaque group lays over it, as its light does.
+ * (stampLaidCoverWgsl). Emission so far on a plane dims by what a later opaque group lays over it, as its light does.
  */
 export function stampGlowOcclusionWgsl(compositor: StampPaintCompositor, cover: StampLaidGroupCover, stage: StampStage, noRest: number, workgroup: number) {
   return /* wgsl */ `
@@ -94,7 +95,7 @@ ${stampStageWgsl(stage)}
 ${STAMP_GLOW_OCCLUSION.wgsl}
 @group(0) @binding(0) var<uniform> u: GlowOcclusion;
 @group(0) @binding(2) var emission: texture_storage_2d<rgba16float, read_write>;
-${laidCoverWgsl(compositor, cover, noRest, 'false')}
+${stampLaidCoverWgsl(compositor, cover, noRest, 'false')}
 @compute @workgroup_size(${workgroup}, ${workgroup}) fn glowOcclusion(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
   let pixel = u.origin + id.xy;
