@@ -41,7 +41,7 @@ function paintingPicturePng(picture: StampSheetsPicture, width: number, height: 
 }
 
 /** The source's still, as `request` asks for it. Throws what a solve refuses: an application it can't land. */
-async function paintingStillOf({ texts, brushes, packUrls, films, at }: PaintingStillRequest): Promise<PaintingStill> {
+async function paintingStillOf({ texts, brushes, packUrls, films, at, report }: PaintingStillRequest): Promise<PaintingStill> {
   const evaluation = painting(paintingSource, paintingValuesFromText(paintingSource.properties ?? {}, texts));
   const brushOf = ({ style, brush }: BrushRef): StampBrush => {
     const key = `${style}/${brush}`;
@@ -57,7 +57,7 @@ async function paintingStillOf({ texts, brushes, packUrls, films, at }: Painting
     const surface = await createStampPaintSurface(owner, { canvas, width, height });
     try {
       const prefix = at === null ? {} : { at };
-      const costs = createStampPaintCostTally(), { solved, composite, release } = await solvePaintingSheets(owner, compiled, { costs, ...prefix });
+      const costs = createStampPaintCostTally(), { solved, composite, release } = await solvePaintingSheets(owner, compiled, { costs, report, ...prefix });
       await drawStampSheetsStill(surface, composite);
       release();
       copy.getContext('2d')!.drawImage(canvas, 0, 0);
@@ -75,7 +75,8 @@ async function paintingStillOf({ texts, brushes, packUrls, films, at }: Painting
       const grained = evaluation.document.wrap ? evaluation.tree.sheets.filter(({ paper }) => paper.grain) : [];
       const grains = await owner.images(grained.map(({ paper }) => ({ asset: paper.grain!.image, kind: 'grain' as const })));
       const problems = grained.flatMap((sheet, i) => paintingWrappedGrainHeightProblem(evaluation.document, sheet, grains[i]) ?? []);
-      return { png, films: filmPngs, lines, costs: paintingSolveCostsLine(costs.take()), problems };
+      const warnings = solved.flatMap(({ decisions }) => decisions.flatMap((decision) => decision.warnings));
+      return { png, films: filmPngs, lines, warnings, costs: paintingSolveCostsLine(costs.take()), problems };
     } finally {
       surface.dispose();
     }

@@ -1,15 +1,16 @@
 // stamp-sheet-decide.ts: when one application lands (ENGINE 3.5), read off the wet field over its core: at τ0 for
-// `wet`, at the first 1 ms step a damp histogram finds for `damp`, once the core's latest texel sets for `dry`; then
-// checked by the field's own law, stepping a millisecond at a time while f32 rounding keeps it from holding. A bloom
-// must find open paint on workable paper under its core. The CPU decides, in f64; the GPU only sums.
+// `wet`, which only warns, at the first 1 ms step a damp histogram finds for `damp`, once the core's latest texel sets
+// for `dry`; then checked by the field's own law, a millisecond at a time while f32 rounding keeps it from holding. A
+// bloom must find open paint on workable paper under its core. The CPU decides, in f64; the GPU only sums.
 //
-// At a fixed `at`, and under `instant` or `never`, a rule is judged at τ0 alone, but `dry` under `instant`: τ0 is the
-// GPU's f32 set time, which rounding may leave a texel workable at.
+// At a fixed `at`, and under `instant` or `never`, `damp` and `dry` are judged at τ0 alone, but `dry` under
+// `instant`: τ0 is the GPU's f32 set time, which rounding may leave a texel workable at.
 
+import { stampDampFirstStep, stampDampFirstWidth, stampDampStep, stampDampWindow } from '../models/stamp-damp-histogram.ts';
 import {
-  STAMP_SHEET_SHARE, STAMP_SHEET_STEP, STAMP_SHEET_VERIFY_STEPS, stampDampFirstStep, stampDampFirstWidth, stampDampStep, stampSheetAtFails, stampSheetEmptyCore,
-  stampSheetGrid, stampSheetHeld, stampSheetHolds, stampSheetNearRounding, stampSheetUnreachable, stampSheetVerifyFault, stampSheetWithinRounding,
-  stampSheetWontBloom, type StampSheetRegime, type StampSheetTotals,
+  STAMP_SHEET_SHARE, STAMP_SHEET_STEP, STAMP_SHEET_VERIFY_STEPS, stampSheetAtFails, stampSheetEmptyCore, stampSheetGrid, stampSheetHeld, stampSheetHolds,
+  stampSheetNearRounding, stampSheetUnreachable, stampSheetVerifyFault, stampSheetWetShort, stampSheetWithinRounding, stampSheetWontBloom,
+  type StampSheetRegime, type StampSheetTotals,
 } from '../models/stamp-sheet-schedule.ts';
 import type { StampSheetWetness } from '../models/stamp-sheet-program.ts';
 import { StampSheetRefusal } from '../models/stamp-sheet-refusal.ts';
@@ -35,11 +36,10 @@ export async function decideStampSheetEntry(steps: StampSheetSteps, input: Stamp
   if (first.weight === 0) return { tau: tau0, warnings: [stampSheetEmptyCore(name)] };
   const warnings: string[] = [];
   let tau = tau0;
-  if (on && input.fixed !== null && !stampSheetHolds(on, first)) {
-    throw new StampSheetRefusal(stampSheetAtFails(name, input.fixed, on, stampSheetHeld(on, first) / first.weight));
-  }
-  if (on) {
-    const decided = await firstHolding(steps, input, core, tau0, first);
+  if (on === 'wet') warnings.push(...await wetWarnings(steps, input, core, tau0, first));
+  else if (on) {
+    if (input.fixed !== null && !stampSheetHolds(on, first)) throw new StampSheetRefusal(stampSheetAtFails(name, input.fixed, on, stampSheetHeld(on, first) / first.weight));
+    const decided = await firstHolding(steps, input, on, core, tau0, first);
     const { at, totals, stepped } = decided === tau0 && stampSheetHolds(on, first) ? { at: tau0, totals: first, stepped: false } : await verified(steps, name, on, core, decided);
     tau = at;
     if (stampSheetNearRounding(on, totals, stepped)) warnings.push(stampSheetWithinRounding(name, on));
@@ -51,29 +51,35 @@ export async function decideStampSheetEntry(steps: StampSheetSteps, input: Stamp
   return { tau, warnings };
 }
 
+/** `wet` judged at τ0 over `core` (`first`, its totals there): where it falls short, mapped, or holds only by a hair. */
+async function wetWarnings(steps: StampSheetSteps, input: StampSheetDecideInput, core: StampSheetCore, tau0: number, first: StampSheetTotals): Promise<string[]> {
+  if (stampSheetHolds('wet', first)) return stampSheetNearRounding('wet', first, false) ? [stampSheetWithinRounding(input.name, 'wet')] : [];
+  const boxes = await steps.failureAt(core, tau0, 'wet');
+  return [stampSheetWetShort(input.name, { tau: tau0, held: stampSheetHeld('wet', first), totals: first }, boxes, input.regime)];
+}
+
 /**
- * The first time from `tau0` the reductions say `input.on` holds over `core` (`first`, its totals at `tau0`).
- * Throws the application's failure, mapped where it held most, where it never does.
+ * The first time from `tau0` the reductions say `on` (`damp` or `dry`) holds over `core` (`first`, its totals at
+ * `tau0`). Throws the application's failure, mapped where it held most, where it never does.
  */
-async function firstHolding(steps: StampSheetSteps, input: StampSheetDecideInput, core: StampSheetCore, tau0: number, first: StampSheetTotals): Promise<number> {
-  const on = input.on!;
+async function firstHolding(steps: StampSheetSteps, input: StampSheetDecideInput, on: Exclude<StampSheetWetness, 'wet'>, core: StampSheetCore, tau0: number, first: StampSheetTotals): Promise<number> {
   if (stampSheetHolds(on, first)) return tau0;
-  if (input.regime === 'never' || (input.regime === 'instant' && on !== 'dry')) return unreachable(steps, input, core, { tau: tau0, held: stampSheetHeld(on, first), totals: first });
+  if (input.regime === 'never' || (input.regime === 'instant' && on !== 'dry')) return unreachable(steps, input, on, core, { tau: tau0, held: stampSheetHeld(on, first), totals: first });
   if (on === 'dry') return stampSheetGrid(tau0, first.latestSet ?? tau0);
-  if (on === 'damp' && first.latestSet !== null) {
+  if (first.latestSet !== null) {
     const last = stampDampStep(first.latestSet, tau0), need = STAMP_SHEET_SHARE * first.weight;
     const histogram = await steps.histogramAt(core, tau0, 0, stampDampFirstWidth(last));
     const { step, most } = await stampDampFirstStep(histogram, need, ({ start, width }) => steps.histogramAt(core, tau0, start, width));
     if (step !== null) return tau0 + step * STAMP_SHEET_STEP;
-    return unreachable(steps, input, core, { tau: tau0 + most.step * STAMP_SHEET_STEP, held: most.weight, totals: first });
+    return unreachable(steps, input, on, core, { tau: tau0 + most.step * STAMP_SHEET_STEP, held: most.weight, totals: first });
   }
-  return unreachable(steps, input, core, { tau: tau0, held: stampSheetHeld(on, first), totals: first });
+  return unreachable(steps, input, on, core, { tau: tau0, held: stampSheetHeld(on, first), totals: first });
 }
 
-/** Throws `input`'s failure from this prefix: its rule held over `held` at most, at `tau`, mapped there. */
-async function unreachable(steps: StampSheetSteps, input: StampSheetDecideInput, core: StampSheetCore, at: { tau: number; held: number; totals: StampSheetTotals }): Promise<never> {
-  const boxes = await steps.failureAt(core, at.tau, input.on!);
-  throw new StampSheetRefusal(stampSheetUnreachable(input.name, input.on!, at, boxes, input.unscheduled, input.regime));
+/** Throws `input`'s failure from this prefix: its rule `on` held over `held` at most, at `tau`, mapped there. */
+async function unreachable(steps: StampSheetSteps, input: StampSheetDecideInput, on: StampSheetWetness, core: StampSheetCore, at: { tau: number; held: number; totals: StampSheetTotals }): Promise<never> {
+  const boxes = await steps.failureAt(core, at.tau, on);
+  throw new StampSheetRefusal(stampSheetUnreachable(input.name, on, at, boxes, input.unscheduled, input.regime));
 }
 
 /**
@@ -89,4 +95,18 @@ async function verified(steps: StampSheetSteps, name: string, on: StampSheetWetn
     throw new Error(stampSheetVerifyFault(name, on, at, on === 'dry' ? 1 : STAMP_SHEET_SHARE, share(stampSheetHeld(on, totals))));
   };
   return check(0);
+}
+
+/**
+ * When `core`, its touch laid by `touch`, is damp from `tau` on over STAMP_SHEET_SHARE of its weight that holds water,
+ * in model s: from its first step that holds to the first after its last; or, never at once, the most of that weight
+ * damp (an upper bound) and when. Null where none of it holds water.
+ */
+export async function readStampSheetDampWindow(steps: StampSheetSteps, core: StampSheetCore, tau: number, touch: StampSheetPrepare): Promise<{ from: number; to: number } | { share: number; at: number } | null> {
+  const totals = await steps.totalsAt(core, tau, touch, null), wetted = totals.weight - totals.never;
+  if (wetted <= 0 || totals.latestSet === null) return null;
+  const histogram = await steps.histogramAt(core, tau, 0, stampDampFirstWidth(stampDampStep(totals.latestSet, tau)));
+  const found = await stampDampWindow(histogram, STAMP_SHEET_SHARE * wetted, ({ start, width }) => steps.histogramAt(core, tau, start, width));
+  if (found.from === null) return { share: found.most.weight / wetted, at: tau + found.most.step * STAMP_SHEET_STEP };
+  return { from: tau + found.from * STAMP_SHEET_STEP, to: tau + (found.to + 1) * STAMP_SHEET_STEP };
 }

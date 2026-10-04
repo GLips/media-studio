@@ -25,14 +25,16 @@ export type PaintingStillRun = { readonly problems: readonly PaintingProblem[]; 
 
 /**
  * The source at `file` at the values `texts` give by name, painted against this machine's styles; `films`: each alone
- * too; `at`: only the prefix landing by that scene second (null for all of it).
+ * too; `at`: only the prefix landing by that scene second (null for all of it); `report`: its lines with damp windows.
  */
-export async function paintPaintingSourceStill(file: string, texts: Readonly<Record<string, string>>, { films, at }: { films: boolean; at: number | null }): Promise<PaintingStillRun> {
+export async function paintPaintingSourceStill(
+  file: string, texts: Readonly<Record<string, string>>, { films, at, report }: { films: boolean; at: number | null; report: boolean },
+): Promise<PaintingStillRun> {
   const { problems, evaluation } = await checkPaintingSourceFile(file, texts);
   if (!evaluation) return { problems, still: null, refused: null };
   const styles = await readPaintingSourceStyles([evaluation], 'paint still'), brushOf = paintingStylesBrushOf(styles);
   const request: PaintingStillRequest = {
-    texts, films, at,
+    texts, films, at, report,
     brushes: Object.fromEntries(paintingBrushRefs(evaluation.tree).map((ref) => [`${ref.style}/${ref.brush}`, brushOf(ref)])),
     packUrls: Object.fromEntries([...styles.values()].flatMap(({ packUrls }) => Object.entries(packUrls))),
   };

@@ -103,7 +103,17 @@ const brokenSources: readonly { readonly name: string; readonly check: () => rea
   {
     name: "an on 'wet' after a flood no wetter than shiny",
     check: () => checkPaintingSource(sourceOf(documentOf([layer('landscape', [{ key: 'sky', applications: [flood({ key: 'sky-flood', water: 0.7 }), { ...stroke('treeline'), on: 'wet' }] }])]))),
-    expect: { severity: 'warning', path: 'treeline.on', message: "on 'wet' follows only applications at or below shiny 0.7: it can never hold" },
+    expect: { severity: 'warning', path: 'treeline.on', message: "on 'wet' follows only applications at or below shiny 0.7: it can never hold; flood wetter before it, or drop the `on`" },
+  },
+  {
+    name: "an on 'damp' after its own layer's flood, set once its wash starts",
+    check: () => checkPaintingSource(sourceOf(documentOf([layer('landscape', [
+      { key: 'sky', applications: [flood({ key: 'sky-flood', water: 0.85 })] }, { key: 'hill', applications: [{ ...stroke('ridge'), on: 'damp' }] },
+    ])]))),
+    expect: {
+      severity: 'warning', path: 'ridge.on',
+      message: "on 'damp' follows no water on the root's sheet: it can never hold; the water before it is sky's, in its own layer, set once its wash starts: lay it in sky, or on another layer",
+    },
   },
   {
     name: "an own sheet's dryingScale of 0",

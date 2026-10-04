@@ -38,7 +38,7 @@ async function withPaintSourceStack(verb: () => Promise<void>): Promise<void> {
 const checkPaintArgs = {
   source: { type: 'positional', required: true, description: 'The *.painting.ts module' },
   set: { type: 'string', valueHint: 'hillTopPx=210,dusk=true', description: 'Property values, held to their schema like any other (an off-step value is an error)' },
-  solve: { type: 'boolean', description: 'With no error, solve every sheet on the GPU: print each wash\'s start and set times and each application\'s landing time, sheet by sheet, and write the painting, and each film on its sheet\'s paper and edge, as PNGs' },
+  solve: { type: 'boolean', description: 'With no error, solve every sheet on the GPU: print each wash\'s start, damp window and set time, each application\'s landing time and each bloom\'s span damp again, sheet by sheet, and write the painting, and each film on its sheet\'s paper and edge, as PNGs' },
   out: { type: 'string', valueHint: 'meadow.solve', description: 'Where --solve writes painting.png and films/<layer>.png (default: <source>.solve in the current directory)' },
   at: { type: 'string', valueHint: '3.5', description: 'With --solve, solve only what lands by this scene second: the unclocked run and each clocked application landing by it (default: everything)' },
 } as const satisfies ArgsDef;
@@ -69,7 +69,7 @@ const checkPaintCommand = defineCommand({
       }
       if (!args.solve) return;
       const { paintPaintingSourceStill, paintingSourceStem, writePaintingSolveImages } = await import('#lib/paint/document/engine/painting-still.ts');
-      const { still, refused } = await paintPaintingSourceStill(args.source, set, { films: true, at });
+      const { still, refused } = await paintPaintingSourceStill(args.source, set, { films: true, at, report: true });
       if (!still) {
         console.error(`paint check: ${refused}`);
         process.exitCode = 1;
@@ -93,7 +93,7 @@ const stillPaintArgs = {
 const stillPaintCommand = defineCommand({
   meta: {
     name: 'still',
-    description: "Paint a painting source at its default property values (or those --set gives): checked as `paint check` checks it, then its sheets solved on the GPU and laid as one PNG the document's size, each own sheet a cut-out of its paper. Prints its problems and fails on any error, or on an application that can't land.",
+    description: "Paint a painting source at its default property values (or those --set gives): checked as `paint check` checks it, then its sheets solved on the GPU and laid as one PNG the document's size, each own sheet a cut-out of its paper. Prints its problems and the solve's warnings, and fails on any error, or on an application that can't land.",
   },
   args: stillPaintArgs,
   run: ({ args, rawArgs }) => {
@@ -102,7 +102,7 @@ const stillPaintCommand = defineCommand({
     return withPaintSourceStack(async () => {
       const { paintingProblemText, paintingErrors } = await import('#lib/paint/document/models/painting-problem.ts');
       const { paintPaintingSourceStill, paintingSourceStem, writePaintingStillPng } = await import('#lib/paint/document/engine/painting-still.ts');
-      const { problems, still, refused } = await paintPaintingSourceStill(args.source, set, { films: false, at });
+      const { problems, still, refused } = await paintPaintingSourceStill(args.source, set, { films: false, at, report: false });
       for (const problem of problems) console.log(paintingProblemText(problem));
       if (!still) {
         const errors = paintingErrors(problems).length;
@@ -111,6 +111,7 @@ const stillPaintCommand = defineCommand({
         return;
       }
       for (const problem of still.problems) console.log(paintingProblemText(problem));
+      for (const warning of still.warnings) console.log(`warning: ${warning}`);
       const out = args.out ?? `${paintingSourceStem(args.source)}.png`;
       writePaintingStillPng(out, still.png);
       console.error(`paint still: wrote ${out}; ${still.costs}`);

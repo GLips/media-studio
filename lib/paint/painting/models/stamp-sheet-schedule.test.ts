@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import type { StampSheetClock } from './stamp-sheet-program.ts';
 import { StampSheetRefusal } from './stamp-sheet-refusal.ts';
 import {
-  stampSheetClockStarted, stampSheetDecided, stampSheetEntryFrom, stampSheetSceneOf, stampSheetSolveStart, stampSheetWashSetMoment, stampSheetWashStart,
+  stampSheetClockStarted, stampSheetDecided, stampSheetEntryFrom, stampSheetMomentAfter, stampSheetSceneOf, stampSheetSolveStart, stampSheetWashStart,
 } from './stamp-sheet-schedule.ts';
 
 /** A solve's state whose unclocked run ended at model `tc`, its clock starting there at scene `scene`. */
@@ -26,7 +26,7 @@ test('under instant a clocked entry lands from when the sheet has set, at its or
   assert.ok(Math.abs(clocked.tau - 12.346) < 1e-9);
   assert.equal(stampSheetSceneOf(clock, state, 3, clocked), 3);
   assert.deepEqual(stampSheetEntryFrom(clock, state, { name: 'ground', orderTime: null, at: null }, from, 12.3456), from);
-  assert.deepEqual(stampSheetWashSetMoment(clock, stampSheetDecided(state, { tau: 12.346, scene: 3 }), true, 15), { tau: 15, scene: 3 });
+  assert.deepEqual(stampSheetMomentAfter(clock, stampSheetDecided(state, { tau: 12.346, scene: 3 }), true, 15), { tau: 15, scene: 3 });
 });
 
 test('a fixed at on a scale lands at its own scene second exactly, and is refused before its predecessor', () => {

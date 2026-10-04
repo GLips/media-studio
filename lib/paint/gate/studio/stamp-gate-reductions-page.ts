@@ -1,11 +1,13 @@
 // stamp-gate-reductions-page.ts: the reductions of schedule/reductions (stamp-gate-sheets.ts), run alone on a device
 // of their own over textures written here and read back as the sheet solver reads them: a fully touched core's weight
-// in its two words, and a damp histogram refined to 1 ms against the closed form's step.
+// in its two words, a damp histogram refined to 1 ms against the closed form's step, and one over paper half set
+// before τ0, which must never hold.
 
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import {
-  STAMP_DAMP_HISTOGRAM_WORDS, STAMP_SHEET_SHARE, STAMP_SHEET_TOTALS, STAMP_SHEET_WEIGHT, stampDampFirstStep, stampDampFirstWidth, stampDampHistogram, stampDampStep, stampSheetTotals,
-} from '#lib/paint/painting/models/stamp-sheet-schedule.ts';
+  STAMP_DAMP_HISTOGRAM_WORDS, stampDampFirstStep, stampDampFirstWidth, stampDampHistogram, stampDampStep,
+} from '#lib/paint/painting/models/stamp-damp-histogram.ts';
+import { STAMP_SHEET_SHARE, STAMP_SHEET_TOTALS, STAMP_SHEET_WEIGHT, stampSheetTotals } from '#lib/paint/painting/models/stamp-sheet-schedule.ts';
 import { stampDrying } from '#lib/paint/painting/models/stamp-wetness.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { stampSheetReductions, type StampSheetCore, type StampSheetReduceTextures } from '#lib/paint/painting/studio/stamp-sheet-reductions.ts';
@@ -50,7 +52,7 @@ function reductionsOver(device: GPUDevice, encoder: GPUCommandEncoder, size: num
   return { arena, reductions: stampSheetReductions(device, stampStage({ width: size, height: size }), arena, textures) };
 }
 
-const wholeCore = (size: number): StampSheetCore => ({ box: { x: 0, y: 0, w: size, h: size }, fluid: null, within: null, clipped: false });
+const wholeCore = (size: number): StampSheetCore => ({ box: { x: 0, y: 0, w: size, h: size }, fluid: null, within: null, clipped: false, prewet: null });
 
 /** A fully touched `size`² core's weight words (low, high). The weight reads no paper, so a texel of it does. */
 async function wholeWeight(device: GPUDevice, size: number): Promise<{ lo: number; hi: number }> {
@@ -66,14 +68,17 @@ async function wholeWeight(device: GPUDevice, size: number): Promise<{ lo: numbe
 const matteStepOf = (i: number) => (i * 7919) % 10_000;
 
 /**
- * A damp histogram over SIDE² texels turning matte across 10 s, refined until its bins are 1 ms: the step it finds,
- * the f64 closed form's, and the narrowest bins it read.
+ * A SIDE² paper whose texel `i` holds `field(i)`'s level and time, fully touched and probed at τ0 = 0: its totals,
+ * and its damp histograms read as the solver reads them, the narrowest bins read so far beside.
  */
-async function dampSearch(device: GPUDevice) {
-  const levels = new Float32Array(SIDE * SIDE * 4);
-  for (let i = 0; i < SIDE * SIDE; i++) levels[i * 4] = DRYING.damp + DRYING.rate * (1 + (matteStepOf(i) + 0.5) / 1000);
+async function dampPaper(device: GPUDevice, field: (i: number) => { level: number; time: number }) {
+  const texels = new Float32Array(SIDE * SIDE * 4);
+  for (let i = 0; i < SIDE * SIDE; i++) {
+    const { level, time } = field(i);
+    texels.set([level, time], i * 4);
+  }
   const paper = device.createTexture({ size: [SIDE, SIDE], format: 'rgba32float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
-  device.queue.writeTexture({ texture: paper }, levels, { bytesPerRow: SIDE * 16 }, [SIDE, SIDE]);
+  device.queue.writeTexture({ texture: paper }, texels, { bytesPerRow: SIDE * 16 }, [SIDE, SIDE]);
   const probe = { core: wholeCore(SIDE), tau: 0, drying: DRYING };
   const over = (work: (reductions: ReturnType<typeof stampSheetReductions>, encoder: GPUCommandEncoder, storage: GPUBuffer) => void, count: number) =>
     wordsFrom(device, count, (encoder, storage) => {
@@ -82,27 +87,47 @@ async function dampSearch(device: GPUDevice) {
       arena.flush();
     });
   const totals = stampSheetTotals(await over((reductions, encoder, storage) => reductions.totals(encoder, storage, probe, null), STAMP_SHEET_TOTALS.words), 0);
-  let narrowest = Infinity;
+  const read = { narrowest: Infinity };
   const binned = async ({ start, width }: { start: number; width: number }) => {
-    narrowest = Math.min(narrowest, width);
+    read.narrowest = Math.min(read.narrowest, width);
     return stampDampHistogram(await over((reductions, encoder, storage) => reductions.histogram(encoder, storage, probe, start, width), STAMP_DAMP_HISTOGRAM_WORDS), start, width);
   };
   const first = await binned({ start: 0, width: stampDampFirstWidth(stampDampStep(totals.latestSet!, 0)) });
-  const { step } = await stampDampFirstStep(first, STAMP_SHEET_SHARE * totals.weight, binned);
+  return { totals, read, search: () => stampDampFirstStep(first, STAMP_SHEET_SHARE * totals.weight, binned) };
+}
+
+/**
+ * A damp histogram over SIDE² texels turning matte across 10 s, refined until its bins are 1 ms: the step it finds,
+ * the f64 closed form's, and the narrowest bins it read.
+ */
+async function dampSearch(device: GPUDevice) {
+  const paper = await dampPaper(device, (i) => ({ level: DRYING.damp + DRYING.rate * (1 + (matteStepOf(i) + 0.5) / 1000), time: 0 }));
+  const { step } = await paper.search();
   // Nothing sets within 84 s of turning matte, so damp weight at a step is all turned matte by it.
   const steps = Array.from({ length: SIDE * SIDE }, (_, i) => 1001 + matteStepOf(i)).toSorted((a, b) => a - b);
-  return { step, expected: steps[Math.ceil(STAMP_SHEET_SHARE * SIDE * SIDE) - 1], narrowest };
+  return { step, expected: steps[Math.ceil(STAMP_SHEET_SHARE * SIDE * SIDE) - 1], narrowest: paper.read.narrowest };
+}
+
+/**
+ * Every other texel set a second before τ0, the rest matte at τ0 and workable for 84 s: no step is damp over 95% of
+ * them, and the most the search says is half.
+ */
+async function dampSetBefore(device: GPUDevice) {
+  const setFor = DRYING.damp / DRYING.rate;
+  const paper = await dampPaper(device, (i) => ({ level: DRYING.damp, time: i % 2 ? -setFor - 1 : 0 }));
+  const { step, most } = await paper.search();
+  return { step, share: most.weight / paper.totals.weight };
 }
 
 /** A fully touched `size`² core's weight. */
 const wholeWeightOf = (size: number) => size * size * STAMP_SHEET_WEIGHT;
 
-/** schedule/reductions' reductions: exact two-word totals at 256² and 8192², and the damp search's step. */
+/** schedule/reductions' reductions: exact two-word totals at 256² and 8192², the damp search's step, and paper set before τ0 counted. */
 export async function checkStampGateReductions(): Promise<StampGateWashCheck[]> {
   const device = await requestStudioGpuDevice();
   try {
     device.pushErrorScope('validation');
-    const small = await wholeWeight(device, SIDE), large = await wholeWeight(device, LARGEST), damp = await dampSearch(device);
+    const small = await wholeWeight(device, SIDE), large = await wholeWeight(device, LARGEST), damp = await dampSearch(device), before = await dampSetBefore(device);
     const error = await device.popErrorScope();
     if (error) throw new Error(`stamp gate reductions: ${error.message}`);
     const id = 'schedule/reductions';
@@ -110,6 +135,7 @@ export async function checkStampGateReductions(): Promise<StampGateWashCheck[]> 
       { id: `${id}: 256²`, passed: small.hi === 1 && small.lo === 0, detail: `high ${small.hi}, low ${small.lo}: ${small.hi * 2 ** 32 + small.lo}, needs ${wholeWeightOf(SIDE)}` },
       { id: `${id}: 8192²`, passed: large.hi === 2 ** 10 && large.lo === 0, detail: `high ${large.hi}, low ${large.lo}: ${large.hi * 2 ** 32 + large.lo}, needs ${wholeWeightOf(LARGEST)}` },
       { id: `${id}: damp histogram`, passed: damp.step === damp.expected && damp.narrowest === 1, detail: `step ${damp.step}, the closed form's ${damp.expected}, bins refined to ${damp.narrowest} step` },
+      { id: `${id}: damp histogram, set before τ0`, passed: before.step === null && before.share === 0.5, detail: `step ${before.step}, at most ${before.share} damp; needs none, at most 0.5` },
     ];
   } finally {
     device.destroy();

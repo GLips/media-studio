@@ -23,20 +23,20 @@ export type PaintingSheetsSolved = { readonly solved: readonly StampSheetSolved[
 
 /**
  * What a selection's solve is told: the poses moving its nodes (all at rest when left out), the scene second whose
- * prefix each sheet shows (all of it when left out), and where costs count.
+ * prefix each sheet shows (all of it when left out), where costs count, and whether decisions carry their reports.
  */
-export type PaintingSheetsSolveOptions = { readonly poses?: PaintingPoses; readonly at?: number; readonly costs?: StampPaintCostTally };
+export type PaintingSheetsSolveOptions = { readonly poses?: PaintingPoses; readonly at?: number; readonly costs?: StampPaintCostTally; readonly report?: boolean };
 
 /**
  * Each of `compiled`'s sheets posed by `poses` and solved on `owner`, one after another, its films held until
  * `release`: each one's solve at its index in the compiled selection. Releases what it held when one is refused.
  */
 export async function solvePaintingSheetFilms(
-  owner: StampPaintGpuOwner, compiled: PaintingSelectionCompiled, { poses = new Map(), at, costs }: PaintingSheetsSolveOptions = {},
+  owner: StampPaintGpuOwner, compiled: PaintingSelectionCompiled, { poses = new Map(), at, costs, report }: PaintingSheetsSolveOptions = {},
 ): Promise<{ readonly solved: readonly StampSheetSolved[]; readonly release: () => void }> {
   const holds: (() => void)[] = [], release = () => holds.splice(0).forEach((letGo) => letGo());
   // The device's lease runs the solves in turn, and each hold runs as its solve settles, before the next one starts.
-  const settled = await Promise.allSettled(compiled.sheets.map(({ program }) => solveStampSheet(owner, paintingSheetPosed(compiled.tree, program, poses, costs), { costs, ...(at !== undefined && { at }) }).then((done) => {
+  const settled = await Promise.allSettled(compiled.sheets.map(({ program }) => solveStampSheet(owner, paintingSheetPosed(compiled.tree, program, poses, costs), { costs, report, ...(at !== undefined && { at }) }).then((done) => {
     holds.push(holdStampSheetFilms(owner, done.films));
     return done;
   })));

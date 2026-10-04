@@ -1,10 +1,10 @@
 // stamp-sheet-schedule.ts: the forward scheduler's decisions, in f64 on the CPU, from the GPU's reductions over an
-// application's core: model time on a 1 ms grid anchored at each predecessor, and the clock's policy (ENGINE 3.5). A
-// solve's state moves by its transitions.
+// application's core: model time on a 1 ms grid anchored at each predecessor, the clock's policy (ENGINE 3.5).
 //
 // The laws, per texel wetted to ℓ at a, drying at rate r with open time o, sheen shiny h and damp d: wet while
 // τ < U = a + (ℓ − h)/r; matte from L = a + (ℓ − d)/r; set from Z = a + o + ℓ/r; under `never` (r = 0), U and Z are
-// +∞ where ℓ > 0, L −∞ where ℓ ≤ d, else +∞. `on` holds over 95% of the core's weight (`dry`, all).
+// +∞ where ℓ > 0, L −∞ where ℓ ≤ d, else +∞. `on` holds over 95% of the core's weight (`dry`, all). A `wet` that
+// doesn't only warns: wetness only falls, so waiting can't help.
 
 import { STAMP_BLOOM_SURPLUS } from './stamp-wet-bloom.ts';
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
@@ -22,8 +22,6 @@ export const STAMP_SHEET_STEP = 0.001;
 export const STAMP_SHEET_SHARE = 0.95;
 /** How many 1 ms steps verification may take past a decision before it's an engine fault: f32 rounding can't account for more. */
 export const STAMP_SHEET_VERIFY_STEPS = 8;
-/** Bins a damp histogram pass sorts weight into. */
-export const STAMP_SHEET_BINS = 4096;
 /** A texel's weight at full contact: contact × 2¹⁶, at most 2¹⁶, so a workgroup's 256 texels sum under 2²⁴. */
 export const STAMP_SHEET_WEIGHT = 65536;
 /** The least contact a core texel has: the fringe below it weighs nothing. */
@@ -41,13 +39,25 @@ export const STAMP_SHEET_BLOOM_SURPLUS = STAMP_BLOOM_SURPLUS.least;
 export type StampSheetMoment = { tau: number; scene: number | null };
 
 /**
- * What a solve decided for an entry: its wash's start, for the wash's first (null else); τ0, the earliest it could
- * land; when it landed, and its scene second; whether a drying closed as its wash started and as it landed; for the
- * wash's last, when all it touched has set (null else, or without water); its warnings.
+ * When a core is damp over STAMP_SHEET_SHARE of the paper under it that holds water, as an entry left it: `from` the
+ * first step that holds, `to` the first after the last; or never at once, at most `share` of it, at `at`.
+ */
+export type StampSheetDampWindow = { kind: 'damp'; from: StampSheetMoment; to: StampSheetMoment } | { kind: 'uneven'; share: number; at: StampSheetMoment };
+
+/**
+ * What a reporting solve read once an entry landed, where the paper dries by its laws: for its wash's last, when what
+ * the wash wetted is damp (`damp`, null else); for a bloom, when its footprint is damp again (`rewet`, null else).
+ */
+export type StampSheetReport = { damp: StampSheetDampWindow | null; rewet: StampSheetDampWindow | null };
+
+/**
+ * What a solve decided for an entry: its wash's start, for the wash's first; τ0, the earliest it could land; when it
+ * landed, and its scene second; whether a drying closed as its wash started and as it landed; for the wash's last,
+ * when all it touched has set; its warnings; what a reporting solve read. Null where there's none.
  */
 export type StampSheetDecision = {
   start: StampSheetMoment | null; tau0: number; tau: number; scene: number | null; closes: { start: boolean; landing: boolean };
-  washSet: StampSheetMoment | null; warnings: readonly string[];
+  washSet: StampSheetMoment | null; warnings: readonly string[]; report: StampSheetReport | null;
 };
 
 /** The scene second model time `tau` maps to on a `scale` clock whose clocked run starts at model time `start` (τc). */
@@ -122,10 +132,10 @@ export function stampSheetEntryFrom(
 }
 
 /**
- * When all a wash touched has set, its paper setting at model `tau`, its last entry (`clocked` or not) landed as
- * `state` says: under `instant`, at that landing's scene second; on a scale, `tau` mapped; else model time alone.
+ * A model time `tau` at or after an entry (`clocked` or not) landed as `state` says, as a moment: under `instant`, at
+ * that landing's scene second, as all it wetted sets there; on a scale, `tau` mapped; else model time alone.
  */
-export function stampSheetWashSetMoment(clock: StampSheetClock, state: StampSheetSolveState, clocked: boolean, tau: number): StampSheetMoment {
+export function stampSheetMomentAfter(clock: StampSheetClock, state: StampSheetSolveState, clocked: boolean, tau: number): StampSheetMoment {
   if (clock.kind === 'instant') return { tau, scene: state.scene };
   return { tau, scene: clock.kind === 'scale' && clocked ? stampSheetSceneAt(clock, state.clockStart!, tau) : null };
 }
@@ -136,10 +146,13 @@ export type StampSheetBegun = { start: StampSheetMoment; closes: boolean };
 /** An entry's landing as decided: τ0, τ and its scene second, its warnings, and whether a drying closed as it landed. */
 export type StampSheetLandingDecided = Pick<StampSheetDecision, 'tau0' | 'tau' | 'scene' | 'warnings'> & { closes: boolean };
 
-/** An entry's decision from its parts: its wash's start (null past the wash's first), its landing, its wash's set moment. */
-export const stampSheetDecisionOf = (begun: StampSheetBegun | null, landing: StampSheetLandingDecided, washSet: StampSheetMoment | null): StampSheetDecision => ({
+/**
+ * An entry's decision from its parts: its wash's start (null past the wash's first), its landing, its wash's set
+ * moment, and what a reporting solve read after it (null for none).
+ */
+export const stampSheetDecisionOf = (begun: StampSheetBegun | null, landing: StampSheetLandingDecided, washSet: StampSheetMoment | null, report: StampSheetReport | null): StampSheetDecision => ({
   start: begun?.start ?? null, tau0: landing.tau0, tau: landing.tau, scene: landing.scene,
-  closes: { start: begun?.closes ?? false, landing: landing.closes }, washSet, warnings: landing.warnings,
+  closes: { start: begun?.closes ?? false, landing: landing.closes }, washSet, warnings: landing.warnings, report,
 });
 
 /** The wash start a remembered decision of its wash's first entry made. */
@@ -203,76 +216,6 @@ export function stampSheetHeld(on: StampSheetWetness, totals: StampSheetTotals):
 /** Whether `on` holds at a probe: over STAMP_SHEET_SHARE of the weight, or for `dry` over all of it. */
 export function stampSheetHolds(on: StampSheetWetness, totals: StampSheetTotals): boolean {
   return on === 'dry' ? totals.workable === 0 : totals.weight > 0 && stampSheetHeld(on, totals) >= STAMP_SHEET_SHARE * totals.weight;
-}
-
-/**
- * A damp histogram: bins `width` 1 ms steps wide from step `start` (steps counted from τ0), the weight turning matte
- * (`matte`) and set (`set`) in each, and the weight that had before `start`.
- */
-export type StampDampHistogram = { start: number; width: number; matte: Float64Array; set: Float64Array; matteBefore: number; setBefore: number };
-
-/** A histogram pass's words read as one: two words a bin, matte's then set's, then before-start's two each. */
-export function stampDampHistogram(words: Uint32Array, start: number, width: number): StampDampHistogram {
-  const bins = STAMP_SHEET_BINS, matte = new Float64Array(bins), set = new Float64Array(bins);
-  for (let b = 0; b < bins; b++) {
-    matte[b] = stampSheetWide(words, 2 * b);
-    set[b] = stampSheetWide(words, 2 * (bins + b));
-  }
-  return { start, width, matte, set, matteBefore: stampSheetWide(words, 4 * bins), setBefore: stampSheetWide(words, 4 * bins + 2) };
-}
-
-/** The words a histogram pass leaves. */
-export const STAMP_DAMP_HISTOGRAM_WORDS = 4 * STAMP_SHEET_BINS + 4;
-
-/**
- * Each bin's most damp weight: what's matte by its end less what's set by its start. For bins a step wide it's exact
- * at that step, less what sets at it too.
- */
-export function stampDampBinBounds(histogram: StampDampHistogram): Float64Array {
-  const bounds = new Float64Array(STAMP_SHEET_BINS);
-  let matte = histogram.matteBefore, set = histogram.setBefore;
-  for (let b = 0; b < STAMP_SHEET_BINS; b++) {
-    matte += histogram.matte[b];
-    if (histogram.width === 1) set += histogram.set[b];
-    bounds[b] = matte - set;
-    if (histogram.width !== 1) set += histogram.set[b];
-  }
-  return bounds;
-}
-
-/** The first histogram over steps 0..`last`: bins wide enough that 4096 of them reach it. */
-export const stampDampFirstWidth = (last: number) => Math.max(1, Math.ceil((last + 1) / STAMP_SHEET_BINS));
-
-/** A bin's refinement: its steps, binned 4096 ways. */
-export const stampDampRefined = (histogram: StampDampHistogram, bin: number) => ({ start: histogram.start + bin * histogram.width, width: Math.ceil(histogram.width / STAMP_SHEET_BINS) });
-
-/** The step of `kL` or `kZ` from a time, `tau0` and the time both after the same base: its first 1 ms step at or past it, at least 0. */
-export const stampDampStep = (time: number, tau0: number) => Math.max(0, Math.ceil((time - tau0) / STAMP_SHEET_STEP - 1e-9));
-
-/**
- * The search for `damp`'s first step, a bin at a time: each bin whose bound reaches `need`, in order, refined until
- * its bins are a step wide; `refine` reads a bin's refinement off the GPU. Resolves the first step reaching `need`,
- * or null, and the most damp weight it saw anywhere (an upper bound) and at which step.
- */
-export async function stampDampFirstStep(
-  first: StampDampHistogram, need: number, refine: (at: { start: number; width: number }) => Promise<StampDampHistogram>,
-): Promise<{ step: number | null; most: { weight: number; step: number } }> {
-  const most = { weight: 0, step: first.start };
-  const search = async (histogram: StampDampHistogram): Promise<number | null> => {
-    const bounds = stampDampBinBounds(histogram);
-    for (let b = 0; b < STAMP_SHEET_BINS; b++) {
-      if (bounds[b] > most.weight) Object.assign(most, { weight: bounds[b], step: histogram.start + b * histogram.width });
-    }
-    // Bins are searched in order, each refined before the next is looked at: the first reaching step is the answer.
-    const from = async (after: number): Promise<number | null> => {
-      const bin = bounds.findIndex((bound, b) => b >= after && bound >= need);
-      if (bin < 0) return null;
-      if (histogram.width === 1) return histogram.start + bin;
-      return (await search(await refine(stampDampRefined(histogram, bin)))) ?? from(bin + 1);
-    };
-    return from(0);
-  };
-  return { step: await search(first), most };
 }
 
 const boxArea = (b: StampBox) => (b.x1 - b.x0) * (b.y1 - b.y0);
@@ -456,26 +399,45 @@ export const stampSheetSeconds = (tau: number) => `${Number(tau.toFixed(3))} s`;
  */
 export type StampSheetRegime = 'drying' | 'instant' | 'never';
 
-/** Why an application can't be reached, the one clause its failure gives: water it never met, its sheet's clock, or its rule's own. */
-function unreachableReason(on: StampSheetWetness, totals: Pick<StampSheetTotals, 'weight' | 'never'>, regime: StampSheetRegime): string {
-  if (totals.never > (1 - STAMP_SHEET_SHARE) * totals.weight) return 'never wetted on this sheet';
-  if (regime === 'instant') return 'settled before it (`instant`)';
-  if (regime === 'never' && on !== 'wet') return 'nothing dries (`never`)';
-  return on === 'wet' ? "not shiny at its predecessor's time" : 'sets before the rest turns matte';
+/** A rule's shortfall over a probe: its share of the core in whole percent, and where it failed as boxes. */
+const shortfall = (at: { held: number; totals: Pick<StampSheetTotals, 'weight'> }, boxes: readonly StampBox[]) => ({
+  share: Math.round((100 * at.held) / Math.max(1, at.totals.weight)), where: boxes.map(({ x0, y0, x1, y1 }) => `[${x0},${y0} → ${x1},${y1}]`).join(' '),
+});
+
+/**
+ * Why `on` falls short over a core, and what to do about it, one clause: water it never met, its sheet's clock, or
+ * its rule's own (a `wet` shortfall warns, so it has no `never` clause of its own: under `never`, it's as laid).
+ */
+function shortReason(on: StampSheetWetness, totals: Pick<StampSheetTotals, 'weight' | 'never'>, regime: StampSheetRegime): string {
+  if (totals.never > (1 - STAMP_SHEET_SHARE) * totals.weight) {
+    const dry = Math.round((100 * totals.never) / totals.weight);
+    return `never wetted on this sheet: ${dry}% of its core met no water before it; lay it over a flood or prewet earlier on the sheet, or drop the \`on\``;
+  }
+  if (regime === 'instant') return 'settled before it (`instant`): give the sheet a numeric `dryingScale`, or drop the `on`';
+  if (regime === 'never' && on !== 'wet') return "nothing dries (`never`): give the sheet a numeric `dryingScale`, or drop the `on` (under `never`, a bloom is `on: 'wet'`)";
+  if (on === 'wet') return "not shiny at its predecessor's time: inset it from the flood's rim (feather it, or narrow its shape), flood wetter, or lay it before any lift it crosses";
+  return 'sets before the rest turns matte: split it along the boxes, so each part lies on paper drying alike';
 }
 
 /**
  * An unreachable application's problem: its rule, the most of its core that held it (an upper bound), when, where it
- * failed, why (as the paper dries under `regime`), and the applications of its sheet left unscheduled.
+ * failed, why (as the paper dries under `regime`) and what to do, and the applications of its sheet left unscheduled.
  */
 export function stampSheetUnreachable(
   name: string, on: StampSheetWetness, at: { tau: number; held: number; totals: Pick<StampSheetTotals, 'weight' | 'never'> }, boxes: readonly StampBox[],
   unscheduled: readonly string[], regime: StampSheetRegime,
 ): string {
-  const share = Math.round((100 * at.held) / Math.max(1, at.totals.weight));
-  const where = boxes.map(({ x0, y0, x1, y1 }) => `[${x0},${y0} → ${x1},${y1}]`).join(' ');
-  const left = unscheduled.length ? `. Unscheduled after it: ${unscheduled.join(', ')}` : '';
-  return `${name}: unreachable from this committed prefix: on '${on}' held over at most ${share}% of its core (needs ${STAMP_SHEET_SHARE * 100}%), at model ${stampSheetSeconds(at.tau)} ${where}; ${unreachableReason(on, at.totals, regime)}${left}`;
+  const { share, where } = shortfall(at, boxes), left = unscheduled.length ? `. Unscheduled after it: ${unscheduled.join(', ')}` : '';
+  return `${name}: unreachable from this committed prefix: on '${on}' held over at most ${share}% of its core (needs ${STAMP_SHEET_SHARE * 100}%), at model ${stampSheetSeconds(at.tau)} ${where}; ${shortReason(on, at.totals, regime)}${left}`;
+}
+
+/**
+ * A `wet` that doesn't hold where its application lands (a warning: it can't move the landing): the share of its core
+ * shiny there, where it isn't, why and what to do.
+ */
+export function stampSheetWetShort(name: string, at: { tau: number; held: number; totals: Pick<StampSheetTotals, 'weight' | 'never'> }, boxes: readonly StampBox[], regime: StampSheetRegime): string {
+  const { share, where } = shortfall(at, boxes);
+  return `${name}: on 'wet' holds over ${share}% of its core (needs ${STAMP_SHEET_SHARE * 100}%) at model ${stampSheetSeconds(at.tau)} ${where}; ${shortReason('wet', at.totals, regime)}. It lands there all the same: \`wet\` never delays`;
 }
 
 /** A wash whose numeric origin comes before its layer's earlier washes have set: scene seconds both. */
@@ -489,9 +451,9 @@ export const stampSheetNeverSets = (wash: string, earlier: string) => `${wash} f
 export const stampSheetAtTooEarly = (name: string, at: number, predecessor: number) =>
   `${name}: fixed at ${stampSheetSeconds(at)} precedes its predecessor at ${stampSheetSeconds(predecessor)}`;
 
-/** A fixed `at` where its `on` doesn't hold: the share of its core it holds over there, an upper bound for `damp`. */
+/** A fixed `at` where its `on` (`damp` or `dry`) doesn't hold: the share of its core it holds over there, and what to do. */
 export const stampSheetAtFails = (name: string, at: number, on: StampSheetWetness, share: number) =>
-  `${name}: at ${stampSheetSeconds(at)}, on '${on}' holds over ${Math.round(100 * share)}% of its core there`;
+  `${name}: at ${stampSheetSeconds(at)}, on '${on}' holds over ${Math.round(100 * share)}% of its core there: move the \`at\` to where \`studio paint check --solve\` says its paper is ${on}, or drop the \`on\``;
 
 export const stampSheetEmptyCore = (name: string) => `${name}: its core is empty: nothing of it reaches paper`;
 

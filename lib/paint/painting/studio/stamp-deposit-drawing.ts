@@ -287,9 +287,9 @@ export function createStampDepositDrawing(device: StampPaintDevice, { stage, com
    * Lays `deposit`'s main stamps in `box` into `view` by `pipeline`, laid by max: a wash deposit's touch (touchOf, its
    * water's contact, which reads no grain) or a dry one's pressure (pressOf).
    */
-  function layMaxStamps(encoder: GPUCommandEncoder, pipeline: GPURenderPipeline, view: GPUTextureView, deposit: CompiledStampDeposit, loaded: StampLoadedDeposit, box: StampPixelBox) {
+  function layMaxStamps(encoder: GPUCommandEncoder, pipeline: GPURenderPipeline, view: GPUTextureView, deposit: CompiledStampDeposit, loaded: StampLoadedDeposit, box: StampPixelBox, loadOp: GPULoadOp = 'clear') {
     const count = deposit.stamps.length;
-    const pass = encoder.beginRenderPass({ colorAttachments: [{ view, loadOp: 'clear', storeOp: 'store' }] });
+    const pass = encoder.beginRenderPass({ colorAttachments: [{ view, loadOp, storeOp: 'store' }] });
     pass.setScissorRect(box.x, box.y, box.w, box.h);
     if (count) {
       pass.setIndexBuffer(fanBuffer, 'uint16');
@@ -520,11 +520,12 @@ export function createStampDepositDrawing(device: StampPaintDevice, { stage, com
     },
     drawStamps,
     /**
-     * Lays `deposit`'s touch over `box` into `into` (r16float, the stage's size, cleared first), as its draw lays it:
-     * where its water reaches before the paper hardens it, for a schedule reading its core.
+     * Lays `deposit`'s touch over `box` into `into` (r16float, the stage's size), as its draw lays it: where its water
+     * reaches before the paper hardens it, for a schedule reading its core. `into` is cleared first, unless `over` the
+     * touch already there, the greater kept: a wash's core is its applications' touches together.
      */
-    drawTouch(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loaded: StampLoadedDeposit, box: StampPixelBox, into: GPUTextureView) {
-      layMaxStamps(encoder, touchPipeline!, into, deposit, loaded, box);
+    drawTouch(encoder: GPUCommandEncoder, deposit: CompiledStampDeposit, loaded: StampLoadedDeposit, box: StampPixelBox, into: GPUTextureView, over = false) {
+      layMaxStamps(encoder, touchPipeline!, into, deposit, loaded, box, over ? 'load' : 'clear');
     },
     /** Writes into a Deposit at `views` what a brushed mask's mark's coverage resolves with on `tooth`, its flags too. */
     writeMarkCoverage(views: GpuUniformViews, marks: StampLoadedMarks, grainOffset: CompiledStampDeposit['grainOffset'], tooth: StampPaperTooth | null) {

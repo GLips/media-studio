@@ -2,9 +2,9 @@
 // the entries before it left (stamp-sheet-decide.ts), then landed into the wet field and its film; a drying closes
 // once all since the last has set. Its state is one value the schedule's transitions move on.
 //
-// The clock's policy is the schedule's (models/stamp-sheet-schedule.ts); the run reads back what it needs (when the
-// paper under a wash or the whole sheet sets) and lays the work. A decision is made in parts, its wash's start and
-// its landing, and a remembered one is replayed through the same parts, so deciding and replaying land alike.
+// The clock's policy is the schedule's (models/stamp-sheet-schedule.ts); the run reads back what it needs and lays
+// the work. A decision is made in parts, its wash's start and its landing, and a remembered one is replayed through
+// the same parts, so deciding and replaying land alike. A reporting run reads damp windows after a landing.
 
 import { paintPigmentSeed } from '#lib/paint/materials/models/paint-paper.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
@@ -13,9 +13,10 @@ import { stampPaintFieldEnds } from '../models/stamp-paint-field.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import {
   stampSheetBegunOf, stampSheetClockStarted, stampSheetClosed, stampSheetDecided, stampSheetDecisionOf, stampSheetDrawn, stampSheetEntryFrom, stampSheetLanded,
-  stampSheetLandingAt, stampSheetLandingOf, stampSheetMaySetBy, stampSheetNeverSets, stampSheetPainted, stampSheetPrewetted, stampSheetRebased, stampSheetRegimeOf,
-  stampSheetSceneOf, stampSheetSetKnown, stampSheetSolveStart, stampSheetStartsWet, stampSheetStateResized, stampSheetWashSetMoment, stampSheetWashStart,
-  type StampSheetBegun, type StampSheetDecision, type StampSheetLandingDecided, type StampSheetMoment, type StampSheetSolveState,
+  stampSheetLandingAt, stampSheetLandingOf, stampSheetMaySetBy, stampSheetMomentAfter, stampSheetNeverSets, stampSheetPainted, stampSheetPrewetted, stampSheetRebased,
+  stampSheetRegimeOf, stampSheetSceneOf, stampSheetSetKnown, stampSheetSolveStart, stampSheetStartsWet, stampSheetStateResized, stampSheetWashStart,
+  type StampSheetBegun, type StampSheetDampWindow, type StampSheetDecision, type StampSheetLandingDecided, type StampSheetMoment, type StampSheetReport,
+  type StampSheetSolveState,
 } from '../models/stamp-sheet-schedule.ts';
 import { stampSheetWashSpans, type StampSheetProgram } from '../models/stamp-sheet-program.ts';
 import { StampSheetRefusal } from '../models/stamp-sheet-refusal.ts';
@@ -29,30 +30,32 @@ import { clearStampTarget, type StampPaintDevice } from './stamp-paint-gpu.ts';
 import type { StampPaintGpuOwner } from './stamp-paint-gpu-owner.ts';
 import { holdStampSheetCheckpoint, keepStampSheetCheckpoint, restoreStampSheetCheckpoint, stampSheetCheckpointKept, type StampSheetPieceTarget } from './stamp-sheet-checkpoints.ts';
 import { createStampSheetClips } from './stamp-sheet-clips.ts';
-import { decideStampSheetEntry } from './stamp-sheet-decide.ts';
+import { decideStampSheetEntry, readStampSheetDampWindow } from './stamp-sheet-decide.ts';
 import type { StampSheetSolveGpu } from './stamp-sheet-load.ts';
-import { createStampSheetSteps, type StampSheetTimeBase } from './stamp-sheet-steps.ts';
+import type { StampSheetCore } from './stamp-sheet-reductions.ts';
+import { createStampSheetSteps, type StampSheetPrepare, type StampSheetTimeBase } from './stamp-sheet-steps.ts';
 import { planStampWetStage, type StampWetBank, type StampWetDepositMoment, type StampWetStagePlan } from './stamp-wet-stages.ts';
 
 /**
  * What a run lays through its loaded GPU work, its paper drying as `drying` says: its brushes, each deposit's water,
- * where it counts costs; `keys`, K₀ onwards as far as it may run, naming its checkpoints.
+ * where it counts costs; `keys`, K₀ onwards as far as it may run, naming its checkpoints; whether it reports.
  */
 export type StampSheetRunInput = {
   program: StampSheetProgram; keys: readonly string[]; gpu: StampSheetSolveGpu; drying: StampDrying; brushes: StampPaintBrushes;
-  waterOf: (deposit: CompiledStampDeposit) => number; costs: StampPaintCostTally | null;
+  waterOf: (deposit: CompiledStampDeposit) => number; costs: StampPaintCostTally | null; report: boolean;
 };
 
 /**
- * What running an entry came to: landed, its decision and whether it was remembered; or not, past its prefix's `at`,
- * the scene second it was decided at and whether its wash started, which a prefix stopping before it must undo.
+ * What running an entry came to: landed, its decision and whether it's remembered as it is (a report added to a
+ * remembered one isn't); or not, past its prefix's `at`, the scene second it was decided at and whether its wash
+ * started, which a prefix stopping before it must undo.
  */
 export type StampSheetEntryRun = { lands: true; decision: StampSheetDecision; known: boolean } | { lands: false; scene: number; known: boolean; started: boolean };
 
 const pixelBoxMeets = (a: StampPixelBox | null, b: StampPixelBox) => !!a && a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
 /** A solve's run over its loaded GPU work. */
-export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevice, { program, keys, gpu, drying, brushes, waterOf, costs }: StampSheetRunInput) {
+export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevice, { program, keys, gpu, drying, brushes, waterOf, costs, report }: StampSheetRunInput) {
   let state: StampSheetSolveState = stampSheetSolveStart(program.films.length, program.washes.length);
   const timeBase: StampSheetTimeBase = {
     base: () => state.base,
@@ -206,7 +209,54 @@ export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevic
     const box = touchedBox(w);
     if (!washes[w].wetHistory || !box) return null;
     const tau = await steps.latestSetOver([box]);
-    return tau === null || tau === Infinity ? null : stampSheetWashSetMoment(clock, state, entries[k].orderTime !== null, tau);
+    return tau === null || tau === Infinity ? null : stampSheetMomentAfter(clock, state, entries[k].orderTime !== null, tau);
+  };
+
+  /** Entry `k`'s core, as its decision and its report read it: null wholly off the stage. */
+  const coreOf = (k: number): StampSheetCore | null => {
+    const { deposit, wash } = entries[k], { box } = gpu.bank.get(deposit)!, clipped = washes[wash].clipTo !== null;
+    return box && { box, fluid: gpu.fluidOf(deposit.mask), within: gpu.boundsOf(deposit, clipped).within, clipped, prewet: null };
+  };
+  /** Lays entry `k`'s touch into the core target. */
+  const touchOf = (k: number): StampSheetPrepare => (encoder) => {
+    const { deposit } = entries[k], loaded = gpu.bank.get(deposit)!;
+    if (loaded.box) gpu.drawing.drawTouch(encoder, deposit, loaded, loaded.box, targets.core.view);
+  };
+  /**
+   * Wash `w`'s core once its last entry `k` has landed, with the work laying it: its applications laid by the wash
+   * law, their touches together, and its prewet's contact. Null where it touched nothing on the stage.
+   */
+  const washCoreOf = (k: number, w: number): { core: StampSheetCore; touch: StampSheetPrepare } | null => {
+    const box = touchedBox(w), { prewet } = washes[w], region = gpu.prewetRegion(w);
+    if (!box) return null;
+    const own = entries.flatMap(({ wash, deposit }, j) => (j <= k && wash === w && gpu.bank.get(deposit)!.wash ? [j] : []));
+    return {
+      core: { box, fluid: null, within: null, clipped: false, prewet: prewet && region ? { region, fluid: gpu.fluidOf(prewet.held) } : null },
+      touch: (encoder) => {
+        clearStampTarget(encoder, targets.core.view);
+        for (const j of own) {
+          const { deposit } = entries[j], loaded = gpu.bank.get(deposit)!;
+          if (loaded.box) gpu.drawing.drawTouch(encoder, deposit, loaded, loaded.box, targets.core.view, true);
+        }
+      },
+    };
+  };
+  /** When `core`, laid by `touch`, is damp from the last landing on, as moments of entry `k`'s clock: null where it holds no water. */
+  const dampWindowOf = async (k: number, core: StampSheetCore, touch: StampSheetPrepare): Promise<StampSheetDampWindow | null> => {
+    const read = await readStampSheetDampWindow(steps, core, state.tau, touch);
+    const moment = (tau: number) => stampSheetMomentAfter(clock, state, entries[k].orderTime !== null, tau);
+    if (!read) return null;
+    return 'from' in read ? { kind: 'damp', from: moment(read.from), to: moment(read.to) } : { kind: 'uneven', share: read.share, at: moment(read.at) };
+  };
+  /**
+   * What a reporting run reads once entry `k` of wash `w` has landed, where its paper dries by its laws: for a bloom,
+   * when its footprint is damp again; for its wash's last, when what the wash wetted is damp.
+   */
+  const reportAfter = async (k: number, w: number): Promise<StampSheetReport> => {
+    if (stampSheetRegimeOf(clock, entries[k].orderTime) !== 'drying') return { damp: null, rewet: null };
+    const core = entries[k].bloom ? coreOf(k) : null, rewet = core && await dampWindowOf(k, core, touchOf(k));
+    const wash = spans.last[w] === k && washes[w].wetHistory ? washCoreOf(k, w) : null;
+    return { damp: wash && await dampWindowOf(k, wash.core, wash.touch), rewet };
   };
 
   /**
@@ -214,17 +264,13 @@ export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevic
    * whether a drying closes as it does: none for one landing `past` its prefix. Refused where it can't land.
    */
   const decideLanding = async (k: number, from: StampSheetMoment, unscheduled: readonly string[], past: (scene: number | null) => boolean): Promise<StampSheetLandingDecided> => {
-    const entry = entries[k], { name, on, bloom, deposit, orderTime } = entry, loaded = gpu.bank.get(deposit)!, clipped = washes[entry.wash].clipTo !== null;
+    const entry = entries[k], { name, on, bloom, deposit, orderTime } = entry;
     const regime = stampSheetRegimeOf(clock, orderTime);
     // Only `instant` reads when the whole sheet sets: it sets before each clocked entry.
     const fieldSet = regime === 'instant' && state.field ? await steps.latestSetOver([state.field]) : null;
     const tau0 = stampSheetEntryFrom(clock, state, entry, { tau: from.tau, exact: from.scene }, fieldSet);
-    const core = loaded.box && { box: loaded.box, fluid: gpu.fluidOf(deposit.mask), within: gpu.boundsOf(deposit, clipped).within, clipped };
     const { tau, warnings } = await decideStampSheetEntry(steps, {
-      name, on, bloom: bloom ? waterOf(deposit) : null, core, unscheduled, regime, fixed: clock.kind === 'scale' ? entry.at : null,
-      touch: (encoder) => {
-        if (loaded.box) gpu.drawing.drawTouch(encoder, deposit, loaded, loaded.box, targets.core.view);
-      },
+      name, on, bloom: bloom ? waterOf(deposit) : null, core: coreOf(k), unscheduled, regime, fixed: clock.kind === 'scale' ? entry.at : null, touch: touchOf(k),
       open: (encoder) => {
         clearStampTarget(encoder, targets.open.view);
         for (const f of openFilms) {
@@ -266,7 +312,8 @@ export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevic
       if (spans.last[w] === k) clips.end(encoder, w);
     });
     const measured = !known && spans.last[w] === k ? await washSetAt(k, w) : null;
-    return { lands: true, decision: stampSheetDecisionOf(begun, landing, known ? known.washSet : measured), known: !!known };
+    const reported = report && !known?.report ? await reportAfter(k, w) : known?.report ?? null;
+    return { lands: true, decision: stampSheetDecisionOf(begun, landing, known ? known.washSet : measured, reported), known: !!known && reported === known.report };
   };
 
   /** The checkpoint after `k` entries, by name: its clips told apart, as another program's may differ. */

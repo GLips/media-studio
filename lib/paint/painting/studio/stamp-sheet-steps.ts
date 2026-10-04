@@ -8,9 +8,8 @@
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { StampBox } from '../models/stamp-region.ts';
 import type { StampPaintCostTally } from '../models/stamp-paint-costs.ts';
-import {
-  STAMP_DAMP_HISTOGRAM_WORDS, STAMP_SHEET_TOTALS, stampDampHistogram, stampSheetFailureBoxes, stampSheetTotals, type StampDampHistogram, type StampSheetTotals,
-} from '../models/stamp-sheet-schedule.ts';
+import { STAMP_DAMP_HISTOGRAM_WORDS, stampDampHistogram, type StampDampHistogram } from '../models/stamp-damp-histogram.ts';
+import { STAMP_SHEET_TOTALS, stampSheetFailureBoxes, stampSheetTotals, type StampSheetTotals } from '../models/stamp-sheet-schedule.ts';
 import type { StampSheetWetness } from '../models/stamp-sheet-program.ts';
 import type { StampDrying } from '../models/stamp-wetness.ts';
 import type { StampPaintDevice } from './stamp-paint-gpu.ts';
