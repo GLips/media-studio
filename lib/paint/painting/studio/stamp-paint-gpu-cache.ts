@@ -13,7 +13,7 @@ import type { StampPaintDevice } from './stamp-paint-gpu.ts';
  * The most a device's cache holds once a frame's own entries and those held are counted out, bytes: a 1080p scene's
  * planes, films and the targets a frame and a solve work in.
  */
-export const STAMP_GPU_CACHE_BUDGET = 1024 * 1024 * 1024;
+export const STAMP_GPU_CACHE_BUDGET = 1536 * 1024 * 1024;
 
 /**
  * What makes an entry: a group's painted layer, a plane's picture, a picture blurred, an own sheet's edge, a strokes

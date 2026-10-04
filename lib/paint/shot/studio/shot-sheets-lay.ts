@@ -130,12 +130,20 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
    * again is made zeroed, so it has none.
    */
   const written = new WeakMap<GPUTexture, StampPixelBox>();
-  /** The layer target a sheet of `shape` copies `frame`'s films into (layerSize) for `encoder`'s work, and its zeros. */
+  /** The layer target a sheet of `shape` copies `frame`'s films into (layerSize), for `encoder`'s work. */
   const layerOf = (encoder: GPUCommandEncoder, shape: StampPaintTarget, frame: ShotSheetsLayFrame) => {
     const { width: w, height: h } = layerSize(frame), count = shape.kind === 'array' ? shape.layers : 1;
-    const size = [w, h, count] as const, usage = GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC | GPUTextureUsage.TEXTURE_BINDING;
-    // `zeros` is never written: WebGPU makes a texture zeroed, and a copy of it clears a box of the layer.
-    return { texture: owner.target('shot layer', { size, format: 'rgba16float', usage }, encoder), zeros: owner.target('shot layer zeros', { size, format: 'rgba16float', usage }, encoder) };
+    return owner.target('shot layer', { size: [w, h, count], format: 'rgba16float', usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC | GPUTextureUsage.TEXTURE_BINDING }, encoder);
+  };
+  /** The largest box cleared yet by layer count: one zeros target a count, grown to it, clears a box of any layer target. */
+  const zerosReach = new Map<number, { w: number; h: number }>();
+  /** Clears `box` of `layer` for `encoder`'s work. */
+  const clearLayerBox = (encoder: GPUCommandEncoder, layer: GPUTexture, box: StampPixelBox) => {
+    const count = layer.depthOrArrayLayers, reach = zerosReach.get(count), w = Math.max(reach?.w ?? 0, box.w), h = Math.max(reach?.h ?? 0, box.h);
+    zerosReach.set(count, { w, h });
+    // Never written: WebGPU makes a texture zeroed.
+    const zeros = owner.target('shot layer zeros', { size: [w, h, count], format: 'rgba16float', usage: GPUTextureUsage.COPY_SRC }, encoder);
+    copyStampTextureBox(encoder, { texture: zeros, x: 0, y: 0 }, { texture: layer, x: box.x, y: box.y }, box);
   };
   const pipelineOf = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }) } });
 
@@ -153,12 +161,12 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
   function copyFilm(encoder: GPUCommandEncoder, frame: ShotSheetsLayFrame, sheet: number, film: StampSheetFilmKept) {
     const kept = keptStampSheetFilm(owner, film, encoder);
     if (!kept || !film.box) return null;
-    const shape = frame.lays.compositors[sheet].targets.layer, target = layerOf(encoder, shape, frame), was = written.get(target.texture);
-    if (was) copyStampTextureBox(encoder, { texture: target.zeros, x: 0, y: 0 }, { texture: target.texture, x: was.x, y: was.y }, was);
+    const shape = frame.lays.compositors[sheet].targets.layer, target = layerOf(encoder, shape, frame), was = written.get(target);
+    if (was) clearLayerBox(encoder, target, was);
     const at = stampStageTexelsOf(stage, film.box);
-    copyStampTextureBox(encoder, { texture: kept, x: 0, y: 0 }, { texture: target.texture, x: at.x, y: at.y }, at);
-    written.set(target.texture, at);
-    return { view: target.texture.createView({ dimension: shape.kind === 'array' ? '2d-array' : '2d' }), at };
+    copyStampTextureBox(encoder, { texture: kept, x: 0, y: 0 }, { texture: target, x: at.x, y: at.y }, at);
+    written.set(target, at);
+    return { view: target.createView({ dimension: shape.kind === 'array' ? '2d-array' : '2d' }), at };
   }
 
   /** Sheet `sheet`'s film `film` cut by its reveals over `at`, texels of its layer target; null for one nothing cuts. */
