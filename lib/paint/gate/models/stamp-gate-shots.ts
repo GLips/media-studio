@@ -1,10 +1,9 @@
-// stamp-gate-shots.ts: the gate's shots (ENGINE 9, tests 6 and 7 through a PaintedShot): the rigged paper heron, its
-// neck skinned to its body, its wing a cel moving its own sheet, and reeds owning their sheet, drawn as pieces, also
-// boiling, and dissolving from day to dusk as it's posed; the wet-contact sheet, its heron's foot posed by a rig:
-// painted in as it plays, on sixes over a warmed span, hidden, and dissolving to a sheet of its own over a dissolving
-// back; the heron alone, a clear back over HTML, also pinned (shot/page); the rain (stamp-gate-rain.ts); and the
-// cut-out cards (stamp-gate-cards.ts). Poses and the rain's drops are tables by scene second, so a baseline's inputs
-// name them. What the cases measure of their frames is here, pure.
+// stamp-gate-shots.ts: the gate's shots (ENGINE 9, tests 6 and 7 through a PaintedShot): the rigged paper heron (neck
+// skinned, wing a cel on its own sheet, reeds drawn as pieces), boiling, and dissolving from day to dusk as it's posed;
+// the wet-contact sheet, its foot rigged: painted in, on sixes over a warmed span, hidden, and dissolving over a
+// dissolving back; the heron alone over HTML, also pinned (shot/page); the rain (stamp-gate-rain.ts); and the cut-out
+// cards (stamp-gate-cards.ts). Poses and drops are tables by scene second, so a baseline's inputs name them. What the
+// cases measure of their frames is here, pure.
 
 import { compilePaintingSelection } from '#lib/paint/document/models/painting-document-compile.ts';
 import type { LayerNode, Mix, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
