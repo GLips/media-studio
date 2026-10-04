@@ -16,7 +16,15 @@ export type VideoProps = {
   profile?: boolean;
   /** How the lens draws: fast, or the reference the fast path is measured against (lens-mode.ts). */
   lens?: LensMode;
+  /**
+   * Painting property values over every scene's, by the source's factory name, as `studio look --set` checked them:
+   * a dial swept in context (painting-value-overrides-install.ts).
+   */
+  paintingValues?: PaintingValuesProp;
 };
+
+/** Property values by painting source, then by property: JSON across the page's boundary. */
+export type PaintingValuesProp = Readonly<Record<string, Readonly<Record<string, string | number | boolean>>>>;
 
 /** One previs scene's blockout alone (BlockoutSolo), for `studio gen video`, run for the chosen model's `seconds`. */
 export type BlockoutSoloProps = { scene: string; seconds: number };

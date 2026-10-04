@@ -7,7 +7,7 @@ import { openStudioRenderSession, renderLensArg, studioProjectArg } from '../pro
 export default defineCommand({
   meta: {
     name: 'look',
-    description: 'Look at a render\'s frames without watching it: a labelled sheet of chosen frames, the same frames before and after (--against) with the pixels that changed, a stretch\'s motion stats (--motion), its tracked motion graphed (--graph=a:b), or each piece\'s place and HUD clearance read from its scene model with no render (--graph=models). Frames come from the composition unless --video names a render. Aim with out/check/timeline.json from `studio check`. Prints its files; open an image with an image viewer or the Read tool.',
+    description: 'Look at a render\'s frames without watching it: a labelled sheet of chosen frames, the same frames before and after (--against) with the pixels that changed, a stretch\'s motion stats (--motion), its tracked motion graphed (--graph=a:b), or each piece\'s place and HUD clearance read from its scene model with no render (--graph=models). Frames come from the composition unless --video names a render; --set paints its paintings at other property values. Aim with out/check/timeline.json from `studio check`. Prints its files; open an image with an image viewer or the Read tool.',
   },
   args: {
     project: studioProjectArg,
@@ -29,6 +29,7 @@ export default defineCommand({
     w: { type: 'string', description: 'Width of each frame in pixels (default 640; 384 for --strip)' },
     captions: { type: 'boolean', description: 'Burn captions in (the composition only)' },
     lens: { ...renderLensArg, description: `${renderLensArg.description}; the composition only` },
+    set: { type: 'string', valueHint: 'heron.reflection=0.5,dusk.level=0.3', description: 'How would a painting look at another value, in its scene? Paint each named painting (by its factory\'s name) at these property values over the scenes\' own, held to its schema as `studio paint check --set` holds them; the composition only' },
     out: { type: 'string', description: 'Where to write, relative to the project unless absolute (default out/check/sheet.jpg, against.jpg, motion.txt or graph.png)' },
   },
   async run({ args }) {
@@ -36,6 +37,7 @@ export default defineCommand({
     const step = Number(args.step);
     if (!(step > 0 && Number.isFinite(step))) throw new Error(`--step must be a positive number of seconds, not ${args.step}`);
 
+    if (args.set !== undefined && (args.video || args.graph === 'models')) throw new Error('--set paints the composition at other painting values: leave out --video and --graph=models');
     if (args.graph === 'models') {
       if ([args.sheet, args.strip, args.video, args.against, args.motion, args.local].some(Boolean)) throw new Error('--graph=models reads the scene models over --bar=N or --frames=a:b: give it no video, times or --motion');
       if (Boolean(args.frames) === Boolean(args.bar)) throw new Error('--graph=models reads a stretch: give it --bar=N or --frames=a:b');
@@ -65,7 +67,7 @@ export default defineCommand({
       const at = args.graph.split(':').map(Number);
       if (!(at.length === 2 && at.every(Number.isFinite) && at[0] < at[1])) throw new Error(`--graph is a stretch of seconds like 4:6, not ${args.graph}`);
       if (args.out && !/\.(png|jpe?g)$/i.test(args.out)) throw new Error(`a --graph is an image: give --out a .png or .jpg name, not ${args.out}`);
-      const session = await openStudioRenderSession(args.project);
+      const session = await openStudioRenderSession(args.project, { paintings: args.set });
       const { renderMotionGraph } = await import('#lib/output/render/engine/render-pipeline.ts');
       const graph = await renderMotionGraph(session, {
         at: [at[0], at[1]], tracks: args.tracks?.split(',').map((t) => t.trim()).filter(Boolean), space: args.local ? 'local' : 'screen',
@@ -94,7 +96,7 @@ export default defineCommand({
 
     const source = await openLookSource(args.video
       ? renderSource(inProject(args.video))
-      : { kind: 'composition', session: await openStudioRenderSession(project, { lens: args.lens }), captions: Boolean(args.captions) });
+      : { kind: 'composition', session: await openStudioRenderSession(project, { lens: args.lens, paintings: args.set }), captions: Boolean(args.captions) });
     const clock = args.bar || args.motion ? await readProjectClock(project) : undefined;
     // A render names its frames by the clock: it must be the whole reel or one bar, placed by its snapshot or --starts-at.
     if (clock && args.video && !(source.first === 0 && source.end === clock.end) && !clock.bars.some((b) => b.from === source.first && b.to === source.end)) {

@@ -1,5 +1,6 @@
 {
   "lib/paint/shot": "A shot selects an evaluation's layers and groups by key, and rigs them by their cels.",
   "lib/paint/gate": "The gate's sheet cases are painting documents, compiled to the solver's program as a source's still is.",
-  "lib/output/render": "A render checks every painting source its project paints from, as `studio paint check` does, before it bundles or queues for the GPU."
+  "lib/output/render": "A render checks every painting source its project paints from, as `studio paint check` does, before it bundles or queues for the GPU.",
+  "lib/picture/composition": "A render's bundle sets the painting values `studio look --set` sweeps before any scene evaluates a painting."
 }

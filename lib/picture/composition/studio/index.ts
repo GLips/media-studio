@@ -1,3 +1,5 @@
+// First: scenes evaluate paintings as they load, at the render's painting values.
+import '#lib/paint/document/studio/painting-value-overrides-install.ts';
 import { registerRoot } from 'remotion';
 import { Root } from './Root.tsx';
 

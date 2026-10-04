@@ -1,6 +1,7 @@
 // painting-source.ts: a `*.painting.ts` module and what evaluating it gives. painting() runs its factory at checked
 // property values, checks the document, and keeps the evaluation for those values, so a scene asking again each frame
-// gets the same one; checkPaintingSource() is the same checks as a list, for a test or `studio paint check`.
+// gets the same one; checkPaintingSource() is the same checks as a list, for a test or `studio paint check`. A render
+// may override a painting's values over every scene's (`studio look --set`), installed before any scene loads.
 
 import type { PaintingDocument } from './painting-document.ts';
 import { checkPaintingDocument } from './painting-document-check.ts';
@@ -41,9 +42,18 @@ export type PaintingEvaluation = {
   readonly warnings: readonly PaintingProblem[];
 };
 
-/** A source's name in problems: its factory's, or `painting source` for an anonymous one. */
-const paintingSourceName = <S extends PropertySchema>(source: PaintingSourceModule<S>) =>
+/** A source's name in problems and overrides: its factory's, or `painting source` for an anonymous one. */
+export const paintingSourceName = <S extends PropertySchema>(source: PaintingSourceModule<S>) =>
   (source.default.name && source.default.name !== 'default' ? source.default.name : 'painting source');
+
+/** Property values a render paints sources at over a scene's own, by source name (paintingSourceName). */
+export type PaintingValueOverrides = ReadonlyMap<string, PaintingPropertyRecord>;
+let paintingValueOverrides: PaintingValueOverrides = new Map();
+
+/** Sets the values painting() lays over a scene's from here on; a render's bundle sets them before any scene loads. */
+export function setPaintingValueOverrides(overrides: PaintingValueOverrides): void {
+  paintingValueOverrides = overrides;
+}
 
 /** Each source's schema problems, found once. */
 const schemaProblemsOf = new WeakMap<object, readonly PaintingProblem[]>();
@@ -93,11 +103,12 @@ function evaluateAt<S extends PropertySchema>(
 }
 
 /**
- * `source` evaluated at `values` (defaults for the rest), checked, and kept for those values. Throws one Error listing
- * every problem when it has errors; a throw inside the factory keeps its own stack.
+ * `source` evaluated at `values` (defaults for the rest), any override set for it laid over them, checked, and kept
+ * for those values. Throws one Error listing every problem when it has errors; a throw inside the factory keeps its own
+ * stack.
  */
 export function painting<S extends PropertySchema>(source: PaintingSourceModule<S>, values: Partial<PropertyValues<S>> = {}): PaintingEvaluation {
-  const given: Readonly<Partial<PaintingPropertyRecord>> = values;
+  const given: Readonly<Partial<PaintingPropertyRecord>> = { ...values, ...paintingValueOverrides.get(paintingSourceName(source)) };
   const checked = sourceValues(source, given);
   if (!checked.values) throw paintingProblemsError(paintingSourceName(source), checked.problems);
   const key = paintingValuesKey(checked.values);

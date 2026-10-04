@@ -98,6 +98,8 @@ export default defineConfig({
     'import/no-duplicates': 'error',
     'import/no-cycle': 'error',
     'import/no-self-import': 'error',
+    // An install sets what modules read as they load, so it's imported for its effect, before them.
+    'import/no-unassigned-import': ['error', { allow: ['**/*-install.ts'] }],
     'no-underscore-dangle': 'off',
   },
 

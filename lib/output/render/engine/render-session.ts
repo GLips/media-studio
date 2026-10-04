@@ -27,7 +27,7 @@ import { wholeBrowserPageError } from '#lib/platform/browser/engine/browser-page
 import { inRenderBrowser, RENDER_REMOTION_OPTIONS } from '#lib/platform/browser/engine/render-browser.ts';
 import { releaseStudioGpuLease } from '#lib/platform/gpu/engine/gpu-lease.ts';
 import type { MotionTracks } from '#lib/picture/measurement/models/motion-tracks.ts';
-import type { CompositionRenderSettings, ReplayProps, VideoProps } from '#lib/picture/video/models/composition-props.ts';
+import type { CompositionRenderSettings, PaintingValuesProp, ReplayProps, VideoProps } from '#lib/picture/video/models/composition-props.ts';
 import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
 import type { LensMode } from '#lib/picture/lens/models/lens-mode.ts';
 
@@ -71,9 +71,12 @@ const GPU_WAIT_RECORDED_SECONDS = 0.1;
 
 /**
  * `workers` overrides the video's `renderWorkers` and DEFAULT_RENDER_WORKERS, as a command's --workers does; `lens` is
- * how every render of the session draws the lens, as --lens says.
+ * how every render of the session draws the lens, as --lens says; `paintingValues`, what its paintings are painted at
+ * over the scenes' values, as `studio look --set` checked them.
  */
-export async function openRenderSession(project: string, { workers, lens = 'fast' }: { workers?: number; lens?: LensMode } = {}) {
+export async function openRenderSession(
+  project: string, { workers, lens = 'fast', paintingValues }: { workers?: number; lens?: LensMode; paintingValues?: PaintingValuesProp } = {},
+) {
   if (workers !== undefined && !(Number.isInteger(workers) && workers > 0)) throw new Error(`--workers is ${workers}: give a whole number above 0`);
   // Only ever lower: raising a process's priority back takes root.
   if (getPriority() < RENDER_NICENESS) setPriority(RENDER_NICENESS);
@@ -89,7 +92,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   const clock = (await readProjectClock(project)) ?? null;
   // A silent video delivers with no mix and no audio track (render-pipeline.ts).
   const silent = (await readProjectDeclaration(project))?.capability === 'silent';
-  const props = (p: Partial<VideoProps> = {}): VideoProps => ({ captions: false, probe: false, blockouts: false, lens, ...p });
+  const props = (p: Partial<VideoProps> = {}): VideoProps => ({ captions: false, probe: false, blockouts: false, lens, ...(paintingValues && { paintingValues }), ...p });
   const selectIn = (inputProps: VideoProps, browser: HeadlessBrowser) =>
     selectComposition({ serveUrl, ...RENDER_REMOTION_OPTIONS, id: projectSlug(project), inputProps, puppeteerInstance: browser });
   /** The composition at `inputProps`, in `browser`, or with none in a render browser of its own, under the GPU lease. */

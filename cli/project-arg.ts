@@ -24,13 +24,16 @@ export const renderLensArg = {
 
 /**
  * Bundles the project a command-line argument names, which must have a video.tsx; `workers` is a --workers value,
- * `lens` a --lens one.
+ * `lens` a --lens one, `paintings` a --set of `painting.property=value` pairs (painting-value-overrides.ts).
  */
-export async function openStudioRenderSession(projectArg: string, { workers, lens }: { workers?: string; lens?: string } = {}) {
+export async function openStudioRenderSession(projectArg: string, { workers, lens, paintings }: { workers?: string; lens?: string; paintings?: string } = {}) {
   const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
   const { openRenderSession } = await import('#lib/output/render/engine/render-session.ts');
   const { lensModeChecked } = await import('#lib/picture/lens/models/lens-mode.ts');
-  return openRenderSession(resolveStudioProjectWith(projectArg, 'video.tsx'), {
+  const { readPaintingValueOverrides } = await import('#lib/paint/document/engine/painting-value-overrides.ts');
+  const project = resolveStudioProjectWith(projectArg, 'video.tsx');
+  return openRenderSession(project, {
     workers: workers === undefined ? undefined : Number(workers), lens: lens === undefined ? undefined : lensModeChecked(lens),
+    ...(paintings !== undefined && { paintingValues: await readPaintingValueOverrides(project, paintings) }),
   });
 }
