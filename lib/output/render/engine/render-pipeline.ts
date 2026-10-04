@@ -22,6 +22,7 @@ import { sfxCueListReport } from '#lib/output/sfx-cues/engine/project-cue-list.t
 import { readSfxCueList } from '#lib/output/sfx-cues/engine/cue-module.ts';
 import { renderVoiceOf } from '#lib/timing/voice/engine/voice-project.ts';
 import type { OnArtifact } from '@remotion/renderer';
+import { frameAtSecond } from '#lib/picture/frame/models/frame.ts';
 import type { VideoProps } from '#lib/picture/video/models/composition-props.ts';
 import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
 import { countVideoFrames, measureWithFfmpeg, runFfmpeg, runFfprobe } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
@@ -507,7 +508,7 @@ export async function checkFramesRepeatable(session: RenderSession, times: numbe
   if (!times.length || times.some((t) => !Number.isFinite(t))) throw new Error('give times in seconds, e.g. 2,8.5');
   const composition = await session.compositionFor(session.props());
   const { fps, durationInFrames } = composition;
-  const frames = times.map((t) => Math.round(t * fps));
+  const frames = times.map((t) => frameAtSecond(t, fps, durationInFrames));
   const bad = frames.find((f) => !(f >= 0 && f < durationInFrames));
   if (bad !== undefined) throw new Error(`${bad / fps}s is outside the video`);
   const inVideo = (f: number) => f >= 0 && f < durationInFrames;

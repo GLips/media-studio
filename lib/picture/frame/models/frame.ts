@@ -23,3 +23,13 @@ export type FrameSize = Pick<VideoFormat, 'width' | 'height'>;
 export const DEFAULT_VIDEO_FORMAT: VideoFormat = { fps: 30, width: 1920, height: 1080, transparent: false };
 
 export const fullFrameRect = ({ width, height }: FrameSize): Rect => ({ x: 0, y: 0, w: width, h: height });
+
+/**
+ * The frame showing at `seconds` in a video whose frames end before frame `end`: the nearest one, except that the
+ * end second itself (a 10 s video's 10) names the last frame, showing as the video ends, not the one past it. A later
+ * time is past the end, for the caller to refuse rather than clamp.
+ */
+export function frameAtSecond(seconds: number, fps: number, end: number): number {
+  const frame = Math.round(seconds * fps);
+  return frame === end ? end - 1 : frame;
+}

@@ -88,6 +88,7 @@ export default defineCommand({
     if (givenStart !== undefined && !(Number.isInteger(givenStart) && givenStart >= 0)) throw new Error(`--starts-at is a frame number, not ${args['starts-at']}`);
     const crop = args.crop ? parseLookCrop(args.crop) : undefined;
     const { loadRenderSnapshot } = await import('#lib/output/render/engine/render-snapshot.ts');
+    const { frameAtSecond } = await import('#lib/picture/frame/models/frame.ts');
     // Where a render starts in the project: its snapshot says, and --starts-at places only one without a snapshot.
     const renderSource = (file: string) => {
       const loaded = loadRenderSnapshot(file);
@@ -111,12 +112,7 @@ export default defineCommand({
         if (!bar) throw new Error(`there's no bar ${args.bar}: bars are ${clock.bars.map((b) => b.n).join(', ')}`);
         return Array.from({ length: bar.to - bar.from }, (_, i) => bar.from + i);
       }
-      // The end second (a 10 s video's 10) names the frame showing as it ends, its last, not the one past it. A time
-      // further on is still refused.
-      const frameAt = (t: number) => {
-        const frame = Math.round(t * source.fps);
-        return frame === source.end ? source.end - 1 : frame;
-      };
+      const frameAt = (t: number) => frameAtSecond(t, source.fps, source.end);
       if (args.sheet) return [...new Set(args.sheet.split(',').map((t) => frameAt(parseLookNumber(t))))].toSorted((a, b) => a - b);
       if (args.strip) {
         const [from, to] = args.strip.split(':').map(parseLookNumber);
