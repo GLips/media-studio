@@ -94,7 +94,7 @@ export function stampPaintStyleProbeMedium(name: string, style: StampPaintStyle)
 }
 
 /** One of a style's brushes read from its pack, or why it can't be: its pack isn't among those given, or lacks it. */
-export type StampPaintStyleBrush = { readonly brush: StampBrush } | { readonly missing: string };
+export type StampPaintStyleBrush = { readonly brush: StampStyleBrush } | { readonly missing: string };
 
 /**
  * Each of `style`'s brushes (named `name`) by the style's own name, read from `packs` with its media, its profile

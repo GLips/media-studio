@@ -2,11 +2,12 @@
 // they run on a clean clone. Its tip image is named, never loaded: a compile places stamps, it doesn't draw them.
 
 import { stampBrushEvenEdge } from '#lib/paint/brush/models/stamp-brush-profile.ts';
-import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampRoundTipStatedProfile } from '#lib/paint/painting/models/stamp-tip-support.ts';
+import type { StampStyleBrush } from '#lib/paint/style/models/style.ts';
 import type { PaintingBrushOf } from './painting-deposit-compile.ts';
 
-const wash: StampBrush = {
+const wash: StampStyleBrush = {
   profile: STAMP_BRUSH_UNMEASURED, name: 'wash', blend: 'normal', media: 'wet', accumulation: { kind: 'glaze', build: 0 },
   tip: { image: { style: 'watercolor', pack: 'vvds', file: 'tips/round.png' }, roundness: 1, sampling: 'isotropic' },
   spacing: 0.1, stepping: 'spread', dynamics: stampLinearDynamics({}), scatter: { count: 1, radius: 0, lateral: 0 },
@@ -20,7 +21,7 @@ wash.profile = stated;
 export const paintingTestBrushOf: PaintingBrushOf = () => wash;
 
 /** The wash brush measured from `min` to `max` px alone, as an imported pack's brush is measured over a range. */
-export function paintingTestBrushSpanning(min: number, max: number): StampBrush {
+export function paintingTestBrushSpanning(min: number, max: number): StampStyleBrush {
   const { support } = stated.samples[0], at = (diameter: number) => ({ diameter, edge: stampBrushEvenEdge(diameter / 2), edgeNoise: 0, support });
   return { ...wash, profile: { ...stated, samples: [at(min), at(max)] } };
 }

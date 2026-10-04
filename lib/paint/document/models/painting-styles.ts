@@ -7,7 +7,7 @@
 import { stampBrushDiameterProblem } from '#lib/paint/brush/models/stamp-brush-profile.ts';
 import type { StampBrush, StampBrushAsset, StampBrushMedia } from '#lib/paint/brush/models/stamp-brush.ts';
 import {
-  readBundledStampPaintPacks, stampPaintStyleBrushes, stampPaintStyleImages, stampPaintStylePaper, type BundledStampPaintStyles,
+  readBundledStampPaintPacks, stampPaintStyleBrushes, stampPaintStyleImages, stampPaintStylePaper, type BundledStampPaintStyles, type StampStyleBrush,
 } from '#lib/paint/style/models/style.ts';
 import type { BrushRef } from './painting-document.ts';
 
@@ -17,7 +17,7 @@ import type { BrushRef } from './painting-document.ts';
  * by `<pack>/<file>`.
  */
 export type PaintingStyleEntry = {
-  readonly brushes: ReadonlyMap<string, StampBrush>;
+  readonly brushes: ReadonlyMap<string, StampStyleBrush>;
   readonly unread: ReadonlyMap<string, string>;
   readonly files: ReadonlySet<string>;
 };
@@ -38,7 +38,7 @@ export function paintingStyleCatalogue(styles: BundledStampPaintStyles, declared
   return {
     declared,
     styles: new Map(served.map(([name, entry]) => {
-      const brushes = new Map<string, StampBrush>(), unread = new Map<string, string>();
+      const brushes = new Map<string, StampStyleBrush>(), unread = new Map<string, string>();
       for (const [key, read] of stampPaintStyleBrushes(name, entry.style, readBundledStampPaintPacks(entry))) {
         if ('brush' in read) brushes.set(key, read.brush);
         else unread.set(key, read.missing);
@@ -69,7 +69,7 @@ export function paintingAssetProblem(styles: PaintingStyleCatalogue, asset: Stam
 }
 
 /** `brush` as `styles` hold it; undefined when no catalogue is known, or it doesn't name the brush or can't read it. */
-export function paintingStyleBrush(styles: PaintingStyleCatalogue | undefined, brush: BrushRef): StampBrush | undefined {
+export function paintingStyleBrush(styles: PaintingStyleCatalogue | undefined, brush: BrushRef): StampStyleBrush | undefined {
   // A source written in JS may leave its ref out or half named: the check reports that (checkBrush) and reads on.
   const { style, brush: key }: Partial<BrushRef> = brush ?? {};
   return style === undefined || key === undefined ? undefined : styles?.styles.get(style)?.brushes.get(key);
