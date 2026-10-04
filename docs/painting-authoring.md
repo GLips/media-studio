@@ -205,9 +205,11 @@ marks, and noise fields with one seed share one pattern. Give each application i
 Geometry: points are `{x, y}` (`StampPoint`) in paper px, x right, y down; angles are radians, positive turning
 clockwise on screen. A `Region` is an ellipse or a polygon of `rings` read even-odd: a ring inside another is a hole,
 one inside a hole an island, rings side by side a union. Rings never cross: compute an overlap's union in TS, or
-write separate applications (**NEW**: the engine holds one ring per region today). A stroke has `subpaths`: pen-ups
-between them lay nothing, and the hand's profile counts the gap. To close a stroke's loop, repeat its first point
-last; a ring never repeats it.
+write separate applications. A fill of several outer rings (rings side by side, or islands) is one application and
+one deposit, holes bare: each ring is laid by its own placement, in written order, under the one charge and timing.
+So a stand of trees in one charge is one fill; a tree in its own colour or moment is its own application. A stroke
+has `subpaths`: pen-ups between them lay nothing, and the hand's profile counts the gap. To close a stroke's loop,
+repeat its first point last; a ring never repeats it.
 
 A module may import sibling TS modules, hold module-level constants and pure memos, and export anything else it
 likes; its factory reads nothing but its values and imports. For seeded randomness use `seededRandom(seed)` from
@@ -947,7 +949,7 @@ move and shutter show of it; a back painted short of that is refused, naming the
 | Concept | How | Notes |
 |---|---|---|
 | plane | `PlaneProps {id, depth, source, lay?, clock?, sourceClock?, masks?, canvas?}` | farther first; equal depths keep written order. With canvases (HTML among canvases), `canvas` names the plane's: the back's is the first, and a later canvas's planes all lie nearer than every plane of an earlier one (an instanced plane's at all its `depths`), else `<id>.canvas` is refused at load |
-| back and nearer planes | the farthest non-instanced plane is the back, fixed at load: painted on paper, or a picture held everywhere; over HTML, a clear back (below). Nearer painted planes are clear film; picture and three planes lay premultiplied over what's behind | across painted planes: the white/black approximation `C + T × behind`, so a strong coloured glaze over coloured paint reads light. Nearer paint keeps its own grain (Sheets) |
+| back and nearer planes | the farthest non-instanced plane is the back, fixed at load: painted on paper, or a picture held everywhere; over HTML, a clear back (below). Nearer painted planes are clear film; picture and three planes lay premultiplied over what's behind | across painted planes: the white/black approximation `C + T × behind`, so a strong coloured glaze over coloured paint reads light. So a nearer watercolour plane tints what's behind it rather than hiding it: a bright far plane (a glitter, a lit pool) shows through its glazes. A gouache body under those glazes hides it. Nearer paint keeps its own grain (Sheets) |
 | ground | a selection's `ground`: paper on the back, transparent elsewhere, when left out | the back is opaque, hiding HTML before the first canvas, and painted wherever the frame reads it: past its document lies bare paper, so a back smaller than the frame, or than the frame and its blur, is refused (Camera). A small painting meant to sit inside the frame goes on a nearer plane with `ground: 'paper'`, before a frame-sized bare back: a document of the same paper with one empty layer (`{ key: 'bare', washes: [] }`). With HTML behind the first canvas inside the `<PaintedShot>` (text, a laid-out element, or a background on a wrapper holding the canvas), the back may be clear (**NEW**): a transparent ground, a picture held less than everywhere, or a three plane, any size, laid as a nearer plane is, its canvas a glaze over that HTML as a later one is. Where no HTML lies behind it inside the shot, the page outside sees it through one alpha: exact over white, lighter and toward its filter's hue over a darker page (HTML among canvases). A transparent back without HTML behind is refused. The page is read again as each frame draws, so the HTML behind a clear back stays mounted while the shot draws: a frame with none behind it fails |
 | selection | `layersOf(evaluation, keys, {ground?, at?})` | layer or group keys; groups include their descendants; composed in document order; an own sheet's layers with their owner, on one plane |
 | occurrence | `<plane id>/<layer or group key>`, at any depth of the tree | the same layer on two planes is two occurrences; a plane's occurrences are fixed by its first evaluation and checked each frame |
