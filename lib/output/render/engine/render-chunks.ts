@@ -25,9 +25,8 @@ const framesText = (frames: readonly number[]) => `frames ${frames[0]}–${frame
 
 /**
  * Draws `frames` chunk by chunk, each `chunkFrames` long, each in a watched browser of its own given to `draw`, and
- * drawn once more when it failed as its browser did; hands each chunk's result to `take` while the next draws, one at
- * a time. Returns the GPU the chunks drew on, refusing chunks that drew on two, and the seconds they waited for the
- * GPU lease.
+ * drawn once more when it failed as its browser did; hands each chunk's result to `take` while the next draws. Returns
+ * the GPU they drew on, refusing chunks on two, and their wait for the GPU lease, s.
  */
 export async function renderInChunks<T>(frames: readonly number[], draw: RenderChunkDraw<T>, { take, chunkFrames = RENDER_CHUNK_FRAMES, stallFloorMs }: {
   take?: (frames: readonly number[], drawn: T) => Promise<void>; chunkFrames?: number; stallFloorMs?: number;
