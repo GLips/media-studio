@@ -1,8 +1,8 @@
 // ─── The files the checks read, parsed once, from one snapshot ────────
 //
 // Every check reads the same candidate snapshot (lint/candidate-snapshot.ts):
-// the working tree run by hand, the index under a hook, so a pre-commit run
-// judges exactly what's committed, or a committed tree.
+// the working tree run by hand, the index under a hook (so a pre-commit run
+// judges exactly what's committed), or a committed tree.
 //
 // Imports resolve against that snapshot too. Gitignored generated inputs
 // (`captures/index.ts`, `music/index.ts`) aren't in it: their edges stay, as a
