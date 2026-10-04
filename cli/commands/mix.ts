@@ -21,7 +21,7 @@ export default defineCommand({
     }
     const { renderMasteredMix } = await import('#lib/output/render/engine/render-pipeline.ts');
     const session = await openStudioRenderSession(args.project);
-    console.log(await renderMasteredMix(session, { auditionSfxCueList: args['sfx-cues'] }));
+    console.log(await renderMasteredMix(session, { timeline: await session.readTimeline(), auditionSfxCueList: args['sfx-cues'] }));
     const report = await videoSoundCheckReport(session.project);
     if (report.length) console.log(['', ...report].join('\n'));
   },

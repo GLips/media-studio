@@ -166,15 +166,14 @@ const DELIVERY_LUFS = -14, DELIVERY_TRUE_PEAK = -1, MASTER_TRUE_PEAK = -2;
 /**
  * Masters the soundtrack to out/mix.wav: one gain to delivery loudness, then a limiter for the peaks. Not loudnorm:
  * when its linear mode can't reach the target it becomes an AGC, which fills in the music's ducks.
- * `auditionSfxCueList` plays the cue list into out/mix-sfx-cues.wav whether or not the video does. A mix that renders
- * silent fails: something it plays didn't sound.
+ * `auditionSfxCueList` plays the cue list into out/mix-sfx-cues.wav too. `timeline`, the caller's report (a browser
+ * pass to read), says whether it's a beat-click draft.
  */
-export async function renderMasteredMix(session: RenderSession, { auditionSfxCueList = false }: { auditionSfxCueList?: boolean } = {}): Promise<string> {
+export async function renderMasteredMix(session: RenderSession, { timeline, auditionSfxCueList = false }: { timeline: TimelineReport; auditionSfxCueList?: boolean }): Promise<string> {
   if (session.silent) throw new Error(`${basename(session.project)} is silent (project.ts): it plays no voice, music or sound, so it has no mix`);
-  const { beatClicks } = await session.readTimeline();
   return withStudioTemp('mix', async (tmp) => {
     const raw = await session.renderAudio({ out: join(tmp, 'raw.wav'), inputProps: session.props({ auditionSfxCueList }) });
-    return masterMix(session, raw, masterWavFor(session, auditionSfxCueList), { beatClicks });
+    return masterMix(session, raw, masterWavFor(session, auditionSfxCueList), { beatClicks: timeline.beatClicks });
   });
 }
 
@@ -312,7 +311,7 @@ const draftVoiceWarning = (session: RenderSession) => `
 `;
 
 const beatClicksWarning = (session: RenderSession) => `
-!!!! DRAFT CLICKS: this video is cut to a beat grid and plays no music yet, so a click marks each beat. It's for timing.
+!!!! DRAFT CLICKS: this video is cut to a tempo grid and plays no music yet, so a click marks each beat. It's for timing.
 !!!! Give it its track: studio music add ${basename(session.project)} <track>, studio music fit --bars, then
 !!!! recordedGrid in timeline.ts and \`music: { track }\` in video.tsx
 `;
@@ -410,7 +409,7 @@ async function renderTransparentDelivery(session: RenderSession, timeline: Timel
 
 /** The delivered videos' soundtrack: `sound`, the captioned render's, mastered to out/mix.wav, or none for a silent project. */
 function deliveredSoundtrack(session: RenderSession, sound: string | undefined, timeline: TimelineReport): string | undefined {
-  if (!session.silent) return masterMix(session, sound!, masterWavFor(session), timeline);
+  if (!session.silent) return masterMix(session, sound!, masterWavFor(session), { beatClicks: timeline.beatClicks });
   // An old mix would read as this video's.
   rmSync(masterWavFor(session), { force: true });
   console.error('silent (project.ts): no voice, music or sound, so no mix, mastering or loudness review; the video has no audio track');
@@ -480,7 +479,7 @@ export async function joinVideoSlices(session: RenderSession, { dir, out }: { di
   }
   if (reached !== timeline.durationInFrames) throw new Error(`the slices in ${dir} reach frame ${reached}, short of the video's ${timeline.durationInFrames}`);
 
-  const mix = session.silent ? undefined : await renderMasteredMix(session);
+  const mix = session.silent ? undefined : await renderMasteredMix(session, { timeline });
   mkdirSync(dirname(out), { recursive: true });
   withStudioTemp('join', (tmp) => {
     const list = join(tmp, 'slices.txt');

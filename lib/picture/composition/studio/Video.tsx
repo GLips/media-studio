@@ -19,8 +19,7 @@ import { FrameProbe } from '#lib/picture/measurement/studio/probe.tsx';
 import { FrameProfiler } from '#lib/picture/profiling/studio/frame-profiler.tsx';
 import { SceneContext } from '#lib/picture/video/studio/scene.tsx';
 import { randomSeedFromKey } from '#lib/picture/motion/models/random.ts';
-import { Sfx, SfxCueListAudio, SfxCueListPlaying } from '#lib/timing/sound/studio/sfx.tsx';
-import { SFX } from '#lib/timing/sound/studio/kit.ts';
+import { SFX, Sfx, SfxCueListAudio, SfxCueListPlaying } from '#lib/timing/sound/studio/sfx.tsx';
 import { sceneClockAt, sceneTimes, scenesAtFrame } from '#lib/timing/timeline/models/video-layout.ts';
 import { laidVideoOf, videoFormatOf, type LaidScene, type LaidVideo, type VideoDef } from '#lib/picture/video/studio/video.ts';
 import { BurnedCaptions, burnedCaptionPages, CaptionBandContext, sidecarCaptionPages } from '#lib/picture/captions/studio/caption-style.tsx';
@@ -126,7 +125,7 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
         ) : null,
       )}
       {video.music && <MusicBedAudio video={video} tl={tl} fps={fps} />}
-      {playsBeatClicks(video) && <BeatClickAudio beatFrames={video.timeline.beatFrames} fps={fps} />}
+      {playsBeatClicks(video) && <BeatClickAudio timeline={video.timeline} fps={fps} />}
       {captions && <BurnedCaptions style={captioned.style} pages={pages} t={t} />}
       {reportTimeline && frame === 0 && <Artifact filename={TIMELINE_ARTIFACT} content={timelineReport(video, tl, config, playsCueList, captioned)} />}
       {probe && <FrameProbe root={root} />}
@@ -149,17 +148,22 @@ function MusicBedAudio({ video, tl, fps }: { video: VideoDef; tl: LaidVideo; fps
 }
 
 /**
- * Whether `video` plays a click on each beat: cut to a beat grid with no `music` to play yet (a tempo guess before
- * its track), so a render has a beat to hear the cuts against rather than refusing a silent mix. A draft.
+ * Whether `video` plays a click on each beat: cut to a tempo grid with no `music` yet, so a render has a beat to hear
+ * the cuts against rather than refusing a silent mix. A draft. Not on a recorded grid: its track exists, so no
+ * `music` there is a video.tsx that forgot it, which clicks would hide.
  */
-const playsBeatClicks = (video: VideoDef) => !video.music && video.timeline.beatFrames.length > 0;
+const playsBeatClicks = (video: VideoDef) => !video.music && video.timeline.spec.grid?.kind === 'tempo' && video.timeline.beatFrames.length > 0;
 
-/** A click landing on each beat's hit frame, as plain audio: no event for `studio check` or a cue list to read. */
-function BeatClickAudio({ beatFrames, fps }: { beatFrames: readonly number[]; fps: number }) {
+/**
+ * A click on each grid beat, where the music will sound: a beat's hit frame plus the picture's lead over its sound.
+ * Plain audio, so `studio check` and a cue list see no event.
+ */
+function BeatClickAudio({ timeline, fps }: { timeline: VideoDef['timeline']; fps: number }) {
   const cues = useMemo(() => {
     const [{ src, seconds, landsAt }] = SFX.click;
-    return beatFrames.map((frame) => ({ id: `beat ${frame}`, at: frame / fps, src, seconds, landsAt, volume: 1 }));
-  }, [beatFrames, fps]);
+    const lead = timeline.spec.pictureLeadFrames ?? 0;
+    return timeline.beatFrames.map((frame) => ({ id: `beat ${frame}`, at: (frame + lead) / fps, src, seconds, landsAt, volume: 1 }));
+  }, [timeline, fps]);
   return <SfxCueListAudio cues={cues} />;
 }
 

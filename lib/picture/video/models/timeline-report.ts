@@ -33,7 +33,7 @@ export type TimelineReport = {
   expectations: TimelineExpectation[];
   /** Whether this render plays the project's cue list (see lib/timing/sound/models/cues.ts), which plays its clicks, keys and accents. */
   sfxCueList: boolean;
-  /** Whether a click marks each beat in place of music: cut to a beat grid, it plays no `music` yet. A draft. */
+  /** Whether a click marks each beat in place of music: cut to a tempo grid, it plays no `music` yet. A draft. */
   beatClicks: boolean;
   /** Each of `VideoDef.sounds`, landing `at` video seconds, with the take it plays's recipe (`impact`, `whip`…). */
   sounds: { id: string; at: number; sound: string }[];
