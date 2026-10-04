@@ -400,7 +400,10 @@ an error. A frame held on twos gives every group the keys it had, so it repaints
   (`StampPaintingCamera.planes`, a `StampLaidPlanes`: the back a picture by type, each nearer picture with the
   groups it shows), and the renderer takes that whole. `paint-camera-world.ts` gives a pose as the studio's one camera
   description (`ShotCamera`), landing a 3D point where the plane step lays its depth. A three plane renders past the
-  frame by its widest defocus's reach (its built `margin`), so it blurs in what lies beyond the frame's edge.
+  frame by its widest defocus's reach (its built `margin`), so it blurs in what lies beyond the frame's edge. Each
+  of its texels is defocused at its own distance, by depth (`lensDefocusWgsl`): a nearer texel spreads its blur over
+  what's behind it, and a texel behind reaches one in front only as far as the sharper of the two blurs, so a sharp
+  mug against a soft wall keeps its edge, the wall's blur fills in behind it, and neither gains or loses light there.
 
 **Planes on the GPU** (`stamp-paint-renderer.ts`, `stamp-paint-plane-passes.ts`). One owner holds a device
 (`stamp-paint-gpu-owner.ts`, built on the studio's `gpu-device-owner.ts`, whose one three.js renderer the three

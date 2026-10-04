@@ -362,10 +362,14 @@ fn passes(x: vec2f, y: vec2f, h: vec2f) -> f32 {
  */
 export const LENS_DEFOCUS = gpuUniformLayout('LensDefocus', [['size', 'vec2f'], ['focus', 'f32'], ['aperture', 'f32'], ['most', 'f32'], ['axis', 'u32'], ['reach', 'u32']]);
 
+// A tap stands in front of a texel when it's nearer by more than this share of the texel's distance: a surface's own
+// curve and a slope's next texels stay one surface.
+const LENS_DEFOCUS_NEARER = 0.05;
+
 /**
  * A per-pixel defocus over a two-layer picture, colour (0) and motion (1, its distance setting the sigma): binds the
- * uniform (0), source (1) and storage result (2). Each texel's own gaussian is scattered by gathering: a tap weighs
- * its kernel's value over that kernel's sum, so light is spread, never gained or lost.
+ * uniform (0), source (1) and storage result (2). Depth-aware: a nearer texel spreads its blur over what's behind;
+ * one at or behind reaches a texel only by the narrower blur, so a soft background stays off a sharp edge.
  */
 export function lensDefocusWgsl(workgroup: number) {
   return /* wgsl */ `
@@ -377,40 +381,77 @@ fn sigmaOf(motion: vec4f) -> f32 {
   if (motion.w < 1e-4) { return 0.0; }
   return min(u.most, abs(u.aperture * (1.0 - u.focus / max(motion.z / motion.w, 1e-4))));
 }
+// A clear texel is farther than anything: whatever covers it stands in front.
+fn distanceOf(motion: vec4f) -> f32 {
+  return select(motion.z / motion.w, 1e30, motion.w < 1e-4);
+}
 // Abramowitz and Stegun 7.1.26, within 1.5e-7.
 fn erf(x: f32) -> f32 {
   let t = 1.0 / (1.0 + 0.3275911 * x);
   return 1.0 - t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429)))) * exp(-x * x);
 }
-fn kernelSum(sigma: f32, reach: i32) -> f32 {
+fn reachOf(sigma: f32) -> i32 { return i32(ceil(${LENS_GAUSSIAN_SIGMAS} * sigma)); }
+fn kernelSum(sigma: f32) -> f32 {
+  if (sigma < ${LENS_DEFOCUS_LEAST_WGSL}) { return 1.0; }
+  let reach = reachOf(sigma);
   if (sigma >= 2.0) { return sigma * 2.5066283 * erf((f32(reach) + 0.5) / (sigma * 1.4142135)); }
   var sum = 0.0;
   for (var k = -reach; k <= reach; k++) { sum += exp(-0.5 * f32(k * k) / (sigma * sigma)); }
   return sum;
+}
+// The gaussian of sigma at offset i, over its kernel's sum, so light is spread, never gained or lost; a sharp one
+// keeps its light to itself.
+fn spread(i: i32, sigma: f32, sum: f32) -> f32 {
+  if (sigma < ${LENS_DEFOCUS_LEAST_WGSL}) { return select(0.0, 1.0, i == 0); }
+  if (abs(i) > reachOf(sigma)) { return 0.0; }
+  return exp(-0.5 * f32(i * i) / (sigma * sigma)) / sum;
 }
 @compute @workgroup_size(${workgroup}, ${workgroup}) fn lensDefocus(@builtin(global_invocation_id) id: vec3u) {
   let size = vec2i(u.size);
   let pixel = vec2i(id.xy);
   if (any(pixel >= size)) { return; }
   let step = select(vec2i(1, 0), vec2i(0, 1), u.axis == 1u);
-  var colour = vec4f(0.0);
-  var motion = vec4f(0.0);
+  let own = textureLoad(source, pixel, 1, 0);
+  let ownSigma = sigmaOf(own);
+  let ownSum = kernelSum(ownSigma);
+  let infront = distanceOf(own) * ${(1 - LENS_DEFOCUS_NEARER).toFixed(3)};
+  var nearColour = vec4f(0.0);
+  var nearMotion = vec4f(0.0);
+  var seenColour = vec4f(0.0);
+  var seenMotion = vec4f(0.0);
+  var seen = 0.0;
+  var hidden = 0.0;
   for (var i = -i32(u.reach); i <= i32(u.reach); i++) {
     let at = pixel + step * i;
     if (any(at < vec2i(0)) || any(at >= size)) { continue; }
     let tapMotion = textureLoad(source, at, 1, 0);
-    let sigma = sigmaOf(tapMotion);
-    var w = select(0.0, 1.0, i == 0);
-    if (sigma >= ${LENS_DEFOCUS_LEAST_WGSL}) {
-      let reach = i32(ceil(${LENS_GAUSSIAN_SIGMAS} * sigma));
-      if (abs(i) > reach) { continue; }
-      w = exp(-0.5 * f32(i * i) / (sigma * sigma)) / kernelSum(sigma, reach);
+    let tapSigma = sigmaOf(tapMotion);
+    let ownWeight = spread(i, ownSigma, ownSum);
+    if (distanceOf(tapMotion) < infront) {
+      // A tap hides only as much as it covers: a blurred edge's faint sliver, its distance read off a tiny cover, hides little.
+      hidden += ownWeight * min(tapMotion.w, 1.0);
+      let w = spread(i, tapSigma, kernelSum(tapSigma));
+      if (w == 0.0) { continue; }
+      nearColour += textureLoad(source, at, 0, 0) * w;
+      nearMotion += tapMotion * w;
+    } else {
+      // Seen on this texel's own kernel, clear taps too, so the fill below can't stretch a silhouette's cover.
+      seen += ownWeight;
+      let sigma = min(tapSigma, ownSigma);
+      let w = spread(i, sigma, select(kernelSum(sigma), ownSum, sigma == ownSigma));
+      if (w == 0.0) { continue; }
+      seenColour += textureLoad(source, at, 0, 0) * w;
+      seenMotion += tapMotion * w;
     }
-    colour += textureLoad(source, at, 0, 0) * w;
-    motion += tapMotion * w;
   }
-  textureStore(defocused, pixel, 0, colour);
-  textureStore(defocused, pixel, 1, motion);
+  // What nearer texels hide of this one's blur is filled from what it still sees: else a sharp edge beside a blurred
+  // one passes full cover on one side and falls short on the other, a dark fringe once composited. It sees itself.
+  let under = (1.0 - min(nearColour.a, 1.0)) * (seen + hidden) / seen;
+  let colour = nearColour + seenColour * under;
+  // Near texels' blurs overlapping can still pass full cover: what's laid is scaled back to it.
+  let over = max(1.0, colour.a);
+  textureStore(defocused, pixel, 0, colour / over);
+  textureStore(defocused, pixel, 1, (nearMotion + seenMotion * under) / over);
 }`;
 }
 
