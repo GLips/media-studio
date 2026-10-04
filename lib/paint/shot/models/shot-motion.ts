@@ -19,11 +19,12 @@ import type { OccurrenceKey, OccurrenceMotionNode, PaintedShotProps } from './sh
 import type { ShotOccurrence } from './shot-occurrences.ts';
 
 /**
- * A plane as motion reads it: its id and its clock's steps (paintNodeClockSteps, checked as it loads); `kind`, whether it paints (only a painted plane's node may bend or
- * boil, a picture plane's only places); whether a callback lays it; and, painted, its occurrences.
+ * A plane as motion reads it: its id and its clock's steps (paintNodeClockSteps, checked as it loads); `kind`, whether
+ * it paints (only a painted plane's node may bend or boil, a picture plane's only places, and an instanced plane takes
+ * none); whether a callback lays it; and, painted, its occurrences.
  */
 export type ShotMotionPlane = {
-  readonly id: string; readonly kind: 'painted' | 'picture' | 'three'; readonly clock: readonly PaintSceneStep[]; readonly movingLay: boolean;
+  readonly id: string; readonly kind: 'painted' | 'picture' | 'three' | 'instanced'; readonly clock: readonly PaintSceneStep[]; readonly movingLay: boolean;
   readonly occurrences: readonly ShotOccurrence[];
 };
 
@@ -86,6 +87,7 @@ function shotNodeSiteProblem(node: OccurrenceMotionNode, site: ShotNodeSite, rig
   if (rigged.has(node.id) && Object.keys(node.pins ?? {}).length) return 'is rigged: it takes no pins, sway or flutter';
   if (node.id !== site.plane.id || site.plane.kind === 'painted') return null;
   if (site.plane.kind === 'three') return 'is a three plane, drawn through the camera: no node moves it';
+  if (site.plane.kind === 'instanced') return 'is an instanced plane: its items take no nodes; each lies where its instances lay it';
   const bends = Object.keys(node.pins ?? {}).length > 0 || (node.marks !== undefined && node.marks !== 'stuck');
   return bends ? 'is a picture plane: its node places it, and pins and boil bend only paint' : null;
 }

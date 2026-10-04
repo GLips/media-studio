@@ -1,12 +1,12 @@
 // paint-camera-build.ts: a camera's planes, projection, lens and plays checked, from plane depths and extents alone;
 // a painting is one source of those (buildPaintingCamera, its nearer planes' extents from paint-motion-reach.ts).
 //
-// Checked over the whole shot: no plane or focus comes to or behind the camera, and the stage holds the frame's
-// preimage on every picture plane, grown by the widest defocus's reach and a pixel, wherever its extent holds anything.
+// Over the whole shot: no plane or focus comes to or behind the camera (an instanced plane by its near depth), and
+// the stage holds the frame's preimage on every picture plane, grown by the widest defocus's reach and a pixel,
+// wherever its extent holds anything; instanced items aren't on it.
 //
 // Eases never overshoot a key, so between keys pan and the span (d − dolly)/(zoom·d) move monotonically; a roll is
-// bounded by the circle the frame's corners turn on. Negative space: frame state written outside `motion` is the
-// scene's to keep on the stage.
+// bounded by the circle its corners turn on. Frame state written outside `motion` is the scene's to keep on stage.
 
 import { LENS_SIGMA_STEP, lensGaussianReach, lensSigmaStepped } from '#lib/picture/lens/models/lens-focus.ts';
 import { stampPlaneDepthProblems, stampScenePlanes, type StampLaidPlanes, type StampPlane, type StampPlaneExtent } from '#lib/paint/painting/models/stamp-plane.ts';
@@ -15,8 +15,9 @@ import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-
 import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import {
-  PAINT_CAMERA_NEAREST, PAINT_CAMERA_REST, paintCameraClipProblem, paintStageCentre,
-  type PaintCamera, type PaintCameraFocusClip, type PaintCameraLens, type PaintCameraMoveClip, type PaintCameraPlane, type PaintCameraPlaneOptions, type PaintCameraPlay,
+  PAINT_CAMERA_NEAREST, PAINT_CAMERA_REST, paintCameraClipProblem, paintCameraPlaneFarthest, paintCameraPlaneNearest, paintStageCentre,
+  type PaintCamera, type PaintCameraFocusClip, type PaintCameraInstancedPlane, type PaintCameraLens, type PaintCameraMoveClip, type PaintCameraPlane, type PaintCameraPlaneOptions,
+  type PaintCameraPlay,
   type PaintCameraPose,
 } from './paint-camera.ts';
 import { paintChannelConflicts, type PaintChannelWriter } from './paint-channels.ts';
@@ -139,6 +140,11 @@ function nearerPaintReach(painting: CompiledStampPaint, groups: readonly number[
   return reach ? { kind: 'box', box: reach } : { kind: 'empty' };
 }
 
+/** Why instanced `plane`'s depths can't hold items, or null: finite, `near` no farther than `far` (each above 0 is checked as a plane's depth). */
+function instancedDepthsProblem({ id, depths: { near, far } }: PaintCameraInstancedPlane): string | null {
+  return Number.isFinite(far) && far >= near ? null : `plane ${id}'s items lie between depths ${near} and ${far}; near comes first, no farther than a finite far`;
+}
+
 /** Why `extent` isn't one, or null: a box's bounds finite and ordered. */
 function extentBoxProblem(id: string, extent: StampPlaneExtent): string | null {
   if (extent.kind !== 'box') return null;
@@ -184,9 +190,9 @@ export function paintCameraExtentProblem(camera: PaintCamera, plane: { readonly 
 /** A camera over `o.planes`, checked (see the file's head), with each plane's greatest magnification. */
 export function buildPaintCamera(o: PaintCameraOptions): PaintCameraBuild {
   const problems: string[] = [], fps = o.animationFps ?? PAINT_ANIMATION_FPS;
-  stampPlaneDepthProblems(o.planes, problems);
+  stampPlaneDepthProblems(o.planes.map((plane) => ({ id: plane.id, depth: paintCameraPlaneNearest(plane) })), problems);
   for (const plane of o.planes) {
-    const problem = plane.kind === 'picture' && extentBoxProblem(plane.id, plane.extent);
+    const problem = plane.kind === 'picture' ? extentBoxProblem(plane.id, plane.extent) : plane.kind === 'instanced' && instancedDepthsProblem(plane);
     if (problem) problems.push(problem);
   }
   if (!(o.fov > 0 && o.fov < 180)) problems.push(`a field of view is between 0 and 180 degrees, not ${o.fov}`);
@@ -204,10 +210,11 @@ export function buildPaintCamera(o: PaintCameraOptions): PaintCameraBuild {
   problems.push(...paintChannelConflicts(writers));
   if (problems.length) return { ok: false, problems };
   // Ties keep their written order, as stampScenePlanes keeps them.
-  const written = o.planes.toSorted((a, b) => b.depth - a.depth);
+  const written = o.planes.toSorted((a, b) => paintCameraPlaneFarthest(b) - paintCameraPlaneFarthest(a));
   const spans = poseSpans(move), dolly = range(spans.flatMap(({ a, b }) => [a.dolly, b.dolly]));
-  for (const { id, depth } of written) {
-    if (depth - dolly.high <= PAINT_CAMERA_NEAREST) problems.push(`the camera dollies ${dolly.high}, at or past plane ${id} at depth ${depth}; a plane stays in front of the camera`);
+  for (const plane of written) {
+    const depth = paintCameraPlaneNearest(plane);
+    if (depth - dolly.high <= PAINT_CAMERA_NEAREST) problems.push(`the camera dollies ${dolly.high}, at or past plane ${plane.id} at depth ${depth}; a plane stays in front of the camera`);
   }
   const focused = focus.flatMap(({ clip }) => clip.keys.map((key) => key.focus));
   if (focused.length && Math.min(...focused) - dolly.high <= PAINT_CAMERA_NEAREST) {
@@ -221,14 +228,17 @@ export function buildPaintCamera(o: PaintCameraOptions): PaintCameraBuild {
   if (problems.length) return { ok: false, problems };
   // A three plane is rendered through the camera, a frame px a px, so its margin is its defocus's growth alone.
   const planes = written.map((plane): PaintCameraPlane => {
-    if (plane.kind === 'picture') return plane;
+    if (plane.kind !== 'three') return plane;
     const sigma = widestDefocus(focus, dolly, plane.depth);
     return { id: plane.id, depth: plane.depth, kind: 'three', margin: sigma > 0 ? Math.ceil(defocusGrowth(sigma)) : 0 };
   });
   const camera: PaintCamera = { stage: o.stage, fov: o.fov, planes, lens: o.lens, animationFps: fps, move: paintLaneByStart(move), focus: paintLaneByStart(focus) };
   const zoom = range(spans.flatMap(({ a, b }) => [a.zoom, b.zoom]));
   // zoom·d/(d − dolly) at its largest zoom and dolly: at least what any pose in the shot shows.
-  const magnification = new Map(planes.map(({ id, depth }) => [id, (zoom.high * depth) / (depth - dolly.high)]));
+  const magnification = new Map(planes.map((plane) => {
+    const depth = paintCameraPlaneNearest(plane);
+    return [plane.id, (zoom.high * depth) / (depth - dolly.high)];
+  }));
   return { ok: true, camera, magnification };
 }
 

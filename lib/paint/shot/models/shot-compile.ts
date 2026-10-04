@@ -1,20 +1,21 @@
 // shot-compile.ts: a PaintedShot's props checked and compiled as it loads (ENGINE 6.1): planes far to near, each on
-// its canvas; each painted plane's occurrences from its first evaluation, at moment 0 through its source clock; the
-// rigs, visibility and motion over them; the camera built over each plane's reach. Every problem is found before any
-// is thrown. Covers are laid through the built camera here, pins each frame (shot-placement.ts). The back is opaque
-// unless HTML lies behind the first canvas.
+// its canvas; each painted plane's occurrences from its first evaluation, at moment 0 through its source clock; each
+// instanced plane's variants (shot-instances.ts); the rigs, visibility and motion over them; the camera built over
+// each plane's reach. Every problem is found before any is thrown. Covers are laid through the built camera here, pins
+// each frame (shot-placement.ts). The back is opaque unless HTML lies behind the first canvas.
 //
-// Negative space: masks, instanced planes, a dissolve between its ends and `warm` are refused (ENGINE 10 slice 6),
-// as are visibility on the back, a picture or a three plane, a lay on either, and painted textures (ENGINE 6.3).
+// Negative space: masks, a dissolve between its ends and `warm` are refused (ENGINE 10 slice 6), as are visibility on
+// the back, a picture or a three plane, a lay on either, and painted textures (ENGINE 6.3).
 
 import { buildPaintCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
 import type { PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
-import { paintNodeClockProblem, paintNodeClockSteps, paintNodeTimeAt, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
+import { paintNodeClockProblem, paintNodeClockSteps, paintNodeTimeAt, type PaintNodeClock, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
 import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import type { LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import { paintMoment, type PaintMoment, type StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
+import { compileShotInstancedPlane, type CompiledShotInstancedPlane } from './shot-instances.ts';
 import { compileShotMotion, type CompiledShotMotion, type ShotMotionPlane } from './shot-motion.ts';
 import { shotOccurrencePlane, shotPlaneOccurrences, type ShotOccurrence } from './shot-occurrences.ts';
 import { shotCoveredPlanes, shotPlacementProblems } from './shot-placement.ts';
@@ -56,13 +57,15 @@ export type CompiledShotPlane =
   | (ShotPlaneCommon & { readonly kind: 'three'; readonly source: ThreeSource });
 
 /**
- * A shot compiled: its planes far to near (shotDrawableOrder), the back first, and as `written`, which a frame orders
- * with its items; how many canvases it draws in, and `clearBack`: the back isn't opaque but clear where it lays
- * nothing, over HTML, its canvas premultiplied as later ones are (shotCanvasAlphaMode); its motion, rigs and
+ * A shot compiled: its planes far to near (shotDrawableOrder), the back first; its instanced planes as written; all
+ * of them as `written`, which a frame orders with its items; how many canvases it draws in, and `clearBack`: the back
+ * isn't opaque but clear where it lays nothing, over HTML, its canvas premultiplied as later ones are
+ * (shotCanvasAlphaMode); its motion (each plane's clock in its planeClocks, an instanced plane's too), rigs and
  * visibility by occurrence; its camera.
  */
 export type CompiledPaintedShot = {
   readonly planes: readonly CompiledShotPlane[];
+  readonly instanced: readonly CompiledShotInstancedPlane[];
   readonly written: readonly (PlaneProps | InstancedPlaneProps)[];
   readonly canvases: number;
   readonly clearBack: boolean;
@@ -96,30 +99,40 @@ export function shotPageProblems(shot: CompiledPaintedShot, page: ShotPage): Pai
 function planePropsProblems(plane: PaintedShotProps['planes'][number], canvases: readonly string[]): PaintingProblem[] {
   const problems: PaintingProblem[] = [];
   if (!plane.id || plane.id.includes('/')) problems.push(shotError(plane.id, 'id', `${JSON.stringify(plane.id)} isn't a plane id: one holds no "/"`));
-  if (plane.kind === 'instanced') return [...problems, shotError(plane.id, 'kind', "is instanced: instanced planes aren't drawn yet (ENGINE slice 6)")];
-  if (plane.masks?.length) problems.push(shotError(plane.id, 'masks', "masks aren't drawn yet (ENGINE slice 6)"));
-  const { lay, source } = plane;
-  if (lay && typeof lay !== 'function' && 'kind' in lay) problems.push(...shotPlacementProblems(plane.id, lay));
-  if (lay && typeof source !== 'function' && (source.kind === 'picture' || source.kind === 'three')) {
-    problems.push(shotError(plane.id, 'lay', `is a ${source.kind} plane, which lies where its source puts it: a lay places a painted plane; move it by its node`));
+  if (plane.kind !== 'instanced') {
+    if (plane.masks?.length) problems.push(shotError(plane.id, 'masks', "masks aren't drawn yet (ENGINE slice 6)"));
+    const { lay, source } = plane;
+    if (lay && typeof lay !== 'function' && 'kind' in lay) problems.push(...shotPlacementProblems(plane.id, lay));
+    if (lay && typeof source !== 'function' && (source.kind === 'picture' || source.kind === 'three')) {
+      problems.push(shotError(plane.id, 'lay', `is a ${source.kind} plane, which lies where its source puts it: a lay places a painted plane; move it by its node`));
+    }
   }
   if (canvases.length && plane.canvas === undefined) problems.push(shotError(plane.id, 'canvas', `names no canvas, and the shot draws in ${canvases.join(', ')}: every plane names one`));
   if (plane.canvas !== undefined && !canvases.includes(plane.canvas)) problems.push(shotError(plane.id, 'canvas', `names ${plane.canvas}, which isn't one of the shot's canvases${canvases.length ? ` (${canvases.join(', ')})` : ': it has none'}`));
-  for (const [field, clock] of [['clock', plane.clock], ['sourceClock', plane.sourceClock]] as const) {
+  const clocks: readonly (readonly [string, PaintNodeClock | undefined])[] = plane.kind === 'instanced' ? [['clock', plane.clock]] : [['clock', plane.clock], ['sourceClock', plane.sourceClock]];
+  for (const [field, clock] of clocks) {
     const problem = clock && paintNodeClockProblem(clock);
     if (problem) problems.push(shotError(plane.id, field, problem));
   }
   return problems;
 }
 
-/** Why the planes can't share their canvases: a later canvas's planes all nearer than an earlier one's, the back on the first. */
-function canvasOrderProblems(planes: readonly CompiledShotPlane[], canvases: readonly string[]): PaintingProblem[] {
+/** The depths a plane's drawables lie between on its canvas: a plane's one depth, an instanced plane's items' `depths`. */
+type ShotCanvasSpan = { readonly id: string; readonly canvas: number; readonly near: number; readonly far: number };
+
+const spanText = ({ near, far }: ShotCanvasSpan) => (near === far ? `at depth ${near}` : `at depths ${near}..${far}`);
+
+/**
+ * Why the drawables can't share their canvases: a later canvas's all nearer than an earlier one's, the back (the
+ * first of `spans`) on the first.
+ */
+function canvasOrderProblems(spans: readonly ShotCanvasSpan[], canvases: readonly string[]): PaintingProblem[] {
   const problems: PaintingProblem[] = [];
-  if (planes.length && planes[0].canvas !== 0) problems.push(shotError(planes[0].id, 'canvas', `is the back, so it draws in the first canvas, ${canvases[0]}`));
-  for (const far of planes) {
-    for (const near of planes) {
-      if (near.canvas > far.canvas && !(near.depth < far.depth)) {
-        problems.push(shotError(near.id, 'canvas', `draws in ${canvases[near.canvas]} at depth ${near.depth}, not nearer than ${far.id} at ${far.depth} in ${canvases[far.canvas]}: a later canvas's planes are all nearer`));
+  if (spans.length && spans[0].canvas !== 0) problems.push(shotError(spans[0].id, 'canvas', `is the back, so it draws in the first canvas, ${canvases[0]}`));
+  for (const far of spans) {
+    for (const near of spans) {
+      if (near.canvas > far.canvas && !(near.far < far.near)) {
+        problems.push(shotError(near.id, 'canvas', `draws in ${canvases[near.canvas]} ${spanText(near)}, not nearer than ${far.id} ${spanText(far)} in ${canvases[far.canvas]}: a later canvas's planes are all nearer`));
       }
     }
   }
@@ -212,11 +225,12 @@ export function compilePaintedShot(
     problems.push(...planePropsProblems(plane, canvases));
   }
   if (problems.length) return { shot: null, problems };
-  // Instanced planes were refused above, so every drawable is a plane, and the farthest is the back.
+  // The farthest plane not instanced is the back; shotDrawableOrder places no items here.
   const written = new Map(props.planes.flatMap((plane) => (plane.kind === 'instanced' ? [] : [[plane.id, plane] as const])));
   if (!written.size) return { shot: null, problems: [shotError('shot', 'planes', 'has no planes: a shot draws its back at least')] };
+  const canvasOf = (name: string | undefined) => (name === undefined ? 0 : canvases.indexOf(name));
   const planes = shotDrawableOrder(props.planes, new Map()).flatMap((drawable, index): CompiledShotPlane[] => {
-    const plane = written.get(drawable.plane)!, canvas = plane.canvas === undefined ? 0 : canvases.indexOf(plane.canvas);
+    const plane = written.get(drawable.plane)!, canvas = canvasOf(plane.canvas);
     const common = { id: plane.id, depth: plane.depth, canvas };
     const { source } = plane;
     if (typeof source !== 'function' && source.kind === 'picture') return [{ ...common, kind: 'picture', source }];
@@ -231,28 +245,41 @@ export function compilePaintedShot(
   if (clearBack && !page.htmlBehind && back.kind === 'picture') {
     problems.push(shotError(back.id, 'source.extent', `is the back, a picture held ${back.source.extent.kind === 'box' ? 'within a box' : back.source.extent.kind}; the back's extent is everywhere, unless HTML lies before the first canvas`));
   }
-  if (canvases.length) problems.push(...canvasOrderProblems(planes, canvases));
+  const instanced = back ? props.planes.flatMap((plane) => {
+    if (plane.kind !== 'instanced') return [];
+    const made = compileShotInstancedPlane(plane, canvasOf(plane.canvas), back, props.camera.stage, problems);
+    return made ? [made] : [];
+  }) : [];
+  if (canvases.length) {
+    const spans = [...planes.map(({ id, canvas, depth }) => ({ id, canvas, near: depth, far: depth })), ...instanced.map(({ id, canvas, depths }) => ({ id, canvas, ...depths }))];
+    problems.push(...canvasOrderProblems(spans, canvases));
+  }
   const rigs = compileShotRigs(props.rigs ?? {}, planes, problems);
   const occurrences = new Map(planes.flatMap((plane) => (plane.kind === 'painted' ? [[plane.id, plane.occurrences.map(({ key }) => key)] as const] : [])));
   const visibility = props.visibility ?? {};
   problems.push(...shotVisibilityProblems(visibility, props.planes, occurrences), ...visibilityPlaneProblems(visibility, planes, rigs));
-  const motionPlanes = planes.map((plane): ShotMotionPlane => ({
-    id: plane.id, kind: plane.kind, clock: paintNodeClockSteps(written.get(plane.id)!.clock), movingLay: plane.kind === 'painted' && plane.lay.kind === 'moving',
-    occurrences: plane.kind === 'painted' ? plane.occurrences : [],
-  }));
+  const motionPlanes = [
+    ...planes.map((plane): ShotMotionPlane => ({
+      id: plane.id, kind: plane.kind, clock: paintNodeClockSteps(written.get(plane.id)!.clock), movingLay: plane.kind === 'painted' && plane.lay.kind === 'moving',
+      occurrences: plane.kind === 'painted' ? plane.occurrences : [],
+    })),
+    // Every instanced plane as written, so a node on one that failed to compile is refused for what it is.
+    ...props.planes.flatMap((plane): ShotMotionPlane[] => (plane.kind === 'instanced' ? [{ id: plane.id, kind: 'instanced', clock: paintNodeClockSteps(plane.clock), movingLay: false, occurrences: [] }] : [])),
+  ];
   const motion = compileShotMotion(motionPlanes, props.motion, new Set(rigs.keys()), fps);
   problems.push(...motion.problems);
   if (props.paintedTextures?.length) problems.push(shotError('shot', 'paintedTextures', "a shot doesn't paint textures for three.js objects yet (ENGINE 6.3): paint them apart, or leave them out"));
   if (problems.length) return { shot: null, problems };
   // Planes laid on the frame are unchecked in the build, which they're laid through; covers are laid and checked after it.
-  const built = buildPaintCamera({ ...props.camera, animationFps: fps, planes: shotCameraPlanes(planes, motion.motion, rigs) });
+  const cameraPlanes = [...shotCameraPlanes(planes, motion.motion, rigs), ...instanced.map(({ id, depths }) => ({ id, kind: 'instanced' as const, depths }))];
+  const built = buildPaintCamera({ ...props.camera, animationFps: fps, planes: cameraPlanes });
   if (!built.ok) return { shot: null, problems: built.problems.map((message) => shotError('camera', '', message)) };
   const covered = shotCoveredPlanes({ camera: built.camera, motion: motion.motion, rigs }, planes);
   if (covered.problems.length) return { shot: null, problems: covered.problems };
   return {
     shot: {
-      planes: covered.planes, written: props.planes, canvases: Math.max(1, canvases.length), clearBack, motion: motion.motion, rigs, visibility: new Map(Object.entries(visibility)),
-      camera: built.camera,
+      planes: covered.planes, instanced, written: props.planes, canvases: Math.max(1, canvases.length), clearBack, motion: motion.motion, rigs,
+      visibility: new Map(Object.entries(visibility)), camera: built.camera,
     },
     problems,
   };

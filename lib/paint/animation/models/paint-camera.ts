@@ -70,11 +70,22 @@ export type PaintCameraPicturePlane = { readonly id: string; readonly depth: num
  */
 export type PaintCameraThreePlane = { readonly id: string; readonly depth: number; readonly kind: 'three'; readonly margin: number };
 
+/**
+ * An instanced plane: items laid through the lens each at its own depth within `depths`, `near` no farther than `far`.
+ * The stage holds no picture of it, so it has no extent: the build checks only that the camera stays short of `near`.
+ */
+export type PaintCameraInstancedPlane = { readonly id: string; readonly kind: 'instanced'; readonly depths: { readonly near: number; readonly far: number } };
+
 /** A plane the camera shows, as built. */
-export type PaintCameraPlane = PaintCameraPicturePlane | PaintCameraThreePlane;
+export type PaintCameraPlane = PaintCameraPicturePlane | PaintCameraThreePlane | PaintCameraInstancedPlane;
 
 /** A plane as written to the build. */
-export type PaintCameraPlaneOptions = PaintCameraPicturePlane | Omit<PaintCameraThreePlane, 'margin'>;
+export type PaintCameraPlaneOptions = PaintCameraPicturePlane | Omit<PaintCameraThreePlane, 'margin'> | PaintCameraInstancedPlane;
+
+/** The nearest depth anything of `plane` lies at. */
+export const paintCameraPlaneNearest = (plane: PaintCameraPlaneOptions): number => (plane.kind === 'instanced' ? plane.depths.near : plane.depth);
+/** The farthest depth anything of `plane` lies at. */
+export const paintCameraPlaneFarthest = (plane: PaintCameraPlaneOptions): number => (plane.kind === 'instanced' ? plane.depths.far : plane.depth);
 
 /**
  * A camera checked (paint-camera-build.ts): its `stage`, its projection (`fov`, vertical degrees at rest: how deep a
@@ -171,34 +182,51 @@ export function paintPlaneDefocus({ focus, aperture }: PaintCameraFocus, dolly: 
 }
 
 /**
- * What the camera does in the frame at `t`: each plane's look (its similarity, and defocus with a focus play) and the
- * lens's bloom; for a reference `exposure`, as at its moment from its aperture point, slid and sharp. Throws on a
- * plane or the focus at or behind the camera: a build can't hold every curve between its checks.
+ * How the camera shows anything at a depth in one frame: `lookAt(depth, name)` gives its look there (its
+ * similarity, its defocus with a focus play, its views at the shutter's ends when the camera moves over a fast frame's
+ * shutter), throwing on a depth at or behind the camera, which `name` names; and the lens's bloom and focus.
  */
-export function paintCameraLensAt(camera: PaintCamera, t: number, exposure: { at: number; aperture: LensExposure['aperture'] } | null = null): StampLensFrame {
+export type PaintCameraDepthLooks = {
+  readonly lookAt: (depth: number, name: string) => StampPlaneLook;
+  readonly bloom: number;
+  readonly focus: StampLensFrame['focus'];
+};
+
+/**
+ * The camera's looks at `t` (PaintCameraDepthLooks); for a reference `exposure`, as at its moment from its aperture
+ * point, slid and sharp. Throws on the focus at or behind the camera: a build can't hold every curve between its checks.
+ */
+export function paintCameraDepthLooks(camera: PaintCamera, t: number, exposure: { at: number; aperture: LensExposure['aperture'] } | null = null): PaintCameraDepthLooks {
   const aperture = exposure?.aperture, seenAt = paintMoment(exposure?.at ?? t, t);
   const pose = paintCameraPoseAt(camera, seenAt), lens = paintCameraFocusAt(camera, seenAt), centre = paintStageCentre(camera.stage);
   if (lens && lens.focus - pose.dolly <= PAINT_CAMERA_NEAREST) throw new Error(`paint camera: at ${seenAt.at}s the camera focuses at depth ${lens.focus}, at or behind itself (dollied ${pose.dolly})`);
   // A fast frame is gathered along the camera's motion over the shutter, if it moves; an exposure is its own moment.
   const { shutter } = camera.lens, opens = shutterOpensAt(t, shutter), opening = !aperture && shutter > 0;
   const openPose = opening ? paintCameraPoseAt(camera, paintMoment(opens, t)) : pose, closePose = opening ? paintCameraPoseAt(camera, paintMoment(opens + shutter, t)) : pose;
-  const moving = !paintCameraPosesEqual(openPose, closePose);
-  const planes = new Map<string, StampPlaneLook>();
-  for (const { id, depth } of camera.planes) {
-    const nearest = Math.max(pose.dolly, openPose.dolly, closePose.dolly);
-    if (depth - nearest <= PAINT_CAMERA_NEAREST) throw new Error(`paint camera: at ${t}s the camera, dollied ${nearest}, is at or past plane ${id} at depth ${depth}`);
+  const moving = !paintCameraPosesEqual(openPose, closePose), nearest = Math.max(pose.dolly, openPose.dolly, closePose.dolly);
+  const lookAt = (depth: number, name: string): StampPlaneLook => {
+    if (depth - nearest <= PAINT_CAMERA_NEAREST) throw new Error(`paint camera: at ${t}s the camera, dollied ${nearest}, is at or past ${name} at depth ${depth}`);
     const view = paintPlaneSimilarity(pose, depth, centre), distance = depth - pose.dolly;
-    const seen = moving ? { open: paintPlaneSimilarity(openPose, depth, centre), close: paintPlaneSimilarity(closePose, depth, centre) } : null;
     if (!aperture) {
-      planes.set(id, { view, defocus: lens ? paintPlaneDefocus(lens, pose.dolly, depth) : 0, distance, shutter: seen });
-      continue;
+      const seen = moving ? { open: paintPlaneSimilarity(openPose, depth, centre), close: paintPlaneSimilarity(closePose, depth, centre) } : null;
+      return { view, defocus: lens ? paintPlaneDefocus(lens, pose.dolly, depth) : 0, distance, shutter: seen };
     }
     const slide = lens ? lensApertureSlide({ focus: lens.focus - pose.dolly, aperture: lens.aperture }, distance, aperture) : { x: 0, y: 0 };
-    planes.set(id, { view: { ...view, kx: view.kx + slide.x, ky: view.ky + slide.y }, defocus: 0, distance, shutter: null });
-  }
+    return { view: { ...view, kx: view.kx + slide.x, ky: view.ky + slide.y }, defocus: 0, distance, shutter: null };
+  };
   const focus = lens && !aperture ? { focus: lens.focus - pose.dolly, aperture: lens.aperture } : null;
-  return { planes, bloom: camera.lens.bloom, focus };
+  return { lookAt, bloom: camera.lens.bloom, focus };
 }
+
+/** `looks` as the frame's lens: each of the camera's planes' looks at its depth, an instanced plane's items looked at one by one. */
+export function paintCameraLensFrame(camera: PaintCamera, looks: PaintCameraDepthLooks): StampLensFrame {
+  const planes = new Map(camera.planes.flatMap((plane) => (plane.kind === 'instanced' ? [] : [[plane.id, looks.lookAt(plane.depth, `plane ${plane.id}`)] as const])));
+  return { planes, bloom: looks.bloom, focus: looks.focus };
+}
+
+/** What the camera does in the frame at `t` (paintCameraDepthLooks), as each of its planes is looked at. */
+export const paintCameraLensAt = (camera: PaintCamera, t: number, exposure: { at: number; aperture: LensExposure['aperture'] } | null = null): StampLensFrame =>
+  paintCameraLensFrame(camera, paintCameraDepthLooks(camera, t, exposure));
 
 const paintCameraPosesEqual = (a: PaintCameraPose, b: PaintCameraPose) =>
   a.pan.x === b.pan.x && a.pan.y === b.pan.y && a.dolly === b.dolly && a.zoom === b.zoom && a.roll === b.roll;

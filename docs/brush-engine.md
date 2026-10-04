@@ -385,7 +385,9 @@ an error. A frame held on twos gives every group the keys it had, so it repaints
   them from old renderers) and any other renderer can. A painted plane's picture doesn't depend on the camera and is kept on the device while
   its groups hold. The camera is one description: its plays key `move` (pan, dolly, zoom, roll) and `focus` (focus
   depth, aperture), plus `fov` and a lens with one `bloom`. `paintCameraLensAt` gives each plane's view (a
-  similarity) and defocus (a thin lens's circle of confusion, as gaussian sigma) at a time. The build proves every
+  similarity) and defocus (a thin lens's circle of confusion, as gaussian sigma) at a time, through
+  `paintCameraDepthLooks`, which gives them at any depth, as each instanced item takes them; an instanced plane is
+  built by its depths alone, its nearest held from the camera and magnified most. The build proves every
   plane's extent over the whole shot, not at sampled times: the back everywhere the frame looks; a nearer plane where
   its groups' paint can be laid (`paint-motion-reach.ts`: the painted box grown by the most each step of the
   `motion` it's given and the recipe's own motion can move it), or everywhere the frame looks once a group's marks
@@ -489,13 +491,17 @@ film where its owners and the plane's place put it, a pieces rig's picture at it
 `layPicture`, a faded group's span mixed back by its visibility (`studio/shot-group-pass.ts`). The plane's picture is
 the old renderer's pass (`painting/studio/stamp-plane-picture-pass.ts`), kept in the device's cache under the plan's
 key. Picture and three planes are the old path's sources, laid through `stamp-lens-source-layers.ts`; they read no
-painted textures yet.
+painted textures yet. An instanced plane (`shot-instances.ts`) reads its items at the exposure's moment and its
+shutter's ends, pairs them by key and looks each through the camera at its own depth. Each variant is solved and laid
+as a painted plane is, still at the stage's corner, its picture kept under its plan's key; a batch of items (one
+variant, one stepped sigma) lays it through each item's view as the lens's items layer
+(`studio/shot-instance-passes.ts`): a quad per item, its view, shutter ends, distance and visibility a vertex row
+(`lens-compositor.ts`, `platform/gpu/studio/gpu-instance-ring.ts`), its filter then its add before the next.
 
 Its presentation, as models the passes will draw from, refused by a shot's load until they're drawn: a path
 mask's capsules for the first `revealPx` of inked length, pen-ups adding none, and the `alphaOf` graph, checked
-acyclic and sorted so each read plane composites first (`shot-masks.ts`); an instanced plane's items batched by
-variant and stepped sigma, and paired by key across the shutter (`shot-instances.ts`); the frames and held moments a
-`warm` span reads (`shot-warm.ts`); and the cost report. Visibility's keys and range, and the group occurrences that composite on their own
+acyclic and sorted so each read plane composites first (`shot-masks.ts`); the frames and held moments a `warm` span
+reads (`shot-warm.ts`); and the cost report. Visibility's keys and range, and the group occurrences that composite on their own
 (`shot-visibility.ts`), are drawn. The cost report's counts are painting's (`painting/models/stamp-paint-costs.ts`, one set of names the document,
 solver, caches and shot all count into); the shot logs a frame's and a warm's under its labels
 (`shot-cost-report.ts`) through `picture/profiling`'s costs channel, which knows nothing of paint, so
