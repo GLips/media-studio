@@ -5,7 +5,6 @@
 
 import { CircleGeometry, Mesh, MeshBasicNodeMaterial, Scene } from 'three/webgpu';
 import type { ThreeSource } from '#lib/paint/shot/models/shot-props.ts';
-import { createStampPaintCostTally, type StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { stampGateFrameDifference, stampGateFramePasses } from '../models/stamp-gate-frames.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import {
@@ -14,16 +13,14 @@ import {
   type StampGateMaskedShot, type StampGateShotMaskId,
 } from '../models/stamp-gate-shot-masks.ts';
 import { stampGateRgb } from './stamp-gate-page-surface.ts';
-import { stampGateShotFrames } from './stamp-gate-shot-frames.ts';
+import { stampGateShotFrames, stampGateSolvedText } from './stamp-gate-shot-frames.ts';
 
-const solvedText = ({ solves }: StampPaintCosts) => solves.map(({ program, from }) => `${program} from ${from}`);
 const differenceText = (d: ReturnType<typeof stampGateFrameDifference>) => `max ${d.max}, mean ${d.mean.toFixed(4)}`;
 
-/** The masked shot as `shown` says, drawn at scene seconds `times`: each frame's RGB bytes, and what each solved and warned. */
-async function maskedFrames(shown: StampGateMaskedShot, times: readonly number[]): Promise<{ frames: Uint8ClampedArray[]; taken: StampPaintCosts[] }> {
-  const costs = createStampPaintCostTally(), taken: StampPaintCosts[] = [];
-  const frames = await stampGateShotFrames(stampGateMaskedShot(shown), times, { costs, drawn: () => taken.push(costs.take()) });
-  return { frames: frames.map(stampGateRgb), taken };
+/** The masked shot as `shown` says, drawn at scene seconds `times`: each frame's RGB bytes, and its costs. */
+async function maskedFrames(shown: StampGateMaskedShot, times: readonly number[]) {
+  const { frames, costs } = await stampGateShotFrames(stampGateMaskedShot(shown), times);
+  return { frames: frames.map(stampGateRgb), costs };
 }
 
 /**
@@ -38,7 +35,7 @@ async function checkPath(): Promise<StampGateWashCheck[]> {
     { heron: 'hidden', tint: 'none' }, { heron: 'unmasked', tint: 'none' }, { heron: 'none', tint: 'none', pond: 'cut' }, { heron: 'none', tint: 'none', pond: 'faded' },
   ] as const).map(async (shown) => (await maskedFrames(shown, [none])).frames));
   const asHidden = stampGateFrameDifference(atNone, hidden), asUnmasked = stampGateFrameDifference(atWhole, unmasked), ground = stampGateFrameDifference(cut, faded);
-  const split = stampGateRevealSplit(atPart, atNone, atWhole, width), solves = revealed.taken.slice(1).flatMap(solvedText), warnings = revealed.taken.flatMap((each) => each.warnings);
+  const split = stampGateRevealSplit(atPart, atNone, atWhole, width), solves = revealed.costs.slice(1).flatMap(stampGateSolvedText), warnings = revealed.costs.flatMap((each) => each.warnings);
   return [
     {
       id: 'shot/masks: path ends', passed: stampGateFramePasses(asHidden) && stampGateFramePasses(asUnmasked),
@@ -134,7 +131,7 @@ const KEPT_TIMES = [STAMP_GATE_MASKS_AT.none, STAMP_GATE_MASKS_AT.part, STAMP_GA
 async function checkAlphaOfPainted(): Promise<StampGateWashCheck[]> {
   const shown = { heron: 'revealed', tint: 'wing' } as const, { width } = stampGateMaskedShot(shown).camera.stage.frame;
   const kept = await maskedFrames(shown, KEPT_TIMES), alone = await Promise.all(KEPT_TIMES.map(async (at) => (await maskedFrames(shown, [at])).frames[0]));
-  const differences = kept.frames.map((frame, i) => stampGateFrameDifference(frame, alone[i])), misses = kept.taken.map(({ counts }) => counts.get('picture misses') ?? 0);
+  const differences = kept.frames.map((frame, i) => stampGateFrameDifference(frame, alone[i])), misses = kept.costs.map(({ counts }) => counts.get('picture misses') ?? 0);
   const tinted = await Promise.all((['unmasked', 'half', 'dissolving'] as const).map(async (heron) => {
     const [[bare], [cut], [uncut]] = await Promise.all((['none', 'heron', 'uncut'] as const).map(async (tint) => (await maskedFrames({ heron, tint }, [0])).frames));
     return stampGateLaidShare(cut, uncut, bare, width, stampGateWellInsideVane);

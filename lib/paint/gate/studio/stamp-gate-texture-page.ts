@@ -11,7 +11,7 @@ import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { stampBindGroup } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
 import { paintingProblemText } from '#lib/paint/document/models/painting-problem.ts';
-import { createStampPaintCostTally, type StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
+import type { StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { compileShotPaintedTextures } from '#lib/paint/shot/models/shot-painted-texture-compile.ts';
 import { createShotPaintedTextures } from '#lib/paint/shot/studio/shot-painted-textures.ts';
 import { paintedThreeColorNode } from '#lib/paint/three-layers/studio/painted-three-material.ts';
@@ -26,7 +26,7 @@ import {
   type StampGateTextureCase, type StampGateTextureId,
 } from '../models/stamp-gate-textures.ts';
 import { stampGateRgb, stampGateRgbBase64, withGateSurface } from './stamp-gate-page-surface.ts';
-import { stampGateShotFrames, type StampGateShotFramesWatch } from './stamp-gate-shot-frames.ts';
+import { stampGateShotFrames, type StampGateShotFrames } from './stamp-gate-shot-frames.ts';
 import { stampGateSheetImageUrl } from './stamp-gate-sheet-owner.ts';
 
 const SOURCE_ID = 'textured';
@@ -152,18 +152,18 @@ export async function paintStampGateTexture(id: StampGateTextureId): Promise<str
 }
 
 /**
- * Shot texture case `id`'s frames, RGBA bytes, drawn in turn through one renderer, warmed first from its first frame
- * to its last when `warmed`; `watch` told as they're drawn.
+ * Shot texture case `id`'s frames and costs, drawn in turn through one renderer, warmed first from its first frame to
+ * its last when `warmed`.
  */
-function drawStampGateShotTextureFrames(id: StampGateShotTextureId, warmed: boolean, watch?: StampGateShotFramesWatch): Promise<Uint8ClampedArray[]> {
+function drawStampGateShotTextureFrames(id: StampGateShotTextureId, warmed: boolean): Promise<StampGateShotFrames> {
   const { shot, cylinder: { geometry, at, repeats, turnSeconds }, texture, frames } = STAMP_GATE_SHOT_TEXTURE_CASES[id];
   const props = shot((tools) => stampGateTexturedScene(tools, at, texture, stampGateCylinder(geometry, repeats)(tools), turnSeconds));
-  return stampGateShotFrames(warmed ? { ...props, warm: { from: frames[0], to: frames[frames.length - 1] } } : props, frames, watch);
+  return stampGateShotFrames(warmed ? { ...props, warm: { from: frames[0], to: frames[frames.length - 1] } } : props, frames);
 }
 
 /** Shot texture baseline `id`'s frames side by side, drawn through the shot's renderer unwarmed: RGB bytes row by row, in base64. */
 export async function paintStampGateShotTexture(id: StampGateShotTextureId): Promise<string> {
-  const drawn = await drawStampGateShotTextureFrames(id, false), { width, height } = stampGateShotTextureFrame(id), one = width / drawn.length;
+  const { frames: drawn } = await drawStampGateShotTextureFrames(id, false), { width, height } = stampGateShotTextureFrame(id), one = width / drawn.length;
   const beside = new Uint8ClampedArray(width * height * 4);
   drawn.forEach((rgba, f) => {
     for (let y = 0; y < height; y++) beside.set(rgba.subarray(y * one * 4, (y + 1) * one * 4), (y * width + f * one) * 4);
@@ -181,14 +181,11 @@ const boxText = (box: { x0: number; y0: number; x1: number; y1: number } | null)
  */
 export async function checkStampGateShotTextureCase(id: StampGateShotTextureCaseId): Promise<StampGateWashCheck[]> {
   const { frames, frame: { width, height } } = STAMP_GATE_SHOT_TEXTURE_CASES[id], [first, second] = frames;
-  const costs = createStampPaintCostTally(), taken: StampPaintCosts[] = [];
-  const [before, after] = await drawStampGateShotTextureFrames(id, false, { costs, drawn: () => taken.push(costs.take()) });
+  const { frames: [before, after], costs: taken } = await drawStampGateShotTextureFrames(id, false);
   const changed = stampGateDifferenceBox(stampGateRgb(before), stampGateRgb(after), width), cylinder = stampGateShotTextureCylinderBox(id);
   const onCylinder = !!changed && changed.x0 >= cylinder.x0 && changed.y0 >= cylinder.y0 && changed.x1 <= cylinder.x1 && changed.y1 <= cylinder.y1;
-  const warmCosts = createStampPaintCostTally(), warmTaken: StampPaintCosts[] = [];
-  let warm: StampPaintCosts | null = null;
-  await drawStampGateShotTextureFrames(id, true, { costs: warmCosts, warmed: () => (warm = warmCosts.take()), drawn: () => warmTaken.push(warmCosts.take()) });
-  const warmSolves = warm!.solves, drawnSolves = warmTaken.flatMap(({ solves }) => solves);
+  const { costs: warmTaken, warm } = await drawStampGateShotTextureFrames(id, true);
+  const warmSolves = warm.solves, drawnSolves = warmTaken.flatMap(({ solves }) => solves);
   return [
     {
       id: `${id}: own solve`, passed: taken[0].solves.length === 2,
@@ -200,7 +197,7 @@ export async function checkStampGateShotTextureCase(id: StampGateShotTextureCase
     },
     {
       id: `${id}: warmed`, passed: warmSolves.length > 0 && !drawnSolves.length,
-      detail: `its warm solved ${solvedText(warm!)}; its frames then solved ${warmTaken.map((each, f) => `${solvedText(each)} at ${frames[f]} s`).join(' and ')}`,
+      detail: `its warm solved ${solvedText(warm)}; its frames then solved ${warmTaken.map((each, f) => `${solvedText(each)} at ${frames[f]} s`).join(' and ')}`,
     },
   ];
 }

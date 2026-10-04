@@ -3,10 +3,9 @@
 // nothing, the lamp's property step, a repeated pose, and the walker re-solving every frame while the street's prefix
 // steps on sixes.
 
-import { createStampPaintCostTally, type StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
+import type { StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
-import type { PaintedShotProps } from '#lib/paint/shot/models/shot-props.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { STAMP_GATE_RAINY_STREET_AT, STAMP_GATE_RAINY_STREET_WARM, stampGateRainyStreetLampStep, stampGateRainyStreetShot } from '../models/stamp-gate-rainy-street.ts';
 import { stampGateDifferenceBox } from '../models/stamp-gate-shots.ts';
@@ -24,21 +23,14 @@ const frameOf = (t: number) => Math.round(t * PAINT_ANIMATION_FPS - 0.5);
 /** The street's first application of the walker's: where a pose of it re-solves the sheet from. */
 const WALKER_ENTRY = 'figure-body';
 
-/** `shot` drawn at `times` once warmed (its span, if any): each frame's RGBA bytes and costs, and the warm's. */
-async function rainyStreetFrames(shot: PaintedShotProps, times: readonly number[]) {
-  const costs = createStampPaintCostTally(), taken: StampPaintCosts[] = [], warmed: StampPaintCosts[] = [];
-  const frames = await stampGateShotFrames(shot, times, { costs, warmed: () => warmed.push(costs.take()), drawn: () => taken.push(costs.take()) });
-  return { frames, taken, warm: warmed[0] };
-}
-
 /**
  * Warmed over a span of one street hold, the walker still, frames in it moving only the camera, the rain, the sky's
  * `k` and the reflection's visibility evaluate nothing and solve nothing.
  */
 async function checkWarmed(): Promise<StampGateWashCheck> {
   const shot = { ...stampGateRainyStreetShot(), warm: STAMP_GATE_RAINY_STREET_WARM }, { width } = shot.camera.stage.frame, times = STAMP_GATE_RAINY_STREET_AT.warmed;
-  const { frames, taken, warm } = await rainyStreetFrames(shot, times);
-  const evaluations = taken.reduce((sum, costs) => sum + made(costs), 0), solved = taken.flatMap(solvedFrom);
+  const { frames, costs, warm } = await stampGateShotFrames(shot, times);
+  const evaluations = costs.reduce((sum, each) => sum + made(each), 0), solved = costs.flatMap(solvedFrom);
   const moved = stampGateDifferenceBox(stampGateRgb(frames[0]), stampGateRgb(frames.at(-1)!), width), box = moved && `x ${moved.x0}..${moved.x1}, y ${moved.y0}..${moved.y1}`;
   return {
     id: 'shot/rainy-street: warmed', passed: warm.solves.length > 0 && warm.bytesRetained > 0 && evaluations === 0 && !solved.length && !!moved,
@@ -48,7 +40,7 @@ async function checkWarmed(): Promise<StampGateWashCheck> {
 
 /** The lamp lit by its property step re-solves the street from the first entry the step changes, as the diff reads it. */
 async function checkLampStep(): Promise<StampGateWashCheck> {
-  const { taken } = await rainyStreetFrames(stampGateRainyStreetShot(), STAMP_GATE_RAINY_STREET_AT.lamp), lit = solvedFrom(taken[1]), step = stampGateRainyStreetLampStep();
+  const { costs } = await stampGateShotFrames(stampGateRainyStreetShot(), STAMP_GATE_RAINY_STREET_AT.lamp), lit = solvedFrom(costs[1]), step = stampGateRainyStreetLampStep();
   return {
     id: 'shot/rainy-street: lamp step', passed: lit.length === 1 && lit[0] === step,
     detail: `the frame the lamp lights at solved ${fromText(lit)}; its diff's first changed entry on the street is ${step}`,
@@ -57,7 +49,7 @@ async function checkLampStep(): Promise<StampGateWashCheck> {
 
 /** The walker forward a step and back within one hold of the street's source: the pose it comes back to solves nothing. */
 async function checkRepeatedPose(): Promise<StampGateWashCheck> {
-  const { taken } = await rainyStreetFrames(stampGateRainyStreetShot(), STAMP_GATE_RAINY_STREET_AT.repeated), [, stepped, back] = taken.map(solvedFrom);
+  const { costs } = await stampGateShotFrames(stampGateRainyStreetShot(), STAMP_GATE_RAINY_STREET_AT.repeated), [, stepped, back] = costs.map(solvedFrom);
   return {
     id: 'shot/rainy-street: repeated pose', passed: stepped.length === 1 && stepped[0] === WALKER_ENTRY && !back.length,
     detail: `the walker a step on solved ${fromText(stepped)} (from ${WALKER_ENTRY} wanted); back where it was, ${fromText(back)}`,
@@ -69,18 +61,19 @@ async function checkRepeatedPose(): Promise<StampGateWashCheck> {
  * new moment, so a new prefix, every sixth frame, and its walker re-solves every frame.
  */
 async function checkWalking(): Promise<StampGateWashCheck> {
-  const shot = stampGateRainyStreetShot(), heard: number[][] = [[]], street = shot.planes.find((plane) => plane.id === 'street');
+  const shot = stampGateRainyStreetShot(), heard: number[][] = [], street = shot.planes.find((plane) => plane.id === 'street');
   if (street?.kind === 'instanced' || typeof street?.source !== 'function') throw new Error("the rainy street's street plane reads its source by a callback");
-  const { source } = street, listened = { ...street, source: (moment: PaintMoment) => (heard.at(-1)!.push(moment.at), source(moment)) };
-  const costs = createStampPaintCostTally(), taken: StampPaintCosts[] = [], planes = shot.planes.map((plane) => (plane === street ? listened : plane));
-  await stampGateShotFrames({ ...shot, planes }, STAMP_GATE_RAINY_STREET_AT.walking, { costs, warmed: () => heard.push([]), drawn: () => (taken.push(costs.take()), heard.push([])) });
-  const read = heard.slice(1, -1).map((ats) => Array.from(new Set(ats)));
-  const steps = read.flatMap((ats, i) => (i > 0 && ats.join() !== read[i - 1].join() ? [frameOf(STAMP_GATE_RAINY_STREET_AT.walking[i])] : []));
-  const walkerSolves = taken.slice(1).map((frame) => solvedFrom(frame).filter((from) => from === WALKER_ENTRY).length);
+  // The moments the street's source reads, by frame: none heard before the first frame begins.
+  const { source } = street, listened = { ...street, source: (moment: PaintMoment) => (heard.at(-1)?.push(moment.at), source(moment)) };
+  const planes = shot.planes.map((plane) => (plane === street ? listened : plane)), times = STAMP_GATE_RAINY_STREET_AT.walking;
+  const { costs } = await stampGateShotFrames({ ...shot, planes }, times, () => heard.push([]));
+  const read = heard.map((ats) => Array.from(new Set(ats)));
+  const steps = read.flatMap((ats, i) => (i > 0 && ats.join() !== read[i - 1].join() ? [frameOf(times[i])] : []));
+  const walkerSolves = costs.slice(1).map((frame) => solvedFrom(frame).filter((from) => from === WALKER_ENTRY).length);
   const sixes = steps.length === 2 && steps.every((frame) => frame % 6 === 0);
   return {
     id: 'shot/rainy-street: walking', passed: read.every((ats) => ats.length === 1) && sixes && walkerSolves.every((n) => n === 1),
-    detail: `over frames ${frameOf(STAMP_GATE_RAINY_STREET_AT.walking[0])}..${frameOf(STAMP_GATE_RAINY_STREET_AT.walking.at(-1)!)} the street's source read ${read.map((ats) => ats.join('/')).join(', ')} s, a new moment at frames ${steps.join(' and ')} (two, each a sixth, wanted); after the first, each frame re-solved from ${WALKER_ENTRY} ${walkerSolves.join(', ')} times (once each wanted)`,
+    detail: `over frames ${frameOf(times[0])}..${frameOf(times.at(-1)!)} the street's source read ${read.map((ats) => ats.join('/')).join(', ')} s, a new moment at frames ${steps.join(' and ')} (two, each a sixth, wanted); after the first, each frame re-solved from ${WALKER_ENTRY} ${walkerSolves.join(', ')} times (once each wanted)`,
   };
 }
 

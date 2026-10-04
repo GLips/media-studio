@@ -4,7 +4,7 @@
 // warmed span, and their baselines' frames. The masked shot's cases are stamp-gate-shot-masks-page.ts's, and the rainy
 // street's stamp-gate-rainy-street-page.ts's, handed on.
 
-import { createStampPaintCostTally, type StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
+import type { StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { STAMP_GATE_FRAME_TOLERANCE } from '../models/stamp-gate-frames.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { STAMP_GATE_HERON_MOVE, stampGateHighPass, stampGatePeakShift } from '../models/stamp-gate-paper-heron.ts';
@@ -17,12 +17,11 @@ import {
   stampGateWetContactPaintingInShot, stampGateWetContactShot, type StampGateShotCaseId, type StampGateShotId,
 } from '../models/stamp-gate-shots.ts';
 import { stampGateRgb, stampGateRgbBase64 } from './stamp-gate-page-surface.ts';
-import { stampGateShotFrames } from './stamp-gate-shot-frames.ts';
+import { stampGateShotFrames, stampGateSolvedText as solvedText } from './stamp-gate-shot-frames.ts';
 import { checkStampGateRainyStreet } from './stamp-gate-rainy-street-page.ts';
 import { checkStampGateShotMasksCase } from './stamp-gate-shot-masks-page.ts';
 
 const shiftText = ({ x, y, r }: { x: number; y: number; r: number }) => `${x}, ${y} (r ${r.toFixed(3)})`;
-const solvedText = ({ solves }: StampPaintCosts) => solves.map(({ program, from }) => `${program} from ${from}`);
 const boxText = (box: { x0: number; y0: number; x1: number; y1: number } | null) => (box ? `x ${box.x0}..${box.x1}, y ${box.y0}..${box.y1}` : 'nothing');
 
 /**
@@ -31,16 +30,14 @@ const boxText = (box: { x0: number; y0: number; x1: number; y1: number } | null)
  * the necks; the heron fades as one; boiling, it wobbles each epoch. Neither swap, fade nor boil re-solves.
  */
 export async function checkStampGateRiggedHeron(): Promise<StampGateWashCheck[]> {
-  const id = 'paper/heron', { rest, moved, posed, swapped, faded, hidden } = STAMP_GATE_RIGGED_HERON_AT, costs = createStampPaintCostTally(), taken: StampPaintCosts[] = [];
-  const [atRest, atMoved, atPosed, atSwapped, atFaded, atHidden] = await stampGateShotFrames(stampGateRiggedHeronShot(), [rest, moved, posed, swapped, faded, hidden], { costs, drawn: () => taken.push(costs.take()) });
-  const unriggedCosts = createStampPaintCostTally();
-  await stampGateShotFrames(stampGateRiggedHeronShot(false), [rest], { costs: unriggedCosts });
-  const boilCosts = createStampPaintCostTally(), boilTaken: StampPaintCosts[] = [];
-  const [boiled, reboiled] = await stampGateShotFrames(stampGateBoilingHeronShot(), STAMP_GATE_HERON_BOIL_AT, { costs: boilCosts, drawn: () => boilTaken.push(boilCosts.take()) });
+  const id = 'paper/heron', { rest, moved, posed, swapped, faded, hidden } = STAMP_GATE_RIGGED_HERON_AT;
+  const { frames: [atRest, atMoved, atPosed, atSwapped, atFaded, atHidden], costs: taken } = await stampGateShotFrames(stampGateRiggedHeronShot(), [rest, moved, posed, swapped, faded, hidden]);
+  const { costs: [unrigged] } = await stampGateShotFrames(stampGateRiggedHeronShot(false), [rest]);
+  const { frames: [boiled, reboiled], costs: boilTaken } = await stampGateShotFrames(stampGateBoilingHeronShot(), STAMP_GATE_HERON_BOIL_AT);
   const { width, height } = stampGateRiggedHeronShot().camera.stage.frame, windows = stampGateRiggedHeronWindows(width, height);
   const [a, b] = [atRest, atMoved].map((rgba) => stampGateHighPass(Float32Array.from(rgba, (v) => v / 255), width, height));
   const body = stampGatePeakShift(a, b, windows.body), wing = stampGatePeakShift(a, b, windows.wing);
-  const riggedRest = solvedText(taken[0]).toSorted().join(', '), unriggedRest = solvedText(unriggedCosts.take()).toSorted().join(', ');
+  const riggedRest = solvedText(taken[0]).toSorted().join(', '), unriggedRest = solvedText(unrigged).toSorted().join(', ');
   const swung = stampGateReedSwung(stampGateRgb(atMoved), stampGateRgb(atPosed), width), warnings = taken.flatMap((each) => each.warnings);
   const swap = stampGateDifferenceBox(stampGateRgb(atPosed), stampGateRgb(atSwapped), width), swapSolves = solvedText(taken[3]);
   const necks = STAMP_GATE_HERON_NECKS, swapInside = !!swap && swap.x0 >= necks.x0 && swap.y0 >= necks.y0 && swap.x1 <= necks.x1 && swap.y1 <= necks.y1;
@@ -77,16 +74,14 @@ export async function checkStampGateRiggedHeron(): Promise<StampGateWashCheck[]>
  * Hidden, the foot's paint goes, what its water did to the shallows stays, and nothing re-solves.
  */
 export async function checkStampGateRiggedWetContact(): Promise<StampGateWashCheck[]> {
-  const costs = createStampPaintCostTally(), { rest, posed } = STAMP_GATE_WET_CONTACT_AT;
-  const taken: StampPaintCosts[] = [];
-  await stampGateShotFrames(stampGateWetContactShot(), [rest, posed], { costs, drawn: () => taken.push(costs.take()) });
-  const { counts, solves } = taken[1], hits = counts.get('checkpoint hits') ?? 0, reused = counts.get('decisions reused') ?? 0, resumed = solves.map(({ from }) => from).join(', ');
-  const paintingIn = stampGateWetContactPaintingInShot(), inCosts = createStampPaintCostTally(), { unpainted, posed: painted } = STAMP_GATE_PAINTING_IN_AT;
-  const [before, after] = await stampGateShotFrames(paintingIn, [unpainted, painted], { costs: inCosts });
-  const width = paintingIn.camera.stage.frame.width, grown = stampGateDifferenceBox(stampGateRgb(before), stampGateRgb(after), width), { warnings } = inCosts.take();
-  const hideCosts = createStampPaintCostTally(), hideTaken: StampPaintCosts[] = [], { shown, hidden } = STAMP_GATE_HIDDEN_FOOT_AT;
-  const [withFoot, footHidden] = await stampGateShotFrames(stampGateHiddenFootShot(), [shown, hidden], { costs: hideCosts, drawn: () => hideTaken.push(hideCosts.take()) });
-  const [alone] = await stampGateShotFrames(stampGateShallowsAloneShot(), [hidden]);
+  const { rest, posed } = STAMP_GATE_WET_CONTACT_AT, { costs: [, posedCosts] } = await stampGateShotFrames(stampGateWetContactShot(), [rest, posed]);
+  const { counts, solves } = posedCosts, hits = counts.get('checkpoint hits') ?? 0, reused = counts.get('decisions reused') ?? 0, resumed = solves.map(({ from }) => from).join(', ');
+  const paintingIn = stampGateWetContactPaintingInShot(), { unpainted, posed: painted } = STAMP_GATE_PAINTING_IN_AT;
+  const { frames: [before, after], costs: inCosts, warm: inWarm } = await stampGateShotFrames(paintingIn, [unpainted, painted]);
+  const width = paintingIn.camera.stage.frame.width, grown = stampGateDifferenceBox(stampGateRgb(before), stampGateRgb(after), width);
+  const warnings = [inWarm, ...inCosts].flatMap((each) => each.warnings), { shown, hidden } = STAMP_GATE_HIDDEN_FOOT_AT;
+  const { frames: [withFoot, footHidden], costs: hideTaken } = await stampGateShotFrames(stampGateHiddenFootShot(), [shown, hidden]);
+  const { frames: [alone] } = await stampGateShotFrames(stampGateShallowsAloneShot(), [hidden]);
   const gone = stampGateDifferenceBox(stampGateRgb(withFoot), stampGateRgb(footHidden), width), left = stampGateDifferenceBox(stampGateRgb(alone), stampGateRgb(footHidden), width);
   const far = { x0: STAMP_GATE_FAR_SHALLOWS.x, y0: STAMP_GATE_FAR_SHALLOWS.y, x1: STAMP_GATE_FAR_SHALLOWS.x + STAMP_GATE_FAR_SHALLOWS.w, y1: STAMP_GATE_FAR_SHALLOWS.y + STAMP_GATE_FAR_SHALLOWS.h };
   const leftFar = !!left && left.x0 < far.x1 && left.x1 > far.x0 && left.y0 < far.y1 && left.y1 > far.y0, hideSolves = solvedText(hideTaken[1]);
@@ -113,7 +108,7 @@ const spreadPast = (narrow: ReturnType<typeof stampGateDifferenceBox>, wide: Ret
   narrow && wide && { left: narrow.x0 - wide.x0, right: wide.x1 - narrow.x1, top: narrow.y0 - wide.y0, bottom: wide.y1 - narrow.y1 };
 
 /** The lone drop shot of `kind`, its one frame as RGB bytes. */
-const loneDropFrame = async (kind: Parameters<typeof stampGateLoneDropShot>[0]) => stampGateRgb((await stampGateShotFrames(stampGateLoneDropShot(kind), [STAMP_GATE_LONE_DROP_AT]))[0]);
+const loneDropFrame = async (kind: Parameters<typeof stampGateLoneDropShot>[0]) => stampGateRgb((await stampGateShotFrames(stampGateLoneDropShot(kind), [STAMP_GATE_LONE_DROP_AT])).frames[0]);
 
 /**
  * shot/rain (ENGINE test 5, the camera still): a lone drop out of focus spreads alike on every side; shutter open, it
@@ -123,8 +118,8 @@ const loneDropFrame = async (kind: Parameters<typeof stampGateLoneDropShot>[0]) 
 async function checkStampGateRain(): Promise<StampGateWashCheck[]> {
   const none = await loneDropFrame('none'), sharp = await loneDropFrame('sharp'), defocused = await loneDropFrame('defocused'), blurred = await loneDropFrame('blurred');
   const recycled = await loneDropFrame('recycled');
-  const rain = stampGateRainShot(), { width } = rain.camera.stage.frame, costs = createStampPaintCostTally(), taken: StampPaintCosts[] = [];
-  const [first, next] = await stampGateShotFrames(rain, [STAMP_GATE_RAIN.at.first, STAMP_GATE_RAIN.at.next], { costs, drawn: () => taken.push(costs.take()) });
+  const rain = stampGateRainShot(), { width } = rain.camera.stage.frame;
+  const { frames: [first, next], costs: taken } = await stampGateShotFrames(rain, [STAMP_GATE_RAIN.at.first, STAMP_GATE_RAIN.at.next]);
   const [shut, soft, open, renewed] = [sharp, defocused, blurred, recycled].map((frame) => stampGateDifferenceBox(none, frame, width));
   const shutSize = boxSize(shut), openSize = boxSize(open), travel = STAMP_GATE_LONE_DROP_TRAVEL, spread = spreadPast(shut, soft);
   const renewedAsShut = !!shut && !!renewed && (['x0', 'x1', 'y0', 'y1'] as const).every((edge) => Math.abs(shut[edge] - renewed[edge]) <= 1);
@@ -170,9 +165,8 @@ const anewText = ({ solved, misses }: ReturnType<typeof dissolveDrawnAnew>) => `
  * solves anything or lays a picture anew, each end's kept.
  */
 async function checkDissolve(): Promise<StampGateWashCheck[]> {
-  const costs = createStampPaintCostTally(), taken: StampPaintCosts[] = [], { together, apart, half, inPond, alone, backHalf } = STAMP_GATE_DISSOLVE_AT;
-  const times = [together, apart, half, inPond, alone, backHalf];
-  const [atTogether, atApart, atHalf, atInPond, atAlone, atBackHalf] = await stampGateShotFrames(stampGateDissolveShot(), times, { costs, drawn: () => taken.push(costs.take()) });
+  const { together, apart, half, inPond, alone, backHalf } = STAMP_GATE_DISSOLVE_AT;
+  const { frames: [atTogether, atApart, atHalf, atInPond, atAlone, atBackHalf], costs: taken } = await stampGateShotFrames(stampGateDissolveShot(), [together, apart, half, inPond, alone, backHalf]);
   const anew = [taken[2], taken[5]].map(dissolveDrawnAnew);
   return [
     dissolveHalfway('shot/dissolve: halfway', 'the heron', [atTogether, atApart], atHalf),
@@ -190,10 +184,7 @@ async function checkDissolve(): Promise<StampGateWashCheck[]> {
  * nothing, as they would were a clock the solve reads left out of the pairing.
  */
 async function checkWarm(): Promise<StampGateWashCheck[]> {
-  const costs = createStampPaintCostTally(), taken: StampPaintCosts[] = [];
-  let warm: StampPaintCosts | null = null;
-  await stampGateShotFrames(stampGateWarmShot(), STAMP_GATE_WARMED_AT, { costs, warmed: () => (warm = costs.take()), drawn: () => taken.push(costs.take()) });
-  const { solves, bytesRetained } = warm!, drawnSolves = taken.flatMap(solvedText);
+  const { costs, warm: { solves, bytesRetained } } = await stampGateShotFrames(stampGateWarmShot(), STAMP_GATE_WARMED_AT), drawnSolves = costs.flatMap(solvedText);
   return [{
     id: 'shot/warm: span solved', passed: solves.length > 0 && bytesRetained > 0 && !drawnSolves.length,
     detail: `warming ${STAMP_GATE_WARM.from}..${STAMP_GATE_WARM.to} s solved ${solves.length} sheet program${solves.length === 1 ? '' : 's'} and kept ${bytesRetained} bytes; the frames at ${STAMP_GATE_WARMED_AT.map((t) => t.toFixed(3)).join(' and ')} s then solved ${drawnSolves.join(', ') || 'nothing'}`,
@@ -211,6 +202,6 @@ export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGa
 
 /** Shot baseline `id`'s frame: RGB bytes row by row, in base64. */
 export async function paintStampGateShot(id: StampGateShotId): Promise<string> {
-  const { shot, at } = stampGateShotBaseline(id), [rgba] = await stampGateShotFrames(shot, [at]);
+  const { shot, at } = stampGateShotBaseline(id), { frames: [rgba] } = await stampGateShotFrames(shot, [at]);
   return stampGateRgbBase64(rgba);
 }
