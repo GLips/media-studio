@@ -157,6 +157,12 @@ const WALK: PaintPlaceClip['keys'] = [
 /** The presentation's ramps: the sky's dissolve to night, the reflection's fade, and the camera's push, depth units. */
 const RAMPS = { night: { from: 0.5, to: 2.5 }, reflection: { from: 1.25, to: 2.25 }, push: { to: 3, dolly: 0.3 } } as const;
 
+/**
+ * The sky laid a tenth larger about the frame's centre: it shares the street's frame-sized document, and the focus on
+ * the street blurs it, so its painting must reach past the frame by that blur.
+ */
+const SKY_LAY = { placement: { x: 0, y: 0, rotation: 0, scale: 1.1 }, pivot: { x: STREET.width / 2, y: STREET.height / 2 } } as const;
+
 /** The street at `lamp`. */
 const streetAt = (lamp: boolean) => painting(STAMP_GATE_PUDDLED_STREET, { lamp });
 
@@ -166,7 +172,7 @@ export const stampGateRainyStreetEvaluations = (): PaintingEvaluation[] => [
 ];
 
 /** What the shot reads beside its evaluations, as its baseline's inputs name it. */
-export const STAMP_GATE_RAINY_STREET_PRESENTATION = { walk: WALK, lampOn: LAMP_ON, ramps: RAMPS, rain: STAMP_GATE_RAIN, depths: DEPTHS } as const;
+export const STAMP_GATE_RAINY_STREET_PRESENTATION = { walk: WALK, lampOn: LAMP_ON, ramps: RAMPS, rain: STAMP_GATE_RAIN, depths: DEPTHS, skyLay: SKY_LAY } as const;
 
 /**
  * The rainy street: the sky dissolving to night at the back; the street, its source on sixes and its clock unheld,
@@ -184,7 +190,10 @@ export function stampGateRainyStreetShot(): PaintedShotProps {
       ],
     },
     planes: [
-      { id: 'sky', depth: DEPTHS.sky, source: ({ at }: PaintMoment) => dissolve(layersOf(dusk, ['sky']), layersOf(night, ['sky']), seg(at, RAMPS.night.from, RAMPS.night.to, motionCurves.linear)) },
+      {
+        id: 'sky', depth: DEPTHS.sky, lay: SKY_LAY,
+        source: ({ at }: PaintMoment) => dissolve(layersOf(dusk, ['sky']), layersOf(night, ['sky']), seg(at, RAMPS.night.from, RAMPS.night.to, motionCurves.linear)),
+      },
       { id: 'street', depth: DEPTHS.street, sourceClock: { hold: 6 }, source: ({ at }: PaintMoment) => layersOf(streetAt(at >= LAMP_ON), STREET_LAYERS, { at }) },
       { id: 'reflection', depth: DEPTHS.street, source: layersOf(streetAt(true), ['reflection']), masks: [{ kind: 'alphaOf', drawable: 'street/puddle' }] },
       { kind: 'instanced', id: 'rain', depths: STAMP_GATE_RAIN_DEPTHS.rain, variants: { drop: layersOf(painting(STAMP_GATE_RAIN_PAINTING), ['drop']) }, instances: ({ at }) => stampGateRainAt(at) },

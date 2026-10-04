@@ -5,10 +5,10 @@
 // they then lie by the build's own rule: a cover once, as the shot compiles; a pin at each frame, as its elements are
 // measured. Also the DOM adapter's arithmetic: an element's measured box as a frame-px centre.
 
-import { paintCameraExtentProblem } from '#lib/paint/animation/models/paint-camera-build.ts';
+import { paintCameraExtentProblem, paintCameraPaintedProblem } from '#lib/paint/animation/models/paint-camera-build.ts';
 import { paintPlaneViewAt } from '#lib/paint/animation/models/paint-camera.ts';
 import {
-  paintPlacementOfSimilarity, paintSimilarityApply, paintSimilarityInverse, paintSimilarityThrough, type PaintSimilarity,
+  paintPlacementOfSimilarity, paintSimilarityApply, paintSimilarityInverse, paintSimilarityOf, paintSimilarityThrough, type PaintSimilarity,
 } from '#lib/paint/animation/models/paint-similarity.ts';
 import { isPaintingFinitePoint, paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import { paintMoment, type StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
@@ -16,7 +16,7 @@ import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-regi
 import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { CompiledPaintedShot, CompiledShotPaintedPlane, CompiledShotPlane } from './shot-compile.ts';
 import type { CoverFrame, ScreenPin } from './shot-props.ts';
-import { shotPaintedExtent } from './shot-reach.ts';
+import { shotBackPainted, shotPaintedExtent } from './shot-reach.ts';
 
 /**
  * The lay covering a frame `frame` px with `box` (document px), seen through `view` (paintPlaneViewAt at the cover's
@@ -85,14 +85,15 @@ export type ShotScreenSetting = Pick<CompiledPaintedShot, 'camera' | 'motion' | 
 
 /**
  * Plane `plane` laid on the frame: `layThrough` given the camera's view of the plane at scene second `at`, then
- * checked where it lies as the camera build checks a plane (paintCameraExtentProblem). The plane laid still, or why
- * it can't lie there: its paint past the stage.
+ * checked where it lies as the camera build checks a plane (paintCameraExtentProblem; the back, also
+ * paintCameraPaintedProblem). The plane laid still, or why it can't lie there.
  */
 function shotScreenLaid(
   { camera, motion, rigs }: ShotScreenSetting, plane: CompiledShotPaintedPlane, at: number, layThrough: (view: PaintSimilarity) => StampGroupLay,
 ): { readonly plane: CompiledShotPaintedPlane } | { readonly problem: PaintingProblem } {
-  const laid: CompiledShotPaintedPlane = { ...plane, lay: { kind: 'still', lay: layThrough(paintPlaneViewAt(camera, plane.depth, paintMoment(at))) } };
-  const problem = paintCameraExtentProblem(camera, plane, shotPaintedExtent(laid, motion, new Set(rigs.keys())));
+  const lay = layThrough(paintPlaneViewAt(camera, plane.depth, paintMoment(at))), laid: CompiledShotPaintedPlane = { ...plane, lay: { kind: 'still', lay } };
+  const problem = paintCameraExtentProblem(camera, plane, shotPaintedExtent(laid, motion, new Set(rigs.keys())))
+    ?? (plane.opaqueBack ? paintCameraPaintedProblem(camera, plane, shotBackPainted(plane, motion, paintSimilarityOf(lay.placement, lay.pivot))) : null);
   return problem ? { problem: paintingProblem('error', plane.id, 'lay', problem) } : { plane: laid };
 }
 

@@ -81,6 +81,14 @@ const spotAt = (at: number): PlaneInstance => {
 /** The shot's stage: a margin past the frame wide enough for a pan of `pan` px to show nothing past it. */
 const stageFor = (pan: number) => stampStage({ width: 200, height: 140 }, 2 + 2 * Math.ceil(pan / 2));
 
+/** The pond's depth: the back, a pan moving it a third as far as the frame. */
+const POND_DEPTH = 3;
+/**
+ * The pond laid about its middle large enough that a pan of `pan` px shows it still: painted the frame's size, it
+ * grows by what the pan moves it past each side.
+ */
+const pondLay = (pan: number) => ({ placement: { x: 0, y: 0, rotation: 0, scale: 1 + pan / POND_DEPTH / 100 }, pivot: { x: 100, y: 70 } });
+
 /** What a masked shot shows. */
 export type StampGateMaskedShot = {
   /**
@@ -106,7 +114,7 @@ export type StampGateMaskedShot = {
 /** The gate's masked shot as `shown` says, on the tinted heron's sheet. */
 export function stampGateMaskedShot({ heron, disc, discVisibility, discHold, tint, pan = 0 }: StampGateMaskedShot): PaintedShotProps {
   const stage = stageFor(pan), evaluation = painting(STAMP_GATE_TINTED_HERON), revealed = painting(STAMP_GATE_TINTED_HERON, { revealed: true });
-  const planes: (PlaneProps | InstancedPlaneProps)[] = [{ id: 'pond', depth: 3, source: layersOf(evaluation, ['water']) }];
+  const planes: (PlaneProps | InstancedPlaneProps)[] = [{ id: 'pond', depth: POND_DEPTH, source: layersOf(evaluation, ['water']), ...(pan > 0 && { lay: pondLay(pan) }) }];
   if (heron === 'revealed') planes.push({ id: 'heron', depth: 2, source: ({ at }) => layersOf(revealed, ['heron'], { at }) });
   else if (heron !== 'none') {
     const source = heron === 'dissolving' ? dissolve(layersOf(evaluation, ['heron']), layersOf(evaluation, ['water']), 0.5) : layersOf(evaluation, ['heron']);

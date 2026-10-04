@@ -1,12 +1,12 @@
 // paint-camera-build.ts: a camera's planes, projection, lens and plays checked, from plane depths and extents alone;
-// a painting is one source of those (buildPaintingCamera, its nearer planes' extents from paint-motion-reach.ts).
+// a painting is one source (buildPaintingCamera, its nearer planes' extents from paint-motion-reach.ts).
 //
-// Over the whole shot: no plane or focus comes to or behind the camera (an instanced plane by its near depth), and
-// the stage holds the frame's preimage on every picture plane, grown by the widest defocus's reach and a pixel,
-// wherever its extent holds anything; instanced items aren't on it.
+// Over the whole shot: no plane or focus comes to or behind the camera (an instanced plane by its near depth); the
+// stage holds the frame's preimage on every picture plane where its extent holds anything, grown by the widest
+// defocus's reach and a pixel; the back's painting holds it grown by its blur.
 //
 // Eases never overshoot a key, so between keys pan and the span (d − dolly)/(zoom·d) move monotonically; a roll is
-// bounded by the circle its corners turn on. Frame state written outside `motion` is the scene's to keep on stage.
+// bounded by its corners' circle; a shutter's poses lie in spans. Frame state outside `motion` is the scene's.
 
 import { LENS_SIGMA_STEP, lensGaussianReach, lensSigmaStepped } from '#lib/picture/lens/models/lens-focus.ts';
 import { stampPlaneDepthProblems, stampScenePlanes, type StampLaidPlanes, type StampPlane, type StampPlaneExtent } from '#lib/paint/painting/models/stamp-plane.ts';
@@ -14,17 +14,19 @@ import { stampStageExtent, type StampStage } from '#lib/paint/painting/models/st
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
+import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import {
-  PAINT_CAMERA_NEAREST, PAINT_CAMERA_REST, paintCameraClipProblem, paintCameraPlaneFarthest, paintCameraPlaneNearest, paintStageCentre,
-  type PaintCamera, type PaintCameraFocusClip, type PaintCameraInstancedPlane, type PaintCameraLens, type PaintCameraMoveClip, type PaintCameraPlane, type PaintCameraPlaneOptions,
-  type PaintCameraPlay,
-  type PaintCameraPose,
+  PAINT_CAMERA_NEAREST, PAINT_CAMERA_REST, paintCameraClipProblem, paintCameraFocusAt, paintCameraPlaneFarthest, paintCameraPlaneNearest, paintCameraPoseAt, paintPlaneDefocus,
+  paintStageCentre,
+  type PaintCamera, type PaintCameraFocusClip, type PaintCameraInstancedPlane, type PaintCameraLens, type PaintCameraMoveClip, type PaintCameraPaintedBox, type PaintCameraPlane,
+  type PaintCameraPlaneOptions, type PaintCameraPlay, type PaintCameraPose,
 } from './paint-camera.ts';
 import { paintChannelConflicts, type PaintChannelWriter } from './paint-channels.ts';
 import { clipSeconds, compilePaintPlayClock, paintLaneByStart, paintPlayClockProblem, paintPlayInterval, type CompiledPaintPlay } from './paint-clock.ts';
 import { paintPxRounded, paintRatioRounded } from './paint-deform.ts';
 import type { PaintMotion } from './paint-motion-compile.ts';
 import { paintGroupLaidReach } from './paint-motion-reach.ts';
+import { paintSimilarityBox, paintSimilarityInverse, paintSimilarityScale } from './paint-similarity.ts';
 
 /**
  * A camera as written: the `stage` its pictures are painted on, its projection (`fov`, vertical degrees over the
@@ -187,6 +189,77 @@ export function paintCameraExtentProblem(camera: PaintCamera, plane: { readonly 
   return extentProblem(camera.stage, plane, extent, spans, widestDefocus(camera.focus, dolly, plane.depth));
 }
 
+/**
+ * How the opaque back's painting falls short of what the camera reads of it in one span, document px: `past`, its
+ * reach past the frame (below 0: inside); `blur`, the blur's reach past the frame; `short`, how much larger to paint
+ * it each side; `scale`, how much larger to lay it about its centre (Infinity: no lay can).
+ */
+type PaintedShortfall = { readonly past: number; readonly blur: number; readonly short: number; readonly scale: number };
+
+/** Below this many document px short, a shortfall is the float arithmetic's, not the painting's. */
+const PAINTED_SLACK = 1e-6;
+/** `value` rounded up, its float arithmetic's slack let go: a back grown by the amount suggested then passes. */
+const ceilPainted = (value: number) => Math.ceil(value - PAINTED_SLACK);
+
+/**
+ * How `painted` falls short of what the camera reads of a plane at `depth` over `span`, defocused by `sigma` frame px,
+ * or null where it holds it all. A sharp plane reads only what the frame shows: a frame-sized back at rest holds it.
+ */
+function paintedShortfall(stage: StampStage, span: PoseSpan, depth: number, sigma: number, { box, lay }: PaintCameraPaintedBox): PaintedShortfall | null {
+  const k = Math.max(planePxPerFramePx(span.a, depth), planePxPerFramePx(span.b, depth)), grow = sigma > 0 ? defocusGrowth(sigma * k) : 0;
+  const toDocument = paintSimilarityInverse(lay), framed = framePreimageBox(stage, span, depth);
+  const seen = paintSimilarityBox(toDocument, framed), read = paintSimilarityBox(toDocument, grownBox(framed, grow));
+  const short = Math.max(box.x0 - read.x0, read.x1 - box.x1, box.y0 - read.y0, read.y1 - box.y1);
+  if (short <= PAINTED_SLACK) return null;
+  const past = Math.min(seen.x0 - box.x0, box.x1 - seen.x1, seen.y0 - box.y0, box.y1 - seen.y1);
+  const cx = (box.x0 + box.x1) / 2, cy = (box.y0 + box.y1) / 2, hw = (box.x1 - box.x0) / 2, hh = (box.y1 - box.y0) / 2;
+  const scale = hw > 0 && hh > 0 ? Math.max((cx - read.x0) / hw, (read.x1 - cx) / hw, (cy - read.y0) / hh, (read.y1 - cy) / hh) : Infinity;
+  return { past, blur: grow / paintSimilarityScale(lay), short, scale };
+}
+
+/** Why the back's shortfall `when` (a span's name, a moment) is one, in a painter's words: refused, never clamped. */
+function paintedProblemText(id: string, when: string, { past, blur, short, scale }: PaintedShortfall): string {
+  const reaches = past >= 0 ? `${Math.floor(past)} px past the frame` : `to ${Math.ceil(-past)} px inside the frame`;
+  const blurred = blur > 0 ? `, and its blur reads ${Math.ceil(blur)} px past the frame` : '';
+  const larger = Number.isFinite(scale) ? `lay it ${(ceilPainted((scale - 1) * 1000) / 10).toFixed(1)}% larger about its centre` : 'lay it larger';
+  return `plane ${id}, the back, is painted ${reaches} (${when})${blurred}, and past its painting lies bare paper: paint it ${ceilPainted(short)} px larger on every side, or ${larger}`;
+}
+
+/** Why the back `plane`, painted over `painted`, can't be shown in `spans` defocused by `sigma`, or null: its worst span's shortfall. */
+function paintedProblem(stage: StampStage, { id, depth }: { id: string; depth: number }, painted: PaintCameraPaintedBox, spans: readonly PoseSpan[], sigma: number): string | null {
+  let worst: { span: PoseSpan; shortfall: PaintedShortfall } | null = null;
+  for (const span of spans) {
+    const shortfall = paintedShortfall(stage, span, depth, sigma, painted);
+    if (shortfall && (!worst || shortfall.short > worst.shortfall.short)) worst = { span, shortfall };
+  }
+  return worst && paintedProblemText(id, worst.span.name, worst.shortfall);
+}
+
+/**
+ * Why `camera` can't show the opaque back `plane` painted over `painted` anywhere in its shot, or null: the build's
+ * check, for a back laid only once the camera is (a cover worked back through its view, a pin measured).
+ */
+export function paintCameraPaintedProblem(camera: PaintCamera, plane: { readonly id: string; readonly depth: number }, painted: PaintCameraPaintedBox): string | null {
+  const spans = poseSpans(camera.move), dolly = range(spans.flatMap(({ a, b }) => [a.dolly, b.dolly]));
+  return paintedProblem(camera.stage, plane, painted, spans, widestDefocus(camera.focus, dolly, plane.depth));
+}
+
+/**
+ * Why `camera` can't show the opaque back `plane` as one frame lays it, `laid` giving its painting at each moment the
+ * frame reads (its own, its shutter's ends), or null: the build's check at each moment's pose and defocus, for a lay
+ * read only as the frame is drawn.
+ */
+export function paintCameraPaintedProblemAt(
+  camera: PaintCamera, plane: { readonly id: string; readonly depth: number }, laid: readonly { readonly moment: PaintMoment; readonly painted: PaintCameraPaintedBox }[],
+): string | null {
+  for (const { moment, painted } of laid) {
+    const pose = paintCameraPoseAt(camera, moment), focus = paintCameraFocusAt(camera, moment);
+    const problem = paintedProblem(camera.stage, plane, painted, [{ a: pose, b: pose, name: `at ${moment.at} s` }], focus ? paintPlaneDefocus(focus, pose.dolly, plane.depth) : 0);
+    if (problem) return problem;
+  }
+  return null;
+}
+
 /** A camera over `o.planes`, checked (see the file's head), with each plane's greatest magnification. */
 export function buildPaintCamera(o: PaintCameraOptions): PaintCameraBuild {
   const problems: string[] = [], fps = o.animationFps ?? PAINT_ANIMATION_FPS;
@@ -222,8 +295,10 @@ export function buildPaintCamera(o: PaintCameraOptions): PaintCameraBuild {
   }
   if (problems.length) return { ok: false, problems };
   for (const plane of written) {
-    const problem = plane.kind === 'picture' && extentProblem(o.stage, plane, plane.extent, spans, widestDefocus(focus, dolly, plane.depth));
-    if (problem) problems.push(problem);
+    if (plane.kind !== 'picture') continue;
+    const sigma = widestDefocus(focus, dolly, plane.depth);
+    const found = [extentProblem(o.stage, plane, plane.extent, spans, sigma), plane.painted ? paintedProblem(o.stage, plane, plane.painted, spans, sigma) : null];
+    problems.push(...found.filter((problem) => problem !== null));
   }
   if (problems.length) return { ok: false, problems };
   // A three plane is rendered through the camera, a frame px a px, so its margin is its defocus's growth alone.

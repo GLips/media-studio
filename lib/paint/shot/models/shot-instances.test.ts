@@ -29,11 +29,14 @@ const drops = painting({
   },
 });
 
+/** The street behind the rain: the drop's painting on a document the frame's size, as a back is painted. */
+const street = painting({ default: (): PaintingDocument => ({ ...drops.document, widthPx: 48, heightPx: 40 }) });
+
 const item = (key: string, depth: number, variant = 'drop', x = 0): PlaneInstance => ({ key, variant, depth, lay: { placement: { x, y: 0, rotation: 0, scale: 1 }, pivot: { x: 8, y: 16 } } });
 const instanced = (id: string, items: readonly PlaneInstance[]): InstancedPlaneProps => ({
   kind: 'instanced', id, depths: { near: 1, far: 2.5 }, variants: { drop: layersOf(drops, ['drop']), big: layersOf(drops, ['drop']) }, instances: () => items,
 });
-const plane = (id: string, depth: number): PlaneProps => ({ id, depth, source: layersOf(drops, ['drop']) });
+const plane = (id: string, depth: number): PlaneProps => ({ id, depth, source: layersOf(street, ['drop']) });
 
 test('items sort with the planes far to near, planes first on a tie, and batch by plane, variant and stepped blur', () => {
   const rain = instanced('rain', [item('a', 2), item('b', 2), item('c', 2.5, 'big'), item('d', 1)]), mist = instanced('mist', [item('m', 2)]);

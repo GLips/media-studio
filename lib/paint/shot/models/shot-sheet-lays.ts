@@ -5,6 +5,7 @@
 // a sheet drawn as pieces gives way to its pieces at its card. A span faded apart is mixed back by its visibility; a
 // film is cut by its reveals. shotPlaneLayPlan plans and keys a moment.
 
+import { paintCameraPaintedProblemAt } from '#lib/paint/animation/models/paint-camera-build.ts';
 import { PAINT_SIMILARITY_IDENTITY, paintSimilarityBox, paintSimilarityInverse, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import type { NodeKey } from '#lib/paint/document/models/painting-document.ts';
 import { paintingNodeSteps, paintingStepNode, type PaintingSelectionCompiled } from '#lib/paint/document/models/painting-document-compile.ts';
@@ -25,7 +26,7 @@ import { shotPlaneLayAt, shotPlanePlaceAt, shotPlanePosesAt, shotRigPosedAt, sho
 import { shotFilmLattice, shotPlacedLattice, type ShotLattice, type ShotShutterAt } from './shot-lattice.ts';
 import { shotOccurrenceKey, shotOccurrencePlane } from './shot-occurrences.ts';
 import type { OccurrenceKey } from './shot-props.ts';
-import { shotNodeShift } from './shot-reach.ts';
+import { shotBackPainted, shotNodeShift } from './shot-reach.ts';
 import {
   shotRigHiddenCels, shotRigPieces, shotRigPiecesPlaced, type CompiledShotRig, type ShotRigFound, type ShotRigPosed, type ShotRigSkin, type ShotRigStretch,
 } from './shot-rigs.ts';
@@ -306,8 +307,8 @@ function shotPiecesPlan(input: ShotPlaneLayInput, found: ShotRigFound, { at, shu
 
 /**
  * `input`'s plane as it lies at `moment`: its sheets where their owners and its place put them, its pieces rigs posed,
- * its fades, ground and masks. Throws on a callback's visibility outside 0..1, or between 0 and 1 inside a pieces rig,
- * whose layers show whole or not at all, and on a reveal callback's value below 0.
+ * its fades, ground and masks. Throws on a callback's visibility outside 0..1 (in a pieces rig, not 0 or 1), or its
+ * lay of the back short of what the frame reads.
  */
 export function shotPlaneLayPlan(input: ShotPlaneLayInput, moment: ShotMomentAt): ShotPlaneLayPlan {
   const { at, shutter } = moment;
@@ -337,6 +338,11 @@ export function shotPlaneLayPlan(input: ShotPlaneLayInput, moment: ShotMomentAt)
 
   const { widthPx, heightPx } = selection.painting.document, groundKind = selection.ground ?? (plane.opaqueBack ? 'paper' : 'transparent');
   let ground: ShotGroundLay = null;
+  if (plane.opaqueBack && plane.lay.kind === 'moving') {
+    const moments = [at, ...(shutter ? [shutter.open, shutter.close] : [])];
+    const problem = paintCameraPaintedProblemAt(shot.camera, plane, moments.map((read) => ({ moment: read, painted: shotBackPainted(plane, motion, shotPlaneLayAt(plane, motion, read)) })));
+    if (problem) throw new Error(`shot: ${problem}`);
+  }
   if (groundKind === 'paper') {
     if (plane.opaqueBack && paintingPoseText(atMoment.place) === PAINTING_REST_POSE && !shutterAt) ground = { kind: 'stage' };
     else {

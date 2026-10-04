@@ -111,6 +111,15 @@ test('a layer inside a rig drawn as pieces shows whole or not at all: refused at
   assert.throws(() => planAt(props(() => 0.5), paintMoment(0)), /front\/neck's visibility is 0.5 at 0 s, inside front\/heron, drawn as pieces/);
 });
 
+/** A back laid a twentieth larger than the frame, drifting right 4 px a second: past its 8 px to spare after 2 s. */
+const driftingBack = ({ at }: PaintMoment) => ({ placement: { x: 4 * at, y: 0, rotation: 0, scale: 1.05 }, pivot: { x: 160, y: 120 } });
+
+test('the back laid by a callback is refused at the frame whose lay leaves the frame reading past its painting', () => {
+  const props: PaintedShotProps = { camera, planes: [{ id: 'back', depth: 1, lay: driftingBack, source: layersOf(pond(false), ['sky']) }] };
+  planAt(props, paintMoment(1));
+  assert.throws(() => planAt(props, paintMoment(3)), /plane back, the back, is painted to 4 px inside the frame \(at 3 s\)/);
+});
+
 const CARD_PAPER = { color: '#e9dfc8', absorbency: 0.5 } as const;
 
 /**

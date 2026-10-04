@@ -5,8 +5,8 @@
 // page adds its object.
 //
 // texture/wrapped-cylinder: two paintings dissolved halfway round a cylinder. texture/wrapped-tile: a tile wrapping
-// both ways on a plane whose uv runs to 2. shot/painted-cylinder: a label, finished as the back, and round a cylinder
-// at each frame's moment. shot/far-cylinder: the tile minified round a turning cylinder.
+// both ways on a plane whose uv runs to 2. shot/painted-cylinder: a label, flat and round a cylinder at each frame's
+// moment. shot/far-cylinder: the tile minified round a turning cylinder.
 
 import meadow from '#lib/paint/document/models/meadow.painting.ts';
 import { compilePaintingSelection } from '#lib/paint/document/models/painting-document-compile.ts';
@@ -89,6 +89,12 @@ function stampGateWrappedSource({ name, size, wrap, flood, bloomAt, bands }: Sta
 function stampGateWholePainting(source: PaintingSourceModule): LayerSelection {
   const evaluation = painting(source);
   return layersOf(evaluation, evaluation.document.layers.map(({ key }) => key));
+}
+
+/** A bare sheet of the gate's wrapped paper `frame` large, named `name`: a shot case's back, behind its smaller painting. */
+function stampGateBareBackSource(name: string, frame: { readonly width: number; readonly height: number }): PaintingSourceModule {
+  const factory = (): PaintingDocument => ({ widthPx: frame.width, heightPx: frame.height, paper: stampGateWrappedPaper(), medium: 'watercolour', layers: [{ key: 'bare', washes: [] }] });
+  return { default: Object.defineProperty(factory, 'name', { value: name }) };
 }
 
 /** `source`'s sheets' programs and steps, compiled with the gate's brushes. */
@@ -270,6 +276,8 @@ const STAMP_GATE_LABEL_SOURCE: PaintingSourceModule = {
 
 /** The painted-cylinder shot's view: one frame, the label flat across its top and the cylinder below it; the camera's field of view. */
 const STAMP_GATE_LABEL_VIEW = { frame: { width: 256, height: 304 }, fov: 30 } as const;
+/** The painted-cylinder shot's back, behind the label: bare paper the frame's size. */
+const STAMP_GATE_LABEL_BACK = stampGateBareBackSource('gateLabelBack', STAMP_GATE_LABEL_VIEW.frame);
 
 /**
  * A shot case's cylinder: its geometry, its middle at `at` in the frame, its uv running `repeats` times round (u) and up
@@ -298,6 +306,8 @@ export type StampGateShotTextureCase = {
 
 /** The far cylinder's view: one frame, the tile flat at its left and the cylinder right of it; the camera's field of view. */
 const STAMP_GATE_FAR_VIEW = { frame: { width: 240, height: 160 }, fov: 30 } as const;
+/** The far-cylinder shot's back, behind the tile: bare paper the frame's size. */
+const STAMP_GATE_FAR_BACK = stampGateBareBackSource('gateTileBack', STAMP_GATE_FAR_VIEW.frame);
 
 /**
  * The far cylinder, its uv running 4 times round and twice up, so a tile texel is near a quarter of a frame px either
@@ -311,8 +321,9 @@ const STAMP_GATE_FAR_CYLINDER = {
 const STAMP_GATE_FAR_FRAMES = [0, 1, 2, 3].map((frame) => frame / STAMP_GATE_SHOT_FPS);
 
 export const STAMP_GATE_SHOT_TEXTURE_CASES: Readonly<Record<StampGateShotTextureId, StampGateShotTextureCase>> = {
-  // The finished label as the back; round the cylinder in front, its seam to the camera, the label at each frame's
-  // moment: between its strokes at 2 s, then after both. Read otherwise than the back, the texture solves its own prefix.
+  // The finished label flat on its paper before the bare back; round the cylinder in front, its seam to the camera, the
+  // label at each frame's moment: between its strokes at 2 s, then after both. Read otherwise than the flat plane, the
+  // texture solves its own prefix.
   'shot/painted-cylinder': {
     frame: STAMP_GATE_LABEL_VIEW.frame,
     frames: STAMP_GATE_LABEL_FRAMES,
@@ -320,16 +331,24 @@ export const STAMP_GATE_SHOT_TEXTURE_CASES: Readonly<Record<StampGateShotTexture
       const label = painting(STAMP_GATE_LABEL_SOURCE);
       return {
         camera: { stage: stampStage(STAMP_GATE_LABEL_VIEW.frame, 2), fov: STAMP_GATE_LABEL_VIEW.fov, lens: { bloom: 0, shutter: 0 } },
-        planes: [{ id: 'label', depth: 2, source: layersOf(label, ['label']) }, { id: 'cylinder', depth: 1, source: { kind: 'three', build: buildCylinder } }],
+        planes: [
+          { id: 'paper', depth: 3, source: layersOf(painting(STAMP_GATE_LABEL_BACK), ['bare']) },
+          { id: 'label', depth: 2, source: layersOf(label, ['label'], { ground: 'paper' }) },
+          { id: 'cylinder', depth: 1, source: { kind: 'three', build: buildCylinder } },
+        ],
         paintedTextures: [{ id: 'label', source: ({ at }: PaintMoment) => layersOf(label, ['label'], { at }), widthPx: STAMP_GATE_LABEL.width, heightPx: STAMP_GATE_LABEL.height }],
       };
     },
     cylinder: { geometry: STAMP_GATE_CYLINDER, at: { x: 128, y: 216 }, repeats: { u: 1, v: 1 }, turnSeconds: null },
     texture: 'label',
-    inputs: () => ({ label: stampGateTexturePainting(STAMP_GATE_LABEL_SOURCE), strokes: STAMP_GATE_LABEL_STROKES, texture: STAMP_GATE_LABEL, view: STAMP_GATE_LABEL_VIEW }),
+    inputs: () => ({
+      label: stampGateTexturePainting(STAMP_GATE_LABEL_SOURCE), back: stampGateTexturePainting(STAMP_GATE_LABEL_BACK), strokes: STAMP_GATE_LABEL_STROKES, texture: STAMP_GATE_LABEL,
+      view: STAMP_GATE_LABEL_VIEW,
+    }),
   },
-  // The tile finished as the back, flat at its size; worn at its size round a cylinder a quarter of it, so the texture
-  // shows minified about 4× and three reads it through its mip chain, the tile's seams and corner coming round as it turns.
+  // The tile finished flat at its size on its paper, before the bare back; worn at its size round a cylinder a quarter
+  // of it, so the texture shows minified about 4× and three reads it through its mip chain, the tile's seams and corner
+  // coming round as it turns.
   'shot/far-cylinder': {
     frame: STAMP_GATE_FAR_VIEW.frame,
     frames: STAMP_GATE_FAR_FRAMES,
@@ -337,13 +356,17 @@ export const STAMP_GATE_SHOT_TEXTURE_CASES: Readonly<Record<StampGateShotTexture
       const tile = stampGateWholePainting(STAMP_GATE_TILE_SOURCE);
       return {
         camera: { stage: stampStage(STAMP_GATE_FAR_VIEW.frame, 2), fov: STAMP_GATE_FAR_VIEW.fov, lens: { bloom: 0, shutter: 0 } },
-        planes: [{ id: 'tile', depth: 2, source: tile }, { id: 'cylinder', depth: 1, source: { kind: 'three', build: buildCylinder } }],
+        planes: [
+          { id: 'paper', depth: 3, source: layersOf(painting(STAMP_GATE_FAR_BACK), ['bare']) },
+          { id: 'tile', depth: 2, source: { ...tile, ground: 'paper' } },
+          { id: 'cylinder', depth: 1, source: { kind: 'three', build: buildCylinder } },
+        ],
         paintedTextures: [{ id: 'tile', source: tile, widthPx: STAMP_GATE_TILE.width, heightPx: STAMP_GATE_TILE.height }],
       };
     },
     cylinder: STAMP_GATE_FAR_CYLINDER,
     texture: 'tile',
-    inputs: () => ({ tile: stampGateTexturePainting(STAMP_GATE_TILE_SOURCE), texture: STAMP_GATE_TILE, view: STAMP_GATE_FAR_VIEW }),
+    inputs: () => ({ tile: stampGateTexturePainting(STAMP_GATE_TILE_SOURCE), back: stampGateTexturePainting(STAMP_GATE_FAR_BACK), texture: STAMP_GATE_TILE, view: STAMP_GATE_FAR_VIEW }),
   },
 };
 

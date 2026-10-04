@@ -219,10 +219,10 @@
     "shot/far-cylinder": {
       "file": "shot/far-cylinder.png",
       "output": "c258108158139a2d77bda3ad00e4b005a3c4dca2060e8564e3bcc95145c98f47",
-      "inputs": "9ae80be0cf4f8c22f75f9811e40d7e1743b25e6e4010bdb8116407fb543e7f39",
-      "reason": "new case: the wrapped tile worn at its size round a small turning cylinder (uv 4 round, 2 up; a texel near a quarter px), four frames at the shot rate, read through the texture's mip chain; accepted by eye, enlarged: steady frame to frame and seamless, where the same frames without the chain sparkle and break its bands",
+      "inputs": "e5234d0721fa9fd63905e6f00a188093f30ecc12743d334ff8303b32ebdf93f9",
+      "reason": "vid-157 camera-build: the camera build refuses a back whose painting the frame and its blur read past, so the rainy street's sky is laid a tenth larger about the frame's centre, and the shot texture cases' label and tile lie flat on a nearer plane (ground paper) before a bare frame-sized back of the same paper",
       "accepted": "2026-10-04",
-      "acceptedOver": "a53c81f3",
+      "acceptedOver": "89bed20f",
       "adapter": "apple metal-3"
     },
     "shot/masks": {
@@ -237,10 +237,10 @@
     "shot/painted-cylinder": {
       "file": "shot/painted-cylinder.png",
       "output": "52710699a499c054524caef411519a3ed3ea4f519d97885eeda4fe89707c116d",
-      "inputs": "0fa8257754baa1951634e1f6ce0c049283a87e9ad54b5ccd95274dc1d1c785b6",
-      "reason": "vid-157 texture-mips review: a shot texture case's inputs take its frames and cylinder from its row, so painted-cylinder's now hold its place, uv repeats and turn as well as its geometry; image unchanged",
+      "inputs": "f30b524032dbc3fc675890f26bba3a64c8aecbb971d0bc2f22cf4f6791f19d4b",
+      "reason": "vid-157 camera-build: the camera build refuses a back whose painting the frame and its blur read past, so the rainy street's sky is laid a tenth larger about the frame's centre, and the shot texture cases' label and tile lie flat on a nearer plane (ground paper) before a bare frame-sized back of the same paper",
       "accepted": "2026-10-04",
-      "acceptedOver": "723c2e72",
+      "acceptedOver": "89bed20f",
       "adapter": "apple metal-3"
     },
     "shot/paper-heron": {
@@ -263,11 +263,11 @@
     },
     "shot/rainy-street": {
       "file": "shot/rainy-street.png",
-      "output": "5ad2fa2b3acc38b49bd889e41825416403bd5cd356df862b765c0083ee9307ef",
-      "inputs": "e5d339e3b5c157361e41325fc36921b63caf10b53f2ec0e2ce55c9f8e8a2172a",
-      "reason": "re-keyed: the rain's painting renamed STAMP_GATE_RAIN_PAINTING (factory gateRain), so its programs' name moves; the rainy street's ramps read seg; images compared by eye with the accepted ones",
+      "output": "541324bde3b6a63677d7923e1030f60216f714a0790788bc776ff2f59492321e",
+      "inputs": "388084da9737757ff3f6452141829c879ad60889597bd02617fcceb9227c251f",
+      "reason": "vid-157 camera-build: the camera build refuses a back whose painting the frame and its blur read past, so the rainy street's sky is laid a tenth larger about the frame's centre, and the shot texture cases' label and tile lie flat on a nearer plane (ground paper) before a bare frame-sized back of the same paper",
       "accepted": "2026-10-04",
-      "acceptedOver": "0c96f70b",
+      "acceptedOver": "89bed20f",
       "adapter": "apple metal-3"
     },
     "shot/rigged-dissolve": {

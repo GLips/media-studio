@@ -175,9 +175,9 @@ const solvedText = ({ solves }: StampPaintCosts) => solves.map(({ program, from,
 const boxText = (box: { x0: number; y0: number; x1: number; y1: number } | null) => (box ? `x ${box.x0}..${box.x1}, y ${box.y0}..${box.y1}` : 'nothing');
 
 /**
- * Shot texture case `id` through one renderer: its first frame solves its texture's prefix itself, the back reading
- * the finished painting; its second, a stroke later, changes the cylinder and nothing else. Warmed over its frames,
- * neither solves anything.
+ * Shot texture case `id` through one renderer: its first frame solves its texture's prefix itself, the flat plane
+ * reading the finished painting, beside the bare back; its second, a stroke later, changes the cylinder and nothing
+ * else. Warmed over its frames, neither solves anything.
  */
 export async function checkStampGateShotTextureCase(id: StampGateShotTextureCaseId): Promise<StampGateWashCheck[]> {
   const { frames, frame: { width, height } } = STAMP_GATE_SHOT_TEXTURE_CASES[id], [first, second] = frames;
@@ -188,8 +188,8 @@ export async function checkStampGateShotTextureCase(id: StampGateShotTextureCase
   const warmSolves = warm.solves, drawnSolves = warmTaken.flatMap(({ solves }) => solves);
   return [
     {
-      id: `${id}: own solve`, passed: taken[0].solves.length === 2,
-      detail: `at ${first} s it solved ${solvedText(taken[0])}: the back's whole painting and the texture's prefix to ${first} s, 2 wanted (1 when the texture reads the back's films)`,
+      id: `${id}: own solve`, passed: taken[0].solves.length === 3,
+      detail: `at ${first} s it solved ${solvedText(taken[0])}: the bare back, the flat plane's whole painting and the texture's prefix to ${first} s, 3 wanted (2 when the texture reads the flat plane's films)`,
     },
     {
       id: `${id}: drawn each frame`, passed: onCylinder,

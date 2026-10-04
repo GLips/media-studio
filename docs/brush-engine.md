@@ -404,8 +404,11 @@ an error. A frame held on twos gives every group the keys it had, so it repaints
   plane's extent over the whole shot, not at sampled times: the back everywhere the frame looks; a nearer plane where
   its groups' paint can be laid (`paint-motion-reach.ts`: the painted box grown by the most each step of the
   `motion` it's given and the recipe's own motion can move it), or everywhere the frame looks once a group's marks
-  are live or re-seeded. A frame state from anything but that `motion` isn't covered. It reports each plane's
-  greatest magnification and names bad planes. `buildPaintingCamera` lays the scene's planes once
+  are live or re-seeded. A frame state from anything but that `motion` isn't covered. A back whose painting it's
+  given (`PaintCameraPicturePlane.painted`: a box of document px and its lay) must hold what the frame reads of it in
+  every span, grown by the widest defocus's reach, 3 sigma + 2 px: past it lies bare paper, so the build refuses one
+  short, never clamps, naming how much larger to paint or lay it (`paintCameraPaintedProblem`; per moment,
+  `paintCameraPaintedProblemAt`). It reports each plane's greatest magnification and names bad planes. `buildPaintingCamera` lays the scene's planes once
   (`StampPaintingCamera.planes`, a `StampLaidPlanes`: the back a picture by type, each nearer picture with the
   groups it shows), and the renderer takes that whole. `paint-camera-world.ts` gives a pose as the studio's one camera
   description (`ShotCamera`), landing a 3D point where the plane step lays its depth. A three plane renders past the
@@ -500,8 +503,10 @@ to near, each painted plane's occurrences from its first evaluation (read throug
 visibility, motion and masks over them, and the camera built over each plane's reach (`shot-reach.ts`). A plane laid on the
 frame is unchecked in that build and laid through the built camera after it, the inverse of its plane view at the
 lay's `at` (`paintPlaneViewAt`, `shotScreenLaid` in `shot-placement.ts`), then checked by the build's own rule
-(`paintCameraExtentProblem`): a cover once, as the shot compiles; a pin each frame, from its elements' centres as
-measured then, and again when one resizes (`shotPinnedPlanes`). Motion (`shot-motion.ts`) hangs each node from its nearest enclosing node, a paintless
+(`paintCameraExtentProblem`, and for the back `paintCameraPaintedProblem`): a cover once, as the shot compiles; a pin
+each frame, from its elements' centres as measured then, and again when one resizes (`shotPinnedPlanes`). The back's
+painted box is its document shrunk by its node's shift (`shotBackPainted`); a back laid by a callback is checked at
+each frame's moment and its shutter's ends as its lay is planned (`shotPlaneLayPlan`), throwing where it falls short. Motion (`shot-motion.ts`) hangs each node from its nearest enclosing node, a paintless
 group's too, its clock chained under its parents' and the plane's `clock`. `shot-frame-plan.ts` reads a plane at one
 moment: the selections its source blends at its source moment, each with its weight (`shotPlaneSharesAt`), its node poses (boil wobble out of the poses marks solve under, in the
 ones the lay reads), boil epochs, visibility and rig poses. A rig (`shot-rigs.ts`) is found over its cels as all the

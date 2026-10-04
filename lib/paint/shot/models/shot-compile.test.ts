@@ -150,12 +150,30 @@ test('a transparent back is refused unless HTML lies behind the first canvas, ov
   assert.deepEqual(problemsOf({ ...props, planes: [{ id: 'back', depth: 1, source: layersOf(pond, ['sky']) }] }), ['back.visibility: is the back, shown wherever the frame is: fade a nearer plane or its occurrences']);
 });
 
+test('the back is refused where the frame or its blur reads past its painting, saying how much larger to paint or lay it, and laid that much larger it holds', () => {
+  const focused: PaintedShotProps['camera'] = {
+    ...camera, stage: stampStage({ width: 320, height: 240 }, 24), plays: [paintCameraPlay({ kind: 'focus', keys: [{ at: 0, focus: 1, aperture: 6 }] }, { clock: { at: 0 }, origin: 'focus' })],
+  };
+  const backed = (scale: number): PaintedShotProps => ({
+    camera: focused,
+    planes: [{ id: 'back', depth: 2, lay: { placement: { x: 0, y: 0, rotation: 0, scale }, pivot: { x: 160, y: 120 } }, source: layersOf(pond, ['sky']) }, { id: 'heron', depth: 1, source: layersOf(pond, ['heron']) }],
+  });
+  const [refused] = problemsOf(backed(1));
+  assert.equal(refused, [
+    'camera: plane back, the back, is painted 0 px past the frame (at rest), and its blur reads 12 px past the frame, and past its painting lies bare paper:',
+    'paint it 12 px larger on every side, or lay it 10.0% larger about its centre',
+  ].join(' '));
+  assert.deepEqual(problemsOf(backed(1 + Number(/(\d+\.\d)% larger/.exec(refused)![1]) / 100)), []);
+});
+
 /** A camera panning 60 px at depth 1 over a stage 40 px wider each side: a plane laid far enough right is seen past it. */
 const panning: PaintedShotProps['camera'] = {
   ...camera, stage: stampStage({ width: 320, height: 240 }, 40), plays: [paintCameraPlay({ kind: 'move', keys: [{ at: 0 }, { at: 1, pan: { x: 60, y: 0 } }] }, { clock: { at: 0 }, origin: 'pan' })],
 };
+/** The back laid a quarter larger about its centre, so the pan never shows past its painting. */
+const backLay = { placement: { x: 0, y: 0, rotation: 0, scale: 1.25 }, pivot: { x: 160, y: 120 } };
 const laidOnFrame = (lay: ScreenPin | CoverFrame): PaintedShotProps => ({
-  camera: panning, planes: [{ id: 'back', depth: 2, source: layersOf(pond, ['sky']) }, { id: 'label', depth: 1, lay, source: layersOf(pond, ['heron']) }],
+  camera: panning, planes: [{ id: 'back', depth: 2, lay: backLay, source: layersOf(pond, ['sky']) }, { id: 'label', depth: 1, lay, source: layersOf(pond, ['heron']) }],
 });
 
 test('a cover holds the frame through the shot\'s own camera at its second, refused where it lays paint past the stage', () => {

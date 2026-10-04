@@ -11,7 +11,7 @@ import type { LensExposure } from '#lib/picture/lens/models/lens-exposures.ts';
 import { shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { StampLensFrame, StampPlaneExtent, StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
-import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { paintLaneClipAt, type PaintLane, type PaintPlayClock } from './paint-clock.ts';
 import { paintPxRounded, paintRatioRounded } from './paint-deform.ts';
@@ -60,8 +60,19 @@ export const PAINT_CAMERA_NEAREST = 1e-3;
  */
 export type PaintCameraLens = { readonly bloom: number; readonly shutter: number };
 
-/** A picture plane, `depth` units from the camera at rest: a picture on the stage, held as far as its `extent`. */
-export type PaintCameraPicturePlane = { readonly id: string; readonly depth: number; readonly kind: 'picture'; readonly extent: StampPlaneExtent };
+/**
+ * The opaque back's painting: `box`, the document px its paint fills wherever its node moves it, and `lay`, document
+ * px to plane px. Past the box lies bare paper, so the frame, and all its blur reads, stay inside it.
+ */
+export type PaintCameraPaintedBox = { readonly box: StampBox; readonly lay: PaintSimilarity };
+
+/**
+ * A picture plane, `depth` units from the camera at rest: a picture on the stage, held as far as its `extent`; the
+ * opaque back's also `painted` over a box (PaintCameraPaintedBox) where its lay is known as the camera builds.
+ */
+export type PaintCameraPicturePlane = {
+  readonly id: string; readonly depth: number; readonly kind: 'picture'; readonly extent: StampPlaneExtent; readonly painted?: PaintCameraPaintedBox;
+};
 
 /**
  * A three plane, `depth` units from the camera at rest: a three.js render, drawn each frame through the camera's
