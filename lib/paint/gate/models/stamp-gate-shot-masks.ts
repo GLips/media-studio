@@ -16,9 +16,10 @@ import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-regi
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { shotPathMaskCapsules } from '#lib/paint/shot/models/shot-masks.ts';
 import type { PaintedShotProps, PlaneMask, PlaneProps, ThreeSource } from '#lib/paint/shot/models/shot-props.ts';
+import { dissolve } from '#lib/paint/shot/models/shot-selection.ts';
 import { STAMP_GATE_HERON_VANE, stampGateHeronLayer, stampGateHeronPolygon, stampGateInsidePolygon, stampGatePaperHeronDocument } from './stamp-gate-paper-heron.ts';
 
-/** The masked shot's cases: its path mask's; its alphaOf masks'; and a painted plane's alphaOf of another, over frames and faded. */
+/** The masked shot's cases: its path mask's; its alphaOf masks'; and a painted plane's alphaOf of another, over frames, faded and dissolving. */
 export const STAMP_GATE_SHOT_MASK_IDS = ['shot/masks: path', 'shot/masks: alphaOf', 'shot/masks: alphaOf painted'] as const;
 export type StampGateShotMaskId = (typeof STAMP_GATE_SHOT_MASK_IDS)[number];
 
@@ -56,8 +57,11 @@ const stageFor = (pan: number) => stampStage({ width: 200, height: 140 }, 2 + 2 
 
 /** What a masked shot shows. */
 export type StampGateMaskedShot = {
-  /** Revealed along its strokes, unmasked, half faded or hidden (its group's visibility 0.5 or 0, its plane still laid), or left out. */
-  readonly heron: 'revealed' | 'unmasked' | 'half' | 'hidden' | 'none';
+  /**
+   * Revealed along its strokes, unmasked, half faded or hidden (its group's visibility 0.5 or 0, its plane still laid),
+   * dissolving halfway to the pond's water (none of which lies under it), or left out.
+   */
+  readonly heron: 'revealed' | 'unmasked' | 'half' | 'hidden' | 'dissolving' | 'none';
   /** The disc (STAMP_GATE_MASKS_DISC) as a picture plane or drawn by a three plane; none when left out. */
   readonly disc?: 'picture' | ThreeSource;
   /** The tint cut to the heron's wing, to all but it, to the whole heron group, or to the disc; uncut; or left out. */
@@ -72,7 +76,10 @@ export type StampGateMaskedShot = {
 export function stampGateMaskedShot({ heron, disc, tint, pond, pan = 0 }: StampGateMaskedShot): PaintedShotProps {
   const stage = stageFor(pan), evaluation = painting(STAMP_GATE_TINTED_HERON), cut: PlaneMask = { kind: 'path', subpaths: STROKES, ...BAND, revealPx: 0 };
   const planes: PlaneProps[] = [{ id: 'pond', depth: 3, source: layersOf(evaluation, ['water']), ...(pond === 'cut' && { masks: [cut] }) }];
-  if (heron !== 'none') planes.push({ id: 'heron', depth: 2, source: layersOf(evaluation, ['heron']), ...(heron === 'revealed' && { masks: [{ ...cut, revealPx: ({ at }) => revealAt(at) }] }) });
+  if (heron !== 'none') {
+    const source = heron === 'dissolving' ? dissolve(layersOf(evaluation, ['heron']), layersOf(evaluation, ['water']), 0.5) : layersOf(evaluation, ['heron']);
+    planes.push({ id: 'heron', depth: 2, source, ...(heron === 'revealed' && { masks: [{ ...cut, revealPx: ({ at }) => revealAt(at) }] }) });
+  }
   if (disc) {
     const source = disc === 'picture' ? { kind: 'picture', extent: { kind: 'everywhere' }, pictureAt: ({ at }: PaintMoment) => Promise.resolve(stampGateMaskDisc(at, stage.margin)) } as const : disc;
     planes.push({ id: 'disc', depth: STAMP_GATE_MASKS_DISC.depth, source });

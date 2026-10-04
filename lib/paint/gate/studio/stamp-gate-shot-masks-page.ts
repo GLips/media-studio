@@ -126,19 +126,19 @@ async function checkAlphaOf(): Promise<StampGateWashCheck[]> {
 const KEPT_TIMES = [STAMP_GATE_MASKS_AT.none, STAMP_GATE_MASKS_AT.part, STAMP_GATE_MASKS_AT.whole, STAMP_GATE_MASKS_AT.whole + 1] as const;
 
 /**
- * A painted plane reading another: the tint cut to the revealing heron's wing, drawn frame after frame by one
- * renderer, draws each frame as drawn alone, laying nothing anew once both hold. Cut to the heron faded to half, it
- * reads half the coverage, which cuts its opacity: a glaze's light is concave in opacity, so that lays over half.
+ * A painted plane reading another: the tint cut to the revealing heron's wing draws each frame of one renderer as
+ * drawn alone, laying nothing anew once both hold. Cut to the heron faded to half, or dissolving halfway to water
+ * elsewhere, it reads half the coverage, cutting its opacity: a glaze's light is concave in opacity, laying over half.
  */
 async function checkAlphaOfPainted(): Promise<StampGateWashCheck[]> {
   const shown = { heron: 'revealed', tint: 'wing' } as const, { width } = stampGateMaskedShot(shown).camera.stage.frame;
   const kept = await maskedFrames(shown, KEPT_TIMES), alone = await Promise.all(KEPT_TIMES.map(async (at) => (await maskedFrames(shown, [at])).frames[0]));
   const differences = kept.frames.map((frame, i) => stampGateFrameDifference(frame, alone[i])), misses = kept.taken.map(({ counts }) => counts.get('picture misses') ?? 0);
-  const tinted = await Promise.all((['unmasked', 'half'] as const).map(async (heron) => {
+  const tinted = await Promise.all((['unmasked', 'half', 'dissolving'] as const).map(async (heron) => {
     const [[bare], [cut], [uncut]] = await Promise.all((['none', 'heron', 'uncut'] as const).map(async (tint) => (await maskedFrames({ heron, tint }, [0])).frames));
     return stampGateVaneTintShare(cut, uncut, bare, width);
   }));
-  const [unfaded, faded] = tinted, share = unfaded > 0 ? faded / unfaded : 0;
+  const [unfaded, faded, dissolving] = tinted, share = unfaded > 0 ? faded / unfaded : 0, dissolvedShare = unfaded > 0 ? dissolving / unfaded : 0;
   return [
     {
       id: 'shot/masks: alphaOf kept', passed: differences.every(stampGateFramePasses) && misses.at(-1) === 0,
@@ -147,6 +147,10 @@ async function checkAlphaOfPainted(): Promise<StampGateWashCheck[]> {
     {
       id: 'shot/masks: alphaOf faded', passed: share >= 0.45 && share <= 0.8,
       detail: `the tint cut to heron/heron lays ${unfaded.toFixed(3)} of itself over the vane, ${faded.toFixed(3)} with the heron at half visibility: ${share.toFixed(3)} as much (0.45..0.8 wanted: half its opacity)`,
+    },
+    {
+      id: 'shot/masks: alphaOf dissolving', passed: Math.abs(dissolvedShare - share) <= 0.03,
+      detail: `with the heron dissolving halfway to water lying elsewhere, the tint cut to heron/heron lays ${dissolvedShare.toFixed(3)} as much as unfaded (${share.toFixed(3)}, as faded to half, within 0.03 wanted)`,
     },
   ];
 }

@@ -603,7 +603,8 @@ nothing revealed drawing as hidden, all as unmasked, and part matching the whole
 past it, with nothing solved; cuts the pond's paint but not its paper; and cuts a tint to the heron's wing, to all
 but it, and to a disc moving across as a picture plane and as a three plane under a panned camera. Cut to the
 revealing heron's wing frame after frame, each frame draws as it does alone and a held frame lays nothing anew; cut
-to the heron faded to half, it tints the wing about half as much. Each shot's frame is a baseline (`shot/`) accepted by eye. `shot/page`
+to the heron faded to half, it tints the wing about half as much, and just as much cut to the heron dissolving
+halfway to water lying elsewhere. Each shot's frame is a baseline (`shot/`) accepted by eye. `shot/page`
 (`stamp-gate-shot-dom-page.ts`) holds a shot's element on the page, scaled as a player shows it, and reads it through
 the DOM adapter: HTML behind the first canvas or not, a canvas in a wrapper at an identity transform refused; the
 heron alone, a clear back, drawn premultiplied, clear at its corners; then pinned to an element, its paint's centroid
