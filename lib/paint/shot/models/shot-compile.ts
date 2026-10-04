@@ -5,14 +5,13 @@
 // problem is found before any is thrown. Covers are laid through the built camera, pins each frame (shot-placement.ts).
 //
 // Negative space: refused are visibility on the opaque back, a lay on a picture or three plane, an alphaOf inside a
-// pieces rig, and a rig on a dissolving plane (paintedPlaneBlendProblems).
+// pieces rig, and a dissolve end cutting a rigged group otherwise than its rig does (shotRigEndProblems).
 
 import { buildPaintCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
 import type { PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
 import { paintNodeClockProblem, paintNodeClockSteps, paintNodeTimeAt, type PaintNodeClock, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
 import type { PaintingBrushOf } from '#lib/paint/document/models/painting-deposit-compile.ts';
 import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
-import type { LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { paintMoment, type PaintMoment, type StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
@@ -30,7 +29,7 @@ import {
 } from './shot-props.ts';
 import { shotCameraPlanes } from './shot-reach.ts';
 import { compileShotRig, type CompiledShotRig } from './shot-rigs.ts';
-import { paintedPlaneBlendProblems, paintedSourceProblems, paintedSourceSelections, type PaintedSource, type ShotPlanePaints } from './shot-selection.ts';
+import { paintedPlaneBlendProblems, paintedSourceEnds, paintedSourceProblems, type PaintedSource, type PaintedSourceEnd, type ShotPlanePaints } from './shot-selection.ts';
 import { shotVisibilityProblems } from './shot-visibility.ts';
 import { shotWarmProblems, type ShotWarm } from './shot-warm.ts';
 
@@ -47,15 +46,15 @@ export type ShotPlaneLay =
 type ShotPlaneCommon = { readonly id: string; readonly depth: number; readonly canvas: number };
 
 /**
- * A painted plane compiled: its source, read at `sourceClock`'s moment; its lay; its first evaluation's `selections`,
- * the size and ground all paint (`paints`) and their occurrences; its rigs, by occurrence; `opaqueBack`: it's the opaque
+ * A painted plane compiled: its source, read at `sourceClock`'s moment; its lay; its first evaluation's `ends` (every
+ * selection it names), the size and ground all paint (`paints`) and their occurrences; `opaqueBack`: it's the opaque
  * back, laid on its root's paper wherever the frame shows (a clear back over HTML is laid as clear film); and its
  * masks, in order.
  */
 export type CompiledShotPaintedPlane = ShotPlaneCommon & {
   readonly kind: 'painted'; readonly source: PresentationValue<PaintedSource>; readonly sourceClock: readonly PaintSceneStep[]; readonly lay: ShotPlaneLay;
-  readonly selections: readonly LayerSelection[]; readonly paints: ShotPlanePaints; readonly occurrences: readonly ShotOccurrence[];
-  readonly rigged: readonly OccurrenceKey[]; readonly opaqueBack: boolean; readonly masks: readonly PlaneMask[];
+  readonly ends: readonly PaintedSourceEnd[]; readonly paints: ShotPlanePaints; readonly occurrences: readonly ShotOccurrence[];
+  readonly opaqueBack: boolean; readonly masks: readonly PlaneMask[];
 };
 
 /** A picture or three plane compiled: its source, posed or pictured at `sourceClock`'s moment. */
@@ -170,27 +169,27 @@ function compilePlaneLay({ lay, reach }: PlaneProps): ShotPlaneLay {
 }
 
 /**
- * Plane `props` (a painted one, holding the rigs `rigged`) compiled from its first evaluation, or null and its
- * problems, its source's at `field`. The farthest plane is the back, opaque; with a transparent ground over HTML
- * behind the first canvas, it's clear film instead.
+ * Plane `props` (a painted one) compiled from its first evaluation, or null and its problems, its source's at `field`.
+ * The farthest plane is the back, opaque; with a transparent ground over HTML behind the first canvas, it's clear
+ * film instead.
  */
 function compilePaintedPlane(
-  props: PlaneProps, source: PresentationValue<PaintedSource>, common: ShotPlaneCommon, farthest: boolean, page: ShotPage, rigged: readonly OccurrenceKey[], fps: number,
-  problems: PaintingProblem[], field = 'source',
+  props: PlaneProps, source: PresentationValue<PaintedSource>, common: ShotPlaneCommon, farthest: boolean, page: ShotPage, fps: number, problems: PaintingProblem[],
+  field = 'source',
 ): CompiledShotPaintedPlane | null {
   const sourceClock = paintNodeClockSteps(props.sourceClock);
   const first = shotPresentationAt(source, paintNodeTimeAt(sourceClock, paintMoment(0), fps));
   const sourceProblems = paintedSourceProblems(props.id, first, field);
   problems.push(...sourceProblems);
   if (sourceProblems.length) return null;
-  const selections = paintedSourceSelections(first), [{ painting: { document: { widthPx, heightPx } }, ground }] = selections, paints = { widthPx, heightPx, ground };
-  problems.push(...paintedPlaneBlendProblems(props.id, selections, paints, rigged, field));
+  const ends = paintedSourceEnds(first, field), [{ selection: { painting: { document: { widthPx, heightPx } }, ground } }] = ends, paints = { widthPx, heightPx, ground };
+  problems.push(...paintedPlaneBlendProblems(props.id, ends, paints));
   const clear = ground === 'transparent';
   if (farthest && clear && !page.htmlBehind) {
     problems.push(shotError(props.id, 'source.ground', 'is the back, laid on its paper wherever the frame shows: its ground is transparent only over HTML before the first canvas'));
   }
   return {
-    ...common, kind: 'painted', source, sourceClock, lay: compilePlaneLay(props), opaqueBack: farthest && !clear, selections, paints, occurrences: shotPlaneOccurrences(props.id, first), rigged,
+    ...common, kind: 'painted', source, sourceClock, lay: compilePlaneLay(props), opaqueBack: farthest && !clear, ends, paints, occurrences: shotPlaneOccurrences(props.id, first),
     masks: props.masks ?? [],
   };
 }
@@ -205,15 +204,12 @@ function compileShotRigs(rigs: NonNullable<PaintedShotProps['rigs']>, planes: re
       problems.push(shotError(occurrence, 'rig', 'names no group occurrence of a painted plane of this shot'));
       continue;
     }
-    // Refused with its plane's source (paintedPlaneBlendProblems): a rig is found over one selection's paint, and
-    // three.js draws a pieces rig the moment it's asked, so two selections' pieces would overwrite each other's.
-    if (plane.selections.length > 1) continue;
     const outer = found.groups.find((group) => Object.hasOwn(rigs, group));
     if (outer) {
       problems.push(shotError(occurrence, 'rig', `lies in ${outer}, which is rigged: its parts pose all it holds, so nothing in it is rigged again`));
       continue;
     }
-    const made = compileShotRig(occurrence, plane.id, plane.selections[0].painting, rig);
+    const made = compileShotRig(occurrence, plane.id, plane.ends, rig);
     problems.push(...made.problems);
     if (made.rig) compiled.set(occurrence, made.rig);
   }
@@ -281,8 +277,7 @@ export function compilePaintedShot(
     const { source } = plane, sourceClock = paintNodeClockSteps(plane.sourceClock);
     if (typeof source !== 'function' && source.kind === 'picture') return [{ ...common, sourceClock, kind: 'picture', source }];
     if (typeof source !== 'function' && source.kind === 'three') return [{ ...common, sourceClock, kind: 'three', source }];
-    const rigged = Object.keys(props.rigs ?? {}).filter((key) => shotOccurrencePlane(key) === plane.id);
-    const painted = compilePaintedPlane(plane, source, common, index === 0, page, rigged, fps, problems);
+    const painted = compilePaintedPlane(plane, source, common, index === 0, page, fps, problems);
     return painted ? [painted] : [];
   });
   const [back] = planes, clearBack = !!back && (back.kind === 'painted' ? !back.opaqueBack : back.kind === 'three' || back.source.extent.kind !== 'everywhere');
@@ -297,7 +292,7 @@ export function compilePaintedShot(
     const common = { id: plane.id, depth: plane.depths.far, canvas: canvasOf(plane.canvas) };
     // Each variant compiles as a painted plane does, under its instanced plane's id (CompiledShotVariant says why).
     const variants = Object.entries(plane.variants).map(([name, source]) =>
-      [name, compilePaintedPlane({ id: plane.id, depth: plane.depths.far, source }, source, common, false, page, [], fps, problems, `variants.${name}`)] as const);
+      [name, compilePaintedPlane({ id: plane.id, depth: plane.depths.far, source }, source, common, false, page, fps, problems, `variants.${name}`)] as const);
     const made = compileShotInstancedPlane(plane, common.canvas, back, props.camera.stage, variants, problems);
     return made ? [made] : [];
   }) : [];

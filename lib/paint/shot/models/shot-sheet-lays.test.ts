@@ -10,7 +10,7 @@ import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-
 import { stampPointBox, stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { stampRoundTipStatedProfile } from '#lib/paint/painting/models/stamp-tip-support.ts';
 import { compilePaintedShot } from './shot-compile.ts';
-import { shotPlanePosesAt, shotPlaneSharesAt } from './shot-frame-plan.ts';
+import { shotPlanePosesAt, shotPlaneSharesAt, shotRigReader } from './shot-frame-plan.ts';
 import type { PaintedShotProps, RigPart } from './shot-props.ts';
 import type { ShotRigFound } from './shot-rigs.ts';
 import { shotPlaneLayPlan } from './shot-sheet-lays.ts';
@@ -57,12 +57,12 @@ function planAt(props: PaintedShotProps, at: PaintMoment) {
   assert.deepEqual(problems, []);
   const [plane] = shot!.planes;
   assert.ok(plane.kind === 'painted');
-  const [{ selection }] = shotPlaneSharesAt(plane, at, FPS), compiled = compilePaintingSelection(selection.painting, brushOf, { layers: selection.layers });
+  const [{ selection }] = shotPlaneSharesAt(shot!, plane, at), compiled = compilePaintingSelection(selection.painting, brushOf, { layers: selection.layers });
   const films = compiled.sheets.map(({ layers }) => layers.map((_, f) => ({ box: stampPointBox({ x: 30, y: 90, w: 180, h: 40 }), key: `film ${f}` })));
   // Rigs found with unit axes: what the plan reads of them is their parts' poses, not the paint they were found over.
   const rigs: ShotRigFound[] = [...shot!.rigs.values()].map((rig) => ({ rig, axes: new Map(rig.parts.map(({ id }) => [id, { direction: 0, length: 1 }])), skin: null }));
-  const solved = shotPlanePosesAt(plane, shot!.motion, rigs, at, false);
-  return { solved, plan: shotPlaneLayPlan({ shot: shot!, plane, selection, compiled, films, solved, rigs, stage: camera.stage }, { at, shutter: null }) };
+  const read = shotRigReader(shot!.motion), solved = shotPlanePosesAt(plane, shot!.motion, rigs, read, at, false);
+  return { solved, plan: shotPlaneLayPlan({ shot: shot!, plane, selection, compiled, films, solved, rigs, read, stage: camera.stage }, { at, shutter: null }) };
 }
 
 const solvedText = (solved: PaintingPoses) => [...solved].map(([key, pose]) => `${key}=${paintingPoseText(pose)}`).join(';');

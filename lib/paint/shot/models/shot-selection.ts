@@ -115,14 +115,17 @@ export function paintedSourceShares(source: PaintedSource): PaintedSourceShare[]
   return shares;
 }
 
+/** A selection a source names, and the field it's written at: `source` itself, or `source.a.b` inside dissolves. */
+export type PaintedSourceEnd = { readonly selection: LayerSelection; readonly field: string };
+
 /**
- * Every selection `source` names, each end of each dissolve whatever its `k`, equal ones once, in order: what its
- * occurrences, reach and document size are read in.
+ * Every selection `source` (written at `field`) names, each end of each dissolve whatever its `k`, equal ones once at
+ * the first one's field, in order: what its occurrences, reach, document size and rigs are read in.
  */
-export function paintedSourceSelections(source: PaintedSource): LayerSelection[] {
-  if (source.kind === 'layers') return [source];
-  const named = paintedSourceSelections(source.a);
-  for (const selection of paintedSourceSelections(source.b)) if (!named.some((each) => sameSelection(each, selection))) named.push(selection);
+export function paintedSourceEnds(source: PaintedSource, field = 'source'): PaintedSourceEnd[] {
+  if (source.kind === 'layers') return [{ selection: source, field }];
+  const named = paintedSourceEnds(source.a, paintingField(field, 'a'));
+  for (const end of paintedSourceEnds(source.b, paintingField(field, 'b'))) if (!named.some(({ selection }) => sameSelection(selection, end.selection))) named.push(end);
   return named;
 }
 
@@ -130,15 +133,14 @@ export function paintedSourceSelections(source: PaintedSource): LayerSelection[]
 export type ShotPlanePaints = { readonly widthPx: number; readonly heightPx: number; readonly ground: LayerSelection['ground'] };
 
 /**
- * Why plane `plane` can't show `selections`, its source's at `field` as its load or a callback's later read finds
- * them: one painting a document or ground other than `paints` (its reach, lay and the back's canvas are read with
- * them), or a dissolve on a plane holding the rigs `rigged`, each found over one selection's paint.
+ * Why plane `plane` can't show `ends`, its source's as its load or a callback's later read finds them, each at its
+ * end's field: one painting a document or ground other than `paints`, which its reach, lay and the back's canvas are
+ * read with.
  */
-export function paintedPlaneBlendProblems(
-  plane: string, selections: readonly LayerSelection[], paints: ShotPlanePaints, rigged: readonly string[], field = 'source',
-): PaintingProblem[] {
-  const problems: PaintingProblem[] = [], error = (message: string) => problems.push(paintingProblem('error', plane, field, message));
-  for (const { painting: { document: { widthPx, heightPx } }, ground } of selections) {
+export function paintedPlaneBlendProblems(plane: string, ends: readonly PaintedSourceEnd[], paints: ShotPlanePaints): PaintingProblem[] {
+  const problems: PaintingProblem[] = [];
+  for (const { selection: { painting: { document: { widthPx, heightPx } }, ground }, field } of ends) {
+    const error = (message: string) => problems.push(paintingProblem('error', plane, field, message));
     if (widthPx !== paints.widthPx || heightPx !== paints.heightPx) {
       error(`paints a ${widthPx} × ${heightPx} document, and the plane's is ${paints.widthPx} × ${paints.heightPx}: every selection a plane shows, a dissolve's ends and each frame's, paints one document size`);
     }
@@ -146,7 +148,6 @@ export function paintedPlaneBlendProblems(
       error(`lays a ${ground ?? 'default'} ground, and the plane a ${paints.ground ?? 'default'} one: every selection a plane shows, a dissolve's ends and each frame's, lays one ground`);
     }
   }
-  if (selections.length > 1 && rigged.length) error(`dissolves, and ${rigged.join(', ')} on it ${rigged.length > 1 ? 'are' : 'is'} rigged: dissolve planes can't be rigged`);
   return problems;
 }
 

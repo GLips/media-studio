@@ -1,6 +1,6 @@
 // shot-frame-plan.ts: what a shot's painted plane is at one moment, purely (ENGINE 6.2, 6.3): the selections its
 // source blends and the clocks its solve reads, the node poses its marks are solved under, the boil epochs reseeding
-// its layers, where its sheets lie, how visible its occurrences are, and its rigs' poses.
+// its layers, where its sheets lie, how visible its occurrences are, and its rigs' poses, read once for every end.
 //
 // A frame's marks are posed at its own moment; its sheets and pieces rigs lie as each exposure or shutter end puts
 // them. Boil wobble moves finished paint: marks are solved without it, and the lay takes it in first, so a lattice
@@ -20,8 +20,8 @@ import type { CompiledPaintedShot, CompiledShotPaintedPlane } from './shot-compi
 import type { CompiledShotMotion, CompiledShotNode } from './shot-motion.ts';
 import { shotPresentationAt, type OccurrenceKey, type RigPartPose } from './shot-props.ts';
 import { shotPlaneOccurrences } from './shot-occurrences.ts';
-import { shotRigCelPoses, shotRigPosed, shotRigPoseProblem, type CompiledShotRig, type ShotRigAxis, type ShotRigFound, type ShotRigPosed } from './shot-rigs.ts';
-import { paintedPlaneBlendProblems, paintedSourceProblems, paintedSourceSelections, paintedSourceShares, type PaintedSourceShare } from './shot-selection.ts';
+import { shotRigCelPoses, shotRigEndProblems, shotRigPosed, shotRigPoseProblem, type CompiledShotRig, type ShotRigFound, type ShotRigPosed } from './shot-rigs.ts';
+import { paintedPlaneBlendProblems, paintedSourceEnds, paintedSourceProblems, paintedSourceShares, type PaintedSourceShare } from './shot-selection.ts';
 import { shotVisibilityProblem } from './shot-visibility.ts';
 
 /** `node`'s boil epoch at `t`, on its own time: 0 unless its marks boil. A boil holds through its frame, as a hold does. */
@@ -67,16 +67,17 @@ export function shotPlanePlaceAt(plane: CompiledShotPaintedPlane, motion: Compil
 }
 
 /**
- * The selections plane `plane`'s source blends at frame moment `t`, read at its source clock's moment, each weighted
+ * The selections plane `plane` of `shot` blends at frame moment `t`, read at its source clock's moment, each weighted
  * (paintedSourceShares). A callback's answer is checked as its load checked the first: throws on its problems
- * (paintedSourceProblems, paintedPlaneBlendProblems), and on occurrences other than its first evaluation's, which
- * motion, rigs and visibility were checked against.
+ * (paintedSourceProblems, paintedPlaneBlendProblems, shotRigEndProblems), and on occurrences other than its first
+ * evaluation's, which motion, rigs and visibility were checked against.
  */
-export function shotPlaneSharesAt(plane: CompiledShotPaintedPlane, t: PaintMoment, animationFps: number): PaintedSourceShare[] {
-  const moment = paintNodeTimeAt(plane.sourceClock, t, animationFps), source = shotPresentationAt(plane.source, moment);
+export function shotPlaneSharesAt(shot: Pick<CompiledPaintedShot, 'motion' | 'rigs'>, plane: CompiledShotPaintedPlane, t: PaintMoment): PaintedSourceShare[] {
+  const moment = paintNodeTimeAt(plane.sourceClock, t, shot.motion.animationFps), source = shotPresentationAt(plane.source, moment);
   if (typeof plane.source !== 'function') return paintedSourceShares(source);
-  const at = `shot plane ${plane.id}'s source at ${moment.at} s`, problems = paintedSourceProblems(plane.id, source);
-  if (!problems.length) problems.push(...paintedPlaneBlendProblems(plane.id, paintedSourceSelections(source), plane.paints, plane.rigged));
+  const at = `shot plane ${plane.id}'s source at ${moment.at} s`, problems = paintedSourceProblems(plane.id, source), ends = paintedSourceEnds(source);
+  if (!problems.length) problems.push(...paintedPlaneBlendProblems(plane.id, ends, plane.paints));
+  for (const rig of problems.length ? [] : shot.rigs.values()) if (rig.plane === plane.id) problems.push(...ends.flatMap((end) => shotRigEndProblems(rig, end)));
   if (problems.length) throw paintingProblemsError(at, problems);
   const keys = shotPlaneOccurrences(plane.id, source).map(({ key }) => key), firstKeys = plane.occurrences.map(({ key }) => key);
   if (keys.length !== firstKeys.length || keys.some((key, i) => key !== firstKeys[i])) {
@@ -142,35 +143,59 @@ export function shotVisibilityAt(shot: CompiledPaintedShot, plane: string, key: 
 /** The pivot rig `rig`'s roots turn about: its group node's, else the document's origin. */
 export const shotRigGroupPivot = (rig: CompiledShotRig, motion: CompiledShotMotion): StampPoint => motion.nodes.get(rig.occurrence)?.pivot ?? { x: 0, y: 0 };
 
+/** A rig at one moment: its pose, the pivot its roots turn about (shotRigGroupPivot), and its group node's boil wobble (null: none). */
+export type ShotRigAt = { readonly pose: Readonly<Record<string, RigPartPose>>; readonly groupPivot: StampPoint; readonly wobble: PaintDeform | null };
+
 /**
- * Rig `rig`'s pose at frame moment `t`, read at its group node's held moment (its own hold, else its plane's), and the
- * pivot its roots turn about (shotRigGroupPivot). Throws on a pose its rig can't take.
+ * Rig `rig` at frame moment `t`, its pose read at its group node's held moment (its own hold, else its plane's).
+ * Throws on a pose its rig can't take.
  */
-export function shotRigPoseAt(rig: CompiledShotRig, motion: CompiledShotMotion, t: PaintMoment): { readonly pose: Readonly<Record<string, RigPartPose>>; readonly groupPivot: StampPoint } {
+export function shotRigAt(rig: CompiledShotRig, motion: CompiledShotMotion, t: PaintMoment): ShotRigAt {
   const node = motion.nodes.get(rig.occurrence), moment = paintNodeTimeAt(node ? node.clock : motion.planeClocks.get(rig.plane) ?? [], t, motion.animationFps);
   const pose = shotPresentationAt(rig.pose, moment), problem = shotRigPoseProblem(rig, pose);
   if (problem) throw new Error(`shot: ${rig.occurrence}'s rig at ${moment.at} s ${problem}`);
-  return { pose, groupPivot: shotRigGroupPivot(rig, motion) };
+  return { pose, groupPivot: shotRigGroupPivot(rig, motion), wobble: node ? shotNodeWobbleAt(node, t, motion.animationFps) : null };
+}
+
+/** A rig at a moment as one frame reads it (shotRigReader). */
+export type ShotRigRead = (rig: CompiledShotRig, t: PaintMoment) => ShotRigAt;
+
+/**
+ * A frame's reads of its rigs (shotRigAt), each rig at each moment read once: its solve and its lay, at every end of
+ * a dissolve, pose by the one answer. Made per frame, so a pose callback is read once a moment a frame reads.
+ */
+export function shotRigReader(motion: CompiledShotMotion): ShotRigRead {
+  const read = new Map<string, ShotRigAt>();
+  return (rig, t) => {
+    const key = JSON.stringify([rig.occurrence, t.at, t.frame]);
+    let at = read.get(key);
+    if (!at) read.set(key, (at = shotRigAt(rig, motion, t)));
+    return at;
+  };
 }
 
 /**
- * Rig `rig` posed at frame moment `t` along `axes`: its pose (shotRigPoseAt) and, `laid`, its group node's wobble
- * first. Marks are solved unlaid; a lattice carries them to where the laid pose puts them.
+ * Rig `found` posed at frame moment `t` as `read` reads it, along its axes; `laid`, its group node's wobble first.
+ * Marks are solved unlaid; a lattice carries them to where the laid pose puts them.
  */
-export function shotRigPosedAt(rig: CompiledShotRig, motion: CompiledShotMotion, axes: ReadonlyMap<string, ShotRigAxis>, t: PaintMoment, laid: boolean): ShotRigPosed {
-  const { pose, groupPivot } = shotRigPoseAt(rig, motion, t), node = motion.nodes.get(rig.occurrence);
-  return shotRigPosed(rig, pose, groupPivot, axes, laid && node ? shotNodeWobbleAt(node, t, motion.animationFps) : null);
+export function shotRigPosedAt({ rig, axes }: ShotRigFound, read: ShotRigRead, t: PaintMoment, laid: boolean): ShotRigPosed {
+  const { pose, groupPivot, wobble } = read(rig, t);
+  return shotRigPosed(rig, pose, groupPivot, axes, laid ? wobble : null);
 }
 
 /**
  * Plane `plane`'s node poses at `t` by document key: its occurrences' own and each marks rig's cels' within its
- * group's frame, of `rigs` (its, as found). `laid`: as the lay reads them, boil wobble in; else as marks are solved.
+ * group's frame, of `rigs` (its, as found), posed as `read` reads them. `laid`: as the lay reads them, boil wobble in;
+ * else as marks are solved.
  */
-export function shotPlanePosesAt(plane: CompiledShotPaintedPlane, motion: CompiledShotMotion, rigs: readonly ShotRigFound[], t: PaintMoment, laid: boolean): Map<NodeKey, PaintingNodePose> {
+export function shotPlanePosesAt(
+  plane: CompiledShotPaintedPlane, motion: CompiledShotMotion, rigs: readonly ShotRigFound[], read: ShotRigRead, t: PaintMoment, laid: boolean,
+): Map<NodeKey, PaintingNodePose> {
   const poses = shotOccurrencePosesAt(plane, motion, t, laid, new Set(rigs.map(({ rig }) => rig.occurrence)));
-  for (const { rig, axes, skin } of rigs) {
+  for (const found of rigs) {
+    const { rig, skin } = found;
     if (!skin) continue;
-    for (const [cel, celPose] of shotRigCelPoses(rig, shotRigPosedAt(rig, motion, axes, t, laid), skin)) {
+    for (const [cel, celPose] of shotRigCelPoses(rig, shotRigPosedAt(found, read, t, laid), skin)) {
       const own = poses.get(cel);
       poses.set(cel, own ? paintingPoseAfter(celPose, own) : celPose);
     }

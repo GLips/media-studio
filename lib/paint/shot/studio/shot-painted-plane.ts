@@ -1,8 +1,8 @@
 // shot-painted-plane.ts: a shot's painted plane drawn for a frame (ENGINE 6.1 steps 1-4 and 6, 6.5). Each selection its
-// source blends at the frame's source moment (one, unless it dissolves) is compiled, its rigs found, its marks posed
-// and its sheets solved. Each moment the frame lays is planned purely, a plan a selection (shotPlaneLayPlan); this
-// reads pieces rigs back and lays each selection's picture, kept under its key so a plane held still is laid once. A
-// dissolve sums them by weight.
+// source blends at the frame's source moment is compiled, its rigs found over its paint, its marks posed (poses
+// read once a frame: shotRigReader) and its sheets solved. Each moment laid is planned per selection
+// (shotPlaneLayPlan); this reads pieces rigs back and lays each selection's picture, kept under its key so a plane
+// held still is laid once; a dissolve sums them by weight.
 //
 // Planes are presented in their masks' order: each keeps the coverage others read in its picture's last layers, and
 // a reader's picture is kept under what it read too (shotPresentedKeys), a source's render named by the renderer.
@@ -26,7 +26,7 @@ import type { LensCompositor, LensLayer } from '#lib/picture/lens/studio/lens-co
 import type { PaintRigPicture } from '#lib/paint/rig/models/paint-rig-pieces.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
 import type { CompiledPaintedShot, CompiledShotPaintedPlane, PaintedShotPaintOptions } from '../models/shot-compile.ts';
-import { shotPlanePosesAt, shotPlaneReseedAt, shotPlaneSharesAt, shotRigGroupPivot } from '../models/shot-frame-plan.ts';
+import { shotPlanePosesAt, shotPlaneReseedAt, shotPlaneSharesAt, shotRigGroupPivot, shotRigReader, type ShotRigRead } from '../models/shot-frame-plan.ts';
 import { shotPresentedKeys } from '../models/shot-masks.ts';
 import { shotOccurrencePlane } from '../models/shot-occurrences.ts';
 import type { OccurrenceKey } from '../models/shot-props.ts';
@@ -53,8 +53,11 @@ export type ShotShareSolved = {
   readonly solvedPoses: PaintingPoses;
 };
 
-/** A painted plane solved for a frame: each selection its source blends, their films held until `release`. */
-export type ShotPlaneSolved = { readonly plane: CompiledShotPaintedPlane; readonly shares: readonly ShotShareSolved[]; readonly release: () => void };
+/**
+ * A painted plane solved for a frame: each selection its source blends, their films held until `release`, and the
+ * frame's reads of its rigs' poses, which its moments read too.
+ */
+export type ShotPlaneSolved = { readonly plane: CompiledShotPaintedPlane; readonly shares: readonly ShotShareSolved[]; readonly read: ShotRigRead; readonly release: () => void };
 
 /** A pieces rig at one moment: its occurrence, its cut pictures and its pieces. */
 type ShotPiecesAt = ShotRigPiecesAt & { readonly rig: string; readonly pictures: readonly PaintRigPicture[] };
@@ -130,8 +133,11 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
     return made;
   }
 
-  /** `selection`, one of `plane`'s at frame moment `frameAt`, compiled, its rigs found, its marks posed and solved. */
-  async function solveShare(plane: CompiledShotPaintedPlane, selection: LayerSelection, weight: number, frameAt: PaintMoment) {
+  /**
+   * `selection`, one of `plane`'s at frame moment `frameAt`, compiled, its rigs found over its paint, its marks posed
+   * as `read` reads its rigs and solved.
+   */
+  async function solveShare(plane: CompiledShotPaintedPlane, selection: LayerSelection, weight: number, frameAt: PaintMoment, read: ShotRigRead) {
     const reseed = shotPlaneReseedAt(plane, motion, selection, frameAt);
     const compiled = compilePaintingSelection(selection.painting, brushOf, { layers: selection.layers, reseed });
     const lays = await laysOf(compiled), at = selection.at, rigs = [...shot.rigs.values()].filter((rig) => rig.plane === plane.id);
@@ -148,24 +154,24 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
       }
     }
     const found = rigs.map((rig) => shotRigFound(rig, shotRigGroupPivot(rig, motion), rig.parts.map(({ cels: [key] }) => ({ key, picture: restCels.get(rig.occurrence)!.get(key)! }))));
-    const solvedPoses = shotPlanePosesAt(plane, motion, found, frameAt, false);
+    const solvedPoses = shotPlanePosesAt(plane, motion, found, read, frameAt, false);
     const { solved, release } = await solvePaintingSheetFilms(owner, compiled, { poses: solvedPoses, costs, ...(at !== undefined && { at }) });
     const share: ShotShareSolved = { selection, weight, compiled, lays, films: solved.map((sheet) => sheet.films), rigs: found, restCels, solvedPoses };
     return { share, release };
   }
 
   /**
-   * `share`'s pieces rigs drawn, its masks made (each alphaOf mask reading what `coverageOf` gives of its drawable),
-   * then `plane` laid into its picture under `key`, the coverage read of it in its last layers: none for a nearer
-   * plane that lays nothing.
+   * `share`, selection `end` of those its plane blends this frame: its pieces rigs drawn, its masks made (each alphaOf
+   * mask reading what `coverageOf` gives of its drawable), then `plane` laid into its picture under `key`, the
+   * coverage read of it in its last layers: none for a nearer plane that lays nothing.
    */
   function paint(
-    encoder: GPUCommandEncoder, plane: CompiledShotPaintedPlane, { share: { lays }, plan, frame: planned, pieces }: ShotShareMoment, key: string,
+    encoder: GPUCommandEncoder, plane: CompiledShotPaintedPlane, { share: { lays }, plan, frame: planned, pieces }: ShotShareMoment, end: number, key: string,
     coverageOf: (drawable: OccurrenceKey) => ShotMaskCoverage | null,
   ): StampPlanePicture | null {
     const drawn = new Map<string, ShotPiecesDrawn>();
     for (const posed of pieces) {
-      const made = piecesDrawer!.draw(posed.rig, posed.pictures, posed);
+      const made = piecesDrawer!.draw(posed.rig, end, posed.pictures, posed);
       if (made) drawn.set(posed.rig, made);
     }
     const frame: ShotSheetsLayFrame = { ...planned, pieces: drawn }, staged = layer.stage(frame, coverageOf), mask = layer.mask(encoder, staged);
@@ -198,7 +204,7 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
     return shares.map((share, i) => {
       const found = pictures.find(keys[i], encoder);
       costs?.count(found ? 'picture hits' : 'picture misses');
-      return { picture: found ?? paint(encoder, plane, share, keys[i], coverageOf), key: keys[i], weight: share.share.weight };
+      return { picture: found ?? paint(encoder, plane, share, i, keys[i], coverageOf), key: keys[i], weight: share.share.weight };
     });
   }
 
@@ -228,23 +234,26 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
   }
 
   return {
-    /** `plane` at frame moment `frameAt`: each selection its source blends compiled, its rigs found, its marks posed and solved. */
+    /**
+     * `plane` at frame moment `frameAt`: each selection its source blends compiled, its rigs found, its marks posed and
+     * solved, every selection posed by one read of each rig.
+     */
     async solve(plane: CompiledShotPaintedPlane, frameAt: PaintMoment): Promise<ShotPlaneSolved> {
       // A callback source evaluates its paintings as it's read: those count as the frame's.
-      const before = paintingEvaluationCounts(), blended = shotPlaneSharesAt(plane, frameAt, motion.animationFps), after = paintingEvaluationCounts();
+      const before = paintingEvaluationCounts(), blended = shotPlaneSharesAt(shot, plane, frameAt), after = paintingEvaluationCounts();
       costs?.count('evaluations made', after.made - before.made);
       costs?.count('evaluation memo hits', after.memoHits - before.memoHits);
-      const releases: (() => void)[] = [];
+      const releases: (() => void)[] = [], read = shotRigReader(motion);
       const release = () => {
         for (const each of releases.splice(0)) each();
       };
       try {
         const shares = await gpuEachInTurn(blended, async ({ selection, weight }) => {
-          const solved = await solveShare(plane, selection, weight, frameAt);
+          const solved = await solveShare(plane, selection, weight, frameAt, read);
           releases.push(solved.release);
           return solved.share;
         });
-        return { plane, shares, release };
+        return { plane, shares, read, release };
       } catch (error) {
         release();
         throw error;
@@ -252,10 +261,10 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
     },
 
     /** `solved`'s plane as it lies at `moment` (shotPlaneLayPlan, each selection's), its pieces rigs' pictures read back and posed. */
-    async moment({ plane, shares }: ShotPlaneSolved, moment: ShotMomentAt): Promise<ShotPlaneMoment> {
+    async moment({ plane, shares, read }: ShotPlaneSolved, moment: ShotMomentAt): Promise<ShotPlaneMoment> {
       const laid = await Promise.all(shares.map(async (share): Promise<ShotShareMoment> => {
         const { selection, compiled, films, rigs, restCels, solvedPoses } = share;
-        const plan = shotPlaneLayPlan({ shot, plane, selection, compiled, films, solved: solvedPoses, rigs, stage }, moment);
+        const plan = shotPlaneLayPlan({ shot, plane, selection, compiled, films, solved: solvedPoses, rigs, read, stage }, moment);
         const pieces = await Promise.all(plan.pieces.map(async (each): Promise<ShotPiecesAt> => {
           const occurrence = each.rig.occurrence, { skin, pictures: cut } = await rigPictures.pieces({ compiled, films }, restCels.get(occurrence)!, each);
           const { at, shutter, stretches } = shotPiecesPlaced(each, skin, cut);

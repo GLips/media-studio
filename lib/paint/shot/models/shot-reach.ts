@@ -51,7 +51,7 @@ export function shotNodeLineGrown(motion: CompiledShotMotion, id: string | undef
 function paintedReach(plane: CompiledShotPaintedPlane, motion: CompiledShotMotion): StampBox | undefined {
   const { widthPx, heightPx, ground } = plane.paints, documentBox = { x0: 0, y0: 0, x1: widthPx, y1: heightPx };
   let reach: StampBox | undefined;
-  for (const selection of plane.selections) {
+  for (const { selection } of plane.ends) {
     for (const key of paintedSourceNodeKeys(selection)) {
       const place = selection.painting.tree.byKey.get(key)!, stated = place.kind === 'layer' && paintingNodeBox(place.node), held = stated && clipped(stampBoxGrown(stated, SHOT_PAINT_SPREAD), documentBox);
       if (held) reach = paintingBoxUnion(reach, shotNodeLineGrown(motion, motion.nearest.get(shotOccurrenceKey(plane.id, key)), held));

@@ -10,7 +10,7 @@ import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { compilePaintedShot } from './shot-compile.ts';
 import { shotPlaneClocks, shotPlaneMomentAt, shotPlaneSharesAt } from './shot-frame-plan.ts';
 import { shotPinnedPlanes } from './shot-placement.ts';
-import type { CoverFrame, PaintedShotProps, RigPart, ScreenPin } from './shot-props.ts';
+import type { CoverFrame, PaintedShotProps, PlaneProps, RigPart, ScreenPin } from './shot-props.ts';
 import { dissolve } from './shot-selection.ts';
 import { shotWarmCombinations, shotWarmFrames } from './shot-warm.ts';
 
@@ -60,9 +60,9 @@ test("a plane's source clock holds what its source reads apart from what its clo
   }, []);
   const [front] = shot!.planes, frame9 = paintMoment(9 / FPS);
   assert.ok(front.kind === 'painted');
-  assert.equal(shotPlaneSharesAt(front, frame9, FPS)[0].selection.at, 6 / FPS);
+  assert.equal(shotPlaneSharesAt(shot!, front, frame9)[0].selection.at, 6 / FPS);
   assert.equal(shotPlaneMomentAt(shot!.motion, 'front', frame9).at, 8 / FPS);
-  assert.throws(() => shotPlaneSharesAt(front, paintMoment(1), FPS), /egret/);
+  assert.throws(() => shotPlaneSharesAt(shot!, front, paintMoment(1)), /egret/);
   // Over its first half second it solves where either clock moves on: sixes and fours. The heron's threes run inside
   // the plane's fours, so they split nothing more.
   const warmed = shotWarmCombinations(shotWarmFrames({ from: 0, to: 0.5 }, FPS), shotPlaneClocks(shot!.motion, front), FPS);
@@ -76,7 +76,7 @@ const puddle = painting({
   },
 });
 
-test("a dissolving plane shows both its ends' occurrences, weighed by k on its source clock, and refuses a rig, two document sizes and two grounds", () => {
+test("a dissolving plane shows both its ends' occurrences, weighed by k on its source clock, and refuses two document sizes, two grounds and an end without its rigged group, each at its end", () => {
   const sky = layersOf(pond, ['sky']), heron = layersOf(pond, ['heron']);
   const { shot } = compilePaintedShot({
     camera, planes: [{ id: 'front', depth: 1, sourceClock: { hold: 6 }, source: ({ at }) => dissolve(sky, dissolve(heron, sky, 0.5), Math.min(1, at)) }],
@@ -85,7 +85,7 @@ test("a dissolving plane shows both its ends' occurrences, weighed by k on its s
   assert.ok(front.kind === 'painted');
   assert.deepEqual(front.occurrences.map(({ key }) => key), ['front/sky', 'front/heron', 'front/body', 'front/neck']);
   // At 9/24 s its source reads 6/24 s: k is 0.25, and the inner dissolve gives half of that back to the sky.
-  assert.deepEqual(shotPlaneSharesAt(front, paintMoment(9 / FPS), FPS).map(({ selection, weight }) => [selection.layers.join(), weight]), [['sky', 0.875], ['heron', 0.125]]);
+  assert.deepEqual(shotPlaneSharesAt(shot!, front, paintMoment(9 / FPS)).map(({ selection, weight }) => [selection.layers.join(), weight]), [['sky', 0.875], ['heron', 0.125]]);
   assert.deepEqual(problemsOf({
     camera,
     planes: [
@@ -94,10 +94,29 @@ test("a dissolving plane shows both its ends' occurrences, weighed by k on its s
     ],
     rigs: { 'front/heron': { parts: heronParts, pose: {} } },
   }), [
-    "back.source: paints a 160 × 120 document, and the plane's is 320 × 240: every selection a plane shows, a dissolve's ends and each frame's, paints one document size",
-    "mid.source: lays a transparent ground, and the plane a default one: every selection a plane shows, a dissolve's ends and each frame's, lays one ground",
-    "front.source: dissolves, and front/heron on it is rigged: dissolve planes can't be rigged",
+    "back.source.b: paints a 160 × 120 document, and the plane's is 320 × 240: every selection a plane shows, a dissolve's ends and each frame's, paints one document size",
+    "mid.source.b: lays a transparent ground, and the plane a default one: every selection a plane shows, a dissolve's ends and each frame's, lays one ground",
+    'front.source.b: shows no group heron, which front/heron rigs: every end of a rigged plane holds its rigged groups cut alike',
   ]);
+});
+
+/** The pond, its heron holding a beak too. */
+const beaked = painting({
+  default: function beakedPond(): PaintingDocument {
+    return { ...pond.document, layers: [layer('sky'), { key: 'heron', children: [layer('body'), layer('neck'), layer('beak')] }] };
+  },
+});
+
+test('a rig on a dissolving plane is held by every end cut alike: one cut otherwise is refused at its end, as the shot loads or a callback reads it later', () => {
+  const heron = layersOf(pond, ['sky', 'heron']), rigs = { 'front/heron': { parts: heronParts, pose: {} } };
+  const shotOf = (source: PlaneProps['source']): PaintedShotProps => ({ camera, planes: [{ id: 'front', depth: 1, source }], rigs });
+  assert.deepEqual(problemsOf(shotOf(dissolve(heron, layersOf(pond, ['sky', 'heron'], { at: 1 }), 0.5))), []);
+  const refused = "front.source.b: holds beak under heron, in none of front/heron's cels: every end of a rigged plane holds its rigged groups cut alike";
+  assert.deepEqual(problemsOf(shotOf(dissolve(heron, layersOf(beaked, ['sky', 'heron']), 0.5))), [refused]);
+  const { shot } = compilePaintedShot(shotOf(({ at }) => (at < 1 ? heron : dissolve(heron, layersOf(beaked, ['sky', 'heron']), 0.5))), []);
+  const [front] = shot!.planes;
+  assert.ok(front.kind === 'painted');
+  assert.throws(() => shotPlaneSharesAt(shot!, front, paintMoment(1)), (error: Error) => error.message.includes(refused));
 });
 
 test('a shot refuses motion its rig or lay already writes, and a painted texture it cannot draw, every problem at once', () => {

@@ -2,7 +2,7 @@
 // films (on a shared sheet, with the cards of sheets it owns) as the whole selection paints them unposed; a rig's
 // axes and a marks rig's skin are found over them. A pieces rig skins its shown cels' rest paint, reads its sheets
 // laid with those cels' films so far, cuts that by the skin, and draws the pieces through three.js, colour and
-// motion, for the plane's lay to lay as paint by their alpha.
+// motion, for the plane's lay to lay as paint by their alpha; a dissolve's ends into a target each.
 // Readbacks are kept by what makes their pixels (stamp-film-readback.ts): what's made from them, by their identity.
 
 import { OrthographicCamera, Scene } from 'three/webgpu';
@@ -101,8 +101,8 @@ export function createShotRigPictures(owner: StampPaintGpuOwner, costs?: StampPa
 export type ShotRigPictures = ReturnType<typeof createShotRigPictures>;
 
 /**
- * Pieces rigs drawn on `owner`'s three.js renderer over `stage`: a target of colour and motion each rig, its meshes
- * made anew when its pictures change, so the old ones' textures go with them.
+ * Pieces rigs drawn on `owner`'s three.js renderer over `stage`: a target of colour and motion each rig and end, its
+ * meshes made anew when its pictures change, so the old ones' textures go with them.
  */
 export async function createShotRigPiecesDrawer(owner: StampPaintGpuOwner, stage: StampStage) {
   const { renderer, targetInto } = await owner.three(), { width, height, margin } = stage;
@@ -113,8 +113,8 @@ export async function createShotRigPiecesDrawer(owner: StampPaintGpuOwner, stage
   const usage = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC;
   type Held = { scene: Scene; meshes: PaintRigPieceMeshes; pictures: readonly PaintRigPicture[]; target: ReturnType<typeof targetInto>; colour: GPUTexture; motion: GPUTexture };
   const held = new Map<string, Held>();
-  const heldFor = (rig: string, pictures: readonly PaintRigPicture[]): Held => {
-    let made = held.get(rig);
+  const heldFor = (at: string, pictures: readonly PaintRigPicture[]): Held => {
+    let made = held.get(at);
     if (made && made.pictures.length === pictures.length && made.pictures.every((picture, p) => picture === pictures[p])) return made;
     if (made) {
       made.meshes.dispose();
@@ -130,16 +130,17 @@ export async function createShotRigPiecesDrawer(owner: StampPaintGpuOwner, stage
     scene.add(meshes.object);
     const target = targetInto([{ name: 'output', texture: colour }, { name: LENS_THREE_MOTION_NAME, texture: moved }]);
     made = { scene, meshes, pictures, target, colour, motion: moved };
-    held.set(rig, made);
+    held.set(at, made);
     return made;
   };
   return {
     /**
-     * Rig `rig`'s `pieces` (each over one of `pictures`) drawn into its target, their travel over the shutter into its
-     * motion; null where none lies on the stage. Rendered and submitted now, ahead of the frame that lays it.
+     * Rig `rig`'s `pieces` (each over one of `pictures`) in the frame's selection `end` drawn into its target, their
+     * travel over the shutter into its motion; null where none lies on the stage. Rendered and submitted now, ahead of
+     * the frame that lays it: a dissolve's ends are laid by one submit, so each draws into a target of its own.
      */
-    draw(rig: string, pictures: readonly PaintRigPicture[], pieces: ShotRigPiecesAt): ShotPiecesDrawn | null {
-      const made = heldFor(rig, pictures), { scene, meshes } = made;
+    draw(rig: string, end: number, pictures: readonly PaintRigPicture[], pieces: ShotRigPiecesAt): ShotPiecesDrawn | null {
+      const made = heldFor(JSON.stringify([rig, end]), pictures), { scene, meshes } = made;
       motion.still();
       if (pieces.shutter) {
         for (const moment of ['open', 'close'] as const) {
