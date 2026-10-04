@@ -213,7 +213,7 @@ function compileShotRigs(rigs: NonNullable<PaintedShotProps['rigs']>, planes: re
       problems.push(shotError(occurrence, 'rig', `lies in ${outer}, which is rigged: its parts pose all it holds, so nothing in it is rigged again`));
       continue;
     }
-    const made = compileShotRig(occurrence, plane.id, plane.selections[0].painting.tree, rig);
+    const made = compileShotRig(occurrence, plane.id, plane.selections[0].painting, rig);
     problems.push(...made.problems);
     if (made.rig) compiled.set(occurrence, made.rig);
   }

@@ -90,7 +90,7 @@ export function createShotRigPictures(owner: StampPaintGpuOwner, costs?: StampPa
      */
     pieces: async (solved: ShotSolvedFilms, rest: ShotRigRestCels, plan: ShotPiecesPlan): Promise<{ readonly skin: ShotRigSkin; readonly pictures: readonly PaintRigPicture[] }> => {
       const { tree, sheets } = solved.compiled, shown = plan.shown.map((key) => rest.get(key)!);
-      const skin = derivedOf(derivedOf(skins, shown[0], () => new Map<string, ShotRigSkin>()), shown.map(idOf).join(','), () => shotRigSkin(plan.rig, shown).skin);
+      const skin = derivedOf(derivedOf(skins, shown[0], () => new Map<string, ShotRigSkin>()), shown.map(idOf).join(','), () => shotRigSkin(plan.rig, shown, plan.shown).skin);
       const combined = await readSteps(solved, plan.steps, (sheet, film) => plan.layers.has(tree.layers[sheets[sheet].layers[film]].node.key));
       return { skin, pictures: derivedOf(derivedOf(cuts, combined, () => new WeakMap<ShotRigSkin, readonly PaintRigPicture[]>()), skin, () => shotRigPiecePictures(combined, skin)) };
     },
