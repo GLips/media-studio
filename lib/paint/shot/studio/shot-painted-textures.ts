@@ -21,6 +21,7 @@ import { createStampPaintSurface, type StampPaintSurface } from '#lib/paint/pain
 import { drawStampSheetsStill } from '#lib/paint/painting/studio/stamp-sheet-composite.ts';
 import { createStampUniformArena } from '#lib/paint/painting/studio/stamp-uniform-arena.ts';
 import type { PaintedThreeTextureHandle, PaintedThreeTexturesSupplied } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
+import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { GPU_FULL_FRAME_WGSL, GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 import { compiledPaintedTextureSourceAt, type CompiledShotPaintedTexture } from '../models/shot-painted-texture-compile.ts';
@@ -74,13 +75,6 @@ ${GPU_SRGB_WGSL}
 }`;
 
 const SHOT_TEXTURE_SUM: GPUBlendState = { color: { operation: 'add', srcFactor: 'one', dstFactor: 'one' }, alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one' } };
-
-/** `step` over `items` one after another, each awaited before the next starts. */
-const eachShotTextureInTurn = <T,>(items: readonly T[], step: (item: T, index: number) => Promise<void>): Promise<void> =>
-  items.reduce(async (before, item, index) => {
-    await before;
-    await step(item, index);
-  }, Promise.resolve());
 
 /**
  * Compiled `textures` drawn on `owner`'s device for a shot's three sources. Refuses, as `update` reads a callback, a
@@ -160,7 +154,7 @@ export function createShotPaintedTextures(owner: StampPaintGpuOwner, textures: r
     if (errors.length) throw new Error(`shot: painted texture ${texture.id} at ${moment.at} s: ${errors.map(paintingProblemText).join('; ')}`);
     const shares = paintedSourceShares(source);
     if (slot.last && samePaintedSourceShares(slot.last, shares)) return;
-    await eachShotTextureInTurn(shares, (share, s) => sumShare(slot, share, s === 0));
+    await gpuEachInTurn(shares, (share, s) => sumShare(slot, share, s === 0));
     await owner.checked(`encoding painted texture ${texture.id}`, () => {
       const encoder = device.createCommandEncoder();
       const pass = encoder.beginRenderPass({ colorAttachments: [{ view: handle.texture.createView(), loadOp: 'clear', storeOp: 'store' }] });
@@ -175,7 +169,9 @@ export function createShotPaintedTextures(owner: StampPaintGpuOwner, textures: r
 
   return {
     handles: drawn.map(({ handle }) => handle),
-    update: (t) => eachShotTextureInTurn(drawn, (slot) => drawAt(slot, paintMoment(t))),
+    update: async (t) => {
+      await gpuEachInTurn(drawn, (slot) => drawAt(slot, paintMoment(t)));
+    },
     dispose: () => {
       for (const texture of owned.splice(0)) texture.destroy();
     },

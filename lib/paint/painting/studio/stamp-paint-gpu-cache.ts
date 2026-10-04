@@ -43,6 +43,8 @@ export type StampPaintGpuCache = {
   store: <Note>(producer: StampGpuCacheProducer) => StampGpuCacheStore<Note>;
   /** The bytes held, for profiling. */
   bytes: () => number;
+  /** How many entries it has given up to make room since it was made, for profiling: a cost report counts the change. */
+  evictions: () => number;
   dispose: () => void;
 };
 
@@ -74,7 +76,7 @@ function forgetStampGpuCacheStore(store: ReadonlyMap<string, StampGpuCacheHeld>)
 /** A cache on `device`, the owner's. */
 export function stampPaintGpuCache(device: StampPaintDevice): StampPaintGpuCache {
   const stores = new Set<ReadonlyMap<string, StampGpuCacheHeld>>();
-  let heldBytes = 0, clock = 0;
+  let heldBytes = 0, clock = 0, evicted = 0;
   /** Gives up entries `encoder`'s frame doesn't use and nobody holds until `more` bytes fit (evictionRank's, then the least recently used), or none is left. */
   const room = (more: number, encoder: GPUCommandEncoder) => {
     const givable: StampGpuCacheHeld[] = [];
@@ -82,6 +84,7 @@ export function stampPaintGpuCache(device: StampPaintDevice): StampPaintGpuCache
     for (const entry of givable.toSorted((a, b) => evictionRank(a) - evictionRank(b) || a.used - b.used)) {
       if (heldBytes + more <= STAMP_GPU_CACHE_BUDGET) return;
       entry.forget();
+      evicted++;
     }
   };
   return {
@@ -127,6 +130,7 @@ export function stampPaintGpuCache(device: StampPaintDevice): StampPaintGpuCache
       };
     },
     bytes: () => heldBytes,
+    evictions: () => evicted,
     dispose: () => {
       for (const store of stores) forgetStampGpuCacheStore(store);
       stores.clear();

@@ -134,7 +134,7 @@ export function compileShotInstancedPlane(
   problems.push(...own);
   for (const [name, painted] of variants) {
     if (!painted) continue;
-    const { widthPx, heightPx } = painted.first.painting.document;
+    const { widthPx, heightPx } = painted.paints;
     if (widthPx > stage.width || heightPx > stage.height) {
       problems.push(paintingProblem('error', props.id, `variants.${name}`, `paints a ${widthPx} × ${heightPx} document, and the stage is ${stage.width} × ${stage.height}: a variant is laid whole on the stage`));
       continue;

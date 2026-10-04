@@ -15,6 +15,7 @@ import type { StampPlaneExtent } from '#lib/paint/painting/models/stamp-plane.ts
 import { stampBoxGrown, type StampBox } from '#lib/paint/painting/models/stamp-region.ts';
 import type { CompiledShotPaintedPlane, CompiledShotPlane } from './shot-compile.ts';
 import type { CompiledShotMotion, CompiledShotNode } from './shot-motion.ts';
+import { paintedSourceNodeKeys, shotOccurrenceKey } from './shot-occurrences.ts';
 import type { OccurrenceKey } from './shot-props.ts';
 
 /**
@@ -42,14 +43,19 @@ export function shotNodeLineGrown(motion: CompiledShotMotion, id: string | undef
   return reached;
 }
 
-/** Where a still nearer painted plane's paint and paper can lie, document px moved by its nodes, before its lay. */
+/**
+ * Where a still nearer painted plane's paint and paper can lie, document px moved by its nodes, before its lay: over
+ * every selection it names, each occurrence's layer as the selection showing it paints it, and its paper where its
+ * ground, one for them all, is paper.
+ */
 function paintedReach(plane: CompiledShotPaintedPlane, motion: CompiledShotMotion): StampBox | undefined {
-  const { painting, ground } = plane.first, { widthPx, heightPx } = painting.document, documentBox = { x0: 0, y0: 0, x1: widthPx, y1: heightPx };
+  const { widthPx, heightPx, ground } = plane.paints, documentBox = { x0: 0, y0: 0, x1: widthPx, y1: heightPx };
   let reach: StampBox | undefined;
-  for (const occurrence of plane.occurrences) {
-    if (occurrence.kind !== 'layer') continue;
-    const place = painting.tree.byKey.get(occurrence.node)!, stated = paintingNodeBox(place.node), held = stated && clipped(stampBoxGrown(stated, SHOT_PAINT_SPREAD), documentBox);
-    if (held) reach = paintingBoxUnion(reach, shotNodeLineGrown(motion, motion.nearest.get(occurrence.key), held));
+  for (const selection of plane.selections) {
+    for (const key of paintedSourceNodeKeys(selection)) {
+      const place = selection.painting.tree.byKey.get(key)!, stated = place.kind === 'layer' && paintingNodeBox(place.node), held = stated && clipped(stampBoxGrown(stated, SHOT_PAINT_SPREAD), documentBox);
+      if (held) reach = paintingBoxUnion(reach, shotNodeLineGrown(motion, motion.nearest.get(shotOccurrenceKey(plane.id, key)), held));
+    }
   }
   if (ground === 'paper') reach = paintingBoxUnion(reach, shotNodeLineGrown(motion, motion.nodes.has(plane.id) ? plane.id : undefined, documentBox));
   return reach;

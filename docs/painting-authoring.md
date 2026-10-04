@@ -23,10 +23,11 @@ under the camera and its lens, on one canvas or several among HTML, a clear back
 cover lays (`shot-placement.ts`), the page read as each frame draws (`shot-dom-points.ts`); occurrences and
 their motion (nodes hang from their nearest enclosing node, a paintless group's included, clocks chaining);
 visibility, a group's fading all it holds as one; rigs (Composition), a cel swap re-solving nothing; instanced planes,
-many items sharing a few finished variants, each blurred along its own travel; and per-plane `clock` and
-`sourceClock` holds. Built as models, checked but not yet drawn, so a shot naming them is refused as it loads:
-dissolves between their ends, path and `alphaOf` masks (`shot-masks.ts`), `warm` (`shot-warm.ts`) and the cost report
-(`shot-cost-report.ts`). Painted textures for three.js objects are compiled and drawn for a three source
+many items sharing a few finished variants, each blurred along its own travel; per-plane `clock` and `sourceClock`
+holds; dissolves and `bracket`, each end solved and laid once and their pictures summed by weight; `warm`; and the
+cost report, each frame's and the warm's, in a profiling render. Built as models, checked but not yet drawn, so a
+shot naming them is refused as it loads: path and `alphaOf` masks (`shot-masks.ts`). Painted textures for three.js
+objects are compiled and drawn for a three source
 (`compileShotPaintedTextures`, `createShotPaintedTextures`) but not yet handed one by a shot, so a shot naming
 `paintedTextures` is refused too. **NEW** marks behaviour the brush engine (the recipe path, docs/brush-engine.md)
 lacks too; unmarked behaviour is how it already paints.
@@ -120,8 +121,7 @@ export const meadowShot: PaintedShotProps = {
 ```
 
 The scene component is `({ t }: { t: number }) => <PaintedShot shot={meadowShot} t={t} />`, wrapped as a project's
-other scenes are; the shot needs only `t`, in scene seconds. A shot refuses `warm` as it loads until warming is drawn
-(What's built): leave it out to see this scene today.
+other scenes are; the shot needs only `t`, in scene seconds.
 
 What lands, and why it looks as it does:
 
@@ -527,8 +527,12 @@ sheet a crayon node declared is refused: crayon keeps no wet history.
   A held moment floors to its hold's grid: on threes, frames 0, 1 and 2 all show frame 0.
 - **Warming**: `warm: {from, to}` on the shot solves the films of the render frames from `from` to `to` (at the
   composition's fps), and of the moments they sample, before the first frame: prefixes, poses, property values,
-  dissolve levels. It reports what it solved and kept, and promises no residency: a span whose films outgrow the
-  cache's budget evicts its beginning, and those frames solve again. Warm spans that fit.
+  dissolve levels. Each painted plane solves once for each pairing of moments the span's frames read on its source
+  clock and its own clock (its nodes' clocks run inside it), so a source held on sixes under a pose held on twos
+  solves each pairing, not each frame. It reports what it solved and kept, and promises no residency: a span whose
+  films outgrow the cache's budget evicts its beginning, and those frames solve again. Warm spans that fit. It warms
+  only frames its scene shows: one running past its scene's end stops there, warned of in the warm's costs (`warm`
+  counts scene seconds, not frames). Each render worker warms its own span, so its cost repeats per worker.
 - **A drop landing in a wash** at a scene second: a timed water application on that wash's sheet with `at` (a bloom,
   if wanted), in the wash or a clocked layer of its own on that sheet, then its paint as the next application without
   `on`, so the bloom's label still checks water alone. A bloom rewets its footprint, so a later `damp` landing
@@ -592,7 +596,7 @@ times or its `dryingScale`, which re-solves.
 | the same on a sheet it doesn't own | its marks move; its sheet re-solves from its first application, scheduling again there | a solve per distinct pose of it and everything after it on the sheet, cached; holds set the rate |
 | marks `boil` (wobble) | warp by a displacement map per epoch | per frame, no solve |
 | marks `boil` with `reseed` | re-placed and repainted | a solve per epoch |
-| `dissolve` `k` | two cached films blended | per frame, no solve |
+| `dissolve` `k` | each end's films solved and its picture laid once, kept; the pictures summed by weight | per frame, no solve once both ends are |
 | a path mask's `revealPx` | mask only | per frame, no solve |
 | instance count or poses | draws of shared films | per frame, no solve |
 | a hold | fewer distinct moments | divides all of the above per second |
@@ -685,7 +689,7 @@ plane's paint must cover what the camera shows of it: the camera build reports a
 | hold | plane `clock: {hold: n}` holds its presentation and motion: its lay, visibility and rig poses, and its nodes' plays; `sourceClock: {hold: n}` holds what `source` reads (its prefix, property values, dissolve weights) | each callback reads its clock's held moment, floored to the hold's grid. Both start from the frame's moment; neither holds the other's. The camera still moves through the shutter |
 | masks | `path` (a band `widthPx` wide in all, round ends, `softPx` 0 or a ramp that far inside its edge; `revealPx` 0 shows nothing, `shotPathInkedLength(subpaths)` all of it), `alphaOf` (another drawable's coverage, partial alpha included, where it lies this frame: a plane by id, any kind, or a painted plane's occurrence; an instanced plane's items are read through their plane) | both **NEW**, on painted planes only. They cut the plane's paint and the own-sheet paper it shapes; the ground stays whole. To leave a layer unmasked, put it on a second plane at the same depth. No mask reads its own plane, through any chain |
 | instances | `{kind: 'instanced', depths: {near, far}, variants, instances(m)}` | each item lays its variant as a plane at its depth (`lay` from the variant's document px; clear outside its paint), depth-sorted with every drawable, planes first on ties, all within `depths` and nearer than the back. A variant is solved and laid once, whole and centred on the stage (its document no larger), and every item showing it shares that picture; items lie anywhere through the lens. An item's defocus blurs that picture, and may spread it only as far as the stage leaves round the variant's document: paint a variant on a document tight round its paint. A key is one item's lifetime: the same key at the shutter's two ends blurs the item along its own travel; a key missing at either end draws it as if still on its plane, blurred only by the camera's move; a recycled item takes a new key. An item's `visibility` fades it, the plane's all of them. Items take no motion nodes (**NEW**) |
-| dissolve | `dissolve(a, b, k)`, nestable | blends the two pictures in the plane's own form (the back's opaque colour, a nearer plane's colour and transmittance, premultiplied RGBA on a later canvas), never their pigment; its occurrences are both sides', moved alike; no rigs inside (**NEW**) |
+| dissolve | `dissolve(a, b, k)`, nestable | blends the two pictures in the plane's own form (the back's opaque colour, a nearer plane's colour and transmittance, premultiplied RGBA on a later canvas), never their pigment; its glow and motion summed alike; its occurrences are both sides', moved alike; both ends one document size on one ground, and no rig on its plane (**NEW**) |
 | three.js | `{kind: 'three', build}`; `paintedTextures: [{id, source, widthPx, heightPx}]` on the shot | the three-layers feature's: posed at each moment (once at 0 as it loads), and may draw offscreen passes (a reflection, a ground) before its scene; it reads painted textures by id (Painted textures) |
 | picture | `{kind: 'picture', extent, pictureAt}` | a `StampPlaneSource`'s: premultiplied, its `box` in stage texels (the margin included), never mutated once handed over; return the same object while it's still |
 | HTML among canvases | `<PaintedShot>` children: HTML and `<PaintedShotCanvas name="…"/>`, stacked in DOM order | one device shared; every canvas is the whole frame, clear where nothing is painted, taking no pointer events. When any exists, every plane names one and several may share one; the back's is the first, and a later canvas holds only planes nearer than an earlier's (**NEW**). A canvas is positioned, so it paints over HTML that isn't, whatever their order: position HTML meant to lie over a canvas (`AbsoluteFill`, `position: 'relative'`). Canvases are fixed to the shot's element, so one nested in positioned wrappers still fills the frame; a transformed, filtered or contained wrapper between them (a transform that changes nothing yet included) is refused as the shot loads and at any frame it appears. A later canvas's paint over HTML is a glaze with α = 1 − luminance(T): exact within the canvas, a coloured glaze over HTML darkening toward grey |
@@ -909,6 +913,8 @@ What the check says today, and what to do:
 | `label.lay.points: both pin 40, 40: two points set a scale and turn only apart` / `label.lay.points[0].element: isn't mounted: …` / `label.lay.points[0].element: names title, the data-pin of 2 elements in the shot: a pin names one` / `label.lay: plane label's picture must hold what the camera shows of it, … widen the stage's margin` / `photo.lay: is a picture plane, which lies where its source puts it: …` | a pin or cover at load (`shotPlacementProblems`), a cover laid as the shot loads and a pin each frame where it's measured (`shotPinnedPlanes`); a lay on a picture or three plane | pin points apart; mount the element, one with its `data-pin`; keep within the stage's margin; move a picture plane by its node |
 | `meadow/hil.visibility: names no plane or occurrence of this shot` / `rain/drop-3.visibility: fades an item of rain, which isn't an occurrence: …` / `meadow/sky.visibility: 1.2 at 3 s; visibility is within 0..1` / `shot.warm: 2..1 isn't a span of scene seconds: …` | the shot's `visibility` (`shotVisibilityProblems` at load, `shotVisibilityProblem` each frame) and `warm` (`shotWarmProblems`) | name an occurrence; fade an item by its own `visibility` |
 | `label.id: names two painted textures: an id names one` / `label.widthPx: is 0: a painted texture is whole px above 0` / `label.source: selects on a transparent ground: a painted texture is opaque, …` / `label.source: blends paintings that wrap otherwise: …` | the shot's painted textures at load (`compileShotPaintedTextures`, each source at moment 0) and a callback's again each frame (`compiledPaintedTextureSourceAt`, which also refuses one wrapping otherwise than at 0) | one id a texture; leave `ground` out; wrap every painting a texture blends alike |
+| `shot.warm: runs to 240 s; its scene ends at 8 s: warm counts scene seconds, not frames, and stops at the scene's end` (warning) | a `warm` past the end of the scene playing the shot, in the warm's costs (`shotWarmPastScene`) | write the span in scene seconds |
+| `back.source: paints a 160 × 120 document, and the plane's is 320 × 240: every selection a plane shows, …` / `front.source: lays a transparent ground, and the plane a default one: …` / `meadow.source: dissolves, and meadow/heron on it is rigged: dissolve planes can't be rigged` | a selection painting a document or laying a ground other than the plane's first; a dissolve on a rigged plane (`paintedPlaneBlendProblems`, at load and each frame for a callback source) | paint every end at one size on one ground; rig the subject on a plane of its own |
 
 `studio paint check <source> --solve [--at <s>] [--out <dir>]` then solves every sheet on the GPU (run it under the
 GPU lock) and prints what only a solve can warn of, reading the images (a grain laid off its height on a document
@@ -977,9 +983,11 @@ camera build's problems and `paintChannelConflicts`' channel conflicts, a transp
 before the first canvas`), and a canvas that doesn't fill its shot (`shot.canvas: PaintedShotCanvas paint lies in a
 <div> with transform: matrix(1, 0, 0, 1, 0, 0), which holds a fixed canvas in its own box: …`). A frame fails on a
 source callback's selection with a problem, or one whose occurrences differ from its first (`shot: plane meadow's
-source at 2 s shows meadow/landscape, and its first showed meadow/landscape, meadow/cloud: …`); on its page, read as
+source at 2 s shows meadow/landscape, and its first showed meadow/landscape, meadow/cloud: …`), or one dissolving on a
+rigged plane; on its page, read as
 it draws: a canvas that no longer fills its shot, a clear back with no HTML behind it (`back.source: is a clear back,
 and no HTML lies before the first canvas at this frame: …`), or a pinned element unmounted, named twice, or laying
-paint past the stage. The cost report, per frame and warmed
-span (evaluations, cache hits and misses, solves by sheet from the first application re-run, decisions reused,
-uploads, bytes kept, and warnings such as a pose folding paint), comes with warming (What's built).
+paint past the stage. In a profiling render the shot reports its costs per frame and for its warmed span (`studio
+profile <project> --costs`): evaluations made and memo hits, film and picture hits and misses, solves by sheet from
+the first application re-run, checkpoint hits, decisions reused, evictions, bytes uploaded (three.js's included),
+bytes kept, and warnings such as a pose folding paint or a warm running past its scene.

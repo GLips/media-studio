@@ -1,12 +1,12 @@
-// shot-frame-plan.ts: what a shot's painted plane is at one moment, purely (ENGINE 6.2, 6.3): the selection its
-// source gives, the node poses its marks are solved under, the boil epochs reseeding its layers, where its sheets
-// lie, how visible its occurrences are, and its rigs' poses.
+// shot-frame-plan.ts: what a shot's painted plane is at one moment, purely (ENGINE 6.2, 6.3): the selections its
+// source blends and the clocks its solve reads, the node poses its marks are solved under, the boil epochs reseeding
+// its layers, where its sheets lie, how visible its occurrences are, and its rigs' poses.
 //
 // A frame's marks are posed at its own moment; its sheets and pieces rigs lie as each exposure or shutter end puts
 // them. Boil wobble moves finished paint: marks are solved without it, and the lay takes it in first, so a lattice
 // carries the solved film where the wobble puts it (ENGINE 5.3). A rigged group's wobble goes inside its rig.
 
-import { paintBoilEpochAt, paintNodeTimeAt, sceneSeconds } from '#lib/paint/animation/models/paint-clock.ts';
+import { paintBoilEpochAt, paintNodeTimeAt, sceneSeconds, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
 import type { PaintDeform } from '#lib/paint/animation/models/paint-deform.ts';
 import { paintLevelDeformsAt, paintLevelPlacementAt } from '#lib/paint/animation/models/paint-motion-frame.ts';
 import { PAINT_SIMILARITY_IDENTITY, paintSimilarityOf, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
@@ -21,7 +21,7 @@ import type { CompiledShotMotion, CompiledShotNode } from './shot-motion.ts';
 import { shotPresentationAt, type OccurrenceKey, type RigPartPose } from './shot-props.ts';
 import { shotPlaneOccurrences } from './shot-occurrences.ts';
 import { shotRigCelPoses, shotRigPosed, shotRigPoseProblem, type CompiledShotRig, type ShotRigAxis, type ShotRigFound, type ShotRigPosed } from './shot-rigs.ts';
-import { paintedSourceProblems, paintedSourceSelection } from './shot-selection.ts';
+import { paintedPlaneBlendProblems, paintedSourceProblems, paintedSourceSelections, paintedSourceShares, type PaintedSourceShare } from './shot-selection.ts';
 import { shotVisibilityProblem } from './shot-visibility.ts';
 
 /** `node`'s boil epoch at `t`, on its own time: 0 unless its marks boil. A boil holds through its frame, as a hold does. */
@@ -67,31 +67,31 @@ export function shotPlanePlaceAt(plane: CompiledShotPaintedPlane, motion: Compil
 }
 
 /**
- * The selection plane `plane`'s source gives at frame moment `t`, read at its source clock's moment. Throws on a
- * callback's selection with problems, on a dissolve between its ends (ENGINE slice 6), and on a source whose
- * occurrences, size or ground aren't its first evaluation's: motion, rigs, visibility, reach and the back were read
- * from those.
+ * The selections plane `plane`'s source blends at frame moment `t`, read at its source clock's moment, each weighted
+ * (paintedSourceShares). A callback's answer is checked as its load checked the first: throws on its problems
+ * (paintedSourceProblems, paintedPlaneBlendProblems), and on occurrences other than its first evaluation's, which
+ * motion, rigs and visibility were checked against.
  */
-export function shotPlaneSelectionAt(plane: CompiledShotPaintedPlane, t: PaintMoment, animationFps: number): LayerSelection {
+export function shotPlaneSharesAt(plane: CompiledShotPaintedPlane, t: PaintMoment, animationFps: number): PaintedSourceShare[] {
   const moment = paintNodeTimeAt(plane.sourceClock, t, animationFps), source = shotPresentationAt(plane.source, moment);
-  // A constant source was checked as the shot loaded; a callback's answer is checked each time it's read.
-  const problems = typeof plane.source === 'function' ? paintedSourceProblems(plane.id, source) : [];
-  if (problems.length) throw paintingProblemsError(`shot plane ${plane.id}'s source at ${moment.at} s`, problems);
-  const drawn = paintedSourceSelection(source);
-  if ('problem' in drawn) throw new Error(`shot: plane ${plane.id}'s source at ${moment.at} s ${drawn.problem}`);
-  const { widthPx, heightPx } = drawn.selection.painting.document, first = plane.first.painting.document;
-  if (widthPx !== first.widthPx || heightPx !== first.heightPx) {
-    throw new Error(`shot: plane ${plane.id}'s source at ${moment.at} s paints a ${widthPx} × ${heightPx} document, and its first ${first.widthPx} × ${first.heightPx}: a source keeps one document size, which its reach and lay were read at`);
-  }
-  const { ground } = drawn.selection, firstGround = plane.first.ground;
-  if (ground !== firstGround) {
-    throw new Error(`shot: plane ${plane.id}'s source at ${moment.at} s lays ${ground ?? 'its default'} ground, and its first ${firstGround ?? 'its default'}: a source keeps the ground its reach, and the back's canvas, were read with`);
-  }
+  if (typeof plane.source !== 'function') return paintedSourceShares(source);
+  const at = `shot plane ${plane.id}'s source at ${moment.at} s`, problems = paintedSourceProblems(plane.id, source);
+  if (!problems.length) problems.push(...paintedPlaneBlendProblems(plane.id, paintedSourceSelections(source), plane.paints, plane.rigged));
+  if (problems.length) throw paintingProblemsError(at, problems);
   const keys = shotPlaneOccurrences(plane.id, source).map(({ key }) => key), firstKeys = plane.occurrences.map(({ key }) => key);
   if (keys.length !== firstKeys.length || keys.some((key, i) => key !== firstKeys[i])) {
-    throw new Error(`shot: plane ${plane.id}'s source at ${moment.at} s shows ${keys.join(', ')}, and its first showed ${firstKeys.join(', ')}: a source keeps the occurrences its motion, rigs and visibility name`);
+    throw new Error(`${at} shows ${keys.join(', ')}, and its first showed ${firstKeys.join(', ')}: a source keeps the occurrences its motion, rigs and visibility name`);
   }
-  return drawn.selection;
+  return paintedSourceShares(source);
+}
+
+/**
+ * The clocks whose held moments plane `plane`'s solve reads, outermost steps first: its source clock, and its own,
+ * which its lay, rigs and nodes read. Frames reading the same moment on each solve alike. Its nodes' and plays' clocks
+ * run inside its own (shot-motion.ts), so their moments follow from its clock's and add no pairing.
+ */
+export function shotPlaneClocks(motion: CompiledShotMotion, plane: CompiledShotPaintedPlane): (readonly PaintSceneStep[])[] {
+  return [plane.sourceClock, motion.planeClocks.get(plane.id) ?? []];
 }
 
 /**

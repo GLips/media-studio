@@ -5,22 +5,16 @@
 // How it wraps is read at moment 0 and held: a callback's source is checked again at each moment.
 
 import { paintingErrors, paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
-import type { LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
 import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { PaintedTexture } from './shot-props.ts';
-import { paintedSourceProblems, type PaintedSource } from './shot-selection.ts';
+import { paintedSourceProblems, paintedSourceSelections, type PaintedSource } from './shot-selection.ts';
 
 /**
  * A painted texture compiled: as written, and `wrap`, how it repeats (u along x, v along y; null: neither), as its
  * source read at moment 0.
  */
 export type CompiledShotPaintedTexture = PaintedTexture & { readonly wrap: StampWrap | null };
-
-/** Every selection `source` names, a dissolve's ends at any weight. */
-function paintedSourceSelections(source: PaintedSource): LayerSelection[] {
-  return source.kind === 'layers' ? [source] : [...paintedSourceSelections(source.a), ...paintedSourceSelections(source.b)];
-}
 
 /** Whether `source` blends paintings that wrap otherwise than each other, at any weight: no texture can draw that. */
 const paintedSourceWrapsMixed = (source: PaintedSource) => new Set(paintedSourceSelections(source).map(({ painting }) => painting.document.wrap ?? null)).size > 1;

@@ -116,13 +116,38 @@ export function paintedSourceShares(source: PaintedSource): PaintedSourceShare[]
 }
 
 /**
- * The one selection `source` draws, or why it can't be drawn: a dissolve between its ends blends two (ENGINE 10 slice
- * 6). At k 0 or 1 it's the end shown.
+ * Every selection `source` names, each end of each dissolve whatever its `k`, equal ones once, in order: what its
+ * occurrences, reach and document size are read in.
  */
-export function paintedSourceSelection(source: PaintedSource): { readonly selection: LayerSelection } | { readonly problem: string } {
-  const shares = paintedSourceShares(source);
-  if (shares.length !== 1) return { problem: `blends ${shares.length} selections: a dissolve between its ends isn't drawn yet (ENGINE slice 6), only at k 0 or 1` };
-  return { selection: shares[0].selection };
+export function paintedSourceSelections(source: PaintedSource): LayerSelection[] {
+  if (source.kind === 'layers') return [source];
+  const named = paintedSourceSelections(source.a);
+  for (const selection of paintedSourceSelections(source.b)) if (!named.some((each) => sameSelection(each, selection))) named.push(selection);
+  return named;
+}
+
+/** What every selection of a painted plane paints, as its first evaluation's first does: its document size, px, and ground. */
+export type ShotPlanePaints = { readonly widthPx: number; readonly heightPx: number; readonly ground: LayerSelection['ground'] };
+
+/**
+ * Why plane `plane` can't show `selections`, its source's at `field` as its load or a callback's later read finds
+ * them: one painting a document or ground other than `paints` (its reach, lay and the back's canvas are read with
+ * them), or a dissolve on a plane holding the rigs `rigged`, each found over one selection's paint.
+ */
+export function paintedPlaneBlendProblems(
+  plane: string, selections: readonly LayerSelection[], paints: ShotPlanePaints, rigged: readonly string[], field = 'source',
+): PaintingProblem[] {
+  const problems: PaintingProblem[] = [], error = (message: string) => problems.push(paintingProblem('error', plane, field, message));
+  for (const { painting: { document: { widthPx, heightPx } }, ground } of selections) {
+    if (widthPx !== paints.widthPx || heightPx !== paints.heightPx) {
+      error(`paints a ${widthPx} × ${heightPx} document, and the plane's is ${paints.widthPx} × ${paints.heightPx}: every selection a plane shows, a dissolve's ends and each frame's, paints one document size`);
+    }
+    if (ground !== paints.ground) {
+      error(`lays a ${ground ?? 'default'} ground, and the plane a ${paints.ground ?? 'default'} one: every selection a plane shows, a dissolve's ends and each frame's, lays one ground`);
+    }
+  }
+  if (selections.length > 1 && rigged.length) error(`dissolves, and ${rigged.join(', ')} on it ${rigged.length > 1 ? 'are' : 'is'} rigged: dissolve planes can't be rigged`);
+  return problems;
 }
 
 /**

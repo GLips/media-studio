@@ -1,9 +1,9 @@
-// stamp-gate-shots.ts: the gate's shots (ENGINE 9, tests 6 and 7 drawn through a PaintedShot): the rigged heron, the
-// paper heron with a neck skinned to its body on the scene's sheet (a lowered neck its second cel), its wing a cel
-// moving its own sheet whole, and a clump of reeds whose group owns its sheet, drawn as pieces, also boiling; and the
-// wet-contact sheet with its heron's foot posed by a rig, also painted in as it plays; the heron alone, a clear back
-// over HTML, also pinned (shot/page); and the rain (stamp-gate-rain.ts). Poses and the rain's drops are tables by scene
-// second, so a baseline's inputs name them. What the cases measure of their frames is here, pure.
+// stamp-gate-shots.ts: the gate's shots (ENGINE 9, tests 6 and 7 through a PaintedShot): the rigged paper heron, its
+// neck skinned to its body, its wing a cel moving its own sheet, and reeds owning their sheet, drawn as pieces, also
+// boiling; the wet-contact sheet, its heron's foot posed by a rig: painted in as it plays, on sixes over a warmed span,
+// hidden, and dissolving to a sheet of its own over a dissolving back; the heron alone, a clear back over HTML, also
+// pinned (shot/page); and the rain (stamp-gate-rain.ts). Poses and the rain's drops are tables by scene second, so a
+// baseline's inputs name them. What the cases measure of their frames is here, pure.
 
 import { compilePaintingSelection } from '#lib/paint/document/models/painting-document-compile.ts';
 import type { LayerNode, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
@@ -16,6 +16,7 @@ import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { stampCanonicalJson, type StampCanonicalDatum } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import type { PaintedShotProps, RigPart, RigPartPose, ScreenPin } from '#lib/paint/shot/models/shot-props.ts';
+import { dissolve } from '#lib/paint/shot/models/shot-selection.ts';
 import {
   STAMP_GATE_HERON_BODY, STAMP_GATE_HERON_MOVE, STAMP_GATE_HERON_VANE, stampGateHeronLayer, stampGateHeronPaper, stampGateHeronPolygon, stampGatePaperHeronDocument,
 } from './stamp-gate-paper-heron.ts';
@@ -26,12 +27,18 @@ import { STAMP_GATE_HERON_POSE, STAMP_GATE_SHEET_IMAGES, STAMP_GATE_WET_CONTACT,
 export const STAMP_GATE_SHOT_PAGE_IDS = ['shot/page'] as const;
 
 /** The shots accepted by eye: each a baseline subject, one frame of its shot. */
-export const STAMP_GATE_SHOT_IDS = ['shot/paper-heron', 'shot/wet-contact', 'shot/rain'] as const;
-
-/** The shot cases checked apart from any sheet case: each a page's checks of its shot's frames. */
-export const STAMP_GATE_SHOT_CASE_IDS = ['shot/rain'] as const;
-export type StampGateShotCaseId = (typeof STAMP_GATE_SHOT_CASE_IDS)[number];
+export const STAMP_GATE_SHOT_IDS = ['shot/paper-heron', 'shot/wet-contact', 'shot/rain', 'shot/dissolve'] as const;
 export type StampGateShotId = (typeof STAMP_GATE_SHOT_IDS)[number];
+
+/**
+ * The shot cases checked apart from any sheet case, each a page's checks of its shot's frames: the rain's items, a
+ * dissolve drawn between its ends, and a span warmed.
+ */
+export const STAMP_GATE_SHOT_CASE_IDS = ['shot/rain', 'shot/dissolve', 'shot/warm'] as const;
+export type StampGateShotCaseId = (typeof STAMP_GATE_SHOT_CASE_IDS)[number];
+
+/** The fps the gate plays its shots at, as a composition would: a warm span's frames are counted at it. */
+export const STAMP_GATE_SHOT_FPS = 30;
 
 const { burntUmber, yellowOchre, phthaloGreen } = WATERCOLOUR_PIGMENTS;
 
@@ -192,13 +199,101 @@ export function stampGateWetContactPaintingInShot(): PaintedShotProps {
   return { ...stampGateWetContactShot(), planes: [{ id: 'pond', depth: 1, source: ({ at }: PaintMoment) => layersOf(evaluation, ['shallows', 'heron'], { at }) }] };
 }
 
-/** Each shot baseline: its shot, the frame it shows, and its sources, poses and instances as its inputs name them. */
+/** The hidden-foot shot's frames: the foot at rest and shown, then at rest and hidden. */
+export const STAMP_GATE_HIDDEN_FOOT_AT = { shown: STAMP_GATE_WET_CONTACT_AT.rest, hidden: STAMP_GATE_WET_CONTACT_AT.rest + 1 } as const;
+
+/** The wet-contact shot, its foot hidden from STAMP_GATE_HIDDEN_FOOT_AT.hidden on, before it's posed. */
+export const stampGateHiddenFootShot = (): PaintedShotProps => ({
+  ...stampGateWetContactShot(), visibility: { 'pond/foot': ({ at }) => (at < STAMP_GATE_HIDDEN_FOOT_AT.hidden ? 1 : 0) },
+});
+
+/** The wet-contact sheet's shallows painted with no heron on it: as they'd be without the foot's water. */
+export const stampGateShallowsAloneShot = (): PaintedShotProps => oneSheetShot('pond', painting(STAMP_GATE_WET_CONTACT, { heron: false }), ['shallows'], {}, []);
+
+/**
+ * The warm shot's span, scene seconds, and two frames inside it, drawn once it's warmed: each a frame its warm skips,
+ * pairing its plane's held moments (source and plane clocks) as an earlier frame does, but posing its foot otherwise
+ * than the frame before it on the source's clock alone did.
+ */
+export const STAMP_GATE_WARM = { from: 0.5, to: 1 } as const;
+export const STAMP_GATE_WARMED_AT = [20 / STAMP_GATE_SHOT_FPS, 28 / STAMP_GATE_SHOT_FPS] as const;
+
+/**
+ * The warm shot's foot, at rest and posed in turn each eighth of a second through its span, as the plane's clock
+ * moves: at rest wherever the source's clock moves on, so a warm pairing the source's moments alone never poses it.
+ */
+const WARM_FOOT_POSED = { heron: { leg: { x: STAMP_GATE_HERON_POSE.kx, y: STAMP_GATE_HERON_POSE.ky } } } as const;
+const WARM_FOOT_POSES: StampGatePoseTable = [
+  { from: 0.5, poses: {} }, { from: 0.625, poses: WARM_FOOT_POSED }, { from: 0.75, poses: {} }, { from: 0.875, poses: WARM_FOOT_POSED }, { from: 1, poses: {} },
+];
+
+/**
+ * The wet-contact shot painted in on sixes, a new prefix each quarter second, its plane held on threes as its foot
+ * flips between rest and posed; its second half-second warmed.
+ */
+export function stampGateWarmShot(): PaintedShotProps {
+  const evaluation = painting(STAMP_GATE_WET_CONTACT);
+  return {
+    ...oneSheetShot('pond', evaluation, ['shallows', 'heron'], { heron: FOOT_RIG }, WARM_FOOT_POSES), warm: STAMP_GATE_WARM,
+    planes: [{ id: 'pond', depth: 1, clock: { hold: 3 }, sourceClock: { hold: 6 }, source: ({ at }: PaintMoment) => layersOf(evaluation, ['shallows', 'heron'], { at }) }],
+  };
+}
+
+/**
+ * The dissolve shot's frames: its heron together, apart and halfway over the shallows alone; then, its plane hidden,
+ * the pond painted with the heron in it, the shallows alone, and halfway between them; and both halfway, the heron
+ * shown, its baseline's frame.
+ */
+export const STAMP_GATE_DISSOLVE_AT = { together: 0, apart: 1, half: 2, inPond: 3, alone: 4, backHalf: 5, bothHalf: 6 } as const;
+
+/**
+ * Each frame's `k`s, the heron plane's, together (0) to apart (1), and the back's, the pond painted with the heron in
+ * it (0) to the shallows alone (1); and whether the heron plane shows.
+ */
+const DISSOLVE_KS = [
+  { at: STAMP_GATE_DISSOLVE_AT.together, heron: 0, back: 1, shown: 1 }, { at: STAMP_GATE_DISSOLVE_AT.apart, heron: 1, back: 1, shown: 1 },
+  { at: STAMP_GATE_DISSOLVE_AT.half, heron: 0.5, back: 1, shown: 1 }, { at: STAMP_GATE_DISSOLVE_AT.inPond, heron: 0, back: 0, shown: 0 },
+  { at: STAMP_GATE_DISSOLVE_AT.alone, heron: 0, back: 1, shown: 0 }, { at: STAMP_GATE_DISSOLVE_AT.backHalf, heron: 0, back: 0.5, shown: 0 },
+  { at: STAMP_GATE_DISSOLVE_AT.bothHalf, heron: 0.5, back: 0.5, shown: 1 },
+] as const;
+
+/** The dissolve shot's evaluations: the shallows alone; the heron on the scene's sheet, and on a sheet of its own. */
+const dissolveEvaluations = () => ({
+  shallows: painting(STAMP_GATE_WET_CONTACT, { heron: false }), together: painting(STAMP_GATE_WET_CONTACT), apart: painting(STAMP_GATE_WET_CONTACT, { apart: true }),
+});
+
+/**
+ * The wet-contact heron on a plane of its own, dissolving from its foot as the scene's sheet paints it (`together`)
+ * to its foot cut out on a sheet of its own (`apart`), over the back, dissolving from the pond painted with the heron
+ * in it to the shallows alone; each, and whether the heron plane shows, by DISSOLVE_KS.
+ */
+export function stampGateDissolveShot(): PaintedShotProps {
+  const { shallows, together, apart } = dissolveEvaluations(), { widthPx: width, heightPx: height } = together.document;
+  const ks = ({ at }: PaintMoment) => DISSOLVE_KS.find((row) => row.at === at) ?? DISSOLVE_KS[0];
+  return {
+    camera: { stage: stampStage({ width, height }, 2), fov: 35, lens: { bloom: 0, shutter: 0 }, plays: [] },
+    planes: [
+      { id: 'pond', depth: 1, source: (moment: PaintMoment) => dissolve(layersOf(together, ['shallows', 'heron']), layersOf(shallows, ['shallows']), ks(moment).back) },
+      { id: 'heron', depth: 1, source: (moment: PaintMoment) => dissolve(layersOf(together, ['heron']), layersOf(apart, ['heron']), ks(moment).heron) },
+    ],
+    visibility: { heron: (moment) => ks(moment).shown },
+  };
+}
+
+/**
+ * Each shot baseline: its shot, the frame it shows, and as its inputs name them its sources (each evaluation drawn),
+ * rigs, poses and `extra`, what else its shot reads.
+ */
 const SHOT_BASELINES: Readonly<Record<StampGateShotId, {
-  shot: () => PaintedShotProps; at: number; evaluation: () => PaintingEvaluation; rigs: Readonly<Record<string, readonly RigPart[]>>; poses: StampGatePoseTable; instances?: StampCanonicalDatum;
+  shot: () => PaintedShotProps; at: number; evaluations: () => readonly PaintingEvaluation[]; rigs: Readonly<Record<string, readonly RigPart[]>>; poses: StampGatePoseTable;
+  extra?: StampCanonicalDatum;
 }>> = {
-  'shot/paper-heron': { shot: stampGateRiggedHeronShot, at: STAMP_GATE_RIGGED_HERON_AT.posed, evaluation: () => painting(STAMP_GATE_RIGGED_HERON), rigs: { heron: HERON_PARTS, reeds: REED_PARTS }, poses: HERON_POSES },
-  'shot/wet-contact': { shot: stampGateWetContactShot, at: STAMP_GATE_WET_CONTACT_AT.posed, evaluation: () => painting(STAMP_GATE_WET_CONTACT), rigs: { heron: FOOT_RIG }, poses: FOOT_POSES },
-  'shot/rain': { shot: stampGateRainShot, at: STAMP_GATE_RAIN.at.first, evaluation: () => painting(STAMP_GATE_RAINY_STREET), rigs: {}, poses: [], instances: STAMP_GATE_RAIN },
+  'shot/paper-heron': { shot: stampGateRiggedHeronShot, at: STAMP_GATE_RIGGED_HERON_AT.posed, evaluations: () => [painting(STAMP_GATE_RIGGED_HERON)], rigs: { heron: HERON_PARTS, reeds: REED_PARTS }, poses: HERON_POSES },
+  'shot/wet-contact': { shot: stampGateWetContactShot, at: STAMP_GATE_WET_CONTACT_AT.posed, evaluations: () => [painting(STAMP_GATE_WET_CONTACT)], rigs: { heron: FOOT_RIG }, poses: FOOT_POSES },
+  'shot/rain': { shot: stampGateRainShot, at: STAMP_GATE_RAIN.at.first, evaluations: () => [painting(STAMP_GATE_RAINY_STREET)], rigs: {}, poses: [], extra: STAMP_GATE_RAIN },
+  'shot/dissolve': {
+    shot: stampGateDissolveShot, at: STAMP_GATE_DISSOLVE_AT.bothHalf, evaluations: () => Object.values(dissolveEvaluations()), rigs: {}, poses: [], extra: { ks: DISSOLVE_KS },
+  },
 };
 
 /** Shot baseline `id`'s shot and the scene second its frame shows. */
@@ -207,10 +302,16 @@ export function stampGateShotBaseline(id: StampGateShotId): { shot: PaintedShotP
   return { shot: shot(), at };
 }
 
-/** What shot baseline `id` is drawn from, as text: its sheets' programs and steps, its rigs, its poses, its instances, its frame and the images it loads. */
+/** `evaluation`'s sheets' programs and steps, compiled whole. */
+function shotEvaluationInputs(evaluation: PaintingEvaluation) {
+  const compiled = compilePaintingSelection(evaluation, stampGateSheetBrushOf);
+  return { programs: compiled.sheets.map(({ program }) => program), steps: compiled.steps };
+}
+
+/** What shot baseline `id` is drawn from, as text: its sheets' programs and steps, its rigs, poses and extra, its frame and the images it loads. */
 export function stampGateShotInputs(id: StampGateShotId): string {
-  const { evaluation, rigs, poses, at, instances } = SHOT_BASELINES[id], compiled = compilePaintingSelection(evaluation(), stampGateSheetBrushOf);
-  return stampCanonicalJson({ programs: compiled.sheets.map(({ program }) => program), steps: compiled.steps, rigs, poses, at, images: STAMP_GATE_SHEET_IMAGES, ...(instances !== undefined && { instances }) });
+  const { evaluations, rigs, poses, extra, at } = SHOT_BASELINES[id];
+  return stampCanonicalJson({ evaluations: evaluations().map(shotEvaluationInputs), rigs, poses, extra, at, images: STAMP_GATE_SHEET_IMAGES });
 }
 
 const insideEllipse = ({ x, y }: StampPoint, centre: StampPoint, rx: number, ry: number) => ((x - centre.x) / rx) ** 2 + ((y - centre.y) / ry) ** 2 <= 1;

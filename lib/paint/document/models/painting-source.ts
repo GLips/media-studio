@@ -46,6 +46,14 @@ const paintingSourceName = <S extends PropertySchema>(source: PaintingSourceModu
 const schemaProblemsOf = new WeakMap<object, readonly PaintingProblem[]>();
 /** Each source's evaluations, by its full values' key. */
 const evaluationsOf = new WeakMap<object, Map<string, PaintingEvaluation>>();
+/** How many evaluations painting() has made, and answered from its memo, since the module loaded. */
+const evaluationCounts = { made: 0, memoHits: 0 };
+
+/**
+ * painting()'s running counts: evaluations made, and answered from the memo. A cost report counts the change around a
+ * synchronous read of sources, which nothing else evaluates during.
+ */
+export const paintingEvaluationCounts = (): { readonly made: number; readonly memoHits: number } => ({ ...evaluationCounts });
 
 /** The schema's and the values' problems, and the full values when there are none. */
 function sourceValues<S extends PropertySchema>(source: PaintingSourceModule<S>, given: Readonly<Partial<PaintingPropertyRecord>>) {
@@ -93,7 +101,11 @@ export function painting<S extends PropertySchema>(source: PaintingSourceModule<
   const evaluations = evaluationsOf.get(source) ?? new Map<string, PaintingEvaluation>();
   evaluationsOf.set(source, evaluations);
   const kept = evaluations.get(key);
-  if (kept) return kept;
+  if (kept) {
+    evaluationCounts.memoHits++;
+    return kept;
+  }
+  evaluationCounts.made++;
   const { problems, evaluation } = evaluateAt(source, checked.values, false);
   if (!evaluation) throw paintingProblemsError(paintingSourceName(source), problems);
   evaluations.set(key, evaluation);

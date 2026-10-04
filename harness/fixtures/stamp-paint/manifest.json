@@ -198,31 +198,40 @@
       "acceptedOver": "afc2f970",
       "adapter": "apple metal-3"
     },
+    "shot/dissolve": {
+      "file": "shot/dissolve.png",
+      "output": "47094c8c90d3d564594a0243433ba5b9e7c204677199bed883e6edb5a667cedd",
+      "inputs": "4e72ae8c95a06e6622def25d69d78e4b1736733de33cedfd994818d383f606d0",
+      "reason": "re-keyed on pres-dissolve: a shot baseline's inputs name its evaluations as a list plus one extra (the dissolve's k table), and shot/dissolve now dissolves its back too (pond painted with the heron to the shallows alone), its frame both halfway",
+      "accepted": "2026-10-04",
+      "acceptedOver": "64534e9e",
+      "adapter": "apple metal-3"
+    },
     "shot/paper-heron": {
       "file": "shot/paper-heron.png",
       "output": "4d0a6b4c84254efc7f1c019eee7e619786192a4c659fcd671f9936373085f77a",
-      "inputs": "0ffe82bf74d542cd07df5ed5944b06783862f43732a234e993d2ca04579dc96e",
-      "reason": "re-keyed on three-textures landing over the shot: each sheet program now carries wrap (null here), so the shots' inputs changed; images unchanged",
-      "accepted": "2026-10-03",
-      "acceptedOver": "84b1fb41",
+      "inputs": "72c936488a12814a28c19ff6b8b17f3bc2b701109c84eca7d6239927ef73e320",
+      "reason": "re-keyed on pres-dissolve: a shot baseline's inputs name its evaluations as a list plus one extra (the dissolve's k table), and shot/dissolve now dissolves its back too (pond painted with the heron to the shallows alone), its frame both halfway",
+      "accepted": "2026-10-04",
+      "acceptedOver": "64534e9e",
       "adapter": "apple metal-3"
     },
     "shot/rain": {
       "file": "shot/rain.png",
       "output": "2ea5b1703b01f2f1857081fdfebc457ef07760fbeb591905004965c01e5f79e5",
-      "inputs": "04c4f979e64189ebd8529badf514dbfd4b74bcb8b1a47412cb2ca13b64f16ea5",
-      "reason": "re-keyed after landing over three-textures, wrap-xy and pres-dom: its programs now carry wrap; image compared by eye with the slice's baseline",
+      "inputs": "a342132e3ca0c7a9636e5d7b9cae925c3661f3fc233c292c20a0848e70b10e84",
+      "reason": "re-keyed after landing over pres-instances: a shot baseline's inputs name its evaluations as a list and the rain's drops as its extra (pres-dissolve's SHOT_BASELINES shape); image compared by eye with the accepted one",
       "accepted": "2026-10-04",
-      "acceptedOver": "319252f4",
+      "acceptedOver": "df7f6c16",
       "adapter": "apple metal-3"
     },
     "shot/wet-contact": {
       "file": "shot/wet-contact.png",
       "output": "83eb90cc4ece6c4841fe84f1d6b58d017d8e1e5886be99ff800e253adb1de79a",
-      "inputs": "1ce5fdc87d214f900b846faf2259cbd88485b04939cafc78b2e0d5c20b8c30e0",
-      "reason": "re-keyed on three-textures landing over the shot: each sheet program now carries wrap (null here), so the shots' inputs changed; images unchanged",
-      "accepted": "2026-10-03",
-      "acceptedOver": "84b1fb41",
+      "inputs": "564fa16c5a42f1e42c61fbf6267f9718b84e3adc9b6584588129c90ca50638e1",
+      "reason": "re-keyed on pres-dissolve: a shot baseline's inputs name its evaluations as a list plus one extra (the dissolve's k table), and shot/dissolve now dissolves its back too (pond painted with the heron to the shallows alone), its frame both halfway",
+      "accepted": "2026-10-04",
+      "acceptedOver": "64534e9e",
       "adapter": "apple metal-3"
     },
     "solved/forward": {

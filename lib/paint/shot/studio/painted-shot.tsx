@@ -1,10 +1,11 @@
 // painted-shot.tsx: a PaintedShot in a scene (ENGINE 6.3): an element the camera's frame, one CSS px a frame px,
 // scaled to fill its box, its HTML children laid out in frame px among PaintedShotCanvases. One device owner draws
 // every canvas; a shot with no PaintedShotCanvas draws in one of its own, under its children. It holds the frame
-// until its paint is solved and WebGPU has checked each draw (the screenshot waits for the GPU).
+// until its paint is solved and WebGPU has checked each draw.
 //
 // The shot loads when its props' identity changes, or its canvases do, once its page is laid out
-// (shot-dom-points.ts); within one, `t` draws the frame, its page read as it's drawn.
+// (shot-dom-points.ts), then solves its `warm` span; within one, `t` draws the frame, its page read as it's drawn. A
+// profiling render gets each frame's costs and the warm's (shot-cost-report.ts).
 
 import { createContext, useContext, useLayoutEffect, useReducer, useRef, useState, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
@@ -13,6 +14,7 @@ import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { BrushRef } from '#lib/paint/document/models/painting-document.ts';
 import type { PaintingBrushOf } from '#lib/paint/document/models/painting-deposit-compile.ts';
 import { paintingProblemsError } from '#lib/paint/document/models/painting-problem.ts';
+import { createStampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { createStampPaintGpuOwner, type StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { createStampPaintSurface, type StampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 import type { ResolvedStampPaintStyle } from '#lib/paint/style/models/style.ts';
@@ -23,7 +25,11 @@ import type { LensMode } from '#lib/picture/lens/models/lens-mode.ts';
 import { useLensMode } from '#lib/picture/lens/studio/lens-mode-context.ts';
 import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { whenLaidOut } from '#lib/picture/measurement/studio/screen-rect.ts';
+import { useFrameCosts, type FrameCostsReport } from '#lib/picture/profiling/studio/frame-profile.ts';
+import { useSceneOrNull } from '#lib/picture/video/studio/scene.tsx';
+import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
 import { compilePaintedShot, shotCanvasAlphaMode } from '../models/shot-compile.ts';
+import { SHOT_FRAME_COSTS_LABEL, SHOT_WARM_COSTS_LABEL, shotCostsProfileEntry } from '../models/shot-cost-report.ts';
 import type { PaintedShotProps } from '../models/shot-props.ts';
 import { createShotPageWatch, SHOT_CANVAS_STYLE, shotCanvasFillProblems, shotHtmlBehind, type ShotPageWatch } from './shot-dom-points.ts';
 import { createPaintedShotRenderer, type PaintedShotRenderer } from './shot-renderer.ts';
@@ -62,7 +68,9 @@ export function PaintedShotCanvas({ name }: { readonly name: string }) {
  * DOM order. Keep `shot` a module constant or memoised: a new one loads anew.
  */
 export function PaintedShot({ shot, t, box: given, children }: { readonly shot: PaintedShotProps; readonly t: number; readonly box?: { x: number; y: number; w: number; h: number }; readonly children?: ReactNode }) {
-  const format = useVideoFormat(), box = given ?? fullFrameRect(format), { frame } = shot.camera.stage;
+  const format = useVideoFormat(), box = given ?? fullFrameRect(format), { frame } = shot.camera.stage, { fps } = format;
+  // The scene playing the shot, when it's played in one: its length is what a warm span is held to.
+  const sceneDur = useSceneOrNull()?.dur ?? null, report = useFrameCosts();
   const holder = useRef<HTMLDivElement>(null);
   const { delayRender, continueRender, cancelRender } = useDelayRender();
   const lensMode = useLensMode();
@@ -91,11 +99,17 @@ export function PaintedShot({ shot, t, box: given, children }: { readonly shot: 
   }, []);
 
   useLayoutEffect(() => {
-    const handle = delayRender('loading the painted shot onto the GPU');
-    let open = true, live = true;
+    let handle = delayRender('loading the painted shot onto the GPU'), open = true, live = true;
     const release = () => {
       if (open) continueRender(handle);
       open = false;
+    };
+    // Each solve a warm makes gets the time a frame's solve gets: a hold of its own, the last let go once it's taken.
+    const solving = (label: string) => {
+      if (!open) return;
+      const next = delayRender(label);
+      continueRender(handle);
+      handle = next;
     };
     const named = [...canvases.named].toSorted(([a], [b]) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
     // With no PaintedShotCanvas, the shot's own canvas lies first, under its children.
@@ -106,7 +120,7 @@ export function PaintedShot({ shot, t, box: given, children }: { readonly shot: 
     }
     const elements = own ? [own] : named.map(([canvas]) => canvas);
     for (const canvas of elements) Object.assign(canvas, { width: frame.width, height: frame.height });
-    const loading = loadPaintedShotScene(shot, holder.current!, elements, named.map(([, name]) => name), layoutMoved);
+    const loading = loadPaintedShotScene(shot, elements, named.map(([, name]) => name), { holder: holder.current!, pinsMoved: layoutMoved, fps, sceneDur, report, solving });
     loading.ready.then(() => {
       if (!live) return undefined;
       flushSync(() => setScene(loading));
@@ -121,7 +135,7 @@ export function PaintedShot({ shot, t, box: given, children }: { readonly shot: 
       setScene(null);
       release();
     };
-  }, [shot, frame.width, frame.height, canvases, delayRender, continueRender, cancelRender]);
+  }, [shot, frame.width, frame.height, canvases, fps, sceneDur, report, delayRender, continueRender, cancelRender]);
 
   useLayoutEffect(() => {
     if (!scene) return undefined;
@@ -158,25 +172,40 @@ export function PaintedShot({ shot, t, box: given, children }: { readonly shot: 
 
 /** A shot loaded on a device of its own over its canvases, drawn a frame at a time, one after another. */
 type PaintedShotScene = {
-  /** Resolves once loaded, or rejects with the load's error. */
+  /** Resolves once loaded and its warm span solved, or rejects with the load's error. */
   readonly ready: Promise<void>;
   /**
    * Draws the frame at `t` as one task after every earlier one, its page read as it's called: refused when its
    * canvases, a clear back's HTML or its pinned elements are amiss there. A no-op once disposed.
    */
   readonly draw: (t: number, mode: LensMode) => Promise<void>;
-  /** Takes no more draws, waits out the load and the draws queued, then lets go of the renderer, surfaces and device. */
+  /** Takes no more draws, stops a warm, waits out the load and the draws queued, then lets go of the renderer, surfaces and device. */
   readonly dispose: () => Promise<void>;
 };
 
 /**
- * `props` checked against `names` (its PaintedShotCanvases' names; none when it draws in its own) and the page in
- * `holder`, its element, once laid out; loaded on a device owner of its own over `canvases`, each handing the browser
- * its alpha as shotCanvasAlphaMode says. `pinsMoved` hears a pinned element resized. Refuses every problem at once.
+ * Where a shot loads: `holder`, its element, its page checked once laid out; `pinsMoved`, told when a pinned element
+ * resizes; the composition's fps, counting its warm's frames; its scene's length, s (null outside one); the
+ * profiler's cost report (null outside a profiling render); `solving`, told of each warm solve.
  */
-function loadPaintedShotScene(props: PaintedShotProps, holder: HTMLElement, canvases: readonly HTMLCanvasElement[], names: readonly string[], pinsMoved: () => void): PaintedShotScene {
+type PaintedShotLoadContext = {
+  readonly holder: HTMLElement;
+  readonly pinsMoved: () => void;
+  readonly fps: number;
+  readonly sceneDur: number | null;
+  readonly report: FrameCostsReport | null;
+  readonly solving: (label: string) => void;
+};
+
+/**
+ * `props` checked against `names` (its PaintedShotCanvases' names; none when it draws in its own) and its page, once
+ * laid out; loaded on a device owner of its own over `canvases`, each handing the browser its alpha as
+ * shotCanvasAlphaMode says, its warm span solved. Refuses every problem at once.
+ */
+function loadPaintedShotScene(props: PaintedShotProps, canvases: readonly HTMLCanvasElement[], names: readonly string[], context: PaintedShotLoadContext): PaintedShotScene {
+  const { holder, pinsMoved, fps, sceneDur, report, solving } = context;
   let owner: StampPaintGpuOwner | null = null, renderer: PaintedShotRenderer | null = null, page: ShotPageWatch | null = null, disposed = false;
-  const surfaces: StampPaintSurface[] = [];
+  const surfaces: StampPaintSurface[] = [], costs = report ? createStampPaintCostTally() : undefined;
   const ready = (async () => {
     await whenLaidOut(holder);
     const fill = shotCanvasFillProblems(holder, canvases, names);
@@ -186,12 +215,20 @@ function loadPaintedShotScene(props: PaintedShotProps, holder: HTMLElement, canv
     const made = await createStampPaintGpuOwner(stampPaintAssetUrl);
     owner = made;
     // One after another: each configures its canvas under the owner's error check.
-    await canvases.reduce(async (before, canvas, index) => {
-      await before;
+    await gpuEachInTurn(canvases, async (canvas, index) => {
       surfaces.push(await createStampPaintSurface(made, { canvas, width: canvas.width, height: canvas.height, alphaMode: shotCanvasAlphaMode(shot, index) }));
-    }, Promise.resolve());
-    renderer = await createPaintedShotRenderer(made, surfaces, shot, { brushOf: paintedShotBrushOf });
+    });
+    renderer = await createPaintedShotRenderer(made, surfaces, shot, { brushOf: paintedShotBrushOf, ...(costs && { costs }) });
+    if (!shot.warm) return;
+    await renderer.warm({ fps, sceneDur, stopped: () => disposed, solving });
+    if (costs) report!(SHOT_WARM_COSTS_LABEL, shotCostsProfileEntry(costs.take()));
   })();
+  /** The frame at `t` drawn once the shot's loaded, its pins laid at `pins`, its costs reported in a profiling render. */
+  const drawFrame = async (t: number, mode: LensMode, pins: Parameters<PaintedShotRenderer['draw']>[2]) => {
+    await ready;
+    await renderer!.draw(t, mode, pins);
+    if (costs) report!(SHOT_FRAME_COSTS_LABEL, shotCostsProfileEntry(costs.take()));
+  };
   // The tasks queued so far, settled either way: one's failure is its caller's, not the next task's.
   let queue: Promise<unknown> = ready.catch(() => {});
   let disposing: Promise<void> | null = null;
@@ -201,7 +238,7 @@ function loadPaintedShotScene(props: PaintedShotProps, holder: HTMLElement, canv
       // Read now, after the frame's layout: by its turn in the queue a later frame may be laid out.
       const read = page?.read();
       if (read?.problems.length) return Promise.reject(paintingProblemsError(`shot's page at ${t} s`, read.problems));
-      const run = queue.then(() => (disposed ? undefined : ready.then(() => renderer!.draw(t, mode, read?.pins))));
+      const run = queue.then(() => (disposed ? undefined : drawFrame(t, mode, read?.pins)));
       queue = run.catch(() => {});
       return run;
     },

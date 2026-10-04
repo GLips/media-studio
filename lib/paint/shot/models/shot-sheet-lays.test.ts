@@ -10,7 +10,7 @@ import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-
 import { stampPointBox, stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { stampRoundTipStatedProfile } from '#lib/paint/painting/models/stamp-tip-support.ts';
 import { compilePaintedShot } from './shot-compile.ts';
-import { shotPlanePosesAt, shotPlaneSelectionAt } from './shot-frame-plan.ts';
+import { shotPlanePosesAt, shotPlaneSharesAt } from './shot-frame-plan.ts';
 import type { PaintedShotProps, RigPart } from './shot-props.ts';
 import type { ShotRigFound } from './shot-rigs.ts';
 import { shotPlaneLayPlan } from './shot-sheet-lays.ts';
@@ -57,7 +57,7 @@ function planAt(props: PaintedShotProps, at: PaintMoment) {
   assert.deepEqual(problems, []);
   const [plane] = shot!.planes;
   assert.ok(plane.kind === 'painted');
-  const selection = shotPlaneSelectionAt(plane, at, FPS), compiled = compilePaintingSelection(selection.painting, brushOf, { layers: selection.layers });
+  const [{ selection }] = shotPlaneSharesAt(plane, at, FPS), compiled = compilePaintingSelection(selection.painting, brushOf, { layers: selection.layers });
   const films = compiled.sheets.map(({ layers }) => layers.map((_, f) => ({ box: stampPointBox({ x: 30, y: 90, w: 180, h: 40 }), key: `film ${f}` })));
   // Rigs found with unit axes: what the plan reads of them is their parts' poses, not the paint they were found over.
   const rigs: ShotRigFound[] = [...shot!.rigs.values()].map((rig) => ({ rig, axes: new Map(rig.parts.map(({ id }) => [id, { direction: 0, length: 1 }])), skin: null }));

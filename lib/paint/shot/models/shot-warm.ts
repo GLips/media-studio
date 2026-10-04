@@ -1,12 +1,14 @@
-// shot-warm.ts: what a shot's `warm` span reads, to solve before its first frame shows: the render frames whose scene
-// seconds lie in from..to at the composition's fps, and the moments those frames read through each plane's and node's
-// clock, an instanced plane's at its shutter's ends too. Warming reports what it kept and promises no residency: a
-// span past the cache's budget evicts its beginning, and those frames solve again.
+// shot-warm.ts: what a shot's `warm` span solves before its first frame shows: the render frames whose scene seconds
+// lie in from..to at the composition's fps, within the scene playing the shot, and of those, for each painted plane,
+// the first to pair each set of moments its solve reads on its clocks. Warming reports what it kept and promises no
+// residency: a span past the cache's budget evicts its beginning, and those frames solve again.
+//
+// Negative space: no shutter ends. An instanced plane's items read them, but its variants are finished selections
+// solved once, so the moments its items move through solve nothing.
 
 import { paintNodeTimeAt, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
 import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
-import { shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import type { PaintedShotProps } from './shot-props.ts';
 
 export type ShotWarm = NonNullable<PaintedShotProps['warm']>;
@@ -17,27 +19,38 @@ export function shotWarmProblems({ from, to }: ShotWarm): PaintingProblem[] {
   return [paintingProblem('error', 'shot', 'warm', `${from}..${to} isn't a span of scene seconds: from 0 or later, to no earlier than from`)];
 }
 
-/** The render frames whose scene seconds lie in `warm` at `fps`, each as the moment it shows, in order. */
-export function shotWarmFrames({ from, to }: ShotWarm, fps: number): PaintMoment[] {
+/**
+ * A warning for `warm` running past the end of the scene playing the shot, `dur` scene seconds long: a span written
+ * in frames, say. The shot warms only to the scene's end (shotWarmFrames) and reports this with its warm's costs.
+ */
+export function shotWarmPastScene({ to }: ShotWarm, dur: number): PaintingProblem[] {
+  return to > dur ? [paintingProblem('warning', 'shot', 'warm', `runs to ${to} s; its scene ends at ${dur} s: warm counts scene seconds, not frames, and stops at the scene's end`)] : [];
+}
+
+/**
+ * The render frames whose scene seconds lie in `warm` at `fps`, each as the moment it shows, in order; with
+ * `sceneDur`, the length of the scene playing the shot, only the frames it shows: none at its end or past it.
+ */
+export function shotWarmFrames({ from, to }: ShotWarm, fps: number, sceneDur: number | null = null): PaintMoment[] {
   // Within a millionth of a frame counts as on it, so 0.1 s at 30 fps is frame 3 though 0.1 × 30 isn't quite 3.
-  const first = Math.ceil(from * fps - 1e-6), last = Math.floor(to * fps + 1e-6);
+  const first = Math.ceil(from * fps - 1e-6), inSpan = Math.floor(to * fps + 1e-6);
+  const last = sceneDur === null ? inSpan : Math.min(inSpan, Math.ceil(sceneDur * fps - 1e-6) - 1);
   return Array.from({ length: Math.max(0, last - first + 1) }, (_, i) => paintMoment((first + i) / fps));
 }
 
 /**
- * The distinct moments a clock of `steps` (a plane's or node's, outermost first, as paintNodeTimeAt takes them) reads
- * over `frames`, in order. With `shutter` (s; an instanced plane's), each frame's shutter ends too, where its items
- * are read for their travel.
+ * The frames of `frames` a painted plane's warm solves, in order: each the first to pair its moments on `clocks` (the
+ * plane's, as shotPlaneClocks gives them) as it does. A later frame pairing them alike solves alike, and is skipped.
  */
-export function shotWarmMoments(frames: readonly PaintMoment[], steps: readonly PaintSceneStep[], animationFps: number, shutter = 0): PaintMoment[] {
-  const moments = new Map<string, PaintMoment>();
-  for (const frame of frames) {
-    const opens = shutterOpensAt(frame.at, shutter);
-    const read = shutter > 0 ? [frame, paintMoment(opens, frame.frame), paintMoment(opens + shutter, frame.frame)] : [frame];
-    for (const moment of read) {
-      const held = paintNodeTimeAt(steps, moment, animationFps);
-      moments.set(`${held.at} ${held.frame}`, held);
-    }
-  }
-  return [...moments.values()];
+export function shotWarmCombinations(frames: readonly PaintMoment[], clocks: readonly (readonly PaintSceneStep[])[], animationFps: number): PaintMoment[] {
+  const paired = new Set<string>();
+  return frames.filter((frame) => {
+    const key = clocks.map((steps) => {
+      const held = paintNodeTimeAt(steps, frame, animationFps);
+      return `${held.at} ${held.frame}`;
+    }).join('|');
+    if (paired.has(key)) return false;
+    paired.add(key);
+    return true;
+  });
 }

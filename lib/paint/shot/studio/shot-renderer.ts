@@ -10,6 +10,7 @@
 import { paintSimilarityAfter } from '#lib/paint/animation/models/paint-similarity.ts';
 import { paintCameraDepthLooks, paintCameraLensFrame, type PaintCameraDepthLooks } from '#lib/paint/animation/models/paint-camera.ts';
 import type { PaintingBrushOf } from '#lib/paint/document/models/painting-deposit-compile.ts';
+import { paintingProblemsError, paintingProblemText } from '#lib/paint/document/models/painting-problem.ts';
 import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { STAMP_REST_LOOK, type StampLaidSourcePlane, type StampLensFrame, type StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
@@ -21,17 +22,18 @@ import type { StampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-s
 import { loadStampPictureSources } from '#lib/paint/painting/studio/stamp-picture-sources.ts';
 import { createStampGrowingUniformArena } from '#lib/paint/painting/studio/stamp-uniform-arena.ts';
 import { loadPaintedThreeSources, type PaintedThreeTexturesSupplied } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
+import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
 import { lensExposures } from '#lib/picture/lens/models/lens-exposures.ts';
 import { LENS_REFERENCE_EXPOSURES, type LensMode } from '#lib/picture/lens/models/lens-mode.ts';
 import { shutterMomentAt, shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import { createLensCompositor, type LensItemsLayer, type LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
-import { paintingProblemsError } from '#lib/paint/document/models/painting-problem.ts';
 import { shotCanvasAlphaMode, shotPaintedSolvables, type CompiledPaintedShot, type CompiledShotPlane } from '../models/shot-compile.ts';
 import { shotPinnedPlanes, type ShotPinCentres } from '../models/shot-placement.ts';
-import { shotNodePoseAt } from '../models/shot-frame-plan.ts';
+import { shotNodePoseAt, shotPlaneClocks } from '../models/shot-frame-plan.ts';
 import { shotDrawSteps, shotExposureItems, type CompiledShotVariant, type ShotExposureItems } from '../models/shot-instances.ts';
 import { shotDrawableOrder } from '../models/shot-plan.ts';
 import type { ShotMomentAt } from '../models/shot-sheet-lays.ts';
+import { shotWarmCombinations, shotWarmFrames, shotWarmPastScene } from '../models/shot-warm.ts';
 import { createShotGroupFade } from './shot-group-pass.ts';
 import { shotItemsLayer } from './shot-instance-passes.ts';
 import { createShotPaintedPlanes, type ShotPlaneMoment, type ShotPlaneSolved } from './shot-painted-plane.ts';
@@ -42,11 +44,25 @@ import { createShotSheetsLayer } from './shot-sheets-lay.ts';
 export type PaintedShotRendererOptions = { readonly brushOf: PaintingBrushOf; readonly costs?: StampPaintCostTally };
 
 /**
- * A shot drawn a frame at a time: `draw` at frame time `t` in a lens mode, its pinned planes' elements as `pins`
- * measures them at that frame (none needed without pins); `finish` waiting out the GPU.
+ * How a shot warms: at the composition's `fps`; within the scene playing it, `sceneDur` s long (null: unknown);
+ * stopping between solves once `stopped` says so; `solving` told of each solve before it starts, so a render can give
+ * each the time a frame's solve gets.
+ */
+export type PaintedShotWarmRun = {
+  readonly fps: number;
+  readonly sceneDur: number | null;
+  readonly stopped?: () => boolean;
+  readonly solving?: (label: string) => void;
+};
+
+/**
+ * A shot drawn a frame at a time: `warm` solving its warm span's films (nothing without one), `draw` at frame time `t`
+ * in a lens mode, its pinned planes' elements as `pins` measures them at that frame (none needed without pins),
+ * `finish` waiting out the GPU. Each counts its costs, the device's evictions, uploads and bytes kept among them.
  */
 export type PaintedShotRenderer = {
   readonly stage: StampStage;
+  warm: (run: PaintedShotWarmRun) => Promise<void>;
   draw: (t: number, mode: LensMode, pins?: ShotPinCentres) => Promise<void>;
   finish: () => Promise<void>;
   dispose: () => void;
@@ -77,13 +93,6 @@ function shotExposures(shot: CompiledPaintedShot, t: number, mode: LensMode): Sh
     return { looks, lens: paintCameraLensFrame(camera, looks), at: paintMoment(at, t), shutter: null, exposure: { index, count, at, aperture } };
   });
 }
-
-/** `run` on each of `items` in turn, each finished before the next starts: GPU work that shares targets and a lease. */
-const eachInTurn = <T,>(items: Iterable<T>, run: (item: T) => Promise<void>): Promise<void> =>
-  [...items].reduce(async (before, item) => {
-    await before;
-    await run(item);
-  }, Promise.resolve());
 
 /**
  * `shot` on `owner`'s device, drawn into `surfaces`, one a canvas in the shot's canvas order, each the camera's frame
@@ -151,17 +160,17 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
       renders: readonly StampSourceRenders[], t: number,
     ) => owner.checked(`drawing the shot at ${exposure.at.at} s of ${t} s`, () => {
       arena.reset();
-      layer.reserve([...moments.values(), ...variantMoments.values()].map(({ frame }) => frame));
+      layer.reserve([...moments.values(), ...variantMoments.values()].flatMap(({ shares }) => shares.map(({ frame }) => frame)));
       const encoder = device.createCommandEncoder(), lensFrame = exposure.lens, fast = !exposure.exposure;
       // The exposure's drawables far to near, consecutive items of a variant blurred alike in one step.
       const steps = shotDrawSteps(shotDrawableOrder(shot.written, items.items), (plane, item) => items.lookOf(plane, item).sigma);
       for (const canvas of canvases) {
         const rendered = renders[canvas.index], lookOf = (id: string) => lensFrame.planes.get(id) ?? STAMP_REST_LOOK;
-        const own = steps.filter((step) => canvasOf.get(step.plane) === canvas.index), planOf = (plane: CompiledShotPlane) => moments.get(plane.id)?.plan;
+        const own = steps.filter((step) => canvasOf.get(step.plane) === canvas.index), momentOf = (plane: CompiledShotPlane) => moments.get(plane.id);
         const shown = own.flatMap((step) => (step.kind === 'plane' ? [planeOf.get(step.plane)!] : []));
-        const glowing = shown.some((plane) => planOf(plane)?.emits);
+        const glowing = shown.some((plane) => momentOf(plane)?.emits);
         const itemsMove = own.some((step) => step.kind === 'items' && step.items.some((item) => items.lookOf(step.plane, item).shutter));
-        const moving = fast && (shown.some((plane) => planOf(plane)?.travels || lookOf(plane.id).shutter) || itemsMove || rendered.moved.size > 0);
+        const moving = fast && (shown.some((plane) => momentOf(plane)?.travels || lookOf(plane.id).shutter) || itemsMove || rendered.moved.size > 0);
         const layers = own.flatMap((step): (LensLayer | LensItemsLayer)[] => {
           if (step.kind === 'items') {
             const variant = variantMoments.get(instancedOf.get(step.plane)!.variants.get(step.variant)!)!;
@@ -196,10 +205,36 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
       device.queue.submit([encoder.finish()]);
     });
 
+    /** `run`, the device's evictions and uploads meanwhile counted, and the bytes its cache keeps after. */
+    const counted = async (run: () => Promise<void>) => {
+      const evicted = owner.cache.evictions(), uploaded = owner.uploaded();
+      try {
+        await run();
+      } finally {
+        costs?.count('evictions', owner.cache.evictions() - evicted);
+        costs?.count('bytes uploaded', owner.uploaded() - uploaded);
+        costs?.retained(owner.cache.bytes());
+      }
+    };
+
     let disposed = false;
     return {
       stage,
-      draw: async (t, mode, pins = new Map()) => {
+      warm: ({ fps, sceneDur, stopped = () => false, solving }) => counted(async () => {
+        const { warm } = shot;
+        if (disposed || !warm) return;
+        owner.assertLive();
+        for (const warning of sceneDur === null ? [] : shotWarmPastScene(warm, sceneDur)) costs?.warned(paintingProblemText(warning));
+        const frames = shotWarmFrames(warm, fps, sceneDur);
+        // Each plane's films solved at each pairing of moments the span's frames read, and let go to the cache. A
+        // solve reads no lay, so a pinned plane warms unlaid.
+        await gpuEachInTurn(shotPaintedSolvables(shot), (plane) => gpuEachInTurn(shotWarmCombinations(frames, shotPlaneClocks(shot.motion, plane), shot.motion.animationFps), async (frame) => {
+          if (stopped()) return;
+          solving?.(`warming the painted shot's ${plane.id} at ${frame.at} s`);
+          (await planes.solve(plane, frame)).release();
+        }));
+      }),
+      draw: (t, mode, pins = new Map()) => counted(async () => {
         if (disposed) return;
         owner.assertLive();
         const pinned = shotPinnedPlanes(shot, pins);
@@ -208,27 +243,24 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
         try {
           // Each plane's and variant's marks posed and solved once, at the frame's own moment; one after another on the
           // solve lease. A pinned plane is solved where this frame's measures lay it.
-          await eachInTurn(shotPaintedSolvables(shot), async (plane) => {
+          await gpuEachInTurn(shotPaintedSolvables(shot), async (plane) => {
             solved.push(await planes.solve(pinned.planes.get(plane.id) ?? plane, paintMoment(t)));
           });
-          await eachInTurn(shotExposures(shot, t, mode), async (exposure) => {
+          await gpuEachInTurn(shotExposures(shot, t, mode), async (exposure) => {
             const moments = new Map<string, ShotPlaneMoment>(), variantMoments = new Map<CompiledShotVariant, ShotPlaneMoment>();
-            await eachInTurn(solved, async (each) => {
+            await gpuEachInTurn(solved, async (each) => {
               const variant = variantOf.get(each.plane);
               if (variant) variantMoments.set(variant, await planes.moment(each, { at: exposure.at, shutter: null }));
               else moments.set(each.plane.id, await planes.moment(each, exposure));
             });
             const items = shotExposureItems(shot.instanced, shot.motion, exposure, exposure.looks);
-            const renders: StampSourceRenders[] = [];
-            await eachInTurn(canvases, async (canvas) => {
-              renders.push(await canvas.sourceLayers.render(t, stampLensSourceExposureOf(exposure.exposure ?? undefined)));
-            });
+            const renders = await gpuEachInTurn(canvases, (canvas) => canvas.sourceLayers.render(t, stampLensSourceExposureOf(exposure.exposure ?? undefined)));
             await drawExposure(exposure, moments, variantMoments, items, renders, t);
           });
         } finally {
           for (const each of solved) each.release();
         }
-      },
+      }),
       finish: () => (disposed ? Promise.resolve() : device.queue.onSubmittedWorkDone()),
       dispose: () => {
         disposed = true;

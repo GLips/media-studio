@@ -11,6 +11,7 @@
 
 import { ExternalTexture, PerspectiveCamera, RepeatWrapping, type Camera, type RenderTarget, type Scene } from 'three/webgpu';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
+import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
 import { shotCameraGrown, type ShotCamera } from '#lib/picture/shot-camera/models/shot-camera.ts';
 import { shotCameraExposed, shotLensOfFocus } from '#lib/picture/lens/models/lens-focus.ts';
 import { shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
@@ -89,11 +90,6 @@ export type PaintedThreeTextureHandle = { readonly id: string; readonly texture:
  */
 export type PaintedThreeTexturesSupplied = { readonly handles: readonly PaintedThreeTextureHandle[]; readonly update: (t: number) => Promise<void> };
 
-/** `step` over `items` one after another: each load awaits, and the device's asynchronous checks run one at a time. */
-async function oneAfterAnother<T, R>(items: readonly T[], step: (item: T) => Promise<R>): Promise<R[]> {
-  return items.reduce<Promise<R[]>>(async (before, item) => [...await before, await step(item)], Promise.resolve([]));
-}
-
 /**
  * Loads `three` on `owner`'s device for `camera`'s three planes, its painted textures each drawn by an old renderer of
  * its compiled painting. Refuses as loadPaintedThreeSources does.
@@ -106,7 +102,7 @@ export async function loadPaintedThree(owner: StampPaintGpuOwner, camera: PaintC
     for (const texture of owned.splice(0)) texture.destroy();
   };
   try {
-    const painted = await oneAfterAnother(three.paintedTextures ?? [], async (texture) => {
+    const painted = await gpuEachInTurn(three.paintedTextures ?? [], async (texture) => {
       const target = owner.webgpu.createTexture({ size: [texture.width, texture.height], format: 'rgba16float', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC });
       owned.push(target);
       const surface = await createStampPaintSurface(owner, { frame: target });
@@ -173,7 +169,7 @@ export async function loadPaintedThreeSources(owner: StampPaintGpuOwner, camera:
         made.push(external);
         return [id, external] as const;
       }));
-      return oneAfterAnother(sourced, async ({ source, plane: { depth, margin } }) => {
+      return gpuEachInTurn(sourced, async ({ source, plane: { depth, margin } }) => {
         const built = source.build({ world, plane: paintWorldPlane(world, depth), textures });
         made.push(built);
         // The frame grown on every side by the plane's margin, so its defocus has what lies past the frame's edge.
@@ -187,7 +183,7 @@ export async function loadPaintedThreeSources(owner: StampPaintGpuOwner, camera:
         const motion = createLensThreeMotion({ width: w, height: h, distanceUnit: world.depthUnit });
         // Posed once first: a source may make its meshes as it poses, and they compile here, not in the first frame.
         built.poseAt(paintMoment(0));
-        await oneAfterAnother(built.offscreen ?? [], (pass) => {
+        await gpuEachInTurn(built.offscreen ?? [], (pass) => {
           renderer.setRenderTarget(pass.target);
           return renderer.compileAsync(pass.scene, pass.camera);
         });

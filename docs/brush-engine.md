@@ -476,22 +476,26 @@ lay's `at` (`paintPlaneViewAt`, `shotScreenLaid` in `shot-placement.ts`), then c
 (`paintCameraExtentProblem`): a cover once, as the shot compiles; a pin each frame, from its elements' centres as
 measured then, and again when one resizes (`shotPinnedPlanes`). Motion (`shot-motion.ts`) hangs each node from its nearest enclosing node, a paintless
 group's too, its clock chained under its parents' and the plane's `clock`. `shot-frame-plan.ts` reads a plane at one
-moment: its selection at its source moment, its node poses (boil wobble out of the poses marks solve under, in the
+moment: the selections its source blends at its source moment, each with its weight (`shotPlaneSharesAt`), its node poses (boil wobble out of the poses marks solve under, in the
 ones the lay reads), boil epochs, visibility and rig poses. A rig (`shot-rigs.ts`) is found over its cels as all the
 selection's paint makes them unposed, whatever a timed prefix has painted yet. One whose group owns its sheet is
 drawn as pieces: a cel layer of its shown cels (`paint-rig-cel-layer.ts`), cut by ownership and posed through
 three.js meshes into colour and motion (`studio/shot-rig-pieces.ts`); any other rig poses its cels' marks before the
 solve, a skinned cel by its skin mesh. A hidden cel stays in its sheet's program and isn't laid, so a cel swap
 re-solves nothing. `studio/shot-renderer.ts` solves each painted plane once a frame (`studio/shot-painted-plane.ts`,
-through `painting-sheets-solve.ts`); then each exposure orders its drawables (`shot-plan.ts`) and plans each plane's
+through `painting-sheets-solve.ts`), each selection a dissolve blends on its own; then each exposure orders its drawables (`shot-plan.ts`) and plans each plane's
 moment purely (`shotPlaneLayPlan`, `shot-sheet-lays.ts`): its steps through lattices (`shot-lattice.ts`), its ground,
 its pieces rigs posed, the spans of the group occurrences that composite on their own (`shot-visibility.ts`), and a
 key naming all of it. `studio/shot-sheets-lay.ts` lays it over `stamp-lattice-pass.ts`: ground, then each card and
 film where its owners and the plane's place put it, a pieces rig's picture at its card by the compositor's
 `layPicture`, a faded group's span mixed back by its visibility (`studio/shot-group-pass.ts`). The plane's picture is
 the old renderer's pass (`painting/studio/stamp-plane-picture-pass.ts`), kept in the device's cache under the plan's
-key. Picture and three planes are the old path's sources, laid through `stamp-lens-source-layers.ts`; they read no
-painted textures yet. An instanced plane (`shot-instances.ts`) reads its items at the exposure's moment and its
+key. A dissolve's selections are each laid, kept and blurred so, then summed by weight into a stage-sized picture
+(`studio/shot-dissolve-pass.ts`): every layer a plane's picture holds (opaque colour, colour and transmittance, glow,
+motion) is linear in what's laid, so the sum is the dissolve, never a pigment mix. Its ends paint one document size
+on one ground, and a rig on its plane is refused: pieces draw at once, and a rig is found over one selection. Picture
+and three planes are the old path's sources, laid through `stamp-lens-source-layers.ts`; they read no painted
+textures yet. An instanced plane (`shot-instances.ts`) reads its items at the exposure's moment and its
 shutter's ends, pairs them by key and looks each through the camera at its own depth. Each variant is compiled, solved
 and laid as a painted plane is, still and centred on the stage, its picture kept under its plan's key; an item whose
 blur would spread it past the stage round its document is refused as the frame reads it. A batch of items (one
@@ -502,9 +506,18 @@ item's travel is its views at the shutter's ends, as a plane's is; its picture's
 
 Its presentation, as models the passes will draw from, refused by a shot's load until they're drawn: a path
 mask's capsules for the first `revealPx` of inked length, pen-ups adding none, and the `alphaOf` graph, checked
-acyclic and sorted so each read plane composites first (`shot-masks.ts`); the frames and held moments a `warm` span
-reads (`shot-warm.ts`); and the cost report. Visibility's keys and range, and the group occurrences that composite on their own
-(`shot-visibility.ts`), are drawn. The cost report's counts are painting's (`painting/models/stamp-paint-costs.ts`, one set of names the document,
+acyclic and sorted so each read plane composites first (`shot-masks.ts`). Visibility's keys and range, and the group
+occurrences that composite on their own (`shot-visibility.ts`), are drawn, and so are `warm` and the cost report.
+A warm (`shot-warm.ts`) solves each painted plane and variant before the first frame at the first of the span's
+frames to pair each set of moments on its source and plane clocks (`shotWarmCombinations` over `shotPlaneClocks`;
+node clocks run inside the plane's), only the frames its scene shows, each solve let go to the cache; a solve reads
+no lay, so a pinned plane warms unlaid. It stops between solves once its scene is disposed, and `PaintedShot` holds
+the render with a fresh `delayRender` per solve, so no single hold waits on the whole span. Steps that mustn't
+overlap on one device (shares, planes, canvases, textures, three sources) run through `gpuEachInTurn`
+(`platform/gpu/models/gpu-in-turn.ts`). The renderer counts evictions and bytes uploaded (every write and image copy
+to the owner's queue, three.js's too) around each draw and warm, and the bytes the cache keeps after it; the
+evaluations a callback source makes or finds memoised are the change in `paintingEvaluationCounts()` across its
+synchronous read. The cost report's counts are painting's (`painting/models/stamp-paint-costs.ts`, one set of names the document,
 solver, caches and shot all count into); the shot logs a frame's and a warm's under its labels
 (`shot-cost-report.ts`) through `picture/profiling`'s costs channel, which knows nothing of paint, so
 `studio profile --costs` tables any drawing's counts. Its painted textures (ENGINE 6.3) are compiled in
@@ -561,7 +574,12 @@ swapped to its lowered cel with nothing solved, then faded halfway as one group,
 with nothing solved, and reeds owning their sheet drawn as pieces, solving at rest as unrigged and swinging when
 posed; the heron boiling, its wobble moving finished paint with nothing solved; and the wet-contact foot posed by a
 rig, resuming its sheet's solve from its checkpoints, and painted in as the shot plays, its rig drawing before the
-foot's first stroke; and rain (`stamp-gate-rain.ts`) falling about a post under a still camera, a lone drop out of
+foot's first stroke, then hidden, its paint going and its water's mark on the shallows staying with nothing solved;
+the heron dissolving from the scene's sheet to a sheet of its own, and under it, its plane hidden, the back dissolving
+from the pond painted with the heron in it to the shallows alone, each halfway lying between its ends with nothing
+solved or laid once they are; the
+foot painting in on sixes, its plane on threes flipping its pose, over a warmed span, the frames its warm skipped as
+pairing their clocks' moments alike then solving nothing; and rain (`stamp-gate-rain.ts`) falling about a post under a still camera, a lone drop out of
 focus spreading alike on every side, blurring along its own fall and drawn as if shut when keyed anew across the
 shutter, a frame moving only drops solving nothing and laying no picture anew. Each shot's frame is a baseline (`shot/`) accepted by eye. `shot/page`
 (`stamp-gate-shot-dom-page.ts`) holds a shot's element on the page, scaled as a player shows it, and reads it through

@@ -40,6 +40,8 @@ export type StampPaintGpuOwner = GpuDeviceOwner & {
    * shared by every painting and output of that size. A frame never depends on what an earlier one left in them.
    */
   target: (name: string, descriptor: GPUTextureDescriptor) => GPUTexture;
+  /** The bytes written and images copied to the device's queue since the owner was made, three.js's too: a cost report counts the change. */
+  uploaded: () => number;
   /** Frees all it holds, then the device and its three.js renderer; dispose what else draws on it first. */
   dispose: () => void;
 };
@@ -54,7 +56,7 @@ type StampDescriptorValue = GPUShaderModule | string | number | boolean | null |
 
 /** An owner of a new device, fetching each image from `imageUrl`. */
 export async function createStampPaintGpuOwner(imageUrl: (asset: StampBrushAsset) => string): Promise<StampPaintGpuOwner> {
-  const base = await createGpuDeviceOwner(), { webgpu, checked } = base;
+  const base = await createGpuDeviceOwner(), { webgpu, checked } = base, queueWritten = countStampQueueWrites(webgpu.queue);
   // Everything the owner makes, freed on dispose.
   const ownGpu = stampPaintGpuScope(cachingStampPaintDevice(webgpu));
   const { device } = ownGpu;
@@ -102,12 +104,57 @@ export async function createStampPaintGpuOwner(imageUrl: (asset: StampBrushAsset
     },
     tipLevels: (tip) => levels.get(tip)!,
     target: (name, descriptor) => cached(targets, `${name}|${JSON.stringify(descriptor)}`, () => device.createTexture(descriptor)),
+    uploaded: queueWritten,
     dispose: () => {
       cache.dispose();
       ownGpu.destroy();
       base.dispose();
     },
   };
+}
+
+/** A typed array: a buffer write counts its offset and size in its elements, not bytes. */
+type StampTypedArray = ArrayBufferView & { readonly BYTES_PER_ELEMENT: number };
+
+/** Whether `data` is a typed array: every view but a DataView is one. */
+function isStampTypedArray(data: AllowSharedBufferSource): data is StampTypedArray {
+  return ArrayBuffer.isView(data) && !(data instanceof DataView);
+}
+
+/** The bytes a buffer write sends: `size` elements of `data` (all past `dataOffset` when left out), bytes for a raw buffer. */
+function stampBufferWriteBytes(data: AllowSharedBufferSource, dataOffset = 0, size?: number): number {
+  const element = isStampTypedArray(data) ? data.BYTES_PER_ELEMENT : 1;
+  return (size ?? data.byteLength / element - dataOffset) * element;
+}
+
+/** `size`'s texel count, as a copy or write reads it: width, height and layers, a missing one 1. */
+function stampExtentTexels(size: GPUExtent3D | Iterable<GPUIntegerCoordinate>): number {
+  const [width, height = 1, layers = 1] = Array.isArray(size) || !('width' in size) ? [...size] : [size.width, size.height, size.depthOrArrayLayers];
+  return width * height * layers;
+}
+
+/**
+ * Counts the bytes each buffer and texture write and image copy on `queue` sends, three.js's too, returning the
+ * running total: own properties shadowing the prototype's methods, as a scope's `destroy` does. An image copy counts
+ * 4 bytes a texel, the decoded RGBA it arrives as, whatever format it lands in.
+ */
+function countStampQueueWrites(queue: GPUQueue): () => number {
+  let bytes = 0;
+  const writeBuffer = queue.writeBuffer.bind(queue), writeTexture = queue.writeTexture.bind(queue), copyImage = queue.copyExternalImageToTexture.bind(queue);
+  queue.writeBuffer = (buffer: GPUBuffer, offset: GPUSize64, data: AllowSharedBufferSource, dataOffset?: GPUSize64, size?: GPUSize64) => {
+    bytes += stampBufferWriteBytes(data, dataOffset, size);
+    writeBuffer(buffer, offset, data, dataOffset, size);
+  };
+  queue.writeTexture = (destination: GPUTexelCopyTextureInfo, data: AllowSharedBufferSource, layout: GPUTexelCopyBufferLayout, size: GPUExtent3D | Iterable<GPUIntegerCoordinate>) => {
+    bytes += data.byteLength - (layout.offset ?? 0);
+    writeTexture(destination, data, layout, Array.isArray(size) || 'width' in size ? size : [...size]);
+  };
+  queue.copyExternalImageToTexture = (source: GPUCopyExternalImageSourceInfo, destination: GPUCopyExternalImageDestInfo, size: GPUExtent3D | Iterable<GPUIntegerCoordinate>) => {
+    const extent = Array.isArray(size) || 'width' in size ? size : [...size];
+    bytes += 4 * stampExtentTexels(extent);
+    copyImage(source, destination, extent);
+  };
+  return () => bytes;
 }
 
 /**

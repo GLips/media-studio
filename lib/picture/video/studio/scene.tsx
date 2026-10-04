@@ -11,3 +11,6 @@ export function useScene(): SceneClock {
   if (!clock) throw new Error('useScene() is only available inside a scene');
   return clock;
 }
+
+/** The scene clock for a component that may also play outside a scene (a gate page, a still): null there. */
+export const useSceneOrNull = (): SceneClock | null => useContext(SceneContext);
