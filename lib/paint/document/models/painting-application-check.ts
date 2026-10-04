@@ -128,7 +128,7 @@ function checkPaintCharge(list: PaintingProblemList, owner: string, charge: Pain
     const problem = maxSpreadProblem(charge.maxSpreadPx, setting);
     if (problem) list.error(owner, 'charge.maxSpreadPx', problem, box);
   }
-  if (charge.opacityCap !== undefined && !isPaintingShare(charge.opacityCap)) list.error(owner, 'charge.opacityCap', `${charge.opacityCap} isn't within 0..1`, box);
+  if (charge.opacityCap !== undefined && !isPaintingShare(charge.opacityCap)) list.error(owner, 'charge.opacityCap', `${charge.opacityCap} isn't within 0..1, the share of a full load's film it lays at most`, box);
   if (charge.burnish !== undefined) {
     const problem = capabilityProblem(medium, 'burnish');
     if (problem) list.error(owner, 'charge.burnish', problem, box);

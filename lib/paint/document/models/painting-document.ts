@@ -169,8 +169,8 @@ export type Tip = { readonly brush: BrushRef; readonly diameterPx: number; reado
 /**
  * Pigment. `water` 0..1: the wetness the brush brings, raising the paper's toward it by contact (the medium's default
  * when left out). `maxSpreadPx` caps how far this application's paint walks as it lands (uncapped when left out).
- * `opacityCap` 0..1 caps the coverage its stamps build to, so gouache goes translucent without whitening. `burnish`:
- * pressed into every valley (crayon).
+ * `opacityCap` 0..1 caps the share of a full load laid: a thinner film, its hue kept. `burnish`: pressed into every
+ * valley (crayon).
  */
 export type PaintCharge = {
   readonly kind: 'paint';

@@ -407,7 +407,7 @@ paints it.
 | mix part `amount` | relative amount | ≥ 0, one positive | — |
 | a full load | the medium's `body` in unit films (1 unit film = a full watercolour wash) | 1 / 20 / 15 | — |
 | fill `load` | share of coverage laid | 0..1 (field allowed) | 1 |
-| `opacityCap` (paint charges) | the most coverage an application's stamps build to, across its subpaths; it clamps what `load` lays | 0..1 | 1 |
+| `opacityCap` (paint charges) | the most of a full load an application's stamps build to, across its subpaths: its film thins, so what's under shows through, its hue kept; it clamps what `load` lays | 0..1 | 1 |
 | lift `strength` | share of liftable paint taken | 0..1 | — |
 | resist `amount` | share of contact removed on peaks | 0..1 | — |
 | `rim` | drying-line strength | 0..2 | 1 |
@@ -443,9 +443,12 @@ paints it.
 
 - **Watercolour**: transparent; granulating pigments (ultramarine 0.9, burnt umber 0.8, cerulean 0.8) settle into
   the grain by load and the paper's depth. Staining pigments (phthalos 0.9, quinacridone rose 0.8) resist lifting.
-- **Gouache**: opaque body colour; light over dark works. Weak mixes are tints with white, not thin washes, so fade
-  gouache by `opacityCap` (coverage), not strength. It barely travels (spread 0.1) and redissolves when lifted dry
-  (0.9). A gouache layer over set watercolour covers by scatter.
+- **Gouache**: opaque body colour; light over dark works. Weak mixes are tints with white, not thin washes: a pale
+  mix (`strength` 0.16) still hides what's under it. For paint that lets what's under show, cap the film with
+  `opacityCap`, which keeps the pigment's hue: a full load is 20 unit films, so a strong pigment is still saturated at
+  0.16 (three washes deep), and a faint tint is 0.02–0.05. A cap thins the paint, not the brush's edge: a hard
+  `detail` brush capped is a fainter hard line. It barely travels (spread 0.1) and redissolves when lifted dry (0.9).
+  A gouache layer over set watercolour covers by scatter.
 - **Crayon**: no water and no wet history: every crayon wash says `wetHistory: false`. `burnish: true` on a paint
   charge presses wax into every valley. Crossing layers stack in the tooth. An eraser is a lift. Wax resists a later
   watercolour wash only where written: give that wash's applications `resists` with the crayon strokes as footprints.
