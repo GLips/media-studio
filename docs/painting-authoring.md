@@ -15,7 +15,7 @@ diff; `layersOf`, `bracket` and `dissolve`, and the problems a shot's load repor
 every sheet of a document, clocked washes and their prefixes included, each own sheet laid as a cut-out of its paper,
 seen through `studio paint still` and `studio paint check --solve`, each at a scene second with `--at`; posing before
 painting by a similarity (a place, a turn, a scale), the marks mapped and their fields, ragged edges and noise read
-where they were planned; a document that wraps across x (`wrap: 'x'`); and a layer's film read back through a
+where they were planned; a document that wraps across x, down y or both (`wrap: 'x' | 'y' | 'xy'`); and a layer's film read back through a
 selection's prefix, its coverage or its picture (`paintingFilmCoverage`, `paintingFilmPicture`).
 
 `<PaintedShot>` and `<PaintedShotCanvas>` draw a shot in a scene: painted, picture and three planes far to near
@@ -162,7 +162,7 @@ PaintingDocument {widthPx, heightPx, paper, medium, dryingScale?, wrap?, layers}
 | `paper` | `Paper` | The root's own sheet: `{color, image?, grain?: {image, scale, depth}, absorbency}`. |
 | `medium` | `'watercolour' \| 'gouache' \| 'crayon'` | Default for every layer; a layer or group may override. Not per wash. |
 | `dryingScale` | `number \| 'instant' \| 'never'` | The root sheet's: scene seconds per model second once a clocked wet wash starts its clock (Time). 1 when left out. An own sheet states its own. |
-| `wrap` | `'x'` | **NEW**: the left edge meets the right, as round a cylinder, on every sheet (Wrapping). Left out, nothing wraps. |
+| `wrap` | `'x' \| 'y' \| 'xy'` | **NEW**: on every sheet `'x'` meets the left edge to the right, as round a cylinder; `'y'` the top to the bottom; `'xy'` both, a tile (Wrapping). Left out, nothing wraps. |
 | `layers` | `LayerNode[]` | Back to front. |
 | an application's `brush` | `{style, brush}` | A style's own brush name (Reference). The style is spelt `'watercolor'`, the medium `'watercolour'`. |
 | a paint charge's `mix` | `Mix \| Field<Mix>` | `{parts: [{pigment, amount}], strength}`; a pigment is an appearance from `WATERCOLOUR_PIGMENTS` or a hex. |
@@ -198,26 +198,35 @@ is a scene helper, which a model can't import.
 
 ### Wrapping
 
-`wrap: 'x'` (**NEW**) paints a document as round a cylinder: a label, a lamp shade, a panorama a camera turns in.
-Its left edge meets its right on every sheet, so a stroke or flood running off one side comes back on the other, its
-water and wet stages (a bloom, a rim, a flood's spread) carrying across, and the paper's tooth, grain and a pigment's
-clumps run on unbroken. Write marks past the edge in plain px: a band from x 170 to 342 on a 256 px document runs
-across the seam, its last 86 px landing from x 0; a bloom dropped at x 252 opens on both sides. A mark lands where
-it lies and a width either side, so nothing needs painting twice. The paper's grain tiles mirrored, and a mirrored
-tile meets itself only after its mirror, so it's fitted to the width in whole pairs: a grain `scale` is laid at the
-nearest of 1 ÷ 2n (0.5, 0.25, 0.167, …). Scale 1, the styles' own, is laid at 0.5, half as wide; pick one of those
-values, and the check warns when the grain is laid more than a tenth off its scale.
+`wrap` (**NEW**) joins a document's opposite edges on every sheet: `'x'` its left edge to its right, as round a
+cylinder (a label, a lamp shade, a panorama a camera turns in); `'y'` its top to its bottom; `'xy'` both, a tile
+that repeats each way, as a wallpaper or a floor. A stroke or flood running off one wrapped edge comes back on the
+other, its water and wet stages (a bloom, a rim, a flood's spread) carrying across, and the paper's tooth, grain and
+a pigment's clumps run on unbroken. On `'xy'` a mark by a corner lands by all four. Write marks past the edge in
+plain px: a band from x 170 to 342 on a 256 px document runs across the seam, its last 86 px landing from x 0; a
+bloom dropped at x 252 opens on both sides. A mark lands where it lies and a width either side, so nothing needs
+painting twice.
+
+The paper's grain tiles mirrored, and a mirrored tile meets itself only after its mirror, so on each wrapped axis
+it's fitted in whole pairs. Across x a grain `scale` is laid at the nearest of 1 ÷ 2n of the width (0.5, 0.25, 0.167,
+…): scale 1, the styles' own, is laid at 0.5, half as wide; pick one of those values, and the check warns when the
+grain is laid more than a tenth off its scale. Down y a tile's height, its width times its image's aspect, is fitted
+to the height the same way. Wrapping one way the tile keeps its aspect; wrapping both, each side is fitted on its
+own, so a tile may stretch a little one way.
 
 A wrapped sheet is painted with a margin past each side, wide enough for its widest mark and the water it carries,
 rounded up to a power of two, and that width is part of its solve's key. So an edit that widens a brush or adds water
 a little keeps every earlier wash's solve; one that carries the widest reach past the next power of two re-solves the
 whole sheet, and `studio paint diff` says so.
 
-What doesn't wrap: y, whose edges clip as ever; a paper `image` (a photograph), laid as it is, so it meets itself at
-the seam unless it tiles across (the check warns); a deposit wider than the document, whose fields (a fill's load, a
-ragged edge's noise) jump where the one wrap round its middle ends; and a long chain of wet-in-wet washes across the
-seam, whose water the margin holds one wash at a time, so a faint seam may show after several. Wrapping is for a painting shown on a
-three.js surface as a painted texture (Composition); on a flat plane it paints as any other, its seam at its edges.
+What doesn't wrap: an axis `wrap` doesn't name, whose edges clip as ever, though the margin is laid past them too, so
+water runs off them as off a larger sheet; a paper `image` (a photograph), laid as it is, so it meets itself at each
+seam unless it tiles that way (the check warns); a deposit wider or taller than the document, whose fields (a fill's
+load, a ragged edge's noise) jump where the one wrap round its middle ends; and a long chain of wet-in-wet washes
+across a seam, whose water the margin holds one wash at a time, so a faint seam may show after several. The check
+warns of a grain laid off its scale across x only: down y the fit goes by the grain image's aspect, which it doesn't
+read. Wrapping is for a painting shown on a three.js surface as a painted texture (Composition); on a flat plane it
+paints as any other, its seams at its edges.
 
 ## Water
 
@@ -698,10 +707,11 @@ build: ({ plane, textures }) => {
 
 `paintedThreeColorNode` (`#lib/paint/three-layers/studio/painted-three-material.ts`) decodes the texture, which is
 gamma-encoded, to the linear colour three.js lights and outputs. Its u runs along the document's x and its v up the
-mesh, so uv (0, 0) is the painting's bottom left. A texture whose paintings say `wrap: 'x'` (Wrapping) repeats across u,
-so on a `CylinderGeometry`, whose u runs once round, no seam shows; every painting a texture blends wraps or none
-does. A texture is drawn again only when its selections or their weights change, so a still selection costs one
-solve. It has no mipmaps: an object showing it far smaller than its size shimmers as it moves.
+mesh, so uv (0, 0) is the painting's bottom left. A texture repeats along each axis its paintings wrap (Wrapping):
+`'x'` across u, so on a `CylinderGeometry`, whose u runs once round, no seam shows; `'y'` along v; `'xy'` both, so a
+`PlaneGeometry` whose uv run past 1 shows it tiled with no seam. Every painting a texture blends wraps alike. A
+texture is drawn again only when its selections or their weights change, so a still selection costs one solve. It
+has no mipmaps: an object showing it far smaller than its size shimmers as it moves.
 
 ## Reference
 
@@ -886,12 +896,12 @@ What the check says today, and what to do:
 | `a.brush.brush: watercolor has no brush mop: its brushes are wash, filler, …` | a brush or paper asset the style lacks | name one it has |
 | `property hillTopPx.value: hillTopPx = 205 is off its step 10` | an unquantised value | quantise in the scene |
 | `document.layers[0]…: meadow isn't pure: two calls differ at layers[0]…` | the factory reads something besides its values | make it pure |
-| `document.wrap: "y" isn't a wrap: 'x' meets the left edge to the right` / `document.paper.image: is a photograph on a wrapped document: its left and right edges meet at the seam, …` / `document.paper.grain.scale: is laid at 0.5 on a wrapped document: its mirrored tiles fit the width in whole pairs, …` (warnings) | a wrap that isn't `'x'`; a photograph on a document that wraps; a grain whose scale is far from 1 ÷ 2n | `'x'` or none; a photograph that tiles across, or grain alone; a grain scale of 0.5, 0.25, … |
+| `document.wrap: "z" isn't a wrap: 'x' meets the left edge to the right, …` / `document.paper.image: is a photograph on a wrapped document: its opposite edges meet at the seams, …` / `document.paper.grain.scale: is laid at 0.5 on a document wrapping across x: its mirrored tiles fit the width in whole pairs, …` (warnings) | a wrap that isn't `'x'`, `'y'` or `'xy'`; a photograph on a document that wraps; a grain whose scale is far from 1 ÷ 2n on one wrapping across x | `'x'`, `'y'`, `'xy'` or none; a photograph that tiles each way it wraps, or grain alone; a grain scale of 0.5, 0.25, … |
 | `back/stem: lies on flower's own sheet: select flower, or all its sheet's layers, on one plane` / `back.source.layers[0]: names hil, which is unknown in meadow` / `back/neck: is selected twice, through heron and neck` / `back.source.k: 1.5 isn't within 0..1` | a plane's source, as the shot's load reports it (`paintedSourceProblems`) | select it whole; fix keys |
 | `meadow.masks[0].drawable: reads rain, whose mask reads meadow/sky` / `front.masks[1].drawable: names rain/drop, but rain's items aren't occurrences: read rain` / `photo.masks: masks cut painted films, and a picture plane has none` / `title.masks[0].widthPx: 0; a band's width is above 0` | a plane's masks, as the shot's load reports them (`shotMaskCheck`) | break the chain; read the plane; mask a painted plane |
 | `rain.depths.far: 2.5 isn't nearer than the back, street at depth 2` / `rain: two items are called a at 2.04 s` / `label.lay.points: both pin 40, 40: two points set a scale and turn only apart` | an instanced plane at load and its items each frame (`shotInstancedPlaneProblems`, `shotInstanceProblems`); a pin or cover (`shotPlacementProblems`) | keep items nearer than the back; one key an item |
 | `meadow/hil.visibility: names no plane or occurrence of this shot` / `rain/drop-3.visibility: fades an item of rain, which isn't an occurrence: …` / `meadow/sky.visibility: 1.2 at 3 s; visibility is within 0..1` / `shot.warm: 2..1 isn't a span of scene seconds: …` | the shot's `visibility` (`shotVisibilityProblems` at load, `shotVisibilityProblem` each frame) and `warm` (`shotWarmProblems`) | name an occurrence; fade an item by its own `visibility` |
-| `label.id: names two painted textures: an id names one` / `label.widthPx: is 0: a painted texture is whole px above 0` / `label.source: selects on a transparent ground: a painted texture is opaque, …` / `label.source: blends a painting that wraps with one that doesn't: …` | the shot's painted textures at load (`compileShotPaintedTextures`, each source at moment 0) and a callback's again each frame (`compiledPaintedTextureSourceAt`, which also refuses one wrapping otherwise than at 0) | one id a texture; leave `ground` out; wrap every painting a texture blends, or none |
+| `label.id: names two painted textures: an id names one` / `label.widthPx: is 0: a painted texture is whole px above 0` / `label.source: selects on a transparent ground: a painted texture is opaque, …` / `label.source: blends paintings that wrap otherwise: …` | the shot's painted textures at load (`compileShotPaintedTextures`, each source at moment 0) and a callback's again each frame (`compiledPaintedTextureSourceAt`, which also refuses one wrapping otherwise than at 0) | one id a texture; leave `ground` out; wrap every painting a texture blends alike |
 
 `studio paint check <source> --solve [--at <s>] [--out <dir>]` then solves every sheet on the GPU (run it under the
 GPU lock) and prints, in each sheet's order (under the sheet's name when there are several), each wash's start and

@@ -179,26 +179,31 @@ shows as it did on paper. Each readback is kept per device under its film's key 
 a composite's picture is kept alike under a key naming its films, steps and cards' papers (`readStampSheetsPictureKept`),
 as a shot's rigs read their cels and pieces.
 
-**Wrapped sheets.** A document saying `wrap: 'x'` meets its left edge to its right on every sheet, as round a
-cylinder (`stamp-sheet-wrap.ts`); its program carries `wrap`, its head naming it only when set. Its solve's plan
+**Wrapped sheets.** A document saying `wrap` (`StampWrap`: `'x'`, `'y'` or `'xy'`) meets its opposite edges on
+each axis it names (`stampWrapsAcross`), on every sheet (`stamp-sheet-wrap.ts`); its program carries `wrap`, its head
+naming it only when set. Every axis is one treatment: the stage's `wrap` holds a period per axis (`StampWrapPeriods`,
+the frame's width or height, 0 on an axis that doesn't wrap), and each step below reads it per axis. Its solve's plan
 (`stampSheetSolvePlan`, pure: stage, K₀'s head, the program painted) bands it: on a stage whose margin is a halo
-(`stampStage(frame, halo, 'x')`), the farthest any mark may lay paint or carry water past its place
+(`stampStage(frame, halo, wrap)`), the farthest any mark may lay paint or carry water past its place
 (`stampSheetWrapHalo`, the wet reach `stampSheetWetReach` as the load boxes it) rounded up to a power of two, in K₀,
 so an edit widening the widest reach a little keeps the key and one past a power of two re-keys the sheet whole; every
-deposit's and brushed mask's stamps copied a whole number of wraps away as far as a stamp on the halo's edge reaches,
-and every area copied `wrap` px apart as the region textures draw it. A copy keeps its stamp's
-`rest`, where its tip noise and rolling grain are read, and its deposit or prewet its `wrapFrom`: the resolve reads
-its load field, clumps and flood scale within the wrap centred on where it was planned (`stageUnwrapped`, with
-STAGE_WRAP, in `stampStageWgsl`), so a copy's pixels read as its own. The paper repeats with it: tooth and grain
-tiles fitted to a whole number round the wrap, mirrored ones in pairs, aspect kept (`stampStageTile`), and value
-noise and pigment clumps on whole cells (`paintNoiseWrapped`, `paintClumpsWrapped`). Films are kept cropped to the
-frame and a refusal's boxes name only what lies in it: the halo is painted so paint by the seam finds its
-neighbours, and never kept. Negative space: y doesn't wrap; a deposit wider than the wrap reads its fields within the one wrap
-round its middle, so a field running along it jumps where that ends; the halo bounds one entry's reach, and at the
-stage's edge a flow meets a wall, not paint going on round, so a long chain of wet-in-wet entries across the seam may
-drift there; a paper photograph is laid as it is and meets itself at the seam, and a grain tile fitted far off its
-authored size is warned of (both by `checkPaintingDocument`); and the composite moves an own sheet its owner chain
-poses whole, unwrapped.
+deposit's and brushed mask's stamps copied whole periods away along each wrapped axis, and across the corner when both
+wrap, as far as a stamp on the halo's edge reaches; and every area copied a period apart on each as the region
+textures draw it. A copy keeps its stamp's `rest`, where its tip noise and rolling grain are read, and its deposit or
+prewet its `wrapFrom`, a point (`StampWrapFrom`): the resolve reads its load field, clumps and flood scale within the
+wrap centred on where it was planned, per axis (`stageUnwrapped`, with STAGE_WRAP a vec2f, in `stampStageWgsl`), so a
+copy's pixels read as its own. The paper repeats with it: tooth and grain tiles fitted to a whole number round each
+wrapped axis, mirrored ones in pairs (`stampTileRoundWraps`, through `stampStageTile`), one axis wrapping keeping the
+tile's aspect and both fitting each side on its own, and value noise and pigment clumps on whole cells per wrapped
+axis (`paintNoiseWrapped`, `paintClumpsWrapped`). Films are kept cropped to the frame and a refusal's boxes name only
+what lies in it: the halo is painted so paint by a seam finds its neighbours, and never kept. Negative space: the
+halo is laid on every side, so an axis that doesn't wrap has it too and water runs off its edges as off a larger
+sheet; a deposit wider or taller than the wrap reads its fields within the one wrap round its middle, so a field
+running along it jumps where that ends; the halo bounds one entry's reach, and at the stage's edge a flow meets a
+wall, not paint going on round, so a long chain of wet-in-wet entries across a seam may drift there; a paper
+photograph is laid as it is and meets itself at each seam, and a grain tile fitted far off its authored size across
+x is warned of (both by `checkPaintingDocument`; down y the fit goes by the grain's aspect, which the check doesn't
+see); and the composite moves an own sheet its owner chain poses whole, unwrapped.
 
 **Capabilities.** A `PaintMedium` declares what it can do besides lay paint (`PaintCapability`): `'wet-history'`,
 `'wet-conditions'`, `'water'`, `'lift'`, `'burnish'`. Watercolour and gouache declare the first four; crayon `lift`
@@ -405,8 +410,8 @@ holds what it adds and its taken share, what it takes from the light behind, so 
 then adds its colour (`over` for the back).
 The output blooms the emission once (`lens.bloom`), adds it in linear light, and encodes. Texture contracts:
 pictures, three sources and the composite are rgba16float, premultiplied linear; a painted texture three samples is
-rgba16float, gamma-encoded and opaque, decoded by `paintedThreeColorNode`, and read repeating across u when its
-handle says `wrap: 'x'`. A glowing frame drawn without a lens is refused.
+rgba16float, gamma-encoded and opaque, decoded by `paintedThreeColorNode`, and read repeating on each axis its
+handle's `wrap` names, u along x and v along y. A glowing frame drawn without a lens is refused.
 
 **rig** is a painted rig's geometry and its drawing: layers (whole paintings at rest) cut into parts that meet at
 skin joints or hinges. `paint-rig-cuts.ts` holds a layer's parts with each joint resolved to its parent's index (a
@@ -486,10 +491,10 @@ solver, caches and shot all count into); the shot logs a frame's and a warm's un
 (`shot-cost-report.ts`) through `picture/profiling`'s costs channel, which knows nothing of paint, so
 `studio profile --costs` tables any drawing's counts. Its painted textures (ENGINE 6.3) are compiled in
 `shot-painted-texture-compile.ts` (`compileShotPaintedTextures`: an id each, whole px, each source at moment 0 as a
-plane's is, never on a transparent ground, never blending a painting that wraps with one that doesn't; whether it
+plane's is, never on a transparent ground, never blending paintings that wrap otherwise than each other; how it
 wraps held from moment 0, a callback's source checked again each frame by `compiledPaintedTextureSourceAt`) and the
 compiled ones drawn by `studio/shot-painted-textures.ts` (`createShotPaintedTextures`, the handles
-`loadPaintedThreeSources` reads, each saying whether it wraps): each
+`loadPaintedThreeSources` reads, each saying how it wraps, resampled through a sampler repeating as it does): each
 selection a texture's source reads at the moment solved, laid on its paper at its document's size, box-resampled to
 the texture's, summed by its dissolve weight in linear light, then gamma-encoded; a texture whose selections and
 weights haven't changed isn't drawn again. Painted textures have no mipmaps.
@@ -538,13 +543,15 @@ swapped to its lowered cel with nothing solved, then faded halfway as one group,
 with nothing solved, and reeds owning their sheet drawn as pieces, solving at rest as unrigged and swinging when
 posed; the heron boiling, its wobble moving finished paint with nothing solved; and the wet-contact foot posed by a
 rig, resuming its sheet's solve from its checkpoints, and painted in as the shot plays, its rig drawing before the
-foot's first stroke. Each shot's frame is a baseline (`shot/`) accepted by eye. Its painted texture
-(`texture/wrapped-cylinder`, `stamp-gate-textures.ts`): two wrapped paintings, a flood and an earth band run across
-their seam and a bloom dropped on it, their bands apart, dissolved halfway and drawn at half their size by
-`createShotPaintedTextures`, so the resample averages across the seam and the sum weighs both, onto a three.js
-cylinder through the three-source loader, its seam turned to the camera above the texture laid flat at 2 px a texel
-and rolled half its width, accepted by eye and held to a seam no rougher than the roughest texel column step within
-12 of it. Frame families (solved sheets, shots, painted textures) are rows of `STAMP_GATE_FRAME_FAMILIES` in
+foot's first stroke. Each shot's frame is a baseline (`shot/`) accepted by eye. Its painted textures
+(`texture/`, `stamp-gate-textures.ts`), each accepted by eye and held to a seam no rougher than the roughest texel step
+across it within 12 of it, on each axis it wraps (`stampGateSeamSteps`): `texture/wrapped-cylinder`, two paintings
+wrapping across x, a flood and an earth band run across their seam and a bloom dropped on it, their bands apart,
+dissolved halfway and drawn at half their size by `createShotPaintedTextures`, so the resample averages across the
+seam and the sum weighs both, onto a three.js cylinder through the three-source loader, its seam turned to the camera
+above the texture laid flat at 2 px a texel and rolled half its width; and `texture/wrapped-tile`, a painting wrapping
+both ways, a flood, a bloom and a crossed band across both seams and the corner, drawn at half its size, laid flat 2×2
+tiled with its seams in the middle, beside a three.js plane whose uv run to 2 each way. Frame families (solved sheets, shots, painted textures) are rows of `STAMP_GATE_FRAME_FAMILIES` in
 `stamp-gate.ts`: IDs, page function, frame size and inputs, so a new family is one row. Pre-commit runs it on the staged tree when a
 path it covers changes; no adapter, a timeout
 or a difference fails the commit. Public baselines live in `harness/fixtures/stamp-paint/`, a pack's brushes' in
