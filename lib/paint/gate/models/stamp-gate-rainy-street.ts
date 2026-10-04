@@ -18,8 +18,9 @@ import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-s
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { PaintedShotProps } from '#lib/paint/shot/models/shot-props.ts';
 import { dissolve } from '#lib/paint/shot/models/shot-selection.ts';
+import { motionCurves, seg } from '#lib/picture/motion/models/motion.ts';
 import { stampGateHeronPolygon } from './stamp-gate-paper-heron.ts';
-import { STAMP_GATE_RAIN, STAMP_GATE_RAIN_DEPTHS, STAMP_GATE_RAINY_STREET, stampGateRainAt } from './stamp-gate-rain.ts';
+import { STAMP_GATE_RAIN, STAMP_GATE_RAIN_DEPTHS, STAMP_GATE_RAIN_PAINTING, stampGateRainAt } from './stamp-gate-rain.ts';
 import { STAMP_GATE_EARTH_MIX, STAMP_GATE_POOL_MIX, STAMP_GATE_ROUND_REF, STAMP_GATE_SHEET_PAPER, stampGateLine, stampGateRectangle, stampGateSheetBrushOf } from './stamp-gate-sheets.ts';
 
 const { yellowOchre, quinacridoneRose, ultramarine, burntUmber, hansaYellow } = WATERCOLOUR_PIGMENTS;
@@ -153,9 +154,6 @@ const WALK: PaintPlaceClip['keys'] = [
   { at: 1.75, x: 24, y: 0 }, { at: 4, x: 60, y: 0 },
 ];
 
-/** A ramp from 0 at `from` to 1 at `to`, scene seconds. */
-const ramp = (at: number, from: number, to: number) => Math.min(1, Math.max(0, (at - from) / (to - from)));
-
 /** The presentation's ramps: the sky's dissolve to night, the reflection's fade, and the camera's push, depth units. */
 const RAMPS = { night: { from: 0.5, to: 2.5 }, reflection: { from: 1.25, to: 2.25 }, push: { to: 3, dolly: 0.3 } } as const;
 
@@ -164,7 +162,7 @@ const streetAt = (lamp: boolean) => painting(STAMP_GATE_PUDDLED_STREET, { lamp }
 
 /** Every evaluation the shot reads: the street at dusk and unlit (the sky's first end), at night, and lit; and the rain's drop. */
 export const stampGateRainyStreetEvaluations = (): PaintingEvaluation[] => [
-  painting(STAMP_GATE_PUDDLED_STREET), painting(STAMP_GATE_PUDDLED_STREET, { night: true }), streetAt(true), painting(STAMP_GATE_RAINY_STREET),
+  painting(STAMP_GATE_PUDDLED_STREET), painting(STAMP_GATE_PUDDLED_STREET, { night: true }), streetAt(true), painting(STAMP_GATE_RAIN_PAINTING),
 ];
 
 /** What the shot reads beside its evaluations, as its baseline's inputs name it. */
@@ -186,15 +184,15 @@ export function stampGateRainyStreetShot(): PaintedShotProps {
       ],
     },
     planes: [
-      { id: 'sky', depth: DEPTHS.sky, source: ({ at }: PaintMoment) => dissolve(layersOf(dusk, ['sky']), layersOf(night, ['sky']), ramp(at, RAMPS.night.from, RAMPS.night.to)) },
+      { id: 'sky', depth: DEPTHS.sky, source: ({ at }: PaintMoment) => dissolve(layersOf(dusk, ['sky']), layersOf(night, ['sky']), seg(at, RAMPS.night.from, RAMPS.night.to, motionCurves.linear)) },
       { id: 'street', depth: DEPTHS.street, sourceClock: { hold: 6 }, source: ({ at }: PaintMoment) => layersOf(streetAt(at >= LAMP_ON), STREET_LAYERS, { at }) },
       { id: 'reflection', depth: DEPTHS.street, source: layersOf(streetAt(true), ['reflection']), masks: [{ kind: 'alphaOf', drawable: 'street/puddle' }] },
-      { kind: 'instanced', id: 'rain', depths: STAMP_GATE_RAIN_DEPTHS.rain, variants: { drop: layersOf(painting(STAMP_GATE_RAINY_STREET), ['drop']) }, instances: ({ at }) => stampGateRainAt(at) },
+      { kind: 'instanced', id: 'rain', depths: STAMP_GATE_RAIN_DEPTHS.rain, variants: { drop: layersOf(painting(STAMP_GATE_RAIN_PAINTING), ['drop']) }, instances: ({ at }) => stampGateRainAt(at) },
     ],
     motion: {
       nodes: [{ id: 'street/walker' }],
       plays: [{ target: 'street/walker', clip: { kind: 'place', keys: WALK }, clock: { at: 0 }, origin: 'the walker crosses the puddle' }],
     },
-    visibility: { reflection: ({ at }) => ramp(at, RAMPS.reflection.from, RAMPS.reflection.to) },
+    visibility: { reflection: ({ at }) => seg(at, RAMPS.reflection.from, RAMPS.reflection.to, motionCurves.linear) },
   };
 }

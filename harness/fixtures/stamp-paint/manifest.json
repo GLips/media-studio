@@ -246,19 +246,19 @@
     "shot/rain": {
       "file": "shot/rain.png",
       "output": "2ea5b1703b01f2f1857081fdfebc457ef07760fbeb591905004965c01e5f79e5",
-      "inputs": "a342132e3ca0c7a9636e5d7b9cae925c3661f3fc233c292c20a0848e70b10e84",
-      "reason": "re-keyed after landing over pres-instances: a shot baseline's inputs name its evaluations as a list and the rain's drops as its extra (pres-dissolve's SHOT_BASELINES shape); image compared by eye with the accepted one",
+      "inputs": "39ff0d7d4c145a145c1707463c7a1a1526b6389da79f661a0956489f25b00269",
+      "reason": "re-keyed: the rain's painting renamed STAMP_GATE_RAIN_PAINTING (factory gateRain), so its programs' name moves; the rainy street's ramps read seg; images compared by eye with the accepted ones",
       "accepted": "2026-10-04",
-      "acceptedOver": "df7f6c16",
+      "acceptedOver": "0c96f70b",
       "adapter": "apple metal-3"
     },
     "shot/rainy-street": {
       "file": "shot/rainy-street.png",
       "output": "5ad2fa2b3acc38b49bd889e41825416403bd5cd356df862b765c0083ee9307ef",
-      "inputs": "a310277439cf284d78867ea6860c2af1a798871d530a1a267362a67dc0bc235f",
-      "reason": "new: ENGINE test 5's rainy street, a sky dissolving to night, a puddle on sixes with drops landing in it, a walker on its wet paper, the lamp's reflection cut to the puddle, rain and a push, at 1.9 s",
+      "inputs": "e5d339e3b5c157361e41325fc36921b63caf10b53f2ec0e2ce55c9f8e8a2172a",
+      "reason": "re-keyed: the rain's painting renamed STAMP_GATE_RAIN_PAINTING (factory gateRain), so its programs' name moves; the rainy street's ramps read seg; images compared by eye with the accepted ones",
       "accepted": "2026-10-04",
-      "acceptedOver": "8f12e119",
+      "acceptedOver": "0c96f70b",
       "adapter": "apple metal-3"
     },
     "shot/wet-contact": {

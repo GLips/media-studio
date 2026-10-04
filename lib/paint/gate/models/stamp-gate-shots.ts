@@ -20,7 +20,7 @@ import { dissolve } from '#lib/paint/shot/models/shot-selection.ts';
 import {
   STAMP_GATE_HERON_BODY, STAMP_GATE_HERON_MOVE, STAMP_GATE_HERON_VANE, stampGateHeronLayer, stampGateInsidePolygon, stampGateHeronPaper, stampGateHeronPolygon, stampGatePaperHeronDocument,
 } from './stamp-gate-paper-heron.ts';
-import { STAMP_GATE_RAIN, STAMP_GATE_RAINY_STREET, stampGateRainShot } from './stamp-gate-rain.ts';
+import { STAMP_GATE_RAIN, STAMP_GATE_RAIN_PAINTING, stampGateRainShot } from './stamp-gate-rain.ts';
 import { STAMP_GATE_RAINY_STREET_AT, STAMP_GATE_RAINY_STREET_PRESENTATION, stampGateRainyStreetEvaluations, stampGateRainyStreetShot } from './stamp-gate-rainy-street.ts';
 import { STAMP_GATE_MASKS_BASELINE, STAMP_GATE_MASKS_PRESENTATION, STAMP_GATE_SHOT_MASK_IDS, STAMP_GATE_TINTED_HERON, stampGateMaskedShot } from './stamp-gate-shot-masks.ts';
 import { STAMP_GATE_HERON_POSE, STAMP_GATE_SHEET_IMAGES, STAMP_GATE_WET_CONTACT, stampGateSheetBrushOf } from './stamp-gate-sheets.ts';
@@ -292,7 +292,7 @@ const SHOT_BASELINES: Readonly<Record<StampGateShotId, {
 }>> = {
   'shot/paper-heron': { shot: stampGateRiggedHeronShot, at: STAMP_GATE_RIGGED_HERON_AT.posed, evaluations: () => [painting(STAMP_GATE_RIGGED_HERON)], rigs: { heron: HERON_PARTS, reeds: REED_PARTS }, poses: HERON_POSES },
   'shot/wet-contact': { shot: stampGateWetContactShot, at: STAMP_GATE_WET_CONTACT_AT.posed, evaluations: () => [painting(STAMP_GATE_WET_CONTACT)], rigs: { heron: FOOT_RIG }, poses: FOOT_POSES },
-  'shot/rain': { shot: stampGateRainShot, at: STAMP_GATE_RAIN.at.first, evaluations: () => [painting(STAMP_GATE_RAINY_STREET)], rigs: {}, poses: [], extra: STAMP_GATE_RAIN },
+  'shot/rain': { shot: stampGateRainShot, at: STAMP_GATE_RAIN.at.first, evaluations: () => [painting(STAMP_GATE_RAIN_PAINTING)], rigs: {}, poses: [], extra: STAMP_GATE_RAIN },
   'shot/dissolve': {
     shot: stampGateDissolveShot, at: STAMP_GATE_DISSOLVE_AT.bothHalf, evaluations: () => Object.values(dissolveEvaluations()), rigs: {}, poses: [], extra: { ks: DISSOLVE_KS },
   },

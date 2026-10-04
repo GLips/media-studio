@@ -30,9 +30,9 @@ const drop: LayerNode = {
   }],
 };
 
-/** The rainy street: a `wall` over a `road`, a `post`, and a `drop`, each a plane's or the rain's own selection. */
-export const STAMP_GATE_RAINY_STREET: PaintingSourceModule = {
-  default: function gateRainyStreet(): PaintingDocument {
+/** The rain's painting: a `wall` over a `road`, a `post`, and a `drop`, each a plane's or the rain's own selection. */
+export const STAMP_GATE_RAIN_PAINTING: PaintingSourceModule = {
+  default: function gateRain(): PaintingDocument {
     const { width, height } = RAIN_FRAME;
     return {
       widthPx: width, heightPx: height, paper: stampGateHeronPaper('#efece4', 1), medium: 'watercolour',
@@ -86,7 +86,7 @@ const focusOnStreet = (aperture: number): PaintCameraPlay => ({
 
 /** A shot of the street and `rain`, still, its shutter open `shutter` s; `post` puts the post between the rain's depths. */
 function streetShot(rain: (at: number) => readonly PlaneInstance[], { shutter, post, plays }: { shutter: number; post: boolean; plays: readonly PaintCameraPlay[] }): PaintedShotProps {
-  const evaluation = painting(STAMP_GATE_RAINY_STREET);
+  const evaluation = painting(STAMP_GATE_RAIN_PAINTING);
   return {
     camera: { stage: stampStage(RAIN_FRAME, RAIN_MARGIN), fov: 35, lens: { bloom: 0, shutter }, plays },
     planes: [
