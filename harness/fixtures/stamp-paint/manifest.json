@@ -285,7 +285,7 @@
       "inputs": "6233116732146ce024c65859171d4d053e428fee4bcd245fe06f6a3a2b48ab95",
       "reason": "vid-157 three-lighting review: the lit shot gains a reference frame at 1 s (third frame), the lens focused on the stands (focus 1, aperture 4 px), and the sun's shadow camera fitted (near 170, far 280); the soft filter searches as far as a blocker on the near plane could shade, with 32 search and 32 filter taps",
       "accepted": "2026-10-04",
-      "acceptedOver": "c8571725",
+      "acceptedOver": "f2580f91",
       "adapter": "apple metal-3"
     },
     "shot/wet-contact": {

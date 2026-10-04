@@ -764,12 +764,15 @@ nothing solved. `reveal/sheets`: a group's reveal intersecting a nested layer's 
 with its paint and the root's ground never; a hidden foot leaving its water's mark on the shallows. `reveal/surfaces`:
 one painting through a still, a shot, a clear back over HTML and a painted texture, its mips re-laid. `reveal/clock`:
 held on sixes it steps, sampled continuously it moves smoothly, a reveal edit solves nothing, posed paint carries
-it, and a dissolve's ends each show theirs. Frame families (solved sheets, shots, painted textures, the lit shot) are rows of `STAMP_GATE_FRAME_FAMILIES` in `stamp-gate.ts`: IDs,
-page function, frame size and inputs, so a new family is one row. Pre-push runs it on each pushed commit's tree when a
-path it covers changes, once it has the whole adapter (the GPU lease, `lib/platform/gpu/engine/gpu-lease.ts`), so its
-deadline never runs while it queues; no adapter, a timeout or a difference refuses the push. Public baselines live in
-`harness/fixtures/stamp-paint/`, a pack's brushes' in `work/validation/stamp-paint/` (`stamp:gate -- private run`). A
-baseline changes only by `update <ids> --reason …`, which writes candidates with their differences, then `accept <ids>`.
+it, and a dissolve's ends each show theirs.
+
+Frame families (solved sheets, shots, painted textures, the lit shot) are rows of `STAMP_GATE_FRAME_FAMILIES` in
+`stamp-gate.ts`: IDs, page function, frame size and inputs, so a new family is one row. Pre-push runs the gate on each
+pushed commit's tree when a path it covers changes, once it has the whole adapter (the GPU lease,
+`lib/platform/gpu/engine/gpu-lease.ts`), so its deadline never runs while it queues; no adapter, a timeout or a
+difference refuses the push. Public baselines live in `harness/fixtures/stamp-paint/`, a pack's brushes' in
+`work/validation/stamp-paint/` (`stamp:gate -- private run`). A baseline changes only by `update <ids> --reason …`,
+which writes candidates with their differences, then `accept <ids>`.
 
 `lib/platform/zip/` reads the zips packs come in; `lib/platform/browser/` runs the fidelity, study and gate pages, each
 under the GPU lease (`lib/platform/gpu/`).
