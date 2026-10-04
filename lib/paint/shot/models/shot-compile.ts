@@ -11,9 +11,11 @@
 import { buildPaintCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
 import type { PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
 import { paintNodeClockProblem, paintNodeClockSteps, paintNodeTimeAt, type PaintNodeClock, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
+import type { PaintingBrushOf } from '#lib/paint/document/models/painting-deposit-compile.ts';
 import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import type { LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
+import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { paintMoment, type PaintMoment, type StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
 import { compileShotInstancedPlane, type CompiledShotInstancedPlane } from './shot-instances.ts';
@@ -80,6 +82,9 @@ export type CompiledPaintedShot = {
   readonly camera: PaintCamera;
   readonly warm: ShotWarm | null;
 };
+
+/** What a compiled shot paints with, its planes and its painted textures alike: its brushes, and where its solves, readbacks and warnings count. */
+export type PaintedShotPaintOptions = { readonly brushOf: PaintingBrushOf; readonly costs?: StampPaintCostTally };
 
 /**
  * What of `shot` a frame solves, and a warm would: its painted planes, then each instanced plane's variants. A variant

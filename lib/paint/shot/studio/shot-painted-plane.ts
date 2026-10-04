@@ -8,12 +8,10 @@
 // a reader's picture is kept under what it read too (shotPresentedKeys), a source's render named by the renderer.
 
 import { compilePaintingSelection, type PaintingSelectionCompiled } from '#lib/paint/document/models/painting-document-compile.ts';
-import type { PaintingBrushOf } from '#lib/paint/document/models/painting-deposit-compile.ts';
 import type { PaintingPoses } from '#lib/paint/document/models/painting-pose.ts';
 import type { LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
 import { paintingEvaluationCounts } from '#lib/paint/document/models/painting-source.ts';
 import { solvePaintingSheetFilms } from '#lib/paint/document/studio/painting-sheets-solve.ts';
-import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
 import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
@@ -27,7 +25,7 @@ import type { StampUniformArena } from '#lib/paint/painting/studio/stamp-uniform
 import type { LensCompositor, LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
 import type { PaintRigPicture } from '#lib/paint/rig/models/paint-rig-pieces.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
-import type { CompiledPaintedShot, CompiledShotPaintedPlane } from '../models/shot-compile.ts';
+import type { CompiledPaintedShot, CompiledShotPaintedPlane, PaintedShotPaintOptions } from '../models/shot-compile.ts';
 import { shotPlanePosesAt, shotPlaneReseedAt, shotPlaneSharesAt, shotRigGroupPivot } from '../models/shot-frame-plan.ts';
 import { shotPresentedKeys } from '../models/shot-masks.ts';
 import { shotOccurrencePlane } from '../models/shot-occurrences.ts';
@@ -107,12 +105,10 @@ export type ShotSourceReads = (plane: string, reader: string) => ShotSourceRead;
 /** A variant's mask reads: it takes no mask, so it reads nothing. */
 const SHOT_READS_NOTHING = (): ShotMaskCoverage | null => null;
 
-/** What a shot's painted planes are drawn with on its device: one stage, one arena, one lay, one picture reader and drawer. */
-export type ShotPaintedPlanesOptions = {
+/** What a shot's painted planes are drawn with on its device: what it paints with, one stage, one arena, one lay, one picture reader and drawer. */
+export type ShotPaintedPlanesOptions = PaintedShotPaintOptions & {
   readonly shot: CompiledPaintedShot;
   readonly stage: StampStage;
-  readonly brushOf: PaintingBrushOf;
-  readonly costs?: StampPaintCostTally;
   readonly arena: StampUniformArena;
   readonly layer: ShotSheetsLayer;
   readonly rigPictures: ShotRigPictures;

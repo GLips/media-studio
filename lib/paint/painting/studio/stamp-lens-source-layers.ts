@@ -6,6 +6,7 @@
 import { LENS_DEFOCUS_LEAST, lensGaussianReach, lensSigmaStepped, type LensFocus } from '#lib/picture/lens/models/lens-focus.ts';
 import type { LensCompositor, LensFrameExposures, LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
 import type { LensPictureLayers } from '#lib/picture/lens/studio/lens-passes.ts';
+import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
 import { STAMP_REST_LOOK, type StampLaidPlanes, type StampLaidSourcePlane, type StampPlaneExtent, type StampPlaneLook } from '../models/stamp-plane.ts';
 import type { StampStage, StampStageTexels } from '../models/stamp-stage.ts';
 import type { StampPaintGpuOwner } from './stamp-paint-gpu-owner.ts';
@@ -164,15 +165,15 @@ export function createStampLensSourceLayers(owner: StampPaintGpuOwner, { stage, 
 
   return {
     // One after another: each may render on the device the next does.
-    render: (t, exposure) => [...sources].reduce<Promise<{ moved: Set<string>; pictures: Map<string, StampLensPicture | null> }>>(async (prior, [id, source]) => {
-      const renders = await prior;
-      if (source.kind === 'three') {
-        if ((await source.render(t, exposure)).moved) renders.moved.add(id);
-        return renders;
-      }
-      renders.pictures.set(id, await source.render(t, exposure));
-      return renders;
-    }, Promise.resolve({ moved: new Set(), pictures: new Map() })),
+    render: async (t, exposure) => {
+      const moved = new Set<string>(), pictures = new Map<string, StampLensPicture | null>();
+      await gpuEachInTurn(sources, async ([id, source]) => {
+        if (source.kind === 'three') {
+          if ((await source.render(t, exposure)).moved) moved.add(id);
+        } else pictures.set(id, await source.render(t, exposure));
+      });
+      return { moved, pictures };
+    },
     layer: (encoder, plane, renders, laying) => {
       if (plane.kind === 'three') return [threeLayer(encoder, plane.id, laying)];
       const picture = renders.pictures.get(plane.id) ?? null;

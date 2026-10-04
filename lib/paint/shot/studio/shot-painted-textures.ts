@@ -8,11 +8,9 @@
 //
 // A texture whose source reads the same selections and weights as when it was last drawn isn't drawn again.
 
-import type { PaintingBrushOf } from '#lib/paint/document/models/painting-deposit-compile.ts';
 import { compilePaintingSelection } from '#lib/paint/document/models/painting-document-compile.ts';
 import { paintingErrors, paintingProblemText } from '#lib/paint/document/models/painting-problem.ts';
 import { solvePaintingSheets } from '#lib/paint/document/studio/painting-sheets-solve.ts';
-import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampWrapsAcross, type StampAxis, type StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
 import { stampBindGroup } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
@@ -24,11 +22,9 @@ import type { PaintedThreeTextureHandle, PaintedThreeTexturesSupplied } from '#l
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { GPU_FULL_FRAME_WGSL, GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
+import type { PaintedShotPaintOptions } from '../models/shot-compile.ts';
 import { compiledPaintedTextureSourceAt, type CompiledShotPaintedTexture } from '../models/shot-painted-texture-compile.ts';
 import { paintedSourceShares, samePaintedSourceShares, type PaintedSourceShare } from '../models/shot-selection.ts';
-
-/** What a shot's painted textures are painted with: its brushes, and where their solves count. */
-export type ShotPaintedTexturesOptions = { readonly brushOf: PaintingBrushOf; readonly costs?: StampPaintCostTally };
 
 /** A shot's painted textures as its three sources read them, and `dispose`, letting their textures go after the sources. */
 export type ShotPaintedTextures = PaintedThreeTexturesSupplied & { readonly dispose: () => void };
@@ -80,7 +76,7 @@ const SHOT_TEXTURE_SUM: GPUBlendState = { color: { operation: 'add', srcFactor: 
  * Compiled `textures` drawn on `owner`'s device for a shot's three sources. Refuses, as `update` reads a callback, a
  * source with an error at that moment (compiledPaintedTextureSourceAt).
  */
-export function createShotPaintedTextures(owner: StampPaintGpuOwner, textures: readonly CompiledShotPaintedTexture[], { brushOf, costs }: ShotPaintedTexturesOptions): ShotPaintedTextures {
+export function createShotPaintedTextures(owner: StampPaintGpuOwner, textures: readonly CompiledShotPaintedTexture[], { brushOf, costs }: PaintedShotPaintOptions): ShotPaintedTextures {
   const { webgpu, device } = owner, usage = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT;
   const resampleModule = device.createShaderModule({ code: SHOT_TEXTURE_RESAMPLE_WGSL }), encodeModule = device.createShaderModule({ code: SHOT_TEXTURE_ENCODE_WGSL });
   const resample = device.createRenderPipeline({ layout: 'auto', vertex: { module: resampleModule }, fragment: { module: resampleModule, targets: [{ format: 'rgba32float', blend: SHOT_TEXTURE_SUM }] } });

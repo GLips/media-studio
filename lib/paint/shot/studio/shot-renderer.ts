@@ -9,9 +9,7 @@
 
 import { PAINT_SIMILARITY_IDENTITY, paintSimilarityAfter, paintSimilarityInverse, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import { paintCameraDepthLooks, paintCameraLensFrame, type PaintCameraDepthLooks } from '#lib/paint/animation/models/paint-camera.ts';
-import type { PaintingBrushOf } from '#lib/paint/document/models/painting-deposit-compile.ts';
 import { paintingProblemsError, paintingProblemText } from '#lib/paint/document/models/painting-problem.ts';
-import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { STAMP_REST_LOOK, type StampLaidSourcePlane, type StampLensFrame, type StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
 import type { StampStage, StampStageTexels } from '#lib/paint/painting/models/stamp-stage.ts';
@@ -27,7 +25,7 @@ import { lensExposures } from '#lib/picture/lens/models/lens-exposures.ts';
 import { LENS_REFERENCE_EXPOSURES, type LensMode } from '#lib/picture/lens/models/lens-mode.ts';
 import { shutterMomentAt, shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import { createLensCompositor, type LensItemsLayer, type LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
-import { shotCanvasAlphaMode, shotPaintedSolvables, type CompiledPaintedShot, type CompiledShotPlane } from '../models/shot-compile.ts';
+import { shotCanvasAlphaMode, shotPaintedSolvables, type CompiledPaintedShot, type CompiledShotPlane, type PaintedShotPaintOptions } from '../models/shot-compile.ts';
 import { shotPinnedPlanes, type ShotPinCentres } from '../models/shot-placement.ts';
 import { shotNodePoseAt, shotPlaneClocks } from '../models/shot-frame-plan.ts';
 import { shotDrawSteps, shotExposureItems, type CompiledShotVariant, type ShotExposureItems } from '../models/shot-instances.ts';
@@ -47,9 +45,6 @@ type ShotSourceMade =
 
 /** A source read's key: what made its render's pixels, and the map its reader reads them through. */
 const shotSourceReadKey = (made: ShotSourceMade, map: PaintSimilarity) => JSON.stringify([made, map.ma, map.mb, map.kx, map.ky]);
-
-/** What a shot is painted with: its brushes, and where its solves, readbacks and warnings count. */
-export type PaintedShotRendererOptions = { readonly brushOf: PaintingBrushOf; readonly costs?: StampPaintCostTally };
 
 /**
  * How a shot warms: at the composition's `fps`; within the scene playing it, `sceneDur` s long (null: unknown);
@@ -106,7 +101,7 @@ function shotExposures(shot: CompiledPaintedShot, t: number, mode: LensMode): Sh
  * `shot` on `owner`'s device, drawn into `surfaces`, one a canvas in the shot's canvas order, each the camera's frame
  * size and handing the browser its alpha as shotCanvasAlphaMode says.
  */
-export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfaces: readonly StampPaintSurface[], shot: CompiledPaintedShot, { brushOf, costs }: PaintedShotRendererOptions): Promise<PaintedShotRenderer> {
+export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfaces: readonly StampPaintSurface[], shot: CompiledPaintedShot, { brushOf, costs }: PaintedShotPaintOptions): Promise<PaintedShotRenderer> {
   // Paint passes go through the owner's caching device; the lens and picture sources take the device itself.
   const { camera } = shot, { stage } = camera, { device, webgpu } = owner;
   if (surfaces.length !== shot.canvases) throw new Error(`shot: drawn into ${surfaces.length} canvases, and it names ${shot.canvases}`);
