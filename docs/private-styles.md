@@ -192,6 +192,6 @@ problem with the pack's `source` (which says where to get it), when a pack isn't
 gone, `brushes` names a brush its pack lacks, the paper names a file its pack lacks, or a manifest is from an older
 asset version. Import the pack again from your copy.
 
-**Keeping packs out of git.** `studio workspace init` ignores `styles/*/brushes/`. check:arch refuses a tracked file
+**Keeping packs out of git.** `studio workspace init` ignores `styles/*/brushes`. check:arch refuses a tracked file
 under a style's `brushes/` in the workspace, and a tracked brush archive (`.brushset`, `.abr`) anywhere in the studio,
 except a test fixture you made yourself and listed in `lint/structural/checks/brush-assets.ts`.

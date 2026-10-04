@@ -7,8 +7,8 @@
 //   work/hosts.json           host name → { repo } (lib/platform/host/engine/hosts.ts); hosts.local.json beside it, ignored
 //   work/arch-baseline.json   check:arch's baseline for the workspace's files, as lint/arch-baseline.json is the studio's
 //
-// Its commits run .githooks-workspace/pre-commit: check:arch over its index against the studio's, the full typecheck
-// and its projects' tests.
+// Its commits run .githooks-workspace/pre-commit: check:arch over its index against the studio's, lint over the
+// sources its index holds, the full typecheck and its projects' tests.
 //
 // Negative space: no package.json in work/. A project's `#studio` and `#lib/*` resolve through the studio's
 // package.json because none sits between them.
@@ -23,11 +23,12 @@ const WORKSPACE_HOOKS_PATH = '../.githooks-workspace';
 
 /**
  * What a project writes that's made, not authored: recorded, generated or rendered; a brand's licensed fonts; and a
- * style's brushes, imported from a bought pack.
+ * style's brushes, imported from a bought pack. Fonts and brushes have no trailing slash, so a symlink to another
+ * checkout's folder (as a second worktree links them) is ignored too.
  */
 const WORKSPACE_IGNORES = [
   'projects/*/captures/', 'projects/*/out/', 'projects/*/audio/', 'projects/*/music/', 'projects/*/generated/',
-  'projects/*/host', 'brands/*/fonts/', 'styles/*/brushes/', 'hosts.local.json', '.DS_Store',
+  'projects/*/host', 'brands/*/fonts', 'styles/*/brushes', 'hosts.local.json', '.DS_Store',
 ];
 
 export function isStudioWorkspaceRepo(): boolean {
