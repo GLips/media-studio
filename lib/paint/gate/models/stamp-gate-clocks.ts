@@ -92,7 +92,7 @@ export const STAMP_GATE_INSTANT_REFUSAL = {
   ends: '; settled before it (`instant`): give the sheet a numeric `dryingScale`, or drop the `on`. Unscheduled after it: pool-bloom, pool-dot',
 } as const;
 export const STAMP_GATE_NEVER_REFUSAL = {
-  starts: "pool-bloom: unreachable from this committed prefix: on 'damp' held over at most 0% of its core (needs 95%), at model 0 s [",
+  starts: "pool-bloom: unreachable from this committed prefix: on 'damp' held over 0% of its core (needs 95%), at model 0 s [",
   ends: "; nothing dries (`never`): give the sheet a numeric `dryingScale`, or drop the `on` (under `never`, a bloom is `on: 'wet'`). Unscheduled after it: pool-dot",
 } as const;
 

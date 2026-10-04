@@ -10,7 +10,9 @@
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import { STAMP_DAMP_HISTOGRAM_BINS } from '../models/stamp-damp-histogram.ts';
-import { STAMP_SHEET_BLOOM_SURPLUS, STAMP_SHEET_CORE_CONTACT, STAMP_SHEET_FAILURE_CELL, STAMP_SHEET_TOTALS, STAMP_SHEET_WEIGHT } from '../models/stamp-sheet-schedule.ts';
+import {
+  STAMP_SHEET_BLOOM_SURPLUS, STAMP_SHEET_CORE_CONTACT, STAMP_SHEET_FAILURE_CELL, STAMP_SHEET_FAILURE_UNSHONE, STAMP_SHEET_TOTALS, STAMP_SHEET_WEIGHT,
+} from '../models/stamp-sheet-schedule.ts';
 import type { StampSheetWetness } from '../models/stamp-sheet-program.ts';
 import { stampRegionTexelWords, type StampStage } from '../models/stamp-stage.ts';
 import { STAMP_WET_PAPER_WGSL, type StampDrying } from '../models/stamp-wetness.ts';
@@ -100,10 +102,10 @@ fn setAt(field: vec4f) -> f32 {
 fn isDamp(field: vec4f, at: WetPaper) -> bool { return field.x > 0.0 && at.wetness <= u.drying.z && at.workable > 0.0; }
 fn inBox(id: vec3u) -> bool { return all(id.xy < u.extent); }
 
-var<workgroup> sums: array<atomic<u32>, 6>;
+var<workgroup> sums: array<atomic<u32>, 7>;
 var<workgroup> extremes: array<atomic<u32>, 2>;
-// The core's totals at the probe (STAMP_SHEET_TOTALS): weight, wet, damp, workable, never wetted, able to bloom; the
-// least matte time kept as its complement's max, and the latest set.
+// The core's totals at the probe (STAMP_SHEET_TOTALS): weight, wet, damp, workable, never wetted, able to bloom, laid
+// shiny and dried past it; the least matte time kept as its complement's max, and the latest set.
 @compute @workgroup_size(${GROUP}, ${GROUP}) fn totals(@builtin(global_invocation_id) id: vec3u, @builtin(local_invocation_index) local: u32) {
   if (inBox(id)) {
     let p = u.origin + id.xy;
@@ -118,6 +120,7 @@ var<workgroup> extremes: array<atomic<u32>, 2>;
       if (field.x <= 0.0) { atomicAdd(&sums[4], w); }
       let opened = (u.flags & BLOOM) != 0u && textureLoad(open, p, 0).r > 0.0;
       if (opened && at.workable > 0.0 && u.water - at.wetness > ${STAMP_SHEET_BLOOM_SURPLUS.toFixed(4)}) { atomicAdd(&sums[5], w); }
+      if (field.x > u.drying.w && at.wetness <= u.drying.w) { atomicAdd(&sums[6], w); }
       if (field.x > 0.0) {
         atomicMax(&extremes[0], ~ordered(matteAt(field)));
         atomicMax(&extremes[1], ordered(setAt(field)));
@@ -125,9 +128,9 @@ var<workgroup> extremes: array<atomic<u32>, 2>;
     }
   }
   workgroupBarrier();
-  if (local < 6u) { addWide(2u * local, atomicLoad(&sums[local])); }
-  if (local == 6u) { atomicMax(&words[${T.leastMatte}u], atomicLoad(&extremes[0])); }
-  if (local == 7u) { atomicMax(&words[${T.latestSet}u], atomicLoad(&extremes[1])); }
+  if (local < 7u) { addWide(2u * local, atomicLoad(&sums[local])); }
+  if (local == 7u) { atomicMax(&words[${T.leastMatte}u], atomicLoad(&extremes[0])); }
+  if (local == 8u) { atomicMax(&words[${T.latestSet}u], atomicLoad(&extremes[1])); }
 }
 
 // The latest any texel of the box sets, wetted or not by the core: when what was laid there has set.
@@ -169,7 +172,8 @@ fn binned(step: u32, base: u32, before: u32, w: u32) {
   binned(sets - 1u, BINS, 4u * BINS + 2u, w);
 }
 
-// A failure map: each ${STAMP_SHEET_FAILURE_CELL} px cell of the box holding a core texel its rule fails at the probe.
+// A failure map: each ${STAMP_SHEET_FAILURE_CELL} px cell of the box holding a core texel its rule fails at the probe,
+// its bits why (STAMP_SHEET_FAILURE_UNSHONE for a \`wet\` texel never laid shiny, else 1).
 @compute @workgroup_size(${GROUP}, ${GROUP}) fn failure(@builtin(global_invocation_id) id: vec3u) {
   if (!inBox(id)) { return; }
   let p = u.origin + id.xy;
@@ -177,7 +181,8 @@ fn binned(step: u32, base: u32, before: u32, w: u32) {
   let field = textureLoad(paper, p, 0);
   let at = wetPaperAt(field, u.tau, u.drying.xyz);
   let holds = select(select(at.workable <= 0.0, isDamp(field, at), u.rule == 1u), at.wetness > u.drying.w, u.rule == 0u);
-  if (!holds) { atomicMax(&words[(id.y / ${STAMP_SHEET_FAILURE_CELL}u) * u.columns + id.x / ${STAMP_SHEET_FAILURE_CELL}u], 1u); }
+  let why = select(1u, ${STAMP_SHEET_FAILURE_UNSHONE}u, u.rule == 0u && field.x <= u.drying.w);
+  if (!holds) { atomicOr(&words[(id.y / ${STAMP_SHEET_FAILURE_CELL}u) * u.columns + id.x / ${STAMP_SHEET_FAILURE_CELL}u], why); }
 }`;
 
 /** A wash's prewet as its core takes it: the region its water lands in, and the fluid holding it off (null for none). */

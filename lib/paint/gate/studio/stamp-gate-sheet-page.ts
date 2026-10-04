@@ -24,7 +24,7 @@ import {
   stampGatePeakShift,
 } from '../models/stamp-gate-paper-heron.ts';
 import {
-  checkStampGateTimes, STAMP_GATE_DAMP_WINDOWS, STAMP_GATE_ERASED, STAMP_GATE_ERASED_AT, STAMP_GATE_FAR_SHALLOWS, STAMP_GATE_FOOT_BOX, STAMP_GATE_FORWARD, STAMP_GATE_HERON_AWAY, STAMP_GATE_HERON_POSE, STAMP_GATE_LIFTED, STAMP_GATE_LIFTED_REFUSAL, STAMP_GATE_NEVER_WETTED, STAMP_GATE_NEVER_WETTED_MESSAGE, STAMP_GATE_REBASE, STAMP_GATE_SHEET_IDS,
+  checkStampGateTimes, STAMP_GATE_DAMP_WINDOWS, STAMP_GATE_ERASED, STAMP_GATE_ERASED_AT, STAMP_GATE_FAR_SHALLOWS, STAMP_GATE_FOOT_BOX, STAMP_GATE_FORWARD, STAMP_GATE_HERON_AWAY, STAMP_GATE_HERON_POSE, STAMP_GATE_LIFTED, STAMP_GATE_LIFTED_REFUSALS, STAMP_GATE_NEVER_WETTED, STAMP_GATE_NEVER_WETTED_MESSAGE, STAMP_GATE_REBASE, STAMP_GATE_SHEET_IDS,
   STAMP_GATE_WET_CONTACT, stampGateFilmCentre, stampGateFilmDifference, stampGateFilmMass, stampGateFilmsEqual, stampGateForwardTimes, stampGateHeronPosed, stampGateDampWindowTexts, stampGateRebaseTimes, stampGateSheetBrushOf,
   stampGateSheetProgram, stampGateSolvedStill, stampGateWetContactTimes, type StampGateSheetId, type StampGateSolvedId,
 } from '../models/stamp-gate-sheets.ts';
@@ -32,7 +32,7 @@ import { checkStampGateClocks } from './stamp-gate-clocks-page.ts';
 import { stampGateRgbBase64, withGateSurface } from './stamp-gate-page-surface.ts';
 import { checkStampGateReductions } from './stamp-gate-reductions-page.ts';
 import { checkStampGateRiggedHeron, checkStampGateRiggedWetContact } from './stamp-gate-shot-page.ts';
-import { stampGateRejection, stampGateSheetImageUrl, stampGateSolvedFilms, withStampGateSheetOwner } from './stamp-gate-sheet-owner.ts';
+import { stampGateRefusedAs, stampGateRejection, stampGateSheetImageUrl, stampGateSolvedFilms, withStampGateSheetOwner } from './stamp-gate-sheet-owner.ts';
 
 /**
  * An eraser rubbed across a crayon line in its direct wash takes up all but the pressed residue under its core, and
@@ -71,16 +71,17 @@ async function checkDampWindows(owner: StampPaintGpuOwner): Promise<StampGateWas
 }
 
 /**
- * A charge `on: 'wet'` across a lift laid before it refused, naming the lift; laid before the lift, it lands with its
- * flood.
+ * A charge `on: 'wet'` across a lift laid before it refused, naming the lift; after a soak that waits for the flood to
+ * turn damp, refused as too late, the lift not named; laid before the lift, it lands with its flood.
  */
 async function checkLifted(owner: StampPaintGpuOwner): Promise<StampGateWashCheck> {
-  const refused = await stampGateRejection(solveStampSheet(owner, stampGateSheetProgram(STAMP_GATE_LIFTED)));
-  const { decisions: [flood, charge] } = await solveStampSheet(owner, stampGateSheetProgram(STAMP_GATE_LIFTED, { lifted: false }));
-  const { starts, ends } = STAMP_GATE_LIFTED_REFUSAL, named = !!refused && refused.startsWith(starts) && refused.endsWith(ends);
+  const lifted = await stampGateRejection(solveStampSheet(owner, stampGateSheetProgram(STAMP_GATE_LIFTED)));
+  const waited = await stampGateRejection(solveStampSheet(owner, stampGateSheetProgram(STAMP_GATE_LIFTED, { order: 'waited' })));
+  const { decisions: [flood, charge] } = await solveStampSheet(owner, stampGateSheetProgram(STAMP_GATE_LIFTED, { order: 'charged' }));
+  const named = stampGateRefusedAs(lifted, STAMP_GATE_LIFTED_REFUSALS.lifted) && stampGateRefusedAs(waited, STAMP_GATE_LIFTED_REFUSALS.waited);
   return {
     id: 'schedule/forward: wet across a lift', passed: named && charge.tau === flood.tau && !charge.warnings.length,
-    detail: `${refused ?? 'the charge after the lift solved'}; before it, the charge at ${charge.tau} s, its flood at ${flood.tau} s${charge.warnings.length ? `; ${charge.warnings.join('; ')}` : ''}`,
+    detail: `${lifted ?? 'the charge after the lift solved'}; ${waited ?? 'the charge after the soak solved'}; before the lift, the charge at ${charge.tau} s, its flood at ${flood.tau} s${charge.warnings.length ? `; ${charge.warnings.join('; ')}` : ''}`,
   };
 }
 

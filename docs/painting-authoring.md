@@ -318,16 +318,22 @@ or without, the application lands at its predecessor's time (or its `at`) into t
 the solve fails. Dropping it changes nothing but the check. A flood laid at the medium's default water (0.7, 0.4) is
 never `wet`: flood at 0.85 or more in watercolour, 0.5 or more in gouache, for anything to charge into it. A core
 whose wetness spans more than the damp band at once (a stroke along a wet and a drying passage) may never be `damp`
-over 95%: split it. Three layouts leave a `wet` short of 95%, and its failure says which:
+over 95%: split it. A `wet` falls short for one of the reasons below, and its failure names the one that fits what
+its core's paper did. First, if more than 5% of its core met no water on the sheet, `never wetted on this sheet`: lay
+it over the flood. Otherwise, the first of these:
 
-- A lift takes the paper's water with its paint (`it crosses glint, which took up the paper's water there`): lay the
-  charge before the lift, and lifts last in their wash, after every charge that crosses them.
-- A charge reaching where a flood's water falls away (a small leaf, a narrow tier, or a second flood the shape of a
-  crisp first, sitting on its rim) has the rim in its core (`part of its core lies where the water under it falls
+- It came too late: at least as much of its failing core was laid shiny and has dried past it as was never shiny
+  (`the water under it dried past shiny before it lands`). Something between the water and the charge waited (an
+  `on: 'damp'` or `'dry'`, a wash starting once its layer had set): lay the charge sooner, ahead of what waits, or
+  flood wetter. At a fixed `at`, move the `at` earlier.
+- A lift took the paper's water with its paint (`it crosses glint, which took up the paper's water there`), named when
+  a lift since the last drying meets where the core was never shiny: lay the charge before the lift, and lifts last in
+  their wash, after every charge that crosses them.
+- Nothing under it was ever above shiny (`nothing under it is shiny`): flood wetter before it.
+- Else a charge reaching where a flood's water falls away (a small leaf, a narrow tier, or a second flood the shape of
+  a crisp first, sitting on its rim) has the rim in its core (`part of its core lies where the water under it falls
   away`): inset it a few px, or feather it or the flood. A textured brush's flood fails alike between its flecks:
   flood with an even brush.
-- The water under it has dried past shiny, or was never above it (`nothing under it is shiny`): flood wetter before
-  it, or move a fixed `at` earlier.
 
 Between `damp` and `shiny` (satin) has no word: reach it with a fixed `at`. Crayon has no wet history, so `on` is
 refused there. The sheet's water is every layer's: `wet` can hold over another layer's flood (**NEW**). On a moving
@@ -722,8 +728,8 @@ const SKY_WASH: Wash = {
 ```
 
 Moving the cue in `timeline.ts` moves the treeline's landing, and so what it meets: a later cue finds the sky less
-wet, and past 3.6 s no longer shiny, where `on: 'wet'` can't hold and the solve fails: `nothing under it is shiny:
-flood wetter before it, or move its \`at\` earlier`. `studio paint check <source> --solve` prints every landing's scene
+wet, and past 3.6 s no longer shiny, where `on: 'wet'` can't hold and the solve fails: `the water under it dried past
+shiny before its \`at\`: move the \`at\` earlier, or flood wetter before it`. `studio paint check <source> --solve` prints every landing's scene
 time, so a scene can check it against its cues.
 
 **Play a painting at another pace.** The selection's `at` is the painting's own time, so a scene maps its time into
@@ -1505,15 +1511,15 @@ A refusal prints alone, after the check's summary, and fails the run. What the s
 
 | Message | When | Do |
 |---|---|---|
-| `ridge-coat: unreachable from this committed prefix: on 'damp' held over at most 69% of its core (needs 95%), at model 131.2 s [0,197 → 640,261]; sets before the rest turns matte: split it along the boxes, so each part lies on paper drying alike. Unscheduled after it: …` | a `damp` or `dry` never holding over 95% of its core from its predecessor's time on (for `damp`, the share is an upper bound). The boxes, in 32 px cells, are where it failed. `never wetted on this sheet: 40% of its core met no water before it; lay it over a flood or prewet earlier on the sheet, or drop the \`on\`` when much of its core met no water. It fails the solve | what it says |
-| `treeline: unreachable from this committed prefix: on 'wet' held over 59% of its core (needs 95%) when it lands, at model 0 s [0,197 → 640,261]; part of its core lies where the water under it falls away (a flood's rim, a textured brush's flecks): inset it from the rim, feather it or the flood, or flood with an even brush. Unscheduled after it: …` (the meadow's sky flooded through `wash`) | a `wet` short of 95% where it lands, its predecessor's time or its `at`: it never delays, so it fails there. The share is exact. The reason names the fix: `it crosses glint, which took up the paper's water there: lay it before glint` where a lift before it meets where it fell short; `nothing under it is shiny: flood wetter before it` (`, or move its \`at\` earlier` at a fixed `at`); else the rim, as here | what it says, or drop the `on`: it lands there all the same, unchecked |
+| `ridge-coat: unreachable from this committed prefix: on 'damp' held over at most 69% of its core (needs 95%), at model 131.2 s [0,197 → 640,261]; sets before the rest turns matte: split it along the boxes, so each part lies on paper drying alike. Unscheduled after it: …` | a `damp` never holding over 95% of its core from its predecessor's time on (`at most`: the share is an upper bound over the times searched), or a `dry` under `never` (needs 100%). The boxes, in 32 px cells, are where it failed. `never wetted on this sheet: 40% of its core met no water before it; lay it over a flood or prewet earlier on the sheet, or drop the \`on\`` comes first, for `wet` and `damp`, when more than 5% of its core met no water. It fails the solve | what it says |
+| `treeline: unreachable from this committed prefix: on 'wet' held over 59% of its core (needs 95%) when it lands, at model 0 s [0,197 → 640,261]; part of its core lies where the water under it falls away (a flood's rim, a textured brush's flecks): inset it from the rim, feather it or the flood, or flood with an even brush. Unscheduled after it: …` (the meadow's sky flooded through `wash`) | a `wet` short of 95% where it lands, its predecessor's time or its `at` (`at its \`at\` of 6 s`): it never delays, so it fails there. The share is exact. The reason names the fix, the first that fits: `never wetted on this sheet: …` when more than 5% of its core met no water; `the water under it dried past shiny before it lands: lay it sooner, ahead of what waits after that water, or flood wetter before it` when at least as much of where it failed was laid shiny and dried as was never shiny (`before its \`at\`: move the \`at\` earlier, or flood wetter before it` at a fixed `at`); `it crosses glint, which took up the paper's water there: lay it before glint` where a lift since the last drying meets where it was never shiny; `nothing under it is shiny: flood wetter before it`; else the rim, as here | what it says, or drop the `on`: it lands there all the same, unchecked |
 | `sky.applications[3] won't bloom: no open paint on workable paper under its core that its water rises 0.08 over; bloom over a wash still open, once its shine has gone (\`on: 'damp'\`), or drop \`effect\`` | a bloom with nothing to act on where it lands: no open paint, paper set, or paper too wet for its water to spread; fails the solve | what it says |
 | `drop: its core is empty: nothing of it reaches paper` (warning) | its clips, resists or reserves leave none of it on paper; it lands at its predecessor's time | widen its clips, or drop it |
 | `treeline: decided within rounding of on 'wet'; another GPU may place it a step apart` (warning) | its `on` holds by a hair | wetter or drier, by a little |
 | `glint: unreachable … settled before it (\`instant\`): give the sheet a numeric \`dryingScale\`, or drop the \`on\`` / `bloom: unreachable … nothing dries (\`never\`): …` | under `instant` the sheet has set before each clocked application, so `wet` or `damp` over earlier paint can't hold; under `never` it stays as it landed, judged at the predecessor's time alone | what it says |
 | `hill starts at 2 s while sky is still wet until 5.1 s` | a numeric `origin` before its layer's earlier washes have set | a later `origin`, or `'set'` |
 | `glaze: fixed at 1 s precedes its predecessor at 3.448 s` | the application before it waited on its `on` past this one's `at` | a later `at`, or an earlier wait |
-| `glaze: at 6 s, on 'dry' holds over 80% of its core there: move the \`at\` to where \`studio paint check --solve\` says its paper is dry, or drop the \`on\`` | a fixed `at` whose `damp` or `dry` doesn't hold then (for `damp`, an upper bound) | what it says |
+| `glaze: unreachable from this committed prefix: on 'dry' held over 80% of its core (needs 100%), at its \`at\` of 6 s [0,0 → 96,64]; move the \`at\` to where \`studio paint check --solve\` says its paper is dry, or drop the \`on\`. Unscheduled after it: …` | a fixed `at` whose `damp` or `dry` doesn't hold then, judged there alone, so the share is exact; the sheet's reasons (`never wetted`, `instant`, `never`) come first | what it says |
 
 `<PaintedShot>` refuses, as it loads, every problem at once: its sources' (as above), a bad rig (`meadow/heron is
 rigged: it takes no pins, sway or flutter`, `meadow/eye: lies under rigged heron and in no part's cels: group it with

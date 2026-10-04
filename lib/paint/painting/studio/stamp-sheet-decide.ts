@@ -8,9 +8,9 @@
 
 import { stampDampFirstStep, stampDampFirstWidth, stampDampStep } from '../models/stamp-damp-histogram.ts';
 import {
-  STAMP_SHEET_SHARE, STAMP_SHEET_STEP, STAMP_SHEET_VERIFY_STEPS, stampSheetAtFails, stampSheetEmptyCore, stampSheetGrid, stampSheetHeld, stampSheetHolds,
-  stampSheetNearRounding, stampSheetUnreachable, stampSheetVerifyFault, stampSheetWetUnreachable, stampSheetWithinRounding, stampSheetWontBloom,
-  type StampSheetLift, type StampSheetRegime, type StampSheetShortfall, type StampSheetTotals,
+  STAMP_SHEET_SHARE, STAMP_SHEET_STEP, STAMP_SHEET_VERIFY_STEPS, stampSheetEmptyCore, stampSheetGrid, stampSheetHeld, stampSheetHolds, stampSheetNearRounding,
+  stampSheetUnreachable, stampSheetVerifyFault, stampSheetWithinRounding, stampSheetWontBloom, type StampSheetLift, type StampSheetRegime, type StampSheetShortfall,
+  type StampSheetTotals,
 } from '../models/stamp-sheet-schedule.ts';
 import type { StampSheetWetness } from '../models/stamp-sheet-program.ts';
 import { StampSheetRefusal } from '../models/stamp-sheet-refusal.ts';
@@ -19,12 +19,12 @@ import type { StampSheetPrepare, StampSheetSteps } from './stamp-sheet-steps.ts'
 
 /**
  * An application as its decision reads it: its name, rule, bloom water (null for none), core (null off the stage),
- * the work laying its touch and marking open paint; for a failure's message, the names after it and the lifts since
- * its sheet's last drying (read if a `wet` fails); how its paper dries; its fixed `at` (null for none).
+ * the work laying its touch and marking open paint; for a failure's message, the names after it and the lifts landed
+ * since its sheet's last drying; how its paper dries; its fixed `at`, scene s (null for none).
  */
 export type StampSheetDecideInput = {
   name: string; on: StampSheetWetness | null; bloom: number | null; core: StampSheetCore | null; touch: StampSheetPrepare; open: StampSheetPrepare;
-  unscheduled: readonly string[]; lifts: () => readonly StampSheetLift[]; regime: StampSheetRegime; fixed: number | null;
+  unscheduled: readonly string[]; lifts: readonly StampSheetLift[]; regime: StampSheetRegime; fixed: number | null;
 };
 
 /** When `input` lands, no earlier than `tau0`, and what its author should hear. Throws where it can't land. */
@@ -37,10 +37,10 @@ export async function decideStampSheetEntry(steps: StampSheetSteps, input: Stamp
   const warnings: string[] = [];
   let tau = tau0;
   if (on === 'wet') {
-    if (!stampSheetHolds('wet', first)) return wetUnreachable(steps, input, core, { tau: tau0, held: stampSheetHeld('wet', first), totals: first });
+    if (!stampSheetHolds('wet', first)) return refuse(steps, input, 'wet', core, { tau: tau0, held: stampSheetHeld('wet', first), totals: first });
     if (stampSheetNearRounding('wet', first, false)) warnings.push(stampSheetWithinRounding(name, 'wet'));
   } else if (on) {
-    if (input.fixed !== null && !stampSheetHolds(on, first)) throw new StampSheetRefusal(stampSheetAtFails(name, input.fixed, on, stampSheetHeld(on, first) / first.weight));
+    if (input.fixed !== null && !stampSheetHolds(on, first)) return refuse(steps, input, on, core, { tau: tau0, held: stampSheetHeld(on, first), totals: first });
     const decided = await firstHolding(steps, input, on, core, tau0, first);
     const { at, totals, stepped } = decided === tau0 && stampSheetHolds(on, first) ? { at: tau0, totals: first, stepped: false } : await verified(steps, name, on, core, decided);
     tau = at;
@@ -59,28 +59,23 @@ export async function decideStampSheetEntry(steps: StampSheetSteps, input: Stamp
  */
 async function firstHolding(steps: StampSheetSteps, input: StampSheetDecideInput, on: Exclude<StampSheetWetness, 'wet'>, core: StampSheetCore, tau0: number, first: StampSheetTotals): Promise<number> {
   if (stampSheetHolds(on, first)) return tau0;
-  if (input.regime === 'never' || (input.regime === 'instant' && on !== 'dry')) return unreachable(steps, input, on, core, { tau: tau0, held: stampSheetHeld(on, first), totals: first });
+  if (input.regime === 'never' || (input.regime === 'instant' && on !== 'dry')) return refuse(steps, input, on, core, { tau: tau0, held: stampSheetHeld(on, first), totals: first });
   if (on === 'dry') return stampSheetGrid(tau0, first.latestSet ?? tau0);
   if (first.latestSet !== null) {
     const last = stampDampStep(first.latestSet, tau0), need = STAMP_SHEET_SHARE * first.weight;
     const histogram = await steps.histogramAt(core, tau0, 0, stampDampFirstWidth(last));
     const { step, most } = await stampDampFirstStep(histogram, need, ({ start, width }) => steps.histogramAt(core, tau0, start, width));
     if (step !== null) return tau0 + step * STAMP_SHEET_STEP;
-    return unreachable(steps, input, on, core, { tau: tau0 + most.step * STAMP_SHEET_STEP, held: most.weight, totals: first });
+    return refuse(steps, input, on, core, { tau: tau0 + most.step * STAMP_SHEET_STEP, held: most.weight, totals: first });
   }
-  return unreachable(steps, input, on, core, { tau: tau0, held: stampSheetHeld(on, first), totals: first });
+  return refuse(steps, input, on, core, { tau: tau0, held: stampSheetHeld(on, first), totals: first });
 }
 
-/** Throws `input`'s failure from this prefix: its rule `on` held over `held` at most, at `tau`, mapped there. */
-async function unreachable(steps: StampSheetSteps, input: StampSheetDecideInput, on: Exclude<StampSheetWetness, 'wet'>, core: StampSheetCore, at: StampSheetShortfall): Promise<never> {
-  const boxes = await steps.failureAt(core, at.tau, on);
-  throw new StampSheetRefusal(stampSheetUnreachable(input.name, on, at, boxes, input.unscheduled, input.regime));
-}
-
-/** Throws `input`'s failure where its `wet` falls short as it lands, at τ0 (`at.tau`): mapped there, the lifts it crosses named. */
-async function wetUnreachable(steps: StampSheetSteps, input: StampSheetDecideInput, core: StampSheetCore, at: StampSheetShortfall): Promise<never> {
-  const boxes = await steps.failureAt(core, at.tau, 'wet');
-  throw new StampSheetRefusal(stampSheetWetUnreachable(input.name, at, boxes, input.lifts(), input.unscheduled, input.regime, input.fixed !== null));
+/** Throws `input`'s refusal from this prefix: its rule `on` short as `at` says, mapped where it fell short there. */
+async function refuse(steps: StampSheetSteps, input: StampSheetDecideInput, on: StampSheetWetness, core: StampSheetCore, at: StampSheetShortfall): Promise<never> {
+  const where = await steps.failureAt(core, at.tau, on), { name, unscheduled, regime, fixed } = input;
+  const rule = on === 'wet' ? { on, lifts: input.lifts } : { on };
+  throw new StampSheetRefusal(stampSheetUnreachable({ name, rule, at, where, unscheduled, regime, fixed }));
 }
 
 /**

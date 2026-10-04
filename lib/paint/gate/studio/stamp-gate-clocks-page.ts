@@ -20,15 +20,13 @@ import { stampGateFrameDifference, stampGateFramePasses } from '../models/stamp-
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { stampGateFilmsEqual, stampGateForwardTimes, stampGateSheetProgram } from '../models/stamp-gate-sheets.ts';
 import { withGateSurface } from './stamp-gate-page-surface.ts';
-import { stampGateRejection, stampGateSheetImageUrl, stampGateSolvedFilms, withStampGateSheetOwner } from './stamp-gate-sheet-owner.ts';
+import { stampGateRefusedAs, stampGateRejection, stampGateSheetImageUrl, stampGateSolvedFilms, withStampGateSheetOwner } from './stamp-gate-sheet-owner.ts';
 
 const ID = 'schedule/clocks';
 const namesOf = ({ entries }: StampSheetProgram) => entries.map(({ name }) => name);
 /** A root sheet's kept `films` as a composite of it alone, at rest on its paper. */
 const aloneOnPaper = (program: StampSheetProgram, films: readonly StampSheetFilmKept[]): StampSheetsComposite =>
   ({ sheets: [{ program, films, place: null, reveals: STAMP_FILMS_WHOLE }], steps: program.films.map((_, film) => ({ kind: 'film', sheet: 0, film }) as const) });
-/** Whether `refused` reads as `starts` … `ends`. */
-const refusedAs = (refused: string | null, { starts, ends }: { starts: string; ends: string }) => !!refused && refused.startsWith(starts) && refused.endsWith(ends);
 
 /** The pool on a scale: every moment its closed form's, scene seconds from τc. */
 async function checkScale(owner: StampPaintGpuOwner): Promise<StampGateWashCheck> {
@@ -49,7 +47,7 @@ async function checkInstant(owner: StampPaintGpuOwner): Promise<StampGateWashChe
   const closing = decisions.flatMap(({ tau, closes }, k) => (k > first && !(closes.landing && tau > decisions[k - 1].tau) ? [names[k]] : []));
   const offClock = decisions.flatMap(({ scene }, k) => (scene === plain.entries[k].orderTime ? [] : [names[k]]));
   return {
-    id: `${ID}: instant`, passed: !closing.length && !offClock.length && refusedAs(refused, STAMP_GATE_INSTANT_REFUSAL),
+    id: `${ID}: instant`, passed: !closing.length && !offClock.length && stampGateRefusedAs(refused, STAMP_GATE_INSTANT_REFUSAL),
     detail: `${closing.length ? `no drying closed before ${closing.join(', ')}` : 'a drying closed before each'}; ${offClock.length ? `off their order times: ${offClock.join(', ')}` : 'each at its order time'}; ${refused ?? 'the charge solved'}`,
   };
 }
@@ -60,7 +58,7 @@ async function checkNever(owner: StampPaintGpuOwner): Promise<StampGateWashCheck
   const refused = await stampGateRejection(solveStampSheet(owner, program));
   const { decisions } = await solveStampSheet(owner, program, { through: 3 });
   const moments = checkStampGateMoments(`${ID}: never`, decisions, [{ tau: 0, scene: null }, { tau: 0, scene: 2 }, { tau: 0, scene: 2 }], namesOf(program).slice(0, 3));
-  return { ...moments, passed: moments.passed && refusedAs(refused, STAMP_GATE_NEVER_REFUSAL), detail: `${moments.detail}; ${refused ?? 'the bloom solved'}` };
+  return { ...moments, passed: moments.passed && stampGateRefusedAs(refused, STAMP_GATE_NEVER_REFUSAL), detail: `${moments.detail}; ${refused ?? 'the bloom solved'}` };
 }
 
 /**

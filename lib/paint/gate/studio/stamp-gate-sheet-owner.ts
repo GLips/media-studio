@@ -39,3 +39,6 @@ export async function stampGateSolvedFilms(owner: StampPaintGpuOwner, program: S
 
 /** The message `solve` rejects with, or null when it resolves. */
 export const stampGateRejection = (solve: Promise<StampSheetSolved>) => solve.then(() => null, (error: Error) => error.message);
+
+/** Whether `refused`, a solve's rejection (null for none), reads as `starts` … `ends`: a refusal whose share and boxes vary. */
+export const stampGateRefusedAs = (refused: string | null, { starts, ends }: { starts: string; ends: string }) => !!refused && refused.startsWith(starts) && refused.endsWith(ends);

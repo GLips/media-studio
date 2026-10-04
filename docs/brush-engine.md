@@ -135,9 +135,11 @@ and the CPU decides in f64 on a 1 ms grid (`stamp-sheet-schedule.ts`, `stamp-she
 field's own law. A histogram bins each wetted texel's weight by the step it turns matte and by its last workable step,
 weight set by its first step going into words of its own, so a bin's bound is what's matte by its end less what has
 set by its start, exact a step wide (`stamp-damp-histogram.ts`). An `on` that can't hold, or a bloom with nothing to
-act on, is a `StampSheetRefusal`, its message the author's, naming a fix. A `wet` is judged at τ0 alone (wetness only
-falls), its fix picked from the solve's state: a lift landed since the last drying meeting where it fell short, no
-core texel shiny, or else the rim. A solve asked for damp windows (`check --solve`)
+act on, is a `StampSheetRefusal`, its message the author's (`stampSheetUnreachable`, one shape for every `on`, a fixed
+`at`'s too), naming a fix. A `wet` is judged at τ0 alone (wetness only falls), its fix picked by what its failing
+texels did: a `dulled` total (laid shiny, dried past it by τ0) at least the rest that failed (never laid shiny) means
+it came too late; else a lift the solve state kept since the last drying meeting a failure cell marked never shiny; else
+no core texel shiny; else the rim. A solve asked for damp windows (`check --solve`)
 reads, after each wash's last landing, when what the wash wetted is damp, and after each bloom, when its footprint is:
 the same histograms over the wash's touches and its prewet's contact, or the bloom's core (`stamp-sheet-damp-report.ts`).
 The laws' times on the CPU are `stampDryingTimes`, which the reductions' WGSL runs per texel. Then it lands into the

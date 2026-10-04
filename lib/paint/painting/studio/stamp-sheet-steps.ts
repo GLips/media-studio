@@ -6,10 +6,9 @@
 // time base, which moves the base up in that step, before anything reads it, once the time runs far past it.
 
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
-import type { StampBox } from '../models/stamp-region.ts';
 import type { StampPaintCostTally } from '../models/stamp-paint-costs.ts';
 import { STAMP_DAMP_HISTOGRAM_WORDS, stampDampHistogram, type StampDampHistogram } from '../models/stamp-damp-histogram.ts';
-import { STAMP_SHEET_TOTALS, stampSheetFailureBoxes, stampSheetTotals, type StampSheetTotals } from '../models/stamp-sheet-schedule.ts';
+import { STAMP_SHEET_TOTALS, stampSheetFailureMap, stampSheetTotals, type StampSheetFailureMap, type StampSheetTotals } from '../models/stamp-sheet-schedule.ts';
 import type { StampSheetWetness } from '../models/stamp-sheet-program.ts';
 import type { StampDrying } from '../models/stamp-wetness.ts';
 import type { StampPaintDevice } from './stamp-paint-gpu.ts';
@@ -85,14 +84,14 @@ export function createStampSheetSteps(owner: StampPaintGpuOwner, device: StampPa
       });
       return stampDampHistogram(read, start, width);
     },
-    /** Where `on` fails over `core` at `tau`: the boxes of its failing cells, document px. */
-    async failureAt(core: StampSheetCore, tau: number, on: StampSheetWetness): Promise<StampBox[]> {
+    /** Where `on` fails over `core` at `tau`: its failing cells as boxes, document px. */
+    async failureAt(core: StampSheetCore, tau: number, on: StampSheetWetness): Promise<StampSheetFailureMap> {
       const read = await readback(`mapping where a core fails at ${tau} s`, buffers.cells, (encoder) => {
         gpu.reductions.failure(encoder, buffers.cells.storage, { core, tau: after(encoder, tau), drying }, on);
       });
       const { columns, rows } = stampSheetFailureGrid(core.box);
       const { margin, frame } = gpu.stage;
-      return stampSheetFailureBoxes(read, columns, rows, { x: core.box.x - margin, y: core.box.y - margin }, frame);
+      return stampSheetFailureMap(read, columns, rows, { x: core.box.x - margin, y: core.box.y - margin }, frame);
     },
     /** The latest anything wetted in `boxes` sets, model s; null where nothing is. */
     async latestSetOver(boxes: readonly StampPixelBox[]): Promise<number | null> {

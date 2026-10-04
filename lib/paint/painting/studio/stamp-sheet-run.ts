@@ -16,7 +16,7 @@ import {
   stampSheetBegunOf, stampSheetClockStarted, stampSheetClosed, stampSheetDecided, stampSheetDecisionOf, stampSheetDrawn, stampSheetEntryFrom, stampSheetLanded,
   stampSheetLandingAt, stampSheetLandingOf, stampSheetMaySetBy, stampSheetMomentAfter, stampSheetNeverSets, stampSheetPainted, stampSheetPrewetted, stampSheetRebased,
   stampSheetRegimeOf, stampSheetSceneOf, stampSheetSetKnown, stampSheetSolveStart, stampSheetStartsWet, stampSheetStateResized, stampSheetWashStart,
-  type StampSheetBegun, type StampSheetDecision, type StampSheetLandingDecided, type StampSheetLift, type StampSheetMoment, type StampSheetSolveState,
+  type StampSheetBegun, type StampSheetDecision, type StampSheetLandingDecided, type StampSheetMoment, type StampSheetSolveState,
 } from '../models/stamp-sheet-schedule.ts';
 import { stampSheetWashSpans, type StampSheetProgram } from '../models/stamp-sheet-program.ts';
 import { StampSheetRefusal } from '../models/stamp-sheet-refusal.ts';
@@ -202,7 +202,7 @@ export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevic
     const reached = box && reachInto(deposit, found, box);
     const wet = { landing: found, plans: { deposit: reached ? [...own, reached] : own, drying: [] }, seed: paintPigmentSeed(deposit.id), rimmed: stampDryingRimCoversLanding(deposit, landing) };
     paintedInto(film, gpu.drawing.drawDeposit(encoder, deposit, loaded, { ...draw, wet }));
-    state = stampSheetLanded(state, { entry: k, wash: entry.wash, landing, support, lifts: deposit.action.kind === 'lift', held: stampFloodHeldWetness(deposit, landing), box });
+    state = stampSheetLanded(state, { entry: k, wash: entry.wash, landing, support, lift: deposit.action.kind === 'lift' ? entry.name : null, held: stampFloodHeldWetness(deposit, landing), box });
   };
 
   /** When all wash `w` touched has set, measured at its last entry `k`: null for a wash with no water of its own, or none under it, or a sheet that never dries. */
@@ -218,11 +218,6 @@ export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevic
     const { deposit, wash } = entries[k], { box } = gpu.bank.get(deposit)!, clipped = washes[wash].clipTo !== null;
     return box && { box, fluid: gpu.fluidOf(deposit.mask), within: gpu.boundsOf(deposit, clipped).within, clipped, prewet: null };
   };
-  /** The lifts landed since the last drying closed, which took up the water under them: their names and supports. */
-  const liftsSince = (): StampSheetLift[] => state.water.since.flatMap(({ entry: j }) => {
-    const { deposit, name } = entries[j], support = deposit.action.kind === 'lift' ? stampDepositSupport(deposit, brushes.tipsOf(deposit)) : null;
-    return support ? [{ name, support }] : [];
-  });
   /** Lays entry `k`'s touch into the core target. */
   const touchOf = (k: number): StampSheetPrepare => (encoder) => {
     const { deposit } = entries[k], loaded = gpu.bank.get(deposit)!;
@@ -241,7 +236,7 @@ export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevic
     const fieldSet = regime === 'instant' && state.field ? await steps.latestSetOver([state.field]) : null;
     const tau0 = stampSheetEntryFrom(clock, state, entry, { tau: from.tau, exact: from.scene }, fieldSet);
     const { tau, warnings } = await decideStampSheetEntry(steps, {
-      name, on, bloom: bloom ? waterOf(deposit) : null, core: coreOf(k), unscheduled, lifts: liftsSince, regime, fixed: clock.kind === 'scale' ? entry.at : null, touch: touchOf(k),
+      name, on, bloom: bloom ? waterOf(deposit) : null, core: coreOf(k), unscheduled, lifts: state.water.lifts, regime, fixed: clock.kind === 'scale' ? entry.at : null, touch: touchOf(k),
       open: (encoder) => {
         clearStampTarget(encoder, targets.open.view);
         for (const f of openFilms) {
