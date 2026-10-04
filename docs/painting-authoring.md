@@ -701,9 +701,11 @@ on one sheet share it; presentation of one layer acts on its own film, never on 
 A three.js object wears a painting through the shot's `paintedTextures`: each `{id, source, widthPx, heightPx}`,
 its `source` any plane's painted source (`layersOf`, `bracket`, `dissolve`, or a callback of the moment). A texture
 is the selection laid on its paintings' paper at their document size, then resampled to `widthPx` × `heightPx`;
-match the two unless the object shows it smaller. It is opaque, so its selections stay on paper (no `ground:
-'transparent'`). A dissolve blends opaque colour in linear light, as a back plane's does. A callback is read at each
-frame's moment, before the three sources render, so the texture shows the frame's prefix as a plane's source does.
+match the two, or go smaller when the object never comes near that size, as a smaller texture lays faster. Shown
+smaller than its size, it's read through its mip chain (below). It is opaque, so its selections stay on paper (no
+`ground: 'transparent'`). A dissolve blends opaque colour in linear light, as a back plane's does. A callback is
+read at each frame's moment, before the three sources render, so the texture shows the frame's prefix as a plane's
+source does.
 
 A mug turning on a table, petals landing on its glaze as it turns. Its label wraps across x, so the seam never shows
 as it comes round, and its petals are timed applications. The label (`scenes/mug/mug-label.painting.ts`), its paper,
@@ -799,8 +801,14 @@ gamma-encoded, to the linear colour three.js lights and outputs. Its u runs alon
 mesh, so uv (0, 0) is the painting's bottom left. A texture repeats along each axis its paintings wrap (Wrapping):
 `'x'` across u, so on a `CylinderGeometry`, whose u runs once round, no seam shows; `'y'` along v; `'xy'` both, so a
 `PlaneGeometry` whose uv run past 1 shows it tiled with no seam. Every painting a texture blends wraps alike. A
-texture is drawn again only when its selections or their weights change, so a still selection costs one solve. It
-has no mipmaps: an object showing it far smaller than its size shimmers as it moves.
+texture is drawn again only when its selections or their weights change, so a still selection costs one solve.
+
+Each lay ends by building the texture's mip chain, smaller copies down to 1 × 1, each averaged from the one above in
+linear light. On an axis the texture wraps, the average runs round the seam, so the smaller copies are seamless too.
+three.js reads the chain trilinearly with anisotropy 8. So an object showing the texture far smaller than its size,
+or turned edge on, holds steady as it moves instead of shimmering; its paint there is a little softer, as any
+mipmapped texture's is. A texture not laid again keeps its chain. The gate's `shot/far-cylinder` shows the wrapped
+tile worn a quarter of its size round a turning cylinder.
 
 ## Reference
 

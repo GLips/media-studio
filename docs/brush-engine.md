@@ -416,8 +416,10 @@ holds what it adds and its taken share, what it takes from the light behind, so 
 then adds its colour (`over` for the back).
 The output blooms the emission once (`lens.bloom`), adds it in linear light, and encodes. Texture contracts:
 pictures, three sources and the composite are rgba16float, premultiplied linear; a painted texture three samples is
-rgba16float, gamma-encoded and opaque, decoded by `paintedThreeColorNode`, and read repeating on each axis its
-handle's `wrap` names, u along x and v along y. A glowing frame drawn without a lens is refused.
+rgba16float, gamma-encoded and opaque in every mip level it has, decoded by `paintedThreeColorNode`, and read
+repeating on each axis its handle's `wrap` names, u along x and v along y. A handle with a mip chain (a shot's) is
+read trilinearly with anisotropy 8; an old renderer's has one level, read as before. A glowing frame drawn without a
+lens is refused.
 
 **rig** is a painted rig's geometry and its drawing: layers (whole paintings at rest) cut into parts that meet at
 skin joints or hinges. `paint-rig-cuts.ts` holds a layer's parts with each joint resolved to its parent's index (a
@@ -550,7 +552,12 @@ selection a texture's source reads at the moment solved, laid on its paper at it
 the texture's, summed by its dissolve weight in linear light, then gamma-encoded. A texture whose selections and
 weights haven't changed isn't solved again, and one whose solves keep the films it was last laid from (their sheet keys,
 finished or open) isn't laid again, so a timed painting's frames between two landings lay one prefix once. A warm
-solves each texture at each warm frame reading other than the last, laying nothing. Painted textures have no mipmaps.
+solves each texture at each warm frame reading other than the last, laying nothing. Each lay ends in the handle's mip
+chain, down to 1 × 1 (`studio/shot-painted-texture-mips.ts`, `shotPaintedTextureMipChain`, in the encode's
+submit): each level below the first is the one above through a tent twice a texel's footprint wide, [1 3 3 1] / 8 a
+side (wider where a side is odd), decoded to linear light, weighed and encoded again. On an axis the texture wraps
+its taps run round the seam, so a wrapped texture's smaller levels are seamless; on one it doesn't they're held at
+the edge. A texture not laid again keeps its chain.
 
 **procreate-brushes** reads a Procreate brush's settings into a `StampBrush` (`procreate-brush.ts`, by the constants
 of `procreate-reading.ts`), and the stroke Procreate draws its previews along. Its `engine/` reads binary plists and
@@ -628,10 +635,15 @@ wearing one is a family of its own (`STAMP_GATE_SHOT_TEXTURE_CASES`, drawn by `p
 shot's renderer): `shot/painted-cylinder`, a label wrapping x, a clocked flood across its seam and earth strokes timed
 at 1 s and 3 s, finished as the back plane and, through `paintedTextures`, round a cylinder in front, its seam to the
 camera, read at each frame's moment; drawn at 2 s and 4 s through one renderer and laid side by side, so the cylinder
-shows the first stroke, then both. Its checks (`checkStampGateShotTextureCase`): the 2 s frame solves the texture's own
-prefix beside the back's whole painting, the 4 s frame changes the cylinder and nothing else, and warmed over 2..4 s
-neither frame solves anything. Frame families (solved sheets, shots, painted textures) are rows of `STAMP_GATE_FRAME_FAMILIES` in
-`stamp-gate.ts`: IDs, page function, frame size and inputs, so a new family is one row. Pre-commit runs it on the staged tree when a
+shows the first stroke, then both. Its checks (`checkStampGateShotTextureCase`, over
+`STAMP_GATE_SHOT_TEXTURE_CASE_IDS`): the 2 s frame solves the texture's own prefix beside the back's whole painting,
+the 4 s frame changes the cylinder and nothing else, and warmed over 2..4 s neither frame solves anything.
+`shot/far-cylinder`: the wrapped tile finished as the back and worn at its size round a small cylinder whose uv run
+4 times round and twice up, so a texel is near a quarter of a px at its front and its seams and corner come round;
+four frames in a row at the shot rate, it turning 3° a frame, laid side by side. Accepted by eye, enlarged: steady
+from frame to frame and seamless, where the same frames without the chain sparkle and break its bands. Frame
+families (solved sheets, shots, painted textures) are rows of `STAMP_GATE_FRAME_FAMILIES` in `stamp-gate.ts`: IDs,
+page function, frame size and inputs, so a new family is one row. Pre-commit runs it on the staged tree when a
 path it covers changes; no adapter, a timeout
 or a difference fails the commit. Public baselines live in `harness/fixtures/stamp-paint/`, a pack's brushes' in
 `work/validation/stamp-paint/` (`stamp:gate -- private run`). A baseline changes only by `update <ids> --reason …`,
