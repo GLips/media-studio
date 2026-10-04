@@ -4,8 +4,9 @@
 // wash case, reading its layer back for the properties it's held to (stamp-gate-washes.ts, stamp-gate-water-marks.ts),
 // animates the animation cases (stamp-gate-animation.ts) and runs the flow, bloom and rim stages alone over layers it writes
 // (stamp-gate-flow.ts, stamp-gate-stripe.ts), draws the region cases (stamp-gate-regions.ts), solves the sheet cases
-// (stamp-gate-sheet-page.ts) and draws the painted textures (stamp-gate-texture-page.ts). Paintings are built here, as
-// a compiled painting's typed arrays don't survive the trip from Node.
+// (stamp-gate-sheet-page.ts), draws the painted textures (stamp-gate-texture-page.ts) and a shot over a page
+// (stamp-gate-shot-dom-page.ts). Paintings are built here, as a compiled painting's typed arrays don't survive the
+// trip from Node.
 
 import { PAINT_KUBELKA_MUNK_WGSL } from '#lib/paint/materials/models/paint-kubelka-munk.ts';
 import { PAINT_PAPER_WGSL } from '#lib/paint/materials/models/paint-paper.ts';
@@ -56,6 +57,7 @@ import { checkStampGateStageCase, checkStampGateThreeCase } from './stamp-gate-s
 import { checkStampGateSheetCase, paintStampGateSolved } from './stamp-gate-sheet-page.ts';
 import { paintStampGateShot } from './stamp-gate-shot-page.ts';
 import { checkStampGateTextureCase, paintStampGateTexture } from './stamp-gate-texture-page.ts';
+import { checkStampGateShotPageCase } from './stamp-gate-shot-dom-page.ts';
 import { checkStampGateRegion, stampGateRegionPaintings, type StampGateRegionId } from '../models/stamp-gate-regions.ts';
 import { checkStampGateContact, STAMP_GATE_CONTACT_IDS, stampGateContactPainting } from '../models/stamp-gate-contact.ts';
 import { checkStampGateMask, stampGateMaskPaintings, type StampGateMaskId } from '../models/stamp-gate-masks.ts';
@@ -494,5 +496,5 @@ async function stampGateAdapter(): Promise<string> {
 Object.assign(globalThis, {
   runStampGateFormulas, paintStampGate, paintStampGatePrivate, traceStampGate, checkStampGateWash, checkStampGateAnimation, checkStampGateFlowCase, checkStampGateStripeCase, checkStampGateRegionCase,
   checkStampGateContactCase, checkStampGateMaskCase, checkStampGateMediaCase, checkStampGateThreeCase, checkStampGateStageCase, checkStampGateSheetCase, paintStampGateSolved,
-  paintStampGateShot, checkStampGateTextureCase, paintStampGateTexture, stampGateAdapter,
+  checkStampGateShotPageCase, paintStampGateShot, checkStampGateTextureCase, paintStampGateTexture, stampGateAdapter,
 });

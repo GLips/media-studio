@@ -1,11 +1,11 @@
-// shot-reach.ts: where each plane of a shot can hold paint, as the camera build checks it (ENGINE 6.1). The back
-// holds paper everywhere. A nearer painted plane holds its layers' stated geometry, padded for paint flowing past it,
-// grown along each occurrence's line of motion nodes by the most each can move it, then laid by its plane's still
-// lay (a cover's included); its ground's paper, when it lays one, over the document.
+// shot-reach.ts: where each plane of a shot can hold paint, as the camera build checks it (ENGINE 6.1). The opaque
+// back holds paper everywhere. A nearer painted plane holds its layers' stated geometry, padded for paint flowing past
+// it, grown along each occurrence's line of motion nodes by the most each can move it, then laid by its still lay;
+// its ground's paper, when it lays one, over the document.
 //
 // Negative space: a plane laid by a callback holds its stated reach (everywhere without one), and one whose source is a
-// callback or that holds a rig is checked everywhere: neither can be bounded before it's drawn. A pin is checked
-// each frame, as measured.
+// callback or that holds a rig is checked everywhere: neither can be bounded before it's drawn. A pin or cover is
+// checked once laid (shot-placement.ts).
 
 import { paintLevelShift } from '#lib/paint/animation/models/paint-motion-reach.ts';
 import type { PaintCameraPlaneOptions } from '#lib/paint/animation/models/paint-camera.ts';
@@ -56,12 +56,12 @@ function paintedReach(plane: CompiledShotPaintedPlane, motion: CompiledShotMotio
 }
 
 /**
- * A painted plane's extent for the camera, `rigged` naming the rigged occurrences: everywhere for the back, unchecked
- * for a plane pinned to HTML until measured (shotPinnedPlanes checks it then), else as the file's head says.
+ * A painted plane's extent for the camera, `rigged` naming the rigged occurrences: everywhere for the opaque back,
+ * unchecked for a plane laid on the frame until laid (shot-placement.ts checks it then), else as the file's head says.
  */
 export function shotPaintedExtent(plane: CompiledShotPaintedPlane, motion: CompiledShotMotion, rigged: ReadonlySet<OccurrenceKey>): StampPlaneExtent {
   if (plane.back) return { kind: 'everywhere' };
-  if (plane.lay.kind === 'pinned') return { kind: 'unchecked', why: 'pinned to HTML, it is checked where it lies once measured' };
+  if (plane.lay.kind === 'screen') return { kind: 'unchecked', why: 'laid on the frame through the camera, it is checked where it lies once laid' };
   if (plane.lay.kind === 'moving') return plane.lay.reach ? { kind: 'box', box: plane.lay.reach } : { kind: 'everywhere' };
   if (typeof plane.source === 'function' || plane.occurrences.some(({ key }) => rigged.has(key))) return { kind: 'everywhere' };
   const reach = paintedReach(plane, motion);

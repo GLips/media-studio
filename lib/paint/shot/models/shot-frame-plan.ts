@@ -55,7 +55,7 @@ export const shotPlaneMomentAt = (motion: CompiledShotMotion, plane: string, t: 
  * unlaid. Throws on a pin: a plane pinned to HTML lies where a frame measures its elements (shotPinnedPlanes).
  */
 export function shotPlaneLayAt(plane: CompiledShotPaintedPlane, motion: CompiledShotMotion, t: PaintMoment): PaintSimilarity {
-  if (plane.lay.kind === 'pinned') throw new Error(`shot: plane ${plane.id} is pinned to HTML, and lies nowhere until its elements are measured`);
+  if (plane.lay.kind === 'screen') throw new Error(`shot: plane ${plane.id} is laid on the frame (${plane.lay.screen.kind}), and lies nowhere until it's laid through the camera`);
   const lay = plane.lay.kind === 'moving' ? plane.lay.lay(shotPlaneMomentAt(motion, plane.id, t)) : plane.lay.lay;
   return lay ? paintSimilarityOf(lay.placement, lay.pivot) : PAINT_SIMILARITY_IDENTITY;
 }

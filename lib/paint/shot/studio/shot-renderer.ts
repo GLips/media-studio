@@ -26,7 +26,7 @@ import { LENS_REFERENCE_EXPOSURES, type LensMode } from '#lib/picture/lens/model
 import { shutterMomentAt, shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import { createLensCompositor, type LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
 import { paintingProblemsError } from '#lib/paint/document/models/painting-problem.ts';
-import type { CompiledPaintedShot, CompiledShotPaintedPlane, CompiledShotPlane } from '../models/shot-compile.ts';
+import { shotCanvasAlphaMode, type CompiledPaintedShot, type CompiledShotPaintedPlane, type CompiledShotPlane } from '../models/shot-compile.ts';
 import { shotPinnedPlanes, type ShotPinCentres } from '../models/shot-placement.ts';
 import type { PlaneInstance } from '../models/shot-props.ts';
 import { shotNodePoseAt } from '../models/shot-frame-plan.ts';
@@ -83,7 +83,7 @@ const eachInTurn = <T,>(items: Iterable<T>, run: (item: T) => Promise<void>): Pr
 
 /**
  * `shot` on `owner`'s device, drawn into `surfaces`, one a canvas in the shot's canvas order, each the camera's frame
- * size; the first opaque unless the back is clear, the rest premultiplied.
+ * size and handing the browser its alpha as shotCanvasAlphaMode says.
  */
 export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfaces: readonly StampPaintSurface[], shot: CompiledPaintedShot, { brushOf, costs }: PaintedShotRendererOptions): Promise<PaintedShotRenderer> {
   // Paint passes go through the owner's caching device; the lens and picture sources take the device itself.
@@ -93,8 +93,8 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
     if (surface.width !== stage.frame.width || surface.height !== stage.frame.height) {
       throw new Error(`shot: the camera's frame is ${stage.frame.width} × ${stage.frame.height}, and canvas ${index}'s surface ${surface.width} × ${surface.height}`);
     }
-    const opaque = index === 0 && !shot.clearBack, alphaMode = opaque ? 'opaque' : 'premultiplied';
-    if (surface.alphaMode !== alphaMode) throw new Error(`shot: canvas ${index}'s surface is ${surface.alphaMode}; ${opaque ? 'the first, holding an opaque back, is opaque' : 'it is laid premultiplied over the page'}`);
+    const alphaMode = shotCanvasAlphaMode(shot, index);
+    if (surface.alphaMode !== alphaMode) throw new Error(`shot: canvas ${index}'s surface is ${surface.alphaMode}; ${alphaMode === 'opaque' ? 'the first, holding an opaque back, is opaque' : 'it is laid premultiplied over the page'}`);
   });
   const arena = createStampGrowingUniformArena(device, SHOT_UNIFORM_SLOTS);
   // Let go of last made first: three's sources before the textures they sample.
@@ -120,7 +120,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
       made.push(lens);
       return { surface, index, lens, frames: createStampLensFrames(lens), sourceLayers: createStampLensSourceLayers(owner, { stage, lens, sources: own }), glowed: false };
     });
-    const back = shot.clearBack ? undefined : shot.planes[0], planeOf = new Map(shot.planes.map((plane) => [plane.id, plane]));
+    const opaqueBack = shot.clearBack ? undefined : shot.planes[0], planeOf = new Map(shot.planes.map((plane) => [plane.id, plane]));
 
     /** A picture plane's look: its view after its node's placement within it, at the moment and the shutter's ends. */
     const pictureLook = (id: string, look: StampPlaneLook, { at, shutter }: ShotMomentAt): StampPlaneLook => {
@@ -147,7 +147,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
         const glowing = shown.some((plane) => planOf(plane)?.emits);
         const moving = fast && (shown.some((plane) => planOf(plane)?.travels || lookOf(plane.id).shutter) || rendered.moved.size > 0);
         const layers = shown.flatMap((plane): LensLayer[] => {
-          const isBack = plane === back, look = lookOf(plane.id);
+          const isBack = plane === opaqueBack, look = lookOf(plane.id);
           if (plane.kind === 'painted') {
             const laid = planes.picture(encoder, canvas.lens, moments.get(plane.id)!, look);
             return laid ? [laid] : [];
@@ -165,7 +165,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
           const { surface } = canvas, dithered = surface.format.endsWith('8unorm');
           frame.develop(encoder, {
             bloom: canvas.glowed ? { sigma: lensFrame.bloom, strength: 1, glow: 'emission' } : null,
-            into: surface.frameTexture().createView(), format: surface.format, encoding: { kind: canvas.index === 0 && back ? 'encoded' : 'premultiplied', dithered },
+            into: surface.frameTexture().createView(), format: surface.format, encoding: { kind: shotCanvasAlphaMode(shot, canvas.index) === 'opaque' ? 'encoded' : 'premultiplied', dithered },
           });
         }
         canvas.lens.flush();

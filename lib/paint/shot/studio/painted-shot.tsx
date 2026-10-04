@@ -4,9 +4,9 @@
 // until its paint is solved and WebGPU has checked each draw (the screenshot waits for the GPU).
 //
 // The shot loads when its props' identity changes, or its canvases do, once its page is laid out
-// (shot-dom-points.ts); within one, `t` draws the frame, its pins measured as it's drawn.
+// (shot-dom-points.ts); within one, `t` draws the frame, its page read as it's drawn.
 
-import { createContext, useContext, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useLayoutEffect, useReducer, useRef, useState, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { useDelayRender } from 'remotion';
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
@@ -23,9 +23,9 @@ import type { LensMode } from '#lib/picture/lens/models/lens-mode.ts';
 import { useLensMode } from '#lib/picture/lens/studio/lens-mode-context.ts';
 import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { whenLaidOut } from '#lib/picture/measurement/studio/screen-rect.ts';
-import { compilePaintedShot } from '../models/shot-compile.ts';
+import { compilePaintedShot, shotCanvasAlphaMode } from '../models/shot-compile.ts';
 import type { PaintedShotProps } from '../models/shot-props.ts';
-import { assertShotCanvasesFill, createShotPinWatch, shotHtmlBehind, type ShotPinWatch } from './shot-dom-points.ts';
+import { createShotPageWatch, SHOT_CANVAS_STYLE, shotCanvasFillProblems, shotHtmlBehind, type ShotPageWatch } from './shot-dom-points.ts';
 import { createPaintedShotRenderer, type PaintedShotRenderer } from './shot-renderer.ts';
 
 const resolvedStyles = new Map<string, ResolvedStampPaintStyle>();
@@ -48,16 +48,12 @@ type ShotCanvasRegistry = { readonly add: (name: string, canvas: HTMLCanvasEleme
 
 const ShotCanvases = createContext<ShotCanvasRegistry | null>(null);
 
-// Fixed to the shot's element, whose transform is their containing block, so each fills the frame however deep it's
-// nested. Positioned, a canvas paints over HTML that isn't: HTML lying over a canvas is positioned too.
-const CANVAS_STYLE = { position: 'fixed', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' } as const;
-
 /** A canvas of a PaintedShot among HTML, the whole frame: planes naming it draw here. Clear where nothing is painted; takes no pointer events. */
 export function PaintedShotCanvas({ name }: { readonly name: string }) {
   const registry = useContext(ShotCanvases), canvas = useRef<HTMLCanvasElement>(null);
   if (!registry) throw new Error(`PaintedShotCanvas ${name} lies outside a PaintedShot`);
   useLayoutEffect(() => registry.add(name, canvas.current!), [registry, name]);
-  return <canvas ref={canvas} style={CANVAS_STYLE} />;
+  return <canvas ref={canvas} style={SHOT_CANVAS_STYLE} />;
 }
 
 /**
@@ -84,6 +80,8 @@ export function PaintedShot({ shot, t, box: given, children }: { readonly shot: 
     },
   }));
   const [scene, setScene] = useState<PaintedShotScene | null>(null);
+  // How many times a pinned element has resized away from where its frame drew it.
+  const [layoutEpoch, layoutMoved] = useReducer((epoch: number) => epoch + 1, 0);
 
   useLayoutEffect(() => {
     mounted.current = true;
@@ -103,13 +101,12 @@ export function PaintedShot({ shot, t, box: given, children }: { readonly shot: 
     // With no PaintedShotCanvas, the shot's own canvas lies first, under its children.
     const own = named.length ? null : Object.assign(document.createElement('canvas'), { width: frame.width, height: frame.height });
     if (own) {
-      Object.assign(own.style, CANVAS_STYLE);
+      Object.assign(own.style, SHOT_CANVAS_STYLE);
       holder.current!.prepend(own);
     }
     const elements = own ? [own] : named.map(([canvas]) => canvas);
     for (const canvas of elements) Object.assign(canvas, { width: frame.width, height: frame.height });
-    // A resize moving a pinned element between frames hands the same scene anew, so the frame draws again where it lies.
-    const loading = loadPaintedShotScene(shot, holder.current!, elements, named.map(([, name]) => name), () => setScene((current) => current && { ...current }));
+    const loading = loadPaintedShotScene(shot, holder.current!, elements, named.map(([, name]) => name), layoutMoved);
     loading.ready.then(() => {
       if (!live) return undefined;
       flushSync(() => setScene(loading));
@@ -128,7 +125,8 @@ export function PaintedShot({ shot, t, box: given, children }: { readonly shot: 
 
   useLayoutEffect(() => {
     if (!scene) return undefined;
-    const handle = delayRender('drawing the painted shot');
+    // A pinned element resized moves layoutEpoch on, so the frame draws again over the page as it now lies.
+    const handle = delayRender(`drawing the painted shot over its page's layout ${layoutEpoch}`);
     let open = true, live = true;
     const release = () => {
       if (open) continueRender(handle);
@@ -142,7 +140,7 @@ export function PaintedShot({ shot, t, box: given, children }: { readonly shot: 
       live = false;
       release();
     };
-  }, [scene, t, lensMode, delayRender, continueRender, cancelRender]);
+  }, [scene, t, lensMode, layoutEpoch, delayRender, continueRender, cancelRender]);
 
   return (
     <div
@@ -162,7 +160,10 @@ export function PaintedShot({ shot, t, box: given, children }: { readonly shot: 
 type PaintedShotScene = {
   /** Resolves once loaded, or rejects with the load's error. */
   readonly ready: Promise<void>;
-  /** Draws the frame at `t` as one task after every earlier one, its pins measured as it's called; a no-op once disposed. */
+  /**
+   * Draws the frame at `t` as one task after every earlier one, its page read as it's called: refused when its
+   * canvases, a clear back's HTML or its pinned elements are amiss there. A no-op once disposed.
+   */
   readonly draw: (t: number, mode: LensMode) => Promise<void>;
   /** Takes no more draws, waits out the load and the draws queued, then lets go of the renderer, surfaces and device. */
   readonly dispose: () => Promise<void>;
@@ -170,24 +171,24 @@ type PaintedShotScene = {
 
 /**
  * `props` checked against `names` (its PaintedShotCanvases' names; none when it draws in its own) and the page in
- * `holder`, its element, once laid out; loaded on a device owner of its own over `canvases`, the first opaque unless
- * its back is clear and the rest premultiplied. `pinsMoved` hears a pinned element resized. Refuses every problem at once.
+ * `holder`, its element, once laid out; loaded on a device owner of its own over `canvases`, each handing the browser
+ * its alpha as shotCanvasAlphaMode says. `pinsMoved` hears a pinned element resized. Refuses every problem at once.
  */
 function loadPaintedShotScene(props: PaintedShotProps, holder: HTMLElement, canvases: readonly HTMLCanvasElement[], names: readonly string[], pinsMoved: () => void): PaintedShotScene {
-  let owner: StampPaintGpuOwner | null = null, renderer: PaintedShotRenderer | null = null, pins: ShotPinWatch | null = null, disposed = false;
+  let owner: StampPaintGpuOwner | null = null, renderer: PaintedShotRenderer | null = null, page: ShotPageWatch | null = null, disposed = false;
   const surfaces: StampPaintSurface[] = [];
   const ready = (async () => {
     await whenLaidOut(holder);
-    assertShotCanvasesFill(holder, canvases, names);
+    const fill = shotCanvasFillProblems(holder, canvases, names);
     const { shot, problems } = compilePaintedShot(props, names, { htmlBehind: shotHtmlBehind(holder, canvases[0]) });
-    if (!shot) throw paintingProblemsError('shot', problems);
-    if (!disposed) pins = createShotPinWatch(holder, shot.camera.stage.frame, shot, pinsMoved);
+    if (!shot || fill.length) throw paintingProblemsError('shot', [...fill, ...problems]);
+    if (!disposed) page = createShotPageWatch(holder, canvases, names, shot, pinsMoved);
     const made = await createStampPaintGpuOwner(stampPaintAssetUrl);
     owner = made;
     // One after another: each configures its canvas under the owner's error check.
     await canvases.reduce(async (before, canvas, index) => {
       await before;
-      surfaces.push(await createStampPaintSurface(made, { canvas, width: canvas.width, height: canvas.height, alphaMode: index === 0 && !shot.clearBack ? 'opaque' : 'premultiplied' }));
+      surfaces.push(await createStampPaintSurface(made, { canvas, width: canvas.width, height: canvas.height, alphaMode: shotCanvasAlphaMode(shot, index) }));
     }, Promise.resolve());
     renderer = await createPaintedShotRenderer(made, surfaces, shot, { brushOf: paintedShotBrushOf });
   })();
@@ -197,15 +198,16 @@ function loadPaintedShotScene(props: PaintedShotProps, holder: HTMLElement, canv
   return {
     ready,
     draw: (t, mode) => {
-      // Measured now, after the frame's layout: by its turn in the queue a later frame may be laid out.
-      const centres = pins?.measure();
-      const run = queue.then(() => (disposed ? undefined : ready.then(() => renderer!.draw(t, mode, centres))));
+      // Read now, after the frame's layout: by its turn in the queue a later frame may be laid out.
+      const read = page?.read();
+      if (read?.problems.length) return Promise.reject(paintingProblemsError(`shot's page at ${t} s`, read.problems));
+      const run = queue.then(() => (disposed ? undefined : ready.then(() => renderer!.draw(t, mode, read?.pins))));
       queue = run.catch(() => {});
       return run;
     },
     dispose: () => {
       disposed = true;
-      pins?.dispose();
+      page?.dispose();
       disposing ??= queue.then(() => {
         renderer?.dispose();
         for (const surface of surfaces.splice(0)) surface.dispose();

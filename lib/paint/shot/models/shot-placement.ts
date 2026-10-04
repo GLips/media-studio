@@ -1,8 +1,9 @@
-// shot-placement.ts: where a pinned or covering plane lies, worked back through the camera. A plane's lay takes its
+// shot-placement.ts: where a plane laid on the frame lies, worked back through the camera. A plane's lay takes its
 // document px to plane px and the camera's view takes plane px to frame px, so a lay meant to land on frame px (an
 // HTML element's centre, the frame's corners) is found through the view's inverse, as the camera stands at the lay's
-// own scene second. A pinned plane is laid that way at each frame, as its elements are measured then, and checked
-// where it lies. Also the DOM adapter's arithmetic: an element's measured box as a frame-px centre.
+// own scene second. Covers and pins are laid alike, after the camera is built (shotScreenLaid), and checked where
+// they then lie by the build's own rule: a cover once, as the shot compiles; a pin at each frame, as its elements are
+// measured. Also the DOM adapter's arithmetic: an element's measured box as a frame-px centre.
 
 import { paintCameraExtentProblem } from '#lib/paint/animation/models/paint-camera-build.ts';
 import { paintPlaneViewAt } from '#lib/paint/animation/models/paint-camera.ts';
@@ -12,7 +13,8 @@ import {
 import { isPaintingFinitePoint, paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import { paintMoment, type StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import type { CompiledPaintedShot, CompiledShotPaintedPlane } from './shot-compile.ts';
+import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
+import type { CompiledPaintedShot, CompiledShotPaintedPlane, CompiledShotPlane } from './shot-compile.ts';
 import type { CoverFrame, ScreenPin } from './shot-props.ts';
 import { shotPaintedExtent } from './shot-reach.ts';
 
@@ -21,7 +23,7 @@ import { shotPaintedExtent } from './shot-reach.ts';
  * `at`): the box's centre on the frame centre's place and the box scaled about its centre, unturned, until it holds
  * every frame corner's place. A rolled camera's frame is turned on the plane, so the box grows to hold its corners.
  */
-export function shotCoverLay(box: StampBox, view: PaintSimilarity, frame: { readonly width: number; readonly height: number }): StampGroupLay {
+export function shotCoverLay(box: StampBox, view: PaintSimilarity, frame: StampStage['frame']): StampGroupLay {
   const onPlane = paintSimilarityInverse(view), { width, height } = frame;
   const centre = paintSimilarityApply(onPlane, { x: width / 2, y: height / 2 }), pivot = { x: (box.x0 + box.x1) / 2, y: (box.y0 + box.y1) / 2 };
   const halfW = (box.x1 - box.x0) / 2, halfH = (box.y1 - box.y0) / 2;
@@ -54,11 +56,13 @@ export function shotPlacementProblems(plane: string, lay: ScreenPin | CoverFrame
     return problems;
   }
   const { points } = lay;
-  points.forEach(({ sourcePx }, i) => {
+  points.forEach(({ sourcePx, element }, i) => {
     if (!isPaintingFinitePoint(sourcePx)) error(`lay.points[${i}].sourcePx`, `${sourcePx.x}, ${sourcePx.y} isn't a finite point`);
+    if (!element.trim()) error(`lay.points[${i}].element`, `${JSON.stringify(element)} names no element: give the element data-pin="…" and name it here`);
   });
   const [a, b] = points;
   if (b && a.sourcePx.x === b.sourcePx.x && a.sourcePx.y === b.sourcePx.y) error('lay.points', `both pin ${a.sourcePx.x}, ${a.sourcePx.y}: two points set a scale and turn only apart`);
+  if (b && a.element === b.element) error('lay.points', `both pin to ${a.element}: two points set a scale and turn only on two elements`);
   return problems;
 }
 
@@ -76,24 +80,54 @@ export function shotPinMeasureProblems(plane: string, centres: readonly (StampPo
 /** Each pinned plane's elements' centres as a frame measures them, frame px by plane id: null where one isn't mounted. */
 export type ShotPinCentres = ReadonlyMap<string, readonly (StampPoint | null)[]>;
 
+/** What a plane laid on the frame is laid through and checked against: its shot's built camera, motion and rigs. */
+export type ShotScreenSetting = Pick<CompiledPaintedShot, 'camera' | 'motion' | 'rigs'>;
+
+/**
+ * Plane `plane` laid on the frame: `layThrough` given the camera's view of the plane at scene second `at`, then
+ * checked where it lies as the camera build checks a plane (paintCameraExtentProblem). The plane laid still, or why
+ * it can't lie there: its paint past the stage.
+ */
+function shotScreenLaid(
+  { camera, motion, rigs }: ShotScreenSetting, plane: CompiledShotPaintedPlane, at: number, layThrough: (view: PaintSimilarity) => StampGroupLay,
+): { readonly plane: CompiledShotPaintedPlane } | { readonly problem: PaintingProblem } {
+  const laid: CompiledShotPaintedPlane = { ...plane, lay: { kind: 'still', lay: layThrough(paintPlaneViewAt(camera, plane.depth, paintMoment(at))) } };
+  const problem = paintCameraExtentProblem(camera, plane, shotPaintedExtent(laid, motion, new Set(rigs.keys())));
+  return problem ? { problem: paintingProblem('error', plane.id, 'lay', problem) } : { plane: laid };
+}
+
+/**
+ * `planes` with each cover laid (shotCoverLay) through the built camera at its second, as the shot compiles; or what
+ * keeps one from lying there.
+ */
+export function shotCoveredPlanes(setting: ShotScreenSetting, planes: readonly CompiledShotPlane[]): { readonly planes: readonly CompiledShotPlane[]; readonly problems: readonly PaintingProblem[] } {
+  const problems: PaintingProblem[] = [];
+  const covered = planes.map((plane) => {
+    if (plane.kind !== 'painted' || plane.lay.kind !== 'screen' || plane.lay.screen.kind !== 'cover') return plane;
+    const { box, at = 0 } = plane.lay.screen;
+    const laid = shotScreenLaid(setting, plane, at, (view) => shotCoverLay(box, view, setting.camera.stage.frame));
+    if ('problem' in laid) problems.push(laid.problem);
+    return 'plane' in laid ? laid.plane : plane;
+  });
+  return { planes: covered, problems };
+}
+
 /**
  * `shot`'s pinned planes laid where `centres` put their elements (shotPinLay, through the camera's view at each pin's
- * second), each checked where it then lies as the camera build checks a plane; or what keeps one from lying there: an
- * element unmeasured or unmounted, two centred alike, paint past the stage.
+ * second); or what keeps one from lying there: an element unmeasured or unmounted, two centred alike, paint past the
+ * stage.
  */
 export function shotPinnedPlanes(shot: CompiledPaintedShot, centres: ShotPinCentres): { readonly planes: ReadonlyMap<string, CompiledShotPaintedPlane>; readonly problems: readonly PaintingProblem[] } {
-  const planes = new Map<string, CompiledShotPaintedPlane>(), problems: PaintingProblem[] = [], rigged = new Set(shot.rigs.keys());
+  const planes = new Map<string, CompiledShotPaintedPlane>(), problems: PaintingProblem[] = [];
   for (const plane of shot.planes) {
-    if (plane.kind !== 'painted' || plane.lay.kind !== 'pinned') continue;
-    const { points, at = 0 } = plane.lay.pin, measured = centres.get(plane.id) ?? points.map(() => null);
+    if (plane.kind !== 'painted' || plane.lay.kind !== 'screen' || plane.lay.screen.kind !== 'pin') continue;
+    const { points, at = 0 } = plane.lay.screen, measured = centres.get(plane.id) ?? points.map(() => null);
     const measureProblems = shotPinMeasureProblems(plane.id, measured), found = measured.flatMap((centre) => (centre ? [centre] : []));
     problems.push(...measureProblems);
     if (measureProblems.length) continue;
-    const lay = shotPinLay(points.map(({ sourcePx }) => sourcePx), found, paintPlaneViewAt(shot.camera, plane.depth, paintMoment(at)));
-    const laid: CompiledShotPaintedPlane = { ...plane, lay: { kind: 'still', lay } };
-    const problem = paintCameraExtentProblem(shot.camera, plane, shotPaintedExtent(laid, shot.motion, rigged));
-    if (problem) problems.push(paintingProblem('error', plane.id, 'lay', problem));
-    else planes.set(plane.id, laid);
+    const laid = shotScreenLaid(shot, plane, at, (view) => shotPinLay(points.map(({ sourcePx }) => sourcePx), found, view));
+    if ('problem' in laid) problems.push(laid.problem);
+    else planes.set(plane.id, laid.plane);
   }
   return { planes, problems };
 }
@@ -106,7 +140,7 @@ export type ShotDomBox = { readonly left: number; readonly top: number; readonly
  * `frame` px, scaled to fill its box, so the page's px divide by that scale, each axis by its own should the fill
  * stretch. Any transform above it (a player's) scales both boxes alike and cancels.
  */
-export function shotDomCentre(element: ShotDomBox, shot: ShotDomBox, frame: { readonly width: number; readonly height: number }): StampPoint {
+export function shotDomCentre(element: ShotDomBox, shot: ShotDomBox, frame: StampStage['frame']): StampPoint {
   return {
     x: ((element.left + element.width / 2 - shot.left) * frame.width) / shot.width,
     y: ((element.top + element.height / 2 - shot.top) * frame.height) / shot.height,

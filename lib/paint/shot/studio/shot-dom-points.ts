@@ -1,16 +1,22 @@
-// shot-dom-points.ts: a PaintedShot's page as its paint reads it (ENGINE 6.3), once layout is final (whenLaidOut):
-// whether HTML lies behind its first canvas, that every canvas fills its frame, and where its pinned elements' centres
-// lie in frame px. Pins are measured as each frame is drawn, and again when the shot or a pinned element resizes.
+// shot-dom-points.ts: a PaintedShot's page as its paint reads it (ENGINE 6.3), once layout is final (whenLaidOut), as
+// it loads and again as each frame draws: whether HTML lies behind its first canvas, that every canvas fills its
+// frame, and where its pinned elements' centres lie in frame px. A pinned element is the one inside the shot whose
+// `data-pin` its pin names; one resized so its centre moves draws its frame again.
 //
 // Negative space: an element moved with no re-render and no resize (a sibling's unsized image loading) isn't seen
-// until the next frame draws.
+// until the next frame draws. Whether HTML meant to lie over a canvas is positioned isn't checked: it can't be told
+// from HTML lying outside the canvas's paint.
 
-import type { RefObject } from 'react';
+import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import type { CompiledPaintedShot } from '../models/shot-compile.ts';
+import { shotPageProblems, type CompiledPaintedShot } from '../models/shot-compile.ts';
 import { shotDomCentre, type ShotPinCentres } from '../models/shot-placement.ts';
 
-type ShotFrameSize = { readonly width: number; readonly height: number };
+/**
+ * A shot's canvas: fixed to the shot's element, whose transform makes it their containing block, so each fills the
+ * frame however deep it's nested. Positioned, a canvas paints over HTML that isn't: HTML lying over one is positioned.
+ */
+export const SHOT_CANVAS_STYLE = { position: 'fixed', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' } as const;
 
 /** How far a canvas's box may stray from its shot's, page px: a scaled layout's rounding. */
 const SHOT_CANVAS_SLACK = 0.5;
@@ -46,26 +52,53 @@ export function shotHtmlBehind(holder: Element, first: Element): boolean {
   return false;
 }
 
+/**
+ * The computed styles that make an element the containing block of a fixed descendant, so a canvas inside it fills
+ * it rather than the shot: each property, and whether its value does. An unsupported property reads ''.
+ */
+const SHOT_FIXED_HOLDERS: readonly (readonly [property: string, holds: (value: string) => boolean])[] = [
+  ...['transform', 'translate', 'scale', 'rotate', 'perspective', 'filter', 'backdrop-filter', 'offset-path'].map((property) => [property, (value: string) => value !== 'none'] as const),
+  ['contain', (value) => /\b(layout|paint|strict|content)\b/.test(value)],
+  ['will-change', (value) => /\b(transform|translate|scale|rotate|perspective|filter)\b/.test(value)],
+  ['container-type', (value) => value !== 'normal'],
+  ['transform-style', (value) => value === 'preserve-3d'],
+  ['content-visibility', (value) => value === 'auto'],
+];
+
+/** What in `style` holds a fixed descendant in its element's own box, as `property: value`, or null. */
+function shotFixedHolding(style: CSSStyleDeclaration): string | null {
+  for (const [property, holds] of SHOT_FIXED_HOLDERS) {
+    const value = style.getPropertyValue(property);
+    if (value && holds(value)) return `${property}: ${value}`;
+  }
+  return null;
+}
+
 const rectText = (r: DOMRect) => `${r.left.toFixed(1)}, ${r.top.toFixed(1)} → ${r.right.toFixed(1)}, ${r.bottom.toFixed(1)}`;
 
 /**
- * Throws unless each of `canvases` lies over `holder`'s whole box, `names` naming them (none for the shot's own). A
- * canvas is fixed to its shot's element, which a transformed, filtered or contained wrapper between them takes over.
+ * Why `canvases` (named by `names`; none for the shot's own) don't each lie over `holder`, the shot's element, whole.
+ * A canvas is fixed to the shot's element, so a wrapper between them that holds it in its own box is refused even
+ * while it changes nothing (an identity transform about to slide); a box elsewhere is refused whatever moved it.
  */
-export function assertShotCanvasesFill(holder: Element, canvases: readonly HTMLCanvasElement[], names: readonly string[]): void {
+export function shotCanvasFillProblems(holder: Element, canvases: readonly HTMLCanvasElement[], names: readonly string[]): PaintingProblem[] {
   const shot = holder.getBoundingClientRect();
-  canvases.forEach((canvas, index) => {
-    const box = canvas.getBoundingClientRect(), name = names[index] === undefined ? "the shot's own canvas" : `PaintedShotCanvas ${names[index]}`;
-    const strays = [box.left - shot.left, box.top - shot.top, box.right - shot.right, box.bottom - shot.bottom].some((d) => Math.abs(d) > SHOT_CANVAS_SLACK);
-    if (strays) {
-      throw new Error(`${name} lies at ${rectText(box)} page px, and its PaintedShot at ${rectText(shot)}: a canvas fills its shot, so no wrapper between them may be transformed, filtered or contained (each holds a fixed canvas in its own box)`);
+  return canvases.flatMap((canvas, index) => {
+    const name = names[index] === undefined ? "the shot's own canvas" : `PaintedShotCanvas ${names[index]}`;
+    const problem = (message: string) => [paintingProblem('error', 'shot', 'canvas', `${name} ${message}: a canvas fills its shot, so no wrapper between them is transformed, filtered or contained`)];
+    for (let wrapper = canvas.parentElement; wrapper && wrapper !== holder; wrapper = wrapper.parentElement) {
+      const holding = shotFixedHolding(getComputedStyle(wrapper));
+      if (holding) return problem(`lies in a <${wrapper.localName}> with ${holding}, which holds a fixed canvas in its own box`);
     }
+    const box = canvas.getBoundingClientRect();
+    const strays = [box.left - shot.left, box.top - shot.top, box.right - shot.right, box.bottom - shot.bottom].some((d) => Math.abs(d) > SHOT_CANVAS_SLACK);
+    return strays ? problem(`lies at ${rectText(box)} page px, and its PaintedShot at ${rectText(shot)}`) : [];
   });
 }
 
-/** The elements `shot`'s pinned planes pin to, by plane id: none without pins. */
-function shotPinElements(shot: CompiledPaintedShot): ReadonlyMap<string, readonly RefObject<Element | null>[]> {
-  return new Map(shot.planes.flatMap((plane) => (plane.kind === 'painted' && plane.lay.kind === 'pinned' ? [[plane.id, plane.lay.pin.points.map(({ element }) => element)] as const] : [])));
+/** The element names `shot`'s pinned planes pin to, by plane id: none without pins. */
+function shotPinNames(shot: CompiledPaintedShot): ReadonlyMap<string, readonly string[]> {
+  return new Map(shot.planes.flatMap((plane) => (plane.kind === 'painted' && plane.lay.kind === 'screen' && plane.lay.screen.kind === 'pin' ? [[plane.id, plane.lay.screen.points.map(({ element }) => element)] as const] : [])));
 }
 
 const sameCentre = (a: StampPoint | null, b: StampPoint | null) => a === b || (!!a && !!b && Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01);
@@ -73,31 +106,48 @@ const sameCentre = (a: StampPoint | null, b: StampPoint | null) => a === b || (!
 const sameCentres = (a: ShotPinCentres, b: ShotPinCentres) =>
   [...a].every(([id, centres]) => centres.every((centre, i) => sameCentre(centre, b.get(id)?.[i] ?? null)));
 
-/** A shot's pinned elements, measured on asking and watched for resizes between. */
-export type ShotPinWatch = {
-  /** Each pinned element's centre in frame px as laid out now, remembered as the drawn one: null where it isn't rendered. */
-  readonly measure: () => ShotPinCentres;
+/** A shot's page, read as each frame draws, its pinned elements watched for resizes between. */
+export type ShotPageWatch = {
+  /**
+   * The page as laid out now: why the frame can't be drawn over it, and each pinned element's centre in frame px (null
+   * where it isn't rendered), remembered as the drawn one.
+   */
+  readonly read: () => { readonly pins: ShotPinCentres; readonly problems: readonly PaintingProblem[] };
   readonly dispose: () => void;
 };
 
 /**
- * `shot`'s pins measured against `holder`, its element, `frame` px wide and high; `moved` called when a resize moves
- * one from where it was last measured. Observes the elements mounted as it starts: one mounted later is measured as
- * frames draw.
+ * `shot`'s page in `holder`, its element, over `canvases` (named by `names`); `moved` called when a pinned element
+ * resizes so its centre leaves where the last frame drew it. Each pinned element is watched from the frame that first
+ * finds it.
  */
-export function createShotPinWatch(holder: Element, frame: ShotFrameSize, shot: CompiledPaintedShot, moved: () => void): ShotPinWatch {
-  const pins = shotPinElements(shot);
-  const centresNow = (): ShotPinCentres => {
-    const box = holder.getBoundingClientRect();
-    return new Map([...pins].map(([id, elements]) => [id, elements.map(({ current }) => (current?.isConnected && current.getClientRects().length ? shotDomCentre(current.getBoundingClientRect(), box, frame) : null))]));
-  };
+export function createShotPageWatch(holder: Element, canvases: readonly HTMLCanvasElement[], names: readonly string[], shot: CompiledPaintedShot, moved: () => void): ShotPageWatch {
+  const pins = shotPinNames(shot), observed = new Set<Element>();
   let drawn: ShotPinCentres | null = null;
   const observer = pins.size ? new ResizeObserver(() => {
-    if (drawn && !sameCentres(centresNow(), drawn)) moved();
+    if (drawn && !sameCentres(measure().centres, drawn)) moved();
   }) : null;
-  if (observer) for (const element of [holder, ...[...pins.values()].flatMap((elements) => elements.flatMap(({ current }) => (current ? [current] : [])))]) observer.observe(element);
+  function measure() {
+    const box = holder.getBoundingClientRect(), problems: PaintingProblem[] = [];
+    const centres: ShotPinCentres = new Map([...pins].map(([id, elements]) => [id, elements.map((element, i) => {
+      const found = holder.querySelectorAll(`[data-pin="${CSS.escape(element)}"]`), [only] = found;
+      if (found.length > 1) problems.push(paintingProblem('error', id, `lay.points[${i}].element`, `names ${element}, the data-pin of ${found.length} elements in the shot: a pin names one`));
+      if (found.length !== 1 || !only.getClientRects().length) return null;
+      if (observer && !observed.has(only)) {
+        observed.add(only);
+        observer.observe(only);
+      }
+      return shotDomCentre(only.getBoundingClientRect(), box, shot.camera.stage.frame);
+    })]));
+    return { centres, problems };
+  }
   return {
-    measure: () => (drawn = centresNow()),
+    read: () => {
+      const { centres, problems } = measure();
+      drawn = centres;
+      const page = shot.clearBack ? shotPageProblems(shot, { htmlBehind: shotHtmlBehind(holder, canvases[0]) }) : [];
+      return { pins: centres, problems: [...shotCanvasFillProblems(holder, canvases, names), ...page, ...problems] };
+    },
     dispose: () => observer?.disconnect(),
   };
 }

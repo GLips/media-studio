@@ -3,7 +3,6 @@
 // picture and three sources are the engine's, imported; everything declared here is the painting path's own.
 // docs/painting-authoring.md's Composition section is the author's page for it.
 
-import type { RefObject } from 'react';
 import type { PaintCameraOptions } from '#lib/paint/animation/models/paint-camera-build.ts';
 import type { PaintNodeClock } from '#lib/paint/animation/models/paint-clock.ts';
 import type { PaintBoilMarks, PaintMotionNode, PaintMotionPlay } from '#lib/paint/animation/models/paint-motion-compile.ts';
@@ -52,13 +51,16 @@ export type PlaneMask =
   | { readonly kind: 'path'; readonly subpaths: readonly (readonly StampPoint[])[]; readonly widthPx: number; readonly revealPx: PresentationValue<number>; readonly softPx?: number }
   | { readonly kind: 'alphaOf'; readonly drawable: OccurrenceKey; readonly invert?: boolean };
 
-/** A document point held on an HTML element's centre. */
-export type PinPoint = { readonly sourcePx: StampPoint; readonly element: RefObject<Element | null> };
+/**
+ * A document point held on the centre of the element inside the PaintedShot whose `data-pin` is `element`. A name,
+ * not a ref, so a pinned shot stays plain data: a module constant.
+ */
+export type PinPoint = { readonly sourcePx: StampPoint; readonly element: string };
 
 /**
  * Lays the plane so its document points sit on HTML elements' centres, measured in frame px as each frame draws (and
- * on resize), once laid out, as the camera stands at scene second `at` (0). One point moves the plane only; two set a
- * similarity: move, uniform scale and turn. A frame whose element isn't mounted fails.
+ * again when one resizes), once laid out, as the camera stands at scene second `at` (0). One point moves the plane
+ * only; two set a similarity: move, uniform scale and turn. A frame whose element isn't mounted fails.
  */
 export type ScreenPin = { readonly kind: 'pin'; readonly points: readonly [PinPoint] | readonly [PinPoint, PinPoint]; readonly at?: number };
 
@@ -70,8 +72,8 @@ export type CoverFrame = { readonly kind: 'cover'; readonly box: StampBox; reado
 
 /**
  * Where a whole plane lies, in frame px. Left out, document px are frame px. A callback may state `reach`, the stage
- * box its paint stays within; without one the camera checks the plane as reaching everywhere. A pin or cover is
- * checked where it lies once measured.
+ * box its paint stays within; without one the camera checks the plane as reaching everywhere. A pin or cover lays a
+ * painted plane on the frame through the camera, checked where it lies once laid.
  */
 export type PlaneLay =
   | { readonly lay?: StampGroupLay; readonly reach?: never }

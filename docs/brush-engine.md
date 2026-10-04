@@ -461,15 +461,18 @@ occurrence key, `<plane>/<key>` (`shot-occurrences.ts`), and every frame draws i
 to near, planes first on ties (`shot-plan.ts`).
 
 `PaintedShot` (`studio/painted-shot.tsx`) is a shot in a scene, beside `StampPainting`: one device owner over its
-canvases, the first opaque and each `PaintedShotCanvas` after it premultiplied (α = 1 − luminance(T)). Its page is
-read by `studio/shot-dom-points.ts` once fonts and layout settle: whether HTML lies behind the first canvas, which
-lets the back be clear (laid as clear film, its canvas premultiplied too: `clearBack`), and that every canvas, fixed
-to the shot's element, fills it. `shot-compile.ts` checks the props as they load, every problem at once: planes far
+canvases, the first opaque and each `PaintedShotCanvas` after it premultiplied (α = 1 − luminance(T);
+`shotCanvasAlphaMode`). Its page is read by `studio/shot-dom-points.ts` once fonts and layout settle, as it loads and
+again as each frame draws: whether HTML lies behind the first canvas, which lets the back be clear (laid as clear film,
+its canvas premultiplied too: `clearBack`) and must stay there while it is; that every canvas, fixed to the shot's
+element, fills it, no wrapper between them transformed, filtered or contained; and where each pinned element (its
+`data-pin` named by the pin) lies. `shot-compile.ts` checks the props as they load, every problem at once: planes far
 to near, each painted plane's occurrences from its first evaluation (read through its `sourceClock`), the rigs,
-visibility and motion over them, and the camera built over each plane's reach (`shot-reach.ts`). A cover lay is
-found then, through the inverse of the camera's plane view at its `at` (`paintPlaneViewAt`, `shot-placement.ts`). A
-pin lay is found each frame from its elements' centres, measured as the frame draws and again when one resizes
-(`shot-dom-points.ts`), then checked as the build checks a plane (`shotPinnedPlanes`, `paintCameraExtentProblem`). Motion (`shot-motion.ts`) hangs each node from its nearest enclosing node, a paintless
+visibility and motion over them, and the camera built over each plane's reach (`shot-reach.ts`). A plane laid on the
+frame is unchecked in that build and laid through the built camera after it, the inverse of its plane view at the
+lay's `at` (`paintPlaneViewAt`, `shotScreenLaid` in `shot-placement.ts`), then checked by the build's own rule
+(`paintCameraExtentProblem`): a cover once, as the shot compiles; a pin each frame, from its elements' centres as
+measured then, and again when one resizes (`shotPinnedPlanes`). Motion (`shot-motion.ts`) hangs each node from its nearest enclosing node, a paintless
 group's too, its clock chained under its parents' and the plane's `clock`. `shot-frame-plan.ts` reads a plane at one
 moment: its selection at its source moment, its node poses (boil wobble out of the poses marks solve under, in the
 ones the lay reads), boil epochs, visibility and rig poses. A rig (`shot-rigs.ts`) is found over its cels as all the
@@ -550,7 +553,11 @@ swapped to its lowered cel with nothing solved, then faded halfway as one group,
 with nothing solved, and reeds owning their sheet drawn as pieces, solving at rest as unrigged and swinging when
 posed; the heron boiling, its wobble moving finished paint with nothing solved; and the wet-contact foot posed by a
 rig, resuming its sheet's solve from its checkpoints, and painted in as the shot plays, its rig drawing before the
-foot's first stroke. Each shot's frame is a baseline (`shot/`) accepted by eye. Its painted textures
+foot's first stroke. Each shot's frame is a baseline (`shot/`) accepted by eye. `shot/page`
+(`stamp-gate-shot-dom-page.ts`) holds a shot's element on the page, scaled as a player shows it, and reads it through
+the DOM adapter: HTML behind the first canvas or not, a canvas in a wrapper at an identity transform refused; the
+heron alone, a clear back, drawn premultiplied, clear at its corners; then pinned to an element, its paint's centroid
+on the element's centre wherever it's placed, and the element resized asking for the frame again. Its painted textures
 (`texture/`, `stamp-gate-textures.ts`), each accepted by eye and held to a seam no rougher than the roughest texel step
 across it within 12 of it, on each axis it wraps (`stampGateSeamSteps`): `texture/wrapped-cylinder`, two paintings
 wrapping across x, a flood and an earth band run across their seam and a bloom dropped on it, their bands apart,
