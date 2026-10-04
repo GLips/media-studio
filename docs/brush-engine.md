@@ -661,9 +661,9 @@ the 4 s frame changes the cylinder and nothing else, and warmed over 2..4 s neit
 four frames in a row at the shot rate, it turning 3° a frame, laid side by side. Accepted by eye, enlarged: steady
 from frame to frame and seamless, where the same frames without the chain sparkle and break its bands. Frame
 families (solved sheets, shots, painted textures) are rows of `STAMP_GATE_FRAME_FAMILIES` in `stamp-gate.ts`: IDs,
-page function, frame size and inputs, so a new family is one row. Pre-commit runs it on the staged tree when a
+page function, frame size and inputs, so a new family is one row. Pre-push runs it on each pushed commit's tree when a
 path it covers changes; no adapter, a timeout
-or a difference fails the commit. Public baselines live in `harness/fixtures/stamp-paint/`, a pack's brushes' in
+or a difference refuses the push. Public baselines live in `harness/fixtures/stamp-paint/`, a pack's brushes' in
 `work/validation/stamp-paint/` (`stamp:gate -- private run`). A baseline changes only by `update <ids> --reason …`,
 which writes candidates with their differences, then `accept <ids>`.
 

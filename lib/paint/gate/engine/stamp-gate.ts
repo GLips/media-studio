@@ -2,8 +2,8 @@
 // solves every sheet case, draws every shot and painted texture and traces a resolve (studio/stamp-gate-page.ts), then
 // holds each to what it answers to: a rendering formula, a painting, a solved sheet's still, a shot's frame and a
 // painted texture's frame to their accepted baselines (stamp-gate-store.ts), a runtime twin to its CPU side, a trace to
-// its frame. `node harness/stamp-paint-gate.ts` runs it; pre-commit runs it
-// on the staged tree (stamp-gate-staged.ts).
+// its frame. `node harness/stamp-paint-gate.ts` runs it; pre-push runs it
+// on each pushed commit's tree (stamp-gate-pushed.ts).
 //
 // Negative space: nothing here skips or retries. No adapter, a missing feature or a failed draw is an error, and an
 // error fails the gate as a difference does.
