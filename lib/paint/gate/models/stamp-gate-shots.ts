@@ -26,6 +26,7 @@ import {
 import { STAMP_GATE_RAIN, STAMP_GATE_RAIN_PAINTING, stampGateRainShot } from './stamp-gate-rain.ts';
 import { STAMP_GATE_RAINY_STREET_AT, STAMP_GATE_RAINY_STREET_PRESENTATION, stampGateRainyStreetEvaluations, stampGateRainyStreetShot } from './stamp-gate-rainy-street.ts';
 import { STAMP_GATE_MASKS_BASELINE, STAMP_GATE_MASKS_PRESENTATION, STAMP_GATE_SHOT_MASK_IDS, STAMP_GATE_TINTED_HERON, stampGateMaskedShot } from './stamp-gate-shot-masks.ts';
+import { STAMP_GATE_SHOT_GLOW_ID } from './stamp-gate-shot-glow.ts';
 import { STAMP_GATE_HERON_POSE, STAMP_GATE_SHEET_IMAGES, STAMP_GATE_WET_CONTACT, stampGateSheetBrushOf } from './stamp-gate-sheets.ts';
 
 /** The shot over a page: its DOM adapter's reads, and a clear back pinned to an element, drawn and read back. */
@@ -38,9 +39,11 @@ export type StampGateShotId = (typeof STAMP_GATE_SHOT_IDS)[number];
 /**
  * The shot cases checked apart from any sheet case, each a page's checks of its shot's frames: the rain's items, a
  * dissolve drawn between its ends, a rigged one posed between its ends, a span warmed, the masked shot's cuts, the
- * rainy street's cost report, and the cards' hidden cel, switched-off view and fading owner.
+ * rainy street's cost report, the cards' hidden cel, switched-off view and fading owner, and what glows.
  */
-export const STAMP_GATE_SHOT_CASE_IDS = ['shot/rain', 'shot/dissolve', 'shot/rigged-dissolve', 'shot/warm', ...STAMP_GATE_SHOT_MASK_IDS, 'shot/rainy-street', 'shot/cards'] as const;
+export const STAMP_GATE_SHOT_CASE_IDS = [
+  'shot/rain', 'shot/dissolve', 'shot/rigged-dissolve', 'shot/warm', ...STAMP_GATE_SHOT_MASK_IDS, 'shot/rainy-street', 'shot/cards', STAMP_GATE_SHOT_GLOW_ID,
+] as const;
 export type StampGateShotCaseId = (typeof STAMP_GATE_SHOT_CASE_IDS)[number];
 
 /** The fps the gate plays its shots at, as a composition would: a warm span's frames are counted at it. */

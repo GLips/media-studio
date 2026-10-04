@@ -2,8 +2,8 @@
 // rigged heron's grain, pieces and boil (test 6), the wet-contact foot posed by its rig, painted in and hidden (test
 // 7), the rain's drops blurred along their own falls (test 5), a dissolve between two sheets over a dissolving back,
 // the rigged heron posed as it dissolves, a warmed span, the cut-out cards, and their baselines' frames. The masked
-// shot's cases are stamp-gate-shot-masks-page.ts's, and the rainy street's stamp-gate-rainy-street-page.ts's, handed
-// on.
+// shot's cases are stamp-gate-shot-masks-page.ts's, the rainy street's stamp-gate-rainy-street-page.ts's and the
+// glowing shot's stamp-gate-shot-glow-page.ts's, handed on.
 
 import type { StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { STAMP_GATE_CARDS_AT, stampGateCardsShot } from '../models/stamp-gate-cards.ts';
@@ -22,6 +22,7 @@ import {
 import { stampGateRgb, stampGateRgbBase64 } from './stamp-gate-page-surface.ts';
 import { stampGateShotFrames, stampGateSolvedText as solvedText } from './stamp-gate-shot-frames.ts';
 import { checkStampGateRainyStreet } from './stamp-gate-rainy-street-page.ts';
+import { checkStampGateShotGlowCase } from './stamp-gate-shot-glow-page.ts';
 import { checkStampGateShotMasksCase } from './stamp-gate-shot-masks-page.ts';
 
 const shiftText = ({ x, y, r }: { x: number; y: number; r: number }) => `${x}, ${y} (r ${r.toFixed(3)})`;
@@ -274,6 +275,7 @@ export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGa
   if (id === 'shot/warm') return checkWarm();
   if (id === 'shot/rainy-street') return checkStampGateRainyStreet();
   if (id === 'shot/cards') return checkCards();
+  if (id === 'shot/glow') return checkStampGateShotGlowCase();
   return checkStampGateShotMasksCase(id);
 }
 
