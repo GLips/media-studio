@@ -30,7 +30,9 @@ weight; painted textures, paintings a three plane's objects wear, drawn at each 
 engine (the recipe path, docs/brush-engine.md) lacks too; unmarked behaviour is how it already paints.
 
 That is everything in the language: every shape the types above hold paints, draws and checks. What the checks
-refuse (Checking and diagnostics) they refuse as wrong, never as not yet built.
+refuse (Checking and diagnostics) they refuse as wrong, never as not yet built. Outside the language, a shot gives
+a profiling render its cost report but no timed stages: ENGINE §8's buckets (`stamp paint solve`, `… lay`, `… masks`
+and the rest) aren't built yet.
 
 ## The model
 

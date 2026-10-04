@@ -119,7 +119,7 @@ export function shotPageProblems(shot: CompiledPaintedShot, page: ShotPage): Pai
   return [shotError(shot.planes[0].id, 'source', 'is a clear back, and no HTML lies before the first canvas at this frame: HTML behind a clear back stays mounted while the shot draws')];
 }
 
-/** Why plane `plane` can't be drawn as written, refusing what's presentation's (ENGINE slice 6). */
+/** Why plane `plane` can't be drawn as written: its id, a lay on a picture or three plane, its canvas or its clocks. */
 function planePropsProblems(plane: PaintedShotProps['planes'][number], canvases: readonly string[]): PaintingProblem[] {
   const problems: PaintingProblem[] = [];
   if (!plane.id || plane.id.includes('/')) problems.push(shotError(plane.id, 'id', `${JSON.stringify(plane.id)} isn't a plane id: one holds no "/"`));
