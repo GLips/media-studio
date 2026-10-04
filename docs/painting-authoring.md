@@ -1,9 +1,9 @@
 # Authoring paintings
 
-Everything an agent needs to paint and animate with painting sources: the model, a worked example, the document's
-shape, how water behaves, units, media, time, costs, recipes, composition, a reference for the engine's shapes, and
-checking. The types are the contract: `lib/paint/document/models/painting-document.ts` (the document),
-`lib/paint/document/models/painting-properties.ts` (a source's property schema) and
+Everything an agent needs to paint and animate with painting sources: the model, a worked example, planning colour and
+light, the document's shape, how water behaves, units, media, time, costs, recipes, composition, a reference for the
+engine's shapes, and checking. The types are the contract: `lib/paint/document/models/painting-document.ts` (the
+document), `lib/paint/document/models/painting-properties.ts` (a source's property schema) and
 `lib/paint/shot/models/shot-props.ts` (a scene's shot). docs/brush-engine.md is the engine underneath.
 
 ## What's built
@@ -149,6 +149,26 @@ new place: its grain stays still and its edges shift a little from solve to solv
 again where it lies; with no `on`, it lands at the same time wherever it is. Its node's hold of 6 sets how many
 places, and so how many solves, a second, and `warm` solves them before the first frame. Given `sheet:
 {kind: 'own', paper}` it would instead be a cut-out carrying its own paper and grain, moved without a solve.
+
+## Planning colour and light
+
+Paint is pigment in films on paper, not colour stacked by alpha. Plan the lights, what mixes and what stays clean
+before writing a wash:
+
+- **Light is the paper.** Watercolour is transparent: a light colour over a darker wash barely shows, and a glaze
+  takes its look from what's under it. Reserve every light (a sun, a lit rim, a lamp's reflection) on each darker
+  application that crosses it, one footprint shared as a TS constant: a region, crisp or feathered, or marks through a
+  tip. A lift leaves a stain, and colour laid into it mixes with what stayed. Only `TITANIUM_WHITE` in a mix covers, as
+  body colour.
+- **One layer is one mixing film.** Within a layer an application mixes into the paint there, keeping up to half of it
+  in watercolour, a fifth in gouache: a blue heart on yellow petals goes olive. In a later layer gouache covers and
+  watercolour glazes (recipe 12). A layer holds 12 pigments.
+- **A field grades pigment amounts.** A `Field<Mix>` mixes its ends' pigments along it, never their colours:
+  ultramarine to rose passes through violet, blue to orange through grey, which the check warns of. Grade one mix's
+  strength, change hue across layers, or charge the second colour into the wet flood (recipe 2).
+- **Gouache lightens with white.** A weaker mix is a tint, still opaque; pale gouache laid as light reads chalky,
+  pasted on. For glow, reserve the paper; for a veil, cap the film (`opacityCap`, Media); for a near-black, mix a hex
+  part at strength 1.
 
 ## The document
 
@@ -308,7 +328,7 @@ strength × contact, so pressure changes it only through what the brush binds to
 
 | | Reserve (masking fluid) | Resist (wax) | Lift |
 |---|---|---|---|
-| Written | `reserves: [footprint, …]` on an application or a wash's `prewet` | `resists: [{footprints, amount}]` on an application, each footprint marks (a stroke or stamps through a tip): the brush's grain is what catches the peaks, and a region has none | a lift application |
+| Written | `reserves: [footprint, …]` on an application or a wash's `prewet`, each a region (`{kind: 'region', region, edge?}`, crisp or feathered) or marks (a stroke or stamps through a tip, as a resist's) | `resists: [{footprints, amount}]` on an application, each footprint marks (a stroke or stamps through a tip): the brush's grain is what catches the peaks, and a region has none | a lift application |
 | Acts on | that application (or prewet): paint, water or lift | that application's contact on the paper's peaks | its own layer's paint under it, and the sheet's water |
 | Effect | excludes this application's deposition and transport: nothing of it lands there, its paint doesn't walk in, its core leaves it out. It does not remove water or paint already present | it keeps 1 − `amount` of contact on peaks; valleys still take paint; `on` judges the contact left | takes up to `strength` of what's liftable |
 | Paint already there | untouched by this application; other applications' water still moves it | untouched | removed, leaving a stain |
@@ -317,9 +337,9 @@ strength × contact, so pressure changes it only through what the brush binds to
 | Other applications | ignore it | ignore it | — |
 | Leaves | bare paper, or whatever was painted before: a dry gap, with no rim | speckled paper | stain: films × pigment staining (watercolour, gouache); 4% pressed wax (crayon) |
 
-To mask a whole wash, give each of its applications and its prewet the same footprints, a TS constant. A reserve
-never erases. The recipe path's keyed reserve targets (a reserve binding other applications by key) have no form
-here.
+To mask a whole wash, give each of its applications and its prewet the same footprints, a TS constant: that is how a
+light stays paper (Planning colour and light), which no lift gives back clean. A reserve never erases. The recipe path's
+keyed reserve targets (a reserve binding other applications by key) have no form here.
 
 ## Washes, layers and paper
 
@@ -686,7 +706,7 @@ shows what a property step re-solves; the cost report counts what each frame and
 
 | # | Look | Write | Watch for |
 |---|---|---|---|
-| 1 | graded sky | a flood whose `mix` is a field: `{kind: 'linear', from: {x, y, value: ZENITH}, to: {x, y, value: HORIZON}}` | grades pigment amounts, never colour; more stops are more applications |
+| 1 | graded sky | a flood whose `mix` is a field: `{kind: 'linear', from: {x, y, value: ZENITH}, to: {x, y, value: HORIZON}}` | grades pigment amounts, never colour: hues far apart pass through grey (the check warns), so grade one mix's strength and change hue across layers; more stops are more applications |
 | 2 | wet-in-wet charge | flood at water 0.85+ with an even brush (watercolour's `detail`), then an application `on: 'wet'` of paint strokes | its core on the flood's full contact |
 | 3 | bloom | after the flood, `{effect: 'bloom', on: 'damp'}` water stamps, water 1 | needs surplus > 0.08 over open paint; under `never`, `on: 'wet'` |
 | 4 | backrun | `{effect: 'bloom', on: 'damp'}`: one water stroke along the junction | both sides must be damp at once; `on: 'wet'` gives softer scallops |
@@ -1049,7 +1069,8 @@ scales its paper's grain with it.
 value}}`, held at its ends past them; `{kind: 'radial', center, radius, inner, outer}`, linear in distance from
 `inner` at the centre to `outer` at `radius` and beyond; `{kind: 'noise', scale, seed, a, b}`, features about `scale`
 px across, reaching nearly both ends. A field of mixes grades each pigment's amount (share × strength): its ends may
-name different pigments in any order, a missing one being 0, and an amount may be 0.
+name different pigments in any order, a missing one being 0, and an amount may be 0. Its middle is its ends mixed, so
+hues far apart grade through grey (Planning colour and light).
 
 **Reveals** (`Reveal`, scene seconds and document px; Time: Reveals): `{kind: 'strokes', strokes: [{points, widthPx,
 from, to, cap?: 'round' | 'flat'}], softS?}` or `{kind: 'field', base, delay?, softS?}`, `base` and `delay` fields of
@@ -1196,6 +1217,7 @@ What the check says today, and what to do:
 | `sky.key: is used twice, by a layer and a wash` / `hill.clipTo: names sky, which isn't an earlier wash of landscape` / `hill.clipTo: names sky, which lays nothing, so nothing of this wash would land` | bad keys | fix keys |
 | `hill.applications[0].area.boundaries[0].path: a boundary strays more than 1 px from its outline` | a boundary off its outline | snap the path |
 | `a.charge.mix: its strength 1.2 isn't within 0..1` / `b.charge.mix: it names ultramarine twice` | a bad mix | fix the mix |
+| `sky-flood.charge.mix: grades through grey: from #3060c0 to #e08030 it mixes #7b6f71 halfway, 9% of the duller end's chroma: …` (warning) | a field of mixes whose middle, mixed as the engine grades it and laid over white, keeps under half the chroma of its duller end (ends near grey aren't judged) | grade one mix's strength, change hue across layers, or charge the second colour into the wet flood (Planning colour and light) |
 | `landscape.washes: mixes 13 pigments; a layer holds 12: split it into two layers` | too many pigments in one film | split the layer |
 | `a.brush.brush: watercolor has no brush mop: its brushes are wash, filler, …` / `a.brush.brush: gouache's flat can't be read: its pack vvds isn't among gouache's imported packs` | a brush or paper asset the style lacks, or names from a pack not imported | name one it has; import the pack |
 | `a.brush.style: names style watercolor, which the project's project.ts doesn't name in styles (it names gouache, crayon)` / `document.paper.grain.image: kyle-watercolor/grains/kyle-paper-pulpy.png isn't among the images the project's bundle serves of watercolor: …` | a brush or paper asset from a style the source's project doesn't declare, or a pack file its style's brushes and paper don't use, which its bundle wouldn't serve | add the style to `project.ts`'s `styles`, or brush with a declared one; name the paper in the style's `style.ts` |

@@ -129,7 +129,7 @@ export function checkPaintingFootprint(list: PaintingProblemList, owner: string,
 function checkPaintCharge(list: PaintingProblemList, owner: string, charge: PaintCharge, application: AnyApplication, setting: PaintingApplicationSetting, box?: StampBox): void {
   const { medium, direct, styles } = setting;
   if (!charge.mix) list.error(owner, 'charge.mix', 'a paint charge needs a mix', box);
-  else checkPaintingMix(list, owner, 'charge.mix', charge.mix, box);
+  else checkPaintingMix(list, owner, 'charge.mix', charge.mix, medium, box);
   if (charge.water !== undefined) {
     const dry = paintingBrushMedia(styles, application.brush) === 'dry';
     const problem = direct ? `water ${WET_HISTORY_NEEDED}` : capabilityProblem(medium, 'water')

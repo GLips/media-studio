@@ -8,7 +8,6 @@
 
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { StampStrokePoint } from '#lib/paint/brush/models/stamp-placement.ts';
-import { paintColorPigmentId } from '#lib/paint/materials/models/paint-medium.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import type { PaintMixturePigment } from '#lib/paint/materials/models/paint-pigment.ts';
 import type { CompiledStampArea } from '#lib/paint/painting/models/stamp-area.ts';
@@ -22,7 +21,8 @@ import type { CompiledStampDeposit, CompiledStampMask } from '#lib/paint/paintin
 import type { StampResolvedGeometry } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { StampSheetAnchors } from '#lib/paint/painting/models/stamp-sheet-program.ts';
 import { compilePaintingArea, paintingOuterRings, paintingRegionRings } from './painting-area-compile.ts';
-import type { AnyApplication, Amount, BrushRef, Charge, FillGeometry, Footprint, MarkFootprint, Mix, MixPart, Resist, Subpath } from './painting-document.ts';
+import type { AnyApplication, Amount, BrushRef, Charge, FillGeometry, Footprint, MarkFootprint, Mix, Resist, Subpath } from './painting-document.ts';
+import { paintingMixPigment, paintingMixture } from './painting-mix-check.ts';
 
 /**
  * The brush a document's ref names, resolved from its style; throws for one it lacks. Compiles are kept by its
@@ -31,12 +31,7 @@ import type { AnyApplication, Amount, BrushRef, Charge, FillGeometry, Footprint,
  */
 export type PaintingBrushOf = (ref: BrushRef) => StampBrush;
 
-/** A part's pigment: a hex is a colour standing for a pigment of its own, fitted as its medium fits a colour. */
-const paintingMixPigment = (pigment: MixPart['pigment']): PaintMixturePigment => (typeof pigment === 'string' ? { color: pigment, id: paintColorPigmentId(pigment), name: pigment } : pigment);
-
-const paintingMixMaterial = ({ parts, strength }: Mix): PaintMaterial => ({
-  kind: 'mixture', strength, parts: parts.map(({ pigment, amount }) => ({ pigment: paintingMixPigment(pigment), amount })),
-});
+const paintingMixMaterial = (mix: Mix): PaintMaterial => ({ kind: 'mixture', ...paintingMixture(mix) });
 
 /** Every pigment `mix` names, as a mixture names it. */
 export function paintingMixPigments(mix: Mix | StampSeededPaintField<Mix>): PaintMixturePigment[] {

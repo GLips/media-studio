@@ -4,7 +4,7 @@ import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercol
 import * as meadow from './meadow.painting.ts';
 import type { StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
 import { checkPaintingDocument, paintingWrappedGrainHeightProblem } from './painting-document-check.ts';
-import type { Application, BrushRef, EdgedRegion, Layer, LayerNode, Mix, PaintingDocument, Ring, Wash } from './painting-document.ts';
+import type { Application, BrushRef, EdgedRegion, Field, Layer, LayerNode, Mix, PaintingDocument, Ring, Wash } from './painting-document.ts';
 import type { PaintingProblem } from './painting-problem.ts';
 import { checkPaintingSource, type PaintingSourceModule } from './painting-source.ts';
 import type { PaintingStyleCatalogue } from './painting-styles.ts';
@@ -12,11 +12,11 @@ import { paintingTestBrushSpanning } from './painting-test-brush.ts';
 
 const W = 400, H = 300;
 const BOX: Ring = [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: 200 }, { x: 0, y: 200 }];
-const { ultramarine, burntSienna } = WATERCOLOUR_PIGMENTS;
+const { ultramarine, burntSienna, quinacridoneRose } = WATERCOLOUR_PIGMENTS;
 const TIP = { brush: { style: 'watercolor', brush: 'wash' }, diameterPx: 60 } as const;
 const BLUE: Mix = { parts: [{ pigment: ultramarine, amount: 1 }], strength: 0.5 };
 
-type FloodOptions = { readonly key?: string; readonly water: number; readonly area?: EdgedRegion; readonly mix?: Mix };
+type FloodOptions = { readonly key?: string; readonly water: number; readonly area?: EdgedRegion; readonly mix?: Mix | Field<Mix> };
 const flood = ({ key, water, area = { region: { kind: 'polygon', rings: [BOX] } }, mix = BLUE }: FloodOptions): Application => ({
   ...(key && { key }), kind: 'fill', area, ...TIP, seed: `flood-${key}`, charge: { kind: 'paint', mix, water },
 });
@@ -40,6 +40,10 @@ const PROJECT_STYLES: PaintingStyleCatalogue = {
 };
 const skyFlood = (tip: { readonly brush?: BrushRef; readonly diameterPx?: number }): PaintingDocument =>
   documentOf([layer('sky', [{ key: 'sky-wash', applications: [{ ...flood({ key: 'sky-flood', water: 0.85 }), ...tip }] }])]);
+/** A sky graded down the box from one pigment to another, each alone at full strength. */
+const graded = (top: Mix['parts'][number]['pigment'], bottom: Mix['parts'][number]['pigment']): Field<Mix> => ({
+  kind: 'linear', from: { x: 0, y: 0, value: { parts: [{ pigment: top, amount: 1 }], strength: 1 } }, to: { x: 0, y: 200, value: { parts: [{ pigment: bottom, amount: 1 }], strength: 1 } },
+});
 
 const brokenSources: readonly { readonly name: string; readonly check: () => readonly PaintingProblem[]; readonly expect: Pick<PaintingProblem, 'severity' | 'path' | 'message'> }[] = [
   {
@@ -170,6 +174,14 @@ const brokenSources: readonly { readonly name: string; readonly check: () => rea
     }]))),
     expect: { severity: 'error', path: 'flood.reveal.base', message: "its value Infinity isn't a finite scene second" },
   },
+  {
+    name: 'a field of mixes from blue to orange, grading through grey',
+    check: () => checkPaintingSource(sourceOf(documentOf([layer('sky', [{ key: 'sky-wash', applications: [flood({ key: 'sky-flood', water: 0.85, mix: graded('#3060c0', '#e08030') })] }])]))),
+    expect: {
+      severity: 'warning', path: 'sky-flood.charge.mix',
+      message: "grades through grey: from #3060c0 to #e08030 it mixes #7b6f71 halfway, 9% of the duller end's chroma: grade one mix's strength, change hue across layers, or charge the second colour into the wet flood",
+    },
+  },
 ];
 
 test('each broken source is refused with its one exact problem', () => {
@@ -178,11 +190,13 @@ test('each broken source is refused with its one exact problem', () => {
   }
 });
 
-test("a source that can paint checks clean: the meadow, and a charge into another layer's wet flood on its sheet", () => {
+test("a source that can paint checks clean: the meadow, a charge into another layer's wet flood on its sheet, and blue graded to rose through violet", () => {
   assert.deepEqual(checkPaintingSource(meadow), []);
   const foot = documentOf([layer('shallows', [{ key: 'pool', applications: [flood({ key: 'pool-flood', water: 0.9 })] }]), layer('heron', [{ key: 'foot', applications: [{ ...stroke('foot-charge'), on: 'wet' }] }])]);
   assert.deepEqual(checkPaintingSource(sourceOf(foot)), []);
   assert.deepEqual(checkPaintingSource(sourceOf(skyFlood({ diameterPx: 60 })), {}, PROJECT_STYLES), []);
+  const dusk = documentOf([layer('sky', [{ key: 'sky-wash', applications: [flood({ key: 'sky-flood', water: 0.85, mix: graded(ultramarine, quinacridoneRose) })] }])]);
+  assert.deepEqual(checkPaintingSource(sourceOf(dusk)), []);
 });
 
 test("a problem's footprint is the box of the geometry it's about, grown by half its brush", () => {

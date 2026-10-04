@@ -455,17 +455,17 @@ and applications), its values held to its schema (`painting-properties.ts`). `pa
 evaluates a source, memoised by its values, and refuses a document with any error. `painting-document-check.ts` checks
 one without the GPU, every problem a record naming its owner's key, field and footprint (`painting-problem.ts`), in
 stages: values, shape and keys, the papers, layers, washes and applications (`painting-application-check.ts`,
-`painting-region-check.ts`, `painting-mix-check.ts`), then each sheet's rules (`painting-sheet-check.ts`) and each
-layer's pigments. Where a rule is the engine's (a fill's guides and strokes, ring geometry, a deposit's water, a
-brush's measured diameters) the check calls the engine's own problem function. A problem's box comes from
-`painting-footprint.ts`. Brushes and papers are checked against a `PaintingStyleCatalogue` (`painting-styles.ts`):
-each style's brushes, read as the bundle reads them (`readBundledStampPaintPacks`, `stampPaintStyleBrushes`), and the
-files it serves. `studio paint check` builds it from `work/styles/`; for a source in `work/projects/<p>/`
-(`studioProjectOfFile`), only the styles its `project.ts` names (`projectStyleNames`, as the bundle reads them) and
-of each only the images the bundle serves (`stampPaintStyleImages`). A fill plans its strokes by its brush's measured
-profile, so its `diameterPx` is held to that range by `stampBrushDiameterProblem` (`stamp-brush-profile.ts`, the rule
-`stampBrushMeasuredProfile` and the profile's reads refuse by), statically and again as a selection compiles, every
-unplannable fill at once by owner.
+`painting-region-check.ts`, `painting-mix-check.ts`, which also warns of a field of mixes whose middle, mixed by the
+pure mixer, greys), then each sheet's rules (`painting-sheet-check.ts`) and each layer's pigments. Where a rule is the
+engine's (a fill's guides and strokes, ring geometry, a deposit's water, a brush's measured diameters) the check calls
+the engine's own problem function. A problem's box comes from `painting-footprint.ts`. Brushes and papers are checked
+against a `PaintingStyleCatalogue` (`painting-styles.ts`): each style's brushes, read as the bundle reads them
+(`readBundledStampPaintPacks`, `stampPaintStyleBrushes`), and the files it serves. `studio paint check` builds it from
+`work/styles/`; for a source in `work/projects/<p>/` (`studioProjectOfFile`), only the styles its `project.ts` names
+(`projectStyleNames`, as the bundle reads them) and of each only the images the bundle serves (`stampPaintStyleImages`).
+A fill plans its strokes by its brush's measured profile, so its `diameterPx` is held to that range by
+`stampBrushDiameterProblem` (`stamp-brush-profile.ts`, the rule `stampBrushMeasuredProfile` and the profile's reads
+refuse by), statically and again as a selection compiles, every unplannable fill at once by owner.
 `painting-tree.ts` resolves a document's tree: its sheets, and each node's medium and sheet; `painting-sheet-program.ts`
 is each sheet's order, its layers' films (`painting-pigment-slots.ts`) and its clock, the one order the checks, the
 evaluation diff (`painting-evaluation-diff.ts`) and the solver read. The checks never touch the GPU.
