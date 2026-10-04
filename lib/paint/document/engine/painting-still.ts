@@ -11,6 +11,7 @@ import { withBrowserModulePage } from '#lib/platform/browser/engine/browser-modu
 import { STUDIO_STYLES_DIR } from '#lib/platform/project/engine/studio-project.ts';
 import { paintingBrushRefs } from '../models/painting-brush-refs.ts';
 import type { PaintingProblem } from '../models/painting-problem.ts';
+import { PAINTING_SOURCE_SUFFIX } from '../models/painting-source.ts';
 import type { PaintingStill, PaintingStillOutcome, PaintingStillRequest } from '../models/painting-still-request.ts';
 import { checkPaintingSourceFile, paintingStylesBrushOf, readPaintingSourceStyles } from './painting-source-load.ts';
 
@@ -42,8 +43,11 @@ export async function paintPaintingSourceStill(file: string, texts: Readonly<Rec
   return 'still' in outcome ? { problems, still: outcome.still, refused: null } : { problems, still: null, refused: outcome.refused };
 }
 
-/** A source file's name without `.painting.ts`: its outputs' default stem. */
-export const paintingSourceStem = (file: string) => basename(file).replace(/\.painting\.ts$/, '').replace(/\.ts$/, '');
+/** A source file's name without `.painting.ts` (or `.ts`): its outputs' default stem. */
+export function paintingSourceStem(file: string): string {
+  const name = basename(file);
+  return name.endsWith(PAINTING_SOURCE_SUFFIX) ? name.slice(0, -PAINTING_SOURCE_SUFFIX.length) : name.replace(/\.ts$/, '');
+}
 
 /** A still's PNG, as its page hands it back (a data URL), written to `file`. */
 export function writePaintingStillPng(file: string, url: string) {

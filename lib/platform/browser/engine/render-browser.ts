@@ -17,7 +17,14 @@ import { wholeBrowserPageError } from './browser-page-error.ts';
  * Every render's browser runs on the GPU: Chrome's compositing goes through its GL backend, which Remotion's default
  * software renderer makes crawl; WebGPU needs no flag.
  */
-export const RENDER_CHROMIUM = { gl: 'angle' } as const;
+const RENDER_CHROMIUM = { gl: 'angle' } as const;
+
+/**
+ * What every Remotion call over a render browser is given: RENDER_CHROMIUM, and how long a frame may hold its
+ * screenshot (a delayRender). Remotion's 30 s is too short for a painted frame once a render draws beside it, as the
+ * GPU lease lets a look do: one that solves in seconds alone has passed 28 s there.
+ */
+export const RENDER_REMOTION_OPTIONS = { chromiumOptions: RENDER_CHROMIUM, timeoutInMilliseconds: 120_000 } as const;
 
 // SwiftShader is Chrome's own; llvmpipe and softpipe are Mesa's, on a Linux machine with no GPU driver.
 const SOFTWARE_GL = /swiftshader|llvmpipe|softpipe|software/i;

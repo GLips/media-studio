@@ -12,8 +12,7 @@ import { basename, join, relative } from 'node:path';
 import { generatePaidMedia } from '#lib/platform/paid-generation/engine/paid-generation.ts';
 import { readPrevisFootageList, writePrevisFootageEntry } from '#lib/footage/previs/engine/previs-footage.ts';
 import { blockoutSlug } from './project-bundle.ts';
-import { RENDER_CHROMIUM } from '#lib/platform/browser/engine/render-browser.ts';
-import { releaseStudioGpuLease } from '#lib/platform/gpu/engine/gpu-lease.ts';
+import { RENDER_REMOTION_OPTIONS } from '#lib/platform/browser/engine/render-browser.ts';
 import type { RenderSession } from './render-session.ts';
 import { PREVIS_BLOCKOUT_SHORT_SIDE, PREVIS_MODEL_NAMES, PREVIS_MODELS, previsAspectRatio, previsShotSeconds, type PrevisModelName } from '#lib/footage/previs/models/previs-models.ts';
 import { probeMediaSeconds } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
@@ -56,8 +55,8 @@ export async function renderPrevisFootage(session: RenderSession, sceneId: strin
   // Checked before the blockout renders, so a video no model can match stops before any work.
   const aspect = previsAspectRatio(timeline);
   const blockout = await renderBlockout(session, sceneId, seconds);
-  // The model takes minutes; nothing after the blockout draws, so the GPU goes back to the queue now.
-  releaseStudioGpuLease();
+  // The model takes minutes and nothing after the blockout draws.
+  session.doneDrawing();
   const prompt = `${PREVIS_PREAMBLES[previs.blockout]}\n\n${previs.prompt}`;
   const playing = readPrevisFootageList(project)[sceneId];
   const stale = Boolean(playing && playing.blockout !== basename(blockout));
@@ -88,11 +87,11 @@ async function renderBlockout(session: RenderSession, sceneId: string, seconds: 
   return withStudioTemp('blockout', async (tmp) => {
     const rendered = join(tmp, 'blockout.mp4');
     await session.inBrowser('blockout', async (browser) => {
-      const composition = await selectComposition({ serveUrl: session.serveUrl, chromiumOptions: RENDER_CHROMIUM, puppeteerInstance: browser, id: blockoutSlug(session.project), inputProps });
+      const composition = await selectComposition({ serveUrl: session.serveUrl, ...RENDER_REMOTION_OPTIONS, puppeteerInstance: browser, id: blockoutSlug(session.project), inputProps });
       const concurrency = session.workersFor(composition);
       console.error(`rendering scene ${sceneId}'s blockout, ${composition.durationInFrames / composition.fps}s…`);
       await renderMedia({
-        composition, serveUrl: session.serveUrl, chromiumOptions: RENDER_CHROMIUM, puppeteerInstance: browser, concurrency, inputProps,
+        composition, serveUrl: session.serveUrl, ...RENDER_REMOTION_OPTIONS, puppeteerInstance: browser, concurrency, inputProps,
         codec: 'h264', muted: true, crf: 20, pixelFormat: 'yuv420p', scale: PREVIS_BLOCKOUT_SHORT_SIDE / Math.min(composition.width, composition.height), outputLocation: rendered,
       });
       return { result: undefined, workers: concurrency };

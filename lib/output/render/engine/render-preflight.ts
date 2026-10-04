@@ -5,8 +5,9 @@
 import { basename, join } from 'node:path';
 import { checkPaintingSourceFile } from '#lib/paint/document/engine/painting-source-load.ts';
 import { paintingErrors, paintingProblemText } from '#lib/paint/document/models/painting-problem.ts';
+import { PAINTING_SOURCE_SUFFIX } from '#lib/paint/document/models/painting-source.ts';
 import { projectStyleProblems } from '#lib/paint/style/engine/project-styles.ts';
-import { listProjectPaintingSources, readProjectDeclaration } from '#lib/platform/project/engine/studio-project.ts';
+import { listProjectSceneFiles, readProjectDeclaration } from '#lib/platform/project/engine/studio-project.ts';
 
 /**
  * Refuses a project whose paintings or styles have an error, naming every one, a painting's after its file; returns
@@ -16,7 +17,7 @@ export async function refuseProjectPaintingErrors(project: string): Promise<numb
   // A painting timed by the project's timeline imports the track's audio, which only the hooks let Node load.
   await import('./tsx-test-hooks.ts');
   const declaration = await readProjectDeclaration(project);
-  const sources = listProjectPaintingSources(project, declaration?.shared ?? []);
+  const sources = listProjectSceneFiles(project, declaration?.shared).filter((file) => file.endsWith(PAINTING_SOURCE_SUFFIX));
   const problems = [...(await Promise.all(sources.map(async (source) => {
     try {
       const { problems: found } = await checkPaintingSourceFile(join(project, source), {});

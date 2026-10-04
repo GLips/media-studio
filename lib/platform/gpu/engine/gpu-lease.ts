@@ -1,17 +1,17 @@
 // gpu-lease.ts: the studio's GPU lease. Every process that draws on the machine's one adapter takes it first, at
-// inRenderBrowser (lib/platform/browser/engine/render-browser.ts), and keeps it until it gives it back or ends, so a
-// command's passes run back to back. Node only.
+// inRenderBrowser (lib/platform/browser/engine/render-browser.ts), and keeps it until its job ends (runAsStudioGpuJob)
+// or it gives it back early, so a command's passes run back to back. Node only.
 //
-// A process queues with a ticket file, `<arrived>-<pid>.json`, in the user's cache, shared by every checkout; who goes
-// next is gpu-lease-queue.ts's rule. A ticket counts while its pid runs and started when the ticket says, so a killed
-// job frees its slot at once. A slot is taken by writing it into the ticket, then reading the others': if another took
-// it too, it's given back and asked for again. A holder's child draws inside its lease.
+// A process queues with a ticket file, `<arrived>-<pid>.json`, in the studio's user cache, shared by every checkout;
+// who goes next is gpu-lease-queue.ts's rule. A ticket counts while its process runs (lib/platform/process), so a
+// killed job frees its slot at once. A slot is taken by writing it into the ticket, then reading the others': if
+// another took it too, it's given back and asked for again. A holder's child draws inside its lease.
 
-import { execFileSync } from 'node:child_process';
 import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync, writeSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { basename, dirname, isAbsolute, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { runningStudioProcesses, studioProcessRunning, thisStudioProcess } from '#lib/platform/process/engine/studio-process.ts';
+import { studioUserCacheDir } from '#lib/platform/temp/engine/studio-user-cache.ts';
 import {
   studioGpuStanding, studioGpuSummaryLine, studioGpuTicketRunning, studioGpuWaitingLine, formatStudioGpuSpan,
   type StudioGpuJobKind, type StudioGpuTicket,
@@ -22,39 +22,41 @@ const STUDIO_GPU_PARENT_LEASE_ENV = 'STUDIO_GPU_LEASE_TICKET';
 const STUDIO_GPU_POLL_MS = 500;
 /** How often a holder notes who draws beside it, for its summary. */
 const STUDIO_GPU_SHARING_SAMPLE_MS = 2000;
-/** ps gives a process's start to the second, and Node's clock starts a little after the process does. */
-const STUDIO_GPU_START_TOLERANCE_MS = 2500;
 
-/** The user's cache: macOS's own, else XDG's. */
-function userCacheDir(): string {
-  if (process.platform === 'darwin') return join(homedir(), 'Library', 'Caches');
-  const xdg = process.env.XDG_CACHE_HOME;
-  return xdg && isAbsolute(xdg) ? xdg : join(homedir(), '.cache');
-}
-
-/** The ticket folder: STUDIO_GPU_LEASE_DIR when set (a test's own queue), else the user's cache. */
-const studioGpuLeaseDir = () => process.env.STUDIO_GPU_LEASE_DIR || join(userCacheDir(), 'media-studio', 'gpu-lease');
+/** The ticket folder: STUDIO_GPU_LEASE_DIR when set (a test's own queue), else the studio's user cache. */
+const studioGpuLeaseDir = () => process.env.STUDIO_GPU_LEASE_DIR || studioUserCacheDir('gpu-lease');
 
 type HeldStudioGpuLease = { file: string; ticket: StudioGpuTicket; waitedMs: number; grantedAt: number; sharedWith: Map<string, StudioGpuTicket>; sampler: NodeJS.Timeout };
 
-// Until a command declares itself, a process is its script and arguments, interactive (a test, a project's tool).
-let studioGpuJob: { kind: StudioGpuJobKind; command: string } = {
+/** What a process is to the queue: its kind, and what other processes' waits call it. */
+export type StudioGpuJob = { readonly kind: StudioGpuJobKind; readonly command: string };
+
+// Outside runAsStudioGpuJob, a process is its script and arguments, interactive: a test, a project's tool.
+let studioGpuJob: StudioGpuJob = {
   kind: 'interactive', command: [basename(process.argv[1] ?? 'node'), ...process.argv.slice(2)].join(' '),
 };
 let queuedTicketFile: string | null = null;
 let heldLease: HeldStudioGpuLease | 'inside-parent' | null = null;
 let takingLease: Promise<void> | null = null;
 let releasesAtExit = false;
-const confirmedTicketIds = new Set<string>();
 
-/** Names this process to the queue before its first GPU browser: its kind, and what other processes' waits call it. */
-export function declareStudioGpuJob(kind: StudioGpuJobKind, command: string): void {
-  studioGpuJob = { kind, command };
+/**
+ * Runs `run` as `job`: whatever it draws queues as `job`, and the GPU goes back when `run` ends, however it ends. Each
+ * entry point runs its whole command in one (cli/studio.ts, harness/run-harness-command.ts).
+ */
+export async function runAsStudioGpuJob<T>(job: StudioGpuJob, run: () => Promise<T>): Promise<T> {
+  studioGpuJob = job;
+  try {
+    return await run();
+  } finally {
+    giveBackStudioGpuLease(false);
+  }
 }
 
 /**
  * Waits for this process's turn on the GPU, unless it holds the lease already, printing its place in the queue each
- * time it changes; returns the seconds this call waited. The lease is kept until releaseStudioGpuLease or exit.
+ * time it changes; returns the seconds this call waited. The lease is kept until the job ends, releaseStudioGpuLease or
+ * exit.
  */
 export async function acquireStudioGpuLease(): Promise<number> {
   if (heldLease) return 0;
@@ -66,8 +68,14 @@ export async function acquireStudioGpuLease(): Promise<number> {
   return (performance.now() - asked) / 1000;
 }
 
-/** Gives the GPU back, and prints how long this process waited for it and drew, and whether anything drew beside it. */
-export function releaseStudioGpuLease({ atExit = false }: { atExit?: boolean } = {}): void {
+/**
+ * Gives the GPU back before the job ends, for a command whose last stretch doesn't draw (a render session's doneDrawing).
+ * It prints how long this process waited for the GPU and drew, and whether anything drew beside it.
+ */
+export const releaseStudioGpuLease = (): void => giveBackStudioGpuLease(false);
+
+/** Gives the lease back, printing the holder's summary, or leaves the queue. */
+function giveBackStudioGpuLease(atExit: boolean): void {
   if (heldLease && heldLease !== 'inside-parent') {
     const lease = heldLease;
     clearInterval(lease.sampler);
@@ -92,14 +100,13 @@ async function takeStudioGpuLease(): Promise<void> {
   mkdirSync(dir, { recursive: true });
   const arrived = Date.now();
   const ticket: StudioGpuTicket = {
-    id: `${arrived}-${process.pid}`, pid: process.pid, started: Math.round(performance.timeOrigin), arrived,
-    kind: studioGpuJob.kind, command: studioGpuJob.command, held: {},
+    id: `${arrived}-${process.pid}`, ...thisStudioProcess(), arrived, kind: studioGpuJob.kind, command: studioGpuJob.command, held: {},
   };
   const file = join(dir, `${ticket.id}.json`);
   writeStudioGpuTicket(file, ticket);
   queuedTicketFile = file;
   if (!releasesAtExit) {
-    process.on('exit', () => releaseStudioGpuLease({ atExit: true }));
+    process.on('exit', () => giveBackStudioGpuLease(true));
     releasesAtExit = true;
   }
   const granted = await askForStudioGpuSlots(file, ticket, '');
@@ -166,51 +173,19 @@ function readStudioGpuTicket(file: string): StudioGpuTicket | null {
 
 /** Every live ticket but `mine`. A dead process's ticket is removed as it's found. */
 function readOtherStudioGpuTickets(dir: string, mine: string): StudioGpuTicket[] {
-  return readdirSync(dir).flatMap((name) => {
+  const tickets = readdirSync(dir).flatMap((name) => {
     if (!name.endsWith('.json') || name === `${mine}.json`) return [];
     const file = join(dir, name), ticket = readStudioGpuTicket(file);
-    if (!ticket) return [];
-    if (studioGpuTicketProcessAlive(ticket)) return [ticket];
-    rmSync(file, { force: true });
-    return [];
+    return ticket ? [{ file, ticket }] : [];
   });
+  const live = new Set(runningStudioProcesses(tickets.map(({ ticket }) => ticket)));
+  for (const { file, ticket } of tickets) if (!live.has(ticket)) rmSync(file, { force: true });
+  return [...live];
 }
 
 /** Whether a parent holding the lease started this process (its ticket in the environment, holding all it needs). */
 function insideParentStudioGpuLease(): boolean {
   const file = process.env[STUDIO_GPU_PARENT_LEASE_ENV];
   const ticket = file ? readStudioGpuTicket(file) : null;
-  return ticket !== null && processRunning(ticket.pid) && studioGpuTicketRunning(ticket);
-}
-
-/** Whether the process that wrote `ticket` still runs: its pid is alive, and started when the ticket says. */
-function studioGpuTicketProcessAlive(ticket: StudioGpuTicket): boolean {
-  if (!processRunning(ticket.pid)) return false;
-  if (confirmedTicketIds.has(ticket.id)) return true;
-  const started = processStartedAt(ticket.pid);
-  if (started === null || Math.abs(started - ticket.started) > STUDIO_GPU_START_TOLERANCE_MS) return false;
-  confirmedTicketIds.add(ticket.id);
-  return true;
-}
-
-/** Signal 0 checks a pid without signalling it: ESRCH is no such process, EPERM one that isn't ours but runs. */
-function processRunning(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    // SAFETY: process.kill throws ErrnoExceptions.
-    return (error as NodeJS.ErrnoException).code === 'EPERM';
-  }
-}
-
-/** When `pid` started, ms since the epoch, as ps tells it (to the second); null once it's gone. */
-function processStartedAt(pid: number): number | null {
-  let started: string;
-  try {
-    started = execFileSync('ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' } }).trim();
-  } catch {
-    return null;
-  }
-  return started ? Date.parse(started) : null;
+  return ticket !== null && studioProcessRunning(ticket) && studioGpuTicketRunning(ticket);
 }

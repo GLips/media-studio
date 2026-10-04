@@ -69,13 +69,17 @@ export function studioProjectOfFile(file: string): string | null {
   return within.length && project !== '..' && !isAbsolute(project) ? join(STUDIO_PROJECTS_DIR, project) : null;
 }
 
+/** The folders a project's scenes live in, each a file per scene with its helpers in a folder of its name. */
+const PROJECT_SCENE_DIRS = ['scenes', 'bars'];
+
 /**
- * The painting sources (`*.painting.ts`) a project's scenes paint from, as paths inside it: each scene's, anywhere in
- * scenes/ or bars/, and those `shared` (its project.ts's) lists. A painting a tool keeps for itself isn't one.
+ * The files a project's scenes are made of, as sorted paths inside it: everything in scenes/ and bars/, however deep,
+ * and the `shared` modules its project.ts lists. A tool's files aren't among them.
  */
-export function listProjectPaintingSources(project: string, shared: readonly string[]): string[] {
-  const inScenes = ['scenes', 'bars'].flatMap((dir) => (existsSync(join(project, dir))
-    ? readdirSync(join(project, dir), { recursive: true, encoding: 'utf8' }).filter((file) => file.endsWith('.painting.ts')).map((file) => `${dir}/${file.split(sep).join('/')}`)
+export function listProjectSceneFiles(project: string, shared: readonly string[] = []): string[] {
+  const inScenes = PROJECT_SCENE_DIRS.flatMap((dir) => (existsSync(join(project, dir))
+    ? readdirSync(join(project, dir), { recursive: true, withFileTypes: true }).filter((entry) => entry.isFile())
+      .map((entry) => relative(project, join(entry.parentPath, entry.name)).split(sep).join('/'))
     : []));
-  return [...new Set([...inScenes, ...shared.filter((file) => file.endsWith('.painting.ts'))])].toSorted();
+  return [...new Set([...inScenes, ...shared])].toSorted();
 }

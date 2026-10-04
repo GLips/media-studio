@@ -24,7 +24,8 @@ import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { readProjectClock } from './project-clock.ts';
 import { renderVoiceOf } from '#lib/timing/voice/engine/voice-project.ts';
 import { wholeBrowserPageError } from '#lib/platform/browser/engine/browser-page-error.ts';
-import { inRenderBrowser, RENDER_CHROMIUM } from '#lib/platform/browser/engine/render-browser.ts';
+import { inRenderBrowser, RENDER_REMOTION_OPTIONS } from '#lib/platform/browser/engine/render-browser.ts';
+import { releaseStudioGpuLease } from '#lib/platform/gpu/engine/gpu-lease.ts';
 import type { MotionTracks } from '#lib/picture/measurement/models/motion-tracks.ts';
 import type { CompositionRenderSettings, ReplayProps, VideoProps } from '#lib/picture/video/models/composition-props.ts';
 import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
@@ -33,7 +34,7 @@ import type { LensMode } from '#lib/picture/lens/models/lens-mode.ts';
 export type RenderSession = Awaited<ReturnType<typeof openRenderSession>>;
 
 /** What a session fills in on every render: its own bundle, composition, browser and tab count. */
-type SessionRenderOptions = 'composition' | 'serveUrl' | 'chromiumOptions' | 'inputProps' | 'concurrency' | 'puppeteerInstance';
+type SessionRenderOptions = 'composition' | 'serveUrl' | 'chromiumOptions' | 'timeoutInMilliseconds' | 'inputProps' | 'concurrency' | 'puppeteerInstance';
 
 /** What renderVideo decides itself: the codec, the file, the frames (every one, as its snapshot says) and the sound. */
 type VideoRenderOptions = SessionRenderOptions | 'codec' | 'outputLocation' | 'frameRange' | 'everyNthFrame' | 'muted' | 'audioCodec' | 'separateAudioTo';
@@ -90,7 +91,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   const silent = (await readProjectDeclaration(project))?.capability === 'silent';
   const props = (p: Partial<VideoProps> = {}): VideoProps => ({ captions: false, probe: false, blockouts: false, lens, ...p });
   const selectIn = (inputProps: VideoProps, browser: HeadlessBrowser) =>
-    selectComposition({ serveUrl, chromiumOptions: RENDER_CHROMIUM, id: projectSlug(project), inputProps, puppeteerInstance: browser });
+    selectComposition({ serveUrl, ...RENDER_REMOTION_OPTIONS, id: projectSlug(project), inputProps, puppeteerInstance: browser });
   /** The composition at `inputProps`, in `browser`, or with none in a render browser of its own, under the GPU lease. */
   async function compositionFor(inputProps: VideoProps, browser?: HeadlessBrowser): Promise<VideoConfig> {
     if (browser) return selectIn(inputProps, browser).catch((error: Error) => Promise.reject(wholeBrowserPageError(error)));
@@ -136,7 +137,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   async function renderFrameImages(dir: string, composition: VideoConfig, inputProps: Record<string, unknown>, frames: number[], browser: HeadlessBrowser, { w = composition.width, concurrency = workersFor(composition), lossless = false } = {}) {
     mkdirSync(dir, { recursive: true });
     await renderFrames({
-      composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, puppeteerInstance: browser, inputProps, outputDir: dir, scale: w / composition.width, frames,
+      composition, serveUrl, ...RENDER_REMOTION_OPTIONS, puppeteerInstance: browser, inputProps, outputDir: dir, scale: w / composition.width, frames,
       ...(lossless ? { imageFormat: 'png' } : { imageFormat: 'jpeg', jpegQuality: 90 }),
       concurrency, imageSequencePattern: 'f-[frame].[ext]', onStart: () => {}, onFrameUpdate: () => {},
     });
@@ -168,7 +169,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   function renderReplay(dir: string, order: number[]) {
     const inputProps: ReplayProps = { ...props(), order };
     return inBrowser('replay', async (browser) => {
-      const composition = await selectComposition({ serveUrl, chromiumOptions: RENDER_CHROMIUM, puppeteerInstance: browser, id: replaySlug(project), inputProps });
+      const composition = await selectComposition({ serveUrl, ...RENDER_REMOTION_OPTIONS, puppeteerInstance: browser, id: replaySlug(project), inputProps });
       return renderFrameImages(dir, composition, inputProps, order.map((_, i) => i), browser, { concurrency: 1, lossless: true });
     });
   }
@@ -181,7 +182,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
     return inBrowser(pass, async (browser) => {
       const composition = await compositionFor(inputProps, browser), concurrency = Math.min(workersFor(composition), frames.length);
       await withStudioTemp('measure', (outputDir) => renderFrames({
-        composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, puppeteerInstance: browser, inputProps, outputDir, concurrency,
+        composition, serveUrl, ...RENDER_REMOTION_OPTIONS, puppeteerInstance: browser, inputProps, outputDir, concurrency,
         imageFormat: 'none', frames, onArtifact, onStart: () => {}, onFrameUpdate: () => {},
       }));
       return { result: composition, workers: concurrency };
@@ -222,7 +223,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
             if (framesDrawn === undefined && progress.renderedFrames === count) framesDrawn = performance.now();
             onProgress?.(progress);
           },
-          composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, puppeteerInstance: browser, concurrency, inputProps, codec: 'h264',
+          composition, serveUrl, ...RENDER_REMOTION_OPTIONS, puppeteerInstance: browser, concurrency, inputProps, codec: 'h264',
           outputLocation: picture, muted, ...(sound && { separateAudioTo: sound }), ...(frames && { frameRange: [frames.from, frames.end - 1] }),
         });
         return composition;
@@ -257,7 +258,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
       const { fps, durationInFrames } = await inBrowser(`${basename(webm)} frames`, async (browser) => {
         const composition = await compositionFor(inputProps, browser), concurrency = workersFor(composition);
         await renderFrames({
-          composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, puppeteerInstance: browser, concurrency, inputProps, outputDir: tmp, imageFormat: 'png',
+          composition, serveUrl, ...RENDER_REMOTION_OPTIONS, puppeteerInstance: browser, concurrency, inputProps, outputDir: tmp, imageFormat: 'png',
           imageSequencePattern: 'f-[frame].[ext]', ...(onArtifact && { onArtifact }), onStart: () => {},
           onFrameUpdate: (rendered) => onProgress?.({ progress: rendered / composition.durationInFrames }),
         });
@@ -289,7 +290,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   async function renderAudio({ out, inputProps = props() }: { out: string; inputProps?: VideoProps }): Promise<string> {
     await inBrowser('sound', async (browser) => {
       const composition = await compositionFor(inputProps, browser), concurrency = workersFor(composition);
-      await renderMedia({ composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, puppeteerInstance: browser, concurrency, inputProps, codec: 'wav', outputLocation: out });
+      await renderMedia({ composition, serveUrl, ...RENDER_REMOTION_OPTIONS, puppeteerInstance: browser, concurrency, inputProps, codec: 'wav', outputLocation: out });
       return { result: undefined, workers: concurrency };
     });
     return out;
@@ -302,7 +303,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
       const composition = await compositionFor(inputProps, browser), concurrency = workersFor(composition);
       await renderFrames({
         onStart: () => {}, onFrameUpdate: () => {}, ...options,
-        composition, serveUrl, chromiumOptions: RENDER_CHROMIUM, puppeteerInstance: browser, concurrency, inputProps,
+        composition, serveUrl, ...RENDER_REMOTION_OPTIONS, puppeteerInstance: browser, concurrency, inputProps,
       });
       return { result: undefined, workers: concurrency };
     });
@@ -311,6 +312,11 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   return {
     project, serveUrl, clock, silent, lens, opened, passes, props, compositionFor, workersFor, timed, inBrowser,
     renderStills, renderReplay, measureFrames, readTimeline, renderVideo, renderTransparentVideo, renderAudio, renderFrameFiles,
+    /**
+     * Gives the GPU back to the queue before the command ends, for a stretch that doesn't draw (a paid generation's
+     * minutes). A render after it queues again.
+     */
+    doneDrawing: releaseStudioGpuLease,
   };
 }
 

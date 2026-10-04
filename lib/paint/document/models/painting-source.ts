@@ -13,6 +13,9 @@ import {
 import type { PaintingStyleCatalogue } from './painting-styles.ts';
 import type { PaintingTree } from './painting-tree.ts';
 
+/** What a painting source's file name ends in: `meadow.painting.ts`. */
+export const PAINTING_SOURCE_SUFFIX = '.painting.ts';
+
 /**
  * Pure: reads only `values` and imports. No clock, engine state or unseeded randomness; module-level constants and
  * pure memos are fine.

@@ -4,7 +4,7 @@
 import { defineCommand, runCommand, runMain } from 'citty';
 import { existsSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { declareStudioGpuJob, releaseStudioGpuLease } from '#lib/platform/gpu/engine/gpu-lease.ts';
+import { runAsStudioGpuJob } from '#lib/platform/gpu/engine/gpu-lease.ts';
 import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
 import { studioTempRoot } from '#lib/platform/temp/engine/studio-temp.ts';
 
@@ -63,16 +63,14 @@ function warnIfInAnotherStudio() {
 const INTERACTIVE_GPU_VERBS: ReadonlySet<string> = new Set(['look', 'still', 'paint']);
 
 const rawArgs = process.argv.slice(2);
-declareStudioGpuJob(INTERACTIVE_GPU_VERBS.has(rawArgs[0]) ? 'interactive' : 'batch', ['studio', ...rawArgs].join(' '));
 const wantsUsage = rawArgs.length === 0 || rawArgs.some((a) => a === '--help' || a === '-h') || (rawArgs.length === 1 && (rawArgs[0] === '--version' || rawArgs[0] === '-v'));
 // runMain prints help and the version, but prints any other error with its stack; a failed command is one line.
 if (wantsUsage) {
   await runMain(studioCommand, { rawArgs });
 } else {
   try {
-    await runCommand(studioCommand, { rawArgs });
-    // A command that drew gives the GPU back now, not whenever its last handle lets the process end.
-    releaseStudioGpuLease();
+    const gpuJob = { kind: INTERACTIVE_GPU_VERBS.has(rawArgs[0]) ? 'interactive' : 'batch', command: ['studio', ...rawArgs].join(' ') } as const;
+    await runAsStudioGpuJob(gpuJob, () => runCommand(studioCommand, { rawArgs }));
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`, () => process.exit(1));
   }

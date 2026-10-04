@@ -1,10 +1,10 @@
 // ─── The studio's temp space: one root per process, removed however it ends ───
 //
-// Every temp folder the studio makes lives under <tmpdir>/media-studio/<pid>/. The root is made on first use and
-// removed on exit, SIGINT and SIGTERM; a step's own folder (withStudioTemp) goes in a finally, so a step that
-// throws leaves nothing even in a long-lived server. A kill -9 can't be caught, so making a root first sweeps its
-// siblings whose pid is no longer running. The structural check studio-temp refuses mkdtempSync and tmpdir()
-// anywhere else, so this is the only way in.
+// Every temp folder the studio makes lives under <tmpdir>/media-studio/<pid>-<started>/, named by its process's
+// identity (lib/platform/process). The root is made on first use and removed on exit, SIGINT and SIGTERM; a step's own
+// folder (withStudioTemp) goes in a finally, so a step that throws leaves nothing even in a long-lived server. A kill -9
+// can't be caught, so making a root first sweeps its siblings whose process no longer runs. The structural check
+// studio-temp refuses mkdtempSync and tmpdir() anywhere else, so this is the only way in.
 //
 // Negative space: Remotion's own remotion-v4.*-assets* folders sit in the temp dir beside this root, not under it;
 // they're Remotion's to clean.
@@ -12,8 +12,9 @@
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { parseStudioProcessName, runningStudioProcesses, studioProcessName, thisStudioProcess } from '#lib/platform/process/engine/studio-process.ts';
 
-/** Where every studio process keeps its root, one folder per pid. */
+/** Where every studio process keeps its root, one folder per process. */
 const STUDIO_TEMP_HOME = join(tmpdir(), 'media-studio');
 
 let processRoot: string | undefined;
@@ -25,7 +26,7 @@ let processRoot: string | undefined;
 export function studioTempRoot(): string {
   if (processRoot) return processRoot;
   sweepDeadStudioTempRoots();
-  const root = join(STUDIO_TEMP_HOME, String(process.pid));
+  const root = join(STUDIO_TEMP_HOME, studioProcessName(thisStudioProcess()));
   mkdirSync(root, { recursive: true });
   const remove = () => rmSync(root, { recursive: true, force: true });
   process.once('exit', remove);
@@ -59,22 +60,17 @@ export function withStudioTemp<T>(prefix: string, step: (dir: string) => T): T {
   return result;
 }
 
-/** Removes every other process's root whose pid is no longer running: what a crash or kill -9 left behind. */
+/**
+ * Removes every other process's root whose process no longer runs: what a crash or kill -9 left behind. A folder not
+ * named by a process's identity isn't a root, and is left alone.
+ */
 function sweepDeadStudioTempRoots() {
   if (!existsSync(STUDIO_TEMP_HOME)) return;
-  for (const name of readdirSync(STUDIO_TEMP_HOME)) {
-    const pid = Number(name);
-    if (!Number.isInteger(pid) || pid === process.pid || isRunning(pid)) continue;
-    rmSync(join(STUDIO_TEMP_HOME, name), { recursive: true, force: true });
-  }
-}
-
-/** Signal 0 checks a pid without signalling it: ESRCH is no such process, EPERM one that isn't ours but runs. */
-function isRunning(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'EPERM';
-  }
+  const mine = studioProcessName(thisStudioProcess());
+  const roots = readdirSync(STUDIO_TEMP_HOME).flatMap((name) => {
+    const identity = parseStudioProcessName(name);
+    return identity && name !== mine ? [{ ...identity, name }] : [];
+  });
+  const running = new Set(runningStudioProcesses(roots).map(({ name }) => name));
+  for (const { name } of roots) if (!running.has(name)) rmSync(join(STUDIO_TEMP_HOME, name), { recursive: true, force: true });
 }

@@ -10,16 +10,17 @@ import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 
 const LEASE_MODULE = new URL('./gpu-lease.ts', import.meta.url).href;
 
-/** A process that takes the lease as `kind`, prints `granted`, and holds it until its stdin ends. */
+/** A process whose job, of `kind`, takes the lease, prints `granted`, and ends with its stdin. */
 function spawnLeaseHolder(dir: string, kind: 'interactive' | 'batch' | 'exclusive', command: string) {
   // Never inside a lease this test's runner might hold.
   const env = { ...Object.fromEntries(Object.entries(process.env).filter(([name]) => name !== 'STUDIO_GPU_LEASE_TICKET')), STUDIO_GPU_LEASE_DIR: dir };
   const child = spawn(process.execPath, ['--input-type=module', '-e', [
-    `import { acquireStudioGpuLease, declareStudioGpuJob } from ${JSON.stringify(LEASE_MODULE)};`,
-    `declareStudioGpuJob(${JSON.stringify(kind)}, ${JSON.stringify(command)});`,
-    'await acquireStudioGpuLease();',
-    "console.log('granted');",
-    "process.stdin.on('end', () => process.exit(0)).resume();",
+    `import { acquireStudioGpuLease, runAsStudioGpuJob } from ${JSON.stringify(LEASE_MODULE)};`,
+    `await runAsStudioGpuJob(${JSON.stringify({ kind, command })}, async () => {`,
+    '  await acquireStudioGpuLease();',
+    "  console.log('granted');",
+    "  await new Promise((ended) => process.stdin.on('end', ended).resume());",
+    '});',
   ].join('\n')], { env, stdio: ['pipe', 'pipe', 'pipe'] });
   const said = { out: '', err: '' };
   child.stdout.on('data', (chunk: Buffer) => { said.out += chunk; });

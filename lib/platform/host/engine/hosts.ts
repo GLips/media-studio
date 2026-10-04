@@ -7,19 +7,19 @@
 //                               `./host/src/components/Button.tsx` and tsc and webpack follow it like any file
 //
 // A working copy named in hosts.local.json is used as it stands, dirty or not. Otherwise the ref is checked out from
-// one shared partial clone into a worktree per commit. The cache ($XDG_CACHE_HOME/studio/hosts) must sit outside the
-// studio tree: a host's own tooling walks up for node_modules and would pick up the studio's.
+// one shared partial clone into a worktree per commit, in the studio's user cache, outside the studio tree: a host's
+// own tooling walks up for node_modules and would pick up the studio's.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, readFileSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, isAbsolute, join } from 'node:path';
+import { studioUserCacheDir } from '#lib/platform/temp/engine/studio-user-cache.ts';
 import { projectHostLink, readProjectHostSpec, type ProjectHostSpec } from './project-host-spec.ts';
 
 export type { ProjectHostSpec };
 import { listStudioProjects, STUDIO_PROJECTS_DIR, STUDIO_WORKSPACE_DIR } from '#lib/platform/project/engine/studio-project.ts';
 
-const XDG_CACHE_HOME = process.env.XDG_CACHE_HOME;
-const HOST_CHECKOUTS_DIR = join(XDG_CACHE_HOME && isAbsolute(XDG_CACHE_HOME) ? XDG_CACHE_HOME : join(homedir(), '.cache'), 'studio', 'hosts');
+const HOST_CHECKOUTS_DIR = studioUserCacheDir('hosts');
 
 type HostRepos = Record<string, { repo: string }>;
 type HostWorkingCopies = Record<string, string>;

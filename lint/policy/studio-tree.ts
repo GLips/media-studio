@@ -108,8 +108,9 @@ export const LIB_LAYERS: readonly LibLayer[] = [
   {
     name: 'platform',
     features: [
-      'platform/temp', 'platform/git', 'platform/zip', 'platform/wav', 'platform/ffmpeg', 'platform/raster', 'platform/paid-generation',
-      'platform/photoshop', 'platform/project', 'platform/host', 'platform/web', 'platform/browser', 'platform/gpu',
+      'platform/process', 'platform/temp', 'platform/git', 'platform/zip', 'platform/wav', 'platform/ffmpeg', 'platform/raster',
+      'platform/paid-generation', 'platform/photoshop', 'platform/project', 'platform/host', 'platform/web', 'platform/browser',
+      'platform/gpu',
     ],
   },
   { name: 'vocabulary', features: ['picture/frame', 'picture/motion', 'picture/type', 'picture/color', 'picture/shot-camera', 'picture/lens'] },

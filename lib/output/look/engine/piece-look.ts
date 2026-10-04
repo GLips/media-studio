@@ -1,30 +1,20 @@
 // piece-look.ts: `studio look --graph=models`. Loads a timed project's scene models (`bars/<id>-model.ts`,
 // `scenes/<id>-model.ts`, or one inside a scene's folder), binds each `definePieceTracks` to its scene's clock from
 // timeline.ts, and samples its pieces over the frames asked: a table a piece and a graph, with no render.
-import { existsSync, readdirSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { rasterizeSvgs } from '#lib/platform/raster/engine/html-raster.ts';
+import { listProjectSceneFiles } from '#lib/platform/project/engine/studio-project.ts';
 import { readProjectTimeline } from '#lib/output/render/engine/project-clock.ts';
 import { buildPieceGraph } from '#lib/output/picture-checks/models/piece-graph.ts';
 import { formatPieceTables, isPieceTracksDefinition, samplePieceTracks, type PieceTracksDefinition } from '#lib/picture/measurement/models/piece-tracks.ts';
 import { videoFormatOf, type VideoDef } from '#lib/picture/video/studio/video.ts';
 
-const SCENE_DIRS = ['bars', 'scenes'];
 const MODEL_FILE = /-model\.ts$/;
 
 /** Every scene model file in `project`: beside its scene file, or in its scene's folder. */
-function sceneModelFiles(project: string): string[] {
-  return SCENE_DIRS.flatMap((dir) => {
-    const root = join(project, dir);
-    if (!existsSync(root)) return [];
-    return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
-      if (entry.isFile()) return MODEL_FILE.test(entry.name) ? [join(root, entry.name)] : [];
-      if (!entry.isDirectory()) return [];
-      return readdirSync(join(root, entry.name)).filter((name) => MODEL_FILE.test(name)).map((name) => join(root, entry.name, name));
-    });
-  }).toSorted();
-}
+const sceneModelFiles = (project: string) => listProjectSceneFiles(project).filter((file) => MODEL_FILE.test(file)).map((file) => join(project, file));
 
 /**
  * Samples every piece track of `project`'s scene models over `frames` (those of `tracks`, ids or parts of them, if

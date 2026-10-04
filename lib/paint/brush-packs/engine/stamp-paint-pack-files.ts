@@ -9,6 +9,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { closeSync, existsSync, linkSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
+import { parseStudioProcessName, studioProcessName, studioProcessRunning, thisStudioProcess, type StudioProcessIdentity } from '#lib/platform/process/engine/studio-process.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { readStampPaintPack, STAMP_PAINT_PACK_MANIFEST, type StampPaintPack } from '../models/stamp-paint-pack.ts';
 
@@ -87,17 +88,14 @@ export function fitWithin(width: number, height: number, max: number) {
 /** A filesystem error's code (ENOENT, EEXIST…); undefined for anything else thrown. */
 const fsErrorCode = (error: unknown) => (error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : undefined);
 
-/** Whether process `pid` still runs; signal 0 only asks. */
-function processAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return fsErrorCode(error) === 'EPERM';
-  }
+/**
+ * The import holding a lock whose text is `text` (`<pid>-<started> <uuid>`), while it runs; undefined once it's gone,
+ * and for a lock naming no process.
+ */
+function runningLockHolder(text: string): StudioProcessIdentity | undefined {
+  const holder = parseStudioProcessName(text.split(' ')[0]);
+  return holder && studioProcessRunning(holder) ? holder : undefined;
 }
-
-const lockHolder = (text: string) => Number(text.split(' ')[0]);
 
 /**
  * Takes `lock` from a dead holder, or says who holds it. Renamed away first, so of two takers one rename wins and the
@@ -112,7 +110,8 @@ function takeOverStaleStampPackLock(lock: string, pack: string) {
     if (fsErrorCode(error) === 'ENOENT') return;
     throw error;
   }
-  if (processAlive(lockHolder(text))) throw new Error(`brushes import: process ${lockHolder(text)} is importing into ${pack} now (${lock})`);
+  const holding = runningLockHolder(text);
+  if (holding) throw new Error(`brushes import: process ${holding.pid} is importing into ${pack} now (${lock})`);
   const taken = `${lock}.stale-${randomUUID()}`;
   try {
     renameSync(lock, taken);
@@ -120,14 +119,14 @@ function takeOverStaleStampPackLock(lock: string, pack: string) {
     if (fsErrorCode(error) === 'ENOENT') return;
     throw error;
   }
-  const holder = lockHolder(readFileSync(taken, 'utf8'));
-  if (processAlive(holder)) {
+  const holder = runningLockHolder(readFileSync(taken, 'utf8'));
+  if (holder) {
     try {
       linkSync(taken, lock);
     } finally {
       rmSync(taken, { force: true });
     }
-    throw new Error(`brushes import: process ${holder} is importing into ${pack} now (${lock})`);
+    throw new Error(`brushes import: process ${holder.pid} is importing into ${pack} now (${lock})`);
   }
   rmSync(taken, { force: true });
 }
@@ -139,7 +138,7 @@ function takeOverStaleStampPackLock(lock: string, pack: string) {
  */
 async function withStampPackLock<T>(brushesDir: string, pack: string, body: () => Promise<T>): Promise<T> {
   mkdirSync(brushesDir, { recursive: true });
-  const lock = join(brushesDir, `.${pack}.lock`), mine = `${process.pid} ${randomUUID()}`;
+  const lock = join(brushesDir, `.${pack}.lock`), mine = `${studioProcessName(thisStudioProcess())} ${randomUUID()}`;
   for (;;) {
     try {
       writeFileSync(lock, mine, { flag: 'wx' });

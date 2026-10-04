@@ -5,7 +5,7 @@ import { studioProjectArg } from '../project-arg.ts';
 const syncHostsCommand = defineCommand({
   meta: {
     name: 'sync',
-    description: "Check out the project's host at the ref in its host.json into ~/.cache/studio/hosts (or use the working copy hosts.local.json names) and link it at <project>/host, which scenes import as @host/…. Prints the host as JSON.",
+    description: "Check out the project's host at the ref in its host.json into ~/.cache/media-studio/hosts (or use the working copy hosts.local.json names) and link it at <project>/host, which scenes import as @host/…. Prints the host as JSON.",
   },
   args: {
     project: studioProjectArg,

@@ -70,7 +70,7 @@ Every paid request is cached by its inputs in the project's `generated/`, so ask
 - **A product repo** a video shows real components from is a host. `work/hosts.json` maps a name to
   `{ "repo": "<git url>" }`; `work/hosts.local.json` (ignored) maps it to a working copy on this machine instead, used as
   it stands. A project opts in with `host.json` `{ "name", "ref", "browserStubs"? }`, and `studio hosts sync <project>`
-  checks the ref out under `~/.cache/studio/hosts/` and links it at `<project>/host`. A scene imports
+  checks the ref out under `~/.cache/media-studio/hosts/` and links it at `<project>/host`. A scene imports
   `@host/<path from the host root>`; tsc types it `any`, so `studio look` is the check. Plain CSS and CSS modules load;
   Tailwind/PostCSS doesn't.
 

@@ -8,7 +8,7 @@
 // The profiled render also logs what drawing code counts it cost (solves, cache hits); `--costs` tables them.
 import { renderFrames, type HeadlessBrowser } from '@remotion/renderer';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
-import { RENDER_CHROMIUM } from '#lib/platform/browser/engine/render-browser.ts';
+import { RENDER_REMOTION_OPTIONS } from '#lib/platform/browser/engine/render-browser.ts';
 import type { RenderSession } from './render-session.ts';
 import { frameCostsTable } from '#lib/picture/profiling/models/frame-costs-table.ts';
 import {
@@ -49,7 +49,7 @@ export async function profileFrames(session: RenderSession, { from, end }: { fro
     const composition = await session.compositionFor(profiled, browser);
     if (end > composition.durationInFrames) throw new Error(`the video has frames 0–${composition.durationInFrames - 1}`);
     await withStudioTemp('profile', (outputDir) => renderFrames({
-      composition, serveUrl: session.serveUrl, chromiumOptions: RENDER_CHROMIUM, puppeteerInstance: browser, inputProps: profiled, outputDir,
+      composition, serveUrl: session.serveUrl, ...RENDER_REMOTION_OPTIONS, puppeteerInstance: browser, inputProps: profiled, outputDir,
       // Quiet, so the entries are read, not echoed (frame-profiler.tsx says how they're logged to allow it).
       concurrency: 1, imageFormat: 'none', frames, logLevel: 'error', onStart: () => {}, onFrameUpdate: () => {},
       onBrowserLog: ({ text }) => {
@@ -66,7 +66,7 @@ export async function profileFrames(session: RenderSession, { from, end }: { fro
     const composition = await session.compositionFor(inputProps, browser);
     const arrived: number[] = [];
     await withStudioTemp('profile', (outputDir) => renderFrames({
-      composition, serveUrl: session.serveUrl, chromiumOptions: RENDER_CHROMIUM, puppeteerInstance: browser, inputProps, outputDir,
+      composition, serveUrl: session.serveUrl, ...RENDER_REMOTION_OPTIONS, puppeteerInstance: browser, inputProps, outputDir,
       concurrency: tabs, imageFormat: 'jpeg', frames, onStart: () => {}, onFrameUpdate: () => arrived.push(performance.now()),
     }));
     // Every tab loads on its first frame; those frames arrive first, and the rest are the steady state.

@@ -288,8 +288,7 @@
       "return { result: result as T, restore };": 1
     },
     "lib/platform/temp/engine/studio-temp.ts": {
-      "if (result instanceof Promise) return result.finally(remove) as T;": 1,
-      "return (error as NodeJS.ErrnoException).code === 'EPERM';": 1
+      "if (result instanceof Promise) return result.finally(remove) as T;": 1
     },
     "lib/timing/sound/engine/sfx-files.ts": {
       "return [writeSfxFile(JSON.parse(request) as SfxRequest, join(dir, file.replace(/\\.ts$/, '.wav'))).module];": 1,
