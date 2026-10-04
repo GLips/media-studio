@@ -1,7 +1,7 @@
 // stamp-gate-rainy-street-page.ts: the gate page's rainy street (stamp-gate-rainy-street.ts, ENGINE test 5), drawn
 // through the shot's renderer (stamp-gate-shot-frames.ts), its cost report read frame by frame: a warmed span costing
-// nothing, the lamp's property step, a repeated pose, and the walker re-solving every frame while the street's prefix
-// steps on sixes.
+// nothing, the lamp's property step, the reflection unsolved until it fades in, a repeated pose, and the walker
+// re-solving every frame while the street's prefix steps on sixes.
 
 import type { StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
@@ -23,6 +23,11 @@ const frameOf = (t: number) => Math.round(t * PAINT_ANIMATION_FPS - 0.5);
 /** The street's first application of the walker's: where a pose of it re-solves the sheet from. */
 const WALKER_ENTRY = 'figure-body';
 
+/** The reflection's one application: where its plane's first solve starts. */
+const REFLECTION_ENTRY = 'reflection-streak';
+
+const hiddenSkipped = (costs: StampPaintCosts) => costs.counts.get('hidden planes skipped') ?? 0;
+
 /**
  * Warmed over a span of one street hold, the walker still, frames in it moving only the camera, the rain, the sky's
  * `k` and the reflection's visibility evaluate nothing and solve nothing.
@@ -38,13 +43,21 @@ async function checkWarmed(): Promise<StampGateWashCheck> {
   };
 }
 
-/** The lamp lit by its property step re-solves the street from the first entry the step changes, as the diff reads it. */
-async function checkLampStep(): Promise<StampGateWashCheck> {
-  const { costs } = await stampGateShotFrames(stampGateRainyStreetShot(), STAMP_GATE_RAINY_STREET_AT.lamp), lit = solvedFrom(costs[1]), step = stampGateRainyStreetLampStep();
-  return {
-    id: 'shot/rainy-street: lamp step', passed: lit.length === 1 && lit[0] === step,
-    detail: `the frame the lamp lights at solved ${fromText(lit)}; its diff's first changed entry on the street is ${step}`,
-  };
+/**
+ * The lamp lit by its property step re-solves the street from the first entry the step changes, as the diff reads it.
+ * The reflection, faded out the frame before, is skipped there, and solved first at the lamp's frame as it fades in.
+ */
+async function checkLampStep(): Promise<StampGateWashCheck[]> {
+  const { costs } = await stampGateShotFrames(stampGateRainyStreetShot(), STAMP_GATE_RAINY_STREET_AT.lamp), step = stampGateRainyStreetLampStep();
+  const [before, lit] = costs.map(solvedFrom), street = lit.filter((from) => from !== REFLECTION_ENTRY), [hiddenBefore, hiddenLit] = costs.map(hiddenSkipped);
+  const reflected = (froms: readonly string[]) => froms.filter((from) => from === REFLECTION_ENTRY).length;
+  return [{
+    id: 'shot/rainy-street: lamp step', passed: street.length === 1 && street[0] === step,
+    detail: `the frame the lamp lights at solved the street ${fromText(street)}; its diff's first changed entry on the street is ${step}`,
+  }, {
+    id: 'shot/rainy-street: hidden reflection', passed: hiddenBefore === 1 && reflected(before) === 0 && hiddenLit === 0 && reflected(lit) === 1,
+    detail: `faded out, the frame before the lamp skipped ${hiddenBefore} hidden planes and solved the reflection ${reflected(before)} times (1 and 0 wanted); fading in at the lamp's, ${hiddenLit} and ${reflected(lit)} times (0 and 1 wanted)`,
+  }];
 }
 
 /** The walker forward a step and back within one hold of the street's source: the pose it comes back to solves nothing. */
@@ -79,5 +92,5 @@ async function checkWalking(): Promise<StampGateWashCheck> {
 
 /** The rainy street's checks. */
 export async function checkStampGateRainyStreet(): Promise<StampGateWashCheck[]> {
-  return [await checkWarmed(), await checkLampStep(), await checkRepeatedPose(), await checkWalking()];
+  return [await checkWarmed(), ...(await checkLampStep()), await checkRepeatedPose(), await checkWalking()];
 }

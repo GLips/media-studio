@@ -593,7 +593,9 @@ A card is cut round its sheet's films, each counted as far as it shows (its laye
 below the owner; a cel a rig hides, not at all), so a view switched off takes its paper, as a pieces rig's hidden
 cels do: a composite's card counts the films its steps lay on its sheet (`StampSheetsComposite.cardFilms`).
 `studio/shot-renderer.ts` solves each painted plane once a frame (`studio/shot-painted-plane.ts`,
-through `painting-sheets-solve.ts`), each selection a dissolve blends on its own; then each exposure orders its drawables (`shot-plan.ts`) and plans each plane's
+through `painting-sheets-solve.ts`), each selection a dissolve blends on its own, if it shows at one of the frame's
+exposures (`shot-shown.ts`; the opaque back always does, a variant as its instanced plane does): one faded to nothing
+lays nothing and covers nothing for a mask, which reads it as no coverage; then each exposure orders its drawables (`shot-plan.ts`) and plans each plane's
 moment purely (`shotPlaneLayPlan`, `shot-sheet-lays.ts`): its steps through lattices (`shot-lattice.ts`), its ground,
 its pieces rigs posed, the spans of the occurrences faded apart, groups and own sheets' owners (`shot-visibility.ts`), and a
 key naming all of it. `studio/shot-sheets-lay.ts` lays it over `stamp-lattice-pass.ts`: ground, then each card and
@@ -648,8 +650,8 @@ Visibility's keys and range, and the occurrences faded apart (`shot-visibility.t
 and so are `warm` and the cost report.
 A warm (`shot-warm.ts`) solves each painted plane and variant before the first frame at the first of the span's
 frames to pair each set of moments on its source and plane clocks (`shotWarmCombinations` over `shotPlaneClocks`;
-node clocks run inside the plane's), only the frames its scene shows, each solve let go to the cache; a solve reads
-no lay, so a pinned plane warms unlaid. It stops between solves once its scene is disposed. `PaintedShot` holds the
+node clocks run inside the plane's), only the frames its scene shows and the plane shows at, in the render's lens
+mode (`shotWarmShown`), each solve let go to the cache; a solve reads no lay, so a pinned plane warms unlaid. It stops between solves once its scene is disposed. `PaintedShot` holds the
 render once for its load and warm and once a frame, while each makes progress (the page's two-hour ceiling,
 `RENDER_TIMEOUT_MS`, is only a backstop): its watch (`shot-watch.ts`) cancels a hold once nothing has moved for 90 s,
 no solve finished and no GPU check settled, naming the shot, the solve it was in and where (the warm, or the frame's
@@ -660,7 +662,7 @@ or more, logs a line the render prints, and other progress a pulse, so the rende
 overlap on one device (shares, planes, canvases, textures, three sources) run through `gpuEachInTurn`
 (`platform/gpu/models/gpu-in-turn.ts`). The renderer counts evictions and bytes uploaded (every write and image copy
 to the owner's queue, three.js's too) around each draw and warm, and the bytes the cache keeps after it, its targets
-apart; the
+apart; the planes a frame or warm leaves hidden are counted as skipped. The
 evaluations a callback source makes or finds memoised are the change in `paintingEvaluationCounts()` across its
 synchronous read. The cost report's counts are painting's (`painting/models/stamp-paint-costs.ts`, one set of names the document,
 solver, caches and shot all count into); the shot logs a frame's and a warm's under its labels

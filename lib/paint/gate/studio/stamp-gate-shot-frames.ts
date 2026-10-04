@@ -53,7 +53,7 @@ export async function stampGateShotFrames(props: PaintedShotProps, draws: readon
   if (!shot) throw paintingProblemsError('stamp gate shot', problems);
   const canvas = createShotCanvasElements(), tally = createStampPaintCostTally();
   return withGateShotRenderer(shot, [canvas], async (renderer) => {
-    await renderer.warm({ fps: STAMP_GATE_SHOT_FPS, sceneDur: null });
+    await renderer.warm({ fps: STAMP_GATE_SHOT_FPS, sceneDur: null, mode: 'fast' });
     const warm = tally.take(), costs: StampPaintCosts[] = [];
     const frames = await gpuEachInTurn(draws, async (draw) => {
       const { t, mode } = typeof draw === 'number' ? { t: draw, mode: 'fast' as const } : draw;

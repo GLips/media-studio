@@ -57,7 +57,7 @@ export function shotItemsCoverages(
   const coverage = (plane: CompiledShotInstancedPlane): ShotItemsCoverage => {
     const lookOf = (item: PlaneInstance) => items.lookOf(plane.id, item), shown = (items.items.get(plane.id) ?? []).filter((item) => lookOf(item).visibility > 0);
     const key = JSON.stringify([
-      [...plane.variants.values()].map((variant) => variantMoments.get(variant)!.shares.map(({ plan }) => plan.key)),
+      [...plane.variants.values()].map((variant) => variantMoments.get(variant)?.shares.map(({ plan }) => plan.key) ?? null),
       shown.map((item) => {
         const { view, visibility } = lookOf(item);
         return [item.variant, view.ma, view.mb, view.kx, view.ky, visibility];
@@ -69,7 +69,8 @@ export function shotItemsCoverages(
       // Alpha laid over alpha is the same in any order, so a variant's items can go together.
       const layers = [...plane.variants.values()].flatMap((variant) => {
         const step = { kind: 'items', plane: plane.id, variant: variant.name, sigma: 0, items: shown.filter((item) => item.variant === variant.name) } as const;
-        const laid = step.items.length ? shotItemsLayer(encoder, lens, planes, stage, variantMoments.get(variant)!, step, lookOf) : null;
+        // A variant whose plane is hidden at every exposure of the frame wasn't solved: it has no moment and covers nothing.
+        const moment = variantMoments.get(variant), laid = step.items.length && moment ? shotItemsLayer(encoder, lens, planes, stage, moment, step, lookOf) : null;
         return laid ? [laid] : [];
       });
       lens.cover(encoder, layers, { view: texture.createView(), size, at });

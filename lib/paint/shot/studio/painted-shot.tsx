@@ -127,7 +127,7 @@ export function PaintedShot({ shot, t, box: given, children }: { readonly shot: 
     if (ownHost) holder.current!.prepend(ownHost);
     const own = ownHost && placeShotCanvas(ownHost), elements = own ? [own] : named.map(([canvas]) => canvas);
     const name = shotWatchName(holder.current!.closest<HTMLElement>('[data-scene]')?.dataset.scene ?? null, shot.planes.map(({ id }) => id));
-    const context = { holder: holder.current!, pinsMoved: layoutMoved, fps, sceneDur, report, name, pictureDrawn };
+    const context = { holder: holder.current!, pinsMoved: layoutMoved, fps, sceneDur, lensMode, report, name, pictureDrawn };
     const loading = loadPaintedShotScene(shot, elements, named.map(([, canvasName]) => canvasName), context);
     loading.ready.then(() => {
       if (!live) return undefined;
@@ -143,7 +143,7 @@ export function PaintedShot({ shot, t, box: given, children }: { readonly shot: 
       setScene(null);
       release();
     };
-  }, [shot, canvases, fps, sceneDur, report, pictureDrawn, delayRender, continueRender, cancelRender]);
+  }, [shot, canvases, fps, sceneDur, lensMode, report, pictureDrawn, delayRender, continueRender, cancelRender]);
 
   useLayoutEffect(() => {
     if (!scene) return undefined;
@@ -186,15 +186,16 @@ type PaintedShotScene = {
 
 /**
  * Where a shot loads: `holder`, its element, its page checked once laid out; `pinsMoved`, told when a pinned element
- * resizes; the composition's fps, counting its warm's frames; its scene's length, s (null outside one); the
- * profiler's cost report (null outside a profiling render); the shot's `name` for its lines; whether the pass draws
- * the picture.
+ * resizes; the composition's fps and lens mode, which its warm solves for; its scene's length, s (null outside one);
+ * the profiler's cost report (null outside a profiling render); the shot's `name` for its lines; whether the pass
+ * draws the picture.
  */
 type PaintedShotLoadContext = {
   readonly holder: HTMLElement;
   readonly pinsMoved: () => void;
   readonly fps: number;
   readonly sceneDur: number | null;
+  readonly lensMode: LensMode;
   readonly report: FrameCostsReport | null;
   readonly name: ShotWatchName;
   readonly pictureDrawn: boolean;
@@ -206,7 +207,7 @@ type PaintedShotLoadContext = {
  * solved. Refuses every problem at once. Without the picture, only checked.
  */
 function loadPaintedShotScene(props: PaintedShotProps, canvases: readonly ShotCanvasElements[], names: readonly string[], context: PaintedShotLoadContext): PaintedShotScene {
-  const { holder, pinsMoved, fps, sceneDur, report, name, pictureDrawn } = context;
+  const { holder, pinsMoved, fps, sceneDur, lensMode, report, name, pictureDrawn } = context;
   let owner: StampPaintGpuOwner | null = null, renderer: PaintedShotRenderer | null = null, page: ShotPageWatch | null = null, disposed = false;
   const surfaces: ShotCanvasSurface[] = [], costs = createStampPaintCostTally();
   const watch = createShotWatch({
@@ -240,7 +241,7 @@ function loadPaintedShotScene(props: PaintedShotProps, canvases: readonly ShotCa
       costs.warned(paintingProblemText(warning));
       logRenderPageLine(`${name.line}: ${paintingProblemText(warning)}`);
     }
-    await unlessLost(renderer.warm({ fps, sceneDur, stopped: () => disposed }));
+    await unlessLost(renderer.warm({ fps, sceneDur, mode: lensMode, stopped: () => disposed }));
     reportCosts(SHOT_WARM_COSTS_LABEL);
   })());
   /** The frame at `t` drawn once the shot's loaded, its pins laid at `pins`, its costs reported in a profiling render. */

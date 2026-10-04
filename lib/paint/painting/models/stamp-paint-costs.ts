@@ -2,14 +2,14 @@
 // document's evaluations, the shot's poses, the sheet solver's solves and schedule decisions, the film store's and GPU
 // cache's hits, misses and evictions, readbacks and uploads. It sits in painting, the lowest feature all of them
 // import, so they count into one tally; the shot sends a frame's or a warmed span's to the profiler
-// (shot-cost-report.ts), and a gate case reads one to hold what a change re-solves. Counting never changes what's drawn.
+// (shot-cost-report.ts), and a gate case reads one to hold what a change re-solves.
 
 /**
  * What a tally counts, in the order a report prints them. `solves` and `entries run` come with each solve; `bytes
- * uploaded` is a size, the rest are events.
+ * uploaded` is a size, the rest are events; `hidden planes skipped` is shot-shown.ts's.
  */
 export const STAMP_PAINT_COST_NAMES = [
-  'evaluations made', 'evaluation memo hits', 'poses made', 'pose hits', 'solves', 'entries run', 'decisions made', 'decisions reused',
+  'evaluations made', 'evaluation memo hits', 'hidden planes skipped', 'poses made', 'pose hits', 'solves', 'entries run', 'decisions made', 'decisions reused',
   'film hits', 'film misses', 'picture hits', 'picture misses', 'film readback hits', 'film readback misses', 'checkpoint hits', 'checkpoint misses',
   'evictions', 'readbacks', 'bytes uploaded',
 ] as const;

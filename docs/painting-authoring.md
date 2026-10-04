@@ -637,7 +637,13 @@ sheet a crayon node declared is refused: crayon keeps no wet history.
   finished and its GPU has answered nothing for 90 s, naming the solve it was stuck in, and otherwise only past a
   two-hour backstop no real warm reaches. It prints a line for each warm solve and each slow solve of a frame. A painting project renders
   in one tab, so the warm runs once a chunk of frames (each chunk is a fresh browser); more `--workers` each warm
-  again.
+  again. A plane warms only at the frames it shows at, as a frame solves it (below): the rest count as hidden planes
+  skipped.
+- **A plane faded out costs nothing**: a frame solves a painted plane (or an instanced plane's variants) only when its
+  visibility is above 0 at one of the frame's exposures, every shutter sample in a reference render. One faded to 0
+  lays nothing and a mask reading it reads no coverage, so it isn't solved; the opaque back always shows. Fade a
+  plane out over the frames it isn't seen in and they skip its paint. An occurrence's visibility doesn't: its plane's
+  sheets are solved whole.
 - **A drop landing in a wash** at a scene second: a timed water application on that wash's sheet with `at` (a bloom,
   if wanted), in the wash or a clocked layer of its own on that sheet, then its paint as the next application without
   `on`, so the bloom's label still checks water alone. A bloom rewets its footprint, so a later `damp` landing
@@ -750,6 +756,7 @@ times or its `dryingScale`, which re-solves.
 | a layer's `sheet` or `medium` | the sheets it leaves and joins re-solve from its first application | solves |
 | `layersOf` `at` crossing an application | a new prefix of the sheet's clocked work | one solve per prefix, cached |
 | a plane's `lay`, depth, camera, lens, an occurrence's visibility | composite only | per frame, no solve |
+| a plane's visibility reaching 0 at every exposure of a frame | it isn't solved or laid | nothing that frame |
 | motion plays, pins, sway, flutter, rig pose on a sheet the occurrence owns | the finished film warps or bends | per frame, no solve |
 | the same on a sheet it doesn't own | its marks move; its sheet re-solves from its first application, scheduling again there | a solve per distinct pose of it and everything after it in the sheet's order (an unclocked element comes before all clocked work), cached; holds set the rate |
 | marks `boil` (wobble) | warp by a displacement map per epoch | per frame, no solve |
@@ -1542,6 +1549,6 @@ the cels over or under it …`, `meadow/heron.parts: lays no paint on the docume
 it (`back.source: is a clear back, and no HTML lies before the first canvas at this frame: …`), or a pinned element
 unmounted, named twice, or laying paint past the stage. In a profiling render the shot reports its costs per frame and
 for its warmed span (`studio profile <project> --costs`): evaluations made and memo hits, film and picture hits and
-misses, solves by sheet from the first application re-run, checkpoint hits, decisions reused, evictions, bytes
-uploaded (three.js's included), bytes kept and target bytes (the passes' working textures; both
+misses, solves by sheet from the first application re-run, checkpoint hits, decisions reused, hidden planes skipped,
+evictions, bytes uploaded (three.js's included), bytes kept and target bytes (the passes' working textures; both
 under the device's one cache budget), and warnings such as a pose folding paint or a warm running past its scene.
