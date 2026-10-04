@@ -9,6 +9,7 @@ import type { PaintingDocument } from '#lib/paint/document/models/painting-docum
 import type { PropertySchema, PropertyValues } from '#lib/paint/document/models/painting-properties.ts';
 import type { PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
 import { stampSheetGrid, stampSheetSeconds, type StampSheetDecision, type StampSheetMoment } from '#lib/paint/painting/models/stamp-sheet-schedule.ts';
+import { stampDryingTimes } from '#lib/paint/painting/models/stamp-wetness.ts';
 import type { StampGateWashCheck } from './stamp-gate-layer.ts';
 import {
   checkStampGateTimes, STAMP_GATE_EARTH_MIX, STAMP_GATE_FLOOD_WATER, STAMP_GATE_FORWARD, STAMP_GATE_POOL_MIX, STAMP_GATE_ROUND_REF, STAMP_GATE_SHEET_DRYING,
@@ -18,7 +19,8 @@ import {
 const CLOCKS = { width: 160, height: 120 } as const;
 /** The drying scale of every clocked gate sheet on a scale. */
 export const STAMP_GATE_CLOCK_SCALE = 0.025;
-const { openTime, damp, rate } = STAMP_GATE_SHEET_DRYING;
+/** When a flood at the gate's flood water turns matte and sets, s after it lands. */
+const FLOODED = stampDryingTimes(STAMP_GATE_FLOOD_WATER, STAMP_GATE_SHEET_DRYING);
 const brush = STAMP_GATE_ROUND_REF;
 
 /** A fill flooding `[x0, y0, x1, y1]` with `mix` at `water`. */
@@ -77,7 +79,7 @@ export const STAMP_GATE_CLOCKED: PaintingSourceModule<typeof clockedProperties> 
  * flood and charge at τc, scene 2 s; the bloom once the pool turns matte; the dot at 9 s.
  */
 export function stampGateClockedMoments(): StampSheetMoment[] {
-  const tc = stampSheetGrid(0, openTime + GROUND_WATER / rate), matte = stampSheetGrid(tc, tc + (STAMP_GATE_FLOOD_WATER - damp) / rate);
+  const tc = stampSheetGrid(0, stampDryingTimes(GROUND_WATER, STAMP_GATE_SHEET_DRYING).setFrom), matte = stampSheetGrid(tc, tc + FLOODED.matteFrom);
   return [
     { tau: 0, scene: null }, { tau: tc, scene: null }, { tau: tc, scene: POOL_ORIGIN }, { tau: tc, scene: POOL_ORIGIN },
     { tau: matte, scene: POOL_ORIGIN + (matte - tc) * STAMP_GATE_CLOCK_SCALE }, { tau: tc + (DOT_AT - POOL_ORIGIN) / STAMP_GATE_CLOCK_SCALE, scene: DOT_AT },
@@ -171,7 +173,7 @@ export const STAMP_GATE_FIXED_TOO_EARLY: PaintingSourceModule = {
 
 /** What the fixed `at` before its predecessor fails with, to the letter: the softening lands once the flood turns matte. */
 export const stampGateFixedTooEarlyMessage = () =>
-  `late: fixed at ${stampSheetSeconds(LATE_AT)} precedes its predecessor at ${stampSheetSeconds(stampSheetGrid(0, (STAMP_GATE_FLOOD_WATER - damp) / rate) * STAMP_GATE_CLOCK_SCALE)}`;
+  `late: fixed at ${stampSheetSeconds(LATE_AT)} precedes its predecessor at ${stampSheetSeconds(stampSheetGrid(0, FLOODED.matteFrom) * STAMP_GATE_CLOCK_SCALE)}`;
 
 const STRAY_AT = 2;
 

@@ -1,6 +1,7 @@
 // studio paint: painting sources (`*.painting.ts`, docs/painting-authoring.md): checked, compared, and solved on the
 // GPU to be seen.
 import { defineCommand, type ArgsDef } from 'citty';
+import { paintingValueTextPairs } from '#lib/paint/document/models/painting-properties.ts';
 import { refuseUnknownCommandFlags } from '../command-flags.ts';
 
 /** `--at`'s scene second, null when it's left out. */
@@ -12,13 +13,7 @@ function sceneSecondFlag(text: string | undefined): number | null {
 }
 
 /** `--<flag>`'s `a=1,b=true` by name, as text: the source's schema reads each value. */
-function flagValues(flag: 'set' | 'to', list: string | undefined): Record<string, string> {
-  return Object.fromEntries((list ?? '').split(',').filter(Boolean).map((pair) => {
-    const at = pair.indexOf('='), name = pair.slice(0, at).trim();
-    if (at < 0 || !name) throw new Error(`--${flag} takes name=value pairs, not "${pair}"`);
-    return [name, pair.slice(at + 1).trim()];
-  }));
-}
+const flagValues = (flag: 'set' | 'to', list: string | undefined): Record<string, string> => Object.fromEntries(paintingValueTextPairs(flag, list ?? ''));
 
 /**
  * Runs a paint verb, a throw printed whole and failing the run: a throw from a source's import or factory is the
@@ -69,7 +64,7 @@ const checkPaintCommand = defineCommand({
       }
       if (!args.solve) return;
       const { paintPaintingSourceStill, paintingSourceStem, writePaintingSolveImages } = await import('#lib/paint/document/engine/painting-still.ts');
-      const { still, refused } = await paintPaintingSourceStill(args.source, set, { films: true, at, report: true });
+      const { still, refused } = await paintPaintingSourceStill(args.source, set, { films: true, at, dampWindows: true });
       if (!still) {
         console.error(`paint check: ${refused}`);
         process.exitCode = 1;
@@ -102,7 +97,7 @@ const stillPaintCommand = defineCommand({
     return withPaintSourceStack(async () => {
       const { paintingProblemText, paintingErrors } = await import('#lib/paint/document/models/painting-problem.ts');
       const { paintPaintingSourceStill, paintingSourceStem, writePaintingStillPng } = await import('#lib/paint/document/engine/painting-still.ts');
-      const { problems, still, refused } = await paintPaintingSourceStill(args.source, set, { films: false, at, report: false });
+      const { problems, still, refused } = await paintPaintingSourceStill(args.source, set, { films: false, at, dampWindows: false });
       for (const problem of problems) console.log(paintingProblemText(problem));
       if (!still) {
         const errors = paintingErrors(problems).length;

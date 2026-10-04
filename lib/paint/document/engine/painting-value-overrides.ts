@@ -1,12 +1,12 @@
 // painting-value-overrides.ts: `studio look --set`'s `painting.property=value` pairs read against a project's painting
-// sources, for a render to paint them at over every scene's values (studio/painting-value-overrides-install.ts). A
+// sources, for a render to paint them at over every scene's values (lib/picture/composition's install). A
 // painting is named by its factory, as its problems name it; each value is read and checked by its schema, as
 // `studio paint check --set` reads one.
 
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { paintingValueProblems, paintingValuesFromText, type PaintingPropertyRecord, type PropertySchema } from '../models/painting-properties.ts';
-import { paintingSourceName, type PaintingSourceModule } from '../models/painting-source.ts';
+import { paintingValueProblems, paintingValuesFromText, paintingValueTextPairs, type PropertySchema } from '../models/painting-properties.ts';
+import { paintingSourceName, type PaintingSourceModule, type PaintingValueOverrides } from '../models/painting-source.ts';
 import { loadPaintingSource } from './painting-source-load.ts';
 
 /** Every `*.painting.ts` in `project`, but under its renders (`out/`). */
@@ -16,14 +16,13 @@ function projectPaintingSourceFiles(project: string): string[] {
     .map((file) => join(project, file));
 }
 
-/** `text`'s `painting.property=value` pairs, split at commas: each painting's values as text, by its name. */
+/** `text`'s `painting.property=value` pairs, each name split at its first dot: each painting's values as text, by its name. */
 function paintingValueTexts(text: string): Map<string, Record<string, string>> {
   const texts = new Map<string, Record<string, string>>();
-  for (const pair of text.split(',').filter((given) => given.trim())) {
-    const match = /^\s*([^.=\s]+)\.([^=\s]+)\s*=(.*)$/.exec(pair);
-    if (!match) throw new Error(`--set takes painting.property=value pairs, not "${pair}"`);
-    const [, painting, property, value] = match;
-    texts.set(painting, { ...texts.get(painting), [property]: value.trim() });
+  for (const [name, value] of paintingValueTextPairs('set', text)) {
+    const dot = name.indexOf('.'), painting = name.slice(0, dot), property = name.slice(dot + 1);
+    if (!painting || !property) throw new Error(`--set takes painting.property=value pairs, not "${name}=${value}"`);
+    texts.set(painting, { ...texts.get(painting), [property]: value });
   }
   return texts;
 }
@@ -32,7 +31,7 @@ function paintingValueTexts(text: string): Map<string, Record<string, string>> {
  * `text`'s `painting.property=value` pairs read against `project`'s painting sources: the values to paint each named
  * painting at, by its name. Throws for a name no source has or several share, or a value its schema refuses.
  */
-export async function readPaintingValueOverrides(project: string, text: string): Promise<Record<string, PaintingPropertyRecord>> {
+export async function readPaintingValueOverrides(project: string, text: string): Promise<PaintingValueOverrides> {
   const texts = paintingValueTexts(text);
   const named = new Map<string, { file: string; source: PaintingSourceModule<PropertySchema> }[]>();
   const loaded = await Promise.all(projectPaintingSourceFiles(project).map(async (file) => ({ file, source: await loadPaintingSource(file) })));

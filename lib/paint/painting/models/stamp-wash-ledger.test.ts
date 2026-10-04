@@ -8,7 +8,7 @@ import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampPaintEnvironment } from './stamp-paint-recipe-types.ts';
 import { createStampWashLedger } from './stamp-wash-ledger.ts';
 import { stampDepositSupport, stampRoundTipsOf, stampRoundTipStatedProfile } from './stamp-tip-support.ts';
-import { stampDrying, stampPaintMedia } from './stamp-wetness.ts';
+import { stampDrying, stampDryingTimes, stampPaintMedia } from './stamp-wetness.ts';
 
 const watercolour = PAINT_MEDIA.watercolour;
 const WET: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'pigment', medium: watercolour, pigments: WATERCOLOUR_PIGMENTS } };
@@ -45,7 +45,7 @@ const ledger = () => createStampWashLedger({
   id: 'g/w', mediumOf: () => watercolour, drying, preparation: null, waterOf: media.waterOf, supportOf: (deposit) => stampDepositSupport(deposit, tips(deposit)), reachOf: () => 0,
 });
 /** Painting seconds after which the first drop's water has set. */
-const setAfter = media.waterOf(first) / drying.rate + drying.openTime;
+const setAfter = stampDryingTimes(media.waterOf(first), drying).setFrom;
 
 test('a deposit finds the water under it as it stands at the time it is given, and nothing that never met its box', () => {
   const soon = ledger();

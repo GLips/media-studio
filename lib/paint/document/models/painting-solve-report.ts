@@ -21,19 +21,19 @@ function paintingDampText(span: StampSheetDampWindow, again: boolean): string {
 
 /** What a wash's last line says of it: when what it wetted was damp and when it had set, each where known. */
 function paintingWashEndText(decision: StampSheetDecision): string | null {
-  const damp = decision.report?.damp, parts = [damp && paintingDampText(damp, false), decision.washSet && `set by ${paintingSolveMoment(decision.washSet)}`];
+  const damp = decision.dampReport?.wash, parts = [damp && paintingDampText(damp, false), decision.washSet && `set by ${paintingSolveMoment(decision.washSet)}`];
   const said = parts.filter((part): part is string => !!part);
   return said.length ? said.join(', ') : null;
 }
 
-/** `program`'s solve as lines, each entry's decision `decisions`' at its index; a reporting solve's damp windows among them. */
+/** `program`'s solve as lines, each entry's decision `decisions`' at its index; damp windows among them where it read them. */
 export function paintingSolveLines(program: StampSheetProgram, decisions: readonly StampSheetDecision[]): string[] {
   const { last } = stampSheetWashSpans(program);
   return decisions.flatMap((decision, k) => {
     const entry = program.entries[k], wash = program.washes[entry.wash], ends = last[entry.wash] === k;
     const waits = entry.on ? ` (on '${entry.on}'${decision.tau > decision.tau0 ? `, ${stampSheetSeconds(decision.tau - decision.tau0)} after it could` : ''})` : '';
     const neverSets = program.clock.kind === 'never' && wash.wetHistory ? [`  ${wash.name}: never sets`] : [];
-    const rewet = decision.report?.rewet, washEnd = ends ? paintingWashEndText(decision) : null;
+    const rewet = decision.dampReport?.rewet, washEnd = ends ? paintingWashEndText(decision) : null;
     return [
       ...(decision.start ? [`${wash.name} (${program.films[wash.film].name}): starts at ${paintingSolveMoment(decision.start)}`] : []),
       `  ${entry.name}: lands at ${paintingSolveMoment(decision)}${waits}${entry.bloom ? ', blooming' : ''}`,

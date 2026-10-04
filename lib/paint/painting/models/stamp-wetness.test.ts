@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
-import { stampDrying } from './stamp-wetness.ts';
+import { stampDrying, stampDryingTimes } from './stamp-wetness.ts';
 
 const AUTHORING = new URL('../../../../docs/painting-authoring.md', import.meta.url);
 
@@ -29,9 +29,9 @@ test("the authoring doc's drying table is the laws' own, at each medium's sheen 
   });
   assert.deepEqual(new Set(media.map(({ name }) => name)), new Set(['watercolour', 'gouache']));
   const expected = media.map(({ water, wetting }) => absorbencies.map((absorbency) => {
-    const { rate, openTime, shiny, damp } = stampDrying(wetting, { color: '#ffffff', absorbency });
-    const shines = water > shiny ? `shiny to ${tableSeconds((water - shiny) / rate)}` : 'never shiny';
-    return `${shines}, damp from ${tableSeconds((water - damp) / rate)}, dry at ${tableSeconds(openTime + water / rate)}`;
+    const { shinyUntil, matteFrom, setFrom } = stampDryingTimes(water, stampDrying(wetting, { color: '#ffffff', absorbency }));
+    const shines = shinyUntil > 0 ? `shiny to ${tableSeconds(shinyUntil)}` : 'never shiny';
+    return `${shines}, damp from ${tableSeconds(matteFrom)}, dry at ${tableSeconds(setFrom)}`;
   }));
   assert.deepEqual(rows.map((cells) => cells.slice(1)), expected);
 });

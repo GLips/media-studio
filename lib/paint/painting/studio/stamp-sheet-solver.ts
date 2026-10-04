@@ -4,8 +4,8 @@
 //
 // Remembered by state key (ENGINE 4.2): each landed entry's decision, or the scene second of an entry past a prefix's
 // `at`. Checkpoints (stamp-sheet-checkpoints.ts) are kept before each wash's first entry, the first posed one, and
-// where an unfinished prefix stops. A known prefix with kept films solves nothing; else a solve runs on from its latest
-// checkpoint. A reporting solve decides again a remembered decision that lacks its report.
+// where an unfinished prefix stops. A known prefix with kept films solves nothing; else a solve replays what it
+// remembers from its latest checkpoint, reading damp windows, if asked, where a decision lacks them.
 
 import { stampBrushedMasksUnder } from '../models/stamp-brushed-mask.ts';
 import type { StampPaintCostTally } from '../models/stamp-paint-costs.ts';
@@ -31,8 +31,8 @@ export type StampSheetSolveOptions = {
   finish?: boolean;
   /** Where the solve counts what it cost: the solve, its readbacks, decisions, films and checkpoints found or not, warnings. */
   costs?: StampPaintCostTally;
-  /** Whether each decision carries its report (StampSheetReport): when washes are damp and blooms rewet, read only when asked. */
-  report?: boolean;
+  /** Whether each decision carries its damp windows (StampSheetDampReport): when washes are damp and blooms rewet. */
+  dampWindows?: boolean;
 };
 
 /** A solve: its last key (Kₖ after the entries solved), how many it solved and whether the painting ended there, the films it kept, each entry's decision. */
@@ -80,20 +80,20 @@ async function stampSheetKeys(head: string, entries: StampSheetProgram['entries'
 /**
  * What's remembered of a prefix of `limit` entries keyed `keys`, ending at scene second `at` (undefined for none):
  * the decisions known from its start, and where it stops when that's known (null while an entry must be decided, or
- * a solve that `report`s must read one).
+ * replayed for the damp windows a solve asks for and it lacks).
  */
-function stampSheetRemembered(keys: readonly string[], limit: number, at: number | undefined, report: boolean) {
+function stampSheetRemembered(keys: readonly string[], limit: number, at: number | undefined, dampWindows: boolean) {
   const decisions: StampSheetDecision[] = [];
   for (let k = 0; k < limit; k++) {
     const memo = remembered.get(keys[k + 1]), scene = memo ? stampSheetMemoScene(memo) : null;
     if (at !== undefined && scene !== null && scene > at) return { decisions, stop: k };
-    if (!memo || 'past' in memo || (report && memo.decision.report === null)) return { decisions, stop: null };
+    if (!memo || 'past' in memo || (dampWindows && memo.decision.dampReport === null)) return { decisions, stop: null };
     decisions.push(memo.decision);
   }
   return { decisions, stop: limit };
 }
 
-async function solveLeased(owner: StampPaintGpuOwner, planned: StampSheetProgram, { through, at, finish, costs, report = false }: StampSheetSolveOptions): Promise<StampSheetSolved> {
+async function solveLeased(owner: StampPaintGpuOwner, planned: StampSheetProgram, { through, at, finish, costs, dampWindows = false }: StampSheetSolveOptions): Promise<StampSheetSolved> {
   const { entries } = planned, all = entries.length;
   if (through !== undefined && !(Number.isInteger(through) && through >= 0 && through <= all)) throw new Error(`stamp sheet: a solve goes through 0 to ${all} entries, not ${through}`);
   if (at !== undefined && !Number.isFinite(at)) throw new Error(`stamp sheet: a prefix ends at a finite scene second, not ${at}`);
@@ -104,7 +104,7 @@ async function solveLeased(owner: StampPaintGpuOwner, planned: StampSheetProgram
   const keys = await stampSheetKeys(plan.head, entries, limit);
   const finished = finish ?? (at !== undefined || (through ?? all) === all);
   const filmKey = (k: number) => `${keys[k]}|${finished ? 'finished' : 'open'}`;
-  const known = stampSheetRemembered(keys, limit, at, report);
+  const known = stampSheetRemembered(keys, limit, at, dampWindows);
   const kept = known.stop === null ? null : keptStampSheetFilms(owner, filmKey(known.stop), planned.films.length);
   costs?.count(kept ? 'film hits' : 'film misses', planned.films.length);
   if (kept) return { key: keys[known.stop!], through: known.stop!, finished, films: kept, decisions: known.decisions };
@@ -122,7 +122,7 @@ async function solveLeased(owner: StampPaintGpuOwner, planned: StampSheetProgram
     }));
     // `never` dries nothing on the sheet, its unclocked run included.
     const drying = { ...stampDrying(program.water.wetting, program.paper), ...(program.clock.kind === 'never' && { rate: 0 }) };
-    const run = stampSheetRun(owner, scope.device, { program, keys, gpu, drying, brushes, waterOf: choice.media.waterOf, costs: costs ?? null, report });
+    const run = stampSheetRun(owner, scope.device, { program, keys, gpu, drying, brushes, waterOf: choice.media.waterOf, costs: costs ?? null, dampWindows });
     const resumed = await resumeStampSheet(run, known.decisions);
     if (known.decisions.length) costs?.count(resumed.from ? 'checkpoint hits' : 'checkpoint misses');
     const { stop, decisions } = await runStampSheet(program, run, { keys, limit, at, ...resumed });

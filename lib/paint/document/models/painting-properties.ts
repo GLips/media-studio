@@ -96,6 +96,18 @@ export function paintingValuesKey(values: PaintingPropertyRecord): string {
 }
 
 /**
+ * A command line's `--<flag>` of comma-separated `name=value` pairs, in order: each name and its value as text, both
+ * trimmed. Throws for a pair with no `=` or no name.
+ */
+export function paintingValueTextPairs(flag: string, text: string): [name: string, value: string][] {
+  return text.split(',').filter((pair) => pair.trim()).map((pair) => {
+    const at = pair.indexOf('='), name = pair.slice(0, at).trim();
+    if (at < 0 || !name) throw new Error(`--${flag} takes name=value pairs, not "${pair}"`);
+    return [name, pair.slice(at + 1).trim()];
+  });
+}
+
+/**
  * Values written as text (a command line's `name=value`) read by `schema`: a number property's as a number, a
  * boolean's as true or false where they read so. Anything else stays text, for paintingValueProblems to refuse by name.
  */

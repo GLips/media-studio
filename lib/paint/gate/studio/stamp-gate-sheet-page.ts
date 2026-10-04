@@ -7,6 +7,7 @@ import * as meadowSource from '#lib/paint/document/models/meadow.painting.ts';
 import { compilePaintingSelection, type PaintingSelectionCompiled } from '#lib/paint/document/models/painting-document-compile.ts';
 import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
 import { painting, type PaintingEvaluation } from '#lib/paint/document/models/painting-source.ts';
+import { paintingSolveLines } from '#lib/paint/document/models/painting-solve-report.ts';
 import { paintingFilmCoverage } from '#lib/paint/document/studio/painting-film-readback.ts';
 import { solvePaintingSheets, type PaintingSheetsSolved } from '#lib/paint/document/studio/painting-sheets-solve.ts';
 import { createStampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
@@ -23,8 +24,8 @@ import {
   stampGatePeakShift,
 } from '../models/stamp-gate-paper-heron.ts';
 import {
-  checkStampGateTimes, STAMP_GATE_ERASED, STAMP_GATE_ERASED_AT, STAMP_GATE_FAR_SHALLOWS, STAMP_GATE_FOOT_BOX, STAMP_GATE_FORWARD, STAMP_GATE_HERON_AWAY, STAMP_GATE_HERON_POSE, STAMP_GATE_NEVER_WETTED, STAMP_GATE_NEVER_WETTED_MESSAGE, STAMP_GATE_REBASE, STAMP_GATE_SHEET_IDS,
-  STAMP_GATE_WET_CONTACT, stampGateFilmCentre, stampGateFilmDifference, stampGateFilmMass, stampGateFilmsEqual, stampGateForwardTimes, stampGateHeronPosed, stampGateRebaseTimes, stampGateSheetBrushOf,
+  checkStampGateTimes, STAMP_GATE_DAMP_WINDOWS, STAMP_GATE_ERASED, STAMP_GATE_ERASED_AT, STAMP_GATE_FAR_SHALLOWS, STAMP_GATE_FOOT_BOX, STAMP_GATE_FORWARD, STAMP_GATE_HERON_AWAY, STAMP_GATE_HERON_POSE, STAMP_GATE_NEVER_WETTED, STAMP_GATE_NEVER_WETTED_MESSAGE, STAMP_GATE_REBASE, STAMP_GATE_SHEET_IDS,
+  STAMP_GATE_WET_CONTACT, stampGateFilmCentre, stampGateFilmDifference, stampGateFilmMass, stampGateFilmsEqual, stampGateForwardTimes, stampGateHeronPosed, stampGateDampWindowTexts, stampGateRebaseTimes, stampGateSheetBrushOf,
   stampGateSheetProgram, stampGateSolvedStill, stampGateWetContactTimes, type StampGateSheetId, type StampGateSolvedId,
 } from '../models/stamp-gate-sheets.ts';
 import { checkStampGateClocks } from './stamp-gate-clocks-page.ts';
@@ -53,9 +54,26 @@ async function checkEraser(owner: StampPaintGpuOwner): Promise<StampGateWashChec
 }
 
 /**
+ * Damp windows, asked for once the sheet's decisions are remembered without them, so each is replayed to read them:
+ * printed on their closed forms, an even flood's, a prewet's under a drier line, and a bloom's footprint damp again.
+ */
+async function checkDampWindows(owner: StampPaintGpuOwner): Promise<StampGateWashCheck> {
+  const program = stampGateSheetProgram(STAMP_GATE_DAMP_WINDOWS), costs = createStampPaintCostTally();
+  await solveStampSheet(owner, program);
+  const { decisions } = await solveStampSheet(owner, program, { dampWindows: true, costs });
+  const reused = costs.take().counts.get('decisions reused') ?? 0, lines = paintingSolveLines(program, decisions);
+  const missing = Object.values(stampGateDampWindowTexts()).filter((text) => !lines.some((line) => line.startsWith(text)));
+  const printed = lines.filter((line) => line.includes('damp')).map((line) => line.trim()).join(' | ');
+  return {
+    id: 'schedule/forward: damp windows', passed: !missing.length && reused === program.entries.length,
+    detail: `${missing.length ? `wanted ${missing.map((text) => `"${text.trim()} …"`).join(', ')}; ` : ''}printed ${printed}; ${reused} of ${program.entries.length} decisions replayed`,
+  };
+}
+
+/**
  * schedule/forward: each decision on its closed form; the meadow's treeline reaching `wet`; damp over never-wetted
  * paper refused to the letter; every prefix's films the same, texel for texel, with an application appended after;
- * and an eraser in a direct wash.
+ * an eraser in a direct wash; and the damp windows a solve reads when asked.
  */
 async function checkForward(): Promise<StampGateWashCheck[]> {
   const id = 'schedule/forward', program = stampGateSheetProgram(STAMP_GATE_FORWARD), appended = stampGateSheetProgram(STAMP_GATE_FORWARD, { appended: true });
@@ -82,6 +100,7 @@ async function checkForward(): Promise<StampGateWashCheck[]> {
         detail: prefixes.map(({ through, same }) => `through ${through}: ${same ? 'same' : 'changed'}`).join(', '),
       },
       await checkEraser(owner),
+      await checkDampWindows(owner),
     ];
   });
 }

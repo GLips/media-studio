@@ -1,10 +1,10 @@
 // stamp-sheet-schedule.ts: the forward scheduler's decisions, in f64 on the CPU, from the GPU's reductions over an
 // application's core: model time on a 1 ms grid anchored at each predecessor, the clock's policy (ENGINE 3.5).
 //
-// The laws, per texel wetted to ℓ at a, drying at rate r with open time o, sheen shiny h and damp d: wet while
-// τ < U = a + (ℓ − h)/r; matte from L = a + (ℓ − d)/r; set from Z = a + o + ℓ/r; under `never` (r = 0), U and Z are
-// +∞ where ℓ > 0, L −∞ where ℓ ≤ d, else +∞. `on` holds over 95% of the core's weight (`dry`, all). A `wet` that
-// doesn't only warns: wetness only falls, so waiting can't help.
+// The laws (stampDryingTimes), per texel wetted to ℓ at a, drying at rate r with open time o, sheen shiny h and damp
+// d: wet while τ < U = a + (ℓ − h)/r; matte from L = a + (ℓ − d)/r; set from Z = a + o + ℓ/r; under `never` (r = 0),
+// U and Z are +∞ where ℓ > 0, L −∞ where ℓ ≤ d, else +∞. `on` holds over 95% of the core's weight (`dry`, all). A
+// `wet` that doesn't only warns: wetness only falls, so waiting can't help.
 
 import { STAMP_BLOOM_SURPLUS } from './stamp-wet-bloom.ts';
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
@@ -45,19 +45,19 @@ export type StampSheetMoment = { tau: number; scene: number | null };
 export type StampSheetDampWindow = { kind: 'damp'; from: StampSheetMoment; to: StampSheetMoment } | { kind: 'uneven'; share: number; at: StampSheetMoment };
 
 /**
- * What a reporting solve read once an entry landed, where the paper dries by its laws: for its wash's last, when what
- * the wash wetted is damp (`damp`, null else); for a bloom, when its footprint is damp again (`rewet`, null else).
+ * Damp windows read once an entry landed, where the paper dries by its laws: for its wash's last, when what the wash
+ * wetted is damp (`wash`, null else); for a bloom, when its footprint is damp again (`rewet`, null else).
  */
-export type StampSheetReport = { damp: StampSheetDampWindow | null; rewet: StampSheetDampWindow | null };
+export type StampSheetDampReport = { wash: StampSheetDampWindow | null; rewet: StampSheetDampWindow | null };
 
 /**
  * What a solve decided for an entry: its wash's start, for the wash's first; τ0, the earliest it could land; when it
  * landed, and its scene second; whether a drying closed as its wash started and as it landed; for the wash's last,
- * when all it touched has set; its warnings; what a reporting solve read. Null where there's none.
+ * when all it touched has set; its warnings; damp windows, if asked. Null where there's none.
  */
 export type StampSheetDecision = {
   start: StampSheetMoment | null; tau0: number; tau: number; scene: number | null; closes: { start: boolean; landing: boolean };
-  washSet: StampSheetMoment | null; warnings: readonly string[]; report: StampSheetReport | null;
+  washSet: StampSheetMoment | null; warnings: readonly string[]; dampReport: StampSheetDampReport | null;
 };
 
 /** The scene second model time `tau` maps to on a `scale` clock whose clocked run starts at model time `start` (τc). */
@@ -148,11 +148,13 @@ export type StampSheetLandingDecided = Pick<StampSheetDecision, 'tau0' | 'tau' |
 
 /**
  * An entry's decision from its parts: its wash's start (null past the wash's first), its landing, its wash's set
- * moment, and what a reporting solve read after it (null for none).
+ * moment, and the damp windows read after it (null where the solve didn't ask).
  */
-export const stampSheetDecisionOf = (begun: StampSheetBegun | null, landing: StampSheetLandingDecided, washSet: StampSheetMoment | null, report: StampSheetReport | null): StampSheetDecision => ({
+export const stampSheetDecisionOf = (
+  begun: StampSheetBegun | null, landing: StampSheetLandingDecided, washSet: StampSheetMoment | null, dampReport: StampSheetDampReport | null,
+): StampSheetDecision => ({
   start: begun?.start ?? null, tau0: landing.tau0, tau: landing.tau, scene: landing.scene,
-  closes: { start: begun?.closes ?? false, landing: landing.closes }, washSet, warnings: landing.warnings, report,
+  closes: { start: begun?.closes ?? false, landing: landing.closes }, washSet, warnings: landing.warnings, dampReport,
 });
 
 /** The wash start a remembered decision of its wash's first entry made. */
@@ -424,7 +426,7 @@ function shortReason(on: StampSheetWetness, totals: Pick<StampSheetTotals, 'weig
  * failed, why (as the paper dries under `regime`) and what to do, and the applications of its sheet left unscheduled.
  */
 export function stampSheetUnreachable(
-  name: string, on: StampSheetWetness, at: { tau: number; held: number; totals: Pick<StampSheetTotals, 'weight' | 'never'> }, boxes: readonly StampBox[],
+  name: string, on: Exclude<StampSheetWetness, 'wet'>, at: { tau: number; held: number; totals: Pick<StampSheetTotals, 'weight' | 'never'> }, boxes: readonly StampBox[],
   unscheduled: readonly string[], regime: StampSheetRegime,
 ): string {
   const { share, where } = shortfall(at, boxes), left = unscheduled.length ? `. Unscheduled after it: ${unscheduled.join(', ')}` : '';
@@ -452,12 +454,14 @@ export const stampSheetAtTooEarly = (name: string, at: number, predecessor: numb
   `${name}: fixed at ${stampSheetSeconds(at)} precedes its predecessor at ${stampSheetSeconds(predecessor)}`;
 
 /** A fixed `at` where its `on` (`damp` or `dry`) doesn't hold: the share of its core it holds over there, and what to do. */
-export const stampSheetAtFails = (name: string, at: number, on: StampSheetWetness, share: number) =>
+export const stampSheetAtFails = (name: string, at: number, on: Exclude<StampSheetWetness, 'wet'>, share: number) =>
   `${name}: at ${stampSheetSeconds(at)}, on '${on}' holds over ${Math.round(100 * share)}% of its core there: move the \`at\` to where \`studio paint check --solve\` says its paper is ${on}, or drop the \`on\``;
 
 export const stampSheetEmptyCore = (name: string) => `${name}: its core is empty: nothing of it reaches paper`;
 
-export const stampSheetWontBloom = (name: string) => `${name} won't bloom: no open paint on workable paper under its core`;
+/** A bloom with nothing to act on where it lands: why, and what to do. */
+export const stampSheetWontBloom = (name: string) =>
+  `${name} won't bloom: no open paint on workable paper under its core that its water rises ${STAMP_SHEET_BLOOM_SURPLUS} over; bloom over a wash still open, once its shine has gone (\`on: 'damp'\`), or drop \`effect\``;
 
 export const stampSheetWithinRounding = (name: string, on: StampSheetWetness) => `${name}: decided within rounding of on '${on}'; another GPU may place it a step apart`;
 

@@ -30,10 +30,10 @@ export async function openStudioRenderSession(projectArg: string, { workers, len
   const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
   const { openRenderSession } = await import('#lib/output/render/engine/render-session.ts');
   const { lensModeChecked } = await import('#lib/picture/lens/models/lens-mode.ts');
-  const { readPaintingValueOverrides } = await import('#lib/paint/document/engine/painting-value-overrides.ts');
   const project = resolveStudioProjectWith(projectArg, 'video.tsx');
+  const readOverrides = async (text: string) => (await import('#lib/paint/document/engine/painting-value-overrides.ts')).readPaintingValueOverrides(project, text);
   return openRenderSession(project, {
     workers: workers === undefined ? undefined : Number(workers), lens: lens === undefined ? undefined : lensModeChecked(lens),
-    ...(paintings !== undefined && { paintingValues: await readPaintingValueOverrides(project, paintings) }),
+    ...(paintings !== undefined && { paintingValues: await readOverrides(paintings) }),
   });
 }

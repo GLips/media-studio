@@ -12,7 +12,7 @@ import type { PaintingProblem } from './painting-problem.ts';
  */
 export type PaintingStillRequest = {
   readonly texts: Readonly<Record<string, string>>; readonly brushes: Readonly<Record<string, StampBrush>>; readonly packUrls: StampPaintPackUrls; readonly films: boolean;
-  readonly at: number | null; readonly report: boolean;
+  readonly at: number | null; readonly dampWindows: boolean;
 };
 
 /**

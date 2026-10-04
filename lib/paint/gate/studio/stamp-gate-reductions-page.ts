@@ -8,7 +8,7 @@ import {
   STAMP_DAMP_HISTOGRAM_WORDS, stampDampFirstStep, stampDampFirstWidth, stampDampHistogram, stampDampStep,
 } from '#lib/paint/painting/models/stamp-damp-histogram.ts';
 import { STAMP_SHEET_SHARE, STAMP_SHEET_TOTALS, STAMP_SHEET_WEIGHT, stampSheetTotals } from '#lib/paint/painting/models/stamp-sheet-schedule.ts';
-import { stampDrying } from '#lib/paint/painting/models/stamp-wetness.ts';
+import { stampDrying, stampDryingTimes } from '#lib/paint/painting/models/stamp-wetness.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { stampSheetReductions, type StampSheetCore, type StampSheetReduceTextures } from '#lib/paint/painting/studio/stamp-sheet-reductions.ts';
 import { createStampUniformArena } from '#lib/paint/painting/studio/stamp-uniform-arena.ts';
@@ -113,7 +113,7 @@ async function dampSearch(device: GPUDevice) {
  * them, and the most the search says is half.
  */
 async function dampSetBefore(device: GPUDevice) {
-  const setFor = DRYING.damp / DRYING.rate;
+  const setFor = stampDryingTimes(DRYING.damp, DRYING).setFrom;
   const paper = await dampPaper(device, (i) => ({ level: DRYING.damp, time: i % 2 ? -setFor - 1 : 0 }));
   const { step, most } = await paper.search();
   return { step, share: most.weight / paper.totals.weight };

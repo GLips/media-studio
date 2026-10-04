@@ -18,7 +18,7 @@ export type VideoProps = {
   lens?: LensMode;
   /**
    * Painting property values over every scene's, by the source's factory name, as `studio look --set` checked them:
-   * a dial swept in context (painting-value-overrides-install.ts).
+   * a dial swept in context (composition-painting-values-install.ts).
    */
   paintingValues?: PaintingValuesProp;
 };

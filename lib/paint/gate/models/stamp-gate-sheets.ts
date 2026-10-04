@@ -18,7 +18,7 @@ import type { StampPointBox } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { StampSheetProgram } from '#lib/paint/painting/models/stamp-sheet-program.ts';
 import { stampSheetGrid, stampSheetSeconds, type StampSheetDecision } from '#lib/paint/painting/models/stamp-sheet-schedule.ts';
 import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
-import { stampDrying } from '#lib/paint/painting/models/stamp-wetness.ts';
+import { stampDrying, stampDryingTimes } from '#lib/paint/painting/models/stamp-wetness.ts';
 import { stampGateSlotAmounts, type StampGateLayer, type StampGateWashCheck } from './stamp-gate-layer.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, type StampGateImage } from './stamp-gate-paintings.ts';
 import { STAMP_GATE_HERON_TURNED, STAMP_GATE_PAPER_HERON, stampGatePaperHeronPoses } from './stamp-gate-paper-heron.ts';
@@ -98,8 +98,8 @@ export const STAMP_GATE_FORWARD: PaintingSourceModule<typeof forwardProperties> 
 
 /** The forward entries' times by the closed forms: flood and charge at once, the bloom when the flood turns matte, the scrub when it sets. */
 export function stampGateForwardTimes(): number[] {
-  const matte = stampSheetGrid(0, (STAMP_GATE_FLOOD_WATER - STAMP_GATE_SHEET_DRYING.damp) / STAMP_GATE_SHEET_DRYING.rate);
-  return [0, 0, matte, stampSheetGrid(matte, STAMP_GATE_SHEET_DRYING.openTime + STAMP_GATE_FLOOD_WATER / STAMP_GATE_SHEET_DRYING.rate)];
+  const flood = stampDryingTimes(STAMP_GATE_FLOOD_WATER, STAMP_GATE_SHEET_DRYING), matte = stampSheetGrid(0, flood.matteFrom);
+  return [0, 0, matte, stampSheetGrid(matte, flood.setFrom)];
 }
 
 const erasedProperties = { erased: { type: 'boolean', default: true } } as const satisfies PropertySchema;
@@ -134,6 +134,48 @@ export const STAMP_GATE_NEVER_WETTED: PaintingSourceModule = {
 export const STAMP_GATE_NEVER_WETTED_MESSAGE =
   "early: unreachable from this committed prefix: on 'damp' held over at most 0% of its core (needs 95%), at model 0 s [0,0 → 96,64]; " +
   'never wetted on this sheet: 100% of its core met no water before it; lay it over a flood or prewet earlier on the sheet, or drop the `on`';
+
+const PREWET_WATER = 0.9;
+const BLOOM_WATER = 0.95;
+
+/**
+ * Three layers, a wash each, laid at once: an even flood; a prewet with a drier line inside it, which leaves its level
+ * as it was; and a flood bloomed into `on: 'damp'`.
+ */
+export const STAMP_GATE_DAMP_WINDOWS: PaintingSourceModule = {
+  default: function gateDampWindows(): PaintingDocument {
+    const fill = (key: string, [x0, y0, x1, y1]: readonly [number, number, number, number]) =>
+      ({ key, kind: 'fill', area: { region: stampGateRectangle(x0, y0, x1, y1) }, brush: STAMP_GATE_ROUND_REF, diameterPx: 24, seed: key, charge: { kind: 'paint', mix: STAMP_GATE_POOL_MIX, water: STAMP_GATE_FLOOD_WATER } } as const);
+    const line = { key: 'soaked-line', kind: 'stroke', subpaths: [stampGateLine(84, 24, 84, 96)], brush: STAMP_GATE_ROUND_REF, diameterPx: 8, seed: 'soaked-line', charge: { kind: 'paint', mix: STAMP_GATE_EARTH_MIX, water: 0.5 } } as const;
+    const bloom = { key: 'lake-bloom', on: 'damp', effect: 'bloom', kind: 'stamps', placements: [{ x: 132, y: 60 }], brush: STAMP_GATE_ROUND_REF, diameterPx: 20, seed: 'lake-bloom', charge: { kind: 'water', water: BLOOM_WATER } } as const;
+    return {
+      widthPx: 160, heightPx: 120, paper: STAMP_GATE_SHEET_PAPER, medium: 'watercolour',
+      layers: [
+        { key: 'pond', washes: [{ key: 'even', applications: [fill('even-flood', [8, 8, 56, 112])] }] },
+        { key: 'marsh', washes: [{ key: 'soaked', prewet: { region: stampGateRectangle(64, 8, 104, 112), water: PREWET_WATER }, applications: [line] }] },
+        { key: 'lake', washes: [{ key: 'bloomed', applications: [fill('lake-flood', [112, 8, 152, 112]), bloom] }] },
+      ],
+    };
+  },
+};
+
+/**
+ * The damp-window sheet's report as `studio paint check --solve` prints it, by the closed forms on the 1 ms grid:
+ * each flood damp from (ℓ − d)/r until o + ℓ/r, ℓ the flood's water or the prewet's; the bloom, landing once its
+ * flood turns matte, damp again from (w − d)/r after.
+ */
+export function stampGateDampWindowTexts(): { even: string; soaked: string; bloom: string } {
+  const dampText = (level: number) => {
+    const { matteFrom, setFrom } = stampDryingTimes(level, STAMP_GATE_SHEET_DRYING);
+    return `damp from ${stampSheetSeconds(stampSheetGrid(0, matteFrom))} until ${stampSheetSeconds(stampSheetGrid(0, setFrom))}`;
+  };
+  const blooms = stampSheetGrid(0, stampDryingTimes(STAMP_GATE_FLOOD_WATER, STAMP_GATE_SHEET_DRYING).matteFrom);
+  const again = stampSheetGrid(blooms, blooms + stampDryingTimes(BLOOM_WATER, STAMP_GATE_SHEET_DRYING).matteFrom);
+  return {
+    even: `  even: ${dampText(STAMP_GATE_FLOOD_WATER)}, set by `, soaked: `  soaked: ${dampText(PREWET_WATER)}, set by `,
+    bloom: `  lake-bloom: rewets its footprint, damp again from ${stampSheetSeconds(again)} until `,
+  };
+}
 
 const WET_CONTACT = { width: 160, height: 120 } as const;
 const SHALLOWS_WATER = 0.75;
@@ -246,9 +288,9 @@ export const STAMP_GATE_REBASE: PaintingSourceModule = {
 
 /** The rebase document's times in f64: each wash once the last has set, the damp application once its flood turns matte. */
 export function stampGateRebaseTimes(): number[] {
-  const { rate, damp, openTime } = stampDrying(PAINT_MEDIA.watercolour.wetting, REBASE_PAPER);
-  const floods = Array.from({ length: REBASE_WASHES }).reduce<number[]>((times) => [...times, times.length ? stampSheetGrid(times.at(-1)!, times.at(-1)! + openTime + REBASE_LEVEL / rate) : 0], []);
-  return [...floods, stampSheetGrid(floods.at(-1)!, floods.at(-1)! + (REBASE_LEVEL - damp) / rate)];
+  const { matteFrom, setFrom } = stampDryingTimes(REBASE_LEVEL, stampDrying(PAINT_MEDIA.watercolour.wetting, REBASE_PAPER));
+  const floods = Array.from({ length: REBASE_WASHES }).reduce<number[]>((times) => [...times, times.length ? stampSheetGrid(times.at(-1)!, times.at(-1)! + setFrom) : 0], []);
+  return [...floods, stampSheetGrid(floods.at(-1)!, floods.at(-1)! + matteFrom)];
 }
 
 /** Whether each decision's τ is the closed form's, and none was warned near rounding. */

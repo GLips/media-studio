@@ -133,11 +133,13 @@ field's own law. A histogram bins each wetted texel's weight by the step it turn
 weight set by its first step going into words of its own, so a bin's bound is what's matte by its end less what has
 set by its start, exact a step wide (`stamp-damp-histogram.ts`). A `damp` or `dry` that can't hold, or a bloom with
 nothing to act on, is a `StampSheetRefusal`, its message the author's, naming a fix. A `wet` that falls short only
-warns: wetness only falls, so it lands where it would without one. A solve asked to report (`check --solve`) reads,
-after each wash's last landing, when what the wash wetted is damp, and after each bloom, when its footprint is: the
-same histograms over the wash's touches and its prewet's contact, or the bloom's core. Then it lands into the one wet field and its film; its water reaches other films' paint through a
-proxy, though only into films that keep a wet history or lift (any other direct film has no open channel); a drying closes once
-everything since the last has set, rimming each film that painted in it, and at the end every wet film's open paint
+warns: wetness only falls, so it lands where it would without one. A solve asked for damp windows (`check --solve`)
+reads, after each wash's last landing, when what the wash wetted is damp, and after each bloom, when its footprint is:
+the same histograms over the wash's touches and its prewet's contact, or the bloom's core (`stamp-sheet-damp-report.ts`).
+The laws' times on the CPU are `stampDryingTimes`, which the reductions' WGSL runs per texel. Then it lands into the
+one wet field and its film; its water reaches other films' paint through a proxy, though only into films that keep a
+wet history or lift (any other direct film has no open channel); a drying closes once everything since the last has
+set, rimming each film that painted in it, and at the end every wet film's open paint
 settles. The field keeps times after a base it moves up past 2¹³ s. It solves a posed program: `paintingSheetPosed`
 (`lib/paint/document/models/painting-pose.ts`) maps each entry's marks by its chain's similarity, anchored clips,
 reserves and resists staying: stamps placed, scaled and turned, areas by their outlines, widths scaled. What travels

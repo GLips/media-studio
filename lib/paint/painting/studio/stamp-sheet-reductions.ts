@@ -9,7 +9,7 @@
 
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
-import { STAMP_SHEET_BINS } from '../models/stamp-damp-histogram.ts';
+import { STAMP_DAMP_HISTOGRAM_BINS } from '../models/stamp-damp-histogram.ts';
 import { STAMP_SHEET_BLOOM_SURPLUS, STAMP_SHEET_CORE_CONTACT, STAMP_SHEET_FAILURE_CELL, STAMP_SHEET_TOTALS, STAMP_SHEET_WEIGHT } from '../models/stamp-sheet-schedule.ts';
 import type { StampSheetWetness } from '../models/stamp-sheet-program.ts';
 import { stampRegionTexelWords, type StampStage } from '../models/stamp-stage.ts';
@@ -57,7 +57,7 @@ ${STAMP_WET_PAPER_WGSL}
 @group(0) @binding(8) var prewet: texture_2d<f32>;
 @group(0) @binding(9) var prewetFluid: texture_2d<f32>;
 ${Object.entries(FLAGS).map(([flag, bit]) => `const ${flag.toUpperCase()} = ${bit}u;`).join('\n')}
-const BINS = ${STAMP_SHEET_BINS}u;
+const BINS = ${STAMP_DAMP_HISTOGRAM_BINS}u;
 ${STAMP_REGION_AT_WGSL}
 // A texel's weight in the core: none where its touch is under STAMP_SHEET_CORE_CONTACT, else its touch × the share it
 // may land there, × 2¹⁶.
@@ -86,8 +86,9 @@ fn infinity() -> f32 {
   var bits = 0x7f800000u;
   return bitcast<f32>(bits);
 }
-// When a texel wetted to \`field.x\` at \`field.y\` turns matte (L) and sets (Z), after the base. On a sheet that
-// never dries (rate 0) a wetted texel never sets, and is matte from the start if no wetter than damp, else never.
+// When a texel wetted to \`field.x\` at \`field.y\` turns matte (L) and sets (Z), after the base: stampDryingTimes'
+// matteFrom and setFrom. On a sheet that never dries (rate 0) a wetted texel never sets, and is matte from the start
+// if no wetter than damp, else never.
 fn matteAt(field: vec4f) -> f32 {
   if (u.drying.x <= 0.0) { return select(infinity(), -infinity(), field.x <= u.drying.z); }
   return field.y + (field.x - u.drying.z) / u.drying.x;

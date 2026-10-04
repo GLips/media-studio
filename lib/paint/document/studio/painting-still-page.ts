@@ -41,7 +41,7 @@ function paintingPicturePng(picture: StampSheetsPicture, width: number, height: 
 }
 
 /** The source's still, as `request` asks for it. Throws what a solve refuses: an application it can't land. */
-async function paintingStillOf({ texts, brushes, packUrls, films, at, report }: PaintingStillRequest): Promise<PaintingStill> {
+async function paintingStillOf({ texts, brushes, packUrls, films, at, dampWindows }: PaintingStillRequest): Promise<PaintingStill> {
   const evaluation = painting(paintingSource, paintingValuesFromText(paintingSource.properties ?? {}, texts));
   const brushOf = ({ style, brush }: BrushRef): StampBrush => {
     const key = `${style}/${brush}`;
@@ -57,7 +57,7 @@ async function paintingStillOf({ texts, brushes, packUrls, films, at, report }: 
     const surface = await createStampPaintSurface(owner, { canvas, width, height });
     try {
       const prefix = at === null ? {} : { at };
-      const costs = createStampPaintCostTally(), { solved, composite, release } = await solvePaintingSheets(owner, compiled, { costs, report, ...prefix });
+      const costs = createStampPaintCostTally(), { solved, composite, release } = await solvePaintingSheets(owner, compiled, { costs, dampWindows, ...prefix });
       await drawStampSheetsStill(surface, composite);
       release();
       copy.getContext('2d')!.drawImage(canvas, 0, 0);

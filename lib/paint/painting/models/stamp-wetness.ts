@@ -37,6 +37,19 @@ export function stampWorkableAt(level: number, at: number, tau: number, { rate, 
   return Math.min(1, Math.max(0, level - rate * Math.max(0, tau - at - openTime)) / damp);
 }
 
+/** When paper wetted to some level passes each sheen, s after it was wetted (stampDryingTimes). */
+export type StampDryingTimes = { shinyUntil: number; matteFrom: number; setFrom: number };
+
+/**
+ * When paper wetted to `level` crosses each line of stampWetnessAt and stampWorkableAt, s after: wetter than shiny
+ * until `shinyUntil`, no wetter than damp from `matteFrom`, unworkable from `setFrom`. The sheet reductions' matteAt
+ * and setAt run these per texel. At rate 0 nothing sets, and paper is matte from the start only if no wetter than damp.
+ */
+export function stampDryingTimes(level: number, { rate, openTime, shiny, damp }: StampDrying): StampDryingTimes {
+  if (rate <= 0) return { shinyUntil: level > shiny ? Infinity : -Infinity, matteFrom: level <= damp ? -Infinity : Infinity, setFrom: Infinity };
+  return { shinyUntil: (level - shiny) / rate, matteFrom: (level - damp) / rate, setFrom: openTime + level / rate };
+}
+
 /**
  * The paper at painting time `tau` from a texel of a wash's wet field (`field`: the level its water last went to, the
  * time it went there, and whether it had dried out since, StampWetPaper's settled, when last written), as its

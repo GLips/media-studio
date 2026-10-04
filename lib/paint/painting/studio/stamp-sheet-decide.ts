@@ -6,7 +6,7 @@
 // At a fixed `at`, and under `instant` or `never`, `damp` and `dry` are judged at τ0 alone, but `dry` under
 // `instant`: τ0 is the GPU's f32 set time, which rounding may leave a texel workable at.
 
-import { stampDampFirstStep, stampDampFirstWidth, stampDampStep, stampDampWindow } from '../models/stamp-damp-histogram.ts';
+import { stampDampFirstStep, stampDampFirstWidth, stampDampStep } from '../models/stamp-damp-histogram.ts';
 import {
   STAMP_SHEET_SHARE, STAMP_SHEET_STEP, STAMP_SHEET_VERIFY_STEPS, stampSheetAtFails, stampSheetEmptyCore, stampSheetGrid, stampSheetHeld, stampSheetHolds,
   stampSheetNearRounding, stampSheetUnreachable, stampSheetVerifyFault, stampSheetWetShort, stampSheetWithinRounding, stampSheetWontBloom,
@@ -77,7 +77,7 @@ async function firstHolding(steps: StampSheetSteps, input: StampSheetDecideInput
 }
 
 /** Throws `input`'s failure from this prefix: its rule `on` held over `held` at most, at `tau`, mapped there. */
-async function unreachable(steps: StampSheetSteps, input: StampSheetDecideInput, on: StampSheetWetness, core: StampSheetCore, at: { tau: number; held: number; totals: StampSheetTotals }): Promise<never> {
+async function unreachable(steps: StampSheetSteps, input: StampSheetDecideInput, on: Exclude<StampSheetWetness, 'wet'>, core: StampSheetCore, at: { tau: number; held: number; totals: StampSheetTotals }): Promise<never> {
   const boxes = await steps.failureAt(core, at.tau, on);
   throw new StampSheetRefusal(stampSheetUnreachable(input.name, on, at, boxes, input.unscheduled, input.regime));
 }
@@ -95,18 +95,4 @@ async function verified(steps: StampSheetSteps, name: string, on: StampSheetWetn
     throw new Error(stampSheetVerifyFault(name, on, at, on === 'dry' ? 1 : STAMP_SHEET_SHARE, share(stampSheetHeld(on, totals))));
   };
   return check(0);
-}
-
-/**
- * When `core` (its touch laid by `touch`) is damp from `tau` on over STAMP_SHEET_SHARE of its wetted weight, model s:
- * its first step that holds to the first after its last; or, never at once, the most damp (an upper bound) and when.
- * Null where none of it holds water, or all of that has set by `tau`.
- */
-export async function readStampSheetDampWindow(steps: StampSheetSteps, core: StampSheetCore, tau: number, touch: StampSheetPrepare): Promise<{ from: number; to: number } | { share: number; at: number } | null> {
-  const totals = await steps.totalsAt(core, tau, touch, null), wetted = totals.weight - totals.never;
-  if (wetted <= 0 || totals.latestSet === null || totals.latestSet <= tau) return null;
-  const histogram = await steps.histogramAt(core, tau, 0, stampDampFirstWidth(stampDampStep(totals.latestSet, tau)));
-  const found = await stampDampWindow(histogram, STAMP_SHEET_SHARE * wetted, ({ start, width }) => steps.histogramAt(core, tau, start, width));
-  if (found.from === null) return { share: found.most.weight / wetted, at: tau + found.most.step * STAMP_SHEET_STEP };
-  return { from: tau + found.from * STAMP_SHEET_STEP, to: tau + (found.to + 1) * STAMP_SHEET_STEP };
 }

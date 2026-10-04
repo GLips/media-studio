@@ -7,7 +7,7 @@
 import { STAMP_SHEET_STEP, stampSheetWide } from './stamp-sheet-schedule.ts';
 
 /** Bins a damp histogram pass sorts weight into. */
-export const STAMP_SHEET_BINS = 4096;
+export const STAMP_DAMP_HISTOGRAM_BINS = 4096;
 
 /**
  * A damp histogram: bins `width` 1 ms steps wide from step `start` (steps counted from τ0); in each, the weight turning
@@ -18,7 +18,7 @@ export type StampDampHistogram = { start: number; width: number; matte: Float64A
 
 /** A histogram pass's words read as one: two words a bin, matte's then sets', then matte-before's two and set-by's two. */
 export function stampDampHistogram(words: Uint32Array, start: number, width: number): StampDampHistogram {
-  const bins = STAMP_SHEET_BINS, matte = new Float64Array(bins), sets = new Float64Array(bins);
+  const bins = STAMP_DAMP_HISTOGRAM_BINS, matte = new Float64Array(bins), sets = new Float64Array(bins);
   for (let b = 0; b < bins; b++) {
     matte[b] = stampSheetWide(words, 2 * b);
     sets[b] = stampSheetWide(words, 2 * (bins + b));
@@ -27,13 +27,13 @@ export function stampDampHistogram(words: Uint32Array, start: number, width: num
 }
 
 /** The words a histogram pass leaves. */
-export const STAMP_DAMP_HISTOGRAM_WORDS = 4 * STAMP_SHEET_BINS + 4;
+export const STAMP_DAMP_HISTOGRAM_WORDS = 4 * STAMP_DAMP_HISTOGRAM_BINS + 4;
 
 /** Each bin's most damp weight: what's matte by its end less what has set by its start; exact for a bin a step wide. */
 export function stampDampBinBounds(histogram: StampDampHistogram): Float64Array {
-  const bounds = new Float64Array(STAMP_SHEET_BINS);
+  const bounds = new Float64Array(STAMP_DAMP_HISTOGRAM_BINS);
   let matte = histogram.matteBefore, set = histogram.setBy;
-  for (let b = 0; b < STAMP_SHEET_BINS; b++) {
+  for (let b = 0; b < STAMP_DAMP_HISTOGRAM_BINS; b++) {
     matte += histogram.matte[b];
     bounds[b] = matte - set;
     set += histogram.sets[b];
@@ -42,10 +42,10 @@ export function stampDampBinBounds(histogram: StampDampHistogram): Float64Array 
 }
 
 /** The first histogram over steps 0..`last`: bins wide enough that 4096 of them reach it. */
-export const stampDampFirstWidth = (last: number) => Math.max(1, Math.ceil((last + 1) / STAMP_SHEET_BINS));
+export const stampDampFirstWidth = (last: number) => Math.max(1, Math.ceil((last + 1) / STAMP_DAMP_HISTOGRAM_BINS));
 
 /** A bin's refinement: its steps, binned 4096 ways. */
-export const stampDampRefined = (histogram: StampDampHistogram, bin: number) => ({ start: histogram.start + bin * histogram.width, width: Math.ceil(histogram.width / STAMP_SHEET_BINS) });
+export const stampDampRefined = (histogram: StampDampHistogram, bin: number) => ({ start: histogram.start + bin * histogram.width, width: Math.ceil(histogram.width / STAMP_DAMP_HISTOGRAM_BINS) });
 
 /** The step of `kL` or `kZ` from a time, `tau0` and the time both after the same base: its first 1 ms step at or past it, at least 0. */
 export const stampDampStep = (time: number, tau0: number) => Math.max(0, Math.ceil((time - tau0) / STAMP_SHEET_STEP - 1e-9));
@@ -64,7 +64,7 @@ export type StampDampMost = { weight: number; step: number };
 async function stampDampSearch(first: StampDampHistogram, need: number, refine: StampDampRefine, last: boolean): Promise<{ step: number | null; most: StampDampMost }> {
   const most: StampDampMost = { weight: 0, step: first.start };
   const search = async (histogram: StampDampHistogram): Promise<number | null> => {
-    const bounds = stampDampBinBounds(histogram), order = Array.from({ length: STAMP_SHEET_BINS }, (_, i) => (last ? STAMP_SHEET_BINS - 1 - i : i));
+    const bounds = stampDampBinBounds(histogram), order = Array.from({ length: STAMP_DAMP_HISTOGRAM_BINS }, (_, i) => (last ? STAMP_DAMP_HISTOGRAM_BINS - 1 - i : i));
     const reaching = order.filter((b) => {
       if (bounds[b] >= need) return true;
       if (bounds[b] > most.weight) Object.assign(most, { weight: bounds[b], step: histogram.start + b * histogram.width });
@@ -84,10 +84,16 @@ async function stampDampSearch(first: StampDampHistogram, need: number, refine: 
 export const stampDampFirstStep = (first: StampDampHistogram, need: number, refine: StampDampRefine) => stampDampSearch(first, need, refine, false);
 
 /**
- * When a core is damp over `need` of its weight, from its first histogram: the first and last steps that hold it, or,
- * where none does, the most damp weight seen. Each refinement is read once, though both searches may ask for it.
+ * When a core is damp over a need, in steps from its histograms' τ: `damp` from the first step that holds it through
+ * the last (`to`, inclusive); or `uneven`, never at once, and the most damp weight seen.
  */
-export async function stampDampWindow(first: StampDampHistogram, need: number, refine: StampDampRefine): Promise<{ from: number; to: number } | { from: null; most: StampDampMost }> {
+export type StampDampSteps = { kind: 'damp'; from: number; to: number } | { kind: 'uneven'; most: StampDampMost };
+
+/**
+ * When a core is damp over `need` of its weight, from its first histogram (StampDampSteps). Each refinement is read
+ * once, though both searches may ask for it.
+ */
+export async function stampDampWindow(first: StampDampHistogram, need: number, refine: StampDampRefine): Promise<StampDampSteps> {
   const read = new Map<string, Promise<StampDampHistogram>>();
   const once: StampDampRefine = (at) => {
     const key = `${at.start}/${at.width}`;
@@ -95,7 +101,7 @@ export async function stampDampWindow(first: StampDampHistogram, need: number, r
     return read.get(key)!;
   };
   const from = await stampDampSearch(first, need, once, false);
-  if (from.step === null) return { from: null, most: from.most };
+  if (from.step === null) return { kind: 'uneven', most: from.most };
   const to = await stampDampSearch(first, need, once, true);
-  return { from: from.step, to: to.step! };
+  return { kind: 'damp', from: from.step, to: to.step! };
 }

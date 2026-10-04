@@ -46,9 +46,12 @@ export type PaintingEvaluation = {
 export const paintingSourceName = <S extends PropertySchema>(source: PaintingSourceModule<S>) =>
   (source.default.name && source.default.name !== 'default' ? source.default.name : 'painting source');
 
-/** Property values a render paints sources at over a scene's own, by source name (paintingSourceName). */
-export type PaintingValueOverrides = ReadonlyMap<string, PaintingPropertyRecord>;
-let paintingValueOverrides: PaintingValueOverrides = new Map();
+/**
+ * Property values a render paints sources at over a scene's own, by source name (paintingSourceName): JSON, as it
+ * crosses into the render's page.
+ */
+export type PaintingValueOverrides = Readonly<Record<string, PaintingPropertyRecord>>;
+let paintingValueOverrides: PaintingValueOverrides = {};
 
 /** Sets the values painting() lays over a scene's from here on; a render's bundle sets them before any scene loads. */
 export function setPaintingValueOverrides(overrides: PaintingValueOverrides): void {
@@ -108,9 +111,10 @@ function evaluateAt<S extends PropertySchema>(
  * stack.
  */
 export function painting<S extends PropertySchema>(source: PaintingSourceModule<S>, values: Partial<PropertyValues<S>> = {}): PaintingEvaluation {
-  const given: Readonly<Partial<PaintingPropertyRecord>> = { ...values, ...paintingValueOverrides.get(paintingSourceName(source)) };
+  const name = paintingSourceName(source), overrides = Object.hasOwn(paintingValueOverrides, name) ? paintingValueOverrides[name] : {};
+  const given: Readonly<Partial<PaintingPropertyRecord>> = { ...values, ...overrides };
   const checked = sourceValues(source, given);
-  if (!checked.values) throw paintingProblemsError(paintingSourceName(source), checked.problems);
+  if (!checked.values) throw paintingProblemsError(name, checked.problems);
   const key = paintingValuesKey(checked.values);
   const evaluations = evaluationsOf.get(source) ?? new Map<string, PaintingEvaluation>();
   evaluationsOf.set(source, evaluations);
@@ -121,7 +125,7 @@ export function painting<S extends PropertySchema>(source: PaintingSourceModule<
   }
   evaluationCounts.made++;
   const { problems, evaluation } = evaluateAt(source, checked.values, false);
-  if (!evaluation) throw paintingProblemsError(paintingSourceName(source), problems);
+  if (!evaluation) throw paintingProblemsError(name, problems);
   evaluations.set(key, evaluation);
   return evaluation;
 }
