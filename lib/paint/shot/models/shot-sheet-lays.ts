@@ -20,7 +20,7 @@ import { stampBoxGrown, type StampBox } from '#lib/paint/painting/models/stamp-r
 import type { StampPointBox, StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { PaintRigPicture, PaintRigPiece } from '#lib/paint/rig/models/paint-rig-pieces.ts';
 import type { CompiledPaintedShot, CompiledShotPaintedPlane } from './shot-compile.ts';
-import { shotPlaneLayAt, shotPlaneMomentAt, shotPlanePlaceAt, shotPlanePosesAt, shotRigPosedAt, shotVisibilityAt, type ShotRigRead } from './shot-frame-plan.ts';
+import { shotPlaneLayAt, shotPlaneMomentAt, shotPlanePlaceAt, shotPlanePosesAt, shotRigPosedAt, shotVisibilityAt, type ShotFrameRigs } from './shot-frame-plan.ts';
 import { shotFilmLattice, shotPlacedLattice, type ShotLattice, type ShotShutterAt } from './shot-lattice.ts';
 import { shotPathInkedLength, shotPathMaskBox, shotPathMaskCapsules, shotPathRevealProblem, type ShotMaskCapsule } from './shot-masks.ts';
 import { shotOccurrenceKey, shotOccurrencePlane } from './shot-occurrences.ts';
@@ -240,8 +240,8 @@ export type ShotFilmSolved = { readonly box: StampPointBox | null; readonly key:
 
 /**
  * What a painted plane's moments are planned from: its shot and plane; the selection drawn this frame, its compile,
- * its films as solved (by sheet) and the poses they were solved under; its rigs as found in that selection, and the
- * frame's reads of their poses, shared by every selection it blends; and the stage it's laid on.
+ * its films as solved (by sheet) and the poses they were solved under; its rigs as found in that selection and posed
+ * by the frame's one read of them; and the stage it's laid on.
  */
 export type ShotPlaneLayInput = {
   readonly shot: CompiledPaintedShot;
@@ -250,8 +250,7 @@ export type ShotPlaneLayInput = {
   readonly compiled: PaintingSelectionCompiled;
   readonly films: readonly (readonly ShotFilmSolved[])[];
   readonly solved: PaintingPoses;
-  readonly rigs: readonly ShotRigFound[];
-  readonly read: ShotRigRead;
+  readonly rigs: ShotFrameRigs;
   readonly stage: Pick<StampStage, 'frame' | 'margin'>;
 };
 
@@ -294,7 +293,7 @@ const latticeTravels = (lattice: ShotLattice) => lattice.travel?.some((value) =>
  * Throws on a visibility inside it between 0 and 1.
  */
 function shotPiecesPlan(input: ShotPlaneLayInput, found: ShotRigFound, { at, shutter: ends }: ShotMomentAt, planeAt: ShotPlaneAt, planeEnds: ShotShutterAt<ShotPlaneAt>): ShotPiecesPlan {
-  const { shot, plane, compiled, read } = input, { rig } = found, { tree } = compiled;
+  const { shot, plane, compiled, rigs: { read } } = input, { rig } = found, { tree } = compiled;
   const sheet = compiled.sheets.find(({ sheet: { owner } }) => owner === rig.group)!.sheet;
   const poseAt = (m: PaintMoment, planeAtM: ShotPlaneAt): ShotPiecesPose => ({ posed: shotRigPosedAt(found, read, m, true), place: shotSheetPlaceAt(tree, sheet, planeAtM) });
   const atPose = poseAt(at, planeAt), shutter = ends && planeEnds && { open: poseAt(ends.open, planeEnds.open), close: poseAt(ends.close, planeEnds.close) };
@@ -316,8 +315,8 @@ function shotPiecesPlan(input: ShotPlaneLayInput, found: ShotRigFound, { at, shu
  */
 export function shotPlaneLayPlan(input: ShotPlaneLayInput, moment: ShotMomentAt): ShotPlaneLayPlan {
   const { at, shutter } = moment;
-  const { shot, plane, selection, compiled, films, solved, rigs, read, stage } = input, { motion } = shot;
-  const planeAt = (m: PaintMoment): ShotPlaneAt => ({ place: shotPlanePlaceAt(plane, motion, m), poses: shotPlanePosesAt(plane, motion, rigs, read, m, true) });
+  const { shot, plane, selection, compiled, films, solved, rigs: frameRigs, stage } = input, { motion } = shot, { found: rigs, read } = frameRigs;
+  const planeAt = (m: PaintMoment): ShotPlaneAt => ({ place: shotPlanePlaceAt(plane, motion, m), poses: shotPlanePosesAt(plane, motion, frameRigs, m, true) });
   const atMoment = planeAt(at), shutterAt: ShotShutterAt<ShotPlaneAt> = shutter && { open: planeAt(shutter.open), close: planeAt(shutter.close) };
   const visibilityOf = (key: NodeKey) => shotVisibilityAt(shot, plane.id, shotOccurrenceKey(plane.id, key), at);
   const piecesRigs = rigs.filter(({ rig }) => rig.pieces);

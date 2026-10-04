@@ -5,7 +5,7 @@
 // problem is found before any is thrown. Covers are laid through the built camera, pins each frame (shot-placement.ts).
 //
 // Negative space: refused are visibility on the opaque back, a lay on a picture or three plane, an alphaOf inside a
-// pieces rig, and a dissolve end cutting a rigged group otherwise than its rig does (shotRigEndProblems).
+// pieces rig, and a dissolve end cutting a rigged group otherwise than its rig does (shotPlaneRigEndProblems).
 
 import { buildPaintCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
 import type { PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
@@ -28,7 +28,7 @@ import {
   type PresentationValue, type ScreenPin, type ThreeSource,
 } from './shot-props.ts';
 import { shotCameraPlanes } from './shot-reach.ts';
-import { compileShotRig, type CompiledShotRig } from './shot-rigs.ts';
+import { compileShotRig, shotPlaneRigEndProblems, shotRigShowsGroup, type CompiledShotRig } from './shot-rigs.ts';
 import { paintedPlaneBlendProblems, paintedSourceEnds, paintedSourceProblems, type PaintedSource, type PaintedSourceEnd, type ShotPlanePaints } from './shot-selection.ts';
 import { shotVisibilityProblems } from './shot-visibility.ts';
 import { shotWarmProblems, type ShotWarm } from './shot-warm.ts';
@@ -194,7 +194,10 @@ function compilePaintedPlane(
   };
 }
 
-/** Each rig compiled over its group occurrence, refusing a rig inside another's group. */
+/**
+ * Each rig compiled over its group occurrence, cut in the first of its plane's ends showing the group, every end held
+ * to that cut; a rig inside another's group refused.
+ */
 function compileShotRigs(rigs: NonNullable<PaintedShotProps['rigs']>, planes: readonly CompiledShotPlane[], problems: PaintingProblem[]) {
   const compiled = new Map<OccurrenceKey, CompiledShotRig>();
   for (const [occurrence, rig] of Object.entries(rigs)) {
@@ -209,10 +212,13 @@ function compileShotRigs(rigs: NonNullable<PaintedShotProps['rigs']>, planes: re
       problems.push(shotError(occurrence, 'rig', `lies in ${outer}, which is rigged: its parts pose all it holds, so nothing in it is rigged again`));
       continue;
     }
-    const made = compileShotRig(occurrence, plane.id, plane.ends, rig);
+    // With no end showing it as a group, the first end's tree is where the rig finds it isn't one.
+    const cutIn = plane.ends.find(({ selection }) => shotRigShowsGroup(selection, found.node)) ?? plane.ends[0];
+    const made = compileShotRig(occurrence, plane.id, cutIn.selection.painting, rig);
     problems.push(...made.problems);
     if (made.rig) compiled.set(occurrence, made.rig);
   }
+  for (const plane of planes) if (plane.kind === 'painted') problems.push(...shotPlaneRigEndProblems(compiled.values(), plane.id, plane.ends));
   return compiled;
 }
 

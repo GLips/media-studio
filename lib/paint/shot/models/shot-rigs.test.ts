@@ -28,11 +28,11 @@ const rigOf = (bodyZ: number) => {
     { id: 'body', z: bodyZ, parent: null, cels: ['body'] },
     { id: 'neck', z: 1, parent: 'body', joint: 'skin', pivot: { x: 60, y: 100 }, blend: 12, cels: ['neck'] },
   ];
-  return compileShotRig('front/heron', 'front', [{ selection: { kind: 'layers', painting: heron, layers: ['heron'] }, field: 'source' }], { parts, pose: {} }).rig!;
+  return compileShotRig('front/heron', 'front', heron, { parts, pose: {} }).rig!;
 };
 const skinRefusal = (bodyZ: number, [body, neck]: readonly PaintRigPicture[]): string => {
   try {
-    shotRigSkin(rigOf(bodyZ), [{ key: 'body', picture: body }, { key: 'neck', picture: neck }]);
+    shotRigSkin(rigOf(bodyZ), [{ cel: 'body', key: 'body', picture: body }, { cel: 'neck', key: 'neck', picture: neck }]);
   } catch (error) {
     return (error as Error).message;
   }

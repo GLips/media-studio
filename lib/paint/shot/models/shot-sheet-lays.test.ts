@@ -10,9 +10,9 @@ import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-
 import { stampPointBox, stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { stampRoundTipStatedProfile } from '#lib/paint/painting/models/stamp-tip-support.ts';
 import { compilePaintedShot } from './shot-compile.ts';
-import { shotPlanePosesAt, shotPlaneSharesAt, shotRigReader } from './shot-frame-plan.ts';
+import { shotPlanePosesAt, shotPlaneSharesAt, shotRigGroupPivot, shotRigReader } from './shot-frame-plan.ts';
 import type { PaintedShotProps, RigPart } from './shot-props.ts';
-import type { ShotRigFound } from './shot-rigs.ts';
+import { shotRigFound, type ShotRigCel, type ShotRigFound } from './shot-rigs.ts';
 import { shotPlaneLayPlan } from './shot-sheet-lays.ts';
 
 const FPS = 24;
@@ -60,10 +60,13 @@ function planAt(props: PaintedShotProps, at: PaintMoment) {
   const [{ selection }] = shotPlaneSharesAt(shot!, plane, at), compiled = compilePaintingSelection(selection.painting, brushOf, { layers: selection.layers });
   const films = compiled.sheets.map(({ layers }) => layers.map((_, f) => ({ box: stampPointBox({ x: 30, y: 90, w: 180, h: 40 }), key: `film ${f}` })));
   // Rigs found with unit axes: what the plan reads of them is their parts' poses, not the paint they were found over.
-  const rigs: ShotRigFound[] = [...shot!.rigs.values()].map((rig) => ({ rig, axes: new Map(rig.parts.map(({ id }) => [id, { direction: 0, length: 1 }])), skin: null }));
-  const read = shotRigReader(shot!.motion), solved = shotPlanePosesAt(plane, shot!.motion, rigs, read, at, false);
-  return { solved, plan: shotPlaneLayPlan({ shot: shot!, plane, selection, compiled, films, solved, rigs, read, stage: camera.stage }, { at, shutter: null }) };
+  const found: ShotRigFound[] = [...shot!.rigs.values()].map((rig) => ({ rig, axes: new Map(rig.parts.map(({ id }) => [id, { direction: 0, length: 1 }])), skin: null }));
+  const rigs = { found, read: shotRigReader(shot!.motion) }, solved = shotPlanePosesAt(plane, shot!.motion, rigs, at, false);
+  return { solved, plan: shotPlaneLayPlan({ shot: shot!, plane, selection, compiled, films, solved, rigs, stage: camera.stage }, { at, shutter: null }) };
 }
+
+/** Rest cel `cel`, its pixels keyed `key`, opaque over its box. */
+const restCel = (cel: string, key: string, x0: number, y0: number, w: number, h: number): ShotRigCel => ({ cel, key, picture: { x0, y0, w, h, rgba: new Float32Array(w * h * 4).fill(1) } });
 
 const solvedText = (solved: PaintingPoses) => [...solved].map(([key, pose]) => `${key}=${paintingPoseText(pose)}`).join(';');
 
@@ -76,6 +79,26 @@ test("a boil's wobble moves finished paint: marks solve alike across epochs, whi
   assert.equal(solvedText(next.solved), solvedText(first.solved));
   assert.equal(again.plan.key, first.plan.key);
   assert.notEqual(next.plan.key, first.plan.key);
+});
+
+test("a cel skinned to others solves under its skin's name: ends painted alike to the body, their necks apart, pose the body apart", () => {
+  const parts: readonly RigPart[] = [
+    { id: 'body', z: 0, parent: null, cels: ['body'] },
+    { id: 'neck', z: 1, parent: 'body', joint: 'skin', pivot: { x: 60, y: 100 }, blend: 12, cels: ['neck'] },
+  ];
+  const { shot } = compilePaintedShot({
+    camera, planes: [{ id: 'front', depth: 1, source: layersOf(pond(false), ['sky', 'heron']) }], rigs: { 'front/heron': { parts, pose: { neck: { rotation: 0.3 } } } },
+  }, []);
+  const [plane] = shot!.planes, rig = shot!.rigs.get('front/heron')!, { motion } = shot!;
+  assert.ok(plane.kind === 'painted');
+  // An end's rig found over its own rest cels, its neck turned and nothing bent: the meshes part, the parts' maps don't.
+  const bodyPose = (neck: ShotRigCel) => {
+    const found = shotRigFound(rig, shotRigGroupPivot(rig, motion), [restCel('body', 'body', 30, 95, 60, 20), neck]);
+    return paintingPoseText(shotPlanePosesAt(plane, motion, { found: [found], read: shotRigReader(motion) }, paintMoment(0), false).get('body')!);
+  };
+  const day = restCel('neck', 'day neck', 54, 60, 12, 45), dusk = restCel('neck', 'dusk neck', 50, 56, 18, 49);
+  assert.notEqual(bodyPose(day), bodyPose(dusk));
+  assert.equal(bodyPose(day), bodyPose(day));
 });
 
 test('a layer inside a rig drawn as pieces shows whole or not at all: refused at load as a constant, as it draws as a callback', () => {

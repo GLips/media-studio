@@ -496,14 +496,15 @@ group's too, its clock chained under its parents' and the plane's `clock`. `shot
 moment: the selections its source blends at its source moment, each with its weight (`shotPlaneSharesAt`), its node poses (boil wobble out of the poses marks solve under, in the
 ones the lay reads), boil epochs, visibility and rig poses. A rig (`shot-rigs.ts`) is found over its cels as all the
 selection's paint makes them unposed, whatever a timed prefix has painted yet: on a dissolving plane, in each end, every
-end holding the group cut alike (`shotRigEndProblems`). A frame reads each rig's pose once a moment (`shotRigReader`)
-and poses every end by it. `shotRigSkin` lays its cels as one and skins them, refusing at the rig's path what the rig
-engine would refuse naming no rig, by its own rules: cels none of which is painted (`paintRigPicturePainted`), and a
-skin joint with no bone (`paintRigSkinProblems`: its child owns no texel, or its paint centres on its pivot). One whose
-group owns its sheet is
+end holding the group cut alike (`shotPlaneRigEndProblems`, at load and as a callback source is read). A frame reads
+each rig's pose once a moment (`shotRigReader`) and poses every end by it. `shotRigSkin` lays its cels as one and
+skins them, refusing at the rig's path what the rig engine would refuse naming no rig, by its own rules: cels none of
+which is painted (`paintRigPicturePainted`), and a skin joint with no bone (`paintRigSkinProblems`: its child owns no
+texel, or its paint centres on its pivot). One whose group owns its sheet is
 drawn as pieces: a cel layer of its shown cels (`paint-rig-cel-layer.ts`), cut by ownership and posed through
 three.js meshes into colour and motion (`studio/shot-rig-pieces.ts`); any other rig poses its cels' marks before the
-solve, a skinned cel by its skin mesh. A hidden cel stays in its sheet's program and isn't laid, so a cel swap
+solve, a skinned cel by its skin mesh, its pose named by its skin's key (its rest cels' readback keys) as well as
+every part's map, since every rest cel shapes the mesh. A hidden cel stays in its sheet's program and isn't laid, so a cel swap
 re-solves nothing. `studio/shot-renderer.ts` solves each painted plane once a frame (`studio/shot-painted-plane.ts`,
 through `painting-sheets-solve.ts`), each selection a dissolve blends on its own; then each exposure orders its drawables (`shot-plan.ts`) and plans each plane's
 moment purely (`shotPlaneLayPlan`, `shot-sheet-lays.ts`): its steps through lattices (`shot-lattice.ts`), its ground,
@@ -515,9 +516,11 @@ the old renderer's pass (`painting/studio/stamp-plane-picture-pass.ts`), kept in
 key. A dissolve's selections are each laid, kept and blurred so, then summed by weight into a stage-sized picture
 (`studio/shot-dissolve-pass.ts`): every layer a plane's picture holds (opaque colour, colour and transmittance, glow,
 motion) is linear in what's laid, so the sum is the dissolve, never a pigment mix. Its ends paint one document size
-on one ground. A marks rig on it solves each end at each pose, kept per end and pose, so a warm covers both; a pieces
-rig finds its skin in each end and draws each into a target of its own, since three.js renders at once and one
-submit lays every end. Picture
+on one ground. A marks rig on it solves each end at each pose; a sheet's keys hash its paint and each entry's pose
+text, so an end resumes another's checkpoint only where both paint and pose agree, the skin's key keeping a skinned
+cel apart wherever any rest cel differs, and a warm covers both ends. A pieces rig finds its skin in each end and
+draws each share of the blend into a target of its own, since three.js renders at once and one submit lays every
+share. Picture
 and three planes are the old path's sources, laid through `stamp-lens-source-layers.ts`, each read at its
 `sourceClock`'s moment (a picture's `pictureAt`, a three scene's `poseAt`) and faded by its visibility, the lens
 layer's `visibility` (`lens-compositor.ts`). Three planes read the shot's

@@ -11,7 +11,8 @@ import type { NodeKey } from '#lib/paint/document/models/painting-document.ts';
 import { PAINTING_REST_POSE, paintingDeformsPose, paintingPoseMap, paintingPoseText, type PaintingNodePose } from '#lib/paint/document/models/painting-pose.ts';
 import { paintingProblem, paintingProblemsError, isPaintingFinitePoint, isPaintingPositive, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import type { LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
-import { paintingSheetInGroup, type PaintingTree } from '#lib/paint/document/models/painting-tree.ts';
+import type { PaintingEvaluation } from '#lib/paint/document/models/painting-source.ts';
+import { paintingLayersUnder, paintingSheetInGroup, type PaintingTree } from '#lib/paint/document/models/painting-tree.ts';
 import type { StampWarpMap } from '#lib/paint/painting/models/stamp-group-warp.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
@@ -73,33 +74,30 @@ function partProblem(part: RigPart): string | null {
   return null;
 }
 
-/** The layers under group `group` in `tree`, in document order. */
-const layersUnder = (tree: PaintingTree, group: NodeKey) => tree.layers.filter(({ groups }) => groups.includes(group)).map(({ node }) => node.key);
+/** The layers under node `key` in `tree`, in document order: itself for a layer. */
+const layersUnder = (tree: PaintingTree, key: NodeKey) => paintingLayersUnder(tree, tree.byKey.get(key)!).map(({ node }) => node.key);
 
 /** Cel `cel`'s layers in `tree`, in document order: itself, a layer, or those under it; null where it isn't under `group`. */
 function celCut(tree: PaintingTree, group: NodeKey, cel: NodeKey): NodeKey[] | null {
-  const place = tree.byKey.get(cel);
-  if (!place?.groups.includes(group)) return null;
-  return place.kind === 'layer' ? [cel] : layersUnder(tree, cel);
+  return tree.byKey.get(cel)?.groups.includes(group) ? layersUnder(tree, cel) : null;
 }
 
 /** `group`'s layers in `tree` on the root's sheet though it owns its own: off the sheet a pieces rig reads its cels from. */
 const offGroupSheet = (tree: PaintingTree, group: NodeKey) => layersUnder(tree, group).filter((layer) => !paintingSheetInGroup(tree, tree.byKey.get(layer)!.sheet, group));
 
-/** Whether `selection` shows `group` as a group: a rig on its plane cuts it there. */
-const showsGroup = (selection: LayerSelection, group: NodeKey) => selection.painting.tree.byKey.get(group)?.kind === 'group' && paintedSourceNodeKeys(selection).includes(group);
+/** Whether `selection` shows `group` as a group: a rig on its plane is cut in the first end that does. */
+export const shotRigShowsGroup = (selection: LayerSelection, group: NodeKey) => selection.painting.tree.byKey.get(group)?.kind === 'group' && paintedSourceNodeKeys(selection).includes(group);
 
 const sameKeys = (a: readonly NodeKey[], b: readonly NodeKey[]) => a.length === b.length && a.every((key) => b.includes(key));
 
 /**
  * Why `end`, a selection rig `rig`'s plane shows, doesn't hold its group as the rig cuts it, at the end's field: not
- * showing it, a cel holding other layers, a layer under it in no cel, or its sheet owned otherwise. Each end's rig is
- * found and posed over that end's paint.
+ * showing it, a cel holding other layers, a layer under it in no cel, or its sheet owned otherwise.
  */
-export function shotRigEndProblems(rig: CompiledShotRig, { selection, field }: PaintedSourceEnd): PaintingProblem[] {
+function shotRigEndProblems(rig: CompiledShotRig, { selection, field }: PaintedSourceEnd): PaintingProblem[] {
   const problems: PaintingProblem[] = [], { group, occurrence } = rig, { tree } = selection.painting;
   const error = (message: string) => problems.push(rigError(rig.plane, field, `${message}: every end of a rigged plane holds its rigged groups cut alike`));
-  if (!showsGroup(selection, group)) {
+  if (!shotRigShowsGroup(selection, group)) {
     error(`shows no group ${group}, which ${occurrence} rigs`);
     return problems;
   }
@@ -117,14 +115,23 @@ export function shotRigEndProblems(rig: CompiledShotRig, { selection, field }: P
 }
 
 /**
- * `rig`, cutting group occurrence `occurrence` of plane `plane`, checked: parts with unique ids, parents among them,
- * no cycles, cels strictly under the group, each layer under it in one part's cels; a pieces rig's cels on its group's
- * sheet or one nested in it. Cut in the first of `ends` showing the group; the rest hold it alike (shotRigEndProblems).
+ * Why plane `plane`'s `ends` (its load's, or a callback's later read) don't hold the groups its rigs (of `rigs`) cut
+ * as they're cut, at each end's field. Each end's rig is found and posed over that end's paint, so a pose must move
+ * the same layers in every end.
  */
-export function compileShotRig(occurrence: OccurrenceKey, plane: string, ends: readonly PaintedSourceEnd[], rig: OccurrenceRig): { rig: CompiledShotRig | null; problems: PaintingProblem[] } {
-  const problems: PaintingProblem[] = [], group = occurrence.slice(plane.length + 1), cutIn = ends.find(({ selection }) => showsGroup(selection, group));
-  if (!cutIn) return { rig: null, problems: [rigError(occurrence, '', `is rigged, and isn't a group of ${plane}'s painting: a rig cuts a group`)] };
-  const { tree, document: { widthPx, heightPx } } = cutIn.selection.painting, place = tree.byKey.get(group)!;
+export function shotPlaneRigEndProblems(rigs: Iterable<CompiledShotRig>, plane: string, ends: readonly PaintedSourceEnd[]): PaintingProblem[] {
+  return [...rigs].filter((rig) => rig.plane === plane).flatMap((rig) => ends.flatMap((end) => shotRigEndProblems(rig, end)));
+}
+
+/**
+ * `rig`, cutting group occurrence `occurrence` of plane `plane` as `painting` holds it, checked: parts with unique
+ * ids, parents among them, no cycles, cels strictly under the group, each layer under it in one part's cels; a pieces
+ * rig's cels on its group's sheet or one nested in it. Its plane's other ends are held to it by shotPlaneRigEndProblems.
+ */
+export function compileShotRig(occurrence: OccurrenceKey, plane: string, painting: PaintingEvaluation, rig: OccurrenceRig): { rig: CompiledShotRig | null; problems: PaintingProblem[] } {
+  const { tree, document: { widthPx, heightPx } } = painting;
+  const problems: PaintingProblem[] = [], group = occurrence.slice(plane.length + 1), place = tree.byKey.get(group);
+  if (place?.kind !== 'group') return { rig: null, problems: [rigError(occurrence, '', `is rigged, and isn't a group of ${plane}'s painting: a rig cuts a group`)] };
   if (!rig.parts.length) problems.push(rigError(occurrence, 'parts', 'is rigged with no parts'));
   const seen = new Set<string>();
   for (const part of rig.parts) {
@@ -164,12 +171,13 @@ export function compileShotRig(occurrence: OccurrenceKey, plane: string, ends: r
     problems.push(rigError(shotOccurrenceKey(plane, layer), '', `lies on the root's sheet, and ${group} owns its sheet: a cel of a rig drawn as pieces lies on its group's sheet`));
   }
   if (problems.length) return { rig: null, problems };
-  const compiled: CompiledShotRig = {
-    occurrence, plane, size: { widthPx, heightPx }, group, parts: rig.parts, lines, celPart, celLayers, pieces, pose: rig.pose,
-    text: stampCanonicalJson({ occurrence, parts: rig.parts }),
+  return {
+    rig: {
+      occurrence, plane, size: { widthPx, heightPx }, group, parts: rig.parts, lines, celPart, celLayers, pieces, pose: rig.pose,
+      text: stampCanonicalJson({ occurrence, parts: rig.parts }),
+    },
+    problems,
   };
-  const unlike = ends.filter((end) => end !== cutIn).flatMap((end) => shotRigEndProblems(compiled, end));
-  return unlike.length ? { rig: null, problems: unlike } : { rig: compiled, problems };
 }
 
 /** Why `pose` can't pose `rig`, or null: a part it doesn't have, a cel not that part's, a number that isn't finite. */
@@ -247,27 +255,38 @@ export function shotRigPosed(
   return { maps, shown: shotRigShownCels(rig, pose) };
 }
 
-/** A cel layer's skin: its cuts (parts in the rig's order) and each of its groups with its mesh, back to front. */
-export type ShotRigSkin = { readonly cuts: PaintRigCutLayer; readonly groups: readonly { readonly group: PaintRigSkinGroup; readonly mesh: PaintRigSkinMesh }[] };
+/**
+ * A rig's cel as the whole selection paints it unposed, and `key`, naming its pixels (its readback's key): equal keys,
+ * equal pictures, in any end or frame.
+ */
+export type ShotRigRestCel = { readonly picture: PaintRigPicture; readonly key: string };
 
-/** A part's cel as a frame shows it: its key, and its picture as the whole selection paints it unposed. */
-export type ShotRigCel = { readonly key: NodeKey; readonly picture: PaintRigPicture };
+/** A part's cel as a frame shows it: its node `cel`, its picture as the whole selection paints it unposed, and that picture's key. */
+export type ShotRigCel = ShotRigRestCel & { readonly cel: NodeKey };
 
 /** Problems that leave `rig`'s cels unskinnable, as one error naming the rig. */
 const shotRigSkinError = (rig: CompiledShotRig, problems: readonly PaintingProblem[]) => paintingProblemsError(`shot's rig ${rig.occurrence}`, problems);
 
-/** Why part `k` of `rig`, showing `cel`, has no bone to bend its skin joint along (`boneless`, paintRigSkinProblems'). */
-function shotRigBonelessProblem(rig: CompiledShotRig, k: number, cel: ShotRigCel, boneless: PaintRigBoneless, onDocument: string): PaintingProblem {
+/** Why part `k` of `rig`, showing `shown`, has no bone to bend its skin joint along (`boneless`, paintRigSkinProblems'). */
+function shotRigBonelessProblem(rig: CompiledShotRig, k: number, shown: ShotRigCel, boneless: PaintRigBoneless, onDocument: string): PaintingProblem {
   const at = `parts.${rig.parts[k].id}`, bends = "a skin joint bends along its part's own paint";
   if (boneless === 'centred') {
-    return rigError(rig.occurrence, at, `its cel ${cel.key}'s own paint centres on its pivot, and ${bends}, out from the pivot: set the pivot where the part meets its parent`);
+    return rigError(rig.occurrence, at, `its cel ${shown.cel}'s own paint centres on its pivot, and ${bends}, out from the pivot: set the pivot where the part meets its parent`);
   }
-  if (!paintRigPicturePainted(cel.picture)) return rigError(rig.occurrence, at, `its cel ${cel.key} lays no paint on ${onDocument}, and ${bends}: paint it there, or leave the part out`);
+  if (!paintRigPicturePainted(shown.picture)) return rigError(rig.occurrence, at, `its cel ${shown.cel} lays no paint on ${onDocument}, and ${bends}: paint it there, or leave the part out`);
   return rigError(
     rig.occurrence, at,
-    `its cel ${cel.key} gives none of the rig's texels most of their colour, outweighed everywhere it paints by the cels over or under it, and ${bends}: where it lies under them, raise its z; where it lies over them, paint it stronger, or out past them`,
+    `its cel ${shown.cel} gives none of the rig's texels most of their colour, outweighed everywhere it paints by the cels over or under it, and ${bends}: where it lies under them, raise its z; where it lies over them, paint it stronger, or out past them`,
   );
 }
+
+/**
+ * A cel layer's skin: its cuts (parts in the rig's order) and each of its groups with its mesh, back to front; `key`
+ * names the rest cels it was found over, and so its meshes.
+ */
+export type ShotRigSkin = {
+  readonly key: string; readonly cuts: PaintRigCutLayer; readonly groups: readonly { readonly group: PaintRigSkinGroup; readonly mesh: PaintRigSkinMesh }[];
+};
 
 /**
  * `cels` (the cel each part shows, in part order) laid as one cel layer and skinned: its cuts, groups and meshes.
@@ -277,13 +296,13 @@ function shotRigBonelessProblem(rig: CompiledShotRig, k: number, cel: ShotRigCel
 export function shotRigSkin(rig: CompiledShotRig, cels: readonly ShotRigCel[]): { picture: PaintRigPicture; skin: ShotRigSkin } {
   const { widthPx, heightPx } = rig.size, onDocument = `the document (0,0 → ${widthPx},${heightPx})`;
   if (!cels.some(({ picture }) => paintRigPicturePainted(picture))) {
-    throw shotRigSkinError(rig, [rigError(rig.occurrence, 'parts', `lays no paint on ${onDocument}: its cels ${cels.map(({ key }) => key).join(', ')} lie off it, or are clipped or reserved away`)]);
+    throw shotRigSkinError(rig, [rigError(rig.occurrence, 'parts', `lays no paint on ${onDocument}: its cels ${cels.map(({ cel }) => cel).join(', ')} lie off it, or are clipped or reserved away`)]);
   }
   const parts: PaintRigCelPart[] = rig.parts.map((part, k) => ({ declaration: part, picture: cels[k].picture }));
-  const { picture, cuts } = paintRigCelLayer(rig.occurrence, parts);
+  const { picture, cuts } = paintRigCelLayer(rig.occurrence, parts), key = stampCanonicalJson(cels.map((cel) => cel.key));
   const boneless = paintRigSkinProblems(cuts);
   if (boneless.length) throw shotRigSkinError(rig, boneless.map((problem) => shotRigBonelessProblem(rig, problem.part, cels[problem.part], problem.boneless, onDocument)));
-  return { picture, skin: { cuts, groups: paintRigSkinGroups(cuts).map((group) => ({ group, mesh: paintRigSkinMesh(cuts, group) })) } };
+  return { picture, skin: { key, cuts, groups: paintRigSkinGroups(cuts).map((group) => ({ group, mesh: paintRigSkinMesh(cuts, group) })) } };
 }
 
 /**
@@ -307,8 +326,9 @@ export function shotRigCelPoses(rig: CompiledShotRig, posed: ShotRigPosed, skin:
   const allTexts = rig.parts.map((part) => `${part.id}=${paintingPoseText(posed.maps.get(part.id)!)}`).join(';');
   for (const [cel, partId] of rig.celPart) {
     const part = rig.parts.find(({ id }) => id === partId)!, map = skinned.get(partId);
-    // A skin mesh covers its part's rest cel alone: a swapped-in cel moves rigidly with its part.
-    if (map && cel === part.cels[0]) poses.set(cel, { kind: 'warp', map, text: `${rig.text}:skin(${partId}):${allTexts}` });
+    // A skin mesh covers its part's rest cel alone: a swapped-in cel moves rigidly with its part. Every rest cel shapes
+    // the mesh, so the skin's key is in the text: a body solved in one end isn't resumed by an end whose neck differs.
+    if (map && cel === part.cels[0]) poses.set(cel, { kind: 'warp', map, text: `${rig.text}:skin(${partId}@${skin.key}):${allTexts}` });
     else poses.set(cel, posed.maps.get(partId)!);
   }
   return poses;
