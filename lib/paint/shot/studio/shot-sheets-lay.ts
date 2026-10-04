@@ -276,12 +276,9 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
             if (copied) {
               const { view: layer } = copied, reveal = cutOf(encoder, frame, lay.sheet, lay.film, copied.at);
               pass.draw(encoder, span, { rest: 'paint', motion: !!traced }, { rest: restView, motion: traced, source: layer });
-              const glowing = step.glow && emission ? { glow: step.glow, emission } : null;
-              if (glowing) glows.before(encoder, compositor, painting, box);
-              lays[lay.sheet].layGroup(encoder, {
+              glows.layAdding(encoder, step.glow && emission ? { compositor, painting, box, emission, glow: step.glow } : null, () => lays[lay.sheet].layGroup(encoder, {
                 layer, painting, index: lay.film, opacity: step.opacity, glaze: true, box, backing: into.backing, rest: restView, paperFromRest: true, mask: mask?.createView() ?? null, reveal,
-              });
-              if (glowing) glows.add(encoder, compositor, painting, glowing.emission, box, glowing.glow);
+              }));
               gather(encoder, frame, into, index, { kind: 'film', compositor, layer, rest: restView, reveal, opacity: step.opacity, box });
               laid = stampBoxUnion(laid, box);
             }

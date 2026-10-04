@@ -1,7 +1,7 @@
 // stamp-paint-plane-passes.ts: the renderer's passes from a plane's paint to its picture (stamp-plane.ts): its colour,
-// premultiplied; a clear plane's taken share; its emission, the light its glowing groups add
-// (stamp-plane-glow-pass.ts). The lens (lens-compositor.ts) defocuses each picture, lays it over the planes behind,
-// blooms the emission once, and encodes.
+// premultiplied; a clear plane's taken share; its emission, its glowing groups' light (stamp-plane-glow-pass.ts). The
+// lens (lens-compositor.ts) defocuses each picture, lays it over the planes behind, blooms the emission once, and
+// encodes.
 //
 // A nearer plane is clear film, measured on white and on black and taken as C + T·b per RGB channel over backing b:
 // exact over those two. Pigment's KM, R + T²·b/(1 − R·b) per spectral band, isn't that, so over other paint it's a
@@ -16,14 +16,17 @@ import { stampRevealAtWgsl } from './stamp-reveal-pass.ts';
 import { gpuUniformLayout } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 
-/** The painting's linear light over `extent` stage texels from `origin`, kept before a glowing group is laid there. */
-export const STAMP_GLOW_BEFORE = gpuUniformLayout('GlowBefore', [['origin', 'vec2u'], ['extent', 'vec2u']]);
+/**
+ * StampPainting's glow over `origin` `extent`: the painting's linear light past `threshold` (by luminance, its hue
+ * kept), times the cover there and `strength` (the glow's amount, the group's opacity and its visibility).
+ */
+export const STAMP_GLOW_LAID = gpuUniformLayout('GlowLaid', [['threshold', 'f32'], ['strength', 'f32'], ['glaze', 'u32'], ['origin', 'vec2u'], ['extent', 'vec2u']]);
 
 /**
- * A glow's source over `origin` `extent`: the light a group's lay added there, per channel, past `threshold` (by
+ * A shot's glow over `origin` `extent`: the light a group's lay added there, per channel, past `threshold` (by
  * luminance, its hue kept), times `amount`. The lay's opacity, visibility and mask are in what it added already.
  */
-export const STAMP_GLOW_SOURCE = gpuUniformLayout('GlowSource', [['threshold', 'f32'], ['amount', 'f32'], ['origin', 'vec2u'], ['extent', 'vec2u']]);
+export const STAMP_GLOW_ADDED = gpuUniformLayout('GlowAdded', [['threshold', 'f32'], ['amount', 'f32'], ['origin', 'vec2u'], ['extent', 'vec2u']]);
 
 /** An opaque group's cover over `origin` `extent`, times `strength` (its opacity and visibility), taken out of the plane's emission. */
 export const STAMP_GLOW_OCCLUSION = gpuUniformLayout('GlowOcclusion', [['strength', 'f32'], ['origin', 'vec2u'], ['extent', 'vec2u']]);
@@ -39,7 +42,8 @@ const STAMP_LAID_COVER_REVEAL_BINDING = 5;
 /**
  * `coverAt(pixel)`, a laid group's cover as `glaze` (WGSL) says it's composited: its layer bound at 3 and, for a moved
  * group, its rest map at 4, read bilinearly at the rest point its lattice shows. `revealed`: each layer texel's cover
- * times its reveals' cut, bound at 5. A glow's occlusion and a shot's alphaOf coverage read it alike.
+ * times its reveals' cut, bound at 5. StampPainting's glow and its occlusion, and a shot's alphaOf coverage, read it
+ * alike.
  */
 export function stampLaidCoverWgsl(compositor: StampPaintCompositor, cover: StampLaidGroupCover, noRest: number, glaze: string, { revealed }: Pick<StampLayVariant, 'revealed'>) {
   const { layer } = compositor.targets;
@@ -71,38 +75,46 @@ ${coverAt}`;
 }
 
 /**
- * The glow's kept light's WGSL for `compositor`: binds its uniform (0), the painting (1) and what it keeps (2), from
- * the target's first texel. Kept in f32, so where the lay changes nothing the source finds exactly nothing added.
+ * StampPainting's glow pass's WGSL for `compositor` on `stage`: binds its uniform (0), the painting (1), the plane's
+ * emission, added to (2), and the group's cover (stampLaidCoverWgsl).
  */
-export function stampGlowBeforeWgsl(compositor: StampPaintCompositor, workgroup: number) {
+export function stampGlowLaidWgsl(compositor: StampPaintCompositor, cover: StampLaidGroupCover, stage: StampStage, noRest: number, workgroup: number) {
   return /* wgsl */ `
+${stampStageWgsl(stage)}
 ${GPU_SRGB_WGSL}
-${STAMP_GLOW_BEFORE.wgsl}
-@group(0) @binding(0) var<uniform> u: GlowBefore;
+${STAMP_GLOW_LAID.wgsl}
+@group(0) @binding(0) var<uniform> u: GlowLaid;
 @group(0) @binding(1) var painting: ${targetType(compositor.targets.painting)};
-@group(0) @binding(2) var before: texture_storage_2d<rgba32float, write>;
+@group(0) @binding(2) var emission: texture_storage_2d<rgba16float, read_write>;
 ${compositor.output}
-@compute @workgroup_size(${workgroup}, ${workgroup}) fn glowBefore(@builtin(global_invocation_id) id: vec3u) {
+${stampLaidCoverWgsl(compositor, cover, noRest, 'u.glaze == 1u', { revealed: false })}
+@compute @workgroup_size(${workgroup}, ${workgroup}) fn glowLaid(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
-  textureStore(before, id.xy, vec4f(linearLight(u.origin + id.xy), 0.0));
+  let pixel = u.origin + id.xy;
+  let covered = clamp(coverAt(pixel), 0.0, 1.0) * u.strength;
+  if (covered <= 0.0) { return; }
+  let c = linearLight(pixel);
+  let luma = dot(c, vec3f(0.2126, 0.7152, 0.0722));
+  let light = c * (max(0.0, luma - u.threshold) / max(luma, 1e-4)) * covered;
+  textureStore(emission, pixel, textureLoad(emission, pixel) + vec4f(light, 0.0));
 }`;
 }
 
 /**
- * The glow source pass's WGSL for `compositor`: binds its uniform (0), the painting (1), the plane's emission, added
- * to (2), and the light kept before the lay (3, stampGlowBeforeWgsl's). What the lay took away adds nothing: a glaze
- * filters the light under it, so it gives off only what it scatters itself.
+ * A shot's glow pass's WGSL for `compositor`: binds its uniform (0), the painting (1), the plane's emission, added to
+ * (2), and the painting's light over the box kept before the lay (3, from its first texel, in f32: where the lay
+ * changes nothing it finds exactly nothing added). What the lay took away adds nothing.
  */
-export function stampGlowSourceWgsl(compositor: StampPaintCompositor, workgroup: number) {
+export function stampGlowAddedWgsl(compositor: StampPaintCompositor, workgroup: number) {
   return /* wgsl */ `
 ${GPU_SRGB_WGSL}
-${STAMP_GLOW_SOURCE.wgsl}
-@group(0) @binding(0) var<uniform> u: GlowSource;
+${STAMP_GLOW_ADDED.wgsl}
+@group(0) @binding(0) var<uniform> u: GlowAdded;
 @group(0) @binding(1) var painting: ${targetType(compositor.targets.painting)};
 @group(0) @binding(2) var emission: texture_storage_2d<rgba16float, read_write>;
 @group(0) @binding(3) var before: texture_2d<f32>;
 ${compositor.output}
-@compute @workgroup_size(${workgroup}, ${workgroup}) fn glowSource(@builtin(global_invocation_id) id: vec3u) {
+@compute @workgroup_size(${workgroup}, ${workgroup}) fn glowAdded(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
   let pixel = u.origin + id.xy;
   let added = max(linearLight(pixel) - textureLoad(before, id.xy, 0).rgb, vec3f(0.0));
@@ -161,17 +173,21 @@ export const stampPlanePictureLayerCount = (layers: StampPlanePictureLayers) =>
 /** The painting's linear light over `extent` stage texels from `origin`, written from the target's first texel into array layer `layer`. */
 export const STAMP_PLANE_LIGHT = gpuUniformLayout('PlaneLight', [['origin', 'vec2u'], ['extent', 'vec2u'], ['layer', 'u32']]);
 
+/** What the light pass writes: rgba16float as pictures are, or rgba32float for a glow's light kept before its lay. */
+export type StampPlaneLightFormat = 'rgba16float' | 'rgba32float';
+
 /**
- * The light pass's WGSL: binds its uniform (0), the painting (1) and the target written (2), an array. It measures the
- * measuring backings' own light, and a clear plane's light on white, which the picture pass reads after the lay on black.
+ * The light pass's WGSL: binds its uniform (0), the painting (1) and the target written (2), an array of `format`. It
+ * measures the measuring backings' own light, a clear plane's light on white, which the picture pass reads after the
+ * lay on black, and a shot's painting before a glowing group is laid.
  */
-export function stampPlaneLightWgsl(compositor: StampPaintCompositor, workgroup: number) {
+export function stampPlaneLightWgsl(compositor: StampPaintCompositor, format: StampPlaneLightFormat, workgroup: number) {
   return /* wgsl */ `
 ${GPU_SRGB_WGSL}
 ${STAMP_PLANE_LIGHT.wgsl}
 @group(0) @binding(0) var<uniform> u: PlaneLight;
 @group(0) @binding(1) var painting: ${targetType(compositor.targets.painting)};
-@group(0) @binding(2) var light: texture_storage_2d_array<rgba16float, write>;
+@group(0) @binding(2) var light: texture_storage_2d_array<${format}, write>;
 ${compositor.output}
 @compute @workgroup_size(${workgroup}, ${workgroup}) fn planeLight(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
@@ -212,7 +228,7 @@ ${compositor.output}
   let texel = u.origin + id.xy;
   let light = linearLight(texel);${film || `
   textureStore(picture, id.xy, 0u, vec4f(light, 1.0) * u.visibility);`}${layers.emission !== null ? `
-  // Each glowing group added the light its lay added, as much of it as it laid.
+  // Each glowing group's light is in already, as much of it as the group shows (stamp-plane-glow-pass.ts).
   textureStore(picture, id.xy, ${layers.emission}u, vec4f(textureLoad(emission, texel, 0).rgb, 0.0) * u.visibility);` : ''}${layers.motion !== null ? `
   // Motion is premultiplied by its cover, which fades with the rest.
   textureStore(picture, id.xy, ${layers.motion}u, textureLoad(motion, texel, 0) * u.visibility);` : ''}${coverage ? `

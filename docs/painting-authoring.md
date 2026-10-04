@@ -1280,15 +1280,19 @@ scale?, reseed?}}` (every n frames; wobble `amount` px (2.2) at feature `scale` 
 needed); `clock`: `{hold: n}` frames or `{freeze: s}`, inside its plane's; `glow: {amount, threshold}`. Pins:
 `PaintPinRig`. Marks laid anew at each pose: pose the layer on a sheet it doesn't own.
 
-**Glow** is the light a node's paint adds over the paint under it on its plane, per channel in linear light (a clear
-plane's measured over black), past `threshold` in luminance (0..1), `amount` times over; the lens blooms it at
-`lens.bloom`. Glow the emitter, not a painted halo: give the glow to the lamp's glass, the moon, the lit window, and
-let the bloom draw the halo. A halo painted round a lamp glows only by its own thickness, a faint veil faintly, and
-never re-emits the glass under it. Light comes only from paint that adds it: a glaze takes light, so it glows by
-what little it scatters, and a reserve adds none: a moon left as paper doesn't glow, one painted in gouache does.
-Paint glows its own colour, none of what's under it: warm paint over a dark road glows warm, so keep a road's
-`amount` low. A threshold near 0 glows every veil; raise it to keep only the bright. Thin paint on a clear plane
-glows by its own light alone, never the backing it's measured on, so it wants a lower threshold than thick.
+**Glow** is the light a node's paint adds to its plane, over the paint and paper the plane holds under it, per
+channel in linear light, past `threshold` in luminance (0..1), `amount` times over; the lens blooms it at
+`lens.bloom`. On a clear plane with no ground nothing lies under the paint but the plane's own earlier paint, so
+paint there adds all the light it gives off. The back, a ground and a card hold paper, the lightest thing on a sheet,
+so a light laid on paper adds only what it's lighter than the paper: about nothing. Glow the emitter, not a painted
+halo: give the glow to the lamp's glass or the lit window, and let the bloom draw the halo. A halo painted round a
+lamp glows only by its own thickness, a faint veil faintly, and never re-emits the glass under it. Light comes only
+from paint that adds it: a glaze takes light, so it glows by what little it scatters, and a reserve adds none. So
+an emitter that must glow is opaque paint (gouache, white in its mix) on a clear plane of its own, or laid over
+darker paint; a moon or a window left as paper, or glazed over paper, glows on no plane. Paint glows its own colour,
+none of what's under it: warm paint over a dark road glows warm, so keep a road's `amount` low. A threshold near 0
+glows every veil; raise it to keep only the bright. Thin paint glows by its own light alone, never the backing it's
+measured on, so it wants a lower threshold than thick.
 
 **Plays** (`paintMotionPlay(node, clip, {clock, origin})`): clock `{at, rate?, loop?: {period, mode?: 'repeat' |
 'pingpong', times?}, hold?, until?}` or `{at, freeze}`; `at` scene s, the rest clip s or frames. Clips: `place`

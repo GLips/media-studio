@@ -14,7 +14,8 @@ import { clearStampTarget, dispatchStampCompute, STAMP_WORKGROUP, stampArrayView
 import type { StampPaintGpuOwner } from './stamp-paint-gpu-owner.ts';
 import type { StampPaintBacking } from './stamp-paint-lay-pass.ts';
 import {
-  STAMP_PLANE_LIGHT, STAMP_PLANE_PICTURE, stampPlaneLightWgsl, stampPlanePictureLayerCount, stampPlanePictureWgsl, type StampPlanePictureLayers,
+  STAMP_PLANE_LIGHT, STAMP_PLANE_PICTURE, stampPlaneLightWgsl, stampPlanePictureLayerCount, stampPlanePictureWgsl, type StampPlaneLightFormat,
+  type StampPlanePictureLayers,
 } from './stamp-paint-plane-passes.ts';
 import type { StampUniformArena } from './stamp-uniform-arena.ts';
 
@@ -24,8 +25,8 @@ export type StampPlanePicture = StampPlanePictureLayers & { readonly box: StampP
 /**
  * A plane laid into its picture under `key`: its compositor, painting (storage), layers, emission and motion targets
  * (cleared here), coverage and visibility. `paper` lays a backing over the first `w` × `h` texels; `lay` lays the
- * plane on `backing`, returning the stage texels laid (null: none). The first lay writes motion and coverage; the
- * lay on paper or black, glow.
+ * plane on `backing`, returning the stage texels laid (null: none). The first lay writes motion and coverage; which
+ * glows is the plane's (stamp-plane-glow-pass.ts).
  */
 export type StampPlanePictureLay = {
   readonly key: string;
@@ -43,6 +44,25 @@ export type StampPlanePictureLay = {
 type StampPictureNote = StampPlanePictureLayers & { readonly box: StampPixelBox };
 
 /**
+ * Encodes `painting`'s linear light over `box` (stage texels), laid by `compositor`, into array layer `layer` of `into`
+ * from its first texel, in `into`'s format (StampPlaneLightFormat), on `owner`'s device, its uniform from `arena`.
+ */
+export function measureStampPlaneLight(
+  owner: StampPaintGpuOwner, arena: StampUniformArena, encoder: GPUCommandEncoder,
+  { compositor, painting, box, into, layer }: { compositor: StampPaintCompositor; painting: GPUTextureView; box: StampPixelBox; into: GPUTexture; layer: number },
+) {
+  const { device } = owner, format: StampPlaneLightFormat = into.format === 'rgba32float' ? 'rgba32float' : 'rgba16float';
+  // The owner's device keeps modules by code and pipelines by descriptor.
+  const pipeline = device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code: stampPlaneLightWgsl(compositor, format, STAMP_WORKGROUP) }) } });
+  dispatchStampCompute(device, encoder, pipeline, [arena.slot((views) => {
+    const put = gpuUniformWriter(STAMP_PLANE_LIGHT, views);
+    put('origin', [box.x, box.y]);
+    put('extent', [box.w, box.h]);
+    put('layer', layer);
+  }), painting, stampArrayView(into)], box.w, box.h);
+}
+
+/**
  * Plane pictures on `owner`'s device over `stage`, kept in its cache's `picture` and `blurred` stores (given up on
  * dispose), each pass's uniform from `arena`.
  */
@@ -54,16 +74,6 @@ export function createStampPlanePictures(owner: StampPaintGpuOwner, { stage, are
   const lights = owner.cache.store<null>('picture');
   const pipeline = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }) } });
 
-  /** The painting's linear light over `box` (stage texels) into array layer `layer` of `into`, from its first texel. */
-  function measureLight(encoder: GPUCommandEncoder, compositor: StampPaintCompositor, painting: GPUTextureView, box: StampPixelBox, into: GPUTexture, layer: number) {
-    dispatchStampCompute(device, encoder, pipeline(stampPlaneLightWgsl(compositor, STAMP_WORKGROUP)), [arena.slot((views) => {
-      const put = gpuUniformWriter(STAMP_PLANE_LIGHT, views);
-      put('origin', [box.x, box.y]);
-      put('extent', [box.w, box.h]);
-      put('layer', layer);
-    }), painting, stampArrayView(into)], box.w, box.h);
-  }
-
   /** The backings' light for `plane`'s compositor: kept, or measured on its painting's first texel before it's laid. */
   function backingLight(encoder: GPUCommandEncoder, plane: StampPlanePictureLay): GPUTexture {
     const key = `${plane.compositor.paper}\n${plane.compositor.output}`, found = lights.find(key, encoder);
@@ -71,7 +81,7 @@ export function createStampPlanePictures(owner: StampPaintGpuOwner, { stage, are
     const [light] = lights.make(key, encoder, [{ width: 1, height: 1, layers: 2, format: 'rgba16float', usage: STORAGE | GPUTextureUsage.TEXTURE_BINDING }], null).textures;
     for (const [layer, backing] of (['white', 'black'] as const).entries()) {
       plane.paper(backing, 1, 1);
-      measureLight(encoder, plane.compositor, plane.painting, { x: 0, y: 0, w: 1, h: 1 }, light, layer);
+      measureStampPlaneLight(owner, arena, encoder, { compositor: plane.compositor, painting: plane.painting, box: { x: 0, y: 0, w: 1, h: 1 }, into: light, layer });
     }
     return light;
   }
@@ -96,7 +106,7 @@ export function createStampPlanePictures(owner: StampPaintGpuOwner, { stage, are
       const [texture] = pictures.make(plane.key, encoder, [{ width: box.w, height: box.h, layers: stampPlanePictureLayerCount(layers), format: 'rgba16float', usage: STORAGE | GPUTextureUsage.TEXTURE_BINDING }], note).textures;
       if (film) {
         // Between the lays the picture's colour layer holds the light on white over its box; the picture pass replaces it.
-        measureLight(encoder, compositor, painting, box, texture, 0);
+        measureStampPlaneLight(owner, arena, encoder, { compositor, painting, box, into: texture, layer: 0 });
         plane.lay('black');
       }
       dispatchStampCompute(device, encoder, pipeline(stampPlanePictureWgsl(compositor, layers, STAMP_WORKGROUP)), [arena.slot((views) => {

@@ -264,10 +264,10 @@ picture holds what the camera shows of it over the whole shot (widen the margin 
 wherever its groups' motion can lay their paint, and everywhere the frame looks once a group's marks are live or
 re-seeded and reports each
 plane's greatest magnification (past about 1.3, its paint looks soft). Keep the camera on ones: held on twos it
-judders. Give a group `glow: { amount, threshold }` in its frame state for a soft light: it glows the light its
-paint adds over what's under it, past `threshold`, so glow the emitter (the lamp's glass, not a painted halo round
-it) and let the lens's bloom, all glow once at `lens.bloom` px of sigma, draw the halo. Opaque paint covering glowing
-paint, laid after it on its plane or on a nearer one, stops its glow. Show it with
+judders. Give a group `glow: { amount, threshold }` in its frame state for a soft light: its laid paint brighter
+than `threshold` glows, as much as the group covers, and the lens blooms all glow once, at `lens.bloom` px of sigma.
+Glow the emitter (the lamp's glass), not a painted halo round it: a halo glows with whatever light shows through it.
+Opaque paint covering glowing paint, laid after it on its plane or on a nearer one, stops its glow. Show it with
 `<StampPainting painting t frameAt camera />`; a glowing frame without a camera is refused. `lens.shutter` is seconds
 open about each frame (1/60 is 180° at 30 fps). The fast lens gathers each frame's motion: the camera's, a group's own
 travel over the shutter (its plane's motion layer, from its lattice), and a three source's per pixel. `studio render

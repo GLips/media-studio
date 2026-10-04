@@ -19,6 +19,7 @@ import { stampWrapPeriods, type StampStage } from '#lib/paint/painting/models/st
 import { stampArrayView } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { stampPlanePictureLayers } from '#lib/paint/painting/studio/stamp-paint-plane-passes.ts';
+import { stampPlaneGlowsOn } from '#lib/paint/painting/studio/stamp-plane-glow-pass.ts';
 import { createStampPlanePictures, type StampPlanePicture } from '#lib/paint/painting/studio/stamp-plane-picture-pass.ts';
 import { stampSheetCompositeTarget, stampSheetsLays, stampSheetsPhotographs, type StampSheetsLays } from '#lib/paint/painting/studio/stamp-sheet-composite.ts';
 import type { StampSheetFilmKept } from '#lib/paint/painting/studio/stamp-sheet-films.ts';
@@ -183,11 +184,13 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
       key, compositor: lays.compositors[0], painting: painting.view, layers, emission: emission?.createView() ?? null, motion: motionTarget?.createView() ?? null,
       coverage: coverage?.createView({ dimension: '2d-array' }) ?? null, visibility: plan.visibility,
       paper: (backing, w, h) => lays.lays[0].drawPaper(encoder, painting.view, backing, w, h),
-      // A glow is the light a film adds over the paint under it, so a clear plane glows on black: on white, light
-      // paint over nothing would add nothing, and paint there takes white's light away.
-      lay: (backing) => layer.lay(encoder, frame, staged, backing === 'black'
-        ? { painting, backing, emission, motion: null, mask, coverage: null }
-        : { painting, backing, emission: backing === 'paper' ? emission : null, motion: motionTarget, mask, coverage }),
+      lay: (backing) => {
+        // The first lay, on paper or white, traces.
+        const traces = backing !== 'black';
+        return layer.lay(encoder, frame, staged, {
+          painting, backing, mask, emission: stampPlaneGlowsOn(backing) ? emission : null, motion: traces ? motionTarget : null, coverage: traces ? coverage : null,
+        });
+      },
     });
   }
 

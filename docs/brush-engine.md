@@ -442,15 +442,18 @@ sources draw with): its images, pipelines' targets and one cache budget, shared 
 blurred pictures. A surface is one output on it. One painted plane at rest, sharp and not glowing is drawn straight
 to the output, as a still always was. Otherwise each plane's picture is painted (paper, its groups, and each glowing
 group's light into the plane's emission), defocused, and composited into a frame-sized target, its emission beside
-it, so paint a nearer plane covers doesn't glow. A glow is the light its group adds past its threshold
-(`stamp-plane-glow-pass.ts`): the painting's linear light over the group's box is kept before it's laid, and what the
-lay added, per channel and never below 0, goes into the emission: its colour kept, its luminance less the
-threshold (none at or under it), times `amount`. No coverage multiplies it: the lay already holds the group's opacity,
-visibility and masks. A clear plane glows on its black lay, the back on its paper: on white, light paint adds
+it, so paint a nearer plane covers doesn't glow. The two renderers measure a glow apart
+(`stamp-plane-glow-pass.ts`). StampPainting's is its laid paint's light past the threshold on the plane's first lay
+(paper, or white for a clear plane), times the group's cover, opacity, visibility and `amount`; each later opaque
+group on the plane dims it by its cover (a glaze leaves it). A shot's is the light its group adds past its threshold:
+the painting's linear light over the group's box is kept (f32) before it's laid, and what the lay added, per channel
+and never below 0, goes into the emission, its colour kept, its luminance less the threshold (none at or under it),
+times `amount`. No coverage multiplies it: the lay already holds the film's opacity, visibility and masks. The back
+glows on its paper, a clear plane on its black lay (`stampPlaneGlowsOn`): on white, light paint over nothing adds
 nothing. So a veil glows by its thickness, a halo over a lamp's glass adds none of the glass's light, warm paint over
-a dark road glows warm, and a glaze, taking light, glows only by what it scatters. In the old renderer each later
-opaque group on the plane dims the emission by its cover (a glaze leaves it); a shot's later films and cards don't.
-A clear plane's groups are laid twice, on plain white and on black whatever the paper (its films kept from the first lay):
+a dark road glows warm, and a glaze, taking light, glows only by what it scatters. Paper and a ground count as what's
+under: a light laid on bare or reserved paper adds only what it's lighter than the paper, about nothing. A shot's
+later films and cards on the plane don't dim an earlier film's glow. A clear plane's groups are laid twice, on plain white and on black whatever the paper (its films kept from the first lay):
 opaque paint lies on its own paper, and only reserves and lifts show the measuring backing. Its light is taken as
 affine in its backing, what it adds plus what it lets through, per RGB channel, from the two lays and the backings'
 own light, measured once per renderer. That's exact over white and black; over other paint it's a two-point
