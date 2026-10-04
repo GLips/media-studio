@@ -1,10 +1,11 @@
 // stamp-gate-shot-page.ts: the gate page's shots (stamp-gate-shots.ts), each compiled and drawn through the shot's
 // renderer on a surface of its own with the gate's brushes and images, its frames read back: the rigged heron's grain,
-// pieces and boil (test 6), the wet-contact foot posed by its rig and painted in (test 7), and their baselines' frames.
+// pieces and boil (test 6), the wet-contact foot posed by its rig and painted in (test 7), a clear back's canvas over
+// HTML, and their baselines' frames.
 
 import { paintingProblemsError } from '#lib/paint/document/models/painting-problem.ts';
 import { createStampPaintCostTally, type StampPaintCosts, type StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
-import { compilePaintedShot } from '#lib/paint/shot/models/shot-compile.ts';
+import { compilePaintedShot, type CompiledPaintedShot } from '#lib/paint/shot/models/shot-compile.ts';
 import type { PaintedShotProps } from '#lib/paint/shot/models/shot-props.ts';
 import { createPaintedShotRenderer } from '#lib/paint/shot/studio/shot-renderer.ts';
 import { STAMP_GATE_FRAME_TOLERANCE } from '../models/stamp-gate-frames.ts';
@@ -12,7 +13,8 @@ import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { STAMP_GATE_HERON_MOVE, stampGateHighPass, stampGatePeakShift } from '../models/stamp-gate-paper-heron.ts';
 import { stampGateSheetBrushOf } from '../models/stamp-gate-sheets.ts';
 import {
-  STAMP_GATE_HERON_BOIL_AT, STAMP_GATE_HERON_NECKS, STAMP_GATE_PAINTING_IN_AT, STAMP_GATE_RIGGED_HERON_AT, STAMP_GATE_WET_CONTACT_AT, stampGateBoilingHeronShot, stampGateDifferenceBox, stampGateFadeBetween,
+  STAMP_GATE_HERON_BOIL_AT, STAMP_GATE_HERON_NECKS, STAMP_GATE_PAINTING_IN_AT, STAMP_GATE_RIGGED_HERON_AT, STAMP_GATE_WET_CONTACT_AT, stampGateBoilingHeronShot, stampGateClearAlpha, stampGateClearBackShot,
+  stampGateDifferenceBox, stampGateFadeBetween,
   stampGateReedSwung, stampGateRiggedHeronShot, stampGateRiggedHeronWindows, stampGateShotBaseline, stampGateWetContactPaintingInShot, stampGateWetContactShot, type StampGateShotId,
 } from '../models/stamp-gate-shots.ts';
 import { stampGateRgb, stampGateRgbBase64, withGateSurface } from './stamp-gate-page-surface.ts';
@@ -22,8 +24,13 @@ import { stampGateSheetImageUrl } from './stamp-gate-sheet-owner.ts';
 async function stampGateShotFrames(props: PaintedShotProps, times: readonly number[], costs?: StampPaintCostTally, drawn?: () => void): Promise<Uint8ClampedArray[]> {
   const { shot, problems } = compilePaintedShot(props, []);
   if (!shot) throw paintingProblemsError('stamp gate shot', problems);
+  return stampGateCompiledShotFrames(shot, times, costs, drawn);
+}
+
+/** `shot`'s frames, as stampGateShotFrames reads them, on a surface premultiplied when its back is clear. */
+async function stampGateCompiledShotFrames(shot: CompiledPaintedShot, times: readonly number[], costs?: StampPaintCostTally, drawn?: () => void): Promise<Uint8ClampedArray[]> {
   const { width, height } = shot.camera.stage.frame;
-  return withGateSurface({ width, height }, stampGateSheetImageUrl, async (surface, frame) => {
+  return withGateSurface({ width, height, alphaMode: shot.clearBack ? 'premultiplied' : 'opaque' }, stampGateSheetImageUrl, async (surface, frame) => {
     const renderer = await createPaintedShotRenderer(surface.owner, [surface], shot, { brushOf: stampGateSheetBrushOf, ...(costs && { costs }) });
     try {
       return await times.reduce(async (before, t) => {
@@ -113,6 +120,21 @@ export async function checkStampGateRiggedWetContact(): Promise<StampGateWashChe
       detail: `drawn at ${unpainted} s, its foot unpainted, and at ${painted} s, painted and posed: changed ${boxText(grown)}${warnings.length ? `; warned: ${warnings.join('; ')}` : ''}`,
     },
   ];
+}
+
+/**
+ * The heron alone as a clear back over HTML (ENGINE 6.3): its canvas premultiplied, clear where nothing is painted and
+ * as opaque as the paint's 1 − luminance(T) where it is.
+ */
+export async function checkStampGateClearBack(): Promise<StampGateWashCheck> {
+  const { shot, problems } = compilePaintedShot(stampGateClearBackShot(), [], { htmlBehind: true });
+  if (!shot) throw paintingProblemsError('stamp gate clear back', problems);
+  const { width, height } = shot.camera.stage.frame, [rgba] = await stampGateCompiledShotFrames(shot, [0]);
+  const { clear, opaque, corner } = stampGateClearAlpha(rgba, width, height);
+  return {
+    id: 'paper/heron: clear back', passed: shot.clearBack && corner === 0 && clear > 0 && opaque > 0,
+    detail: `laid clear (${shot.clearBack}), its canvas is clear in ${clear} of ${width * height} texels, at least half opaque in ${opaque}, its corners at most ${corner} alpha (0 wanted)`,
+  };
 }
 
 /** Shot baseline `id`'s frame: RGB bytes row by row, in base64. */

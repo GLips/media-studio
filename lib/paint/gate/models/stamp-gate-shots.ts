@@ -1,8 +1,9 @@
 // stamp-gate-shots.ts: the gate's shots (ENGINE 9, tests 6 and 7 drawn through a PaintedShot): the rigged heron, the
 // paper heron with a neck skinned to its body on the scene's sheet (a lowered neck its second cel), its wing a cel
 // moving its own sheet whole, and a clump of reeds whose group owns its sheet, drawn as pieces, also boiling; and the
-// wet-contact sheet with its heron's foot posed by a rig, also painted in as it plays. Each shot's poses are a table
-// by scene second, so its baseline's inputs name them. What the cases measure of their frames is here, pure.
+// wet-contact sheet with its heron's foot posed by a rig, also painted in as it plays; and the heron alone, a clear back
+// over HTML. Each shot's poses are a table by scene second, so its baseline's inputs name them. What the cases measure
+// of their frames is here, pure.
 
 import { compilePaintingSelection } from '#lib/paint/document/models/painting-document-compile.ts';
 import type { LayerNode, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
@@ -139,6 +140,26 @@ export const stampGateBoilingHeronShot = (): PaintedShotProps => ({
 });
 
 const FOOT_RIG: readonly RigPart[] = [{ id: 'leg', z: 0, parent: null, cels: ['foot'] }];
+
+/** The paper heron's heron alone on a transparent ground, unrigged: a back clear round its paint, shown over HTML. */
+export function stampGateClearBackShot(): PaintedShotProps {
+  const evaluation = painting(STAMP_GATE_RIGGED_HERON);
+  return { ...oneSheetShot('paper', evaluation, ['heron'], {}, []), planes: [{ id: 'paper', depth: 1, source: layersOf(evaluation, ['heron'], { ground: 'transparent' }) }] };
+}
+
+/**
+ * How a clear canvas's RGBA bytes (as the browser reads it back, unpremultiplied) lie: how many texels are clear, how
+ * many at least half opaque, and the most opaque of its corners, which the heron's paint stays clear of.
+ */
+export function stampGateClearAlpha(rgba: ArrayLike<number>, width: number, height: number): { clear: number; opaque: number; corner: number } {
+  let clear = 0, opaque = 0;
+  for (let i = 3; i < rgba.length; i += 4) {
+    if (rgba[i] === 0) clear++;
+    if (rgba[i] >= 128) opaque++;
+  }
+  const corner = Math.max(...[0, width - 1, (height - 1) * width, height * width - 1].map((texel) => rgba[texel * 4 + 3]));
+  return { clear, opaque, corner };
+}
 
 /** The wet-contact shot: the shallows and the heron, its foot the one part of its rig. */
 export const stampGateWetContactShot = (): PaintedShotProps => oneSheetShot('pond', painting(STAMP_GATE_WET_CONTACT), ['shallows', 'heron'], { heron: FOOT_RIG }, FOOT_POSES);
