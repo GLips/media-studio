@@ -3,8 +3,9 @@
 // every canvas; a shot with no PaintedShotCanvas draws in one of its own, under its children.
 //
 // It loads when its props or canvases change, once its page is laid out (shot-dom-points.ts), and solves its `warm`
-// span; `t` draws the frame. It holds the render for the load and each draw however long: its watch (shot-watch.ts)
-// fails one once progress stops, a lost device at once. A pass drawing no picture only checks the shot.
+// span; `t` draws the frame. It holds the render once for the load and warm and once a draw, while they make progress:
+// its watch (shot-watch.ts) fails one once progress stops, a lost device at once. A pass drawing no picture only
+// checks the shot.
 
 import { createContext, useContext, useLayoutEffect, useReducer, useRef, useState, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
@@ -18,7 +19,8 @@ import { createStampPaintGpuOwner, type StampPaintGpuOwner } from '#lib/paint/pa
 import type { ResolvedStampPaintStyle } from '#lib/paint/style/models/style.ts';
 import { stampPaintAssetUrl, stampPaintStyle } from '#lib/paint/style/studio/stamp-paint-styles.ts';
 import { fullFrameRect } from '#lib/picture/frame/models/frame.ts';
-import { usePictureDrawn, useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
+import { usePictureDrawn } from '#lib/picture/frame/studio/picture-drawn.ts';
+import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 import type { LensMode } from '#lib/picture/lens/models/lens-mode.ts';
 import { useLensMode } from '#lib/picture/lens/studio/lens-mode-context.ts';
 import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
@@ -84,7 +86,7 @@ export function PaintedShotCanvas({ name }: { readonly name: string }) {
 export function PaintedShot({ shot, t, box: given, children }: { readonly shot: PaintedShotProps; readonly t: number; readonly box?: { x: number; y: number; w: number; h: number }; readonly children?: ReactNode }) {
   const format = useVideoFormat(), box = given ?? fullFrameRect(format), { frame } = shot.camera.stage, { fps } = format;
   // The scene playing the shot, when it's played in one: its length is what a warm span is held to.
-  const sceneDur = useSceneOrNull()?.dur ?? null, report = useFrameCosts(), drawn = usePictureDrawn();
+  const sceneDur = useSceneOrNull()?.dur ?? null, report = useFrameCosts(), pictureDrawn = usePictureDrawn();
   const holder = useRef<HTMLDivElement>(null);
   const { delayRender, continueRender, cancelRender } = useDelayRender();
   const lensMode = useLensMode();
@@ -125,7 +127,7 @@ export function PaintedShot({ shot, t, box: given, children }: { readonly shot: 
     if (ownHost) holder.current!.prepend(ownHost);
     const own = ownHost && placeShotCanvas(ownHost), elements = own ? [own] : named.map(([canvas]) => canvas);
     const name = shotWatchName(holder.current!.closest<HTMLElement>('[data-scene]')?.dataset.scene ?? null, shot.planes.map(({ id }) => id));
-    const context = { holder: holder.current!, pinsMoved: layoutMoved, fps, sceneDur, report, name, drawn };
+    const context = { holder: holder.current!, pinsMoved: layoutMoved, fps, sceneDur, report, name, pictureDrawn };
     const loading = loadPaintedShotScene(shot, elements, named.map(([, canvasName]) => canvasName), context);
     loading.ready.then(() => {
       if (!live) return undefined;
@@ -141,7 +143,7 @@ export function PaintedShot({ shot, t, box: given, children }: { readonly shot: 
       setScene(null);
       release();
     };
-  }, [shot, canvases, fps, sceneDur, report, drawn, delayRender, continueRender, cancelRender]);
+  }, [shot, canvases, fps, sceneDur, report, pictureDrawn, delayRender, continueRender, cancelRender]);
 
   useLayoutEffect(() => {
     if (!scene) return undefined;
@@ -195,7 +197,7 @@ type PaintedShotLoadContext = {
   readonly sceneDur: number | null;
   readonly report: FrameCostsReport | null;
   readonly name: ShotWatchName;
-  readonly drawn: boolean;
+  readonly pictureDrawn: boolean;
 };
 
 /**
@@ -204,10 +206,12 @@ type PaintedShotLoadContext = {
  * solved. Refuses every problem at once. Without the picture, only checked.
  */
 function loadPaintedShotScene(props: PaintedShotProps, canvases: readonly ShotCanvasElements[], names: readonly string[], context: PaintedShotLoadContext): PaintedShotScene {
-  const { holder, pinsMoved, fps, sceneDur, report, name, drawn } = context;
+  const { holder, pinsMoved, fps, sceneDur, report, name, pictureDrawn } = context;
   let owner: StampPaintGpuOwner | null = null, renderer: PaintedShotRenderer | null = null, page: ShotPageWatch | null = null, disposed = false;
   const surfaces: ShotCanvasSurface[] = [], costs = createStampPaintCostTally();
-  const watch = createShotWatch({ name, settled: () => owner?.checksSettled() ?? 0, costs });
+  const watch = createShotWatch({
+    name, costs, gpu: () => owner && { checksSettled: owner.checksSettled(), evictions: owner.cache.evictions(), uploaded: owner.uploaded(), kept: owner.cache.bytes() },
+  });
   /** `work` raced against the device's loss: rejected with it at once, before any check would see it. */
   const unlessLost = <T,>(work: Promise<T>) => Promise.race([work, owner!.whenLost.then((loss) => Promise.reject(loss))]);
   /** The costs counted since the last, given to the profiler under `label` in a profiling render. */
@@ -222,7 +226,7 @@ function loadPaintedShotScene(props: PaintedShotProps, canvases: readonly ShotCa
     const placed = [...shotCanvasFillProblems(holder, canvases, names), ...shotGlazeIsolationProblems(holder, canvases, names, layings)];
     if (!shot || placed.length) throw paintingProblemsError('shot', [...placed, ...problems]);
     if (!disposed) page = createShotPageWatch(holder, canvases, names, shot, pinsMoved);
-    if (!drawn) return;
+    if (!pictureDrawn) return;
     const made = await createStampPaintGpuOwner(stampPaintAssetUrl);
     owner = made;
     // One after another: each configures its canvases under the owner's error check.

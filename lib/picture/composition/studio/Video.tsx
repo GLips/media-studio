@@ -27,7 +27,8 @@ import { captionsToSrt, captionsToVtt } from '#lib/picture/captions/models/capti
 import { captionTrackOfVoice, type CaptionTrack } from '#lib/picture/captions/models/caption-track.ts';
 import { pillCaptions } from '#lib/picture/captions/studio/pill-captions.tsx';
 import type { CaptionStyle } from '#lib/picture/captions/studio/caption-style.tsx';
-import { PictureDrawnContext, VideoTransparentContext } from '#lib/picture/frame/studio/video-format.ts';
+import { PictureDrawnContext } from '#lib/picture/frame/studio/picture-drawn.ts';
+import { VideoTransparentContext } from '#lib/picture/frame/studio/video-format.ts';
 import { LensModeContext } from '#lib/picture/lens/studio/lens-mode-context.ts';
 
 export const TIMELINE_ARTIFACT = 'timeline.json';

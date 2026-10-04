@@ -4,6 +4,7 @@
 // solving where, how far the run got, and what it cost so far.
 
 import type { StampPaintCostName, StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
+import { renderBrowserFailureText } from '#lib/platform/browser/models/render-browser-failure.ts';
 
 /** What a shot runs: its warm over scene seconds `from`..`to`, or the draw of the frame at scene second `t`. */
 export type ShotRun = { readonly kind: 'warm'; readonly from: number; readonly to: number } | { readonly kind: 'frame'; readonly t: number };
@@ -49,20 +50,27 @@ export function shotStillSolvingLine(name: ShotWatchName, { run }: ShotRunPlace,
   return `${name.line}, ${runText(run)}: still solving ${solveText(solve, run)}, ${secs} s in`;
 }
 
-/** What `costs` has counted, for a stall's error. */
-function costsText(costs: StampPaintCosts): string {
+/**
+ * What a run's device did so far, read as it stalls (its tally counts evictions and uploads only once a run ends):
+ * caches' `evictions` and bytes `uploaded` since the run began, and the bytes its cache `kept` now.
+ */
+export type ShotRunDevice = { readonly evictions: number; readonly uploaded: number; readonly kept: number };
+
+/** What `costs` has counted and `device` done, for a stall's error. */
+function costsText(costs: StampPaintCosts, device: ShotRunDevice): string {
   return `${programsText(count(costs, 'solves'))} solved (${count(costs, 'entries run')} entries), ${count(costs, 'film misses')} film misses, `
-    + `${count(costs, 'evictions')} evictions, ${mibText(count(costs, 'bytes uploaded'))} uploaded, ${mibText(costs.bytesRetained)} kept`;
+    + `${device.evictions} evictions, ${mibText(device.uploaded)} uploaded, ${mibText(device.kept)} kept`;
 }
 
 /**
  * The error a shot stalled `secs` with, nothing solved and its device answering nothing, `doing` what it was (loading,
- * drawing a frame), at `place` in its run (null: before the run's first solve).
+ * drawing a frame), at `place` in its run (null: before the run's first solve), with what the run cost so far. A stall
+ * is its browser's failure: a hung GPU process, which a fresh browser may not meet.
  */
-export function shotStallText(name: ShotWatchName, doing: string, place: ShotRunPlace | null, secs: number, costs: StampPaintCosts): string {
+export function shotStallText(name: ShotWatchName, doing: string, place: ShotRunPlace | null, secs: number, costs: StampPaintCosts, device: ShotRunDevice): string {
   const stalled = `${name.whole} stalled: no solve has finished and its GPU has answered nothing in ${secs} s, so the render stops.`;
-  if (!place) return `${stalled} It was ${doing}, before any solve.`;
+  if (!place) return renderBrowserFailureText(`${stalled} It was ${doing}, before any solve.`);
   const { run, total, done, solving } = place;
   const at = solving ? `It was solving ${solveText(solving, run)}, ${runText(run)}` : `It was ${runText(run)}, between solves`;
-  return `${stalled} ${at}, ${done} of ${total} solves done. This run's costs so far: ${costsText(costs)}.`;
+  return renderBrowserFailureText(`${stalled} ${at}, ${done} of ${total} solves done. This run's costs so far: ${costsText(costs, device)}.`);
 }

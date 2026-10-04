@@ -13,6 +13,7 @@ import type { CompiledStampBoundary } from '#lib/paint/painting/models/stamp-are
 import type { CompiledStampBrushedMask } from '#lib/paint/painting/models/stamp-brushed-mask.ts';
 import type { StampWarpMap } from '#lib/paint/painting/models/stamp-group-warp.ts';
 import { STAMP_KEPT_BYTES } from '#lib/paint/painting/models/stamp-deposit-placement.ts';
+import { createKeptByBytes } from '#lib/paint/painting/models/stamp-kept-memo.ts';
 import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import type { CompiledStampDeposit, CompiledStampMask } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampBox, StampEdge, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
@@ -254,9 +255,8 @@ export const PAINTING_POSES_KEPT_BYTES = 256 * 2 ** 20;
 
 const programIds = new WeakMap<StampSheetProgram, number>();
 let programsSeen = 0;
-/** Kept poses by program and maps' texts, least recently asked for first, with their bytes. */
-const posesKept = new Map<string, { readonly posed: StampSheetProgram; readonly bytes: number }>();
-let posesKeptBytes = 0;
+/** Kept poses by program and maps' texts. */
+const posesKept = createKeptByBytes<string, StampSheetProgram>(PAINTING_POSES_KEPT_BYTES);
 
 /** What `posed` holds that its program doesn't, in bytes, roughly: its posed entries' stamps. */
 const posedBytes = (program: StampSheetProgram, posed: StampSheetProgram) => STAMP_KEPT_BYTES * posed.entries.reduce((sum, { deposit }, k) =>
@@ -274,20 +274,9 @@ export function paintingSheetPosed(tree: PaintingTree, program: StampSheetProgra
   if (id === undefined) programIds.set(program, (id = programsSeen++));
   const key = `${id}\n${texts.join('\n')}`, known = posesKept.get(key);
   costs?.count(known ? 'pose hits' : 'poses made');
-  if (known) {
-    posesKept.delete(key);
-    posesKept.set(key, known);
-    return known.posed;
-  }
-  const posed = paintingSheetPosedBy(program, chained, texts), bytes = posedBytes(program, posed) + 2 * key.length;
-  if (bytes > PAINTING_POSES_KEPT_BYTES) return posed;
-  posesKept.set(key, { posed, bytes });
-  posesKeptBytes += bytes;
-  for (const [oldest, entry] of posesKept) {
-    if (posesKeptBytes <= PAINTING_POSES_KEPT_BYTES) break;
-    posesKept.delete(oldest);
-    posesKeptBytes -= entry.bytes;
-  }
+  if (known) return known;
+  const posed = paintingSheetPosedBy(program, chained, texts);
+  posesKept.set(key, posed, posedBytes(program, posed) + 2 * key.length);
   return posed;
 }
 

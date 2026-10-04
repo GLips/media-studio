@@ -127,8 +127,6 @@ export default defineConfig({
     },
     { files: ['web/**'], rules: { 'react/no-array-index-key': 'error' } },
     { files: [...TERMINAL_PROGRAM_GLOBS], rules: { 'no-console': 'off' } },
-    // A render page's lines for the terminal leave through its console: the one wire Remotion carries back to Node.
-    { files: ['lib/platform/browser/studio/render-page-log.ts'], rules: { 'no-console': 'off' } },
     { files: [...DEFAULT_EXPORT_MODULE_GLOBS], rules: { 'import/no-default-export': 'off' } },
   ],
 });

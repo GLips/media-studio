@@ -13,10 +13,3 @@ export function useVideoFormat(): VideoFormat {
   return { fps, width, height, transparent: useContext(VideoTransparentContext) };
 }
 
-/**
- * Whether this pass draws the picture. A pass that only measures frames or gathers their sound draws none, so what
- * paints on the GPU checks its props and paints nothing. Video.tsx provides it; anywhere else draws.
- */
-export const PictureDrawnContext = createContext(true);
-
-export const usePictureDrawn = (): boolean => useContext(PictureDrawnContext);

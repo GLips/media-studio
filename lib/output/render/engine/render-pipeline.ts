@@ -4,8 +4,8 @@
 // (VideoFormat.transparent) delivers as WebM and HEVC with alpha instead of MP4.
 //
 // Progress goes to stderr; each function returns what it made, for the command to print on stdout.
-import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, dirname, extname, join } from 'node:path';
+import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { rasterizeSvgs } from '#lib/platform/raster/engine/html-raster.ts';
 import { framingProblems, takeFitWarnings } from '#lib/output/picture-checks/models/framing-check.ts';
 import { framingArtifactName, type FramingReport } from '#lib/picture/measurement/models/framing-marks.ts';
@@ -15,7 +15,7 @@ import { assembleMotionTracks, formatMotionReport, motionArtifactName, type Fram
 import { measureLoudness } from '#lib/platform/ffmpeg/engine/loudness.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { artifactSink, DELIVERY_AUDIO_CODEC, DELIVERY_ENCODING, formatRenderPasses, TIMELINE_REPORT_NAME, type RenderSession } from './render-session.ts';
-import { loadRenderSnapshot, renderSnapshotPath, writeRenderSnapshot } from './render-snapshot.ts';
+import { renderSnapshotPath } from './render-snapshot.ts';
 import { sfxEventsFrom, type SfxEvent } from '#lib/output/sfx-cues/models/cue-events.ts';
 import { sfxMarkArtifactName, type SfxMark } from '#lib/timing/sound/models/sfx-marks.ts';
 import { sfxCueListReport } from '#lib/output/sfx-cues/engine/project-cue-list.ts';
@@ -25,7 +25,7 @@ import type { OnArtifact } from '@remotion/renderer';
 import { frameAtSecond } from '#lib/picture/frame/models/frame.ts';
 import type { VideoProps } from '#lib/picture/video/models/composition-props.ts';
 import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
-import { countVideoFrames, measureWithFfmpeg, runFfmpeg, runFfmpegAsync, runFfprobe } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
+import { measureWithFfmpeg, runFfmpeg, runFfprobe } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 
 const outDirFor = (session: RenderSession) => join(session.project, 'out');
 const videoFor = (session: RenderSession, captions: boolean) => join(outDirFor(session), captions ? 'video.mp4' : 'video-plain.mp4');
@@ -219,7 +219,7 @@ function masterMix(session: RenderSession, raw: string, masterWav: string, { bea
 // ---------- the videos ----------
 
 /** A render's progress on stderr, every tenth. */
-function renderProgress(out: string) {
+export function renderProgress(out: string) {
   let shown = -1;
   return ({ progress }: { progress: number }) => {
     const pct = Math.floor(progress * 10) * 10;
@@ -430,78 +430,6 @@ export async function renderAnimatic(session: RenderSession, { out }: { out: str
   });
   if (renderVoiceOf(session.project) === 'draft') console.error(draftVoiceWarning(session));
   return rendered;
-}
-
-// ---------- slices ----------
-
-/** What names a slice's lossless frames, beside its video: what --join reads. */
-const LOSSLESS_SLICE_SUFFIX = '.lossless.mkv';
-
-/** Where a slice at `out` keeps its frames lossless: `<name>.lossless.mkv` beside it. */
-const losslessSliceFor = (out: string) => join(dirname(out), `${basename(out, extname(out))}${LOSSLESS_SLICE_SUFFIX}`);
-
-/**
- * Frames `from`–`end` (exclusive) of the video, silent, at `out` at delivery settings to watch, and kept lossless
- * beside it for --join, each with its snapshot recording where in the video it starts: to re-render just the part a
- * change touched. No framing check and no mix. Returns both files.
- */
-export async function renderVideoSlice(session: RenderSession, { from, end, out }: { from: number; end: number; out: string }): Promise<string[]> {
-  const timeline = await session.readTimeline();
-  if (!(Number.isInteger(from) && Number.isInteger(end) && from >= 0 && end > from && end <= timeline.durationInFrames)) {
-    throw new Error(`frames ${from}–${end - 1} aren't within the video's 0–${timeline.durationInFrames - 1}`);
-  }
-  const lossless = losslessSliceFor(out);
-  await session.renderVideo({ out, frames: { from, end }, sound: 'none', encoding: DELIVERY_ENCODING, lossless, timeline, onProgress: renderProgress(out) });
-  return [out, lossless];
-}
-
-/**
- * Joins the slices' lossless frames in `dir` (each `<name>.lossless.mkv`) at `out`, encoded once under a fresh
- * mastered mix, so sounds play across the joins. The timeline is the slices' snapshots', read with no page: refused
- * when two differ or their clock isn't the project's now, as is a gap, overlap or short file. A silent one isn't
- * checked for sound.
- */
-export async function joinVideoSlices(session: RenderSession, { dir, out }: { dir: string; out: string }): Promise<string> {
-  const slices = readdirSync(dir).filter((name) => name.endsWith(LOSSLESS_SLICE_SUFFIX)).map((name) => {
-    const file = join(dir, name), loaded = loadRenderSnapshot(file);
-    if (loaded.kind === 'none') throw new Error(loaded.reason);
-    const { frames, timeline, clock, gpu } = loaded.snapshot;
-    const counted = countVideoFrames(file);
-    if (counted !== frames.end - frames.from) throw new Error(`${name} holds ${counted} frames, and its snapshot says ${frames.end - frames.from}`);
-    return { file, name, timeline, clock, gpu, from: frames.from, end: frames.end };
-  }).toSorted((a, b) => a.from - b.from);
-  if (!slices.length) throw new Error(`${dir} holds no slices (*${LOSSLESS_SLICE_SUFFIX}): render them with studio render --frames`);
-  const [first] = slices, { timeline } = first, laid = JSON.stringify(timeline);
-  for (const s of slices) {
-    if (JSON.stringify(s.timeline) !== laid) throw new Error(`${s.name} (frames ${s.from}–${s.end - 1}) was rendered on another timeline than ${first.name}: render the older one again`);
-  }
-  // A retime moves every later bar and cue, so slices from before one put the picture off the mix made now.
-  if (JSON.stringify(first.clock) !== JSON.stringify(session.clock)) throw new Error(`the slices in ${dir} were rendered on another clock than the project's now (a retime moves every later bar and cue): render them again`);
-  // Each GPU rounds a painted frame its own way, so slices from two would show a seam where they meet.
-  const gpus = [...new Set(slices.map((s) => s.gpu))];
-  if (gpus.length > 1) throw new Error(`the slices in ${dir} were drawn on ${gpus.length} GPUs (${gpus.join('; ')}): render them all on one machine`);
-  let reached = 0;
-  for (const s of slices) {
-    if (s.from !== reached) throw new Error(`${s.name} starts at frame ${s.from}, but the slices before it reach ${reached}: ${s.from > reached ? 'render the gap' : 'they overlap'}`);
-    reached = s.end;
-  }
-  if (reached !== timeline.durationInFrames) throw new Error(`the slices in ${dir} reach frame ${reached}, short of the video's ${timeline.durationInFrames}`);
-
-  const mix = session.silent ? undefined : await renderMasteredMix(session, { timeline });
-  mkdirSync(dirname(out), { recursive: true });
-  await withStudioTemp('join', (tmp) => {
-    const list = join(tmp, 'slices.txt');
-    writeFileSync(list, slices.map((s) => `file '${s.file.replaceAll("'", "'\\''")}'`).join('\n'));
-    // The mix is padded past the picture and cut half a frame after it, so the last frame keeps its sound.
-    const sound = mix ? ['-i', mix, '-map', '0:v', '-map', '1:a', ...DELIVERY_AUDIO_CODEC, '-af', 'apad'] : ['-map', '0:v'];
-    return session.timed(`${basename(out)} encode`, () => runFfmpegAsync(['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, ...sound,
-      '-c:v', 'libx264', '-crf', String(DELIVERY_ENCODING.crf), '-preset', DELIVERY_ENCODING.preset, '-pix_fmt', 'yuv420p',
-      '-t', String((timeline.durationInFrames + 0.5) / timeline.fps), '-movflags', '+faststart', out]));
-  });
-  const counted = countVideoFrames(out);
-  if (counted !== timeline.durationInFrames) throw new Error(`${out} holds ${counted} frames, not the video's ${timeline.durationInFrames}`);
-  writeRenderSnapshot(out, { frames: { from: 0, end: timeline.durationInFrames }, timeline, clock: session.clock, voice: renderVoiceOf(session.project), gpu: gpus[0] });
-  return out;
 }
 
 // ---------- repeatability ----------

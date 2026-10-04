@@ -6,9 +6,11 @@
 //   - the whole render: the span rendered unprofiled to JPEGs in one tab and in the session's, timed from the frames'
 //     arrival. Each tab's first frame loads everything and is left out: a span no longer than the tabs isn't timed.
 // The profiled render also logs what drawing code counts it cost (solves, cache hits); `--costs` tables them.
-import { renderFrames, type HeadlessBrowser } from '@remotion/renderer';
+import { renderFrames } from '@remotion/renderer';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
-import { printRenderPageLog, RENDER_PAGE_OPTIONS } from '#lib/platform/browser/engine/render-browser.ts';
+import { RENDER_PAGE_OPTIONS } from '#lib/platform/browser/engine/render-browser.ts';
+import { watchedRenderFrames } from '#lib/platform/browser/engine/render-watch.ts';
+import { renderHostLineText } from '#lib/platform/browser/models/render-page-log.ts';
 import type { RenderSession } from './render-session.ts';
 import { frameCostsTable } from '#lib/picture/profiling/models/frame-costs-table.ts';
 import {
@@ -47,30 +49,31 @@ export async function profileFrames(session: RenderSession, { from, end }: { fro
   const lines: FrameProfileLine[] = [];
   const profiled = session.props({ profile: true });
 
-  const composition = await session.inBrowser('profiled frames', async (browser) => {
+  const composition = await session.inBrowser('profiled frames', async (browser, watch) => {
     const composition = await session.compositionFor(profiled, browser);
     if (end > composition.durationInFrames) throw new Error(`the video has frames 0–${composition.durationInFrames - 1}`);
-    await withStudioTemp('profile', (outputDir) => renderFrames({
-      ...RENDER_PAGE_OPTIONS, composition, serveUrl: session.serveUrl, puppeteerInstance: browser, inputProps: profiled, outputDir,
+    await renderFrames({
+      ...RENDER_PAGE_OPTIONS, ...watchedRenderFrames(watch), composition, serveUrl: session.serveUrl, puppeteerInstance: browser, inputProps: profiled, outputDir: null,
       // Quiet, so the entries are read, not echoed (frame-profiler.tsx says how they're logged to allow it).
-      concurrency: 1, imageFormat: 'none', frames, logLevel: 'error', onStart: () => {}, onFrameUpdate: () => {},
+      concurrency: 1, imageFormat: 'none', frames, logLevel: 'error', onStart: () => {},
       onBrowserLog: (log) => {
-        printRenderPageLog(log);
+        watch.onBrowserLog(log);
+        const entry = renderHostLineText(FRAME_PROFILE_LOG_PREFIX, log.text);
         // SAFETY: frame-profiler.tsx alone logs behind this prefix, and only a FrameProfileLine's JSON.
-        if (log.text.startsWith(FRAME_PROFILE_LOG_PREFIX)) lines.push(JSON.parse(log.text.slice(FRAME_PROFILE_LOG_PREFIX.length)) as FrameProfileLine);
+        if (entry !== null) lines.push(JSON.parse(entry) as FrameProfileLine);
       },
-    }));
+    });
     return { result: composition, workers: 1 };
   });
 
-  const wholeIn = (tabs: number) => session.inBrowser(`whole frames, ${tabs} tab${tabs > 1 ? 's' : ''}`, async (browser: HeadlessBrowser) => {
+  const wholeIn = (tabs: number) => session.inBrowser(`whole frames, ${tabs} tab${tabs > 1 ? 's' : ''}`, async (browser, watch) => {
     const inputProps = session.props();
     // Selected again: a composition carries the props it was selected with, and renders with them.
     const composition = await session.compositionFor(inputProps, browser);
     const arrived: number[] = [];
     await withStudioTemp('profile', (outputDir) => renderFrames({
-      ...RENDER_PAGE_OPTIONS, composition, serveUrl: session.serveUrl, puppeteerInstance: browser, inputProps, outputDir,
-      concurrency: tabs, imageFormat: 'jpeg', frames, onStart: () => {}, onFrameUpdate: () => arrived.push(performance.now()),
+      ...RENDER_PAGE_OPTIONS, ...watchedRenderFrames(watch, () => arrived.push(performance.now())), composition, serveUrl: session.serveUrl, puppeteerInstance: browser,
+      inputProps, outputDir, concurrency: tabs, imageFormat: 'jpeg', frames, onStart: () => {},
     }));
     // Every tab loads on its first frame; those frames arrive first, and the rest are the steady state.
     const steady = arrived.slice(tabs - 1);

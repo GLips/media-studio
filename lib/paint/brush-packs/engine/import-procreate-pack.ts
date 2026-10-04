@@ -20,8 +20,9 @@ import type { StampPaintColor } from '#lib/paint/materials/models/paint-material
 import { parseBinaryPlist, unarchiveKeyedPlist } from '#lib/paint/procreate-brushes/engine/binary-plist.ts';
 import { readProcreateComposite } from '#lib/paint/procreate-brushes/engine/procreate-canvas.ts';
 import {
-  fitWithin, sha256OfFile, stampPackSlug as slugOf, writeStampPackPng as writeBrushImage, type ImportStampPaintPackOptions,
+  fitWithin, stampPackSlug as slugOf, writeStampPackPng as writeBrushImage, type ImportStampPaintPackOptions,
 } from './stamp-paint-pack-files.ts';
+import { sha256OfFile } from '#lib/platform/files/engine/file-sha256.ts';
 import { openZipBytes, openZipFile, type ZipArchive } from '#lib/platform/zip/engine/zip-archive.ts';
 
 /**

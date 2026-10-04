@@ -8,7 +8,9 @@
 import { PAINT_MEDIA, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { PaintMixturePigment } from '#lib/paint/materials/models/paint-pigment.ts';
 import { stampBrushedMasksUnder } from '#lib/paint/painting/models/stamp-brushed-mask.ts';
+import { createKeptByCount, type StampKeptByCount } from '#lib/paint/painting/models/stamp-kept-memo.ts';
 import { stampBoilSeed, type CompiledStampDeposit } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
+import { rememberedOnce } from '#lib/paint/painting/models/stamp-remembered.ts';
 import type { StampSheetCompositeStep, StampSheetEntry, StampSheetFilm, StampSheetPrewet, StampSheetProgram, StampSheetWash } from '#lib/paint/painting/models/stamp-sheet-program.ts';
 import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
 import { compilePaintingArea } from './painting-area-compile.ts';
@@ -168,7 +170,7 @@ export const PAINTING_SELECTIONS_KEPT = 16;
  * Compiled selections by evaluation, the brushes resolving them, and the layers selected with their boil epochs: one
  * program a sheet while it's kept, so the poses kept per program are met again.
  */
-const compiledSelections = new WeakMap<PaintingEvaluation, WeakMap<PaintingBrushOf, Map<string, PaintingSelectionCompiled>>>();
+const compiledSelections = new WeakMap<PaintingEvaluation, WeakMap<PaintingBrushOf, StampKeptByCount<string, PaintingSelectionCompiled>>>();
 
 /**
  * The selected layers of `evaluation`, each sheet they lie on compiled at rest. A film comes where its layer does in
@@ -178,20 +180,9 @@ const compiledSelections = new WeakMap<PaintingEvaluation, WeakMap<PaintingBrush
 export function compilePaintingSelection(evaluation: PaintingEvaluation, brushOf: PaintingBrushOf, { layers, reseed }: PaintingSelectionCompileOptions = {}): PaintingSelectionCompiled {
   const selected = paintingSelectedLayers(evaluation.tree, layers), epochs = paintingLayerEpochs(evaluation.tree, reseed);
   const key = `${[...selected].toSorted((a, b) => a - b).join(',')}|${[...epochs].map(([layer, epoch]) => `${layer}@${epoch}`).join(',')}`;
-  let byBrushes = compiledSelections.get(evaluation);
-  if (!byBrushes) compiledSelections.set(evaluation, (byBrushes = new WeakMap<PaintingBrushOf, Map<string, PaintingSelectionCompiled>>()));
-  let bySelection = byBrushes.get(brushOf);
-  if (!bySelection) byBrushes.set(brushOf, (bySelection = new Map<string, PaintingSelectionCompiled>()));
-  const known = bySelection.get(key);
-  if (known) {
-    bySelection.delete(key);
-    bySelection.set(key, known);
-    return known;
-  }
-  const compiled = compileSelectedLayers(evaluation, brushOf, selected, epochs);
-  bySelection.set(key, compiled);
-  if (bySelection.size > PAINTING_SELECTIONS_KEPT) bySelection.delete(bySelection.keys().next().value!);
-  return compiled;
+  const byBrushes = rememberedOnce(compiledSelections, evaluation, () => new WeakMap<PaintingBrushOf, StampKeptByCount<string, PaintingSelectionCompiled>>());
+  const bySelection = rememberedOnce(byBrushes, brushOf, () => createKeptByCount<string, PaintingSelectionCompiled>(PAINTING_SELECTIONS_KEPT));
+  return rememberedOnce(bySelection, key, () => compileSelectedLayers(evaluation, brushOf, selected, epochs));
 }
 
 /**

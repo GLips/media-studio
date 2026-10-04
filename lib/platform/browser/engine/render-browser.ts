@@ -11,6 +11,7 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { openBrowser, type HeadlessBrowser } from '@remotion/renderer';
 import { acquireStudioGpuLease } from '#lib/platform/gpu/engine/gpu-lease.ts';
+import { renderBrowserFailureText } from '../models/render-browser-failure.ts';
 import { renderPageLogText } from '../models/render-page-log.ts';
 import { wholeBrowserPageError } from './browser-page-error.ts';
 
@@ -21,11 +22,11 @@ import { wholeBrowserPageError } from './browser-page-error.ts';
 const RENDER_CHROMIUM = { gl: 'angle' } as const;
 
 /**
- * The one wall-clock ceiling of a render's page: each delayRender, each seek and each page call. A backstop far past
- * any frame's work, so wall time isn't the budget: a render fails sooner only when its progress stops, as a painted
- * shot's watchdog (shot-watch.ts) and a chunked render's (render-chunks.ts) see it.
+ * The one wall-clock ceiling of a render's page: each delayRender (a painted shot's load and warm, or one frame), each
+ * seek and each page call. Only a backstop for a page making progress forever: a render fails when its progress stops,
+ * as a painted shot's watch (shot-watch.ts) and every render browser's (render-watch.ts) see it.
  */
-export const RENDER_TIMEOUT_MS = 15 * 60_000;
+export const RENDER_TIMEOUT_MS = 2 * 60 * 60_000;
 
 /** Prints a render page's lines for the terminal (render-page-log.ts) on stderr: Remotion's `onBrowserLog`. */
 export function printRenderPageLog({ text }: { readonly text: string }): void {
@@ -76,14 +77,21 @@ async function readGpuBackends(browser: HeadlessBrowser): Promise<GpuBackends> {
 /** The backends as a render records them, one line: another GPU rounds a painted frame differently. */
 const describeGpu = ({ gl, webgpu }: GpuBackends) => `${gl}; WebGPU ${webgpu!.vendor} ${webgpu!.architecture}`;
 
+/** The error `text`, marked as its browser's failure when `lostGpu`: a fresh browser may not meet it. */
+const gpuBackendError = (text: string, lostGpu: boolean) => new Error(lostGpu ? renderBrowserFailureText(text) : text);
+
+/**
+ * Refuses a browser with no GL or WebGPU, or a software one. One that had them and fell back by the end, or has no GL
+ * at all, lost its GPU process.
+ */
 function assertHardwareGpu({ gl, webgpu }: GpuBackends, when: 'before' | 'after') {
-  const what = when === 'before' ? 'has' : 'fell back to';
-  if (gl === null) throw new Error(`the render's browser ${what} no GL backend: its GPU process is gone`);
+  const what = when === 'before' ? 'has' : 'fell back to', fellBack = when === 'after';
+  if (gl === null) throw gpuBackendError(`the render's browser ${what} no GL backend: its GPU process is gone`, true);
   if (SOFTWARE_GL.test(gl)) {
-    throw new Error(`the render's browser ${what} software GL (${gl}), which renders many times slower. Close other GPU-heavy apps, or render with fewer --workers`);
+    throw gpuBackendError(`the render's browser ${what} software GL (${gl}), which renders many times slower. Close other GPU-heavy apps, or render with fewer --workers`, fellBack);
   }
-  if (webgpu === null) throw new Error(`the render's browser ${what} no WebGPU adapter: stamp paintings can't draw`);
-  if (webgpu.fallback) throw new Error(`the render's browser ${what} a software WebGPU adapter, which renders many times slower`);
+  if (webgpu === null) throw gpuBackendError(`the render's browser ${what} no WebGPU adapter: stamp paintings can't draw`, fellBack);
+  if (webgpu.fallback) throw gpuBackendError(`the render's browser ${what} a software WebGPU adapter, which renders many times slower`, fellBack);
 }
 
 /**

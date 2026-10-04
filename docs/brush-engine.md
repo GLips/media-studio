@@ -642,11 +642,13 @@ A warm (`shot-warm.ts`) solves each painted plane and variant before the first f
 frames to pair each set of moments on its source and plane clocks (`shotWarmCombinations` over `shotPlaneClocks`;
 node clocks run inside the plane's), only the frames its scene shows, each solve let go to the cache; a solve reads
 no lay, so a pinned plane warms unlaid. It stops between solves once its scene is disposed. `PaintedShot` holds the
-render once for its load and warm and once a frame, however long each takes: its watch (`shot-watch.ts`) cancels a
-hold only once nothing has moved for 90 s, no solve finished and no GPU check settled, naming the shot, the solve it
-was in and where (the warm, or the frame's own solve, cold), how many of the run's solves are done and its costs so
-far; a lost device fails the hold at once. Each warm solve that solved sheets, and each frame's solve that took 5 s
-or more, logs a line the render prints (`platform/browser`'s render-page-log). Steps that mustn't
+render once for its load and warm and once a frame, while each makes progress (the page's two-hour ceiling,
+`RENDER_TIMEOUT_MS`, is only a backstop): its watch (`shot-watch.ts`) cancels a hold once nothing has moved for 90 s,
+no solve finished and no GPU check settled, naming the shot, the solve it was in and where (the warm, or the frame's
+own solve, cold), how many of the run's solves are done and what the run cost so far, its evictions and uploads read
+live; a lost device fails the hold at once. Each warm solve that solved sheets, and each frame's solve that took 5 s
+or more, logs a line the render prints, and other progress a pulse, so the render's browser watch
+(`platform/browser`'s render-watch) sees the page alive while it is. Steps that mustn't
 overlap on one device (shares, planes, canvases, textures, three sources) run through `gpuEachInTurn`
 (`platform/gpu/models/gpu-in-turn.ts`). The renderer counts evictions and bytes uploaded (every write and image copy
 to the owner's queue, three.js's too) around each draw and warm, and the bytes the cache keeps after it; the

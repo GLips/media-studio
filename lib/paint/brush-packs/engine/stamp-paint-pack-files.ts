@@ -5,8 +5,8 @@
 // (a sheet's fidelity/, Photoshop's reference/) sits beside the generations and outlives them. Also here: brush images
 // written as downsized grey PNGs, and the archive's hash.
 
-import { createHash, randomUUID } from 'node:crypto';
-import { closeSync, existsSync, linkSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { existsSync, linkSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { parseStudioProcessName, studioProcessName, studioProcessRunning, thisStudioProcess, type StudioProcessIdentity } from '#lib/platform/process/engine/studio-process.ts';
@@ -72,13 +72,6 @@ export const stampPaintPackDir = ({ stylesDir, style, pack }: StampPaintPackPlac
 
 /** A brush's or paper's name as a file name: lowercase letters, digits and dashes; empty for a name in another script. */
 export const stampPackSlug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-
-export function sha256OfFile(file: string): string {
-  const hash = createHash('sha256'), fd = openSync(file, 'r'), chunk = Buffer.alloc(1 << 22);
-  for (let read; (read = readSync(fd, chunk, 0, chunk.length, null)) > 0;) hash.update(chunk.subarray(0, read));
-  closeSync(fd);
-  return hash.digest('hex');
-}
 
 export function fitWithin(width: number, height: number, max: number) {
   const scale = Math.min(1, max / Math.max(width, height));

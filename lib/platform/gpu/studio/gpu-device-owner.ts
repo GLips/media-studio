@@ -6,6 +6,7 @@
 // anything open. An asynchronous one (three.js's loads) stays open across awaits, so they run one after another:
 // two open at once would pop each other's scopes.
 
+import { gpuDeviceLostText } from '../models/gpu-device-lost.ts';
 import { createStudioThreeRenderer, type StudioThreeRenderer } from './studio-three-renderer.ts';
 
 const GPU_ERROR_SCOPES = ['validation', 'out-of-memory', 'internal'] as const;
@@ -72,7 +73,7 @@ export async function createGpuDeviceOwner(): Promise<GpuDeviceOwner> {
     void webgpu.lost.then(({ reason, message }) => {
       if (reason !== 'destroyed') {
         lost ??= message;
-        resolve(new Error(`gpu: the device was lost: ${message}`));
+        resolve(new Error(gpuDeviceLostText(message)));
       }
       return undefined;
     });
@@ -119,7 +120,7 @@ export async function createGpuDeviceOwner(): Promise<GpuDeviceOwner> {
   return {
     webgpu, checked, checkedAsync, whenLost,
     assertLive: () => {
-      if (lost) throw new Error(`gpu: the device was lost: ${lost}`);
+      if (lost) throw new Error(gpuDeviceLostText(lost));
     },
     checksSettled: () => settled,
     three: () => (three ??= checkedAsync('making the three.js renderer', async () => {

@@ -13,6 +13,7 @@ import { stampBrushEdgeOffsetMean, stampBrushMeasuredProfile } from '#lib/paint/
 import type { CompiledStampArea } from './stamp-area.ts';
 import { placeStampFlood, stampBrushFillEdge, stampFloodBarrier, stampFloodEdgeOf, stampFloodLaidPast, type StampFillApplication } from './stamp-fill.ts';
 import { stampFillStrokePath } from './stamp-fill-strokes.ts';
+import { createKeptByBytes } from './stamp-kept-memo.ts';
 import { stampMarkStamps } from './stamp-marks.ts';
 import { stampPaintFieldAt, type StampSeededPaintField } from './stamp-paint-field.ts';
 import type { CompiledStampFlood } from './stamp-paint-recipe-compile.ts';
@@ -47,8 +48,7 @@ const POINT_BYTES = 64, ENTRY_BYTES = 1024;
 const bytesOf = ({ stamps, dualStamps, ...placement }: StampDepositPlacement, key: string) => ENTRY_BYTES + 2 * key.length + STAMP_KEPT_BYTES * (stamps.length + dualStamps.length)
   + (placement.kind === 'flood' ? POINT_BYTES * placement.flood.barrier.polygon.length : 0);
 
-const kept = new Map<string, { placement: StampDepositPlacement; bytes: number }>();
-let keptBytes = 0;
+const kept = createKeptByBytes<string, StampDepositPlacement>(STAMP_PLACEMENTS_KEPT_BYTES);
 
 /** `geometry` placed by `brush` at `diameter`, seeded by `seed`: remembered by their content, or placed now. */
 export function placeStampDeposit(geometry: StampPlacingGeometry, brush: StampBrush, diameter: number, seed: string): StampDepositPlacement {
@@ -56,22 +56,9 @@ export function placeStampDeposit(geometry: StampPlacingGeometry, brush: StampBr
   const keyed = brush.profile.kind === 'measured' ? { ...brush, profile: brush.profile.key } : brush;
   const key = `${stampContentKey(keyed)}\n${diameter}\n${seed}\n${stampContentKey(geometry)}`;
   const found = kept.get(key);
-  if (found) {
-    // Asked for again: the most recent, given up last.
-    kept.delete(key);
-    kept.set(key, found);
-    return found.placement;
-  }
+  if (found) return found;
   const placement = frozenPlacement(placeNow(geometry, brush, diameter, seed));
-  const bytes = bytesOf(placement, key);
-  if (bytes > STAMP_PLACEMENTS_KEPT_BYTES) return placement;
-  kept.set(key, { placement, bytes });
-  keptBytes += bytes;
-  for (const [oldest, entry] of kept) {
-    if (keptBytes <= STAMP_PLACEMENTS_KEPT_BYTES) break;
-    kept.delete(oldest);
-    keptBytes -= entry.bytes;
-  }
+  kept.set(key, placement, bytesOf(placement, key));
   return placement;
 }
 

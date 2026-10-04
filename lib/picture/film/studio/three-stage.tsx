@@ -15,7 +15,8 @@ import {
 } from 'three/webgpu';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { fullFrameRect, type FrameSize } from '#lib/picture/frame/models/frame.ts';
-import { usePictureDrawn, useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
+import { usePictureDrawn } from '#lib/picture/frame/studio/picture-drawn.ts';
+import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import type { ShotCamera } from '#lib/picture/shot-camera/models/shot-camera.ts';
 import { setThreeShotCamera } from '#lib/picture/shot-camera/studio/three-shot-camera.ts';
@@ -85,14 +86,14 @@ export function ThreeStage({
   const canvas = useRef<HTMLCanvasElement>(null);
   const [gpu, setGpu] = useState<ThreeStageGpu | null>(null);
   const { delayRender, continueRender, cancelRender } = useDelayRender();
-  const { fps, ...size } = useVideoFormat(), drawn = usePictureDrawn();
+  const { fps, ...size } = useVideoFormat(), pictureDrawn = usePictureDrawn();
   const box = given ?? fullFrameRect(size);
   const { w, h } = box;
 
   // A device and canvas output for each size; let go of with it. Scrubbing the Studio mounts a stage per scene. A pass
   // drawing no picture makes none, so draws nothing.
   useLayoutEffect(() => {
-    if (!drawn) return undefined;
+    if (!pictureDrawn) return undefined;
     const handle = delayRender('making the three.js stage\'s GPU device');
     let open = true, live = true;
     const release = () => {
@@ -115,7 +116,7 @@ export function ThreeStage({
       setGpu(null);
       release();
     };
-  }, [w, h, transparent, drawn, delayRender, continueRender, cancelRender]);
+  }, [w, h, transparent, pictureDrawn, delayRender, continueRender, cancelRender]);
 
   useLayoutEffect(() => {
     if (!gpu) return undefined;

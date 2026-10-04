@@ -621,8 +621,9 @@ sheet a crayon node declared is refused: crayon keeps no wet history.
   solves each pairing, not each frame. It reports what it solved and kept, and promises no residency: a span whose
   films outgrow the cache's budget evicts its beginning, and those frames solve again. Warm spans that fit. It warms
   only frames its scene shows: one running past its scene's end stops there, and every render prints a warning. A
-  warm, and a frame's own solves, take as long as they need: the render fails a shot only once nothing has moved for
-  90 s, naming the solve it was stuck in, and prints a line for each warm solve and each slow solve of a frame. A painting project renders
+  warm, and a frame's own solves, are held as long as they make progress: the render fails a shot once no solve has
+  finished and its GPU has answered nothing for 90 s, naming the solve it was stuck in, and otherwise only past a
+  two-hour backstop no real warm reaches. It prints a line for each warm solve and each slow solve of a frame. A painting project renders
   in one tab, so the warm runs once a chunk of frames (each chunk is a fresh browser); more `--workers` each warm
   again.
 - **A drop landing in a wash** at a scene second: a timed water application on that wash's sheet with `at` (a bloom,
