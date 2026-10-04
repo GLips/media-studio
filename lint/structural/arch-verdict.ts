@@ -1,19 +1,19 @@
 // ─── check:arch's verdict over one scope ──────────────────────────────
 //
 // Every check run over the scope's tree, and what it finds judged against the
-// scope's baseline. The public scope judges the studio's files against
-// lint/arch-baseline.json. The workspace scope reads the studio's files too
-// (your projects import them) but judges only work/'s, against
-// work/arch-baseline.json. The baseline is read from the snapshot, as the
-// files it excuses are: under the hook, a baseline edit counts once it's staged.
+// scope's baseline (lint/gate-scope.ts). The workspace scope reads the studio's
+// files too (your projects import them) but judges only work/'s.
 
 import { STUDIO_WORKSPACE_MOUNT } from '../policy/studio-tree.ts';
-import { baselineTier, compareToBaseline, parseBaseline, type BaselineComparison } from '../baseline.ts';
+import { baselineTier, compareToBaseline, type BaselineComparison } from '../baseline.ts';
+import { gateBaselineFile, gateRepository, readGateBaseline, type GateRepository } from '../gate-scope.ts';
 import { createCheckContext, type CheckContext, type CheckTarget, type Finding } from './check-context.ts';
 import { STRUCTURAL_CHECKS } from './registry.ts';
 
 export type ArchVerdict = BaselineComparison & {
   context: CheckContext;
+  /** The repository whose files are judged: the studio's, or work/'s. */
+  repository: GateRepository;
   /** The scope's baseline, relative to the studio's root. */
   baselineFile: string;
   /** The scope's blocking findings, before the baseline excuses any. */
@@ -39,7 +39,7 @@ export function judgeArchitecture(root: string, target: CheckTarget): ArchVerdic
   } finally {
     context.dispose();
   }
-  const baselineFile = target.scope === 'workspace' ? `${STUDIO_WORKSPACE_MOUNT}/arch-baseline.json` : 'lint/arch-baseline.json';
-  const baseline = parseBaseline(context.tree.paths.has(baselineFile) ? context.tree.readTexts([baselineFile])[0] : undefined);
-  return { context, baselineFile, findings, advisories, crashed, ...compareToBaseline(findings, baselineTier(baseline, 'structural')) };
+  const repository = gateRepository(root, target.scope, target.snapshot);
+  const baseline = baselineTier(readGateBaseline(repository), 'structural');
+  return { context, repository, baselineFile: gateBaselineFile(target.scope), findings, advisories, crashed, ...compareToBaseline(findings, baseline) };
 }

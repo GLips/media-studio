@@ -14,7 +14,7 @@
 
 import { builtinModules } from 'node:module';
 import { parseSync } from 'oxc-parser';
-import { listSnapshotPaths, readSnapshotTexts, type SnapshotRepository } from '../candidate-snapshot.ts';
+import { isSourcePath, listSnapshotPaths, readSnapshotTexts, SOURCE_EXTENSIONS, type MountedSnapshot } from '../candidate-snapshot.ts';
 import { expandStudioAlias, normalizeRepoPath } from '../policy/studio-tree.ts';
 
 /**
@@ -68,14 +68,6 @@ export type SourceFile = {
   lineOf: (offset: number) => number;
 };
 
-/**
- * One repository's snapshot and its place in the tree's path space: `mount` is `''` for the root repository,
- * whose package.json names the aliases, or a folder (`work`) prefixing every path it lists.
- * `gitEnv` is the environment git runs in: the process's own for the repository git is committing (a hook's
- * GIT_INDEX_FILE is the index the commit holds), isolatedGitEnv() for any other.
- */
-export type MountedSnapshot = SnapshotRepository & { mount: string };
-
 export type SourceTree = {
   /** Every path in the snapshot, any extension. */
   paths: ReadonlySet<string>;
@@ -87,11 +79,6 @@ export type SourceTree = {
   /** Snapshot files' text, for checks over non-source files (docs, shell), read in one batch. */
   readTexts: (paths: readonly string[]) => string[];
 };
-
-export const SOURCE_EXTENSIONS = ['ts', 'tsx', 'mts', 'cts', 'js', 'jsx', 'mjs', 'cjs'] as const;
-const SOURCE_RE = new RegExp(`\\.(${SOURCE_EXTENSIONS.join('|')})$`);
-/** A TypeScript or JavaScript file by its extension, a declaration file included. */
-export const isSourcePath = (path: string) => SOURCE_RE.test(path);
 
 /** Every mounted repository's snapshot, read as one tree. Two repositories listing one path is refused. */
 export function loadSourceTree(options: { repos: readonly MountedSnapshot[]; scope: TreeScope }): SourceTree {
@@ -238,18 +225,46 @@ const isRequire = (callee: AstNode) =>
   (callee.type === 'MemberExpression' && (callee.object as AstNode).name === 'require' && (callee.property as AstNode).name === 'resolve');
 
 /** Depth-first over every node; `visit` returning `false` skips that node's children. */
-export function walkAst(node: unknown, visit: (node: AstNode, parent: AstNode | undefined) => boolean | void, parent?: AstNode): void {
-  if (node === null || typeof node !== 'object') return;
-  if (Array.isArray(node)) {
-    for (const child of node) walkAst(child, visit, parent);
-    return;
+export function walkAst(node: AstNode, visit: (node: AstNode, parent: AstNode | undefined) => boolean | void, parent?: AstNode): void {
+  if (visit(node, parent) === false) return;
+  for (const child of childrenOf(node)) walkAst(child, visit, node);
+}
+
+export const isAstNode = (value: unknown): value is AstNode =>
+  typeof value === 'object' && value !== null && 'type' in value && typeof value.type === 'string';
+export const isIdentifier = (value: unknown): value is AstNode & { name: string } =>
+  isAstNode(value) && value.type === 'Identifier' && typeof value.name === 'string';
+export const isStringLiteral = (value: unknown): value is AstNode & { value: string } =>
+  isAstNode(value) && value.type === 'Literal' && typeof value.value === 'string';
+
+/** The node under `key`, if one is. */
+export function childAt(node: AstNode, key: string): AstNode | undefined {
+  const value = node[key];
+  return isAstNode(value) ? value : undefined;
+}
+
+/** The nodes listed under `key`; an array's holes (`[, b]`) are skipped. */
+export function childrenAt(node: AstNode, key: string): AstNode[] {
+  const value = node[key];
+  return Array.isArray(value) ? value.filter(isAstNode) : [];
+}
+
+/** Every node directly under `node`, in the parser's field order. A value that's no node (a regex's parts, a template's text) holds none. */
+export function childrenOf(node: AstNode): AstNode[] {
+  const children: AstNode[] = [];
+  for (const [key, value] of Object.entries(node)) {
+    if (key === 'type') continue;
+    if (Array.isArray(value)) children.push(...value.filter(isAstNode));
+    else if (isAstNode(value)) children.push(value);
   }
-  const record = node as AstNode;
-  if (typeof record.type === 'string') {
-    if (visit(record, parent) === false) return;
-    parent = record;
-  }
-  for (const key in record) if (key !== 'type') walkAst(record[key], visit, parent);
+  return children;
+}
+
+/** The name a member expression reads: `a.b`'s `b`, `a['b']`'s; none for a computed `a[k]`. */
+export function memberName(member: AstNode): string | undefined {
+  const property = childAt(member, 'property');
+  if (member.computed) return isStringLiteral(property) ? property.value : undefined;
+  return isIdentifier(property) ? property.name : undefined;
 }
 
 function readImportsMap(packageJson: string): Record<string, string> {

@@ -370,22 +370,6 @@
     "lint/structural/checks/feature-visibility.ts": {
       "return { kind: 'malformed', reason: (error as Error).message };": 1
     },
-    "lint/structural/checks/frame-determinism.ts": {
-      "if (node.type === 'Identifier') return node.name as string;": 1,
-      "const object = node.object as AstNode;": 1,
-      "if (object.type !== 'Identifier' || !GLOBAL_OBJECTS.has(object.name as string)) return undefined;": 1,
-      "const property = member.property as AstNode;": 1,
-      "if (!member.computed) return property.name as string;": 1,
-      "const owner = globalNamed(node.object as AstNode), name = propertyName(node);": 1,
-      "if (node.type === 'VariableDeclarator' && node.init && (node.id as AstNode).type === 'Identifier') {": 1,
-      "const owner = globalNamed(node.init as AstNode);": 2,
-      "if (node.type === 'VariableDeclarator' && (node.id as AstNode).type === 'ObjectPattern' && node.init) {": 1,
-      "for (const property of ((node.id as AstNode).properties as AstNode[])) {": 2,
-      "const key = property.key as AstNode | undefined;": 1,
-      "const name = key?.type === 'Identifier' ? key.name as string : key?.type === 'Literal' ? String(key.value) : undefined;": 1,
-      "if ((node.type === 'NewExpression' || node.type === 'CallExpression') && globalNamed(node.callee as AstNode) === 'Date') {": 1,
-      "if (node.type === 'CallExpression' || !(node.arguments as unknown[]).length) found.push({ construct: call, instead: \"use the scene's time\", offset: node.start });": 1
-    },
     "lint/structural/checks/no-broad-parameters.ts": {
       "const annotated = ((fn as Node & { parameters?: readonly Node[] }).parameters ?? [])": 1,
       ".filter((parameter) => (parameter as Node & { type?: Node }).type !== undefined && !isReceiver(parameter));": 1,
@@ -512,7 +496,6 @@
       "const quasis = literal.type === 'TemplateLiteral' && (literal.expressions as unknown[]).length === 0 ? literal.quasis as AstNode[] : undefined;": 2,
       "? literal.value : (quasis?.[0]?.value as { cooked?: string } | undefined)?.cooked;": 1,
       "(callee.type === 'MemberExpression' && (callee.object as AstNode).name === 'require' && (callee.property as AstNode).name === 'resolve');": 2,
-      "const record = node as AstNode;": 1,
       "const imports = (JSON.parse(packageJson) as { imports?: Record<string, unknown> }).imports ?? {};": 1
     },
     "lint/structural/type-checker.ts": {
@@ -815,7 +798,7 @@
       "const serverOnly = target.kind === 'builtin' ? target.name": 1
     },
     "lint/structural/checks/frame-determinism.ts": {
-      "const name = key?.type === 'Identifier' ? key.name as string : key?.type === 'Literal' ? String(key.value) : undefined;": 1
+      "const name = isIdentifier(key) ? key.name : key?.type === 'Literal' ? String(key.value) : undefined;": 1
     },
     "lint/structural/checks/timing-ownership.ts": {
       "const name = node.computed ? (property.type === 'Literal' ? property.value : undefined) : property.name;": 1
@@ -993,16 +976,10 @@
     "lint/oxlint/lib/rule-options.ts": {
       "option: unknown": 1
     },
-    "lint/structural/checks/frame-determinism.ts": {
-      "program: unknown": 1
-    },
     "lint/structural/checks/shadow-source.ts": {
       "computed: unknown": 1
     },
     "lint/structural/checks/timing-ownership.ts": {
-      "node: unknown": 1
-    },
-    "lint/structural/source-tree.ts": {
       "node: unknown": 1
     }
   },
@@ -1143,9 +1120,6 @@
     },
     "lint/structural/checks/feature-visibility.ts": {
       "typeof reason": 1
-    },
-    "lint/structural/checks/frame-determinism.ts": {
-      "typeof property.value": 1
     },
     "lint/structural/checks/render-snapshot.ts": {
       "typeof node.value": 1
@@ -1430,9 +1404,6 @@
     },
     "lint/structural/checks/barrel-purity.ts": {
       "if (node.type !== 'Identifier' || calls.has(node)) return;": 1
-    },
-    "lint/structural/checks/frame-determinism.ts": {
-      "walkAst(program, (node) => {": 1
     },
     "lint/structural/checks/sdk-containment.ts": {
       "walkAst(file.program, (node) => {": 1

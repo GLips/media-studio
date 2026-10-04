@@ -20,6 +20,8 @@ test('a model reaching render, I/O or browser code is caught through any chain; 
       'export const early = () => fetch();', 'function fetch() { return 1; }',
       'export const outer = () => { { const document = 1; void document; } return document; };',
       'const self = { navigator: 1 };', 'export const own = self.navigator;',
+      // An overload's parameter is a type's, erased: it reads nothing.
+      'export class Meter { read(process: number): number; read(process: string): number; read(v: number | string) { return Number(v); } }',
     ].join('\n'),
     // A model's own window over time, named as the browser's is.
     'lib/picture/motion/models/rub.ts': 'const window = { at: 0, over: 1 };\nexport const rub = window.at + window.over;\n',

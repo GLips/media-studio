@@ -26,6 +26,9 @@ the console is their output) and `DEFAULT_EXPORT_MODULE_GLOBS` (loaded by path f
 so a project is checked before it's added. The pre-commit hooks pass `--snapshot index`: only what the commit holds,
 so another session's half-written file can't block it, and each lists the sources it left unchecked. check:arch reads
 the index's text; oxlint reads the index's files from disk. `check:arch -- --rev <commit>` reads a committed tree.
+`--update-baseline` counts only the index, as the hook judges it: a baseline excuses what a commit holds, so stage a
+fix before rewriting it, and an untracked project's violations are never excused. A scope's repository, mount and
+baseline file are `lint/gate-scope.ts`'s.
 
 **`structural/`** reads the snapshot, parsed once (`source-tree.ts`), with every import resolved to
 a canonical path, so an alias and a relative spelling reach one verdict. The `types` checks ask the TypeScript 7

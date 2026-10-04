@@ -17,10 +17,12 @@ test('ambient randomness and clocks are caught however they are reached, in code
       'const M = Math;', 'export const r = M.random();', 'const t = global.performance.timeOrigin;', 'enum Seed { At = Date.now() }',
     ].join('\n'),
     'work/projects/p/scenes/intro/sky.ts': 'export const jitter = () => Math.random();\n',
-    // Legal neighbours: a date from an argument, a seeded stream, an erased type, and an unrelated `now`.
+    // Legal neighbours: a date from an argument, a seeded stream, an erased type, an unrelated `now`, and a timer
+    // handed in under the global's name.
     'lib/picture/motion/models/when.ts': [
       'export const at = (iso: string) => new Date(iso);', "import { seededRandom } from './random.ts';",
       'export type Clock = ReturnType<typeof Date.now>;', 'export const clock = { now: () => 0 };', 'export const t = clock.now();',
+      'export const lap = (performance: { now(): number }) => performance.now();',
     ].join('\n'),
     // Not held: engine code times a render, a capture stamps provenance, and a spec may do either.
     'lib/output/render/engine/session.ts': 'export const started = performance.now();\n',
