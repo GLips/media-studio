@@ -319,7 +319,7 @@ export const STAMP_GATE_SHOT_TEXTURE_CASES: Readonly<Record<StampGateShotTexture
     shot: (buildCylinder) => {
       const label = painting(STAMP_GATE_LABEL_SOURCE);
       return {
-        camera: { stage: stampStage(STAMP_GATE_LABEL_VIEW.frame, 2), fov: STAMP_GATE_LABEL_VIEW.fov, lens: { bloom: 0, shutter: 0 }, plays: [] },
+        camera: { stage: stampStage(STAMP_GATE_LABEL_VIEW.frame, 2), fov: STAMP_GATE_LABEL_VIEW.fov, lens: { bloom: 0, shutter: 0 } },
         planes: [{ id: 'label', depth: 2, source: layersOf(label, ['label']) }, { id: 'cylinder', depth: 1, source: { kind: 'three', build: buildCylinder } }],
         paintedTextures: [{ id: 'label', source: ({ at }: PaintMoment) => layersOf(label, ['label'], { at }), widthPx: STAMP_GATE_LABEL.width, heightPx: STAMP_GATE_LABEL.height }],
       };
@@ -336,7 +336,7 @@ export const STAMP_GATE_SHOT_TEXTURE_CASES: Readonly<Record<StampGateShotTexture
     shot: (buildCylinder) => {
       const tile = stampGateWholePainting(STAMP_GATE_TILE_SOURCE);
       return {
-        camera: { stage: stampStage(STAMP_GATE_FAR_VIEW.frame, 2), fov: STAMP_GATE_FAR_VIEW.fov, lens: { bloom: 0, shutter: 0 }, plays: [] },
+        camera: { stage: stampStage(STAMP_GATE_FAR_VIEW.frame, 2), fov: STAMP_GATE_FAR_VIEW.fov, lens: { bloom: 0, shutter: 0 } },
         planes: [{ id: 'tile', depth: 2, source: tile }, { id: 'cylinder', depth: 1, source: { kind: 'three', build: buildCylinder } }],
         paintedTextures: [{ id: 'tile', source: tile, widthPx: STAMP_GATE_TILE.width, heightPx: STAMP_GATE_TILE.height }],
       };

@@ -142,10 +142,10 @@ test('a re-seeding group always has its epoch; a stuck one over a boil is held a
   const reseeded = { id: 'ink', marks: { boil: { every: 2, reseed: true } } } satisfies PaintMotionNode;
   const still = { id: 'rock' } satisfies PaintMotionNode;
   const painting = paintingOf([square('ink', { options: { boil: { every: 2 } } }), square('rock', { options: { boil: { every: 2 } } })]);
-  const motion = built(buildPaintMotion(painting, { nodes: [reseeded, still], plays: [] }));
+  const motion = built(buildPaintMotion(painting, { nodes: [reseeded, still] }));
   assert.deepEqual(paintMotionFrameAt(motion, paintMoment(1.5)).get('ink')?.marks, { kind: 'written', epoch: 18 });
   assert.deepEqual(paintMotionFrameAt(motion, paintMoment(1.5)).get('rock')?.marks, { kind: 'written', epoch: 0 });
-  const unboiled = buildPaintMotion(paintingOf([square('ink')]), { nodes: [reseeded], plays: [] });
+  const unboiled = buildPaintMotion(paintingOf([square('ink')]), { nodes: [reseeded] });
   assert.match(problemsOf(unboiled)[0], /^ink re-seeds its marks, but its group is compiled without a boil/);
 });
 

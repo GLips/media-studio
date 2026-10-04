@@ -45,7 +45,7 @@ const pond = (own: boolean) => painting({
   },
 });
 
-const camera: PaintedShotProps['camera'] = { stage: stampStage({ width: 320, height: 240 }, 2), fov: 35, lens: { bloom: 0, shutter: 0 }, plays: [], animationFps: FPS };
+const camera: PaintedShotProps['camera'] = { stage: stampStage({ width: 320, height: 240 }, 2), fov: 35, lens: { bloom: 0, shutter: 0 }, animationFps: FPS };
 const HERON_PARTS: readonly RigPart[] = [
   { id: 'body', z: 0, parent: null, cels: ['body'] },
   { id: 'neck', z: 1, parent: 'body', joint: 'hinge', pivot: { x: 60, y: 100 }, cels: ['neck'] },
@@ -73,7 +73,7 @@ const solvedText = (solved: PaintingPoses) => [...solved].map(([key, pose]) => `
 test("a boil's wobble moves finished paint: marks solve alike across epochs, while the lay and its picture's key move", () => {
   const props: PaintedShotProps = {
     camera, planes: [{ id: 'front', depth: 1, source: layersOf(pond(false), ['sky', 'heron']) }],
-    motion: { nodes: [{ id: 'front/heron', marks: { boil: { every: 1 } } }], plays: [] },
+    motion: { nodes: [{ id: 'front/heron', marks: { boil: { every: 1 } } }] },
   };
   const [first, again, next] = [1.5, 1.5, 2.5].map((frame) => planAt(props, paintMoment(frame / FPS)));
   assert.equal(solvedText(next.solved), solvedText(first.solved));

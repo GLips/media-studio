@@ -28,14 +28,14 @@ import { paintGroupLaidReach } from './paint-motion-reach.ts';
 
 /**
  * A camera as written: the `stage` its pictures are painted on, its projection (`fov`, vertical degrees over the
- * frame at rest), its `planes` (in any order), its `lens` and its plays.
+ * frame at rest), its `planes` (in any order), its `lens` and its plays (none: it stands at rest, every plane sharp).
  */
 export type PaintCameraOptions = {
   readonly stage: StampStage;
   readonly fov: number;
   readonly planes: readonly PaintCameraPlaneOptions[];
   readonly lens: PaintCameraLens;
-  readonly plays: readonly PaintCameraPlay[];
+  readonly plays?: readonly PaintCameraPlay[];
   readonly animationFps?: number;
 };
 
@@ -199,7 +199,7 @@ export function buildPaintCamera(o: PaintCameraOptions): PaintCameraBuild {
   if (!(o.lens.bloom >= 0 && Number.isFinite(o.lens.bloom))) problems.push(`the lens blooms by a sigma of 0 px or more, not ${o.lens.bloom}`);
   if (!(o.lens.shutter >= 0 && Number.isFinite(o.lens.shutter))) problems.push(`the lens's shutter is open 0 s or more, not ${o.lens.shutter}`);
   const move: CompiledPaintPlay<PaintCameraMoveClip>[] = [], focus: CompiledPaintPlay<PaintCameraFocusClip>[] = [], writers: PaintChannelWriter[] = [];
-  for (const play of o.plays) {
+  for (const play of o.plays ?? []) {
     const problem = paintCameraClipProblem(play.clip) ?? paintPlayClockProblem(play.clock);
     if (problem) { problems.push(`${play.origin}: ${problem}`); continue; }
     const clock = compilePaintPlayClock(play.clock, []), interval = paintPlayInterval(clock, clipSeconds(play.clip.keys.at(-1)!.at));

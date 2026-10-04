@@ -33,7 +33,7 @@ const pond = painting({
   },
 });
 
-const camera: PaintedShotProps['camera'] = { stage: stampStage({ width: 320, height: 240 }, 2), fov: 35, lens: { bloom: 0, shutter: 0 }, plays: [], animationFps: FPS };
+const camera: PaintedShotProps['camera'] = { stage: stampStage({ width: 320, height: 240 }, 2), fov: 35, lens: { bloom: 0, shutter: 0 }, animationFps: FPS };
 const heronParts: readonly RigPart[] = [
   { id: 'body', z: 0, parent: null, cels: ['body'] },
   { id: 'neck', z: 1, parent: 'body', joint: 'skin', pivot: { x: 60, y: 100 }, blend: 12, cels: ['neck'] },
@@ -44,7 +44,7 @@ test('motion hangs each occurrence node from its nearest enclosing node, a paint
   const { shot } = compilePaintedShot({
     camera,
     planes: [{ id: 'front', depth: 1, clock: { hold: 2 }, source: layersOf(pond, ['sky', 'heron']) }],
-    motion: { nodes: [{ id: 'front' }, { id: 'front/heron', pivot: { x: 60, y: 100 }, clock: { hold: 3 } }, { id: 'front/neck' }], plays: [] },
+    motion: { nodes: [{ id: 'front' }, { id: 'front/heron', pivot: { x: 60, y: 100 }, clock: { hold: 3 } }, { id: 'front/neck' }] },
   }, []);
   const { nodes, nearest } = shot!.motion;
   assert.deepEqual([...nodes.values()].map(({ id, parent }) => [id, parent]), [['front', null], ['front/heron', 'front'], ['front/neck', 'front/heron']]);
@@ -56,7 +56,7 @@ test("a plane's source clock holds what its source reads apart from what its clo
   const { shot } = compilePaintedShot({
     camera,
     planes: [{ id: 'front', depth: 1, clock: { hold: 4 }, sourceClock: { hold: 6 }, source: ({ at }) => layersOf(pond, at < 1 ? ['sky', 'heron'] : ['sky', 'egret'], { at }) }],
-    motion: { nodes: [{ id: 'front/heron', clock: { hold: 3 } }], plays: [] },
+    motion: { nodes: [{ id: 'front/heron', clock: { hold: 3 } }] },
   }, []);
   const [front] = shot!.planes, frame9 = paintMoment(9 / FPS);
   assert.ok(front.kind === 'painted');

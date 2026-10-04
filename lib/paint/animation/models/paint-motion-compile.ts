@@ -269,10 +269,10 @@ function filePlay(node: MutableNode, play: PaintMotionPlay, writers: PaintChanne
  * don't make a tree, pins that can't weigh paint, a boil that can fold or can't re-seed, plays on missing nodes or
  * pins, clips and clocks that can't be evaluated, and two writers on one lane at once.
  */
-export function compilePaintMotion(painting: CompiledStampPaint, o: { nodes: readonly PaintMotionNode[]; plays: readonly PaintMotionPlay[]; animationFps: number }, problems: string[]): PaintMotion {
+export function compilePaintMotion(painting: CompiledStampPaint, o: { nodes: readonly PaintMotionNode[]; plays?: readonly PaintMotionPlay[]; animationFps: number }, problems: string[]): PaintMotion {
   const nodes = compileNodes(painting, o.nodes, problems);
   const writers: PaintChannelWriter[] = [];
-  for (const play of o.plays) {
+  for (const play of o.plays ?? []) {
     const node = nodes.get(play.target);
     const clipProblem = paintMotionClipProblem(play.clip), clockProblem = paintPlayClockProblem(play.clock);
     if (!node) problems.push(`${play.origin} plays on ${play.target}, which isn't a node`);

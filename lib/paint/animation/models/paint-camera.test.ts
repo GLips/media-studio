@@ -55,7 +55,7 @@ const threePlaneScene = [painted('back', 2, ['sky']), painted('frog', 1, ['frog'
 
 test('the build names a group on no plane or two, and orders the planes farthest first with the groups each shows', () => {
   const painting = paintingOf([{ id: 'sky', box: across }, { id: 'frog', box: across }, { id: 'toad', box: across }, { id: 'leaf', box: across }]);
-  const build = (planes: readonly StampPlane[]) => buildPaintingCamera(painting, { stage, fov: 35, lens: { bloom: 0, shutter: 0 }, plays: [], planes, motion: null });
+  const build = (planes: readonly StampPlane[]) => buildPaintingCamera(painting, { stage, fov: 35, lens: { bloom: 0, shutter: 0 }, planes, motion: null });
   assert.deepEqual(problemsOf(build([painted('back', 4, ['sky', 'frog']), painted('mid', 1, ['frog']), painted('near', 0.5, ['leaf'])])), [
     'frog is on plane back and plane mid; a group is on one plane',
     'toad is on no plane',

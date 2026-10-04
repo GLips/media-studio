@@ -197,7 +197,7 @@ function oneSheetShot(
     return poseAt(table, group, at);
   };
   return {
-    camera: { stage: stampStage({ width, height }, 2), fov: 35, lens: { bloom: 0, shutter: 0 }, plays: [] },
+    camera: { stage: stampStage({ width, height }, 2), fov: 35, lens: { bloom: 0, shutter: 0 } },
     planes: [{ id: plane, depth: 1, source: layersOf(evaluation, layers) }],
     rigs: Object.fromEntries(Object.entries(rigs).map(([group, parts]) => [`${plane}/${group}`, { parts, pose: pose(group) }])),
   };
@@ -222,7 +222,7 @@ export const STAMP_GATE_HERON_BOIL_AT = [1.5 / PAINT_ANIMATION_FPS, 2.5 / PAINT_
 
 /** The rigged heron boiling every frame, its wobble on the heron's group, whose rig takes it. */
 export const stampGateBoilingHeronShot = (): PaintedShotProps => ({
-  ...stampGateRiggedHeronShot(), motion: { nodes: [{ id: 'paper/heron', marks: { boil: { every: 1 } } }], plays: [] },
+  ...stampGateRiggedHeronShot(), motion: { nodes: [{ id: 'paper/heron', marks: { boil: { every: 1 } } }] },
 });
 
 const FOOT_RIG: readonly RigPart[] = [{ id: 'leg', z: 0, parent: null, cels: ['foot'] }];
@@ -342,7 +342,7 @@ export function stampGateDissolveShot(): PaintedShotProps {
   const { shallows, together, apart } = dissolveEvaluations(), { widthPx: width, heightPx: height } = together.document;
   const ks = ({ at }: PaintMoment) => DISSOLVE_KS.find((row) => row.at === at) ?? DISSOLVE_KS[0];
   return {
-    camera: { stage: stampStage({ width, height }, 2), fov: 35, lens: { bloom: 0, shutter: 0 }, plays: [] },
+    camera: { stage: stampStage({ width, height }, 2), fov: 35, lens: { bloom: 0, shutter: 0 } },
     planes: [
       { id: 'pond', depth: 1, source: (moment: PaintMoment) => dissolve(layersOf(together, ['shallows', 'heron']), layersOf(shallows, ['shallows']), ks(moment).back) },
       { id: 'heron', depth: 1, source: (moment: PaintMoment) => dissolve(layersOf(together, ['heron']), layersOf(apart, ['heron']), ks(moment).heron) },

@@ -176,7 +176,7 @@ export type PaintedTexture = { readonly id: string; readonly source: Presentatio
 export type PaintedShotProps = {
   readonly camera: Omit<PaintCameraOptions, 'planes'>;
   readonly planes: readonly (PlaneProps | InstancedPlaneProps)[];
-  readonly motion?: { readonly nodes: readonly OccurrenceMotionNode[]; readonly plays: readonly PaintMotionPlay[] };
+  readonly motion?: { readonly nodes: readonly OccurrenceMotionNode[]; readonly plays?: readonly PaintMotionPlay[] };
   readonly visibility?: Readonly<Record<OccurrenceKey, PresentationValue<number>>>;
   readonly rigs?: Readonly<Record<OccurrenceKey, OccurrenceRig>>;
   readonly paintedTextures?: readonly PaintedTexture[];

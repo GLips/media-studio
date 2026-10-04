@@ -396,8 +396,8 @@ an error. A frame held on twos gives every group the keys it had, so it repaints
   which three.js fills (`painted-three-sources.ts`: `loadPaintedThreeSources` over painted textures supplied as
   handles with a hook drawing them each frame, a shot's by `createShotPaintedTextures`, `loadPaintedThree` supplying
   them from old renderers) and any other renderer can. A painted plane's picture doesn't depend on the camera and is kept on the device while
-  its groups hold. The camera is one description: its plays key `move` (pan, dolly, zoom, roll) and `focus` (focus
-  depth, aperture), plus `fov` and a lens with one `bloom`. `paintCameraLensAt` gives each plane's view (a
+  its groups hold. The camera is one description: its plays, if any (none: at rest, every plane sharp), key `move`
+  (pan, dolly, zoom, roll) and `focus` (focus depth, aperture), plus `fov` and a lens with one `bloom`. `paintCameraLensAt` gives each plane's view (a
   similarity) and defocus (a thin lens's circle of confusion, as gaussian sigma) at a time, through
   `paintCameraDepthLooks`, which gives them at any depth, as each instanced item takes them; an instanced plane is
   built by its depths alone, its nearest held from the camera and magnified most. The build proves every

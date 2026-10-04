@@ -48,7 +48,7 @@ test('items sort with the planes far to near, planes first on a tie, and batch b
   ]);
 });
 
-const camera: PaintedShotProps['camera'] = { stage: stampStage({ width: 48, height: 40 }, 2), fov: 35, lens: { bloom: 0, shutter: 0.02 }, plays: [], animationFps: 24 };
+const camera: PaintedShotProps['camera'] = { stage: stampStage({ width: 48, height: 40 }, 2), fov: 35, lens: { bloom: 0, shutter: 0.02 }, animationFps: 24 };
 const compiled = (planes: PaintedShotProps['planes'], motion?: PaintedShotProps['motion']) => compilePaintedShot({ camera, planes, ...(motion && { motion }) }, []);
 
 test("an exposure lays each item by its lay at its depth, blurred along its own travel only while its key spans the shutter", () => {
@@ -85,7 +85,7 @@ test('a variant lies centred on the stage, and an item blurring it past the stag
 
 test("an instanced plane's load refuses what its items can't be drawn by, every problem at once", () => {
   const big = painting({ default: (): PaintingDocument => ({ ...drops.document, widthPx: 64 }) });
-  assert.deepEqual(compiled([plane('street', 2), { ...instanced('rain', []), variants: { drop: layersOf(big, ['drop']) } }], { nodes: [{ id: 'rain' }], plays: [] }).problems.map(({ path, message }) => `${path}: ${message}`), [
+  assert.deepEqual(compiled([plane('street', 2), { ...instanced('rain', []), variants: { drop: layersOf(big, ['drop']) } }], { nodes: [{ id: 'rain' }] }).problems.map(({ path, message }) => `${path}: ${message}`), [
     "rain.depths.far: 2.5 isn't nearer than the back, street at depth 2",
     'rain.variants.drop: paints a 64 × 32 document, and the stage is 52 × 44: a variant is laid whole on the stage',
     'rain.motion: is an instanced plane: its items take no nodes; each lies where its instances lay it',

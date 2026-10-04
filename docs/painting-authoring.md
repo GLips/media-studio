@@ -969,7 +969,7 @@ const labelAt = ({ at }: PaintMoment) => layersOf(label, ['label'], { at });
 const MUG = { radius: 163, height: 384 } as const;
 
 export const mugShot: PaintedShotProps = {
-  camera: { stage: stampStage({ width: 1280, height: 720 }, 2), fov: 30, lens: { bloom: 0, shutter: 1 / 48 }, plays: [] },
+  camera: { stage: stampStage({ width: 1280, height: 720 }, 2), fov: 30, lens: { bloom: 0, shutter: 1 / 48 } },
   planes: [
     { id: 'table', depth: 2, source: layersOf(painting(table), ['table']) },
     {
@@ -1133,7 +1133,7 @@ camera shows its plane. No mirror: scale is positive. A box (`reach`, `cover`) i
 
 **Camera** (`PaintCameraOptions` without `planes`): `stage: stampStage(frame, margin)`, margin whole and even; at least
 2, more for defocus or a moving lay's reach. `fov` vertical degrees. `lens: {bloom, shutter}`: bloom sigma frame px,
-shutter seconds open. `animationFps` (24). `plays` is required: `[]` for a still camera, else
+shutter seconds open. `animationFps` (24). `plays?`: left out, the camera stands at rest, every plane sharp; else
 `[paintCameraPlay(clip, {clock, origin})]`, `origin` naming the play in errors. A `move` clip's keys `{at, pan?,
 dolly?, zoom?, roll?, ease?}`: `at` clip s; `pan` `{x, y}` px as seen at depth 1; `dolly` depth units toward the planes;
 `zoom` 1 at rest; `roll` radians; a field left out is at rest; `ease` (`'linear'`, `'in'`, `'out'`, `'inOut'`) on the
