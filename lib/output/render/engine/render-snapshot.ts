@@ -8,7 +8,7 @@
 // A reader of a render goes through loadRenderSnapshot, never out/check/timeline.json: that is `studio check`'s latest
 // report, and says nothing about a render made before it.
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readFileSync, readSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import type { MotionTracks } from '#lib/picture/measurement/models/motion-tracks.ts';
 import type { TimelineClockTable } from '#lib/timing/timeline/models/timeline.ts';
@@ -54,6 +54,17 @@ export function renderSnapshotPath(render: string): string {
   return join(dirname(render), `${basename(render, extname(render))}.snapshot.json`);
 }
 
+/** `file`'s SHA-256, read a block at a time: a slice's lossless frames run to gigabytes. */
+function fileSha256(file: string): string {
+  const hash = createHash('sha256'), block = Buffer.alloc(8 * 2 ** 20), fd = openSync(file, 'r');
+  try {
+    for (let read; (read = readSync(fd, block)) > 0;) hash.update(block.subarray(0, read));
+  } finally {
+    closeSync(fd);
+  }
+  return hash.digest('hex');
+}
+
 const stamps = new Map<string, { key: string; stamp: RenderFileStamp }>();
 /** The file's hash and mtime. Hashed again only when its mtime or size moves, so asking again costs a stat. */
 export function renderFileStamp(file: string): RenderFileStamp {
@@ -61,7 +72,7 @@ export function renderFileStamp(file: string): RenderFileStamp {
   const key = `${mtimeMs}:${size}`;
   const cached = stamps.get(file);
   if (cached?.key === key) return cached.stamp;
-  const stamp = { hash: createHash('sha256').update(readFileSync(file)).digest('hex').slice(0, 10), modified: mtime.toISOString() };
+  const stamp = { hash: fileSha256(file).slice(0, 10), modified: mtime.toISOString() };
   stamps.set(file, { key, stamp });
   return stamp;
 }

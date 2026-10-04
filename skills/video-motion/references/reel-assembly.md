@@ -87,7 +87,7 @@ the bar's first frame, and without the other bars in the bundle. Several builder
    `reel-critique.md` as the brief.
 7. Give a reel a `tools/` folder of the checks the whole reel reruns after each round of fixes. An integrate script
    (`integrate.sh 3 5`) re-renders the bars a change touched (`studio render --frames`), joins every bar under the
-   mix (`studio render --join`, which refuses a bar rendered on an older timeline) and measures the cut: each sound against the music, where each slam's sound lands, each beat's
+   mix (`studio render --join`, which encodes the bars' lossless frames once and refuses bars from two timelines or an older clock) and measures the cut: each sound against the music, where each slam's sound lands, each beat's
    attack, the still runs and every beat frame's luma, and the HUD's legibility on every frame. `studio look <project>
    --video <after.mp4> --against <before.mp4> --bar=N --crop=…` tells which frames and regions a change moved, and
    `--motion --bar=N` where a bar stops moving.

@@ -14,7 +14,7 @@ import { buildMotionGraph, motionGraphBackdropFrame, type MotionGraphSpace } fro
 import { assembleMotionTracks, formatMotionReport, motionArtifactName, type FrameMotion, type MotionTracks } from '#lib/picture/measurement/models/motion-tracks.ts';
 import { measureLoudness } from '#lib/platform/ffmpeg/engine/loudness.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
-import { artifactSink, DELIVERY_AUDIO_CODEC, formatRenderPasses, TIMELINE_REPORT_NAME, type RenderSession } from './render-session.ts';
+import { artifactSink, DELIVERY_AUDIO_CODEC, DELIVERY_ENCODING, formatRenderPasses, TIMELINE_REPORT_NAME, type RenderSession } from './render-session.ts';
 import { loadRenderSnapshot, renderSnapshotPath, writeRenderSnapshot } from './render-snapshot.ts';
 import { sfxEventsFrom, type SfxEvent } from '#lib/output/sfx-cues/models/cue-events.ts';
 import { sfxMarkArtifactName, type SfxMark } from '#lib/timing/sound/models/sfx-marks.ts';
@@ -25,7 +25,7 @@ import type { OnArtifact } from '@remotion/renderer';
 import { frameAtSecond } from '#lib/picture/frame/models/frame.ts';
 import type { VideoProps } from '#lib/picture/video/models/composition-props.ts';
 import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
-import { countVideoFrames, measureWithFfmpeg, runFfmpeg, runFfprobe } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
+import { countVideoFrames, measureWithFfmpeg, runFfmpeg, runFfmpegAsync, runFfprobe } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 
 const outDirFor = (session: RenderSession) => join(session.project, 'out');
 const videoFor = (session: RenderSession, captions: boolean) => join(outDirFor(session), captions ? 'video.mp4' : 'video-plain.mp4');
@@ -228,17 +228,16 @@ function renderProgress(out: string) {
 }
 
 /**
- * A delivered video, under the mastered mix (see renderDeliveredVideo). A silent one keeps the composition's own
- * sound, which is none, so Remotion writes no audio track: a sound playing in it after all shows up as a track its
- * review refuses. `approve` is session.renderVideo's; the soundtrack is the mix it names.
+ * A delivered video, its sound `apart` for the mix, or `none` under a mix made already. A silent one keeps the
+ * composition's own sound, none, so it gets no audio track: a sound playing in it after all is a track its review
+ * refuses. `approve` is session.renderVideo's; the soundtrack is the mix it names.
  */
-async function renderDeliveryVideo(session: RenderSession, { out, inputProps, timeline, separateSound = false, onArtifact, approve }: {
-  out: string; inputProps: VideoProps; timeline: TimelineReport; separateSound?: boolean; onArtifact?: OnArtifact;
+async function renderDeliveryVideo(session: RenderSession, { out, inputProps, timeline, sound, onArtifact, approve }: {
+  out: string; inputProps: VideoProps; timeline: TimelineReport; sound: 'apart' | 'none'; onArtifact?: OnArtifact;
   approve: (rendered: { sound?: string }) => Promise<{ soundtrack?: string; motion: MotionTracks }>;
 }) {
   await session.renderVideo({
-    out, inputProps, muted: !session.silent && !separateSound, separateSound, timeline, approve, ...(onArtifact && { onArtifact }),
-    crf: 18, x264Preset: 'slow', pixelFormat: 'yuv420p', imageFormat: 'jpeg', jpegQuality: 94, onProgress: renderProgress(out),
+    out, inputProps, sound: session.silent ? 'own' : sound, encoding: DELIVERY_ENCODING, timeline, approve, ...(onArtifact && { onArtifact }), onProgress: renderProgress(out),
   });
 }
 
@@ -342,7 +341,7 @@ export async function renderDeliveredVideo(session: RenderSession, { plain, onDr
   const sink = artifactSink();
   let delivery: { soundtrack?: string; motion: MotionTracks } | undefined;
   await renderDeliveryVideo(session, {
-    out: videoFor(session, true), inputProps: checkedProps(session), timeline, separateSound: !session.silent, onArtifact: sink.onArtifact,
+    out: videoFor(session, true), inputProps: checkedProps(session), timeline, sound: 'apart', onArtifact: sink.onArtifact,
     approve: async ({ sound }) => {
       delivery = { soundtrack: deliveredSoundtrack(session, sound, timeline), motion: approveCheckedRender(session, sink, timeline).motion };
       return delivery;
@@ -350,7 +349,7 @@ export async function renderDeliveredVideo(session: RenderSession, { plain, onDr
   });
   await session.timed('video.mp4 review', () => reviewDelivery(session, true, timeline));
   if (plain) {
-    await renderDeliveryVideo(session, { out: videoFor(session, false), inputProps: session.props(), timeline, approve: async () => delivery! });
+    await renderDeliveryVideo(session, { out: videoFor(session, false), inputProps: session.props(), timeline, sound: 'none', approve: async () => delivery! });
     await session.timed('video-plain.mp4 review', () => reviewDelivery(session, false, timeline));
   }
   const sidecars = writeCaptionSidecars(session, timeline);
@@ -427,7 +426,7 @@ function deliveredSoundtrack(session: RenderSession, sound: string | undefined, 
 export async function renderAnimatic(session: RenderSession, { out }: { out: string }): Promise<string> {
   mkdirSync(dirname(out), { recursive: true });
   const rendered = await session.renderVideo({
-    out, inputProps: session.props({ captions: true }), crf: 26, x264Preset: 'veryfast', imageFormat: 'jpeg', jpegQuality: 85, onProgress: renderProgress(out),
+    out, inputProps: session.props({ captions: true }), sound: 'own', encoding: { crf: 26, preset: 'veryfast' }, onProgress: renderProgress(out),
   });
   if (renderVoiceOf(session.project) === 'draft') console.error(draftVoiceWarning(session));
   return rendered;
@@ -435,61 +434,69 @@ export async function renderAnimatic(session: RenderSession, { out }: { out: str
 
 // ---------- slices ----------
 
+/** What names a slice's lossless frames, beside its video: what --join reads. */
+const LOSSLESS_SLICE_SUFFIX = '.lossless.mkv';
+
+/** Where a slice at `out` keeps its frames lossless: `<name>.lossless.mkv` beside it. */
+const losslessSliceFor = (out: string) => join(dirname(out), `${basename(out, extname(out))}${LOSSLESS_SLICE_SUFFIX}`);
+
 /**
- * Frames `from`–`end` (exclusive) of the video, silent, at `out`: to re-render just the part a change touched. No
- * framing check and no mix; its snapshot records where in the video it starts.
+ * Frames `from`–`end` (exclusive) of the video, silent, at `out` at delivery settings to watch, and kept lossless
+ * beside it for --join, each with its snapshot recording where in the video it starts: to re-render just the part a
+ * change touched. No framing check and no mix. Returns both files.
  */
-export async function renderVideoSlice(session: RenderSession, { from, end, out }: { from: number; end: number; out: string }): Promise<string> {
+export async function renderVideoSlice(session: RenderSession, { from, end, out }: { from: number; end: number; out: string }): Promise<string[]> {
   const timeline = await session.readTimeline();
   if (!(Number.isInteger(from) && Number.isInteger(end) && from >= 0 && end > from && end <= timeline.durationInFrames)) {
     throw new Error(`frames ${from}–${end - 1} aren't within the video's 0–${timeline.durationInFrames - 1}`);
   }
-  mkdirSync(dirname(out), { recursive: true });
-  return session.renderVideo({ out, frames: { from, end }, muted: true, timeline, crf: 20, onProgress: renderProgress(out) });
+  const lossless = losslessSliceFor(out);
+  await session.renderVideo({ out, frames: { from, end }, sound: 'none', encoding: DELIVERY_ENCODING, lossless, timeline, onProgress: renderProgress(out) });
+  return [out, lossless];
 }
 
 /**
- * Joins the slices in `dir` at `out`, under a fresh mastered mix, so placed sounds play across the joins. Refuses
- * another timeline, a gap or overlap, or a file short of its snapshot's frames: each puts every later frame off its
- * sound.
- *
- * Negative space: a silent join doesn't check that no sound plays; the delivered render's review does.
+ * Joins the slices' lossless frames in `dir` (each `<name>.lossless.mkv`) at `out`, encoded once under a fresh
+ * mastered mix, so sounds play across the joins. The timeline is the slices' snapshots', read with no page: refused
+ * when two differ or their clock isn't the project's now, as is a gap, overlap or short file. A silent one isn't
+ * checked for sound.
  */
 export async function joinVideoSlices(session: RenderSession, { dir, out }: { dir: string; out: string }): Promise<string> {
-  const timeline = await session.readTimeline();
-  const now = JSON.stringify(timeline);
-  // Not the join itself, when it's written among its slices.
-  const slices = readdirSync(dir).filter((name) => extname(name) === '.mp4' && join(dir, name) !== out).map((name) => {
-    const file = join(dir, name);
-    const loaded = loadRenderSnapshot(file);
+  const slices = readdirSync(dir).filter((name) => name.endsWith(LOSSLESS_SLICE_SUFFIX)).map((name) => {
+    const file = join(dir, name), loaded = loadRenderSnapshot(file);
     if (loaded.kind === 'none') throw new Error(loaded.reason);
-    const { frames } = loaded.snapshot;
-    if (JSON.stringify(loaded.snapshot.timeline) !== now) throw new Error(`${name} (frames ${frames.from}–${frames.end - 1}) was rendered on another timeline than the video's now (a retime moves every later bar and cue): render it again`);
-    const { gpu } = loaded.snapshot;
+    const { frames, timeline, clock, gpu } = loaded.snapshot;
     const counted = countVideoFrames(file);
     if (counted !== frames.end - frames.from) throw new Error(`${name} holds ${counted} frames, and its snapshot says ${frames.end - frames.from}`);
-    return { file, gpu, ...frames };
+    return { file, name, timeline, clock, gpu, from: frames.from, end: frames.end };
   }).toSorted((a, b) => a.from - b.from);
+  if (!slices.length) throw new Error(`${dir} holds no slices (*${LOSSLESS_SLICE_SUFFIX}): render them with studio render --frames`);
+  const [first] = slices, { timeline } = first, laid = JSON.stringify(timeline);
+  for (const s of slices) {
+    if (JSON.stringify(s.timeline) !== laid) throw new Error(`${s.name} (frames ${s.from}–${s.end - 1}) was rendered on another timeline than ${first.name}: render the older one again`);
+  }
+  // A retime moves every later bar and cue, so slices from before one put the picture off the mix made now.
+  if (JSON.stringify(first.clock) !== JSON.stringify(session.clock)) throw new Error(`the slices in ${dir} were rendered on another clock than the project's now (a retime moves every later bar and cue): render them again`);
   // Each GPU rounds a painted frame its own way, so slices from two would show a seam where they meet.
   const gpus = [...new Set(slices.map((s) => s.gpu))];
   if (gpus.length > 1) throw new Error(`the slices in ${dir} were drawn on ${gpus.length} GPUs (${gpus.join('; ')}): render them all on one machine`);
   let reached = 0;
   for (const s of slices) {
-    if (s.from !== reached) throw new Error(`${basename(s.file)} starts at frame ${s.from}, but the slices before it reach ${reached}: ${s.from > reached ? 'render the gap' : 'they overlap'}`);
+    if (s.from !== reached) throw new Error(`${s.name} starts at frame ${s.from}, but the slices before it reach ${reached}: ${s.from > reached ? 'render the gap' : 'they overlap'}`);
     reached = s.end;
   }
   if (reached !== timeline.durationInFrames) throw new Error(`the slices in ${dir} reach frame ${reached}, short of the video's ${timeline.durationInFrames}`);
 
   const mix = session.silent ? undefined : await renderMasteredMix(session, { timeline });
   mkdirSync(dirname(out), { recursive: true });
-  withStudioTemp('join', (tmp) => {
+  await withStudioTemp('join', (tmp) => {
     const list = join(tmp, 'slices.txt');
     writeFileSync(list, slices.map((s) => `file '${s.file.replaceAll("'", "'\\''")}'`).join('\n'));
     // The mix is padded past the picture and cut half a frame after it, so the last frame keeps its sound.
     const sound = mix ? ['-i', mix, '-map', '0:v', '-map', '1:a', ...DELIVERY_AUDIO_CODEC, '-af', 'apad'] : ['-map', '0:v'];
-    runFfmpeg(['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, ...sound,
-      '-c:v', 'libx264', '-crf', '16', '-preset', 'medium', '-pix_fmt', 'yuv420p',
-      '-t', String((timeline.durationInFrames + 0.5) / timeline.fps), '-movflags', '+faststart', out]);
+    return session.timed(`${basename(out)} encode`, () => runFfmpegAsync(['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, ...sound,
+      '-c:v', 'libx264', '-crf', String(DELIVERY_ENCODING.crf), '-preset', DELIVERY_ENCODING.preset, '-pix_fmt', 'yuv420p',
+      '-t', String((timeline.durationInFrames + 0.5) / timeline.fps), '-movflags', '+faststart', out]));
   });
   const counted = countVideoFrames(out);
   if (counted !== timeline.durationInFrames) throw new Error(`${out} holds ${counted} frames, not the video's ${timeline.durationInFrames}`);

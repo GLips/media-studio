@@ -12,7 +12,7 @@ export const studioProjectArg = {
 export const renderWorkersArg = {
   type: 'string',
   valueHint: '4',
-  description: "Tabs rendering at once, in place of the video's renderWorkers or the default, 3. The tabs share one GPU, so more rarely render faster and leave the machine less to spare",
+  description: "Tabs rendering at once, in place of the video's renderWorkers or the default: 1 for a project that paints (its project.ts names styles), 3 otherwise. The tabs share one GPU, so more rarely render faster and leave the machine less to spare; each painting tab solves its paint again",
 } as const satisfies StringArgDef;
 
 /** The --lens a rendering command takes: how its frames draw the lens. */

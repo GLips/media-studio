@@ -8,7 +8,7 @@ import { copyFileSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { bundleStudioProject } from './studio-bundle.ts';
 import { refuseProjectPaintingErrors } from './render-preflight.ts';
-import { inRenderBrowser, RENDER_REMOTION_OPTIONS } from '#lib/platform/browser/engine/render-browser.ts';
+import { inRenderBrowser, RENDER_PAGE_OPTIONS } from '#lib/platform/browser/engine/render-browser.ts';
 import { artifactSink } from './render-session.ts';
 import { stillProblems, type StillMeasure, type StillPixels, type StillProblem } from '#lib/picture/stills/models/still-check.ts';
 import { isStillFitArtifact, STILL_MEASURE_ARTIFACT, STILL_UI_ZONES, stillName, type StillFitReport, type StillProps, type StillRenderProps } from '#lib/picture/stills/models/still-presets.ts';
@@ -47,7 +47,7 @@ export async function renderProjectStills(project: string, selection: StillSelec
   const serveUrl = await bundleStudioProject(project);
   return withStudioTemp('stills', async (tmp) => {
     const { result } = await inRenderBrowser(async (browser) => {
-      const all = (await getCompositions(serveUrl, { puppeteerInstance: browser, ...RENDER_REMOTION_OPTIONS })).filter((c) => c.id.startsWith('still-'));
+      const all = (await getCompositions(serveUrl, { ...RENDER_PAGE_OPTIONS, puppeteerInstance: browser })).filter((c) => c.id.startsWith('still-'));
       if (!all.length) throw new Error(`${project} has no stills.tsx, or it defines no stills`);
       const keeps = (list: readonly string[] | undefined, value: string) => !list || list.includes(value);
       const chosen = all.filter((c) => {
@@ -71,7 +71,7 @@ export async function renderProjectStills(project: string, selection: StillSelec
         const sink = artifactSink();
         await renderStill({
           composition: { ...composition, props }, serveUrl, output, imageFormat, jpegQuality: imageFormat === 'jpeg' ? 92 : undefined,
-          puppeteerInstance: browser, ...RENDER_REMOTION_OPTIONS, onArtifact: sink.onArtifact,
+          ...RENDER_PAGE_OPTIONS, puppeteerInstance: browser, onArtifact: sink.onArtifact,
         });
         return sink;
       };

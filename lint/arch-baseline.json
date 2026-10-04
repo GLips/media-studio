@@ -837,9 +837,6 @@
       "const composition = await session.compositionFor(profiled, browser);": 1,
       "const composition = await session.compositionFor(inputProps, browser);": 1
     },
-    "lib/output/render/engine/render-session.ts": {
-      "const composition = await compositionFor(inputProps, browser);": 1
-    },
     "lib/output/render/engine/studio-bundle.ts": {
       "const recording: WebpackOverrideFn = async (config) => {": 1
     },
@@ -1017,9 +1014,6 @@
     "lib/output/look/engine/piece-look.ts": {
       "Record<string, unknown>": 1
     },
-    "lib/output/render/engine/render-session.ts": {
-      "Record<string, unknown>": 1
-    },
     "lib/paint/brush-fidelity/engine/stamp-paint-guard.ts": {
       "Record<string, unknown>": 3,
       "Record<string, unknown[]>": 2
@@ -1189,7 +1183,6 @@
       "return spans.map(([a, b]): ChannelMove => {": 1
     },
     "lib/output/render/engine/render-pipeline.ts": {
-      "const slices = readdirSync(dir).filter((name) => extname(name) === '.mp4' && join(dir, name) !== out).map((name) => {": 1,
       "...frames.flatMap((f) => [1, 2, 3].flatMap((every) => [...runUpTo(f, every), f])),": 1
     },
     "lib/output/review/engine/project-artifacts.ts": {

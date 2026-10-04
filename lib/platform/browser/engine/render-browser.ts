@@ -11,6 +11,7 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { openBrowser, type HeadlessBrowser } from '@remotion/renderer';
 import { acquireStudioGpuLease } from '#lib/platform/gpu/engine/gpu-lease.ts';
+import { renderPageLogText } from '../models/render-page-log.ts';
 import { wholeBrowserPageError } from './browser-page-error.ts';
 
 /**
@@ -20,11 +21,23 @@ import { wholeBrowserPageError } from './browser-page-error.ts';
 const RENDER_CHROMIUM = { gl: 'angle' } as const;
 
 /**
- * What every Remotion call over a render browser is given: RENDER_CHROMIUM, and how long a frame may hold its
- * screenshot (a delayRender). Remotion's 30 s is too short for a painted frame once a render draws beside it, as the
- * GPU lease lets a look do: one that solves in seconds alone has passed 28 s there.
+ * The one wall-clock ceiling of a render's page: each delayRender, each seek and each page call. A backstop far past
+ * any frame's work, so wall time isn't the budget: a render fails sooner only when its progress stops, as a painted
+ * shot's watchdog (shot-watch.ts) and a chunked render's (render-chunks.ts) see it.
  */
-export const RENDER_REMOTION_OPTIONS = { chromiumOptions: RENDER_CHROMIUM, timeoutInMilliseconds: 120_000 } as const;
+export const RENDER_TIMEOUT_MS = 15 * 60_000;
+
+/** Prints a render page's lines for the terminal (render-page-log.ts) on stderr: Remotion's `onBrowserLog`. */
+export function printRenderPageLog({ text }: { readonly text: string }): void {
+  const line = renderPageLogText(text);
+  if (line !== null) process.stderr.write(`  ${line}\n`);
+}
+
+/**
+ * What every Remotion call that opens a render page takes: the GPU, the one ceiling, and the page's lines printed.
+ * Spread first, so a call that watches the page's lines passes its own `onBrowserLog`.
+ */
+export const RENDER_PAGE_OPTIONS = { chromiumOptions: RENDER_CHROMIUM, timeoutInMilliseconds: RENDER_TIMEOUT_MS, onBrowserLog: printRenderPageLog } as const;
 
 // SwiftShader is Chrome's own; llvmpipe and softpipe are Mesa's, on a Linux machine with no GPU driver.
 const SOFTWARE_GL = /swiftshader|llvmpipe|softpipe|software/i;
