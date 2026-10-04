@@ -26,17 +26,21 @@ import { GPU_FULL_FRAME_WGSL, GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu
 import type { PaintedShotPaintOptions } from '../models/shot-compile.ts';
 import { compiledPaintedTextureSourceAt, type CompiledShotPaintedTexture } from '../models/shot-painted-texture-compile.ts';
 import { paintedSourceShares, samePaintedSourceShares, type PaintedSourceShare } from '../models/shot-selection.ts';
+import type { ShotSolve } from '../models/shot-progress.ts';
 import { shotPaintedTextureMipChain, type ShotPaintedTextureMipChain } from './shot-painted-texture-mips.ts';
+import type { ShotSolveProgress } from './shot-watch.ts';
 
-/** How a warm runs the textures' solves: stopping between them once `stopped` says so, `solving` told of each before it starts. */
-export type ShotPaintedTexturesWarmRun = { readonly stopped: () => boolean; readonly solving?: (label: string) => void };
+/** One solve a warm makes: what it solves, and the solve, its films let go to the cache. */
+export type ShotWarmSolve = { readonly solve: ShotSolve; readonly run: () => Promise<void> };
 
 /**
- * A shot's painted textures as its three sources read them; `warm`, solving each at each of `frames` and letting its
- * films go to the cache; and `dispose`, letting their textures go after the sources.
+ * A shot's painted textures as its three sources read them; `solveAt`, `update` with each texture's solve told to
+ * `progress`, for a frame to make before its sources render; `warmSolves`, the solves a warm over `frames` makes; and
+ * `dispose`, letting their textures go after the sources.
  */
 export type ShotPaintedTextures = PaintedThreeTexturesSupplied & {
-  readonly warm: (frames: readonly PaintMoment[], run: ShotPaintedTexturesWarmRun) => Promise<void>;
+  readonly solveAt: (t: number, progress?: ShotSolveProgress) => Promise<void>;
+  readonly warmSolves: (frames: readonly PaintMoment[]) => ShotWarmSolve[];
   readonly dispose: () => void;
 };
 
@@ -217,25 +221,26 @@ export function createShotPaintedTextures(owner: StampPaintGpuOwner, textures: r
     slot.read = shares;
   };
 
+  const solveAt = (t: number, progress?: ShotSolveProgress) => gpuEachInTurn(drawn, async (slot) => {
+    progress?.solving({ what: `texture ${slot.texture.id}`, at: t });
+    await drawAt(slot, paintMoment(t));
+    progress?.solved();
+  }).then(() => undefined);
+
   return {
     handles: drawn.map(({ handle }) => handle),
-    update: async (t) => {
-      await gpuEachInTurn(drawn, (slot) => drawAt(slot, paintMoment(t)));
-    },
+    update: (t) => solveAt(t),
+    solveAt,
     // A frame reading what the one before it did solves alike, so it's skipped: a source that never changes solves once.
-    warm: async (frames, { stopped, solving }) => {
-      await gpuEachInTurn(drawn, async ({ texture }) => {
-        let before: readonly PaintedSourceShare[] | null = null;
-        await gpuEachInTurn(frames, async (moment) => {
-          if (stopped()) return;
-          const shares = shotTextureSharesAt(texture, moment);
-          if (before && samePaintedSourceShares(before, shares)) return;
-          before = shares;
-          solving?.(`warming the painted shot's texture ${texture.id} at ${moment.at} s`);
-          await withSharesSolved(shares, () => Promise.resolve());
-        });
+    warmSolves: (frames) => drawn.flatMap(({ texture }) => {
+      let before: readonly PaintedSourceShare[] | null = null;
+      return frames.flatMap((moment): ShotWarmSolve[] => {
+        const shares = shotTextureSharesAt(texture, moment);
+        if (before && samePaintedSourceShares(before, shares)) return [];
+        before = shares;
+        return [{ solve: { what: `texture ${texture.id}`, at: moment.at }, run: () => withSharesSolved(shares, () => Promise.resolve()) }];
       });
-    },
+    }),
     dispose: () => {
       for (const texture of owned.splice(0)) texture.destroy();
     },

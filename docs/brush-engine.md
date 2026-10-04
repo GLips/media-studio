@@ -603,8 +603,9 @@ and three planes are the old path's sources, laid through `stamp-lens-source-lay
 `sourceClock`'s moment (a picture's `pictureAt`, a three scene's `poseAt`) and faded by its visibility, the lens
 layer's `visibility` (`lens-compositor.ts`). Three planes read the shot's
 painted textures (`studio/shot-painted-textures.ts`): made by `createShotPaintedTextures` before
-`loadPaintedThreeSources` when the shot has a three plane and released after it, drawn by the loader's hook at each
-frame's moment before its sources render, and solved at each warm frame after the planes. An instanced plane
+`loadPaintedThreeSources` when the shot has a three plane and released after it, drawn at each frame's moment once
+its planes are solved, before its sources render (the loader's hook finds them drawn), and solved at each warm frame
+after the planes. An instanced plane
 (`shot-instances.ts`) reads its items at the exposure's moment and its shutter's ends, pairs them by key and looks each through the camera at its own depth. Each variant is compiled, solved
 and laid as a painted plane is, still and centred on the stage, its picture kept under its plan's key; an item whose
 blur would spread it past the stage round its document is refused as the frame reads it. A batch of items (one
@@ -638,8 +639,12 @@ and so are `warm` and the cost report.
 A warm (`shot-warm.ts`) solves each painted plane and variant before the first frame at the first of the span's
 frames to pair each set of moments on its source and plane clocks (`shotWarmCombinations` over `shotPlaneClocks`;
 node clocks run inside the plane's), only the frames its scene shows, each solve let go to the cache; a solve reads
-no lay, so a pinned plane warms unlaid. It stops between solves once its scene is disposed, and `PaintedShot` holds
-the render with a fresh `delayRender` per solve, so no single hold waits on the whole span. Steps that mustn't
+no lay, so a pinned plane warms unlaid. It stops between solves once its scene is disposed. `PaintedShot` holds the
+render once for its load and warm and once a frame, however long each takes: its watch (`shot-watch.ts`) cancels a
+hold only once nothing has moved for 90 s, no solve finished and no GPU check settled, naming the shot, the solve it
+was in and where (the warm, or the frame's own solve, cold), how many of the run's solves are done and its costs so
+far; a lost device fails the hold at once. Each warm solve that solved sheets, and each frame's solve that took 5 s
+or more, logs a line the render prints (`platform/browser`'s render-page-log). Steps that mustn't
 overlap on one device (shares, planes, canvases, textures, three sources) run through `gpuEachInTurn`
 (`platform/gpu/models/gpu-in-turn.ts`). The renderer counts evictions and bytes uploaded (every write and image copy
 to the owner's queue, three.js's too) around each draw and warm, and the bytes the cache keeps after it; the

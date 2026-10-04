@@ -34,6 +34,13 @@ export type GpuDeviceOwner = {
   checkedAsync: <T>(what: string, work: () => Promise<T>) => Promise<T>;
   /** Throws if the device was lost (a lost device isn't an error a scope catches). */
   assertLive: () => void;
+  /** Resolves with the device's loss as an error, for work to race; never for a device `dispose` destroyed. */
+  whenLost: Promise<Error>;
+  /**
+   * How many checks (`checked`, `checkedAsync`) have settled, either way: work the device finished. It only grows, so
+   * a watchdog reads a device that's stuck as this standing still.
+   */
+  checksSettled: () => number;
   /** The device's one three.js renderer, made the first time it's asked for. */
   three: () => Promise<StudioThreeRenderer>;
   /** Lets go of the three.js renderer and destroys the device; dispose what draws on it first. */
@@ -60,8 +67,16 @@ export async function requestStudioGpuDevice(): Promise<GPUDevice> {
 /** An owner of a new device. */
 export async function createGpuDeviceOwner(): Promise<GpuDeviceOwner> {
   const webgpu = await requestStudioGpuDevice();
-  let lost: string | null = null;
-  void webgpu.lost.then(({ reason, message }) => (lost ??= reason === 'destroyed' ? null : message));
+  let lost: string | null = null, settled = 0;
+  const whenLost = new Promise<Error>((resolve) => {
+    void webgpu.lost.then(({ reason, message }) => {
+      if (reason !== 'destroyed') {
+        lost ??= message;
+        resolve(new Error(`gpu: the device was lost: ${message}`));
+      }
+      return undefined;
+    });
+  });
 
   const checked = async <T,>(what: string, work: () => T): Promise<T> => {
     for (const scope of GPU_ERROR_SCOPES) webgpu.pushErrorScope(scope);
@@ -73,7 +88,7 @@ export async function createGpuDeviceOwner(): Promise<GpuDeviceOwner> {
       // device's resolve with no error.
       popped = Promise.all(GPU_ERROR_SCOPES.map(() => webgpu.popErrorScope()));
     }
-    const error = (await popped).find(Boolean);
+    const error = (await popped.finally(() => settled++)).find(Boolean);
     if (error) throw new Error(`gpu: ${what} failed: ${error.message}`);
     return result;
   };
@@ -96,16 +111,17 @@ export async function createGpuDeviceOwner(): Promise<GpuDeviceOwner> {
       if (error) throw new Error(`gpu: ${what} failed: ${error.message}`);
       return result;
     });
-    asyncChecks = run.catch(() => {});
+    asyncChecks = run.catch(() => {}).finally(() => settled++);
     return run;
   };
 
   let three: Promise<StudioThreeRenderer> | null = null, made: StudioThreeRenderer | null = null, disposed = false;
   return {
-    webgpu, checked, checkedAsync,
+    webgpu, checked, checkedAsync, whenLost,
     assertLive: () => {
       if (lost) throw new Error(`gpu: the device was lost: ${lost}`);
     },
+    checksSettled: () => settled,
     three: () => (three ??= checkedAsync('making the three.js renderer', async () => {
       const renderer = await createStudioThreeRenderer(webgpu);
       // One finished after the owner went is let go of at once.

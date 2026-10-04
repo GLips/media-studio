@@ -11,7 +11,7 @@
 import { paintNodeTimeAt } from '#lib/paint/animation/models/paint-clock.ts';
 import { PAINT_SIMILARITY_IDENTITY, paintSimilarityAfter, paintSimilarityInverse, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import { paintCameraDepthLooks, paintCameraLensFrame, type PaintCameraDepthLooks } from '#lib/paint/animation/models/paint-camera.ts';
-import { paintingProblemsError, paintingProblemText } from '#lib/paint/document/models/painting-problem.ts';
+import { paintingProblemsError } from '#lib/paint/document/models/painting-problem.ts';
 import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { STAMP_REST_LOOK, type StampLaidSourcePlane, type StampLensFrame, type StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
 import type { StampStage, StampStageTexels } from '#lib/paint/painting/models/stamp-stage.ts';
@@ -32,14 +32,15 @@ import { shotNodePoseAt, shotPlaneClocks, shotVisibilityAt } from '../models/sho
 import { shotDrawSteps, shotExposureItems, type CompiledShotInstancedPlane, type CompiledShotVariant, type ShotExposureItems } from '../models/shot-instances.ts';
 import { shotDrawableOrder } from '../models/shot-plan.ts';
 import type { ShotMomentAt } from '../models/shot-sheet-lays.ts';
-import { shotWarmCombinations, shotWarmFrames, shotWarmPastScene } from '../models/shot-warm.ts';
+import { shotWarmCombinations, shotWarmFrames } from '../models/shot-warm.ts';
 import { shotCanvasPaintSurfaces, type ShotCanvasSurface } from './shot-canvas.ts';
 import { createShotSpanFade } from './shot-span-fade-pass.ts';
 import { shotItemsCoverages, shotItemsLayer, type ShotItemsCoverage } from './shot-instance-passes.ts';
 import { createShotPaintedPlanes, type ShotPlaneMoment, type ShotPlaneSolved, type ShotSourceRead } from './shot-painted-plane.ts';
-import { createShotPaintedTextures } from './shot-painted-textures.ts';
+import { createShotPaintedTextures, type ShotWarmSolve } from './shot-painted-textures.ts';
 import { createShotRigPictures, createShotRigPiecesDrawer } from './shot-rig-pieces.ts';
 import { createShotSheetsLayer } from './shot-sheets-lay.ts';
+import type { ShotSolveProgress } from './shot-watch.ts';
 
 /**
  * What made the pixels a mask reads of a plane it doesn't lay: a three render's frame and exposure, a picture's upload
@@ -61,20 +62,17 @@ const throughCamera = (seen: PaintSimilarity, at: { readonly x: number; readonly
 
 /**
  * How a shot warms: at the composition's `fps`; within the scene playing it, `sceneDur` s long (null: unknown);
- * stopping between solves once `stopped` says so; `solving` told of each solve before it starts, so a render can give
- * each the time a frame's solve gets.
+ * stopping between solves once `stopped` says so.
  */
-export type PaintedShotWarmRun = {
-  readonly fps: number;
-  readonly sceneDur: number | null;
-  readonly stopped?: () => boolean;
-  readonly solving?: (label: string) => void;
-};
+export type PaintedShotWarmRun = { readonly fps: number; readonly sceneDur: number | null; readonly stopped?: () => boolean };
+
+/** How a renderer paints: its brushes and costs, and `progress`, told of each warm's and each frame's solves. */
+export type PaintedShotRendererOptions = PaintedShotPaintOptions & { readonly progress?: ShotSolveProgress };
 
 /**
  * A shot drawn a frame at a time: `warm` solving its warm span's films (nothing without one), `draw` at frame time `t`
  * in a lens mode, its pinned planes' elements as `pins` measures them at that frame (none needed without pins),
- * `finish` waiting out the GPU. Each counts its costs, the device's evictions, uploads and bytes kept among them.
+ * `finish` waiting out the GPU. Each counts its costs (evictions, uploads, bytes kept) and tells `progress` its solves.
  */
 export type PaintedShotRenderer = {
   readonly stage: StampStage;
@@ -112,7 +110,8 @@ function shotExposures(shot: CompiledPaintedShot, t: number, mode: LensMode): Sh
  * `shot` on `owner`'s device, drawn into `surfaces`, one a canvas in the shot's canvas order, each the camera's frame
  * size and laid as shotCanvasLayings says (createShotCanvasSurface). A glaze's frame keeps what it lets through.
  */
-export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfaces: readonly ShotCanvasSurface[], shot: CompiledPaintedShot, { brushOf, costs }: PaintedShotPaintOptions): Promise<PaintedShotRenderer> {
+export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfaces: readonly ShotCanvasSurface[], shot: CompiledPaintedShot, options: PaintedShotRendererOptions): Promise<PaintedShotRenderer> {
+  const { brushOf, costs, progress } = options;
   // Paint passes go through the owner's caching device; the lens and picture sources take the device itself.
   const { camera } = shot, { stage } = camera, { device, webgpu } = owner;
   if (surfaces.length !== shot.canvases) throw new Error(`shot: drawn into ${surfaces.length} canvases, and it names ${shot.canvases}`);
@@ -303,33 +302,44 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
     let disposed = false;
     return {
       stage,
-      warm: ({ fps, sceneDur, stopped = () => false, solving }) => counted(async () => {
+      warm: ({ fps, sceneDur, stopped = () => false }) => counted(async () => {
         const { warm } = shot;
         if (disposed || !warm) return;
         owner.assertLive();
-        for (const warning of sceneDur === null ? [] : shotWarmPastScene(warm, sceneDur)) costs?.warned(paintingProblemText(warning));
         const frames = shotWarmFrames(warm, fps, sceneDur);
-        // Each plane's films solved at each pairing of moments the span's frames read, and let go to the cache. A
-        // solve reads no lay, so a pinned plane warms unlaid.
-        await gpuEachInTurn(shotPaintedSolvables(shot), (plane) => gpuEachInTurn(shotWarmCombinations(frames, shotPlaneClocks(shot.motion, plane), shot.motion.animationFps), async (frame) => {
+        // Each plane's films solved at each pairing of moments the span's frames read, and let go to the cache; then
+        // the textures'. A solve reads no lay, so a pinned plane warms unlaid.
+        const solves: ShotWarmSolve[] = [
+          ...shotPaintedSolvables(shot).flatMap((plane) => shotWarmCombinations(frames, shotPlaneClocks(shot.motion, plane), shot.motion.animationFps).map((frame) => ({
+            solve: { what: plane.id, at: frame.at }, run: async () => (await planes.solve(plane, frame)).release(),
+          }))),
+          ...(textures?.warmSolves(frames) ?? []),
+        ];
+        progress?.run({ kind: 'warm', ...warm }, solves.length);
+        await gpuEachInTurn(solves, async ({ solve, run }) => {
           if (stopped()) return;
-          solving?.(`warming the painted shot's ${plane.id} at ${frame.at} s`);
-          (await planes.solve(plane, frame)).release();
-        }));
-        await textures?.warm(frames, { stopped, ...(solving && { solving }) });
+          progress?.solving(solve);
+          await run();
+          progress?.solved();
+        });
       }),
       draw: (t, mode, pins = new Map()) => counted(async () => {
         if (disposed) return;
         owner.assertLive();
         const pinned = shotPinnedPlanes(shot, pins);
         if (pinned.problems.length) throw paintingProblemsError(`the shot's pins at ${t} s`, pinned.problems);
-        const solved: ShotPlaneSolved[] = [];
+        const solvables = shotPaintedSolvables(shot), solved: ShotPlaneSolved[] = [];
+        progress?.run({ kind: 'frame', t }, solvables.length + (textures?.handles.length ?? 0));
         try {
           // Each plane's and variant's marks posed and solved once, at the frame's own moment; one after another on the
-          // solve lease. A pinned plane is solved where this frame's measures lay it.
-          await gpuEachInTurn(shotPaintedSolvables(shot), async (plane) => {
+          // solve lease. A pinned plane is solved where this frame's measures lay it. Then the painted textures, which
+          // its three sources read as they render.
+          await gpuEachInTurn(solvables, async (plane) => {
+            progress?.solving({ what: plane.id, at: t });
             solved.push(await planes.solve(pinned.planes.get(plane.id) ?? plane, paintMoment(t)));
+            progress?.solved();
           });
+          await textures?.solveAt(t, progress);
           await gpuEachInTurn(shotExposures(shot, t, mode), async (exposure) => {
             const moments = new Map<string, ShotPlaneMoment>(), variantMoments = new Map<CompiledShotVariant, ShotPlaneMoment>();
             await gpuEachInTurn(solved, async (each) => {

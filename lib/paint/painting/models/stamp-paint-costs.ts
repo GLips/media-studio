@@ -33,7 +33,10 @@ export type StampPaintCosts = {
   readonly bytesRetained: number;
 };
 
-/** Counts painting's costs as they happen; `take` hands over what it counted and starts again from nothing. */
+/**
+ * Counts painting's costs as they happen; `take` hands over what it counted and starts again from nothing, `counted`
+ * shows it and counts on.
+ */
 export type StampPaintCostTally = {
   readonly count: (name: StampPaintCostCount, n?: number) => void;
   readonly solved: (solve: StampPaintSolveCost) => void;
@@ -42,6 +45,7 @@ export type StampPaintCostTally = {
   /** The bytes the caches hold now: a level, the latest kept. */
   readonly retained: (bytes: number) => void;
   readonly take: () => StampPaintCosts;
+  readonly counted: () => StampPaintCosts;
 };
 
 const noCosts = () => new Map(STAMP_PAINT_COST_NAMES.map((name) => [name, 0]));
@@ -58,6 +62,7 @@ export function createStampPaintCostTally(): StampPaintCostTally {
     },
     warned: (text) => { warnings.push(text); },
     retained: (bytes) => { bytesRetained = bytes; },
+    counted: () => ({ counts, solves, warnings, bytesRetained }),
     take: () => {
       const costs = { counts, solves, warnings, bytesRetained };
       counts = noCosts();
