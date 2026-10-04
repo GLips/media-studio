@@ -4,6 +4,7 @@ import type { StampSheetClock } from './stamp-sheet-program.ts';
 import { StampSheetRefusal } from './stamp-sheet-refusal.ts';
 import {
   stampSheetClockStarted, stampSheetDecided, stampSheetEntryFrom, stampSheetMomentAfter, stampSheetSceneOf, stampSheetSolveStart, stampSheetWashStart,
+  stampSheetWetUnreachable, type StampSheetLift,
 } from './stamp-sheet-schedule.ts';
 
 /** A solve's state whose unclocked run ended at model `tc`, its clock starting there at scene `scene`. */
@@ -35,4 +36,18 @@ test('a fixed at on a scale lands at its own scene second exactly, and is refuse
   assert.deepEqual(fixed, { tau: 360, exact: 9 });
   assert.equal(stampSheetSceneOf(clock, state, 9, fixed), 9);
   assert.throws(() => stampSheetEntryFrom(clock, state, late, { tau: 400, exact: null }, null), (error) => error instanceof StampSheetRefusal && error.message === 'late: fixed at 9 s precedes its predecessor at 10 s');
+});
+
+test("a wet short where it lands fails with the fix for its reason: a lift it crosses, nothing shiny under it, else where the water falls away", () => {
+  const boxes = [{ x0: 64, y0: 32, x1: 96, y1: 64 }], glint: StampSheetLift = { name: 'glint', support: { x0: 70, y0: 0, x1: 82, y1: 120 } };
+  const fail = (held: number, lifts: readonly StampSheetLift[], fixed = false) =>
+    stampSheetWetUnreachable('reeds', { tau: 2, held, totals: { weight: 1000, never: 0 } }, boxes, lifts, ['ripple'], 'drying', fixed);
+  assert.equal(
+    fail(800, [glint]),
+    "reeds: unreachable from this committed prefix: on 'wet' held over 80% of its core (needs 95%) when it lands, at model 2 s [64,32 → 96,64]; " +
+      "it crosses glint, which took up the paper's water there: lay it before glint. Unscheduled after it: ripple",
+  );
+  assert.match(fail(800, [{ ...glint, support: { x0: 0, y0: 0, x1: 10, y1: 10 } }]), /; part of its core lies where the water under it falls away \(a flood's rim/);
+  assert.match(fail(0, [], true), /held over 0% .*; nothing under it is shiny: flood wetter before it, or move its `at` earlier\. /);
+  assert.match(fail(946, []), /held over 94\.6% of its core \(needs 95%\)/);
 });

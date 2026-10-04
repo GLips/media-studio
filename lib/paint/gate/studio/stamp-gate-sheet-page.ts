@@ -24,7 +24,7 @@ import {
   stampGatePeakShift,
 } from '../models/stamp-gate-paper-heron.ts';
 import {
-  checkStampGateTimes, STAMP_GATE_DAMP_WINDOWS, STAMP_GATE_ERASED, STAMP_GATE_ERASED_AT, STAMP_GATE_FAR_SHALLOWS, STAMP_GATE_FOOT_BOX, STAMP_GATE_FORWARD, STAMP_GATE_HERON_AWAY, STAMP_GATE_HERON_POSE, STAMP_GATE_NEVER_WETTED, STAMP_GATE_NEVER_WETTED_MESSAGE, STAMP_GATE_REBASE, STAMP_GATE_SHEET_IDS,
+  checkStampGateTimes, STAMP_GATE_DAMP_WINDOWS, STAMP_GATE_ERASED, STAMP_GATE_ERASED_AT, STAMP_GATE_FAR_SHALLOWS, STAMP_GATE_FOOT_BOX, STAMP_GATE_FORWARD, STAMP_GATE_HERON_AWAY, STAMP_GATE_HERON_POSE, STAMP_GATE_LIFTED, STAMP_GATE_LIFTED_REFUSAL, STAMP_GATE_NEVER_WETTED, STAMP_GATE_NEVER_WETTED_MESSAGE, STAMP_GATE_REBASE, STAMP_GATE_SHEET_IDS,
   STAMP_GATE_WET_CONTACT, stampGateFilmCentre, stampGateFilmDifference, stampGateFilmMass, stampGateFilmsEqual, stampGateForwardTimes, stampGateHeronPosed, stampGateDampWindowTexts, stampGateRebaseTimes, stampGateSheetBrushOf,
   stampGateSheetProgram, stampGateSolvedStill, stampGateWetContactTimes, type StampGateSheetId, type StampGateSolvedId,
 } from '../models/stamp-gate-sheets.ts';
@@ -71,9 +71,23 @@ async function checkDampWindows(owner: StampPaintGpuOwner): Promise<StampGateWas
 }
 
 /**
+ * A charge `on: 'wet'` across a lift laid before it refused, naming the lift; laid before the lift, it lands with its
+ * flood.
+ */
+async function checkLifted(owner: StampPaintGpuOwner): Promise<StampGateWashCheck> {
+  const refused = await stampGateRejection(solveStampSheet(owner, stampGateSheetProgram(STAMP_GATE_LIFTED)));
+  const { decisions: [flood, charge] } = await solveStampSheet(owner, stampGateSheetProgram(STAMP_GATE_LIFTED, { lifted: false }));
+  const { starts, ends } = STAMP_GATE_LIFTED_REFUSAL, named = !!refused && refused.startsWith(starts) && refused.endsWith(ends);
+  return {
+    id: 'schedule/forward: wet across a lift', passed: named && charge.tau === flood.tau && !charge.warnings.length,
+    detail: `${refused ?? 'the charge after the lift solved'}; before it, the charge at ${charge.tau} s, its flood at ${flood.tau} s${charge.warnings.length ? `; ${charge.warnings.join('; ')}` : ''}`,
+  };
+}
+
+/**
  * schedule/forward: each decision on its closed form; the meadow's treeline reaching `wet`; damp over never-wetted
- * paper refused to the letter; every prefix's films the same, texel for texel, with an application appended after;
- * an eraser in a direct wash; and the damp windows a solve reads when asked.
+ * paper refused to the letter, and wet across a lift; every prefix's films the same, texel for texel, with an
+ * application appended after; an eraser in a direct wash; and the damp windows a solve reads when asked.
  */
 async function checkForward(): Promise<StampGateWashCheck[]> {
   const id = 'schedule/forward', program = stampGateSheetProgram(STAMP_GATE_FORWARD), appended = stampGateSheetProgram(STAMP_GATE_FORWARD, { appended: true });
@@ -99,6 +113,7 @@ async function checkForward(): Promise<StampGateWashCheck[]> {
         id: `${id}: appending`, passed: prefixes.every(({ same }) => same),
         detail: prefixes.map(({ through, same }) => `through ${through}: ${same ? 'same' : 'changed'}`).join(', '),
       },
+      await checkLifted(owner),
       await checkEraser(owner),
       await checkDampWindows(owner),
     ];

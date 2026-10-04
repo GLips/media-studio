@@ -3,8 +3,8 @@
 //
 // The laws (stampDryingTimes), per texel wetted to ℓ at a, drying at rate r with open time o, sheen shiny h and damp
 // d: wet while τ < U = a + (ℓ − h)/r; matte from L = a + (ℓ − d)/r; set from Z = a + o + ℓ/r; under `never` (r = 0),
-// U and Z are +∞ where ℓ > 0, L −∞ where ℓ ≤ d, else +∞. `on` holds over 95% of the core's weight (`dry`, all). A
-// `wet` that doesn't only warns: wetness only falls, so waiting can't help.
+// U and Z are +∞ where ℓ > 0, L −∞ where ℓ ≤ d, else +∞. `on` holds over 95% of the core's weight (`dry`, all); a
+// `wet` fails where it lands if it doesn't, as wetness only falls.
 
 import { STAMP_BLOOM_SURPLUS } from './stamp-wet-bloom.ts';
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
@@ -401,45 +401,75 @@ export const stampSheetSeconds = (tau: number) => `${Number(tau.toFixed(3))} s`;
  */
 export type StampSheetRegime = 'drying' | 'instant' | 'never';
 
-/** A rule's shortfall over a probe: its share of the core in whole percent, and where it failed as boxes. */
-const shortfall = (at: { held: number; totals: Pick<StampSheetTotals, 'weight'> }, boxes: readonly StampBox[]) => ({
-  share: Math.round((100 * at.held) / Math.max(1, at.totals.weight)), where: boxes.map(({ x0, y0, x1, y1 }) => `[${x0},${y0} → ${x1},${y1}]`).join(' '),
-});
+/** A rule's shortfall at a probe: the most of its core that held it, the weight of all of it, and why it fell short. */
+export type StampSheetShortfall = { tau: number; held: number; totals: Pick<StampSheetTotals, 'weight' | 'never'> };
 
 /**
- * Why `on` falls short over a core, and what to do about it, one clause: water it never met, its sheet's clock, or
- * its own rule. A `wet` under `never` falls short by its rule: the paper is as it was laid.
+ * A shortfall's share of the core and where it failed as boxes. Whole percent, but a tenth under the need where
+ * rounding would print the need itself (a failing 94.6% isn't "95%, needs 95%").
  */
-function shortReason(on: StampSheetWetness, totals: Pick<StampSheetTotals, 'weight' | 'never'>, regime: StampSheetRegime): string {
+function shortfall(at: Pick<StampSheetShortfall, 'held' | 'totals'>, boxes: readonly StampBox[]) {
+  const percent = (100 * at.held) / Math.max(1, at.totals.weight), need = STAMP_SHEET_SHARE * 100;
+  const share = Math.round(percent) >= need && percent < need ? Math.floor(10 * percent) / 10 : Math.round(percent);
+  return { share, where: boxes.map(({ x0, y0, x1, y1 }) => `[${x0},${y0} → ${x1},${y1}]`).join(' ') };
+}
+
+const unscheduledAfter = (unscheduled: readonly string[]) => (unscheduled.length ? `. Unscheduled after it: ${unscheduled.join(', ')}` : '');
+
+/**
+ * Why `on` falls short over a core for its sheet's sake, and what to do, one clause: water it never met, or its
+ * sheet's clock; null for neither. A `wet` under `never` falls short by its own reasons: the paper is as it was laid.
+ */
+function sheetShortReason(on: StampSheetWetness, totals: Pick<StampSheetTotals, 'weight' | 'never'>, regime: StampSheetRegime): string | null {
   if (totals.never > (1 - STAMP_SHEET_SHARE) * totals.weight) {
     const dry = Math.round((100 * totals.never) / totals.weight);
     return `never wetted on this sheet: ${dry}% of its core met no water before it; lay it over a flood or prewet earlier on the sheet, or drop the \`on\``;
   }
   if (regime === 'instant') return 'settled before it (`instant`): give the sheet a numeric `dryingScale`, or drop the `on`';
   if (regime === 'never' && on !== 'wet') return "nothing dries (`never`): give the sheet a numeric `dryingScale`, or drop the `on` (under `never`, a bloom is `on: 'wet'`)";
-  if (on === 'wet') return "not shiny at its predecessor's time: inset it from the flood's rim (feather it, or narrow its shape), flood wetter, or lay it before any lift it crosses";
-  return 'sets before the rest turns matte: split it along the boxes, so each part lies on paper drying alike';
+  return null;
 }
 
 /**
- * An unreachable application's problem: its rule, the most of its core that held it (an upper bound), when, where it
- * failed, why (as the paper dries under `regime`) and what to do, and the applications of its sheet left unscheduled.
+ * A `damp` or `dry` application unreachable from its prefix: its rule, the most of its core that held it (an upper
+ * bound), when, where it failed, why (as the paper dries under `regime`) and what to do, and the applications of its
+ * sheet left unscheduled.
  */
 export function stampSheetUnreachable(
-  name: string, on: Exclude<StampSheetWetness, 'wet'>, at: { tau: number; held: number; totals: Pick<StampSheetTotals, 'weight' | 'never'> }, boxes: readonly StampBox[],
-  unscheduled: readonly string[], regime: StampSheetRegime,
+  name: string, on: Exclude<StampSheetWetness, 'wet'>, at: StampSheetShortfall, boxes: readonly StampBox[], unscheduled: readonly string[], regime: StampSheetRegime,
 ): string {
-  const { share, where } = shortfall(at, boxes), left = unscheduled.length ? `. Unscheduled after it: ${unscheduled.join(', ')}` : '';
-  return `${name}: unreachable from this committed prefix: on '${on}' held over at most ${share}% of its core (needs ${STAMP_SHEET_SHARE * 100}%), at model ${stampSheetSeconds(at.tau)} ${where}; ${shortReason(on, at.totals, regime)}${left}`;
+  const { share, where } = shortfall(at, boxes);
+  const why = sheetShortReason(on, at.totals, regime) ?? 'sets before the rest turns matte: split it along the boxes, so each part lies on paper drying alike';
+  return `${name}: unreachable from this committed prefix: on '${on}' held over at most ${share}% of its core (needs ${STAMP_SHEET_SHARE * 100}%), at model ${stampSheetSeconds(at.tau)} ${where}; ${why}${unscheduledAfter(unscheduled)}`;
+}
+
+/** A lift landed on a sheet since its last drying closed, which took up the water under it: its name and support, document px. */
+export type StampSheetLift = { name: string; support: StampBox };
+
+/**
+ * Why `on: 'wet'` falls short where its application lands, and what to do, one clause: its sheet's reason; else lifts
+ * before it whose support meets where it failed (`boxes`); else nothing under it shiny; else part of it off the
+ * shine, at a flood's rim or between its flecks. A fixed `at` can move earlier.
+ */
+function wetShortReason(at: StampSheetShortfall, boxes: readonly StampBox[], lifts: readonly StampSheetLift[], regime: StampSheetRegime, fixed: boolean): string {
+  const sheet = sheetShortReason('wet', at.totals, regime);
+  if (sheet) return sheet;
+  const crossed = lifts.filter(({ support }) => boxes.some((box) => boxesMeet(support, box))).map(({ name }) => name).join(', ');
+  if (crossed) return `it crosses ${crossed}, which took up the paper's water there: lay it before ${crossed}`;
+  if (at.held === 0) return `nothing under it is shiny: flood wetter before it${fixed ? ', or move its `at` earlier' : ''}`;
+  return "part of its core lies where the water under it falls away (a flood's rim, a textured brush's flecks): inset it from the rim, feather it or the flood, or flood with an even brush";
 }
 
 /**
- * A `wet` that doesn't hold where its application lands (a warning: it can't move the landing): the share of its core
- * shiny there, where it isn't, why and what to do.
+ * A `wet` that doesn't hold when its application lands, unreachable from its prefix as wetness only falls: the share
+ * of its core shiny there, where it isn't, why and what to do (`lifts`, those landed since its sheet's last drying;
+ * `fixed`, whether it's at a fixed `at`), and the applications of its sheet left unscheduled.
  */
-export function stampSheetWetShort(name: string, at: { tau: number; held: number; totals: Pick<StampSheetTotals, 'weight' | 'never'> }, boxes: readonly StampBox[], regime: StampSheetRegime): string {
-  const { share, where } = shortfall(at, boxes);
-  return `${name}: on 'wet' holds over ${share}% of its core (needs ${STAMP_SHEET_SHARE * 100}%) at model ${stampSheetSeconds(at.tau)} ${where}; ${shortReason('wet', at.totals, regime)}. It lands there all the same: \`wet\` never delays`;
+export function stampSheetWetUnreachable(
+  name: string, at: StampSheetShortfall, boxes: readonly StampBox[], lifts: readonly StampSheetLift[], unscheduled: readonly string[], regime: StampSheetRegime, fixed: boolean,
+): string {
+  const { share, where } = shortfall(at, boxes), why = wetShortReason(at, boxes, lifts, regime, fixed);
+  return `${name}: unreachable from this committed prefix: on 'wet' held over ${share}% of its core (needs ${STAMP_SHEET_SHARE * 100}%) when it lands, at model ${stampSheetSeconds(at.tau)} ${where}; ${why}${unscheduledAfter(unscheduled)}`;
 }
 
 /** A wash whose numeric origin comes before its layer's earlier washes have set: scene seconds both. */

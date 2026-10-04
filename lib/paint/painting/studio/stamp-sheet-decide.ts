@@ -1,7 +1,7 @@
 // stamp-sheet-decide.ts: when one application lands (ENGINE 3.5), read off the wet field over its core: at τ0 for
-// `wet`, which only warns, at the first 1 ms step a damp histogram finds for `damp`, once the core's latest texel sets
-// for `dry`; then checked by the field's own law, a millisecond at a time while f32 rounding keeps it from holding. A
-// bloom must find open paint on workable paper under its core. The CPU decides, in f64; the GPU only sums.
+// `wet`, failing there (wetness only falls); at the first 1 ms step a damp histogram finds for `damp`; once the core's
+// latest texel sets for `dry`; then checked by the field's own law, a millisecond at a time while f32 rounding keeps
+// it from holding. A bloom must find open paint on workable paper under its core. The CPU decides in f64.
 //
 // At a fixed `at`, and under `instant` or `never`, `damp` and `dry` are judged at τ0 alone, but `dry` under
 // `instant`: τ0 is the GPU's f32 set time, which rounding may leave a texel workable at.
@@ -9,8 +9,8 @@
 import { stampDampFirstStep, stampDampFirstWidth, stampDampStep } from '../models/stamp-damp-histogram.ts';
 import {
   STAMP_SHEET_SHARE, STAMP_SHEET_STEP, STAMP_SHEET_VERIFY_STEPS, stampSheetAtFails, stampSheetEmptyCore, stampSheetGrid, stampSheetHeld, stampSheetHolds,
-  stampSheetNearRounding, stampSheetUnreachable, stampSheetVerifyFault, stampSheetWetShort, stampSheetWithinRounding, stampSheetWontBloom,
-  type StampSheetRegime, type StampSheetTotals,
+  stampSheetNearRounding, stampSheetUnreachable, stampSheetVerifyFault, stampSheetWetUnreachable, stampSheetWithinRounding, stampSheetWontBloom,
+  type StampSheetLift, type StampSheetRegime, type StampSheetShortfall, type StampSheetTotals,
 } from '../models/stamp-sheet-schedule.ts';
 import type { StampSheetWetness } from '../models/stamp-sheet-program.ts';
 import { StampSheetRefusal } from '../models/stamp-sheet-refusal.ts';
@@ -18,13 +18,13 @@ import type { StampSheetCore } from './stamp-sheet-reductions.ts';
 import type { StampSheetPrepare, StampSheetSteps } from './stamp-sheet-steps.ts';
 
 /**
- * An application as its decision reads it: its name, what it waits for, its water when it must bloom (null else), its
- * core (null wholly off the stage), the work laying its touch and marking open paint, the names after it for a
- * failure's message; how its paper dries, and its fixed `at` holding it to τ0 (null for none).
+ * An application as its decision reads it: its name, rule, bloom water (null for none), core (null off the stage),
+ * the work laying its touch and marking open paint; for a failure's message, the names after it and the lifts since
+ * its sheet's last drying (read if a `wet` fails); how its paper dries; its fixed `at` (null for none).
  */
 export type StampSheetDecideInput = {
-  name: string; on: StampSheetWetness | null; bloom: number | null; core: StampSheetCore | null;
-  touch: StampSheetPrepare; open: StampSheetPrepare; unscheduled: readonly string[]; regime: StampSheetRegime; fixed: number | null;
+  name: string; on: StampSheetWetness | null; bloom: number | null; core: StampSheetCore | null; touch: StampSheetPrepare; open: StampSheetPrepare;
+  unscheduled: readonly string[]; lifts: () => readonly StampSheetLift[]; regime: StampSheetRegime; fixed: number | null;
 };
 
 /** When `input` lands, no earlier than `tau0`, and what its author should hear. Throws where it can't land. */
@@ -36,8 +36,10 @@ export async function decideStampSheetEntry(steps: StampSheetSteps, input: Stamp
   if (first.weight === 0) return { tau: tau0, warnings: [stampSheetEmptyCore(name)] };
   const warnings: string[] = [];
   let tau = tau0;
-  if (on === 'wet') warnings.push(...await wetWarnings(steps, input, core, tau0, first));
-  else if (on) {
+  if (on === 'wet') {
+    if (!stampSheetHolds('wet', first)) return wetUnreachable(steps, input, core, { tau: tau0, held: stampSheetHeld('wet', first), totals: first });
+    if (stampSheetNearRounding('wet', first, false)) warnings.push(stampSheetWithinRounding(name, 'wet'));
+  } else if (on) {
     if (input.fixed !== null && !stampSheetHolds(on, first)) throw new StampSheetRefusal(stampSheetAtFails(name, input.fixed, on, stampSheetHeld(on, first) / first.weight));
     const decided = await firstHolding(steps, input, on, core, tau0, first);
     const { at, totals, stepped } = decided === tau0 && stampSheetHolds(on, first) ? { at: tau0, totals: first, stepped: false } : await verified(steps, name, on, core, decided);
@@ -49,13 +51,6 @@ export async function decideStampSheetEntry(steps: StampSheetSteps, input: Stamp
     if (blooming === 0) throw new StampSheetRefusal(stampSheetWontBloom(name));
   }
   return { tau, warnings };
-}
-
-/** `wet` judged at τ0 over `core` (`first`, its totals there): where it falls short, mapped, or holds only by a hair. */
-async function wetWarnings(steps: StampSheetSteps, input: StampSheetDecideInput, core: StampSheetCore, tau0: number, first: StampSheetTotals): Promise<string[]> {
-  if (stampSheetHolds('wet', first)) return stampSheetNearRounding('wet', first, false) ? [stampSheetWithinRounding(input.name, 'wet')] : [];
-  const boxes = await steps.failureAt(core, tau0, 'wet');
-  return [stampSheetWetShort(input.name, { tau: tau0, held: stampSheetHeld('wet', first), totals: first }, boxes, input.regime)];
 }
 
 /**
@@ -77,9 +72,15 @@ async function firstHolding(steps: StampSheetSteps, input: StampSheetDecideInput
 }
 
 /** Throws `input`'s failure from this prefix: its rule `on` held over `held` at most, at `tau`, mapped there. */
-async function unreachable(steps: StampSheetSteps, input: StampSheetDecideInput, on: Exclude<StampSheetWetness, 'wet'>, core: StampSheetCore, at: { tau: number; held: number; totals: StampSheetTotals }): Promise<never> {
+async function unreachable(steps: StampSheetSteps, input: StampSheetDecideInput, on: Exclude<StampSheetWetness, 'wet'>, core: StampSheetCore, at: StampSheetShortfall): Promise<never> {
   const boxes = await steps.failureAt(core, at.tau, on);
   throw new StampSheetRefusal(stampSheetUnreachable(input.name, on, at, boxes, input.unscheduled, input.regime));
+}
+
+/** Throws `input`'s failure where its `wet` falls short as it lands, at τ0 (`at.tau`): mapped there, the lifts it crosses named. */
+async function wetUnreachable(steps: StampSheetSteps, input: StampSheetDecideInput, core: StampSheetCore, at: StampSheetShortfall): Promise<never> {
+  const boxes = await steps.failureAt(core, at.tau, 'wet');
+  throw new StampSheetRefusal(stampSheetWetUnreachable(input.name, at, boxes, input.lifts(), input.unscheduled, input.regime, input.fixed !== null));
 }
 
 /**

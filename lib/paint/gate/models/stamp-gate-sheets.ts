@@ -135,6 +135,31 @@ export const STAMP_GATE_NEVER_WETTED_MESSAGE =
   "early: unreachable from this committed prefix: on 'damp' held over at most 0% of its core (needs 95%), at model 0 s [0,0 → 96,64]; " +
   'never wetted on this sheet: 100% of its core met no water before it; lay it over a flood or prewet earlier on the sheet, or drop the `on`';
 
+const liftedProperties = { lifted: { type: 'boolean', default: true } } as const satisfies PropertySchema;
+
+/**
+ * A flood, a lift down its middle and a charge `on: 'wet'` across the lift: `lifted`, the lift first, so the charge
+ * meets the paper it dried; else the charge first, landing with its flood.
+ */
+export const STAMP_GATE_LIFTED: PaintingSourceModule<typeof liftedProperties> = {
+  properties: liftedProperties,
+  default: function gateLifted({ lifted }: PropertyValues<typeof liftedProperties>): PaintingDocument {
+    const flood = { key: 'flood', kind: 'fill', area: { region: stampGateRectangle(16, 16, 144, 104) }, brush: STAMP_GATE_ROUND_REF, diameterPx: 24, seed: 'flood', charge: { kind: 'paint', mix: STAMP_GATE_POOL_MIX, water: STAMP_GATE_FLOOD_WATER } } as const;
+    const lift = { key: 'lift', kind: 'stroke', subpaths: [stampGateLine(80, 24, 80, 96)], brush: STAMP_GATE_ROUND_REF, diameterPx: 12, seed: 'lift', charge: { kind: 'lift', strength: 0.8 } } as const;
+    const charge = { key: 'charge', on: 'wet', kind: 'stroke', subpaths: [stampGateLine(40, 60, 120, 60)], brush: STAMP_GATE_ROUND_REF, diameterPx: 10, seed: 'charge', charge: { kind: 'paint', mix: STAMP_GATE_EARTH_MIX, water: 0.6 } } as const;
+    return {
+      widthPx: FORWARD.width, heightPx: FORWARD.height, paper: STAMP_GATE_SHEET_PAPER, medium: 'watercolour',
+      layers: [{ key: 'pond', washes: [{ key: 'pool', applications: lifted ? [flood, lift, charge] : [flood, charge, lift] }] }],
+    };
+  },
+};
+
+/** How the charge across the lift is refused, but for its share and boxes: the lift named, and its fix. */
+export const STAMP_GATE_LIFTED_REFUSAL = {
+  starts: "charge: unreachable from this committed prefix: on 'wet' held over ",
+  ends: "; it crosses lift, which took up the paper's water there: lay it before lift",
+} as const;
+
 const PREWET_WATER = 0.9;
 const BLOOM_WATER = 0.95;
 
