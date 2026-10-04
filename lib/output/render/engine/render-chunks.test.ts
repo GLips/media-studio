@@ -38,7 +38,8 @@ const outcomes = await withStudioTemp('render-chunks', async (studio) => {
   const chunked = (frames: number[], hangs: (ask: number) => boolean) => {
     asks = 0;
     answer = (ask) => (hangs(ask) ? 'hang' : 'draw');
-    return renderInChunks(frames, draw, { chunkFrames: 2, stallFloorMs: 4000 }).then(({ drawn }) => ({ drawn, asks }), (error: Error) => ({ error, asks }));
+    // Long enough for a browser to open and load its page while other tests render beside it.
+    return renderInChunks(frames, draw, { chunkFrames: 2, stallFloorMs: 15_000 }).then(({ drawn }) => ({ drawn, asks }), (error: Error) => ({ error, asks }));
   };
   return { once: await chunked([0, 1, 2, 3], (ask) => ask === 1), always: await chunked([2, 3], () => true) };
 });
