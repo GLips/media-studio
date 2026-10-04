@@ -422,6 +422,16 @@ an error. A frame held on twos gives every group the keys it had, so it repaints
   of its texels is defocused at its own distance, by depth (`lensDefocusWgsl`): a nearer texel spreads its blur over
   what's behind it, and a texel behind reaches one in front only as far as the sharper of the two blurs, so a sharp
   mug against a soft wall keeps its edge, the wall's blur fills in behind it, and neither gains or loses light there.
+  Each render poses the source's scene, sets the exposure's camera (every layer seen, a reference exposure's moved
+  over the aperture), advances three's node frame (three draws a shadow map once a frame per camera, and only its
+  animation loop advances frames otherwise), hands the camera to the scene's `offscreen` for passes it draws first
+  (`painted-three-mirror.ts` sets a planar mirror's camera from it), then draws the scene with its motion layer. A
+  scene asking for `shadows` has shadow maps on around its renders alone, the shared renderer put back after
+  (`painted-three-shadows.ts`): its directional and spot lights' maps filtered as percentage-closer soft shadows, a
+  blocker search setting each receiver's penumbra by the gap behind its blocker, so a contact stays tight and a cast
+  shadow softens. The search loads texels and the filter compares them, the first read a comparison so three binds
+  the map with a comparison sampler. A pass carries no motion layer, and a shadow on a still floor isn't blurred over
+  a fast frame's shutter (the motion layer follows surfaces); a reference exposure draws both at its own moment.
 
 **Planes on the GPU** (`stamp-paint-renderer.ts`, `stamp-paint-plane-passes.ts`). One owner holds a device
 (`stamp-paint-gpu-owner.ts`, built on the studio's `gpu-device-owner.ts`, whose one three.js renderer the three

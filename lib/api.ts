@@ -132,6 +132,8 @@ export { StampPainting } from '#lib/paint/style/studio/stamp-painting.tsx';
 export type { StampPictureAt, StampPictureRgba, StampPlane, StampPlaneSource } from '#lib/paint/painting/models/stamp-plane.ts';
 export type { PaintedThree, PaintedThreeOffscreenPass, PaintedThreeSource, PaintedThreeSourceScene, PaintedThreeSourceTools, PaintedThreeTexture } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
 export { paintedThreeColorNode } from '#lib/paint/three-layers/studio/painted-three-material.ts';
+export { paintedThreeMirrorCamera } from '#lib/paint/three-layers/studio/painted-three-mirror.ts';
+export type { PaintedThreeShadows } from '#lib/paint/three-layers/studio/painted-three-shadows.ts';
 // Painting sources (docs/painting-authoring.md): a `*.painting.ts` factory returns a PaintingDocument, whose types a
 // source imports from lib/paint/document/models/painting-document.ts. A scene evaluates it and selects its layers.
 export { checkPaintingSource, painting, type PaintingEvaluation, type PaintingFactory, type PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
