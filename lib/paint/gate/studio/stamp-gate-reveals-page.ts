@@ -16,12 +16,12 @@ import { stampBindGroup } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
 import { createStampPaintGpuOwner, type StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { copyStampLayerForReadback, readStampLayerCopy } from '#lib/paint/painting/studio/stamp-layer-readback.ts';
 import { drawStampSheetsStill, readStampSheetsPicture } from '#lib/paint/painting/studio/stamp-sheet-composite.ts';
-import { compilePaintedShot, shotCanvasAlphaMode } from '#lib/paint/shot/models/shot-compile.ts';
+import { compilePaintedShot } from '#lib/paint/shot/models/shot-compile.ts';
 import { compileShotPaintedTextures } from '#lib/paint/shot/models/shot-painted-texture-compile.ts';
 import type { PaintedShotProps } from '#lib/paint/shot/models/shot-props.ts';
 import { dissolve } from '#lib/paint/shot/models/shot-selection.ts';
+import { createShotCanvasElements } from '#lib/paint/shot/studio/shot-canvas.ts';
 import { createShotPaintedTextures } from '#lib/paint/shot/studio/shot-painted-textures.ts';
-import { createPaintedShotRenderer } from '#lib/paint/shot/studio/shot-renderer.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
 import { GPU_FULL_FRAME_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 import { stampGateFrameDifference, stampGateFramePasses, stampGateLaidShare, type StampGateFrameDifference } from '../models/stamp-gate-frames.ts';
@@ -34,8 +34,8 @@ import {
   stampGateRevealSplitText, stampGateTexelsChanged, stampGateWrappedShownAt, type StampGateRevealFrame, type StampGateRevealId,
 } from '../models/stamp-gate-reveals.ts';
 import { STAMP_GATE_WET_CONTACT, STAMP_GATE_FAR_SHALLOWS, STAMP_GATE_FOOT_BOX, stampGateSheetBrushOf } from '../models/stamp-gate-sheets.ts';
-import { stampGateRgb, withGateSurface } from './stamp-gate-page-surface.ts';
-import { stampGateShotFrames, stampGateSolvedText } from './stamp-gate-shot-frames.ts';
+import { stampGateCanvasBytes, stampGateRgb, withGateSurface } from './stamp-gate-page-surface.ts';
+import { stampGateShotFrames, stampGateSolvedText, withGateShotRenderer } from './stamp-gate-shot-frames.ts';
 import { stampGateSheetImageUrl } from './stamp-gate-sheet-owner.ts';
 
 const { lo: LO, hi: HI } = STAMP_GATE_REVEAL_ENDS;
@@ -72,28 +72,28 @@ async function revealShotFrames(props: PaintedShotProps, times: readonly number[
   return { frames: frames.map((rgba) => rgbFrame(rgba, width, height)), costs };
 }
 
-/** `props`, a clear back, drawn over HTML at `times` through the shot's renderer: each frame premultiplied, RGBA. */
-function clearBackFrames(props: PaintedShotProps, times: readonly number[]): Promise<StampGateRevealFrame[]> {
+/** A clear back's frames, a glaze's two images (shot-canvas.ts), each premultiplied RGBA. */
+type ClearBackFrames = { readonly colour: StampGateRevealFrame[]; readonly filter: StampGateRevealFrame[] };
+
+/** `props`, a clear back, drawn over HTML at `times` through the shot's renderer into a glaze's colour and filter. */
+async function clearBackFrames(props: PaintedShotProps, times: readonly number[]): Promise<ClearBackFrames> {
   const { shot, problems } = compilePaintedShot(props, [], { htmlBehind: true });
   if (!shot) throw paintingProblemsError('stamp gate reveal', problems);
-  const { width, height } = shot.camera.stage.frame;
-  return withGateSurface({ width, height, alphaMode: shotCanvasAlphaMode(shot, 0) }, stampGateSheetImageUrl, async (surface, read) => {
-    const renderer = await createPaintedShotRenderer(surface.owner, [surface], shot, { brushOf: stampGateSheetBrushOf });
-    try {
-      return await gpuEachInTurn(times, async (t) => {
-        await renderer.draw(t, 'fast');
-        await renderer.finish();
-        const rgba = read(), bytes = new Uint8ClampedArray(rgba.length);
-        for (let i = 0; i < rgba.length; i += 4) {
-          for (let c = 0; c < 3; c++) bytes[i + c] = Math.round((rgba[i + c] * rgba[i + 3]) / 255);
-          bytes[i + 3] = rgba[i + 3];
-        }
-        return { bytes, width, height, channels: 4 as const };
-      });
-    } finally {
-      renderer.dispose();
+  const { width, height } = shot.camera.stage.frame, canvas = createShotCanvasElements();
+  const premultiplied = (rgba: Uint8ClampedArray): StampGateRevealFrame => {
+    const bytes = new Uint8ClampedArray(rgba.length);
+    for (let i = 0; i < rgba.length; i += 4) {
+      for (let c = 0; c < 3; c++) bytes[i + c] = Math.round((rgba[i + c] * rgba[i + 3]) / 255);
+      bytes[i + 3] = rgba[i + 3];
     }
-  });
+    return { bytes, width, height, channels: 4 };
+  };
+  const drawn = await withGateShotRenderer(shot, [canvas], (renderer) => gpuEachInTurn(times, async (t) => {
+    await renderer.draw(t, 'fast');
+    await renderer.finish();
+    return { colour: premultiplied(stampGateCanvasBytes(canvas.colour)), filter: premultiplied(stampGateCanvasBytes(canvas.filter)) };
+  }));
+  return { colour: drawn.map(({ colour }) => colour), filter: drawn.map(({ filter }) => filter) };
 }
 
 const LEVEL_WGSL = (level: number) => /* wgsl */ `
@@ -334,8 +334,8 @@ async function reedsPieces(times: readonly number[]) {
 }
 
 /**
- * reveal/surfaces: the ink revealed through a still, a shot, a clear back over HTML and a painted texture, each held
- * to the twin against its own ends; over HTML, all hidden lays nothing, not even light let through; the texture laid
+ * reveal/surfaces: the ink revealed through a still, a shot, a clear back over HTML (a glaze, both its images) and a
+ * painted texture, each held to the twin against its own ends; over HTML, all hidden lays nothing; the texture laid
  * and re-mipped as its reveal moves; and a rig's reeds, drawn as pieces, their paint and card cut alike.
  */
 async function checkSurfaces(): Promise<StampGateWashCheck[]> {
@@ -343,15 +343,19 @@ async function checkSurfaces(): Promise<StampGateWashCheck[]> {
   const stills = await revealStills([...stillsAt(ink, times), ...stillsAt(whole, [HI])]);
   const shot = await revealShotFrames(stampGateRevealShot(({ at }) => layersOf(ink, ['ink'], { at })), times), [shotWhole] = (await revealShotFrames(stampGateRevealShot(layersOf(whole, ['ink'])), [HI])).frames;
   const clear = await clearBackFrames(stampGateRevealShot(({ at }) => layersOf(ink, ['ink'], { ground: 'transparent', at })), times);
-  const [clearWhole] = await clearBackFrames(stampGateRevealShot(layersOf(whole, ['ink'], { ground: 'transparent' })), [HI]);
+  const clearWhole = await clearBackFrames(stampGateRevealShot(layersOf(whole, ['ink'], { ground: 'transparent' })), [HI]);
   const textured = await inkTextureLevels(times), [loLevels, midLevels, hiLevels] = textured.levels;
-  const laidClear = Array.from(clear[0].bytes).reduce((most, v, i) => (i % 4 === 3 ? Math.max(most, v) : most), 0);
+  const laidClear = [clear.colour[0], clear.filter[0]].reduce((most, { bytes }) => Array.from(bytes).reduce((m, v, i) => (i % 4 === 3 ? Math.max(m, v) : m), most), 0);
+  const filterSplit = stampGateRevealSplit(clear.filter[1], clear.filter[0].bytes, clearWhole.filter[0].bytes, stampGateInkShownAt(STAMP_GATE_INK_AT.mid), 1);
   const remipped = [loLevels, hiLevels].map(({ half }) => stampGateTexelsChanged(midLevels.half, half.bytes));
   const pieces = await reedsPieces([LO, STAMP_GATE_REEDS_AT]), piecesSplit = stampGateRevealSplit(pieces.frames[1], pieces.frames[0].bytes, pieces.whole.bytes, stampGateReedsShownAt(STAMP_GATE_REEDS_AT), 1);
   return [
     surfaceCheck('still', stills.frames, stills.frames[3], 1),
     surfaceCheck('shot', shot.frames, shotWhole, 1),
-    surfaceCheck('html', clear, clearWhole, 1, { passed: laidClear === 0, detail: `; all hidden over HTML, its most opaque texel ${laidClear} (0 wanted)` }),
+    surfaceCheck('html', clear.colour, clearWhole.colour[0], 1, {
+      passed: laidClear === 0 && stampGateRevealSplitHeld(filterSplit),
+      detail: ` in the glaze's colour, ${stampGateRevealSplitText(filterSplit)} in its filter; all hidden over HTML, either's most opaque texel ${laidClear} (0 wanted)`,
+    }),
     surfaceCheck('texture', textured.levels.map(({ base }) => base), textured.whole, 1, {
       passed: remipped.every((changed) => changed > 0), detail: `; its level 1 at ${STAMP_GATE_INK_AT.mid} s differs from it all hidden in ${remipped[0]} texels and all shown in ${remipped[1]} (re-mipped as it moves)`,
     }),
