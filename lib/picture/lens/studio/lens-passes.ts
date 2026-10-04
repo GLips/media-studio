@@ -45,9 +45,58 @@ export type LensLaying = 'filter' | 'add';
  */
 export type LensFrameTargets = { readonly glowing: boolean; readonly moving: boolean; readonly through: boolean };
 
-/** The frame's targets' locations in order (lensLaidHeadWgsl): its colour, then those `has` holds. */
-const lensFrameTargetFields = ({ glowing, moving, through }: LensFrameTargets) =>
-  ['colour', ...(glowing ? ['emission'] : []), ...(moving ? ['motion'] : []), ...(through ? ['through'] : [])];
+/** A frame target's field in the struct a laying returns (lensLaidHeadWgsl). */
+export type LensFrameTargetField = 'colour' | 'emission' | 'motion' | 'through';
+
+/**
+ * A target a frame composites into: its field, whether a frame holding `has` holds it, the value it's cleared to,
+ * and the blend and write mask each laying draws it with.
+ */
+export type LensFrameTarget = {
+  readonly field: LensFrameTargetField;
+  readonly held: (has: LensFrameTargets) => boolean;
+  readonly clear: number;
+  readonly drawn: (laying: LensLaying) => { readonly blend: GPUBlendState; readonly writeMask: GPUColorWriteFlags };
+};
+
+/** The blend each laying draws its colour and emission with. */
+export const LENS_LAYING_BLEND: Record<LensLaying, GPUBlendState> = {
+  filter: { color: { srcFactor: 'zero', dstFactor: 'src', operation: 'add' }, alpha: { srcFactor: 'zero', dstFactor: 'src-alpha', operation: 'add' } },
+  add: { color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' }, alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' } },
+};
+
+/** A motion laid over the frame's by its cover, in w; the filter laying leaves it alone. */
+export const LENS_MOTION_BLEND: GPUBlendState = {
+  color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+  alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+};
+
+/** What `laying` writes of a target `only` writes (all of it when `only` is null). GPUColorWrite is read as a pipeline is made: plain Node has none. */
+const writtenBy = (only: LensLaying | null, laying: LensLaying) => (only === null || laying === only ? GPUColorWrite.ALL : 0);
+
+/**
+ * Every target a frame composites into, in location order: its colour; its emission, laid as the colour is; its
+ * motion, which only an add lays; and what it lets through, from 1, which only a filter multiplies.
+ */
+const LENS_FRAME_TARGETS: readonly LensFrameTarget[] = [
+  { field: 'colour', held: () => true, clear: 0, drawn: (laying) => ({ blend: LENS_LAYING_BLEND[laying], writeMask: writtenBy(null, laying) }) },
+  { field: 'emission', held: ({ glowing }) => glowing, clear: 0, drawn: (laying) => ({ blend: LENS_LAYING_BLEND[laying], writeMask: writtenBy(null, laying) }) },
+  { field: 'motion', held: ({ moving }) => moving, clear: 0, drawn: (laying) => ({ blend: LENS_MOTION_BLEND, writeMask: writtenBy('add', laying) }) },
+  { field: 'through', held: ({ through }) => through, clear: 1, drawn: (laying) => ({ blend: LENS_LAYING_BLEND.filter, writeMask: writtenBy('filter', laying) }) },
+];
+
+/** The targets a frame holding `has` composites into, in location order. */
+export const lensFrameTargetsHeld = (has: LensFrameTargets) => LENS_FRAME_TARGETS.filter(({ held }) => held(has));
+
+/** A pipeline key naming the targets `has` holds. */
+export const lensFrameTargetsKey = (has: LensFrameTargets) => lensFrameTargetsHeld(has).map(({ field }) => field).join('+');
+
+/** The composite's colour target states for `laying`, each rgba16float, as `has` holds them. */
+export const lensLayingTargets = (has: LensFrameTargets, laying: LensLaying): GPUColorTargetState[] =>
+  lensFrameTargetsHeld(has).map(({ drawn }) => {
+    const { blend, writeMask } = drawn(laying);
+    return { format: 'rgba16float', blend, writeMask };
+  });
 
 const sampled = (layer: number) => `textureSampleLevel(picture, linearClamp, uv, ${layer}u, 0.0)`;
 
@@ -59,7 +108,7 @@ type LensLaidAt = { readonly open: string; readonly close: string; readonly dist
 
 /** The struct a laying returns, and the similarity it maps points by: shared by every pass laying a picture. */
 function lensLaidHeadWgsl(has: LensFrameTargets) {
-  const locations = lensFrameTargetFields(has).map((field, location) => `@location(${location}) ${field}: vec4f`);
+  const locations = lensFrameTargetsHeld(has).map(({ field }, location) => `@location(${location}) ${field}: vec4f`);
   return /* wgsl */ `
 struct Laid { ${locations.join(', ')} }
 fn similar(m: vec4f, p: vec2f) -> vec2f { return vec2f(m.x * p.x - m.y * p.y, m.y * p.x + m.x * p.y) + m.zw; }`;
@@ -70,11 +119,10 @@ fn similar(m: vec4f, p: vec2f) -> vec2f { return vec2f(m.x * p.x - m.y * p.y, m.
  * `glowing`, its motion when `moving` (the frame px a point moves over the shutter, its distance, its cover) and
  * what it lets through when `through`, which only a filter writes. A visibility below 1 lays that share of the picture.
  */
-function lensLaidWgsl({ glowing, moving, through }: LensFrameTargets, layers: LensPictureLayers, laying: LensLaying, at: LensLaidAt) {
+function lensLaidWgsl(has: LensFrameTargets, layers: LensPictureLayers, laying: LensLaying, at: LensLaidAt) {
   const shown = (wgsl: string) => `(${wgsl}) * ${at.visibility}`;
   const emission = layers.emission !== null ? shown(`${sampled(layers.emission)}.rgb`) : 'vec3f(0.0)';
-  const outputs = (colour: string, light: string, motion: string, passed: string) =>
-    [colour, ...(glowing ? [light] : []), ...(moving ? [motion] : []), ...(through ? [passed] : [])].join(', ');
+  const outputs = (values: Readonly<Record<LensFrameTargetField, string>>) => lensFrameTargetsHeld(has).map(({ field }) => values[field]).join(', ');
   // The motion of a point p: the plane's own carries it to p ∓ v/2 as the shutter opens and closes, where the views
   // then put it.
   const motion = /* wgsl */ `
@@ -89,9 +137,9 @@ function lensLaidWgsl({ glowing, moving, through }: LensFrameTargets, layers: Le
   const laid = {
     filter: /* wgsl */ `
   let through = ${layers.taken !== null ? `1.0 - ${shown(`${sampled(layers.taken)}.rgb`)}` : 'vec3f(1.0 - colour.a)'};
-  return Laid(${outputs('vec4f(through, 1.0 - colour.a)', 'vec4f(through, 1.0 - colour.a)', 'vec4f(0.0)', 'vec4f(through, 1.0)')});`,
-    add: /* wgsl */ `${moving ? motion : ''}
-  return Laid(${outputs('colour', `vec4f(${emission}, 0.0)`, 'vec4f(travel, distance, colour.a)', 'vec4f(1.0)')});`,
+  return Laid(${outputs({ colour: 'vec4f(through, 1.0 - colour.a)', emission: 'vec4f(through, 1.0 - colour.a)', motion: 'vec4f(0.0)', through: 'vec4f(through, 1.0)' })});`,
+    add: /* wgsl */ `${has.moving ? motion : ''}
+  return Laid(${outputs({ colour: 'colour', emission: `vec4f(${emission}, 0.0)`, motion: 'vec4f(travel, distance, colour.a)', through: 'vec4f(1.0)' })});`,
   }[laying];
   return /* wgsl */ `
   let colour = ${shown(sampled(0))};${laid}`;
@@ -170,17 +218,8 @@ struct Item {
 }`;
 }
 
-/** The blend each laying draws its colour and emission with. */
-export const LENS_LAYING_BLEND: Record<LensLaying, GPUBlendState> = {
-  filter: { color: { srcFactor: 'zero', dstFactor: 'src', operation: 'add' }, alpha: { srcFactor: 'zero', dstFactor: 'src-alpha', operation: 'add' } },
-  add: { color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' }, alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' } },
-};
-
-/** A motion laid over the frame's by its cover, in w; the filter laying leaves it alone. */
-export const LENS_MOTION_BLEND: GPUBlendState = {
-  color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-  alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-};
+/** What a frame carries past its composite beside its colour: its emission when `glowing`, what it lets through when `through`. */
+export type LensFrameCarried = Pick<LensFrameTargets, 'glowing' | 'through'>;
 
 /** An exposure's share of its frame. */
 export const LENS_SUM = gpuUniformLayout('LensSum', [['weight', 'f32']]);
@@ -190,7 +229,7 @@ export const LENS_SUM = gpuUniformLayout('LensSum', [['weight', 'f32']]);
  * colour and emission (none for an exposure that doesn't glow); and when `through`, what it lets through (3) into the
  * sum's (location 2). Light over a page is C + T × page, linear in both, so averaging each averages the light.
  */
-export function lensSumWgsl(glowing: boolean, through: boolean) {
+export function lensSumWgsl({ glowing, through }: LensFrameCarried) {
   return /* wgsl */ `
 ${GPU_FULL_FRAME_WGSL}
 ${LENS_SUM.wgsl}
@@ -273,7 +312,7 @@ export const LENS_MOTION_GATHER = gpuUniformLayout('LensMotionGather', [['tile',
  * gathered colour (4); when `glowing`, the emission (5) and gathered emission (6); when `through`, what it lets
  * through (7) and that gathered (8). Each is gathered with the colour's weights.
  */
-export function lensMotionGatherWgsl({ glowing, through }: { readonly glowing: boolean; readonly through: boolean }, workgroup: number) {
+export function lensMotionGatherWgsl({ glowing, through }: LensFrameCarried, workgroup: number) {
   const carried = [...(glowing ? [{ name: 'emission', Name: 'Emission', binding: 5 }] : []), ...(through ? [{ name: 'through', Name: 'Through', binding: 7 }] : [])];
   const each = (wgsl: (name: string, Name: string) => string) => carried.map(({ name, Name }) => wgsl(name, Name)).join('');
   return /* wgsl */ `
@@ -489,14 +528,13 @@ ${LENS_GLOW.wgsl}
 export const LENS_OUTPUT = gpuUniformLayout('LensOutput', [['strength', 'f32']]);
 
 /**
- * How the image is written. `encoded`: sRGB, opaque, dithered into bytes when `dithered`; `glaze`: a colour image into
- * the develop's target and a filter image into `filter`, both sRGB and premultiplied, for a page to lay over what's
- * behind (lensOutputWgsl); `linear`: linear light, premultiplied, its alpha kept, for an output pass of the caller's
- * (a tone map).
+ * How the image is written, a plain value keying the output's pipeline. `encoded`: sRGB, opaque, dithered into bytes
+ * when `dithered`; `glaze`: a colour and a filter image, both sRGB and premultiplied, for a page to lay over what's
+ * behind (lensOutputWgsl); `linear`: linear light, premultiplied, its alpha kept, for a tone map of the caller's.
  */
 export type LensImageEncoding =
   | { readonly kind: 'encoded'; readonly dithered: boolean }
-  | { readonly kind: 'glaze'; readonly dithered: boolean; readonly filter: GPUTextureView }
+  | { readonly kind: 'glaze'; readonly dithered: boolean }
   | { readonly kind: 'linear' };
 
 /** How many page colours, encoded and evenly spread, a glaze is fitted over beside white (lensOutputWgsl). */

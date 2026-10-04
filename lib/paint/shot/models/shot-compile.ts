@@ -69,7 +69,7 @@ export type CompiledShotPlane = CompiledShotPaintedPlane | CompiledShotSourcePla
 /**
  * A shot compiled: its planes far to near, the back first; its instanced planes; both as `written`, which a frame
  * orders with its items; its canvas count; `clearBack`: the back is clear where it lays nothing, over HTML
- * (shotCanvasLaying); its motion (an instanced plane's clock too), rigs, visibility by occurrence, masks' graph,
+ * (shotCanvasLayings); its motion (an instanced plane's clock too), rigs, visibility by occurrence, masks' graph,
  * camera, warm span (null: none) and painted textures.
  */
 export type CompiledPaintedShot = {
@@ -113,8 +113,9 @@ const SHOT_NO_HTML_BEHIND: ShotPage = { htmlBehind: false };
  */
 export type ShotCanvasLaying = 'opaque' | 'glaze';
 
-/** How canvas `index` of `shot` is laid: the first opaque, holding an opaque back; the rest, and a clear back's, as glazes. */
-export const shotCanvasLaying = (shot: CompiledPaintedShot, index: number): ShotCanvasLaying => (index === 0 && !shot.clearBack ? 'opaque' : 'glaze');
+/** How each of `shot`'s canvases is laid, in order: the first opaque, holding an opaque back; the rest, and a clear back's, as glazes. */
+export const shotCanvasLayings = (shot: Pick<CompiledPaintedShot, 'canvases' | 'clearBack'>): ShotCanvasLaying[] =>
+  Array.from({ length: shot.canvases }, (_, index) => (index === 0 && !shot.clearBack ? 'opaque' : 'glaze'));
 
 /**
  * Why `shot` can't draw a frame over `page` as that frame finds it: a clear back with no HTML behind it. Its load's

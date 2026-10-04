@@ -500,13 +500,15 @@ to near, planes first on ties (`shot-plan.ts`).
 
 `PaintedShot` (`studio/painted-shot.tsx`) is a shot in a scene, beside `StampPainting`: one device owner over its
 canvases, the first opaque and each `PaintedShotCanvas` after it a glaze (`shotCanvasLaying`). A glaze canvas is two
-elements (`ShotCanvasElements`, made by `shot-canvas-surface.ts`): a filter the page multiplies by (`mix-blend-mode:
+elements (`ShotCanvasElements`; `shot-canvas.ts` makes them, every shot's element and their surfaces): a filter the page multiplies by (`mix-blend-mode:
 multiply`), then its colour over it, both premultiplied. Its frame keeps what it lets through per channel, T, beside
 its light C (the lens's `through` target: multiplied as filters lay, summed and gathered with the colour), and the
 lens's `glaze` encoding writes both images so that over an opaque page colour P, encoded, the browser shows
 k + (1 − a)·f·P per channel: a line fitted to enc(C + T·lin(P)), exact over white and least squares over eight
-greys, so a strong glaze over a channel the page holds dark strays a few levels. Where nothing lies behind it inside
-the shot it's exact over white. Its page is read by `studio/shot-dom-points.ts` once fonts and layout settle, as it
+greys, so a strong coloured glaze over a channel the page holds near black strays up to about 20 levels. The shot's
+element is an isolated group, so the multiply reaches only its own HTML and canvases: where nothing lies behind a
+glaze inside the shot, the multiply meets a clear backdrop and the filter lays as plain colour, so the page outside
+sees the glaze through one alpha, exact over white and lighter, toward its filter's hue, over a darker page. Its page is read by `studio/shot-dom-points.ts` once fonts and layout settle, as it
 loads and again as each frame draws: whether HTML lies behind the first canvas, which lets the back be clear (laid as
 clear film, its canvas a glaze too: `clearBack`) and must stay there while it is; that every canvas, fixed to the
 shot's element, fills it, no wrapper between them transformed, filtered or contained, and none between a glaze and its
@@ -701,7 +703,10 @@ in a translucent wrapper refused and an opaque back in one not; the heron alone,
 at its corners; then pinned to an element, its paint's centroid on the element's centre wherever it's placed, and the
 element resized asking for the frame again. Last, a violet watercolour wash glazed from a later canvas over a yellow
 HTML block and a teal back is photographed as the browser composites it (`browserModuleScreenshot`), each channel's
-mean over each within 8 levels of the wash drawn in one canvas over a flat picture of that colour. Its painted textures
+mean over each within 8 levels of the wash drawn in one canvas over a flat picture of that colour. The same wash as a
+clear back over the block, nothing in the shot past it, is photographed over a white page and a dark one outside the
+shot: over the block, and over nothing on white, within 8 levels of the wash over that colour; over nothing, the page
+let through alike in every channel, one alpha, the dark page showing the glaze lighter. Its painted textures
 (`texture/`, `stamp-gate-textures.ts`), each accepted by eye and held to a seam no rougher than the roughest texel step
 across it within 12 of it, on each axis it wraps (`stampGateSeamSteps`): `texture/wrapped-cylinder`, two paintings
 wrapping across x, a flood and an earth band run across their seam and a bloom dropped on it, their bands apart,

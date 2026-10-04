@@ -29,6 +29,13 @@ export function imageUrl({ size, pixels }: StampGateImage): string {
   return canvas.toDataURL('image/png');
 }
 
+/** `canvas`'s RGBA bytes as the browser reads it back, unpremultiplied: a WebGPU canvas off the page, its last frame. */
+export function stampGateCanvasBytes(canvas: HTMLCanvasElement): Uint8ClampedArray {
+  const context = Object.assign(document.createElement('canvas'), { width: canvas.width, height: canvas.height }).getContext('2d')!;
+  context.drawImage(canvas, 0, 0);
+  return context.getImageData(0, 0, canvas.width, canvas.height).data;
+}
+
 /**
  * An opaque surface (and the device owner under it) of its own `width` × `height`, its images at `url`, handed to
  * `use` with what reads its frame; disposed after.
@@ -38,13 +45,8 @@ export async function withGateSurface<T>({ width, height }: { width: number; hei
   const owner = await createStampPaintGpuOwner(url);
   try {
     const surface = await createStampPaintSurface(owner, { canvas, width, height });
-    const frame = () => {
-      const context = Object.assign(document.createElement('canvas'), { width, height }).getContext('2d')!;
-      context.drawImage(canvas, 0, 0);
-      return context.getImageData(0, 0, width, height).data;
-    };
     try {
-      return await use(surface, frame);
+      return await use(surface, () => stampGateCanvasBytes(canvas));
     } finally {
       surface.dispose();
     }

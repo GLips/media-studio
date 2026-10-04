@@ -1,6 +1,7 @@
 // stamp-gate-glaze.ts: the gate's glaze over a page (ENGINE 6.3, shot/page): a violet watercolour wash in a later
-// canvas, laid over a coloured HTML block and the back's flat colour, and the same wash drawn in one canvas over a
-// flat picture of each colour, which is what the page should show. What the check measures of them is here, pure.
+// canvas, laid over a coloured HTML block and the back's flat colour, or as a clear back over the block and nothing
+// past it; and the same wash drawn in one canvas over a flat picture of each colour, which is what the page should
+// show. What the checks measure of them is here, pure.
 
 import type { PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
 import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
@@ -26,18 +27,21 @@ export const STAMP_GATE_GLAZE_BLOCK: { readonly x: number; readonly y: number; r
 /** The back's flat colour: a pale teal. */
 export const STAMP_GATE_GLAZE_BACK: StampGateRgb = [168, 214, 204];
 
+/** The pages the clear back's wash is photographed on, outside the shot: white, and a dark grey, alike in every channel. */
+export const STAMP_GATE_GLAZE_PAGES = { white: [255, 255, 255], dark: [32, 32, 32] } as const satisfies Record<string, StampGateRgb>;
+
 /** A box of the frame, px. */
-export type StampGateGlazeBox = { readonly x0: number; readonly y0: number; readonly x1: number; readonly y1: number };
+type StampGateGlazeBox = { readonly x0: number; readonly y0: number; readonly x1: number; readonly y1: number };
 
 /**
- * Where the check measures, frame px: the wash over the block and over the back, each clear of the wash's edge and
- * the block's, and the block and the back bare, clear of the wash's bleed.
+ * Where the checks measure, frame px: the wash on the block and past it (over the back, or nothing), each clear of
+ * the wash's edge and the block's; and the block and the frame past it bare, clear of the wash's bleed.
  */
-export const STAMP_GATE_GLAZE_REGIONS = {
-  'glaze over the block': { x0: 36, y0: 36, x1: 88, y1: 104 },
-  'glaze over the back': { x0: 112, y0: 36, x1: 164, y1: 104 },
+const STAMP_GATE_GLAZE_REGIONS = {
+  'the wash on the block': { x0: 36, y0: 36, x1: 88, y1: 104 },
+  'the wash past the block': { x0: 112, y0: 36, x1: 164, y1: 104 },
   'the block bare': { x0: 2, y0: 30, x1: 14, y1: 110 },
-  'the back bare': { x0: 186, y0: 30, x1: 198, y1: 110 },
+  'past the block bare': { x0: 186, y0: 30, x1: 198, y1: 110 },
 } as const satisfies Record<string, StampGateGlazeBox>;
 export type StampGateGlazeRegion = keyof typeof STAMP_GATE_GLAZE_REGIONS;
 
@@ -51,7 +55,7 @@ const STAMP_GATE_GLAZE: PaintingSourceModule = {
   },
 };
 
-const glazeWash = () => layersOf(painting(STAMP_GATE_GLAZE), ['wash']);
+const glazeWash = (ground?: 'transparent') => layersOf(painting(STAMP_GATE_GLAZE), ['wash'], ground ? { ground } : {});
 
 const glazeCamera = () => ({ stage: stampStage(GLAZE_FRAME, 2), fov: 35, lens: { bloom: 0, shutter: 0 }, plays: [] });
 
@@ -70,19 +74,37 @@ export const stampGateGlazePageShot = (): PaintedShotProps => ({
   camera: glazeCamera(), planes: [flatBack(STAMP_GATE_GLAZE_BACK, 'under'), { id: 'wash', depth: 1, canvas: 'over', source: glazeWash() }],
 });
 
+/** The clear back's canvas. */
+export const STAMP_GATE_GLAZE_CLEAR_CANVASES = ['wash'] as const;
+
+/** The wash alone in canvas `wash`, a clear back over the HTML block: past the block, the shot holds no HTML. */
+export const stampGateGlazeClearBackShot = (): PaintedShotProps => ({
+  camera: glazeCamera(), planes: [{ id: 'wash', depth: 1, canvas: 'wash', source: glazeWash('transparent') }],
+});
+
 /** The wash drawn in one canvas over a flat picture of `rgb`: what the page should show of it over that colour. */
 export const stampGateGlazeOverShot = (rgb: StampGateRgb): PaintedShotProps => ({
   camera: glazeCamera(), planes: [flatBack(rgb), { id: 'wash', depth: 1, source: glazeWash() }],
 });
 
-/** `rgba`'s (a `width` px wide frame's bytes) mean colour in `box`, encoded, per channel. */
-export function stampGateGlazeMean(rgba: ArrayLike<number>, width: number, { x0, y0, x1, y1 }: StampGateGlazeBox): StampGateRgb {
-  const sum = [0, 0, 0];
+/** `rgba`'s (a glaze frame's bytes, the page's or a reference's) mean colour in `region`, encoded, per channel. */
+export function stampGateGlazeMean(rgba: ArrayLike<number>, region: StampGateGlazeRegion): StampGateRgb {
+  const { x0, y0, x1, y1 }: StampGateGlazeBox = STAMP_GATE_GLAZE_REGIONS[region], sum = [0, 0, 0];
   for (let y = y0; y < y1; y++) {
-    for (let x = x0; x < x1; x++) for (let c = 0; c < 3; c++) sum[c] += rgba[(y * width + x) * 4 + c];
+    for (let x = x0; x < x1; x++) for (let c = 0; c < 3; c++) sum[c] += rgba[(y * GLAZE_FRAME.width + x) * 4 + c];
   }
   const count = (x1 - x0) * (y1 - y0);
   return [sum[0] / count, sum[1] / count, sum[2] / count];
+}
+
+/**
+ * How much of the page outside the shot a region lets through, per channel: its means photographed over the white
+ * page and the dark one (STAMP_GATE_GLAZE_PAGES), apart, over the pages' own difference. Over nothing inside the
+ * shot, a glaze lets the page through by one alpha, so alike in every channel.
+ */
+export function stampGateGlazeLetThrough(overWhite: StampGateRgb, overDark: StampGateRgb): StampGateRgb {
+  const { white, dark } = STAMP_GATE_GLAZE_PAGES, [r, g, b] = [0, 1, 2].map((c) => (overWhite[c] - overDark[c]) / (white[c] - dark[c]));
+  return [r, g, b];
 }
 
 const luminance = ([r, g, b]: readonly number[]) => 0.2126 * r + 0.7152 * g + 0.0722 * b;

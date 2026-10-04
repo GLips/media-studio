@@ -16,9 +16,12 @@ const answerBrowserModuleScreenshot: BrowserModuleScreenshotAnswer = (id, png, e
   else waiting.resolve(png);
 };
 
+/** Once the page has rendered twice: a WebGPU canvas drawn before is presented by then, and styles set are laid. */
+const browserModuleFramesPassed = () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+
 /**
- * `box` of the page's viewport as the browser next composites it, RGBA bytes row by row. A WebGPU canvas shows the
- * frame it last presented: wait for the page's frame after drawing before asking.
+ * `box` of the page's viewport as the browser composites it, RGBA bytes row by row, once the page has rendered what
+ * was drawn and styled before the call: a WebGPU canvas shows the frame it last presented.
  */
 export async function browserModuleScreenshot(box: BrowserModuleViewportBox): Promise<ImageData> {
   // SAFETY: Runtime.addBinding sets a function of one string; a page opened otherwise has none.
@@ -26,6 +29,7 @@ export async function browserModuleScreenshot(box: BrowserModuleViewportBox): Pr
   const ask = scope[BROWSER_MODULE_SCREENSHOT_BINDING];
   if (!ask) throw new Error('browser module screenshot: this page has no screenshot binding; withBrowserModulePage opens pages that do');
   scope[BROWSER_MODULE_SCREENSHOT_ANSWER] = answerBrowserModuleScreenshot;
+  await browserModuleFramesPassed();
   const id = browserModuleScreenshotCount++;
   const png = await new Promise<string>((resolve, reject) => {
     browserModuleScreenshotsWaiting.set(id, { resolve, reject });

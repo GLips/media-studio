@@ -9,26 +9,9 @@
 
 import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import { shotCanvasLaying, shotPageProblems, type CompiledPaintedShot } from '../models/shot-compile.ts';
+import { shotCanvasLayings, shotPageProblems, type CompiledPaintedShot, type ShotCanvasLaying } from '../models/shot-compile.ts';
 import { shotDomCentre, type ShotPinCentres } from '../models/shot-placement.ts';
-
-/**
- * A shot's canvas: fixed to the shot's element, whose transform makes it their containing block, so each fills the
- * frame however deep it's nested. Positioned, a canvas paints over HTML that isn't: HTML lying over one is positioned.
- */
-export const SHOT_CANVAS_STYLE = { position: 'fixed', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' } as const;
-
-/**
- * A shot canvas's filter, laid just before its colour canvas: what's behind is multiplied by it. The shot's element,
- * transformed, is a stacking context, so the blend reaches the shot's own HTML and canvases and nothing outside.
- */
-export const SHOT_FILTER_CANVAS_STYLE = { ...SHOT_CANVAS_STYLE, mixBlendMode: 'multiply' } as const;
-
-/**
- * A shot canvas's elements, siblings: `filter`, then `colour` over it. An opaque canvas draws only in `colour`, its
- * filter left hidden; a glaze draws in both (ShotCanvasLaying).
- */
-export type ShotCanvasElements = { readonly filter: HTMLCanvasElement; readonly colour: HTMLCanvasElement };
+import { shotCanvasStart, type ShotCanvasElements } from './shot-canvas.ts';
 
 /** How far a canvas's box may stray from its shot's, page px: a scaled layout's rounding. */
 const SHOT_CANVAS_SLACK = 0.5;
@@ -43,12 +26,12 @@ function paintsBackground(ancestor: Element): boolean {
 }
 
 /**
- * Whether HTML lies behind `first`, a PaintedShot's first canvas element (its filter, ShotCanvasElements), inside its
- * element `holder`: text or a laid-out element before it in document order, or a background on a wrapper holding it.
- * What lies outside the shot doesn't count: a clear back shows its shot's own HTML.
+ * Whether HTML lies behind `canvas`, a PaintedShot's first, inside its element `holder`: text or a laid-out element
+ * before it in document order, or a background on a wrapper holding it. What lies outside the shot doesn't count: a
+ * clear back shows its shot's own HTML.
  */
-export function shotHtmlBehind(holder: Element, first: Element): boolean {
-  const walker = document.createTreeWalker(holder, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+export function shotHtmlBehind(holder: Element, canvas: ShotCanvasElements): boolean {
+  const first = shotCanvasStart(canvas), walker = document.createTreeWalker(holder, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
   for (let node = walker.nextNode(); node && node !== first; node = walker.nextNode()) {
     if (node instanceof Text) {
       if (node.data.trim() && node.parentElement?.getClientRects().length) return true;
@@ -113,27 +96,48 @@ function shotGlazeIsolating(wrapper: Element, style: CSSStyleDeclaration): strin
 
 const rectText = (r: DOMRect) => `${r.left.toFixed(1)}, ${r.top.toFixed(1)} → ${r.right.toFixed(1)}, ${r.bottom.toFixed(1)}`;
 
+/** Canvas `index`'s name in a problem, its PaintedShotCanvas's (`names`; none for the shot's own). */
+const shotCanvasName = (names: readonly string[], index: number) => (names[index] === undefined ? "the shot's own canvas" : `PaintedShotCanvas ${names[index]}`);
+
+/** The elements between `canvas` and `holder`, the shot's element, innermost first. */
+function shotCanvasWrappers(holder: Element, { colour }: ShotCanvasElements): Element[] {
+  const wrappers: Element[] = [];
+  for (let wrapper = colour.parentElement; wrapper && wrapper !== holder; wrapper = wrapper.parentElement) wrappers.push(wrapper);
+  return wrappers;
+}
+
 /**
- * Why `canvases` (named by `names`; none for the shot's own) don't each lie over `holder`, the shot's element, whole,
- * or, once `shot` is compiled, why a glaze can't reach the HTML behind it. A wrapper holding a canvas in its box
- * is refused even while it changes nothing (an identity transform about to slide), as is one isolating a glaze.
+ * Why `canvases` (named by `names`) don't each lie over `holder`, the shot's element, whole. A wrapper holding a
+ * canvas in its box is refused even while it changes nothing (an identity transform about to slide).
  */
-export function shotCanvasFillProblems(holder: Element, canvases: readonly ShotCanvasElements[], names: readonly string[], shot: CompiledPaintedShot | null): PaintingProblem[] {
+export function shotCanvasFillProblems(holder: Element, canvases: readonly ShotCanvasElements[], names: readonly string[]): PaintingProblem[] {
   const frame = holder.getBoundingClientRect();
-  return canvases.flatMap(({ colour }, index) => {
-    const name = names[index] === undefined ? "the shot's own canvas" : `PaintedShotCanvas ${names[index]}`;
-    const problem = (message: string) => [paintingProblem('error', 'shot', 'canvas', `${name} ${message}: a canvas fills its shot, so no wrapper between them is transformed, filtered or contained`)];
-    const glaze = shot && shotCanvasLaying(shot, index) === 'glaze';
-    for (let wrapper = colour.parentElement; wrapper && wrapper !== holder; wrapper = wrapper.parentElement) {
-      const style = getComputedStyle(wrapper), holding = shotFixedHolding(style), isolating = glaze && shotGlazeIsolating(wrapper, style);
+  return canvases.flatMap((canvas, index) => {
+    const problem = (message: string) => [paintingProblem('error', 'shot', 'canvas', `${shotCanvasName(names, index)} ${message}: a canvas fills its shot, so no wrapper between them is transformed, filtered or contained`)];
+    for (const wrapper of shotCanvasWrappers(holder, canvas)) {
+      const holding = shotFixedHolding(getComputedStyle(wrapper));
       if (holding) return problem(`lies in a <${wrapper.localName}> with ${holding}, which holds a fixed canvas in its own box`);
-      if (isolating) {
-        return [paintingProblem('error', 'shot', 'canvas', `${name} is a glaze over the HTML behind it, and lies in a <${wrapper.localName}> with ${isolating}, which isolates it from that HTML: no wrapper between a glaze canvas and its shot makes a stacking context`)];
-      }
     }
-    const box = colour.getBoundingClientRect();
+    const box = canvas.colour.getBoundingClientRect();
     const strays = [box.left - frame.left, box.top - frame.top, box.right - frame.right, box.bottom - frame.bottom].some((d) => Math.abs(d) > SHOT_CANVAS_SLACK);
     return strays ? problem(`lies at ${rectText(box)} page px, and its PaintedShot at ${rectText(frame)}`) : [];
+  });
+}
+
+/**
+ * Why a glaze among `canvases` (named by `names`, laid as `layings` says) can't reach the HTML behind it: a wrapper
+ * between it and `holder`, the shot's element, making a stacking context, which its multiply would stop at.
+ */
+export function shotGlazeIsolationProblems(holder: Element, canvases: readonly ShotCanvasElements[], names: readonly string[], layings: readonly ShotCanvasLaying[]): PaintingProblem[] {
+  return canvases.flatMap((canvas, index) => {
+    if (layings[index] !== 'glaze') return [];
+    for (const wrapper of shotCanvasWrappers(holder, canvas)) {
+      const isolating = shotGlazeIsolating(wrapper, getComputedStyle(wrapper));
+      if (isolating) {
+        return [paintingProblem('error', 'shot', 'canvas', `${shotCanvasName(names, index)} is a glaze over the HTML behind it, and lies in a <${wrapper.localName}> with ${isolating}, which isolates it from that HTML: no wrapper between a glaze canvas and its shot makes a stacking context`)];
+      }
+    }
+    return [];
   });
 }
 
@@ -186,8 +190,9 @@ export function createShotPageWatch(holder: Element, canvases: readonly ShotCanv
     read: () => {
       const { centres, problems } = measure();
       drawn = centres;
-      const page = shot.clearBack ? shotPageProblems(shot, { htmlBehind: shotHtmlBehind(holder, canvases[0].filter) }) : [];
-      return { pins: centres, problems: [...shotCanvasFillProblems(holder, canvases, names, shot), ...page, ...problems] };
+      const page = shot.clearBack ? shotPageProblems(shot, { htmlBehind: shotHtmlBehind(holder, canvases[0]) }) : [];
+      const placed = [...shotCanvasFillProblems(holder, canvases, names), ...shotGlazeIsolationProblems(holder, canvases, names, shotCanvasLayings(shot))];
+      return { pins: centres, problems: [...placed, ...page, ...problems] };
     },
     dispose: () => observer?.disconnect(),
   };

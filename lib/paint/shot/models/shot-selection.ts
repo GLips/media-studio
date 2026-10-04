@@ -11,8 +11,8 @@ import { shotOccurrenceKey } from './shot-occurrences.ts';
 
 /**
  * Two finished selections' plane pictures interpolated linearly, `k` 0..1 from a to b, in their native form: opaque
- * colour on an opaque backing, colour and transmittance for clear painted pictures, premultiplied RGBA at an RGBA
- * output. It mixes pictures, never pigment. Either side may be a dissolve.
+ * colour on an opaque backing, colour and transmittance for clear pictures, on any canvas. It mixes pictures, never
+ * pigment. Either side may be a dissolve.
  */
 export type Dissolve = { readonly kind: 'dissolve'; readonly a: PaintedSource; readonly b: PaintedSource; readonly k: number };
 
