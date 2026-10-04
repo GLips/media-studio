@@ -13,7 +13,7 @@ export default defineCommand({
     project: studioProjectArg,
     frames: { type: 'string', valueHint: '200:210', description: 'What do these frames look like? 200:210 (inclusive), 200:260:5 (every 5th) or 161,176,191' },
     bar: { type: 'string', valueHint: '3', description: 'What does this bar look like, or how does it move? Every frame of a music-led project\'s bar N' },
-    sheet: { type: 'string', valueHint: '0.5,4,9', description: 'What do these moments look like? Times in seconds' },
+    sheet: { type: 'string', valueHint: '0.5,4,9', description: 'What do these moments look like? Times in seconds; the end second names the last frame' },
     strip: { type: 'string', valueHint: '4:5', description: 'How does this stretch move? Seconds from:to, every --step seconds' },
     video: { type: 'string', valueHint: 'out/video.mp4', description: 'What does a render show, rather than the code? Read frames from this video (relative to the project unless absolute)' },
     against: { type: 'string', valueHint: 'out/wip/before.mp4', description: 'What did a change move? Each frame of this render (before) beside the composition\'s or --video\'s (after) and the pixels that really changed, with each frame\'s changed-pixel count; with no frames given, every frame, the sheet showing the most changed' },
@@ -111,7 +111,12 @@ export default defineCommand({
         if (!bar) throw new Error(`there's no bar ${args.bar}: bars are ${clock.bars.map((b) => b.n).join(', ')}`);
         return Array.from({ length: bar.to - bar.from }, (_, i) => bar.from + i);
       }
-      const frameAt = (t: number) => Math.round(t * source.fps);
+      // The end second (a 10 s video's 10) names the frame showing as it ends, its last, not the one past it. A time
+      // further on is still refused.
+      const frameAt = (t: number) => {
+        const frame = Math.round(t * source.fps);
+        return frame === source.end ? source.end - 1 : frame;
+      };
       if (args.sheet) return [...new Set(args.sheet.split(',').map((t) => frameAt(parseLookNumber(t))))].toSorted((a, b) => a - b);
       if (args.strip) {
         const [from, to] = args.strip.split(':').map(parseLookNumber);
