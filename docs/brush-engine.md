@@ -499,11 +499,18 @@ occurrence key, `<plane>/<key>` (`shot-occurrences.ts`), and every frame draws i
 to near, planes first on ties (`shot-plan.ts`).
 
 `PaintedShot` (`studio/painted-shot.tsx`) is a shot in a scene, beside `StampPainting`: one device owner over its
-canvases, the first opaque and each `PaintedShotCanvas` after it premultiplied (α = 1 − luminance(T);
-`shotCanvasAlphaMode`). Its page is read by `studio/shot-dom-points.ts` once fonts and layout settle, as it loads and
-again as each frame draws: whether HTML lies behind the first canvas, which lets the back be clear (laid as clear film,
-its canvas premultiplied too: `clearBack`) and must stay there while it is; that every canvas, fixed to the shot's
-element, fills it, no wrapper between them transformed, filtered or contained; and where each pinned element (its
+canvases, the first opaque and each `PaintedShotCanvas` after it a glaze (`shotCanvasLaying`). A glaze canvas is two
+elements (`ShotCanvasElements`, made by `shot-canvas-surface.ts`): a filter the page multiplies by (`mix-blend-mode:
+multiply`), then its colour over it, both premultiplied. Its frame keeps what it lets through per channel, T, beside
+its light C (the lens's `through` target: multiplied as filters lay, summed and gathered with the colour), and the
+lens's `glaze` encoding writes both images so that over an opaque page colour P, encoded, the browser shows
+k + (1 − a)·f·P per channel: a line fitted to enc(C + T·lin(P)), exact over white and least squares over eight
+greys, so a strong glaze over a channel the page holds dark strays a few levels. Where nothing lies behind it inside
+the shot it's exact over white. Its page is read by `studio/shot-dom-points.ts` once fonts and layout settle, as it
+loads and again as each frame draws: whether HTML lies behind the first canvas, which lets the back be clear (laid as
+clear film, its canvas a glaze too: `clearBack`) and must stay there while it is; that every canvas, fixed to the
+shot's element, fills it, no wrapper between them transformed, filtered or contained, and none between a glaze and its
+shot making a stacking context, which would multiply it over that group alone; and where each pinned element (its
 `data-pin` named by the pin) lies. `shot-compile.ts` checks the props as they load, every problem at once: planes far
 to near, each painted plane's occurrences from its first evaluation (read through its `sourceClock`), the rigs,
 visibility, motion and masks over them, and the camera built over each plane's reach (`shot-reach.ts`). A plane laid on the
@@ -689,9 +696,12 @@ it; and a leaf owning its card faded halfway, lying between it shown and gone, a
 without it, with nothing solved.
 Each shot's frame is a baseline (`shot/`) accepted by eye. `shot/page`
 (`stamp-gate-shot-dom-page.ts`) holds a shot's element on the page, scaled as a player shows it, and reads it through
-the DOM adapter: HTML behind the first canvas or not, a canvas in a wrapper at an identity transform refused; the
-heron alone, a clear back, drawn premultiplied, clear at its corners; then pinned to an element, its paint's centroid
-on the element's centre wherever it's placed, and the element resized asking for the frame again. Its painted textures
+the DOM adapter: HTML behind the first canvas or not, a canvas in a wrapper at an identity transform refused, a glaze
+in a translucent wrapper refused and an opaque back in one not; the heron alone, a clear back, drawn as a glaze, clear
+at its corners; then pinned to an element, its paint's centroid on the element's centre wherever it's placed, and the
+element resized asking for the frame again. Last, a violet watercolour wash glazed from a later canvas over a yellow
+HTML block and a teal back is photographed as the browser composites it (`browserModuleScreenshot`), each channel's
+mean over each within 8 levels of the wash drawn in one canvas over a flat picture of that colour. Its painted textures
 (`texture/`, `stamp-gate-textures.ts`), each accepted by eye and held to a seam no rougher than the roughest texel step
 across it within 12 of it, on each axis it wraps (`stampGateSeamSteps`): `texture/wrapped-cylinder`, two paintings
 wrapping across x, a flood and an earth band run across their seam and a bloom dropped on it, their bands apart,
