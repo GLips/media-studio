@@ -218,11 +218,11 @@
     },
     "shot/painted-cylinder": {
       "file": "shot/painted-cylinder.png",
-      "output": "1fee505996c1187790076896a76c23fc4d040548d5321940f013b551d092a9f8",
+      "output": "52710699a499c054524caef411519a3ed3ea4f519d97885eeda4fe89707c116d",
       "inputs": "75d528351bba72c2d183abbc9dc1245c8c088a0f37de556684ec0f7240d9637e",
-      "reason": "new: a shot wearing a wrapped painted texture read at each frame's moment, through the shot's renderer, at 2 s and 4 s side by side (vid-157 shot-textures)",
+      "reason": "painted textures carry a mip chain, read trilinearly with anisotropy 8: only the cylinder's sides move, within about 22 px of each silhouette where they turn away and the chain averages what a pixel covers (most at the edge column); its front, the flat texture and the back unchanged. Looked at enlarged: the bands meet the edge as before, a shade smoother",
       "accepted": "2026-10-04",
-      "acceptedOver": "23ca3dbd",
+      "acceptedOver": "a53c81f3",
       "adapter": "apple metal-3"
     },
     "shot/paper-heron": {
@@ -281,11 +281,11 @@
     },
     "texture/wrapped-cylinder": {
       "file": "texture/wrapped-cylinder.png",
-      "output": "60d54d0eeed25acd46058fce00b4406996aa9d09fc10e4721d6ffdc0e0bea725",
+      "output": "691b81e3f35afd8020ed6d7f4ae3deb7cda0ef6468c5588f2ce8af6d93b3a138",
       "inputs": "b5136259e48e9035cf48d3078ada640bbc5e729be898b166cb5f757b49f6446d",
-      "reason": "The texture is now two wrapped paintings (bands at y 110 and 100) dissolved halfway and drawn at half size, so the resample, the shares' sum and their weights run in the baseline; laid flat at 2 px a texel",
-      "accepted": "2026-10-03",
-      "acceptedOver": "d5ff3187",
+      "reason": "painted textures carry a mip chain, read trilinearly with anisotropy 8: only the cylinder's sides move, within about 22 px of each silhouette where they turn away and the chain averages what a pixel covers (most at the edge column); its front, the flat texture and the back unchanged. Looked at enlarged: the bands meet the edge as before, a shade smoother",
+      "accepted": "2026-10-04",
+      "acceptedOver": "a53c81f3",
       "adapter": "apple metal-3"
     },
     "texture/wrapped-tile": {

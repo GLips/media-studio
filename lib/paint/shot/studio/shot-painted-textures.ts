@@ -1,8 +1,9 @@
 // shot-painted-textures.ts: a shot's compiled painted textures drawn for its three sources, each a handle
 // loadPaintedThreeSources reads, brought up to a frame's moment by `update`. Each selection a texture's source blends
 // then is solved, laid on its paper at the document's size, resampled to the texture's size and summed by its weight
-// in linear light, so a dissolve blends opaque colour; then gamma-encoded into the handle, as paintedThreeColorNode
-// decodes it. A warm solves each texture at its frames, laying nothing.
+// in linear light, so a dissolve blends opaque colour; then gamma-encoded into the handle's first level, as
+// paintedThreeColorNode decodes it, its mip chain below (shot-painted-texture-mips.ts). A warm solves each texture at
+// its frames, laying nothing.
 //
 // A texture isn't laid again when its source reads what it last did, or its solves keep the films it was last laid
 // from: a timed painting's frames between two landings show one prefix.
@@ -24,6 +25,7 @@ import { GPU_FULL_FRAME_WGSL, GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu
 import type { PaintedShotPaintOptions } from '../models/shot-compile.ts';
 import { compiledPaintedTextureSourceAt, type CompiledShotPaintedTexture } from '../models/shot-painted-texture-compile.ts';
 import { paintedSourceShares, samePaintedSourceShares, type PaintedSourceShare } from '../models/shot-selection.ts';
+import { shotPaintedTextureMipChain, shotPaintedTextureMipLevels, type ShotPaintedTextureMipChain } from './shot-painted-texture-mips.ts';
 
 /** How a warm runs the textures' solves: stopping between them once `stopped` says so, `solving` told of each before it starts. */
 export type ShotPaintedTexturesWarmRun = { readonly stopped: () => boolean; readonly solving?: (label: string) => void };
@@ -44,12 +46,13 @@ type ShotTextureShareSolved = { readonly compiled: PaintingSelectionCompiled; re
 type ShotTextureShareLaid = { readonly compiled: PaintingSelectionCompiled; readonly weight: number; readonly films: string };
 
 /**
- * A texture as it's drawn: its handle, the sum laid into it, the shares its source last read (null: none yet), and
- * what the sum was laid from (null: nothing yet).
+ * A texture as it's drawn: its handle and its mip chain, the sum laid into it, the shares its source last read (null:
+ * none yet), and what the sum was laid from (null: nothing yet).
  */
 type ShotPaintedTextureSlot = {
   readonly texture: CompiledShotPaintedTexture;
   readonly handle: PaintedThreeTextureHandle;
+  readonly mips: ShotPaintedTextureMipChain;
   readonly light: GPUTexture;
   read: readonly PaintedSourceShare[] | null;
   laid: readonly ShotTextureShareLaid[] | null;
@@ -125,8 +128,8 @@ export function createShotPaintedTextures(owner: StampPaintGpuOwner, textures: r
   };
   // Let go of on dispose: the handles, each texture's sum, and a picture a painting's size.
   const owned: GPUTexture[] = [], pictures = new Map<string, Promise<{ view: GPUTextureView; surface: StampPaintSurface }>>();
-  const own = (width: number, height: number, format: GPUTextureFormat) => {
-    const texture = webgpu.createTexture({ size: [width, height], format, usage });
+  const own = (width: number, height: number, format: GPUTextureFormat, mipLevelCount = 1) => {
+    const texture = webgpu.createTexture({ size: [width, height], format, usage, mipLevelCount });
     owned.push(texture);
     return texture;
   };
@@ -141,10 +144,10 @@ export function createShotPaintedTextures(owner: StampPaintGpuOwner, textures: r
     return made;
   };
   const arena = createStampUniformArena(device, 1);
-  const drawn = textures.map((texture): ShotPaintedTextureSlot => ({
-    texture, handle: { id: texture.id, texture: own(texture.widthPx, texture.heightPx, 'rgba16float'), wrap: texture.wrap },
-    light: own(texture.widthPx, texture.heightPx, 'rgba32float'), read: null, laid: null,
-  }));
+  const drawn = textures.map((texture): ShotPaintedTextureSlot => {
+    const { id, widthPx, heightPx, wrap } = texture, handle = { id, texture: own(widthPx, heightPx, 'rgba16float', shotPaintedTextureMipLevels(widthPx, heightPx)), wrap };
+    return { texture, handle, mips: shotPaintedTextureMipChain(device, handle.texture, wrap), light: own(widthPx, heightPx, 'rgba32float'), read: null, laid: null };
+  });
 
   /** `run` over `shares` each solved, their films held until it settles. */
   const withSharesSolved = async <R,>(shares: readonly PaintedSourceShare[], run: (solved: readonly ShotTextureShareSolved[]) => Promise<R>): Promise<R> => {
@@ -185,21 +188,25 @@ export function createShotPaintedTextures(owner: StampPaintGpuOwner, textures: r
     });
   };
 
-  /** `slot`'s shares at `moment` solved, then laid, summed and encoded into its handle unless they keep what it was laid from. */
+  /**
+   * `slot`'s shares at `moment` solved, then laid, summed, encoded into its handle and its chain downsampled, unless
+   * they keep what it was laid from.
+   */
   const drawAt = async (slot: ShotPaintedTextureSlot, moment: PaintMoment) => {
-    const { texture, handle, light } = slot, shares = shotTextureSharesAt(texture, moment);
+    const { texture, handle, mips, light } = slot, shares = shotTextureSharesAt(texture, moment);
     if (slot.read && samePaintedSourceShares(slot.read, shares)) return;
     await withSharesSolved(shares, async (solved) => {
       const laid = solved.map(shotTextureShareLaid);
       if (slot.laid && sameShotTextureLaid(slot.laid, laid)) return;
       await gpuEachInTurn(solved, (share, s) => sumShare(slot, share, s === 0));
-      await owner.checked(`encoding painted texture ${texture.id}`, () => {
+      await owner.checked(`encoding painted texture ${texture.id} and its mip chain`, () => {
         const encoder = device.createCommandEncoder();
-        const pass = encoder.beginRenderPass({ colorAttachments: [{ view: handle.texture.createView(), loadOp: 'clear', storeOp: 'store' }] });
+        const pass = encoder.beginRenderPass({ colorAttachments: [{ view: handle.texture.createView({ mipLevelCount: 1 }), loadOp: 'clear', storeOp: 'store' }] });
         pass.setPipeline(encode);
         pass.setBindGroup(0, stampBindGroup(device, encode, [light.createView()]));
         pass.draw(3);
         pass.end();
+        mips.encode(encoder);
         device.queue.submit([encoder.finish()]);
       });
       slot.laid = laid;

@@ -9,7 +9,7 @@
 // target premultiplies), its motion texture the lens's motion layer (lens-three-motion.ts); a painted texture is
 // rgba16float, gamma-encoded and opaque, decoded by paintedThreeColorNode.
 
-import { ExternalTexture, PerspectiveCamera, RepeatWrapping, type Camera, type RenderTarget, type Scene } from 'three/webgpu';
+import { ExternalTexture, LinearMipmapLinearFilter, PerspectiveCamera, RepeatWrapping, type Camera, type RenderTarget, type Scene } from 'three/webgpu';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
 import { shotCameraGrown, type ShotCamera } from '#lib/picture/shot-camera/models/shot-camera.ts';
@@ -29,6 +29,9 @@ import { createStampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-
 
 /** A source's multisampling: its edges antialiased, resolved the same each time (vid-129). */
 const PAINTED_THREE_SAMPLES = 4;
+
+/** The most taps a mip-chained painted texture's sample takes along a surface turned away, as a cylinder's sides are. */
+const PAINTED_THREE_ANISOTROPY = 8;
 
 /**
  * A painting drawn each frame into a texture three samples: a painting on a 3D object. `width` × `height` of its own
@@ -79,8 +82,8 @@ export type PaintedThreeLoaded = {
 
 /**
  * A painted texture a material reads, by id: rgba16float, gamma-encoded and opaque; `wrap` as its painting wraps, u
- * repeating along x, v along y (null: neither). Whoever supplies it draws it and lets it go, after the sources loaded
- * over it.
+ * repeating along x, v along y (null: neither). Whoever supplies it draws every mip level its `texture` has, each past
+ * the first the one above downsampled, and lets it go after the sources loaded over it.
  */
 export type PaintedThreeTextureHandle = { readonly id: string; readonly texture: GPUTexture; readonly wrap: StampWrap | null };
 
@@ -166,6 +169,12 @@ export async function loadPaintedThreeSources(owner: StampPaintGpuOwner, camera:
         const external = new ExternalTexture(texture);
         if (stampWrapsAcross(wrap, 'x')) external.wrapS = RepeatWrapping;
         if (stampWrapsAcross(wrap, 'y')) external.wrapT = RepeatWrapping;
+        // Its supplier's levels, three making none. A handle of one level (an old renderer's) is read as it always was.
+        if (texture.mipLevelCount > 1) {
+          external.minFilter = LinearMipmapLinearFilter;
+          external.generateMipmaps = false;
+          external.anisotropy = PAINTED_THREE_ANISOTROPY;
+        }
         made.push(external);
         return [id, external] as const;
       }));
