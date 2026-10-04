@@ -22,6 +22,8 @@ function isPaintingSourceModule(loaded: unknown): loaded is PaintingSourceModule
 
 /** The source module at `file`. Throws unless its default export is a factory. */
 export async function loadPaintingSource(file: string): Promise<PaintingSourceModule<PropertySchema>> {
+  // A source timed by its project's timeline imports it, and so the track's audio: the hooks load that as a URL.
+  await import('#lib/output/render/engine/tsx-test-hooks.ts');
   const loaded: unknown = await import(pathToFileURL(resolve(file)).href);
   if (!isPaintingSourceModule(loaded)) throw new Error(`${file} isn't a painting source: its default export is its factory, and \`properties\` its schema`);
   return loaded;

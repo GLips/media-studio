@@ -10,6 +10,7 @@
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { openBrowser, type HeadlessBrowser } from '@remotion/renderer';
+import { wholeBrowserPageError } from './browser-page-error.ts';
 
 /**
  * Every render's browser runs on the GPU: Chrome's compositing goes through its GL backend, which Remotion's default
@@ -66,15 +67,15 @@ function assertHardwareGpu({ gl, webgpu }: GpuBackends, when: 'before' | 'after'
 
 /**
  * Runs `render` in a browser of its own (Remotion's `puppeteerInstance`), told its GPU backends, and closes it after.
- * Refuses to start on software GL or WebGPU, and fails if the browser has fallen back to either by the end, since the
- * frames rendered after the fallback were. Returns what `render` did and the GPU backends it had.
+ * Refuses to start on software GL or WebGPU, and fails if the browser falls back to either by the end, since frames
+ * after the fallback were. Returns `render`'s result and its GPU. A page's error keeps its whole message.
  */
 export async function inRenderBrowser<T>(render: (browser: HeadlessBrowser, gpu: string) => Promise<T>): Promise<{ result: T; gpu: string }> {
   const browser = await openBrowser('chrome', { chromiumOptions: RENDER_CHROMIUM });
   try {
     const before = await readGpuBackends(browser);
     assertHardwareGpu(before, 'before');
-    const result = await render(browser, describeGpu(before));
+    const result = await render(browser, describeGpu(before)).catch((error: Error) => Promise.reject(wholeBrowserPageError(error)));
     assertHardwareGpu(await readGpuBackends(browser), 'after');
     return { result, gpu: describeGpu(before) };
   } finally {

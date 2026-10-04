@@ -22,6 +22,7 @@ import { writeRenderSnapshot, type RenderSnapshot } from './render-snapshot.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { readProjectClock } from './project-clock.ts';
 import { renderVoiceOf } from '#lib/timing/voice/engine/voice-project.ts';
+import { wholeBrowserPageError } from '#lib/platform/browser/engine/browser-page-error.ts';
 import { inRenderBrowser, RENDER_CHROMIUM } from '#lib/platform/browser/engine/render-browser.ts';
 import type { MotionTracks } from '#lib/picture/measurement/models/motion-tracks.ts';
 import type { CompositionRenderSettings, ReplayProps, VideoProps } from '#lib/picture/video/models/composition-props.ts';
@@ -77,8 +78,10 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   // A silent video delivers with no mix and no audio track (render-pipeline.ts).
   const silent = (await readProjectCapability(project)) === 'silent';
   const props = (p: Partial<VideoProps> = {}): VideoProps => ({ captions: false, probe: false, blockouts: false, lens, ...p });
+  // Without a browser, Remotion opens its own, outside inRenderBrowser: a page's error keeps its whole message here too.
   const compositionFor = (inputProps: VideoProps, browser?: HeadlessBrowser) =>
-    selectComposition({ serveUrl, chromiumOptions: RENDER_CHROMIUM, id: projectSlug(project), inputProps, puppeteerInstance: browser });
+    selectComposition({ serveUrl, chromiumOptions: RENDER_CHROMIUM, id: projectSlug(project), inputProps, puppeteerInstance: browser })
+      .catch((error: Error) => Promise.reject(wholeBrowserPageError(error)));
 
   /** Tabs for a render of `composition`: the session's `workers`, else the video's `renderWorkers`, else the default. */
   function workersFor(composition: VideoConfig): number {
