@@ -42,49 +42,122 @@ export type LensFrameTargets = { readonly glowing: boolean; readonly moving: boo
 const sampled = (layer: number) => `textureSampleLevel(picture, linearClamp, uv, ${layer}u, 0.0)`;
 
 /**
- * The composite's WGSL, drawn twice a layer (`laying`) into the frame's colour (location 0), its emission (1) when
- * `glowing`, and its motion (next) when `moving`: binds its uniform (0), the picture as an array (1) and a linear
- * clamped sampler (2). The motion is the frame px a point moves over the shutter, its distance, and its cover.
+ * What a laying reads of the layer or item being laid, as WGSL expressions: its views as the shutter opens and closes,
+ * its distance, whether its motion layer gives its texels' distances (null: never), and how visible it is (null: whole).
  */
-export function lensCompositeWgsl({ glowing, moving }: LensFrameTargets, layers: LensPictureLayers, laying: LensLaying) {
-  const emission = layers.emission !== null ? `${sampled(layers.emission)}.rgb` : 'vec3f(0.0)';
+type LensLaidAt = { readonly open: string; readonly close: string; readonly distance: string; readonly texels: string | null; readonly visibility: string | null };
+
+/** The struct a laying returns, and the similarity it maps points by: shared by every pass laying a picture. */
+function lensLaidHeadWgsl({ glowing, moving }: LensFrameTargets) {
+  const locations = ['@location(0) colour: vec4f', ...(glowing ? ['@location(1) emission: vec4f'] : []), ...(moving ? [`@location(${glowing ? 2 : 1}) motion: vec4f`] : [])];
+  return /* wgsl */ `
+struct Laid { ${locations.join(', ')} }
+fn similar(m: vec4f, p: vec2f) -> vec2f { return vec2f(m.x * p.x - m.y * p.y, m.y * p.x + m.x * p.y) + m.zw; }`;
+}
+
+/**
+ * A fragment's laying (`laying`) of the picture at `uv`, plane point `p`, into the frame's colour, its emission when
+ * `glowing` and its motion when `moving`: the motion is the frame px a point moves over the shutter, its distance, and
+ * its cover. A visibility below 1 lays that share of the picture: its colour, emission and what it takes.
+ */
+function lensLaidWgsl({ glowing, moving }: LensFrameTargets, layers: LensPictureLayers, laying: LensLaying, at: LensLaidAt) {
+  const shown = (wgsl: string) => (at.visibility ? `(${wgsl}) * ${at.visibility}` : wgsl);
+  const emission = layers.emission !== null ? shown(`${sampled(layers.emission)}.rgb`) : 'vec3f(0.0)';
   const outputs = (colour: string, light: string, motion: string) => [colour, ...(glowing ? [light] : []), ...(moving ? [motion] : [])].join(', ');
   // The motion of a point p: the plane's own carries it to p ∓ v/2 as the shutter opens and closes, where the views
   // then put it.
   const motion = /* wgsl */ `
   var own = vec2f(0.0);
-  var distance = u.distance;${layers.motion !== null ? /* wgsl */ `
+  var distance = ${at.distance};${layers.motion !== null ? /* wgsl */ `
   let moved = ${sampled(layers.motion)};
   if (moved.w > 1e-4) {
-    own = moved.xy / moved.w;
-    if (u.distances == 1u) { distance = moved.z / moved.w; }
+    own = moved.xy / moved.w;${at.texels ? `
+    if (${at.texels}) { distance = moved.z / moved.w; }` : ''}
   }` : ''}
-  let travel = similar(u.close, p + own * 0.5) - similar(u.open, p - own * 0.5);`;
+  let travel = similar(${at.close}, p + own * 0.5) - similar(${at.open}, p - own * 0.5);`;
   const laid = {
     filter: /* wgsl */ `
-  let through = ${layers.taken !== null ? `1.0 - ${sampled(layers.taken)}.rgb` : 'vec3f(1.0 - colour.a)'};
+  let through = ${layers.taken !== null ? `1.0 - ${shown(`${sampled(layers.taken)}.rgb`)}` : 'vec3f(1.0 - colour.a)'};
   return Laid(${outputs('vec4f(through, 1.0 - colour.a)', 'vec4f(through, 1.0 - colour.a)', 'vec4f(0.0)')});`,
     add: /* wgsl */ `${moving ? motion : ''}
   return Laid(${outputs('colour', `vec4f(${emission}, 0.0)`, 'vec4f(travel, distance, colour.a)')});`,
   }[laying];
-  const locations = ['@location(0) colour: vec4f', ...(glowing ? ['@location(1) emission: vec4f'] : []), ...(moving ? [`@location(${glowing ? 2 : 1}) motion: vec4f`] : [])];
+  return /* wgsl */ `
+  let colour = ${shown(sampled(0))};${laid}`;
+}
+
+/** The frame pixel's centre back through view `view` (a vec4f expression) to the plane: q = m·p + k, so p = (q − k)·conj(m) / |m|². */
+const unviewedWgsl = (view: string, at: string) => /* wgsl */ `
+  let m = ${view}.xy;
+  let d = ${at}.xy - ${view}.zw;
+  let p = vec2f(d.x * m.x + d.y * m.y, d.y * m.x - d.x * m.y) / dot(m, m);`;
+
+/**
+ * The composite's WGSL, drawn twice a layer (`laying`) into the frame's colour (location 0), its emission (1) when
+ * `glowing`, and its motion (next) when `moving`: binds its uniform (0), the picture as an array (1) and a linear
+ * clamped sampler (2).
+ */
+export function lensCompositeWgsl(has: LensFrameTargets, layers: LensPictureLayers, laying: LensLaying) {
   return /* wgsl */ `
 ${GPU_FULL_FRAME_WGSL}
 ${LENS_COMPOSITE.wgsl}
 @group(0) @binding(0) var<uniform> u: LensComposite;
 @group(0) @binding(1) var picture: texture_2d_array<f32>;
 @group(0) @binding(2) var linearClamp: sampler;
-struct Laid { ${locations.join(', ')} }
-fn similar(m: vec4f, p: vec2f) -> vec2f { return vec2f(m.x * p.x - m.y * p.y, m.y * p.x + m.x * p.y) + m.zw; }
-@fragment fn lensComposite(@builtin(position) at: vec4f) -> Laid {
-  // The frame pixel's centre back through the view to the plane: q = m·p + k, so p = (q − k)·conj(m) / |m|².
-  let m = u.view.xy;
-  let d = at.xy - u.view.zw;
-  let p = vec2f(d.x * m.x + d.y * m.y, d.y * m.x - d.x * m.y) / dot(m, m);
+${lensLaidHeadWgsl(has)}
+@fragment fn lensComposite(@builtin(position) at: vec4f) -> Laid {${unviewedWgsl('u.view', 'at')}
   let uv = (p - u.origin) / u.size;
   // Past a clipped picture's edge it's clear: nothing is laid there, by either laying.
-  if (u.clipped == 1u && (any(uv < vec2f(0.0)) || any(uv > vec2f(1.0)))) { discard; }
-  let colour = ${sampled(0)};${laid}
+  if (u.clipped == 1u && (any(uv < vec2f(0.0)) || any(uv > vec2f(1.0)))) { discard; }${lensLaidWgsl(has, layers, laying, {
+    open: 'u.open', close: 'u.close', distance: 'u.distance', texels: 'u.distances == 1u', visibility: null,
+  })}
+}`;
+}
+
+/**
+ * Where a frame of `frame` px shows items laying one picture: its first texel's corner at plane point `origin`, `size`
+ * texels, clear past its edge. Each item's view, its views at the shutter's ends, its distance and visibility are its
+ * instance's row (LENS_ITEM_ROW).
+ */
+export const LENS_ITEMS = gpuUniformLayout('LensItems', [['origin', 'vec2f'], ['size', 'vec2f'], ['frame', 'vec2f']]);
+
+/** An item's instance row: its view, open and close (each ma, mb, kx, ky), then its distance and visibility. */
+export const LENS_ITEM_ROW = { floats: 14, layout: {
+  arrayStride: 56, stepMode: 'instance', attributes: [
+    { shaderLocation: 0, offset: 0, format: 'float32x4' }, { shaderLocation: 1, offset: 16, format: 'float32x4' },
+    { shaderLocation: 2, offset: 32, format: 'float32x4' }, { shaderLocation: 3, offset: 48, format: 'float32x2' },
+  ],
+} } as const satisfies { floats: number; layout: GPUVertexBufferLayout };
+
+/**
+ * The items' WGSL, drawn as a triangle strip of 4 vertices an item (its picture's box through its view), twice an
+ * item (`laying`) into the composite's targets as lensCompositeWgsl draws a layer: binds its uniform (0), the
+ * picture (1) and the sampler (2); its instance rows are LENS_ITEM_ROW.
+ */
+export function lensItemsWgsl(has: LensFrameTargets, layers: LensPictureLayers, laying: LensLaying) {
+  return /* wgsl */ `
+${LENS_ITEMS.wgsl}
+@group(0) @binding(0) var<uniform> u: LensItems;
+@group(0) @binding(1) var picture: texture_2d_array<f32>;
+@group(0) @binding(2) var linearClamp: sampler;
+${lensLaidHeadWgsl(has)}
+struct Item {
+  @builtin(position) at: vec4f,
+  @location(0) @interpolate(flat) view: vec4f,
+  @location(1) @interpolate(flat) open: vec4f,
+  @location(2) @interpolate(flat) close: vec4f,
+  @location(3) @interpolate(flat) lit: vec2f,
+}
+@vertex fn lensItem(@builtin(vertex_index) corner: u32, @location(0) view: vec4f, @location(1) open: vec4f, @location(2) close: vec4f, @location(3) lit: vec2f) -> Item {
+  let q = similar(view, u.origin + vec2f(f32(corner & 1u), f32(corner >> 1u)) * u.size) / u.frame;
+  return Item(vec4f(q.x * 2.0 - 1.0, 1.0 - q.y * 2.0, 0.0, 1.0), view, open, close, lit);
+}
+@fragment fn lensItemLaid(item: Item) -> Laid {${unviewedWgsl('item.view', 'item.at')}
+  let uv = (p - u.origin) / u.size;
+  // The quad is the picture's box; a pixel its edge cuts is laid only where its centre falls inside.
+  if (any(uv < vec2f(0.0)) || any(uv > vec2f(1.0))) { discard; }${lensLaidWgsl(has, layers, laying, {
+    open: 'item.open', close: 'item.close', distance: 'item.lit.x', texels: null, visibility: 'item.lit.y',
+  })}
 }`;
 }
 
