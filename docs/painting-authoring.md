@@ -401,8 +401,12 @@ Edges: `crisp` is a wall paint and water stop at, where a drying wash gathers it
 wall and rim, ramping coverage to nothing over `widthPx` inside the line; a feather wider than half a shape never
 reaches full coverage. `bleed(reachPx)` removes the wall: a ramp `reachPx` wide past the line where paint and water
 land fading and dry with no rim; a flood lays its paint over the whole ramp, which grades it. Either ramp is a
-smoothstep, reading from 10% to 90% over about 0.6 of its width: for a soft edge that reads W px wide, give it about
-1.6 W. Past the ramp, paint walks only into water already there; for a wetter loss, lay a
+smoothstep in coverage, and how wide it reads depends on the paint (measured with a dark blue). In watercolour it
+reads from 10% to 90% over about 0.6 of its width, its middle about 0.6 of a bleed's reach past the line (0.4 of a
+feather's width inside it): for an edge that reads W px wide, give it about 1.6 W. Gouache's body colour hides at a
+tenth of a load, so its ramp reads over only about 0.3 of the width, out at its thin end, a bleed's middle about 0.8
+of its reach past the line (a feather's 0.2 inside it): give it about 3.3 W, and draw a bleeding shape's line inside
+where its edge should read. Past the ramp, paint walks only into water already there; for a wetter loss, lay a
 water stroke along the edge first. Two floods of one wash whose ramps overlap both land there, the later into the
 earlier's water. So a silhouette that melts into wet paint is `bleed` on that stretch; a feather still walls it. Any
 edge may be ragged: `roughness: {amountPx, featurePx, seed}`. `maxSpreadPx` on a paint charge caps how far that
