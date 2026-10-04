@@ -18,41 +18,38 @@ const PIECES = { width: 200, height: 140 } as const;
 const { cerulean, yellowOchre, ultramarine, quinacridoneRose, burntSienna, phthaloBlue, phthaloGreen } = WATERCOLOUR_PIGMENTS;
 const mixOf = (pigment: Mix['parts'][number]['pigment'], strength: number): Mix => ({ parts: [{ pigment, amount: 1 }], strength });
 
-/** The sprig's layers some frame hides, by the property painting each: the flag's two cels, the bud's rim, the seed's paint. */
-const HIDEABLE = { 'flag-ochre': 'ochre', 'flag-blue': 'blue', 'bud-rim': 'rim', seed: 'seed' } as const;
-export type StampGatePiecesHideable = keyof typeof HIDEABLE;
-const hideableProperty: ReadonlyMap<string, (typeof HIDEABLE)[StampGatePiecesHideable]> = new Map(Object.entries(HIDEABLE));
+/** A sprig layer over `polygon`, dry over what's before it unless `first`; painted clear unless `painted`. */
+const sprigLayer = (key: string, polygon: readonly number[], mix: Mix, { painted = true, first = false } = {}): Layer =>
+  (painted ? stampGateHeronLayer(key, stampGateHeronPolygon(...polygon), mix, 0.7, first ? undefined : 'dry') : { key, washes: [] });
 
-// A layer's place on its sheet names its deposits and so seeds them: one left out would repaint every later one, so
-// one not painted is painted clear in its place.
+// The layers some frame hides, each painted unless its property is false: the flag's `ochre` and `blue` cels, the
+// bud's `rim` and the `seed`. A layer's place on its sheet names its deposits and so seeds them: one left out would
+// repaint every later one, so one not painted is painted clear in its place.
 const piecesProperties = {
   ochre: { type: 'boolean', default: true }, blue: { type: 'boolean', default: true }, rim: { type: 'boolean', default: true }, seed: { type: 'boolean', default: true },
 } as const satisfies PropertySchema;
 
 /**
  * A sky; and a `sprig` owning a card of warm paper: a two-cel flag, a petal-and-rim `bud`, a `seed` and its clear
- * cel, and a `leaf`, each painted dry over the last. A hideable layer whose property is false is painted clear.
+ * cel, and a `leaf`, each painted dry over the last.
  */
 export const STAMP_GATE_PIECES: PaintingSourceModule<typeof piecesProperties> = {
   properties: piecesProperties,
-  default: function gatePieces(painted: PropertyValues<typeof piecesProperties>): PaintingDocument {
-    const clear = (key: string) => {
-      const property = hideableProperty.get(key);
-      return property !== undefined && !painted[property];
-    };
-    const layer = (key: string, polygon: readonly number[], mix: Mix, first = false): Layer =>
-      (clear(key) ? { key, washes: [] } : stampGateHeronLayer(key, stampGateHeronPolygon(...polygon), mix, 0.7, first ? undefined : 'dry'));
+  default: function gatePieces({ ochre, blue, rim, seed }: PropertyValues<typeof piecesProperties>): PaintingDocument {
     const bud: LayerNode = {
       key: 'bud',
-      children: [layer('bud-petal', [62, 22, 94, 18, 98, 60, 66, 64], mixOf(quinacridoneRose, 0.6)), layer('bud-rim', [62, 74, 98, 70, 100, 86, 64, 90], mixOf(burntSienna, 0.7))],
+      children: [
+        sprigLayer('bud-petal', [62, 22, 94, 18, 98, 60, 66, 64], mixOf(quinacridoneRose, 0.6)),
+        sprigLayer('bud-rim', [62, 74, 98, 70, 100, 86, 64, 90], mixOf(burntSienna, 0.7), { painted: rim }),
+      ],
     };
     const sprig: LayerNode[] = [
-      layer('flag-ochre', [12, 18, 44, 14, 48, 56, 16, 60], mixOf(yellowOchre, 0.7), true),
-      layer('flag-blue', [12, 78, 44, 74, 48, 118, 16, 122], mixOf(ultramarine, 0.6)),
+      sprigLayer('flag-ochre', [12, 18, 44, 14, 48, 56, 16, 60], mixOf(yellowOchre, 0.7), { painted: ochre, first: true }),
+      sprigLayer('flag-blue', [12, 78, 44, 74, 48, 118, 16, 122], mixOf(ultramarine, 0.6), { painted: blue }),
       bud,
-      layer('seed', [112, 30, 144, 26, 148, 70, 116, 74], mixOf(phthaloBlue, 0.5)),
+      sprigLayer('seed', [112, 30, 144, 26, 148, 70, 116, 74], mixOf(phthaloBlue, 0.5), { painted: seed }),
       { key: 'seed-clear', washes: [] },
-      layer('leaf', [160, 40, 188, 30, 192, 100, 166, 108], mixOf(phthaloGreen, 0.5)),
+      sprigLayer('leaf', [160, 40, 188, 30, 192, 100, 166, 108], mixOf(phthaloGreen, 0.5)),
     ];
     return {
       widthPx: PIECES.width, heightPx: PIECES.height, paper: stampGateHeronPaper('#f3eee2', 1), medium: 'watercolour',
@@ -91,21 +88,20 @@ export const STAMP_GATE_PIECES_TABLE: readonly { readonly from: number; readonly
 
 const rowAt = ({ at }: PaintMoment) => STAMP_GATE_PIECES_TABLE.findLast(({ from }) => from <= at)!;
 
-/** The sprig on one still plane, the layers `clear` names painted clear, rigged as `rig` says. */
-const piecesShot = (clear: readonly StampGatePiecesHideable[], rig: Pick<NonNullable<PaintedShotProps['rigs']>[string], 'parts' | 'pose'>): PaintedShotProps => {
-  const cleared: ReadonlySet<string> = new Set(clear);
-  const painted = Object.fromEntries([...hideableProperty].map(([key, property]) => [property, !cleared.has(key)]));
-  return {
-    camera: { stage: stampStage(PIECES, 2), fov: 35, lens: { bloom: 0, shutter: 0 }, plays: [] },
-    planes: [{ id: 'pieces', depth: 1, source: layersOf(painting(STAMP_GATE_PIECES, painted), ['sky', 'sprig']) }],
-    rigs: { 'pieces/sprig': rig },
-  };
-};
+/** The sprig on one still plane, painted as `painted` says, rigged as `rig` says. */
+const piecesShot = (painted: Partial<PropertyValues<typeof piecesProperties>>, rig: Pick<NonNullable<PaintedShotProps['rigs']>[string], 'parts' | 'pose'>): PaintedShotProps => ({
+  camera: { stage: stampStage(PIECES, 2), fov: 35, lens: { bloom: 0, shutter: 0 }, plays: [] },
+  planes: [{ id: 'pieces', depth: 1, source: layersOf(painting(STAMP_GATE_PIECES, painted), ['sky', 'sprig']) }],
+  rigs: { 'pieces/sprig': rig },
+});
 
 /** The sprig posed and its rim switched by STAMP_GATE_PIECES_TABLE. */
 export const stampGatePiecesShot = (): PaintedShotProps => ({
-  ...piecesShot([], { parts: STAMP_GATE_PIECES_PARTS, pose: (moment) => rowAt(moment).pose }), visibility: { 'pieces/bud-rim': (moment) => rowAt(moment).rim },
+  ...piecesShot({}, { parts: STAMP_GATE_PIECES_PARTS, pose: (moment) => rowAt(moment).pose }), visibility: { 'pieces/bud-rim': (moment) => rowAt(moment).rim },
 });
 
-/** The sprig with `clear` painted clear, every cel shown at rest as a part of its own: what a frame hiding them shows. */
-export const stampGatePiecesFlatShot = (clear: readonly StampGatePiecesHideable[]): PaintedShotProps => piecesShot(clear, { parts: STAMP_GATE_PIECES_FLAT_PARTS, pose: {} });
+/**
+ * The sprig painted as `painted` says (a layer whose property is false painted clear), every cel shown at rest as a
+ * part of its own: what a frame hiding those layers shows.
+ */
+export const stampGatePiecesFlatShot = (painted: Partial<PropertyValues<typeof piecesProperties>>): PaintedShotProps => piecesShot(painted, { parts: STAMP_GATE_PIECES_FLAT_PARTS, pose: {} });

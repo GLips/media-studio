@@ -578,9 +578,10 @@ solve, a skinned cel by its skin mesh, its pose named by its skin's key (its res
 every part's map, since every rest cel shapes the mesh. A hidden cel stays in its sheet's program and isn't laid, so a
 cel swap re-solves nothing. A pieces rig's picture lays only its shown cels' films (`ShotPiecesPlan.steps`), each at
 its index in its sheet's program, whose mixing group is its palette and drying, so nothing hidden ahead of it moves
-it (`StampSheetLaid.shown`). A card is cut round its sheet's films, each counted as far as it shows (its layer's
-visibility times its groups' below the owner; a cel a rig hides, not at all), so a view switched off takes its paper,
-as a pieces rig's hidden cels do.
+it (`readSteps` in `studio/shot-rig-pieces.ts` hands the composite each sheet's films whole, `StampSheetKeptFilms`).
+A card is cut round its sheet's films, each counted as far as it shows (its layer's visibility times its groups'
+below the owner; a cel a rig hides, not at all), so a view switched off takes its paper, as a pieces rig's hidden
+cels do: a composite's card counts the films its steps lay on its sheet (`StampSheetsComposite.cardFilms`).
 `studio/shot-renderer.ts` solves each painted plane once a frame (`studio/shot-painted-plane.ts`,
 through `painting-sheets-solve.ts`), each selection a dissolve blends on its own; then each exposure orders its drawables (`shot-plan.ts`) and plans each plane's
 moment purely (`shotPlaneLayPlan`, `shot-sheet-lays.ts`): its steps through lattices (`shot-lattice.ts`), its ground,

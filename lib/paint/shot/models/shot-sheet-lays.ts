@@ -292,9 +292,8 @@ function shotPiecesPlan(input: ShotPlaneLayInput, found: ShotRigFound, { at, shu
   const unseen = new Set([...faded].flatMap((key) => paintingNodeSteps(compiled, key))), shown = rig.parts.map(({ id }) => atPose.posed.shown.get(id)!);
   const showing = new Set(shown.flatMap((cel) => rig.celLayers.get(cel)!));
   const steps = compiled.steps.flatMap((step, index) => {
-    const { sheet: onSheet, layers } = compiled.sheets[step.sheet];
-    if (!paintingSheetInGroup(tree, onSheet, rig.group) || unseen.has(index)) return [];
-    return step.kind === 'card' || showing.has(tree.layers[layers[step.film]].node.key) ? [index] : [];
+    if (!paintingSheetInGroup(tree, compiled.sheets[step.sheet].sheet, rig.group) || unseen.has(index)) return [];
+    return step.kind === 'card' || showing.has(paintingStepNode(compiled, step)) ? [index] : [];
   });
   return { rig, shown, steps, at: atPose, shutter, travels: !!shutter && piecesPoseText(shutter.open) !== piecesPoseText(shutter.close) };
 }

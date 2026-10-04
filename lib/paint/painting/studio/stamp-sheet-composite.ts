@@ -1,8 +1,8 @@
 // stamp-sheet-composite.ts: the films of several sheets laid as one picture (ENGINE 5.4, 5.5). The root sheet's paper
 // is the ground; then, back to front, each film by its own sheet's lay (its compositor, paper colour and photograph),
-// and an own sheet's card where its owner comes: its paper laid as far as the union of its films' coverage reaches,
-// cover = min(1, STAMP_OPAQUE_COVER × union). A placed sheet is laid moved by a similarity. A film cut by reveals is
-// laid, and joins its card's union, as they show it; the union is cached under its films' keys and reveals.
+// and an own sheet's card where its owner comes: its paper laid as far as the union of its laid films' coverage
+// reaches, cover = min(1, STAMP_OPAQUE_COVER × union). A placed sheet is laid moved by a similarity. A film cut by
+// reveals is laid, and joins its card's union, as they show it; the union is cached under its films' keys and reveals.
 //
 // Whoever solved a composite's films holds them until it's laid (holdStampSheetFilms): another solve meanwhile may
 // make entries past the cache's budget.
@@ -35,16 +35,23 @@ export type StampSheetKeptFilms = { readonly program: StampSheetProgram; readonl
 
 /**
  * A sheet as a composite lays it: its kept films; `place`, where its films, card and paper lie (null: where they were
- * painted); `reveals`, each film's, outermost first (STAMP_FILMS_WHOLE for a readback, read as painted); and `shown`,
- * how much of each film its card counts (StampSheetEdgeFilm's): 0 for one a readback of part of the sheet leaves out.
+ * painted); and `reveals`, each film's, outermost first (STAMP_FILMS_WHOLE for a readback, read as painted).
  */
-export type StampSheetLaid = StampSheetKeptFilms & { readonly place: StampSheetPlace | null; readonly reveals: StampFilmRevealLinks; readonly shown: readonly number[] };
+export type StampSheetLaid = StampSheetKeptFilms & { readonly place: StampSheetPlace | null; readonly reveals: StampFilmRevealLinks };
 
 /**
  * Sheets laid as one picture: the root's first, its paper the ground when one is laid; the steps laying them, back
- * to front. Every sheet is the same document's: one size.
+ * to front. Every sheet is the same document's: one size. A card is cut round the films the steps lay on its sheet,
+ * or with `cardFilms: 'kept'` every film it keeps, backing a film read alone.
  */
-export type StampSheetsComposite = { sheets: readonly StampSheetLaid[]; steps: readonly StampSheetCompositeStep[] };
+export type StampSheetsComposite = { sheets: readonly StampSheetLaid[]; steps: readonly StampSheetCompositeStep[]; cardFilms?: 'laid' | 'kept' };
+
+/** Each sheet's films its card is cut round, in film order (StampSheetsComposite's `cardFilms`). */
+function stampSheetsCardFilms({ sheets, steps, cardFilms = 'laid' }: StampSheetsComposite): readonly (readonly number[])[] {
+  const counted = sheets.map(({ films }) => films.map(() => cardFilms === 'kept'));
+  for (const step of steps) if (step.kind === 'film') counted[step.sheet][step.film] = true;
+  return counted.map((films) => films.flatMap((on, f) => (on ? [f] : [])));
+}
 
 /** A kept edge's note: the painting points its union covers. */
 type StampSheetEdgeNote = { box: StampPointBox };
@@ -141,10 +148,13 @@ const revealSlots = (sheet: StampSheetLaid, film: number) => stampRevealSlots(sh
  * How many uniform slots laying `composite` may take: the ground, a rest map a sheet, a card and its edge's joins
  * (each film cut first), a lay a film and its cut.
  */
-const compositeSlots = ({ sheets, steps }: StampSheetsComposite) => 1 + sheets.length + steps.reduce((sum, step) => {
-  const sheet = sheets[step.sheet];
-  return sum + (step.kind === 'card' ? 1 + sheet.films.reduce((joins, _, f) => joins + 1 + revealSlots(sheet, f), 0) : 1 + revealSlots(sheet, step.film));
-}, 0);
+const compositeSlots = (composite: StampSheetsComposite) => {
+  const { sheets, steps } = composite, cardFilms = stampSheetsCardFilms(composite);
+  return 1 + sheets.length + steps.reduce((sum, step) => {
+    const sheet = sheets[step.sheet];
+    return sum + (step.kind === 'card' ? 1 + cardFilms[step.sheet].reduce((joins, f) => joins + 1 + revealSlots(sheet, f), 0) : 1 + revealSlots(sheet, step.film));
+  }, 0);
+};
 
 /** A composite's sheets made ready to lay on a device: each one's compositor and lay, its paper's photograph loaded. */
 export type StampSheetsLays = { stage: StampStage; compositors: readonly StampPaintCompositor[]; lays: readonly StampPaintLay[]; painting: StampPaintTarget };
@@ -190,7 +200,7 @@ function encodeStampSheetsSteps(
   owner: StampPaintGpuOwner, device: StampPaintDevice, encoder: GPUCommandEncoder, arena: StampUniformArena, composite: StampSheetsComposite,
   { stage, compositors, lays }: StampSheetsLays, painting: GPUTextureView, ground: StampPaintBacking,
 ) {
-  const revealing = createStampRevealPass(owner, device, stage), size = { width: stage.width, height: stage.height };
+  const revealing = createStampRevealPass(owner, device, stage), size = { width: stage.width, height: stage.height }, cardFilms = stampSheetsCardFilms(composite);
   const periodsOf = (s: number) => stampWrapPeriods(composite.sheets[s].program, composite.sheets[s].program.wrap);
   const rests = composite.sheets.map(({ place }, s) => {
     if (!place) return null;
@@ -200,12 +210,10 @@ function encodeStampSheetsSteps(
     return view;
   });
   for (const step of composite.steps) {
-    const { films, place, reveals, shown } = composite.sheets[step.sheet], rest = rests[step.sheet];
+    const { films, place, reveals } = composite.sheets[step.sheet], rest = rests[step.sheet];
     if (step.kind === 'card') {
-      // A film counted none of is left out of the edge's box as well as its union.
-      const counted = films.flatMap((film, f) => (shown[f] > 0 ? [{ film, shown: shown[f], links: reveals[f] ?? [] }] : []));
-      const cutting = { reveals: counted.map(({ links }) => links), pass: revealing, stage, size, periods: periodsOf(step.sheet) };
-      const edge = stampSheetEdge(owner, device, encoder, arena, counted, cutting);
+      const counted = cardFilms[step.sheet], cutting = { reveals: counted.map((f) => reveals[f] ?? []), pass: revealing, stage, size, periods: periodsOf(step.sheet) };
+      const edge = stampSheetEdge(owner, device, encoder, arena, counted.map((f) => ({ film: films[f], shown: 1 })), cutting);
       const edgeBox = edge && stampStageTexelsOf(stage, edge.box);
       const box = edgeBox && (place ? placedBox(stage, edgeBox, place) : edgeBox);
       if (edge && edgeBox && box) lays[step.sheet].layCard(encoder, { edge: edge.view, edgeBox, painting, box, rest });

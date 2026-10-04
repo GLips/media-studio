@@ -52,16 +52,13 @@ export function createShotRigPictures(owner: StampPaintGpuOwner, costs?: StampPa
   const skins = new WeakMap<PaintRigPicture, Map<string, ShotRigSkin>>(), cuts = new WeakMap<PaintRigPicture, WeakMap<ShotRigSkin, readonly PaintRigPicture[]>>();
   /**
    * `solved`'s steps `steps` read back clear, the sheets unmoved: a film laid at its index in its sheet, by its own
-   * palette and drying, whatever the steps leave out before it; a card cut round the films they lay; each film cut by
-   * its reveals. Kept under its films' keys and reveals and its cards' papers.
+   * palette and drying, whatever the steps leave out before it; a card cut round the films they lay on its sheet; each
+   * film cut by its reveals. Kept under its films' keys and reveals and its cards' papers.
    */
   const readSteps = async (solved: ShotSolvedFilms, steps: readonly number[]): Promise<ShotRigKeyedPicture> => {
     const { compiled } = solved, laid = steps.map((index) => compiled.steps[index]);
-    const lays = (sheet: number, film: number) => laid.some((step) => step.kind === 'film' && step.sheet === sheet && step.film === film);
-    const composite: StampSheetsComposite = {
-      sheets: compiled.sheets.map(({ program }, s) => ({ program, films: solved.films[s], place: null, reveals: solved.reveals[s], shown: solved.films[s].map((_, f) => (lays(s, f) ? 1 : 0)) })),
-      steps: laid,
-    };
+    // Each sheet's films whole, so a step's film index is its program's.
+    const composite: StampSheetsComposite = { sheets: compiled.sheets.map(({ program }, s) => ({ program, films: solved.films[s], place: null, reveals: solved.reveals[s] })), steps: laid };
     // A card reaches only as far as the films laid on it, whose steps name them in the crop and key.
     const crop = laid.reduce<StampPointBox | null>((union, step) => (step.kind === 'film' ? stampBoxUnion(union, solved.films[step.sheet][step.film].box) : union), null);
     const key = laid.map((step) => {

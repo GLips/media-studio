@@ -10,7 +10,7 @@ import { STAMP_GATE_CARDS_AT, stampGateCardsShot } from '../models/stamp-gate-ca
 import { STAMP_GATE_FRAME_TOLERANCE, stampGateFrameDifference, stampGateFrameDifferenceText, stampGateFramePasses } from '../models/stamp-gate-frames.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { STAMP_GATE_HERON_MOVE, stampGateHighPass, stampGatePeakShift } from '../models/stamp-gate-paper-heron.ts';
-import { STAMP_GATE_PIECES_AT, stampGatePiecesFlatShot, stampGatePiecesShot, type StampGatePiecesHideable } from '../models/stamp-gate-pieces.ts';
+import { STAMP_GATE_PIECES_AT, stampGatePiecesFlatShot, stampGatePiecesShot } from '../models/stamp-gate-pieces.ts';
 import { STAMP_GATE_LONE_DROP_AT, STAMP_GATE_LONE_DROP_TRAVEL, STAMP_GATE_RAIN, stampGateLoneDropShot, stampGateRainShot } from '../models/stamp-gate-rain.ts';
 import { STAMP_GATE_FAR_SHALLOWS } from '../models/stamp-gate-sheets.ts';
 import {
@@ -268,8 +268,8 @@ async function checkCards(): Promise<StampGateWashCheck[]> {
   ];
 }
 
-/** The sprig with the layers `clear` names painted clear, every cel shown, its one frame as RGB bytes. */
-const piecesFlat = async (...clear: StampGatePiecesHideable[]) => stampGateRgb((await stampGateShotFrames(stampGatePiecesFlatShot(clear), [STAMP_GATE_PIECES_AT.rest])).frames[0]);
+/** The sprig painted as `painted` says, every cel shown, its one frame as RGB bytes. */
+const piecesFlat = async (painted: Parameters<typeof stampGatePiecesFlatShot>[0]) => stampGateRgb((await stampGateShotFrames(stampGatePiecesFlatShot(painted), [STAMP_GATE_PIECES_AT.rest])).frames[0]);
 
 /**
  * shot/pieces: a sprig drawn as pieces lays every film by its own palette, whatever is hidden ahead of it. Its flag
@@ -280,8 +280,8 @@ async function checkPieces(): Promise<StampGateWashCheck[]> {
   const { rest, swapped, off, cleared } = STAMP_GATE_PIECES_AT;
   const { frames: [, atSwapped, atOff, atCleared], costs: taken } = await stampGateShotFrames(stampGatePiecesShot(), [rest, swapped, off, cleared]);
   const [swap, rimOff, clear] = [
-    stampGateFrameDifference(stampGateRgb(atSwapped), await piecesFlat('flag-ochre')), stampGateFrameDifference(stampGateRgb(atOff), await piecesFlat('flag-blue', 'bud-rim')),
-    stampGateFrameDifference(stampGateRgb(atCleared), await piecesFlat('flag-blue', 'seed')),
+    stampGateFrameDifference(stampGateRgb(atSwapped), await piecesFlat({ ochre: false })), stampGateFrameDifference(stampGateRgb(atOff), await piecesFlat({ blue: false, rim: false })),
+    stampGateFrameDifference(stampGateRgb(atCleared), await piecesFlat({ blue: false, seed: false })),
   ];
   const solves = taken.slice(1).flatMap(solvedText), allowed = `${STAMP_GATE_FRAME_TOLERANCE.max} levels allowed`;
   return [

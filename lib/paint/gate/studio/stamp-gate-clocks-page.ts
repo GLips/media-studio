@@ -26,7 +26,7 @@ const ID = 'schedule/clocks';
 const namesOf = ({ entries }: StampSheetProgram) => entries.map(({ name }) => name);
 /** A root sheet's kept `films` as a composite of it alone, at rest on its paper. */
 const aloneOnPaper = (program: StampSheetProgram, films: readonly StampSheetFilmKept[]): StampSheetsComposite =>
-  ({ sheets: [{ program, films, place: null, reveals: STAMP_FILMS_WHOLE, shown: films.map(() => 1) }], steps: program.films.map((_, film) => ({ kind: 'film', sheet: 0, film }) as const) });
+  ({ sheets: [{ program, films, place: null, reveals: STAMP_FILMS_WHOLE }], steps: program.films.map((_, film) => ({ kind: 'film', sheet: 0, film }) as const) });
 /** Whether `said`, a refusal or a warning, reads as `starts` … `ends`. */
 const saidAs = (said: string | null, { starts, ends }: { starts: string; ends: string }) => !!said && said.startsWith(starts) && said.endsWith(ends);
 

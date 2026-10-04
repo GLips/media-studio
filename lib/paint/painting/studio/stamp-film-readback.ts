@@ -99,7 +99,7 @@ export function readStampFilmPicture(owner: StampPaintGpuOwner, sheet: StampShee
     if (!crop) return emptyPicture();
     const card: StampSheetCompositeStep[] = backing === 'sheet' && edge === 'union' ? [{ kind: 'card', sheet: 0 }] : [];
     // The card is the sheet's paper as far as all its films reach, though only one is laid on it.
-    const composite = { sheets: [{ ...sheet, place: null, reveals: STAMP_FILMS_WHOLE, shown: films.map(() => 1) }], steps: [...card, { kind: 'film', sheet: 0, film } as const] };
+    const composite: StampSheetsComposite = { sheets: [{ ...sheet, place: null, reveals: STAMP_FILMS_WHOLE }], steps: [...card, { kind: 'film', sheet: 0, film }], cardFilms: 'kept' };
     return readStampSheetsPicture(owner, composite, crop, backing === 'sheet' && edge === 'document' ? 'paper' : 'clear', costs);
   }, costs);
 }
