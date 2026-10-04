@@ -559,7 +559,9 @@ swapped to its lowered cel with nothing solved, then faded halfway as one group,
 with nothing solved, and reeds owning their sheet drawn as pieces, solving at rest as unrigged and swinging when
 posed; the heron boiling, its wobble moving finished paint with nothing solved; and the wet-contact foot posed by a
 rig, resuming its sheet's solve from its checkpoints, and painted in as the shot plays, its rig drawing before the
-foot's first stroke. Each shot's frame is a baseline (`shot/`) accepted by eye. `shot/page`
+foot's first stroke; and rain (`stamp-gate-rain.ts`) falling about a post under a still camera, a lone drop blurring
+along its own fall and drawn as if shut when keyed anew across the shutter, a frame moving only drops solving nothing
+and laying no picture anew. Each shot's frame is a baseline (`shot/`) accepted by eye. `shot/page`
 (`stamp-gate-shot-dom-page.ts`) holds a shot's element on the page, scaled as a player shows it, and reads it through
 the DOM adapter: HTML behind the first canvas or not, a canvas in a wrapper at an identity transform refused; the
 heron alone, a clear back, drawn premultiplied, clear at its corners; then pinned to an element, its paint's centroid

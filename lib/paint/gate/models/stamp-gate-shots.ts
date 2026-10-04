@@ -1,9 +1,10 @@
 // stamp-gate-shots.ts: the gate's shots (ENGINE 9, tests 6 and 7 drawn through a PaintedShot): the rigged heron, the
 // paper heron with a neck skinned to its body on the scene's sheet (a lowered neck its second cel), its wing a cel
 // moving its own sheet whole, and a clump of reeds whose group owns its sheet, drawn as pieces, also boiling; and the
-// wet-contact sheet with its heron's foot posed by a rig, also painted in as it plays; and the heron alone, a clear back
-// over HTML, also pinned (shot/page). Each shot's poses are a table by scene second, so its baseline's inputs name
-// them. What the cases measure of their frames is here, pure.
+// wet-contact sheet with its heron's foot posed by a rig, also painted in as it plays; the heron alone, a clear back
+// over HTML, also pinned (shot/page); and the rain (stamp-gate-rain.ts). Each shot's poses are a table by scene
+// second, and the rain's drops one of their own, so its baseline's inputs name them. What the cases measure of their
+// frames is here, pure.
 
 import { compilePaintingSelection } from '#lib/paint/document/models/painting-document-compile.ts';
 import type { LayerNode, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
@@ -13,19 +14,24 @@ import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercol
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
-import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
+import { stampCanonicalJson, type StampCanonicalDatum } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import type { PaintedShotProps, RigPart, RigPartPose, ScreenPin } from '#lib/paint/shot/models/shot-props.ts';
 import {
   STAMP_GATE_HERON_BODY, STAMP_GATE_HERON_MOVE, STAMP_GATE_HERON_VANE, stampGateHeronLayer, stampGateHeronPaper, stampGateHeronPolygon, stampGatePaperHeronDocument,
 } from './stamp-gate-paper-heron.ts';
+import { STAMP_GATE_RAIN, STAMP_GATE_RAINY_STREET, stampGateRainShot } from './stamp-gate-rain.ts';
 import { STAMP_GATE_HERON_POSE, STAMP_GATE_SHEET_IMAGES, STAMP_GATE_WET_CONTACT, stampGateSheetBrushOf } from './stamp-gate-sheets.ts';
 
 /** The shot over a page: its DOM adapter's reads, and a clear back pinned to an element, drawn and read back. */
 export const STAMP_GATE_SHOT_PAGE_IDS = ['shot/page'] as const;
 
 /** The shots accepted by eye: each a baseline subject, one frame of its shot. */
-export const STAMP_GATE_SHOT_IDS = ['shot/paper-heron', 'shot/wet-contact'] as const;
+export const STAMP_GATE_SHOT_IDS = ['shot/paper-heron', 'shot/wet-contact', 'shot/rain'] as const;
+
+/** The shot cases checked apart from any sheet case: each a page's checks of its shot's frames. */
+export const STAMP_GATE_SHOT_CASE_IDS = ['shot/rain'] as const;
+export type StampGateShotCaseId = (typeof STAMP_GATE_SHOT_CASE_IDS)[number];
 export type StampGateShotId = (typeof STAMP_GATE_SHOT_IDS)[number];
 
 const { burntUmber, yellowOchre, phthaloGreen } = WATERCOLOUR_PIGMENTS;
@@ -187,10 +193,13 @@ export function stampGateWetContactPaintingInShot(): PaintedShotProps {
   return { ...stampGateWetContactShot(), planes: [{ id: 'pond', depth: 1, source: ({ at }: PaintMoment) => layersOf(evaluation, ['shallows', 'heron'], { at }) }] };
 }
 
-/** Each shot baseline: its shot, the frame it shows, and its sources and poses as its inputs name them. */
-const SHOT_BASELINES: Readonly<Record<StampGateShotId, { shot: () => PaintedShotProps; at: number; evaluation: () => PaintingEvaluation; rigs: Readonly<Record<string, readonly RigPart[]>>; poses: StampGatePoseTable }>> = {
+/** Each shot baseline: its shot, the frame it shows, and its sources, poses and instances as its inputs name them. */
+const SHOT_BASELINES: Readonly<Record<StampGateShotId, {
+  shot: () => PaintedShotProps; at: number; evaluation: () => PaintingEvaluation; rigs: Readonly<Record<string, readonly RigPart[]>>; poses: StampGatePoseTable; instances?: StampCanonicalDatum;
+}>> = {
   'shot/paper-heron': { shot: stampGateRiggedHeronShot, at: STAMP_GATE_RIGGED_HERON_AT.posed, evaluation: () => painting(STAMP_GATE_RIGGED_HERON), rigs: { heron: HERON_PARTS, reeds: REED_PARTS }, poses: HERON_POSES },
   'shot/wet-contact': { shot: stampGateWetContactShot, at: STAMP_GATE_WET_CONTACT_AT.posed, evaluation: () => painting(STAMP_GATE_WET_CONTACT), rigs: { heron: FOOT_RIG }, poses: FOOT_POSES },
+  'shot/rain': { shot: stampGateRainShot, at: STAMP_GATE_RAIN.at.first, evaluation: () => painting(STAMP_GATE_RAINY_STREET), rigs: {}, poses: [], instances: STAMP_GATE_RAIN },
 };
 
 /** Shot baseline `id`'s shot and the scene second its frame shows. */
@@ -199,10 +208,10 @@ export function stampGateShotBaseline(id: StampGateShotId): { shot: PaintedShotP
   return { shot: shot(), at };
 }
 
-/** What shot baseline `id` is drawn from, as text: its sheets' programs and steps, its rigs, its poses, its frame and the images it loads. */
+/** What shot baseline `id` is drawn from, as text: its sheets' programs and steps, its rigs, its poses, its instances, its frame and the images it loads. */
 export function stampGateShotInputs(id: StampGateShotId): string {
-  const { evaluation, rigs, poses, at } = SHOT_BASELINES[id], compiled = compilePaintingSelection(evaluation(), stampGateSheetBrushOf);
-  return stampCanonicalJson({ programs: compiled.sheets.map(({ program }) => program), steps: compiled.steps, rigs, poses, at, images: STAMP_GATE_SHEET_IMAGES });
+  const { evaluation, rigs, poses, at, instances } = SHOT_BASELINES[id], compiled = compilePaintingSelection(evaluation(), stampGateSheetBrushOf);
+  return stampCanonicalJson({ programs: compiled.sheets.map(({ program }) => program), steps: compiled.steps, rigs, poses, at, images: STAMP_GATE_SHEET_IMAGES, ...(instances !== undefined && { instances }) });
 }
 
 const insideEllipse = ({ x, y }: StampPoint, centre: StampPoint, rx: number, ry: number) => ((x - centre.x) / rx) ** 2 + ((y - centre.y) / ry) ** 2 <= 1;

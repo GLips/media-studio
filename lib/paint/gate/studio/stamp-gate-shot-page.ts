@@ -1,6 +1,7 @@
 // stamp-gate-shot-page.ts: the gate page's shots (stamp-gate-shots.ts), each compiled and drawn through the shot's
 // renderer on a surface of its own with the gate's brushes and images, its frames read back: the rigged heron's grain,
-// pieces and boil (test 6), the wet-contact foot posed by its rig and painted in (test 7), and their baselines' frames.
+// pieces and boil (test 6), the wet-contact foot posed by its rig and painted in (test 7), the rain's drops blurred
+// along their own falls (test 5), and their baselines' frames.
 
 import { paintingProblemsError } from '#lib/paint/document/models/painting-problem.ts';
 import { createStampPaintCostTally, type StampPaintCosts, type StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
@@ -10,10 +11,12 @@ import { createPaintedShotRenderer } from '#lib/paint/shot/studio/shot-renderer.
 import { STAMP_GATE_FRAME_TOLERANCE } from '../models/stamp-gate-frames.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { STAMP_GATE_HERON_MOVE, stampGateHighPass, stampGatePeakShift } from '../models/stamp-gate-paper-heron.ts';
+import { STAMP_GATE_LONE_DROP_AT, STAMP_GATE_LONE_DROP_TRAVEL, STAMP_GATE_RAIN, stampGateLoneDropShot, stampGateRainShot } from '../models/stamp-gate-rain.ts';
 import { stampGateSheetBrushOf } from '../models/stamp-gate-sheets.ts';
 import {
   STAMP_GATE_HERON_BOIL_AT, STAMP_GATE_HERON_NECKS, STAMP_GATE_PAINTING_IN_AT, STAMP_GATE_RIGGED_HERON_AT, STAMP_GATE_WET_CONTACT_AT, stampGateBoilingHeronShot, stampGateDifferenceBox, stampGateFadeBetween,
-  stampGateReedSwung, stampGateRiggedHeronShot, stampGateRiggedHeronWindows, stampGateShotBaseline, stampGateWetContactPaintingInShot, stampGateWetContactShot, type StampGateShotId,
+  stampGateReedSwung, stampGateRiggedHeronShot, stampGateRiggedHeronWindows, stampGateShotBaseline, stampGateWetContactPaintingInShot, stampGateWetContactShot, type StampGateShotCaseId,
+  type StampGateShotId,
 } from '../models/stamp-gate-shots.ts';
 import { stampGateRgb, stampGateRgbBase64, withGateSurface } from './stamp-gate-page-surface.ts';
 import { stampGateSheetImageUrl } from './stamp-gate-sheet-owner.ts';
@@ -113,6 +116,45 @@ export async function checkStampGateRiggedWetContact(): Promise<StampGateWashChe
       detail: `drawn at ${unpainted} s, its foot unpainted, and at ${painted} s, painted and posed: changed ${boxText(grown)}${warnings.length ? `; warned: ${warnings.join('; ')}` : ''}`,
     },
   ];
+}
+
+const boxSize = (box: ReturnType<typeof stampGateDifferenceBox>) => box && { w: box.x1 - box.x0, h: box.y1 - box.y0 };
+
+/**
+ * shot/rain (ENGINE test 5, the camera still): a lone drop under an open shutter blurs along its own fall, longer than
+ * it's drawn shut and no wider; keyed anew across the shutter, it draws as if shut; and a frame of the rain that moves
+ * only its drops solves nothing and lays no picture anew.
+ */
+async function checkStampGateRain(): Promise<StampGateWashCheck[]> {
+  const loneDrop = async (kind: Parameters<typeof stampGateLoneDropShot>[0]) => stampGateRgb((await stampGateShotFrames(stampGateLoneDropShot(kind), [STAMP_GATE_LONE_DROP_AT]))[0]);
+  const none = await loneDrop('none'), sharp = await loneDrop('sharp'), blurred = await loneDrop('blurred'), recycled = await loneDrop('recycled');
+  const rain = stampGateRainShot(), { width } = rain.camera.stage.frame, costs = createStampPaintCostTally(), taken: StampPaintCosts[] = [];
+  const [first, next] = await stampGateShotFrames(rain, [STAMP_GATE_RAIN.at.first, STAMP_GATE_RAIN.at.next], costs, () => taken.push(costs.take()));
+  const [shut, open, renewed] = [sharp, blurred, recycled].map((frame) => stampGateDifferenceBox(none, frame, width));
+  const shutSize = boxSize(shut), openSize = boxSize(open), travel = STAMP_GATE_LONE_DROP_TRAVEL;
+  const renewedAsShut = !!shut && !!renewed && (['x0', 'x1', 'y0', 'y1'] as const).every((edge) => Math.abs(shut[edge] - renewed[edge]) <= 1);
+  const fell = stampGateDifferenceBox(stampGateRgb(first), stampGateRgb(next), width), nextSolves = solvedText(taken[1]), misses = taken[1].counts.get('picture misses') ?? 0;
+  const warnings = taken.flatMap((each) => each.warnings);
+  return [
+    {
+      id: 'shot/rain: own blur', passed: !!shutSize && !!openSize && openSize.h >= shutSize.h + travel / 2 && Math.abs(openSize.w - shutSize.w) <= 2,
+      detail: `falling ${travel} px while the shutter's open, the drop shows over ${boxText(open)}; shut, over ${boxText(shut)} (at least ${travel / 2} px longer and within 2 px as wide wanted)`,
+    },
+    {
+      id: 'shot/rain: recycled key', passed: renewedAsShut,
+      detail: `keyed anew across the open shutter, the drop shows over ${boxText(renewed)}; shut, over ${boxText(shut)} (within a px wanted)`,
+    },
+    {
+      id: 'shot/rain: drops only', passed: !!fell && !nextSolves.length && misses === 0 && !warnings.length,
+      detail: `a frame later the drops changed ${boxText(fell)}, solved ${nextSolves.join(', ') || 'nothing'} and laid ${misses} picture${misses === 1 ? '' : 's'} anew${warnings.length ? `; warned: ${warnings.join('; ')}` : ''}`,
+    },
+  ];
+}
+
+/** Shot case `id`'s checks. */
+export async function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGateWashCheck[]> {
+  if (id === 'shot/rain') return checkStampGateRain();
+  throw new Error(`stamp gate: no shot case ${JSON.stringify(id)}`);
 }
 
 /** Shot baseline `id`'s frame: RGB bytes row by row, in base64. */

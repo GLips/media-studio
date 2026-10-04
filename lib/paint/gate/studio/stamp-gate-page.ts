@@ -55,7 +55,7 @@ import { stampGatePrivatePainting, type StampGatePrivateCase } from '../models/s
 import { drawn, drawnImages, gateRenderer, stampGateRgbBase64, withGateRenderer, withGateSurface } from './stamp-gate-page-surface.ts';
 import { checkStampGateStageCase, checkStampGateThreeCase } from './stamp-gate-stage-page.ts';
 import { checkStampGateSheetCase, paintStampGateSolved } from './stamp-gate-sheet-page.ts';
-import { paintStampGateShot } from './stamp-gate-shot-page.ts';
+import { checkStampGateShotCase, paintStampGateShot } from './stamp-gate-shot-page.ts';
 import { checkStampGateTextureCase, paintStampGateTexture } from './stamp-gate-texture-page.ts';
 import { checkStampGateShotPageCase } from './stamp-gate-shot-dom-page.ts';
 import { checkStampGateRegion, stampGateRegionPaintings, type StampGateRegionId } from '../models/stamp-gate-regions.ts';
@@ -496,5 +496,5 @@ async function stampGateAdapter(): Promise<string> {
 Object.assign(globalThis, {
   runStampGateFormulas, paintStampGate, paintStampGatePrivate, traceStampGate, checkStampGateWash, checkStampGateAnimation, checkStampGateFlowCase, checkStampGateStripeCase, checkStampGateRegionCase,
   checkStampGateContactCase, checkStampGateMaskCase, checkStampGateMediaCase, checkStampGateThreeCase, checkStampGateStageCase, checkStampGateSheetCase, paintStampGateSolved,
-  checkStampGateShotPageCase, paintStampGateShot, checkStampGateTextureCase, paintStampGateTexture, stampGateAdapter,
+  checkStampGateShotPageCase, checkStampGateShotCase, paintStampGateShot, checkStampGateTextureCase, paintStampGateTexture, stampGateAdapter,
 });

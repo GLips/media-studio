@@ -207,6 +207,15 @@
       "acceptedOver": "84b1fb41",
       "adapter": "apple metal-3"
     },
+    "shot/rain": {
+      "file": "shot/rain.png",
+      "output": "4eb407e26ab11997b2fc15b905a0205079e2a78bd0638b5346ed1039bd809ea8",
+      "inputs": "fd91a8c14b05f6bf07c299e1465f3305cbf74875e39a102ea78f39a122d54ebd",
+      "reason": "vid-157 pres-instances: new case, rain falling about a post through an instanced plane, each drop blurred along its own fall",
+      "accepted": "2026-10-04",
+      "acceptedOver": "49f50173",
+      "adapter": "apple metal-3"
+    },
     "shot/wet-contact": {
       "file": "shot/wet-contact.png",
       "output": "83eb90cc4ece6c4841fe84f1d6b58d017d8e1e5886be99ff800e253adb1de79a",
