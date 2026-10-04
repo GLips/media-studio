@@ -1,22 +1,25 @@
-// stamp-gate-textures.ts: the gate's painted textures (ENGINE 6.3), each drawn as a shot's painted texture at half
-// its paintings' size, so its resample averages across a seam, read by a three.js object through the loader and
-// laid flat beside it; judged by eye and held to seams no rougher than the paint beside them. A case is a row of
-// STAMP_GATE_TEXTURE_CASES; the page adds its three.js object.
+// stamp-gate-textures.ts: the gate's painted textures (ENGINE 6.3), each read by a three.js object, judged by eye. A
+// texture case draws its texture at half its paintings' size, so its resample averages across a seam, lays it flat
+// beside the object and holds its seams no rougher than the paint beside them; a shot case draws one through the
+// shot's renderer, frame after frame. Each is a row of STAMP_GATE_TEXTURE_CASES or STAMP_GATE_SHOT_TEXTURE_CASES; the
+// page adds its object.
 //
-// texture/wrapped-cylinder: two paintings wrapping x dissolved halfway, round a cylinder, its seam to the camera, the
-// texture flat below, rolled half its width. texture/wrapped-tile: a tile wrapping both ways, a flood and a bloom on
-// its corner, flat 2 × 2 beside a plane whose uv runs to 2 each way, so its handle repeats.
+// texture/wrapped-cylinder: two paintings dissolved halfway round a cylinder. texture/wrapped-tile: a tile wrapping
+// both ways on a plane whose uv runs to 2. shot/painted-cylinder: a label, finished as the back, and round a cylinder
+// at each frame's moment.
 
 import meadow from '#lib/paint/document/models/meadow.painting.ts';
 import { compilePaintingSelection } from '#lib/paint/document/models/painting-document-compile.ts';
 import type { PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
 import { layersOf, type LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
 import { painting, type PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
+import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { stampCanonicalJson, type StampCanonicalDatum } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
-import type { StampAxis, StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
-import type { PaintedTexture } from '#lib/paint/shot/models/shot-props.ts';
+import { stampStage, type StampAxis, type StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
+import type { PaintedShotProps, PaintedTexture, ThreeSource } from '#lib/paint/shot/models/shot-props.ts';
 import { dissolve } from '#lib/paint/shot/models/shot-selection.ts';
+import { STAMP_GATE_CLOCK_SCALE } from './stamp-gate-clocks.ts';
 import {
   STAMP_GATE_EARTH_MIX, STAMP_GATE_POOL_MIX, STAMP_GATE_ROUND_REF, STAMP_GATE_SHEET_IMAGES, STAMP_GATE_SHEET_PAPER, stampGateLine, stampGateRectangle, stampGateSheetBrushOf,
 } from './stamp-gate-sheets.ts';
@@ -43,15 +46,17 @@ type StampGateWrappedPainting = {
   readonly bands: readonly (readonly number[])[];
 };
 
+/** The gate's paper wrapped: the meadow's grain, a tile half its width round x, shallow enough that a bloom opens through it. */
+const stampGateWrappedPaper = () => ({ ...STAMP_GATE_SHEET_PAPER, grain: { ...meadow({ hillTopPx: 200 }).paper.grain!, scale: 0.5, depth: 0.2 } });
+
 /**
- * A sheet of the meadow's grain, a tile half its width and shallow enough that a bloom opens through it, wrapping as
- * `wrap`: a flood over `flood`, a bloom dropped at `bloomAt` once it turns matte, and an earth stroke along each band.
+ * A sheet of the gate's wrapped paper, wrapping as `wrap`: a flood over `flood`, a bloom dropped at `bloomAt` once it
+ * turns matte, and an earth stroke along each band.
  */
 function stampGateWrappedSource({ name, size, wrap, flood, bloomAt, bands }: StampGateWrappedPainting): PaintingSourceModule {
   const factory = (): PaintingDocument => {
-    const grain = { ...meadow({ hillTopPx: 200 }).paper.grain!, scale: 0.5, depth: 0.2 };
     return {
-      widthPx: size.width, heightPx: size.height, wrap, paper: { ...STAMP_GATE_SHEET_PAPER, grain }, medium: 'watercolour',
+      widthPx: size.width, heightPx: size.height, wrap, paper: stampGateWrappedPaper(), medium: 'watercolour',
       layers: [
         {
           key: 'pond',
@@ -215,3 +220,103 @@ export function stampGateSeamSteps(rgb: ArrayLike<number>, width: number, height
     return sum / across;
   });
 }
+
+export const STAMP_GATE_SHOT_TEXTURE_IDS = ['shot/painted-cylinder'] as const;
+export type StampGateShotTextureId = (typeof STAMP_GATE_SHOT_TEXTURE_IDS)[number];
+
+/** The label's size, document px; worn as a texture the same size, as one shown near its size is. */
+const STAMP_GATE_LABEL = { width: 256, height: 128 } as const;
+/** When the label's strokes land, scene seconds. */
+const STAMP_GATE_LABEL_STROKES = { first: 1, second: 3 } as const;
+/** The scene seconds the label's shot shows, one between its strokes and one after both, and the span warmed over them. */
+const STAMP_GATE_LABEL_SHOWN = { frames: [2, 4], warm: { from: 2, to: 4 } } as const;
+
+/** An earth stroke through `xy` landing at scene second `at`. */
+const stampGateTimedStroke = (key: string, at: number, xy: readonly number[]) => ({
+  key, at, kind: 'stroke', subpaths: [stampGateLine(...xy)], brush: STAMP_GATE_ROUND_REF, diameterPx: 12, seed: key, charge: { kind: 'paint', mix: STAMP_GATE_EARTH_MIX, water: 0.5 },
+} as const);
+
+/**
+ * A label wrapping x on the gate's wrapped paper, drying at the gate's clock scale: one wash clocked from 0 s, a flood
+ * from x 196 past the right edge to 316 (60 on the left), an earth stroke across the seam at 1 s, into the flood's wet,
+ * and a lower one at 3 s.
+ */
+const STAMP_GATE_LABEL_SOURCE: PaintingSourceModule = {
+  default: function gateLabel(): PaintingDocument {
+    return {
+      widthPx: STAMP_GATE_LABEL.width, heightPx: STAMP_GATE_LABEL.height, wrap: 'x', paper: stampGateWrappedPaper(), medium: 'watercolour', dryingScale: STAMP_GATE_CLOCK_SCALE,
+      layers: [{
+        key: 'label',
+        washes: [{
+          key: 'bands', clock: { origin: 0 },
+          applications: [
+            { key: 'flood', kind: 'fill', area: { region: stampGateRectangle(196, 20, 316, 108) }, brush: STAMP_GATE_ROUND_REF, diameterPx: 24, seed: 'flood', charge: { kind: 'paint', mix: STAMP_GATE_POOL_MIX, water: FLOOD_WATER } },
+            stampGateTimedStroke('first', STAMP_GATE_LABEL_STROKES.first, [150, 50, 256, 54, 362, 49]),
+            stampGateTimedStroke('second', STAMP_GATE_LABEL_STROKES.second, [120, 86, 256, 82, 392, 88]),
+          ],
+        }],
+      }],
+    };
+  },
+};
+
+/**
+ * The painted-cylinder shot's view: one frame, the label flat across its top and the cylinder below it, its middle at
+ * `cylinderAt`; the camera's field of view.
+ */
+const STAMP_GATE_LABEL_VIEW = { frame: { width: 256, height: 304 }, cylinderAt: { x: 128, y: 216 }, fov: 30 } as const;
+
+/**
+ * A shot case but its three.js object (the page's): one frame's size; the scene seconds its `frames` show, drawn in
+ * turn through one renderer; the span a warmed draw warms; its shot, warmed or not, the cylinder's scene built by
+ * `cylinder`, lying with its middle at `cylinderAt` and wearing painted texture `texture`; its inputs.
+ */
+export type StampGateShotTextureCase = {
+  readonly frame: { readonly width: number; readonly height: number };
+  readonly frames: readonly number[];
+  readonly warm: { readonly from: number; readonly to: number };
+  readonly shot: (cylinder: ThreeSource['build'], warmed: boolean) => PaintedShotProps;
+  readonly cylinderAt: StampPoint;
+  readonly texture: string;
+  readonly inputs: () => Readonly<Record<string, StampCanonicalDatum>>;
+};
+
+export const STAMP_GATE_SHOT_TEXTURE_CASES: Readonly<Record<StampGateShotTextureId, StampGateShotTextureCase>> = {
+  // The finished label as the back; round the cylinder in front, its seam to the camera, the label at each frame's
+  // moment: between its strokes at 2 s, then after both. Read otherwise than the back, the texture solves its own prefix.
+  'shot/painted-cylinder': {
+    frame: STAMP_GATE_LABEL_VIEW.frame,
+    frames: STAMP_GATE_LABEL_SHOWN.frames,
+    warm: STAMP_GATE_LABEL_SHOWN.warm,
+    shot: (cylinder, warmed) => {
+      const label = painting(STAMP_GATE_LABEL_SOURCE);
+      return {
+        camera: { stage: stampStage(STAMP_GATE_LABEL_VIEW.frame, 2), fov: STAMP_GATE_LABEL_VIEW.fov, lens: { bloom: 0, shutter: 0 }, plays: [] },
+        planes: [{ id: 'label', depth: 2, source: layersOf(label, ['label']) }, { id: 'cylinder', depth: 1, source: { kind: 'three', build: cylinder } }],
+        paintedTextures: [{ id: 'label', source: ({ at }: PaintMoment) => layersOf(label, ['label'], { at }), widthPx: STAMP_GATE_LABEL.width, heightPx: STAMP_GATE_LABEL.height }],
+        ...(warmed && { warm: STAMP_GATE_LABEL_SHOWN.warm }),
+      };
+    },
+    cylinderAt: STAMP_GATE_LABEL_VIEW.cylinderAt,
+    texture: 'label',
+    inputs: () => ({
+      label: stampGateTexturePainting(STAMP_GATE_LABEL_SOURCE), strokes: STAMP_GATE_LABEL_STROKES, frames: STAMP_GATE_LABEL_SHOWN.frames, texture: STAMP_GATE_LABEL,
+      cylinder: STAMP_GATE_CYLINDER, view: STAMP_GATE_LABEL_VIEW,
+    }),
+  },
+};
+
+/** Shot texture baseline `id`'s frame size: its frames side by side. */
+export function stampGateShotTextureFrame(id: StampGateShotTextureId): { width: number; height: number } {
+  const { frame, frames } = STAMP_GATE_SHOT_TEXTURE_CASES[id];
+  return { width: frame.width * frames.length, height: frame.height };
+}
+
+/** The box shot texture case `id`'s cylinder lies within, frame px, end exclusive: its front's, which it recedes from. */
+export function stampGateShotTextureCylinderBox(id: StampGateShotTextureId): { x0: number; y0: number; x1: number; y1: number } {
+  const { cylinderAt: { x, y } } = STAMP_GATE_SHOT_TEXTURE_CASES[id], { radius, height } = STAMP_GATE_CYLINDER;
+  return { x0: Math.floor(x - radius), y0: Math.floor(y - height / 2), x1: Math.ceil(x + radius), y1: Math.ceil(y + height / 2) };
+}
+
+/** What shot texture baseline `id` is drawn from, as text: its painting's programs and steps, its times, texture, cylinder and view, and the images. */
+export const stampGateShotTextureInputs = (id: StampGateShotTextureId) => stampCanonicalJson({ id, ...STAMP_GATE_SHOT_TEXTURE_CASES[id].inputs(), images: STAMP_GATE_SHEET_IMAGES });

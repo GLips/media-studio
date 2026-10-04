@@ -32,7 +32,9 @@ import { STAMP_GATE_CONTACT_IDS } from '../models/stamp-gate-contact.ts';
 import { STAMP_GATE_MASK_IDS } from '../models/stamp-gate-masks.ts';
 import { STAMP_GATE_SHEET_IDS, STAMP_GATE_SOLVED_IDS, stampGateSolvedInputs, stampGateSolvedStill } from '../models/stamp-gate-sheets.ts';
 import { STAMP_GATE_SHOT_CASE_IDS, STAMP_GATE_SHOT_IDS, STAMP_GATE_SHOT_PAGE_IDS, stampGateShotBaseline, stampGateShotInputs } from '../models/stamp-gate-shots.ts';
-import { STAMP_GATE_TEXTURE_IDS, stampGateTextureFrame, stampGateTextureInputs } from '../models/stamp-gate-textures.ts';
+import {
+  STAMP_GATE_SHOT_TEXTURE_IDS, STAMP_GATE_TEXTURE_IDS, stampGateShotTextureFrame, stampGateShotTextureInputs, stampGateTextureFrame, stampGateTextureInputs,
+} from '../models/stamp-gate-textures.ts';
 import { readStampGateBaseline, stampGateFrame, stampGateInputsHash, writeStampGateCandidate, type StampGateOutput } from './stamp-gate-store.ts';
 
 /** The gate's browser side, which the private run loads too. */
@@ -86,6 +88,8 @@ const STAMP_GATE_FRAME_FAMILIES: readonly StampGateFrameFamily[] = [
     ids: STAMP_GATE_SHOT_IDS, page: 'paintStampGateShot', inputs: stampGateShotInputs, size: (id) => stampGateShotBaseline(id).shot.camera.stage.frame,
   }),
   stampGateFrameFamily({ ids: STAMP_GATE_TEXTURE_IDS, page: 'paintStampGateTexture', inputs: stampGateTextureInputs, size: stampGateTextureFrame }),
+  // Shots wearing painted textures, apart from the shots above: the texture page builds the three.js objects wearing them.
+  stampGateFrameFamily({ ids: STAMP_GATE_SHOT_TEXTURE_IDS, page: 'paintStampGateShotTexture', inputs: stampGateShotTextureInputs, size: stampGateShotTextureFrame }),
 ];
 
 /** Every baseline subject's ID: each rendering formula's, each painting's and each frame family's cases'. */
@@ -109,6 +113,7 @@ const STAMP_GATE_CASES = {
   checkStampGateContactCase: STAMP_GATE_CONTACT_IDS,
   checkStampGateSheetCase: STAMP_GATE_SHEET_IDS,
   checkStampGateTextureCase: STAMP_GATE_TEXTURE_IDS,
+  checkStampGateShotTextureCase: STAMP_GATE_SHOT_TEXTURE_IDS,
   checkStampGateShotPageCase: STAMP_GATE_SHOT_PAGE_IDS,
   checkStampGateShotCase: STAMP_GATE_SHOT_CASE_IDS,
 } satisfies Readonly<Record<string, readonly string[]>>;
