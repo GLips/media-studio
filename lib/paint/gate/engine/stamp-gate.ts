@@ -33,7 +33,8 @@ import { STAMP_GATE_MASK_IDS } from '../models/stamp-gate-masks.ts';
 import { STAMP_GATE_SHEET_IDS, STAMP_GATE_SOLVED_IDS, stampGateSolvedInputs, stampGateSolvedStill } from '../models/stamp-gate-sheets.ts';
 import { STAMP_GATE_SHOT_CASE_IDS, STAMP_GATE_SHOT_IDS, STAMP_GATE_SHOT_PAGE_IDS, stampGateShotBaseline, stampGateShotInputs } from '../models/stamp-gate-shots.ts';
 import {
-  STAMP_GATE_SHOT_TEXTURE_IDS, STAMP_GATE_TEXTURE_IDS, stampGateShotTextureFrame, stampGateShotTextureInputs, stampGateTextureFrame, stampGateTextureInputs,
+  STAMP_GATE_SHOT_TEXTURE_CASE_IDS, STAMP_GATE_SHOT_TEXTURE_IDS, STAMP_GATE_TEXTURE_IDS, stampGateShotTextureFrame, stampGateShotTextureInputs, stampGateTextureFrame,
+  stampGateTextureInputs,
 } from '../models/stamp-gate-textures.ts';
 import { readStampGateBaseline, stampGateFrame, stampGateInputsHash, writeStampGateCandidate, type StampGateOutput } from './stamp-gate-store.ts';
 
@@ -113,7 +114,7 @@ const STAMP_GATE_CASES = {
   checkStampGateContactCase: STAMP_GATE_CONTACT_IDS,
   checkStampGateSheetCase: STAMP_GATE_SHEET_IDS,
   checkStampGateTextureCase: STAMP_GATE_TEXTURE_IDS,
-  checkStampGateShotTextureCase: STAMP_GATE_SHOT_TEXTURE_IDS,
+  checkStampGateShotTextureCase: STAMP_GATE_SHOT_TEXTURE_CASE_IDS,
   checkStampGateShotPageCase: STAMP_GATE_SHOT_PAGE_IDS,
   checkStampGateShotCase: STAMP_GATE_SHOT_CASE_IDS,
 } satisfies Readonly<Record<string, readonly string[]>>;

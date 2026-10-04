@@ -207,6 +207,15 @@
       "acceptedOver": "64534e9e",
       "adapter": "apple metal-3"
     },
+    "shot/far-cylinder": {
+      "file": "shot/far-cylinder.png",
+      "output": "c258108158139a2d77bda3ad00e4b005a3c4dca2060e8564e3bcc95145c98f47",
+      "inputs": "9ae80be0cf4f8c22f75f9811e40d7e1743b25e6e4010bdb8116407fb543e7f39",
+      "reason": "new case: the wrapped tile worn at its size round a small turning cylinder (uv 4 round, 2 up; a texel near a quarter px), four frames at the shot rate, read through the texture's mip chain; accepted by eye, enlarged: steady frame to frame and seamless, where the same frames without the chain sparkle and break its bands",
+      "accepted": "2026-10-04",
+      "acceptedOver": "a53c81f3",
+      "adapter": "apple metal-3"
+    },
     "shot/masks": {
       "file": "shot/masks.png",
       "output": "a8e355b04b5ef22ed8ced904b5f7ad35afa49ed9f3d1e35190c676eab748bd72",
