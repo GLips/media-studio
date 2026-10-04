@@ -147,10 +147,10 @@
     "painting/pigment-gouache": {
       "file": "painting/pigment-gouache.png",
       "output": "7737de9a6ab4374c28b55c5487388b9470aa8dbdab0ab8e05979863bc962d610",
-      "inputs": "fd9cd5acf1fc12ac5d910b5c9de04a8369547b2875d7504bef3d0ff69eb6f582",
-      "reason": "vid-119 over main a413b16 (vid-140): floods laid as strokes in rows within a barrier or lost edge, water landed per pixel in each wash's GPU wet field with closed-form waits, brush profiles bounding marks; a layer grain blend held to where the stroke has paint",
-      "accepted": "2026-10-03",
-      "acceptedOver": "afc2f970",
+      "inputs": "78e44ed1cb7a47fe18175b93d6ae8f36a8d0328413cb8c5c5f89335d74cd57cc",
+      "reason": "vid-157 brush-truth: gouache declares its dry brush's tooth (paperContact.dryBrush), so its medium's inputs change; the painting has no dry brush, so its pixels hold",
+      "accepted": "2026-10-04",
+      "acceptedOver": "3933a0fd",
       "adapter": "apple metal-3"
     },
     "painting/pigment-watercolour": {
