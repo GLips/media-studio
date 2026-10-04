@@ -1,15 +1,16 @@
 // stamp-gate-shot-page.ts: the gate page's shots (stamp-gate-shots.ts), drawn by stamp-gate-shot-frames.ts: the
 // rigged heron's grain, pieces and boil (test 6), the wet-contact foot posed by its rig, painted in and hidden (test
 // 7), the rain's drops blurred along their own falls (test 5), a dissolve between two sheets over a dissolving back,
-// the rigged heron posed as it dissolves, a warmed span, the cut-out cards, and their baselines' frames. The masked
-// shot's cases are stamp-gate-shot-masks-page.ts's, the rainy street's stamp-gate-rainy-street-page.ts's and the
-// glowing shot's stamp-gate-shot-glow-page.ts's, handed on.
+// the rigged heron posed as it dissolves, a warmed span, the cut-out cards, the sprig drawn as pieces, and their
+// baselines' frames. The masked shot's cases are stamp-gate-shot-masks-page.ts's, the rainy street's
+// stamp-gate-rainy-street-page.ts's and the glowing shot's stamp-gate-shot-glow-page.ts's, handed on.
 
 import type { StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { STAMP_GATE_CARDS_AT, stampGateCardsShot } from '../models/stamp-gate-cards.ts';
 import { STAMP_GATE_FRAME_TOLERANCE, stampGateFrameDifference, stampGateFrameDifferenceText, stampGateFramePasses } from '../models/stamp-gate-frames.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { STAMP_GATE_HERON_MOVE, stampGateHighPass, stampGatePeakShift } from '../models/stamp-gate-paper-heron.ts';
+import { STAMP_GATE_PIECES_AT, stampGatePiecesFlatShot, stampGatePiecesShot, type StampGatePiecesHideable } from '../models/stamp-gate-pieces.ts';
 import { STAMP_GATE_LONE_DROP_AT, STAMP_GATE_LONE_DROP_TRAVEL, STAMP_GATE_RAIN, stampGateLoneDropShot, stampGateRainShot } from '../models/stamp-gate-rain.ts';
 import { STAMP_GATE_FAR_SHALLOWS } from '../models/stamp-gate-sheets.ts';
 import {
@@ -267,6 +268,38 @@ async function checkCards(): Promise<StampGateWashCheck[]> {
   ];
 }
 
+/** The sprig with the layers `clear` names painted clear, every cel shown, its one frame as RGB bytes. */
+const piecesFlat = async (...clear: StampGatePiecesHideable[]) => stampGateRgb((await stampGateShotFrames(stampGatePiecesFlatShot(clear), [STAMP_GATE_PIECES_AT.rest])).frames[0]);
+
+/**
+ * shot/pieces: a sprig drawn as pieces lays every film by its own palette, whatever is hidden ahead of it. Its flag
+ * swapped to a cel of another colour, its bud's rim switched off and its seed hidden by a clear cel each draw as the
+ * sprig with what each hides painted clear and nothing left out, solving nothing.
+ */
+async function checkPieces(): Promise<StampGateWashCheck[]> {
+  const { rest, swapped, off, cleared } = STAMP_GATE_PIECES_AT;
+  const { frames: [, atSwapped, atOff, atCleared], costs: taken } = await stampGateShotFrames(stampGatePiecesShot(), [rest, swapped, off, cleared]);
+  const [swap, rimOff, clear] = [
+    stampGateFrameDifference(stampGateRgb(atSwapped), await piecesFlat('flag-ochre')), stampGateFrameDifference(stampGateRgb(atOff), await piecesFlat('flag-blue', 'bud-rim')),
+    stampGateFrameDifference(stampGateRgb(atCleared), await piecesFlat('flag-blue', 'seed')),
+  ];
+  const solves = taken.slice(1).flatMap(solvedText), allowed = `${STAMP_GATE_FRAME_TOLERANCE.max} levels allowed`;
+  return [
+    {
+      id: 'shot/pieces: swap', passed: stampGateFramePasses(swap),
+      detail: `the sprig with its flag swapped to its blue cel lies ${stampGateFrameDifferenceText(swap)} from it with the ochre rest cel painted clear (${allowed})`,
+    },
+    {
+      id: 'shot/pieces: layer off', passed: stampGateFramePasses(rimOff),
+      detail: `the sprig with its bud's rim at visibility 0 lies ${stampGateFrameDifferenceText(rimOff)} from it with the rim painted clear (${allowed})`,
+    },
+    {
+      id: 'shot/pieces: clear cel', passed: stampGateFramePasses(clear) && !solves.length,
+      detail: `the sprig with its seed showing its clear cel lies ${stampGateFrameDifferenceText(clear)} from it with the seed painted clear (${allowed}); swapping, switching and clearing solved ${solves.join(', ') || 'nothing'}`,
+    },
+  ];
+}
+
 /** Shot case `id`'s checks. */
 export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGateWashCheck[]> {
   if (id === 'shot/rain') return checkStampGateRain();
@@ -275,6 +308,7 @@ export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGa
   if (id === 'shot/warm') return checkWarm();
   if (id === 'shot/rainy-street') return checkStampGateRainyStreet();
   if (id === 'shot/cards') return checkCards();
+  if (id === 'shot/pieces') return checkPieces();
   if (id === 'shot/glow') return checkStampGateShotGlowCase();
   return checkStampGateShotMasksCase(id);
 }

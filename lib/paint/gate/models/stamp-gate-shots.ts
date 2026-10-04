@@ -1,9 +1,9 @@
 // stamp-gate-shots.ts: the gate's shots (ENGINE 9, tests 6 and 7 through a PaintedShot): the rigged paper heron (neck
 // skinned, wing a cel on its own sheet, reeds drawn as pieces), boiling, and dissolving from day to dusk as it's posed;
 // the wet-contact sheet, its foot rigged: painted in, on sixes over a warmed span, hidden, and dissolving over a
-// dissolving back; the heron alone over HTML, also pinned (shot/page); the rain (stamp-gate-rain.ts); and the cut-out
-// cards (stamp-gate-cards.ts). Poses and drops are tables by scene second, so a baseline's inputs name them. What the
-// cases measure of their frames is here, pure.
+// dissolving back; the heron alone over HTML, also pinned (shot/page); the rain (stamp-gate-rain.ts); the cut-out
+// cards (stamp-gate-cards.ts); and the sprig drawn as pieces (stamp-gate-pieces.ts). Poses and drops are tables by
+// scene second, so a baseline's inputs name them. What the cases measure of their frames is here, pure.
 
 import { compilePaintingSelection } from '#lib/paint/document/models/painting-document-compile.ts';
 import type { LayerNode, Mix, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
@@ -23,6 +23,7 @@ import {
   STAMP_GATE_HERON_BODY, STAMP_GATE_HERON_MIXES, STAMP_GATE_HERON_MOVE, STAMP_GATE_HERON_VANE, stampGateHeronLayer, stampGateInsidePolygon, stampGateHeronPaper, stampGateHeronPolygon,
   stampGatePaperHeronDocument, type StampGateHeronMixes,
 } from './stamp-gate-paper-heron.ts';
+import { STAMP_GATE_PIECES, STAMP_GATE_PIECES_AT, STAMP_GATE_PIECES_PARTS, STAMP_GATE_PIECES_TABLE, stampGatePiecesShot } from './stamp-gate-pieces.ts';
 import { STAMP_GATE_RAIN, STAMP_GATE_RAIN_PAINTING, stampGateRainShot } from './stamp-gate-rain.ts';
 import { STAMP_GATE_RAINY_STREET_AT, STAMP_GATE_RAINY_STREET_PRESENTATION, stampGateRainyStreetEvaluations, stampGateRainyStreetShot } from './stamp-gate-rainy-street.ts';
 import { STAMP_GATE_MASKS_BASELINE, STAMP_GATE_MASKS_PRESENTATION, STAMP_GATE_SHOT_MASK_IDS, STAMP_GATE_TINTED_HERON, stampGateMaskedShot } from './stamp-gate-shot-masks.ts';
@@ -33,16 +34,18 @@ import { STAMP_GATE_HERON_POSE, STAMP_GATE_SHEET_IMAGES, STAMP_GATE_WET_CONTACT,
 export const STAMP_GATE_SHOT_PAGE_IDS = ['shot/page'] as const;
 
 /** The shots accepted by eye: each a baseline subject, one frame of its shot. */
-export const STAMP_GATE_SHOT_IDS = ['shot/paper-heron', 'shot/wet-contact', 'shot/rain', 'shot/dissolve', 'shot/rigged-dissolve', 'shot/masks', 'shot/rainy-street', 'shot/cards'] as const;
+export const STAMP_GATE_SHOT_IDS = [
+  'shot/paper-heron', 'shot/wet-contact', 'shot/rain', 'shot/dissolve', 'shot/rigged-dissolve', 'shot/masks', 'shot/rainy-street', 'shot/cards', 'shot/pieces',
+] as const;
 export type StampGateShotId = (typeof STAMP_GATE_SHOT_IDS)[number];
 
 /**
  * The shot cases checked apart from any sheet case, each a page's checks of its shot's frames: the rain's items, a
- * dissolve drawn between its ends, a rigged one posed between its ends, a span warmed, the masked shot's cuts, the
- * rainy street's cost report, the cards' hidden cel, switched-off view and fading owner, and what glows.
+ * plain and a rigged dissolve between their ends, a span warmed, the masked shot's cuts, the rainy street's costs,
+ * the cards' hidden cel, view off and fading owner, the sprig's swap, layer off and clear cel, and what glows.
  */
 export const STAMP_GATE_SHOT_CASE_IDS = [
-  'shot/rain', 'shot/dissolve', 'shot/rigged-dissolve', 'shot/warm', ...STAMP_GATE_SHOT_MASK_IDS, 'shot/rainy-street', 'shot/cards', STAMP_GATE_SHOT_GLOW_ID,
+  'shot/rain', 'shot/dissolve', 'shot/rigged-dissolve', 'shot/warm', ...STAMP_GATE_SHOT_MASK_IDS, 'shot/rainy-street', 'shot/cards', 'shot/pieces', STAMP_GATE_SHOT_GLOW_ID,
 ] as const;
 export type StampGateShotCaseId = (typeof STAMP_GATE_SHOT_CASE_IDS)[number];
 
@@ -381,6 +384,9 @@ const SHOT_BASELINES: Readonly<Record<StampGateShotId, {
   },
   'shot/cards': {
     shot: stampGateCardsShot, at: STAMP_GATE_CARDS_AT.faded, evaluations: () => [painting(STAMP_GATE_CARDS)], rigs: { figure: stampGateCardParts(true) }, poses: [], extra: { leaf: STAMP_GATE_CARDS_LEAF, sitting: STAMP_GATE_CARDS_SITTING },
+  },
+  'shot/pieces': {
+    shot: stampGatePiecesShot, at: STAMP_GATE_PIECES_AT.all, evaluations: () => [painting(STAMP_GATE_PIECES)], rigs: { sprig: STAMP_GATE_PIECES_PARTS }, poses: [], extra: { table: STAMP_GATE_PIECES_TABLE },
   },
 };
 

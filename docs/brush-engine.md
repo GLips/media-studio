@@ -735,7 +735,11 @@ says it changes; the walker stepping back to a pose solves nothing; walking, the
 each sixth frame while the walker re-solves every frame. The cards (`stamp-gate-cards.ts`) hold a collage card whose
 rigged figure hides its lying cel, and whose sitting view is switched off, each drawing as the card painted without
 it; and a leaf owning its card faded halfway, lying between it shown and gone, and gone, drawing as the cards painted
-without it, with nothing solved.
+without it, with nothing solved. The sprig (`stamp-gate-pieces.ts`, `shot/pieces`) owns its card and is drawn as
+pieces: its flag swapped to a cel of another colour, its bud's rim switched off and its seed hidden by a clear cel,
+each ahead of later parts, draw as the sprig with what they hide painted clear in its place and every cel shown, with
+nothing solved. Its reference paints a layer clear rather than leaving it out: deposits are named by their layer's
+place on its sheet, so a layer left out renames, and so reseeds, every later one's.
 Each shot's frame is a baseline (`shot/`) accepted by eye. `shot/page`
 (`stamp-gate-shot-dom-page.ts`) holds a shot's element on the page, scaled as a player shows it, and reads it through
 the DOM adapter: HTML behind the first canvas or not, a canvas in a wrapper at an identity transform refused, a glaze

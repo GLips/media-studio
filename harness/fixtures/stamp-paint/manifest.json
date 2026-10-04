@@ -252,6 +252,15 @@
       "acceptedOver": "64534e9e",
       "adapter": "apple metal-3"
     },
+    "shot/pieces": {
+      "file": "shot/pieces.png",
+      "output": "296b8046011b9dbd1c3ee9c7811972b66f320a40ae7632754a6e65dbce1bd70d",
+      "inputs": "7bd57e3c03818e65732317077cba613592c8cd56771521ba6c183c614b07936f",
+      "reason": "rig-pieces-films: new case shot/pieces, a sprig drawn as pieces with its flag swapped to its blue cel, its bud's rim switched off and its seed cleared, each part in its own colour",
+      "accepted": "2026-10-04",
+      "acceptedOver": "1dd19ca2",
+      "adapter": "apple metal-3"
+    },
     "shot/rain": {
       "file": "shot/rain.png",
       "output": "2ea5b1703b01f2f1857081fdfebc457ef07760fbeb591905004965c01e5f79e5",
