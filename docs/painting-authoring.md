@@ -167,8 +167,8 @@ before writing a wash:
   ultramarine to rose passes through violet, blue to orange through grey, which the check warns of. Grade one mix's
   strength, change hue across layers, or charge the second colour into the wet flood (recipe 2).
 - **Gouache lightens with white.** A weaker mix is a tint, still opaque, and any gouache dries 3–6 L* paler than
-  written (Reference › Pigments); pale gouache laid as light reads chalky, pasted on. For glow, reserve the paper; for a veil, cap the film (`opacityCap`, Media); for a near-black, mix a hex
-  part at strength 1.
+  written (Reference › Pigments); pale gouache laid as light reads chalky, pasted on. For glow, reserve the paper;
+  for a veil, cap the film (`opacityCap`, Media); for a near-black, mix a hex part at strength 1.
 
 ## The document
 
