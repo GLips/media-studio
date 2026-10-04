@@ -4,8 +4,9 @@
 // canvas far to near through its lens. The first canvas holds the back. A pinned plane lies where the frame's
 // measures put it.
 //
-// Picture and three planes are the old path's sources (stamp-lens-source-layers.ts). An alphaOf mask reads plane px
-// to plane px, no parallax between depths; a three render is the camera's, read through the reader's view.
+// Picture and three planes are the old path's sources (stamp-lens-source-layers.ts), three reading the shot's painted
+// textures (shot-painted-textures.ts). An alphaOf mask reads plane px to plane px, no parallax between depths; a three
+// render is the camera's, seen through the reader's view.
 
 import { PAINT_SIMILARITY_IDENTITY, paintSimilarityAfter, paintSimilarityInverse, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import { paintCameraDepthLooks, paintCameraLensFrame, type PaintCameraDepthLooks } from '#lib/paint/animation/models/paint-camera.ts';
@@ -19,7 +20,7 @@ import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-
 import type { StampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 import { loadStampPictureSources } from '#lib/paint/painting/studio/stamp-picture-sources.ts';
 import { createStampGrowingUniformArena } from '#lib/paint/painting/studio/stamp-uniform-arena.ts';
-import { loadPaintedThreeSources, type PaintedThreeTexturesSupplied } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
+import { loadPaintedThreeSources } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
 import { lensExposures } from '#lib/picture/lens/models/lens-exposures.ts';
 import { LENS_REFERENCE_EXPOSURES, type LensMode } from '#lib/picture/lens/models/lens-mode.ts';
@@ -35,6 +36,7 @@ import { shotWarmCombinations, shotWarmFrames, shotWarmPastScene } from '../mode
 import { createShotGroupFade } from './shot-group-pass.ts';
 import { shotItemsLayer } from './shot-instance-passes.ts';
 import { createShotPaintedPlanes, type ShotPlaneMoment, type ShotPlaneSolved, type ShotSourceRead } from './shot-painted-plane.ts';
+import { createShotPaintedTextures } from './shot-painted-textures.ts';
 import { createShotRigPictures, createShotRigPiecesDrawer } from './shot-rig-pieces.ts';
 import { createShotSheetsLayer } from './shot-sheets-lay.ts';
 
@@ -70,8 +72,6 @@ export type PaintedShotRenderer = {
   finish: () => Promise<void>;
   dispose: () => void;
 };
-
-const SHOT_NO_PAINTED_TEXTURES: PaintedThreeTexturesSupplied = { handles: [], update: () => Promise.resolve() };
 
 /** How many uniform slots a shot's arena starts with; it grows as a frame's rigs and fades need. */
 const SHOT_UNIFORM_SLOTS = 512;
@@ -120,7 +120,10 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
   };
   try {
     const threeSources = shot.planes.flatMap((plane) => (plane.kind === 'three' ? [{ id: plane.id, build: plane.source.build }] : []));
-    const three = threeSources.length ? await loadPaintedThreeSources(owner, camera, threeSources, SHOT_NO_PAINTED_TEXTURES) : null;
+    // Only three sources read painted textures, so a shot without one draws none.
+    const textures = threeSources.length ? createShotPaintedTextures(owner, shot.paintedTextures, { brushOf, costs }) : null;
+    if (textures) made.push(textures);
+    const three = textures && (await loadPaintedThreeSources(owner, camera, threeSources, textures));
     if (three) made.push(three);
     const pictures = loadStampPictureSources(webgpu, new Map(shot.planes.flatMap((plane) => (plane.kind === 'picture' ? [[plane.id, plane.source.pictureAt] as const] : []))));
     made.push(pictures);
@@ -261,6 +264,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
           solving?.(`warming the painted shot's ${plane.id} at ${frame.at} s`);
           (await planes.solve(plane, frame)).release();
         }));
+        await textures?.warm(frames, { stopped, ...(solving && { solving }) });
       }),
       draw: (t, mode, pins = new Map()) => counted(async () => {
         if (disposed) return;

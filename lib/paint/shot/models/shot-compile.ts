@@ -1,12 +1,11 @@
 // shot-compile.ts: a PaintedShot's props checked and compiled as it loads (ENGINE 6.1): planes far to near, each on
 // its canvas; each painted plane's occurrences from its first evaluation, at moment 0 through its source clock; each
 // instanced plane's variants (shot-instances.ts); the rigs, visibility, motion, masks and warm over them; the camera
-// built over each plane's reach. Every problem is found before any is thrown. Covers are laid through the built
-// camera, pins each frame (shot-placement.ts).
+// built over each plane's reach; the painted textures its three sources read (shot-painted-texture-compile.ts). Every
+// problem is found before any is thrown. Covers are laid through the built camera, pins each frame (shot-placement.ts).
 //
 // Negative space: refused are visibility on the back, a picture or a three plane, a lay on either, an alphaOf inside a
-// pieces rig or of an instanced plane, painted textures (ENGINE 6.3), and a rig on a dissolving plane
-// (paintedPlaneBlendProblems).
+// pieces rig or of an instanced plane, and a rig on a dissolving plane (paintedPlaneBlendProblems).
 
 import { buildPaintCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
 import type { PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
@@ -22,6 +21,7 @@ import { compileShotInstancedPlane, type CompiledShotInstancedPlane } from './sh
 import { compileShotMotion, type CompiledShotMotion, type ShotMotionPlane } from './shot-motion.ts';
 import { shotOccurrencePlane, shotPlaneOccurrences, type ShotOccurrence } from './shot-occurrences.ts';
 import { shotMaskCheck, type ShotMaskGraph } from './shot-masks.ts';
+import { compileShotPaintedTextures, type CompiledShotPaintedTexture } from './shot-painted-texture-compile.ts';
 import { shotCoveredPlanes, shotPlacementProblems } from './shot-placement.ts';
 import { shotDrawableOrder } from './shot-plan.ts';
 import {
@@ -67,7 +67,7 @@ export type CompiledShotPlane =
  * A shot compiled: its planes far to near, the back first; its instanced planes; both as `written`, which a frame
  * orders with its items; its canvas count; `clearBack`: the back is clear where it lays nothing, over HTML
  * (shotCanvasAlphaMode); its motion (an instanced plane's clock too), rigs, visibility by occurrence, masks' graph,
- * camera, and the span it warms (null: none).
+ * camera, warm span (null: none) and painted textures.
  */
 export type CompiledPaintedShot = {
   readonly planes: readonly CompiledShotPlane[];
@@ -81,6 +81,7 @@ export type CompiledPaintedShot = {
   readonly masks: ShotMaskGraph;
   readonly camera: PaintCamera;
   readonly warm: ShotWarm | null;
+  readonly paintedTextures: readonly CompiledShotPaintedTexture[];
 };
 
 /** What a compiled shot paints with, its planes and its painted textures alike: its brushes, and where its solves, readbacks and warnings count. */
@@ -265,6 +266,9 @@ export function compilePaintedShot(
   props: PaintedShotProps, canvases: readonly string[], page: ShotPage = SHOT_NO_HTML_BEHIND,
 ): { readonly shot: CompiledPaintedShot | null; readonly problems: readonly PaintingProblem[] } {
   const problems: PaintingProblem[] = [], fps = props.camera.animationFps ?? PAINT_ANIMATION_FPS;
+  // A texture reads no plane, so its problems join every answer, whichever stage the planes stop at.
+  const textures = compileShotPaintedTextures(props.paintedTextures ?? []);
+  const answer = (shot: CompiledPaintedShot | null, found: readonly PaintingProblem[]) => ({ shot, problems: [...found, ...textures.problems] });
   if (props.warm) problems.push(...shotWarmProblems(props.warm));
   canvases.forEach((name, index) => {
     if (canvases.indexOf(name) !== index) problems.push(shotError('shot', 'canvas', `names two of its canvases ${name}: each PaintedShotCanvas takes a name of its own`));
@@ -275,10 +279,10 @@ export function compilePaintedShot(
     ids.add(plane.id);
     problems.push(...planePropsProblems(plane, canvases), ...maskInstancedProblems(plane, instancedIds));
   }
-  if (problems.length) return { shot: null, problems };
+  if (problems.length) return answer(null, problems);
   // The farthest plane not instanced is the back; shotDrawableOrder places no items here.
   const written = new Map(props.planes.flatMap((plane) => (plane.kind === 'instanced' ? [] : [[plane.id, plane] as const])));
-  if (!written.size) return { shot: null, problems: [shotError('shot', 'planes', 'has no planes: a shot draws its back at least')] };
+  if (!written.size) return answer(null, [shotError('shot', 'planes', 'has no planes: a shot draws its back at least')]);
   const canvasOf = (name: string | undefined) => (name === undefined ? 0 : canvases.indexOf(name));
   const planes = shotDrawableOrder(props.planes, new Map()).flatMap((drawable, index): CompiledShotPlane[] => {
     const plane = written.get(drawable.plane)!, canvas = canvasOf(plane.canvas);
@@ -326,19 +330,16 @@ export function compilePaintedShot(
   ];
   const motion = compileShotMotion(motionPlanes, props.motion, new Set(rigs.keys()), fps);
   problems.push(...motion.problems);
-  if (props.paintedTextures?.length) problems.push(shotError('shot', 'paintedTextures', "a shot doesn't paint textures for three.js objects yet (ENGINE 6.3): paint them apart, or leave them out"));
-  if (problems.length || !masks.graph) return { shot: null, problems };
+  if (problems.length || !masks.graph || !textures.textures) return answer(null, problems);
   // Planes laid on the frame are unchecked in the build, which they're laid through; covers are laid and checked after it.
   const cameraPlanes = [...shotCameraPlanes(planes, motion.motion, rigs), ...instanced.map(({ id, depths }) => ({ id, kind: 'instanced' as const, depths }))];
   const built = buildPaintCamera({ ...props.camera, animationFps: fps, planes: cameraPlanes });
-  if (!built.ok) return { shot: null, problems: built.problems.map((message) => shotError('camera', '', message)) };
+  if (!built.ok) return answer(null, built.problems.map((message) => shotError('camera', '', message)));
   const covered = shotCoveredPlanes({ camera: built.camera, motion: motion.motion, rigs }, planes);
-  if (covered.problems.length) return { shot: null, problems: covered.problems };
-  return {
-    shot: {
-      planes: covered.planes, instanced, written: props.planes, canvases: Math.max(1, canvases.length), clearBack, motion: motion.motion, rigs,
-      visibility: new Map(Object.entries(visibility)), masks: masks.graph, camera: built.camera, warm: props.warm ?? null,
-    },
-    problems,
-  };
+  if (covered.problems.length) return answer(null, covered.problems);
+  return answer({
+    planes: covered.planes, instanced, written: props.planes, canvases: Math.max(1, canvases.length), clearBack, motion: motion.motion, rigs,
+    visibility: new Map(Object.entries(visibility)), masks: masks.graph, camera: built.camera, warm: props.warm ?? null,
+    paintedTextures: textures.textures,
+  }, problems);
 }

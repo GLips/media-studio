@@ -1,16 +1,15 @@
-// shot-painted-textures.ts: a shot's compiled painted textures (ENGINE 6.3, compileShotPaintedTextures) drawn for its
-// three sources, each a handle loadPaintedThreeSources reads, brought up to a frame's moment by `update`. A texture's
-// source is read at the moment;
-// each selection it blends is solved (solvePaintingSheets), laid on its paper at the document's size
-// (drawStampSheetsStill), resampled to the texture's size and summed by its weight in linear light, so a dissolve
-// blends opaque colour; then gamma-encoded into the handle, as paintedThreeColorNode decodes it. A painting that wraps
-// is resampled repeating across each axis it wraps, and its handle says how it wraps.
+// shot-painted-textures.ts: a shot's compiled painted textures drawn for its three sources, each a handle
+// loadPaintedThreeSources reads, brought up to a frame's moment by `update`. Each selection a texture's source blends
+// then is solved, laid on its paper at the document's size, resampled to the texture's size and summed by its weight
+// in linear light, so a dissolve blends opaque colour; then gamma-encoded into the handle, as paintedThreeColorNode
+// decodes it. A warm solves each texture at its frames, laying nothing.
 //
-// A texture whose source reads the same selections and weights as when it was last drawn isn't drawn again.
+// A texture isn't laid again when its source reads what it last did, or its solves keep the films it was last laid
+// from: a timed painting's frames between two landings show one prefix.
 
-import { compilePaintingSelection } from '#lib/paint/document/models/painting-document-compile.ts';
+import { compilePaintingSelection, type PaintingSelectionCompiled } from '#lib/paint/document/models/painting-document-compile.ts';
 import { paintingErrors, paintingProblemText } from '#lib/paint/document/models/painting-problem.ts';
-import { solvePaintingSheets } from '#lib/paint/document/studio/painting-sheets-solve.ts';
+import { solvePaintingSheets, type PaintingSheetsSolved } from '#lib/paint/document/studio/painting-sheets-solve.ts';
 import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampWrapsAcross, type StampAxis, type StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
 import { stampBindGroup } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
@@ -26,16 +25,41 @@ import type { PaintedShotPaintOptions } from '../models/shot-compile.ts';
 import { compiledPaintedTextureSourceAt, type CompiledShotPaintedTexture } from '../models/shot-painted-texture-compile.ts';
 import { paintedSourceShares, samePaintedSourceShares, type PaintedSourceShare } from '../models/shot-selection.ts';
 
-/** A shot's painted textures as its three sources read them, and `dispose`, letting their textures go after the sources. */
-export type ShotPaintedTextures = PaintedThreeTexturesSupplied & { readonly dispose: () => void };
+/** How a warm runs the textures' solves: stopping between them once `stopped` says so, `solving` told of each before it starts. */
+export type ShotPaintedTexturesWarmRun = { readonly stopped: () => boolean; readonly solving?: (label: string) => void };
 
-/** A texture as it's drawn: its handle, the sum laid into it, and the shares it was last drawn from (null: never drawn). */
+/**
+ * A shot's painted textures as its three sources read them; `warm`, solving each at each of `frames` and letting its
+ * films go to the cache; and `dispose`, letting their textures go after the sources.
+ */
+export type ShotPaintedTextures = PaintedThreeTexturesSupplied & {
+  readonly warm: (frames: readonly PaintMoment[], run: ShotPaintedTexturesWarmRun) => Promise<void>;
+  readonly dispose: () => void;
+};
+
+/** One share of a texture's source solved: its compiled selection, its weight, and its sheets' solves, held until released. */
+type ShotTextureShareSolved = { readonly compiled: PaintingSelectionCompiled; readonly weight: number; readonly sheets: PaintingSheetsSolved };
+
+/** What a share's picture was laid from: its compiled selection, its weight, and the key of each of its sheets' films. */
+type ShotTextureShareLaid = { readonly compiled: PaintingSelectionCompiled; readonly weight: number; readonly films: string };
+
+/**
+ * A texture as it's drawn: its handle, the sum laid into it, the shares its source last read (null: none yet), and
+ * what the sum was laid from (null: nothing yet).
+ */
 type ShotPaintedTextureSlot = {
   readonly texture: CompiledShotPaintedTexture;
   readonly handle: PaintedThreeTextureHandle;
   readonly light: GPUTexture;
-  last: readonly PaintedSourceShare[] | null;
+  read: readonly PaintedSourceShare[] | null;
+  laid: readonly ShotTextureShareLaid[] | null;
 };
+
+const shotTextureShareLaid = ({ compiled, weight, sheets }: ShotTextureShareSolved): ShotTextureShareLaid =>
+  ({ compiled, weight, films: sheets.solved.map(({ key, finished }) => `${key} ${finished ? 'finished' : 'open'}`).join('|') });
+
+const sameShotTextureLaid = (a: readonly ShotTextureShareLaid[], b: readonly ShotTextureShareLaid[]) =>
+  a.length === b.length && a.every(({ compiled, weight, films }, i) => compiled === b[i].compiled && weight === b[i].weight && films === b[i].films);
 
 /** Taps a side a texture's texel averages its painting through, at most: past 8× smaller, a texel samples sparsely. */
 const SHOT_TEXTURE_MOST_TAPS = 8;
@@ -71,6 +95,13 @@ ${GPU_SRGB_WGSL}
 }`;
 
 const SHOT_TEXTURE_SUM: GPUBlendState = { color: { operation: 'add', srcFactor: 'one', dstFactor: 'one' }, alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one' } };
+
+/** The shares `texture`'s source blends at `moment`, refusing a source with an error there. */
+function shotTextureSharesAt(texture: CompiledShotPaintedTexture, moment: PaintMoment): PaintedSourceShare[] {
+  const { source, problems } = compiledPaintedTextureSourceAt(texture, moment), errors = paintingErrors(problems);
+  if (errors.length) throw new Error(`shot: painted texture ${texture.id} at ${moment.at} s: ${errors.map(paintingProblemText).join('; ')}`);
+  return paintedSourceShares(source);
+}
 
 /**
  * Compiled `textures` drawn on `owner`'s device for a shot's three sources. Refuses, as `update` reads a callback, a
@@ -112,19 +143,28 @@ export function createShotPaintedTextures(owner: StampPaintGpuOwner, textures: r
   const arena = createStampUniformArena(device, 1);
   const drawn = textures.map((texture): ShotPaintedTextureSlot => ({
     texture, handle: { id: texture.id, texture: own(texture.widthPx, texture.heightPx, 'rgba16float'), wrap: texture.wrap },
-    light: own(texture.widthPx, texture.heightPx, 'rgba32float'), last: null,
+    light: own(texture.widthPx, texture.heightPx, 'rgba32float'), read: null, laid: null,
   }));
 
-  /** One share's selection solved, laid on its paper and summed by its weight into `light`, cleared first when `first`. */
-  const sumShare = async ({ texture, light }: ShotPaintedTextureSlot, { selection, weight }: PaintedSourceShare, first: boolean) => {
-    const compiled = compilePaintingSelection(selection.painting, brushOf, { layers: selection.layers });
-    const { width, height } = compiled.sheets[0].program, picture = await pictureOf(width, height);
-    const { composite, release } = await solvePaintingSheets(owner, compiled, { ...(costs && { costs }), ...(selection.at !== undefined && { at: selection.at }) });
+  /** `run` over `shares` each solved, their films held until it settles. */
+  const withSharesSolved = async <R,>(shares: readonly PaintedSourceShare[], run: (solved: readonly ShotTextureShareSolved[]) => Promise<R>): Promise<R> => {
+    const solved: ShotTextureShareSolved[] = [];
     try {
-      await drawStampSheetsStill(picture.surface, composite);
+      await gpuEachInTurn(shares, async ({ selection, weight }) => {
+        const compiled = compilePaintingSelection(selection.painting, brushOf, { layers: selection.layers });
+        const sheets = await solvePaintingSheets(owner, compiled, { ...(costs && { costs }), ...(selection.at !== undefined && { at: selection.at }) });
+        solved.push({ compiled, weight, sheets });
+      });
+      return await run(solved);
     } finally {
-      release();
+      for (const { sheets } of solved) sheets.release();
     }
+  };
+
+  /** One share laid on its paper and summed by its weight into `light`, cleared first when `first`. */
+  const sumShare = async ({ texture, light }: ShotPaintedTextureSlot, { compiled, weight, sheets }: ShotTextureShareSolved, first: boolean) => {
+    const { width, height } = compiled.sheets[0].program, picture = await pictureOf(width, height);
+    await drawStampSheetsStill(picture.surface, sheets.composite);
     await owner.checked(`summing painted texture ${texture.id}`, () => {
       const taps = [width / texture.widthPx, height / texture.heightPx].map((ratio) => Math.min(SHOT_TEXTURE_MOST_TAPS, Math.max(1, Math.ceil(ratio))));
       const slot = arena.slot((views) => {
@@ -145,28 +185,46 @@ export function createShotPaintedTextures(owner: StampPaintGpuOwner, textures: r
     });
   };
 
+  /** `slot`'s shares at `moment` solved, then laid, summed and encoded into its handle unless they keep what it was laid from. */
   const drawAt = async (slot: ShotPaintedTextureSlot, moment: PaintMoment) => {
-    const { texture, handle, light } = slot, { source, problems } = compiledPaintedTextureSourceAt(texture, moment), errors = paintingErrors(problems);
-    if (errors.length) throw new Error(`shot: painted texture ${texture.id} at ${moment.at} s: ${errors.map(paintingProblemText).join('; ')}`);
-    const shares = paintedSourceShares(source);
-    if (slot.last && samePaintedSourceShares(slot.last, shares)) return;
-    await gpuEachInTurn(shares, (share, s) => sumShare(slot, share, s === 0));
-    await owner.checked(`encoding painted texture ${texture.id}`, () => {
-      const encoder = device.createCommandEncoder();
-      const pass = encoder.beginRenderPass({ colorAttachments: [{ view: handle.texture.createView(), loadOp: 'clear', storeOp: 'store' }] });
-      pass.setPipeline(encode);
-      pass.setBindGroup(0, stampBindGroup(device, encode, [light.createView()]));
-      pass.draw(3);
-      pass.end();
-      device.queue.submit([encoder.finish()]);
+    const { texture, handle, light } = slot, shares = shotTextureSharesAt(texture, moment);
+    if (slot.read && samePaintedSourceShares(slot.read, shares)) return;
+    await withSharesSolved(shares, async (solved) => {
+      const laid = solved.map(shotTextureShareLaid);
+      if (slot.laid && sameShotTextureLaid(slot.laid, laid)) return;
+      await gpuEachInTurn(solved, (share, s) => sumShare(slot, share, s === 0));
+      await owner.checked(`encoding painted texture ${texture.id}`, () => {
+        const encoder = device.createCommandEncoder();
+        const pass = encoder.beginRenderPass({ colorAttachments: [{ view: handle.texture.createView(), loadOp: 'clear', storeOp: 'store' }] });
+        pass.setPipeline(encode);
+        pass.setBindGroup(0, stampBindGroup(device, encode, [light.createView()]));
+        pass.draw(3);
+        pass.end();
+        device.queue.submit([encoder.finish()]);
+      });
+      slot.laid = laid;
     });
-    slot.last = shares;
+    slot.read = shares;
   };
 
   return {
     handles: drawn.map(({ handle }) => handle),
     update: async (t) => {
       await gpuEachInTurn(drawn, (slot) => drawAt(slot, paintMoment(t)));
+    },
+    // A frame reading what the one before it did solves alike, so it's skipped: a source that never changes solves once.
+    warm: async (frames, { stopped, solving }) => {
+      await gpuEachInTurn(drawn, async ({ texture }) => {
+        let before: readonly PaintedSourceShare[] | null = null;
+        await gpuEachInTurn(frames, async (moment) => {
+          if (stopped()) return;
+          const shares = shotTextureSharesAt(texture, moment);
+          if (before && samePaintedSourceShares(before, shares)) return;
+          before = shares;
+          solving?.(`warming the painted shot's texture ${texture.id} at ${moment.at} s`);
+          await withSharesSolved(shares, () => Promise.resolve());
+        });
+      });
     },
     dispose: () => {
       for (const texture of owned.splice(0)) texture.destroy();

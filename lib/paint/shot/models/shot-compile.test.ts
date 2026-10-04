@@ -100,7 +100,7 @@ test("a dissolving plane shows both its ends' occurrences, weighed by k on its s
   ]);
 });
 
-test('a shot refuses motion its rig or lay already writes, and what it does not draw, every problem at once', () => {
+test('a shot refuses motion its rig or lay already writes, and a painted texture it cannot draw, every problem at once', () => {
   assert.deepEqual(problemsOf({
     camera,
     planes: [{ id: 'front', depth: 1, lay: () => ({ placement: { x: 0, y: 0, rotation: 0, scale: 1 }, pivot: { x: 0, y: 0 } }), source: layersOf(pond, ['sky', 'heron']) }],
@@ -112,12 +112,12 @@ test('a shot refuses motion its rig or lay already writes, and what it does not 
         { target: 'front', clip: { kind: 'place', keys: [{ at: 0, x: 0, y: 0 }, { at: 1, x: 20, y: 0 }] }, clock: { at: 1 }, origin: 'push' },
       ],
     },
-    paintedTextures: [{ id: 'mug', source: layersOf(pond, ['sky']), widthPx: 64, heightPx: 64 }],
+    paintedTextures: [{ id: 'mug', source: layersOf(pond, ['sky'], { ground: 'transparent' }), widthPx: 64, heightPx: 64 }],
   }), [
     'front/neck.motion: lies in front/heron, which is rigged: its rig\'s parts pose all it holds, so nothing in it takes a node',
     'heron sways.motion: front/heron is rigged: it takes no pins, sway or flutter',
     'motion: push writes place on front from 1s while front\'s lay callback still does (without end)',
-    'shot.paintedTextures: a shot doesn\'t paint textures for three.js objects yet (ENGINE 6.3): paint them apart, or leave them out',
+    "mug.source: selects on a transparent ground: a painted texture is opaque, shown on its paintings' paper",
   ]);
 });
 
