@@ -222,7 +222,7 @@
       "inputs": "e5234d0721fa9fd63905e6f00a188093f30ecc12743d334ff8303b32ebdf93f9",
       "reason": "vid-157 camera-build: the camera build refuses a back whose painting the frame and its blur read past, so the rainy street's sky is laid a tenth larger about the frame's centre, and the shot texture cases' label and tile lie flat on a nearer plane (ground paper) before a bare frame-sized back of the same paper",
       "accepted": "2026-10-04",
-      "acceptedOver": "99ad8563",
+      "acceptedOver": "f84fd7cc",
       "adapter": "apple metal-3"
     },
     "shot/masks": {
@@ -240,7 +240,7 @@
       "inputs": "f30b524032dbc3fc675890f26bba3a64c8aecbb971d0bc2f22cf4f6791f19d4b",
       "reason": "vid-157 camera-build: the camera build refuses a back whose painting the frame and its blur read past, so the rainy street's sky is laid a tenth larger about the frame's centre, and the shot texture cases' label and tile lie flat on a nearer plane (ground paper) before a bare frame-sized back of the same paper",
       "accepted": "2026-10-04",
-      "acceptedOver": "99ad8563",
+      "acceptedOver": "f84fd7cc",
       "adapter": "apple metal-3"
     },
     "shot/paper-heron": {
@@ -267,7 +267,7 @@
       "inputs": "388084da9737757ff3f6452141829c879ad60889597bd02617fcceb9227c251f",
       "reason": "vid-157 camera-build: the camera build refuses a back whose painting the frame and its blur read past, so the rainy street's sky is laid a tenth larger about the frame's centre, and the shot texture cases' label and tile lie flat on a nearer plane (ground paper) before a bare frame-sized back of the same paper",
       "accepted": "2026-10-04",
-      "acceptedOver": "99ad8563",
+      "acceptedOver": "f84fd7cc",
       "adapter": "apple metal-3"
     },
     "shot/rigged-dissolve": {
