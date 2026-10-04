@@ -400,7 +400,9 @@ ellipse), either direction; two stretches along each other with different edges 
 Edges: `crisp` is a wall paint and water stop at, where a drying wash gathers its rim. `feather(widthPx)` keeps that
 wall and rim, ramping coverage to nothing over `widthPx` inside the line; a feather wider than half a shape never
 reaches full coverage. `bleed(reachPx)` removes the wall: a ramp `reachPx` wide past the line where paint and water
-land fading and dry with no rim. Past the ramp, paint walks only into water already there; for a wetter loss, lay a
+land fading and dry with no rim; a flood lays its paint over the whole ramp, which grades it. Either ramp is a
+smoothstep, reading from 10% to 90% over about 0.6 of its width: for a soft edge that reads W px wide, give it about
+1.6 W. Past the ramp, paint walks only into water already there; for a wetter loss, lay a
 water stroke along the edge first. Two floods of one wash whose ramps overlap both land there, the later into the
 earlier's water. So a silhouette that melts into wet paint is `bleed` on that stretch; a feather still walls it. Any
 edge may be ragged: `roughness: {amountPx, featurePx, seed}`. `maxSpreadPx` on a paint charge caps how far that

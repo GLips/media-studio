@@ -68,7 +68,9 @@ consecutive authored cross-sections, keyed by the pair's guide IDs) draw from th
 anywhere leaves the other pairs' marks where they were. A flood (`placeStampFlood`) is its brush's strokes round the
 outline and in rows across it, landing within a barrier its `edge` (`StampFloodEdge`) makes: `barrier`, the default,
 the outline itself, a wall its paint and water stop at and its drying rim gathers against; `lost`, a ramp out over
-`reach` px past it, so the wash bleeds into wet paper and dries without a line. Only a barrier is a wall
+`reach` px past it (its line `ragged` as an area's may be), so the wash bleeds into wet paper and dries without a
+line. A lost edge's strokes are planned over the outline grown as far as the ramp reaches (`stampFloodLaidPast`), so
+the ramp grades paint that's there rather than the paper past where the strokes would stop. Only a barrier is a wall
 (`stampDepositWalled`), in the wet field's held wetness and the rim's walls alike. A flood's `reach` lays the region
 grown by its distance grid (`stampGrownPolygon`), not scaled. Every mark ends where its edge meets the outline unless its `reach` runs it past (`{ past }`, diameters
 its centres may lie outside: rows run out across and along the shape, guided marks' ends on past the outline, a

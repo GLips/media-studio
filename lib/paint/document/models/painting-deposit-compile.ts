@@ -119,7 +119,7 @@ function paintingFillDeposit(
   const area = compilePaintingArea(fill.area, `${owner}.area`), { edge } = fill.area;
   const laying = fill.laying ?? (brush.media === 'dry' ? undefined : { kind: 'flood' as const });
   const application: StampFillApplication | undefined = laying?.kind === 'flood'
-    ? { kind: 'flood', edge: edge?.kind === 'bleed' ? { kind: 'lost', reach: edge.reachPx } : { kind: 'barrier' }, ...(laying.reach && { reach: laying.reach }) }
+    ? { kind: 'flood', edge: edge?.kind === 'bleed' ? { kind: 'lost', reach: edge.reachPx, ...(edge.roughness && { ragged: { amount: edge.roughness.amountPx, scale: edge.roughness.featurePx } }) } : { kind: 'barrier' }, ...(laying.reach && { reach: laying.reach }) }
     : laying;
   const flooded = application?.kind === 'flood';
   const within = flooded ? clips : [...clips, area];

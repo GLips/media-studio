@@ -11,12 +11,12 @@ import { placeStrokeStamps, stampFrozenMarks, type FrozenStampMarks, type Placed
 import type { StampPressureCurve } from '#lib/paint/brush/models/stamp-stroke-hand.ts';
 import { stampBrushEdgeOffsetMean, stampBrushMeasuredProfile } from '#lib/paint/brush/models/stamp-brush-profile.ts';
 import type { CompiledStampArea } from './stamp-area.ts';
-import { placeStampFlood, stampBrushFillEdge, stampFloodBarrier, stampFloodEdgeOf, type StampFillApplication } from './stamp-fill.ts';
+import { placeStampFlood, stampBrushFillEdge, stampFloodBarrier, stampFloodEdgeOf, stampFloodLaidPast, type StampFillApplication } from './stamp-fill.ts';
 import { stampFillStrokePath } from './stamp-fill-strokes.ts';
 import { stampMarkStamps } from './stamp-marks.ts';
 import { stampPaintFieldAt, type StampSeededPaintField } from './stamp-paint-field.ts';
 import type { CompiledStampFlood } from './stamp-paint-recipe-compile.ts';
-import { stampRegionPolygon, type StampPoint } from './stamp-region.ts';
+import { stampGrownPolygon, stampRegionPolygon, type StampPoint } from './stamp-region.ts';
 import type { StampResolvedGeometry } from './stamp-paint-recipe-types.ts';
 
 /**
@@ -105,9 +105,10 @@ function placeNow(geometry: StampPlacingGeometry, brush: StampBrush, diameter: n
   if (geometry.kind === 'fill') {
     const { region, application, direction = 0, load } = geometry;
     if (application.kind === 'flood') {
-      const { scale, stamps, dualStamps } = placeStampFlood(region, brush, diameter, direction, seed);
-      const polygon = stampRegionPolygon(region), edge = stampFloodEdgeOf(application);
-      const flood = { edge, barrier: stampFloodBarrier(polygon, edge), scale, load };
+      const polygon = stampRegionPolygon(region), edge = stampFloodEdgeOf(application), past = stampFloodLaidPast(edge);
+      const laid = past > 0 ? { kind: 'polygon' as const, points: stampGrownPolygon(polygon, past) } : region;
+      const { scale, stamps, dualStamps } = placeStampFlood(laid, brush, diameter, direction, seed);
+      const flood = { edge, barrier: stampFloodBarrier(polygon, edge, seed), scale, load };
       return { kind: 'flood', flood, stamps, dualStamps };
     }
     const offset = stampBrushEdgeOffsetMean(stampBrushMeasuredProfile(brush), diameter, brush.name);
