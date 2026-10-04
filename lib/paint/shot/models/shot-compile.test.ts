@@ -3,10 +3,13 @@ import { test } from 'node:test';
 import type { Layer, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
 import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
 import { painting } from '#lib/paint/document/models/painting-source.ts';
+import { paintCameraPlay, paintPlaneViewAt } from '#lib/paint/animation/models/paint-camera.ts';
+import { paintSimilarityApply, paintSimilarityAfter, paintSimilarityOf } from '#lib/paint/animation/models/paint-similarity.ts';
 import { paintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { compilePaintedShot } from './shot-compile.ts';
 import { shotPlaneMomentAt, shotPlaneSelectionAt } from './shot-frame-plan.ts';
+import { shotPinnedPlanes } from './shot-placement.ts';
 import type { PaintedShotProps, RigPart } from './shot-props.ts';
 
 const FPS = 24;
@@ -77,5 +80,35 @@ test('a shot refuses motion its rig or lay already writes, and what it does not 
     'heron sways.motion: front/heron is rigged: it takes no pins, sway or flutter',
     'motion: push writes place on front from 1s while front\'s lay callback still does (without end)',
     'shot.paintedTextures: a shot doesn\'t paint textures for three.js objects yet (ENGINE 6.3): paint them apart, or leave them out',
+  ]);
+});
+
+test('a transparent back is refused unless HTML lies behind the first canvas, over which it is laid clear', () => {
+  const props: PaintedShotProps = { camera, planes: [{ id: 'back', depth: 1, source: layersOf(pond, ['sky'], { ground: 'transparent' }) }] };
+  assert.deepEqual(problemsOf(props), ['back.source.ground: is the back, laid on its paper wherever the frame shows: its ground is transparent only over HTML before the first canvas']);
+  const { shot } = compilePaintedShot(props, [], { htmlBehind: true });
+  assert.equal(shot!.clearBack, true);
+  assert.equal(shot!.planes[0].kind === 'painted' && shot!.planes[0].back, false);
+});
+
+test('a pinned plane lies where a frame measures its elements, refused when one is unmounted or its paint passes the stage', () => {
+  const pin = { kind: 'pin', points: [{ sourcePx: { x: 40, y: 100 }, element: { current: null } }] } as const;
+  // The camera pans 60 px at depth 1 over a stage 40 px wider each side: a plane laid far enough right is seen past it.
+  const pan = paintCameraPlay({ kind: 'move', keys: [{ at: 0 }, { at: 1, pan: { x: 60, y: 0 } }] }, { clock: { at: 0 }, origin: 'pan' });
+  const { shot } = compilePaintedShot({
+    camera: { ...camera, stage: stampStage({ width: 320, height: 240 }, 40), plays: [pan] },
+    planes: [{ id: 'back', depth: 2, source: layersOf(pond, ['sky']) }, { id: 'label', depth: 1, lay: pin, source: layersOf(pond, ['heron']) }],
+  }, []);
+  const pinnedAt = (x: number, y: number) => shotPinnedPlanes(shot!, new Map([['label', [{ x, y }]]]));
+  const { planes, problems } = pinnedAt(60, 90), label = planes.get('label')!;
+  assert.deepEqual(problems, []);
+  assert.ok(label.lay.kind === 'still' && label.lay.lay);
+  const { placement, pivot } = label.lay.lay, view = paintPlaneViewAt(shot!.camera, 1, paintMoment(0));
+  const centre = paintSimilarityApply(paintSimilarityAfter(view, paintSimilarityOf(placement, pivot)), pin.points[0].sourcePx);
+  assert.ok(Math.hypot(centre.x - 60, centre.y - 90) < 1e-6, `its point lies at ${centre.x}, ${centre.y}`);
+  const refused = (centres: Map<string, readonly ({ x: number; y: number } | null)[]>) => shotPinnedPlanes(shot!, centres).problems.map(({ path, message }) => `${path}: ${message}`);
+  assert.deepEqual(refused(new Map([['label', [null]]])), ["label.lay.points[0].element: isn't mounted: a pin lies on its element's centre once laid out"]);
+  assert.deepEqual(refused(new Map([['label', [{ x: 300, y: 90 }]]])), [
+    "label.lay: plane label's picture must hold what the camera shows of it, 258..382 × 30..170 pan from key 0 to 1, but the stage holds -40..360 × -40..280; widen the stage's margin",
   ]);
 });

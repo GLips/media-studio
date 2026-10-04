@@ -56,9 +56,9 @@ export type PlaneMask =
 export type PinPoint = { readonly sourcePx: StampPoint; readonly element: RefObject<Element | null> };
 
 /**
- * Lays the plane so its document points sit on HTML elements' centres, measured in frame px once laid out (and on
- * resize), as the camera stands at scene second `at` (0). One point moves the plane only; two set a similarity: move,
- * uniform scale and turn. The shot draws nothing until it has measured.
+ * Lays the plane so its document points sit on HTML elements' centres, measured in frame px as each frame draws (and
+ * on resize), once laid out, as the camera stands at scene second `at` (0). One point moves the plane only; two set a
+ * similarity: move, uniform scale and turn. A frame whose element isn't mounted fails.
  */
 export type ScreenPin = { readonly kind: 'pin'; readonly points: readonly [PinPoint] | readonly [PinPoint, PinPoint]; readonly at?: number };
 

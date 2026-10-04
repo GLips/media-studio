@@ -1,7 +1,8 @@
 // shot-renderer.ts: a compiled shot drawn on one owner's device into its canvases (ENGINE 6.1). A frame solves each
 // painted plane once, at its own moment; then each exposure (a fast frame's one, a reference frame's many) lays every
 // plane where it lies at that moment and composites each canvas's planes far to near through that canvas's lens. The
-// first canvas holds the back and is opaque; a later one is developed premultiplied over the page.
+// first canvas holds the back, opaque unless it's clear over HTML; a later one is developed premultiplied over the
+// page. A pinned plane lies where the frame's measures put it.
 //
 // Picture and three planes are the old path's sources, rendered and laid through stamp-lens-source-layers.ts; a
 // picture plane's node places it within its plane. Its three sources read no painted textures (shot-compile.ts).
@@ -24,7 +25,9 @@ import { lensExposures } from '#lib/picture/lens/models/lens-exposures.ts';
 import { LENS_REFERENCE_EXPOSURES, type LensMode } from '#lib/picture/lens/models/lens-mode.ts';
 import { shutterMomentAt, shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import { createLensCompositor, type LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
+import { paintingProblemsError } from '#lib/paint/document/models/painting-problem.ts';
 import type { CompiledPaintedShot, CompiledShotPaintedPlane, CompiledShotPlane } from '../models/shot-compile.ts';
+import { shotPinnedPlanes, type ShotPinCentres } from '../models/shot-placement.ts';
 import type { PlaneInstance } from '../models/shot-props.ts';
 import { shotNodePoseAt } from '../models/shot-frame-plan.ts';
 import { shotDrawableOrder } from '../models/shot-plan.ts';
@@ -37,10 +40,13 @@ import { createShotSheetsLayer } from './shot-sheets-lay.ts';
 /** What a shot is painted with: its brushes, and where its solves, readbacks and warnings count. */
 export type PaintedShotRendererOptions = { readonly brushOf: PaintingBrushOf; readonly costs?: StampPaintCostTally };
 
-/** A shot drawn a frame at a time: `draw` at frame time `t` in a lens mode, `finish` waiting out the GPU. */
+/**
+ * A shot drawn a frame at a time: `draw` at frame time `t` in a lens mode, its pinned planes' elements as `pins`
+ * measures them at that frame (none needed without pins); `finish` waiting out the GPU.
+ */
 export type PaintedShotRenderer = {
   readonly stage: StampStage;
-  draw: (t: number, mode: LensMode) => Promise<void>;
+  draw: (t: number, mode: LensMode, pins?: ShotPinCentres) => Promise<void>;
   finish: () => Promise<void>;
   dispose: () => void;
 };
@@ -77,7 +83,7 @@ const eachInTurn = <T,>(items: Iterable<T>, run: (item: T) => Promise<void>): Pr
 
 /**
  * `shot` on `owner`'s device, drawn into `surfaces`, one a canvas in the shot's canvas order, each the camera's frame
- * size; the first opaque, the rest premultiplied.
+ * size; the first opaque unless the back is clear, the rest premultiplied.
  */
 export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfaces: readonly StampPaintSurface[], shot: CompiledPaintedShot, { brushOf, costs }: PaintedShotRendererOptions): Promise<PaintedShotRenderer> {
   // Paint passes go through the owner's caching device; the lens and picture sources take the device itself.
@@ -87,8 +93,8 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
     if (surface.width !== stage.frame.width || surface.height !== stage.frame.height) {
       throw new Error(`shot: the camera's frame is ${stage.frame.width} × ${stage.frame.height}, and canvas ${index}'s surface ${surface.width} × ${surface.height}`);
     }
-    const alphaMode = index === 0 ? 'opaque' : 'premultiplied';
-    if (surface.alphaMode !== alphaMode) throw new Error(`shot: canvas ${index}'s surface is ${surface.alphaMode}; ${index === 0 ? 'the first, holding the back, is opaque' : 'a later one is laid premultiplied over the page'}`);
+    const opaque = index === 0 && !shot.clearBack, alphaMode = opaque ? 'opaque' : 'premultiplied';
+    if (surface.alphaMode !== alphaMode) throw new Error(`shot: canvas ${index}'s surface is ${surface.alphaMode}; ${opaque ? 'the first, holding an opaque back, is opaque' : 'it is laid premultiplied over the page'}`);
   });
   const arena = createStampGrowingUniformArena(device, SHOT_UNIFORM_SLOTS);
   // Let go of last made first: three's sources before the textures they sample.
@@ -114,7 +120,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
       made.push(lens);
       return { surface, index, lens, frames: createStampLensFrames(lens), sourceLayers: createStampLensSourceLayers(owner, { stage, lens, sources: own }), glowed: false };
     });
-    const back = shot.planes[0], planeOf = new Map(shot.planes.map((plane) => [plane.id, plane]));
+    const back = shot.clearBack ? undefined : shot.planes[0], planeOf = new Map(shot.planes.map((plane) => [plane.id, plane]));
 
     /** A picture plane's look: its view after its node's placement within it, at the moment and the shutter's ends. */
     const pictureLook = (id: string, look: StampPlaneLook, { at, shutter }: ShotMomentAt): StampPlaneLook => {
@@ -159,7 +165,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
           const { surface } = canvas, dithered = surface.format.endsWith('8unorm');
           frame.develop(encoder, {
             bloom: canvas.glowed ? { sigma: lensFrame.bloom, strength: 1, glow: 'emission' } : null,
-            into: surface.frameTexture().createView(), format: surface.format, encoding: { kind: canvas.index === 0 ? 'encoded' : 'premultiplied', dithered },
+            into: surface.frameTexture().createView(), format: surface.format, encoding: { kind: canvas.index === 0 && back ? 'encoded' : 'premultiplied', dithered },
           });
         }
         canvas.lens.flush();
@@ -172,14 +178,16 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
     let disposed = false;
     return {
       stage,
-      draw: async (t, mode) => {
+      draw: async (t, mode, pins = new Map()) => {
         if (disposed) return;
         owner.assertLive();
+        const pinned = shotPinnedPlanes(shot, pins);
+        if (pinned.problems.length) throw paintingProblemsError(`the shot's pins at ${t} s`, pinned.problems);
         const solved: ShotPlaneSolved[] = [];
         try {
           // Each plane's marks posed and solved once, at the frame's own moment; one after another on the solve lease.
           await eachInTurn(shot.planes.filter(isPainted), async (plane) => {
-            solved.push(await planes.solve(plane, paintMoment(t)));
+            solved.push(await planes.solve(pinned.planes.get(plane.id) ?? plane, paintMoment(t)));
           });
           await eachInTurn(shotExposures(shot, t, mode), async (exposure) => {
             const moments = new Map<string, ShotPlaneMoment>();

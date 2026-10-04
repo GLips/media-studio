@@ -172,6 +172,15 @@ function extentProblem(stage: StampStage, { id, depth }: { id: string; depth: nu
   return null;
 }
 
+/**
+ * Why `camera` can't show plane `plane` held as far as `extent` anywhere in its shot, or null: the build's check, for
+ * a plane whose extent is known only once the camera is (a lay worked back through its view, an element measured).
+ */
+export function paintCameraExtentProblem(camera: PaintCamera, plane: { readonly id: string; readonly depth: number }, extent: StampPlaneExtent): string | null {
+  const spans = poseSpans(camera.move), dolly = range(spans.flatMap(({ a, b }) => [a.dolly, b.dolly]));
+  return extentProblem(camera.stage, plane, extent, spans, widestDefocus(camera.focus, dolly, plane.depth));
+}
+
 /** A camera over `o.planes`, checked (see the file's head), with each plane's greatest magnification. */
 export function buildPaintCamera(o: PaintCameraOptions): PaintCameraBuild {
   const problems: string[] = [], fps = o.animationFps ?? PAINT_ANIMATION_FPS;

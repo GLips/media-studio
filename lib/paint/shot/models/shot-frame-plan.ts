@@ -50,8 +50,12 @@ export function shotNodePoseAt(node: CompiledShotNode, t: PaintMoment, animation
 export const shotPlaneMomentAt = (motion: CompiledShotMotion, plane: string, t: PaintMoment): PaintMoment =>
   paintNodeTimeAt(motion.planeClocks.get(plane) ?? [], t, motion.animationFps);
 
-/** Plane `plane`'s lay at `t`, document px to plane px: a callback's read at its presentation moment; the identity unlaid. */
+/**
+ * Plane `plane`'s lay at `t`, document px to plane px: a callback's read at its presentation moment; the identity
+ * unlaid. Throws on a pin: a plane pinned to HTML lies where a frame measures its elements (shotPinnedPlanes).
+ */
 export function shotPlaneLayAt(plane: CompiledShotPaintedPlane, motion: CompiledShotMotion, t: PaintMoment): PaintSimilarity {
+  if (plane.lay.kind === 'pinned') throw new Error(`shot: plane ${plane.id} is pinned to HTML, and lies nowhere until its elements are measured`);
   const lay = plane.lay.kind === 'moving' ? plane.lay.lay(shotPlaneMomentAt(motion, plane.id, t)) : plane.lay.lay;
   return lay ? paintSimilarityOf(lay.placement, lay.pivot) : PAINT_SIMILARITY_IDENTITY;
 }
@@ -65,7 +69,8 @@ export function shotPlanePlaceAt(plane: CompiledShotPaintedPlane, motion: Compil
 /**
  * The selection plane `plane`'s source gives at frame moment `t`, read at its source clock's moment. Throws on a
  * callback's selection with problems, on a dissolve between its ends (ENGINE slice 6), and on a source whose
- * occurrences aren't its first evaluation's: motion, rigs and visibility were checked against those.
+ * occurrences, size or ground aren't its first evaluation's: motion, rigs, visibility, reach and the back were read
+ * from those.
  */
 export function shotPlaneSelectionAt(plane: CompiledShotPaintedPlane, t: PaintMoment, animationFps: number): LayerSelection {
   const moment = paintNodeTimeAt(plane.sourceClock, t, animationFps), source = shotPresentationAt(plane.source, moment);
@@ -77,6 +82,10 @@ export function shotPlaneSelectionAt(plane: CompiledShotPaintedPlane, t: PaintMo
   const { widthPx, heightPx } = drawn.selection.painting.document, first = plane.first.painting.document;
   if (widthPx !== first.widthPx || heightPx !== first.heightPx) {
     throw new Error(`shot: plane ${plane.id}'s source at ${moment.at} s paints a ${widthPx} × ${heightPx} document, and its first ${first.widthPx} × ${first.heightPx}: a source keeps one document size, which its reach and lay were read at`);
+  }
+  const { ground } = drawn.selection, firstGround = plane.first.ground;
+  if (ground !== firstGround) {
+    throw new Error(`shot: plane ${plane.id}'s source at ${moment.at} s lays ${ground ?? 'its default'} ground, and its first ${firstGround ?? 'its default'}: a source keeps the ground its reach, and the back's canvas, were read with`);
   }
   const keys = shotPlaneOccurrences(plane.id, source).map(({ key }) => key), firstKeys = plane.occurrences.map(({ key }) => key);
   if (keys.length !== firstKeys.length || keys.some((key, i) => key !== firstKeys[i])) {

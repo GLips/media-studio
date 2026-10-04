@@ -1,15 +1,20 @@
 // shot-placement.ts: where a pinned or covering plane lies, worked back through the camera. A plane's lay takes its
 // document px to plane px and the camera's view takes plane px to frame px, so a lay meant to land on frame px (an
 // HTML element's centre, the frame's corners) is found through the view's inverse, as the camera stands at the lay's
-// own scene second. Also the DOM adapter's arithmetic: an element's measured box as a frame-px centre.
+// own scene second. A pinned plane is laid that way at each frame, as its elements are measured then, and checked
+// where it lies. Also the DOM adapter's arithmetic: an element's measured box as a frame-px centre.
 
+import { paintCameraExtentProblem } from '#lib/paint/animation/models/paint-camera-build.ts';
+import { paintPlaneViewAt } from '#lib/paint/animation/models/paint-camera.ts';
 import {
   paintPlacementOfSimilarity, paintSimilarityApply, paintSimilarityInverse, paintSimilarityThrough, type PaintSimilarity,
 } from '#lib/paint/animation/models/paint-similarity.ts';
 import { isPaintingFinitePoint, paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
-import type { StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import { paintMoment, type StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import type { CompiledPaintedShot, CompiledShotPaintedPlane } from './shot-compile.ts';
 import type { CoverFrame, ScreenPin } from './shot-props.ts';
+import { shotPaintedExtent } from './shot-reach.ts';
 
 /**
  * The lay covering a frame `frame` px with `box` (document px), seen through `view` (paintPlaneViewAt at the cover's
@@ -66,6 +71,31 @@ export function shotPinMeasureProblems(plane: string, centres: readonly (StampPo
   const [a, b] = centres;
   if (a && b && a.x === b.x && a.y === b.y) problems.push(paintingProblem('error', plane, 'lay.points', `both elements are centred at ${a.x}, ${a.y} px: two points set a scale and turn only apart`));
   return problems;
+}
+
+/** Each pinned plane's elements' centres as a frame measures them, frame px by plane id: null where one isn't mounted. */
+export type ShotPinCentres = ReadonlyMap<string, readonly (StampPoint | null)[]>;
+
+/**
+ * `shot`'s pinned planes laid where `centres` put their elements (shotPinLay, through the camera's view at each pin's
+ * second), each checked where it then lies as the camera build checks a plane; or what keeps one from lying there: an
+ * element unmeasured or unmounted, two centred alike, paint past the stage.
+ */
+export function shotPinnedPlanes(shot: CompiledPaintedShot, centres: ShotPinCentres): { readonly planes: ReadonlyMap<string, CompiledShotPaintedPlane>; readonly problems: readonly PaintingProblem[] } {
+  const planes = new Map<string, CompiledShotPaintedPlane>(), problems: PaintingProblem[] = [], rigged = new Set(shot.rigs.keys());
+  for (const plane of shot.planes) {
+    if (plane.kind !== 'painted' || plane.lay.kind !== 'pinned') continue;
+    const { points, at = 0 } = plane.lay.pin, measured = centres.get(plane.id) ?? points.map(() => null);
+    const measureProblems = shotPinMeasureProblems(plane.id, measured), found = measured.flatMap((centre) => (centre ? [centre] : []));
+    problems.push(...measureProblems);
+    if (measureProblems.length) continue;
+    const lay = shotPinLay(points.map(({ sourcePx }) => sourcePx), found, paintPlaneViewAt(shot.camera, plane.depth, paintMoment(at)));
+    const laid: CompiledShotPaintedPlane = { ...plane, lay: { kind: 'still', lay } };
+    const problem = paintCameraExtentProblem(shot.camera, plane, shotPaintedExtent(laid, shot.motion, rigged));
+    if (problem) problems.push(paintingProblem('error', plane.id, 'lay', problem));
+    else planes.set(plane.id, laid);
+  }
+  return { planes, problems };
 }
 
 /** A box as the DOM measures one (`getBoundingClientRect`), in the page's px. */
