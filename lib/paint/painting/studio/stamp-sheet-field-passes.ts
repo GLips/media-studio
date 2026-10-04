@@ -9,7 +9,7 @@
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import { STAMP_PAINT_FIELD_SHARE, stampPaintFieldEnds, type StampSeededPaintField } from '../models/stamp-paint-field.ts';
-import { stampRegionTexelWords, stampStageTexelsOf, stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
+import { stampRegionTexelWords, stampStageTexelsOf, stampStageWgsl, type StampStage, type StampWrapFrom } from '../models/stamp-stage.ts';
 import { STAMP_LANDED_WETNESS_WGSL, STAMP_WET_PAPER_WGSL, type StampDrying } from '../models/stamp-wetness.ts';
 import { stampBindGroup, type StampPaintDevice } from './stamp-paint-gpu.ts';
 import { STAMP_REGION_AT_WGSL, type StampRegionTexture } from './stamp-region-textures.ts';
@@ -29,7 +29,7 @@ const SHEET_FIELD = gpuUniformLayout('SheetField', [['origin', 'vec2u'], ['exten
  */
 const SHEET_PREWET = gpuUniformLayout('SheetPrewet', [
   ['origin', 'vec2u'], ['extent', 'vec2u'], ['drying', 'vec4f'], ['region', 'vec4f'], ['fluid', 'vec4f'], ['geometry', 'vec4f'], ['rest', 'vec4f'], ['ends', 'vec2f'],
-  ['tau', 'f32'], ['kind', 'i32'], ['wrapFrom', 'f32'],
+  ['tau', 'f32'], ['kind', 'i32'], ['wrapFrom', 'vec2f'],
 ]);
 
 const header = (layout: { wgsl: string; name: string }) => /* wgsl */ `
@@ -119,10 +119,10 @@ ${STAMP_REGION_AT_WGSL}
 /**
  * A prewet as its pass lands it: its region, the fluid holding it off (null for none on the stage), its water, and
  * the map back to where it was planned, where its water's field is read (within a wrap of `wrapFrom` on a wrapping
- * stage, else 0).
+ * stage, else unread).
  */
 export type StampSheetPrewetLanding = {
-  region: StampRegionTexture; fluid: StampRegionTexture | null; water: StampSeededPaintField<number>; rest: StampRestMap; wrapFrom: number;
+  region: StampRegionTexture; fluid: StampRegionTexture | null; water: StampSeededPaintField<number>; rest: StampRestMap; wrapFrom: StampWrapFrom;
 };
 
 /** What the passes write: the field's paper and rim, the open-paint mask; `blank` for a fluid of none. */

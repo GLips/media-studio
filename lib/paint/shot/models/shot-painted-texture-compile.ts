@@ -1,39 +1,47 @@
 // shot-painted-texture-compile.ts: a shot's painted textures (ENGINE 6.3) checked and compiled as the shot loads,
 // before they're drawn (shot-painted-textures.ts): each id once, a size in whole px, and a source a painted source on
 // its paper, every painting it blends wrapping alike. A texture is opaque, so a transparent ground has nothing to show
-// through to; and it repeats across u or doesn't, so a dissolve can't blend a painting that wraps with one that
-// doesn't. Whether it wraps is read at moment 0 and held: a callback's source is checked again at each moment.
+// through to; and it repeats across u, v, both or neither, so a dissolve can't blend paintings that wrap otherwise.
+// How it wraps is read at moment 0 and held: a callback's source is checked again at each moment.
 
 import { paintingErrors, paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import type { LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
 import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import type { StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { PaintedTexture } from './shot-props.ts';
 import { paintedSourceProblems, type PaintedSource } from './shot-selection.ts';
 
-/** A painted texture compiled: as written, and `wrap`, whether it repeats across u, as its source read at moment 0. */
-export type CompiledShotPaintedTexture = PaintedTexture & { readonly wrap: 'x' | null };
+/**
+ * A painted texture compiled: as written, and `wrap`, how it repeats (u along x, v along y; null: neither), as its
+ * source read at moment 0.
+ */
+export type CompiledShotPaintedTexture = PaintedTexture & { readonly wrap: StampWrap | null };
 
 /** Every selection `source` names, a dissolve's ends at any weight. */
 function paintedSourceSelections(source: PaintedSource): LayerSelection[] {
   return source.kind === 'layers' ? [source] : [...paintedSourceSelections(source.a), ...paintedSourceSelections(source.b)];
 }
 
-/** Whether `source` blends a painting that wraps with one that doesn't, at any weight: no texture can draw that. */
+/** Whether `source` blends paintings that wrap otherwise than each other, at any weight: no texture can draw that. */
 const paintedSourceWrapsMixed = (source: PaintedSource) => new Set(paintedSourceSelections(source).map(({ painting }) => painting.document.wrap ?? null)).size > 1;
 
-/** How the texture of `source`, one whose paintings all wrap alike (paintedSourceWrapsMixed false), wraps: 'x' or null. */
-const paintedSourceWrap = (source: PaintedSource): 'x' | null => paintedSourceSelections(source)[0].painting.document.wrap ?? null;
+/** How the texture of `source`, one whose paintings all wrap alike (paintedSourceWrapsMixed false), wraps. */
+const paintedSourceWrap = (source: PaintedSource): StampWrap | null => paintedSourceSelections(source)[0].painting.document.wrap ?? null;
+
+/** How a texture wrapping as `wrap` repeats, in a problem's words. */
+const PAINTED_WRAP_TEXT: Readonly<Record<StampWrap | 'none', string>> = { none: "doesn't wrap", x: 'wraps across x', y: 'wraps across y', xy: 'wraps both ways' };
+const paintedWrapText = (wrap: StampWrap | null) => PAINTED_WRAP_TEXT[wrap ?? 'none'];
 
 /**
  * Problems in painted texture `id`'s `source` as read at one moment: a painted source's (paintedSourceProblems), a
- * selection on a transparent ground, and paintings that wrap mixed with ones that don't.
+ * selection on a transparent ground, and paintings that wrap otherwise than each other.
  */
 function paintedTextureSourceProblems(id: string, source: PaintedSource): PaintingProblem[] {
   const problems = paintedSourceProblems(id, source);
   if (paintedSourceSelections(source).some(({ ground }) => ground === 'transparent')) {
     problems.push(paintingProblem('error', id, 'source', "selects on a transparent ground: a painted texture is opaque, shown on its paintings' paper"));
   }
-  if (paintedSourceWrapsMixed(source)) problems.push(paintingProblem('error', id, 'source', "blends a painting that wraps with one that doesn't: a texture repeats across u or doesn't"));
+  if (paintedSourceWrapsMixed(source)) problems.push(paintingProblem('error', id, 'source', 'blends paintings that wrap otherwise: a texture repeats across u, v, both or neither, as all it blends do'));
   return problems;
 }
 
@@ -66,7 +74,7 @@ export function compiledPaintedTextureSourceAt(texture: CompiledShotPaintedTextu
   if (typeof texture.source !== 'function') return { source: texture.source, problems: [] };
   const source = texture.source(moment), problems = paintedTextureSourceProblems(texture.id, source);
   if (!paintingErrors(problems).length && paintedSourceWrap(source) !== texture.wrap) {
-    problems.push(paintingProblem('error', texture.id, 'source', `${texture.wrap ? 'wraps' : "doesn't wrap"} at 0 s, and at ${moment.at} s ${texture.wrap ? "doesn't" : 'does'}: a texture repeats across u or doesn't, for all time`));
+    problems.push(paintingProblem('error', texture.id, 'source', `${paintedWrapText(texture.wrap)} at 0 s, and at ${moment.at} s ${paintedWrapText(paintedSourceWrap(source))}: a texture repeats as it did at 0 s, for all time`));
   }
   return { source, problems };
 }

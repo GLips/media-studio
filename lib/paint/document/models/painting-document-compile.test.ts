@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { stampSheetEntryKey, stampSheetHeadKey } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
 import { stampSheetSolvePlan, stampSheetWrapHalo } from '#lib/paint/painting/models/stamp-sheet-wrap.ts';
+import type { StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
 import { compilePaintingSelection } from './painting-document-compile.ts';
 import type { Layer, PaintingDocument } from './painting-document.ts';
 import { painting, type PaintingEvaluation } from './painting-source.ts';
@@ -43,10 +44,10 @@ test('a fill with an island in its hole floods both outer rings as one deposit, 
   assert.ok(ringed.stamps.length > outline.stamps.length, 'the island is flooded besides the outline');
 });
 
-const strokedDocument = (profile: (along: number) => number, [from, to] = [20, 180]): PaintingDocument => ({
+const strokedDocument = (profile: (along: number) => number, from = { x: 20, y: 60 }, to = { x: 180, y: 60 }): PaintingDocument => ({
   widthPx: 200, heightPx: 120, paper: { color: '#ffffff', absorbency: 0.5 }, medium: 'watercolour',
   layers: [{ key: 'ink', washes: [{ key: 'line', applications: [{
-    kind: 'stroke', subpaths: [[{ x: from, y: 60 }, { x: to, y: 60 }]], hand: { profile },
+    kind: 'stroke', subpaths: [[from, to]], hand: { profile },
     brush: { style: 'watercolor', brush: 'wash' }, diameterPx: 16, seed: 'line', charge: { kind: 'paint', mix: { parts: [{ pigment: '#223344', amount: 1 }], strength: 0.8 } },
   }] }] }],
 });
@@ -97,29 +98,35 @@ test("a boil epoch reseeds its layer's marks and keys alone: each epoch lays the
   assert.deepEqual(again.entries.map(({ datum }) => datum), boiled.entries.map(({ datum }) => datum));
 });
 
-test('a wrapped document is keyed apart from itself unwrapped, and an unwrapped head reads no wrap', () => {
-  const head = (wrap?: 'x') => rootProgram(painting({ default: () => ({ ...strokedDocument(() => 1), ...(wrap && { wrap }) }) })).head;
-  const [plain, wrapped] = [head(), head('x')];
-  assert.notEqual(plain, wrapped);
-  assert.ok(!plain.includes('wrap'));
+test('a wrapped document is keyed apart from itself unwrapped and wrapped otherwise, and an unwrapped head reads no wrap', () => {
+  const head = (wrap?: StampWrap) => rootProgram(painting({ default: () => ({ ...strokedDocument(() => 1), ...(wrap && { wrap }) }) })).head;
+  const heads = [head(), head('x'), head('y'), head('xy')];
+  assert.equal(new Set(heads).size, heads.length);
+  assert.ok(!heads[0].includes('wrap'));
 });
 
-test("banded for its solve, a stroke run past a wrapped sheet's seam lays its copies a wrap back, each reading as its stamp", () => {
-  // Across the seam of a 200 px sheet, from 150 to 260.
-  const program = rootProgram(painting({ default: () => ({ ...strokedDocument(() => 1, [150, 260]), wrap: 'x' }) }));
-  assert.equal(program.wrap, 'x');
+/** Whether `d` px is a whole number of `period`s, to rounding. */
+const wholePeriods = (d: number, period: number) => Math.abs(d / period - Math.round(d / period)) < 1e-9;
+
+test("banded for its solve, a stroke run past a tile's corner lays its copies a period back on each axis and across the corner, each reading as its stamp", () => {
+  // Across both seams of a 200 × 120 tile, by its corner: from (150, 90) to (260, 150).
+  const program = rootProgram(painting({ default: () => ({ ...strokedDocument(() => 1, { x: 150, y: 90 }, { x: 260, y: 150 }), wrap: 'xy' }) }));
+  assert.equal(program.wrap, 'xy');
   const halo = stampSheetWrapHalo(program), plan = stampSheetSolvePlan(program);
   // A power of two, so a pose or edit widening the widest reach a little keeps the sheet's key.
   assert.ok(Number.isInteger(Math.log2(halo)) && halo >= 8 * Math.SQRT2 + 2, `a halo of ${halo} px reaches a 16 px stamp's turned corner and its edge`);
-  assert.deepEqual([plan.stage.margin, plan.stage.wrap], [halo, 200]);
+  assert.deepEqual([plan.stage.margin, plan.stage.wrap], [halo, { x: 200, y: 120 }]);
   const planned = program.entries[0].deposit, banded = plan.painted().entries[0].deposit;
-  // Each stamp, then its copies: past the seam they're a wrap back, within the frame; each keeps where it was placed.
+  // Each stamp, then its copies, each keeping where it was placed: whole periods away, within the halo's reach.
   const originals = banded.stamps.filter((stamp) => stamp.rest === undefined);
-  assert.deepEqual(originals.map(({ x }) => x), planned.stamps.map(({ x }) => x));
+  assert.deepEqual(originals.map(({ x, y }) => [x, y]), planned.stamps.map(({ x, y }) => [x, y]));
   const copies = banded.stamps.filter((stamp) => stamp.rest !== undefined);
-  assert.ok(copies.some(({ x, rest }) => rest!.x > 200 && x === rest!.x - 200 && x >= 0), 'the run past the seam is copied into the frame');
-  assert.ok(copies.every(({ x, rest }) => Math.abs(x - rest!.x) % 200 === 0 && x > -2 * halo && x < 200 + 2 * halo));
-  assert.equal(banded.wrapFrom, (planned.stamps[0].x + planned.stamps.at(-1)!.x) / 2 - 100);
+  assert.ok(copies.every(({ x, y, rest }) => wholePeriods(x - rest!.x, 200) && wholePeriods(y - rest!.y, 120) && x > -2 * halo && x < 200 + 2 * halo && y > -2 * halo && y < 120 + 2 * halo));
+  const shifted = (dx: number, dy: number) => copies.some(({ x, y, rest }) => Math.abs(x - rest!.x - dx) < 1e-9 && Math.abs(y - rest!.y - dy) < 1e-9 && x >= 0 && y >= 0);
+  assert.ok(shifted(-200, -120), 'the run past the corner is copied into the frame at its top left');
+  assert.ok(shifted(-200, 0) && shifted(0, -120), 'and past each seam, a period back on that axis');
+  const xs = planned.stamps.map(({ x }) => x), ys = planned.stamps.map(({ y }) => y);
+  assert.deepEqual(banded.wrapFrom, [(Math.min(...xs) + Math.max(...xs)) / 2 - 100, (Math.min(...ys) + Math.max(...ys)) / 2 - 60]);
   assert.notEqual(plan.head, program.head);
   assert.equal(plan.painted().head, plan.head);
 });

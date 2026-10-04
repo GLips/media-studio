@@ -80,7 +80,7 @@ fn washMoved(now: array<vec4f, ${layers}>, wasPigment: f32) -> array<vec4f, ${la
  * where two washes meet they mix rather than one replacing the other.
  */
 const mixedLay = (pickup: number, s: string) => /* wgsl */ `
-fn layDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32, wrap: f32) {
+fn layDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32, wrap: vec2f) {
   let cover = clamp(coverage + max(rims.x, rims.y), 0.0, 1.0);
   if (cover <= 0.0) { return; }
   let incoming = incomingAt${s}(tooth, at, press, 0.0, wrap);
@@ -117,7 +117,7 @@ fn heldAround${s}(pixel: vec2u) -> f32 {
   }
   return held / 9.0;
 }
-fn layDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32, wrap: f32) {
+fn layDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32, wrap: vec2f) {
   let cover = clamp(coverage + max(rims.x, rims.y), 0.0, 1.0);
   if (cover <= 0.0) { return; }
   var was: array<vec4f, LAYERS>;
@@ -324,7 +324,7 @@ fn liftedUnder(i: u32, covered: vec4f, behind: array<vec4f, UNDER_LAYERS>, left:
     const holdWgsl = /* wgsl */ `
 ${PAINT_PAPER_WGSL}
 const WASH_HABITS = array<vec3f, ${habits.length}>(${habits.map((habit) => `vec3f(${habit.map(f32).join(', ')})`).join(', ')});
-fn washHold(l: u32, at: vec2f, tooth: vec2f, depth: f32, held: vec4f, wrap: f32) -> vec4f {
+fn washHold(l: u32, at: vec2f, tooth: vec2f, depth: f32, held: vec4f, wrap: vec2f) -> vec4f {
   let h = 1.0 - tooth.x;
   let meanHeight = 1.0 - tooth.y;
   let valley = paintValley(h, meanHeight);
@@ -367,7 +367,7 @@ ${eachMedium((medium, s) => /* wgsl */ `
 // A full stroke's pigment amounts here, graded between its material's ends by amount, where the paper's tooth and
 // each pigment's habits put them: a dry medium's as hard as it's \`press\`ed, the tooth \`filled\` so far by wax; its
 // clumps repeating every \`wrap\` px across (0 for none).
-fn incomingAt${s}(tooth: vec2f, at: vec2f, press: f32, filled: f32, wrap: f32) -> array<vec4f, LAYERS> {
+fn incomingAt${s}(tooth: vec2f, at: vec2f, press: f32, filled: f32, wrap: vec2f) -> array<vec4f, LAYERS> {
   let h = 1.0 - tooth.x;
   let meanHeight = 1.0 - tooth.y;
   let valley = paintValley(h, meanHeight);
@@ -385,7 +385,7 @@ fn incomingAt${s}(tooth: vec2f, at: vec2f, press: f32, filled: f32, wrap: f32) -
   return incoming;
 }
 ${medium.layering.kind === 'stacks' ? stackedLay(medium.layering, medium.body, s) : mixedLay(medium.pickup, s)}`)}
-${dispatched('layDeposit', 'pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32, wrap: f32', 'pixel, coverage, rims, tooth, at, press, wrap')}`,
+${dispatched('layDeposit', 'pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32, wrap: vec2f', 'pixel, coverage, rims, tooth, at, press, wrap')}`,
       wet: /* wgsl */ `
 ${STAMP_WET_LIFT_WGSL}
 @group(0) @binding(25) var<storage, read> residueShares: array<vec4f>;
@@ -411,7 +411,7 @@ fn noneFresh${s}(pixel: vec2u) {
 // sets the open share to none wherever the paper has settled since it last took water, so whatever reads it after
 // (this landing, the stages, a later landing) reads the paint there as set. Every pixel of the box writes \`fresh\`,
 // none where nothing was laid: the flow reads it there too, where water may land without paint.
-fn landDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, reserved: f32, wet: WetLanding, wrap: f32) {
+fn landDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, reserved: f32, wet: WetLanding, wrap: vec2f) {
   let cover = clamp(coverage + max(rims.x, rims.y), 0.0, 1.0);
   if (paint.knockout != 0u) {
     knockOut${s}(pixel, cover, reserved, wet);
@@ -469,7 +469,7 @@ fn landDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: v
   now[o.x][o.y] = wetLandOpen(open, kept, gained);
   for (var l = 0u; l < LAYERS; l++) { if (!isKnockoutLayer(l)) { textureStore(layer, pixel, l, now[l]); } }
 }`)}
-${dispatched('landDeposit', 'pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, reserved: f32, wet: WetLanding, wrap: f32', 'pixel, coverage, rims, tooth, at, reserved, wet, wrap')}`,
+${dispatched('landDeposit', 'pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, reserved: f32, wet: WetLanding, wrap: vec2f', 'pixel, coverage, rims, tooth, at, reserved, wet, wrap')}`,
       writerFor: (deposit) => {
         const writer = writers.get(deposit);
         if (!writer) throw new Error(`stamp paint: ${deposit.id} isn't in the painting its pigment compositor was made for`);

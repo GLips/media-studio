@@ -20,6 +20,7 @@ import { checkedStampIdSegment, stampDepositNameText } from './stamp-deposit-ide
 import type { StampDepositWithin, StampPaintPaper, StampPaintRecipe, StampPaintRecipeDeposit, StampPaintRecipeGroup, StampPaintRecipeMask, StampPaintRecipeResist } from './stamp-paint-recipe-types.ts';
 import { checkedStampRim, compileStampWashWait, type CompiledStampWash, type CompiledStampWashStep } from './stamp-wash-effects.ts';
 import type { StampRestMap } from './stamp-rest-map.ts';
+import type { StampWrapFrom } from './stamp-stage.ts';
 
 /**
  * The fluid a deposit lands under: its latest op over the fluid before it, null for none. Deposits under the same
@@ -67,10 +68,10 @@ type CompiledStampDepositCommon<A extends CompiledStampAction> = {
    */
   rest?: StampRestMap;
   /**
-   * On a sheet that wraps, the x its pixels are read within a wrap of, before `rest` (stamp-sheet-wrap.ts): its copies
-   * past the seam read its fields as it does. Absent elsewhere.
+   * On a sheet that wraps, where its pixels are read within a wrap of, before `rest` (stamp-sheet-wrap.ts): its copies
+   * past a seam read its fields as it does. Absent elsewhere.
    */
-  wrapFrom?: number;
+  wrapFrom?: StampWrapFrom;
 };
 
 /**

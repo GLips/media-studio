@@ -72,7 +72,7 @@ function washChange(path: string | undefined, cause: string | undefined): Painti
  * wrap or a sheet holding nothing. Throws for a wrapped document without `brushOf`.
  */
 function paintingSheetHalos(evaluation: PaintingEvaluation, brushOf: PaintingBrushOf | null): (sheet: PaintingSheet) => number | null {
-  if (evaluation.document.wrap !== 'x') return () => null;
+  if (evaluation.document.wrap === undefined) return () => null;
   if (!brushOf) throw new Error("a wrapped document's diff reads its halos through its brushes, and none were given");
   const { sheets } = compilePaintingSelection(evaluation, brushOf);
   return (sheet) => {

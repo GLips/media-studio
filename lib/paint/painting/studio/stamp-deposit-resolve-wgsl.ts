@@ -34,7 +34,7 @@ export const STAMP_DEPOSIT_FLAGS = {
  * for (strokeBodyAt); the map back to where it was planned (StampRestMap); and `wrapFrom` (stageUnwrapped).
  */
 export const STAMP_DEPOSIT_KEEP = gpuUniformLayout('Keep', [
-  ['fluid', 'vec4f'], ['within', 'vec4f'], ['load', 'vec4f'], ['rest', 'vec4f'], ['loadEnds', 'vec2f'], ['loadKind', 'i32'], ['bodyReach', 'f32'], ['wrapFrom', 'f32'],
+  ['fluid', 'vec4f'], ['within', 'vec4f'], ['load', 'vec4f'], ['rest', 'vec4f'], ['loadEnds', 'vec2f'], ['loadKind', 'i32'], ['bodyReach', 'f32'], ['wrapFrom', 'vec2f'],
 ]);
 /**
  * A wash deposit's landing (StampWetLanding): how its paper dries (stampDryingWords), its painting second, its

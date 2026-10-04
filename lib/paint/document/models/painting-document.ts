@@ -12,6 +12,7 @@ import type { PaintPigmentAppearance } from '#lib/paint/materials/models/paint-p
 import type { StampFillReach, StampFillStrokes } from '#lib/paint/painting/models/stamp-fill-strokes.ts';
 import type { StampSeededPaintField } from '#lib/paint/painting/models/stamp-paint-field.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import type { StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
 
 // ---- identity ------------------------------------------------------------------------------------------------------
 
@@ -42,7 +43,7 @@ export type Ring = readonly StampPoint[];
 /**
  * `polygon`: its rings read even-odd, so a ring inside another is a hole, one inside a hole an island, and rings side
  * by side a union; rings never cross (compute an overlap's union in TS). Curves arrive flattened. Paint outside the
- * document rectangle is clipped away, except across x on a document that wraps (`wrap: 'x'`): it comes round.
+ * document rectangle is clipped away, except across an axis the document wraps (`wrap`): it comes round.
  */
 export type Region =
   | { readonly kind: 'polygon'; readonly rings: readonly Ring[] }
@@ -320,8 +321,8 @@ export type LayerNode = Layer | LayerGroup;
 
 /**
  * Any size; (0, 0) is its top-left corner. `paper` is the root's own sheet, the whole document rectangle, drying at
- * `dryingScale` (1) once a clocked wet wash on it starts its clock. `wrap: 'x'`: its left edge meets its right, as
- * round a cylinder, so paper, marks and wet stages run on across the seam on every sheet.
+ * `dryingScale` (1) once a clocked wet wash on it starts its clock. `wrap` (StampWrap): paper, marks and wet stages
+ * run on across each seam it names, on every sheet.
  */
 export type PaintingDocument = {
   readonly widthPx: number;
@@ -329,7 +330,7 @@ export type PaintingDocument = {
   readonly paper: Paper;
   readonly medium: MediumName;
   readonly dryingScale?: DryingScale;
-  readonly wrap?: 'x';
+  readonly wrap?: StampWrap;
   /** Back to front. */
   readonly layers: readonly LayerNode[];
 };

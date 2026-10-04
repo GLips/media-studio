@@ -250,7 +250,7 @@ fn layerCoverage(pixel: vec2u) -> f32 { return textureLoad(layer, pixel).a; }
 fn depositPaint(under: vec4f, color: vec3f, blend: i32, coverage: f32) -> vec4f {
   return laidOver(under, vec4f(color, 1.0) * clamp(coverage, 0.0, 1.0), blend);
 }
-fn layDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32, wrap: f32) {
+fn layDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32, wrap: vec2f) {
   var color = paint.color;
   if (paint.tinted == 1u) { color = tinted(color, pixel); }
   var over = depositPaint(textureLoad(layer, pixel), color, paint.blend, coverage);

@@ -15,6 +15,7 @@ import type { CompiledStampDeposit, CompiledStampMask, StampMixedPainting, Stamp
 import type { StampPigmentMixing } from './stamp-pigment-paint.ts';
 import type { StampPaintPaper } from './stamp-paint-recipe-types.ts';
 import type { StampRestMap } from './stamp-rest-map.ts';
+import type { StampWrap, StampWrapFrom } from './stamp-stage.ts';
 
 /** What an entry waits for over its core before it lands (StampSheetEntry's `on`). */
 export type StampSheetWetness = 'wet' | 'damp' | 'dry';
@@ -36,8 +37,8 @@ export type StampSheetPrewet = {
   area: CompiledStampArea; water: StampSeededPaintField<number>; held: CompiledStampMask | null; anchored: ReadonlySet<CompiledStampMask>;
   /** For a prewet a pose moved, the map back to where it was planned, where its water's field is read; absent where it lies. */
   rest?: StampRestMap;
-  /** On a sheet that wraps, the x its water's field is read within a wrap of (stamp-sheet-wrap.ts); absent elsewhere. */
-  wrapFrom?: number;
+  /** On a sheet that wraps, where its water's field is read within a wrap of (stamp-sheet-wrap.ts); absent elsewhere. */
+  wrapFrom?: StampWrapFrom;
 };
 
 /**
@@ -80,7 +81,7 @@ export type StampSheetEntry = {
  */
 export type StampSheetProgram = {
   name: string; width: number; height: number; paper: StampPaintPaper; edge: 'document' | 'union'; water: PaintMedium; clock: StampSheetClock;
-  wrap: 'x' | null; films: readonly StampSheetFilm[]; washes: readonly StampSheetWash[]; entries: readonly StampSheetEntry[]; head: string;
+  wrap: StampWrap | null; films: readonly StampSheetFilm[]; washes: readonly StampSheetWash[]; entries: readonly StampSheetEntry[]; head: string;
 };
 
 /**

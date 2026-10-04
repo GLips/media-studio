@@ -17,8 +17,8 @@ import { STAMP_REST_IDENTITY, STAMP_REST_POINT_WGSL, type StampRestMap } from '.
 
 // A state of the masking fluid over its box: the state it's built on (`parent`, width 0 for none), then `opCount` ops
 // from `firstOp`: a mask joins its area by max, an unmask lifts its amount (everywhere for `count` 0), a clip keeps
-// only its area. An op's area, worked within its `reach`, joins its copies `wrap` px apart.
-const MASK_STEP = gpuUniformLayout('MaskStep', [['box', 'vec4f'], ['parent', 'vec4f'], ['source', 'vec4f'], ['firstOp', 'u32'], ['opCount', 'u32'], ['wrap', 'f32']]);
+// only its area. An op's area, worked within its `reach`, joins its copies `wrap` apart.
+const MASK_STEP = gpuUniformLayout('MaskStep', [['box', 'vec4f'], ['parent', 'vec4f'], ['source', 'vec4f'], ['firstOp', 'u32'], ['opCount', 'u32'], ['wrap', 'vec2f']]);
 /** A MaskOp's words: its fifteen, padded to its rest map's vec4f alignment, and that map's four. */
 const MASK_OP_WORDS = 20;
 const MASK_STEP_WGSL = /* wgsl */ `
@@ -51,15 +51,15 @@ ${STAMP_AREA_COVERAGE_WGSL}
       if (all(s >= vec2f(0.0)) && all(s < u.source.zw)) { r = textureLoad(source, vec2u(s), 0).r; }
     } else if (op.count > 0u) {
       r = 0.0;
-      var k = 0.0;
-      var last = 0.0;
-      if (u.wrap > 0.0) {
-        k = ceil((p.x - op.reach.z) / u.wrap);
-        last = floor((p.x - op.reach.x) / u.wrap);
-      }
-      for (; k <= last; k += 1.0) {
-        let q = vec2f(p.x - k * u.wrap, p.y);
-        if (all(q >= op.reach.xy) && all(q <= op.reach.zw)) { r = max(r, areaCoverageAt(q, restPoint(op.rest, q), op.first, op.count, op.inset, op.ragged, op.width, op.seed, op.boundaryFirst, op.boundaryCount)); }
+      let wraps = u.wrap > vec2f(0.0);
+      let period = max(u.wrap, vec2f(1.0));
+      let first = select(vec2f(0.0), ceil((p - op.reach.zw) / period), wraps);
+      let last = select(vec2f(0.0), floor((p - op.reach.xy) / period), wraps);
+      for (var ky = first.y; ky <= last.y; ky += 1.0) {
+        for (var kx = first.x; kx <= last.x; kx += 1.0) {
+          let q = p - vec2f(kx, ky) * u.wrap;
+          if (all(q >= op.reach.xy) && all(q <= op.reach.zw)) { r = max(r, areaCoverageAt(q, restPoint(op.rest, q), op.first, op.count, op.inset, op.ragged, op.width, op.seed, op.boundaryFirst, op.boundaryCount)); }
+        }
       }
     }
     if (op.kind == 2u) { fluid *= r; } else { fluid = select(fluid * (1.0 - op.amount * r), max(fluid, r), op.kind == 0u || op.kind == 3u); }
@@ -151,12 +151,17 @@ export function encodeStampRegionTextures(
     const w = Math.min(frame.width + margin, Math.ceil(box.x1)) - x, h = Math.min(frame.height + margin, Math.ceil(box.y1)) - y;
     return w > 0 && h > 0 ? stampPointBox({ x, y, w, h }) : null;
   };
-  // On a wrapping stage, with each copy of it a whole number of wraps away that's on the stage.
+  // On a wrapping stage, with each copy of it a whole number of periods away on each axis that wraps, on the stage.
+  const shifts = (period: number, from: number, to: number, side: number) => {
+    const found: number[] = [];
+    if (!period) return [0];
+    for (let k = Math.ceil((-margin - to) / period); k <= Math.floor((side + margin - from) / period); k++) found.push(k * period);
+    return found;
+  };
   const inPainting = (box: StampBox): StampPointBox | null => {
-    if (!wrap) return held(box);
     let found: StampPointBox | null = null;
-    for (let k = Math.ceil((-margin - box.x1) / wrap); k <= Math.floor((frame.width + margin - box.x0) / wrap); k++) {
-      found = stampBoxUnion(found, held({ ...box, x0: box.x0 + k * wrap, x1: box.x1 + k * wrap }));
+    for (const dy of shifts(wrap.y, box.y0, box.y1, frame.height)) {
+      for (const dx of shifts(wrap.x, box.x0, box.x1, frame.width)) found = stampBoxUnion(found, held({ x0: box.x0 + dx, y0: box.y0 + dy, x1: box.x1 + dx, y1: box.y1 + dy }));
     }
     return found;
   };
@@ -272,7 +277,7 @@ export function encodeStampRegionTextures(
       put('source', stampPointBoxWords(step.source?.box));
       put('firstOp', step.firstOp);
       put('opCount', step.opCount);
-      put('wrap', wrap);
+      put('wrap', [wrap.x, wrap.y]);
       const pass = encoder.beginRenderPass({ colorAttachments: [{ view: made.get(step)!.view, loadOp: 'clear', storeOp: 'store' }] });
       pass.setPipeline(pipeline);
       pass.setBindGroup(0, stampBindGroup(on, pipeline, [

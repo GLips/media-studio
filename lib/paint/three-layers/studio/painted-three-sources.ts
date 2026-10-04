@@ -2,8 +2,8 @@
 // Each three source is a plane of the scene's camera and a lens source (stamp-lens-source.ts): its scene is rendered
 // through the camera's shot camera (paint-camera-world.ts) into a texture of ours, the frame grown by the plane's
 // defocus margin. Painted textures, paintings a material reads, are supplied as handles and brought up to each frame
-// first (`loadPaintedThreeSources`); `loadPaintedThree` paints them with old renderers. A handle that wraps is read
-// repeating across u.
+// first (`loadPaintedThreeSources`); `loadPaintedThree` paints them with old renderers. A handle repeats on
+// each axis it wraps.
 //
 // Texture contracts: a source's texture is rgba16float premultiplied linear colour (normal blending over a clear
 // target premultiplies), its motion texture the lens's motion layer (lens-three-motion.ts); a painted texture is
@@ -21,6 +21,7 @@ import { PAINT_CAMERA_REST, paintCameraFocusAt, paintCameraPoseAt, type PaintCam
 import { paintMoment, type PaintMoment, type StampPaintFrameAt } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampLensSource, StampLensSourceExposure } from '#lib/paint/painting/studio/stamp-lens-source.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
+import { stampWrapsAcross, type StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { createStampPaintRenderer } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
 import { createStampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
@@ -76,10 +77,11 @@ export type PaintedThreeLoaded = {
 };
 
 /**
- * A painted texture a material reads, by id: rgba16float, gamma-encoded and opaque; `wrap` 'x' when its painting
- * wraps, so u repeats, else null. Whoever supplies it draws it and lets it go, after the sources loaded over it.
+ * A painted texture a material reads, by id: rgba16float, gamma-encoded and opaque; `wrap` as its painting wraps, u
+ * repeating along x, v along y (null: neither). Whoever supplies it draws it and lets it go, after the sources loaded
+ * over it.
  */
-export type PaintedThreeTextureHandle = { readonly id: string; readonly texture: GPUTexture; readonly wrap: 'x' | null };
+export type PaintedThreeTextureHandle = { readonly id: string; readonly texture: GPUTexture; readonly wrap: StampWrap | null };
 
 /**
  * The painted textures three's sources read: their handles, and `update`, which brings them all up to frame time `t`,
@@ -166,7 +168,8 @@ export async function loadPaintedThreeSources(owner: StampPaintGpuOwner, camera:
       // Made after three's renderer, so let go of before it: an ExternalTexture's dispose tells its renderer.
       const textures = new Map(supplied.handles.map(({ id, texture, wrap }) => {
         const external = new ExternalTexture(texture);
-        if (wrap === 'x') external.wrapS = RepeatWrapping;
+        if (stampWrapsAcross(wrap, 'x')) external.wrapS = RepeatWrapping;
+        if (stampWrapsAcross(wrap, 'y')) external.wrapT = RepeatWrapping;
         made.push(external);
         return [id, external] as const;
       }));

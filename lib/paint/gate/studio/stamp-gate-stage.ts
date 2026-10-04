@@ -14,7 +14,7 @@ import { putStampWetLand, STAMP_WET_FIELD_FORMATS, STAMP_WET_LAND, stampWetField
 import { gpuHalfBits, gpuHalfValue } from '#lib/platform/gpu/models/gpu-half-float.ts';
 
 const STAMP_GATE_FLOW_HOLD_WGSL = /* wgsl */ `
-fn washHold(l: u32, at: vec2f, tooth: vec2f, depth: f32, held: vec4f, wrap: f32) -> vec4f {
+fn washHold(l: u32, at: vec2f, tooth: vec2f, depth: f32, held: vec4f, wrap: vec2f) -> vec4f {
   return vec4f(1.0 + 0.6 * sin(0.9 * at.x) * cos(0.7 * at.y));
 }`;
 

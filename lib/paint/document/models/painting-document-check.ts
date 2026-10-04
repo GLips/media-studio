@@ -7,7 +7,7 @@
 import { PAINT_MEDIA, paintMediumCan } from '#lib/paint/materials/models/paint-medium.ts';
 import { STAMP_PIGMENT_GROUP_SLOTS } from '#lib/paint/painting/models/stamp-pigment-paint.ts';
 import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
-import { stampTileRoundWrap } from '#lib/paint/painting/models/stamp-stage.ts';
+import { STAMP_WRAPS, stampTileRoundWrap, stampWrapsAcross, type StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
 import { checkPaintingApplication, checkPaintingFootprint, type PaintingApplicationSetting } from './painting-application-check.ts';
 import type { AnyApplication, DryingScale, Key, LayerNode, MediumName, PaintingDocument, Paper, Wash } from './painting-document.ts';
 import { paintingBoxUnion, paintingGeometryBox, paintingNodeBox, paintingWashBox } from './painting-footprint.ts';
@@ -40,7 +40,9 @@ function checkPaintingTreeAndKeys(list: PaintingProblemList, paintingDocument: P
   if (!isMedium(medium)) list.error('document', 'medium', `'${medium}' isn't a medium: ${Object.keys(PAINT_MEDIA).join(', ')}`);
   if (!paintingDocument.paper) list.error('document', 'paper', 'a document needs its paper');
   const wrap: unknown = paintingDocument.wrap;
-  if (wrap !== undefined && wrap !== 'x') list.error('document', 'wrap', `${JSON.stringify(wrap)} isn't a wrap: 'x' meets the left edge to the right`);
+  if (wrap !== undefined && !STAMP_WRAPS.some((each) => each === wrap)) {
+    list.error('document', 'wrap', `${JSON.stringify(wrap)} isn't a wrap: 'x' meets the left edge to the right, 'y' the top to the bottom, 'xy' both`);
+  }
   if (!isPaintingList(paintingDocument.layers)) {
     list.error('document', 'layers', 'a document needs its layers, back to front');
     return;
@@ -214,6 +216,13 @@ function checkLayerPalettes(list: PaintingProblemList, tree: PaintingTree, order
 /** How far a wrapped document's grain scale may be laid from its own, as a share of it, before the check warns. */
 const PAINTING_WRAPPED_GRAIN_DRIFT = 0.1;
 
+/** Where a paper photograph meets itself on a document wrapping each way. */
+const PAINTING_PHOTOGRAPH_SEAMS: Readonly<Record<StampWrap, string>> = {
+  x: 'its left and right edges meet at the seam, a join unless it tiles across',
+  y: 'its top and bottom edges meet at the seam, a join unless it tiles down',
+  xy: 'its opposite edges meet at the seams, a join unless it tiles both ways',
+};
+
 /**
  * `document` checked (with `styles`, its brushes and paper assets too): every problem, and its tree resolved when its
  * shape and keys held.
@@ -223,15 +232,17 @@ export function checkPaintingDocument(paintingDocument: PaintingDocument, styles
   checkPaintingTreeAndKeys(list, paintingDocument);
   if (list.hasErrors) return { problems: list.problems, tree: null };
   const tree = paintingTree(paintingDocument);
-  // A photograph is laid over the frame as it is, so a wrapped document's meets itself at the seam. Mirrored grain
-  // tiles fit the wrap in whole pairs (stampTileRoundWrap), so a scale far from width ÷ 2n is laid at another.
+  // A photograph is laid over the frame as it is, so a wrapped document's meets itself at each seam. Mirrored grain
+  // tiles fit each wrapped axis in whole pairs (stampTileRoundWraps), so a scale far from width ÷ 2n is laid at another.
+  // Only x is held: a tile's height goes by its image's aspect, which the check doesn't see.
+  const { wrap: wraps } = paintingDocument;
   const photographWraps = (owner: string, field: string, { image, grain }: Paper) => {
-    if (!paintingDocument.wrap) return;
-    if (image) list.warn(owner, paintingField(field, 'image'), 'is a photograph on a wrapped document: its left and right edges meet at the seam, a join unless it tiles across');
-    if (!grain || !isPaintingPositive(grain.scale)) return;
+    if (!wraps) return;
+    if (image) list.warn(owner, paintingField(field, 'image'), `is a photograph on a wrapped document: ${PAINTING_PHOTOGRAPH_SEAMS[wraps]}`);
+    if (!grain || !isPaintingPositive(grain.scale) || !stampWrapsAcross(wraps, 'x')) return;
     const width = paintingDocument.widthPx, laid = stampTileRoundWrap(width, grain.scale * width, true) / width;
     if (Math.abs(laid / grain.scale - 1) > PAINTING_WRAPPED_GRAIN_DRIFT) {
-      list.warn(owner, paintingField(field, 'grain.scale'), `is laid at ${+laid.toFixed(3)} on a wrapped document: its mirrored tiles fit the width in whole pairs, 1 ÷ 2n of it (0.5, 0.25, 0.167…)`);
+      list.warn(owner, paintingField(field, 'grain.scale'), `is laid at ${+laid.toFixed(3)} on a document wrapping across x: its mirrored tiles fit the width in whole pairs, 1 ÷ 2n of it (0.5, 0.25, 0.167…)`);
     }
   };
   checkPaper(list, 'document', 'paper', paintingDocument.paper, styles);

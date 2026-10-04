@@ -4,7 +4,7 @@
 // each selection it blends is solved (solvePaintingSheets), laid on its paper at the document's size
 // (drawStampSheetsStill), resampled to the texture's size and summed by its weight in linear light, so a dissolve
 // blends opaque colour; then gamma-encoded into the handle, as paintedThreeColorNode decodes it. A painting that wraps
-// is resampled repeating across x, and its handle says it wraps.
+// is resampled repeating across each axis it wraps, and its handle says how it wraps.
 //
 // A texture whose source reads the same selections and weights as when it was last drawn isn't drawn again.
 
@@ -14,6 +14,7 @@ import { paintingErrors, paintingProblemText } from '#lib/paint/document/models/
 import { solvePaintingSheets } from '#lib/paint/document/studio/painting-sheets-solve.ts';
 import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import { stampWrapsAcross, type StampAxis, type StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
 import { stampBindGroup } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { createStampPaintSurface, type StampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
@@ -90,10 +91,16 @@ export function createShotPaintedTextures(owner: StampPaintGpuOwner, textures: r
   const resampleModule = device.createShaderModule({ code: SHOT_TEXTURE_RESAMPLE_WGSL }), encodeModule = device.createShaderModule({ code: SHOT_TEXTURE_ENCODE_WGSL });
   const resample = device.createRenderPipeline({ layout: 'auto', vertex: { module: resampleModule }, fragment: { module: resampleModule, targets: [{ format: 'rgba32float', blend: SHOT_TEXTURE_SUM }] } });
   const encode = device.createRenderPipeline({ layout: 'auto', vertex: { module: encodeModule }, fragment: { module: encodeModule, targets: [{ format: 'rgba16float' }] } });
-  // A wrapped painting is read repeating across x, so a texel by the seam averages paint from both its edges.
-  const along = {
-    x: device.createSampler({ magFilter: 'linear', minFilter: 'linear', addressModeU: 'repeat' }),
-    flat: device.createSampler({ magFilter: 'linear', minFilter: 'linear', addressModeU: 'clamp-to-edge' }),
+  // A wrapped painting is read repeating across each axis it wraps, so a texel by a seam averages paint from both its
+  // edges; one sampler a wrap, made once.
+  const samplers = new Map<StampWrap | null, GPUSampler>();
+  const along = (wrap: StampWrap | null) => {
+    let sampler = samplers.get(wrap);
+    if (!sampler) {
+      const mode = (axis: StampAxis): GPUAddressMode => (stampWrapsAcross(wrap, axis) ? 'repeat' : 'clamp-to-edge');
+      samplers.set(wrap, (sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear', addressModeU: mode('x'), addressModeV: mode('y') })));
+    }
+    return sampler;
   };
   // Let go of on dispose: the handles, each texture's sum, and a picture a painting's size.
   const owned: GPUTexture[] = [], pictures = new Map<string, Promise<{ view: GPUTextureView; surface: StampPaintSurface }>>();
@@ -139,7 +146,7 @@ export function createShotPaintedTextures(owner: StampPaintGpuOwner, textures: r
       const encoder = device.createCommandEncoder();
       const pass = encoder.beginRenderPass({ colorAttachments: [{ view: light.createView(), loadOp: first ? 'clear' : 'load', clearValue: [0, 0, 0, 0], storeOp: 'store' }] });
       pass.setPipeline(resample);
-      pass.setBindGroup(0, stampBindGroup(device, resample, [slot, picture.view, texture.wrap ? along.x : along.flat]));
+      pass.setBindGroup(0, stampBindGroup(device, resample, [slot, picture.view, along(texture.wrap)]));
       pass.draw(3);
       pass.end();
       arena.flush();

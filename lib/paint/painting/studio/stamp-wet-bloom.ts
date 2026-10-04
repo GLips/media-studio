@@ -12,7 +12,7 @@ import { STAMP_BLOOM_BAND_WIDTH, STAMP_BLOOM_CARRY_SPREAD, STAMP_BLOOM_LEAST_SIG
 import { STAMP_WET_LIFT_WGSL } from '../models/stamp-wet-lift.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
-import { stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
+import { STAMP_WRAP_FROM_NONE, stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 import { stampWetStageExtentOf, type StampLoadedWetStage, type StampWetDepositMoment, type StampWetStage, type StampWetStageContext, type StampWetStageExtent } from './stamp-wet-stages.ts';
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { destroyStampTexturesOnceSubmitted } from './stamp-paint-gpu.ts';
@@ -29,12 +29,12 @@ const STAMP_BLOOM_SEND_FLOOR = 0.2;
 
 /**
  * A bloom: its box, seed and diameter; the medium's spread, damp and shiny (PaintSheen); the widest its water could
- * spread (stampBloomBound), which its spreads are sized by; and on a wrapping stage, the x its front is keyed within a
- * wrap of (its deposit's wrapFrom), so a copy past the seam blooms as it does.
+ * spread (stampBloomBound), which its spreads are sized by; and on a wrapping stage, where its front is keyed within a
+ * wrap of (its deposit's wrapFrom), so a copy past a seam blooms as it does.
  */
 const BLOOM = gpuUniformLayout('Bloom', [
   ['origin', 'vec2u'], ['extent', 'vec2u'], ['seed', 'u32'], ['damp', 'f32'], ['shine', 'f32'], ['spread', 'f32'], ['diameter', 'f32'], ['bound', 'f32'],
-  ['wrapFrom', 'f32'],
+  ['wrapFrom', 'vec2f'],
 ]);
 
 /**
@@ -410,7 +410,7 @@ function loadBloom({ device, layer, footprint, field, wash, stage }: StampWetSta
     put('spread', wetting.spread);
     put('diameter', deposit.diameter);
     put('bound', plan.bound);
-    put('wrapFrom', deposit.wrapFrom ?? 0);
+    put('wrapFrom', deposit.wrapFrom ?? STAMP_WRAP_FROM_NONE);
     device.queue.writeBuffer(plan.uniform, 0, words);
     plan.spreads.write(box);
 

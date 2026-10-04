@@ -65,6 +65,6 @@ export async function diffPaintingSourceFiles(before: PaintingSourceFileSide, af
   const a = await checkPaintingSourceFile(before.file, before.texts), b = await checkPaintingSourceFile(after.file, after.texts);
   if (!a.evaluation || !b.evaluation) return { before: a, after: b, diff: null };
   const evaluations = [a.evaluation, b.evaluation];
-  const brushOf = evaluations.some(({ document }) => document.wrap === 'x') ? paintingStylesBrushOf(await readPaintingSourceStyles(evaluations, 'paint diff')) : null;
+  const brushOf = evaluations.some(({ document }) => document.wrap !== undefined) ? paintingStylesBrushOf(await readPaintingSourceStyles(evaluations, 'paint diff')) : null;
   return { before: a, after: b, diff: paintingEvaluationDiff(a.evaluation, b.evaluation, brushOf) };
 }

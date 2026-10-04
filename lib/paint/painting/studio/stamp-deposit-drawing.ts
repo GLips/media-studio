@@ -19,7 +19,7 @@ import { stampPaintFieldEnds } from '../models/stamp-paint-field.ts';
 import type { StampSeededPaintField } from '../models/stamp-paint-field.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampPaintPaper } from '../models/stamp-paint-recipe-types.ts';
-import { stampBoxUnion, stampRegionTexelWords, stampStageTexelsGrown, stampStageTile, type StampStage } from '../models/stamp-stage.ts';
+import { STAMP_WRAP_FROM_NONE, stampBoxUnion, stampRegionTexelWords, stampStageTexelsGrown, stampStageTile, type StampStage } from '../models/stamp-stage.ts';
 import { STAMP_TIP_HULL_SIDES, type StampTipHull } from '../models/stamp-tip-hull.ts';
 import type { StampTipFootprint } from '../models/stamp-tip-support.ts';
 import { stampTipFullContact } from '../models/stamp-wet-contact.ts';
@@ -458,7 +458,7 @@ export function createStampDepositDrawing(device: StampPaintDevice, { stage, com
         put('within', stampRegionTexelWords(within?.region?.box, stage));
         put('bodyReach', STAMP_WET_BODY_REACH * deposit.diameter);
         put('rest', deposit.rest ?? STAMP_REST_IDENTITY);
-        put('wrapFrom', deposit.wrapFrom ?? 0);
+        put('wrapFrom', deposit.wrapFrom ?? STAMP_WRAP_FROM_NONE);
         if (deposit.kind !== 'flood') return;
         const ends = stampPaintFieldEnds(deposit.flood.load);
         put('load', ends.geometry);
