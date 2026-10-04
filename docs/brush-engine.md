@@ -461,10 +461,15 @@ occurrence key, `<plane>/<key>` (`shot-occurrences.ts`), and every frame draws i
 to near, planes first on ties (`shot-plan.ts`).
 
 `PaintedShot` (`studio/painted-shot.tsx`) is a shot in a scene, beside `StampPainting`: one device owner over its
-canvases, the first opaque and each `PaintedShotCanvas` after it premultiplied. `shot-compile.ts` checks the props
-as they load, every problem at once: planes far to near, each painted plane's occurrences from its first evaluation
-(read through its `sourceClock`), the rigs, visibility and motion over them, and the camera built over each plane's
-reach (`shot-reach.ts`). Motion (`shot-motion.ts`) hangs each node from its nearest enclosing node, a paintless
+canvases, the first opaque and each `PaintedShotCanvas` after it premultiplied (α = 1 − luminance(T)). Its page is
+read by `studio/shot-dom-points.ts` once fonts and layout settle: whether HTML lies behind the first canvas, which
+lets the back be clear (laid as clear film, its canvas premultiplied too: `clearBack`), and that every canvas, fixed
+to the shot's element, fills it. `shot-compile.ts` checks the props as they load, every problem at once: planes far
+to near, each painted plane's occurrences from its first evaluation (read through its `sourceClock`), the rigs,
+visibility and motion over them, and the camera built over each plane's reach (`shot-reach.ts`). A cover lay is
+found then, through the inverse of the camera's plane view at its `at` (`paintPlaneViewAt`, `shot-placement.ts`). A
+pin lay is found each frame from its elements' centres, measured as the frame draws and again when one resizes
+(`shot-dom-points.ts`), then checked as the build checks a plane (`shotPinnedPlanes`, `paintCameraExtentProblem`). Motion (`shot-motion.ts`) hangs each node from its nearest enclosing node, a paintless
 group's too, its clock chained under its parents' and the plane's `clock`. `shot-frame-plan.ts` reads a plane at one
 moment: its selection at its source moment, its node poses (boil wobble out of the poses marks solve under, in the
 ones the lay reads), boil epochs, visibility and rig poses. A rig (`shot-rigs.ts`) is found over its cels as all the
@@ -486,10 +491,8 @@ painted textures yet.
 Its presentation, as models the passes will draw from, refused by a shot's load until they're drawn: a path
 mask's capsules for the first `revealPx` of inked length, pen-ups adding none, and the `alphaOf` graph, checked
 acyclic and sorted so each read plane composites first (`shot-masks.ts`); an instanced plane's items batched by
-variant and stepped sigma, and paired by key across the shutter (`shot-instances.ts`); pin and cover lays found
-through the inverse of the camera's plane view at their `at` (`paintPlaneViewAt`, `paintSimilarityThrough`), and a
-DOM box's centre in frame px (`shot-placement.ts`); the frames and held moments a `warm` span reads (`shot-warm.ts`);
-and the cost report. Visibility's keys and range, and the group occurrences that composite on their own
+variant and stepped sigma, and paired by key across the shutter (`shot-instances.ts`); the frames and held moments a
+`warm` span reads (`shot-warm.ts`); and the cost report. Visibility's keys and range, and the group occurrences that composite on their own
 (`shot-visibility.ts`), are drawn. The cost report's counts are painting's (`painting/models/stamp-paint-costs.ts`, one set of names the document,
 solver, caches and shot all count into); the shot logs a frame's and a warm's under its labels
 (`shot-cost-report.ts`) through `picture/profiling`'s costs channel, which knows nothing of paint, so
