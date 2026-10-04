@@ -63,7 +63,7 @@ export const STAMP_GATE_RAIN = {
 } as const;
 
 /** The post's depth, the rain's depths about it, and the street's: the farther drops fall behind the post, the nearer in front. */
-const DEPTHS = { street: 3, post: 1.6, rain: { near: 1.1, far: 2.5 } } as const;
+export const STAMP_GATE_RAIN_DEPTHS = { street: 3, post: 1.6, rain: { near: 1.1, far: 2.5 } } as const;
 
 /** A drop of the painting's laid with its centre at `x`, `y` frame px, scaled 1.5 / its depth, as a nearer drop looks larger. */
 const dropAt = (key: string, x: number, y: number, depth: number): PlaneInstance => ({
@@ -71,7 +71,7 @@ const dropAt = (key: string, x: number, y: number, depth: number): PlaneInstance
 });
 
 /** The rain at scene second `at`: each drop where its fall has it, keyed by its column and which fall it's in. */
-function rainAt(at: number): PlaneInstance[] {
+export function stampGateRainAt(at: number): PlaneInstance[] {
   const { drops, speed, fall } = STAMP_GATE_RAIN, span = fall.to - fall.from;
   return drops.map(([x, start, depth], i) => {
     const fallen = start * span + speed * (1.5 / depth) * at, which = Math.floor(fallen / span);
@@ -81,7 +81,7 @@ function rainAt(at: number): PlaneInstance[] {
 
 /** The camera focused on the street, its aperture `aperture`. */
 const focusOnStreet = (aperture: number): PaintCameraPlay => ({
-  clip: { kind: 'focus', keys: [{ at: 0, focus: DEPTHS.street, aperture }] }, clock: { at: 0 }, origin: 'the camera focuses on the street',
+  clip: { kind: 'focus', keys: [{ at: 0, focus: STAMP_GATE_RAIN_DEPTHS.street, aperture }] }, clock: { at: 0 }, origin: 'the camera focuses on the street',
 });
 
 /** A shot of the street and `rain`, still, its shutter open `shutter` s; `post` puts the post between the rain's depths. */
@@ -90,15 +90,15 @@ function streetShot(rain: (at: number) => readonly PlaneInstance[], { shutter, p
   return {
     camera: { stage: stampStage(RAIN_FRAME, RAIN_MARGIN), fov: 35, lens: { bloom: 0, shutter }, plays },
     planes: [
-      { id: 'street', depth: DEPTHS.street, source: layersOf(evaluation, ['wall', 'road']) },
-      ...(post ? [{ id: 'post', depth: DEPTHS.post, source: layersOf(evaluation, ['post']) }] : []),
-      { kind: 'instanced', id: 'rain', depths: DEPTHS.rain, variants: { drop: layersOf(evaluation, ['drop']) }, instances: ({ at }) => rain(at) },
+      { id: 'street', depth: STAMP_GATE_RAIN_DEPTHS.street, source: layersOf(evaluation, ['wall', 'road']) },
+      ...(post ? [{ id: 'post', depth: STAMP_GATE_RAIN_DEPTHS.post, source: layersOf(evaluation, ['post']) }] : []),
+      { kind: 'instanced', id: 'rain', depths: STAMP_GATE_RAIN_DEPTHS.rain, variants: { drop: layersOf(evaluation, ['drop']) }, instances: ({ at }) => rain(at) },
     ],
   };
 }
 
 /** The rain falling over the street, past the post, focused on the street. */
-export const stampGateRainShot = (): PaintedShotProps => streetShot(rainAt, { shutter: STAMP_GATE_RAIN.shutter, post: true, plays: [focusOnStreet(1.5)] });
+export const stampGateRainShot = (): PaintedShotProps => streetShot(stampGateRainAt, { shutter: STAMP_GATE_RAIN.shutter, post: true, plays: [focusOnStreet(1.5)] });
 
 /** Where the lone drop is at scene second `at`: falling at depth 1.5 down column 60, at 60 px at STAMP_GATE_LONE_DROP_AT. */
 export const STAMP_GATE_LONE_DROP_AT = 0.125;

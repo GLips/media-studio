@@ -252,6 +252,15 @@
       "acceptedOver": "df7f6c16",
       "adapter": "apple metal-3"
     },
+    "shot/rainy-street": {
+      "file": "shot/rainy-street.png",
+      "output": "5ad2fa2b3acc38b49bd889e41825416403bd5cd356df862b765c0083ee9307ef",
+      "inputs": "a310277439cf284d78867ea6860c2af1a798871d530a1a267362a67dc0bc235f",
+      "reason": "new: ENGINE test 5's rainy street, a sky dissolving to night, a puddle on sixes with drops landing in it, a walker on its wet paper, the lamp's reflection cut to the puddle, rain and a push, at 1.9 s",
+      "accepted": "2026-10-04",
+      "acceptedOver": "8f12e119",
+      "adapter": "apple metal-3"
+    },
     "shot/wet-contact": {
       "file": "shot/wet-contact.png",
       "output": "83eb90cc4ece6c4841fe84f1d6b58d017d8e1e5886be99ff800e253adb1de79a",

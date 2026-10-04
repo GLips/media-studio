@@ -21,6 +21,7 @@ import {
   STAMP_GATE_HERON_BODY, STAMP_GATE_HERON_MOVE, STAMP_GATE_HERON_VANE, stampGateHeronLayer, stampGateInsidePolygon, stampGateHeronPaper, stampGateHeronPolygon, stampGatePaperHeronDocument,
 } from './stamp-gate-paper-heron.ts';
 import { STAMP_GATE_RAIN, STAMP_GATE_RAINY_STREET, stampGateRainShot } from './stamp-gate-rain.ts';
+import { STAMP_GATE_RAINY_STREET_AT, STAMP_GATE_RAINY_STREET_PRESENTATION, stampGateRainyStreetEvaluations, stampGateRainyStreetShot } from './stamp-gate-rainy-street.ts';
 import { STAMP_GATE_MASKS_BASELINE, STAMP_GATE_MASKS_PRESENTATION, STAMP_GATE_SHOT_MASK_IDS, STAMP_GATE_TINTED_HERON, stampGateMaskedShot } from './stamp-gate-shot-masks.ts';
 import { STAMP_GATE_HERON_POSE, STAMP_GATE_SHEET_IMAGES, STAMP_GATE_WET_CONTACT, stampGateSheetBrushOf } from './stamp-gate-sheets.ts';
 
@@ -28,14 +29,14 @@ import { STAMP_GATE_HERON_POSE, STAMP_GATE_SHEET_IMAGES, STAMP_GATE_WET_CONTACT,
 export const STAMP_GATE_SHOT_PAGE_IDS = ['shot/page'] as const;
 
 /** The shots accepted by eye: each a baseline subject, one frame of its shot. */
-export const STAMP_GATE_SHOT_IDS = ['shot/paper-heron', 'shot/wet-contact', 'shot/rain', 'shot/dissolve', 'shot/masks'] as const;
+export const STAMP_GATE_SHOT_IDS = ['shot/paper-heron', 'shot/wet-contact', 'shot/rain', 'shot/dissolve', 'shot/masks', 'shot/rainy-street'] as const;
 export type StampGateShotId = (typeof STAMP_GATE_SHOT_IDS)[number];
 
 /**
  * The shot cases checked apart from any sheet case, each a page's checks of its shot's frames: the rain's items, a
- * dissolve drawn between its ends, a span warmed, and the masked shot's cuts.
+ * dissolve drawn between its ends, a span warmed, the masked shot's cuts, and the rainy street's cost report.
  */
-export const STAMP_GATE_SHOT_CASE_IDS = ['shot/rain', 'shot/dissolve', 'shot/warm', ...STAMP_GATE_SHOT_MASK_IDS] as const;
+export const STAMP_GATE_SHOT_CASE_IDS = ['shot/rain', 'shot/dissolve', 'shot/warm', ...STAMP_GATE_SHOT_MASK_IDS, 'shot/rainy-street'] as const;
 export type StampGateShotCaseId = (typeof STAMP_GATE_SHOT_CASE_IDS)[number];
 
 /** The fps the gate plays its shots at, as a composition would: a warm span's frames are counted at it. */
@@ -298,6 +299,9 @@ const SHOT_BASELINES: Readonly<Record<StampGateShotId, {
   'shot/masks': {
     shot: () => stampGateMaskedShot(STAMP_GATE_MASKS_BASELINE.shown), at: STAMP_GATE_MASKS_BASELINE.at, evaluations: () => [painting(STAMP_GATE_TINTED_HERON)], rigs: {}, poses: [],
     extra: STAMP_GATE_MASKS_PRESENTATION,
+  },
+  'shot/rainy-street': {
+    shot: stampGateRainyStreetShot, at: STAMP_GATE_RAINY_STREET_AT.baseline, evaluations: stampGateRainyStreetEvaluations, rigs: {}, poses: [], extra: STAMP_GATE_RAINY_STREET_PRESENTATION,
   },
 };
 

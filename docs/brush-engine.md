@@ -616,7 +616,13 @@ past it, with nothing solved; cuts the pond's paint but not its paper; and cuts 
 but it, and to a disc moving across as a picture plane and as a three plane under a panned camera. Cut to the
 revealing heron's wing frame after frame, each frame draws as it does alone and a held frame lays nothing anew; cut
 to the heron faded to half, it tints the wing about half as much, and just as much cut to the heron dissolving
-halfway to water lying elsewhere. Each shot's frame is a baseline (`shot/`) accepted by eye. `shot/page`
+halfway to water lying elsewhere. The rainy street (`stamp-gate-rainy-street.ts`, ENGINE test 5) draws them together
+in one shot under a camera pushing in: a sky dissolving to night at the back; a street painted in on sixes, its
+puddle clocked with drops landing in it at their times and a walker on its wet paper placed by a play; the lamp's
+reflection cut to the puddle and fading in; and the rain. Warmed, frames moving only the camera, the rain, `k` or
+visibility evaluate and solve nothing; the lamp's property step re-solves from the first entry the evaluation diff
+says it changes; the walker stepping back to a pose solves nothing; walking, the street's source reads a new moment
+each sixth frame while the walker re-solves every frame. Each shot's frame is a baseline (`shot/`) accepted by eye. `shot/page`
 (`stamp-gate-shot-dom-page.ts`) holds a shot's element on the page, scaled as a player shows it, and reads it through
 the DOM adapter: HTML behind the first canvas or not, a canvas in a wrapper at an identity transform refused; the
 heron alone, a clear back, drawn premultiplied, clear at its corners; then pinned to an element, its paint's centroid

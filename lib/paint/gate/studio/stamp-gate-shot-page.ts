@@ -1,7 +1,8 @@
 // stamp-gate-shot-page.ts: the gate page's shots (stamp-gate-shots.ts), drawn by stamp-gate-shot-frames.ts: the
 // rigged heron's grain, pieces and boil (test 6), the wet-contact foot posed by its rig, painted in and hidden (test
 // 7), the rain's drops blurred along their own falls (test 5), a dissolve between two sheets over a dissolving back, a
-// warmed span, and their baselines' frames. The masked shot's cases are stamp-gate-shot-masks-page.ts's, handed on.
+// warmed span, and their baselines' frames. The masked shot's cases are stamp-gate-shot-masks-page.ts's, and the rainy
+// street's stamp-gate-rainy-street-page.ts's, handed on.
 
 import { createStampPaintCostTally, type StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { STAMP_GATE_FRAME_TOLERANCE } from '../models/stamp-gate-frames.ts';
@@ -17,6 +18,7 @@ import {
 } from '../models/stamp-gate-shots.ts';
 import { stampGateRgb, stampGateRgbBase64 } from './stamp-gate-page-surface.ts';
 import { stampGateShotFrames } from './stamp-gate-shot-frames.ts';
+import { checkStampGateRainyStreet } from './stamp-gate-rainy-street-page.ts';
 import { checkStampGateShotMasksCase } from './stamp-gate-shot-masks-page.ts';
 
 const shiftText = ({ x, y, r }: { x: number; y: number; r: number }) => `${x}, ${y} (r ${r.toFixed(3)})`;
@@ -203,6 +205,7 @@ export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGa
   if (id === 'shot/rain') return checkStampGateRain();
   if (id === 'shot/dissolve') return checkDissolve();
   if (id === 'shot/warm') return checkWarm();
+  if (id === 'shot/rainy-street') return checkStampGateRainyStreet();
   return checkStampGateShotMasksCase(id);
 }
 
