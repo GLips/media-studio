@@ -21,6 +21,8 @@ export type VideoProps = {
    * a dial swept in context (composition-painting-values-install.ts).
    */
   paintingValues?: PaintingValuesProp;
+  /** Draw the picture (the default); off for a pass that only measures frames or gathers sound (video-format.ts). */
+  picture?: boolean;
 };
 
 /** Property values by painting source, then by property: JSON across the page's boundary. */

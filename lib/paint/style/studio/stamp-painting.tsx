@@ -10,7 +10,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useDelayRender } from 'remotion';
 import { fullFrameRect } from '#lib/picture/frame/models/frame.ts';
-import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
+import { usePictureDrawn, useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { useFrameProfile, type FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { paintMoment, type StampPaintFrameAt } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
@@ -65,11 +65,12 @@ export function StampPainting({ t, frameAt, width, height, box: given, ...shownP
   const [scene, setScene] = useState<StampPaintingScene | null>(null);
   const { delayRender, continueRender, cancelRender } = useDelayRender();
   const profile = useFrameProfile();
-  const lensMode = useLensMode();
+  const lensMode = useLensMode(), pictureDrawn = usePictureDrawn();
 
   // Each size gets a device and a canvas of its own, made here and let go of with it, so a device still loading when
-  // the size changes never shares a canvas with the next.
+  // the size changes never shares a canvas with the next. A pass drawing no picture makes none, so paints nothing.
   useLayoutEffect(() => {
+    if (!pictureDrawn) return undefined;
     const handle = delayRender('making the stamp painting\'s GPU surface');
     let open = true, live = true;
     const release = () => {
@@ -97,7 +98,7 @@ export function StampPainting({ t, frameAt, width, height, box: given, ...shownP
       setGpu(null);
       release();
     };
-  }, [w, h, profile, delayRender, continueRender, cancelRender]);
+  }, [w, h, profile, pictureDrawn, delayRender, continueRender, cancelRender]);
 
   useLayoutEffect(() => {
     if (!gpu) return undefined;
