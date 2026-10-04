@@ -100,7 +100,9 @@ export async function bundleStudioProject(project: string): Promise<string> {
     return { path, size, mtimeMs, hash: hashFile(path) };
   });
   if (inputs.every((input) => input.mtimeMs < started) && bundleConfigFingerprint(project) === config) {
-    const record: KeptBundle = { project: resolve(project), dir, config, inputs, missing: recorded.missing };
+    // Looks wrong: webpack counts a folder it probed as a file (node_modules/zod, tried as zod.js…) as missing, and a
+    // folder always exists, so kept, it would refuse the bundle every run. Only what's absent now can appear.
+    const record: KeptBundle = { project: resolve(project), dir, config, inputs, missing: recorded.missing.filter((path) => !existsSync(path)) };
     const written = join(home, `current.json.${process.pid}`);
     writeFileSync(written, JSON.stringify(record));
     renameSync(written, join(home, 'current.json'));
