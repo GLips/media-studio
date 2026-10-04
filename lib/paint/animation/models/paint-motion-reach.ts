@@ -1,15 +1,16 @@
 // paint-motion-reach.ts: where a group's paint can be laid over a whole shot, bounded from what its motion compiles
 // to rather than sampled. Each step a point goes through (paint-motion-frame.ts's order: wobble, then each level's
 // pins, flutter, sway and placement, then the recipe's own motion) moves the points of a box by at most a radius read
-// from its clips' keys, so the box grown step by step holds every frame's lay.
+// from its clips' keys, so the box grown step by step holds every frame's lay; paintLevelPlacedHeld bounds it within.
 //
 // Eases never overshoot a key, so a keyed offset, turn or scale stays within its keys' range. Negative space: live
-// marks (re-placed by a poser) and re-seeded marks (re-rolled) can land anywhere their poser or seed says, so a group
-// drawing either has no bound here.
+// marks (re-placed by a poser) and re-seeded marks (re-rolled) can land anywhere, so a group drawing either has no
+// bound here.
 
 import type { StampGroupPlacement } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import type { CompiledStampGroup } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampBoxGrown, type StampBox, type StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import { paintPlacementRounded } from './paint-deform.ts';
 import { paintGroupPaintedBox, type CompiledPaintLevel, type PaintMotion } from './paint-motion-compile.ts';
 
 /** Where a group's paint can lie anywhere in the shot (null: it paints nothing), or why that can't be bounded. */
@@ -40,6 +41,12 @@ const placementShift = (range: PlacementRange, pivot: StampPoint, box: StampBox)
 
 /** The most `level`'s own bend and placement move a point of `box`, its pins left out for a live node's own level. */
 export function paintLevelShift(level: CompiledPaintLevel, box: StampBox, withPins: boolean): number {
+  const places = level.place.flatMap(({ clip }) => clip.keys);
+  return paintLevelBendShift(level, box, withPins) + (places.length ? placementShift(placementRange(places), level.pivot, box) : 0);
+}
+
+/** The most `level`'s bend (its pins, flutter and sway, all before its placement) moves a point of `box`. */
+export function paintLevelBendShift(level: CompiledPaintLevel, box: StampBox, withPins: boolean): number {
   let shift = 0;
   // Pins' displacements add, each at most its whole move (a weight is at most 1).
   if (withPins) {
@@ -59,9 +66,27 @@ export function paintLevelShift(level: CompiledPaintLevel, box: StampBox, withPi
   }
   // A sway turns a point about its root by at most amount/length radians.
   for (const { clip } of level.sway) shift += farthest(box, clip.root) * (Math.abs(clip.amount) / clip.length);
-  const places = level.place.flatMap(({ clip }) => clip.keys);
-  if (places.length) shift += placementShift(placementRange(places), level.pivot, box);
   return shift;
+}
+
+const extremes = (values: readonly number[]) => ({ low: Math.min(...values), high: Math.max(...values) });
+
+/**
+ * What every placement `level`'s place plays show lays `box` over, a box: each side as far in as any key's offset and
+ * scale bring it, then every side in by the most a turn moves a point; null where that leaves nothing. Unlike a shift,
+ * a scale growing the box brings no side in.
+ */
+export function paintLevelPlacedHeld(level: CompiledPaintLevel, box: StampBox): StampBox | null {
+  // Rounded as evaluation rounds them; eased values never pass a key's, so each part stays within its keys' range.
+  const keys = level.place.flatMap(({ clip }) => clip.keys.map(paintPlacementRounded));
+  if (!keys.length) return box;
+  const { pivot } = level, x = extremes(keys.map((key) => key.x)), y = extremes(keys.map((key) => key.y)), s = extremes(keys.map((key) => key.scale));
+  const turned = s.high * Math.max(...keys.map((key) => Math.abs(key.rotation))) * farthest(box, pivot);
+  // A side at c + d goes to c + t + s·d: innermost at the far offset, and the least scale where d points outward.
+  const low = (side: number, c: number, t: number) => c + t + (side < c ? s.low : s.high) * (side - c) + turned;
+  const high = (side: number, c: number, t: number) => c + t + (side > c ? s.low : s.high) * (side - c) - turned;
+  const held = { x0: low(box.x0, pivot.x, x.high), x1: high(box.x1, pivot.x, x.low), y0: low(box.y0, pivot.y, y.high), y1: high(box.y1, pivot.y, y.low) };
+  return held.x0 < held.x1 && held.y0 < held.y1 ? held : null;
 }
 
 /** How far a bound is grown past every step: the steps evaluation rounds moves to, and a pixel for the lay's lattice. */

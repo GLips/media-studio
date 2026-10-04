@@ -3,7 +3,7 @@
 //
 // Over the whole shot: no plane or focus comes to or behind the camera (an instanced plane by its near depth); the
 // stage holds the frame's preimage on every picture plane where its extent holds anything, grown by the widest
-// defocus's reach and a pixel; the back's painting holds it grown by its blur.
+// defocus's reach and a pixel. A shot holds its back's paint to these reads (paintCameraShotReads).
 //
 // Eases never overshoot a key, so between keys pan and the span (d − dolly)/(zoom·d) move monotonically; a roll is
 // bounded by its corners' circle; a shutter's poses lie in spans. Frame state outside `motion` is the scene's.
@@ -18,7 +18,7 @@ import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-s
 import {
   PAINT_CAMERA_NEAREST, PAINT_CAMERA_REST, paintCameraClipProblem, paintCameraFocusAt, paintCameraPlaneFarthest, paintCameraPlaneNearest, paintCameraPoseAt, paintPlaneDefocus,
   paintStageCentre,
-  type PaintCamera, type PaintCameraFocusClip, type PaintCameraInstancedPlane, type PaintCameraLens, type PaintCameraMoveClip, type PaintCameraPaintedBox, type PaintCameraPlane,
+  type PaintCamera, type PaintCameraFocusClip, type PaintCameraInstancedPlane, type PaintCameraLens, type PaintCameraMoveClip, type PaintCameraPicturePlane, type PaintCameraPlane,
   type PaintCameraPlaneOptions, type PaintCameraPlay, type PaintCameraPose,
 } from './paint-camera.ts';
 import { paintChannelConflicts, type PaintChannelWriter } from './paint-channels.ts';
@@ -26,7 +26,6 @@ import { clipSeconds, compilePaintPlayClock, paintLaneByStart, paintPlayClockPro
 import { paintPxRounded, paintRatioRounded } from './paint-deform.ts';
 import type { PaintMotion } from './paint-motion-compile.ts';
 import { paintGroupLaidReach } from './paint-motion-reach.ts';
-import { paintSimilarityBox, paintSimilarityInverse, paintSimilarityScale } from './paint-similarity.ts';
 
 /**
  * A camera as written: the `stage` its pictures are painted on, its projection (`fov`, vertical degrees over the
@@ -160,17 +159,29 @@ function extentBoxProblem(id: string, extent: StampPlaneExtent): string | null {
 const defocusGrowth = (sigma: number) => lensGaussianReach(lensSigmaStepped(sigma) * LENS_SIGMA_STEP) + 2;
 
 /**
- * Why a plane at `depth` can't hold what the camera shows of it in some span, or null. `extent`: where its picture
- * holds anything, beyond which it needs nothing held.
+ * What the frame reads of a plane over one stretch of the shot, `when` naming it: `seen`, the plane px it shows
+ * (frame origin); `reach`, how far past them its blur reads, plane px, 0 while sharp.
  */
-function extentProblem(stage: StampStage, { id, depth }: { id: string; depth: number }, extent: StampPlaneExtent, spans: readonly PoseSpan[], sigma: number): string | null {
+export type PaintCameraPlaneRead = { readonly when: string; readonly seen: StampBox; readonly reach: number };
+
+/**
+ * What the frame shows of a plane at `depth` over `span`, defocused by `sigma` frame px: the plane px it shows, and
+ * how many plane px its defocus spreads past them (defocusGrowth's, so at least 2 px even sharp).
+ */
+function spanSight(stage: StampStage, span: PoseSpan, depth: number, sigma: number) {
+  const k = Math.max(planePxPerFramePx(span.a, depth), planePxPerFramePx(span.b, depth));
+  return { seen: framePreimageBox(stage, span, depth), grow: defocusGrowth(sigma * k) };
+}
+
+/**
+ * Why picture plane `plane` can't hold what the camera shows of it in some span, defocused by `sigma`, or null. Its
+ * extent: where its picture holds anything, beyond which it needs nothing held.
+ */
+function pictureProblem(stage: StampStage, { id, depth, extent }: PaintCameraPicturePlane, spans: readonly PoseSpan[], sigma: number): string | null {
   if (extent.kind === 'empty' || extent.kind === 'unchecked') return null;
   const stageBox = stampStageExtent(stage);
   for (const span of spans) {
-    const k = Math.max(planePxPerFramePx(span.a, depth), planePxPerFramePx(span.b, depth));
-    // The blur's reach in picture px, its sigma stepped up at most a step, the bilinear read's pixel, and one for rounding.
-    const grow = defocusGrowth(sigma * k);
-    const seen = framePreimageBox(stage, span, depth), needed = grownBox(seen, grow);
+    const { seen, grow } = spanSight(stage, span, depth, sigma), needed = grownBox(seen, grow);
     // The picture's own defocus spreads it `grow` past its extent, and that spread must be on the stage too.
     const held = extent.kind === 'everywhere' ? needed : meet(needed, grownBox(extent.box, grow));
     if (held && !within(held, stageBox)) {
@@ -180,84 +191,43 @@ function extentProblem(stage: StampStage, { id, depth }: { id: string; depth: nu
   return null;
 }
 
-/**
- * Why `camera` can't show plane `plane` held as far as `extent` anywhere in its shot, or null: the build's check, for
- * a plane whose extent is known only once the camera is (a lay worked back through its view, an element measured).
- */
-export function paintCameraExtentProblem(camera: PaintCamera, plane: { readonly id: string; readonly depth: number }, extent: StampPlaneExtent): string | null {
+/** `camera`'s move as spans, and the widest defocus anything at `depth` gets in its shot. */
+function cameraSpans(camera: PaintCamera, depth: number) {
   const spans = poseSpans(camera.move), dolly = range(spans.flatMap(({ a, b }) => [a.dolly, b.dolly]));
-  return extentProblem(camera.stage, plane, extent, spans, widestDefocus(camera.focus, dolly, plane.depth));
+  return { spans, sigma: widestDefocus(camera.focus, dolly, depth) };
 }
 
 /**
- * How the opaque back's painting falls short of what the camera reads of it in one span, document px: `past`, its
- * reach past the frame (below 0: inside); `blur`, the blur's reach past the frame; `short`, how much larger to paint
- * it each side; `scale`, how much larger to lay it about its centre (Infinity: no lay can).
+ * Why `camera` can't show picture plane `plane` anywhere in its shot, or null: the build's check, for a plane whose
+ * extent is known only once the camera is (a lay worked back through its view, an element measured).
  */
-type PaintedShortfall = { readonly past: number; readonly blur: number; readonly short: number; readonly scale: number };
-
-/** Below this many document px short, a shortfall is the float arithmetic's, not the painting's. */
-const PAINTED_SLACK = 1e-6;
-/** `value` rounded up, its float arithmetic's slack let go: a back grown by the amount suggested then passes. */
-const ceilPainted = (value: number) => Math.ceil(value - PAINTED_SLACK);
-
-/**
- * How `painted` falls short of what the camera reads of a plane at `depth` over `span`, defocused by `sigma` frame px,
- * or null where it holds it all. A sharp plane reads only what the frame shows: a frame-sized back at rest holds it.
- */
-function paintedShortfall(stage: StampStage, span: PoseSpan, depth: number, sigma: number, { box, lay }: PaintCameraPaintedBox): PaintedShortfall | null {
-  const k = Math.max(planePxPerFramePx(span.a, depth), planePxPerFramePx(span.b, depth)), grow = sigma > 0 ? defocusGrowth(sigma * k) : 0;
-  const toDocument = paintSimilarityInverse(lay), framed = framePreimageBox(stage, span, depth);
-  const seen = paintSimilarityBox(toDocument, framed), read = paintSimilarityBox(toDocument, grownBox(framed, grow));
-  const short = Math.max(box.x0 - read.x0, read.x1 - box.x1, box.y0 - read.y0, read.y1 - box.y1);
-  if (short <= PAINTED_SLACK) return null;
-  const past = Math.min(seen.x0 - box.x0, box.x1 - seen.x1, seen.y0 - box.y0, box.y1 - seen.y1);
-  const cx = (box.x0 + box.x1) / 2, cy = (box.y0 + box.y1) / 2, hw = (box.x1 - box.x0) / 2, hh = (box.y1 - box.y0) / 2;
-  const scale = hw > 0 && hh > 0 ? Math.max((cx - read.x0) / hw, (read.x1 - cx) / hw, (cy - read.y0) / hh, (read.y1 - cy) / hh) : Infinity;
-  return { past, blur: grow / paintSimilarityScale(lay), short, scale };
-}
-
-/** Why the back's shortfall `when` (a span's name, a moment) is one, in a painter's words: refused, never clamped. */
-function paintedProblemText(id: string, when: string, { past, blur, short, scale }: PaintedShortfall): string {
-  const reaches = past >= 0 ? `${Math.floor(past)} px past the frame` : `to ${Math.ceil(-past)} px inside the frame`;
-  const blurred = blur > 0 ? `, and its blur reads ${Math.ceil(blur)} px past the frame` : '';
-  const larger = Number.isFinite(scale) ? `lay it ${(ceilPainted((scale - 1) * 1000) / 10).toFixed(1)}% larger about its centre` : 'lay it larger';
-  return `plane ${id}, the back, is painted ${reaches} (${when})${blurred}, and past its painting lies bare paper: paint it ${ceilPainted(short)} px larger on every side, or ${larger}`;
-}
-
-/** Why the back `plane`, painted over `painted`, can't be shown in `spans` defocused by `sigma`, or null: its worst span's shortfall. */
-function paintedProblem(stage: StampStage, { id, depth }: { id: string; depth: number }, painted: PaintCameraPaintedBox, spans: readonly PoseSpan[], sigma: number): string | null {
-  let worst: { span: PoseSpan; shortfall: PaintedShortfall } | null = null;
-  for (const span of spans) {
-    const shortfall = paintedShortfall(stage, span, depth, sigma, painted);
-    if (shortfall && (!worst || shortfall.short > worst.shortfall.short)) worst = { span, shortfall };
-  }
-  return worst && paintedProblemText(id, worst.span.name, worst.shortfall);
+export function paintCameraPictureProblem(camera: PaintCamera, plane: PaintCameraPicturePlane): string | null {
+  const { spans, sigma } = cameraSpans(camera, plane.depth);
+  return pictureProblem(camera.stage, plane, spans, sigma);
 }
 
 /**
- * Why `camera` can't show the opaque back `plane` painted over `painted` anywhere in its shot, or null: the build's
- * check, for a back laid only once the camera is (a cover worked back through its view, a pin measured).
+ * What `camera` reads of a plane at `depth` anywhere in its shot: a read a span of its move, defocused by the widest
+ * defocus the plane gets. A sharp plane reads only what the frame shows, so a frame-sized one at rest holds it.
  */
-export function paintCameraPaintedProblem(camera: PaintCamera, plane: { readonly id: string; readonly depth: number }, painted: PaintCameraPaintedBox): string | null {
-  const spans = poseSpans(camera.move), dolly = range(spans.flatMap(({ a, b }) => [a.dolly, b.dolly]));
-  return paintedProblem(camera.stage, plane, painted, spans, widestDefocus(camera.focus, dolly, plane.depth));
+export function paintCameraShotReads(camera: PaintCamera, depth: number): PaintCameraPlaneRead[] {
+  const { spans, sigma } = cameraSpans(camera, depth);
+  return spans.map((span) => {
+    const { seen, grow } = spanSight(camera.stage, span, depth, sigma);
+    return { when: span.name, seen, reach: sigma > 0 ? grow : 0 };
+  });
 }
 
 /**
- * Why `camera` can't show the opaque back `plane` as one frame lays it, `laid` giving its painting at each moment the
- * frame reads (its own, its shutter's ends), or null: the build's check at each moment's pose and defocus, for a lay
- * read only as the frame is drawn.
+ * What `camera` reads of a plane at `depth` at each of `moments` (a frame's own, its shutter's ends), each as the
+ * camera stands then and defocused as the frame at `at` is, the lens taking one defocus a frame.
  */
-export function paintCameraPaintedProblemAt(
-  camera: PaintCamera, plane: { readonly id: string; readonly depth: number }, laid: readonly { readonly moment: PaintMoment; readonly painted: PaintCameraPaintedBox }[],
-): string | null {
-  for (const { moment, painted } of laid) {
-    const pose = paintCameraPoseAt(camera, moment), focus = paintCameraFocusAt(camera, moment);
-    const problem = paintedProblem(camera.stage, plane, painted, [{ a: pose, b: pose, name: `at ${moment.at} s` }], focus ? paintPlaneDefocus(focus, pose.dolly, plane.depth) : 0);
-    if (problem) return problem;
-  }
-  return null;
+export function paintCameraFrameReads(camera: PaintCamera, depth: number, at: PaintMoment, moments: readonly PaintMoment[]): PaintCameraPlaneRead[] {
+  const pose = paintCameraPoseAt(camera, at), focus = paintCameraFocusAt(camera, at), sigma = focus ? paintPlaneDefocus(focus, pose.dolly, depth) : 0;
+  return moments.map((moment) => {
+    const posed = paintCameraPoseAt(camera, moment), { seen, grow } = spanSight(camera.stage, { a: posed, b: posed, name: '' }, depth, sigma);
+    return { when: `at ${moment.at} s`, seen, reach: sigma > 0 ? grow : 0 };
+  });
 }
 
 /** A camera over `o.planes`, checked (see the file's head), with each plane's greatest magnification. */
@@ -295,10 +265,8 @@ export function buildPaintCamera(o: PaintCameraOptions): PaintCameraBuild {
   }
   if (problems.length) return { ok: false, problems };
   for (const plane of written) {
-    if (plane.kind !== 'picture') continue;
-    const sigma = widestDefocus(focus, dolly, plane.depth);
-    const found = [extentProblem(o.stage, plane, plane.extent, spans, sigma), plane.painted ? paintedProblem(o.stage, plane, plane.painted, spans, sigma) : null];
-    problems.push(...found.filter((problem) => problem !== null));
+    const problem = plane.kind === 'picture' && pictureProblem(o.stage, plane, spans, widestDefocus(focus, dolly, plane.depth));
+    if (problem) problems.push(problem);
   }
   if (problems.length) return { ok: false, problems };
   // A three plane is rendered through the camera, a frame px a px, so its margin is its defocus's growth alone.

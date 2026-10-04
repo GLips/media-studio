@@ -14,7 +14,7 @@ import type { NodeKey } from '#lib/paint/document/models/painting-document.ts';
 import { paintingDeformsPose, paintingPoseAfter, paintingSimilarityPose, type PaintingNodePose } from '#lib/paint/document/models/painting-pose.ts';
 import { paintingProblemsError, paintingProblemText } from '#lib/paint/document/models/painting-problem.ts';
 import type { LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
-import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import type { PaintMoment, StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import type { CompiledPaintedShot, CompiledShotPaintedPlane } from './shot-compile.ts';
 import type { CompiledShotMotion, CompiledShotNode } from './shot-motion.ts';
@@ -50,14 +50,16 @@ export function shotNodePoseAt(node: CompiledShotNode, t: PaintMoment, animation
 export const shotPlaneMomentAt = (motion: CompiledShotMotion, plane: string, t: PaintMoment): PaintMoment =>
   paintNodeTimeAt(motion.planeClocks.get(plane) ?? [], t, motion.animationFps);
 
+/** A lay as a similarity, document px to plane px: the identity for none. */
+export const shotLaySimilarity = (lay: StampGroupLay | null): PaintSimilarity => (lay ? paintSimilarityOf(lay.placement, lay.pivot) : PAINT_SIMILARITY_IDENTITY);
+
 /**
  * Plane `plane`'s lay at `t`, document px to plane px: a callback's read at its presentation moment; the identity
  * unlaid. Throws on a pin: a plane pinned to HTML lies where a frame measures its elements (shotPinnedPlanes).
  */
 export function shotPlaneLayAt(plane: CompiledShotPaintedPlane, motion: CompiledShotMotion, t: PaintMoment): PaintSimilarity {
   if (plane.lay.kind === 'screen') throw new Error(`shot: plane ${plane.id} is laid on the frame (${plane.lay.screen.kind}), and lies nowhere until it's laid through the camera`);
-  const lay = plane.lay.kind === 'moving' ? plane.lay.lay(shotPlaneMomentAt(motion, plane.id, t)) : plane.lay.lay;
-  return lay ? paintSimilarityOf(lay.placement, lay.pivot) : PAINT_SIMILARITY_IDENTITY;
+  return shotLaySimilarity(plane.lay.kind === 'moving' ? plane.lay.lay(shotPlaneMomentAt(motion, plane.id, t)) : plane.lay.lay);
 }
 
 /** Where plane `plane` lays its root sheet at `t`: its node's map, its wobble in, then its lay. Document px to plane px. */

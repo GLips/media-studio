@@ -117,7 +117,7 @@ const driftingBack = ({ at }: PaintMoment) => ({ placement: { x: 4 * at, y: 0, r
 test('the back laid by a callback is refused at the frame whose lay leaves the frame reading past its painting', () => {
   const props: PaintedShotProps = { camera, planes: [{ id: 'back', depth: 1, lay: driftingBack, source: layersOf(pond(false), ['sky']) }] };
   planAt(props, paintMoment(1));
-  assert.throws(() => planAt(props, paintMoment(3)), /plane back, the back, is painted to 4 px inside the frame \(at 3 s\)/);
+  assert.throws(() => planAt(props, paintMoment(3)), /^Error: shot: back\.lay: is the back, painted to 4 px inside the frame \(at 3 s\), and past its painting lies bare paper: at that moment, lay it 2\.4% larger about its pivot/);
 });
 
 const CARD_PAPER = { color: '#e9dfc8', absorbency: 0.5 } as const;

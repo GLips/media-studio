@@ -1,15 +1,15 @@
-// shot-reach.ts: where each shot plane can hold paint, as the camera build checks it (ENGINE 6.1). The opaque
-// back holds paper everywhere, paint only on its document (shotBackPainted). A nearer painted plane holds its layers'
-// stated geometry, padded for paint flowing past it, grown along each occurrence's motion nodes by the most each can
-// move it, then laid by its still lay; its ground's paper over the document.
+// shot-reach.ts: where each plane of a shot can hold paint, as the camera build checks it (ENGINE 6.1). The opaque
+// back holds paper everywhere (its paint: shot-back.ts). A nearer painted plane holds its layers' stated geometry,
+// padded for paint flowing past it, grown along each occurrence's line of motion nodes by the most each can move it,
+// then laid by its still lay; its ground's paper, when it lays one, over the document.
 //
 // Negative space: a plane laid by a callback holds its stated reach (everywhere without one), and one whose source is a
-// callback or holds a rig is checked everywhere: neither is bounded till drawn. A pin or cover is checked once laid
-// (shot-placement.ts); a back laid by a callback, each frame.
+// callback or that holds a rig is checked everywhere: neither can be bounded before it's drawn. A pin or cover is
+// checked once laid (shot-placement.ts).
 
 import { paintLevelShift } from '#lib/paint/animation/models/paint-motion-reach.ts';
-import type { PaintCameraPaintedBox, PaintCameraPlaneOptions } from '#lib/paint/animation/models/paint-camera.ts';
-import { PAINT_SIMILARITY_IDENTITY, paintSimilarityBox, paintSimilarityOf, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
+import type { PaintCameraPicturePlane, PaintCameraPlaneOptions } from '#lib/paint/animation/models/paint-camera.ts';
+import { paintSimilarityBox, paintSimilarityOf } from '#lib/paint/animation/models/paint-similarity.ts';
 import { paintingBoxUnion, paintingNodeBox } from '#lib/paint/document/models/painting-footprint.ts';
 import type { StampPlaneExtent } from '#lib/paint/painting/models/stamp-plane.ts';
 import { stampBoxGrown, type StampBox } from '#lib/paint/painting/models/stamp-region.ts';
@@ -77,25 +77,17 @@ export function shotPaintedExtent(plane: CompiledShotPaintedPlane, motion: Compi
   return { kind: 'box', box: paintSimilarityBox(paintSimilarityOf(lay.placement, lay.pivot), reach) };
 }
 
-/**
- * The opaque back's painting for the camera laid by `lay` (document px to plane px): its document, less the most its
- * plane's node moves a point of it.
- */
-export function shotBackPainted(plane: CompiledShotPaintedPlane, motion: CompiledShotMotion, lay: PaintSimilarity): PaintCameraPaintedBox {
-  const documentBox = { x0: 0, y0: 0, x1: plane.paints.widthPx, y1: plane.paints.heightPx }, node = motion.nodes.get(plane.id);
-  return { box: stampBoxGrown(documentBox, -(node ? shotNodeShift(node, documentBox) : 0)), lay };
-}
+/** Painted plane `plane` as the camera build takes it, `rigged` naming the rigged occurrences: a picture plane held as far as its reach. */
+export const shotPaintedCameraPlane = (plane: CompiledShotPaintedPlane, motion: CompiledShotMotion, rigged: ReadonlySet<OccurrenceKey>): PaintCameraPicturePlane =>
+  ({ id: plane.id, depth: plane.depth, kind: 'picture', extent: shotPaintedExtent(plane, motion, rigged) });
 
-/** The camera build's planes for a shot's `planes`: each painted plane a picture plane held as far as its reach, the opaque back painted over its document when laid still. */
+/** The camera build's planes for a shot's `planes`: each painted plane a picture plane held as far as its reach. */
 export function shotCameraPlanes(planes: readonly CompiledShotPlane[], motion: CompiledShotMotion, rigs: ReadonlyMap<OccurrenceKey, unknown>): PaintCameraPlaneOptions[] {
   const rigged = new Set(rigs.keys());
   return planes.map((plane): PaintCameraPlaneOptions => {
     const { id, depth } = plane;
     if (plane.kind === 'three') return { id, depth, kind: 'three' };
     if (plane.kind === 'picture') return { id, depth, kind: 'picture', extent: plane.source.extent };
-    const extent = shotPaintedExtent(plane, motion, rigged);
-    if (!plane.opaqueBack || plane.lay.kind !== 'still') return { id, depth, kind: 'picture', extent };
-    const { lay } = plane.lay;
-    return { id, depth, kind: 'picture', extent, painted: shotBackPainted(plane, motion, lay ? paintSimilarityOf(lay.placement, lay.pivot) : PAINT_SIMILARITY_IDENTITY) };
+    return shotPaintedCameraPlane(plane, motion, rigged);
   });
 }

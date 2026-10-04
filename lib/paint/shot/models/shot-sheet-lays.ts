@@ -5,9 +5,9 @@
 // a sheet drawn as pieces gives way to its pieces at its card. A span faded apart is mixed back by its visibility; a
 // film is cut by its reveals. shotPlaneLayPlan plans and keys a moment.
 
-import { paintCameraPaintedProblemAt } from '#lib/paint/animation/models/paint-camera-build.ts';
-import { PAINT_SIMILARITY_IDENTITY, paintSimilarityBox, paintSimilarityInverse, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
+import { PAINT_SIMILARITY_IDENTITY } from '#lib/paint/animation/models/paint-similarity.ts';
 import type { NodeKey } from '#lib/paint/document/models/painting-document.ts';
+import { paintingProblem, paintingProblemText } from '#lib/paint/document/models/painting-problem.ts';
 import { paintingNodeSteps, paintingStepNode, type PaintingSelectionCompiled } from '#lib/paint/document/models/painting-document-compile.ts';
 import { paintingRevealLinksOf } from '#lib/paint/document/models/painting-reveal.ts';
 import { paintingBoxUnion, paintingNodeBox } from '#lib/paint/document/models/painting-footprint.ts';
@@ -18,15 +18,15 @@ import type { LayerSelection } from '#lib/paint/document/models/painting-selecti
 import { paintingSheetInGroup, type PaintingSheet, type PaintingTree } from '#lib/paint/document/models/painting-tree.ts';
 import type { PaintMoment, StampGroupGlow } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampFilmRevealLinks } from '#lib/paint/painting/models/stamp-reveal.ts';
-import { stampBoxGrown, type StampBox } from '#lib/paint/painting/models/stamp-region.ts';
+import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
 import type { StampPointBox, StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { PaintRigPicture, PaintRigPiece } from '#lib/paint/rig/models/paint-rig-pieces.ts';
+import { shotBackFrameProblem, shotBackGroundBox } from './shot-back.ts';
 import type { CompiledPaintedShot, CompiledShotPaintedPlane } from './shot-compile.ts';
-import { shotPlaneLayAt, shotPlanePlaceAt, shotPlanePosesAt, shotRigPosedAt, shotVisibilityAt, type ShotFrameRigs } from './shot-frame-plan.ts';
+import { shotPlanePlaceAt, shotPlanePosesAt, shotRigPosedAt, shotVisibilityAt, type ShotFrameRigs } from './shot-frame-plan.ts';
 import { shotFilmLattice, shotPlacedLattice, type ShotLattice, type ShotShutterAt } from './shot-lattice.ts';
 import { shotOccurrenceKey, shotOccurrencePlane } from './shot-occurrences.ts';
 import type { OccurrenceKey } from './shot-props.ts';
-import { shotBackPainted, shotNodeShift } from './shot-reach.ts';
 import {
   shotRigHiddenCels, shotRigPieces, shotRigPiecesPlaced, type CompiledShotRig, type ShotRigFound, type ShotRigPosed, type ShotRigSkin, type ShotRigStretch,
 } from './shot-rigs.ts';
@@ -152,15 +152,6 @@ export function shotFadeSpans(compiled: PaintingSelectionCompiled, apart: Readon
     if (inside.length) spans.push({ node, first: inside[0], last: inside.at(-1)!, visibility });
   }
   return spans.toSorted((a, b) => a.first - b.first || b.last - a.last);
-}
-
-/**
- * The document px the back's ground must cover: the stage (plane px, its margin round the frame) taken back through
- * the plane's `lay`, grown by `reach`, the most its node moves a point.
- */
-export function shotBackGroundBox({ frame, margin }: Pick<StampStage, 'frame' | 'margin'>, lay: PaintSimilarity, reach: number): StampBox {
-  const stageBox = { x0: -margin, y0: -margin, x1: frame.width + margin, y1: frame.height + margin };
-  return stampBoxGrown(paintSimilarityBox(paintSimilarityInverse(lay), stageBox), reach + 1);
 }
 
 /** The ground's lattice: its paper over `box` (document px) laid where its plane lies, at `at` and over the shutter. */
@@ -337,17 +328,13 @@ export function shotPlaneLayPlan(input: ShotPlaneLayInput, moment: ShotMomentAt)
   });
 
   const { widthPx, heightPx } = selection.painting.document, groundKind = selection.ground ?? (plane.opaqueBack ? 'paper' : 'transparent');
+  const short = shotBackFrameProblem(shot, plane, at, shutter);
+  if (short) throw new Error(`shot: ${paintingProblemText(paintingProblem('error', plane.id, 'lay', short))}`);
   let ground: ShotGroundLay = null;
-  if (plane.opaqueBack && plane.lay.kind === 'moving') {
-    const moments = [at, ...(shutter ? [shutter.open, shutter.close] : [])];
-    const problem = paintCameraPaintedProblemAt(shot.camera, plane, moments.map((read) => ({ moment: read, painted: shotBackPainted(plane, motion, shotPlaneLayAt(plane, motion, read)) })));
-    if (problem) throw new Error(`shot: ${problem}`);
-  }
   if (groundKind === 'paper') {
     if (plane.opaqueBack && paintingPoseText(atMoment.place) === PAINTING_REST_POSE && !shutterAt) ground = { kind: 'stage' };
     else {
-      const planeNode = motion.nodes.get(plane.id), documentBox = { x0: 0, y0: 0, x1: widthPx, y1: heightPx };
-      const box = plane.opaqueBack ? shotBackGroundBox(stage, shotPlaneLayAt(plane, motion, at), planeNode ? shotNodeShift(planeNode, documentBox) : 0) : documentBox;
+      const box = plane.opaqueBack ? shotBackGroundBox(stage, plane, motion, at) : { x0: 0, y0: 0, x1: widthPx, y1: heightPx };
       ground = { kind: 'placed', box, lattice: shotGroundLattice(box, atMoment, shutterAt) };
     }
   }

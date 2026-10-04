@@ -16,11 +16,12 @@ import { shotWarmCombinations, shotWarmFrames } from './shot-warm.ts';
 
 const FPS = 24;
 
-const layer = (key: string): Layer => ({
+/** A layer of one stroke, `shift` px right and down of where the pond paints it. */
+const layer = (key: string, shift = 0): Layer => ({
   key, washes: [{
     key: `${key}-wash`,
     applications: [{
-      kind: 'stroke', subpaths: [[{ x: 40, y: 100 }, { x: 200, y: 120 }]], brush: { style: 'watercolor', brush: 'wash' }, diameterPx: 20,
+      kind: 'stroke', subpaths: [[{ x: 40 + shift, y: 100 + shift }, { x: 200 + shift, y: 120 + shift }]], brush: { style: 'watercolor', brush: 'wash' }, diameterPx: 20,
       seed: key, charge: { kind: 'paint', mix: { parts: [{ pigment: '#3a4a6b', amount: 1 }], strength: 0.6 } },
     }],
   }],
@@ -150,20 +151,46 @@ test('a transparent back is refused unless HTML lies behind the first canvas, ov
   assert.deepEqual(problemsOf({ ...props, planes: [{ id: 'back', depth: 1, source: layersOf(pond, ['sky']) }] }), ['back.visibility: is the back, shown wherever the frame is: fade a nearer plane or its occurrences']);
 });
 
-test('the back is refused where the frame or its blur reads past its painting, saying how much larger to paint or lay it, and laid that much larger it holds', () => {
-  const focused: PaintedShotProps['camera'] = {
-    ...camera, stage: stampStage({ width: 320, height: 240 }, 24), plays: [paintCameraPlay({ kind: 'focus', keys: [{ at: 0, focus: 1, aperture: 6 }] }, { clock: { at: 0 }, origin: 'focus' })],
-  };
-  const backed = (scale: number): PaintedShotProps => ({
-    camera: focused,
-    planes: [{ id: 'back', depth: 2, lay: { placement: { x: 0, y: 0, rotation: 0, scale }, pivot: { x: 160, y: 120 } }, source: layersOf(pond, ['sky']) }, { id: 'heron', depth: 1, source: layersOf(pond, ['heron']) }],
-  });
-  const [refused] = problemsOf(backed(1));
-  assert.equal(refused, [
-    'camera: plane back, the back, is painted 0 px past the frame (at rest), and its blur reads 12 px past the frame, and past its painting lies bare paper:',
-    'paint it 12 px larger on every side, or lay it 10.0% larger about its centre',
+/** The pond's sky alone on a document `grow` px larger on every side, its wash where the pond's lies. */
+const skyGrown = (grow: number) => painting({
+  default: function sky(): PaintingDocument {
+    return { ...pond.document, widthPx: 320 + 2 * grow, heightPx: 240 + 2 * grow, layers: [layer('sky', grow)] };
+  },
+});
+
+/** A focus on the heron at depth 1, blurring the back at depth 2 12 px past the frame. */
+const focused: PaintedShotProps['camera'] = {
+  ...camera, stage: stampStage({ width: 320, height: 240 }, 24), plays: [paintCameraPlay({ kind: 'focus', keys: [{ at: 0, focus: 1, aperture: 6 }] }, { clock: { at: 0 }, origin: 'focus' })],
+};
+const BACK = { id: 'back', depth: 2 } as const;
+const backedBy = (back: PlaneProps): PaintedShotProps => ({ camera: focused, planes: [back, { id: 'heron', depth: 1, source: layersOf(pond, ['heron']) }] });
+
+test("the back is refused where the frame's blur reads past its painting, and mended by either fix it names", () => {
+  const [unlaid] = problemsOf(backedBy({ ...BACK, source: layersOf(pond, ['sky']) }));
+  assert.equal(unlaid, [
+    'back.lay: is the back, painted 0 px past the frame (at rest), its blur reading 12 px past the frame, and past its painting lies bare paper:',
+    'lay it 10.0% larger about its centre: { placement: { x: 0, y: 0, rotation: 0, scale: 1.1 }, pivot: { x: 160, y: 120 } },',
+    'or paint 12 px more on every side and lay it 12 px up and left: { placement: { x: -12, y: -12, rotation: 0, scale: 1 }, pivot: { x: 0, y: 0 } }',
   ].join(' '));
-  assert.deepEqual(problemsOf(backed(1 + Number(/(\d+\.\d)% larger/.exec(refused)![1]) / 100)), []);
+  assert.deepEqual(problemsOf(backedBy({ ...BACK, source: layersOf(skyGrown(12), ['sky']), lay: { placement: { x: -12, y: -12, rotation: 0, scale: 1 }, pivot: { x: 0, y: 0 } } })), []);
+  const laid = (scale: number) => backedBy({ ...BACK, source: layersOf(pond, ['sky']), lay: { placement: { x: 0, y: 0, rotation: 0, scale }, pivot: { x: 160, y: 120 } } });
+  const [short] = problemsOf(laid(1.05));
+  assert.match(short, /lay it 4\.8% larger about its pivot \(placement scale 1\.05 → 1\.101\)/);
+  assert.deepEqual(problemsOf(laid(1.101)), []);
+  // A cover's lever is its box, the scale being the cover's to set.
+  const [covered] = problemsOf(backedBy({ ...BACK, source: layersOf(pond, ['sky']), lay: { kind: 'cover', box: { x0: 0, y0: 0, x1: 320, y1: 240 } } }));
+  assert.match(covered, /: cover a box 12 px smaller on every side \(box: \{ x0: 12, y0: 12, x1: 308, y1: 228 \}\), or paint 12 px more past its box on every side/);
+  assert.deepEqual(problemsOf(backedBy({ ...BACK, source: layersOf(pond, ['sky']), lay: { kind: 'cover', box: { x0: 12, y0: 12, x1: 308, y1: 228 } } })), []);
+  assert.deepEqual(problemsOf(backedBy({ ...BACK, source: layersOf(skyGrown(12), ['sky']), lay: { kind: 'cover', box: { x0: 12, y0: 12, x1: 332, y1: 252 } } })), []);
+});
+
+test("the back's node takes its paint in only as far as it brings an edge in: a push in holds, a drift is refused", () => {
+  const moving = (keys: readonly { at: number; x: number; y: number; scale?: number }[]): PaintedShotProps => ({
+    camera, planes: [{ id: 'back', depth: 1, source: layersOf(pond, ['sky']) }],
+    motion: { nodes: [{ id: 'back', pivot: { x: 160, y: 120 } }], plays: [{ target: 'back', clip: { kind: 'place', keys }, clock: { at: 0 }, origin: 'move' }] },
+  });
+  assert.deepEqual(problemsOf(moving([{ at: 0, x: 0, y: 0 }, { at: 1, x: 0, y: 0, scale: 1.2 }])), []);
+  assert.match(problemsOf(moving([{ at: 0, x: 0, y: 0 }, { at: 1, x: 10, y: 0 }]))[0], /^back\.lay: is the back, painted to 10 px inside the frame \(at rest\), its node moving its edge up to 10 px in,/);
 });
 
 /** A camera panning 60 px at depth 1 over a stage 40 px wider each side: a plane laid far enough right is seen past it. */

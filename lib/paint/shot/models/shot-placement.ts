@@ -5,10 +5,10 @@
 // they then lie by the build's own rule: a cover once, as the shot compiles; a pin at each frame, as its elements are
 // measured. Also the DOM adapter's arithmetic: an element's measured box as a frame-px centre.
 
-import { paintCameraExtentProblem, paintCameraPaintedProblem } from '#lib/paint/animation/models/paint-camera-build.ts';
+import { paintCameraPictureProblem } from '#lib/paint/animation/models/paint-camera-build.ts';
 import { paintPlaneViewAt } from '#lib/paint/animation/models/paint-camera.ts';
 import {
-  paintPlacementOfSimilarity, paintSimilarityApply, paintSimilarityInverse, paintSimilarityOf, paintSimilarityThrough, type PaintSimilarity,
+  paintPlacementOfSimilarity, paintSimilarityApply, paintSimilarityInverse, paintSimilarityThrough, type PaintSimilarity,
 } from '#lib/paint/animation/models/paint-similarity.ts';
 import { isPaintingFinitePoint, paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import { paintMoment, type StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
@@ -16,7 +16,8 @@ import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-regi
 import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { CompiledPaintedShot, CompiledShotPaintedPlane, CompiledShotPlane } from './shot-compile.ts';
 import type { CoverFrame, ScreenPin } from './shot-props.ts';
-import { shotBackPainted, shotPaintedExtent } from './shot-reach.ts';
+import { shotBarePaperProblem, type ShotBackLaying } from './shot-back.ts';
+import { shotPaintedCameraPlane } from './shot-reach.ts';
 
 /**
  * The lay covering a frame `frame` px with `box` (document px), seen through `view` (paintPlaneViewAt at the cover's
@@ -85,15 +86,17 @@ export type ShotScreenSetting = Pick<CompiledPaintedShot, 'camera' | 'motion' | 
 
 /**
  * Plane `plane` laid on the frame: `layThrough` given the camera's view of the plane at scene second `at`, then
- * checked where it lies as the camera build checks a plane (paintCameraExtentProblem; the back, also
- * paintCameraPaintedProblem). The plane laid still, or why it can't lie there.
+ * checked where it lies as the camera build checks a plane (paintCameraPictureProblem), the back's painting against
+ * all the frame reads of it as `laying` words its fix (shotBarePaperProblem). The plane laid still, or why it can't
+ * lie there.
  */
 function shotScreenLaid(
-  { camera, motion, rigs }: ShotScreenSetting, plane: CompiledShotPaintedPlane, at: number, layThrough: (view: PaintSimilarity) => StampGroupLay,
+  setting: ShotScreenSetting, plane: CompiledShotPaintedPlane, at: number, layThrough: (view: PaintSimilarity) => StampGroupLay,
+  laying: (lay: StampGroupLay, view: PaintSimilarity) => ShotBackLaying,
 ): { readonly plane: CompiledShotPaintedPlane } | { readonly problem: PaintingProblem } {
-  const lay = layThrough(paintPlaneViewAt(camera, plane.depth, paintMoment(at))), laid: CompiledShotPaintedPlane = { ...plane, lay: { kind: 'still', lay } };
-  const problem = paintCameraExtentProblem(camera, plane, shotPaintedExtent(laid, motion, new Set(rigs.keys())))
-    ?? (plane.opaqueBack ? paintCameraPaintedProblem(camera, plane, shotBackPainted(plane, motion, paintSimilarityOf(lay.placement, lay.pivot))) : null);
+  const { camera, motion, rigs } = setting, view = paintPlaneViewAt(camera, plane.depth, paintMoment(at)), lay = layThrough(view);
+  const laid: CompiledShotPaintedPlane = { ...plane, lay: { kind: 'still', lay } };
+  const problem = paintCameraPictureProblem(camera, shotPaintedCameraPlane(laid, motion, new Set(rigs.keys()))) ?? shotBarePaperProblem(setting, plane, laying(lay, view));
   return problem ? { problem: paintingProblem('error', plane.id, 'lay', problem) } : { plane: laid };
 }
 
@@ -105,8 +108,8 @@ export function shotCoveredPlanes(setting: ShotScreenSetting, planes: readonly C
   const problems: PaintingProblem[] = [];
   const covered = planes.map((plane) => {
     if (plane.kind !== 'painted' || plane.lay.kind !== 'screen' || plane.lay.screen.kind !== 'cover') return plane;
-    const { box, at = 0 } = plane.lay.screen;
-    const laid = shotScreenLaid(setting, plane, at, (view) => shotCoverLay(box, view, setting.camera.stage.frame));
+    const { box, at = 0 } = plane.lay.screen, { frame } = setting.camera.stage;
+    const laid = shotScreenLaid(setting, plane, at, (view) => shotCoverLay(box, view, frame), (lay, view) => ({ kind: 'cover', lay, box, relaid: (other) => shotCoverLay(other, view, frame) }));
     if ('problem' in laid) problems.push(laid.problem);
     return 'plane' in laid ? laid.plane : plane;
   });
@@ -126,7 +129,8 @@ export function shotPinnedPlanes(shot: CompiledPaintedShot, centres: ShotPinCent
     const measureProblems = shotPinMeasureProblems(plane.id, measured), found = measured.flatMap((centre) => (centre ? [centre] : []));
     problems.push(...measureProblems);
     if (measureProblems.length) continue;
-    const laid = shotScreenLaid(shot, plane, at, (view) => shotPinLay(points.map(({ sourcePx }) => sourcePx), found, view));
+    const sources = points.map(({ sourcePx }) => sourcePx);
+    const laid = shotScreenLaid(shot, plane, at, (view) => shotPinLay(sources, found, view), (lay) => ({ kind: 'pin', lay, sources }));
     if ('problem' in laid) problems.push(laid.problem);
     else planes.set(plane.id, laid.plane);
   }

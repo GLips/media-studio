@@ -16,6 +16,7 @@ import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-moti
 import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { paintMoment, type PaintMoment, type StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
+import { shotBarePaperProblem } from './shot-back.ts';
 import { compileShotInstancedPlane, type CompiledShotInstancedPlane } from './shot-instances.ts';
 import { compileShotMotion, type CompiledShotMotion, type ShotMotionPlane } from './shot-motion.ts';
 import { shotOccurrencePlane, shotPlaneOccurrences, type ShotOccurrence } from './shot-occurrences.ts';
@@ -326,8 +327,11 @@ export function compilePaintedShot(
   const cameraPlanes = [...shotCameraPlanes(planes, motion.motion, rigs), ...instanced.map(({ id, depths }) => ({ id, kind: 'instanced' as const, depths }))];
   const built = buildPaintCamera({ ...props.camera, animationFps: fps, planes: cameraPlanes });
   if (!built.ok) return answer(null, built.problems.map((message) => shotError('camera', '', message)));
-  const covered = shotCoveredPlanes({ camera: built.camera, motion: motion.motion, rigs }, planes);
-  if (covered.problems.length) return answer(null, covered.problems);
+  const setting = { camera: built.camera, motion: motion.motion, rigs }, covered = shotCoveredPlanes(setting, planes);
+  // A back laid still is held to all the frame reads of it here; a cover is as it's laid, a callback's lay each frame.
+  const bare = back?.kind === 'painted' && back.lay.kind === 'still' && shotBarePaperProblem(setting, back, { kind: 'lay', lay: back.lay.lay });
+  const laidProblems = [...covered.problems, ...(bare ? [shotError(back.id, 'lay', bare)] : [])];
+  if (laidProblems.length) return answer(null, laidProblems);
   return answer({
     planes: covered.planes, instanced, written: props.planes, canvases: Math.max(1, canvases.length), clearBack, motion: motion.motion, rigs,
     visibility: new Map(Object.entries(visibility)), masks: masks.graph, camera: built.camera, warm: props.warm ?? null,
