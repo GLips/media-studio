@@ -15,21 +15,22 @@ export function detectMusicBeats(samples: Float32Array, rate: number): MusicBeat
   const period = beatPeriod(onset);
   return {
     bpm: Math.round((60 / (period * hopSeconds)) * 10) / 10,
-    beats: trackBeats(onset, period).map((i) => Math.round((i + WINDOW_HOPS) * hopSeconds * 1000) / 1000),
+    beats: trackBeats(onset, period).map((i) => Math.round(i * hopSeconds * 1000) / 1000),
   };
 }
 
 /**
- * Per 10 ms hop: how sharply loudness rises, with the slow trend taken out. A hop's energy window starts at the hop,
- * so it first catches a hit WINDOW_HOPS early; beat times add that back.
+ * Per 10 ms hop: how sharply loudness rises, with the slow trend taken out. Hop f's energy window ends at f hops, so
+ * a hit is heard in the hop after it lands. The track starts out of silence: the first windows reach back before it,
+ * so a hit on its first sample rises as any other does.
  */
 function onsetEnvelope(samples: Float32Array, rate: number): Float64Array {
   const hop = Math.round(rate * HOP_SECONDS), win = hop * WINDOW_HOPS;
-  const frames = Math.max(0, Math.floor((samples.length - win) / hop));
+  const frames = Math.floor(samples.length / hop) + 1;
   const energy = new Float64Array(frames);
   for (let f = 0; f < frames; f++) {
     let sum = 0;
-    for (let k = f * hop; k < f * hop + win; k++) sum += samples[k] * samples[k];
+    for (let k = Math.max(0, f * hop - win); k < f * hop; k++) sum += samples[k] * samples[k];
     energy[f] = Math.log(1e-10 + sum / win);
   }
   const rise = new Float64Array(frames);

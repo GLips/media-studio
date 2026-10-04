@@ -38,7 +38,7 @@ export default defineCommand({
     } else if (args.join) {
       console.log(await pipeline.joinVideoSlices(session, { dir: inProject(args.join), out: inProject(args.out ?? 'out/wip/joined.mp4') }));
     } else {
-      for (const file of await pipeline.renderDeliveredVideo(session, { plain: Boolean(args.plain) })) console.log(file);
+      for (const file of await pipeline.renderDeliveredVideo(session, { plain: Boolean(args.plain), onDraft: (warning) => console.error(warning) })) console.log(file);
     }
   },
 });

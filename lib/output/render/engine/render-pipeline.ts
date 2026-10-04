@@ -171,14 +171,18 @@ const DELIVERY_LUFS = -14, DELIVERY_TRUE_PEAK = -1, MASTER_TRUE_PEAK = -2;
  */
 export async function renderMasteredMix(session: RenderSession, { auditionSfxCueList = false }: { auditionSfxCueList?: boolean } = {}): Promise<string> {
   if (session.silent) throw new Error(`${basename(session.project)} is silent (project.ts): it plays no voice, music or sound, so it has no mix`);
+  const { beatClicks } = await session.readTimeline();
   return withStudioTemp('mix', async (tmp) => {
     const raw = await session.renderAudio({ out: join(tmp, 'raw.wav'), inputProps: session.props({ auditionSfxCueList }) });
-    return masterMix(session, raw, masterWavFor(session, auditionSfxCueList));
+    return masterMix(session, raw, masterWavFor(session, auditionSfxCueList), { beatClicks });
   });
 }
 
-/** Masters `raw`, the video's sound as rendered, to `masterWav` (see renderMasteredMix). */
-function masterMix(session: RenderSession, raw: string, masterWav: string): string {
+/**
+ * Masters `raw`, the video's sound as rendered, to `masterWav` (see renderMasteredMix). A draft of `beatClicks` gains
+ * only to the peak ceiling: sparse clicks reach delivery loudness only by the limiter crushing each one.
+ */
+function masterMix(session: RenderSession, raw: string, masterWav: string, { beatClicks }: { beatClicks: boolean }): string {
   const mastering = performance.now();
   mkdirSync(outDirFor(session), { recursive: true });
   const before = measureLoudness(raw);
@@ -191,15 +195,17 @@ function masterMix(session: RenderSession, raw: string, masterWav: string): stri
       `volume=${gainDb}dB,aresample=192000,alimiter=limit=${10 ** (ceilingDb / 20)}:attack=1:release=60:level=false:latency=true,aresample=48000`,
       '-c:a', 'pcm_s24le', masterWav]);
     const encoded = join(tmp, 'encoded.m4a');
-    let gain = DELIVERY_LUFS - before.lufs, ceiling = MASTER_TRUE_PEAK, encodedPeak = Infinity;
+    let gain = beatClicks ? MASTER_TRUE_PEAK - before.truePeak : DELIVERY_LUFS - before.lufs, ceiling = MASTER_TRUE_PEAK, encodedPeak = Infinity;
     // AAC overshoots sharp transients by more than MASTER_TRUE_PEAK's 1 dB allows (a tattoo needle's bite came out 2.3 dB
     // over its master), so the ceiling comes down by what the encoded master still peaks over delivery's.
     for (let pass = 0; pass < 4 && encodedPeak > DELIVERY_TRUE_PEAK; pass++) {
       if (pass > 0) ceiling -= encodedPeak - DELIVERY_TRUE_PEAK + 0.2;
+      master(gain, ceiling);
       // The limiter shaves a little loudness off the peaks it catches, so a second pass makes that back.
-      master(gain, ceiling);
-      gain += DELIVERY_LUFS - measureLoudness(masterWav).lufs;
-      master(gain, ceiling);
+      if (!beatClicks) {
+        gain += DELIVERY_LUFS - measureLoudness(masterWav).lufs;
+        master(gain, ceiling);
+      }
       runFfmpeg(['-y', '-v', 'error', '-i', masterWav, ...DELIVERY_AUDIO_CODEC, encoded]);
       encodedPeak = measureLoudness(encoded).truePeak;
     }
@@ -252,9 +258,10 @@ function reviewDelivery(session: RenderSession, captions: boolean, timeline: Tim
     problems.push('has no audio stream');
   } else {
     const { lufs, truePeak } = measureLoudness(video);
-    if (Math.abs(lufs - DELIVERY_LUFS) > 1) problems.push(`measures ${lufs} LUFS, not ${DELIVERY_LUFS} ± 1`);
+    // A draft of beat clicks is mastered to its peaks alone (see masterMix).
+    if (!timeline.beatClicks && Math.abs(lufs - DELIVERY_LUFS) > 1) problems.push(`measures ${lufs} LUFS, not ${DELIVERY_LUFS} ± 1`);
     if (truePeak > DELIVERY_TRUE_PEAK) problems.push(`peaks at ${truePeak} dBTP, over ${DELIVERY_TRUE_PEAK}`);
-    sound = `${lufs} LUFS, ${truePeak} dBTP`;
+    sound = `${lufs} LUFS${timeline.beatClicks ? ' (beat clicks, a draft)' : ''}, ${truePeak} dBTP`;
   }
   if (problems.length) throw new Error(`${video} ${problems.join(' and ')}`);
 
@@ -304,19 +311,25 @@ const draftVoiceWarning = (session: RenderSession) => `
 !!!! Voice it for real first: studio voice ${basename(session.project)}
 `;
 
+const beatClicksWarning = (session: RenderSession) => `
+!!!! DRAFT CLICKS: this video is cut to a beat grid and plays no music yet, so a click marks each beat. It's for timing.
+!!!! Give it its track: studio music add ${basename(session.project)} <track>, studio music fit --bars, then
+!!!! recordedGrid in timeline.ts and \`music: { track }\` in video.tsx
+`;
+
 /**
  * The whole pipeline: video.mp4 with captions, delivered only if its framing check passes; the mastered mix;
  * video-plain.mp4 if `plain`; each checked for delivery; video.srt and video.vtt. Returns what it delivered.
+ * `onDraft` gets each draft's warning (a draft voice, beat clicks) at the start and the end.
  *
- * The check rides on the captioned render so every frame is drawn once: a failing check costs an encode, and
- * `studio check` is still the quick way to one.
+ * The check rides on the captioned render so every frame is drawn once.
  */
-export async function renderDeliveredVideo(session: RenderSession, { plain }: { plain: boolean }): Promise<string[]> {
+export async function renderDeliveredVideo(session: RenderSession, { plain, onDraft }: { plain: boolean; onDraft: (warning: string) => void }): Promise<string[]> {
   const timeline = await session.readTimeline();
   const estimated = timeline.cues.filter((q) => !q.voiced).map((q) => q.id);
   if (estimated.length) throw new Error(`${estimated.join(', ')} ${estimated.length > 1 ? 'are' : 'is'} estimated, not voiced: run studio voice <project> before rendering the video`);
-  const draft = renderVoiceOf(session.project) === 'draft';
-  if (draft) console.error(draftVoiceWarning(session));
+  const drafts = [renderVoiceOf(session.project) === 'draft' && draftVoiceWarning(session), timeline.beatClicks && beatClicksWarning(session)].filter((w) => w !== false);
+  drafts.forEach(onDraft);
   if (timeline.transparent) return renderTransparentDelivery(session, timeline, { plain });
   // An old plain video would no longer match the captioned one beside it.
   if (!plain) removeRender(videoFor(session, false));
@@ -331,7 +344,7 @@ export async function renderDeliveredVideo(session: RenderSession, { plain }: { 
   await renderDeliveryVideo(session, {
     out: videoFor(session, true), inputProps: checkedProps(session), timeline, separateSound: !session.silent, onArtifact: sink.onArtifact,
     approve: async ({ sound }) => {
-      delivery = { soundtrack: deliveredSoundtrack(session, sound), motion: approveCheckedRender(session, sink, timeline).motion };
+      delivery = { soundtrack: deliveredSoundtrack(session, sound, timeline), motion: approveCheckedRender(session, sink, timeline).motion };
       return delivery;
     },
   });
@@ -344,8 +357,8 @@ export async function renderDeliveredVideo(session: RenderSession, { plain }: { 
   const variants = plain ? [true, false] : [true];
   const delivered = [...variants.map((captions) => videoFor(session, captions)), ...sidecars];
   for (const line of formatRenderPasses(session)) console.error(line);
-  // Again at the end, where it can't scroll away under the render's progress.
-  if (draft) console.error(draftVoiceWarning(session));
+  // Again at the end, where they can't scroll away under the render's progress.
+  drafts.forEach(onDraft);
   return delivered;
 }
 
@@ -396,8 +409,8 @@ async function renderTransparentDelivery(session: RenderSession, timeline: Timel
 }
 
 /** The delivered videos' soundtrack: `sound`, the captioned render's, mastered to out/mix.wav, or none for a silent project. */
-function deliveredSoundtrack(session: RenderSession, sound: string | undefined): string | undefined {
-  if (!session.silent) return masterMix(session, sound!, masterWavFor(session));
+function deliveredSoundtrack(session: RenderSession, sound: string | undefined, timeline: TimelineReport): string | undefined {
+  if (!session.silent) return masterMix(session, sound!, masterWavFor(session), timeline);
   // An old mix would read as this video's.
   rmSync(masterWavFor(session), { force: true });
   console.error('silent (project.ts): no voice, music or sound, so no mix, mastering or loudness review; the video has no audio track');
@@ -408,7 +421,7 @@ function deliveredSoundtrack(session: RenderSession, sound: string | undefined):
 
 /**
  * The whole video at `out` as it plays now, for `studio review`: whatever sound the composition has (none, a tempo
- * guess's silence, a draft voice, the fitted music), captions on, with no framing check, no mix and no refusal of an
+ * guess's clicks, a draft voice, the fitted music), captions on, with no framing check, no mix and no refusal of an
  * estimated line, so a video of blocked scenes can be approved before it's voiced or finished.
  */
 export async function renderAnimatic(session: RenderSession, { out }: { out: string }): Promise<string> {

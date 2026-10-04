@@ -20,6 +20,7 @@ import { FrameProfiler } from '#lib/picture/profiling/studio/frame-profiler.tsx'
 import { SceneContext } from '#lib/picture/video/studio/scene.tsx';
 import { randomSeedFromKey } from '#lib/picture/motion/models/random.ts';
 import { Sfx, SfxCueListAudio, SfxCueListPlaying } from '#lib/timing/sound/studio/sfx.tsx';
+import { SFX } from '#lib/timing/sound/studio/kit.ts';
 import { sceneClockAt, sceneTimes, scenesAtFrame } from '#lib/timing/timeline/models/video-layout.ts';
 import { laidVideoOf, videoFormatOf, type LaidScene, type LaidVideo, type VideoDef } from '#lib/picture/video/studio/video.ts';
 import { BurnedCaptions, burnedCaptionPages, CaptionBandContext, sidecarCaptionPages } from '#lib/picture/captions/studio/caption-style.tsx';
@@ -73,6 +74,7 @@ function timelineReport(video: VideoDef, tl: LaidVideo, { fps, width, height, du
       return { scene: scene.id, ...promise, start: scene.start + during.start, end: scene.start + during.end };
     })),
     sfxCueList,
+    beatClicks: playsBeatClicks(video),
     sounds: (video.sounds ?? []).map(({ at, sound, id }, i) => {
       const takes = Array.isArray(sound) ? sound : [sound];
       return { id: String(id ?? i), at, sound: takes[randomSeedFromKey(id ?? i) % takes.length].request.sound };
@@ -124,6 +126,7 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
         ) : null,
       )}
       {video.music && <MusicBedAudio video={video} tl={tl} fps={fps} />}
+      {playsBeatClicks(video) && <BeatClickAudio beatFrames={video.timeline.beatFrames} fps={fps} />}
       {captions && <BurnedCaptions style={captioned.style} pages={pages} t={t} />}
       {reportTimeline && frame === 0 && <Artifact filename={TIMELINE_ARTIFACT} content={timelineReport(video, tl, config, playsCueList, captioned)} />}
       {probe && <FrameProbe root={root} />}
@@ -143,6 +146,21 @@ function MusicBedAudio({ video, tl, fps }: { video: VideoDef; tl: LaidVideo; fps
     <Audio src={bed.track.src} name="music" loop loopVolumeCurveBehavior="extend" trimBefore={Math.round((bed.sourceStartSeconds ?? 0) * fps)}
       volume={(f) => gainAt(f / fps)} />
   );
+}
+
+/**
+ * Whether `video` plays a click on each beat: cut to a beat grid with no `music` to play yet (a tempo guess before
+ * its track), so a render has a beat to hear the cuts against rather than refusing a silent mix. A draft.
+ */
+const playsBeatClicks = (video: VideoDef) => !video.music && video.timeline.beatFrames.length > 0;
+
+/** A click landing on each beat's hit frame, as plain audio: no event for `studio check` or a cue list to read. */
+function BeatClickAudio({ beatFrames, fps }: { beatFrames: readonly number[]; fps: number }) {
+  const cues = useMemo(() => {
+    const [{ src, seconds, landsAt }] = SFX.click;
+    return beatFrames.map((frame) => ({ id: `beat ${frame}`, at: frame / fps, src, seconds, landsAt, volume: 1 }));
+  }, [beatFrames, fps]);
+  return <SfxCueListAudio cues={cues} />;
 }
 
 // Footage listed for a scene that no longer asks for previs is left unplayed, and kept, since it was paid for.

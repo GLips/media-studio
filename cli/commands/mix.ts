@@ -5,7 +5,7 @@ import { openStudioRenderSession, studioProjectArg } from '../project-arg.ts';
 export default defineCommand({
   meta: {
     name: 'mix',
-    description: "Render just the soundtrack, mastered to −14 LUFS and −2 dBTP, to out/mix.wav, to audition the levels. Prints the file. Fails on a mix that renders silent, and refuses a silent project, which has none. For a video with sounds on its own clock (defineVideo({ sounds })) and music, then a row per sound against the music where it lands, before mastering: whether it lands on an attack or swells to a peak, the gap in ms after the music's nearest attack, the sound's and the music's momentary loudness (LUFS) and the difference (LU), flagged FLAM (15–100 ms off, heard as two hits), BURIED (over 8 LU under) or OVER (over 3 LU above); then the music's empty beats, with no attack of its own, where a sound can land alone.",
+    description: "Render just the soundtrack, mastered to −14 LUFS and −2 dBTP (a draft's beat clicks, with no music yet, to −2 dBTP alone), to out/mix.wav, to audition the levels. Prints the file. Fails on a mix that renders silent, and refuses a silent project, which has none. For a video with sounds on its own clock (defineVideo({ sounds })) and music, then a row per sound against the music where it lands, before mastering: whether it lands on an attack or swells to a peak, the gap in ms after the music's nearest attack, the sound's and the music's momentary loudness (LUFS) and the difference (LU), flagged FLAM (15–100 ms off, heard as two hits), BURIED (over 8 LU under) or OVER (over 3 LU above); then the music's empty beats, with no attack of its own, where a sound can land alone.",
   },
   args: {
     project: studioProjectArg,
