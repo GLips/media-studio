@@ -15,11 +15,12 @@ import type { PaintingEvaluation } from '#lib/paint/document/models/painting-sou
 import type { StampWarpMap } from '#lib/paint/painting/models/stamp-group-warp.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
-import { paintRigCelLayer, type PaintRigCelPart } from '#lib/paint/rig/models/paint-rig-cel-layer.ts';
+import { paintRigCelLayer, paintRigPicturePainted, type PaintRigCelPart } from '#lib/paint/rig/models/paint-rig-cel-layer.ts';
 import type { PaintRigCutLayer } from '#lib/paint/rig/models/paint-rig-cuts.ts';
 import { paintRigSkinGroupPicture, type PaintRigPicture, type PaintRigPiece } from '#lib/paint/rig/models/paint-rig-pieces.ts';
 import {
-  paintRigBandStretch, paintRigSkinGroups, paintRigSkinMesh, paintRigSkinRestMap, paintRigSkinTriangles, type PaintRigSkinGroup, type PaintRigSkinMesh,
+  paintRigBandStretch, paintRigSkinGroups, paintRigSkinMesh, paintRigSkinProblems, paintRigSkinRestMap, paintRigSkinTriangles,
+  type PaintRigBoneless, type PaintRigSkinGroup, type PaintRigSkinMesh,
 } from '#lib/paint/rig/models/paint-rig-skin.ts';
 import { shotOccurrenceKey } from './shot-occurrences.ts';
 import type { OccurrenceKey, OccurrenceRig, RigPart, RigPartPose } from './shot-props.ts';
@@ -108,7 +109,12 @@ export function compileShotRig(occurrence: OccurrenceKey, plane: string, paintin
     }
   }
   for (const layer of under) {
-    if (!layerCel.has(layer)) problems.push(rigError(shotOccurrenceKey(plane, layer), '', `lies under rigged ${group} and in no part's cels: name it in a part's cels, or group it with the layer it rides on (a group cel's layers may mix media) and name the group as one cel`));
+    if (!layerCel.has(layer)) {
+      problems.push(rigError(
+        shotOccurrenceKey(plane, layer), '',
+        `lies under rigged ${group} and in no part's cels: group it with the layer it rides on (a group cel's layers may mix media) and name the group as that part's cel, or give it a part of its own: a part's cels after its first are swaps, shown one at a time, so one named there is hidden at rest`,
+      ));
+    }
   }
   const pieces = place.sheet.owner === group;
   if (pieces) {
@@ -207,47 +213,39 @@ export function shotRigPosed(
 /** A cel layer's skin: its cuts (parts in the rig's order) and each of its groups with its mesh, back to front. */
 export type ShotRigSkin = { readonly cuts: PaintRigCutLayer; readonly groups: readonly { readonly group: PaintRigSkinGroup; readonly mesh: PaintRigSkinMesh }[] };
 
-/** Whether `picture` holds any paint. */
-function shotRigPicturePainted({ rgba }: PaintRigPicture): boolean {
-  for (let a = 3; a < rgba.length; a += 4) if (rgba[a] > 0) return true;
-  return false;
-}
+/** A part's cel as a frame shows it: its key, and its picture as the whole selection paints it unposed. */
+export type ShotRigCel = { readonly key: NodeKey; readonly picture: PaintRigPicture };
 
-/** Why `rig`'s cels can't be skinned (shotRigSkinProblems), as one error naming the rig. */
+/** Problems that leave `rig`'s cels unskinnable, as one error naming the rig. */
 const shotRigSkinError = (rig: CompiledShotRig, problems: readonly PaintingProblem[]) => paintingProblemsError(`shot's rig ${rig.occurrence}`, problems);
 
-/**
- * Why `rig` can't be skinned over `cels` (a picture a part, keyed `shown`): none lays paint on the document, or a
- * skinned part's lays none; with `cuts`, a skinned part's lies wholly under higher cels. A skin joint bends along its
- * part's own paint; a hinged part or a root may show none.
- */
-export function shotRigSkinProblems(rig: CompiledShotRig, cels: readonly PaintRigPicture[], shown: readonly NodeKey[], cuts?: PaintRigCutLayer): PaintingProblem[] {
-  const { widthPx, heightPx } = rig.size, onDocument = `the document (0,0 → ${widthPx},${heightPx})`;
-  const painted = cels.map(shotRigPicturePainted);
-  if (!painted.some(Boolean)) return [rigError(rig.occurrence, 'parts', `lays no paint on ${onDocument}: its cels ${shown.join(', ')} lie off it, or are clipped or reserved away`)];
-  return rig.parts.flatMap((part, k) => {
-    if (part.parent === null || part.joint !== 'skin') return [];
-    if (!painted[k]) {
-      return [rigError(rig.occurrence, `parts.${part.id}`, `its cel ${shown[k]} lays no paint on ${onDocument}, and a skin joint bends along its part's own paint: paint it there, or leave the part out`)];
-    }
-    if (cuts && !cuts.owner.includes(k)) {
-      return [rigError(rig.occurrence, `parts.${part.id}`, `its cel ${shown[k]} lies wholly under cels drawn over it, so none of the rig's paint is its own, and a skin joint bends along its part's own paint: raise its z, or paint it out from under them`)];
-    }
-    return [];
-  });
+/** Why part `k` of `rig`, showing `cel`, has no bone to bend its skin joint along (`boneless`, paintRigSkinProblems'). */
+function shotRigBonelessProblem(rig: CompiledShotRig, k: number, cel: ShotRigCel, boneless: PaintRigBoneless, onDocument: string): PaintingProblem {
+  const at = `parts.${rig.parts[k].id}`, bends = "a skin joint bends along its part's own paint";
+  if (boneless === 'centred') {
+    return rigError(rig.occurrence, at, `its cel ${cel.key}'s own paint centres on its pivot, and ${bends}, out from the pivot: set the pivot where the part meets its parent`);
+  }
+  if (!paintRigPicturePainted(cel.picture)) return rigError(rig.occurrence, at, `its cel ${cel.key} lays no paint on ${onDocument}, and ${bends}: paint it there, or leave the part out`);
+  return rigError(
+    rig.occurrence, at,
+    `its cel ${cel.key} gives none of the rig's texels most of their colour, outweighed everywhere it paints by the cels over or under it, and ${bends}: where it lies under them, raise its z; where it lies over them, paint it stronger, or out past them`,
+  );
 }
 
 /**
- * `cels` (one picture a part, in the rig's part order: the cel each shows, keyed `shown`) laid as one cel layer and
- * skinned: its cuts, groups and meshes. Refuses what shotRigSkinProblems finds, before laying and before skinning.
+ * `cels` (the cel each part shows, in part order) laid as one cel layer and skinned: its cuts, groups and meshes.
+ * Refuses at the rig's path, by the rig engine's own rules, what it would refuse naming no rig: no cel painted, a
+ * skin joint with no bone. A hinged part or a root may show a clear cel.
  */
-export function shotRigSkin(rig: CompiledShotRig, cels: readonly PaintRigPicture[], shown: readonly NodeKey[]): { picture: PaintRigPicture; skin: ShotRigSkin } {
-  const unlaid = shotRigSkinProblems(rig, cels, shown);
-  if (unlaid.length) throw shotRigSkinError(rig, unlaid);
-  const parts: PaintRigCelPart[] = rig.parts.map((part, k) => ({ declaration: part, picture: cels[k] }));
+export function shotRigSkin(rig: CompiledShotRig, cels: readonly ShotRigCel[]): { picture: PaintRigPicture; skin: ShotRigSkin } {
+  const { widthPx, heightPx } = rig.size, onDocument = `the document (0,0 → ${widthPx},${heightPx})`;
+  if (!cels.some(({ picture }) => paintRigPicturePainted(picture))) {
+    throw shotRigSkinError(rig, [rigError(rig.occurrence, 'parts', `lays no paint on ${onDocument}: its cels ${cels.map(({ key }) => key).join(', ')} lie off it, or are clipped or reserved away`)]);
+  }
+  const parts: PaintRigCelPart[] = rig.parts.map((part, k) => ({ declaration: part, picture: cels[k].picture }));
   const { picture, cuts } = paintRigCelLayer(rig.occurrence, parts);
-  const unskinned = shotRigSkinProblems(rig, cels, shown, cuts);
-  if (unskinned.length) throw shotRigSkinError(rig, unskinned);
+  const boneless = paintRigSkinProblems(cuts);
+  if (boneless.length) throw shotRigSkinError(rig, boneless.map((problem) => shotRigBonelessProblem(rig, problem.part, cels[problem.part], problem.boneless, onDocument)));
   return { picture, skin: { cuts, groups: paintRigSkinGroups(cuts).map((group) => ({ group, mesh: paintRigSkinMesh(cuts, group) })) } };
 }
 
@@ -287,9 +285,9 @@ export function shotRigCelPoses(rig: CompiledShotRig, posed: ShotRigPosed, skin:
 export type ShotRigFound = { readonly rig: CompiledShotRig; readonly axes: ReadonlyMap<string, ShotRigAxis>; readonly skin: ShotRigSkin | null };
 
 /** `rig` found over `cels`, its parts' rest cels, its roots turning about `groupPivot`. */
-export function shotRigFound(rig: CompiledShotRig, groupPivot: StampPoint, cels: readonly PaintRigPicture[]): ShotRigFound {
-  const axes = new Map(rig.parts.map((part, k) => [part.id, shotRigPartAxis(shotRigPartPivot(part, groupPivot), cels[k])] as const));
-  return { rig, axes, skin: rig.pieces ? null : shotRigSkin(rig, cels, rig.parts.map(({ cels: [rest] }) => rest)).skin };
+export function shotRigFound(rig: CompiledShotRig, groupPivot: StampPoint, cels: readonly ShotRigCel[]): ShotRigFound {
+  const axes = new Map(rig.parts.map((part, k) => [part.id, shotRigPartAxis(shotRigPartPivot(part, groupPivot), cels[k].picture)] as const));
+  return { rig, axes, skin: rig.pieces ? null : shotRigSkin(rig, cels).skin };
 }
 
 /** A skin joint's band at one pose: how far its triangles stretch, for a warning when one folds (ENGINE 6.5). */

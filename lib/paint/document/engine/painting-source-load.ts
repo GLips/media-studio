@@ -6,7 +6,8 @@
 
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { readProjectDeclaration, STUDIO_STYLES_DIR, studioProjectOfFile } from '#lib/platform/project/engine/studio-project.ts';
+import { STUDIO_STYLES_DIR, studioProjectOfFile } from '#lib/platform/project/engine/studio-project.ts';
+import { projectStyleNames } from '#lib/paint/style/engine/project-styles.ts';
 import { readWorkspacePigmentStyle, type WorkspacePigmentStyle } from '#lib/paint/style/engine/workspace-pigment-style.ts';
 import { paintingBrushRefs } from '../models/painting-brush-refs.ts';
 import type { PaintingBrushOf } from '../models/painting-deposit-compile.ts';
@@ -31,15 +32,15 @@ export async function loadPaintingSource(file: string): Promise<PaintingSourceMo
 }
 
 /**
- * The source at `file` checked at the values `texts` give by name, against this machine's styles: inside a project,
- * only those its project.ts names, as its bundle serves them.
+ * The source at `file` checked at the values `texts` give by name, against this machine's styles: inside a project
+ * (work/projects/<p>/), only those its project.ts names, as its bundle serves them.
  */
 export async function checkPaintingSourceFile(file: string, texts: Readonly<Record<string, string>>): Promise<PaintingSourceEvaluation> {
   const source = await loadPaintingSource(file);
   const values = paintingValuesFromText(source.properties ?? {}, texts);
   const { default: styles } = await import('#lib/paint/style/engine/node-stamp-paint-styles.ts');
-  const project = studioProjectOfFile(file), declared = project === null ? null : (await readProjectDeclaration(project))?.styles ?? [];
-  return evaluatePaintingSource(source, values, paintingStyleCatalogue(styles, declared));
+  const project = studioProjectOfFile(file);
+  return evaluatePaintingSource(source, values, paintingStyleCatalogue(styles, project === null ? null : projectStyleNames(project)));
 }
 
 /** One side of a comparison: a source file at the values `texts` give by name. */

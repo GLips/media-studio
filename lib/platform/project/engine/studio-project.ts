@@ -2,8 +2,8 @@
 //
 // The `studio` CLI runs from any directory, so everything that reads or writes studio files goes through
 // STUDIO_ROOT rather than the working directory.
-import { existsSync, readdirSync, statSync } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { ProjectCapability, ProjectDeclaration } from '../models/capability.ts';
 
@@ -49,26 +49,22 @@ export function resolveStudioProjectWith(arg: string, file: string): string {
   return dir;
 }
 
-/** The project's project.ts, or undefined for an older project with none. */
-export async function readProjectDeclaration(project: string): Promise<ProjectDeclaration | undefined> {
-  const file = join(project, 'project.ts');
-  if (!existsSync(file)) return undefined;
-  // SAFETY: check:arch's capability-match refuses a project.ts that default-exports no ProjectDeclaration.
-  return ((await import(/* @vite-ignore */ pathToFileURL(file).href)) as { default: ProjectDeclaration }).default;
-}
-
 /**
  * What the project's project.ts declares it is (check:arch holds that to what it binds), or undefined for an older
  * project with none.
  */
 export async function readProjectCapability(project: string): Promise<ProjectCapability | undefined> {
-  return (await readProjectDeclaration(project))?.capability;
+  const file = join(project, 'project.ts');
+  if (!existsSync(file)) return undefined;
+  // SAFETY: check:arch's capability-match refuses a project.ts that default-exports no ProjectDeclaration.
+  return ((await import(/* @vite-ignore */ pathToFileURL(file).href)) as { default: ProjectDeclaration }).default.capability;
 }
 
-/** The project `file` lies in: the nearest folder holding it, or above, that has a project.ts; null outside any. */
+/**
+ * The project folder `file` (one that exists) lies in, work/projects/<p>/ as the studio lays projects out; null for a
+ * file outside one. Its real path, as STUDIO_ROOT is, so a symlinked working directory still finds it.
+ */
 export function studioProjectOfFile(file: string): string | null {
-  for (let dir = dirname(resolve(file)); ; dir = dirname(dir)) {
-    if (existsSync(join(dir, 'project.ts'))) return dir;
-    if (dirname(dir) === dir) return null;
-  }
+  const [project, ...within] = relative(STUDIO_PROJECTS_DIR, realpathSync(file)).split(sep);
+  return within.length && project !== '..' && !isAbsolute(project) ? join(STUDIO_PROJECTS_DIR, project) : null;
 }

@@ -447,14 +447,16 @@ evaluates a source, memoised by its values, and refuses a document with any erro
 one without the GPU, every problem a record naming its owner's key, field and footprint (`painting-problem.ts`), in
 stages: values, shape and keys, the papers, layers, washes and applications (`painting-application-check.ts`,
 `painting-region-check.ts`, `painting-mix-check.ts`), then each sheet's rules (`painting-sheet-check.ts`) and each
-layer's pigments. Where a rule is the engine's (a fill's guides and strokes, ring geometry, a deposit's water) the
-check calls the engine's own problem function. A problem's box comes from `painting-footprint.ts`. Brushes and papers
-are checked against a `PaintingStyleCatalogue` (`painting-styles.ts`): each style's brushes with their media and the
-diameters their measured profiles span, read as the bundle reads them (`stampPaintStyleBrushes`), and its pack files;
-`studio paint check` builds it from `work/styles/`, inside a project only the styles its `project.ts` names
-(`studioProjectOfFile`), so the check refuses what the bundle wouldn't serve. A fill plans its strokes by its brush's
-measured profile, so its `diameterPx` is held to that range (`paintingFillBrushProblem`), statically and again as a
-selection compiles, every unplannable fill at once by owner; the profile's own throw stays as an assertion.
+layer's pigments. Where a rule is the engine's (a fill's guides and strokes, ring geometry, a deposit's water, a
+brush's measured diameters) the check calls the engine's own problem function. A problem's box comes from
+`painting-footprint.ts`. Brushes and papers are checked against a `PaintingStyleCatalogue` (`painting-styles.ts`):
+each style's brushes, read as the bundle reads them (`readBundledStampPaintPacks`, `stampPaintStyleBrushes`), and the
+files it serves. `studio paint check` builds it from `work/styles/`; for a source in `work/projects/<p>/`
+(`studioProjectOfFile`), only the styles its `project.ts` names (`projectStyleNames`, as the bundle reads them) and
+of each only the images the bundle serves (`stampPaintStyleImages`). A fill plans its strokes by its brush's measured
+profile, so its `diameterPx` is held to that range by `stampBrushDiameterProblem` (`stamp-brush-profile.ts`, the rule
+`stampBrushMeasuredProfile` and the profile's reads refuse by), statically and again as a selection compiles, every
+unplannable fill at once by owner.
 `painting-tree.ts` resolves a document's tree: its sheets, and each node's medium and sheet; `painting-sheet-program.ts`
 is each sheet's order, its layers' films (`painting-pigment-slots.ts`) and its clock, the one order the checks, the
 evaluation diff (`painting-evaluation-diff.ts`) and the solver read. The checks never touch the GPU.
@@ -493,9 +495,10 @@ measured then, and again when one resizes (`shotPinnedPlanes`). Motion (`shot-mo
 group's too, its clock chained under its parents' and the plane's `clock`. `shot-frame-plan.ts` reads a plane at one
 moment: the selections its source blends at its source moment, each with its weight (`shotPlaneSharesAt`), its node poses (boil wobble out of the poses marks solve under, in the
 ones the lay reads), boil epochs, visibility and rig poses. A rig (`shot-rigs.ts`) is found over its cels as all the
-selection's paint makes them unposed, whatever a timed prefix has painted yet; before its cels are laid as one and
-skinned, `shotRigSkinProblems` refuses at the rig's path cels that lay no paint on the document, and a skinned part
-whose cel shows none of its own, so the cel layer's and skin mesh's throws stay assertions. One whose group owns its sheet is
+selection's paint makes them unposed, whatever a timed prefix has painted yet; `shotRigSkin` lays its cels as one and
+skins them, refusing at the rig's path what the rig engine would refuse naming no rig, by its own rules: cels none of
+which is painted (`paintRigPicturePainted`), and a skin joint with no bone (`paintRigSkinProblems`: its child owns no
+texel, or its paint centres on its pivot). One whose group owns its sheet is
 drawn as pieces: a cel layer of its shown cels (`paint-rig-cel-layer.ts`), cut by ownership and posed through
 three.js meshes into colour and motion (`studio/shot-rig-pieces.ts`); any other rig poses its cels' marks before the
 solve, a skinned cel by its skin mesh. A hidden cel stays in its sheet's program and isn't laid, so a cel swap

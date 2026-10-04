@@ -1,27 +1,23 @@
-// painting-styles.ts: what a document's brushes and paper assets are checked against: each style's brush names, with
-// whether each lays wet or dry and the diameters its measured profile spans, and the pack files it can serve. Styles
-// are private and machine-local (work/styles/), so this is built from whatever loaded them (Node's style reader, a
-// bundle's `@stamp-paint-styles`) and handed to the check; a check without one leaves brushes and assets to the
-// compiler. Inside a project the catalogue holds only the styles its project.ts names, as its bundle does.
+// painting-styles.ts: what a document's brushes and paper assets are checked against: each style's brushes, read as
+// its bundle reads them, and the pack files it can serve. Styles are private and machine-local (work/styles/), so this
+// is built from whatever loaded them (Node's style reader, a bundle's `@stamp-paint-styles`) and handed to the check;
+// a check without one leaves brushes and assets to the compiler. Inside a project the catalogue holds only the styles
+// its project.ts names, and of each only the images its bundle serves.
 
-import { stampBrushProfileRange } from '#lib/paint/brush/models/stamp-brush-profile.ts';
+import { stampBrushDiameterProblem } from '#lib/paint/brush/models/stamp-brush-profile.ts';
 import type { StampBrush, StampBrushAsset, StampBrushMedia } from '#lib/paint/brush/models/stamp-brush.ts';
-import { readStampPaintPack } from '#lib/paint/brush-packs/models/stamp-paint-pack.ts';
-import { stampPaintStyleBrushes, type BundledStampPaintStyles } from '#lib/paint/style/models/style.ts';
+import {
+  readBundledStampPaintPacks, stampPaintStyleBrushes, stampPaintStyleImages, stampPaintStylePaper, type BundledStampPaintStyles,
+} from '#lib/paint/style/models/style.ts';
 import type { BrushRef } from './painting-document.ts';
 
-/** The diameters a brush's measured profile spans, px: a fill plans its strokes by that profile. Or why it has none. */
-export type PaintingBrushDiameters = { readonly kind: 'measured'; readonly min: number; readonly max: number } | { readonly kind: 'unmeasured'; readonly why: string };
-
-/** One of a style's brushes as a document is checked against it: whether it lays wet or dry, and its measured diameters. */
-export type PaintingStyleBrush = { readonly media: StampBrushMedia; readonly diameters: PaintingBrushDiameters };
-
 /**
- * One style as a document is checked against it: its brushes by its own names; those it names that can't be read here
- * (their pack isn't imported, or lacks them), each with why; and its files by `<pack>/<file>`.
+ * One style as a document is checked against it: its brushes by its own names, each with its media and profile; those
+ * it names that can't be read here (their pack isn't imported, or lacks them), each with why; and the files it serves
+ * by `<pack>/<file>`.
  */
 export type PaintingStyleEntry = {
-  readonly brushes: ReadonlyMap<string, PaintingStyleBrush>;
+  readonly brushes: ReadonlyMap<string, StampBrush>;
   readonly unread: ReadonlyMap<string, string>;
   readonly files: ReadonlySet<string>;
 };
@@ -32,29 +28,26 @@ export type PaintingStyleEntry = {
  */
 export type PaintingStyleCatalogue = { readonly styles: ReadonlyMap<string, PaintingStyleEntry>; readonly declared: readonly string[] | null };
 
-/** `brush`'s measured diameters, from the profile its style resolved it with. */
-export function paintingBrushDiameters({ profile }: StampBrush): PaintingBrushDiameters {
-  if (profile.kind === 'measured') return { kind: 'measured', ...stampBrushProfileRange(profile) };
-  return { kind: 'unmeasured', why: profile.kind === 'refused' ? profile.why : 'no import measured it' };
-}
-
 /**
- * The catalogue of `styles` as a bundle serves them: a brush's media its own, else its pack's, and its diameters from
- * its pack's profile. With `declared` (a project's project.ts `styles`), only the styles named there.
+ * The catalogue of `styles`, their brushes read as a bundle reads them (stampPaintStyleBrushes). With `declared` (a
+ * project's project.ts `styles`), only the styles named there, each serving only its brushes' and paper's images, as
+ * the project's bundle does (project-styles.ts); without, every file the imported packs list, as a still is served.
  */
 export function paintingStyleCatalogue(styles: BundledStampPaintStyles, declared: readonly string[] | null): PaintingStyleCatalogue {
   const served = Object.entries(styles).filter(([name]) => declared === null || declared.includes(name));
   return {
     declared,
-    styles: new Map(served.map(([name, { style, manifests, images }]) => {
-      const packs = Object.fromEntries(Object.entries(manifests).map(([pack, manifest]) => [pack, readStampPaintPack(manifest)]));
-      const brushes = new Map<string, PaintingStyleBrush>(), unread = new Map<string, string>();
-      for (const [key, read] of stampPaintStyleBrushes(name, style, packs)) {
-        const { pack, media } = style.brushes[key];
-        if ('brush' in read) brushes.set(key, { media: media ?? style.packs[pack].media, diameters: paintingBrushDiameters(read.brush) });
+    styles: new Map(served.map(([name, entry]) => {
+      const brushes = new Map<string, StampBrush>(), unread = new Map<string, string>();
+      for (const [key, read] of stampPaintStyleBrushes(name, entry.style, readBundledStampPaintPacks(entry))) {
+        if ('brush' in read) brushes.set(key, read.brush);
         else unread.set(key, read.missing);
       }
-      return [name, { brushes, unread, files: new Set(Object.keys(images)) }];
+      const images = Object.keys(entry.images);
+      const bundled = declared === null
+        ? null
+        : new Set(stampPaintStyleImages({ brushes: Object.fromEntries(brushes), paper: stampPaintStylePaper(name, entry.style) }).map(({ pack, file }) => `${pack}/${file}`));
+      return [name, { brushes, unread, files: new Set(bundled ? images.filter((file) => bundled.has(file)) : images) }];
     })),
   };
 }
@@ -68,27 +61,32 @@ export function paintingStyleMissing({ styles, declared }: PaintingStyleCatalogu
 
 /** Why `asset` can't be found in `styles`, or null. */
 export function paintingAssetProblem(styles: PaintingStyleCatalogue, asset: StampBrushAsset): string | null {
-  const entry = styles.styles.get(asset.style);
+  const entry = styles.styles.get(asset.style), key = `${asset.pack}/${asset.file}`;
   if (!entry) return paintingStyleMissing(styles, asset.style);
-  return entry.files.has(`${asset.pack}/${asset.file}`) ? null : `${asset.pack}/${asset.file} isn't among ${asset.style}'s imported pack files`;
+  if (entry.files.has(key)) return null;
+  if (styles.declared === null) return `${key} isn't among ${asset.style}'s imported pack files`;
+  return `${key} isn't among the images the project's bundle serves of ${asset.style}: its brushes' tips and grains, and its paper's`;
 }
 
 /** `brush` as `styles` hold it; undefined when no catalogue is known, or it doesn't name the brush or can't read it. */
-export const paintingStyleBrush = (styles: PaintingStyleCatalogue | undefined, brush: BrushRef): PaintingStyleBrush | undefined =>
-  styles?.styles.get(brush.style)?.brushes.get(brush.brush);
+export function paintingStyleBrush(styles: PaintingStyleCatalogue | undefined, brush: BrushRef): StampBrush | undefined {
+  // A source written in JS may leave its ref out or half named: the check reports that (checkBrush) and reads on.
+  const { style, brush: key }: Partial<BrushRef> = brush ?? {};
+  return style === undefined || key === undefined ? undefined : styles?.styles.get(style)?.brushes.get(key);
+}
 
 /** Whether `brush` lays wet or dry in `styles`; undefined when no catalogue is known, or it doesn't name the brush. */
 export const paintingBrushMedia = (styles: PaintingStyleCatalogue | undefined, brush: BrushRef): StampBrushMedia | undefined => paintingStyleBrush(styles, brush)?.media;
 
 /**
- * Why a fill can't plan its strokes by `brush` at `diameterPx`, and at which field: a fill, flooded or stroked, reads
- * its brush's measured profile, so the brush needs one measured at that diameter. The engine refuses the same as it
- * plans (stamp-brush-profile.ts), naming no application.
+ * Why a fill can't plan its strokes by `brush` (named `ref`) at `diameterPx`, at the field at fault: a fill, flooded
+ * or stroked, reads its brush's measured profile, which planning refuses by (stampBrushDiameterProblem).
  */
-export function paintingFillBrushProblem(brush: BrushRef, diameters: PaintingBrushDiameters, diameterPx: number): { readonly field: 'brush' | 'diameterPx'; readonly message: string } | null {
-  const name = `${brush.style}'s ${brush.brush}`;
-  if (diameters.kind === 'unmeasured') return { field: 'brush', message: `${name} has no measured profile, which a fill plans its strokes by: ${diameters.why}` };
-  const { min, max } = diameters;
-  if (diameterPx >= min && diameterPx <= max) return null;
-  return { field: 'diameterPx', message: `${name} is measured from ${min} to ${max} px, and a fill plans its strokes by that measure: this lays ${diameterPx}` };
+export function paintingFillBrushProblem(ref: BrushRef, brush: StampBrush, diameterPx: number): { readonly field: 'brush' | 'diameterPx'; readonly message: string } | null {
+  const problem = stampBrushDiameterProblem(brush, diameterPx);
+  if (problem === null) return null;
+  return {
+    field: problem.field === 'diameter' ? 'diameterPx' : 'brush',
+    message: `a fill plans its strokes by its brush's measured profile, and ${ref.style}'s ${ref.brush} ${problem.message}`,
+  };
 }

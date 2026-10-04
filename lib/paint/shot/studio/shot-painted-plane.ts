@@ -147,7 +147,7 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
         rest.release();
       }
     }
-    const found = rigs.map((rig) => shotRigFound(rig, shotRigGroupPivot(rig, motion), rig.parts.map(({ cels }) => restCels.get(rig.occurrence)!.get(cels[0])!)));
+    const found = rigs.map((rig) => shotRigFound(rig, shotRigGroupPivot(rig, motion), rig.parts.map(({ cels: [key] }) => ({ key, picture: restCels.get(rig.occurrence)!.get(key)! }))));
     const solvedPoses = shotPlanePosesAt(plane, motion, found, frameAt, false);
     const { solved, release } = await solvePaintingSheetFilms(owner, compiled, { poses: solvedPoses, costs, ...(at !== undefined && { at }) });
     const share: ShotShareSolved = { selection, weight, compiled, lays, films: solved.map((sheet) => sheet.films), rigs: found, restCels, solvedPoses };

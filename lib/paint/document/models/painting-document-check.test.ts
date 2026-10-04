@@ -8,6 +8,7 @@ import type { Application, BrushRef, EdgedRegion, Layer, LayerNode, Mix, Paintin
 import type { PaintingProblem } from './painting-problem.ts';
 import { checkPaintingSource, type PaintingSourceModule } from './painting-source.ts';
 import type { PaintingStyleCatalogue } from './painting-styles.ts';
+import { paintingTestBrushSpanning } from './painting-test-brush.ts';
 
 const W = 400, H = 300;
 const BOX: Ring = [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: 200 }, { x: 0, y: 200 }];
@@ -35,7 +36,7 @@ const greys = (from: number, count: number): Mix => ({
 /** A project naming watercolor alone, whose wash is measured from 8 to 512 px; the workspace also holds gouache. */
 const PROJECT_STYLES: PaintingStyleCatalogue = {
   declared: ['watercolor'],
-  styles: new Map([['watercolor', { brushes: new Map([['wash', { media: 'wet', diameters: { kind: 'measured', min: 8, max: 512 } }]]), unread: new Map(), files: new Set() }]]),
+  styles: new Map([['watercolor', { brushes: new Map([['wash', paintingTestBrushSpanning(8, 512)]]), unread: new Map(), files: new Set() }]]),
 };
 const skyFlood = (tip: { readonly brush?: BrushRef; readonly diameterPx?: number }): PaintingDocument =>
   documentOf([layer('sky', [{ key: 'sky-wash', applications: [{ ...flood({ key: 'sky-flood', water: 0.85 }), ...tip }] }])]);
@@ -136,12 +137,17 @@ const brokenSources: readonly { readonly name: string; readonly check: () => rea
   {
     name: "a fill laid below its brush's measured diameters",
     check: () => checkPaintingSource(sourceOf(skyFlood({ diameterPx: 4 })), {}, PROJECT_STYLES),
-    expect: { severity: 'error', path: 'sky-flood.diameterPx', message: "watercolor's wash is measured from 8 to 512 px, and a fill plans its strokes by that measure: this lays 4" },
+    expect: { severity: 'error', path: 'sky-flood.diameterPx', message: "a fill plans its strokes by its brush's measured profile, and watercolor's wash is measured from 8 to 512 px, not at 4" },
   },
   {
     name: "a brush from a style the project's project.ts doesn't name",
     check: () => checkPaintingSource(sourceOf(skyFlood({ brush: { style: 'gouache', brush: 'flat' } })), {}, PROJECT_STYLES),
     expect: { severity: 'error', path: 'sky-flood.brush.style', message: "names style gouache, which the project's project.ts doesn't name in styles (it names watercolor)" },
+  },
+  {
+    name: 'a fill written in JS with no brush, checked against styles',
+    check: () => checkPaintingSource(sourceOf(skyFlood({ brush: undefined })), {}, PROJECT_STYLES),
+    expect: { severity: 'error', path: 'sky-flood.brush', message: 'a brush is {style, brush}, both named' },
   },
 ];
 

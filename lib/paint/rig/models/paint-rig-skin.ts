@@ -74,17 +74,47 @@ function nearest(box: PaintRigTexelBox, x: number, y: number, reach: number, is:
   return best;
 }
 
+/** Why a skin joint has no bone to bend along: its child owns none of the layer's texels, or their middle is its pivot. */
+export type PaintRigBoneless = 'unowned' | 'centred';
+
+/**
+ * Skin joint `child`'s bone (pivot `pivot`): from its pivot toward the middle of the texels the child owns, as a unit
+ * vector, or why it has none. A skinned part's texels are the ones its group moves it by, so this is the mesh's bone.
+ */
+function skinBone({ box, owner }: PaintRigCutLayer, child: number, pivot: StampPoint): { readonly bone: StampPoint } | { readonly boneless: PaintRigBoneless } {
+  let x = 0, y = 0, owned = false;
+  for (let t = 0; t < owner.length; t++) {
+    if (owner[t] !== child) continue;
+    owned = true;
+    x += box.x0 + (t % box.w) + 0.5 - pivot.x; y += box.y0 + Math.floor(t / box.w) + 0.5 - pivot.y;
+  }
+  const length = Math.hypot(x, y);
+  if (!owned) return { boneless: 'unowned' };
+  return length > 0 ? { bone: { x: x / length, y: y / length } } : { boneless: 'centred' };
+}
+
+/**
+ * The skin joints of `layer` with no bone to bend along, by child (an index into its parts) and why
+ * (PaintRigBoneless): what paintRigSkinMesh refuses, for a caller to name before it skins.
+ */
+export function paintRigSkinProblems(layer: PaintRigCutLayer): { readonly part: number; readonly boneless: PaintRigBoneless }[] {
+  return layer.parts.flatMap(({ joint }, part) => {
+    if (joint.kind !== 'skin') return [];
+    const found = skinBone(layer, part, joint.pivot);
+    return 'boneless' in found ? [{ part, boneless: found.boneless }] : [];
+  });
+}
+
 /** `group`'s mesh over `layer`: the cells any of whose texels (or their neighbours) it covers, and each vertex's share in each skin joint's child. */
 export function paintRigSkinMesh(layer: PaintRigCutLayer, group: PaintRigSkinGroup): PaintRigSkinMesh {
   const { box, parts } = layer, cell = SKIN_CELL, { mover, cover } = group;
   const columns = Math.ceil(box.w / cell), rows = Math.ceil(box.h / cell), stride = columns + 1;
-  // A joint's bone: from its pivot toward the middle of its child's texels, as a unit vector.
   const boneOf = (child: number, pivot: StampPoint) => {
-    let x = 0, y = 0;
-    for (let t = 0; t < mover.length; t++) if (mover[t] === child) { x += box.x0 + (t % box.w) + 0.5 - pivot.x; y += box.y0 + Math.floor(t / box.w) + 0.5 - pivot.y; }
-    const length = Math.hypot(x, y);
-    if (!(length > 0)) throw new Error(`paint rig: ${parts[child].id} is skinned on ${layer.id} with no paint of its own there, so its joint has no bone`);
-    return { x: x / length, y: y / length };
+    const found = skinBone(layer, child, pivot);
+    if ('boneless' in found) {
+      throw new Error(`paint rig: ${parts[child].id} is skinned on ${layer.id} ${found.boneless === 'unowned' ? 'with no paint of its own there' : 'with its paint centred on its pivot'}, so its joint has no bone`);
+    }
+    return found.bone;
   };
   const skinJoints = group.members.flatMap((child) => {
     const { joint } = parts[child];

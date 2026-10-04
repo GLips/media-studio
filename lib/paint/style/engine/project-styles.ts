@@ -54,14 +54,18 @@ function styleAssetProblems(dir: string, style: StampPaintStyle): string[] {
   return [...packProblems, ...brushProblems, ...paperProblems];
 }
 
+/** The styles `projectDir`'s project.ts names, which its bundle serves alone: none for a project with no project.ts. */
+export function projectStyleNames(projectDir: string): readonly string[] {
+  const declarationFile = join(resolve(projectDir), 'project.ts');
+  return existsSync(declarationFile) ? requireDefault<ProjectDeclaration>(declarationFile).styles ?? [] : [];
+}
 
 /**
  * Checks each style the project names, throwing with every problem at once, then rewrites generated/stamp-paint-styles.ts
  * and returns its path. A style's images are imported by name, so naming another brush or paper needs a new bundle.
  */
 export function writeProjectStylesModule(projectDir: string): string {
-  const declarationFile = join(resolve(projectDir), 'project.ts');
-  const names = existsSync(declarationFile) ? requireDefault<ProjectDeclaration>(declarationFile).styles ?? [] : [];
+  const names = projectStyleNames(projectDir);
   const problems = names.flatMap((name) => {
     const file = join(stylesDirFor(projectDir), name, 'style.ts');
     if (!existsSync(file)) {

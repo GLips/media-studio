@@ -89,8 +89,9 @@ export function createShotRigPictures(owner: StampPaintGpuOwner, costs?: StampPa
      * edge, cut by that skin into one picture a skin group. Overlapping cels show their paper once, under both.
      */
     pieces: async (solved: ShotSolvedFilms, rest: ShotRigRestCels, plan: ShotPiecesPlan): Promise<{ readonly skin: ShotRigSkin; readonly pictures: readonly PaintRigPicture[] }> => {
-      const { tree, sheets } = solved.compiled, shown = plan.shown.map((key) => rest.get(key)!);
-      const skin = derivedOf(derivedOf(skins, shown[0], () => new Map<string, ShotRigSkin>()), shown.map(idOf).join(','), () => shotRigSkin(plan.rig, shown, plan.shown).skin);
+      const { tree, sheets } = solved.compiled, shown = plan.shown.map((key) => ({ key, picture: rest.get(key)! }));
+      const byPictures = derivedOf(skins, shown[0].picture, () => new Map<string, ShotRigSkin>());
+      const skin = derivedOf(byPictures, shown.map(({ picture }) => idOf(picture)).join(','), () => shotRigSkin(plan.rig, shown).skin);
       const combined = await readSteps(solved, plan.steps, (sheet, film) => plan.layers.has(tree.layers[sheets[sheet].layers[film]].node.key));
       return { skin, pictures: derivedOf(derivedOf(cuts, combined, () => new WeakMap<ShotRigSkin, readonly PaintRigPicture[]>()), skin, () => shotRigPiecePictures(combined, skin)) };
     },

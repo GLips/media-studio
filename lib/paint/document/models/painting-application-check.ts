@@ -44,7 +44,7 @@ function checkBrush(list: PaintingProblemList, owner: string, field: string, bru
 function checkFillBrush(list: PaintingProblemList, owner: string, fill: FillGeometry & { readonly brush: BrushRef; readonly diameterPx: number }, styles: PaintingStyleCatalogue | undefined, box?: StampBox): void {
   const brush = paintingStyleBrush(styles, fill.brush);
   if (!brush || !isPaintingPositive(fill.diameterPx)) return;
-  const problem = paintingFillBrushProblem(fill.brush, brush.diameters, fill.diameterPx);
+  const problem = paintingFillBrushProblem(fill.brush, brush, fill.diameterPx);
   if (problem) list.error(owner, problem.field, problem.message, box);
 }
 

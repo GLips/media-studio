@@ -22,7 +22,7 @@ import { paintingApplicationOwner, paintingProblem, paintingProblemsError, type 
 import { paintingReseeded } from './painting-reseed.ts';
 import { paintingSheetOrders, paintingSheetWashes, type PaintingSheetOrder } from './painting-sheet-program.ts';
 import type { PaintingEvaluation } from './painting-source.ts';
-import { paintingBrushDiameters, paintingFillBrushProblem } from './painting-styles.ts';
+import { paintingFillBrushProblem } from './painting-styles.ts';
 import { paintingLayersUnder, paintingSheetName, type PaintingSheet, type PaintingTree } from './painting-tree.ts';
 
 /** `medium` with its paint's spread held to `maxSpreadPx` at `diameter`: the medium one application lands by. */
@@ -188,7 +188,7 @@ export function compilePaintingSelection(evaluation: PaintingEvaluation, brushOf
 function paintingFillBrushProblems(tree: PaintingTree, selected: ReadonlySet<number>, brushOf: PaintingBrushOf): PaintingProblem[] {
   return [...selected].flatMap((layer) => tree.layers[layer].node.washes.flatMap((wash) => wash.applications.flatMap((application: AnyApplication, i) => {
     if (application.kind !== 'fill') return [];
-    const problem = paintingFillBrushProblem(application.brush, paintingBrushDiameters(brushOf(application.brush)), application.diameterPx);
+    const problem = paintingFillBrushProblem(application.brush, brushOf(application.brush), application.diameterPx);
     return problem ? [paintingProblem('error', paintingApplicationOwner(wash, application, i), problem.field, problem.message, paintingGeometryBox(application, application.diameterPx))] : [];
   })));
 }

@@ -681,7 +681,8 @@ Before the first look:
 - Planes run farthest first. With `<PaintedShotCanvas>`es, the back draws in the first, and each later canvas's
   planes all lie nearer than every plane of an earlier one.
 - A rig names every layer under its group in one part's cels, a layer riding another (a gouache light on its
-  watercolour) grouped with it as one cel, and each skinned part's rest cel paints on the document.
+  watercolour) grouped with it as one cel, not named as a further cel (those are swaps, hidden at rest). Each skinned
+  part's rest cel paints some of the rig on its own, not outweighed everywhere by the cels over or under it.
 - `PaintedShotProps` is a module constant, or memoised: a new identity reloads the shot.
 
 The camera's stage frame is the canvas's pixels. `<PaintedShot>` is an element the frame's size, one CSS px a frame
@@ -942,10 +943,13 @@ length, amount, period}` (direction radians, −π/2 up; length px to the tip; a
 parent: null, cels}`, `{id, z, parent, joint: 'skin', pivot, blend, cels}` or `{id, z, parent, joint: 'hinge', pivot,
 cels}`. Every layer under the group lies in exactly one part's cels; a cel is a layer, or a group (a line and its wash
 as one part) whose layers may mix media: a gouache rim light rides its watercolour body as one cel by sharing a group
-with it. Paint each part whole on its cels, running under its neighbours where a joint turns: a texel shows the cel
-giving it most colour. A skin joint bends along its part's own paint, so a skinned part's cel (its rest cel, or the
-one a pose shows on a rig drawn as pieces) lays paint on the document, not all of it under higher cels; else the frame
-drawing it is refused at `<occurrence>.parts.<id>`. A hinged part or a root may show a clear cel. Parts draw by `z`,
+with it. A part's cels after its first are swaps, shown one at a time, so a layer meant to show with a part goes in
+its group cel, not after it. Paint each part whole on its cels, running under its neighbours where a joint turns: a
+texel shows the cel giving it most colour. A skin joint bends along its part's own paint, from its pivot out, so a
+skinned part's cel (its rest cel, or the one a pose shows on a rig drawn as pieces) gives some texel most of its
+colour: it lays paint on the document, isn't outweighed everywhere by the cels over or under it (under them, raise
+its z; over them but faint, paint it stronger or past them), and its paint doesn't centre on its pivot. Else the
+frame drawing it is refused at `<occurrence>.parts.<id>`. A hinged part or a root may show a clear cel. Parts draw by `z`,
 document order breaking ties. Across a skin joint the two parts' moves blend over `blend` px, so the joint bends as an
 arc keeping the limb's width; a hinge turns rigidly. Chains nest to any depth. `pose` names parts by id: `{x?, y?,
 rotation?, bend?, cel?}`, a move in document px and a turn in radians in its parent's frame about its pivot (a root's,
@@ -963,9 +967,10 @@ paint: on an own sheet, the rest picture before the rig bends it; on shared pape
 gives, each held to its schema like any other (an off-step value is an error), and prints every problem it finds
 without the GPU, one a line: `<owner>.<field>: <message> [x0,y0 → x1,y1]`, the box (document px) of the geometry the
 problem is about, grown by half its brush, and `warning: ` before a warning. Brushes and paper assets are checked
-against the styles in `work/styles/`: inside a project (the nearest folder above the source holding a `project.ts`),
-only those its `project.ts` names in `styles`, as its bundle serves them. A fill's `diameterPx` is checked against its
-brush's measured range. A clean source prints its summary; any error fails the run:
+against the styles in `work/styles/`: inside a project (`work/projects/<p>/`), only those its `project.ts` names in
+`styles`, and of each only the images its bundle serves (its brushes' tips and grains, and its paper's). A fill's
+`diameterPx` is checked against its brush's measured range. A clean source prints its summary; any error fails the
+run:
 
 ```
 $ node cli/studio.ts paint check lib/paint/document/models/meadow.painting.ts
@@ -1018,8 +1023,8 @@ What the check says today, and what to do:
 | `a.charge.mix: its strength 1.2 isn't within 0..1` / `b.charge.mix: it names ultramarine twice` | a bad mix | fix the mix |
 | `landscape.washes: mixes 13 pigments; a layer holds 12: split it into two layers` | too many pigments in one film | split the layer |
 | `a.brush.brush: watercolor has no brush mop: its brushes are wash, filler, …` / `a.brush.brush: gouache's flat can't be read: its pack vvds isn't among gouache's imported packs` | a brush or paper asset the style lacks, or names from a pack not imported | name one it has; import the pack |
-| `a.brush.style: names style watercolor, which the project's project.ts doesn't name in styles (it names gouache, crayon)` | a brush or paper asset from a style the source's project doesn't declare, which its bundle wouldn't serve | add the style to `project.ts`'s `styles`, or brush with a declared one |
-| `sky-flood.diameterPx: gouache's flat is measured from 8 to 512 px, and a fill plans its strokes by that measure: this lays 4` / `sky-flood.brush: watercolor's wash has no measured profile, which a fill plans its strokes by: …` | a fill's diameter outside its brush's measured profile, or a brush with none (also refused as the painting compiles, at every value a scene sets) | a diameter in the range, or a measured brush |
+| `a.brush.style: names style watercolor, which the project's project.ts doesn't name in styles (it names gouache, crayon)` / `document.paper.grain.image: kyle-watercolor/grains/kyle-paper-pulpy.png isn't among the images the project's bundle serves of watercolor: …` | a brush or paper asset from a style the source's project doesn't declare, or a pack file its style's brushes and paper don't use, which its bundle wouldn't serve | add the style to `project.ts`'s `styles`, or brush with a declared one; name the paper in the style's `style.ts` |
+| `sky-flood.diameterPx: a fill plans its strokes by its brush's measured profile, and gouache's flat is measured from 8 to 512 px, not at 4` / `sky-flood.brush: … and watercolor's wash has no profile to plan with: …` | a fill's diameter outside its brush's measured profile, or a brush with none (also refused as the painting compiles, at every value a scene sets) | a diameter in the range, or a measured brush |
 | `property hillTopPx.value: hillTopPx = 205 is off its step 10` | an unquantised value | quantise in the scene |
 | `document.layers[0]…: meadow isn't pure: two calls differ at layers[0]…` | the factory reads something besides its values | make it pure |
 | `document.wrap: "z" isn't a wrap: 'x' meets the left edge to the right, …` / `document.paper.image: is a photograph on a wrapped document: its opposite edges meet at the seams, …` / `document.paper.grain.scale: is laid at 0.5 on a document wrapping across x: its mirrored tiles fit the width in whole pairs, …` / `document.paper.grain.scale: is laid 960 × 540 px on a document wrapping down y, not the 960 × 960 its 512 × 512 image asks: …` (warnings, the last from `--solve` and `paint still`) | a wrap that isn't `'x'`, `'y'` or `'xy'`; a photograph on a document that wraps; a grain whose scale is far from 1 ÷ 2n on one wrapping across x; a grain whose height, by its image's aspect, is laid far off on one wrapping down y | `'x'`, `'y'`, `'xy'` or none; a photograph that tiles each way it wraps, or grain alone; a grain scale of 0.5, 0.25, …; a smaller scale, or a document whose sides are the image's in a small whole ratio |
@@ -1093,18 +1098,18 @@ A refusal prints alone, after the check's summary, and fails the run. What the s
 | `glaze: at 6 s, on 'dry' holds over 80% of its core there` | a fixed `at` whose `on` doesn't hold then (for `damp`, an upper bound) | move the `at`, or drop the `on` |
 
 `<PaintedShot>` refuses, as it loads, every problem at once: its sources' (as above), a bad rig (`meadow/heron is
-rigged: it takes no pins, sway or flutter`, `meadow/eye: lies under rigged heron and in no part's cels: name it in a
-part's cels, or group it with the layer it rides on (a group cel's layers may mix media) and name the group as one
-cel`), the camera build's problems and `paintChannelConflicts`' channel conflicts, a transparent back with no HTML
+rigged: it takes no pins, sway or flutter`, `meadow/eye: lies under rigged heron and in no part's cels: group it with
+the layer it rides on (a group cel's layers may mix media) and name the group as that part's cel, or give it a part
+of its own: …`), the camera build's problems and `paintChannelConflicts`' channel conflicts, a transparent back with no HTML
 behind (`back.source.ground: is the back, laid on its paper wherever the frame shows: its ground is transparent only
 over HTML before the first canvas`), and a canvas that doesn't fill its shot (`shot.canvas: PaintedShotCanvas paint
 lies in a <div> with transform: matrix(1, 0, 0, 1, 0, 0), which holds a fixed canvas in its own box: …`). A frame
 fails on a source callback's selection with a problem, or one whose occurrences differ from its first (`shot: plane
 meadow's source at 2 s shows meadow/landscape, and its first showed meadow/landscape, meadow/cloud: …`), or one
-dissolving on a rigged plane; on a rig, as it's skinned, whose cels leave a skin joint no paint of its own
+dissolving on a rigged plane; on a rig, as it's skinned, whose cels leave a skin joint no paint of its own to bend along
 (`meadow/heron.parts.neck: its cel neck lays no paint on the document (0,0 → 640,360), and a skin joint bends along
-its part's own paint: …`, `… lies wholly under cels drawn over it …`, `meadow/heron.parts: lays no paint on the
-document …`); on its page, read as it draws: a canvas that no longer fills its shot, a clear back with no HTML behind
+its part's own paint: …`, `… gives none of the rig's texels most of their colour, outweighed everywhere it paints by
+the cels over or under it …`, `meadow/heron.parts: lays no paint on the document …`); on its page, read as it draws: a canvas that no longer fills its shot, a clear back with no HTML behind
 it (`back.source: is a clear back, and no HTML lies before the first canvas at this frame: …`), or a pinned element
 unmounted, named twice, or laying paint past the stage. In a profiling render the shot reports its costs per frame and
 for its warmed span (`studio profile <project> --costs`): evaluations made and memo hits, film and picture hits and

@@ -9,8 +9,7 @@
 
 import styles from '@stamp-paint-styles';
 import type { StampBrushAsset } from '#lib/paint/brush/models/stamp-brush.ts';
-import { readStampPaintPack } from '#lib/paint/brush-packs/models/stamp-paint-pack.ts';
-import { resolveStampPaintStyle, type ResolvedStampPaintStyle, type StampPaintStyle } from '../models/style.ts';
+import { readBundledStampPaintPacks, resolveStampPaintStyle, type ResolvedStampPaintStyle, type StampPaintStyle } from '../models/style.ts';
 
 const bundled = (name: string) => {
   const style = styles[name];
@@ -20,8 +19,7 @@ const bundled = (name: string) => {
 
 /** The style `name` from the project's project.ts, ready to paint with. */
 export function stampPaintStyle<S extends StampPaintStyle = StampPaintStyle>(name: string): ResolvedStampPaintStyle<S> {
-  const { style, manifests } = bundled(name);
-  const packs = Object.fromEntries(Object.entries(manifests).map(([pack, manifest]) => [pack, readStampPaintPack(manifest)]));
+  const entry = bundled(name), { style } = entry, packs = readBundledStampPaintPacks(entry);
   return resolveStampPaintStyle(name, style as S, packs);
 }
 

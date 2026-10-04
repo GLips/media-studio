@@ -6,7 +6,7 @@ import type { StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
 import { compilePaintingSelection } from './painting-document-compile.ts';
 import type { Layer, PaintingDocument } from './painting-document.ts';
 import { painting, type PaintingEvaluation } from './painting-source.ts';
-import { paintingTestBrushOf } from './painting-test-brush.ts';
+import { paintingTestBrushOf, paintingTestBrushSpanning } from './painting-test-brush.ts';
 import * as meadow from './meadow.painting.ts';
 
 const brushOf = paintingTestBrushOf;
@@ -28,12 +28,20 @@ test('the meadow compiles to its sheet order: a film per layer, a wash per wash,
 });
 
 const square = (x0: number, size: number) => [{ x: x0, y: x0 }, { x: x0 + size, y: x0 }, { x: x0 + size, y: x0 + size }, { x: x0, y: x0 + size }];
-const ringedDocument = (rings: readonly ReturnType<typeof square>[]): PaintingDocument => ({
+const ringedDocument = (rings: readonly ReturnType<typeof square>[], diameterPx = 24): PaintingDocument => ({
   widthPx: 300, heightPx: 300, paper: { color: '#ffffff', absorbency: 0.5 }, medium: 'watercolour',
   layers: [{ key: 'target', washes: [{ key: 'rings', applications: [{
     kind: 'fill', area: { region: { kind: 'polygon', rings } },
-    brush: { style: 'watercolor', brush: 'wash' }, diameterPx: 24, seed: 'rings', charge: { kind: 'paint', mix: { parts: [{ pigment: '#335577', amount: 1 }], strength: 0.6 } },
+    brush: { style: 'watercolor', brush: 'wash' }, diameterPx, seed: 'rings', charge: { kind: 'paint', mix: { parts: [{ pigment: '#335577', amount: 1 }], strength: 0.6 } },
   }] }] }],
+});
+
+test("a selection refuses a fill its brush isn't measured across before planning, naming the fill and its field", () => {
+  const spanning = paintingTestBrushSpanning(8, 512), fine = painting({ default: () => ringedDocument([square(20, 260)], 4) });
+  assert.throws(
+    () => compilePaintingSelection(fine, () => spanning),
+    /rings\.applications\[0\]\.diameterPx: a fill plans its strokes by its brush's measured profile, and watercolor's wash is measured from 8 to 512 px, not at 4/,
+  );
 });
 
 test('a fill with an island in its hole floods both outer rings as one deposit, stopped at the ringed area', () => {

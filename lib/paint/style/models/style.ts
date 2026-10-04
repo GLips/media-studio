@@ -11,7 +11,7 @@ import type { PaintPigmentAppearance } from '#lib/paint/materials/models/paint-p
 import type { StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
 import type { StampPaintMixing, StampPigmentMixing } from '#lib/paint/painting/models/stamp-pigment-paint.ts';
-import { resolveStampPaintPackBrush, stampPaintPackArchives, type StampPaintPack } from '#lib/paint/brush-packs/models/stamp-paint-pack.ts';
+import { readStampPaintPack, resolveStampPaintPackBrush, stampPaintPackArchives, type StampPaintPack } from '#lib/paint/brush-packs/models/stamp-paint-pack.ts';
 import { stampBrushProbeMediumKey, stampBrushProbePaint, type StampBrushProbeMedium } from '#lib/paint/brush-packs/models/stamp-brush-profile-probes.ts';
 
 /** A style's style.ts: `export default { … } satisfies StampPaintStyle`. */
@@ -56,6 +56,10 @@ export type BundledStampPaintStyle = {
   images: Readonly<Record<string, string>>;
 };
 export type BundledStampPaintStyles = Readonly<Record<string, BundledStampPaintStyle>>;
+
+/** A bundled style's packs, each manifest read (readStampPaintPack), ready for its brushes to be read from. */
+export const readBundledStampPaintPacks = ({ manifests }: BundledStampPaintStyle): Record<string, StampPaintPack> =>
+  Object.fromEntries(Object.entries(manifests).map(([pack, manifest]) => [pack, readStampPaintPack(manifest)]));
 
 /** How a style's paint mixes: in pigment, its own pigments by key, where its `paint` says so; else either way. */
 export type StampPaintStyleMixing<S extends StampPaintStyle> =
@@ -132,12 +136,15 @@ export function stampPaintStylePaper(name: string, style: StampPaintStyle): Stam
   };
 }
 
-/** Every image a style paints with, by pack and file, each once: its brushes' tips and grains, their duals', its paper's. */
-export function stampPaintStyleImages(resolved: ResolvedStampPaintStyle): Omit<StampBrushAsset, 'style'>[] {
+/**
+ * Every image a style paints with, by pack and file, each once: its brushes' tips and grains, their duals', its
+ * paper's. A project's bundle serves these alone.
+ */
+export function stampPaintStyleImages({ brushes, paper }: Pick<ResolvedStampPaintStyle, 'brushes' | 'paper'>): Omit<StampBrushAsset, 'style'>[] {
   const assets = [
-    ...Object.values(resolved.brushes).flatMap((brush) => stampBrushImages(brush).map(({ image }) => image)),
-    ...(resolved.paper.image ? [resolved.paper.image] : []),
-    ...(resolved.paper.grain ? [resolved.paper.grain.image] : []),
+    ...Object.values(brushes).flatMap((brush) => stampBrushImages(brush).map(({ image }) => image)),
+    ...(paper.image ? [paper.image] : []),
+    ...(paper.grain ? [paper.grain.image] : []),
   ];
   const byKey = new Map(assets.map(({ pack, file }) => [`${pack}/${file}`, { pack, file }]));
   return [...byKey.values()];
