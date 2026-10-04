@@ -441,8 +441,8 @@ paints it.
 | mix `strength` | share of a full load | 0..1 | — |
 | mix part `amount` | relative amount | ≥ 0, one positive | — |
 | a full load | the medium's `body` in unit films (1 unit film = a full watercolour wash) | 1 / 20 / 15 | — |
-| fill `load` | share of coverage laid | 0..1 (field allowed) | 1 |
-| `opacityCap` (paint charges) | the most of a full load an application's stamps build to, across its subpaths: its film thins, so what's under shows through, its hue kept; it clamps what `load` lays | 0..1 | 1 |
+| fill `load` | share of a full load laid, per texel: on a flood the same factor as `opacityCap`; on a fill laid by strokes it scales each stamp, so overlapping stamps still build | 0..1 (field allowed) | 1 |
+| `opacityCap` (paint charges) | the most of a full load an application's stamps build to, across its subpaths: its film thins, so what's under shows through, its hue kept; it clamps what `load` lays. Per application: overlapping applications add up, n of them to about n × cap | 0..1 | 1 |
 | lift `strength` | share of liftable paint taken | 0..1 | — |
 | resist `amount` | share of contact removed on peaks | 0..1 | — |
 | `rim` | drying-line strength | 0..2 | 1 |
@@ -480,10 +480,14 @@ paints it.
   the grain by load and the paper's depth. Staining pigments (phthalos 0.9, quinacridone rose 0.8) resist lifting.
 - **Gouache**: opaque body colour; light over dark works. Weak mixes are tints with white, not thin washes: a pale
   mix (`strength` 0.16) still hides what's under it. For paint that lets what's under show, cap the film with
-  `opacityCap`, which keeps the pigment's hue: a full load is 20 unit films, so a strong pigment is still saturated at
-  0.16 (three washes deep), and a faint tint is 0.02–0.05. A cap thins the paint, not the brush's edge: a hard
-  `detail` brush capped is a fainter hard line. It barely travels (spread 0.1) and redissolves when lifted dry (0.9).
-  A gouache layer over set watercolour covers by scatter.
+  `opacityCap` (on a flood `load` is the same factor), which keeps the pigment's hue: a full load is 20 unit films, so
+  a strong pigment is still saturated at 0.16 (three washes deep). What's under shows through about half at 0.1 of a
+  full load, a fifth at 0.25 and about a tenth at 0.5 (a near-black hides by 0.1). Caps are per application and add
+  up where applications overlap, so plan a veil by their sum: fourteen halo discs at 0.035 lay about half a full load,
+  an opaque disc, and a faint tint is 0.02–0.05 in all. A cap thins the paint, not the brush's edge: a hard `detail`
+  brush capped is a fainter hard line. Named pigments' masstones are their swatches (Reference › Pigments), none near
+  black, and strength below 1 adds white: for a near-black, mix a hex part (`'#10171f'`) at strength 1. It barely
+  travels (spread 0.1) and redissolves when lifted dry (0.9). A gouache layer over set watercolour covers by scatter.
 - **Crayon**: no water and no wet history: every crayon wash says `wetHistory: false`. `burnish: true` on a paint
   charge presses wax into every valley. Crossing layers stack in the tooth. An eraser is a lift. Wax resists a later
   watercolour wash only where written: give that wash's applications `resists` with the crayon strokes as footprints.
@@ -1019,9 +1023,24 @@ tile worn a quarter of its size round a turning cylinder.
 
 The engine's shapes the types import, with their units and defaults.
 
-**Pigments** (`WATERCOLOUR_PIGMENTS`, any medium; granulation g, flocculation f, staining s, 0..1): `ultramarine` g 0.9
-f 0.35; `phthaloBlue` s 0.9; `cerulean` g 0.8 f 0.2; `phthaloGreen` s 0.9; `hansaYellow` s 0.5; `yellowOchre` g 0.3;
-`quinacridoneRose` s 0.8; `cadmiumRed` g 0.15; `burntSienna` g 0.4 s 0.3; `burntUmber` g 0.8 f 0.25 s 0.3.
+**Pigments** (`WATERCOLOUR_PIGMENTS`, any medium). Over white is what a full watercolour load lays on white paper, and
+the paint itself, thick, in gouache and crayon (their masstone); L* its lightness, 0 black to 100 white; habits 0..1.
+The table is the pigment table's, held to it by `paint-watercolour-pigments.test.ts`.
+
+| Pigment | Over white | L* | Granulation | Flocculation | Staining |
+|---|---|---|---|---|---|
+| `ultramarine` | `#2b3994` | 28 | 0.9 | 0.35 | 0.1 |
+| `phthaloBlue` | `#1c4383` | 29 | 0 | 0 | 0.9 |
+| `cerulean` | `#3986bc` | 54 | 0.8 | 0.2 | 0.1 |
+| `phthaloGreen` | `#095d51` | 35 | 0 | 0 | 0.9 |
+| `hansaYellow` | `#f4c419` | 81 | 0 | 0 | 0.5 |
+| `yellowOchre` | `#c89742` | 66 | 0.3 | 0.1 | 0.2 |
+| `quinacridoneRose` | `#c42c62` | 45 | 0 | 0 | 0.8 |
+| `cadmiumRed` | `#d12e22` | 46 | 0.15 | 0 | 0.2 |
+| `burntSienna` | `#9c4d26` | 42 | 0.4 | 0.1 | 0.3 |
+| `burntUmber` | `#5c412f` | 30 | 0.8 | 0.25 | 0.3 |
+
+None is near black: in gouache a named mix stays at L* 28 or above, so a near-black is a hex part (Media).
 `TITANIUM_WHITE` (`#lib/paint/materials/models/paint-medium.ts`) mixes as a pigment too.
 
 **Brushes**, by style. Wet brushes lay by the wet law in a wet wash; dry ones by the dry law anywhere. "Pressure"
