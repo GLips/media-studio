@@ -37,7 +37,7 @@ export function paintingSolveLines(program: StampSheetProgram, decisions: readon
     return [
       ...(decision.start ? [`${wash.name} (${program.films[wash.film].name}): starts at ${paintingSolveMoment(decision.start)}`] : []),
       `  ${entry.name}: lands at ${paintingSolveMoment(decision)}${waits}${entry.bloom ? ', blooming' : ''}`,
-      ...(rewet ? [`  ${entry.name}: its footprint ${paintingDampText(rewet, true)}`] : []),
+      ...(rewet ? [`  ${entry.name}: rewets its footprint, ${paintingDampText(rewet, true)}`] : []),
       ...decision.warnings.map((warning) => `  warning: ${warning}`),
       ...(washEnd ? [`  ${wash.name}: ${washEnd}`] : []),
       ...(ends && !decision.washSet ? neverSets : []),

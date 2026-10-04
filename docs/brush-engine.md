@@ -129,8 +129,13 @@ against the paper the ones before it left: the GPU sums over its core (where its
 weighing its touch times the share it may land there: off its fluid, within its regions, inside its clip base) in
 integer atomics, two-word totals and 4096-bin damp histograms (`stamp-sheet-reductions.ts`),
 and the CPU decides in f64 on a 1 ms grid (`stamp-sheet-schedule.ts`, `stamp-sheet-decide.ts`), checked again by the
-field's own law. An `on` that can't hold, or a bloom with nothing to act on, is a `StampSheetRefusal`, its message
-the author's. Then it lands into the one wet field and its film; its water reaches other films' paint through a
+field's own law. A histogram bins each wetted texel's weight by the step it turns matte and by its last workable step,
+weight set by its first step going into words of its own, so a bin's bound is what's matte by its end less what has
+set by its start, exact a step wide (`stamp-damp-histogram.ts`). A `damp` or `dry` that can't hold, or a bloom with
+nothing to act on, is a `StampSheetRefusal`, its message the author's, naming a fix. A `wet` that falls short only
+warns: wetness only falls, so it lands where it would without one. A solve asked to report (`check --solve`) reads,
+after each wash's last landing, when what the wash wetted is damp, and after each bloom, when its footprint is: the
+same histograms over the wash's touches and its prewet's contact, or the bloom's core. Then it lands into the one wet field and its film; its water reaches other films' paint through a
 proxy, though only into films that keep a wet history or lift (any other direct film has no open channel); a drying closes once
 everything since the last has set, rimming each film that painted in it, and at the end every wet film's open paint
 settles. The field keeps times after a base it moves up past 2¹³ s. It solves a posed program: `paintingSheetPosed`

@@ -98,13 +98,13 @@ async function verified(steps: StampSheetSteps, name: string, on: StampSheetWetn
 }
 
 /**
- * When `core`, its touch laid by `touch`, is damp from `tau` on over STAMP_SHEET_SHARE of its weight that holds water,
- * in model s: from its first step that holds to the first after its last; or, never at once, the most of that weight
- * damp (an upper bound) and when. Null where none of it holds water.
+ * When `core` (its touch laid by `touch`) is damp from `tau` on over STAMP_SHEET_SHARE of its wetted weight, model s:
+ * its first step that holds to the first after its last; or, never at once, the most damp (an upper bound) and when.
+ * Null where none of it holds water, or all of that has set by `tau`.
  */
 export async function readStampSheetDampWindow(steps: StampSheetSteps, core: StampSheetCore, tau: number, touch: StampSheetPrepare): Promise<{ from: number; to: number } | { share: number; at: number } | null> {
   const totals = await steps.totalsAt(core, tau, touch, null), wetted = totals.weight - totals.never;
-  if (wetted <= 0 || totals.latestSet === null) return null;
+  if (wetted <= 0 || totals.latestSet === null || totals.latestSet <= tau) return null;
   const histogram = await steps.histogramAt(core, tau, 0, stampDampFirstWidth(stampDampStep(totals.latestSet, tau)));
   const found = await stampDampWindow(histogram, STAMP_SHEET_SHARE * wetted, ({ start, width }) => steps.histogramAt(core, tau, start, width));
   if (found.from === null) return { share: found.most.weight / wetted, at: tau + found.most.step * STAMP_SHEET_STEP };

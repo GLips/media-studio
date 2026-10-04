@@ -283,6 +283,21 @@ flat plane it paints as any other, its seams at its edges.
   2, less as the paper is less wet, stopping at walls and dry gaps. Set paint never flows, however wet again; only a
   lift reaches it, by the medium's rewetting.
 
+**Drying times.** Model seconds from water landing on dry paper until it's no longer shiny, until it's damp, and until
+it's dry, by the laws above. Both media have no open time, so paint sets as its paper dries. Absorbency 0.3 takes 1.25
+times as long as 0.5, and 0.7 takes 0.83 times as long. A sheet's `dryingScale` maps them to scene seconds (Time).
+
+| Medium, water | absorbency 0.3 | 0.5 (the default) | 0.7 |
+|---|---|---|---|
+| watercolour 0.7 (its default) | never shiny, damp from 105, dry at 210 | never shiny, damp from 84, dry at 168 | never shiny, damp from 70, dry at 140 |
+| watercolour 0.85 (a flood) | shiny to 45, damp from 150, dry at 255 | shiny to 36, damp from 120, dry at 204 | shiny to 30, damp from 100, dry at 170 |
+| watercolour 1 (a bloom's drop) | shiny to 90, damp from 195, dry at 300 | shiny to 72, damp from 156, dry at 240 | shiny to 60, damp from 130, dry at 200 |
+| gouache 0.4 (its default) | never shiny, damp from 7.5, dry at 60 | never shiny, damp from 6, dry at 48 | never shiny, damp from 5, dry at 40 |
+| gouache 0.5 (a flood) | shiny to 15, damp from 22.5, dry at 75 | shiny to 12, damp from 18, dry at 60 | shiny to 10, damp from 15, dry at 50 |
+
+Water landing on wet paper leaves it at the wetter of the two and dries from there: a drop of 1 on a flood that has
+turned damp is damp again 156 s later (watercolour, 0.5). `studio paint check --solve` prints each wash's damp window and each bloom's (Checking).
+
 ### `on`: what an application waits for
 
 Judged once, before the application lands, where the frame's pose puts it, over its core: the document's paper it
@@ -292,15 +307,24 @@ reached counts against `wet` and `damp`.
 
 | `on` | Holds when | Watercolour | Gouache | Use for |
 |---|---|---|---|---|
-| `wet` | 95% of the core is wetter than `shiny` | > 0.7 | > 0.4 | charging, wet-in-wet. Wetness only falls, so it holds now or never |
+| `wet` | 95% of the core is wetter than `shiny` | > 0.7 | > 0.4 | charging, wet-in-wet. Wetness only falls, so it holds now or never: it never delays, and where it falls short the solve warns |
 | `damp` | 95% of the core is at or below `damp` and above 0, at one time | ≤ 0.35 | ≤ 0.35 | blooms, backruns, soft lifts |
 | `dry` | no core texel holds water or open paint | 0 | 0 | glazing within the wash, dry lifts, rewetting |
 | left out | always | | | lands at its predecessor's time in the sheet's order, into whatever is still open |
 
-The 95% share is provisional (**NEW**, as is the per-texel judge). An `on` that can't hold is an error: the solve
-fails, naming the application (Checking). A flood laid at the medium's default water (0.7, 0.4) is never `wet`: flood
-at 0.85 or more in watercolour, 0.5 or more in gouache, for anything to charge into it. A core whose wetness spans
-more than the damp band at once (a stroke along a wet and a drying passage) may never be `damp` over 95%: split it.
+The 95% share is provisional (**NEW**, as is the per-texel judge). A `damp` or `dry` that can't hold is an error: the
+solve fails, naming the application, where it fell short and what to do (Checking). A `wet` never delays: with it or
+without, the application lands at its predecessor's time into the same paper, so where under 95% of its core shines
+the solve warns, with the share and where, and lands it all the same. A flood laid at the medium's default water (0.7,
+0.4) is never `wet`: flood at 0.85 or more in watercolour, 0.5 or more in gouache, for anything to charge into it. A
+core whose wetness spans more than the damp band at once (a stroke along a wet and a drying passage) may never be
+`damp` over 95%: split it. Three layouts leave a `wet` short of 95%:
+
+- A second flood the shape of a crisp first sits on the first's rim, where its water falls away: feather the second,
+  or inset it a few px.
+- A charge reaching the flood's edge (a small leaf, a narrow tier) has its rim in its core: inset it, or feather the
+  flood.
+- A lift takes the paper's water with its paint: lay lifts last in their wash, after every charge that crosses them.
 Between `damp` and `shiny` (satin) has no word: reach it with a fixed `at`. Crayon has no wet history, so `on` is
 refused there. The sheet's water is every layer's: `wet` can hold over another layer's flood (**NEW**). On a moving
 element `on` is judged again at every pose; leave it out and fix `at` where timing shouldn't depend on place.
@@ -313,13 +337,21 @@ water application, which the engine fails if it certainly can't bloom.
 | Technique | Write | `on` | Acts only if | What you see |
 |---|---|---|---|---|
 | charge | paint, water 0.5–0.8 | `wet` | the paper is shiny under it (clear prewet water counts) | colour feathers in, sigma ≤ spread × diameter ÷ 2 |
-| bloom | water stamps, water 0.9–1, `effect: 'bloom'` | `damp` | surplus water − wetness > 0.08 over open paint on workable paper; spread > 0; sigma ≥ 0.5 px | cauliflower edge; full from surplus 0.35; sigma = 1.5 × spread × diameter × surplus ≤ 24 px |
+| bloom | water stamps, water 0.9–1, `effect: 'bloom'` | `damp` | surplus water − wetness > 0.08 over open paint on workable paper; spread > 0; sigma ≥ 0.5 px | cauliflower edge; full from surplus 0.35; sigma = 1.5 × spread × diameter × surplus ≤ 24 px (the bloom chart, below) |
 | backrun | one water stroke along a junction, water 1, `effect: 'bloom'` | `damp` (`wet` for softer) | as bloom | lobed edge pushed back along the stroke |
 | soften | water stroke, water 0.3, along an edge | `wet` or `damp` | open paint under it | the edge evens out without flooding |
 | wet lift | lift, strength 0.5–1 | `wet` (runs back) or `damp` (crisper) | open paint under it | soft light area; on shiny paper paint runs back up to min(16, spread × diameter ÷ 3) px, less on damp |
 | dry lift (scrub) | lift, strength 1 | `dry` | the medium lifts | takes strength × rewetting of set paint (0.35 / 0.9 / an eraser's all), less the stain |
 | rewet | water, 0.5–1 | `dry` | the medium takes water | wets the sheet's paper for later applications; set paint doesn't move |
 | clear-water ground | the wash's `prewet` | — | — | an even soak at the wash's start, before its first `on` is judged; no brush texture |
+
+![Nine watercolour floods in three rows, a bloom dropped into each: faint at left, a lobed edge at right, its line darker down the rows](images/bloom-rims.png)
+
+The bloom chart (`lib/paint/document/models/bloom-rims.painting.ts`): crisp floods at water 0.85, and into each, once
+it's damp, a drop 80 px across whose water lies 0.1, 0.2 and 0.35 over damp from left to right; each row is a wash of
+`rim` 0.5, 1 and 2 from the top. Under 0.2 a bloom barely shows. The rim darkens a bloom's edge as it darkens the
+flood's. A bloom rewets its footprint: water w landing at τ keeps it wet until τ + w × drying ÷ (0.5 + absorbency), so
+a drop of 1 at 150 s is dry at 390 s (watercolour, 0.5).
 
 Under `never` the paper never falls to damp, so a bloom there is `on: 'wet'` (or no `on`) with water 1 over a flood
 at 0.85–0.9: surplus 0.1–0.15, a small bloom. An unlabelled application that can't act does nothing. A lift takes
@@ -673,7 +705,7 @@ const SKY_WASH: Wash = {
 ```
 
 Moving the cue in `timeline.ts` moves the treeline's landing, and so what it meets: a later cue finds the sky less
-wet, or, past 3.6 s, refuses `on: 'wet'` at solve. `studio paint check <source> --solve` prints every landing's
+wet, and past 3.6 s no longer shiny, where the solve warns that `on: 'wet'` falls short and lands it there all the same. `studio paint check <source> --solve` prints every landing's
 scene time, so a scene can check it against its cues.
 
 **Play a painting at another pace.** The selection's `at` is the painting's own time, so a scene maps its time into
@@ -1235,14 +1267,17 @@ the same problems as records
 `{severity, owner, field, path, message, footprint?}`, and calls the factory twice to name one that isn't pure.
 `painting(source, values)` throws every error as one, naming its source; errors thrown inside a factory keep their TS
 stack. `paintingEvaluationDiff(a, b)` (`lib/paint/document/models/painting-evaluation-diff.ts`) is the diff as data.
-To see a scene, `studio look <project> --sheet 0,2,4` renders its frames from the composition.
+To see a scene, `studio look <project> --sheet 0,2,4` renders its frames from the composition. `--set
+dusk.level=0.3,heron.reflection=1` paints each named painting (by its factory's name) at those values over every
+scene's own, held to its schema, so a dial is seen in place, one look a value.
 
 What the check says today, and what to do:
 
 | Message | When | Do |
 |---|---|---|
-| `treeline.on: on 'wet' follows only applications at or below shiny 0.7: it can never hold` (warning) | nothing before it on its sheet states water above shiny; its own layer's earlier washes have set and don't count | flood wetter |
-| `drop.on: on 'damp' follows no water on the root's sheet: it can never hold` / `on 'wet' on the root's sheet, whose clock is instant: everything before it has set when it lands: it can never hold` (warnings) | nothing could be wet under it | lay water first, or drop the `on` |
+| `treeline.on: on 'wet' follows only applications at or below shiny 0.7: it can never hold; flood wetter before it, or drop the \`on\`` (warning) | nothing before it on its sheet states water above shiny; its own layer's earlier washes have set and don't count | what it says |
+| `drop.on: on 'damp' follows no water on the root's sheet: it can never hold; …` (warning) | nothing could be wet under it, for the first of these it finds: `the water before it is wall-wet's, in its own layer, set once its wash starts: lay it in wall-wet, or on another layer`; `only clocked washes lay water, and the sheet's unclocked work lands before them: give its wash a clock`; `the water before it is sketch's, which keeps no wet history: …`; `nothing before it lays water: lay some first, or drop the \`on\`` | what it says |
+| `glint.on: on 'wet' on the root's sheet, whose clock is instant: everything before it has set when it lands: it can never hold; give the sheet a numeric \`dryingScale\`, or drop the \`on\`` (warning) | a clocked `on` under `instant` | what it says |
 | `hill-flood.at: fixed at 3.2 s precedes its predecessor at 3.5 s` / `fixed at 1 s precedes its wash's start 2 s` / `at needs a clocked wash` | an `at` breaks its wash's order | move the `at`, or clock the wash |
 | `hill.clock: starts at 2 s, before sky's application at 3 s` / `starts when earlier washes set, and landscape has none before it` / `follows sky, which is clocked: a wash after a clocked wash is clocked too` | a layer's washes out of order | `origin: 'set'`, or clock differently |
 | `hill.clock: follows sky on the root's sheet, which never dries` | a wash after a wet one on a sheet whose clock is `never` | give the later wash a layer or sheet of its own, or another `dryingScale` |
@@ -1276,9 +1311,12 @@ What the check says today, and what to do:
 
 `studio paint check <source> --solve [--at <s>] [--out <dir>]` then solves every sheet on the GPU and prints what only a
 solve can warn of, reading the images (a grain laid off its height on a document wrapping down y), then, in each sheet's
-order (under the sheet's name when there are several), each wash's start and when what it wetted had set, and each
-application's landing time with the `on` it waited for: model seconds in the unclocked run, scene seconds with model
-time beside once the clock runs. `--at` solves the prefix shown at that scene second, as a selection's `at` does,
+order (under the sheet's name when there are several), each wash's start, when what it wetted was damp and when it had
+set, and each application's landing time with the `on` it waited for, a bloom's with when its footprint is damp again:
+model seconds in the unclocked run, scene seconds with model time beside once the clock runs. A damp window is read from
+the wash's (or the bloom's) landing on, over the paper it wetted that still holds water: from when 95% of it is damp at
+once until 95% no longer is; where it never is at once, the most that is, and when. `studio paint still` prints the
+solve's warnings, not its lines. `--at` solves the prefix shown at that scene second, as a selection's `at` does,
 finished. It writes the painting to `<dir>/painting.png` and each layer's film on its sheet's paper and edge
 (`paintingFilmPicture`: the root's paper, or an own sheet's card, clear past it) to `<dir>/films/<layer>.png` (`<dir>`
 is `<source>.solve` by default). `studio paint still <source> [--set …] [--at <s>] [--out <file>]` checks and solves the
@@ -1296,18 +1334,27 @@ $ node cli/studio.ts paint check lib/paint/document/models/meadow.painting.ts --
 sky (landscape): starts at 0 s
   sky-flood: lands at 0 s
   treeline: lands at 0 s (on 'wet')
-  sky: set by 203.9 s
+  sky: damp from 119.901 s until 182.883 s, set by 203.9 s
 hill (landscape): starts at 203.901 s
   hill-flood: lands at 203.901 s
-  hill: set by 323.842 s
+  hill: never damp over 95% of it at once (at most 89% at 239.841 s), set by 323.842 s
 cloud-wash (cloud): starts at 203.901 s
   cloud-wash.applications[0]: lands at 203.901 s
-  cloud-wash: set by 356.501 s
-costs: 1 solves, 4 entries run, 4 decisions made, 4 film hits, 2 film misses, 2 film readback misses, 10 readbacks
+  cloud-wash: never damp over 95% of it at once (at most 37% at 258.925 s), set by 356.501 s
+costs: 1 solves, 4 entries run, 4 decisions made, 4 film hits, 2 film misses, 2 film readback misses, 18 readbacks
+```
+
+The hill's wash brush lands its water in flecks and the cloud's feather fades it, so neither is damp all at once: a
+`damp` into either would wait on its own core, smaller than the wash. A bloom prints its footprint's window under its
+landing:
+
+```
+  wall-bloom-a: lands at scene 150 s (model 150 s) (on 'damp'), blooming
+  wall-bloom-a: rewets its footprint, damp again from scene 306 s (model 306 s) until scene 361.111 s (model 361.111 s)
 ```
 
 A pond clocked from 0 s on a sheet at `dryingScale: 0.02`, reeds charged in `on: 'wet'`, a glint lifted `on: 'dry'` at
-6 s, then ripples at `origin: 'set'`:
+6 s, then ripples at `origin: 'set'` (a wash whose paper has all set by its last landing prints no damp window):
 
 ```
 pond (water): starts at scene 0 s (model 0 s)
@@ -1327,14 +1374,15 @@ A refusal prints alone, after the check's summary, and fails the run. What the s
 
 | Message | When | Do |
 |---|---|---|
-| `treeline: unreachable from this committed prefix: on 'wet' held over at most 59% of its core (needs 95%), at model 0 s [0,197 → 640,261]; not shiny at its predecessor's time. Unscheduled after it: hill-flood, cloud-wash.applications[0]` (the meadow's sky flooded through `wash`) | its `on` never holds over 95% of its core from its predecessor's time on. The boxes, in 32 px cells, are where it failed; `never wetted on this sheet` when its core met no water, `sets before the rest turns matte` for a `damp` that can't hold. It fails the solve | flood wetter or with an even brush, move the application onto the flood, or drop the `on` |
+| `ridge-coat: unreachable from this committed prefix: on 'damp' held over at most 69% of its core (needs 95%), at model 131.2 s [0,197 → 640,261]; sets before the rest turns matte: split it along the boxes, so each part lies on paper drying alike. Unscheduled after it: …` | a `damp` or `dry` never holding over 95% of its core from its predecessor's time on (for `damp`, the share is an upper bound). The boxes, in 32 px cells, are where it failed. `never wetted on this sheet: 40% of its core met no water before it; lay it over a flood or prewet earlier on the sheet, or drop the \`on\`` when much of its core met no water. It fails the solve | what it says |
+| `treeline: on 'wet' holds over 59% of its core (needs 95%) at model 0 s [0,197 → 640,261]; not shiny at its predecessor's time: inset it from the flood's rim (feather it, or narrow its shape), flood wetter, or lay it before any lift it crosses. It lands there all the same: \`wet\` never delays` (warning; the meadow's sky flooded through `wash`) | a `wet` short of 95% where it lands, at a fixed `at` too | what it says, or drop the `on`: it moves nothing |
 | `sky.applications[3] won't bloom: no open paint on workable paper under its core` | a bloom with nothing to act on where it lands; fails the solve | bloom over a wash still open, or drop `effect` |
 | `drop: its core is empty: nothing of it reaches paper` (warning) | its clips, resists or reserves leave none of it on paper; it lands at its predecessor's time | widen its clips, or drop it |
 | `treeline: decided within rounding of on 'wet'; another GPU may place it a step apart` (warning) | its `on` holds by a hair | wetter or drier, by a little |
-| `glint: unreachable … settled before it (\`instant\`)` / `bloom: unreachable … nothing dries (\`never\`)` | under `instant` the sheet has set before each clocked application, so `wet` and `damp` over earlier paint can't hold; under `never` it stays as it landed, judged at the predecessor's time alone | drop the `on`, or give the sheet a numeric `dryingScale` |
+| `glint: unreachable … settled before it (\`instant\`): give the sheet a numeric \`dryingScale\`, or drop the \`on\`` / `bloom: unreachable … nothing dries (\`never\`): …` | under `instant` the sheet has set before each clocked application, so `damp` over earlier paint can't hold (a `wet` warns alike); under `never` it stays as it landed, judged at the predecessor's time alone | what it says |
 | `hill starts at 2 s while sky is still wet until 5.1 s` | a numeric `origin` before its layer's earlier washes have set | a later `origin`, or `'set'` |
 | `glaze: fixed at 1 s precedes its predecessor at 3.448 s` | the application before it waited on its `on` past this one's `at` | a later `at`, or an earlier wait |
-| `glaze: at 6 s, on 'dry' holds over 80% of its core there` | a fixed `at` whose `on` doesn't hold then (for `damp`, an upper bound) | move the `at`, or drop the `on` |
+| `glaze: at 6 s, on 'dry' holds over 80% of its core there: move the \`at\` to where \`studio paint check --solve\` says its paper is dry, or drop the \`on\`` | a fixed `at` whose `damp` or `dry` doesn't hold then (for `damp`, an upper bound) | what it says |
 
 `<PaintedShot>` refuses, as it loads, every problem at once: its sources' (as above), a bad rig (`meadow/heron is
 rigged: it takes no pins, sway or flutter`, `meadow/eye: lies under rigged heron and in no part's cels: group it with

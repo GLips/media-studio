@@ -84,14 +84,21 @@ export function stampGateClockedMoments(): StampSheetMoment[] {
   ];
 }
 
-/** How the clocked sheet's charge is refused under `instant`, and its bloom under `never`, but for the model second and boxes. */
+/**
+ * How the clocked sheet's charge is warned of under `instant`, landing all the same, and its bloom refused there and
+ * under `never`, but for the model second and boxes.
+ */
+export const STAMP_GATE_INSTANT_WARNING = {
+  starts: "pool-charge: on 'wet' holds over 0% of its core (needs 95%) at model ",
+  ends: '; settled before it (`instant`): give the sheet a numeric `dryingScale`, or drop the `on`. It lands there all the same: `wet` never delays',
+} as const;
 export const STAMP_GATE_INSTANT_REFUSAL = {
-  starts: "pool-charge: unreachable from this committed prefix: on 'wet' held over at most 0% of its core (needs 95%), at model ",
-  ends: '; settled before it (`instant`). Unscheduled after it: pool-bloom, pool-dot',
+  starts: "pool-bloom: unreachable from this committed prefix: on 'damp' held over at most 0% of its core (needs 95%), at model ",
+  ends: '; settled before it (`instant`): give the sheet a numeric `dryingScale`, or drop the `on`. Unscheduled after it: pool-dot',
 } as const;
 export const STAMP_GATE_NEVER_REFUSAL = {
   starts: "pool-bloom: unreachable from this committed prefix: on 'damp' held over at most 0% of its core (needs 95%), at model 0 s [",
-  ends: '; nothing dries (`never`). Unscheduled after it: pool-dot',
+  ends: "; nothing dries (`never`): give the sheet a numeric `dryingScale`, or drop the `on` (under `never`, a bloom is `on: 'wet'`). Unscheduled after it: pool-dot",
 } as const;
 
 /** One layer's two washes clocked from 0 s: a flood, then, at `'set'`, a prewet a charge `on: 'wet'` reads. */

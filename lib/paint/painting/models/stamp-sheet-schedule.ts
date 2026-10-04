@@ -406,7 +406,7 @@ const shortfall = (at: { held: number; totals: Pick<StampSheetTotals, 'weight'> 
 
 /**
  * Why `on` falls short over a core, and what to do about it, one clause: water it never met, its sheet's clock, or
- * its rule's own (a `wet` shortfall warns, so it has no `never` clause of its own: under `never`, it's as laid).
+ * its own rule. A `wet` under `never` falls short by its rule: the paper is as it was laid.
  */
 function shortReason(on: StampSheetWetness, totals: Pick<StampSheetTotals, 'weight' | 'never'>, regime: StampSheetRegime): string {
   if (totals.never > (1 - STAMP_SHEET_SHARE) * totals.weight) {

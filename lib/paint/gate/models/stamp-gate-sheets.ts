@@ -132,7 +132,8 @@ export const STAMP_GATE_NEVER_WETTED: PaintingSourceModule = {
 
 /** What a damp application over never-wetted paper fails with, to the letter. */
 export const STAMP_GATE_NEVER_WETTED_MESSAGE =
-  "early: unreachable from this committed prefix: on 'damp' held over at most 0% of its core (needs 95%), at model 0 s [0,0 → 96,64]; never wetted on this sheet";
+  "early: unreachable from this committed prefix: on 'damp' held over at most 0% of its core (needs 95%), at model 0 s [0,0 → 96,64]; " +
+  'never wetted on this sheet: 100% of its core met no water before it; lay it over a flood or prewet earlier on the sheet, or drop the `on`';
 
 const WET_CONTACT = { width: 160, height: 120 } as const;
 const SHALLOWS_WATER = 0.75;
