@@ -24,7 +24,9 @@ test('finds the tempo and the beats of a noisy drum loop, not half or double tim
   const bpm = 96, first = 0.37;
   const found = detectMusicBeats(drumLoop(20, bpm, first), RATE);
   assert.ok(Math.abs(found.bpm - bpm) < 1, `bpm ${found.bpm}`);
-  const expected = Array.from({ length: 28 }, (_, k) => first + (k + 2) * (60 / bpm));
+  // The noise the loop starts in is no onset: the first beat is its first kick.
+  assert.ok(Math.abs(found.beats[0] - first) < 0.03, `the first beat is at ${found.beats[0]} s`);
+  const expected = Array.from({ length: 30 }, (_, k) => first + k * (60 / bpm));
   for (const t of expected) assert.ok(found.beats.some((b) => Math.abs(b - t) < 0.03), `no beat near ${t.toFixed(2)}s`);
 });
 
