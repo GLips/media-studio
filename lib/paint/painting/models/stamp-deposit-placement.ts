@@ -37,11 +37,14 @@ export type StampDepositPlacement = StampDepositMarks<FrozenStampMarks>;
 export const STAMP_PLACEMENTS_KEPT_BYTES = 80 * 2 ** 20;
 
 /**
- * What a placement holds, in bytes, roughly: its stamps (each about 320, and 80 more for what loading works out from
- * it, kept as long as it is: stamp-mark-load.ts), a flood's outline, and its key.
+ * What a kept stamp holds, in bytes, roughly: about 320, and 80 more for what loading works out from it, kept as long
+ * as it is (stamp-mark-load.ts).
  */
-const STAMP_BYTES = 400, POINT_BYTES = 64, ENTRY_BYTES = 1024;
-const bytesOf = ({ stamps, dualStamps, ...placement }: StampDepositPlacement, key: string) => ENTRY_BYTES + 2 * key.length + STAMP_BYTES * (stamps.length + dualStamps.length)
+export const STAMP_KEPT_BYTES = 400;
+
+/** What a placement holds, in bytes, roughly: its stamps, a flood's outline, and its key. */
+const POINT_BYTES = 64, ENTRY_BYTES = 1024;
+const bytesOf = ({ stamps, dualStamps, ...placement }: StampDepositPlacement, key: string) => ENTRY_BYTES + 2 * key.length + STAMP_KEPT_BYTES * (stamps.length + dualStamps.length)
   + (placement.kind === 'flood' ? POINT_BYTES * placement.flood.barrier.polygon.length : 0);
 
 const kept = new Map<string, { placement: StampDepositPlacement; bytes: number }>();

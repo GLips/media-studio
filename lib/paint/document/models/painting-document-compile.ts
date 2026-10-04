@@ -158,8 +158,15 @@ export function paintingSelectedLayers(tree: PaintingTree, keys?: readonly NodeK
 }
 
 /**
+ * How many selections an evaluation keeps compiled for one brushOf, the least recently read forgotten first. A boiling
+ * layer compiles anew each epoch, and each compile keeps its poses (painting-pose.ts), so keeping every one grows a
+ * render's page by megabytes a frame until it crashes. Enough for a shot's selections of one source at their epochs.
+ */
+export const PAINTING_SELECTIONS_KEPT = 16;
+
+/**
  * Compiled selections by evaluation, the brushes resolving them, and the layers selected with their boil epochs: one
- * program a sheet while its evaluation lives, so the poses kept per program (painting-pose.ts) are met again.
+ * program a sheet while it's kept, so the poses kept per program are met again.
  */
 const compiledSelections = new WeakMap<PaintingEvaluation, WeakMap<PaintingBrushOf, Map<string, PaintingSelectionCompiled>>>();
 
@@ -176,9 +183,14 @@ export function compilePaintingSelection(evaluation: PaintingEvaluation, brushOf
   let bySelection = byBrushes.get(brushOf);
   if (!bySelection) byBrushes.set(brushOf, (bySelection = new Map<string, PaintingSelectionCompiled>()));
   const known = bySelection.get(key);
-  if (known) return known;
+  if (known) {
+    bySelection.delete(key);
+    bySelection.set(key, known);
+    return known;
+  }
   const compiled = compileSelectedLayers(evaluation, brushOf, selected, epochs);
   bySelection.set(key, compiled);
+  if (bySelection.size > PAINTING_SELECTIONS_KEPT) bySelection.delete(bySelection.keys().next().value!);
   return compiled;
 }
 

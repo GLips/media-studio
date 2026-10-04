@@ -518,8 +518,10 @@ evaluation diff (`painting-evaluation-diff.ts`) and the solver read. The checks 
 `painting-document-compile.ts` compiles a selection of an evaluation's layers to one solver program per sheet they
 lie on, its clock and order times with it, each application through `painting-deposit-compile.ts` and
 `painting-area-compile.ts`, a boiling layer's seeds suffixed for its epoch (`painting-reseed.ts`), the epochs given by
-layer or group key, and the composite's steps, each selection compiled once per evaluation, brushes and epochs; `painting-pose.ts` poses a program before it's solved,
-each pose kept per program; `studio/painting-sheets-solve.ts` solves a selection's sheets, holding their films until
+layer or group key, and the composite's steps, the 16 selections last read kept compiled per evaluation and brushes
+(a boiling layer compiles anew each epoch); `painting-pose.ts` poses a program before it's solved, the poses last asked
+for kept up to 256 MiB of stamps across programs (a rigged heron's pose is tens of MB, so a count a program would
+grow a render's page frame by frame until it crashed); `studio/painting-sheets-solve.ts` solves a selection's sheets, holding their films until
 its caller releases them, and places each own sheet by its owner chain's map; `studio/painting-film-readback.ts` reads
 a selected layer's film back through its prefix (a `LayerSelection`, `painting-selection.ts`), its coverage
 (`paintingFilmCoverage`) or its picture (`paintingFilmPicture`); `engine/painting-still.ts` resolves its
