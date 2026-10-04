@@ -440,10 +440,17 @@ an error. A frame held on twos gives every group the keys it had, so it repaints
 (`stamp-paint-gpu-owner.ts`, built on the studio's `gpu-device-owner.ts`, whose one three.js renderer the three
 sources draw with): its images, pipelines' targets and one cache budget, shared by films, pictures and
 blurred pictures. A surface is one output on it. One painted plane at rest, sharp and not glowing is drawn straight
-to the output, as a still always was. Otherwise each plane's picture is painted (paper, its groups, and each glowing group's light past its threshold
-into the plane's emission, which each later opaque group on the plane dims by its cover; a glaze leaves it), defocused,
-and composited into a frame-sized target, its emission beside it, so paint a nearer plane covers doesn't glow. A clear
-plane's groups are laid twice, on plain white and on black whatever the paper (its films kept from the first lay):
+to the output, as a still always was. Otherwise each plane's picture is painted (paper, its groups, and each glowing
+group's light into the plane's emission), defocused, and composited into a frame-sized target, its emission beside
+it, so paint a nearer plane covers doesn't glow. A glow is the light its group adds past its threshold
+(`stamp-plane-glow-pass.ts`): the painting's linear light over the group's box is kept before it's laid, and what the
+lay added, per channel and never below 0, goes into the emission: its colour kept, its luminance less the
+threshold (none at or under it), times `amount`. No coverage multiplies it: the lay already holds the group's opacity,
+visibility and masks. A clear plane glows on its black lay, the back on its paper: on white, light paint adds
+nothing. So a veil glows by its thickness, a halo over a lamp's glass adds none of the glass's light, warm paint over
+a dark road glows warm, and a glaze, taking light, glows only by what it scatters. In the old renderer each later
+opaque group on the plane dims the emission by its cover (a glaze leaves it); a shot's later films and cards don't.
+A clear plane's groups are laid twice, on plain white and on black whatever the paper (its films kept from the first lay):
 opaque paint lies on its own paper, and only reserves and lifts show the measuring backing. Its light is taken as
 affine in its backing, what it adds plus what it lets through, per RGB channel, from the two lays and the backings'
 own light, measured once per renderer. That's exact over white and black; over other paint it's a two-point
@@ -596,8 +603,8 @@ over the stage: an `alphaOf` read through both lays, plane px to plane px
 (a three render through the reader's camera view; an instanced plane's items drawn still and sharp through the
 camera into a frame-sized target by `LensCompositor.cover`, when a lay first asks, and read through the reader's
 view), a source's weighed by its visibility, which its render leaves out. The lay takes it into each film's opacity, each card's cover
-and each pieces picture, and scales the glow after; the ground is never cut. A film's reveals cut it in its layer
-target before it's laid (`stamp-reveal-pass.ts`), its glow and the coverage it gathers for readers alike. While a plane is laid on white, the
+and each pieces picture, so the light each film adds, its glow, is cut with it; the ground is never cut. A film's reveals
+cut it in its layer target before it's laid (`stamp-reveal-pass.ts`), its glow and the coverage it gathers for readers alike. While a plane is laid on white, the
 coverage of each drawable another plane reads gathers alongside (film, card, pieces, ground), a channel each, four
 to a layer of one array, mixed by a fading group's span like the paint; the picture keeps it, faded by the plane's
 visibility, in layers after the lens's (`coverage` in `stampPlanePictureLayers`), so whatever sums pictures sums

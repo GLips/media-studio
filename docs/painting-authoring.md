@@ -1277,9 +1277,18 @@ moment and shutter ends, the fix for that moment's lay.
 **Motion nodes** (`OccurrenceMotionNode`: `PaintMotionNode` without `parent` or `live` marks): `{id, pivot?, pins?,
 marks?, clock?, glow?}`. `pivot` document px (the origin); `marks`: `'stuck'` (default), `{boil: {every, amount?,
 scale?, reseed?}}` (every n frames; wobble `amount` px (2.2) at feature `scale` px (45), document px; no pivot
-needed); `clock`: `{hold: n}` frames or `{freeze: s}`, inside its plane's; `glow: {amount, threshold}` (emission ×
-amount where laid paint is brighter than threshold, linear light). Pins: `PaintPinRig`. Marks laid anew at each pose:
-pose the layer on a sheet it doesn't own.
+needed); `clock`: `{hold: n}` frames or `{freeze: s}`, inside its plane's; `glow: {amount, threshold}`. Pins:
+`PaintPinRig`. Marks laid anew at each pose: pose the layer on a sheet it doesn't own.
+
+**Glow** is the light a node's paint adds over the paint under it on its plane, per channel in linear light (a clear
+plane's measured over black), past `threshold` in luminance (0..1), `amount` times over; the lens blooms it at
+`lens.bloom`. Glow the emitter, not a painted halo: give the glow to the lamp's glass, the moon, the lit window, and
+let the bloom draw the halo. A halo painted round a lamp glows only by its own thickness, a faint veil faintly, and
+never re-emits the glass under it. Light comes only from paint that adds it: a glaze takes light, so it glows by
+what little it scatters, and a reserve adds none: a moon left as paper doesn't glow, one painted in gouache does.
+Paint glows its own colour, none of what's under it: warm paint over a dark road glows warm, so keep a road's
+`amount` low. A threshold near 0 glows every veil; raise it to keep only the bright. Thin paint on a clear plane
+glows by its own light alone, never the backing it's measured on, so it wants a lower threshold than thick.
 
 **Plays** (`paintMotionPlay(node, clip, {clock, origin})`): clock `{at, rate?, loop?: {period, mode?: 'repeat' |
 'pingpong', times?}, hold?, until?}` or `{at, freeze}`; `at` scene s, the rest clip s or frames. Clips: `place`
