@@ -10,6 +10,7 @@ import type { BrushRef, Hex, Layer, LayerNode, Mix, Paper, PaintingDocument, Reg
 import { paintingSimilarityPose, type PaintingPoses } from '#lib/paint/document/models/painting-pose.ts';
 import type { PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
+import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 
 const PAPER_HERON = { width: 200, height: 140 } as const;
 const GRAIN = meadow({ hillTopPx: 200 }).paper.grain!.image;
@@ -34,6 +35,16 @@ export const stampGateHeronLayer = (key: string, region: Region, mix: Mix, water
 
 /** The vane's outline, document px: the wing's paint at rest. */
 export const STAMP_GATE_HERON_VANE = [98, 40, 146, 26, 160, 48, 114, 70] as const;
+/** Whether `p` lies inside convex `polygon` (x, y pairs, either winding) at least `inset` px from each edge. */
+export function stampGateInsidePolygon(p: StampPoint, polygon: readonly number[], inset: number): boolean {
+  const n = polygon.length / 2, sides: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const ax = polygon[2 * i], ay = polygon[2 * i + 1], bx = polygon[(2 * i + 2) % polygon.length], by = polygon[(2 * i + 3) % polygon.length];
+    sides.push(((bx - ax) * (p.y - ay) - (by - ay) * (p.x - ax)) / Math.hypot(bx - ax, by - ay));
+  }
+  return sides.every((d) => d >= inset) || sides.every((d) => d <= -inset);
+}
+
 /** The body's ellipse at rest, document px. */
 export const STAMP_GATE_HERON_BODY = { center: { x: 66, y: 60 }, radiusX: 36, radiusY: 22 } as const;
 

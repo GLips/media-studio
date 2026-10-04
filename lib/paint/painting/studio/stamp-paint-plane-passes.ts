@@ -110,23 +110,26 @@ export const STAMP_PLANE_PICTURE = gpuUniformLayout('PlanePicture', [['origin', 
 
 /**
  * A picture's array layers (lens-passes.ts): its colour (0), premultiplied, then for `film` (a clear plane's) its
- * taken share (1 − what it lets through, per channel), then its emission when it glows, then its groups' own motion
- * when one travels over the shutter. A `paper` picture is laid over by its alpha, as a three render is.
+ * taken share (1 − what it lets through, per channel), its emission when it glows, its groups' own motion when one
+ * travels. A `paper` picture is laid over by its alpha. Last, unread by the lens: the coverage its lay gathered.
  */
 export type StampPlanePictureLayers =
-  | { readonly kind: 'paper'; readonly taken: null; readonly emission: number | null; readonly motion: number | null }
-  | { readonly kind: 'film'; readonly taken: 1; readonly emission: number | null; readonly motion: number | null };
+  | { readonly kind: 'paper'; readonly taken: null; readonly emission: number | null; readonly motion: number | null; readonly coverage: StampPictureCoverageLayers | null }
+  | { readonly kind: 'film'; readonly taken: 1; readonly emission: number | null; readonly motion: number | null; readonly coverage: StampPictureCoverageLayers | null };
 
-export function stampPlanePictureLayers(kind: StampPlanePictureLayers['kind'], { emits, travels }: { emits: boolean; travels: boolean }): StampPlanePictureLayers {
-  const emission = kind === 'film' ? 2 : 1, motion = emission + Number(emits);
-  const extra = { emission: emits ? emission : null, motion: travels ? motion : null };
+/** Where a picture's coverage lies: `layers` array layers from `layer`. */
+export type StampPictureCoverageLayers = { readonly layer: number; readonly layers: number };
+
+/** A picture's layers by its kind, whether it glows and travels, and how many `coverage` layers its lay gathers. */
+export function stampPlanePictureLayers(kind: StampPlanePictureLayers['kind'], { emits, travels, coverage = 0 }: { emits: boolean; travels: boolean; coverage?: number }): StampPlanePictureLayers {
+  const emission = kind === 'film' ? 2 : 1, motion = emission + Number(emits), after = motion + Number(travels);
+  const extra = { emission: emits ? emission : null, motion: travels ? motion : null, coverage: coverage ? { layer: after, layers: coverage } : null };
   return kind === 'film' ? { kind, taken: 1, ...extra } : { kind, taken: null, ...extra };
 }
 
-export const stampPlanePictureLayerCount = (layers: StampPlanePictureLayers) => 1 + Number(layers.kind === 'film') + Number(layers.emission !== null) + Number(layers.motion !== null);
-
-/** A pipeline key naming `layers`' shape. */
-export const stampPlanePictureLayersKey = (layers: StampPlanePictureLayers) => `${layers.kind}|${layers.emission !== null}|${layers.motion !== null}`;
+/** How many array layers `layers` takes: those the lens reads, and any coverage after them. */
+export const stampPlanePictureLayerCount = (layers: StampPlanePictureLayers) =>
+  1 + Number(layers.kind === 'film') + Number(layers.emission !== null) + Number(layers.motion !== null) + (layers.coverage?.layers ?? 0);
 
 /** The painting's linear light over `extent` stage texels from `origin`, written from the target's first texel into array layer `layer`. */
 export const STAMP_PLANE_LIGHT = gpuUniformLayout('PlaneLight', [['origin', 'vec2u'], ['extent', 'vec2u'], ['layer', 'u32']]);
@@ -151,8 +154,8 @@ ${compositor.output}
 
 /**
  * The picture pass's WGSL: binds its uniform (0), the painting (1), its emission (2), the picture (3), for a film the
- * backings' light (4: white's at layer 0, black's at 1), and its groups' motion (5). A film's painting is its lay on
- * black, its colour layer its light on white; its alpha 1 − luminance(T), for a canvas over HTML.
+ * backings' light (4: white's at layer 0, black's at 1), its groups' motion (5) and gathered coverage (6). A film's
+ * painting is its lay on black, its colour layer its light on white; its alpha 1 − luminance(T).
  */
 export function stampPlanePictureWgsl(compositor: StampPaintCompositor, layers: StampPlanePictureLayers, workgroup: number) {
   // Light over backing b taken as C + T·b per channel: the two lays give T = ΔL / Δbacking, and C what black leaves
@@ -165,6 +168,7 @@ export function stampPlanePictureWgsl(compositor: StampPaintCompositor, layers: 
   let kept = 1.0 - dot(through, vec3f(0.2126, 0.7152, 0.0722));
   textureStore(picture, id.xy, 0u, vec4f(max(light - through * black, vec3f(0.0)), kept) * u.visibility);
   textureStore(picture, id.xy, ${layers.taken}u, vec4f(1.0 - through, 0.0) * u.visibility);`;
+  const { coverage } = layers;
   return /* wgsl */ `
 ${GPU_SRGB_WGSL}
 ${STAMP_PLANE_PICTURE.wgsl}
@@ -174,6 +178,7 @@ ${layers.emission !== null ? '@group(0) @binding(2) var emission: texture_2d<f32
 @group(0) @binding(3) var picture: texture_storage_2d_array<rgba16float, ${film ? 'read_write' : 'write'}>;
 ${film ? '@group(0) @binding(4) var backingLight: texture_2d_array<f32>;' : ''}
 ${layers.motion !== null ? '@group(0) @binding(5) var motion: texture_2d<f32>;' : ''}
+${coverage ? '@group(0) @binding(6) var coverage: texture_2d_array<f32>;' : ''}
 ${compositor.output}
 @compute @workgroup_size(${workgroup}, ${workgroup}) fn planePicture(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
@@ -183,6 +188,7 @@ ${compositor.output}
   // The glow source weighed each group's light by its cover already.
   textureStore(picture, id.xy, ${layers.emission}u, vec4f(textureLoad(emission, texel, 0).rgb, 0.0) * u.visibility);` : ''}${layers.motion !== null ? `
   // Motion is premultiplied by its cover, which fades with the rest.
-  textureStore(picture, id.xy, ${layers.motion}u, textureLoad(motion, texel, 0) * u.visibility);` : ''}
+  textureStore(picture, id.xy, ${layers.motion}u, textureLoad(motion, texel, 0) * u.visibility);` : ''}${coverage ? `
+  for (var l = 0u; l < ${coverage.layers}u; l++) { textureStore(picture, id.xy, ${coverage.layer}u + l, textureLoad(coverage, texel, l, 0) * u.visibility); }` : ''}
 }`;
 }

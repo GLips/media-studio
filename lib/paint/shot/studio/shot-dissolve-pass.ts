@@ -19,13 +19,18 @@ const SHOT_DISSOLVE = gpuUniformLayout('Dissolve', [['origin', 'vec2u'], ['exten
 /** One picture a dissolve sums, and its weight. */
 export type ShotDissolveShare = { readonly picture: StampPlanePicture; readonly weight: number };
 
-/** Each layer of the sum, shaped `into`, and the share's layer added into it: null where the share has none, adding nothing. */
+/**
+ * Each layer of the sum, shaped `into`, and the share's layer added into it: null where the share has none, adding
+ * nothing. The coverage alphaOf masks read is summed with the colour, so a dissolving plane covers as it shows.
+ */
 function dissolveLayerPairs(share: StampPlanePictureLayers, into: StampPlanePictureLayers): { readonly into: number; readonly from: number | null }[] {
   const roles = (['taken', 'emission', 'motion'] as const).flatMap((role) => {
     const at = into[role];
     return at === null ? [] : [{ into: at, from: share[role] }];
   });
-  return [{ into: 0, from: 0 }, ...roles];
+  const summed = into.coverage, shared = share.coverage;
+  const coverage = summed ? Array.from({ length: summed.layers }, (_, l) => ({ into: summed.layer + l, from: shared ? shared.layer + l : null })) : [];
+  return [{ into: 0, from: 0 }, ...roles, ...coverage];
 }
 
 /**

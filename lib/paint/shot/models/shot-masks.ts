@@ -1,10 +1,10 @@
 // shot-masks.ts: a plane's presentation masks as geometry and as a graph. A path mask shows its subpaths' first
 // `revealPx` of inked length, as round-ended capsules a pass draws with max blending; an alphaOf mask reads another
 // drawable's laid coverage, so the masks order the planes, and a mask must never read itself through any chain. Masks
-// cut finished films in a plane's document px and never enter a solve.
+// cut finished films in a plane's document px and never enter a solve: a reader's picture is keyed by what it read.
 
 import { isPaintingFinitePoint, isPaintingList, paintingField, paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
-import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { shotDrawableNamer, shotOccurrencePlane } from './shot-occurrences.ts';
 import type { InstancedPlaneProps, OccurrenceKey, PlaneMask, PlaneProps } from './shot-props.ts';
 
@@ -48,6 +48,16 @@ export function shotPathMaskCapsules(subpaths: readonly (readonly StampPoint[])[
     }
   }
   return capsules;
+}
+
+/**
+ * The document box a path mask's band can reach, whole px: its subpaths' box grown by half its width, and a texel
+ * more for a read's bilinear tap at its edge.
+ */
+export function shotPathMaskBox({ subpaths, widthPx }: Pick<PathMask, 'subpaths' | 'widthPx'>): StampBox {
+  const reach = widthPx / 2 + 1, first: StampPoint = subpaths[0][0];
+  const box = subpaths.flat().reduce((grown, { x, y }) => ({ x0: Math.min(grown.x0, x), y0: Math.min(grown.y0, y), x1: Math.max(grown.x1, x), y1: Math.max(grown.y1, y) }), { x0: first.x, y0: first.y, x1: first.x, y1: first.y });
+  return { x0: Math.floor(box.x0 - reach), y0: Math.floor(box.y0 - reach), x1: Math.ceil(box.x1 + reach), y1: Math.ceil(box.y1 + reach) };
 }
 
 /**
@@ -155,6 +165,37 @@ export function shotMaskCheck(planes: readonly (PlaneProps | InstancedPlaneProps
   };
   for (const { id } of planes) if (!state.has(id)) visit(id);
   return { graph: problems.length ? null : { order, read }, problems };
+}
+
+/**
+ * A painted plane at one moment as its presented keys read it: each selection it blends (one, unless it dissolves),
+ * by its plan's key and weight; and what its alphaOf masks read, in mask order.
+ */
+export type ShotPresentedPlan = { readonly shares: readonly { readonly key: string; readonly weight: number }[]; readonly alphaOf: readonly OccurrenceKey[] };
+
+/** A painted plane's presented keys: each selection's picture's, and the plane's as a reader names the pictures summed. */
+export type ShotPresentedKeys = { readonly shares: readonly string[]; readonly plane: string };
+
+/**
+ * Each painted plane's presented keys, in the masks' `order`. A selection's picture is kept under its plan's key, a
+ * reader's adding what each mask reads: a painted plane's key (presented first) or a source's render as `sourceKey`
+ * names it. A dissolve's plane key adds its weights, a selection's never, so moving only the weights lays nothing anew.
+ */
+export function shotPresentedKeys(
+  order: readonly string[], plans: ReadonlyMap<string, ShotPresentedPlan>, sourceKey: (plane: string, reader: string) => string,
+): Map<string, ShotPresentedKeys> {
+  const keys = new Map<string, ShotPresentedKeys>();
+  for (const id of order) {
+    const plan = plans.get(id);
+    if (!plan) continue;
+    const read = plan.alphaOf.map((drawable) => {
+      const on = shotOccurrencePlane(drawable);
+      return [drawable, plans.has(on) ? keys.get(on)!.plane : sourceKey(on, id)];
+    });
+    const shares = plan.shares.map(({ key }) => (read.length ? JSON.stringify([key, read]) : key)), [lone] = plan.shares;
+    keys.set(id, { shares, plane: shares.length === 1 && lone.weight === 1 ? shares[0] : JSON.stringify(shares.map((key, i) => [key, plan.shares[i].weight])) });
+  }
+  return keys;
 }
 
 /** The problem a chain of alphaOf reads returning to its first plane is, at that plane's first read. */

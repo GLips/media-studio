@@ -87,3 +87,17 @@ test('a layer inside a rig drawn as pieces shows whole or not at all: refused at
   assert.deepEqual(planAt(props(0), paintMoment(0)).plan.pieces[0].layers, new Set(['body']));
   assert.throws(() => planAt(props(() => 0.5), paintMoment(0)), /front\/neck's visibility is 0.5 at 0 s, inside front\/heron, drawn as pieces/);
 });
+
+test("a path mask's reveal moves its picture's key, never what it solves; a callback's reveal below 0 is refused at its frame", () => {
+  const props: PaintedShotProps = {
+    camera, planes: [{
+      id: 'front', depth: 1, source: layersOf(pond(false), ['sky', 'heron']),
+      masks: [{ kind: 'path', subpaths: [[{ x: 40, y: 100 }, { x: 200, y: 120 }]], widthPx: 30, revealPx: ({ at }) => 80 * at - 40 }],
+    }],
+  };
+  const [early, late] = [1, 2].map((s) => planAt(props, paintMoment(s)));
+  assert.equal(solvedText(late.solved), solvedText(early.solved));
+  assert.notEqual(late.plan.key, early.plan.key);
+  assert.deepEqual(early.plan.masks.map((mask) => mask.kind === 'path' && mask.revealPx), [40]);
+  assert.throws(() => planAt(props, paintMoment(0)), /front\.masks\[0\]\.revealPx: -40 at 0 s; a reveal is 0 px or more/);
+});

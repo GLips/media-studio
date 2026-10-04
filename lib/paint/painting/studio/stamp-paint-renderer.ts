@@ -605,7 +605,7 @@ function rendererOnSurface({
     const motion = travelling && planeMotion ? { into: motionTarget().view, travels: planeMotion.travels, cover: stampMotionCover(planeMotion.span) } : undefined;
     return planePictures.paint(encoder, {
       key, compositor, painting: targets.painting.view, layers, visibility: 1,
-      emission: layers.emission !== null ? emissionTarget().view : null, motion: travelling ? motionTarget().view : null,
+      emission: layers.emission !== null ? emissionTarget().view : null, motion: travelling ? motionTarget().view : null, coverage: null,
       paper: (backing, w, h) => drawPaper(encoder, backing, w, h),
       lay: (backing) => {
         drawPaper(encoder, backing);

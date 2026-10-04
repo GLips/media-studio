@@ -24,10 +24,11 @@ export type StampLensSourcePicture = { readonly texture: GPUTexture; readonly mo
 
 /**
  * A picture source's picture: `texture`, rgba16float premultiplied linear colour, one layer, TEXTURE_BINDING, its first
- * texel at `box`'s corner, at least `box`'s size and clear past it; `box`, where its texels lie on the stage. The
- * source's own, read until the draw is submitted.
+ * texel at `box`'s corner, at least `box`'s size and clear past it; `box`, where its texels lie on the stage;
+ * `version`, naming what was written there, the same while the source hands back the same picture. The source's own,
+ * read until the draw is submitted.
  */
-export type StampLensPicture = { readonly texture: GPUTexture; readonly box: StampStageTexels };
+export type StampLensPicture = { readonly texture: GPUTexture; readonly box: StampStageTexels; readonly version: number };
 
 /**
  * A three source. `render` fills its picture at frame time `t`: through the lens as it moves over the frame's shutter

@@ -156,26 +156,34 @@ ${compositor.group.wgsl}
 };
 
 /**
- * `cardUnionAt(pixel, origin, extent, moved)`: an own sheet's union (z) and paper point (xy, stage px) where its card's
- * texel at `pixel` was painted, read bilinearly through `rest` when moved. The union is `edge` (r32float) over stage
- * texels `origin` `extent`. The includer declares `edge`, `rest` and the stage's WGSL.
+ * `stampBilinearOrZero(source, s, extent)`: `source` read bilinearly at texel point `s` (centres at .5), nothing past
+ * its first `extent` texels, so a read fades out over its edge; `stampTexelOrZero` is one tap of it.
  */
-export const STAMP_CARD_UNION_WGSL = /* wgsl */ `
-fn cardUnionTexel(t: vec2i, origin: vec2u, extent: vec2u) -> f32 {
-  let q = t - vec2i(origin);
-  if (any(q < vec2i(0)) || any(q >= vec2i(extent))) { return 0.0; }
-  return textureLoad(edge, vec2u(q), 0).r;
+export const STAMP_BILINEAR_OR_ZERO_WGSL = /* wgsl */ `
+fn stampTexelOrZero(source: texture_2d<f32>, t: vec2i, extent: vec2u) -> vec4f {
+  if (any(t < vec2i(0)) || any(t >= vec2i(extent))) { return vec4f(0.0); }
+  return textureLoad(source, vec2u(t), 0);
 }
-fn cardUnionAt(pixel: vec2u, origin: vec2u, extent: vec2u, moved: bool) -> vec3f {
-  if (!moved) { return vec3f(stagePoint(vec2i(pixel)), cardUnionTexel(vec2i(pixel), origin, extent)); }
-  let at = textureLoad(rest, pixel, 0).xy;
-  if (at.x < ${STAMP_NO_REST / 2}.0) { return vec3f(at, 0.0); }
-  let q = at - 0.5 + vec2f(STAGE_MARGIN);
+fn stampBilinearOrZero(source: texture_2d<f32>, s: vec2f, extent: vec2u) -> vec4f {
+  let q = s - 0.5;
   let b = vec2i(floor(q));
   let f = q - floor(q);
-  let top = mix(cardUnionTexel(b, origin, extent), cardUnionTexel(b + vec2i(1, 0), origin, extent), f.x);
-  let bottom = mix(cardUnionTexel(b + vec2i(0, 1), origin, extent), cardUnionTexel(b + vec2i(1, 1), origin, extent), f.x);
-  return vec3f(at, mix(top, bottom, f.y));
+  let top = mix(stampTexelOrZero(source, b, extent), stampTexelOrZero(source, b + vec2i(1, 0), extent), f.x);
+  let bottom = mix(stampTexelOrZero(source, b + vec2i(0, 1), extent), stampTexelOrZero(source, b + vec2i(1, 1), extent), f.x);
+  return mix(top, bottom, f.y);
+}`;
+
+/**
+ * `cardUnionAt(pixel, origin, extent, moved)`: an own sheet's union (z) and paper point (xy, stage px) where its card's
+ * texel at `pixel` was painted, read bilinearly through `rest` when moved. The union is `edge` (r32float) over stage
+ * texels `origin` `extent`. The includer declares `edge`, `rest`, the stage's WGSL and STAMP_BILINEAR_OR_ZERO_WGSL.
+ */
+export const STAMP_CARD_UNION_WGSL = /* wgsl */ `
+fn cardUnionAt(pixel: vec2u, origin: vec2u, extent: vec2u, moved: bool) -> vec3f {
+  if (!moved) { return vec3f(stagePoint(vec2i(pixel)), stampTexelOrZero(edge, vec2i(pixel) - vec2i(origin), extent).r); }
+  let at = textureLoad(rest, pixel, 0).xy;
+  if (at.x < ${STAMP_NO_REST / 2}.0) { return vec3f(at, 0.0); }
+  return vec3f(at, stampBilinearOrZero(edge, at + vec2f(STAGE_MARGIN) - vec2f(origin), extent).r);
 }`;
 
 const STAMP_LAY_CARD = gpuUniformLayout('Card', [
@@ -197,6 +205,7 @@ ${STAMP_LAY_CARD.wgsl}
 @group(0) @binding(4) var edge: texture_2d<f32>;
 @group(0) @binding(5) var rest: texture_2d<f32>;
 ${masked ? '@group(0) @binding(6) var mask: texture_2d<f32>;' : ''}
+${STAMP_BILINEAR_OR_ZERO_WGSL}
 ${STAMP_CARD_UNION_WGSL}
 @compute @workgroup_size(${STAMP_WORKGROUP}, ${STAMP_WORKGROUP}) fn card(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }

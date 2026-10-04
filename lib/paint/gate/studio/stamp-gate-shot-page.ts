@@ -1,57 +1,23 @@
-// stamp-gate-shot-page.ts: the gate page's shots (stamp-gate-shots.ts), each compiled and drawn through the shot's
-// renderer on a surface of its own with the gate's brushes and images, its frames read back: the rigged heron's grain,
-// pieces and boil (test 6), the wet-contact foot posed by its rig, painted in and hidden (test 7), the rain's drops
-// blurred along their own falls (test 5), a dissolve between two sheets over a dissolving back, a warmed span, and
-// their baselines' frames.
+// stamp-gate-shot-page.ts: the gate page's shots (stamp-gate-shots.ts), drawn by stamp-gate-shot-frames.ts: the
+// rigged heron's grain, pieces and boil (test 6), the wet-contact foot posed by its rig, painted in and hidden (test
+// 7), the rain's drops blurred along their own falls (test 5), a dissolve between two sheets over a dissolving back, a
+// warmed span, and their baselines' frames. The masked shot's cases are stamp-gate-shot-masks-page.ts's, handed on.
 
-import { paintingProblemsError } from '#lib/paint/document/models/painting-problem.ts';
-import { createStampPaintCostTally, type StampPaintCosts, type StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
-import { compilePaintedShot } from '#lib/paint/shot/models/shot-compile.ts';
-import type { PaintedShotProps } from '#lib/paint/shot/models/shot-props.ts';
-import { createPaintedShotRenderer } from '#lib/paint/shot/studio/shot-renderer.ts';
-import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
+import { createStampPaintCostTally, type StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { STAMP_GATE_FRAME_TOLERANCE } from '../models/stamp-gate-frames.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { STAMP_GATE_HERON_MOVE, stampGateHighPass, stampGatePeakShift } from '../models/stamp-gate-paper-heron.ts';
 import { STAMP_GATE_LONE_DROP_AT, STAMP_GATE_LONE_DROP_TRAVEL, STAMP_GATE_RAIN, stampGateLoneDropShot, stampGateRainShot } from '../models/stamp-gate-rain.ts';
-import { STAMP_GATE_FAR_SHALLOWS, stampGateSheetBrushOf } from '../models/stamp-gate-sheets.ts';
+import { STAMP_GATE_FAR_SHALLOWS } from '../models/stamp-gate-sheets.ts';
 import {
-  STAMP_GATE_DISSOLVE_AT, STAMP_GATE_HERON_BOIL_AT, STAMP_GATE_HERON_NECKS, STAMP_GATE_HIDDEN_FOOT_AT, STAMP_GATE_PAINTING_IN_AT, STAMP_GATE_RIGGED_HERON_AT, STAMP_GATE_SHOT_CASE_IDS,
-  STAMP_GATE_SHOT_FPS, STAMP_GATE_WARM, STAMP_GATE_WARMED_AT, STAMP_GATE_WET_CONTACT_AT, stampGateBoilingHeronShot, stampGateDifferenceBox, stampGateDissolveShot, stampGateFadeBetween,
+  STAMP_GATE_DISSOLVE_AT, STAMP_GATE_HERON_BOIL_AT, STAMP_GATE_HERON_NECKS, STAMP_GATE_HIDDEN_FOOT_AT, STAMP_GATE_PAINTING_IN_AT, STAMP_GATE_RIGGED_HERON_AT,
+  STAMP_GATE_WARM, STAMP_GATE_WARMED_AT, STAMP_GATE_WET_CONTACT_AT, stampGateBoilingHeronShot, stampGateDifferenceBox, stampGateDissolveShot, stampGateFadeBetween,
   stampGateHiddenFootShot, stampGateReedSwung, stampGateRiggedHeronShot, stampGateRiggedHeronWindows, stampGateShallowsAloneShot, stampGateShotBaseline, stampGateWarmShot,
   stampGateWetContactPaintingInShot, stampGateWetContactShot, type StampGateShotCaseId, type StampGateShotId,
 } from '../models/stamp-gate-shots.ts';
-import { stampGateRgb, stampGateRgbBase64, withGateSurface } from './stamp-gate-page-surface.ts';
-import { stampGateSheetImageUrl } from './stamp-gate-sheet-owner.ts';
-
-/** What a gate shot's frames count into, `costs`, and what's called as they're drawn: `warmed` after the warm, `drawn` after each frame. */
-type StampGateShotFramesWatch = { readonly costs?: StampPaintCostTally; readonly warmed?: () => void; readonly drawn?: () => void };
-
-/**
- * `props`' frames at scene seconds `times`, in turn, each read back as RGBA bytes, once its warm span (if any) is
- * solved at STAMP_GATE_SHOT_FPS, in no scene.
- */
-async function stampGateShotFrames(props: PaintedShotProps, times: readonly number[], { costs, warmed, drawn }: StampGateShotFramesWatch = {}): Promise<Uint8ClampedArray[]> {
-  const { shot, problems } = compilePaintedShot(props, []);
-  if (!shot) throw paintingProblemsError('stamp gate shot', problems);
-  const { width, height } = shot.camera.stage.frame;
-  return withGateSurface({ width, height }, stampGateSheetImageUrl, async (surface, frame) => {
-    const renderer = await createPaintedShotRenderer(surface.owner, [surface], shot, { brushOf: stampGateSheetBrushOf, ...(costs && { costs }) });
-    try {
-      await renderer.warm({ fps: STAMP_GATE_SHOT_FPS, sceneDur: null });
-      warmed?.();
-      return await gpuEachInTurn(times, async (t) => {
-        await renderer.draw(t, 'fast');
-        await renderer.finish();
-        const read = frame();
-        drawn?.();
-        return read;
-      });
-    } finally {
-      renderer.dispose();
-    }
-  });
-}
+import { stampGateRgb, stampGateRgbBase64 } from './stamp-gate-page-surface.ts';
+import { stampGateShotFrames } from './stamp-gate-shot-frames.ts';
+import { checkStampGateShotMasksCase } from './stamp-gate-shot-masks-page.ts';
 
 const shiftText = ({ x, y, r }: { x: number; y: number; r: number }) => `${x}, ${y} (r ${r.toFixed(3)})`;
 const solvedText = ({ solves }: StampPaintCosts) => solves.map(({ program, from }) => `${program} from ${from}`);
@@ -144,14 +110,17 @@ const boxSize = (box: ReturnType<typeof stampGateDifferenceBox>) => box && { w: 
 const spreadPast = (narrow: ReturnType<typeof stampGateDifferenceBox>, wide: ReturnType<typeof stampGateDifferenceBox>) =>
   narrow && wide && { left: narrow.x0 - wide.x0, right: wide.x1 - narrow.x1, top: narrow.y0 - wide.y0, bottom: wide.y1 - narrow.y1 };
 
+/** The lone drop shot of `kind`, its one frame as RGB bytes. */
+const loneDropFrame = async (kind: Parameters<typeof stampGateLoneDropShot>[0]) => stampGateRgb((await stampGateShotFrames(stampGateLoneDropShot(kind), [STAMP_GATE_LONE_DROP_AT]))[0]);
+
 /**
  * shot/rain (ENGINE test 5, the camera still): a lone drop out of focus spreads alike on every side; shutter open, it
  * blurs along its fall, longer than shut and no wider; keyed anew across the shutter, it draws as if shut; a frame
  * moving only drops solves nothing and lays no picture anew.
  */
 async function checkStampGateRain(): Promise<StampGateWashCheck[]> {
-  const loneDrop = async (kind: Parameters<typeof stampGateLoneDropShot>[0]) => stampGateRgb((await stampGateShotFrames(stampGateLoneDropShot(kind), [STAMP_GATE_LONE_DROP_AT]))[0]);
-  const none = await loneDrop('none'), sharp = await loneDrop('sharp'), defocused = await loneDrop('defocused'), blurred = await loneDrop('blurred'), recycled = await loneDrop('recycled');
+  const none = await loneDropFrame('none'), sharp = await loneDropFrame('sharp'), defocused = await loneDropFrame('defocused'), blurred = await loneDropFrame('blurred');
+  const recycled = await loneDropFrame('recycled');
   const rain = stampGateRainShot(), { width } = rain.camera.stage.frame, costs = createStampPaintCostTally(), taken: StampPaintCosts[] = [];
   const [first, next] = await stampGateShotFrames(rain, [STAMP_GATE_RAIN.at.first, STAMP_GATE_RAIN.at.next], { costs, drawn: () => taken.push(costs.take()) });
   const [shut, soft, open, renewed] = [sharp, defocused, blurred, recycled].map((frame) => stampGateDifferenceBox(none, frame, width));
@@ -234,7 +203,7 @@ export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGa
   if (id === 'shot/rain') return checkStampGateRain();
   if (id === 'shot/dissolve') return checkDissolve();
   if (id === 'shot/warm') return checkWarm();
-  throw new Error(`stamp gate: no shot case ${JSON.stringify(id)}; the gate has ${STAMP_GATE_SHOT_CASE_IDS.join(', ')}`);
+  return checkStampGateShotMasksCase(id);
 }
 
 /** Shot baseline `id`'s frame: RGB bytes row by row, in base64. */

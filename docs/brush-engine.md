@@ -470,7 +470,7 @@ its canvas premultiplied too: `clearBack`) and must stay there while it is; that
 element, fills it, no wrapper between them transformed, filtered or contained; and where each pinned element (its
 `data-pin` named by the pin) lies. `shot-compile.ts` checks the props as they load, every problem at once: planes far
 to near, each painted plane's occurrences from its first evaluation (read through its `sourceClock`), the rigs,
-visibility and motion over them, and the camera built over each plane's reach (`shot-reach.ts`). A plane laid on the
+visibility, motion and masks over them, and the camera built over each plane's reach (`shot-reach.ts`). A plane laid on the
 frame is unchecked in that build and laid through the built camera after it, the inverse of its plane view at the
 lay's `at` (`paintPlaneViewAt`, `shotScreenLaid` in `shot-placement.ts`), then checked by the build's own rule
 (`paintCameraExtentProblem`): a cover once, as the shot compiles; a pin each frame, from its elements' centres as
@@ -504,10 +504,27 @@ layer (`studio/shot-instance-passes.ts`): a quad per item, its view, shutter end
 (`lens-compositor.ts`, `platform/gpu/studio/gpu-instance-ring.ts`), its filter then its add before the next. An
 item's travel is its views at the shutter's ends, as a plane's is; its picture's own motion isn't read.
 
-Its presentation, as models the passes will draw from, refused by a shot's load until they're drawn: a path
-mask's capsules for the first `revealPx` of inked length, pen-ups adding none, and the `alphaOf` graph, checked
-acyclic and sorted so each read plane composites first (`shot-masks.ts`). Visibility's keys and range, and the group
-occurrences that composite on their own (`shot-visibility.ts`), are drawn, and so are `warm` and the cost report.
+Masks (ENGINE 6.3) are drawn. A path mask's capsules are the first `revealPx` of inked length, pen-ups adding none,
+and the `alphaOf` graph is checked acyclic and sorted so each read plane composites first (`shot-masks.ts`); the
+plan holds each mask at the plane's presentation moment and what other planes read of it (`shot-sheet-lays.ts`), so
+a reveal moves the picture's key and solves nothing. Each exposure lays every painted plane first, in the graph's
+order (`present` in `studio/shot-painted-plane.ts`). `studio/shot-mask-passes.ts` multiplies a plane's masks into
+one r32float factor over the stage: a path's capsules drawn into a band over its document box with max blending,
+laid where the plane's place puts it (not its nodes'); an `alphaOf` read through both lays, plane px to plane px
+(a three render through the reader's camera view). The lay takes it into each film's opacity, each card's cover
+and each pieces picture, and scales the glow after; the ground is never cut. While a plane is laid on white, the
+coverage of each drawable another plane reads gathers alongside (film, card, pieces, ground), a channel each, four
+to a layer of one array, mixed by a fading group's span like the paint; the picture keeps it, faded by the plane's
+visibility, in layers after the lens's (`coverage` in `stampPlanePictureLayers`), so whatever sums pictures sums
+their coverage alike. A reader's picture is kept under its plan's key and what it read (`shotPresentedKeys`): a
+painted plane's presented key, a picture source's upload and box, a three render's frame and exposure, each with the
+map it's read through. So a reader is laid anew only when what it reads moves. A dissolving plane's masks cut each
+selection alike, and its coverage is summed by weight with its colour (`shot-dissolve-pass.ts`); a reader keys it by
+every selection's key and weight. An `alphaOf` of an instanced plane is refused as the shot loads until its items'
+coverage is gathered.
+
+Visibility's keys and range, and the group occurrences that composite on their own (`shot-visibility.ts`), are drawn,
+and so are `warm` and the cost report.
 A warm (`shot-warm.ts`) solves each painted plane and variant before the first frame at the first of the span's
 frames to pair each set of moments on its source and plane clocks (`shotWarmCombinations` over `shotPlaneClocks`;
 node clocks run inside the plane's), only the frames its scene shows, each solve let go to the cache; a solve reads
@@ -581,7 +598,12 @@ solved or laid once they are; the
 foot painting in on sixes, its plane on threes flipping its pose, over a warmed span, the frames its warm skipped as
 pairing their clocks' moments alike then solving nothing; and rain (`stamp-gate-rain.ts`) falling about a post under a still camera, a lone drop out of
 focus spreading alike on every side, blurring along its own fall and drawn as if shut when keyed anew across the
-shutter, a frame moving only drops solving nothing and laying no picture anew. Each shot's frame is a baseline (`shot/`) accepted by eye. `shot/page`
+shutter, a frame moving only drops solving nothing and laying no picture anew. The masked shot (`stamp-gate-shot-masks.ts`) reveals the paper heron along two strokes,
+nothing revealed drawing as hidden, all as unmasked, and part matching the whole well inside its band and nothing
+past it, with nothing solved; cuts the pond's paint but not its paper; and cuts a tint to the heron's wing, to all
+but it, and to a disc moving across as a picture plane and as a three plane under a panned camera. Cut to the
+revealing heron's wing frame after frame, each frame draws as it does alone and a held frame lays nothing anew; cut
+to the heron faded to half, it tints the wing about half as much. Each shot's frame is a baseline (`shot/`) accepted by eye. `shot/page`
 (`stamp-gate-shot-dom-page.ts`) holds a shot's element on the page, scaled as a player shows it, and reads it through
 the DOM adapter: HTML behind the first canvas or not, a canvas in a wrapper at an identity transform refused; the
 heron alone, a clear back, drawn premultiplied, clear at its corners; then pinned to an element, its paint's centroid

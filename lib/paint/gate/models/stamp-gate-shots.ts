@@ -18,23 +18,24 @@ import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import type { PaintedShotProps, RigPart, RigPartPose, ScreenPin } from '#lib/paint/shot/models/shot-props.ts';
 import { dissolve } from '#lib/paint/shot/models/shot-selection.ts';
 import {
-  STAMP_GATE_HERON_BODY, STAMP_GATE_HERON_MOVE, STAMP_GATE_HERON_VANE, stampGateHeronLayer, stampGateHeronPaper, stampGateHeronPolygon, stampGatePaperHeronDocument,
+  STAMP_GATE_HERON_BODY, STAMP_GATE_HERON_MOVE, STAMP_GATE_HERON_VANE, stampGateHeronLayer, stampGateInsidePolygon, stampGateHeronPaper, stampGateHeronPolygon, stampGatePaperHeronDocument,
 } from './stamp-gate-paper-heron.ts';
 import { STAMP_GATE_RAIN, STAMP_GATE_RAINY_STREET, stampGateRainShot } from './stamp-gate-rain.ts';
+import { STAMP_GATE_MASKS_BASELINE, STAMP_GATE_MASKS_PRESENTATION, STAMP_GATE_SHOT_MASK_IDS, STAMP_GATE_TINTED_HERON, stampGateMaskedShot } from './stamp-gate-shot-masks.ts';
 import { STAMP_GATE_HERON_POSE, STAMP_GATE_SHEET_IMAGES, STAMP_GATE_WET_CONTACT, stampGateSheetBrushOf } from './stamp-gate-sheets.ts';
 
 /** The shot over a page: its DOM adapter's reads, and a clear back pinned to an element, drawn and read back. */
 export const STAMP_GATE_SHOT_PAGE_IDS = ['shot/page'] as const;
 
 /** The shots accepted by eye: each a baseline subject, one frame of its shot. */
-export const STAMP_GATE_SHOT_IDS = ['shot/paper-heron', 'shot/wet-contact', 'shot/rain', 'shot/dissolve'] as const;
+export const STAMP_GATE_SHOT_IDS = ['shot/paper-heron', 'shot/wet-contact', 'shot/rain', 'shot/dissolve', 'shot/masks'] as const;
 export type StampGateShotId = (typeof STAMP_GATE_SHOT_IDS)[number];
 
 /**
  * The shot cases checked apart from any sheet case, each a page's checks of its shot's frames: the rain's items, a
- * dissolve drawn between its ends, and a span warmed.
+ * dissolve drawn between its ends, a span warmed, and the masked shot's cuts.
  */
-export const STAMP_GATE_SHOT_CASE_IDS = ['shot/rain', 'shot/dissolve', 'shot/warm'] as const;
+export const STAMP_GATE_SHOT_CASE_IDS = ['shot/rain', 'shot/dissolve', 'shot/warm', ...STAMP_GATE_SHOT_MASK_IDS] as const;
 export type StampGateShotCaseId = (typeof STAMP_GATE_SHOT_CASE_IDS)[number];
 
 /** The fps the gate plays its shots at, as a composition would: a warm span's frames are counted at it. */
@@ -294,6 +295,10 @@ const SHOT_BASELINES: Readonly<Record<StampGateShotId, {
   'shot/dissolve': {
     shot: stampGateDissolveShot, at: STAMP_GATE_DISSOLVE_AT.bothHalf, evaluations: () => Object.values(dissolveEvaluations()), rigs: {}, poses: [], extra: { ks: DISSOLVE_KS },
   },
+  'shot/masks': {
+    shot: () => stampGateMaskedShot(STAMP_GATE_MASKS_BASELINE.shown), at: STAMP_GATE_MASKS_BASELINE.at, evaluations: () => [painting(STAMP_GATE_TINTED_HERON)], rigs: {}, poses: [],
+    extra: STAMP_GATE_MASKS_PRESENTATION,
+  },
 };
 
 /** Shot baseline `id`'s shot and the scene second its frame shows. */
@@ -316,16 +321,6 @@ export function stampGateShotInputs(id: StampGateShotId): string {
 
 const insideEllipse = ({ x, y }: StampPoint, centre: StampPoint, rx: number, ry: number) => ((x - centre.x) / rx) ** 2 + ((y - centre.y) / ry) ** 2 <= 1;
 
-/** Whether `p` lies inside convex `polygon` (x, y pairs, either winding) at least `inset` px from each edge. */
-function insidePolygon(p: StampPoint, polygon: readonly number[], inset: number): boolean {
-  const n = polygon.length / 2, sides: number[] = [];
-  for (let i = 0; i < n; i++) {
-    const ax = polygon[2 * i], ay = polygon[2 * i + 1], bx = polygon[(2 * i + 2) % polygon.length], by = polygon[(2 * i + 3) % polygon.length];
-    sides.push(((bx - ax) * (p.y - ay) - (by - ay) * (p.x - ax)) / Math.hypot(bx - ax, by - ay));
-  }
-  return sides.every((d) => d >= inset) || sides.every((d) => d <= -inset);
-}
-
 /** How far inside a part's paint a window lies, px: clear of its edges' bleed. */
 const WINDOW_INSET = 5;
 
@@ -339,7 +334,7 @@ export function stampGateRiggedHeronWindows(width: number, height: number): { bo
   const windowOf = (inside: (p: StampPoint) => boolean) => Uint8Array.from({ length: width * height }, (_, i) => (inside({ x: (i % width) + 0.5, y: Math.floor(i / width) + 0.5 }) ? 1 : 0));
   return {
     body: windowOf((p) => p.x >= neckReach && [center, moved].every((c) => insideEllipse(p, c, radiusX - WINDOW_INSET, radiusY - WINDOW_INSET))),
-    wing: windowOf((p) => insidePolygon(p, STAMP_GATE_HERON_VANE, WINDOW_INSET)),
+    wing: windowOf((p) => stampGateInsidePolygon(p, STAMP_GATE_HERON_VANE, WINDOW_INSET)),
   };
 }
 
@@ -351,7 +346,7 @@ export function stampGateReedSwung(rest: ArrayLike<number>, swung: ArrayLike<num
   let changed = 0;
   for (let texel = 0; texel < rest.length / 3; texel++) {
     const p = { x: (texel % width) + 0.5, y: Math.floor(texel / width) + 0.5 };
-    if (!insidePolygon(p, REED_B, REED_INSET)) continue;
+    if (!stampGateInsidePolygon(p, REED_B, REED_INSET)) continue;
     if ([0, 1, 2].some((c) => Math.abs(rest[3 * texel + c] - swung[3 * texel + c]) > 2)) changed++;
   }
   return changed;

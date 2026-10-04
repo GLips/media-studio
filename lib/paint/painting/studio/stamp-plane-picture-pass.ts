@@ -23,8 +23,9 @@ export type StampPlanePicture = StampPlanePictureLayers & { readonly box: StampP
 
 /**
  * A plane laid into its picture under `key`: its compositor, painting (a storage view), layers, emission and motion
- * targets (cleared here) and visibility. `paper` lays a backing over the painting's first `w` × `h` texels; `lay` lays
- * the plane on `backing`, returning the stage texels laid (null: none). Only its first lay writes glow and motion.
+ * targets (cleared here), coverage array and visibility. `paper` lays a backing over the painting's first `w` × `h`
+ * texels; `lay` lays the plane on `backing`, returning the stage texels laid (null: none). Only its first lay writes
+ * glow, motion and coverage.
  */
 export type StampPlanePictureLay = {
   readonly key: string;
@@ -33,6 +34,7 @@ export type StampPlanePictureLay = {
   readonly layers: StampPlanePictureLayers;
   readonly emission: GPUTextureView | null;
   readonly motion: GPUTextureView | null;
+  readonly coverage: GPUTextureView | null;
   readonly visibility: number;
   readonly paper: (backing: 'white' | 'black', w: number, h: number) => void;
   readonly lay: (backing: StampPaintBacking) => StampPixelBox | null;
@@ -102,21 +104,21 @@ export function createStampPlanePictures(owner: StampPaintGpuOwner, { stage, are
         put('origin', [box.x, box.y]);
         put('extent', [box.w, box.h]);
         put('visibility', plane.visibility);
-      }), painting, plane.emission, stampArrayView(texture), light && stampArrayView(light), plane.motion], box.w, box.h);
+      }), painting, plane.emission, stampArrayView(texture), light && stampArrayView(light), plane.motion, plane.coverage], box.w, box.h);
       return { ...note, texture };
     },
     /**
      * `picture` (kept under `key`) defocused by `sigma` stage px through `lens`, kept under its key and the stepped
-     * sigma, its box grown by the blur's reach; the picture itself where the sigma steps to nothing. `fresh`: the
-     * picture was laid anew under a key it was kept under before, so what was blurred of it then is stale.
+     * sigma, its box grown by the blur's reach; the picture itself where the sigma steps to nothing. Only the layers
+     * the lens reads are blurred: the blurred picture holds no coverage.
      */
-    blurred(encoder: GPUCommandEncoder, lens: Pick<LensCompositor, 'gaussian'>, picture: StampPlanePicture, key: string, sigma: number, fresh = false): StampPlanePicture {
+    blurred(encoder: GPUCommandEncoder, lens: Pick<LensCompositor, 'gaussian'>, picture: StampPlanePicture, key: string, sigma: number): StampPlanePicture {
       const stepped = lensSigmaStepped(sigma), blurredKey = `${key}|${stepped}`;
       if (!stepped) return picture;
-      const found = fresh ? null : blurred.find(blurredKey, encoder);
+      const found = blurred.find(blurredKey, encoder);
       if (found) return { ...found.note, texture: found.textures[0] };
       const { texture: sharp, box: sharpBox, ...layers } = picture;
-      const box = stampStageTexelsGrown(stage, sharpBox, lensGaussianReach(stepped)), count = sharp.depthOrArrayLayers, note: StampPictureNote = { ...layers, box };
+      const box = stampStageTexelsGrown(stage, sharpBox, lensGaussianReach(stepped)), note: StampPictureNote = { ...layers, coverage: null, box }, count = stampPlanePictureLayerCount(note);
       const [texture] = blurred.make(blurredKey, encoder, [{ width: box.w, height: box.h, layers: count, format: 'rgba16float', usage: STORAGE | GPUTextureUsage.TEXTURE_BINDING }], note).textures;
       lens.gaussian(encoder, { source: stampArrayView(sharp), into: stampArrayView(texture), layers: count, sigma: stepped, read: sharpBox, sourceAt: sharpBox, box });
       return { ...note, texture };

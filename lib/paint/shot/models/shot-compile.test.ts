@@ -165,3 +165,27 @@ test('a pinned plane lies where a frame measures its elements, refused when one 
     "label.lay: plane label's picture must hold what the camera shows of it, 258..382 × 30..170 pan from key 0 to 1, but the stage holds -40..360 × -40..280; widen the stage's margin",
   ]);
 });
+
+test('an alphaOf mask reads a rig drawn as pieces whole, never a part inside it nor an instanced plane, and its plane composites first', () => {
+  const reedBed = painting({
+    default: function reedBed(): PaintingDocument {
+      return {
+        widthPx: 320, heightPx: 240, paper: { color: '#f4f2ed', absorbency: 0.5 }, medium: 'watercolour',
+        layers: [layer('sky'), { key: 'reeds', sheet: { kind: 'own', paper: { color: '#e4ead0', absorbency: 0.4 } }, children: [layer('reed-a'), layer('reed-b')] }],
+      };
+    },
+  });
+  const shotReading = (drawable: string): PaintedShotProps => ({
+    camera,
+    planes: [
+      { id: 'back', depth: 2, source: layersOf(reedBed, ['sky']) },
+      { id: 'tint', depth: 1, source: layersOf(reedBed, ['sky']), masks: [{ kind: 'alphaOf', drawable }] },
+      { id: 'bed', depth: 1.5, source: layersOf(reedBed, ['reeds']) },
+    ],
+    rigs: { 'bed/reeds': { parts: [{ id: 'a', z: 0, parent: null, cels: ['reed-a'] }, { id: 'b', z: 1, parent: 'a', joint: 'hinge', pivot: { x: 60, y: 110 }, cels: ['reed-b'] }], pose: {} } },
+  });
+  assert.deepEqual(problemsOf(shotReading('bed/reed-b')), ['tint.masks[0].drawable: names bed/reed-b, inside bed/reeds, drawn as pieces: read bed/reeds']);
+  assert.deepEqual(compilePaintedShot(shotReading('bed/reeds'), []).shot!.masks.order, ['back', 'bed', 'tint']);
+  const raining = shotReading('rain'), rain = { kind: 'instanced', id: 'rain', depths: { near: 1.2, far: 1.4 }, variants: { drop: layersOf(reedBed, ['sky']) }, instances: () => [] } as const;
+  assert.ok(problemsOf({ ...raining, planes: [...raining.planes, rain] }).includes("tint.masks[0].drawable: names rain, an instanced plane, whose coverage isn't drawn yet (ENGINE slice 6)"));
+});

@@ -1,20 +1,20 @@
 // shot-renderer.ts: a compiled shot drawn on one owner's device into its canvases (ENGINE 6.1). A frame solves each
 // painted plane and instanced variant once, at its own moment; then each exposure (a fast frame's one, a reference
-// frame's many) lays every plane where it lies then, reads its items, and composites each canvas's planes and item
-// batches far to near through its lens. The first canvas holds the back, opaque unless it's clear over HTML; a later
-// one is developed premultiplied. A pinned plane lies where the frame's measures put it.
+// frame's many) lays every plane where it lies then, in its masks' order, reads its items, and composites each
+// canvas far to near through its lens. The first canvas holds the back. A pinned plane lies where the frame's
+// measures put it.
 //
-// Picture and three planes are the old path's sources (stamp-lens-source-layers.ts), a picture plane placed within
-// its plane by its node. Its three sources read no painted textures.
+// Picture and three planes are the old path's sources (stamp-lens-source-layers.ts). An alphaOf mask reads plane px
+// to plane px, no parallax between depths; a three render is the camera's, read through the reader's view.
 
-import { paintSimilarityAfter } from '#lib/paint/animation/models/paint-similarity.ts';
+import { PAINT_SIMILARITY_IDENTITY, paintSimilarityAfter, paintSimilarityInverse, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import { paintCameraDepthLooks, paintCameraLensFrame, type PaintCameraDepthLooks } from '#lib/paint/animation/models/paint-camera.ts';
 import type { PaintingBrushOf } from '#lib/paint/document/models/painting-deposit-compile.ts';
 import { paintingProblemsError, paintingProblemText } from '#lib/paint/document/models/painting-problem.ts';
 import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { STAMP_REST_LOOK, type StampLaidSourcePlane, type StampLensFrame, type StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
-import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
+import type { StampStage, StampStageTexels } from '#lib/paint/painting/models/stamp-stage.ts';
 import { createStampLensFrames, createStampLensSourceLayers, stampLensSourcesBlurExtent, type StampSourceRenders } from '#lib/paint/painting/studio/stamp-lens-source-layers.ts';
 import { stampLensSourceExposureOf, type StampLensSource, type StampLensSourceExposure } from '#lib/paint/painting/studio/stamp-lens-source.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
@@ -36,9 +36,17 @@ import type { ShotMomentAt } from '../models/shot-sheet-lays.ts';
 import { shotWarmCombinations, shotWarmFrames, shotWarmPastScene } from '../models/shot-warm.ts';
 import { createShotGroupFade } from './shot-group-pass.ts';
 import { shotItemsLayer } from './shot-instance-passes.ts';
-import { createShotPaintedPlanes, type ShotPlaneMoment, type ShotPlaneSolved } from './shot-painted-plane.ts';
+import { createShotPaintedPlanes, type ShotPlaneMoment, type ShotPlaneSolved, type ShotSourceRead } from './shot-painted-plane.ts';
 import { createShotRigPictures, createShotRigPiecesDrawer } from './shot-rig-pieces.ts';
 import { createShotSheetsLayer } from './shot-sheets-lay.ts';
+
+/** What made a source plane's render's pixels: a three render's frame and exposure, or a picture's upload and box. */
+type ShotSourceMade =
+  | { readonly kind: 'three'; readonly t: number; readonly exposure: StampLensSourceExposure | null }
+  | { readonly kind: 'picture'; readonly version: number; readonly box: StampStageTexels };
+
+/** A source read's key: what made its render's pixels, and the map its reader reads them through. */
+const shotSourceReadKey = (made: ShotSourceMade, map: PaintSimilarity) => JSON.stringify([made, map.ma, map.mb, map.kx, map.ky]);
 
 /** What a shot is painted with: its brushes, and where its solves, readbacks and warnings count. */
 export type PaintedShotRendererOptions = { readonly brushOf: PaintingBrushOf; readonly costs?: StampPaintCostTally };
@@ -139,16 +147,39 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
     // A variant is a finished picture laid whole: it lies still at each exposure's moment. It shares its plane's id.
     const variantOf = new Map(shot.instanced.flatMap((plane) => [...plane.variants.values()].map((variant) => [variant.painted, variant] as const)));
 
+    /** Where picture plane `id`'s node places its picture within the plane at `m`: picture px to plane px. */
+    const pictureNodeMap = (id: string, m: PaintMoment): PaintSimilarity => {
+      const node = shot.motion.nodes.get(id);
+      if (!node) return PAINT_SIMILARITY_IDENTITY;
+      const pose = shotNodePoseAt(node, m, shot.motion.animationFps, true);
+      if (pose.kind !== 'similarity') throw new Error(`shot: picture plane ${id}'s node bends it (${pose.text}); its node only places it`);
+      return pose.map;
+    };
+
     /** A picture plane's look: its view after its node's placement within it, at the moment and the shutter's ends. */
     const pictureLook = (id: string, look: StampPlaneLook, { at, shutter }: ShotMomentAt): StampPlaneLook => {
-      const node = shot.motion.nodes.get(id);
-      if (!node) return look;
-      const placed = (view: StampPlaneLook['view'], m: PaintMoment) => {
-        const pose = shotNodePoseAt(node, m, shot.motion.animationFps, true);
-        if (pose.kind !== 'similarity') throw new Error(`shot: picture plane ${id}'s node bends it (${pose.text}); its node only places it`);
-        return paintSimilarityAfter(view, pose.map);
-      };
+      if (!shot.motion.nodes.has(id)) return look;
+      const placed = (view: StampPlaneLook['view'], m: PaintMoment) => paintSimilarityAfter(view, pictureNodeMap(id, m));
       return { ...look, view: placed(look.view, at), shutter: look.shutter && shutter && { open: placed(look.shutter.open, shutter.open), close: placed(look.shutter.close, shutter.close) } };
+    };
+
+    /**
+     * Source plane `id` as painted plane `reader`'s mask reads it at `exposure` of frame `t`: its render's alpha, a
+     * picture's through its node's placement, a three render's through the reader's view; and a key naming both.
+     */
+    const sourceRead = (id: string, reader: string, exposure: ShotExposure, renders: readonly StampSourceRenders[], t: number): ShotSourceRead => {
+      const plane = planeOf.get(id)!, source = sources.get(id), { margin } = stage, planePx: PaintSimilarity = { ma: 1, mb: 0, kx: -margin, ky: -margin };
+      if (plane.kind === 'three' && source?.kind === 'three') {
+        // A three source is posed at its moment: frame t and the exposure name its render.
+        const { texture, at } = source.picture, { view } = exposure.lens.planes.get(reader) ?? STAMP_REST_LOOK;
+        const map = paintSimilarityAfter({ ma: 1, mb: 0, kx: -at.x, ky: -at.y }, paintSimilarityAfter(view, planePx));
+        return { coverage: { view: texture.createView(), channel: 3, extent: { w: texture.width, h: texture.height }, map }, key: shotSourceReadKey({ kind: 'three', t, exposure: stampLensSourceExposureOf(exposure.exposure ?? undefined) }, map) };
+      }
+      if (plane.kind !== 'picture') throw new Error(`shot: ${reader}'s mask reads ${id}, a ${plane.kind} plane, as a source; only a picture or three plane renders one`);
+      const picture = renders[plane.canvas].pictures.get(id) ?? null;
+      if (!picture) return { coverage: null, key: 'nothing' };
+      const { box } = picture, map = paintSimilarityAfter({ ma: 1, mb: 0, kx: margin - box.x, ky: margin - box.y }, paintSimilarityAfter(paintSimilarityInverse(pictureNodeMap(id, exposure.at)), planePx));
+      return { coverage: { view: picture.texture.createView(), channel: 3, extent: { w: box.w, h: box.h }, map }, key: shotSourceReadKey({ kind: 'picture', version: picture.version, box }, map) };
     };
 
     /**
@@ -162,6 +193,8 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
       arena.reset();
       layer.reserve([...moments.values(), ...variantMoments.values()].flatMap(({ shares }) => shares.map(({ frame }) => frame)));
       const encoder = device.createCommandEncoder(), lensFrame = exposure.lens, fast = !exposure.exposure;
+      // Every painted plane laid first, each after those its masks read, whatever canvas or depth it's drawn at.
+      const presented = planes.present(encoder, moments, (id, reader) => sourceRead(id, reader, exposure, renders, t));
       // The exposure's drawables far to near, consecutive items of a variant blurred alike in one step.
       const steps = shotDrawSteps(shotDrawableOrder(shot.written, items.items), (plane, item) => items.lookOf(plane, item).sigma);
       for (const canvas of canvases) {
@@ -179,7 +212,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
           }
           const plane = planeOf.get(step.plane)!, isBack = plane === opaqueBack, look = lookOf(plane.id);
           if (plane.kind === 'painted') {
-            const laid = planes.picture(encoder, canvas.lens, moments.get(plane.id)!, look);
+            const laid = planes.picture(encoder, canvas.lens, presented.get(plane.id)!, look);
             return laid ? [laid] : [];
           }
           const source: StampLaidSourcePlane = plane.kind === 'three' ? { id: plane.id, kind: 'three' } : { id: plane.id, kind: 'picture', extent: plane.source.extent };

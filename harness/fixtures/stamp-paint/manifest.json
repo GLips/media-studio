@@ -207,6 +207,15 @@
       "acceptedOver": "64534e9e",
       "adapter": "apple metal-3"
     },
+    "shot/masks": {
+      "file": "shot/masks.png",
+      "output": "a8e355b04b5ef22ed8ced904b5f7ad35afa49ed9f3d1e35190c676eab748bd72",
+      "inputs": "6d15aaa60c03e7e7444eabc1453caf2f1e3da3e8d4a9587094b659356c3ce83a",
+      "reason": "re-keyed landing over pres-dissolve: a shot baseline's inputs name its evaluations as a list and its strokes and reveals as the row's extra (pres-dissolve's SHOT_BASELINES shape); image compared by eye with the accepted one",
+      "accepted": "2026-10-04",
+      "acceptedOver": "552473fe",
+      "adapter": "apple metal-3"
+    },
     "shot/paper-heron": {
       "file": "shot/paper-heron.png",
       "output": "4d0a6b4c84254efc7f1c019eee7e619786192a4c659fcd671f9936373085f77a",
