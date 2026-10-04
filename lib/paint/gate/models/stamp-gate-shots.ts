@@ -2,8 +2,9 @@
 // neck skinned to its body, its wing a cel moving its own sheet, and reeds owning their sheet, drawn as pieces, also
 // boiling, and dissolving from day to dusk as it's posed; the wet-contact sheet, its heron's foot posed by a rig:
 // painted in as it plays, on sixes over a warmed span, hidden, and dissolving to a sheet of its own over a dissolving
-// back; the heron alone, a clear back over HTML, also pinned (shot/page); and the rain (stamp-gate-rain.ts). Poses
-// and drops are tables by scene second, so a baseline's inputs name them. Its cases' measures are here, pure.
+// back; the heron alone, a clear back over HTML, also pinned (shot/page); the rain (stamp-gate-rain.ts); and the
+// cut-out cards (stamp-gate-cards.ts). Poses and the rain's drops are tables by scene second, so a baseline's inputs
+// name them. What the cases measure of their frames is here, pure.
 
 import { compilePaintingSelection } from '#lib/paint/document/models/painting-document-compile.ts';
 import type { LayerNode, Mix, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
@@ -17,6 +18,7 @@ import { stampCanonicalJson, type StampCanonicalDatum } from '#lib/paint/paintin
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import type { PaintedShotProps, RigPart, RigPartPose, ScreenPin } from '#lib/paint/shot/models/shot-props.ts';
 import { dissolve } from '#lib/paint/shot/models/shot-selection.ts';
+import { STAMP_GATE_CARDS, STAMP_GATE_CARDS_AT, STAMP_GATE_CARDS_LEAF, stampGateCardParts, stampGateCardsShot } from './stamp-gate-cards.ts';
 import {
   STAMP_GATE_HERON_BODY, STAMP_GATE_HERON_MIXES, STAMP_GATE_HERON_MOVE, STAMP_GATE_HERON_VANE, stampGateHeronLayer, stampGateInsidePolygon, stampGateHeronPaper, stampGateHeronPolygon,
   stampGatePaperHeronDocument, type StampGateHeronMixes,
@@ -30,15 +32,15 @@ import { STAMP_GATE_HERON_POSE, STAMP_GATE_SHEET_IMAGES, STAMP_GATE_WET_CONTACT,
 export const STAMP_GATE_SHOT_PAGE_IDS = ['shot/page'] as const;
 
 /** The shots accepted by eye: each a baseline subject, one frame of its shot. */
-export const STAMP_GATE_SHOT_IDS = ['shot/paper-heron', 'shot/wet-contact', 'shot/rain', 'shot/dissolve', 'shot/rigged-dissolve', 'shot/masks', 'shot/rainy-street'] as const;
+export const STAMP_GATE_SHOT_IDS = ['shot/paper-heron', 'shot/wet-contact', 'shot/rain', 'shot/dissolve', 'shot/rigged-dissolve', 'shot/masks', 'shot/rainy-street', 'shot/cards'] as const;
 export type StampGateShotId = (typeof STAMP_GATE_SHOT_IDS)[number];
 
 /**
  * The shot cases checked apart from any sheet case, each a page's checks of its shot's frames: the rain's items, a
- * dissolve drawn between its ends, a rigged one posed between its ends, a span warmed, the masked shot's cuts, and the
- * rainy street's cost report.
+ * dissolve drawn between its ends, a rigged one posed between its ends, a span warmed, the masked shot's cuts, the
+ * rainy street's cost report, and the cards' hidden cel and fading owner.
  */
-export const STAMP_GATE_SHOT_CASE_IDS = ['shot/rain', 'shot/dissolve', 'shot/rigged-dissolve', 'shot/warm', ...STAMP_GATE_SHOT_MASK_IDS, 'shot/rainy-street'] as const;
+export const STAMP_GATE_SHOT_CASE_IDS = ['shot/rain', 'shot/dissolve', 'shot/rigged-dissolve', 'shot/warm', ...STAMP_GATE_SHOT_MASK_IDS, 'shot/rainy-street', 'shot/cards'] as const;
 export type StampGateShotCaseId = (typeof STAMP_GATE_SHOT_CASE_IDS)[number];
 
 /** The fps the gate plays its shots at, as a composition would: a warm span's frames are counted at it. */
@@ -373,6 +375,9 @@ const SHOT_BASELINES: Readonly<Record<StampGateShotId, {
   },
   'shot/rainy-street': {
     shot: stampGateRainyStreetShot, at: STAMP_GATE_RAINY_STREET_AT.baseline, evaluations: stampGateRainyStreetEvaluations, rigs: {}, poses: [], extra: STAMP_GATE_RAINY_STREET_PRESENTATION,
+  },
+  'shot/cards': {
+    shot: stampGateCardsShot, at: STAMP_GATE_CARDS_AT.faded, evaluations: () => [painting(STAMP_GATE_CARDS)], rigs: { figure: stampGateCardParts(true) }, poses: [], extra: { leaf: STAMP_GATE_CARDS_LEAF },
   },
 };
 

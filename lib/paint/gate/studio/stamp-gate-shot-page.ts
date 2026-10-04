@@ -1,11 +1,13 @@
 // stamp-gate-shot-page.ts: the gate page's shots (stamp-gate-shots.ts), drawn by stamp-gate-shot-frames.ts: the
 // rigged heron's grain, pieces and boil (test 6), the wet-contact foot posed by its rig, painted in and hidden (test
 // 7), the rain's drops blurred along their own falls (test 5), a dissolve between two sheets over a dissolving back,
-// the rigged heron posed as it dissolves, a warmed span, and their baselines' frames. The masked shot's cases are stamp-gate-shot-masks-page.ts's, and the rainy
-// street's stamp-gate-rainy-street-page.ts's, handed on.
+// the rigged heron posed as it dissolves, a warmed span, the cut-out cards, and their baselines' frames. The masked
+// shot's cases are stamp-gate-shot-masks-page.ts's, and the rainy street's stamp-gate-rainy-street-page.ts's, handed
+// on.
 
 import type { StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
-import { STAMP_GATE_FRAME_TOLERANCE } from '../models/stamp-gate-frames.ts';
+import { STAMP_GATE_CARDS_AT, stampGateCardsShot } from '../models/stamp-gate-cards.ts';
+import { STAMP_GATE_FRAME_TOLERANCE, stampGateFrameDifference, type StampGateFrameDifference } from '../models/stamp-gate-frames.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { STAMP_GATE_HERON_MOVE, stampGateHighPass, stampGatePeakShift } from '../models/stamp-gate-paper-heron.ts';
 import { STAMP_GATE_LONE_DROP_AT, STAMP_GATE_LONE_DROP_TRAVEL, STAMP_GATE_RAIN, stampGateLoneDropShot, stampGateRainShot } from '../models/stamp-gate-rain.ts';
@@ -232,6 +234,33 @@ async function checkWarm(): Promise<StampGateWashCheck[]> {
   }];
 }
 
+const differenceText = ({ max, mean }: StampGateFrameDifference) => `max ${max}, mean ${mean.toFixed(4)}`;
+
+/**
+ * shot/cards: the collage card's hidden cel takes no paper, the card lying as it does with no such cel painted; the
+ * leaf owning its card fades card and paint as one, halfway between shown and gone in every channel they differ in,
+ * and gone, lying as the cards do painted without it; neither fade solves anything.
+ */
+async function checkCards(): Promise<StampGateWashCheck[]> {
+  const { shown, faded, gone } = STAMP_GATE_CARDS_AT;
+  const { frames: [atShown, atFaded, atGone], costs: taken } = await stampGateShotFrames(stampGateCardsShot(), [shown, faded, gone]);
+  const { frames: [noDown] } = await stampGateShotFrames(stampGateCardsShot({ down: false }), [shown]);
+  const { frames: [noLeaf] } = await stampGateShotFrames(stampGateCardsShot({ leaf: false }), [gone]);
+  const hiddenCel = stampGateFrameDifference(stampGateRgb(atShown), stampGateRgb(noDown)), left = stampGateFrameDifference(stampGateRgb(atGone), stampGateRgb(noLeaf));
+  const fade = stampGateFadeBetween(stampGateRgb(atShown), stampGateRgb(atFaded), stampGateRgb(atGone)), fadeSolves = taken.slice(1).flatMap(solvedText);
+  const tolerance = STAMP_GATE_FRAME_TOLERANCE.max;
+  return [
+    {
+      id: 'shot/cards: hidden cel', passed: hiddenCel.max <= tolerance,
+      detail: `the collage with its lying cel hidden lies ${differenceText(hiddenCel)} from it painted without that cel (${tolerance} allowed)`,
+    },
+    {
+      id: 'shot/cards: owner fade', passed: fade.outside <= tolerance && fade.apart > 0 && fade.between === fade.apart && left.max <= tolerance && !fadeSolves.length,
+      detail: `the leaf faded halfway strays ${fade.outside} levels outside it shown and gone (${tolerance} allowed) and lies between them in ${fade.between} of the ${fade.apart} channels they differ in; gone, it lies ${differenceText(left)} from the cards painted without it; fading solved ${fadeSolves.join(', ') || 'nothing'}`,
+    },
+  ];
+}
+
 /** Shot case `id`'s checks. */
 export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGateWashCheck[]> {
   if (id === 'shot/rain') return checkStampGateRain();
@@ -239,6 +268,7 @@ export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGa
   if (id === 'shot/rigged-dissolve') return checkRiggedDissolve();
   if (id === 'shot/warm') return checkWarm();
   if (id === 'shot/rainy-street') return checkStampGateRainyStreet();
+  if (id === 'shot/cards') return checkCards();
   return checkStampGateShotMasksCase(id);
 }
 

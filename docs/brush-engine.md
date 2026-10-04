@@ -657,7 +657,10 @@ puddle clocked with drops landing in it at their times and a walker on its wet p
 reflection cut to the puddle and fading in; and the rain. Warmed, frames moving only the camera, the rain, `k` or
 visibility evaluate and solve nothing; the lamp's property step re-solves from the first entry the evaluation diff
 says it changes; the walker stepping back to a pose solves nothing; walking, the street's source reads a new moment
-each sixth frame while the walker re-solves every frame. Each shot's frame is a baseline (`shot/`) accepted by eye. `shot/page`
+each sixth frame while the walker re-solves every frame. The cards (`stamp-gate-cards.ts`) hold a collage card whose
+rigged figure hides its lying cel, drawing as the card painted without that cel, and a leaf owning its card faded
+halfway, lying between it shown and gone, and gone, drawing as the cards painted without it, with nothing solved.
+Each shot's frame is a baseline (`shot/`) accepted by eye. `shot/page`
 (`stamp-gate-shot-dom-page.ts`) holds a shot's element on the page, scaled as a player shows it, and reads it through
 the DOM adapter: HTML behind the first canvas or not, a canvas in a wrapper at an identity transform refused; the
 heron alone, a clear back, drawn premultiplied, clear at its corners; then pinned to an element, its paint's centroid
