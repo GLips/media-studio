@@ -1,11 +1,10 @@
 // ─── A gate's scope: the repository it judges, where it mounts, its baseline ──
 //
 // check:arch and lint each judge the one scope `--scope` names; named none, they run each scope there is
-// (gate-every-scope.ts). `public` is the studio's repository, what a clean clone holds;
-// `workspace` is work/, your projects, mounted at `work/` in the studio's path space. Either is read in this
-// process's git environment, a hook's when one runs the gate. Each scope keeps one baseline file holding both
-// tiers' entries (lint/baseline.ts), read from the snapshot the gate judges: under a hook, an edit to it counts once
-// it's staged.
+// (gate-every-scope.ts). `public` is the studio's repository, what a clean clone holds; `workspace` is work/, your
+// projects, mounted at `work/` in the studio's path space. Either is read in this process's git environment, a
+// hook's when one runs the gate. Each scope keeps one baseline file holding both tiers' entries (lint/baseline.ts),
+// read from the snapshot the gate judges: under a hook, an edit to it counts once it's staged.
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';

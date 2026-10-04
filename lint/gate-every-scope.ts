@@ -16,7 +16,7 @@ const SCOPE_NAME: Readonly<Record<GateScope, string>> = { public: 'the studio', 
  * The scopes a run with no `--scope` judges: the studio, and work/ when it's a workspace. A work/ folder with no
  * repository of its own holds nothing a commit could, so it isn't judged, and the run says so.
  */
-export const presentGateScopes = (): GateScope[] => (isStudioWorkspaceRepo() ? ['public', 'workspace'] : ['public']);
+const presentGateScopes = (): GateScope[] => (isStudioWorkspaceRepo() ? ['public', 'workspace'] : ['public']);
 
 /**
  * Runs `script` once per scope present, `--scope` added to `args`, and prints what each judged. Returns whether
