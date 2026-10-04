@@ -15,8 +15,9 @@ diff; `layersOf`, `bracket` and `dissolve`, and the problems a shot's load repor
 every sheet of a document, clocked washes and their prefixes included, each own sheet laid as a cut-out of its paper,
 seen through `studio paint still` and `studio paint check --solve`, each at a scene second with `--at`; posing before
 painting by a similarity (a place, a turn, a scale), the marks mapped and their fields, ragged edges and noise read
-where they were planned; a document that wraps across x, down y or both (`wrap: 'x' | 'y' | 'xy'`); and a layer's film read back through a
-selection's prefix, its coverage or its picture (`paintingFilmCoverage`, `paintingFilmPicture`).
+where they were planned; a document that wraps across x, down y or both (`wrap: 'x' | 'y' | 'xy'`); a layer's or
+group's `reveal`, its finished paint shown over time at the selection's `at` (Time); and a layer's film read back
+through a selection's prefix, its coverage or its picture (`paintingFilmCoverage`, `paintingFilmPicture`).
 
 `<PaintedShot>` and `<PaintedShotCanvas>` draw a shot in a scene: painted, picture and three planes far to near
 under the camera and its lens, on one canvas or several among HTML, a clear back over HTML behind the first; pin and
@@ -24,7 +25,7 @@ cover lays (`shot-placement.ts`), the page read as each frame draws (`shot-dom-p
 their motion (nodes hang from their nearest enclosing node, a paintless group's included, clocks chaining);
 visibility, a group's fading all it holds as one and a card fading with its owner; rigs (Composition), a cel swap
 re-solving nothing; instanced planes, many items sharing a few finished variants, each blurred along its own travel;
-path and `alphaOf` masks; per-plane
+`alphaOf` masks; per-plane
 `clock` and `sourceClock` holds; dissolves and `bracket`, each end solved and laid once and their pictures summed by
 weight, a rig posing every end alike; painted textures, paintings a three plane's objects wear, drawn at each frame's moment (Painted textures);
 `warm`; and the cost report, each frame's and the warm's, in a profiling render. **NEW** marks behaviour the brush
@@ -54,7 +55,7 @@ and the rest) aren't built yet.
 6. Scenes own clocks: they choose property values and sample times, and put finished layers on planes under a camera.
 7. A sheet is one painting: a layer posed (place, pins, sway, flutter, rig) on a sheet it doesn't own is repainted
    into it at each distinct pose, its applications scheduled again where the pose puts them. Everything else a scene
-   does (a plane's lay, the camera, visibility, a cut-out's moves, masks, dissolves) never re-solves paint; a property
+   does (a plane's lay, the camera, visibility, a cut-out's moves, masks, reveals, dissolves) never re-solves paint; a property
    change does, and so does boil `reseed`.
 8. The engine validates the document, solves each sheet's history once per distinct input, resuming from the first
    application that changed, and reports problems by key and path.
@@ -154,8 +155,8 @@ places, and so how many solves, a second, and `warm` solves them before the firs
 ```
 PaintingDocument {widthPx, heightPx, paper, medium, dryingScale?, wrap?, layers}
 └─ layers: LayerNode[]            back to front
-   ├─ LayerGroup {key, sheet?, medium?, children: LayerNode[]}
-   └─ Layer {key, sheet?, medium?, washes: Wash[]}
+   ├─ LayerGroup {key, sheet?, medium?, reveal?, children: LayerNode[]}
+   └─ Layer {key, sheet?, medium?, reveal?, washes: Wash[]}
       └─ Wash {key, clipTo?, prewet?, rim?, clock? | wetHistory: false, applications}
          └─ Application {stroke | stamps | fill and its geometry, brush, diameterPx, seed, charge,
                          key?, on?, at?, effect?, clips?, reserves?, resists?}
@@ -169,6 +170,7 @@ PaintingDocument {widthPx, heightPx, paper, medium, dryingScale?, wrap?, layers}
 | `dryingScale` | `number \| 'instant' \| 'never'` | The root sheet's: scene seconds per model second once a clocked wet wash starts its clock (Time). 1 when left out. An own sheet states its own. |
 | `wrap` | `'x' \| 'y' \| 'xy'` | **NEW**: on every sheet `'x'` meets the left edge to the right, as round a cylinder; `'y'` the top to the bottom; `'xy'` both, a tile (Wrapping). Left out, nothing wraps. |
 | `layers` | `LayerNode[]` | Back to front. |
+| a layer's or group's `reveal` | `Reveal` | **NEW**: where and when its finished paint shows, at the selection's `at`; all of it when `at` is left out (Time: Reveals). |
 | an application's `brush` | `{style, brush}` | A style's own brush name (Reference). The style is spelt `'watercolor'`, the medium `'watercolour'`. |
 | a paint charge's `mix` | `Mix \| Field<Mix>` | `{parts: [{pigment, amount}], strength}`; a pigment is an appearance from `WATERCOLOUR_PIGMENTS` or a hex. |
 
@@ -557,6 +559,52 @@ sheet a crayon node declared is refused: crayon keeps no wet history.
   `on`, so the bloom's label still checks water alone. A bloom rewets its footprint, so a later `damp` landing
   overlapping it waits or fails.
 
+### Reveals: finished paint shown over time
+
+A layer's or group's `reveal` (**NEW**) says where its finished paint shows, and from when: an arrival time for each
+texel, in the scene seconds a selection's `at` counts. At `at`, a texel shows once its arrival has passed, ramping in
+over the reveal's `softS` seconds (0: at once, the front antialiased over a px). Left out, `at` shows every reveal
+whole. A reveal is presentation: scheduling, the water, the solve and its checkpoints never see it, so a reveal edit
+re-solves nothing (the evaluation diff names it `recompose`), and an `at` moving through a reveal re-solves nothing
+but the clocked prefixes it crosses.
+
+- **Strokes**: `{kind: 'strokes', strokes, softS?}`, each stroke `{points, widthPx, from, to, cap?}`: a band `widthPx`
+  wide round `points` (document px, joints round), its front advancing along them by arclength at constant speed,
+  at the first point at `from`, the last at `to`. `cap: 'round'` (left out) reaches half the width past each end and
+  arrives there with the end; `'flat'` stops square at it. Where bands cross, the earliest arrival shows the texel. A
+  texel no band covers never shows. An eased pull is its path cut into pieces, each with its own `from` and `to`.
+- **Field**: `{kind: 'field', base, delay?, softS?}`: each texel arrives at `base` plus `delay`, each a `Field<number>`
+  of scene seconds (constant, linear, radial or noise, Reference; a noise field names its `seed`), wherever paint lies:
+  a flood rising, a moon filling out, a petal's colour coming in blotches.
+- **What it cuts**: a layer's reveal cuts its own film. A group's cuts every film it holds, a nested reveal multiplying
+  in, and the paper of every sheet it owns: an own sheet's card follows its revealed paint, as far as the revealed
+  coverage reaches. Never the root's ground, never a sibling's film: on a shared sheet, what a hidden layer's water
+  did to its neighbours' paint stays. It cuts pigment, before colour: each texel's opacity is taken times its share,
+  so a half-revealed glaze lays as a thinner glaze, over HTML too.
+- **Where it shows**: everything that reads a selection reads its reveals at the selection's `at`: a still
+  (`studio paint still --at`), a plane, a plane over HTML, a painted texture (laid and re-mipped each frame its reveal
+  moves), a rig drawn as pieces. Posed paint carries its reveal: it's read where its marks were painted (a warp by its
+  fitted similarity). A film read back (`paintingFilmCoverage`, `paintingFilmPicture`) is read whole, as painted.
+- **The overlap limit**: a reveal shows *finished* paint. Where applications overlap in one film, the texel shows the
+  finished mixture from its earliest arrival, every later application in it included: ink crossing ink shows the
+  crossing stroke the moment the first band reaches it, and yellow laid over blue can't arrive after the blue. Nor
+  can a reveal show a lift taking paint up, or water moving it. For marks that must arrive in order where they
+  overlap, give each its own layer and reveal; for paint whose arrival changes what it meets, time the applications
+  (`at` on a clocked wash) and show the prefix.
+- **Band widths**: share each path as a TS constant between the application and its reveal, and size the band with
+  `paintingRevealBandPx(application, medium, {wet?, sheetMedia?})` (`#lib/paint/document/models/painting-reveal.ts`):
+  the paint's span (its widest diameter and its wobble), its tip's floor, and in a wet wash (`wet`, true when left
+  out) as far as its water carries paint in its medium or any of `sheetMedia`, the films it lands in. It's
+  conservative: a band that wide never trims the stroke's own fringe. A straight edge needs no band: a linear field
+  across it leaves the film its own fringe (recipe 35).
+- **Held sources step it**: a reveal is part of the sampled painting, so a plane's `sourceClock: {hold: 6}` steps it on
+  sixes with everything else its source reads. For a smooth reveal over stepped properties, leave `sourceClock`
+  unheld, quantise the properties, and pass the continuous `moment.at` (recipe 36).
+- **Cost**: a field is read where it's needed. A strokes reveal's arrivals are drawn once into a map over the box its
+  bands reach (16 bytes a texel), kept in the GPU cache by the reveal, the film it cuts and its resolution; each frame
+  reads it. Thousands of short strokes (a front of discs, each at its own beat) cost once; a map the size of the
+  document costs its memory for as long as it's shown.
+
 ### Cues and painting time
 
 A document's times (`origin`, `at`) are the seconds its selections' `at` counts: scene seconds when a plane passes
@@ -616,7 +664,7 @@ times or its `dryingScale`, which re-solves.
 | marks `boil` (wobble) | warp by a displacement map per epoch | per frame, no solve |
 | marks `boil` with `reseed` | re-placed and repainted | a solve per epoch |
 | `dissolve` `k` | each end's films solved and its picture laid once, kept; the pictures summed by weight | per frame, no solve once both ends are; a rig pose on a shared sheet solves each end at it |
-| a path mask's `revealPx` | mask only | per frame, no solve |
+| a reveal, or the `at` it's read at | the film's cut, recomposed | per frame, no solve; a strokes reveal's arrival map drawn once per film and kept |
 | instance count or poses | draws of shared films | per frame, no solve |
 | a hold | fewer distinct moments | divides all of the above per second |
 
@@ -657,14 +705,17 @@ shows what a property step re-solves; the cost report counts what each frame and
 | 23 | falling rain | an instanced plane: drop variants, `instances(m)` placing each under a lasting key | finished paint moving: no wet interaction; each drop blurs along its own fall |
 | 24 | collage cut-out sliding | the layer with `sheet: {kind: 'own', paper}`; motion on its occurrence | its grain travels with it, as paper does |
 | 25 | paint drifting over still paper | the layer left on its parent's sheet; motion on its occurrence, held | a solve per distinct pose, from its first application on |
-| 26 | handwriting reveal | `masks: [{kind: 'path', subpaths, widthPx: 14, revealPx: (m) => …}]` | `widthPx` is the band's full width; pen-ups add no length; the ground stays; a cut-out's paper follows its masked paint |
+| 26 | ink drawn on the beat | the ink layer's `reveal: {kind: 'strokes', strokes}`, its paths shared with its application, a stroke per beat; plane source `(m) => layersOf(p, keys, {at: m.at})` (below) | the overlap limit: where strokes cross in one film, the crossing shows with the first band; band widths from `paintingRevealBandPx` |
 | 27 | animated property, smooth | `bracket(v, LEVELS)` → `dissolve(layersOf(lower), layersOf(upper), k)` | ghosting where edges move between levels |
 | 28 | one painting, two places | two planes selecting the same evaluation and layers | each is its own occurrence |
-| 29 | a drawing appearing stroke by stroke | a direct wash with `clock: {origin}` and an `at` per application, on any sheet: a direct wash has no say in its drying | or a path mask over the finished drawing |
+| 29 | a drawing appearing stroke by stroke | a direct wash with `clock: {origin}` and an `at` per application, on any sheet: a direct wash has no say in its drying | or a reveal over the finished drawing (recipe 26), which pens each stroke along its length |
 | 30 | an element fading | `visibility: {'plane/layer': (m) => …}` on the shot | a group's visibility fades it as one; a cut-out's owner fades its card with it; on another's card, the paper its paint alone cut goes as it does |
 | 31 | an element passing behind a ridge on shared paper | its applications' `clips: [{region: ABOVE_RIDGE, anchor: 'paper'}]`; motion on its occurrence | the clip stays on the paper while the element moves |
 | 32 | an element mingling with a wet wash as it moves | its layer on the wash's sheet (left out, or `scene` under an own sheet), posed by motion or a rig; its charge timed while the wash is wet (`at`, or `on: 'wet'`), later work `at` once it has set | a solve per pose from its first application; hiding it leaves its water's work in the wash: fade a group holding both |
 | 33 | a figure that bends | its parts as layers (or groups) under one group; `rigs: {'plane/figure': {parts, pose}}` | on an own sheet the paint bends; on shared paper it's repainted per pose, into the sheet's water |
+| 34 | a flood rising, a moon filling, a petal blotching in | a `field` reveal: `linear` up the flood, `radial` out of the moon, `noise` over the petal with a `linear` delay along it (below) | a field covers the whole film: past its ends a linear field holds, and paint outside the moon arrives at `outer` |
+| 35 | a flat underline over HTML | the underline's own-sheet layer pinned to the words, revealed by a `linear` field along its length (below) | a field leaves the film its own fringe, where a band would trim it; its card follows its paint |
+| 36 | a smooth reveal over stepped properties | no `sourceClock`; properties quantised by their `step`; `layersOf(painting(src, {stepped}), keys, {at: m.at})` (below) | held on sixes, the reveal steps with the rest; each stepped value is one solve, the reveal recomposes each frame |
 
 Recipe 27 in full, as a plane of the worked example's scene (imports as there, plus `bracket`, `dissolve` and
 `type PlaneProps` from `#studio`):
@@ -680,6 +731,84 @@ const smoothPlane: PlaneProps = {
     const { lower, upper, k } = bracket(hillTopSmooth(moment.at), LEVELS);
     return dissolve(landscapeAt(lower), landscapeAt(upper), k);
   },
+};
+```
+
+Recipe 26, a skyline inked a stroke a beat from the `ink` cue, each stroke drawn over half a beat. The paths are the
+application's and the reveal's; the band holds all the pen lays:
+
+```ts
+import type { Application, PaintingDocument, Reveal, Subpath } from '#lib/paint/document/models/painting-document.ts';
+import { paintingRevealBandPx } from '#lib/paint/document/models/painting-reveal.ts';
+import { sceneCueSeconds } from '#lib/timing/timeline/models/scene-cue-seconds.ts';
+import { timeline } from '../../timeline.ts';
+
+const CLOCK = timeline.clock('city'), CUE = sceneCueSeconds(CLOCK);
+const SKYLINE: readonly Subpath[] = [/* one path a pen-down, in the order they're inked */];
+const LINES: Application = {
+  key: 'lines', kind: 'stroke', subpaths: SKYLINE, brush: { style: 'watercolor', brush: 'ink' }, diameterPx: 6, seed: 'lines',
+  charge: { kind: 'paint', mix: { parts: [{ pigment: '#0b1024', amount: 1 }], strength: 1 } },
+};
+/** A direct wash: its ink carries no water past its stamps. */
+const BAND = paintingRevealBandPx(LINES, 'watercolour', { wet: false });
+const INKED: Reveal = {
+  kind: 'strokes',
+  strokes: SKYLINE.map((points, i) => ({ points, widthPx: BAND, from: CUE.ink + i * CLOCK.spb, to: CUE.ink + (i + 0.5) * CLOCK.spb })),
+};
+
+export default function ink(): PaintingDocument {
+  return {
+    widthPx: 1920, heightPx: 1080, paper: COTTON, medium: 'watercolour',
+    layers: [{ key: 'ink', reveal: INKED, washes: [{ key: 'pen', wetHistory: false, applications: [LINES] }] }],
+  };
+}
+```
+
+Its plane, the module imported as `ink`, reads each frame's moment: `{id: 'ink', depth: 1, source: (m) =>
+layersOf(painting(ink), ['ink'], {at: m.at})}`.
+Where two of its strokes cross, the crossing shows the moment the first band reaches it, the second stroke's ink
+included: one film can't hold back paint a band already shows. A stroke that must be seen crossing another goes on a
+layer of its own with its own reveal.
+
+Recipe 34, three fields from the `drop` cue: a flood rising from the foot over two seconds, its edge ragged; a moon
+filling out from its centre; a petal's colour coming in blotches, sweeping from its base to its tip:
+
+```ts
+const FLOOD: Reveal = {
+  kind: 'field', softS: 0.25,
+  base: { kind: 'linear', from: { x: 0, y: 1080, value: CUE.drop }, to: { x: 0, y: 400, value: CUE.drop + 2 } },
+  delay: { kind: 'noise', scale: 120, seed: 'flood-edge', a: -0.2, b: 0.2 },
+};
+const MOON: Reveal = { kind: 'field', softS: 0.15, base: { kind: 'radial', center: { x: 1400, y: 260 }, radius: 110, inner: CUE.drop, outer: CUE.drop + 0.6 } };
+const PETAL: Reveal = {
+  kind: 'field', softS: 0.3,
+  base: { kind: 'noise', scale: 14, seed: 'petal', a: CUE.drop, b: CUE.drop + 1.2 },
+  delay: { kind: 'linear', from: { x: 138, y: 0, value: 0 }, to: { x: 194, y: 0, value: 0.8 } },
+};
+```
+
+Recipe 35, an underline under the tagline's words, on a small document pinned by two points to the words' ends
+(Composition), drawn left to right in half a second from the `underline` cue. A band round the stroke would trim the
+bristles' fringe; a linear field along it leaves the film's own edge, and the own sheet's coral card follows the
+paint. Its plane, on a canvas over the HTML, reads `(m) => layersOf(painting(underline), ['underline'], {ground:
+'transparent', at: m.at})`:
+
+```ts
+const UNDERLINED: Reveal = {
+  kind: 'field', base: { kind: 'linear', from: { x: 40, y: 0, value: CUE.underline }, to: { x: 480, y: 0, value: CUE.underline + 0.5 } },
+};
+const layer: Layer = { key: 'underline', sheet: { kind: 'own', paper: CORAL_PAPER }, reveal: UNDERLINED, washes: [UNDERLINE_WASH] };
+```
+
+Recipe 36, the worked example's meadow with a reveal on its cloud layer: the hill still steps by its 10 px `step`,
+a solve a step, while the cloud's reveal moves every frame. The source is unheld, so the reveal reads the frame's
+moment; held on sixes, as the worked example holds it, the reveal would step with the hill:
+
+```ts
+const smoothReveal: PlaneProps = {
+  id: 'meadow',
+  depth: 1,
+  source: (moment) => layersOf(painting(meadow, { hillTopPx: hillTopAt(moment.at) }), ['landscape', 'cloud'], { at: moment.at }),
 };
 ```
 
@@ -719,7 +848,7 @@ plane's paint must cover what the camera shows of it: the camera build reports a
 | pin to HTML | `lay: {kind: 'pin', points: [{sourcePx, element: 'title'}], at?}`, one point or two, on a painted plane; the element is the one inside the `<PaintedShot>` with `data-pin="title"` | one moves the plane; two also scale and turn it. A name, not a ref, so a pinned shot stays a module constant. Each element's centre is measured in frame px as each frame draws, once fonts and layout are settled, and again when a pinned element resizes; the camera's reach check runs there (**NEW**). A frame whose element isn't mounted, or whose name two elements carry, fails. An element moved without a re-render or a resize (a sibling's image loading) is seen at the next frame |
 | cover the frame | `lay: {kind: 'cover', box, at?}`, on a painted plane | centres the box where the frame's centre lies and scales it about its centre, unturned, until it holds the frame's corners, through the shot's own camera at `at` (**NEW**). A rolled camera grows the box to hold its turned frame. Laid once as the shot loads, and checked there as a pin is each frame |
 | hold | plane `clock: {hold: n}` holds its presentation and motion: its lay, visibility and rig poses, and its nodes' plays; `sourceClock: {hold: n}` holds what `source` reads (a callback's prefix, property values and dissolve weights, a picture's `pictureAt`, a three scene's `poseAt`) | each callback reads its clock's held moment, floored to the hold's grid. Both start from the frame's moment; neither holds the other's. The camera still moves through the shutter |
-| masks | `path` (a band `widthPx` wide in all, round ends, `softPx` 0 or a ramp that far inside its edge; `revealPx` 0 shows nothing, `shotPathInkedLength(subpaths)` all of it), `alphaOf` (another drawable's coverage, partial alpha included, where it lies this frame: a plane by id, painted, picture, three or instanced, or a painted plane's occurrence), `invert?` | both **NEW**, on painted planes only. They cut the plane's paint, glow and the own-sheet paper it shapes; the ground stays whole. To leave a layer unmasked, put it on a second plane at the same depth. No mask reads its own plane, through any chain. A path's band lies in document px and moves with the plane's lay, not with a node or rig posed inside it. `alphaOf` reads through both lays: a painted or picture drawable's coverage at the same plane px, the camera's parallax between their depths left out; a three plane's where its render shows it; an instanced plane's items where the camera shows them, sharp and still. A drawable's coverage is cut by its own plane's masks and visibility. A part inside a rig drawn as pieces isn't read apart: read the rig. A reader is laid anew only when what it reads changes: a painted plane's picture, a picture source's new picture, a three render's frame, an instanced plane's items moved, faded or repainted, a drawable's visibility. A dissolving plane's masks cut both ends alike, and reading one reads its ends' coverage blended as its picture is |
+| masks | `alphaOf` (another drawable's coverage, partial alpha included, where it lies this frame: a plane by id, painted, picture, three or instanced, or a painted plane's occurrence), `invert?` | **NEW**, on painted planes only. It cuts the plane's paint, glow and the own-sheet paper it shapes; the ground stays whole. To leave a layer unmasked, put it on a second plane at the same depth. No mask reads its own plane, through any chain. Paint shown over time, along a path or by a field, is the document's to say: a layer's or group's `reveal` (Time). `alphaOf` reads through both lays: a painted or picture drawable's coverage at the same plane px, the camera's parallax between their depths left out; a three plane's where its render shows it; an instanced plane's items where the camera shows them, sharp and still. A drawable's coverage is cut by its own plane's masks and visibility. A part inside a rig drawn as pieces isn't read apart: read the rig. A reader is laid anew only when what it reads changes: a painted plane's picture, a picture source's new picture, a three render's frame, an instanced plane's items moved, faded or repainted, a drawable's visibility. A dissolving plane's masks cut both ends alike, and reading one reads its ends' coverage blended as its picture is |
 | instances | `{kind: 'instanced', depths: {near, far}, variants, instances(m)}` | each item lays its variant as a plane at its depth (`lay` from the variant's document px; clear outside its paint), depth-sorted with every drawable, planes first on ties, all within `depths` and nearer than the back. A variant is solved and laid once, whole and centred on the stage (its document no larger), and every item showing it shares that picture; items lie anywhere through the lens. An item's defocus blurs that picture, and may spread it only as far as the stage leaves round the variant's document: paint a variant on a document tight round its paint. A key is one item's lifetime: the same key at the shutter's two ends blurs the item along its own travel; a key missing at either end draws it as if still on its plane, blurred only by the camera's move; a recycled item takes a new key. An item's `visibility` fades it, the plane's all of them. Items take no motion nodes (**NEW**) |
 | dissolve | `dissolve(a, b, k)`, nestable | blends the two pictures in the plane's own form (the back's opaque colour, a nearer plane's colour and transmittance, premultiplied RGBA on a later canvas), never their pigment; its glow and motion summed alike; its occurrences are both sides', moved alike; every end one document size on one ground; a rig on its plane needs its group cut alike in every end (the same layers in each cel), and each end is posed by the frame's one read of the pose and solved per pose (**NEW**) |
 | three.js | `{kind: 'three', build}`; `paintedTextures: [{id, source, widthPx, heightPx}]` on the shot | the three-layers feature's: posed at each moment (once at 0 as it loads), and may draw offscreen passes (a reflection, a ground) before its scene; it reads painted textures by id (Painted textures) |
@@ -901,6 +1030,12 @@ value}}`, held at its ends past them; `{kind: 'radial', center, radius, inner, o
 px across, reaching nearly both ends. A field of mixes grades each pigment's amount (share × strength): its ends may
 name different pigments in any order, a missing one being 0, and an amount may be 0.
 
+**Reveals** (`Reveal`, scene seconds and document px; Time: Reveals): `{kind: 'strokes', strokes: [{points, widthPx,
+from, to, cap?: 'round' | 'flat'}], softS?}` or `{kind: 'field', base, delay?, softS?}`, `base` and `delay` fields of
+seconds. `paintingRevealBandPx(application, medium, {wet?, sheetMedia?})`
+(`#lib/paint/document/models/painting-reveal.ts`): the px a strokes reveal's band needs to hold all `application` lays
+round the path the two share.
+
 **Hand** (`StampStrokeHand`): `profile`: `'taper'` (light, firm, light), `'pressFlick'` (pressed, then flicked off),
 `'swell'` (thin, full, thin), `'drag'` (steady, lifting over its last fifth), or a curve `(u) => pressure` over the
 application's whole length, gaps included; left out, flat at full pressure, so each point's own pressure shapes the
@@ -996,7 +1131,8 @@ paint check: 0 errors, 0 warnings
 
 `studio paint diff <source> [<edited copy>] [--set name=value,…] [--to name=value,…]` compares two evaluations: the
 source at `--set` against itself at `--set` with `--to` on top, or against an edited copy. It prints the document
-fields that differ (paper colour among them, which re-solves nothing), then each wash in its sheet's order: `same`,
+fields that differ (paper colour among them, which re-solves nothing), each reveal that differs (`ink.reveal.strokes[2].to
+differs: recompose only, nothing solves`), then each wash in its sheet's order: `same`,
 `content` (it changed itself, at the first path that differs), or `upstream` (something earlier on its sheet changed).
 A pigment a later wash brings changes its layer's film, so it reads at the layer's first application
 (`water.slots.palette`). On a wrapped document a change moving a sheet's margin past its power of two (Wrapping)
@@ -1040,11 +1176,11 @@ What the check says today, and what to do:
 | `a.brush.style: names style watercolor, which the project's project.ts doesn't name in styles (it names gouache, crayon)` / `document.paper.grain.image: kyle-watercolor/grains/kyle-paper-pulpy.png isn't among the images the project's bundle serves of watercolor: …` | a brush or paper asset from a style the source's project doesn't declare, or a pack file its style's brushes and paper don't use, which its bundle wouldn't serve | add the style to `project.ts`'s `styles`, or brush with a declared one; name the paper in the style's `style.ts` |
 | `sky-flood.diameterPx: a fill plans its strokes by its brush's measured profile, and gouache's flat is measured from 8 to 512 px, not at 4` / `sky-flood.brush: … and watercolor's wash has no profile to plan with: …` | a fill's diameter outside its brush's measured profile, or a brush with none (also refused as the painting compiles, at every value a scene sets) | a diameter in the range, or a measured brush |
 | `property hillTopPx.value: hillTopPx = 205 is off its step 10` | an unquantised value | quantise in the scene |
+| `ink.reveal.strokes[2].to: 1 s isn't after from, 1 s: a stroke advances from its first point to its last` / `ink.reveal.strokes[0].points: lie on one spot: a stroke needs a length to advance along` / `ink.reveal.strokes[0].widthPx: 0 isn't a finite width above 0` / `sky.reveal.base: its value NaN isn't a finite scene second` | a reveal a frame can't show (`stampRevealProblems`) | finite scene seconds, `from` before `to`, a width above 0, a path two points apart |
 | `document.layers[0]…: meadow isn't pure: two calls differ at layers[0]…` | the factory reads something besides its values | make it pure |
 | `document.wrap: "z" isn't a wrap: 'x' meets the left edge to the right, …` / `document.paper.image: is a photograph on a wrapped document: its opposite edges meet at the seams, …` / `document.paper.grain.scale: is laid at 0.5 on a document wrapping across x: its mirrored tiles fit the width in whole pairs, …` / `document.paper.grain.scale: is laid 960 × 540 px on a document wrapping down y, not the 960 × 960 its 512 × 512 image asks: …` (warnings, the last from `--solve` and `paint still`) | a wrap that isn't `'x'`, `'y'` or `'xy'`; a photograph on a document that wraps; a grain whose scale is far from 1 ÷ 2n on one wrapping across x; a grain whose height, by its image's aspect, is laid far off on one wrapping down y | `'x'`, `'y'`, `'xy'` or none; a photograph that tiles each way it wraps, or grain alone; a grain scale of 0.5, 0.25, …; a smaller scale, or a document whose sides are the image's in a small whole ratio |
 | `back/stem: lies on flower's own sheet: select flower, or all its sheet's layers, on one plane` / `back.source.layers[0]: names hil, which is unknown in meadow` / `back/neck: is selected twice, through heron and neck` / `back.source.k: 1.5 isn't within 0..1` | a plane's source, as the shot's load reports it (`paintedSourceProblems`) | select it whole; fix keys |
-| `meadow.masks[0].drawable: reads rain, whose mask reads meadow/sky` / `front.masks[1].drawable: names rain/drop, but rain's items aren't occurrences: read rain` / `photo.masks: masks cut painted films, and a picture plane has none` / `title.masks[0].widthPx: 0; a band's width is above 0` / `tint.masks[0].drawable: names pond/reed-b, inside pond/reeds, drawn as pieces: read pond/reeds` | a plane's masks, as the shot's load reports them (`shotMaskCheck`, and the shot's rigs and instanced planes) | break the chain; read the plane or the rig; mask a painted plane |
-| `shot: title.masks[0].revealPx: -4 at 0.5 s; a reveal is 0 px or more` | a reveal callback's value below 0, thrown at the frame that reads it | clamp the reveal at 0 |
+| `meadow.masks[0].drawable: reads rain, whose mask reads meadow/sky` / `front.masks[1].drawable: names rain/drop, but rain's items aren't occurrences: read rain` / `photo.masks: masks cut painted films, and a picture plane has none` / `tint.masks[0].drawable: names pond/reed-b, inside pond/reeds, drawn as pieces: read pond/reeds` | a plane's masks, as the shot's load reports them (`shotMaskCheck`, and the shot's rigs and instanced planes) | break the chain; read the plane or the rig; mask a painted plane |
 | `rain.depths.far: 2.5 isn't nearer than the back, street at depth 2` / `rain.variants.drop: paints a 64 × 32 document, and the stage is 52 × 44: a variant is laid whole on the stage` / `rain.motion: is an instanced plane: its items take no nodes; …` / `rain: two items are called a at 2.04 s` / `rain: drop-3-0 at 1.04 s blurs drop 18 px past its document, and the stage leaves it 16: paint drop on a smaller document, or lay the item larger` | an instanced plane at load and its items each frame (`compileShotInstancedPlane`, `shotInstanceProblems`, `shotExposureItems`) | keep items nearer than the back; paint a variant no larger than the stage, its document tight round its paint; lay items by `instances`; one key an item |
 | `label.lay.points: both pin 40, 40: two points set a scale and turn only apart` / `label.lay.points[0].element: isn't mounted: …` / `label.lay.points[0].element: names title, the data-pin of 2 elements in the shot: a pin names one` / `label.lay: plane label's picture must hold what the camera shows of it, … widen the stage's margin` / `photo.lay: is a picture plane, which lies where its source puts it: …` | a pin or cover at load (`shotPlacementProblems`), a cover laid as the shot loads and a pin each frame where it's measured (`shotPinnedPlanes`); a lay on a picture or three plane | pin points apart; mount the element, one with its `data-pin`; keep within the stage's margin; move a picture plane by its node |
 | `meadow/hil.visibility: names no plane or occurrence of this shot` / `rain/drop-3.visibility: fades an item of rain, which isn't an occurrence: …` / `table.visibility: is the back, shown wherever the frame is: fade a nearer plane or its occurrences` / `meadow/sky.visibility: 1.2 at 3 s; visibility is within 0..1` / `shot.warm: 2..1 isn't a span of scene seconds: …` | the shot's `visibility` (`shotVisibilityProblems` and, for the back, `compilePaintedShot` at load; `shotVisibilityProblem` each frame) and `warm` (`shotWarmProblems`) | name an occurrence; fade an item by its own `visibility`; fade a plane nearer than the back |

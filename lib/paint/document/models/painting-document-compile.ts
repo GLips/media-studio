@@ -26,7 +26,7 @@ import { paintingFillBrushProblem } from './painting-styles.ts';
 import { paintingLayersUnder, paintingSheetName, type PaintingSheet, type PaintingTree } from './painting-tree.ts';
 
 /** `medium` with its paint's spread held to `maxSpreadPx` at `diameter`: the medium one application lands by. */
-const paintingCappedMedium = (medium: PaintMedium, maxSpreadPx: number, diameter: number): PaintMedium =>
+export const paintingCappedMedium = (medium: PaintMedium, maxSpreadPx: number, diameter: number): PaintMedium =>
   ({ ...medium, wetting: { ...medium.wetting, spread: Math.min(medium.wetting.spread, maxSpreadPx / diameter) } });
 
 /** A prewet as its wash lays it at its start: its area, water and reserves. */

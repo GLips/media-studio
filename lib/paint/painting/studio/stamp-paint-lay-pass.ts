@@ -13,6 +13,7 @@ import { STAMP_REST_POINT_WGSL, type StampRestMap } from '../models/stamp-rest-m
 import { stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 import { stampPaintTargetWgsl, type StampPaintCompositor } from './stamp-paint-compositor.ts';
 import { dispatchStampCompute, STAMP_WORKGROUP, type StampPaintDevice, type StampPaintImage } from './stamp-paint-gpu.ts';
+import { stampRevealAtWgsl } from './stamp-reveal-pass.ts';
 import type { StampUniformArena } from './stamp-uniform-arena.ts';
 
 const PAPER = gpuUniformLayout('Paper', [['color', 'vec3f'], ['hasImage', 'u32'], ['cover', 'vec2f'], ['lod', 'f32'], ['frame', 'vec2f']]);
@@ -81,16 +82,20 @@ const STAMP_PAINT_BACKING_WORDS = { paper: 0, white: 1, black: 2 } as const sati
 const GROUP_REST_BINDING = 16;
 /** Where a masked group pass binds its mask (r32float over the stage, 1 for all shown), after the rest point. */
 const GROUP_MASK_BINDING = 17;
+/** Where a revealed group pass binds its reveals' cut (r32float over its layer's texels, stamp-reveal-pass.ts), after the mask. */
+const GROUP_REVEAL_BINDING = 18;
 // `masked`: each pixel's opacity is the group's times a shot's presentation mask there, so a mask cuts paint as
-// visibility fades it.
-const groupWgsl = (compositor: StampPaintCompositor, moved: boolean, stage: StampStage, masked: boolean) => {
+// visibility fades it. `revealed`: each texel of the layer is laid at its opacity times its reveals' cut, a moved
+// lay's taps each at their own, so a reveal cuts the finished film before it becomes colour.
+const groupWgsl = (compositor: StampPaintCompositor, moved: boolean, stage: StampStage, masked: boolean, revealed: boolean) => {
   const { layer, painting } = compositor.targets;
   const layerAt = (texel: string) => (layer.kind === 'array' ? `textureLoad(layer, ${texel}, l, 0)` : `textureLoad(layer, ${texel}, 0)`);
   const paintingAt = painting.kind === 'array' ? 'textureLoad(painting, pixel, i)' : 'textureLoad(painting, pixel)';
   const store = (value: string) => (painting.kind === 'array' ? `textureStore(painting, pixel, i, ${value})` : `textureStore(painting, pixel, ${value})`);
   const paintingLayers = painting.kind === 'array' ? painting.layers : 1;
-  const opacity = masked ? /* wgsl */ `
-  let opacity = u.opacity * textureLoad(mask, pixel, 0).r;
+  const cut = !moved && revealed ? ' * revealAt(vec2i(pixel))' : '';
+  const opacity = masked || cut ? /* wgsl */ `
+  let opacity = u.opacity${masked ? ' * textureLoad(mask, pixel, 0).r' : ''}${cut};
   if (opacity <= 0.0) { return; }` : '\n  let opacity = u.opacity;';
   const common = /* wgsl */ `
 ${stampStageWgsl(stage)}
@@ -101,6 +106,7 @@ ${GPU_SRGB_WGSL}
 ${STAMP_LAY_GROUP.wgsl}
 @group(0) @binding(0) var<uniform> u: Group;
 ${masked ? `@group(0) @binding(${GROUP_MASK_BINDING}) var mask: texture_2d<f32>;` : ''}
+${revealed ? stampRevealAtWgsl(GROUP_REVEAL_BINDING) : ''}
 fn groupUnderAt(pixel: vec2u, i: u32) -> vec4f { return ${paintingAt}; }
 fn groupGroundAt(pixel: vec2u) -> vec2f { return stagePoint(vec2i(pixel)); }
 // What a reserve or lift shows where \`paper\` lies under it: that, or the measuring backing.
@@ -147,8 +153,10 @@ ${compositor.group.wgsl}
     let w = select(1.0 - f.x, f.x, corner.x == 1u) * select(1.0 - f.y, f.y, corner.y == 1u);
     if (w == 0.0) { continue; }
     tapTexel = vec2i(base) + STAGE_MARGIN + vec2i(corner);
-    for (var i = 0u; i < ${paintingLayers}u; i++) { tapLaid[i] = groupUnderAt(pixel, i); }
-    layGroup(pixel, u.glaze == 1u, opacity);
+    for (var i = 0u; i < ${paintingLayers}u; i++) { tapLaid[i] = groupUnderAt(pixel, i); }${revealed ? `
+    let tapOpacity = opacity * revealAt(tapTexel);
+    if (tapOpacity > 0.0) { layGroup(pixel, u.glaze == 1u, tapOpacity); }` : `
+    layGroup(pixel, u.glaze == 1u, opacity);`}
     for (var i = 0u; i < ${paintingLayers}u; i++) { blended[i] += w * tapLaid[i]; }
   }
   for (var i = 0u; i < ${paintingLayers}u; i++) { ${store('blended[i]')}; }
@@ -264,14 +272,14 @@ export type StampPaintLayOptions = {
 };
 
 /**
- * A group laid: its film `layer` onto `painting` over `box` (stage texels) at `opacity` (times a shot's `mask` there,
- * r32float over the stage, when given), glazed or not, as group `index` of its compositor; a reserve or lift showing
- * `backing`; through `rest`, a lattice's rest points, when moved, its own paper read where it was painted when
- * `paperFromRest`.
+ * A group laid: its film `layer` onto `painting` over `box` (stage texels) at `opacity`, times a shot's `mask`
+ * (r32float, stage texels) and its reveals' cut `reveal` (r32float, layer texels) when given; glazed or not, as group
+ * `index` of its compositor; a reserve or lift showing `backing`; through `rest` when moved, its own paper read where
+ * it was painted when `paperFromRest`.
  */
 export type StampGroupLay = {
   layer: GPUTextureView; painting: GPUTextureView; index: number; opacity: number; glaze: boolean; box: StampPixelBox; backing: StampPaintBacking;
-  rest: GPUTextureView | null; paperFromRest: boolean; mask?: GPUTextureView | null;
+  rest: GPUTextureView | null; paperFromRest: boolean; mask?: GPUTextureView | null; reveal?: GPUTextureView | null;
 };
 
 /** The lay's passes on `device`, their pipelines made now; each pass's uniform from `arena`. */
@@ -280,11 +288,11 @@ export function createStampPaintLay(device: StampPaintDevice, arena: StampUnifor
   const compute = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }) } });
   const pipelines = { paper: compute(paperWgsl(compositor, stage)) };
   // The still unmasked group pass is made now, as every lay takes it; the others when first asked.
-  const groups = new Map<string, GPUComputePipeline>([['false|false', compute(groupWgsl(compositor, false, stage, false))]]);
-  const groupPipeline = (moved: boolean, masked: boolean) => {
-    const key = `${moved}|${masked}`;
+  const groups = new Map<string, GPUComputePipeline>([['false|false|false', compute(groupWgsl(compositor, false, stage, false, false))]]);
+  const groupPipeline = (moved: boolean, masked: boolean, revealed: boolean) => {
+    const key = `${moved}|${masked}|${revealed}`;
     let made = groups.get(key);
-    if (!made) groups.set(key, (made = compute(groupWgsl(compositor, moved, stage, masked))));
+    if (!made) groups.set(key, (made = compute(groupWgsl(compositor, moved, stage, masked, revealed))));
     return made;
   };
   const cards = new Map<boolean, GPUComputePipeline>();
@@ -334,11 +342,11 @@ export function createStampPaintLay(device: StampPaintDevice, arena: StampUnifor
     },
     /** Lays a group as `lay` says. */
     layGroup(encoder: GPUCommandEncoder, lay: StampGroupLay) {
-      const { box, rest } = lay, mask = lay.mask ?? null;
-      const pipeline = groupPipeline(rest !== null, mask !== null);
-      // The moved pass binds the rest points past the compositor's own bindings, at GROUP_REST_BINDING, and a masked
-      // one its mask after them.
-      const restBinding = rest || mask ? [...Array<null>(GROUP_REST_BINDING - 3 - groupResources.length).fill(null), rest, ...(mask ? [mask] : [])] : [];
+      const { box, rest } = lay, mask = lay.mask ?? null, reveal = lay.reveal ?? null;
+      const pipeline = groupPipeline(rest !== null, mask !== null, reveal !== null);
+      // The moved pass binds the rest points past the compositor's own bindings, at GROUP_REST_BINDING, a masked one
+      // its mask after them and a revealed one its cut after that.
+      const restBinding = rest || mask || reveal ? [...Array<null>(GROUP_REST_BINDING - 3 - groupResources.length).fill(null), rest, mask, reveal] : [];
       dispatchStampCompute(device, encoder, pipeline, [
         arena.slot((views) => {
           const put = gpuUniformWriter(STAMP_LAY_GROUP, views);

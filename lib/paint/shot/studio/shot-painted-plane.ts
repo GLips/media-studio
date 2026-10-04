@@ -14,7 +14,7 @@ import { paintingEvaluationCounts } from '#lib/paint/document/models/painting-so
 import { solvePaintingSheetFilms } from '#lib/paint/document/studio/painting-sheets-solve.ts';
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
-import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
+import { stampWrapPeriods, type StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { stampArrayView } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { stampPlanePictureLayers } from '#lib/paint/painting/studio/stamp-paint-plane-passes.ts';
@@ -262,15 +262,18 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
         const { selection, compiled, films, rigs, restCels, solvedPoses } = share;
         const plan = shotPlaneLayPlan({ shot, plane, selection, compiled, films, solved: solvedPoses, rigs, stage }, moment);
         const pieces = await Promise.all(plan.pieces.map(async (each): Promise<ShotPiecesAt> => {
-          const occurrence = each.rig.occurrence, { skin, pictures: cut } = await rigPictures.pieces({ compiled, films }, restCels.get(occurrence)!, each);
+          const occurrence = each.rig.occurrence, { skin, pictures: cut } = await rigPictures.pieces({ compiled, films, reveals: plan.reveals }, restCels.get(occurrence)!, each);
           const { at, shutter, stretches } = shotPiecesPlaced(each, skin, cut);
           for (const { joint, flips } of stretches) if (flips) costs?.warned(`${occurrence}'s ${joint} joint folds over itself in ${flips} triangle${flips > 1 ? 's' : ''} at ${moment.at.at} s`);
           return { rig: occurrence, pictures: cut, at, shutter };
         }));
-        const { widthPx, heightPx } = selection.painting.document;
+        const { widthPx, heightPx, wrap } = selection.painting.document, periods = stampWrapPeriods({ width: widthPx, height: heightPx }, wrap ?? null);
         return {
           share, plan, pieces,
-          frame: { document: { width: widthPx, height: heightPx }, lays: share.lays, films, steps: plan.steps, ground: plan.ground, fades: plan.fades, masks: plan.masks, reads: plan.reads },
+          frame: {
+            document: { width: widthPx, height: heightPx, periods }, lays: share.lays, films, reveals: plan.reveals, steps: plan.steps, ground: plan.ground, fades: plan.fades,
+            masks: plan.masks, reads: plan.reads,
+          },
         };
       }));
       return { plane, shares: laid, emits: laid.some(({ plan }) => plan.emits), travels: laid.some(({ plan }) => plan.travels), visibility: laid[0].plan.visibility };
@@ -292,7 +295,7 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
       };
       // A plane's masks are its own, alike in every selection's plan.
       const plans = new Map([...moments].map(([id, { plane, shares }]) => [id, {
-        shares: shares.map(({ plan, share }) => ({ key: plan.key, weight: share.weight })), alphaOf: plane.masks.flatMap((mask) => (mask.kind === 'alphaOf' ? [mask.drawable] : [])),
+        shares: shares.map(({ plan, share }) => ({ key: plan.key, weight: share.weight })), alphaOf: plane.masks.map((mask) => mask.drawable),
       }]));
       const keys = shotPresentedKeys(shot.masks.order, plans, (plane, reader) => sourceRead(plane, reader).key);
       const presented = new Map<string, ShotPlanePresented>();

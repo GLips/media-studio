@@ -30,6 +30,7 @@ import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { STAMP_GATE_REGION_IDS } from '../models/stamp-gate-regions.ts';
 import { STAMP_GATE_CONTACT_IDS } from '../models/stamp-gate-contact.ts';
 import { STAMP_GATE_MASK_IDS } from '../models/stamp-gate-masks.ts';
+import { STAMP_GATE_REVEAL_IDS } from '../models/stamp-gate-reveals.ts';
 import { STAMP_GATE_SHEET_IDS, STAMP_GATE_SOLVED_IDS, stampGateSolvedInputs, stampGateSolvedStill } from '../models/stamp-gate-sheets.ts';
 import { STAMP_GATE_SHOT_CASE_IDS, STAMP_GATE_SHOT_IDS, STAMP_GATE_SHOT_PAGE_IDS, stampGateShotBaseline, stampGateShotInputs } from '../models/stamp-gate-shots.ts';
 import {
@@ -117,6 +118,7 @@ const STAMP_GATE_CASES = {
   checkStampGateShotTextureCase: STAMP_GATE_SHOT_TEXTURE_CASE_IDS,
   checkStampGateShotPageCase: STAMP_GATE_SHOT_PAGE_IDS,
   checkStampGateShotCase: STAMP_GATE_SHOT_CASE_IDS,
+  checkStampGateRevealCase: STAMP_GATE_REVEAL_IDS,
 } satisfies Readonly<Record<string, readonly string[]>>;
 
 /** What a run collects: the paintings and family frames (by baseline ID) drawn, and the cases checked, by page function. */

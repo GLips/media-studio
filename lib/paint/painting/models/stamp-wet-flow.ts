@@ -17,18 +17,21 @@ import { STAMP_WET_TRANSPORT_WGSL, stampWetTransportReach } from './stamp-wet-tr
  */
 export const STAMP_LIFT_RUN_BACK_MOST_SIGMA = 16;
 
+/** What a deposit's reach reads of it: what it lays (a lift runs back less) and its diameter, px. */
+export type StampWetCarrier = { readonly action: { readonly kind: CompiledStampDeposit['action']['kind'] }; readonly diameter: number };
+
 /**
  * How far a deposit's paint moves on flooded paper, as a diffusion's sigma in px: its medium's spread of its diameter,
  * reaching about 2 sigma; a lift's run-back a third of that spread, at most STAMP_LIFT_RUN_BACK_MOST_SIGMA. The most it
  * moves: each pair goes by its landing's local scale (its `scale` grid), a flood's narrow parts less.
  */
-export function stampWetFlowSigma(deposit: CompiledStampDeposit, medium: PaintMedium): number {
+export function stampWetFlowSigma(deposit: StampWetCarrier, medium: PaintMedium): number {
   const { spread } = medium.wetting;
   return deposit.action.kind === 'lift' ? Math.min(STAMP_LIFT_RUN_BACK_MOST_SIGMA, (spread * deposit.diameter) / 3) : (spread * deposit.diameter) / 2;
 }
 
 /** How far past its stamps a deposit's flow moves paint in `medium`, px: its transport's reach at its sigma. */
-export const stampWetFlowReach = (deposit: CompiledStampDeposit, medium: PaintMedium) => stampWetTransportReach(stampWetFlowSigma(deposit, medium));
+export const stampWetFlowReach = (deposit: StampWetCarrier, medium: PaintMedium) => stampWetTransportReach(stampWetFlowSigma(deposit, medium));
 
 /** The flow's laws, per pixel pair and pass; the stage reads potentials and the transport's ways and runs them. */
 export const STAMP_WET_FLOW_WGSL = /* wgsl */ `${STAMP_WET_LIFT_WGSL}

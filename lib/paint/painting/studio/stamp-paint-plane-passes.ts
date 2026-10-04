@@ -10,6 +10,7 @@
 import type { StampStage } from '../models/stamp-stage.ts';
 import { stampStageWgsl } from '../models/stamp-stage.ts';
 import { type StampPaintCompositor, type StampPaintTarget } from './stamp-paint-compositor.ts';
+import { stampRevealAtWgsl } from './stamp-reveal-pass.ts';
 import { gpuUniformLayout } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 
@@ -27,16 +28,20 @@ export type StampLaidGroupCover = 'group' | 'moved group';
 
 const targetType = (target: StampPaintTarget) => (target.kind === 'array' ? 'texture_2d_array<f32>' : 'texture_2d<f32>');
 
+/** Where a laid group's cover binds its reveals' cut, past its rest map. */
+const STAMP_LAID_COVER_REVEAL_BINDING = 5;
+
 /**
  * `coverAt(pixel)`, a laid group's cover as `glaze` (WGSL) says it's composited: its layer bound at 3 and, for a moved
- * group, its rest map at 4, its cover then read bilinearly at the rest point its lattice shows. A glow and a shot's
- * coverage for alphaOf masks read it alike.
+ * group, its rest map at 4, read bilinearly at the rest point its lattice shows. `revealed`: each layer texel's cover
+ * times its reveals' cut, bound at 5. A glow and a shot's alphaOf coverage read it alike.
  */
-export function stampLaidCoverWgsl(compositor: StampPaintCompositor, cover: StampLaidGroupCover, noRest: number, glaze: string) {
+export function stampLaidCoverWgsl(compositor: StampPaintCompositor, cover: StampLaidGroupCover, noRest: number, glaze: string, revealed = false) {
   const { layer } = compositor.targets;
   const firstLayer = (texel: string) => (layer.kind === 'array' ? `textureLoad(source, ${texel}, 0u, 0)` : `textureLoad(source, ${texel}, 0)`);
+  const cut = (texel: string) => (revealed ? ` * revealAt(${texel})` : '');
   // A rest map's value where no lattice covers a pixel: STAMP_NO_REST, halved as the group pass tests it.
-  const coverAt = cover === 'group' ? `fn coverAt(pixel: vec2u) -> f32 { return groupCover(${firstLayer('pixel')}, ${glaze}); }` : /* wgsl */ `
+  const coverAt = cover === 'group' ? `fn coverAt(pixel: vec2u) -> f32 { return groupCover(${firstLayer('pixel')}, ${glaze})${cut('vec2i(pixel)')}; }` : /* wgsl */ `
 @group(0) @binding(4) var rest: texture_2d<f32>;
 fn coverAt(pixel: vec2u) -> f32 {
   let q = textureLoad(rest, pixel, 0).xy - 0.5;
@@ -49,21 +54,22 @@ fn coverAt(pixel: vec2u) -> f32 {
     let w = select(1.0 - f.x, f.x, corner.x == 1u) * select(1.0 - f.y, f.y, corner.y == 1u);
     let tap = vec2i(base) + STAGE_MARGIN + vec2i(corner);
     if (w == 0.0 || any(tap < vec2i(0)) || any(tap >= vec2i(textureDimensions(source)))) { continue; }
-    covered += w * groupCover(${firstLayer('vec2u(tap)')}, ${glaze});
+    covered += w * groupCover(${firstLayer('vec2u(tap)')}, ${glaze})${cut('tap')};
   }
   return covered;
 }`;
   return /* wgsl */ `
 @group(0) @binding(3) var source: ${targetType(layer)};
+${revealed ? stampRevealAtWgsl(STAMP_LAID_COVER_REVEAL_BINDING) : ''}
 ${compositor.group.cover}
 ${coverAt}`;
 }
 
 /**
  * The glow source pass's WGSL for `compositor` on `stage`: binds its uniform (0), the painting (1), the plane's
- * emission, added to (2), and the group's cover (stampLaidCoverWgsl).
+ * emission, added to (2), and the group's cover (stampLaidCoverWgsl), cut by its reveals when `revealed`.
  */
-export function stampGlowSourceWgsl(compositor: StampPaintCompositor, cover: StampLaidGroupCover, stage: StampStage, noRest: number, workgroup: number) {
+export function stampGlowSourceWgsl(compositor: StampPaintCompositor, cover: StampLaidGroupCover, stage: StampStage, noRest: number, workgroup: number, revealed = false) {
   return /* wgsl */ `
 ${stampStageWgsl(stage)}
 ${GPU_SRGB_WGSL}
@@ -72,7 +78,7 @@ ${STAMP_GLOW_SOURCE.wgsl}
 @group(0) @binding(1) var painting: ${targetType(compositor.targets.painting)};
 @group(0) @binding(2) var emission: texture_storage_2d<rgba16float, read_write>;
 ${compositor.output}
-${stampLaidCoverWgsl(compositor, cover, noRest, 'u.glaze == 1u')}
+${stampLaidCoverWgsl(compositor, cover, noRest, 'u.glaze == 1u', revealed)}
 @compute @workgroup_size(${workgroup}, ${workgroup}) fn glowSource(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
   let pixel = u.origin + id.xy;

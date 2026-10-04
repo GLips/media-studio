@@ -370,8 +370,8 @@ const SHOT_BASELINES: Readonly<Record<StampGateShotId, {
     rigs: { heron: HERON_PARTS, reeds: REED_PARTS }, poses: RIGGED_DISSOLVE_POSES, extra: { ks: RIGGED_DISSOLVE_KS },
   },
   'shot/masks': {
-    shot: () => stampGateMaskedShot(STAMP_GATE_MASKS_BASELINE.shown), at: STAMP_GATE_MASKS_BASELINE.at, evaluations: () => [painting(STAMP_GATE_TINTED_HERON)], rigs: {}, poses: [],
-    extra: STAMP_GATE_MASKS_PRESENTATION,
+    shot: () => stampGateMaskedShot(STAMP_GATE_MASKS_BASELINE.shown), at: STAMP_GATE_MASKS_BASELINE.at, evaluations: () => [painting(STAMP_GATE_TINTED_HERON), painting(STAMP_GATE_TINTED_HERON, { revealed: true })],
+    rigs: {}, poses: [], extra: STAMP_GATE_MASKS_PRESENTATION,
   },
   'shot/rainy-street': {
     shot: stampGateRainyStreetShot, at: STAMP_GATE_RAINY_STREET_AT.baseline, evaluations: stampGateRainyStreetEvaluations, rigs: {}, poses: [], extra: STAMP_GATE_RAINY_STREET_PRESENTATION,

@@ -1,53 +1,24 @@
 // stamp-gate-shot-masks-page.ts: the gate page's masked shot (stamp-gate-shot-masks.ts), drawn through the shot's
-// renderer (stamp-gate-shot-frames.ts): a path mask revealing the heron along its strokes, and alphaOf masks cutting a
-// tint to the heron's wing, to all but it, to a disc moving across, a picture or a three plane, to the heron revealed
-// over frames and faded, and to the disc faded, held and instanced.
+// renderer (stamp-gate-shot-frames.ts): alphaOf masks cutting a tint to the heron's wing, to all but it, to a disc
+// moving across, a picture or a three plane, to the heron revealed by its document over frames and faded, and to the
+// disc faded, held and instanced.
 
 import { CircleGeometry, Mesh, MeshBasicNodeMaterial, Scene } from 'three/webgpu';
 import type { ThreeSource } from '#lib/paint/shot/models/shot-props.ts';
 import { stampGateFrameDifference, stampGateFrameDifferenceText as differenceText, stampGateFramePasses } from '../models/stamp-gate-frames.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import {
-  STAMP_GATE_MASKS_AT, STAMP_GATE_MASKS_DISC, STAMP_GATE_MASKS_WING, stampGateLaidShare, stampGateMaskDiscBox, stampGateMaskDiscCentre, stampGateMaskedShot, stampGateNearDiscCentre, stampGateRevealSplit,
+  STAMP_GATE_MASKS_AT, STAMP_GATE_MASKS_DISC, STAMP_GATE_MASKS_WING, stampGateLaidShare, stampGateMaskDiscBox, stampGateMaskDiscCentre, stampGateMaskedShot, stampGateNearDiscCentre,
   stampGateTintSplit, stampGateWellInsideVane,
   type StampGateMaskedShot, type StampGateShotMaskId,
 } from '../models/stamp-gate-shot-masks.ts';
 import { stampGateRgb } from './stamp-gate-page-surface.ts';
-import { stampGateShotFrames, stampGateSolvedText } from './stamp-gate-shot-frames.ts';
+import { stampGateShotFrames } from './stamp-gate-shot-frames.ts';
 
 /** The masked shot as `shown` says, drawn at scene seconds `times`: each frame's RGB bytes, and its costs. */
 async function maskedFrames(shown: StampGateMaskedShot, times: readonly number[]) {
   const { frames, costs } = await stampGateShotFrames(stampGateMaskedShot(shown), times);
   return { frames: frames.map(stampGateRgb), costs };
-}
-
-/**
- * The path mask: revealing nothing it draws as the heron hidden, revealing all as unmasked; part revealed, it shows
- * the whole reveal well inside its band and nothing past it, card and film alike, re-solving nothing. A path mask on
- * the back cuts its paint, never its paper.
- */
-async function checkPath(): Promise<StampGateWashCheck[]> {
-  const { none, part, whole } = STAMP_GATE_MASKS_AT, { width } = stampGateMaskedShot({ heron: 'revealed', tint: 'none' }).camera.stage.frame;
-  const revealed = await maskedFrames({ heron: 'revealed', tint: 'none' }, [none, part, whole]), [atNone, atPart, atWhole] = revealed.frames;
-  const [[hidden], [unmasked], [cut], [faded]] = await Promise.all(([
-    { heron: 'hidden', tint: 'none' }, { heron: 'unmasked', tint: 'none' }, { heron: 'none', tint: 'none', pond: 'cut' }, { heron: 'none', tint: 'none', pond: 'faded' },
-  ] as const).map(async (shown) => (await maskedFrames(shown, [none])).frames));
-  const asHidden = stampGateFrameDifference(atNone, hidden), asUnmasked = stampGateFrameDifference(atWhole, unmasked), ground = stampGateFrameDifference(cut, faded);
-  const split = stampGateRevealSplit(atPart, atNone, atWhole, width), solves = revealed.costs.slice(1).flatMap(stampGateSolvedText), warnings = revealed.costs.flatMap((each) => each.warnings);
-  return [
-    {
-      id: 'shot/masks: path ends', passed: stampGateFramePasses(asHidden) && stampGateFramePasses(asUnmasked),
-      detail: `revealing nothing, the heron is drawn as hidden (${differenceText(asHidden)}); revealing past its strokes' length, as unmasked (${differenceText(asUnmasked)})`,
-    },
-    {
-      id: 'shot/masks: path band', passed: split.shown > 0 && split.inside === 0 && split.outside === 0 && !solves.length && !warnings.length,
-      detail: `part revealed, it changed ${split.shown} texels from nothing revealed; ${split.inside} well inside its band differ from the whole reveal, ${split.outside} past it from none (0 wanted); its reveals solved ${solves.join(', ') || 'nothing'}${warnings.length ? `; warned: ${warnings.join('; ')}` : ''}`,
-    },
-    {
-      id: 'shot/masks: path on the back', passed: stampGateFramePasses(ground),
-      detail: `the pond's water cut by a mask revealing nothing is drawn as the water hidden, its paper showing (${differenceText(ground)})`,
-    },
-  ];
 }
 
 /** The disc as a three plane: a flat grey disc on its plane, where stampGateMaskDiscCentre puts it. */
@@ -122,9 +93,9 @@ async function checkAlphaOf(): Promise<StampGateWashCheck[]> {
 const KEPT_TIMES = [STAMP_GATE_MASKS_AT.none, STAMP_GATE_MASKS_AT.part, STAMP_GATE_MASKS_AT.whole, STAMP_GATE_MASKS_AT.whole + 1] as const;
 
 /**
- * A painted plane reading another: the tint cut to the revealing heron's wing draws each frame of one renderer as
- * drawn alone, laying nothing anew once both hold. Cut to the heron faded to half, or dissolving halfway to water
- * elsewhere, it reads half the coverage, cutting its opacity: a glaze's light is concave in opacity, laying over half.
+ * A painted plane reading another: the tint cut to the wing of the heron its document reveals draws each frame as
+ * drawn alone, laying nothing anew once both hold. Cut to the heron faded to half, or dissolving halfway, it reads
+ * half the coverage, cutting its opacity: a glaze's light is concave in opacity, laying over half.
  */
 async function checkAlphaOfPainted(): Promise<StampGateWashCheck[]> {
   const shown = { heron: 'revealed', tint: 'wing' } as const, { width } = stampGateMaskedShot(shown).camera.stage.frame;
@@ -212,7 +183,7 @@ async function checkSources(): Promise<StampGateWashCheck[]> {
 /** Masked shot case `id`'s checks. */
 export async function checkStampGateShotMasksCase(id: StampGateShotMaskId): Promise<StampGateWashCheck[]> {
   const checks: Record<StampGateShotMaskId, () => Promise<StampGateWashCheck[]>> = {
-    'shot/masks: path': checkPath, 'shot/masks: alphaOf': checkAlphaOf, 'shot/masks: alphaOf painted': checkAlphaOfPainted, 'shot/masks: sources': checkSources,
+    'shot/masks: alphaOf': checkAlphaOf, 'shot/masks: alphaOf painted': checkAlphaOfPainted, 'shot/masks: sources': checkSources,
   };
   return checks[id]();
 }

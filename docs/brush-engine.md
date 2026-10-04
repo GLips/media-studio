@@ -170,7 +170,15 @@ nested sheet lies on its parent's card and a scene layer under the owner glazes 
 own compositor and lay, so one device holds several papers; a sheet its owner's chain poses lays through a rest
 texture, films and edge sampled at the rest point (`drawPlacedRest`, by the map's words and its inverse's,
 `StampSheetPlace`), so its grain moves with it. The edge is the films' union, cached under their keys (producer
-`edge`). `stamp-film-readback.ts` reads a solved film back for a rig and its tools (ENGINE 5.1): its coverage,
+`edge`). A film a reveal cuts (a document's `reveal`, `stamp-reveal.ts`) is laid through `studio/stamp-reveal-pass.ts`:
+an r32float cut over the layer target, each texel's share shown at the selection's time, which the lay takes into
+its opacity before compositing (pigment, before colour) and the card's union takes into that film's coverage, so the
+paper follows the revealed paint. A strokes reveal's arrivals (first arrival and its cover, the first at full cover,
+seconds per px) are drawn once into an rgba32float map over the box its bands reach, from tile lists of segments, and
+kept under producer `arrival` by the reveal, its mapping, wrap and resolution; a field's are read where they're needed.
+The cuts multiply, a group's over its descendants', and each is read where its node's marks were solved: posed paint
+carries its reveal (a warp by its fitted similarity). The root's ground is never cut; the solve, its checkpoints and
+the water never see a reveal, so the evaluation diff names a reveal edit `recompose`. `stamp-film-readback.ts` reads a solved film back for a rig and its tools (ENGINE 5.1): its coverage,
 document-sized, or its picture, premultiplied linear, laid clear or on its sheet's paper and edge (the root's paper
 over the document, an own sheet's card over its union, as its program's `edge` says). A clear picture is laid over
 white and over black and read as the two-point reading against each backing's light, so laid back over any ground it
@@ -539,17 +547,17 @@ layer (`studio/shot-instance-passes.ts`): a quad per item, its view, shutter end
 (`lens-compositor.ts`, `platform/gpu/studio/gpu-instance-ring.ts`), its filter then its add before the next. An
 item's travel is its views at the shutter's ends, as a plane's is; its picture's own motion isn't read.
 
-Masks (ENGINE 6.3) are drawn. A path mask's capsules are the first `revealPx` of inked length, pen-ups adding none,
-and the `alphaOf` graph is checked acyclic and sorted so each read plane composites first (`shot-masks.ts`); the
-plan holds each mask at the plane's presentation moment and what other planes read of it (`shot-sheet-lays.ts`), so
-a reveal moves the picture's key and solves nothing. Each exposure lays every painted plane first, in the graph's
-order (`present` in `studio/shot-painted-plane.ts`). `studio/shot-mask-passes.ts` multiplies a plane's masks into
-one r32float factor over the stage: a path's capsules drawn into a band over its document box with max blending,
-laid where the plane's place puts it (not its nodes'); an `alphaOf` read through both lays, plane px to plane px
+Masks (ENGINE 6.3) are drawn. The `alphaOf` graph is checked acyclic and sorted so each read plane composites first
+(`shot-masks.ts`); the plan holds each mask and what other planes read of it (`shot-sheet-lays.ts`), and each film's
+reveals at the selection's time, read under the poses its marks were solved by, so a moving reveal moves the
+picture's key and solves nothing. Each exposure lays every painted plane first, in the graph's order (`present` in
+`studio/shot-painted-plane.ts`). `studio/shot-mask-passes.ts` multiplies a plane's masks into one r32float factor
+over the stage: an `alphaOf` read through both lays, plane px to plane px
 (a three render through the reader's camera view; an instanced plane's items drawn still and sharp through the
 camera into a frame-sized target by `LensCompositor.cover`, when a lay first asks, and read through the reader's
 view), a source's weighed by its visibility, which its render leaves out. The lay takes it into each film's opacity, each card's cover
-and each pieces picture, and scales the glow after; the ground is never cut. While a plane is laid on white, the
+and each pieces picture, and scales the glow after; the ground is never cut. A film's reveals cut it in its layer
+target before it's laid (`stamp-reveal-pass.ts`), its glow and the coverage it gathers for readers alike. While a plane is laid on white, the
 coverage of each drawable another plane reads gathers alongside (film, card, pieces, ground), a channel each, four
 to a layer of one array, mixed by a fading group's span like the paint; the picture keeps it, faded by the plane's
 visibility, in layers after the lens's (`coverage` in `stampPlanePictureLayers`), so whatever sums pictures sums
@@ -645,11 +653,9 @@ ends; the
 foot painting in on sixes, its plane on threes flipping its pose, over a warmed span, the frames its warm skipped as
 pairing their clocks' moments alike then solving nothing; and rain (`stamp-gate-rain.ts`) falling about a post under a still camera, a lone drop out of
 focus spreading alike on every side, blurring along its own fall and drawn as if shut when keyed anew across the
-shutter, a frame moving only drops solving nothing and laying no picture anew. The masked shot (`stamp-gate-shot-masks.ts`) reveals the paper heron along two strokes,
-nothing revealed drawing as hidden, all as unmasked, and part matching the whole well inside its band and nothing
-past it, with nothing solved; cuts the pond's paint but not its paper; and cuts a tint to the heron's wing, to all
-but it, and to a disc moving across as a picture plane and as a three plane under a panned camera. Cut to the
-revealing heron's wing frame after frame, each frame draws as it does alone and a held frame lays nothing anew; cut
+shutter, a frame moving only drops solving nothing and laying no picture anew. The masked shot (`stamp-gate-shot-masks.ts`) shows the paper heron part revealed by its document's reveal (`shot/masks`),
+and cuts a tint to the heron's wing, to all but it, and to a disc moving across as a picture plane and as a three
+plane under a panned camera. Cut to the revealing heron's wing frame after frame, each frame draws as it does alone and a held frame lays nothing anew; cut
 to the heron faded to half, it tints the wing about half as much, and just as much cut to the heron dissolving
 halfway to water lying elsewhere. A picture disc at half visibility lays half of itself and cuts the tint at half its
 coverage; a three disc hidden draws and cuts as none; a disc held on sixes keeps still, its tint with it, within a
@@ -688,8 +694,18 @@ the 4 s frame changes the cylinder and nothing else, and warmed over 2..4 s neit
 `shot/far-cylinder`: the wrapped tile finished as the back and worn at its size round a small cylinder whose uv run
 4 times round and twice up, so a texel is near a quarter of a px at its front and its seams and corner come round;
 four frames in a row at the shot rate, it turning 3° a frame, laid side by side. Accepted by eye, enlarged: steady
-from frame to frame and seamless, where the same frames without the chain sparkle and break its bands. Frame
-families (solved sheets, shots, painted textures) are rows of `STAMP_GATE_FRAME_FAMILIES` in `stamp-gate.ts`: IDs,
+from frame to frame and seamless, where the same frames without the chain sparkle and break its bands.
+
+The reveal cases (`stamp-gate-reveals.ts`, `stamp-gate-reveals-page.ts`) hold a reveal to its CPU twin
+(`stampRevealShownAt`): a texel whose twin shows none, its neighbours too, matches the frame with all hidden, one
+showing all matches the unrevealed frame, on each surface's own frames. `reveal/strokes`: mixed-width strokes, a round
+and a flat cap, a crossing taken by the earlier, an uncovered texel never shown, a soft ramp read along a stroke.
+`reveal/fields`: linear, radial and noise fields with a delay, seeked forward and back to the same frames with
+nothing solved. `reveal/sheets`: a group's reveal intersecting a nested layer's on a heron's own sheet, its card cut
+with its paint and the root's ground never; a hidden foot leaving its water's mark on the shallows. `reveal/surfaces`:
+one painting through a still, a shot, a clear back over HTML and a painted texture, its mips re-laid. `reveal/clock`:
+held on sixes it steps, sampled continuously it moves smoothly, a reveal edit solves nothing, posed paint carries
+it, and a dissolve's ends each show theirs. Frame families (solved sheets, shots, painted textures) are rows of `STAMP_GATE_FRAME_FAMILIES` in `stamp-gate.ts`: IDs,
 page function, frame size and inputs, so a new family is one row. Pre-push runs it on each pushed commit's tree when a
 path it covers changes; no adapter, a timeout
 or a difference refuses the push. Public baselines live in `harness/fixtures/stamp-paint/`, a pack's brushes' in

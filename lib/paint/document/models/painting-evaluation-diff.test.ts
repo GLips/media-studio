@@ -18,16 +18,20 @@ type PondChoices = {
   readonly glazePx?: number; readonly wrap?: boolean;
   /** The reeds in a group owning a sheet of its own; and a mist layer laid before the water. */
   readonly reedBed?: boolean; readonly mist?: boolean;
+  /** When the water's reveal stroke reaches its end, s. */
+  readonly revealTo?: number;
 };
 /** A pool flooded and charged, glazed in a later wash, and reeds in a layer of their own: each variant its own source. */
-const pondSource = ({ chargeKey = 'charge', chargeSeed = 'charge', curve = Math.sqrt, paper = '#f4f2ed', glaze = '#3a4a6b', glazePx = 24, wrap = false, reedBed = false, mist = false }: PondChoices) => painting({
+const pondSource = ({
+  chargeKey = 'charge', chargeSeed = 'charge', curve = Math.sqrt, paper = '#f4f2ed', glaze = '#3a4a6b', glazePx = 24, wrap = false, reedBed = false, mist = false, revealTo = 2,
+}: PondChoices) => painting({
   default: function pond(): PaintingDocument {
     const reeds = { key: 'reeds', washes: [{ key: 'reed-wash', applications: [touch('reeds')] }] };
     return {
       widthPx: 200, heightPx: 120, paper: { color: paper, absorbency: 0.5 }, medium: 'watercolour', ...(wrap && { wrap: 'x' as const }), layers: [
         ...(mist ? [{ key: 'mist', washes: [{ key: 'mist-wash', applications: [touch('mist')] }] }] : []),
         {
-          key: 'water', washes: [
+          key: 'water', reveal: { kind: 'strokes', strokes: [{ points: [{ x: 20, y: 60 }, { x: 180, y: 70 }], widthPx: 40, from: 1, to: revealTo }] }, washes: [
             { key: 'pool', applications: [touch('flood', 'flood'), touch(chargeSeed, chargeKey, curve)] },
             { key: 'pool-glaze', applications: [touch('glaze', undefined, undefined, glaze, glazePx)] },
           ],
@@ -80,4 +84,10 @@ test("on a wrapped sheet, a later wash widening the halo past its power of two r
   const diff = (glazePx: number) => changes(paintingEvaluationDiff(pondSource({ wrap: true }), pondSource({ wrap: true, glazePx }), paintingTestBrushOf));
   assert.deepEqual(diff(25).slice(0, 2), [['pool', { kind: 'same' }], ['pool-glaze', { kind: 'content', path: 'pool-glaze.applications[0].diameterPx' }]]);
   assert.deepEqual(diff(120)[0], ['pool', { kind: 'upstream', from: "the root's sheet" }]);
+});
+
+test('a reveal edit recomposes only: every wash is the same', () => {
+  const diff = paintingEvaluationDiff(pondSource({}), pondSource({ revealTo: 3 }), null);
+  assert.deepEqual([diff.document, diff.recompose], [[], ['water.reveal.strokes[0].to']]);
+  assert.ok(changes(diff).every(([, change]) => typeof change === 'object' && change.kind === 'same'));
 });

@@ -142,16 +142,22 @@ test("a card is cut round what shows, a fading layer's share thinned; an own she
   assert.deepEqual(plan.fades, [{ node: 'sitting', first: 4, last: 4, visibility: 0 }, { node: 'leaf', first: 5, last: 6, visibility: 0.5 }]);
 });
 
-test("a path mask's reveal moves its picture's key, never what it solves; a callback's reveal below 0 is refused at its frame", () => {
-  const props: PaintedShotProps = {
-    camera, planes: [{
-      id: 'front', depth: 1, source: layersOf(pond(false), ['sky', 'heron']),
-      masks: [{ kind: 'path', subpaths: [[{ x: 40, y: 100 }, { x: 200, y: 120 }]], widthPx: 30, revealPx: ({ at }) => 80 * at - 40 }],
-    }],
-  };
-  const [early, late] = [1, 2].map((s) => planAt(props, paintMoment(s)));
+/** The pond revealed: the heron's group by a field arriving left to right, its neck by a stroke of its own as well. */
+const revealedPond = painting({
+  default: function revealedPondDocument(): PaintingDocument {
+    const neck: Layer = { ...layer('neck'), reveal: { kind: 'strokes', strokes: [{ points: [{ x: 40, y: 100 }, { x: 200, y: 120 }], widthPx: 40, from: 1, to: 3 }] } };
+    const heron = { key: 'heron', reveal: { kind: 'field', base: { kind: 'linear', from: { x: 40, y: 0, value: 0 }, to: { x: 200, y: 0, value: 2 } } }, children: [layer('body'), neck] } as const;
+    return { widthPx: 320, heightPx: 240, paper: { color: '#f4f2ed', absorbency: 0.5 }, medium: 'watercolour', layers: [layer('sky'), heron] };
+  },
+});
+
+test("a reveal moves its picture's key, never what it solves, until it's over; a film is cut by its groups' reveals and its own", () => {
+  const plannedAt = (at: number) => planAt({ camera, planes: [{ id: 'front', depth: 1, source: layersOf(revealedPond, ['sky', 'heron'], { at }) }] }, paintMoment(at));
+  const [early, late, over, longOver] = [1, 2, 10, 20].map(plannedAt);
   assert.equal(solvedText(late.solved), solvedText(early.solved));
   assert.notEqual(late.plan.key, early.plan.key);
-  assert.deepEqual(early.plan.masks.map((mask) => mask.kind === 'path' && mask.revealPx), [40]);
-  assert.throws(() => planAt(props, paintMoment(0)), /front\.masks\[0\]\.revealPx: -40 at 0 s; a reveal is 0 px or more/);
+  // Past every reveal's window it shows as it ever will: a later frame lays nothing anew.
+  assert.equal(longOver.plan.key, over.plan.key);
+  const [[sky, body, neck]] = early.plan.reveals;
+  assert.deepEqual([sky, body, neck].map((links) => links.map(({ reveal }) => reveal.kind)), [[], ['field'], ['field', 'strokes']]);
 });

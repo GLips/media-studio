@@ -2,23 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
 import { painting } from '#lib/paint/document/models/painting-source.ts';
-import { shotMaskCheck, shotPathInkedLength, shotPathMaskCapsules, shotPathMaskCover, shotPresentedKeys, type ShotPresentedPlan } from './shot-masks.ts';
+import { shotMaskCheck, shotPresentedKeys, type ShotPresentedPlan } from './shot-masks.ts';
 import { paintedSourceNodeKeys, shotOccurrenceKey } from './shot-occurrences.ts';
 import type { InstancedPlaneProps, PlaneMask, PlaneProps } from './shot-props.ts';
 import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
-
-test('a path mask reveals inked length: a pen-up adds none, a dot shows once reached, the band keeps its width to where the reveal ends', () => {
-  const subpaths = [[{ x: 0, y: 0 }, { x: 10, y: 0 }], [{ x: 100, y: 0 }], [{ x: 20, y: 0 }, { x: 20, y: 10 }, { x: 20, y: 30 }], [{ x: 24, y: 32 }]];
-  const runs = (revealPx: number) => shotPathMaskCapsules(subpaths, revealPx).map(({ a, b }) => `${a.x},${a.y}→${b.x},${b.y}`);
-  assert.equal(shotPathInkedLength(subpaths), 40);
-  assert.deepEqual(runs(0), []);
-  assert.deepEqual(runs(5), ['0,0→5,0']);
-  assert.deepEqual(runs(10), ['0,0→10,0', '100,0→100,0']);
-  assert.deepEqual(runs(15), ['0,0→10,0', '100,0→100,0', '20,0→20,5']);
-  // The whole inked length shows the closing full stop as well.
-  assert.deepEqual(runs(shotPathInkedLength(subpaths)), ['0,0→10,0', '100,0→100,0', '20,0→20,10', '20,10→20,30', '24,32→24,32']);
-  assert.deepEqual([3, 4.5, 5.5].map((distance) => shotPathMaskCover(distance, 10, 1)), [1, 0.5, 0]);
-});
 
 /** A layer of one stroke, keyed `key`. */
 const stroke = (key: string) => ({
@@ -56,23 +43,20 @@ test('an alphaOf reads a plane or an occurrence of its shot, each read plane com
   assert.deepEqual([...graph?.read ?? []], ['front/neck', 'rain', 'photo']);
 });
 
-test('a shot refuses an instanced item, a mask off painted films, a bad path and any chain of reads back to itself', () => {
+test('a shot refuses an instanced item, a mask off painted films and any chain of reads back to itself', () => {
   const planes = [
     plane('front', 2, [reads('rain/drop'), reads('nowhere')], ['heron']),
     rain,
     photo([reads('front')]),
     plane('loop-a', 3, [reads('loop-b')]),
     plane('loop-b', 3, [reads('loop-a/sky')]),
-    plane('self', 3, [reads('self/sky'), { kind: 'path', subpaths: [], widthPx: 0, revealPx: -1 }]),
+    plane('self', 3, [reads('self/sky')]),
   ];
   const { graph, problems } = shotMaskCheck(planes, occurrencesOf(planes));
   assert.deepEqual(problems.map(({ path, message }) => `${path}: ${message}`), [
     "front.masks[0].drawable: names rain/drop, but rain's items aren't occurrences: read rain",
     'front.masks[1].drawable: names nowhere, which is no plane or occurrence of this shot',
     'photo.masks: masks cut painted films, and a picture plane has none',
-    'self.masks[1].subpaths: a path mask needs a subpath',
-    "self.masks[1].widthPx: 0; a band's width is above 0",
-    'self.masks[1].revealPx: -1; a reveal is 0 px or more',
     'loop-a.masks[0].drawable: reads loop-b, whose mask reads loop-a/sky',
     'self.masks[0].drawable: reads self/sky, on self itself',
   ]);

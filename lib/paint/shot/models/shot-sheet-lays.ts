@@ -2,13 +2,13 @@
 // Poses split at each sheet's owner: the owner's node and those enclosing it, then the plane's place, carry the sheet
 // whole; the nodes below it posed its marks before the solve, and a lattice carries the solved paint where they pose
 // it now. Each composite step becomes a lattice (a card over its films as far as each shows, a film over its paint);
-// a sheet drawn as pieces gives way to its pieces at its card. A span faded apart is mixed back by its visibility.
-// Masks lie where the plane does (ENGINE 6.3). The studio draws what shotPlaneLayPlan plans.
+// a sheet drawn as pieces gives way to its pieces at its card. A span faded apart is mixed back by its visibility; a
+// film is cut by its reveals. shotPlaneLayPlan plans and keys a moment.
 
 import { PAINT_SIMILARITY_IDENTITY, paintSimilarityBox, paintSimilarityInverse, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import type { NodeKey } from '#lib/paint/document/models/painting-document.ts';
-import { paintingProblemText } from '#lib/paint/document/models/painting-problem.ts';
 import { paintingNodeSteps, paintingStepNode, type PaintingSelectionCompiled } from '#lib/paint/document/models/painting-document-compile.ts';
+import { paintingFilmReveals, paintingRevealLinks } from '#lib/paint/document/models/painting-reveal.ts';
 import { paintingBoxUnion, paintingNodeBox } from '#lib/paint/document/models/painting-footprint.ts';
 import {
   PAINTING_REST_POSE, paintingPoseAfter, paintingPoseMap, paintingPoseText, paintingSimilarityPose, type PaintingNodePose, type PaintingPoses,
@@ -16,15 +16,15 @@ import {
 import type { LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
 import { paintingSheetInGroup, type PaintingSheet, type PaintingTree } from '#lib/paint/document/models/painting-tree.ts';
 import type { PaintMoment, StampGroupGlow } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import type { StampRevealLink } from '#lib/paint/painting/models/stamp-reveal.ts';
 import { stampBoxGrown, type StampBox } from '#lib/paint/painting/models/stamp-region.ts';
 import type { StampPointBox, StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { PaintRigPicture, PaintRigPiece } from '#lib/paint/rig/models/paint-rig-pieces.ts';
 import type { CompiledPaintedShot, CompiledShotPaintedPlane } from './shot-compile.ts';
-import { shotPlaneLayAt, shotPlaneMomentAt, shotPlanePlaceAt, shotPlanePosesAt, shotRigPosedAt, shotVisibilityAt, type ShotFrameRigs } from './shot-frame-plan.ts';
+import { shotPlaneLayAt, shotPlanePlaceAt, shotPlanePosesAt, shotRigPosedAt, shotVisibilityAt, type ShotFrameRigs } from './shot-frame-plan.ts';
 import { shotFilmLattice, shotPlacedLattice, type ShotLattice, type ShotShutterAt } from './shot-lattice.ts';
-import { shotPathInkedLength, shotPathMaskBox, shotPathMaskCapsules, shotPathRevealProblem, type ShotMaskCapsule } from './shot-masks.ts';
 import { shotOccurrenceKey, shotOccurrencePlane } from './shot-occurrences.ts';
-import { shotPresentationAt, type OccurrenceKey } from './shot-props.ts';
+import type { OccurrenceKey } from './shot-props.ts';
 import { shotNodeShift } from './shot-reach.ts';
 import {
   shotRigHiddenCels, shotRigPieces, shotRigPiecesPlaced, type CompiledShotRig, type ShotRigFound, type ShotRigPosed, type ShotRigSkin, type ShotRigStretch,
@@ -209,20 +209,8 @@ export function shotPiecesPlaced(plan: ShotPiecesPlan, skin: ShotRigSkin, pictur
   return { at: at.pieces, stretches: at.stretches, shutter: plan.shutter && { open: placed(plan.shutter.open).pieces, close: placed(plan.shutter.close).pieces } };
 }
 
-/**
- * A path mask at one moment: how much of its inked length shows (`revealPx`, at most all) as capsules (document px),
- * its band's width and softness, the box its whole band can reach (shotPathMaskBox), and the lattice laying that box
- * where the plane lies. Node poses below the plane don't carry it: it cuts the plane's frame.
- */
-export type ShotPathMaskAt = {
-  readonly kind: 'path'; readonly revealPx: number; readonly capsules: readonly ShotMaskCapsule[]; readonly widthPx: number; readonly softPx: number;
-  readonly box: StampBox; readonly lattice: ShotLattice;
-};
-
 /** An alphaOf mask: the drawable whose laid coverage it reads, and whether it shows where that drawable isn't. */
-export type ShotAlphaOfMaskAt = { readonly kind: 'alphaOf'; readonly drawable: OccurrenceKey; readonly invert: boolean };
-
-export type ShotMaskAt = ShotPathMaskAt | ShotAlphaOfMaskAt;
+export type ShotMaskAt = { readonly kind: 'alphaOf'; readonly drawable: OccurrenceKey; readonly invert: boolean };
 
 /**
  * A drawable of a plane that another plane's alphaOf mask reads: the steps whose lay covers it (its node's; all of
@@ -230,20 +218,9 @@ export type ShotMaskAt = ShotPathMaskAt | ShotAlphaOfMaskAt;
  */
 export type ShotPlaneRead = { readonly drawable: OccurrenceKey; readonly steps: ReadonlySet<number>; readonly ground: boolean };
 
-/**
- * `plane`'s masks at frame moment `at`, read at its presentation's moment, the plane lying at `place`. Throws on a
- * reveal callback's value below 0.
- */
-function shotMasksAt(input: ShotPlaneLayInput, at: PaintMoment, place: PaintingNodePose): ShotMaskAt[] {
-  const { plane, shot } = input, moment = shotPlaneMomentAt(shot.motion, plane.id, at);
-  return plane.masks.map((mask, i): ShotMaskAt => {
-    if (mask.kind === 'alphaOf') return { kind: 'alphaOf', drawable: mask.drawable, invert: mask.invert ?? false };
-    const revealPx = shotPresentationAt(mask.revealPx, moment), problem = shotPathRevealProblem(plane.id, i, revealPx, moment.at);
-    if (problem) throw new Error(`shot: ${paintingProblemText(problem)}`);
-    const box = shotPathMaskBox(mask), shown = Math.min(revealPx, shotPathInkedLength(mask.subpaths));
-    return { kind: 'path', revealPx: shown, capsules: shotPathMaskCapsules(mask.subpaths, shown), widthPx: mask.widthPx, softPx: mask.softPx ?? 0, box, lattice: shotPlacedLattice(box, place, null) };
-  });
-}
+/** `plane`'s masks: the same every moment. */
+const shotMasksOf = ({ plane }: Pick<ShotPlaneLayInput, 'plane'>): ShotMaskAt[] =>
+  plane.masks.map(({ drawable, invert }) => ({ kind: 'alphaOf', drawable, invert: invert ?? false }));
 
 /** What of `input`'s plane the shot's alphaOf masks read: each drawable's steps in its compile, the plane's being all of them. */
 function shotPlaneReads({ shot, plane, compiled }: Pick<ShotPlaneLayInput, 'shot' | 'plane' | 'compiled'>): ShotPlaneRead[] {
@@ -274,14 +251,14 @@ export type ShotPlaneLayInput = {
 };
 
 /**
- * A painted plane at one moment, planned: its steps, its faded spans (outermost first), its ground, its
- * pieces rigs, its masks, what other planes' masks read of it, its visibility, whether it glows and whether anything
- * travels over the shutter. `key` names all the lay reads; what its alphaOf masks read is named per frame
- * (shotPresentedKeys).
+ * A painted plane at one moment, planned: its steps, each film's reveals by sheet (under the poses its marks were
+ * solved by), its faded spans (outermost first), its ground, pieces rigs, masks, what others' masks read of it, its
+ * visibility, whether it glows and whether anything travels over the shutter. `key` names all the lay reads.
  */
 export type ShotPlaneLayPlan = {
   readonly key: string;
   readonly steps: readonly (ShotStepFrame | null)[];
+  readonly reveals: readonly (readonly (readonly StampRevealLink[])[])[];
   readonly fades: readonly ShotFadeSpan[];
   readonly ground: ShotGroundLay;
   readonly pieces: readonly ShotPiecesPlan[];
@@ -369,18 +346,20 @@ export function shotPlaneLayPlan(input: ShotPlaneLayInput, moment: ShotMomentAt)
     }
   }
 
-  const masks = shotMasksAt(input, at, atMoment.place), reads = shotPlaneReads(input);
+  const filmReveals = paintingFilmReveals(compiled), reveals = filmReveals.map((sheet) => sheet.map((film) => paintingRevealLinks(compiled.tree, film, solved, selection.at ?? Infinity)));
+  const masks = shotMasksOf(input), reads = shotPlaneReads(input);
   const visibility = plane.opaqueBack ? 1 : shotVisibilityAt(shot, plane.id, plane.id, at), emits = steps.some((step) => step?.glow && step.opacity > 0);
   const travels = !!shutter && ((ground?.kind === 'placed' && latticeTravels(ground.lattice)) || steps.some((step) => step && step.lay.kind !== 'pieces' && latticeTravels(step.lay.lattice)) || pieces.some((each) => each.travels));
   // All the lay reads: the compile and its films, every pose at the moment and the shutter's ends, how much shows of
-  // what, the ground, the pieces, the masks and the drawables read. The stage is the renderer's, whose own store keeps
-  // the pictures. A path mask's subpaths and band are its plane's, the same all shot.
+  // what, the ground, the pieces, the masks and the drawables read. The stage's own store keeps the pictures. Reveals
+  // are the compile's, so only the time each shows at and where it lies are new.
   const key = JSON.stringify([
     plane.id, plane.opaqueBack, compileId(compiled), films.map((sheet) => sheet.map((film) => film.key)), posesText(solved), planeAtText(atMoment),
+    reveals.map((sheet) => sheet.map((film) => film.map(({ toRest, at: shownAt }) => [toRest, shownAt]))),
     shutterAt && [planeAtText(shutterAt.open), planeAtText(shutterAt.close)], [...hidden], steps.map((step) => step && [step.opacity, step.glow, step.lay.kind === 'card' && step.lay.films]), fades,
     ground && (ground.kind === 'stage' ? 'stage' : ground.box), pieces.map((each) => [
       each.rig.occurrence, each.shown, each.steps, [...each.layers], piecesPoseText(each.at), each.shutter && [piecesPoseText(each.shutter.open), piecesPoseText(each.shutter.close)],
-    ]), masks.map((mask) => (mask.kind === 'path' ? mask.revealPx : [mask.drawable, mask.invert])), reads.map(({ drawable }) => drawable), visibility, emits, travels,
+    ]), masks.map((mask) => [mask.drawable, mask.invert]), reads.map(({ drawable }) => drawable), visibility, emits, travels,
   ]);
-  return { key, steps, fades, ground, pieces, masks, reads, visibility, emits, travels };
+  return { key, steps, reveals, fades, ground, pieces, masks, reads, visibility, emits, travels };
 }

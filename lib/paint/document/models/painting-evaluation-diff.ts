@@ -1,8 +1,9 @@
 // painting-evaluation-diff.ts: what changed between two evaluations of a painting (two property values, or a source
 // before and after an edit), read over each sheet's order as a solve would: the document fields that differ, then
-// each wash `same`, changed in its own `content`, or `upstream` of a change earlier on its sheet. It's how an author
-// learns what a property costs before warming it. It compares documents at rest: posed marks and reseeds aren't in
-// it. A wrapped sheet's halo is in its K₀, so it's compared too, read through the brushes it compiles with.
+// each wash `same`, changed in its own `content`, or `upstream` of a change earlier on its sheet; and the reveals that
+// differ, which only recompose. It's how an author learns what a property costs before warming it. It compares
+// documents at rest: posed marks and reseeds aren't in it. A wrapped sheet's halo is in its K₀, so it's compared too,
+// read through the brushes it compiles with.
 
 import { stampSheetWrapHalo } from '#lib/paint/painting/models/stamp-sheet-wrap.ts';
 import { compilePaintingSelection } from './painting-document-compile.ts';
@@ -22,36 +23,44 @@ export type PaintingWashChange =
 
 /**
  * `document`: the paths outside any wash that differ, first per field (paper colour is here and re-solves nothing).
- * `washes`: the second evaluation's washes in each sheet's order, the root's sheet first.
+ * `washes`: the second evaluation's washes in each sheet's order, the root's sheet first. `recompose`: each node whose
+ * reveal differs, at its first differing path (`ink.reveal.strokes[2].to`): laid anew, solving nothing.
  */
 export type PaintingEvaluationDiff = {
   readonly document: readonly string[];
   readonly washes: readonly { readonly layer: LayerKey; readonly wash: WashKey; readonly change: PaintingWashChange }[];
+  readonly recompose: readonly string[];
 };
 
-/** What a node is outside its washes and keys: what it is, its medium and sheet, and what it holds. */
+/** What a node is outside its washes, reveal and keys: what it is, its medium and sheet, and what it holds. */
 const nodeFrame = (node: LayerNode): PaintingDatum => ({
   kind: isPaintingGroup(node) ? 'group' : 'layer', medium: node.medium, sheet: node.sheet,
   holds: isPaintingGroup(node) ? node.children.length : node.washes.length,
 });
 
-/** The first differing path of each field outside the washes, keys left out: keys never reach a solve. */
-function documentChanges(a: PaintingDocument, b: PaintingDocument): string[] {
-  const changes: string[] = [];
-  const compare = (x: PaintingDatum, y: PaintingDatum, path: string) => {
-    const found = paintingFirstDifference(x, y, path, 'identity');
-    if (found !== null) changes.push(found);
-  };
-  for (const field of ['widthPx', 'heightPx', 'medium', 'paper', 'dryingScale', 'wrap'] as const) compare(a[field], b[field], field);
+/** `x` and `y`'s first differing path under `path`, pushed onto `into` when they differ. */
+function pushFirstDifference(into: string[], x: PaintingDatum, y: PaintingDatum, path: string) {
+  const found = paintingFirstDifference(x, y, path, 'identity');
+  if (found !== null) into.push(found);
+}
+
+/**
+ * The first differing path of each field outside the washes, keys left out (keys never reach a solve); and of each
+ * node's reveal, named by the second's key, which recomposes only.
+ */
+function documentChanges(a: PaintingDocument, b: PaintingDocument): { readonly document: string[]; readonly recompose: string[] } {
+  const changes: string[] = [], recompose: string[] = [];
+  for (const field of ['widthPx', 'heightPx', 'medium', 'paper', 'dryingScale', 'wrap'] as const) pushFirstDifference(changes, a[field], b[field], field);
   const visit = (x: readonly LayerNode[], y: readonly LayerNode[], path: string) => {
     for (let i = 0; i < Math.max(x.length, y.length); i++) {
       const at = `${path}[${i}]`, before = x.at(i), after = y.at(i);
-      compare(before ? nodeFrame(before) : null, after ? nodeFrame(after) : null, at);
+      pushFirstDifference(changes, before ? nodeFrame(before) : null, after ? nodeFrame(after) : null, at);
+      if (before && after) pushFirstDifference(recompose, before.reveal, after.reveal, `${after.key}.reveal`);
       if (before && after && isPaintingGroup(before) && isPaintingGroup(after)) visit(before.children, after.children, `${at}.children`);
     }
   };
   visit(a.layers, b.layers, 'layers');
-  return changes;
+  return { document: changes, recompose };
 }
 
 /** Where `path`, a path within an entry's datum, lies by its owner: `water.slots.palette[1]`, `hill-flood.area…`. */
@@ -109,7 +118,7 @@ export function paintingEvaluationDiff(a: PaintingEvaluation, b: PaintingEvaluat
       return { layer: place.node.key, wash: node.key, change: washChange(content.get(id), upstream.get(id)) };
     });
   });
-  return { document: documentChanges(a.document, b.document), washes };
+  return { ...documentChanges(a.document, b.document), washes };
 }
 
 /** A wash's change as `studio paint diff` prints it. */
@@ -118,7 +127,10 @@ function washChangeText(change: PaintingWashChange): string {
   return change.kind === 'upstream' ? `upstream, after ${change.from}` : 'same';
 }
 
-/** `diff` as `studio paint diff` prints it, a line each: the document's changed fields, then each wash. */
+/** `diff` as `studio paint diff` prints it, a line each: the document's changed fields, each wash, then each reveal. */
 export function paintingEvaluationDiffLines(diff: PaintingEvaluationDiff): string[] {
-  return [...diff.document.map((path) => `document: ${path} differs`), ...diff.washes.map(({ layer, wash, change }) => `${layer}/${wash}: ${washChangeText(change)}`)];
+  return [
+    ...diff.document.map((path) => `document: ${path} differs`), ...diff.washes.map(({ layer, wash, change }) => `${layer}/${wash}: ${washChangeText(change)}`),
+    ...diff.recompose.map((path) => `${path} differs: recompose only, nothing solves`),
+  ];
 }

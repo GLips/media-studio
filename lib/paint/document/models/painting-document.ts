@@ -12,6 +12,7 @@ import type { PaintPigmentAppearance } from '#lib/paint/materials/models/paint-p
 import type { StampFillReach, StampFillStrokes } from '#lib/paint/painting/models/stamp-fill-strokes.ts';
 import type { StampSeededPaintField } from '#lib/paint/painting/models/stamp-paint-field.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import type { StampReveal, StampRevealStroke } from '#lib/paint/painting/models/stamp-reveal.ts';
 import type { StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
 
 // ---- identity ------------------------------------------------------------------------------------------------------
@@ -252,6 +253,23 @@ export type TimedDirectApplication = Deposit<DryPaintCharge | LiftCharge> & { re
 /** Any application a wash may hold, as the checks and the compiler read it. */
 export type AnyApplication = Application | TimedApplication | DirectApplication | TimedDirectApplication;
 
+// ---- reveals -------------------------------------------------------------------------------------------------------
+
+/**
+ * One stroke of a reveal: a band `widthPx` wide round `points` (document px), its front moving along them at constant
+ * speed from scene second `from` to `to`. `cap` `'round'` (left out) reaches half the width past each end; `'flat'`
+ * stops square. Share a path with its application as a TS constant; paintingRevealBandPx gives a width holding it.
+ */
+export type RevealStroke = StampRevealStroke;
+
+/**
+ * Where and when a node's finished paint shows at the selection's `at` (all of it when left out): an arrival time per
+ * texel. `strokes`: the earliest stroke covering it; uncovered never shows. `field`: `base` plus `delay`, in scene
+ * seconds. A texel shows over `softS` seconds once reached. It cuts what's laid, never what's painted: solves, water
+ * and checkpoints are untouched.
+ */
+export type Reveal = StampReveal;
+
 // ---- washes, layers, groups ----------------------------------------------------------------------------------------
 
 /**
@@ -302,6 +320,8 @@ export type Layer = {
   readonly key: LayerKey;
   readonly medium?: MediumName;
   readonly sheet?: Sheet;
+  /** Cuts this layer's film alone: the ground and sibling films stay, with what its water did to them. */
+  readonly reveal?: Reveal;
   readonly washes: readonly Wash[];
   readonly children?: never;
 };
@@ -311,6 +331,11 @@ export type LayerGroup = {
   readonly key: GroupKey;
   readonly medium?: MediumName;
   readonly sheet?: Sheet;
+  /**
+   * Cuts every film under it, multiplying with their own reveals, and the cards of sheets it or a node under it owns
+   * with their paint; never the root's paper.
+   */
+  readonly reveal?: Reveal;
   readonly children: readonly LayerNode[];
   readonly washes?: never;
 };

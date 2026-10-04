@@ -245,7 +245,6 @@ function visibilityPlaneProblems(
 function maskPiecesProblems(planes: readonly CompiledShotPlane[], rigs: ReadonlyMap<OccurrenceKey, CompiledShotRig>): PaintingProblem[] {
   const occurrences = new Map(planes.flatMap((plane) => (plane.kind === 'painted' ? plane.occurrences.map((occurrence) => [occurrence.key, occurrence] as const) : [])));
   return planes.flatMap((plane) => (plane.kind === 'painted' ? plane.masks : []).flatMap((mask, i) => {
-    if (mask.kind !== 'alphaOf') return [];
     const rig = occurrences.get(mask.drawable)?.groups.find((group) => rigs.get(group)?.pieces);
     return rig ? [shotError(plane.id, `masks[${i}].drawable`, `names ${mask.drawable}, inside ${rig}, drawn as pieces: read ${rig}`)] : [];
   }));

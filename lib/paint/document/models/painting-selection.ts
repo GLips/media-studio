@@ -13,8 +13,8 @@ export type SelectionGround = 'paper' | 'transparent';
 
 /**
  * Layers or groups of one evaluation, finished and composed in document order, in document px. The selected layers of
- * one sheet are painted as one history; layers it leaves out aren't painted into it. `at`: the scene second whose
- * scheduled prefix its clocked washes show (every application when left out). An own sheet's layers go together.
+ * one sheet are painted as one history; layers it leaves out aren't painted into it. `at`: the scene second its
+ * clocked washes and its reveals show (all of both when left out). An own sheet's layers go together.
  */
 export type LayerSelection = {
   readonly kind: 'layers';

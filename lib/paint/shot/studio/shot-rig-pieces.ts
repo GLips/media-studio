@@ -9,6 +9,7 @@ import { OrthographicCamera, Scene } from 'three/webgpu';
 import type { NodeKey } from '#lib/paint/document/models/painting-document.ts';
 import { paintingNodeSteps, type PaintingSelectionCompiled } from '#lib/paint/document/models/painting-document-compile.ts';
 import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
+import { stampRevealLinksKey, type StampRevealLink } from '#lib/paint/painting/models/stamp-reveal.ts';
 import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
 import { stampBoxUnion, stampStageTexelsWithin, type StampPointBox, type StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { readStampSheetsPictureKept } from '#lib/paint/painting/studio/stamp-film-readback.ts';
@@ -22,8 +23,13 @@ import { shotRigPiecePictures, shotRigSkin, type CompiledShotRig, type ShotRigKe
 import type { ShotPiecesPlan, ShotRigPiecesAt } from '../models/shot-sheet-lays.ts';
 import type { ShotPiecesDrawn } from './shot-sheets-lay.ts';
 
-/** A selection's films as one solve kept them: each sheet's, in its compiled order. */
-export type ShotSolvedFilms = { readonly compiled: PaintingSelectionCompiled; readonly films: readonly (readonly StampSheetFilmKept[])[] };
+/**
+ * A selection's films as one solve kept them: each sheet's, in its compiled order; and, where they're laid as shown,
+ * each film's reveals (a rest cel is read whole).
+ */
+export type ShotSolvedFilms = {
+  readonly compiled: PaintingSelectionCompiled; readonly films: readonly (readonly StampSheetFilmKept[])[]; readonly reveals?: readonly (readonly (readonly StampRevealLink[])[])[];
+};
 
 /** A rig's cels as the whole selection paints them unposed, each with the key naming its pixels, by document key. */
 export type ShotRigRestCels = ReadonlyMap<NodeKey, ShotRigKeyedPicture>;
@@ -48,11 +54,12 @@ export function createShotRigPictures(owner: StampPaintGpuOwner, costs?: StampPa
   const skins = new WeakMap<PaintRigPicture, Map<string, ShotRigSkin>>(), cuts = new WeakMap<PaintRigPicture, WeakMap<ShotRigSkin, readonly PaintRigPicture[]>>();
   /**
    * `solved`'s steps `steps` read back clear, the sheets unmoved, each sheet holding only the films `keeps` keeps: its
-   * card's edge is made from those, and a step laying another isn't read. Kept under its films' keys and its cards'
-   * papers, which name its pixels.
+   * card's edge is made from those, and a step laying another isn't read. Each film is cut by its reveals. Kept under
+   * its films' keys and reveals and its cards' papers, which name its pixels.
    */
   const readSteps = async (solved: ShotSolvedFilms, steps: readonly number[], keeps: (sheet: number, film: number) => boolean = () => true): Promise<ShotRigKeyedPicture> => {
     const { compiled } = solved, films = solved.films.map((each, s) => each.filter((_, f) => keeps(s, f)));
+    const reveals = solved.films.map((each, s) => each.flatMap((_, f) => (keeps(s, f) ? [solved.reveals?.[s][f] ?? []] : [])));
     // Each film's index among those kept, -1 for one left out.
     const remap = solved.films.map((each, s) => {
       let next = 0;
@@ -60,13 +67,13 @@ export function createShotRigPictures(owner: StampPaintGpuOwner, costs?: StampPa
     });
     const laid = steps.map((index) => compiled.steps[index]).filter((step) => step.kind === 'card' || remap[step.sheet][step.film] >= 0);
     const composite: StampSheetsComposite = {
-      sheets: compiled.sheets.map(({ program }, s) => ({ program, films: films[s], place: null })),
+      sheets: compiled.sheets.map(({ program }, s) => ({ program, films: films[s], place: null, reveals: reveals[s] })),
       steps: laid.map((step) => (step.kind === 'card' ? step : { ...step, film: remap[step.sheet][step.film] })),
     };
     const crop = laid.reduce<StampPointBox | null>((union, step) => stampBoxUnion(union, step.kind === 'card' ? boxOf(films[step.sheet]) : solved.films[step.sheet][step.film].box), null);
     const key = laid.map((step) => {
-      if (step.kind === 'film') return solved.films[step.sheet][step.film].key;
-      return `card ${stampCanonicalJson(compiled.sheets[step.sheet].program.paper)} ${films[step.sheet].map(({ key: film }) => film).join('+')}`;
+      if (step.kind === 'film') return `${solved.films[step.sheet][step.film].key} ${stampRevealLinksKey(solved.reveals?.[step.sheet][step.film] ?? [])}`;
+      return `card ${stampCanonicalJson(compiled.sheets[step.sheet].program.paper)} ${films[step.sheet].map(({ key: film }) => film).join('+')} ${reveals[step.sheet].map(stampRevealLinksKey).join('+')}`;
     }).join('|');
     return { picture: crop ? await readStampSheetsPictureKept(owner, key, composite, crop, 'clear', costs) : EMPTY, key };
   };

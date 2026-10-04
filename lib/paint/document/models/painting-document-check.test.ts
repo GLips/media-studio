@@ -149,6 +149,27 @@ const brokenSources: readonly { readonly name: string; readonly check: () => rea
     check: () => checkPaintingSource(sourceOf(skyFlood({ brush: undefined })), {}, PROJECT_STYLES),
     expect: { severity: 'error', path: 'sky-flood.brush', message: 'a brush is {style, brush}, both named' },
   },
+  ...([
+    ['reaching its end before it starts', { from: 2, to: 1 }, 'strokes[0].to', "1 s isn't after from, 2 s: a stroke advances from its first point to its last"],
+    ['of no width', { widthPx: 0 }, 'strokes[0].widthPx', "0 isn't a finite width above 0"],
+    ['on one spot', { points: [{ x: 50, y: 50 }, { x: 50, y: 50 }] }, 'strokes[0].points', 'lie on one spot: a stroke needs a length to advance along'],
+    ['starting at no time', { from: Number.NaN }, 'strokes[0].from', "NaN isn't a finite scene second"],
+  ] as const).map(([what, revealed, field, message]) => ({
+    name: `a reveal stroke ${what}`,
+    check: () => checkPaintingSource(sourceOf(documentOf([{
+      ...layer('ink', [{ key: 'ink-wash', applications: [stroke('line')] }]),
+      reveal: { kind: 'strokes', strokes: [{ points: [{ x: 20, y: 150 }, { x: 380, y: 150 }], widthPx: 30, from: 0, to: 1, ...revealed }] },
+    }]))),
+    expect: { severity: 'error', path: `ink.reveal.${field}`, message },
+  } as const)),
+  {
+    name: 'a field reveal arriving at no time',
+    check: () => checkPaintingSource(sourceOf(documentOf([{
+      key: 'flood', reveal: { kind: 'field', base: { kind: 'linear', from: { x: 0, y: 0, value: 0 }, to: { x: 0, y: H, value: Number.POSITIVE_INFINITY } } },
+      children: [layer('sky', [{ key: 'sky-wash', applications: [flood({ key: 'sky-flood', water: 0.85 })] }])],
+    }]))),
+    expect: { severity: 'error', path: 'flood.reveal.base', message: "its value Infinity isn't a finite scene second" },
+  },
 ];
 
 test('each broken source is refused with its one exact problem', () => {

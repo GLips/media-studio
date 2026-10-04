@@ -7,9 +7,10 @@
 import { PAINT_MEDIA, paintMediumCan } from '#lib/paint/materials/models/paint-medium.ts';
 import { STAMP_PIGMENT_GROUP_SLOTS } from '#lib/paint/painting/models/stamp-pigment-paint.ts';
 import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
+import { stampRevealProblems } from '#lib/paint/painting/models/stamp-reveal.ts';
 import { STAMP_WRAPS, stampStage, stampStageTile, stampTileRoundWrap, stampWrapsAcross, type StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
 import { checkPaintingApplication, checkPaintingFootprint, type PaintingApplicationSetting } from './painting-application-check.ts';
-import type { AnyApplication, DryingScale, Key, LayerNode, MediumName, PaintingDocument, Paper, Wash } from './painting-document.ts';
+import type { AnyApplication, DryingScale, Key, LayerNode, MediumName, PaintingDocument, Paper, Reveal, Wash } from './painting-document.ts';
 import { paintingBoxUnion, paintingGeometryBox, paintingNodeBox, paintingWashBox } from './painting-footprint.ts';
 import {
   isPaintingHexColor, isPaintingList, isPaintingPositive, isPaintingShare, paintingApplicationOwner, paintingField, paintingProblem, PaintingProblemList, type PaintingProblem,
@@ -194,6 +195,11 @@ function checkWashApplications(list: PaintingProblemList, wash: Wash, { start }:
   });
 }
 
+/** A node's reveal held to what a pass can show: finite times with `from` before `to`, widths above 0, paths with a length, fields of finite seconds. */
+function checkReveal(list: PaintingProblemList, node: LayerNode, reveal: Reveal): void {
+  for (const { field, message } of stampRevealProblems(reveal)) list.error(node.key, paintingField('reveal', field), message, paintingNodeBox(node));
+}
+
 /** A layer's washes in order. */
 function checkLayer(list: PaintingProblemList, layer: PaintingLayerPlace, styles: PaintingStyleCatalogue | undefined): void {
   const { node } = layer, medium = PAINT_MEDIA[layer.medium], times = paintingWashOrderTimes(node);
@@ -253,6 +259,7 @@ export function checkPaintingDocument(paintingDocument: PaintingDocument, styles
     if (node.sheet?.kind === 'own') checkPaper(list, node.key, 'sheet.paper', node.sheet.paper, styles);
     if (node.sheet?.kind === 'own') photographWraps(node.key, 'sheet.paper', node.sheet.paper);
     if (node.sheet?.kind === 'own') checkDryingScale(list, node.key, 'sheet.dryingScale', node.sheet.dryingScale);
+    if (node.reveal !== undefined) checkReveal(list, node, node.reveal);
     if (place.kind === 'group' && place.node.children.length === 0) list.warn(node.key, 'children', 'holds nothing');
     if (place.kind === 'layer') checkLayer(list, place, styles);
   }

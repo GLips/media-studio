@@ -1,17 +1,17 @@
 // shot-painted-textures.ts: a shot's compiled painted textures drawn for its three sources, each a handle
 // loadPaintedThreeSources reads, brought up to a frame's moment by `update`. Each selection a texture's source blends
 // then is solved, laid on its paper at the document's size, resampled to the texture's size and summed by its weight
-// in linear light, so a dissolve blends opaque colour; then gamma-encoded into the handle's first level, as
-// paintedThreeColorNode decodes it, its mip chain below (shot-painted-texture-mips.ts). A warm solves each texture at
-// its frames, laying nothing.
+// in linear light, so a dissolve blends opaque colour; then gamma-encoded into the handle's first level, its mip chain
+// below. A warm solves each texture at its frames, laying nothing.
 //
-// A texture isn't laid again when its source reads what it last did, or its solves keep the films it was last laid
-// from: a timed painting's frames between two landings show one prefix.
+// A texture isn't laid again when its solves keep the films it was last laid from and its reveals show what they last
+// did. A moving reveal lays it, and its mip chain, every frame.
 
 import { compilePaintingSelection, type PaintingSelectionCompiled } from '#lib/paint/document/models/painting-document-compile.ts';
 import { paintingErrors, paintingProblemText } from '#lib/paint/document/models/painting-problem.ts';
 import { solvePaintingSheets, type PaintingSheetsSolved } from '#lib/paint/document/studio/painting-sheets-solve.ts';
 import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import { stampRevealLinksKey } from '#lib/paint/painting/models/stamp-reveal.ts';
 import { stampWrapsAcross, type StampAxis, type StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
 import { stampBindGroup } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
@@ -43,7 +43,7 @@ export type ShotPaintedTextures = PaintedThreeTexturesSupplied & {
 /** One share of a texture's source solved: its compiled selection, its weight, and its sheets' solves, held until released. */
 type ShotTextureShareSolved = { readonly compiled: PaintingSelectionCompiled; readonly weight: number; readonly sheets: PaintingSheetsSolved };
 
-/** What a share's picture was laid from: its compiled selection, its weight, and the key of each of its sheets' films. */
+/** What a share's picture was laid from: its compiled selection, its weight, and the key of each of its sheets' films and their reveals. */
 type ShotTextureShareLaid = { readonly compiled: PaintingSelectionCompiled; readonly weight: number; readonly films: string };
 
 /**
@@ -59,8 +59,10 @@ type ShotPaintedTextureSlot = {
   laid: readonly ShotTextureShareLaid[] | null;
 };
 
-const shotTextureShareLaid = ({ compiled, weight, sheets }: ShotTextureShareSolved): ShotTextureShareLaid =>
-  ({ compiled, weight, films: sheets.solved.map(({ key, finished }) => `${key} ${finished ? 'finished' : 'open'}`).join('|') });
+const shotTextureShareLaid = ({ compiled, weight, sheets }: ShotTextureShareSolved): ShotTextureShareLaid => ({
+  compiled, weight,
+  films: sheets.solved.map(({ key, finished }, s) => `${key} ${finished ? 'finished' : 'open'} ${(sheets.composite.sheets[s].reveals ?? []).map(stampRevealLinksKey).join('|')}`).join('|'),
+});
 
 const sameShotTextureLaid = (a: readonly ShotTextureShareLaid[], b: readonly ShotTextureShareLaid[]) =>
   a.length === b.length && a.every(({ compiled, weight, films }, i) => compiled === b[i].compiled && weight === b[i].weight && films === b[i].films);

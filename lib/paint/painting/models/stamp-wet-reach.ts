@@ -8,10 +8,10 @@
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { CompiledStampDeposit } from './stamp-paint-recipe-compile.ts';
 import { stampBloomReach } from './stamp-wet-bloom.ts';
-import { stampWetFlowReach } from './stamp-wet-flow.ts';
+import { stampWetFlowReach, type StampWetCarrier } from './stamp-wet-flow.ts';
 
 /** How far past its stamps `deposit`, giving `water`, carries paint in `medium`, px: its flow's or its bloom's reach. */
-export const stampWetDepositReach = (deposit: CompiledStampDeposit, medium: PaintMedium, water: number) =>
+export const stampWetDepositReach = (deposit: StampWetCarrier, medium: PaintMedium, water: number) =>
   Math.max(stampWetFlowReach(deposit, medium), stampBloomReach(deposit, medium, water));
 
 /**

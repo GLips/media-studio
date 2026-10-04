@@ -227,11 +227,11 @@
     },
     "shot/masks": {
       "file": "shot/masks.png",
-      "output": "a8e355b04b5ef22ed8ced904b5f7ad35afa49ed9f3d1e35190c676eab748bd72",
-      "inputs": "6d15aaa60c03e7e7444eabc1453caf2f1e3da3e8d4a9587094b659356c3ce83a",
-      "reason": "re-keyed landing over pres-dissolve: a shot baseline's inputs name its evaluations as a list and its strokes and reveals as the row's extra (pres-dissolve's SHOT_BASELINES shape); image compared by eye with the accepted one",
+      "output": "79b0ce1986d14064e271faca70ecdff4aa00644636593b42e2ae50fb885bf547",
+      "inputs": "f9ee91fa4797bcbff286162fde2880994fed6feee8a91a758b2a176d5cae38d7",
+      "reason": "vid-157 reveal: the heron is revealed by its document's reveal (two strokes, a hard front at 100 px a second) in place of the deleted path mask; the baseline frame shows it part revealed at 1.8 s, the front across the wing, its tint cut to what shows",
       "accepted": "2026-10-04",
-      "acceptedOver": "552473fe",
+      "acceptedOver": "78298e97",
       "adapter": "apple metal-3"
     },
     "shot/painted-cylinder": {

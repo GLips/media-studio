@@ -43,13 +43,10 @@ export type OccurrenceKey = string;
 
 /**
  * A presentation mask, painted planes only: it cuts the plane's paint and the own-sheet paper it shapes, never the
- * ground; it re-solves nothing. `path`: paint within a band `widthPx` wide in all (`softPx` ramping inward) round
- * the first `revealPx` of inked length, document px, round-ended; `shotPathInkedLength` shows all. `alphaOf`: a
- * plane's or painted occurrence's coverage as laid, partial alpha too.
+ * ground; it re-solves nothing. `alphaOf`: a plane's or painted occurrence's coverage as laid, partial alpha too. Paint
+ * shown over time along a path is the document's to say: a layer's or group's `reveal`.
  */
-export type PlaneMask =
-  | { readonly kind: 'path'; readonly subpaths: readonly (readonly StampPoint[])[]; readonly widthPx: number; readonly revealPx: PresentationValue<number>; readonly softPx?: number }
-  | { readonly kind: 'alphaOf'; readonly drawable: OccurrenceKey; readonly invert?: boolean };
+export type PlaneMask = { readonly kind: 'alphaOf'; readonly drawable: OccurrenceKey; readonly invert?: boolean };
 
 /**
  * A document point held on the centre of the element inside the PaintedShot whose `data-pin` is `element`. A name,

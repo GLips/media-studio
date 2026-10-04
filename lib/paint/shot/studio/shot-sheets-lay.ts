@@ -2,7 +2,8 @@
 // ground, then each composite step through its lattice (shot-sheet-lays.ts), back to front. A film is copied into a
 // layer target a margin in and laid where its lattice's rest map reads it; a card lays its paper over its films'
 // union, each as far as it shows; a pieces rig's render lays as paint by its alpha (ENGINE 6.5). A faded span is mixed
-// back by shot-span-fade-pass.ts. Masks cut all but the ground.
+// back by shot-span-fade-pass.ts. A film's reveals cut it, its glow and coverage alike, and its card's union. Masks
+// cut all but the ground.
 //
 // Everything lies through rest maps, so the plane's place, its nodes and a frame moment's poses are one path; at rest
 // a lattice is one exact cell.
@@ -11,34 +12,37 @@ import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu
 import { GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 import type { StampPixelBox } from '#lib/paint/painting/models/stamp-blur-region.ts';
 import type { StampGroupGlow } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
-import { stampBoxUnion, stampStageTexelsOf, stampStageTexelsWithin, stampStageWgsl, type StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
+import { stampRevealLinksKey, type StampRevealLink } from '#lib/paint/painting/models/stamp-reveal.ts';
+import { stampBoxUnion, stampStageTexelsOf, stampStageTexelsWithin, stampStageWgsl, type StampStage, type StampWrapPeriods } from '#lib/paint/painting/models/stamp-stage.ts';
 import { createStampLatticePass, STAMP_LATTICE_VERTEX_FLOATS, type StampLatticePass, type StampLatticeSpan } from '#lib/paint/painting/studio/stamp-lattice-pass.ts';
 import { stampPaintTargetWgsl, type StampPaintCompositor, type StampPaintTarget } from '#lib/paint/painting/studio/stamp-paint-compositor.ts';
 import { copyStampTextureBox, dispatchStampCompute, STAMP_WORKGROUP, stampPaintSamplers } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { STAMP_NO_REST, type StampPaintBacking } from '#lib/paint/painting/studio/stamp-paint-lay-pass.ts';
 import { STAMP_GLOW_SOURCE, stampGlowSourceWgsl } from '#lib/paint/painting/studio/stamp-paint-plane-passes.ts';
-import { stampSheetEdge, type StampSheetsLays } from '#lib/paint/painting/studio/stamp-sheet-composite.ts';
+import { createStampRevealPass } from '#lib/paint/painting/studio/stamp-reveal-pass.ts';
+import { stampSheetEdge, type StampSheetEdgeCuts, type StampSheetsLays } from '#lib/paint/painting/studio/stamp-sheet-composite.ts';
 import { keptStampSheetFilm, type StampSheetFilmKept } from '#lib/paint/painting/studio/stamp-sheet-films.ts';
 import type { StampUniformArena } from '#lib/paint/painting/studio/stamp-uniform-arena.ts';
 import type { ShotLattice } from '../models/shot-lattice.ts';
 import type { OccurrenceKey } from '../models/shot-props.ts';
-import type { ShotFadeSpan, ShotGroundLay, ShotMaskAt, ShotPathMaskAt, ShotPlaneRead, ShotStepFrame } from '../models/shot-sheet-lays.ts';
+import type { ShotFadeSpan, ShotGroundLay, ShotMaskAt, ShotPlaneRead, ShotStepFrame } from '../models/shot-sheet-lays.ts';
 import { shotPlainFaded, type ShotFadedTarget, type ShotSpanFade, type ShotSpanKept } from './shot-span-fade-pass.ts';
-import { createShotMaskPasses, type ShotCoverStep, type ShotMaskCapsuleSpan, type ShotMaskCoverage } from './shot-mask-passes.ts';
+import { createShotMaskPasses, type ShotCoverStep, type ShotMaskCoverage } from './shot-mask-passes.ts';
 
 /** A rig's pieces as drawn this moment, stage-sized: their premultiplied linear colour, their motion, and the stage texels they cover. */
 export type ShotPiecesDrawn = { readonly colour: GPUTextureView; readonly motion: GPUTextureView; readonly box: StampPixelBox };
 
 /**
- * What a plane lays at one moment: its document's size, its sheets' lays, each sheet's kept films, its steps (null:
- * nothing laid), its ground (the stage's paper where the plane lies at rest, its paper through a lattice, or none),
- * its fades, outermost first, each pieces rig's render by its occurrence, its masks and what others' masks read.
+ * What a plane lays at one moment: its document's size and wrap periods, its sheets' lays, each sheet's kept films and
+ * their reveals, its steps (null: nothing laid), its ground (the stage's paper where the plane lies at rest, its paper
+ * through a lattice, or none), its fades, outermost first, each pieces rig's render, and its masks and reads.
  */
 export type ShotSheetsLayFrame = {
-  readonly document: { readonly width: number; readonly height: number };
+  readonly document: { readonly width: number; readonly height: number; readonly periods: StampWrapPeriods };
   readonly lays: StampSheetsLays;
   readonly films: readonly (readonly StampSheetFilmKept[])[];
+  readonly reveals: readonly (readonly (readonly StampRevealLink[])[])[];
   readonly steps: readonly (ShotStepFrame | null)[];
   readonly ground: ShotGroundLay;
   readonly fades: readonly ShotFadeSpan[];
@@ -47,13 +51,8 @@ export type ShotSheetsLayFrame = {
   readonly reads: readonly ShotPlaneRead[];
 };
 
-/**
- * A frame's mask as its lay multiplies it in: a path mask with its lattice and capsules staged, or an alphaOf mask
- * with its drawable's coverage (null: it covers nothing).
- */
-type ShotMaskStaged =
-  | { readonly kind: 'path'; readonly at: ShotPathMaskAt; readonly lattice: ShotStagedLattice; readonly capsules: ShotMaskCapsuleSpan }
-  | { readonly kind: 'alphaOf'; readonly coverage: ShotMaskCoverage | null; readonly invert: boolean };
+/** A frame's alphaOf mask as its lay multiplies it in: its drawable's coverage (null: it covers nothing). */
+type ShotMaskStaged = { readonly coverage: ShotMaskCoverage | null; readonly invert: boolean };
 
 /** Where a frame's lattices lie in their passes' vertices: the ground's, then each step's (null for none); and its masks. */
 export type ShotSheetsStaged = {
@@ -114,6 +113,7 @@ const latticeFloats = ({ triangles }: ShotLattice) => (triangles.length / 4) * S
 /** Lays of painted planes on `owner`'s device onto `stage`, each pass's uniform from `arena`, fading through `fade`. */
 export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena, fade }: { stage: StampStage; arena: StampUniformArena; fade: ShotSpanFade }) {
   const { device } = owner, { margin } = stage, linearClamp = stampPaintSamplers(device).linearClamp, masking = createShotMaskPasses(owner, { stage, arena });
+  const revealing = createStampRevealPass(owner, device, stage);
   const passes = new Map<string, StampLatticePass>();
   const passOf = (shape: StampPaintTarget) => {
     const key = layerTargetKind(shape);
@@ -148,8 +148,11 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
     return { pass, span, box: stampStageTexelsWithin(stage, reach.x0, reach.y0, reach.x1, reach.y1) };
   }
 
-  /** Copies `film` into its layer target a margin in, clearing what the last copy left: the layer as a lay reads it. */
-  function copyFilm(encoder: GPUCommandEncoder, frame: ShotSheetsLayFrame, sheet: number, film: StampSheetFilmKept): GPUTextureView | null {
+  /**
+   * Copies `film` into its layer target a margin in, clearing what the last copy left: the layer as a lay reads it,
+   * the texels its paint lies over and the target's size.
+   */
+  function copyFilm(encoder: GPUCommandEncoder, frame: ShotSheetsLayFrame, sheet: number, film: StampSheetFilmKept) {
     const kept = keptStampSheetFilm(owner, film, encoder);
     if (!kept || !film.box) return null;
     const shape = frame.lays.compositors[sheet].targets.layer, target = layerOf(shape, frame.document.width, frame.document.height);
@@ -157,12 +160,33 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
     const at = stampStageTexelsOf(stage, film.box);
     copyStampTextureBox(encoder, { texture: kept, x: 0, y: 0 }, { texture: target.texture, x: at.x, y: at.y }, at);
     target.written = at;
-    return target.texture.createView({ dimension: shape.kind === 'array' ? '2d-array' : '2d' });
+    return { view: target.texture.createView({ dimension: shape.kind === 'array' ? '2d-array' : '2d' }), at, size: { width: target.texture.width, height: target.texture.height } };
   }
 
-  /** Adds a film's glow over `box`, read through its lattice's rest map, to the plane's emission. */
-  function addGlow(encoder: GPUCommandEncoder, compositor: StampPaintCompositor, painting: GPUTextureView, emission: GPUTexture, layer: GPUTextureView, restView: GPUTextureView, glow: StampGroupGlow, opacity: number, box: StampPixelBox) {
-    const pipeline = pipelineOf(stampGlowSourceWgsl(compositor, 'moved group', stage, STAMP_NO_REST, STAMP_WORKGROUP));
+  /** Sheet `sheet`'s film `film` cut by its reveals over `at`, texels of a layer target of `size`; null for one nothing cuts. */
+  const cutOf = (encoder: GPUCommandEncoder, frame: ShotSheetsLayFrame, sheet: number, film: number, at: StampPixelBox, size: { width: number; height: number }) =>
+    revealing.cut(encoder, arena, { links: frame.reveals[sheet][film], box: at, size, periods: frame.document.periods });
+
+  /** Sheet `sheet`'s films `shown` (its film indices, the edge's order) cut by their reveals as its edge joins them; none when nothing cuts any. */
+  function edgeCuts(encoder: GPUCommandEncoder, frame: ShotSheetsLayFrame, sheet: number, shown: readonly number[]): StampSheetEdgeCuts | undefined {
+    const reveals = shown.map((f) => frame.reveals[sheet][f]), films = frame.films[sheet];
+    if (!reveals.some((links) => links.length > 0)) return undefined;
+    const size = { width: Math.max(stage.width, frame.document.width + 2 * margin), height: Math.max(stage.height, frame.document.height + 2 * margin) };
+    return {
+      key: reveals.map(stampRevealLinksKey).join('|'),
+      cutOf: (i) => {
+        const f = shown[i], box = films[f].box && stampStageTexelsOf(stage, films[f].box), view = box && cutOf(encoder, frame, sheet, f, box, size);
+        return box && view ? { view, origin: [box.x, box.y] } : null;
+      },
+    };
+  }
+
+  /** Adds a film's glow over `box`, read through its lattice's rest map and cut by its reveals' `reveal`, to the plane's emission. */
+  function addGlow(
+    encoder: GPUCommandEncoder, compositor: StampPaintCompositor, painting: GPUTextureView, emission: GPUTexture, layer: GPUTextureView, restView: GPUTextureView,
+    reveal: GPUTextureView | null, glow: StampGroupGlow, opacity: number, box: StampPixelBox,
+  ) {
+    const pipeline = pipelineOf(stampGlowSourceWgsl(compositor, 'moved group', stage, STAMP_NO_REST, STAMP_WORKGROUP, reveal !== null));
     dispatchStampCompute(device, encoder, pipeline, [arena.slot((views) => {
       const put = gpuUniformWriter(STAMP_GLOW_SOURCE, views);
       put('threshold', glow.threshold);
@@ -170,7 +194,7 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
       put('glaze', 1);
       put('origin', [box.x, box.y]);
       put('extent', [box.w, box.h]);
-    }), painting, emission.createView(), layer, restView], box.w, box.h);
+    }), painting, emission.createView(), layer, restView, reveal], box.w, box.h);
   }
 
   /** Lays a rig's render as paint, and over the plane's motion when traced, taken times `mask` when given. */
@@ -190,23 +214,19 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
   }
 
   return {
-    /** Starts a frame whose planes lay `frames`: room in every pass for all their lattices, each laid once. */
+    /**
+     * Starts a frame whose planes lay `frames`: room in every pass for all their lattices, each laid once. The frame
+     * before was submitted, so what its reveals' arrival maps were drawn from goes.
+     */
     reserve(frames: readonly Omit<ShotSheetsLayFrame, 'pieces'>[]) {
       const floats = new Map<StampLatticePass, number>();
       const room = (shape: StampPaintTarget, lattice: ShotLattice) => floats.set(passOf(shape), (floats.get(passOf(shape)) ?? 0) + latticeFloats(lattice));
-      let capsules = 0;
       for (const frame of frames) {
-        const groundShape = frame.lays.compositors[0].targets.layer;
-        if (frame.ground?.kind === 'placed') room(groundShape, frame.ground.lattice);
+        if (frame.ground?.kind === 'placed') room(frame.lays.compositors[0].targets.layer, frame.ground.lattice);
         for (const step of frame.steps) if (step && step.lay.kind !== 'pieces') room(frame.lays.compositors[step.lay.sheet].targets.layer, step.lay.lattice);
-        for (const mask of frame.masks) {
-          if (mask.kind !== 'path') continue;
-          room(groundShape, mask.lattice);
-          capsules += mask.capsules.length;
-        }
       }
       for (const pass of passes.values()) pass.reset(floats.get(pass) ?? 0);
-      masking.reserve(capsules);
+      revealing.release();
     },
     /**
      * Stages `frame`'s lattices, once for every backing it's laid on, and its masks, each alphaOf mask reading what
@@ -217,9 +237,7 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
       return {
         ground,
         steps: frame.steps.map((step) => (step && step.lay.kind !== 'pieces' ? stageLattice(frame.lays.compositors[step.lay.sheet].targets.layer, step.lay.lattice) : null)),
-        masks: frame.masks.map((mask): ShotMaskStaged => (mask.kind === 'path'
-          ? { kind: 'path', at: mask, lattice: stageLattice(groundShape, mask.lattice), capsules: masking.capsules(mask.capsules, mask.box) }
-          : { kind: 'alphaOf', coverage: coverageOf(mask.drawable), invert: mask.invert })),
+        masks: frame.masks.map((mask): ShotMaskStaged => ({ coverage: coverageOf(mask.drawable), invert: mask.invert })),
       };
     },
     /**
@@ -228,16 +246,8 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
      */
     mask(encoder: GPUCommandEncoder, { masks }: ShotSheetsStaged): GPUTexture | null {
       if (!masks.length) return null;
-      const mask = masking.begin(encoder), restView = rest();
-      for (const staged of masks) {
-        if (staged.kind === 'alphaOf') {
-          masking.coverage(encoder, mask, staged.coverage, staged.invert);
-          continue;
-        }
-        const { lattice: { pass, span }, capsules, at } = staged;
-        pass.draw(encoder, span, { rest: 'region', motion: false }, { rest: restView, motion: null, source: null });
-        masking.band(encoder, mask, at, capsules, restView);
-      }
+      const mask = masking.begin(encoder);
+      for (const { coverage, invert } of masks) masking.coverage(encoder, mask, coverage, invert);
       return mask;
     },
     /** Where `frame`'s reads gather as it's laid; null for none. */
@@ -280,7 +290,8 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
         } else if (step && step.lay.kind !== 'pieces' && staging?.box) {
           const lay = step.lay, { pass, span, box } = staging, compositor = compositors[lay.sheet];
           if (lay.kind === 'card') {
-            const edge = stampSheetEdge(owner, device, encoder, arena, lay.films.map(({ film, shown }) => ({ film: films[lay.sheet][film], shown })));
+            const shown = lay.films.map(({ film }) => film);
+            const edge = stampSheetEdge(owner, device, encoder, arena, lay.films.map(({ film, shown: share }) => ({ film: films[lay.sheet][film], shown: share })), edgeCuts(encoder, frame, lay.sheet, shown));
             if (edge) {
               const edgeBox = stampStageTexelsOf(stage, edge.box);
               pass.draw(encoder, span, { rest: 'region', motion: !!traced }, { rest: restView, motion: traced, source: null });
@@ -289,14 +300,15 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
               laid = stampBoxUnion(laid, box);
             }
           } else if (step.opacity > 0) {
-            const layer = copyFilm(encoder, frame, lay.sheet, films[lay.sheet][lay.film]);
-            if (layer) {
+            const copied = copyFilm(encoder, frame, lay.sheet, films[lay.sheet][lay.film]);
+            if (copied) {
+              const { view: layer } = copied, reveal = cutOf(encoder, frame, lay.sheet, lay.film, copied.at, copied.size);
               pass.draw(encoder, span, { rest: 'paint', motion: !!traced }, { rest: restView, motion: traced, source: layer });
               lays[lay.sheet].layGroup(encoder, {
-                layer, painting, index: lay.film, opacity: step.opacity, glaze: true, box, backing: into.backing, rest: restView, paperFromRest: true, mask: mask?.createView() ?? null,
+                layer, painting, index: lay.film, opacity: step.opacity, glaze: true, box, backing: into.backing, rest: restView, paperFromRest: true, mask: mask?.createView() ?? null, reveal,
               });
-              if (step.glow && into.emission) addGlow(encoder, compositor, painting, into.emission, layer, restView, step.glow, step.opacity, box);
-              gather(encoder, frame, into, index, { kind: 'film', compositor, layer, rest: restView, opacity: step.opacity, box });
+              if (step.glow && into.emission) addGlow(encoder, compositor, painting, into.emission, layer, restView, reveal, step.glow, step.opacity, box);
+              gather(encoder, frame, into, index, { kind: 'film', compositor, layer, rest: restView, reveal, opacity: step.opacity, box });
               laid = stampBoxUnion(laid, box);
             }
           }
@@ -311,10 +323,9 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
       if (mask && into.emission) masking.scale(encoder, into.emission, mask);
       return laid;
     },
-    /** Uploads the frame's lattices and capsules: before its encoder is submitted. */
+    /** Uploads the frame's lattices: before its encoder is submitted. */
     flush() {
       for (const pass of passes.values()) pass.flush();
-      masking.flush();
     },
   };
 }

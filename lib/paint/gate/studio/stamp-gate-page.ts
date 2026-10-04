@@ -1,12 +1,11 @@
 // stamp-gate-page.ts: the GPU gate's browser side, run by engine/stamp-gate.ts through withBrowserModulePage. It runs
 // the formula grids (stamp-gate-formulas.ts) on the renderer's own WGSL, paints the gate's paintings
-// (stamp-gate-paintings.ts) with the studio's renderer, holds a traced resolve to the frame it draws, and paints each
-// wash case, reading its layer back for the properties it's held to (stamp-gate-washes.ts, stamp-gate-water-marks.ts),
-// animates the animation cases (stamp-gate-animation.ts) and runs the flow, bloom and rim stages alone over layers it writes
-// (stamp-gate-flow.ts, stamp-gate-stripe.ts), draws the region cases (stamp-gate-regions.ts), solves the sheet cases
-// (stamp-gate-sheet-page.ts), draws the painted textures (stamp-gate-texture-page.ts) and a shot over a page
-// (stamp-gate-shot-dom-page.ts). Paintings are built here, as a compiled painting's typed arrays don't survive the
-// trip from Node.
+// (stamp-gate-paintings.ts), holds a traced resolve to the frame it draws, and paints each wash case, reading its
+// layer back (stamp-gate-washes.ts, stamp-gate-water-marks.ts), animates the animation cases and runs the flow, bloom
+// and rim stages alone (stamp-gate-flow.ts, stamp-gate-stripe.ts), draws the region cases, solves the sheet cases
+// (stamp-gate-sheet-page.ts), draws the painted textures and a shot over a page (stamp-gate-shot-dom-page.ts), and
+// holds reveals to their twin (stamp-gate-reveals-page.ts). Paintings are built here, as a compiled painting's typed
+// arrays don't survive the trip from Node.
 
 import { PAINT_KUBELKA_MUNK_WGSL } from '#lib/paint/materials/models/paint-kubelka-munk.ts';
 import { PAINT_PAPER_WGSL } from '#lib/paint/materials/models/paint-paper.ts';
@@ -58,6 +57,7 @@ import { checkStampGateSheetCase, paintStampGateSolved } from './stamp-gate-shee
 import { checkStampGateShotCase, paintStampGateShot } from './stamp-gate-shot-page.ts';
 import { checkStampGateShotTextureCase, checkStampGateTextureCase, paintStampGateShotTexture, paintStampGateTexture } from './stamp-gate-texture-page.ts';
 import { checkStampGateShotPageCase } from './stamp-gate-shot-dom-page.ts';
+import { checkStampGateRevealCase } from './stamp-gate-reveals-page.ts';
 import { checkStampGateRegion, stampGateRegionPaintings, type StampGateRegionId } from '../models/stamp-gate-regions.ts';
 import { checkStampGateContact, STAMP_GATE_CONTACT_IDS, stampGateContactPainting } from '../models/stamp-gate-contact.ts';
 import { checkStampGateMask, stampGateMaskPaintings, type StampGateMaskId } from '../models/stamp-gate-masks.ts';
@@ -497,5 +497,5 @@ Object.assign(globalThis, {
   runStampGateFormulas, paintStampGate, paintStampGatePrivate, traceStampGate, checkStampGateWash, checkStampGateAnimation, checkStampGateFlowCase, checkStampGateStripeCase, checkStampGateRegionCase,
   checkStampGateContactCase, checkStampGateMaskCase, checkStampGateMediaCase, checkStampGateThreeCase, checkStampGateStageCase, checkStampGateSheetCase, paintStampGateSolved,
   checkStampGateShotPageCase, checkStampGateShotCase, paintStampGateShot, checkStampGateTextureCase, paintStampGateTexture, checkStampGateShotTextureCase, paintStampGateShotTexture,
-  stampGateAdapter,
+  checkStampGateRevealCase, stampGateAdapter,
 });
