@@ -1,13 +1,16 @@
 // ─── A gate's scope: the repository it judges, where it mounts, its baseline ──
 //
-// check:arch and lint each judge one scope. `public` is the studio's repository, what a clean clone holds;
+// check:arch and lint each judge the one scope `--scope` names; named none, they run each scope there is
+// (gate-every-scope.ts). `public` is the studio's repository, what a clean clone holds;
 // `workspace` is work/, your projects, mounted at `work/` in the studio's path space. Either is read in this
 // process's git environment, a hook's when one runs the gate. Each scope keeps one baseline file holding both
 // tiers' entries (lint/baseline.ts), read from the snapshot the gate judges: under a hook, an edit to it counts once
 // it's staged.
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { isolatedGitEnv } from '#lib/platform/git/engine/fixture-git.ts';
 import { STUDIO_WORKSPACE_MOUNT } from './policy/studio-tree.ts';
 import { parseBaseline, rebaselineTier, type Baseline, type BaselineTier } from './baseline.ts';
 import { parseLiveSnapshot, readSnapshotText, type CandidateSnapshot, type LiveSnapshot, type MountedSnapshot } from './candidate-snapshot.ts';
@@ -30,7 +33,23 @@ export type GateRepository = MountedSnapshot & { scope: GateScope };
 /** The repository a scope judges, at `snapshot`, in this process's git environment. */
 export function gateRepository(root: string, scope: GateScope, snapshot: CandidateSnapshot): GateRepository {
   const mount = SCOPE_MOUNT[scope];
-  return { scope, root: mount ? join(root, mount) : root, mount, snapshot, gitEnv: process.env };
+  const repository: GateRepository = { scope, root: mount ? join(root, mount) : root, mount, snapshot, gitEnv: process.env };
+  if (scope === 'workspace') assertOwnWorkspaceRepository(repository);
+  return repository;
+}
+
+/**
+ * work/ must be a repository of its own, and the one this process's git environment names: a folder inside the
+ * studio's repository, or a hook's GIT_DIR pointing elsewhere, would read the wrong index as the workspace's.
+ */
+function assertOwnWorkspaceRepository({ root, gitEnv }: GateRepository): void {
+  const revParse = (env: NodeJS.ProcessEnv, what: string) =>
+    realpathSync(execFileSync('git', ['rev-parse', what], { cwd: root, env, encoding: 'utf8' }).trim());
+  if (!existsSync(root) || revParse(isolatedGitEnv(), '--show-toplevel') !== realpathSync(root)) {
+    throw new Error(`${root} isn't a repository of its own: run \`studio workspace init\``);
+  }
+  const own = revParse(isolatedGitEnv(), '--absolute-git-dir'), read = revParse(gitEnv, '--absolute-git-dir');
+  if (read !== own) throw new Error(`git reads ${read} for ${root}, not its own ${own}: this process's GIT_DIR names another repository`);
 }
 
 /** The scope's baseline file, relative to the studio's root. */

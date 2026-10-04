@@ -5,8 +5,6 @@
 // specifier themselves, so an alias and a relative spelling can't reach two
 // verdicts.
 
-import { execFileSync } from 'node:child_process';
-import { existsSync, realpathSync } from 'node:fs';
 import { isolatedGitEnv } from '#lib/platform/git/engine/fixture-git.ts';
 import { classifyStudioPath, STUDIO_WORKSPACE_MOUNT, type StudioPosition } from '../policy/studio-tree.ts';
 import { readDeclaredShared, readDeclaredStyles, type DeclarationProblem, type DeclaredStyles } from './project-declaration.ts';
@@ -115,23 +113,8 @@ export function createCheckContext(root: string, target: CheckTarget): CheckCont
     return contextFor(tree, root);
   }
   const workspace = gateRepository(root, 'workspace', target.snapshot);
-  assertOwnWorkspaceRepository(workspace);
   const studio: MountedSnapshot = { ...gateRepository(root, 'public', target.snapshot), gitEnv: isolatedGitEnv() };
   return contextFor(loadSourceTree({ repos: [studio, workspace], scope: studioScope }), root);
-}
-
-/**
- * work/ must be a repository of its own, and the one this process's git environment names: a folder inside the
- * studio's repository, or a hook's GIT_DIR pointing elsewhere, would read the wrong index as the workspace's.
- */
-function assertOwnWorkspaceRepository({ root, gitEnv }: MountedSnapshot): void {
-  const revParse = (env: NodeJS.ProcessEnv, what: string) =>
-    realpathSync(execFileSync('git', ['rev-parse', what], { cwd: root, env, encoding: 'utf8' }).trim());
-  if (!existsSync(root) || revParse(isolatedGitEnv(), '--show-toplevel') !== realpathSync(root)) {
-    throw new Error(`${root} isn't a repository of its own: run \`studio workspace init\``);
-  }
-  const own = revParse(isolatedGitEnv(), '--absolute-git-dir'), read = revParse(gitEnv, '--absolute-git-dir');
-  if (read !== own) throw new Error(`git reads ${read} for ${root}, not its own ${own}: this process's GIT_DIR names another repository`);
 }
 
 export function contextFor(tree: SourceTree, root: string): CheckContext {

@@ -109,14 +109,20 @@ describe('studio new', { concurrency: true }, () => {
     });
   }
 
-  test('a new project blocks from its first commit: a bar that builds its own timing fails check:arch', async () => {
+  test('a new project blocks from its first commit, and by hand: a bar that builds its own timing fails check:arch', async () => {
     await inStudioCopy(async (studio) => {
       const project = await scaffold(studio, 'music-led');
       appendFileSync(join(studio, 'work/projects', project, 'bars/hook.tsx'), "import { beatSpan } from '#lib/timing/timeline/models/timeline.ts';\nexport const longer = beatSpan(8);\n");
       runFixtureGit(join(studio, 'work'), ['add', '--all']);
+      const finding = new RegExp(`work/projects/${project}/bars/hook\\.tsx:\\d+ +\\[timing-ownership\\] imports the timing constructor beatSpan`);
       const arch = await checkWorkspace(studio);
       assert.equal(arch.code, 1, arch.output);
-      assert.match(arch.output, new RegExp(`work/projects/${project}/bars/hook\\.tsx:\\d+ +\\[timing-ownership\\] imports the timing constructor beatSpan`));
+      assert.match(arch.output, finding);
+      // A bare run, as a painter makes by hand, judges work/ beside the studio.
+      const byHand = await outcome(studio, process.execPath, ['lint/check-arch.ts']);
+      assert.equal(byHand.code, 1, byHand.output);
+      assert.match(byHand.output, finding);
+      assert.match(byHand.output, /check:arch: the studio passed, work\/ failed\./);
     });
   });
 });

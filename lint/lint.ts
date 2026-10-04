@@ -4,69 +4,82 @@
 // (the file check:arch keeps, under oxlint's own rule ids). Exits 1 on a new finding or a stale baseline entry.
 // Warnings print and never block.
 //
-//   npm run lint                              the studio's working tree, untracked files included
-//   npm run lint -- --snapshot index          the sources the studio's index holds (pre-commit's)
-//   npm run lint -- --scope workspace         work/'s working tree (its hook adds --snapshot index)
+//   npm run lint                              the studio's working tree, untracked included, and work/'s if there
+//   npm run lint -- --scope public            the studio alone (its hook adds --snapshot index)
+//   npm run lint -- --scope workspace         work/ alone (its hook adds --snapshot index)
 //   npm run lint -- --list                    every baselined finding, not just counts
-//   npm run lint -- --update-baseline         rewrite the scope's oxlint entries to the index's findings, what a commit holds
+//   npm run lint -- --update-baseline         rewrite each baseline's oxlint entries to its index's findings
 //
-// What oxlint enables: oxlint.config.ts. Keys: lint/oxlint/oxlint-verdict.ts. Scopes and baselines: lint/gate-scope.ts.
+// What oxlint enables: oxlint.config.ts. Keys: lint/oxlint/oxlint-verdict.ts. Scopes: lint/gate-scope.ts; none
+// named, lint/gate-every-scope.ts.
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { describeLeftOutOfIndex } from './candidate-snapshot.ts';
-import { gateRunSnapshot, parseGateScope, rewriteGateBaseline } from './gate-scope.ts';
+import { judgeEveryGateScope } from './gate-every-scope.ts';
+import { gateRunSnapshot, parseGateScope, rewriteGateBaseline, type GateScope } from './gate-scope.ts';
 import { judgeOxlint } from './oxlint/oxlint-verdict.ts';
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const script = fileURLToPath(import.meta.url);
+const root = join(dirname(script), '..');
 
 const { values } = parseArgs({
   options: {
-    scope: { type: 'string', default: 'public' }, snapshot: { type: 'string' }, list: { type: 'boolean' },
+    scope: { type: 'string' }, snapshot: { type: 'string' }, list: { type: 'boolean' },
     'update-baseline': { type: 'boolean' },
   },
 });
-const scope = parseGateScope(values.scope);
-const updating = Boolean(values['update-baseline']);
-const snapshot = gateRunSnapshot(values.snapshot, updating);
-const { repository, linted, findings, advisories, fresh, stale, baselined } = judgeOxlint(root, scope, snapshot);
 
-const owner = scope === 'workspace' ? 'work/\'s' : 'the studio\'s';
-const where = snapshot.kind === 'index'
-  ? `the ${linted.length} sources the commit holds (${owner} index), read from disk`
-  : `the ${linted.length} sources in ${owner} working tree, untracked files included`;
-const leftOut = snapshot.kind === 'index' ? describeLeftOutOfIndex(repository, 'from disk') : [];
+type LintRunOptions = { snapshot?: string; list?: boolean; 'update-baseline'?: boolean };
 
-if (updating) {
-  const file = rewriteGateBaseline(root, scope, 'oxlint', findings);
-  console.log(`Wrote ${findings.length} oxlint findings to ${file}, counted over ${where}: stage it${scope === 'workspace' ? ' in work/' : ''} for the hook to read it.`);
-  if (leftOut.length) console.log(`\n${leftOut.join('\n')}`);
-  process.exit(0);
-}
+const passed = values.scope === undefined
+  ? await judgeEveryGateScope(root, 'lint', script, process.argv.slice(2))
+  : reportOxlint(parseGateScope(values.scope), values);
+process.exitCode = passed ? 0 : 1;
 
-console.log(`lint over ${where}\n`);
-if (leftOut.length) console.log(`${leftOut.join('\n')}\n`);
-const perRule = new Map<string, typeof baselined>();
-for (const finding of baselined) perRule.set(finding.check, [...(perRule.get(finding.check) ?? []), finding]);
-console.log(`Baseline (reports, doesn't block), ${baselined.length}:`);
-for (const [rule, ours] of [...perRule].toSorted(([a], [b]) => a.localeCompare(b))) {
-  console.log(`  ${rule.padEnd(44)} ${String(ours.length).padStart(4)} in ${new Set(ours.map((f) => f.path)).size} files`);
-  if (values.list) for (const finding of ours) console.log(`      ${finding.path}:${finding.line}  ${finding.message}`);
-}
-if (advisories.length) {
-  console.log(`\nWarnings (report, never block), ${advisories.length}:`);
-  for (const finding of advisories) console.log(`  ${finding.path}:${finding.line}  [${finding.check}] ${finding.message}`);
-}
-if (fresh.length) {
-  console.log(`\nNew (blocks), ${fresh.length}:`);
-  for (const finding of fresh) console.log(`  ${finding.path}:${finding.line}  [${finding.check}] ${finding.message}`);
-}
-if (stale.length) {
-  console.log(`\nStale baseline entries (block until the baseline is rewritten: stage the fixes, then --update-baseline), ${stale.length}:`);
-  for (const entry of stale) console.log(`  ${entry.path}  [${entry.check}] ${entry.key} ×${entry.count}`);
-}
+/** One scope linted and printed. Returns whether it passed. */
+function reportOxlint(scope: GateScope, options: LintRunOptions): boolean {
+  const updating = Boolean(options['update-baseline']);
+  const snapshot = gateRunSnapshot(options.snapshot, updating);
+  const { repository, linted, findings, advisories, fresh, stale, baselined } = judgeOxlint(root, scope, snapshot);
 
-const failed = fresh.length > 0 || stale.length > 0;
-console.log(failed ? '\nlint failed.' : '\nlint passed.');
-process.exitCode = failed ? 1 : 0;
+  const owner = scope === 'workspace' ? 'work/\'s' : 'the studio\'s';
+  const where = snapshot.kind === 'index'
+    ? `the ${linted.length} sources the commit holds (${owner} index), read from disk`
+    : `the ${linted.length} sources in ${owner} working tree, untracked files included`;
+  const leftOut = snapshot.kind === 'index' ? describeLeftOutOfIndex(repository, 'from disk') : [];
+
+  if (updating) {
+    const file = rewriteGateBaseline(root, scope, 'oxlint', findings);
+    console.log(`Wrote ${findings.length} oxlint findings to ${file}, counted over ${where}: stage it${scope === 'workspace' ? ' in work/' : ''} for the hook to read it.`);
+    if (leftOut.length) console.log(`\n${leftOut.join('\n')}`);
+    return true;
+  }
+
+  console.log(`lint over ${where}\n`);
+  if (leftOut.length) console.log(`${leftOut.join('\n')}\n`);
+  const perRule = new Map<string, typeof baselined>();
+  for (const finding of baselined) perRule.set(finding.check, [...(perRule.get(finding.check) ?? []), finding]);
+  console.log(`Baseline (reports, doesn't block), ${baselined.length}:`);
+  for (const [rule, ours] of [...perRule].toSorted(([a], [b]) => a.localeCompare(b))) {
+    console.log(`  ${rule.padEnd(44)} ${String(ours.length).padStart(4)} in ${new Set(ours.map((f) => f.path)).size} files`);
+    if (options.list) for (const finding of ours) console.log(`      ${finding.path}:${finding.line}  ${finding.message}`);
+  }
+  if (advisories.length) {
+    console.log(`\nWarnings (report, never block), ${advisories.length}:`);
+    for (const finding of advisories) console.log(`  ${finding.path}:${finding.line}  [${finding.check}] ${finding.message}`);
+  }
+  if (fresh.length) {
+    console.log(`\nNew (blocks), ${fresh.length}:`);
+    for (const finding of fresh) console.log(`  ${finding.path}:${finding.line}  [${finding.check}] ${finding.message}`);
+  }
+  if (stale.length) {
+    console.log(`\nStale baseline entries (block until the baseline is rewritten: stage the fixes, then --update-baseline), ${stale.length}:`);
+    for (const entry of stale) console.log(`  ${entry.path}  [${entry.check}] ${entry.key} ×${entry.count}`);
+  }
+
+  const failed = fresh.length > 0 || stale.length > 0;
+  console.log(failed ? '\nlint failed.' : '\nlint passed.');
+  return !failed;
+}

@@ -8,6 +8,8 @@ policy/*.ts             tables the checks read: SDK owners, timing constructors
 structural/             whole-tree checks (npm run check:arch, check-arch.ts)
 oxlint/                 per-file rules, run by oxlint.config.ts (npm run lint, lint.ts)
 candidate-snapshot.ts   the files both tiers read: the working tree by hand, the index under a hook
+gate-scope.ts           a scope (the studio, or work/): its repository, mount and baseline
+gate-every-scope.ts     a run with no --scope: each scope there is, side by side
 baseline.ts             how both tiers count findings against a baseline
 arch-baseline.json      the studio's baselined findings, both tiers; work/arch-baseline.json is the workspace's
 ```
@@ -22,13 +24,20 @@ the console is their output) and `DEFAULT_EXPORT_MODULE_GLOBS` (loaded by path f
 
 ## The tiers
 
+**Which scope.** check:arch and lint judge one scope at a time: `public`, the studio's repository as a clean clone
+holds it, or `workspace`, work/'s, read beside the studio's. Each has its own baseline, and each hook names its own
+scope. Run by hand with no `--scope`, either judges the studio and, when work/ is a workspace, work/ too: each scope
+in its own process, exactly as its hook runs it, so a project is judged by hand as its commit will be. The run opens
+by naming the scopes it judges and closes with each one's verdict. `check:arch -- --rev <commit>` judges the studio
+alone.
+
 **What both tiers read.** Run by hand, check:arch and lint read the working tree, untracked files included,
 so a project is checked before it's added. The pre-commit hooks pass `--snapshot index`: only what the commit holds,
 so another session's half-written file can't block it, and each lists the sources it left unchecked. check:arch reads
 the index's text; oxlint reads the index's files from disk. `check:arch -- --rev <commit>` reads a committed tree.
 `--update-baseline` counts only the index, as the hook judges it: a baseline excuses what a commit holds, so stage a
-fix before rewriting it, and an untracked project's violations are never excused. A scope's repository, mount and
-baseline file are `lint/gate-scope.ts`'s.
+fix before rewriting it, and an untracked project's violations are never excused. With no `--scope` it rewrites each
+scope's baseline. A scope's repository, mount and baseline file are `lint/gate-scope.ts`'s.
 
 **`structural/`** reads the snapshot, parsed once (`source-tree.ts`), with every import resolved to
 a canonical path, so an alias and a relative spelling reach one verdict. The `types` checks ask the TypeScript 7
@@ -41,7 +50,8 @@ the id oxlint prints (`arch(no-long-comments)`), keyed by its line's text, and e
 
 **`oxlint/`** holds per-file syntax rules, registered as `arch/*` by `oxlint/plugin.ts` and enabled in
 `oxlint.config.ts` beside oxlint's built-ins (type-aware `typescript/*`, sonarjs duplication, `import/no-cycle`).
-`npm run lint` runs oxlint over the studio, and `-- --scope workspace` over work/; a warning never blocks.
+`npm run lint` runs oxlint over the studio and work/, `-- --scope public` or `-- --scope workspace` over one; a
+warning never blocks.
 Rule specs use RuleTester; `lint/oxlintrc.test.ts` runs the real CLI once, because RuleTester builds no global
 scope. `oxlint/lib/rule-file.ts` turns oxlint's filename into a studio position.
 
