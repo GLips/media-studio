@@ -1,10 +1,10 @@
-// stamp-gate-textures.ts: the gate's painted textures (ENGINE 6.3): two paintings that wrap (`wrap: 'x'`) dissolved
-// halfway and drawn as a shot's painted texture at half their size, so its resample averages across the seam and its
-// sum weighs both, read by a three.js cylinder; judged by eye and held to a seam no rougher than the paint beside it.
-// A band and a flood run across the seam and a bloom opens on it, on a grain that must meet itself there.
+// stamp-gate-textures.ts: the gate's painted textures (ENGINE 6.3), each drawn as a shot's painted texture at half
+// its paintings' size, so its resample averages across a seam, read by a three.js object through the loader and
+// laid flat beside it; judged by eye and held to seams no rougher than the paint beside them.
 //
-// The baseline's frame: the cylinder above, its seam turned to the camera, on grey; the texture flat below, each
-// texel 2 px across, rolled half its width so its seam runs down the middle.
+// texture/wrapped-cylinder: two paintings wrapping x dissolved halfway, round a cylinder, its seam to the camera, the
+// texture flat below, rolled half its width. texture/wrapped-tile: a tile wrapping both ways, a flood and a bloom on
+// its corner, flat 2 × 2 beside a plane whose uv runs to 2 each way, so its handle repeats.
 
 import meadow from '#lib/paint/document/models/meadow.painting.ts';
 import { compilePaintingSelection } from '#lib/paint/document/models/painting-document-compile.ts';
@@ -18,7 +18,7 @@ import {
   STAMP_GATE_EARTH_MIX, STAMP_GATE_POOL_MIX, STAMP_GATE_ROUND_REF, STAMP_GATE_SHEET_IMAGES, STAMP_GATE_SHEET_PAPER, stampGateLine, stampGateRectangle, stampGateSheetBrushOf,
 } from './stamp-gate-sheets.ts';
 
-export const STAMP_GATE_TEXTURE_IDS = ['texture/wrapped-cylinder'] as const;
+export const STAMP_GATE_TEXTURE_IDS = ['texture/wrapped-cylinder', 'texture/wrapped-tile'] as const;
 export type StampGateTextureId = (typeof STAMP_GATE_TEXTURE_IDS)[number];
 
 /** The wrapped paintings' size, document px. */
@@ -87,32 +87,99 @@ export function stampGateWrappedTexture(): PaintedTexture {
   return { id: 'wrapped', source: dissolve(low, high, STAMP_GATE_TEXTURE_DISSOLVE), widthPx: STAMP_GATE_WRAPPED_TEXTURE.width, heightPx: STAMP_GATE_WRAPPED_TEXTURE.height };
 }
 
+/** The tile's size, document px: square, as the gate's square grain at half its width fits it whole both ways. */
+export const STAMP_GATE_TILE = { width: 160, height: 160 } as const;
+/** The texture it's drawn into: half its size, so each texel averages 2 × 2 of its px, across a seam too. */
+export const STAMP_GATE_TILE_TEXTURE = { width: STAMP_GATE_TILE.width / 2, height: STAMP_GATE_TILE.height / 2 } as const;
+
+/**
+ * A tile wrapping both ways, of the meadow's grain at half its width: a flood from (110, 110) past its right and
+ * bottom edges and its corner to (210, 210), a bloom dropped on the corner once it turns matte, and an earth stroke
+ * across each seam alone, at y 80 and at x 80, clear of the flood.
+ */
+const STAMP_GATE_TILE_SOURCE: PaintingSourceModule = {
+  default: function gateTile(): PaintingDocument {
+    const grain = { ...meadow({ hillTopPx: 200 }).paper.grain!, scale: 0.5, depth: 0.2 };
+    return {
+      widthPx: STAMP_GATE_TILE.width, heightPx: STAMP_GATE_TILE.height, wrap: 'xy', paper: { ...STAMP_GATE_SHEET_PAPER, grain }, medium: 'watercolour',
+      layers: [
+        {
+          key: 'pond',
+          washes: [{
+            key: 'pool',
+            applications: [
+              { key: 'flood', kind: 'fill', area: { region: stampGateRectangle(110, 110, 210, 210) }, brush: STAMP_GATE_ROUND_REF, diameterPx: 24, seed: 'flood', charge: { kind: 'paint', mix: STAMP_GATE_POOL_MIX, water: FLOOD_WATER } },
+              { key: 'bloom', on: 'damp', effect: 'bloom', kind: 'stamps', placements: [{ x: 157, y: 157 }], brush: STAMP_GATE_ROUND_REF, diameterPx: 22, seed: 'bloom', charge: { kind: 'water', water: 0.95 } },
+            ],
+          }],
+        },
+        {
+          key: 'band',
+          washes: [{
+            key: 'stroke',
+            applications: [{
+              key: 'run', kind: 'stroke', subpaths: [stampGateLine(105, 80, 160, 82, 215, 79), stampGateLine(80, 105, 82, 160, 79, 215)], brush: STAMP_GATE_ROUND_REF, diameterPx: 12, seed: 'band',
+              charge: { kind: 'paint', mix: STAMP_GATE_EARTH_MIX, water: 0.5 },
+            }],
+          }],
+        },
+      ],
+    };
+  },
+};
+
+/** The plane the tile's texture is read on through three.js: frame px at its plane, its uv running to 2 each way. */
+export const STAMP_GATE_PLANE = { size: 288, repeats: 2 } as const;
+/** The plane's view: the camera's stage, its field of view, and the grey round the plane, linear light. */
+export const STAMP_GATE_PLANE_VIEW = { width: 320, height: 320, fov: 30, grey: 0.2 } as const;
+/** The tile's baseline frame: the tile flat 2 × 2, each texel STAMP_GATE_TEXEL_PX across, then the plane's view beside it. */
+export const STAMP_GATE_TILE_FRAME = { width: 2 * STAMP_GATE_TEXEL_PX * STAMP_GATE_TILE_TEXTURE.width + STAMP_GATE_PLANE_VIEW.width, height: STAMP_GATE_PLANE_VIEW.height } as const;
+
+/** The shot's painted texture the plane reads: the tile whole, at half size. */
+export function stampGateTileTexture(): PaintedTexture {
+  const evaluation = painting(STAMP_GATE_TILE_SOURCE);
+  return { id: 'tile', source: layersOf(evaluation, evaluation.document.layers.map(({ key }) => key)), widthPx: STAMP_GATE_TILE_TEXTURE.width, heightPx: STAMP_GATE_TILE_TEXTURE.height };
+}
+
+/** Texture baseline `id`'s frame size. */
+export const stampGateTextureFrame = (id: StampGateTextureId) => (id === 'texture/wrapped-tile' ? STAMP_GATE_TILE_FRAME : STAMP_GATE_TEXTURE_FRAME);
+
+/** `source`'s sheets' programs and steps, compiled with the gate's brushes. */
+function stampGateTexturePainting(source: PaintingSourceModule) {
+  const compiled = compilePaintingSelection(painting(source), stampGateSheetBrushOf);
+  return { programs: compiled.sheets.map(({ program }) => program), steps: compiled.steps };
+}
+
 /**
  * What texture baseline `id` is drawn from, as text: each painting's sheets' programs and steps, the dissolve, the
- * texture's size, the cylinder, its view and the images.
+ * texture's size, the object it's read on, its view and the images.
  */
 export function stampGateTextureInputs(id: StampGateTextureId) {
-  const paintings = STAMP_GATE_WRAPPED_SOURCES.map((source) => {
-    const compiled = compilePaintingSelection(painting(source), stampGateSheetBrushOf);
-    return { programs: compiled.sheets.map(({ program }) => program), steps: compiled.steps };
-  });
+  if (id === 'texture/wrapped-tile') {
+    return stampCanonicalJson({
+      id, paintings: [stampGateTexturePainting(STAMP_GATE_TILE_SOURCE)], texture: STAMP_GATE_TILE_TEXTURE, plane: STAMP_GATE_PLANE, view: STAMP_GATE_PLANE_VIEW, images: STAMP_GATE_SHEET_IMAGES,
+    });
+  }
   return stampCanonicalJson({
-    id, paintings, dissolve: STAMP_GATE_TEXTURE_DISSOLVE, texture: STAMP_GATE_WRAPPED_TEXTURE, cylinder: STAMP_GATE_CYLINDER, view: STAMP_GATE_CYLINDER_VIEW, images: STAMP_GATE_SHEET_IMAGES,
+    id, paintings: STAMP_GATE_WRAPPED_SOURCES.map(stampGateTexturePainting), dissolve: STAMP_GATE_TEXTURE_DISSOLVE, texture: STAMP_GATE_WRAPPED_TEXTURE, cylinder: STAMP_GATE_CYLINDER,
+    view: STAMP_GATE_CYLINDER_VIEW, images: STAMP_GATE_SHEET_IMAGES,
   });
 }
 
 /**
- * How rough the flat texture is across each column boundary of `rgb` (its rows, `width` × `height`, RGB bytes,
- * rolled so the seam lies between columns width / 2 − 1 and width / 2): the mean over rows of the largest channel's
- * step, levels, one a boundary.
+ * How rough a flat texture is across each boundary between its texels along `axis` (`rgb` its rows, `width` × `height`,
+ * RGB bytes): across each column boundary for x, each row boundary for y, the mean over the other axis of the largest
+ * channel's step, levels, one a boundary.
  */
-export function stampGateColumnSteps(rgb: ArrayLike<number>, width: number, height: number): number[] {
-  return Array.from({ length: width - 1 }, (_, x) => {
+export function stampGateSeamSteps(rgb: ArrayLike<number>, width: number, height: number, axis: 'x' | 'y'): number[] {
+  const [along, across] = axis === 'x' ? [width, height] : [height, width];
+  const at = (i: number, j: number) => (axis === 'x' ? j * width + i : i * width + j) * 3;
+  return Array.from({ length: along - 1 }, (_, i) => {
     let sum = 0;
-    for (let y = 0; y < height; y++) {
-      const at = (y * width + x) * 3;
-      sum += Math.max(...[0, 1, 2].map((c) => Math.abs(rgb[at + 3 + c] - rgb[at + c])));
+    for (let j = 0; j < across; j++) {
+      const from = at(i, j), to = at(i + 1, j);
+      sum += Math.max(...[0, 1, 2].map((c) => Math.abs(rgb[to + c] - rgb[from + c])));
     }
-    return sum / height;
+    return sum / across;
   });
 }

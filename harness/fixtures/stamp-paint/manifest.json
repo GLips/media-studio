@@ -251,6 +251,15 @@
       "accepted": "2026-10-03",
       "acceptedOver": "d5ff3187",
       "adapter": "apple metal-3"
+    },
+    "texture/wrapped-tile": {
+      "file": "texture/wrapped-tile.png",
+      "output": "34a3b0b3a00f7d2e487d52fcce7a3d9ee8898bc85895ade3d83ed03f1e3efefc",
+      "inputs": "55be724724c0f01860d0fcdd74a94a9d16c57ec16811f64c6d56dea28bd50079",
+      "reason": "vid-157 wrap-xy: a tile wrapping both ways (wrap: 'xy'), a flood and a bloom on its corner and a stroke across each seam, drawn at half size as a shot's painted texture, laid flat 2 x 2 beside a three.js plane whose uv runs to 2 each way; accepted by eye, seamless at both seams and the corner, flat and on the plane",
+      "accepted": "2026-10-04",
+      "acceptedOver": "3d8b7e03",
+      "adapter": "apple metal-3"
     }
   }
 }
