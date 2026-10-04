@@ -87,6 +87,16 @@ export function checkPaintCapability(medium: PaintMedium | null, capability: Pai
 }
 
 /**
+ * `medium` as a brush's profile probe sees it: without its dry brush's tooth, since probes paint a pack's brushes as
+ * the pack reads them, never dragged dry. Profiles are keyed on this (stampBrushProbeMediumKey), so tuning what no
+ * probe sees measures nothing anew.
+ */
+export type PaintMediumAsProbed = Omit<PaintMedium, 'paperContact'> & { paperContact: { kind: 'valleys' } | { kind: 'peaks'; tooth: number } };
+
+export const paintMediumAsProbed = (medium: PaintMedium): PaintMediumAsProbed =>
+  (medium.paperContact.kind === 'valleys' ? { ...medium, paperContact: { kind: 'valleys' } } : medium);
+
+/**
  * A masstone medium's colours: each the paint's own, thick. `cover` is what a full load of a perfect white reflects
  * dry over black, below 1: how far one stroke hides what's under it, and so how far a lift has to thin it before the
  * paper shows. Tinting strength is a colour's luminance, at least `leastStrength`.

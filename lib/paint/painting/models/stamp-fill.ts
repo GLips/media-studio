@@ -13,11 +13,11 @@ import {
   stampBrushEdgeOffsetMean, stampBrushEdgeReach, stampBrushMeasuredProfile, stampBrushProfileRange, type StampBrushEdgeReach,
 } from '#lib/paint/brush/models/stamp-brush-profile.ts';
 import { placeStrokeStamps, stampFrozenMarks, type PlacedStamp, type StampStrokePoint } from '#lib/paint/brush/models/stamp-placement.ts';
-import { stampRegionSeed, type CompiledStampArea } from './stamp-area.ts';
+import { compileStampArea, stampLostEdge, stampRegionSeed, type CompiledStampArea } from './stamp-area.ts';
 import { planStampFloodRuns, type StampFloodReach, type StampFloodRuns } from './stamp-fill-plan.ts';
 import { stampRowFrame, stampRowSpans, type StampFillReach, type StampFillStrokes, type StampRowFrame } from './stamp-fill-strokes.ts';
 import type { CompiledStampDeposit, CompiledStampFlood } from './stamp-paint-recipe-compile.ts';
-import { stampGridUnion, stampRegionPolygon, type StampEdge, type StampGrid, type StampPoint, type StampRegion } from './stamp-region.ts';
+import { stampEdgeReach, stampGridUnion, stampRegionPolygon, type StampEdge, type StampGrid, type StampPoint, type StampRegion } from './stamp-region.ts';
 
 /**
  * Rows a quarter diameter apart, at most: close enough that a tip's own falloff doesn't band. A dry brush's flood and
@@ -129,21 +129,22 @@ export const stampFloodEdgeOf = (application: { edge?: StampFloodEdge }): StampF
 
 /**
  * The barrier a flood of `polygon` stops at: its outline, a pixel's antialiasing wide, or ramping out over a lost
- * edge's reach (an outset half the reach, as an area's soft edge is centred on its line), its ragged line seeded by
- * `seed` (stampRegionSeed). Refuses a reach that isn't finite and positive.
+ * edge's reach (stampLostEdge), its ragged line seeded by `seed` (stampRegionSeed). Refuses a reach that isn't finite
+ * and positive, and what compileStampArea refuses of an edge.
  */
 export function stampFloodBarrier(polygon: readonly StampPoint[], edge: StampFloodEdge, seed: string): CompiledStampArea {
   if (edge.kind === 'barrier') return { polygon, seed: 0 };
   const { reach, ragged } = edge;
   if (!(reach > 0 && Number.isFinite(reach))) throw new Error(`stamp paint: a flood's lost edge reaches ${reach} px, and it reaches a finite distance over 0`);
-  return { polygon, edge: { soft: reach, ...(ragged && { ragged }) }, inset: -reach / 2, seed: ragged ? stampRegionSeed(seed) : 0 };
+  return compileStampArea({ rings: [polygon], ...stampLostEdge(reach, ragged), seed: ragged ? stampRegionSeed(seed) : 0 }, 'a flood');
 }
 
 /**
- * How far past its outline a flood lays paint: a lost edge's whole ramp, out to where its ragged line reaches, so
- * the barrier grades paint that's there rather than paper; nothing past a barrier.
+ * How far past its outline a flood lays paint: as far as its `barrier` lets any through (a lost edge's ramp, out to
+ * its ragged line's furthest), so the barrier grades paint that's there rather than paper. A wall lets none past its
+ * antialiasing, and the flood's strokes round the outline already reach it.
  */
-export const stampFloodLaidPast = (edge: StampFloodEdge): number => (edge.kind === 'lost' ? edge.reach + (edge.ragged?.amount ?? 0) : 0);
+export const stampFloodLaidPast = (barrier: CompiledStampArea): number => (barrier.edge?.soft ? stampEdgeReach(barrier.edge) - (barrier.inset ?? 0) : 0);
 
 /**
  * Rows `step` apart across `frame`'s region, each split into segments by `spans` (in the frame), every segment a start

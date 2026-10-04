@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
+import { PAINT_MEDIA, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import { PAINT_BANDS } from '#lib/paint/materials/models/paint-spectrum.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
@@ -8,7 +8,8 @@ import { compileStampPaintRecipe, stampMixedPainting, type CompiledStampPaint } 
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampPaintMaterial } from './stamp-paint-recipe-types.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
-import { compileStampPigmentPaint, STAMP_PIGMENT_GROUP_SLOTS, stampGrainDepthIn, stampPigmentAmountsAt, stampPigmentGroupMedium, type StampPigmentMixing } from './stamp-pigment-paint.ts';
+import { compileStampPigmentPaint, STAMP_PIGMENT_GROUP_SLOTS, stampPigmentAmountsAt, stampPigmentGroupMedium, type StampPigmentMixing } from './stamp-pigment-paint.ts';
+import { STAMP_PRESSURE_GRAIN_OWNER, stampBrushPaperContact, stampGrainDepthBy } from './stamp-paper-contact.ts';
 import { stampPaintMedia } from './stamp-wetness.ts';
 import { placeStrokeStamps } from '#lib/paint/brush/models/stamp-placement.ts';
 
@@ -86,7 +87,7 @@ test('a keyed material lays, between its keys, what a mixture of the eased amoun
   assert.equal(washOf([mixture(1, 0)]).groups[0].recolours, undefined);
 });
 
-test("a medium on the paper's tooth sets aside a brush's grain depth by pressure, and only that", () => {
+test("a deposit on the paper's peaks, a dry medium's or a dry brush's in a wet one, sets aside its brush's grain depth by pressure, and only that", () => {
   const stick = {
     tip: { roundness: 1, sampling: 'isotropic' }, spacing: 0.5, stepping: 'spread', scatter: { count: 1, radius: 0, lateral: 0 },
     dynamics: { grainDepth: { pressure: { kind: 'linear', amount: 1 }, fade: { kind: 'linear', amount: 0.5, steps: 1 } } },
@@ -95,9 +96,11 @@ test("a medium on the paper's tooth sets aside a brush's grain depth by pressure
   } as const;
   // Past the first step, a half-pressure stroke's grain depth is half by pressure and half by fade.
   for (const stamp of placeStrokeStamps([{ x: 0, y: 0, pressure: 0.5 }, { x: 200, y: 0, pressure: 0.5 }], stick, 20, 'tooth').slice(1)) {
-    assert.ok(Math.abs(stampGrainDepthIn(stamp, PAINT_MEDIA.crayon) - 0.5) < 1e-9);
-    assert.ok(Math.abs(stampGrainDepthIn(stamp, PAINT_MEDIA.watercolour) - 0.25) < 1e-9);
-    assert.ok(Math.abs(stampGrainDepthIn(stamp, null) - 0.25) < 1e-9);
+    const depthIn = (medium: PaintMedium | null, media: 'wet' | 'dry') => stampGrainDepthBy(stamp, STAMP_PRESSURE_GRAIN_OWNER[stampBrushPaperContact(medium, media).kind]);
+    assert.ok(Math.abs(depthIn(PAINT_MEDIA.crayon, 'dry') - 0.5) < 1e-9);
+    assert.ok(Math.abs(depthIn(PAINT_MEDIA.watercolour, 'dry') - 0.5) < 1e-9);
+    assert.ok(Math.abs(depthIn(PAINT_MEDIA.watercolour, 'wet') - 0.25) < 1e-9);
+    assert.ok(Math.abs(depthIn(null, 'dry') - 0.25) < 1e-9);
   }
 });
 

@@ -11,8 +11,8 @@ import { paintMixtureComponents } from '#lib/paint/materials/models/paint-mixtur
 import { paintPigmentSeed } from '#lib/paint/materials/models/paint-paper.ts';
 import type { PaintMixturePigment, PaintPigment } from '#lib/paint/materials/models/paint-pigment.ts';
 import type { PaintBands } from '#lib/paint/materials/models/paint-spectrum.ts';
-import type { PlacedStamp } from '#lib/paint/brush/models/stamp-placement.ts';
 import { stampPaintFieldEnds } from './stamp-paint-field.ts';
+import { isStampDryBrush, stampBrushPaperContact } from './stamp-paper-contact.ts';
 import { mapStampKeyList, stampKeySpanAt, type StampKeyList } from './stamp-scene-keys.ts';
 import { stampGroupKnocksOut, type CompiledStampDeposit, type CompiledStampGroup, type StampMixedPainting } from './stamp-paint-recipe-compile.ts';
 import type { CompiledStampKeyedMaterial } from './stamp-paint-recipe-types.ts';
@@ -115,9 +115,8 @@ export const STAMP_PIGMENT_UNDERPAINT_SLOTS = 16;
 
 /**
  * `knockout`: whether it's in its group's knockout, taking from the paint behind the group rather than laying its own.
- * `dryBrush`: whether it drags over the paper as a dry brush does in its medium (PaintMedium's
- * `paperContact.dryBrush`): a dry-media brush in a wet medium. Its water is the painting's media binding's
- * (StampPaintMedia).
+ * `dryBrush`: whether it drags over the paper as a dry brush does in its medium (stampBrushPaperContact): a
+ * dry-media brush in a wet medium. Its water is the painting's media binding's (StampPaintMedia).
  */
 export type StampPigmentDeposit = { group: number; components: readonly StampPigmentComponent[]; grade: StampPigmentGrade; knockout: boolean; dryBrush: boolean };
 
@@ -196,7 +195,7 @@ export function compileStampPigmentPaint(painting: StampMixedPainting, mixing: S
       deposits.set(deposit, {
         group: g,
         knockout: false,
-        dryBrush: deposit.brush.media === 'dry' && medium.paperContact.kind === 'valleys',
+        dryBrush: isStampDryBrush(stampBrushPaperContact(medium, deposit.brush.media)),
         grade: kind === 0 ? UNGRADED : { kind, geometry },
         components: pigments.map((pigment) => {
           let slot = palette.findIndex(({ id }) => id === pigment.id);
@@ -226,25 +225,6 @@ export function stampPigmentGroupMedium(paint: StampPigmentPaint, painting: Stam
   if (g < 0) throw new Error(`stamp paint: ${group.id} isn't a group of the painting its paint was compiled for`);
   return paint.media[paint.groups[g].medium];
 }
-
-/** `stamp`'s share of its grain's depth in `medium` (null: flat paint), pressure's share as STAMP_PRESSURE_GRAIN_OWNER says. */
-export const stampGrainDepthIn = (stamp: PlacedStamp, medium: PaintMedium | null): number => stampGrainDepthBy(stamp, stampGrainDepthSourceIn(medium));
-
-/** What owns a stamp's grain response to pressure: the paper's tooth, or the brush (STAMP_PRESSURE_GRAIN_OWNER). */
-export type StampGrainDepthSource = 'tooth' | 'brush';
-
-/**
- * Crayon's grain policy, by the medium's paper contact: in 'peaks' contact the paper's tooth owns the pressure
- * response (paintDryContact presses into it), so the brush's grain depth by pressure, Photoshop's model of the same,
- * is set aside; kept, Kyle's Nupastel laid nothing at half pressure. In 'valleys' the brush owns it. A lift goes alike.
- */
-export const STAMP_PRESSURE_GRAIN_OWNER = { peaks: 'tooth', valleys: 'brush' } as const satisfies Record<PaintMedium['paperContact']['kind'], StampGrainDepthSource>;
-
-/** What owns a stamp's grain response to pressure in `medium`; flat paint, touching no tooth, leaves it to the brush. */
-export const stampGrainDepthSourceIn = (medium: PaintMedium | null): StampGrainDepthSource => (medium ? STAMP_PRESSURE_GRAIN_OWNER[medium.paperContact.kind] : 'brush');
-/** `stamp`'s share of its grain's depth, its pressure's share taken from `source`. */
-export const stampGrainDepthBy = (stamp: PlacedStamp, source: StampGrainDepthSource): number =>
-  stamp.grainDepth * (source === 'tooth' ? 1 : stamp.grainDepthByPressure);
 
 /** Whether two pigments are one: the same absorption, scattering and habits. A name is only for people. */
 const samePigment = (a: PaintPigment, b: PaintPigment) =>

@@ -14,7 +14,7 @@ import { STAMP_RESOLVE_PLANS, stampActiveLayers, stampResolveOrderIndex, stampRe
 import { STAMP_FLOATS, STAMP_ORDERED_TILE, stampBinsAppended, stampInstanceFloats, stampMarksOrderedBins, stampMarksPlan, stampTintFloats, TINT_FLOATS } from '../models/stamp-mark-load.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampPaintPaper } from '../models/stamp-paint-recipe-types.ts';
-import { stampGrainDepthSourceIn } from '../models/stamp-pigment-paint.ts';
+import { STAMP_PRESSURE_GRAIN_OWNER, stampBrushPaperContact } from '../models/stamp-paper-contact.ts';
 import { stampStageTexelsWithin, type StampStage } from '../models/stamp-stage.ts';
 import type { StampTipHull } from '../models/stamp-tip-hull.ts';
 import { stampMarksSupport, stampMarksTipHull, stampTipFootprintOf, type StampTipFootprint, type StampTipsOf } from '../models/stamp-tip-support.ts';
@@ -76,8 +76,8 @@ export function loadStampMarks(on: StampPaintDevice, { stage, tipFootprint }: St
     throw new Error(`stamp paint: ${total.toLocaleString()} stamps need ${Math.round((total * STAMP_FLOATS * 4) / 2 ** 20)} MB, over this GPU's ${Math.round(on.limits.maxBufferSize / 2 ** 20)} MB buffer`);
   }
   const stampData = new Float32Array(Math.max(1, total) * STAMP_FLOATS), tintData = new Float32Array(Math.max(1, tints) * TINT_FLOATS);
-  entries.forEach(({ marks, medium }, i) => {
-    const { main, dual, tint } = placed[i], grainDepthSource = stampGrainDepthSourceIn(medium);
+  entries.forEach(({ marks, brush, medium }, i) => {
+    const { main, dual, tint } = placed[i], grainDepthSource = STAMP_PRESSURE_GRAIN_OWNER[stampBrushPaperContact(medium, brush.media).kind];
     stampData.set(stampInstanceFloats(marks.stamps, grainDepthSource), main * STAMP_FLOATS);
     stampData.set(stampInstanceFloats(marks.dualStamps, grainDepthSource), dual * STAMP_FLOATS);
     if (tint !== null) tintData.set(stampTintFloats(marks.stamps), tint * TINT_FLOATS);

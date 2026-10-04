@@ -20,8 +20,9 @@ import type { StampPaintColor } from '#lib/paint/materials/models/paint-material
 import type { StampPaintCompositor, StampWashGroupLayer } from './stamp-paint-compositor.ts';
 import type { StampPaintDevice } from './stamp-paint-gpu.ts';
 import { STAMP_REFLECTANCE_READING_WGSL } from './stamp-reflectance-reading.ts';
-import { STAMP_STACKED_FILL_REACH, stampPigmentLayWgsl } from './stamp-paint-pigment-lay.ts';
+import { STAMP_STACKED_FILL_REACH, stampPigmentLayContactWgsl, stampPigmentLayWgsl } from './stamp-paint-pigment-lay.ts';
 import { gpuUniformLayout, gpuUniformWriter, type GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
+import { gpuWgslFloat as f32 } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 
 /** Words per component in the component buffer: slot, seed, granulation, flocculation. */
 const COMPONENT_WORDS = 4;
@@ -36,8 +37,6 @@ const PIGMENT_PAINT_DEPOSIT = gpuUniformLayout('PaintDeposit', [
   ['amounts', { vec4fArray: STAMP_PIGMENT_GROUP_SLOTS / 2 }],
 ]);
 
-/** A number as a WGSL f32 literal, to the precision an f32 holds. */
-const f32 = (value: number) => value.toPrecision(9);
 const vec4s = (values: ArrayLike<number>, count: number) =>
   Array.from({ length: count }, (_, i) => `vec4f(${[0, 1, 2, 3].map((j) => f32(values[i * 4 + j] ?? 0)).join(', ')})`).join(', ');
 
@@ -75,6 +74,17 @@ fn washMoved(now: array<vec4f, ${layers}>, wasPigment: f32) -> array<vec4f, ${la
   return moved;
 }`;
 }
+
+/**
+ * Where `medium` meets the paper (WGSL), from the paper's height `h`, its mean and valley, by a pigment's granulation
+ * and its share of a full load; a dry medium's by how hard it's pressed and how far wax already fills the tooth.
+ */
+const contactOf = ({ paperContact }: PaintMedium, depth: string, granulation: string, load: string, press: string, filled: string) => (paperContact.kind === 'peaks'
+  ? `paintDryContact(h, meanHeight, ${f32(paperContact.tooth)}, ${depth}, ${press}, ${filled})`
+  : `paintWetSettle(valley, ${depth}, ${granulation}, ${load})`);
+/** A deposit's own contact in `medium`, a dry brush's as its lay takes it (stampPigmentLayContactWgsl). */
+const layContactOf = (medium: PaintMedium) =>
+  stampPigmentLayContactWgsl(medium, contactOf(medium, 'u.paperDepth', 'c.granulation', `amount / ${f32(medium.body)}`, 'press', 'filled'));
 
 /** The suffix of medium `m`'s own WGSL functions (`incomingAtM0`), which a switch on GROUP_MEDIA reaches. */
 const mediumSuffix = (m: number) => `M${m}`;
@@ -225,16 +235,6 @@ fn liftedUnder(i: u32, covered: vec4f, behind: array<vec4f, UNDER_LAYERS>, left:
 }`;
   };
 
-  // Where `medium` meets the paper, from the paper's height `h`, its mean and valley, by a pigment's granulation and
-  // its share of a full load; a dry medium's by how hard it's pressed and how far wax already fills the tooth.
-  const contactOf = ({ paperContact }: PaintMedium, depth: string, granulation: string, load: string, press: string, filled: string) => (paperContact.kind === 'peaks'
-    ? `paintDryContact(h, meanHeight, ${f32(paperContact.tooth)}, ${depth}, ${press}, ${filled})`
-    : `paintWetSettle(valley, ${depth}, ${granulation}, ${load})`);
-  // A deposit's own contact in `medium`: a dry brush's paint, in a wet medium, settles nowhere (dryBrushShare).
-  const layContactOf = (medium: PaintMedium) => {
-    const own = contactOf(medium, 'u.paperDepth', 'c.granulation', `amount / ${f32(medium.body)}`, 'press', 'filled');
-    return medium.paperContact.kind === 'valleys' ? `select(${own}, 1.0, paint.dryBrush != 0u)` : own;
-  };
   const groupOf = (deposit: CompiledStampDeposit) => {
     const group = paint.deposits.get(deposit)?.group;
     if (group === undefined) throw new Error(`stamp paint: ${deposit.id} isn't in the painting its pigment compositor was made for`);

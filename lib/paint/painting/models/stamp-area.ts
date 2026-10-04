@@ -19,6 +19,13 @@ import { checkedStampPolygon, STAMP_RINGED_COUNT, stampEdgeReach, stampEdgeWidth
  */
 export type StampArea = { region: StampRegion; edge?: StampEdge; inset?: number };
 
+/**
+ * An edge giving way over `reach` px past its line, maybe `ragged`: a soft edge outset half its width, so its ramp
+ * starts on the line. A flood's lost edge and a document's bleed are both one.
+ */
+export const stampLostEdge = (reach: number, ragged?: StampEdge['ragged']): { edge: StampEdge; inset: number } =>
+  ({ edge: { soft: reach, ...(ragged && { ragged }) }, inset: -reach / 2 });
+
 /** A seed for a region's ragged edge from its ID, as a u32 the renderer's noise reads. */
 export const stampRegionSeed = (id: string) => Math.floor(seededRandom(`${id}|region`)() * 0x100000000) >>> 0;
 

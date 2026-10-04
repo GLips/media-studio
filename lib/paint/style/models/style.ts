@@ -65,13 +65,16 @@ export const readBundledStampPaintPacks = ({ manifests }: BundledStampPaintStyle
 export type StampPaintStyleMixing<S extends StampPaintStyle> =
   S extends { paint: { pigments: infer P extends Readonly<Record<string, PaintPigmentAppearance>> } } ? StampPigmentMixing<P> : StampPaintMixing;
 
+/** A style's brush as it paints: read from its pack's source, with its media, the role's or else its pack's. */
+export type StampStyleBrush = StampBrush & { media: StampBrushMedia };
+
 /**
  * A style ready to paint with: each of its brushes read from its pack's source with its media, its palette, its paper, and how its
  * paint mixes (its pigments with it, for a style that paints in pigment).
  */
 export type ResolvedStampPaintStyle<S extends StampPaintStyle = StampPaintStyle> = {
   name: string;
-  brushes: { readonly [K in keyof S['brushes']]: StampBrush };
+  brushes: { readonly [K in keyof S['brushes']]: StampStyleBrush };
   palette: S['palette'];
   paper: StampPaintPaper;
   mixing: StampPaintStyleMixing<S>;

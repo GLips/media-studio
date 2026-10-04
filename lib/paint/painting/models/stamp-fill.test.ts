@@ -215,4 +215,5 @@ test("a flood's barrier is its outline unless its edge is lost, then whole on th
   assert.ok(stampAreaCoverageAt(lost, 30, 100) > 0.3 && stampAreaCoverageAt(lost, 30, 100) < 0.7, `lost: halfway ${stampAreaCoverageAt(lost, 30, 100)}`);
   assert.ok(stampAreaCoverageAt(lost, 20, 100) < 0.01, `lost: at its reach ${stampAreaCoverageAt(lost, 20, 100)}`);
   assert.throws(() => barrierOf({ kind: 'flood', edge: { kind: 'lost', reach: 0 } }), /lost edge reaches 0 px/);
+  assert.throws(() => barrierOf({ kind: 'flood', edge: { kind: 'lost', reach: 20, ragged: { amount: 4, scale: 0 } } }), /ragged amount of 0 or more at a positive scale/);
 });

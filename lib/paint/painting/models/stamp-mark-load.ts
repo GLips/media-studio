@@ -7,7 +7,7 @@
 import { stampAccumulationPlan, type StampAccumulationPlan } from './stamp-deposit-stages.ts';
 import type { StampAccumulation } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { FrozenStampMarks } from '#lib/paint/brush/models/stamp-placement.ts';
-import { stampGrainDepthBy, type StampGrainDepthSource } from './stamp-pigment-paint.ts';
+import { stampGrainDepthBy, type StampGrainDepthSource } from './stamp-paper-contact.ts';
 import { stampMarksTipHull, stampPlacedSupportInto, type StampTipFootprint } from './stamp-tip-support.ts';
 import { rememberedFor, rememberedOnce } from './stamp-remembered.ts';
 
@@ -25,7 +25,7 @@ export const TINT_FLOATS = 4;
 export const STAMP_ORDERED_TILE = 32;
 
 const instanceFloats = new WeakMap<StampMarks, Map<StampGrainDepthSource, Float32Array>>();
-/** `marks` as instance floats (STAMP_FLOATS each), their grain depth by pressure from `source` (stampGrainDepthSourceIn). */
+/** `marks` as instance floats (STAMP_FLOATS each), their grain depth by pressure from `source` (STAMP_PRESSURE_GRAIN_OWNER). */
 export const stampInstanceFloats = (marks: StampMarks, source: StampGrainDepthSource) => rememberedFor(instanceFloats, marks, source, () => {
   const floats = new Float32Array(marks.length * STAMP_FLOATS);
   marks.forEach((s, i) => floats.set(

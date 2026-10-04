@@ -1,25 +1,46 @@
 // stamp-paint-pigment-lay.ts: how a deposit lays its paint into a group's layer in a pigment medium, as WGSL with the
 // medium's numbers written in, one set per medium (its suffix `s`): mixing (watercolour, gouache) or stacking (crayon),
-// a dry brush's share of the paper in a wet medium with either. It calls the compositor's incomingAt and reads its
-// bindings (layer, before, paint, u): stamp-paint-pigment-compositor.ts is its one caller.
+// and the whole of a dry brush's meeting with the paper in a wet medium. It calls the compositor's incomingAt and
+// reads its bindings (layer, before, paint, u): stamp-paint-pigment-compositor.ts is its one caller.
+//
+// Negative space: only a mixing lay takes a dry brush's share. The one stacking medium, crayon, meets the paper on its
+// peaks already, so no dry brush is dragged in it.
 
 import type { PaintMedium, PaintStackedLayering } from '#lib/paint/materials/models/paint-medium.ts';
+import { gpuWgslFloat as f32 } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 
-/** A number as a WGSL f32 literal, to the precision an f32 holds. */
-const f32 = (value: number) => value.toPrecision(9);
+/**
+ * The paper contact a deposit's own paint is laid at in `medium`, `own` the medium's (WGSL): a dry brush's paint, in
+ * a wet medium, settles nowhere, its contact with the paper being the rate it lays at (dryBrushShare).
+ */
+export const stampPigmentLayContactWgsl = (medium: PaintMedium, own: string) =>
+  (medium.paperContact.kind === 'valleys' ? `select(${own}, 1.0, paint.dryBrush != 0u)` : own);
+
+/**
+ * How much of a pixel a dry brush in a wet medium lays at: the peaks it catches at the hand's press, the valleys bare
+ * whatever the paper's depth, which is tuned to how wet paint shows the tooth. 1 for any other deposit; a dry
+ * medium's tooth is its paint's own contact.
+ */
+const dryBrushShare = ({ paperContact }: PaintMedium, s: string) => /* wgsl */ `
+fn dryBrushShare${s}(tooth: vec2f, press: f32) -> f32 {
+  ${paperContact.kind === 'valleys'
+    ? `if (paint.dryBrush == 0u) { return 1.0; }
+  return paintDryContact(1.0 - tooth.x, 1.0 - tooth.y, ${f32(paperContact.dryBrush.tooth)}, 1.0, press, 0.0);`
+    : 'return 1.0;'}
+}`;
 
 /**
  * A mixing medium's lay: each stroke moves the paint toward its own, carrying `pickup` of the wet paint under it, so
  * where two washes meet they mix rather than one replacing the other. A dry brush moves it only where it touches the
  * paper (dryBrushShare): the valleys it skips keep what's there, scumbled over, not thinned.
  */
-const mixedLay = (pickup: number, s: string) => /* wgsl */ `
+const mixedLay = (medium: PaintMedium, s: string) => /* wgsl */ `${dryBrushShare(medium, s)}
 fn layDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32, wrap: vec2f) {
   let cover = clamp(coverage + max(rims.x, rims.y), 0.0, 1.0);
   if (cover <= 0.0) { return; }
   let incoming = incomingAt${s}(tooth, at, press, 0.0, wrap);
   let under = textureLoad(layer, pixel, 0u).x;
-  let rate = cover * dryBrushShare${s}(tooth, press) * (1.0 - ${f32(pickup)} * under);
+  let rate = cover * dryBrushShare${s}(tooth, press) * (1.0 - ${f32(medium.pickup)} * under);
   for (var l = 0u; l < LAYERS; l++) {
     if (isKnockoutLayer(l)) { continue; }
     let was = textureLoad(layer, pixel, l);
@@ -75,19 +96,6 @@ fn layDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: ve
   }
 }`;
 
-/**
- * How much of a pixel a dry brush in a wet medium lays at: the peaks it catches at the hand's press, the valleys bare
- * whatever the paper's depth, which is tuned to how wet paint shows the tooth. 1 for any other deposit; a dry
- * medium's tooth is its paint's own contact.
- */
-const dryBrushShare = ({ paperContact }: PaintMedium, s: string) => /* wgsl */ `
-fn dryBrushShare${s}(tooth: vec2f, press: f32) -> f32 {
-  ${paperContact.kind === 'valleys'
-    ? `if (paint.dryBrush == 0u) { return 1.0; }
-  return paintDryContact(1.0 - tooth.x, 1.0 - tooth.y, ${f32(paperContact.dryBrush.tooth)}, 1.0, press, 0.0);`
-    : 'return 1.0;'}
-}`;
-
-/** `medium`'s lay, suffixed `s`: its dry brush's share and its layering's layDeposit. */
-export const stampPigmentLayWgsl = (medium: PaintMedium, s: string) => `${dryBrushShare(medium, s)}
-${medium.layering.kind === 'stacks' ? stackedLay(medium.layering, medium.body, s) : mixedLay(medium.pickup, s)}`;
+/** `medium`'s lay, suffixed `s`: its layering's layDeposit. */
+export const stampPigmentLayWgsl = (medium: PaintMedium, s: string) =>
+  (medium.layering.kind === 'stacks' ? stackedLay(medium.layering, medium.body, s) : mixedLay(medium, s));

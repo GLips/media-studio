@@ -19,7 +19,7 @@ import type { StampSeededPaintField } from '#lib/paint/painting/models/stamp-pai
 import type { CompiledStampDeposit, CompiledStampMask } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampResolvedGeometry } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { StampSheetAnchors } from '#lib/paint/painting/models/stamp-sheet-program.ts';
-import { compilePaintingArea, paintingOuterRings, paintingRegionRings } from './painting-area-compile.ts';
+import { compilePaintingArea, paintingFloodEdge, paintingOuterRings, paintingRegionRings } from './painting-area-compile.ts';
 import type { AnyApplication, Amount, BrushRef, Charge, FillGeometry, Footprint, MarkFootprint, Mix, Resist, Subpath } from './painting-document.ts';
 import { paintingMixture } from './painting-mix.ts';
 
@@ -119,7 +119,7 @@ function paintingFillDeposit(
   const area = compilePaintingArea(fill.area, `${owner}.area`), { edge } = fill.area;
   const laying = fill.laying ?? (brush.media === 'dry' ? undefined : { kind: 'flood' as const });
   const application: StampFillApplication | undefined = laying?.kind === 'flood'
-    ? { kind: 'flood', edge: edge?.kind === 'bleed' ? { kind: 'lost', reach: edge.reachPx, ...(edge.roughness && { ragged: { amount: edge.roughness.amountPx, scale: edge.roughness.featurePx } }) } : { kind: 'barrier' }, ...(laying.reach && { reach: laying.reach }) }
+    ? { kind: 'flood', edge: paintingFloodEdge(edge), ...(laying.reach && { reach: laying.reach }) }
     : laying;
   const flooded = application?.kind === 'flood';
   const within = flooded ? clips : [...clips, area];
