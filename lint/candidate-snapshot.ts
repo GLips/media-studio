@@ -79,7 +79,7 @@ export function listLeftOutOfIndex({ root, gitEnv }: { root: string; gitEnv: Nod
   };
 }
 
-const LISTED = 12;
+const LEFT_OUT_LISTED = 12;
 
 /**
  * Lines naming what an index run left unchecked, `mount` prefixing each path, or none. `unstagedRead` says how the
@@ -89,8 +89,8 @@ export function describeLeftOutOfIndex(leftOut: LeftOutOfIndex, { mount, isSourc
   mount: string; isSource: (path: string) => boolean; unstagedRead: string;
 }): string[] {
   const listed = (paths: readonly string[]) => [
-    ...paths.slice(0, LISTED).map((path) => `  ${mount ? `${mount}/` : ''}${path}`),
-    ...(paths.length > LISTED ? [`  and ${paths.length - LISTED} more`] : []),
+    ...paths.slice(0, LEFT_OUT_LISTED).map((path) => `  ${mount ? `${mount}/` : ''}${path}`),
+    ...(paths.length > LEFT_OUT_LISTED ? [`  and ${paths.length - LEFT_OUT_LISTED} more`] : []),
   ];
   const untracked = leftOut.untracked.filter(isSource), unstaged = leftOut.unstaged.filter(isSource);
   return [
