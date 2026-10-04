@@ -1,11 +1,10 @@
 // ─── The baseline: today's violations, counted, so they report without blocking ──
 //
 // Findings are counted per check, file and key (never line), so an edit above a
-// baselined violation leaves it baselined. A count above the baseline is a new
-// violation and blocks. A count below it is stale and blocks too, until the
-// baseline is rewritten: the list only shrinks on purpose, and each shrink is a
-// reviewable diff. A new file or project has no entries, so it blocks from its
-// first commit.
+// baselined violation leaves it baselined. A count above the baseline is new and
+// blocks; one below is stale and blocks until the baseline is rewritten, each
+// shrink a reviewable diff. A rewrite adds no entry unless told to admit one
+// (BaselineRewrite), so a new project blocks from its first commit.
 //
 // Both tiers keep one baseline per scope. An oxlint rule is filed under the id
 // oxlint prints (`arch(no-long-comments)`), a structural check under its bare
@@ -39,10 +38,33 @@ export function baselineTier(baseline: Baseline, tier: BaselineTier): Baseline {
   return Object.fromEntries(Object.entries(baseline).filter(([check]) => baselineTierOf(check) === tier));
 }
 
-/** The baseline with one tier's entries rewritten to `findings`, the other tier's kept, checks in order. */
-export function rebaselineTier(baseline: Baseline, tier: BaselineTier, findings: readonly Finding[]): Baseline {
-  const merged = { ...baselineTier(baseline, tier === 'oxlint' ? 'structural' : 'oxlint'), ...baselineOf(findings) };
+/**
+ * What a rewrite does with a finding past the baseline. `shrink` leaves it out, so it still blocks: each entry falls
+ * to the count found and never rises. `admit` excuses it, on purpose: a new rule's existing violations, or a moved
+ * file's.
+ */
+export type BaselineRewrite = 'shrink' | 'admit';
+
+/** The baseline with one tier's entries rewritten to `findings` as `rewrite` says, the other tier's kept, checks in order. */
+export function rebaselineTier(baseline: Baseline, tier: BaselineTier, findings: readonly Finding[], rewrite: BaselineRewrite): Baseline {
+  const counted = baselineOf(findings);
+  const own = rewrite === 'admit' ? counted : lowerBaseline(baselineTier(baseline, tier), counted);
+  const merged = { ...baselineTier(baseline, tier === 'oxlint' ? 'structural' : 'oxlint'), ...own };
   return Object.fromEntries(Object.entries(merged).toSorted(([a], [b]) => a.localeCompare(b)));
+}
+
+/** Each of the baseline's entries at most its count in `counted`; one `counted` lacks is gone. */
+function lowerBaseline(baseline: Baseline, counted: Baseline): Baseline {
+  const lowered: Baseline = {};
+  for (const [check, files] of Object.entries(baseline)) {
+    for (const [path, keys] of Object.entries(files)) {
+      for (const [key, allowed] of Object.entries(keys)) {
+        const count = Math.min(allowed, counted[check]?.[path]?.[key] ?? 0);
+        if (count > 0) ((lowered[check] ??= {})[path] ??= {})[key] = count;
+      }
+    }
+  }
+  return lowered;
 }
 
 export function baselineOf(findings: readonly Finding[]): Baseline {

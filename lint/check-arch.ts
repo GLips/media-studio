@@ -9,17 +9,18 @@
 //   npm run check:arch -- --scope workspace   work/ alone, read with the studio's (its hook adds it too)
 //   npm run check:arch -- --rev main          a committed tree of the studio's
 //   npm run check:arch -- --list              every baselined finding, not just counts
-//   npm run check:arch -- --update-baseline   rewrite each baseline to the findings its index holds
+//   npm run check:arch -- --update-baseline   shrink each baseline to its index; scoped, --admit-new grows it
 //
 // Snapshots: lint/candidate-snapshot.ts. Scopes: lint/gate-scope.ts; none named, lint/gate-every-scope.ts.
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import type { BaselineRewrite } from './baseline.ts';
 import { judgeArchitecture } from './structural/arch-verdict.ts';
 import { describeLeftOutOfIndex } from './candidate-snapshot.ts';
 import { judgeEveryGateScope } from './gate-every-scope.ts';
-import { gateRunSnapshot, parseGateScope, rewriteGateBaseline, type GateScope } from './gate-scope.ts';
+import { describeUnexcused, gateRunSnapshot, parseBaselineRewrite, parseGateScope, rewriteGateBaseline, type GateScope } from './gate-scope.ts';
 import type { CheckTarget } from './structural/check-context.ts';
 import { STRUCTURAL_CHECKS } from './structural/registry.ts';
 
@@ -29,24 +30,24 @@ const root = join(dirname(script), '..');
 const { values } = parseArgs({
   options: {
     rev: { type: 'string' }, snapshot: { type: 'string' }, scope: { type: 'string' }, list: { type: 'boolean' },
-    'update-baseline': { type: 'boolean' },
+    'update-baseline': { type: 'boolean' }, 'admit-new': { type: 'boolean' },
   },
 });
 
-type ArchRunOptions = { rev?: string; snapshot?: string; list?: boolean; 'update-baseline'?: boolean };
+type ArchRunOptions = { rev?: string; snapshot?: string; list?: boolean };
 
+const baselineRewrite = parseBaselineRewrite(values);
 // A commit is the studio's, so --rev alone judges the studio.
 const passed = values.scope === undefined && values.rev === undefined
   ? await judgeEveryGateScope(root, 'check:arch', script, process.argv.slice(2))
-  : reportArchitecture(parseGateScope(values.scope ?? 'public'), values);
+  : reportArchitecture(parseGateScope(values.scope ?? 'public'), values, baselineRewrite);
 process.exitCode = passed ? 0 : 1;
 
-/** One scope judged and printed. Returns whether it passed. */
-function reportArchitecture(scope: GateScope, options: ArchRunOptions): boolean {
-  const updating = Boolean(options['update-baseline']);
+/** One scope judged and printed, its baseline rewritten as `rewrite` says. Returns whether it passed. */
+function reportArchitecture(scope: GateScope, options: ArchRunOptions, rewrite: BaselineRewrite | undefined): boolean {
   if (scope === 'workspace' && options.rev) throw new Error('--rev names a commit of the studio\'s; the workspace scope reads work/\'s working tree or index');
-  if (options.rev && (options.snapshot || updating)) throw new Error('--rev reads a commit, so it takes no --snapshot and rewrites no baseline');
-  const live = gateRunSnapshot(options.snapshot, updating);
+  if (options.rev && (options.snapshot || rewrite)) throw new Error('--rev reads a commit, so it takes no --snapshot and rewrites no baseline');
+  const live = gateRunSnapshot(options.snapshot, rewrite !== undefined);
   const target: CheckTarget = scope === 'workspace'
     ? { scope, snapshot: live }
     : { scope, snapshot: options.rev ? { kind: 'commit', rev: options.rev } : live };
@@ -58,12 +59,14 @@ function reportArchitecture(scope: GateScope, options: ArchRunOptions): boolean 
   const where = scope === 'workspace' ? `work/'s ${read}, with the studio's` : `the studio's ${read}`;
   const leftOut = snapshot.kind === 'index' ? describeLeftOutOfIndex(repository, 'as staged') : [];
 
-  if (updating) {
+  if (rewrite) {
     if (crashed.length) throw new Error(`not rewriting the baseline while a check crashes:\n${crashed.join('\n')}`);
-    const file = rewriteGateBaseline(root, scope, 'structural', findings);
-    console.log(`Wrote ${findings.length} findings to ${file}, counted over ${where}: stage it${scope === 'workspace' ? ' in work/' : ''} for the hook to read it.`);
+    const { file, unexcused } = rewriteGateBaseline(root, scope, 'structural', findings, rewrite);
+    console.log(`Wrote ${findings.length - unexcused.length} findings to ${file}, counted over ${where}: stage it${scope === 'workspace' ? ' in work/' : ''} for the hook to read it.`);
     if (leftOut.length) console.log(`\n${leftOut.join('\n')}`);
-    return true;
+    const unexcusedLines = describeUnexcused(scope, unexcused);
+    if (unexcusedLines.length) console.log(`\n${unexcusedLines.join('\n')}`);
+    return unexcused.length === 0;
   }
 
   console.log(`check:arch over ${where}: ${context.tree.sources.length} source files of ${context.tree.paths.size} files\n`);

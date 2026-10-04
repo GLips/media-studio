@@ -26,18 +26,20 @@ the console is their output) and `DEFAULT_EXPORT_MODULE_GLOBS` (loaded by path f
 
 **Which scope.** check:arch and lint judge one scope at a time: `public`, the studio's repository as a clean clone
 holds it, or `workspace`, work/'s, read beside the studio's. Each has its own baseline, and each hook names its own
-scope. Run by hand with no `--scope`, either judges the studio and, when work/ is a workspace, work/ too: each scope
-in its own process, exactly as its hook runs it, so a project is judged by hand as its commit will be. The run opens
-by naming the scopes it judges and closes with each one's verdict. `check:arch -- --rev <commit>` judges the studio
-alone.
+scope. Run by hand with no `--scope`, either judges the studio and, when work/ is a workspace, work/ too, so a project
+is judged by hand as its commit will be. Each scope runs in its own process, the same `--scope` run its hook makes,
+but over the working tree (unless `--snapshot index`) and outside any hook's git environment. The run opens by naming
+the scopes it judges and closes with each one's verdict. `check:arch -- --rev <commit>` judges the studio alone.
 
 **What both tiers read.** Run by hand, check:arch and lint read the working tree, untracked files included,
 so a project is checked before it's added. The pre-commit hooks pass `--snapshot index`: only what the commit holds,
 so another session's half-written file can't block it, and each lists the sources it left unchecked. check:arch reads
 the index's text; oxlint reads the index's files from disk. `check:arch -- --rev <commit>` reads a committed tree.
 `--update-baseline` counts only the index, as the hook judges it: a baseline excuses what a commit holds, so stage a
-fix before rewriting it, and an untracked project's violations are never excused. With no `--scope` it rewrites each
-scope's baseline. A scope's repository, mount and baseline file are `lint/gate-scope.ts`'s.
+fix before rewriting it. It only shrinks a baseline: each entry falls to the count found, and a finding past it is
+left out, still blocking, so a new project's violations are never excused. With no `--scope` it shrinks each scope's
+baseline. Adding entries is deliberate and names one scope: `--scope <s> --update-baseline --admit-new` excuses a new
+rule's existing violations or a moved file's. A scope's repository, mount and baseline file are `lint/gate-scope.ts`'s.
 
 **`structural/`** reads the snapshot, parsed once (`source-tree.ts`), with every import resolved to
 a canonical path, so an alias and a relative spelling reach one verdict. The `types` checks ask the TypeScript 7

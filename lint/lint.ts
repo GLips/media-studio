@@ -8,7 +8,7 @@
 //   npm run lint -- --scope public            the studio alone (its hook adds --snapshot index)
 //   npm run lint -- --scope workspace         work/ alone (its hook adds --snapshot index)
 //   npm run lint -- --list                    every baselined finding, not just counts
-//   npm run lint -- --update-baseline         rewrite each baseline's oxlint entries to its index's findings
+//   npm run lint -- --update-baseline         shrink each baseline's oxlint entries; scoped, --admit-new grows them
 //
 // What oxlint enables: oxlint.config.ts. Keys: lint/oxlint/oxlint-verdict.ts. Scopes: lint/gate-scope.ts; none
 // named, lint/gate-every-scope.ts.
@@ -16,9 +16,10 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import type { BaselineRewrite } from './baseline.ts';
 import { describeLeftOutOfIndex } from './candidate-snapshot.ts';
 import { judgeEveryGateScope } from './gate-every-scope.ts';
-import { gateRunSnapshot, parseGateScope, rewriteGateBaseline, type GateScope } from './gate-scope.ts';
+import { describeUnexcused, gateRunSnapshot, parseBaselineRewrite, parseGateScope, rewriteGateBaseline, type GateScope } from './gate-scope.ts';
 import { judgeOxlint } from './oxlint/oxlint-verdict.ts';
 
 const script = fileURLToPath(import.meta.url);
@@ -27,21 +28,21 @@ const root = join(dirname(script), '..');
 const { values } = parseArgs({
   options: {
     scope: { type: 'string' }, snapshot: { type: 'string' }, list: { type: 'boolean' },
-    'update-baseline': { type: 'boolean' },
+    'update-baseline': { type: 'boolean' }, 'admit-new': { type: 'boolean' },
   },
 });
 
-type LintRunOptions = { snapshot?: string; list?: boolean; 'update-baseline'?: boolean };
+type LintRunOptions = { snapshot?: string; list?: boolean };
 
+const baselineRewrite = parseBaselineRewrite(values);
 const passed = values.scope === undefined
   ? await judgeEveryGateScope(root, 'lint', script, process.argv.slice(2))
-  : reportOxlint(parseGateScope(values.scope), values);
+  : reportOxlint(parseGateScope(values.scope), values, baselineRewrite);
 process.exitCode = passed ? 0 : 1;
 
-/** One scope linted and printed. Returns whether it passed. */
-function reportOxlint(scope: GateScope, options: LintRunOptions): boolean {
-  const updating = Boolean(options['update-baseline']);
-  const snapshot = gateRunSnapshot(options.snapshot, updating);
+/** One scope linted and printed, its baseline rewritten as `rewrite` says. Returns whether it passed. */
+function reportOxlint(scope: GateScope, options: LintRunOptions, rewrite: BaselineRewrite | undefined): boolean {
+  const snapshot = gateRunSnapshot(options.snapshot, rewrite !== undefined);
   const { repository, linted, findings, advisories, fresh, stale, baselined } = judgeOxlint(root, scope, snapshot);
 
   const owner = scope === 'workspace' ? 'work/\'s' : 'the studio\'s';
@@ -50,11 +51,13 @@ function reportOxlint(scope: GateScope, options: LintRunOptions): boolean {
     : `the ${linted.length} sources in ${owner} working tree, untracked files included`;
   const leftOut = snapshot.kind === 'index' ? describeLeftOutOfIndex(repository, 'from disk') : [];
 
-  if (updating) {
-    const file = rewriteGateBaseline(root, scope, 'oxlint', findings);
-    console.log(`Wrote ${findings.length} oxlint findings to ${file}, counted over ${where}: stage it${scope === 'workspace' ? ' in work/' : ''} for the hook to read it.`);
+  if (rewrite) {
+    const { file, unexcused } = rewriteGateBaseline(root, scope, 'oxlint', findings, rewrite);
+    console.log(`Wrote ${findings.length - unexcused.length} oxlint findings to ${file}, counted over ${where}: stage it${scope === 'workspace' ? ' in work/' : ''} for the hook to read it.`);
     if (leftOut.length) console.log(`\n${leftOut.join('\n')}`);
-    return true;
+    const unexcusedLines = describeUnexcused(scope, unexcused);
+    if (unexcusedLines.length) console.log(`\n${unexcusedLines.join('\n')}`);
+    return unexcused.length === 0;
   }
 
   console.log(`lint over ${where}\n`);

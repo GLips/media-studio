@@ -11,7 +11,7 @@ import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isolatedGitEnv } from '#lib/platform/git/engine/fixture-git.ts';
 import { STUDIO_WORKSPACE_MOUNT } from './policy/studio-tree.ts';
-import { parseBaseline, rebaselineTier, type Baseline, type BaselineTier } from './baseline.ts';
+import { baselineTier, compareToBaseline, parseBaseline, rebaselineTier, type Baseline, type BaselineRewrite, type BaselineTier } from './baseline.ts';
 import { parseLiveSnapshot, readSnapshotText, type CandidateSnapshot, type LiveSnapshot, type MountedSnapshot } from './candidate-snapshot.ts';
 import type { Finding } from './structural/check-context.ts';
 
@@ -33,22 +33,30 @@ export type GateRepository = MountedSnapshot & { scope: GateScope };
 export function gateRepository(root: string, scope: GateScope, snapshot: CandidateSnapshot): GateRepository {
   const mount = SCOPE_MOUNT[scope];
   const repository: GateRepository = { scope, root: mount ? join(root, mount) : root, mount, snapshot, gitEnv: process.env };
-  if (scope === 'workspace') assertOwnWorkspaceRepository(repository);
+  if (scope === 'workspace') assertOwnWorkspaceRepository(root, repository);
   return repository;
 }
 
+const revParse = (cwd: string, env: NodeJS.ProcessEnv, what: string) =>
+  realpathSync(execFileSync('git', ['rev-parse', what], { cwd, env, encoding: 'utf8' }).trim());
+
 /**
- * work/ must be a repository of its own, and the one this process's git environment names: a folder inside the
- * studio's repository, or a hook's GIT_DIR pointing elsewhere, would read the wrong index as the workspace's.
+ * Why the studio at `root` has no workspace scope, or nothing when it has one: work/ must be a repository of its own,
+ * as `studio workspace init` makes it. A plain folder there sits inside the studio's repository, whose index holds none
+ * of it.
  */
-function assertOwnWorkspaceRepository({ root, gitEnv }: GateRepository): void {
-  const revParse = (env: NodeJS.ProcessEnv, what: string) =>
-    realpathSync(execFileSync('git', ['rev-parse', what], { cwd: root, env, encoding: 'utf8' }).trim());
-  if (!existsSync(root) || revParse(isolatedGitEnv(), '--show-toplevel') !== realpathSync(root)) {
-    throw new Error(`${root} isn't a repository of its own: run \`studio workspace init\``);
-  }
-  const own = revParse(isolatedGitEnv(), '--absolute-git-dir'), read = revParse(gitEnv, '--absolute-git-dir');
-  if (read !== own) throw new Error(`git reads ${read} for ${root}, not its own ${own}: this process's GIT_DIR names another repository`);
+export function workspaceRepositoryProblem(root: string): string | undefined {
+  const workspace = join(root, SCOPE_MOUNT.workspace);
+  if (existsSync(workspace) && revParse(workspace, isolatedGitEnv(), '--show-toplevel') === realpathSync(workspace)) return undefined;
+  return `${workspace} isn't a repository of its own (\`studio workspace init\` makes it one)`;
+}
+
+/** work/ is a workspace, and the repository this process's git environment names: a hook's GIT_DIR may name another. */
+function assertOwnWorkspaceRepository(root: string, { root: workspace, gitEnv }: GateRepository): void {
+  const problem = workspaceRepositoryProblem(root);
+  if (problem) throw new Error(problem);
+  const own = revParse(workspace, isolatedGitEnv(), '--absolute-git-dir'), read = revParse(workspace, gitEnv, '--absolute-git-dir');
+  if (read !== own) throw new Error(`git reads ${read} for ${workspace}, not its own ${own}: this process's GIT_DIR names another repository`);
 }
 
 /** The scope's baseline file, relative to the studio's root. */
@@ -71,12 +79,37 @@ export function gateRunSnapshot(argument: string | undefined, updateBaseline: bo
 }
 
 /**
- * Rewrites one tier's entries in the scope's baseline file on disk to `findings`, keeping the other tier's as the
- * file has them, a rewrite not yet staged included. Returns the file, relative to the studio's root.
+ * What `--update-baseline` does, or nothing for a run that only judges: it shrinks, and with `--admit-new` it admits
+ * too. Admitting names its one scope: run bare, it would excuse whatever work/'s index holds, a new project's
+ * violations among them, beside the studio's moved file.
  */
-export function rewriteGateBaseline(root: string, scope: GateScope, tier: BaselineTier, findings: readonly Finding[]): string {
+export function parseBaselineRewrite(options: { scope?: string; 'update-baseline'?: boolean; 'admit-new'?: boolean }): BaselineRewrite | undefined {
+  if (!options['admit-new']) return options['update-baseline'] ? 'shrink' : undefined;
+  if (!options['update-baseline']) throw new Error('--admit-new goes with --update-baseline');
+  if (options.scope === undefined) throw new Error('--admit-new excuses new findings in one scope: name it, --scope public or --scope workspace');
+  return 'admit';
+}
+
+/**
+ * Rewrites one tier's entries in the scope's baseline file on disk from `findings`, keeping the other tier's as the
+ * file has them, a rewrite not yet staged included. Returns the file, relative to the studio's root, and the findings
+ * the rewrite left unexcused, which still block.
+ */
+export function rewriteGateBaseline(
+  root: string, scope: GateScope, tier: BaselineTier, findings: readonly Finding[], rewrite: BaselineRewrite,
+): { file: string; unexcused: Finding[] } {
   const file = gateBaselineFile(scope), path = join(root, file);
   const onDisk = parseBaseline(existsSync(path) ? readFileSync(path, 'utf8') : undefined);
-  writeFileSync(path, `${JSON.stringify(rebaselineTier(onDisk, tier, findings), null, 2)}\n`);
-  return file;
+  const rewritten = rebaselineTier(onDisk, tier, findings, rewrite);
+  writeFileSync(path, `${JSON.stringify(rewritten, null, 2)}\n`);
+  return { file, unexcused: compareToBaseline(findings, baselineTier(rewritten, tier)).fresh };
+}
+
+/** The lines a shrinking rewrite prints for the findings it left out: each, and how to admit them on purpose. */
+export function describeUnexcused(scope: GateScope, unexcused: readonly Finding[]): string[] {
+  if (!unexcused.length) return [];
+  return [
+    `Not excused (block), ${unexcused.length}: a baseline only shrinks. Fix them, or, for a new rule's existing violations or a moved file's, admit them with --scope ${scope} --update-baseline --admit-new:`,
+    ...unexcused.map((finding) => `  ${finding.path}:${finding.line}  [${finding.check}] ${finding.message}`),
+  ];
 }
