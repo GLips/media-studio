@@ -131,7 +131,7 @@ integer atomics, two-word totals and 4096-bin damp histograms (`stamp-sheet-redu
 and the CPU decides in f64 on a 1 ms grid (`stamp-sheet-schedule.ts`, `stamp-sheet-decide.ts`), checked again by the
 field's own law. An `on` that can't hold, or a bloom with nothing to act on, is a `StampSheetRefusal`, its message
 the author's. Then it lands into the one wet field and its film; its water reaches other films' paint through a
-proxy, though only into films that keep a wet history (a direct film has no open channel); a drying closes once
+proxy, though only into films that keep a wet history or lift (any other direct film has no open channel); a drying closes once
 everything since the last has set, rimming each film that painted in it, and at the end every wet film's open paint
 settles. The field keeps times after a base it moves up past 2¹³ s. It solves a posed program: `paintingSheetPosed`
 (`lib/paint/document/models/painting-pose.ts`) maps each entry's marks by its chain's similarity, anchored clips,
@@ -215,9 +215,11 @@ still`); and the composite moves an own sheet its owner chain poses whole, unwra
 read off them: `checkPaintCapability` is the one check, which the recipe makes as each operation is written (a
 burnish, a lift, a wait, a `when`, a wet technique, water a deposit states, `wetHistory: false`), its message naming
 the medium. Which law lays a deposit is `stampDepositionLaw`, per
-deposit: water, a lift, and paint from a wet brush in a medium with wet history land in the wash's history
-(`landDeposit`); any other paint, a dry-media brush's or crayon's in a wash too, is laid by the dry law (`layDeposit`:
-pressure, the tooth, a burnish).
+deposit: water, a lift (in a direct wash too: crayon's eraser), and paint from a wet brush in a medium with wet
+history land in the wash's history (`landDeposit`); any other paint, a dry-media brush's or crayon's in a wash too, is
+laid by the dry law (`layDeposit`: pressure, the tooth, a burnish). A direct wash holding a lift is mixed as a wash
+(`stampSheetMixedPainting`), so its lifts land through the history as a recipe passage's do; the gate's
+`schedule/forward: eraser` holds a crayon line erased under the eraser's core and untouched past its reach.
 
 **Dry brush.** Where paint meets the tooth is the medium's `paperContact`: a wet medium pools into the valleys, a dry
 one catches on the peaks. Watercolour also declares a `dryBrush` tooth: its dry-media brushes drag over the sheet and

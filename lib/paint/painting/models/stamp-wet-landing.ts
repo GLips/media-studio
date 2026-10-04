@@ -19,6 +19,8 @@ export type StampDepositionLaw = 'wash' | 'dry';
 export function stampDepositionLaw(
   deposit: { action: Pick<CompiledStampAction, 'kind'>; brush: Pick<StampBrush, 'media'> }, medium: PaintMedium | null, history: boolean,
 ): StampDepositionLaw {
+  // A lift takes up what the paper holds through its wetness, even out of a wash: an eraser over crayon.
+  if (deposit.action.kind === 'lift') return 'wash';
   if (!history) return 'dry';
   if (deposit.action.kind !== 'paint') return 'wash';
   // A dry brush skips the tooth wherever it's laid, a crayon in a wash too.

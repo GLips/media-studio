@@ -13,6 +13,7 @@ import type { PropertySchema, PropertyValues } from '#lib/paint/document/models/
 import { painting, type PaintingEvaluation, type PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
+import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
 import type { StampPointBox } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { StampSheetProgram } from '#lib/paint/painting/models/stamp-sheet-program.ts';
 import { stampSheetGrid, stampSheetSeconds, type StampSheetDecision } from '#lib/paint/painting/models/stamp-sheet-schedule.ts';
@@ -100,6 +101,24 @@ export function stampGateForwardTimes(): number[] {
   const matte = stampSheetGrid(0, (STAMP_GATE_FLOOD_WATER - STAMP_GATE_SHEET_DRYING.damp) / STAMP_GATE_SHEET_DRYING.rate);
   return [0, 0, matte, stampSheetGrid(matte, STAMP_GATE_SHEET_DRYING.openTime + STAMP_GATE_FLOOD_WATER / STAMP_GATE_SHEET_DRYING.rate)];
 }
+
+const erasedProperties = { erased: { type: 'boolean', default: true } } as const satisfies PropertySchema;
+
+/** Where the erased crayon line lies and the eraser crosses it, document px: its band, and the eraser's core across it. */
+export const STAMP_GATE_ERASED_AT = { line: { y0: 28, y1: 37 }, core: { x0: 45, x1: 52 }, eraser: { x0: 38, x1: 59 } } as const;
+
+/** A crayon line drawn direct, and, `erased`, an eraser rubbed across its middle after it in the same wash. */
+export const STAMP_GATE_ERASED: PaintingSourceModule<typeof erasedProperties> = {
+  properties: erasedProperties,
+  default: function gateErased({ erased }: PropertyValues<typeof erasedProperties>): PaintingDocument {
+    const line = { key: 'line', kind: 'stroke', subpaths: [stampGateLine(8, 32, 88, 32)], brush: STAMP_GATE_ROUND_REF, diameterPx: 8, seed: 'line', charge: { kind: 'paint', mix: STAMP_GATE_EARTH_MIX } } as const;
+    const eraser = { key: 'eraser', kind: 'stroke', subpaths: [stampGateLine(48, 12, 48, 52)], brush: STAMP_GATE_ROUND_REF, diameterPx: 12, seed: 'eraser', charge: { kind: 'lift', strength: 1 } } as const;
+    return {
+      widthPx: 96, heightPx: 64, paper: STAMP_GATE_SHEET_PAPER, medium: 'watercolour',
+      layers: [{ key: 'drawing', medium: 'crayon', washes: [{ key: 'lines', wetHistory: false, applications: erased ? [line, eraser] : [line] }] }],
+    };
+  },
+};
 
 /** One damp application on paper nothing wetted. */
 export const STAMP_GATE_NEVER_WETTED: PaintingSourceModule = {
@@ -260,6 +279,14 @@ export function stampGateFilmDifference(a: StampGateFilm, b: StampGateFilm, with
     }
   }
   return most;
+}
+
+/** How much of `slot`'s pigment `film` holds over painting points `within`, end exclusive. */
+export function stampGateFilmMass(film: StampGateFilm, slot: number, within: StampBox): number {
+  const channel = slot + 1;
+  let total = 0;
+  for (let y = within.y0; y < within.y1; y++) for (let x = within.x0; x < within.x1; x++) total += stampGateFilmValue(film, x, y, channel >> 2, channel & 3);
+  return total;
 }
 
 /** The centre of `slot`'s pigment in `film`, painting points; null for a film holding none. */

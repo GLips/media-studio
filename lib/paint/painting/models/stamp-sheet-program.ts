@@ -112,12 +112,13 @@ export function stampSheetMixedPainting(program: StampSheetProgram): StampMixedP
     paper: program.paper, mixing: { kind: 'pigment', medium: program.water, pigments: {} },
     groups: program.films.map((film, f) => ({
       id: `film${f}`, mixing: film.mixing, paper: 'ground',
-      passes: passes.filter((pass) => pass.film === f).map(({ id, wet, deposits: laid }): StampMixedPass => (wet
+      // A direct wash that lifts is mixed as a wash: its lifts land through the history, as a recipe passage's do.
+      passes: passes.filter((pass) => pass.film === f).map(({ id, wet, deposits: laid }): StampMixedPass => (wet || !laid.every(stampPaintingDeposit)
         ? { id, kind: 'wash', knockout: false, deposits: laid }
         : { id, kind: 'dry', deposits: laid.filter(stampPaintingDeposit) })),
     })),
   };
 }
 
-/** Whether `deposit` lays paint: a direct wash's every one does, as the compiler refuses its lifts so far. */
+/** Whether `deposit` lays paint: a direct wash's every one does but its lifts. */
 const stampPaintingDeposit = (deposit: CompiledStampDeposit): deposit is CompiledStampDeposit<CompiledStampPaintAction> => deposit.action.kind === 'paint';

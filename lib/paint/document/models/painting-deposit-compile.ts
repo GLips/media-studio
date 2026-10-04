@@ -21,7 +21,6 @@ import { stampPaintFieldEnds, type StampSeededPaintField } from '#lib/paint/pain
 import type { CompiledStampDeposit, CompiledStampMask } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampResolvedGeometry } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { StampSheetAnchors } from '#lib/paint/painting/models/stamp-sheet-program.ts';
-import { StampSheetRefusal } from '#lib/paint/painting/models/stamp-sheet-refusal.ts';
 import { compilePaintingArea, paintingOuterRings, paintingRegionRings } from './painting-area-compile.ts';
 import type { AnyApplication, Amount, BrushRef, Charge, FillGeometry, Footprint, MarkFootprint, Mix, MixPart, Resist, Subpath } from './painting-document.ts';
 
@@ -106,11 +105,10 @@ export type PaintingCompiledDeposit = { deposit: CompiledStampDeposit; anchors: 
 export type PaintingDepositSetting = { id: string; wet: boolean; brushOf: PaintingBrushOf };
 
 /**
- * `application` of a checked document compiled at rest, `owner` naming it in errors. Refuses a lift in a direct wash
- * (an eraser), whose dry pass the engine lays only paint in so far; throws on what compileDeposit refuses.
+ * `application` of a checked document compiled at rest, `owner` naming it in errors; throws on what compileDeposit
+ * refuses. A lift compiles as a wash's does wherever it's laid, an eraser in a direct wash too: it acts on the paper.
  */
 export function compilePaintingDeposit(application: AnyApplication, owner: string, { id, wet, brushOf }: PaintingDepositSetting): PaintingCompiledDeposit {
-  if (!wet && application.charge.kind === 'lift') throw new StampSheetRefusal(`painting: ${owner} lifts in a wash without wet history, and the solver lifts only in a wet wash so far`);
   const brush = brushOf(application.brush), action = paintingAction(application.charge);
   const tool = { brush, diameter: application.diameterPx, ...(application.charge.kind === 'paint' && application.charge.opacityCap !== undefined && { opacity: application.charge.opacityCap }) };
   const fluid = compilePaintingFluid(id, application.reserves ?? [], application.resists ?? [], brushOf);

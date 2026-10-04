@@ -503,7 +503,8 @@ sheet a crayon node declared is refused: crayon keeps no wet history.
   if any, must hold there, at whatever pose the frame gives. Two applications may share one `at`: they land in
   document order.
 - **Direct washes** (`wetHistory: false`, crayon's only kind) may take `clock: {origin}`, so a drawing appears stroke
-  by stroke at fixed `at`s; `on` is refused. A direct application neither reads nor writes water, so the sheet's
+  by stroke at fixed `at`s; `on` is refused. A lift in one acts on the paper as in any wash: crayon's eraser takes
+  up the wax under it. Any other direct application neither reads nor writes water, so the sheet's
   scale never changes how it looks, and a direct wash can't choose it. On a numeric clock, the time between its
   strokes still dries the water already on the sheet.
 - **Scheduling** is forward: applications in the sheet's order, each at the earliest time at or after its predecessor
@@ -1062,7 +1063,6 @@ A refusal prints alone, after the check's summary, and fails the run. What the s
 | `hill starts at 2 s while sky is still wet until 5.1 s` | a numeric `origin` before its layer's earlier washes have set | a later `origin`, or `'set'` |
 | `glaze: fixed at 1 s precedes its predecessor at 3.448 s` | the application before it waited on its `on` past this one's `at` | a later `at`, or an earlier wait |
 | `glaze: at 6 s, on 'dry' holds over 80% of its core there` | a fixed `at` whose `on` doesn't hold then (for `damp`, an upper bound) | move the `at`, or drop the `on` |
-| `painting: glint lifts in a wash without wet history, and the solver lifts only in a wet wash so far` | what this solver doesn't paint yet | lift in a wet wash, or check it without `--solve` |
 
 `<PaintedShot>` refuses, as it loads, every problem at once: its sources' (as above), a bad rig (`meadow/heron is
 rigged: it takes no pins, sway or flutter`, `meadow/eye lies under rigged meadow/heron and in no part's cels`), the

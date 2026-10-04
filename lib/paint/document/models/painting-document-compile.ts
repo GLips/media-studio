@@ -4,8 +4,6 @@
 // text of what each entry reads (ENGINE 4.2) and of the sheet's head, which a solve chains its keys from; and the
 // steps compositing them (ENGINE 5.4). Keys name things in messages only: deposits are named by ordinals and seeded
 // by their tips. Posing comes after (painting-pose.ts).
-//
-// Negative space: a lift in a direct wash, the solver's limit so far, is refused by name, not painted wrong.
 
 import { PAINT_MEDIA, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { PaintMixturePigment } from '#lib/paint/materials/models/paint-pigment.ts';
@@ -46,8 +44,7 @@ const paintingEntryMarks = (deposit: CompiledStampDeposit, prewet: StampSheetPre
 
 /**
  * `order`, a sheet's order in `evaluation`, as its program at rest, brushes resolved by `brushOf`, each boiling layer
- * reseeded for its epoch in `epochs` (paintingLayerEpochs'). Refuses what the solver can't paint so far: a lift in a
- * direct wash.
+ * reseeded for its epoch in `epochs` (paintingLayerEpochs').
  */
 function compilePaintingSheet(evaluation: PaintingEvaluation, order: PaintingSheetOrder, brushOf: PaintingBrushOf, epochs: ReadonlyMap<number, number>): StampSheetProgram {
   const { document: paintingDocument, tree } = evaluation;

@@ -6,11 +6,11 @@
 import { paintColorPigmentId, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import { stampPaintFieldEnds } from '#lib/paint/painting/models/stamp-paint-field.ts';
 import { stampPigmentLayers } from '#lib/paint/painting/models/stamp-pigment-paint.ts';
-import type { AnyApplication, Field, Layer, Mix, MixPart } from './painting-document.ts';
+import type { AnyApplication, Field, Layer, Mix, MixPart, Wash } from './painting-document.ts';
 
 /**
  * A layer's film layout: `palette`, pigment ids a slot each; `paintLayers`, the four-channel layers holding coverage,
- * a channel per slot and, when it keeps a wet history, its open share in channel `open` (null when it doesn't).
+ * a channel per slot and, when it keeps a wet history or lifts, its open share in channel `open` (null when neither).
  */
 export type PaintingPigmentSlots = { readonly palette: readonly string[]; readonly paintLayers: number; readonly open: number | null };
 
@@ -32,6 +32,12 @@ function paintingMixPigmentIds(mix: Mix | Field<Mix>, medium: PaintMedium): stri
   return [...new Set([...mixPigmentIds(first, medium), ...mixPigmentIds(second, medium)])];
 }
 
+/** Whether `wash` lifts: a lift lands through the wet history wherever it's laid (stampDepositionLaw), reading the open share. */
+function paintingWashLifts(wash: Wash): boolean {
+  const applications: readonly AnyApplication[] = wash.applications;
+  return applications.some(({ charge }) => charge.kind === 'lift');
+}
+
 /**
  * `layer`'s film layout in `medium`, its applications read in document order (its sheet's order, within one layer).
  * Expects mixes that are checked.
@@ -44,6 +50,6 @@ export function paintingLayerSlots(layer: Layer, medium: PaintMedium): PaintingP
       if (charge.kind === 'paint') for (const id of paintingMixPigmentIds(charge.mix, medium)) palette.add(id);
     }
   }
-  const wet = layer.washes.some((wash) => wash.wetHistory !== false), paintLayers = stampPigmentLayers(palette.size, wet);
+  const wet = layer.washes.some((wash) => wash.wetHistory !== false || paintingWashLifts(wash)), paintLayers = stampPigmentLayers(palette.size, wet);
   return { palette: [...palette], paintLayers, open: wet ? 4 * paintLayers - 1 : null };
 }
