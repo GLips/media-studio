@@ -115,7 +115,7 @@ test("banded for its solve, a stroke run past a tile's corner lays its copies a 
   const halo = stampSheetWrapHalo(program), plan = stampSheetSolvePlan(program);
   // A power of two, so a pose or edit widening the widest reach a little keeps the sheet's key.
   assert.ok(Number.isInteger(Math.log2(halo)) && halo >= 8 * Math.SQRT2 + 2, `a halo of ${halo} px reaches a 16 px stamp's turned corner and its edge`);
-  assert.deepEqual([plan.stage.margin, plan.stage.wrap], [halo, { x: 200, y: 120 }]);
+  assert.deepEqual([plan.stage.margin, plan.stage.wrapPeriods], [halo, { x: 200, y: 120 }]);
   const planned = program.entries[0].deposit, banded = plan.painted().entries[0].deposit;
   // Each stamp, then its copies, each keeping where it was placed: whole periods away, within the halo's reach.
   const originals = banded.stamps.filter((stamp) => stamp.rest === undefined);
@@ -126,7 +126,7 @@ test("banded for its solve, a stroke run past a tile's corner lays its copies a 
   assert.ok(shifted(-200, -120), 'the run past the corner is copied into the frame at its top left');
   assert.ok(shifted(-200, 0) && shifted(0, -120), 'and past each seam, a period back on that axis');
   const xs = planned.stamps.map(({ x }) => x), ys = planned.stamps.map(({ y }) => y);
-  assert.deepEqual(banded.wrapFrom, [(Math.min(...xs) + Math.max(...xs)) / 2 - 100, (Math.min(...ys) + Math.max(...ys)) / 2 - 60]);
+  assert.deepEqual(banded.wrapFrom, { x: (Math.min(...xs) + Math.max(...xs)) / 2 - 100, y: (Math.min(...ys) + Math.max(...ys)) / 2 - 60 });
   assert.notEqual(plan.head, program.head);
   assert.equal(plan.painted().head, plan.head);
 });

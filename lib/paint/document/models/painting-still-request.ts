@@ -3,6 +3,7 @@
 
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { StampPaintPackUrls } from '#lib/paint/brush-packs/models/stamp-paint-pack-urls.ts';
+import type { PaintingProblem } from './painting-problem.ts';
 
 /**
  * What a still's page is handed: the property values as `--set` wrote them, each brush the document names by
@@ -16,10 +17,12 @@ export type PaintingStillRequest = {
 
 /**
  * A still as its page returns it: the painting as a PNG data URL, each layer's film when asked, the solve's lines
- * (paintingSolveLines) and what it cost, a line (paintingSolveCostsLine).
+ * (paintingSolveLines) and what it cost, a line (paintingSolveCostsLine); and what the solve found that the check
+ * couldn't, reading its images (paintingWrappedGrainHeightProblem), warnings all.
  */
 export type PaintingStill = {
   readonly png: string; readonly films: readonly { readonly name: string; readonly png: string }[]; readonly lines: readonly string[]; readonly costs: string;
+  readonly problems: readonly PaintingProblem[];
 };
 
 /** What a still's page returns: the still, or what the solve refused to paint (a StampSheetRefusal's message). */

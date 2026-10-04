@@ -13,6 +13,7 @@ import { StampSheetRefusal } from '#lib/paint/painting/models/stamp-sheet-refusa
 import { createStampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { createStampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 import { drawStampSheetsStill, type StampSheetsPicture } from '#lib/paint/painting/studio/stamp-sheet-composite.ts';
+import { paintingWrappedGrainHeightProblem } from '../models/painting-document-check.ts';
 import { compilePaintingSelection } from '../models/painting-document-compile.ts';
 import type { BrushRef } from '../models/painting-document.ts';
 import { paintingValuesFromText } from '../models/painting-properties.ts';
@@ -70,7 +71,11 @@ async function paintingStillOf({ texts, brushes, packUrls, films, at }: Painting
         const landed = paintingSolveLines(program, solved[s].decisions), solveLines = landed.length ? landed : [`nothing lands by scene ${at} s`];
         return several ? [`${paintingSheetName(sheet)}:`].concat(solveLines.map((line) => `  ${line}`)) : solveLines;
       });
-      return { png, films: filmPngs, lines, costs: paintingSolveCostsLine(costs.take()) };
+      // Each grain's image was loaded by the solve; asking again reads the owner's.
+      const grained = evaluation.document.wrap ? evaluation.tree.sheets.filter(({ paper }) => paper.grain) : [];
+      const grains = await owner.images(grained.map(({ paper }) => ({ asset: paper.grain!.image, kind: 'grain' as const })));
+      const problems = grained.flatMap((sheet, i) => paintingWrappedGrainHeightProblem(evaluation.document, sheet, grains[i]) ?? []);
+      return { png, films: filmPngs, lines, costs: paintingSolveCostsLine(costs.take()), problems };
     } finally {
       surface.dispose();
     }

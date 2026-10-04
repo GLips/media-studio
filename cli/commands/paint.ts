@@ -73,6 +73,7 @@ const checkPaintCommand = defineCommand({
         process.exitCode = 1;
         return;
       }
+      for (const problem of still.problems) console.log(paintingProblemText(problem));
       for (const line of [...still.lines, still.costs]) console.log(line);
       const wrote = writePaintingSolveImages(still, args.out ?? `${paintingSourceStem(args.source)}.solve`);
       console.error(`paint check: wrote ${wrote.painting} and ${still.films.length} films in ${wrote.films}`);
@@ -107,6 +108,7 @@ const stillPaintCommand = defineCommand({
         process.exitCode = 1;
         return;
       }
+      for (const problem of still.problems) console.log(paintingProblemText(problem));
       const out = args.out ?? `${paintingSourceStem(args.source)}.png`;
       writePaintingStillPng(out, still.png);
       console.error(`paint still: wrote ${out}; ${still.costs}`);

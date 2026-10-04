@@ -207,12 +207,16 @@ plain px: a band from x 170 to 342 on a 256 px document runs across the seam, it
 bloom dropped at x 252 opens on both sides. A mark lands where it lies and a width either side, so nothing needs
 painting twice.
 
-The paper's grain tiles mirrored, and a mirrored tile meets itself only after its mirror, so on each wrapped axis
-it's fitted in whole pairs. Across x a grain `scale` is laid at the nearest of 1 ÷ 2n of the width (0.5, 0.25, 0.167,
-…): scale 1, the styles' own, is laid at 0.5, half as wide; pick one of those values, and the check warns when the
-grain is laid more than a tenth off its scale. Down y a tile's height, its width times its image's aspect, is fitted
-to the height the same way. Wrapping one way the tile keeps its aspect; wrapping both, each side is fitted on its
-own, so a tile may stretch a little one way.
+The paper's grain tiles mirrored, and a mirrored tile meets itself only after its mirror, so on each wrapped axis it's
+fitted in whole pairs: the tile is laid (width ÷ 2n) × (height ÷ 2m), each side the nearest to what it asks. Across x a
+grain `scale` is laid at the nearest of 1 ÷ 2n of the width (0.5, 0.25, 0.167, …): scale 1, the styles' own, is laid at
+0.5, half as wide; pick one of those values, and the check warns when the grain is laid more than a tenth off its scale.
+Down y the tile's height, its width times its image's aspect, is fitted to the height the same way, so it's laid
+anywhere from three quarters of what it asks to half as large again, and one asking more than half the height is laid at
+half. On `'y'` alone the width follows: the grain keeps its aspect, not its scale. On `'xy'` each side is fitted on its
+own, so the grain keeps its aspect only when the document's aspect is the image's times a small whole ratio: a square
+grain at 0.5 on a 1920 × 1080 tile is laid 960 × 540, squashed to 16:9. At 0.1 it's laid 192 × 180, near enough. `studio
+paint check --solve` and `studio paint still`, which load the image, warn when the height is laid more than a tenth off.
 
 A wrapped sheet is painted with a margin past each side, wide enough for its widest mark and the water it carries,
 rounded up to a power of two, and that width is part of its solve's key. So an edit that widens a brush or adds water
@@ -222,11 +226,11 @@ whole sheet, and `studio paint diff` says so.
 What doesn't wrap: an axis `wrap` doesn't name, whose edges clip as ever, though the margin is laid past them too, so
 water runs off them as off a larger sheet; a paper `image` (a photograph), laid as it is, so it meets itself at each
 seam unless it tiles that way (the check warns); a deposit wider or taller than the document, whose fields (a fill's
-load, a ragged edge's noise) jump where the one wrap round its middle ends; and a long chain of wet-in-wet washes
-across a seam, whose water the margin holds one wash at a time, so a faint seam may show after several. The check
-warns of a grain laid off its scale across x only: down y the fit goes by the grain image's aspect, which it doesn't
-read. Wrapping is for a painting shown on a three.js surface as a painted texture (Composition); on a flat plane it
-paints as any other, its seams at its edges.
+load, a ragged edge's noise) jump where the one wrap round its middle ends; and a long chain of wet-in-wet washes across
+a seam, whose water the margin holds one wash at a time, so a faint seam may show after several. The check warns of a
+grain laid off its scale across x; down y the fit goes by the grain image's aspect, which only a solve reads, so
+`--solve` warns of it. Wrapping is for a painting shown on a three.js surface as a painted texture (Composition); on a
+flat plane it paints as any other, its seams at its edges.
 
 ## Water
 
@@ -896,7 +900,7 @@ What the check says today, and what to do:
 | `a.brush.brush: watercolor has no brush mop: its brushes are wash, filler, …` | a brush or paper asset the style lacks | name one it has |
 | `property hillTopPx.value: hillTopPx = 205 is off its step 10` | an unquantised value | quantise in the scene |
 | `document.layers[0]…: meadow isn't pure: two calls differ at layers[0]…` | the factory reads something besides its values | make it pure |
-| `document.wrap: "z" isn't a wrap: 'x' meets the left edge to the right, …` / `document.paper.image: is a photograph on a wrapped document: its opposite edges meet at the seams, …` / `document.paper.grain.scale: is laid at 0.5 on a document wrapping across x: its mirrored tiles fit the width in whole pairs, …` (warnings) | a wrap that isn't `'x'`, `'y'` or `'xy'`; a photograph on a document that wraps; a grain whose scale is far from 1 ÷ 2n on one wrapping across x | `'x'`, `'y'`, `'xy'` or none; a photograph that tiles each way it wraps, or grain alone; a grain scale of 0.5, 0.25, … |
+| `document.wrap: "z" isn't a wrap: 'x' meets the left edge to the right, …` / `document.paper.image: is a photograph on a wrapped document: its opposite edges meet at the seams, …` / `document.paper.grain.scale: is laid at 0.5 on a document wrapping across x: its mirrored tiles fit the width in whole pairs, …` / `document.paper.grain.scale: is laid 960 × 540 px on a document wrapping down y, not the 960 × 960 its 512 × 512 image asks: …` (warnings, the last from `--solve` and `paint still`) | a wrap that isn't `'x'`, `'y'` or `'xy'`; a photograph on a document that wraps; a grain whose scale is far from 1 ÷ 2n on one wrapping across x; a grain whose height, by its image's aspect, is laid far off on one wrapping down y | `'x'`, `'y'`, `'xy'` or none; a photograph that tiles each way it wraps, or grain alone; a grain scale of 0.5, 0.25, …; a smaller scale, or a document whose sides are the image's in a small whole ratio |
 | `back/stem: lies on flower's own sheet: select flower, or all its sheet's layers, on one plane` / `back.source.layers[0]: names hil, which is unknown in meadow` / `back/neck: is selected twice, through heron and neck` / `back.source.k: 1.5 isn't within 0..1` | a plane's source, as the shot's load reports it (`paintedSourceProblems`) | select it whole; fix keys |
 | `meadow.masks[0].drawable: reads rain, whose mask reads meadow/sky` / `front.masks[1].drawable: names rain/drop, but rain's items aren't occurrences: read rain` / `photo.masks: masks cut painted films, and a picture plane has none` / `title.masks[0].widthPx: 0; a band's width is above 0` | a plane's masks, as the shot's load reports them (`shotMaskCheck`) | break the chain; read the plane; mask a painted plane |
 | `rain.depths.far: 2.5 isn't nearer than the back, street at depth 2` / `rain: two items are called a at 2.04 s` / `label.lay.points: both pin 40, 40: two points set a scale and turn only apart` | an instanced plane at load and its items each frame (`shotInstancedPlaneProblems`, `shotInstanceProblems`); a pin or cover (`shotPlacementProblems`) | keep items nearer than the back; one key an item |
@@ -904,13 +908,14 @@ What the check says today, and what to do:
 | `label.id: names two painted textures: an id names one` / `label.widthPx: is 0: a painted texture is whole px above 0` / `label.source: selects on a transparent ground: a painted texture is opaque, …` / `label.source: blends paintings that wrap otherwise: …` | the shot's painted textures at load (`compileShotPaintedTextures`, each source at moment 0) and a callback's again each frame (`compiledPaintedTextureSourceAt`, which also refuses one wrapping otherwise than at 0) | one id a texture; leave `ground` out; wrap every painting a texture blends alike |
 
 `studio paint check <source> --solve [--at <s>] [--out <dir>]` then solves every sheet on the GPU (run it under the
-GPU lock) and prints, in each sheet's order (under the sheet's name when there are several), each wash's start and
+GPU lock) and prints what only a solve can warn of, reading the images (a grain laid off its height on a document
+wrapping down y), then, in each sheet's order (under the sheet's name when there are several), each wash's start and
 when what it wetted had set, and each application's landing time with the `on` it waited for: model seconds in the
 unclocked run, scene seconds with model time beside once the clock runs. `--at` solves the prefix shown at that scene
 second, as a selection's `at` does, finished. It writes the painting to `<dir>/painting.png` and each layer's film on
 its sheet's paper and edge (`paintingFilmPicture`: the root's paper, or an own sheet's card, clear past it) to
 `<dir>/films/<layer>.png` (`<dir>` is `<source>.solve` by default). `studio paint still <source> [--set …] [--at <s>]
-[--out <file>]` checks and solves the same way and writes only the painting, the document's size (`<source>.png`).
+[--out <file>]` checks and solves the same way, warning alike, and writes only the painting, the document's size (`<source>.png`).
 Both end on what the solve cost: solves, entries run, decisions made and reused (a decision is remembered by its
 prefix's key), films and checkpoints found or not, films' pictures read back or kept from an earlier read, and
 readbacks.

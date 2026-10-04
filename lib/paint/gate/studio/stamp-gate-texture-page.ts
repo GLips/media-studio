@@ -1,15 +1,15 @@
 // stamp-gate-texture-page.ts: the gate page's painted textures (stamp-gate-textures.ts): a case's texture compiled
 // and drawn as a shot's painted texture on a device of its own (compileShotPaintedTextures,
-// createShotPaintedTextures), read by a three.js object through the three-source loader, and the object's view laid
-// with the texture flat in the baseline's frame. Each case is a row of STAMP_GATE_TEXTURE_CASES.
+// createShotPaintedTextures), read by its three.js object through the three-source loader, and the object's view laid
+// with the texture flat in the baseline's frame. The objects are the page's; all else of a case is its row of
+// STAMP_GATE_TEXTURE_CASES.
 
 import { CylinderGeometry, Mesh, MeshBasicNodeMaterial, PlaneGeometry, Scene, type BufferGeometry } from 'three/webgpu';
 import { buildPaintCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
-import { stampStage, type StampAxis } from '#lib/paint/painting/models/stamp-stage.ts';
+import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { stampBindGroup } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
 import { paintingProblemText } from '#lib/paint/document/models/painting-problem.ts';
 import { compileShotPaintedTextures } from '#lib/paint/shot/models/shot-painted-texture-compile.ts';
-import type { PaintedTexture } from '#lib/paint/shot/models/shot-props.ts';
 import { createShotPaintedTextures } from '#lib/paint/shot/studio/shot-painted-textures.ts';
 import { paintedThreeColorNode } from '#lib/paint/three-layers/studio/painted-three-material.ts';
 import { loadPaintedThreeSources, type PaintedThreeSourceScene, type PaintedThreeSourceTools } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
@@ -17,20 +17,37 @@ import { GPU_FULL_FRAME_WGSL, GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { stampGateSheetBrushOf } from '../models/stamp-gate-sheets.ts';
 import {
-  STAMP_GATE_CYLINDER, STAMP_GATE_CYLINDER_VIEW, STAMP_GATE_PLANE, STAMP_GATE_PLANE_VIEW, STAMP_GATE_TEXEL_PX, STAMP_GATE_TILE_TEXTURE, STAMP_GATE_WRAPPED_TEXTURE,
-  stampGateSeamSteps, stampGateTextureFrame, stampGateTileTexture, stampGateWrappedTexture, type StampGateTextureId,
+  STAMP_GATE_CYLINDER, STAMP_GATE_PLANE, STAMP_GATE_TEXEL_PX, STAMP_GATE_TEXTURE_CASES, stampGateSeamSteps, stampGateTextureFrame, stampGateTextureSeams, type StampGateTextureCase,
+  type StampGateTextureId,
 } from '../models/stamp-gate-textures.ts';
 import { stampGateRgb, stampGateRgbBase64, withGateSurface } from './stamp-gate-page-surface.ts';
 import { stampGateSheetImageUrl } from './stamp-gate-sheet-owner.ts';
 
 const SOURCE_ID = 'textured';
 
-/** A three.js scene of one mesh, `geometry` coloured by painted `texture`, its centre `behind` the view's on the plane. */
+/** The three.js object a case's view sees reading its texture: its geometry, and how far behind the plane its centre lies, frame px. */
+type StampGateTextureReader = { geometry: BufferGeometry; behind: number };
+
+/** Each case's object, built against the loader's plane. */
+const STAMP_GATE_TEXTURE_OBJECTS: Readonly<Record<StampGateTextureId, (tools: PaintedThreeSourceTools) => StampGateTextureReader>> = {
+  // Its front on the plane.
+  'texture/wrapped-cylinder': ({ plane }) => {
+    const { radius, height, segments } = STAMP_GATE_CYLINDER, r = plane.length(radius);
+    return { geometry: new CylinderGeometry(r, r, plane.length(height), segments, 1, true), behind: r };
+  },
+  'texture/wrapped-tile': ({ plane }) => {
+    const side = plane.length(STAMP_GATE_PLANE.size), geometry = new PlaneGeometry(side, side), uv = geometry.getAttribute('uv');
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, STAMP_GATE_PLANE.repeats * uv.getX(i), STAMP_GATE_PLANE.repeats * uv.getY(i));
+    return { geometry, behind: 0 };
+  },
+};
+
+/** A three.js scene of `object`, coloured by painted texture `textureId`, centred on `view`'s middle. */
 function stampGateTexturedScene(
-  { plane, textures }: PaintedThreeSourceTools, view: { width: number; height: number }, texture: PaintedTexture, geometry: BufferGeometry, behind: number,
+  { plane, textures }: PaintedThreeSourceTools, view: StampGateTextureCase['view'], textureId: string, { geometry, behind }: StampGateTextureReader,
 ): PaintedThreeSourceScene {
   const material = new MeshBasicNodeMaterial();
-  material.colorNode = paintedThreeColorNode(textures.get(texture.id)!);
+  material.colorNode = paintedThreeColorNode(textures.get(textureId)!);
   const mesh = new Mesh(geometry, material), centre = plane.point({ x: view.width / 2, y: view.height / 2 });
   mesh.position.set(centre.x, centre.y, centre.z - behind);
   const scene = new Scene();
@@ -41,83 +58,44 @@ function stampGateTexturedScene(
   } };
 }
 
-/** What a texture case draws: its texture, the view and object reading it, its frame's lay, and its flat texture's seams. */
-type StampGateTextureCase = {
-  readonly texture: () => PaintedTexture;
-  readonly view: { readonly width: number; readonly height: number; readonly fov: number; readonly grey: number };
-  readonly build: (tools: PaintedThreeSourceTools) => PaintedThreeSourceScene;
-  /** WGSL for `lay(p)`, the frame's pixel `p` from `view` (the object seen, through overGrey) and `painted`. */
-  readonly lay: string;
-  /** Where the flat texture lies in the frame, px, and its texels across and down. */
-  readonly flat: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
-  /** Each axis a seam crosses the flat texture on, and the texel boundary it lies on. */
-  readonly seams: readonly { readonly axis: StampAxis; readonly at: number }[];
-};
-
-const STAMP_GATE_TEXTURE_CASES: Readonly<Record<StampGateTextureId, StampGateTextureCase>> = {
-  // The cylinder above, its seam (u 0 and 1) turned to the camera, its front on the plane; the texture below, rolled
-  // half its width so its seam runs down the middle.
-  'texture/wrapped-cylinder': {
-    texture: stampGateWrappedTexture,
-    view: STAMP_GATE_CYLINDER_VIEW,
-    build: (tools) => {
-      const { radius, height, segments } = STAMP_GATE_CYLINDER, r = tools.plane.length(radius);
-      return stampGateTexturedScene(tools, STAMP_GATE_CYLINDER_VIEW, stampGateWrappedTexture(), new CylinderGeometry(r, r, tools.plane.length(height), segments, 1, true), r);
-    },
-    lay: /* wgsl */ `
-fn lay(p: vec2i) -> vec4f {
-  let above = ${STAMP_GATE_CYLINDER_VIEW.height};
-  let width = ${STAMP_GATE_WRAPPED_TEXTURE.width};
-  let texel = ${STAMP_GATE_TEXEL_PX};
-  if (p.y < above) { return overGrey(textureLoad(view, p, 0)); }
-  return vec4f(textureLoad(painted, vec2i((p.x / texel + width / 2) % width, (p.y - above) / texel), 0).rgb, 1.0);
-}`,
-    flat: { x: 0, y: STAMP_GATE_CYLINDER_VIEW.height, ...STAMP_GATE_WRAPPED_TEXTURE },
-    seams: [{ axis: 'x', at: STAMP_GATE_WRAPPED_TEXTURE.width / 2 - 1 }],
-  },
-  // The tile flat 2 × 2 on the left, its seams and corner at the middle; the plane beside it, its uv to 2 each way.
-  'texture/wrapped-tile': {
-    texture: stampGateTileTexture,
-    view: STAMP_GATE_PLANE_VIEW,
-    build: (tools) => {
-      const side = tools.plane.length(STAMP_GATE_PLANE.size), geometry = new PlaneGeometry(side, side), uv = geometry.getAttribute('uv');
-      for (let i = 0; i < uv.count; i++) uv.setXY(i, STAMP_GATE_PLANE.repeats * uv.getX(i), STAMP_GATE_PLANE.repeats * uv.getY(i));
-      return stampGateTexturedScene(tools, STAMP_GATE_PLANE_VIEW, stampGateTileTexture(), geometry, 0);
-    },
-    lay: /* wgsl */ `
-fn lay(p: vec2i) -> vec4f {
-  let size = vec2i(${STAMP_GATE_TILE_TEXTURE.width}, ${STAMP_GATE_TILE_TEXTURE.height});
-  let texel = ${STAMP_GATE_TEXEL_PX};
-  let flat = 2 * texel * size.x;
-  if (p.x >= flat) { return overGrey(textureLoad(view, p - vec2i(flat, 0), 0)); }
-  return vec4f(textureLoad(painted, (p / texel) % size, 0).rgb, 1.0);
-}`,
-    flat: { x: 0, y: 0, width: 2 * STAMP_GATE_TILE_TEXTURE.width, height: 2 * STAMP_GATE_TILE_TEXTURE.height },
-    seams: [{ axis: 'x', at: STAMP_GATE_TILE_TEXTURE.width - 1 }, { axis: 'y', at: STAMP_GATE_TILE_TEXTURE.height - 1 }],
-  },
-};
-
-/** The WGSL laying `drawn`'s frame: the object's premultiplied view over its grey, and its texture, already encoded. */
-const layWgsl = ({ view, lay }: StampGateTextureCase) => /* wgsl */ `
+/**
+ * The WGSL laying a case's frame: within its view, the object's premultiplied view over its grey; within its flat
+ * texture, the texture's texel there (rolled, and repeating past its size), already encoded.
+ */
+function layWgsl({ view, viewAt, flat }: StampGateTextureCase): string {
+  const texel = STAMP_GATE_TEXEL_PX;
+  return /* wgsl */ `
 ${GPU_FULL_FRAME_WGSL}
 ${GPU_SRGB_WGSL}
 @group(0) @binding(0) var view: texture_2d<f32>;
 @group(0) @binding(1) var painted: texture_2d<f32>;
-fn overGrey(seen: vec4f) -> vec4f { return vec4f(srgbEncoded(seen.rgb + (1.0 - seen.a) * ${view.grey.toFixed(3)}), 1.0); }
-${lay}
-@fragment fn layFrame(@builtin(position) at: vec4f) -> @location(0) vec4f { return lay(vec2i(at.xy)); }`;
+@fragment fn layFrame(@builtin(position) at: vec4f) -> @location(0) vec4f {
+  let p = vec2i(at.xy);
+  let grey = ${view.grey.toFixed(3)};
+  let seen = p - vec2i(${viewAt.x}, ${viewAt.y});
+  if (all(seen >= vec2i(0)) && all(seen < vec2i(${view.width}, ${view.height}))) {
+    let object = textureLoad(view, seen, 0);
+    return vec4f(srgbEncoded(object.rgb + (1.0 - object.a) * grey), 1.0);
+  }
+  let q = p - vec2i(${flat.at.x}, ${flat.at.y});
+  if (any(q < vec2i(0)) || any(q >= vec2i(${texel * flat.texels.width}, ${texel * flat.texels.height}))) { return vec4f(srgbEncoded(vec3f(grey)), 1.0); }
+  let size = vec2i(textureDimensions(painted));
+  return vec4f(textureLoad(painted, (q / ${texel} + vec2i(${flat.roll.x}, ${flat.roll.y})) % size, 0).rgb, 1.0);
+}`;
+}
 
 /** Texture baseline `id`'s frame, RGBA bytes: its object seen, and its texture flat. */
 function drawStampGateTextureFrame(id: StampGateTextureId): Promise<Uint8ClampedArray> {
-  const drawn = STAMP_GATE_TEXTURE_CASES[id], { width, height, fov } = drawn.view;
+  const drawn = STAMP_GATE_TEXTURE_CASES[id], texture = drawn.texture(), { width, height, fov } = drawn.view;
   const built = buildPaintCamera({ stage: stampStage({ width, height }), fov, planes: [{ id: SOURCE_ID, depth: 1, kind: 'three' }], lens: { bloom: 0, shutter: 0 }, plays: [] });
   if (!built.ok) throw new Error(`stamp gate: ${id}'s camera: ${built.problems.join('; ')}`);
   return withGateSurface(stampGateTextureFrame(id), stampGateSheetImageUrl, async (surface, frame) => {
-    const compiled = compileShotPaintedTextures([drawn.texture()]);
+    const compiled = compileShotPaintedTextures([texture]);
     if (!compiled.textures) throw new Error(`stamp gate: ${id}'s texture: ${compiled.problems.map(paintingProblemText).join('; ')}`);
     const { owner } = surface, textures = createShotPaintedTextures(owner, compiled.textures, { brushOf: stampGateSheetBrushOf });
     try {
-      const loaded = await loadPaintedThreeSources(owner, built.camera, [{ id: SOURCE_ID, build: drawn.build }], textures);
+      const build = (tools: PaintedThreeSourceTools) => stampGateTexturedScene(tools, drawn.view, texture.id, STAMP_GATE_TEXTURE_OBJECTS[id](tools));
+      const loaded = await loadPaintedThreeSources(owner, built.camera, [{ id: SOURCE_ID, build }], textures);
       try {
         const source = loaded.sources.get(SOURCE_ID)!;
         if (source.kind !== 'three') throw new Error(`stamp gate: ${id}'s source isn't a three source`);
@@ -158,12 +136,12 @@ const SEAM_ALLOWANCE = 1;
 const SEAM_NEIGHBOURS = 12;
 
 /** A case's flat texture's texels, RGB bytes row by row, read back out of its frame's `rgb`, each STAMP_GATE_TEXEL_PX px across. */
-function stampGateFlatTexels(rgb: Uint8ClampedArray, frameWidth: number, flat: StampGateTextureCase['flat']): Uint8Array {
-  const texels = new Uint8Array(flat.width * flat.height * 3);
-  for (let y = 0; y < flat.height; y++) {
-    for (let x = 0; x < flat.width; x++) {
-      const from = ((flat.y + y * STAMP_GATE_TEXEL_PX) * frameWidth + flat.x + x * STAMP_GATE_TEXEL_PX) * 3;
-      texels.set(rgb.subarray(from, from + 3), (y * flat.width + x) * 3);
+function stampGateFlatTexels(rgb: Uint8ClampedArray, frameWidth: number, { at, texels: { width, height } }: StampGateTextureCase['flat']): Uint8Array {
+  const texels = new Uint8Array(width * height * 3);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const from = ((at.y + y * STAMP_GATE_TEXEL_PX) * frameWidth + at.x + x * STAMP_GATE_TEXEL_PX) * 3;
+      texels.set(rgb.subarray(from, from + 3), (y * width + x) * 3);
     }
   }
   return texels;
@@ -174,10 +152,10 @@ function stampGateFlatTexels(rgb: Uint8ClampedArray, frameWidth: number, flat: S
  * texel boundary at most the roughest within SEAM_NEIGHBOURS of it, plus SEAM_ALLOWANCE.
  */
 export async function checkStampGateTextureCase(id: StampGateTextureId): Promise<StampGateWashCheck> {
-  const { flat, seams } = STAMP_GATE_TEXTURE_CASES[id];
+  const { flat } = STAMP_GATE_TEXTURE_CASES[id];
   const texels = stampGateFlatTexels(stampGateRgb(await drawStampGateTextureFrame(id)), stampGateTextureFrame(id).width, flat);
-  const held = seams.map(({ axis, at }) => {
-    const steps = stampGateSeamSteps(texels, flat.width, flat.height, axis);
+  const held = stampGateTextureSeams(id).map(({ axis, at }) => {
+    const steps = stampGateSeamSteps(texels, flat.texels.width, flat.texels.height, axis);
     const roughest = Math.max(...steps.filter((_, b) => b !== at && Math.abs(b - at) <= SEAM_NEIGHBOURS));
     return { passed: steps[at] <= roughest + SEAM_ALLOWANCE, detail: `across ${axis} the mean step over the seam ${steps[at].toFixed(2)} levels, the roughest within ${SEAM_NEIGHBOURS} of it ${roughest.toFixed(2)}` };
   });

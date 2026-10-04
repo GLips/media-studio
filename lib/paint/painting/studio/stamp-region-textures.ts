@@ -10,7 +10,7 @@ import { STAMP_AREA_COVERAGE_WGSL, stampAreaBox, type CompiledStampArea } from '
 import type { CompiledStampBrushedMask } from '../models/stamp-brushed-mask.ts';
 import type { CompiledStampMask } from '../models/stamp-paint-recipe-compile.ts';
 import { STAMP_POLYGON_DISTANCE_WGSL, STAMP_REGION_WGSL, STAMP_RINGED_COUNT, stampEdgeWidth, stampRingsLayout, type StampBox, type StampPoint } from '../models/stamp-region.ts';
-import { stampBoxUnion, stampPointBox, stampPointBoxWords, type StampPointBox, type StampStage } from '../models/stamp-stage.ts';
+import { stampAxisWords, stampBoxUnion, stampPointBox, stampPointBoxWords, stampWrapOffsets, type StampPointBox, type StampStage } from '../models/stamp-stage.ts';
 import { stampBindGroup, stampPaintBuffer, type StampPaintDevice } from './stamp-paint-gpu.ts';
 import { STAMP_UNIFORM_SLOT } from './stamp-uniform-arena.ts';
 import { STAMP_REST_IDENTITY, STAMP_REST_POINT_WGSL, type StampRestMap } from '../models/stamp-rest-map.ts';
@@ -115,7 +115,7 @@ export type StampRegionTextures = { coverages: readonly (StampRegionTexture | nu
 export function encodeStampRegionTextures(
   on: StampPaintDevice, encoder: GPUCommandEncoder, { stage, blank }: { stage: StampStage; blank: GPUTextureView }, request: StampRegionTextureRequest,
 ): StampRegionTextures {
-  const { frame, margin, wrap } = stage;
+  const { frame, margin, wrapPeriods } = stage;
   // Every polygon once and every op of the fluid, in storage buffers.
   const points: number[] = [], placed = new Map<readonly StampPoint[], [number, number]>();
   const pointsOf = (polygon: readonly StampPoint[]) => {
@@ -151,18 +151,10 @@ export function encodeStampRegionTextures(
     const w = Math.min(frame.width + margin, Math.ceil(box.x1)) - x, h = Math.min(frame.height + margin, Math.ceil(box.y1)) - y;
     return w > 0 && h > 0 ? stampPointBox({ x, y, w, h }) : null;
   };
-  // On a wrapping stage, with each copy of it a whole number of periods away on each axis that wraps, on the stage.
-  const shifts = (period: number, from: number, to: number, side: number) => {
-    const found: number[] = [];
-    if (!period) return [0];
-    for (let k = Math.ceil((-margin - to) / period); k <= Math.floor((side + margin - from) / period); k++) found.push(k * period);
-    return found;
-  };
+  // On a wrapping stage, with each copy of it whole periods away on each axis that wraps, on the stage.
   const inPainting = (box: StampBox): StampPointBox | null => {
     let found: StampPointBox | null = null;
-    for (const dy of shifts(wrap.y, box.y0, box.y1, frame.height)) {
-      for (const dx of shifts(wrap.x, box.x0, box.x1, frame.width)) found = stampBoxUnion(found, held({ x0: box.x0 + dx, y0: box.y0 + dy, x1: box.x1 + dx, y1: box.y1 + dy }));
-    }
+    for (const [dx, dy] of stampWrapOffsets(wrapPeriods, box, margin)) found = stampBoxUnion(found, held({ x0: box.x0 + dx, y0: box.y0 + dy, x1: box.x1 + dx, y1: box.y1 + dy }));
     return found;
   };
   /** An op of the fluid, over its area or everywhere, or a brushed mask's coverage (`source`), as a MaskOp. */
@@ -277,7 +269,7 @@ export function encodeStampRegionTextures(
       put('source', stampPointBoxWords(step.source?.box));
       put('firstOp', step.firstOp);
       put('opCount', step.opCount);
-      put('wrap', [wrap.x, wrap.y]);
+      put('wrap', stampAxisWords(wrapPeriods));
       const pass = encoder.beginRenderPass({ colorAttachments: [{ view: made.get(step)!.view, loadOp: 'clear', storeOp: 'store' }] });
       pass.setPipeline(pipeline);
       pass.setBindGroup(0, stampBindGroup(on, pipeline, [

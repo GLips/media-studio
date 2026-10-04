@@ -18,7 +18,7 @@ import { stampDepositWater } from './stamp-paint-action.ts';
 import type { CompiledStampDeposit, CompiledStampMask } from './stamp-paint-recipe-compile.ts';
 import type { StampSheetProgram, StampSheetPrewet } from './stamp-sheet-program.ts';
 import { stampCanonicalJson } from './stamp-sheet-state-key.ts';
-import { stampStage, type StampStage, type StampWrapFrom, type StampWrapPeriods } from './stamp-stage.ts';
+import { stampStage, stampWrapOffsets, type StampStage, type StampWrapFrom, type StampWrapPeriods } from './stamp-stage.ts';
 import { stampSheetWetReach } from './stamp-wet-reach.ts';
 
 /**
@@ -66,17 +66,6 @@ export function stampSheetWrapHalo(program: StampSheetProgram): number {
 }
 
 /**
- * The shifts, px, that copy a place `at` along an axis repeating every `period` px (0: one that doesn't, so only 0) to
- * land within `reach` px of the frame, 0 among them, least first.
- */
-function stampWrapShifts(at: number, period: number, reach: number): number[] {
-  if (!period) return [0];
-  const shifts: number[] = [];
-  for (let k = Math.ceil((-reach - at) / period); k <= Math.floor((period + reach - at) / period); k++) shifts.push(k * period);
-  return shifts;
-}
-
-/**
  * `marks` with each stamp followed by its copies whole periods away on each axis that wraps (`periods`), the corner's
  * too, whose places lie within `reach` px of the frame: twice the halo, as far as a stamp on the stage's edge may lay
  * paint from. A copy keeps its stamp's rest, where tip noise and rolling grain are read.
@@ -86,9 +75,8 @@ function stampMarksWrapped(marks: FrozenStampMarks, periods: StampWrapPeriods, r
   for (const stamp of marks) {
     copied.push(stamp);
     const rest = stamp.rest ?? Object.freeze({ x: stamp.x, y: stamp.y });
-    for (const dy of stampWrapShifts(stamp.y, periods.y, reach)) {
-      for (const dx of stampWrapShifts(stamp.x, periods.x, reach)) if (dx || dy) copied.push({ ...stamp, x: stamp.x + dx, y: stamp.y + dy, rest });
-    }
+    const at = { x0: stamp.x, y0: stamp.y, x1: stamp.x, y1: stamp.y };
+    for (const [dx, dy] of stampWrapOffsets(periods, at, reach)) if (dx || dy) copied.push({ ...stamp, x: stamp.x + dx, y: stamp.y + dy, rest });
   }
   return stampFrozenMarks(copied);
 }
@@ -101,7 +89,7 @@ const stampWrapFromAlong = (low: number, high: number, period: number) => (perio
  * on it; 0 on an axis that doesn't, and for a deposit of nothing.
  */
 const stampWrapFrom = (box: StampBox, periods: StampWrapPeriods): StampWrapFrom =>
-  [stampWrapFromAlong(box.x0, box.x1, periods.x), stampWrapFromAlong(box.y0, box.y1, periods.y)];
+  ({ x: stampWrapFromAlong(box.x0, box.x1, periods.x), y: stampWrapFromAlong(box.y0, box.y1, periods.y) });
 
 /** `marks`' places folded into `into`. */
 function stampMarksSpan(marks: FrozenStampMarks, into: StampBox) {
@@ -139,7 +127,7 @@ const banded = new WeakMap<StampSheetProgram, StampSheetProgram>();
 function stampSheetBanded(program: StampSheetProgram, stage: StampStage): StampSheetProgram {
   const known = banded.get(program);
   if (known) return known;
-  const periods = stage.wrap, reach = 2 * stage.margin;
+  const periods = stage.wrapPeriods, reach = 2 * stage.margin;
   const copiedRound = (marks: FrozenStampMarks) => stampMarksWrapped(marks, periods, reach);
   const wrapped = new Map<CompiledStampMask, CompiledStampMask>();
   const fluid = (mask: CompiledStampMask | null): CompiledStampMask | null => {

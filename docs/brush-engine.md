@@ -181,29 +181,33 @@ as a shot's rigs read their cels and pieces.
 
 **Wrapped sheets.** A document saying `wrap` (`StampWrap`: `'x'`, `'y'` or `'xy'`) meets its opposite edges on
 each axis it names (`stampWrapsAcross`), on every sheet (`stamp-sheet-wrap.ts`); its program carries `wrap`, its head
-naming it only when set. Every axis is one treatment: the stage's `wrap` holds a period per axis (`StampWrapPeriods`,
-the frame's width or height, 0 on an axis that doesn't wrap), and each step below reads it per axis. Its solve's plan
+naming it only when set. Every axis is one treatment: the stage's `wrapPeriods` holds a period per axis
+(`StampWrapPeriods`, the frame's width or height, 0 on an axis that doesn't wrap), and each step below reads it per
+axis. Its solve's plan
 (`stampSheetSolvePlan`, pure: stage, K₀'s head, the program painted) bands it: on a stage whose margin is a halo
 (`stampStage(frame, halo, wrap)`), the farthest any mark may lay paint or carry water past its place
 (`stampSheetWrapHalo`, the wet reach `stampSheetWetReach` as the load boxes it) rounded up to a power of two, in K₀,
 so an edit widening the widest reach a little keeps the key and one past a power of two re-keys the sheet whole; every
 deposit's and brushed mask's stamps copied whole periods away along each wrapped axis, and across the corner when both
 wrap, as far as a stamp on the halo's edge reaches; and every area copied a period apart on each as the region
-textures draw it. A copy keeps its stamp's `rest`, where its tip noise and rolling grain are read, and its deposit or
-prewet its `wrapFrom`, a point (`StampWrapFrom`): the resolve reads its load field, clumps and flood scale within the
+textures draw it, both copies enumerated by one `stampWrapOffsets` (the region textures' WGSL mask step its twin). A copy keeps its stamp's `rest`, where its tip noise and rolling grain are read, and its deposit or
+prewet its `wrapFrom`, a point `{x, y}` (`StampWrapFrom`): the resolve reads its load field, clumps and flood scale within the
 wrap centred on where it was planned, per axis (`stageUnwrapped`, with STAGE_WRAP a vec2f, in `stampStageWgsl`), so a
 copy's pixels read as its own. The paper repeats with it: tooth and grain tiles fitted to a whole number round each
-wrapped axis, mirrored ones in pairs (`stampTileRoundWraps`, through `stampStageTile`), one axis wrapping keeping the
-tile's aspect and both fitting each side on its own, and value noise and pigment clumps on whole cells per wrapped
-axis (`paintNoiseWrapped`, `paintClumpsWrapped`). Films are kept cropped to the frame and a refusal's boxes name only
+wrapped axis, mirrored ones in pairs (`stampStageTile`), so a mirrored tile is laid (W ÷ 2n) × (H ÷ 2m) on `'xy'`,
+each side the nearest its own; one axis wrapping, the other side follows and the tile keeps its aspect, though down y
+not its scale; both wrapping, its aspect goes by the frame's (a square grain at 0.5 on a 16:9 tile is laid squashed
+16:9). Value noise and pigment clumps sit on whole cells per wrapped axis (`paintNoiseWrapped`,
+`paintClumpsWrapped`). Films are kept cropped to the frame and a refusal's boxes name only
 what lies in it: the halo is painted so paint by a seam finds its neighbours, and never kept. Negative space: the
 halo is laid on every side, so an axis that doesn't wrap has it too and water runs off its edges as off a larger
 sheet; a deposit wider or taller than the wrap reads its fields within the one wrap round its middle, so a field
 running along it jumps where that ends; the halo bounds one entry's reach, and at the stage's edge a flow meets a
 wall, not paint going on round, so a long chain of wet-in-wet entries across a seam may drift there; a paper
-photograph is laid as it is and meets itself at each seam, and a grain tile fitted far off its authored size across
-x is warned of (both by `checkPaintingDocument`; down y the fit goes by the grain's aspect, which the check doesn't
-see); and the composite moves an own sheet its owner chain poses whole, unwrapped.
+photograph is laid as it is and meets itself at each seam, and a grain tile laid more than a tenth off its authored
+size is warned of: its width by `checkPaintingDocument`, its height, which goes by the image's aspect, by a solve that
+loads the image (`paintingWrappedGrainHeightProblem`, printed by `studio paint check --solve` and `studio paint
+still`); and the composite moves an own sheet its owner chain poses whole, unwrapped.
 
 **Capabilities.** A `PaintMedium` declares what it can do besides lay paint (`PaintCapability`): `'wet-history'`,
 `'wet-conditions'`, `'water'`, `'lift'`, `'burnish'`. Watercolour and gouache declare the first four; crayon `lift`
@@ -551,7 +555,10 @@ dissolved halfway and drawn at half their size by `createShotPaintedTextures`, s
 seam and the sum weighs both, onto a three.js cylinder through the three-source loader, its seam turned to the camera
 above the texture laid flat at 2 px a texel and rolled half its width; and `texture/wrapped-tile`, a painting wrapping
 both ways, a flood, a bloom and a crossed band across both seams and the corner, drawn at half its size, laid flat 2×2
-tiled with its seams in the middle, beside a three.js plane whose uv run to 2 each way. Frame families (solved sheets, shots, painted textures) are rows of `STAMP_GATE_FRAME_FAMILIES` in
+tiled with its seams in the middle, beside a three.js plane whose uv run to 2 each way. A case is a row of
+`STAMP_GATE_TEXTURE_CASES` (its texture, view, flat lay with its roll, seam axes and inputs; its frame and seam texels
+derived from them), the page adding only its three.js object. The family holds a texture itself, laid flat; the shot
+handing `paintedTextures` to its three sources is a `shot/` case's to hold. Frame families (solved sheets, shots, painted textures) are rows of `STAMP_GATE_FRAME_FAMILIES` in
 `stamp-gate.ts`: IDs, page function, frame size and inputs, so a new family is one row. Pre-commit runs it on the staged tree when a
 path it covers changes; no adapter, a timeout
 or a difference fails the commit. Public baselines live in `harness/fixtures/stamp-paint/`, a pack's brushes' in

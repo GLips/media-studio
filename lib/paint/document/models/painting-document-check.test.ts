@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import * as meadow from './meadow.painting.ts';
+import type { StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
+import { checkPaintingDocument, paintingWrappedGrainHeightProblem } from './painting-document-check.ts';
 import type { Application, EdgedRegion, Layer, LayerNode, Mix, PaintingDocument, Ring, Wash } from './painting-document.ts';
 import type { PaintingProblem } from './painting-problem.ts';
 import { checkPaintingSource, type PaintingSourceModule } from './painting-source.ts';
@@ -148,4 +150,17 @@ test("a factory that isn't pure is named, with the first place two of its calls 
   assert.deepEqual(checkPaintingSource(restless).map(({ path, message }) => ({ path, message })), [
     { path: 'document.layers[0].washes[0].applications[0].charge.water', message: "restless isn't pure: two calls differ at layers[0].washes[0].applications[0].charge.water" },
   ]);
+});
+
+test("a grain on a document wrapping down y is warned of by the solve where its height is laid a tenth off its image's", () => {
+  const grain = { image: { style: 'watercolor', pack: 'vvds', file: 'papers/vvds-watercolor-canvas-3.grain.png' }, scale: 0.5, depth: 0.35 };
+  const sky = layer('sky', [{ key: 'sky-wash', applications: [flood({ key: 'sky-flood', water: 0.85 })] }]);
+  const laid = (wrap: StampWrap) => {
+    const wide: PaintingDocument = { ...documentOf([sky]), widthPx: 1920, heightPx: 1080, wrap, paper: { color: '#f4f2ed', absorbency: 0.5, grain } };
+    return paintingWrappedGrainHeightProblem(wide, checkPaintingDocument(wide).tree!.sheets[0], { width: 512, height: 512 })?.message ?? null;
+  };
+  // Both ways each side fits on its own, so the square is squashed to the frame's 16:9; down y alone it keeps its aspect, smaller.
+  assert.equal(laid('xy'), 'is laid 960 × 540 px on a document wrapping down y, not the 960 × 960 its 512 × 512 image asks: its mirrored tiles fit the height in whole pairs, 1 ÷ 2n of it');
+  assert.match(laid('y')!, /^is laid 540 × 540 px/);
+  assert.equal(laid('x'), null);
 });

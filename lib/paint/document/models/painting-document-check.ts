@@ -7,18 +7,18 @@
 import { PAINT_MEDIA, paintMediumCan } from '#lib/paint/materials/models/paint-medium.ts';
 import { STAMP_PIGMENT_GROUP_SLOTS } from '#lib/paint/painting/models/stamp-pigment-paint.ts';
 import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
-import { STAMP_WRAPS, stampTileRoundWrap, stampWrapsAcross, type StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
+import { STAMP_WRAPS, stampStage, stampStageTile, stampTileRoundWrap, stampWrapsAcross, type StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
 import { checkPaintingApplication, checkPaintingFootprint, type PaintingApplicationSetting } from './painting-application-check.ts';
 import type { AnyApplication, DryingScale, Key, LayerNode, MediumName, PaintingDocument, Paper, Wash } from './painting-document.ts';
 import { paintingBoxUnion, paintingGeometryBox, paintingNodeBox, paintingWashBox } from './painting-footprint.ts';
 import {
-  isPaintingHexColor, isPaintingList, isPaintingPositive, isPaintingShare, paintingApplicationOwner, paintingField, PaintingProblemList, type PaintingProblem,
+  isPaintingHexColor, isPaintingList, isPaintingPositive, isPaintingShare, paintingApplicationOwner, paintingField, paintingProblem, PaintingProblemList, type PaintingProblem,
 } from './painting-problem.ts';
 import { checkPaintingAmount, checkPaintingRegion } from './painting-region-check.ts';
 import { checkPaintingSheetOrders } from './painting-sheet-check.ts';
 import { paintingSheetOrders, paintingWashOrderTimes, type PaintingSheetOrder, type PaintingWashOrderTimes } from './painting-sheet-program.ts';
 import { paintingAssetProblem, type PaintingStyleCatalogue } from './painting-styles.ts';
-import { isPaintingGroup, paintingSheetName, paintingTree, type PaintingLayerPlace, type PaintingTree } from './painting-tree.ts';
+import { isPaintingGroup, paintingSheetName, paintingTree, type PaintingLayerPlace, type PaintingSheet, type PaintingTree } from './painting-tree.ts';
 
 /** WebGPU's guaranteed `maxTextureDimension2D`: the largest document side every device can hold. */
 const LARGEST_DOCUMENT_SIDE = 8192;
@@ -233,8 +233,8 @@ export function checkPaintingDocument(paintingDocument: PaintingDocument, styles
   if (list.hasErrors) return { problems: list.problems, tree: null };
   const tree = paintingTree(paintingDocument);
   // A photograph is laid over the frame as it is, so a wrapped document's meets itself at each seam. Mirrored grain
-  // tiles fit each wrapped axis in whole pairs (stampTileRoundWraps), so a scale far from width ÷ 2n is laid at another.
-  // Only x is held: a tile's height goes by its image's aspect, which the check doesn't see.
+  // tiles fit each wrapped side in whole pairs (stampStageTile), so a scale far from width ÷ 2n is laid at another.
+  // Only the width is held here: the height goes by the image's aspect, a solve's to warn of (paintingWrappedGrainHeightProblem).
   const { wrap: wraps } = paintingDocument;
   const photographWraps = (owner: string, field: string, { image, grain }: Paper) => {
     if (!wraps) return;
@@ -262,4 +262,24 @@ export function checkPaintingDocument(paintingDocument: PaintingDocument, styles
   checkPaintingSheetOrders(list, tree, orders, styles);
   checkIdleDryingScales(list, paintingDocument, tree, orders);
   return { problems: list.problems, tree };
+}
+
+/** A length in a problem's message, px: to a tenth. */
+const paintingPx = (length: number) => +length.toFixed(1);
+
+/**
+ * What a solve, loading `sheet`'s grain image (`image`, px), warns of on a document wrapping down y: the tile laid more
+ * than a tenth off the height its scale and the image's aspect ask, which checkPaintingDocument can't see. Here a
+ * grain squashed by the frame's aspect shows. Null when near enough, or on any other document.
+ */
+export function paintingWrappedGrainHeightProblem(
+  paintingDocument: PaintingDocument, sheet: PaintingSheet, image: { readonly width: number; readonly height: number },
+): PaintingProblem | null {
+  const { wrap, widthPx, heightPx } = paintingDocument, { grain } = sheet.paper;
+  if (!wrap || !stampWrapsAcross(wrap, 'y') || !grain) return null;
+  const asked: [number, number] = [grain.scale * widthPx, grain.scale * widthPx * (image.height / image.width)];
+  const [width, height] = stampStageTile(stampStage({ width: widthPx, height: heightPx }, 0, wrap), asked, true);
+  if (Math.abs(height / asked[1] - 1) <= PAINTING_WRAPPED_GRAIN_DRIFT) return null;
+  const [owner, field] = sheet.owner === null ? ['document', 'paper'] : [sheet.owner, 'sheet.paper'], [askedWidth, askedHeight] = asked.map(paintingPx);
+  return paintingProblem('warning', owner, paintingField(field, 'grain.scale'), `is laid ${paintingPx(width)} × ${paintingPx(height)} px on a document wrapping down y, not the ${askedWidth} × ${askedHeight} its ${image.width} × ${image.height} image asks: its mirrored tiles fit the height in whole pairs, 1 ÷ 2n of it`);
 }

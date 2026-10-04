@@ -9,7 +9,7 @@
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import { STAMP_PAINT_FIELD_SHARE, stampPaintFieldEnds, type StampSeededPaintField } from '../models/stamp-paint-field.ts';
-import { stampRegionTexelWords, stampStageTexelsOf, stampStageWgsl, type StampStage, type StampWrapFrom } from '../models/stamp-stage.ts';
+import { stampAxisWords, stampRegionTexelWords, stampStageTexelsOf, stampStageWgsl, type StampStage, type StampWrapFrom } from '../models/stamp-stage.ts';
 import { STAMP_LANDED_WETNESS_WGSL, STAMP_WET_PAPER_WGSL, type StampDrying } from '../models/stamp-wetness.ts';
 import { stampBindGroup, type StampPaintDevice } from './stamp-paint-gpu.ts';
 import { STAMP_REGION_AT_WGSL, type StampRegionTexture } from './stamp-region-textures.ts';
@@ -198,7 +198,7 @@ export function stampSheetFieldPasses(device: StampPaintDevice, stage: StampStag
         put('ends', [ends.first, ends.second]);
         put('tau', tau);
         put('kind', ends.kind);
-        put('wrapFrom', wrapFrom);
+        put('wrapFrom', stampAxisWords(wrapFrom));
       });
       run(encoder, prewet, [uniform, region.view, fluid?.view ?? targets.blank, targets.paper, targets.rim], box);
     },

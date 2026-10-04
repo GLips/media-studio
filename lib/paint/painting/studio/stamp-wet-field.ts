@@ -16,7 +16,7 @@ import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import { STAMP_LANDED_WETNESS_WGSL, STAMP_WET_CONTACT_WGSL, STAMP_WET_PAPER_WGSL, stampFloodHeldWetness, type StampDrying, type StampWetLanding } from '../models/stamp-wetness.ts';
 import type { StampPaintDevice } from './stamp-paint-gpu.ts';
 import { STAMP_REGION_AT_WGSL } from './stamp-region-textures.ts';
-import { STAMP_WRAP_FROM_NONE, stampRegionTexelWords, stampStageWgsl, type StampPointBox, type StampStage, type StampWrapFrom } from '../models/stamp-stage.ts';
+import { STAMP_WRAP_FROM_NONE, stampAxisWords, stampRegionTexelWords, stampStageWgsl, type StampPointBox, type StampStage } from '../models/stamp-stage.ts';
 import { gpuUniformLayout, gpuUniformStruct, gpuUniformWriter, type GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { STAMP_REST_IDENTITY, STAMP_REST_POINT_WGSL, type StampRestMap } from '../models/stamp-rest-map.ts';
 
@@ -194,20 +194,20 @@ export type StampWetFieldViews = { paper: GPUTextureView; rim: GPUTextureView; l
  * Where a deposit's tool's local scale is read (STAMP_GRID_AT_WGSL over a scale buffer): a flood's plan's, its narrow
  * parts laid smaller, read where it was planned (`rest`, within a wrap of `wrapFrom`); anyone else's reads 1 everywhere.
  */
-export type StampWetScale = { lattice: [number, number, number, number]; rest: StampRestMap; size: [number, number]; first: number; wrapFrom: StampWrapFrom };
+export type StampWetScale = { lattice: [number, number, number, number]; rest: StampRestMap; size: [number, number]; first: number; wrapFrom: [number, number] };
 
 /** Every flood's scale grid of `deposits` in one buffer, after a grid of ones for every other deposit. */
 export function stampWetScales(device: StampPaintDevice, deposits: Iterable<CompiledStampDeposit>) {
   const grids = new Map<CompiledStampDeposit, StampGrid>();
   for (const deposit of deposits) if (deposit.kind === 'flood') grids.set(deposit, deposit.flood.scale);
-  const ones: StampWetScale = { lattice: [0, 0, 1e9, 0], rest: STAMP_REST_IDENTITY, size: [2, 2], first: 0, wrapFrom: STAMP_WRAP_FROM_NONE };
+  const ones: StampWetScale = { lattice: [0, 0, 1e9, 0], rest: STAMP_REST_IDENTITY, size: [2, 2], first: 0, wrapFrom: stampAxisWords(STAMP_WRAP_FROM_NONE) };
   const values = new Float32Array(4 + [...grids.values()].reduce((sum, grid) => sum + grid.values.length, 0));
   values.fill(1, 0, 4);
   const at = new Map<CompiledStampDeposit, StampWetScale>();
   let first = 4;
   for (const [deposit, { x0, y0, cell, columns, rows, values: own }] of grids) {
     values.set(own, first);
-    at.set(deposit, { lattice: [x0, y0, cell, 0], rest: deposit.rest ?? STAMP_REST_IDENTITY, size: [columns, rows], first, wrapFrom: deposit.wrapFrom ?? STAMP_WRAP_FROM_NONE });
+    at.set(deposit, { lattice: [x0, y0, cell, 0], rest: deposit.rest ?? STAMP_REST_IDENTITY, size: [columns, rows], first, wrapFrom: stampAxisWords(deposit.wrapFrom ?? STAMP_WRAP_FROM_NONE) });
     first += own.length;
   }
   const buffer = device.createBuffer({ size: values.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });

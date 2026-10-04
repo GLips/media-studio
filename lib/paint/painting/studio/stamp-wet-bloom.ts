@@ -12,7 +12,7 @@ import { STAMP_BLOOM_BAND_WIDTH, STAMP_BLOOM_CARRY_SPREAD, STAMP_BLOOM_LEAST_SIG
 import { STAMP_WET_LIFT_WGSL } from '../models/stamp-wet-lift.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
-import { STAMP_WRAP_FROM_NONE, stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
+import { STAMP_WRAP_FROM_NONE, stampAxisWords, stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 import { stampWetStageExtentOf, type StampLoadedWetStage, type StampWetDepositMoment, type StampWetStage, type StampWetStageContext, type StampWetStageExtent } from './stamp-wet-stages.ts';
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { destroyStampTexturesOnceSubmitted } from './stamp-paint-gpu.ts';
@@ -410,7 +410,7 @@ function loadBloom({ device, layer, footprint, field, wash, stage }: StampWetSta
     put('spread', wetting.spread);
     put('diameter', deposit.diameter);
     put('bound', plan.bound);
-    put('wrapFrom', deposit.wrapFrom ?? STAMP_WRAP_FROM_NONE);
+    put('wrapFrom', stampAxisWords(deposit.wrapFrom ?? STAMP_WRAP_FROM_NONE));
     device.queue.writeBuffer(plan.uniform, 0, words);
     plan.spreads.write(box);
 
