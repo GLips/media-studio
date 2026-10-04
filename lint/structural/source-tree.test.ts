@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { isolatedGitEnv, runFixtureGit } from '#lib/platform/git/engine/fixture-git.ts';
 import { studioTempRoot } from '#lib/platform/temp/engine/studio-temp.ts';
-import { loadSourceTree, type CandidateSnapshot, type TreeScope } from './source-tree.ts';
+import type { CandidateSnapshot } from '../candidate-snapshot.ts';
+import { loadSourceTree, type TreeScope } from './source-tree.ts';
 
 const root = join(studioTempRoot(), 'source-tree');
 mkdirSync(root);
@@ -58,12 +59,19 @@ test('a file outside the declared tree is reported, not dropped', () => {
   assert.ok(!tree.sources.some((file) => file.path === 'odd/stray.ts'));
 });
 
-test('the index snapshot reads staged content, never the working tree', () => {
+test('the index holds only what is staged; the working tree, its edits and untracked files too, and not what it deleted', () => {
   write('lib/api.ts', "import 'fs';\n");
   write('lib/untracked.ts', 'export {};\n');
+  rmSync(join(root, 'lib/timing/timeline/models/index.ts'));
   const tree = load();
   assert.equal(tree.sources.find((file) => file.path === 'lib/api.ts')!.text, 'export const a = 1;\n');
   assert.ok(!tree.paths.has('lib/untracked.ts'));
+  assert.ok(tree.paths.has('lib/timing/timeline/models/index.ts'));
+
+  const worktree = load({ kind: 'worktree' });
+  assert.equal(worktree.sources.find((file) => file.path === 'lib/api.ts')!.imports[0].specifier, 'fs');
+  assert.ok(worktree.paths.has('lib/untracked.ts'));
+  assert.ok(!worktree.paths.has('lib/timing/timeline/models/index.ts'));
 
   git('add', 'lib/api.ts');
   const staged = load();

@@ -36,7 +36,7 @@ Everything they make lives in `work/`: `work/projects/<yyyy-mm-name>/`, brand ki
 in `work/hosts.json`. It's a git repository of its own that the studio's ignores, so their projects and client names
 never reach the studio's history, and pulling studio updates never touches their work. Recordings, renders and
 generated media stay on the machine (its `.gitignore`); only what they write is committed. Its commits run their own
-gate: `check:arch --scope workspace`, the typecheck and their projects' tests.
+gate: `check:arch --scope workspace`, lint, the typecheck and their projects' tests.
 
 Offer to give it a private remote. With `gh`: `gh repo create <name> --private --source=work --push`.
 

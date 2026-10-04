@@ -16,6 +16,12 @@ import type { Finding } from './structural/check-context.ts';
 /** check → path → key → count. */
 export type Baseline = Record<string, Record<string, Record<string, number>>>;
 
+/** A baseline file's text, or `{}` (nothing excused) for a snapshot that holds none. */
+export function parseBaseline(text: string | undefined): Baseline {
+  // SAFETY: a baseline file is the JSON rebaselineTier writes, in this shape; nothing else writes it.
+  return text === undefined ? {} : (JSON.parse(text) as Baseline);
+}
+
 export type BaselineComparison = {
   /** Findings past what the baseline allows, the latest in each file first to be called new. */
   fresh: Finding[];

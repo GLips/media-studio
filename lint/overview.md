@@ -5,8 +5,9 @@ One lint system with two tiers. They're split by what a rule can see, and both r
 ```
 policy/studio-tree.ts   where a path sits: lib areas, features and roles, projects, cli, harness, web places
 policy/*.ts             tables the checks read: SDK owners, timing constructors
-structural/             whole-tree checks (npm run check:arch, check-arch.ts), over the git index
-oxlint/                 per-file rules, run by oxlint.config.ts (npm run lint, lint.ts), over the working tree
+structural/             whole-tree checks (npm run check:arch, check-arch.ts)
+oxlint/                 per-file rules, run by oxlint.config.ts (npm run lint, lint.ts)
+candidate-snapshot.ts   the files both tiers read: the working tree by hand, the index under a hook
 baseline.ts             how both tiers count findings against a baseline
 arch-baseline.json      the studio's baselined findings, both tiers; work/arch-baseline.json is the workspace's
 ```
@@ -21,7 +22,12 @@ the console is their output) and `DEFAULT_EXPORT_MODULE_GLOBS` (loaded by path f
 
 ## The tiers
 
-**`structural/`** reads the snapshot a commit holds, parsed once (`source-tree.ts`), with every import resolved to
+**What both tiers read.** Run by hand, check:arch and lint read the working tree, untracked files included,
+so a project is checked before it's added. The pre-commit hooks pass `--snapshot index`: only what the commit holds,
+so another session's half-written file can't block it, and each lists the sources it left unchecked. check:arch reads
+the index's text; oxlint reads the index's files from disk. `check:arch -- --rev <commit>` reads a committed tree.
+
+**`structural/`** reads the snapshot, parsed once (`source-tree.ts`), with every import resolved to
 a canonical path, so an alias and a relative spelling reach one verdict. The `types` checks ask the TypeScript 7
 compiler what a declaration means. `type-checker.ts` serves the compiler the same snapshot through the API's virtual
 filesystem, and `tsconfigFor` picks each file's program by its position. Findings are counted per check, file and

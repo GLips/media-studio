@@ -11,8 +11,9 @@ import { join } from 'node:path';
 import { isolatedGitEnv } from '#lib/platform/git/engine/fixture-git.ts';
 import { classifyStudioPath, STUDIO_WORKSPACE_MOUNT, type StudioPosition } from '../policy/studio-tree.ts';
 import { readDeclaredShared, readDeclaredStyles, type DeclarationProblem, type DeclaredStyles } from './project-declaration.ts';
+import type { CandidateSnapshot, LiveSnapshot } from '../candidate-snapshot.ts';
 import { createTypeCheckerHost, tsconfigFor, type SourceFile as TypedSourceFile, type TypeCheckerHost, type TypedProgram } from './type-checker.ts';
-import { loadSourceTree, walkAst, type AstNode, type CandidateSnapshot, type ImportTarget, type MountedSnapshot, type ScannedImport, type SourceFile, type SourceTree } from './source-tree.ts';
+import { loadSourceTree, walkAst, type AstNode, type ImportTarget, type MountedSnapshot, type ScannedImport, type SourceFile, type SourceTree } from './source-tree.ts';
 
 export type Finding = {
   check: string;
@@ -98,22 +99,25 @@ export function studioScope(path: string): 'governed' | 'exempt' | 'undeclared' 
 
 /**
  * What check:arch reads. `public` is the studio's snapshot alone, as a clean clone holds it, in this process's git
- * environment. `workspace` adds work/'s index, mounted at `work/`: this process's environment is the workspace's
- * (its hook's), and the studio's index is read with none of it.
+ * environment. `workspace` adds work/'s, mounted at `work/`, beside the studio's of the same kind: this process's
+ * environment is the workspace's (its hook's), and the studio's is read with none of it.
  */
-export type CheckTarget = { scope: 'public'; snapshot: CandidateSnapshot } | { scope: 'workspace' };
+export type CheckTarget = { scope: 'public'; snapshot: CandidateSnapshot } | { scope: 'workspace'; snapshot: LiveSnapshot };
+
+/** The repository whose files a target judges: the studio's, or work/'s. */
+export const judgedRepositoryRoot = (root: string, target: CheckTarget) => (target.scope === 'workspace' ? join(root, STUDIO_WORKSPACE_MOUNT) : root);
 
 export function createCheckContext(root: string, target: CheckTarget): CheckContext {
   if (target.scope === 'public') {
     const tree = loadSourceTree({ repos: [{ root, mount: '', snapshot: target.snapshot, gitEnv: process.env }], scope: studioScope });
     // `work` itself is the workspace added as a gitlink.
     const tracked = [...tree.paths].find((path) => path === STUDIO_WORKSPACE_MOUNT || path.startsWith(`${STUDIO_WORKSPACE_MOUNT}/`));
-    if (tracked) throw new Error(`the studio tracks ${tracked}, in work/, which is your workspace's repository: untrack it (git rm --cached)`);
+    if (tracked) throw new Error(`the studio holds ${tracked}, in work/, which is your workspace's repository: untrack it (git rm --cached) and ignore it`);
     return contextFor(tree, root);
   }
-  const workspace: MountedSnapshot = { root: join(root, STUDIO_WORKSPACE_MOUNT), mount: STUDIO_WORKSPACE_MOUNT, snapshot: { kind: 'index' }, gitEnv: process.env };
+  const workspace: MountedSnapshot = { root: judgedRepositoryRoot(root, target), mount: STUDIO_WORKSPACE_MOUNT, snapshot: target.snapshot, gitEnv: process.env };
   assertOwnWorkspaceRepository(workspace);
-  const studio: MountedSnapshot = { root, mount: '', snapshot: { kind: 'index' }, gitEnv: isolatedGitEnv() };
+  const studio: MountedSnapshot = { root, mount: '', snapshot: target.snapshot, gitEnv: isolatedGitEnv() };
   return contextFor(loadSourceTree({ repos: [studio, workspace], scope: studioScope }), root);
 }
 

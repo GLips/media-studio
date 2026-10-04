@@ -5,10 +5,10 @@
 // has no createProgram), and this file is the one importer of its `unstable`
 // path. The sync client: checks return findings, never promises.
 //
-// The compiler reads the check's snapshot, not the working tree: every file the
-// snapshot holds is served from it through the API's virtual filesystem, so a
-// type check judges what the next commit holds, as every other check does. What
-// the snapshot doesn't hold (node_modules, gitignored generated inputs) falls
+// The compiler reads the check's snapshot: every file the snapshot holds is
+// served from it through the API's virtual filesystem, so under a hook a type
+// check judges what the next commit holds, as every other check does. What the
+// snapshot doesn't hold (node_modules, gitignored generated inputs) falls
 // through to disk.
 
 import { resolve, sep } from 'node:path';
@@ -64,7 +64,7 @@ export function createTypeCheckerHost(root: string, tree: SourceTree): TypeCheck
     const path = repoRelative(fileName);
     return path !== undefined && tree.paths.has(path) ? path : undefined;
   };
-  // The snapshot's folders, so a tsconfig's include globs expand over what it holds, not the working tree.
+  // The snapshot's folders, so a tsconfig's include globs expand over what it holds, never a gitignored file.
   const folders = new Map<string, { files: string[]; directories: string[] }>([['', { files: [], directories: [] }]]);
   for (const path of tree.paths) {
     const parts = path.split('/');

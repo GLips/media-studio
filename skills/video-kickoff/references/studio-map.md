@@ -39,10 +39,10 @@ effects from seeded recipes (`studio sfx list`; `studio sfx showcase` to listen 
 
 `npm run typecheck` checks everything, including that every rect a scene points at was captured. `npm test` runs the
 tests. `npm run check:arch` holds the architecture (where timing is built, what a scene may import, a project's declared
-capability against what it binds, the modules its scenes may share) over what the next commit holds; older
-violations sit in `lint/arch-baseline.json` (the studio's) and `work/arch-baseline.json` (yours), and a new one
-blocks. The pre-commit gate (`.githooks/pre-commit`, switched on by `npm install`) runs `check:arch`, then
-`typecheck:gate` and `test:gate`: the typecheck and tests of what a clean clone holds, which has no `work/`. Your workspace's commits run the rest (Your work, above).
+capability against what it binds, the modules its scenes may share) over the working tree, untracked files included
+(the hooks read what the commit holds); older violations sit in `lint/arch-baseline.json` (the studio's) and
+`work/arch-baseline.json` (yours), and a new one blocks. The pre-commit gate (`.githooks/pre-commit`, switched on by
+`npm install`) runs `check:arch` and `lint`, then `typecheck:gate` and `test:gate`: the typecheck and tests of what a clean clone holds, which has no `work/`. Your workspace's commits run the rest (Your work, above).
 
 ## A project
 

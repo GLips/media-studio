@@ -1,51 +1,68 @@
 // ─── npm run check:arch ───────────────────────────────────────────────
 //
-// Runs every structural check over one candidate snapshot and compares the
-// findings to a baseline. Exits 1 on a new finding, a stale baseline entry or a
-// crashed check. Advisory checks print and never block.
+// Every structural check over one candidate snapshot, its findings compared to
+// a baseline. Exits 1 on a new finding, a stale baseline entry or a crashed
+// check. Advisory checks print and never block.
 //
-//   npm run check:arch                        the studio's index: what its next commit holds
+//   npm run check:arch                        the studio's working tree, untracked files included
+//   npm run check:arch -- --snapshot index    the studio's index, what its next commit holds (pre-commit's)
 //   npm run check:arch -- --rev main          a committed tree of the studio's
-//   npm run check:arch -- --scope workspace   work/'s index, read with the studio's (its pre-commit hook runs this)
+//   npm run check:arch -- --scope workspace   work/'s working tree with the studio's (its hook adds --snapshot index)
 //   npm run check:arch -- --list              every baselined finding, not just counts
 //   npm run check:arch -- --update-baseline   rewrite the scope's baseline to today's findings
 //
-// The index, not the working tree: stage a file for the check to see it. What
-// each scope judges, against which baseline: lint/structural/arch-verdict.ts.
+// Snapshots: lint/candidate-snapshot.ts. Scopes: lint/structural/arch-verdict.ts.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { judgeArchitecture } from './structural/arch-verdict.ts';
-import { rebaselineTier, type Baseline } from './baseline.ts';
-import type { CheckTarget } from './structural/check-context.ts';
+import { parseBaseline, rebaselineTier } from './baseline.ts';
+import { describeLeftOutOfIndex, listLeftOutOfIndex, parseLiveSnapshot } from './candidate-snapshot.ts';
+import { judgedRepositoryRoot, type CheckTarget } from './structural/check-context.ts';
 import { STRUCTURAL_CHECKS } from './structural/registry.ts';
+import { isSourcePath } from './structural/source-tree.ts';
+import { STUDIO_WORKSPACE_MOUNT } from './policy/studio-tree.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const { values } = parseArgs({
-  options: { rev: { type: 'string' }, scope: { type: 'string', default: 'public' }, list: { type: 'boolean' }, 'update-baseline': { type: 'boolean' } },
+  options: {
+    rev: { type: 'string' }, snapshot: { type: 'string' }, scope: { type: 'string', default: 'public' }, list: { type: 'boolean' },
+    'update-baseline': { type: 'boolean' },
+  },
 });
 if (values.scope !== 'public' && values.scope !== 'workspace') throw new Error(`--scope is public or workspace, not ${values.scope}`);
-if (values.scope === 'workspace' && values.rev) throw new Error('--rev names a commit of the studio\'s; the workspace scope reads work/\'s index');
+if (values.scope === 'workspace' && values.rev) throw new Error('--rev names a commit of the studio\'s; the workspace scope reads work/\'s working tree or index');
+if (values.rev && values.snapshot) throw new Error('--rev reads a commit, so it takes no --snapshot');
+const live = parseLiveSnapshot(values.snapshot ?? 'worktree');
 const target: CheckTarget = values.scope === 'workspace'
-  ? { scope: 'workspace' }
-  : { scope: 'public', snapshot: values.rev ? { kind: 'commit', rev: values.rev } : { kind: 'index' } };
+  ? { scope: 'workspace', snapshot: live }
+  : { scope: 'public', snapshot: values.rev ? { kind: 'commit', rev: values.rev } : live };
 const { context, baselineFile, findings, advisories, crashed, fresh, stale, baselined } = judgeArchitecture(root, target);
 
 if (values['update-baseline']) {
   if (crashed.length) throw new Error(`not rewriting the baseline while a check crashes:\n${crashed.join('\n')}`);
   // The file on disk is what's rewritten, so its oxlint entries are the ones kept, staged or not.
   const file = join(root, baselineFile);
-  const onDisk = existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as Baseline) : {};
+  const onDisk = parseBaseline(existsSync(file) ? readFileSync(file, 'utf8') : undefined);
   writeFileSync(file, `${JSON.stringify(rebaselineTier(onDisk, 'structural', findings), null, 2)}\n`);
-  console.log(`Wrote ${findings.length} findings to ${baselineFile}${target.scope === 'workspace' ? ': stage it in work/ for the check to read it' : ''}.`);
+  console.log(`Wrote ${findings.length} findings to ${baselineFile}: stage it${target.scope === 'workspace' ? ' in work/' : ''} for the hook to read it.`);
   process.exit(0);
 }
 
-const where = target.scope === 'workspace' ? 'work/\'s index, with the studio\'s' : target.snapshot.kind === 'index' ? 'the index' : `commit ${target.snapshot.rev}`;
-console.log(`check:arch over ${where}: ${context.tree.sources.length} source files, ${context.tree.paths.size} tracked files\n`);
+const { snapshot } = target;
+const SNAPSHOT_READ = { worktree: 'working tree, untracked files included', index: 'index, what the commit holds' };
+const read = snapshot.kind === 'commit' ? `commit ${snapshot.rev}` : SNAPSHOT_READ[snapshot.kind];
+const where = target.scope === 'workspace' ? `work/'s ${read}, with the studio's` : `the studio's ${read}`;
+console.log(`check:arch over ${where}: ${context.tree.sources.length} source files of ${context.tree.paths.size} files\n`);
+if (snapshot.kind === 'index') {
+  const leftOut = describeLeftOutOfIndex(listLeftOutOfIndex({ root: judgedRepositoryRoot(root, target), gitEnv: process.env }), {
+    mount: target.scope === 'workspace' ? STUDIO_WORKSPACE_MOUNT : '', isSource: isSourcePath, unstagedRead: 'checked as staged',
+  });
+  if (leftOut.length) console.log(`${leftOut.join('\n')}\n`);
+}
 
 console.log('Baseline (reports, doesn\'t block):');
 for (const check of STRUCTURAL_CHECKS.filter((candidate) => !candidate.advisory)) {

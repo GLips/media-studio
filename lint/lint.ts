@@ -1,40 +1,57 @@
 // ─── npm run lint ─────────────────────────────────────────────────────
 //
-// oxlint over the files one scope tracks, as its working tree holds them, its errors compared to the scope's
-// baseline (the file check:arch keeps, under oxlint's own rule ids). Exits 1
-// on a new finding or a stale baseline entry. Warnings print and never block.
+// oxlint over the sources one scope's snapshot holds, read from disk, its errors compared to the scope's baseline
+// (the file check:arch keeps, under oxlint's own rule ids). Exits 1 on a new finding or a stale baseline entry.
+// Warnings print and never block.
 //
-//   npm run lint                              the studio's checkout
-//   npm run lint -- --scope workspace         work/ (its pre-commit hook runs this)
+//   npm run lint                              the studio's working tree, untracked files included
+//   npm run lint -- --snapshot index          the sources the studio's index holds (pre-commit's)
+//   npm run lint -- --scope workspace         work/'s working tree (its hook adds --snapshot index)
 //   npm run lint -- --list                    every baselined finding, not just counts
 //   npm run lint -- --update-baseline         rewrite the scope's oxlint entries to today's findings
 //
-// What oxlint enables: oxlint.config.ts. How a finding is keyed: lint/oxlint/oxlint-verdict.ts.
+// What oxlint enables: oxlint.config.ts. Keys and snapshots: lint/oxlint/oxlint-verdict.ts.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { rebaselineTier, type Baseline } from './baseline.ts';
-import { judgeOxlint } from './oxlint/oxlint-verdict.ts';
+import { parseBaseline, rebaselineTier } from './baseline.ts';
+import { describeLeftOutOfIndex, listLeftOutOfIndex, parseLiveSnapshot } from './candidate-snapshot.ts';
+import { judgeOxlint, oxlintScopeRoot } from './oxlint/oxlint-verdict.ts';
+import { STUDIO_WORKSPACE_MOUNT } from './policy/studio-tree.ts';
+import { isSourcePath } from './structural/source-tree.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const { values } = parseArgs({
-  options: { scope: { type: 'string', default: 'public' }, list: { type: 'boolean' }, 'update-baseline': { type: 'boolean' } },
+  options: {
+    scope: { type: 'string', default: 'public' }, snapshot: { type: 'string', default: 'worktree' }, list: { type: 'boolean' },
+    'update-baseline': { type: 'boolean' },
+  },
 });
 if (values.scope !== 'public' && values.scope !== 'workspace') throw new Error(`--scope is public or workspace, not ${values.scope}`);
-const { baselineFile, findings, advisories, fresh, stale, baselined } = judgeOxlint(root, values.scope);
+const snapshot = parseLiveSnapshot(values.snapshot);
+const { baselineFile, linted, findings, advisories, fresh, stale, baselined } = judgeOxlint(root, values.scope, snapshot);
 
 if (values['update-baseline']) {
   const file = join(root, baselineFile);
-  const onDisk = existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as Baseline) : {};
+  const onDisk = parseBaseline(existsSync(file) ? readFileSync(file, 'utf8') : undefined);
   writeFileSync(file, `${JSON.stringify(rebaselineTier(onDisk, 'oxlint', findings), null, 2)}\n`);
-  console.log(`Wrote ${findings.length} oxlint findings to ${baselineFile}${values.scope === 'workspace' ? ': stage it in work/' : ''}.`);
+  console.log(`Wrote ${findings.length} oxlint findings to ${baselineFile}: stage it${values.scope === 'workspace' ? ' in work/' : ''} for the hook to read it.`);
   process.exit(0);
 }
 
-console.log(`lint over ${values.scope === 'workspace' ? 'work/' : 'the studio'}'s working tree\n`);
+const owner = values.scope === 'workspace' ? 'work/\'s' : 'the studio\'s';
+console.log(snapshot.kind === 'index'
+  ? `lint over the ${linted.length} sources the commit holds (${owner} index), read from disk\n`
+  : `lint over the ${linted.length} sources in ${owner} working tree, untracked files included\n`);
+if (snapshot.kind === 'index') {
+  const leftOut = describeLeftOutOfIndex(listLeftOutOfIndex({ root: oxlintScopeRoot(root, values.scope), gitEnv: process.env }), {
+    mount: values.scope === 'workspace' ? STUDIO_WORKSPACE_MOUNT : '', isSource: isSourcePath, unstagedRead: 'linted as they are on disk, not as staged',
+  });
+  if (leftOut.length) console.log(`${leftOut.join('\n')}\n`);
+}
 const perRule = new Map<string, typeof baselined>();
 for (const finding of baselined) perRule.set(finding.check, [...(perRule.get(finding.check) ?? []), finding]);
 console.log(`Baseline (reports, doesn't block), ${baselined.length}:`);

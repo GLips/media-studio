@@ -327,17 +327,10 @@
     "lint/baseline.ts": {
       "const [check, path, key] = JSON.parse(id) as [string, string, string];": 1
     },
-    "lint/check-arch.ts": {
-      "const onDisk = existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as Baseline) : {};": 1
-    },
-    "lint/lint.ts": {
-      "const onDisk = existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as Baseline) : {};": 1
-    },
     "lint/oxlint/lib/rule-options.ts": {
       "const value = (option as Record<string, unknown>)[key];": 1
     },
     "lint/oxlint/oxlint-verdict.ts": {
-      "const baseline = existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as Baseline) : {};": 1,
       "return JSON.parse(execFileSync(binary, ['-f', 'json', ...files], { cwd: root, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })) as OxlintReport;": 1,
       "const stdout = (failure as { stdout?: string }).stdout;": 1,
       "return JSON.parse(stdout) as OxlintReport;": 1
@@ -347,9 +340,6 @@
     },
     "lint/rewrite-lib-imports.ts": {
       "const imports = (JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { imports: Record<string, string> }).imports;": 1
-    },
-    "lint/structural/arch-verdict.ts": {
-      "const baseline = JSON.parse(baselineText) as Baseline;": 1
     },
     "lint/structural/check-context.ts": {
       "const callee = node.callee as AstNode | undefined;": 1,
@@ -836,12 +826,6 @@
     "lib/timing/voice/models/voice-words.ts": {
       "const cost = Array.from({ length: n + 1 }, (_, i) => Array.from({ length: m + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)));": 1
     },
-    "lint/check-arch.ts": {
-      "const where = target.scope === 'workspace' ? 'work/\\'s index, with the studio\\'s' : target.snapshot.kind === 'index' ? 'the index' : `commit ${target.snapshot.rev}`;": 1
-    },
-    "lint/structural/arch-verdict.ts": {
-      "const baselineText = target.scope === 'public'": 1
-    },
     "lint/structural/checks/barrel-purity.ts": {
       "const serverOnly = target.kind === 'builtin' ? target.name": 1
     },
@@ -981,9 +965,6 @@
       "value: unknown": 17,
       "v: unknown": 2
     },
-    "lib/platform/gpu/models/gpu-uniform-layout.ts": {
-      "value: unknown": 1
-    },
     "lib/paint/photoshop-brushes/engine/photoshop-capture.ts": {
       "data: unknown": 1
     },
@@ -1010,6 +991,9 @@
       "args: unknown[]": 2,
       "a: unknown[]": 1,
       "list: unknown[]": 1
+    },
+    "lib/platform/gpu/models/gpu-uniform-layout.ts": {
+      "value: unknown": 1
     },
     "lib/platform/paid-generation/engine/openrouter.ts": {
       "body: object": 4
@@ -1091,9 +1075,6 @@
     "lib/paint/brush-packs/models/stamp-paint-pack.ts": {
       "Record<string, unknown>": 1
     },
-    "lib/platform/gpu/models/gpu-uniform-layout.ts": {
-      "Readonly<Record<string, unknown>>": 1
-    },
     "lib/paint/photoshop-brushes/engine/photoshop-capture.ts": {
       "Record<string, unknown>": 5
     },
@@ -1117,6 +1098,9 @@
       "Readonly<Record<string, unknown>>": 1
     },
     "lib/paint/style/models/style.ts": {
+      "Readonly<Record<string, unknown>>": 1
+    },
+    "lib/platform/gpu/models/gpu-uniform-layout.ts": {
       "Readonly<Record<string, unknown>>": 1
     },
     "lib/platform/paid-generation/engine/paid-generation.ts": {
@@ -1147,9 +1131,6 @@
     "lib/paint/brush-packs/models/stamp-paint-pack.ts": {
       "typeof value": 2
     },
-    "lib/platform/gpu/models/gpu-uniform-layout.ts": {
-      "typeof value": 1
-    },
     "lib/paint/photoshop-brushes/models/photoshop-descriptor.ts": {
       "typeof v": 3,
       "typeof v._unit": 1,
@@ -1168,6 +1149,9 @@
     },
     "lib/picture/brand/models/brand.ts": {
       "typeof v": 2
+    },
+    "lib/platform/gpu/models/gpu-uniform-layout.ts": {
+      "typeof value": 1
     },
     "lib/platform/web/engine/studio-app-server.ts": {
       "typeof body.root": 1
