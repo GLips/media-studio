@@ -3,8 +3,8 @@
 // Two measures, since a render's frame is its drawing and then its capture:
 //   - the drawing: the span rendered once in one tab with no screenshot, the page timing the work drawing code offers
 //     (lib/picture/profiling/studio/frame-profile.ts), each piece waited for on the GPU, and logging it to the console.
-//   - the whole render: the span rendered unprofiled to JPEGs, as a delivery render's frames are, in one tab and in
-//     the session's tabs, timed here from the frames' arrival. Its first frame, which loads everything, is left out.
+//   - the whole render: the span rendered unprofiled to JPEGs in one tab and in the session's, timed from the frames'
+//     arrival. Each tab's first frame loads everything and is left out: a span no longer than the tabs isn't timed.
 // The profiled render also logs what drawing code counts it cost (solves, cache hits); `--costs` tables them.
 import { renderFrames, type HeadlessBrowser } from '@remotion/renderer';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
@@ -26,8 +26,11 @@ export type FrameProfileReport = {
   drawn: { label: string; frames: number; spread: FrameTimeSpread }[];
   /** A label ending "load": each one's time, from mount to ready, not per frame. */
   loads: { label: string; ms: number[] }[];
-  /** A frame's whole render, steady state: wall-clock per frame, in `tabs` at once. */
-  whole: { tabs: number; msPerFrame: number }[];
+  /**
+   * A frame's whole render, steady state: wall-clock per frame, in `tabs` at once. `null` when the span has no frame
+   * past each tab's first, so no steady state to time.
+   */
+  whole: { tabs: number; msPerFrame: number | null }[];
   /** What the profiled frames' drawing counted it cost, as logged. */
   costs: FrameCostsEntry[];
 };
@@ -41,7 +44,6 @@ function spreadOf(values: number[]): FrameTimeSpread {
 /** Profiles frames `from`–`end` (exclusive), rendering them three times: profiled, then whole in 1 tab and in the session's. */
 export async function profileFrames(session: RenderSession, { from, end }: { from: number; end: number }): Promise<FrameProfileReport> {
   const frames = Array.from({ length: end - from }, (_, i) => from + i);
-  if (frames.length < 2) throw new Error('profile at least 2 frames: the first loads everything and is left out of the whole render');
   const lines: FrameProfileLine[] = [];
   const profiled = session.props({ profile: true });
 
@@ -74,7 +76,8 @@ export async function profileFrames(session: RenderSession, { from, end }: { fro
     return { result: { tabs, msPerFrame: (steady[steady.length - 1] - steady[0]) / (steady.length - 1) }, workers: tabs };
   });
   const tabs = session.workersFor(composition);
-  const whole = [await wholeIn(1), ...(tabs > 1 ? [await wholeIn(tabs)] : [])];
+  const steadyIn = async (count: number): Promise<FrameProfileReport['whole'][number]> => (frames.length > count ? wholeIn(count) : { tabs: count, msPerFrame: null });
+  const whole = [await steadyIn(1), ...(tabs > 1 ? [await steadyIn(tabs)] : [])];
 
   const entries = lines.filter((line): line is FrameProfileEntry => !isFrameCostsEntry(line));
   const labels = [...new Set(entries.map((e) => e.label))];
@@ -94,6 +97,7 @@ export async function profileFrames(session: RenderSession, { from, end }: { fro
 }
 
 const ms = (n: number) => `${n.toFixed(1)} ms`;
+const counted = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 
 /** A load's times: each, when there are few; else the first (which fills caches) apart from the spread of the rest. */
 function formatLoads(times: readonly number[]): string {
@@ -107,12 +111,14 @@ export function formatFrameProfile(report: FrameProfileReport, { costs = false }
   const { frames, size, gpu } = report;
   const costLines = report.costs.length ? frameCostsTable(report.costs) : ['  nothing in these frames counts its costs'];
   return [
-    `frames ${frames.from}–${frames.end - 1} at ${size.width}×${size.height}, GPU ${gpu}`,
+    `${frames.end - frames.from === 1 ? `frame ${frames.from}` : `frames ${frames.from}–${frames.end - 1}`} at ${size.width}×${size.height}, GPU ${gpu}`,
     'drawing, per frame, waited for on the GPU (1 tab, no screenshot):',
-    ...(report.drawn.length ? report.drawn.map(({ label, frames: n, spread: s }) => `  ${label}: median ${ms(s.median)}, p90 ${ms(s.p90)}, max ${ms(s.max)} over ${n} frames`) : ['  nothing in these frames offers its work to be timed']),
+    ...(report.drawn.length ? report.drawn.map(({ label, frames: n, spread: s }) => `  ${label}: median ${ms(s.median)}, p90 ${ms(s.p90)}, max ${ms(s.max)} over ${counted(n, 'frame')}`) : ['  nothing in these frames offers its work to be timed']),
     ...report.loads.map(({ label, ms: times }) => `  ${label}: ${formatLoads(times)}`),
     'whole render, per frame, steady state (JPEG frames, no encode):',
-    ...report.whole.map(({ tabs, msPerFrame }) => `  ${tabs} tab${tabs > 1 ? 's' : ''}: ${ms(msPerFrame)}`),
+    ...report.whole.map(({ tabs, msPerFrame }) => (msPerFrame === null
+      ? `  ${counted(tabs, 'tab')}: no steady state from ${counted(frames.end - frames.from, 'frame')}: profile ${tabs + 1} or more`
+      : `  ${counted(tabs, 'tab')}: ${ms(msPerFrame)}`)),
     ...(costs ? ['costs, as the profiled drawing counted them:', ...costLines] : []),
   ];
 }
