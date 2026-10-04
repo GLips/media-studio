@@ -35,7 +35,7 @@ import { shotDrawableOrder } from '../models/shot-plan.ts';
 import type { ShotMomentAt } from '../models/shot-sheet-lays.ts';
 import { shotWarmCombinations, shotWarmFrames, shotWarmPastScene } from '../models/shot-warm.ts';
 import { createShotGroupFade } from './shot-group-pass.ts';
-import { shotItemsLayer } from './shot-instance-passes.ts';
+import { shotItemsCoverages, shotItemsLayer, type ShotItemsCoverage } from './shot-instance-passes.ts';
 import { createShotPaintedPlanes, type ShotPlaneMoment, type ShotPlaneSolved, type ShotSourceRead } from './shot-painted-plane.ts';
 import { createShotPaintedTextures } from './shot-painted-textures.ts';
 import { createShotRigPictures, createShotRigPiecesDrawer } from './shot-rig-pieces.ts';
@@ -43,15 +43,21 @@ import { createShotSheetsLayer } from './shot-sheets-lay.ts';
 
 /**
  * What made the pixels a mask reads of a plane it doesn't lay: a three render's frame and exposure, a picture's upload
- * and box, or an instanced plane's variants' pictures (their keys) and each shown item's variant, view and visibility.
+ * and box, or an instanced plane's items (ShotItemsCoverage's key).
  */
 type ShotSourceMade =
   | { readonly kind: 'three'; readonly t: number; readonly exposure: StampLensSourceExposure | null }
   | { readonly kind: 'picture'; readonly version: number; readonly box: StampStageTexels }
-  | { readonly kind: 'items'; readonly pictures: readonly (readonly string[])[]; readonly items: readonly (readonly [string, number, number, number, number, number])[] };
+  | { readonly kind: 'items'; readonly key: string };
 
 /** A source read's key: what made its pixels, the share of them read, and the map its reader reads them through. */
 const shotSourceReadKey = (made: ShotSourceMade, weight: number, map: PaintSimilarity) => JSON.stringify([made, weight, map.ma, map.mb, map.kx, map.ky]);
+
+/**
+ * How a reader reads a camera's render: `seen` (its stage texel's point to frame px), then on to the render's texel
+ * point, its first texel at frame px `at`.
+ */
+const throughCamera = (seen: PaintSimilarity, at: { readonly x: number; readonly y: number }) => paintSimilarityAfter({ ma: 1, mb: 0, kx: -at.x, ky: -at.y }, seen);
 
 /**
  * How a shot warms: at the composition's `fps`; within the scene playing it, `sceneDur` s long (null: unknown);
@@ -177,55 +183,38 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
     };
 
     const { margin } = stage, planePx: PaintSimilarity = { ma: 1, mb: 0, kx: -margin, ky: -margin };
-    const usage = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING;
-
-    /** Instanced plane `plane`'s items drawn still and sharp through the camera into a frame-sized target, by their visibility. */
-    const itemsCoverage = (encoder: GPUCommandEncoder, plane: CompiledShotInstancedPlane, variantMoments: ReadonlyMap<CompiledShotVariant, ShotPlaneMoment>, items: ShotExposureItems) => {
-      const lens = canvases[plane.canvas].lens, shown = items.items.get(plane.id) ?? [];
-      const target = owner.target(`shot items coverage ${plane.id}`, { size: [stage.frame.width, stage.frame.height], format: 'rgba16float', usage });
-      // Alpha laid over alpha is the same in any order, so a variant's items can go together.
-      const layers = [...plane.variants.values()].flatMap((variant) => {
-        const step = { kind: 'items', plane: plane.id, variant: variant.name, sigma: 0, items: shown.filter((item) => item.variant === variant.name) } as const;
-        const laid = step.items.length ? shotItemsLayer(encoder, lens, planes, stage, variantMoments.get(variant)!, step, (item) => ({ ...items.lookOf(plane.id, item), shutter: null })) : null;
-        return laid ? [laid] : [];
-      });
-      lens.cover(encoder, layers, target.createView());
-      return target;
-    };
 
     /**
      * Plane `id`, a source or instanced plane, as painted plane `reader`'s mask reads it at `exposure` of frame `t`:
-     * a picture's alpha through its node's placement; a three render's, or the items', through the reader's view;
-     * each by its visibility. And a key naming what's read.
+     * a picture's alpha through its node's placement; a three render's, or the items' (`items`), through the
+     * reader's view; each by its visibility. And a key naming what's read.
      */
     const sourceRead = (
-      encoder: GPUCommandEncoder, id: string, reader: string, exposure: ShotExposure, drawn: { renders: readonly StampSourceRenders[]; variantMoments: ReadonlyMap<CompiledShotVariant, ShotPlaneMoment>; items: ShotExposureItems }, t: number,
+      id: string, reader: string, exposure: ShotExposure, renders: readonly StampSourceRenders[], items: (plane: CompiledShotInstancedPlane) => ShotItemsCoverage, t: number,
     ): ShotSourceRead => {
       const { view } = exposure.lens.planes.get(reader) ?? STAMP_REST_LOOK, seen = paintSimilarityAfter(view, planePx), instanced = instancedOf.get(id);
       if (instanced) {
-        const shown = (drawn.items.items.get(id) ?? []).map((item) => [item, drawn.items.lookOf(id, item)] as const).filter(([, look]) => look.visibility > 0);
-        const itemsMade: ShotSourceMade = {
-          kind: 'items', pictures: [...instanced.variants.values()].map((variant) => drawn.variantMoments.get(variant)!.shares.map(({ plan }) => plan.key)),
-          items: shown.map(([item, { view: v, visibility }]) => [item.variant, v.ma, v.mb, v.kx, v.ky, visibility] as const),
+        // An item's visibility is in its look already: the plane's is read through its items.
+        const { key, at, read } = items(instanced), map = throughCamera(seen, at);
+        return {
+          key: shotSourceReadKey({ kind: 'items', key }, 1, map),
+          coverage: () => {
+            const texture = read();
+            return texture && { view: texture.createView(), channel: 3, weight: 1, extent: { w: texture.width, h: texture.height }, map };
+          },
         };
-        let target: GPUTexture | undefined;
-        const coverage = () => {
-          target ??= itemsCoverage(encoder, instanced, drawn.variantMoments, drawn.items);
-          return { view: target.createView(), channel: 3, weight: 1, extent: { w: target.width, h: target.height }, map: seen };
-        };
-        return { key: shotSourceReadKey(itemsMade, 1, seen), coverage: shown.length ? coverage : () => null };
       }
       const plane = planeOf.get(id)!, source = sources.get(id), weight = shotVisibilityAt(shot, id, id, exposure.at);
       if (plane.kind === 'three' && source?.kind === 'three') {
         // A three source is posed at its moment: frame t and the exposure name its render.
-        const { texture, at } = source.picture, map = paintSimilarityAfter({ ma: 1, mb: 0, kx: -at.x, ky: -at.y }, seen);
+        const { texture, at } = source.picture, map = throughCamera(seen, at);
         return {
           key: shotSourceReadKey({ kind: 'three', t, exposure: stampLensSourceExposureOf(exposure.exposure ?? undefined) }, weight, map),
           coverage: () => ({ view: texture.createView(), channel: 3, weight, extent: { w: texture.width, h: texture.height }, map }),
         };
       }
       if (plane.kind !== 'picture') throw new Error(`shot: ${reader}'s mask reads ${id}, a ${plane.kind} plane, as a source; only a picture, three or instanced plane renders one`);
-      const picture = drawn.renders[plane.canvas].pictures.get(id) ?? null;
+      const picture = renders[plane.canvas].pictures.get(id) ?? null;
       if (!picture) return { key: 'nothing', coverage: () => null };
       const { box } = picture, map = paintSimilarityAfter({ ma: 1, mb: 0, kx: margin - box.x, ky: margin - box.y }, paintSimilarityAfter(paintSimilarityInverse(pictureNodeMap(id, exposure.at)), planePx));
       return {
@@ -246,7 +235,8 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
       layer.reserve([...moments.values(), ...variantMoments.values()].flatMap(({ shares }) => shares.map(({ frame }) => frame)));
       const encoder = device.createCommandEncoder(), lensFrame = exposure.lens, fast = !exposure.exposure;
       // Every painted plane laid first, each after those its masks read, whatever canvas or depth it's drawn at.
-      const presented = planes.present(encoder, moments, (id, reader) => sourceRead(encoder, id, reader, exposure, { renders, variantMoments, items }, t));
+      const itemsCovered = shotItemsCoverages(encoder, { owner, lenses: canvases.map(({ lens }) => lens), planes, stage }, variantMoments, items);
+      const presented = planes.present(encoder, moments, (id, reader) => sourceRead(id, reader, exposure, renders, itemsCovered, t));
       // The exposure's drawables far to near, consecutive items of a variant blurred alike in one step.
       const steps = shotDrawSteps(shotDrawableOrder(shot.written, items.items), (plane, item) => items.lookOf(plane, item).sigma);
       for (const canvas of canvases) {
