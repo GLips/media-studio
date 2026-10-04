@@ -1,9 +1,9 @@
-// stamp-gate-three-plane.ts: the GPU gate's three-plane cases (three/flat, three/pigment, three/defocus). A painted
-// ground at the back, a three.js plane of known colours before it (stamp-plane.ts), its texture written by the gate,
-// and a painted plane in front, an opaque box on clear film, in each compositor. Held to: each opaque colour showing as itself
-// within a level; a half-transparent patch laid over the ground in linear light; the front plane covering it; an
-// all-clear texture drawing as the planes without it; any frame order drawing the same frames; and the lens's per-pixel
-// defocus, the card all at one distance, as the content blurred on the CPU.
+// stamp-gate-three-plane.ts: the GPU gate's three-plane cases (three/flat, three/pigment, three/defocus,
+// three/defocus-edge). A painted ground, a three.js plane of known colours before it (stamp-plane.ts), its texture
+// written by the gate, and a painted plane in front, an opaque box on clear film. Held to: each opaque colour showing
+// as itself within a level; a half-transparent patch laid over the ground in linear light; the front plane covering
+// it; an all-clear texture drawing as no card; any frame order drawing the same frames; the lens's per-pixel defocus
+// as the content blurred on the CPU; and a sharp near patch over a blurred far one as the two blurred apart.
 
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
@@ -17,7 +17,7 @@ import { STAMP_GATE_IMAGES, STAMP_GATE_WHITE, stampGateBrush, stampGatePolygon, 
 import { STAMP_GATE_DEFOCUS_TOLERANCE, STAMP_GATE_REST_LOOK, stampGateGaussian } from './stamp-gate-lens.ts';
 import type { StampGateWashCheck } from './stamp-gate-layer.ts';
 
-export const STAMP_GATE_THREE_IDS = ['three/defocus', 'three/flat', 'three/pigment'] as const;
+export const STAMP_GATE_THREE_IDS = ['three/defocus', 'three/defocus-edge', 'three/flat', 'three/pigment'] as const;
 export type StampGateThreeKind = 'flat' | 'pigment';
 /** The compositor case `id` names, or null for one that isn't a compositor case. */
 export const stampGateThreeKind = (id: string): StampGateThreeKind | null => ({ 'three/flat': 'flat', 'three/pigment': 'pigment' } as const)[id] ?? null;
@@ -67,6 +67,50 @@ export function stampGateThreeMotion(content: Float32Array): Float32Array {
   for (let i = 3; i < content.length; i += 4) motion.set([0, 0, STAMP_GATE_THREE_DISTANCE * content[i], content[i]], i - 3);
   return motion;
 }
+
+/**
+ * The defocus-edge card: a red far patch, and a cream one at half its distance over it and past its foot onto clear,
+ * as a sharp mug before a soft wall. A defocus can pass full cover on one side of a depth edge and fall short on the
+ * other: a dark fringe once laid over the ground.
+ */
+const EDGE_FAR: Patch = { box: { x0: 20, x1: 140, y0: 20, y1: 110 }, rgb: [0.6, 0.12, 0.08], alpha: 1 };
+const EDGE_NEAR: Patch = { box: { x0: 60, x1: 100, y0: 50, y1: 145 }, rgb: [0.85, 0.8, 0.7], alpha: 1 };
+const EDGE_FAR_DISTANCE = 2 * STAMP_GATE_THREE_DISTANCE;
+
+const layPatch = (rgba: Float32Array, { box, rgb, alpha }: Patch, texel: (rgb: Patch['rgb'], alpha: number) => readonly number[]) => {
+  for (let y = box.y0; y < box.y1; y++) for (let x = box.x0; x < box.x1; x++) rgba.set(texel(rgb, alpha), (y * STAMP_GATE_THREE_SIZE.width + x) * 4);
+};
+const premultiplied = (rgb: Patch['rgb'], alpha: number) => [rgb[0] * alpha, rgb[1] * alpha, rgb[2] * alpha, alpha];
+
+/** The defocus-edge card as a three.js render gives it, each texel its nearest surface: its colour and motion layers. */
+export function stampGateThreeEdgeLayers(): { content: Float32Array; motion: Float32Array } {
+  const { width, height } = STAMP_GATE_THREE_SIZE, content = new Float32Array(width * height * 4), motion = new Float32Array(width * height * 4);
+  for (const [patch, distance] of [[EDGE_FAR, EDGE_FAR_DISTANCE], [EDGE_NEAR, STAMP_GATE_THREE_DISTANCE]] as const) {
+    layPatch(content, patch, premultiplied);
+    layPatch(motion, patch, (_, alpha) => [0, 0, distance * alpha, alpha]);
+  }
+  return { content, motion };
+}
+
+/**
+ * The defocus-edge card as layers would give it, worked out on the CPU: the far patch whole, the part the near one
+ * hides included, blurred by STAMP_GATE_THREE_DEFOCUS px, then the near one laid sharp over it.
+ */
+export function stampGateThreeEdgeLayered(): Float64Array {
+  const { width, height } = STAMP_GATE_THREE_SIZE, far = new Float32Array(width * height * 4);
+  layPatch(far, EDGE_FAR, premultiplied);
+  const layered = stampGateGaussian(far, width, height, 4, STAMP_GATE_THREE_DEFOCUS, 0);
+  const near = new Float32Array(width * height * 4);
+  layPatch(near, EDGE_NEAR, premultiplied);
+  for (let i = 0; i < layered.length; i += 4) for (let c = 0; c < 4; c++) layered[i + c] = near[i + c] + layered[i + c] * (1 - near[i + 3]);
+  return layered;
+}
+
+/** The defocus-edge case's lens: focused on the near patch, so the far one blurs by STAMP_GATE_THREE_DEFOCUS px. */
+export const STAMP_GATE_THREE_EDGE_LENS: StampLensFrame = {
+  planes: new Map([[STAMP_GATE_CARD, STAMP_GATE_REST_LOOK]]), bloom: 0,
+  focus: { focus: STAMP_GATE_THREE_DISTANCE, aperture: STAMP_GATE_THREE_DEFOCUS / (1 - STAMP_GATE_THREE_DISTANCE / EDGE_FAR_DISTANCE) },
+};
 
 /** Content a as the lens defocuses it, worked out on the CPU: premultiplied, so a patch fades into clear. */
 export function stampGateThreeContentBlurred(): Float64Array {
@@ -177,5 +221,18 @@ export function checkStampGateThreeDefocus({ blurred, cpuBlurred, sharp }: Recor
     id: 'three/defocus: a three plane defocuses as its content blurred',
     passed: twin.max <= STAMP_GATE_DEFOCUS_TOLERANCE && unlike.max > 40,
     detail: `defocused ${STAMP_GATE_THREE_DEFOCUS} px against its content blurred on the CPU: max ${twin.max} (past ${STAMP_GATE_DEFOCUS_TOLERANCE} fails), against sharp ${unlike.max} (40 or under fails)`,
+  };
+}
+
+/**
+ * Whether the two-distance card defocused through the lens (`blurred`) lays as its layers blurred apart and laid in
+ * turn (`layered`, laid sharp), within a defocus's tolerance, and visibly unlike the card laid sharp (`sharp`).
+ */
+export function checkStampGateThreeDefocusEdge({ blurred, layered, sharp }: Record<'blurred' | 'layered' | 'sharp', Rgba>): StampGateWashCheck {
+  const twin = stampGateFrameDifference(blurred, layered), unlike = stampGateFrameDifference(sharp, blurred);
+  return {
+    id: 'three/defocus-edge: a sharp near surface over a blurred far one lays as the two blurred apart, with no fringe at their edge',
+    passed: twin.max <= STAMP_GATE_DEFOCUS_TOLERANCE && unlike.max > 40,
+    detail: `the far patch defocused ${STAMP_GATE_THREE_DEFOCUS} px under a sharp near one, against the layers blurred apart on the CPU: max ${twin.max}, mean ${twin.mean.toFixed(4)} (past ${STAMP_GATE_DEFOCUS_TOLERANCE} fails), against sharp ${unlike.max} (40 or under fails)`,
   };
 }
