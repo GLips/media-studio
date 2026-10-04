@@ -1207,7 +1207,7 @@ whether it catches the paper's peaks.
 | | `flat` | wet | a broad flat over a block: shade, cloth lights | size |
 | | `thick` | wet | dense and opaque, a crisp edge | size, flow |
 | | `round` | wet | shadows, folds, the core | size, flow |
-| | `bristly` | wet | bristle marks inside the stroke | size |
+| | `bristly` | wet | bristle marks inside the stroke; under falling pressure (`drag`, `pressFlick`) it narrows until the bristles part: a dry run-out | size |
 | | `dab` | wet | a short round dab: small lights, glints | size |
 | | `dry` | dry | catches the paper's peaks and skips its valleys, leaving what's in them: a scumble over a block, a broken edge. Its width doesn't follow pressure; harder pressure catches more of the tooth | roundness |
 | | `detail` | wet | a fine opaque line: stems, lip lights | size, opacity, flow |
@@ -1240,8 +1240,13 @@ sheetMedia?})`, the px a strokes reveal's band needs to hold all a stroke `appli
 **Hand** (`StampStrokeHand`): `profile`: `'taper'` (light, firm, light), `'pressFlick'` (pressed, then flicked off),
 `'swell'` (thin, full, thin), `'drag'` (steady, lifting over its last fifth), or a curve `(u) => pressure` over the
 application's whole length, gaps included; left out, flat at full pressure, so each point's own pressure shapes the
-stroke. `fullProfileAt` diameters before a stroke gets its profile's full depth (12); `curvature` 0..1, how much a
-long straight run lightens; `wobble: {pressure 0..1, position diameters}`. A stroke's paint spans about
+stroke. `fullProfileAt` diameters before a stroke gets its profile's full depth (12): a shorter stroke gets that
+share of it, so with the default a stroke 3 diameters long tapers only a quarter as deep (its ends at 0.8 rather than
+0.2). For short blades, petals and wings, set `fullProfileAt` to about the stroke's length in diameters, or 0 for the
+full depth always. Each profile has a floor: `taper` touches down and lifts off at 0.2, `pressFlick` ends at 0.1,
+`swell` and `drag` at 0.15; a brush thins there only as far as it binds size to pressure (`studio brushes
+describe`), and a stroke whose ends fall under the brush's smallest measured diameter may lay nothing there that reads.
+`curvature` 0..1, how much a long straight run lightens; `wobble: {pressure 0..1, position diameters}`. A stroke's paint spans about
 `diameterPx` × `scale`, times the size its brush binds to pressure, edge to edge; a textured tip is ragged inside
 that, and wobble `position` moves the line by up to that many diameters. A curve is the document's one function: the
 diff compares it by identity, so define it once at module level.
@@ -1254,7 +1259,8 @@ how far its paint walks, the rim's band, the cost, and the narrowest part it rea
 `laying: {kind: 'flood', reach?}` or `{kind: 'strokes', pattern, spacing?, variation?, hand?, reach?}`. `pattern` is an
 object: `{kind: 'backAndForth' | 'zigzag' | 'shading', turns?: 'eased' | 'pressed'}` (how it turns back), `{kind:
 'hatch'}`, `{kind: 'crossHatch'}`, `{kind: 'scribble'}`, `{kind: 'contour'}`, or `{kind: 'guided', guides: [{id,
-path}]}`. `spacing` diameters between rows (the pattern's own); `variation` 0..1 (0.3); `reach`: `'inside'` (marks'
+path}]}`: two or more cross-sections, all running the same way, each from outside the region to outside it (one ending
+inside is refused); marks lie only between consecutive guides, so the region past the first and the last stays bare. `spacing` diameters between rows (the pattern's own); `variation` 0..1 (0.3); `reach`: `'inside'` (marks'
 edges meet the outline; the default) or `{past: n}` diameters beyond it, for a clip to trim. A flood's tip breaks
 along its outline, leaving a few bare specks rimmed with paint: a wash meant to reach the paper's edge runs its outline
 past it (the meadow's, 30 px), so they fall off the paper. A fill, flooded or stroked, plans its strokes by its
