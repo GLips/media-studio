@@ -16,6 +16,7 @@ import { compilePaintingDeposit, compilePaintingFluid, paintingMixPigments, type
 import type { AnyApplication, NodeKey, Prewet, Wash } from './painting-document.ts';
 import { paintingEntryReads, paintingSheetHead } from './painting-entry-reads.ts';
 import { PAINTING_REST_POSE } from './painting-pose.ts';
+import { paintingWashLifts } from './painting-pigment-slots.ts';
 import { paintingApplicationOwner } from './painting-problem.ts';
 import { paintingReseeded } from './painting-reseed.ts';
 import { paintingSheetOrders, paintingSheetWashes, type PaintingSheetOrder } from './painting-sheet-program.ts';
@@ -65,7 +66,9 @@ function compilePaintingSheet(evaluation: PaintingEvaluation, order: PaintingShe
     const wet = node.wetHistory !== false, clipTo = node.clipTo === undefined ? null : washIndex.get(`${layer}/${place.node.washes.findIndex(({ key }) => key === node.clipTo)}`)!;
     const epoch = epochOf(layer), id = stampBoilSeed(`${layer}/${wash}/prewet`, epoch);
     const prewet = wet && node.prewet ? compilePaintingPrewet(paintingReseeded(node.prewet, epoch), id, node.key, brushOf) : null;
-    return { film: layer, name: node.key, prewet, rim: wet ? node.rim ?? 1 : 0, clipTo, wetHistory: wet, origin: node.clock?.origin ?? null };
+    const compiled: StampSheetWash = { film: layer, name: node.key, prewet, rim: wet ? node.rim ?? 1 : 0, clipTo, wetHistory: wet, origin: node.clock?.origin ?? null };
+    if (paintingWashLifts(node)) compiled.lifts = true;
+    return compiled;
   });
   const entries = order.entries.map((entry, k): StampSheetEntry => {
     const wash: Wash = tree.layers[order.layers[entry.layer].layer].node.washes[entry.wash], epoch = epochOf(entry.layer);

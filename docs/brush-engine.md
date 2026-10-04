@@ -217,9 +217,11 @@ burnish, a lift, a wait, a `when`, a wet technique, water a deposit states, `wet
 the medium. Which law lays a deposit is `stampDepositionLaw`, per
 deposit: water, a lift (in a direct wash too: crayon's eraser), and paint from a wet brush in a medium with wet
 history land in the wash's history (`landDeposit`); any other paint, a dry-media brush's or crayon's in a wash too, is
-laid by the dry law (`layDeposit`: pressure, the tooth, a burnish). A direct wash holding a lift is mixed as a wash
-(`stampSheetMixedPainting`), so its lifts land through the history as a recipe passage's do; the gate's
-`schedule/forward: eraser` holds a crayon line erased under the eraser's core and untouched past its reach.
+laid by the dry law (`layDeposit`: pressure, the tooth, a burnish). A document's wash that lifts compiles `lifts`
+(`paintingWashLifts`, which also gives its film the open channel), and a direct one holding it is mixed as a wash
+(`stampSheetMixedPainting`), so its lifts land through the history as a recipe passage's do while its other
+applications stay direct; the gate's `schedule/forward: eraser` holds a crayon line erased under the eraser's core
+and untouched past its reach.
 
 **Dry brush.** Where paint meets the tooth is the medium's `paperContact`: a wet medium pools into the valleys, a dry
 one catches on the peaks. Watercolour also declares a `dryBrush` tooth: its dry-media brushes drag over the sheet and

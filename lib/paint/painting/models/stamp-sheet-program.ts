@@ -43,11 +43,11 @@ export type StampSheetPrewet = {
 
 /**
  * A wash: its film (an index into `films`), its name, its prewet (null for none), its rim's strength 0..2, the earlier
- * wash of its film whose paint clips it (an index into `washes`, null for none), whether it touches water at all, and
- * its clock's origin: a scene second, `'set'`, or null for an unclocked wash.
+ * wash of its film whose paint clips it (an index into `washes`, null for none), whether it touches water
+ * (`wetHistory`) or `lifts` (absent when not), and its clock's origin: a scene second, `'set'`, or null.
  */
 export type StampSheetWash = {
-  film: number; name: string; prewet: StampSheetPrewet | null; rim: number; clipTo: number | null; wetHistory: boolean; origin: number | 'set' | null;
+  film: number; name: string; prewet: StampSheetPrewet | null; rim: number; clipTo: number | null; wetHistory: boolean; lifts?: true; origin: number | 'set' | null;
 };
 
 /**
@@ -105,20 +105,21 @@ export function stampSheetWashSpans({ washes, entries }: Pick<StampSheetProgram,
 export function stampSheetMixedPainting(program: StampSheetProgram): StampMixedPainting {
   const passes = program.washes.map((wash, w) => {
     const laid: CompiledStampDeposit[] = [];
-    return { film: wash.film, id: `film${wash.film}/wash${w}`, wet: wash.wetHistory, deposits: laid };
+    // A wash that lifts is mixed as a wash, a direct one too: its lifts land through the history (stampDepositionLaw)
+    // and read the open share its film keeps for them.
+    return { film: wash.film, id: `film${wash.film}/wash${w}`, wet: wash.wetHistory || wash.lifts === true, deposits: laid };
   });
   for (const entry of program.entries) passes[entry.wash].deposits.push(entry.deposit);
   return {
     paper: program.paper, mixing: { kind: 'pigment', medium: program.water, pigments: {} },
     groups: program.films.map((film, f) => ({
       id: `film${f}`, mixing: film.mixing, paper: 'ground',
-      // A direct wash that lifts is mixed as a wash: its lifts land through the history, as a recipe passage's do.
-      passes: passes.filter((pass) => pass.film === f).map(({ id, wet, deposits: laid }): StampMixedPass => (wet || !laid.every(stampPaintingDeposit)
+      passes: passes.filter((pass) => pass.film === f).map(({ id, wet, deposits: laid }): StampMixedPass => (wet
         ? { id, kind: 'wash', knockout: false, deposits: laid }
         : { id, kind: 'dry', deposits: laid.filter(stampPaintingDeposit) })),
     })),
   };
 }
 
-/** Whether `deposit` lays paint: a direct wash's every one does but its lifts. */
+/** Whether `deposit` lays paint: a direct wash's every one does, a wash that lifts being mixed as a wash. */
 const stampPaintingDeposit = (deposit: CompiledStampDeposit): deposit is CompiledStampDeposit<CompiledStampPaintAction> => deposit.action.kind === 'paint';

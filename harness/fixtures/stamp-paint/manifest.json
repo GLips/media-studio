@@ -273,10 +273,10 @@
     "solved/forward": {
       "file": "solved/forward.png",
       "output": "f0003f7c4e327d9e25299197504d478b1343f240457c5e2663bf37768ec463f8",
-      "inputs": "fbe94e799b1ad0c3afcb37996ebfc7f4336eb954b0ab2f89c0ad8ea05c3fa522",
-      "reason": "vid-157 three-textures: each sheet program carries its document's wrap (null for these, which don't wrap), so each solved still's inputs text changes; the sheet code reads a stage's margin where it assumed none; images unchanged",
-      "accepted": "2026-10-03",
-      "acceptedOver": "34622a69",
+      "inputs": "3853a94cf8afbf4982a7eee333108b8751ee21b819bf37680918e701725c281f",
+      "reason": "re-keyed: a wash holding a lift compiles lifts (paintingWashLifts), mixed as a wash by that flag rather than by what it lays; forward's scrub and eraser washes carry it, so its programs' text changes; image compared by eye with the accepted one",
+      "accepted": "2026-10-04",
+      "acceptedOver": "0c96f70b",
       "adapter": "apple metal-3"
     },
     "solved/paper-heron": {

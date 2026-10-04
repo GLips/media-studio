@@ -32,8 +32,11 @@ function paintingMixPigmentIds(mix: Mix | Field<Mix>, medium: PaintMedium): stri
   return [...new Set([...mixPigmentIds(first, medium), ...mixPigmentIds(second, medium)])];
 }
 
-/** Whether `wash` lifts: a lift lands through the wet history wherever it's laid (stampDepositionLaw), reading the open share. */
-function paintingWashLifts(wash: Wash): boolean {
+/**
+ * Whether `wash` lifts. A lift takes up what the paper holds through its wetness (stampDepositionLaw), an eraser in a
+ * direct wash too, so its film keeps the open share and its wash compiles `lifts` (StampSheetWash), mixed as a wash.
+ */
+export function paintingWashLifts(wash: Wash): boolean {
   const applications: readonly AnyApplication[] = wash.applications;
   return applications.some(({ charge }) => charge.kind === 'lift');
 }
