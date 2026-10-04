@@ -20,10 +20,10 @@ const SOURCE_MOTION_LAYERS: LensPictureLayers = { ...SOURCE_LAYERS, motion: 1 };
 export type StampSourceRenders = { readonly moved: ReadonlySet<string>; readonly pictures: ReadonlyMap<string, StampLensPicture | null> };
 
 /**
- * How a frame lays a source plane: its `look`, the lens's `focus`, whether the frame gathers motion, and whether it's
- * the `back`, which must show wherever the frame does.
+ * How a frame lays a source plane: its `look`, the lens's `focus`, whether the frame gathers motion, whether it's the
+ * `back`, which must show wherever the frame does, and its `visibility` 0..1, the share of it laid.
  */
-export type StampSourceLaying = { readonly look: StampPlaneLook; readonly focus: LensFocus | null; readonly moving: boolean; readonly back: boolean };
+export type StampSourceLaying = { readonly look: StampPlaneLook; readonly focus: LensFocus | null; readonly moving: boolean; readonly back: boolean; readonly visibility: number };
 
 export type StampLensSourceLayers = {
   /** Renders each source for frame time `t` (or `exposure`), one after another. */
@@ -115,12 +115,12 @@ export function createStampLensSourceLayers(owner: StampPaintGpuOwner, { stage, 
    * `moving`, else with its motion layer, each texel defocused by `focus` at its own distance, at most twice the
    * aperture: else a point by the lens would blur the whole picture.
    */
-  function threeLayer(encoder: GPUCommandEncoder, id: string, { look, focus, moving }: StampSourceLaying): LensLayer {
+  function threeLayer(encoder: GPUCommandEncoder, id: string, { look, focus, moving, visibility }: StampSourceLaying): LensLayer {
     const { texture, motion, at } = threes.get(id)!.picture, { width: w, height: h } = texture;
     // A source renders through the camera, its motion with it: only the lens's defocus is left to do. Still or not, a
     // gathered frame reads its texels' distances: its plane's would misplace what's in front.
     const laid = (picture: GPUTextureView, layers: LensPictureLayers): LensLayer => ({
-      picture, layers, view: STAMP_REST_LOOK.view, shutter: null, origin: at, size: { w, h }, clipped: true, distance: look.distance, distances: moving ? 'texels' : 'layer',
+      picture, layers, view: STAMP_REST_LOOK.view, shutter: null, origin: at, size: { w, h }, clipped: true, distance: look.distance, distances: moving ? 'texels' : 'layer', visibility,
     });
     const defocusing = focus !== null && focus.aperture >= LENS_DEFOCUS_LEAST;
     if (!defocusing && !moving) return laid(arrayView(texture), SOURCE_LAYERS);
@@ -138,11 +138,11 @@ export function createStampLensSourceLayers(owner: StampPaintGpuOwner, { stage, 
    * Picture plane `id`'s picture laid by its `look`, defocused by it over its box grown by the blur's reach, into a
    * stage-sized target cleared first: one target a plane, whatever its box.
    */
-  function pictureLayer(encoder: GPUCommandEncoder, id: string, { texture, box }: StampLensPicture, look: StampPlaneLook): LensLayer {
+  function pictureLayer(encoder: GPUCommandEncoder, id: string, { texture, box }: StampLensPicture, { look, visibility }: StampSourceLaying): LensLayer {
     // Sized to the texture, not the box: the lens samples its picture over `size`, and past the box it's clear.
     const laid = (view: GPUTextureView, at: StampStageTexels, size: { w: number; h: number }): LensLayer => ({
       picture: view, layers: SOURCE_LAYERS, view: look.view, shutter: look.shutter, origin: { x: at.x - margin, y: at.y - margin }, size, clipped: true,
-      distance: look.distance, distances: 'layer',
+      distance: look.distance, distances: 'layer', visibility,
     });
     // A plane's defocus is frame px: on its picture, it's that over the view's scale.
     const sigma = look.defocus && lensSigmaStepped(look.defocus / Math.hypot(look.view.ma, look.view.mb));
@@ -179,7 +179,7 @@ export function createStampLensSourceLayers(owner: StampPaintGpuOwner, { stage, 
       const picture = renders.pictures.get(plane.id) ?? null;
       if (picture) checkStampLensPicture(plane.id, picture, stage, plane.extent);
       if (laying.back) checkBackCovers(plane.id, picture ?? { box: null }, laying.look);
-      return picture ? [pictureLayer(encoder, plane.id, picture, laying.look)] : [];
+      return picture ? [pictureLayer(encoder, plane.id, picture, laying)] : [];
     },
   };
 }

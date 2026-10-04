@@ -66,7 +66,7 @@ function paintedReach(plane: CompiledShotPaintedPlane, motion: CompiledShotMotio
  * unchecked for a plane laid on the frame until laid (shot-placement.ts checks it then), else as the file's head says.
  */
 export function shotPaintedExtent(plane: CompiledShotPaintedPlane, motion: CompiledShotMotion, rigged: ReadonlySet<OccurrenceKey>): StampPlaneExtent {
-  if (plane.back) return { kind: 'everywhere' };
+  if (plane.opaqueBack) return { kind: 'everywhere' };
   if (plane.lay.kind === 'screen') return { kind: 'unchecked', why: 'laid on the frame through the camera, it is checked where it lies once laid' };
   if (plane.lay.kind === 'moving') return plane.lay.reach ? { kind: 'box', box: plane.lay.reach } : { kind: 'everywhere' };
   if (typeof plane.source === 'function' || plane.occurrences.some(({ key }) => rigged.has(key))) return { kind: 'everywhere' };

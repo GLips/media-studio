@@ -121,12 +121,14 @@ test('a shot refuses motion its rig or lay already writes, and a painted texture
   ]);
 });
 
-test('a transparent back is refused unless HTML lies behind the first canvas, over which it is laid clear', () => {
-  const props: PaintedShotProps = { camera, planes: [{ id: 'back', depth: 1, source: layersOf(pond, ['sky'], { ground: 'transparent' }) }] };
+test('a transparent back is refused unless HTML lies behind the first canvas, over which it is laid clear and may fade, as the opaque back may not', () => {
+  const props: PaintedShotProps = { camera, planes: [{ id: 'back', depth: 1, source: layersOf(pond, ['sky'], { ground: 'transparent' }) }], visibility: { back: 0.5 } };
   assert.deepEqual(problemsOf(props), ['back.source.ground: is the back, laid on its paper wherever the frame shows: its ground is transparent only over HTML before the first canvas']);
-  const { shot } = compilePaintedShot(props, [], { htmlBehind: true });
+  const { shot, problems } = compilePaintedShot(props, [], { htmlBehind: true });
+  assert.deepEqual(problems, []);
   assert.equal(shot!.clearBack, true);
-  assert.equal(shot!.planes[0].kind === 'painted' && shot!.planes[0].back, false);
+  assert.equal(shot!.planes[0].kind === 'painted' && shot!.planes[0].opaqueBack, false);
+  assert.deepEqual(problemsOf({ ...props, planes: [{ id: 'back', depth: 1, source: layersOf(pond, ['sky']) }] }), ['back.visibility: is the back, shown wherever the frame is: fade a nearer plane or its occurrences']);
 });
 
 /** A camera panning 60 px at depth 1 over a stage 40 px wider each side: a plane laid far enough right is seen past it. */
@@ -166,7 +168,7 @@ test('a pinned plane lies where a frame measures its elements, refused when one 
   ]);
 });
 
-test('an alphaOf mask reads a rig drawn as pieces whole, never a part inside it nor an instanced plane, and its plane composites first', () => {
+test('an alphaOf mask reads a rig drawn as pieces whole, never a part inside it, and its plane composites first', () => {
   const reedBed = painting({
     default: function reedBed(): PaintingDocument {
       return {
@@ -186,6 +188,4 @@ test('an alphaOf mask reads a rig drawn as pieces whole, never a part inside it 
   });
   assert.deepEqual(problemsOf(shotReading('bed/reed-b')), ['tint.masks[0].drawable: names bed/reed-b, inside bed/reeds, drawn as pieces: read bed/reeds']);
   assert.deepEqual(compilePaintedShot(shotReading('bed/reeds'), []).shot!.masks.order, ['back', 'bed', 'tint']);
-  const raining = shotReading('rain'), rain = { kind: 'instanced', id: 'rain', depths: { near: 1.2, far: 1.4 }, variants: { drop: layersOf(reedBed, ['sky']) }, instances: () => [] } as const;
-  assert.ok(problemsOf({ ...raining, planes: [...raining.planes, rain] }).includes("tint.masks[0].drawable: names rain, an instanced plane, whose coverage isn't drawn yet (ENGINE slice 6)"));
 });

@@ -84,7 +84,7 @@ type PlaneCommon = {
   readonly id: string;
   /**
    * Holds the moment the plane's presentation and motion read (its lay, masks, instances, visibility, and every
-   * motion node on it): `{ hold: 2 }` moves on twos. The camera still moves; a source callback reads `sourceClock`.
+   * motion node on it): `{ hold: 2 }` moves on twos. The camera still moves; a source reads `sourceClock`.
    */
   readonly clock?: PaintNodeClock;
   /**
@@ -96,8 +96,9 @@ type PlaneCommon = {
 
 /**
  * A plane. `depth`: distance from the camera at rest, above 0, larger farther; 1 is the depth a pan is measured at.
- * `sourceClock` holds the moment a `source` callback reads (its prefix, properties and dissolve weights): `{ hold: 6 }`
- * repaints on sixes while `clock`, holding presentation and motion, runs on. Both start from the frame's moment.
+ * `sourceClock` holds the moment its `source` reads: a callback's (prefix, properties, dissolve weights), a picture's
+ * `pictureAt`, a three scene's `poseAt`. `{ hold: 6 }` repaints on sixes while `clock` runs on. Both start from the
+ * frame's moment.
  */
 export type PlaneProps = PlaneCommon & PlaneLay & {
   readonly kind?: undefined;

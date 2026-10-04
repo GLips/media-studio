@@ -1,7 +1,7 @@
 // stamp-gate-shot-masks-page.ts: the gate page's masked shot (stamp-gate-shot-masks.ts), drawn through the shot's
 // renderer (stamp-gate-shot-frames.ts): a path mask revealing the heron along its strokes, and alphaOf masks cutting a
-// tint to the heron's wing, to all but it, to a disc moving across, a picture or a three plane, and to the heron
-// revealed over frames and faded.
+// tint to the heron's wing, to all but it, to a disc moving across, a picture or a three plane, to the heron revealed
+// over frames and faded, and to the disc faded, held and instanced.
 
 import { CircleGeometry, Mesh, MeshBasicNodeMaterial, Scene } from 'three/webgpu';
 import type { ThreeSource } from '#lib/paint/shot/models/shot-props.ts';
@@ -9,7 +9,8 @@ import { createStampPaintCostTally, type StampPaintCosts } from '#lib/paint/pain
 import { stampGateFrameDifference, stampGateFramePasses } from '../models/stamp-gate-frames.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import {
-  STAMP_GATE_MASKS_AT, STAMP_GATE_MASKS_DISC, STAMP_GATE_MASKS_WING, stampGateMaskDiscBox, stampGateMaskDiscCentre, stampGateMaskedShot, stampGateRevealSplit, stampGateTintSplit, stampGateVaneTintShare,
+  STAMP_GATE_MASKS_AT, STAMP_GATE_MASKS_DISC, STAMP_GATE_MASKS_WING, stampGateLaidShare, stampGateMaskDiscBox, stampGateMaskDiscCentre, stampGateMaskedShot, stampGateNearDiscCentre, stampGateRevealSplit,
+  stampGateTintSplit, stampGateWellInsideVane,
   type StampGateMaskedShot, type StampGateShotMaskId,
 } from '../models/stamp-gate-shot-masks.ts';
 import { stampGateRgb } from './stamp-gate-page-surface.ts';
@@ -136,7 +137,7 @@ async function checkAlphaOfPainted(): Promise<StampGateWashCheck[]> {
   const differences = kept.frames.map((frame, i) => stampGateFrameDifference(frame, alone[i])), misses = kept.taken.map(({ counts }) => counts.get('picture misses') ?? 0);
   const tinted = await Promise.all((['unmasked', 'half', 'dissolving'] as const).map(async (heron) => {
     const [[bare], [cut], [uncut]] = await Promise.all((['none', 'heron', 'uncut'] as const).map(async (tint) => (await maskedFrames({ heron, tint }, [0])).frames));
-    return stampGateVaneTintShare(cut, uncut, bare, width);
+    return stampGateLaidShare(cut, uncut, bare, width, stampGateWellInsideVane);
   }));
   const [unfaded, faded, dissolving] = tinted, share = unfaded > 0 ? faded / unfaded : 0, dissolvedShare = unfaded > 0 ? dissolving / unfaded : 0;
   return [
@@ -155,8 +156,68 @@ async function checkAlphaOfPainted(): Promise<StampGateWashCheck[]> {
   ];
 }
 
+/** The held frames' scene seconds: frames 0, 3 and 7 at 24 fps, the first two within a hold of HOLD, the last past it. */
+const HOLD = 6, HELD_TIMES = [0, 0.15, 0.3] as const;
+
+/** The disc as `disc` shows it, the tint as `tint` cuts it, at scene second 0. */
+const discFrame = async (shown: Omit<StampGateMaskedShot, 'heron'>) => (await maskedFrames({ heron: 'none', ...shown }, [0])).frames[0];
+
+/** How much the tint cut to the disc lays near the disc's centre, `radius` px, as a share of the tint uncut, the disc shown as `shown`. */
+async function discTintShare(shown: Omit<StampGateMaskedShot, 'heron' | 'tint'>, width: number, radius: number) {
+  const [bare, cut, uncut] = await Promise.all((['none', 'disc', 'uncut'] as const).map((tint) => discFrame({ ...shown, tint })));
+  return stampGateLaidShare(cut, uncut, bare, width, stampGateNearDiscCentre(0, radius));
+}
+
+/** Frames held: the first two (within a hold) alike, the last (past it) not. */
+const heldText = ([within, past]: ReturnType<typeof stampGateFrameDifference>[]) => `within a hold ${differenceText(within)}, past it ${differenceText(past)}`;
+const heldPasses = ([within, past]: ReturnType<typeof stampGateFrameDifference>[]) => stampGateFramePasses(within) && !stampGateFramePasses(past);
+
+/**
+ * The disc's sources, drawn and read: a picture disc at half visibility lays half of itself, the tint cut to it half
+ * its coverage; a three disc hidden draws and cuts as none; held, a disc and its tint keep still within a hold; the
+ * tint cut to an instanced spot follows it and fades with it.
+ */
+async function checkSources(): Promise<StampGateWashCheck[]> {
+  const { width } = stampGateMaskedShot({ heron: 'none', tint: 'none' }).camera.stage.frame, wellInside = STAMP_GATE_MASKS_DISC.r - 4, spotInside = STAMP_GATE_MASKS_DISC.spot - 6;
+  const [empty, whole, half, hidden] = await Promise.all([
+    discFrame({ tint: 'none' }), discFrame({ disc: 'picture', tint: 'none' }), discFrame({ disc: 'picture', discVisibility: 0.5, tint: 'none' }),
+    discFrame({ disc: THREE_DISC, discVisibility: 0, tint: 'disc' }),
+  ]);
+  const drawnShare = stampGateLaidShare(half, whole, empty, width, stampGateNearDiscCentre(0, wellInside)), asEmpty = stampGateFrameDifference(hidden, empty);
+  const [wholeTint, halfTint, spotTint, halfSpotTint] = await Promise.all([
+    discTintShare({ disc: 'picture' }, width, wellInside), discTintShare({ disc: 'picture', discVisibility: 0.5 }, width, wellInside),
+    discTintShare({ disc: 'spot' }, width, spotInside), discTintShare({ disc: 'spot', discVisibility: 0.5 }, width, spotInside),
+  ]);
+  const held = await Promise.all((['picture', THREE_DISC] as const).map(async (disc) => {
+    const { frames } = await maskedFrames({ heron: 'none', disc, discHold: HOLD, tint: 'disc' }, HELD_TIMES);
+    return [stampGateFrameDifference(frames[0], frames[1]), stampGateFrameDifference(frames[1], frames[2])];
+  }));
+  const [spotBare, spotCut] = await Promise.all((['none', 'disc'] as const).map(async (tint) => (await maskedFrames({ heron: 'none', disc: 'spot', tint }, DISC_TIMES)).frames));
+  const onSpot = discSplits(spotCut, spotBare, width, 0), tintShare = halfTint / wholeTint, spotShare = halfSpotTint / spotTint;
+  return [
+    {
+      id: 'shot/masks: source faded', passed: drawnShare >= 0.45 && drawnShare <= 0.55 && wholeTint >= 0.95 && tintShare >= 0.45 && tintShare <= 0.8,
+      detail: `the picture disc at half visibility lays ${drawnShare.toFixed(3)} of itself (0.45..0.55 wanted); the tint cut to it lays ${wholeTint.toFixed(3)} of itself unfaded (0.95 at least wanted), ${tintShare.toFixed(3)} as much at half (0.45..0.8 wanted: half its opacity)`,
+    },
+    {
+      id: 'shot/masks: source hidden', passed: asEmpty.max <= 1,
+      detail: `the three disc at visibility 0, the tint cut to it, is drawn as no disc and no tint: ${differenceText(asEmpty)} (a level at most wanted, the half-float rounding of laying the tint's empty picture)`,
+    },
+    {
+      id: 'shot/masks: source held', passed: held.every(heldPasses),
+      detail: `held on ${HOLD}s at ${HELD_TIMES.join(', ')} s, the tint cut to it: the picture disc ${heldText(held[0])}; the three disc ${heldText(held[1])} (alike within, not past, wanted)`,
+    },
+    {
+      id: 'shot/masks: alphaOf instanced', passed: onSpot.every(({ split }) => split.inside > 0 && split.outside === 0) && spotShare >= 0.45 && spotShare <= 0.8,
+      detail: `the tint cut to an instanced plane's moving spot changed, ${discText(onSpot)} (0 past it wanted); the plane at half visibility, it lays ${spotShare.toFixed(3)} as much (0.45..0.8 wanted)`,
+    },
+  ];
+}
+
 /** Masked shot case `id`'s checks. */
 export async function checkStampGateShotMasksCase(id: StampGateShotMaskId): Promise<StampGateWashCheck[]> {
-  if (id === 'shot/masks: path') return checkPath();
-  return id === 'shot/masks: alphaOf' ? checkAlphaOf() : checkAlphaOfPainted();
+  const checks: Record<StampGateShotMaskId, () => Promise<StampGateWashCheck[]>> = {
+    'shot/masks: path': checkPath, 'shot/masks: alphaOf': checkAlphaOf, 'shot/masks: alphaOf painted': checkAlphaOfPainted, 'shot/masks: sources': checkSources,
+  };
+  return checks[id]();
 }

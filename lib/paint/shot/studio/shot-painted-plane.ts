@@ -94,12 +94,12 @@ export type ShotPlanePresented = {
 };
 
 /**
- * What a painted plane's alphaOf mask reads of a source plane this exposure: its render's coverage (null: none) and a
- * key naming that coverage's pixels, as the reader reads them.
+ * What a painted plane's alphaOf mask reads of a plane it doesn't lay this exposure, a source or instanced plane: a key
+ * naming that coverage's pixels as the reader reads them, and the coverage (null: none), drawn when a lay first asks.
  */
-export type ShotSourceRead = { readonly coverage: ShotMaskCoverage | null; readonly key: string };
+export type ShotSourceRead = { readonly key: string; readonly coverage: () => ShotMaskCoverage | null };
 
-/** Source plane `plane` as painted plane `reader`'s masks read it this exposure. */
+/** Source or instanced plane `plane` as painted plane `reader`'s masks read it this exposure. */
 export type ShotSourceReads = (plane: string, reader: string) => ShotSourceRead;
 
 /** A variant's mask reads: it takes no mask, so it reads nothing. */
@@ -169,7 +169,7 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
       if (made) drawn.set(posed.rig, made);
     }
     const frame: ShotSheetsLayFrame = { ...planned, pieces: drawn }, staged = layer.stage(frame, coverageOf), mask = layer.mask(encoder, staged);
-    const layers = stampPlanePictureLayers(plane.back ? 'paper' : 'film', { emits: plan.emits, travels: plan.travels, coverage: shotCoverageLayers(plan.reads.length) });
+    const layers = stampPlanePictureLayers(plane.opaqueBack ? 'paper' : 'film', { emits: plan.emits, travels: plan.travels, coverage: shotCoverageLayers(plan.reads.length) });
     const usage = GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT;
     const target = stampSheetCompositeTarget(owner, 'shot painting', stage, lays.painting, usage | GPUTextureUsage.COPY_DST);
     const painting = { texture: target.texture, shape: lays.painting, view: target.view };
@@ -194,7 +194,7 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
     encoder: GPUCommandEncoder, moment: ShotPlaneMoment, keys: readonly string[], coverageOf: (drawable: OccurrenceKey) => ShotMaskCoverage | null,
   ): ShotSharePresented[] {
     const { plane, shares } = moment;
-    if (!plane.back && moment.visibility <= 0) return [];
+    if (!plane.opaqueBack && moment.visibility <= 0) return [];
     return shares.map((share, i) => {
       const found = pictures.find(keys[i], encoder);
       costs?.count(found ? 'picture hits' : 'picture misses');
@@ -215,7 +215,7 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
     if (!laid.length) return null;
     // A selection laying nothing adds nothing: what the others lay is still weighed.
     if (laid.length === 1 && laid[0].weight === 1) return laid[0].picture;
-    return dissolve.sum(encoder, stampPlanePictureLayers(moment.plane.back ? 'paper' : 'film', { emits: moment.emits, travels: moment.travels, coverage }), laid);
+    return dissolve.sum(encoder, stampPlanePictureLayers(moment.plane.opaqueBack ? 'paper' : 'film', { emits: moment.emits, travels: moment.travels, coverage }), laid);
   }
 
   /**
@@ -294,7 +294,7 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
       /** What `reader`'s masks read of `drawable`: a painted plane's coverage from its sharp picture, a source's from its render. */
       const coverageOf = (reader: string) => (drawable: OccurrenceKey): ShotMaskCoverage | null => {
         const on = shotOccurrencePlane(drawable), painted = presented.get(on);
-        if (!painted) return sourceRead(on, reader).coverage;
+        if (!painted) return sourceRead(on, reader).coverage();
         const sharp = painted.sharp();
         return sharp && shotPictureCoverage(sharp, painted.moment.shares[0].plan.reads.findIndex((read) => read.drawable === drawable));
       };
@@ -320,9 +320,10 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
       const sigma = look.defocus && look.defocus / Math.hypot(look.view.ma, look.view.mb);
       const picture = sigma ? summed(encoder, moment, defocused(encoder, lens, presented.shares, sigma)) : presented.sharp();
       if (!picture) return null;
+      // Laid whole: the picture pass took the plane's visibility into its picture already.
       return {
         picture: stampArrayView(picture.texture), layers: picture, view: look.view, shutter: look.shutter, origin: { x: picture.box.x - margin, y: picture.box.y - margin },
-        size: picture.box, clipped: !plane.back, distance: look.distance, distances: 'layer',
+        size: picture.box, clipped: !plane.opaqueBack, distance: look.distance, distances: 'layer', visibility: 1,
       };
     },
 

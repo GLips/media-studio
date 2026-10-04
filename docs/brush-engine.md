@@ -498,7 +498,9 @@ key. A dissolve's selections are each laid, kept and blurred so, then summed by 
 (`studio/shot-dissolve-pass.ts`): every layer a plane's picture holds (opaque colour, colour and transmittance, glow,
 motion) is linear in what's laid, so the sum is the dissolve, never a pigment mix. Its ends paint one document size
 on one ground, and a rig on its plane is refused: pieces draw at once, and a rig is found over one selection. Picture
-and three planes are the old path's sources, laid through `stamp-lens-source-layers.ts`. Three planes read the shot's
+and three planes are the old path's sources, laid through `stamp-lens-source-layers.ts`, each read at its
+`sourceClock`'s moment (a picture's `pictureAt`, a three scene's `poseAt`) and faded by its visibility, the lens
+layer's `visibility` (`lens-compositor.ts`). Three planes read the shot's
 painted textures (`studio/shot-painted-textures.ts`): made by `createShotPaintedTextures` before
 `loadPaintedThreeSources` when the shot has a three plane and released after it, drawn by the loader's hook at each
 frame's moment before its sources render, and solved at each warm frame after the planes. An instanced plane
@@ -517,17 +519,18 @@ a reveal moves the picture's key and solves nothing. Each exposure lays every pa
 order (`present` in `studio/shot-painted-plane.ts`). `studio/shot-mask-passes.ts` multiplies a plane's masks into
 one r32float factor over the stage: a path's capsules drawn into a band over its document box with max blending,
 laid where the plane's place puts it (not its nodes'); an `alphaOf` read through both lays, plane px to plane px
-(a three render through the reader's camera view). The lay takes it into each film's opacity, each card's cover
+(a three render through the reader's camera view; an instanced plane's items drawn still and sharp through the
+camera into a frame-sized target by `LensCompositor.cover`, when a lay first asks, and read through the reader's
+view), a source's weighed by its visibility, which its render leaves out. The lay takes it into each film's opacity, each card's cover
 and each pieces picture, and scales the glow after; the ground is never cut. While a plane is laid on white, the
 coverage of each drawable another plane reads gathers alongside (film, card, pieces, ground), a channel each, four
 to a layer of one array, mixed by a fading group's span like the paint; the picture keeps it, faded by the plane's
 visibility, in layers after the lens's (`coverage` in `stampPlanePictureLayers`), so whatever sums pictures sums
 their coverage alike. A reader's picture is kept under its plan's key and what it read (`shotPresentedKeys`): a
-painted plane's presented key, a picture source's upload and box, a three render's frame and exposure, each with the
-map it's read through. So a reader is laid anew only when what it reads moves. A dissolving plane's masks cut each
+painted plane's presented key, a picture source's upload and box, a three render's frame and exposure, an instanced
+plane's variants' keys and its shown items' views and visibility, each with the map it's read through and its weight. So a reader is laid anew only when what it reads moves. A dissolving plane's masks cut each
 selection alike, and its coverage is summed by weight with its colour (`shot-dissolve-pass.ts`); a reader keys it by
-every selection's key and weight. An `alphaOf` of an instanced plane is refused as the shot loads until its items'
-coverage is gathered.
+every selection's key and weight.
 
 Visibility's keys and range, and the group occurrences that composite on their own (`shot-visibility.ts`), are drawn,
 and so are `warm` and the cost report.
@@ -618,7 +621,9 @@ past it, with nothing solved; cuts the pond's paint but not its paper; and cuts 
 but it, and to a disc moving across as a picture plane and as a three plane under a panned camera. Cut to the
 revealing heron's wing frame after frame, each frame draws as it does alone and a held frame lays nothing anew; cut
 to the heron faded to half, it tints the wing about half as much, and just as much cut to the heron dissolving
-halfway to water lying elsewhere. The rainy street (`stamp-gate-rainy-street.ts`, ENGINE test 5) draws them together
+halfway to water lying elsewhere. A picture disc at half visibility lays half of itself and cuts the tint at half its
+coverage; a three disc hidden draws and cuts as none; a disc held on sixes keeps still, its tint with it, within a
+hold; and the tint cut to an instanced plane's painted spot follows it and fades with it. The rainy street (`stamp-gate-rainy-street.ts`, ENGINE test 5) draws them together
 in one shot under a camera pushing in: a sky dissolving to night at the back; a street painted in on sixes, its
 puddle clocked with drops landing in it at their times and a walker on its wet paper placed by a play; the lamp's
 reflection cut to the puddle and fading in; and the rain. Warmed, frames moving only the camera, the rain, `k` or

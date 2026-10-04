@@ -44,7 +44,7 @@ export async function createStampSourcesRenderer(
         const moving = paintFrame.kind === 'fast' && (renders.moved.size > 0 || [...paintFrame.lens.planes.values()].some(({ shutter }) => shutter));
         const encoder = device.createCommandEncoder();
         const layers = laidPlanes.flatMap((plane, index) => sourceLayers.layer(encoder, plane, renders, {
-          look: lensFrame?.planes.get(plane.id) ?? STAMP_REST_LOOK, focus: lensFrame?.focus ?? null, moving, back: index === 0,
+          look: lensFrame?.planes.get(plane.id) ?? STAMP_REST_LOOK, focus: lensFrame?.focus ?? null, moving, back: index === 0, visibility: 1,
         }));
         const { frame: exposures, last } = lensFrameOf(paintFrame.kind === 'exposure' ? paintFrame.exposure : undefined);
         exposures.exposure(encoder, layers, { glowing: false, moving });

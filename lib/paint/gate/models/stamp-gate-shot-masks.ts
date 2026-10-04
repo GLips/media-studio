@@ -1,12 +1,13 @@
 // stamp-gate-shot-masks.ts: the gate's masked shot (ENGINE 6.3's masks through a PaintedShot). The paper heron's pond
 // at the back; its heron on a plane of its own, revealed along two strokes by a path mask whose reveal is a table by
-// scene second; a disc moving across, a picture or three plane; and nearest, a tint washed over the whole sheet, cut by
-// an alphaOf mask to the heron's wing, to all but it, to the whole heron, or to the disc. What the checks measure of
-// their frames is here.
+// scene second; a disc moving across, a picture or three plane or a painted spot's instance, faded or held; and
+// nearest, a tint washed over the whole sheet, cut by an alphaOf mask to the heron's wing, to all but it, to the whole
+// heron, or to the disc. What the checks measure of their frames is here.
 
 import { PAINT_CAMERA_REST, paintCameraPlay, paintPlaneSimilarity, paintStageCentre } from '#lib/paint/animation/models/paint-camera.ts';
 import { paintSimilarityApply } from '#lib/paint/animation/models/paint-similarity.ts';
 import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
+import type { PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
 import { painting, type PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
 import { srgbToLinear } from '#lib/paint/materials/models/paint-spectrum.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
@@ -15,12 +16,15 @@ import type { StampPictureRgba } from '#lib/paint/painting/models/stamp-plane.ts
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { shotPathMaskCapsules } from '#lib/paint/shot/models/shot-masks.ts';
-import type { PaintedShotProps, PlaneMask, PlaneProps, ThreeSource } from '#lib/paint/shot/models/shot-props.ts';
+import type { InstancedPlaneProps, PaintedShotProps, PlaneInstance, PlaneMask, PlaneProps, ThreeSource } from '#lib/paint/shot/models/shot-props.ts';
 import { dissolve } from '#lib/paint/shot/models/shot-selection.ts';
 import { STAMP_GATE_HERON_VANE, stampGateHeronLayer, stampGateHeronPolygon, stampGateInsidePolygon, stampGatePaperHeronDocument } from './stamp-gate-paper-heron.ts';
 
-/** The masked shot's cases: its path mask's; its alphaOf masks'; and a painted plane's alphaOf of another, over frames, faded and dissolving. */
-export const STAMP_GATE_SHOT_MASK_IDS = ['shot/masks: path', 'shot/masks: alphaOf', 'shot/masks: alphaOf painted'] as const;
+/**
+ * The masked shot's cases: its path mask's; its alphaOf masks'; a painted plane's alphaOf of another, over frames,
+ * faded and dissolving; and the disc's sources faded, held and instanced, as drawn and as read.
+ */
+export const STAMP_GATE_SHOT_MASK_IDS = ['shot/masks: path', 'shot/masks: alphaOf', 'shot/masks: alphaOf painted', 'shot/masks: sources'] as const;
 export type StampGateShotMaskId = (typeof STAMP_GATE_SHOT_MASK_IDS)[number];
 
 /** A yellow-ochre wash over the whole sheet, after the heron: what the tint plane's mask cuts. */
@@ -47,10 +51,27 @@ const REVEALS: readonly { readonly from: number; readonly revealPx: number }[] =
 ];
 const revealAt = (at: number) => REVEALS.findLast(({ from }) => from <= at)!.revealPx;
 
-/** The disc's plane's depth; its centre at scene second 0 and radius, its plane's px; how far it moves right each second. */
-export const STAMP_GATE_MASKS_DISC = { depth: 1.5, x: 50, y: 96, r: 28, perSecond: 40 } as const;
+/**
+ * The disc's plane's depth; its centre at scene second 0 and radius, its plane's px, and the painted spot's radius,
+ * inside it so its bleed stays in the disc's box; how far it moves right each second.
+ */
+export const STAMP_GATE_MASKS_DISC = { depth: 1.5, x: 50, y: 96, r: 28, spot: 20, perSecond: 40 } as const;
 /** Where the disc's centre lies on its plane at scene second `at`. */
 export const stampGateMaskDiscCentre = (at: number): StampPoint => ({ x: STAMP_GATE_MASKS_DISC.x + STAMP_GATE_MASKS_DISC.perSecond * at, y: STAMP_GATE_MASKS_DISC.y });
+
+/** A burnt-umber spot painted on the heron's paper where the disc's centre lies at scene second 0: an instance's variant. */
+export const STAMP_GATE_MASKS_SPOT: PaintingSourceModule = {
+  default: function gateMaskSpot(): PaintingDocument {
+    const { x, y } = stampGateMaskDiscCentre(0), spot = { kind: 'ellipse', center: { x, y }, radiusX: STAMP_GATE_MASKS_DISC.spot, radiusY: STAMP_GATE_MASKS_DISC.spot } as const;
+    return { ...stampGatePaperHeronDocument(), layers: [stampGateHeronLayer('spot', spot, { parts: [{ pigment: WATERCOLOUR_PIGMENTS.burntUmber, amount: 1 }], strength: 0.8 }, 0.7)] };
+  },
+};
+
+/** The spot laid as one item at the disc's depth, its centre where the disc's is at scene second `at`. */
+const spotAt = (at: number): PlaneInstance => {
+  const from = stampGateMaskDiscCentre(0), to = stampGateMaskDiscCentre(at);
+  return { key: 'spot', variant: 'spot', depth: STAMP_GATE_MASKS_DISC.depth, lay: { placement: { x: to.x - from.x, y: to.y - from.y, rotation: 0, scale: 1 }, pivot: from } };
+};
 
 /** The shot's stage: a margin past the frame wide enough for a pan of `pan` px to show nothing past it. */
 const stageFor = (pan: number) => stampStage({ width: 200, height: 140 }, 2 + 2 * Math.ceil(pan / 2));
@@ -62,8 +83,15 @@ export type StampGateMaskedShot = {
    * dissolving halfway to the pond's water (none of which lies under it), or left out.
    */
   readonly heron: 'revealed' | 'unmasked' | 'half' | 'hidden' | 'dissolving' | 'none';
-  /** The disc (STAMP_GATE_MASKS_DISC) as a picture plane or drawn by a three plane; none when left out. */
-  readonly disc?: 'picture' | ThreeSource;
+  /**
+   * The disc (STAMP_GATE_MASKS_DISC) as a picture plane, drawn by a three plane, or the painted spot as an instanced
+   * plane's one item; none when left out.
+   */
+  readonly disc?: 'picture' | 'spot' | ThreeSource;
+  /** The disc's plane's visibility; 1 when left out. */
+  readonly discVisibility?: number;
+  /** How many frames the disc's source holds each moment it reads (its `sourceClock`); unheld when left out. */
+  readonly discHold?: number;
   /** The tint cut to the heron's wing, to all but it, to the whole heron group, or to the disc; uncut; or left out. */
   readonly tint: 'wing' | 'not wing' | 'heron' | 'disc' | 'uncut' | 'none';
   /** The pond's water cut by a path mask revealing nothing, or faded (its visibility 0). */
@@ -73,16 +101,19 @@ export type StampGateMaskedShot = {
 };
 
 /** The gate's masked shot as `shown` says, on the tinted heron's sheet. */
-export function stampGateMaskedShot({ heron, disc, tint, pond, pan = 0 }: StampGateMaskedShot): PaintedShotProps {
+export function stampGateMaskedShot({ heron, disc, discVisibility, discHold, tint, pond, pan = 0 }: StampGateMaskedShot): PaintedShotProps {
   const stage = stageFor(pan), evaluation = painting(STAMP_GATE_TINTED_HERON), cut: PlaneMask = { kind: 'path', subpaths: STROKES, ...BAND, revealPx: 0 };
-  const planes: PlaneProps[] = [{ id: 'pond', depth: 3, source: layersOf(evaluation, ['water']), ...(pond === 'cut' && { masks: [cut] }) }];
+  const planes: (PlaneProps | InstancedPlaneProps)[] = [{ id: 'pond', depth: 3, source: layersOf(evaluation, ['water']), ...(pond === 'cut' && { masks: [cut] }) }];
   if (heron !== 'none') {
     const source = heron === 'dissolving' ? dissolve(layersOf(evaluation, ['heron']), layersOf(evaluation, ['water']), 0.5) : layersOf(evaluation, ['heron']);
     planes.push({ id: 'heron', depth: 2, source, ...(heron === 'revealed' && { masks: [{ ...cut, revealPx: ({ at }) => revealAt(at) }] }) });
   }
-  if (disc) {
+  if (disc === 'spot') {
+    const depths = { near: STAMP_GATE_MASKS_DISC.depth - 0.25, far: STAMP_GATE_MASKS_DISC.depth + 0.25 }, variants = { spot: layersOf(painting(STAMP_GATE_MASKS_SPOT), ['spot']) };
+    planes.push({ kind: 'instanced', id: 'disc', depths, variants, instances: ({ at }) => [spotAt(at)] });
+  } else if (disc) {
     const source = disc === 'picture' ? { kind: 'picture', extent: { kind: 'everywhere' }, pictureAt: ({ at }: PaintMoment) => Promise.resolve(stampGateMaskDisc(at, stage.margin)) } as const : disc;
-    planes.push({ id: 'disc', depth: STAMP_GATE_MASKS_DISC.depth, source });
+    planes.push({ id: 'disc', depth: STAMP_GATE_MASKS_DISC.depth, source, ...(discHold && { sourceClock: { hold: discHold } }) });
   }
   const read = { wing: 'heron/wing', 'not wing': 'heron/wing', heron: 'heron/heron', disc: 'disc' } as const, tinted = { id: 'tint', depth: 1, source: layersOf(evaluation, ['tint']) };
   if (tint === 'uncut') planes.push(tinted);
@@ -91,7 +122,10 @@ export function stampGateMaskedShot({ heron, disc, tint, pond, pan = 0 }: StampG
   return {
     camera: { stage, fov: 35, lens: { bloom: 0, shutter: 0 }, plays },
     planes,
-    visibility: { ...(heron === 'hidden' && { 'heron/heron': 0 }), ...(heron === 'half' && { 'heron/heron': 0.5 }), ...(pond === 'faded' && { 'pond/water': 0 }) },
+    visibility: {
+      ...(heron === 'hidden' && { 'heron/heron': 0 }), ...(heron === 'half' && { 'heron/heron': 0.5 }), ...(pond === 'faded' && { 'pond/water': 0 }),
+      ...(discVisibility !== undefined && { disc: discVisibility }),
+    },
   };
 }
 
@@ -148,6 +182,9 @@ export function stampGateRevealSplit(part: ArrayLike<number>, none: ArrayLike<nu
   return { inside, outside, shown };
 }
 
+/** Whether frame px `p` lies well inside the vane, 5 px in. */
+export const stampGateWellInsideVane = (p: StampPoint) => stampGateInsidePolygon(p, STAMP_GATE_HERON_VANE, 5);
+
 /**
  * How frame `cut` (the tint cut by a mask) differs from `bare` (no tint), RGB bytes `width` px wide: texels changed
  * inside `box` and outside it, and how many texels lie outside it; and of the texels well inside the vane (5 px in),
@@ -157,7 +194,7 @@ export function stampGateTintSplit(cut: ArrayLike<number>, bare: ArrayLike<numbe
   let inside = 0, outside = 0, beyond = 0, vane = 0, vaneAll = 0;
   for (let texel = 0; texel < cut.length / 3; texel++) {
     const x = texel % width, y = Math.floor(texel / width), within = x >= box.x0 && x < box.x1 && y >= box.y0 && y < box.y1, changed = differs(cut, bare, texel);
-    const inVane = stampGateInsidePolygon({ x: x + 0.5, y: y + 0.5 }, STAMP_GATE_HERON_VANE, 5);
+    const inVane = stampGateWellInsideVane({ x: x + 0.5, y: y + 0.5 });
     if (!within) beyond++;
     if (changed && within) inside++;
     if (changed && !within) outside++;
@@ -167,14 +204,20 @@ export function stampGateTintSplit(cut: ArrayLike<number>, bare: ArrayLike<numbe
   return { inside, outside, beyond, vane, vaneAll };
 }
 
+/** Whether frame px `p` lies within `radius` px of the disc's centre at scene second `at`, the camera at rest. */
+export function stampGateNearDiscCentre(at: number, radius: number): (p: StampPoint) => boolean {
+  const view = paintPlaneSimilarity(PAINT_CAMERA_REST, STAMP_GATE_MASKS_DISC.depth, paintStageCentre(stageFor(0))), centre = paintSimilarityApply(view, stampGateMaskDiscCentre(at));
+  return (p) => Math.hypot(p.x - centre.x, p.y - centre.y) <= radius;
+}
+
 /**
- * How much of the tint frame `cut` lays well inside the vane (5 px in), as a share of what `uncut` lays there, both
- * over `bare` (RGB bytes, `width` px wide), in linear light: 1 where its mask read whole coverage, 0 where none.
+ * How much frame `cut` lays where `within` holds, as a share of what `uncut` lays there, both over `bare` (RGB bytes,
+ * `width` px wide), in linear light: a mask's tint, 1 where it read whole coverage, 0 where none.
  */
-export function stampGateVaneTintShare(cut: ArrayLike<number>, uncut: ArrayLike<number>, bare: ArrayLike<number>, width: number): number {
+export function stampGateLaidShare(cut: ArrayLike<number>, uncut: ArrayLike<number>, bare: ArrayLike<number>, width: number, within: (p: StampPoint) => boolean): number {
   let laid = 0, whole = 0;
   for (let texel = 0; texel < cut.length / 3; texel++) {
-    if (!stampGateInsidePolygon({ x: (texel % width) + 0.5, y: Math.floor(texel / width) + 0.5 }, STAMP_GATE_HERON_VANE, 5)) continue;
+    if (!within({ x: (texel % width) + 0.5, y: Math.floor(texel / width) + 0.5 })) continue;
     for (let c = 3 * texel; c < 3 * texel + 3; c++) {
       const under = srgbToLinear(bare[c] / 255);
       laid += Math.abs(srgbToLinear(cut[c] / 255) - under);

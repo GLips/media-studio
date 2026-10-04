@@ -27,7 +27,7 @@ export type LensBox = { readonly x: number; readonly y: number; readonly w: numb
 /**
  * One layer of an exposure: `picture`, an array of `layers` (lens-passes.ts), placed and shown as LENS_COMPOSITE
  * says. `shutter`: its view as the shutter opens and closes, null for still. `distance`: how far it is from the
- * camera, unless its motion layer gives each texel's (`distances: 'texels'`).
+ * camera, unless its motion layer gives each texel's (`distances: 'texels'`). `visibility` 0..1, the share of it laid.
  */
 export type LensLayer = {
   readonly picture: GPUTextureView;
@@ -39,6 +39,7 @@ export type LensLayer = {
   readonly clipped: boolean;
   readonly distance: number;
   readonly distances: 'layer' | 'texels';
+  readonly visibility: number;
 };
 
 /**
@@ -119,6 +120,11 @@ export type LensCompositor = {
   /** A gaussian of `sigma` px (lens-focus.ts's reach) over boxes in one space, past `read` clear, within its blur extent. */
   gaussian: (encoder: GPUCommandEncoder, draw: LensGaussianDraw) => void;
   defocus: (encoder: GPUCommandEncoder, draw: LensDefocusDraw) => void;
+  /**
+   * Composites `layers` still into `into` (rgba16float, the lens's size, cleared first): its alpha what they cover
+   * where the frame shows them, each by its visibility. What an alphaOf mask reads of drawables the lens lays.
+   */
+  cover: (encoder: GPUCommandEncoder, layers: readonly (LensLayer | LensItemsLayer)[], into: GPUTextureView) => void;
   /** Uploads the uniforms encoded since the last flush: before every submit of an encoder the lens encoded into. */
   flush: () => void;
   dispose: () => void;
@@ -262,9 +268,12 @@ export function createLensCompositor(device: GPUDevice, { width, height, blurExt
     }
   }
 
-  /** Composites `layers` far to near into the composite's targets: colour, then emission and motion as `has` says. */
-  function composite(encoder: GPUCommandEncoder, layers: readonly (LensLayer | LensItemsLayer)[], has: LensExposureDraw) {
-    const attachments = [composited.colour(), ...(has.glowing ? [composited.emission()] : []), ...(has.moving ? [composited.motion()] : [])].map(({ view }) => clearing(view));
+  /**
+   * Composites `layers` far to near into the composite's targets: colour (`colour`, else the composite's own), then
+   * emission and motion as `has` says.
+   */
+  function composite(encoder: GPUCommandEncoder, layers: readonly (LensLayer | LensItemsLayer)[], has: LensExposureDraw, colour = composited.colour().view) {
+    const attachments = [colour, ...[...(has.glowing ? [composited.emission()] : []), ...(has.moving ? [composited.motion()] : [])].map(({ view }) => view)].map(clearing);
     const pass = encoder.beginRenderPass({ colorAttachments: attachments });
     for (const layer of layers) {
       if ('items' in layer) {
@@ -282,6 +291,7 @@ export function createLensCompositor(device: GPUDevice, { width, height, blurExt
         put('clipped', layer.clipped ? 1 : 0);
         put('distances', layer.distances === 'texels' ? 1 : 0);
         put('distance', layer.distance);
+        put('visibility', layer.visibility);
       });
       for (const laying of ['filter', 'add'] as const satisfies readonly LensLaying[]) {
         const key = `composite|${has.glowing}|${has.moving}|${lensPictureLayersKey(layer.layers)}|${laying}`;
@@ -428,6 +438,7 @@ export function createLensCompositor(device: GPUDevice, { width, height, blurExt
 
   return {
     width, height, beginFrame, gaussian, defocus,
+    cover: (encoder, layers, into) => composite(encoder, layers, { glowing: false, moving: false }, into),
     flush: () => {
       ring.flush();
       itemRows.flush();

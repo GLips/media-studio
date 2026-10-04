@@ -337,25 +337,25 @@ export function shotPlaneLayPlan(input: ShotPlaneLayInput, moment: ShotMomentAt)
   const isolated = new Set(shotIsolatedGroups(groups.map(({ key }) => key), groupVisibility, shot.masks.read, new Set(rigs.map(({ rig }) => rig.occurrence))));
   const fades = shotFadeSpans(compiled, new Map(groups.filter(({ key }) => isolated.has(key)).map(({ key, node }) => [node, groupVisibility.get(key)!])));
 
-  const { widthPx, heightPx } = selection.painting.document, groundKind = selection.ground ?? (plane.back ? 'paper' : 'transparent');
+  const { widthPx, heightPx } = selection.painting.document, groundKind = selection.ground ?? (plane.opaqueBack ? 'paper' : 'transparent');
   let ground: ShotGroundLay = null;
   if (groundKind === 'paper') {
-    if (plane.back && paintingPoseText(atMoment.place) === PAINTING_REST_POSE && !shutterAt) ground = { kind: 'stage' };
+    if (plane.opaqueBack && paintingPoseText(atMoment.place) === PAINTING_REST_POSE && !shutterAt) ground = { kind: 'stage' };
     else {
       const planeNode = motion.nodes.get(plane.id), documentBox = { x0: 0, y0: 0, x1: widthPx, y1: heightPx };
-      const box = plane.back ? shotBackGroundBox(stage, shotPlaneLayAt(plane, motion, at), planeNode ? shotNodeShift(planeNode, documentBox) : 0) : documentBox;
+      const box = plane.opaqueBack ? shotBackGroundBox(stage, shotPlaneLayAt(plane, motion, at), planeNode ? shotNodeShift(planeNode, documentBox) : 0) : documentBox;
       ground = { kind: 'placed', box, lattice: shotGroundLattice(box, atMoment, shutterAt) };
     }
   }
 
   const masks = shotMasksAt(input, at, atMoment.place), reads = shotPlaneReads(input);
-  const visibility = plane.back ? 1 : shotVisibilityAt(shot, plane.id, plane.id, at), emits = steps.some((step) => step?.glow && step.opacity > 0);
+  const visibility = plane.opaqueBack ? 1 : shotVisibilityAt(shot, plane.id, plane.id, at), emits = steps.some((step) => step?.glow && step.opacity > 0);
   const travels = !!shutter && ((ground?.kind === 'placed' && latticeTravels(ground.lattice)) || steps.some((step) => step && step.lay.kind !== 'pieces' && latticeTravels(step.lay.lattice)) || pieces.some((each) => each.travels));
   // All the lay reads: the compile and its films, every pose at the moment and the shutter's ends, how much shows of
   // what, the ground, the pieces, the masks and the drawables read. The stage is the renderer's, whose own store keeps
   // the pictures. A path mask's subpaths and band are its plane's, the same all shot.
   const key = JSON.stringify([
-    plane.id, plane.back, compileId(compiled), films.map((sheet) => sheet.map((film) => film.key)), posesText(solved), planeAtText(atMoment),
+    plane.id, plane.opaqueBack, compileId(compiled), films.map((sheet) => sheet.map((film) => film.key)), posesText(solved), planeAtText(atMoment),
     shutterAt && [planeAtText(shutterAt.open), planeAtText(shutterAt.close)], [...hidden], steps.map((step) => step && [step.opacity, step.glow]), fades,
     ground && (ground.kind === 'stage' ? 'stage' : ground.box), pieces.map((each) => [
       each.rig.occurrence, each.shown, each.steps, [...each.layers], piecesPoseText(each.at), each.shutter && [piecesPoseText(each.shutter.open), piecesPoseText(each.shutter.close)],

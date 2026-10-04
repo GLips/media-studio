@@ -819,10 +819,10 @@ function rendererOnSurface({
       const layerOf = (picture: StampPlanePicture | null, look: StampPlaneLook, clipped: boolean): LensLayer[] => (picture
         ? [{
           picture: stampArrayView(picture.texture), layers: picture, view: look.view, shutter: look.shutter,
-          origin: { x: picture.box.x - margin, y: picture.box.y - margin }, size: picture.box, clipped, distance: look.distance, distances: 'layer',
+          origin: { x: picture.box.x - margin, y: picture.box.y - margin }, size: picture.box, clipped, distance: look.distance, distances: 'layer', visibility: 1,
         }]
         : []);
-      const laying = (id: string, isBack: boolean) => ({ look: lookOf(id), focus: lensFrame?.focus ?? null, moving, back: isBack });
+      const laying = (id: string, isBack: boolean) => ({ look: lookOf(id), focus: lensFrame?.focus ?? null, moving, back: isBack, visibility: 1 });
       const layers: LensLayer[] = [back, ...nearer].flatMap((plane, index): LensLayer[] => {
         const look = lookOf(plane.id);
         if (plane.kind !== 'painted') return sourceLayers.layer(encoder, plane, renders, laying(plane.id, index === 0));

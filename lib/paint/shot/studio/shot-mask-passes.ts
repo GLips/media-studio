@@ -26,11 +26,11 @@ import type { ShotPathMaskAt } from '../models/shot-sheet-lays.ts';
 
 /**
  * A drawable's coverage as an alphaOf mask reads it: channel `channel` (0 r .. 3 a) of a texture over its first
- * `extent` texels (none past them), `map` taking a stage texel's point (texel centres at .5) to the texel point read
- * there.
+ * `extent` texels (none past them), times `weight`, `map` taking a stage texel's point (texel centres at .5) to the
+ * texel point read there. A source plane's weight is its visibility, which its render leaves out.
  */
 export type ShotMaskCoverage = {
-  readonly view: GPUTextureView; readonly channel: number; readonly extent: { readonly w: number; readonly h: number }; readonly map: PaintSimilarity;
+  readonly view: GPUTextureView; readonly channel: number; readonly weight: number; readonly extent: { readonly w: number; readonly h: number }; readonly map: PaintSimilarity;
 };
 
 /** How many drawables' coverage one layer gathers: a channel each. */
@@ -50,7 +50,7 @@ export function shotPictureCoverage(picture: StampPlanePicture, read: number): S
   const { layer, channel } = shotCoverageSlot(read), { box } = picture;
   return {
     view: picture.texture.createView({ dimension: '2d', baseArrayLayer: picture.coverage!.layer + layer, arrayLayerCount: 1 }),
-    channel, extent: { w: box.w, h: box.h }, map: { ma: 1, mb: 0, kx: -box.x, ky: -box.y },
+    channel, weight: 1, extent: { w: box.w, h: box.h }, map: { ma: 1, mb: 0, kx: -box.x, ky: -box.y },
   };
 }
 
@@ -107,7 +107,8 @@ ${STAMP_BILINEAR_OR_ZERO_WGSL}
 }`;
 
 const SHOT_MASK_COVERAGE = gpuUniformLayout('ShotMaskCoverage', [['map', 'vec4f'], ['channel', 'vec4f'], ['extent', 'vec2u'], ['stage', 'vec2u'], ['invert', 'u32']]);
-// A drawable's coverage (2, the channel `channel` picks) read where `map` takes each stage texel's point, inverted or not.
+// A drawable's coverage (2, the channel `channel` picks and weighs) read where `map` takes each stage texel's point,
+// inverted or not.
 const COVERAGE_WGSL = /* wgsl */ `
 ${SHOT_MASK_COVERAGE.wgsl}
 @group(0) @binding(0) var<uniform> u: ShotMaskCoverage;
@@ -278,7 +279,7 @@ export function createShotMaskPasses(owner: StampPaintGpuOwner, { stage, arena }
       dispatchStampCompute(device, encoder, compute(COVERAGE_WGSL), [arena.slot((views) => {
         const put = gpuUniformWriter(SHOT_MASK_COVERAGE, views), map = coverage?.map;
         put('map', map ? [map.ma, map.mb, map.kx, map.ky] : [1, 0, 0, 0]);
-        put('channel', shotChannels((channel) => Number(channel === coverage?.channel)));
+        put('channel', shotChannels((channel) => (channel === coverage?.channel ? coverage.weight : 0)));
         put('extent', coverage ? [coverage.extent.w, coverage.extent.h] : [0, 0]);
         put('stage', [width, height]);
         put('invert', invert ? 1 : 0);

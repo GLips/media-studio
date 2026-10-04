@@ -24,10 +24,12 @@ export const lensPictureLayersKey = ({ taken, emission, motion }: LensPictureLay
 /**
  * Where a frame shows a picture: `view` takes plane points to frame px (p ↦ (ma + i·mb)·p + (kx + i·ky)), as do
  * `open` and `close` as the shutter opens and closes; its first texel's corner at plane point `origin`, `size`
- * texels; `clipped`, clear past its edge, else edge texels held; `distance`, unless `distances` reads its texels'.
+ * texels; `clipped`, clear past its edge, else edge texels held; `distance`, unless `distances` reads its texels';
+ * `visibility`, the share of it laid.
  */
 export const LENS_COMPOSITE = gpuUniformLayout('LensComposite', [
   ['view', 'vec4f'], ['open', 'vec4f'], ['close', 'vec4f'], ['origin', 'vec2f'], ['size', 'vec2f'], ['clipped', 'u32'], ['distances', 'u32'], ['distance', 'f32'],
+  ['visibility', 'f32'],
 ]);
 
 /**
@@ -44,9 +46,9 @@ const sampled = (layer: number) => `textureSampleLevel(picture, linearClamp, uv,
 
 /**
  * What a laying reads of the layer or item being laid, as WGSL expressions: its views as the shutter opens and closes,
- * its distance, whether its motion layer gives its texels' distances (null: never), and how visible it is (null: whole).
+ * its distance, whether its motion layer gives its texels' distances (null: never), and how visible it is.
  */
-type LensLaidAt = { readonly open: string; readonly close: string; readonly distance: string; readonly texels: string | null; readonly visibility: string | null };
+type LensLaidAt = { readonly open: string; readonly close: string; readonly distance: string; readonly texels: string | null; readonly visibility: string };
 
 /** The struct a laying returns, and the similarity it maps points by: shared by every pass laying a picture. */
 function lensLaidHeadWgsl({ glowing, moving }: LensFrameTargets) {
@@ -62,7 +64,7 @@ fn similar(m: vec4f, p: vec2f) -> vec2f { return vec2f(m.x * p.x - m.y * p.y, m.
  * its cover. A visibility below 1 lays that share of the picture: its colour, emission and what it takes.
  */
 function lensLaidWgsl({ glowing, moving }: LensFrameTargets, layers: LensPictureLayers, laying: LensLaying, at: LensLaidAt) {
-  const shown = (wgsl: string) => (at.visibility ? `(${wgsl}) * ${at.visibility}` : wgsl);
+  const shown = (wgsl: string) => `(${wgsl}) * ${at.visibility}`;
   const emission = layers.emission !== null ? shown(`${sampled(layers.emission)}.rgb`) : 'vec3f(0.0)';
   const outputs = (colour: string, light: string, motion: string) => [colour, ...(glowing ? [light] : []), ...(moving ? [motion] : [])].join(', ');
   // The motion of a point p: the plane's own carries it to p ∓ v/2 as the shutter opens and closes, where the views
@@ -110,7 +112,7 @@ ${lensLaidHeadWgsl(has)}
   let uv = (p - u.origin) / u.size;
   // Past a clipped picture's edge it's clear: nothing is laid there, by either laying.
   if (u.clipped == 1u && (any(uv < vec2f(0.0)) || any(uv > vec2f(1.0)))) { discard; }${lensLaidWgsl(has, layers, laying, {
-    open: 'u.open', close: 'u.close', distance: 'u.distance', texels: 'u.distances == 1u', visibility: null,
+    open: 'u.open', close: 'u.close', distance: 'u.distance', texels: 'u.distances == 1u', visibility: 'u.visibility',
   })}
 }`;
 }
