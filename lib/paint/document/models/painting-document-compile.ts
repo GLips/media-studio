@@ -17,10 +17,12 @@ import type { AnyApplication, NodeKey, Prewet, Wash } from './painting-document.
 import { paintingEntryReads, paintingSheetHead } from './painting-entry-reads.ts';
 import { PAINTING_REST_POSE } from './painting-pose.ts';
 import { paintingWashLifts } from './painting-pigment-slots.ts';
-import { paintingApplicationOwner } from './painting-problem.ts';
+import { paintingGeometryBox } from './painting-footprint.ts';
+import { paintingApplicationOwner, paintingProblem, paintingProblemsError, type PaintingProblem } from './painting-problem.ts';
 import { paintingReseeded } from './painting-reseed.ts';
 import { paintingSheetOrders, paintingSheetWashes, type PaintingSheetOrder } from './painting-sheet-program.ts';
 import type { PaintingEvaluation } from './painting-source.ts';
+import { paintingBrushDiameters, paintingFillBrushProblem } from './painting-styles.ts';
 import { paintingLayersUnder, paintingSheetName, type PaintingSheet, type PaintingTree } from './painting-tree.ts';
 
 /** `medium` with its paint's spread held to `maxSpreadPx` at `diameter`: the medium one application lands by. */
@@ -179,10 +181,25 @@ export function compilePaintingSelection(evaluation: PaintingEvaluation, brushOf
   return compiled;
 }
 
+/**
+ * Each fill of the `selected` layers whose brush, as `brushOf` resolves it, can't plan it (paintingFillBrushProblem):
+ * the check's rule, held here too for an evaluation no check saw with styles (a scene's values, in a bundle).
+ */
+function paintingFillBrushProblems(tree: PaintingTree, selected: ReadonlySet<number>, brushOf: PaintingBrushOf): PaintingProblem[] {
+  return [...selected].flatMap((layer) => tree.layers[layer].node.washes.flatMap((wash) => wash.applications.flatMap((application: AnyApplication, i) => {
+    if (application.kind !== 'fill') return [];
+    const problem = paintingFillBrushProblem(application.brush, paintingBrushDiameters(brushOf(application.brush)), application.diameterPx);
+    return problem ? [paintingProblem('error', paintingApplicationOwner(wash, application, i), problem.field, problem.message, paintingGeometryBox(application, application.diameterPx))] : [];
+  })));
+}
+
 function compileSelectedLayers(
   evaluation: PaintingEvaluation, brushOf: PaintingBrushOf, selected: ReadonlySet<number>, epochs: ReadonlyMap<number, number>,
 ): PaintingSelectionCompiled {
   const { tree } = evaluation;
+  // Refused whole, by owner, before any deposit is planned: the planner refuses one alone, naming no application.
+  const unplannable = paintingFillBrushProblems(tree, selected, brushOf);
+  if (unplannable.length) throw paintingProblemsError(evaluation.source, unplannable);
   const sheets = paintingSheetOrders(tree, selected).flatMap((order, s): PaintingSheetCompiled[] => (s > 0 && order.layers.length === 0
     ? []
     : [{ sheet: order.sheet, layers: order.layers.map(({ layer }) => layer), ownerChain: order.ownerChain, program: compilePaintingSheet(evaluation, order, brushOf, epochs) }]));

@@ -3,7 +3,7 @@
 // The `studio` CLI runs from any directory, so everything that reads or writes studio files goes through
 // STUDIO_ROOT rather than the working directory.
 import { existsSync, readdirSync, statSync } from 'node:fs';
-import { basename, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { ProjectCapability, ProjectDeclaration } from '../models/capability.ts';
 
@@ -49,13 +49,26 @@ export function resolveStudioProjectWith(arg: string, file: string): string {
   return dir;
 }
 
+/** The project's project.ts, or undefined for an older project with none. */
+export async function readProjectDeclaration(project: string): Promise<ProjectDeclaration | undefined> {
+  const file = join(project, 'project.ts');
+  if (!existsSync(file)) return undefined;
+  // SAFETY: check:arch's capability-match refuses a project.ts that default-exports no ProjectDeclaration.
+  return ((await import(/* @vite-ignore */ pathToFileURL(file).href)) as { default: ProjectDeclaration }).default;
+}
+
 /**
  * What the project's project.ts declares it is (check:arch holds that to what it binds), or undefined for an older
  * project with none.
  */
 export async function readProjectCapability(project: string): Promise<ProjectCapability | undefined> {
-  const file = join(project, 'project.ts');
-  if (!existsSync(file)) return undefined;
-  const { default: declaration } = (await import(/* @vite-ignore */ pathToFileURL(file).href)) as { default: ProjectDeclaration };
-  return declaration.capability;
+  return (await readProjectDeclaration(project))?.capability;
+}
+
+/** The project `file` lies in: the nearest folder holding it, or above, that has a project.ts; null outside any. */
+export function studioProjectOfFile(file: string): string | null {
+  for (let dir = dirname(resolve(file)); ; dir = dirname(dir)) {
+    if (existsSync(join(dir, 'project.ts'))) return dir;
+    if (dirname(dir) === dir) return null;
+  }
 }

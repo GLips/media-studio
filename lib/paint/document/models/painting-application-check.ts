@@ -1,6 +1,7 @@
 // painting-application-check.ts: one application held to its geometry, its tip, its charge and its layer's medium:
-// what the recipe compiler would throw on, said by key and field before anything is solved, and what the types refuse
-// checked again for a source written in JS.
+// what the recipe compiler would throw on, and with styles what the planner would (a fill's brush unmeasured at its
+// diameter), said by key and field before anything is solved, and what the types refuse checked again for a source
+// written in JS.
 
 import { paintMediumCan, type PaintCapability, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import { stampFillGuidesProblem, stampFillReachProblem, stampFillStrokesProblem } from '#lib/paint/painting/models/stamp-fill-strokes.ts';
@@ -11,7 +12,7 @@ import { paintingGeometryBox, paintingLargestDiameter, paintingPointsBox, painti
 import { checkPaintingMix } from './painting-mix-check.ts';
 import { isPaintingFinitePoint, isPaintingList, isPaintingPositive, isPaintingShare, paintingField, type PaintingProblemList } from './painting-problem.ts';
 import { checkPaintingAmount, checkPaintingEdge, checkPaintingEdgedRegion, checkPaintingRegion, paintingRegionRings } from './painting-region-check.ts';
-import { paintingBrushMedia, type PaintingStyleCatalogue } from './painting-styles.ts';
+import { paintingBrushMedia, paintingFillBrushProblem, paintingStyleBrush, paintingStyleMissing, type PaintingStyleCatalogue } from './painting-styles.ts';
 
 /** What an application is checked in: its layer's medium, whether its wash keeps a wet history, and the styles, if known. */
 export type PaintingApplicationSetting = {
@@ -31,9 +32,20 @@ function checkBrush(list: PaintingProblemList, owner: string, field: string, bru
     list.error(owner, field, 'a brush is {style, brush}, both named', box);
     return;
   }
-  const style = styles?.get(brush.style);
-  if (styles && !style) list.error(owner, paintingField(field, 'style'), `names style ${brush.style}, which isn't one of ${[...styles.keys()].join(', ')}`, box);
-  else if (style && !style.brushes.has(brush.brush)) list.error(owner, paintingField(field, 'brush'), `${brush.style} has no brush ${brush.brush}: its brushes are ${[...style.brushes.keys()].join(', ')}`, box);
+  const style = styles?.styles.get(brush.style);
+  if (styles && !style) list.error(owner, paintingField(field, 'style'), paintingStyleMissing(styles, brush.style), box);
+  if (!style || style.brushes.has(brush.brush)) return;
+  const unread = style.unread.get(brush.brush);
+  if (unread !== undefined) list.error(owner, paintingField(field, 'brush'), `${brush.style}'s ${brush.brush} can't be read: ${unread}`, box);
+  else list.error(owner, paintingField(field, 'brush'), `${brush.style} has no brush ${brush.brush}: its brushes are ${[...style.brushes.keys(), ...style.unread.keys()].join(', ')}`, box);
+}
+
+/** A fill's brush held to the diameters its measured profile spans, which the fill plans by (paintingFillBrushProblem). */
+function checkFillBrush(list: PaintingProblemList, owner: string, fill: FillGeometry & { readonly brush: BrushRef; readonly diameterPx: number }, styles: PaintingStyleCatalogue | undefined, box?: StampBox): void {
+  const brush = paintingStyleBrush(styles, fill.brush);
+  if (!brush || !isPaintingPositive(fill.diameterPx)) return;
+  const problem = paintingFillBrushProblem(fill.brush, brush.diameters, fill.diameterPx);
+  if (problem) list.error(owner, problem.field, problem.message, box);
 }
 
 /** Problems in a stroke's or stamps' marks and its tip: what a footprint of explicit marks shares with an application. */
@@ -183,6 +195,7 @@ export function checkPaintingApplication(list: PaintingProblemList, owner: strin
   else checkMarks(list, owner, '', application, box);
   if (!isPaintingPositive(application.diameterPx)) list.error(owner, 'diameterPx', `${application.diameterPx} isn't above 0`, box);
   checkBrush(list, owner, 'brush', application.brush, setting.styles, box);
+  if (application.kind === 'fill') checkFillBrush(list, owner, application, setting.styles, box);
   checkCharge(list, owner, application, setting, box);
   checkBloom(list, owner, application, setting, box);
   const on: string | undefined = 'on' in application ? application.on : undefined;

@@ -4,9 +4,10 @@ import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercol
 import * as meadow from './meadow.painting.ts';
 import type { StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
 import { checkPaintingDocument, paintingWrappedGrainHeightProblem } from './painting-document-check.ts';
-import type { Application, EdgedRegion, Layer, LayerNode, Mix, PaintingDocument, Ring, Wash } from './painting-document.ts';
+import type { Application, BrushRef, EdgedRegion, Layer, LayerNode, Mix, PaintingDocument, Ring, Wash } from './painting-document.ts';
 import type { PaintingProblem } from './painting-problem.ts';
 import { checkPaintingSource, type PaintingSourceModule } from './painting-source.ts';
+import type { PaintingStyleCatalogue } from './painting-styles.ts';
 
 const W = 400, H = 300;
 const BOX: Ring = [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: 200 }, { x: 0, y: 200 }];
@@ -31,6 +32,13 @@ const layer = (key: string, washes: readonly Wash[]): Layer => ({ key, washes })
 const greys = (from: number, count: number): Mix => ({
   parts: Array.from({ length: count }, (_, i) => ({ pigment: `#${(from + i).toString(16).padStart(2, '0').repeat(3)}`, amount: 1 })), strength: 1,
 });
+/** A project naming watercolor alone, whose wash is measured from 8 to 512 px; the workspace also holds gouache. */
+const PROJECT_STYLES: PaintingStyleCatalogue = {
+  declared: ['watercolor'],
+  styles: new Map([['watercolor', { brushes: new Map([['wash', { media: 'wet', diameters: { kind: 'measured', min: 8, max: 512 } }]]), unread: new Map(), files: new Set() }]]),
+};
+const skyFlood = (tip: { readonly brush?: BrushRef; readonly diameterPx?: number }): PaintingDocument =>
+  documentOf([layer('sky', [{ key: 'sky-wash', applications: [{ ...flood({ key: 'sky-flood', water: 0.85 }), ...tip }] }])]);
 
 const brokenSources: readonly { readonly name: string; readonly check: () => readonly PaintingProblem[]; readonly expect: Pick<PaintingProblem, 'severity' | 'path' | 'message'> }[] = [
   {
@@ -125,6 +133,16 @@ const brokenSources: readonly { readonly name: string; readonly check: () => rea
     },
     expect: { severity: 'warning', path: 'document.paper.grain.scale', message: 'is laid at 0.5 on a document wrapping across x: its mirrored tiles fit the width in whole pairs, 1 ÷ 2n of it (0.5, 0.25, 0.167…)' },
   },
+  {
+    name: "a fill laid below its brush's measured diameters",
+    check: () => checkPaintingSource(sourceOf(skyFlood({ diameterPx: 4 })), {}, PROJECT_STYLES),
+    expect: { severity: 'error', path: 'sky-flood.diameterPx', message: "watercolor's wash is measured from 8 to 512 px, and a fill plans its strokes by that measure: this lays 4" },
+  },
+  {
+    name: "a brush from a style the project's project.ts doesn't name",
+    check: () => checkPaintingSource(sourceOf(skyFlood({ brush: { style: 'gouache', brush: 'flat' } })), {}, PROJECT_STYLES),
+    expect: { severity: 'error', path: 'sky-flood.brush.style', message: "names style gouache, which the project's project.ts doesn't name in styles (it names watercolor)" },
+  },
 ];
 
 test('each broken source is refused with its one exact problem', () => {
@@ -137,11 +155,14 @@ test("a source that can paint checks clean: the meadow, and a charge into anothe
   assert.deepEqual(checkPaintingSource(meadow), []);
   const foot = documentOf([layer('shallows', [{ key: 'pool', applications: [flood({ key: 'pool-flood', water: 0.9 })] }]), layer('heron', [{ key: 'foot', applications: [{ ...stroke('foot-charge'), on: 'wet' }] }])]);
   assert.deepEqual(checkPaintingSource(sourceOf(foot)), []);
+  assert.deepEqual(checkPaintingSource(sourceOf(skyFlood({ diameterPx: 60 })), {}, PROJECT_STYLES), []);
 });
 
 test("a problem's footprint is the box of the geometry it's about, grown by half its brush", () => {
   const [problem] = brokenSources[7].check();
   assert.deepEqual(problem.footprint, { x0: -30, y0: 10, x1: 330, y1: 70 });
+  const [unplannable] = checkPaintingSource(sourceOf(skyFlood({ diameterPx: 4 })), {}, PROJECT_STYLES);
+  assert.deepEqual(unplannable.footprint, { x0: -2, y0: -2, x1: 402, y1: 202 });
 });
 
 test("a factory that isn't pure is named, with the first place two of its calls differ", () => {

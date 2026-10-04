@@ -1,11 +1,12 @@
 // painting-source-load.ts: a painting source loaded by path in Node and checked as `studio paint check` reports it:
 // its values from the command's `name=value` text, read by its schema; every problem found without solving, its
-// brushes and paper assets against the styles in work/styles/; and, when it has no error, its evaluation to summarise
-// or, for `studio paint diff`, to compare with another. A wrapped document's diff reads its brushes, as a still does.
+// brushes and paper assets against the styles in work/styles/ (inside a project, those its project.ts names); and,
+// when it has no error, its evaluation to summarise or, for `studio paint diff`, to compare with another. A wrapped
+// document's diff reads its brushes, as a still does.
 
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { STUDIO_STYLES_DIR } from '#lib/platform/project/engine/studio-project.ts';
+import { readProjectDeclaration, STUDIO_STYLES_DIR, studioProjectOfFile } from '#lib/platform/project/engine/studio-project.ts';
 import { readWorkspacePigmentStyle, type WorkspacePigmentStyle } from '#lib/paint/style/engine/workspace-pigment-style.ts';
 import { paintingBrushRefs } from '../models/painting-brush-refs.ts';
 import type { PaintingBrushOf } from '../models/painting-deposit-compile.ts';
@@ -29,12 +30,16 @@ export async function loadPaintingSource(file: string): Promise<PaintingSourceMo
   return loaded;
 }
 
-/** The source at `file` checked at the values `texts` give by name, against this machine's styles. */
+/**
+ * The source at `file` checked at the values `texts` give by name, against this machine's styles: inside a project,
+ * only those its project.ts names, as its bundle serves them.
+ */
 export async function checkPaintingSourceFile(file: string, texts: Readonly<Record<string, string>>): Promise<PaintingSourceEvaluation> {
   const source = await loadPaintingSource(file);
   const values = paintingValuesFromText(source.properties ?? {}, texts);
   const { default: styles } = await import('#lib/paint/style/engine/node-stamp-paint-styles.ts');
-  return evaluatePaintingSource(source, values, paintingStyleCatalogue(styles));
+  const project = studioProjectOfFile(file), declared = project === null ? null : (await readProjectDeclaration(project))?.styles ?? [];
+  return evaluatePaintingSource(source, values, paintingStyleCatalogue(styles, declared));
 }
 
 /** One side of a comparison: a source file at the values `texts` give by name. */

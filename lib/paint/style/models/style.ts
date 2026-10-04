@@ -86,17 +86,31 @@ export function stampPaintStyleProbeMedium(name: string, style: StampPaintStyle)
   return { paper: stampPaintStylePaper(name, style), mixing, paint: stampBrushProbePaint(mixing) };
 }
 
+/** One of a style's brushes read from its pack, or why it can't be: its pack isn't among those given, or lacks it. */
+export type StampPaintStyleBrush = { readonly brush: StampBrush } | { readonly missing: string };
+
 /**
- * `style`, named `name`, with its brushes read from its packs' sources, each brush's profile checked against the
- * medium its style probes in now. Throws on a brush its pack lacks, which the bundle's check
- * (lib/paint/style/engine/project-styles.ts) has already refused, or a pigment keyed by other than its id.
+ * Each of `style`'s brushes (named `name`) by the style's own name, read from `packs` with its media, its profile
+ * checked against the medium its style probes in now (refused, saying why, when measured otherwise).
+ */
+export function stampPaintStyleBrushes(name: string, style: StampPaintStyle, packs: Readonly<Record<string, StampPaintPack>>): Map<string, StampPaintStyleBrush> {
+  const medium = stampBrushProbeMediumKey(stampPaintStyleProbeMedium(name, style), stampPaintPackArchives(packs));
+  return new Map(Object.entries(style.brushes).map(([key, { pack, brush, media }]): [string, StampPaintStyleBrush] => {
+    if (!packs[pack]) return [key, { missing: `its pack ${pack} isn't among ${name}'s imported packs` }];
+    const found = resolveStampPaintPackBrush(packs[pack], brush, medium);
+    return [key, found ? { brush: { ...found.brush, media: media ?? style.packs[pack].media } } : { missing: `${pack}'s manifest has no brush ${JSON.stringify(brush)}` }];
+  }));
+}
+
+/**
+ * `style`, named `name`, with its brushes read from its packs' sources (stampPaintStyleBrushes). Throws on a brush its
+ * packs lack, which the bundle's check (lib/paint/style/engine/project-styles.ts) has already refused, or a pigment
+ * keyed by other than its id.
  */
 export function resolveStampPaintStyle<S extends StampPaintStyle>(name: string, style: S, packs: Readonly<Record<string, StampPaintPack>>): ResolvedStampPaintStyle<S> {
-  const medium = stampBrushProbeMediumKey(stampPaintStyleProbeMedium(name, style), stampPaintPackArchives(packs));
-  const brushes = Object.fromEntries(Object.entries(style.brushes).map(([key, { pack, brush, media }]) => {
-    const found = packs[pack] && resolveStampPaintPackBrush(packs[pack], brush, medium);
-    if (!found) throw new Error(`stamp paint: ${name}'s brush ${key} is ${pack}'s ${JSON.stringify(brush)}, which its manifest lacks`);
-    return [key, { ...found.brush, media: media ?? style.packs[pack].media }];
+  const brushes = Object.fromEntries([...stampPaintStyleBrushes(name, style, packs)].map(([key, read]) => {
+    if ('missing' in read) throw new Error(`stamp paint: ${name}'s brush ${key}: ${read.missing}`);
+    return [key, read.brush];
   }));
   const misnamed = Object.entries(style.paint?.pigments ?? {}).find(([key, { id }]) => key !== id);
   if (misnamed) throw new Error(`stamp paint: ${name}'s pigment ${misnamed[0]} has the id ${misnamed[1].id}; key each pigment by its id`);

@@ -287,9 +287,6 @@
       "throw failure ? new AggregateError([failure, cleanup], `photoshop: the run failed (${(failure as Error).message}), and ${pendingNote}`) : new Error(pendingNote);": 1,
       "return { result: result as T, restore };": 1
     },
-    "lib/platform/project/engine/studio-project.ts": {
-      "const { default: declaration } = (await import(/* @vite-ignore */ pathToFileURL(file).href)) as { default: ProjectDeclaration };": 1
-    },
     "lib/platform/temp/engine/studio-temp.ts": {
       "if (result instanceof Promise) return result.finally(remove) as T;": 1,
       "return (error as NodeJS.ErrnoException).code === 'EPERM';": 1
