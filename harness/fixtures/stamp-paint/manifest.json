@@ -261,6 +261,15 @@
       "acceptedOver": "0c96f70b",
       "adapter": "apple metal-3"
     },
+    "shot/rigged-dissolve": {
+      "file": "shot/rigged-dissolve.png",
+      "output": "4746c5cbdecd9d01c85891ad21e93c9e9356a82d6d1fb45e6c4e14b7dd0d556b",
+      "inputs": "90776cee4ac9d21e6378a2991b6fce24f5b0d92657cf6d8c5a9b1a2409c1cc34",
+      "reason": "vid-157 dissolve-rigs: the rigged heron dissolving from day to dusk on its shared sheet, posed mid-dissolve; a new case",
+      "accepted": "2026-10-04",
+      "acceptedOver": "785225df",
+      "adapter": "apple metal-3"
+    },
     "shot/wet-contact": {
       "file": "shot/wet-contact.png",
       "output": "83eb90cc4ece6c4841fe84f1d6b58d017d8e1e5886be99ff800e253adb1de79a",

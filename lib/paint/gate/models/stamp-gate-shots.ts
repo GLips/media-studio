@@ -1,12 +1,12 @@
 // stamp-gate-shots.ts: the gate's shots (ENGINE 9, tests 6 and 7 through a PaintedShot): the rigged paper heron, its
 // neck skinned to its body, its wing a cel moving its own sheet, and reeds owning their sheet, drawn as pieces, also
-// boiling; the wet-contact sheet, its heron's foot posed by a rig: painted in as it plays, on sixes over a warmed span,
-// hidden, and dissolving to a sheet of its own over a dissolving back; the heron alone, a clear back over HTML, also
-// pinned (shot/page); and the rain (stamp-gate-rain.ts). Poses and the rain's drops are tables by scene second, so a
-// baseline's inputs name them. What the cases measure of their frames is here, pure.
+// boiling, and dissolving from day to dusk as it's posed; the wet-contact sheet, its heron's foot posed by a rig:
+// painted in as it plays, on sixes over a warmed span, hidden, and dissolving to a sheet of its own over a dissolving
+// back; the heron alone, a clear back over HTML, also pinned (shot/page); and the rain (stamp-gate-rain.ts). Poses
+// and drops are tables by scene second, so a baseline's inputs name them. Its cases' measures are here, pure.
 
 import { compilePaintingSelection } from '#lib/paint/document/models/painting-document-compile.ts';
-import type { LayerNode, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
+import type { LayerNode, Mix, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
 import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
 import { painting, type PaintingEvaluation, type PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
@@ -18,7 +18,8 @@ import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import type { PaintedShotProps, RigPart, RigPartPose, ScreenPin } from '#lib/paint/shot/models/shot-props.ts';
 import { dissolve } from '#lib/paint/shot/models/shot-selection.ts';
 import {
-  STAMP_GATE_HERON_BODY, STAMP_GATE_HERON_MOVE, STAMP_GATE_HERON_VANE, stampGateHeronLayer, stampGateInsidePolygon, stampGateHeronPaper, stampGateHeronPolygon, stampGatePaperHeronDocument,
+  STAMP_GATE_HERON_BODY, STAMP_GATE_HERON_MIXES, STAMP_GATE_HERON_MOVE, STAMP_GATE_HERON_VANE, stampGateHeronLayer, stampGateInsidePolygon, stampGateHeronPaper, stampGateHeronPolygon,
+  stampGatePaperHeronDocument, type StampGateHeronMixes,
 } from './stamp-gate-paper-heron.ts';
 import { STAMP_GATE_RAIN, STAMP_GATE_RAIN_PAINTING, stampGateRainShot } from './stamp-gate-rain.ts';
 import { STAMP_GATE_RAINY_STREET_AT, STAMP_GATE_RAINY_STREET_PRESENTATION, stampGateRainyStreetEvaluations, stampGateRainyStreetShot } from './stamp-gate-rainy-street.ts';
@@ -29,20 +30,21 @@ import { STAMP_GATE_HERON_POSE, STAMP_GATE_SHEET_IMAGES, STAMP_GATE_WET_CONTACT,
 export const STAMP_GATE_SHOT_PAGE_IDS = ['shot/page'] as const;
 
 /** The shots accepted by eye: each a baseline subject, one frame of its shot. */
-export const STAMP_GATE_SHOT_IDS = ['shot/paper-heron', 'shot/wet-contact', 'shot/rain', 'shot/dissolve', 'shot/masks', 'shot/rainy-street'] as const;
+export const STAMP_GATE_SHOT_IDS = ['shot/paper-heron', 'shot/wet-contact', 'shot/rain', 'shot/dissolve', 'shot/rigged-dissolve', 'shot/masks', 'shot/rainy-street'] as const;
 export type StampGateShotId = (typeof STAMP_GATE_SHOT_IDS)[number];
 
 /**
  * The shot cases checked apart from any sheet case, each a page's checks of its shot's frames: the rain's items, a
- * dissolve drawn between its ends, a span warmed, the masked shot's cuts, and the rainy street's cost report.
+ * dissolve drawn between its ends, a rigged one posed between its ends, a span warmed, the masked shot's cuts, and the
+ * rainy street's cost report.
  */
-export const STAMP_GATE_SHOT_CASE_IDS = ['shot/rain', 'shot/dissolve', 'shot/warm', ...STAMP_GATE_SHOT_MASK_IDS, 'shot/rainy-street'] as const;
+export const STAMP_GATE_SHOT_CASE_IDS = ['shot/rain', 'shot/dissolve', 'shot/rigged-dissolve', 'shot/warm', ...STAMP_GATE_SHOT_MASK_IDS, 'shot/rainy-street'] as const;
 export type StampGateShotCaseId = (typeof STAMP_GATE_SHOT_CASE_IDS)[number];
 
 /** The fps the gate plays its shots at, as a composition would: a warm span's frames are counted at it. */
 export const STAMP_GATE_SHOT_FPS = 30;
 
-const { burntUmber, yellowOchre, phthaloGreen } = WATERCOLOUR_PIGMENTS;
+const { burntSienna, burntUmber, phthaloGreen, ultramarine, yellowOchre } = WATERCOLOUR_PIGMENTS;
 
 /** The neck's outline at rest, document px: up from inside the body's left end. */
 const NECK = [36, 54, 46, 48, 34, 28, 38, 12, 28, 12, 24, 30] as const;
@@ -60,24 +62,46 @@ const REED_HINGE = { x: 24, y: 128 } as const;
 /** How far inside the swung reed's outline its paint is measured, px: clear of its edge's bleed. */
 const REED_INSET = 1.5;
 
-const neck: LayerNode = stampGateHeronLayer('neck', stampGateHeronPolygon(...NECK), { parts: [{ pigment: burntUmber, amount: 1 }], strength: 0.55 }, 0.7);
-// Painted once the neck is dry, as a later cel is: hidden, a cel's water would leave what it did to the body showing.
-const neckLow: LayerNode = stampGateHeronLayer('neck-low', stampGateHeronPolygon(...NECK_LOW), { parts: [{ pigment: burntUmber, amount: 1 }], strength: 0.55 }, 0.7, 'dry');
-const reeds: LayerNode = {
-  key: 'reeds', sheet: { kind: 'own', paper: stampGateHeronPaper('#e4ead0', 1.2) },
-  children: [
-    stampGateHeronLayer('reed-a', stampGateHeronPolygon(...REED_A), { parts: [{ pigment: yellowOchre, amount: 1 }], strength: 0.7 }, 0.7),
-    stampGateHeronLayer('reed-b', stampGateHeronPolygon(...REED_B), { parts: [{ pigment: phthaloGreen, amount: 1 }], strength: 0.4 }, 0.7),
-  ],
+/** What the rigged heron is painted with: its water and body, both its necks, and each reed. */
+type StampGateRiggedHeronPalette = StampGateHeronMixes & { readonly neck: Mix; readonly reedA: Mix; readonly reedB: Mix };
+
+const DAY: StampGateRiggedHeronPalette = {
+  ...STAMP_GATE_HERON_MIXES, neck: { parts: [{ pigment: burntUmber, amount: 1 }], strength: 0.55 },
+  reedA: { parts: [{ pigment: yellowOchre, amount: 1 }], strength: 0.7 }, reedB: { parts: [{ pigment: phthaloGreen, amount: 1 }], strength: 0.4 },
+};
+/** Dusk's: every part the rigs cut painted cooler and darker, so each differs from day's wherever it's posed. */
+const DUSK: StampGateRiggedHeronPalette = {
+  water: { parts: [{ pigment: ultramarine, amount: 1 }], strength: 0.6 }, body: { parts: [{ pigment: ultramarine, amount: 0.6 }, { pigment: burntUmber, amount: 0.4 }], strength: 0.75 },
+  neck: { parts: [{ pigment: ultramarine, amount: 0.6 }, { pigment: burntUmber, amount: 0.4 }], strength: 0.6 },
+  reedA: { parts: [{ pigment: burntSienna, amount: 1 }], strength: 0.7 }, reedB: { parts: [{ pigment: ultramarine, amount: 1 }], strength: 0.5 },
 };
 
 /**
- * The paper heron with a `neck` and a `neck-low` laid over its body, all on the scene's sheet, and `reeds`, a group
- * owning a sheet of its own holding two overlapping reeds.
+ * The paper heron painted with `palette`, a `neck` and a `neck-low` laid over its body, all on the scene's sheet, and
+ * `reeds`, a group owning a sheet of its own holding two overlapping reeds.
  */
+function riggedHeronDocument(palette: StampGateRiggedHeronPalette): PaintingDocument {
+  const neck = stampGateHeronLayer('neck', stampGateHeronPolygon(...NECK), palette.neck, 0.7);
+  // Painted once the neck is dry, as a later cel is: hidden, a cel's water would leave what it did to the body showing.
+  const neckLow = stampGateHeronLayer('neck-low', stampGateHeronPolygon(...NECK_LOW), palette.neck, 0.7, 'dry');
+  const reeds: LayerNode = {
+    key: 'reeds', sheet: { kind: 'own', paper: stampGateHeronPaper('#e4ead0', 1.2) },
+    children: [stampGateHeronLayer('reed-a', stampGateHeronPolygon(...REED_A), palette.reedA, 0.7), stampGateHeronLayer('reed-b', stampGateHeronPolygon(...REED_B), palette.reedB, 0.7)],
+  };
+  return stampGatePaperHeronDocument([neck, neckLow], [reeds], palette);
+}
+
+/** The rigged heron by day. */
 export const STAMP_GATE_RIGGED_HERON: PaintingSourceModule = {
   default: function gateRiggedHeron(): PaintingDocument {
-    return stampGatePaperHeronDocument([neck, neckLow], [reeds]);
+    return riggedHeronDocument(DAY);
+  },
+};
+
+/** The rigged heron at dusk: its layers cut alike, so its rigs cut it as they cut day's. */
+export const STAMP_GATE_DUSK_HERON: PaintingSourceModule = {
+  default: function gateDuskHeron(): PaintingDocument {
+    return riggedHeronDocument(DUSK);
   },
 };
 
@@ -117,6 +141,40 @@ const HERON_POSES: StampGatePoseTable = [
 /** Where the heron's neck shows when posed or swapped, frame px: left of the body's middle (posed), above the water. */
 export const STAMP_GATE_HERON_NECKS = { x0: 0, y0: 0, x1: STAMP_GATE_HERON_BODY.center.x + 8, y1: 116 } as const;
 
+/**
+ * The rigged dissolve's frames: the heron by day and at dusk, posed alike; halfway between them, its baseline's frame;
+ * halfway at another pose; and halfway at the first pose again.
+ */
+export const STAMP_GATE_RIGGED_DISSOLVE_AT = { day: 0, dusk: 1, half: 2, reposed: 3, again: 4 } as const;
+const RIGGED_DISSOLVE_KS = [
+  { from: STAMP_GATE_RIGGED_DISSOLVE_AT.day, k: 0 }, { from: STAMP_GATE_RIGGED_DISSOLVE_AT.dusk, k: 1 }, { from: STAMP_GATE_RIGGED_DISSOLVE_AT.half, k: 0.5 },
+] as const;
+const REPOSED_HERON = { body: { x: 8, y: 4 }, neck: { bend: -0.4 }, wing: { rotation: 0.2 } } satisfies Pose;
+const REPOSED_REEDS = { 'reed-b': { rotation: -0.15 } } satisfies Pose;
+const RIGGED_DISSOLVE_POSES: StampGatePoseTable = [
+  { from: STAMP_GATE_RIGGED_DISSOLVE_AT.day, poses: { heron: POSED_HERON, reeds: POSED_REEDS } },
+  { from: STAMP_GATE_RIGGED_DISSOLVE_AT.reposed, poses: { heron: REPOSED_HERON, reeds: REPOSED_REEDS } },
+  { from: STAMP_GATE_RIGGED_DISSOLVE_AT.again, poses: { heron: POSED_HERON, reeds: POSED_REEDS } },
+];
+
+/**
+ * The rigged heron dissolving from day to dusk on its one plane, its heron's marks on the shared sheet and its reeds
+ * as pieces, both posed by RIGGED_DISSOLVE_POSES whichever end shows; `heard` hears each pose read, by group; `warm`,
+ * a span warmed before any frame is drawn.
+ */
+export function stampGateRiggedDissolveShot({ heard, warm }: { heard?: (group: string) => void; warm?: PaintedShotProps['warm'] } = {}): PaintedShotProps {
+  const day = painting(STAMP_GATE_RIGGED_HERON), dusk = painting(STAMP_GATE_DUSK_HERON), layers = ['water', 'heron', 'reeds'];
+  const k = (at: number) => RIGGED_DISSOLVE_KS.findLast(({ from }) => from <= at)!.k;
+  return {
+    ...oneSheetShot('paper', day, layers, { heron: HERON_PARTS, reeds: REED_PARTS }, RIGGED_DISSOLVE_POSES, heard),
+    planes: [{ id: 'paper', depth: 1, source: ({ at }: PaintMoment) => dissolve(layersOf(day, layers), layersOf(dusk, layers), k(at)) }],
+    ...(warm && { warm }),
+  };
+}
+
+/** The rigged dissolve's two paintings, as a solve names them: what each frame posed anew solves a sheet of. */
+export const stampGateRiggedDissolveSources = () => [painting(STAMP_GATE_RIGGED_HERON).source, painting(STAMP_GATE_DUSK_HERON).source].toSorted();
+
 /** The wet-contact shot's frames: the foot at rest, then posed by its rig as the sheet case poses its group. */
 export const STAMP_GATE_WET_CONTACT_AT = { rest: 1, posed: 3 } as const;
 const FOOT_POSES: StampGatePoseTable = [
@@ -124,13 +182,22 @@ const FOOT_POSES: StampGatePoseTable = [
   { from: STAMP_GATE_WET_CONTACT_AT.posed, poses: { heron: { leg: { x: STAMP_GATE_HERON_POSE.kx, y: STAMP_GATE_HERON_POSE.ky } } } },
 ];
 
-/** A shot of one painted plane `plane` over `evaluation`'s `layers`, a still camera on its document, its `rigs` posed by `table`. */
-function oneSheetShot(plane: string, evaluation: PaintingEvaluation, layers: readonly string[], rigs: Readonly<Record<string, readonly RigPart[]>>, table: StampGatePoseTable): PaintedShotProps {
+/**
+ * A shot of one painted plane `plane` over `evaluation`'s `layers`, a still camera on its document, its `rigs` posed by
+ * `table`; `heard` hears each pose read, by group.
+ */
+function oneSheetShot(
+  plane: string, evaluation: PaintingEvaluation, layers: readonly string[], rigs: Readonly<Record<string, readonly RigPart[]>>, table: StampGatePoseTable, heard?: (group: string) => void,
+): PaintedShotProps {
   const { widthPx: width, heightPx: height } = evaluation.document;
+  const pose = (group: string) => ({ at }: PaintMoment) => {
+    heard?.(group);
+    return poseAt(table, group, at);
+  };
   return {
     camera: { stage: stampStage({ width, height }, 2), fov: 35, lens: { bloom: 0, shutter: 0 }, plays: [] },
     planes: [{ id: plane, depth: 1, source: layersOf(evaluation, layers) }],
-    rigs: Object.fromEntries(Object.entries(rigs).map(([group, parts]) => [`${plane}/${group}`, { parts, pose: ({ at }) => poseAt(table, group, at) }])),
+    rigs: Object.fromEntries(Object.entries(rigs).map(([group, parts]) => [`${plane}/${group}`, { parts, pose: pose(group) }])),
   };
 }
 
@@ -295,6 +362,10 @@ const SHOT_BASELINES: Readonly<Record<StampGateShotId, {
   'shot/rain': { shot: stampGateRainShot, at: STAMP_GATE_RAIN.at.first, evaluations: () => [painting(STAMP_GATE_RAIN_PAINTING)], rigs: {}, poses: [], extra: STAMP_GATE_RAIN },
   'shot/dissolve': {
     shot: stampGateDissolveShot, at: STAMP_GATE_DISSOLVE_AT.bothHalf, evaluations: () => Object.values(dissolveEvaluations()), rigs: {}, poses: [], extra: { ks: DISSOLVE_KS },
+  },
+  'shot/rigged-dissolve': {
+    shot: stampGateRiggedDissolveShot, at: STAMP_GATE_RIGGED_DISSOLVE_AT.half, evaluations: () => [painting(STAMP_GATE_RIGGED_HERON), painting(STAMP_GATE_DUSK_HERON)],
+    rigs: { heron: HERON_PARTS, reeds: REED_PARTS }, poses: RIGGED_DISSOLVE_POSES, extra: { ks: RIGGED_DISSOLVE_KS },
   },
   'shot/masks': {
     shot: () => stampGateMaskedShot(STAMP_GATE_MASKS_BASELINE.shown), at: STAMP_GATE_MASKS_BASELINE.at, evaluations: () => [painting(STAMP_GATE_TINTED_HERON)], rigs: {}, poses: [],

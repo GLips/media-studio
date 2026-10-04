@@ -1,7 +1,7 @@
 // stamp-gate-shot-page.ts: the gate page's shots (stamp-gate-shots.ts), drawn by stamp-gate-shot-frames.ts: the
 // rigged heron's grain, pieces and boil (test 6), the wet-contact foot posed by its rig, painted in and hidden (test
-// 7), the rain's drops blurred along their own falls (test 5), a dissolve between two sheets over a dissolving back, a
-// warmed span, and their baselines' frames. The masked shot's cases are stamp-gate-shot-masks-page.ts's, and the rainy
+// 7), the rain's drops blurred along their own falls (test 5), a dissolve between two sheets over a dissolving back,
+// the rigged heron posed as it dissolves, a warmed span, and their baselines' frames. The masked shot's cases are stamp-gate-shot-masks-page.ts's, and the rainy
 // street's stamp-gate-rainy-street-page.ts's, handed on.
 
 import type { StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
@@ -11,10 +11,11 @@ import { STAMP_GATE_HERON_MOVE, stampGateHighPass, stampGatePeakShift } from '..
 import { STAMP_GATE_LONE_DROP_AT, STAMP_GATE_LONE_DROP_TRAVEL, STAMP_GATE_RAIN, stampGateLoneDropShot, stampGateRainShot } from '../models/stamp-gate-rain.ts';
 import { STAMP_GATE_FAR_SHALLOWS } from '../models/stamp-gate-sheets.ts';
 import {
-  STAMP_GATE_DISSOLVE_AT, STAMP_GATE_HERON_BOIL_AT, STAMP_GATE_HERON_NECKS, STAMP_GATE_HIDDEN_FOOT_AT, STAMP_GATE_PAINTING_IN_AT, STAMP_GATE_RIGGED_HERON_AT,
-  STAMP_GATE_WARM, STAMP_GATE_WARMED_AT, STAMP_GATE_WET_CONTACT_AT, stampGateBoilingHeronShot, stampGateDifferenceBox, stampGateDissolveShot, stampGateFadeBetween,
-  stampGateHiddenFootShot, stampGateReedSwung, stampGateRiggedHeronShot, stampGateRiggedHeronWindows, stampGateShallowsAloneShot, stampGateShotBaseline, stampGateWarmShot,
-  stampGateWetContactPaintingInShot, stampGateWetContactShot, type StampGateShotCaseId, type StampGateShotId,
+  STAMP_GATE_DISSOLVE_AT, STAMP_GATE_HERON_BOIL_AT, STAMP_GATE_HERON_NECKS, STAMP_GATE_HIDDEN_FOOT_AT, STAMP_GATE_PAINTING_IN_AT, STAMP_GATE_RIGGED_DISSOLVE_AT,
+  STAMP_GATE_RIGGED_HERON_AT, STAMP_GATE_WARM, STAMP_GATE_WARMED_AT, STAMP_GATE_WET_CONTACT_AT, stampGateBoilingHeronShot, stampGateDifferenceBox, stampGateDissolveShot,
+  stampGateFadeBetween, stampGateHiddenFootShot, stampGateReedSwung, stampGateRiggedDissolveShot, stampGateRiggedDissolveSources, stampGateRiggedHeronShot,
+  stampGateRiggedHeronWindows, stampGateShallowsAloneShot, stampGateShotBaseline, stampGateWarmShot, stampGateWetContactPaintingInShot, stampGateWetContactShot,
+  type StampGateShotCaseId, type StampGateShotId,
 } from '../models/stamp-gate-shots.ts';
 import { stampGateRgb, stampGateRgbBase64 } from './stamp-gate-page-surface.ts';
 import { stampGateShotFrames, stampGateSolvedText as solvedText } from './stamp-gate-shot-frames.ts';
@@ -178,6 +179,46 @@ async function checkDissolve(): Promise<StampGateWashCheck[]> {
   ];
 }
 
+/** The paintings a frame's `costs` solved sheets of, by source name, each once. */
+const solvedSources = ({ solves }: StampPaintCosts) => [...new Set(solves.map(({ program }) => program.slice(0, program.indexOf(','))))].toSorted();
+
+/**
+ * shot/rigged-dissolve: the rigged heron dissolving from day to dusk, drawn halfway first, lies between its posed ends.
+ * Drawn after them, halfway solves nothing; posed anew it solves each end, and posed as first again nothing. Each frame
+ * reads each rig's pose once. A warm of the halfway frame solves both ends.
+ */
+async function checkRiggedDissolve(): Promise<StampGateWashCheck[]> {
+  const { day, dusk, half, reposed, again } = STAMP_GATE_RIGGED_DISSOLVE_AT, heard: Map<string, number>[] = [];
+  const hear = (group: string) => {
+    const frame = heard.at(-1);
+    frame?.set(group, (frame.get(group) ?? 0) + 1);
+  };
+  const { frames: [atDay, atDusk], costs: taken } = await stampGateShotFrames(stampGateRiggedDissolveShot({ heard: hear }), [day, dusk, half, reposed, again], () => heard.push(new Map()));
+  // Halfway is read off the warmed renderer, where it's the first frame drawn: both ends' pieces drawn in one frame. One
+  // drawn after its ends reuses their kept pictures and draws no pieces, so it can't show one end's overwriting the other's.
+  const warmed = await stampGateShotFrames(stampGateRiggedDissolveShot({ warm: { from: half, to: half } }), [half]), [atHalf] = warmed.frames;
+  const ends = stampGateRiggedDissolveSources(), bothEnds = (costs: StampPaintCosts) => solvedSources(costs).join() === ends.join();
+  const halfAnew = dissolveDrawnAnew(taken[2]), againAnew = dissolveDrawnAnew(taken[4]), warnings = taken.flatMap((each) => each.warnings);
+  const reads = heard.map((frame) => [...frame].map(([group, count]) => `${group} ${count}`).join(', ') || 'none');
+  const warmedSolves = solvedText(warmed.costs[0]);
+  return [
+    dissolveHalfway('shot/rigged-dissolve: halfway', 'the posed heron and reeds', [atDay, atDusk], atHalf),
+    {
+      id: 'shot/rigged-dissolve: solved per end and pose',
+      passed: !halfAnew.solved.length && halfAnew.misses === 0 && bothEnds(taken[3]) && !againAnew.solved.length && againAnew.misses === 0 && !warnings.length,
+      detail: `drawn after its posed ends, halfway ${anewText(halfAnew)}; posed anew, it solved sheets of ${solvedSources(taken[3]).join(' and ') || 'nothing'} (${ends.join(' and ')} wanted); posed as first again, it ${anewText(againAnew)}${warnings.length ? `; warned: ${warnings.join('; ')}` : ''}`,
+    },
+    {
+      id: 'shot/rigged-dissolve: one pose read a frame', passed: heard.length === 5 && heard.every((frame) => frame.size === 2 && [...frame.values()].every((count) => count === 1)),
+      detail: `its frames read its rigs' poses ${reads.join('; ')} times (heron 1, reeds 1 each wanted)`,
+    },
+    {
+      id: 'shot/rigged-dissolve: warm', passed: bothEnds(warmed.warm) && !warmedSolves.length,
+      detail: `warming the halfway frame solved sheets of ${solvedSources(warmed.warm).join(' and ') || 'nothing'} (${ends.join(' and ')} wanted); drawing it then solved ${warmedSolves.join(', ') || 'nothing'}`,
+    },
+  ];
+}
+
 /**
  * shot/warm: the wet-contact shot painted in on sixes, its plane on threes flipping its foot's pose, its span warmed,
  * solves each pairing of its clocks' moments and keeps bytes; frames the warm skipped as pairing alike then solve
@@ -195,6 +236,7 @@ async function checkWarm(): Promise<StampGateWashCheck[]> {
 export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGateWashCheck[]> {
   if (id === 'shot/rain') return checkStampGateRain();
   if (id === 'shot/dissolve') return checkDissolve();
+  if (id === 'shot/rigged-dissolve') return checkRiggedDissolve();
   if (id === 'shot/warm') return checkWarm();
   if (id === 'shot/rainy-street') return checkStampGateRainyStreet();
   return checkStampGateShotMasksCase(id);

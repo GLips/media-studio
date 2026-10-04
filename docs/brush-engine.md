@@ -631,7 +631,10 @@ rig, resuming its sheet's solve from its checkpoints, and painted in as the shot
 foot's first stroke, then hidden, its paint going and its water's mark on the shallows staying with nothing solved;
 the heron dissolving from the scene's sheet to a sheet of its own, and under it, its plane hidden, the back dissolving
 from the pond painted with the heron in it to the shallows alone, each halfway lying between its ends with nothing
-solved or laid once they are; the
+solved or laid once they are; the rigged heron dissolving from day to dusk on its shared sheet, posed mid-dissolve
+(`shot/rigged-dissolve`): halfway, drawn first so both ends' pieces draw in one frame, between its posed ends, and
+drawn after them solving nothing, each end solved at a new pose and nothing at the first again, each rig's pose read once a frame, and a warm of the halfway frame solving both
+ends; the
 foot painting in on sixes, its plane on threes flipping its pose, over a warmed span, the frames its warm skipped as
 pairing their clocks' moments alike then solving nothing; and rain (`stamp-gate-rain.ts`) falling about a post under a still camera, a lone drop out of
 focus spreading alike on every side, blurring along its own fall and drawn as if shut when keyed anew across the

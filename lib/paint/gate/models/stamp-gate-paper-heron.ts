@@ -48,20 +48,24 @@ export function stampGateInsidePolygon(p: StampPoint, polygon: readonly number[]
 /** The body's ellipse at rest, document px. */
 export const STAMP_GATE_HERON_BODY = { center: { x: 66, y: 60 }, radiusX: 36, radiusY: 22 } as const;
 
+/** What the paper heron's water and body are painted with. */
+export type StampGateHeronMixes = { readonly water: Mix; readonly body: Mix };
+export const STAMP_GATE_HERON_MIXES: StampGateHeronMixes = { water: { parts: [{ pigment: cerulean, amount: 1 }], strength: 0.45 }, body: { parts: [{ pigment: burntUmber, amount: 1 }], strength: 0.7 } };
+
 /**
  * The paper heron: water across the sheet's foot, and a `heron` group: its `body` on the root's paper, `between` over
  * it, its `wing` an own sheet of warm paper holding a `vane` and a `tip` (an own sheet of cool paper, its `feather` on
- * it), and `after` over them all.
+ * it), and `after` over them all; its water and body painted with `mixes`.
  */
-export function stampGatePaperHeronDocument(between: readonly LayerNode[] = [], after: readonly LayerNode[] = []): PaintingDocument {
+export function stampGatePaperHeronDocument(between: readonly LayerNode[] = [], after: readonly LayerNode[] = [], mixes = STAMP_GATE_HERON_MIXES): PaintingDocument {
   return {
     widthPx: PAPER_HERON.width, heightPx: PAPER_HERON.height, paper: ROOT_PAPER, medium: 'watercolour',
     layers: [
-      stampGateHeronLayer('water', stampGateHeronPolygon(0, 116, 200, 116, 200, 140, 0, 140), { parts: [{ pigment: cerulean, amount: 1 }], strength: 0.45 }, 0.8),
+      stampGateHeronLayer('water', stampGateHeronPolygon(0, 116, 200, 116, 200, 140, 0, 140), mixes.water, 0.8),
       {
         key: 'heron',
         children: [
-          stampGateHeronLayer('body', { kind: 'ellipse', ...STAMP_GATE_HERON_BODY }, { parts: [{ pigment: burntUmber, amount: 1 }], strength: 0.7 }, 0.7),
+          stampGateHeronLayer('body', { kind: 'ellipse', ...STAMP_GATE_HERON_BODY }, mixes.body, 0.7),
           ...between,
           {
             key: 'wing', sheet: { kind: 'own', paper: WING_PAPER },
