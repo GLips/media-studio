@@ -22,26 +22,40 @@ const layer = (key: string): Layer => ({
 
 const pond = painting({
   default: function pond(): PaintingDocument {
-    return { widthPx: 320, heightPx: 240, paper: { color: '#f4f2ed', absorbency: 0.5 }, medium: 'watercolour', layers: [layer('sky'), layer('mist')] };
+    return {
+      widthPx: 320, heightPx: 240, paper: { color: '#f4f2ed', absorbency: 0.5 }, medium: 'watercolour',
+      layers: [layer('sky'), layer('mist'), { key: 'birds', children: [layer('swift'), layer('swallow')] }],
+    };
   },
 });
 
-/** A mist, shown from 1 s, over the back. */
+/**
+ * Over the back: a mist shown from 1 s; birds whose swift shows from 2 s and swallow never, their group gone from 3 s;
+ * and a card whose one layer is hidden, laid on its paper.
+ */
 const { shot } = compilePaintedShot({
   camera: { stage: stampStage({ width: 320, height: 240 }, 2), fov: 35, lens: { bloom: 0, shutter: SHUTTER }, plays: [], animationFps: FPS },
-  planes: [{ id: 'back', depth: 2, source: layersOf(pond, ['sky']) }, { id: 'mist', depth: 1, source: layersOf(pond, ['mist']) }],
-  visibility: { mist: ({ at }) => (at < 1 ? 0 : 1) },
+  planes: [
+    { id: 'back', depth: 4, source: layersOf(pond, ['sky']) }, { id: 'mist', depth: 3, source: layersOf(pond, ['mist']) },
+    { id: 'birds', depth: 2, source: layersOf(pond, ['birds']) }, { id: 'card', depth: 1, source: layersOf(pond, ['swallow'], { ground: 'paper' }) },
+  ],
+  visibility: {
+    mist: ({ at }) => (at < 1 ? 0 : 1), 'birds/swift': ({ at }) => (at < 2 ? 0 : 1), 'birds/swallow': 0, 'birds/birds': ({ at }) => (at < 3 ? 1 : 0),
+    'card/swallow': 0,
+  },
 }, []);
 
-test('a frame solves a painted plane only if it shows at one of its exposures; the back always shows', () => {
+test('a frame solves a painted plane only if it lays something at one of its exposures; the back always does', () => {
   const shownAt = (t: number, mode: 'fast' | 'reference') => {
     const { shown, hidden } = shotSolvablesShown(shot!, shotExposureMoments(SHUTTER, t, mode));
     return [shown.map(({ id }) => id), hidden];
   };
-  assert.deepEqual(shownAt(0.98, 'fast'), [['back'], 1]);
+  assert.deepEqual(shownAt(0.98, 'fast'), [['back', 'card'], 2]);
   // Its shutter, open 0.93..1.03 s, sees the mist arrive in its last exposures.
-  assert.deepEqual(shownAt(0.98, 'reference'), [['back', 'mist'], 0]);
-  assert.deepEqual(shownAt(1.5, 'fast'), [['back', 'mist'], 0]);
+  assert.deepEqual(shownAt(0.98, 'reference'), [['back', 'mist', 'card'], 1]);
+  assert.deepEqual(shownAt(2.5, 'fast'), [['back', 'mist', 'birds', 'card'], 0]);
+  // The swift shows, but not through its group.
+  assert.deepEqual(shownAt(3.5, 'fast'), [['back', 'mist', 'card'], 1]);
 });
 
 test('a warm solves a plane at the frames it shows at, counting those it skips', () => {

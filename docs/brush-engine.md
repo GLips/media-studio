@@ -594,8 +594,9 @@ below the owner; a cel a rig hides, not at all), so a view switched off takes it
 cels do: a composite's card counts the films its steps lay on its sheet (`StampSheetsComposite.cardFilms`).
 `studio/shot-renderer.ts` solves each painted plane once a frame (`studio/shot-painted-plane.ts`,
 through `painting-sheets-solve.ts`), each selection a dissolve blends on its own, if it shows at one of the frame's
-exposures (`shot-shown.ts`; the opaque back always does, a variant as its instanced plane does): one faded to nothing
-lays nothing and covers nothing for a mask, which reads it as no coverage; then each exposure orders its drawables (`shot-plan.ts`) and plans each plane's
+exposures (`shot-shown.ts`: its visibility above 0, and its ground paper or a layer above 0 through its groups; the
+opaque back always shows, a variant as its instanced plane does): one that doesn't lays nothing and covers nothing for
+a mask, which reads it as no coverage; then each exposure orders its drawables (`shot-plan.ts`) and plans each plane's
 moment purely (`shotPlaneLayPlan`, `shot-sheet-lays.ts`): its steps through lattices (`shot-lattice.ts`), its ground,
 its pieces rigs posed, the spans of the occurrences faded apart, groups and own sheets' owners (`shot-visibility.ts`), and a
 key naming all of it. `studio/shot-sheets-lay.ts` lays it over `stamp-lattice-pass.ts`: ground, then each card and
