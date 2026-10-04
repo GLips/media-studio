@@ -13,8 +13,16 @@ test('a model reaching render, I/O or browser code is caught through any chain; 
     ].join('\n'),
     // Legal neighbour: a model's spec, its evaluator under node --test.
     'lib/picture/motion/models/ease.test.ts': "import { test } from 'node:test';\nimport { ease } from './ease.ts';\ntest('e', () => ease(1));\n",
-    // Adversarial: a global read as a parameter's default, beside a parameter that shares a global's name.
-    'lib/picture/motion/models/size.ts': 'export const size = (w = window) => w;\nexport const env = (process: number) => process;\n',
+    // Adversarial: a global read as a parameter's default, beside a parameter, a local and a later function
+    // that share a global's name, and a local in a nested block that shadows nothing outside it.
+    'lib/picture/motion/models/size.ts': [
+      'export const size = (w = window) => w;', 'export const env = (process: number) => process;',
+      'export const early = () => fetch();', 'function fetch() { return 1; }',
+      'export const outer = () => { { const document = 1; void document; } return document; };',
+      'const self = { navigator: 1 };', 'export const own = self.navigator;',
+    ].join('\n'),
+    // A model's own window over time, named as the browser's is.
+    'lib/picture/motion/models/rub.ts': 'const window = { at: 0, over: 1 };\nexport const rub = window.at + window.over;\n',
     // Obvious: a render package.
     'lib/timing/timeline/models/cues.ts': "import React from 'react';\nexport const c = React;\n",
     // Adversarial: two hops through lib code to the render barrel by alias, a require of a builtin, a global via globalThis.
@@ -31,7 +39,7 @@ test('a model reaching render, I/O or browser code is caught through any chain; 
     'work/projects/p/scenes/pond/pond.painting.ts': "import { Scene } from '#studio';\nexport default () => Scene;\n",
   });
   assert.deepEqual(findings.map((finding) => `${finding.path}: ${finding.message}`).toSorted(), [
-    'lib/picture/motion/models/size.ts: a model reaches the global process',
+    'lib/picture/motion/models/size.ts: a model reaches the global document',
     'lib/picture/motion/models/size.ts: a model reaches the global window',
     // Every lib file a chain passes through is a model now, so the middle hop is caught on its own too.
     'lib/picture/reel/models/format.ts: a model reaches studio code (lib/api.ts)',
