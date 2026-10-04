@@ -7,6 +7,7 @@
 // read_write storage of rgba16float: the `texture-formats-tier2` feature.
 
 import { GPU_FULL_FRAME_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
+import { gpuMipLevelCount } from '#lib/platform/gpu/models/gpu-mip-levels.ts';
 import type { StampTipImage, StampTipLevels } from '#lib/paint/brush/models/stamp-tip-levels.ts';
 
 /**
@@ -170,7 +171,7 @@ function mipmappedTextures(device: StampPaintDevice, images: readonly { width: n
   };
   const encoder = device.createCommandEncoder();
   const made = images.map(({ width, height, format, fill }) => {
-    const levels = Math.floor(Math.log2(Math.max(width, height))) + 1;
+    const levels = gpuMipLevelCount(width, height);
     const texture = device.createTexture({
       size: [width, height], format, mipLevelCount: levels,
       usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,

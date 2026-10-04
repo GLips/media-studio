@@ -11,9 +11,6 @@ import { stampWrapsAcross, type StampWrap } from '#lib/paint/painting/models/sta
 import { stampBindGroup, type StampPaintDevice } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
 import { GPU_FULL_FRAME_WGSL, GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 
-/** How many levels a `width` × `height` texture's chain holds: each half the one above, rounded down, to 1 × 1. */
-export const shotPaintedTextureMipLevels = (width: number, height: number) => Math.floor(Math.log2(Math.max(width, height))) + 1;
-
 /** One texture's chain, readied: `encode` downsamples each level below its first from the one above, in order. */
 export type ShotPaintedTextureMipChain = { readonly encode: (encoder: GPUCommandEncoder) => void };
 

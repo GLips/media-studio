@@ -20,12 +20,13 @@ import { drawStampSheetsStill } from '#lib/paint/painting/studio/stamp-sheet-com
 import { createStampUniformArena } from '#lib/paint/painting/studio/stamp-uniform-arena.ts';
 import type { PaintedThreeTextureHandle, PaintedThreeTexturesSupplied } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
+import { gpuMipLevelCount } from '#lib/platform/gpu/models/gpu-mip-levels.ts';
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { GPU_FULL_FRAME_WGSL, GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 import type { PaintedShotPaintOptions } from '../models/shot-compile.ts';
 import { compiledPaintedTextureSourceAt, type CompiledShotPaintedTexture } from '../models/shot-painted-texture-compile.ts';
 import { paintedSourceShares, samePaintedSourceShares, type PaintedSourceShare } from '../models/shot-selection.ts';
-import { shotPaintedTextureMipChain, shotPaintedTextureMipLevels, type ShotPaintedTextureMipChain } from './shot-painted-texture-mips.ts';
+import { shotPaintedTextureMipChain, type ShotPaintedTextureMipChain } from './shot-painted-texture-mips.ts';
 
 /** How a warm runs the textures' solves: stopping between them once `stopped` says so, `solving` told of each before it starts. */
 export type ShotPaintedTexturesWarmRun = { readonly stopped: () => boolean; readonly solving?: (label: string) => void };
@@ -145,7 +146,7 @@ export function createShotPaintedTextures(owner: StampPaintGpuOwner, textures: r
   };
   const arena = createStampUniformArena(device, 1);
   const drawn = textures.map((texture): ShotPaintedTextureSlot => {
-    const { id, widthPx, heightPx, wrap } = texture, handle = { id, texture: own(widthPx, heightPx, 'rgba16float', shotPaintedTextureMipLevels(widthPx, heightPx)), wrap };
+    const { id, widthPx, heightPx, wrap } = texture, handle = { id, texture: own(widthPx, heightPx, 'rgba16float', gpuMipLevelCount(widthPx, heightPx)), wrap };
     return { texture, handle, mips: shotPaintedTextureMipChain(device, handle.texture, wrap), light: own(widthPx, heightPx, 'rgba32float'), read: null, laid: null };
   });
 

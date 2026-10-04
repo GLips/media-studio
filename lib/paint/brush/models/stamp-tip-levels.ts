@@ -5,6 +5,8 @@
 // Each level is the mean of four texels of the one above, rounded, a tie to the darker. A GPU's filter rounds ties
 // either way by the byte, so levels it makes differ by machine. An odd side drops its last texel.
 
+import { gpuMipLevelCount } from '#lib/platform/gpu/models/gpu-mip-levels.ts';
+
 /** One mip level of a grey tip: `texels` a byte each, row by row, 255 bare paper and darker paint. */
 export type StampTipLevel = { width: number; height: number; texels: Uint8Array };
 
@@ -14,13 +16,10 @@ export type StampTipLevels = readonly StampTipLevel[];
 /** A grey image as decoded: a byte a texel, row by row. */
 export type StampTipImage = { width: number; height: number; pixels: Uint8Array };
 
-/** How many mip levels a `width` × `height` image has, down to one texel, as WebGPU counts them. */
-export const stampTipLevelCount = (width: number, height: number) => Math.floor(Math.log2(Math.max(width, height))) + 1;
-
 /** `image`'s mip levels, its own pixels the first. */
 export function stampTipLevels(image: StampTipImage): StampTipLevels {
   const levels: StampTipLevel[] = [{ width: image.width, height: image.height, texels: image.pixels }];
-  for (let level = 1; level < stampTipLevelCount(image.width, image.height); level++) levels.push(halvedStampTipLevel(levels[level - 1]));
+  for (let level = 1; level < gpuMipLevelCount(image.width, image.height); level++) levels.push(halvedStampTipLevel(levels[level - 1]));
   return levels;
 }
 

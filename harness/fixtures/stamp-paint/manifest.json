@@ -228,10 +228,10 @@
     "shot/painted-cylinder": {
       "file": "shot/painted-cylinder.png",
       "output": "52710699a499c054524caef411519a3ed3ea4f519d97885eeda4fe89707c116d",
-      "inputs": "75d528351bba72c2d183abbc9dc1245c8c088a0f37de556684ec0f7240d9637e",
-      "reason": "painted textures carry a mip chain, read trilinearly with anisotropy 8: only the cylinder's sides move, within about 22 px of each silhouette where they turn away and the chain averages what a pixel covers (most at the edge column); its front, the flat texture and the back unchanged. Looked at enlarged: the bands meet the edge as before, a shade smoother",
+      "inputs": "0fa8257754baa1951634e1f6ce0c049283a87e9ad54b5ccd95274dc1d1c785b6",
+      "reason": "vid-157 texture-mips review: a shot texture case's inputs take its frames and cylinder from its row, so painted-cylinder's now hold its place, uv repeats and turn as well as its geometry; image unchanged",
       "accepted": "2026-10-04",
-      "acceptedOver": "a53c81f3",
+      "acceptedOver": "723c2e72",
       "adapter": "apple metal-3"
     },
     "shot/paper-heron": {

@@ -9,7 +9,7 @@
 // target premultiplies), its motion texture the lens's motion layer (lens-three-motion.ts); a painted texture is
 // rgba16float, gamma-encoded and opaque, decoded by paintedThreeColorNode.
 
-import { ExternalTexture, LinearMipmapLinearFilter, PerspectiveCamera, RepeatWrapping, type Camera, type RenderTarget, type Scene } from 'three/webgpu';
+import { ExternalTexture, PerspectiveCamera, RepeatWrapping, type Camera, type RenderTarget, type Scene } from 'three/webgpu';
 import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
 import { shotCameraGrown, type ShotCamera } from '#lib/picture/shot-camera/models/shot-camera.ts';
@@ -169,12 +169,10 @@ export async function loadPaintedThreeSources(owner: StampPaintGpuOwner, camera:
         const external = new ExternalTexture(texture);
         if (stampWrapsAcross(wrap, 'x')) external.wrapS = RepeatWrapping;
         if (stampWrapsAcross(wrap, 'y')) external.wrapT = RepeatWrapping;
-        // Its supplier's levels, three making none. A handle of one level (an old renderer's) is read as it always was.
-        if (texture.mipLevelCount > 1) {
-          external.minFilter = LinearMipmapLinearFilter;
-          external.generateMipmaps = false;
-          external.anisotropy = PAINTED_THREE_ANISOTROPY;
-        }
+        // three samples an ExternalTexture's every level trilinearly by default and never makes levels for one, so a
+        // chained handle needs only anisotropy. A one-level handle (an old renderer's) is read without it: anisotropy
+        // would move the old path's renders.
+        if (texture.mipLevelCount > 1) external.anisotropy = PAINTED_THREE_ANISOTROPY;
         made.push(external);
         return [id, external] as const;
       }));

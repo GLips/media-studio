@@ -417,9 +417,9 @@ then adds its colour (`over` for the back).
 The output blooms the emission once (`lens.bloom`), adds it in linear light, and encodes. Texture contracts:
 pictures, three sources and the composite are rgba16float, premultiplied linear; a painted texture three samples is
 rgba16float, gamma-encoded and opaque in every mip level it has, decoded by `paintedThreeColorNode`, and read
-repeating on each axis its handle's `wrap` names, u along x and v along y. A handle with a mip chain (a shot's) is
-read trilinearly with anisotropy 8; an old renderer's has one level, read as before. A glowing frame drawn without a
-lens is refused.
+repeating on each axis its handle's `wrap` names, u along x and v along y. three reads every handle trilinearly
+across whatever levels it has and makes none of its own; a handle with a mip chain (a shot's) is read with
+anisotropy 8 as well, an old renderer's (one level) without it. A glowing frame drawn without a lens is refused.
 
 **rig** is a painted rig's geometry and its drawing: layers (whole paintings at rest) cut into parts that meet at
 skin joints or hinges. `paint-rig-cuts.ts` holds a layer's parts with each joint resolved to its parent's index (a

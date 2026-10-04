@@ -268,11 +268,8 @@ const STAMP_GATE_LABEL_SOURCE: PaintingSourceModule = {
   },
 };
 
-/**
- * The painted-cylinder shot's view: one frame, the label flat across its top and the cylinder below it, its middle at
- * `cylinderAt`; the camera's field of view.
- */
-const STAMP_GATE_LABEL_VIEW = { frame: { width: 256, height: 304 }, cylinderAt: { x: 128, y: 216 }, fov: 30 } as const;
+/** The painted-cylinder shot's view: one frame, the label flat across its top and the cylinder below it; the camera's field of view. */
+const STAMP_GATE_LABEL_VIEW = { frame: { width: 256, height: 304 }, fov: 30 } as const;
 
 /**
  * A shot case's cylinder: its geometry, its middle at `at` in the frame, its uv running `repeats` times round (u) and up
@@ -287,13 +284,13 @@ export type StampGateShotCylinder = {
 
 /**
  * A shot case but its three.js object (the page's): one frame's size; the scene seconds its `frames` show, drawn in
- * turn through one renderer (a warmed draw warms from the first to the last); its shot, the cylinder's scene built by
- * `cylinder`, wearing painted texture `texture`; the cylinder; its inputs.
+ * turn through one renderer (a warmed draw warms from the first to the last); its shot, the cylinder plane's scene
+ * built by `buildCylinder`, wearing painted texture `texture`; the cylinder; its inputs, frames and cylinder aside.
  */
 export type StampGateShotTextureCase = {
   readonly frame: { readonly width: number; readonly height: number };
   readonly frames: readonly number[];
-  readonly shot: (cylinder: ThreeSource['build']) => PaintedShotProps;
+  readonly shot: (buildCylinder: ThreeSource['build']) => PaintedShotProps;
   readonly cylinder: StampGateShotCylinder;
   readonly texture: string;
   readonly inputs: () => Readonly<Record<string, StampCanonicalDatum>>;
@@ -319,39 +316,34 @@ export const STAMP_GATE_SHOT_TEXTURE_CASES: Readonly<Record<StampGateShotTexture
   'shot/painted-cylinder': {
     frame: STAMP_GATE_LABEL_VIEW.frame,
     frames: STAMP_GATE_LABEL_FRAMES,
-    shot: (cylinder) => {
+    shot: (buildCylinder) => {
       const label = painting(STAMP_GATE_LABEL_SOURCE);
       return {
         camera: { stage: stampStage(STAMP_GATE_LABEL_VIEW.frame, 2), fov: STAMP_GATE_LABEL_VIEW.fov, lens: { bloom: 0, shutter: 0 }, plays: [] },
-        planes: [{ id: 'label', depth: 2, source: layersOf(label, ['label']) }, { id: 'cylinder', depth: 1, source: { kind: 'three', build: cylinder } }],
+        planes: [{ id: 'label', depth: 2, source: layersOf(label, ['label']) }, { id: 'cylinder', depth: 1, source: { kind: 'three', build: buildCylinder } }],
         paintedTextures: [{ id: 'label', source: ({ at }: PaintMoment) => layersOf(label, ['label'], { at }), widthPx: STAMP_GATE_LABEL.width, heightPx: STAMP_GATE_LABEL.height }],
       };
     },
-    cylinder: { geometry: STAMP_GATE_CYLINDER, at: STAMP_GATE_LABEL_VIEW.cylinderAt, repeats: { u: 1, v: 1 }, turnSeconds: null },
+    cylinder: { geometry: STAMP_GATE_CYLINDER, at: { x: 128, y: 216 }, repeats: { u: 1, v: 1 }, turnSeconds: null },
     texture: 'label',
-    inputs: () => ({
-      label: stampGateTexturePainting(STAMP_GATE_LABEL_SOURCE), strokes: STAMP_GATE_LABEL_STROKES, frames: STAMP_GATE_LABEL_FRAMES, texture: STAMP_GATE_LABEL,
-      cylinder: STAMP_GATE_CYLINDER, view: STAMP_GATE_LABEL_VIEW,
-    }),
+    inputs: () => ({ label: stampGateTexturePainting(STAMP_GATE_LABEL_SOURCE), strokes: STAMP_GATE_LABEL_STROKES, texture: STAMP_GATE_LABEL, view: STAMP_GATE_LABEL_VIEW }),
   },
   // The tile finished as the back, flat at its size; worn at its size round a cylinder a quarter of it, so the texture
   // shows minified about 4× and three reads it through its mip chain, the tile's seams and corner coming round as it turns.
   'shot/far-cylinder': {
     frame: STAMP_GATE_FAR_VIEW.frame,
     frames: STAMP_GATE_FAR_FRAMES,
-    shot: (cylinder) => {
+    shot: (buildCylinder) => {
       const tile = stampGateWholePainting(STAMP_GATE_TILE_SOURCE);
       return {
         camera: { stage: stampStage(STAMP_GATE_FAR_VIEW.frame, 2), fov: STAMP_GATE_FAR_VIEW.fov, lens: { bloom: 0, shutter: 0 }, plays: [] },
-        planes: [{ id: 'tile', depth: 2, source: tile }, { id: 'cylinder', depth: 1, source: { kind: 'three', build: cylinder } }],
+        planes: [{ id: 'tile', depth: 2, source: tile }, { id: 'cylinder', depth: 1, source: { kind: 'three', build: buildCylinder } }],
         paintedTextures: [{ id: 'tile', source: tile, widthPx: STAMP_GATE_TILE.width, heightPx: STAMP_GATE_TILE.height }],
       };
     },
     cylinder: STAMP_GATE_FAR_CYLINDER,
     texture: 'tile',
-    inputs: () => ({
-      tile: stampGateTexturePainting(STAMP_GATE_TILE_SOURCE), frames: STAMP_GATE_FAR_FRAMES, texture: STAMP_GATE_TILE, cylinder: STAMP_GATE_FAR_CYLINDER, view: STAMP_GATE_FAR_VIEW,
-    }),
+    inputs: () => ({ tile: stampGateTexturePainting(STAMP_GATE_TILE_SOURCE), texture: STAMP_GATE_TILE, view: STAMP_GATE_FAR_VIEW }),
   },
 };
 
@@ -368,4 +360,7 @@ export function stampGateShotTextureCylinderBox(id: StampGateShotTextureId): { x
 }
 
 /** What shot texture baseline `id` is drawn from, as text: its painting's programs and steps, its times, texture, cylinder and view, and the images. */
-export const stampGateShotTextureInputs = (id: StampGateShotTextureId) => stampCanonicalJson({ id, ...STAMP_GATE_SHOT_TEXTURE_CASES[id].inputs(), images: STAMP_GATE_SHEET_IMAGES });
+export function stampGateShotTextureInputs(id: StampGateShotTextureId): string {
+  const { inputs, frames, cylinder } = STAMP_GATE_SHOT_TEXTURE_CASES[id];
+  return stampCanonicalJson({ id, ...inputs(), frames, cylinder, images: STAMP_GATE_SHEET_IMAGES });
+}
