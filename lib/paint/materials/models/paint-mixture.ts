@@ -59,6 +59,23 @@ export function paintMixtureComponents(mixture: PaintMixture, medium: PaintMediu
   return amounts.toSorted((a, b) => a.pigment.id.localeCompare(b.pigment.id, 'en'));
 }
 
+/**
+ * The components `t` (0..1) of the way from `a` to `b`, as a field of mixes grades its ends' components
+ * (stamp-pigment-paint.ts): each pigment's amount, by id, eased from its amount in `a` to its amount in `b`, an end
+ * lacking it at 0. A medium's white is one of them, so a gouache grade eases its white too.
+ */
+export function paintComponentsBetween(a: readonly PaintComponent[], b: readonly PaintComponent[], t: number): PaintComponent[] {
+  const between = new Map<string, PaintComponent>();
+  for (const [components, share] of [[a, 1 - t], [b, t]] as const) {
+    for (const { pigment, amount } of components) {
+      const kept = between.get(pigment.id);
+      if (kept) kept.amount += share * amount;
+      else between.set(pigment.id, { pigment, amount: share * amount });
+    }
+  }
+  return [...between.values()].toSorted((x, y) => x.pigment.id.localeCompare(y.pigment.id, 'en'));
+}
+
 /** A film as laid: its total absorption and scattering per band. */
 export type PaintFilm = { absorb: PaintBandValues; scatter: PaintBandValues };
 
@@ -82,6 +99,11 @@ export function paintLayered(under: PaintBandValues, films: readonly PaintFilm[]
     for (let b = 0; b < R.length; b++) R[b] = kubelkaMunkOver(kubelkaMunkFilm({ absorb: film.absorb[b], scatter: film.scatter[b] }), R[b]);
   }
   return R;
+}
+
+/** The reflectance of a full stroke of `components`, dried in `medium`, on white paper: the colour its swatch shows. */
+export function paintComponentsOverWhite(components: readonly PaintComponent[], medium: PaintMedium): PaintBandValues {
+  return paintLayered(new Float64Array(components[0].pigment.K.length).fill(1), [paintFilm(components, medium)]);
 }
 
 /** The reflectance of `film` built thick enough to hide anything under it. */

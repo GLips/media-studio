@@ -3,10 +3,10 @@
 // fits a group's palette (stamp-pigment-paint.ts), and the four-channel layers holding them. A pigment added late in
 // a layer changes the layout its first application is solved in, so the evaluation diff reads it there.
 
-import { paintColorPigmentId, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
-import { stampPaintFieldEnds } from '#lib/paint/painting/models/stamp-paint-field.ts';
+import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import { stampPigmentLayers } from '#lib/paint/painting/models/stamp-pigment-paint.ts';
-import type { AnyApplication, Field, Layer, Mix, MixPart, Wash } from './painting-document.ts';
+import type { AnyApplication, Field, Layer, Mix, Wash } from './painting-document.ts';
+import { paintingFieldMixes, paintingPartPigment } from './painting-mix.ts';
 
 /**
  * A layer's film layout: `palette`, pigment ids a slot each; `paintLayers`, the four-channel layers holding coverage,
@@ -14,23 +14,17 @@ import type { AnyApplication, Field, Layer, Mix, MixPart, Wash } from './paintin
  */
 export type PaintingPigmentSlots = { readonly palette: readonly string[]; readonly paintLayers: number; readonly open: number | null };
 
-/** A part's pigment by id: an appearance's own, or a hex's `color:#rrggbb`. */
-const paintingPigmentId = (pigment: MixPart['pigment']) => (typeof pigment === 'string' ? paintColorPigmentId(pigment) : pigment.id);
-
 /** The pigment ids one mix lays in `medium`, sorted by id as the engine's mixture components are. */
 function mixPigmentIds({ parts, strength }: Mix, medium: PaintMedium): string[] {
-  const ids = parts.filter(({ amount }) => amount > 0).map(({ pigment }) => paintingPigmentId(pigment));
+  const ids = parts.filter(({ amount }) => amount > 0).map(({ pigment }) => paintingPartPigment(pigment).id);
   const { lightening } = medium;
   if (lightening.kind === 'white' && strength < 1 && !ids.includes(lightening.white.id)) ids.push(lightening.white.id);
   return ids.toSorted((a, b) => a.localeCompare(b, 'en'));
 }
 
 /** The pigment ids a charge's mix lays in `medium`, in first-use order: a field's first end's, then its second's. */
-function paintingMixPigmentIds(mix: Mix | Field<Mix>, medium: PaintMedium): string[] {
-  if ('parts' in mix) return mixPigmentIds(mix, medium);
-  const { first, second } = stampPaintFieldEnds(mix);
-  return [...new Set([...mixPigmentIds(first, medium), ...mixPigmentIds(second, medium)])];
-}
+const paintingMixPigmentIds = (mix: Mix | Field<Mix>, medium: PaintMedium): string[] =>
+  [...new Set(paintingFieldMixes(mix).flatMap((end) => mixPigmentIds(end, medium)))];
 
 /**
  * Whether `wash` lifts. A lift takes up what the paper holds through its wetness (stampDepositionLaw), an eraser in a

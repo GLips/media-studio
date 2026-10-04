@@ -6,23 +6,14 @@
 // far apart mix on the way (blue and orange to grey, where blue and rose keep a violet). The middle is mixed by the
 // pure mixer and laid over white, as the engine lays it.
 
-import { paintColorPigmentId, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
-import { paintFilm, paintLayered, paintMixtureComponents, paintMixtureProblem, type PaintComponent, type PaintMixture } from '#lib/paint/materials/models/paint-mixture.ts';
-import type { PaintMixturePigment } from '#lib/paint/materials/models/paint-pigment.ts';
+import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
+import { paintComponentsBetween, paintComponentsOverWhite, paintMixtureComponents, paintMixtureProblem, type PaintComponent } from '#lib/paint/materials/models/paint-mixture.ts';
 import { PAINT_BANDS, paintBandsToLinearRgb, paintLinearToHex, paintLinearToLab } from '#lib/paint/materials/models/paint-spectrum.ts';
 import { stampPaintFieldProblem } from '#lib/paint/painting/models/stamp-paint-field.ts';
 import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
-import type { Field, Hex, Mix, MixPart } from './painting-document.ts';
+import type { Field, Mix } from './painting-document.ts';
+import { isPaintingHexPigment, paintingMixture } from './painting-mix.ts';
 import { isPaintingHexColor, isPaintingList, paintingField, type PaintingProblemList } from './painting-problem.ts';
-
-const isHex = (pigment: MixPart['pigment']): pigment is Hex => typeof pigment === 'string';
-
-/** A part's pigment as the engine's mixture reads it: a hex is a colour standing for a pigment of its own, fitted as its medium fits a colour. */
-export const paintingMixPigment = (pigment: MixPart['pigment']): PaintMixturePigment =>
-  (isHex(pigment) ? { color: pigment, id: paintColorPigmentId(pigment), name: pigment } : pigment);
-
-/** `mix` as the engine's mixture, the one the compile lays and the checks mix. */
-export const paintingMixture = ({ parts, strength }: Mix): PaintMixture => ({ parts: parts.map(({ pigment, amount }) => ({ pigment: paintingMixPigment(pigment), amount })), strength });
 
 /**
  * Each end of a field of mixes, by its field within the field (a linear's `from.value` and `to.value`), so a problem
@@ -44,32 +35,18 @@ const GREY_MIDDLE_KEEPS = 0.5;
 /** Ends duller than this CIELAB chroma are near greys already, with no colour for the middle to lose. */
 const GREY_ENDS_BELOW = 10;
 
-const WHITE_PAPER = new Float64Array(PAINT_BANDS.count).fill(1);
-
 /** What `components` lay, a full stroke over white paper in `medium`, as linear sRGB. */
-const overWhite = (components: readonly PaintComponent[], medium: PaintMedium) =>
-  paintBandsToLinearRgb(PAINT_BANDS, paintLayered(WHITE_PAPER, [paintFilm(components, medium)]));
+const overWhite = (components: readonly PaintComponent[], medium: PaintMedium) => paintBandsToLinearRgb(PAINT_BANDS, paintComponentsOverWhite(components, medium));
 
 const labChroma = (linear: readonly number[]) => {
   const [, a, b] = paintLinearToLab(linear);
   return Math.hypot(a, b);
 };
 
-/** Halfway between two ends' components, as the engine grades them: each pigment at the mean of its ends' amounts, an end lacking it at 0. */
-function componentsHalfway(a: readonly PaintComponent[], b: readonly PaintComponent[]): PaintComponent[] {
-  const halfway = new Map<string, PaintComponent>();
-  for (const { pigment, amount } of [...a, ...b]) {
-    const kept = halfway.get(pigment.id);
-    if (kept) kept.amount += amount / 2;
-    else halfway.set(pigment.id, { pigment, amount: amount / 2 });
-  }
-  return [...halfway.values()];
-}
-
 /** Why a field of mixes from `from` to `to` reads grey halfway in `medium`, or null. */
 function mixFieldGreyProblem(from: Mix, to: Mix, medium: PaintMedium): string | null {
   const [a, b] = [from, to].map((end) => paintMixtureComponents(paintingMixture(end), medium, PAINT_BANDS));
-  const ends = [overWhite(a, medium), overWhite(b, medium)], middle = overWhite(componentsHalfway(a, b), medium);
+  const ends = [overWhite(a, medium), overWhite(b, medium)], middle = overWhite(paintComponentsBetween(a, b, 0.5), medium);
   const duller = Math.min(...ends.map(labChroma)), kept = labChroma(middle) / duller;
   if (duller < GREY_ENDS_BELOW || kept >= GREY_MIDDLE_KEEPS) return null;
   const [first, second] = ends.map(paintLinearToHex);
@@ -83,12 +60,12 @@ function checkOneMix(list: PaintingProblemList, owner: string, field: string, mi
     list.error(owner, paintingField(field, 'parts'), 'a mix needs its parts', box);
     return false;
   }
-  const bad = mix.parts.findIndex(({ pigment }) => (isHex(pigment)
+  const bad = mix.parts.findIndex(({ pigment }) => (isPaintingHexPigment(pigment)
     ? !isPaintingHexColor(pigment)
     : !(pigment.id && isPaintingHexColor(pigment.overWhite) && isPaintingHexColor(pigment.overBlack))));
   if (bad >= 0) {
     const { pigment } = mix.parts[bad];
-    const message = isHex(pigment) ? `'${pigment}' isn't #rrggbb` : `${pigment.id || 'a pigment'} needs an id and #rrggbb overWhite and overBlack`;
+    const message = isPaintingHexPigment(pigment) ? `'${pigment}' isn't #rrggbb` : `${pigment.id || 'a pigment'} needs an id and #rrggbb overWhite and overBlack`;
     list.error(owner, paintingField(field, `parts[${bad}].pigment`), message, box);
     return false;
   }

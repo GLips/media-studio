@@ -9,20 +9,19 @@
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { StampStrokePoint } from '#lib/paint/brush/models/stamp-placement.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
-import type { PaintMixturePigment } from '#lib/paint/materials/models/paint-pigment.ts';
 import type { CompiledStampArea } from '#lib/paint/painting/models/stamp-area.ts';
 import { compileStampBrushedMask } from '#lib/paint/painting/models/stamp-brushed-mask.ts';
 import { compileDeposit } from '#lib/paint/painting/models/stamp-deposit-compile.ts';
 import { stampFillPartsJoined, type StampFillApplication } from '#lib/paint/painting/models/stamp-fill.ts';
 import type { StampMark, StampMarkGeometry } from '#lib/paint/painting/models/stamp-marks.ts';
 import { compilePaintAction, compileWashAction, mapStampPaintField, type CompiledStampAction, type StampRecipeWashAction } from '#lib/paint/painting/models/stamp-paint-action.ts';
-import { stampPaintFieldEnds, type StampSeededPaintField } from '#lib/paint/painting/models/stamp-paint-field.ts';
+import type { StampSeededPaintField } from '#lib/paint/painting/models/stamp-paint-field.ts';
 import type { CompiledStampDeposit, CompiledStampMask } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampResolvedGeometry } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { StampSheetAnchors } from '#lib/paint/painting/models/stamp-sheet-program.ts';
 import { compilePaintingArea, paintingOuterRings, paintingRegionRings } from './painting-area-compile.ts';
 import type { AnyApplication, Amount, BrushRef, Charge, FillGeometry, Footprint, MarkFootprint, Mix, Resist, Subpath } from './painting-document.ts';
-import { paintingMixPigment, paintingMixture } from './painting-mix-check.ts';
+import { paintingMixture } from './painting-mix.ts';
 
 /**
  * The brush a document's ref names, resolved from its style; throws for one it lacks. Compiles are kept by its
@@ -32,18 +31,6 @@ import { paintingMixPigment, paintingMixture } from './painting-mix-check.ts';
 export type PaintingBrushOf = (ref: BrushRef) => StampBrush;
 
 const paintingMixMaterial = (mix: Mix): PaintMaterial => ({ kind: 'mixture', ...paintingMixture(mix) });
-
-/** Every pigment `mix` names, as a mixture names it. */
-export function paintingMixPigments(mix: Mix | StampSeededPaintField<Mix>): PaintMixturePigment[] {
-  return paintingFieldMixes(mix).flatMap(({ parts }) => parts.map(({ pigment }) => paintingMixPigment(pigment)));
-}
-
-/** The mixes a charge's mix, constant or a field, names: a field's two ends. */
-function paintingFieldMixes(mix: Mix | StampSeededPaintField<Mix>): readonly Mix[] {
-  if ('parts' in mix) return [mix];
-  const { first, second } = stampPaintFieldEnds(mix);
-  return [first, second];
-}
 
 /** A share, constant or a field, as a field. */
 const paintingAmountField = (amount: Amount): StampSeededPaintField<number> => (typeof amount === 'number' ? { kind: 'constant', value: amount } : amount);

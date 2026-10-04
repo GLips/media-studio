@@ -12,9 +12,10 @@ import { stampBoilSeed, type CompiledStampDeposit } from '#lib/paint/painting/mo
 import type { StampSheetCompositeStep, StampSheetEntry, StampSheetFilm, StampSheetPrewet, StampSheetProgram, StampSheetWash } from '#lib/paint/painting/models/stamp-sheet-program.ts';
 import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
 import { compilePaintingArea } from './painting-area-compile.ts';
-import { compilePaintingDeposit, compilePaintingFluid, paintingMixPigments, type PaintingBrushOf } from './painting-deposit-compile.ts';
+import { compilePaintingDeposit, compilePaintingFluid, type PaintingBrushOf } from './painting-deposit-compile.ts';
 import type { AnyApplication, NodeKey, Prewet, Wash } from './painting-document.ts';
 import { paintingEntryReads, paintingSheetHead } from './painting-entry-reads.ts';
+import { paintingMixPigments } from './painting-mix.ts';
 import { PAINTING_REST_POSE } from './painting-pose.ts';
 import { paintingWashLifts } from './painting-pigment-slots.ts';
 import { paintingGeometryBox } from './painting-footprint.ts';
