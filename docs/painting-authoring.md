@@ -1183,45 +1183,46 @@ red), so a near-black is a hex part (Media). In crayon a mix goes to about L* 25
 `TITANIUM_WHITE` (`#lib/paint/materials/models/paint-medium.ts`) mixes as a pigment too.
 
 **Brushes**, by style. Wet brushes lay by the wet law in a wet wash; dry ones by the dry law anywhere. "Pressure"
-is what a stroke point's pressure moves (crayon's medium, and a dry brush's in a wet one, also decide how pressure
-meets the tooth). How far it moves them varies brush to brush, and the packs are private, so the numbers live on your
-machine: `studio brushes describe <style>` prints, for each brush, the share of its size, opacity and flow (and
-anything else pressure moves) kept at pressure 0.3, 0.6 and 1; its visible width over its diameter at a few
-diameters; the smallest diameter it was measured at, under which no probe drew a line, so plan nothing finer; and
+lists everything a stroke point's pressure moves, as `studio brushes describe` prints it. On the paper's peaks
+(crayon's medium, and a dry brush in a wet one) the tooth answers pressure too, catching more as it presses, and a
+brush's grain depth by pressure is set aside, so it isn't listed there. How far pressure moves each varies brush to
+brush, and the packs are private, so the numbers live on your machine: `studio brushes describe <style>` prints, for
+each brush, the share of each kept at pressure 0.3, 0.6 and 1; its visible width over its diameter at a few
+diameters; the smallest diameter its profile holds (plan nothing finer; most go down to the probes' 2 px floor); and
 whether it catches the paper's peaks.
 
 | Style | Brush | Lays | For | Pressure |
 |---|---|---|---|---|
-| `watercolor` | `wash` | wet | a lightly textured body with soft ends: floods nothing waits on, as its texture lands water in flecks | size, opacity, flow |
-| | `filler` | wet | a big, open, mottled glaze that keeps paper showing | size, opacity, flow |
+| `watercolor` | `wash` | wet | a lightly textured body with soft ends: floods nothing waits on, as its texture lands water in flecks | size, opacity, flow, count |
+| | `filler` | wet | a big, open, mottled glaze that keeps paper showing | size, opacity, flow, count |
 | | `wet` | wet | cloudy wet-in-wet with soft edges; sky bands melting together | size, opacity, flow |
 | | `blend` | wet | a soft, feathered wash | size, opacity, flow |
 | | `roughEdge` | wet | a dense body with a broken, granulated edge: hair, a pine | size, opacity, flow |
-| | `shadow`, `charge` | wet | a round wash pooling at its rim; the round tip for a disc; touches dropped into a wet wash | size, flow |
-| | `dry` | dry | bristle streaks following the stroke, catching the paper's peaks and skipping its valleys | size, opacity, flow |
+| | `shadow`, `charge` | wet | a round wash pooling at its rim; the round tip for a disc; touches dropped into a wet wash | size, opacity, flow, roundness |
+| | `dry` | dry | bristle streaks following the stroke, catching the paper's peaks and skipping its valleys | size, opacity, flow, roundness |
 | | `pigment` | wet | granulating veins, a texture pass near the base colour | size, opacity, flow |
 | | `crystals` | wet | salt crystallisation as a band, for a pass clipped to a shape | size |
-| | `stains` | wet | a bloom with a dark pooled edge | size, opacity, flow |
-| | `blotch` | wet | a cauliflower bloom with a dense heart, as placed stamps | size, opacity, flow |
+| | `stains` | wet | a bloom with a dark pooled edge | size, opacity, flow, scatter |
+| | `blotch` | wet | a cauliflower bloom with a dense heart, as placed stamps | size, opacity, flow, count, scatter |
 | | `splashes` | wet | clean round drops of mixed size | size, opacity, flow |
 | | `pencil` | dry | a grainy, broken line | size, flow |
-| | `ink` | wet | a crisp, opaque, tapered line: dark accents, birds | size, flow |
-| | `detail` | wet | a smooth tapered line holding at 4–12 px; laid big, the even flood later work waits on | size, opacity, flow |
-| `gouache` | `wash` | wet | a smooth body for floods: a toned ground, each element's flat block | size |
-| | `flat` | wet | a broad flat over a block: shade, cloth lights | size |
-| | `thick` | wet | dense and opaque, a crisp edge | size, flow |
-| | `round` | wet | shadows, folds, the core | size, flow |
-| | `bristly` | wet | bristle marks inside the stroke; under falling pressure (`drag`, `pressFlick`) it narrows until the bristles part: a dry run-out | size |
-| | `dab` | wet | a short round dab: small lights, glints | size |
+| | `ink` | wet | a crisp, opaque, tapered line: dark accents, birds | size, opacity, flow, roundness, grainDepth |
+| | `detail` | wet | a smooth tapered line holding at 4–12 px; laid big, the even flood later work waits on | size, opacity, flow, roundness |
+| `gouache` | `wash` | wet | a smooth body for floods: a toned ground, each element's flat block | size, roundness, scatter |
+| | `flat` | wet | a broad flat over a block: shade, cloth lights | size, count |
+| | `thick` | wet | dense and opaque, a crisp edge | size, flow, roundness, grainDepth |
+| | `round` | wet | shadows, folds, the core | size, flow, grainDepth |
+| | `bristly` | wet | bristle marks inside the stroke; under falling pressure (`drag`, `pressFlick`) it narrows until the bristles part: a dry run-out | size, grainDepth |
+| | `dab` | wet | a short round dab: small lights, glints | size, opacity, roundness |
 | | `dry` | dry | catches the paper's peaks and skips its valleys, leaving what's in them: a scumble over a block, a broken edge. Its width doesn't follow pressure; harder pressure catches more of the tooth | roundness |
-| | `detail` | wet | a fine opaque line: stems, lip lights | size, opacity, flow |
+| | `detail` | wet | a fine opaque line: stems, lip lights | size, opacity, flow, roundness, grainDepth |
 | `crayon` | `stick` | dry | a hard stick's point: hatching, crisp grainy marks | size |
 | | `side` | dry | a stick on its side: broad grainy zigzags, a first layer | size, flow |
 | | `tooth` | dry | a soft stick leaving the tooth bare: a scumbled ground | size, opacity, flow |
 | | `conte` | dry | waxy and dense: small solid darks | roundness |
-| | `chalk` | dry | a rough, broken chalky mark for texture | size, opacity, flow |
+| | `chalk` | dry | a rough, broken chalky mark for texture | size, opacity, flow, roundness, count |
 | | `pencil` | dry | a grainy graphite outline | size, flow |
-| | `eraser` | dry | a lift rubbing a soft light back toward the paper | size, flow |
+| | `eraser` | dry | a lift rubbing a soft light back toward the paper | size, flow, count |
 
 **Papers**: each of those styles' `vvds` pack holds `papers/vvds-watercolor-canvas-1.png` … `-4.png`, each with a
 `.grain.png`; name them `{style, pack: 'vvds', file}`. The styles paint on canvas-3: grain depth 0.35 (watercolor),
@@ -1249,7 +1250,7 @@ share of it, so with the default a stroke 3 diameters long tapers only a quarter
 0.2). For short blades, petals and wings, set `fullProfileAt` to about the stroke's length in diameters, or 0 for the
 full depth always. Each profile has a floor: `taper` touches down and lifts off at 0.2, `pressFlick` ends at 0.1,
 `swell` and `drag` at 0.15; a brush thins there only as far as it binds size to pressure (`studio brushes
-describe`), and a stroke whose ends fall under the brush's smallest measured diameter may lay nothing there that reads.
+describe`), and a stroke whose ends fall under the smallest diameter its brush's profile holds may lay nothing there that reads.
 `curvature` 0..1, how much a long straight run lightens; `wobble: {pressure 0..1, position diameters}`. A stroke's paint spans about
 `diameterPx` × `scale`, times the size its brush binds to pressure, edge to edge; a textured tip is ragged inside
 that, and wobble `position` moves the line by up to that many diameters. A curve is the document's one function: the

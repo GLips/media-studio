@@ -115,8 +115,8 @@ scene's `expect` says what must be on screen while a word is spoken:
   references.
 - `procreate-brushes`: Procreate brushes read into a `StampBrush`, and the stroke Procreate previews them along.
 - `brush-packs`: a pack of brushes on disk, and `studio brushes import` for either app's.
-- `style`: a private painting style (`work/styles/<name>/`), the styles a project names, and `StampPainting`, which
-  paints in one in a scene.
+- `style`: a private painting style (`work/styles/<name>/`), the styles a project names, `StampPainting`, which
+  paints in one in a scene, and `studio brushes describe`, a style's brushes as numbers to plan by.
 - `brush-fidelity`: how close a painted brush comes to its app's own, measured, scored and fitted
   (`npm run brushes:sheet`).
 - `studies`: wet and dry passages, fill and stroke-hand sheets, painted for a person to judge.

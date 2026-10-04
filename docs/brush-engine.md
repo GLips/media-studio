@@ -69,8 +69,9 @@ anywhere leaves the other pairs' marks where they were. A flood (`placeStampFloo
 outline and in rows across it, landing within a barrier its `edge` (`StampFloodEdge`) makes: `barrier`, the default,
 the outline itself, a wall its paint and water stop at and its drying rim gathers against; `lost`, a ramp out over
 `reach` px past it (its line `ragged` as an area's may be), so the wash bleeds into wet paper and dries without a
-line. A lost edge's strokes are planned over the outline grown as far as the ramp reaches (`stampFloodLaidPast`), so
-the ramp grades paint that's there rather than the paper past where the strokes would stop. Only a barrier is a wall
+line. A lost edge's strokes are planned over the outline grown as far as its barrier lets paint through
+(`stampFloodLaidPast`), so the ramp grades paint that's there rather than the paper past where the strokes would stop.
+A lost edge and a document's bleed are one soft edge (`stampLostEdge`). Only a barrier is a wall
 (`stampDepositWalled`), in the wet field's held wetness and the rim's walls alike. A flood's `reach` lays the region
 grown by its distance grid (`stampGrownPolygon`), not scaled. Every mark ends where its edge meets the outline unless its `reach` runs it past (`{ past }`, diameters
 its centres may lie outside: rows run out across and along the shape, guided marks' ends on past the outline, a
@@ -246,11 +247,16 @@ one catches on the peaks. Every wet medium also declares a `dryBrush` tooth (0.8
 dry-media brushes drag over the sheet and catch only the peaks above it, more as they press (`paintDryContact`), and
 skip the valleys whatever the paper's depth, which is tuned to how wet paint shows the tooth. The paint stays the
 medium's (it glazes or covers and mixes, stacking no wax). The dry brush's contact scales how far a pixel moves toward
-its paint (`dryBrushShare`), not the paint itself, so a valley it skips keeps what's there: a scumble over a block
-leaves the block in the valleys rather than thinning it. The gate's `wash/dry-brush` (watercolour) and
-`wash/dry-brush-gouache` hold a dry stroke darker where the paper stands higher, a wet one not, and a pale dry stroke
-over a dark band darker where the paper is lower. A profile's medium key leaves the dry-brush tooth out: probes paint
-a pack's brushes as the pack reads them, never as a dry brush.
+its paint (`dryBrushShare`, beside the rest of its contact in `stamp-paint-pigment-lay.ts`), not the paint itself, so a
+valley it skips keeps what's there: a scumble over a block leaves the block in the valleys rather than thinning it.
+How a deposit meets the paper (`stampBrushPaperContact`: peaks, valleys or flat) is decided in one place, which the
+compiler, the stamps' load and `studio brushes describe` all ask; on the peaks, a dry medium's or a dry brush's, the
+tooth answers pressure and the brush's grain depth by pressure is set aside (`STAMP_PRESSURE_GRAIN_OWNER`). The
+gate's `wash/dry-brush` (watercolour) and `wash/dry-brush-gouache` hold a dry stroke darker where the paper stands
+higher and a wet one not, and a pale dry stroke scumbled over half a dark band lightening it more where the paper
+stands higher while its valleys keep the bare half's darkness. A profile's medium key reads the medium as a probe
+sees it (`paintMediumAsProbed`), without the dry-brush tooth: probes paint a pack's brushes as the pack reads them,
+never dragged dry.
 
 **Water.** A deposit's water is resolved once, as it compiles in its medium (`stampDepositWater`, kept as
 `StampPigmentDeposit.water`): a lift's none; water its action states, which a medium without `'water'` refuses (crayon
@@ -673,6 +679,8 @@ importer read both apps' brushes; inside either app's feature, that app would im
 
 **style** is a style in a project: `StampPaintStyle` (`style.ts`), the styles a project names, checked before a bundle
 (`project-styles.ts`), the bundle's styles module (`@stamp-paint-styles`) and `StampPainting`, a painting in a scene.
+It also reads a workspace style in Node (`readWorkspaceStampPaintStyle`), and `studio brushes describe` prints its
+brushes as numbers to plan by (`style-brush-numbers.ts`, read by `workspace-style-brush-numbers.ts`).
 
 **brush-fidelity** holds a painted brush against its target, a Procreate preview or a Photoshop reference capture
 (`brush-fidelity-target.ts`): one measure (`stroke-measure.ts`), one scorer (`brush-fidelity-score.ts`) that the
