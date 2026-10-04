@@ -12,7 +12,7 @@
 import { PAINT_KUBELKA_MUNK_WGSL } from '#lib/paint/materials/models/paint-kubelka-munk.ts';
 import { PAINT_PAPER_WGSL, paintPigmentSeed } from '#lib/paint/materials/models/paint-paper.ts';
 import { paintHexToLinear } from '#lib/paint/materials/models/paint-spectrum.ts';
-import type { PaintMedium, PaintStackedLayering } from '#lib/paint/materials/models/paint-medium.ts';
+import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import { STAMP_PIGMENT_GROUP_SLOTS, stampPigmentAmountsAt, stampPigmentGroupLayers, type StampPigmentPaint, type StampPigmentUnderpaint } from '../models/stamp-pigment-paint.ts';
 import { STAMP_WET_LIFT_WGSL, stampLiftPigmentResidueShare, stampLiftResidueWgsl, stampLiftKnockoutKeep } from '../models/stamp-wet-lift.ts';
 import { STAMP_OPAQUE_COVER, type CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
@@ -20,6 +20,7 @@ import type { StampPaintColor } from '#lib/paint/materials/models/paint-material
 import type { StampPaintCompositor, StampWashGroupLayer } from './stamp-paint-compositor.ts';
 import type { StampPaintDevice } from './stamp-paint-gpu.ts';
 import { STAMP_REFLECTANCE_READING_WGSL } from './stamp-reflectance-reading.ts';
+import { STAMP_STACKED_FILL_REACH, stampPigmentLayWgsl } from './stamp-paint-pigment-lay.ts';
 import { gpuUniformLayout, gpuUniformWriter, type GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 
 /** Words per component in the component buffer: slot, seed, granulation, flocculation. */
@@ -74,72 +75,6 @@ fn washMoved(now: array<vec4f, ${layers}>, wasPigment: f32) -> array<vec4f, ${la
   return moved;
 }`;
 }
-
-/**
- * A mixing medium's lay: each stroke moves the paint toward its own, carrying `pickup` of the wet paint under it, so
- * where two washes meet they mix rather than one replacing the other.
- */
-const mixedLay = (pickup: number, s: string) => /* wgsl */ `
-fn layDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32, wrap: vec2f) {
-  let cover = clamp(coverage + max(rims.x, rims.y), 0.0, 1.0);
-  if (cover <= 0.0) { return; }
-  let incoming = incomingAt${s}(tooth, at, press, 0.0, wrap);
-  let under = textureLoad(layer, pixel, 0u).x;
-  let rate = cover * (1.0 - ${f32(pickup)} * under);
-  for (var l = 0u; l < LAYERS; l++) {
-    if (isKnockoutLayer(l)) { continue; }
-    let was = textureLoad(layer, pixel, l);
-    var now = was + rate * (incoming[l] - was);
-    if (l == 0u) { now.x = cover + under * (1.0 - cover); }
-    textureStore(layer, pixel, l, now);
-  }
-}`;
-
-/** How far round a pixel a stacking medium's tooth fills from, in texels of the paper's grain: about a valley across. */
-const STACKED_FILL_REACH = 6;
-
-/**
- * A stacking medium's lay (PaintStackedLayering): each layer adds its pigment to what the tooth holds, as crossing
- * crayon layers mix. Past `holds` full loads a stroke trades its wax for what's there, its own on top. Wax held fills
- * the valleys `fill` of the way, so each later layer reaches further into them.
- */
-const stackedLay = ({ holds, fill }: PaintStackedLayering, body: number, s: string) => /* wgsl */ `
-// The wax held round \`pixel\` before this deposit, a ring u.beforeReach pixels out and the pixel: a valley fills with
-// wax pressed in from the peaks round it, never having caught any itself.
-fn heldAround${s}(pixel: vec2u) -> f32 {
-  let last = vec2i(textureDimensions(before)) - 1;
-  var held = 0.0;
-  for (var k = 0; k < 9; k++) {
-    let angle = f32(k) * 0.7854;
-    let offset = select(vec2i(round(u.beforeReach * vec2f(cos(angle), sin(angle)))), vec2i(0), k == 8);
-    let q = vec2u(clamp(vec2i(pixel) + offset, vec2i(0), last));
-    for (var l = 0u; l < LAYERS; l++) { if (!isKnockoutLayer(l)) { held += dot(textureLoad(before, q, l, 0), pigmentMask(l)); } }
-  }
-  return held / 9.0;
-}
-fn layDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32, wrap: vec2f) {
-  let cover = clamp(coverage + max(rims.x, rims.y), 0.0, 1.0);
-  if (cover <= 0.0) { return; }
-  var was: array<vec4f, LAYERS>;
-  var held = 0.0;
-  for (var l = 0u; l < LAYERS; l++) {
-    was[l] = textureLoad(layer, pixel, l);
-    if (!isKnockoutLayer(l)) { held += dot(was[l], pigmentMask(l)); }
-  }
-  let incoming = incomingAt${s}(tooth, at, press, heldAround${s}(pixel) / ${f32(holds * body)} * ${f32(fill)}, wrap);
-  var added = 0.0;
-  for (var l = 0u; l < LAYERS; l++) { if (!isKnockoutLayer(l)) { added += cover * dot(incoming[l], pigmentMask(l)); } }
-  // What's there gives way only as far as the stroke's own wax overfills the tooth.
-  let keep = select(1.0, clamp((${f32(holds * body)} - added) / max(held, 1e-6), 0.0, 1.0), held + added > ${f32(holds * body)});
-  let under = was[0].x;
-  for (var l = 0u; l < LAYERS; l++) {
-    if (isKnockoutLayer(l)) { continue; }
-    // The open share isn't wax: a dry stroke sets it, as any paint laid over it does.
-    var now = mix(was[l] * (1.0 - cover), was[l] * keep + cover * incoming[l], pigmentMask(l));
-    if (l == 0u) { now.x = cover + under * (1.0 - cover); }
-    textureStore(layer, pixel, l, now);
-  }
-}`;
 
 /** The suffix of medium `m`'s own WGSL functions (`incomingAtM0`), which a switch on GROUP_MEDIA reaches. */
 const mediumSuffix = (m: number) => `M${m}`;
@@ -295,14 +230,10 @@ fn liftedUnder(i: u32, covered: vec4f, behind: array<vec4f, UNDER_LAYERS>, left:
   const contactOf = ({ paperContact }: PaintMedium, depth: string, granulation: string, load: string, press: string, filled: string) => (paperContact.kind === 'peaks'
     ? `paintDryContact(h, meanHeight, ${f32(paperContact.tooth)}, ${depth}, ${press}, ${filled})`
     : `paintWetSettle(valley, ${depth}, ${granulation}, ${load})`);
-  // A deposit's own contact in `medium`. A dry brush in a wet medium catches the peaks as a dry medium does, at the
-  // hand's press, its paint the medium's: its valleys go as bare as its wet paint would settle into them deep.
+  // A deposit's own contact in `medium`: a dry brush's paint, in a wet medium, settles nowhere (dryBrushShare).
   const layContactOf = (medium: PaintMedium) => {
     const own = contactOf(medium, 'u.paperDepth', 'c.granulation', `amount / ${f32(medium.body)}`, 'press', 'filled');
-    const { paperContact } = medium, dryBrush = paperContact.kind === 'valleys' ? paperContact.dryBrush : undefined;
-    if (!dryBrush) return own;
-    const depth = `paintSettleDepth(u.paperDepth, c.granulation, amount / ${f32(medium.body)})`;
-    return `select(${own}, paintDryContact(h, meanHeight, ${f32(dryBrush.tooth)}, ${depth}, press, filled), paint.dryBrush != 0u)`;
+    return medium.paperContact.kind === 'valleys' ? `select(${own}, 1.0, paint.dryBrush != 0u)` : own;
   };
   const groupOf = (deposit: CompiledStampDeposit) => {
     const group = paint.deposits.get(deposit)?.group;
@@ -343,8 +274,8 @@ fn washHold(l: u32, at: vec2f, tooth: vec2f, depth: f32, held: vec4f, wrap: vec2
   return {
     targets: { layer: { kind: 'array', layers }, painting: { kind: 'array', layers: V + underLayers } },
     readsStampTints: false,
-    // Read for every deposit where any medium needs it: a medium that doesn't reads past it.
-    reads: { press: media.some(({ paperContact }) => paperContact.kind === 'peaks'), before: media.some(({ layering }) => layering.kind === 'stacks') ? { reach: STACKED_FILL_REACH } : null },
+    // Read for every deposit where any medium or dry brush needs it: a deposit that doesn't reads past it.
+    reads: { press: media.some(({ paperContact }) => paperContact.kind === 'peaks') || [...paint.deposits.values()].some(({ dryBrush }) => dryBrush), before: media.some(({ layering }) => layering.kind === 'stacks') ? { reach: STAMP_STACKED_FILL_REACH } : null },
     deposit: {
       layout: PIGMENT_PAINT_DEPOSIT,
       wgsl: /* wgsl */ `
@@ -384,7 +315,7 @@ fn incomingAt${s}(tooth: vec2f, at: vec2f, press: f32, filled: f32, wrap: vec2f)
   }
   return incoming;
 }
-${medium.layering.kind === 'stacks' ? stackedLay(medium.layering, medium.body, s) : mixedLay(medium.pickup, s)}`)}
+${stampPigmentLayWgsl(medium, s)}`)}
 ${dispatched('layDeposit', 'pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32, wrap: vec2f', 'pixel, coverage, rims, tooth, at, press, wrap')}`,
       wet: /* wgsl */ `
 ${STAMP_WET_LIFT_WGSL}

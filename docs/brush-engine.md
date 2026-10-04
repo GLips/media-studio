@@ -240,10 +240,15 @@ applications stay direct; the gate's `schedule/forward: eraser` holds a crayon l
 and untouched past its reach.
 
 **Dry brush.** Where paint meets the tooth is the medium's `paperContact`: a wet medium pools into the valleys, a dry
-one catches on the peaks. Watercolour also declares a `dryBrush` tooth: its dry-media brushes drag over the sheet and
-catch only the peaks above it, their valleys left as bare as wet paint would settle into them deep, while the paint
-stays watercolour's (it glazes and mixes, stacking no wax). The gate's `wash/dry-brush` holds a dry stroke darker
-where the paper stands higher, and a wet one not. Gouache declares none, so its dry brush still settles.
+one catches on the peaks. Every wet medium also declares a `dryBrush` tooth (0.85 for watercolour and gouache): its
+dry-media brushes drag over the sheet and catch only the peaks above it, more as they press (`paintDryContact`), and
+skip the valleys whatever the paper's depth, which is tuned to how wet paint shows the tooth. The paint stays the
+medium's (it glazes or covers and mixes, stacking no wax). The dry brush's contact scales how far a pixel moves toward
+its paint (`dryBrushShare`), not the paint itself, so a valley it skips keeps what's there: a scumble over a block
+leaves the block in the valleys rather than thinning it. The gate's `wash/dry-brush` (watercolour) and
+`wash/dry-brush-gouache` hold a dry stroke darker where the paper stands higher, a wet one not, and a pale dry stroke
+over a dark band darker where the paper is lower. A profile's medium key leaves the dry-brush tooth out: probes paint
+a pack's brushes as the pack reads them, never as a dry brush.
 
 **Water.** A deposit's water is resolved once, as it compiles in its medium (`stampDepositWater`, kept as
 `StampPigmentDeposit.water`): a lift's none; water its action states, which a medium without `'water'` refuses (crayon

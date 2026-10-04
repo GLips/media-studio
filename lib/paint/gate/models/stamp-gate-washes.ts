@@ -266,8 +266,9 @@ function washCases(): StampGateWashCase[] {
     stampGateLiftColourCase('wash/lift-paler-gouache-wet', 'gouache', false),
     stampGateLiftColourCase('wash/lift-paler-gouache-dry', 'gouache', true),
     stampGateLiftColourCase('wash/lift-paler-crayon', 'crayon', false),
-    // A dry brush and a wet one in watercolour, read against the paper's grain.
-    stampGateDryBrushCase('wash/dry-brush'),
+    // A dry brush and a wet one in each wet medium, read against the paper's grain.
+    stampGateDryBrushCase('wash/dry-brush', 'watercolour'),
+    stampGateDryBrushCase('wash/dry-brush-gouache', 'gouache'),
     {
       id: 'wash/wait', property: 'drawn',
       subject: washPainting('watercolour', null, (wash) => {

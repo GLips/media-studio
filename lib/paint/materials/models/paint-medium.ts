@@ -52,9 +52,9 @@ export type PaintMedium = {
   /**
    * Where the paint meets the paper's tooth: a wet medium pools into the valleys (as deep as the paper is, and further
    * by granulation); a dry one catches on the peaks above `tooth` of the mean height, lower as it presses harder.
-   * `dryBrush`: a wet medium's dry-media brush catches the peaks above its `tooth`, its paint still the medium's.
+   * `dryBrush`: its dry-media brush catches the peaks above its `tooth`, skipping the valleys, its paint the medium's.
    */
-  paperContact: { kind: 'valleys'; dryBrush?: { tooth: number } } | { kind: 'peaks'; tooth: number };
+  paperContact: { kind: 'valleys'; dryBrush: { tooth: number } } | { kind: 'peaks'; tooth: number };
   layering: PaintLayering;
   /** How much more a film scatters dry than wet: air between the particles, where water was. Watercolour dries lighter. */
   dryingScatter: number;
@@ -147,7 +147,7 @@ export const PAINT_MEDIA = {
   // of white nearly hides black, so a lift thins it toward the paper, paler as it goes (vid-122).
   gouache: {
     name: 'gouache', color: { kind: 'masstone', leastStrength: 0.05, cover: 0.9 }, body: 20, lightening: { kind: 'white', white: TITANIUM_WHITE }, granulation: 0.2,
-    paperContact: { kind: 'valleys' }, layering: { kind: 'mixes' }, dryingScatter: 0.4, pickup: 0.2, liftResidue: { kind: 'staining', films: 0.6 },
+    paperContact: { kind: 'valleys', dryBrush: { tooth: 0.85 } }, layering: { kind: 'mixes' }, dryingScatter: 0.4, pickup: 0.2, liftResidue: { kind: 'staining', films: 0.6 },
     // A first guess (vid-117): it barely travels, dries fast and re-dissolves once dry.
     wetting: { spread: 0.1, drying: 120, openTime: 0, rewetting: 0.9, defaultWater: 0.4, sheen: { shiny: 0.4, damp: 0.35 } },
     capabilities: ['wet-history', 'wet-conditions', 'water', 'lift'],

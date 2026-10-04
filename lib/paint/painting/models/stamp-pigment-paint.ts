@@ -115,8 +115,8 @@ export const STAMP_PIGMENT_UNDERPAINT_SLOTS = 16;
 
 /**
  * `knockout`: whether it's in its group's knockout, taking from the paint behind the group rather than laying its own.
- * `dryBrush`: whether its paint catches the paper's peaks as a dry brush does in its medium (PaintMedium's
- * `paperContact.dryBrush`): a dry-media brush in a medium that says how. Its water is the painting's media binding's
+ * `dryBrush`: whether it drags over the paper as a dry brush does in its medium (PaintMedium's
+ * `paperContact.dryBrush`): a dry-media brush in a wet medium. Its water is the painting's media binding's
  * (StampPaintMedia).
  */
 export type StampPigmentDeposit = { group: number; components: readonly StampPigmentComponent[]; grade: StampPigmentGrade; knockout: boolean; dryBrush: boolean };
@@ -196,7 +196,7 @@ export function compileStampPigmentPaint(painting: StampMixedPainting, mixing: S
       deposits.set(deposit, {
         group: g,
         knockout: false,
-        dryBrush: deposit.brush.media === 'dry' && medium.paperContact.kind === 'valleys' && !!medium.paperContact.dryBrush,
+        dryBrush: deposit.brush.media === 'dry' && medium.paperContact.kind === 'valleys',
         grade: kind === 0 ? UNGRADED : { kind, geometry },
         components: pigments.map((pigment) => {
           let slot = palette.findIndex(({ id }) => id === pigment.id);

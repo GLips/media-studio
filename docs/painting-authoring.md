@@ -502,7 +502,7 @@ paints it.
 |---|---|---|---|
 | Body (unit films per full load) | 1 | 20 | 15 |
 | Lightens with | water (strength < 1 thins) | white (strength < 1 adds titanium white) | white wax |
-| Paper contact | valleys; a dry brush skips below 0.85 of the tooth | valleys | peaks (tooth 0.85); burnish reaches valleys |
+| Paper contact | valleys; a dry brush catches the peaks (tooth 0.85) and skips the valleys | valleys; a dry brush catches the peaks (tooth 0.85) and skips the valleys | peaks (tooth 0.85); burnish reaches valleys |
 | Layering in one layer | mixes, pickup 0.5 | mixes, pickup 0.2 | stacks: trades past 4/3 loads, filling the valleys 60% there |
 | Spread / drying / rewetting | 0.5 d / 240 s / 0.35 | 0.1 d / 120 s / 0.9 | 0 / — / 1 (an eraser) |
 | Sheen shiny / damp | 0.7 / 0.35 | 0.4 / 0.35 | — |
@@ -1187,7 +1187,7 @@ is what a stroke point's pressure moves (crayon's medium also decides how pressu
 | | `blend` | wet | a soft, feathered wash | size, opacity, flow |
 | | `roughEdge` | wet | a dense body with a broken, granulated edge: hair, a pine | size, opacity, flow |
 | | `shadow`, `charge` | wet | a round wash pooling at its rim; the round tip for a disc; touches dropped into a wet wash | size, flow |
-| | `dry` | dry | bristle streaks following the stroke | size, opacity, flow |
+| | `dry` | dry | bristle streaks following the stroke, catching the paper's peaks and skipping its valleys | size, opacity, flow |
 | | `pigment` | wet | granulating veins, a texture pass near the base colour | size, opacity, flow |
 | | `crystals` | wet | salt crystallisation as a band, for a pass clipped to a shape | size |
 | | `stains` | wet | a bloom with a dark pooled edge | size, opacity, flow |
@@ -1202,7 +1202,7 @@ is what a stroke point's pressure moves (crayon's medium also decides how pressu
 | | `round` | wet | shadows, folds, the core | size, flow |
 | | `bristly` | wet | bristle marks inside the stroke | size |
 | | `dab` | wet | a short round dab: small lights, glints | size |
-| | `dry` | dry | breaks over paper and paint: a scumble | — |
+| | `dry` | dry | catches the paper's peaks and skips its valleys, leaving what's in them: a scumble over a block, a broken edge. Its width doesn't follow pressure; harder pressure catches more of the tooth | roundness |
 | | `detail` | wet | a fine opaque line: stems, lip lights | size, opacity, flow |
 | `crayon` | `stick` | dry | a hard stick's point: hatching, crisp grainy marks | size |
 | | `side` | dry | a stick on its side: broad grainy zigzags, a first layer | size, flow |

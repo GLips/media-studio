@@ -92,10 +92,13 @@ export function stampBrushProbePaint(mixing: StampPaintMixing): PaintMaterial {
  */
 export function stampBrushProbeMediumKey({ paper, mixing, paint }: StampBrushProbeMedium, sources: Readonly<Record<string, string>>): string {
   const image = ({ pack, file }: StampBrushAsset) => ({ archive: sources[pack] ?? null, file });
+  // Without a wet medium's dry-brush tooth: probes paint a pack's brushes as it reads them, never as a dry brush.
+  const probed = mixing.kind === 'pigment' && mixing.medium.paperContact.kind === 'valleys'
+    ? { ...mixing, medium: { ...mixing.medium, paperContact: { kind: 'valleys' } } } : mixing;
   const keyed = {
     assets: STAMP_PAINT_ASSETS_VERSION,
     paper: { color: paper.color, image: paper.image ? image(paper.image) : null, grain: paper.grain ? { ...paper.grain, image: image(paper.grain.image) } : null },
-    mixing, paint,
+    mixing: probed, paint,
   };
   return stampBrushProfileHash(JSON.stringify(keyed));
 }
