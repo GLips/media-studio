@@ -256,13 +256,13 @@ export function shotRigPosed(
 }
 
 /**
- * A rig's cel as the whole selection paints it unposed, and `key`, naming its pixels (its readback's key): equal keys,
- * equal pictures, in any end or frame.
+ * A rig's picture read back (a rest cel, or a pieces rig's sheets) and `key`, naming its pixels (its readback's key):
+ * equal keys, equal pictures, in any end or frame.
  */
-export type ShotRigRestCel = { readonly picture: PaintRigPicture; readonly key: string };
+export type ShotRigKeyedPicture = { readonly picture: PaintRigPicture; readonly key: string };
 
 /** A part's cel as a frame shows it: its node `cel`, its picture as the whole selection paints it unposed, and that picture's key. */
-export type ShotRigCel = ShotRigRestCel & { readonly cel: NodeKey };
+export type ShotRigCel = ShotRigKeyedPicture & { readonly cel: NodeKey };
 
 /** Problems that leave `rig`'s cels unskinnable, as one error naming the rig. */
 const shotRigSkinError = (rig: CompiledShotRig, problems: readonly PaintingProblem[]) => paintingProblemsError(`shot's rig ${rig.occurrence}`, problems);

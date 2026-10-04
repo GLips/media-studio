@@ -18,7 +18,7 @@ import type { StampSheetFilmKept } from '#lib/paint/painting/studio/stamp-sheet-
 import { createLensThreeMotion, LENS_THREE_MOTION_NAME } from '#lib/picture/lens/studio/lens-three-motion.ts';
 import { paintRigPiecesBox, type PaintRigPicture } from '#lib/paint/rig/models/paint-rig-pieces.ts';
 import { createPaintRigPieceMeshes, type PaintRigPieceMeshes } from '#lib/paint/rig/studio/paint-rig-piece-meshes.ts';
-import { shotRigPiecePictures, shotRigSkin, type CompiledShotRig, type ShotRigRestCel, type ShotRigSkin } from '../models/shot-rigs.ts';
+import { shotRigPiecePictures, shotRigSkin, type CompiledShotRig, type ShotRigKeyedPicture, type ShotRigSkin } from '../models/shot-rigs.ts';
 import type { ShotPiecesPlan, ShotRigPiecesAt } from '../models/shot-sheet-lays.ts';
 import type { ShotPiecesDrawn } from './shot-sheets-lay.ts';
 
@@ -26,7 +26,7 @@ import type { ShotPiecesDrawn } from './shot-sheets-lay.ts';
 export type ShotSolvedFilms = { readonly compiled: PaintingSelectionCompiled; readonly films: readonly (readonly StampSheetFilmKept[])[] };
 
 /** A rig's cels as the whole selection paints them unposed, each with the key naming its pixels, by document key. */
-export type ShotRigRestCels = ReadonlyMap<NodeKey, ShotRigRestCel>;
+export type ShotRigRestCels = ReadonlyMap<NodeKey, ShotRigKeyedPicture>;
 
 const EMPTY: PaintRigPicture = { x0: 0, y0: 0, w: 0, h: 0, rgba: new Float32Array(0) };
 
@@ -51,7 +51,7 @@ export function createShotRigPictures(owner: StampPaintGpuOwner, costs?: StampPa
    * card's edge is made from those, and a step laying another isn't read. Kept under its films' keys and its cards'
    * papers, which name its pixels.
    */
-  const readSteps = async (solved: ShotSolvedFilms, steps: readonly number[], keeps: (sheet: number, film: number) => boolean = () => true): Promise<ShotRigRestCel> => {
+  const readSteps = async (solved: ShotSolvedFilms, steps: readonly number[], keeps: (sheet: number, film: number) => boolean = () => true): Promise<ShotRigKeyedPicture> => {
     const { compiled } = solved, films = solved.films.map((each, s) => each.filter((_, f) => keeps(s, f)));
     // Each film's index among those kept, -1 for one left out.
     const remap = solved.films.map((each, s) => {
@@ -71,7 +71,7 @@ export function createShotRigPictures(owner: StampPaintGpuOwner, costs?: StampPa
     return { picture: crop ? await readStampSheetsPictureKept(owner, key, composite, crop, 'clear', costs) : EMPTY, key };
   };
   /** Cel `key`'s steps read back clear: with `cards`, the cards of sheets it or a node under it owns; else its paint alone. */
-  const cel = (solved: ShotSolvedFilms, key: NodeKey, cards: boolean): Promise<ShotRigRestCel> =>
+  const cel = (solved: ShotSolvedFilms, key: NodeKey, cards: boolean): Promise<ShotRigKeyedPicture> =>
     readSteps(solved, paintingNodeSteps(solved.compiled, key).filter((index) => cards || solved.compiled.steps[index].kind === 'film'));
   return {
     /**

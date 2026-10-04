@@ -68,6 +68,7 @@ export function shotPlanePlaceAt(plane: CompiledShotPaintedPlane, motion: Compil
 
 /**
  * The selections plane `plane` of `shot` blends at frame moment `t`, read at its source clock's moment, each weighted
+ * (paintedSourceShares). A callback's answer is checked as its load checked the first: throws on its problems
  * (paintedSourceProblems, paintedPlaneBlendProblems, shotPlaneRigEndProblems), and on occurrences other than its
  * first evaluation's, which motion, rigs and visibility were checked against.
  */
