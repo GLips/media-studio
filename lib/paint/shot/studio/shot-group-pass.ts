@@ -1,6 +1,7 @@
-// shot-group-pass.ts: a faded group occurrence composited apart and mixed back (ENGINE 5.4, 6.1 step 6). Before the
-// first step of its span the plane's painting, emission and motion are kept; after its last, each is mixed from what
-// was kept toward what the span laid by the group's visibility, so all it holds fades as one, never layer by layer.
+// shot-group-pass.ts: a faded group occurrence, or a faded own sheet's owner, composited apart and mixed back (ENGINE
+// 5.4, 6.1 step 6). Before the first step of its span the plane's painting, emission and motion are kept; after its
+// last, each is mixed from what was kept toward what the span laid by its visibility, so all it holds, an own sheet's
+// card included, fades as one, never layer by layer.
 //
 // The painting is the compositor's state, not light: mixing it is exact for a flat compositor and close for a pigment
 // one, whose state is near linear over the small steps a fade takes between two pictures.

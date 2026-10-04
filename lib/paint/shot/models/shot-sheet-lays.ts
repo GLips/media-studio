@@ -1,9 +1,9 @@
 // shot-sheet-lays.ts: how a painted plane lays its selection's sheets at one moment (ENGINE 5.3, 5.4, 6.2), purely.
 // Poses split at each sheet's owner: the owner's node and those enclosing it, then the plane's place, carry the sheet
 // whole; the nodes below it posed its marks before the solve, and a lattice carries the solved paint where they pose
-// it now. Each composite step becomes a lattice (a card over its sheet's edge, a film over its paint); a sheet drawn
-// as pieces gives way to its pieces at its card. An isolated group's span is mixed back by its visibility. Masks lie
-// where the plane does (ENGINE 6.3). shotPlaneLayPlan plans and keys a moment; the studio draws it.
+// it now. Each composite step becomes a lattice (a card over its sheet's shown films, a film over its paint); a sheet
+// drawn as pieces gives way to its pieces at its card. A faded group's or own sheet owner's span is mixed back by its
+// visibility. Masks lie where the plane does (ENGINE 6.3). The studio draws what shotPlaneLayPlan plans.
 
 import { PAINT_SIMILARITY_IDENTITY, paintSimilarityBox, paintSimilarityInverse, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import type { NodeKey } from '#lib/paint/document/models/painting-document.ts';
@@ -29,7 +29,7 @@ import { shotNodeShift } from './shot-reach.ts';
 import {
   shotRigHiddenCels, shotRigPieces, shotRigPiecesPlaced, type CompiledShotRig, type ShotRigFound, type ShotRigPosed, type ShotRigSkin, type ShotRigStretch,
 } from './shot-rigs.ts';
-import { shotIsolatedGroups } from './shot-visibility.ts';
+import { shotFadedApart } from './shot-visibility.ts';
 
 /** A plane at one moment: where it lays its document (document px to plane px), and its nodes' poses by document key. */
 export type ShotPlaneAt = { readonly place: PaintingNodePose; readonly poses: PaintingPoses };
@@ -59,11 +59,12 @@ export const shotSheetPlaceAt = (tree: PaintingTree, sheet: PaintingSheet, at: S
 export const shotLayerMarksAt = (tree: PaintingTree, layer: number, poses: PaintingPoses): PaintingNodePose => posedBy(shotLayerMarkKeys(tree, layer), poses);
 
 /**
- * How a step lays this moment: a card's paper over its sheet's `edge` (document px), a film through its lattice, or
- * a rig's pieces (`rig`, its group occurrence) in place of its group's sheet.
+ * How a step lays this moment: a card's paper over its sheet's `edge` (document px), cut round the sheet's films
+ * `films` (those shown, painted somewhere); a film through its lattice; or a rig's pieces (`rig`, its group
+ * occurrence) in place of its group's sheet.
  */
 export type ShotStepLay =
-  | { readonly kind: 'card'; readonly sheet: number; readonly edge: StampBox; readonly lattice: ShotLattice }
+  | { readonly kind: 'card'; readonly sheet: number; readonly films: readonly number[]; readonly edge: StampBox; readonly lattice: ShotLattice }
   | { readonly kind: 'film'; readonly sheet: number; readonly film: number; readonly layer: NodeKey; readonly lattice: ShotLattice }
   | { readonly kind: 'pieces'; readonly rig: string };
 
@@ -87,8 +88,8 @@ export type ShotSelectionLayInput = {
 
 /**
  * Each of the selection's steps as it lays at `input.at`: null for one with nothing to lay (a film painted nowhere, a
- * card of no paint, a step a rig's pieces stand in for, or one in a hidden cel). A pieces group's own card is where
- * its pieces go.
+ * card of no shown paint, a step a rig's pieces stand in for, or one in a hidden cel). A card is cut round its sheet's
+ * shown films; a pieces group's card is where its pieces go.
  */
 export function shotSelectionStepLays({ compiled, filmBoxes, solved, at, shutter, pieces, hidden }: ShotSelectionLayInput): (ShotStepLay | null)[] {
   const { tree, sheets, steps } = compiled;
@@ -96,16 +97,18 @@ export function shotSelectionStepLays({ compiled, filmBoxes, solved, at, shutter
     const { sheet } = sheets[s], place = (moment: ShotPlaneAt) => shotSheetPlaceAt(tree, sheet, moment);
     return { at: place(at), shutter: shutter && { open: place(shutter.open), close: place(shutter.close) } };
   };
+  const unseen = (key: NodeKey) => [key, ...tree.byKey.get(key)!.groups].some((each) => hidden.has(each));
   return steps.map((step): ShotStepLay | null => {
-    const { sheet } = sheets[step.sheet], key = paintingStepNode(compiled, step);
-    if ([key, ...tree.byKey.get(key)!.groups].some((each) => hidden.has(each))) return null;
+    const { sheet } = sheets[step.sheet];
+    if (unseen(paintingStepNode(compiled, step))) return null;
     // Groups drawn as pieces never nest: nothing in a rigged group is rigged again.
     const group = [...pieces.keys()].find((each) => paintingSheetInGroup(tree, sheet, each));
     if (group !== undefined) return step.kind === 'card' && sheet.owner === group ? { kind: 'pieces', rig: pieces.get(group)! } : null;
     const placed = placeOf(step.sheet);
     if (step.kind === 'card') {
-      const edge = filmBoxes[step.sheet].reduce<StampBox | undefined>((union, box) => paintingBoxUnion(union, box ?? undefined), undefined);
-      return edge ? { kind: 'card', sheet: step.sheet, edge, lattice: shotPlacedLattice(edge, placed.at, placed.shutter) } : null;
+      const films = sheets[step.sheet].layers.flatMap((layer, f) => (filmBoxes[step.sheet][f] && !unseen(tree.layers[layer].node.key) ? [f] : []));
+      const edge = films.reduce<StampBox | undefined>((union, f) => paintingBoxUnion(union, filmBoxes[step.sheet][f]!), undefined);
+      return edge ? { kind: 'card', sheet: step.sheet, films, edge, lattice: shotPlacedLattice(edge, placed.at, placed.shutter) } : null;
     }
     const box = filmBoxes[step.sheet][step.film];
     if (!box) return null;
@@ -117,19 +120,19 @@ export function shotSelectionStepLays({ compiled, filmBoxes, solved, at, shutter
   });
 }
 
-/** An isolated group's span of steps, `first` to `last` inclusive, and how visible it is. */
-export type ShotFadeSpan = { readonly group: NodeKey; readonly first: number; readonly last: number; readonly visibility: number };
+/** The span of steps a node faded apart composites, `first` to `last` inclusive, and how visible it is, below 1. */
+export type ShotFadeSpan = { readonly node: NodeKey; readonly first: number; readonly last: number; readonly visibility: number };
 
 /**
- * The spans of steps `isolated` groups (document keys, by visibility) composite apart: each one's steps
- * (paintingNodeSteps), contiguous in document order. Outermost first where spans nest; none for a group the selection
- * lays nothing of.
+ * The spans of steps `apart` nodes (document keys, by visibility: shotFadedApart's) composite apart: each one's steps
+ * (paintingNodeSteps, its own sheet's card among them), contiguous in document order. Outermost first where spans
+ * nest; none for a node the selection lays nothing of.
  */
-export function shotFadeSpans(compiled: PaintingSelectionCompiled, isolated: ReadonlyMap<NodeKey, number>): ShotFadeSpan[] {
+export function shotFadeSpans(compiled: PaintingSelectionCompiled, apart: ReadonlyMap<NodeKey, number>): ShotFadeSpan[] {
   const spans: ShotFadeSpan[] = [];
-  for (const [group, visibility] of isolated) {
-    const inside = paintingNodeSteps(compiled, group);
-    if (inside.length) spans.push({ group, first: inside[0], last: inside.at(-1)!, visibility });
+  for (const [node, visibility] of apart) {
+    const inside = paintingNodeSteps(compiled, node);
+    if (inside.length) spans.push({ node, first: inside[0], last: inside.at(-1)!, visibility });
   }
   return spans.toSorted((a, b) => a.first - b.first || b.last - a.last);
 }
@@ -255,7 +258,7 @@ export type ShotPlaneLayInput = {
 };
 
 /**
- * A painted plane at one moment, planned: its steps, its isolated groups' spans (outermost first), its ground, its
+ * A painted plane at one moment, planned: its steps, its faded spans (outermost first), its ground, its
  * pieces rigs, its masks, what other planes' masks read of it, its visibility, whether it glows and whether anything
  * travels over the shutter. `key` names all the lay reads; what its alphaOf masks read is named per frame
  * (shotPresentedKeys).
@@ -325,18 +328,19 @@ export function shotPlaneLayPlan(input: ShotPlaneLayInput, moment: ShotMomentAt)
   const hidden = new Set(rigs.filter(({ rig }) => !rig.pieces).flatMap(({ rig }) => shotRigHiddenCels(rig, read(rig, at).pose)));
   const filmBoxes = films.map((sheet) => sheet.map(({ box }): StampBox | null => box && { x0: box.x, y0: box.y, x1: box.x + box.w, y1: box.y + box.h }));
   const lays = shotSelectionStepLays({ compiled, filmBoxes, solved, at: atMoment, shutter: shutterAt, pieces: new Map(piecesRigs.map(({ rig }) => [rig.group, rig.occurrence])), hidden });
+  // A layer owning its sheet is faded by its span, card and film as one: its film lays whole inside it.
+  const owners = new Set(compiled.sheets.flatMap(({ sheet: { owner } }) => (owner === null ? [] : [owner])));
   const steps = lays.map((lay): ShotStepFrame | null => {
     if (!lay) return null;
     if (lay.kind !== 'film') return { lay, opacity: 1, glow: null };
     const nearest = motion.nearest.get(shotOccurrenceKey(plane.id, lay.layer));
-    return { lay, opacity: visibilityOf(lay.layer), glow: (nearest !== undefined && motion.nodes.get(nearest)?.glow) || null };
+    return { lay, opacity: owners.has(lay.layer) ? 1 : visibilityOf(lay.layer), glow: (nearest !== undefined && motion.nodes.get(nearest)?.glow) || null };
   });
 
-  // A group inside a pieces rig shows whole or not at all in its pictures: it isn't composited apart.
-  const groups = plane.occurrences.filter((occurrence) => occurrence.kind === 'group' && !piecesRigs.some(({ rig }) => occurrence.groups.includes(rig.occurrence)));
-  const groupVisibility = new Map(groups.map(({ key, node }) => [key, visibilityOf(node)]));
-  const isolated = new Set(shotIsolatedGroups(groups.map(({ key }) => key), groupVisibility, shot.masks.read, new Set(rigs.map(({ rig }) => rig.occurrence))));
-  const fades = shotFadeSpans(compiled, new Map(groups.filter(({ key }) => isolated.has(key)).map(({ key, node }) => [node, groupVisibility.get(key)!])));
+  // What's inside a pieces rig shows whole or not at all in its pictures: it isn't composited apart.
+  const fadable = plane.occurrences.filter((occurrence) => !piecesRigs.some(({ rig }) => occurrence.groups.includes(rig.occurrence)));
+  const fadableVisibility = new Map(fadable.map(({ key, node }) => [key, visibilityOf(node)]));
+  const fades = shotFadeSpans(compiled, new Map(shotFadedApart(fadable, fadableVisibility, owners).map(({ key, node }) => [node, fadableVisibility.get(key)!])));
 
   const { widthPx, heightPx } = selection.painting.document, groundKind = selection.ground ?? (plane.opaqueBack ? 'paper' : 'transparent');
   let ground: ShotGroundLay = null;

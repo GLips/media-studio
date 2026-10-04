@@ -173,8 +173,8 @@ export type PaintedTexture = { readonly id: string; readonly source: Presentatio
 
 /**
  * A shot: the paint camera (its stage frame is the canvas's pixels), planes in any order, motion over occurrences (node
- * ids are OccurrenceKeys), visibility 0..1 (a group's fades all it holds; a layer's, its own film only) and rigs by
- * occurrence. `warm`: the render frames in `from..to`, their films solved before the first shows.
+ * ids are OccurrenceKeys), visibility 0..1 (shot-visibility.ts) and rigs by occurrence. `warm`: the render frames in
+ * `from..to`, their films solved before the first shows.
  */
 export type PaintedShotProps = {
   readonly camera: Omit<PaintCameraOptions, 'planes'>;

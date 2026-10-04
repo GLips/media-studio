@@ -22,8 +22,9 @@ selection's prefix, its coverage or its picture (`paintingFilmCoverage`, `painti
 under the camera and its lens, on one canvas or several among HTML, a clear back over HTML behind the first; pin and
 cover lays (`shot-placement.ts`), the page read as each frame draws (`shot-dom-points.ts`); occurrences and
 their motion (nodes hang from their nearest enclosing node, a paintless group's included, clocks chaining);
-visibility, a group's fading all it holds as one; rigs (Composition), a cel swap re-solving nothing; instanced planes,
-many items sharing a few finished variants, each blurred along its own travel; path and `alphaOf` masks; per-plane
+visibility, a group's fading all it holds as one and a card fading with its owner; rigs (Composition), a cel swap
+re-solving nothing; instanced planes, many items sharing a few finished variants, each blurred along its own travel;
+path and `alphaOf` masks; per-plane
 `clock` and `sourceClock` holds; dissolves and `bracket`, each end solved and laid once and their pictures summed by
 weight, a rig posing every end alike; painted textures, paintings a three plane's objects wear, drawn at each frame's moment (Painted textures);
 `warm`; and the cost report, each frame's and the warm's, in a profiling render. **NEW** marks behaviour the brush
@@ -362,6 +363,16 @@ it, on its real tooth.
 | `{kind: 'own', paper, dryingScale?}` | a new sheet of `paper`, which its layers lie on, drying at its own `dryingScale` (1), never another sheet's | the cut-out moves whole, paper and paint, with no solve; its layers posed apart from it are repainted into it | as far as its layers' paint landed, by its paper: a lift lightens paint and leaves the card whole | collage, a cut-out that slides, turns or bends |
 | `{kind: 'scene'}` | the root's sheet, past any enclosing own sheet, at the root's `dryingScale` | as left out, on the root's paper | no: it glazes | a shadow under a cut-out, falling on the scene's paper. A shadow on a card it's glued to is a layer of the card beside it |
 
+An own sheet's card is its paper cut round its paint, at twice the paint's gain: at each px it covers min(1, 2 ×
+the most coverage any of its shown layers laid there). So the card is whole wherever its paint is half laid, and it
+runs ahead of the paint through a soft edge's outer half: a `feather` or `bleed` outline on a card shows a rim of its
+paper past the paint, and gouache, covering under 1 in its tooth, shows the paper through. Tint the paper where a
+cut-out should read as paint alone (a gouache card, a sprig, a star): its paint's colour hides both. Leave it pale
+where it should read as cut paper. Keep a card's outline crisp, and paint an edge meant to melt into what's behind on
+its parent's sheet, where nothing lies under it but that sheet's paint. A card is cut from its shown layers: a cel a
+rig hides takes its paper with it. The owner's visibility, a layer's or a group's, fades card and paint as one, so
+one at 0 leaves nothing; a layer on another's card fades its own film, the card staying.
+
 Posing is a node's place, pins, sway, flutter or rig. On a sheet the occurrence owns, it moves finished paint.
 Otherwise (**NEW**) it moves the marks before painting: strokes, stamps and fills are planned at rest, then each mark
 goes where the pose puts it, scaled and turned with it, with its clips, reserves and resists, and the sheet's history
@@ -648,7 +659,7 @@ shows what a property step re-solves; the cost report counts what each frame and
 | 27 | animated property, smooth | `bracket(v, LEVELS)` → `dissolve(layersOf(lower), layersOf(upper), k)` | ghosting where edges move between levels |
 | 28 | one painting, two places | two planes selecting the same evaluation and layers | each is its own occurrence |
 | 29 | a drawing appearing stroke by stroke | a direct wash with `clock: {origin}` and an `at` per application, on any sheet: a direct wash has no say in its drying | or a path mask over the finished drawing |
-| 30 | an element fading | `visibility: {'plane/layer': (m) => …}` on the shot | a group's visibility fades it as one |
+| 30 | an element fading | `visibility: {'plane/layer': (m) => …}` on the shot | a group's visibility fades it as one; a cut-out's owner fades its card with it |
 | 31 | an element passing behind a ridge on shared paper | its applications' `clips: [{region: ABOVE_RIDGE, anchor: 'paper'}]`; motion on its occurrence | the clip stays on the paper while the element moves |
 | 32 | an element mingling with a wet wash as it moves | its layer on the wash's sheet (left out, or `scene` under an own sheet), posed by motion or a rig; its charge timed while the wash is wet (`at`, or `on: 'wet'`), later work `at` once it has set | a solve per pose from its first application; hiding it leaves its water's work in the wash: fade a group holding both |
 | 33 | a figure that bends | its parts as layers (or groups) under one group; `rigs: {'plane/figure': {parts, pose}}` | on an own sheet the paint bends; on shared paper it's repainted per pose, into the sheet's water |
@@ -699,7 +710,7 @@ plane's paint must cover what the camera shows of it: the camera build reports a
 | selection | `layersOf(evaluation, keys, {ground?, at?})` | layer or group keys; groups include their descendants; composed in document order; an own sheet's layers with their owner, on one plane |
 | occurrence | `<plane id>/<layer or group key>`, at any depth of the tree | the same layer on two planes is two occurrences; a plane's occurrences are fixed by its first evaluation and checked each frame |
 | motion | `motion {nodes, plays}`: `OccurrenceMotionNode`s and the animation feature's plays; node ids are occurrence keys | a node's parent is its enclosing group's node, else its plane. A group's node takes all a layer's does, with one phase, seed and map for everything it holds |
-| visibility | `visibility: {[occurrence]: 0..1 or (m) => …}` | multiplies the occurrence's composite; a group's fades all it holds, its own sheet's paper included, as one. A layer's fades its own film: what its water did to other layers' paint on the sheet stays (Sheets). A picture or three plane's fades its picture or render, and what a mask reads of it. Inside a rig drawn as pieces, a layer or group shows (1) or doesn't (0): fade the rigged group whole. The opaque back takes none, being shown wherever the frame is; a clear back over HTML fades as a nearer plane does |
+| visibility | `visibility: {[occurrence]: 0..1 or (m) => …}` | multiplies the occurrence's composite; a group's fades all it holds as one, and an own sheet's owner, a layer or a group, fades its card with its paint (Sheets). Any other layer's fades its own film, the card it lies on staying: what its water did to other layers' paint on the sheet stays (Sheets). A picture or three plane's fades its picture or render, and what a mask reads of it. Inside a rig drawn as pieces, a layer or group shows (1) or doesn't (0): fade the rigged group whole. The opaque back takes none, being shown wherever the frame is; a clear back over HTML fades as a nearer plane does |
 | glow, boil, pins, sway, flutter, place | node fields and plays (Reference) | move finished paint on a sheet the occurrence owns, its marks before painting otherwise (Sheets); boil wobble moves finished paint either way. Boil wobble and sway phase follow the occurrence key |
 | rig | `rigs: {[group occurrence]: {parts, pose}}` (Reference) | a rigged node takes place, clock, glow and boil, not pins, sway or flutter. On a sheet the group or a cel owns, paint, paper and edge bend as pieces (**NEW** in shots); otherwise the cels' marks are posed before painting (**NEW**) |
 | moving lay | `lay: (m) => …`, `reach?` (the stage box it stays in) | without `reach` the camera checks it as reaching everywhere |
@@ -957,9 +968,10 @@ the group node's pivot); `bend` curls the part along the line from its pivot to 
 shows another of its cels. Parts left out rest on their first cel. Views (whole-body drawings a joint can't reach) are
 groups switched by `visibility`. Every cel and view is painted, shown or not, into its sheet's water: one painted
 while another is wet mingles with it, and stays mingled when that one is hidden. To paint each apart, give each later
-cel's or view's first application `on: 'dry'`. A hidden cel stays in its sheet's program, only not laid, so a swap
-re-solves nothing. The pose is read at the node's held moment (its own hold, else its plane's). Boil wobbles finished
-paint: on an own sheet, the rest picture before the rig bends it; on shared paper, the posed film. No mirrors.
+cel's or view's first application `on: 'dry'`. A hidden cel stays in its sheet's program, so a swap re-solves
+nothing, and lays neither its paint nor, on a card, its paper: a card is cut round its shown cels. The pose is read
+at the node's held moment (its own hold, else its plane's). Boil wobbles finished paint: on an own sheet, the rest
+picture before the rig bends it; on shared paper, the posed film. No mirrors.
 
 ## Checking and diagnostics
 

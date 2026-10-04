@@ -5,7 +5,7 @@ import { painting } from '#lib/paint/document/models/painting-source.ts';
 import { paintedSourceNodeKeys, shotOccurrenceKey } from './shot-occurrences.ts';
 import type { InstancedPlaneProps, PlaneProps } from './shot-props.ts';
 import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
-import { shotIsolatedGroups, shotVisibilityProblem, shotVisibilityProblems } from './shot-visibility.ts';
+import { shotVisibilityProblem, shotVisibilityProblems } from './shot-visibility.ts';
 
 /** A layer of one stroke, keyed `key`. */
 const stroke = (key: string) => ({
@@ -24,7 +24,7 @@ const pond = painting({
   },
 });
 
-test('visibility names planes and occurrences, never an item, within 0..1; a faded, read or rigged group draws on its own', () => {
+test('visibility names planes and occurrences, never an item, within 0..1', () => {
   const source = layersOf(pond, ['sky', 'heron']), meadow: PlaneProps = { id: 'meadow', depth: 3, source };
   const rain: InstancedPlaneProps = { kind: 'instanced', id: 'rain', depths: { near: 1, far: 2 }, variants: { drop: layersOf(pond, ['sky']) }, instances: () => [] };
   const occurrences = new Map([['meadow', paintedSourceNodeKeys(source).map((key) => shotOccurrenceKey('meadow', key))]]);
@@ -35,8 +35,4 @@ test('visibility names planes and occurrences, never an item, within 0..1; a fad
     'meadow.visibility: 1.5; visibility is within 0..1',
   ]);
   assert.equal(shotVisibilityProblem('meadow/sky', -0.2, 2.5)?.message, '-0.2 at 2.5 s; visibility is within 0..1');
-  const groups = ['meadow/heron', 'back/heron', 'front/heron', 'side/heron'];
-  assert.deepEqual(shotIsolatedGroups(groups, new Map([['meadow/heron', 0.5], ['back/heron', 1]]), new Set(['front/heron']), new Set(['side/heron'])), [
-    'meadow/heron', 'front/heron', 'side/heron',
-  ]);
 });

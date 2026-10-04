@@ -1,10 +1,11 @@
-// shot-visibility.ts: how visible a shot's planes and occurrences are, and which group occurrences draw on their own.
-// Visibility multiplies a drawable's composite and re-solves nothing. A group's fades all it holds as one, its own
-// sheet's paper included, so a group below 1, read by an alphaOf mask, or rigged composites into a scratch picture
-// first; a layer's fades its own film only. Items aren't occurrences: an item fades by its own `visibility`.
+// shot-visibility.ts: how visible a shot's planes and occurrences are, and which occurrences draw on their own.
+// Visibility multiplies a drawable's composite and re-solves nothing. A group's fades all it holds as one, and an own
+// sheet's owner, layer or group, fades its card with its paint, so either below 1 composites into a scratch picture
+// first; any other layer's fades its own film only. Items aren't occurrences: an item fades by its own `visibility`.
 
+import type { NodeKey } from '#lib/paint/document/models/painting-document.ts';
 import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
-import { shotDrawableNamer, shotOccurrencePlane } from './shot-occurrences.ts';
+import { shotDrawableNamer, shotOccurrencePlane, type ShotOccurrence } from './shot-occurrences.ts';
 import type { InstancedPlaneProps, OccurrenceKey, PaintedShotProps, PlaneProps } from './shot-props.ts';
 
 /**
@@ -42,11 +43,10 @@ export function shotVisibilityProblems(
 }
 
 /**
- * The group occurrences among `groups` that composite on their own this frame: faded below 1 (`visibility`, each
- * occurrence's this frame, 1 when absent), read by an alphaOf mask (`read`, from shotMaskCheck), or rigged.
+ * The occurrences among `occurrences` that composite on their own this frame, faded below 1 (`visibility`, each
+ * one's this frame, 1 when absent): groups, and layers owning an own sheet (`owners`, document keys). A mask reading
+ * one at 1 gathers its coverage as it's laid in place.
  */
-export function shotIsolatedGroups(
-  groups: readonly OccurrenceKey[], visibility: ReadonlyMap<OccurrenceKey, number>, read: ReadonlySet<string>, rigged: ReadonlySet<OccurrenceKey>,
-): OccurrenceKey[] {
-  return groups.filter((group) => (visibility.get(group) ?? 1) < 1 || read.has(group) || rigged.has(group));
+export function shotFadedApart(occurrences: readonly ShotOccurrence[], visibility: ReadonlyMap<OccurrenceKey, number>, owners: ReadonlySet<NodeKey>): ShotOccurrence[] {
+  return occurrences.filter(({ key, node, kind }) => (kind === 'group' || owners.has(node)) && (visibility.get(key) ?? 1) < 1);
 }

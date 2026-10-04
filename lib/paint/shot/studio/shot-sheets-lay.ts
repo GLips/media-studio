@@ -1,8 +1,8 @@
 // shot-sheets-lay.ts: a painted plane's selection laid at one moment onto its painting (ENGINE 5.4, 6.1 step 6), on
 // the GPU: its ground, then each composite step through its lattice (shot-sheet-lays.ts), back to front. A film is
 // copied into a layer target a margin in and laid where its lattice's rest map reads it; a card lays its sheet's
-// paper over its edge alike; a pieces rig's render lays as paint by its alpha (ENGINE 6.5). Masks cut all but the
-// ground (shot-mask-passes.ts).
+// paper over its shown films' union alike; a pieces rig's render lays as paint by its alpha (ENGINE 6.5). A faded
+// span is mixed back by shot-group-pass.ts. Masks cut all but the ground (shot-mask-passes.ts).
 //
 // Everything lies through rest maps, so the plane's place, its nodes and a frame moment's poses are one path; at rest
 // a lattice is one exact cell.
@@ -267,10 +267,8 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
       const gathered: ShotFadedTarget[] = coverage ? [{ texture: coverage, shape: { kind: 'array', layers: coverage.depthOrArrayLayers }, view: coverage.createView({ dimension: '2d-array' }) }] : [];
       const fadeTargets = [into.painting, ...[into.emission, into.motion].flatMap((texture) => (texture ? [shotPlainFaded(texture)] : [])), ...gathered];
       const open: { span: ShotFadeSpan; kept: ShotGroupKept }[] = [];
-      // A span at full visibility would mix back exactly what it laid: it's laid in place, nothing kept.
-      const fading = frame.fades.filter(({ visibility }) => visibility < 1);
       frame.steps.forEach((step, index) => {
-        for (const span of fading) if (span.first === index) open.push({ span, kept: fade.keep(encoder, fadeTargets, open.length) });
+        for (const span of frame.fades) if (span.first === index) open.push({ span, kept: fade.keep(encoder, fadeTargets, open.length) });
         const staging = staged.steps[index];
         if (step && step.lay.kind === 'pieces') {
           const drawn = frame.pieces.get(step.lay.rig);
@@ -282,7 +280,7 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
         } else if (step && step.lay.kind !== 'pieces' && staging?.box) {
           const lay = step.lay, { pass, span, box } = staging, compositor = compositors[lay.sheet];
           if (lay.kind === 'card') {
-            const edge = stampSheetEdge(owner, device, encoder, arena, films[lay.sheet]);
+            const edge = stampSheetEdge(owner, device, encoder, arena, lay.films.map((film) => films[lay.sheet][film]));
             if (edge) {
               const edgeBox = stampStageTexelsOf(stage, edge.box);
               pass.draw(encoder, span, { rest: 'region', motion: !!traced }, { rest: restView, motion: traced, source: null });

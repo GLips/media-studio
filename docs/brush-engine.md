@@ -505,13 +505,15 @@ drawn as pieces: a cel layer of its shown cels (`paint-rig-cel-layer.ts`), cut b
 three.js meshes into colour and motion (`studio/shot-rig-pieces.ts`); any other rig poses its cels' marks before the
 solve, a skinned cel by its skin mesh, its pose named by its skin's key (its rest cels' readback keys) as well as
 every part's map, since every rest cel shapes the mesh. A hidden cel stays in its sheet's program and isn't laid, so a cel swap
-re-solves nothing. `studio/shot-renderer.ts` solves each painted plane once a frame (`studio/shot-painted-plane.ts`,
+re-solves nothing; a card is cut round its sheet's shown films alone, its edge their union, as a pieces rig's is.
+`studio/shot-renderer.ts` solves each painted plane once a frame (`studio/shot-painted-plane.ts`,
 through `painting-sheets-solve.ts`), each selection a dissolve blends on its own; then each exposure orders its drawables (`shot-plan.ts`) and plans each plane's
 moment purely (`shotPlaneLayPlan`, `shot-sheet-lays.ts`): its steps through lattices (`shot-lattice.ts`), its ground,
-its pieces rigs posed, the spans of the group occurrences that composite on their own (`shot-visibility.ts`), and a
+its pieces rigs posed, the spans of the occurrences faded apart, groups and own sheets' owners (`shot-visibility.ts`), and a
 key naming all of it. `studio/shot-sheets-lay.ts` lays it over `stamp-lattice-pass.ts`: ground, then each card and
 film where its owners and the plane's place put it, a pieces rig's picture at its card by the compositor's
-`layPicture`, a faded group's span mixed back by its visibility (`studio/shot-group-pass.ts`). The plane's picture is
+`layPicture`, a faded group's or own sheet owner's span mixed back by its visibility, card and paint as one
+(`studio/shot-group-pass.ts`). The plane's picture is
 the old renderer's pass (`painting/studio/stamp-plane-picture-pass.ts`), kept in the device's cache under the plan's
 key. A dissolve's selections are each laid, kept and blurred so, then summed by weight into a stage-sized picture
 (`studio/shot-dissolve-pass.ts`): every layer a plane's picture holds (opaque colour, colour and transmittance, glow,
@@ -555,7 +557,7 @@ plane's variants' keys and its shown items' views and visibility, each with the 
 selection alike, and its coverage is summed by weight with its colour (`shot-dissolve-pass.ts`); a reader keys it by
 every selection's key and weight.
 
-Visibility's keys and range, and the group occurrences that composite on their own (`shot-visibility.ts`), are drawn,
+Visibility's keys and range, and the occurrences faded apart (`shot-visibility.ts`), are drawn,
 and so are `warm` and the cost report.
 A warm (`shot-warm.ts`) solves each painted plane and variant before the first frame at the first of the span's
 frames to pair each set of moments on its source and plane clocks (`shotWarmCombinations` over `shotPlaneClocks`;
