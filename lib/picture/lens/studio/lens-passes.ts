@@ -39,8 +39,15 @@ export const LENS_COMPOSITE = gpuUniformLayout('LensComposite', [
  */
 export type LensLaying = 'filter' | 'add';
 
-/** What the frame being composited holds besides its colour: an emission when anything glows, a motion when anything moved. */
-export type LensFrameTargets = { readonly glowing: boolean; readonly moving: boolean };
+/**
+ * What the frame being composited holds besides its colour: an emission when anything glows, a motion when anything
+ * moved, and `through`, what it lets through per channel, when it's laid over a page as a glaze.
+ */
+export type LensFrameTargets = { readonly glowing: boolean; readonly moving: boolean; readonly through: boolean };
+
+/** The frame's targets' locations in order (lensLaidHeadWgsl): its colour, then those `has` holds. */
+const lensFrameTargetFields = ({ glowing, moving, through }: LensFrameTargets) =>
+  ['colour', ...(glowing ? ['emission'] : []), ...(moving ? ['motion'] : []), ...(through ? ['through'] : [])];
 
 const sampled = (layer: number) => `textureSampleLevel(picture, linearClamp, uv, ${layer}u, 0.0)`;
 
@@ -51,8 +58,8 @@ const sampled = (layer: number) => `textureSampleLevel(picture, linearClamp, uv,
 type LensLaidAt = { readonly open: string; readonly close: string; readonly distance: string; readonly texels: string | null; readonly visibility: string };
 
 /** The struct a laying returns, and the similarity it maps points by: shared by every pass laying a picture. */
-function lensLaidHeadWgsl({ glowing, moving }: LensFrameTargets) {
-  const locations = ['@location(0) colour: vec4f', ...(glowing ? ['@location(1) emission: vec4f'] : []), ...(moving ? [`@location(${glowing ? 2 : 1}) motion: vec4f`] : [])];
+function lensLaidHeadWgsl(has: LensFrameTargets) {
+  const locations = lensFrameTargetFields(has).map((field, location) => `@location(${location}) ${field}: vec4f`);
   return /* wgsl */ `
 struct Laid { ${locations.join(', ')} }
 fn similar(m: vec4f, p: vec2f) -> vec2f { return vec2f(m.x * p.x - m.y * p.y, m.y * p.x + m.x * p.y) + m.zw; }`;
@@ -60,13 +67,14 @@ fn similar(m: vec4f, p: vec2f) -> vec2f { return vec2f(m.x * p.x - m.y * p.y, m.
 
 /**
  * A fragment's laying (`laying`) of the picture at `uv`, plane point `p`, into the frame's colour, its emission when
- * `glowing` and its motion when `moving`: the motion is the frame px a point moves over the shutter, its distance, and
- * its cover. A visibility below 1 lays that share of the picture: its colour, emission and what it takes.
+ * `glowing`, its motion when `moving` (the frame px a point moves over the shutter, its distance, its cover) and
+ * what it lets through when `through`, which only a filter writes. A visibility below 1 lays that share of the picture.
  */
-function lensLaidWgsl({ glowing, moving }: LensFrameTargets, layers: LensPictureLayers, laying: LensLaying, at: LensLaidAt) {
+function lensLaidWgsl({ glowing, moving, through }: LensFrameTargets, layers: LensPictureLayers, laying: LensLaying, at: LensLaidAt) {
   const shown = (wgsl: string) => `(${wgsl}) * ${at.visibility}`;
   const emission = layers.emission !== null ? shown(`${sampled(layers.emission)}.rgb`) : 'vec3f(0.0)';
-  const outputs = (colour: string, light: string, motion: string) => [colour, ...(glowing ? [light] : []), ...(moving ? [motion] : [])].join(', ');
+  const outputs = (colour: string, light: string, motion: string, passed: string) =>
+    [colour, ...(glowing ? [light] : []), ...(moving ? [motion] : []), ...(through ? [passed] : [])].join(', ');
   // The motion of a point p: the plane's own carries it to p ∓ v/2 as the shutter opens and closes, where the views
   // then put it.
   const motion = /* wgsl */ `
@@ -81,9 +89,9 @@ function lensLaidWgsl({ glowing, moving }: LensFrameTargets, layers: LensPicture
   const laid = {
     filter: /* wgsl */ `
   let through = ${layers.taken !== null ? `1.0 - ${shown(`${sampled(layers.taken)}.rgb`)}` : 'vec3f(1.0 - colour.a)'};
-  return Laid(${outputs('vec4f(through, 1.0 - colour.a)', 'vec4f(through, 1.0 - colour.a)', 'vec4f(0.0)')});`,
+  return Laid(${outputs('vec4f(through, 1.0 - colour.a)', 'vec4f(through, 1.0 - colour.a)', 'vec4f(0.0)', 'vec4f(through, 1.0)')});`,
     add: /* wgsl */ `${moving ? motion : ''}
-  return Laid(${outputs('colour', `vec4f(${emission}, 0.0)`, 'vec4f(travel, distance, colour.a)')});`,
+  return Laid(${outputs('colour', `vec4f(${emission}, 0.0)`, 'vec4f(travel, distance, colour.a)', 'vec4f(1.0)')});`,
   }[laying];
   return /* wgsl */ `
   let colour = ${shown(sampled(0))};${laid}`;
@@ -96,9 +104,9 @@ const unviewedWgsl = (view: string, at: string) => /* wgsl */ `
   let p = vec2f(d.x * m.x + d.y * m.y, d.y * m.x - d.x * m.y) / dot(m, m);`;
 
 /**
- * The composite's WGSL, drawn twice a layer (`laying`) into the frame's colour (location 0), its emission (1) when
- * `glowing`, and its motion (next) when `moving`: binds its uniform (0), the picture as an array (1) and a linear
- * clamped sampler (2).
+ * The composite's WGSL, drawn twice a layer (`laying`) into the frame's colour (location 0), then its emission when
+ * `glowing`, its motion when `moving` and what it lets through when `through`, in that order: binds its uniform (0),
+ * the picture as an array (1) and a linear clamped sampler (2).
  */
 export function lensCompositeWgsl(has: LensFrameTargets, layers: LensPictureLayers, laying: LensLaying) {
   return /* wgsl */ `
@@ -179,19 +187,21 @@ export const LENS_SUM = gpuUniformLayout('LensSum', [['weight', 'f32']]);
 
 /**
  * The sum's WGSL: adds an exposure's colour (1) and, when `glowing`, its emission (2), times `weight`, into the sum's
- * colour and emission (none for an exposure that doesn't glow).
+ * colour and emission (none for an exposure that doesn't glow); and when `through`, what it lets through (3) into the
+ * sum's (location 2). Light over a page is C + T × page, linear in both, so averaging each averages the light.
  */
-export function lensSumWgsl(glowing: boolean) {
+export function lensSumWgsl(glowing: boolean, through: boolean) {
   return /* wgsl */ `
 ${GPU_FULL_FRAME_WGSL}
 ${LENS_SUM.wgsl}
 @group(0) @binding(0) var<uniform> u: LensSum;
 @group(0) @binding(1) var colour: texture_2d<f32>;
 ${glowing ? '@group(0) @binding(2) var emission: texture_2d<f32>;' : ''}
-struct Added { @location(0) colour: vec4f, @location(1) emission: vec4f }
+${through ? '@group(0) @binding(3) var through: texture_2d<f32>;' : ''}
+struct Added { @location(0) colour: vec4f, @location(1) emission: vec4f${through ? ', @location(2) through: vec4f' : ''} }
 @fragment fn lensSum(@builtin(position) at: vec4f) -> Added {
   let pixel = vec2u(at.xy);
-  return Added(textureLoad(colour, pixel, 0) * u.weight, ${glowing ? 'textureLoad(emission, pixel, 0) * u.weight' : 'vec4f(0.0)'});
+  return Added(textureLoad(colour, pixel, 0) * u.weight, ${glowing ? 'textureLoad(emission, pixel, 0) * u.weight' : 'vec4f(0.0)'}${through ? ', textureLoad(through, pixel, 0) * u.weight' : ''});
 }`;
 }
 
@@ -260,10 +270,12 @@ export const LENS_MOTION_GATHER = gpuUniformLayout('LensMotionGather', [['tile',
 
 /**
  * The gather's WGSL: binds its uniform (0), the frame's colour (1), its motion (2), the neighbourhoods (3), the
- * gathered colour (4) and, when `glowing`, the emission (5) and gathered emission (6).
+ * gathered colour (4); when `glowing`, the emission (5) and gathered emission (6); when `through`, what it lets
+ * through (7) and that gathered (8). Each is gathered with the colour's weights.
  */
-export function lensMotionGatherWgsl(glowing: boolean, workgroup: number) {
-  const each = (what: string) => (glowing ? what : '');
+export function lensMotionGatherWgsl({ glowing, through }: { readonly glowing: boolean; readonly through: boolean }, workgroup: number) {
+  const carried = [...(glowing ? [{ name: 'emission', Name: 'Emission', binding: 5 }] : []), ...(through ? [{ name: 'through', Name: 'Through', binding: 7 }] : [])];
+  const each = (wgsl: (name: string, Name: string) => string) => carried.map(({ name, Name }) => wgsl(name, Name)).join('');
   return /* wgsl */ `
 ${LENS_MOTION_GATHER.wgsl}
 @group(0) @binding(0) var<uniform> u: LensMotionGather;
@@ -271,8 +283,8 @@ ${LENS_MOTION_GATHER.wgsl}
 @group(0) @binding(2) var motion: texture_2d<f32>;
 @group(0) @binding(3) var near: texture_2d<f32>;
 @group(0) @binding(4) var gathered: texture_storage_2d<rgba16float, write>;
-${each(`@group(0) @binding(5) var emission: texture_2d<f32>;
-@group(0) @binding(6) var gatheredEmission: texture_storage_2d<rgba16float, write>;`)}
+${carried.map(({ name, Name, binding }) => `@group(0) @binding(${binding}) var ${name}: texture_2d<f32>;
+@group(0) @binding(${binding + 1}) var gathered${Name}: texture_storage_2d<rgba16float, write>;`).join('\n')}
 ${halfMotionWgsl}
 /** \`h\`'s direction, else \`fallback\`'s: a still point's sweep is the pixel it's on, whichever way it's met. */
 fn direction(h: vec2f, fallback: vec2f) -> vec2f {
@@ -294,11 +306,11 @@ fn passes(x: vec2f, y: vec2f, h: vec2f) -> f32 {
   let x = vec2i(id.xy);
   let centre = vec2f(x) + 0.5;
   let longest = textureLoad(near, id.xy / u.tile, 0).xy;
-  let cx = textureLoad(colour, x, 0);${each(`
-  let ex = textureLoad(emission, x, 0);`)}
+  let cx = textureLoad(colour, x, 0);${each((name, Name) => `
+  let x${Name} = textureLoad(${name}, x, 0);`)}
   if (length(longest) <= 0.5) {
-    textureStore(gathered, x, cx);${each(`
-    textureStore(gatheredEmission, x, ex);`)}
+    textureStore(gathered, x, cx);${each((_, Name) => `
+    textureStore(gathered${Name}, x, x${Name});`)}
     return;
   }
   let mx = textureLoad(motion, x, 0);
@@ -310,9 +322,9 @@ fn passes(x: vec2f, y: vec2f, h: vec2f) -> f32 {
   var behind = cx;
   var behindWeight = 1.0;
   var front = vec4f(0.0);
-  var cover = 0.0;${each(`
-  var behindEmission = ex;
-  var frontEmission = vec4f(0.0);`)}
+  var cover = 0.0;${each((_, Name) => `
+  var behind${Name} = x${Name};
+  var front${Name} = vec4f(0.0);`)}
   // A fixed jitter by pixel, the same every frame: a still frame's bytes depend only on what it shows. The lines'
   // taps sit half a cell apart, so where the lines are one they don't sample the same points.
   let jitter = (fract(dot(vec2f(x), vec2f(0.7548776662, 0.5698402910))) - 0.5) * 0.5;
@@ -332,8 +344,8 @@ fn passes(x: vec2f, y: vec2f, h: vec2f) -> f32 {
     let nearer = (mx.z - my.z) / max(u.soft * mx.z, 1e-6);
     let level = clamp(1.0 - abs(nearer), 0.0, 1.0);
     let ahead = (1.0 - level) * step(0.0, nearer) + level * clamp(reachY - reachX, 0.0, 1.0);
-    let cy = textureLoad(colour, y, 0);${each(`
-    let ey = textureLoad(emission, y, 0);`)}
+    let cy = textureLoad(colour, y, 0);${each((name, Name) => `
+    let y${Name} = textureLoad(${name}, y, 0);`)}
     // In front: the share of the shutter y's sweep spends over x, as much of its cell as lies along that sweep. Its
     // sweep is met by both lines; each takes the part it runs along (cos²), so one met twice counts once.
     let sweep = direction(hy, centre - yc);
@@ -345,14 +357,14 @@ fn passes(x: vec2f, y: vec2f, h: vec2f) -> f32 {
     // Behind: what x's own sweep passes over, weighed by how much of its line the cell holds.
     let seen = (1.0 - ahead) * passes(yc, centre, hx) * cell * abs(dot(units[line], direction(hx, yc - centre)));
     behind += cy * seen;
-    behindWeight += seen;${each(`
-    frontEmission += ey * covers;
-    behindEmission += ey * seen;`)}
+    behindWeight += seen;${each((_, Name) => `
+    front${Name} += y${Name} * covers;
+    behind${Name} += y${Name} * seen;`)}
   }
   // Light in front past full cover is its own average, covering all.
   let laid = min(cover, 1.0) / max(cover, 1e-6);
-  textureStore(gathered, x, front * laid + behind / behindWeight * (1.0 - min(cover, 1.0)));${each(`
-  textureStore(gatheredEmission, x, frontEmission * laid + behindEmission / behindWeight * (1.0 - min(cover, 1.0)));`)}
+  textureStore(gathered, x, front * laid + behind / behindWeight * (1.0 - min(cover, 1.0)));${each((_, Name) => `
+  textureStore(gathered${Name}, x, front${Name} * laid + behind${Name} / behindWeight * (1.0 - min(cover, 1.0)));`)}
 }`;
 }
 
@@ -477,16 +489,25 @@ ${LENS_GLOW.wgsl}
 export const LENS_OUTPUT = gpuUniformLayout('LensOutput', [['strength', 'f32']]);
 
 /**
- * How the image is written. `encoded`: sRGB, opaque, dithered into bytes when `dithered`; `premultiplied`: sRGB over
- * its alpha, premultiplied by it as a browser composites a canvas, light past its alpha dropped; `linear`: linear
- * light, premultiplied, its alpha kept, for an output pass of the caller's (a tone map).
+ * How the image is written. `encoded`: sRGB, opaque, dithered into bytes when `dithered`; `glaze`: a colour image into
+ * the develop's target and a filter image into `filter`, both sRGB and premultiplied, for a page to lay over what's
+ * behind (lensOutputWgsl); `linear`: linear light, premultiplied, its alpha kept, for an output pass of the caller's
+ * (a tone map).
  */
-export type LensImageEncoding = { readonly kind: 'encoded' | 'premultiplied'; readonly dithered: boolean } | { readonly kind: 'linear' };
+export type LensImageEncoding =
+  | { readonly kind: 'encoded'; readonly dithered: boolean }
+  | { readonly kind: 'glaze'; readonly dithered: boolean; readonly filter: GPUTextureView }
+  | { readonly kind: 'linear' };
+
+/** How many page colours, encoded and evenly spread, a glaze is fitted over beside white (lensOutputWgsl). */
+const LENS_GLAZE_BACKDROPS = 8;
+/** The fit's denominator: the backdrops' squared distances from white. */
+const LENS_GLAZE_SPREAD = Array.from({ length: LENS_GLAZE_BACKDROPS }, (_, i) => ((i + 0.5) / LENS_GLAZE_BACKDROPS - 1) ** 2).reduce((a, b) => a + b);
 
 /**
  * The output's WGSL: the frame's colour (1) and, with `bloom`, its bloom (2) times `strength`, added in linear light
- * and written as `encoding` says. A `half` bloom is half the frame's size each way, read bilinear through the
- * sampler (3); a `whole` one, texel for texel.
+ * and written as `encoding` says, a glaze reading what the frame lets through (4). A `half` bloom is half the frame's
+ * size each way, read bilinear through the sampler (3); a `whole` one, texel for texel.
  */
 export function lensOutputWgsl(bloom: 'half' | 'whole' | null, encoding: LensImageEncoding) {
   const bloomAt = bloom === 'half' ? 'textureSampleLevel(bloom, linearClamp, (vec2f(pixel) + 0.5) / vec2f(textureDimensions(colour)), 0.0)' : 'textureLoad(bloom, pixel, 0)';
@@ -501,15 +522,29 @@ export function lensOutputWgsl(bloom: 'half' | 'whole' | null, encoding: LensIma
   let linear = max(textureLoad(colour, pixel, 0).rgb, vec3f(0.0))${light};
   ${dither}
   return vec4f(clamp(srgbEncoded(linear) + dither, vec3f(0.0), vec3f(1.0)), 1.0);`,
-    // A browser lays a premultiplied canvas as c + (1 − a)·behind, in encoded colour, and wants c no more than a.
-    premultiplied: /* wgsl */ `
-  let c = textureLoad(colour, pixel, 0);
-  let a = clamp(c.a, 0.0, 1.0);
-  if (a <= 0.0) { return vec4f(0.0); }
-  let linear = max(c.rgb, vec3f(0.0))${light};
+    // The page lays the filter multiplied, then the colour over it, in encoded colour: a page colour P becomes
+    // k + (1 − a)·f·P per channel, a line where the light is C + T·lin(P). It's fitted exact over white, by least
+    // squares over the backdrops; colour past its alpha goes to the slope, white still exact.
+    glaze: /* wgsl */ `
+  let c = max(textureLoad(colour, pixel, 0).rgb, vec3f(0.0))${light};
+  let t = clamp(textureLoad(through, pixel, 0).rgb, vec3f(0.0), vec3f(1.0));
+  let white = min(srgbEncoded(c + t), vec3f(1.0));
+  var slope = vec3f(0.0);
+  for (var i = 0u; i < ${LENS_GLAZE_BACKDROPS}u; i++) {
+    let p = (f32(i) + 0.5) / ${LENS_GLAZE_BACKDROPS}.0;
+    slope += (min(srgbEncoded(c + t * srgbDecoded(vec3f(p))), vec3f(1.0)) - white) * (p - 1.0);
+  }
+  slope = clamp(slope / ${LENS_GLAZE_SPREAD.toFixed(6)}, vec3f(0.0), vec3f(1.0));
+  let most = max(slope.r, max(slope.g, slope.b));
+  let a = 1.0 - most;
+  let k = clamp(white - slope, vec3f(0.0), vec3f(a));
+  let f = select(vec3f(1.0), clamp((white - k) / most, vec3f(0.0), vec3f(1.0)), most > 0.0);
+  // The filter premultiplied at 1 − least: multiplied over P, P·(least + (f − least)) = P·f.
+  let least = min(f.r, min(f.g, f.b));
   ${dither}
-  return vec4f(clamp(srgbEncoded(linear / a) + dither, vec3f(0.0), vec3f(1.0)) * a, a);`,
+  return Glazed(vec4f(clamp(k + dither, vec3f(0.0), vec3f(a)), a), vec4f(clamp(f - least + dither, vec3f(0.0), vec3f(1.0 - least)), 1.0 - least));`,
   }[encoding.kind];
+  const glaze = encoding.kind === 'glaze';
   return /* wgsl */ `
 ${GPU_FULL_FRAME_WGSL}
 ${GPU_SRGB_WGSL}
@@ -518,7 +553,9 @@ ${LENS_OUTPUT.wgsl}
 @group(0) @binding(1) var colour: texture_2d<f32>;
 ${bloom ? '@group(0) @binding(2) var bloom: texture_2d<f32>;' : ''}
 ${bloom === 'half' ? '@group(0) @binding(3) var linearClamp: sampler;' : ''}
-@fragment fn lensOutput(@builtin(position) at: vec4f) -> @location(0) vec4f {
+${glaze ? `@group(0) @binding(4) var through: texture_2d<f32>;
+struct Glazed { @location(0) colour: vec4f, @location(1) under: vec4f }` : ''}
+@fragment fn lensOutput(@builtin(position) at: vec4f) -> ${glaze ? 'Glazed' : '@location(0) vec4f'} {
   let pixel = vec2u(at.xy);${written}
 }`;
 }

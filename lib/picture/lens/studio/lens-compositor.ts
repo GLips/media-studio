@@ -1,8 +1,8 @@
 // lens-compositor.ts: the studio's one lens on the GPU, for painted planes and three.js alike. A frame is one or
-// more exposures (lens-exposures.ts), each its layers composited far to near, a layer of items laying one picture
-// many times; several exposures are averaged in a 32-bit sum.
-// One exposure that moved is gathered along its motion instead. Then what glows is bloomed once, and the image
-// written. lens-passes.ts holds the passes.
+// more exposures (lens-exposures.ts), each its layers composited far to near; several are averaged in a 32-bit sum,
+// and one that moved is gathered along its motion instead. Then what glows is bloomed once, and the image written. A
+// frame laid over a page as a glaze keeps what it lets through per channel beside its light, treated alike.
+// lens-passes.ts holds the passes.
 //
 // Warning: it encodes into its caller's command encoder, and its uniforms go up with `flush`, which the caller runs
 // before each submit. One frame is open at a time: beginning one ends the last.
@@ -15,7 +15,7 @@ import { LENS_GAUSSIAN_SIGMAS, lensGaussianReach, type LensFocus } from '../mode
 import {
   LENS_COMPOSITE, LENS_DEFOCUS, LENS_GLOW, LENS_ITEM_ROW, LENS_ITEMS, LENS_LAYING_BLEND, LENS_MOTION_BLEND, LENS_MOTION_GATHER, LENS_MOTION_TILES, LENS_OUTPUT, LENS_SUM, lensCompositeWgsl,
   lensDefocusWgsl, lensGlowWgsl, lensItemsWgsl, lensMotionGatherWgsl, lensMotionNeighboursWgsl, lensMotionTilesWgsl, lensOutputWgsl, lensPictureLayersKey, lensSumWgsl,
-  type LensImageEncoding, type LensLaying, type LensPictureLayers,
+  type LensFrameTargets, type LensImageEncoding, type LensLaying, type LensPictureLayers,
 } from './lens-passes.ts';
 
 /** A similarity, plane points to frame px: p ↦ (ma + i·mb)·p + (kx + i·ky). */
@@ -74,7 +74,10 @@ export type LensCoverTarget = { readonly view: GPUTextureView; readonly size: { 
  */
 export type LensExposureDraw = { readonly glowing: boolean; readonly moving: boolean };
 
-/** How a frame is developed: into `into` (a `format` target), `bloom` added, written as `encoding` says. */
+/**
+ * How a frame is developed: into `into` (a `format` target, as a glaze's filter is), `bloom` added, written as
+ * `encoding` says. A glaze is developed only from a frame keeping what it lets through.
+ */
 export type LensDevelopDraw = { readonly bloom: LensBloom | null; readonly into: GPUTextureView; readonly format: GPUTextureFormat; readonly encoding: LensImageEncoding };
 
 /**
@@ -115,11 +118,17 @@ export type LensDefocusDraw = {
   readonly focus: LensFocus; readonly most: number;
 };
 
+/**
+ * What a frame keeps besides its light: `through`, what it lets through per channel, for an image a page lays over
+ * what's behind it (a `glaze` encoding). Such a frame takes composited exposures only.
+ */
+export type LensFrameKeeps = { readonly through: boolean };
+
 export type LensCompositor = {
   readonly width: number;
   readonly height: number;
-  /** Begins a frame of `count` exposures; the frame begun before it, if still open, takes no more. */
-  beginFrame: (count: number) => LensFrameExposures;
+  /** Begins a frame of `count` exposures keeping what `keeps` says; the frame begun before it, if still open, takes no more. */
+  beginFrame: (count: number, keeps?: LensFrameKeeps) => LensFrameExposures;
   /** A gaussian of `sigma` px (lens-focus.ts's reach) over boxes in one space, past `read` clear, within its blur extent. */
   gaussian: (encoder: GPUCommandEncoder, draw: LensGaussianDraw) => void;
   defocus: (encoder: GPUCommandEncoder, draw: LensDefocusDraw) => void;
@@ -143,13 +152,15 @@ const LENS_MOTION_TAPS = 24;
 /** Distances within this share of each other count as one depth in the motion gather. */
 const LENS_MOTION_SOFT = 0.02;
 
-const clearing = (view: GPUTextureView): GPURenderPassColorAttachment => ({ view, loadOp: 'clear', clearValue: [0, 0, 0, 0], storeOp: 'store' });
-/** The composite's targets for `laying`, `has` saying which it holds besides colour. */
-const layingTargets = (has: LensExposureDraw, laying: LensLaying): GPUColorTargetState[] => [
+const clearing = (view: GPUTextureView, value = 0): GPURenderPassColorAttachment => ({ view, loadOp: 'clear', clearValue: [value, value, value, value], storeOp: 'store' });
+/** The composite's targets for `laying`, `has` saying which it holds besides colour: what it lets through only filters. */
+const layingTargets = (has: LensFrameTargets, laying: LensLaying): GPUColorTargetState[] => [
   { format: 'rgba16float', blend: LENS_LAYING_BLEND[laying] },
   ...(has.glowing ? [{ format: 'rgba16float' as const, blend: LENS_LAYING_BLEND[laying] }] : []),
   ...(has.moving ? [{ format: 'rgba16float' as const, blend: LENS_MOTION_BLEND, writeMask: laying === 'add' ? GPUColorWrite.ALL : 0 }] : []),
+  ...(has.through ? [{ format: 'rgba16float' as const, blend: LENS_LAYING_BLEND.filter, writeMask: laying === 'filter' ? GPUColorWrite.ALL : 0 }] : []),
 ];
+const targetsKey = ({ glowing, moving, through }: LensFrameTargets) => `${glowing}|${moving}|${through}`;
 const view4 = ({ ma, mb, kx, ky }: LensView): [number, number, number, number] => [ma, mb, kx, ky];
 
 /** What a render pipeline's vertex stage reads: its vertex buffers, and the primitives its vertices make. */
@@ -228,16 +239,25 @@ export function createLensCompositor(device: GPUDevice, { width, height, blurExt
     colour: () => frameTarget('colour', 'rgba16float', RENDER),
     emission: () => frameTarget('emission', 'rgba16float', RENDER),
     motion: () => frameTarget('motion', 'rgba16float', RENDER),
+    through: () => frameTarget('through', 'rgba16float', RENDER),
   };
-  const sum = { colour: () => frameTarget('sum colour', 'rgba32float', RENDER), emission: () => frameTarget('sum emission', 'rgba32float', RENDER) };
-  /** Adds `colour` and, when `glowing`, the composite's emission to the sum, exposure `index`'s share of `count`. */
-  function addToSum(encoder: GPUCommandEncoder, colour: GPUTextureView, glowing: boolean, index: number, count: number) {
+  const sum = {
+    colour: () => frameTarget('sum colour', 'rgba32float', RENDER), emission: () => frameTarget('sum emission', 'rgba32float', RENDER),
+    through: () => frameTarget('sum through', 'rgba32float', RENDER),
+  };
+  /**
+   * Adds `colour` and, when `glowing`, the composite's emission to the sum, and what it lets through when `through`,
+   * exposure `index`'s share of `count`.
+   */
+  function addToSum(encoder: GPUCommandEncoder, colour: GPUTextureView, { glowing, through }: { glowing: boolean; through: boolean }, index: number, count: number) {
     const adding = LENS_LAYING_BLEND.add, loadOp: GPULoadOp = index === 0 ? 'clear' : 'load';
-    const pipeline = drawn(`sum|${glowing}`, () => lensSumWgsl(glowing), [{ format: 'rgba32float', blend: adding }, { format: 'rgba32float', blend: adding }]);
-    fullFrame(encoder, [sum.colour(), sum.emission()].map(({ view }) => ({ view, loadOp, clearValue: [0, 0, 0, 0], storeOp: 'store' as const })), pipeline, [
+    const targets = [sum.colour(), sum.emission(), ...(through ? [sum.through()] : [])];
+    const pipeline = drawn(`sum|${glowing}|${through}`, () => lensSumWgsl(glowing, through), targets.map(() => ({ format: 'rgba32float' as const, blend: adding })));
+    fullFrame(encoder, targets.map(({ view }) => ({ view, loadOp, clearValue: [0, 0, 0, 0], storeOp: 'store' as const })), pipeline, [
       ring.slot((views) => gpuUniformWriter(LENS_SUM, views)('weight', 1 / count)),
       colour,
       glowing ? composited.emission().view : null,
+      through ? composited.through().view : null,
     ]);
   }
 
@@ -245,7 +265,7 @@ export function createLensCompositor(device: GPUDevice, { width, height, blurExt
    * `layer`'s items into `pass`, in order, each its filter then its add: a film's colour and what it takes need two
    * blends, and one item laid whole before the next lays overlapping items as a picture each would.
    */
-  function compositeItems(pass: GPURenderPassEncoder, layer: LensItemsLayer, has: LensExposureDraw, frame: { w: number; h: number }) {
+  function compositeItems(pass: GPURenderPassEncoder, layer: LensItemsLayer, has: LensFrameTargets, frame: { w: number; h: number }) {
     const placed = itemRows.rows(layer.items.length, (floats) => layer.items.forEach((item, i) => {
       floats.set([...view4(item.view), ...view4(item.shutter?.open ?? item.view), ...view4(item.shutter?.close ?? item.view), item.distance, item.visibility], i * LENS_ITEM_ROW.floats);
     }));
@@ -258,7 +278,7 @@ export function createLensCompositor(device: GPUDevice, { width, height, blurExt
     // An item moves as its views do: its picture's own motion would count its travel twice.
     const layers = { ...layer.layers, motion: null };
     const layings = (['filter', 'add'] as const satisfies readonly LensLaying[]).map((laying) => {
-      const key = `items|${has.glowing}|${has.moving}|${lensPictureLayersKey(layers)}|${laying}`;
+      const key = `items|${targetsKey(has)}|${lensPictureLayersKey(layers)}|${laying}`;
       const pipeline = drawn(key, () => lensItemsWgsl(has, layers, laying), layingTargets(has, laying), { buffers: [LENS_ITEM_ROW.layout], topology: 'triangle-strip' });
       return { pipeline, group: bindGroup(pipeline, [uniform, layer.picture, linearClamp]) };
     });
@@ -274,10 +294,13 @@ export function createLensCompositor(device: GPUDevice, { width, height, blurExt
 
   /**
    * Composites `layers` far to near into the composite's targets: colour (`colour`, else the composite's own, the
-   * frame's size), then emission and motion as `has` says.
+   * frame's size), then emission, motion and what it lets through (from 1) as `has` says.
    */
-  function composite(encoder: GPUCommandEncoder, layers: readonly (LensLayer | LensItemsLayer)[], has: LensExposureDraw, colour = { view: composited.colour().view, size: { w: width, h: height } }) {
-    const attachments = [colour.view, ...[...(has.glowing ? [composited.emission()] : []), ...(has.moving ? [composited.motion()] : [])].map(({ view }) => view)].map(clearing);
+  function composite(encoder: GPUCommandEncoder, layers: readonly (LensLayer | LensItemsLayer)[], has: LensFrameTargets, colour = { view: composited.colour().view, size: { w: width, h: height } }) {
+    const attachments = [
+      clearing(colour.view), ...[...(has.glowing ? [composited.emission()] : []), ...(has.moving ? [composited.motion()] : [])].map(({ view }) => clearing(view)),
+      ...(has.through ? [clearing(composited.through().view, 1)] : []),
+    ];
     const pass = encoder.beginRenderPass({ colorAttachments: attachments });
     for (const layer of layers) {
       if ('items' in layer) {
@@ -298,7 +321,7 @@ export function createLensCompositor(device: GPUDevice, { width, height, blurExt
         put('visibility', layer.visibility);
       });
       for (const laying of ['filter', 'add'] as const satisfies readonly LensLaying[]) {
-        const key = `composite|${has.glowing}|${has.moving}|${lensPictureLayersKey(layer.layers)}|${laying}`;
+        const key = `composite|${targetsKey(has)}|${lensPictureLayersKey(layer.layers)}|${laying}`;
         const pipeline = drawn(key, () => lensCompositeWgsl(has, layer.layers, laying), layingTargets(has, laying));
         pass.setPipeline(pipeline);
         pass.setBindGroup(0, bindGroup(pipeline, [uniform, layer.picture, linearClamp]));
@@ -314,12 +337,12 @@ export function createLensCompositor(device: GPUDevice, { width, height, blurExt
     const still = layers.map((layer) => ('items' in layer
       ? { ...layer, items: layer.items.map((item) => ({ ...item, view: moved(item.view), shutter: null })) }
       : { ...layer, view: moved(layer.view), shutter: null }));
-    composite(encoder, still, { glowing: false, moving: false }, { view, size });
+    composite(encoder, still, { glowing: false, moving: false, through: false }, { view, size });
   }
 
   // The open frame: only it may add exposures, so a frame given up halfway can't leak into the next.
   let open: object | null = null;
-  function beginFrame(count: number): LensFrameExposures {
+  function beginFrame(count: number, { through }: LensFrameKeeps = { through: false }): LensFrameExposures {
     if (!(Number.isInteger(count) && count >= 1)) throw new Error(`lens: a frame takes a whole number of exposures, 1 or more, not ${count}`);
     const self = {};
     open = self;
@@ -335,21 +358,23 @@ export function createLensCompositor(device: GPUDevice, { width, height, blurExt
         const index = next();
         glowed ||= draw.glowing;
         moving = count === 1 && draw.moving;
-        composite(encoder, layers, { glowing: draw.glowing, moving });
+        composite(encoder, layers, { glowing: draw.glowing, moving, through });
         // Several exposures: each adds its share, emission too, so a glow in some exposures and not others averages.
-        if (count > 1) addToSum(encoder, composited.colour().view, draw.glowing, index, count);
+        if (count > 1) addToSum(encoder, composited.colour().view, { glowing: draw.glowing, through }, index, count);
       },
       exposureImage: (encoder, drawnImage) => {
+        if (through) throw new Error('lens: an exposure drawn through the camera handed to a frame keeping what it lets through: it knows only its alpha');
         const index = next();
         if (count === 1) image = drawnImage;
-        else addToSum(encoder, drawnImage, false, index, count);
+        else addToSum(encoder, drawnImage, { glowing: false, through: false }, index, count);
       },
       develop: (encoder, draw) => {
         if (open !== self) throw new Error('lens: a frame developed after another began');
         if (arrived < count) throw new Error(`lens: a frame developed with ${arrived} of its ${count} exposures`);
+        if (draw.encoding.kind === 'glaze' && !through) throw new Error("lens: a glaze developed from a frame that didn't keep what it lets through");
         open = null;
         const exposed = count === 1 ? composited : sum;
-        developFrame(encoder, { colour: image ? { view: image } : exposed.colour(), emission: glowed ? exposed.emission() : null, moving }, draw);
+        developFrame(encoder, { colour: image ? { view: image } : exposed.colour(), emission: glowed ? exposed.emission() : null, through: through ? exposed.through() : null, moving }, draw);
       },
     };
   }
@@ -387,8 +412,8 @@ export function createLensCompositor(device: GPUDevice, { width, height, blurExt
     pass(across.array, into, 1);
   }
 
-  /** The frame's colour and emission gathered along its motion. */
-  function gatherMotion(encoder: GPUCommandEncoder, colour: { view: GPUTextureView }, emission: LensTarget | null) {
+  /** The frame's colour, emission and what it lets through gathered along its motion. */
+  function gatherMotion(encoder: GPUCommandEncoder, colour: { view: GPUTextureView }, emission: LensTarget | null, through: LensTarget | null) {
     const columns = Math.ceil(width / LENS_MOTION_TILE), rows = Math.ceil(height / LENS_MOTION_TILE);
     const tiles = target('motion tiles', columns, rows, 'rgba16float', STORAGE), near = target('motion near', columns, rows, 'rgba16float', STORAGE);
     const motion = composited.motion().view;
@@ -399,14 +424,15 @@ export function createLensCompositor(device: GPUDevice, { width, height, blurExt
     }), motion, tiles.view], columns, rows);
     dispatch(encoder, compute('motion near', () => lensMotionNeighboursWgsl(LENS_WORKGROUP)), [null, tiles.view, near.view], columns, rows);
     const gathered = frameTarget('gathered colour', 'rgba16float', STORAGE), gatheredEmission = emission && frameTarget('gathered emission', 'rgba16float', STORAGE);
-    dispatch(encoder, compute(`motion gather|${!!emission}`, () => lensMotionGatherWgsl(!!emission, LENS_WORKGROUP)), [ring.slot((views) => {
+    const gatheredThrough = through && frameTarget('gathered through', 'rgba16float', STORAGE), carried = { glowing: !!emission, through: !!through };
+    dispatch(encoder, compute(`motion gather|${carried.glowing}|${carried.through}`, () => lensMotionGatherWgsl(carried, LENS_WORKGROUP)), [ring.slot((views) => {
       const put = gpuUniformWriter(LENS_MOTION_GATHER, views);
       put('tile', LENS_MOTION_TILE);
       put('taps', LENS_MOTION_TAPS);
       put('reach', LENS_MOTION_TILE);
       put('soft', LENS_MOTION_SOFT);
-    }), colour.view, motion, near.view, gathered.view, emission?.view ?? null, gatheredEmission?.view ?? null], width, height);
-    return { colour: gathered, emission: gatheredEmission };
+    }), colour.view, motion, near.view, gathered.view, emission?.view ?? null, gatheredEmission?.view ?? null, through?.view ?? null, gatheredThrough?.view ?? null], width, height);
+    return { colour: gathered, emission: gatheredEmission, through: gatheredThrough };
   }
 
   /** `colour`'s light past `threshold`, into a target of its own. */
@@ -437,15 +463,18 @@ export function createLensCompositor(device: GPUDevice, { width, height, blurExt
     return bloomed;
   }
 
-  function developFrame(encoder: GPUCommandEncoder, exposed: { colour: { view: GPUTextureView }; emission: LensTarget | null; moving: boolean }, { bloom, into, format, encoding }: LensDevelopDraw) {
-    let { colour, emission } = exposed;
-    if (exposed.moving) ({ colour, emission } = gatherMotion(encoder, colour, emission));
+  function developFrame(
+    encoder: GPUCommandEncoder, exposed: { colour: { view: GPUTextureView }; emission: LensTarget | null; through: LensTarget | null; moving: boolean }, { bloom, into, format, encoding }: LensDevelopDraw,
+  ) {
+    let { colour, emission, through } = exposed;
+    if (exposed.moving) ({ colour, emission, through } = gatherMotion(encoder, colour, emission, through));
     const glow = bloom && (bloom.glow === 'emission' ? emission : glowOf(encoder, colour, bloom.glow.threshold));
     const light = glow && bloom.sigma > 0 ? { view: bloomOf(encoder, glow, bloom.sigma).view, size: 'half' as const } : glow && { view: glow.view, size: 'whole' as const };
-    const pipeline = drawn(`output|${light?.size}|${JSON.stringify(encoding)}|${format}`, () => lensOutputWgsl(light ? light.size : null, encoding), [{ format }]);
-    fullFrame(encoder, [{ view: into, loadOp: 'clear', storeOp: 'store' }], pipeline, [
+    const glaze = encoding.kind === 'glaze' ? encoding : null, images = [into, ...(glaze ? [glaze.filter] : [])];
+    const pipeline = drawn(`output|${light?.size}|${encoding.kind}|${encoding.kind !== 'linear' && encoding.dithered}|${format}`, () => lensOutputWgsl(light ? light.size : null, encoding), images.map(() => ({ format })));
+    fullFrame(encoder, images.map((view) => ({ view, loadOp: 'clear', storeOp: 'store' })), pipeline, [
       light ? ring.slot((views) => gpuUniformWriter(LENS_OUTPUT, views)('strength', bloom!.strength)) : null,
-      colour.view, light?.view ?? null, light?.size === 'half' ? linearClamp : null,
+      colour.view, light?.view ?? null, light?.size === 'half' ? linearClamp : null, glaze ? through!.view : null,
     ]);
   }
 

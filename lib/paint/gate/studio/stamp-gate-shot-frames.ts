@@ -25,7 +25,7 @@ export async function stampGateShotFrames(props: PaintedShotProps, times: readon
   if (!shot) throw paintingProblemsError('stamp gate shot', problems);
   const { width, height } = shot.camera.stage.frame, tally = createStampPaintCostTally();
   return withGateSurface({ width, height }, stampGateSheetImageUrl, async (surface, frame) => {
-    const renderer = await createPaintedShotRenderer(surface.owner, [surface], shot, { brushOf: stampGateSheetBrushOf, costs: tally });
+    const renderer = await createPaintedShotRenderer(surface.owner, [{ colour: surface, filter: null }], shot, { brushOf: stampGateSheetBrushOf, costs: tally });
     try {
       await renderer.warm({ fps: STAMP_GATE_SHOT_FPS, sceneDur: null });
       const warm = tally.take(), costs: StampPaintCosts[] = [];

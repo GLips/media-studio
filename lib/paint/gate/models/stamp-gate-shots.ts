@@ -240,21 +240,21 @@ export function stampGateClearBackShot(lay?: ScreenPin): PaintedShotProps {
 export const stampGatePinnedHeronShot = (sourcePx: StampPoint): PaintedShotProps => stampGateClearBackShot({ kind: 'pin', points: [{ sourcePx, element: 'heron' }] });
 
 /**
- * How a clear canvas's RGBA bytes (as the browser reads it back, unpremultiplied) lie: how many texels are clear, how
- * many at least half opaque, the most opaque of its corners, which the heron's paint stays clear of, and its alpha's
- * centroid in frame px, a texel's centre half a px in.
+ * How a clear canvas's alphas (a byte a texel, stampGateGlazeAlpha's) lie: how many texels are clear, how many at
+ * least half opaque, the most opaque of its corners, which the heron's paint stays clear of, and its alpha's centroid
+ * in frame px, a texel's centre half a px in.
  */
-export function stampGateClearAlpha(rgba: ArrayLike<number>, width: number, height: number): { clear: number; opaque: number; corner: number; centroid: StampPoint } {
+export function stampGateClearAlpha(alphas: ArrayLike<number>, width: number, height: number): { clear: number; opaque: number; corner: number; centroid: StampPoint } {
   let clear = 0, opaque = 0, sum = 0, x = 0, y = 0;
   for (let texel = 0; texel < width * height; texel++) {
-    const alpha = rgba[texel * 4 + 3];
+    const alpha = alphas[texel];
     if (alpha === 0) clear++;
     if (alpha >= 128) opaque++;
     sum += alpha;
     x += alpha * ((texel % width) + 0.5);
     y += alpha * (Math.floor(texel / width) + 0.5);
   }
-  const corner = Math.max(...[0, width - 1, (height - 1) * width, height * width - 1].map((texel) => rgba[texel * 4 + 3]));
+  const corner = Math.max(...[0, width - 1, (height - 1) * width, height * width - 1].map((texel) => alphas[texel]));
   return { clear, opaque, corner, centroid: { x: x / sum, y: y / sum } };
 }
 

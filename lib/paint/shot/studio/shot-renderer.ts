@@ -18,7 +18,6 @@ import type { StampStage, StampStageTexels } from '#lib/paint/painting/models/st
 import { createStampLensFrames, createStampLensSourceLayers, stampLensSourcesBlurExtent, type StampSourceRenders } from '#lib/paint/painting/studio/stamp-lens-source-layers.ts';
 import { stampLensSourceExposureOf, type StampLensSource, type StampLensSourceExposure } from '#lib/paint/painting/studio/stamp-lens-source.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
-import type { StampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 import { loadStampPictureSources } from '#lib/paint/painting/studio/stamp-picture-sources.ts';
 import { createStampGrowingUniformArena } from '#lib/paint/painting/studio/stamp-uniform-arena.ts';
 import { loadPaintedThreeSources } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
@@ -27,13 +26,14 @@ import { lensExposures } from '#lib/picture/lens/models/lens-exposures.ts';
 import { LENS_REFERENCE_EXPOSURES, type LensMode } from '#lib/picture/lens/models/lens-mode.ts';
 import { shutterMomentAt, shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import { createLensCompositor, type LensItemsLayer, type LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
-import { shotCanvasAlphaMode, shotPaintedSolvables, type CompiledPaintedShot, type CompiledShotPlane, type PaintedShotPaintOptions } from '../models/shot-compile.ts';
+import { shotCanvasLaying, shotPaintedSolvables, type CompiledPaintedShot, type CompiledShotPlane, type PaintedShotPaintOptions } from '../models/shot-compile.ts';
 import { shotPinnedPlanes, type ShotPinCentres } from '../models/shot-placement.ts';
 import { shotNodePoseAt, shotPlaneClocks, shotVisibilityAt } from '../models/shot-frame-plan.ts';
 import { shotDrawSteps, shotExposureItems, type CompiledShotInstancedPlane, type CompiledShotVariant, type ShotExposureItems } from '../models/shot-instances.ts';
 import { shotDrawableOrder } from '../models/shot-plan.ts';
 import type { ShotMomentAt } from '../models/shot-sheet-lays.ts';
 import { shotWarmCombinations, shotWarmFrames, shotWarmPastScene } from '../models/shot-warm.ts';
+import type { ShotCanvasSurface } from './shot-canvas-surface.ts';
 import { createShotSpanFade } from './shot-span-fade-pass.ts';
 import { shotItemsCoverages, shotItemsLayer, type ShotItemsCoverage } from './shot-instance-passes.ts';
 import { createShotPaintedPlanes, type ShotPlaneMoment, type ShotPlaneSolved, type ShotSourceRead } from './shot-painted-plane.ts';
@@ -110,18 +110,22 @@ function shotExposures(shot: CompiledPaintedShot, t: number, mode: LensMode): Sh
 
 /**
  * `shot` on `owner`'s device, drawn into `surfaces`, one a canvas in the shot's canvas order, each the camera's frame
- * size and handing the browser its alpha as shotCanvasAlphaMode says.
+ * size and laid as shotCanvasLaying says (createShotCanvasSurface).
  */
-export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfaces: readonly StampPaintSurface[], shot: CompiledPaintedShot, { brushOf, costs }: PaintedShotPaintOptions): Promise<PaintedShotRenderer> {
+export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfaces: readonly ShotCanvasSurface[], shot: CompiledPaintedShot, { brushOf, costs }: PaintedShotPaintOptions): Promise<PaintedShotRenderer> {
   // Paint passes go through the owner's caching device; the lens and picture sources take the device itself.
   const { camera } = shot, { stage } = camera, { device, webgpu } = owner;
   if (surfaces.length !== shot.canvases) throw new Error(`shot: drawn into ${surfaces.length} canvases, and it names ${shot.canvases}`);
-  surfaces.forEach((surface, index) => {
-    if (surface.width !== stage.frame.width || surface.height !== stage.frame.height) {
-      throw new Error(`shot: the camera's frame is ${stage.frame.width} × ${stage.frame.height}, and canvas ${index}'s surface ${surface.width} × ${surface.height}`);
+  surfaces.forEach(({ colour, filter }, index) => {
+    for (const surface of [colour, ...(filter ? [filter] : [])]) {
+      if (surface.width !== stage.frame.width || surface.height !== stage.frame.height) {
+        throw new Error(`shot: the camera's frame is ${stage.frame.width} × ${stage.frame.height}, and canvas ${index}'s surface ${surface.width} × ${surface.height}`);
+      }
     }
-    const alphaMode = shotCanvasAlphaMode(shot, index);
-    if (surface.alphaMode !== alphaMode) throw new Error(`shot: canvas ${index}'s surface is ${surface.alphaMode}; ${alphaMode === 'opaque' ? 'the first, holding an opaque back, is opaque' : 'it is laid premultiplied over the page'}`);
+    const laying = shotCanvasLaying(shot, index), modes = [colour.alphaMode, filter?.alphaMode ?? 'none'].join(' over ');
+    if (modes !== (laying === 'opaque' ? 'opaque over none' : 'premultiplied over premultiplied')) {
+      throw new Error(`shot: canvas ${index}'s surfaces are ${modes}; ${laying === 'opaque' ? 'the first, holding an opaque back, is one opaque surface' : 'a glaze is a premultiplied colour surface over a premultiplied filter'}`);
+    }
   });
   const arena = createStampGrowingUniformArena(device, SHOT_UNIFORM_SLOTS);
   // Let go of last made first: three's sources before the textures they sample.
@@ -158,7 +162,8 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
       const own = new Map([...sources].filter(([id]) => shot.planes.some((plane) => plane.id === id && plane.canvas === index)));
       const lens = createLensCompositor(webgpu, { ...stage.frame, blurExtent: stampLensSourcesBlurExtent(stage, own) });
       made.push(lens);
-      return { surface, index, lens, frames: createStampLensFrames(lens), sourceLayers: createStampLensSourceLayers(owner, { stage, lens, sources: own }), glowed: false };
+      const frames = createStampLensFrames(lens, { through: shotCanvasLaying(shot, index) === 'glaze' });
+      return { surface, index, lens, frames, sourceLayers: createStampLensSourceLayers(owner, { stage, lens, sources: own }), glowed: false };
     });
     const opaqueBack = shot.clearBack ? undefined : shot.planes[0], planeOf = new Map(shot.planes.map((plane) => [plane.id, plane]));
     const instancedOf = new Map(shot.instanced.map((plane) => [plane.id, plane]));
@@ -270,10 +275,11 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
         frame.exposure(encoder, layers, { glowing, moving });
         // One bloom of all that glows over the frame's exposures, once they're in.
         if (last) {
-          const { surface } = canvas, dithered = surface.format.endsWith('8unorm');
+          const { colour, filter } = canvas.surface, dithered = colour.format.endsWith('8unorm');
           frame.develop(encoder, {
             bloom: canvas.glowed ? { sigma: lensFrame.bloom, strength: 1, glow: 'emission' } : null,
-            into: surface.frameTexture().createView(), format: surface.format, encoding: { kind: shotCanvasAlphaMode(shot, canvas.index) === 'opaque' ? 'encoded' : 'premultiplied', dithered },
+            into: colour.frameTexture().createView(), format: colour.format,
+            encoding: filter ? { kind: 'glaze', dithered, filter: filter.frameTexture().createView() } : { kind: 'encoded', dithered },
           });
         }
         canvas.lens.flush();

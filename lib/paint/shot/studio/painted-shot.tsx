@@ -16,7 +16,6 @@ import type { PaintingBrushOf } from '#lib/paint/document/models/painting-deposi
 import { paintingProblemsError } from '#lib/paint/document/models/painting-problem.ts';
 import { createStampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { createStampPaintGpuOwner, type StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
-import { createStampPaintSurface, type StampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 import type { ResolvedStampPaintStyle } from '#lib/paint/style/models/style.ts';
 import { stampPaintAssetUrl, stampPaintStyle } from '#lib/paint/style/studio/stamp-paint-styles.ts';
 import { fullFrameRect } from '#lib/picture/frame/models/frame.ts';
@@ -28,10 +27,13 @@ import { whenLaidOut } from '#lib/picture/measurement/studio/screen-rect.ts';
 import { useFrameCosts, type FrameCostsReport } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { useSceneOrNull } from '#lib/picture/video/studio/scene.tsx';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
-import { compilePaintedShot, shotCanvasAlphaMode } from '../models/shot-compile.ts';
+import { compilePaintedShot, shotCanvasLaying } from '../models/shot-compile.ts';
 import { SHOT_FRAME_COSTS_LABEL, SHOT_WARM_COSTS_LABEL, shotCostsProfileEntry } from '../models/shot-cost-report.ts';
 import type { PaintedShotProps } from '../models/shot-props.ts';
-import { createShotPageWatch, SHOT_CANVAS_STYLE, shotCanvasFillProblems, shotHtmlBehind, type ShotPageWatch } from './shot-dom-points.ts';
+import { createShotCanvasSurface, disposeShotCanvasSurface, type ShotCanvasSurface } from './shot-canvas-surface.ts';
+import {
+  createShotPageWatch, SHOT_CANVAS_STYLE, SHOT_FILTER_CANVAS_STYLE, shotCanvasFillProblems, shotHtmlBehind, type ShotCanvasElements, type ShotPageWatch,
+} from './shot-dom-points.ts';
 import { createPaintedShotRenderer, type PaintedShotRenderer } from './shot-renderer.ts';
 
 const resolvedStyles = new Map<string, ResolvedStampPaintStyle>();
@@ -49,18 +51,35 @@ export const paintedShotBrushOf: PaintingBrushOf = ({ style, brush }: BrushRef):
   return found;
 };
 
-/** The canvases a PaintedShot's children hold, as they mount: each its name and element. */
-type ShotCanvasRegistry = { readonly add: (name: string, canvas: HTMLCanvasElement) => () => void };
+/** The canvases a PaintedShot's children hold, as they mount: each its name and elements. */
+type ShotCanvasRegistry = { readonly add: (name: string, canvas: ShotCanvasElements) => () => void };
 
 const ShotCanvases = createContext<ShotCanvasRegistry | null>(null);
 
-/** A canvas of a PaintedShot among HTML, the whole frame: planes naming it draw here. Clear where nothing is painted; takes no pointer events. */
+/**
+ * A canvas of a PaintedShot among HTML, the whole frame: planes naming it draw here. Clear where nothing is painted;
+ * takes no pointer events. Two canvas elements, a glaze's filter and its colour (ShotCanvasElements).
+ */
 export function PaintedShotCanvas({ name }: { readonly name: string }) {
-  const registry = useContext(ShotCanvases), canvas = useRef<HTMLCanvasElement>(null);
+  const registry = useContext(ShotCanvases), filter = useRef<HTMLCanvasElement>(null), colour = useRef<HTMLCanvasElement>(null);
   if (!registry) throw new Error(`PaintedShotCanvas ${name} lies outside a PaintedShot`);
-  useLayoutEffect(() => registry.add(name, canvas.current!), [registry, name]);
-  return <canvas ref={canvas} style={SHOT_CANVAS_STYLE} />;
+  useLayoutEffect(() => registry.add(name, { filter: filter.current!, colour: colour.current! }), [registry, name]);
+  return (
+    <>
+      <canvas ref={filter} style={SHOT_FILTER_CANVAS_STYLE} />
+      <canvas ref={colour} style={SHOT_CANVAS_STYLE} />
+    </>
+  );
 }
+
+function createStyledShotCanvas(style: typeof SHOT_CANVAS_STYLE | typeof SHOT_FILTER_CANVAS_STYLE): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  Object.assign(canvas.style, style);
+  return canvas;
+}
+
+/** A shot canvas's elements made off the page, styled as PaintedShotCanvas's. */
+const createShotCanvasElements = (): ShotCanvasElements => ({ filter: createStyledShotCanvas(SHOT_FILTER_CANVAS_STYLE), colour: createStyledShotCanvas(SHOT_CANVAS_STYLE) });
 
 /**
  * Draws `shot` at scene second `t`, holding the frame until its paint is solved. Its element is the camera's frame,
@@ -76,7 +95,7 @@ export function PaintedShot({ shot, t, box: given, children }: { readonly shot: 
   const lensMode = useLensMode();
   // Canvases register into one map as they mount, before this element's own effects run. One added or gone once it's
   // mounted gives the map a new holder, so the shot loads anew; before then, the first load reads them all.
-  const [canvases, setCanvases] = useState(() => ({ named: new Map<HTMLCanvasElement, string>() })), mounted = useRef(false);
+  const [canvases, setCanvases] = useState(() => ({ named: new Map<ShotCanvasElements, string>() })), mounted = useRef(false);
   const [registry] = useState<ShotCanvasRegistry>(() => ({
     add: (name, canvas) => {
       canvases.named.set(canvas, name);
@@ -111,15 +130,11 @@ export function PaintedShot({ shot, t, box: given, children }: { readonly shot: 
       continueRender(handle);
       handle = next;
     };
-    const named = [...canvases.named].toSorted(([a], [b]) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+    const named = [...canvases.named].toSorted(([a], [b]) => (a.filter.compareDocumentPosition(b.filter) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
     // With no PaintedShotCanvas, the shot's own canvas lies first, under its children.
-    const own = named.length ? null : Object.assign(document.createElement('canvas'), { width: frame.width, height: frame.height });
-    if (own) {
-      Object.assign(own.style, SHOT_CANVAS_STYLE);
-      holder.current!.prepend(own);
-    }
+    const own = named.length ? null : createShotCanvasElements();
+    if (own) holder.current!.prepend(own.filter, own.colour);
     const elements = own ? [own] : named.map(([canvas]) => canvas);
-    for (const canvas of elements) Object.assign(canvas, { width: frame.width, height: frame.height });
     const loading = loadPaintedShotScene(shot, elements, named.map(([, name]) => name), { holder: holder.current!, pinsMoved: layoutMoved, fps, sceneDur, report, solving });
     loading.ready.then(() => {
       if (!live) return undefined;
@@ -131,11 +146,12 @@ export function PaintedShot({ shot, t, box: given, children }: { readonly shot: 
     return () => {
       live = false;
       void loading.dispose();
-      own?.remove();
+      own?.filter.remove();
+      own?.colour.remove();
       setScene(null);
       release();
     };
-  }, [shot, frame.width, frame.height, canvases, fps, sceneDur, report, delayRender, continueRender, cancelRender]);
+  }, [shot, canvases, fps, sceneDur, report, delayRender, continueRender, cancelRender]);
 
   useLayoutEffect(() => {
     if (!scene) return undefined;
@@ -199,24 +215,24 @@ type PaintedShotLoadContext = {
 
 /**
  * `props` checked against `names` (its PaintedShotCanvases' names; none when it draws in its own) and its page, once
- * laid out; loaded on a device owner of its own over `canvases`, each handing the browser its alpha as
- * shotCanvasAlphaMode says, its warm span solved. Refuses every problem at once.
+ * laid out; loaded on a device owner of its own over `canvases`, each laid as shotCanvasLaying says, its warm span
+ * solved. Refuses every problem at once.
  */
-function loadPaintedShotScene(props: PaintedShotProps, canvases: readonly HTMLCanvasElement[], names: readonly string[], context: PaintedShotLoadContext): PaintedShotScene {
+function loadPaintedShotScene(props: PaintedShotProps, canvases: readonly ShotCanvasElements[], names: readonly string[], context: PaintedShotLoadContext): PaintedShotScene {
   const { holder, pinsMoved, fps, sceneDur, report, solving } = context;
   let owner: StampPaintGpuOwner | null = null, renderer: PaintedShotRenderer | null = null, page: ShotPageWatch | null = null, disposed = false;
-  const surfaces: StampPaintSurface[] = [], costs = report ? createStampPaintCostTally() : undefined;
+  const surfaces: ShotCanvasSurface[] = [], costs = report ? createStampPaintCostTally() : undefined;
   const ready = (async () => {
     await whenLaidOut(holder);
-    const fill = shotCanvasFillProblems(holder, canvases, names);
-    const { shot, problems } = compilePaintedShot(props, names, { htmlBehind: shotHtmlBehind(holder, canvases[0]) });
+    const { shot, problems } = compilePaintedShot(props, names, { htmlBehind: shotHtmlBehind(holder, canvases[0].filter) });
+    const fill = shotCanvasFillProblems(holder, canvases, names, shot);
     if (!shot || fill.length) throw paintingProblemsError('shot', [...fill, ...problems]);
     if (!disposed) page = createShotPageWatch(holder, canvases, names, shot, pinsMoved);
     const made = await createStampPaintGpuOwner(stampPaintAssetUrl);
     owner = made;
-    // One after another: each configures its canvas under the owner's error check.
+    // One after another: each configures its canvases under the owner's error check.
     await gpuEachInTurn(canvases, async (canvas, index) => {
-      surfaces.push(await createStampPaintSurface(made, { canvas, width: canvas.width, height: canvas.height, alphaMode: shotCanvasAlphaMode(shot, index) }));
+      surfaces.push(await createShotCanvasSurface(made, canvas, shotCanvasLaying(shot, index), shot.camera.stage.frame));
     });
     renderer = await createPaintedShotRenderer(made, surfaces, shot, { brushOf: paintedShotBrushOf, ...(costs && { costs }) });
     if (!shot.warm) return;
@@ -247,7 +263,7 @@ function loadPaintedShotScene(props: PaintedShotProps, canvases: readonly HTMLCa
       page?.dispose();
       disposing ??= queue.then(() => {
         renderer?.dispose();
-        for (const surface of surfaces.splice(0)) surface.dispose();
+        for (const surface of surfaces.splice(0)) disposeShotCanvasSurface(surface);
         return owner?.dispose();
       });
       return disposing;

@@ -4,7 +4,7 @@
 // look, as a painted picture is, and laid where the look puts it, clear past its edge.
 
 import { LENS_DEFOCUS_LEAST, lensGaussianReach, lensSigmaStepped, type LensFocus } from '#lib/picture/lens/models/lens-focus.ts';
-import type { LensCompositor, LensFrameExposures, LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
+import type { LensCompositor, LensFrameExposures, LensFrameKeeps, LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
 import type { LensPictureLayers } from '#lib/picture/lens/studio/lens-passes.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
 import { STAMP_REST_LOOK, type StampLaidPlanes, type StampLaidSourcePlane, type StampPlaneExtent, type StampPlaneLook } from '../models/stamp-plane.ts';
@@ -81,15 +81,15 @@ export function stampLensSourcesBlurExtent({ width, height }: StampStage, source
 }
 
 /**
- * The lens frames a renderer's paint frames go into: a frame of its own for one that isn't an exposure, else its
- * reference frame's, begun at its first exposure; `last` says it's done, to develop.
+ * The lens frames a renderer's paint frames go into, each keeping what `keeps` says: a frame of its own for one that
+ * isn't an exposure, else its reference frame's, begun at its first exposure; `last` says it's done, to develop.
  */
-export function createStampLensFrames(lens: LensCompositor) {
+export function createStampLensFrames(lens: LensCompositor, keeps?: LensFrameKeeps) {
   let referenceFrame: LensFrameExposures | null = null;
   return (exposure: { readonly index: number; readonly count: number } | undefined): { frame: LensFrameExposures; last: boolean } => {
-    if (!exposure) return { frame: lens.beginFrame(1), last: true };
+    if (!exposure) return { frame: lens.beginFrame(1, keeps), last: true };
     const { index, count } = exposure;
-    if (index === 0) referenceFrame = lens.beginFrame(count);
+    if (index === 0) referenceFrame = lens.beginFrame(count, keeps);
     if (referenceFrame?.count !== count) throw new Error(`stamp paint: exposure ${index} of ${count} drawn into a paintFrame of ${referenceFrame?.count ?? 'none'}`);
     return { frame: referenceFrame, last: index === count - 1 };
   };

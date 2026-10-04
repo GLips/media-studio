@@ -30,14 +30,14 @@ export function imageUrl({ size, pixels }: StampGateImage): string {
 }
 
 /**
- * A surface (and the device owner under it) of its own `width` × `height`, opaque unless `alphaMode` says, its images
- * at `url`, handed to `use` with what reads its frame (unpremultiplied); disposed after.
+ * An opaque surface (and the device owner under it) of its own `width` × `height`, its images at `url`, handed to
+ * `use` with what reads its frame; disposed after.
  */
-export async function withGateSurface<T>({ width, height, alphaMode }: { width: number; height: number; alphaMode?: GPUCanvasAlphaMode }, url: (asset: StampBrushAsset) => string, use: (surface: StampPaintSurface, frame: () => Uint8ClampedArray) => Promise<T>): Promise<T> {
+export async function withGateSurface<T>({ width, height }: { width: number; height: number }, url: (asset: StampBrushAsset) => string, use: (surface: StampPaintSurface, frame: () => Uint8ClampedArray) => Promise<T>): Promise<T> {
   const canvas = Object.assign(document.createElement('canvas'), { width, height });
   const owner = await createStampPaintGpuOwner(url);
   try {
-    const surface = await createStampPaintSurface(owner, { canvas, width, height, ...(alphaMode && { alphaMode }) });
+    const surface = await createStampPaintSurface(owner, { canvas, width, height });
     const frame = () => {
       const context = Object.assign(document.createElement('canvas'), { width, height }).getContext('2d')!;
       context.drawImage(canvas, 0, 0);

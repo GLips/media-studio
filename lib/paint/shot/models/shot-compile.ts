@@ -69,7 +69,7 @@ export type CompiledShotPlane = CompiledShotPaintedPlane | CompiledShotSourcePla
 /**
  * A shot compiled: its planes far to near, the back first; its instanced planes; both as `written`, which a frame
  * orders with its items; its canvas count; `clearBack`: the back is clear where it lays nothing, over HTML
- * (shotCanvasAlphaMode); its motion (an instanced plane's clock too), rigs, visibility by occurrence, masks' graph,
+ * (shotCanvasLaying); its motion (an instanced plane's clock too), rigs, visibility by occurrence, masks' graph,
  * camera, warm span (null: none) and painted textures.
  */
 export type CompiledPaintedShot = {
@@ -107,8 +107,14 @@ export type ShotPage = { readonly htmlBehind: boolean };
 /** A shot drawn with no page, or in a canvas of its own under its children: nothing lies behind its back. */
 const SHOT_NO_HTML_BEHIND: ShotPage = { htmlBehind: false };
 
-/** How canvas `index` of `shot` hands the browser its pixels: the first opaque, holding an opaque back; the rest, and a clear back's, premultiplied. */
-export const shotCanvasAlphaMode = (shot: CompiledPaintedShot, index: number): 'opaque' | 'premultiplied' => (index === 0 && !shot.clearBack ? 'opaque' : 'premultiplied');
+/**
+ * How a shot's canvas is laid on the page: `opaque`, hiding what's behind it; or as a `glaze` over the HTML behind,
+ * a colour canvas over a filter canvas the page is multiplied by, so each channel of what's behind is taken apart.
+ */
+export type ShotCanvasLaying = 'opaque' | 'glaze';
+
+/** How canvas `index` of `shot` is laid: the first opaque, holding an opaque back; the rest, and a clear back's, as glazes. */
+export const shotCanvasLaying = (shot: CompiledPaintedShot, index: number): ShotCanvasLaying => (index === 0 && !shot.clearBack ? 'opaque' : 'glaze');
 
 /**
  * Why `shot` can't draw a frame over `page` as that frame finds it: a clear back with no HTML behind it. Its load's
