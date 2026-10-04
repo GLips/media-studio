@@ -63,5 +63,14 @@ export async function stampGateShotFrames(props: PaintedShotProps, times: readon
   }, tally);
 }
 
+/** Equal frames, RGBA bytes `height` rows high, laid side by side in turn into one `width` px across. */
+export function stampGateFramesBeside(frames: readonly Uint8ClampedArray[], { width, height }: { readonly width: number; readonly height: number }): Uint8ClampedArray {
+  const one = width / frames.length, beside = new Uint8ClampedArray(width * height * 4);
+  frames.forEach((rgba, f) => {
+    for (let y = 0; y < height; y++) beside.set(rgba.subarray(y * one * 4, (y + 1) * one * 4), (y * width + f * one) * 4);
+  });
+  return beside;
+}
+
 /** A frame's solves, each its sheet program and the first entry it re-ran. */
 export const stampGateSolvedText = ({ solves }: StampPaintCosts) => solves.map(({ program, from }) => `${program} from ${from}`);

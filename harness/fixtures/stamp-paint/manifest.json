@@ -279,6 +279,15 @@
       "acceptedOver": "785225df",
       "adapter": "apple metal-3"
     },
+    "shot/shadow": {
+      "file": "shot/shadow.png",
+      "output": "b00be277182cfb94704e97c57c432398cd54501969675555cea76008a381f23c",
+      "inputs": "c5703c80354eb4f9fa8f72d0bbe2c10aca376a230142f4b225e287a29ec1666f",
+      "reason": "New lit three.js shot: two stands, the right with soft shadows and a planar mirror following the panning camera, its twin with neither",
+      "accepted": "2026-10-04",
+      "acceptedOver": "78298e97",
+      "adapter": "apple metal-3"
+    },
     "shot/wet-contact": {
       "file": "shot/wet-contact.png",
       "output": "83eb90cc4ece6c4841fe84f1d6b58d017d8e1e5886be99ff800e253adb1de79a",

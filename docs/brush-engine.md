@@ -737,7 +737,15 @@ the 4 s frame changes the cylinder and nothing else, and warmed over 2..4 s neit
 `shot/far-cylinder`: the wrapped tile finished as the back and worn at its size round a small cylinder whose uv run
 4 times round and twice up, so a texel is near a quarter of a px at its front and its seams and corner come round;
 four frames in a row at the shot rate, it turning 3° a frame, laid side by side. Accepted by eye, enlarged: steady
-from frame to frame and seamless, where the same frames without the chain sparkle and break its bands.
+from frame to frame and seamless, where the same frames without the chain sparkle and break its bands. Its lit
+three.js shot (`shot/shadow`, `stamp-gate-three-lighting.ts`, drawn by `paintStampGateLighting`): two stands before a
+flat wall, each a floor tilted toward the camera with a red-capped post on it and a sun casting from high on the
+front right; the right stand asks for soft shadows and mirrors its post through `paintedThreeMirrorCamera`, its twin
+on the left asks for neither. The camera pans right 36 px and the posts slide as frames at 0 s and 1 s draw with the
+shutter open, laid side by side and accepted by eye. Its checks (`checkStampGateLightingCase`) read the floor through
+the stands' own geometry projected by the frame's camera: dark beside the foot, the shadow's edge there sharp and at
+least twice as wide down its far end; the twin's floor lit where its shadow would fall; and the cap's reflection
+within 3 px of the mirrored cap seen through the frame's camera, so a mirror left at rest fails as the camera pans.
 
 The reveal cases (`stamp-gate-reveals.ts`, `stamp-gate-reveals-page.ts`) hold a reveal to its CPU twin
 (`stampRevealShownAt`): a texel whose twin shows none, its neighbours too, matches the frame with all hidden, one
@@ -748,7 +756,7 @@ nothing solved. `reveal/sheets`: a group's reveal intersecting a nested layer's 
 with its paint and the root's ground never; a hidden foot leaving its water's mark on the shallows. `reveal/surfaces`:
 one painting through a still, a shot, a clear back over HTML and a painted texture, its mips re-laid. `reveal/clock`:
 held on sixes it steps, sampled continuously it moves smoothly, a reveal edit solves nothing, posed paint carries
-it, and a dissolve's ends each show theirs. Frame families (solved sheets, shots, painted textures) are rows of `STAMP_GATE_FRAME_FAMILIES` in `stamp-gate.ts`: IDs,
+it, and a dissolve's ends each show theirs. Frame families (solved sheets, shots, painted textures, the lit shot) are rows of `STAMP_GATE_FRAME_FAMILIES` in `stamp-gate.ts`: IDs,
 page function, frame size and inputs, so a new family is one row. Pre-push runs it on each pushed commit's tree when a
 path it covers changes, once it has the whole adapter (the GPU lease, `lib/platform/gpu/engine/gpu-lease.ts`), so its
 deadline never runs while it queues; no adapter, a timeout or a difference refuses the push. Public baselines live in

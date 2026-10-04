@@ -26,7 +26,7 @@ import {
   type StampGateTextureCase, type StampGateTextureId,
 } from '../models/stamp-gate-textures.ts';
 import { stampGateRgb, stampGateRgbBase64, withGateSurface } from './stamp-gate-page-surface.ts';
-import { stampGateShotFrames, type StampGateShotFrames } from './stamp-gate-shot-frames.ts';
+import { stampGateFramesBeside, stampGateShotFrames, type StampGateShotFrames } from './stamp-gate-shot-frames.ts';
 import { stampGateSheetImageUrl } from './stamp-gate-sheet-owner.ts';
 
 const SOURCE_ID = 'textured';
@@ -163,12 +163,8 @@ function drawStampGateShotTextureFrames(id: StampGateShotTextureId, warmed: bool
 
 /** Shot texture baseline `id`'s frames side by side, drawn through the shot's renderer unwarmed: RGB bytes row by row, in base64. */
 export async function paintStampGateShotTexture(id: StampGateShotTextureId): Promise<string> {
-  const { frames: drawn } = await drawStampGateShotTextureFrames(id, false), { width, height } = stampGateShotTextureFrame(id), one = width / drawn.length;
-  const beside = new Uint8ClampedArray(width * height * 4);
-  drawn.forEach((rgba, f) => {
-    for (let y = 0; y < height; y++) beside.set(rgba.subarray(y * one * 4, (y + 1) * one * 4), (y * width + f * one) * 4);
-  });
-  return stampGateRgbBase64(beside);
+  const { frames: drawn } = await drawStampGateShotTextureFrames(id, false);
+  return stampGateRgbBase64(stampGateFramesBeside(drawn, stampGateShotTextureFrame(id)));
 }
 
 const solvedText = ({ solves }: StampPaintCosts) => solves.map(({ program, from, entries }) => `${program} from ${from} (${entries})`).join(', ') || 'nothing';

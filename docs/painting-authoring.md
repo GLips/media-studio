@@ -1135,7 +1135,9 @@ function glossyFloor({ plane, frame }: PaintedThreeSourceTools): PaintedThreeSou
 
 The reflection is added to the floor's own lit colour, as reflected light is; a shadow on the floor darkens the
 floor and leaves its reflection be. A mip level averages a square twice the last's width, a fair stand-in for a
-rough surface's spread, not a measured one. Set `ROUGHNESS` by eye at delivery size.
+rough surface's spread, not a measured one. Set `ROUGHNESS` by eye at delivery size. The gate's `shot/shadow` is
+this in small: a post standing on a tilted floor, its shadow tight at its foot and soft down its length, its cap
+mirrored where the panning camera sees it, beside a twin asking for no shadows.
 
 ## Reference
 
