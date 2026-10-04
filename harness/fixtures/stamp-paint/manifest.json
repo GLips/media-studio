@@ -210,10 +210,10 @@
     "shot/rain": {
       "file": "shot/rain.png",
       "output": "2ea5b1703b01f2f1857081fdfebc457ef07760fbeb591905004965c01e5f79e5",
-      "inputs": "fd91a8c14b05f6bf07c299e1465f3305cbf74875e39a102ea78f39a122d54ebd",
-      "reason": "variants laid centred on the stage, so a defocused drop's halo is no longer clipped on its top and left",
+      "inputs": "04c4f979e64189ebd8529badf514dbfd4b74bcb8b1a47412cb2ca13b64f16ea5",
+      "reason": "re-keyed after landing over three-textures, wrap-xy and pres-dom: its programs now carry wrap; image compared by eye with the slice's baseline",
       "accepted": "2026-10-04",
-      "acceptedOver": "40e86d3f",
+      "acceptedOver": "319252f4",
       "adapter": "apple metal-3"
     },
     "shot/wet-contact": {

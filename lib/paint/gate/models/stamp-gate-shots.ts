@@ -2,9 +2,8 @@
 // paper heron with a neck skinned to its body on the scene's sheet (a lowered neck its second cel), its wing a cel
 // moving its own sheet whole, and a clump of reeds whose group owns its sheet, drawn as pieces, also boiling; and the
 // wet-contact sheet with its heron's foot posed by a rig, also painted in as it plays; the heron alone, a clear back
-// over HTML, also pinned (shot/page); and the rain (stamp-gate-rain.ts). Each shot's poses are a table by scene
-// second, and the rain's drops one of their own, so its baseline's inputs name them. What the cases measure of their
-// frames is here, pure.
+// over HTML, also pinned (shot/page); and the rain (stamp-gate-rain.ts). Poses and the rain's drops are tables by scene
+// second, so a baseline's inputs name them. What the cases measure of their frames is here, pure.
 
 import { compilePaintingSelection } from '#lib/paint/document/models/painting-document-compile.ts';
 import type { LayerNode, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';

@@ -1,12 +1,11 @@
 // shot-renderer.ts: a compiled shot drawn on one owner's device into its canvases (ENGINE 6.1). A frame solves each
 // painted plane and instanced variant once, at its own moment; then each exposure (a fast frame's one, a reference
-// frame's many) lays every plane where it lies at that moment, reads its items, and composites each canvas's planes
-// and item batches far to near through that canvas's lens. The first canvas holds the back, opaque unless it's clear
-// over HTML; a later one is developed premultiplied over the page. A pinned plane lies where the frame's measures put
-// it.
+// frame's many) lays every plane where it lies then, reads its items, and composites each canvas's planes and item
+// batches far to near through its lens. The first canvas holds the back, opaque unless it's clear over HTML; a later
+// one is developed premultiplied. A pinned plane lies where the frame's measures put it.
 //
-// Picture and three planes are the old path's sources, rendered and laid through stamp-lens-source-layers.ts; a
-// picture plane's node places it within its plane. Its three sources read no painted textures (shot-compile.ts).
+// Picture and three planes are the old path's sources (stamp-lens-source-layers.ts), a picture plane placed within
+// its plane by its node. Its three sources read no painted textures.
 
 import { paintSimilarityAfter } from '#lib/paint/animation/models/paint-similarity.ts';
 import { paintCameraDepthLooks, paintCameraLensFrame, type PaintCameraDepthLooks } from '#lib/paint/animation/models/paint-camera.ts';

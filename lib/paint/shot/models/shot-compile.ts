@@ -1,8 +1,8 @@
 // shot-compile.ts: a PaintedShot's props checked and compiled as it loads (ENGINE 6.1): planes far to near, each on
 // its canvas; each painted plane's occurrences from its first evaluation, at moment 0 through its source clock; each
 // instanced plane's variants (shot-instances.ts); the rigs, visibility and motion over them; the camera built over
-// each plane's reach. Every problem is found before any is thrown. Covers are laid through the built camera here, pins
-// each frame (shot-placement.ts). The back is opaque unless HTML lies behind the first canvas.
+// each plane's reach. Every problem is found before any is thrown. Covers are laid through the built camera, pins each
+// frame (shot-placement.ts).
 //
 // Negative space: masks, a dissolve between its ends and `warm` are refused (ENGINE 10 slice 6), as are visibility on
 // the back, a picture or a three plane, a lay on either, and painted textures (ENGINE 6.3).
@@ -57,11 +57,10 @@ export type CompiledShotPlane =
   | (ShotPlaneCommon & { readonly kind: 'three'; readonly source: ThreeSource });
 
 /**
- * A shot compiled: its planes far to near (shotDrawableOrder), the back first; its instanced planes as written; all
- * of them as `written`, which a frame orders with its items; how many canvases it draws in, and `clearBack`: the back
- * isn't opaque but clear where it lays nothing, over HTML, its canvas premultiplied as later ones are
- * (shotCanvasAlphaMode); its motion (each plane's clock in its planeClocks, an instanced plane's too), rigs and
- * visibility by occurrence; its camera.
+ * A shot compiled: its planes far to near, the back first; its instanced planes; all of them as `written`, which a
+ * frame orders with its items; its canvas count, and `clearBack`: the back is clear where it lays nothing, over HTML,
+ * its canvas premultiplied (shotCanvasAlphaMode); its motion (an instanced plane's clock too), rigs, visibility by
+ * occurrence and camera.
  */
 export type CompiledPaintedShot = {
   readonly planes: readonly CompiledShotPlane[];
