@@ -46,7 +46,23 @@ const importBrushesCommand = defineCommand({
   },
 });
 
+const describeBrushesCommand = defineCommand({
+  meta: {
+    name: 'describe',
+    description: "Print each of a style's brushes as numbers to plan by, read from the packs imported here (they're private, so no doc holds them): the share of its size, opacity and flow (and anything else pressure moves) kept at pressure 0.3, 0.6 and 1, outside a taper; its flow before pressure, and whether its tip parts as pressure falls; its visible width over its diameter at a few diameters, and the smallest diameter it was measured at, under which it lays nothing that reads; and whether it catches the paper's peaks.",
+  },
+  args: {
+    style: { type: 'positional', required: true, description: 'The style, work/styles/<style>/' },
+  },
+  async run({ args }) {
+    const { STUDIO_STYLES_DIR } = await import('#lib/platform/project/engine/studio-project.ts');
+    const { readWorkspaceStyleBrushNumbers } = await import('#lib/paint/style/engine/workspace-style-brush-numbers.ts');
+    const { stampStyleBrushNumbersText } = await import('#lib/paint/style/models/style-brush-numbers.ts');
+    console.log(stampStyleBrushNumbersText(await readWorkspaceStyleBrushNumbers(STUDIO_STYLES_DIR, args.style)).join('\n'));
+  },
+});
+
 export default defineCommand({
-  meta: { name: 'brushes', description: "A private style's brush assets, imported from packs you bought" },
-  subCommands: { import: importBrushesCommand },
+  meta: { name: 'brushes', description: "A private style's brush assets, imported from packs you bought, and the numbers to plan by that they paint with" },
+  subCommands: { import: importBrushesCommand, describe: describeBrushesCommand },
 });

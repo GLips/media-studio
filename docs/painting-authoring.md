@@ -1179,7 +1179,12 @@ red), so a near-black is a hex part (Media). In crayon a mix goes to about L* 25
 `TITANIUM_WHITE` (`#lib/paint/materials/models/paint-medium.ts`) mixes as a pigment too.
 
 **Brushes**, by style. Wet brushes lay by the wet law in a wet wash; dry ones by the dry law anywhere. "Pressure"
-is what a stroke point's pressure moves (crayon's medium also decides how pressure meets the tooth).
+is what a stroke point's pressure moves (crayon's medium, and a dry brush's in a wet one, also decide how pressure
+meets the tooth). How far it moves them varies brush to brush, and the packs are private, so the numbers live on your
+machine: `studio brushes describe <style>` prints, for each brush, the share of its size, opacity and flow (and
+anything else pressure moves) kept at pressure 0.3, 0.6 and 1; its visible width over its diameter at a few
+diameters; the smallest diameter it was measured at, under which no probe drew a line, so plan nothing finer; and
+whether it catches the paper's peaks.
 
 | Style | Brush | Lays | For | Pressure |
 |---|---|---|---|---|
@@ -1209,7 +1214,7 @@ is what a stroke point's pressure moves (crayon's medium also decides how pressu
 | `crayon` | `stick` | dry | a hard stick's point: hatching, crisp grainy marks | size |
 | | `side` | dry | a stick on its side: broad grainy zigzags, a first layer | size, flow |
 | | `tooth` | dry | a soft stick leaving the tooth bare: a scumbled ground | size, opacity, flow |
-| | `conte` | dry | waxy and dense: small solid darks | — |
+| | `conte` | dry | waxy and dense: small solid darks | roundness |
 | | `chalk` | dry | a rough, broken chalky mark for texture | size, opacity, flow |
 | | `pencil` | dry | a grainy graphite outline | size, flow |
 | | `eraser` | dry | a lift rubbing a soft light back toward the paper | size, flow |
