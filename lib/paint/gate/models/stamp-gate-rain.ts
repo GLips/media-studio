@@ -79,9 +79,10 @@ function rainAt(at: number): PlaneInstance[] {
   });
 }
 
-const focusOnStreet: PaintCameraPlay = {
-  clip: { kind: 'focus', keys: [{ at: 0, focus: DEPTHS.street, aperture: 1.5 }] }, clock: { at: 0 }, origin: 'the camera focuses on the street',
-};
+/** The camera focused on the street, its aperture `aperture`. */
+const focusOnStreet = (aperture: number): PaintCameraPlay => ({
+  clip: { kind: 'focus', keys: [{ at: 0, focus: DEPTHS.street, aperture }] }, clock: { at: 0 }, origin: 'the camera focuses on the street',
+});
 
 /** A shot of the street and `rain`, still, its shutter open `shutter` s; `post` puts the post between the rain's depths. */
 function streetShot(rain: (at: number) => readonly PlaneInstance[], { shutter, post, plays }: { shutter: number; post: boolean; plays: readonly PaintCameraPlay[] }): PaintedShotProps {
@@ -97,19 +98,21 @@ function streetShot(rain: (at: number) => readonly PlaneInstance[], { shutter, p
 }
 
 /** The rain falling over the street, past the post, focused on the street. */
-export const stampGateRainShot = (): PaintedShotProps => streetShot(rainAt, { shutter: STAMP_GATE_RAIN.shutter, post: true, plays: [focusOnStreet] });
+export const stampGateRainShot = (): PaintedShotProps => streetShot(rainAt, { shutter: STAMP_GATE_RAIN.shutter, post: true, plays: [focusOnStreet(1.5)] });
 
 /** Where the lone drop is at scene second `at`: falling at depth 1.5 down column 60, at 60 px at STAMP_GATE_LONE_DROP_AT. */
 export const STAMP_GATE_LONE_DROP_AT = 0.125;
 const loneDropY = (at: number) => 60 + STAMP_GATE_RAIN.speed * (at - STAMP_GATE_LONE_DROP_AT);
 
 /**
- * The lone drop's shots: `none` draws no drop; `sharp` the drop with the shutter shut; `blurred` with it open, one
- * key for its fall; `recycled` open too, but keyed anew each millisecond, so no key spans the shutter.
+ * The lone drop's shots: `none` draws no drop; `sharp` the drop, shutter shut; `defocused` shut, focused on the street,
+ * its blur reaching past its document's top; `blurred` shutter open, one key for its fall; `recycled` open, keyed anew
+ * each millisecond, so no key spans the shutter.
  */
-export function stampGateLoneDropShot(kind: 'none' | 'sharp' | 'blurred' | 'recycled'): PaintedShotProps {
+export function stampGateLoneDropShot(kind: 'none' | 'sharp' | 'defocused' | 'blurred' | 'recycled'): PaintedShotProps {
   const rain = (at: number) => (kind === 'none' ? [] : [dropAt(kind === 'recycled' ? `drop-${Math.round(at * 1000)}` : 'drop', 60, loneDropY(at), 1.5)]);
-  return streetShot(rain, { shutter: kind === 'sharp' ? 0 : STAMP_GATE_RAIN.shutter, post: false, plays: [] });
+  const shut = kind === 'sharp' || kind === 'defocused';
+  return streetShot(rain, { shutter: shut ? 0 : STAMP_GATE_RAIN.shutter, post: false, plays: kind === 'defocused' ? [focusOnStreet(3)] : [] });
 }
 
 /** How far the lone drop falls while the shutter's open, frame px. */

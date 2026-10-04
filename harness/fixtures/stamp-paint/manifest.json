@@ -209,11 +209,11 @@
     },
     "shot/rain": {
       "file": "shot/rain.png",
-      "output": "4eb407e26ab11997b2fc15b905a0205079e2a78bd0638b5346ed1039bd809ea8",
+      "output": "2ea5b1703b01f2f1857081fdfebc457ef07760fbeb591905004965c01e5f79e5",
       "inputs": "fd91a8c14b05f6bf07c299e1465f3305cbf74875e39a102ea78f39a122d54ebd",
-      "reason": "vid-157 pres-instances: new case, rain falling about a post through an instanced plane, each drop blurred along its own fall",
+      "reason": "variants laid centred on the stage, so a defocused drop's halo is no longer clipped on its top and left",
       "accepted": "2026-10-04",
-      "acceptedOver": "49f50173",
+      "acceptedOver": "40e86d3f",
       "adapter": "apple metal-3"
     },
     "shot/wet-contact": {

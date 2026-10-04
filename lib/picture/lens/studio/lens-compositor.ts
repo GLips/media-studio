@@ -142,6 +142,10 @@ const layingTargets = (has: LensExposureDraw, laying: LensLaying): GPUColorTarge
 ];
 const view4 = ({ ma, mb, kx, ky }: LensView): [number, number, number, number] => [ma, mb, kx, ky];
 
+/** What a render pipeline's vertex stage reads: its vertex buffers, and the primitives its vertices make. */
+type LensDrawnVertices = { readonly buffers: readonly GPUVertexBufferLayout[]; readonly topology: GPUPrimitiveTopology };
+const LENS_FULL_FRAME_VERTICES: LensDrawnVertices = { buffers: [], topology: 'triangle-list' };
+
 /**
  * A lens for frames `width` × `height` on `device`; its targets and pipelines are made when a frame first asks.
  * `blurExtent`: the largest box a gaussian or defocus spans, its corner included (the frame when left out).
@@ -182,13 +186,12 @@ export function createLensCompositor(device: GPUDevice, { width, height, blurExt
     return computes.get(key)!;
   };
   const draws = new Map<string, GPURenderPipeline>();
-  /** A render pipeline made once by `key`; `strip` draws instance rows (LENS_ITEM_ROW) as triangle strips. */
-  const drawn = (key: string, code: () => string, colorTargets: readonly GPUColorTargetState[], strip = false) => {
+  /** A render pipeline made once by `key`, reading `vertex`'s buffers in its topology (a full-frame triangle reads none). */
+  const drawn = (key: string, code: () => string, colorTargets: readonly GPUColorTargetState[], vertex: LensDrawnVertices = LENS_FULL_FRAME_VERTICES) => {
     if (!draws.has(key)) {
       const module = device.createShaderModule({ code: code() });
       draws.set(key, device.createRenderPipeline({
-        layout: 'auto', vertex: { module, buffers: strip ? [LENS_ITEM_ROW.layout] : [] }, fragment: { module, targets: [...colorTargets] },
-        ...(strip && { primitive: { topology: 'triangle-strip' } }),
+        layout: 'auto', vertex: { module, buffers: [...vertex.buffers] }, fragment: { module, targets: [...colorTargets] }, primitive: { topology: vertex.topology },
       }));
     }
     return draws.get(key)!;
@@ -242,9 +245,11 @@ export function createLensCompositor(device: GPUDevice, { width, height, blurExt
       put('size', [layer.size.w, layer.size.h]);
       put('frame', [width, height]);
     });
+    // An item moves as its views do: its picture's own motion would count its travel twice.
+    const layers = { ...layer.layers, motion: null };
     const layings = (['filter', 'add'] as const satisfies readonly LensLaying[]).map((laying) => {
-      const key = `items|${has.glowing}|${has.moving}|${lensPictureLayersKey(layer.layers)}|${laying}`;
-      const pipeline = drawn(key, () => lensItemsWgsl(has, layer.layers, laying), layingTargets(has, laying), true);
+      const key = `items|${has.glowing}|${has.moving}|${lensPictureLayersKey(layers)}|${laying}`;
+      const pipeline = drawn(key, () => lensItemsWgsl(has, layers, laying), layingTargets(has, laying), { buffers: [LENS_ITEM_ROW.layout], topology: 'triangle-strip' });
       return { pipeline, group: bindGroup(pipeline, [uniform, layer.picture, linearClamp]) };
     });
     pass.setVertexBuffer(0, placed.buffer, placed.offset, placed.size);

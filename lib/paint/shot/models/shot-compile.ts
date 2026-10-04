@@ -75,6 +75,15 @@ export type CompiledPaintedShot = {
   readonly camera: PaintCamera;
 };
 
+/**
+ * What of `shot` a frame solves, and a warm would: its painted planes, then each instanced plane's variants. A variant
+ * carries its instanced plane's id (CompiledShotVariant), so whatever is kept per solvable is keyed by object.
+ */
+export function shotPaintedSolvables(shot: Pick<CompiledPaintedShot, 'planes' | 'instanced'>): CompiledShotPaintedPlane[] {
+  const painted = shot.planes.filter((plane): plane is CompiledShotPaintedPlane => plane.kind === 'painted');
+  return [...painted, ...shot.instanced.flatMap(({ variants }) => [...variants.values()].map((variant) => variant.painted))];
+}
+
 const shotError = (owner: string, field: string, message: string) => paintingProblem('error', owner, field, message);
 
 /** What a shot's page holds as it loads or draws a frame: whether HTML lies behind its first canvas (before it in DOM order). */
@@ -147,18 +156,20 @@ function compilePlaneLay({ lay, reach }: PlaneProps): ShotPlaneLay {
 }
 
 /**
- * Plane `props` (a painted one) compiled from its first evaluation, or null and its problems. The farthest plane is
- * the back, opaque; with a transparent ground over HTML behind the first canvas, it's clear film instead.
+ * Plane `props` (a painted one) compiled from its first evaluation, or null and its problems, its source's at `field`.
+ * The farthest plane is the back, opaque; with a transparent ground over HTML behind the first canvas, it's clear film
+ * instead.
  */
 function compilePaintedPlane(
   props: PlaneProps, source: PresentationValue<PaintedSource>, common: ShotPlaneCommon, farthest: boolean, page: ShotPage, fps: number, problems: PaintingProblem[],
+  field = 'source',
 ): CompiledShotPaintedPlane | null {
   const sourceClock = paintNodeClockSteps(props.sourceClock);
   const first = shotPresentationAt(source, paintNodeTimeAt(sourceClock, paintMoment(0), fps));
-  const sourceProblems = paintedSourceProblems(props.id, first);
+  const sourceProblems = paintedSourceProblems(props.id, first, field);
   problems.push(...sourceProblems);
   const drawn = paintedSourceSelection(first);
-  if ('problem' in drawn) problems.push(shotError(props.id, 'source', drawn.problem));
+  if ('problem' in drawn) problems.push(shotError(props.id, field, drawn.problem));
   if (sourceProblems.length || 'problem' in drawn) return null;
   const clear = drawn.selection.ground === 'transparent';
   if (farthest && clear && !page.htmlBehind) {
@@ -247,7 +258,11 @@ export function compilePaintedShot(
   }
   const instanced = back ? props.planes.flatMap((plane) => {
     if (plane.kind !== 'instanced') return [];
-    const made = compileShotInstancedPlane(plane, canvasOf(plane.canvas), back, props.camera.stage, problems);
+    const common = { id: plane.id, depth: plane.depths.far, canvas: canvasOf(plane.canvas) };
+    // Each variant compiles as a painted plane does, under its instanced plane's id (CompiledShotVariant says why).
+    const variants = Object.entries(plane.variants).map(([name, source]) =>
+      [name, compilePaintedPlane({ id: plane.id, depth: plane.depths.far, source }, source, common, false, page, fps, problems, `variants.${name}`)] as const);
+    const made = compileShotInstancedPlane(plane, common.canvas, back, props.camera.stage, variants, problems);
     return made ? [made] : [];
   }) : [];
   if (canvases.length) {

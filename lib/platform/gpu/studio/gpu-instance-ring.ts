@@ -1,15 +1,13 @@
-// gpu-instance-ring.ts: per-instance vertex rows for draws encoded now and submitted together, as gpu-uniform-ring.ts
-// holds their uniforms. A draw's rows are written into staging as it's encoded, side by side, and every row is
-// uploaded by `flush` before the submit. A chunk too full for a draw's rows opens another, at least twice as big, so
-// no count of rows need be known first.
+// gpu-instance-ring.ts: per-instance vertex rows for draws encoded now and submitted together, a draw's rows side by
+// side, staged and uploaded before the submit by gpu-staged-ring.ts; and a row's layout, its fields read in order.
 
-type GpuInstanceChunk = { buffer: GPUBuffer; staging: Float32Array; rows: number; used: number };
+import { createGpuStagedRing } from './gpu-staged-ring.ts';
 
 /** Where a draw's rows lie: bound as an instance-step vertex buffer, row 0 at instance 0. */
 export type GpuInstanceRows = { readonly buffer: GPUBuffer; readonly offset: number; readonly size: number };
 
 export type GpuInstanceRing = {
-  /** `count` rows, each `floats` wide, filled by `fill`, which writes row i from float i × floats of what it's given. */
+  /** `count` zeroed rows, each `floats` wide, filled by `fill`, which writes row i from float i × floats of what it's given. */
   rows: (count: number, fill: (floats: Float32Array) => void) => GpuInstanceRows;
   /**
    * Uploads every row filled since the last flush, and starts over. Warning: call it after encoding and before the
@@ -20,33 +18,25 @@ export type GpuInstanceRing = {
 };
 
 /** Instance rows of `floats` floats each on `device`, its first chunk holding `rows`. */
-export function createGpuInstanceRing(device: GPUDevice, { label, floats, rows: first = 256 }: { label: string; floats: number; rows?: number }): GpuInstanceRing {
-  const chunks: GpuInstanceChunk[] = [], rowBytes = floats * 4;
-  const open = (rows: number) => {
-    const buffer = device.createBuffer({ label: `${label} instances`, size: rows * rowBytes, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
-    const chunk = { buffer, staging: new Float32Array(rows * floats), rows, used: 0 };
-    chunks.push(chunk);
-    return chunk;
-  };
-  open(first);
+export function createGpuInstanceRing(device: GPUDevice, { label, floats, rows = 256 }: { label: string; floats: number; rows?: number }): GpuInstanceRing {
+  const ring = createGpuStagedRing(device, { label: `${label} instances`, usage: GPUBufferUsage.VERTEX, unitBytes: floats * 4, units: rows });
   return {
     rows: (count, fill) => {
-      const chunk = chunks.find(({ rows, used }) => rows - used >= count) ?? open(Math.max(count, chunks.at(-1)!.rows * 2));
-      const from = chunk.used * floats, size = count * rowBytes, offset = chunk.used * rowBytes;
-      chunk.used += count;
-      const into = chunk.staging.subarray(from, from + count * floats);
-      into.fill(0);
-      fill(into);
-      return { buffer: chunk.buffer, offset, size };
+      const { buffer, staging, offset, size } = ring.take(count);
+      fill(new Float32Array(staging, offset, count * floats));
+      return { buffer, offset, size };
     },
-    flush: () => {
-      for (const chunk of chunks) {
-        if (chunk.used) device.queue.writeBuffer(chunk.buffer, 0, chunk.staging, 0, chunk.used * floats);
-        chunk.used = 0;
-      }
-    },
-    destroy: () => {
-      for (const { buffer } of chunks.splice(0)) buffer.destroy();
-    },
+    flush: ring.flush,
+    destroy: ring.destroy,
   };
+}
+
+/** An instance row: its floats, and its instance-step layout. */
+export type GpuInstanceRow = { readonly floats: number; readonly layout: GPUVertexBufferLayout };
+
+/** A row of fields `widths` floats wide, side by side, field i read at shader location i: its floats and layout made together. */
+export function gpuInstanceRow(widths: readonly (1 | 2 | 3 | 4)[]): GpuInstanceRow {
+  const offsets = widths.map((_, i) => widths.slice(0, i).reduce((sum, width) => sum + width, 0)), floats = widths.reduce((sum, width) => sum + width, 0);
+  const attributes = widths.map((width, shaderLocation): GPUVertexAttribute => ({ shaderLocation, offset: offsets[shaderLocation] * 4, format: width === 1 ? 'float32' : `float32x${width}` }));
+  return { floats, layout: { arrayStride: floats * 4, stepMode: 'instance', attributes } };
 }

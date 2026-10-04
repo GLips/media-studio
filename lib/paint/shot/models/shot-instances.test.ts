@@ -5,6 +5,7 @@ import { painting } from '#lib/paint/document/models/painting-source.ts';
 import { lensSigmaStepped } from '#lib/picture/lens/models/lens-focus.ts';
 import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
 import { paintCameraDepthLooks } from '#lib/paint/animation/models/paint-camera.ts';
+import { paintSimilarityAfter, paintSimilarityApply } from '#lib/paint/animation/models/paint-similarity.ts';
 import { paintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { compilePaintedShot } from './shot-compile.ts';
@@ -57,12 +58,29 @@ test("an exposure lays each item by its lay at its depth, blurred along its own 
   const exposure = { at: paintMoment(1), shutter: { open: paintMoment(0.99, 1), close: paintMoment(1.01, 1) } };
   const { items, lookOf } = shotExposureItems(shot!.instanced, shot!.motion, exposure, paintCameraDepthLooks(shot!.camera, 1));
   const [a, b] = items.get('rain')!, falling = lookOf('rain', a);
-  // Its variant's picture starts at the stage's corner, the margin past the frame's; the camera's at rest.
-  assert.ok(Math.abs(falling.view.kx - 102) < 1e-9 && falling.view.ky === 2);
+  // The drop's pivot, through its variant's picture and its view, lies where its lay puts it, as the camera sees depth 2.
+  const pivot = paintSimilarityApply(paintSimilarityAfter(falling.view, shot!.instanced[0].variants.get('drop')!.picture), { x: 8, y: 16 });
+  const laid = paintSimilarityApply(paintCameraDepthLooks(shot!.camera, 1).lookAt(2, 'the street').view, { x: 108, y: 16 });
+  assert.ok(Math.abs(pivot.x - laid.x) < 1e-9 && Math.abs(pivot.y - laid.y) < 1e-9);
   assert.ok(falling.shutter && Math.abs(falling.shutter.close.kx - falling.shutter.open.kx - 2) < 1e-9);
   assert.equal(lookOf('rain', b).shutter, null);
   const twice = compiled([plane('street', 3), { ...rain, instances: () => [item('a', 2), item('a', 1.5)] }]).shot!;
   assert.throws(() => shotExposureItems(twice.instanced, twice.motion, exposure, paintCameraDepthLooks(twice.camera, 1)), /rain: two items are called a at 1 s/);
+});
+
+/** A drop at depth 1 under a camera focused at depth 3, its aperture `aperture`, and its items at rest. */
+function focusedDrop(aperture: number) {
+  const plays: PaintedShotProps['camera']['plays'] = [{ clip: { kind: 'focus', keys: [{ at: 0, focus: 3, aperture }] }, clock: { at: 0 }, origin: 'the camera focuses on the street' }];
+  const shot = compilePaintedShot({ camera: { ...camera, plays }, planes: [plane('street', 3), instanced('rain', [item('a', 1)])] }, []).shot!;
+  return { shot, items: () => shotExposureItems(shot.instanced, shot.motion, { at: paintMoment(0), shutter: null }, paintCameraDepthLooks(shot.camera, 0)) };
+}
+
+test('a variant lies centred on the stage, and an item blurring it past the stage round it is refused', () => {
+  const sharp = focusedDrop(0.5);
+  // A 16 × 32 document on a 52 × 44 stage: 18 px either side, 6 above and below.
+  assert.equal(sharp.shot.instanced[0].variants.get('drop')!.room, 6);
+  assert.doesNotThrow(sharp.items);
+  assert.throws(focusedDrop(2).items, /rain: a at 0 s blurs drop \d+ px past its document, and the stage leaves it 6/);
 });
 
 test("an instanced plane's load refuses what its items can't be drawn by, every problem at once", () => {

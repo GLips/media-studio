@@ -115,10 +115,9 @@ export type PlaneProps = PlaneCommon & PlaneLay & {
 export type PlaneInstance = { readonly key: string; readonly variant: string; readonly depth: number; readonly lay: StampGroupLay; readonly visibility?: number };
 
 /**
- * Many items sharing finished variants, each depth-sorted with every drawable (ties: planes first, then item order),
- * between `depths`, nearer than the back plane. `instances` is read at each frame's moment and shutter ends, through
- * the plane's `clock`. A variant is laid once, whole on the stage; its items lie anywhere through the lens. The
- * plane's visibility fades every item.
+ * Items sharing finished variants, depth-sorted with every drawable (ties: planes, then item order) between `depths`,
+ * nearer than the back. `instances` is read at each frame's moment and shutter ends, by the plane's `clock`. A variant
+ * lies whole, centred on the stage, which must hold its items' blur; items lie anywhere through the lens. Its visibility fades all.
  */
 export type InstancedPlaneProps = PlaneCommon & {
   readonly kind: 'instanced';

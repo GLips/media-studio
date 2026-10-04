@@ -120,22 +120,31 @@ export async function checkStampGateRiggedWetContact(): Promise<StampGateWashChe
 
 const boxSize = (box: ReturnType<typeof stampGateDifferenceBox>) => box && { w: box.x1 - box.x0, h: box.y1 - box.y0 };
 
+/** How far `wide` reaches past `narrow` on each side, px; null if either is. */
+const spreadPast = (narrow: ReturnType<typeof stampGateDifferenceBox>, wide: ReturnType<typeof stampGateDifferenceBox>) =>
+  narrow && wide && { left: narrow.x0 - wide.x0, right: wide.x1 - narrow.x1, top: narrow.y0 - wide.y0, bottom: wide.y1 - narrow.y1 };
+
 /**
- * shot/rain (ENGINE test 5, the camera still): a lone drop under an open shutter blurs along its own fall, longer than
- * it's drawn shut and no wider; keyed anew across the shutter, it draws as if shut; and a frame of the rain that moves
- * only its drops solves nothing and lays no picture anew.
+ * shot/rain (ENGINE test 5, the camera still): a lone drop out of focus spreads alike on every side; shutter open, it
+ * blurs along its fall, longer than shut and no wider; keyed anew across the shutter, it draws as if shut; a frame
+ * moving only drops solves nothing and lays no picture anew.
  */
 async function checkStampGateRain(): Promise<StampGateWashCheck[]> {
   const loneDrop = async (kind: Parameters<typeof stampGateLoneDropShot>[0]) => stampGateRgb((await stampGateShotFrames(stampGateLoneDropShot(kind), [STAMP_GATE_LONE_DROP_AT]))[0]);
-  const none = await loneDrop('none'), sharp = await loneDrop('sharp'), blurred = await loneDrop('blurred'), recycled = await loneDrop('recycled');
+  const none = await loneDrop('none'), sharp = await loneDrop('sharp'), defocused = await loneDrop('defocused'), blurred = await loneDrop('blurred'), recycled = await loneDrop('recycled');
   const rain = stampGateRainShot(), { width } = rain.camera.stage.frame, costs = createStampPaintCostTally(), taken: StampPaintCosts[] = [];
   const [first, next] = await stampGateShotFrames(rain, [STAMP_GATE_RAIN.at.first, STAMP_GATE_RAIN.at.next], costs, () => taken.push(costs.take()));
-  const [shut, open, renewed] = [sharp, blurred, recycled].map((frame) => stampGateDifferenceBox(none, frame, width));
-  const shutSize = boxSize(shut), openSize = boxSize(open), travel = STAMP_GATE_LONE_DROP_TRAVEL;
+  const [shut, soft, open, renewed] = [sharp, defocused, blurred, recycled].map((frame) => stampGateDifferenceBox(none, frame, width));
+  const shutSize = boxSize(shut), openSize = boxSize(open), travel = STAMP_GATE_LONE_DROP_TRAVEL, spread = spreadPast(shut, soft);
   const renewedAsShut = !!shut && !!renewed && (['x0', 'x1', 'y0', 'y1'] as const).every((edge) => Math.abs(shut[edge] - renewed[edge]) <= 1);
+  const spreadAlike = !!spread && Object.values(spread).every((px) => px > 0) && Math.abs(spread.top - spread.bottom) <= 1 && Math.abs(spread.left - spread.right) <= 1;
   const fell = stampGateDifferenceBox(stampGateRgb(first), stampGateRgb(next), width), nextSolves = solvedText(taken[1]), misses = taken[1].counts.get('picture misses') ?? 0;
   const warnings = taken.flatMap((each) => each.warnings);
   return [
+    {
+      id: 'shot/rain: defocus', passed: spreadAlike,
+      detail: `out of focus, the still drop shows over ${boxText(soft)}; in focus, over ${boxText(shut)}${spread ? `: ${spread.left}, ${spread.right}, ${spread.top} and ${spread.bottom} px past it left, right, above and below` : ''} (more than 0 each, sides and ends within a px of each other wanted)`,
+    },
     {
       id: 'shot/rain: own blur', passed: !!shutSize && !!openSize && openSize.h >= shutSize.h + travel / 2 && Math.abs(openSize.w - shutSize.w) <= 2,
       detail: `falling ${travel} px while the shutter's open, the drop shows over ${boxText(open)}; shut, over ${boxText(shut)} (at least ${travel / 2} px longer and within 2 px as wide wanted)`,

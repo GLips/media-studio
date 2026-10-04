@@ -492,11 +492,13 @@ film where its owners and the plane's place put it, a pieces rig's picture at it
 the old renderer's pass (`painting/studio/stamp-plane-picture-pass.ts`), kept in the device's cache under the plan's
 key. Picture and three planes are the old path's sources, laid through `stamp-lens-source-layers.ts`; they read no
 painted textures yet. An instanced plane (`shot-instances.ts`) reads its items at the exposure's moment and its
-shutter's ends, pairs them by key and looks each through the camera at its own depth. Each variant is solved and laid
-as a painted plane is, still at the stage's corner, its picture kept under its plan's key; a batch of items (one
-variant, one stepped sigma) lays it through each item's view as the lens's items layer
-(`studio/shot-instance-passes.ts`): a quad per item, its view, shutter ends, distance and visibility a vertex row
-(`lens-compositor.ts`, `platform/gpu/studio/gpu-instance-ring.ts`), its filter then its add before the next.
+shutter's ends, pairs them by key and looks each through the camera at its own depth. Each variant is compiled, solved
+and laid as a painted plane is, still and centred on the stage, its picture kept under its plan's key; an item whose
+blur would spread it past the stage round its document is refused as the frame reads it. A batch of items (one
+variant, one stepped sigma) lays that picture, blurred in its own px, through each item's view as the lens's items
+layer (`studio/shot-instance-passes.ts`): a quad per item, its view, shutter ends, distance and visibility a vertex row
+(`lens-compositor.ts`, `platform/gpu/studio/gpu-instance-ring.ts`), its filter then its add before the next. An
+item's travel is its views at the shutter's ends, as a plane's is; its picture's own motion isn't read.
 
 Its presentation, as models the passes will draw from, refused by a shot's load until they're drawn: a path
 mask's capsules for the first `revealPx` of inked length, pen-ups adding none, and the `alphaOf` graph, checked
@@ -559,9 +561,9 @@ swapped to its lowered cel with nothing solved, then faded halfway as one group,
 with nothing solved, and reeds owning their sheet drawn as pieces, solving at rest as unrigged and swinging when
 posed; the heron boiling, its wobble moving finished paint with nothing solved; and the wet-contact foot posed by a
 rig, resuming its sheet's solve from its checkpoints, and painted in as the shot plays, its rig drawing before the
-foot's first stroke; and rain (`stamp-gate-rain.ts`) falling about a post under a still camera, a lone drop blurring
-along its own fall and drawn as if shut when keyed anew across the shutter, a frame moving only drops solving nothing
-and laying no picture anew. Each shot's frame is a baseline (`shot/`) accepted by eye. `shot/page`
+foot's first stroke; and rain (`stamp-gate-rain.ts`) falling about a post under a still camera, a lone drop out of
+focus spreading alike on every side, blurring along its own fall and drawn as if shut when keyed anew across the
+shutter, a frame moving only drops solving nothing and laying no picture anew. Each shot's frame is a baseline (`shot/`) accepted by eye. `shot/page`
 (`stamp-gate-shot-dom-page.ts`) holds a shot's element on the page, scaled as a player shows it, and reads it through
 the DOM adapter: HTML behind the first canvas or not, a canvas in a wrapper at an identity transform refused; the
 heron alone, a clear back, drawn premultiplied, clear at its corners; then pinned to an element, its paint's centroid

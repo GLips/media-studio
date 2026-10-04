@@ -106,6 +106,20 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
     });
   }
 
+  /**
+   * `moment`'s picture defocused by `sigma` px of its own (0: sharp), as the picture pass keeps it: kept, or its
+   * pieces rigs drawn and it laid. Null for a nearer plane that lays nothing, or one faded out.
+   */
+  function pictureDefocused(encoder: GPUCommandEncoder, lens: LensCompositor, moment: ShotPlaneMoment, sigma: number): StampPlanePicture | null {
+    const { plan, solved: { plane } } = moment;
+    if (!plane.back && plan.visibility <= 0) return null;
+    const found = pictures.find(plan.key, encoder);
+    costs?.count(found ? 'picture hits' : 'picture misses');
+    const sharp = found ?? paint(encoder, moment);
+    if (!sharp) return null;
+    return sigma ? pictures.blurred(encoder, lens, sharp, plan.key, sigma) : sharp;
+  }
+
   return {
     /** `plane` at frame moment `frameAt`: its selection compiled, its rigs found, its marks posed and solved. */
     async solve(plane: CompiledShotPaintedPlane, frameAt: PaintMoment): Promise<ShotPlaneSolved> {
@@ -145,19 +159,17 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
       return { solved, plan, pieces, frame: { document: { width: widthPx, height: heightPx }, lays: solved.lays, films, steps: plan.steps, ground: plan.ground, fades: plan.fades } };
     },
 
+    pictureDefocused,
+
     /**
-     * `moment`'s picture as the lens takes it (`look`'s view and defocus, clipped unless it's the back): kept, or its
-     * pieces rigs drawn and it laid. Null for a nearer plane that lays nothing, or one faded out.
+     * `moment`'s picture as the lens takes it (`look`'s view and defocus, clipped unless it's the back), as
+     * pictureDefocused gives it. Null for a nearer plane that lays nothing, or one faded out.
      */
     picture(encoder: GPUCommandEncoder, lens: LensCompositor, moment: ShotPlaneMoment, look: StampPlaneLook): LensLayer | null {
-      const { plan, solved: { plane } } = moment;
-      if (!plane.back && plan.visibility <= 0) return null;
-      const found = pictures.find(plan.key, encoder);
-      costs?.count(found ? 'picture hits' : 'picture misses');
-      const sharp = found ?? paint(encoder, moment);
-      if (!sharp) return null;
+      const { solved: { plane } } = moment;
       // A plane's defocus is frame px: on its picture, it's that over the view's scale.
-      const picture = look.defocus ? pictures.blurred(encoder, lens, sharp, plan.key, look.defocus / Math.hypot(look.view.ma, look.view.mb)) : sharp;
+      const picture = pictureDefocused(encoder, lens, moment, look.defocus && look.defocus / Math.hypot(look.view.ma, look.view.mb));
+      if (!picture) return null;
       return {
         picture: stampArrayView(picture.texture), layers: picture, view: look.view, shutter: look.shutter, origin: { x: picture.box.x - margin, y: picture.box.y - margin },
         size: picture.box, clipped: !plane.back, distance: look.distance, distances: 'layer',

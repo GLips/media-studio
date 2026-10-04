@@ -6,6 +6,7 @@
 
 import { gpuUniformLayout } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { GPU_FULL_FRAME_WGSL, GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
+import { gpuInstanceRow } from '#lib/platform/gpu/studio/gpu-instance-ring.ts';
 import { LENS_DEFOCUS_LEAST, LENS_GAUSSIAN_SIGMAS } from '../models/lens-focus.ts';
 
 const LENS_DEFOCUS_LEAST_WGSL = LENS_DEFOCUS_LEAST.toFixed(3);
@@ -121,20 +122,18 @@ ${lensLaidHeadWgsl(has)}
  */
 export const LENS_ITEMS = gpuUniformLayout('LensItems', [['origin', 'vec2f'], ['size', 'vec2f'], ['frame', 'vec2f']]);
 
-/** An item's instance row: its view, open and close (each ma, mb, kx, ky), then its distance and visibility. */
-export const LENS_ITEM_ROW = { floats: 14, layout: {
-  arrayStride: 56, stepMode: 'instance', attributes: [
-    { shaderLocation: 0, offset: 0, format: 'float32x4' }, { shaderLocation: 1, offset: 16, format: 'float32x4' },
-    { shaderLocation: 2, offset: 32, format: 'float32x4' }, { shaderLocation: 3, offset: 48, format: 'float32x2' },
-  ],
-} } as const satisfies { floats: number; layout: GPUVertexBufferLayout };
+/**
+ * An item's instance row, lensItemsWgsl's locations 0 to 3 in order: its view, open and close (each ma, mb, kx, ky),
+ * then its distance and visibility.
+ */
+export const LENS_ITEM_ROW = gpuInstanceRow([4, 4, 4, 2]);
 
 /**
  * The items' WGSL, drawn as a triangle strip of 4 vertices an item (its picture's box through its view), twice an
  * item (`laying`) into the composite's targets as lensCompositeWgsl draws a layer: binds its uniform (0), the
- * picture (1) and the sampler (2); its instance rows are LENS_ITEM_ROW.
+ * picture (1) and the sampler (2); its instance rows are LENS_ITEM_ROW. Its picture's motion layer is never read.
  */
-export function lensItemsWgsl(has: LensFrameTargets, layers: LensPictureLayers, laying: LensLaying) {
+export function lensItemsWgsl(has: LensFrameTargets, layers: LensPictureLayers & { readonly motion: null }, laying: LensLaying) {
   return /* wgsl */ `
 ${LENS_ITEMS.wgsl}
 @group(0) @binding(0) var<uniform> u: LensItems;
