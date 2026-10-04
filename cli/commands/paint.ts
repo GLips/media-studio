@@ -22,10 +22,12 @@ function flagValues(flag: 'set' | 'to', list: string | undefined): Record<string
 
 /**
  * Runs a paint verb, a throw printed whole and failing the run: a throw from a source's import or factory is the
- * author's bug, and its stack says where. The studio would print only its message.
+ * author's bug, and its stack says where. The studio would print only its message. The render's tsx hooks come first:
+ * a source timed by its project's timeline imports the track's audio.
  */
 async function withPaintSourceStack(verb: () => Promise<void>): Promise<void> {
   try {
+    await import('#lib/output/render/engine/tsx-test-hooks.ts');
     await verb();
   } catch (error) {
     console.error(error instanceof Error ? error.stack : String(error));
@@ -36,7 +38,7 @@ async function withPaintSourceStack(verb: () => Promise<void>): Promise<void> {
 const checkPaintArgs = {
   source: { type: 'positional', required: true, description: 'The *.painting.ts module' },
   set: { type: 'string', valueHint: 'hillTopPx=210,dusk=true', description: 'Property values, held to their schema like any other (an off-step value is an error)' },
-  solve: { type: 'boolean', description: 'With no error, solve every sheet on the GPU (under the GPU lock): print each wash\'s start and set times and each application\'s landing time, sheet by sheet, and write the painting, and each film on its sheet\'s paper and edge, as PNGs' },
+  solve: { type: 'boolean', description: 'With no error, solve every sheet on the GPU: print each wash\'s start and set times and each application\'s landing time, sheet by sheet, and write the painting, and each film on its sheet\'s paper and edge, as PNGs' },
   out: { type: 'string', valueHint: 'meadow.solve', description: 'Where --solve writes painting.png and films/<layer>.png (default: <source>.solve in the current directory)' },
   at: { type: 'string', valueHint: '3.5', description: 'With --solve, solve only what lands by this scene second: the unclocked run and each clocked application landing by it (default: everything)' },
 } as const satisfies ArgsDef;
@@ -91,7 +93,7 @@ const stillPaintArgs = {
 const stillPaintCommand = defineCommand({
   meta: {
     name: 'still',
-    description: "Paint a painting source at its default property values (or those --set gives): checked as `paint check` checks it, then its sheets solved on the GPU (run it under the GPU lock) and laid as one PNG the document's size, each own sheet a cut-out of its paper. Prints its problems and fails on any error, or on an application that can't land.",
+    description: "Paint a painting source at its default property values (or those --set gives): checked as `paint check` checks it, then its sheets solved on the GPU and laid as one PNG the document's size, each own sheet a cut-out of its paper. Prints its problems and fails on any error, or on an application that can't land.",
   },
   args: stillPaintArgs,
   run: ({ args, rawArgs }) => {

@@ -1150,6 +1150,10 @@ meadow (hillTopPx 200): 640 × 360 px, watercolour, on #f4f2ed paper
 paint check: 0 errors, 0 warnings
 ```
 
+Before a render, a look or a still bundles, every painting its project's scenes paint from (in `scenes/` and `bars/`,
+and those `shared` lists) is checked this way at its defaults, with the styles `project.ts` names, and any error stops
+it, every one listed, in a second rather than after its wait for the GPU.
+
 `studio paint diff <source> [<edited copy>] [--set name=value,…] [--to name=value,…]` compares two evaluations: the
 source at `--set` against itself at `--set` with `--to` on top, or against an edited copy. It prints the document
 fields that differ (paper colour among them, which re-solves nothing), then each wash in its sheet's order: `same`,
@@ -1209,18 +1213,21 @@ What the check says today, and what to do:
 | `shot.warm: runs to 240 s; its scene ends at 8 s: warm counts scene seconds, not frames, and stops at the scene's end` (warning) | a `warm` past the end of the scene playing the shot, in the warm's costs (`shotWarmPastScene`) | write the span in scene seconds |
 | `back.source.b: paints a 160 × 120 document, and the plane's is 320 × 240: every selection a plane shows, …` / `front.source: lays a transparent ground, and the plane a default one: …` / `meadow.source.b: shows no group heron, which meadow/heron rigs: every end of a rigged plane holds its rigged groups cut alike` / `meadow.source.b: holds beak under heron, in none of meadow/heron's cels: …` | a selection, named at its end's field, painting a document or laying a ground other than the plane's first (`paintedPlaneBlendProblems`); a dissolve end on a rigged plane without the rigged group, or holding it cut otherwise: a cel with other layers, a layer in no cel, its sheet owned otherwise (`shotPlaneRigEndProblems`); both at load and each frame for a callback source | paint every end at one size on one ground; give every end the rigged group with the same layers in each cel, or rig the subject on a plane of its own |
 
-`studio paint check <source> --solve [--at <s>] [--out <dir>]` then solves every sheet on the GPU (run it under the
-GPU lock) and prints what only a solve can warn of, reading the images (a grain laid off its height on a document
-wrapping down y), then, in each sheet's order (under the sheet's name when there are several), each wash's start and
-when what it wetted had set, and each application's landing time with the `on` it waited for: model seconds in the
-unclocked run, scene seconds with model time beside once the clock runs. `--at` solves the prefix shown at that scene
-second, as a selection's `at` does, finished. It writes the painting to `<dir>/painting.png` and each layer's film on
-its sheet's paper and edge (`paintingFilmPicture`: the root's paper, or an own sheet's card, clear past it) to
-`<dir>/films/<layer>.png` (`<dir>` is `<source>.solve` by default). `studio paint still <source> [--set …] [--at <s>]
-[--out <file>]` checks and solves the same way, warning alike, and writes only the painting, the document's size (`<source>.png`).
-Both end on what the solve cost: solves, entries run, decisions made and reused (a decision is remembered by its
-prefix's key), films and checkpoints found or not, films' pictures read back or kept from an earlier read, and
-readbacks.
+`studio paint check <source> --solve [--at <s>] [--out <dir>]` then solves every sheet on the GPU and prints what only a
+solve can warn of, reading the images (a grain laid off its height on a document wrapping down y), then, in each sheet's
+order (under the sheet's name when there are several), each wash's start and when what it wetted had set, and each
+application's landing time with the `on` it waited for: model seconds in the unclocked run, scene seconds with model
+time beside once the clock runs. `--at` solves the prefix shown at that scene second, as a selection's `at` does,
+finished. It writes the painting to `<dir>/painting.png` and each layer's film on its sheet's paper and edge
+(`paintingFilmPicture`: the root's paper, or an own sheet's card, clear past it) to `<dir>/films/<layer>.png` (`<dir>`
+is `<source>.solve` by default). `studio paint still <source> [--set …] [--at <s>] [--out <file>]` checks and solves the
+same way, warning alike, and writes only the painting, the document's size (`<source>.png`). Both end on what the solve
+cost: solves, entries run, decisions made and reused (a decision is remembered by its prefix's key), films and
+checkpoints found or not, films' pictures read back or kept from an earlier read, and readbacks.
+
+Whatever draws on the GPU (a solve, a still, a look, a render, the GPU gate) queues for the studio's GPU lease: one
+look or solve and one render at once, the gate alone. It prints its place while it waits, and ends `GPU: waited 4m10s,
+ran 52s, alone` (or `sharing with` what drew beside it).
 
 ```
 $ node cli/studio.ts paint check lib/paint/document/models/meadow.painting.ts --solve

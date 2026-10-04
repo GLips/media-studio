@@ -5,7 +5,7 @@
 import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { ProjectCapability, ProjectDeclaration } from '../models/capability.ts';
+import type { ProjectDeclaration } from '../models/capability.ts';
 
 export const STUDIO_ROOT = resolve(import.meta.dirname, '../../../..');
 /**
@@ -50,14 +50,14 @@ export function resolveStudioProjectWith(arg: string, file: string): string {
 }
 
 /**
- * What the project's project.ts declares it is (check:arch holds that to what it binds), or undefined for an older
- * project with none.
+ * What the project's project.ts declares (its capability, which check:arch holds to what it binds, its shared modules
+ * and styles), or undefined for an older project with none.
  */
-export async function readProjectCapability(project: string): Promise<ProjectCapability | undefined> {
+export async function readProjectDeclaration(project: string): Promise<ProjectDeclaration | undefined> {
   const file = join(project, 'project.ts');
   if (!existsSync(file)) return undefined;
   // SAFETY: check:arch's capability-match refuses a project.ts that default-exports no ProjectDeclaration.
-  return ((await import(/* @vite-ignore */ pathToFileURL(file).href)) as { default: ProjectDeclaration }).default.capability;
+  return ((await import(/* @vite-ignore */ pathToFileURL(file).href)) as { default: ProjectDeclaration }).default;
 }
 
 /**
@@ -67,4 +67,15 @@ export async function readProjectCapability(project: string): Promise<ProjectCap
 export function studioProjectOfFile(file: string): string | null {
   const [project, ...within] = relative(STUDIO_PROJECTS_DIR, realpathSync(file)).split(sep);
   return within.length && project !== '..' && !isAbsolute(project) ? join(STUDIO_PROJECTS_DIR, project) : null;
+}
+
+/**
+ * The painting sources (`*.painting.ts`) a project's scenes paint from, as paths inside it: each scene's, anywhere in
+ * scenes/ or bars/, and those `shared` (its project.ts's) lists. A painting a tool keeps for itself isn't one.
+ */
+export function listProjectPaintingSources(project: string, shared: readonly string[]): string[] {
+  const inScenes = ['scenes', 'bars'].flatMap((dir) => (existsSync(join(project, dir))
+    ? readdirSync(join(project, dir), { recursive: true, encoding: 'utf8' }).filter((file) => file.endsWith('.painting.ts')).map((file) => `${dir}/${file.split(sep).join('/')}`)
+    : []));
+  return [...new Set([...inScenes, ...shared.filter((file) => file.endsWith('.painting.ts'))])].toSorted();
 }

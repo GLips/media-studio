@@ -1,4 +1,4 @@
-// stamp-gate-reach.ts: which files the GPU gate's outcome depends on, so pre-commit runs it exactly when a staged path
+// stamp-gate-reach.ts: which files the GPU gate's outcome depends on, so pre-push runs it exactly when a pushed path
 // is one of them. Read off the import graph by the bundler the gate's page is built with, so the set can't drift
 // from the code the way a listed set does.
 
@@ -9,7 +9,7 @@ import { bundledSourceFiles } from '#lib/platform/browser/engine/browser-module-
  * What the gate reads besides its imports: its accepted fixtures, the packages it runs on, and the hook that calls it.
  * A path is matched as a prefix when it ends in a slash, else whole.
  */
-const STAMP_GATE_READ_PATHS = ['harness/fixtures/stamp-paint/', 'package.json', 'package-lock.json', '.githooks/pre-commit'];
+const STAMP_GATE_READ_PATHS = ['harness/fixtures/stamp-paint/', 'package.json', 'package-lock.json', '.githooks/pre-push'];
 
 /** Every file under `root` the gate's CLI (for Node) and page (for the browser) import, as repository paths. */
 export async function stampGateImportedFiles(root: string, page: string): Promise<Set<string>> {
@@ -20,6 +20,6 @@ export async function stampGateImportedFiles(root: string, page: string): Promis
   return new Set([...cli, ...browser]);
 }
 
-/** The staged paths the gate depends on: those it imports, or reads. */
-export const stampGateReachedBy = (staged: readonly string[], imported: ReadonlySet<string>) =>
-  staged.filter((path) => imported.has(path) || STAMP_GATE_READ_PATHS.some((read) => (read.endsWith('/') ? path.startsWith(read) : path === read)));
+/** The pushed paths the gate depends on: those it imports, or reads. */
+export const stampGateReachedBy = (pushed: readonly string[], imported: ReadonlySet<string>) =>
+  pushed.filter((path) => imported.has(path) || STAMP_GATE_READ_PATHS.some((read) => (read.endsWith('/') ? path.startsWith(read) : path === read)));

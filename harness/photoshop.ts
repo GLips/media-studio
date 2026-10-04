@@ -86,4 +86,4 @@ const restoreCommand = defineCommand({
 await runHarnessCommand(defineCommand({
   meta: { name: 'photoshop', description: "Photoshop 2026's own renders of probes and pack brushes, captured by script, leaving Graham's Photoshop as it was" },
   subCommands: { check: checkCommand, probes: probesCommand, references: referencesCommand, restore: restoreCommand },
-}));
+}), 'batch');

@@ -7,6 +7,7 @@ import type { VideoConfig } from 'remotion';
 import { copyFileSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { bundleStudioProject } from './studio-bundle.ts';
+import { refuseProjectPaintingErrors } from './render-preflight.ts';
 import { inRenderBrowser, RENDER_CHROMIUM } from '#lib/platform/browser/engine/render-browser.ts';
 import { artifactSink } from './render-session.ts';
 import { stillProblems, type StillMeasure, type StillPixels, type StillProblem } from '#lib/picture/stills/models/still-check.ts';
@@ -42,6 +43,7 @@ function decodeRgb(file: string, w: number, h: number): StillPixels {
  * written in `format`. `drawnDir` keeps every still as drawn there, failures too, for a sheet (lib/output/review/engine/still-sheet.ts).
  */
 export async function renderProjectStills(project: string, selection: StillSelection, { format, check, drawnDir }: { format: 'png' | 'jpeg'; check: boolean; drawnDir?: string }): Promise<RenderedStill[]> {
+  await refuseProjectPaintingErrors(project);
   const serveUrl = await bundleStudioProject(project);
   return withStudioTemp('stills', async (tmp) => {
     const { result } = await inRenderBrowser(async (browser) => {

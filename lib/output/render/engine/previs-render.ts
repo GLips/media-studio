@@ -13,6 +13,7 @@ import { generatePaidMedia } from '#lib/platform/paid-generation/engine/paid-gen
 import { readPrevisFootageList, writePrevisFootageEntry } from '#lib/footage/previs/engine/previs-footage.ts';
 import { blockoutSlug } from './project-bundle.ts';
 import { RENDER_CHROMIUM } from '#lib/platform/browser/engine/render-browser.ts';
+import { releaseStudioGpuLease } from '#lib/platform/gpu/engine/gpu-lease.ts';
 import type { RenderSession } from './render-session.ts';
 import { PREVIS_BLOCKOUT_SHORT_SIDE, PREVIS_MODEL_NAMES, PREVIS_MODELS, previsAspectRatio, previsShotSeconds, type PrevisModelName } from '#lib/footage/previs/models/previs-models.ts';
 import { probeMediaSeconds } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
@@ -55,6 +56,8 @@ export async function renderPrevisFootage(session: RenderSession, sceneId: strin
   // Checked before the blockout renders, so a video no model can match stops before any work.
   const aspect = previsAspectRatio(timeline);
   const blockout = await renderBlockout(session, sceneId, seconds);
+  // The model takes minutes; nothing after the blockout draws, so the GPU goes back to the queue now.
+  releaseStudioGpuLease();
   const prompt = `${PREVIS_PREAMBLES[previs.blockout]}\n\n${previs.prompt}`;
   const playing = readPrevisFootageList(project)[sceneId];
   const stale = Boolean(playing && playing.blockout !== basename(blockout));

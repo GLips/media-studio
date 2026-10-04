@@ -60,13 +60,9 @@ export function projectStyleNames(projectDir: string): readonly string[] {
   return existsSync(declarationFile) ? requireDefault<ProjectDeclaration>(declarationFile).styles ?? [] : [];
 }
 
-/**
- * Checks each style the project names, throwing with every problem at once, then rewrites generated/stamp-paint-styles.ts
- * and returns its path. A style's images are imported by name, so naming another brush or paper needs a new bundle.
- */
-export function writeProjectStylesModule(projectDir: string): string {
-  const names = projectStyleNames(projectDir);
-  const problems = names.flatMap((name) => {
+/** What's wrong with the styles the project names, a problem each (a style's own lines under it); none when all paint. */
+export function projectStyleProblems(projectDir: string): string[] {
+  return projectStyleNames(projectDir).flatMap((name) => {
     const file = join(stylesDirFor(projectDir), name, 'style.ts');
     if (!existsSync(file)) {
       return [`styles: ${basename(resolve(projectDir))}'s project.ts names ${JSON.stringify(name)}, which isn't a style (work/styles/ has ${listStyles(projectDir).join(', ') || 'none'})`];
@@ -74,7 +70,16 @@ export function writeProjectStylesModule(projectDir: string): string {
     const lines = styleAssetProblems(join(stylesDirFor(projectDir), name), requireDefault<StampPaintStyle>(file));
     return lines.length ? [`styles: ${name} can't paint until its packs are imported in work/styles/${name}/ (brushes/ isn't in git, so each machine imports its own; docs/private-styles.md):\n${lines.join('\n')}`] : [];
   });
+}
+
+/**
+ * Checks each style the project names, throwing with every problem at once, then rewrites generated/stamp-paint-styles.ts
+ * and returns its path. A style's images are imported by name, so naming another brush or paper needs a new bundle.
+ */
+export function writeProjectStylesModule(projectDir: string): string {
+  const problems = projectStyleProblems(projectDir);
   if (problems.length) throw new Error(problems.join('\n'));
+  const names = projectStyleNames(projectDir);
 
   const path = projectStylesModuleFor(projectDir);
   const from = (p: string) => JSON.stringify(relative(dirname(path), p).split('\\').join('/'));

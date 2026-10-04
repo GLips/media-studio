@@ -3,16 +3,20 @@
 // a process of its own, decides whether a pushed path reaches it and runs it there. One deadline covers each commit.
 //
 // Pre-push rather than pre-commit: the GPU gate takes minutes and paints on the one adapter every session shares, so
-// it runs once per push, not once per commit.
+// it runs once per push, not once per commit. It has the adapter to itself: before any tree runs, this process waits
+// for the whole GPU lease (lib/platform/gpu/engine/gpu-lease.ts), which each tree's gate, its child, draws inside.
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { symlinkSync } from 'node:fs';
 import { join } from 'node:path';
+import { acquireStudioGpuLease } from '#lib/platform/gpu/engine/gpu-lease.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
+import { stampGateImportedFiles, stampGateReachedBy } from './stamp-gate-reach.ts';
+import { STAMP_GATE_PAGE } from './stamp-gate.ts';
 
 /**
- * The most the gate may take on one pushed commit, from writing out its tree to its last comparison. It catches a hung
- * gate, not a slow one: another session rendering slows the GPU gate well past a minute.
+ * The most the gate may take on one pushed commit, from writing out its tree to its last comparison, with the adapter
+ * its own. It catches a hung gate, not a slow one.
  */
 export const STAMP_GATE_PUSHED_TIMEOUT_MS = 300_000;
 
@@ -29,6 +33,15 @@ export function stampGatePushedCommits(root: string, prePushInput: string): { sh
     paths: execFileSync('git', ['log', '--format=', '--name-only', '--no-renames', '-z', sha, '--not', '--remotes'], { cwd: root, encoding: 'utf8' })
       .split('\0').filter(Boolean),
   }));
+}
+
+/**
+ * Waits for the whole GPU when a pushed commit carries a path the gate reaches in the checkout at `root`, so no tree's
+ * deadline runs while it queues. A pushed tree reaching the gate where this checkout doesn't queues on its own.
+ */
+export async function leaseGpuForPushedStampGate(root: string, commits: readonly { paths: readonly string[] }[]): Promise<void> {
+  const imported = await stampGateImportedFiles(root, STAMP_GATE_PAGE);
+  if (commits.some(({ paths }) => stampGateReachedBy(paths, imported).length)) await acquireStudioGpuLease();
 }
 
 /** Writes out commit `sha` of the repository at `root` and runs that tree's `tree` verb on it, handing it `paths`. */

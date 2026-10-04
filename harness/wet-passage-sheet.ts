@@ -24,4 +24,4 @@ const paintCommand = defineCommand({
 await runHarnessCommand(defineCommand({
   meta: { name: 'wet-passage-sheet', description: "Wet paint's reference passages, painted and laid out to be judged" },
   subCommands: { paint: paintCommand },
-}));
+}), 'batch');

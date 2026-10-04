@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { acceptStampGateCandidates, STAMP_GATE_PUBLIC_STORE } from '#lib/paint/gate/engine/stamp-gate-store.ts';
 import { runStampGatePrivate, updateStampGatePrivate, type StampGatePrivateBrush } from '#lib/paint/gate/engine/stamp-gate-private.ts';
 import { STAMP_GATE_PRIVATE_FLAT_CASES } from '#lib/paint/gate/models/stamp-gate-private-cases.ts';
-import { runPushedStampGate, stampGatePushedCommits } from '#lib/paint/gate/engine/stamp-gate-pushed.ts';
+import { leaseGpuForPushedStampGate, runPushedStampGate, stampGatePushedCommits } from '#lib/paint/gate/engine/stamp-gate-pushed.ts';
 import { stampGateImportedFiles, stampGateReachedBy } from '#lib/paint/gate/engine/stamp-gate-reach.ts';
 import { runStampGate, STAMP_GATE_PAGE, stampGateBaselineIds, updateStampGate, type StampGateCheck } from '#lib/paint/gate/engine/stamp-gate.ts';
 import { STUDIO_STYLES_DIR, STUDIO_WORKSPACE_DIR } from '#lib/platform/project/engine/studio-project.ts';
@@ -68,9 +68,11 @@ const acceptCommand = defineCommand({
 
 const pushedCommand = defineCommand({
   meta: { name: 'pushed', description: "Pre-push's gate: pre-push's stdin names the pushed refs; each pushed commit is written out and its own tree verb runs on it, each within its deadline." },
-  run() {
+  async run() {
     const root = process.cwd();
-    for (const { sha, paths } of stampGatePushedCommits(root, readFileSync(0, 'utf8'))) {
+    const commits = stampGatePushedCommits(root, readFileSync(0, 'utf8'));
+    await leaseGpuForPushedStampGate(root, commits);
+    for (const { sha, paths } of commits) {
       const { passed, seconds } = runPushedStampGate(root, sha, paths);
       if (!passed) console.log(`stamp gate: FAILED on ${sha.slice(0, 8)} after ${seconds.toFixed(1)} s`);
       if (!passed) process.exitCode = 1;
@@ -111,4 +113,4 @@ await runHarnessCommand(defineCommand({
   meta: { name: 'stamp-paint-gate', description: "The GPU gate: stamp paint's formulas, paintings and traces held to accepted baselines" },
   default: 'run',
   subCommands: { run: runCommand, update: updateCommand, accept: acceptCommand, pushed: pushedCommand, tree: treeCommand, private: privateCommand },
-}));
+}), 'exclusive');

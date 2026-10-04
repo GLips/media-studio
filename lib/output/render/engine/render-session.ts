@@ -15,8 +15,9 @@ import { availableParallelism, getPriority, setPriority } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import type { VideoConfig } from 'remotion';
 import { projectSlug, replaySlug } from './project-bundle.ts';
-import { readProjectCapability } from '#lib/platform/project/engine/studio-project.ts';
+import { readProjectDeclaration } from '#lib/platform/project/engine/studio-project.ts';
 import { bundleStudioProject } from './studio-bundle.ts';
+import { refuseProjectPaintingErrors } from './render-preflight.ts';
 import { runFfmpeg, runFfmpegAsync } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { writeRenderSnapshot, type RenderSnapshot } from './render-snapshot.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
@@ -62,6 +63,11 @@ const RENDER_NICENESS = 10;
 /** One timed pass of a command's renders: `workers` and `gpu` where it rendered frames. */
 export type RenderPass = { pass: string; seconds: number; workers?: number; gpu?: string };
 
+/** The pass a wait for the GPU lease is recorded as, so it never reads as a render's own time. */
+const GPU_WAIT_PASS = 'waiting for the GPU';
+/** A wait shorter than this is the lease's own bookkeeping, not a queue, and isn't recorded. */
+const GPU_WAIT_RECORDED_SECONDS = 0.1;
+
 /**
  * `workers` overrides the video's `renderWorkers` and DEFAULT_RENDER_WORKERS, as a command's --workers does; `lens` is
  * how every render of the session draws the lens, as --lens says.
@@ -71,17 +77,27 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   // Only ever lower: raising a process's priority back takes root.
   if (getPriority() < RENDER_NICENESS) setPriority(RENDER_NICENESS);
   const opened = performance.now();
+  const paintings = await refuseProjectPaintingErrors(project);
+  const checked = performance.now();
   const serveUrl = await bundleStudioProject(project);
-  const passes: RenderPass[] = [{ pass: 'bundle', seconds: (performance.now() - opened) / 1000 }];
+  const passes: RenderPass[] = [
+    ...(paintings ? [{ pass: `${paintings} ${paintings === 1 ? 'painting' : 'paintings'} checked`, seconds: (checked - opened) / 1000 }] : []),
+    { pass: 'bundle', seconds: (performance.now() - checked) / 1000 },
+  ];
   // Read with the bundle, so every snapshot the session writes holds the clock its renders were made on.
   const clock = (await readProjectClock(project)) ?? null;
   // A silent video delivers with no mix and no audio track (render-pipeline.ts).
-  const silent = (await readProjectCapability(project)) === 'silent';
+  const silent = (await readProjectDeclaration(project))?.capability === 'silent';
   const props = (p: Partial<VideoProps> = {}): VideoProps => ({ captions: false, probe: false, blockouts: false, lens, ...p });
-  // Without a browser, Remotion opens its own, outside inRenderBrowser: a page's error keeps its whole message here too.
-  const compositionFor = (inputProps: VideoProps, browser?: HeadlessBrowser) =>
-    selectComposition({ serveUrl, chromiumOptions: RENDER_CHROMIUM, id: projectSlug(project), inputProps, puppeteerInstance: browser })
-      .catch((error: Error) => Promise.reject(wholeBrowserPageError(error)));
+  const selectIn = (inputProps: VideoProps, browser: HeadlessBrowser) =>
+    selectComposition({ serveUrl, chromiumOptions: RENDER_CHROMIUM, id: projectSlug(project), inputProps, puppeteerInstance: browser });
+  /** The composition at `inputProps`, in `browser`, or with none in a render browser of its own, under the GPU lease. */
+  async function compositionFor(inputProps: VideoProps, browser?: HeadlessBrowser): Promise<VideoConfig> {
+    if (browser) return selectIn(inputProps, browser).catch((error: Error) => Promise.reject(wholeBrowserPageError(error)));
+    const { result, waited } = await inRenderBrowser((own) => selectIn(inputProps, own));
+    recordGpuWait(waited);
+    return result;
+  }
 
   /** Tabs for a render of `composition`: the session's `workers`, else the video's `renderWorkers`, else the default. */
   function workersFor(composition: VideoConfig): number {
@@ -92,6 +108,11 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
     return workers ?? renderWorkers ?? DEFAULT_RENDER_WORKERS;
   }
 
+  /** Records the wait for the GPU lease an inRenderBrowser call reports, when it queued. */
+  function recordGpuWait(waited: number) {
+    if (waited >= GPU_WAIT_RECORDED_SECONDS) passes.push({ pass: GPU_WAIT_PASS, seconds: waited });
+  }
+
   /** Runs `run` and records it as `pass`. */
   async function timed<T>(pass: string, run: () => Promise<T> | T, more: Omit<RenderPass, 'pass' | 'seconds'> = {}): Promise<T> {
     const started = performance.now();
@@ -100,11 +121,15 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
     return result;
   }
 
-  /** Renders in a browser of its own (see render-browser.ts), recording the pass with the GPU backends it had. */
+  /**
+   * Renders in a browser of its own (see render-browser.ts), recording the pass with the GPU backends it had, and apart
+   * from it any wait for the GPU lease.
+   */
   async function inBrowser<T>(pass: string, render: (browser: HeadlessBrowser) => Promise<{ result: T; workers?: number }>): Promise<T> {
     const started = performance.now();
-    const { result: { result, workers: used }, gpu } = await inRenderBrowser(render);
-    passes.push({ pass, seconds: (performance.now() - started) / 1000, workers: used, gpu });
+    const { result: { result, workers: used }, gpu, waited } = await inRenderBrowser(render);
+    recordGpuWait(waited);
+    passes.push({ pass, seconds: (performance.now() - started) / 1000 - waited, workers: used, gpu });
     return result;
   }
 
@@ -187,7 +212,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
       const picture = join(tmp, name), sound = separateSound ? join(tmp, 'sound.wav') : undefined;
       const started = performance.now();
       let framesDrawn: number | undefined, concurrency = 0;
-      const { result: composition, gpu } = await inRenderBrowser(async (browser) => {
+      const { result: composition, gpu, waited } = await inRenderBrowser(async (browser) => {
         const composition = await compositionFor(inputProps, browser);
         concurrency = workersFor(composition);
         const count = frames ? frames.end - frames.from : composition.durationInFrames;
@@ -205,7 +230,8 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
       // Encoding runs beside the frames; what's left of it once they're all drawn is the encode's own time.
       const ended = performance.now();
       framesDrawn ??= ended;
-      passes.push({ pass: `${name} frames`, seconds: (framesDrawn - started) / 1000, workers: concurrency, gpu }, { pass: `${name} encode`, seconds: (ended - framesDrawn) / 1000 });
+      recordGpuWait(waited);
+      passes.push({ pass: `${name} frames`, seconds: (framesDrawn - started) / 1000 - waited, workers: concurrency, gpu }, { pass: `${name} encode`, seconds: (ended - framesDrawn) / 1000 });
       const { soundtrack, motion } = (await approve?.({ sound })) ?? {};
       if (soundtrack) {
         await timed(`${name} mux`, () => runFfmpeg(['-y', '-v', 'error', '-i', picture, '-i', soundtrack, '-map', '0:v', '-map', '1:a', '-c:v', 'copy', ...DELIVERY_AUDIO_CODEC, '-movflags', '+faststart', out]));
