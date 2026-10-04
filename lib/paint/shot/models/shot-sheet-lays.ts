@@ -172,14 +172,13 @@ export type ShotPiecesPose = { readonly posed: ShotRigPosed; readonly place: Pai
 
 /**
  * A pieces rig at one moment, before its pictures are read: its rig; the cel each part shows, in part order; the steps
- * its sheets lay (none under a node faded out) and the layers whose films they lay (its shown cels' that show); its
- * pose at the moment and at the shutter's ends; and whether it moves between them.
+ * its sheets lay (indices in its compile's steps): their cards and its shown cels' films, none under a node faded out;
+ * its pose at the moment and at the shutter's ends; and whether it moves between them.
  */
 export type ShotPiecesPlan = {
   readonly rig: CompiledShotRig;
   readonly shown: readonly NodeKey[];
   readonly steps: readonly number[];
-  readonly layers: ReadonlySet<NodeKey>;
   readonly at: ShotPiecesPose;
   readonly shutter: { readonly open: ShotPiecesPose; readonly close: ShotPiecesPose } | null;
   readonly travels: boolean;
@@ -291,9 +290,13 @@ function shotPiecesPlan(input: ShotPlaneLayInput, found: ShotRigFound, { at, shu
     return visibility === 0 ? [node] : [];
   }));
   const unseen = new Set([...faded].flatMap((key) => paintingNodeSteps(compiled, key))), shown = rig.parts.map(({ id }) => atPose.posed.shown.get(id)!);
-  const layers = new Set(shown.flatMap((cel) => rig.celLayers.get(cel)!).filter((layer) => ![layer, ...tree.byKey.get(layer)!.groups].some((key) => faded.has(key))));
-  const steps = compiled.steps.flatMap((step, index) => (paintingSheetInGroup(tree, compiled.sheets[step.sheet].sheet, rig.group) && !unseen.has(index) ? [index] : []));
-  return { rig, shown, steps, layers, at: atPose, shutter, travels: !!shutter && piecesPoseText(shutter.open) !== piecesPoseText(shutter.close) };
+  const showing = new Set(shown.flatMap((cel) => rig.celLayers.get(cel)!));
+  const steps = compiled.steps.flatMap((step, index) => {
+    const { sheet: onSheet, layers } = compiled.sheets[step.sheet];
+    if (!paintingSheetInGroup(tree, onSheet, rig.group) || unseen.has(index)) return [];
+    return step.kind === 'card' || showing.has(tree.layers[layers[step.film]].node.key) ? [index] : [];
+  });
+  return { rig, shown, steps, at: atPose, shutter, travels: !!shutter && piecesPoseText(shutter.open) !== piecesPoseText(shutter.close) };
 }
 
 /**
@@ -351,7 +354,7 @@ export function shotPlaneLayPlan(input: ShotPlaneLayInput, moment: ShotMomentAt)
     reveals.map((sheet) => sheet.map((film) => film.map(({ toRest, at: shownAt }) => [toRest, shownAt]))),
     shutterAt && [planeAtText(shutterAt.open), planeAtText(shutterAt.close)], [...hidden], steps.map((step) => step && [step.opacity, step.glow, step.lay.kind === 'card' && step.lay.films]), fades,
     ground && (ground.kind === 'stage' ? 'stage' : ground.box), pieces.map((each) => [
-      each.rig.occurrence, each.shown, each.steps, [...each.layers], piecesPoseText(each.at), each.shutter && [piecesPoseText(each.shutter.open), piecesPoseText(each.shutter.close)],
+      each.rig.occurrence, each.shown, each.steps, piecesPoseText(each.at), each.shutter && [piecesPoseText(each.shutter.open), piecesPoseText(each.shutter.close)],
     ]), masks.map((mask) => [mask.drawable, mask.invert]), reads.map(({ drawable }) => drawable), visibility, emits, travels,
   ]);
   return { key, steps, reveals, fades, ground, pieces, masks, reads, visibility, emits, travels };

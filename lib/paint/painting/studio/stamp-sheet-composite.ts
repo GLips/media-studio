@@ -27,14 +27,18 @@ import { createStampUniformArena, type StampUniformArena } from './stamp-uniform
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 
-/** A sheet's films as a solve kept them: its program, and film f of it kept as `films[f]`. */
+/**
+ * A sheet's films as a solve kept them: its program, and film f of it kept as `films[f]`. Film f is laid by its
+ * program's mixing group f, its palette and drying: a composite leaving films out keeps every one at its index.
+ */
 export type StampSheetKeptFilms = { readonly program: StampSheetProgram; readonly films: readonly StampSheetFilmKept[] };
 
 /**
  * A sheet as a composite lays it: its kept films; `place`, where its films, card and paper lie (null: where they were
- * painted); and `reveals`, each film's, outermost first (STAMP_FILMS_WHOLE for a readback, read as painted).
+ * painted); `reveals`, each film's, outermost first (STAMP_FILMS_WHOLE for a readback, read as painted); and `shown`,
+ * how much of each film its card counts (StampSheetEdgeFilm's): 0 for one a readback of part of the sheet leaves out.
  */
-export type StampSheetLaid = StampSheetKeptFilms & { readonly place: StampSheetPlace | null; readonly reveals: StampFilmRevealLinks };
+export type StampSheetLaid = StampSheetKeptFilms & { readonly place: StampSheetPlace | null; readonly reveals: StampFilmRevealLinks; readonly shown: readonly number[] };
 
 /**
  * Sheets laid as one picture: the root's first, its paper the ground when one is laid; the steps laying them, back
@@ -196,10 +200,12 @@ function encodeStampSheetsSteps(
     return view;
   });
   for (const step of composite.steps) {
-    const { films, place, reveals } = composite.sheets[step.sheet], rest = rests[step.sheet];
+    const { films, place, reveals, shown } = composite.sheets[step.sheet], rest = rests[step.sheet];
     if (step.kind === 'card') {
-      const edgeFilms = films.map((film) => ({ film, shown: 1 }));
-      const edge = stampSheetEdge(owner, device, encoder, arena, edgeFilms, { reveals, pass: revealing, stage, size, periods: periodsOf(step.sheet) });
+      // A film counted none of is left out of the edge's box as well as its union.
+      const counted = films.flatMap((film, f) => (shown[f] > 0 ? [{ film, shown: shown[f], links: reveals[f] ?? [] }] : []));
+      const cutting = { reveals: counted.map(({ links }) => links), pass: revealing, stage, size, periods: periodsOf(step.sheet) };
+      const edge = stampSheetEdge(owner, device, encoder, arena, counted, cutting);
       const edgeBox = edge && stampStageTexelsOf(stage, edge.box);
       const box = edgeBox && (place ? placedBox(stage, edgeBox, place) : edgeBox);
       if (edge && edgeBox && box) lays[step.sheet].layCard(encoder, { edge: edge.view, edgeBox, painting, box, rest });

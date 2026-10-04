@@ -9,7 +9,7 @@ import { OrthographicCamera, Scene } from 'three/webgpu';
 import type { NodeKey } from '#lib/paint/document/models/painting-document.ts';
 import { paintingNodeSteps, type PaintingSelectionCompiled } from '#lib/paint/document/models/painting-document-compile.ts';
 import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
-import { stampRevealLinksKey, stampSheetRevealsKey, type StampFilmRevealLinks } from '#lib/paint/painting/models/stamp-reveal.ts';
+import { stampRevealLinksKey, type StampFilmRevealLinks } from '#lib/paint/painting/models/stamp-reveal.ts';
 import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
 import { stampBoxUnion, stampStageTexelsWithin, type StampPointBox, type StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { readStampSheetsPictureKept } from '#lib/paint/painting/studio/stamp-film-readback.ts';
@@ -36,8 +36,6 @@ export type ShotRigRestCels = ReadonlyMap<NodeKey, ShotRigKeyedPicture>;
 
 const EMPTY: PaintRigPicture = { x0: 0, y0: 0, w: 0, h: 0, rgba: new Float32Array(0) };
 
-const boxOf = (films: readonly StampSheetFilmKept[]) => films.reduce<StampPointBox | null>((union, { box }) => stampBoxUnion(union, box), null);
-
 /** What `make` makes from `from`, made once while `made` keeps it. */
 function derivedOf<K, T>(made: { get: (key: K) => T | undefined; set: (key: K, value: T) => void }, from: K, make: () => T): T {
   let value = made.get(from);
@@ -53,27 +51,22 @@ export function createShotRigPictures(owner: StampPaintGpuOwner, costs?: StampPa
   // A skin, by its cels' pictures: the first's, then all of theirs. Cut pictures, by what's cut and the skin cutting it.
   const skins = new WeakMap<PaintRigPicture, Map<string, ShotRigSkin>>(), cuts = new WeakMap<PaintRigPicture, WeakMap<ShotRigSkin, readonly PaintRigPicture[]>>();
   /**
-   * `solved`'s steps `steps` read back clear, the sheets unmoved, each sheet holding only the films `keeps` keeps: its
-   * card's edge is made from those, and a step laying another isn't read. Each film is cut by its reveals. Kept under
-   * its films' keys and reveals and its cards' papers, which name its pixels.
+   * `solved`'s steps `steps` read back clear, the sheets unmoved: a film laid at its index in its sheet, by its own
+   * palette and drying, whatever the steps leave out before it; a card cut round the films they lay; each film cut by
+   * its reveals. Kept under its films' keys and reveals and its cards' papers.
    */
-  const readSteps = async (solved: ShotSolvedFilms, steps: readonly number[], keeps: (sheet: number, film: number) => boolean = () => true): Promise<ShotRigKeyedPicture> => {
-    const { compiled } = solved, films = solved.films.map((each, s) => each.filter((_, f) => keeps(s, f)));
-    const reveals = solved.films.map((each, s) => each.flatMap((_, f) => (keeps(s, f) ? [solved.reveals[s][f] ?? []] : [])));
-    // Each film's index among those kept, -1 for one left out.
-    const remap = solved.films.map((each, s) => {
-      let next = 0;
-      return each.map((_, f) => (keeps(s, f) ? next++ : -1));
-    });
-    const laid = steps.map((index) => compiled.steps[index]).filter((step) => step.kind === 'card' || remap[step.sheet][step.film] >= 0);
+  const readSteps = async (solved: ShotSolvedFilms, steps: readonly number[]): Promise<ShotRigKeyedPicture> => {
+    const { compiled } = solved, laid = steps.map((index) => compiled.steps[index]);
+    const lays = (sheet: number, film: number) => laid.some((step) => step.kind === 'film' && step.sheet === sheet && step.film === film);
     const composite: StampSheetsComposite = {
-      sheets: compiled.sheets.map(({ program }, s) => ({ program, films: films[s], place: null, reveals: reveals[s] })),
-      steps: laid.map((step) => (step.kind === 'card' ? step : { ...step, film: remap[step.sheet][step.film] })),
+      sheets: compiled.sheets.map(({ program }, s) => ({ program, films: solved.films[s], place: null, reveals: solved.reveals[s], shown: solved.films[s].map((_, f) => (lays(s, f) ? 1 : 0)) })),
+      steps: laid,
     };
-    const crop = laid.reduce<StampPointBox | null>((union, step) => stampBoxUnion(union, step.kind === 'card' ? boxOf(films[step.sheet]) : solved.films[step.sheet][step.film].box), null);
+    // A card reaches only as far as the films laid on it, whose steps name them in the crop and key.
+    const crop = laid.reduce<StampPointBox | null>((union, step) => (step.kind === 'film' ? stampBoxUnion(union, solved.films[step.sheet][step.film].box) : union), null);
     const key = laid.map((step) => {
       if (step.kind === 'film') return `${solved.films[step.sheet][step.film].key} ${stampRevealLinksKey(solved.reveals[step.sheet][step.film] ?? [])}`;
-      return `card ${stampCanonicalJson(compiled.sheets[step.sheet].program.paper)} ${films[step.sheet].map(({ key: film }) => film).join('+')} ${stampSheetRevealsKey(reveals[step.sheet])}`;
+      return `card ${stampCanonicalJson(compiled.sheets[step.sheet].program.paper)}`;
     }).join('|');
     return { picture: crop ? await readStampSheetsPictureKept(owner, key, composite, crop, 'clear', costs) : EMPTY, key };
   };
@@ -91,13 +84,13 @@ export function createShotRigPictures(owner: StampPaintGpuOwner, costs?: StampPa
     },
     /**
      * A pieces rig's pictures as `plan` shows it: the shown cels' rest paint (`rest`) skinned, and its group's sheets
-     * (those nested in it too) laid as `solved` painted them with the plan's steps and layers alone, on their paper and
-     * edge, cut by that skin into one picture a skin group. Overlapping cels show their paper once, under both.
+     * (those nested in it too) laid as `solved` painted them with the plan's steps alone, on their paper and edge, cut
+     * by that skin into one picture a skin group. Overlapping cels show their paper once, under both.
      */
     pieces: async (solved: ShotSolvedFilms, rest: ShotRigRestCels, plan: ShotPiecesPlan): Promise<{ readonly skin: ShotRigSkin; readonly pictures: readonly PaintRigPicture[] }> => {
-      const { tree, sheets } = solved.compiled, shown = plan.shown.map((node) => ({ cel: node, ...rest.get(node)! }));
+      const shown = plan.shown.map((node) => ({ cel: node, ...rest.get(node)! }));
       const skin = derivedOf(derivedOf(skins, shown[0].picture, () => new Map<string, ShotRigSkin>()), shown.map(({ picture }) => idOf(picture)).join(','), () => shotRigSkin(plan.rig, shown).skin);
-      const { picture: combined } = await readSteps(solved, plan.steps, (sheet, film) => plan.layers.has(tree.layers[sheets[sheet].layers[film]].node.key));
+      const { picture: combined } = await readSteps(solved, plan.steps);
       return { skin, pictures: derivedOf(derivedOf(cuts, combined, () => new WeakMap<ShotRigSkin, readonly PaintRigPicture[]>()), skin, () => shotRigPiecePictures(combined, skin)) };
     },
   };

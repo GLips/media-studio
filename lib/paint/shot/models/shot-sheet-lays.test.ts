@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
-import { compilePaintingSelection } from '#lib/paint/document/models/painting-document-compile.ts';
+import { compilePaintingSelection, paintingStepNode } from '#lib/paint/document/models/painting-document-compile.ts';
 import type { Layer, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
 import { paintingPoseText, type PaintingPoses } from '#lib/paint/document/models/painting-pose.ts';
 import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
@@ -62,7 +62,7 @@ function planAt(props: PaintedShotProps, at: PaintMoment) {
   // Rigs found with unit axes: what the plan reads of them is their parts' poses, not the paint they were found over.
   const found: ShotRigFound[] = [...shot!.rigs.values()].map((rig) => ({ rig, axes: new Map(rig.parts.map(({ id }) => [id, { direction: 0, length: 1 }])), skin: null }));
   const rigs = { found, read: shotRigReader(shot!.motion) }, solved = shotPlanePosesAt(plane, shot!.motion, rigs, at, false);
-  return { solved, plan: shotPlaneLayPlan({ shot: shot!, plane, selection, compiled, films, solved, rigs, stage: camera.stage }, { at, shutter: null }) };
+  return { compiled, solved, plan: shotPlaneLayPlan({ shot: shot!, plane, selection, compiled, films, solved, rigs, stage: camera.stage }, { at, shutter: null }) };
 }
 
 /** Rest cel `cel`, its pixels keyed `key`, opaque over its box. */
@@ -107,7 +107,8 @@ test('a layer inside a rig drawn as pieces shows whole or not at all: refused at
     rigs: { 'front/heron': { parts: HERON_PARTS, pose: {} } }, visibility: { 'front/neck': visibility },
   });
   assert.deepEqual(compilePaintedShot(props(0.5), []).problems.map(({ message }) => message), ['is 0.5, inside front/heron, drawn as pieces: a layer or group there shows (1) or doesn\'t (0)']);
-  assert.deepEqual(planAt(props(0), paintMoment(0)).plan.pieces[0].layers, new Set(['body']));
+  const { compiled, plan } = planAt(props(0), paintMoment(0));
+  assert.deepEqual(plan.pieces[0].steps.map((index) => paintingStepNode(compiled, compiled.steps[index])), ['heron', 'body']);
   assert.throws(() => planAt(props(() => 0.5), paintMoment(0)), /front\/neck's visibility is 0.5 at 0 s, inside front\/heron, drawn as pieces/);
 });
 

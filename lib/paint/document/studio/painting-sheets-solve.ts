@@ -64,7 +64,8 @@ export async function solvePaintingSheets(owner: StampPaintGpuOwner, compiled: P
       release();
       throw new Error(`painting: ${program.name} is placed by a warp (${pose.text}); a still lays a sheet moved by a similarity only`);
     }
-    return { program, films: solved[s].films, place: paintingPoseText(pose) === PAINTING_REST_POSE ? null : paintingSheetPlace(pose.map), reveals: reveals[s] };
+    const { films } = solved[s];
+    return { program, films, place: paintingPoseText(pose) === PAINTING_REST_POSE ? null : paintingSheetPlace(pose.map), reveals: reveals[s], shown: films.map(() => 1) };
   });
   return { solved, composite: { sheets, steps: compiled.steps }, release };
 }
