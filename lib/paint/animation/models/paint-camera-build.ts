@@ -16,7 +16,7 @@ import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import {
-  PAINT_CAMERA_NEAREST, PAINT_CAMERA_REST, paintCameraClipProblem, paintCameraFocusAt, paintCameraPlaneFarthest, paintCameraPlaneNearest, paintCameraPoseAt, paintPlaneDefocus,
+  PAINT_CAMERA_NEAREST, PAINT_CAMERA_REST, paintCameraClipProblem, paintCameraFocusAt, paintCameraPlaneFarthest, paintCameraPlaneNearest, paintCameraPoseAt, paintFilmShutter, paintPlaneDefocus,
   paintStageCentre,
   type PaintCamera, type PaintCameraFocusClip, type PaintCameraInstancedPlane, type PaintCameraLensOptions, type PaintCameraMoveClip, type PaintCameraPicturePlane,
   type PaintCameraPlane, type PaintCameraPlaneOptions, type PaintCameraPlay, type PaintCameraPose, type PaintCameraShutter,
@@ -39,6 +39,21 @@ export type PaintCameraOptions = {
   readonly plays?: readonly PaintCameraPlay[];
   readonly animationFps?: number;
 };
+
+/**
+ * A shot's lens: a camera's (PaintCameraLensOptions), its `shutter` left out to take the film's, open half the frame
+ * the shot is played at (paintFilmShutter: 1/60 s at 30 fps).
+ */
+export type PaintShotLens = Omit<PaintCameraLensOptions, 'shutter'> & { readonly shutter?: PaintCameraShutter };
+
+/** A shot's camera as written (PaintedShotProps' `camera`): a camera's options over no planes, its lens a shot's. */
+export type PaintShotCamera = Omit<PaintCameraOptions, 'planes' | 'lens'> & { readonly lens: PaintShotLens };
+
+/** `camera` as the options of a camera over `planes` in a film of `filmFps` frames a second, whose shutter a lens leaving its own out takes. */
+export function paintShotCameraOptions(camera: PaintShotCamera, filmFps: number, planes: readonly PaintCameraPlaneOptions[]): PaintCameraOptions {
+  const { bloom, shutter = paintFilmShutter(filmFps) } = camera.lens;
+  return { ...camera, lens: { bloom, shutter }, planes };
+}
 
 /**
  * A camera built, with the most each plane is magnified anywhere in the shot (frame px per plane px; its picture is

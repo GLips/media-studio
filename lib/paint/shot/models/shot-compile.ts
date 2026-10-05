@@ -7,8 +7,8 @@
 // Negative space: refused are visibility on the opaque back, a lay on a picture or three plane, an alphaOf inside a
 // pieces rig, and a dissolve end cutting a rigged group otherwise than its rig does (shotPlaneRigEndProblems).
 
-import { buildPaintCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
-import { paintFilmShutter, type PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
+import { buildPaintCamera, paintShotCameraOptions } from '#lib/paint/animation/models/paint-camera-build.ts';
+import type { PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
 import { paintNodeClockProblem, paintNodeClockSteps, paintNodeTimeAt, type PaintNodeClock, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
 import type { PaintingBrushOf } from '#lib/paint/document/models/painting-deposit-compile.ts';
 import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
@@ -332,8 +332,7 @@ export function compilePaintedShot(
   if (problems.length || !masks.graph || !textures.textures) return answer(null, problems);
   // Planes laid on the frame are unchecked in the build, which they're laid through; covers are laid and checked after it.
   const cameraPlanes = [...shotCameraPlanes(planes, motion.motion, rigs), ...instanced.map(({ id, depths }) => ({ id, kind: 'instanced' as const, depths }))];
-  const { bloom, shutter = paintFilmShutter(filmFps) } = props.camera.lens;
-  const built = buildPaintCamera({ ...props.camera, lens: { bloom, shutter }, animationFps: fps, planes: cameraPlanes });
+  const built = buildPaintCamera({ ...paintShotCameraOptions(props.camera, filmFps, cameraPlanes), animationFps: fps });
   if (!built.ok) return answer(null, built.problems.map((message) => shotError('camera', '', message)));
   const setting = { camera: built.camera, motion: motion.motion, rigs }, covered = shotCoveredPlanes(setting, planes);
   // A back laid still is held to all the frame reads of it here; a cover is as it's laid, a callback's lay each frame.

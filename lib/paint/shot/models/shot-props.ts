@@ -3,8 +3,7 @@
 // picture and three sources are the engine's, imported; everything declared here is the painting path's own.
 // docs/painting-authoring.md's Composition section is the author's page for it.
 
-import type { PaintCameraOptions } from '#lib/paint/animation/models/paint-camera-build.ts';
-import type { PaintCameraLensOptions, PaintCameraShutter } from '#lib/paint/animation/models/paint-camera.ts';
+import type { PaintShotCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
 import type { PaintNodeClock } from '#lib/paint/animation/models/paint-clock.ts';
 import type { PaintBoilMarks, PaintMotionNode, PaintMotionPlay } from '#lib/paint/animation/models/paint-motion-compile.ts';
 import type { NodeKey } from '#lib/paint/document/models/painting-document.ts';
@@ -170,18 +169,12 @@ export type OccurrenceMotionNode = Omit<PaintMotionNode, 'parent' | 'marks'> & {
 export type PaintedTexture = { readonly id: string; readonly source: PresentationValue<PaintedSource>; readonly widthPx: number; readonly heightPx: number };
 
 /**
- * A shot's lens: a camera's (PaintCameraLensOptions), its `shutter` left out to take the film's, open half the frame
- * the shot is played at (paintFilmShutter: 1/60 s at 30 fps).
- */
-export type PaintedShotLens = Omit<PaintCameraLensOptions, 'shutter'> & { readonly shutter?: PaintCameraShutter };
-
-/**
  * A shot: the paint camera (its stage frame is the canvas's pixels), planes in any order, motion over occurrences (node
  * ids are OccurrenceKeys), visibility 0..1 (shot-visibility.ts) and rigs by occurrence. `warm`: the render frames in
  * `from..to`, their films solved before the first shows.
  */
 export type PaintedShotProps = {
-  readonly camera: Omit<PaintCameraOptions, 'planes' | 'lens'> & { readonly lens: PaintedShotLens };
+  readonly camera: PaintShotCamera;
   readonly planes: readonly (PlaneProps | InstancedPlaneProps)[];
   readonly motion?: { readonly nodes: readonly OccurrenceMotionNode[]; readonly plays?: readonly PaintMotionPlay[] };
   readonly visibility?: Readonly<Record<OccurrenceKey, PresentationValue<number>>>;

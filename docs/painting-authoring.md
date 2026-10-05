@@ -1141,15 +1141,18 @@ against the union's last form, as if a still lay had to be a pin or cover. Type 
 A document point on a plane at depth d reaches the frame in two steps: the plane's lay takes it to plane px q, and
 the camera shows q at `c + R(−roll) · (s · (q − c) + shift)`, c the frame's centre, s = zoom · d ÷ (d − dolly), shift
 = −pan · zoom ÷ (d − dolly) (Reference › Camera). A positive pan x slides every plane left, a nearer plane further.
-Two models in `#lib/paint/animation/models/paint-camera-depths.ts` answer the questions a scene asks across depths,
+Three models in `#lib/paint/animation/models/paint-camera-depths.ts` answer the questions a scene asks across depths,
 through the `camera` it hands `<PaintedShot>`, every play included, so its `*-model.ts` and tests can line things up:
 
 - `paintPointAcrossDepths(camera, {depth, point}, toDepth, m)`: the px on a plane at `toDepth` that the frame shows
   where it shows `point`, plane px on a plane at `depth`, at moment `m`. Both are plane px: put a lay on either side
   yourself. A plane held by `clock` reads its lay at its held moment while the camera moves on, so ask at the frame's.
-- `paintCameraReachAt(camera, depth)`: how far past the frame, in whole px on each side (`left`, `top`, `right`,
-  `bottom`), the camera reads a plane at `depth` anywhere in the shot, its blur included. A painting that large and
-  laid at (−left, −top) holds every frame: what the back's check asks (Camera).
+- `paintCameraReachAt(camera, depth, filmFps)`: how far past the frame, in whole px on each side (`left`, `top`,
+  `right`, `bottom`), the camera reads a plane at `depth` anywhere in the shot, its blur included, a shutter left out
+  the film's at `filmFps`. A painting that large and laid at (−left, −top) holds every frame: what the back's check
+  asks (Camera).
+- `paintShotViewAt(camera, depth, m)`: the similarity, plane px to frame px, with which the camera shows a plane at
+  `depth` at moment `m`.
 
 Both are exact only between image-parallel planes, which every painted, picture and instanced plane is. A three
 scene's receding ground isn't: a point on it lies where the scene's own camera puts it. The camera's step alone is
@@ -1499,7 +1502,7 @@ for a brush with no profile on its style's paper and paint as they are now, the 
 pivot)` plane px, frame px with the camera at rest, then the camera shows its plane (Where a plane point lands). No
 mirror: scale is positive. A box (`reach`, `cover`) is `{x0, y0, x1, y1}`.
 
-**Camera** (`PaintCameraOptions` without `planes`, its lens a `PaintedShotLens`): `stage: stampStage(frame, margin)`,
+**Camera** (`PaintShotCamera`: `PaintCameraOptions` without `planes`, its lens a `PaintShotLens`): `stage: stampStage(frame, margin)`,
 margin whole and even; at least 2, more for defocus or a moving lay's reach. `fov` vertical degrees. `lens: {bloom,
 shutter?}`: bloom sigma frame px; shutter seconds open about each frame's time, above 0, or `'shut'`, every frame
 sharp; left out, the film's, half a frame at the composition's fps (`paintFilmShutter`: 1/60 s at 30) (Time: The

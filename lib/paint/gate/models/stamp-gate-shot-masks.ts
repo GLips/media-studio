@@ -4,8 +4,8 @@
 // sheet, cut by an alphaOf mask to the heron's wing, to all but it, to the whole heron, or to the disc, under a camera
 // at rest, panned, or panning. What the checks measure of their frames is here.
 
-import { buildPaintCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
-import { PAINT_CAMERA_REST, paintCameraPlay, paintPlaneSimilarity, paintPlaneViewAt, paintStageCentre } from '#lib/paint/animation/models/paint-camera.ts';
+import { paintShotViewAt } from '#lib/paint/animation/models/paint-camera-depths.ts';
+import { PAINT_CAMERA_REST, paintCameraPlay, paintPlaneSimilarity, paintStageCentre } from '#lib/paint/animation/models/paint-camera.ts';
 import { paintSimilarityApply, paintSimilarityBox, paintSimilarityInverse, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
 import type { PaintingDocument, Reveal } from '#lib/paint/document/models/painting-document.ts';
@@ -187,15 +187,8 @@ export const STAMP_GATE_MASKS_WING: StampBox = { x0: 90, y0: 12, x1: 184, y1: 78
 /** Whether frame px `p` lies well inside the vane, 5 px in. */
 export const stampGateWellInsideVane = (p: StampPoint) => stampGateInsidePolygon(p, STAMP_GATE_HERON_VANE, 5);
 
-/**
- * How the masked shot `shown`'s camera shows a plane at `depth` at scene second `at`, plane px to frame px: its own
- * camera, built as the shot builds it.
- */
-export function stampGateMaskedView(shown: StampGateMaskedShot, depth: number, at: number): PaintSimilarity {
-  const built = buildPaintCamera({ ...stampGateMaskedShot(shown).camera, planes: [] });
-  if (!built.ok) throw new Error(`stamp gate: the masked shot's camera: ${built.problems.join('; ')}`);
-  return paintPlaneViewAt(built.camera, depth, paintMoment(at));
-}
+/** How the masked shot `shown`'s own camera shows a plane at `depth` at scene second `at`, plane px to frame px. */
+export const stampGateMaskedView = (shown: StampGateMaskedShot, depth: number, at: number): PaintSimilarity => paintShotViewAt(stampGateMaskedShot(shown).camera, depth, paintMoment(at));
 
 /**
  * How frame `cut` (the tint cut by a mask) differs from `bare` (no tint), RGB bytes `width` px wide, the heron's

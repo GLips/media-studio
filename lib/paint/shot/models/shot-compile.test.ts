@@ -223,7 +223,7 @@ const skyPadded = (pad: PaintCameraReach): PlaneProps => ({
 });
 
 test("a back padded by the camera's reach at its depth holds all the camera reads of it, and a px less on a side is refused", () => {
-  const reach = paintCameraReachAt(drifting, 2), padded = (pad: PaintCameraReach) => problemsOf({ camera: drifting, planes: [skyPadded(pad)] });
+  const reach = paintCameraReachAt(drifting, 2, FILM_FPS), padded = (pad: PaintCameraReach) => problemsOf({ camera: drifting, planes: [skyPadded(pad)] });
   assert.ok(reach.right > reach.left && reach.top > reach.bottom, `a drift right and up reads further right and up: ${JSON.stringify(reach)}`);
   assert.deepEqual(padded(reach), []);
   assert.match(padded({ ...reach, right: reach.right - 1 })[0], /^back\.lay: is the back, painted /);
