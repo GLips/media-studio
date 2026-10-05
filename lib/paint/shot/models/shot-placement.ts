@@ -16,7 +16,7 @@ import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-regi
 import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { CompiledPaintedShot, CompiledShotPaintedPlane, CompiledShotPlane } from './shot-compile.ts';
 import type { CoverFrame, ScreenPin } from './shot-props.ts';
-import { shotBarePaperProblem, type ShotBackLaying } from './shot-back.ts';
+import { shotBarePaperProblem, type ShotBackLaying, type ShotBackSetting } from './shot-back.ts';
 import { shotPaintedCameraPlane } from './shot-reach.ts';
 
 /**
@@ -98,6 +98,16 @@ function shotScreenLaid(
   const laid: CompiledShotPaintedPlane = { ...plane, lay: { kind: 'still', lay } };
   const problem = paintCameraPictureProblem(camera, shotPaintedCameraPlane(laid, motion, new Set(rigs.keys()))) ?? shotBarePaperProblem(setting, plane, laying(lay, view));
   return problem ? { problem: paintingProblem('error', plane.id, 'lay', problem) } : { plane: laid };
+}
+
+/**
+ * Why `plane`, the back laid still by `lay` (null: not laid), can't hold all the frame reads of it, or null
+ * (shotBarePaperProblem): its fixes include a cover of its painting, laid as a cover at its default second, 0, is.
+ */
+export function shotStillBackProblem(setting: ShotBackSetting, plane: CompiledShotPaintedPlane, lay: StampGroupLay | null): string | null {
+  const view = paintPlaneViewAt(setting.camera, plane.depth, paintMoment(0)), { frame } = setting.camera.stage;
+  const box = { x0: 0, y0: 0, x1: plane.paints.widthPx, y1: plane.paints.heightPx };
+  return shotBarePaperProblem(setting, plane, { kind: 'lay', lay, cover: { box, relaid: (other) => shotCoverLay(other, view, frame) } });
 }
 
 /**

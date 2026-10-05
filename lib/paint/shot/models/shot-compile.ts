@@ -16,13 +16,12 @@ import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-moti
 import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { paintMoment, type PaintMoment, type StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
-import { shotBarePaperProblem } from './shot-back.ts';
 import { compileShotInstancedPlane, type CompiledShotInstancedPlane } from './shot-instances.ts';
 import { compileShotMotion, type CompiledShotMotion, type ShotMotionPlane } from './shot-motion.ts';
 import { shotOccurrencePlane, shotPlaneOccurrences, type ShotOccurrence } from './shot-occurrences.ts';
 import { shotMaskCheck, type ShotMaskGraph } from './shot-masks.ts';
 import { compileShotPaintedTextures, type CompiledShotPaintedTexture } from './shot-painted-texture-compile.ts';
-import { shotCoveredPlanes, shotPlacementProblems } from './shot-placement.ts';
+import { shotCoveredPlanes, shotPlacementProblems, shotStillBackProblem } from './shot-placement.ts';
 import { shotDrawableOrder } from './shot-plan.ts';
 import {
   shotPresentationAt, type CoverFrame, type InstancedPlaneProps, type OccurrenceKey, type PaintedShotProps, type PictureSource, type PlaneMask, type PlaneProps,
@@ -336,7 +335,7 @@ export function compilePaintedShot(
   if (!built.ok) return answer(null, built.problems.map((message) => shotError('camera', '', message)));
   const setting = { camera: built.camera, motion: motion.motion, rigs }, covered = shotCoveredPlanes(setting, planes);
   // A back laid still is held to all the frame reads of it here; a cover is as it's laid, a callback's lay each frame.
-  const bare = back?.kind === 'painted' && back.lay.kind === 'still' && shotBarePaperProblem(setting, back, { kind: 'lay', lay: back.lay.lay });
+  const bare = back?.kind === 'painted' && back.lay.kind === 'still' && shotStillBackProblem(setting, back, back.lay.lay);
   const laidProblems = [...covered.problems, ...(bare ? [shotError(back.id, 'lay', bare)] : [])];
   if (laidProblems.length) return answer(null, laidProblems);
   return answer({

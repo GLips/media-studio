@@ -23,13 +23,17 @@ import { shotNodeShift } from './shot-reach.ts';
 /** What the back is checked through: its shot's built camera and motion. */
 export type ShotBackSetting = Pick<CompiledPaintedShot, 'camera' | 'motion'>;
 
+/** A cover of `box` (document px), and `relaid`, the lay covering another box the same way. */
+export type ShotBackCover = { readonly box: StampBox; readonly relaid: (box: StampBox) => StampGroupLay };
+
 /**
- * How the back is laid, which is how its fix is worded: a lay as written (null: none), a cover of `box` (`relaid`
- * covering another box the same way), or a pin of document points `sources`; each with the lay it comes to.
+ * How the back is laid, which is how its fix is worded: a lay as written (null: none), with the cover of its whole
+ * painting a still lay may become instead (null for a callback's); a cover; or a pin of document points `sources`.
+ * Each with the lay it comes to.
  */
 export type ShotBackLaying =
-  | { readonly kind: 'lay'; readonly lay: StampGroupLay | null }
-  | { readonly kind: 'cover'; readonly lay: StampGroupLay; readonly box: StampBox; readonly relaid: (box: StampBox) => StampGroupLay }
+  | { readonly kind: 'lay'; readonly lay: StampGroupLay | null; readonly cover: ShotBackCover | null }
+  | ({ readonly kind: 'cover'; readonly lay: StampGroupLay } & ShotBackCover)
   | { readonly kind: 'pin'; readonly lay: StampGroupLay; readonly sources: readonly StampPoint[] };
 
 /** `plane`'s document, document px, `grow` px larger on every side. */
@@ -103,18 +107,41 @@ const layText = ({ x, y, rotation, scale }: StampGroupPlacement, pivot: StampPoi
 /** The scale `by` about `pivot`, as a similarity. */
 const scaledAbout = (pivot: StampPoint, by: number): PaintSimilarity => paintSimilarityOf({ x: 0, y: 0, rotation: 0, scale: by }, pivot);
 
+const boxText = ({ x0, y0, x1, y1 }: StampBox) => `{ x0: ${num(x0)}, y0: ${num(y0)}, x1: ${num(x1)}, y1: ${num(y1)} }`;
+
+/**
+ * The least whole px `cover`'s box shrinks by on every side for a cover of it to hold all `reads` within `held`, with
+ * the box it comes to; null for none. Its shortfall is no bound on it: a smaller box lays larger, its blur reading
+ * fewer document px.
+ */
+function coverHolding({ box, relaid }: ShotBackCover, reads: readonly PaintCameraPlaneRead[], held: StampBox): { readonly less: number; readonly box: StampBox } | null {
+  const most = Math.floor(Math.min(box.x1 - box.x0, box.y1 - box.y0) / 2 - BACK_SLACK);
+  const holds = (n: number) => excess(unionOf(readsThrough(reads, shotLaySimilarity(relaid(stampBoxGrown(box, -n)))).map((each) => each.read)), held) <= BACK_SLACK;
+  // leastPassing doubles its way up from where it starts, so it starts at 1: 0 is tried on its own.
+  const less = holds(0) ? 0 : leastPassing(1, most, holds);
+  return less === null ? null : { less, box: stampBoxGrown(box, -less) };
+}
+
+/**
+ * A back laid still, or not laid, as a cover instead, the still form needing no placement worked out: of its whole
+ * painting where that holds, else of the largest box inside it that does.
+ */
+function stillCoverFix(cover: ShotBackCover, reads: readonly PaintCameraPlaneRead[], held: StampBox): string[] {
+  const inside = coverHolding(cover, reads, held);
+  if (!inside) return [];
+  const lay = `lay: { kind: 'cover', box: ${boxText(inside.box)} }`;
+  return [inside.less === 0 ? `cover the frame with its painting: ${lay}` : `cover the frame with a box ${inside.less} px inside its painting: ${lay}`];
+}
+
 /**
  * The ways to make the back laid by `lay` as `laying` says hold `read` (document px, all the frame reads of it): lay
  * it larger, cover less of it, pin its points nearer, or paint more of it (`more` px each side, null: none holds).
  */
 function backFixes(laying: ShotBackLaying, lay: PaintSimilarity, read: StampBox, held: StampBox, more: number | null, reads: readonly PaintCameraPlaneRead[]): string[] {
   if (laying.kind === 'cover') {
-    const { box, relaid } = laying, most = Math.floor(Math.min(box.x1 - box.x0, box.y1 - box.y0) / 2 - BACK_SLACK);
-    const covering = (n: number) => unionOf(readsThrough(reads, shotLaySimilarity(relaid(stampBoxGrown(box, -n)))).map((each) => each.read));
-    const less = leastPassing(Math.max(1, Math.ceil(excess(read, held) - BACK_SLACK)), most, (n) => excess(covering(n), held) <= BACK_SLACK);
-    const smaller = less === null ? null : stampBoxGrown(box, -less);
+    const smaller = coverHolding(laying, reads, held);
     return [
-      ...(smaller ? [`cover a box ${less} px smaller on every side (box: { x0: ${num(smaller.x0)}, y0: ${num(smaller.y0)}, x1: ${num(smaller.x1)}, y1: ${num(smaller.y1)} })`] : []),
+      ...(smaller ? [`cover a box ${smaller.less} px smaller on every side (box: ${boxText(smaller.box)})`] : []),
       ...(more === null ? [] : [`paint ${more} px more past its box on every side (the box then ${more} px further right and down, with its paint)`]),
     ];
   }
@@ -136,12 +163,13 @@ function backFixes(laying: ShotBackLaying, lay: PaintSimilarity, read: StampBox,
   const scaled = written && about === written.pivot
     ? `lay it ${larger.toFixed(1)}% larger about its pivot (placement scale ${num(written.placement.scale)} → ${num(Math.ceil(written.placement.scale * by * 1000 - BACK_SLACK) / 1000)})`
     : `lay it ${larger.toFixed(1)}% larger about its centre: ${layText(paintPlacementOfSimilarity(paintSimilarityAfter(lay, scaledAbout(about, by)), about), about)}`;
-  if (more === null) return [scaled];
+  const covered = laying.cover ? stillCoverFix(laying.cover, reads, held) : [];
+  if (more === null) return [scaled, ...covered];
   // Painting more on the top and left moves every document px of it, its pivot among them, `more` right and down.
   const painted = written
     ? `paint ${more} px more on every side and lay it ${more} px further up and left (placement x: ${num(written.placement.x - more)}, y: ${num(written.placement.y - more)}, its pivot moving with its paint)`
     : `paint ${more} px more on every side and lay it ${more} px up and left: ${layText({ x: -more, y: -more, rotation: 0, scale: 1 }, { x: 0, y: 0 })}`;
-  return [scaled, painted];
+  return [scaled, ...covered, painted];
 }
 
 /**
@@ -182,7 +210,8 @@ export function shotBackFrameProblem(
   if (!plane.opaqueBack || plane.lay.kind !== 'moving') return null;
   const moments = [at, ...(shutter ? [shutter.open, shutter.close] : [])], reads = paintCameraFrameReads(camera, plane.depth, at, moments);
   for (const [i, each] of moments.entries()) {
-    const lay = plane.lay.lay(shotPlaneMomentAt(motion, plane.id, each)), problem = backProblem(plane, motion, [reads[i]], shotLaySimilarity(lay), { kind: 'lay', lay }, true);
+    const lay = plane.lay.lay(shotPlaneMomentAt(motion, plane.id, each));
+    const problem = backProblem(plane, motion, [reads[i]], shotLaySimilarity(lay), { kind: 'lay', lay, cover: null }, true);
     if (problem) return problem;
   }
   return null;

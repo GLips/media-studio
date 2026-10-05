@@ -165,11 +165,12 @@ const focused: PaintedShotProps['camera'] = {
 const BACK = { id: 'back', depth: 2 } as const;
 const backedBy = (back: PlaneProps): PaintedShotProps => ({ camera: focused, planes: [back, { id: 'heron', depth: 1, source: layersOf(pond, ['heron']) }] });
 
-test("the back is refused where the frame's blur reads past its painting, and mended by either fix it names", () => {
+test("the back is refused where the frame's blur reads past its painting, and mended by any fix it names", () => {
   const [unlaid] = problemsOf(backedBy({ ...BACK, source: layersOf(pond, ['sky']) }));
   assert.equal(unlaid, [
     'back.lay: is the back, painted 0 px past the frame (at rest), its blur reading 12 px past the frame, and past its painting lies bare paper:',
     'lay it 10.0% larger about its centre: { placement: { x: 0, y: 0, rotation: 0, scale: 1.1 }, pivot: { x: 160, y: 120 } },',
+    "or cover the frame with a box 11 px inside its painting: lay: { kind: 'cover', box: { x0: 11, y0: 11, x1: 309, y1: 229 } },",
     'or paint 12 px more on every side and lay it 12 px up and left: { placement: { x: -12, y: -12, rotation: 0, scale: 1 }, pivot: { x: 0, y: 0 } }',
   ].join(' '));
   assert.deepEqual(problemsOf(backedBy({ ...BACK, source: layersOf(skyGrown(12), ['sky']), lay: { placement: { x: -12, y: -12, rotation: 0, scale: 1 }, pivot: { x: 0, y: 0 } } })), []);
@@ -177,10 +178,10 @@ test("the back is refused where the frame's blur reads past its painting, and me
   const [short] = problemsOf(laid(1.05));
   assert.match(short, /lay it 4\.8% larger about its pivot \(placement scale 1\.05 → 1\.101\)/);
   assert.deepEqual(problemsOf(laid(1.101)), []);
-  // A cover's lever is its box, the scale being the cover's to set.
+  // A cover's lever is its box, the scale being the cover's to set: a box 11 px in lays it larger, so its blur reads less.
   const [covered] = problemsOf(backedBy({ ...BACK, source: layersOf(pond, ['sky']), lay: { kind: 'cover', box: { x0: 0, y0: 0, x1: 320, y1: 240 } } }));
-  assert.match(covered, /: cover a box 12 px smaller on every side \(box: \{ x0: 12, y0: 12, x1: 308, y1: 228 \}\), or paint 12 px more past its box on every side/);
-  assert.deepEqual(problemsOf(backedBy({ ...BACK, source: layersOf(pond, ['sky']), lay: { kind: 'cover', box: { x0: 12, y0: 12, x1: 308, y1: 228 } } })), []);
+  assert.match(covered, /: cover a box 11 px smaller on every side \(box: \{ x0: 11, y0: 11, x1: 309, y1: 229 \}\), or paint 12 px more past its box on every side/);
+  assert.deepEqual(problemsOf(backedBy({ ...BACK, source: layersOf(pond, ['sky']), lay: { kind: 'cover', box: { x0: 11, y0: 11, x1: 309, y1: 229 } } })), []);
   assert.deepEqual(problemsOf(backedBy({ ...BACK, source: layersOf(skyGrown(12), ['sky']), lay: { kind: 'cover', box: { x0: 12, y0: 12, x1: 332, y1: 252 } } })), []);
 });
 
