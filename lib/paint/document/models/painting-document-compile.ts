@@ -1,24 +1,26 @@
 // painting-document-compile.ts: a selection of an evaluation's layers as the programs the wash solver runs
 // (stamp-sheet-program.ts), one per sheet they lie on (ENGINE 4.1): a film per selected layer, its washes and
 // applications in the sheet's order with their order times, the sheet's clock, each deposit planned at rest, with the
-// text of what each entry reads (ENGINE 4.2) and of the sheet's head, which a solve chains its keys from; and the
-// steps compositing them (ENGINE 5.4). Keys name things in messages only: deposits are named by ordinals and seeded
-// by their tips. Posing comes after (painting-pose.ts).
+// digest of what each entry reads (ENGINE 4.2) and the text of the sheet's head, which a solve chains its keys from;
+// and the steps compositing them (ENGINE 5.4). Keys name things in messages only: deposits are named by ordinals and
+// seeded by their tips. Posing comes after (painting-pose.ts). Compiles are kept across evaluations by bytes.
 
 import { PAINT_MEDIA, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { PaintMixturePigment } from '#lib/paint/materials/models/paint-pigment.ts';
 import { stampBrushedMasksUnder } from '#lib/paint/painting/models/stamp-brushed-mask.ts';
-import { createKeptByCount, type StampKeptByCount } from '#lib/paint/painting/models/stamp-kept-memo.ts';
+import { STAMP_KEPT_BYTES, stampPlacementsKept } from '#lib/paint/painting/models/stamp-deposit-placement.ts';
+import { createKeptByBytes } from '#lib/paint/painting/models/stamp-kept-memo.ts';
+import type { StampPaintCostTally, StampPaintKept } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { stampBoilSeed, type CompiledStampDeposit } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { rememberedOnce } from '#lib/paint/painting/models/stamp-remembered.ts';
 import type { StampSheetCompositeStep, StampSheetEntry, StampSheetFilm, StampSheetPrewet, StampSheetProgram, StampSheetWash } from '#lib/paint/painting/models/stamp-sheet-program.ts';
-import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
+import { stampCanonicalDigest, stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
 import { compilePaintingArea } from './painting-area-compile.ts';
 import { compilePaintingDeposit, compilePaintingFluid, type PaintingBrushOf } from './painting-deposit-compile.ts';
 import type { AnyApplication, NodeKey, Prewet, Wash } from './painting-document.ts';
 import { paintingEntryReads, paintingSheetHead } from './painting-entry-reads.ts';
 import { paintingMixPigments } from './painting-mix.ts';
-import { PAINTING_REST_POSE } from './painting-pose.ts';
+import { PAINTING_REST_POSE, paintingPosesKept } from './painting-pose.ts';
 import { paintingWashLifts } from './painting-pigment-slots.ts';
 import { paintingGeometryBox } from './painting-footprint.ts';
 import { paintingApplicationOwner, paintingProblem, paintingProblemsError, type PaintingProblem } from './painting-problem.ts';
@@ -87,7 +89,7 @@ function compilePaintingSheet(evaluation: PaintingEvaluation, order: PaintingShe
     return {
       wash: w, name: owner, deposit, medium: capped, on: 'on' in application ? application.on ?? null : null, bloom: 'effect' in application && application.effect === 'bloom',
       chain: entry.chain, orderTime: entry.orderTime, at: application.at ?? null, anchors,
-      datum: stampCanonicalJson({ reads: reads[k].datum, marks, boil: epoch || undefined }), pose: PAINTING_REST_POSE,
+      digest: stampCanonicalDigest({ reads: reads[k].datum, marks, boil: epoch || undefined }), pose: PAINTING_REST_POSE,
     };
   });
   return {
@@ -133,9 +135,9 @@ export function paintingNodeSteps(compiled: PaintingSelectionCompiled, key: Node
 /**
  * What a selection's compile is told: `layers`, the layers and groups selected (all when left out); `reseed`, boil
  * epochs by the key of the layer or group boiling (ENGINE 4.6), the innermost naming a layer winning. A reseeded
- * layer's every seed is suffixed for its epoch and its entries keyed by it; one at 0 is as written.
+ * layer's every seed is suffixed for its epoch and its entries keyed by it; one at 0 is as written. `costs` counts.
  */
-export type PaintingSelectionCompileOptions = { readonly layers?: readonly NodeKey[]; readonly reseed?: ReadonlyMap<NodeKey, number> };
+export type PaintingSelectionCompileOptions = { readonly layers?: readonly NodeKey[]; readonly reseed?: ReadonlyMap<NodeKey, number>; readonly costs?: StampPaintCostTally };
 
 /** Each layer `reseed` boils, by its ordinal in `tree.layers`, at its epoch (PaintingSelectionCompileOptions'); none at 0. */
 export function paintingLayerEpochs(tree: PaintingTree, reseed?: ReadonlyMap<NodeKey, number>): ReadonlyMap<number, number> {
@@ -160,29 +162,55 @@ export function paintingSelectedLayers(tree: PaintingTree, keys?: readonly NodeK
 }
 
 /**
- * How many selections an evaluation keeps compiled for one brushOf, the least recently read forgotten first. A boiling
- * layer compiles anew each epoch, and each compile keeps its poses (painting-pose.ts), so keeping every one grows a
- * render's page by megabytes a frame until it crashes. Enough for a shot's selections of one source at their epochs.
+ * The most bytes the compiled selections kept across evaluations hold (paintingSelectionBytes), least recently used
+ * given up first; kept for good, a render reaching light after light would fill its page's heap. Below one frame's
+ * selections every frame compiles them all again: a large shot's frame between two lights reckons 2.4 GiB.
  */
-export const PAINTING_SELECTIONS_KEPT = 16;
+export const PAINTING_SELECTIONS_KEPT_BYTES = 2.5 * 2 ** 30;
+
+/** What a compiled entry holds besides its marks, in bytes, roughly: its deposit's areas, fluid and fields. */
+const PAINTING_ENTRY_BYTES = 4096;
 
 /**
- * Compiled selections by evaluation, the brushes resolving them, and the layers selected with their boil epochs: one
- * program a sheet while it's kept, so the poses kept per program are met again.
+ * What `compiled` holds, in bytes, roughly: each of its programs' marks (stamps, dual stamps and its fluids' brushed
+ * marks) as kept stamps, and its entries. Marks two selections share (a placement both found) are counted in each.
  */
-const compiledSelections = new WeakMap<PaintingEvaluation, WeakMap<PaintingBrushOf, StampKeptByCount<string, PaintingSelectionCompiled>>>();
+function paintingSelectionBytes({ sheets }: PaintingSelectionCompiled): number {
+  let marks = 0, entries = 0;
+  for (const { program } of sheets) {
+    entries += program.entries.length;
+    for (const { deposit } of program.entries) marks += deposit.stamps.length + deposit.dualStamps.length;
+    const brushed = stampBrushedMasksUnder([...program.entries.map(({ deposit }) => deposit.mask), ...program.washes.map(({ prewet }) => prewet?.held)]);
+    for (const mask of brushed) for (const { stamps, dualStamps } of mask.marks) marks += stamps.length + dualStamps.length;
+  }
+  return STAMP_KEPT_BYTES * marks + PAINTING_ENTRY_BYTES * entries;
+}
+
+/** Compiled selections by evaluation, brushes, and the layers selected with their boil epochs: one program a sheet while kept, so its poses are met again. */
+const selectionsKept = createKeptByBytes<string, PaintingSelectionCompiled>(PAINTING_SELECTIONS_KEPT_BYTES);
+
+/** The ids naming evaluations and brushOfs in selectionsKept's keys: an object's for its life. */
+const evaluationIds = new WeakMap<PaintingEvaluation, number>(), brushOfIds = new WeakMap<PaintingBrushOf, number>();
+let idsGiven = 0;
+const idOf = <O extends object>(ids: WeakMap<O, number>, of: O) => rememberedOnce(ids, of, () => idsGiven++);
+
+/** What the page's painting memos keep now: compiled selections, posed programs and placements, each how many and their bytes. */
+export const paintingMemosKept = (): StampPaintKept => ({ compiled: selectionsKept.held(), posed: paintingPosesKept(), placed: stampPlacementsKept() });
 
 /**
  * The selected layers of `evaluation`, each sheet they lie on compiled at rest. A film comes where its layer does in
  * document order; a card where its owner does, before every node under it, so a nested sheet lies on its parent's
- * card and a scene layer under the owner glazes over it. Memoised per `brushOf`, selection and epochs.
+ * card and a scene layer under the owner glazes over it. Kept as PAINTING_SELECTIONS_KEPT_BYTES holds.
  */
-export function compilePaintingSelection(evaluation: PaintingEvaluation, brushOf: PaintingBrushOf, { layers, reseed }: PaintingSelectionCompileOptions = {}): PaintingSelectionCompiled {
+export function compilePaintingSelection(evaluation: PaintingEvaluation, brushOf: PaintingBrushOf, { layers, reseed, costs }: PaintingSelectionCompileOptions = {}): PaintingSelectionCompiled {
   const selected = paintingSelectedLayers(evaluation.tree, layers), epochs = paintingLayerEpochs(evaluation.tree, reseed);
-  const key = `${[...selected].toSorted((a, b) => a - b).join(',')}|${[...epochs].map(([layer, epoch]) => `${layer}@${epoch}`).join(',')}`;
-  const byBrushes = rememberedOnce(compiledSelections, evaluation, () => new WeakMap<PaintingBrushOf, StampKeptByCount<string, PaintingSelectionCompiled>>());
-  const bySelection = rememberedOnce(byBrushes, brushOf, () => createKeptByCount<string, PaintingSelectionCompiled>(PAINTING_SELECTIONS_KEPT));
-  return rememberedOnce(bySelection, key, () => compileSelectedLayers(evaluation, brushOf, selected, epochs));
+  const key = `${idOf(evaluationIds, evaluation)}|${idOf(brushOfIds, brushOf)}|${[...selected].toSorted((a, b) => a - b).join(',')}|${[...epochs].map(([layer, epoch]) => `${layer}@${epoch}`).join(',')}`;
+  const known = selectionsKept.get(key);
+  costs?.count(known ? 'selection hits' : 'selections compiled');
+  if (known) return known;
+  const compiled = compileSelectedLayers(evaluation, brushOf, selected, epochs);
+  selectionsKept.set(key, compiled, paintingSelectionBytes(compiled) + 2 * key.length);
+  return compiled;
 }
 
 /**

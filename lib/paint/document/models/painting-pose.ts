@@ -13,7 +13,7 @@ import type { CompiledStampBoundary } from '#lib/paint/painting/models/stamp-are
 import type { CompiledStampBrushedMask } from '#lib/paint/painting/models/stamp-brushed-mask.ts';
 import type { StampWarpMap } from '#lib/paint/painting/models/stamp-group-warp.ts';
 import { STAMP_KEPT_BYTES } from '#lib/paint/painting/models/stamp-deposit-placement.ts';
-import { createKeptByBytes } from '#lib/paint/painting/models/stamp-kept-memo.ts';
+import { createKeptByBytes, type StampKeptHeld } from '#lib/paint/painting/models/stamp-kept-memo.ts';
 import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import type { CompiledStampDeposit, CompiledStampMask } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampBox, StampEdge, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
@@ -257,6 +257,9 @@ const programIds = new WeakMap<StampSheetProgram, number>();
 let programsSeen = 0;
 /** Kept poses by program and maps' texts. */
 const posesKept = createKeptByBytes<string, StampSheetProgram>(PAINTING_POSES_KEPT_BYTES);
+
+/** What the poses kept hold now: how many, and their bytes, roughly. */
+export const paintingPosesKept = (): StampKeptHeld => posesKept.held();
 
 /** What `posed` holds that its program doesn't, in bytes, roughly: its posed entries' stamps. */
 const posedBytes = (program: StampSheetProgram, posed: StampSheetProgram) => STAMP_KEPT_BYTES * posed.entries.reduce((sum, { deposit }, k) =>

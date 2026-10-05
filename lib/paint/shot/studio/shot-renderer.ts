@@ -10,6 +10,7 @@
 import { paintNodeTimeAt } from '#lib/paint/animation/models/paint-clock.ts';
 import { PAINT_SIMILARITY_IDENTITY, paintSimilarityAfter, paintSimilarityInverse, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import { paintCameraDepthLooks, paintCameraLensFrame, type PaintCameraDepthLooks } from '#lib/paint/animation/models/paint-camera.ts';
+import { paintingMemosKept } from '#lib/paint/document/models/painting-document-compile.ts';
 import { paintingProblemsError } from '#lib/paint/document/models/painting-problem.ts';
 import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { STAMP_REST_LOOK, type StampLaidSourcePlane, type StampLensFrame, type StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
@@ -290,7 +291,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
       device.queue.submit([encoder.finish()]);
     });
 
-    /** `run`, the device's evictions and uploads meanwhile counted, and the bytes its cache keeps after. */
+    /** `run`, the device's evictions and uploads meanwhile counted, and the bytes its cache and the page's memos keep after. */
     const counted = async (run: () => Promise<void>) => {
       const evicted = owner.cache.evictions(), uploaded = owner.uploaded();
       try {
@@ -298,7 +299,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
       } finally {
         costs?.count('evictions', owner.cache.evictions() - evicted);
         costs?.count('bytes uploaded', owner.uploaded() - uploaded);
-        costs?.retained(owner.cache.bytes());
+        costs?.retained(owner.cache.bytes(), paintingMemosKept());
       }
     };
 

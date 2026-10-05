@@ -144,7 +144,7 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
    */
   async function solveShare(plane: CompiledShotPaintedPlane, selection: LayerSelection, weight: number, frameAt: PaintMoment, read: ShotRigRead) {
     const reseed = shotPlaneReseedAt(plane, motion, selection, frameAt);
-    const compiled = compilePaintingSelection(selection.painting, brushOf, { layers: selection.layers, reseed });
+    const compiled = compilePaintingSelection(selection.painting, brushOf, { layers: selection.layers, reseed, costs });
     const lays = await laysOf(compiled), at = selection.at, rigs = [...shot.rigs.values()].filter((rig) => rig.plane === plane.id);
     let restCels = new Map<string, ShotRigRestCels>();
     if (rigs.length) {

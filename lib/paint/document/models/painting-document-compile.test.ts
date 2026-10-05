@@ -24,7 +24,7 @@ test('the meadow compiles to its sheet order: a film per layer, a wash per wash,
   assert.ok(cloud.deposit.kind === 'flood' && cloud.deposit.flood.barrier.edge?.soft === 14);
   // A property step re-reads only what it changes: the hill's entry, not the sky's.
   const higher = rootProgram(painting(meadow, { hillTopPx: 210 }));
-  assert.deepEqual(higher.entries.map(({ datum }, k) => datum === program.entries[k].datum), [true, true, false, true]);
+  assert.deepEqual(higher.entries.map(({ digest }, k) => digest === program.entries[k].digest), [true, true, false, true]);
 });
 
 const square = (x0: number, size: number) => [{ x: x0, y: x0 }, { x: x0 + size, y: x0 }, { x: x0 + size, y: x0 + size }, { x: x0, y: x0 + size }];
@@ -60,12 +60,12 @@ const strokedDocument = (profile: (along: number) => number, from = { x: 20, y: 
   }] }] }],
 });
 
-test("a stroke's hand curve enters its key through the stamps it lays: two curves, two keys; the same curve, one", async () => {
-  const keyOf = async (profile: (along: number) => number) => {
+test("a stroke's hand curve enters its key through the stamps it lays: two curves, two keys; the same curve, one", () => {
+  const keyOf = (profile: (along: number) => number) => {
     const program = rootProgram(painting({ default: () => strokedDocument(profile) }));
-    return stampSheetEntryKey(await stampSheetHeadKey(program.head), program.entries[0]);
+    return stampSheetEntryKey(stampSheetHeadKey(program.head), program.entries[0]);
   };
-  const [rising, falling, risingAgain] = await Promise.all([keyOf((along) => 0.2 + 0.8 * along), keyOf((along) => 1 - 0.8 * along), keyOf((along) => 0.2 + 0.8 * along)]);
+  const [rising, falling, risingAgain] = [keyOf((along) => 0.2 + 0.8 * along), keyOf((along) => 1 - 0.8 * along), keyOf((along) => 0.2 + 0.8 * along)];
   assert.notEqual(rising, falling);
   assert.equal(rising, risingAgain);
 });
@@ -101,9 +101,9 @@ test("a boil epoch reseeds its layer's marks and keys alone: each epoch lays the
   const evaluation = painting(meadow);
   const rootOf = (reseed?: ReadonlyMap<string, number>) => compilePaintingSelection(evaluation, brushOf, { reseed }).sheets[0].program;
   const still = rootOf(), boiled = rootOf(new Map([['landscape', 1]])), again = rootOf(new Map([['landscape', 1]]));
-  assert.deepEqual(boiled.entries.map(({ datum }, k) => datum === still.entries[k].datum), [false, false, false, true]);
+  assert.deepEqual(boiled.entries.map(({ digest }, k) => digest === still.entries[k].digest), [false, false, false, true]);
   assert.notEqual(boiled.entries[0].deposit.id, still.entries[0].deposit.id);
-  assert.deepEqual(again.entries.map(({ datum }) => datum), boiled.entries.map(({ datum }) => datum));
+  assert.deepEqual(again.entries.map(({ digest }) => digest), boiled.entries.map(({ digest }) => digest));
 });
 
 test('a wrapped document is keyed apart from itself unwrapped and wrapped otherwise, and an unwrapped head reads no wrap', () => {

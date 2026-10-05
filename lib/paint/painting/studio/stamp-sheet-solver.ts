@@ -67,14 +67,11 @@ export function solveStampSheet(owner: StampPaintGpuOwner, program: StampSheetPr
   return withStampSolveLease(owner, () => solveLeased(owner, program, options));
 }
 
-/** K₀ (from `head`) to K_`through` for `entries`: each its datum and pose after the key before it. */
-async function stampSheetKeys(head: string, entries: StampSheetProgram['entries'], through: number): Promise<string[]> {
-  const chain = async (keys: string[]): Promise<string[]> => {
-    const k = keys.length - 1;
-    if (k === through) return keys;
-    return chain([...keys, await stampSheetEntryKey(keys[k], entries[k])]);
-  };
-  return chain([await stampSheetHeadKey(head)]);
+/** K₀ (from `head`) to K_`through` for `entries`: each its digest and pose after the key before it. */
+function stampSheetKeys(head: string, entries: StampSheetProgram['entries'], through: number): string[] {
+  const keys = [stampSheetHeadKey(head)];
+  for (let k = 0; k < through; k++) keys.push(stampSheetEntryKey(keys[k], entries[k]));
+  return keys;
 }
 
 /**
@@ -101,7 +98,7 @@ async function solveLeased(owner: StampPaintGpuOwner, planned: StampSheetProgram
   const limit = Math.min(through ?? all, at === undefined ? all : entries.filter(({ orderTime }) => orderTime === null || orderTime <= at).length);
   // A sheet that wraps is solved banded on a stage holding its halo, in K₀ (stamp-sheet-wrap.ts); its films are kept cropped to the frame.
   const plan = stampSheetSolvePlan(planned);
-  const keys = await stampSheetKeys(plan.head, entries, limit);
+  const keys = stampSheetKeys(plan.head, entries, limit);
   const finished = finish ?? (at !== undefined || (through ?? all) === all);
   const filmKey = (k: number) => `${keys[k]}|${finished ? 'finished' : 'open'}`;
   const known = stampSheetRemembered(keys, limit, at, dampWindows);

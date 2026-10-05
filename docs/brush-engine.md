@@ -153,8 +153,9 @@ with the paint is read where it was planned: a posed deposit, area and prewet ca
 `stamp-rest-map.ts`), the map back to rest, and a stamp its rest point, where its tip noise is seeded; the resolve
 reads the fill's load field, pigment clumps and a flood's local scale there, the region pass a ragged edge's noise,
 the prewet its water. The paper's tooth and grain are read where they lie. Keys chain from the program's head through each entry's
-datum (what it reads of the document, with the marks it compiled to) and its pose's text (`stamp-sheet-state-key.ts`),
-so a decision is remembered by its prefix, and a solve's films are kept, cropped, in the device's cache under its last
+digest (the SHA-256 of what it reads of the document, with the marks it compiled to, hashed as its canonical text is
+written so that text is never held whole: `platform/hash`'s streaming `createTextSha256`) and its pose's text
+(`stamp-sheet-state-key.ts`), so a decision is remembered by its prefix, and a solve's films are kept, cropped, in the device's cache under its last
 key (`stamp-sheet-films.ts`), which a still lays as the renderer lays a painting. The run of entries is
 `stamp-sheet-run.ts`, on the program's clock, whose policy is pure functions in `stamp-sheet-schedule.ts`: a `scale`
 maps model time to scene seconds from S at τc, the unclocked run's end, so a numeric origin or fixed `at` maps back;
@@ -529,8 +530,10 @@ evaluation diff (`painting-evaluation-diff.ts`) and the solver read. The checks 
 `painting-document-compile.ts` compiles a selection of an evaluation's layers to one solver program per sheet they
 lie on, its clock and order times with it, each application through `painting-deposit-compile.ts` and
 `painting-area-compile.ts`, a boiling layer's seeds suffixed for its epoch (`painting-reseed.ts`), the epochs given by
-layer or group key, and the composite's steps, the 16 selections last read kept compiled per evaluation and brushes
-(a boiling layer compiles anew each epoch); `painting-pose.ts` poses a program before it's solved, the poses last asked
+layer or group key, and the composite's steps, the selections last read kept compiled up to 2.5 GiB across every
+evaluation (`PAINTING_SELECTIONS_KEPT_BYTES`, reckoned at 400 bytes a kept stamp: a render reaching light after light,
+or a layer boiling into epoch after epoch, compiles anew at each, and kept for good they'd fill a page's heap);
+`painting-pose.ts` poses a program before it's solved, the poses last asked
 for kept up to 256 MiB of stamps across programs (a rigged heron's pose is tens of MB, so a count a program would
 grow a render's page frame by frame until it crashed); `studio/painting-sheets-solve.ts` solves a selection's sheets, holding their films until
 its caller releases them, and places each own sheet by its owner chain's map; `studio/painting-film-readback.ts` reads
@@ -665,9 +668,10 @@ or more, logs a line the render prints, and other progress a pulse, so the rende
 (`platform/browser`'s render-watch) sees the page alive while it is. Steps that mustn't
 overlap on one device (shares, planes, canvases, textures, three sources) run through `gpuEachInTurn`
 (`platform/gpu/models/gpu-in-turn.ts`). The renderer counts evictions and bytes uploaded (every write and image copy
-to the owner's queue, three.js's too) around each draw and warm, and the bytes the cache keeps after it, its targets
-apart; and the solves hidden planes skip (`hidden solves skipped`: one a plane in a frame, one a pairing of moments
-in a warm). The
+to the owner's queue, three.js's too) around each draw and warm, and after it the bytes the cache keeps, its targets
+apart, and what the page's memos keep (`paintingMemosKept`: compiled selections, posed programs and placements, each
+a count and its bytes); selections compiled and found kept; and the solves hidden planes skip (`hidden solves
+skipped`: one a plane in a frame, one a pairing of moments in a warm). The
 evaluations a callback source makes or finds memoised are the change in `paintingEvaluationCounts()` across its
 synchronous read. The cost report's counts are painting's (`painting/models/stamp-paint-costs.ts`, one set of names the document,
 solver, caches and shot all count into); the shot logs a frame's and a warm's under its labels

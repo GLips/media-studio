@@ -161,7 +161,7 @@ export function createShotPaintedTextures(owner: StampPaintGpuOwner, textures: r
     const solved: ShotTextureShareSolved[] = [];
     try {
       await gpuEachInTurn(shares, async ({ selection, weight }) => {
-        const compiled = compilePaintingSelection(selection.painting, brushOf, { layers: selection.layers });
+        const compiled = compilePaintingSelection(selection.painting, brushOf, { layers: selection.layers, costs });
         const sheets = await solvePaintingSheets(owner, compiled, { ...(costs && { costs }), ...(selection.at !== undefined && { at: selection.at }) });
         solved.push({ compiled, weight, sheets });
       });

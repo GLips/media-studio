@@ -1549,7 +1549,9 @@ its part's own paint: …`, `… gives none of the rig's texels most of their co
 the cels over or under it …`, `meadow/heron.parts: lays no paint on the document …`); on its page, read as it draws: a canvas that no longer fills its shot, a clear back with no HTML behind
 it (`back.source: is a clear back, and no HTML lies before the first canvas at this frame: …`), or a pinned element
 unmounted, named twice, or laying paint past the stage. In a profiling render the shot reports its costs per frame and
-for its warmed span (`studio profile <project> --costs`): evaluations made and memo hits, film and picture hits and
-misses, solves by sheet from the first application re-run, checkpoint hits, decisions reused, hidden solves skipped,
-evictions, bytes uploaded (three.js's included), bytes kept and bytes in targets (the passes' working textures; both
-under the device's one cache budget), and warnings such as a pose folding paint or a warm running past its scene.
+for its warmed span (`studio profile <project> --costs`): evaluations made and memo hits, selections compiled and
+found kept, film and picture hits and misses, solves by sheet from the first application re-run, checkpoint hits,
+decisions reused, hidden solves skipped, evictions, bytes uploaded (three.js's included), GPU bytes kept and in targets
+(the passes' working textures; both under the device's one cache budget), what the page keeps of compiled selections,
+posed programs and placements (each how many and their bytes, held to 2.5 GiB, 256 MiB and 80 MiB, so a long render's page
+stays bounded), and warnings such as a pose folding paint or a warm running past its scene.

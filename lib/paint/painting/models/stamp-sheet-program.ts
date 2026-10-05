@@ -67,11 +67,11 @@ export type StampSheetAnchors = { within: ReadonlySet<number>; masks: ReadonlySe
 /**
  * One application in its sheet's order: its deposit, as posed; its paint's medium (its film's, spread capped); what
  * it waits for; the node ordinals posing it, outermost first, its layer's too; its order time and fixed `at`, scene s
- * (null when unclocked or untimed); `datum`, the text of all it reads at rest (ENGINE 4.2); `pose`, its map's text.
+ * (null when unclocked or untimed); `digest`, the hash of all it reads at rest (ENGINE 4.2); `pose`, its map's text.
  */
 export type StampSheetEntry = {
   wash: number; name: string; deposit: CompiledStampDeposit; medium: PaintMedium; on: StampSheetWetness | null; bloom: boolean;
-  chain: readonly number[]; orderTime: number | null; at: number | null; anchors: StampSheetAnchors; datum: string; pose: string;
+  chain: readonly number[]; orderTime: number | null; at: number | null; anchors: StampSheetAnchors; digest: string; pose: string;
 };
 
 /**

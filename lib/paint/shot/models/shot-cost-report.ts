@@ -3,6 +3,7 @@
 // labels; `studio profile --costs` tables them. A warning met goes in as `studio paint check` prints it
 // (paintingProblemText).
 
+import type { StampKeptHeld } from '#lib/paint/painting/models/stamp-kept-memo.ts';
 import type { StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import type { FrameCost, FrameCosts } from '#lib/picture/profiling/models/frame-profile-entry.ts';
 
@@ -10,11 +11,20 @@ import type { FrameCost, FrameCosts } from '#lib/picture/profiling/models/frame-
 export const SHOT_FRAME_COSTS_LABEL = 'stamp paint costs';
 export const SHOT_WARM_COSTS_LABEL = 'stamp paint warm costs';
 
-/** `costs` as the frame profiler logs them: every count in its printed order, the bytes kept and in targets, a note a solve or warning. */
-export function shotCostsProfileEntry({ counts, solves, warnings, bytes }: StampPaintCosts): FrameCosts {
+/** A page memo's levels: how many values it keeps, and their bytes. */
+const memoLevels = (name: string, { count, bytes }: StampKeptHeld): FrameCost[] => [{ name: `${name} kept`, value: count }, { name: `${name} bytes kept`, value: bytes, unit: 'bytes' }];
+
+/**
+ * `costs` as the frame profiler logs them: every count in its printed order; as levels, the GPU cache's bytes kept and
+ * in targets, then each page memo's values and bytes; a note a solve or warning.
+ */
+export function shotCostsProfileEntry({ counts, solves, warnings, bytes, kept }: StampPaintCosts): FrameCosts {
   return {
     counts: [...counts].map(([name, value]): FrameCost => (name === 'bytes uploaded' ? { name, value, unit: 'bytes' } : { name, value })),
-    levels: [{ name: 'bytes kept', value: bytes.kept, unit: 'bytes' }, { name: 'bytes in targets', value: bytes.targets, unit: 'bytes' }],
+    levels: [
+      { name: 'GPU bytes kept', value: bytes.kept, unit: 'bytes' }, { name: 'GPU bytes in targets', value: bytes.targets, unit: 'bytes' },
+      ...memoLevels('compiled selections', kept.compiled), ...memoLevels('posed programs', kept.posed), ...memoLevels('placements', kept.placed),
+    ],
     notes: [...solves.map(({ program, from, entries }) => `solved ${program} from ${from}: ${entries} ${entries === 1 ? 'entry' : 'entries'}`), ...warnings],
   };
 }

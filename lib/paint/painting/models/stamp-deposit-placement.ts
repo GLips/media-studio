@@ -13,7 +13,7 @@ import { stampBrushEdgeOffsetMean, stampBrushMeasuredProfile } from '#lib/paint/
 import type { CompiledStampArea } from './stamp-area.ts';
 import { placeStampFlood, stampBrushFillEdge, stampFloodBarrier, stampFloodEdgeOf, stampFloodLaidPast, type StampFillApplication } from './stamp-fill.ts';
 import { stampFillStrokePath } from './stamp-fill-strokes.ts';
-import { createKeptByBytes } from './stamp-kept-memo.ts';
+import { createKeptByBytes, type StampKeptHeld } from './stamp-kept-memo.ts';
 import { stampMarkStamps } from './stamp-marks.ts';
 import { stampPaintFieldAt, type StampSeededPaintField } from './stamp-paint-field.ts';
 import type { CompiledStampFlood } from './stamp-paint-recipe-compile.ts';
@@ -49,6 +49,9 @@ const bytesOf = ({ stamps, dualStamps, ...placement }: StampDepositPlacement, ke
   + (placement.kind === 'flood' ? POINT_BYTES * placement.flood.barrier.polygon.length : 0);
 
 const kept = createKeptByBytes<string, StampDepositPlacement>(STAMP_PLACEMENTS_KEPT_BYTES);
+
+/** What the placements kept hold now: how many, and their bytes, roughly. */
+export const stampPlacementsKept = (): StampKeptHeld => kept.held();
 
 /** `geometry` placed by `brush` at `diameter`, seeded by `seed`: remembered by their content, or placed now. */
 export function placeStampDeposit(geometry: StampPlacingGeometry, brush: StampBrush, diameter: number, seed: string): StampDepositPlacement {
