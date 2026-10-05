@@ -194,7 +194,11 @@ bands reach, from tile lists of segments, and
 kept under producer `arrival` by the reveal, its mapping, wrap and resolution; on a wrapped sheet its segments are
 copied a period each way, so a band wraps with its paint. A field's are read where they're needed, at each texel's own
 document px with no period, so on a wrapped sheet a mark crossing a seam arrives in two halves unless the field
-arrives alike on both edges; the document check warns of it (`painting-reveal-seam-check.ts`).
+arrives alike on both edges; the document check warns of it (`painting-reveal-seam-check.ts`). A field's base is read
+through its profile: 32 samples of its share, which the document makes from the profile's curve
+(`painting-reveal-profile.ts`) and the cut's uniform holds, read linearly between, by the pass and its twin alike. The
+engine never sees a curve, so any curve the document names is drawn the same way. The times an author reads off a
+reveal (`revealEnd`, `revealArrivalAt`) come from the arithmetic the pass reads: its arrival span and its arrivals.
 The cuts multiply, a group's over its descendants', and each is read where its node's marks were solved: posed paint
 carries its reveal (a warp by its fitted similarity). The root's ground is never cut; the solve, its checkpoints and
 the water never see a reveal, so the evaluation diff lists a reveal edit under its `reveals`, recomposing only. `stamp-film-readback.ts` reads a solved film back for a rig and its tools (ENGINE 5.1): its coverage,
@@ -840,8 +844,8 @@ The reveal cases (`stamp-gate-reveals.ts`, `stamp-gate-reveals-page.ts`) hold a 
 (`stampRevealShownAt`): a texel whose twin shows none, its neighbours too, matches the frame with all hidden, one
 showing all matches the unrevealed frame, on each surface's own frames. `reveal/strokes`: mixed-width strokes, a round
 and a flat cap, a crossing taken by the earlier, an uncovered texel never shown, a soft ramp read along a stroke.
-`reveal/fields`: linear, radial and noise fields with a delay, seeked forward and back to the same frames with
-nothing solved. `reveal/sheets`: a group's reveal intersecting a nested layer's on a heron's own sheet, its card cut
+`reveal/fields`: linear, radial and noise fields with a delay, the radial's front run by a profile, seeked forward
+and back to the same frames with nothing solved. `reveal/sheets`: a group's reveal intersecting a nested layer's on a heron's own sheet, its card cut
 with its paint and the root's ground never; a hidden foot leaving its water's mark on the shallows. `reveal/surfaces`:
 one painting through a still, a shot, a clear back over HTML and a painted texture, its mips re-laid. `reveal/clock`:
 held on sixes it steps, sampled continuously it moves smoothly, a reveal edit solves nothing, posed paint carries

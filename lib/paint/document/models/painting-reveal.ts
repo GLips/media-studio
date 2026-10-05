@@ -1,8 +1,9 @@
 // painting-reveal.ts: a document's reveals as a selection's lays read them (docs/painting-authoring.md, Time). A film
 // is cut by its layer's reveal and every enclosing group's, multiplied. Each is read in its node's frame: a node posed
 // on a sheet it doesn't own carries its reveal with its marks, while one at or above the sheet's owner moves the
-// finished sheet, so its reveal is read where the sheet was painted. And for authors: an eased pull as reveal strokes,
-// how wide a stroke reads, which sizes its band, and the band showing all it lays.
+// finished sheet, so its reveal is read where the sheet was painted. And for authors: when a reveal ends and when it
+// reaches a point, an eased pull as reveal strokes, how wide a stroke reads, which sizes its band, and the band
+// showing all it lays.
 
 import { PAINT_SIMILARITY_IDENTITY, paintSimilarityInverse, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import { stampBrushMeasuredProfile, stampBrushVisibleWidth } from '#lib/paint/brush/models/stamp-brush-profile.ts';
@@ -10,7 +11,9 @@ import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { stampPolylineDistance } from '#lib/paint/painting/models/stamp-area-boundaries.ts';
 import { stampDepositWater } from '#lib/paint/painting/models/stamp-paint-action.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import { stampRevealPathLength, stampRevealSampleAt, type StampFilmRevealLinks, type StampRevealCap } from '#lib/paint/painting/models/stamp-reveal.ts';
+import {
+  stampRevealArrivalSpan, stampRevealPathLength, stampRevealPointArrival, stampRevealSampleAt, type StampFilmRevealLinks, type StampReveal, type StampRevealCap,
+} from '#lib/paint/painting/models/stamp-reveal.ts';
 import { stampMarksReach } from '#lib/paint/painting/models/stamp-sheet-wrap.ts';
 import { stampSheetWetReach } from '#lib/paint/painting/models/stamp-wet-reach.ts';
 import { compilePaintingDeposit, type PaintingBrushOf } from './painting-deposit-compile.ts';
@@ -18,12 +21,13 @@ import { paintingCappedMedium, type PaintingSelectionCompiled } from './painting
 import type { AnyApplication, MediumName, NodeKey, Reveal, RevealStroke } from './painting-document.ts';
 import { paintingNodeBox } from './painting-footprint.ts';
 import { paintingPoseAfter, paintingPoseFitOver, paintingSimilarityPose, type PaintingPoses } from './painting-pose.ts';
+import { paintingStampReveal } from './painting-reveal-profile.ts';
 
 /**
  * A reveal cutting a film: its node's, and the nodes posing the film's marks from below its sheet's owner down to
  * that node, outermost first (none for a node moving the finished sheet, or the sheet's owner).
  */
-type PaintingFilmReveal = { readonly node: NodeKey; readonly reveal: Reveal; readonly posedBy: readonly NodeKey[] };
+type PaintingFilmReveal = { readonly node: NodeKey; readonly reveal: StampReveal; readonly posedBy: readonly NodeKey[] };
 
 const filmReveals = new WeakMap<PaintingSelectionCompiled, readonly (readonly (readonly PaintingFilmReveal[])[])[]>();
 
@@ -36,7 +40,7 @@ function paintingFilmReveals(compiled: PaintingSelectionCompiled) {
     const { groups, node } = tree.layers[layer], line = [...groups, node.key], below = sheet.owner === null ? 0 : line.indexOf(sheet.owner) + 1;
     return line.flatMap((key, i): PaintingFilmReveal[] => {
       const { reveal } = tree.byKey.get(key)!.node;
-      return reveal ? [{ node: key, reveal, posedBy: i >= below ? line.slice(below, i + 1) : [] }] : [];
+      return reveal ? [{ node: key, reveal: paintingStampReveal(reveal), posedBy: i >= below ? line.slice(below, i + 1) : [] }] : [];
     });
   }));
   filmReveals.set(compiled, made);
@@ -63,6 +67,22 @@ export function paintingRevealLinksOf(compiled: PaintingSelectionCompiled, poses
     });
   }));
 }
+
+/**
+ * The scene second `reveal` finishes, as the pass reads it: its last arrival plus its `softS`. A field's last arrival
+ * is its base's latest plus its delay's, wherever each lies.
+ */
+export function revealEnd(reveal: Reveal): number {
+  const stamp = paintingStampReveal(reveal);
+  return stampRevealArrivalSpan(stamp).last + (stamp.softS ?? 0);
+}
+
+/**
+ * The scene second `reveal`'s front reaches `point` (document px), as the pass reads it. Strokes: when the earliest
+ * band covering the point first touches it; off every band, at its nearest path point. On a wrapped document a band's
+ * copy across a seam isn't read: ask on the side its path runs.
+ */
+export const revealArrivalAt = (reveal: Reveal, point: StampPoint): number => stampRevealPointArrival(paintingStampReveal(reveal), point);
 
 /** `points` from `s0` to `s1` px along them. */
 function pathBetween(points: readonly StampPoint[], s0: number, s1: number): StampPoint[] {

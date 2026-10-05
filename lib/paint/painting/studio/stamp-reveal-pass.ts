@@ -11,8 +11,8 @@ import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import { stampPaintFieldEnds } from '../models/stamp-paint-field.ts';
 import { STAMP_REST_POINT_WGSL } from '../models/stamp-rest-map.ts';
 import {
-  STAMP_REVEAL_ARRIVAL_SHOWN_WGSL, STAMP_REVEAL_ARRIVAL_WGSL, STAMP_REVEAL_SEGMENT_FLOATS, STAMP_REVEAL_TILE, STAMP_REVEAL_WGSL, stampRevealKey, stampRevealSegments, stampRevealTiles,
-  type StampReveal, type StampRevealLink,
+  STAMP_REVEAL_ARRIVAL_SHOWN_WGSL, STAMP_REVEAL_ARRIVAL_WGSL, STAMP_REVEAL_EVEN_PROFILE, STAMP_REVEAL_PROFILE_SAMPLES, STAMP_REVEAL_SEGMENT_FLOATS, STAMP_REVEAL_TILE, STAMP_REVEAL_WGSL,
+  stampRevealKey, stampRevealProfileWgsl, stampRevealSegments, stampRevealTiles, type StampReveal, type StampRevealLink,
 } from '../models/stamp-reveal.ts';
 import { stampStageTexelsWithin, stampStageWgsl, type StampStage, type StampWrapPeriods } from '../models/stamp-stage.ts';
 import type { StampGpuCacheStore } from './stamp-paint-gpu-cache.ts';
@@ -39,13 +39,15 @@ ${STAMP_REVEAL_ARRIVAL_WGSL}
   textureStore(arrival, id.xy, revealArrivalAt(stagePoint(vec2i(u.origin + id.xy)), spans[2u * t], spans[2u * t + 1u]));
 }`;
 
+// The profile fills the slot (STAMP_UNIFORM_SLOT, 64 words): a field added here takes samples from it.
 const CUT = gpuUniformLayout('RevealCut', [
   ['origin', 'vec2u'], ['extent', 'vec2u'], ['first', 'u32'], ['at', 'f32'], ['softS', 'f32'], ['mapOrigin', 'vec2u'], ['mapExtent', 'vec2u'],
   ['toRest', 'vec4f'], ['baseKind', 'i32'], ['baseEnds', 'vec2f'], ['baseGeometry', 'vec4f'], ['delayKind', 'i32'], ['delayEnds', 'vec2f'], ['delayGeometry', 'vec4f'],
+  ['profile', { vec4fArray: STAMP_REVEAL_PROFILE_SAMPLES / 4 }],
 ]);
 // One reveal's share of each texel over `origin` `extent` of the cut: written by the film's first, multiplied in by
-// the rest. A strokes reveal reads its arrival map (none past it: never reached); a field reads its arrivals at the
-// texel's rest point, its front's seconds per px across a px each way, as stampRevealFieldShown does.
+// the rest. A strokes reveal reads its arrival map (none past it: never reached); a field reads its profiled arrivals
+// at the texel's rest point, its front's seconds per px across a px each way, as stampRevealFieldShown does.
 const cutWgsl = (stage: StampStage, kind: StampReveal['kind']) => /* wgsl */ `
 ${stampStageWgsl(stage)}
 ${STAMP_REST_POINT_WGSL}
@@ -60,9 +62,10 @@ fn shownAt(texel: vec2i) -> f32 {
   if (any(m < vec2i(0)) || any(m >= vec2i(u.mapExtent))) { return 0.0; }
   return revealArrivalShown(textureLoad(arrival, vec2u(m), 0), u.at, u.softS);
 }` : /* wgsl */ `
+${stampRevealProfileWgsl('u.profile')}
 fn arrivalAt(p: vec2f) -> f32 {
   let r = restPoint(u.toRest, p);
-  return revealFieldValue(r, u.baseKind, u.baseEnds, u.baseGeometry) + revealFieldValue(r, u.delayKind, u.delayEnds, u.delayGeometry);
+  return revealProfiledValue(r, u.baseKind, u.baseEnds, u.baseGeometry) + revealFieldValue(r, u.delayKind, u.delayEnds, u.delayGeometry);
 }
 fn shownAt(texel: vec2i) -> f32 {
   let p = stagePoint(texel);
@@ -174,6 +177,7 @@ export function createStampRevealPass(owner: StampPaintGpuOwner, device: StampPa
             put('mapExtent', [map.box.w, map.box.h]);
           }
           if (reveal.kind !== 'field') return;
+          put('profile', reveal.profile ?? STAMP_REVEAL_EVEN_PROFILE);
           for (const [name, field] of [['base', reveal.base], ['delay', reveal.delay]] as const) {
             if (!field) continue;
             const { first, second, kind, geometry } = stampPaintFieldEnds(field);

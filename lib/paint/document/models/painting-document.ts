@@ -12,8 +12,9 @@ import type { PaintPigmentAppearance } from '#lib/paint/materials/models/paint-p
 import type { StampFillReach, StampFillStrokes } from '#lib/paint/painting/models/stamp-fill-strokes.ts';
 import type { StampSeededPaintField } from '#lib/paint/painting/models/stamp-paint-field.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import type { StampReveal, StampRevealStroke } from '#lib/paint/painting/models/stamp-reveal.ts';
+import type { StampRevealStroke } from '#lib/paint/painting/models/stamp-reveal.ts';
 import type { StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
+import type { PaintingReveal } from './painting-reveal-profile.ts';
 
 // ---- identity ------------------------------------------------------------------------------------------------------
 
@@ -266,11 +267,11 @@ export type RevealStroke = StampRevealStroke;
 
 /**
  * Where and when a node's finished paint shows at the selection's `at` (all of it when left out): an arrival time per
- * texel. `strokes`: the earliest stroke covering it; uncovered never shows. `field`: `base` plus `delay`, in scene
- * seconds. A texel shows over `softS` seconds once reached. It cuts what's laid, never what's painted: solves, water
+ * texel. `strokes`: the earliest stroke covering it; uncovered never shows. `field`: `base` through its `profile`,
+ * plus `delay`, in scene seconds. A texel shows over `softS` seconds once reached. It cuts what's laid: solves, water
  * and checkpoints are untouched.
  */
-export type Reveal = StampReveal;
+export type Reveal = PaintingReveal;
 
 // ---- washes, layers, groups ----------------------------------------------------------------------------------------
 

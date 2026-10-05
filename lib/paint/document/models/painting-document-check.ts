@@ -17,6 +17,7 @@ import {
   isPaintingHexColor, isPaintingList, isPaintingPositive, isPaintingShare, paintingApplicationOwner, paintingField, paintingProblem, PaintingProblemList, type PaintingProblem,
 } from './painting-problem.ts';
 import { checkPaintingAmount, checkPaintingRegion } from './painting-region-check.ts';
+import { paintingStampReveal } from './painting-reveal-profile.ts';
 import { checkPaintingRevealSeams } from './painting-reveal-seam-check.ts';
 import { checkPaintingSheetOrders } from './painting-sheet-check.ts';
 import { paintingSheetOrders, paintingWashOrderTimes, type PaintingSheetOrder, type PaintingWashOrderTimes } from './painting-sheet-program.ts';
@@ -200,7 +201,7 @@ function checkWashApplications(list: PaintingProblemList, wash: Wash, { start }:
 
 /** A node's reveal held to what a pass can show: finite times with `from` before `to`, widths above 0, paths with a length, fields of finite seconds. */
 function checkReveal(list: PaintingProblemList, node: LayerNode, reveal: Reveal): void {
-  for (const { field, message } of stampRevealProblems(reveal)) list.error(node.key, paintingField('reveal', field), message, paintingNodeBox(node));
+  for (const { field, message } of stampRevealProblems(paintingStampReveal(reveal))) list.error(node.key, paintingField('reveal', field), message, paintingNodeBox(node));
 }
 
 /** A layer's washes in order. A layer with none is clear, as a rig's clear cel and a bare-paper back's layer are. */

@@ -1,9 +1,10 @@
 // stamp-reveal.ts: finished paint shown over time, as a document's reveal cuts it (docs/painting-authoring.md, Time).
-// A reveal gives each texel an arrival time: strokes advance along their paths by arclength at constant speed, each
-// from its `from` to its `to`, the earliest winning where they cross; a field reads it off fields, base plus delay.
-// A texel shows its covered share once the time passes its arrival, ramped over `softS` seconds and a texel of the
-// front's travel; arrived bands cover it as their union, so bands meeting edge to edge leave no seam. Here are the
-// checks, the plan the GPU pass reads (stamp-reveal-pass.ts) and its CPU twin, which the GPU gate holds the pass to.
+// A reveal gives each texel an arrival time: strokes advance along their paths by arclength at constant speed, the
+// earliest winning where they cross; a field reads it off fields, base (through its profile) plus delay. A texel shows
+// its covered share once the time passes its arrival, ramped over `softS` seconds and a texel of the front's travel;
+// arrived bands cover it as their union, so bands meeting edge to edge leave no seam. Here: the checks, the plan the
+// GPU pass reads (stamp-reveal-pass.ts), its CPU twin, which the GPU gate holds the pass to, and the times an author
+// reads off it.
 
 import { STAMP_PAINT_FIELD_SHARE, stampPaintFieldAt, stampPaintFieldEnds, stampPaintFieldProblem, type StampSeededPaintField } from './stamp-paint-field.ts';
 import type { StampPoint } from './stamp-region.ts';
@@ -27,14 +28,30 @@ export type StampRevealStroke = {
   readonly cap?: StampRevealCap;
 };
 
+/** Points a field reveal's profile is sampled at, evenly over its base's share from 0 to 1: eight vec4fs of a pass's uniform. */
+export const STAMP_REVEAL_PROFILE_SAMPLES = 32;
+
+/**
+ * How a field reveal's base runs between its two values: at each of STAMP_REVEAL_PROFILE_SAMPLES even shares of its
+ * way, the share of the way from its first value to its second it arrives at there, read linearly between. The
+ * engine reads only samples; the document makes them from a curve (painting-reveal-profile.ts).
+ */
+export type StampRevealProfile = readonly number[];
+
+/** The profile a field without one reads on the GPU: its base's own share. */
+export const STAMP_REVEAL_EVEN_PROFILE: StampRevealProfile = Array.from({ length: STAMP_REVEAL_PROFILE_SAMPLES }, (_, i) => i / (STAMP_REVEAL_PROFILE_SAMPLES - 1));
+
 /**
  * Where and when finished paint shows: `strokes`, each texel arriving when the earliest stroke covering it reaches it;
- * `field`, arriving at `base` plus `delay` (0 when left out) scene seconds, everywhere covered. `softS` (0): seconds a
- * texel takes to show in full once reached.
+ * `field`, arriving at `base` through `profile` (its own linear grade when left out) plus `delay` (0 when left out)
+ * scene seconds, everywhere covered. `softS` (0): seconds a texel takes to show in full once reached.
  */
 export type StampReveal =
   | { readonly kind: 'strokes'; readonly strokes: readonly StampRevealStroke[]; readonly softS?: number }
-  | { readonly kind: 'field'; readonly base: StampSeededPaintField<number>; readonly delay?: StampSeededPaintField<number>; readonly softS?: number };
+  | {
+    readonly kind: 'field'; readonly base: StampSeededPaintField<number>; readonly delay?: StampSeededPaintField<number>; readonly profile?: StampRevealProfile;
+    readonly softS?: number;
+  };
 
 /** One thing wrong with a reveal: the field it's at (`strokes[2].to`), and why. */
 export type StampRevealProblem = { readonly field: string; readonly message: string };
@@ -100,6 +117,26 @@ fn revealRamp(t: f32, arrival: f32, perPx: f32, softS: f32) -> f32 {
   return clamp((t - arrival + perPx / 2.0) / max(softS + perPx, 1e-6), 0.0, 1.0);
 }
 fn revealFieldValue(p: vec2f, kind: i32, ends: vec2f, g: vec4f) -> f32 { return mix(ends.x, ends.y, paintFieldShare(p, kind, g)); }`;
+
+/** `share` (0..1) of a field's way through `profile`, sampled and read linearly between: the CPU twin of revealProfiled. */
+export function stampRevealProfiled(share: number, profile: StampRevealProfile | undefined): number {
+  if (!profile) return share;
+  const s = share * (STAMP_REVEAL_PROFILE_SAMPLES - 1), i = Math.min(Math.floor(s), STAMP_REVEAL_PROFILE_SAMPLES - 2);
+  return profile[i] + (profile[i + 1] - profile[i]) * (s - i);
+}
+
+/**
+ * `revealProfiledValue(p, kind, ends, g)`: a base field's value at `p` through the profile `table` names (WGSL, an
+ * array of STAMP_REVEAL_PROFILE_SAMPLES / 4 vec4fs), as stampRevealProfiled reads it. Needs STAMP_REVEAL_WGSL.
+ */
+export const stampRevealProfileWgsl = (table: string) => /* wgsl */ `
+fn revealProfileAt(i: u32) -> f32 { return ${table}[i / 4u][i % 4u]; }
+fn revealProfiled(share: f32) -> f32 {
+  let s = share * ${STAMP_REVEAL_PROFILE_SAMPLES - 1}.0;
+  let i = min(u32(s), ${STAMP_REVEAL_PROFILE_SAMPLES - 2}u);
+  return mix(revealProfileAt(i), revealProfileAt(i + 1u), s - f32(i));
+}
+fn revealProfiledValue(p: vec2f, kind: i32, ends: vec2f, g: vec4f) -> f32 { return mix(ends.x, ends.y, revealProfiled(paintFieldShare(p, kind, g))); }`;
 
 /** Floats a segment takes in a pass's list: its ends (film px), half its width, its arrival at its start, seconds a px along it, its caps. */
 export const STAMP_REVEAL_SEGMENT_FLOATS = 8;
@@ -331,9 +368,12 @@ fn revealArrivalShown(a: vec4u, t: f32, softS: f32) -> f32 {
 export const stampRevealArrivalShown = ({ first, cover, full, total, perPx }: StampRevealArrival, t: number, softS: number) =>
   Math.max(cover * stampRevealRamp(t, first, perPx, softS), total * stampRevealRamp(t, full, perPx, softS));
 
-/** A field reveal's arrival at rest point (x, y): its base's value plus its delay's. */
-export const stampRevealFieldArrival = (reveal: Extract<StampReveal, { kind: 'field' }>, x: number, y: number) =>
-  stampPaintFieldAt(reveal.base, x, y) + (reveal.delay ? stampPaintFieldAt(reveal.delay, x, y) : 0);
+/** A field reveal's arrival at rest point (x, y): its base's value there through its profile, plus its delay's. */
+export function stampRevealFieldArrival(reveal: Extract<StampReveal, { kind: 'field' }>, x: number, y: number): number {
+  const { first, second, kind, geometry } = stampPaintFieldEnds(reveal.base);
+  const base = first + (second - first) * stampRevealProfiled(STAMP_PAINT_FIELD_SHARE.cpu(x, y, kind, geometry), reveal.profile);
+  return base + (reveal.delay ? stampPaintFieldAt(reveal.delay, x, y) : 0);
+}
 
 /**
  * How far a field reveal shows at film point (x, y) at `t`, the film's points taken to the reveal's rest px by
@@ -361,14 +401,50 @@ export function stampRevealShownAt(reveal: StampReveal, point: StampPoint, t: nu
   return stampRevealArrivalShown(stampRevealArrivalAt(segments, all, point.x, point.y), sampled, reveal.softS ?? 0);
 }
 
+/**
+ * When `reveal`'s front reaches document point `point`, scene seconds, as the pass reads arrivals: a field's arrival
+ * there; for strokes, the earliest of the bands covering it or, where none does, its nearest path point's (the
+ * earliest of several equally near). A wrapped document's copies past a seam aren't read.
+ */
+export function stampRevealPointArrival(reveal: StampReveal, point: StampPoint): number {
+  if (reveal.kind === 'field') return stampRevealFieldArrival(reveal, point.x, point.y);
+  const segments = stampRevealSegments(reveal.strokes, [1, 0, 0, 0], { x: 0, y: 0 }), count = segments.length / STAMP_REVEAL_SEGMENT_FLOATS;
+  const { first } = stampRevealArrivalAt(segments, Array.from({ length: count }, (_, k) => k), point.x, point.y);
+  if (first < STAMP_REVEAL_NEVER) return first;
+  let nearest = Infinity, arrival = STAMP_REVEAL_NEVER;
+  for (let k = 0; k < count; k++) {
+    const s = k * STAMP_REVEAL_SEGMENT_FLOATS, { along } = revealSegmentAt(segments, k, point.x, point.y);
+    const ax = segments[s], ay = segments[s + 1], dx = segments[s + 2] - ax, dy = segments[s + 3] - ay, span = Math.hypot(dx, dy);
+    const distance = Math.hypot(point.x - ax - (dx * along) / span, point.y - ay - (dy * along) / span), at = segments[s + 5] + segments[s + 6] * along;
+    if (distance < nearest || (distance === nearest && at < arrival)) {
+      nearest = distance;
+      arrival = at;
+    }
+  }
+  return arrival;
+}
+
 // ---- sampling ------------------------------------------------------------------------------------------------------
 
-/** A field's least and most value. */
-const fieldRange = (field: StampSeededPaintField<number> | undefined): [number, number] => {
+/** A field's least and most value, its share taken through `profile`. */
+const fieldRange = (field: StampSeededPaintField<number> | undefined, profile: StampRevealProfile = [0, 1]): [number, number] => {
   if (!field) return [0, 0];
-  const { first, second } = stampPaintFieldEnds(field);
-  return [Math.min(first, second), Math.max(first, second)];
+  const { first, second } = stampPaintFieldEnds(field), values = [Math.min(...profile), Math.max(...profile)].map((share) => first + (second - first) * share);
+  return [Math.min(...values), Math.max(...values)];
 };
+
+/**
+ * The earliest and latest arrival `reveal` gives anywhere, scene seconds: its strokes' first `from` and last `to`; a
+ * field's base's least and most through its profile, plus its delay's (a bound: they needn't meet at one point). The
+ * window a pass shows a reveal over, and the end its author reads (revealEnd), both come from here.
+ */
+export function stampRevealArrivalSpan(reveal: StampReveal): { readonly first: number; readonly last: number } {
+  if (reveal.kind === 'strokes') {
+    return reveal.strokes.reduce(({ first, last }, { from, to }) => ({ first: Math.min(first, from), last: Math.max(last, to) }), { first: Infinity, last: -Infinity });
+  }
+  const [baseLo, baseHi] = fieldRange(reveal.base, reveal.profile), [delayLo, delayHi] = fieldRange(reveal.delay);
+  return { first: baseLo + delayLo, last: baseHi + delayHi };
+}
 
 /**
  * How far past its last arrival a reveal's window runs, seconds: a hard front over flat arrivals (a constant field,
@@ -382,19 +458,11 @@ const STAMP_REVEAL_STEP_S = 1e-3;
  * its seconds per film px.
  */
 export function stampRevealWindow(reveal: StampReveal, scale: number): { readonly lo: number; readonly hi: number } {
-  const softS = reveal.softS ?? 0;
-  if (reveal.kind === 'field') {
-    const [baseLo, baseHi] = fieldRange(reveal.base), [delayLo, delayHi] = fieldRange(reveal.delay), lo = baseLo + delayLo, hi = baseHi + delayHi;
-    const half = (Math.SQRT2 * (hi - lo)) / 2;
-    return { lo: lo - half, hi: hi + softS + half + STAMP_REVEAL_STEP_S };
-  }
-  let lo = Infinity, hi = -Infinity, half = 0;
-  for (const { points, from, to } of reveal.strokes) {
-    lo = Math.min(lo, from);
-    hi = Math.max(hi, to);
-    half = Math.max(half, ((to - from) * scale) / stampRevealPathLength(points) / 2);
-  }
-  return { lo: lo - half, hi: hi + softS + half + STAMP_REVEAL_STEP_S };
+  const softS = reveal.softS ?? 0, { first, last } = stampRevealArrivalSpan(reveal);
+  const half = reveal.kind === 'field'
+    ? (Math.SQRT2 * (last - first)) / 2
+    : reveal.strokes.reduce((most, { points, from, to }) => Math.max(most, ((to - from) * scale) / stampRevealPathLength(points) / 2), 0);
+  return { lo: first - half, hi: last + softS + half + STAMP_REVEAL_STEP_S };
 }
 
 /**

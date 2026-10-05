@@ -2,12 +2,13 @@
 // what it shows (stampRevealShownAt): drawn mid-reveal, it matches the all-hidden frame wherever the twin shows
 // nothing and the all-shown frame wherever it shows all. The ink: a flood revealed by three strokes of mixed widths
 // and caps; wrapped, by one across its seam. The fields: a flood, a moon and a petal, revealed by a linear, a radial
-// and a noise field. The nested heron: its group and body each revealed, the body cut by both. The hidden foot: the
-// wet-contact heron hidden whole. The reeds: a rig drawn as pieces, revealed. The page
+// (profile `out`) and a noise field. The nested heron: its group and body each revealed, the body cut by both. The
+// hidden foot: the wet-contact heron hidden whole. The reeds: a rig drawn as pieces, revealed. The page
 // (studio/stamp-gate-reveals-page.ts) draws them; what its checks measure is here.
 
 import type { PaintingDocument, LayerNode, Reveal } from '#lib/paint/document/models/painting-document.ts';
 import type { PropertySchema, PropertyValues } from '#lib/paint/document/models/painting-properties.ts';
+import { paintingStampReveal } from '#lib/paint/document/models/painting-reveal-profile.ts';
 import type { PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
@@ -97,7 +98,7 @@ export const STAMP_GATE_INK_TEXELS = {
 export const STAMP_GATE_INK_RAMP = { x0: 30, x1: 90, y: 40 } as const;
 
 /** How far the ink shows at document point `p` at scene second `t`, its reveal `reveal`. */
-export const stampGateInkShownAt = (t: number, reveal: Reveal = INK_REVEAL) => (p: StampPoint) => stampRevealShownAt(reveal, p, t);
+export const stampGateInkShownAt = (t: number, reveal: Reveal = INK_REVEAL) => (p: StampPoint) => stampRevealShownAt(paintingStampReveal(reveal), p, t);
 
 /** The wrapped ink's reveal: a band from x 150 on across the right edge, wrapping to x 50 on the left, from 0 to 2 s. */
 const WRAPPED_REVEAL = { kind: 'strokes', strokes: [{ points: [{ x: 150, y: 70 }, { x: 250, y: 70 }], widthPx: 60, from: 0, to: 2 }] } as const satisfies Reveal;
@@ -134,7 +135,7 @@ const FIELD_COLUMNS = {
   },
   moon: {
     box: [72, 8, 128, 132], pigment: burntSienna, strength: 0.7,
-    reveal: { kind: 'field', softS: 0.2, base: { kind: 'radial', center: { x: 100, y: 70 }, radius: 56, inner: 0, outer: 2 } },
+    reveal: { kind: 'field', softS: 0.2, base: { kind: 'radial', center: { x: 100, y: 70 }, radius: 56, inner: 0, outer: 2 }, profile: 'out' },
   },
   petal: {
     box: [138, 8, 194, 132], pigment: quinacridoneRose, strength: 0.7,
@@ -151,7 +152,7 @@ export const STAMP_GATE_FIELD_COLUMNS = Object.keys(FIELD_COLUMNS) as readonly S
 
 const fieldProperties = { revealed: { type: 'boolean', default: true } } as const satisfies PropertySchema;
 
-/** A flood, a moon and a petal, side by side, each revealed by its field (a linear, a radial, a noise and its delay) when `revealed`. */
+/** A flood, a moon and a petal, side by side, each revealed by its field (a linear, a radial run `out`, a noise and its delay) when `revealed`. */
 export const STAMP_GATE_FIELDS: PaintingSourceModule<typeof fieldProperties> = {
   properties: fieldProperties,
   default: function gateRevealFields({ revealed }: PropertyValues<typeof fieldProperties>): PaintingDocument {
@@ -171,7 +172,7 @@ export const STAMP_GATE_FIELD_SEEKS = { forward: [0.5, 1, 1.5], back: [1, 0.5] }
 /** How far a column's field shows at document point `p` at scene second `t`: judged only well inside its column, a flood's bleed clear of the next. */
 export function stampGateFieldShownAt(column: StampGateFieldColumn, t: number): (p: StampPoint) => number | null {
   const { box: [x0, y0, x1, y1], reveal } = FIELD_COLUMNS[column], inset = 4;
-  return (p) => (p.x >= x0 + inset && p.x <= x1 - inset && p.y >= y0 + inset && p.y <= y1 - inset ? stampRevealShownAt(reveal, p, t) : null);
+  return (p) => (p.x >= x0 + inset && p.x <= x1 - inset && p.y >= y0 + inset && p.y <= y1 - inset ? stampRevealShownAt(paintingStampReveal(reveal), p, t) : null);
 }
 
 // ---- the nested heron ----------------------------------------------------------------------------------------------

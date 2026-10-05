@@ -9,6 +9,7 @@ import { stampWrapsAcross, type StampAxis, type StampWrap } from '#lib/paint/pai
 import type { AnyApplication, LayerNode, PaintingDocument } from './painting-document.ts';
 import { paintingBoxUnion, paintingGeometryBox } from './painting-footprint.ts';
 import { paintingApplicationOwner, type PaintingProblemList } from './painting-problem.ts';
+import { paintingStampReveal } from './painting-reveal-profile.ts';
 import type { PaintingTree } from './painting-tree.ts';
 
 /** Arrivals closer than this across a seam split a mark on one frame at most, at up to 60 fps: too brief to see. */
@@ -88,7 +89,7 @@ export function checkPaintingRevealSeams(list: PaintingProblemList, paintingDocu
   const { wrap } = paintingDocument;
   if (!wrap) return;
   for (const { node } of tree.nodes) {
-    const { reveal } = node;
+    const reveal = node.reveal && paintingStampReveal(node.reveal);
     if (reveal?.kind !== 'field') continue;
     for (const seam of revealSeams(paintingDocument, wrap)) {
       const tears = seamTears(tree, node, reveal, seam), worst = tears.map(({ most }) => most).reduce<SeamArrivals | null>(mostApart, null);

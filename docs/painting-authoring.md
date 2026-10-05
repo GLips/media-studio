@@ -740,8 +740,8 @@ nothing but the clocked prefixes it crosses.
   from, to, ease, piecesPerSecond?, cap?})` (`#lib/paint/document/models/painting-reveal.ts`) cuts one, 30 pieces a
   second (a piece a frame at 30 fps) unless told otherwise. On a wrapped document a band wraps with its paint: one
   written past an edge comes back on the other, so a mark grows along its own path across a seam (recipe 38).
-- **Field**: `{kind: 'field', base, delay?, softS?}`: each texel arrives at `base` plus `delay`, each a `Field<number>`
-  of scene seconds (Reference › Fields), wherever paint lies. One of each kind:
+- **Field**: `{kind: 'field', base, delay?, profile?, softS?}`: each texel arrives at `base` plus `delay`, each a
+  `Field<number>` of scene seconds (Reference › Fields), wherever paint lies. One of each kind:
   - constant, the whole film at once: `base: {kind: 'constant', value: 2}`, fading in over `softS` from 2 s;
   - linear, a flood rising: `base: {kind: 'linear', from: {x: 34, y: 132, value: 0}, to: {x: 34, y: 8, value: 2}}`,
     its foot at 0 s and its top at 2 s, held past both;
@@ -753,10 +753,42 @@ nothing but the clocked prefixes it crosses.
   `delay` adds to `base`: a noise delay rags a rising flood's edge, a linear one sweeps a petal's blotches from its
   base to its tip (recipe 34, timed from a cue).
 
+  `profile` says how the front runs between the base's two values, in the curves a place key takes: `'out'` leaves
+  fast and slows into its last texels, `'in'` leaves from rest, `'inOut'` does both, and `'linear'` (left out) keeps
+  the base's even pace. Half its time in, a front run `'out'` has come three quarters of its way, `'in'` a quarter. It
+  runs from whichever value comes first, so a radial field with `inner` later than `outer` closes inward the same way.
+  It shapes the base before `delay` adds to it, so a noise delay still rags the eased front. On a constant base it
+  changes nothing. A moon that blooms fast and settles into its rim:
+
+  ```ts
+  const MOON: Reveal = {
+    kind: 'field', softS: 0.15, profile: 'out',
+    base: { kind: 'radial', center: { x: 1400, y: 260 }, radius: 110, inner: CUE.drop, outer: CUE.drop + 0.6 },
+  };
+  ```
+
+  The engine reads a profile as 32 samples along the field's way, straight between them: a curve leaving from rest
+  runs evenly through the first 1/31 of its way.
+
   A field varies across the document, not along a mark, and is read at each texel's own px, so it doesn't wrap: on a
   wrapped document a mark crossing a seam arrives in two halves unless the field arrives alike on the seam's two
   edges. `paint check` warns (`vine.reveal: a field arrives at x 0 at 0.00 s and at x 2048 at 1.00 s (y 359), so
   stem, crossing the seam, arrives in two halves: …`): keep marks off the seam, or reveal by strokes, which wrap.
+- **Its times**: read them off the reveal rather than copying its numbers, so retiming it retimes what follows it.
+  Both are in `#lib/paint/document/models/painting-reveal.ts` and read the times the pass shows.
+  - `revealEnd(reveal)`: the scene second it finishes, its last arrival plus `softS`. A field's last arrival is its
+    base's latest plus its delay's latest, whether or not they meet at one point.
+  - `revealArrivalAt(reveal, point)`: the scene second its front reaches `point` (document px), when the texel there
+    starts to show. A field's is its arrival there, profile and delay included. A strokes reveal's is the earliest
+    band covering the point, the moment that band's front touches it; a point off every band is measured at its
+    nearest path point, so a mark beside a path reads when the front passes it. On a wrapped document a band's copy
+    across a seam isn't read: ask on the side the path runs.
+
+  ```ts
+  const PRESS_AT = revealEnd(CARD_REVEAL);                                         // the card lands as its last stroke does
+  const leafFrom = (leaf: Leaf) => revealArrivalAt(STEM_REVEAL, leaf.base) + 0.02;  // each leaf drawn out once the stem reaches it
+  ```
+
 - **What it cuts**: a layer's reveal cuts its own film. A group's cuts every film it holds, a nested reveal multiplying
   in, and the paper of every sheet it owns: an own sheet's card follows its revealed paint, as far as the revealed
   coverage reaches. Never the root's ground, never a sibling's film: on a shared sheet, what a hidden layer's water
@@ -1462,11 +1494,14 @@ hues far apart grade through grey (Planning colour and light); in gouache or cra
 (Media: Thin films). A reveal's fields are of scene seconds, one of each kind in Time: Reveals.
 
 **Reveals** (`Reveal`, scene seconds and document px; Time: Reveals): `{kind: 'strokes', strokes: [{points, widthPx,
-from, to, cap?: 'round' | 'flat'}], softS?}` or `{kind: 'field', base, delay?, softS?}`, `base` and `delay` fields of
-seconds. In `#lib/paint/document/models/painting-reveal.ts`: `paintingEasedRevealStrokes(points, {widthPx, from, to,
-ease, piecesPerSecond?, cap?})`, an eased pull as strokes; `paintingStrokeVisibleWidthPx(application, brushOf)`, how
-wide a stroke `application` reads, px, which sizes its band; `paintingRevealBandPx(application, medium, {brushOf,
-wet?, sheetMedia?})`, the px a band needs to hold all it lays round its subpaths, the bound past that.
+from, to, cap?: 'round' | 'flat'}], softS?}` or `{kind: 'field', base, delay?, profile?, softS?}`, `base` and `delay`
+fields of seconds, `profile` (`RevealProfile`) a place key's curve, `'linear' | 'in' | 'out' | 'inOut'`, the front
+runs by. In `#lib/paint/document/models/painting-reveal.ts`: `revealEnd(reveal)`, the scene second it finishes;
+`revealArrivalAt(reveal, point)`, the scene second its front reaches a document point;
+`paintingEasedRevealStrokes(points, {widthPx, from, to, ease, piecesPerSecond?, cap?})`, an eased pull as strokes;
+`paintingStrokeVisibleWidthPx(application, brushOf)`, how wide a stroke `application` reads, px, which sizes its band;
+`paintingRevealBandPx(application, medium, {brushOf, wet?, sheetMedia?})`, the px a band needs to hold all it lays
+round its subpaths, the bound past that.
 
 **Hand** (`StampStrokeHand`): `profile`: `'taper'` (light, firm, light), `'pressFlick'` (pressed, then flicked off),
 `'swell'` (thin, full, thin), `'drag'` (steady, lifting over its last fifth), or a curve `(u) => pressure` over the
