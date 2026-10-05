@@ -7,7 +7,7 @@
 // killed job frees its slot at once. A slot is taken by writing it into the ticket, then reading the others': if
 // another took it too, it's given back and asked for again. A holder's child draws inside its lease.
 
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync, writeSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync, writeSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { runningStudioProcesses, studioProcessRunning, thisStudioProcess } from '#lib/platform/process/engine/studio-process.ts';
@@ -182,10 +182,16 @@ function readStudioGpuTicket(file: string): StudioGpuTicket | null {
   }
 }
 
-/** Every live ticket but `mine`. A dead process's ticket is removed as it's found. */
-function readOtherStudioGpuTickets(dir: string, mine: string): StudioGpuTicket[] {
+/** Every live ticket, holding its slots or queued for them, from every checkout: what `studio gpu` lists. */
+export function readStudioGpuTickets(): StudioGpuTicket[] {
+  const dir = studioGpuLeaseDir();
+  return existsSync(dir) ? readOtherStudioGpuTickets(dir, null) : [];
+}
+
+/** Every live ticket but `mine`'s. A dead process's ticket is removed as it's found. */
+function readOtherStudioGpuTickets(dir: string, mine: string | null): StudioGpuTicket[] {
   const tickets = readdirSync(dir).flatMap((name) => {
-    if (!name.endsWith('.json') || name === `${mine}.json`) return [];
+    if (!name.endsWith('.json') || (mine !== null && name === `${mine}.json`)) return [];
     const file = join(dir, name), ticket = readStudioGpuTicket(file);
     return ticket ? [{ file, ticket }] : [];
   });

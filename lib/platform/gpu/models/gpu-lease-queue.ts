@@ -52,16 +52,21 @@ function queuedForSlotSince(ticket: StudioGpuTicket, slot: StudioGpuSlot): numbe
   return slot === 'interactive' && ticket.kind === 'exclusive' ? ticket.held.batch : ticket.arrived;
 }
 
-/** `ticket`'s standing among `others`, the other live tickets. Ties in arrival go by id, so every reader agrees. */
+/** The tickets queued for `slot`, first in line first. Ties in arrival go by id, so every reader agrees. */
+function studioGpuSlotQueue(tickets: readonly StudioGpuTicket[], slot: StudioGpuSlot): StudioGpuTicket[] {
+  return tickets.flatMap((ticket) => {
+    const since = queuedForSlotSince(ticket, slot);
+    return since === undefined ? [] : [{ ticket, since }];
+  }).toSorted((a, b) => a.since - b.since || (a.ticket.id < b.ticket.id ? -1 : 1)).map(({ ticket }) => ticket);
+}
+
+/** `ticket`'s standing among `others`, the other live tickets. */
 export function studioGpuStanding(others: readonly StudioGpuTicket[], ticket: StudioGpuTicket): StudioGpuStanding {
   const slot = studioGpuNextSlot(ticket);
   if (slot === null) return { kind: 'running' };
-  const mine = queuedForSlotSince(ticket, slot)!;
   const holders = others.filter((other) => other.held[slot] !== undefined);
-  const ahead = others.flatMap((other) => {
-    const since = queuedForSlotSince(other, slot);
-    return since !== undefined && (since < mine || (since === mine && other.id < ticket.id)) ? [{ other, since }] : [];
-  }).toSorted((a, b) => a.since - b.since || (a.other.id < b.other.id ? -1 : 1)).map(({ other }) => other);
+  const queue = studioGpuSlotQueue([...others, ticket], slot);
+  const ahead = queue.slice(0, queue.indexOf(ticket));
   return holders.length || ahead.length ? { kind: 'waiting', slot, holders, ahead } : { kind: 'claim', slot };
 }
 
@@ -91,6 +96,24 @@ export function studioGpuWaitingLine(standing: Extract<StudioGpuStanding, { kind
   const place = ahead.length ? `${ordinal(ahead.length + 1)} in line for the ${slot} slot, behind ${ahead.map(studioGpuTicketName).join(', ')}` : `next for the ${slot} slot`;
   const held = holders.map((holder) => `${studioGpuTicketName(holder)} for ${formatStudioGpuSpan(now - holder.held[slot]!)}`);
   return `GPU: ${place}${held.length ? `; held by ${held.join(', ')}` : ''}`;
+}
+
+/**
+ * What `studio gpu` prints from every live ticket: each slot's holder, its pid and how long it has held the slot, then
+ * the slot's queue in order, each with how long it has waited there. The gate shows in both slots.
+ */
+export function studioGpuQueueLines(tickets: readonly StudioGpuTicket[], now: number): string[] {
+  const lines: string[] = [];
+  for (const slot of ['interactive', 'batch'] as const) {
+    const held = tickets.filter((ticket) => ticket.held[slot] !== undefined)
+      .map((holder) => `${holder.command} (pid ${holder.pid}) for ${formatStudioGpuSpan(now - holder.held[slot]!)}`);
+    const queue = studioGpuSlotQueue(tickets, slot);
+    lines.push(
+      `${slot} slot: ${held.length ? `held by ${held.join(', ')}` : 'free'}${queue.length ? '' : ', no one waiting'}`,
+      ...queue.map((ticket, i) => `  ${i + 1}. ${ticket.command} (pid ${ticket.pid}), waiting ${formatStudioGpuSpan(now - queuedForSlotSince(ticket, slot)!)}`),
+    );
+  }
+  return lines;
 }
 
 /** What a process prints when it gives the GPU back: how long it waited and drew, and whether anything drew beside it. */

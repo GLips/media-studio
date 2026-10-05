@@ -1488,7 +1488,8 @@ checkpoints found or not, films' pictures read back or kept from an earlier read
 
 Whatever draws on the GPU (a solve, a still, a look, a render, the GPU gate) queues for the studio's GPU lease: one
 look or solve and one render at once, the gate alone. It prints its place while it waits, and ends `GPU: waited 4m10s,
-ran 52s, alone` (or `sharing with` what drew beside it).
+ran 52s, alone` (or `sharing with` what drew beside it). `studio gpu` lists who holds each slot, and for how long, and
+who waits for it, in order, from every checkout.
 
 ```
 $ node cli/studio.ts paint check lib/paint/document/models/meadow.painting.ts --solve

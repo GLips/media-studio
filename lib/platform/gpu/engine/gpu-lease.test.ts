@@ -1,12 +1,15 @@
 // Processes contending for the GPU through the lease, in a queue of their own (STUDIO_GPU_LEASE_DIR): a render and a
 // still hold its two slots; the gate queues, then a look. Each holder is killed with its ticket left behind, and its
-// slot frees at once. The gate takes the batch slot after the look queued, so the look draws first.
+// slot frees at once. The gate takes the batch slot after the look queued, so the look draws first; `studio gpu`'s
+// listing says so meanwhile.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { readdirSync } from 'node:fs';
 import { test } from 'node:test';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
+import { studioGpuQueueLines } from '../models/gpu-lease-queue.ts';
+import { readStudioGpuTickets } from './gpu-lease.ts';
 
 const LEASE_MODULE = new URL('./gpu-lease.ts', import.meta.url).href;
 
@@ -53,6 +56,14 @@ test('a killed holder frees its slot, and a look queued before the gate took the
     render.child.kill('SIGKILL');
     await render.exited;
     await waitUntil('the gate takes the batch slot, behind the look', () => /GPU: 2nd in line for the interactive slot, behind look \(pid \d+\); held by still/.test(gate.said.err));
+    // What `studio gpu` lists, reading this test's queue: the gate in both slots, holding one and waiting for the other.
+    process.env.STUDIO_GPU_LEASE_DIR = dir;
+    assert.match(studioGpuQueueLines(readStudioGpuTickets(), Date.now()).join('\n'), new RegExp([
+      String.raw`^interactive slot: held by still \(pid \d+\) for \d+s`,
+      String.raw`  1\. look \(pid \d+\), waiting \d+s`,
+      String.raw`  2\. gate \(pid \d+\), waiting \d+s`,
+      String.raw`batch slot: held by gate \(pid \d+\) for \d+s, no one waiting$`,
+    ].join('\n')));
     still.child.kill('SIGKILL');
     await still.exited;
     await waitUntil('the look has the GPU', look.granted);
@@ -68,6 +79,7 @@ test('a killed holder frees its slot, and a look queued before the gate took the
     await gate.exited;
     assert.deepEqual(readdirSync(dir), []);
   } finally {
+    delete process.env.STUDIO_GPU_LEASE_DIR;
     for (const { child } of started) child.kill('SIGKILL');
   }
 }));

@@ -41,6 +41,7 @@ const studioCommand = defineCommand({
     paint: () => import('./commands/paint.ts').then((m) => m.default),
     review: () => import('./commands/review.ts').then((m) => m.default),
     home: () => import('./commands/home.ts').then((m) => m.default),
+    gpu: () => import('./commands/gpu.ts').then((m) => m.default),
     hosts: () => import('./commands/hosts.ts').then((m) => m.default),
     api: () => import('./commands/api.ts').then((m) => m.default),
   },
