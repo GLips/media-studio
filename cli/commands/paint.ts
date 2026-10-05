@@ -2,7 +2,7 @@
 // GPU to be seen.
 import { defineCommand, type ArgsDef } from 'citty';
 import { paintingValueTextPairs } from '#lib/paint/document/models/painting-properties.ts';
-import { refuseUnknownCommandFlags } from '../command-flags.ts';
+import { checkedCommandOutFlag, refuseUnknownCommandFlags } from '../command-flags.ts';
 
 /** `--at`'s scene second, null when it's left out. */
 function sceneSecondFlag(text: string | undefined): number | null {
@@ -34,7 +34,7 @@ const checkPaintArgs = {
   source: { type: 'positional', required: true, description: 'The *.painting.ts module' },
   set: { type: 'string', valueHint: 'hillTopPx=210,dusk=true', description: 'Property values, held to their schema like any other (an off-step value is an error)' },
   solve: { type: 'boolean', description: 'With no error, solve every sheet on the GPU: print each wash\'s start, damp window and set time, each application\'s landing time and each bloom\'s span damp again, sheet by sheet, and write the painting, and each film on its sheet\'s paper and edge, as PNGs' },
-  out: { type: 'string', valueHint: 'meadow.solve', description: 'Where --solve writes painting.png and films/<layer>.png (default: <source>.solve in the current directory)' },
+  out: { type: 'string', valueHint: 'meadow.solve', description: 'The folder --solve writes painting.png and films/<layer>.png into, in a folder that exists (default: <source>.solve in its project\'s out/check/, or beside it outside a project)' },
   at: { type: 'string', valueHint: '3.5', description: 'With --solve, solve only what lands by this scene second: the unclocked run and each clocked application landing by it (default: everything)' },
 } as const satisfies ArgsDef;
 
@@ -49,6 +49,8 @@ const checkPaintCommand = defineCommand({
     refuseUnknownCommandFlags(rawArgs, checkPaintArgs);
     const set = flagValues('set', args.set), at = sceneSecondFlag(args.at);
     if (at !== null && !args.solve) throw new Error('--at picks the prefix a solve paints: give --solve too');
+    if (args.out !== undefined && !args.solve) throw new Error('--out is where a solve writes: give --solve too');
+    const out = args.out === undefined ? null : checkedCommandOutFlag(args.out, { base: process.cwd(), writes: 'folder' });
     return withPaintSourceStack(async () => {
       const { paintingProblemText, paintingErrors } = await import('#lib/paint/document/models/painting-problem.ts');
       const { paintingCheckLeftToSolve, paintingEvaluationSummary } = await import('#lib/paint/document/models/painting-summary.ts');
@@ -65,7 +67,7 @@ const checkPaintCommand = defineCommand({
         return;
       }
       if (!args.solve) return;
-      const { paintPaintingSourceStill, paintingSourceStem, writePaintingSolveImages } = await import('#lib/paint/document/engine/painting-still.ts');
+      const { paintPaintingSourceStill, paintingSourceOutPath, writePaintingSolveImages } = await import('#lib/paint/document/engine/painting-still.ts');
       const { still, refused } = await paintPaintingSourceStill(args.source, set, { films: true, at, dampWindows: true });
       if (!still) {
         console.error(`paint check: ${refused}`);
@@ -74,7 +76,7 @@ const checkPaintCommand = defineCommand({
       }
       for (const problem of still.problems) console.log(paintingProblemText(problem));
       for (const line of [...still.lines, still.costs]) console.log(line);
-      const wrote = writePaintingSolveImages(still, args.out ?? `${paintingSourceStem(args.source)}.solve`);
+      const wrote = writePaintingSolveImages(still, out ?? paintingSourceOutPath(args.source, '.solve'));
       console.error(`paint check: wrote ${wrote.painting} and ${still.films.length} films in ${wrote.films}`);
     });
   },
@@ -83,7 +85,7 @@ const checkPaintCommand = defineCommand({
 const stillPaintArgs = {
   source: { type: 'positional', required: true, description: 'The *.painting.ts module' },
   set: { type: 'string', valueHint: 'hillTopPx=210,dusk=true', description: 'Property values, held to their schema like any other' },
-  out: { type: 'string', valueHint: 'meadow.png', description: 'The PNG to write (default: <source>.png in the current directory)' },
+  out: { type: 'string', valueHint: 'meadow.png', description: 'The .png to write, in a folder that exists (default: <source>.png in its project\'s out/check/, or beside it outside a project)' },
   at: { type: 'string', valueHint: '3.5', description: 'Paint only what lands by this scene second: the unclocked run and each clocked application landing by it, finished (default: everything)' },
 } as const satisfies ArgsDef;
 
@@ -96,9 +98,10 @@ const stillPaintCommand = defineCommand({
   run: ({ args, rawArgs }) => {
     refuseUnknownCommandFlags(rawArgs, stillPaintArgs);
     const set = flagValues('set', args.set), at = sceneSecondFlag(args.at);
+    const given = args.out === undefined ? null : checkedCommandOutFlag(args.out, { base: process.cwd(), writes: ['.png'] });
     return withPaintSourceStack(async () => {
       const { paintingProblemText, paintingErrors } = await import('#lib/paint/document/models/painting-problem.ts');
-      const { paintPaintingSourceStill, paintingSourceStem, writePaintingStillPng } = await import('#lib/paint/document/engine/painting-still.ts');
+      const { paintPaintingSourceStill, paintingSourceOutPath, writePaintingStillPng } = await import('#lib/paint/document/engine/painting-still.ts');
       const { problems, still, refused } = await paintPaintingSourceStill(args.source, set, { films: false, at, dampWindows: false });
       for (const problem of problems) console.log(paintingProblemText(problem));
       if (!still) {
@@ -109,7 +112,7 @@ const stillPaintCommand = defineCommand({
       }
       for (const problem of still.problems) console.log(paintingProblemText(problem));
       for (const warning of still.warnings) console.log(`warning: ${warning}`);
-      const out = args.out ?? `${paintingSourceStem(args.source)}.png`;
+      const out = given ?? paintingSourceOutPath(args.source, '.png');
       writePaintingStillPng(out, still.png);
       console.error(`paint still: wrote ${out}; ${still.costs}`);
     });

@@ -1,6 +1,7 @@
 // studio render: the whole pipeline, from framing check to a delivered video.mp4; the animatic, as the video plays
 // now, for studio review; or a slice of the video, and the slices joined back into one.
 import { defineCommand } from 'citty';
+import { checkedCommandOutFlag } from '../command-flags.ts';
 import { openStudioRenderSession, renderLensArg, renderWorkersArg, studioProjectArg } from '../project-arg.ts';
 
 export default defineCommand({
@@ -17,10 +18,10 @@ export default defineCommand({
     frames: { type: 'string', valueHint: '120:239', description: 'Render only these frames (inclusive), silent, with no framing check or mix, to out/wip/frames-<a>-<b>.mp4 or --out, and lossless beside it (<name>.lossless.mkv) for --join' },
     join: { type: 'string', valueHint: 'out/wip/bars', description: 'Join the --frames renders\' lossless frames in this folder (relative to the project unless absolute) into the whole video, encoded once under the mastered mix, to out/wip/joined.mp4 or --out. Refuses slices from two timelines or another clock than the project\'s now, a gap or an overlap' },
     remote: { type: 'boolean', description: 'Draw the frames on the remote render app\'s GPUs (studio remote deploy), not this machine\'s: --frames as a slice, or the whole video joined under the mastered mix to out/wip/joined.mp4 or --out, never the delivered video. Prints what each container billed' },
-    out: { type: 'string', description: 'Where --frames, --join, --animatic or --remote writes, relative to the project unless absolute' },
+    out: { type: 'string', valueHint: 'out/wip/v2.mp4', description: 'The .mp4 --frames, --join, --animatic or --remote writes, relative to the project unless absolute, in a folder that exists or under the project\'s out/; checked before anything renders' },
   },
   async run({ args }) {
-    const { isAbsolute, join } = await import('node:path');
+    const { join, resolve } = await import('node:path');
     if ([args.frames, args.join, args.animatic].filter(Boolean).length > 1) throw new Error('--frames renders a slice, --join joins slices and --animatic renders the animatic: give one');
     if ((args.frames || args.join || args.animatic) && args.plain) throw new Error('--plain is for the delivered video: leave it out of --frames, --join and --animatic');
     if (args.remote && (args.join || args.animatic || args.plain)) throw new Error('--remote draws frames: a --frames slice, or the whole video joined; leave out --join, --animatic and --plain');
@@ -29,18 +30,20 @@ export default defineCommand({
     if (range && !(range.length === 2 && range.every(Number.isInteger) && range[0] >= 0 && range[1] >= range[0])) {
       throw new Error(`--frames is a first and last frame like 120:239, not ${args.frames}`);
     }
+    const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
+    const project = resolveStudioProjectWith(args.project, 'video.tsx');
+    // Each out is checked before its session opens: a render queues for the GPU and draws for minutes before it writes.
+    const outOr = (fallback: string) => checkedCommandOutFlag(args.out ?? fallback, { base: project, writes: ['.mp4'], madeIn: join(project, 'out') });
     if (args.remote) {
-      const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
       const { renderRemotely } = await import('#lib/output/remote-render/engine/remote-render.ts');
       const { lensModeChecked } = await import('#lib/picture/lens/models/lens-mode.ts');
       // Checked here, as a local render's session checks them, so a typo fails before anything uploads.
       const workers = args.workers === undefined ? undefined : Number(args.workers);
       if (workers !== undefined && !(Number.isInteger(workers) && workers > 0)) throw new Error(`--workers is ${args.workers}: give a whole number above 0`);
-      const project = resolveStudioProjectWith(args.project, 'video.tsx');
       const frames = range && { from: range[0], end: range[1] + 1 };
-      const out = args.out ?? (range ? `out/wip/frames-${range[0]}-${range[1]}.mp4` : 'out/wip/joined.mp4');
+      const out = outOr(range ? `out/wip/frames-${range[0]}-${range[1]}.mp4` : 'out/wip/joined.mp4');
       const written = await renderRemotely(project, {
-        out: isAbsolute(out) ? out : join(project, out), ...(frames && { frames }),
+        out, ...(frames && { frames }),
         ...(args.lens !== undefined && { lens: lensModeChecked(args.lens) }), ...(workers !== undefined && { workers }),
       });
       for (const file of written) console.log(file);
@@ -48,18 +51,20 @@ export default defineCommand({
     }
     const pipeline = await import('#lib/output/render/engine/render-pipeline.ts');
     const slices = await import('#lib/output/render/engine/render-slices.ts');
-    const session = await openStudioRenderSession(args.project, { workers: args.workers, lens: args.lens });
-    const inProject = (file: string) => (isAbsolute(file) ? file : join(session.project, file));
+    const openSession = () => openStudioRenderSession(project, { workers: args.workers, lens: args.lens });
     if (range) {
-      const [from, last] = range;
-      for (const file of await slices.renderVideoSlice(session, { from, end: last + 1, out: inProject(args.out ?? `out/wip/frames-${from}-${last}.mp4`) })) console.log(file);
+      const [from, last] = range, out = outOr(`out/wip/frames-${from}-${last}.mp4`);
+      for (const file of await slices.renderVideoSlice(await openSession(), { from, end: last + 1, out })) console.log(file);
     } else if (args.animatic) {
-      console.log(await pipeline.renderAnimatic(session, { out: inProject(args.out ?? 'out/wip/animatic.mp4') }));
+      const out = outOr('out/wip/animatic.mp4');
+      console.log(await pipeline.renderAnimatic(await openSession(), { out }));
     } else if (args.join) {
+      const out = outOr('out/wip/joined.mp4');
+      const session = await openSession();
       const mixFor = (timeline: Parameters<typeof pipeline.renderMasteredMix>[1]['timeline']) => pipeline.renderMasteredMix(session, { timeline });
-      console.log(await slices.joinVideoSlices(session, { dir: inProject(args.join), out: inProject(args.out ?? 'out/wip/joined.mp4'), mixFor }));
+      console.log(await slices.joinVideoSlices(session, { dir: resolve(project, args.join), out, mixFor }));
     } else {
-      for (const file of await pipeline.renderDeliveredVideo(session, { plain: Boolean(args.plain), onDraft: (warning) => console.error(warning) })) console.log(file);
+      for (const file of await pipeline.renderDeliveredVideo(await openSession(), { plain: Boolean(args.plain), onDraft: (warning) => console.error(warning) })) console.log(file);
     }
   },
 });

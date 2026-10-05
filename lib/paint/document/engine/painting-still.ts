@@ -5,10 +5,10 @@
 // written. Every sheet's paper is resolved, each own sheet's too.
 
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { basename, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { withBrowserModulePage } from '#lib/platform/browser/engine/browser-module-page.ts';
-import { STUDIO_STYLES_DIR } from '#lib/platform/project/engine/studio-project.ts';
+import { STUDIO_STYLES_DIR, studioProjectOfFile } from '#lib/platform/project/engine/studio-project.ts';
 import { paintingBrushRefs } from '../models/painting-brush-refs.ts';
 import type { PaintingProblem } from '../models/painting-problem.ts';
 import { PAINTING_SOURCE_SUFFIX } from '../models/painting-source.ts';
@@ -45,14 +45,19 @@ export async function paintPaintingSourceStill(
   return 'still' in outcome ? { problems, still: outcome.still, refused: null } : { problems, still: null, refused: outcome.refused };
 }
 
-/** A source file's name without `.painting.ts` (or `.ts`): its outputs' default stem. */
-export function paintingSourceStem(file: string): string {
-  const name = basename(file);
-  return name.endsWith(PAINTING_SOURCE_SUFFIX) ? name.slice(0, -PAINTING_SOURCE_SUFFIX.length) : name.replace(/\.ts$/, '');
+/**
+ * Where a source's solve folder (`.solve`) or still (`.png`) goes when --out doesn't say: named for the source without
+ * `.painting.ts`, in its project's out/check/, or beside it outside a project.
+ */
+export function paintingSourceOutPath(file: string, suffix: '.solve' | '.png'): string {
+  const name = basename(file), project = studioProjectOfFile(file);
+  const stem = name.endsWith(PAINTING_SOURCE_SUFFIX) ? name.slice(0, -PAINTING_SOURCE_SUFFIX.length) : name.replace(/\.ts$/, '');
+  return join(project === null ? dirname(resolve(file)) : join(project, 'out', 'check'), `${stem}${suffix}`);
 }
 
 /** A still's PNG, as its page hands it back (a data URL), written to `file`. */
 export function writePaintingStillPng(file: string, url: string) {
+  mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, Buffer.from(url.slice(url.indexOf(',') + 1), 'base64'));
 }
 

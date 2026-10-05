@@ -68,7 +68,7 @@ push, raises the hill on sixes, and drifts the cloud.
 
 The source is `lib/paint/document/models/meadow.painting.ts`; read it whole before writing your own. Its spec checks
 it clean, `node cli/studio.ts paint check lib/paint/document/models/meadow.painting.ts` prints its summary, and
-`node cli/studio.ts paint still lib/paint/document/models/meadow.painting.ts` paints it to `meadow.png`. It
+`node cli/studio.ts paint still lib/paint/document/models/meadow.painting.ts` paints it to `meadow.png` beside it. It
 exports `properties`, one quantised number (`hillTopPx`, 150..260 px on a 10 px step), and a default factory
 `meadow({ hillTopPx })` returning a 640 × 360 px watercolour document on a cotton paper (`vvds-watercolor-canvas-3`
 grain, absorbency 0.5) with two layers:
@@ -1480,11 +1480,13 @@ the wash's (or the bloom's) landing on, over the paper it wetted that still hold
 once until 95% no longer is; where it never is at once, the most that is, and when. `studio paint still` prints the
 solve's warnings, not its lines. `--at` solves the prefix shown at that scene second, as a selection's `at` does,
 finished. It writes the painting to `<dir>/painting.png` and each layer's film on its sheet's paper and edge
-(`paintingFilmPicture`: the root's paper, or an own sheet's card, clear past it) to `<dir>/films/<layer>.png` (`<dir>`
-is `<source>.solve` by default). `studio paint still <source> [--set …] [--at <s>] [--out <file>]` checks and solves the
-same way, warning alike, and writes only the painting, the document's size (`<source>.png`). Both end on what the solve
-cost: solves, entries run, decisions made and reused (a decision is remembered by its prefix's key), films and
-checkpoints found or not, films' pictures read back or kept from an earlier read, and readbacks.
+(`paintingFilmPicture`: the root's paper, or an own sheet's card, clear past it) to `<dir>/films/<layer>.png`.
+`studio paint still <source> [--set …] [--at <s>] [--out <file>.png]` checks and solves the same way, warning alike,
+and writes only the painting, the document's size. Left out, `<dir>` is `<source>.solve` and `<file>` `<source>.png`,
+in the source's project's `out/check/`, or beside the source outside a project; given, either must lie in a folder
+that exists, checked before the solve queues for the GPU. Both end on what the solve cost: solves, entries run,
+decisions made and reused (a decision is remembered by its prefix's key), films and checkpoints found or not, films'
+pictures read back or kept from an earlier read, and readbacks.
 
 Whatever draws on the GPU (a solve, a still, a look, a render, the GPU gate) queues for the studio's GPU lease: one
 look or solve and one render at once, the gate alone. It prints its place while it waits, and ends `GPU: waited 4m10s,

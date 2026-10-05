@@ -654,10 +654,6 @@
     }
   },
   "eslint(no-nested-ternary)": {
-    "cli/commands/look.ts": {
-      "const out = inProject(args.out ?? (args.motion ? 'out/check/motion.txt' : args.against ? 'out/check/against.jpg' : 'out/check/sheet.jpg'));": 1,
-      "const cols = Number(args.cols ?? (args.against ? 1 : args.strip ? 5 : 3)), w = Number(args.w ?? (args.strip ? 384 : 640));": 1
-    },
     "lib/footage/capture/engine/page-probe.ts": {
       "const url = /^[a-z][a-z0-9+.-]*:/i.test(target) ? target : existsSync(resolve(target)) ? pathToFileURL(resolve(target)).href : target;": 1
     },

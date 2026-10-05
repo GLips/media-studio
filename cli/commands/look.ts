@@ -2,6 +2,7 @@
 // chosen frames, before/after against another render, a stretch's motion stats, and graphs of its tracked elements, or
 // of its pieces read from their scene models with no render.
 import { defineCommand } from 'citty';
+import { checkedCommandOutFlag } from '../command-flags.ts';
 import { openStudioRenderSession, renderLensArg, studioProjectArg } from '../project-arg.ts';
 
 export default defineCommand({
@@ -26,34 +27,34 @@ export default defineCommand({
     local: { type: 'boolean', description: 'For --graph: plot boxes in their owner\'s frame (a camera\'s page, a group\'s pixels), not on screen' },
     step: { type: 'string', default: '0.1', description: 'Seconds between --strip frames, or --graph trail dots' },
     cols: { type: 'string', description: 'Columns (default 3; 5 for --strip; before/after rows for --against, default 1)' },
-    w: { type: 'string', description: 'Width of each frame in pixels (default 640; 384 for --strip)' },
+    w: { type: 'string', description: 'Width of each frame in pixels (default 640; 384 for --strip; the crop\'s own width with --crop, so it shows 1:1)' },
     captions: { type: 'boolean', description: 'Burn captions in (the composition only)' },
     lens: { ...renderLensArg, description: `${renderLensArg.description}; the composition only` },
     set: { type: 'string', valueHint: 'heron.reflection=0.5,dusk.level=0.3', description: 'How would a painting look at another value, in its scene? Paint each named painting (by its factory\'s name) at these property values over the scenes\' own, held to its schema as `studio paint check --set` holds them; the composition only' },
     remote: { type: 'boolean', description: 'Draw the composition\'s frames on the remote render app\'s GPU (studio remote deploy; docs/remote-render.md), not this machine\'s, for a sheet, --against or --motion; the sheet, comparison and measures are made here. Prints what the call billed' },
-    out: { type: 'string', description: 'Where to write, relative to the project unless absolute (default out/check/sheet.jpg, against.jpg, motion.txt or graph.png)' },
+    out: { type: 'string', valueHint: 'out/check/sky.png', description: 'The file to write, relative to the project unless absolute, in a folder that exists or under the project\'s out/: a .jpg or .png sheet, a .txt for --motion, a .png graph (.jpg too for --graph=a:b); checked before anything renders (default out/check/sheet.jpg, against.jpg, motion.txt, graph.png or models.png)' },
   },
   async run({ args }) {
-    const { isAbsolute, join } = await import('node:path');
+    const { join, resolve } = await import('node:path');
+    const { existsSync } = await import('node:fs');
+    const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
     const step = Number(args.step);
     if (!(step > 0 && Number.isFinite(step))) throw new Error(`--step must be a positive number of seconds, not ${args.step}`);
+    // Checked before anything renders: a look may queue for the GPU for minutes before it writes.
+    const outOr = (project: string, fallback: string, writes: readonly string[]) => checkedCommandOutFlag(args.out ?? fallback, { base: project, writes, madeIn: join(project, 'out') });
 
     if (args.set !== undefined && (args.video || args.graph === 'models')) throw new Error('--set paints the composition at other painting values: leave out --video and --graph=models');
     if (args.remote && args.graph) throw new Error('--graph reads the scene models or tracks the composition here: leave out --remote');
     if (args.graph === 'models') {
       if ([args.sheet, args.strip, args.video, args.against, args.motion, args.local].some(Boolean)) throw new Error('--graph=models reads the scene models over --bar=N or --frames=a:b: give it no video, times or --motion');
       if (Boolean(args.frames) === Boolean(args.bar)) throw new Error('--graph=models reads a stretch: give it --bar=N or --frames=a:b');
-      if (args.out && !/\.png$/i.test(args.out)) throw new Error(`a --graph is an image: give --out a .png name, not ${args.out}`);
-      const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
       const { lookBarFrames, parseLookFrames } = await import('#lib/output/look/models/look-frames.ts');
       const { readProjectClock } = await import('#lib/output/render/engine/project-clock.ts');
       const { lookPieceModels } = await import('#lib/output/look/engine/piece-look.ts');
       const project = resolveStudioProjectWith(args.project, 'timeline.ts');
+      const out = outOr(project, 'out/check/models.png', ['.png']);
       const frames = args.frames ? parseLookFrames(args.frames) : lookBarFrames(await readProjectClock(project), args.bar ?? '', project);
-      const lines = await lookPieceModels(project, {
-        frames, tracks: args.tracks?.split(',').map((t) => t.trim()).filter(Boolean),
-        out: args.out && isAbsolute(args.out) ? args.out : join(project, args.out ?? 'out/check/models.png'),
-      });
+      const lines = await lookPieceModels(project, { frames, tracks: args.tracks?.split(',').map((t) => t.trim()).filter(Boolean), out });
       for (const line of lines) console.log(line);
       return;
     }
@@ -62,12 +63,13 @@ export default defineCommand({
       if ([args.frames, args.bar, args.sheet, args.strip, args.video, args.against, args.motion].some(Boolean)) throw new Error('--graph=a:b measures the composition on its own: give it no frames, video or --motion (--graph=models reads a --bar or --frames)');
       const at = args.graph.split(':').map(Number);
       if (!(at.length === 2 && at.every(Number.isFinite) && at[0] < at[1])) throw new Error(`--graph is a stretch of seconds like 4:6, not ${args.graph}`);
-      if (args.out && !/\.(png|jpe?g)$/i.test(args.out)) throw new Error(`a --graph is an image: give --out a .png or .jpg name, not ${args.out}`);
-      const session = await openStudioRenderSession(args.project, { paintings: args.set });
+      const project = resolveStudioProjectWith(args.project, 'video.tsx');
+      const out = outOr(project, 'out/check/graph.png', ['.png', '.jpg', '.jpeg']);
+      const session = await openStudioRenderSession(project, { paintings: args.set });
       const { renderMotionGraph } = await import('#lib/output/render/engine/render-pipeline.ts');
       const graph = await renderMotionGraph(session, {
         at: [at[0], at[1]], tracks: args.tracks?.split(',').map((t) => t.trim()).filter(Boolean), space: args.local ? 'local' : 'screen',
-        trailStep: step, captions: Boolean(args.captions), out: args.out && isAbsolute(args.out) ? args.out : join(session.project, args.out ?? 'out/check/graph.png'),
+        trailStep: step, captions: Boolean(args.captions), out,
       });
       for (const line of [...graph.summary, '', ...graph.files]) console.log(line);
       return;
@@ -76,17 +78,21 @@ export default defineCommand({
     if ([args.frames, args.bar, args.sheet, args.strip].filter(Boolean).length > 1) throw new Error('choose frames one way: --frames, --bar, --sheet or --strip');
     if (args.remote && args.video) throw new Error('--remote draws the composition on a remote GPU: leave out --video (a render is read here)');
     if (args.motion && args.against) throw new Error('--motion measures one render: leave out --against');
-    const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
     const { lookAgainst, lookFrameSheet, lookMotion, openLookSource } = await import('#lib/output/look/engine/frame-look.ts');
     const { lookFramesOf, parseLookCrop } = await import('#lib/output/look/models/look-frames.ts');
     const { readProjectClock } = await import('#lib/output/render/engine/project-clock.ts');
     const project = resolveStudioProjectWith(args.project, 'video.tsx');
-    const inProject = (file: string) => (isAbsolute(file) ? file : join(project, file));
-    const out = inProject(args.out ?? (args.motion ? 'out/check/motion.txt' : args.against ? 'out/check/against.jpg' : 'out/check/sheet.jpg'));
+    const inProject = (file: string) => resolve(project, file);
+    const out = args.motion
+      ? outOr(project, 'out/check/motion.txt', ['.txt'])
+      : outOr(project, args.against ? 'out/check/against.jpg' : 'out/check/sheet.jpg', ['.jpg', '.jpeg', '.png']);
+    // --against is read only once the composition is open, which may wait its turn on the GPU.
+    for (const render of [args.video, args.against]) if (render && !existsSync(inProject(render))) throw new Error(`there's no render at ${inProject(render)}`);
     const givenStart = args['starts-at'] === undefined ? undefined : Number(args['starts-at']);
     if (givenStart !== undefined && !(Number.isInteger(givenStart) && givenStart >= 0)) throw new Error(`--starts-at is a frame number, not ${args['starts-at']}`);
     const crop = args.crop ? parseLookCrop(args.crop) : undefined;
-    const cols = Number(args.cols ?? (args.against ? 1 : args.strip ? 5 : 3)), w = Number(args.w ?? (args.strip ? 384 : 640));
+    const tile = args.strip ? { cols: 5, w: 384 } : { cols: 3, w: 640 };
+    const cols = Number(args.cols ?? (args.against ? 1 : tile.cols)), w = Number(args.w ?? (crop ? crop.w : tile.w));
     if (!(Number.isInteger(cols) && cols > 0 && Number.isInteger(w) && w > 0)) throw new Error('--cols and --w are positive whole numbers');
     const still = Number(args.still);
     if (args.motion && !(still > 0)) throw new Error(`--still is a positive mean change, not ${args.still}`);
