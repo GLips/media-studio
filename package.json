@@ -81,6 +81,7 @@
     "esbuild": "0.28.1",
     "lucide-react": "1.41.0",
     "manifold-3d": "^3.5.3",
+    "modal": "0.10.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "remotion": "4.0.525",

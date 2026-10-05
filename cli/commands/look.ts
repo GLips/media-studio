@@ -30,6 +30,7 @@ export default defineCommand({
     captions: { type: 'boolean', description: 'Burn captions in (the composition only)' },
     lens: { ...renderLensArg, description: `${renderLensArg.description}; the composition only` },
     set: { type: 'string', valueHint: 'heron.reflection=0.5,dusk.level=0.3', description: 'How would a painting look at another value, in its scene? Paint each named painting (by its factory\'s name) at these property values over the scenes\' own, held to its schema as `studio paint check --set` holds them; the composition only' },
+    remote: { type: 'boolean', description: 'Draw the composition\'s frames on the remote render app\'s GPU (studio remote deploy; docs/remote-render.md), not this machine\'s, for a sheet, --against or --motion; the sheet, comparison and measures are made here. Prints what the call billed' },
     out: { type: 'string', description: 'Where to write, relative to the project unless absolute (default out/check/sheet.jpg, against.jpg, motion.txt or graph.png)' },
   },
   async run({ args }) {
@@ -38,6 +39,7 @@ export default defineCommand({
     if (!(step > 0 && Number.isFinite(step))) throw new Error(`--step must be a positive number of seconds, not ${args.step}`);
 
     if (args.set !== undefined && (args.video || args.graph === 'models')) throw new Error('--set paints the composition at other painting values: leave out --video and --graph=models');
+    if (args.remote && args.graph) throw new Error('--graph reads the scene models or tracks the composition here: leave out --remote');
     if (args.graph === 'models') {
       if ([args.sheet, args.strip, args.video, args.against, args.motion, args.local].some(Boolean)) throw new Error('--graph=models reads the scene models over --bar=N or --frames=a:b: give it no video, times or --motion');
       if (Boolean(args.frames) === Boolean(args.bar)) throw new Error('--graph=models reads a stretch: give it --bar=N or --frames=a:b');
@@ -72,6 +74,7 @@ export default defineCommand({
     }
 
     if ([args.frames, args.bar, args.sheet, args.strip].filter(Boolean).length > 1) throw new Error('choose frames one way: --frames, --bar, --sheet or --strip');
+    if (args.remote && args.video) throw new Error('--remote draws the composition on a remote GPU: leave out --video (a render is read here)');
     if (args.motion && args.against) throw new Error('--motion measures one render: leave out --against');
     const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
     const { lookAgainst, lookFrameSheet, lookMotion, openLookSource } = await import('#lib/output/look/engine/frame-look.ts');
@@ -97,14 +100,15 @@ export default defineCommand({
     const clock = args.bar || args.motion ? await readProjectClock(project) : undefined;
 
     type LookSource = Parameters<typeof openLookSource>[0];
-    const look = async (opening: LookSource) => {
+    // `asked`: the frames a remote look resolved where the composition is; a local one resolves them from its source.
+    const look = async (opening: LookSource, asked?: readonly number[]) => {
       const source = await openLookSource(opening);
       // A render names its frames by the clock: it must be the whole reel or one bar, placed by its snapshot or --starts-at.
       if (clock && args.video && !(source.first === 0 && source.end === clock.end) && !clock.bars.some((b) => b.from === source.first && b.to === source.end)) {
         throw new Error(`${source.name} holds frames ${source.first}–${source.end - 1}, which is neither the whole reel (0–${clock.end - 1}) nor one bar: ` +
           'render it again with studio render --frames, whose snapshot places it, or give one without a snapshot --starts-at=<its bar\'s first frame>');
       }
-      const frames = lookFramesOf(ask, source, { clock, project });
+      const frames = asked ? [...asked] : lookFramesOf(ask, source, { clock, project });
       if (args.motion) {
         if (frames.some((f, i) => i && f !== frames[i - 1] + 1)) throw new Error('--motion measures a stretch: --frames=a:b or --bar=N');
         return lookMotion(source, frames[0], frames.at(-1)!, { crop, still, clock, out });
@@ -113,9 +117,15 @@ export default defineCommand({
         ? lookAgainst(await openLookSource(renderSource(inProject(args.against))), source, frames, { crop, cols, w, out })
         : lookFrameSheet(source, frames, { crop, cols, w, out });
     };
-    const lines = await look(args.video
-      ? renderSource(inProject(args.video))
-      : { kind: 'composition', session: await openStudioRenderSession(project, { lens: args.lens, paintings: args.set }), captions: Boolean(args.captions) });
+    const lines = args.remote
+      ? await (await import('#lib/output/remote-render/engine/remote-look.ts')).withRemoteLook(project, {
+        // A crop, a comparison and a motion measure read frames at the video's own size; a sheet scales them to --w.
+        ask, width: crop || args.against || args.motion ? 'full' : w, before: Boolean(args.motion), captions: Boolean(args.captions),
+        ...(args.lens !== undefined && { lens: args.lens }), ...(args.set !== undefined && { set: args.set }),
+      }, look)
+      : await look(args.video
+        ? renderSource(inProject(args.video))
+        : { kind: 'composition', session: await openStudioRenderSession(project, { lens: args.lens, paintings: args.set }), captions: Boolean(args.captions) });
     for (const line of lines) console.log(line);
   },
 });

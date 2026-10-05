@@ -1,0 +1,3 @@
+{
+  "lib/output/remote-render": "`studio look --remote` resolves a look's frames in the container as `studio look` does, and hands the stills drawn there back to the sheets, comparisons and motion measures here."
+}
