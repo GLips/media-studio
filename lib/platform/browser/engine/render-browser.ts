@@ -100,6 +100,19 @@ async function openOwnRenderBrowser(): Promise<KeptRenderBrowserLoan> {
 }
 
 /**
+ * Rejects as its browser's failure once `browser`'s connection closes, crashed or killed. A call sent into a closed
+ * connection never settles, so a check that might meet one races this.
+ */
+function renderBrowserClosed(browser: HeadlessBrowser): Promise<never> {
+  const closed = new Promise<never>((_, reject) => browser.connection.transport.websocket.addEventListener('close', () => {
+    reject(new Error(renderBrowserFailureText("the render's browser closed: it crashed, or something killed it")));
+  }));
+  // Rejects whenever the browser closes, its own close after the work included: only a race awaits it.
+  closed.catch(() => {});
+  return closed;
+}
+
+/**
  * Runs `render` in a browser of its own, or one borrowed from a keeper (KEPT_RENDER_BROWSERS_ENV), told its GPU
  * backends, and closes or gives it back after; `waited` is the seconds this call queued for either. Refuses software GL
  * or WebGPU, and fails if the browser falls back to either by the end. A page's error keeps its whole message.
@@ -107,12 +120,13 @@ async function openOwnRenderBrowser(): Promise<KeptRenderBrowserLoan> {
 export async function inRenderBrowser<T>(render: (browser: HeadlessBrowser, gpu: string) => Promise<T>): Promise<{ result: T; gpu: string; waited: number }> {
   const keeper = process.env[KEPT_RENDER_BROWSERS_ENV];
   const { browser, waited, giveBack } = keeper ? await borrowKeptRenderBrowser(keeper) : await openOwnRenderBrowser();
+  const closed = renderBrowserClosed(browser);
   let broken = false;
   try {
-    const before = await readGpuBackends(browser);
+    const before = await Promise.race([readGpuBackends(browser), closed]);
     assertHardwareGpu(before, 'before');
     const result = await render(browser, describeGpu(before)).catch((error: Error) => Promise.reject(wholeBrowserPageError(error)));
-    assertHardwareGpu(await readGpuBackends(browser), 'after');
+    assertHardwareGpu(await Promise.race([readGpuBackends(browser), closed]), 'after');
     return { result, gpu: describeGpu(before), waited };
   } catch (error) {
     broken = error instanceof Error && isRenderBrowserFailure(error.message);
