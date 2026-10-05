@@ -46,9 +46,10 @@ export function createStampPlaneGlows(owner: StampPaintGpuOwner, { stage, arena 
   const { device } = owner;
   // The owner's device keeps modules by code and pipelines by descriptor.
   const pipelineOf = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }) } });
-  // One a device, made when a shot first glows: a group's kept light is read by its glow pass before the next glowing
-  // group's is kept, as each submit runs its passes in the order they were encoded.
-  const kept = () => owner.target('glow before', { size: [stage.width, stage.height], format: 'rgba32float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING });
+  // One for `encoder`'s frame: a group's kept light is read by its glow pass before the next glowing group's is kept,
+  // as each submit runs its passes in the order they were encoded.
+  const kept = (encoder: GPUCommandEncoder) =>
+    owner.target('glow before', { size: [stage.width, stage.height], format: 'rgba32float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING }, encoder);
   return {
     /**
      * A shot's glow: encodes `lay`, which lays a group as `glowing` says, adding to its emission the light the lay adds
@@ -56,7 +57,7 @@ export function createStampPlaneGlows(owner: StampPaintGpuOwner, { stage, arena 
      */
     layAdding(encoder: GPUCommandEncoder, glowing: StampGlowingLay | null, lay: () => void) {
       if (!glowing) return lay();
-      const { compositor, painting, box, emission, glow } = glowing, before = kept();
+      const { compositor, painting, box, emission, glow } = glowing, before = kept(encoder);
       measureStampPlaneLight(owner, arena, encoder, { compositor, painting, box, into: before, layer: 0 });
       lay();
       dispatchStampCompute(device, encoder, pipelineOf(stampGlowAddedWgsl(compositor, STAMP_WORKGROUP)), [arena.slot((views) => {
