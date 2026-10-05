@@ -104,7 +104,7 @@ Everything is from `#studio`.
       lifting at the end) for washes and fills, or a curve `(along) => pressure`, which can build on
       `STAMP_PRESSURE_PROFILES`. A stroke shorter than `fullProfileAt` diameters (12) gets that share of the
       profile's depth: for a short blade, petal or wing, set `fullProfileAt` to about its length in diameters.
-      `studio brushes describe <style>` prints how far each brush's size, opacity and flow follow pressure.
+      `studio brushes describe --style <style>` prints how far each brush's size, opacity and flow follow pressure.
     - `curvature` (0..1, try 0.3) presses harder where the path turns tightly and lightens straight runs by up to that
       share, as a hand does when it slows into a corner.
     - `wobble: { pressure: 0.1, position: 0.1 }` adds seeded unsteadiness (a share of the pressure; diameters sideways),

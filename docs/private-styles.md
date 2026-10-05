@@ -103,9 +103,9 @@ from the pack carries its profile; code that needs one refuses a brush without. 
 <name> --pack <pack>`, with no archive, imports the pack again from itself, measuring only the brushes whose key has
 changed. It takes some seconds a brush.
 
-**Numbers to plan by.** `studio brushes describe <name>` prints each of the style's brushes as its packs here paint
-it: the share of its size, opacity and flow (and anything else pressure moves) kept at pressure 0.3, 0.6 and 1; its
-visible width over its diameter at a few diameters, from its profile; the smallest diameter its profile holds; and
+**Numbers to plan by.** `studio brushes describe --style <name>` prints each of the style's brushes as its packs here
+paint it: the share of its size, opacity and flow (and anything else pressure moves) kept at pressure 0.3, 0.6 and 1;
+its visible width over its diameter at a few diameters, from its profile; the smallest diameter its profile holds; and
 whether it catches the paper's peaks. The packs are private, so these numbers live only here, never in the studio's
 docs.
 

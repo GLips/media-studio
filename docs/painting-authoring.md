@@ -1222,10 +1222,10 @@ red), so a near-black is a hex part (Media). In crayon a mix goes to about L* 25
 lists everything a stroke point's pressure moves, as `studio brushes describe` prints it. On the paper's peaks
 (crayon's medium, and a dry brush in a wet one) the tooth answers pressure too, catching more as it presses, and a
 brush's grain depth by pressure is set aside, so it isn't listed there. How far pressure moves each varies brush to
-brush, and the packs are private, so the numbers live on your machine: `studio brushes describe <style>` prints, for
-each brush, the share of each kept at pressure 0.3, 0.6 and 1; its visible width over its diameter at a few
-diameters; the smallest diameter its profile holds (plan nothing finer; most go down to the probes' 2 px floor); and
-whether it catches the paper's peaks.
+brush, and the packs are private, so the numbers live on your machine: `studio brushes describe --style <style>`
+prints, for each brush, the share of each kept at pressure 0.3, 0.6 and 1; its visible width over its diameter at a
+few diameters; the smallest diameter its profile holds (plan nothing finer; most go down to the probes' 2 px floor);
+and whether it catches the paper's peaks.
 
 | Style | Brush | Lays | For | Pressure |
 |---|---|---|---|---|
