@@ -377,15 +377,15 @@ function rendererOnSurface({
   done();
   done = span('stamp paint targets load');
   // Targets are the owner's, shared with every painting drawn on its device and held by this one's scope until it's
-  // disposed: a frame overwrites all it reads of them.
-  const target = (name: string, w: number, h: number, usage: number, targetFormat: GPUTextureFormat = 'rgba16float') => {
-    const texture = scope.target(name, { size: [w, h], format: targetFormat, usage: usage | GPUTextureUsage.TEXTURE_BINDING });
+  // disposed: a frame overwrites all it reads of them. Taken at the load, or by `encoder`'s work as a frame first asks.
+  const target = (name: string, w: number, h: number, usage: number, targetFormat: GPUTextureFormat = 'rgba16float', encoder: GPUCommandEncoder | null = null) => {
+    const texture = scope.target(name, { size: [w, h], format: targetFormat, usage: usage | GPUTextureUsage.TEXTURE_BINDING }, encoder);
     return { texture, view: texture.createView(), layers: [texture.createView()] };
   };
   /** A compositor's target, an array's layers each cleared through a view of its own. */
   const layered = (name: string, shape: StampPaintTarget, usage: number) => {
     if (shape.kind === 'plain') return target(name, width, height, usage);
-    const texture = scope.target(name, { size: [width, height, shape.layers], format: 'rgba16float', usage: usage | GPUTextureUsage.TEXTURE_BINDING });
+    const texture = scope.target(name, { size: [width, height, shape.layers], format: 'rgba16float', usage: usage | GPUTextureUsage.TEXTURE_BINDING }, null);
     return {
       texture, view: texture.createView({ dimension: '2d-array' }),
       layers: Array.from({ length: shape.layers }, (_, layer) => texture.createView({ dimension: '2d', baseArrayLayer: layer, arrayLayerCount: 1 })),
@@ -515,7 +515,7 @@ function rendererOnSurface({
       const { span: latticeSpan, reach } = latticePass.add(triangles, traced?.travel?.travel);
       if (map) box = stampStageTexelsWithin(stage, reach.x0, reach.y0, reach.x1, reach.y1);
       if (!box) return null;
-      latticeRest ??= target('rest', width, height, GPUTextureUsage.RENDER_ATTACHMENT, 'rg32float');
+      latticeRest ??= target('rest', width, height, GPUTextureUsage.RENDER_ATTACHMENT, 'rg32float', encoder);
       const targetsOf = { rest: latticeRest.view, motion: traced?.into ?? null, source: targets.layer.view };
       // A region's motion is drawn on its own: the rest's pass drops what holds no paint.
       latticePass.draw(encoder, latticeSpan, { rest: 'paint', motion: traced?.cover === 'paint' }, targetsOf);
@@ -534,11 +534,11 @@ function rendererOnSurface({
   // under that and its sigma; a source plane's texture is handed in, defocused each frame it's blurred. Every picture
   // box here is in the stage's texels. Targets are made when a frame first asks.
   const planeTargets = new Map<string, { texture: GPUTexture; view: GPUTextureView; array: GPUTextureView }>();
-  /** A scratch target of `layers` array layers, `w` × `h`, as a storage array, a sampled array and a render target. */
-  const planeTarget = (name: string, w: number, h: number, layers: number) => {
+  /** A scratch target of `layers` array layers, `w` × `h`, as a storage array, a sampled array and a render target, for `encoder`'s work. */
+  const planeTarget = (name: string, w: number, h: number, layers: number, encoder: GPUCommandEncoder) => {
     const key = `${name}|${w}|${h}|${layers}`;
     if (!planeTargets.has(key)) {
-      const texture = scope.target(name, { size: [w, h, layers], format: 'rgba16float', usage: STORAGE | RENDER | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC });
+      const texture = scope.target(name, { size: [w, h, layers], format: 'rgba16float', usage: STORAGE | RENDER | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC }, encoder);
       planeTargets.set(key, { texture, view: texture.createView({ dimension: layers > 1 ? '2d-array' : '2d' }), array: stampArrayView(texture) });
     }
     return planeTargets.get(key)!;
@@ -550,12 +550,12 @@ function rendererOnSurface({
   const planePictures = createStampPlanePictures(owner, { stage, arena: uniforms });
   const planeGlows = createStampPlaneGlows(owner, { stage, arena: uniforms });
   /** The plane's emission as its groups glow, stage-sized: cleared for each plane that glows. */
-  const emissionTarget = () => planeTarget('emission', width, height, 1);
+  const emissionTarget = (encoder: GPUCommandEncoder) => planeTarget('emission', width, height, 1, encoder);
   /**
    * The plane's own motion as its groups are laid, stage-sized, in the lens's motion layer (lens-passes.ts): each
    * pixel's travel over the shutter, painting px, as its nearest paint moves. Cleared for each plane whose groups travel.
    */
-  const motionTarget = () => planeTarget('motion', width, height, 1);
+  const motionTarget = (encoder: GPUCommandEncoder) => planeTarget('motion', width, height, 1, encoder);
   /**
    * Paints a plane's groups (`planeGroups`) as `kind` and resolves them into its picture, kept under `key`
    * (stamp-plane-picture-pass.ts): a paper picture on the painting's paper, a film on white and again on black, from
@@ -565,10 +565,10 @@ function rendererOnSurface({
     const shown = planeGroups.filter((index) => groups[index].visibility);
     const travelling = !!planeMotion && shown.some((index) => planeMotion.travels[index]);
     const layers = stampPlanePictureLayers(kind, { emits: shown.some((index) => groups[index].glow), travels: travelling });
-    const motion = travelling && planeMotion ? { into: motionTarget().view, travels: planeMotion.travels, cover: stampMotionCover(planeMotion.span) } : undefined;
+    const motion = travelling && planeMotion ? { into: motionTarget(encoder).view, travels: planeMotion.travels, cover: stampMotionCover(planeMotion.span) } : undefined;
     return planePictures.paint(encoder, {
       key, compositor, painting: targets.painting.view, layers, visibility: 1,
-      emission: layers.emission !== null ? emissionTarget().view : null, motion: travelling ? motionTarget().view : null, coverage: null,
+      emission: layers.emission !== null ? emissionTarget(encoder).view : null, motion: travelling ? motionTarget(encoder).view : null, coverage: null,
       paper: (backing, w, h) => drawPaper(encoder, backing, w, h),
       lay: (backing) => {
         drawPaper(encoder, backing);
@@ -609,7 +609,7 @@ function rendererOnSurface({
       // glaze leaves the glow under it: dimming it by its tint would take its spectral transmittance.
       const { group, glow, visibility } = groupFrame, cover = { layer: targets.layer.view, rest: laid.rest }, shown = group.opacity * visibility;
       // The emission target is made only once a plane glows.
-      const over = () => ({ compositor, painting: targets.painting.view, emission: emissionTarget().view, box: laid.box });
+      const over = () => ({ compositor, painting: targets.painting.view, emission: emissionTarget(encoder).view, box: laid.box });
       if (!again && glowed && group.composite === 'opaque') planeGlows.occlude(encoder, over(), cover, shown);
       if (glow && !again) {
         planeGlows.addLaid(encoder, { ...over(), glow }, { ...cover, glaze: group.composite === 'glaze' }, shown);
@@ -819,7 +819,7 @@ function rendererOnSurface({
     latticeRoom(groups);
     const encoder = device.createCommandEncoder(), layers = new Map<string, GPUTexture>();
     for (const plane of [planes.back, ...planes.nearer].flatMap((laid) => (laid.kind === 'painted' ? [laid] : []))) {
-      const into = planeTarget(`transport ${plane.id}`, width, height, 1);
+      const into = planeTarget(`transport ${plane.id}`, width, height, 1, encoder);
       clearStampTarget(encoder, into.view);
       if (plane.groups.some((index) => travels[index] && groups[index].visibility)) {
         drawPaper(encoder, 'paper');

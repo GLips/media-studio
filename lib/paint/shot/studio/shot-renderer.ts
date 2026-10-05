@@ -21,11 +21,10 @@ import { loadStampPictureSources } from '#lib/paint/painting/studio/stamp-pictur
 import { createStampGrowingUniformArena } from '#lib/paint/painting/studio/stamp-uniform-arena.ts';
 import { loadPaintedThreeSources } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
-import { lensExposures } from '#lib/picture/lens/models/lens-exposures.ts';
-import { LENS_REFERENCE_EXPOSURES, type LensMode } from '#lib/picture/lens/models/lens-mode.ts';
+import type { LensMode } from '#lib/picture/lens/models/lens-mode.ts';
 import { shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import { createLensCompositor, type LensItemsLayer, type LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
-import { shotCanvasLayings, shotPaintedSolvables, type CompiledPaintedShot, type CompiledShotPlane, type PaintedShotPaintOptions } from '../models/shot-compile.ts';
+import { shotCanvasLayings, shotPaintedSolvables, type CompiledPaintedShot, type CompiledShotPaintedPlane, type CompiledShotPlane, type PaintedShotPaintOptions } from '../models/shot-compile.ts';
 import { shotExposureMoments, shotSolvablesShown, shotWarmShown } from '../models/shot-shown.ts';
 import { shotPinnedPlanes, type ShotPinCentres } from '../models/shot-placement.ts';
 import { shotNodePoseAt, shotVisibilityAt } from '../models/shot-frame-plan.ts';
@@ -96,14 +95,13 @@ type ShotExposure = ShotMomentAt & {
 
 function shotExposures(shot: CompiledPaintedShot, t: number, mode: LensMode): ShotExposure[] {
   const { camera } = shot, { shutter } = camera.lens;
-  if (mode === 'fast') {
-    const opens = shutterOpensAt(t, shutter), looks = paintCameraDepthLooks(camera, t);
-    const moments = shutter > 0 ? { open: paintMoment(opens, t), close: paintMoment(opens + shutter, t) } : null;
-    return [{ looks, lens: paintCameraLensFrame(camera, looks), at: paintMoment(t), shutter: moments, exposure: null }];
-  }
-  const moments = shotExposureMoments(shutter, t, mode);
-  return lensExposures(LENS_REFERENCE_EXPOSURES).map(({ index, count, aperture }) => {
-    const at = moments[index], looks = paintCameraDepthLooks(camera, t, { at: at.at, aperture });
+  return shotExposureMoments(shutter, t, mode).map(({ exposure, at }) => {
+    if (!exposure) {
+      const opens = shutterOpensAt(t, shutter), looks = paintCameraDepthLooks(camera, t);
+      const moments = shutter > 0 ? { open: paintMoment(opens, t), close: paintMoment(opens + shutter, t) } : null;
+      return { looks, lens: paintCameraLensFrame(camera, looks), at, shutter: moments, exposure: null };
+    }
+    const { index, count, aperture } = exposure, looks = paintCameraDepthLooks(camera, t, { at: at.at, aperture });
     return { looks, lens: paintCameraLensFrame(camera, looks), at, shutter: null, exposure: { index, count, at: at.at, aperture } };
   });
 }
@@ -189,10 +187,9 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
     const { margin } = stage, planePx: PaintSimilarity = { ma: 1, mb: 0, kx: -margin, ky: -margin };
 
     /**
-     * Plane `id`, a source or instanced plane or a painted plane hidden this frame, as painted plane `reader`'s mask
-     * reads it at `exposure` of frame `t`: a picture's alpha through its node's placement; a three render's, or the
-     * items' (`items`), through the reader's view; each by its visibility; nothing of a hidden plane. And a key naming
-     * what's read.
+     * Plane `id`, a source or instanced plane, as painted plane `reader`'s mask reads it at `exposure` of frame `t`:
+     * a picture's alpha through its node's placement; a three render's, or the items' (`items`), through the
+     * reader's view; each by its visibility. And a key naming what's read.
      */
     const sourceRead = (
       id: string, reader: string, exposure: ShotExposure, renders: readonly StampSourceRenders[], items: (plane: CompiledShotInstancedPlane) => ShotItemsCoverage, t: number,
@@ -209,9 +206,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
           },
         };
       }
-      const plane = planeOf.get(id)!;
-      if (plane.kind === 'painted') return { key: 'hidden', coverage: () => null };
-      const source = sources.get(id), weight = shotVisibilityAt(shot, id, id, exposure.at);
+      const plane = planeOf.get(id)!, source = sources.get(id), weight = shotVisibilityAt(shot, id, id, exposure.at);
       if (plane.kind === 'three' && source?.kind === 'three') {
         // A three source is posed at its moment: frame t and the exposure name its render.
         const { texture, at } = source.picture, map = throughCamera(seen, at);
@@ -220,6 +215,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
           coverage: () => ({ view: texture.createView(), channel: 3, weight, extent: { w: texture.width, h: texture.height }, map }),
         };
       }
+      if (plane.kind !== 'picture') throw new Error(`shot: ${reader}'s mask reads ${id}, a ${plane.kind} plane, as a source; only a picture, three or instanced plane renders one`);
       const picture = renders[plane.canvas].pictures.get(id) ?? null;
       if (!picture) return { key: 'nothing', coverage: () => null };
       const { box } = picture, map = paintSimilarityAfter({ ma: 1, mb: 0, kx: margin - box.x, ky: margin - box.y }, paintSimilarityAfter(paintSimilarityInverse(pictureNodeMap(id, exposure.at)), planePx));
@@ -231,18 +227,19 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
 
     /**
      * Encodes and submits one exposure of every canvas, its painted planes as `moments` lays them, its variants as
-     * `variantMoments` does, its items as `items` reads them.
+     * `variantMoments` does, its items as `items` reads them. Those `hidden` this frame weren't solved: they lay
+     * nothing, and cover nothing for a mask reading them.
      */
     const drawExposure = (
-      exposure: ShotExposure, moments: ReadonlyMap<string, ShotPlaneMoment>, variantMoments: ReadonlyMap<CompiledShotVariant, ShotPlaneMoment>, items: ShotExposureItems,
-      renders: readonly StampSourceRenders[], t: number,
+      exposure: ShotExposure, moments: ReadonlyMap<string, ShotPlaneMoment>, variantMoments: ReadonlyMap<CompiledShotVariant, ShotPlaneMoment>,
+      hidden: ReadonlySet<CompiledShotPaintedPlane>, items: ShotExposureItems, renders: readonly StampSourceRenders[], t: number,
     ) => owner.checked(`drawing the shot at ${exposure.at.at} s of ${t} s`, () => {
       arena.reset();
       layer.reserve([...moments.values(), ...variantMoments.values()].flatMap(({ shares }) => shares.map(({ frame }) => frame)));
       const encoder = device.createCommandEncoder(), lensFrame = exposure.lens, fast = !exposure.exposure;
       // Every painted plane laid first, each after those its masks read, whatever canvas or depth it's drawn at.
-      const itemsCovered = shotItemsCoverages(encoder, { owner, lenses: canvases.map(({ lens }) => lens), planes, stage }, variantMoments, items);
-      const presented = planes.present(encoder, moments, (id, reader) => sourceRead(id, reader, exposure, renders, itemsCovered, t));
+      const itemsCovered = shotItemsCoverages(encoder, { owner, lenses: canvases.map(({ lens }) => lens), planes, stage }, variantMoments, hidden, items);
+      const presented = planes.present(encoder, moments, hidden, (id, reader) => sourceRead(id, reader, exposure, renders, itemsCovered, t));
       // The exposure's drawables far to near, consecutive items of a variant blurred alike in one step.
       const steps = shotDrawSteps(shotDrawableOrder(shot.written, items.items), (plane, item) => items.lookOf(plane, item).sigma);
       for (const canvas of canvases) {
@@ -253,15 +250,16 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
         const itemsMove = own.some((step) => step.kind === 'items' && step.items.some((item) => items.lookOf(step.plane, item).shutter));
         const moving = fast && (shown.some((plane) => momentOf(plane)?.travels || lookOf(plane.id).shutter) || itemsMove || rendered.moved.size > 0);
         const layers = own.flatMap((step): (LensLayer | LensItemsLayer)[] => {
-          // A plane or variant hidden at every exposure of the frame wasn't solved: it lays nothing.
           if (step.kind === 'items') {
-            const variant = variantMoments.get(instancedOf.get(step.plane)!.variants.get(step.variant)!);
-            const laid = variant && shotItemsLayer(encoder, canvas.lens, planes, stage, variant, step, (item) => items.lookOf(step.plane, item));
+            const variant = instancedOf.get(step.plane)!.variants.get(step.variant)!;
+            if (hidden.has(variant.painted)) return [];
+            const laid = shotItemsLayer(encoder, canvas.lens, planes, stage, variantMoments.get(variant)!, step, (item) => items.lookOf(step.plane, item));
             return laid ? [laid] : [];
           }
           const plane = planeOf.get(step.plane)!, isBack = plane === opaqueBack, look = lookOf(plane.id);
           if (plane.kind === 'painted') {
-            const solvedPlane = presented.get(plane.id), laid = solvedPlane && planes.picture(encoder, canvas.lens, solvedPlane, look);
+            if (hidden.has(plane)) return [];
+            const laid = planes.picture(encoder, canvas.lens, presented.get(plane.id)!, look);
             return laid ? [laid] : [];
           }
           // The compile refuses the opaque back a visibility: it reads 1.
@@ -300,7 +298,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
       } finally {
         costs?.count('evictions', owner.cache.evictions() - evicted);
         costs?.count('bytes uploaded', owner.uploaded() - uploaded);
-        costs?.retained({ kept: owner.cache.bytes() - owner.cache.bytes('target'), targets: owner.cache.bytes('target') });
+        costs?.retained(owner.cache.bytes());
       }
     };
 
@@ -317,7 +315,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
         const solves: ShotWarmSolve[] = [
           ...shotPaintedSolvables(shot).flatMap((plane) => {
             const shown = shotWarmShown(shot, plane, frames, mode);
-            costs?.count('hidden planes skipped', shown.hidden);
+            costs?.count('hidden solves skipped', shown.hidden);
             return shown.frames.map((frame) => ({ solve: { what: plane.id, at: frame.at }, run: async () => (await planes.solve(plane, frame)).release() }));
           }),
           ...(textures?.warmSolves(frames) ?? []),
@@ -336,7 +334,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
         const pinned = shotPinnedPlanes(shot, pins);
         if (pinned.problems.length) throw paintingProblemsError(`the shot's pins at ${t} s`, pinned.problems);
         const solved: ShotPlaneSolved[] = [], exposures = shotExposures(shot, t, mode), shown = shotSolvablesShown(shot, exposures.map(({ at }) => at));
-        costs?.count('hidden planes skipped', shown.hidden);
+        costs?.count('hidden solves skipped', shown.hidden.size);
         progress?.run({ kind: 'frame', t }, shown.shown.length + (textures?.handles.length ?? 0));
         try {
           // Each plane's and variant's marks posed and solved once, at the frame's own moment, if it shows at one of
@@ -357,7 +355,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
             });
             const items = shotExposureItems(shot.instanced, shot.motion, exposure, exposure.looks);
             const renders = await gpuEachInTurn(canvases, (canvas) => canvas.sourceLayers.render(t, stampLensSourceExposureOf(exposure.exposure ?? undefined)));
-            await drawExposure(exposure, moments, variantMoments, items, renders, t);
+            await drawExposure(exposure, moments, variantMoments, shown.hidden, items, renders, t);
           });
         } finally {
           for (const each of solved) each.release();

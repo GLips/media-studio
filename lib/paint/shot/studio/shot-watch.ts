@@ -7,7 +7,7 @@
 // progressing. Progress no line reports sends a pulse, so the render's Node side, counting lines and pulses as life
 // (render-watch.ts), sees the page alive while it is, and a stalled page, which sends nothing, as stuck.
 
-import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
+import type { StampGpuCacheBytes, StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { logRenderPageLine, logRenderPagePulse } from '#lib/platform/browser/studio/render-page-log.ts';
 import {
   shotSolvedLine, shotStallText, shotStillSolvingLine, type ShotRun, type ShotRunDevice, type ShotRunPlace, type ShotSolve, type ShotWatchName,
@@ -42,8 +42,8 @@ export type ShotWatch = ShotSolveProgress & {
   readonly dispose: () => void;
 };
 
-/** The shot's device as its watch reads it: checks settled, caches' evictions and bytes uploaded so far, bytes kept now. */
-export type ShotGpuReading = { readonly checksSettled: number; readonly evictions: number; readonly uploaded: number; readonly kept: number };
+/** The shot's device as its watch reads it: checks settled, caches' evictions and bytes uploaded so far, the bytes its cache holds now. */
+export type ShotGpuReading = { readonly checksSettled: number; readonly evictions: number; readonly uploaded: number; readonly bytes: StampGpuCacheBytes };
 
 /**
  * What a watch reads: the shot's `name`; its device (null before it's made); `costs`, its tally, taken after each run;
@@ -58,7 +58,7 @@ export type ShotWatchSource = {
   readonly stallSeconds?: number;
 };
 
-const NO_GPU: ShotGpuReading = { checksSettled: 0, evictions: 0, uploaded: 0, kept: 0 };
+const NO_GPU: ShotGpuReading = { checksSettled: 0, evictions: 0, uploaded: 0, bytes: { kept: 0, targets: 0 } };
 
 export function createShotWatch({ name, gpu, costs, log = logRenderPageLine, pulse = logRenderPagePulse, stallSeconds = SHOT_STALL_SECONDS }: ShotWatchSource): ShotWatch {
   let place: (ShotRunPlace & { done: number; solving: ShotSolve | null }) | null = null, doing = '';
@@ -74,7 +74,7 @@ export function createShotWatch({ name, gpu, costs, log = logRenderPageLine, pul
   };
   const runDevice = (): ShotRunDevice => {
     const now = reading();
-    return { evictions: now.evictions - runFrom.evictions, uploaded: now.uploaded - runFrom.uploaded, kept: now.kept };
+    return { evictions: now.evictions - runFrom.evictions, uploaded: now.uploaded - runFrom.uploaded, bytes: now.bytes };
   };
 
   const stop = () => {

@@ -27,10 +27,10 @@ type StampPaintGpuOwned = { device: StampPaintDevice; destroy: () => void };
 
 /**
  * A painting's share of a device: what it makes through `device` is destroyed by `destroy`, and each target it takes
- * (the owner's, StampPaintGpuOwner's `target`) is held from the cache's eviction until then: work across encoders, a
- * solve's films and wet paper or a renderer's frames, paints in these.
+ * (the owner's, by `name` and `shape`) is held from eviction until then, for work across encoders. `encoder` is the
+ * one open as a target is first taken, null at a load.
  */
-export type StampPaintGpuScope = StampPaintGpuOwned & { target: (name: string, shape: StampPaintTargetRequest) => GPUTexture };
+export type StampPaintGpuScope = StampPaintGpuOwned & { target: (name: string, shape: StampPaintTargetRequest, encoder: GPUCommandEncoder | null) => GPUTexture };
 
 export type StampPaintGpuOwner = GpuDeviceOwner & {
   /**
@@ -49,12 +49,12 @@ export type StampPaintGpuOwner = GpuDeviceOwner & {
   drawnImage: (key: string, draw: () => { size: number; pixels: Uint8Array }) => StampPaintImage;
   /** The mip levels `tip` was uploaded with: a tip's from `images` or `drawnImage`. */
   tipLevels: (tip: StampPaintImage) => StampTipLevels;
-  /** What frames keep between them on the device, under one budget: films, pictures, pictures blurred, targets. */
+  /** What the device holds between frames, under one budget: films, pictures, pictures blurred, checkpoints, targets. */
   cache: StampPaintGpuCache;
   /**
-   * The texture for `name` (its role) as `shape` asks, used by `encoder`'s work: one a device for each role and
-   * shape, kept in the cache and given up to its budget once no frame being encoded uses it. A frame never depends on
-   * what an earlier one left in it; work spanning encoders takes targets through a scope.
+   * The texture for role `name` as `shape` asks, used by `encoder`'s frame: one a role and shape, cached under the
+   * budget. Scratch, whatever it holds: a pass reading what it last wrote keeps a store of its own; work spanning
+   * encoders takes a scope's.
    */
   target: (name: string, shape: StampPaintTargetRequest, encoder: GPUCommandEncoder) => GPUTexture;
   /** A 1 × 1 texture of `format`, never written (zeros): what a pass binds where it reads nothing. One a format, for the owner's life. */
@@ -84,9 +84,6 @@ export async function createStampPaintGpuOwner(imageUrl: (asset: StampBrushAsset
   const levels = new Map<StampPaintImage, StampTipLevels>();
   const blanks = new Map<GPUTextureFormat, GPUTexture>();
   const cache = stampPaintGpuCache(device), targets = cache.store<null>('target');
-  /** `name`'s target shaped `shape`, as kept under `key`: found, or made for `encoder` (none: a holder's). */
-  const takeTarget = (key: string, { size: [width, height, layers = 1], format, usage }: StampPaintTargetRequest, encoder: GPUCommandEncoder | null) =>
-    (targets.find(key, encoder) ?? targets.make(key, encoder, [{ width, height, layers, format, usage }], null)).textures[0];
   const tipImage = (tipLevels: StampTipLevels) => {
     const image = uploadStampTipLevels(device, tipLevels);
     levels.set(image, tipLevels);
@@ -96,17 +93,21 @@ export async function createStampPaintGpuOwner(imageUrl: (asset: StampBrushAsset
   return {
     ...base, device, cache,
     scope: () => {
-      const owned = stampPaintGpuScope(device), holds = new Map<string, () => void>();
+      const owned = stampPaintGpuScope(device), taken = new Map<string, { texture: GPUTexture; release: () => void }>();
       return {
         device: owned.device,
-        target: (name, shape) => {
-          const key = stampPaintTargetKey(name, shape), texture = takeTarget(key, shape, null);
-          if (!holds.has(key)) holds.set(key, targets.hold(key)!);
-          return texture;
+        target: (name, shape, encoder) => {
+          const key = stampPaintTargetKey(name, shape);
+          let held = taken.get(key);
+          if (!held) {
+            const { entry, release } = targets.take(key, encoder, [stampPaintTargetTexture(shape)], null);
+            taken.set(key, (held = { texture: entry.textures[0], release }));
+          }
+          return held.texture;
         },
         destroy: () => {
-          for (const release of holds.values()) release();
-          holds.clear();
+          for (const { release } of taken.values()) release();
+          taken.clear();
           owned.destroy();
         },
       };
@@ -140,7 +141,10 @@ export async function createStampPaintGpuOwner(imageUrl: (asset: StampBrushAsset
       return image;
     },
     tipLevels: (tip) => levels.get(tip)!,
-    target: (name, shape, encoder) => takeTarget(stampPaintTargetKey(name, shape), shape, encoder),
+    target: (name, shape, encoder) => {
+      const key = stampPaintTargetKey(name, shape);
+      return (targets.find(key, encoder) ?? targets.make(key, encoder, [stampPaintTargetTexture(shape)], null)).textures[0];
+    },
     blank: (format) => cached(blanks, format, () => device.createTexture({ size: [1, 1], format, usage: GPUTextureUsage.TEXTURE_BINDING })),
     uploaded: queueWritten,
     dispose: () => {
@@ -228,6 +232,9 @@ function cachingStampPaintDevice(raw: GPUDevice): StampPaintDevice {
 
 /** A target's key in the cache: its role and shape. */
 const stampPaintTargetKey = (name: string, { size, format, usage }: StampPaintTargetRequest) => `${name}|${size.join('x')}|${format}|${usage}`;
+
+/** The texture a target shaped `shape` is made as. */
+const stampPaintTargetTexture = ({ size: [width, height, layers = 1], format, usage }: StampPaintTargetRequest) => ({ width, height, layers, format, usage });
 
 /** `made`'s entry under `key`, made by `make` the first time. */
 function cached<K, T>(made: Map<K, T>, key: K, make: () => T): T {

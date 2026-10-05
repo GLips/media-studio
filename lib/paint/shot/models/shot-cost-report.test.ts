@@ -22,17 +22,17 @@ test('a shot\'s costs table per frame, frames that cost alike as one line, a sol
     }),
     ...[1, 2].map((n) => frame(n, (costs) => {
       costs.count('evaluation memo hits');
-      costs.count('hidden planes skipped');
+      costs.count('hidden solves skipped');
       costs.count('film hits', 2);
       costs.retained({ kept: 8_000_000, targets: 2_000_000 });
     })),
   ];
   assert.deepEqual(frameCostsTable(entries), [
     '  stamp paint costs:',
-    '    frame 0: evaluations made 1, solves 1, entries run 3, film misses 2, bytes uploaded 4.0 MB; bytes retained 8.0 MB, target bytes 3.0 MB',
+    '    frame 0: evaluations made 1, solves 1, entries run 3, film misses 2, bytes uploaded 4.0 MB; bytes kept 8.0 MB, bytes in targets 3.0 MB',
     '      solved heron sheet from wash 0: 3 entries',
     "      warning: treeline.on: on 'wet' follows only applications at or below shiny 0.7: it can never hold",
-    '    frames 1–2, each: evaluation memo hits 1, hidden planes skipped 1, film hits 2; bytes retained 8.0 MB, target bytes 2.0 MB',
-    '    over 3 frames: evaluations made 1, evaluation memo hits 2, hidden planes skipped 2, solves 1, entries run 3, film hits 4, film misses 2, bytes uploaded 4.0 MB; most bytes retained 8.0 MB, most target bytes 3.0 MB',
+    '    frames 1–2, each: evaluation memo hits 1, hidden solves skipped 1, film hits 2; bytes kept 8.0 MB, bytes in targets 2.0 MB',
+    '    over 3 frames: evaluations made 1, evaluation memo hits 2, hidden solves skipped 2, solves 1, entries run 3, film hits 4, film misses 2, bytes uploaded 4.0 MB; most bytes kept 8.0 MB, most bytes in targets 3.0 MB',
   ]);
 });

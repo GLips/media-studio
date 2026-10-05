@@ -229,10 +229,10 @@ async function checkRiggedDissolve(): Promise<StampGateWashCheck[]> {
  * nothing, as they would were a clock the solve reads left out of the pairing.
  */
 async function checkWarm(): Promise<StampGateWashCheck[]> {
-  const { costs, warm: { solves, bytesRetained } } = await stampGateShotFrames(stampGateWarmShot(), STAMP_GATE_WARMED_AT), drawnSolves = costs.flatMap(solvedText);
+  const { costs, warm: { solves, bytes } } = await stampGateShotFrames(stampGateWarmShot(), STAMP_GATE_WARMED_AT), drawnSolves = costs.flatMap(solvedText);
   return [{
-    id: 'shot/warm: span solved', passed: solves.length > 0 && bytesRetained > 0 && !drawnSolves.length,
-    detail: `warming ${STAMP_GATE_WARM.from}..${STAMP_GATE_WARM.to} s solved ${solves.length} sheet program${solves.length === 1 ? '' : 's'} and kept ${bytesRetained} bytes; the frames at ${STAMP_GATE_WARMED_AT.map((t) => t.toFixed(3)).join(' and ')} s then solved ${drawnSolves.join(', ') || 'nothing'}`,
+    id: 'shot/warm: span solved', passed: solves.length > 0 && bytes.kept > 0 && !drawnSolves.length,
+    detail: `warming ${STAMP_GATE_WARM.from}..${STAMP_GATE_WARM.to} s solved ${solves.length} sheet program${solves.length === 1 ? '' : 's'} and kept ${bytes.kept} bytes; the frames at ${STAMP_GATE_WARMED_AT.map((t) => t.toFixed(3)).join(' and ')} s then solved ${drawnSolves.join(', ') || 'nothing'}`,
   }];
 }
 

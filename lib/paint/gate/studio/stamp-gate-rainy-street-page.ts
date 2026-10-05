@@ -26,7 +26,7 @@ const WALKER_ENTRY = 'figure-body';
 /** The reflection's one application: where its plane's first solve starts. */
 const REFLECTION_ENTRY = 'reflection-streak';
 
-const hiddenSkipped = (costs: StampPaintCosts) => costs.counts.get('hidden planes skipped') ?? 0;
+const hiddenSkipped = (costs: StampPaintCosts) => costs.counts.get('hidden solves skipped') ?? 0;
 
 /**
  * Warmed over a span of one street hold, the walker still, frames in it moving only the camera, the rain, the sky's
@@ -38,8 +38,8 @@ async function checkWarmed(): Promise<StampGateWashCheck> {
   const evaluations = costs.reduce((sum, each) => sum + made(each), 0), solved = costs.flatMap(solvedFrom);
   const moved = stampGateDifferenceBox(stampGateRgb(frames[0]), stampGateRgb(frames.at(-1)!), width), box = moved && `x ${moved.x0}..${moved.x1}, y ${moved.y0}..${moved.y1}`;
   return {
-    id: 'shot/rainy-street: warmed', passed: warm.solves.length > 0 && warm.bytesRetained > 0 && evaluations === 0 && !solved.length && !!moved,
-    detail: `warming ${STAMP_GATE_RAINY_STREET_WARM.from}..${STAMP_GATE_RAINY_STREET_WARM.to} s solved ${warm.solves.length} sheet programs and kept ${warm.bytesRetained} bytes; its ${times.length} frames then changed ${box ?? 'nothing'}, made ${evaluations} evaluations and solved ${fromText(solved)} (0 and nothing wanted)`,
+    id: 'shot/rainy-street: warmed', passed: warm.solves.length > 0 && warm.bytes.kept > 0 && evaluations === 0 && !solved.length && !!moved,
+    detail: `warming ${STAMP_GATE_RAINY_STREET_WARM.from}..${STAMP_GATE_RAINY_STREET_WARM.to} s solved ${warm.solves.length} sheet programs and kept ${warm.bytes.kept} bytes; its ${times.length} frames then changed ${box ?? 'nothing'}, made ${evaluations} evaluations and solved ${fromText(solved)} (0 and nothing wanted)`,
   };
 }
 

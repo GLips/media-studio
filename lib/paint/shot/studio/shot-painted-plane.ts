@@ -96,13 +96,17 @@ export type ShotPlanePresented = {
 };
 
 /**
- * What a painted plane's alphaOf mask reads of a plane it doesn't lay this exposure, a source or instanced plane: a key
- * naming that coverage's pixels as the reader reads them, and the coverage (null: none), drawn when a lay first asks.
+ * What a painted plane's alphaOf mask reads of a plane it doesn't lay this exposure, a source or instanced plane or a
+ * painted plane hidden this frame: a key naming that coverage's pixels as the reader reads them, and the coverage
+ * (null: none), drawn when a lay first asks.
  */
 export type ShotSourceRead = { readonly key: string; readonly coverage: () => ShotMaskCoverage | null };
 
 /** Source or instanced plane `plane` as painted plane `reader`'s masks read it this exposure. */
 export type ShotSourceReads = (plane: string, reader: string) => ShotSourceRead;
+
+/** A painted plane hidden this frame, as a mask reads it: it lays nothing, so it covers nothing. */
+const SHOT_HIDDEN_READ: ShotSourceRead = { key: 'hidden', coverage: () => null };
 
 /** A variant's mask reads: it takes no mask, so it reads nothing. */
 const SHOT_READS_NOTHING = (): ShotMaskCoverage | null => null;
@@ -120,6 +124,8 @@ export type ShotPaintedPlanesOptions = PaintedShotPaintOptions & {
 /** A shot's painted planes on `owner`'s device, their pictures kept in its cache until `dispose`. */
 export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage, brushOf, costs, arena, layer, rigPictures, piecesDrawer }: ShotPaintedPlanesOptions) {
   const { motion } = shot, { width, height, margin } = stage;
+  // A variant isn't here: a mask reads an instanced plane through its items.
+  const paintedOf = new Map(shot.planes.flatMap((plane) => (plane.kind === 'painted' ? [[plane.id, plane] as const] : [])));
   const laysKept = new WeakMap<PaintingSelectionCompiled, StampSheetsLays>(), pictures = createStampPlanePictures(owner, { stage, arena });
   const dissolve = createShotDissolve(owner, { stage, arena });
   /** `compiled`'s sheets' lays on the shot's stage, made once a compile. */
@@ -289,11 +295,16 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
 
     /**
      * Each of `moments`' planes presented, in the shot's masks' order: each selection's picture kept, or its pieces
-     * rigs drawn and it laid, its alphaOf masks reading what planes before it laid and what `sources` rendered.
+     * rigs drawn and it laid, its alphaOf masks reading what planes before it laid and what `sources` rendered, and
+     * nothing of a plane `hidden` this frame.
      */
-    present(encoder: GPUCommandEncoder, moments: ReadonlyMap<string, ShotPlaneMoment>, sources: ShotSourceReads): ReadonlyMap<string, ShotPlanePresented> {
+    present(
+      encoder: GPUCommandEncoder, moments: ReadonlyMap<string, ShotPlaneMoment>, hidden: ReadonlySet<CompiledShotPaintedPlane>, sources: ShotSourceReads,
+    ): ReadonlyMap<string, ShotPlanePresented> {
       const sourceReads = new Map<string, ShotSourceRead>();
       const sourceRead = (plane: string, reader: string) => {
+        const painted = paintedOf.get(plane);
+        if (painted && hidden.has(painted)) return SHOT_HIDDEN_READ;
         const at = JSON.stringify([plane, reader]);
         let read = sourceReads.get(at);
         if (!read) sourceReads.set(at, (read = sources(plane, reader)));

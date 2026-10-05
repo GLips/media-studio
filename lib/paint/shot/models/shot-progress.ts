@@ -3,7 +3,7 @@
 // whatever the warm didn't keep: cold. A solve that solved sheets gets a line; a stall gets an error naming what was
 // solving where, how far the run got, and what it cost so far.
 
-import type { StampPaintCostName, StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
+import type { StampGpuCacheBytes, StampPaintCostName, StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { renderBrowserFailureText } from '#lib/platform/browser/models/render-browser-failure.ts';
 
 /** What a shot runs: its warm over scene seconds `from`..`to`, or the draw of the frame at scene second `t`. */
@@ -52,14 +52,14 @@ export function shotStillSolvingLine(name: ShotWatchName, { run }: ShotRunPlace,
 
 /**
  * What a run's device did so far, read as it stalls (its tally counts evictions and uploads only once a run ends):
- * caches' `evictions` and bytes `uploaded` since the run began, and the bytes its cache `kept` now.
+ * caches' `evictions` and bytes `uploaded` since the run began, and the `bytes` its cache holds now.
  */
-export type ShotRunDevice = { readonly evictions: number; readonly uploaded: number; readonly kept: number };
+export type ShotRunDevice = { readonly evictions: number; readonly uploaded: number; readonly bytes: StampGpuCacheBytes };
 
 /** What `costs` has counted and `device` done, for a stall's error. */
 function costsText(costs: StampPaintCosts, device: ShotRunDevice): string {
   return `${programsText(count(costs, 'solves'))} solved (${count(costs, 'entries run')} entries), ${count(costs, 'film misses')} film misses, `
-    + `${device.evictions} evictions, ${mibText(device.uploaded)} uploaded, ${mibText(device.kept)} kept`;
+    + `${device.evictions} evictions, ${mibText(device.uploaded)} uploaded, ${mibText(device.bytes.kept)} kept, ${mibText(device.bytes.targets)} in targets`;
 }
 
 /**

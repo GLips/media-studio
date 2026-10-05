@@ -454,10 +454,13 @@ an error. A frame held on twos gives every group the keys it had, so it repaints
 
 **Planes on the GPU** (`stamp-paint-renderer.ts`, `stamp-paint-plane-passes.ts`). One owner holds a device
 (`stamp-paint-gpu-owner.ts`, built on the studio's `gpu-device-owner.ts`, whose one three.js renderer the three
-sources draw with): its images and one cache budget (`STAMP_GPU_CACHE_BUDGET`), shared by films, pictures, blurred
-pictures and the passes' targets. A pass takes a target by name and shape for its frame's encoder (`owner.target`);
-work spanning encoders, a solve or the old renderer, takes it from a scope, which holds it until it ends
-(`scope.target`). Past the budget the cache gives up checkpoints first, then whatever the frame being encoded doesn't
+sources draw with): its images and one cache budget (`STAMP_GPU_CACHE_BUDGET`, 1.5 GiB), shared by films, pictures,
+blurred pictures and the passes' targets, whose bytes it reports apart (`bytes()`: kept, and in targets). A pass takes
+a target by name and shape for its frame's encoder (`owner.target`); work spanning encoders, a solve or the old
+renderer, takes it from a scope, which holds it until it ends (`scope.target`, given the encoder open as it's first
+taken, none at a load). A pass that reads what it last wrote, a shot's layer target clearing only its last box, keeps
+its targets in a store of its own (`shot-sheets-lay.ts`). Every encoder is made, filled and submitted in one
+synchronous run, so the cache knows the one open. Past the budget the cache gives up checkpoints first, then whatever the frame being encoded doesn't
 use and nobody holds, least recently used first, so a long render's sizes never pile up. A 1 × 1 blank a pass binds
 for nothing is the owner's for its life (`owner.blank`), and a crop's light measure is a texture of its own, freed
 once read. A surface is one output on it. One painted plane at rest, sharp and not glowing is drawn straight
@@ -595,8 +598,8 @@ cels do: a composite's card counts the films its steps lay on its sheet (`StampS
 `studio/shot-renderer.ts` solves each painted plane once a frame (`studio/shot-painted-plane.ts`,
 through `painting-sheets-solve.ts`), each selection a dissolve blends on its own, if it shows at one of the frame's
 exposures (`shot-shown.ts`: its visibility above 0, and its ground paper or a layer above 0 through its groups; the
-opaque back always shows, a variant as its instanced plane does): one that doesn't lays nothing and covers nothing for
-a mask, which reads it as no coverage; then each exposure orders its drawables (`shot-plan.ts`) and plans each plane's
+opaque back always shows, a variant as its instanced plane does). One that doesn't is the frame's hidden
+(`shotSolvablesShown`), which each exposure carries: it lays nothing, and a mask reading it reads no coverage; then each exposure orders its drawables (`shot-plan.ts`) and plans each plane's
 moment purely (`shotPlaneLayPlan`, `shot-sheet-lays.ts`): its steps through lattices (`shot-lattice.ts`), its ground,
 its pieces rigs posed, the spans of the occurrences faded apart, groups and own sheets' owners (`shot-visibility.ts`), and a
 key naming all of it. `studio/shot-sheets-lay.ts` lays it over `stamp-lattice-pass.ts`: ground, then each card and
@@ -663,7 +666,8 @@ or more, logs a line the render prints, and other progress a pulse, so the rende
 overlap on one device (shares, planes, canvases, textures, three sources) run through `gpuEachInTurn`
 (`platform/gpu/models/gpu-in-turn.ts`). The renderer counts evictions and bytes uploaded (every write and image copy
 to the owner's queue, three.js's too) around each draw and warm, and the bytes the cache keeps after it, its targets
-apart; the planes a frame or warm leaves hidden are counted as skipped. The
+apart; and the solves hidden planes skip (`hidden solves skipped`: one a plane in a frame, one a pairing of moments
+in a warm). The
 evaluations a callback source makes or finds memoised are the change in `paintingEvaluationCounts()` across its
 synchronous read. The cost report's counts are painting's (`painting/models/stamp-paint-costs.ts`, one set of names the document,
 solver, caches and shot all count into); the shot logs a frame's and a warm's under its labels

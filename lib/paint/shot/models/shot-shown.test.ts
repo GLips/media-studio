@@ -47,15 +47,15 @@ const { shot } = compilePaintedShot({
 
 test('a frame solves a painted plane only if it lays something at one of its exposures; the back always does', () => {
   const shownAt = (t: number, mode: 'fast' | 'reference') => {
-    const { shown, hidden } = shotSolvablesShown(shot!, shotExposureMoments(SHUTTER, t, mode));
-    return [shown.map(({ id }) => id), hidden];
+    const { shown, hidden } = shotSolvablesShown(shot!, shotExposureMoments(SHUTTER, t, mode).map(({ at }) => at));
+    return [shown.map(({ id }) => id), [...hidden].map(({ id }) => id)];
   };
-  assert.deepEqual(shownAt(0.98, 'fast'), [['back', 'card'], 2]);
+  assert.deepEqual(shownAt(0.98, 'fast'), [['back', 'card'], ['mist', 'birds']]);
   // Its shutter, open 0.93..1.03 s, sees the mist arrive in its last exposures.
-  assert.deepEqual(shownAt(0.98, 'reference'), [['back', 'mist', 'card'], 1]);
-  assert.deepEqual(shownAt(2.5, 'fast'), [['back', 'mist', 'birds', 'card'], 0]);
+  assert.deepEqual(shownAt(0.98, 'reference'), [['back', 'mist', 'card'], ['birds']]);
+  assert.deepEqual(shownAt(2.5, 'fast'), [['back', 'mist', 'birds', 'card'], []]);
   // The swift shows, but not through its group.
-  assert.deepEqual(shownAt(3.5, 'fast'), [['back', 'mist', 'card'], 1]);
+  assert.deepEqual(shownAt(3.5, 'fast'), [['back', 'mist', 'card'], ['birds']]);
 });
 
 test('a warm solves a plane at the frames it shows at, counting those it skips', () => {

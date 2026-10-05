@@ -2,14 +2,14 @@
 // document's evaluations, the shot's poses, the sheet solver's solves and schedule decisions, the film store's and GPU
 // cache's hits, misses and evictions, readbacks and uploads. It sits in painting, the lowest feature all of them
 // import, so they count into one tally; the shot sends a frame's or a warmed span's to the profiler
-// (shot-cost-report.ts), and a gate case reads one to hold what a change re-solves.
+// (shot-cost-report.ts), and a gate case reads one to hold what a change re-solves. Counting never changes what's drawn.
 
 /**
  * What a tally counts, in the order a report prints them. `solves` and `entries run` come with each solve; `bytes
- * uploaded` is a size, the rest are events; `hidden planes skipped` is shot-shown.ts's.
+ * uploaded` is a size, the rest are events.
  */
 export const STAMP_PAINT_COST_NAMES = [
-  'evaluations made', 'evaluation memo hits', 'hidden planes skipped', 'poses made', 'pose hits', 'solves', 'entries run', 'decisions made', 'decisions reused',
+  'evaluations made', 'evaluation memo hits', 'hidden solves skipped', 'poses made', 'pose hits', 'solves', 'entries run', 'decisions made', 'decisions reused',
   'film hits', 'film misses', 'picture hits', 'picture misses', 'film readback hits', 'film readback misses', 'checkpoint hits', 'checkpoint misses',
   'evictions', 'readbacks', 'bytes uploaded',
 ] as const;
@@ -23,16 +23,20 @@ export type StampPaintCostCount = Exclude<StampPaintCostName, 'solves' | 'entrie
 export type StampPaintSolveCost = { readonly program: string; readonly from: string; readonly entries: number };
 
 /**
+ * The bytes a device's GPU cache holds (stamp-paint-gpu-cache.ts): `kept`, what passes made to find again (films,
+ * pictures, checkpoints and the like), and `targets`, what passes work in.
+ */
+export type StampGpuCacheBytes = { readonly kept: number; readonly targets: number };
+
+/**
  * A frame's or a warmed span's costs: every count by name, in STAMP_PAINT_COST_NAMES' order; every solve; the
- * warnings met, as `studio paint check` prints them; and at its end the bytes the device's cache kept between frames
- * and those its targets took.
+ * warnings met, as `studio paint check` prints them; and the bytes the device's cache held at its end.
  */
 export type StampPaintCosts = {
   readonly counts: ReadonlyMap<StampPaintCostName, number>;
   readonly solves: readonly StampPaintSolveCost[];
   readonly warnings: readonly string[];
-  readonly bytesRetained: number;
-  readonly targetBytes: number;
+  readonly bytes: StampGpuCacheBytes;
 };
 
 /**
@@ -44,8 +48,8 @@ export type StampPaintCostTally = {
   readonly solved: (solve: StampPaintSolveCost) => void;
   /** A warning met as the frame drew, printed: it fails nothing, so the report is where it's seen. */
   readonly warned: (text: string) => void;
-  /** The bytes the device's cache holds now, `kept` between frames and its `targets`: levels, the latest kept. */
-  readonly retained: (bytes: { readonly kept: number; readonly targets: number }) => void;
+  /** The bytes the device's cache holds now: levels, the latest kept. */
+  readonly retained: (bytes: StampGpuCacheBytes) => void;
   readonly take: () => StampPaintCosts;
   readonly counted: () => StampPaintCosts;
 };
@@ -53,7 +57,7 @@ export type StampPaintCostTally = {
 const noCosts = () => new Map(STAMP_PAINT_COST_NAMES.map((name) => [name, 0]));
 
 export function createStampPaintCostTally(): StampPaintCostTally {
-  let counts = noCosts(), solves: StampPaintSolveCost[] = [], warnings: string[] = [], bytesRetained = 0, targetBytes = 0;
+  let counts = noCosts(), solves: StampPaintSolveCost[] = [], warnings: string[] = [], bytes: StampGpuCacheBytes = { kept: 0, targets: 0 };
   const add = (name: StampPaintCostName, n: number) => counts.set(name, (counts.get(name) ?? 0) + n);
   return {
     count: (name, n = 1) => { add(name, n); },
@@ -63,13 +67,10 @@ export function createStampPaintCostTally(): StampPaintCostTally {
       add('entries run', solve.entries);
     },
     warned: (text) => { warnings.push(text); },
-    retained: ({ kept, targets }) => {
-      bytesRetained = kept;
-      targetBytes = targets;
-    },
-    counted: () => ({ counts, solves, warnings, bytesRetained, targetBytes }),
+    retained: (held) => { bytes = held; },
+    counted: () => ({ counts, solves, warnings, bytes }),
     take: () => {
-      const costs = { counts, solves, warnings, bytesRetained, targetBytes };
+      const costs = { counts, solves, warnings, bytes };
       counts = noCosts();
       solves = [];
       warnings = [];

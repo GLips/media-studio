@@ -285,10 +285,10 @@ export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevic
 
   /** The checkpoint after `k` entries, by name: its clips told apart, as another program's may differ. */
   const checkpointKey = (k: number) => `${keys[k]}|clips ${clips.keptName(k)}`;
-  /** Where a checkpoint's piece goes back to. */
-  const pieceTexture = (target: StampSheetPieceTarget): GPUTexture => {
+  /** Where a checkpoint's piece goes back to, as `encoder` writes it. */
+  const pieceTexture = (target: StampSheetPieceTarget, encoder: GPUCommandEncoder): GPUTexture => {
     if (target.kind === 'film') return targets.film(target.film).texture;
-    if (target.kind === 'clip') return clips.textureOf(target.clip);
+    if (target.kind === 'clip') return clips.textureOf(target.clip, encoder);
     return target.kind === 'paper' ? targets.paper.texture : targets.rim.texture;
   };
   /** The run back at its start: clean films and dry paper. */
@@ -322,7 +322,7 @@ export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevic
       keepStampSheetCheckpoint(owner, encoder, checkpointKey(k), [
         ...program.films.map((_, film) => ({ target: { kind: 'film', film } as const, texture: targets.film(film).texture, box: state.painted[film] })),
         { target: { kind: 'paper' }, texture: targets.paper.texture, box: state.field }, { target: { kind: 'rim' }, texture: targets.rim.texture, box: state.field },
-        ...kept.map((clip) => ({ target: { kind: 'clip', clip } as const, texture: clips.textureOf(clip), box: clipBox(clip.wash) })),
+        ...kept.map((clip) => ({ target: { kind: 'clip', clip } as const, texture: clips.textureOf(clip, encoder), box: clipBox(clip.wash) })),
       ], { state, clips: kept });
     },
     /** The run as the checkpoint after `k` entries left it. Throws where none is kept: an engine fault, as a caller checks or holds it first. */
@@ -330,7 +330,7 @@ export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevic
       restart(encoder);
       const restored = restoreStampSheetCheckpoint(owner, encoder, checkpointKey(k), (checkpoint) => {
         clips.restored(encoder, k, checkpoint.clips);
-        return pieceTexture;
+        return (target) => pieceTexture(target, encoder);
       });
       state = stampSheetStateResized(restored.state, program.films.length, washes.length);
     },

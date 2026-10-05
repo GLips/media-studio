@@ -1550,6 +1550,6 @@ the cels over or under it …`, `meadow/heron.parts: lays no paint on the docume
 it (`back.source: is a clear back, and no HTML lies before the first canvas at this frame: …`), or a pinned element
 unmounted, named twice, or laying paint past the stage. In a profiling render the shot reports its costs per frame and
 for its warmed span (`studio profile <project> --costs`): evaluations made and memo hits, film and picture hits and
-misses, solves by sheet from the first application re-run, checkpoint hits, decisions reused, hidden planes skipped,
-evictions, bytes uploaded (three.js's included), bytes kept and target bytes (the passes' working textures; both
+misses, solves by sheet from the first application re-run, checkpoint hits, decisions reused, hidden solves skipped,
+evictions, bytes uploaded (three.js's included), bytes kept and bytes in targets (the passes' working textures; both
 under the device's one cache budget), and warnings such as a pose folding paint or a warm running past its scene.

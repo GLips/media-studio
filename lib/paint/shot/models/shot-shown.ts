@@ -5,7 +5,7 @@
 // id), whatever its items do. A layer a marks rig hides by its pose still counts: a pose isn't read before a solve.
 
 import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
-import { lensExposures } from '#lib/picture/lens/models/lens-exposures.ts';
+import { lensExposures, type LensExposure } from '#lib/picture/lens/models/lens-exposures.ts';
 import { LENS_REFERENCE_EXPOSURES, type LensMode } from '#lib/picture/lens/models/lens-mode.ts';
 import { shutterMomentAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import { shotPaintedSolvables, type CompiledPaintedShot, type CompiledShotPaintedPlane } from './shot-compile.ts';
@@ -13,13 +13,16 @@ import { shotPlaneClocks, shotVisibilityAt } from './shot-frame-plan.ts';
 import type { OccurrenceKey } from './shot-props.ts';
 import { shotWarmCombinations } from './shot-warm.ts';
 
+/** One of a frame's exposures: the reference exposure it is (null: a fast frame's one), and the moment it lies at. */
+export type ShotExposureMoment = { readonly exposure: LensExposure | null; readonly at: PaintMoment };
+
 /**
- * The moments frame `t`'s exposures lie at in lens mode `mode`, its shutter open `shutter` s: the frame's own when
- * fast; each reference exposure's, in order, where it samples the shutter.
+ * Frame `t`'s exposures in lens mode `mode`, its shutter open `shutter` s: fast, one at the frame's own moment;
+ * reference, each of its exposures, in order, where it samples the shutter.
  */
-export function shotExposureMoments(shutter: number, t: number, mode: LensMode): PaintMoment[] {
-  if (mode === 'fast') return [paintMoment(t)];
-  return lensExposures(LENS_REFERENCE_EXPOSURES).map(({ shutter: share }) => paintMoment(shutterMomentAt(t, shutter, share), t));
+export function shotExposureMoments(shutter: number, t: number, mode: LensMode): ShotExposureMoment[] {
+  if (mode === 'fast') return [{ exposure: null, at: paintMoment(t) }];
+  return lensExposures(LENS_REFERENCE_EXPOSURES).map((exposure) => ({ exposure, at: paintMoment(shutterMomentAt(t, shutter, exposure.shutter), t) }));
 }
 
 /**
@@ -37,10 +40,17 @@ function shotPlaneShowsAt(shot: CompiledPaintedShot, plane: CompiledShotPaintedP
 export const shotPlaneShows = (shot: CompiledPaintedShot, plane: CompiledShotPaintedPlane, moments: readonly PaintMoment[]) =>
   plane.opaqueBack || moments.some((moment) => shotPlaneShowsAt(shot, plane, moment));
 
-/** What of `shot` a frame whose exposures lie at `moments` solves (shotPaintedSolvables', in order), and how many it leaves hidden. */
-export function shotSolvablesShown(shot: CompiledPaintedShot, moments: readonly PaintMoment[]): { shown: CompiledShotPaintedPlane[]; hidden: number } {
-  const all = shotPaintedSolvables(shot), shown = all.filter((plane) => shotPlaneShows(shot, plane, moments));
-  return { shown, hidden: all.length - shown.length };
+/**
+ * What of `shot` a frame whose exposures lie at `moments` solves (shotPaintedSolvables', in order), and what it leaves
+ * hidden: those lay nothing and cover nothing for a mask reading them.
+ */
+export function shotSolvablesShown(shot: CompiledPaintedShot, moments: readonly PaintMoment[]): { shown: CompiledShotPaintedPlane[]; hidden: ReadonlySet<CompiledShotPaintedPlane> } {
+  const shown: CompiledShotPaintedPlane[] = [], hidden = new Set<CompiledShotPaintedPlane>();
+  for (const plane of shotPaintedSolvables(shot)) {
+    if (shotPlaneShows(shot, plane, moments)) shown.push(plane);
+    else hidden.add(plane);
+  }
+  return { shown, hidden };
 }
 
 /**
@@ -49,7 +59,7 @@ export function shotSolvablesShown(shot: CompiledPaintedShot, moments: readonly 
  */
 export function shotWarmShown(shot: CompiledPaintedShot, plane: CompiledShotPaintedPlane, frames: readonly PaintMoment[], mode: LensMode): { frames: PaintMoment[]; hidden: number } {
   const clocks = shotPlaneClocks(shot.motion, plane), fps = shot.motion.animationFps, { shutter } = shot.camera.lens;
-  const shows = frames.filter((frame) => shotPlaneShows(shot, plane, shotExposureMoments(shutter, frame.at, mode)));
+  const shows = frames.filter((frame) => shotPlaneShows(shot, plane, shotExposureMoments(shutter, frame.at, mode).map(({ at }) => at)));
   const solved = shotWarmCombinations(shows, clocks, fps);
   return { frames: solved, hidden: shows.length === frames.length ? 0 : shotWarmCombinations(frames, clocks, fps).length - solved.length };
 }

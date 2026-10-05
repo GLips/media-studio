@@ -211,7 +211,7 @@ function loadPaintedShotScene(props: PaintedShotProps, canvases: readonly ShotCa
   let owner: StampPaintGpuOwner | null = null, renderer: PaintedShotRenderer | null = null, page: ShotPageWatch | null = null, disposed = false;
   const surfaces: ShotCanvasSurface[] = [], costs = createStampPaintCostTally();
   const watch = createShotWatch({
-    name, costs, gpu: () => owner && { checksSettled: owner.checksSettled(), evictions: owner.cache.evictions(), uploaded: owner.uploaded(), kept: owner.cache.bytes() },
+    name, costs, gpu: () => owner && { checksSettled: owner.checksSettled(), evictions: owner.cache.evictions(), uploaded: owner.uploaded(), bytes: owner.cache.bytes() },
   });
   /** `work` raced against the device's loss: rejected with it at once, before any check would see it. */
   const unlessLost = <T,>(work: Promise<T>) => Promise.race([work, owner!.whenLost.then((loss) => Promise.reject(loss))]);

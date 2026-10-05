@@ -23,13 +23,14 @@ export function createStampSheetTargets(owner: StampPaintGpuOwner, scope: StampP
   const COPIED = GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST;
   const { width, height } = stage, shape = compositor.targets.layer;
   if (shape.kind !== 'array') throw new Error('stamp sheet: a sheet solve paints in pigment, whose layers are arrays');
-  // Names start "sheet", apart from the renderer's targets of the same size.
-  const plain = (name: string, w: number, h: number, format: GPUTextureFormat, usage: number): StampDepositTarget => {
-    const texture = scope.target(`sheet ${name}`, { size: [w, h], format, usage: usage | SAMPLED });
+  // Names start "sheet", apart from the renderer's targets of the same size. Taken at the load, but for a clip's,
+  // taken by the step `encoder` it's first written in.
+  const plain = (name: string, w: number, h: number, format: GPUTextureFormat, usage: number, encoder: GPUCommandEncoder | null = null): StampDepositTarget => {
+    const texture = scope.target(`sheet ${name}`, { size: [w, h], format, usage: usage | SAMPLED }, encoder);
     return { texture, view: texture.createView() };
   };
   const layered = (name: string, usage: number): StampSheetLayered => {
-    const texture = scope.target(`sheet ${name}`, { size: [width, height, shape.layers], format: 'rgba16float', usage: usage | SAMPLED });
+    const texture = scope.target(`sheet ${name}`, { size: [width, height, shape.layers], format: 'rgba16float', usage: usage | SAMPLED }, null);
     return {
       texture, view: texture.createView({ dimension: '2d-array' }),
       layers: Array.from({ length: shape.layers }, (_, layer) => texture.createView({ dimension: '2d', baseArrayLayer: layer, arrayLayerCount: 1 })),
@@ -61,10 +62,10 @@ export function createStampSheetTargets(owner: StampPaintGpuOwner, scope: StampP
     /** What a compositor reading a deposit's pressure or the layer before it reads; null for one that doesn't. */
     press: compositor.reads.press ? plain('press', width, height, 'r16float', RENDER) : null,
     before: compositor.reads.before ? layered('before', GPUTextureUsage.COPY_DST) : null,
-    /** Wash `w`'s clip base kept (stampSheetFieldPasses' clipBase), for a later wash clipping to it; written whole. */
-    savedClip: (w: number) => plain(`clip base ${w}`, width, height, 'rgba16float', STORAGE | RENDER | COPIED),
-    /** Wash `w`'s clip coverage while another wash's entries land in the clip target. */
-    clipCoverage: (w: number) => plain(`clip coverage ${w}`, width, height, 'rgba16float', RENDER | COPIED),
+    /** Wash `w`'s clip base kept (stampSheetFieldPasses' clipBase), for a later wash clipping to it, as `encoder` reads or writes it; written whole. */
+    savedClip: (w: number, encoder: GPUCommandEncoder) => plain(`clip base ${w}`, width, height, 'rgba16float', STORAGE | RENDER | COPIED, encoder),
+    /** Wash `w`'s clip coverage while another wash's entries land in the clip target, as `encoder` reads or writes it. */
+    clipCoverage: (w: number, encoder: GPUCommandEncoder) => plain(`clip coverage ${w}`, width, height, 'rgba16float', RENDER | COPIED, encoder),
     /** Clears what a solve reads before it writes: every film, and no film in the working layer. */
     clear(encoder: GPUCommandEncoder) {
       for (const film of filmTargets) for (const view of film.layers) clearStampTarget(encoder, view);

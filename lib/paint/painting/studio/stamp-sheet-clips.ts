@@ -27,11 +27,11 @@ export function createStampSheetClips(program: StampSheetProgram, targets: Stamp
   let open = new Set<number>();
   /** The clip target's coverage into its wash's own target, when that wash keeps it and is open. */
   const park = (encoder: GPUCommandEncoder) => {
-    if (holder !== null && keeps(holder) && open.has(holder)) copyStampSheetClip(encoder, targets.clip.texture, targets.clipCoverage(holder).texture);
+    if (holder !== null && keeps(holder) && open.has(holder)) copyStampSheetClip(encoder, targets.clip.texture, targets.clipCoverage(holder, encoder).texture);
   };
-  const textureOf = ({ wash, kind }: StampSheetClipKept) => {
-    if (kind === 'base') return targets.savedClip(wash).texture;
-    return holder === wash ? targets.clip.texture : targets.clipCoverage(wash).texture;
+  const textureOf = ({ wash, kind }: StampSheetClipKept, encoder: GPUCommandEncoder) => {
+    if (kind === 'base') return targets.savedClip(wash, encoder).texture;
+    return holder === wash ? targets.clip.texture : targets.clipCoverage(wash, encoder).texture;
   };
   /**
    * What a checkpoint after `k` entries keeps of the clips: each open wash's coverage it keeps, and each ended
@@ -48,7 +48,7 @@ export function createStampSheetClips(program: StampSheetProgram, targets: Stamp
       if (holder !== w) park(encoder);
       const { clipTo } = washes[w];
       if (clipTo === null) clearStampTarget(encoder, targets.clip.view);
-      else passes.clipBase(encoder, targets.savedClip(clipTo).view, targets.clip.view, 0);
+      else passes.clipBase(encoder, targets.savedClip(clipTo, encoder).view, targets.clip.view, 0);
       holder = w;
       open.add(w);
     },
@@ -58,16 +58,16 @@ export function createStampSheetClips(program: StampSheetProgram, targets: Stamp
     enter(encoder: GPUCommandEncoder, w: number) {
       if (holder === w) return;
       park(encoder);
-      if (keeps(w)) copyStampSheetClip(encoder, targets.clipCoverage(w).texture, targets.clip.texture);
+      if (keeps(w)) copyStampSheetClip(encoder, targets.clipCoverage(w, encoder).texture, targets.clip.texture);
       holder = w;
     },
     /** Wash `w`, the clip target's holder, ending: its base kept when a later wash clips to it. */
     end(encoder: GPUCommandEncoder, w: number) {
       open.delete(w);
-      if (clippedTo.has(w)) passes.clipBase(encoder, targets.clip.view, targets.savedClip(w).view, washes[w].clipTo === null ? 0 : 1);
+      if (clippedTo.has(w)) passes.clipBase(encoder, targets.clip.view, targets.savedClip(w, encoder).view, washes[w].clipTo === null ? 0 : 1);
     },
     kept,
-    /** The texture holding `clip` now. */
+    /** The texture holding `clip` now, as `encoder` reads or writes it. */
     textureOf,
     /**
      * The clips as a checkpoint after `k` entries left them, those it `held` cleared in `encoder` for it to write:
@@ -76,7 +76,7 @@ export function createStampSheetClips(program: StampSheetProgram, targets: Stamp
     restored(encoder: GPUCommandEncoder, k: number, held: readonly StampSheetClipKept[]) {
       holder = null;
       open = new Set(washes.flatMap((_, w) => (openAfter(w, k) ? [w] : [])));
-      for (const clip of held) clearStampTarget(encoder, textureOf(clip).createView());
+      for (const clip of held) clearStampTarget(encoder, textureOf(clip, encoder).createView());
     },
     /**
      * What a checkpoint after `k` entries keeps of the clips, as text: one keeping other clips, as a program clipping
