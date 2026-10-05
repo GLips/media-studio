@@ -94,14 +94,13 @@ async function keptBrowserRecord(browser: HeadlessBrowser): Promise<KeptRenderBr
 
 /**
  * Keeps `count` render browsers open for borrowers until the process is stopped, reopening any whose process ends (a
- * crash, or a borrower ending a broken one). Clears `dir` first: a keeper before it left only stale records.
+ * crash, or a borrower ending a broken one). Clears `dir` first: a keeper before it left only stale records. A signal
+ * exits the process (exitStudioProcessOnSignals) and Remotion's exit-time kill ends the browsers, so it holds no handler.
  */
 export async function keepRenderBrowsers(dir: string, count: number): Promise<never> {
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   const kept = new Map<number, HeadlessBrowser>(), failedAt = new Map<number, number>();
-  const closeAll = () => Promise.all([...kept.values()].map((browser) => browser.close({ silent: true })));
-  for (const signal of ['SIGTERM', 'SIGINT'] as const) process.once(signal, () => void closeAll().finally(() => process.exit(0)));
 
   async function open(slot: number) {
     const old = kept.get(slot);
