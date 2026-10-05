@@ -351,7 +351,7 @@ export async function openRenderSession(
   }): Promise<string> {
     mkdirSync(dirname(out), { recursive: true });
     return withStudioTemp('lossless', async (tmp) => {
-      const drawn = await drawLossless(`${basename(out)} frames`, frames, { inputProps: props(), dir: tmp, fps: timeline.fps, ...(onProgress && { onProgress }) });
+      const drawn = await drawLossless(`${basename(out)} frames`, frames, { inputProps: props(), dir: tmp, timeline, ...(onProgress && { onProgress }) });
       await keepLossless(drawn.list, out, { frames, timeline, clock, voice: renderVoiceOf(project), gpu: drawn.gpu });
       return out;
     });
