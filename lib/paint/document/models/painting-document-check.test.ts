@@ -201,6 +201,11 @@ const brokenSources: readonly { readonly name: string; readonly check: () => rea
       message: "'ultramarine' isn't a pigment: a hex part is #rrggbb, and a named pigment is its object, WATERCOLOUR_PIGMENTS.ultramarine (lib/paint/materials/models/paint-watercolour-pigments.ts)",
     },
   },
+  {
+    name: "a key starting with #, as an unkeyed application's deposit is named",
+    check: () => checkPaintingSource(sourceOf(documentOf([layer('sky', [{ key: 'sky-wash', applications: [flood({ water: 0.85 }), flood({ key: '#0', water: 0.85 })] }])]))),
+    expect: { severity: 'error', path: 'sky-wash.applications[1].key', message: "'#0' isn't a key: one is non-empty, with no /, | or whitespace, and doesn't start with #" },
+  },
 ];
 
 test('each broken source is refused with its one exact problem', () => {

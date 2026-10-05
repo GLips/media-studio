@@ -106,6 +106,11 @@ test("a boil epoch reseeds its layer's marks and keys alone: each epoch lays the
   assert.deepEqual(again.entries.map(({ digest }) => digest), boiled.entries.map(({ digest }) => digest));
 });
 
+test("a layer left out leaves another's deposits as they were: a deposit is named, and seeded, by keys, not places", () => {
+  const cloudOf = (layers?: readonly string[]) => compilePaintingSelection(painting(meadow), brushOf, { layers }).sheets[0].program.entries.at(-1)!.deposit;
+  assert.deepEqual(cloudOf(['cloud']), cloudOf());
+});
+
 test('a wrapped document is keyed apart from itself unwrapped and wrapped otherwise, and an unwrapped head reads no wrap', () => {
   const head = (wrap?: StampWrap) => rootProgram(painting({ default: () => ({ ...strokedDocument(() => 1), ...(wrap && { wrap }) }) })).head;
   const heads = [head(), head('x'), head('y'), head('xy')];

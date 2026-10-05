@@ -42,8 +42,8 @@ const pondSource = ({
   },
 });
 
-/** The pond's washes when its charge changes at `path`: the pool itself, and every wash after it on the sheet. */
-const chargeChanged = (path: string) => [['pool', { kind: 'content', path }], ['pool-glaze', { kind: 'upstream', from: 'charge' }], ['reed-wash', { kind: 'upstream', from: 'charge' }]];
+/** The pond's washes when its charge, keyed `key`, changes at `path`: the pool itself, and every wash after it on the sheet. */
+const chargeChanged = (path: string, key = 'charge') => [['pool', { kind: 'content', path }], ['pool-glaze', { kind: 'upstream', from: key }], ['reed-wash', { kind: 'upstream', from: key }]];
 
 const changes = (diff: ReturnType<typeof paintingEvaluationDiff>) => diff.washes.map(({ wash, change }) => [wash, change]);
 
@@ -57,12 +57,11 @@ test('a property step re-solves the wash it changes and every later one on its s
   ]);
 });
 
-test('keys and paper colour re-solve nothing; a seed or a recreated curve re-solves its wash and all after it', () => {
+test('paper colour re-solves nothing; a key, a seed or a recreated curve re-solves its wash and all after it', () => {
   const base = pondSource({});
-  const same = changes(paintingEvaluationDiff(base, pondSource({ chargeKey: 'dab' }), null));
-  assert.deepEqual(same, [['pool', { kind: 'same' }], ['pool-glaze', { kind: 'same' }], ['reed-wash', { kind: 'same' }]]);
   const recoloured = paintingEvaluationDiff(base, pondSource({ paper: '#efe9dc' }), null);
-  assert.deepEqual([recoloured.document, changes(recoloured)], [['paper.color'], same]);
+  assert.deepEqual([recoloured.document, changes(recoloured)], [['paper.color'], [['pool', { kind: 'same' }], ['pool-glaze', { kind: 'same' }], ['reed-wash', { kind: 'same' }]]]);
+  assert.deepEqual(changes(paintingEvaluationDiff(base, pondSource({ chargeKey: 'dab' }), null)), chargeChanged('dab.key', 'dab'));
   assert.deepEqual(changes(paintingEvaluationDiff(base, pondSource({ chargeSeed: 'charge-2' }), null)), chargeChanged('charge.seed'));
   assert.deepEqual(changes(paintingEvaluationDiff(base, pondSource({ curve: (u) => Math.sqrt(u) }), null)), chargeChanged('charge.hand.profile'));
 });

@@ -1,8 +1,8 @@
 // stamp-gate-pieces.ts: the gate's sprig drawn as pieces (shot/pieces). A sprig owns its card and is rigged, so it's
 // drawn as pieces: a flag of two cels of different colours, a bud whose cel is a petal and a rim, a seed of a painted
 // cel and a clear one, and a leaf last. Every film is laid by its own palette and drying whatever's hidden ahead of
-// it: the flag swapped, the rim switched off and the seed hidden by its clear cel each draw as the sprig with what's
-// hidden painted clear, every cel a part of its own, so nothing is left out of it.
+// it: the flag swapped, the rim switched off and the seed hidden by its clear cel each draw as the sprig painted
+// without what's hidden, every cel left a part of its own.
 
 import type { Layer, LayerNode, Mix, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
 import type { PropertySchema, PropertyValues } from '#lib/paint/document/models/painting-properties.ts';
@@ -18,13 +18,15 @@ const PIECES = { width: 200, height: 140 } as const;
 const { cerulean, yellowOchre, ultramarine, quinacridoneRose, burntSienna, phthaloBlue, phthaloGreen } = WATERCOLOUR_PIGMENTS;
 const mixOf = (pigment: Mix['parts'][number]['pigment'], strength: number): Mix => ({ parts: [{ pigment, amount: 1 }], strength });
 
-/** A sprig layer over `polygon`, dry over what's before it unless `first`; painted clear unless `painted`. */
-const sprigLayer = (key: string, polygon: readonly number[], mix: Mix, { painted = true, first = false } = {}): Layer =>
-  (painted ? stampGateHeronLayer(key, stampGateHeronPolygon(...polygon), mix, 0.7, first ? undefined : 'dry') : { key, washes: [] });
+/** A sprig layer over `polygon`, dry over what's before it unless `first`. */
+const sprigLayer = (key: string, polygon: readonly number[], mix: Mix, first = false): Layer =>
+  stampGateHeronLayer(key, stampGateHeronPolygon(...polygon), mix, 0.7, first ? undefined : 'dry');
 
-// The layers some frame hides, each painted unless its property is false: the flag's `ochre` and `blue` cels, the
-// bud's `rim` and the `seed`. A layer's place on its sheet names its deposits and so seeds them: one left out would
-// repaint every later one, so one not painted is painted clear in its place.
+/** `layer` as a list of one when `painted`, else none: the sprig without it. */
+const sprigLayerIf = (painted: boolean, layer: Layer): Layer[] => (painted ? [layer] : []);
+
+// The layers some frame hides, each in the sprig unless its property is false: the flag's `ochre` and `blue` cels, the
+// bud's `rim` and the `seed`.
 const piecesProperties = {
   ochre: { type: 'boolean', default: true }, blue: { type: 'boolean', default: true }, rim: { type: 'boolean', default: true }, seed: { type: 'boolean', default: true },
 } as const satisfies PropertySchema;
@@ -40,14 +42,14 @@ export const STAMP_GATE_PIECES: PaintingSourceModule<typeof piecesProperties> = 
       key: 'bud',
       children: [
         sprigLayer('bud-petal', [62, 22, 94, 18, 98, 60, 66, 64], mixOf(quinacridoneRose, 0.6)),
-        sprigLayer('bud-rim', [62, 74, 98, 70, 100, 86, 64, 90], mixOf(burntSienna, 0.7), { painted: rim }),
+        ...sprigLayerIf(rim, sprigLayer('bud-rim', [62, 74, 98, 70, 100, 86, 64, 90], mixOf(burntSienna, 0.7))),
       ],
     };
     const sprig: LayerNode[] = [
-      sprigLayer('flag-ochre', [12, 18, 44, 14, 48, 56, 16, 60], mixOf(yellowOchre, 0.7), { painted: ochre, first: true }),
-      sprigLayer('flag-blue', [12, 78, 44, 74, 48, 118, 16, 122], mixOf(ultramarine, 0.6), { painted: blue }),
+      ...sprigLayerIf(ochre, sprigLayer('flag-ochre', [12, 18, 44, 14, 48, 56, 16, 60], mixOf(yellowOchre, 0.7), true)),
+      ...sprigLayerIf(blue, sprigLayer('flag-blue', [12, 78, 44, 74, 48, 118, 16, 122], mixOf(ultramarine, 0.6))),
       bud,
-      sprigLayer('seed', [112, 30, 144, 26, 148, 70, 116, 74], mixOf(phthaloBlue, 0.5), { painted: seed }),
+      ...sprigLayerIf(seed, sprigLayer('seed', [112, 30, 144, 26, 148, 70, 116, 74], mixOf(phthaloBlue, 0.5))),
       { key: 'seed-clear', washes: [] },
       sprigLayer('leaf', [160, 40, 188, 30, 192, 100, 166, 108], mixOf(phthaloGreen, 0.5)),
     ];
@@ -69,8 +71,12 @@ export const STAMP_GATE_PIECES_PARTS: readonly RigPart[] = [
   { id: 'leaf', z: 3, parent: null, cels: ['leaf'] },
 ];
 
-/** The sprig's every cel a part of its own, so all show at rest and none is left out of what's laid. */
-export const STAMP_GATE_PIECES_FLAT_PARTS: readonly RigPart[] = ['flag-ochre', 'flag-blue', 'bud', 'seed', 'seed-clear', 'leaf'].map((cel, z) => ({ id: cel, z, parent: null, cels: [cel] }));
+/** The sprig's cels in its parts' order, each with the property leaving it out of the sprig (null for none). */
+const SPRIG_CELS = [['flag-ochre', 'ochre'], ['flag-blue', 'blue'], ['bud', null], ['seed', 'seed'], ['seed-clear', null], ['leaf', null]] as const;
+
+/** Every cel the sprig painted as `painted` holds, a part of its own, so all show at rest and none is left out of what's laid. */
+const piecesFlatParts = (painted: Partial<PropertyValues<typeof piecesProperties>>): RigPart[] =>
+  SPRIG_CELS.flatMap(([cel, property], z) => (property && painted[property] === false ? [] : [{ id: cel, z, parent: null, cels: [cel] }]));
 
 /** The pieces shot's frames: at rest; the flag swapped; the rim off; the seed cleared; and all three, its baseline's frame. */
 export const STAMP_GATE_PIECES_AT = { rest: 0, swapped: 1, off: 2, cleared: 3, all: 4 } as const;
@@ -101,7 +107,7 @@ export const stampGatePiecesShot = (): PaintedShotProps => ({
 });
 
 /**
- * The sprig painted as `painted` says (a layer whose property is false painted clear), every cel shown at rest as a
- * part of its own: what a frame hiding those layers shows.
+ * The sprig painted as `painted` says (a layer whose property is false left out), every cel it holds shown at rest as
+ * a part of its own: what a frame hiding those layers shows.
  */
-export const stampGatePiecesFlatShot = (painted: Partial<PropertyValues<typeof piecesProperties>>): PaintedShotProps => piecesShot(painted, { parts: STAMP_GATE_PIECES_FLAT_PARTS, pose: {} });
+export const stampGatePiecesFlatShot = (painted: Partial<PropertyValues<typeof piecesProperties>>): PaintedShotProps => piecesShot(painted, { parts: piecesFlatParts(painted), pose: {} });

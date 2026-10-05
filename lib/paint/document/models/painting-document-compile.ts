@@ -2,8 +2,9 @@
 // (stamp-sheet-program.ts), one per sheet they lie on (ENGINE 4.1): a film per selected layer, its washes and
 // applications in the sheet's order with their order times, the sheet's clock, each deposit planned at rest, with the
 // digest of what each entry reads (ENGINE 4.2) and the text of the sheet's head, which a solve chains its keys from;
-// and the steps compositing them (ENGINE 5.4). Keys name things in messages only: deposits are named by ordinals and
-// seeded by their tips. Posing comes after (painting-pose.ts). Compiles are kept across evaluations by bytes.
+// and the steps compositing them (ENGINE 5.4). A deposit's ID is made of keys, never places, and seeds its colour and
+// water; its marks are its tip's seed's. Posing comes after (painting-pose.ts). Compiles are kept across evaluations
+// by bytes.
 
 import { PAINT_MEDIA, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { PaintMixturePigment } from '#lib/paint/materials/models/paint-pigment.ts';
@@ -17,7 +18,7 @@ import type { StampSheetCompositeStep, StampSheetEntry, StampSheetFilm, StampShe
 import { stampCanonicalDigest, stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
 import { compilePaintingArea } from './painting-area-compile.ts';
 import { compilePaintingDeposit, compilePaintingFluid, type PaintingBrushOf } from './painting-deposit-compile.ts';
-import type { AnyApplication, NodeKey, Prewet, Wash } from './painting-document.ts';
+import type { AnyApplication, LayerKey, NodeKey, Prewet, Wash } from './painting-document.ts';
 import { paintingEntryReads, paintingSheetHead } from './painting-entry-reads.ts';
 import { paintingMixPigments } from './painting-mix.ts';
 import { PAINTING_REST_POSE, paintingPosesKept } from './painting-pose.ts';
@@ -33,6 +34,15 @@ import { paintingLayersUnder, paintingSheetName, type PaintingSheet, type Painti
 /** `medium` with its paint's spread held to `maxSpreadPx` at `diameter`: the medium one application lands by. */
 export const paintingCappedMedium = (medium: PaintMedium, maxSpreadPx: number, diameter: number): PaintMedium =>
   ({ ...medium, wetting: { ...medium.wetting, spread: Math.min(medium.wetting.spread, maxSpreadPx / diameter) } });
+
+/**
+ * The ID of application `index` of `wash`, which seeds its deposit: its layer's, wash's and own keys, `#index` for one
+ * without a key. Keys, so a layer left out or added reseeds no other; no key starts with `#`, so none takes another's.
+ */
+const paintingApplicationDepositId = (layer: LayerKey, wash: Wash, application: AnyApplication, index: number) => `${layer}/${wash.key}/${application.key ?? `#${index}`}`;
+
+/** The ID naming a wash's prewet's reserves, as paintingApplicationDepositId names an application's. */
+const paintingPrewetId = (layer: LayerKey, wash: Wash) => `${layer}/${wash.key}/#prewet`;
 
 /** A prewet as its wash lays it at its start: its area, water and reserves. */
 function compilePaintingPrewet(prewet: Prewet, id: string, owner: string, brushOf: PaintingBrushOf): StampSheetPrewet {
@@ -68,20 +78,20 @@ function compilePaintingSheet(evaluation: PaintingEvaluation, order: PaintingShe
     }
     return { medium: PAINT_MEDIA[medium], mixing: { kind: 'pigment', medium: PAINT_MEDIA[medium], pigments }, slots, name: place.node.key };
   });
-  const washes = sheetWashes.map(({ layer, wash, place, node }): StampSheetWash => {
+  const washes = sheetWashes.map(({ layer, place, node }): StampSheetWash => {
     // A checked document clips only to an earlier wash with applications, so it's on this sheet.
     const wet = node.wetHistory !== false, clipTo = node.clipTo === undefined ? null : washIndex.get(`${layer}/${place.node.washes.findIndex(({ key }) => key === node.clipTo)}`)!;
-    const epoch = epochOf(layer), id = stampBoilSeed(`${layer}/${wash}/prewet`, epoch);
+    const epoch = epochOf(layer), id = stampBoilSeed(paintingPrewetId(place.node.key, node), epoch);
     const prewet = wet && node.prewet ? compilePaintingPrewet(paintingReseeded(node.prewet, epoch), id, node.key, brushOf) : null;
     const compiled: StampSheetWash = { film: layer, name: node.key, prewet, rim: wet ? node.rim ?? 1 : 0, clipTo, wetHistory: wet, origin: node.clock?.origin ?? null };
     if (paintingWashLifts(node)) compiled.lifts = true;
     return compiled;
   });
   const entries = order.entries.map((entry, k): StampSheetEntry => {
-    const wash: Wash = tree.layers[order.layers[entry.layer].layer].node.washes[entry.wash], epoch = epochOf(entry.layer);
+    const { node } = tree.layers[order.layers[entry.layer].layer], wash: Wash = node.washes[entry.wash], epoch = epochOf(entry.layer);
     const application: AnyApplication = paintingReseeded(wash.applications[entry.application], epoch);
     const w = washIndex.get(`${entry.layer}/${entry.wash}`)!, owner = paintingApplicationOwner(wash, application, entry.application);
-    const id = stampBoilSeed(`${entry.layer}/${entry.wash}/${entry.application}`, epoch);
+    const id = stampBoilSeed(paintingApplicationDepositId(node.key, wash, application, entry.application), epoch);
     const { deposit, anchors } = compilePaintingDeposit(application, owner, { id, wet: washes[w].wetHistory, brushOf });
     const { medium } = films[entry.layer], { charge } = application, firstOfWash = order.entries.findIndex((other) => other.layer === entry.layer && other.wash === entry.wash) === k;
     const capped = charge.kind === 'paint' && charge.maxSpreadPx !== undefined ? paintingCappedMedium(medium, charge.maxSpreadPx, application.diameterPx) : medium;

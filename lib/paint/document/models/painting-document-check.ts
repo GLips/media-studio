@@ -23,7 +23,8 @@ import { isPaintingGroup, paintingSheetName, paintingTree, type PaintingLayerPla
 
 /** WebGPU's guaranteed `maxTextureDimension2D`: the largest document side every device can hold. */
 const LARGEST_DOCUMENT_SIDE = 8192;
-const KEY = /^[^\s/|]+$/;
+// A leading `#` is the compiler's: an application without a key is `#i` in its deposit's ID.
+const KEY = /^[^\s/|#][^\s/|]*$/;
 
 /** What a check found, and the resolved tree when its shape held. */
 export type PaintingDocumentCheck = { readonly problems: readonly PaintingProblem[]; readonly tree: PaintingTree | null };
@@ -51,7 +52,7 @@ function checkPaintingTreeAndKeys(list: PaintingProblemList, paintingDocument: P
   const seen = new Map<Key, { what: string; box: StampBox | undefined }>();
   const claim = (key: Key | undefined, owner: string, what: string, box: StampBox | undefined) => {
     if (typeof key !== 'string' || !KEY.test(key)) {
-      list.error(owner, 'key', `'${String(key)}' isn't a key: one is non-empty, with no /, | or whitespace`, box);
+      list.error(owner, 'key', `'${String(key)}' isn't a key: one is non-empty, with no /, | or whitespace, and doesn't start with #`, box);
       return;
     }
     const first = seen.get(key);

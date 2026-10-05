@@ -110,13 +110,14 @@ export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevic
     const { state: next, closed } = stampSheetClosed(state, at, closes, drying);
     state = next;
     if (!closed) return;
-    const id = closed.ordinal ? `sheet|dry${closed.ordinal}` : 'sheet';
     const landings = new Map(closed.since.map(({ entry, landing }) => [entries[entry].deposit, landing]));
     program.films.forEach((_, f) => {
       const own = closed.since.filter(({ entry }) => filmOfEntry(entry) === f);
       if (!own.length) return;
-      const { rim } = washes[entries[own.at(-1)!.entry].wash];
-      const film: StampWashDrying = { id: `${id}|film${f}`, deposits: own.map(({ entry }) => entries[entry].deposit), rim, at, closes, wettest: closed.wettest };
+      const last = entries[own.at(-1)!.entry];
+      // Named, and so seeded, by the last deposit it dries, which no other drying holds: never by its film's place or
+      // its count on the sheet, so a layer left out or added reseeds no other's.
+      const film: StampWashDrying = { id: `${last.deposit.id}|dried`, deposits: own.map(({ entry }) => entries[entry].deposit), rim: washes[last.wash].rim, at, closes, wettest: closed.wettest };
       const bank: StampWetBank = { device, landings, dryings: [film], boxOf: (deposit) => gpu.bank.get(deposit)?.box ?? null, wallOf: gpu.wallOf };
       targets.swap(encoder, f);
       for (const stage of gpu.stages.drying) paintedInto(f, planStampWetStage(stage, bank).encode(encoder, { drying: film, seed: paintPigmentSeed(film.id) }));
@@ -174,7 +175,9 @@ export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevic
       encode: (encoder, moment) => {
         for (const { film, proxy, found, plans } of reaching) {
           targets.swap(encoder, film);
-          for (const plan of plans) paintedInto(film, plan.encode(encoder, { ...moment, deposit: proxy, landing: found, seed: paintPigmentSeed(proxy.id) }));
+          // The moment's seed is the deposit's: a proxy is its water, spreading alike in every film, and never seeded by
+          // a film's place, which a layer left out or added would move.
+          for (const plan of plans) paintedInto(film, plan.encode(encoder, { ...moment, deposit: proxy, landing: found }));
         }
         return null;
       },

@@ -18,8 +18,9 @@ import type { StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
 // ---- identity ------------------------------------------------------------------------------------------------------
 
 /**
- * Names a layer, group, wash or application, unique across the document, with no `/`, `|` or whitespace. Keys never
- * reach a solve; renaming one repaints nothing.
+ * Names a layer, group, wash or application, unique across the document, with no `/`, `|` or whitespace, and not
+ * starting with `#`. A layer's, wash's and application's keys name its deposits, seeding their colour and water, so
+ * renaming one repaints them and leaving a layer out repaints no other; a group's key repaints nothing.
  */
 export type Key = string;
 export type LayerKey = Key;

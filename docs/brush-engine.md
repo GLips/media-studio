@@ -143,9 +143,10 @@ no core texel shiny; else the rim. A solve asked for damp windows (`check --solv
 reads, after each wash's last landing, when what the wash wetted is damp, and after each bloom, when its footprint is:
 the same histograms over the wash's touches and its prewet's contact, or the bloom's core (`stamp-sheet-damp-report.ts`).
 The laws' times on the CPU are `stampDryingTimes`, which the reductions' WGSL runs per texel. Then it lands into the
-one wet field and its film; its water reaches other films' paint through a proxy, though only into films that keep a
-wet history or lift (any other direct film has no open channel); a drying closes once everything since the last has
-set, rimming each film that painted in it, and at the end every wet film's open paint
+one wet field and its film; its water reaches other films' paint through a proxy, seeded as the deposit is, though
+only into films that keep a wet history or lift (any other direct film has no open channel); a drying closes once
+everything since the last has set, rimming each film that painted in it, each film's rim seeded by the last deposit it
+dries, never by the film's place or the drying's count, and at the end every wet film's open paint
 settles. The field keeps times after a base it moves up past 2¹³ s. It solves a posed program: `paintingSheetPosed`
 (`lib/paint/document/models/painting-pose.ts`) maps each entry's marks by its chain's similarity, anchored clips,
 reserves and resists staying: stamps placed, scaled and turned, areas by their outlines, widths scaled. What travels
@@ -529,10 +530,12 @@ is each sheet's order, its layers' films (`painting-pigment-slots.ts`) and its c
 evaluation diff (`painting-evaluation-diff.ts`) and the solver read. The checks never touch the GPU.
 `painting-document-compile.ts` compiles a selection of an evaluation's layers to one solver program per sheet they
 lie on, its clock and order times with it, each application through `painting-deposit-compile.ts` and
-`painting-area-compile.ts`, a boiling layer's seeds suffixed for its epoch (`painting-reseed.ts`), the epochs given by
-layer or group key, and the composite's steps, the selections last read kept compiled up to 2.5 GiB across every
-evaluation (`PAINTING_SELECTIONS_KEPT_BYTES`, reckoned at 400 bytes a kept stamp: a render reaching light after light,
-or a layer boiling into epoch after epoch, compiles anew at each, and kept for good they'd fill a page's heap);
+`painting-area-compile.ts`, each deposit's ID its layer's, wash's and application's keys (`#i` for an unkeyed
+application), which seeds its colour and water, a boiling layer's seeds suffixed for its epoch (`painting-reseed.ts`),
+the epochs given by layer or group key, and the composite's steps, the selections last read kept compiled up to
+2.5 GiB across every evaluation (`PAINTING_SELECTIONS_KEPT_BYTES`, reckoned at 400 bytes a kept stamp: a render
+reaching light after light, or a layer boiling into epoch after epoch, compiles anew at each, and kept for good they'd
+fill a page's heap);
 `painting-pose.ts` poses a program before it's solved, the poses last asked
 for kept up to 256 MiB of stamps across programs (a rigged heron's pose is tens of MB, so a count a program would
 grow a render's page frame by frame until it crashed); `studio/painting-sheets-solve.ts` solves a selection's sheets, holding their films until
@@ -769,9 +772,9 @@ rigged figure hides its lying cel, and whose sitting view is switched off, each 
 it; and a leaf owning its card faded halfway, lying between it shown and gone, and gone, drawing as the cards painted
 without it, with nothing solved. The sprig (`stamp-gate-pieces.ts`, `shot/pieces`) owns its card and is drawn as
 pieces: its flag swapped to a cel of another colour, its bud's rim switched off and its seed hidden by a clear cel,
-each ahead of later parts, draw as the sprig with what they hide painted clear in its place and every cel shown, with
-nothing solved. Its reference paints a layer clear rather than leaving it out: deposits are named by their layer's
-place on its sheet, so a layer left out renames, and so reseeds, every later one's.
+each ahead of later parts, draw as the sprig painted without what they hide and every cel it holds shown, with
+nothing solved. The reference leaves the hidden layer out: every seed a sheet's solve draws is named by keys, never by
+a layer's place on its sheet, so a layer left out reseeds no other.
 Each shot's frame is a baseline (`shot/`) accepted by eye. `shot/page`
 (`stamp-gate-shot-dom-page.ts`) holds a shot's element on the page, scaled as a player shows it, and reads it through
 the DOM adapter: HTML behind the first canvas or not, a canvas in a wrapper at an identity transform refused, a glaze

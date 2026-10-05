@@ -1,8 +1,8 @@
 // painting-sheet-program.ts: each sheet's order (docs/painting-authoring.md, Sheets), the one physical history every
 // application on a sheet takes part in, whichever layer it paints: the unclocked run in document order, then the
 // clocked run sorted by order time, ties in document order. A pure function of the document, so validation,
-// comparison and the compiler read one order. Entries name layers, washes and groups by ordinal: keys never reach a
-// solve.
+// comparison and the compiler read one order. Entries name layers, washes and groups by ordinal; keys reach a solve
+// only as the IDs seeding deposits (painting-document-compile.ts).
 
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import type { StampSheetClock } from '#lib/paint/painting/models/stamp-sheet-program.ts';

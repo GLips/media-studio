@@ -284,13 +284,13 @@ async function checkCards(): Promise<StampGateWashCheck[]> {
   ];
 }
 
-/** The sprig painted as `painted` says, every cel shown, its one frame as RGB bytes. */
+/** The sprig painted as `painted` says, every cel it holds shown, its one frame as RGB bytes. */
 const piecesFlat = async (painted: Parameters<typeof stampGatePiecesFlatShot>[0]) => stampGateRgb((await stampGateShotFrames(stampGatePiecesFlatShot(painted), [STAMP_GATE_PIECES_AT.rest])).frames[0]);
 
 /**
  * shot/pieces: a sprig drawn as pieces lays every film by its own palette, whatever is hidden ahead of it. Its flag
  * swapped to a cel of another colour, its bud's rim switched off and its seed hidden by a clear cel each draw as the
- * sprig with what each hides painted clear and nothing left out, solving nothing.
+ * sprig painted without what each hides, solving nothing.
  */
 async function checkPieces(): Promise<StampGateWashCheck[]> {
   const { rest, swapped, off, cleared } = STAMP_GATE_PIECES_AT;
@@ -303,15 +303,15 @@ async function checkPieces(): Promise<StampGateWashCheck[]> {
   return [
     {
       id: 'shot/pieces: swap', passed: stampGateFramePasses(swap),
-      detail: `the sprig with its flag swapped to its blue cel lies ${stampGateFrameDifferenceText(swap)} from it with the ochre rest cel painted clear (${allowed})`,
+      detail: `the sprig with its flag swapped to its blue cel lies ${stampGateFrameDifferenceText(swap)} from it painted without the ochre rest cel (${allowed})`,
     },
     {
       id: 'shot/pieces: layer off', passed: stampGateFramePasses(rimOff),
-      detail: `the sprig with its bud's rim at visibility 0 lies ${stampGateFrameDifferenceText(rimOff)} from it with the rim painted clear (${allowed})`,
+      detail: `the sprig with its bud's rim at visibility 0 lies ${stampGateFrameDifferenceText(rimOff)} from it painted without the rim (${allowed})`,
     },
     {
       id: 'shot/pieces: clear cel', passed: stampGateFramePasses(clear) && !solves.length,
-      detail: `the sprig with its seed showing its clear cel lies ${stampGateFrameDifferenceText(clear)} from it with the seed painted clear (${allowed}); swapping, switching and clearing solved ${solves.join(', ') || 'nothing'}`,
+      detail: `the sprig with its seed showing its clear cel lies ${stampGateFrameDifferenceText(clear)} from it painted without the seed (${allowed}); swapping, switching and clearing solved ${solves.join(', ') || 'nothing'}`,
     },
   ];
 }

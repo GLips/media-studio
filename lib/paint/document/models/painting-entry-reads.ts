@@ -1,6 +1,6 @@
 // painting-entry-reads.ts: what a sheet's solve reads of a document, as data: its head (K₀'s part, ENGINE 4.2) and each
-// entry's datum in the sheet's order, keys left out. The compiler keys entries by it (with their compiled marks) and
-// the evaluation diff compares it, so both read one account of what an entry depends on.
+// entry's datum in the sheet's order. The compiler keys entries by it (with their compiled marks) and the evaluation
+// diff compares it, so both read one account of what an entry depends on.
 
 import type { AnyApplication, PaintingDocument, Wash } from './painting-document.ts';
 import type { PaintingDatum } from './painting-document-difference.ts';
@@ -21,9 +21,9 @@ export const paintingSheetHead = (paintingDocument: PaintingDocument, order: Pai
 export type PaintingEntryRead = { readonly datum: PaintingDatum; readonly owners: Readonly<Record<'layer' | 'wash' | 'application', string>> };
 
 /**
- * What each entry of `order` brings to its solve, keys left out (a `clipTo` by its wash's place): its layer's film at
- * its first entry, its wash's fields at the wash's first, its application and where it stands. Not its chain:
- * ordinals shift with any node added earlier, and a chain reaches the key as its pose's text.
+ * What each entry of `order` brings to its solve (a `clipTo` by its wash's place): its layer's key and film at its
+ * first entry, its wash's fields at the wash's first, its application and where it stands. Keys seed deposits; state
+ * keys chain, so each is read once. Not its node chain: ordinals shift; it's keyed as its pose's text.
  */
 export function paintingEntryReads(tree: PaintingTree, order: PaintingSheetOrder): PaintingEntryRead[] {
   const seen = new Set<string>();
@@ -34,9 +34,9 @@ export function paintingEntryReads(tree: PaintingTree, order: PaintingSheetOrder
     seen.add(`${entry.layer}`).add(washId);
     const clipTo = wash.clipTo === undefined ? undefined : place.node.washes.findIndex(({ key }) => key === wash.clipTo);
     const datum = {
-      layer: firstOfLayer ? { slots } : undefined,
-      wash: firstOfWash ? { ...wash, key: undefined, clipTo, applications: undefined } : undefined,
-      application: { ...application, key: undefined },
+      layer: firstOfLayer ? { key: place.node.key, slots } : undefined,
+      wash: firstOfWash ? { ...wash, clipTo, applications: undefined } : undefined,
+      application,
       place: {
         layer: entry.layer, wash: entry.wash, application: entry.application, orderTime: entry.orderTime, medium: place.medium,
         lastOfWash: order.entries.findIndex((other, j) => j > k && other.layer === entry.layer && other.wash === entry.wash) < 0,

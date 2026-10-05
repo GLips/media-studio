@@ -195,9 +195,12 @@ PaintingDocument {widthPx, heightPx, paper, medium, dryingScale?, wrap?, layers}
 | an application's `brush` | `{style, brush}` | A style's own brush name (Reference). The style is spelt `'watercolor'`, the medium `'watercolour'`. |
 | a paint charge's `mix` | `Mix \| Field<Mix>` | `{parts: [{pigment, amount}], strength}`; a pigment is an appearance from `WATERCOLOUR_PIGMENTS` or a hex. |
 
-Keys name the tree: layers, groups, washes, and any application you want named. They're unique across the document
-and hold no `/`, `|` or whitespace. Problems name an unkeyed application `<wash>.applications[i]`. Keys never reach a
-solve. Marks that land together are consecutive applications, the later ones without `on`.
+Keys name the tree: layers, groups, washes, and any application you want named. They're unique across the document,
+hold no `/`, `|` or whitespace, and don't start with `#`. Problems name an unkeyed application `<wash>.applications[i]`.
+A deposit is named `<layer>/<wash>/<application>` by keys (`#i` for an unkeyed application, its place in its wash), and
+that name seeds its colour and water: leaving a layer out or adding one repaints no other, while renaming a layer, wash
+or application repaints its deposits. A group's key repaints nothing. Marks that land together are consecutive
+applications, the later ones without `on`.
 
 Seeds are separate strings. Equal seeds draw equal randomness: two applications with one seed repeat each other's
 marks, and noise fields with one seed share one pattern. Give each application its own unless you want that.
@@ -1409,7 +1412,8 @@ then each reveal that differs (`ink.reveal.strokes[2].to differs: recompose only
 A pigment a later wash brings changes its layer's film, so it reads at the layer's first application
 (`water.slots.palette`). On a wrapped document a change moving a sheet's margin past its power of two (Wrapping)
 re-solves the sheet from its first wash, each reading `upstream`; the diff reads the brushes for that, as a still
-does. Keys never count. So you see what a property step re-solves before warming it:
+does. A renamed layer, wash or application reads `content` at its key (`dab.key`), since keys seed deposits; a renamed
+group never counts. So you see what a property step re-solves before warming it:
 
 ```
 $ node cli/studio.ts paint diff lib/paint/document/models/meadow.painting.ts --to hillTopPx=210

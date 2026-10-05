@@ -289,10 +289,10 @@ export type StampSheetLift = { name: string; support: StampBox };
 /**
  * What water a solve has laid, as the ledger keeps a wash's (stamp-wash-ledger.ts) for a whole sheet: every wetting
  * (a prewet's or a landing's), the entries landed by the wash law since the last drying with their landings and the
- * lifts among them, the wettest the paper has stood since, and how many dryings have closed.
+ * lifts among them, and the wettest the paper has stood since.
  */
 export type StampSheetWater = {
-  wettings: readonly StampWetting[]; since: readonly { entry: number; landing: StampWetLanding }[]; lifts: readonly StampSheetLift[]; wettest: number; dryings: number;
+  wettings: readonly StampWetting[]; since: readonly { entry: number; landing: StampWetLanding }[]; lifts: readonly StampSheetLift[]; wettest: number;
 };
 
 /**
@@ -310,7 +310,7 @@ export type StampSheetSolveState = {
 /** A solve's state before anything lands: `films` films and `washes` washes, on dry paper at 0 s. */
 export const stampSheetSolveStart = (films: number, washes: number): StampSheetSolveState => ({
   base: 0, tau: 0, scene: null, clockStart: null, painted: Array.from({ length: films }, () => null), touched: Array.from({ length: washes }, () => []), field: null,
-  since: null, landedSince: false, knownSetAt: -Infinity, water: { wettings: [], since: [], lifts: [], wettest: 0, dryings: 0 },
+  since: null, landedSince: false, knownSetAt: -Infinity, water: { wettings: [], since: [], lifts: [], wettest: 0 },
 });
 
 /**
@@ -397,18 +397,18 @@ export const stampSheetMaySetBy = (state: StampSheetSolveState, at: number) => s
 export const stampSheetSetKnown = (state: StampSheetSolveState, at: number | null): StampSheetSolveState => ({ ...state, knownSetAt: at ?? -Infinity });
 
 /**
- * A drying as a solve closes it: its ordinal among the sheet's, the entries landed in it with their landings, when
- * and why it closed, and the wettest its paper stood.
+ * A drying as a solve closes it: the entries landed in it with their landings, when and why it closed, and the wettest
+ * its paper stood.
  */
-export type StampSheetClosure = { ordinal: number; since: StampSheetWater['since']; at: number; closes: StampWashDrying['closes']; wettest: number };
+export type StampSheetClosure = { since: StampSheetWater['since']; at: number; closes: StampWashDrying['closes']; wettest: number };
 
 /** `state` with the drying of all landed since the last closed at `at`, and that drying: null when nothing landed by the wash law. */
 export function stampSheetClosed(state: StampSheetSolveState, at: number, closes: StampWashDrying['closes'], drying: StampDrying): { state: StampSheetSolveState; closed: StampSheetClosure | null } {
-  const { water } = state, closed = water.since.length ? { ordinal: water.dryings, since: water.since, at, closes, wettest: water.wettest } : null;
+  const { water } = state, closed = water.since.length ? { since: water.since, at, closes, wettest: water.wettest } : null;
   // The next drying starts from the wettest any water laid so far still stands.
   const standing = Math.min(1, Math.max(0, ...water.wettings.map(({ level, at: laid }) => stampWetnessAt(level, laid, at, drying))));
   return {
-    state: { ...state, since: null, landedSince: false, knownSetAt: -Infinity, water: { ...water, since: [], lifts: [], wettest: standing, dryings: water.dryings + (closed ? 1 : 0) } },
+    state: { ...state, since: null, landedSince: false, knownSetAt: -Infinity, water: { ...water, since: [], lifts: [], wettest: standing } },
     closed,
   };
 }

@@ -45,8 +45,9 @@ function pushFirstDifference(into: string[], x: PaintingDatum, y: PaintingDatum,
 }
 
 /**
- * The first differing path of each field outside the washes, keys left out (keys never reach a solve); and of each
- * node's reveal, named by the second's key, which recomposes only.
+ * The first differing path of each field outside the washes, keys left out (a layer's is read with its entries, whose
+ * deposits it seeds; a group's never reaches a solve); and of each node's reveal, named by the second's key, which
+ * recomposes only.
  */
 function documentChanges(a: PaintingDocument, b: PaintingDocument): { readonly document: string[]; readonly reveals: string[] } {
   const changes: string[] = [], reveals: string[] = [];
