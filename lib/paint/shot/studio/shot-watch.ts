@@ -22,7 +22,7 @@ const SHOT_HEARTBEAT_SECONDS = 30;
 /** How long a frame's own solve runs before its line is worth printing, s. */
 const SHOT_SLOW_SOLVE_SECONDS = 5;
 
-/** The most seconds between pulses while the shot makes progress: well inside the render browser's stall floor. */
+/** The most seconds between pulses while the shot makes progress: well inside the render browser's stall (render-watch.ts). */
 const SHOT_PULSE_SECONDS = 15;
 
 /** What a renderer tells its watch: each run as it starts, with its solves' count, and each solve's start and end. */

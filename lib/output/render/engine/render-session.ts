@@ -27,7 +27,7 @@ import { inWatchedRenderBrowser, watchedRenderFrames, watchedRenderMedia, type R
 import { releaseStudioGpuLease } from '#lib/platform/gpu/engine/gpu-lease.ts';
 import type { MotionTracks } from '#lib/picture/measurement/models/motion-tracks.ts';
 import type { CompositionRenderSettings, PaintingValuesProp, ReplayProps, VideoProps } from '#lib/picture/video/models/composition-props.ts';
-import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
+import { timelineFrameText, type TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
 import type { LensMode } from '#lib/picture/lens/models/lens-mode.ts';
 
 export type RenderSession = Awaited<ReturnType<typeof openRenderSession>>;
@@ -198,41 +198,58 @@ export async function openRenderSession(
   }
 
   /**
-   * `frames` drawn chunk by chunk (render-chunks.ts) as `draw` says, each into `into(chunk)` and handed to `take` once
-   * drawn. Records the pass; returns the GPU, and whether any frame played sound.
+   * Frame `frame` as a failed render names it, by its scene in `timeline`. Read only when a frame fails for good, and
+   * when not given; a timeline that can't be read then leaves the frame bare rather than hiding why it failed.
    */
-  async function drawChunks(pass: string, frames: readonly number[], draw: FrameDraw, { into, take }: {
-    into: (chunk: readonly number[]) => string; take?: (chunk: readonly number[], dir: string) => Promise<void>;
+  async function describeRenderFrame(frame: number, timeline?: TimelineReport): Promise<string> {
+    const read = timeline ?? await readTimeline().catch(() => null);
+    return read ? timelineFrameText(read, frame) : `frame ${frame}`;
+  }
+
+  /**
+   * `frames` drawn chunk by chunk (render-chunks.ts) as `draw` says, each piece into `into(piece)` and handed to `take`
+   * once drawn; a frame that fails is named by its scene in `timeline` (read then, when not given). Records the pass;
+   * returns the GPU, and whether any frame played sound.
+   */
+  async function drawChunks(pass: string, frames: readonly number[], draw: FrameDraw, { into, take, timeline }: {
+    into: (piece: readonly number[]) => string; take?: (piece: readonly number[], dir: string) => Promise<void>; timeline?: TimelineReport;
   }): Promise<{ gpu: string; heard: boolean }> {
     const started = performance.now();
     let used = 0;
-    const { gpu, drawn, waited } = await renderInChunks<{ dir: string; heard: boolean }>(frames, async (browser, chunk, watch) => {
-      const dir = into(chunk), { concurrency, heard } = await drawFrames(browser, watch, chunk, dir, draw);
+    const { gpu, drawn, waited } = await renderInChunks<{ dir: string; heard: boolean }>(frames, async (browser, piece, watch) => {
+      const dir = into(piece), { concurrency, heard } = await drawFrames(browser, watch, piece, dir, draw);
       used = Math.max(used, concurrency);
       return { dir, heard };
-    }, { ...(take && { take: (chunk, { dir }) => take(chunk, dir) }) });
+    }, { ...(take && { take: (piece, { dir }) => take(piece, dir) }), describeFrame: (frame) => describeRenderFrame(frame, timeline) });
     recordGpuWait(waited);
     passes.push({ pass, seconds: (performance.now() - started) / 1000 - waited, workers: used, gpu });
     return { gpu, heard: drawn.some(({ heard }) => heard) };
   }
 
   /**
-   * Frames `from`–`end` (exclusive) drawn chunk by chunk into `dir`, each chunk kept as a lossless FFV1 file (with
-   * its alpha when `alpha`) as the next draws. Returns a concat list of them in order, the GPU, and whether any frame
-   * played sound.
+   * Frames `from`–`end` (exclusive) of `timeline` drawn chunk by chunk into `dir`, each piece kept as a lossless FFV1
+   * file (with its alpha when `alpha`) as the next draws. Returns a concat list of them in order, the GPU, and whether
+   * any frame played sound.
    */
-  async function drawLossless(pass: string, { from, end }: RenderSnapshot['frames'], { inputProps, dir, fps, alpha = false, onProgress, onArtifact }: {
-    inputProps: VideoProps; dir: string; fps: number; alpha?: boolean; onProgress?: (p: { progress: number }) => void; onArtifact?: OnArtifact;
+  async function drawLossless(pass: string, { from, end }: RenderSnapshot['frames'], { inputProps, dir, timeline, alpha = false, onProgress, onArtifact }: {
+    inputProps: VideoProps; dir: string; timeline: TimelineReport; alpha?: boolean; onProgress?: (p: { progress: number }) => void; onArtifact?: OnArtifact;
   }): Promise<{ list: string; gpu: string; heard: boolean }> {
     const frames = Array.from({ length: end - from }, (_, i) => from + i), seen = new Set<number>(), files: string[] = [];
     const drawn = await drawChunks(pass, frames, {
       inputProps, image: { imageFormat: 'png' }, ...(onArtifact && { onArtifact }), onFrame: (frame) => onProgress?.({ progress: seen.add(frame).size / frames.length }),
     }, {
-      into: (chunk) => join(dir, `frames-${chunk[0]}`),
-      take: async (chunk, images) => {
-        const file = join(dir, `chunk-${chunk[0]}.mkv`);
+      timeline,
+      into: (piece) => {
+        // Emptied first: a piece drawn again after its browser failed shares its first frame's folder with the failed
+        // draw, whose frames past it would join its file.
+        const images = join(dir, `frames-${piece[0]}`);
+        rmSync(images, { recursive: true, force: true });
+        return images;
+      },
+      take: async (piece, images) => {
+        const file = join(dir, `chunk-${piece[0]}.mkv`);
         // Remotion pads the frame numbers, so the glob's order is the video's.
-        await runFfmpegAsync(['-y', '-v', 'error', '-framerate', String(fps), '-pattern_type', 'glob', '-i', join(images, 'f-*.png'),
+        await runFfmpegAsync(['-y', '-v', 'error', '-framerate', String(timeline.fps), '-pattern_type', 'glob', '-i', join(images, 'f-*.png'),
           '-c:v', 'ffv1', '-level', '3', '-slices', '16', '-pix_fmt', alpha ? 'bgra' : 'bgr0', file]);
         rmSync(images, { recursive: true });
         files.push(file);
@@ -308,7 +325,7 @@ export async function openRenderSession(
     const name = basename(out), count = span.end - span.from;
     mkdirSync(dirname(out), { recursive: true });
     return withStudioTemp('video', async (tmp) => {
-      const drawn = await drawLossless(`${name} frames`, span, { inputProps, dir: tmp, fps: timeline.fps, ...(onProgress && { onProgress }), ...(onArtifact && { onArtifact }) });
+      const drawn = await drawLossless(`${name} frames`, span, { inputProps, dir: tmp, timeline, ...(onProgress && { onProgress }), ...(onArtifact && { onArtifact }) });
       const picture = join(tmp, name);
       await timed(`${name} encode`, () => encodeLosslessList(drawn.list, picture, encoding));
       const encoded = countVideoFrames(picture);
@@ -352,7 +369,7 @@ export async function openRenderSession(
     // A second of 1080p frames is a few hundred MB, so they go even when the render or an encode fails.
     await withStudioTemp('alpha', async (tmp) => {
       const { list, gpu } = await drawLossless(`${basename(webm)} frames`, { from: 0, end: timeline.durationInFrames }, {
-        inputProps, dir: tmp, fps: timeline.fps, alpha: true, ...(onProgress && { onProgress }), ...(onArtifact && { onArtifact }),
+        inputProps, dir: tmp, timeline, alpha: true, ...(onProgress && { onProgress }), ...(onArtifact && { onArtifact }),
       });
       const { motion } = (await approve?.()) ?? {};
       const frames = ['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list];
@@ -389,10 +406,10 @@ export async function openRenderSession(
 
   /** The video's frames as `imageFormat` files in `outputDir`, each `f-<frame>`, its number padded to the video's length. */
   async function renderFrameFiles({ outputDir, imageFormat, inputProps = props() }: { outputDir: string; imageFormat: 'png' | 'jpeg'; inputProps?: VideoProps }) {
-    const { durationInFrames } = await readTimeline();
-    await drawChunks('frame files', Array.from({ length: durationInFrames }, (_, i) => i), {
+    const timeline = await readTimeline();
+    await drawChunks('frame files', Array.from({ length: timeline.durationInFrames }, (_, i) => i), {
       inputProps, image: imageFormat === 'png' ? { imageFormat } : { imageFormat, jpegQuality: 90 },
-    }, { into: () => outputDir });
+    }, { into: () => outputDir, timeline });
   }
 
   return {

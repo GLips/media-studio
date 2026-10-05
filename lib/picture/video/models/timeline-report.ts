@@ -40,3 +40,12 @@ export type TimelineReport = {
 };
 /** A scene's `expect` (see SceneExpectation), its `during` in video seconds. */
 export type TimelineExpectation = { scene: string; start: number; end: number } & ({ see: string } | { hold: string; for: number; within?: number });
+
+/** Frame `frame` as a render's error names it: its second, and the scene on screen at it, or the two crossfading. */
+export function timelineFrameText({ fps, scenes }: Pick<TimelineReport, 'fps' | 'scenes'>, frame: number): string {
+  const shown = scenes.filter(({ visible }) => visible.from <= frame && frame < visible.to).map(({ id }) => id);
+  const at = `frame ${frame} (${(frame / fps).toFixed(2)} s`;
+  // The composition can run a frame or so past its last scene (TimelineReport.durationInFrames).
+  if (!shown.length) return `${at}, past the last scene)`;
+  return `${at}, ${shown.length > 1 ? `scenes ${shown.join(' and ')} crossfading` : `scene ${shown[0]}`})`;
+}
