@@ -28,7 +28,8 @@ npm link                  # puts `studio` on the PATH, pointing at this checkout
 studio workspace init     # makes work/, the person's own git repository
 ```
 
-`studio home` then prints the clone's root from anywhere.
+`studio home` then prints the clone's root from anywhere. Run inside another checkout of the studio (a worktree, a
+second clone), `studio` runs that checkout's own CLI on its own `work/`.
 
 ## 3. Their workspace
 

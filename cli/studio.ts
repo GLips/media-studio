@@ -40,17 +40,27 @@ const studioCommand = defineCommand({
   },
 });
 
-warnIfInAnotherStudio();
+runInEnclosingStudioCheckout();
 // Made up front, not on first use, so every command sweeps what a crashed or killed one left in the temp dir.
 studioTempRoot();
 
-// An agent in a second checkout (a worktree, a clone) would otherwise run this checkout's code on this checkout's
-// projects and wonder why its edits change nothing.
-function warnIfInAnotherStudio() {
-  let dir = process.cwd();
-  while (!existsSync(join(dir, '.git')) && dirname(dir) !== dir) dir = dirname(dir);
-  if (existsSync(join(dir, 'lib/api.ts')) && realpathSync(dir) !== realpathSync(STUDIO_ROOT)) {
-    process.stderr.write(`studio: you're in ${dir}; studio home is ${STUDIO_ROOT}\n`);
+/**
+ * The PATH's `studio` is one checkout's file. Started inside another checkout (a worktree, a clone), this process
+ * becomes that checkout's cli/studio.ts with the same arguments, so an agent there runs its own code on its own
+ * projects. It's replaced, not spawned: signals reach the command, and its exit code is the run's.
+ */
+function runInEnclosingStudioCheckout() {
+  const checkout = enclosingStudioCheckout(process.cwd());
+  if (checkout === null || realpathSync(checkout) === realpathSync(STUDIO_ROOT)) return;
+  // Node leaves execve out only on Windows, where the studio doesn't run.
+  process.execve!(process.execPath, [process.execPath, ...process.execArgv, join(checkout, 'cli/studio.ts'), ...process.argv.slice(2)]);
+}
+
+/** The nearest folder at or above `from` holding a studio checkout (its cli/studio.ts and lib/api.ts), or null. */
+function enclosingStudioCheckout(from: string): string | null {
+  for (let dir = from; ; dir = dirname(dir)) {
+    if (existsSync(join(dir, 'cli/studio.ts')) && existsSync(join(dir, 'lib/api.ts'))) return dir;
+    if (dirname(dir) === dir) return null;
   }
 }
 
