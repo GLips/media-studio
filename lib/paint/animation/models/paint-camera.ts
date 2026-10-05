@@ -22,8 +22,9 @@ import type { PaintSimilarity } from './paint-similarity.ts';
 export const paintStageCentre = ({ frame }: StampStage): StampPoint => ({ x: frame.width / 2, y: frame.height / 2 });
 
 /**
- * Where the camera is. `pan`: px, as a plane at depth 1 sees it move; `dolly`: depth units toward the planes; `zoom`:
- * the lens, 1 at rest; `roll`: radians, y-down like every angle in the painting, so the picture turns by −roll.
+ * Where the camera is. `pan`: px the camera moves, as a plane at depth 1 sees it, so a positive x slides the picture
+ * left (paintPlaneSimilarity); `dolly`: depth units toward the planes; `zoom`: the lens, 1 at rest; `roll`: radians,
+ * y-down like every angle in the painting, so the picture turns by −roll.
  */
 export type PaintCameraPose = { readonly pan: StampPoint; readonly dolly: number; readonly zoom: number; readonly roll: number };
 

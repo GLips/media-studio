@@ -169,7 +169,16 @@ before writing a wash:
   strength, change hue across layers, or charge the second colour into the wet flood (recipe 2).
 - **Gouache lightens with white.** A weaker mix is a tint, still opaque, and any gouache dries 3–6 L* paler than
   written (Reference › Pigments); pale gouache laid as light reads chalky, pasted on. For glow, reserve the paper;
-  for a veil, cap the film (`opacityCap`, Media); for a near-black, mix a hex part at strength 1.
+  for a veil, cap the film (`opacityCap`, Media: Thin films); for a near-black, mix a hex part at strength 1.
+- **A big soft light on a dark ground** (a lit bank, a pool of lamplight on a road): watercolour only darkens, and a
+  reserve or a feathered region always shows its edge, so a soft light reserved out of a dark wash comes out as strips
+  or a cut-out. Lay the light as a gouache underpaint, its edge feathered or bled (gouache wants about 3.3 × the
+  width you mean to read, Washes, layers and paper), then glaze watercolour over it and its dark surround in a later
+  layer (recipe 12), which marries the two.
+- **Haze is paint; glow is light.** A haze (mist over a far shore, warm air round a low sun) is a veil graded by a
+  radial `load` on its fill (`{kind: 'radial', center, radius, inner: 0.6, outer: 0}`, Reference › Fields): no edge
+  anywhere. Light that gives off light (a sun, a lamp, a lit window) is its emitter's `glow` and the lens's bloom
+  (Reference › Glow): rings or discs painted round it read as rings or discs.
 
 ## The document
 
@@ -344,6 +353,12 @@ Between `damp` and `shiny` (satin) has no word: reach it with a fixed `at`. Cray
 refused there. The sheet's water is every layer's: `wet` can hold over another layer's flood (**NEW**). On a moving
 element `on` is judged again at every pose; leave it out and fix `at` where timing shouldn't depend on place.
 
+A `dry` waits on the sheet, not on its own layer: it lands after everything before it in the sheet's order, every
+layer's, once no water or open paint lies under its core, whichever layer laid it, and while it waits everything
+after it waits too (Time: Scheduling). An ink line after a wet sky in the order lands after the sky's last
+application, and where it crosses the sky's water, once that has dried. Layers meant to run on their own go on their
+own sheets (`sheet: {kind: 'own', paper}`), or leave out `on` and land in order or at a fixed `at`.
+
 ### Techniques are applications
 
 There's no effect object: every technique is applications with a charge. One label exists: `effect: 'bloom'` on a
@@ -388,6 +403,12 @@ strength × contact, so pressure changes it only through what the brush binds to
 To mask a whole wash, give each of its applications and its prewet the same footprints, a TS constant: that is how a
 light stays paper (Planning colour and light), which no lift gives back clean. A reserve never erases. The recipe path's
 keyed reserve targets (a reserve binding other applications by key) have no form here.
+
+A lift spends the paper's water as well as its paint: it dries what it touches for whatever is laid after it there,
+so a `wet` or `damp` charge over a lift made since the last drying can't hold (the solve names the lift). Charge
+first and lift last in the wash. Light added into a dark ground (a lit window's reflection in a wet road) isn't a lift
+and a charge: a lift takes little from a dark wash and leaves nothing to charge into. Lay it as gouache over the dark
+(Planning colour and light).
 
 ## Washes, layers and paper
 
@@ -499,8 +520,8 @@ paints it.
 | mix `strength` | share of a full load | 0..1 | — |
 | mix part `amount` | relative amount | ≥ 0, one positive | — |
 | a full load | the medium's `body` in unit films (1 unit film = a full watercolour wash) | 1 / 20 / 15 | — |
-| fill `load` | share of a full load laid, per texel: on a flood the same factor as `opacityCap`; on a fill laid by strokes it scales each stamp, so overlapping stamps still build | 0..1 (field allowed) | 1 |
-| `opacityCap` (paint charges) | the most of a full load an application's stamps build to, across its subpaths: its film thins, so what's under shows through, its hue kept; it multiplies what `load` lays (a flood at `load` 0.4 capped at 0.5 lays 0.2). Per application: overlapping applications add up, n of them to about n × cap | 0..1 | 1 |
+| fill `load` | share of a full load laid, per texel: on a flood the same factor as `opacityCap`; on a fill laid by strokes it scales each stamp, so overlapping stamps still build. What fades gouache toward no paint, where a mix's strength 0 lays white (Media: Thin films) | 0..1 (field allowed) | 1 |
+| `opacityCap` (paint charges) | the most of a full load one application builds at each texel, across its stamps and subpaths: its film thins, so what's under shows through, and a dark colour lightens toward its tint, which can read as another hue (Media: Thin films); it multiplies what `load` lays (a flood at `load` 0.4 capped at 0.5 lays 0.2). Per application, per texel: overlapping applications add up, n of them to about n × cap | 0..1 | 1 |
 | lift `strength` | share of liftable paint taken | 0..1 | — |
 | resist `amount` | share of contact removed on peaks | 0..1 | — |
 | `rim` | drying-line strength | 0..2 | 1 |
@@ -515,7 +536,7 @@ paints it.
 | `dryingScale` (the document's, an own sheet's) | scene seconds per model second | > 0, `instant`, `never` | 1 |
 | holds, boil `every` | animation frames at `camera.animationFps` | whole ≥ 1 | 24 fps |
 | place `x`, `y`; rig pose `x`, `y`; boil `amount`, `scale` | document px | — | 0; 2.2, 45 |
-| camera `pan` | `{x, y}` px as seen at depth 1 | — | 0 |
+| camera `pan` | `{x, y}` px the camera moves, as seen at depth 1: a positive x slides the picture left, a plane at depth d by x · zoom ÷ (d − dolly) (Where a plane point lands) | — | 0 |
 | plane `depth` | depth units, larger farther; 1 is where a pan is measured | > 0 | — |
 | `lay` `{placement: {x, y, rotation, scale}, pivot}` | frame px, radians, factor; pivot in document px | — | identity |
 | camera `fov`, lens `bloom`, `shutter` | vertical degrees; frame px sigma; seconds open | — | — |
@@ -540,15 +561,14 @@ paints it.
   Composition, HTML among canvases).
 - **Gouache**: opaque body colour; light over dark works. Weak mixes are tints with white, not thin washes: a pale
   mix (`strength` 0.16) still hides what's under it. For paint that lets what's under show, cap the film with
-  `opacityCap` (on a flood `load` is the same factor), which keeps the pigment's hue: a full load is 20 unit films, so
-  a strong pigment is still saturated at 0.16 (three washes deep). What's under shows through about half at 0.1 of a
-  full load, a fifth at 0.25 and about a tenth at 0.5 (a near-black hides by 0.1). Caps are per application and add
-  up where applications overlap, so plan a veil by their sum: fourteen halo discs at 0.035 lay about half a full load,
-  an opaque disc, and a faint tint is 0.02–0.05 in all. A cap thins the paint, not the brush's edge: a hard `detail`
-  brush capped is a fainter hard line. Gouache dries 3–6 L* paler than it is wet, so named pigments dry to Reference ›
-  Pigments' Gouache column, none darker than L* 35, a mix of them no darker than about L* 29, and strength below 1
-  adds white: for a near-black, mix a hex part at strength 1 (`'#10171f'` dries to L* 10). It barely travels (spread
-  0.1) and redissolves when lifted dry (0.9). A gouache layer over set watercolour covers by scatter.
+  `opacityCap` (on a flood `load` is the same factor), a thin film (Thin films, below): a full load is 20 unit
+  films, so a strong pigment is still saturated at 0.16 (three washes deep). What's under shows through about half at
+  0.1 of a full load, a fifth at 0.25 and about a tenth at 0.5 (a near-black hides by 0.1). A cap thins the paint,
+  not the brush's edge: a hard `detail` brush capped is a fainter hard line. Gouache dries 3–6 L* paler than it is
+  wet, so named pigments dry to Reference › Pigments' Gouache column, none darker than L* 35, a mix of them no darker
+  than about L* 29, and strength below 1 adds white: for a near-black, mix a hex part at strength 1 (`'#10171f'`
+  dries to L* 10). It barely travels (spread 0.1) and redissolves when lifted dry (0.9). A gouache layer over set
+  watercolour covers by scatter.
 - **Crayon**: no water and no wet history: every crayon wash says `wetHistory: false`. `burnish: true` on a paint
   charge presses wax into every valley. Crossing layers stack in the tooth. An eraser is a lift. Wax resists a later
   watercolour wash only where written: give that wash's applications `resists` with the crayon strokes as footprints.
@@ -567,6 +587,23 @@ mixing media on one paper picks one tooth. One sheet has one water too (**NEW**)
 that declared the sheet (the document's, for the root), and `on` reads that medium's sheen. A gouache layer on the
 root's watercolour sheet lands into watercolour water, while its own paint walks by gouache's spread. A wet wash on a
 sheet a crayon node declared is refused: crayon keeps no wet history.
+
+### Thin films
+
+A capped film (`opacityCap`, or a flood's `load`) is thin paint over whatever lies under it, in any medium:
+
+- **A dark colour lightens toward its tint**, which can read as another hue. `solid('#3b3fb4')` capped at 0.2 over
+  cream reads a vivid cerulean (about `#3d86de`), not a pale indigo, and at 0.5 a saturated royal blue. Pick a capped
+  colour by looking at it capped over its ground, not by its hex; for a shadow, grey the hex (`#2a2548`) until the
+  shadow falls darker, not bluer, than what it lies on.
+- **A cap is per application, per texel.** It bounds what one application builds at each texel, across all its
+  stamps and subpaths, so one stroke crossing itself stays under it. Applications that overlap add up: n caps of c
+  build about n × c. Plan a veil of many marks by their sum: fourteen halo discs at 0.035 lay about half a full load,
+  an opaque disc in gouache, and a faint tint is 0.02–0.05 in all. A film meant to stay even is one application.
+- **Gouache at strength 0 is titanium white.** Strength below 1 adds white (Lightens with, above), so a gouache mix,
+  or a field's end, at strength 0 lays titanium white, not nothing: a mottle from blue to strength 0 is blue to
+  white. Fade gouache toward no paint by the fill's `load` (a field grades it) or its `opacityCap`, keeping the mix's
+  strength; the check warns of a mix at strength 0. Crayon is alike, with its wax white.
 
 ## Time
 
@@ -659,6 +696,11 @@ sheet a crayon node declared is refused: crayon keeps no wet history.
   if wanted), in the wash or a clocked layer of its own on that sheet, then its paint as the next application without
   `on`, so the bloom's label still checks water alone. A bloom rewets its footprint, so a later `damp` landing
   overlapping it waits or fails.
+- **A shape that moves** (a wing beating, an arm swinging, a gate opening) is a rig, not painting time or a reveal:
+  painting time lands and dries paint, and a reveal shows finished paint arriving where it lies, so neither moves
+  what's already there. Paint each moving part on its own cels under one group and pose it by `rigs` (recipe 33). On a
+  sheet the group owns it's drawn as pieces, paint and paper bending each frame with no solve; on shared paper each
+  pose repaints it into the sheet's water.
 
 ### Reveals: finished paint shown over time
 
@@ -679,8 +721,17 @@ nothing but the clocked prefixes it crosses.
   from, to, ease, piecesPerSecond?, cap?})` (`#lib/paint/document/models/painting-reveal.ts`) cuts one, 30 pieces a
   second (a piece a frame at 30 fps) unless told otherwise.
 - **Field**: `{kind: 'field', base, delay?, softS?}`: each texel arrives at `base` plus `delay`, each a `Field<number>`
-  of scene seconds (constant, linear, radial or noise, Reference; a noise field names its `seed`), wherever paint lies:
-  a flood rising, a moon filling out, a petal's colour coming in blotches.
+  of scene seconds (Reference › Fields), wherever paint lies. One of each kind:
+  - constant, the whole film at once: `base: {kind: 'constant', value: 2}`, fading in over `softS` from 2 s;
+  - linear, a flood rising: `base: {kind: 'linear', from: {x: 34, y: 132, value: 0}, to: {x: 34, y: 8, value: 2}}`,
+    its foot at 0 s and its top at 2 s, held past both;
+  - radial, a moon filling out: `base: {kind: 'radial', center: {x: 100, y: 70}, radius: 56, inner: 0, outer: 2}`,
+    its centre first and its rim at 2 s;
+  - noise, a petal's colour coming in blotches: `base: {kind: 'noise', scale: 14, seed: 'petal', a: 0, b: 1.2}`,
+    blotches about 14 px across arriving over 1.2 s. A noise field names its `seed`.
+
+  `delay` adds to `base`: a noise delay rags a rising flood's edge, a linear one sweeps a petal's blotches from its
+  base to its tip (recipe 34, timed from a cue).
 - **What it cuts**: a layer's reveal cuts its own film. A group's cuts every film it holds, a nested reveal multiplying
   in, and the paper of every sheet it owns: an own sheet's card follows its revealed paint, as far as the revealed
   coverage reaches. Never the root's ground, never a sibling's film: on a shared sheet, what a hidden layer's water
@@ -696,14 +747,20 @@ nothing but the clocked prefixes it crosses.
   can a reveal show a lift taking paint up, or water moving it. For marks that must arrive in order where they
   overlap, give each its own layer and reveal; for paint whose arrival changes what it meets, time the applications
   (`at` on a clocked wash) and show the prefix.
-- **Band widths**: share each path as a TS constant between the application and its reveal. A band too narrow trims
-  the paint at its edge. `paintingRevealBandPx(application, medium, {brushOf, wet?, sheetMedia?})`
-  (`#lib/paint/document/models/painting-reveal.ts`) measures the band a stroke application needs round its own
-  subpaths: its stamps as compiled, scatter, wobble and a tip's span, blur and dual among them, at their farthest
-  from the path, and in a wet wash (`wet`, true when left out) as far as its water carries paint in its medium or
-  any of `sheetMedia`, the films it lands in. A band that wide never trims the stroke's own paint. It reads the
-  brush, which a painting source can't resolve: hold the source's width to it in a test (recipe 26). A straight edge
-  needs no band: a linear field across it leaves the film its own fringe (recipe 35).
+- **Band widths**: share each path as a TS constant between the application and its reveal, and size its band by how
+  wide the stroke reads: its brush's visible width, which `studio brushes describe` prints over the diameter, at the
+  stroke's widest, plus its hand's wobble either side. `paintingStrokeVisibleWidthPx(application, brushOf)`
+  (`#lib/paint/document/models/painting-reveal.ts`) works it out. It reads the brush, which a painting source can't
+  resolve, so hold the source's widths to it in a test (recipe 26); the document never derives a band. Then look: a
+  band too narrow trims the stroke's edge, so widen it until the edge reads whole. A band wider than the spacing of
+  its rows reaches the paint beside it and shows that at its own time: a card of rows 112 px apart, banded 480 px wide,
+  arrives in two or three big sweeps, not row by row. `paintingRevealBandPx(application, medium, {brushOf, wet?,
+  sheetMedia?})` is the upper bound, everything the application can lay round its own subpaths: its stamps as
+  compiled, scatter, wobble and a tip's span, blur and dual among them, at their farthest from the path, and in a wet
+  wash (`wet`, true when left out) as far as its water carries paint in its medium or any of `sheetMedia`, the films
+  it lands in. Its faint stamps and carried water mostly can't be seen (a 176 px gouache row's bound is 587 px): reach
+  for it only where carried paint shows, a wet stroke's paint walking visibly past its edge. A straight edge needs no
+  band: a linear field across it leaves the film its own fringe (recipe 35).
 - **Held sources step it**: a reveal is part of the sampled painting, so a plane's `sourceClock: {hold: 6}` steps it on
   sixes with everything else its source reads. For a smooth reveal over stepped properties, leave `sourceClock`
   unheld, quantise the properties, and pass the continuous `moment.at` (recipe 36).
@@ -817,7 +874,7 @@ a run of frames costing alike as one line.
 | 23 | falling rain | an instanced plane: drop variants, `instances(m)` placing each under a lasting key | finished paint moving: no wet interaction; each drop blurs along its own fall |
 | 24 | collage cut-out sliding | the layer with `sheet: {kind: 'own', paper}`; motion on its occurrence | its grain travels with it, as paper does |
 | 25 | paint drifting over still paper | the layer left on its parent's sheet; motion on its occurrence, held | a solve per distinct pose, from its first application on |
-| 26 | ink drawn on the beat | the ink layer's `reveal: {kind: 'strokes', strokes}`, its paths shared with its application, a stroke per beat; plane source `(m) => layersOf(p, keys, {at: m.at})` (below) | the overlap limit: where strokes cross in one film, the crossing shows with the first band; band widths held to `paintingRevealBandPx` in a test |
+| 26 | ink drawn on the beat | the ink layer's `reveal: {kind: 'strokes', strokes}`, its paths shared with its application, a stroke per beat; plane source `(m) => layersOf(p, keys, {at: m.at})` (below) | the overlap limit: where strokes cross in one film, the crossing shows with the first band; band widths held to the pen's visible width (`paintingStrokeVisibleWidthPx`) in a test, then sized by eye |
 | 27 | animated property, smooth | `bracket(v, LEVELS)` → `dissolve(layersOf(lower), layersOf(upper), k)` | ghosting where edges move between levels |
 | 28 | one painting, two places | two planes selecting the same evaluation and layers | each is its own occurrence |
 | 29 | a drawing appearing stroke by stroke | a direct wash with `clock: {origin}` and an `at` per application, on any sheet: a direct wash has no say in its drying | or a reveal over the finished drawing (recipe 26), which pens each stroke along its length |
@@ -848,7 +905,8 @@ const smoothPlane: PlaneProps = {
 ```
 
 Recipe 26, a skyline inked a stroke a beat from the `ink` cue, each stroke drawn over half a beat. The paths are the
-application's and the reveal's; the band holds all the pen lays:
+application's and the reveal's; the band is the pen's visible width and a little more, as a look at the drawn line
+asked:
 
 ```ts
 import type { DirectApplication, PaintingDocument, Reveal, Subpath } from '#lib/paint/document/models/painting-document.ts';
@@ -861,8 +919,8 @@ export const LINES = {
   key: 'lines', kind: 'stroke', subpaths: SKYLINE, brush: { style: 'watercolor', brush: 'ink' }, diameterPx: 6, seed: 'lines',
   charge: { kind: 'paint', mix: { parts: [{ pigment: '#0b1024', amount: 1 }], strength: 1 } },
 } satisfies DirectApplication;
-/** The band round each path, px: held to the pen's paint by ink.test.ts. */
-export const BAND = 14;
+/** The band round each path, px: no narrower than the pen reads (ink.test.ts), and 8 by eye at the line's edge. */
+export const BAND = 8;
 const INKED: Reveal = {
   kind: 'strokes',
   strokes: SKYLINE.map((points, i) => ({ points, widthPx: BAND, from: CUE.ink + i * CLOCK.spb, to: CUE.ink + (i + 0.5) * CLOCK.spb })),
@@ -878,19 +936,20 @@ export default function ink(): PaintingDocument {
 
 Its plane, the module imported as `ink`, reads each frame's moment: `{id: 'ink', depth: 1, source: (m) =>
 layersOf(painting(ink), ['ink'], {at: m.at})}`. Its test resolves the pen's brush from the workspace's style, as a
-still does, and holds the band to all the pen lays (a direct wash: its ink carries no water past its stamps):
+still does, and holds the band to the pen's visible width, so a pen rebrushed wider fails the test before it shows
+trimmed:
 
 ```ts
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { paintingStylesBrushOf, readPaintingSourceStyles } from '#lib/paint/document/engine/painting-source-load.ts';
-import { paintingRevealBandPx } from '#lib/paint/document/models/painting-reveal.ts';
+import { paintingStrokeVisibleWidthPx } from '#lib/paint/document/models/painting-reveal.ts';
 import { painting } from '#lib/paint/document/models/painting-source.ts';
 import * as ink from './ink.painting.ts';
 
-test('the band holds all the pen lays', async () => {
+test('the band is no narrower than the pen reads', async () => {
   const brushOf = paintingStylesBrushOf(await readPaintingSourceStyles([painting(ink)], 'the ink band'));
-  assert.ok(ink.BAND >= paintingRevealBandPx(ink.LINES, 'watercolour', { brushOf, wet: false }));
+  assert.ok(ink.BAND >= paintingStrokeVisibleWidthPx(ink.LINES, brushOf));
 });
 ```
 
@@ -948,6 +1007,10 @@ Before the first look:
   `studio paint check` and missing from the bundle.
 - `studio paint check` passes on each painting source, at the values its scenes set: brushes, fill diameters, keys
   and order, without the GPU.
+- Keys share one namespace across the whole document: a layer, a group, a wash and an application may not share a
+  key, even in different layers (`hill` the layer, `hill-wash`, `hill-flood`). An element built twice by one TS
+  function takes a key prefix as an argument. Keys stay flat because shots address `plane/layer` by them
+  (visibility, rigs, motion nodes, masks).
 - Planes run farthest first. With `<PaintedShotCanvas>`es, the back draws in the first, and each later canvas's
   planes all lie nearer than every plane of an earlier one.
 - A rig names every layer under its group in one part's cels, a layer riding another (a gouache light on its
@@ -975,9 +1038,7 @@ move and shutter show of it; a back painted short of that is refused, naming the
 | visibility | `visibility: {[occurrence]: 0..1 or (m) => …}` | multiplies the occurrence's composite; a group's fades all it holds as one, and an own sheet's owner, a layer or a group, fades its card with its paint (Sheets). Any other layer's fades its own film, and thins the card it lies on only where its paint alone cut it: what its water did to other layers' paint on the sheet stays (Sheets). A picture or three plane's fades its picture or render, and what a mask reads of it. Inside a rig drawn as pieces, a layer or group shows (1) or doesn't (0): fade the rigged group whole. The opaque back takes none, being shown wherever the frame is; a clear back over HTML fades as a nearer plane does |
 | glow, boil, pins, sway, flutter, place | node fields and plays (Reference) | move finished paint on a sheet the occurrence owns, its marks before painting otherwise (Sheets); boil wobble moves finished paint either way. Boil wobble and sway phase follow the occurrence key |
 | rig | `rigs: {[group occurrence]: {parts, pose}}` (Reference) | a rigged node takes place, clock, glow and boil, not pins, sway or flutter. On a sheet the group or a cel owns, paint, paper and edge bend as pieces (**NEW** in shots); otherwise the cels' marks are posed before painting (**NEW**) |
-| moving lay | `lay: (m) => …`, `reach?` (the stage box it stays in) | without `reach` the camera checks it as reaching everywhere. The back laid so is checked at each frame as it draws, its painting holding what the frame and its blur read at the frame's moment and its shutter's ends: a frame it falls short at fails |
-| pin to HTML | `lay: {kind: 'pin', points: [{sourcePx, element: 'title'}], at?}`, one point or two, on a painted plane; the element is the one inside the `<PaintedShot>` with `data-pin="title"` | one moves the plane; two also scale and turn it. A name, not a ref, so a pinned shot stays a module constant. Each element's centre is measured in frame px as each frame draws, once fonts and layout are settled, and again when a pinned element resizes; the camera's reach check runs there (**NEW**). A frame whose element isn't mounted, or whose name two elements carry, fails. An element moved without a re-render or a resize (a sibling's image loading) is seen at the next frame |
-| cover the frame | `lay: {kind: 'cover', box, at?}`, on a painted plane | centres the box where the frame's centre lies and scales it about its centre, unturned, until it holds the frame's corners, through the shot's own camera at `at` (**NEW**). A rolled camera grows the box to hold its turned frame. Laid once as the shot loads, and checked there as a pin is each frame. On the back, the cover's box holds only the frame at `at`, so its painting must reach past the box by its blur and any travel: the refusal names a box that many px smaller |
+| lay | a plane's `lay` (and `reach`): still, moving, or on the frame, a pin or a cover | where its document lies in frame px (Lay forms, below) |
 | hold | plane `clock: {hold: n}` holds its presentation and motion: its lay, visibility and rig poses, and its nodes' plays; `sourceClock: {hold: n}` holds what `source` reads (a callback's prefix, property values and dissolve weights, a picture's `pictureAt`, a three scene's `poseAt`) | each callback reads its clock's held moment, floored to the hold's grid. Both start from the frame's moment; neither holds the other's. The camera still moves through the shutter |
 | masks | `alphaOf` (another drawable's coverage, partial alpha included, where it lies this frame: a plane by id, painted, picture, three or instanced, or a painted plane's occurrence), `invert?` | **NEW**, on painted planes only. It cuts the plane's paint, glow and the own-sheet paper it shapes; the ground stays whole. A plane's masks multiply. To leave a layer unmasked, put it on a second plane at the same depth. No mask reads its own plane, through any chain. Paint shown over time, along a path or by a field, is the document's to say: a layer's or group's `reveal` (Time). `alphaOf` reads through both lays: a painted or picture drawable's coverage at the same plane px, the camera's parallax between their depths left out; a three plane's where its render shows it; an instanced plane's items where the camera shows them, sharp and still. A drawable's coverage is cut by its own plane's masks and visibility. A part inside a rig drawn as pieces isn't read apart: read the rig. A reader is laid anew only when what it reads changes: a painted plane's picture, a picture source's new picture, a three render's frame, an instanced plane's items moved, faded or repainted, a drawable's visibility. A dissolving plane's masks cut both ends alike, and reading one reads its ends' coverage blended as its picture is |
 | instances | `{kind: 'instanced', depths: {near, far}, variants, instances(m)}` | each item lays its variant as a plane at its depth (`lay` from the variant's document px; clear outside its paint), depth-sorted with every drawable, planes first on ties, all within `depths` and nearer than the back. A variant is solved and laid once, whole and centred on the stage (its document no larger), and every item showing it shares that picture; items lie anywhere through the lens. An item's defocus blurs that picture, and may spread it only as far as the stage leaves round the variant's document: paint a variant on a document tight round its paint. A key is one item's lifetime: the same key at the shutter's two ends blurs the item along its own travel; a key missing at either end draws it as if still on its plane, blurred only by the camera's move; a recycled item takes a new key. An item's `visibility` fades it, the plane's all of them. Items take no motion nodes (**NEW**) |
@@ -990,6 +1051,51 @@ move and shutter show of it; a back painted short of that is refused, naming the
 Rules that keep it cheap and correct: presentation never adds paint; warps of finished paint can't reveal paint that
 was never laid; paint on separate sheets or planes never joins another's wet history by overlapping it, while layers
 on one sheet share it; presentation of one layer acts on its own film, never on what its water did to others.
+
+### Lay forms
+
+A plane's `lay` takes its document px to plane px, which the camera then shows (Where a plane point lands, below).
+`PlaneProps` holds it in one of three forms:
+
+| Form | Write | Lays the plane | Checked |
+|---|---|---|---|
+| still | `lay: { placement: { x: -40, y: -40, rotation: 0, scale: 1 }, pivot: { x: 0, y: 0 } }`, or no `lay` (document px are plane px) | by one similarity all shot long: a point p lands at `pivot + (x, y) + R(rotation) · scale · (p − pivot)` (Reference › Lay) | as the shot loads |
+| moving | `lay: (m) => ({ placement: { x: 40 * m.at, y: 0, rotation: 0, scale: 1 }, pivot: { x: 0, y: 0 } }), reach: { x0: -200, y0: 0, x1: 2400, y1: 1080 }` | a still lay read at each frame's moment (the plane's held moment, `clock`); `reach`, optional, the stage box its paint stays within | without `reach` the camera checks it as reaching everywhere. The back laid so is checked at each frame as it draws, its painting holding what the frame and its blur read at the frame's moment and its shutter's ends: a frame it falls short at fails |
+| on the frame: cover | `lay: { kind: 'cover', box: { x0: 40, y0: 40, x1: 1960, y1: 1120 } }`, `at?` | through the shot's own camera at scene second `at` (0) (**NEW**): the box centred where the frame's centre lies and scaled about its centre, unturned, until it holds the frame's corners. A rolled camera grows the box to hold its turned frame | laid once as the shot loads, and checked there as a pin is each frame. On the back, the box holds only the frame at `at`, so its painting must reach past the box by its blur and any travel: the refusal names a box that many px smaller |
+| on the frame: pin | `lay: { kind: 'pin', points: [{ sourcePx: { x: 24, y: 60 }, element: 'title' }], at? }`, one point or two; the element is the one inside the `<PaintedShot>` with `data-pin="title"` | one point moves the plane, putting `sourcePx` on its element's centre; two also scale and turn it | each element's centre is measured in frame px as each frame draws, once fonts and layout are settled, and again when a pinned element resizes; the camera's reach check runs there (**NEW**). A frame whose element isn't mounted, or whose name two elements carry, fails. An element moved without a re-render or a resize (a sibling's image loading) is seen at the next frame |
+
+A lay of any form places a painted plane: a picture or three plane lies where its source puts it, moved by its node.
+A pin names its element, not a ref, so a pinned shot stays a module constant. The cover is the still form needing
+no placement worked out: a frame-sized middle of a larger painting is `{kind: 'cover', box}` of that middle, and the
+back's refusal names one among its fixes (Checking).
+
+`lay` and `reach` go together: `PlaneLay` (from `#studio`) is the union of the three forms. A helper that builds planes
+taking `lay` and `reach` as separate optional fields loses which goes with which, and TypeScript reports the plane
+against the union's last form, as if a still lay had to be a pin or cover. Type the helper's lay as one `PlaneLay`
+(`(id, depth, source, lay: PlaneLay = {}) => ({ id, depth, source, ...lay })`), or write the plane's literal whole.
+
+### Where a plane point lands
+
+A document point on a plane at depth d reaches the frame in two steps: the plane's lay takes it to plane px q, and
+the camera shows q at `c + R(−roll) · (s · (q − c) + shift)`, c the frame's centre, s = zoom · d ÷ (d − dolly), shift
+= −pan · zoom ÷ (d − dolly) (Reference › Camera). A positive pan x slides every plane left, a nearer plane further.
+`paintPlaneSimilarity(pose, depth, paintStageCentre(stage))` is that step as a similarity, and
+`paintCameraMoveAt(clip, s)` the pose `s` seconds into a move clip (scene seconds less its clock's `at`, for a clock
+with no rate, loop or hold), both in `#lib/paint/animation/models/paint-camera.ts`; `paintSimilarityApply` and
+`paintSimilarityInverse` are in `#lib/paint/animation/models/paint-similarity.ts`. They're models, so a scene's
+`*-model.ts` and its tests can line things up across planes. A figure on a plane at depth 1 standing in a lamp's pool
+on the back, at depth 2 and not laid, 4 s into the camera's `PAN` clip:
+
+```ts
+const centre = paintStageCentre(STAGE), pose = paintCameraMoveAt(PAN, 4);
+/** The pool's centre, back document px, where the frame shows it at 4 s. */
+const poolOnFrame = paintSimilarityApply(paintPlaneSimilarity(pose, 2, centre), { x: 1300, y: 860 });
+/** The figure plane's px the frame shows there at 4 s: lay the figure's feet here. */
+const feet = paintSimilarityApply(paintSimilarityInverse(paintPlaneSimilarity(pose, 1, centre)), poolOnFrame);
+```
+
+With the camera panned 120 px right there (pan x 120, no dolly or zoom), the pool at x 1300 shows at 1240, and the
+figure's feet go at 1360: its nearer plane slides 120 px, twice the back's 60.
 
 ### Painted textures
 
@@ -1112,6 +1218,17 @@ each render and read at the floor's screen uv.
 
 A three scene lights itself with three.js's lights. Its renderer is the device's one, shared by every three plane,
 so a scene's lighting choices hold for its own renders alone.
+
+**Focus.** A focus play's `focus` is a depth, as a plane's is, so a dolly keeps the same depth sharp. A three plane
+is blurred texel by texel at each texel's own depth, not at its plane's: the plane's `depth` only anchors
+`plane.point` and `plane.length`. One depth unit is the rest lens's focal length, frameH ÷ (2 tan(fov ÷ 2)) px (2015
+px for a 1080 px frame at fov 30), and world units are px at depth 1, `plane.length(px)` giving px × the plane's
+depth. So a point o world units nearer the camera than a plane at depth d lies at depth d − o ÷ focal px: to hold a
+face sharp, focus there, not on the plane. The turntable's mug stands on a plane at depth 1 through its turntable's
+centre; its painted face is nearer by the mug's 45 mm radius turned by its 17° tilt plus 52 mm up the wall, 58 mm at
+5.9 px a mm, 344 world units, so at depth 1 − 344 ÷ 2015 = 0.83. Focused at 1, aperture 11 blurred the face by
+11 × |1 − 1 ÷ 0.83| ≈ 2.3 px of sigma, soft at delivery size; the lens was right. Focused at 0.83 the face is sharp,
+and the wall at depth 3 takes 11 × (1 − 0.83 ÷ 3) ≈ 8 px.
 
 **Shadows.** A scene asks for them beside its `scene`: `shadows: { softness }`. Directional and spot lights with
 `castShadow` cast, from meshes with `castShadow` onto meshes with `receiveShadow`, each through its own
@@ -1270,13 +1387,15 @@ value}}`, held at its ends past them; `{kind: 'radial', center, radius, inner, o
 `inner` at the centre to `outer` at `radius` and beyond; `{kind: 'noise', scale, seed, a, b}`, features about `scale`
 px across, reaching nearly both ends. A field of mixes grades each pigment's amount (share × strength): its ends may
 name different pigments in any order, a missing one being 0, and an amount may be 0. Its middle is its ends mixed, so
-hues far apart grade through grey (Planning colour and light).
+hues far apart grade through grey (Planning colour and light); in gouache or crayon an end at strength 0 lays white
+(Media: Thin films). A reveal's fields are of scene seconds, one of each kind in Time: Reveals.
 
 **Reveals** (`Reveal`, scene seconds and document px; Time: Reveals): `{kind: 'strokes', strokes: [{points, widthPx,
 from, to, cap?: 'round' | 'flat'}], softS?}` or `{kind: 'field', base, delay?, softS?}`, `base` and `delay` fields of
 seconds. In `#lib/paint/document/models/painting-reveal.ts`: `paintingEasedRevealStrokes(points, {widthPx, from, to,
-ease, piecesPerSecond?, cap?})`, an eased pull as strokes; `paintingRevealBandPx(application, medium, {brushOf, wet?,
-sheetMedia?})`, the px a strokes reveal's band needs to hold all a stroke `application` lays round its subpaths.
+ease, piecesPerSecond?, cap?})`, an eased pull as strokes; `paintingStrokeVisibleWidthPx(application, brushOf)`, how
+wide a stroke `application` reads, px, which sizes its band; `paintingRevealBandPx(application, medium, {brushOf,
+wet?, sheetMedia?})`, the px a band needs to hold all it lays round its subpaths, the bound past that.
 
 **Hand** (`StampStrokeHand`): `profile`: `'taper'` (light, firm, light), `'pressFlick'` (pressed, then flicked off),
 `'swell'` (thin, full, thin), `'drag'` (steady, lifting over its last fifth), or a curve `(u) => pressure` over the
@@ -1307,24 +1426,27 @@ along its outline, leaving a few bare specks rimmed with paint: a wash meant to 
 past it (the meadow's, 30 px), so they fall off the paper. A fill, flooded or stroked, plans its strokes by its
 brush's measured profile, so its brush needs one, measured across its `diameterPx`; the check names the range.
 
-**Lay**: a point p of the document lands at `pivot + (x, y) + R(rotation) · scale · (p − pivot)` frame px, then the
-camera shows its plane. No mirror: scale is positive. A box (`reach`, `cover`) is `{x0, y0, x1, y1}`.
+**Lay** (Composition: Lay forms): a point p of the document lands at `pivot + (x, y) + R(rotation) · scale · (p −
+pivot)` plane px, frame px with the camera at rest, then the camera shows its plane (Where a plane point lands). No
+mirror: scale is positive. A box (`reach`, `cover`) is `{x0, y0, x1, y1}`.
 
 **Camera** (`PaintCameraOptions` without `planes`): `stage: stampStage(frame, margin)`, margin whole and even; at least
 2, more for defocus or a moving lay's reach. `fov` vertical degrees. `lens: {bloom, shutter}`: bloom sigma frame px,
 shutter seconds open. `animationFps` (24). `plays?`: left out, the camera stands at rest, every plane sharp; else
 `[paintCameraPlay(clip, {clock, origin})]`, `origin` naming the play in errors. A `move` clip's keys `{at, pan?,
-dolly?, zoom?, roll?, ease?}`: `at` clip s; `pan` `{x, y}` px as seen at depth 1; `dolly` depth units toward the planes;
-`zoom` 1 at rest; `roll` radians; a field left out is at rest; `ease` (`'linear'`, `'in'`, `'out'`, `'inOut'`) on the
-key it eases into. A `focus` clip's keys `{at, focus, aperture, ease?}`: `focus` the depth held sharp; `aperture`
-frame px of blur sigma at infinite depth. A plane at depth d shows scaled zoom · d ÷ (d − dolly) about the frame
-centre, shifted by −pan · zoom ÷ (d − dolly), turned by −roll. A pan moves a far plane less: give it a document wider
-than the frame by the pan ÷ d it travels, placed with `lay`. The back's painting must reach past everything the frame
+dolly?, zoom?, roll?, ease?}`: `at` clip s; `pan` `{x, y}` px the camera moves as seen at depth 1, a positive x
+sliding the picture left; `dolly` depth units toward the planes; `zoom` 1 at rest; `roll` radians; a field left out
+is at rest; `ease` (`'linear'`, `'in'`, `'out'`, `'inOut'`) on the key it eases into. A `focus` clip's keys `{at,
+focus, aperture, ease?}`: `focus` the depth held sharp, a three scene's texels each at their own (Lighting a three
+scene); `aperture` frame px of blur sigma at infinite depth. A plane at depth d shows scaled zoom · d ÷ (d − dolly)
+about the frame centre, shifted by −pan · zoom ÷ (d − dolly), turned by −roll. A pan moves a far plane less: give it
+a document wider than the frame by the pan ÷ d it travels, placed with `lay`. The back's painting must reach past everything the frame
 reads of it: past the frame by its blur, about 3 × sigma + 2 px each side at its widest defocus, and past any travel
 the move and shutter show; a node moving the back takes in what it brings an edge in (a push in takes in nothing).
 Bare paper lies past its document, so a back short of that is refused (`back.lay`) over every span of the move,
 never clamped, the fix named in its lay's terms: a still lay or none, a scale about its pivot (or a lay literal about
-its centre) or how many px more to paint and how far up and left to lay it then; a cover, a box that many px smaller;
+its centre), a cover of a box inside its painting (`lay: {kind: 'cover', box}`, the still form with no placement to
+work out), or how many px more to paint and how far up and left to lay it then; a cover, a box that many px smaller;
 a pin, its two points nearer; any, how many px more to paint. A back laid by a callback is checked so at each frame's
 moment and shutter ends, the fix for that moment's lay.
 
@@ -1451,6 +1573,7 @@ What the check says today, and what to do:
 | `hill.applications[0].area.boundaries[0].path: a boundary strays more than 1 px from its outline` | a boundary off its outline | snap the path |
 | `a.charge.mix: its strength 1.2 isn't within 0..1` / `b.charge.mix: it names ultramarine twice` / `c.charge.mix.parts[0].pigment: 'ultramarine' isn't a pigment: a hex part is #rrggbb, and a named pigment is its object, WATERCOLOUR_PIGMENTS.ultramarine (lib/paint/materials/models/paint-watercolour-pigments.ts)` | a bad mix; a pigment given by its name rather than its object (a name not in `WATERCOLOUR_PIGMENTS` lists those that are) | fix the mix; import `WATERCOLOUR_PIGMENTS` (from `#studio` too) and give its object |
 | `sky-flood.charge.mix: grades through grey: from #3060c0 to #e08030 it mixes #7b6f71 halfway, 9% of the duller end's chroma: …` (warning) | a field of mixes whose middle, mixed as the engine grades it and laid over white, keeps under half the chroma of its duller end (ends near grey aren't judged) | grade one mix's strength, change hue across layers, or charge the second colour into the wet flood (Planning colour and light) |
+| `bank-flood.charge.mix.b: gouache at strength 0 lays titanium white (PW6) there, not nothing: …` (warning) | a mix, or a field's end, at strength 0 in a medium that lightens with white (gouache, crayon) | keep the mix's strength and fade by the fill's `load` or the charge's `opacityCap` (Media: Thin films) |
 | `landscape.washes: mixes 13 pigments; a layer holds 12: split it into two layers` | too many pigments in one film | split the layer |
 | `a.brush.brush: watercolor has no brush mop: its brushes are wash, filler, …` / `a.brush.brush: gouache's flat can't be read: its pack vvds isn't among gouache's imported packs` | a brush or paper asset the style lacks, or names from a pack not imported | name one it has; import the pack |
 | `a.brush.style: names style watercolor, which the project's project.ts doesn't name in styles (it names gouache, crayon)` / `document.paper.grain.image: kyle-watercolor/grains/kyle-paper-pulpy.png isn't among the images the project's bundle serves of watercolor: …` | a brush or paper asset from a style the source's project doesn't declare, or a pack file its style's brushes and paper don't use, which its bundle wouldn't serve | add the style to `project.ts`'s `styles`, or brush with a declared one; name the paper in the style's `style.ts` |
@@ -1463,7 +1586,7 @@ What the check says today, and what to do:
 | `meadow.masks[0].drawable: reads rain, whose mask reads meadow/sky` / `front.masks[1].drawable: names rain/drop, but rain's items aren't occurrences: read rain` / `photo.masks: masks cut painted films, and a picture plane has none` / `tint.masks[0].drawable: names pond/reed-b, inside pond/reeds, drawn as pieces: read pond/reeds` | a plane's masks, as the shot's load reports them (`shotMaskCheck`, and the shot's rigs and instanced planes) | break the chain; read the plane or the rig; mask a painted plane |
 | `rain.depths.far: 2.5 isn't nearer than the back, street at depth 2` / `rain.variants.drop: paints a 64 × 32 document, and the stage is 52 × 44: a variant is laid whole on the stage` / `rain.motion: is an instanced plane: its items take no nodes; …` / `rain: two items are called a at 2.04 s` / `rain: drop-3-0 at 1.04 s blurs drop 18 px past its document, and the stage leaves it 16: paint drop on a smaller document, or lay the item larger` | an instanced plane at load and its items each frame (`compileShotInstancedPlane`, `shotInstanceProblems`, `shotExposureItems`) | keep items nearer than the back; paint a variant no larger than the stage, its document tight round its paint; lay items by `instances`; one key an item |
 | `label.lay.points: both pin 40, 40: two points set a scale and turn only apart` / `label.lay.points[0].element: isn't mounted: …` / `label.lay.points[0].element: names title, the data-pin of 2 elements in the shot: a pin names one` / `label.lay: plane label's picture must hold what the camera shows of it, … widen the stage's margin` / `photo.lay: is a picture plane, which lies where its source puts it: …` | a pin or cover at load (`shotPlacementProblems`), a cover laid as the shot loads and a pin each frame where it's measured (`shotPinnedPlanes`); a lay on a picture or three plane | pin points apart; mount the element, one with its `data-pin`; keep within the stage's margin; move a picture plane by its node |
-| `sky.lay: is the back, painted 0 px past the frame (push from key 0 to 1), its blur reading 5 px past the frame, and past its painting lies bare paper: lay it 2.8% larger about its centre: { placement: { x: 0, y: 0, rotation: 0, scale: 1.028 }, pivot: { x: 960, y: 540 } }, or paint 5 px more on every side and lay it 5 px up and left: { … }` / `backdrop.lay: …: cover a box 13 px smaller on every side (box: { … }), or paint 13 px more past its box on every side …` / `shot: sky.lay: is the back, painted to 4 px inside the frame (at 3 s), …: at that moment, lay it 2.4% larger about its pivot (placement scale 1.05 → 1.076), …` | the back's painting short of what the frame, its blur, the camera's move and the back's own node read, refused, never clamped: a still lay as the shot loads, a cover as it's laid, a pin each frame it's measured (`shotBarePaperProblem`), a callback's lay each frame (`shotBackFrameProblem`) | apply either fix it names: they're worked out for the lay as written, so the shot then holds. Painting more on the top and left moves every document px of it right and down, so the lay moves up and left with it. A painting meant to sit small inside the frame goes on a nearer plane with `ground: 'paper'`, before a frame-sized bare back (one empty layer) |
+| `sky.lay: is the back, painted 0 px past the frame (push from key 0 to 1), its blur reading 5 px past the frame, and past its painting lies bare paper: lay it 2.8% larger about its centre: { placement: { x: 0, y: 0, rotation: 0, scale: 1.028 }, pivot: { x: 960, y: 540 } }, or cover the frame with a box … px inside its painting: lay: { kind: 'cover', box: { … } }, or paint 5 px more on every side and lay it 5 px up and left: { … }` / `backdrop.lay: …: cover a box 13 px smaller on every side (box: { … }), or paint 13 px more past its box on every side …` / `shot: sky.lay: is the back, painted to 4 px inside the frame (at 3 s), …: at that moment, lay it 2.4% larger about its pivot (placement scale 1.05 → 1.076), …` | the back's painting short of what the frame, its blur, the camera's move and the back's own node read, refused, never clamped: a still lay as the shot loads, a cover as it's laid, a pin each frame it's measured (`shotBarePaperProblem`), a callback's lay each frame (`shotBackFrameProblem`) | apply any fix it names: they're worked out for the lay as written, so the shot then holds. A still back's cover fix replaces its lay with a cover, centred and scaled for you. Painting more on the top and left moves every document px of it right and down, so the lay moves up and left with it. A painting meant to sit small inside the frame goes on a nearer plane with `ground: 'paper'`, before a frame-sized bare back (one empty layer) |
 | `meadow/hil.visibility: names no plane or occurrence of this shot` / `rain/drop-3.visibility: fades an item of rain, which isn't an occurrence: …` / `table.visibility: is the back, shown wherever the frame is: fade a nearer plane or its occurrences` / `meadow/sky.visibility: 1.2 at 3 s; visibility is within 0..1` / `shot.warm: 2..1 isn't a span of scene seconds: …` | the shot's `visibility` (`shotVisibilityProblems` and, for the back, `compilePaintedShot` at load; `shotVisibilityProblem` each frame) and `warm` (`shotWarmProblems`) | name an occurrence; fade an item by its own `visibility`; fade a plane nearer than the back |
 | `label.id: names two painted textures: an id names one` / `label.widthPx: is 0: a painted texture is whole px above 0` / `label.source: selects on a transparent ground: a painted texture is opaque, …` / `label.source: blends paintings that wrap otherwise: …` | the shot's painted textures as it compiles (`compilePaintedShot`, each source at moment 0, beside its planes' problems) and a callback's again each frame (`compiledPaintedTextureSourceAt`, which also refuses one wrapping otherwise than at 0) | one id a texture; leave `ground` out; wrap every painting a texture blends alike |
 | `shot.warm: runs to 240 s; its scene ends at 8 s: warm counts scene seconds, not frames, and stops at the scene's end` (warning) | a `warm` past the end of the scene playing the shot, printed by every render and in the warm's costs (`shotWarmPastScene`) | write the span in scene seconds |
