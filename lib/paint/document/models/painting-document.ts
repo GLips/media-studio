@@ -170,9 +170,9 @@ export type Tip = { readonly brush: BrushRef; readonly diameterPx: number; reado
 
 /**
  * Pigment. `water` 0..1: the wetness the brush brings, raising the paper's toward it by contact (the medium's default
- * when left out). `maxSpreadPx` caps how far this application's paint walks as it lands (uncapped when left out).
- * `opacityCap` 0..1 caps the share of a full load it lays, hue kept; overlaps add up. `burnish`: pressed into every
- * valley (crayon).
+ * when left out). `maxSpreadPx` caps how far this application's paint walks as it lands. `opacityCap` 0..1: the most
+ * of a full load this application builds at a texel, a dark colour thinning toward its tint. `burnish`: pressed into
+ * every valley (crayon).
  */
 export type PaintCharge = {
   readonly kind: 'paint';
@@ -259,7 +259,8 @@ export type AnyApplication = Application | TimedApplication | DirectApplication 
 /**
  * One stroke of a reveal: a band `widthPx` wide round `points` (document px), its front moving along them at constant
  * speed from scene second `from` to `to`. `cap` `'round'` (left out) reaches half the width past each end; `'flat'`
- * stops square. Share a path with its application as a TS constant; hold its width to paintingRevealBandPx in a test.
+ * stops square. Size it by the stroke's visible width (paintingStrokeVisibleWidthPx), then look: wider than its
+ * rows' spacing, it shows theirs.
  */
 export type RevealStroke = StampRevealStroke;
 

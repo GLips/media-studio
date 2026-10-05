@@ -4,7 +4,8 @@
 //
 // A field of mixes is warned of where it grades through grey: the engine grades each pigment's amount, so two hues
 // far apart mix on the way (blue and orange to grey, where blue and rose keep a violet). The middle is mixed by the
-// pure mixer and laid over white, as the engine lays it.
+// pure mixer and laid over white, as the engine lays it. Gouache or crayon at strength 0 is warned of: it lays white,
+// not nothing.
 
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import { paintComponentsBetween, paintComponentsOverWhite, paintMixtureComponents, paintMixtureProblem, type PaintComponent } from '#lib/paint/materials/models/paint-mixture.ts';
@@ -65,8 +66,15 @@ function textPigmentProblem(text: string): string {
   return `${hex} is an object from WATERCOLOUR_PIGMENTS (${NAMED_PIGMENTS_MODULE}): ${Object.keys(WATERCOLOUR_PIGMENTS).join(', ')}`;
 }
 
-/** Problems in one mix at `field` of `owner`; whether the engine can paint it. */
-function checkOneMix(list: PaintingProblemList, owner: string, field: string, mix: Mix, box?: StampBox): boolean {
+/** Why `mix` lays `medium`'s white rather than no paint, or null: a medium lightening with white lays only it at strength 0. */
+function mixWhiteProblem(mix: Mix, medium: PaintMedium): string | null {
+  if (medium.lightening.kind !== 'white' || mix.strength !== 0) return null;
+  return `${medium.name} at strength 0 lays ${medium.lightening.white.name} there, not nothing: fade paint out by a fill's \`load\` `
+    + '(a field too) or its `opacityCap`, keeping the mix\'s strength';
+}
+
+/** Problems in one mix at `field` of `owner`, laid in `medium`; whether the engine can paint it. */
+function checkOneMix(list: PaintingProblemList, owner: string, field: string, mix: Mix, medium: PaintMedium, box?: StampBox): boolean {
   if (!isPaintingList(mix.parts)) {
     list.error(owner, paintingField(field, 'parts'), 'a mix needs its parts', box);
     return false;
@@ -82,6 +90,8 @@ function checkOneMix(list: PaintingProblemList, owner: string, field: string, mi
   }
   const problem = paintMixtureProblem(paintingMixture(mix));
   if (problem) list.error(owner, field, problem, box);
+  const white = !problem && mixWhiteProblem(mix, medium);
+  if (white) list.warn(owner, field, white, box);
   return !problem;
 }
 
@@ -91,7 +101,7 @@ function checkOneMix(list: PaintingProblemList, owner: string, field: string, mi
  */
 export function checkPaintingMix(list: PaintingProblemList, owner: string, field: string, mix: Mix | Field<Mix>, medium: PaintMedium, box?: StampBox): void {
   if ('parts' in mix) {
-    checkOneMix(list, owner, field, mix, box);
+    checkOneMix(list, owner, field, mix, medium, box);
     return;
   }
   const geometry = stampPaintFieldProblem(mix, () => null);
@@ -100,7 +110,7 @@ export function checkPaintingMix(list: PaintingProblemList, owner: string, field
     return;
   }
   const ends = mixFieldEnds(mix);
-  const paintable = ends.map(([end, value]) => checkOneMix(list, owner, paintingField(field, end), value, box)).every(Boolean);
+  const paintable = ends.map(([end, value]) => checkOneMix(list, owner, paintingField(field, end), value, medium, box)).every(Boolean);
   if (!paintable || ends.length !== 2) return;
   const grey = mixFieldGreyProblem(ends[0][1], ends[1][1], medium);
   if (grey) list.warn(owner, field, grey, box);
