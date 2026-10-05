@@ -14,14 +14,13 @@ import { availableParallelism, getPriority, setPriority } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import type { VideoConfig } from 'remotion';
 import { projectSlug, replaySlug } from './project-bundle.ts';
-import { readProjectDeclaration } from '#lib/platform/project/engine/studio-project.ts';
 import { bundleStudioProject } from './studio-bundle.ts';
 import { refuseProjectPaintingErrors } from './render-preflight.ts';
 import { countVideoFrames, runFfmpegAsync } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { writeRenderSnapshot, type RenderSnapshot } from './render-snapshot.ts';
 import { renderInChunks } from './render-chunks.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
-import { readProjectClock } from './project-clock.ts';
+import { openRenderLedger, type RenderLedger } from './render-ledger.ts';
 import { renderVoiceOf } from '#lib/timing/voice/engine/voice-project.ts';
 import { RENDER_PAGE_OPTIONS } from '#lib/platform/browser/engine/render-browser.ts';
 import { inWatchedRenderBrowser, watchedRenderFrames, watchedRenderMedia, type RenderWatch } from '#lib/platform/browser/engine/render-watch.ts';
@@ -73,9 +72,6 @@ export const PAINTING_RENDER_WORKERS = 1;
  */
 const RENDER_NICENESS = 10;
 
-/** One timed pass of a command's renders: `workers` and `gpu` where it rendered frames. */
-export type RenderPass = { pass: string; seconds: number; workers?: number; gpu?: string };
-
 /** The pass a wait for the GPU lease is recorded as, so it never reads as a render's own time. */
 const GPU_WAIT_PASS = 'waiting for the GPU';
 /** A wait shorter than this is the lease's own bookkeeping, not a queue, and isn't recorded. */
@@ -118,6 +114,12 @@ type FrameDraw = {
   readonly width?: number; readonly tabs?: number; readonly onFrame?: (frame: number) => void; readonly onArtifact?: OnArtifact;
 };
 
+/** The lossless chunks `list` names, copied whole into one file at `out`, with its snapshot. */
+async function keepLossless(list: string, out: string, made: Pick<RenderSnapshot, 'frames' | 'timeline' | 'clock' | 'voice' | 'gpu'>) {
+  await runFfmpegAsync(['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', out]);
+  writeRenderSnapshot(out, made);
+}
+
 /**
  * `workers` overrides the video's `renderWorkers` and the default tabs, as a command's --workers does; `lens` is how
  * every render of the session draws the lens, as --lens says; `paintingValues`, what its paintings are painted at over
@@ -129,19 +131,11 @@ export async function openRenderSession(
   if (workers !== undefined && !(Number.isInteger(workers) && workers > 0)) throw new Error(`--workers is ${workers}: give a whole number above 0`);
   // Only ever lower: raising a process's priority back takes root.
   if (getPriority() < RENDER_NICENESS) setPriority(RENDER_NICENESS);
-  const opened = performance.now();
+  const ledger = await openRenderLedger(project), { clock, paints, passes, timed } = ledger;
+  const checking = performance.now();
   const paintings = await refuseProjectPaintingErrors(project);
-  const checked = performance.now();
-  const serveUrl = await bundleStudioProject(project);
-  const passes: RenderPass[] = [
-    ...(paintings ? [{ pass: `${paintings} ${paintings === 1 ? 'painting' : 'paintings'} checked`, seconds: (checked - opened) / 1000 }] : []),
-    { pass: 'bundle', seconds: (performance.now() - checked) / 1000 },
-  ];
-  // Read with the bundle, so every snapshot the session writes holds the clock its renders were made on.
-  const clock = (await readProjectClock(project)) ?? null;
-  const declaration = await readProjectDeclaration(project);
-  // A silent video delivers with no mix and no audio track (render-pipeline.ts).
-  const silent = declaration?.capability === 'silent', paints = Boolean(declaration?.styles?.length);
+  if (paintings) passes.push({ pass: `${paintings} ${paintings === 1 ? 'painting' : 'paintings'} checked`, seconds: (performance.now() - checking) / 1000 });
+  const serveUrl = await timed('bundle', () => bundleStudioProject(project));
   const props = (p: Partial<VideoProps> = {}): VideoProps => ({ captions: false, probe: false, blockouts: false, lens, ...(paintingValues && { paintingValues }), ...p });
   const selectVideo = (inputProps: VideoProps, browser: HeadlessBrowser) => selectComposition({ ...RENDER_PAGE_OPTIONS, serveUrl, id: projectSlug(project), inputProps, puppeteerInstance: browser });
   /** The video's composition with `inputProps`, selected in `browser`, or in a watched one of its own, under the GPU lease. */
@@ -167,14 +161,6 @@ export async function openRenderSession(
   /** Records the wait for the GPU lease a watched browser reports, when it queued. */
   function recordGpuWait(waited: number) {
     if (waited >= GPU_WAIT_RECORDED_SECONDS) passes.push({ pass: GPU_WAIT_PASS, seconds: waited });
-  }
-
-  /** Runs `run` and records it as `pass`. */
-  async function timed<T>(pass: string, run: () => Promise<T> | T, more: Omit<RenderPass, 'pass' | 'seconds'> = {}): Promise<T> {
-    const started = performance.now();
-    const result = await run();
-    passes.push({ pass, seconds: (performance.now() - started) / 1000, ...more });
-    return result;
   }
 
   /**
@@ -327,10 +313,22 @@ export async function openRenderSession(
       else copyFileSync(picture, out);
       const made = { frames: span, timeline, clock, voice: renderVoiceOf(project), gpu: drawn.gpu };
       writeRenderSnapshot(out, { ...made, ...(motion && { motion }) });
-      if (lossless) {
-        await runFfmpegAsync(['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', drawn.list, '-c', 'copy', lossless]);
-        writeRenderSnapshot(lossless, made);
-      }
+      if (lossless) await keepLossless(drawn.list, lossless, made);
+      return out;
+    });
+  }
+
+  /**
+   * `frames` of the video kept lossless at `out` as a slice keeps them for --join (FFV1), with its snapshot, and
+   * nothing encoded: a remote render's piece, which the machine that asked for it encodes.
+   */
+  async function renderLosslessVideo({ out, frames, timeline, onProgress }: {
+    out: string; frames: RenderSnapshot['frames']; timeline: TimelineReport; onProgress?: (p: { progress: number }) => void;
+  }): Promise<string> {
+    mkdirSync(dirname(out), { recursive: true });
+    return withStudioTemp('lossless', async (tmp) => {
+      const drawn = await drawLossless(`${basename(out)} frames`, frames, { inputProps: props(), dir: tmp, fps: timeline.fps, ...(onProgress && { onProgress }) });
+      await keepLossless(drawn.list, out, { frames, timeline, clock, voice: renderVoiceOf(project), gpu: drawn.gpu });
       return out;
     });
   }
@@ -391,8 +389,8 @@ export async function openRenderSession(
   }
 
   return {
-    project, serveUrl, clock, silent, paints, lens, opened, passes, props, compositionFor, workersFor, timed, inBrowser,
-    renderStills, renderReplay, measureFrames, readTimeline, renderVideo, renderTransparentVideo, renderAudio, renderFrameFiles,
+    ...ledger, serveUrl, lens, props, compositionFor, workersFor, inBrowser,
+    renderStills, renderReplay, measureFrames, readTimeline, renderVideo, renderLosslessVideo, renderTransparentVideo, renderAudio, renderFrameFiles,
     /**
      * Gives the GPU back to the queue before the command ends, for a stretch that doesn't draw (a paid generation's
      * minutes). A render after it queues again.
@@ -418,7 +416,7 @@ export function artifactSink() {
  * render's pass includes opening its browser. The wall-clock runs from the session's opening, so it also holds what
  * no pass times (judging a check, writing reports).
  */
-export function formatRenderPasses({ passes, opened }: Pick<RenderSession, 'passes' | 'opened'>): string[] {
+export function formatRenderPasses({ passes, opened }: Pick<RenderLedger, 'passes' | 'opened'>): string[] {
   const width = Math.max(...passes.map((p) => p.pass.length));
   const gpu = [...new Set(passes.flatMap((p) => (p.gpu ? [p.gpu] : [])))];
   const total = passes.reduce((sum, p) => sum + p.seconds, 0);

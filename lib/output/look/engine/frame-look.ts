@@ -1,24 +1,33 @@
 // frame-look.ts: `studio look`'s frames, from the composition or a rendered video: a labelled sheet of chosen frames,
 // before/after pairs against another render with a count of the pixels that really changed, and a stretch's motion.
 // Each source is decoded once per command: one ffmpeg pass selects every frame the command needs, however many.
-import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { tileLabelledImages } from '#lib/platform/ffmpeg/engine/contact-sheet.ts';
 import { formatFrameMotion, type MotionClock } from './frame-motion.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import type { RenderSession } from '#lib/output/render/engine/render-session.ts';
 import { runFfmpeg, runFfprobe } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
+import type { LookComposition, LookCrop } from '../models/look-frames.ts';
 
 export type LookSource =
   | { kind: 'composition'; session: RenderSession; captions: boolean }
   /** A render; its first frame is the project's frame `startsAt` (0 for a whole video, a bar's first for a bar alone). */
-  | { kind: 'video'; file: string; startsAt: number };
+  | { kind: 'video'; file: string; startsAt: number }
+  /**
+   * The composition's stills, drawn already (a remote render's): `fileFor` each of the frames drawn, `w` wide, of a
+   * composition `composition`.
+   */
+  | { kind: 'stills'; composition: LookComposition; w: number; fileFor: (frame: number) => string | undefined };
 
 /** How ffmpeg reads a source's chosen frames in order: its input args, the filter chain after it, and any rendered stills' dir. */
 type LookInput = { args: string[]; chain: string };
 
-/** A region of the frame, in the source's pixels. */
-export type LookCrop = { x: number; y: number; w: number; h: number };
+/** Stills of `frames`, in order, as ffmpeg reads them: numbered for image2's sequence pattern (ffmpeg builds without glob support are common). */
+function stillsInput(frames: number[], dir: string, fileFor: (frame: number) => string): LookInput {
+  frames.forEach((f, i) => copyFileSync(fileFor(f), join(dir, `${String(i).padStart(5, '0')}.jpg`)));
+  return { args: ['-framerate', String(PAIRING_RATE), '-i', join(dir, '%05d.jpg')], chain: `settb=1/${PAIRING_RATE},setpts=N` };
+}
 
 /**
  * A pixel really changed when its luma moves more than this (of 255). Two renders of the same code aren't bit for bit
@@ -36,32 +45,6 @@ const MAX_SHEET_TILES = 60, MAX_AGAINST_ROWS = 12;
  */
 const PAIRING_RATE = 30;
 
-/** Frames: `200:210` (inclusive), `200:260:5` (every 5th) or `161,176,191`. */
-export function parseLookFrames(spec: string): number[] {
-  const range = spec.split(':');
-  const frames = range.length > 1 ? stepFrames(range.map(parseLookNumber)) : spec.split(',').map(parseLookNumber);
-  if (!frames.length || !frames.every((f) => Number.isInteger(f) && f >= 0)) {
-    throw new Error(`frames are whole numbers, like 200:210, 200:260:5 or 161,176,191, not ${spec}`);
-  }
-  return [...new Set(frames)].toSorted((a, b) => a - b);
-}
-
-/** A number from a comma or colon list; an empty item is NaN, where Number('') would quietly make it 0. */
-export const parseLookNumber = (item: string) => (item.trim() ? Number(item) : NaN);
-
-function stepFrames([from, to, step = 1, ...rest]: number[]): number[] {
-  if (rest.length || !(step >= 1 && from <= to)) return [NaN];
-  return Array.from({ length: Math.floor((to - from) / step) + 1 }, (_, i) => from + i * step);
-}
-
-export function parseLookCrop(spec: string): LookCrop {
-  const [x, y, w, h, ...rest] = spec.split(',').map(Number);
-  if (rest.length || ![x, y, w, h].every((n) => Number.isInteger(n) && n >= 0) || !(w > 0 && h > 0)) {
-    throw new Error(`--crop is x,y,w,h in the video's pixels, like 0,120,1920,840, not ${spec}`);
-  }
-  return { x, y, w, h };
-}
-
 /** A source opened for reading frames: its rate and size, the project frames it holds, and a one-pass decoder. */
 export type OpenLookSource = Awaited<ReturnType<typeof openLookSource>>;
 
@@ -73,10 +56,21 @@ export async function openLookSource(source: LookSource) {
       name: 'composition', fps: composition.fps, width: composition.width, height: composition.height, first: 0, end: composition.durationInFrames,
       /** Renders `frames` `w` wide into `dir`; the ffmpeg input that reads them in order. */
       async input(frames: number[], w: number, dir: string): Promise<LookInput> {
-        const stills = await session.renderStills(dir, frames, { w, captions });
-        // Numbered in order for image2's sequence pattern: ffmpeg builds without glob support are common.
-        frames.forEach((f, i) => renameSync(stills.fileFor(f), join(dir, `${String(i).padStart(5, '0')}.jpg`)));
-        return { args: ['-framerate', String(PAIRING_RATE), '-i', join(dir, '%05d.jpg')], chain: `settb=1/${PAIRING_RATE},setpts=N` };
+        const drawn = join(dir, 'drawn');
+        const stills = await session.renderStills(drawn, frames, { w, captions });
+        return stillsInput(frames, dir, stills.fileFor);
+      },
+    };
+  }
+  if (source.kind === 'stills') {
+    const { composition, w: drawnWidth, fileFor } = source;
+    return {
+      name: 'composition', fps: composition.fps, width: composition.width, height: composition.height, first: 0, end: composition.durationInFrames,
+      async input(frames: number[], w: number, dir: string): Promise<LookInput> {
+        const missing = frames.filter((f) => fileFor(f) === undefined);
+        if (w !== drawnWidth || missing.length) throw new Error(`the stills drawn are ${drawnWidth} wide${missing.length ? `, with no frame ${missing.join(', ')}` : ''}: this look asked for frames ${w} wide`);
+        mkdirSync(dir, { recursive: true });
+        return stillsInput(frames, dir, (f) => fileFor(f)!);
       },
     };
   }

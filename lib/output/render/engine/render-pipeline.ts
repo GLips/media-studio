@@ -16,6 +16,7 @@ import { measureLoudness } from '#lib/platform/ffmpeg/engine/loudness.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { artifactSink, DELIVERY_AUDIO_CODEC, DELIVERY_ENCODING, formatRenderPasses, TIMELINE_REPORT_NAME, type RenderSession } from './render-session.ts';
 import { renderSnapshotPath } from './render-snapshot.ts';
+import type { RenderLedger } from './render-ledger.ts';
 import { sfxEventsFrom, type SfxEvent } from '#lib/output/sfx-cues/models/cue-events.ts';
 import { sfxMarkArtifactName, type SfxMark } from '#lib/timing/sound/models/sfx-marks.ts';
 import { sfxCueListReport } from '#lib/output/sfx-cues/engine/project-cue-list.ts';
@@ -27,13 +28,13 @@ import type { VideoProps } from '#lib/picture/video/models/composition-props.ts'
 import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
 import { measureWithFfmpeg, runFfmpeg, runFfprobe } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 
-const outDirFor = (session: RenderSession) => join(session.project, 'out');
+const outDirFor = (ledger: Pick<RenderLedger, 'project'>) => join(ledger.project, 'out');
 const videoFor = (session: RenderSession, captions: boolean) => join(outDirFor(session), captions ? 'video.mp4' : 'video-plain.mp4');
 // Named apart, not video.webm and video.mov, so each has a snapshot of its own (render-snapshot.ts names it by basename).
 const transparentVideosFor = (session: RenderSession) => ({ webm: join(outDirFor(session), 'video.webm'), mov: join(outDirFor(session), 'video-hevc.mov') });
 /** Removes a render that no longer matches the project, and its snapshot. */
 const removeRender = (video: string) => { for (const file of [video, renderSnapshotPath(video)]) rmSync(file, { force: true }); };
-const masterWavFor = (session: RenderSession, auditionSfxCueList = false) => join(outDirFor(session), auditionSfxCueList ? 'mix-sfx-cues.wav' : 'mix.wav');
+const masterWavFor = (ledger: Pick<RenderLedger, 'project'>, auditionSfxCueList = false) => join(outDirFor(ledger), auditionSfxCueList ? 'mix-sfx-cues.wav' : 'mix.wav');
 
 // ---------- the check ----------
 
@@ -174,17 +175,18 @@ export async function renderMasteredMix(session: RenderSession, { timeline, audi
   if (session.silent) throw new Error(`${basename(session.project)} is silent (project.ts): it plays no voice, music or sound, so it has no mix`);
   return withStudioTemp('mix', async (tmp) => {
     const raw = await session.renderAudio({ out: join(tmp, 'raw.wav'), inputProps: session.props({ auditionSfxCueList }) });
-    return masterMix(session, raw, masterWavFor(session, auditionSfxCueList), { beatClicks: timeline.beatClicks });
+    return masterRenderedMix(session, raw, { beatClicks: timeline.beatClicks, auditionSfxCueList });
   });
 }
 
 /**
- * Masters `raw`, the video's sound as rendered, to `masterWav` (see renderMasteredMix). A draft of `beatClicks` gains
- * only to the peak ceiling: sparse clicks reach delivery loudness only by the limiter crushing each one.
+ * Masters `raw`, the video's sound as rendered (here or by a remote render), to out/mix.wav, or out/mix-sfx-cues.wav
+ * for `auditionSfxCueList` (see renderMasteredMix). A draft of `beatClicks` gains only to the peak ceiling: sparse
+ * clicks reach delivery loudness only by the limiter crushing each one.
  */
-function masterMix(session: RenderSession, raw: string, masterWav: string, { beatClicks }: { beatClicks: boolean }): string {
-  const mastering = performance.now();
-  mkdirSync(outDirFor(session), { recursive: true });
+export function masterRenderedMix(ledger: Pick<RenderLedger, 'project' | 'passes'>, raw: string, { beatClicks, auditionSfxCueList = false }: { beatClicks: boolean; auditionSfxCueList?: boolean }): string {
+  const mastering = performance.now(), masterWav = masterWavFor(ledger, auditionSfxCueList);
+  mkdirSync(outDirFor(ledger), { recursive: true });
   const before = measureLoudness(raw);
   if (before.lufs === -Infinity) {
     throw new Error("the mix renders silent: a voice, music or sound the video plays didn't sound. A video with no sound at all declares `capability: 'silent'` in project.ts");
@@ -211,7 +213,7 @@ function masterMix(session: RenderSession, raw: string, masterWav: string, { bea
     }
     const after = measureLoudness(masterWav);
     console.error(`mix: ${before.lufs} LUFS, ${before.truePeak} dBTP → +${gain.toFixed(1)} dB and limited at ${ceiling.toFixed(1)} → ${after.lufs} LUFS, ${after.truePeak} dBTP (${encodedPeak} encoded)`);
-    session.passes.push({ pass: 'mastering', seconds: (performance.now() - mastering) / 1000 });
+    ledger.passes.push({ pass: 'mastering', seconds: (performance.now() - mastering) / 1000 });
     return masterWav;
   });
 }
@@ -257,7 +259,7 @@ function reviewDelivery(session: RenderSession, captions: boolean, timeline: Tim
     problems.push('has no audio stream');
   } else {
     const { lufs, truePeak } = measureLoudness(video);
-    // A draft of beat clicks is mastered to its peaks alone (see masterMix).
+    // A draft of beat clicks is mastered to its peaks alone (see masterRenderedMix).
     if (!timeline.beatClicks && Math.abs(lufs - DELIVERY_LUFS) > 1) problems.push(`measures ${lufs} LUFS, not ${DELIVERY_LUFS} ± 1`);
     if (truePeak > DELIVERY_TRUE_PEAK) problems.push(`peaks at ${truePeak} dBTP, over ${DELIVERY_TRUE_PEAK}`);
     sound = `${lufs} LUFS${timeline.beatClicks ? ' (beat clicks, a draft)' : ''}, ${truePeak} dBTP`;
@@ -409,7 +411,7 @@ async function renderTransparentDelivery(session: RenderSession, timeline: Timel
 
 /** The delivered videos' soundtrack: `sound`, the captioned render's, mastered to out/mix.wav, or none for a silent project. */
 function deliveredSoundtrack(session: RenderSession, sound: string | undefined, timeline: TimelineReport): string | undefined {
-  if (!session.silent) return masterMix(session, sound!, masterWavFor(session), { beatClicks: timeline.beatClicks });
+  if (!session.silent) return masterRenderedMix(session, sound!, { beatClicks: timeline.beatClicks });
   // An old mix would read as this video's.
   rmSync(masterWavFor(session), { force: true });
   console.error('silent (project.ts): no voice, music or sound, so no mix, mastering or loudness review; the video has no audio track');

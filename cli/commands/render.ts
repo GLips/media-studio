@@ -37,7 +37,8 @@ export default defineCommand({
     } else if (args.animatic) {
       console.log(await pipeline.renderAnimatic(session, { out: inProject(args.out ?? 'out/wip/animatic.mp4') }));
     } else if (args.join) {
-      console.log(await slices.joinVideoSlices(session, { dir: inProject(args.join), out: inProject(args.out ?? 'out/wip/joined.mp4') }));
+      const mixFor = (timeline: Parameters<typeof pipeline.renderMasteredMix>[1]['timeline']) => pipeline.renderMasteredMix(session, { timeline });
+      console.log(await slices.joinVideoSlices(session, { dir: inProject(args.join), out: inProject(args.out ?? 'out/wip/joined.mp4'), mixFor }));
     } else {
       for (const file of await pipeline.renderDeliveredVideo(session, { plain: Boolean(args.plain), onDraft: (warning) => console.error(warning) })) console.log(file);
     }

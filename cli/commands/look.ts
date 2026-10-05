@@ -43,17 +43,11 @@ export default defineCommand({
       if (Boolean(args.frames) === Boolean(args.bar)) throw new Error('--graph=models reads a stretch: give it --bar=N or --frames=a:b');
       if (args.out && !/\.png$/i.test(args.out)) throw new Error(`a --graph is an image: give --out a .png name, not ${args.out}`);
       const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
-      const { parseLookFrames } = await import('#lib/output/look/engine/frame-look.ts');
+      const { lookBarFrames, parseLookFrames } = await import('#lib/output/look/models/look-frames.ts');
       const { readProjectClock } = await import('#lib/output/render/engine/project-clock.ts');
       const { lookPieceModels } = await import('#lib/output/look/engine/piece-look.ts');
       const project = resolveStudioProjectWith(args.project, 'timeline.ts');
-      const frames = await (async () => {
-        if (args.frames) return parseLookFrames(args.frames);
-        const clock = await readProjectClock(project);
-        const bar = clock?.bars.find((b) => b.n === Number(args.bar));
-        if (!bar) throw new Error(`there's no bar ${args.bar}: bars are ${clock?.bars.map((b) => b.n).join(', ')}`);
-        return Array.from({ length: bar.to - bar.from }, (_, i) => bar.from + i);
-      })();
+      const frames = args.frames ? parseLookFrames(args.frames) : lookBarFrames(await readProjectClock(project), args.bar ?? '', project);
       const lines = await lookPieceModels(project, {
         frames, tracks: args.tracks?.split(',').map((t) => t.trim()).filter(Boolean),
         out: args.out && isAbsolute(args.out) ? args.out : join(project, args.out ?? 'out/check/models.png'),
@@ -78,8 +72,10 @@ export default defineCommand({
     }
 
     if ([args.frames, args.bar, args.sheet, args.strip].filter(Boolean).length > 1) throw new Error('choose frames one way: --frames, --bar, --sheet or --strip');
+    if (args.motion && args.against) throw new Error('--motion measures one render: leave out --against');
     const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
-    const { lookAgainst, lookFrameSheet, lookMotion, openLookSource, parseLookCrop, parseLookFrames, parseLookNumber } = await import('#lib/output/look/engine/frame-look.ts');
+    const { lookAgainst, lookFrameSheet, lookMotion, openLookSource } = await import('#lib/output/look/engine/frame-look.ts');
+    const { lookFramesOf, parseLookCrop } = await import('#lib/output/look/models/look-frames.ts');
     const { readProjectClock } = await import('#lib/output/render/engine/project-clock.ts');
     const project = resolveStudioProjectWith(args.project, 'video.tsx');
     const inProject = (file: string) => (isAbsolute(file) ? file : join(project, file));
@@ -87,57 +83,39 @@ export default defineCommand({
     const givenStart = args['starts-at'] === undefined ? undefined : Number(args['starts-at']);
     if (givenStart !== undefined && !(Number.isInteger(givenStart) && givenStart >= 0)) throw new Error(`--starts-at is a frame number, not ${args['starts-at']}`);
     const crop = args.crop ? parseLookCrop(args.crop) : undefined;
+    const cols = Number(args.cols ?? (args.against ? 1 : args.strip ? 5 : 3)), w = Number(args.w ?? (args.strip ? 384 : 640));
+    if (!(Number.isInteger(cols) && cols > 0 && Number.isInteger(w) && w > 0)) throw new Error('--cols and --w are positive whole numbers');
+    const still = Number(args.still);
+    if (args.motion && !(still > 0)) throw new Error(`--still is a positive mean change, not ${args.still}`);
     const { loadRenderSnapshot } = await import('#lib/output/render/engine/render-snapshot.ts');
-    const { frameAtSecond } = await import('#lib/picture/frame/models/frame.ts');
     // Where a render starts in the project: its snapshot says, and --starts-at places only one without a snapshot.
     const renderSource = (file: string) => {
       const loaded = loadRenderSnapshot(file);
       return { kind: 'video' as const, file, startsAt: loaded.kind === 'snapshot' ? loaded.snapshot.frames.from : givenStart ?? 0 };
     };
+    const ask = { frames: args.frames, bar: args.bar, sheet: args.sheet, strip: args.strip, step, every: Boolean(args.motion || args.against) };
+    const clock = args.bar || args.motion ? await readProjectClock(project) : undefined;
 
-    const source = await openLookSource(args.video
+    type LookSource = Parameters<typeof openLookSource>[0];
+    const look = async (opening: LookSource) => {
+      const source = await openLookSource(opening);
+      // A render names its frames by the clock: it must be the whole reel or one bar, placed by its snapshot or --starts-at.
+      if (clock && args.video && !(source.first === 0 && source.end === clock.end) && !clock.bars.some((b) => b.from === source.first && b.to === source.end)) {
+        throw new Error(`${source.name} holds frames ${source.first}–${source.end - 1}, which is neither the whole reel (0–${clock.end - 1}) nor one bar: ` +
+          'render it again with studio render --frames, whose snapshot places it, or give one without a snapshot --starts-at=<its bar\'s first frame>');
+      }
+      const frames = lookFramesOf(ask, source, { clock, project });
+      if (args.motion) {
+        if (frames.some((f, i) => i && f !== frames[i - 1] + 1)) throw new Error('--motion measures a stretch: --frames=a:b or --bar=N');
+        return lookMotion(source, frames[0], frames.at(-1)!, { crop, still, clock, out });
+      }
+      return args.against
+        ? lookAgainst(await openLookSource(renderSource(inProject(args.against))), source, frames, { crop, cols, w, out })
+        : lookFrameSheet(source, frames, { crop, cols, w, out });
+    };
+    const lines = await look(args.video
       ? renderSource(inProject(args.video))
       : { kind: 'composition', session: await openStudioRenderSession(project, { lens: args.lens, paintings: args.set }), captions: Boolean(args.captions) });
-    const clock = args.bar || args.motion ? await readProjectClock(project) : undefined;
-    // A render names its frames by the clock: it must be the whole reel or one bar, placed by its snapshot or --starts-at.
-    if (clock && args.video && !(source.first === 0 && source.end === clock.end) && !clock.bars.some((b) => b.from === source.first && b.to === source.end)) {
-      throw new Error(`${source.name} holds frames ${source.first}–${source.end - 1}, which is neither the whole reel (0–${clock.end - 1}) nor one bar: ` +
-        'render it again with studio render --frames, whose snapshot places it, or give one without a snapshot --starts-at=<its bar\'s first frame>');
-    }
-    const frames = (() => {
-      if (args.frames) return parseLookFrames(args.frames);
-      if (args.bar) {
-        if (!clock) throw new Error(`${project} has no bar clock (a timeline.ts): give --frames`);
-        const bar = clock.bars.find((b) => b.n === Number(args.bar));
-        if (!bar) throw new Error(`there's no bar ${args.bar}: bars are ${clock.bars.map((b) => b.n).join(', ')}`);
-        return Array.from({ length: bar.to - bar.from }, (_, i) => bar.from + i);
-      }
-      const frameAt = (t: number) => frameAtSecond(t, source.fps, source.end);
-      if (args.sheet) return [...new Set(args.sheet.split(',').map((t) => frameAt(parseLookNumber(t))))].toSorted((a, b) => a - b);
-      if (args.strip) {
-        const [from, to] = args.strip.split(':').map(parseLookNumber);
-        if (!(Number.isFinite(from) && from < to)) throw new Error(`--strip is a stretch of seconds like 4:5, not ${args.strip}`);
-        return [...new Set(Array.from({ length: Math.floor((to - from) / step + 1e-6) + 1 }, (_, i) => frameAt(from + i * step)))];
-      }
-      if (args.motion || args.against) return Array.from({ length: source.end - source.first }, (_, i) => source.first + i);
-      throw new Error('give frames: --frames=200:210, --bar=3, --sheet=0.5,4,9 or --strip=4:5');
-    })();
-    if (frames.some((f) => !Number.isFinite(f))) throw new Error('frames and times are numbers');
-
-    let lines: string[];
-    if (args.motion) {
-      if (args.against) throw new Error('--motion measures one render: leave out --against');
-      if (frames.some((f, i) => i && f !== frames[i - 1] + 1)) throw new Error('--motion measures a stretch: --frames=a:b or --bar=N');
-      const still = Number(args.still);
-      if (!(still > 0)) throw new Error(`--still is a positive mean change, not ${args.still}`);
-      lines = await lookMotion(source, frames[0], frames.at(-1)!, { crop, still, clock, out });
-    } else {
-      const cols = Number(args.cols ?? (args.against ? 1 : args.strip ? 5 : 3)), w = Number(args.w ?? (args.strip ? 384 : 640));
-      if (!(Number.isInteger(cols) && cols > 0 && Number.isInteger(w) && w > 0)) throw new Error('--cols and --w are positive whole numbers');
-      lines = args.against
-        ? await lookAgainst(await openLookSource(renderSource(inProject(args.against))), source, frames, { crop, cols, w, out })
-        : await lookFrameSheet(source, frames, { crop, cols, w, out });
-    }
     for (const line of lines) console.log(line);
   },
 });
