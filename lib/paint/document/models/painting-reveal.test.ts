@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { stampRevealShownAt } from '#lib/paint/painting/models/stamp-reveal.ts';
 import type { PaintingBrushOf } from './painting-deposit-compile.ts';
 import type { Application, DirectApplication, Mix } from './painting-document.ts';
-import { paintingEasedRevealStrokes, paintingRevealBandPx } from './painting-reveal.ts';
+import { paintingEasedRevealStrokes, paintingRevealBandPx, paintingStrokeVisibleWidthPx } from './painting-reveal.ts';
 import { paintingTestBrushOf } from './painting-test-brush.ts';
 
 const PATH = [{ x: 20, y: 60 }, { x: 180, y: 60 }];
@@ -11,10 +11,14 @@ const STROKE = { kind: 'stroke', subpaths: [PATH], brush: { style: 'watercolor',
 const INK: Mix = { parts: [{ pigment: '#223344', amount: 1 }], strength: 0.8 };
 const LINE = { ...STROKE, key: 'line', charge: { kind: 'paint', mix: INK } } satisfies DirectApplication;
 
-test("a band holds what a stroke lays: a scattered brush's stamps strayed from the path, a wet wash's water past them", () => {
+test("a stroke reads its visible width, and a band holding all it lays reaches past it: a scattered brush's stamps strayed from the path, a wet wash's water past them", () => {
   const brush = paintingTestBrushOf({ style: 'watercolor', brush: 'wash' });
   const scattered: PaintingBrushOf = () => ({ ...brush, scatter: { count: 3, radius: 1, lateral: 0.5 } });
   const plain = paintingRevealBandPx(LINE, 'watercolour', { brushOf: paintingTestBrushOf, wet: false });
+  // The test brush's even edge reads its diameter wide; a point scaled 1.5 widens it, and wobble moves it 4 px each way.
+  assert.equal(paintingStrokeVisibleWidthPx(LINE, paintingTestBrushOf), LINE.diameterPx);
+  const wavering = { ...LINE, subpaths: [[PATH[0], { ...PATH[1], scale: 1.5 }]], hand: { wobble: { position: 0.25 } } } satisfies DirectApplication;
+  assert.equal(paintingStrokeVisibleWidthPx(wavering, paintingTestBrushOf), 32);
   assert.ok(plain >= LINE.diameterPx, `a plain stroke's band, ${plain} px, holds its diameter`);
   // Scattered up to a diameter off the path, its stamps need near a diameter more each side.
   assert.ok(paintingRevealBandPx(LINE, 'watercolour', { brushOf: scattered, wet: false }) > plain + LINE.diameterPx);

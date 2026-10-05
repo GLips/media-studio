@@ -161,6 +161,10 @@ export function stampBrushEdgeOffsetMean(profile: StampBrushMeasuredProfile, dia
   return sum / (2 * n);
 }
 
+/** How wide a firm stroke at `diameter` reads, px: twice its mean visible offset, as `studio brushes describe` prints it. */
+export const stampBrushVisibleWidth = (profile: StampBrushMeasuredProfile, diameter: number, brush: string): number =>
+  2 * stampBrushEdgeOffsetMean(profile, diameter, brush);
+
 /** A layer's tip support at the samples either side of a diameter: a bound takes the larger of the two. */
 export type StampTipSupportAround = readonly [StampTipSupport, StampTipSupport];
 

@@ -5,7 +5,7 @@
 
 import type { StampBrushMedia, StampScaleTarget } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampPressureShare } from '#lib/paint/brush/models/stamp-dynamics.ts';
-import { stampBrushEdgeOffsetMean, stampBrushProfileRange } from '#lib/paint/brush/models/stamp-brush-profile.ts';
+import { stampBrushProfileRange, stampBrushVisibleWidth } from '#lib/paint/brush/models/stamp-brush-profile.ts';
 import { STAMP_BRUSH_PROBE_LEAST_DIAMETER } from '#lib/paint/brush-packs/models/stamp-brush-profile-probes.ts';
 import { STAMP_PRESSURE_GRAIN_OWNER, stampBrushPaperContact, type StampPaperContact } from '#lib/paint/painting/models/stamp-paper-contact.ts';
 import type { ResolvedStampPaintStyle, StampStyleBrush } from './style.ts';
@@ -50,7 +50,7 @@ function footprintOf(brush: StampStyleBrush): StampStyleBrushFootprint {
   if (profile.kind === 'unmeasured') return { kind: 'unmeasured', why: 'its pack measured no profile for it' };
   const { min, max } = stampBrushProfileRange(profile);
   const widths = STAMP_STYLE_BRUSH_DIAMETERS.filter((diameter) => diameter >= min && diameter <= max)
-    .map((diameter) => ({ diameter, ratio: (2 * stampBrushEdgeOffsetMean(profile, diameter, brush.name)) / diameter }));
+    .map((diameter) => ({ diameter, ratio: stampBrushVisibleWidth(profile, diameter, brush.name) / diameter }));
   return { kind: 'measured', smallest: min, largest: max, widths };
 }
 

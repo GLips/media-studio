@@ -2,9 +2,10 @@
 // is cut by its layer's reveal and every enclosing group's, multiplied. Each is read in its node's frame: a node posed
 // on a sheet it doesn't own carries its reveal with its marks, while one at or above the sheet's owner moves the
 // finished sheet, so its reveal is read where the sheet was painted. And for authors: an eased pull as reveal strokes,
-// and how wide a band must be to show all an application lays.
+// how wide a stroke reads, which sizes its band, and the band showing all it lays.
 
 import { PAINT_SIMILARITY_IDENTITY, paintSimilarityInverse, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
+import { stampBrushMeasuredProfile, stampBrushVisibleWidth } from '#lib/paint/brush/models/stamp-brush-profile.ts';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { stampPolylineDistance } from '#lib/paint/painting/models/stamp-area-boundaries.ts';
 import { stampDepositWater } from '#lib/paint/painting/models/stamp-paint-action.ts';
@@ -116,8 +117,8 @@ export type PaintingRevealBandSetting = { readonly brushOf: PaintingBrushOf; rea
 
 /**
  * The band, px, a strokes reveal needs to show all stroke `application` lays round its subpaths: its compiled stamps'
- * farthest reach, and when `wet` (true, left out) as far as its water carries paint in `medium` or any of
- * `sheetMedia`. A painting source can't resolve a brush: hold its widths to this in a test.
+ * farthest reach and, when `wet` (true, left out), as far as its water carries paint in `medium` or any of
+ * `sheetMedia`. An upper bound, mostly faint stamps and water nobody sees: needed only where carried paint shows.
  */
 export function paintingRevealBandPx(
   application: AnyApplication & { readonly kind: 'stroke' }, medium: MediumName, { brushOf, wet = true, sheetMedia = [] }: PaintingRevealBandSetting,
@@ -131,4 +132,18 @@ export function paintingRevealBandPx(
   const capped = charge.kind === 'paint' && charge.maxSpreadPx !== undefined ? paintingCappedMedium(own, charge.maxSpreadPx, application.diameterPx) : own;
   const carried = wet ? stampSheetWetReach(sheetMedia.map((name) => PAINT_MEDIA[name]), deposit, capped, stampDepositWater(deposit, capped)) : 0;
   return Math.ceil(2 * (farthest + stampMarksReach(deposit) + carried));
+}
+
+/**
+ * How wide stroke `application` reads, px, which sizes a strokes reveal's band: its brush's visible width (as `studio
+ * brushes describe` prints it) at `diameterPx` times its points' largest `scale`, plus its hand's wobble either side.
+ * Refuses a brush without a measured profile. A painting source can't resolve a brush, so a test holds its bands to
+ * this.
+ */
+export function paintingStrokeVisibleWidthPx(application: AnyApplication & { readonly kind: 'stroke' }, brushOf: PaintingBrushOf): number {
+  const brush = brushOf(application.brush);
+  let scale = 0;
+  for (const path of application.subpaths) for (const point of path) scale = Math.max(scale, point.scale ?? 1);
+  const wobble = 2 * (application.hand?.wobble?.position ?? 0) * application.diameterPx;
+  return stampBrushVisibleWidth(stampBrushMeasuredProfile(brush), application.diameterPx * scale, brush.name) + wobble;
 }
