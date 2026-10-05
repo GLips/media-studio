@@ -713,12 +713,15 @@ tips, and the capture rig that has Photoshop paint probes and references (docs/p
 procreate-brushes only for the S-curve its references are painted along, Procreate's preview stroke.
 
 **brush-packs** is a pack on disk: the manifest (`stamp-paint-pack.ts`), the files an importer writes under
-`work/styles/<style>/brushes/<pack>/`, the three importers, and the URLs a browser page finds a served pack's files
-at (`stamp-paint-pack-urls.ts`, read back by `readServedStampPaintPack`). It is its own feature because a pack and its
-importer read both apps' brushes; inside either app's feature, that app would import the other back.
+`work/styles/<style>/brushes/<pack>/`, the three importers, the profiles they measure, stored beside the pack a file a
+brush and key and found by computing the key (`stamp-brush-profile-store.ts`; a pack a style paints from is a
+`ProfiledStampPaintPack`), and the URLs a browser page finds a served pack's files at (`stamp-paint-pack-urls.ts`,
+read back by `readServedStampPaintPack`). It is its own feature because a pack and its importer read both apps'
+brushes; inside either app's feature, that app would import the other back.
 
 **style** is a style in a project: `StampPaintStyle` (`style.ts`), the styles a project names, checked before a bundle
-(`project-styles.ts`), the bundle's styles module (`@stamp-paint-styles`) and `StampPainting`, a painting in a scene.
+(`project-styles.ts`), the bundle's styles module (`@stamp-paint-styles`, carrying the profiles Node found for the
+brushes each style names, `style-packs.ts`) and `StampPainting`, a painting in a scene.
 It also reads a workspace style in Node (`readWorkspaceStampPaintStyle`), and `studio brushes describe` prints its
 brushes as numbers to plan by (`style-brush-numbers.ts`, read by `workspace-style-brush-numbers.ts`).
 

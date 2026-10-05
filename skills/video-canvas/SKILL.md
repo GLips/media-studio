@@ -23,7 +23,8 @@ each brush close, rough or off against its Procreate preview (a score from the b
 painted look on this machine; say so, and offer what the studio's React code can do (SVG strokes, masks, three.js).
 A style whose `brushes/` is missing must be imported first (`studio brushes import`, from a Procreate `.brushset` or a
 Photoshop `.abr` or `.tpl`, docs/private-styles.md); the
-bundle refuses it, naming where the pack came from.
+bundle refuses it, naming where the pack came from. A brush refused for having no profile names the command that
+measures it (`studio brushes import --style <name> --pack <pack>`, no archive): run it, then paint.
 
 A project paints with a style once its `project.ts` names it (`styles: ['watercolor']`); then it imports
 `#styles/<name>/…`. Work in `work/projects/2026-09-watercolor-paintings/` shows a character and a landscape end to end.
