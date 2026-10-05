@@ -1378,14 +1378,16 @@ problem is about, grown by half its brush, and `warning: ` before a warning. Bru
 against the styles in `work/styles/`: inside a project (`work/projects/<p>/`), only those its `project.ts` names in
 `styles`, and of each only the images its bundle serves (its brushes' tips and grains, and its paper's). A fill's
 `diameterPx` is checked against its brush's measured range. A clean source prints its summary; any error fails the
-run:
+run. The check reads only the water each application states, so it warns of an `on` that can never hold, and leaves
+every other `on` to a solve, which alone sees the paper as it is when the application lands. The last line counts
+those: 0 errors only means the source has no error the check can see.
 
 ```
 $ node cli/studio.ts paint check lib/paint/document/models/meadow.painting.ts
 meadow (hillTopPx 200): 640 × 360 px, watercolour, on #f4f2ed paper
   landscape: layer, watercolour, on the root's sheet: sky (2 applications), hill (1 application)
   cloud: layer, watercolour, on the root's sheet: cloud-wash (1 application)
-paint check: 0 errors, 0 warnings
+paint check: 0 errors, 0 warnings; 1 `on` gate not checked: --solve decides it
 ```
 
 Before a render, a look or a still bundles, every painting its project's scenes paint from (in `scenes/` and `bars/`,

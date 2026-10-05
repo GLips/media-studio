@@ -41,7 +41,7 @@ const checkPaintArgs = {
 const checkPaintCommand = defineCommand({
   meta: {
     name: 'check',
-    description: "Evaluate a painting source at its default property values (or those --set gives) and print every problem found: the schema and values, the factory's purity (called twice, its documents compared), the document's shape and keys, its papers, brushes and assets against work/styles/, its geometry, charges and media, washes, clocks and `on`s that can never hold. Each problem prints as `<path>: <message> [x0,y0 → x1,y1]`, the box in document px; warnings say so. Then, if it has no error, the document's size and medium and each layer's medium, sheet, washes and applications; with --solve, every sheet solved (an application that can't land fails the check, naming where its rule failed). Fails on any error.",
+    description: "Evaluate a painting source at its default property values (or those --set gives) and print every problem found: the schema and values, the factory's purity (called twice, its documents compared), the document's shape and keys, its papers, brushes and assets against work/styles/, its geometry, charges and media, washes, clocks and `on`s that can never hold. Each problem prints as `<path>: <message> [x0,y0 → x1,y1]`, the box in document px; warnings say so. Then, if it has no error, the document's size and medium and each layer's medium, sheet, washes and applications, and how many `on` gates only a solve decides; with --solve, every sheet solved (an application that can't land fails the check, naming where its rule failed). Fails on any error.",
   },
   args: checkPaintArgs,
   run: ({ args, rawArgs }) => {
@@ -51,13 +51,15 @@ const checkPaintCommand = defineCommand({
     if (at !== null && !args.solve) throw new Error('--at picks the prefix a solve paints: give --solve too');
     return withPaintSourceStack(async () => {
       const { paintingProblemText, paintingErrors } = await import('#lib/paint/document/models/painting-problem.ts');
-      const { paintingEvaluationSummary } = await import('#lib/paint/document/models/painting-summary.ts');
+      const { paintingCheckLeftToSolve, paintingEvaluationSummary } = await import('#lib/paint/document/models/painting-summary.ts');
       const { checkPaintingSourceFile } = await import('#lib/paint/document/engine/painting-source-load.ts');
       const { problems, evaluation } = await checkPaintingSourceFile(args.source, set);
       for (const problem of problems) console.log(paintingProblemText(problem));
       if (evaluation) for (const line of paintingEvaluationSummary(evaluation)) console.log(line);
-      const errors = paintingErrors(problems).length;
-      console.error(`paint check: ${errors} ${errors === 1 ? 'error' : 'errors'}, ${problems.length - errors} ${problems.length - errors === 1 ? 'warning' : 'warnings'}`);
+      const errors = paintingErrors(problems).length, warnings = problems.length - errors;
+      // A solve that follows decides what the check left; without one, the summary says what went unexamined.
+      const leftToSolve = evaluation && !args.solve ? paintingCheckLeftToSolve(evaluation) : null;
+      console.error(`paint check: ${errors} ${errors === 1 ? 'error' : 'errors'}, ${warnings} ${warnings === 1 ? 'warning' : 'warnings'}${leftToSolve ? `; ${leftToSolve}` : ''}`);
       if (errors > 0) {
         process.exitCode = 1;
         return;
