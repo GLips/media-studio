@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Layer, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
 import { painting } from '#lib/paint/document/models/painting-source.ts';
+import { paintingPoseMap } from '#lib/paint/document/models/painting-pose.ts';
 import type { PaintRigPicture } from '#lib/paint/rig/models/paint-rig-pieces.ts';
+import { paintRigPosedPoint } from '#lib/paint/rig/models/paint-rig-pose.ts';
 import type { RigPart } from './shot-props.ts';
-import { compileShotRig, shotRigSkin } from './shot-rigs.ts';
+import { compileShotRig, shotRigCelPoses, shotRigFound, shotRigPosed, shotRigSkin } from './shot-rigs.ts';
 
 const layer = (key: string): Layer => ({
   key, washes: [{
@@ -50,4 +52,16 @@ test("a rig's cels that leave a skin joint no paint of its own to bend along are
   assert.match(skinRefusal(2, [cel(40, 80, 40, 40), cel(50, 90, 8, 8)]), outweighed);
   assert.match(skinRefusal(0, [cel(40, 80, 40, 40), cel(50, 90, 8, 8, 0.4)]), outweighed);
   assert.equal(skinRefusal(0, [cel(40, 80, 40, 40), cel(50, 90, 8, 8)]), 'skinned');
+});
+
+test("a posed point is where the shot draws its part's paint, skinned, wherever the part's paint moves wholly with it", () => {
+  const rig = rigOf(0), groupPivot = { x: 60, y: 120 }, pose = { body: { x: 5, y: -3, rotation: 0.15 }, neck: { rotation: -0.6 } };
+  // A body 80 px wide, and a neck rising 60 px from its middle, skinned at (60, 100) over 12 px.
+  const found = shotRigFound(rig, groupPivot, [{ cel: 'body', key: 'body', picture: cel(20, 96, 80, 44) }, { cel: 'neck', key: 'neck', picture: cel(54, 40, 12, 62) }]);
+  const drawn = shotRigCelPoses(rig, shotRigPosed(rig, pose, groupPivot, found.axes, null), found.skin!);
+  for (const [part, point] of [['neck', { x: 60, y: 50 }], ['body', { x: 30, y: 130 }]] as const) {
+    const at = paintingPoseMap(drawn.get(part)!)(point), posed = paintRigPosedPoint({ parts: rig.parts, pivot: groupPivot }, pose, part, point);
+    // The shot keys a move to a thousandth of a px and a millionth of a radian.
+    assert.ok(Math.hypot(at.x - posed.x, at.y - posed.y) < 2e-3, `${part} at (${point.x}, ${point.y})`);
+  }
 });

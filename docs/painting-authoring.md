@@ -907,7 +907,7 @@ a run of frames costing alike as one line.
 | 30 | an element fading | `visibility: {'plane/layer': (m) => …}` on the shot | a group's visibility fades it as one; a cut-out's owner fades its card with it; on another's card, the paper its paint alone cut goes as it does |
 | 31 | an element passing behind a ridge on shared paper | its applications' `clips: [{region: ABOVE_RIDGE, anchor: 'paper'}]`; motion on its occurrence | the clip stays on the paper while the element moves |
 | 32 | an element mingling with a wet wash as it moves | its layer on the wash's sheet (left out, or `scene` under an own sheet), posed by motion or a rig; its charge timed while the wash is wet (`at`, or `on: 'wet'`), later work `at` once it has set | a solve per pose from its first application; hiding it leaves its water's work in the wash: fade a group holding both |
-| 33 | a figure that bends | its parts as layers (or groups) under one group; `rigs: {'plane/figure': {parts, pose}}` | on an own sheet the paint bends; on shared paper it's repainted per pose, into the sheet's water |
+| 33 | a figure that bends | its parts as layers (or groups) under one group; `rigs: {'plane/figure': {parts, pose}}`; a leg standing where its foot is told by `paintRigTwoBoneReach` in `pose`, its reflection posed by `paintRigMirroredPose` (Reference, Pose helpers) | on an own sheet the paint bends; on shared paper it's repainted per pose, into the sheet's water |
 | 34 | a flood rising, a moon filling, a petal blotching in | a `field` reveal: `linear` up the flood, `radial` out of the moon, `noise` over the petal with a `linear` delay along it (below) | a field covers the whole film: past its ends a linear field holds, and paint outside the moon arrives at `outer` |
 | 35 | a flat underline over HTML | the underline's own-sheet layer pinned to the words, revealed by a `linear` field along its length (below) | a field leaves the film its own fringe, where a band would trim it; its card follows its paint |
 | 36 | a smooth reveal over stepped properties | no `sourceClock`; properties quantised by their `step`; `layersOf(painting(src, {stepped}), keys, {at: m.at})` (below) | held on sixes, the reveal steps with the rest; each stepped value is one solve, the reveal recomposes each frame |
@@ -1574,7 +1574,40 @@ while another is wet mingles with it, and stays mingled when that one is hidden.
 cel's or view's first application `on: 'dry'`. A hidden cel or view stays in its sheet's program, so a swap
 re-solves nothing, and lays neither its paint nor, on a card, its paper: a card is cut round what shows. The pose is
 read at the node's held moment (its own hold, else its plane's). Boil wobbles finished paint: on an own sheet, the
-rest picture before the rig bends it; on shared paper, the posed film. No mirrors.
+rest picture before the rig bends it; on shared paper, the posed film. A rig never mirrors paint: a reflection is a
+rig of its own, on paint drawn mirrored.
+
+**Pose helpers** (`#lib/paint/rig/models/paint-rig-pose.ts`, pure, for a `pose` callback and anything timed by the
+rig). A `PaintRigSkeleton` is a rig's `parts` and its group node's `pivot`, which its roots turn about.
+- `paintRigPosedPoint(skeleton, pose, part, point)`: where `pose` puts a rest point on a part, as the shot draws it.
+  The skin moves a part's paint by exactly this past half its joint's `blend`; paint nearer a skin joint bends between
+  the two parts' moves.
+- `paintRigTwoBoneReach(skeleton, pose, {chain: [upper, lower], tip, target, bend})`: the turns that put `tip`, a rest
+  point on `lower` (a child of `upper`), on `target`. The chain's root rides its parent as `pose` already puts it.
+  `bend` is the side its middle joint takes from the line to the target, `'clockwise'` or `'counterclockwise'` as the
+  picture shows it. It returns `upper` and `lower`, each part's `rotation`; `turn`, the lower part's turn in the
+  group's frame, so a foot kept level turns by `-turn`; and where the `joint` and `tip` land. A target past the
+  chain's reach straightens it toward the target, the tip falling short. The reach is exact, so a planted foot never
+  slides, and a knee straightens fast over a leg's last few px of reach: keep a target meant to read smooth inside it.
+- `paintRigMirroredPose(pose, 'y')`: the pose for a reflection in level water, its parts' pivots and its group pivot
+  mirrored as its paint is. Every turn and bend is reversed and each move's y flipped (`'x'` flips left for right);
+  a part's `cel` is kept, so a reflection whose cels have keys of their own renames them.
+- None carries a point through a `bend`: a bend curls along paint only the shot sees.
+
+```ts
+const WADER: PaintRigSkeleton = { parts: waderParts(false), pivot: BODY_PIVOT };
+function waderPoseAt(at: number) {
+  const trunk = { body: bodyAt(at), neck: { rotation: neckAt(at) } };
+  const leg = paintRigTwoBoneReach(WADER, trunk, { chain: ['thigh', 'shin'], tip: ANKLE, target: footAt(at), bend: 'counterclockwise' });
+  return { ...trunk, thigh: { rotation: leg.upper }, shin: { rotation: leg.lower }, foot: { rotation: -leg.turn } };
+}
+rigs: {
+  'lake/wader': { parts: waderParts(false), pose: ({ at }) => waderPoseAt(at) },
+  'lake/reflection': { parts: waderParts(true), pose: ({ at }) => paintRigMirroredPose(waderPoseAt(at), 'y') },
+},
+// where the bill points as the strike lands: the ring's centre
+const strikeAt = paintRigPosedPoint(WADER, waderPoseAt(STRIKE), 'head', BILL_TIP);
+```
 
 ## Checking and diagnostics
 

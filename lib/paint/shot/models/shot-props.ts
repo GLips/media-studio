@@ -11,6 +11,7 @@ import type { PaintMoment, StampGroupLay } from '#lib/paint/painting/models/stam
 import type { StampPictureAt, StampPlaneExtent } from '#lib/paint/painting/models/stamp-plane.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import type { PaintRigCutDeclaration } from '#lib/paint/rig/models/paint-rig-cuts.ts';
+import type { PaintRigPartMove } from '#lib/paint/rig/models/paint-rig-pose.ts';
 import type { PaintedThreeSource } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
 import type { PaintedSource } from './shot-selection.ts';
 
@@ -133,18 +134,8 @@ export type InstancedPlaneProps = PlaneCommon & {
  */
 export type RigPart = PaintRigCutDeclaration & { readonly cels: readonly NodeKey[] };
 
-/**
- * A part's pose, in its parent's frame: a move (`x`, `y` document px) and a turn (`rotation` radians) about its pivot
- * (a root's, the group node's pivot), a `bend` (radians) curling it along pivot to farthest paint at rest, and the
- * `cel` it shows.
- */
-export type RigPartPose = {
-  readonly x?: number;
-  readonly y?: number;
-  readonly rotation?: number;
-  readonly bend?: number;
-  readonly cel?: NodeKey;
-};
+/** A part's pose: its move in its parent's frame about its pivot (a root's, the group node's pivot), and the `cel` it shows. */
+export type RigPartPose = PaintRigPartMove & { readonly cel?: NodeKey };
 
 /**
  * A group occurrence cut into parts by its layers: each layer under the group lies in exactly one part's cels. Parts

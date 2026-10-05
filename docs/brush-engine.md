@@ -508,7 +508,9 @@ rest-to-posed map; it measures folds across a joint's band. `paint-rig-pieces.ts
 pictures through posed triangles (a group through its skin mesh, a cel through its lattice), posed on the CPU once
 for renderer and measures alike. `paint-rig-piece-meshes.ts` draws them on the GPU as three.js meshes whose posed
 vertices the lens's motion layer follows; `paint-rig-pieces-gpu.ts` draws them for a Node tool and reads them back.
-A rig's files, poses and clocks stay with the projects that use them.
+`paint-rig-pose.ts` is a pose's moves and what a pose callback reads off the rig's declaration: a rest point carried
+by its part's map up the chain, as the shot builds each part's (exact wherever the skin moves paint wholly with its
+part), a two-bone reach, and a pose mirrored. A rig's files, poses and clocks stay with the projects that use them.
 
 **document** is the painting language a source writes, which docs/painting-authoring.md teaches. A `*.painting.ts`
 source's factory returns a `PaintingDocument` (`painting-document.ts`: a paper, a medium and a tree of layers, washes
