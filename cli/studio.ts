@@ -5,8 +5,11 @@ import { defineCommand, runCommand, runMain } from 'citty';
 import { existsSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { runAsStudioGpuJob } from '#lib/platform/gpu/engine/gpu-lease.ts';
+import { exitStudioProcessOnSignals } from '#lib/platform/process/engine/studio-signal-exit.ts';
 import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
 import { studioTempRoot } from '#lib/platform/temp/engine/studio-temp.ts';
+
+exitStudioProcessOnSignals();
 
 const studioCommand = defineCommand({
   meta: {

@@ -1,10 +1,10 @@
 // ─── The studio's temp space: one root per process, removed however it ends ───
 //
 // Every temp folder the studio makes lives under <tmpdir>/media-studio/<pid>-<started>/, named by its process's
-// identity (lib/platform/process). The root is made on first use and removed on exit, SIGINT and SIGTERM; a step's own
-// folder (withStudioTemp) goes in a finally, so a step that throws leaves nothing even in a long-lived server. A kill -9
-// can't be caught, so making a root first sweeps its siblings whose process no longer runs. The structural check
-// studio-temp refuses mkdtempSync and tmpdir() anywhere else, so this is the only way in.
+// identity (lib/platform/process). The root is made on first use and removed on exit, which a signal reaches through
+// studio-signal-exit.ts; a step's own folder (withStudioTemp) goes in a finally. A kill -9, or a signal to a process
+// without that policy, skips the exit, so making a root first sweeps its siblings whose process no longer runs. The
+// structural check studio-temp refuses mkdtempSync and tmpdir() elsewhere, so this is the only way in.
 //
 // Negative space: Remotion's own remotion-v4.*-assets* folders sit in the temp dir beside this root, not under it;
 // they're Remotion's to clean.
@@ -28,15 +28,7 @@ export function studioTempRoot(): string {
   sweepDeadStudioTempRoots();
   const root = join(STUDIO_TEMP_HOME, studioProcessName(thisStudioProcess()));
   mkdirSync(root, { recursive: true });
-  const remove = () => rmSync(root, { recursive: true, force: true });
-  process.once('exit', remove);
-  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-    process.once(signal, () => {
-      remove();
-      // A listener replaces the default of dying by the signal, so with no other listener, die by it as before.
-      if (process.listenerCount(signal) === 0) process.kill(process.pid, signal);
-    });
-  }
+  process.once('exit', () => rmSync(root, { recursive: true, force: true }));
   processRoot = root;
   return root;
 }

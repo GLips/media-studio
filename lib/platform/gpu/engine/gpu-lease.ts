@@ -81,14 +81,25 @@ function giveBackStudioGpuLease(atExit: boolean): void {
     clearInterval(lease.sampler);
     noteStudioGpuSharing(lease);
     const line = `${studioGpuSummaryLine({ waitedMs: lease.waitedMs, ranMs: Date.now() - lease.grantedAt, sharedWith: [...lease.sharedWith.values()] })}\n`;
-    // At exit only a synchronous write still reaches a pipe.
-    if (atExit) writeSync(2, line);
+    if (atExit) writeStudioGpuSummaryAtExit(line);
     else process.stderr.write(line);
     delete process.env[STUDIO_GPU_PARENT_LEASE_ENV];
   }
   if (queuedTicketFile) rmSync(queuedTicketFile, { force: true });
   queuedTicketFile = null;
   heldLease = null;
+}
+
+/**
+ * At exit only a synchronous write still reaches a pipe. One whose reader has gone (EPIPE) or a hung-up terminal (EIO)
+ * throws, and a throwing 'exit' listener stops those after it, Remotion's browser kill among them; the summary is lost.
+ */
+function writeStudioGpuSummaryAtExit(line: string): void {
+  try {
+    writeSync(2, line);
+  } catch {
+    // Nothing reads stderr any more.
+  }
 }
 
 async function takeStudioGpuLease(): Promise<void> {

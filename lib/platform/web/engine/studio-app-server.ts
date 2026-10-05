@@ -2,7 +2,8 @@
 // one owner in the engine.
 //
 // Negative space: nothing deploys the app as a server. Locally it's Vite's own dev server, bound to this machine;
-// Vite's host check refuses a request addressed to any other name, which keeps a DNS-rebinding page out.
+// Vite's host check refuses a request addressed to any other name, which keeps a DNS-rebinding page out. Nothing
+// closes the server either: it ends with its process, which a signal exits (studio-signal-exit.ts).
 import { join } from 'node:path';
 import { createServer } from 'vite';
 import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
@@ -23,11 +24,6 @@ export async function openStudioAppServer({ port }: { port: number }): Promise<S
   if (running !== undefined) throw new Error(`port ${port} is taken by ${running === null ? 'something other than the studio app' : `the studio app of ${running}`}: pass --port to use another`);
   const server = await createServer({ configFile: STUDIO_APP_CONFIG, server: { host: 'localhost', port, strictPort: true }, logLevel: 'warn' });
   await server.listen();
-  // Exits by the signal's code itself: Vite's dependencies listen for these signals too, and studio-temp re-raises one
-  // only when no other listener is left, so neither would end the process. Exiting runs studio-temp's cleanup.
-  for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143]] as const) {
-    process.once(signal, () => void server.close().finally(() => process.exit(code)));
-  }
   return { url, startedHere: true };
 }
 

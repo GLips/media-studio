@@ -1639,9 +1639,6 @@
       "const provenance = JSON.parse(readFileSync(join(project, 'generated', 'provenance.json'), 'utf8'));": 1,
       "calls.push({ url: `${init?.method ?? 'GET'} ${url.origin}${url.pathname}`, body: typeof init?.body === 'string' ? JSON.parse(init.body) : null });": 1
     },
-    "lib/platform/temp/engine/studio-temp.test.ts": {
-      "const [, stoppedBy] = await once(child, 'exit');": 1
-    },
     "lib/timing/music/engine/music-track.ts": {
       "const [stream] = JSON.parse(runFfprobe(['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=channels,sample_rate', '-of', 'json', sourcePath]).toString()).streams;": 1
     },

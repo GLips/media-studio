@@ -25,17 +25,6 @@ test('a step that throws leaves no folder, sync or async', async () => {
   assert.equal(dirname(seen), studioTempRoot());
 });
 
-for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-  test(`a process stopped with ${signal} removes its root, and still dies by the signal`, async () => {
-    const { child, root } = await startHoldingProcess();
-    assert.equal(existsSync(root), true);
-    child.kill(signal);
-    const [, stoppedBy] = await once(child, 'exit');
-    assert.equal(stoppedBy, signal);
-    assert.equal(existsSync(root), false);
-  });
-}
-
 test("after a kill -9, the next studio process sweeps the dead process's root", async () => {
   const { child, root } = await startHoldingProcess();
   child.kill('SIGKILL');
