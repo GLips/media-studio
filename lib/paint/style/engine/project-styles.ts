@@ -1,7 +1,9 @@
 // project-styles.ts: the private styles a project.ts names, checked from work/styles/<name>/ before a bundle: each
 // pack a style.ts lists must be imported here, at the studio's asset version, with every file its manifest lists. A
 // failing style stops the bundle, listing each file with the pack's `source`. A passing one goes into
-// generated/stamp-paint-styles.ts (aliased `@stamp-paint-styles`), importing its style.ts, manifests and images.
+// generated/stamp-paint-styles.ts (aliased `@stamp-paint-styles`), importing its style.ts, manifests, its brushes'
+// profiles at their keys now (style-packs.ts) and images. A brush with none stored doesn't stop the bundle: only a
+// fill with it is refused.
 //
 // Stays free of import.meta: lib/output/render/engine/project-bundle.ts imports it, and the Remotion CLI bundles that to
 // CommonJS. So work/styles is found from the project's folder, and project.ts and style.ts are read with require,
@@ -13,6 +15,7 @@ import type { ProjectDeclaration } from '#lib/platform/project/models/capability
 import { STAMP_PAINT_PACK_MANIFEST, type StampPaintPack } from '#lib/paint/brush-packs/models/stamp-paint-pack.ts';
 import { resolveStampPaintStyle, stampPaintStyleImages, type StampPaintStyle } from '../models/style.ts';
 import { readImportedStampPaintPack, readStampPaintPackGeneration } from '#lib/paint/brush-packs/engine/stamp-paint-pack-files.ts';
+import { readStampPaintStylePacks, stampPaintStyleProfiledPacks } from './style-packs.ts';
 
 const stylesDirFor = (projectDir: string) => join(resolve(projectDir), '..', '..', 'styles');
 const requireDefault = <T>(file: string) => (createRequire(file)(file) as { default: T }).default;
@@ -91,15 +94,20 @@ export function writeProjectStylesModule(projectDir: string): string {
     // Resolved once per pack, so the manifest and images imported are one generation's. One published since the check
     // above is whole by construction (replaceStampPaintPack), so it's bundled unchecked rather than mixed.
     const generations = Object.fromEntries(packs.map((pack) => [pack, readStampPaintPackGeneration(join(dir, 'brushes', pack))]));
-    const manifests = Object.fromEntries(packs.map((pack) => [pack, generations[pack].manifest]));
-    const images = stampPaintStyleImages(resolveStampPaintStyle(name, style, manifests));
+    const read = readStampPaintStylePacks(stylesDirFor(projectDir), name, style, generations);
+    const images = stampPaintStyleImages(resolveStampPaintStyle(name, style, stampPaintStyleProfiledPacks(read)));
     imports.push(`import style${s} from ${from(join(dir, 'style.ts'))};`);
     packs.forEach((pack, p) => imports.push(`import manifest${s}_${p} from ${from(join(generations[pack].dir, STAMP_PAINT_PACK_MANIFEST))};`));
+    const profiles = packs.map((pack, p) => Object.entries(read[pack].profileFiles).map(([brush, file], b) => {
+      imports.push(`import profile${s}_${p}_${b} from ${from(file)};`);
+      return `${JSON.stringify(brush)}: profile${s}_${p}_${b}`;
+    }));
     images.forEach(({ pack, file }, i) => imports.push(`import image${s}_${i} from ${from(join(generations[pack].dir, file))};`));
     entries.push(
       `  ${JSON.stringify(name)}: {`,
       `    style: style${s},`,
       `    manifests: { ${packs.map((pack, p) => `${JSON.stringify(pack)}: manifest${s}_${p}`).join(', ')} },`,
+      `    profiles: { ${packs.map((pack, p) => `${JSON.stringify(pack)}: ${profiles[p].length ? `{ ${profiles[p].join(', ')} }` : '{}'}`).join(', ')} },`,
       `    images: {`,
       ...images.map(({ pack, file }, i) => `      ${JSON.stringify(`${pack}/${file}`)}: image${s}_${i},`),
       '    },',

@@ -39,7 +39,7 @@ export function paintingStyleCatalogue(styles: BundledStampPaintStyles, declared
     declared,
     styles: new Map(served.map(([name, entry]) => {
       const brushes = new Map<string, StampStyleBrush>(), unread = new Map<string, string>();
-      for (const [key, read] of stampPaintStyleBrushes(name, entry.style, readBundledStampPaintPacks(entry))) {
+      for (const [key, read] of stampPaintStyleBrushes(name, entry.style, readBundledStampPaintPacks(name, entry))) {
         if ('brush' in read) brushes.set(key, read.brush);
         else unread.set(key, read.missing);
       }

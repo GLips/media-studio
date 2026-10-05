@@ -2,26 +2,21 @@
 // one) is Procreate's (import-procreate-pack.ts); an .abr or .tpl (or a zip holding them and no .brushset) is
 // Photoshop's (import-photoshop-pack.ts). Both write the same pack layout, its manifest saying which app it is.
 //
-// Every import measures its brushes' profiles (measure-stamp-brush-profiles.ts) before it publishes. Imported again
-// without an archive, a pack is republished from its own manifest and images, its profiles measured anew where
-// what they depend on has changed.
+// Every import measures each brush whose key has no profile stored (stamp-brush-profile-store.ts), storing each as
+// it's measured, before it publishes. Without an archive, it only measures, into the pack as it's published now:
+// it never writes a generation or a manifest, so what's measured is all it adds.
 
-import { linkSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { isPhotoshopBrushFile, writePhotoshopPackAssets } from './import-photoshop-pack.ts';
 import { writeProcreatePackAssets } from './import-procreate-pack.ts';
+import { measureStampBrushProfiles, type MeasureStampBrushProfiles } from './measure-stamp-brush-profiles.ts';
+import { readStampBrushProfileFile, stampPackBrushesKeyed, stampPackProbeMediumKey, writeStampBrushProfile, type StampPaintPackGeneration } from './stamp-brush-profile-store.ts';
 import {
-  measureStampBrushProfiles, stampBrushProfileKey, stampPackProbeMediumKey, type MeasureStampBrushProfiles, type MeasureStampBrushProfilesRequest,
-} from './measure-stamp-brush-profiles.ts';
-import {
-  checkStampPaintPackArchive, readImportedStampPaintPack, readStampPaintPackGeneration, replaceStampPaintPack, stampPaintPackDir,
+  checkStampPaintPackArchive, readStampPaintPackGeneration, replaceStampPaintPack, stampPaintPackDir, withStampPackLock,
   type ImportStampPaintPackOptions, type StampPaintPackPlace,
 } from './stamp-paint-pack-files.ts';
-import {
-  readStampPaintPack, readStampPaintPackBrushSource, STAMP_PAINT_PACK_MANIFEST, storedStampPaintPackProfile, type StampPaintPack, type StampPaintPackProfile,
-  type StoredStampPaintPack,
-} from '../models/stamp-paint-pack.ts';
-import type { StampBrushProfileKey } from '#lib/paint/brush/models/stamp-brush.ts';
+import { readStampPaintPack, STAMP_PAINT_PACK_MANIFEST, type StampPaintPack, type StampPaintPackProfile } from '../models/stamp-paint-pack.ts';
 import type { StampBrushProbeMedium } from '../models/stamp-brush-profile-probes.ts';
 import { openZipFile } from '#lib/platform/zip/engine/zip-archive.ts';
 
@@ -39,64 +34,76 @@ function sourceAppOf(archive: string): 'procreate' | 'photoshop' {
 }
 
 /**
+ * How each brush's profile came to be: measured now, found stored at its key, or refused; or that its measuring
+ * failed and starts again in a fresh browser, heard before its outcome.
+ */
+export type StampBrushProfileOutcome = 'measured' | 'kept' | 'refused' | 'retrying';
+
+/**
  * How an import measures profiles: in its style's `medium`, by `measure` (the browser's unless a test stands in),
  * hearing of each brush as it's done.
  */
-export type StampPaintPackMeasuring = { medium: StampBrushProbeMedium; measure?: MeasureStampBrushProfiles; onBrush?: MeasureStampBrushProfilesRequest['onBrush'] };
+export type StampPaintPackMeasuring = {
+  medium: StampBrushProbeMedium;
+  measure?: MeasureStampBrushProfiles;
+  onBrush?: (name: string, outcome: StampBrushProfileOutcome, why?: string) => void;
+};
 
-export type ImportedStampPaintPack = { dir: string; manifest: StampPaintPack };
-
-/** `kept` where its key is `key` still, so measuring again would read the same; else null. */
-function keptStampProfile(kept: StampPaintPackProfile | undefined, key: StampBrushProfileKey): (StampPaintPackProfile & { key: StampBrushProfileKey }) | null {
-  const was = kept?.key;
-  return kept && was && was.protocol === key.protocol && was.settings === key.settings && was.assets === key.assets && was.medium === key.medium ? { ...kept, key: was } : null;
-}
+/** A pack as an import leaves it: its folder, its manifest, and every brush's profile at its key now, by name. */
+export type ImportedStampPaintPack = { dir: string; manifest: StampPaintPack; profiles: Record<string, StampPaintPackProfile> };
 
 /**
- * `stored` with each brush's profile, kept from `previous` where its key still matches and measured otherwise, its
- * manifest written into `generation`.
+ * Every brush of `generation`, of the pack at `place`, with its profile at its key now: found stored, or measured and
+ * stored as it's heard. Run under the pack's lock, so what's missing is read once another import into the pack has
+ * stored what it measured.
  */
-async function publishStampPaintPack(
-  { stylesDir, style, pack }: StampPaintPackPlace, generation: string, stored: StoredStampPaintPack, previous: StampPaintPack['profiles'],
-  { medium, measure = measureStampBrushProfiles, onBrush }: StampPaintPackMeasuring,
-) {
-  const unmeasured = readStampPaintPack({ ...stored, profiles: {} }), mediumKey = stampPackProbeMediumKey({ stylesDir, style, pack }, stored.source.sha256, medium);
-  const brushes = Object.keys(unmeasured.brushes).map((name) => {
-    const { brush } = readStampPaintPackBrushSource(unmeasured, name)!, key = stampBrushProfileKey(brush, generation, mediumKey);
-    return { name, brush, key, kept: keptStampProfile(previous[name], key) };
-  });
-  const wanted = brushes.filter(({ kept }) => !kept);
-  for (const { name, kept } of brushes) if (kept) onBrush?.(name, 'kept');
-  const measured = wanted.length ? await measure({ stylesDir, style, pack, generation, medium, brushes: wanted, onBrush }) : {};
-  const profiles = Object.fromEntries(brushes.map(({ name, key, kept }) => [name, storedStampPaintPackProfile(kept ?? { key, ...measured[name] })]));
-  const manifest = { ...stored, profiles };
-  writeFileSync(join(generation, STAMP_PAINT_PACK_MANIFEST), `${JSON.stringify(manifest, null, 1)}\n`);
-  return { manifest: readStampPaintPack(manifest) };
+async function measureUnstoredStampProfiles(
+  place: StampPaintPackPlace, generation: StampPaintPackGeneration, { medium, measure = measureStampBrushProfiles, onBrush }: StampPaintPackMeasuring,
+): Promise<Record<string, StampPaintPackProfile>> {
+  const packDir = stampPaintPackDir(place), mediumKey = stampPackProbeMediumKey(place, generation.manifest.source.sha256, medium);
+  const brushes = stampPackBrushesKeyed(packDir, generation, mediumKey, Object.keys(generation.manifest.brushes));
+  const profiles = new Map<string, StampPaintPackProfile>();
+  for (const { name, key, file } of brushes) {
+    const stored = readStampBrushProfileFile(file, name, key);
+    if (!stored) continue;
+    profiles.set(name, stored);
+    onBrush?.(name, 'kept');
+  }
+  const wanted = brushes.filter(({ name }) => !profiles.has(name)), keys = new Map(wanted.map(({ name, key }) => [name, key]));
+  if (wanted.length) {
+    await measure({
+      ...place, generation: generation.dir, medium, brushes: wanted,
+      onMeasured: (name, measurement) => {
+        const profile: StampPaintPackProfile = { ...measurement, key: keys.get(name)! };
+        writeStampBrushProfile(packDir, name, profile);
+        profiles.set(name, profile);
+        onBrush?.(name, measurement.kind);
+      },
+      onRetrying: (name, why) => onBrush?.(name, 'retrying', why),
+    });
+  }
+  return Object.fromEntries(brushes.map(({ name }) => [name, profiles.get(name)!]));
 }
 
-/** The profiles of the pack now at `place`, which an import keeps where their keys still match; none before its first. */
-const previousProfiles = (place: StampPaintPackPlace) => readImportedStampPaintPack(stampPaintPackDir(place))?.manifest.profiles ?? {};
-
-/** Imports `archive` as its app's pack, its profiles measured, replacing what an import writes only once it has succeeded. */
+/** Imports `archive` as its app's pack, its unstored profiles measured, replacing what an import writes only once it has succeeded. */
 export async function importStampPaintPack(options: ImportStampPaintPackOptions, measuring: StampPaintPackMeasuring): Promise<ImportedStampPaintPack> {
   checkStampPaintPackArchive(options);
-  const app = sourceAppOf(options.archive), previous = previousProfiles(options);
-  return replaceStampPaintPack(options, (generation) => publishStampPaintPack(options, generation, app === 'procreate' ? writeProcreatePackAssets(options, generation) : writePhotoshopPackAssets(options, generation), previous, measuring));
+  const app = sourceAppOf(options.archive);
+  return replaceStampPaintPack(options, async (dir) => {
+    const stored = app === 'procreate' ? writeProcreatePackAssets(options, dir) : writePhotoshopPackAssets(options, dir);
+    writeFileSync(join(dir, STAMP_PAINT_PACK_MANIFEST), `${JSON.stringify(stored, null, 1)}\n`);
+    const manifest = readStampPaintPack(stored);
+    return { manifest, profiles: await measureUnstoredStampProfiles(options, { dir, manifest }, measuring) };
+  });
 }
 
 /**
- * Republishes the pack at `place` from its own manifest and images (linked, so unchanged), its profiles measured where
- * their keys have changed: `studio brushes import` without an archive.
+ * Measures each brush of the pack published at `place` whose key has no profile stored, and stores it: `studio brushes
+ * import` without an archive. The pack itself is left as it is.
  */
-export async function reimportStampPaintPack(place: StampPaintPackPlace, measuring: StampPaintPackMeasuring): Promise<ImportedStampPaintPack> {
-  const current = readStampPaintPackGeneration(stampPaintPackDir(place));
-  // SAFETY: readStampPaintPackGeneration has just read this very file whole through readStampPaintPack.
-  const stored = JSON.parse(readFileSync(join(current.dir, STAMP_PAINT_PACK_MANIFEST), 'utf8')) as StoredStampPaintPack;
-  return replaceStampPaintPack(place, (generation) => {
-    for (const file of current.manifest.files) {
-      mkdirSync(dirname(join(generation, file)), { recursive: true });
-      linkSync(join(current.dir, file), join(generation, file));
-    }
-    return publishStampPaintPack(place, generation, stored, current.manifest.profiles, measuring);
+export function measureStampPaintPackProfiles(place: StampPaintPackPlace, measuring: StampPaintPackMeasuring): Promise<ImportedStampPaintPack> {
+  return withStampPackLock(place, async () => {
+    const dir = stampPaintPackDir(place), current = readStampPaintPackGeneration(dir);
+    return { dir, manifest: current.manifest, profiles: await measureUnstoredStampProfiles(place, current, measuring) };
   });
 }

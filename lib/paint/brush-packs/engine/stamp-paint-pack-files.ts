@@ -2,12 +2,13 @@
 // (import-procreate-pack.ts, import-photoshop-pack.ts) and read by everything that paints with one. An import writes
 // a whole generation, generations/<id>/ (the manifest and every image it lists), then renames `current` over the old
 // pointer to name it, so a reader sees one generation whole or the one before. Everything else in the pack's folder
-// (a sheet's fidelity/, Photoshop's reference/) sits beside the generations and outlives them. Also here: brush images
-// written as downsized grey PNGs, and the archive's hash.
+// (its profiles/, a sheet's fidelity/, Photoshop's reference/) sits beside the generations and outlives them. Also
+// here: the lock imports into one pack take turns by, and brush images written as downsized grey PNGs.
 
 import { randomUUID } from 'node:crypto';
 import { existsSync, linkSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { parseStudioProcessName, studioProcessName, studioProcessRunning, thisStudioProcess, type StudioProcessIdentity } from '#lib/platform/process/engine/studio-process.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
@@ -91,25 +92,25 @@ function runningLockHolder(text: string): StudioProcessIdentity | undefined {
 }
 
 /**
- * Takes `lock` from a dead holder, or says who holds it. Renamed away first, so of two takers one rename wins and the
- * other retries. What was renamed may turn out live (another taker locked between our read and rename): it's linked
- * back, which fails rather than overwrite a newer lock.
+ * Takes `lock` from a dead holder, or returns the live one holding it. Renamed away first, so of two takers one rename
+ * wins and the other tries again. What was renamed may turn out live (another taker locked between our read and
+ * rename): it's linked back, which fails rather than overwrite a newer lock.
  */
-function takeOverStaleStampPackLock(lock: string, pack: string) {
+function takeOverStaleStampPackLock(lock: string): StudioProcessIdentity | undefined {
   let text: string;
   try {
     text = readFileSync(lock, 'utf8');
   } catch (error) {
-    if (fsErrorCode(error) === 'ENOENT') return;
+    if (fsErrorCode(error) === 'ENOENT') return undefined;
     throw error;
   }
   const holding = runningLockHolder(text);
-  if (holding) throw new Error(`brushes import: process ${holding.pid} is importing into ${pack} now (${lock})`);
+  if (holding) return holding;
   const taken = `${lock}.stale-${randomUUID()}`;
   try {
     renameSync(lock, taken);
   } catch (error) {
-    if (fsErrorCode(error) === 'ENOENT') return;
+    if (fsErrorCode(error) === 'ENOENT') return undefined;
     throw error;
   }
   const holder = runningLockHolder(readFileSync(taken, 'utf8'));
@@ -119,28 +120,42 @@ function takeOverStaleStampPackLock(lock: string, pack: string) {
     } finally {
       rmSync(taken, { force: true });
     }
-    throw new Error(`brushes import: process ${holder.pid} is importing into ${pack} now (${lock})`);
+    return holder;
   }
   rmSync(taken, { force: true });
+  return undefined;
+}
+
+const STAMP_PACK_LOCK_POLL_MS = 500;
+
+/**
+ * Makes `lock` this import's (`mine`), exclusively (O_EXCL): a lock whose process has gone (a killed import) is taken
+ * over, one held by a live process waited out, its holder named once (`told`, the pid last named).
+ */
+async function takeStampPackLock(lock: string, mine: string, waiting: string, told?: number): Promise<void> {
+  try {
+    writeFileSync(lock, mine, { flag: 'wx' });
+    return;
+  } catch (error) {
+    if (fsErrorCode(error) !== 'EEXIST') throw error;
+  }
+  const holder = takeOverStaleStampPackLock(lock);
+  if (!holder) return takeStampPackLock(lock, mine, waiting, told);
+  if (told !== holder.pid) process.stderr.write(`brushes import: waiting for process ${holder.pid}, importing into ${waiting} now (${lock})\n`);
+  await sleep(STAMP_PACK_LOCK_POLL_MS);
+  return takeStampPackLock(lock, mine, waiting, holder.pid);
 }
 
 /**
- * Holds `brushes/.<pack>.lock` while `body` runs, so two imports into one pack can't interleave their publishing. It's
- * made exclusively (O_EXCL); a lock whose process has gone (a killed import) is taken over, one held by a live process
- * refuses. Released only while it's still this import's.
+ * Holds `brushes/.<pack>.lock` while `body` runs (an import's generation switch, and the profiles it stores), so two
+ * imports into one pack take turns and the second measures only what the first left unstored. Released only while
+ * it's still this import's.
  */
-async function withStampPackLock<T>(brushesDir: string, pack: string, body: () => Promise<T>): Promise<T> {
+export async function withStampPackLock<T>({ stylesDir, style, pack }: StampPaintPackPlace, body: () => Promise<T>): Promise<T> {
+  const brushesDir = join(stylesDir, style, 'brushes');
   mkdirSync(brushesDir, { recursive: true });
   const lock = join(brushesDir, `.${pack}.lock`), mine = `${studioProcessName(thisStudioProcess())} ${randomUUID()}`;
-  for (;;) {
-    try {
-      writeFileSync(lock, mine, { flag: 'wx' });
-      break;
-    } catch (error) {
-      if (fsErrorCode(error) !== 'EEXIST') throw error;
-      takeOverStaleStampPackLock(lock, pack);
-    }
-  }
+  await takeStampPackLock(lock, mine, `${style}'s ${pack}`);
   try {
     return await body();
   } finally {
@@ -166,8 +181,8 @@ export function checkStampPaintPackArchive({ archive, ...place }: ImportStampPai
 export async function replaceStampPaintPack<T>(place: StampPaintPackPlace, write: (generation: string) => T | Promise<T>): Promise<T & { dir: string }> {
   const { style, pack } = place;
   if (!/^[a-z0-9][a-z0-9-]*$/.test(pack) || !/^[a-z0-9][a-z0-9-]*$/.test(style)) throw new Error('brushes import: --style and --pack are lowercase names: letters, digits and dashes');
-  const dir = stampPaintPackDir(place), brushesDir = join(dir, '..'), generations = join(dir, STAMP_PACK_GENERATIONS);
-  return withStampPackLock(brushesDir, pack, async () => {
+  const dir = stampPaintPackDir(place), generations = join(dir, STAMP_PACK_GENERATIONS);
+  return withStampPackLock(place, async () => {
     const name = stampPackGenerationName(), generation = join(generations, name), pointer = join(dir, `.${STAMP_PACK_CURRENT}-${name}`);
     mkdirSync(generation, { recursive: true });
     let written: T;

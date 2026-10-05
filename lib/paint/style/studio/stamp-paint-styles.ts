@@ -19,7 +19,7 @@ const bundled = (name: string) => {
 
 /** The style `name` from the project's project.ts, ready to paint with. */
 export function stampPaintStyle<S extends StampPaintStyle = StampPaintStyle>(name: string): ResolvedStampPaintStyle<S> {
-  const entry = bundled(name), { style } = entry, packs = readBundledStampPaintPacks(entry);
+  const entry = bundled(name), { style } = entry, packs = readBundledStampPaintPacks(name, entry);
   return resolveStampPaintStyle(name, style as S, packs);
 }
 

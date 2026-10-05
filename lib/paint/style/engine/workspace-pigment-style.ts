@@ -9,6 +9,7 @@ import type { StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-rec
 import type { StampPigmentMixing } from '#lib/paint/painting/models/stamp-pigment-paint.ts';
 import { resolveStampPaintStyle, type ResolvedStampPaintStyle, type StampPaintStyle } from '../models/style.ts';
 import { importStampPaintStyle } from './style-probe-medium.ts';
+import { readStampPaintStylePacks, stampPaintStyleProfiledPacks } from './style-packs.ts';
 
 /** A workspace style read: its style.ts, it resolved, and each of its packs as served, by pack. */
 export type WorkspaceStampPaintStyle = { style: StampPaintStyle; resolved: ResolvedStampPaintStyle; served: Readonly<Record<string, ServedStampPaintPack>> };
@@ -21,7 +22,8 @@ export async function readWorkspaceStampPaintStyle(stylesDir: string, name: stri
   const style = await importStampPaintStyle(stylesDir, name);
   if (!style) throw new Error(`${who}: ${name} has no style.ts in ${stylesDir}`);
   const served = Object.fromEntries(Object.keys(style.packs).map((pack) => [pack, readServedStampPaintPack(stylesDir, name, pack)]));
-  const resolved = resolveStampPaintStyle(name, style, Object.fromEntries(Object.entries(served).map(([pack, { manifest }]) => [pack, manifest])));
+  const read = readStampPaintStylePacks(stylesDir, name, style, served);
+  const resolved = resolveStampPaintStyle(name, style, stampPaintStyleProfiledPacks(read));
   return { style, resolved, served };
 }
 
