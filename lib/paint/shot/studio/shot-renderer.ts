@@ -28,7 +28,7 @@ import { createLensCompositor, type LensItemsLayer, type LensLayer } from '#lib/
 import { shotCanvasLayings, shotPaintedSolvables, type CompiledPaintedShot, type CompiledShotPaintedPlane, type CompiledShotPlane, type PaintedShotPaintOptions } from '../models/shot-compile.ts';
 import { shotExposureMoments, shotSolvablesShown, shotWarmShown } from '../models/shot-shown.ts';
 import { shotPinnedPlanes, type ShotPinCentres } from '../models/shot-placement.ts';
-import { shotNodePoseAt, shotVisibilityAt } from '../models/shot-frame-plan.ts';
+import { shotNodePoseAt, shotRigReader, shotVisibilityAt } from '../models/shot-frame-plan.ts';
 import { shotDrawSteps, shotExposureItems, type CompiledShotInstancedPlane, type CompiledShotVariant, type ShotExposureItems } from '../models/shot-instances.ts';
 import { shotDrawableOrder } from '../models/shot-plan.ts';
 import type { ShotMomentAt } from '../models/shot-sheet-lays.ts';
@@ -310,14 +310,14 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
         const { warm } = shot;
         if (disposed || !warm) return;
         owner.assertLive();
-        const frames = shotWarmFrames(warm, fps, sceneDur);
+        const frames = shotWarmFrames(warm, fps, sceneDur), read = shotRigReader(shot.motion);
         // Each plane's films solved at each pairing of moments the span's frames it shows at read, and let go to the
         // cache; then the textures'. A solve reads no lay, so a pinned plane warms unlaid.
         const solves: ShotWarmSolve[] = [
           ...shotPaintedSolvables(shot).flatMap((plane) => {
-            const shown = shotWarmShown(shot, plane, frames, mode);
+            const shown = shotWarmShown(shot, plane, frames, mode, read);
             costs?.count('hidden solves skipped', shown.hidden);
-            return shown.frames.map((frame) => ({ solve: { what: plane.id, at: frame.at }, run: async () => (await planes.solve(plane, frame)).release() }));
+            return shown.frames.map((frame) => ({ solve: { what: plane.id, at: frame.at }, run: async () => (await planes.solve(plane, frame, read)).release() }));
           }),
           ...(textures?.warmSolves(frames) ?? []),
         ];
@@ -334,7 +334,9 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
         owner.assertLive();
         const pinned = shotPinnedPlanes(shot, pins);
         if (pinned.problems.length) throw paintingProblemsError(`the shot's pins at ${t} s`, pinned.problems);
-        const solved: ShotPlaneSolved[] = [], exposures = shotExposures(shot, t, mode), shown = shotSolvablesShown(shot, exposures.map(({ at }) => at));
+        // One read of each rig's pose a moment for the frame: which planes show, and their solves and lays.
+        const read = shotRigReader(shot.motion), exposures = shotExposures(shot, t, mode), shown = shotSolvablesShown(shot, exposures.map(({ at }) => at), read);
+        const solved: ShotPlaneSolved[] = [];
         costs?.count('hidden solves skipped', shown.hidden.size);
         progress?.run({ kind: 'frame', t }, shown.shown.length + (textures?.handles.length ?? 0));
         try {
@@ -343,7 +345,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
           // measures lay it. Then the painted textures, which its three sources read as they render.
           await gpuEachInTurn(shown.shown, async (plane) => {
             progress?.solving({ what: plane.id, at: t });
-            solved.push(await planes.solve(pinned.planes.get(plane.id) ?? plane, paintMoment(t)));
+            solved.push(await planes.solve(pinned.planes.get(plane.id) ?? plane, paintMoment(t), read));
             progress?.solved();
           });
           await textures?.solveAt(t, progress);

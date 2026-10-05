@@ -643,8 +643,9 @@ sheet a crayon node declared is refused: crayon keeps no wet history.
   lays something at one of the frame's exposures, every shutter sample in a reference render: its visibility above 0,
   and its ground paper or one of its layers above 0 through every group holding it. Otherwise it lays nothing and a
   mask reading it reads no coverage, so it isn't solved; the opaque back always shows. Fade a plane, or all its
-  layers, out over the frames it isn't seen in and they skip its paint. While any layer shows, its sheets are solved
-  whole, the hidden layers' water included. A cel a rig hides by its pose still counts as shown.
+  layers, out over the frames it isn't seen in and they skip its paint. A cel a rig's pose hides doesn't show either,
+  so a plane whose only shown layers lie in cels its rigs' poses hide isn't solved. While any layer shows, its sheets
+  are solved whole, the hidden layers' water included.
 - **A drop landing in a wash** at a scene second: a timed water application on that wash's sheet with `at` (a bloom,
   if wanted), in the wash or a clocked layer of its own on that sheet, then its paint as the next application without
   `on`, so the bloom's label still checks water alone. A bloom rewets its footprint, so a later `damp` landing

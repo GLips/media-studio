@@ -671,7 +671,9 @@ overlap on one device (shares, planes, canvases, textures, three sources) run th
 to the owner's queue, three.js's too) around each draw and warm, and after it the bytes the cache keeps, its targets
 apart, and what the page's memos keep (`paintingMemosKept`: compiled selections, posed programs and placements, each
 a count and its bytes); selections compiled and found kept; and the solves hidden planes skip (`hidden solves
-skipped`: one a plane in a frame, one a pairing of moments in a warm). The
+skipped`: one a plane in a frame, one a pairing of moments in a warm). A plane is hidden when it lays nothing at any
+of the frame's exposures (`shot-shown.ts`): its own visibility, its layers' through their groups, and a cel its rig's
+pose hides, read through the frame's one rig reader (`shotRigReader`), which its solve and lay then read again. The
 evaluations a callback source makes or finds memoised are the change in `paintingEvaluationCounts()` across its
 synchronous read. The cost report's counts are painting's (`painting/models/stamp-paint-costs.ts`, one set of names the document,
 solver, caches and shot all count into); the shot logs a frame's and a warm's under its labels

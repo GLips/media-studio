@@ -5,6 +5,8 @@ import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
 import { painting } from '#lib/paint/document/models/painting-source.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { compilePaintedShot } from './shot-compile.ts';
+import { shotRigReader } from './shot-frame-plan.ts';
+import type { RigPartPose } from './shot-props.ts';
 import { shotExposureMoments, shotSolvablesShown, shotWarmShown } from './shot-shown.ts';
 import { shotWarmFrames } from './shot-warm.ts';
 
@@ -30,8 +32,8 @@ const pond = painting({
 });
 
 /**
- * Over the back: a mist shown from 1 s; birds whose swift shows from 2 s and swallow never, their group gone from 3 s;
- * and a card whose one layer is hidden, laid on its paper.
+ * Over the back: a mist shown from 1 s; birds whose swift shows from 2 s and swallow never, rigged to show the swallow
+ * cel from 2.75 s, their group gone from 3 s; and a card whose one layer is hidden, laid on its paper.
  */
 const { shot } = compilePaintedShot({
   camera: { stage: stampStage({ width: 320, height: 240 }, 2), fov: 35, lens: { bloom: 0, shutter: SHUTTER }, plays: [], animationFps: FPS },
@@ -39,6 +41,7 @@ const { shot } = compilePaintedShot({
     { id: 'back', depth: 4, source: layersOf(pond, ['sky']) }, { id: 'mist', depth: 3, source: layersOf(pond, ['mist']) },
     { id: 'birds', depth: 2, source: layersOf(pond, ['birds']) }, { id: 'card', depth: 1, source: layersOf(pond, ['swallow'], { ground: 'paper' }) },
   ],
+  rigs: { 'birds/birds': { parts: [{ id: 'bird', z: 0, parent: null, cels: ['swift', 'swallow'] }], pose: ({ at }): Readonly<Record<string, RigPartPose>> => (at < 2.75 ? {} : { bird: { cel: 'swallow' } }) } },
   visibility: {
     mist: ({ at }) => (at < 1 ? 0 : 1), 'birds/swift': ({ at }) => (at < 2 ? 0 : 1), 'birds/swallow': 0, 'birds/birds': ({ at }) => (at < 3 ? 1 : 0),
     'card/swallow': 0,
@@ -47,13 +50,15 @@ const { shot } = compilePaintedShot({
 
 test('a frame solves a painted plane only if it lays something at one of its exposures; the back always does', () => {
   const shownAt = (t: number, mode: 'fast' | 'reference') => {
-    const { shown, hidden } = shotSolvablesShown(shot!, shotExposureMoments(SHUTTER, t, mode).map(({ at }) => at));
+    const { shown, hidden } = shotSolvablesShown(shot!, shotExposureMoments(SHUTTER, t, mode).map(({ at }) => at), shotRigReader(shot!.motion));
     return [shown.map(({ id }) => id), [...hidden].map(({ id }) => id)];
   };
   assert.deepEqual(shownAt(0.98, 'fast'), [['back', 'card'], ['mist', 'birds']]);
   // Its shutter, open 0.93..1.03 s, sees the mist arrive in its last exposures.
   assert.deepEqual(shownAt(0.98, 'reference'), [['back', 'mist', 'card'], ['birds']]);
   assert.deepEqual(shownAt(2.5, 'fast'), [['back', 'mist', 'birds', 'card'], []]);
+  // The swift shown is a cel its rig's pose hides.
+  assert.deepEqual(shownAt(2.9, 'fast'), [['back', 'mist', 'card'], ['birds']]);
   // The swift shows, but not through its group.
   assert.deepEqual(shownAt(3.5, 'fast'), [['back', 'mist', 'card'], ['birds']]);
 });
@@ -61,7 +66,7 @@ test('a frame solves a painted plane only if it lays something at one of its exp
 test('a warm solves a plane at the frames it shows at, counting those it skips', () => {
   const mist = shot!.planes.find(({ id }) => id === 'mist')!;
   assert.ok(mist.kind === 'painted');
-  const { frames, hidden } = shotWarmShown(shot!, mist, shotWarmFrames({ from: 0.5, to: 1.5 }, FPS), 'fast');
+  const { frames, hidden } = shotWarmShown(shot!, mist, shotWarmFrames({ from: 0.5, to: 1.5 }, FPS), 'fast', shotRigReader(shot!.motion));
   assert.deepEqual(frames.map(({ at }) => Math.round(at * FPS)), Array.from({ length: 13 }, (_, i) => 24 + i));
   assert.equal(hidden, 12);
 });

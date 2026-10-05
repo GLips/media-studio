@@ -6,7 +6,7 @@
 // stamp-gate-rainy-street-page.ts's and the glowing shot's stamp-gate-shot-glow-page.ts's, handed on.
 
 import type { StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
-import { STAMP_GATE_CARDS_AT, stampGateCardsShot } from '../models/stamp-gate-cards.ts';
+import { STAMP_GATE_CARDS_AT, STAMP_GATE_CARDS_POSED_AT, stampGateCardsPosedShot, stampGateCardsShot } from '../models/stamp-gate-cards.ts';
 import { STAMP_GATE_FRAME_TOLERANCE, stampGateFrameDifference, stampGateFrameDifferenceText, stampGateFramePasses } from '../models/stamp-gate-frames.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { STAMP_GATE_HERON_MOVE, stampGateHighPass, stampGatePeakShift } from '../models/stamp-gate-paper-heron.ts';
@@ -240,9 +240,24 @@ async function checkWarm(): Promise<StampGateWashCheck[]> {
 const cardsFrame = async (painted: Parameters<typeof stampGateCardsShot>[0], at: number) => stampGateRgb((await stampGateShotFrames(stampGateCardsShot(painted), [at])).frames[0]);
 
 /**
+ * The collage on a plane of its own, at rest showing only a cel its pose hides, skipped unsolved; posed to show that
+ * cel, solved.
+ */
+async function checkPosedCel(): Promise<StampGateWashCheck> {
+  const { costs } = await stampGateShotFrames(stampGateCardsPosedShot(), [STAMP_GATE_CARDS_POSED_AT.rest, STAMP_GATE_CARDS_POSED_AT.lying]);
+  const [skippedRest, skippedLying] = costs.map((each) => each.counts.get('hidden solves skipped') ?? 0);
+  const [collageRest, collageLying] = costs.map(({ solves }) => solves.filter(({ program }) => program.includes('collage')).length);
+  return {
+    id: 'shot/cards: posed cel', passed: skippedRest === 1 && collageRest === 0 && skippedLying === 0 && collageLying > 0,
+    detail: `at rest, its one cel left hidden by its pose, the frame skipped ${skippedRest} hidden planes and solved the collage's sheets ${collageRest} times (1 and 0 wanted); `
+      + `posed to show it, ${skippedLying} and ${collageLying} (0 and more wanted)`,
+  };
+}
+
+/**
  * shot/cards: the collage's hidden cel and its view switched off take no paper, each drawing as the card painted
  * without it, and the view shown changes the frame; the leaf owning its card fades card and paint as one, halfway
- * between shown and gone in every channel they differ in, gone drawing as the cards without it, solving nothing.
+ * between shown and gone in every channel they differ in, gone drawing as the cards without it; and checkPosedCel.
  */
 async function checkCards(): Promise<StampGateWashCheck[]> {
   const { shown, faded, gone, sitting } = STAMP_GATE_CARDS_AT;
@@ -265,6 +280,7 @@ async function checkCards(): Promise<StampGateWashCheck[]> {
       id: 'shot/cards: owner fade', passed: stampGateFadeLiesBetween(fade) && stampGateFramePasses(left) && !fadeSolves.length,
       detail: `the leaf faded halfway strays ${fade.outside} levels outside it shown and gone (${allowed}) and lies between them in ${fade.between} of the ${fade.apart} channels they differ in; gone, it lies ${stampGateFrameDifferenceText(left)} from the cards painted without it; fading solved ${fadeSolves.join(', ') || 'nothing'}`,
     },
+    await checkPosedCel(),
   ];
 }
 

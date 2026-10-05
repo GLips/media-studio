@@ -2,7 +2,8 @@
 // showing the standing one, so the lying one is hidden, and a sitting view beside it, switched off until `sitting`; a
 // leaf owns a card of its own and fades out. A hidden cel and a view switched off take no paper, and the leaf takes
 // its card with its paint: halfway it lies between shown and gone, and gone it leaves nothing. Each is measured
-// against the document painted without it.
+// against the document painted without it. On a plane of its own, the collage showing only a cel its pose hides
+// isn't solved.
 
 import type { LayerNode, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
 import type { PropertySchema, PropertyValues } from '#lib/paint/document/models/painting-properties.ts';
@@ -11,7 +12,7 @@ import { painting, type PaintingSourceModule } from '#lib/paint/document/models/
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
-import type { PaintedShotProps, RigPart } from '#lib/paint/shot/models/shot-props.ts';
+import type { PaintedShotProps, RigPart, RigPartPose } from '#lib/paint/shot/models/shot-props.ts';
 import { stampGateHeronLayer, stampGateHeronPaper, stampGateHeronPolygon } from './stamp-gate-paper-heron.ts';
 
 const CARDS = { width: 200, height: 140 } as const;
@@ -81,5 +82,22 @@ export function stampGateCardsShot({ down = true, sitting = true, leaf = true }:
       ...(sitting && { 'cards/sitting': visibilityBy(STAMP_GATE_CARDS_SITTING) }),
       ...(leaf && { 'cards/leaf': visibilityBy(STAMP_GATE_CARDS_LEAF) }),
     },
+  };
+}
+
+/** The posed-cel shot's frames: the figure at rest, its standing cel switched off; then posed to show its lying cel. */
+export const STAMP_GATE_CARDS_POSED_AT = { rest: 0, lying: 1 } as const;
+
+/**
+ * The sky on the back plane and the collage before it on a clear ground, without its view or the leaf: its figure's
+ * standing cel switched off, so at rest the collage shows only the lying cel its pose hides, until posed to show it.
+ */
+export function stampGateCardsPosedShot(): PaintedShotProps {
+  const evaluation = painting(STAMP_GATE_CARDS, { down: true, sitting: false, leaf: false });
+  return {
+    camera: { stage: stampStage(CARDS, 2), fov: 35, lens: { bloom: 0, shutter: 0 }, plays: [] },
+    planes: [{ id: 'sky', depth: 2, source: layersOf(evaluation, ['sky']) }, { id: 'collage', depth: 1, source: layersOf(evaluation, ['collage']) }],
+    rigs: { 'collage/figure': { parts: stampGateCardParts(true), pose: ({ at }): Readonly<Record<string, RigPartPose>> => (at < STAMP_GATE_CARDS_POSED_AT.lying ? {} : { figure: { cel: 'down' } }) } },
+    visibility: { 'collage/up': 0 },
   };
 }

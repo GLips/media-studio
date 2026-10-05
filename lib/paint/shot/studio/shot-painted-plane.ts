@@ -28,7 +28,7 @@ import type { LensCompositor, LensLayer } from '#lib/picture/lens/studio/lens-co
 import type { PaintRigPicture } from '#lib/paint/rig/models/paint-rig-pieces.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
 import type { CompiledPaintedShot, CompiledShotPaintedPlane, PaintedShotPaintOptions } from '../models/shot-compile.ts';
-import { shotPlanePosesAt, shotPlaneReseedAt, shotPlaneSharesAt, shotRigGroupPivot, shotRigReader, type ShotFrameRigs, type ShotRigRead } from '../models/shot-frame-plan.ts';
+import { shotPlanePosesAt, shotPlaneReseedAt, shotPlaneSharesAt, shotRigGroupPivot, type ShotFrameRigs, type ShotRigRead } from '../models/shot-frame-plan.ts';
 import { shotPresentedKeys } from '../models/shot-masks.ts';
 import { shotOccurrencePlane } from '../models/shot-occurrences.ts';
 import type { OccurrenceKey } from '../models/shot-props.ts';
@@ -244,14 +244,14 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
   return {
     /**
      * `plane` at frame moment `frameAt`: each selection its source blends compiled, its rigs found, its marks posed and
-     * solved, every selection posed by one read of each rig.
+     * solved, every selection posed by `read`, the frame's reader of its rigs.
      */
-    async solve(plane: CompiledShotPaintedPlane, frameAt: PaintMoment): Promise<ShotPlaneSolved> {
+    async solve(plane: CompiledShotPaintedPlane, frameAt: PaintMoment, read: ShotRigRead): Promise<ShotPlaneSolved> {
       // A callback source evaluates its paintings as it's read: those count as the frame's.
       const before = paintingEvaluationCounts(), blended = shotPlaneSharesAt(shot, plane, frameAt), after = paintingEvaluationCounts();
       costs?.count('evaluations made', after.made - before.made);
       costs?.count('evaluation memo hits', after.memoHits - before.memoHits);
-      const releases: (() => void)[] = [], read = shotRigReader(motion);
+      const releases: (() => void)[] = [];
       const release = () => {
         for (const each of releases.splice(0)) each();
       };
