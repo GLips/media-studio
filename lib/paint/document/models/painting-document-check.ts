@@ -200,10 +200,9 @@ function checkReveal(list: PaintingProblemList, node: LayerNode, reveal: Reveal)
   for (const { field, message } of stampRevealProblems(reveal)) list.error(node.key, paintingField('reveal', field), message, paintingNodeBox(node));
 }
 
-/** A layer's washes in order. */
+/** A layer's washes in order. A layer with none is clear, as a rig's clear cel and a bare-paper back's layer are. */
 function checkLayer(list: PaintingProblemList, layer: PaintingLayerPlace, styles: PaintingStyleCatalogue | undefined): void {
   const { node } = layer, medium = PAINT_MEDIA[layer.medium], times = paintingWashOrderTimes(node);
-  if (node.washes.length === 0) list.warn(node.key, 'washes', 'paints nothing');
   node.washes.forEach((wash, w) => {
     const setting: PaintingApplicationSetting = { medium, direct: wash.wetHistory === false, ...(styles && { styles }) };
     checkWashFields(list, layer, w, times, setting);

@@ -4,7 +4,7 @@ import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercol
 import * as meadow from './meadow.painting.ts';
 import type { StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
 import { checkPaintingDocument, paintingWrappedGrainHeightProblem } from './painting-document-check.ts';
-import type { Application, BrushRef, EdgedRegion, Field, Layer, LayerNode, Mix, PaintingDocument, Ring, Wash } from './painting-document.ts';
+import type { Application, BrushRef, EdgedRegion, Field, Hex, Layer, LayerNode, Mix, PaintingDocument, Ring, Wash } from './painting-document.ts';
 import type { PaintingProblem } from './painting-problem.ts';
 import { checkPaintingSource, type PaintingSourceModule } from './painting-source.ts';
 import type { PaintingStyleCatalogue } from './painting-styles.ts';
@@ -192,6 +192,15 @@ const brokenSources: readonly { readonly name: string; readonly check: () => rea
       message: "grades through grey: from #3060c0 to #e08030 it mixes #7b6f71 halfway, 9% of the duller end's chroma: grade one mix's strength, change hue across layers, or charge the second colour into the wet flood",
     },
   },
+  {
+    name: 'a pigment written by its name',
+    // SAFETY: the types refuse a bare name; a palette typed as strings is the source the check is there for.
+    check: () => checkPaintingSource(sourceOf(documentOf([layer('sky', [{ key: 'sky-wash', applications: [flood({ key: 'sky-flood', water: 0.85, mix: { parts: [{ pigment: 'ultramarine' as Hex, amount: 1 }], strength: 0.5 } })] }])]))),
+    expect: {
+      severity: 'error', path: 'sky-flood.charge.mix.parts[0].pigment',
+      message: "'ultramarine' isn't a pigment: a hex part is #rrggbb, and a named pigment is its object, WATERCOLOUR_PIGMENTS.ultramarine (lib/paint/materials/models/paint-watercolour-pigments.ts)",
+    },
+  },
 ];
 
 test('each broken source is refused with its one exact problem', () => {
@@ -200,8 +209,10 @@ test('each broken source is refused with its one exact problem', () => {
   }
 });
 
-test("a source that can paint checks clean: the meadow, a charge into another layer's wet flood on its sheet, and blue graded to rose through violet", () => {
+test("a source that can paint checks clean: the meadow, a clear layer, a charge into another layer's wet flood on its sheet, and blue graded to rose through violet", () => {
   assert.deepEqual(checkPaintingSource(meadow), []);
+  // A layer with no washes is clear: a rig's clear cel, or a bare-paper back's one layer.
+  assert.deepEqual(checkPaintingSource(sourceOf(documentOf([layer('bare', [])]))), []);
   const foot = documentOf([layer('shallows', [{ key: 'pool', applications: [flood({ key: 'pool-flood', water: 0.9 })] }]), layer('heron', [{ key: 'foot', applications: [{ ...stroke('foot-charge'), on: 'wet' }] }])]);
   assert.deepEqual(checkPaintingSource(sourceOf(foot)), []);
   assert.deepEqual(checkPaintingSource(sourceOf(skyFlood({ diameterPx: 60 })), {}, PROJECT_STYLES), []);

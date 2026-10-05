@@ -9,6 +9,7 @@
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import { paintComponentsBetween, paintComponentsOverWhite, paintMixtureComponents, paintMixtureProblem, type PaintComponent } from '#lib/paint/materials/models/paint-mixture.ts';
 import { PAINT_BANDS, paintBandsToLinearRgb, paintLinearToHex, paintLinearToLab } from '#lib/paint/materials/models/paint-spectrum.ts';
+import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { stampPaintFieldProblem } from '#lib/paint/painting/models/stamp-paint-field.ts';
 import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
 import type { Field, Mix } from './painting-document.ts';
@@ -54,6 +55,16 @@ function mixFieldGreyProblem(from: Mix, to: Mix, medium: PaintMedium): string | 
     + 'grade one mix\'s strength, change hue across layers, or charge the second colour into the wet flood';
 }
 
+/** The module named pigments come from, as a problem points to it. */
+const NAMED_PIGMENTS_MODULE = 'lib/paint/materials/models/paint-watercolour-pigments.ts';
+
+/** Why a part's pigment text isn't one: a hex is `#rrggbb`, and a named pigment is its object, never its name. */
+function textPigmentProblem(text: string): string {
+  const hex = `'${text}' isn't a pigment: a hex part is #rrggbb, and a named pigment`;
+  if (Object.hasOwn(WATERCOLOUR_PIGMENTS, text)) return `${hex} is its object, WATERCOLOUR_PIGMENTS.${text} (${NAMED_PIGMENTS_MODULE})`;
+  return `${hex} is an object from WATERCOLOUR_PIGMENTS (${NAMED_PIGMENTS_MODULE}): ${Object.keys(WATERCOLOUR_PIGMENTS).join(', ')}`;
+}
+
 /** Problems in one mix at `field` of `owner`; whether the engine can paint it. */
 function checkOneMix(list: PaintingProblemList, owner: string, field: string, mix: Mix, box?: StampBox): boolean {
   if (!isPaintingList(mix.parts)) {
@@ -65,7 +76,7 @@ function checkOneMix(list: PaintingProblemList, owner: string, field: string, mi
     : !(pigment.id && isPaintingHexColor(pigment.overWhite) && isPaintingHexColor(pigment.overBlack))));
   if (bad >= 0) {
     const { pigment } = mix.parts[bad];
-    const message = isPaintingHexPigment(pigment) ? `'${pigment}' isn't #rrggbb` : `${pigment.id || 'a pigment'} needs an id and #rrggbb overWhite and overBlack`;
+    const message = isPaintingHexPigment(pigment) ? textPigmentProblem(pigment) : `${pigment.id || 'a pigment'} needs an id and #rrggbb overWhite and overBlack`;
     list.error(owner, paintingField(field, `parts[${bad}].pigment`), message, box);
     return false;
   }

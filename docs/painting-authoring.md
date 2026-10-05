@@ -396,6 +396,10 @@ keyed reserve targets (a reserve binding other applications by key) have no form
 | Group | children; a sheet and medium they inherit; a motion parent | nothing physical | its children, in order; dries nothing |
 | Sheet | a paper: colour, image, grain, absorbency; one water, one order, one clock | every layer on it (one grain per sheet) | — |
 
+A layer with no washes (`{ key: 'bare', washes: [] }`) is clear: its film lays nothing, and the check takes it as
+meant. It's a rig's clear cel (Rigs), or the one layer of a bare-paper back (Composition). A layer left empty by
+mistake is clear too, and shows as nothing in the look.
+
 Layering law within a layer: watercolour and gouache mix (an application moves the pixel toward its own paint, keeping
 pickup × coverage of what's there: 0.5 and 0.2); crayon stacks wax in the tooth, trading for older wax past 4/3 full
 loads and filling the valleys only 60% there, so paper shows through several layers (about five fill it). A
@@ -1356,7 +1360,8 @@ texel shows the cel giving it most colour. A skin joint bends along its part's o
 skinned part's cel (its rest cel, or the one a pose shows on a rig drawn as pieces) gives some texel most of its
 colour: it lays paint on the document, isn't outweighed everywhere by the cels over or under it (under them, raise
 its z; over them but faint, paint it stronger or past them), and its paint doesn't centre on its pivot. Else the
-frame drawing it is refused at `<occurrence>.parts.<id>`. A hinged part or a root may show a clear cel. Parts draw by `z`,
+frame drawing it is refused at `<occurrence>.parts.<id>`. A hinged part or a root may show a clear cel: a layer with
+no washes (`{ key: 'seed-clear', washes: [] }`), which checks clean. Parts draw by `z`,
 document order breaking ties. Across a skin joint the two parts' moves blend over `blend` px, so the joint bends as an
 arc keeping the limb's width; a hinge turns rigidly. Chains nest to any depth. `pose` names parts by id: `{x?, y?,
 rotation?, bend?, cel?}`, a move in document px and a turn in radians in its parent's frame about its pivot (a root's,
@@ -1438,7 +1443,7 @@ What the check says today, and what to do:
 | `drop.effect: lays paint; a bloom is water` / `drop.effect: won't bloom: gouache spreads 0.1 d, so its largest bloom is 0.3 px` | `effect: 'bloom'` that certainly can't act | a water charge, a bigger tip, or no label |
 | `sky.key: is used twice, by a layer and a wash` / `hill.clipTo: names sky, which isn't an earlier wash of landscape` / `hill.clipTo: names sky, which lays nothing, so nothing of this wash would land` | bad keys | fix keys |
 | `hill.applications[0].area.boundaries[0].path: a boundary strays more than 1 px from its outline` | a boundary off its outline | snap the path |
-| `a.charge.mix: its strength 1.2 isn't within 0..1` / `b.charge.mix: it names ultramarine twice` | a bad mix | fix the mix |
+| `a.charge.mix: its strength 1.2 isn't within 0..1` / `b.charge.mix: it names ultramarine twice` / `c.charge.mix.parts[0].pigment: 'ultramarine' isn't a pigment: a hex part is #rrggbb, and a named pigment is its object, WATERCOLOUR_PIGMENTS.ultramarine (lib/paint/materials/models/paint-watercolour-pigments.ts)` | a bad mix; a pigment given by its name rather than its object (a name not in `WATERCOLOUR_PIGMENTS` lists those that are) | fix the mix; import `WATERCOLOUR_PIGMENTS` (from `#studio` too) and give its object |
 | `sky-flood.charge.mix: grades through grey: from #3060c0 to #e08030 it mixes #7b6f71 halfway, 9% of the duller end's chroma: …` (warning) | a field of mixes whose middle, mixed as the engine grades it and laid over white, keeps under half the chroma of its duller end (ends near grey aren't judged) | grade one mix's strength, change hue across layers, or charge the second colour into the wet flood (Planning colour and light) |
 | `landscape.washes: mixes 13 pigments; a layer holds 12: split it into two layers` | too many pigments in one film | split the layer |
 | `a.brush.brush: watercolor has no brush mop: its brushes are wash, filler, …` / `a.brush.brush: gouache's flat can't be read: its pack vvds isn't among gouache's imported packs` | a brush or paper asset the style lacks, or names from a pack not imported | name one it has; import the pack |
