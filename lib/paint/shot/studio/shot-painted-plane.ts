@@ -5,8 +5,9 @@
 // held still is laid once; a dissolve sums them by weight.
 //
 // Planes are presented in their masks' order: each keeps the coverage others read in its picture's last layers, and
-// a reader's picture is kept under what it read too (shotPresentedKeys), a source's render named by the renderer.
+// a reader's picture is kept under what it read and through what map (shotPresentedKeys).
 
+import { paintSimilarityAfter } from '#lib/paint/animation/models/paint-similarity.ts';
 import { compilePaintingSelection, type PaintingSelectionCompiled } from '#lib/paint/document/models/painting-document-compile.ts';
 import type { PaintingPoses } from '#lib/paint/document/models/painting-pose.ts';
 import type { LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
@@ -29,7 +30,7 @@ import type { PaintRigPicture } from '#lib/paint/rig/models/paint-rig-pieces.ts'
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
 import type { CompiledPaintedShot, CompiledShotPaintedPlane, PaintedShotPaintOptions } from '../models/shot-compile.ts';
 import { shotPlanePosesAt, shotPlaneReseedAt, shotPlaneSharesAt, shotRigGroupPivot, type ShotFrameRigs, type ShotRigRead } from '../models/shot-frame-plan.ts';
-import { shotPresentedKeys } from '../models/shot-masks.ts';
+import { shotPresentedKeys, type ShotMaskAcross } from '../models/shot-masks.ts';
 import { shotOccurrencePlane } from '../models/shot-occurrences.ts';
 import type { OccurrenceKey } from '../models/shot-props.ts';
 import { shotRigFound } from '../models/shot-rigs.ts';
@@ -124,6 +125,8 @@ export type ShotPaintedPlanesOptions = PaintedShotPaintOptions & {
 /** A shot's painted planes on `owner`'s device, their pictures kept in its cache until `dispose`. */
 export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage, brushOf, costs, arena, layer, rigPictures, piecesDrawer }: ShotPaintedPlanesOptions) {
   const { motion } = shot, { width, height, margin } = stage;
+  // A stage texel's point to plane px and back: the stage's origin lies `margin` up and left of the frame's.
+  const fromStage = { ma: 1, mb: 0, kx: -margin, ky: -margin }, toStage = { ma: 1, mb: 0, kx: margin, ky: margin };
   // A variant isn't here: a mask reads an instanced plane through its items.
   const paintedOf = new Map(shot.planes.flatMap((plane) => (plane.kind === 'painted' ? [[plane.id, plane] as const] : [])));
   const laysKept = new WeakMap<PaintingSelectionCompiled, StampSheetsLays>(), pictures = createStampPlanePictures(owner, { stage, arena });
@@ -295,11 +298,11 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
 
     /**
      * Each of `moments`' planes presented, in the shot's masks' order: each selection's picture kept, or its pieces
-     * rigs drawn and it laid, its alphaOf masks reading what planes before it laid and what `sources` rendered, and
-     * nothing of a plane `hidden` this frame.
+     * rigs drawn and it laid, its alphaOf masks reading what planes before it laid, through the camera as `across`
+     * maps it, and what `sources` rendered; nothing of a plane `hidden` this frame.
      */
     present(
-      encoder: GPUCommandEncoder, moments: ReadonlyMap<string, ShotPlaneMoment>, hidden: ReadonlySet<CompiledShotPaintedPlane>, sources: ShotSourceReads,
+      encoder: GPUCommandEncoder, moments: ReadonlyMap<string, ShotPlaneMoment>, hidden: ReadonlySet<CompiledShotPaintedPlane>, sources: ShotSourceReads, across: ShotMaskAcross,
     ): ReadonlyMap<string, ShotPlanePresented> {
       const sourceReads = new Map<string, ShotSourceRead>();
       const sourceRead = (plane: string, reader: string) => {
@@ -314,14 +317,17 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
       const plans = new Map([...moments].map(([id, { plane, shares }]) => [id, {
         shares: shares.map(({ plan, share }) => ({ key: plan.key, weight: share.weight })), alphaOf: plane.masks.map((mask) => mask.drawable),
       }]));
-      const keys = shotPresentedKeys(shot.masks.order, plans, (plane, reader) => sourceRead(plane, reader).key);
+      const keys = shotPresentedKeys(shot.masks.order, plans, (plane, reader) => sourceRead(plane, reader).key, across);
       const presented = new Map<string, ShotPlanePresented>();
-      /** What `reader`'s masks read of `drawable`: a painted plane's coverage from its sharp picture, a source's from its render. */
+      /**
+       * What `reader`'s masks read of `drawable`: a painted plane's coverage from its sharp picture, where the camera
+       * shows it (`across`, between stage texels), a source's from its render.
+       */
       const coverageOf = (reader: string) => (drawable: OccurrenceKey): ShotMaskCoverage | null => {
         const on = shotOccurrencePlane(drawable), painted = presented.get(on);
         if (!painted) return sourceRead(on, reader).coverage();
-        const sharp = painted.sharp();
-        return sharp && shotPictureCoverage(sharp, painted.moment.shares[0].plan.reads.findIndex((read) => read.drawable === drawable));
+        const sharp = painted.sharp(), stageAcross = paintSimilarityAfter(toStage, paintSimilarityAfter(across(on, reader), fromStage));
+        return sharp && shotPictureCoverage(sharp, painted.moment.shares[0].plan.reads.findIndex((read) => read.drawable === drawable), stageAcross);
       };
       // The keys hold the planes in the masks' order: each after what it reads.
       for (const [id, key] of keys) {

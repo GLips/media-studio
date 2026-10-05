@@ -1,13 +1,14 @@
 // shot-mask-passes.ts: a painted plane's presentation masks on the GPU (ENGINE 6.3). Before its sheets are laid, its
-// masks multiply into one factor over the stage, 1 where all shows: each alphaOf mask's drawable's laid coverage. The
-// lay takes each film's opacity, card's union and pieces picture times it, glow and all, never the ground.
+// masks multiply into one factor over the stage, 1 where all shows: each alphaOf mask's drawable's laid coverage,
+// read where the camera shows it. The lay takes each film's opacity, card's union and pieces picture times it, glow
+// and all, never the ground.
 //
 // The lay also gathers what other planes' alphaOf masks read of this one: each step's cover, a channel per drawable
 // read, four to a layer of one array, mixed by group fades as paint is. Its picture keeps those layers
 // (shotPictureCoverage).
 
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
-import type { PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
+import { paintSimilarityAfter, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import type { StampPixelBox } from '#lib/paint/painting/models/stamp-blur-region.ts';
 import { STAMP_OPAQUE_COVER } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampStageWgsl, type StampStage, type StampStageTexels } from '#lib/paint/painting/models/stamp-stage.ts';
@@ -40,12 +41,15 @@ export const shotCoverageLayers = (reads: number) => Math.ceil(reads / SHOT_READ
 /** Where read `read` of a plane lies among its coverage layers: its layer and channel. */
 const shotCoverageSlot = (read: number) => ({ layer: Math.floor(read / SHOT_READS_PER_LAYER), channel: read % SHOT_READS_PER_LAYER });
 
-/** Read `read`'s coverage kept in `picture`'s layers, as a mask reads it: its box's texel 0 at the box's first stage texel. */
-export function shotPictureCoverage(picture: StampPlanePicture, read: number): ShotMaskCoverage {
+/**
+ * Read `read`'s coverage kept in `picture`'s layers, as a mask reads it through `across`, the reader's stage texel
+ * points to the read plane's: its box's texel 0 at the box's first stage texel.
+ */
+export function shotPictureCoverage(picture: StampPlanePicture, read: number, across: PaintSimilarity): ShotMaskCoverage {
   const { layer, channel } = shotCoverageSlot(read), { box } = picture;
   return {
     view: picture.texture.createView({ dimension: '2d', baseArrayLayer: picture.coverage!.layer + layer, arrayLayerCount: 1 }),
-    channel, weight: 1, extent: { w: box.w, h: box.h }, map: { ma: 1, mb: 0, kx: -box.x, ky: -box.y },
+    channel, weight: 1, extent: { w: box.w, h: box.h }, map: paintSimilarityAfter({ ma: 1, mb: 0, kx: -box.x, ky: -box.y }, across),
   };
 }
 

@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
 import { painting } from '#lib/paint/document/models/painting-source.ts';
-import { shotMaskCheck, shotPresentedKeys, type ShotPresentedPlan } from './shot-masks.ts';
+import { PAINT_SIMILARITY_IDENTITY } from '#lib/paint/animation/models/paint-similarity.ts';
+import { shotMaskCheck, shotPresentedKeys, type ShotMaskAcross, type ShotPresentedPlan } from './shot-masks.ts';
 import { paintedSourceNodeKeys, shotOccurrenceKey } from './shot-occurrences.ts';
 import type { InstancedPlaneProps, PlaneMask, PlaneProps } from './shot-props.ts';
 import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
@@ -69,11 +70,11 @@ const lonePlan = (key: string, alphaOf: readonly string[] = []): ShotPresentedPl
 /** A pond dissolving `k` of the way from dawn to dusk. */
 const dissolvingPond = (k: number): ShotPresentedPlan => ({ shares: [{ key: 'pond dawn', weight: 1 - k }, { key: 'pond dusk', weight: k }], alphaOf: [] });
 
-test("a reader's presented key moves with what it reads, through a chain, from a source and across a dissolve, and only then", () => {
+test("a reader's presented key moves with what it reads and where the camera shows it, through a chain, from a source and across a dissolve, and only then", () => {
   // tint reads wing, on heron, which reads the photo; pond reads nothing; glow reads pond, which dissolves.
   const order = ['photo', 'pond', 'heron', 'tint', 'glow'];
-  const keysOf = (plans: Record<string, ShotPresentedPlan>, photoKey = 'photo@1') =>
-    shotPresentedKeys(order, new Map(Object.entries(plans)), (on, reader) => `${on} for ${reader}: ${photoKey}`);
+  const keysOf = (plans: Record<string, ShotPresentedPlan>, photoKey = 'photo@1', across: ShotMaskAcross = () => ({ ...PAINT_SIMILARITY_IDENTITY })) =>
+    shotPresentedKeys(order, new Map(Object.entries(plans)), (on, reader) => `${on} for ${reader}: ${photoKey}`, across);
   const plans = { pond: dissolvingPond(0.25), heron: lonePlan('heron', ['photo']), tint: lonePlan('tint', ['heron/wing']), glow: lonePlan('glow', ['pond']) };
   const keys = keysOf(plans);
   assert.deepEqual(keys.get('pond')!.shares, ['pond dawn', 'pond dusk']);
@@ -84,4 +85,8 @@ test("a reader's presented key moves with what it reads, through a chain, from a
   // A dissolve moving only its weights keeps its selections' pictures, and moves its reader's.
   assert.deepEqual(keysOf({ ...plans, pond: dissolvingPond(0.5) }).get('pond')!.shares, keys.get('pond')!.shares);
   assert.notEqual(keysOf({ ...plans, pond: dissolvingPond(0.5) }).get('glow')!.plane, keys.get('glow')!.plane);
+  // The camera's parallax between tint and heron moves the tint's read of the wing, and nothing the heron reads.
+  const panned = keysOf(plans, 'photo@1', (on, reader) => (on === 'heron' && reader === 'tint' ? { ma: 1, mb: 0, kx: 12, ky: 0 } : PAINT_SIMILARITY_IDENTITY));
+  assert.notEqual(panned.get('tint')!.plane, keys.get('tint')!.plane);
+  assert.deepEqual(panned.get('heron'), keys.get('heron'));
 });

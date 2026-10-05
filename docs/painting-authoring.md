@@ -1098,7 +1098,7 @@ move and shutter show of it; a back painted short of that is refused, naming the
 | rig | `rigs: {[group occurrence]: {parts, pose}}` (Reference) | a rigged node takes place, clock, glow and boil, not pins, sway or flutter. On a sheet the group or a cel owns, paint, paper and edge bend as pieces (**NEW** in shots); otherwise the cels' marks are posed before painting (**NEW**) |
 | lay | a plane's `lay` (and `reach`): still, moving, or on the frame, a pin or a cover | where its document lies in frame px (Lay forms, below) |
 | hold | plane `clock: {hold: n}` holds its presentation and motion: its lay, visibility and rig poses, and its nodes' plays; `sourceClock: {hold: n}` holds what `source` reads (a callback's prefix, property values and dissolve weights, a picture's `pictureAt`, a three scene's `poseAt`) | each callback reads its clock's held moment, floored to the hold's grid. Both start from the frame's moment; neither holds the other's. The camera still moves through the shutter |
-| masks | `alphaOf` (another drawable's coverage, partial alpha included, where it lies this frame: a plane by id, painted, picture, three or instanced, or a painted plane's occurrence), `invert?` | **NEW**, on painted planes only. It cuts the plane's paint, glow and the own-sheet paper it shapes; the ground stays whole. A plane's masks multiply. To leave a layer unmasked, put it on a second plane at the same depth. No mask reads its own plane, through any chain. Paint shown over time, along a path or by a field, is the document's to say: a layer's or group's `reveal` (Time). `alphaOf` reads through both lays: a painted or picture drawable's coverage at the same plane px, the camera's parallax between their depths left out; a three plane's where its render shows it; an instanced plane's items where the camera shows them, sharp and still. A drawable's coverage is cut by its own plane's masks and visibility. A part inside a rig drawn as pieces isn't read apart: read the rig. A reader is laid anew only when what it reads changes: a painted plane's picture, a picture source's new picture, a three render's frame, an instanced plane's items moved, faded or repainted, a drawable's visibility. A dissolving plane's masks cut both ends alike, and reading one reads its ends' coverage blended as its picture is |
+| masks | `alphaOf` (another drawable's coverage, partial alpha included, where it lies this frame: a plane by id, painted, picture, three or instanced, or a painted plane's occurrence), `invert?` | **NEW**, on painted planes only. It cuts the plane's paint, glow and the own-sheet paper it shapes; the ground stays whole. A plane's masks multiply. To leave a layer unmasked, put it on a second plane at the same depth. No mask reads its own plane, through any chain. Paint shown over time, along a path or by a field, is the document's to say: a layer's or group's `reveal` (Time). `alphaOf` reads every drawable where the camera shows it this frame, through both lays and the parallax between their depths: a reader's plane px is found on the frame and read on the drawable's plane there, so the cut stays on what it reads on the frame as the camera pans, while the reader's paint slides by at its own depth. At one depth that's the same plane px, as at rest. A three plane's coverage is read where its render shows it; an instanced plane's items where the camera shows them, sharp and still. A drawable's coverage is cut by its own plane's masks and visibility. A part inside a rig drawn as pieces isn't read apart: read the rig. A reader is laid anew only when what it reads changes: a painted plane's picture, a picture source's new picture, a three render's frame, an instanced plane's items moved, faded or repainted, a drawable's visibility, or where the camera shows it against the reader (each frame a camera move parts their depths). A dissolving plane's masks cut both ends alike, and reading one reads its ends' coverage blended as its picture is |
 | instances | `{kind: 'instanced', depths: {near, far}, variants, instances(m)}` | each item lays its variant as a plane at its depth (`lay` from the variant's document px; clear outside its paint), depth-sorted with every drawable, planes first on ties, all within `depths` and nearer than the back. A variant is solved and laid once, whole and centred on the stage (its document no larger), and every item showing it shares that picture; items lie anywhere through the lens. An item's defocus blurs that picture, and may spread it only as far as the stage leaves round the variant's document: paint a variant on a document tight round its paint. A key is one item's lifetime: the same key at the shutter's two ends blurs the item along its own travel; a key missing at either end draws it as if still on its plane, blurred only by the camera's move; a recycled item takes a new key. An item's `visibility` fades it, the plane's all of them. Items take no motion nodes (**NEW**) |
 | dissolve | `dissolve(a, b, k)`, nestable | blends the two pictures in the plane's own form (the back's opaque colour, a nearer plane's or a clear back's colour and transmittance, on any canvas), never their pigment; its glow and motion summed alike; its occurrences are both sides', moved alike; every end one document size on one ground; a rig on its plane needs its group cut alike in every end (the same layers in each cel), and each end is posed by the frame's one read of the pose and solved per pose (**NEW**) |
 | three.js | `{kind: 'three', build}`; `paintedTextures: [{id, source, widthPx, heightPx}]` on the shot | the three-layers feature's: posed at each moment (once at 0 as it loads), then its offscreen passes drawn before its scene (a mirror following the exposure's camera, a ground); it may ask for soft shadows (`shadows`) and reads painted textures by id (Painted textures, Lighting a three scene) |
@@ -1141,19 +1141,25 @@ against the union's last form, as if a still lay had to be a pin or cover. Type 
 A document point on a plane at depth d reaches the frame in two steps: the plane's lay takes it to plane px q, and
 the camera shows q at `c + R(−roll) · (s · (q − c) + shift)`, c the frame's centre, s = zoom · d ÷ (d − dolly), shift
 = −pan · zoom ÷ (d − dolly) (Reference › Camera). A positive pan x slides every plane left, a nearer plane further.
-`paintPlaneSimilarity(pose, depth, paintStageCentre(stage))` is that step as a similarity, and
-`paintCameraMoveAt(clip, s)` the pose `s` seconds into a move clip (scene seconds less its clock's `at`, for a clock
-with no rate, loop or hold), both in `#lib/paint/animation/models/paint-camera.ts`; `paintSimilarityApply` and
-`paintSimilarityInverse` are in `#lib/paint/animation/models/paint-similarity.ts`. They're models, so a scene's
-`*-model.ts` and its tests can line things up across planes. A figure on a plane at depth 1 standing in a lamp's pool
-on the back, at depth 2 and not laid, 4 s into the camera's `PAN` clip:
+Two models in `#lib/paint/animation/models/paint-camera-depths.ts` answer the questions a scene asks across depths,
+through the `camera` it hands `<PaintedShot>`, every play included, so its `*-model.ts` and tests can line things up:
+
+- `paintPointAcrossDepths(camera, {depth, point}, toDepth, m)`: the px on a plane at `toDepth` that the frame shows
+  where it shows `point`, plane px on a plane at `depth`, at moment `m`. Both are plane px: put a lay on either side
+  yourself. A plane held by `clock` reads its lay at its held moment while the camera moves on, so ask at the frame's.
+- `paintCameraReachAt(camera, depth)`: how far past the frame, in whole px on each side (`left`, `top`, `right`,
+  `bottom`), the camera reads a plane at `depth` anywhere in the shot, its blur included. A painting that large and
+  laid at (−left, −top) holds every frame: what the back's check asks (Camera).
+
+Both are exact only between image-parallel planes, which every painted, picture and instanced plane is. A three
+scene's receding ground isn't: a point on it lies where the scene's own camera puts it. The camera's step alone is
+`paintPlaneSimilarity(pose, depth, paintStageCentre(stage))` in `paint-camera.ts`, with `paintSimilarityApply` and
+`paintSimilarityInverse` in `paint-similarity.ts`. A figure on a plane at depth 1 standing in a lamp's pool on the
+back, at depth 2 and not laid, 4 s in:
 
 ```ts
-const centre = paintStageCentre(STAGE), pose = paintCameraMoveAt(PAN, 4);
-/** The pool's centre, back document px, where the frame shows it at 4 s. */
-const poolOnFrame = paintSimilarityApply(paintPlaneSimilarity(pose, 2, centre), { x: 1300, y: 860 });
-/** The figure plane's px the frame shows there at 4 s: lay the figure's feet here. */
-const feet = paintSimilarityApply(paintSimilarityInverse(paintPlaneSimilarity(pose, 1, centre)), poolOnFrame);
+/** The figure plane's px the frame shows the pool's centre (back document px) on at 4 s: lay the figure's feet here. */
+const feet = paintPointAcrossDepths(CAMERA, { depth: 2, point: { x: 1300, y: 860 } }, 1, paintMoment(4));
 ```
 
 With the camera panned 120 px right there (pan x 120, no dolly or zoom), the pool at x 1300 shows at 1240, and the
@@ -1505,7 +1511,8 @@ is at rest; `ease` (`'linear'`, `'in'`, `'out'`, `'inOut'`) on the key it eases 
 focus, aperture, ease?}`: `focus` the depth held sharp, a three scene's texels each at their own (Lighting a three
 scene); `aperture` frame px of blur sigma at infinite depth. A plane at depth d shows scaled zoom · d ÷ (d − dolly)
 about the frame centre, shifted by −pan · zoom ÷ (d − dolly), turned by −roll. A pan moves a far plane less: give it
-a document wider than the frame by the pan ÷ d it travels, placed with `lay`. The back's painting must reach past everything the frame
+a document wider than the frame by the pan ÷ d it travels, placed with `lay` (`paintCameraReachAt` gives the px on
+each side, blur included). The back's painting must reach past everything the frame
 reads of it: past the frame by its blur, about 3 × sigma + 2 px each side at its widest defocus, and past any travel
 the move and shutter show; a node moving the back takes in what it brings an edge in (a push in takes in nothing).
 Bare paper lies past its document, so a back short of that is refused (`back.lay`) over every span of the move,

@@ -1,7 +1,8 @@
 // shot-masks.ts: a plane's presentation masks as a graph. An alphaOf mask reads another drawable's laid coverage, so
 // the masks order the planes, and a mask must never read itself through any chain. Masks cut finished films in a
-// plane's document px and never enter a solve: a reader's picture is keyed by what it read.
+// plane's document px and never enter a solve: a reader's picture is keyed by what it read, and where.
 
+import type { PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import { shotDrawableNamer, shotOccurrencePlane } from './shot-occurrences.ts';
 import type { InstancedPlaneProps, OccurrenceKey, PlaneProps } from './shot-props.ts';
@@ -84,12 +85,19 @@ export type ShotPresentedPlan = { readonly shares: readonly { readonly key: stri
 export type ShotPresentedKeys = { readonly shares: readonly string[]; readonly plane: string };
 
 /**
+ * How a reader's masks read a painted plane this exposure: the reader's plane px to the read plane's, where the camera
+ * shows them on one frame px (paintViewAcross). The identity at one depth.
+ */
+export type ShotMaskAcross = (plane: string, reader: string) => PaintSimilarity;
+
+/**
  * Each painted plane's presented keys, in the masks' `order`. A selection's picture is kept under its plan's key, a
- * reader's adding what each mask reads: a painted plane's key (presented first) or a source's render as `sourceKey`
- * names it. A dissolve's plane key adds its weights, a selection's never, so moving only the weights lays nothing anew.
+ * reader's adding what each mask reads: a painted plane's key (presented first) and its `across` map, or a source's
+ * render as `sourceKey` names it. A dissolve's plane key adds its weights, a selection's never: moving weights lays
+ * nothing anew.
  */
 export function shotPresentedKeys(
-  order: readonly string[], plans: ReadonlyMap<string, ShotPresentedPlan>, sourceKey: (plane: string, reader: string) => string,
+  order: readonly string[], plans: ReadonlyMap<string, ShotPresentedPlan>, sourceKey: (plane: string, reader: string) => string, across: ShotMaskAcross,
 ): Map<string, ShotPresentedKeys> {
   const keys = new Map<string, ShotPresentedKeys>();
   for (const id of order) {
@@ -97,7 +105,9 @@ export function shotPresentedKeys(
     if (!plan) continue;
     const read = plan.alphaOf.map((drawable) => {
       const on = shotOccurrencePlane(drawable);
-      return [drawable, plans.has(on) ? keys.get(on)!.plane : sourceKey(on, id)];
+      if (!plans.has(on)) return [drawable, sourceKey(on, id)];
+      const { ma, mb, kx, ky } = across(on, id);
+      return [drawable, keys.get(on)!.plane, ma, mb, kx, ky];
     });
     const shares = plan.shares.map(({ key }) => (read.length ? JSON.stringify([key, read]) : key)), [lone] = plan.shares;
     keys.set(id, { shares, plane: shares.length === 1 && lone.weight === 1 ? shares[0] : JSON.stringify(shares.map((key, i) => [key, plan.shares[i].weight])) });

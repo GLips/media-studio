@@ -234,6 +234,15 @@
       "acceptedOver": "5fcf8c2e",
       "adapter": "apple metal-3"
     },
+    "shot/masks-across": {
+      "file": "shot/masks-across.png",
+      "output": "59081627c6815cef0d926bb6c55b7c204740cd5253015814995547a1d1f2c20a",
+      "inputs": "9f9f4acca85724f996d4a0eb9b05bd5d9a359421b5d9f8f25e11b105c627d78e",
+      "reason": "relations-across-depth: the tint a depth nearer than the heron, cut to its wing, under a 24 px pan at 1 s",
+      "accepted": "2026-10-05",
+      "acceptedOver": "6f6895ee",
+      "adapter": "apple metal-3"
+    },
     "shot/painted-cylinder": {
       "file": "shot/painted-cylinder.png",
       "output": "a50d47166eea527e164effdcb139ce4a530cd4a96d0b51c234e0ea2b21a48e57",

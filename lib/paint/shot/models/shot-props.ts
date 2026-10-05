@@ -44,8 +44,8 @@ export type OccurrenceKey = string;
 
 /**
  * A presentation mask, painted planes only: it cuts the plane's paint and the own-sheet paper it shapes, never the
- * ground; it re-solves nothing. `alphaOf`: a plane's or painted occurrence's coverage as laid, partial alpha too. Paint
- * shown over time along a path is the document's to say: a layer's or group's `reveal`.
+ * ground; it re-solves nothing. `alphaOf`: a plane's or painted occurrence's coverage as laid, partial alpha too,
+ * read where the camera shows it this frame, parallax included. Paint shown over time is a layer's or group's `reveal`.
  */
 export type PlaneMask = { readonly kind: 'alphaOf'; readonly drawable: OccurrenceKey; readonly invert?: boolean };
 

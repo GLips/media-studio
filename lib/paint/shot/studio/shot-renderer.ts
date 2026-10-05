@@ -3,13 +3,14 @@
 // frame's many) lays every plane where it lies, in its masks' order, reads its items, and composites each canvas far
 // to near through its lens. The first canvas holds the back. A pinned plane lies where the frame's measures put it.
 //
-// Picture and three planes are the old path's sources (stamp-lens-source-layers.ts). An alphaOf mask reads plane px
-// to plane px, no parallax between depths; a three render, and an instanced plane's items drawn still, are the
-// camera's, seen through the reader's view.
+// Picture and three planes are the old path's sources (stamp-lens-source-layers.ts). An alphaOf mask reads its
+// drawable where this exposure's camera shows it: through the reader's view, then, for a painted or picture plane,
+// the drawable's view undone.
 
 import { paintNodeTimeAt } from '#lib/paint/animation/models/paint-clock.ts';
 import { PAINT_SIMILARITY_IDENTITY, paintSimilarityAfter, paintSimilarityInverse, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import { paintCameraDepthLooks, paintCameraLensFrame, type PaintCameraDepthLooks } from '#lib/paint/animation/models/paint-camera.ts';
+import { paintViewAcross } from '#lib/paint/animation/models/paint-camera-depths.ts';
 import { paintingMemosKept } from '#lib/paint/document/models/painting-document-compile.ts';
 import { paintingProblemsError } from '#lib/paint/document/models/painting-problem.ts';
 import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
@@ -30,6 +31,7 @@ import { shotExposureMoments, shotSolvablesShown, shotWarmShown } from '../model
 import { shotPinnedPlanes, type ShotPinCentres } from '../models/shot-placement.ts';
 import { shotNodePoseAt, shotRigReader, shotVisibilityAt } from '../models/shot-frame-plan.ts';
 import { shotDrawSteps, shotExposureItems, type CompiledShotInstancedPlane, type CompiledShotVariant, type ShotExposureItems } from '../models/shot-instances.ts';
+import type { ShotMaskAcross } from '../models/shot-masks.ts';
 import { shotDrawableOrder } from '../models/shot-plan.ts';
 import type { ShotMomentAt } from '../models/shot-sheet-lays.ts';
 import { shotWarmFrames } from '../models/shot-warm.ts';
@@ -106,6 +108,13 @@ function shotExposures(shot: CompiledPaintedShot, t: number, mode: LensMode): Sh
     return { looks, lens: paintCameraLensFrame(camera, looks), at, shutter: null, exposure: { index, count, at: at.at, aperture } };
   });
 }
+
+/** How `exposure`'s camera shows plane `id`, plane px to frame px. */
+const shotExposureView = (exposure: ShotExposure, id: string) => (exposure.lens.planes.get(id) ?? STAMP_REST_LOOK).view;
+
+/** `exposure`'s map from a reader's plane px to a painted or picture plane's, where its camera shows both on one frame px. */
+const shotExposureAcross = (exposure: ShotExposure): ShotMaskAcross => (plane, reader) =>
+  paintViewAcross(shotExposureView(exposure, reader), shotExposureView(exposure, plane));
 
 /**
  * `shot` on `owner`'s device, drawn into `surfaces`, one a canvas in the shot's canvas order, each the camera's frame
@@ -189,13 +198,13 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
 
     /**
      * Plane `id`, a source or instanced plane, as painted plane `reader`'s mask reads it at `exposure` of frame `t`:
-     * a picture's alpha through its node's placement; a three render's, or the items' (`items`), through the
-     * reader's view; each by its visibility. And a key naming what's read.
+     * a picture's alpha where the camera shows it, through its node's placement; a three render's, or the items'
+     * (`items`), through the reader's view; each by its visibility. And a key naming what's read.
      */
     const sourceRead = (
       id: string, reader: string, exposure: ShotExposure, renders: readonly StampSourceRenders[], items: (plane: CompiledShotInstancedPlane) => ShotItemsCoverage, t: number,
     ): ShotSourceRead => {
-      const { view } = exposure.lens.planes.get(reader) ?? STAMP_REST_LOOK, seen = paintSimilarityAfter(view, planePx), instanced = instancedOf.get(id);
+      const seen = paintSimilarityAfter(shotExposureView(exposure, reader), planePx), instanced = instancedOf.get(id);
       if (instanced) {
         // An item's visibility is in its look already: the plane's is read through its items.
         const { key, at, read } = items(instanced), map = throughCamera(seen, at);
@@ -219,7 +228,8 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
       if (plane.kind !== 'picture') throw new Error(`shot: ${reader}'s mask reads ${id}, a ${plane.kind} plane, as a source; only a picture, three or instanced plane renders one`);
       const picture = renders[plane.canvas].pictures.get(id) ?? null;
       if (!picture) return { key: 'nothing', coverage: () => null };
-      const { box } = picture, map = paintSimilarityAfter({ ma: 1, mb: 0, kx: margin - box.x, ky: margin - box.y }, paintSimilarityAfter(paintSimilarityInverse(pictureNodeMap(id, exposure.at)), planePx));
+      const { box } = picture, onPlane = paintSimilarityAfter(shotExposureAcross(exposure)(id, reader), planePx);
+      const map = paintSimilarityAfter({ ma: 1, mb: 0, kx: margin - box.x, ky: margin - box.y }, paintSimilarityAfter(paintSimilarityInverse(pictureNodeMap(id, exposure.at)), onPlane));
       return {
         key: shotSourceReadKey({ kind: 'picture', version: picture.version, box }, weight, map),
         coverage: () => ({ view: picture.texture.createView(), channel: 3, weight, extent: { w: box.w, h: box.h }, map }),
@@ -240,7 +250,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
       const encoder = device.createCommandEncoder(), lensFrame = exposure.lens, fast = !exposure.exposure;
       // Every painted plane laid first, each after those its masks read, whatever canvas or depth it's drawn at.
       const itemsCovered = shotItemsCoverages(encoder, { owner, lenses: canvases.map(({ lens }) => lens), planes, stage }, variantMoments, hidden, items);
-      const presented = planes.present(encoder, moments, hidden, (id, reader) => sourceRead(id, reader, exposure, renders, itemsCovered, t));
+      const presented = planes.present(encoder, moments, hidden, (id, reader) => sourceRead(id, reader, exposure, renders, itemsCovered, t), shotExposureAcross(exposure));
       // The exposure's drawables far to near, consecutive items of a variant blurred alike in one step.
       const steps = shotDrawSteps(shotDrawableOrder(shot.written, items.items), (plane, item) => items.lookOf(plane, item).sigma);
       for (const canvas of canvases) {

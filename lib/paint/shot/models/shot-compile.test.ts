@@ -4,6 +4,7 @@ import type { Layer, PaintingDocument } from '#lib/paint/document/models/paintin
 import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
 import { painting } from '#lib/paint/document/models/painting-source.ts';
 import { paintCameraPlay, paintPlaneViewAt, type PaintCameraShutter } from '#lib/paint/animation/models/paint-camera.ts';
+import { paintCameraReachAt, type PaintCameraReach } from '#lib/paint/animation/models/paint-camera-depths.ts';
 import { paintSimilarityApply, paintSimilarityAfter, paintSimilarityInverse, paintSimilarityOf } from '#lib/paint/animation/models/paint-similarity.ts';
 import { paintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
@@ -200,6 +201,33 @@ test("the back is refused where the frame's blur reads past its painting, and me
   assert.match(covered, /: cover a box 11 px smaller on every side \(box: \{ x0: 11, y0: 11, x1: 309, y1: 229 \}\), or paint 12 px more past its box on every side/);
   assert.deepEqual(problemsOf(backedBy({ ...BACK, source: layersOf(pond, ['sky']), lay: { kind: 'cover', box: { x0: 11, y0: 11, x1: 309, y1: 229 } } })), []);
   assert.deepEqual(problemsOf(backedBy({ ...BACK, source: layersOf(skyGrown(12), ['sky']), lay: { kind: 'cover', box: { x0: 12, y0: 12, x1: 332, y1: 252 } } })), []);
+});
+
+/** A drift right and up with a push in, focused on depth 1, over a stage wide enough for all of it. */
+const drifting: PaintedShotProps['camera'] = {
+  ...camera, stage: stampStage({ width: 320, height: 240 }, 80),
+  plays: [
+    paintCameraPlay({ kind: 'move', keys: [{ at: 0 }, { at: 1, pan: { x: 60, y: -12 }, dolly: 0.2 }] }, { clock: { at: 0 }, origin: 'drift' }),
+    paintCameraPlay({ kind: 'focus', keys: [{ at: 0, focus: 1, aperture: 4 }] }, { clock: { at: 0 }, origin: 'focus' }),
+  ],
+};
+
+/** The pond's sky on a document padded by `pad` past the frame, laid back by its left and top pads. */
+const skyPadded = (pad: PaintCameraReach): PlaneProps => ({
+  id: 'back', depth: 2, lay: { placement: { x: -pad.left, y: -pad.top, rotation: 0, scale: 1 }, pivot: { x: 0, y: 0 } },
+  source: layersOf(painting({
+    default: function sky(): PaintingDocument {
+      return { ...pond.document, widthPx: 320 + pad.left + pad.right, heightPx: 240 + pad.top + pad.bottom, layers: [layer('sky', pad.left)] };
+    },
+  }), ['sky']),
+});
+
+test("a back padded by the camera's reach at its depth holds all the camera reads of it, and a px less on a side is refused", () => {
+  const reach = paintCameraReachAt(drifting, 2), padded = (pad: PaintCameraReach) => problemsOf({ camera: drifting, planes: [skyPadded(pad)] });
+  assert.ok(reach.right > reach.left && reach.top > reach.bottom, `a drift right and up reads further right and up: ${JSON.stringify(reach)}`);
+  assert.deepEqual(padded(reach), []);
+  assert.match(padded({ ...reach, right: reach.right - 1 })[0], /^back\.lay: is the back, painted /);
+  assert.match(padded({ ...reach, top: reach.top - 1 })[0], /^back\.lay: is the back, painted /);
 });
 
 test("the back's node takes its paint in only as far as it brings an edge in: a push in holds, a drift is refused", () => {

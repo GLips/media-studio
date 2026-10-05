@@ -1,6 +1,7 @@
-// node harness/stamp-paint-gate.ts [run] (npm run stamp:gate, run by default): the GPU gate (lib/paint/gate). It
+// node harness/stamp-paint-gate.ts [run [ids]] (npm run stamp:gate, run by default): the GPU gate (lib/paint/gate). It
 // runs the renderer's formulas, paints synthetic paintings and traces a resolve on the GPU, and holds each to its
-// accepted baseline (harness/fixtures/stamp-paint/), its CPU twin or its frame. `update <ids> --reason` writes
+// accepted baseline (harness/fixtures/stamp-paint/), its CPU twin or its frame; `run <ids>`, only the baselines and
+// cases named. `update <ids> --reason` writes
 // candidates with their differences; `accept <ids>` replaces the baselines with them. `pushed` is what pre-push runs; it runs `tree` inside each pushed commit, written out.
 // `private run|update|accept` does the same for pack brushes, into the workspace's work/validation/stamp-paint/.
 import { defineCommand } from 'citty';
@@ -40,9 +41,12 @@ const idsArg = (raw: readonly string[]) => (raw.includes('all') ? stampGateBasel
 const reasonArg = { type: 'string', required: true, description: 'Why the baselines change, recorded with them when accepted' } as const;
 
 const runCommand = defineCommand({
-  meta: { name: 'run', description: 'Run the gate: formulas against their baselines or CPU twins, paintings against their baselines, a trace against its frame. Fails on any difference, a missing adapter or a changed input.' },
-  async run() {
-    report(await runStampGate(STAMP_GATE_PUBLIC_STORE));
+  meta: {
+    name: 'run',
+    description: 'Run the gate: formulas against their baselines or CPU twins, paintings against their baselines, a trace against its frame. Fails on any difference, a missing adapter or a changed input. Name baselines or cases (shot/masks "shot/masks: alphaOf") to run only those.',
+  },
+  async run({ args }) {
+    report(await runStampGate(STAMP_GATE_PUBLIC_STORE, args._));
   },
 });
 

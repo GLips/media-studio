@@ -1,15 +1,15 @@
 // stamp-gate-shot-masks-page.ts: the gate page's masked shot (stamp-gate-shot-masks.ts), drawn through the shot's
 // renderer (stamp-gate-shot-frames.ts): alphaOf masks cutting a tint to the heron's wing, to all but it, to a disc
-// moving across, a picture or a three plane, to the heron revealed by its document over frames and faded, and to the
-// disc faded, held and instanced.
+// moving across, a picture or a three plane, to the heron revealed by its document over frames and faded, to the
+// disc faded, held and instanced, and to the wing a depth farther as the camera pans.
 
 import { CircleGeometry, Mesh, MeshBasicNodeMaterial, Scene } from 'three/webgpu';
 import type { ThreeSource } from '#lib/paint/shot/models/shot-props.ts';
 import { stampGateFrameDifference, stampGateFrameDifferenceText as differenceText, stampGateFramePasses, stampGateLaidShare } from '../models/stamp-gate-frames.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import {
-  STAMP_GATE_MASKS_AT, STAMP_GATE_MASKS_DISC, STAMP_GATE_MASKS_WING, stampGateMaskDiscBox, stampGateMaskDiscCentre, stampGateMaskedShot, stampGateNearDiscCentre,
-  stampGateTintSplit, stampGateWellInsideVane,
+  STAMP_GATE_MASKS_ACROSS, STAMP_GATE_MASKS_AT, STAMP_GATE_MASKS_DISC, STAMP_GATE_MASKS_WING, stampGateMaskDiscBox, stampGateMaskDiscCentre, stampGateMaskedShot,
+  stampGateMaskedView, stampGateNearDiscCentre, stampGateTintSplit, stampGateWellInsideVane,
   type StampGateMaskedShot, type StampGateShotMaskId,
 } from '../models/stamp-gate-shot-masks.ts';
 import { stampGateRgb } from './stamp-gate-page-surface.ts';
@@ -48,9 +48,9 @@ const PAN = 24;
 /** The disc frames' scene seconds: the disc moves between them. */
 const DISC_TIMES = [0, 1] as const;
 
-/** How each frame `cut` (the tint cut to the disc) differs from `bare`, `width` px wide, round the disc as a camera panned `pan` shows it. */
-const discSplits = (cut: readonly ArrayLike<number>[], bare: readonly ArrayLike<number>[], width: number, pan: number) =>
-  DISC_TIMES.map((at, i) => ({ at, split: stampGateTintSplit(cut[i], bare[i], width, stampGateMaskDiscBox(at, pan)) }));
+/** How each frame `cut` (the tint cut to the disc) differs from `bare`, `width` px wide, at `times`, round the disc as `shown`'s camera shows it. */
+const discSplits = (cut: readonly ArrayLike<number>[], bare: readonly ArrayLike<number>[], width: number, shown: StampGateMaskedShot, times: readonly number[] = DISC_TIMES) =>
+  times.map((at, i) => ({ at, split: stampGateTintSplit(cut[i], bare[i], width, stampGateMaskDiscBox(at, stampGateMaskedView(shown, STAMP_GATE_MASKS_DISC.depth, at))) }));
 const discText = (splits: ReturnType<typeof discSplits>) => splits.map(({ at, split }) => `at ${at} s, ${split.inside} texels round it and ${split.outside} past it`).join('; ');
 
 /**
@@ -64,11 +64,10 @@ async function checkAlphaOf(): Promise<StampGateWashCheck[]> {
     maskedFrames({ heron: 'unmasked', tint: 'none' }, [0]), maskedFrames({ heron: 'unmasked', tint: 'wing' }, [0]), maskedFrames({ heron: 'unmasked', tint: 'not wing' }, [0]),
     maskedFrames({ heron: 'unmasked', disc: 'picture', tint: 'none' }, times), maskedFrames({ heron: 'unmasked', disc: 'picture', tint: 'disc' }, times),
   ].map(async (drawn) => (await drawn).frames));
-  const [threeBare, threeCut] = await Promise.all([
-    maskedFrames({ heron: 'none', disc: THREE_DISC, tint: 'none', pan: PAN }, times), maskedFrames({ heron: 'none', disc: THREE_DISC, tint: 'disc', pan: PAN }, times),
-  ].map(async (drawn) => (await drawn).frames));
+  const threeShown = { heron: 'none', disc: THREE_DISC, tint: 'disc', pan: PAN } as const;
+  const [threeBare, threeCut] = await Promise.all([maskedFrames({ ...threeShown, tint: 'none' }, times), maskedFrames(threeShown, times)].map(async (drawn) => (await drawn).frames));
   const onWing = stampGateTintSplit(wing, bare, width, STAMP_GATE_MASKS_WING), offWing = stampGateTintSplit(notWing, bare, width, STAMP_GATE_MASKS_WING);
-  const onDisc = discSplits(discCut, discBare, width, 0), onThree = discSplits(threeCut, threeBare, width, PAN);
+  const onDisc = discSplits(discCut, discBare, width, { heron: 'unmasked', disc: 'picture', tint: 'disc' }), onThree = discSplits(threeCut, threeBare, width, threeShown);
   return [
     {
       id: 'shot/masks: alphaOf', passed: onWing.outside === 0 && onWing.vane === onWing.vaneAll && onWing.vaneAll > 0,
@@ -159,7 +158,7 @@ async function checkSources(): Promise<StampGateWashCheck[]> {
     return [stampGateFrameDifference(frames[0], frames[1]), stampGateFrameDifference(frames[1], frames[2])];
   }));
   const [spotBare, spotCut] = await Promise.all((['none', 'disc'] as const).map(async (tint) => (await maskedFrames({ heron: 'none', disc: 'spot', tint }, DISC_TIMES)).frames));
-  const onSpot = discSplits(spotCut, spotBare, width, 0), tintShare = halfTint / wholeTint, spotShare = halfSpotTint / spotTint;
+  const onSpot = discSplits(spotCut, spotBare, width, { heron: 'none', disc: 'spot', tint: 'disc' }), tintShare = halfTint / wholeTint, spotShare = halfSpotTint / spotTint;
   return [
     {
       id: 'shot/masks: source faded', passed: drawnShare >= 0.45 && drawnShare <= 0.55 && wholeTint >= 0.95 && tintShare >= 0.45 && tintShare <= 0.8,
@@ -180,10 +179,41 @@ async function checkSources(): Promise<StampGateWashCheck[]> {
   ];
 }
 
+/** Pictures laid anew at each of a drawing's frames. */
+const laidAnew = ({ costs }: Awaited<ReturnType<typeof maskedFrames>>) => costs.map(({ counts }) => counts.get('picture misses') ?? 0);
+
+/**
+ * A mask across depths: the tint a depth nearer than the heron, cut to its wing, stays on the wing where the camera
+ * shows it as a pan parts the two depths, laid anew each frame the parallax moves. At the heron's own depth it lays
+ * nothing anew once both hold.
+ */
+async function checkAcrossDepths(): Promise<StampGateWashCheck[]> {
+  const { shown, times } = STAMP_GATE_MASKS_ACROSS, { width } = stampGateMaskedShot(shown).camera.stage.frame;
+  const discShown = { ...shown, heron: 'none', disc: 'picture', tint: 'disc' } as const;
+  const [bare, cut, oneDepth, discBare, discCut] = await Promise.all([
+    maskedFrames({ ...shown, tint: 'none' }, times), maskedFrames(shown, times), maskedFrames({ ...shown, tintDepth: 2 }, times),
+    maskedFrames({ ...discShown, tint: 'none' }, times), maskedFrames(discShown, times),
+  ]);
+  const splits = times.map((at, i) => ({ at, split: stampGateTintSplit(cut.frames[i], bare.frames[i], width, STAMP_GATE_MASKS_WING, stampGateMaskedView(shown, 2, at)) }));
+  const onDisc = discSplits(discCut.frames, discBare.frames, width, discShown, times), across = laidAnew(cut), one = laidAnew(oneDepth);
+  const splitText = splits.map(({ at, split }) => `at ${at} s, ${split.inside} texels round the wing and ${split.outside} past it, ${split.vane} of the ${split.vaneAll} well inside its vane`);
+  const onWing = splits.every(({ split }) => split.outside === 0 && split.vane === split.vaneAll && split.vaneAll > 0);
+  return [
+    {
+      id: 'shot/masks: across depths', passed: onWing && onDisc.every(({ split }) => split.inside > 0 && split.outside === 0),
+      detail: `the tint at depth 1, the camera panning ${shown.pan} px over ${shown.panOver} s: cut to heron/wing at depth 2, where the wing shows, ${splitText.join('; ')} (0 past it and all the vane wanted); cut to the picture disc at depth ${STAMP_GATE_MASKS_DISC.depth}, ${discText(onDisc)} (0 past it wanted)`,
+    },
+    {
+      id: 'shot/masks: across depths laid', passed: across.slice(1).every((laid) => laid > 0) && one.at(-1) === 0,
+      detail: `at ${times.join(', ')} s, laid ${across.join(', ')} pictures anew with the tint a depth nearer (some each frame the pan moves wanted), ${one.join(', ')} with it at the heron's depth (none at the last wanted)`,
+    },
+  ];
+}
+
 /** Masked shot case `id`'s checks. */
 export async function checkStampGateShotMasksCase(id: StampGateShotMaskId): Promise<StampGateWashCheck[]> {
   const checks: Record<StampGateShotMaskId, () => Promise<StampGateWashCheck[]>> = {
-    'shot/masks: alphaOf': checkAlphaOf, 'shot/masks: alphaOf painted': checkAlphaOfPainted, 'shot/masks: sources': checkSources,
+    'shot/masks: alphaOf': checkAlphaOf, 'shot/masks: alphaOf painted': checkAlphaOfPainted, 'shot/masks: sources': checkSources, 'shot/masks: across depths': checkAcrossDepths,
   };
   return checks[id]();
 }

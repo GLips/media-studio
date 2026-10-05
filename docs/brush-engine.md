@@ -644,8 +644,10 @@ Masks (ENGINE 6.3) are drawn. The `alphaOf` graph is checked acyclic and sorted 
 reveals at the selection's time, read under the poses its marks were solved by, so a moving reveal moves the
 picture's key and solves nothing. Each exposure lays every painted plane first, in the graph's order (`present` in
 `studio/shot-painted-plane.ts`). `studio/shot-mask-passes.ts` multiplies a plane's masks into one r32float factor
-over the stage: an `alphaOf` read through both lays, plane px to plane px
-(a three render through the reader's camera view; an instanced plane's items drawn still and sharp through the
+over the stage: an `alphaOf` read where the exposure's camera shows its drawable, a painted or picture plane's through
+both lays and the parallax between their depths (the reader's view, then the drawable's undone: `paintViewAcross`,
+exactly the identity between equal views, so a reader at its drawable's depth reads plane px to plane px and keys
+nothing new as the camera moves; a three render through the reader's camera view; an instanced plane's items drawn still and sharp through the
 camera into a frame-sized target by `LensCompositor.cover`, when a lay first asks, and read through the reader's
 view), a source's weighed by its visibility, which its render leaves out. The lay takes it into each film's opacity, each card's cover
 and each pieces picture, so the light each film adds, its glow, is cut with it; the ground is never cut. A film's reveals
@@ -654,7 +656,7 @@ coverage of each drawable another plane reads gathers alongside (film, card, pie
 to a layer of one array, mixed by a fading group's span like the paint; the picture keeps it, faded by the plane's
 visibility, in layers after the lens's (`coverage` in `stampPlanePictureLayers`), so whatever sums pictures sums
 their coverage alike. A reader's picture is kept under its plan's key and what it read (`shotPresentedKeys`): a
-painted plane's presented key, a picture source's upload and box, a three render's frame and exposure, an instanced
+painted plane's presented key and the map across to it, a picture source's upload and box, a three render's frame and exposure, an instanced
 plane's variants' keys and its shown items' views and visibility, each with the map it's read through and its weight. So a reader is laid anew only when what it reads moves. A dissolving plane's masks cut each
 selection alike, and its coverage is summed by weight with its colour (`shot-dissolve-pass.ts`); a reader keys it by
 every selection's key and weight.
@@ -735,7 +737,8 @@ reading registered for fitting (`brush-readings.ts`). `npm run brushes:sheet`, `
 (`npm run wet:passages`, `dry:passages`), the fill sheet and the stroke hand sheet (`brushes:fills`,
 `brushes:hand`), each a Node side over a browser page.
 
-**gate** holds the GPU renderer to accepted output (`npm run stamp:gate -- run`): every rendering formula over a grid,
+**gate** holds the GPU renderer to accepted output (`npm run stamp:gate -- run`, or `run <ids>` for the baselines and
+cases named): every rendering formula over a grid,
 each runtime twin against its CPU side, synthetic paintings that walk every path the renderer takes, and a traced
 resolve against its frame; `media/mixed` holds each group of a three-medium painting to itself painted alone in its
 own medium (max 0), and gouache glazed over a dark watercolour wash to covering it. The sheet solver's cases
@@ -765,7 +768,9 @@ shutter, a frame moving only drops solving nothing and laying no picture anew; a
 (`shot/shutter`), its lens leaving out its shutter: blurred along its slide by the film's, about the frame's time,
 and shut, drawn as if it stood still. The masked shot (`stamp-gate-shot-masks.ts`) shows the paper heron part revealed by its document's reveal (`shot/masks`),
 and cuts a tint to the heron's wing, to all but it, and to a disc moving across as a picture plane and as a three
-plane under a panned camera. Cut to the revealing heron's wing frame after frame, each frame draws as it does alone and a held frame lays nothing anew; cut
+plane under a panned camera. On a plane nearer than the heron, the tint stays cut to the wing, and to a picture disc,
+as a pan parts their depths (`shot/masks-across`), laid anew each frame they move apart; at the heron's depth, never.
+Cut to the revealing heron's wing frame after frame, each frame draws as it does alone and a held frame lays nothing anew; cut
 to the heron faded to half, it tints the wing about half as much, and just as much cut to the heron dissolving
 halfway to water lying elsewhere. A picture disc at half visibility lays half of itself and cuts the tint at half its
 coverage; a three disc hidden draws and cuts as none; a disc held on sixes keeps still, its tint with it, within a

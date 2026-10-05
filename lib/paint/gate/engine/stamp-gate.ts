@@ -219,9 +219,22 @@ function checkTrace({ trace }: Collected): StampGateCheck {
   };
 }
 
-/** The whole gate against the baselines in `store`: every formula, twin, property grid, painting, solved sheet, shot, painted texture, the trace, and every case. */
-export async function runStampGate(store: string): Promise<StampGateCheck[]> {
-  const collected = await collectStampGate({ paintings: STAMP_GATE_PAINTING_IDS, frames: new Set(STAMP_GATE_FRAME_FAMILIES.flatMap(({ ids }) => ids)), cases: STAMP_GATE_CASES });
+/**
+ * The gate against the baselines in `store`: every formula, twin, property grid, painting, solved sheet, shot, painted
+ * texture, the trace, and every case. Or, `only` naming any, those baseline subjects and cases alone: one case on the
+ * shared GPU, not minutes of all of them. Throws on a name the gate hasn't.
+ */
+export async function runStampGate(store: string, only: readonly string[] = []): Promise<StampGateCheck[]> {
+  const frames = STAMP_GATE_FRAME_FAMILIES.flatMap(({ ids }) => ids);
+  if (only.length) {
+    const known = new Set([...stampGateBaselineIds(), ...Object.values(STAMP_GATE_CASES).flat()]), unknown = only.filter((id) => !known.has(id));
+    if (unknown.length) throw new Error(`stamp gate: no subject or case ${unknown.join(', ')}; the gate has ${[...known].join(', ')}`);
+    const named = (id: string) => only.includes(id), cases = Object.fromEntries(Object.entries(STAMP_GATE_CASES).map(([page, ids]) => [page, ids.filter(named)]));
+    const collected = await collectStampGate({ paintings: STAMP_GATE_PAINTING_IDS.filter((id) => named(`painting/${id}`)), frames: new Set(frames.filter(named)), cases });
+    const subjects = [...formulaSubjects(collected), ...collected.frames].filter((subject) => named(subject.id));
+    return [...subjects.map((subject) => checkStampGateSubject(store, subject, collected.adapter)), ...collected.washChecks];
+  }
+  const collected = await collectStampGate({ paintings: STAMP_GATE_PAINTING_IDS, frames: new Set(frames), cases: STAMP_GATE_CASES });
   return [
     ...formulaSubjects(collected).map((subject) => checkStampGateSubject(store, subject, collected.adapter)),
     ...checkTwins(collected),
