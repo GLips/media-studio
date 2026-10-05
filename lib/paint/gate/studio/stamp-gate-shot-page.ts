@@ -1,6 +1,7 @@
 // stamp-gate-shot-page.ts: the gate page's shots (stamp-gate-shots.ts), drawn by stamp-gate-shot-frames.ts: the
 // rigged heron's grain, pieces and boil (test 6), the wet-contact foot posed by its rig, painted in and hidden (test
-// 7), the rain's drops blurred along their own falls (test 5), a dissolve between two sheets over a dissolving back,
+// 7), the rain's drops blurred along their own falls (test 5), a plane blurred by the film's shutter unless shut, a
+// dissolve between two sheets over a dissolving back,
 // the rigged heron posed as it dissolves, a warmed span, the cut-out cards, the sprig drawn as pieces, and their
 // baselines' frames. The masked shot's cases are stamp-gate-shot-masks-page.ts's, the rainy street's
 // stamp-gate-rainy-street-page.ts's and the glowing shot's stamp-gate-shot-glow-page.ts's, handed on.
@@ -11,11 +12,14 @@ import { STAMP_GATE_FRAME_TOLERANCE, stampGateFrameDifference, stampGateFrameDif
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { STAMP_GATE_HERON_MOVE, stampGateHighPass, stampGatePeakShift } from '../models/stamp-gate-paper-heron.ts';
 import { STAMP_GATE_PIECES_AT, stampGatePiecesFlatShot, stampGatePiecesShot } from '../models/stamp-gate-pieces.ts';
-import { STAMP_GATE_LONE_DROP_AT, STAMP_GATE_LONE_DROP_TRAVEL, STAMP_GATE_RAIN, stampGateLoneDropShot, stampGateRainShot } from '../models/stamp-gate-rain.ts';
+import { paintFilmShutter } from '#lib/paint/animation/models/paint-camera.ts';
+import {
+  STAMP_GATE_LONE_DROP_AT, STAMP_GATE_LONE_DROP_TRAVEL, STAMP_GATE_RAIN, STAMP_GATE_SLIDING_POST, stampGateLoneDropShot, stampGateRainShot, stampGateSlidingPostShot,
+} from '../models/stamp-gate-rain.ts';
 import { STAMP_GATE_FAR_SHALLOWS } from '../models/stamp-gate-sheets.ts';
 import {
   STAMP_GATE_DISSOLVE_AT, STAMP_GATE_HERON_BOIL_AT, STAMP_GATE_HERON_NECKS, STAMP_GATE_HIDDEN_FOOT_AT, STAMP_GATE_PAINTING_IN_AT, STAMP_GATE_RIGGED_DISSOLVE_AT,
-  STAMP_GATE_RIGGED_HERON_AT, STAMP_GATE_WARM, STAMP_GATE_WARMED_AT, STAMP_GATE_WET_CONTACT_AT, stampGateBoilingHeronShot, stampGateDifferenceBox, stampGateDissolveShot,
+  STAMP_GATE_RIGGED_HERON_AT, STAMP_GATE_SHOT_FPS, STAMP_GATE_WARM, STAMP_GATE_WARMED_AT, STAMP_GATE_WET_CONTACT_AT, stampGateBoilingHeronShot, stampGateDifferenceBox, stampGateDissolveShot,
   stampGateFadeBetween, stampGateFadeLiesBetween, stampGateHiddenFootShot, stampGateReedSwung, stampGateRiggedDissolveShot, stampGateRiggedDissolveSources,
   stampGateRiggedHeronShot, stampGateRiggedHeronWindows, stampGateShallowsAloneShot, stampGateShotBaseline, stampGateWarmShot, stampGateWetContactPaintingInShot,
   stampGateWetContactShot, type StampGateShotCaseId, type StampGateShotId,
@@ -147,6 +151,34 @@ async function checkStampGateRain(): Promise<StampGateWashCheck[]> {
     {
       id: 'shot/rain: drops only', passed: !!fell && !nextSolves.length && misses === 0 && !warnings.length,
       detail: `a frame later the drops changed ${boxText(fell)}, solved ${nextSolves.join(', ') || 'nothing'} and laid ${misses} picture${misses === 1 ? '' : 's'} anew${warnings.length ? `; warned: ${warnings.join('; ')}` : ''}`,
+    },
+  ];
+}
+
+/** The sliding post shot of `kind`, its one frame as RGB bytes. */
+const slidingPostFrame = async (kind: Parameters<typeof stampGateSlidingPostShot>[0]) =>
+  stampGateRgb((await stampGateShotFrames(stampGateSlidingPostShot(kind), [STAMP_GATE_SLIDING_POST.at])).frames[0]);
+
+/**
+ * shot/shutter: a lens leaving out its shutter takes the film's, open half the frame STAMP_GATE_SHOT_FPS plays: the
+ * sliding post blurs along its slide, wider than shut, as tall, and about the frame's time; shut, it draws as if it
+ * stood still.
+ */
+async function checkSlidingPost(): Promise<StampGateWashCheck[]> {
+  const none = await slidingPostFrame('none'), still = await slidingPostFrame('still'), shut = await slidingPostFrame('shut'), film = await slidingPostFrame('film');
+  const { width } = stampGateSlidingPostShot('none').camera.stage.frame;
+  const [shutBox, filmBox] = [shut, film].map((frame) => stampGateDifferenceBox(none, frame, width));
+  const shutSize = boxSize(shutBox), filmSize = boxSize(filmBox), spread = spreadPast(shutBox, filmBox), asStill = stampGateFrameDifference(still, shut);
+  const travel = STAMP_GATE_SLIDING_POST.speed * paintFilmShutter(STAMP_GATE_SHOT_FPS);
+  const blurred = !!shutSize && !!filmSize && filmSize.w >= shutSize.w + travel / 2 && Math.abs(filmSize.h - shutSize.h) <= 2;
+  return [
+    {
+      id: 'shot/shutter: film', passed: blurred && !!spread && Math.abs(spread.left - spread.right) <= 2,
+      detail: `sliding ${travel} px while the film's shutter is open, the post shows over ${boxText(filmBox)}; shut, over ${boxText(shutBox)}${spread ? `, ${spread.left} and ${spread.right} px past it left and right` : ''} (at least ${travel / 2} px wider, within 2 px as tall and its sides within 2 px of each other wanted)`,
+    },
+    {
+      id: 'shot/shutter: shut', passed: stampGateFramePasses(asStill),
+      detail: `sliding, shut, the post lies ${stampGateFrameDifferenceText(asStill)} from it standing still (${STAMP_GATE_FRAME_TOLERANCE.max} levels allowed)`,
     },
   ];
 }
@@ -319,6 +351,7 @@ async function checkPieces(): Promise<StampGateWashCheck[]> {
 /** Shot case `id`'s checks. */
 export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGateWashCheck[]> {
   if (id === 'shot/rain') return checkStampGateRain();
+  if (id === 'shot/shutter') return checkSlidingPost();
   if (id === 'shot/dissolve') return checkDissolve();
   if (id === 'shot/rigged-dissolve') return checkRiggedDissolve();
   if (id === 'shot/warm') return checkWarm();

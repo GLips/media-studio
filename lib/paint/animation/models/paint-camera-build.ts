@@ -18,8 +18,8 @@ import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-s
 import {
   PAINT_CAMERA_NEAREST, PAINT_CAMERA_REST, paintCameraClipProblem, paintCameraFocusAt, paintCameraPlaneFarthest, paintCameraPlaneNearest, paintCameraPoseAt, paintPlaneDefocus,
   paintStageCentre,
-  type PaintCamera, type PaintCameraFocusClip, type PaintCameraInstancedPlane, type PaintCameraLens, type PaintCameraMoveClip, type PaintCameraPicturePlane, type PaintCameraPlane,
-  type PaintCameraPlaneOptions, type PaintCameraPlay, type PaintCameraPose,
+  type PaintCamera, type PaintCameraFocusClip, type PaintCameraInstancedPlane, type PaintCameraLensOptions, type PaintCameraMoveClip, type PaintCameraPicturePlane,
+  type PaintCameraPlane, type PaintCameraPlaneOptions, type PaintCameraPlay, type PaintCameraPose, type PaintCameraShutter,
 } from './paint-camera.ts';
 import { paintChannelConflicts, type PaintChannelWriter } from './paint-channels.ts';
 import { clipSeconds, compilePaintPlayClock, paintLaneByStart, paintPlayClockProblem, paintPlayInterval, type CompiledPaintPlay } from './paint-clock.ts';
@@ -35,7 +35,7 @@ export type PaintCameraOptions = {
   readonly stage: StampStage;
   readonly fov: number;
   readonly planes: readonly PaintCameraPlaneOptions[];
-  readonly lens: PaintCameraLens;
+  readonly lens: PaintCameraLensOptions;
   readonly plays?: readonly PaintCameraPlay[];
   readonly animationFps?: number;
 };
@@ -155,6 +155,13 @@ function extentBoxProblem(id: string, extent: StampPlaneExtent): string | null {
     : `plane ${id}'s extent is ${x0}..${x1} × ${y0}..${y1}; a box's bounds are finite, x0 ≤ x1 and y0 ≤ y1`;
 }
 
+/** Why `shutter` can't be a lens's, or null: seconds more than 0, or 'shut', which is how a shutter open 0 s is said. */
+function shutterProblem(shutter: PaintCameraShutter): string | null {
+  if (shutter === 'shut') return null;
+  if (shutter === 0) return "the lens's shutter is open 0 s: say shutter: 'shut' to draw every frame sharp on purpose";
+  return shutter > 0 && Number.isFinite(shutter) ? null : `the lens's shutter is open ${shutter} s; a shutter is open more than 0 s, or 'shut'`;
+}
+
 /** How far a defocus of `sigma` px spreads: its reach, the sigma stepped up at most a step, a bilinear read's pixel and one for rounding. */
 const defocusGrowth = (sigma: number) => lensGaussianReach(lensSigmaStepped(sigma) * LENS_SIGMA_STEP) + 2;
 
@@ -240,7 +247,8 @@ export function buildPaintCamera(o: PaintCameraOptions): PaintCameraBuild {
   }
   if (!(o.fov > 0 && o.fov < 180)) problems.push(`a field of view is between 0 and 180 degrees, not ${o.fov}`);
   if (!(o.lens.bloom >= 0 && Number.isFinite(o.lens.bloom))) problems.push(`the lens blooms by a sigma of 0 px or more, not ${o.lens.bloom}`);
-  if (!(o.lens.shutter >= 0 && Number.isFinite(o.lens.shutter))) problems.push(`the lens's shutter is open 0 s or more, not ${o.lens.shutter}`);
+  const shutter = shutterProblem(o.lens.shutter);
+  if (shutter) problems.push(shutter);
   const move: CompiledPaintPlay<PaintCameraMoveClip>[] = [], focus: CompiledPaintPlay<PaintCameraFocusClip>[] = [], writers: PaintChannelWriter[] = [];
   for (const play of o.plays ?? []) {
     const problem = paintCameraClipProblem(play.clip) ?? paintPlayClockProblem(play.clock);
@@ -275,7 +283,8 @@ export function buildPaintCamera(o: PaintCameraOptions): PaintCameraBuild {
     const sigma = widestDefocus(focus, dolly, plane.depth);
     return { id: plane.id, depth: plane.depth, kind: 'three', margin: sigma > 0 ? Math.ceil(defocusGrowth(sigma)) : 0 };
   });
-  const camera: PaintCamera = { stage: o.stage, fov: o.fov, planes, lens: o.lens, animationFps: fps, move: paintLaneByStart(move), focus: paintLaneByStart(focus) };
+  const lens = { bloom: o.lens.bloom, shutter: o.lens.shutter === 'shut' ? 0 : o.lens.shutter };
+  const camera: PaintCamera = { stage: o.stage, fov: o.fov, planes, lens, animationFps: fps, move: paintLaneByStart(move), focus: paintLaneByStart(focus) };
   const zoom = range(spans.flatMap(({ a, b }) => [a.zoom, b.zoom]));
   // zoom·d/(d − dolly) at its largest zoom and dolly: at least what any pose in the shot shows.
   const magnification = new Map(planes.map((plane) => {

@@ -34,6 +34,7 @@ import {
   stampGateRevealSplitText, stampGateTexelsChanged, stampGateWrappedShownAt, type StampGateRevealFrame, type StampGateRevealId,
 } from '../models/stamp-gate-reveals.ts';
 import { STAMP_GATE_WET_CONTACT, STAMP_GATE_FAR_SHALLOWS, STAMP_GATE_FOOT_BOX, stampGateSheetBrushOf } from '../models/stamp-gate-sheets.ts';
+import { STAMP_GATE_SHOT_FPS } from '../models/stamp-gate-shots.ts';
 import { stampGateCanvasBytes, stampGateRgb, withGateSurface } from './stamp-gate-page-surface.ts';
 import { stampGateShotFrames, stampGateSolvedText, withGateShotRenderer } from './stamp-gate-shot-frames.ts';
 import { stampGateSheetImageUrl } from './stamp-gate-sheet-owner.ts';
@@ -77,7 +78,7 @@ type ClearBackFrames = { readonly colour: StampGateRevealFrame[]; readonly filte
 
 /** `props`, a clear back, drawn over HTML at `times` through the shot's renderer into a glaze's colour and filter. */
 async function clearBackFrames(props: PaintedShotProps, times: readonly number[]): Promise<ClearBackFrames> {
-  const { shot, problems } = compilePaintedShot(props, [], { htmlBehind: true });
+  const { shot, problems } = compilePaintedShot(props, [], STAMP_GATE_SHOT_FPS, { htmlBehind: true });
   if (!shot) throw paintingProblemsError('stamp gate reveal', problems);
   const { width, height } = shot.camera.stage.frame, canvas = createShotCanvasElements();
   const premultiplied = (rgba: Uint8ClampedArray): StampGateRevealFrame => {

@@ -8,7 +8,7 @@
 // checks read the floor left of it, clear of the post and its reflection.
 
 import { Matrix4, Vector3 } from 'three';
-import { buildPaintCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
+import { buildPaintCamera, type PaintCameraOptions } from '#lib/paint/animation/models/paint-camera-build.ts';
 import { paintCameraPlay, type PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
 import { paintCameraWorld, paintPlaneWorldPoint, type PaintCameraWorld } from '#lib/paint/animation/models/paint-camera-world.ts';
 import { srgbToLinear } from '#lib/paint/materials/models/paint-spectrum.ts';
@@ -104,8 +104,8 @@ function stampGateLightingWall(): StampPictureRgba {
   return { box: { x: 0, y: 0, w, h }, rgba };
 }
 
-/** The shot's camera: panning right over its second, focused on the stands. */
-const stampGateLightingCamera = (): PaintedShotProps['camera'] => ({
+/** The shot's camera, its shutter said, as building it apart from the shot needs: panning right over its second, focused on the stands. */
+const stampGateLightingCamera = (): Omit<PaintCameraOptions, 'planes'> => ({
   stage: stage(), fov: STAMP_GATE_LIGHTING_VIEW.fov, lens: { bloom: 0, shutter: STAMP_GATE_LIGHTING_SHUTTER },
   plays: [
     paintCameraPlay({ kind: 'move', keys: [{ at: 0 }, { at: 1, pan: { x: STAMP_GATE_LIGHTING_VIEW.pan, y: 0 } }] }, { clock: { at: 0 }, origin: 'pan' }),

@@ -57,7 +57,7 @@ const STAMP_GATE_GLAZE: PaintingSourceModule = {
 
 const glazeWash = (ground?: 'transparent') => layersOf(painting(STAMP_GATE_GLAZE), ['wash'], ground ? { ground } : {});
 
-const glazeCamera = () => ({ stage: stampStage(GLAZE_FRAME, 2), fov: 35, lens: { bloom: 0, shutter: 0 }, plays: [] });
+const glazeCamera = (): PaintedShotProps['camera'] => ({ stage: stampStage(GLAZE_FRAME, 2), fov: 35, lens: { bloom: 0, shutter: 'shut' }, plays: [] });
 
 /** A flat picture of `rgb` filling the whole stage: one picture, so it uploads once. */
 function flatBack(rgb: StampGateRgb, canvas?: string): PlaneProps {

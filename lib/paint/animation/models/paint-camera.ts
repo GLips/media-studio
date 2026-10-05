@@ -56,10 +56,22 @@ export const paintCameraPlay = (clip: PaintCameraClip, timing: { readonly clock:
 export const PAINT_CAMERA_NEAREST = 1e-3;
 
 /**
- * The lens past its focus: `bloom`, the sigma in frame px of the gaussian spreading the frame's emission; `shutter`,
- * seconds open about each frame's time (lens-shutter.ts; REEL_SHUTTER is the reel's).
+ * How long the shutter stays open about each frame's time (lens-shutter.ts): seconds, more than 0; or `'shut'`, every
+ * frame drawn sharp on purpose.
  */
+export type PaintCameraShutter = number | 'shut';
+
+/**
+ * The lens past its focus, as a camera is built with it: `bloom`, the sigma in frame px of the gaussian spreading the
+ * frame's emission; its `shutter`.
+ */
+export type PaintCameraLensOptions = { readonly bloom: number; readonly shutter: PaintCameraShutter };
+
+/** The lens built: `bloom` as written; `shutter`, seconds open about each frame's time, 0 when shut. */
 export type PaintCameraLens = { readonly bloom: number; readonly shutter: number };
+
+/** The film's shutter at `filmFps` frames a second: open half a frame (a 180° shutter), seconds. */
+export const paintFilmShutter = (filmFps: number) => 1 / (2 * filmFps);
 
 /** A picture plane, `depth` units from the camera at rest: a picture on the stage, held as far as its `extent`. */
 export type PaintCameraPicturePlane = { readonly id: string; readonly depth: number; readonly kind: 'picture'; readonly extent: StampPlaneExtent };

@@ -132,7 +132,7 @@ export function stampGateMaskedShot({ heron, disc, discVisibility, discHold, tin
   else if (tint !== 'none') planes.push({ ...tinted, masks: [{ kind: 'alphaOf', drawable: read[tint], invert: tint === 'not wing' }] });
   const plays = pan ? [paintCameraPlay({ kind: 'move', keys: [{ at: 0, pan: { x: pan, y: 0 } }] }, { clock: { at: 0 }, origin: 'pan' })] : [];
   return {
-    camera: { stage, fov: 35, lens: { bloom: 0, shutter: 0 }, plays },
+    camera: { stage, fov: 35, lens: { bloom: 0, shutter: 'shut' }, plays },
     planes,
     visibility: {
       ...(heron === 'hidden' && { 'heron/heron': 0 }), ...(heron === 'half' && { 'heron/heron': 0.5 }),

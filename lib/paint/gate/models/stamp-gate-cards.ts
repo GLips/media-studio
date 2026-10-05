@@ -75,7 +75,7 @@ const visibilityBy = (rows: StampGateCardsVisibility) => ({ at }: PaintMoment) =
 export function stampGateCardsShot({ down = true, sitting = true, leaf = true }: { down?: boolean; sitting?: boolean; leaf?: boolean } = {}): PaintedShotProps {
   const evaluation = painting(STAMP_GATE_CARDS, { down, sitting, leaf });
   return {
-    camera: { stage: stampStage(CARDS, 2), fov: 35, lens: { bloom: 0, shutter: 0 }, plays: [] },
+    camera: { stage: stampStage(CARDS, 2), fov: 35, lens: { bloom: 0, shutter: 'shut' }, plays: [] },
     planes: [{ id: 'cards', depth: 1, source: layersOf(evaluation, leaf ? ['sky', 'collage', 'leaf'] : ['sky', 'collage']) }],
     rigs: { 'cards/figure': { parts: stampGateCardParts(down), pose: {} } },
     visibility: {
@@ -95,7 +95,7 @@ export const STAMP_GATE_CARDS_POSED_AT = { rest: 0, lying: 1 } as const;
 export function stampGateCardsPosedShot(): PaintedShotProps {
   const evaluation = painting(STAMP_GATE_CARDS, { down: true, sitting: false, leaf: false });
   return {
-    camera: { stage: stampStage(CARDS, 2), fov: 35, lens: { bloom: 0, shutter: 0 }, plays: [] },
+    camera: { stage: stampStage(CARDS, 2), fov: 35, lens: { bloom: 0, shutter: 'shut' }, plays: [] },
     planes: [{ id: 'sky', depth: 2, source: layersOf(evaluation, ['sky']) }, { id: 'collage', depth: 1, source: layersOf(evaluation, ['collage']) }],
     rigs: { 'collage/figure': { parts: stampGateCardParts(true), pose: ({ at }): Readonly<Record<string, RigPartPose>> => (at < STAMP_GATE_CARDS_POSED_AT.lying ? {} : { figure: { cel: 'down' } }) } },
     visibility: { 'collage/up': 0 },

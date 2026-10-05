@@ -8,7 +8,7 @@
 // pieces rig, and a dissolve end cutting a rigged group otherwise than its rig does (shotPlaneRigEndProblems).
 
 import { buildPaintCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
-import type { PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
+import { paintFilmShutter, type PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
 import { paintNodeClockProblem, paintNodeClockSteps, paintNodeTimeAt, type PaintNodeClock, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
 import type { PaintingBrushOf } from '#lib/paint/document/models/painting-deposit-compile.ts';
 import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
@@ -259,10 +259,11 @@ function maskPiecesProblems(planes: readonly CompiledShotPlane[], rigs: Readonly
 
 /**
  * `props` checked and compiled, drawn in `canvases` (the PaintedShotCanvas names, in document order; none for the
- * shot's own canvas) on `page`: the compiled shot, or null and every problem keeping it from being drawn.
+ * shot's own canvas) on `page`, in a film of `filmFps` frames a second, whose shutter a lens leaving its own out
+ * takes: the compiled shot, or null and every problem keeping it from being drawn.
  */
 export function compilePaintedShot(
-  props: PaintedShotProps, canvases: readonly string[], page: ShotPage = SHOT_NO_HTML_BEHIND,
+  props: PaintedShotProps, canvases: readonly string[], filmFps: number, page: ShotPage = SHOT_NO_HTML_BEHIND,
 ): { readonly shot: CompiledPaintedShot | null; readonly problems: readonly PaintingProblem[] } {
   const problems: PaintingProblem[] = [], fps = props.camera.animationFps ?? PAINT_ANIMATION_FPS;
   // A texture reads no plane, so its problems join every answer, whichever stage the planes stop at.
@@ -331,7 +332,8 @@ export function compilePaintedShot(
   if (problems.length || !masks.graph || !textures.textures) return answer(null, problems);
   // Planes laid on the frame are unchecked in the build, which they're laid through; covers are laid and checked after it.
   const cameraPlanes = [...shotCameraPlanes(planes, motion.motion, rigs), ...instanced.map(({ id, depths }) => ({ id, kind: 'instanced' as const, depths }))];
-  const built = buildPaintCamera({ ...props.camera, animationFps: fps, planes: cameraPlanes });
+  const { bloom, shutter = paintFilmShutter(filmFps) } = props.camera.lens;
+  const built = buildPaintCamera({ ...props.camera, lens: { bloom, shutter }, animationFps: fps, planes: cameraPlanes });
   if (!built.ok) return answer(null, built.problems.map((message) => shotError('camera', '', message)));
   const setting = { camera: built.camera, motion: motion.motion, rigs }, covered = shotCoveredPlanes(setting, planes);
   // A back laid still is held to all the frame reads of it here; a cover is as it's laid, a callback's lay each frame.

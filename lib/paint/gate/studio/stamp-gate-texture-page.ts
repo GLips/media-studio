@@ -110,7 +110,7 @@ ${GPU_SRGB_WGSL}
 /** Texture baseline `id`'s frame, RGBA bytes: its object seen, and its texture flat. */
 function drawStampGateTextureFrame(id: StampGateTextureId): Promise<Uint8ClampedArray> {
   const drawn = STAMP_GATE_TEXTURE_CASES[id], texture = drawn.texture(), { width, height, fov } = drawn.view;
-  const built = buildPaintCamera({ stage: stampStage({ width, height }), fov, planes: [{ id: SOURCE_ID, depth: 1, kind: 'three' }], lens: { bloom: 0, shutter: 0 } });
+  const built = buildPaintCamera({ stage: stampStage({ width, height }), fov, planes: [{ id: SOURCE_ID, depth: 1, kind: 'three' }], lens: { bloom: 0, shutter: 'shut' } });
   if (!built.ok) throw new Error(`stamp gate: ${id}'s camera: ${built.problems.join('; ')}`);
   return withGateSurface(stampGateTextureFrame(id), stampGateSheetImageUrl, async (surface, frame) => {
     const compiled = compileShotPaintedTextures([texture]);

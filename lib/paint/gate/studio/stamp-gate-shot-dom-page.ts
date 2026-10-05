@@ -20,7 +20,7 @@ import {
   stampGateGlazeClearBackShot, stampGateGlazeLetThrough, stampGateGlazeMean, stampGateGlazeOverShot, stampGateGlazePageShot, type StampGateGlazeRegion, type StampGateRgb,
 } from '../models/stamp-gate-glaze.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
-import { STAMP_GATE_SHOT_PAGE_IDS, stampGateClearAlpha, stampGateClearBackShot, stampGatePinnedHeronShot } from '../models/stamp-gate-shots.ts';
+import { STAMP_GATE_SHOT_FPS, STAMP_GATE_SHOT_PAGE_IDS, stampGateClearAlpha, stampGateClearBackShot, stampGatePinnedHeronShot } from '../models/stamp-gate-shots.ts';
 import { stampGateCanvasBytes } from './stamp-gate-page-surface.ts';
 import { stampGateShotFrames, withGateShotRenderer } from './stamp-gate-shot-frames.ts';
 
@@ -101,7 +101,7 @@ async function withShotElement<T>(frame: ShotFrame, html: string, use: (shot: Ga
 
 /** `props` compiled for `canvases` on `page`; a problem keeping it from being drawn throws. */
 function compiledGateShot(props: PaintedShotProps, canvases: readonly string[], page: ShotPage): CompiledPaintedShot {
-  const { shot, problems } = compilePaintedShot(props, canvases, page);
+  const { shot, problems } = compilePaintedShot(props, canvases, STAMP_GATE_SHOT_FPS, page);
   if (!shot) throw paintingProblemsError('stamp gate shot page', problems);
   return shot;
 }

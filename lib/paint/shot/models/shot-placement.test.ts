@@ -11,7 +11,7 @@ import { shotCoverLay, shotDomCentre, shotPinLay, shotPinMeasureProblems } from 
 /** A camera panning, zooming and rolling over two seconds, a plane at depth 3 under it. */
 function rollingCamera() {
   const built = buildPaintCamera({
-    stage: stampStage({ width: 800, height: 600 }), fov: 35, lens: { bloom: 0, shutter: 0 },
+    stage: stampStage({ width: 800, height: 600 }), fov: 35, lens: { bloom: 0, shutter: 'shut' },
     planes: [{ id: 'sky', depth: 3, kind: 'picture', extent: { kind: 'unchecked', why: 'only its view is read' } }],
     plays: [paintCameraPlay({ kind: 'move', keys: [{ at: 0 }, { at: 2, pan: { x: 60, y: -30 }, zoom: 1.4, roll: 0.3 }] }, { clock: { at: 0 }, origin: 'drift' })],
   });

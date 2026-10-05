@@ -96,7 +96,7 @@ const rowAt = ({ at }: PaintMoment) => STAMP_GATE_PIECES_TABLE.findLast(({ from 
 
 /** The sprig on one still plane, painted as `painted` says, rigged as `rig` says. */
 const piecesShot = (painted: Partial<PropertyValues<typeof piecesProperties>>, rig: Pick<NonNullable<PaintedShotProps['rigs']>[string], 'parts' | 'pose'>): PaintedShotProps => ({
-  camera: { stage: stampStage(PIECES, 2), fov: 35, lens: { bloom: 0, shutter: 0 }, plays: [] },
+  camera: { stage: stampStage(PIECES, 2), fov: 35, lens: { bloom: 0, shutter: 'shut' }, plays: [] },
   planes: [{ id: 'pieces', depth: 1, source: layersOf(painting(STAMP_GATE_PIECES, painted), ['sky', 'sprig']) }],
   rigs: { 'pieces/sprig': rig },
 });

@@ -425,7 +425,7 @@ an error. A frame held on twos gives every group the keys it had, so it repaints
   handles with a hook drawing them each frame, a shot's by `createShotPaintedTextures`, `loadPaintedThree` supplying
   them from old renderers) and any other renderer can. A painted plane's picture doesn't depend on the camera and is kept on the device while
   its groups hold. The camera is one description: its plays, if any (none: at rest, every plane sharp), key `move`
-  (pan, dolly, zoom, roll) and `focus` (focus depth, aperture), plus `fov` and a lens with one `bloom`. `paintCameraLensAt` gives each plane's view (a
+  (pan, dolly, zoom, roll) and `focus` (focus depth, aperture), plus `fov` and a lens with one `bloom` and its `shutter`, seconds open or `'shut'` (built as 0 s; a shot leaving it out takes `paintFilmShutter`, half its film's frame). `paintCameraLensAt` gives each plane's view (a
   similarity) and defocus (a thin lens's circle of confusion, as gaussian sigma) at a time, through
   `paintCameraDepthLooks`, which gives them at any depth, as each instanced item takes them; an instanced plane is
   built by its depths alone, its nearest held from the camera and magnified most. The build proves every
@@ -761,7 +761,9 @@ ends; the
 foot painting in on sixes, its plane on threes flipping its pose, over a warmed span, the frames its warm skipped as
 pairing their clocks' moments alike then solving nothing; and rain (`stamp-gate-rain.ts`) falling about a post under a still camera, a lone drop out of
 focus spreading alike on every side, blurring along its own fall and drawn as if shut when keyed anew across the
-shutter, a frame moving only drops solving nothing and laying no picture anew. The masked shot (`stamp-gate-shot-masks.ts`) shows the paper heron part revealed by its document's reveal (`shot/masks`),
+shutter, a frame moving only drops solving nothing and laying no picture anew; and the post sliding across the street
+(`shot/shutter`), its lens leaving out its shutter: blurred along its slide by the film's, about the frame's time,
+and shut, drawn as if it stood still. The masked shot (`stamp-gate-shot-masks.ts`) shows the paper heron part revealed by its document's reveal (`shot/masks`),
 and cuts a tint to the heron's wing, to all but it, and to a disc moving across as a picture plane and as a three
 plane under a panned camera. Cut to the revealing heron's wing frame after frame, each frame draws as it does alone and a held frame lays nothing anew; cut
 to the heron faded to half, it tints the wing about half as much, and just as much cut to the heron dissolving

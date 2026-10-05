@@ -186,9 +186,9 @@ type PaintedShotScene = {
 
 /**
  * Where a shot loads: `holder`, its element, its page checked once laid out; `pinsMoved`, told when a pinned element
- * resizes; the composition's fps and lens mode, which its warm solves for; its scene's length, s (null outside one);
- * the profiler's cost report (null outside a profiling render); the shot's `name` for its lines; whether the pass
- * draws the picture.
+ * resizes; the composition's fps and lens mode, which it's compiled and warmed for; its scene's length, s (null
+ * outside one); the profiler's cost report (null outside a profiling render); the shot's `name` for its lines; whether
+ * the pass draws the picture.
  */
 type PaintedShotLoadContext = {
   readonly holder: HTMLElement;
@@ -222,7 +222,7 @@ function loadPaintedShotScene(props: PaintedShotProps, canvases: readonly ShotCa
   };
   const ready = watch.watching('loading', (async () => {
     await whenLaidOut(holder);
-    const { shot, problems } = compilePaintedShot(props, names, { htmlBehind: shotHtmlBehind(holder, canvases[0]) });
+    const { shot, problems } = compilePaintedShot(props, names, fps, { htmlBehind: shotHtmlBehind(holder, canvases[0]) });
     const layings = shot ? shotCanvasLayings(shot) : [];
     const placed = [...shotCanvasFillProblems(holder, canvases, names), ...shotGlazeIsolationProblems(holder, canvases, names, layings)];
     if (!shot || placed.length) throw paintingProblemsError('shot', [...placed, ...problems]);

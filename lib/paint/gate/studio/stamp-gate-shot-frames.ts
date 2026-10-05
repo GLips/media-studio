@@ -45,11 +45,11 @@ export type StampGateShotFrames = { readonly frames: readonly Uint8ClampedArray[
 export type StampGateShotDraw = number | { readonly t: number; readonly mode: LensMode };
 
 /**
- * `props`' frames as `draws` say, in turn, once its warm span (if any) is solved at STAMP_GATE_SHOT_FPS, in no scene;
+ * `props`' frames as `draws` say, in turn, played at STAMP_GATE_SHOT_FPS (its warm span, if any, solved first), in no scene;
  * `drawing` called as each frame begins, for a check splitting what else it hears by frame.
  */
 export async function stampGateShotFrames(props: PaintedShotProps, draws: readonly StampGateShotDraw[], drawing?: () => void): Promise<StampGateShotFrames> {
-  const { shot, problems } = compilePaintedShot(props, []);
+  const { shot, problems } = compilePaintedShot(props, [], STAMP_GATE_SHOT_FPS);
   if (!shot) throw paintingProblemsError('stamp gate shot', problems);
   const canvas = createShotCanvasElements(), tally = createStampPaintCostTally();
   return withGateShotRenderer(shot, [canvas], async (renderer) => {

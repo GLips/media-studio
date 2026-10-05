@@ -83,7 +83,7 @@ export const STAMP_GATE_STREAK_GLOW: StampGroupGlow = { amount: 1, threshold: 0.
 export function stampGateGlowShot(glowing: StampGateGlowing, { disc = true }: { disc?: boolean } = {}): PaintedShotProps {
   const nodes = Object.entries(glowing).map(([layer, glow]) => ({ id: `${layer === 'streak' ? 'night' : 'lamp'}/${layer}`, glow }));
   return {
-    camera: { stage: stampStage(GLOW_FRAME, 2), fov: 35, lens: { bloom: 4, shutter: 0 }, plays: [] },
+    camera: { stage: stampStage(GLOW_FRAME, 2), fov: 35, lens: { bloom: 4, shutter: 'shut' }, plays: [] },
     planes: [
       { id: 'night', depth: 1, source: layersOf(painting(STAMP_GATE_GLOW_NIGHT), ['sky', 'streak']) },
       { id: 'lamp', depth: 1, source: layersOf(painting(STAMP_GATE_GLOW_LAMP), disc ? ['glass', 'disc'] : ['glass']) },

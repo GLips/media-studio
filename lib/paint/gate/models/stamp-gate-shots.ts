@@ -40,12 +40,12 @@ export const STAMP_GATE_SHOT_IDS = [
 export type StampGateShotId = (typeof STAMP_GATE_SHOT_IDS)[number];
 
 /**
- * The shot cases checked apart from any sheet case, each a page's checks of its shot's frames: the rain's items, a
- * plain and a rigged dissolve between their ends, a span warmed, the masked shot's cuts, the rainy street's costs,
- * the cards' hidden cel, view off and fading owner, the sprig's swap, layer off and clear cel, and what glows.
+ * The shot cases checked apart from any sheet case, each a page's checks of its shot's frames: the rain's items, the
+ * film's shutter, dissolves plain and rigged, a span warmed, the masked shot's cuts, the rainy street's costs, the
+ * cards' hidden cel, view off and fading owner, the sprig's swap, layer off and clear cel, and what glows.
  */
 export const STAMP_GATE_SHOT_CASE_IDS = [
-  'shot/rain', 'shot/dissolve', 'shot/rigged-dissolve', 'shot/warm', ...STAMP_GATE_SHOT_MASK_IDS, 'shot/rainy-street', 'shot/cards', 'shot/pieces', STAMP_GATE_SHOT_GLOW_ID,
+  'shot/rain', 'shot/shutter', 'shot/dissolve', 'shot/rigged-dissolve', 'shot/warm', ...STAMP_GATE_SHOT_MASK_IDS, 'shot/rainy-street', 'shot/cards', 'shot/pieces', STAMP_GATE_SHOT_GLOW_ID,
 ] as const;
 export type StampGateShotCaseId = (typeof STAMP_GATE_SHOT_CASE_IDS)[number];
 
@@ -203,7 +203,7 @@ function oneSheetShot(
     return poseAt(table, group, at);
   };
   return {
-    camera: { stage: stampStage({ width, height }, 2), fov: 35, lens: { bloom: 0, shutter: 0 } },
+    camera: { stage: stampStage({ width, height }, 2), fov: 35, lens: { bloom: 0, shutter: 'shut' } },
     planes: [{ id: plane, depth: 1, source: layersOf(evaluation, layers) }],
     rigs: Object.fromEntries(Object.entries(rigs).map(([group, parts]) => [`${plane}/${group}`, { parts, pose: pose(group) }])),
   };
@@ -348,7 +348,7 @@ export function stampGateDissolveShot(): PaintedShotProps {
   const { shallows, together, apart } = dissolveEvaluations(), { widthPx: width, heightPx: height } = together.document;
   const ks = ({ at }: PaintMoment) => DISSOLVE_KS.find((row) => row.at === at) ?? DISSOLVE_KS[0];
   return {
-    camera: { stage: stampStage({ width, height }, 2), fov: 35, lens: { bloom: 0, shutter: 0 } },
+    camera: { stage: stampStage({ width, height }, 2), fov: 35, lens: { bloom: 0, shutter: 'shut' } },
     planes: [
       { id: 'pond', depth: 1, source: (moment: PaintMoment) => dissolve(layersOf(together, ['shallows', 'heron']), layersOf(shallows, ['shallows']), ks(moment).back) },
       { id: 'heron', depth: 1, source: (moment: PaintMoment) => dissolve(layersOf(together, ['heron']), layersOf(apart, ['heron']), ks(moment).heron) },

@@ -109,7 +109,8 @@ export const meadowShot: PaintedShotProps = {
     // must hold all the frame shows of it: the push in shows less, so a frame-sized meadow holds it.
     stage: stampStage({ width: 640, height: 360 }, 2),
     fov: 30,
-    lens: { bloom: 0, shutter: 1 / 48 },
+    // No shutter: the film's, open half a frame (1/60 s at 30 fps). `shutter: 'shut'` draws every frame sharp.
+    lens: { bloom: 0 },
     // Ease sits on the key it eases into.
     plays: [paintCameraPlay({ kind: 'move', keys: [{ at: 0 }, { at: 5, dolly: 0.08, ease: 'inOut' }] }, { clock: { at: 0 }, origin: 'push' })],
   },
@@ -542,7 +543,8 @@ paints it.
 | camera `pan` | `{x, y}` px the camera moves, as seen at depth 1: a positive x slides the picture left, a plane at depth d by x · zoom ÷ (d − dolly) (Where a plane point lands) | — | 0 |
 | plane `depth` | depth units, larger farther; 1 is where a pan is measured | > 0 | — |
 | `lay` `{placement: {x, y, rotation, scale}, pivot}` | frame px, radians, factor; pivot in document px | — | identity |
-| camera `fov`, lens `bloom`, `shutter` | vertical degrees; frame px sigma; seconds open | — | — |
+| camera `fov`, lens `bloom` | vertical degrees; frame px sigma | — | — |
+| lens `shutter` | seconds open, about each frame's time; or `'shut'`, sharp on purpose | > 0, or `'shut'` (0 is refused) | the film's: half a frame at the composition's fps, 1/60 s at 30 |
 | property `step` | the property's unit, a grid from `min` | > 0 | none |
 
 ## Media
@@ -615,6 +617,7 @@ A capped film (`opacityCap`, or a flood's `load`) is thin paint over whatever li
 | painting time | model seconds, 0 at its sheet's start | the sheet | `on`, drying, workability |
 | scene time | scene seconds | the scene | clocks, `at`, plays, `PaintMoment.at` |
 | animation grid | frames at `camera.animationFps` (24) | the scene | holds, boil, plays' holds |
+| film | frames at the composition's fps | the composition | render frames, warm spans, a lens's shutter left out |
 
 - **Unclocked wash**: scheduled in painting time like any other, so its `on`s hold as they would; `at` is refused by
   type. A sheet's unclocked work is painted before any clock starts, in document order. Always shown finished; a
@@ -688,6 +691,19 @@ A capped film (`opacityCap`, or a flood's `load`) is thin paint over whatever li
   each in a fresh browser with a warm of its own, down to a lone frame, which fails the render, named with its scene,
   if it fails again. A plane warms only at the frames it shows at, as a frame solves it (below): the rest count as hidden planes
   skipped.
+- **The shutter**: each frame is seen with the lens's shutter open about its time. Left out, it's the film's: open half
+  a frame at the composition's fps (a 180° shutter, 1/60 s at 30 fps, 1/48 s at 24), as a camera shooting the scene
+  would be. `shutter: 'shut'` draws every frame sharp, on purpose: a graphic held crisp, a stop-motion look. A number
+  is seconds, above 0; a shutter written 0 is refused, naming `'shut'`. Paint is solved once a frame, at its moment;
+  what moves finished paint (the camera, a moving lay, nodes' plays, a rig drawn as pieces, a three scene's pose,
+  instanced items keyed alike) is read at the shutter's two ends and blurs along its travel between. A hold reads the
+  frame shown, not the second an exposure sees, so a drawing held on twos, a `sourceClock` hold and a boil's epoch are
+  one pose through the whole shutter: blur never smears a hold or makes a boil step crawl, though the camera still
+  moves through it. A pinned plane follows its element unblurred (Composition: Lay forms). In a fast frame the
+  shutter costs no solve, only the reads at its ends and gathering the travel across the frame: a few percent of the
+  frame's render (136 ms a frame shut, 140 ms open, on a 1920×1080 shot under a moving camera). A reference frame
+  averages its 24 exposures shut or open. What it costs in paint is reach: a moving back's painting holds what both
+  ends show (Camera).
 - **A plane faded out costs nothing**: a frame solves a painted plane (or an instanced plane's variants) only when it
   lays something at one of the frame's exposures, every shutter sample in a reference render: its visibility above 0,
   and its ground paper or one of its layers above 0 through every group holding it. Otherwise it lays nothing and a
@@ -833,6 +849,7 @@ times or its `dryingScale`, which re-solves.
 | a layer's `sheet` or `medium` | the sheets it leaves and joins re-solve from its first application | solves |
 | `layersOf` `at` crossing an application | a new prefix of the sheet's clocked work | one solve per prefix, cached |
 | a plane's `lay`, depth, camera, lens, an occurrence's visibility | composite only | per frame, no solve |
+| the lens's `shutter` open, as the film's is when left out | a fast frame reads what moves at the shutter's ends and gathers its travel; a reference frame's 24 exposures sample the shutter shut or open | per frame, no solve: a few percent of a fast frame's render (Time: The shutter) |
 | a plane's visibility, or every one of its layers', reaching 0 at every exposure of a frame | it isn't solved or laid | nothing that frame |
 | motion plays, pins, sway, flutter, rig pose on a sheet the occurrence owns | the finished film warps or bends | per frame, no solve |
 | the same on a sheet it doesn't own | its marks move; its sheet re-solves from its first application, scheduling again there | a solve per distinct pose of it and everything after it in the sheet's order (an unclocked element comes before all clocked work), cached; holds set the rate |
@@ -1106,9 +1123,13 @@ A plane's `lay` takes its document px to plane px, which the camera then shows (
 | on the frame: pin | `lay: { kind: 'pin', points: [{ sourcePx: { x: 24, y: 60 }, element: 'title' }], at? }`, one point or two; the element is the one inside the `<PaintedShot>` with `data-pin="title"` | one point moves the plane, putting `sourcePx` on its element's centre; two also scale and turn it | each element's centre is measured in frame px as each frame draws, once fonts and layout are settled, and again when a pinned element resizes; the camera's reach check runs there (**NEW**). A frame whose element isn't mounted, or whose name two elements carry, fails. An element moved without a re-render or a resize (a sibling's image loading) is seen at the next frame |
 
 A lay of any form places a painted plane: a picture or three plane lies where its source puts it, moved by its node.
-A pin names its element, not a ref, so a pinned shot stays a module constant. The cover is the still form needing
-no placement worked out: a frame-sized middle of a larger painting is `{kind: 'cover', box}` of that middle, and the
-back's refusal names one among its fixes (Checking).
+A pin names its element, not a ref, so a pinned shot stays a module constant. A pin is measured once a frame and lays
+its plane still through that frame's shutter, so following its element never blurs; the camera's move and the plane's
+nodes still blur it. A move that should blur is said in paint, and the HTML follows it: a moving lay or a `place`
+play, and the element placed by the same function of the scene second. With the camera at rest, `const slide = (at:
+number) => 240 * at` is read by the lay as `x: slide(m.at)` and by the scene as the element's `left: slide(t)`. The
+cover is the still form needing no placement worked out: a frame-sized middle of a larger painting is `{kind:
+'cover', box}` of that middle, and the back's refusal names one among its fixes (Checking).
 
 `lay` and `reach` go together: `PlaneLay` (from `#studio`) is the union of the three forms. A helper that builds planes
 taking `lay` and `reach` as separate optional fields loses which goes with which, and TypeScript reports the plane
@@ -1196,7 +1217,7 @@ const labelAt = ({ at }: PaintMoment) => layersOf(label, ['label'], { at });
 const MUG = { radius: 163, height: 384 } as const;
 
 export const mugShot: PaintedShotProps = {
-  camera: { stage: stampStage({ width: 1280, height: 720 }, 2), fov: 30, lens: { bloom: 0, shutter: 1 / 48 } },
+  camera: { stage: stampStage({ width: 1280, height: 720 }, 2), fov: 30, lens: { bloom: 0 } },
   planes: [
     { id: 'table', depth: 2, source: layersOf(painting(table), ['table']) },
     {
@@ -1472,9 +1493,11 @@ for a brush with no profile on its style's paper and paint as they are now, the 
 pivot)` plane px, frame px with the camera at rest, then the camera shows its plane (Where a plane point lands). No
 mirror: scale is positive. A box (`reach`, `cover`) is `{x0, y0, x1, y1}`.
 
-**Camera** (`PaintCameraOptions` without `planes`): `stage: stampStage(frame, margin)`, margin whole and even; at least
-2, more for defocus or a moving lay's reach. `fov` vertical degrees. `lens: {bloom, shutter}`: bloom sigma frame px,
-shutter seconds open. `animationFps` (24). `plays?`: left out, the camera stands at rest, every plane sharp; else
+**Camera** (`PaintCameraOptions` without `planes`, its lens a `PaintedShotLens`): `stage: stampStage(frame, margin)`,
+margin whole and even; at least 2, more for defocus or a moving lay's reach. `fov` vertical degrees. `lens: {bloom,
+shutter?}`: bloom sigma frame px; shutter seconds open about each frame's time, above 0, or `'shut'`, every frame
+sharp; left out, the film's, half a frame at the composition's fps (`paintFilmShutter`: 1/60 s at 30) (Time: The
+shutter). `animationFps` (24). `plays?`: left out, the camera stands at rest, every plane sharp; else
 `[paintCameraPlay(clip, {clock, origin})]`, `origin` naming the play in errors. A `move` clip's keys `{at, pan?,
 dolly?, zoom?, roll?, ease?}`: `at` clip s; `pan` `{x, y}` px the camera moves as seen at depth 1, a positive x
 sliding the picture left; `dolly` depth units toward the planes; `zoom` 1 at rest; `roll` radians; a field left out

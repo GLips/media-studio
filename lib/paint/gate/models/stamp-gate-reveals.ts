@@ -303,7 +303,7 @@ export function stampGateRevealedReedsShot(source: PresentationValue<PaintedSour
  */
 export function stampGateRevealShot(source: PresentationValue<PaintedSource>, hold?: number): PaintedShotProps {
   return {
-    camera: { stage: stampStage(SIZE, 2), fov: 35, lens: { bloom: 0, shutter: 0 }, plays: [] },
+    camera: { stage: stampStage(SIZE, 2), fov: 35, lens: { bloom: 0, shutter: 'shut' }, plays: [] },
     planes: [{ id: 'sheet', depth: 1, source, ...(hold !== undefined && { sourceClock: { hold } }) }],
   };
 }
