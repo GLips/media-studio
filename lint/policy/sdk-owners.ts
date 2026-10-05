@@ -20,6 +20,7 @@ export const SDK_OWNERS: readonly SdkOwner[] = [
   // The render's tsx hooks, and (platform/browser) a studio module bundled for a page or a node run.
   { sdk: 'esbuild', owners: ['lib/output/render/engine/', 'lib/platform/browser/engine/'], packages: ['esbuild'] },
   { sdk: 'vite', owners: ['lib/platform/web/engine/'], packages: ['vite'] },
-  // Calling the remote render app on Modal's GPUs, and (its CLI) deploying it and stopping its containers.
-  { sdk: 'modal', owners: ['lib/output/remote-render/engine/'], packages: ['modal'], binaries: ['modal'] },
+  // Calling the studio's remote app on Modal (renders and checks in its containers), and (its CLI) deploying it and
+  // stopping its containers.
+  { sdk: 'modal', owners: ['lib/platform/remote/engine/'], packages: ['modal'], binaries: ['modal'] },
 ];

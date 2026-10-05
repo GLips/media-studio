@@ -31,7 +31,7 @@ export default defineCommand({
     captions: { type: 'boolean', description: 'Burn captions in (the composition only)' },
     lens: { ...renderLensArg, description: `${renderLensArg.description}; the composition only` },
     set: { type: 'string', valueHint: 'heron.reflection=0.5,dusk.level=0.3', description: 'How would a painting look at another value, in its scene? Paint each named painting (by its factory\'s name) at these property values over the scenes\' own, held to its schema as `studio paint check --set` holds them; the composition only' },
-    remote: { type: 'boolean', description: 'Draw the composition\'s frames on the remote render app\'s GPU (studio remote deploy; docs/remote-render.md), not this machine\'s, for a sheet, --against or --motion; the sheet, comparison and measures are made here. Prints what the call billed' },
+    remote: { type: 'boolean', description: 'Draw the composition\'s frames on the remote app\'s GPU (studio remote deploy; docs/remote.md), not this machine\'s, for a sheet, --against or --motion; the sheet, comparison and measures are made here. Prints what the call billed' },
     out: { type: 'string', valueHint: 'out/check/sky.png', description: 'The file to write, relative to the project unless absolute, in a folder that exists or under the project\'s out/: a .jpg or .png sheet, a .txt for --motion, a .png graph (.jpg too for --graph=a:b); checked before anything renders (default out/check/sheet.jpg, against.jpg, motion.txt, graph.png or models.png)' },
   },
   async run({ args }) {

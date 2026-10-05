@@ -1,29 +1,33 @@
 // remote-upload.ts: what a remote call's container needs of this machine's files, named by content, and the upload of
-// what the app's Volume lacks. Node only.
+// what the app's Volume lacks. A render takes its project and the studio code it runs; a check, the whole checkout
+// (docs/remote.md, Uploads). Ignored files go only as named here. A brush pack goes as its `current` and that
+// generation, which never changes once made: it's uploaded once under its name and never hashed. Node only.
 //
-// The studio goes as git lists it: lib/ and cli/, tracked and new, and the root files a render reads; ignored files
-// never go. The project goes as the workspace's git lists it, with its media (music/, audio/, captures/), the styles
-// it names likewise, and every brand kit with its fonts. A brush pack goes as its `current` and that generation,
-// which never changes once made: it's uploaded once under its name and never hashed. A project with a host is refused:
-// its host's checkout lives outside the studio.
+// Negative space: a project's generated/ and out/ never go. Both are made by a render, and no check reads them.
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { sha256OfFile } from '#lib/platform/files/engine/file-sha256.ts';
 import { isolatedGitEnv } from '#lib/platform/git/engine/fixture-git.ts';
-import { readProjectDeclaration, STUDIO_BRANDS_DIR, STUDIO_ROOT, STUDIO_STYLES_DIR, STUDIO_WORKSPACE_DIR } from '#lib/platform/project/engine/studio-project.ts';
+import {
+  listStudioProjects, readProjectDeclaration, STUDIO_BRANDS_DIR, STUDIO_PROJECTS_DIR, STUDIO_ROOT, STUDIO_STYLES_DIR, STUDIO_WORKSPACE_DIR,
+} from '#lib/platform/project/engine/studio-project.ts';
+import { isStudioWorkspaceRepo } from '#lib/platform/project/engine/studio-workspace.ts';
 import { studioUserCacheDir } from '#lib/platform/temp/engine/studio-user-cache.ts';
-import type { RemotePrepareAnswer, RemotePutRequest, RemoteRenderApp } from './remote-modal.ts';
+import type { RemoteApp, RemotePrepareAnswer, RemotePutRequest } from './remote-modal.ts';
 
 /** A file the container lays at `path` (relative to the studio, `/`-separated), its bytes at `local` here. */
 export type RemoteUploadFile = { readonly path: string; readonly local: string; readonly hash: string; readonly size: number };
-/** A brush generation the container links at `path`, uploaded once under `key` (its style, pack and generation). */
+/** A brush generation the container lays at `path`, uploaded once under `key` (its style, pack and generation). */
 export type RemoteUploadGeneration = { readonly path: string; readonly local: string; readonly key: string };
 export type RemoteUpload = { readonly files: readonly RemoteUploadFile[]; readonly generations: readonly RemoteUploadGeneration[] };
+/** A repository a checkout holds: its folder in the studio ('' the studio's own, 'work' the workspace) and the paths it tracks. */
+export type RemoteUploadRepo = { readonly root: string; readonly tracked: readonly string[] };
+export type RemoteCheckoutUpload = RemoteUpload & { readonly repos: readonly RemoteUploadRepo[] };
 
 /** The studio's own files a render reads beyond lib/ and cli/. */
 const STUDIO_ROOT_FILES = ['package.json', 'package-lock.json', 'tsconfig.json', 'remotion.config.ts', 'types.d.ts'];
-/** A project's media folders, ignored by the workspace's git, which its render reads. */
+/** A project's media folders, ignored by the workspace's git, which its render, its typecheck and its tests read. */
 const PROJECT_MEDIA_DIRS = ['music', 'audio', 'captures'];
 /** Bytes a single upload call carries, short of a size Modal's JS SDK would have to split. */
 const UPLOAD_BATCH_BYTES = 32 * 2 ** 20;
@@ -31,13 +35,16 @@ const UPLOAD_CALLS_AT_ONCE = 4;
 
 const studioPath = (local: string) => relative(STUDIO_ROOT, local).split(sep).join('/');
 
-/** Files git lists under `paths` of the repository at `repo`, tracked and new but not ignored, that exist. */
-function gitListed(repo: string, paths: readonly string[]): string[] {
-  const listed = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ...paths], {
+/** Paths (repository-relative) git lists under `paths` of the repository at `repo`: those it tracks, or every one it doesn't ignore. */
+function gitPaths(repo: string, which: 'tracked' | 'unignored', paths: readonly string[] = []): string[] {
+  const listed = execFileSync('git', ['ls-files', '-z', '--cached', ...(which === 'unignored' ? ['--others', '--exclude-standard'] : []), '--', ...paths], {
     cwd: repo, env: isolatedGitEnv(), encoding: 'utf8', maxBuffer: 64 * 2 ** 20,
   });
-  return [...new Set(listed.split('\0').filter(Boolean))].map((path) => join(repo, path));
+  return [...new Set(listed.split('\0').filter(Boolean))];
 }
+
+/** Files git lists under `paths` of the repository at `repo`, tracked and new but not ignored, as absolute paths. */
+const gitListed = (repo: string, paths: readonly string[] = []) => gitPaths(repo, 'unignored', paths).map((path) => join(repo, path));
 
 /** Every file under `dir` (a link to a file counts as one), none when it's missing; macOS's .DS_Store left out. */
 function filesUnder(dir: string): string[] {
@@ -46,9 +53,11 @@ function filesUnder(dir: string): string[] {
     .filter((file) => !file.endsWith('.DS_Store') && statSync(file).isFile());
 }
 
+const isFileHere = (file: string) => existsSync(file) && statSync(file).isFile();
+
 // ---------- hashing, remembered ----------
 
-const HASHES_FILE = studioUserCacheDir('remote-render', 'hashes.json');
+const HASHES_FILE = studioUserCacheDir('remote', 'hashes.json');
 type RememberedHash = [path: string, size: number, mtimeMs: number, hash: string];
 
 function isRememberedHash(value: unknown): value is RememberedHash {
@@ -74,7 +83,7 @@ function hashedFiles(files: readonly string[]): RemoteUploadFile[] {
   return hashed;
 }
 
-// ---------- what a project needs ----------
+// ---------- what a render and a check need ----------
 
 /** Each brush pack of `style`: its `current` file, and the generation it names. */
 function brushPacksOf(style: string): { current: string; generation: RemoteUploadGeneration }[] {
@@ -88,18 +97,44 @@ function brushPacksOf(style: string): { current: string; generation: RemoteUploa
   });
 }
 
-/** What a render of `project` (its folder) reads, hashed. */
-export async function remoteUploadFor(project: string): Promise<RemoteUpload> {
+/** Every brand kit's fonts, which the workspace's git ignores. */
+const brandFonts = () => (existsSync(STUDIO_BRANDS_DIR) ? readdirSync(STUDIO_BRANDS_DIR).flatMap((kit) => filesUnder(join(STUDIO_BRANDS_DIR, kit, 'fonts'))) : []);
+
+/** What a render of `project` (its folder) reads, hashed. A project with a host is refused: its host's checkout lives outside the studio. */
+export async function remoteProjectUpload(project: string): Promise<RemoteUpload> {
   if (existsSync(join(project, 'host.json'))) throw new Error(`${relative(STUDIO_ROOT, project)} composes a host's components (host.json), whose checkout isn't uploaded: render it here`);
   const styles = (await readProjectDeclaration(project))?.styles ?? [];
   const packs = styles.flatMap(brushPacksOf);
-  const kits = existsSync(STUDIO_BRANDS_DIR) ? readdirSync(STUDIO_BRANDS_DIR).map((kit) => join(STUDIO_BRANDS_DIR, kit, 'fonts')) : [];
   const files = [
     ...gitListed(STUDIO_ROOT, ['lib', 'cli']), ...STUDIO_ROOT_FILES.map((file) => join(STUDIO_ROOT, file)),
     ...gitListed(STUDIO_WORKSPACE_DIR, [relative(STUDIO_WORKSPACE_DIR, project), ...styles.map((style) => `styles/${style}`), 'brands']),
-    ...PROJECT_MEDIA_DIRS.flatMap((dir) => filesUnder(join(project, dir))), ...kits.flatMap(filesUnder), ...packs.map(({ current }) => current),
-  ].filter((file) => existsSync(file) && statSync(file).isFile());
+    ...PROJECT_MEDIA_DIRS.flatMap((dir) => filesUnder(join(project, dir))), ...brandFonts(), ...packs.map(({ current }) => current),
+  ].filter(isFileHere);
   return { files: hashedFiles([...new Set(files)]), generations: packs.map(({ generation }) => generation) };
+}
+
+/**
+ * The whole checkout as a check reads it, hashed: each repository's files as git lists them, with the paths it tracks,
+ * and the workspace's ignored inputs, which a project's typecheck and tests import. A checkout without a workspace
+ * goes as the studio alone, as a clean clone is.
+ */
+export function remoteCheckoutUpload(): RemoteCheckoutUpload {
+  const roots = isStudioWorkspaceRepo() ? [STUDIO_ROOT, STUDIO_WORKSPACE_DIR] : [STUDIO_ROOT];
+  const listed = roots.flatMap((root) => gitListed(root)).filter(isFileHere);
+  const packs = roots.includes(STUDIO_WORKSPACE_DIR) && existsSync(STUDIO_STYLES_DIR) ? readdirSync(STUDIO_STYLES_DIR).flatMap(brushPacksOf) : [];
+  const ignored = roots.includes(STUDIO_WORKSPACE_DIR) ? [
+    ...listStudioProjects().flatMap((project) => PROJECT_MEDIA_DIRS.flatMap((dir) => filesUnder(join(STUDIO_PROJECTS_DIR, project, dir)))),
+    ...brandFonts(), ...packs.map(({ current }) => current),
+  ] : [];
+  const files = hashedFiles([...new Set([...listed, ...ignored])]), uploaded = new Set(files.map((file) => file.path));
+  return {
+    files, generations: packs.map(({ generation }) => generation),
+    // Only what goes: a tracked file deleted here has no bytes to lay out.
+    repos: roots.map((root) => {
+      const folder = studioPath(root);
+      return { root: folder, tracked: gitPaths(root, 'tracked').filter((path) => uploaded.has(folder ? `${folder}/${path}` : path)) };
+    }),
+  };
 }
 
 // ---------- uploading ----------
@@ -136,7 +171,7 @@ const readUpload = (local: string) => new Uint8Array(readFileSync(local));
  * Uploads what `prepared` says the Volume lacks of `upload`: files in batches, and each missing brush generation, its
  * last batch marking it complete once the rest are in. Returns the files and bytes sent.
  */
-export async function uploadRemoteMissing(app: RemoteRenderApp, upload: RemoteUpload, prepared: RemotePrepareAnswer): Promise<{ files: number; bytes: number }> {
+export async function uploadRemoteMissing(app: RemoteApp, upload: RemoteUpload, prepared: RemotePrepareAnswer): Promise<{ files: number; bytes: number }> {
   const missing = new Set(prepared.missingFiles);
   const files = [...new Map(upload.files.filter((f) => missing.has(f.hash)).map((f) => [f.hash, f])).values()];
   // Each batch is read as its call goes, so the uploads never sit in memory all at once.

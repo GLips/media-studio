@@ -1,5 +1,5 @@
 // remote-look.ts: `studio look --remote`, from this machine: the look's stills drawn by a warm render server on the
-// deployed app (remote-call.ts), its frames resolved there against the composition, and handed back as a look source
+// deployed app (remote-render-call.ts), its frames resolved there against the composition, and handed back as a look source
 // (frame-look.ts's `stills`) for the sheets, comparisons and motion `studio look` makes here. Node only.
 import { existsSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -8,7 +8,7 @@ import type { LookFrameAsk } from '#lib/output/look/models/look-frames.ts';
 import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { isRemoteLookAnswer, REMOTE_LOOK_ANSWER_FILE, remoteStillFile } from '../models/remote-render-job.ts';
-import { openRemoteCall, printRemoteBilling, writeRemoteFiles } from './remote-call.ts';
+import { openRemoteRenderCall, writeRemoteFiles } from './remote-render-call.ts';
 
 /**
  * What a remote look asks for: frames as `ask` says, `width` wide (`full`, the video's), with the frame before the first
@@ -23,13 +23,13 @@ export type RemoteLookRequest = {
  * the look asked for, while they're on disk. Prints what the call billed.
  */
 export async function withRemoteLook<T>(project: string, request: RemoteLookRequest, look: (source: LookSource, frames: readonly number[]) => Promise<T>): Promise<T> {
-  const call = await openRemoteCall(project);
+  const call = await openRemoteRenderCall(project);
   try {
     const { files, report } = await call.runJob({
       kind: 'look', project: relative(STUDIO_ROOT, project), ask: request.ask, width: request.width, before: request.before, captions: request.captions,
       ...(request.lens !== undefined && { lens: request.lens }), ...(request.set !== undefined && { set: request.set }),
     }, 'remote');
-    printRemoteBilling(call.settings, [report]);
+    call.printBilling([{ label: 'remote', report }]);
     return await withStudioTemp('remote-look', async (dir) => {
       writeRemoteFiles(files, dir);
       const answer: unknown = JSON.parse(readFileSync(join(dir, REMOTE_LOOK_ANSWER_FILE), 'utf8'));

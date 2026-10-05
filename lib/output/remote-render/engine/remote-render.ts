@@ -1,5 +1,5 @@
 // remote-render.ts: `studio render --remote`, from this machine. The project's frames drawn on the deployed app's
-// GPU containers (remote-call.ts), each container's share as a lossless piece per browser, and finished here: a
+// GPU containers (remote-render-call.ts), each container's share as a lossless piece per browser, and finished here: a
 // --frames slice kept lossless and encoded as `studio render --frames` keeps it; the whole video joined as `studio
 // render --join` joins, under a mix mastered from the sound the first container drew. No browser opens here, so the
 // GPU lease is never taken. Node only.
@@ -16,7 +16,7 @@ import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { renderVoiceOf } from '#lib/timing/voice/engine/voice-project.ts';
 import { REMOTE_SOUND_FILE } from '../models/remote-render-job.ts';
 import { remoteContainerCount, type RemoteFrames } from '../models/remote-render-plan.ts';
-import { openRemoteCall, printRemoteBilling, writeRemoteFiles } from './remote-call.ts';
+import { openRemoteRenderCall, writeRemoteFiles } from './remote-render-call.ts';
 
 /** Where a whole video's remote pieces are kept, for `studio render --join` to join again. */
 export const REMOTE_PIECES_DIR = join('out', 'wip', 'remote');
@@ -33,15 +33,16 @@ export async function renderRemotely(project: string, { frames, out, lens, worke
   // Refused here before anything uploads when the clock knows the length; each container checks again on its page.
   if (frames && ledger.clock) refuseSliceOutside({ durationInFrames: ledger.clock.end }, frames);
   const known = frames ? frames.end - frames.from : ledger.clock?.end;
-  const call = await openRemoteCall(project);
+  const call = await openRemoteRenderCall(project);
   try {
-    const containers = known === undefined ? 1 : remoteContainerCount(known, call.settings.maxContainers);
+    const containers = known === undefined ? 1 : remoteContainerCount(known, call.settings.render.maxContainers);
     const drawing = performance.now();
+    const label = (index: number) => (containers > 1 ? `remote ${index + 1}/${containers}` : 'remote');
     const answers = await Promise.all(Array.from({ length: containers }, (_, index) => call.runJob({
       kind: 'pieces', project: relative(STUDIO_ROOT, project), ...(lens !== undefined && { lens }), ...(workers !== undefined && { workers }),
-      frames: frames ?? 'all', containers, index, browsers: call.settings.browsers, sound: !frames && index === 0 && !ledger.silent,
-    }, containers > 1 ? `remote ${index + 1}/${containers}` : 'remote')));
-    ledger.passes.push({ pass: `remote frames (${containers} container${containers > 1 ? 's' : ''})`, seconds: (performance.now() - drawing) / 1000, gpu: answers[0].report.gpuName });
+      frames: frames ?? 'all', containers, index, browsers: call.settings.render.browsers, sound: !frames && index === 0 && !ledger.silent,
+    }, label(index))));
+    ledger.passes.push({ pass: `remote frames (${containers} container${containers > 1 ? 's' : ''})`, seconds: (performance.now() - drawing) / 1000, gpu: answers[0].report.gpuName ?? undefined });
     const written = frames
       ? await withStudioTemp('remote-pieces', (dir) => {
         for (const { files } of answers) writeRemoteFiles(files, dir);
@@ -49,7 +50,7 @@ export async function renderRemotely(project: string, { frames, out, lens, worke
       })
       : [await joinRemotePieces(ledger, answers.map((a) => a.files), out)];
     for (const line of formatRenderPasses(ledger)) process.stderr.write(`${line}\n`);
-    printRemoteBilling(call.settings, answers.map((a) => a.report));
+    call.printBilling(answers.map(({ report }, index) => ({ label: label(index), report })));
     return written;
   } finally {
     call.close();

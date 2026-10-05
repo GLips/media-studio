@@ -1,46 +1,67 @@
-// studio remote: the remote render app on Modal that `studio render --remote` and `studio look --remote` draw on, its
-// deployment and its containers; and the two verbs its containers run (`job`, `keep-browsers`). docs/remote-render.md.
+// studio remote: the studio's app on Modal, which `studio render --remote` and `studio look --remote` draw on and
+// `studio remote run` runs the repo's checks on; its deployment and its containers; and the two verbs its render
+// containers run (`job`, `keep-browsers`). docs/remote.md.
 import { defineCommand } from 'citty';
 import { openStudioRenderSession } from '../project-arg.ts';
 
 const numberFlag = (text: string | undefined) => (text === undefined ? undefined : Number(text));
+/** A flag given in minutes, as whole seconds. */
+const minutesFlagSeconds = (text: string | undefined) => (text === undefined ? undefined : Math.round(Number(text) * 60));
 
 const deployCommand = defineCommand({
   meta: {
     name: 'deploy',
-    description: 'Deploy the remote render app (lib/output/remote-render/engine/modal_render_app.py) to your Modal account: its image built from package-lock.json and this Node, rebuilt only when either changes. Run it again after either changes, or to change a setting; each deploy sets every setting, a flag left out going back to its default. Stops the containers the deployment before it left warm. Prints what a warm container costs an hour.',
+    description: 'Deploy the remote app (lib/platform/remote/engine/modal_remote_app.py) to your Modal account: its image built from package-lock.json and this Node, rebuilt only when either changes. Run it again after either changes, or to change a setting; each deploy sets every setting, a flag left out going back to its default. Stops every container the deployment before it left, warm or busy. Prints what a warm container costs an hour.',
   },
   args: {
     gpu: { type: 'string', valueHint: 'T4', description: 'The GPU each render container has: T4 (the default), L4, A10 or L40S' },
-    warm: { type: 'string', valueHint: '10', description: 'Minutes a container stays warm after its last call, billed while it waits (default 10; Modal allows 2 seconds to 20 minutes)' },
+    warm: { type: 'string', valueHint: '10', description: 'Minutes a render container stays warm after its last call, billed while it waits (default 10; Modal allows 2 seconds to 20 minutes)' },
+    'check-warm': { type: 'string', valueHint: '2', description: 'Minutes a check container (studio remote run) stays warm after its last call (default 2): a cold check takes 13–19 s longer, laying the checkout out' },
     'max-containers': { type: 'string', valueHint: '4', description: 'Most render containers at once: a render splits across up to this many, about one per 600 frames (default 4)' },
     browsers: { type: 'string', valueHint: '3', description: 'Browsers each container draws its share in, a piece each at once (default 3); it keeps one more open, for the sound' },
   },
   async run({ args }) {
-    const { deployRemoteRender, describeRemoteSettings } = await import('#lib/output/remote-render/engine/remote-admin.ts');
-    const warmMinutes = numberFlag(args.warm);
-    const { settings, stopped } = await deployRemoteRender({
-      gpu: args.gpu, warmSeconds: warmMinutes === undefined ? undefined : Math.round(warmMinutes * 60),
+    const { deployRemote, describeRemoteSettings } = await import('#lib/platform/remote/engine/remote-admin.ts');
+    const { settings, stopped } = await deployRemote({
+      gpu: args.gpu, warmSeconds: minutesFlagSeconds(args.warm), checkWarmSeconds: minutesFlagSeconds(args['check-warm']),
       maxContainers: numberFlag(args['max-containers']), browsers: numberFlag(args.browsers),
     });
-    console.log(`deployed: ${describeRemoteSettings(settings)}${stopped ? `; stopped the ${stopped} container${stopped > 1 ? 's' : ''} the last deployment left warm` : ''}`);
+    console.log(['deployed:', ...describeRemoteSettings(settings).map((line) => `  ${line}`)].join('\n'));
+    if (stopped) console.log(`stopped the ${stopped} container${stopped > 1 ? 's' : ''} the last deployment left`);
   },
 });
 
 const statusCommand = defineCommand({
-  meta: { name: 'status', description: 'What the deployed remote render app runs on and costs warm, and how many of its containers are up now' },
+  meta: { name: 'status', description: 'What the deployed remote app runs renders and checks on and costs warm, and how many of its containers are up now' },
   async run() {
-    const { remoteRenderStatus } = await import('#lib/output/remote-render/engine/remote-admin.ts');
-    for (const line of await remoteRenderStatus()) console.log(line);
+    const { remoteStatus } = await import('#lib/platform/remote/engine/remote-admin.ts');
+    for (const line of await remoteStatus()) console.log(line);
   },
 });
 
 const stopCommand = defineCommand({
-  meta: { name: 'stop', description: 'Stop the remote render app\'s containers now rather than when their warm window ends, so nothing bills; a call running in one fails' },
+  meta: { name: 'stop', description: 'Stop the remote app\'s containers, renders\' and checks\', now rather than when their warm window ends, so nothing bills; a call running in one fails' },
   async run() {
-    const { stopRemoteRender } = await import('#lib/output/remote-render/engine/remote-admin.ts');
-    const stopped = await stopRemoteRender();
+    const { stopRemote } = await import('#lib/platform/remote/engine/remote-admin.ts');
+    const stopped = await stopRemote();
     console.log(stopped ? `stopped ${stopped} container${stopped > 1 ? 's' : ''}` : 'no containers were up');
+  },
+});
+
+const runCommand = defineCommand({
+  meta: {
+    name: 'run',
+    description: 'Run package.json scripts (typecheck, typecheck:gate, typecheck:web, lint, check:arch, test:gate, test:workspace, test or any other) in containers on the remote app, not on this machine: each in its own, all at once, against this checkout as it is on disk, both repositories with their uncommitted and untracked files, every project\'s media and every style\'s brushes. Each script\'s output streams here as it comes, marked with its name when there are several; a summary says how each ran and where its time went, then what each container billed. Exits 1 when any failed. A test runner (node --test) gets 16 cores and a T4, since tests render in the render browser; any other script 4 cores and no GPU. Refuses stamp:gate and other harness/ scripts, which need this Mac\'s GPU or Photoshop. Deploy first (studio remote deploy).',
+  },
+  args: {
+    scripts: { type: 'positional', required: true, description: 'The scripts, as npm run names them, e.g. typecheck lint test:gate' },
+  },
+  async run({ args }) {
+    const { formatRemoteRunOutcomes, runRemoteScripts } = await import('#lib/platform/remote/engine/remote-run.ts');
+    const outcomes = await runRemoteScripts(args._.map(String));
+    console.log(['', ...formatRemoteRunOutcomes(outcomes)].join('\n'));
+    const failed = outcomes.filter((outcome) => outcome.exitCode !== 0).map((outcome) => outcome.script);
+    if (failed.length) throw new Error(`remote run: ${failed.join(', ')} failed (${failed.length > 1 ? 'their' : 'its'} output is above)`);
   },
 });
 
@@ -75,6 +96,6 @@ const keepBrowsersCommand = defineCommand({
 });
 
 export default defineCommand({
-  meta: { name: 'remote', description: 'The remote render app on Modal that render --remote and look --remote draw on: deploy it, see it, stop its containers' },
-  subCommands: { deploy: deployCommand, status: statusCommand, stop: stopCommand, job: jobCommand, 'keep-browsers': keepBrowsersCommand },
+  meta: { name: 'remote', description: 'The studio\'s app on Modal: render --remote and look --remote draw on its GPUs, and remote run runs the repo\'s checks on its CPUs. Deploy it, see it, stop its containers' },
+  subCommands: { deploy: deployCommand, status: statusCommand, stop: stopCommand, run: runCommand, job: jobCommand, 'keep-browsers': keepBrowsersCommand },
 });
