@@ -1,8 +1,9 @@
 // painting-document-check.ts: a PaintingDocument held to what the engine can paint, before anything is solved
 // (docs/painting-authoring.md, Checking). Three stages, each run only if those before it found no error, so references
 // resolve before ranges are read: the document's shape and keys; papers, layers, washes and their applications in
-// their resolved media; then each sheet's order (painting-sheet-check.ts), and the pigments each layer's film holds.
-// What only solving can tell (an `on` that never holds over a real core) is the solver's.
+// their resolved media; then each sheet's order (painting-sheet-check.ts), the pigments each layer's film holds, and
+// field reveals at a wrapped document's seams (painting-reveal-seam-check.ts). What only solving can tell (an `on`
+// that never holds over a real core) is the solver's.
 
 import { PAINT_MEDIA, paintMediumCan } from '#lib/paint/materials/models/paint-medium.ts';
 import { STAMP_PIGMENT_GROUP_SLOTS } from '#lib/paint/painting/models/stamp-pigment-paint.ts';
@@ -16,6 +17,7 @@ import {
   isPaintingHexColor, isPaintingList, isPaintingPositive, isPaintingShare, paintingApplicationOwner, paintingField, paintingProblem, PaintingProblemList, type PaintingProblem,
 } from './painting-problem.ts';
 import { checkPaintingAmount, checkPaintingRegion } from './painting-region-check.ts';
+import { checkPaintingRevealSeams } from './painting-reveal-seam-check.ts';
 import { checkPaintingSheetOrders } from './painting-sheet-check.ts';
 import { paintingSheetOrders, paintingWashOrderTimes, type PaintingSheetOrder, type PaintingWashOrderTimes } from './painting-sheet-program.ts';
 import { paintingAssetProblem, type PaintingStyleCatalogue } from './painting-styles.ts';
@@ -268,6 +270,7 @@ export function checkPaintingDocument(paintingDocument: PaintingDocument, styles
   checkLayerPalettes(list, tree, orders);
   checkPaintingSheetOrders(list, tree, orders, styles);
   checkIdleDryingScales(list, paintingDocument, tree, orders);
+  checkPaintingRevealSeams(list, paintingDocument, tree);
   return { problems: list.problems, tree };
 }
 

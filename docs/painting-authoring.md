@@ -268,11 +268,14 @@ whole sheet, and `studio paint diff` says so.
 What doesn't wrap: an axis `wrap` doesn't name, whose edges clip as ever, though the margin is laid past them too, so
 water runs off them as off a larger sheet; a paper `image` (a photograph), laid as it is, so it meets itself at each
 seam unless it tiles that way (the check warns); a deposit wider or taller than the document, whose fields (a fill's
-load, a ragged edge's noise) jump where the one wrap round its middle ends; and a long chain of wet-in-wet washes across
-a seam, whose water the margin holds one wash at a time, so a faint seam may show after several. The check warns of a
-grain laid off its scale across x; down y the fit goes by the grain image's aspect, which only a solve reads, so
-`--solve` warns of it. Wrapping is for a painting shown on a three.js surface as a painted texture (Composition); on a
-flat plane it paints as any other, its seams at its edges.
+load, a ragged edge's noise) jump where the one wrap round its middle ends; a long chain of wet-in-wet washes across a
+seam, whose water the margin holds one wash at a time, so a faint seam may show after several; and a field reveal
+(Reveals), read at each texel's own px with no period: a mark crossing a seam arrives in two halves, each at the field's
+arrival on its own edge, unless the field arrives alike on both edges, which a sweep across the seam never does. `paint
+check` warns, naming both arrivals: keep marks off the seam, or reveal by strokes, which wrap (recipe 38). The check
+warns of a grain laid off its scale across x; down y the fit goes by the grain image's aspect, which only a solve
+reads, so `--solve` warns of it. Wrapping is for a painting shown on a three.js surface as a painted texture
+(Composition); on a flat plane it paints as any other, its seams at its edges.
 
 ## Water
 
@@ -719,7 +722,8 @@ nothing but the clocked prefixes it crosses.
   up with no seam (a texel's union reads its eight earliest partial bands). A texel no band covers never shows. An
   eased pull is its path cut into pieces, each at its stretch's pace: `paintingEasedRevealStrokes(points, {widthPx,
   from, to, ease, piecesPerSecond?, cap?})` (`#lib/paint/document/models/painting-reveal.ts`) cuts one, 30 pieces a
-  second (a piece a frame at 30 fps) unless told otherwise.
+  second (a piece a frame at 30 fps) unless told otherwise. On a wrapped document a band wraps with its paint: one
+  written past an edge comes back on the other, so a mark grows along its own path across a seam (recipe 38).
 - **Field**: `{kind: 'field', base, delay?, softS?}`: each texel arrives at `base` plus `delay`, each a `Field<number>`
   of scene seconds (Reference › Fields), wherever paint lies. One of each kind:
   - constant, the whole film at once: `base: {kind: 'constant', value: 2}`, fading in over `softS` from 2 s;
@@ -732,6 +736,11 @@ nothing but the clocked prefixes it crosses.
 
   `delay` adds to `base`: a noise delay rags a rising flood's edge, a linear one sweeps a petal's blotches from its
   base to its tip (recipe 34, timed from a cue).
+
+  A field varies across the document, not along a mark, and is read at each texel's own px, so it doesn't wrap: on a
+  wrapped document a mark crossing a seam arrives in two halves unless the field arrives alike on the seam's two
+  edges. `paint check` warns (`vine.reveal: a field arrives at x 0 at 0.00 s and at x 2048 at 1.00 s (y 359), so
+  stem, crossing the seam, arrives in two halves: …`): keep marks off the seam, or reveal by strokes, which wrap.
 - **What it cuts**: a layer's reveal cuts its own film. A group's cuts every film it holds, a nested reveal multiplying
   in, and the paper of every sheet it owns: an own sheet's card follows its revealed paint, as far as the revealed
   coverage reaches. Never the root's ground, never a sibling's film: on a shared sheet, what a hidden layer's water
@@ -886,6 +895,7 @@ a run of frames costing alike as one line.
 | 35 | a flat underline over HTML | the underline's own-sheet layer pinned to the words, revealed by a `linear` field along its length (below) | a field leaves the film its own fringe, where a band would trim it; its card follows its paint |
 | 36 | a smooth reveal over stepped properties | no `sourceClock`; properties quantised by their `step`; `layersOf(painting(src, {stepped}), keys, {at: m.at})` (below) | held on sixes, the reveal steps with the rest; each stepped value is one solve, the reveal recomposes each frame |
 | 37 | a light moving while the scene dissolves between lights | the light (a sun and its halo) a small painting on a nearer plane of its own, `lay: (m) => …` along its path, in gouache or with `TITANIUM_WHITE` to lie over the sky; the held lights reserve nothing for it | a light reserved in each held solve stays where that solve put it and fades in place through the dissolve, a ghost |
+| 38 | a mark growing along its own path, a vine round a mug | the layer's `reveal: {kind: 'strokes', strokes}`, `paintingEasedRevealStrokes` over each of the application's own subpaths, written past the seam in plain px (below) | a field varies across the document, not along the mark, and tears where a mark crosses a wrapped seam (the check warns); bands wrap with their paint; band widths held to `paintingRevealBandPx` in a test |
 
 Recipe 27 in full, as a plane of the worked example's scene (imports as there, plus `bracket`, `dissolve` and
 `type PlaneProps` from `#studio`):
@@ -998,6 +1008,37 @@ const smoothReveal: PlaneProps = {
   source: (moment) => layersOf(painting(meadow, { hillTopPx: hillTopAt(moment.at) }), ['landscape', 'cloud'], { at: moment.at }),
 };
 ```
+
+Recipe 38, a vine round a mug's 2048 px girth (`wrap: 'x'`), growing from its root at x 1700 along its stem in 1.5 s
+from the `bloom` cue, easing in and out. The stem is written past the seam in plain px, its last 372 px landing from
+x 0, and its reveal's strokes are its own subpaths, so the band crosses the seam with the paint and the stem grows on
+unbroken. A linear field from its root to its tip would sweep across the mug instead, and the part past the seam,
+read at x 0..372, short of the field's start, would arrive with the root:
+
+```ts
+import type { DirectApplication, Layer, Reveal, Subpath } from '#lib/paint/document/models/painting-document.ts';
+import { paintingEasedRevealStrokes } from '#lib/paint/document/models/painting-reveal.ts';
+
+const VINE: Subpath = Array.from({ length: 49 }, (_, i) => {
+  const x = 1700 + 15 * i;
+  return { x, y: 360 + 40 * Math.sin(x / 90), pressure: 0.8 };
+});
+export const STEM = {
+  key: 'stem', kind: 'stroke', subpaths: [VINE], brush: { style: 'gouache', brush: 'round' }, diameterPx: 14, seed: 'stem',
+  charge: { kind: 'paint', mix: { parts: [{ pigment: '#2f5a32', amount: 1 }], strength: 1 } },
+} satisfies DirectApplication;
+/** The band round the stem, px: held to its paint by a test, as recipe 26's is. */
+export const STEM_BAND = 30;
+const easeInOut = (u: number) => u * u * (3 - 2 * u);
+const GROWN: Reveal = {
+  kind: 'strokes',
+  strokes: STEM.subpaths.flatMap((points) => paintingEasedRevealStrokes(points, { widthPx: STEM_BAND, from: CUE.bloom, to: CUE.bloom + 1.5, ease: easeInOut })),
+};
+const vine: Layer = { key: 'vine', reveal: GROWN, washes: [{ key: 'vine-paint', wetHistory: false, applications: [STEM] }] };
+```
+
+Each subpath grows over the same span from its own first point; a tendril off the stem takes its own `from`, when the
+stem's front reaches its root.
 
 ## Composition
 
@@ -1580,6 +1621,7 @@ What the check says today, and what to do:
 | `sky-flood.diameterPx: a fill plans its strokes by its brush's measured profile, and gouache's flat is measured from 8 to 512 px, not at 4` / `sky-flood.brush: … and watercolor's wash has no profile to plan with: …` | a fill's diameter outside its brush's measured profile, or a brush with none (also refused as the painting compiles, at every value a scene sets) | a diameter in the range, or a measured brush |
 | `property hillTopPx.value: hillTopPx = 205 is off its step 10` | an unquantised value | quantise in the scene |
 | `ink.reveal.strokes[2].to: 1 s isn't after from, 1 s: a stroke advances from its first point to its last` / `ink.reveal.strokes[0].points: lie on one spot: a stroke needs a length to advance along` / `ink.reveal.strokes[0].widthPx: 0 isn't a finite width above 0` / `sky.reveal.base: its value NaN isn't a finite scene second` | a reveal a frame can't show (`stampRevealProblems`) | finite scene seconds, `from` before `to`, a width above 0, a path two points apart |
+| `vine.reveal: a field arrives at x 0 at 0.00 s and at x 2048 at 1.00 s (y 359), so stem, crossing the seam, arrives in two halves: keep marks off the seam, or reveal by strokes, which wrap` (warning) | a field reveal on a wrapped document over a mark whose box crosses a seam, where the field's arrivals on the seam's two edges differ by more than 1/60 s along the mark (`checkPaintingRevealSeams`); the row named is where they differ most | what it says: a strokes reveal on the mark's own paths (recipe 38), or a field arriving alike on both edges |
 | `document.layers[0]…: meadow isn't pure: two calls differ at layers[0]…` | the factory reads something besides its values | make it pure |
 | `document.wrap: "z" isn't a wrap: 'x' meets the left edge to the right, …` / `document.paper.image: is a photograph on a wrapped document: its opposite edges meet at the seams, …` / `document.paper.grain.scale: is laid at 0.5 on a document wrapping across x: its mirrored tiles fit the width in whole pairs, …` / `document.paper.grain.scale: is laid 960 × 540 px on a document wrapping down y, not the 960 × 960 its 512 × 512 image asks: …` (warnings, the last from `--solve` and `paint still`) | a wrap that isn't `'x'`, `'y'` or `'xy'`; a photograph on a document that wraps; a grain whose scale is far from 1 ÷ 2n on one wrapping across x; a grain whose height, by its image's aspect, is laid far off on one wrapping down y | `'x'`, `'y'`, `'xy'` or none; a photograph that tiles each way it wraps, or grain alone; a grain scale of 0.5, 0.25, …; a smaller scale, or a document whose sides are the image's in a small whole ratio |
 | `back/stem: lies on flower's own sheet: select flower, or all its sheet's layers, on one plane` / `back.source.layers[0]: names hil, which is unknown in meadow` / `back/neck: is selected twice, through heron and neck` / `back.source.k: 1.5 isn't within 0..1` | a plane's source, as the shot's load reports it (`paintedSourceProblems`) | select it whole; fix keys |

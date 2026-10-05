@@ -4,7 +4,7 @@ import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercol
 import * as meadow from './meadow.painting.ts';
 import type { StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
 import { checkPaintingDocument, paintingWrappedGrainHeightProblem } from './painting-document-check.ts';
-import type { Application, BrushRef, EdgedRegion, Field, Hex, Layer, LayerNode, Mix, PaintingDocument, Ring, Wash } from './painting-document.ts';
+import type { Application, BrushRef, EdgedRegion, Field, Hex, Layer, LayerNode, Mix, PaintingDocument, Ring, Subpath, Wash } from './painting-document.ts';
 import type { PaintingProblem } from './painting-problem.ts';
 import { checkPaintingSource, type PaintingSourceModule } from './painting-source.ts';
 import type { PaintingStyleCatalogue } from './painting-styles.ts';
@@ -20,8 +20,8 @@ type FloodOptions = { readonly key?: string; readonly water: number; readonly ar
 const flood = ({ key, water, area = { region: { kind: 'polygon', rings: [BOX] } }, mix = BLUE }: FloodOptions): Application => ({
   ...(key && { key }), kind: 'fill', area, ...TIP, seed: `flood-${key}`, charge: { kind: 'paint', mix, water },
 });
-const stroke = (key: string): Application => ({
-  key, kind: 'stroke', subpaths: [[{ x: 20, y: 150 }, { x: 380, y: 150 }]], ...TIP, diameterPx: 20, seed: `stroke-${key}`,
+const stroke = (key: string, subpaths: readonly Subpath[] = [[{ x: 20, y: 150 }, { x: 380, y: 150 }]]): Application => ({
+  key, kind: 'stroke', subpaths, ...TIP, diameterPx: 20, seed: `stroke-${key}`,
   charge: { kind: 'paint', mix: { parts: [{ pigment: burntSienna, amount: 1 }], strength: 0.7 } },
 });
 const documentOf = (layers: readonly LayerNode[], medium: PaintingDocument['medium'] = 'watercolour', dryingScale?: PaintingDocument['dryingScale']): PaintingDocument => ({
@@ -43,6 +43,15 @@ const skyFlood = (tip: { readonly brush?: BrushRef; readonly diameterPx?: number
 /** A sky graded down the box from one pigment to another, each alone at full strength. */
 const graded = (top: Mix['parts'][number]['pigment'], bottom: Mix['parts'][number]['pigment']): Field<Mix> => ({
   kind: 'linear', from: { x: 0, y: 0, value: { parts: [{ pigment: top, amount: 1 }], strength: 1 } }, to: { x: 0, y: 200, value: { parts: [{ pigment: bottom, amount: 1 }], strength: 1 } },
+});
+
+/** An ink layer on a document wrapping across x, its reveal sweeping from x 0 at 0 s to the far edge at 1 s. */
+const sweptAcrossWrap = (line: Application): PaintingDocument => ({
+  ...documentOf([{
+    ...layer('ink', [{ key: 'ink-wash', applications: [line] }]),
+    reveal: { kind: 'field', base: { kind: 'linear', from: { x: 0, y: 0, value: 0 }, to: { x: W, y: 0, value: 1 } } },
+  }]),
+  wrap: 'x',
 });
 
 const brokenSources: readonly { readonly name: string; readonly check: () => readonly PaintingProblem[]; readonly expect: Pick<PaintingProblem, 'severity' | 'path' | 'message'> }[] = [
@@ -185,6 +194,14 @@ const brokenSources: readonly { readonly name: string; readonly check: () => rea
     expect: { severity: 'error', path: 'flood.reveal.base', message: "its value Infinity isn't a finite scene second" },
   },
   {
+    name: 'a field reveal sweeping across a wrapped seam a stroke crosses',
+    check: () => checkPaintingSource(sourceOf(sweptAcrossWrap(stroke('line', [[{ x: 300, y: 150 }, { x: 460, y: 150 }]])))),
+    expect: {
+      severity: 'warning', path: 'ink.reveal',
+      message: 'a field arrives at x 0 at 0.00 s and at x 400 at 1.00 s (y 150), so line, crossing the seam, arrives in two halves: keep marks off the seam, or reveal by strokes, which wrap',
+    },
+  },
+  {
     name: 'a field of mixes from blue to orange, grading through grey',
     check: () => checkPaintingSource(sourceOf(documentOf([layer('sky', [{ key: 'sky-wash', applications: [flood({ key: 'sky-flood', water: 0.85, mix: graded('#3060c0', '#e08030') })] }])]))),
     expect: {
@@ -225,7 +242,7 @@ test('each broken source is refused with its one exact problem', () => {
   }
 });
 
-test("a source that can paint checks clean: the meadow, a clear layer, a charge into another layer's wet flood on its sheet, and blue graded to rose through violet", () => {
+test("a source that can paint checks clean: the meadow, a clear layer, a charge into another layer's wet flood on its sheet, blue graded to rose through violet, and a sweep over a wrapped document's marks off its seam", () => {
   assert.deepEqual(checkPaintingSource(meadow), []);
   // A layer with no washes is clear: a rig's clear cel, or a bare-paper back's one layer.
   assert.deepEqual(checkPaintingSource(sourceOf(documentOf([layer('bare', [])]))), []);
@@ -234,6 +251,7 @@ test("a source that can paint checks clean: the meadow, a clear layer, a charge 
   assert.deepEqual(checkPaintingSource(sourceOf(skyFlood({ diameterPx: 60 })), {}, PROJECT_STYLES), []);
   const dusk = documentOf([layer('sky', [{ key: 'sky-wash', applications: [flood({ key: 'sky-flood', water: 0.85, mix: graded(ultramarine, quinacridoneRose) })] }])]);
   assert.deepEqual(checkPaintingSource(sourceOf(dusk)), []);
+  assert.deepEqual(checkPaintingSource(sourceOf(sweptAcrossWrap(stroke('line')))), []);
 });
 
 test("a problem's footprint is the box of the geometry it's about, grown by half its brush", () => {

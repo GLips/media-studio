@@ -191,7 +191,10 @@ its opacity before compositing (pigment, before colour) and the card's union tak
 paper follows the revealed paint. A strokes reveal's arrivals (first arrival and its cover, the first at full cover
 and the cover its arrived bands' union reaches, seconds per px) are drawn once into an rgba32uint map over the box its
 bands reach, from tile lists of segments, and
-kept under producer `arrival` by the reveal, its mapping, wrap and resolution; a field's are read where they're needed.
+kept under producer `arrival` by the reveal, its mapping, wrap and resolution; on a wrapped sheet its segments are
+copied a period each way, so a band wraps with its paint. A field's are read where they're needed, at each texel's own
+document px with no period, so on a wrapped sheet a mark crossing a seam arrives in two halves unless the field
+arrives alike on both edges; the document check warns of it (`painting-reveal-seam-check.ts`).
 The cuts multiply, a group's over its descendants', and each is read where its node's marks were solved: posed paint
 carries its reveal (a warp by its fitted similarity). The root's ground is never cut; the solve, its checkpoints and
 the water never see a reveal, so the evaluation diff lists a reveal edit under its `reveals`, recomposing only. `stamp-film-readback.ts` reads a solved film back for a rig and its tools (ENGINE 5.1): its coverage,
