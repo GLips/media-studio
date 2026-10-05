@@ -32,7 +32,7 @@ const confirmedStudioProcesses = new Set<string>();
  * ps call asks after all those not yet confirmed.
  */
 export function runningStudioProcesses<T extends StudioProcessIdentity>(identities: readonly T[]): T[] {
-  const alive = identities.filter(({ pid }) => pidAlive(pid));
+  const alive = identities.filter(({ pid }) => processPidAlive(pid));
   const asking = alive.filter((identity) => !confirmedStudioProcesses.has(studioProcessName(identity)));
   const starts = asking.length ? processStartTimes(asking.map(({ pid }) => pid)) : new Map<number, number>();
   return alive.filter((identity) => {
@@ -48,8 +48,11 @@ export function runningStudioProcesses<T extends StudioProcessIdentity>(identiti
 /** Whether `identity`'s process still runs, as runningStudioProcesses decides it. */
 export const studioProcessRunning = (identity: StudioProcessIdentity): boolean => runningStudioProcesses([identity]).length > 0;
 
-/** Signal 0 checks a pid without signalling it: ESRCH is no such process, EPERM one that isn't ours but runs. */
-function pidAlive(pid: number): boolean {
+/**
+ * Whether any process runs as `pid`, by signal 0, which checks without signalling: ESRCH is no such process, EPERM one
+ * that isn't ours but runs. For a pid this process watches over (a child it keeps), which no other can take meanwhile.
+ */
+export function processPidAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;

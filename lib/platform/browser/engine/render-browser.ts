@@ -1,25 +1,21 @@
 // render-browser.ts: the browser every render runs in, and the GPU backends it actually got. Node only.
 //
-// Chrome silently falls back to SwiftShader, its software GL, when it can't have the GPU or its GPU process keeps
-// crashing: the render just takes many times as long. So each render's browser is asked which renderer a WebGL
-// context gets and which adapter WebGPU gets, before the render and after; a missing or software one fails it.
-// Everything three.js and painted draws with WebGPU; software GL still means the page composites in software.
+// Chrome silently falls back to SwiftShader, its software GL, when it can't have the GPU, and renders many times
+// slower. So each render's browser is asked which renderer WebGL gets and which adapter WebGPU gets, before the render
+// and after; a missing or software one fails it (painting draws with WebGPU, but software GL composites the page in
+// software). The page asked is served over loopback HTTP, as Remotion's are: WebGPU needs a secure context.
 //
-// WebGPU exists only in a secure context, so the question is asked of a page served over loopback HTTP, as Remotion
-// serves a render's: about:blank has no navigator.gpu.
+// Under a browser keeper (kept-render-browsers.ts, a remote-render container) a render borrows the keeper's browsers
+// and takes no GPU lease: they are the machine's GPU.
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { openBrowser, type HeadlessBrowser } from '@remotion/renderer';
+import type { HeadlessBrowser } from '@remotion/renderer';
 import { acquireStudioGpuLease } from '#lib/platform/gpu/engine/gpu-lease.ts';
-import { renderBrowserFailureText } from '../models/render-browser-failure.ts';
+import { isRenderBrowserFailure, renderBrowserFailureText } from '../models/render-browser-failure.ts';
 import { renderPageLogText } from '../models/render-page-log.ts';
 import { wholeBrowserPageError } from './browser-page-error.ts';
-
-/**
- * Every render's browser runs on the GPU: Chrome's compositing goes through its GL backend, which Remotion's default
- * software renderer makes crawl; WebGPU needs no flag.
- */
-const RENDER_CHROMIUM = { gl: 'angle' } as const;
+import { borrowKeptRenderBrowser, KEPT_RENDER_BROWSERS_ENV, type KeptRenderBrowserLoan } from './kept-render-browsers.ts';
+import { openRenderBrowser, RENDER_CHROME_MODE, RENDER_CHROMIUM } from './render-browser-launch.ts';
 
 /**
  * The one wall-clock ceiling of a render's page: each delayRender (a painted shot's load and warm, or one frame), each
@@ -38,7 +34,9 @@ export function printRenderPageLog({ text }: { readonly text: string }): void {
  * What every Remotion call that opens a render page takes: the GPU, the one ceiling, and the page's lines printed.
  * Spread first, so a call that watches the page's lines passes its own `onBrowserLog`.
  */
-export const RENDER_PAGE_OPTIONS = { chromiumOptions: RENDER_CHROMIUM, timeoutInMilliseconds: RENDER_TIMEOUT_MS, onBrowserLog: printRenderPageLog } as const;
+export const RENDER_PAGE_OPTIONS = {
+  chromiumOptions: RENDER_CHROMIUM, chromeMode: RENDER_CHROME_MODE, timeoutInMilliseconds: RENDER_TIMEOUT_MS, onBrowserLog: printRenderPageLog,
+} as const;
 
 // SwiftShader is Chrome's own; llvmpipe and softpipe are Mesa's, on a Linux machine with no GPU driver.
 const SOFTWARE_GL = /swiftshader|llvmpipe|softpipe|software/i;
@@ -94,21 +92,32 @@ function assertHardwareGpu({ gl, webgpu }: GpuBackends, when: 'before' | 'after'
   if (webgpu.fallback) throw gpuBackendError(`the render's browser ${what} a software WebGPU adapter, which renders many times slower`, fellBack);
 }
 
+/** A browser of this process's own, opened once it holds the GPU lease (gpu-lease.ts), and closed when given back. */
+async function openOwnRenderBrowser(): Promise<KeptRenderBrowserLoan> {
+  const waited = await acquireStudioGpuLease();
+  const browser = await openRenderBrowser();
+  return { browser, waited, giveBack: () => browser.close({ silent: true }) };
+}
+
 /**
- * Runs `render` in a browser of its own, told its GPU backends, and closes it after. The browser opens once the process
- * holds the GPU lease (gpu-lease.ts); `waited` is the seconds this call queued. Refuses software GL or WebGPU, and
- * fails if the browser falls back to either by the end. A page's error keeps its whole message.
+ * Runs `render` in a browser of its own, or one borrowed from a keeper (KEPT_RENDER_BROWSERS_ENV), told its GPU
+ * backends, and closes or gives it back after; `waited` is the seconds this call queued for either. Refuses software GL
+ * or WebGPU, and fails if the browser falls back to either by the end. A page's error keeps its whole message.
  */
 export async function inRenderBrowser<T>(render: (browser: HeadlessBrowser, gpu: string) => Promise<T>): Promise<{ result: T; gpu: string; waited: number }> {
-  const waited = await acquireStudioGpuLease();
-  const browser = await openBrowser('chrome', { chromiumOptions: RENDER_CHROMIUM });
+  const keeper = process.env[KEPT_RENDER_BROWSERS_ENV];
+  const { browser, waited, giveBack } = keeper ? await borrowKeptRenderBrowser(keeper) : await openOwnRenderBrowser();
+  let broken = false;
   try {
     const before = await readGpuBackends(browser);
     assertHardwareGpu(before, 'before');
     const result = await render(browser, describeGpu(before)).catch((error: Error) => Promise.reject(wholeBrowserPageError(error)));
     assertHardwareGpu(await readGpuBackends(browser), 'after');
     return { result, gpu: describeGpu(before), waited };
+  } catch (error) {
+    broken = error instanceof Error && isRenderBrowserFailure(error.message);
+    throw error;
   } finally {
-    await browser.close({ silent: true });
+    await giveBack(broken);
   }
 }
