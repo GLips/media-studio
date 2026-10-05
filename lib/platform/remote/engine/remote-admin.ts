@@ -1,15 +1,16 @@
-// remote-admin.ts: `studio remote`'s deploy, status and stop: the app deployed with its settings, what it runs on
-// and costs warm, and its containers stopped now rather than at the end of their warm window. Node only.
+// remote-admin.ts: `studio remote`'s deploy, status and stop: this checkout's version of the app deployed with its
+// settings, the versions deployed with what this one runs on and costs warm, and containers stopped now rather than at
+// the end of their warm window. Node only.
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { remoteWarmDollarsPerHour } from '../models/remote-cost.ts';
 import { REMOTE_PROGRAM_SIZE, REMOTE_TEST_RUNNER_SIZE } from '../models/remote-run.ts';
 import {
-  formatRemoteWarmWindow, isRemoteGpu, REMOTE_APP, REMOTE_DEFAULTS, REMOTE_GPUS, REMOTE_WARM_SECONDS_RANGE, type RemoteContainerSize, type RemoteSettings,
+  formatRemoteWarmWindow, isRemoteAppVersion, isRemoteGpu, REMOTE_DEFAULTS, REMOTE_GPUS, REMOTE_WARM_SECONDS_RANGE, type RemoteContainerSize, type RemoteSettings,
 } from '../models/remote-settings.ts';
-import { REMOTE_APP_FILE, remoteAppHash, remoteLockHash } from './remote-call.ts';
-import { deployRemoteApp, listRemoteContainers, openRemoteApp, stopRemoteContainers } from './remote-modal.ts';
+import { REMOTE_APP_FILE, remoteCheckoutApp } from './remote-call.ts';
+import { deployRemoteApp, listDeployedRemoteApps, openRemoteApp, stopRemoteContainers, type DeployedRemoteApp } from './remote-modal.ts';
 
 /** What a deploy's flags may set; the rest are REMOTE_DEFAULTS. */
 export type RemoteDeployChoices = {
@@ -21,7 +22,7 @@ const MOST_REMOTE_BROWSERS = 6;
 
 const wholeIn = (value: number, least: number, most: number) => Number.isInteger(value) && value >= least && value <= most;
 
-/** `choices` over the defaults, checked, with what binds the deployment to this checkout. */
+/** `choices` over the defaults, checked, with this checkout's Node and version. */
 function remoteSettingsOf(choices: RemoteDeployChoices): RemoteSettings {
   const { render } = REMOTE_DEFAULTS;
   const gpu = choices.gpu ?? render.gpu, warmSeconds = choices.warmSeconds ?? REMOTE_DEFAULTS.warmSeconds;
@@ -35,7 +36,7 @@ function remoteSettingsOf(choices: RemoteDeployChoices): RemoteSettings {
   if (!wholeIn(browsers, 1, MOST_REMOTE_BROWSERS)) throw new Error(`--browsers is a whole number 1–${MOST_REMOTE_BROWSERS}, not ${browsers}`);
   return {
     warmSeconds, checkWarmSeconds, render: { gpu, maxContainers, browsers, cpu: render.cpu, memoryMiB: render.memoryMiB },
-    node: process.versions.node, lockHash: remoteLockHash(), appHash: remoteAppHash(),
+    node: process.versions.node, app: remoteCheckoutApp(),
   };
 }
 
@@ -54,45 +55,45 @@ export const describeRemoteSettings = ({ render, warmSeconds, checkWarmSeconds }
 ];
 
 /**
- * Deploys the app with `choices`, building its image when the lockfile or Node changed, and stops the containers the
- * deployment before it left warm: they would answer calls on its settings and code until their window ran out. Returns
- * the settings and how many it stopped.
+ * Deploys this checkout's version of the app with `choices`, its image built when the lockfile or Node changed, and
+ * returns its settings. The containers that version's deployment before left are ended (deployRemoteApp); no other
+ * version's are touched.
  */
-export async function deployRemote(choices: RemoteDeployChoices): Promise<{ settings: RemoteSettings; stopped: number }> {
+export function deployRemote(choices: RemoteDeployChoices): RemoteSettings {
   const settings = remoteSettingsOf(choices);
   withStudioTemp('remote-deploy', (dir) => {
     const file = join(dir, 'remote-settings.json');
     writeFileSync(file, JSON.stringify(settings));
     deployRemoteApp(REMOTE_APP_FILE, file);
   });
-  return { settings, stopped: await stopRemote() };
+  return settings;
 }
 
-/** What the deployed app runs on, and how many of its containers are up now. */
+const containersUp = (count: number) => `${count || 'no'} container${count === 1 ? '' : 's'} up`;
+
+/** The versions of the app deployed, each with its containers up now, and what this checkout's runs on when it's one. */
 export async function remoteStatus(): Promise<string[]> {
-  const app = await openRemoteApp();
+  const mine = remoteCheckoutApp(), versions = listDeployedRemoteApps(isRemoteAppVersion);
+  const listed = versions.length
+    ? ['versions of the remote app deployed:', ...versions.map(({ name, containers }) => `  ${name}: ${containersUp(containers.length)}${name === mine ? ' (this checkout\'s)' : ''}`)]
+    : ['no version of the remote app is deployed'];
+  const stopping = versions.some(({ containers }) => containers.length) ? ['studio remote stop ends this checkout\'s version\'s containers now, --all every version\'s'] : [];
+  if (!versions.some(({ name }) => name === mine)) return [...listed, `this checkout's version, ${mine}, isn't deployed: studio remote deploy deploys it`, ...stopping];
+  const app = await openRemoteApp(mine);
   try {
     const { settings } = await app.prepare({ files: [], generations: [] });
-    const running = listRemoteContainers(await app.appId()).length;
-    const current = settings.lockHash === remoteLockHash() && settings.appHash === remoteAppHash();
-    return [
-      `${REMOTE_APP}:`, ...describeRemoteSettings(settings).map((line) => `  ${line}`),
-      `${running} container${running === 1 ? '' : 's'} up now${running ? ' (studio remote stop ends them)' : ''}`,
-      ...(current ? [] : ['deployed from another lockfile or app than this checkout\'s: run studio remote deploy before using it']),
-    ];
+    return [...listed, `${mine}, this checkout's, runs:`, ...describeRemoteSettings(settings).map((line) => `  ${line}`), ...stopping];
   } finally {
     app.close();
   }
 }
 
-/** Stops the app's containers now, renders' and checks'; returns how many. */
-export async function stopRemote(): Promise<number> {
-  const app = await openRemoteApp();
-  try {
-    const containers = listRemoteContainers(await app.appId());
-    stopRemoteContainers(containers);
-    return containers.length;
-  } finally {
-    app.close();
-  }
+/**
+ * Stops the containers of this checkout's version of the app now, renders' and checks', or with `all` every version's;
+ * returns the versions it looked at, each with the containers it stopped.
+ */
+export function stopRemote({ all }: { all: boolean }): { mine: string; stopped: DeployedRemoteApp[] } {
+  const mine = remoteCheckoutApp(), stopped = listDeployedRemoteApps(all ? isRemoteAppVersion : (name) => name === mine);
+  for (const { containers } of stopped) stopRemoteContainers(containers);
+  return { mine, stopped };
 }

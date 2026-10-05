@@ -31,13 +31,20 @@ export type RemoteSettings = {
   readonly render: RemoteRenderServerSettings;
   /** The Node version the image installs: the deploying machine's, so the container runs what the Mac does. */
   readonly node: string;
-  /** SHA-256 of package-lock.json the image installed from, and of the app's own file, as deployed. */
-  readonly lockHash: string;
-  readonly appHash: string;
+  /** The deployment's name, its version's (remoteAppOfVersion): the app's code names itself by it. */
+  readonly app: string;
 };
 
-/** The deployed app's name, and the Volume its uploads live in, keyed by content. */
-export const REMOTE_APP = 'media-studio-remote';
+const REMOTE_APP_VERSION_NAME = /^media-studio-remote-[0-9a-f]{8}$/;
+
+/**
+ * The app is deployed once per version, named by 8 hex of what the version is bound to (remote-call.ts's
+ * remoteCheckoutApp), so checkouts that differ each deploy and call their own. Every version shares the Volume of
+ * uploads, keyed by content.
+ */
+export const remoteAppOfVersion = (version: string) => `media-studio-remote-${version}`;
+/** Negative space: an app named otherwise is no version, so `studio remote stop --all` never reaches it. */
+export const isRemoteAppVersion = (name: string) => REMOTE_APP_VERSION_NAME.test(name);
 export const REMOTE_VOLUME = 'media-studio-remote-blobs';
 
 /**
@@ -51,7 +58,7 @@ export const REMOTE_DEFAULTS = {
   // container waits only for a quick rerun.
   checkWarmSeconds: 120,
   render: { gpu: 'T4', maxContainers: 4, browsers: 3, cpu: { request: 2, limit: 8 }, memoryMiB: { request: 4096, limit: 16384 } },
-} as const satisfies Omit<RemoteSettings, 'node' | 'lockHash' | 'appHash'>;
+} as const satisfies Omit<RemoteSettings, 'node' | 'app'>;
 
 /** A warm window as people say it: whole minutes, else seconds. */
 export const formatRemoteWarmWindow = (seconds: number) => (seconds % 60 === 0 ? `${seconds / 60} min` : `${seconds} s`);
@@ -79,6 +86,5 @@ export function isRemoteSettings(value: unknown): value is RemoteSettings {
     'checkWarmSeconds' in value && typeof value.checkWarmSeconds === 'number' &&
     'render' in value && isRenderServerSettings(value.render) &&
     'node' in value && typeof value.node === 'string' &&
-    'lockHash' in value && typeof value.lockHash === 'string' &&
-    'appHash' in value && typeof value.appHash === 'string';
+    'app' in value && typeof value.app === 'string';
 }

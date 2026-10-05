@@ -24,7 +24,7 @@ export const REMOTE_PIECES_DIR = join('out', 'wip', 'remote');
 /**
  * Renders `project` (its folder) on the remote app: `frames` of it as a slice at `out` (and lossless beside it), or
  * the whole video's pieces into out/wip/remote/ joined at `out`. `lens` and `workers` are the command's flags. Returns
- * the files it wrote.
+ * the files it wrote, and prints what the calls billed, whether it wrote them or failed.
  */
 export async function renderRemotely(project: string, { frames, out, lens, workers }: {
   frames?: RemoteFrames; out: string; lens?: string; workers?: number;
@@ -38,10 +38,13 @@ export async function renderRemotely(project: string, { frames, out, lens, worke
     const containers = known === undefined ? 1 : remoteContainerCount(known, call.settings.render.maxContainers);
     const drawing = performance.now();
     const label = (index: number) => (containers > 1 ? `remote ${index + 1}/${containers}` : 'remote');
-    const answers = await Promise.all(Array.from({ length: containers }, (_, index) => call.runJob({
-      kind: 'pieces', project: relative(STUDIO_ROOT, project), ...(lens !== undefined && { lens }), ...(workers !== undefined && { workers }),
-      frames: frames ?? 'all', containers, index, browsers: call.settings.render.browsers, sound: !frames && index === 0 && !ledger.silent,
-    }, label(index))));
+    const answers = await call.runJobs(Array.from({ length: containers }, (_, index) => ({
+      job: {
+        kind: 'pieces', project: relative(STUDIO_ROOT, project), ...(lens !== undefined && { lens }), ...(workers !== undefined && { workers }),
+        frames: frames ?? 'all', containers, index, browsers: call.settings.render.browsers, sound: !frames && index === 0 && !ledger.silent,
+      },
+      label: label(index),
+    })));
     ledger.passes.push({ pass: `remote frames (${containers} container${containers > 1 ? 's' : ''})`, seconds: (performance.now() - drawing) / 1000, gpu: answers[0].report.gpuName ?? undefined });
     const written = frames
       ? await withStudioTemp('remote-pieces', (dir) => {
@@ -50,9 +53,9 @@ export async function renderRemotely(project: string, { frames, out, lens, worke
       })
       : [await joinRemotePieces(ledger, answers.map((a) => a.files), out)];
     for (const line of formatRenderPasses(ledger)) process.stderr.write(`${line}\n`);
-    call.printBilling(answers.map(({ report }, index) => ({ label: label(index), report })));
     return written;
   } finally {
+    call.printBilling();
     call.close();
   }
 }

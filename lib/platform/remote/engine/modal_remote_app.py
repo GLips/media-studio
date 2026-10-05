@@ -1,6 +1,7 @@
 # modal_remote_app.py: the studio's remote app on Modal, deployed by `studio remote deploy` (remote-admin.ts), which
-# names its settings file in STUDIO_REMOTE_SETTINGS; the containers read the same settings from /settings. Called
-# from the studio through Modal's JS SDK (remote-modal.ts). docs/remote.md says how to run it.
+# names its settings file in STUDIO_REMOTE_SETTINGS; the containers read the same settings from /settings. The
+# settings name the app by its version, so checkouts that differ deploy apps of their own. Called from the studio
+# through Modal's JS SDK (remote-modal.ts). docs/remote.md says how to run it.
 #
 # Three classes. StudioRemoteBlobs, a small CPU container, keeps a Volume of what remote calls upload: files by content
 # hash, and brush generations by style, pack and generation (never changed once made). StudioRenderServer, a GPU
@@ -34,8 +35,8 @@ RENDER = SETTINGS["render"]
 # The studio checkout this file sits in (lib/platform/remote/engine/); only a deploy reads files from it.
 STUDIO = Path(__file__).resolve().parents[4] if LOCAL else Path("/")
 
-# As remote-settings.ts names them.
-app = modal.App("media-studio-remote")
+# As remote-settings.ts names them: the app by its version, and the Volume every version shares.
+app = modal.App(SETTINGS["app"])
 volume = modal.Volume.from_name("media-studio-remote-blobs", create_if_missing=True, version=2)
 
 BLOBS = Path("/blobs")

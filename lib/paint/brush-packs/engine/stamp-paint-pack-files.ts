@@ -6,11 +6,11 @@
 // here: the lock imports into one pack take turns by, and brush images written as downsized grey PNGs.
 
 import { randomUUID } from 'node:crypto';
-import { existsSync, linkSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
-import { parseStudioProcessName, studioProcessName, studioProcessRunning, thisStudioProcess, type StudioProcessIdentity } from '#lib/platform/process/engine/studio-process.ts';
+import { releaseStudioLockFile, tryStudioLockFile, type StudioLockFileHold } from '#lib/platform/files/engine/studio-lock-file.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { readStampPaintPack, STAMP_PAINT_PACK_MANIFEST, type StampPaintPack } from '../models/stamp-paint-pack.ts';
 
@@ -79,87 +79,33 @@ export function fitWithin(width: number, height: number, max: number) {
   return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
 }
 
-/** A filesystem error's code (ENOENT, EEXIST…); undefined for anything else thrown. */
-const fsErrorCode = (error: unknown) => (error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : undefined);
-
-/**
- * The import holding a lock whose text is `text` (`<pid>-<started> <uuid>`), while it runs; undefined once it's gone,
- * and for a lock naming no process.
- */
-function runningLockHolder(text: string): StudioProcessIdentity | undefined {
-  const holder = parseStudioProcessName(text.split(' ')[0]);
-  return holder && studioProcessRunning(holder) ? holder : undefined;
-}
-
-/**
- * Takes `lock` from a dead holder, or returns the live one holding it. Renamed away first, so of two takers one rename
- * wins and the other tries again. What was renamed may turn out live (another taker locked between our read and
- * rename): it's linked back, which fails rather than overwrite a newer lock.
- */
-function takeOverStaleStampPackLock(lock: string): StudioProcessIdentity | undefined {
-  let text: string;
-  try {
-    text = readFileSync(lock, 'utf8');
-  } catch (error) {
-    if (fsErrorCode(error) === 'ENOENT') return undefined;
-    throw error;
-  }
-  const holding = runningLockHolder(text);
-  if (holding) return holding;
-  const taken = `${lock}.stale-${randomUUID()}`;
-  try {
-    renameSync(lock, taken);
-  } catch (error) {
-    if (fsErrorCode(error) === 'ENOENT') return undefined;
-    throw error;
-  }
-  const holder = runningLockHolder(readFileSync(taken, 'utf8'));
-  if (holder) {
-    try {
-      linkSync(taken, lock);
-    } finally {
-      rmSync(taken, { force: true });
-    }
-    return holder;
-  }
-  rmSync(taken, { force: true });
-  return undefined;
-}
-
 const STAMP_PACK_LOCK_POLL_MS = 500;
 
 /**
- * Makes `lock` this import's (`mine`), exclusively (O_EXCL): a lock whose process has gone (a killed import) is taken
- * over, one held by a live process waited out, its holder named once (`told`, the pid last named).
+ * Takes `lock` for this import (tryStudioLockFile: one whose process has gone, a killed import, is taken over),
+ * waiting while a live process holds it, its holder named once (`told`, the pid last named).
  */
-async function takeStampPackLock(lock: string, mine: string, waiting: string, told?: number): Promise<void> {
-  try {
-    writeFileSync(lock, mine, { flag: 'wx' });
-    return;
-  } catch (error) {
-    if (fsErrorCode(error) !== 'EEXIST') throw error;
-  }
-  const holder = takeOverStaleStampPackLock(lock);
-  if (!holder) return takeStampPackLock(lock, mine, waiting, told);
-  if (told !== holder.pid) process.stderr.write(`brushes import: waiting for process ${holder.pid}, importing into ${waiting} now (${lock})\n`);
+async function takeStampPackLock(lock: string, waiting: string, told?: number): Promise<StudioLockFileHold> {
+  const tried = tryStudioLockFile(lock);
+  if ('held' in tried) return tried.held;
+  const { pid } = tried.holder;
+  if (told !== pid) process.stderr.write(`brushes import: waiting for process ${pid}, importing into ${waiting} now (${lock})\n`);
   await sleep(STAMP_PACK_LOCK_POLL_MS);
-  return takeStampPackLock(lock, mine, waiting, holder.pid);
+  return takeStampPackLock(lock, waiting, pid);
 }
 
 /**
  * Holds `brushes/.<pack>.lock` while `body` runs (an import's generation switch, and the profiles it stores), so two
- * imports into one pack take turns and the second measures only what the first left unstored. Released only while
- * it's still this import's.
+ * imports into one pack take turns and the second measures only what the first left unstored.
  */
 export async function withStampPackLock<T>({ stylesDir, style, pack }: StampPaintPackPlace, body: () => Promise<T>): Promise<T> {
   const brushesDir = join(stylesDir, style, 'brushes');
   mkdirSync(brushesDir, { recursive: true });
-  const lock = join(brushesDir, `.${pack}.lock`), mine = `${studioProcessName(thisStudioProcess())} ${randomUUID()}`;
-  await takeStampPackLock(lock, mine, `${style}'s ${pack}`);
+  const hold = await takeStampPackLock(join(brushesDir, `.${pack}.lock`), `${style}'s ${pack}`);
   try {
     return await body();
   } finally {
-    if (existsSync(lock) && readFileSync(lock, 'utf8') === mine) rmSync(lock, { force: true });
+    releaseStudioLockFile(hold);
   }
 }
 

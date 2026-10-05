@@ -916,9 +916,6 @@
     "lib/paint/brush-packs/engine/import-photoshop-pack.test.ts": {
       "m: ReturnType<typeof stored>": 1
     },
-    "lib/paint/brush-packs/engine/stamp-paint-pack-files.ts": {
-      "error: unknown": 1
-    },
     "lib/paint/brush-packs/models/stamp-paint-pack.ts": {
       "value: unknown": 17,
       "v: unknown": 2
@@ -1069,9 +1066,6 @@
     },
     "lib/paint/brush-packs/engine/import-procreate-pack.ts": {
       "typeof value": 3
-    },
-    "lib/paint/brush-packs/engine/stamp-paint-pack-files.ts": {
-      "typeof error.code": 1
     },
     "lib/paint/brush-packs/models/stamp-paint-pack.ts": {
       "typeof value": 2

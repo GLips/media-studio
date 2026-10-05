@@ -11,7 +11,7 @@ const minutesFlagSeconds = (text: string | undefined) => (text === undefined ? u
 const deployCommand = defineCommand({
   meta: {
     name: 'deploy',
-    description: 'Deploy the remote app (lib/platform/remote/engine/modal_remote_app.py) to your Modal account: its image built from package-lock.json and this Node, rebuilt only when either changes. Run it again after either changes, or to change a setting; each deploy sets every setting, a flag left out going back to its default. Stops every container the deployment before it left, warm or busy. Prints what a warm container costs an hour.',
+    description: 'Deploy this checkout\'s version of the remote app (lib/platform/remote/engine/modal_remote_app.py) to your Modal account, named media-studio-remote-<8 hex> by its package-lock.json, this Node and the app\'s code: checkouts that differ in any deploy versions of their own and never touch each other\'s. Its image is built from package-lock.json and this Node, rebuilt only when either changes. Run it when a remote command says this checkout\'s version isn\'t deployed, or to change a setting; each deploy sets every setting, a flag left out going back to its default. Ends the containers this version\'s deployment before left, warm or busy (a busy one\'s call runs again on a new container). Prints what a warm container costs an hour.',
   },
   args: {
     gpu: { type: 'string', valueHint: 'T4', description: 'The GPU each render container has: T4 (the default), L4, A10 or L40S' },
@@ -22,17 +22,16 @@ const deployCommand = defineCommand({
   },
   async run({ args }) {
     const { deployRemote, describeRemoteSettings } = await import('#lib/platform/remote/engine/remote-admin.ts');
-    const { settings, stopped } = await deployRemote({
+    const settings = deployRemote({
       gpu: args.gpu, warmSeconds: minutesFlagSeconds(args.warm), checkWarmSeconds: minutesFlagSeconds(args['check-warm']),
       maxContainers: numberFlag(args['max-containers']), browsers: numberFlag(args.browsers),
     });
-    console.log(['deployed:', ...describeRemoteSettings(settings).map((line) => `  ${line}`)].join('\n'));
-    if (stopped) console.log(`stopped the ${stopped} container${stopped > 1 ? 's' : ''} the last deployment left`);
+    console.log([`deployed ${settings.app}:`, ...describeRemoteSettings(settings).map((line) => `  ${line}`)].join('\n'));
   },
 });
 
 const statusCommand = defineCommand({
-  meta: { name: 'status', description: 'What the deployed remote app runs renders and checks on and costs warm, and how many of its containers are up now' },
+  meta: { name: 'status', description: 'The versions of the remote app deployed, each with how many containers it has up now, and what this checkout\'s version runs renders and checks on and costs warm, or that it isn\'t deployed' },
   async run() {
     const { remoteStatus } = await import('#lib/platform/remote/engine/remote-admin.ts');
     for (const line of await remoteStatus()) console.log(line);
@@ -40,11 +39,17 @@ const statusCommand = defineCommand({
 });
 
 const stopCommand = defineCommand({
-  meta: { name: 'stop', description: 'Stop the remote app\'s containers, renders\' and checks\', now rather than when their warm window ends, so nothing bills; a call running in one fails' },
-  async run() {
+  meta: { name: 'stop', description: 'Stop the containers of this checkout\'s version of the remote app, renders\' and checks\', now rather than when their warm window ends, so nothing bills; a call running in one fails, another checkout\'s of the same version too. Other versions\' containers run on unless --all' },
+  args: {
+    all: { type: 'boolean', default: false, description: 'Stop every version\'s containers (each media-studio-remote-<8 hex> app), not only this checkout\'s' },
+  },
+  async run({ args }) {
     const { stopRemote } = await import('#lib/platform/remote/engine/remote-admin.ts');
-    const stopped = await stopRemote();
-    console.log(stopped ? `stopped ${stopped} container${stopped > 1 ? 's' : ''}` : 'no containers were up');
+    const { mine, stopped } = stopRemote({ all: args.all });
+    if (!stopped.length) console.log(args.all ? 'no version of the remote app is deployed' : `this checkout's version, ${mine}, isn't deployed: nothing to stop`);
+    for (const { name, containers } of stopped) {
+      console.log(`${name}: ${containers.length ? `stopped ${containers.length} container${containers.length > 1 ? 's' : ''}` : 'no containers were up'}`);
+    }
   },
 });
 
@@ -96,6 +101,6 @@ const keepBrowsersCommand = defineCommand({
 });
 
 export default defineCommand({
-  meta: { name: 'remote', description: 'The studio\'s app on Modal: render --remote and look --remote draw on its GPUs, and remote run runs the repo\'s checks on its CPUs. Deploy it, see it, stop its containers' },
+  meta: { name: 'remote', description: 'The studio\'s app on Modal: render --remote and look --remote draw on its GPUs, and remote run runs the repo\'s checks on its CPUs. Deploy this checkout\'s version of it, see the versions deployed, stop their containers' },
   subCommands: { deploy: deployCommand, status: statusCommand, stop: stopCommand, run: runCommand, job: jobCommand, 'keep-browsers': keepBrowsersCommand },
 });

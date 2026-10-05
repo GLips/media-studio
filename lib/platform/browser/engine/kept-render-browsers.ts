@@ -4,12 +4,13 @@
 // render borrows a free one wherever it would open its own (inRenderBrowser). Node only.
 //
 // The folder holds `keeper.json`, the keeper's identity and how many it keeps, and per browser i: `<i>.json`, its pid
-// and DevTools endpoint, or the error that keeps it from opening; `<i>.lock`, its borrower's identity while lent; and
-// `<i>.sh`, the shim a borrower attaches through (attachRenderBrowser).
-import { chmodSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+// and DevTools endpoint, or the error that keeps it from opening; `<i>.lock`, its borrower's lock (studio-lock-file.ts)
+// while lent; and `<i>.sh`, the shim a borrower attaches through (attachRenderBrowser).
+import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { HeadlessBrowser } from '@remotion/renderer';
+import { releaseStudioLockFile, tryStudioLockFile, type StudioLockFileHold } from '#lib/platform/files/engine/studio-lock-file.ts';
 import { processPidAlive, studioProcessRunning, thisStudioProcess, type StudioProcessIdentity } from '#lib/platform/process/engine/studio-process.ts';
 import { attachRenderBrowser, openRenderBrowser, sendRenderBrowserCommand } from './render-browser-launch.ts';
 
@@ -38,10 +39,6 @@ function isKeptRenderBrowser(value: unknown): value is KeptRenderBrowser {
   if (typeof value !== 'object' || value === null) return false;
   if ('error' in value) return typeof value.error === 'string';
   return 'pid' in value && typeof value.pid === 'number' && 'endpoint' in value && typeof value.endpoint === 'string';
-}
-
-function isStudioProcessIdentity(value: unknown): value is StudioProcessIdentity {
-  return typeof value === 'object' && value !== null && isIdentity(value);
 }
 
 /** The file at `path` read as JSON and held to `is`; undefined when it's missing or isn't one. */
@@ -139,30 +136,10 @@ export async function keepRenderBrowsers(dir: string, count: number): Promise<ne
 
 // ---------- borrowing ----------
 
-/**
- * Takes `slot`'s lock for this process, unless another running process holds it. A lock is linked in whole from a
- * file of this process's own, so a reader never finds it empty; one whose holder ended is taken over.
- */
-function lockSlot(dir: string, slot: number): boolean {
-  const lock = lockPath(dir, slot), mine = `${lock}.${process.pid}`;
-  writeFileSync(mine, JSON.stringify(thisStudioProcess()));
-  try {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        linkSync(mine, lock);
-        return true;
-      } catch (error) {
-        // SAFETY: node:fs throws ErrnoExceptions.
-        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-        const holder = readKeptFile(lock, isStudioProcessIdentity);
-        if (!holder || studioProcessRunning(holder)) return false;
-        rmSync(lock, { force: true });
-      }
-    }
-    return false;
-  } finally {
-    rmSync(mine, { force: true });
-  }
+/** `slot`'s lock, taken for this process (tryStudioLockFile), or undefined while another running process holds it. */
+function lockSlot(dir: string, slot: number): StudioLockFileHold | undefined {
+  const tried = tryStudioLockFile(lockPath(dir, slot));
+  return 'held' in tried ? tried.held : undefined;
 }
 
 /** A page or other target in a browser, as CDP's Target.getTargets lists it. */
@@ -229,7 +206,7 @@ function endKeptBrowser(pid: number) {
   }
 }
 
-async function attachKeptBrowser(dir: string, slot: number, { pid, endpoint }: { pid: number; endpoint: string }): Promise<Omit<KeptRenderBrowserLoan, 'waited'>> {
+async function attachKeptBrowser(dir: string, { slot, held: { pid, endpoint }, lock }: LockedKeptSlot): Promise<Omit<KeptRenderBrowserLoan, 'waited'>> {
   await clearKeptBrowserPages(endpoint);
   const shim = join(dir, `${slot}.sh`);
   writeFileSync(shim, `#!/bin/sh\necho 'DevTools listening on ${endpoint}' >&2\nexec sleep 2147483647\n`);
@@ -240,7 +217,7 @@ async function attachKeptBrowser(dir: string, slot: number, { pid, endpoint }: {
     async giveBack(broken) {
       await browser.close({ silent: true });
       if (broken) endKeptBrowser(pid);
-      rmSync(lockPath(dir, slot), { force: true });
+      releaseStudioLockFile(lock);
     },
   };
 }
@@ -251,18 +228,19 @@ async function attachKeptBrowser(dir: string, slot: number, { pid, endpoint }: {
  */
 export async function borrowKeptRenderBrowser(dir: string): Promise<KeptRenderBrowserLoan> {
   const asked = performance.now();
-  const { slot, held } = await lockKeptSlot(dir);
+  const locked = await lockKeptSlot(dir);
   const waited = (performance.now() - asked) / 1000;
   try {
-    return { ...(await attachKeptBrowser(dir, slot, held)), waited };
+    return { ...(await attachKeptBrowser(dir, locked)), waited };
   } catch (error) {
-    endKeptBrowser(held.pid);
-    rmSync(lockPath(dir, slot), { force: true });
+    endKeptBrowser(locked.held.pid);
+    releaseStudioLockFile(locked.lock);
     throw error;
   }
 }
 
-type LockedKeptSlot = { readonly slot: number; readonly held: { readonly pid: number; readonly endpoint: string } };
+/** A slot lent to this process: its browser as its record said under the lock, and the lock. */
+type LockedKeptSlot = { readonly slot: number; readonly held: { readonly pid: number; readonly endpoint: string }; readonly lock: StudioLockFileHold };
 
 /** A slot of the keeper in `dir` whose browser is open and free, locked for this process, polling until one is. */
 async function lockKeptSlot(dir: string): Promise<LockedKeptSlot> {
@@ -270,11 +248,12 @@ async function lockKeptSlot(dir: string): Promise<LockedKeptSlot> {
   if (!keeper || !studioProcessRunning(keeper)) throw new Error(`no render browser keeper runs in ${dir}`);
   const records = Array.from({ length: keeper.count }, (_, slot) => ({ slot, record: readKeptFile(recordPath(dir, slot), isKeptRenderBrowser) }));
   for (const { slot, record } of records) {
-    if (!record || 'error' in record || !processPidAlive(record.pid) || !lockSlot(dir, slot)) continue;
+    const lock = record && !('error' in record) && processPidAlive(record.pid) ? lockSlot(dir, slot) : undefined;
+    if (!lock) continue;
     // Read again under the lock: the keeper may have reopened it since.
     const held = readKeptFile(recordPath(dir, slot), isKeptRenderBrowser);
-    if (held && !('error' in held) && processPidAlive(held.pid)) return { slot, held };
-    rmSync(lockPath(dir, slot), { force: true });
+    if (held && !('error' in held) && processPidAlive(held.pid)) return { slot, held, lock };
+    releaseStudioLockFile(lock);
   }
   const failing = records.flatMap(({ record }) => (record && 'error' in record ? [record.error] : []));
   if (failing.length === keeper.count) throw new Error(`no kept render browser opens: ${failing[0]}`);

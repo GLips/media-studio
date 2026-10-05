@@ -13,8 +13,7 @@ local browser and runs no check here, so it never takes the GPU lease and needs 
 machine's cores to the work that must stay here.
 
 The code is `lib/platform/remote/`; the render and look jobs are `lib/output/remote-render/`. The app Modal runs is
-`lib/platform/remote/engine/modal_remote_app.py`, named `media-studio-remote`. This machine calls it through Modal's
-JS SDK, `modal` on npm.
+`lib/platform/remote/engine/modal_remote_app.py`. This machine calls it through Modal's JS SDK, `modal` on npm.
 
 ## Setting up
 
@@ -25,7 +24,7 @@ JS SDK, `modal` on npm.
    modal setup
    ```
 
-2. Deploy the app:
+2. Deploy this checkout's version of the app:
 
    ```
    studio remote deploy
@@ -35,11 +34,7 @@ JS SDK, `modal` on npm.
    `npm ci` from `package-lock.json`, Chrome for Testing, ffmpeg, git and the Vulkan loader. Renders and checks run
    on the same image. Modal keeps it until the lockfile or the Node version changes.
 
-Deploy again after `package-lock.json`, Node or `modal_remote_app.py` changes. Until you do, remote commands refuse
-and name the file that changed. `studio remote status` checks the same thing. Every checkout calls the one deployed
-app, so deploying from a checkout whose lockfile differs makes the others refuse until they deploy in turn.
-
-Each deploy sets every setting. A flag you leave out goes back to its default:
+Each deploy sets every setting of its version. A flag you leave out goes back to its default:
 
 | Flag | Default | What it sets |
 |---|---|---|
@@ -50,9 +45,25 @@ Each deploy sets every setting. A flag you leave out goes back to its default:
 | `--browsers` | `3` | Browsers each render container draws its share in, one piece each. It keeps one more open for the sound. A T4 fits three painting browsers |
 
 Every render container reserves 2 cores and 4 GiB of memory. A render can burst to 8 cores and 16 GiB, and is
-billed for what it uses. Check containers are sized by the script they run, not by a flag (see below). A deploy also
-stops every container the last deployment left, warm or busy. Otherwise they would answer calls on the old settings
-and code until their window ran out. So don't deploy while someone's call is running.
+billed for what it uses. Check containers are sized by the script they run, not by a flag (see below).
+
+A deploy ends every container its version's deployment before left, warm or busy (Modal's `recreate` strategy).
+Otherwise they would answer calls on the old settings until their window ran out. A call busy in one runs again from
+the start on a new container, so a deploy costs a same-version checkout's running render its progress. No other
+version's containers are touched.
+
+## Versions
+
+The app is deployed once per version, named `media-studio-remote-` and 8 hex digits of what the version is bound
+to: `package-lock.json`, Node and `modal_remote_app.py`. A checkout finds its own version by computing that name.
+Checkouts that differ in any of the three deploy and call versions of their own, so one never stops or replaces
+another's. Checkouts alike in all three share a version, its deployment and its containers. Every version uploads
+into the one Volume, which is keyed by content.
+
+After `package-lock.json`, Node or `modal_remote_app.py` changes, this checkout's version is a new one. Remote
+commands refuse until you deploy it. `studio remote status` lists the versions deployed, each with its containers up
+now, and says what this checkout's runs on, or that it isn't deployed. A version no checkout uses any more costs
+nothing once its containers stop; `modal app stop <name>` retires it.
 
 ## Running checks
 
@@ -100,7 +111,7 @@ is on disk here. So `--snapshot index` there sees your tracked files with unstag
 
 A Modal container sees every processor of its host, whatever it reserved. So the script runs pinned to as many
 processors as it reserved (`taskset`), and `node --test` starts one file per core it has, not one per host core. At
-most 32 check containers run at once, over every checkout calling the app; a call past that waits for one.
+most 32 check containers run at once, over every checkout sharing the version; a call past that waits for one.
 
 More cores wouldn't make test:gate faster. Its render tests take the GPU lease one at a time, as they do here, and
 together hold it for about 110 s of its 124. A T4 starts a browser and bundles more slowly than the M1 Max does.
@@ -173,6 +184,11 @@ call from the end of the call before it, since Modal bills the wait between call
 the warm window costs if nothing else comes. The estimate is Modal's list price times what the container reports.
 `modal environment billing report --for today` has the real figure, a few minutes later.
 
+A command that fails or is stopped leaves no call running. When one container of a render fails, the calls of the
+others are cancelled. Ctrl-C or a kill (SIGINT, SIGTERM, SIGHUP) cancels every call in flight, waiting up to 5 s,
+before the command exits. A cancelled call's container is ended, its warm state with it. A failed command still
+prints the bill of every call that answered. A cancelled call never reports, so what it ran is left out.
+
 Modal's rates per second (October 2026):
 
 | | $/s | $/h |
@@ -198,11 +214,14 @@ You can make the window shorter or longer:
 studio remote deploy --warm 3                   # 3 minutes: a cold start costs less than waiting 10
 studio remote deploy --warm 20                  # the most Modal allows, for a long session of looks
 studio remote deploy --warm 20 --check-warm 10  # checks too, for a session of many reruns
-studio remote stop                              # end every container now; nothing bills after it
+studio remote stop                              # end this checkout's version's containers now; nothing bills after it
+studio remote stop --all                        # end every version's
 ```
 
-Just after `studio remote stop`, the next call's upload step can take 10–40 s more than usual while Modal places
-new containers. Let the window run out instead when you don't need the money back now.
+`studio remote stop` ends the containers of this checkout's version, a call busy in one failing, whichever
+checkout of the version made it. Other versions' containers run on unless you add `--all`. Just after a stop, the next
+call's upload step can take 10–40 s more than usual while Modal places new containers. Let the window run out
+instead when you don't need the money back now.
 
 ## Measured renders
 

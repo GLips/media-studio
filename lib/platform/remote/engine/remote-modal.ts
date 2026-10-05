@@ -1,11 +1,13 @@
-// remote-modal.ts: the studio's one door to Modal. The deployed remote app (modal_remote_app.py) is called through
-// Modal's JS SDK, which reads the machine's Modal token from ~/.modal.toml itself; what the SDK can't do (deploy, list
-// and stop containers) goes through the `modal` CLI. Nothing here prints or keeps a token. Node only.
+// remote-modal.ts: the studio's one door to Modal. A deployed version of the remote app (modal_remote_app.py) is
+// called through Modal's JS SDK, which reads the machine's Modal token from ~/.modal.toml itself; what the SDK can't do
+// (deploy, list apps and containers, stop containers) goes through the `modal` CLI. Nothing here prints or keeps a
+// token. Node only.
 import { spawnSync } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { ModalClient, NotFoundError, type FunctionCall } from 'modal';
+import { onStudioSignalExit } from '#lib/platform/process/engine/studio-signal-exit.ts';
 import { isRemoteCallReport, type RemoteCallReport } from '../models/remote-cost.ts';
-import { REMOTE_APP, isRemoteSettings, type RemoteContainerSize, type RemoteSettings } from '../models/remote-settings.ts';
+import { isRemoteSettings, type RemoteContainerSize, type RemoteSettings } from '../models/remote-settings.ts';
 
 /** The app's classes: uploads into its Volume (a small CPU container), the GPU render server, the CPU check server. */
 const BLOBS_CLASS = 'StudioRemoteBlobs', RENDER_CLASS = 'StudioRenderServer', CHECK_CLASS = 'StudioCheckServer';
@@ -100,20 +102,56 @@ async function followRemoteCall<T>(call: FunctionCall, onLine: (line: string) =>
 /** The lines in a call's printed `output`, a last one unended counted too. */
 export const remoteOutputLines = (output: string) => output.split('\n').length - (output.endsWith('\n') || output === '' ? 1 : 0);
 
-/** The deployed app, its classes looked up; refuses with how to deploy it when it isn't. */
-export async function openRemoteApp() {
+/**
+ * The deployed app named `name`, its classes looked up; refuses with how to deploy it when it isn't. Each call it
+ * starts is known while it runs: cancelRunningCalls cancels them, as a signal ending the process does before it exits.
+ */
+export async function openRemoteApp(name: string) {
   const client = new ModalClient();
-  const lookUp = async (name: string) => {
+  const lookUp = async (cls: string) => {
     try {
-      return await client.cls.fromName(REMOTE_APP, name);
+      return await client.cls.fromName(name, cls);
     } catch (error) {
-      if (error instanceof NotFoundError) throw new Error(`the remote app (${REMOTE_APP}) isn't deployed: run studio remote deploy`, { cause: error });
+      if (error instanceof NotFoundError) {
+        throw new Error(`the remote app ${name} isn't deployed: run studio remote deploy (a checkout deploys a version of its own when its package-lock.json, Node or modal_remote_app.py differ)`, { cause: error });
+      }
       throw error;
     }
   };
   const [blobs, renderServer, checkServer] = await Promise.all([
     lookUp(BLOBS_CLASS).then((cls) => cls.instance()), lookUp(RENDER_CLASS).then((cls) => cls.instance()), lookUp(CHECK_CLASS),
   ]);
+
+  // Each call as it's started, so one still starting is cancelled once it has an id.
+  const running = new Set<Promise<FunctionCall>>();
+  let ending = false;
+
+  /**
+   * Cancels every call still running, ending its container: Modal stops a cancelled call's method, but the job or
+   * script it started would run on in a warm container, holding its browsers or tree.
+   */
+  async function cancelRunningCalls(): Promise<void> {
+    await Promise.allSettled([...running].map(async (started) => (await started).cancel({ terminateContainers: true })));
+  }
+  const forgetSignal = onStudioSignalExit(async () => {
+    ending = true;
+    await cancelRunningCalls();
+  });
+
+  /** `follow` run on the call `started` starts, known as running until it settles. */
+  async function runCall<T>(started: Promise<FunctionCall>, follow: (call: FunctionCall) => Promise<T>): Promise<T> {
+    running.add(started);
+    try {
+      return await follow(await started);
+    } catch (error) {
+      // Looks wrong: a call a signal cancelled never settles, so its command reports no failure of its own and the
+      // process exits with the signal's code once every call is cancelled.
+      if (ending) await new Promise<never>(() => {});
+      throw error;
+    } finally {
+      running.delete(started);
+    }
+  }
 
   /** Which of `files` (content hashes) and `generations` (brush generation keys) the Volume lacks, and the settings. */
   async function prepare(request: { files: readonly string[]; generations: readonly string[] }): Promise<RemotePrepareAnswer> {
@@ -124,7 +162,7 @@ export async function openRemoteApp() {
 
   /** Runs `request` (a job and the files it needs) on a render server, each line its container logs told to `onLine`. */
   async function render(request: RemoteRenderRequest, onLine: (line: string) => void): Promise<RemoteRenderAnswer> {
-    const answer = await followRemoteCall(await renderServer.method('run').spawn([request]), onLine, { what: 'a render', isAnswer: isRenderAnswerWire });
+    const answer = await runCall(renderServer.method('run').spawn([request]), (call) => followRemoteCall(call, onLine, { what: 'a render', isAnswer: isRenderAnswerWire }));
     return { ...answer, files: new Map(answer.files) };
   }
 
@@ -137,9 +175,9 @@ export async function openRemoteApp() {
       ...(size.gpu === null ? {} : { gpu: size.gpu }),
       cpu: size.cpu.request, cpuLimit: size.cpu.limit, memoryMiB: size.memoryMiB.request, memoryLimitMiB: size.memoryMiB.limit, scaledownWindowMs: warmSeconds * 1000,
     }).instance();
-    return followRemoteCall(await sized.method('run').spawn([request]), onLine, {
+    return runCall(sized.method('run').spawn([request]), (call) => followRemoteCall(call, onLine, {
       what: 'a check', isAnswer: isCheckAnswer, linesIn: (answer) => remoteOutputLines(answer.output),
-    });
+    }));
   }
 
   return {
@@ -147,8 +185,11 @@ export async function openRemoteApp() {
     put: (request: RemotePutRequest) => blobs.method('put').remote([request]),
     render,
     check,
-    appId: async () => (await client.apps.fromName(REMOTE_APP)).appId,
-    close: () => client.close(),
+    cancelRunningCalls,
+    close: () => {
+      forgetSignal();
+      client.close();
+    },
   };
 }
 
@@ -160,25 +201,43 @@ function runModalCli(args: readonly string[], { env }: { env?: NodeJS.ProcessEnv
 }
 
 /**
- * Deploys the app at `appFile` with the settings in the JSON file `settingsFile`. Modal imports the app here to read
- * it, which would leave a __pycache__ in lib/.
+ * Deploys the app at `appFile` with the settings in the JSON file `settingsFile`, which name it. Modal's recreate
+ * strategy ends the containers its deployment before left, a busy one's call run again on a new one: they'd answer
+ * calls on the old settings until their window ran out. Modal imports the app here, which would leave a __pycache__.
  */
 export function deployRemoteApp(appFile: string, settingsFile: string): void {
-  runModalCli(['deploy', appFile], { env: { STUDIO_REMOTE_SETTINGS: settingsFile, PYTHONDONTWRITEBYTECODE: '1' } });
+  runModalCli(['deploy', '--strategy', 'recreate', appFile], { env: { STUDIO_REMOTE_SETTINGS: settingsFile, PYTHONDONTWRITEBYTECODE: '1' } });
 }
 
-/** A row of `modal container list --json`, keyed by its columns in snake case. */
-function isListedContainer(value: unknown): value is { container_id: string } {
-  return typeof value === 'object' && value !== null && 'container_id' in value && isText(value.container_id);
+/** A row of `modal app list --json`, keyed by its columns in snake case: an app's name is its description. */
+function isListedApp(value: unknown): value is { app_id: string; description: string; state: string } {
+  return typeof value === 'object' && value !== null && 'app_id' in value && isText(value.app_id) &&
+    'description' in value && isText(value.description) && 'state' in value && isText(value.state);
 }
 
-/** The ids of the app's containers up now, warm or busy, of every class. */
-export function listRemoteContainers(appId: string): string[] {
-  const listed = spawnSync('modal', ['container', 'list', '--json', '--app-id', appId], { encoding: 'utf8', stdio: ['ignore', 'pipe', 2] });
-  if (listed.error || listed.status !== 0) throw new Error(`modal container list failed${listed.error ? `: ${listed.error.message}` : ''}`);
-  const containers: unknown = JSON.parse(listed.stdout);
-  if (!Array.isArray(containers) || !containers.every(isListedContainer)) throw new Error('modal container list answered in a shape this studio doesn\'t read');
-  return containers.map((container) => container.container_id);
+/** A row of `modal container list --json`. */
+function isListedContainer(value: unknown): value is { container_id: string; app_id: string } {
+  return typeof value === 'object' && value !== null && 'container_id' in value && isText(value.container_id) && 'app_id' in value && isText(value.app_id);
+}
+
+/** The rows the `modal` CLI's listing `args` answers in JSON, each held to `isRow`. */
+function listModalRows<T>(args: readonly string[], isRow: (value: unknown) => value is T): T[] {
+  const listed = spawnSync('modal', [...args, '--json'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 2] });
+  if (listed.error || listed.status !== 0) throw new Error(`modal ${args.join(' ')} failed${listed.error ? `: ${listed.error.message}` : ''}`);
+  const rows: unknown = JSON.parse(listed.stdout);
+  if (!Array.isArray(rows) || !rows.every(isRow)) throw new Error(`modal ${args.join(' ')} answered in a shape this studio doesn't read`);
+  return rows;
+}
+
+/** A deployed app, and the ids of its containers up now, warm or busy, of every class. */
+export type DeployedRemoteApp = { readonly name: string; readonly containers: readonly string[] };
+
+/** The deployed apps whose names `isWanted` accepts, each with its containers. */
+export function listDeployedRemoteApps(isWanted: (name: string) => boolean): DeployedRemoteApp[] {
+  const apps = listModalRows(['app', 'list'], isListedApp).filter((app) => app.state === 'deployed' && isWanted(app.description));
+  if (!apps.length) return [];
+  const containers = listModalRows(['container', 'list'], isListedContainer);
+  return apps.map((app) => ({ name: app.description, containers: containers.filter((c) => c.app_id === app.app_id).map((c) => c.container_id) }));
 }
 
 /** Stops each of `containers` now (a busy one's call fails). */

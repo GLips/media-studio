@@ -1,7 +1,8 @@
-// remote-run.ts: `studio remote run`, from this machine: package.json's scripts run in CPU-only containers on the
-// deployed app (modal_remote_app.py's StudioCheckServer), each in its own, all at once, against this checkout as it
-// is on disk: both repositories, uncommitted and untracked files included, as remote-upload.ts's checkout upload
-// gathers them. Each script's output streams here as it comes, marked with its name when there are several. Node only.
+// remote-run.ts: `studio remote run`, from this machine: package.json's scripts run in check containers of this
+// checkout's version of the app (modal_remote_app.py's StudioCheckServer), each in its own, all at once, against this
+// checkout as it is on disk: both repositories, uncommitted and untracked files included, as remote-upload.ts's
+// checkout upload gathers them. Each script's output streams here as it comes, marked with its name when there are
+// several. A script that fails leaves the others running: each is judged on its own. Node only.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';

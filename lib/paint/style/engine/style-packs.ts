@@ -7,7 +7,7 @@
 
 import { readStampPackBrushProfiles, type StampPaintPackGeneration } from '#lib/paint/brush-packs/engine/stamp-brush-profile-store.ts';
 import { stampPaintPackDir } from '#lib/paint/brush-packs/engine/stamp-paint-pack-files.ts';
-import type { ProfiledStampPaintPack } from '#lib/paint/brush-packs/models/stamp-paint-pack.ts';
+import { storedStampBrushProfile, type ProfiledStampPaintPack, type StoredStampBrushProfile } from '#lib/paint/brush-packs/models/stamp-paint-pack.ts';
 import { stampPaintStyleProbeMediumKey, type StampPaintStyle } from '../models/style.ts';
 
 /** One of a style's packs as read: its generation's folder, the pack as the style paints from it, and each profile's file. */
@@ -32,3 +32,12 @@ export function readStampPaintStylePacks(
 /** Each pack of `read` as its style paints from it. */
 export const stampPaintStyleProfiledPacks = (read: Readonly<Record<string, StampPaintStylePackRead>>): Record<string, ProfiledStampPaintPack> =>
   Object.fromEntries(Object.entries(read).map(([pack, { profiled }]) => [pack, profiled]));
+
+/**
+ * Each pack of `read`'s profiles by brush, as their files store them: what a styles module written for a bundle (Node's,
+ * a served page's) carries, for stampPaintStyle to read as a bundle's imports.
+ */
+export const stampPaintStyleStoredProfiles = (read: Readonly<Record<string, StampPaintStylePackRead>>): Record<string, Record<string, StoredStampBrushProfile>> =>
+  Object.fromEntries(Object.entries(read).map(([pack, { profiled }]) => [
+    pack, Object.fromEntries(Object.entries(profiled.profiles).map(([brush, profile]) => [brush, storedStampBrushProfile(brush, profile)])),
+  ]));

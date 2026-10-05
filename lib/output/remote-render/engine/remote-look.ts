@@ -20,16 +20,18 @@ export type RemoteLookRequest = {
 
 /**
  * Draws `request`'s stills of `project` (its folder) remotely, then runs `look` with them as a source and the frames
- * the look asked for, while they're on disk. Prints what the call billed.
+ * the look asked for, while they're on disk. Prints what the call billed, whether the look was made or failed.
  */
 export async function withRemoteLook<T>(project: string, request: RemoteLookRequest, look: (source: LookSource, frames: readonly number[]) => Promise<T>): Promise<T> {
   const call = await openRemoteRenderCall(project);
   try {
-    const { files, report } = await call.runJob({
-      kind: 'look', project: relative(STUDIO_ROOT, project), ask: request.ask, width: request.width, before: request.before, captions: request.captions,
-      ...(request.lens !== undefined && { lens: request.lens }), ...(request.set !== undefined && { set: request.set }),
-    }, 'remote');
-    call.printBilling([{ label: 'remote', report }]);
+    const [{ files }] = await call.runJobs([{
+      job: {
+        kind: 'look', project: relative(STUDIO_ROOT, project), ask: request.ask, width: request.width, before: request.before, captions: request.captions,
+        ...(request.lens !== undefined && { lens: request.lens }), ...(request.set !== undefined && { set: request.set }),
+      },
+      label: 'remote',
+    }]);
     return await withStudioTemp('remote-look', async (dir) => {
       writeRemoteFiles(files, dir);
       const answer: unknown = JSON.parse(readFileSync(join(dir, REMOTE_LOOK_ANSWER_FILE), 'utf8'));
@@ -41,6 +43,7 @@ export async function withRemoteLook<T>(project: string, request: RemoteLookRequ
       return look({ kind: 'stills', composition: answer.composition, w: answer.w, fileFor }, answer.frames);
     });
   } finally {
+    call.printBilling();
     call.close();
   }
 }
