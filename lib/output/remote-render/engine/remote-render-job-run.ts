@@ -18,14 +18,23 @@ import {
 /** How a job opens its project's render session: as the CLI does, from --workers, --lens and --set text. */
 export type RemoteJobSessionOpener = (project: string, options: { workers?: string; lens?: string; paintings?: string }) => Promise<RenderSession>;
 
-/** A pieces job: its share drawn piece by piece at once, each in a browser of its own, with the sound beside. */
-async function renderRemotePieces(job: Extract<RemoteRenderJob, { kind: 'pieces' }>, session: RenderSession, out: string) {
+/** A container's share of the video drawn piece by piece at once, each in a browser of its own. */
+async function renderRemoteShare(job: Extract<RemoteRenderJob, { kind: 'pieces' }>, session: RenderSession, out: string) {
   const timeline = await session.readTimeline();
   const frames = job.frames === 'all' ? { from: 0, end: timeline.durationInFrames } : job.frames;
   refuseSliceOutside(timeline, frames);
-  const pieces = remoteContainerPieces(frames, job);
+  await Promise.all(remoteContainerPieces(frames, job).map((piece) =>
+    session.renderLosslessVideo({ out: join(out, remotePieceFile(piece)), frames: piece, timeline, onProgress: renderProgress(remotePieceFile(piece)) })));
+}
+
+/**
+ * A pieces job: its share, and the sound when asked, drawn at once in the browser the keeper keeps spare. On a cloud
+ * container gathering the sound takes about half a second a frame, painted or not, so after the pieces it would
+ * near double the wall time.
+ */
+async function renderRemotePieces(job: Extract<RemoteRenderJob, { kind: 'pieces' }>, session: RenderSession, out: string) {
   await Promise.all([
-    ...pieces.map((piece) => session.renderLosslessVideo({ out: join(out, remotePieceFile(piece)), frames: piece, timeline, onProgress: renderProgress(remotePieceFile(piece)) })),
+    renderRemoteShare(job, session, out),
     ...(job.sound && !session.silent ? [session.renderAudio({ out: join(out, REMOTE_SOUND_FILE) })] : []),
   ]);
 }

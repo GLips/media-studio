@@ -15,7 +15,7 @@ export type RemoteRenderSettings = {
   /** How long a container stays up after its last call, warm for the next: Modal's scaledown_window, 2 s to 20 min. */
   readonly warmSeconds: number;
   readonly maxContainers: number;
-  /** Render browsers each container keeps open, each drawing its own piece of a video. */
+  /** Render browsers each container draws its share in, each its own piece; it keeps one more for the sound. */
   readonly browsers: number;
   readonly cpu: RemoteRenderReservation;
   readonly memoryMiB: RemoteRenderReservation;

@@ -14,7 +14,7 @@ const deployCommand = defineCommand({
     gpu: { type: 'string', valueHint: 'T4', description: 'The GPU each render container has: T4 (the default), L4, A10 or L40S' },
     warm: { type: 'string', valueHint: '10', description: 'Minutes a container stays warm after its last call, billed while it waits (default 10; Modal allows 2 seconds to 20 minutes)' },
     'max-containers': { type: 'string', valueHint: '4', description: 'Most render containers at once: a render splits across up to this many, about one per 600 frames (default 4)' },
-    browsers: { type: 'string', valueHint: '3', description: 'Browsers each container keeps open, each drawing a piece of its share at once (default 3)' },
+    browsers: { type: 'string', valueHint: '3', description: 'Browsers each container draws its share in, a piece each at once (default 3); it keeps one more open, for the sound' },
   },
   async run({ args }) {
     const { deployRemoteRender, describeRemoteSettings } = await import('#lib/output/remote-render/engine/remote-admin.ts');

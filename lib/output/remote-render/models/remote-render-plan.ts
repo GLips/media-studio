@@ -1,9 +1,9 @@
 // remote-render-plan.ts: how a remote render shares a video's frames over containers, and each container's share over
 // its browsers. Pure.
 //
-// A container costs about 100 s cold before its first frame and a few warm, so it takes a long share: one per up to
-// REMOTE_MOST_FRAMES_PER_CONTAINER frames. Inside one, each kept browser draws a piece at once: a browser's GPU process
-// is CPU-bound, so more browsers use more of the GPU where more tabs wouldn't.
+// A container spends about a minute before its first frame (its files, bundle, timeline and first solve), so it takes
+// a long share: one per up to REMOTE_MOST_FRAMES_PER_CONTAINER frames. Inside one, each kept browser draws a piece at
+// once: a browser's GPU process is CPU-bound, so more browsers use more of the GPU where more tabs wouldn't.
 //
 // The Mac picks how many containers from the frames it knows (the clock's length for a whole video); each container
 // cuts its share from the frames its own page reads, so a wrong guess costs balance, never a frame.

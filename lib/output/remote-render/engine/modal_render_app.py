@@ -240,8 +240,10 @@ class StudioRenderServer:
             return
         self.stop_keeper()
         log = open("/tmp/keeper.log", "ab")
+        # One browser more than the pieces: a share's sound draws beside them (remote-render-job-run.ts). It paints
+        # nothing, so it needs none of the GPU's memory a painting browser holds.
         self.keeper = subprocess.Popen(
-            ["node", "cli/studio.ts", "remote", "keep-browsers", "--dir", str(KEPT), "--count", str(SETTINGS["browsers"])],
+            ["node", "cli/studio.ts", "remote", "keep-browsers", "--dir", str(KEPT), "--count", str(SETTINGS["browsers"] + 1)],
             cwd=TREE, stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
         )
         self.keeper_code = code
@@ -274,10 +276,11 @@ class StudioRenderServer:
         finally:
             peak = memory.stop()
         cpu_after, ended = cgroup_cpu_seconds(), time.time()
+        # Every number goes as a float: Modal's JS SDK decodes a CBOR integer past 2^32 (a peak over 4 GiB) as a BigInt.
         report = {
             "gpuName": self.gpu_name, "containerStarted": self.started, "previousCallEnded": self.last_ended,
             "callStarted": called, "callEnded": ended,
-            "cpuSeconds": None if cpu_before is None or cpu_after is None else cpu_after - cpu_before, "memoryPeakBytes": peak,
+            "cpuSeconds": None if cpu_before is None or cpu_after is None else cpu_after - cpu_before, "memoryPeakBytes": None if peak is None else float(peak),
         }
         self.last_ended = ended
         return {"ok": code == 0, "error": None if code == 0 else f"studio remote job exited {code} (its output is above)", "files": made, "report": report}

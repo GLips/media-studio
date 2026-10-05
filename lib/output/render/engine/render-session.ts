@@ -8,9 +8,9 @@
 //
 // Every page opens in a watched browser (render-watch.ts); frames draw in chunks (render-chunks.ts), a video's kept
 // lossless and encoded once. A pass only measuring frames or gathering sound draws no picture.
-import { renderFrames, renderMedia, selectComposition, type HeadlessBrowser, type OnArtifact } from '@remotion/renderer';
+import { renderFrames, renderMedia, RenderInternals, selectComposition, type HeadlessBrowser, type OnArtifact } from '@remotion/renderer';
 import { copyFileSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { availableParallelism, getPriority, setPriority } from 'node:os';
+import { getPriority, setPriority } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import type { VideoConfig } from 'remotion';
 import { projectSlug, replaySlug } from './project-bundle.ts';
@@ -54,11 +54,18 @@ export const DELIVERY_ENCODING: VideoEncoding = { crf: 18, preset: 'slow' };
 export type VideoSound = 'none' | 'own' | 'apart';
 
 /**
+ * The most tabs Remotion opens at once: the cores it counts, the fewer of Node's count and nproc's. A cloud container
+ * (remote-render) counts only the cores it reserves, though it bursts past them, so a video's renderWorkers or its
+ * sound pass's default would be refused there.
+ */
+const RENDER_CORES = RenderInternals.resolveConcurrency('100%');
+
+/**
  * Tabs a render runs at once, unless the command's --workers or the video's `renderWorkers` says otherwise. The tabs
  * share one GPU, so more don't draw faster: on a 10-core M1 Max the showcase delivered in the same time on 2, 3, 5 or
  * 9, and checked fastest on 3, while fewer left the machine's own apps far more of it.
  */
-export const DEFAULT_RENDER_WORKERS = Math.min(3, Math.max(1, availableParallelism() - 1));
+const DEFAULT_RENDER_WORKERS = Math.min(3, Math.max(1, RENDER_CORES - 1));
 
 /**
  * Tabs a project that paints (its project.ts names styles) draws its picture in: one. Each tab solves its paint on a
@@ -148,14 +155,14 @@ export async function openRenderSession(
 
   /**
    * Tabs for a render of `composition` with `inputProps`: the session's `workers`, else the video's `renderWorkers`,
-   * else PAINTING_RENDER_WORKERS for a painting project's picture, else the default.
+   * else PAINTING_RENDER_WORKERS for a painting project's picture, else the default; never more than RENDER_CORES.
    */
   function workersFor(composition: VideoConfig, { picture = true }: Partial<VideoProps> = {}): number {
     const { renderWorkers } = composition.defaultProps as CompositionRenderSettings;
     if (renderWorkers !== undefined && !(Number.isInteger(renderWorkers) && renderWorkers > 0)) {
       throw new Error(`the video's renderWorkers is ${renderWorkers}: give a whole number above 0`);
     }
-    return workers ?? renderWorkers ?? (paints && picture ? PAINTING_RENDER_WORKERS : DEFAULT_RENDER_WORKERS);
+    return Math.min(RENDER_CORES, workers ?? renderWorkers ?? (paints && picture ? PAINTING_RENDER_WORKERS : DEFAULT_RENDER_WORKERS));
   }
 
   /** Records the wait for the GPU lease a watched browser reports, when it queued. */
