@@ -444,7 +444,15 @@ function shareText(held: number, weight: number, need: number): string {
   return `${Math.round(percent) >= need && percent < need ? Math.floor(10 * percent) / 10 : Math.round(percent)}`;
 }
 
-const unscheduledAfter = (unscheduled: readonly string[]) => (unscheduled.length ? `. Unscheduled after it: ${unscheduled.join(', ')}` : '');
+/** How many of a refusal's unscheduled applications it names: a sheet's whole tail would bury the one at fault. */
+const STAMP_SHEET_UNSCHEDULED_NAMED = 5;
+
+/** The applications a refusal leaves unscheduled: the first few by name, the rest counted. */
+function unscheduledAfter(unscheduled: readonly string[]): string {
+  if (!unscheduled.length) return '';
+  const more = unscheduled.length - STAMP_SHEET_UNSCHEDULED_NAMED;
+  return `. Unscheduled after it: ${unscheduled.slice(0, STAMP_SHEET_UNSCHEDULED_NAMED).join(', ')}${more > 0 ? ` and ${more} more` : ''}`;
+}
 
 /**
  * Why `on` falls short over a core for its sheet's sake, and what to do, one clause: water a `wet` or `damp` never

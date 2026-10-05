@@ -1518,7 +1518,9 @@ ripples (water): starts at scene 6 s (model 300 s)
 The ripples wait for the glint before them in the order, not only for the pond to set. A wet wash on a sheet whose
 clock is `never` ends `never sets`.
 
-A refusal prints alone, after the check's summary, and fails the run. What the solve says, and what to do:
+A refusal prints alone, after the check's summary, and fails the run; a render or a look prints the page's message,
+none of its bundle's stack frames. It names the first five applications it leaves unscheduled on its sheet and counts
+the rest (`Unscheduled after it: a, b, c, d, e and 30 more`). What the solve says, and what to do:
 
 | Message | When | Do |
 |---|---|---|

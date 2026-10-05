@@ -58,8 +58,12 @@ test('a wet short where it lands names the fix for what its core did: too late, 
 });
 
 /** A `damp` or `dry` application's refusal, holding `held` of 1000 at model 5 s. */
-const coatRefused = (on: 'damp' | 'dry', held: number, regime: StampSheetShortRefused['regime'], fixed: number | null = null) => stampSheetUnreachable({
-  name: 'coat', rule: { on }, at: { tau: 5, held, totals: { weight: 1000, never: 0, dulled: 0 } }, where: { boxes: [], unshone: [] }, unscheduled: [], regime, fixed,
+const coatRefused = (on: 'damp' | 'dry', held: number, regime: StampSheetShortRefused['regime'], fixed: number | null = null, unscheduled: readonly string[] = []) => stampSheetUnreachable({
+  name: 'coat', rule: { on }, at: { tau: 5, held, totals: { weight: 1000, never: 0, dulled: 0 } }, where: { boxes: [], unshone: [] }, unscheduled, regime, fixed,
+});
+
+test("a refusal names the first five applications it leaves unscheduled and counts the rest", () => {
+  assert.match(coatRefused('damp', 400, 'drying', null, ['a', 'b', 'c', 'd', 'e', 'f', 'g']), /\. Unscheduled after it: a, b, c, d, e and 2 more$/);
 });
 
 test("an on's refusal prints its share a tenth under the need it misses, an upper bound only for a damp searched as the paper dries", () => {
