@@ -6,15 +6,16 @@ painted brush comes to the app's own, the studies a person judges, and the gate 
 feature under `lib/paint/`, each importing only those below it:
 
 ```
-shot               → document, animation, rig, three-layers, style, painting, brush, picture/lens, picture/profiling
-document           → style, painting, materials, brush
-animation          → painting
-rig                → painting
-brush-fidelity     → brush-packs, photoshop-brushes, procreate-brushes, painting, brush
+gate               → shot, document, style, three-layers, animation, brush-packs, painting, materials, brush
 studies            → style, brush-packs, painting, materials, brush
-gate               → shot, document, brush-packs, painting, materials, brush
-style              → brush-packs, painting, materials, brush
-brush-packs        → photoshop-brushes, procreate-brushes, materials, brush, platform/zip
+brush-fidelity     → brush-packs, photoshop-brushes, procreate-brushes, painting, brush
+shot               → document, style, three-layers, animation, rig, painting, brush, picture/lens, picture/profiling
+document           → style, animation, brush-packs, painting, materials, brush
+style              → three-layers, animation, brush-packs, painting, materials, brush
+three-layers       → animation, painting
+animation          → painting, brush
+rig                → painting
+brush-packs        → photoshop-brushes, procreate-brushes, painting, materials, brush, platform/zip
 photoshop-brushes  → procreate-brushes, brush
 procreate-brushes  → brush, platform/zip
 painting           → materials, brush
@@ -580,7 +581,7 @@ motion nodes and plays, rigs), in the engine's shapes. A drawable is named by pl
 and instanced items far to near, planes first on ties (`shot-plan.ts`).
 
 `PaintedShot` (`studio/painted-shot.tsx`) is a shot in a scene, beside `StampPainting`: one device owner over its
-canvases, the first opaque and each `PaintedShotCanvas` after it a glaze (`shotCanvasLaying`). A glaze canvas is two
+canvases, the first opaque and each `PaintedShotCanvas` after it a glaze (`shotCanvasLayings`). A glaze canvas is two
 elements (`ShotCanvasElements`; `shot-canvas.ts` makes them, every shot's element and their surfaces): a filter the page multiplies by (`mix-blend-mode:
 multiply`), then its colour over it, both premultiplied. Its frame keeps what it lets through per channel, T, beside
 its light C (the lens's `through` target: multiplied as filters lay, summed and gathered with the colour), and the
