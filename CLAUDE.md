@@ -10,6 +10,10 @@
   its own baseline, reading the working tree, untracked files included; each hook passes its own scope and reads what
   its commit holds. The GPU gate (`npm run stamp:gate`) takes minutes on the one shared adapter, so pre-push runs it, not
   pre-commit; run it yourself only before handing over work that changes rendering.
+- This Mac is shared by many agents. Run heavy checks in the cloud: `studio remote run typecheck lint test:gate` (any
+  npm script but the GPU gate) runs each in its own Modal container against this checkout as it is on disk, for a few
+  cents (the full suite about $0.06). It needs this checkout's version deployed; a remote command says when it isn't,
+  and deploying (`studio remote deploy`) is Graham's call. `docs/remote.md` has the rest.
 - `work/` holds your projects (`work/projects/<p>/`), brand kits (`work/brands/<name>/`, see `docs/brand-kits.md`),
   private painting styles (`work/styles/<name>/`, see `docs/private-styles.md`) and `hosts.json`. The studio's git
   ignores it; it's a git repository of its own, made by `studio workspace init` (run it first). Its commits run
