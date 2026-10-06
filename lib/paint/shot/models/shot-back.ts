@@ -45,18 +45,20 @@ const documentOf = ({ paints }: CompiledShotPaintedPlane, grow = 0): StampBox =>
  */
 export function shotBackGroundBox({ frame, margin }: Pick<StampStage, 'frame' | 'margin'>, plane: CompiledShotPaintedPlane, motion: CompiledShotMotion, at: PaintMoment): StampBox {
   const node = motion.nodes.get(plane.id), stageBox = { x0: -margin, y0: -margin, x1: frame.width + margin, y1: frame.height + margin };
-  return stampBoxGrown(paintSimilarityBox(paintSimilarityInverse(shotPlaneLayAt(plane, motion, at)), stageBox), (node ? shotNodeShift(node, documentOf(plane)) : 0) + 1);
+  return stampBoxGrown(paintSimilarityBox(paintSimilarityInverse(shotPlaneLayAt(plane, motion, at)), stageBox), (node ? shotNodeShift(motion, node, documentOf(plane)) : 0) + 1);
 }
 
 /**
  * What of `painted` (document px) the back's paint covers all shot long: shrunk by the most its node's bend and boil
- * move a point, then laid by every placement the node plays; null where nothing is covered throughout.
+ * move a point, then laid by every placement the node plays at the shot's moments; null where nothing is covered
+ * throughout.
  */
 function backHeld(plane: CompiledShotPaintedPlane, motion: CompiledShotMotion, painted: StampBox): StampBox | null {
   const node = motion.nodes.get(plane.id);
   if (!node) return painted;
-  const bent = stampBoxGrown(painted, -(paintLevelBendShift(node, painted, true) + (node.marks.kind === 'wobble' ? node.marks.wobble.amount : 0)));
-  return bent.x0 < bent.x1 && bent.y0 < bent.y1 ? paintLevelPlacedHeld(node, bent) : null;
+  const { moments, animationFps } = motion;
+  const bent = stampBoxGrown(painted, -(paintLevelBendShift(node, painted, true, moments, animationFps) + (node.marks.kind === 'wobble' ? node.marks.wobble.amount : 0)));
+  return bent.x0 < bent.x1 && bent.y0 < bent.y1 ? paintLevelPlacedHeld(node, bent, moments, animationFps) : null;
 }
 
 /** Below this many document px short, a shortfall is the float arithmetic's, not the painting's. */

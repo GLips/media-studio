@@ -11,10 +11,10 @@ import { TITANIUM_WHITE } from '#lib/paint/materials/models/paint-medium.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import type { StampGroupGlow } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
-import type { PaintedShotProps } from '#lib/paint/shot/models/shot-props.ts';
 import type { StampGateWashCheck } from './stamp-gate-layer.ts';
 import { stampGateHeronLayer, stampGateHeronPaper, stampGateHeronPolygon } from './stamp-gate-paper-heron.ts';
 import { STAMP_GATE_ROUND_REF } from './stamp-gate-sheets.ts';
+import type { StampGateShot } from './stamp-gate-shot-span.ts';
 
 export const STAMP_GATE_SHOT_GLOW_ID = 'shot/glow' as const;
 
@@ -80,7 +80,7 @@ export const STAMP_GATE_LAMP_GLOW: StampGroupGlow = { amount: 1, threshold: 0.3 
 export const STAMP_GATE_STREAK_GLOW: StampGroupGlow = { amount: 1, threshold: 0.02 };
 
 /** The glowing shot, `glowing` as given, the disc shown unless `disc` is false, bloomed by 4 frame px. */
-export function stampGateGlowShot(glowing: StampGateGlowing, { disc = true }: { disc?: boolean } = {}): PaintedShotProps {
+export function stampGateGlowShot(glowing: StampGateGlowing, { disc = true }: { disc?: boolean } = {}): StampGateShot {
   const nodes = Object.entries(glowing).map(([layer, glow]) => ({ id: `${layer === 'streak' ? 'night' : 'lamp'}/${layer}`, glow }));
   return {
     camera: { stage: stampStage(GLOW_FRAME, 2), fov: 35, lens: { bloom: 4, shutter: 'shut' }, plays: [] },

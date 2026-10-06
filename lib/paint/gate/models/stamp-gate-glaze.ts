@@ -10,8 +10,9 @@ import { srgbToLinear } from '#lib/paint/materials/models/paint-spectrum.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import type { StampPictureRgba } from '#lib/paint/painting/models/stamp-plane.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
-import type { PaintedShotProps, PlaneProps } from '#lib/paint/shot/models/shot-props.ts';
+import type { PlaneProps } from '#lib/paint/shot/models/shot-props.ts';
 import { stampGateHeronLayer, stampGateHeronPaper, stampGateHeronPolygon } from './stamp-gate-paper-heron.ts';
+import type { StampGateShot } from './stamp-gate-shot-span.ts';
 
 /** Encoded sRGB bytes. */
 export type StampGateRgb = readonly [number, number, number];
@@ -57,7 +58,7 @@ const STAMP_GATE_GLAZE: PaintingSourceModule = {
 
 const glazeWash = (ground?: 'transparent') => layersOf(painting(STAMP_GATE_GLAZE), ['wash'], ground ? { ground } : {});
 
-const glazeCamera = (): PaintedShotProps['camera'] => ({ stage: stampStage(GLAZE_FRAME, 2), fov: 35, lens: { bloom: 0, shutter: 'shut' }, plays: [] });
+const glazeCamera = (): StampGateShot['camera'] => ({ stage: stampStage(GLAZE_FRAME, 2), fov: 35, lens: { bloom: 0, shutter: 'shut' }, plays: [] });
 
 /** A flat picture of `rgb` filling the whole stage: one picture, so it uploads once. */
 function flatBack(rgb: StampGateRgb, canvas?: string): PlaneProps {
@@ -70,7 +71,7 @@ function flatBack(rgb: StampGateRgb, canvas?: string): PlaneProps {
 export const STAMP_GATE_GLAZE_CANVASES = ['under', 'over'] as const;
 
 /** The shot over the page: the back's flat colour in canvas `under`, the wash in canvas `over`, the HTML block between. */
-export const stampGateGlazePageShot = (): PaintedShotProps => ({
+export const stampGateGlazePageShot = (): StampGateShot => ({
   camera: glazeCamera(), planes: [flatBack(STAMP_GATE_GLAZE_BACK, 'under'), { id: 'wash', depth: 1, canvas: 'over', source: glazeWash() }],
 });
 
@@ -78,12 +79,12 @@ export const stampGateGlazePageShot = (): PaintedShotProps => ({
 export const STAMP_GATE_GLAZE_CLEAR_CANVASES = ['wash'] as const;
 
 /** The wash alone in canvas `wash`, a clear back over the HTML block: past the block, the shot holds no HTML. */
-export const stampGateGlazeClearBackShot = (): PaintedShotProps => ({
+export const stampGateGlazeClearBackShot = (): StampGateShot => ({
   camera: glazeCamera(), planes: [{ id: 'wash', depth: 1, canvas: 'wash', source: glazeWash('transparent') }],
 });
 
 /** The wash drawn in one canvas over a flat picture of `rgb`: what the page should show of it over that colour. */
-export const stampGateGlazeOverShot = (rgb: StampGateRgb): PaintedShotProps => ({
+export const stampGateGlazeOverShot = (rgb: StampGateRgb): StampGateShot => ({
   camera: glazeCamera(), planes: [flatBack(rgb), { id: 'wash', depth: 1, source: glazeWash() }],
 });
 

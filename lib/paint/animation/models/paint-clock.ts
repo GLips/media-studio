@@ -172,6 +172,14 @@ export function paintPlayClipTimeAt(clock: CompiledPaintPlayClock, t: PaintMomen
   return clock.clip.reduce((time, step) => clipStepTime(step, time), clipSeconds(paintPlayHeldTime(clock, t, animationFps) - clock.start));
 }
 
+/**
+ * The clip's moment `clock` hands a value at moment `t`: paintPlayClipTimeAt's for the second seen, and for the frame
+ * shown, so a value holding its frame reads the clip's frame.
+ */
+export function paintPlayClipMomentAt(clock: CompiledPaintPlayClock, t: PaintMoment, animationFps: number): PaintMoment {
+  return { at: paintPlayClipTimeAt(clock, t, animationFps), frame: paintPlayClipTimeAt(clock, { at: t.frame, frame: t.frame }, animationFps) };
+}
+
 /** The scene second `clock` reads at moment `t`: through its scene steps, held at `until` past it. */
 function paintPlayHeldTime(clock: CompiledPaintPlayClock, t: PaintMoment, animationFps: number): SceneSeconds {
   const until = (time: number) => Math.min(time, clock.until);
@@ -192,13 +200,16 @@ export type CompiledPaintPlay<C> = { readonly clip: C; readonly clock: CompiledP
 export type PaintLane<C> = readonly CompiledPaintPlay<C>[];
 
 /**
- * The play writing `lane` at moment `t`, and the clip time it hands its clip: the latest to have started by its own
- * held time (paintPlayClipTimeAt's), or before any has, the first. Chosen through its holds, so where one held play
- * hands on to the next mid-shutter, the frame's drawing still holds through it.
+ * The play writing `lane` at moment `t`, and the clip time and moment (paintPlayClipMomentAt) it hands its clip: the
+ * latest to have started by its own held time (paintPlayClipTimeAt's), or before any has, the first. Chosen through
+ * its holds, so where one held play hands on to the next mid-shutter, the frame's drawing still holds through it.
  */
-export function paintLaneClipAt<C>(lane: PaintLane<C>, t: PaintMoment, animationFps: number): { play: CompiledPaintPlay<C>; time: ClipSeconds } | undefined {
+export function paintLaneClipAt<C>(lane: PaintLane<C>, t: PaintMoment, animationFps: number): { play: CompiledPaintPlay<C>; time: ClipSeconds; moment: PaintMoment } | undefined {
   const play = lane.findLast((each) => paintPlayHeldTime(each.clock, t, animationFps) >= each.interval.start) ?? lane[0];
-  return play && { play, time: paintPlayClipTimeAt(play.clock, t, animationFps) };
+  if (!play) return undefined;
+  const moment = paintPlayClipMomentAt(play.clock, t, animationFps);
+  // SAFETY: the moment's `at` is the clip time paintPlayClipTimeAt hands on.
+  return { play, time: moment.at as ClipSeconds, moment };
 }
 
 /** `lane` sorted by start, as a lane is kept. */

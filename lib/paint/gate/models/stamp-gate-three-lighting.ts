@@ -10,18 +10,20 @@
 import { Matrix4, Vector3 } from 'three';
 import { buildPaintCamera, type PaintCameraOptions } from '#lib/paint/animation/models/paint-camera-build.ts';
 import { paintCameraPlay, type PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
+import { paintKeyed } from '#lib/paint/animation/models/paint-keyed.ts';
 import { paintCameraWorld, paintPlaneWorldPoint, type PaintCameraWorld } from '#lib/paint/animation/models/paint-camera-world.ts';
 import { srgbToLinear } from '#lib/paint/materials/models/paint-spectrum.ts';
 import { paintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampPictureRgba } from '#lib/paint/painting/models/stamp-plane.ts';
 import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
-import type { PaintedShotProps, ThreeSource } from '#lib/paint/shot/models/shot-props.ts';
+import type { ThreeSource } from '#lib/paint/shot/models/shot-props.ts';
 import { paintedThreeShotCamera } from '#lib/paint/three-layers/models/painted-three-camera.ts';
 import type { LensExposure } from '#lib/picture/lens/models/lens-exposures.ts';
 import type { LensMode } from '#lib/picture/lens/models/lens-mode.ts';
 import { shotCameraProject, type ShotCamera } from '#lib/picture/shot-camera/models/shot-camera.ts';
 import type { StampGateWashCheck } from './stamp-gate-layer.ts';
+import { stampGateShotSpan, type StampGateShot } from './stamp-gate-shot-span.ts';
 
 export const STAMP_GATE_LIGHTING_ID = 'shot/shadow';
 export const STAMP_GATE_LIGHTING_IDS = [STAMP_GATE_LIGHTING_ID] as const;
@@ -105,16 +107,16 @@ function stampGateLightingWall(): StampPictureRgba {
 }
 
 /** The shot's camera, its shutter said, as building it apart from the shot needs: panning right over its second, focused on the stands. */
-const stampGateLightingCamera = (): Omit<PaintCameraOptions, 'planes'> => ({
+const stampGateLightingCamera = (): Omit<PaintCameraOptions, 'planes' | 'span'> => ({
   stage: stage(), fov: STAMP_GATE_LIGHTING_VIEW.fov, lens: { bloom: 0, shutter: STAMP_GATE_LIGHTING_SHUTTER },
   plays: [
-    paintCameraPlay({ kind: 'move', keys: [{ at: 0 }, { at: 1, pan: { x: STAMP_GATE_LIGHTING_VIEW.pan, y: 0 } }] }, { clock: { at: 0 }, origin: 'pan' }),
-    paintCameraPlay({ kind: 'focus', keys: [{ at: 0, ...STAMP_GATE_LIGHTING_FOCUS }] }, { clock: { at: 0 }, origin: 'focus' }),
+    paintCameraPlay({ kind: 'move', value: paintKeyed([{ at: 0, value: { pan: { x: 0, y: 0 } } }, { at: 1, value: { pan: { x: STAMP_GATE_LIGHTING_VIEW.pan, y: 0 } } }]) }, { clock: { at: 0 }, origin: 'pan' }),
+    paintCameraPlay({ kind: 'focus', value: STAMP_GATE_LIGHTING_FOCUS }, { clock: { at: 0 }, origin: 'focus' }),
   ],
 });
 
 /** The shot, each stand's scene built by `build`. */
-export function stampGateLightingShot(build: Readonly<Record<StampGateStandId, ThreeSource['build']>>): PaintedShotProps {
+export function stampGateLightingShot(build: Readonly<Record<StampGateStandId, ThreeSource['build']>>): StampGateShot {
   return {
     camera: stampGateLightingCamera(),
     planes: [
@@ -125,12 +127,12 @@ export function stampGateLightingShot(build: Readonly<Record<StampGateStandId, T
 }
 
 /**
- * The shot's camera built with the shadowed stand's three plane alone, what the source rendered apart is loaded on;
- * its world, and the margin that plane renders past the frame.
+ * The shot's camera built with the shadowed stand's three plane alone, what the source rendered apart is loaded on,
+ * over the span its frames and that render lie in; its world, and the margin that plane renders past the frame.
  */
 export function stampGateLightingPaintCamera(): { readonly camera: PaintCamera; readonly world: PaintCameraWorld; readonly margin: number } {
-  const { stage: shotStage, fov, ...camera } = stampGateLightingCamera();
-  const built = buildPaintCamera({ stage: shotStage, fov, ...camera, planes: [{ id: 'shadowed', depth: STAMP_GATE_STAND.depth, kind: 'three' }] });
+  const { stage: shotStage, fov, ...camera } = stampGateLightingCamera(), span = stampGateShotSpan([...STAMP_GATE_LIGHTING_FRAMES.map(({ at }) => at), STAMP_GATE_LIGHTING_EXPOSED.t]);
+  const built = buildPaintCamera({ stage: shotStage, fov, ...camera, span, planes: [{ id: 'shadowed', depth: STAMP_GATE_STAND.depth, kind: 'three' }] });
   if (!built.ok) throw new Error(`stamp gate: ${STAMP_GATE_LIGHTING_ID}'s camera: ${built.problems.join('; ')}`);
   const plane = built.camera.planes[0];
   return { camera: built.camera, world: paintCameraWorld(shotStage, { fov }), margin: plane.kind === 'three' ? plane.margin : 0 };

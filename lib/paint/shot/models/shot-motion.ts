@@ -3,8 +3,8 @@
 // node. A group's node moves all it holds with one phase, seed and map, its pins, sway, flutter and boil included.
 // The lanes, clocks and channel law are the animation feature's (paint-motion-compile.ts), read per level.
 //
-// A writer beside the plays: a plane laid by a callback places its plane node ('place') for all time, so a place play
-// on that node clashes. A rigged group's node takes no pins, sway or flutter: its rig deforms all it holds.
+// A writer beside the plays: a plane whose lay varies in time places its plane node ('place') for all time, so a place
+// play on that node clashes. A rigged group's node takes no pins, sway or flutter: its rig deforms all it holds.
 
 import type { PaintBoilWobble } from '#lib/paint/animation/models/paint-boil-displacement.ts';
 import { paintChannelConflicts, type PaintChannelWriter } from '#lib/paint/animation/models/paint-channels.ts';
@@ -13,15 +13,16 @@ import { paintIdPhase, paintMotionClipProblem } from '#lib/paint/animation/model
 import {
   compilePaintBoil, filePaintLevelPlay, paintGlowProblem, paintInheritedGlow, paintLevelLanes, paintLevelLanesSorted, type CompiledPaintLevel, type PaintLevelLanes,
 } from '#lib/paint/animation/models/paint-motion-compile.ts';
+import { paintLevelValueProblems } from '#lib/paint/animation/models/paint-motion-reach.ts';
 import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
-import type { StampGroupGlow } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import type { PaintMoment, StampGroupGlow } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { OccurrenceKey, OccurrenceMotionNode, PaintedShotProps } from './shot-props.ts';
 import type { ShotOccurrence } from './shot-occurrences.ts';
 
 /**
  * A plane as motion reads it: its id and its clock's steps (paintNodeClockSteps, checked as it loads); `kind`, whether
  * it paints (only a painted plane's node may bend or boil, a picture plane's only places, and an instanced plane takes
- * none); whether a callback lays it; and, painted, its occurrences.
+ * none); whether its lay varies in time; and, painted, its occurrences.
  */
 export type ShotMotionPlane = {
   readonly id: string; readonly kind: 'painted' | 'picture' | 'three' | 'instanced'; readonly clock: readonly PaintSceneStep[]; readonly movingLay: boolean;
@@ -49,13 +50,15 @@ export type CompiledShotNode = CompiledPaintLevel & {
 
 /**
  * A shot's motion: its nodes by id, each plane's own clock steps (what its presentation reads), each occurrence's
- * nearest node (itself, else its nearest enclosing group's, else its plane's; none left out), and the animation fps.
+ * nearest node (itself, else its nearest enclosing group's, else its plane's; none left out), the animation fps, and
+ * the moments its shot draws (paint-span-moments.ts), where its reach is sampled.
  */
 export type CompiledShotMotion = {
   readonly nodes: ReadonlyMap<string, CompiledShotNode>;
   readonly planeClocks: ReadonlyMap<string, readonly PaintSceneStep[]>;
   readonly nearest: ReadonlyMap<OccurrenceKey, string>;
   readonly animationFps: number;
+  readonly moments: readonly PaintMoment[];
 };
 
 const motionError = (owner: string, message: string) => paintingProblem('error', owner, 'motion', message);
@@ -94,11 +97,12 @@ function shotNodeSiteProblem(node: OccurrenceMotionNode, site: ShotNodeSite, rig
 
 /**
  * `motion` checked and compiled over `planes`' occurrences: nodes on names of the shot, one each, none under a rigged
- * group and none bending a picture plane or a rigged group; plays on nodes, their clips and clocks sound; no two
- * writers clashing, a moving lay among them. `rigged`: the shot's rigged group occurrences.
+ * group and none bending a picture plane or a rigged group; plays on nodes, their clips and clocks sound, and their
+ * values at the shot's `moments`; no two writers clashing, a moving lay among them. `rigged`: the shot's rigged group
+ * occurrences.
  */
 export function compileShotMotion(
-  planes: readonly ShotMotionPlane[], motion: PaintedShotProps['motion'], rigged: ReadonlySet<OccurrenceKey>, animationFps: number,
+  planes: readonly ShotMotionPlane[], motion: PaintedShotProps['motion'], rigged: ReadonlySet<OccurrenceKey>, animationFps: number, moments: readonly PaintMoment[],
 ): { readonly motion: CompiledShotMotion; readonly problems: readonly PaintingProblem[] } {
   const problems: PaintingProblem[] = [], sites = shotNodeSites(planes), written = new Map<string, OccurrenceMotionNode>();
   for (const node of motion?.nodes ?? []) {
@@ -135,7 +139,7 @@ export function compileShotMotion(
   }
   const writers: PaintChannelWriter[] = [];
   for (const plane of planes) {
-    if (plane.movingLay) writers.push({ channel: 'place', target: plane.id, start: sceneSeconds(0), end: sceneSeconds(Infinity), origin: `${plane.id}'s lay callback` });
+    if (plane.movingLay) writers.push({ channel: 'place', target: plane.id, start: sceneSeconds(0), end: sceneSeconds(Infinity), origin: `${plane.id}'s moving lay` });
   }
   for (const play of motion?.plays ?? []) {
     const node = compiled.get(play.target), problem = paintMotionClipProblem(play.clip) ?? paintPlayClockProblem(play.clock);
@@ -151,9 +155,10 @@ export function compileShotMotion(
   }
   problems.push(...paintChannelConflicts(writers).map((message) => paintingProblem('error', 'motion', '', message)));
   const nodes = new Map([...compiled].map(([id, node]): [string, CompiledShotNode] => [id, { ...node, ...paintLevelLanesSorted(lanes.get(id)!) }]));
+  for (const node of nodes.values()) problems.push(...paintLevelValueProblems(node, moments, animationFps).map((message) => motionError(node.id, message)));
   const nearest = new Map(planes.flatMap((plane) => plane.occurrences.flatMap(({ key, groups }) => {
     const found = [key, ...groups.toReversed(), plane.id].find((name) => nodes.has(name));
     return found ? [[key, found] as const] : [];
   })));
-  return { motion: { nodes, planeClocks, nearest, animationFps }, problems };
+  return { motion: { nodes, planeClocks, nearest, animationFps, moments }, problems };
 }

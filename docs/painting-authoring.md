@@ -25,7 +25,8 @@ cover lays (`shot-placement.ts`), the page read as each frame draws (`shot-dom-p
 their motion (nodes hang from their nearest enclosing node, a paintless group's included, clocks chaining);
 visibility, a group's fading all it holds as one and a card fading with its owner; rigs (Composition), a cel swap
 re-solving nothing; instanced planes, many items sharing a few finished variants, each blurred along its own travel;
-`alphaOf` masks; per-plane
+values in time, keyed with curves, sampled over the shot's span for its checks and motion warnings, and camera moves
+that add (Values in time); `alphaOf` masks; per-plane
 `clock` and `sourceClock` holds; dissolves and `bracket`, each end solved and laid once and their pictures summed by
 weight, a rig posing every end alike; painted textures, paintings a three plane's objects wear, drawn at each frame's moment (Painted textures);
 `warm`; and the cost report, each frame's and the warm's, in a profiling render. **NEW** marks behaviour the brush
@@ -89,7 +90,8 @@ The scene, as a project would write it (`scenes/meadow.tsx`, with its source in 
 import { paintCameraPlay } from '#lib/paint/animation/models/paint-camera.ts';
 import { paintMotionPlay } from '#lib/paint/animation/models/paint-motion-compile.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
-import { layersOf, painting, type OccurrenceMotionNode, type PaintedShotProps } from '#studio';
+import { layersOf, paintKeyed, painting, sceneSecondsOf, type OccurrenceMotionNode, type PaintedShotProps } from '#studio';
+import { timeline } from '../timeline.ts';
 import * as meadow from './meadow/meadow.painting.ts';
 
 /** The hill's top at scene second `t`, px, snapped to the source's 10 px step. */
@@ -111,14 +113,18 @@ export const meadowShot: PaintedShotProps = {
     fov: 30,
     // No shutter: the film's, open half a frame (1/60 s at 30 fps). `shutter: 'shut'` draws every frame sharp.
     lens: { bloom: 0 },
-    // Ease sits on the key it eases into.
-    plays: [paintCameraPlay({ kind: 'move', keys: [{ at: 0 }, { at: 5, dolly: 0.08, ease: 'inOut' }] }, { clock: { at: 0 }, origin: 'push' })],
+    // A key's curve is how the value moves into it from the key before.
+    plays: [paintCameraPlay({ kind: 'move', value: paintKeyed([{ at: 0, value: { dolly: 0 } }, { at: 5, value: { dolly: 0.08 }, curve: 'inOut' }]) }, {
+      clock: { at: 0 }, origin: 'push',
+    })],
   },
+  // The scene seconds its frames show: every value is sampled over them for what the shot checks.
+  span: sceneSecondsOf(timeline.clock('meadow')).span,
   // The source reads its own held moment: the hill steps on sixes while anything the plane moves keeps the frame's.
   planes: [{ id: 'meadow', depth: 1, sourceClock: { hold: 6 }, source: (moment) => landscapeAt(hillTopAt(moment.at)) }],
   motion: {
     nodes: [cloud],
-    plays: [paintMotionPlay(cloud, { kind: 'place', keys: [{ at: 0, x: 0, y: 0 }, { at: 4, x: 60, y: -4, ease: 'inOut' }] }, {
+    plays: [paintMotionPlay(cloud, { kind: 'place', value: paintKeyed([{ at: 0, value: { x: 0, y: 0 } }, { at: 4, value: { x: 60, y: -4 }, curve: 'inOut' }]) }, {
       clock: { at: 0, loop: { period: 4, mode: 'pingpong' } }, origin: 'cloud drift',
     })],
   },
@@ -127,7 +133,8 @@ export const meadowShot: PaintedShotProps = {
 ```
 
 The scene component is `({ t }: { t: number }) => <PaintedShot shot={meadowShot} t={t} />`, wrapped as a project's
-other scenes are; the shot needs only `t`, in scene seconds.
+other scenes are; the shot needs only `t`, in scene seconds. `node cli/studio.ts paint check scenes/meadow.tsx` checks
+the shot without the GPU, warning of any motion that may read badly (Checking).
 
 What lands, and why it looks as it does:
 
@@ -753,7 +760,8 @@ nothing but the clocked prefixes it crosses.
   `delay` adds to `base`: a noise delay rags a rising flood's edge, a linear one sweeps a petal's blotches from its
   base to its tip (recipe 34, timed from a cue).
 
-  `profile` says how the front runs between the base's two values, in the curves a place key takes: `'out'` leaves
+  `profile` says how the front runs between the base's two values, in the curves a key takes (Values in time), bar a
+  function, a spring and a move timed in seconds, which a document can't hold: `'out'` leaves
   fast and slows into its last texels, `'in'` leaves from rest, `'inOut'` does both, and `'linear'` (left out) keeps
   the base's even pace. Half its time in, a front run `'out'` has come three quarters of its way, `'in'` a quarter. It
   runs from whichever value comes first, so a radial field with `inner` later than `outer` closes inward the same way.
@@ -870,6 +878,23 @@ it: `layersOf(p, ['landscape'], { at: (moment.at - CUE.paint) * 2 })` starts the
 it twice as fast. That retimes playback only: every prefix is the same solve, with the same wet interactions, shown at
 another moment. To change what the water does (a charge meeting the sky wetter or drier), change the document's
 times or its `dryingScale`, which re-solves.
+
+**Time a shot's motion.** `sceneSecondsOf(clock)` (`#studio`, or `#lib/timing/timeline/models/scene-seconds.ts` from
+models) reads the same clock in a shot's seconds: `cue(name)` (its own, or another scene's as `<scene>.<cue>`),
+`beat(n)` when beat n hits, `beats(n)` and `frames(n)` as lengths, `beatAt(s)` the beat a second falls on, `end`, and
+`span`, the seconds its frames show, which the shot takes (Values in time). A key's or a play's `at` is a plain number
+of seconds worked out from these, never a new way to say a time:
+
+```ts
+const SECONDS = sceneSecondsOf(timeline.clock('city'));
+/** The tram arrives on the bell, braking over the last beat, and leaves two beats later. */
+const TRAM = paintKeyed([
+  { at: 0, value: { x: -400 } },
+  { at: SECONDS.cue('bell'), value: { x: 0 }, curve: { accelerate: 0, brake: SECONDS.beats(1) } },
+  { at: SECONDS.cue('bell') + SECONDS.beats(2), hold: true },
+  { at: SECONDS.end, value: { x: 600 }, curve: 'in' },
+]);
+```
 
 ## What changes, what runs, what it costs
 
@@ -1124,11 +1149,12 @@ move and shutter show of it; a back painted short of that is refused, naming the
 | ground | a selection's `ground`: paper on the back, transparent elsewhere, when left out | the back is opaque, hiding HTML before the first canvas, and painted wherever the frame reads it: past its document lies bare paper, so a back smaller than the frame, or than the frame and its blur, is refused (Camera). A small painting meant to sit inside the frame goes on a nearer plane with `ground: 'paper'`, before a frame-sized bare back: a document of the same paper with one empty layer (`{ key: 'bare', washes: [] }`). With HTML behind the first canvas inside the `<PaintedShot>` (text, a laid-out element, or a background on a wrapper holding the canvas), the back may be clear (**NEW**): a transparent ground, a picture held less than everywhere, or a three plane, any size, laid as a nearer plane is, its canvas a glaze over that HTML as a later one is. Where no HTML lies behind it inside the shot, the page outside sees it through one alpha: exact over white, lighter and toward its filter's hue over a darker page (HTML among canvases). A transparent back without HTML behind is refused. The page is read again as each frame draws, so the HTML behind a clear back stays mounted while the shot draws: a frame with none behind it fails |
 | selection | `layersOf(evaluation, keys, {ground?, at?})` | layer or group keys; groups include their descendants; composed in document order; an own sheet's layers with their owner, on one plane |
 | occurrence | `<plane id>/<layer or group key>`, at any depth of the tree | the same layer on two planes is two occurrences; a plane's occurrences are fixed by its first evaluation and checked each frame |
-| motion | `motion {nodes, plays?}`: `OccurrenceMotionNode`s and the animation feature's plays, none playing when `plays` is left out; node ids are occurrence keys | a node's parent is its enclosing group's node, else its plane. A group's node takes all a layer's does, with one phase, seed and map for everything it holds |
-| visibility | `visibility: {[occurrence]: 0..1 or (m) => …}` | multiplies the occurrence's composite; a group's fades all it holds as one, and an own sheet's owner, a layer or a group, fades its card with its paint (Sheets). Any other layer's fades its own film, and thins the card it lies on only where its paint alone cut it: what its water did to other layers' paint on the sheet stays (Sheets). A picture or three plane's fades its picture or render, and what a mask reads of it. Inside a rig drawn as pieces, a layer or group shows (1) or doesn't (0): fade the rigged group whole. The opaque back takes none, being shown wherever the frame is; a clear back over HTML fades as a nearer plane does |
+| span | `span: {from, to, fps}`, the scene seconds the shot's frames show: `sceneSecondsOf(clock).span` | every value is sampled at its frames and their shutters' ends, for what the shot checks and warns of (Values in time); a render refuses a span at another frame rate than its composition's, or short of its scene's frames |
+| motion | `motion {nodes, plays?}`: `OccurrenceMotionNode`s and the animation feature's plays, none playing when `plays` is left out; node ids are occurrence keys | a node's parent is its enclosing group's node, else its plane. A group's node takes all a layer's does, with one phase, seed and map for everything it holds. A `place` or `poses` play's clip takes a `value` (Values in time) |
+| visibility | `visibility: {[occurrence]: 0..1, or a value in time}` | multiplies the occurrence's composite; a group's fades all it holds as one, and an own sheet's owner, a layer or a group, fades its card with its paint (Sheets). Any other layer's fades its own film, and thins the card it lies on only where its paint alone cut it: what its water did to other layers' paint on the sheet stays (Sheets). A picture or three plane's fades its picture or render, and what a mask reads of it. Inside a rig drawn as pieces, a layer or group shows (1) or doesn't (0): fade the rigged group whole. The opaque back takes none, being shown wherever the frame is; a clear back over HTML fades as a nearer plane does |
 | glow, boil, pins, sway, flutter, place | node fields and plays (Reference) | move finished paint on a sheet the occurrence owns, its marks before painting otherwise (Sheets); boil wobble moves finished paint either way. Boil wobble and sway phase follow the occurrence key |
 | rig | `rigs: {[group occurrence]: {parts, pose}}` (Reference) | a rigged node takes place, clock, glow and boil, not pins, sway or flutter. On a sheet the group or a cel owns, paint, paper and edge bend as pieces (**NEW** in shots); otherwise the cels' marks are posed before painting (**NEW**) |
-| lay | a plane's `lay` (and `reach`): still, moving, or on the frame, a pin or a cover | where its document lies in frame px (Lay forms, below) |
+| lay | a plane's `lay`: still, moving (a value in time), or on the frame, a pin or a cover | where its document lies in frame px (Lay forms, below) |
 | hold | plane `clock: {hold: n}` holds its presentation and motion: its lay, visibility and rig poses, and its nodes' plays; `sourceClock: {hold: n}` holds what `source` reads (a callback's prefix, property values and dissolve weights, a picture's `pictureAt`, a three scene's `poseAt`) | each callback reads its clock's held moment, floored to the hold's grid. Both start from the frame's moment; neither holds the other's. The camera still moves through the shutter |
 | masks | `alphaOf` (another drawable's coverage, partial alpha included, where it lies this frame: a plane by id, painted, picture, three or instanced, or a painted plane's occurrence), `invert?` | **NEW**, on painted planes only. It cuts the plane's paint, glow and the own-sheet paper it shapes; the ground stays whole. A plane's masks multiply. To leave a layer unmasked, put it on a second plane at the same depth. No mask reads its own plane, through any chain. Paint shown over time, along a path or by a field, is the document's to say: a layer's or group's `reveal` (Time). `alphaOf` reads every drawable where the camera shows it this frame, through both lays and the parallax between their depths: a reader's plane px is found on the frame and read on the drawable's plane there, so the cut stays on what it reads on the frame as the camera pans, while the reader's paint slides by at its own depth. At one depth that's the same plane px, as at rest. A three plane's coverage is read where its render shows it; an instanced plane's items where the camera shows them, sharp and still. A drawable's coverage is cut by its own plane's masks and visibility. A part inside a rig drawn as pieces isn't read apart: read the rig. A reader is laid anew only when what it reads changes: a painted plane's picture, a picture source's new picture, a three render's frame, an instanced plane's items moved, faded or repainted, a drawable's visibility, or where the camera shows it against the reader (each frame a camera move parts their depths). A dissolving plane's masks cut both ends alike, and reading one reads its ends' coverage blended as its picture is |
 | instances | `{kind: 'instanced', depths: {near, far}, variants, instances(m)}` | each item lays its variant as a plane at its depth (`lay` from the variant's document px; clear outside its paint), depth-sorted with every drawable, planes first on ties, all within `depths` and nearer than the back. A variant is solved and laid once, whole and centred on the stage (its document no larger), and every item showing it shares that picture; items lie anywhere through the lens. An item's defocus blurs that picture, and may spread it only as far as the stage leaves round the variant's document: paint a variant on a document tight round its paint. A key is one item's lifetime: the same key at the shutter's two ends blurs the item along its own travel; a key missing at either end draws it as if still on its plane, blurred only by the camera's move; a recycled item takes a new key. An item's `visibility` fades it, the plane's all of them. Items take no motion nodes (**NEW**) |
@@ -1142,6 +1168,93 @@ Rules that keep it cheap and correct: presentation never adds paint; warps of fi
 was never laid; paint on separate sheets or planes never joins another's wet history by overlapping it, while layers
 on one sheet share it; presentation of one layer acts on its own film, never on what its water did to others.
 
+### Values in time
+
+Whatever a shot shows that may change takes one type, `PresentationValue<T>` (`#studio`): a constant, or a function
+of the moment, `(m) => T`, read at each exposure (`m.at` the second seen, a shutter's ends included; `m.frame` the
+frame shown). A plane's `lay`, `source` and `visibility`, a rig's `pose`, a node's `place` and `poses` plays, and the
+camera's `move` and `focus` plays all take it, a play as its clip's `value`. A play's value reads its clip's seconds
+(scene seconds less its clock's `at`, through its rate, loop and hold); the rest read their plane's moment.
+
+`paintKeyed(keys, { between? })` (`#studio`; from models, `#lib/paint/animation/models/paint-keyed.ts`) makes that
+function from keys, over any value made of numbers: a number, a point, a placement, a camera pose, an object or array
+of them, every key naming the same numbers. A key is `{at, value, curve?, curves?, through?}` or `{at, hold: true}`:
+
+- `curve` is how the value moves into this key from the one before. Key 0 has none before it, so takes no curve.
+  `curves` gives a channel (a top-level field: `x`, `pan`, `dolly`) its own; a channel it leaves out takes `curve`.
+- `hold: true` keeps the value of the key before until `at`; the next key moves on from there.
+- `through: [p, …]` are points the move into this key passes at speed, on a smooth path its curve paces. For a value
+  with channels, each point names the same channels, the ones it routes; the rest move straight.
+- Before its first key the value is that key's, and past its last, the last's. `settlesAt` is when it stops changing.
+
+| Curve | Moves into its key | Past the key? |
+|---|---|---|
+| `'linear'`, and a channel with no curve | at an even pace | no |
+| `'in'`, `'out'`, `'inOut'` | quadratically: from rest, onto the key at rest, or both | no |
+| `{in: p}`, `{out: p}`, `{inOut: p}` | the same at power p (2 the quadratic, 3 cubic) | no |
+| `{accelerate: a, brake: b}` | speeding up for `a` s, cruising, braking for the last `b` s, which fit since the key before | no |
+| `{back: o}` | to `o` of the way past it, settling back onto it by its time | yes |
+| `{spring: {duration, bounce?}}` | a perceptual spring (`#lib/picture/motion`), timed to arrive on the key at its time (98% of the way) and settling after it, `settlesAt` saying when. Its arrival fits since the key before; what it still has to settle adds to what follows | when `bounce` is above 0 |
+| `(u) => share` | any ease of the share of the stretch covered, 0 at its start and 1 at its end | as written |
+
+`between: 'smooth'` moves every channel a key gives no curve on a monotone cubic through its keys: it passes each key
+at speed and never past it, leaves the first key and arrives at the last from rest, and meets a curved key at the
+speed its curve has there. So, smooth or not, only a spring or a `back` carries a value past a key.
+
+```ts
+/** A walk: to x 60 by 1.2 s, a pause, then on to 140, stepping up over a kerb at x 100 on the way. */
+const WALK = paintKeyed([
+  { at: 0, value: { x: 0, y: 0 } },
+  { at: 1.2, value: { x: 60, y: 0 }, curve: 'inOut' },
+  { at: 2, hold: true },
+  { at: 3.5, value: { x: 140, y: 0 }, through: [{ x: 100, y: -12 }], curve: 'out' },
+]);
+/** A push passing 2 s at speed, its pan landing there on a spring. */
+const PUSH = paintKeyed<PaintCameraMovePose>([
+  { at: 0, value: { dolly: 0, pan: { x: 0, y: 0 } } },
+  { at: 2, value: { dolly: 0.1, pan: { x: 40, y: 0 } }, curves: { pan: { spring: { duration: 0.6, bounce: 0.3 } } } },
+  { at: 6, value: { dolly: 0.3, pan: { x: 40, y: 0 } } },
+], { between: 'smooth' });
+```
+
+The walker's play is `paintMotionPlay(walker, { kind: 'place', value: WALK }, …)`, the push's
+`paintCameraPlay({ kind: 'move', value: PUSH }, …)`. Keys written `as const` lead TypeScript to take key 0's literals
+for the value's type: name it, as `paintKeyed<PaintCameraMovePose>(…)` does.
+
+**Accents and hits.** `paintKeyedAccent({at, peak, attack, settle, curves?})` rises from rest (every number 0) to
+`peak` over `attack` s, is on it at `at`, and settles back over `settle` s. `paintKeyedHit({at, peak, attack, settle,
+anticipate: {value, lead}, curves?})` first winds back to `anticipate.value` over `lead` s. Each stretch is `inOut`
+unless `curves` names its own (`anticipate`, `attack`, `settle`). They're keyed values resting at 0, so they add.
+
+**Adding to the camera.** One move plays at a time: two `move` plays over the same moments are refused, as two `focus`
+plays are. A move play with `blend: 'add'` adds its value to the move under it instead, field by field (pan, dolly,
+zoom and roll each summed, a field left out adding 0), so a kick lands on a push without rewriting it; a focus can't
+add:
+
+```ts
+plays: [
+  paintCameraPlay({ kind: 'move', value: PUSH }, { clock: { at: 0 }, origin: 'push' }),
+  paintCameraPlay({
+    kind: 'move',
+    value: paintKeyedHit<PaintCameraMovePose>({ at: SECONDS.cue('slam'), peak: { pan: { x: 0, y: 6 } }, attack: 0.06, settle: 0.4, anticipate: { value: { pan: { x: 0, y: -2 } }, lead: 0.2 } }),
+  }, { clock: { at: 0 }, origin: 'slam', blend: 'add' }),
+],
+```
+
+**Scale 0.** A node's `place`, or a plane's lay, may scale to 0: the occurrence, or the plane, draws nothing at that
+moment, and everything under it with it, so a figure can shrink away and grow back. No check maps paint through it,
+and a solve lays its marks where they rest. The back, shown wherever the frame is, can't scale to 0, nor can a pin a
+`poses` play moves.
+
+**The span.** A shot's `span` is the scene seconds its frames show, `sceneSecondsOf(timeline.clock('<scene>')).span`
+(Cues and painting time): from its cut, before 0 while it fades in over the scene before, to its end, past it while
+the next fades in over it. The shot samples every value at each frame of it and, with the shutter open, at each
+shutter's ends, and checks what it finds there: the camera's poses and what they show of each plane, how far a node's
+place carries its paint, where a moving lay puts its plane. So no plane says where its paint can reach: the samples
+do. Between them nothing is drawn but a shutter's smear, so a spring passing its key between two frames is neither
+drawn nor checked. A render refuses a span at a frame rate other than its composition's, or short of its scene's
+frames, and draws no frame outside it. The same samples drive the motion warnings (Checking).
+
 ### Lay forms
 
 A plane's `lay` takes its document px to plane px, which the camera then shows (Where a plane point lands, below).
@@ -1150,7 +1263,7 @@ A plane's `lay` takes its document px to plane px, which the camera then shows (
 | Form | Write | Lays the plane | Checked |
 |---|---|---|---|
 | still | `lay: { placement: { x: -40, y: -40, rotation: 0, scale: 1 }, pivot: { x: 0, y: 0 } }`, or no `lay` (document px are plane px) | by one similarity all shot long: a point p lands at `pivot + (x, y) + R(rotation) · scale · (p − pivot)` (Reference › Lay) | as the shot loads |
-| moving | `lay: (m) => ({ placement: { x: 40 * m.at, y: 0, rotation: 0, scale: 1 }, pivot: { x: 0, y: 0 } }), reach: { x0: -200, y0: 0, x1: 2400, y1: 1080 }` | a still lay read at each frame's moment (the plane's held moment, `clock`); `reach`, optional, the stage box its paint stays within | without `reach` the camera checks it as reaching everywhere. The back laid so is checked at each frame as it draws, its painting holding what the frame and its blur read at the frame's moment and its shutter's ends: a frame it falls short at fails |
+| moving | `lay: paintKeyed([{ at: 0, value: DRIFT_FROM }, { at: 6, value: DRIFT_TO, curve: 'inOut' }])`, each a still lay, or `lay: (m) => ({ placement: { x: 40 * m.at, y: 0, rotation: 0, scale: 1 }, pivot: { x: 0, y: 0 } })` | a still lay read at each frame's moment (the plane's held moment, `clock`); at scale 0, the plane draws nothing then | as the shot loads, where its paint lies at each moment of the shot's span (Values in time). The back laid so is checked at each frame as it draws, its painting holding what the frame and its blur read at the frame's moment and its shutter's ends: a frame it falls short at fails. The back can't scale to 0 |
 | on the frame: cover | `lay: { kind: 'cover', box: { x0: 40, y0: 40, x1: 1960, y1: 1120 } }`, `at?` | through the shot's own camera at scene second `at` (0) (**NEW**): the box centred where the frame's centre lies and scaled about its centre, unturned, until it holds the frame's corners. A rolled camera grows the box to hold its turned frame | laid once as the shot loads, and checked there as a pin is each frame. On the back, the box holds only the frame at `at`, so its painting must reach past the box by its blur and any travel: the refusal names a box that many px smaller |
 | on the frame: pin | `lay: { kind: 'pin', points: [{ sourcePx: { x: 24, y: 60 }, element: 'title' }], at? }`, one point or two; the element is the one inside the `<PaintedShot>` with `data-pin="title"` | one point moves the plane, putting `sourcePx` on its element's centre; two also scale and turn it | each element's centre is measured in frame px as each frame draws, once fonts and layout are settled, and again when a pinned element resizes; the camera's reach check runs there (**NEW**). A frame whose element isn't mounted, or whose name two elements carry, fails. An element moved without a re-render or a resize (a sibling's image loading) is seen at the next frame |
 
@@ -1162,11 +1275,7 @@ play, and the element placed by the same function of the scene second. With the 
 number) => 240 * at` is read by the lay as `x: slide(m.at)` and by the scene as the element's `left: slide(t)`. The
 cover is the still form needing no placement worked out: a frame-sized middle of a larger painting is `{kind:
 'cover', box}` of that middle, and the back's refusal names one among its fixes (Checking).
-
-`lay` and `reach` go together: `PlaneLay` (from `#studio`) is the union of the three forms. A helper that builds planes
-taking `lay` and `reach` as separate optional fields loses which goes with which, and TypeScript reports the plane
-against the union's last form, as if a still lay had to be a pin or cover. Type the helper's lay as one `PlaneLay`
-(`(id, depth, source, lay: PlaneLay = {}) => ({ id, depth, source, ...lay })`), or write the plane's literal whole.
+`PlaneLay` (`#studio`) is any of the lay forms, for a helper that builds planes to take as its `lay`.
 
 ### Where a plane point lands
 
@@ -1174,16 +1283,16 @@ A document point on a plane at depth d reaches the frame in two steps: the plane
 the camera shows q at `c + R(−roll) · (s · (q − c) + shift)`, c the frame's centre, s = zoom · d ÷ (d − dolly), shift
 = −pan · zoom ÷ (d − dolly) (Reference › Camera). A positive pan x slides every plane left, a nearer plane further.
 Three models in `#lib/paint/animation/models/paint-camera-depths.ts` answer the questions a scene asks across depths,
-through the `camera` it hands `<PaintedShot>`, every play included, so its `*-model.ts` and tests can line things up:
+through the `camera` it hands `<PaintedShot>`, every play included, and the shot's `span`, so its `*-model.ts` and tests can line things up:
 
-- `paintPointAcrossDepths(camera, {depth, point}, toDepth, m)`: the px on a plane at `toDepth` that the frame shows
+- `paintPointAcrossDepths(camera, span, {depth, point}, toDepth, m)`: the px on a plane at `toDepth` that the frame shows
   where it shows `point`, plane px on a plane at `depth`, at moment `m`. Both are plane px: put a lay on either side
   yourself. A plane held by `clock` reads its lay at its held moment while the camera moves on, so ask at the frame's.
-- `paintCameraReachAt(camera, depth, filmFps)`: how far past the frame, in whole px on each side (`left`, `top`,
-  `right`, `bottom`), the camera reads a plane at `depth` anywhere in the shot, its blur included, a shutter left out
+- `paintCameraReachAt(camera, span, depth, filmFps)`: how far past the frame, in whole px on each side (`left`, `top`,
+  `right`, `bottom`), the camera reads a plane at `depth` anywhere in the span, its blur included, a shutter left out
   the film's at `filmFps`. A painting that large and laid at (−left, −top) holds every frame: what the back's check
   asks (Camera).
-- `paintShotViewAt(camera, depth, m)`: the similarity, plane px to frame px, with which the camera shows a plane at
+- `paintShotViewAt(camera, span, depth, m)`: the similarity, plane px to frame px, with which the camera shows a plane at
   `depth` at moment `m`.
 
 Both are exact only between image-parallel planes, which every painted, picture and instanced plane is. A three
@@ -1194,7 +1303,7 @@ back, at depth 2 and not laid, 4 s in:
 
 ```ts
 /** The figure plane's px the frame shows the pool's centre (back document px) on at 4 s: lay the figure's feet here. */
-const feet = paintPointAcrossDepths(CAMERA, { depth: 2, point: { x: 1300, y: 860 } }, 1, paintMoment(4));
+const feet = paintPointAcrossDepths(CAMERA, SPAN, { depth: 2, point: { x: 1300, y: 860 } }, 1, paintMoment(4));
 ```
 
 With the camera panned 120 px right there (pan x 120, no dolly or zoom), the pool at x 1300 shows at 1240, and the
@@ -1495,7 +1604,7 @@ hues far apart grade through grey (Planning colour and light); in gouache or cra
 
 **Reveals** (`Reveal`, scene seconds and document px; Time: Reveals): `{kind: 'strokes', strokes: [{points, widthPx,
 from, to, cap?: 'round' | 'flat'}], softS?}` or `{kind: 'field', base, delay?, profile?, softS?}`, `base` and `delay`
-fields of seconds, `profile` (`RevealProfile`) a place key's curve, `'linear' | 'in' | 'out' | 'inOut'`, the front
+fields of seconds, `profile` (`RevealProfile`) a key's curve (a name, a power like `{in: 3}`, or `{back: 0.1}`), the front
 runs by. In `#lib/paint/document/models/painting-reveal.ts`: `revealEnd(reveal)`, the scene second it finishes;
 `revealArrivalAt(reveal, point)`, the scene second its front reaches a document point;
 `paintingEasedRevealStrokes(points, {widthPx, from, to, ease, piecesPerSecond?, cap?})`, an eased pull as strokes;
@@ -1535,19 +1644,22 @@ for a brush with no profile on its style's paper and paint as they are now, the 
 
 **Lay** (Composition: Lay forms): a point p of the document lands at `pivot + (x, y) + R(rotation) · scale · (p −
 pivot)` plane px, frame px with the camera at rest, then the camera shows its plane (Where a plane point lands). No
-mirror: scale is positive. A box (`reach`, `cover`) is `{x0, y0, x1, y1}`.
+mirror: scale is 0 or more, and at 0 the plane draws nothing (Values in time: Scale 0). A box (`cover`) is `{x0, y0,
+x1, y1}`.
 
-**Camera** (`PaintShotCamera`: `PaintCameraOptions` without `planes`, its lens a `PaintShotLens`): `stage: stampStage(frame, margin)`,
-margin whole and even; at least 2, more for defocus or a moving lay's reach. `fov` vertical degrees. `lens: {bloom,
-shutter?}`: bloom sigma frame px; shutter seconds open about each frame's time, above 0, or `'shut'`, every frame
-sharp; left out, the film's, half a frame at the composition's fps (`paintFilmShutter`: 1/60 s at 30) (Time: The
-shutter). `animationFps` (24). `plays?`: left out, the camera stands at rest, every plane sharp; else
-`[paintCameraPlay(clip, {clock, origin})]`, `origin` naming the play in errors. A `move` clip's keys `{at, pan?,
-dolly?, zoom?, roll?, ease?}`: `at` clip s; `pan` `{x, y}` px the camera moves as seen at depth 1, a positive x
-sliding the picture left; `dolly` depth units toward the planes; `zoom` 1 at rest; `roll` radians; a field left out
-is at rest; `ease` (`'linear'`, `'in'`, `'out'`, `'inOut'`) on the key it eases into. A `focus` clip's keys `{at,
-focus, aperture, ease?}`: `focus` the depth held sharp, a three scene's texels each at their own (Lighting a three
-scene); `aperture` frame px of blur sigma at infinite depth. A plane at depth d shows scaled zoom · d ÷ (d − dolly)
+**Camera** (`PaintShotCamera`: `PaintCameraOptions` without `planes` or `span`, which is the shot's, its lens a `PaintShotLens`):
+`stage: stampStage(frame, margin)`, margin whole and even; at least 2, more for defocus or where a moving lay carries
+paint past the frame. `fov` vertical degrees. `lens: {bloom, shutter?}`: bloom sigma frame px; shutter seconds open
+about each frame's time, above 0, or `'shut'`, every frame sharp; left out, the film's, half a frame at the
+composition's fps (`paintFilmShutter`: 1/60 s at 30) (Time: The shutter). `animationFps` (24). `plays?`: left out, the
+camera stands at rest, every plane sharp; else `[paintCameraPlay(clip, {clock, origin, blend?})]`, `origin` naming the
+play in errors. A `move` clip `{kind: 'move', value}`, its value (Values in time) in clip s a `PaintCameraMovePose`
+`{pan?, dolly?, zoom?, roll?}`: `pan` `{x, y}` px the camera moves as seen at depth 1, a positive x sliding the picture
+left; `dolly` depth units toward the planes; `zoom` 1 at rest; `roll` radians; a field left out is at rest. Before the
+first move plays, the camera holds its value at its start. Move plays may not overlap, but for one with `blend: 'add'`,
+whose value adds to the move under it, a field left out adding 0. A `focus` clip `{kind: 'focus', value}`, its value
+`{focus, aperture}`: `focus` the depth held sharp, a three scene's texels each at their own (Lighting a three scene);
+`aperture` frame px of blur sigma at infinite depth. A plane at depth d shows scaled zoom · d ÷ (d − dolly)
 about the frame centre, shifted by −pan · zoom ÷ (d − dolly), turned by −roll. A pan moves a far plane less: give it
 a document wider than the frame by the pan ÷ d it travels, placed with `lay` (`paintCameraReachAt` gives the px on
 each side, blur included). The back's painting must reach past everything the frame
@@ -1581,10 +1693,13 @@ glows every veil; raise it to keep only the bright. Thin paint glows by its own 
 measured on, so it wants a lower threshold than thick.
 
 **Plays** (`paintMotionPlay(node, clip, {clock, origin})`): clock `{at, rate?, loop?: {period, mode?: 'repeat' |
-'pingpong', times?}, hold?, until?}` or `{at, freeze}`; `at` scene s, the rest clip s or frames. Clips: `place`
-`{keys: [{at, x, y, rotation?, scale?, ease?}]}` (rigid, about the node's pivot, x and y document px); `poses` `{keys:
-[{at, pose: {pin: {x?, y?, rotation?, scale?}}, ease?}]}`; `breathe {pin, amount, period}`; `sway {root, direction,
-length, amount, period}` (direction radians, −π/2 up; length px to the tip; amount px of tip travel; period s);
+'pingpong', times?}, hold?, until?}` or `{at, freeze}`; `at` scene s, the rest clip s or frames. A play writes its
+node from `at` until its clock's `until`, else until its keyed value settles (a function's, for ever). Two plays
+writing one thing (a node's place, one pin) over the same seconds are refused, as are a plane's moving `lay` and a
+place on its plane's node: two writers of where the plane lies. Clips: `place` `{value}`, its value (Values in time) `{x?, y?,
+rotation?, scale?}` (rigid, about the node's pivot, x and y document px; scale 0 or more, at 0 drawing nothing);
+`poses` `{value}`, its value `{[pin]: {x?, y?, rotation?, scale?}}`, a pin's scale above 0; `breathe {pin, amount,
+period}`; `sway {root, direction, length, amount, period}` (direction radians, −π/2 up; length px to the tip; amount px of tip travel; period s);
 `flutter {at, direction, least, period}`.
 
 **Rigs** (`OccurrenceRig`, on a group occurrence): `parts`, each a `PaintRigCutDeclaration` with its `cels`: `{id, z,
@@ -1665,6 +1780,31 @@ meadow (hillTopPx 200): 640 × 360 px, watercolour, on #f4f2ed paper
 paint check: 0 errors, 0 warnings; 1 `on` gate not checked: --solve decides it
 ```
 
+Given any other module, `studio paint check <module>` compiles every painted shot it exports (a value with a camera,
+planes and a span) as its render would, without the GPU, and prints each problem as `<export>: <owner>.<field>:
+<message>`. It takes HTML to lie behind the shot, which only the page can say, so a clear back passes here and is the
+render's to refuse. A shot a function builds (from a scene's clock, say) isn't seen: export its value.
+
+**Motion warnings.** A shot follows each drawable (a plane, and an occurrence with a node or a visibility of its own)
+from document px to frame px at every frame of its span and a quarter frame either side, through the camera, the lay
+and its nodes' places, and warns of what tends to read badly. They're warnings, printed by the check and by every
+render, never refusals: a deliberate snap or pop stays as written.
+
+- **A speed jump**: across two frames, a drawable's speed changes by 2 px a frame or more past what its acceleration
+  either side carries, and by half the faster speed or more. That's a key met at another speed than it's left at,
+  which reads as a knock: a stop at full speed, a start from rest at speed. The share keeps a slow drift's rounding out.
+- **Fast with the shutter shut**: with the shutter shut, a drawable moving more than the frame's width ÷ 7 a second, so
+  width ÷ (7 × fps) px a frame (11.4 px for 1920 px at 24 fps). That's the seven-second rule: a pan crossing the frame
+  in under about 7 s judders on film even with a half-open shutter's blur bridging its frames. With none, each frame is
+  a sharp copy, and past that pace the eye sees copies, not motion; under it, unblurred motion reads crisp.
+- **A pop**: a visibility changing by 0.9 or more between two frames while the drawable is in frame, so it appears or
+  vanishes in one frame. A swap isn't a pop: a drawable on the same plane stepping as far the other way in that
+  frame, where it shows, as a cel or a view switched by visibility does.
+
+An occurrence with no node of its own moves as its plane does, so only its plane warns of that motion. Bends (pins,
+sway, flutter, boil) and rigs' poses move paint within a drawable and aren't followed, nor are an instanced plane's
+items, a three plane, or a plane pinned to HTML, laid only as each frame measures it.
+
 Before a render, a look or a still bundles, every painting its project's scenes paint from (in `scenes/` and `bars/`,
 and those `shared` lists) is checked this way at its defaults, with the styles `project.ts` names, and any error stops
 it, every one listed, in a second rather than after its wait for the GPU.
@@ -1737,6 +1877,12 @@ What the check says today, and what to do:
 | `scene heron's painted shot (…) stalled: no solve has finished and its GPU has answered nothing in 90 s, so the render stops. It was solving heron at 2.4 s, warming 0–10 s, 12 of 96 solves done. …` | a load, warm or frame that made no progress for 90 s: its GPU process hung, or a solve that never settles (`shot-watch.ts`) | nothing: the render draws its chunk again in halves, each in a fresh browser; a frame that stalls again alone fails it (below), a bug to report with the line |
 | `frame 174 (5.80 s, scene lake) failed again, drawn alone in a fresh browser: Page crashed!` | a frame whose page crashed, stalled or lost its GPU in its chunk, and again drawn alone in a fresh browser: the frame alone outgrows the page (its heap, its GPU), or hangs it | `studio profile <project> --frames 174 --costs` for what the frame holds; a frame stuck at the same solve is a bug to report with the line |
 | `back.source.b: paints a 160 × 120 document, and the plane's is 320 × 240: every selection a plane shows, …` / `front.source: lays a transparent ground, and the plane a default one: …` / `meadow.source.b: shows no group heron, which meadow/heron rigs: every end of a rigged plane holds its rigged groups cut alike` / `meadow.source.b: holds beak under heron, in none of meadow/heron's cels: …` | a selection, named at its end's field, painting a document or laying a ground other than the plane's first (`paintedPlaneBlendProblems`); a dissolve end on a rigged plane without the rigged group, or holding it cut otherwise: a cel with other layers, a layer in no cel, its sheet owned otherwise (`shotPlaneRigEndProblems`); both at load and each frame for a callback source | paint every end at one size on one ground; give every end the rigged group with the same layers in each cel, or rig the subject on a plane of its own |
+| `birds/swift.motion: its speed jumps at 1 s, from 5 to 0 px a frame: meet the key at the speed it leaves at (a curve easing into it, or between: 'smooth')` (warning) | a speed jump at a key (Motion warnings), from `studio paint check` on the shot's module and every render | ease into the key (`'out'`, `'inOut'`), or `between: 'smooth'`; a knock that's meant stays |
+| `birds/swift.motion: moves up to 5 px a frame with the shutter shut, from 0 s to 1 s; past 1.9 px a frame it strobes: slow it, or open the shutter` (warning) | a drawable moving faster than the frame's width in 7 s with the shutter shut | what it says |
+| `birds/swallow.motion: its visibility steps from 0 to 1 within a frame at 1.5 s: it pops in or out` (warning) | a visibility changing by 0.9 or more in a frame, in frame | fade it over a few frames; a pop that's meant stays |
+| `kick writes camera on the camera's move from 2s while push still does (until 6s)` / `drift writes place on front from 1s while front's moving lay still does (without end)` | two camera moves, or two plays on one node's place or pin, over the same seconds; a place on a plane's node beside its moving lay | `blend: 'add'` on a move that adds; for a node, one play at a time; move a plane by its lay or its node, not both |
+| `shot.span: is sampled at 30 fps, and the composition runs at 24: …` / `shot.span: runs from 0 s to 4 s, and its scene shows 0 s to 6 s at least: give it its scene's span, sceneSecondsOf(clock).span` | a span not the scene's, as the render loads the shot | `span: sceneSecondsOf(clock).span` |
+| `paintKeyed: key 0 has a curve or through points, but no key comes before it to move from` / `paintKeyed: key 2 is at 1 s, not after key 1 at 1 s` / `paintKeyed: key 1's value isn't shaped as key 0's: every key names the same numbers` / `paintKeyed: key 1 springs in over 0.512 s to arrive on it, more than the 0.4 s since key 0` | keys `paintKeyed` can't move between, thrown where they're built | move key 0's curve to key 1; keys in order, each naming the same numbers; a shorter spring, or a key before it earlier |
 
 `studio paint check <source> --solve [--at <s>] [--out <dir>]` then solves every sheet on the GPU and prints what only a
 solve can warn of, reading the images (a grain laid off its height on a document wrapping down y), then, in each sheet's

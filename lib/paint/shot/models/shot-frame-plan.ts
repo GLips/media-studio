@@ -18,7 +18,8 @@ import type { PaintMoment, StampGroupLay } from '#lib/paint/painting/models/stam
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import type { CompiledPaintedShot, CompiledShotPaintedPlane } from './shot-compile.ts';
 import type { CompiledShotMotion, CompiledShotNode } from './shot-motion.ts';
-import { shotPresentationAt, type OccurrenceKey, type RigPartPose } from './shot-props.ts';
+import type { OccurrenceKey, RigPartPose } from './shot-props.ts';
+import { presentationValueAt } from '#lib/paint/animation/models/paint-value.ts';
 import { shotPlaneOccurrences } from './shot-occurrences.ts';
 import { shotPlaneRigEndProblems, shotRigCelPoses, shotRigPosed, shotRigPoseProblem, type CompiledShotRig, type ShotRigFound, type ShotRigPosed } from './shot-rigs.ts';
 import { paintedPlaneBlendProblems, paintedSourceEnds, paintedSourceProblems, paintedSourceShares, type PaintedSourceShare } from './shot-selection.ts';
@@ -39,11 +40,30 @@ export function shotNodeWobbleAt(node: CompiledShotNode, t: PaintMoment, animati
 
 /**
  * `node`'s own map at `t` in its parent's frame: its pins, flutter and sway, then its placement about its pivot; with
- * `wobble`, its boil's wobble first, before anything bends it. A similarity while nothing bends; the identity at rest.
+ * `wobble`, its boil's wobble first. A similarity while nothing bends; the identity at rest. `solving`: a placement
+ * at scale 0 left out, so no solve maps marks onto a point; it shows nothing then (shotScaledToNothingAt).
  */
-export function shotNodePoseAt(node: CompiledShotNode, t: PaintMoment, animationFps: number, wobble: boolean): PaintingNodePose {
+export function shotNodePoseAt(node: CompiledShotNode, t: PaintMoment, animationFps: number, { wobble, solving }: { readonly wobble: boolean; readonly solving: boolean }): PaintingNodePose {
   const boiled = wobble ? shotNodeWobbleAt(node, t, animationFps) : null, place = paintLevelPlacementAt(node, t, animationFps);
-  return paintingDeformsPose([...(boiled ? [boiled] : []), ...paintLevelDeformsAt(node, t, animationFps, true), ...(place ? [place] : [])]);
+  const placed = place && !(solving && placesNothing(place.placement)) ? [place] : [];
+  return paintingDeformsPose([...(boiled ? [boiled] : []), ...paintLevelDeformsAt(node, t, animationFps, true), ...placed]);
+}
+
+/** A placement at scale 0 lays everything on its pivot, which draws nothing. */
+const placesNothing = ({ scale }: { readonly scale: number }) => scale === 0;
+
+/**
+ * Whether `key` (a plane, or an occurrence on `plane`) is placed at scale 0 at `t`, by its node, a node over it, or
+ * its plane's moving lay: it draws nothing then, as at visibility 0, and nothing is mapped back through it.
+ */
+export function shotScaledToNothingAt(shot: CompiledPaintedShot, plane: string, key: OccurrenceKey, t: PaintMoment): boolean {
+  const { motion } = shot;
+  for (let id = motion.nearest.get(key) ?? (motion.nodes.has(plane) ? plane : null); id !== null; id = motion.nodes.get(id)!.parent) {
+    const place = paintLevelPlacementAt(motion.nodes.get(id)!, t, motion.animationFps);
+    if (place && placesNothing(place.placement)) return true;
+  }
+  const compiled = shot.planes.find((each) => each.id === plane);
+  return compiled?.kind === 'painted' && compiled.lay.kind === 'moving' && placesNothing(compiled.lay.lay(shotPlaneMomentAt(motion, plane, t)).placement);
 }
 
 /** The moment plane `plane`'s presentation reads at frame moment `t`: through its own clock. */
@@ -64,7 +84,7 @@ export function shotPlaneLayAt(plane: CompiledShotPaintedPlane, motion: Compiled
 
 /** Where plane `plane` lays its root sheet at `t`: its node's map, its wobble in, then its lay. Document px to plane px. */
 export function shotPlanePlaceAt(plane: CompiledShotPaintedPlane, motion: CompiledShotMotion, t: PaintMoment): PaintingNodePose {
-  const node = motion.nodes.get(plane.id), own = node ? shotNodePoseAt(node, t, motion.animationFps, true) : paintingSimilarityPose(PAINT_SIMILARITY_IDENTITY);
+  const node = motion.nodes.get(plane.id), own = node ? shotNodePoseAt(node, t, motion.animationFps, { wobble: true, solving: false }) : paintingSimilarityPose(PAINT_SIMILARITY_IDENTITY);
   return paintingPoseAfter(paintingSimilarityPose(shotPlaneLayAt(plane, motion, t)), own);
 }
 
@@ -75,7 +95,7 @@ export function shotPlanePlaceAt(plane: CompiledShotPaintedPlane, motion: Compil
  * first evaluation's, which motion, rigs and visibility were checked against.
  */
 export function shotPlaneSharesAt(shot: Pick<CompiledPaintedShot, 'motion' | 'rigs'>, plane: CompiledShotPaintedPlane, t: PaintMoment): PaintedSourceShare[] {
-  const moment = paintNodeTimeAt(plane.sourceClock, t, shot.motion.animationFps), source = shotPresentationAt(plane.source, moment);
+  const moment = paintNodeTimeAt(plane.sourceClock, t, shot.motion.animationFps), source = presentationValueAt(plane.source, moment);
   if (typeof plane.source !== 'function') return paintedSourceShares(source);
   const at = `shot plane ${plane.id}'s source at ${moment.at} s`, problems = paintedSourceProblems(plane.id, source), ends = paintedSourceEnds(source);
   if (!problems.length) problems.push(...paintedPlaneBlendProblems(plane.id, ends, plane.paints));
@@ -99,15 +119,15 @@ export function shotPlaneClocks(motion: CompiledShotMotion, plane: CompiledShotP
 
 /**
  * The node maps of plane `plane`'s occurrences at `t`, by document key: each occurrence's own node, its plane's left
- * out; with `wobble`, as laid, each boil's wobble in but a rigged group's (`rigged`), which its rig takes.
+ * out; `laid`, as laid, each boil's wobble in but a rigged group's (`rigged`), which its rig takes; else as solved.
  */
 export function shotOccurrencePosesAt(
-  plane: CompiledShotPaintedPlane, motion: CompiledShotMotion, t: PaintMoment, wobble: boolean, rigged: ReadonlySet<OccurrenceKey>,
+  plane: CompiledShotPaintedPlane, motion: CompiledShotMotion, t: PaintMoment, laid: boolean, rigged: ReadonlySet<OccurrenceKey>,
 ): Map<NodeKey, PaintingNodePose> {
   const poses = new Map<NodeKey, PaintingNodePose>();
   for (const { key, node } of plane.occurrences) {
     const level = motion.nodes.get(key);
-    if (level) poses.set(node, shotNodePoseAt(level, t, motion.animationFps, wobble && !rigged.has(key)));
+    if (level) poses.set(node, shotNodePoseAt(level, t, motion.animationFps, { wobble: laid && !rigged.has(key), solving: !laid }));
   }
   return poses;
 }
@@ -132,12 +152,13 @@ export function shotPlaneReseedAt(plane: CompiledShotPaintedPlane, motion: Compi
 
 /**
  * How visible `key` (a plane or an occurrence on `plane`) is at `t`, read at its plane's presentation moment: 1 unless
- * the shot says. Throws on a callback's value outside 0..1.
+ * the shot says, 0 where it's scaled to nothing (shotScaledToNothingAt). Throws on a callback's value outside 0..1.
  */
 export function shotVisibilityAt(shot: CompiledPaintedShot, plane: string, key: OccurrenceKey, t: PaintMoment): number {
+  if (shotScaledToNothingAt(shot, plane, key, t)) return 0;
   const value = shot.visibility.get(key);
   if (value === undefined) return 1;
-  const moment = shotPlaneMomentAt(shot.motion, plane, t), visibility = shotPresentationAt(value, moment), problem = shotVisibilityProblem(key, visibility, moment.at);
+  const moment = shotPlaneMomentAt(shot.motion, plane, t), visibility = presentationValueAt(value, moment), problem = shotVisibilityProblem(key, visibility, moment.at);
   if (problem) throw new Error(`shot: ${paintingProblemText(problem)}`);
   return visibility;
 }
@@ -154,7 +175,7 @@ export type ShotRigAt = { readonly pose: Readonly<Record<string, RigPartPose>>; 
  */
 function shotRigAt(rig: CompiledShotRig, motion: CompiledShotMotion, t: PaintMoment): ShotRigAt {
   const node = motion.nodes.get(rig.occurrence), moment = paintNodeTimeAt(node ? node.clock : motion.planeClocks.get(rig.plane) ?? [], t, motion.animationFps);
-  const pose = shotPresentationAt(rig.pose, moment), problem = shotRigPoseProblem(rig, pose);
+  const pose = presentationValueAt(rig.pose, moment), problem = shotRigPoseProblem(rig, pose);
   if (problem) throw new Error(`shot: ${rig.occurrence}'s rig at ${moment.at} s ${problem}`);
   return { pose, groupPivot: shotRigGroupPivot(rig, motion), wobble: node ? shotNodeWobbleAt(node, t, motion.animationFps) : null };
 }

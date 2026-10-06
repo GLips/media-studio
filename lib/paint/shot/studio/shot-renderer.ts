@@ -182,7 +182,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
     const pictureNodeMap = (id: string, m: PaintMoment): PaintSimilarity => {
       const node = shot.motion.nodes.get(id);
       if (!node) return PAINT_SIMILARITY_IDENTITY;
-      const pose = shotNodePoseAt(node, m, shot.motion.animationFps, true);
+      const pose = shotNodePoseAt(node, m, shot.motion.animationFps, { wobble: true, solving: false });
       if (pose.kind !== 'similarity') throw new Error(`shot: picture plane ${id}'s node bends it (${pose.text}); its node only places it`);
       return pose.map;
     };
@@ -227,7 +227,8 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
       }
       if (plane.kind !== 'picture') throw new Error(`shot: ${reader}'s mask reads ${id}, a ${plane.kind} plane, as a source; only a picture, three or instanced plane renders one`);
       const picture = renders[plane.canvas].pictures.get(id) ?? null;
-      if (!picture) return { key: 'nothing', coverage: () => null };
+      // Unseen, it may be scaled to nothing, which no map leads back through.
+      if (!picture || weight <= 0) return { key: 'nothing', coverage: () => null };
       const { box } = picture, onPlane = paintSimilarityAfter(shotExposureAcross(exposure)(id, reader), planePx);
       const map = paintSimilarityAfter({ ma: 1, mb: 0, kx: margin - box.x, ky: margin - box.y }, paintSimilarityAfter(paintSimilarityInverse(pictureNodeMap(id, exposure.at)), onPlane));
       return {
@@ -342,6 +343,9 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
       draw: (t, mode, pins = new Map()) => counted(async () => {
         if (disposed) return;
         owner.assertLive();
+        // What the shot's compile checked, reached and warned of was sampled over its span alone.
+        const { from, to } = shot.span;
+        if (t < from - 1e-9 || t >= to - 1e-9) throw new Error(`painted shot: drawn at ${t} s, outside its span, ${from} s to ${to} s`);
         const pinned = shotPinnedPlanes(shot, pins);
         if (pinned.problems.length) throw paintingProblemsError(`the shot's pins at ${t} s`, pinned.problems);
         // One read of each rig's pose a moment for the frame: which planes show, and their solves and lays.

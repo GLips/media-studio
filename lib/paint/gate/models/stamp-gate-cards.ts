@@ -12,8 +12,9 @@ import { painting, type PaintingSourceModule } from '#lib/paint/document/models/
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
-import type { PaintedShotProps, RigPart, RigPartPose } from '#lib/paint/shot/models/shot-props.ts';
+import type { RigPart, RigPartPose } from '#lib/paint/shot/models/shot-props.ts';
 import { stampGateHeronLayer, stampGateHeronPaper, stampGateHeronPolygon } from './stamp-gate-paper-heron.ts';
+import type { StampGateShot } from './stamp-gate-shot-span.ts';
 
 const CARDS = { width: 200, height: 140 } as const;
 const { cerulean, burntUmber, phthaloGreen } = WATERCOLOUR_PIGMENTS;
@@ -72,7 +73,7 @@ const visibilityBy = (rows: StampGateCardsVisibility) => ({ at }: PaintMoment) =
  * The cards on one still plane, the figure rigged at rest, the sitting view and the leaf switched and fading by their
  * tables; painted with `down`, `sitting` and `leaf` as the document's properties say.
  */
-export function stampGateCardsShot({ down = true, sitting = true, leaf = true }: { down?: boolean; sitting?: boolean; leaf?: boolean } = {}): PaintedShotProps {
+export function stampGateCardsShot({ down = true, sitting = true, leaf = true }: { down?: boolean; sitting?: boolean; leaf?: boolean } = {}): StampGateShot {
   const evaluation = painting(STAMP_GATE_CARDS, { down, sitting, leaf });
   return {
     camera: { stage: stampStage(CARDS, 2), fov: 35, lens: { bloom: 0, shutter: 'shut' }, plays: [] },
@@ -92,7 +93,7 @@ export const STAMP_GATE_CARDS_POSED_AT = { rest: 0, lying: 1 } as const;
  * The sky on the back plane and the collage before it on a clear ground, without its view or the leaf: its figure's
  * standing cel switched off, so at rest the collage shows only the lying cel its pose hides, until posed to show it.
  */
-export function stampGateCardsPosedShot(): PaintedShotProps {
+export function stampGateCardsPosedShot(): StampGateShot {
   const evaluation = painting(STAMP_GATE_CARDS, { down: true, sitting: false, leaf: false });
   return {
     camera: { stage: stampStage(CARDS, 2), fov: 35, lens: { bloom: 0, shutter: 'shut' }, plays: [] },

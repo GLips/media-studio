@@ -17,10 +17,10 @@ import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-s
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { stampCanonicalJson, type StampCanonicalDatum } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
 import { stampStage, type StampAxis, type StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
-import type { PaintedShotProps, PaintedTexture, ThreeSource } from '#lib/paint/shot/models/shot-props.ts';
+import type { PaintedTexture, ThreeSource } from '#lib/paint/shot/models/shot-props.ts';
 import { dissolve } from '#lib/paint/shot/models/shot-selection.ts';
 import { STAMP_GATE_CLOCK_SCALE } from './stamp-gate-clocks.ts';
-import { STAMP_GATE_SHOT_FPS } from './stamp-gate-shots.ts';
+import { STAMP_GATE_SHOT_FPS, type StampGateShot } from './stamp-gate-shot-span.ts';
 import {
   STAMP_GATE_EARTH_MIX, STAMP_GATE_POOL_MIX, STAMP_GATE_ROUND_REF, STAMP_GATE_SHEET_IMAGES, STAMP_GATE_SHEET_PAPER, stampGateLine, stampGateRectangle, stampGateSheetBrushOf,
 } from './stamp-gate-sheets.ts';
@@ -298,7 +298,7 @@ export type StampGateShotCylinder = {
 export type StampGateShotTextureCase = {
   readonly frame: { readonly width: number; readonly height: number };
   readonly frames: readonly number[];
-  readonly shot: (buildCylinder: ThreeSource['build']) => PaintedShotProps;
+  readonly shot: (buildCylinder: ThreeSource['build']) => StampGateShot;
   readonly cylinder: StampGateShotCylinder;
   readonly texture: string;
   readonly inputs: () => Readonly<Record<string, StampCanonicalDatum>>;

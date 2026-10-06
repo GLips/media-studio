@@ -6,6 +6,7 @@
 // hidden foot: the wet-contact heron hidden whole. The reeds: a rig drawn as pieces, revealed. The page
 // (studio/stamp-gate-reveals-page.ts) draws them; what its checks measure is here.
 
+import type { PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
 import type { PaintingDocument, LayerNode, Reveal } from '#lib/paint/document/models/painting-document.ts';
 import type { PropertySchema, PropertyValues } from '#lib/paint/document/models/painting-properties.ts';
 import { paintingStampReveal } from '#lib/paint/document/models/painting-reveal-profile.ts';
@@ -14,12 +15,12 @@ import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercol
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { stampRevealShownAt } from '#lib/paint/painting/models/stamp-reveal.ts';
 import { stampStage, stampWrapPeriods } from '#lib/paint/painting/models/stamp-stage.ts';
-import type { PaintedShotProps, PresentationValue } from '#lib/paint/shot/models/shot-props.ts';
 import type { PaintedSource } from '#lib/paint/shot/models/shot-selection.ts';
 import { STAMP_GATE_HERON_BODY, STAMP_GATE_HERON_MOVE, stampGatePaperHeronDocument } from './stamp-gate-paper-heron.ts';
 import { stampGateTexelDiffers } from './stamp-gate-frames.ts';
 import { STAMP_GATE_ROUND_REF, STAMP_GATE_SHEET_PAPER, STAMP_GATE_WET_CONTACT, stampGateRectangle } from './stamp-gate-sheets.ts';
 import { STAMP_GATE_REED_PARTS, STAMP_GATE_RIGGED_HERON } from './stamp-gate-shots.ts';
+import type { StampGateShot } from './stamp-gate-shot-span.ts';
 
 /**
  * The reveal cases: strokes (mixed widths, caps, a crossing, uncovered paint, a soft ramp, a wrap's seam); fields
@@ -292,7 +293,7 @@ export const STAMP_GATE_REEDS_AT = 1;
 export const stampGateReedsShownAt = (t: number) => (p: StampPoint) => stampRevealShownAt(REEDS_REVEAL, p, t);
 
 /** A shot of the rigged heron's `source`, its reeds rigged at rest, so drawn as pieces. */
-export function stampGateRevealedReedsShot(source: PresentationValue<PaintedSource>): PaintedShotProps {
+export function stampGateRevealedReedsShot(source: PresentationValue<PaintedSource>): StampGateShot {
   return { ...stampGateRevealShot(source), rigs: { 'sheet/reeds': { parts: STAMP_GATE_REED_PARTS, pose: () => ({}) } } };
 }
 
@@ -302,7 +303,7 @@ export function stampGateRevealedReedsShot(source: PresentationValue<PaintedSour
  * A shot of a gate reveal's sheet at its size, its camera at rest, so frame px are document px: one plane showing
  * `source`, its source held on `hold`s when given.
  */
-export function stampGateRevealShot(source: PresentationValue<PaintedSource>, hold?: number): PaintedShotProps {
+export function stampGateRevealShot(source: PresentationValue<PaintedSource>, hold?: number): StampGateShot {
   return {
     camera: { stage: stampStage(SIZE, 2), fov: 35, lens: { bloom: 0, shutter: 'shut' }, plays: [] },
     planes: [{ id: 'sheet', depth: 1, source, ...(hold !== undefined && { sourceClock: { hold } }) }],

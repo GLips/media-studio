@@ -11,8 +11,9 @@ import { painting, type PaintingSourceModule } from '#lib/paint/document/models/
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
-import type { PaintedShotProps, RigPart, RigPartPose } from '#lib/paint/shot/models/shot-props.ts';
+import type { RigPart, RigPartPose } from '#lib/paint/shot/models/shot-props.ts';
 import { stampGateHeronLayer, stampGateHeronPaper, stampGateHeronPolygon } from './stamp-gate-paper-heron.ts';
+import type { StampGateShot } from './stamp-gate-shot-span.ts';
 
 const PIECES = { width: 200, height: 140 } as const;
 const { cerulean, yellowOchre, ultramarine, quinacridoneRose, burntSienna, phthaloBlue, phthaloGreen } = WATERCOLOUR_PIGMENTS;
@@ -95,14 +96,14 @@ export const STAMP_GATE_PIECES_TABLE: readonly { readonly from: number; readonly
 const rowAt = ({ at }: PaintMoment) => STAMP_GATE_PIECES_TABLE.findLast(({ from }) => from <= at)!;
 
 /** The sprig on one still plane, painted as `painted` says, rigged as `rig` says. */
-const piecesShot = (painted: Partial<PropertyValues<typeof piecesProperties>>, rig: Pick<NonNullable<PaintedShotProps['rigs']>[string], 'parts' | 'pose'>): PaintedShotProps => ({
+const piecesShot = (painted: Partial<PropertyValues<typeof piecesProperties>>, rig: Pick<NonNullable<StampGateShot['rigs']>[string], 'parts' | 'pose'>): StampGateShot => ({
   camera: { stage: stampStage(PIECES, 2), fov: 35, lens: { bloom: 0, shutter: 'shut' }, plays: [] },
   planes: [{ id: 'pieces', depth: 1, source: layersOf(painting(STAMP_GATE_PIECES, painted), ['sky', 'sprig']) }],
   rigs: { 'pieces/sprig': rig },
 });
 
 /** The sprig posed and its rim switched by STAMP_GATE_PIECES_TABLE. */
-export const stampGatePiecesShot = (): PaintedShotProps => ({
+export const stampGatePiecesShot = (): StampGateShot => ({
   ...piecesShot({}, { parts: STAMP_GATE_PIECES_PARTS, pose: (moment) => rowAt(moment).pose }), visibility: { 'pieces/bud-rim': (moment) => rowAt(moment).rim },
 });
 
@@ -110,4 +111,4 @@ export const stampGatePiecesShot = (): PaintedShotProps => ({
  * The sprig painted as `painted` says (a layer whose property is false left out), every cel it holds shown at rest as
  * a part of its own: what a frame hiding those layers shows.
  */
-export const stampGatePiecesFlatShot = (painted: Partial<PropertyValues<typeof piecesProperties>>): PaintedShotProps => piecesShot(painted, { parts: piecesFlatParts(painted), pose: {} });
+export const stampGatePiecesFlatShot = (painted: Partial<PropertyValues<typeof piecesProperties>>): StampGateShot => piecesShot(painted, { parts: piecesFlatParts(painted), pose: {} });

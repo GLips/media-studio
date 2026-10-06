@@ -7,7 +7,8 @@
 import { paintingErrors, paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
-import { shotPresentationAt, type PaintedTexture } from './shot-props.ts';
+import type { PaintedTexture } from './shot-props.ts';
+import { presentationValueAt } from '#lib/paint/animation/models/paint-value.ts';
 import { paintedSourceEnds, paintedSourceProblems, type PaintedSource } from './shot-selection.ts';
 
 /**
@@ -53,7 +54,7 @@ export function compileShotPaintedTextures(textures: readonly PaintedTexture[]):
     for (const [field, px] of [['widthPx', widthPx], ['heightPx', heightPx]] as const) {
       if (!(Number.isInteger(px) && px > 0)) problems.push(paintingProblem('error', id, field, `is ${px}: a painted texture is whole px above 0`));
     }
-    const first = shotPresentationAt(texture.source, paintMoment(0)), found = paintedTextureSourceProblems(id, first);
+    const first = presentationValueAt(texture.source, paintMoment(0)), found = paintedTextureSourceProblems(id, first);
     problems.push(...found);
     return { ...texture, wrap: paintingErrors(found).length ? null : paintedSourceWrap(first) };
   });
@@ -65,7 +66,7 @@ export function compileShotPaintedTextures(textures: readonly PaintedTexture[]):
  * otherwise than at moment 0; a constant one was checked as it compiled.
  */
 export function compiledPaintedTextureSourceAt(texture: CompiledShotPaintedTexture, moment: PaintMoment): { readonly source: PaintedSource; readonly problems: readonly PaintingProblem[] } {
-  const source = shotPresentationAt(texture.source, moment);
+  const source = presentationValueAt(texture.source, moment);
   if (typeof texture.source !== 'function') return { source, problems: [] };
   const problems = paintedTextureSourceProblems(texture.id, source);
   if (!paintingErrors(problems).length && paintedSourceWrap(source) !== texture.wrap) {

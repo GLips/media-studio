@@ -13,10 +13,12 @@ import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { StampLensFrame, StampPlaneExtent, StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
-import { paintLaneClipAt, type PaintLane, type PaintPlayClock } from './paint-clock.ts';
+import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
+import { paintLaneClipAt, paintPlayClipMomentAt, type CompiledPaintPlay, type PaintLane, type PaintPlayClock } from './paint-clock.ts';
 import { paintPxRounded, paintRatioRounded } from './paint-deform.ts';
-import { paintKeySpanAt, type PaintEase } from './paint-motion-clips.ts';
+import { paintClipMoment } from './paint-motion-clips.ts';
 import type { PaintSimilarity } from './paint-similarity.ts';
+import { presentationValueAt, type PresentationValue } from './paint-value.ts';
 
 /** The frame's centre on `stage` (the renderer's: the frame and the margin it paints past it), what planes scale about. */
 export const paintStageCentre = ({ frame }: StampStage): StampPoint => ({ x: frame.width / 2, y: frame.height / 2 });
@@ -36,21 +38,23 @@ export const PAINT_CAMERA_REST: PaintCameraPose = { pan: { x: 0, y: 0 }, dolly: 
  */
 export type PaintCameraFocus = { readonly focus: number; readonly aperture: number };
 
-/** A pose `at` s into the clip, reached from the key before by `ease`; a field left out is at rest there. */
-export type PaintCameraMoveKey = { readonly at: number; readonly pan?: StampPoint; readonly dolly?: number; readonly zoom?: number; readonly roll?: number; readonly ease?: PaintEase };
-/** A focus `at` s into the clip, reached from the key before by `ease`. */
-export type PaintCameraFocusKey = PaintCameraFocus & { readonly at: number; readonly ease?: PaintEase };
+/** What a move sets: the parts of a pose it names, the rest at rest (or, for a move that adds, adding nothing). */
+export type PaintCameraMovePose = { readonly pan?: StampPoint; readonly dolly?: number; readonly zoom?: number; readonly roll?: number };
 
-/** The camera's pose keyed, keys in increasing order. */
-export type PaintCameraMoveClip = { readonly kind: 'move'; readonly keys: readonly PaintCameraMoveKey[] };
-/** The camera's focus keyed (a focus pull), keys in increasing order. */
-export type PaintCameraFocusClip = { readonly kind: 'focus'; readonly keys: readonly PaintCameraFocusKey[] };
+/** The camera's pose, a value of the clip's moment (paint-value.ts; paintKeyed keys one). */
+export type PaintCameraMoveClip = { readonly kind: 'move'; readonly value: PresentationValue<PaintCameraMovePose> };
+/** The camera's focus, a value of the clip's moment (a focus pull, keyed). */
+export type PaintCameraFocusClip = { readonly kind: 'focus'; readonly value: PresentationValue<PaintCameraFocus> };
 export type PaintCameraClip = PaintCameraMoveClip | PaintCameraFocusClip;
 
-/** A clip played on the camera through its own clock (no node's holds reach it); `origin` names it in errors. */
-export type PaintCameraPlay = { readonly clip: PaintCameraClip; readonly clock: PaintPlayClock; readonly origin: string };
+/**
+ * A clip played on the camera through its own clock (no node's holds reach it); `origin` names it in errors. A move
+ * with `blend: 'add'` adds its parts to the pose under it (the move playing then, else rest), a part left out adding
+ * 0. Any number of moves may add at once; two that don't, overlapping, are refused.
+ */
+export type PaintCameraPlay = { readonly clip: PaintCameraClip; readonly clock: PaintPlayClock; readonly origin: string; readonly blend?: 'add' };
 
-export const paintCameraPlay = (clip: PaintCameraClip, timing: { readonly clock: PaintPlayClock; readonly origin: string }): PaintCameraPlay => ({ clip, ...timing });
+export const paintCameraPlay = (clip: PaintCameraClip, timing: { readonly clock: PaintPlayClock; readonly origin: string; readonly blend?: 'add' }): PaintCameraPlay => ({ clip, ...timing });
 
 /** How near the camera a plane or its focus may come, depth units: nearer, its scale runs off toward infinity. */
 export const PAINT_CAMERA_NEAREST = 1e-3;
@@ -72,6 +76,9 @@ export type PaintCameraLens = { readonly bloom: number; readonly shutter: number
 
 /** The film's shutter at `filmFps` frames a second: open half a frame (a 180° shutter), seconds. */
 export const paintFilmShutter = (filmFps: number) => 1 / (2 * filmFps);
+
+/** Whether `lens`'s shutter is shut: each frame one instant, nothing smeared along its motion. */
+export const paintCameraShutterShut = (lens: PaintCameraLens) => lens.shutter === 0;
 
 /** A picture plane, `depth` units from the camera at rest: a picture on the stage, held as far as its `extent`. */
 export type PaintCameraPicturePlane = { readonly id: string; readonly depth: number; readonly kind: 'picture'; readonly extent: StampPlaneExtent };
@@ -100,9 +107,22 @@ export const paintCameraPlaneNearest = (plane: PaintCameraPlaneOptions): number 
 /** The farthest depth anything of `plane` lies at. */
 export const paintCameraPlaneFarthest = (plane: PaintCameraPlaneOptions): number => (plane.kind === 'instanced' ? plane.depths.far : plane.depth);
 
+/** The poses some frames of a shot show (each frame's own and its shutter's ends), and `when` they are. */
+export type PaintCameraPoseSpan = { readonly poses: readonly PaintCameraPose[]; readonly when: string };
+
+/**
+ * What the build sampled of the camera over its shot (paint-camera-build.ts): its poses, frame by frame, runs of
+ * frames showing the same poses as one span; and each frame's focus (null with no focus play) and dolly.
+ */
+export type PaintCameraShotSamples = {
+  readonly spans: readonly PaintCameraPoseSpan[];
+  readonly lenses: readonly { readonly focus: PaintCameraFocus | null; readonly dolly: number }[];
+};
+
 /**
  * A camera checked (paint-camera-build.ts): its `stage`, its projection (`fov`, vertical degrees at rest: how deep a
- * three.js world looks, never where a plane lands), its planes farthest first, its lens and its plays.
+ * three.js world looks, never where a plane lands), its planes farthest first, its lens, its plays (`move` the lane
+ * of moves that set the pose, `moveAdds` those adding to it) and the span of scene seconds its shot shows, sampled.
  */
 export type PaintCamera = {
   readonly stage: StampStage;
@@ -111,61 +131,54 @@ export type PaintCamera = {
   readonly lens: PaintCameraLens;
   readonly animationFps: number;
   readonly move: PaintLane<PaintCameraMoveClip>;
+  readonly moveAdds: readonly CompiledPaintPlay<PaintCameraMoveClip>[];
   readonly focus: PaintLane<PaintCameraFocusClip>;
+  readonly span: SceneShownSpan;
+  readonly samples: PaintCameraShotSamples;
 };
 
-function moveKeyProblem({ pan = { x: 0, y: 0 }, dolly = 0, zoom = 1, roll = 0 }: PaintCameraMoveKey): string | null {
-  if (![pan.x, pan.y, dolly, zoom, roll].every(Number.isFinite)) return 'needs finite pan, dolly, zoom and roll';
-  // Rounded as evaluation rounds it; eased values never pass a key's, so positive keys keep every frame's positive.
-  return paintRatioRounded(zoom) > 0 ? null : `zooms to ${zoom}; a zoom must be above 0 (1 at rest) as rounded to a millionth`;
+/** Why `pose`, a move's (`adds` for one that adds), can't be drawn, or null: a part not finite. */
+export function paintCameraMovePoseProblem({ pan = { x: 0, y: 0 }, dolly = 0, zoom = 1, roll = 0 }: PaintCameraMovePose): string | null {
+  return [pan.x, pan.y, dolly, zoom, roll].every(Number.isFinite) ? null : `its pose ${JSON.stringify({ pan, dolly, zoom, roll })} isn't finite`;
 }
 
-const focusKeyProblem = ({ focus, aperture }: PaintCameraFocusKey) =>
-  focus > 0 && Number.isFinite(focus) && aperture >= 0 && Number.isFinite(aperture) ? null : `needs a focus depth above 0 and an aperture of 0 or more, not ${focus} and ${aperture}`;
+/** Why `pose` can't be shown, as evaluation rounds it, or null: a zoom at or below 0. */
+export const paintCameraPoseProblem = ({ zoom }: PaintCameraPose): string | null =>
+  (zoom > 0 ? null : `it zooms to ${zoom}; a zoom must be above 0 (1 at rest) as rounded to a millionth`);
 
-/** Why `clip` can't be played, or null: no keys, times not increasing, numbers not finite, a zoom or focus not above 0. */
-export function paintCameraClipProblem(clip: PaintCameraClip): string | null {
-  if (!clip.keys.length) return 'it has no keys';
-  const keyProblems = clip.kind === 'move' ? clip.keys.map(moveKeyProblem) : clip.keys.map(focusKeyProblem);
-  for (const [i, key] of clip.keys.entries()) {
-    if (!Number.isFinite(key.at)) return `key ${i} is at ${key.at}s, not a finite time`;
-    if (i && !(key.at > clip.keys[i - 1].at)) return `its keys need increasing times; key ${i} is at ${key.at}s after ${clip.keys[i - 1].at}s`;
-    if (keyProblems[i]) return `key ${i} ${keyProblems[i]}`;
-  }
-  return null;
-}
+/** Why `focus` can't be focused, or null: a focus depth at or below 0, a negative aperture, or either not finite. */
+export const paintCameraFocusProblem = ({ focus, aperture }: PaintCameraFocus): string | null =>
+  (focus > 0 && Number.isFinite(focus) && aperture >= 0 && Number.isFinite(aperture) ? null : `it needs a focus depth above 0 and an aperture of 0 or more, not ${focus} and ${aperture}`);
 
-const between = (a: number, b: number, share: number) => a + (b - a) * share;
+/** The move a play sets at clip moment `moment`, its parts as written. */
+const moveValueAt = (clip: PaintCameraMoveClip, moment: PaintMoment): PaintCameraMovePose => presentationValueAt(clip.value, paintClipMoment(moment));
 
-/** The camera's pose time s into a move clip, rounded to the steps keys hold. */
-export function paintCameraMoveAt(clip: PaintCameraMoveClip, time: number): PaintCameraPose {
-  const { from, to, share } = paintKeySpanAt(clip.keys, Math.max(0, time));
-  const a = { ...PAINT_CAMERA_REST, ...clip.keys[from] }, b = { ...PAINT_CAMERA_REST, ...clip.keys[to] };
-  return {
-    pan: { x: paintPxRounded(between(a.pan.x, b.pan.x, share)), y: paintPxRounded(between(a.pan.y, b.pan.y, share)) },
-    dolly: paintRatioRounded(between(a.dolly, b.dolly, share)),
-    zoom: paintRatioRounded(between(a.zoom, b.zoom, share)),
-    roll: paintRatioRounded(between(a.roll, b.roll, share)),
-  };
-}
-
-/** The camera's focus time s into a focus clip, rounded to the steps keys hold. */
-export function paintCameraFocusClipAt(clip: PaintCameraFocusClip, time: number): PaintCameraFocus {
-  const { from, to, share } = paintKeySpanAt(clip.keys, Math.max(0, time));
-  const a = clip.keys[from], b = clip.keys[to];
-  return { focus: paintRatioRounded(between(a.focus, b.focus, share)), aperture: paintPxRounded(between(a.aperture, b.aperture, share)) };
-}
-
-/** Where the camera is at moment `t` (paintMoment): before the first move starts, that move's first key's pose; at rest with no move. */
-export function paintCameraPoseAt(camera: PaintCamera, t: PaintMoment): PaintCameraPose {
+/** The pose under the camera's moves at `t`: the playing move's, rest filling what it leaves out; rest with none. */
+function basePoseAt(camera: PaintCamera, t: PaintMoment): PaintCameraPose {
   const playing = paintLaneClipAt(camera.move, t, camera.animationFps);
-  return playing ? paintCameraMoveAt(playing.play.clip, playing.time) : PAINT_CAMERA_REST;
+  return playing ? { ...PAINT_CAMERA_REST, ...moveValueAt(playing.play.clip, playing.moment) } : PAINT_CAMERA_REST;
 }
 
-/** The camera's focus at moment `t`: before the first focus play starts, its first key's; null, every plane sharp, with none. */
+/**
+ * Where the camera is at moment `t` (paintMoment), rounded to the steps evaluation holds: the move playing then (before
+ * the first starts, its value at its start; at rest with none), plus every move adding then.
+ */
+export function paintCameraPoseAt(camera: PaintCamera, t: PaintMoment): PaintCameraPose {
+  let { pan, dolly, zoom, roll } = basePoseAt(camera, t);
+  for (const add of camera.moveAdds) {
+    const value = moveValueAt(add.clip, paintPlayClipMomentAt(add.clock, t, camera.animationFps));
+    pan = { x: pan.x + (value.pan?.x ?? 0), y: pan.y + (value.pan?.y ?? 0) };
+    dolly += value.dolly ?? 0; zoom += value.zoom ?? 0; roll += value.roll ?? 0;
+  }
+  return { pan: { x: paintPxRounded(pan.x), y: paintPxRounded(pan.y) }, dolly: paintRatioRounded(dolly), zoom: paintRatioRounded(zoom), roll: paintRatioRounded(roll) };
+}
+
+/** The camera's focus at moment `t`, rounded: the focus play then (before the first starts, its start's); null, every plane sharp, with none. */
 export function paintCameraFocusAt(camera: PaintCamera, t: PaintMoment): PaintCameraFocus | null {
   const playing = paintLaneClipAt(camera.focus, t, camera.animationFps);
-  return playing ? paintCameraFocusClipAt(playing.play.clip, playing.time) : null;
+  if (!playing) return null;
+  const { focus, aperture } = presentationValueAt(playing.play.clip.value, paintClipMoment(playing.moment));
+  return { focus: paintRatioRounded(focus), aperture: paintPxRounded(aperture) };
 }
 
 /**
@@ -214,7 +227,7 @@ export function paintCameraDepthLooks(camera: PaintCamera, t: number, exposure: 
   const pose = paintCameraPoseAt(camera, seenAt), lens = paintCameraFocusAt(camera, seenAt), centre = paintStageCentre(camera.stage);
   if (lens && lens.focus - pose.dolly <= PAINT_CAMERA_NEAREST) throw new Error(`paint camera: at ${seenAt.at}s the camera focuses at depth ${lens.focus}, at or behind itself (dollied ${pose.dolly})`);
   // A fast frame is gathered along the camera's motion over the shutter, if it moves; an exposure is its own moment.
-  const { shutter } = camera.lens, opens = shutterOpensAt(t, shutter), opening = !aperture && shutter > 0;
+  const { shutter } = camera.lens, opens = shutterOpensAt(t, shutter), opening = !aperture && !paintCameraShutterShut(camera.lens);
   const openPose = opening ? paintCameraPoseAt(camera, paintMoment(opens, t)) : pose, closePose = opening ? paintCameraPoseAt(camera, paintMoment(opens + shutter, t)) : pose;
   const moving = !paintCameraPosesEqual(openPose, closePose), nearest = Math.max(pose.dolly, openPose.dolly, closePose.dolly);
   const lookAt = (depth: number, name: string): StampPlaneLook => {

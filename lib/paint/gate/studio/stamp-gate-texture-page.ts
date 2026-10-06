@@ -19,6 +19,7 @@ import { loadPaintedThreeSources, type PaintedThreeSourceScene, type PaintedThre
 import { GPU_FULL_FRAME_WGSL, GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { stampGateSheetBrushOf } from '../models/stamp-gate-sheets.ts';
+import { stampGateShotSpan } from '../models/stamp-gate-shot-span.ts';
 import { stampGateDifferenceBox } from '../models/stamp-gate-shots.ts';
 import {
   STAMP_GATE_CYLINDER, STAMP_GATE_PLANE, STAMP_GATE_SHOT_TEXTURE_CASES, STAMP_GATE_TEXEL_PX, STAMP_GATE_TEXTURE_CASES, stampGateSeamSteps, stampGateShotTextureCylinderBox,
@@ -110,7 +111,7 @@ ${GPU_SRGB_WGSL}
 /** Texture baseline `id`'s frame, RGBA bytes: its object seen, and its texture flat. */
 function drawStampGateTextureFrame(id: StampGateTextureId): Promise<Uint8ClampedArray> {
   const drawn = STAMP_GATE_TEXTURE_CASES[id], texture = drawn.texture(), { width, height, fov } = drawn.view;
-  const built = buildPaintCamera({ stage: stampStage({ width, height }), fov, planes: [{ id: SOURCE_ID, depth: 1, kind: 'three' }], lens: { bloom: 0, shutter: 'shut' } });
+  const built = buildPaintCamera({ stage: stampStage({ width, height }), fov, planes: [{ id: SOURCE_ID, depth: 1, kind: 'three' }], lens: { bloom: 0, shutter: 'shut' }, span: stampGateShotSpan([0]) });
   if (!built.ok) throw new Error(`stamp gate: ${id}'s camera: ${built.problems.join('; ')}`);
   return withGateSurface(stampGateTextureFrame(id), stampGateSheetImageUrl, async (surface, frame) => {
     const compiled = compileShotPaintedTextures([texture]);

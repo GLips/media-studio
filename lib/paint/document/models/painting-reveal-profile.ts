@@ -1,18 +1,28 @@
 // painting-reveal-profile.ts: a reveal as a document says it, and as the engine reads it. A field reveal's `profile`
-// is a curve, named as place keys name theirs, saying how its front runs between its base's two values in time; the
-// engine reads it sampled (StampRevealProfile), so the GPU and its twin read one table whatever the curve. The curve
-// comes through the one import below.
+// is a curve, said as a key's curve is (paint-curves.ts), saying how its front runs between its base's two values in
+// time; the engine reads it sampled (StampRevealProfile), so the GPU and its twin read one table whatever the curve.
 
-import { paintEased as revealCurveAt, type PaintEase as RevealCurve } from '#lib/paint/animation/models/paint-motion-clips.ts';
+import { paintCurveProblem, paintCurveTiming, type PaintCurve } from '#lib/paint/animation/models/paint-curves.ts';
 import { stampPaintFieldEnds, type StampSeededPaintField } from '#lib/paint/painting/models/stamp-paint-field.ts';
 import { STAMP_REVEAL_PROFILE_SAMPLES, type StampReveal, type StampRevealProfile, type StampRevealStroke } from '#lib/paint/painting/models/stamp-reveal.ts';
 
 /**
  * How a field reveal's front runs between its base's two values, from the earlier to the later: `'out'` leaves fast
  * and slows into its last texels, `'in'` leaves from rest, `'inOut'` both; `'linear'` (left out) keeps the base's own
- * pace. At a share of its time, the front has come the curve's share of its way.
+ * pace. At a share of its time, the front has come the curve's share of its way. A document is data, so no function;
+ * a spring and a move timed in seconds have no seconds here.
  */
-export type RevealProfile = RevealCurve;
+export type RevealProfile = Exclude<PaintCurve, ((share: number) => number) | { readonly spring: unknown } | { readonly accelerate: number }>;
+
+/** Why `profile` can't run a front, or null. */
+export const paintingRevealProfileProblem = (profile: RevealProfile): string | null => paintCurveProblem(profile, 1);
+
+/** The share of its way `profile`'s front has come at a share of its time. */
+function revealProfileEase(profile: RevealProfile): (share: number) => number {
+  const timing = paintCurveTiming(profile, 1);
+  // SAFETY: a RevealProfile names no spring, the one curve timed apart from an ease.
+  return (timing as Extract<typeof timing, { kind: 'ease' }>).ease;
+}
 
 /** A reveal as a document says it (painting-document.ts' Reveal): the engine's, a field's profile a curve. */
 export type PaintingReveal =
@@ -30,7 +40,7 @@ const CURVE_STEPS = 1024;
  * curve overshooting reaches a texel the first time its front does, so the front never takes paint back.
  */
 function paintingRevealProfileSamples(profile: RevealProfile, forward: boolean): StampRevealProfile {
-  const curve = Array.from({ length: CURVE_STEPS + 1 }, (_, k) => revealCurveAt(profile, k / CURVE_STEPS));
+  const ease = revealProfileEase(profile), curve = Array.from({ length: CURVE_STEPS + 1 }, (_, k) => ease(k / CURVE_STEPS));
   // The share of its time at which the front first comes `way` of its way.
   const reached = (way: number) => {
     const k = curve.findIndex((share) => share >= way);

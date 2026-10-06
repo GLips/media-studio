@@ -39,6 +39,7 @@ const pond = painting({
  */
 const { shot } = compilePaintedShot({
   camera: { stage: stampStage({ width: 320, height: 240 }, 2), fov: 35, lens: { bloom: 0, shutter: SHUTTER }, plays: [], animationFps: FPS },
+  span: { from: 0, to: 4, fps: FPS },
   planes: [
     { id: 'back', depth: 4, source: layersOf(pond, ['sky']) }, { id: 'mist', depth: 3, source: layersOf(pond, ['mist']) },
     { id: 'birds', depth: 2, source: layersOf(pond, ['birds']) }, { id: 'card', depth: 1, source: layersOf(pond, ['swallow'], { ground: 'paper' }) },

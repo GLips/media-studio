@@ -10,8 +10,9 @@ import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
 import { painting, type PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
-import type { PaintedShotProps, PlaneInstance, PlaneProps } from '#lib/paint/shot/models/shot-props.ts';
+import type { PlaneInstance, PlaneProps } from '#lib/paint/shot/models/shot-props.ts';
 import { stampGateHeronLayer, stampGateHeronPaper, stampGateHeronPolygon } from './stamp-gate-paper-heron.ts';
+import type { StampGateShot } from './stamp-gate-shot-span.ts';
 
 const { yellowOchre, burntUmber, ultramarine, cerulean } = WATERCOLOUR_PIGMENTS;
 
@@ -82,11 +83,11 @@ export function stampGateRainAt(at: number): PlaneInstance[] {
 
 /** The camera focused on the street, its aperture `aperture`. */
 const focusOnStreet = (aperture: number): PaintCameraPlay => ({
-  clip: { kind: 'focus', keys: [{ at: 0, focus: STAMP_GATE_RAIN_DEPTHS.street, aperture }] }, clock: { at: 0 }, origin: 'the camera focuses on the street',
+  clip: { kind: 'focus', value: { focus: STAMP_GATE_RAIN_DEPTHS.street, aperture } }, clock: { at: 0 }, origin: 'the camera focuses on the street',
 });
 
 /** A shot of the street and `rain`, still, its lens's `shutter` as given; `post` puts the post between the rain's depths. */
-function streetShot(rain: (at: number) => readonly PlaneInstance[], { shutter, post, plays }: { shutter: PaintCameraShutter; post: boolean; plays: readonly PaintCameraPlay[] }): PaintedShotProps {
+function streetShot(rain: (at: number) => readonly PlaneInstance[], { shutter, post, plays }: { shutter: PaintCameraShutter; post: boolean; plays: readonly PaintCameraPlay[] }): StampGateShot {
   const evaluation = painting(STAMP_GATE_RAIN_PAINTING);
   return {
     camera: { stage: stampStage(RAIN_FRAME, RAIN_MARGIN), fov: 35, lens: { bloom: 0, shutter }, plays },
@@ -99,7 +100,7 @@ function streetShot(rain: (at: number) => readonly PlaneInstance[], { shutter, p
 }
 
 /** The rain falling over the street, past the post, focused on the street. */
-export const stampGateRainShot = (): PaintedShotProps => streetShot(stampGateRainAt, { shutter: STAMP_GATE_RAIN.shutter, post: true, plays: [focusOnStreet(1.5)] });
+export const stampGateRainShot = (): StampGateShot => streetShot(stampGateRainAt, { shutter: STAMP_GATE_RAIN.shutter, post: true, plays: [focusOnStreet(1.5)] });
 
 /** Where the lone drop is at scene second `at`: falling at depth 1.5 down column 60, at 60 px at STAMP_GATE_LONE_DROP_AT. */
 export const STAMP_GATE_LONE_DROP_AT = 0.125;
@@ -110,7 +111,7 @@ const loneDropY = (at: number) => 60 + STAMP_GATE_RAIN.speed * (at - STAMP_GATE_
  * its blur reaching past its document's top; `blurred` shutter open, one key for its fall; `recycled` open, keyed anew
  * each millisecond, so no key spans the shutter.
  */
-export function stampGateLoneDropShot(kind: 'none' | 'sharp' | 'defocused' | 'blurred' | 'recycled'): PaintedShotProps {
+export function stampGateLoneDropShot(kind: 'none' | 'sharp' | 'defocused' | 'blurred' | 'recycled'): StampGateShot {
   const rain = (at: number) => (kind === 'none' ? [] : [dropAt(kind === 'recycled' ? `drop-${Math.round(at * 1000)}` : 'drop', 60, loneDropY(at), 1.5)]);
   const shut = kind === 'sharp' || kind === 'defocused';
   return streetShot(rain, { shutter: shut ? 'shut' : STAMP_GATE_RAIN.shutter, post: false, plays: kind === 'defocused' ? [focusOnStreet(3)] : [] });
@@ -129,13 +130,12 @@ export const STAMP_GATE_SLIDING_POST = { speed: 1200, at: 0.5, span: 30 } as con
  * The street under a still camera, the post sliding across it: `film`, the shot's lens leaving out its shutter, so it
  * takes the film's; `shut`; `still`, the post standing where it's painted, the film's shutter open; `none`, no post.
  */
-export function stampGateSlidingPostShot(kind: 'none' | 'still' | 'shut' | 'film'): PaintedShotProps {
+export function stampGateSlidingPostShot(kind: 'none' | 'still' | 'shut' | 'film'): StampGateShot {
   const evaluation = painting(STAMP_GATE_RAIN_PAINTING), { speed, at, span } = STAMP_GATE_SLIDING_POST;
   const slid = (seen: number) => Math.max(-span, Math.min(span, speed * (seen - at)));
   const post = { id: 'post', depth: STAMP_GATE_RAIN_DEPTHS.post, source: layersOf(evaluation, ['post']) };
   const sliding: PlaneProps = {
     ...post, lay: ({ at: seen }) => ({ placement: { x: slid(seen), y: 0, rotation: 0, scale: 1 }, pivot: { x: 0, y: 0 } }),
-    reach: { x0: 0, y0: 0, x1: RAIN_FRAME.width, y1: RAIN_FRAME.height },
   };
   return {
     camera: { stage: stampStage(RAIN_FRAME, RAIN_MARGIN), fov: 35, lens: kind === 'shut' ? { bloom: 0, shutter: 'shut' } : { bloom: 0 } },

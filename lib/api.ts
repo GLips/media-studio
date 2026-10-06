@@ -64,6 +64,7 @@ export { defineVideo, videoFormatOf, type ScenePrevis, type VideoSound } from '#
 export type { LineSpan, SceneClock } from '#lib/timing/timeline/models/video-layout.ts';
 export { sceneForTimelineClock } from '#lib/picture/video/studio/timeline-scene.tsx';
 export { sceneCueSeconds } from '#lib/timing/timeline/models/scene-cue-seconds.ts';
+export { sceneSecondsOf, type SceneClockSeconds, type SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
 export type { SceneRung } from '#lib/timing/timeline/models/scene-rung.ts';
 export { blockingScene } from '#lib/footage/previs/studio/blocking-scene.tsx';
 export { SFX, Sfx, SfxCueListAudio, SfxCueListPlaying, type SfxCueSound, type SfxSound } from '#lib/timing/sound/studio/sfx.tsx';
@@ -116,8 +117,12 @@ export { svgFigureShapes, svgPathRegions, type SvgPathFigure, type SvgPathPlacem
 export { buildPaintMotion, type PaintMotionBuild } from '#lib/paint/animation/models/paint-motion.ts';
 export { paintMotionPlay, type PaintBoilMarks, type PaintLivePose, type PaintLivePoser, type PaintMarks, type PaintMotion, type PaintMotionNode, type PaintMotionPlay } from '#lib/paint/animation/models/paint-motion-compile.ts';
 export { paintMotionFrameAt } from '#lib/paint/animation/models/paint-motion-frame.ts';
-export { paintIdHash, paintIdPhase, type PaintEase, type PaintMotionClip, type PaintPose, type PaintPoseClip } from '#lib/paint/animation/models/paint-motion-clips.ts';
-export type { PaintPartPin, PaintPin, PaintPinMove, PaintPinRig, PaintRadialPin } from '#lib/paint/animation/models/paint-pins.ts';
+export { paintIdHash, paintIdPhase, type PaintMotionClip, type PaintPlaceClip, type PaintPose, type PaintPoseClip } from '#lib/paint/animation/models/paint-motion-clips.ts';
+export type { PaintPartPin, PaintPin, PaintPinRig, PaintPlacementMove, PaintRadialPin } from '#lib/paint/animation/models/paint-pins.ts';
+// Values in time (docs/painting-authoring.md, Composition: Values in time): a constant or a function of the moment, keyed with curves.
+export { presentationValueAt, type PaintKeyed, type PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
+export { paintKeyed, paintKeyedAccent, paintKeyedHit, type PaintKey, type PaintKeyedOptions } from '#lib/paint/animation/models/paint-keyed.ts';
+export type { PaintCurve } from '#lib/paint/animation/models/paint-curves.ts';
 export { type PaintNodeClock, type PaintPlayClock, type PaintPlayLoop } from '#lib/paint/animation/models/paint-clock.ts';
 export { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
 // Pigment paint: a style that paints in pigment names its medium and pigments; a deposit lays a colour or a mixture.
@@ -143,7 +148,7 @@ export { layersOf, type LayerSelection, type SelectionGround } from '#lib/paint/
 export { bracket, dissolve, type Dissolve, type PaintedSource } from '#lib/paint/shot/models/shot-selection.ts';
 export type {
   CoverFrame, InstancedPlaneProps, OccurrenceKey, OccurrenceMotionNode, OccurrenceRig, PaintedShotProps, PaintedTexture, PictureSource, PinPoint, PlaneInstance,
-  PlaneLay, PlaneMask, PlaneProps, PresentationValue, RigPart, RigPartPose, ScreenPin, ThreeSource,
+  PlaneLay, PlaneMask, PlaneProps, RigPart, RigPartPose, ScreenPin, ThreeSource,
 } from '#lib/paint/shot/models/shot-props.ts';
 export type { PaintShotCamera, PaintShotLens } from '#lib/paint/animation/models/paint-camera-build.ts';
 export { PaintedShot, PaintedShotCanvas } from '#lib/paint/shot/studio/painted-shot.tsx';

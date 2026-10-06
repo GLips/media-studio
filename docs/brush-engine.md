@@ -428,15 +428,17 @@ an error. A frame held on twos gives every group the keys it had, so it repaints
   which three.js fills (`painted-three-sources.ts`: `loadPaintedThreeSources` over painted textures supplied as
   handles with a hook drawing them each frame, a shot's by `createShotPaintedTextures`, `loadPaintedThree` supplying
   them from old renderers) and any other renderer can. A painted plane's picture doesn't depend on the camera and is kept on the device while
-  its groups hold. The camera is one description: its plays, if any (none: at rest, every plane sharp), key `move`
-  (pan, dolly, zoom, roll) and `focus` (focus depth, aperture), plus `fov` and a lens with one `bloom` and its `shutter`, seconds open or `'shut'` (built as 0 s; a shot leaving it out takes `paintFilmShutter`, half its film's frame). `paintCameraLensAt` gives each plane's view (a
+  its groups hold. The camera is one description: its plays, if any (none: at rest, every plane sharp), set `move`
+  (pan, dolly, zoom, roll), with moves that add to it (`blend: 'add'`), and `focus` (focus depth, aperture), each a
+  value in time (`paint-value.ts`, keyed by `paint-keyed.ts`), plus `fov` and a lens with one `bloom` and its `shutter`, seconds open or `'shut'` (built as 0 s; a shot leaving it out takes `paintFilmShutter`, half its film's frame). `paintCameraLensAt` gives each plane's view (a
   similarity) and defocus (a thin lens's circle of confusion, as gaussian sigma) at a time, through
   `paintCameraDepthLooks`, which gives them at any depth, as each instanced item takes them; an instanced plane is
-  built by its depths alone, its nearest held from the camera and magnified most. The build proves every
-  plane's extent over the whole shot, not at sampled times: the back everywhere the frame looks; a nearer plane where
-  its groups' paint can be laid (`paint-motion-reach.ts`: the painted box grown by the most each step of the
-  `motion` it's given and the recipe's own motion can move it), or everywhere the frame looks once a group's marks
-  are live or re-seeded. A frame state from anything but that `motion` isn't covered. What the frame reads of a
+  built by its depths alone, its nearest held from the camera and magnified most. The build checks every plane's
+  extent at each moment its shot's span draws (`paint-span-moments.ts`: each frame and its shutter's ends), with a
+  pixel of slack for what moves between them: the back everywhere the frame looks; a nearer plane where its groups'
+  paint can be laid (`paint-motion-reach.ts`: the painted box grown by the most each step of the `motion` it's given
+  and the recipe's own motion moves it at those moments), or everywhere the frame looks once a group's marks are live
+  or re-seeded. A frame state from anything but that `motion` isn't covered. What the frame reads of a
   plane, the plane px it shows and how far past them its defocus reaches (3 sigma + 2 px, 0 while sharp), it gives
   span by span over the shot (`paintCameraShotReads`) or at a frame's moments (`paintCameraFrameReads`), for a shot to
   hold its back's painting to. It reports each plane's greatest magnification and names bad planes. `buildPaintingCamera` lays the scene's planes once
@@ -579,7 +581,8 @@ shot's element, fills it, no wrapper between them transformed, filtered or conta
 shot making a stacking context, which would multiply it over that group alone; and where each pinned element (its
 `data-pin` named by the pin) lies. `shot-compile.ts` checks the props as they load, every problem at once: planes far
 to near, each painted plane's occurrences from its first evaluation (read through its `sourceClock`), the rigs,
-visibility, motion and masks over them, and the camera built over each plane's reach (`shot-reach.ts`). A plane laid on the
+visibility, motion and masks over them, and the camera built over each plane's reach (`shot-reach.ts`), every value
+sampled over the shot's span; then it warns of motion that may read badly there (`shot-motion-warnings.ts`). A plane laid on the
 frame is unchecked in that build and laid through the built camera after it, the inverse of its plane view at the
 lay's `at` (`paintPlaneViewAt`, `shotScreenLaid` in `shot-placement.ts`), then checked by the build's own rule
 (`paintCameraPictureProblem`): a cover once, as the shot compiles; a pin each frame, from its elements' centres as

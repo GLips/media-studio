@@ -6,6 +6,7 @@
 import type { PaintShotCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
 import type { PaintNodeClock } from '#lib/paint/animation/models/paint-clock.ts';
 import type { PaintBoilMarks, PaintMotionNode, PaintMotionPlay } from '#lib/paint/animation/models/paint-motion-compile.ts';
+import type { PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
 import type { NodeKey } from '#lib/paint/document/models/painting-document.ts';
 import type { PaintMoment, StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampPictureAt, StampPlaneExtent } from '#lib/paint/painting/models/stamp-plane.ts';
@@ -13,6 +14,7 @@ import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-regi
 import type { PaintRigCutDeclaration } from '#lib/paint/rig/models/paint-rig-cuts.ts';
 import type { PaintRigPartMove } from '#lib/paint/rig/models/paint-rig-pose.ts';
 import type { PaintedThreeSource } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
+import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
 import type { PaintedSource } from './shot-selection.ts';
 
 /** The engine's picture plane source: a picture handed in at each moment, held within `extent`. */
@@ -25,15 +27,6 @@ export type PictureSource = { readonly kind: 'picture'; readonly extent: StampPl
 export type ThreeSource = { readonly kind: 'three'; readonly build: PaintedThreeSource['build'] };
 
 // ---- planes --------------------------------------------------------------------------------------------------------
-
-/** A constant, or read per exposure at its moment: `at` the scene second seen, `frame` the frame shown. */
-export type PresentationValue<T> = T | ((moment: PaintMoment) => T);
-
-/** `value` at `moment`: a constant as it is, a callback called. */
-export function shotPresentationAt<T>(value: PresentationValue<T>, moment: PaintMoment): T {
-  // SAFETY: every T a shot presents (a source, a number, a rig's pose) is data, so a function is only ever the callback.
-  return typeof value === 'function' ? (value as (moment: PaintMoment) => T)(moment) : value;
-}
 
 /**
  * A drawable's name for motion, visibility, rigs and masks: a plane's id, or `<plane id>/<layer or group key>` for
@@ -69,14 +62,11 @@ export type ScreenPin = { readonly kind: 'pin'; readonly points: readonly [PinPo
 export type CoverFrame = { readonly kind: 'cover'; readonly box: StampBox; readonly at?: number };
 
 /**
- * Where a whole plane lies, in frame px. Left out, document px are frame px. A callback may state `reach`, the stage
- * box its paint stays within; without one the camera checks the plane as reaching everywhere. A pin or cover lays a
- * painted plane on the frame through the camera, checked where it lies once laid.
+ * Where a whole painted plane lies, document px to plane px (left out, they're one): a lay, or a value of the plane's
+ * moment, sampled at the shot's moments for where its paint can reach. A pin or cover lays it on the frame through
+ * the camera, checked where it lies once laid.
  */
-export type PlaneLay =
-  | { readonly lay?: StampGroupLay; readonly reach?: never }
-  | { readonly lay: (moment: PaintMoment) => StampGroupLay; readonly reach?: StampBox }
-  | { readonly lay: ScreenPin | CoverFrame; readonly reach?: never };
+export type PlaneLay = PresentationValue<StampGroupLay> | ScreenPin | CoverFrame;
 
 type PlaneCommon = {
   readonly id: string;
@@ -98,8 +88,9 @@ type PlaneCommon = {
  * `pictureAt`, a three scene's `poseAt`. `{ hold: 6 }` repaints on sixes while `clock` runs on. Both start from the
  * frame's moment.
  */
-export type PlaneProps = PlaneCommon & PlaneLay & {
+export type PlaneProps = PlaneCommon & {
   readonly kind?: undefined;
+  readonly lay?: PlaneLay;
   readonly depth: number;
   readonly masks?: readonly PlaneMask[];
   readonly source: PresentationValue<PaintedSource> | PictureSource | ThreeSource;
@@ -160,12 +151,14 @@ export type OccurrenceMotionNode = Omit<PaintMotionNode, 'parent' | 'marks'> & {
 export type PaintedTexture = { readonly id: string; readonly source: PresentationValue<PaintedSource>; readonly widthPx: number; readonly heightPx: number };
 
 /**
- * A shot: the paint camera (its stage frame is the canvas's pixels), planes in any order, motion over occurrences (node
- * ids are OccurrenceKeys), visibility 0..1 (shot-visibility.ts) and rigs by occurrence. `warm`: the render frames in
- * `from..to`, their films solved before the first shows.
+ * A shot: the paint camera (its stage frame is the canvas's pixels), planes in any order, motion over occurrences,
+ * visibility 0..1 and rigs by occurrence. `span`: the scene seconds its frames show (sceneSecondsOf(clock).span),
+ * where every value is sampled for checks and warnings. `warm`: the render frames in `from..to`, their films solved
+ * before the first shows.
  */
 export type PaintedShotProps = {
   readonly camera: PaintShotCamera;
+  readonly span: SceneShownSpan;
   readonly planes: readonly (PlaneProps | InstancedPlaneProps)[];
   readonly motion?: { readonly nodes: readonly OccurrenceMotionNode[]; readonly plays?: readonly PaintMotionPlay[] };
   readonly visibility?: Readonly<Record<OccurrenceKey, PresentationValue<number>>>;

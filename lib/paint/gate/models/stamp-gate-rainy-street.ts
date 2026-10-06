@@ -5,7 +5,8 @@
 // lamp and ramps are tables by scene second, so a baseline's inputs name them.
 
 import { paintCameraPlay } from '#lib/paint/animation/models/paint-camera.ts';
-import type { PaintPlaceClip } from '#lib/paint/animation/models/paint-motion-clips.ts';
+import { paintKeyed } from '#lib/paint/animation/models/paint-keyed.ts';
+import type { PaintPlacementMove } from '#lib/paint/animation/models/paint-pins.ts';
 import { paintingSelectedLayers } from '#lib/paint/document/models/painting-document-compile.ts';
 import type { Application, Layer, LayerNode, Mix, PaintingDocument, Region } from '#lib/paint/document/models/painting-document.ts';
 import { paintingEvaluationDiff } from '#lib/paint/document/models/painting-evaluation-diff.ts';
@@ -16,12 +17,12 @@ import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercol
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
-import type { PaintedShotProps } from '#lib/paint/shot/models/shot-props.ts';
 import { dissolve } from '#lib/paint/shot/models/shot-selection.ts';
 import { motionCurves, seg } from '#lib/picture/motion/models/motion.ts';
 import { stampGateHeronPolygon } from './stamp-gate-paper-heron.ts';
 import { STAMP_GATE_RAIN, STAMP_GATE_RAIN_DEPTHS, STAMP_GATE_RAIN_PAINTING, stampGateRainAt } from './stamp-gate-rain.ts';
 import { STAMP_GATE_EARTH_MIX, STAMP_GATE_POOL_MIX, STAMP_GATE_ROUND_REF, STAMP_GATE_SHEET_PAPER, stampGateLine, stampGateRectangle, stampGateSheetBrushOf } from './stamp-gate-sheets.ts';
+import type { StampGateShot } from './stamp-gate-shot-span.ts';
 
 const { yellowOchre, quinacridoneRose, ultramarine, burntUmber, hansaYellow } = WATERCOLOUR_PIGMENTS;
 const brush = STAMP_GATE_ROUND_REF;
@@ -149,7 +150,7 @@ export const STAMP_GATE_RAINY_STREET_WARM = { from: 1.5, to: 1.7 } as const;
  * The walker's place keys, scene seconds: a px a frame to 1 s; still; a step forward and back on frames 24 to 26; still
  * through the warm span; then on across the puddle.
  */
-const WALK: PaintPlaceClip['keys'] = [
+const WALK: readonly ({ readonly at: number } & PaintPlacementMove)[] = [
   { at: 0, x: 0, y: 0 }, { at: 1, x: 24, y: 0 }, { at: midFrame(24), x: 24, y: 0 }, { at: midFrame(25), x: 27, y: 0 }, { at: midFrame(26), x: 24, y: 0 },
   { at: 1.75, x: 24, y: 0 }, { at: 4, x: 60, y: 0 },
 ];
@@ -179,14 +180,14 @@ export const STAMP_GATE_RAINY_STREET_PRESENTATION = { walk: WALK, lampOn: LAMP_O
  * lit at LAMP_ON; the reflection cut to the puddle, fading in; the rain; the walker placed by WALK; the camera pushing
  * in, focused on the street, its shutter open as the rain's.
  */
-export function stampGateRainyStreetShot(): PaintedShotProps {
+export function stampGateRainyStreetShot(): StampGateShot {
   const dusk = painting(STAMP_GATE_PUDDLED_STREET), night = painting(STAMP_GATE_PUDDLED_STREET, { night: true });
   return {
     camera: {
       stage: stampStage(STREET, STREET_MARGIN), fov: 35, lens: { bloom: 0, shutter: STAMP_GATE_RAIN.shutter },
       plays: [
-        paintCameraPlay({ kind: 'move', keys: [{ at: 0, dolly: 0 }, { at: RAMPS.push.to, dolly: RAMPS.push.dolly }] }, { clock: { at: 0 }, origin: 'the camera pushes in' }),
-        paintCameraPlay({ kind: 'focus', keys: [{ at: 0, focus: DEPTHS.street, aperture: 1.5 }] }, { clock: { at: 0 }, origin: 'the camera focuses on the street' }),
+        paintCameraPlay({ kind: 'move', value: paintKeyed([{ at: 0, value: { dolly: 0 } }, { at: RAMPS.push.to, value: { dolly: RAMPS.push.dolly } }]) }, { clock: { at: 0 }, origin: 'the camera pushes in' }),
+        paintCameraPlay({ kind: 'focus', value: { focus: DEPTHS.street, aperture: 1.5 } }, { clock: { at: 0 }, origin: 'the camera focuses on the street' }),
       ],
     },
     planes: [
@@ -200,7 +201,7 @@ export function stampGateRainyStreetShot(): PaintedShotProps {
     ],
     motion: {
       nodes: [{ id: 'street/walker' }],
-      plays: [{ target: 'street/walker', clip: { kind: 'place', keys: WALK }, clock: { at: 0 }, origin: 'the walker crosses the puddle' }],
+      plays: [{ target: 'street/walker', clip: { kind: 'place', value: paintKeyed(WALK.map(({ at, ...value }) => ({ at, value }))) }, clock: { at: 0 }, origin: 'the walker crosses the puddle' }],
     },
     visibility: { reflection: ({ at }) => seg(at, RAMPS.reflection.from, RAMPS.reflection.to, motionCurves.linear) },
   };

@@ -17,9 +17,10 @@ import {
   STAMP_GATE_LONE_DROP_AT, STAMP_GATE_LONE_DROP_TRAVEL, STAMP_GATE_RAIN, STAMP_GATE_SLIDING_POST, stampGateLoneDropShot, stampGateRainShot, stampGateSlidingPostShot,
 } from '../models/stamp-gate-rain.ts';
 import { STAMP_GATE_FAR_SHALLOWS } from '../models/stamp-gate-sheets.ts';
+import { STAMP_GATE_SHOT_FPS } from '../models/stamp-gate-shot-span.ts';
 import {
   STAMP_GATE_DISSOLVE_AT, STAMP_GATE_HERON_BOIL_AT, STAMP_GATE_HERON_NECKS, STAMP_GATE_HIDDEN_FOOT_AT, STAMP_GATE_PAINTING_IN_AT, STAMP_GATE_RIGGED_DISSOLVE_AT,
-  STAMP_GATE_RIGGED_HERON_AT, STAMP_GATE_SHOT_FPS, STAMP_GATE_WARM, STAMP_GATE_WARMED_AT, STAMP_GATE_WET_CONTACT_AT, stampGateBoilingHeronShot, stampGateDifferenceBox, stampGateDissolveShot,
+  STAMP_GATE_RIGGED_HERON_AT, STAMP_GATE_WARM, STAMP_GATE_WARMED_AT, STAMP_GATE_WET_CONTACT_AT, stampGateBoilingHeronShot, stampGateDifferenceBox, stampGateDissolveShot,
   stampGateFadeBetween, stampGateFadeLiesBetween, stampGateHiddenFootShot, stampGateReedSwung, stampGateRiggedDissolveShot, stampGateRiggedDissolveSources,
   stampGateRiggedHeronShot, stampGateRiggedHeronWindows, stampGateShallowsAloneShot, stampGateShotBaseline, stampGateWarmShot, stampGateWetContactPaintingInShot,
   stampGateWetContactShot, type StampGateShotCaseId, type StampGateShotId,

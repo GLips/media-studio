@@ -5,6 +5,7 @@
 // at rest, panned, or panning. What the checks measure of their frames is here.
 
 import { paintShotViewAt } from '#lib/paint/animation/models/paint-camera-depths.ts';
+import { paintKeyed } from '#lib/paint/animation/models/paint-keyed.ts';
 import { PAINT_CAMERA_REST, paintCameraPlay, paintPlaneSimilarity, paintStageCentre } from '#lib/paint/animation/models/paint-camera.ts';
 import { paintSimilarityApply, paintSimilarityBox, paintSimilarityInverse, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
@@ -16,10 +17,11 @@ import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-
 import type { StampPictureRgba } from '#lib/paint/painting/models/stamp-plane.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
-import type { InstancedPlaneProps, PaintedShotProps, PlaneInstance, PlaneProps, ThreeSource } from '#lib/paint/shot/models/shot-props.ts';
+import type { InstancedPlaneProps, PlaneInstance, PlaneProps, ThreeSource } from '#lib/paint/shot/models/shot-props.ts';
 import { dissolve } from '#lib/paint/shot/models/shot-selection.ts';
 import { stampGateTexelDiffers } from './stamp-gate-frames.ts';
 import { STAMP_GATE_HERON_VANE, stampGateHeronLayer, stampGateHeronPolygon, stampGateInsidePolygon, stampGatePaperHeronDocument } from './stamp-gate-paper-heron.ts';
+import { stampGateShotSpan, type StampGateShot } from './stamp-gate-shot-span.ts';
 
 /**
  * The masked shot's cases: its alphaOf masks'; a painted plane's alphaOf of another, over frames as its heron is
@@ -118,7 +120,7 @@ export type StampGateMaskedShot = {
 };
 
 /** The gate's masked shot as `shown` says, on the tinted heron's sheet. */
-export function stampGateMaskedShot({ heron, disc, discVisibility, discHold, tint, tintDepth = 1, pan = 0, panOver }: StampGateMaskedShot): PaintedShotProps {
+export function stampGateMaskedShot({ heron, disc, discVisibility, discHold, tint, tintDepth = 1, pan = 0, panOver }: StampGateMaskedShot): StampGateShot {
   const stage = stageFor(pan), evaluation = painting(STAMP_GATE_TINTED_HERON), revealed = painting(STAMP_GATE_TINTED_HERON, { revealed: true });
   const planes: (PlaneProps | InstancedPlaneProps)[] = [{ id: 'pond', depth: POND_DEPTH, source: layersOf(evaluation, ['water']), ...(pan > 0 && { lay: pondLay(pan) }) }];
   if (heron === 'revealed') planes.push({ id: 'heron', depth: 2, source: ({ at }) => layersOf(revealed, ['heron'], { at }) });
@@ -136,8 +138,9 @@ export function stampGateMaskedShot({ heron, disc, discVisibility, discHold, tin
   const read = { wing: 'heron/wing', 'not wing': 'heron/wing', heron: 'heron/heron', disc: 'disc' } as const, tinted = { id: 'tint', depth: tintDepth, source: layersOf(evaluation, ['tint']) };
   if (tint === 'uncut') planes.push(tinted);
   else if (tint !== 'none') planes.push({ ...tinted, masks: [{ kind: 'alphaOf', drawable: read[tint], invert: tint === 'not wing' }] });
-  const panned = { pan: { x: pan, y: 0 } }, keys = panOver ? [{ at: 0 }, { at: panOver, ...panned }] : [{ at: 0, ...panned }];
-  const plays = pan ? [paintCameraPlay({ kind: 'move', keys }, { clock: { at: 0 }, origin: 'pan' })] : [];
+  const panned = { pan: { x: pan, y: 0 } };
+  const move = panOver ? paintKeyed([{ at: 0, value: { pan: { x: 0, y: 0 } } }, { at: panOver, value: panned }]) : panned;
+  const plays = pan ? [paintCameraPlay({ kind: 'move', value: move }, { clock: { at: 0 }, origin: 'pan' })] : [];
   return {
     camera: { stage, fov: 35, lens: { bloom: 0, shutter: 'shut' }, plays },
     planes,
@@ -188,7 +191,7 @@ export const STAMP_GATE_MASKS_WING: StampBox = { x0: 90, y0: 12, x1: 184, y1: 78
 export const stampGateWellInsideVane = (p: StampPoint) => stampGateInsidePolygon(p, STAMP_GATE_HERON_VANE, 5);
 
 /** How the masked shot `shown`'s own camera shows a plane at `depth` at scene second `at`, plane px to frame px. */
-export const stampGateMaskedView = (shown: StampGateMaskedShot, depth: number, at: number): PaintSimilarity => paintShotViewAt(stampGateMaskedShot(shown).camera, depth, paintMoment(at));
+export const stampGateMaskedView = (shown: StampGateMaskedShot, depth: number, at: number): PaintSimilarity => paintShotViewAt(stampGateMaskedShot(shown).camera, stampGateShotSpan([at]), depth, paintMoment(at));
 
 /**
  * How frame `cut` (the tint cut by a mask) differs from `bare` (no tint), RGB bytes `width` px wide, the heron's

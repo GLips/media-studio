@@ -13,7 +13,7 @@ import { useDelayRender } from 'remotion';
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { BrushRef } from '#lib/paint/document/models/painting-document.ts';
 import type { PaintingBrushOf } from '#lib/paint/document/models/painting-deposit-compile.ts';
-import { paintingProblemsError, paintingProblemText } from '#lib/paint/document/models/painting-problem.ts';
+import { paintingProblem, paintingProblemsError, paintingProblemText, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import { createStampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { createStampPaintGpuOwner, type StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import type { ResolvedStampPaintStyle } from '#lib/paint/style/models/style.ts';
@@ -29,6 +29,7 @@ import { useFrameCosts, type FrameCostsReport } from '#lib/picture/profiling/stu
 import { useSceneOrNull } from '#lib/picture/video/studio/scene.tsx';
 import { logRenderPageLine } from '#lib/platform/browser/studio/render-page-log.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
+import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
 import { compilePaintedShot, shotCanvasLayings } from '../models/shot-compile.ts';
 import { SHOT_FRAME_COSTS_LABEL, SHOT_WARM_COSTS_LABEL, shotCostsProfileEntry } from '../models/shot-cost-report.ts';
 import { shotWatchName, type ShotWatchName } from '../models/shot-progress.ts';
@@ -202,6 +203,19 @@ type PaintedShotLoadContext = {
 };
 
 /**
+ * Why a shot's `span` isn't the one it's drawn over: a frame rate other than the composition's `fps`, or, in a scene
+ * `sceneDur` s long, not covering its frames from its cut to its end.
+ */
+function shotSpanProblems(span: SceneShownSpan, fps: number, sceneDur: number | null): PaintingProblem[] {
+  const problems: PaintingProblem[] = [], error = (message: string) => problems.push(paintingProblem('error', 'shot', 'span', message));
+  if (span.fps !== fps) error(`is sampled at ${span.fps} fps, and the composition runs at ${fps}: give it its scene's span, sceneSecondsOf(clock).span`);
+  if (sceneDur !== null && !(span.from <= 1e-9 && span.to >= sceneDur - 1e-9)) {
+    error(`runs from ${span.from} s to ${span.to} s, and its scene shows 0 s to ${sceneDur} s at least: give it its scene's span, sceneSecondsOf(clock).span`);
+  }
+  return problems;
+}
+
+/**
  * `props` checked against `names` (its PaintedShotCanvases' names; none when it draws in its own) and its page, once
  * laid out; loaded on a device owner of its own over `canvases`, each laid as shotCanvasLayings says, its warm span
  * solved. Refuses every problem at once. Without the picture, only checked.
@@ -224,8 +238,13 @@ function loadPaintedShotScene(props: PaintedShotProps, canvases: readonly ShotCa
     await whenLaidOut(holder);
     const { shot, problems } = compilePaintedShot(props, names, fps, { htmlBehind: shotHtmlBehind(holder, canvases[0]) });
     const layings = shot ? shotCanvasLayings(shot) : [];
-    const placed = [...shotCanvasFillProblems(holder, canvases, names), ...shotGlazeIsolationProblems(holder, canvases, names, layings)];
+    const placed = [...shotCanvasFillProblems(holder, canvases, names), ...shotGlazeIsolationProblems(holder, canvases, names, layings), ...shotSpanProblems(props.span, fps, sceneDur)];
     if (!shot || placed.length) throw paintingProblemsError('shot', [...placed, ...problems]);
+    // Said in every render: what the shot's motion may read badly as, beside a shot that draws.
+    for (const warning of problems.filter(({ severity }) => severity === 'warning')) {
+      costs.warned(paintingProblemText(warning));
+      logRenderPageLine(`${name.line}: ${paintingProblemText(warning)}`);
+    }
     if (!disposed) page = createShotPageWatch(holder, canvases, names, shot, pinsMoved);
     if (!pictureDrawn) return;
     const made = await createStampPaintGpuOwner(stampPaintAssetUrl);

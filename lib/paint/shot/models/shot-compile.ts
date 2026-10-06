@@ -1,32 +1,34 @@
 // shot-compile.ts: a PaintedShot's props checked and compiled as it loads (ENGINE 6.1): planes far to near, each on
-// its canvas; each painted plane's occurrences from its first evaluation, at moment 0 through its source clock; each
-// instanced plane's variants (shot-instances.ts); the rigs, visibility, motion, masks and warm over them; the camera
-// built over each plane's reach; the painted textures its three sources read (shot-painted-texture-compile.ts). Every
-// problem is found before any is thrown. Covers are laid through the built camera, pins each frame (shot-placement.ts).
+// its canvas; painted planes' occurrences from their first evaluation, at moment 0; instanced planes' variants; the
+// rigs, visibility, motion, masks and warm over them; the camera built over each plane's reach; the painted textures
+// three sources read. Every problem is found before any is thrown. Values in time are sampled at the moments its
+// span draws (paint-span-moments.ts), for its reach and its motion's warnings (shot-motion-warnings.ts).
 //
 // Negative space: refused are visibility on the opaque back, a lay on a picture or three plane, an alphaOf inside a
 // pieces rig, and a dissolve end cutting a rigged group otherwise than its rig does (shotPlaneRigEndProblems).
 
-import { buildPaintCamera, paintShotCameraOptions } from '#lib/paint/animation/models/paint-camera-build.ts';
+import { buildPaintCamera, paintCameraLensBuilt, paintShotCameraOptions } from '#lib/paint/animation/models/paint-camera-build.ts';
 import type { PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
 import { paintNodeClockProblem, paintNodeClockSteps, paintNodeTimeAt, type PaintNodeClock, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
+import { paintPlacementMoveProblem } from '#lib/paint/animation/models/paint-motion-clips.ts';
+import { paintSecondsText, paintSpanFrames, paintSpanMoments, paintSpanProblem } from '#lib/paint/animation/models/paint-span-moments.ts';
+import { presentationValueAt, type PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
 import type { PaintingBrushOf } from '#lib/paint/document/models/painting-deposit-compile.ts';
 import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { paintMoment, type PaintMoment, type StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
-import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
+import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
+import { shotPlaneMomentAt } from './shot-frame-plan.ts';
 import { compileShotInstancedPlane, type CompiledShotInstancedPlane } from './shot-instances.ts';
 import { compileShotMotion, type CompiledShotMotion, type ShotMotionPlane } from './shot-motion.ts';
+import { shotMotionWarnings } from './shot-motion-warnings.ts';
 import { shotOccurrencePlane, shotPlaneOccurrences, type ShotOccurrence } from './shot-occurrences.ts';
 import { shotMaskCheck, type ShotMaskGraph } from './shot-masks.ts';
 import { compileShotPaintedTextures, type CompiledShotPaintedTexture } from './shot-painted-texture-compile.ts';
 import { shotCoveredPlanes, shotPlacementProblems, shotStillBackProblem } from './shot-placement.ts';
 import { shotDrawableOrder } from './shot-plan.ts';
-import {
-  shotPresentationAt, type CoverFrame, type InstancedPlaneProps, type OccurrenceKey, type PaintedShotProps, type PictureSource, type PlaneMask, type PlaneProps,
-  type PresentationValue, type ScreenPin, type ThreeSource,
-} from './shot-props.ts';
+import type { CoverFrame, InstancedPlaneProps, OccurrenceKey, PaintedShotProps, PictureSource, PlaneMask, PlaneProps, ScreenPin, ThreeSource } from './shot-props.ts';
 import { shotCameraPlanes } from './shot-reach.ts';
 import { compileShotRig, shotPlaneRigEndProblems, shotRigShowsGroup, type CompiledShotRig } from './shot-rigs.ts';
 import { paintedPlaneBlendProblems, paintedSourceEnds, paintedSourceProblems, type PaintedSource, type PaintedSourceEnd, type ShotPlanePaints } from './shot-selection.ts';
@@ -40,7 +42,7 @@ import { shotWarmProblems, type ShotWarm } from './shot-warm.ts';
  */
 export type ShotPlaneLay =
   | { readonly kind: 'still'; readonly lay: StampGroupLay | null }
-  | { readonly kind: 'moving'; readonly lay: (moment: PaintMoment) => StampGroupLay; readonly reach: StampBox | null }
+  | { readonly kind: 'moving'; readonly lay: (moment: PaintMoment) => StampGroupLay }
   | { readonly kind: 'screen'; readonly screen: ScreenPin | CoverFrame };
 
 type ShotPlaneCommon = { readonly id: string; readonly depth: number; readonly canvas: number };
@@ -67,11 +69,11 @@ export type CompiledShotPlane = CompiledShotPaintedPlane | CompiledShotSourcePla
 
 /**
  * A shot compiled: its planes far to near, the back first; its instanced planes; both as `written`, which a frame
- * orders with its items; its canvas count; `clearBack`: the back is clear where it lays nothing, over HTML
- * (shotCanvasLayings); its motion (an instanced plane's clock too), rigs, visibility by occurrence, masks' graph,
- * camera, warm span (null: none) and painted textures.
+ * orders with its items; its canvas count; `clearBack`: the back is clear where it lays nothing, over HTML; its
+ * motion, rigs, visibility by occurrence, masks' graph, camera, span, warm span (null: none) and painted textures.
  */
 export type CompiledPaintedShot = {
+  readonly span: SceneShownSpan;
   readonly planes: readonly CompiledShotPlane[];
   readonly instanced: readonly CompiledShotInstancedPlane[];
   readonly written: readonly (PlaneProps | InstancedPlaneProps)[];
@@ -169,10 +171,24 @@ function canvasOrderProblems(spans: readonly ShotCanvasSpan[], canvases: readonl
 }
 
 /** Plane `props`' lay: a pin or cover left to be laid through the built camera. */
-function compilePlaneLay({ lay, reach }: PlaneProps): ShotPlaneLay {
-  if (typeof lay === 'function') return { kind: 'moving', lay, reach: reach ?? null };
+function compilePlaneLay({ lay }: PlaneProps): ShotPlaneLay {
+  if (typeof lay === 'function') return { kind: 'moving', lay };
   if (lay && 'kind' in lay) return { kind: 'screen', screen: lay };
   return { kind: 'still', lay: lay ?? null };
+}
+
+/**
+ * Why `plane`'s moving lay can't lay it at one of `motion`'s moments, or none: a part not finite, a negative scale, or
+ * on the back, which must hold the frame, a scale of 0.
+ */
+function movingLayProblems(plane: CompiledShotPaintedPlane, motion: CompiledShotMotion): PaintingProblem[] {
+  if (plane.lay.kind !== 'moving') return [];
+  for (const moment of motion.moments) {
+    const { placement, pivot } = plane.lay.lay(shotPlaneMomentAt(motion, plane.id, moment));
+    const problem = paintPlacementMoveProblem(placement, plane.opaqueBack ? 'the back' : null) ?? (Number.isFinite(pivot.x) && Number.isFinite(pivot.y) ? null : `its pivot ${pivot.x}, ${pivot.y} isn't finite`);
+    if (problem) return [shotError(plane.id, 'lay', `at ${paintSecondsText(moment.at)} ${problem}`)];
+  }
+  return [];
 }
 
 /**
@@ -185,7 +201,7 @@ function compilePaintedPlane(
   field = 'source',
 ): CompiledShotPaintedPlane | null {
   const sourceClock = paintNodeClockSteps(props.sourceClock);
-  const first = shotPresentationAt(source, paintNodeTimeAt(sourceClock, paintMoment(0), fps));
+  const first = presentationValueAt(source, paintNodeTimeAt(sourceClock, paintMoment(0), fps));
   const sourceProblems = paintedSourceProblems(props.id, first, field);
   problems.push(...sourceProblems);
   if (sourceProblems.length) return null;
@@ -270,6 +286,8 @@ export function compilePaintedShot(
   const textures = compileShotPaintedTextures(props.paintedTextures ?? []);
   const answer = (shot: CompiledPaintedShot | null, found: readonly PaintingProblem[]) => ({ shot, problems: [...found, ...textures.problems] });
   if (props.warm) problems.push(...shotWarmProblems(props.warm));
+  const spanProblem = paintSpanProblem(props.span);
+  if (spanProblem) problems.push(shotError('shot', 'span', spanProblem));
   canvases.forEach((name, index) => {
     if (canvases.indexOf(name) !== index) problems.push(shotError('shot', 'canvas', `names two of its canvases ${name}: each PaintedShotCanvas takes a name of its own`));
   });
@@ -327,21 +345,25 @@ export function compilePaintedShot(
     // Every instanced plane as written, so a node on one that failed to compile is refused for what it is.
     ...props.planes.flatMap((plane): ShotMotionPlane[] => (plane.kind === 'instanced' ? [{ id: plane.id, kind: 'instanced', clock: paintNodeClockSteps(plane.clock), movingLay: false, occurrences: [] }] : [])),
   ];
-  const motion = compileShotMotion(motionPlanes, props.motion, new Set(rigs.keys()), fps);
+  const cameraOptions = paintShotCameraOptions(props.camera, props.span, filmFps, []);
+  const frames = paintSpanFrames(props.span, paintCameraLensBuilt(cameraOptions.lens)), moments = paintSpanMoments(frames);
+  const motion = compileShotMotion(motionPlanes, props.motion, new Set(rigs.keys()), fps, moments);
   problems.push(...motion.problems);
+  for (const plane of planes) if (plane.kind === 'painted') problems.push(...movingLayProblems(plane, motion.motion));
   if (problems.length || !masks.graph || !textures.textures) return answer(null, problems);
   // Planes laid on the frame are unchecked in the build, which they're laid through; covers are laid and checked after it.
   const cameraPlanes = [...shotCameraPlanes(planes, motion.motion, rigs), ...instanced.map(({ id, depths }) => ({ id, kind: 'instanced' as const, depths }))];
-  const built = buildPaintCamera({ ...paintShotCameraOptions(props.camera, filmFps, cameraPlanes), animationFps: fps });
+  const built = buildPaintCamera({ ...cameraOptions, planes: cameraPlanes, animationFps: fps });
   if (!built.ok) return answer(null, built.problems.map((message) => shotError('camera', '', message)));
   const setting = { camera: built.camera, motion: motion.motion, rigs }, covered = shotCoveredPlanes(setting, planes);
   // A back laid still is held to all the frame reads of it here; a cover is as it's laid, a callback's lay each frame.
   const bare = back?.kind === 'painted' && back.lay.kind === 'still' && shotStillBackProblem(setting, back, back.lay.lay);
   const laidProblems = [...covered.problems, ...(bare ? [shotError(back.id, 'lay', bare)] : [])];
   if (laidProblems.length) return answer(null, laidProblems);
-  return answer({
-    planes: covered.planes, instanced, written: props.planes, canvases: Math.max(1, canvases.length), clearBack, motion: motion.motion, rigs,
+  const shot: CompiledPaintedShot = {
+    span: props.span, planes: covered.planes, instanced, written: props.planes, canvases: Math.max(1, canvases.length), clearBack, motion: motion.motion, rigs,
     visibility: new Map(Object.entries(visibility)), masks: masks.graph, camera: built.camera, warm: props.warm ?? null,
     paintedTextures: textures.textures,
-  }, problems);
+  };
+  return answer(shot, [...problems, ...shotMotionWarnings(shot, frames)]);
 }

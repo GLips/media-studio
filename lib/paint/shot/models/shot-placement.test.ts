@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { paintCameraPlay, paintPlaneViewAt } from '#lib/paint/animation/models/paint-camera.ts';
 import { buildPaintCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
+import { paintKeyed } from '#lib/paint/animation/models/paint-keyed.ts';
 import { paintSimilarityAfter, paintSimilarityApply, paintSimilarityInverse, paintSimilarityOf, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import { paintMoment, type StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
@@ -10,10 +11,11 @@ import { shotCoverLay, shotDomCentre, shotPinLay, shotPinMeasureProblems } from 
 
 /** A camera panning, zooming and rolling over two seconds, a plane at depth 3 under it. */
 function rollingCamera() {
+  const drift = paintKeyed([{ at: 0, value: { pan: { x: 0, y: 0 }, zoom: 1, roll: 0 } }, { at: 2, value: { pan: { x: 60, y: -30 }, zoom: 1.4, roll: 0.3 } }]);
   const built = buildPaintCamera({
-    stage: stampStage({ width: 800, height: 600 }), fov: 35, lens: { bloom: 0, shutter: 'shut' },
+    stage: stampStage({ width: 800, height: 600 }), fov: 35, lens: { bloom: 0, shutter: 'shut' }, span: { from: 0, to: 2, fps: 24 },
     planes: [{ id: 'sky', depth: 3, kind: 'picture', extent: { kind: 'unchecked', why: 'only its view is read' } }],
-    plays: [paintCameraPlay({ kind: 'move', keys: [{ at: 0 }, { at: 2, pan: { x: 60, y: -30 }, zoom: 1.4, roll: 0.3 }] }, { clock: { at: 0 }, origin: 'drift' })],
+    plays: [paintCameraPlay({ kind: 'move', value: drift }, { clock: { at: 0 }, origin: 'drift' })],
   });
   if (!built.ok) assert.fail(built.problems.join('\n'));
   return built.camera;

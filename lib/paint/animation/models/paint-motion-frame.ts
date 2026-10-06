@@ -27,7 +27,7 @@ function pinsMovedAt(level: CompiledPaintLevel, t: PaintMoment, animationFps: nu
   return [...level.pins].flatMap(([name, { pin, lane }]) => {
     const playing = paintLaneClipAt(lane, t, animationFps);
     if (!playing) return [];
-    const move = paintPlacementRounded(paintPinClipMoveAt(playing.play.clip, name, playing.time));
+    const move = paintPlacementRounded(paintPinClipMoveAt(playing.play.clip, name, playing.moment));
     return paintPlacementIsRest(move) ? [] : [{ name, pin, move }];
   });
 }
@@ -56,7 +56,7 @@ export function paintLevelDeformsAt(node: CompiledPaintLevel, t: PaintMoment, fp
 export function paintLevelPlacementAt(node: CompiledPaintLevel, t: PaintMoment, fps: number): Extract<PaintDeform, { kind: 'place' }> | null {
   const playing = paintLaneClipAt(node.place, t, fps);
   if (!playing) return null;
-  const placement = paintPlacementRounded(paintPlaceClipAt(playing.play.clip, playing.time));
+  const placement = paintPlacementRounded(paintPlaceClipAt(playing.play.clip, playing.moment));
   return paintPlacementIsRest(placement) ? null : { owner: node.id, kind: 'place', placement, pivot: node.pivot };
 }
 
@@ -83,6 +83,8 @@ export function paintNodeWarpAt(motion: PaintMotion, node: CompiledPaintNode, t:
     if (place) steps.push(place);
   }
   const outermostBend = steps.findLastIndex((step) => step.kind !== 'place');
+  // A placement at scale 0 leaves a bend after it nothing to bend: the node lies on its pivot, at scale 0 too.
+  if (steps.slice(0, outermostBend + 1).some((step) => step.kind === 'place' && step.placement.scale === 0)) return { warp: [], lay: { x: 0, y: 0, rotation: 0, scale: 0 } };
   const places = steps.slice(outermostBend + 1).flatMap((step) => (step.kind === 'place' ? [step] : []));
   return { warp: steps.slice(0, outermostBend + 1), lay: places.length ? composedPlacement(places, node.pivot) : null };
 }

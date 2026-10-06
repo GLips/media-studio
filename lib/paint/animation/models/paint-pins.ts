@@ -20,8 +20,11 @@ export type PaintPin = PaintRadialPin | PaintPartPin;
 /** A group's pins by name. */
 export type PaintPinRig<P extends string> = Readonly<Record<P, PaintPin>>;
 
-/** How a pin moves from rest: `x`, `y` px, `rotation` radians about the pin, `scale` about the pin (2 = twice as big). */
-export type PaintPinMove = { readonly x?: number; readonly y?: number; readonly rotation?: number; readonly scale?: number };
+/**
+ * A move from rest about a point (a pin, a node's pivot): `x`, `y` px, `rotation` radians and `scale` (2 = twice as
+ * big) about it, a part left out at rest. A pin's and a node's placement alike.
+ */
+export type PaintPlacementMove = { readonly x?: number; readonly y?: number; readonly rotation?: number; readonly scale?: number };
 
 /** A pin's geometry with every default resolved: what its weight is a function of, and nothing else. */
 export type PaintPinGeometry =

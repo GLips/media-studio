@@ -18,7 +18,6 @@ import { copyStampLayerForReadback, readStampLayerCopy } from '#lib/paint/painti
 import { drawStampSheetsStill, readStampSheetsPicture } from '#lib/paint/painting/studio/stamp-sheet-composite.ts';
 import { compilePaintedShot } from '#lib/paint/shot/models/shot-compile.ts';
 import { compileShotPaintedTextures } from '#lib/paint/shot/models/shot-painted-texture-compile.ts';
-import type { PaintedShotProps } from '#lib/paint/shot/models/shot-props.ts';
 import { dissolve } from '#lib/paint/shot/models/shot-selection.ts';
 import { createShotCanvasElements } from '#lib/paint/shot/studio/shot-canvas.ts';
 import { createShotPaintedTextures } from '#lib/paint/shot/studio/shot-painted-textures.ts';
@@ -34,7 +33,7 @@ import {
   stampGateRevealSplitText, stampGateTexelsChanged, stampGateWrappedShownAt, type StampGateRevealFrame, type StampGateRevealId,
 } from '../models/stamp-gate-reveals.ts';
 import { STAMP_GATE_WET_CONTACT, STAMP_GATE_FAR_SHALLOWS, STAMP_GATE_FOOT_BOX, stampGateSheetBrushOf } from '../models/stamp-gate-sheets.ts';
-import { STAMP_GATE_SHOT_FPS } from '../models/stamp-gate-shots.ts';
+import { STAMP_GATE_SHOT_FPS, stampGateShotSpanned, type StampGateShot } from '../models/stamp-gate-shot-span.ts';
 import { stampGateCanvasBytes, stampGateRgb, withGateSurface } from './stamp-gate-page-surface.ts';
 import { stampGateShotFrames, stampGateSolvedText, withGateShotRenderer } from './stamp-gate-shot-frames.ts';
 import { stampGateSheetImageUrl } from './stamp-gate-sheet-owner.ts';
@@ -68,7 +67,7 @@ function revealStills(stills: readonly RevealStill[]): Promise<{ frames: StampGa
 const stillsAt = (evaluation: PaintingEvaluation, times: readonly number[], poses?: PaintingPoses): RevealStill[] => times.map((at) => ({ evaluation, at, ...(poses && { poses }) }));
 
 /** `props`' frames at `times` through the shot's renderer, opaque, as RGB; and each frame's costs. */
-async function revealShotFrames(props: PaintedShotProps, times: readonly number[]) {
+async function revealShotFrames(props: StampGateShot, times: readonly number[]) {
   const { frames, costs } = await stampGateShotFrames(props, times), { width, height } = props.camera.stage.frame;
   return { frames: frames.map((rgba) => rgbFrame(rgba, width, height)), costs };
 }
@@ -77,8 +76,8 @@ async function revealShotFrames(props: PaintedShotProps, times: readonly number[
 type ClearBackFrames = { readonly colour: StampGateRevealFrame[]; readonly filter: StampGateRevealFrame[] };
 
 /** `props`, a clear back, drawn over HTML at `times` through the shot's renderer into a glaze's colour and filter. */
-async function clearBackFrames(props: PaintedShotProps, times: readonly number[]): Promise<ClearBackFrames> {
-  const { shot, problems } = compilePaintedShot(props, [], STAMP_GATE_SHOT_FPS, { htmlBehind: true });
+async function clearBackFrames(props: StampGateShot, times: readonly number[]): Promise<ClearBackFrames> {
+  const { shot, problems } = compilePaintedShot(stampGateShotSpanned(props, times), [], STAMP_GATE_SHOT_FPS, { htmlBehind: true });
   if (!shot) throw paintingProblemsError('stamp gate reveal', problems);
   const { width, height } = shot.camera.stage.frame, canvas = createShotCanvasElements();
   const premultiplied = (rgba: Uint8ClampedArray): StampGateRevealFrame => {
@@ -384,7 +383,7 @@ async function checkClock(): Promise<StampGateWashCheck[]> {
   const heron = painting(STAMP_GATE_NESTED_HERON), poses: PaintingPoses = new Map([['heron', paintingSimilarityPose({ ma: 1, mb: 0, kx: STAMP_GATE_NESTED_MOVE.x, ky: STAMP_GATE_NESTED_MOVE.y })]]);
   const { frames: [posedLo, posedMid, posedWhole] } = await revealStills([...stillsAt(heron, [LO, STAMP_GATE_NESTED_AT], poses), ...stillsAt(painting(STAMP_GATE_NESTED_HERON, { reveal: 'none' }), [HI], poses)]);
   const posed = stampGateRevealSplit(posedMid, posedLo.bytes, posedWhole.bytes, stampGateNestedShownAt(STAMP_GATE_NESTED_AT, STAMP_GATE_NESTED_MOVE), 1);
-  const mid = STAMP_GATE_INK_AT.mid, shotOf = async (props: PaintedShotProps) => (await revealShotFrames(props, [0])).frames[0];
+  const mid = STAMP_GATE_INK_AT.mid, shotOf = async (props: StampGateShot) => (await revealShotFrames(props, [0])).frames[0];
   const sides = await gpuEachInTurn([mid, HI], (at) => shotOf(stampGateRevealShot(layersOf(ink, ['ink'], { at }))));
   const ends = await gpuEachInTurn([0, 1], (k) => shotOf(stampGateRevealShot(dissolve(layersOf(ink, ['ink'], { at: mid }), layersOf(ink, ['ink'], { at: HI }), k))));
   const atEnds = ends.map((frame, i) => stampGateFrameDifference(frame.bytes, sides[i].bytes));

@@ -10,7 +10,6 @@ import { paintingProblemsError } from '#lib/paint/document/models/painting-probl
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { compilePaintedShot, shotCanvasLayings, type CompiledPaintedShot, type ShotCanvasLaying, type ShotPage } from '#lib/paint/shot/models/shot-compile.ts';
 import type { ShotPinCentres } from '#lib/paint/shot/models/shot-placement.ts';
-import type { PaintedShotProps } from '#lib/paint/shot/models/shot-props.ts';
 import { createShotCanvasElements, placeShotCanvas, shotElementStyle, type ShotCanvasElements } from '#lib/paint/shot/studio/shot-canvas.ts';
 import { createShotPageWatch, shotCanvasFillProblems, shotGlazeIsolationProblems, shotHtmlBehind } from '#lib/paint/shot/studio/shot-dom-points.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
@@ -20,11 +19,12 @@ import {
   stampGateGlazeClearBackShot, stampGateGlazeLetThrough, stampGateGlazeMean, stampGateGlazeOverShot, stampGateGlazePageShot, type StampGateGlazeRegion, type StampGateRgb,
 } from '../models/stamp-gate-glaze.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
-import { STAMP_GATE_SHOT_FPS, STAMP_GATE_SHOT_PAGE_IDS, stampGateClearAlpha, stampGateClearBackShot, stampGatePinnedHeronShot } from '../models/stamp-gate-shots.ts';
+import { STAMP_GATE_SHOT_FPS, stampGateShotSpanned, type StampGateShot } from '../models/stamp-gate-shot-span.ts';
+import { STAMP_GATE_SHOT_PAGE_IDS, stampGateClearAlpha, stampGateClearBackShot, stampGatePinnedHeronShot } from '../models/stamp-gate-shots.ts';
 import { stampGateCanvasBytes } from './stamp-gate-page-surface.ts';
 import { stampGateShotFrames, withGateShotRenderer } from './stamp-gate-shot-frames.ts';
 
-type ShotFrame = PaintedShotProps['camera']['stage']['frame'];
+type ShotFrame = StampGateShot['camera']['stage']['frame'];
 type ClearAlpha = ReturnType<typeof stampGateClearAlpha>;
 
 /** Where a gate shot's element lies on its page, page px, and its scale. */
@@ -99,9 +99,9 @@ async function withShotElement<T>(frame: ShotFrame, html: string, use: (shot: Ga
   }
 }
 
-/** `props` compiled for `canvases` on `page`; a problem keeping it from being drawn throws. */
-function compiledGateShot(props: PaintedShotProps, canvases: readonly string[], page: ShotPage): CompiledPaintedShot {
-  const { shot, problems } = compilePaintedShot(props, canvases, STAMP_GATE_SHOT_FPS, page);
+/** `props` compiled for `canvases` on `page`, to be drawn at 0 s; a problem keeping it from being drawn throws. */
+function compiledGateShot(props: StampGateShot, canvases: readonly string[], page: ShotPage): CompiledPaintedShot {
+  const { shot, problems } = compilePaintedShot(stampGateShotSpanned(props, [0]), canvases, STAMP_GATE_SHOT_FPS, page);
   if (!shot) throw paintingProblemsError('stamp gate shot page', problems);
   return shot;
 }
@@ -222,7 +222,7 @@ const glazeMeasuredText = (measured: ReturnType<typeof glazeMeasured>) =>
  * `props` compiled for `names` on `shot`'s page, refused if a canvas strays or a glaze is isolated, drawn into its
  * canvases at 0 s; then `photograph` reads the page, and all is disposed.
  */
-async function drawnOnPage<T>(props: PaintedShotProps, names: readonly string[], { holder, canvases }: GateShotPage, photograph: () => Promise<T>): Promise<T> {
+async function drawnOnPage<T>(props: StampGateShot, names: readonly string[], { holder, canvases }: GateShotPage, photograph: () => Promise<T>): Promise<T> {
   const shot = compiledGateShot(props, names, { htmlBehind: shotHtmlBehind(holder, canvases[0]) });
   const problems = [...shotCanvasFillProblems(holder, canvases, names), ...shotGlazeIsolationProblems(holder, canvases, names, shotCanvasLayings(shot))];
   if (problems.length) throw paintingProblemsError('stamp gate shot page', problems);

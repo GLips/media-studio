@@ -6,12 +6,11 @@ import { paintingProblemsError } from '#lib/paint/document/models/painting-probl
 import { createStampPaintCostTally, type StampPaintCostTally, type StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { createStampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { compilePaintedShot, shotCanvasLayings, type CompiledPaintedShot } from '#lib/paint/shot/models/shot-compile.ts';
-import type { PaintedShotProps } from '#lib/paint/shot/models/shot-props.ts';
 import { createShotCanvasElements, createShotCanvasSurface, disposeShotCanvasSurface, type ShotCanvasElements, type ShotCanvasSurface } from '#lib/paint/shot/studio/shot-canvas.ts';
 import { createPaintedShotRenderer, type PaintedShotRenderer } from '#lib/paint/shot/studio/shot-renderer.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
 import type { LensMode } from '#lib/picture/lens/models/lens-mode.ts';
-import { STAMP_GATE_SHOT_FPS } from '../models/stamp-gate-shots.ts';
+import { STAMP_GATE_SHOT_FPS, stampGateShotSpanned, type StampGateShot } from '../models/stamp-gate-shot-span.ts';
 import { stampGateSheetBrushOf } from '../models/stamp-gate-sheets.ts';
 import { stampGateCanvasBytes } from './stamp-gate-page-surface.ts';
 import { stampGateSheetImageUrl } from './stamp-gate-sheet-owner.ts';
@@ -45,11 +44,12 @@ export type StampGateShotFrames = { readonly frames: readonly Uint8ClampedArray[
 export type StampGateShotDraw = number | { readonly t: number; readonly mode: LensMode };
 
 /**
- * `props`' frames as `draws` say, in turn, played at STAMP_GATE_SHOT_FPS (its warm span, if any, solved first), in no scene;
- * `drawing` called as each frame begins, for a check splitting what else it hears by frame.
+ * `props`' frames as `draws` say, in turn, over the span they lie in, once its warm span (if any) is solved at
+ * STAMP_GATE_SHOT_FPS, in no scene; `drawing` called as each frame begins, for a check splitting what else it hears by
+ * frame.
  */
-export async function stampGateShotFrames(props: PaintedShotProps, draws: readonly StampGateShotDraw[], drawing?: () => void): Promise<StampGateShotFrames> {
-  const { shot, problems } = compilePaintedShot(props, [], STAMP_GATE_SHOT_FPS);
+export async function stampGateShotFrames(props: StampGateShot, draws: readonly StampGateShotDraw[], drawing?: () => void): Promise<StampGateShotFrames> {
+  const { shot, problems } = compilePaintedShot(stampGateShotSpanned(props, draws.map((draw) => (typeof draw === 'number' ? draw : draw.t))), [], STAMP_GATE_SHOT_FPS);
   if (!shot) throw paintingProblemsError('stamp gate shot', problems);
   const canvas = createShotCanvasElements(), tally = createStampPaintCostTally();
   return withGateShotRenderer(shot, [canvas], async (renderer) => {

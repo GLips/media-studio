@@ -50,13 +50,15 @@ function stampGroupFrame(group: CompiledStampGroup, state: StampGroupFrameState)
   if (paintAt !== undefined && !Number.isFinite(paintAt)) throw new Error(`stamp paint: ${group.id}'s paint is read at ${paintAt} s`);
   if (lay) {
     const { placement: { x, y, rotation, scale }, pivot } = lay;
-    if (![x, y, rotation, scale, pivot.x, pivot.y].every(Number.isFinite) || !(scale > 0)) throw new Error(`stamp paint: ${group.id}'s lay needs finite values and a positive scale`);
+    if (![x, y, rotation, scale, pivot.x, pivot.y].every(Number.isFinite) || !(scale >= 0)) throw new Error(`stamp paint: ${group.id}'s lay needs finite values and a scale of 0 or more`);
   }
   const moved = lay && !isStill(lay.placement) ? lay : null;
+  // A lay at scale 0 shrinks the group onto its pivot, so it's hidden; its lay stays, for the shutter's travel.
+  const shown = lay?.placement.scale === 0 ? 0 : visibility;
   // A hidden group draws nothing, whatever its marks or lay.
-  const paintKey = visibility === 0 ? 'hidden' : `${marks.kind === 'live' ? `*${JSON.stringify(marks.key)}` : marks.epoch}${paintAt === undefined ? '' : `~${paintAt}`}`;
+  const paintKey = shown === 0 ? 'hidden' : `${marks.kind === 'live' ? `*${JSON.stringify(marks.key)}` : marks.epoch}${paintAt === undefined ? '' : `~${paintAt}`}`;
   return {
-    paintKey, group, marks, lay: moved, warp: warp ? { map: warp.map, key: warp.key, cell: warp.cell ?? STAMP_WARP_CELL } : null, visibility,
+    paintKey, group, marks, lay: moved, warp: warp ? { map: warp.map, key: warp.key, cell: warp.cell ?? STAMP_WARP_CELL } : null, visibility: shown,
     paintAt: paintAt ?? null, glow: stampGroupGlowChecked(group.id, state.glow),
   };
 }

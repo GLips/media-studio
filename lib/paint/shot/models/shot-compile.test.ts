@@ -5,9 +5,12 @@ import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
 import { painting } from '#lib/paint/document/models/painting-source.ts';
 import { paintCameraPlay, paintPlaneViewAt, type PaintCameraShutter } from '#lib/paint/animation/models/paint-camera.ts';
 import { paintCameraReachAt, type PaintCameraReach } from '#lib/paint/animation/models/paint-camera-depths.ts';
+import { paintKeyed } from '#lib/paint/animation/models/paint-keyed.ts';
+import type { PaintPlacementMove } from '#lib/paint/animation/models/paint-pins.ts';
 import { paintSimilarityApply, paintSimilarityAfter, paintSimilarityInverse, paintSimilarityOf } from '#lib/paint/animation/models/paint-similarity.ts';
 import { paintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
+import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
 import { compilePaintedShot } from './shot-compile.ts';
 import { shotPlaneClocks, shotPlaneMomentAt, shotPlaneSharesAt } from './shot-frame-plan.ts';
 import { shotPinnedPlanes } from './shot-placement.ts';
@@ -18,6 +21,8 @@ import { shotWarmCombinations, shotWarmFrames } from './shot-warm.ts';
 const FPS = 24;
 /** The film the shots play in, frames a second. */
 const FILM_FPS = 30;
+/** The shots' span: their first second, through its last frame. */
+const SPAN: SceneShownSpan = { from: 0, to: 1 + 1 / FPS, fps: FPS };
 
 /** A layer of one stroke, `shift` px right and down of where the pond paints it. */
 const layer = (key: string, shift = 0): Layer => ({
@@ -46,7 +51,7 @@ const problemsOf = (props: PaintedShotProps) => compilePaintedShot(props, [], FI
 
 /** The sky alone, its lens's shutter `shutter`, left out when undefined. */
 const skyShotWith = (shutter?: PaintCameraShutter): PaintedShotProps => ({
-  camera: { ...camera, lens: shutter === undefined ? { bloom: 0 } : { bloom: 0, shutter } },
+  camera: { ...camera, lens: shutter === undefined ? { bloom: 0 } : { bloom: 0, shutter } }, span: SPAN,
   planes: [{ id: 'front', depth: 1, source: layersOf(pond, ['sky']) }],
 });
 const shutterOf = (props: PaintedShotProps, filmFps: number) => compilePaintedShot(props, [], filmFps).shot!.camera.lens.shutter;
@@ -61,7 +66,7 @@ test("a lens leaving out its shutter opens it half the film's frame; 'shut' keep
 
 test('motion hangs each occurrence node from its nearest enclosing node, a paintless group one, and chains their clocks', () => {
   const { shot } = compilePaintedShot({
-    camera,
+    camera, span: SPAN,
     planes: [{ id: 'front', depth: 1, clock: { hold: 2 }, source: layersOf(pond, ['sky', 'heron']) }],
     motion: { nodes: [{ id: 'front' }, { id: 'front/heron', pivot: { x: 60, y: 100 }, clock: { hold: 3 } }, { id: 'front/neck' }] },
   }, [], FILM_FPS);
@@ -73,7 +78,7 @@ test('motion hangs each occurrence node from its nearest enclosing node, a paint
 
 test("a plane's source clock holds what its source reads apart from what its clock holds, each answer checked, and a warm pairs them", () => {
   const { shot } = compilePaintedShot({
-    camera,
+    camera, span: SPAN,
     planes: [{ id: 'front', depth: 1, clock: { hold: 4 }, sourceClock: { hold: 6 }, source: ({ at }) => layersOf(pond, at < 1 ? ['sky', 'heron'] : ['sky', 'egret'], { at }) }],
     motion: { nodes: [{ id: 'front/heron', clock: { hold: 3 } }] },
   }, [], FILM_FPS);
@@ -98,7 +103,7 @@ const puddle = painting({
 test("a dissolving plane shows both its ends' occurrences, weighed by k on its source clock, and refuses two document sizes, two grounds and an end without its rigged group, each at its end", () => {
   const sky = layersOf(pond, ['sky']), heron = layersOf(pond, ['heron']);
   const { shot } = compilePaintedShot({
-    camera, planes: [{ id: 'front', depth: 1, sourceClock: { hold: 6 }, source: ({ at }) => dissolve(sky, dissolve(heron, sky, 0.5), Math.min(1, at)) }],
+    camera, span: SPAN, planes: [{ id: 'front', depth: 1, sourceClock: { hold: 6 }, source: ({ at }) => dissolve(sky, dissolve(heron, sky, 0.5), Math.min(1, at)) }],
   }, [], FILM_FPS);
   const [front] = shot!.planes;
   assert.ok(front.kind === 'painted');
@@ -106,7 +111,7 @@ test("a dissolving plane shows both its ends' occurrences, weighed by k on its s
   // At 9/24 s its source reads 6/24 s: k is 0.25, and the inner dissolve gives half of that back to the sky.
   assert.deepEqual(shotPlaneSharesAt(shot!, front, paintMoment(9 / FPS)).map(({ selection, weight }) => [selection.layers.join(), weight]), [['sky', 0.875], ['heron', 0.125]]);
   assert.deepEqual(problemsOf({
-    camera,
+    camera, span: SPAN,
     planes: [
       { id: 'back', depth: 3, source: dissolve(sky, layersOf(puddle, ['sky']), 0.5) }, { id: 'mid', depth: 2, source: dissolve(sky, layersOf(pond, ['sky'], { ground: 'transparent' }), 0.5) },
       { id: 'front', depth: 1, source: dissolve(heron, sky, 0) },
@@ -128,7 +133,7 @@ const beaked = painting({
 
 test('a rig on a dissolving plane is held by every end cut alike: one cut otherwise is refused at its end, as the shot loads or a callback reads it later', () => {
   const heron = layersOf(pond, ['sky', 'heron']), rigs = { 'front/heron': { parts: heronParts, pose: {} } };
-  const shotOf = (source: PlaneProps['source']): PaintedShotProps => ({ camera, planes: [{ id: 'front', depth: 1, source }], rigs });
+  const shotOf = (source: PlaneProps['source']): PaintedShotProps => ({ camera, span: SPAN, planes: [{ id: 'front', depth: 1, source }], rigs });
   assert.deepEqual(problemsOf(shotOf(dissolve(heron, layersOf(pond, ['sky', 'heron'], { at: 1 }), 0.5))), []);
   const refused = "front.source.b: holds beak under heron, in none of front/heron's cels: every end of a rigged plane holds its rigged groups cut alike";
   assert.deepEqual(problemsOf(shotOf(dissolve(heron, layersOf(beaked, ['sky', 'heron']), 0.5))), [refused]);
@@ -140,27 +145,27 @@ test('a rig on a dissolving plane is held by every end cut alike: one cut otherw
 
 test('a shot refuses motion its rig or lay already writes, and a painted texture it cannot draw, every problem at once', () => {
   assert.deepEqual(problemsOf({
-    camera,
+    camera, span: SPAN,
     planes: [{ id: 'front', depth: 1, lay: () => ({ placement: { x: 0, y: 0, rotation: 0, scale: 1 }, pivot: { x: 0, y: 0 } }), source: layersOf(pond, ['sky', 'heron']) }],
     rigs: { 'front/heron': { parts: heronParts, pose: {} } },
     motion: {
       nodes: [{ id: 'front' }, { id: 'front/heron' }, { id: 'front/neck' }],
       plays: [
         { target: 'front/heron', clip: { kind: 'sway', root: { x: 60, y: 100 }, direction: -Math.PI / 2, length: 40, amount: 4, period: 2 }, clock: { at: 0 }, origin: 'heron sways' },
-        { target: 'front', clip: { kind: 'place', keys: [{ at: 0, x: 0, y: 0 }, { at: 1, x: 20, y: 0 }] }, clock: { at: 1 }, origin: 'push' },
+        { target: 'front', clip: { kind: 'place', value: paintKeyed([{ at: 0, value: { x: 0, y: 0 } }, { at: 1, value: { x: 20, y: 0 } }]) }, clock: { at: 1 }, origin: 'push' },
       ],
     },
     paintedTextures: [{ id: 'mug', source: layersOf(pond, ['sky'], { ground: 'transparent' }), widthPx: 64, heightPx: 64 }],
   }), [
     'front/neck.motion: lies in front/heron, which is rigged: its rig\'s parts pose all it holds, so nothing in it takes a node',
     'heron sways.motion: front/heron is rigged: it takes no pins, sway or flutter',
-    'motion: push writes place on front from 1s while front\'s lay callback still does (without end)',
+    'motion: push writes place on front from 1s while front\'s moving lay still does (without end)',
     "mug.source: selects on a transparent ground: a painted texture is opaque, shown on its paintings' paper",
   ]);
 });
 
 test('a transparent back is refused unless HTML lies behind the first canvas, over which it is laid clear and may fade, as the opaque back may not', () => {
-  const props: PaintedShotProps = { camera, planes: [{ id: 'back', depth: 1, source: layersOf(pond, ['sky'], { ground: 'transparent' }) }], visibility: { back: 0.5 } };
+  const props: PaintedShotProps = { camera, span: SPAN, planes: [{ id: 'back', depth: 1, source: layersOf(pond, ['sky'], { ground: 'transparent' }) }], visibility: { back: 0.5 } };
   assert.deepEqual(problemsOf(props), ['back.source.ground: is the back, laid on its paper wherever the frame shows: its ground is transparent only over HTML before the first canvas']);
   const { shot, problems } = compilePaintedShot(props, [], FILM_FPS, { htmlBehind: true });
   assert.deepEqual(problems, []);
@@ -178,10 +183,10 @@ const skyGrown = (grow: number) => painting({
 
 /** A focus on the heron at depth 1, blurring the back at depth 2 12 px past the frame. */
 const focused: PaintedShotProps['camera'] = {
-  ...camera, stage: stampStage({ width: 320, height: 240 }, 24), plays: [paintCameraPlay({ kind: 'focus', keys: [{ at: 0, focus: 1, aperture: 6 }] }, { clock: { at: 0 }, origin: 'focus' })],
+  ...camera, stage: stampStage({ width: 320, height: 240 }, 24), plays: [paintCameraPlay({ kind: 'focus', value: { focus: 1, aperture: 6 } }, { clock: { at: 0 }, origin: 'focus' })],
 };
 const BACK = { id: 'back', depth: 2 } as const;
-const backedBy = (back: PlaneProps): PaintedShotProps => ({ camera: focused, planes: [back, { id: 'heron', depth: 1, source: layersOf(pond, ['heron']) }] });
+const backedBy = (back: PlaneProps): PaintedShotProps => ({ camera: focused, span: SPAN, planes: [back, { id: 'heron', depth: 1, source: layersOf(pond, ['heron']) }] });
 
 test("the back is refused where the frame's blur reads past its painting, and mended by any fix it names", () => {
   const [unlaid] = problemsOf(backedBy({ ...BACK, source: layersOf(pond, ['sky']) }));
@@ -203,12 +208,12 @@ test("the back is refused where the frame's blur reads past its painting, and me
   assert.deepEqual(problemsOf(backedBy({ ...BACK, source: layersOf(skyGrown(12), ['sky']), lay: { kind: 'cover', box: { x0: 12, y0: 12, x1: 332, y1: 252 } } })), []);
 });
 
-/** A drift right and up with a push in, focused on depth 1, over a stage wide enough for all of it. */
+/** A drift right and up with a push in, easing in and out, under the film's shutter, focused on depth 1, over a stage wide enough for all of it. */
 const drifting: PaintedShotProps['camera'] = {
-  ...camera, stage: stampStage({ width: 320, height: 240 }, 80),
+  ...camera, stage: stampStage({ width: 320, height: 240 }, 80), lens: { bloom: 0 },
   plays: [
-    paintCameraPlay({ kind: 'move', keys: [{ at: 0 }, { at: 1, pan: { x: 60, y: -12 }, dolly: 0.2 }] }, { clock: { at: 0 }, origin: 'drift' }),
-    paintCameraPlay({ kind: 'focus', keys: [{ at: 0, focus: 1, aperture: 4 }] }, { clock: { at: 0 }, origin: 'focus' }),
+    paintCameraPlay({ kind: 'move', value: paintKeyed([{ at: 0, value: { pan: { x: 0, y: 0 }, dolly: 0 } }, { at: 1, value: { pan: { x: 60, y: -40 }, dolly: 0.2 }, curve: 'inOut' }]) }, { clock: { at: 0 }, origin: 'drift' }),
+    paintCameraPlay({ kind: 'focus', value: { focus: 1, aperture: 4 } }, { clock: { at: 0 }, origin: 'focus' }),
   ],
 };
 
@@ -223,7 +228,7 @@ const skyPadded = (pad: PaintCameraReach): PlaneProps => ({
 });
 
 test("a back padded by the camera's reach at its depth holds all the camera reads of it, and a px less on a side is refused", () => {
-  const reach = paintCameraReachAt(drifting, 2, FILM_FPS), padded = (pad: PaintCameraReach) => problemsOf({ camera: drifting, planes: [skyPadded(pad)] });
+  const reach = paintCameraReachAt(drifting, SPAN, 2, FILM_FPS), padded = (pad: PaintCameraReach) => problemsOf({ camera: drifting, span: SPAN, planes: [skyPadded(pad)] });
   assert.ok(reach.right > reach.left && reach.top > reach.bottom, `a drift right and up reads further right and up: ${JSON.stringify(reach)}`);
   assert.deepEqual(padded(reach), []);
   assert.match(padded({ ...reach, right: reach.right - 1 })[0], /^back\.lay: is the back, painted /);
@@ -231,22 +236,22 @@ test("a back padded by the camera's reach at its depth holds all the camera read
 });
 
 test("the back's node takes its paint in only as far as it brings an edge in: a push in holds, a drift is refused", () => {
-  const moving = (keys: readonly { at: number; x: number; y: number; scale?: number }[]): PaintedShotProps => ({
-    camera, planes: [{ id: 'back', depth: 1, source: layersOf(pond, ['sky']) }],
-    motion: { nodes: [{ id: 'back', pivot: { x: 160, y: 120 } }], plays: [{ target: 'back', clip: { kind: 'place', keys }, clock: { at: 0 }, origin: 'move' }] },
+  const moving = (to: PaintPlacementMove): PaintedShotProps => ({
+    camera, span: SPAN, planes: [{ id: 'back', depth: 1, source: layersOf(pond, ['sky']) }],
+    motion: { nodes: [{ id: 'back', pivot: { x: 160, y: 120 } }], plays: [{ target: 'back', clip: { kind: 'place', value: paintKeyed([{ at: 0, value: { x: 0, y: 0, scale: 1 } }, { at: 1, value: { scale: 1, ...to } }]) }, clock: { at: 0 }, origin: 'move' }] },
   });
-  assert.deepEqual(problemsOf(moving([{ at: 0, x: 0, y: 0 }, { at: 1, x: 0, y: 0, scale: 1.2 }])), []);
-  assert.match(problemsOf(moving([{ at: 0, x: 0, y: 0 }, { at: 1, x: 10, y: 0 }]))[0], /^back\.lay: is the back, painted to 10 px inside the frame \(at rest\), its node moving its edge up to 10 px in,/);
+  assert.deepEqual(problemsOf(moving({ x: 0, y: 0, scale: 1.2 })), []);
+  assert.match(problemsOf(moving({ x: 10, y: 0 }))[0], /^back\.lay: is the back, painted to 10 px inside the frame \(at rest\), its node moving its edge up to 10 px in,/);
 });
 
 /** A camera panning 60 px at depth 1 over a stage 40 px wider each side: a plane laid far enough right is seen past it. */
 const panning: PaintedShotProps['camera'] = {
-  ...camera, stage: stampStage({ width: 320, height: 240 }, 40), plays: [paintCameraPlay({ kind: 'move', keys: [{ at: 0 }, { at: 1, pan: { x: 60, y: 0 } }] }, { clock: { at: 0 }, origin: 'pan' })],
+  ...camera, stage: stampStage({ width: 320, height: 240 }, 40), plays: [paintCameraPlay({ kind: 'move', value: paintKeyed([{ at: 0, value: { pan: { x: 0, y: 0 } } }, { at: 1, value: { pan: { x: 60, y: 0 } } }]) }, { clock: { at: 0 }, origin: 'pan' })],
 };
 /** The back laid a quarter larger about its centre, so the pan never shows past its painting. */
 const backLay = { placement: { x: 0, y: 0, rotation: 0, scale: 1.25 }, pivot: { x: 160, y: 120 } };
 const laidOnFrame = (lay: ScreenPin | CoverFrame): PaintedShotProps => ({
-  camera: panning, planes: [{ id: 'back', depth: 2, lay: backLay, source: layersOf(pond, ['sky']) }, { id: 'label', depth: 1, lay, source: layersOf(pond, ['heron']) }],
+  camera: panning, span: SPAN, planes: [{ id: 'back', depth: 2, lay: backLay, source: layersOf(pond, ['sky']) }, { id: 'label', depth: 1, lay, source: layersOf(pond, ['heron']) }],
 });
 
 test('a cover holds the frame through the shot\'s own camera at its second, refused where it lays paint past the stage', () => {
@@ -258,7 +263,7 @@ test('a cover holds the frame through the shot\'s own camera at its second, refu
   assert.ok(corners.every(({ x, y }) => x > box.x0 - 1e-6 && x < box.x1 + 1e-6 && y > box.y0 - 1e-6 && y < box.y1 + 1e-6), `the frame's corners lie on the box: ${JSON.stringify(corners)}`);
   // A box a tenth the frame's is laid ten times its size, its paint reaching past the stage as the camera pans.
   assert.deepEqual(problemsOf(laidOnFrame({ kind: 'cover', box: { x0: 100, y0: 100, x1: 132, y1: 124 } })), [
-    "label.lay: plane label's picture must hold what the camera shows of it, -2..382 × -2..242 pan from key 0 to 1, but the stage holds -40..360 × -40..280; widen the stage's margin",
+    "label.lay: plane label's picture must hold what the camera shows of it, 38..362 × -2..242 at 0.667 s, but the stage holds -40..360 × -40..280; widen the stage's margin",
   ]);
 });
 
@@ -274,7 +279,7 @@ test('a pinned plane lies where a frame measures its elements, refused when one 
   const refused = (centres: Map<string, readonly ({ x: number; y: number } | null)[]>) => shotPinnedPlanes(shot!, centres).problems.map(({ path, message }) => `${path}: ${message}`);
   assert.deepEqual(refused(new Map([['label', [null]]])), ["label.lay.points[0].element: isn't mounted: a pin lies on its element's centre once laid out"]);
   assert.deepEqual(refused(new Map([['label', [{ x: 300, y: 90 }]]])), [
-    "label.lay: plane label's picture must hold what the camera shows of it, 258..382 × 30..170 pan from key 0 to 1, but the stage holds -40..360 × -40..280; widen the stage's margin",
+    "label.lay: plane label's picture must hold what the camera shows of it, 258..362 × 30..170 at 0.667 s, but the stage holds -40..360 × -40..280; widen the stage's margin",
   ]);
 });
 
@@ -288,7 +293,7 @@ test('an alphaOf mask reads a rig drawn as pieces whole, never a part inside it,
     },
   });
   const shotReading = (drawable: string): PaintedShotProps => ({
-    camera,
+    camera, span: SPAN,
     planes: [
       { id: 'back', depth: 2, source: layersOf(reedBed, ['sky']) },
       { id: 'tint', depth: 1, source: layersOf(reedBed, ['sky']), masks: [{ kind: 'alphaOf', drawable }] },
