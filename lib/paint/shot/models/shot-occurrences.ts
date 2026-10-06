@@ -1,9 +1,11 @@
 // shot-occurrences.ts: the names a shot's drawables go by. A plane is named by its id; a layer or group a painted plane
 // shows is an occurrence, `<plane id>/<key>`, so the same layer on two planes is two occurrences. Neither plane ids
 // nor document keys hold a `/`, so the first one splits a name. An instanced plane's items aren't occurrences. A
-// painted plane's occurrences are the layers and groups its source shows, in document order.
+// painted plane's occurrences are the layers and groups its source shows, in document order. An author writes what
+// an occurrence does under its plane, by its key alone, so a problem with it is named there (shotEntryProblem).
 
 import type { NodeKey } from '#lib/paint/document/models/painting-document.ts';
+import { paintingField, paintingProblem, type PaintingProblem, type PaintingProblemSeverity } from '#lib/paint/document/models/painting-problem.ts';
 import type { PaintingNodePlace } from '#lib/paint/document/models/painting-tree.ts';
 import type { InstancedPlaneProps, OccurrenceKey, PlaneProps } from './shot-props.ts';
 import type { PaintedSource } from './shot-selection.ts';
@@ -13,6 +15,15 @@ export const shotOccurrenceKey = (plane: string, key: NodeKey): OccurrenceKey =>
 
 /** The plane `name` lies on: an occurrence's plane, or a plane id itself. */
 export const shotOccurrencePlane = (name: OccurrenceKey): string => name.split('/', 1)[0];
+
+/**
+ * A problem with what the shot says of `name` at `field`, named where its author wrote it: owned by its plane, at
+ * `occurrences.<key>` for an occurrence, so `front/neck`'s clock is `front.occurrences.neck.clock`.
+ */
+export function shotEntryProblem(severity: PaintingProblemSeverity, name: OccurrenceKey, field: string, message: string): PaintingProblem {
+  const plane = shotOccurrencePlane(name), entry = name === plane ? '' : `occurrences.${name.slice(plane.length + 1)}`;
+  return paintingProblem(severity, plane, paintingField(entry, field), message);
+}
 
 /** What a name means in a shot: a plane, a painted plane's occurrence, an instanced plane's item, or nothing drawn. */
 export type ShotDrawableName = 'plane' | 'occurrence' | 'item' | 'unknown';

@@ -11,7 +11,7 @@ import { painting, type PaintingSourceModule } from '#lib/paint/document/models/
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
-import type { RigPart, RigPartPose } from '#lib/paint/shot/models/shot-props.ts';
+import type { OccurrenceProps, OccurrenceRig, RigPart, RigPartPose } from '#lib/paint/shot/models/shot-props.ts';
 import { stampGateHeronLayer, stampGateHeronPaper, stampGateHeronPolygon } from './stamp-gate-paper-heron.ts';
 import type { StampGateShot } from './stamp-gate-shot-span.ts';
 
@@ -95,17 +95,15 @@ export const STAMP_GATE_PIECES_TABLE: readonly { readonly from: number; readonly
 
 const rowAt = ({ at }: PaintMoment) => STAMP_GATE_PIECES_TABLE.findLast(({ from }) => from <= at)!;
 
-/** The sprig on one still plane, painted as `painted` says, rigged as `rig` says. */
-const piecesShot = (painted: Partial<PropertyValues<typeof piecesProperties>>, rig: Pick<NonNullable<StampGateShot['rigs']>[string], 'parts' | 'pose'>): StampGateShot => ({
+/** The sprig on one still plane, painted as `painted` says, rigged as `rig` says (laid in place for null); `entries`, what else its occurrences do. */
+const piecesShot = (painted: Partial<PropertyValues<typeof piecesProperties>>, rig: OccurrenceRig | null, entries: Readonly<Record<string, OccurrenceProps>> = {}): StampGateShot => ({
   camera: { stage: stampStage(PIECES, 2), fov: 35, lens: { bloom: 0, shutter: 'shut' }, plays: [] },
-  planes: [{ id: 'pieces', depth: 1, source: layersOf(painting(STAMP_GATE_PIECES, painted), ['sky', 'sprig']) }],
-  rigs: { 'pieces/sprig': rig },
+  planes: [{ id: 'pieces', depth: 1, source: layersOf(painting(STAMP_GATE_PIECES, painted), ['sky', 'sprig']), occurrences: { ...(rig && { sprig: { rig } }), ...entries } }],
 });
 
 /** The sprig posed and its rim switched by STAMP_GATE_PIECES_TABLE. */
-export const stampGatePiecesShot = (): StampGateShot => ({
-  ...piecesShot({}, { parts: STAMP_GATE_PIECES_PARTS, pose: (moment) => rowAt(moment).pose }), visibility: { 'pieces/bud-rim': (moment) => rowAt(moment).rim },
-});
+export const stampGatePiecesShot = (): StampGateShot =>
+  piecesShot({}, { parts: STAMP_GATE_PIECES_PARTS, pose: (moment) => rowAt(moment).pose }, { 'bud-rim': { visibility: (moment) => rowAt(moment).rim } });
 
 /** The scene seconds the sprig's bud cel is read at as it fades: shown, halfway, and gone. */
 export const STAMP_GATE_PIECES_FADE_AT = { shown: 0, faded: 1, gone: 2 } as const;
@@ -118,8 +116,10 @@ const BUD_FADE = [{ from: STAMP_GATE_PIECES_FADE_AT.shown, visibility: 1 }, { fr
  * pieces, or unless `rigged` laid in place, its blue flag cel hidden as the rig's rest hides it.
  */
 export const stampGatePiecesFadingShot = (rigged = true): StampGateShot => {
-  const shot = piecesShot({}, { parts: STAMP_GATE_PIECES_PARTS, pose: {} }), bud = ({ at }: PaintMoment) => BUD_FADE.findLast(({ from }) => from <= at)!.visibility;
-  return rigged ? { ...shot, visibility: { 'pieces/bud': bud } } : { ...shot, rigs: {}, visibility: { 'pieces/flag-blue': 0, 'pieces/bud': bud } };
+  const bud = ({ at }: PaintMoment) => BUD_FADE.findLast(({ from }) => from <= at)!.visibility;
+  return rigged
+    ? piecesShot({}, { parts: STAMP_GATE_PIECES_PARTS, pose: {} }, { bud: { visibility: bud } })
+    : piecesShot({}, null, { 'flag-blue': { visibility: 0 }, bud: { visibility: bud } });
 };
 
 /**

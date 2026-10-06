@@ -9,7 +9,7 @@
 import { paintPlacementIsRest, paintPlacementRounded, paintRatioSteps, type PaintDeform } from '#lib/paint/animation/models/paint-deform.ts';
 import type { NodeKey } from '#lib/paint/document/models/painting-document.ts';
 import { PAINTING_REST_POSE, paintingDeformsPose, paintingPoseMap, paintingPoseText, type PaintingNodePose } from '#lib/paint/document/models/painting-pose.ts';
-import { paintingProblem, paintingProblemsError, isPaintingFinitePoint, isPaintingPositive, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
+import { paintingField, paintingProblem, paintingProblemsError, isPaintingFinitePoint, isPaintingPositive, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import type { LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
 import type { PaintingEvaluation } from '#lib/paint/document/models/painting-source.ts';
 import { paintingLayersUnder, paintingSheetInGroup, type PaintingTree } from '#lib/paint/document/models/painting-tree.ts';
@@ -23,7 +23,7 @@ import {
   paintRigBandStretch, paintRigSkinGroups, paintRigSkinMesh, paintRigSkinProblems, paintRigSkinRestMap, paintRigSkinTriangles,
   type PaintRigBoneless, type PaintRigSkinGroup, type PaintRigSkinMesh,
 } from '#lib/paint/rig/models/paint-rig-skin.ts';
-import { paintedSourceNodeKeys, shotOccurrenceKey } from './shot-occurrences.ts';
+import { paintedSourceNodeKeys, shotEntryProblem } from './shot-occurrences.ts';
 import type { OccurrenceKey, OccurrenceRig, RigPart, RigPartPose } from './shot-props.ts';
 import type { PaintedSourceEnd } from './shot-selection.ts';
 
@@ -46,7 +46,8 @@ export type CompiledShotRig = {
   readonly text: string;
 };
 
-const rigError = (owner: string, field: string, message: string) => paintingProblem('error', owner, field, message);
+/** A problem with `occurrence`'s rig at `field`, named where its entry writes it: `front.occurrences.heron.rig.parts`. */
+const rigError = (occurrence: OccurrenceKey, field: string, message: string) => shotEntryProblem('error', occurrence, paintingField('rig', field), message);
 
 /** Each part's line, itself first, or a problem: a parent that isn't a part, or a cycle. */
 function rigLines(occurrence: OccurrenceKey, parts: readonly RigPart[], problems: PaintingProblem[]): Map<string, RigPart[]> {
@@ -96,7 +97,7 @@ const sameKeys = (a: readonly NodeKey[], b: readonly NodeKey[]) => a.length === 
  */
 function shotRigEndProblems(rig: CompiledShotRig, { selection, field }: PaintedSourceEnd): PaintingProblem[] {
   const problems: PaintingProblem[] = [], { group, occurrence } = rig, { tree } = selection.painting;
-  const error = (message: string) => problems.push(rigError(rig.plane, field, `${message}: every end of a rigged plane holds its rigged groups cut alike`));
+  const error = (message: string) => problems.push(paintingProblem('error', rig.plane, field, `${message}: every end of a rigged plane holds its rigged groups cut alike`));
   if (!shotRigShowsGroup(selection, group)) {
     error(`shows no group ${group}, which ${occurrence} rigs`);
     return problems;
@@ -131,8 +132,8 @@ export function shotPlaneRigEndProblems(rigs: Iterable<CompiledShotRig>, plane: 
 export function compileShotRig(occurrence: OccurrenceKey, plane: string, painting: PaintingEvaluation, rig: OccurrenceRig): { rig: CompiledShotRig | null; problems: PaintingProblem[] } {
   const { tree, document: { widthPx, heightPx } } = painting;
   const problems: PaintingProblem[] = [], group = occurrence.slice(plane.length + 1), place = tree.byKey.get(group);
-  if (place?.kind !== 'group') return { rig: null, problems: [rigError(occurrence, '', `is rigged, and isn't a group of ${plane}'s painting: a rig cuts a group`)] };
-  if (!rig.parts.length) problems.push(rigError(occurrence, 'parts', 'is rigged with no parts'));
+  if (place?.kind !== 'group') return { rig: null, problems: [rigError(occurrence, '', `cuts ${group}, which isn't a group of ${plane}'s painting: a rig cuts a group`)] };
+  if (!rig.parts.length) problems.push(rigError(occurrence, 'parts', 'are none: a rig cuts its group into parts'));
   const seen = new Set<string>();
   for (const part of rig.parts) {
     if (seen.has(part.id)) problems.push(rigError(occurrence, `parts.${part.id}`, 'is declared twice'));
@@ -152,7 +153,7 @@ export function compileShotRig(occurrence: OccurrenceKey, plane: string, paintin
       celLayers.set(cel, layers);
       for (const layer of layers) {
         const before = layerCel.get(layer);
-        if (before !== undefined) problems.push(rigError(shotOccurrenceKey(plane, layer), '', `lies in cels ${before} and ${cel}; a layer of a rig lies in one part's cels`));
+        if (before !== undefined) problems.push(rigError(occurrence, `parts.${part.id}.cels`, `names ${cel}, holding ${layer}, which cel ${before} holds too: a layer of a rig lies in one part's cels`));
         else layerCel.set(layer, cel);
       }
     }
@@ -160,15 +161,15 @@ export function compileShotRig(occurrence: OccurrenceKey, plane: string, paintin
   for (const layer of layersUnder(tree, group)) {
     if (!layerCel.has(layer)) {
       problems.push(rigError(
-        shotOccurrenceKey(plane, layer), '',
-        `lies under rigged ${group} and in no part's cels: group it with the layer it rides on (a group cel's layers may mix media) and name the group as that part's cel, or give it a part of its own: a part's cels after its first are swaps, shown one at a time, so one named there is hidden at rest`,
+        occurrence, 'parts',
+        `hold no cel with ${layer}, which lies under ${group}: group it with the layer it rides on (a group cel's layers may mix media) and name the group as that part's cel, or give it a part of its own: a part's cels after its first are swaps, shown one at a time, so one named there is hidden at rest`,
       ));
     }
   }
   const pieces = place.sheet.owner === group;
   // A cel's paint is read off the group's sheet: one on the root's (a `scene` layer) isn't on it.
   for (const layer of pieces ? offGroupSheet(tree, group) : []) {
-    problems.push(rigError(shotOccurrenceKey(plane, layer), '', `lies on the root's sheet, and ${group} owns its sheet: a cel of a rig drawn as pieces lies on its group's sheet`));
+    problems.push(rigError(occurrence, 'parts', `hold ${layer}, which lies on the root's sheet, and ${group} owns its sheet: a cel of a rig drawn as pieces lies on its group's sheet`));
   }
   if (problems.length) return { rig: null, problems };
   return {

@@ -149,8 +149,8 @@ export type { PaintingProblem } from '#lib/paint/document/models/painting-proble
 export { layersOf, type LayerSelection, type SelectionGround } from '#lib/paint/document/models/painting-selection.ts';
 export { bracket, dissolve, type Dissolve, type PaintedSource } from '#lib/paint/shot/models/shot-selection.ts';
 export type {
-  CoverFrame, InstancedPlaneProps, OccurrenceKey, OccurrenceMotionNode, OccurrenceRig, PaintedShotProps, PaintedTexture, PictureSource, PinPoint, PlaneInstance,
-  PlaneLay, PlaneMask, PlaneProps, RigPart, RigPartPose, ScreenPin, ThreeSource,
+  CoverFrame, InstancedPlaneProps, OccurrenceKey, OccurrenceProps, OccurrenceRig, PaintedShotProps, PaintedTexture, PictureSource, PinPoint, PlaneInstance,
+  PlaneLay, PlaneMask, PlaneProps, RigPart, RigPartPose, ScreenPin, ShotNodePlay, ThreeSource,
 } from '#lib/paint/shot/models/shot-props.ts';
 export type { PaintShotCamera, PaintShotLens } from '#lib/paint/animation/models/paint-camera-build.ts';
 export { PaintedShot, PaintedShotCanvas } from '#lib/paint/shot/studio/painted-shot.tsx';

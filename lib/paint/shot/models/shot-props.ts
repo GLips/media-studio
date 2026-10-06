@@ -1,6 +1,7 @@
-// shot-props.ts: what a scene composes painting evaluations with: a shot of planes under the paint camera, motion
-// over occurrences, rigs, masks, instances and painted textures. Camera, clocks, motion, placements, rig declarations,
-// picture and three sources are the engine's, imported; everything declared here is the painting path's own.
+// shot-props.ts: what a scene composes painting evaluations with: a shot of planes under the paint camera, each
+// plane's entry saying everything about it (its visibility, its node and plays, and its occurrences' own, rigs among
+// them), masks, instances and painted textures. Camera, clocks, motion, placements, rig declarations, picture and
+// three sources are the engine's, imported; everything declared here is the painting path's own.
 // docs/painting-authoring.md's Composition section is the author's page for it.
 
 import type { PaintShotCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
@@ -29,9 +30,9 @@ export type ThreeSource = { readonly kind: 'three'; readonly build: PaintedThree
 // ---- planes --------------------------------------------------------------------------------------------------------
 
 /**
- * A drawable's name for motion, visibility, rigs and masks: a plane's id, or `<plane id>/<layer or group key>` for
- * one occurrence on it (shotOccurrenceKey). The same layer on two planes is two occurrences. Boil wobble and sway
- * phase follow it.
+ * A drawable's name, as a mask reads it and the shot's compiled maps key it: a plane's id, or `<plane id>/<layer or
+ * group key>` for one occurrence on it (shotOccurrenceKey). The same layer on two planes is two occurrences. Boil
+ * wobble and sway phase follow it.
  */
 export type OccurrenceKey = string;
 
@@ -72,7 +73,7 @@ type PlaneCommon = {
   readonly id: string;
   /**
    * Holds the moment the plane's presentation and motion read (its lay, masks, instances, visibility, and every
-   * motion node on it): `{ hold: 2 }` moves on twos. The camera still moves; a source reads `sourceClock`.
+   * motion node on it, its own included): `{ hold: 2 }` moves on twos. The camera still moves; a source reads `sourceClock`.
    */
   readonly clock?: PaintNodeClock;
   /**
@@ -80,6 +81,8 @@ type PlaneCommon = {
    * draws in the first, and every plane of a later canvas is nearer than every plane of an earlier one.
    */
   readonly canvas?: string;
+  /** 0..1, multiplying the whole plane's composite; the opaque back takes none. */
+  readonly visibility?: PresentationValue<number>;
 };
 
 /**
@@ -88,13 +91,17 @@ type PlaneCommon = {
  * `pictureAt`, a three scene's `poseAt`. `{ hold: 6 }` repaints on sixes while `clock` runs on. Both start from the
  * frame's moment.
  */
-export type PlaneProps = PlaneCommon & {
+export type PlaneProps = PlaneCommon & ShotNodeFields & {
   readonly kind?: undefined;
   readonly lay?: PlaneLay;
   readonly depth: number;
   readonly masks?: readonly PlaneMask[];
   readonly source: PresentationValue<PaintedSource> | PictureSource | ThreeSource;
   readonly sourceClock?: PaintNodeClock;
+  /** Plays on the plane's own node, which its node fields (`pivot`, `pins`, `marks`, `glow`) write: it moves the whole plane. */
+  readonly plays?: readonly ShotNodePlay[];
+  /** What each layer or group the plane shows does, by its key. */
+  readonly occurrences?: Readonly<Record<NodeKey, OccurrenceProps>>;
 };
 
 /**
@@ -129,21 +136,21 @@ export type RigPart = PaintRigCutDeclaration & { readonly cels: readonly NodeKey
 export type RigPartPose = PaintRigPartMove & { readonly cel?: NodeKey };
 
 /**
- * A group occurrence cut into parts by its layers: each layer under the group lies in exactly one part's cels. Parts
- * draw by `z`, document order breaking ties; skin joints bend across cels. `pose` names parts by id; those left out
- * rest. Read at the group node's held moment (its own hold, else its plane's).
+ * A group occurrence cut into parts by its layers, as its entry's `rig`: each layer under the group lies in exactly
+ * one part's cels. Parts draw by `z`, document order breaking ties; skin joints bend across cels. `pose` names parts
+ * by id; those left out rest. Read at the group node's held moment (its own hold, else its plane's).
  */
 export type OccurrenceRig = {
   readonly parts: readonly RigPart[];
   readonly pose: PresentationValue<Readonly<Record<string, RigPartPose>>>;
 };
 
-// ---- the shot ------------------------------------------------------------------------------------------------------
+// ---- motion nodes --------------------------------------------------------------------------------------------------
 
 /**
- * The animation feature's motion node for an occurrence or plane, its parent implied: its enclosing group's
- * occurrence, else its plane. A group's node takes pins, sway, flutter and boil with one phase, seed and map for all
- * it holds. Marks stay put or boil; to lay them anew per pose, pose it on a sheet it doesn't own.
+ * The animation feature's motion node, compiled from an entry: its id the drawable's name, its parent implied (its
+ * enclosing group's occurrence, else its plane). A group's node moves all it holds with one phase, seed and map.
+ * Marks stay put or boil; to lay them anew per pose, pose it on a sheet it doesn't own.
  */
 export type OccurrenceMotionNode = Omit<PaintMotionNode, 'parent' | 'marks' | 'glow'> & {
   readonly marks?: 'stuck' | { readonly boil: PaintBoilMarks };
@@ -151,22 +158,37 @@ export type OccurrenceMotionNode = Omit<PaintMotionNode, 'parent' | 'marks' | 'g
   readonly glow?: PresentationValue<StampGroupGlow> | 'none';
 };
 
+/** A node's fields as a plane's entry writes them, beside its own: a plane's node is held by the plane's `clock`. */
+export type ShotNodeFields = Omit<OccurrenceMotionNode, 'id' | 'clock'>;
+
+/** A play on the node of the entry it's written in: a plane's, or an occurrence's. `origin` names it in errors. */
+export type ShotNodePlay = Omit<PaintMotionPlay, 'target'>;
+
+/**
+ * What one layer or group a painted plane shows does, as the plane's `occurrences` says it by the node's key: its
+ * visibility, 0..1; a group's rig; and its node's fields and plays. A node field or a play gives it a node; with
+ * none, it moves as its nearest enclosing node does.
+ */
+export type OccurrenceProps = Omit<OccurrenceMotionNode, 'id'> & {
+  readonly visibility?: PresentationValue<number>;
+  readonly rig?: OccurrenceRig;
+  readonly plays?: readonly ShotNodePlay[];
+};
+
+// ---- the shot ------------------------------------------------------------------------------------------------------
+
 /** A painting drawn into a texture a three source samples by `id`, `widthPx` × `heightPx`, timed by the shot's moment. */
 export type PaintedTexture = { readonly id: string; readonly source: PresentationValue<PaintedSource>; readonly widthPx: number; readonly heightPx: number };
 
 /**
- * A shot: the paint camera (its stage frame is the canvas's pixels), planes in any order, motion over occurrences,
- * visibility 0..1 and rigs by occurrence. `span`: the scene seconds its frames show (sceneSecondsOf(clock).span),
- * where every value is sampled for checks and warnings. `warm`: the render frames in `from..to`, their films solved
- * before the first shows.
+ * A shot: the paint camera (its stage frame is the canvas's pixels) and its planes in any order, each saying all it
+ * and its occurrences do. `span`: the scene seconds its frames show (sceneSecondsOf(clock).span), where every value is
+ * sampled for checks and warnings. `warm`: the render frames in `from..to`, their films solved before the first shows.
  */
 export type PaintedShotProps = {
   readonly camera: PaintShotCamera;
   readonly span: SceneShownSpan;
   readonly planes: readonly (PlaneProps | InstancedPlaneProps)[];
-  readonly motion?: { readonly nodes: readonly OccurrenceMotionNode[]; readonly plays?: readonly PaintMotionPlay[] };
-  readonly visibility?: Readonly<Record<OccurrenceKey, PresentationValue<number>>>;
-  readonly rigs?: Readonly<Record<OccurrenceKey, OccurrenceRig>>;
   readonly paintedTextures?: readonly PaintedTexture[];
   readonly warm?: { readonly from: number; readonly to: number };
 };

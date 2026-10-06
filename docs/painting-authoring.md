@@ -21,8 +21,9 @@ through a selection's prefix, its coverage or its picture (`paintingFilmCoverage
 
 `<PaintedShot>` and `<PaintedShotCanvas>` draw a shot in a scene: painted, picture and three planes far to near
 under the camera and its lens, on one canvas or several among HTML, a clear back over HTML behind the first; pin and
-cover lays (`shot-placement.ts`), the page read as each frame draws (`shot-dom-points.ts`); occurrences and
-their motion (nodes hang from their nearest enclosing node, a paintless group's included, clocks chaining);
+cover lays (`shot-placement.ts`), the page read as each frame draws (`shot-dom-points.ts`); each plane's entry
+saying all it and its occurrences do, and their motion (nodes hang from their nearest enclosing node, a paintless
+group's included, clocks chaining);
 visibility, a group's fading all it holds as one and a card fading with its owner; rigs (Composition), a cel swap
 re-solving nothing; instanced planes, many items sharing a few finished variants, each blurred along its own travel;
 values in time, keyed with curves, sampled over the shot's span for its checks and motion warnings, and camera moves
@@ -88,9 +89,8 @@ The scene, as a project would write it (`scenes/meadow.tsx`, with its source in 
 // 8 s, repainted into the root's paper at each new place. `warm` solves seconds 0–8 first.
 
 import { paintCameraPlay } from '#lib/paint/animation/models/paint-camera.ts';
-import { paintMotionPlay } from '#lib/paint/animation/models/paint-motion-compile.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
-import { layersOf, paintKeyed, painting, sceneSecondsOf, type OccurrenceMotionNode, type PaintedShotProps } from '#studio';
+import { layersOf, paintKeyed, painting, sceneSecondsOf, type PaintedShotProps } from '#studio';
 import { timeline } from '../timeline.ts';
 import * as meadow from './meadow/meadow.painting.ts';
 
@@ -101,9 +101,6 @@ function hillTopAt(t: number): number {
 }
 
 const landscapeAt = (hillTopPx: number) => layersOf(painting(meadow, { hillTopPx }), ['landscape', 'cloud']);
-
-/** The cloud's occurrence on plane `meadow`: its motion node turns about the cloud's centre, held on sixes. */
-const cloud: OccurrenceMotionNode = { id: 'meadow/cloud', pivot: { x: 200, y: 80 }, clock: { hold: 6 } };
 
 export const meadowShot: PaintedShotProps = {
   camera: {
@@ -120,14 +117,20 @@ export const meadowShot: PaintedShotProps = {
   },
   // The scene seconds its frames show: every value is sampled over them for what the shot checks.
   span: sceneSecondsOf(timeline.clock('meadow')).span,
-  // The source reads its own held moment: the hill steps on sixes while anything the plane moves keeps the frame's.
-  planes: [{ id: 'meadow', depth: 1, sourceClock: { hold: 6 }, source: (moment) => landscapeAt(hillTopAt(moment.at)) }],
-  motion: {
-    nodes: [cloud],
-    plays: [paintMotionPlay(cloud, { kind: 'place', value: paintKeyed([{ at: 0, value: { x: 0, y: 0 } }, { at: 4, value: { x: 60, y: -4 }, curve: 'inOut' }]) }, {
-      clock: { at: 0, loop: { period: 4, mode: 'pingpong' } }, origin: 'cloud drift',
-    })],
-  },
+  planes: [{
+    // The source reads its own held moment: the hill steps on sixes while anything the plane moves keeps the frame's.
+    id: 'meadow', depth: 1, sourceClock: { hold: 6 }, source: (moment) => landscapeAt(hillTopAt(moment.at)),
+    occurrences: {
+      // The cloud's entry: its motion node turns about the cloud's centre, held on sixes, and drifts there and back.
+      cloud: {
+        pivot: { x: 200, y: 80 }, clock: { hold: 6 },
+        plays: [{
+          clip: { kind: 'place', value: paintKeyed([{ at: 0, value: { x: 0, y: 0 } }, { at: 4, value: { x: 60, y: -4 }, curve: 'inOut' }]) },
+          clock: { at: 0, loop: { period: 4, mode: 'pingpong' } }, origin: 'cloud drift',
+        }],
+      },
+    },
+  }],
   warm: { from: 0, to: 8 },
 };
 ```
@@ -961,10 +964,10 @@ a run of frames costing alike as one line.
 | 27 | animated property, smooth | `bracket(v, LEVELS)` → `dissolve(layersOf(lower), layersOf(upper), k)` | ghosting where edges move between levels |
 | 28 | one painting, two places | two planes selecting the same evaluation and layers | each is its own occurrence |
 | 29 | a drawing appearing stroke by stroke | a direct wash with `clock: {origin}` and an `at` per application, on any sheet: a direct wash has no say in its drying | or a reveal over the finished drawing (recipe 26), which pens each stroke along its length |
-| 30 | an element fading | `visibility: {'plane/layer': (m) => …}` on the shot | a group's visibility fades it as one; a cut-out's owner fades its card with it; on another's card, the paper its paint alone cut goes as it does |
+| 30 | an element fading | `visibility: (m) => …` in its entry, under its plane's `occurrences` by key, or on the plane | a group's visibility fades it as one; a cut-out's owner fades its card with it; on another's card, the paper its paint alone cut goes as it does |
 | 31 | an element passing behind a ridge on shared paper | its applications' `clips: [{region: ABOVE_RIDGE, anchor: 'paper'}]`; motion on its occurrence | the clip stays on the paper while the element moves |
 | 32 | an element mingling with a wet wash as it moves | its layer on the wash's sheet (left out, or `scene` under an own sheet), posed by motion or a rig; its charge timed while the wash is wet (`at`, or `on: 'wet'`), later work `at` once it has set | a solve per pose from its first application; hiding it leaves its water's work in the wash: fade a group holding both |
-| 33 | a figure that bends | its parts as layers (or groups) under one group; `rigs: {'plane/figure': {parts, pose}}`; a leg standing where its foot is told by `paintRigTwoBoneReach` in `pose`, its reflection posed by `paintRigMirroredPose` (Reference, Pose helpers) | on an own sheet the paint bends; on shared paper it's repainted per pose, into the sheet's water |
+| 33 | a figure that bends | its parts as layers (or groups) under one group; `rig: {parts, pose}` in the group's entry under its plane's `occurrences`; a leg standing where its foot is told by `paintRigTwoBoneReach` in `pose`, its reflection posed by `paintRigMirroredPose` (Reference, Pose helpers) | on an own sheet the paint bends; on shared paper it's repainted per pose, into the sheet's water |
 | 34 | a flood rising, a moon filling, a petal blotching in | a `field` reveal: `linear` up the flood, `radial` out of the moon, `noise` over the petal with a `linear` delay along it (below) | a field covers the whole film: past its ends a linear field holds, and paint outside the moon arrives at `outer` |
 | 35 | a flat underline over HTML | the underline's own-sheet layer pinned to the words, revealed by a `linear` field along its length (below) | a field leaves the film its own fringe, where a band would trim it; its card follows its paint |
 | 36 | a smooth reveal over stepped properties | no `sourceClock`; properties quantised by their `step`; `layersOf(painting(src, {stepped}), keys, {at: m.at})` (below) | held on sixes, the reveal steps with the rest; each stepped value is one solve, the reveal recomposes each frame |
@@ -1124,8 +1127,8 @@ Before the first look:
   and order, without the GPU.
 - Keys share one namespace across the whole document: a layer, a group, a wash and an application may not share a
   key, even in different layers (`hill` the layer, `hill-wash`, `hill-flood`). An element built twice by one TS
-  function takes a key prefix as an argument. Keys stay flat because shots address `plane/layer` by them
-  (visibility, rigs, motion nodes, masks).
+  function takes a key prefix as an argument. Keys stay flat because a plane's entry names the layers and groups it
+  shows by key alone, and a mask reads one as `<plane id>/<key>`.
 - Planes run farthest first. With `<PaintedShotCanvas>`es, the back draws in the first, and each later canvas's
   planes all lie nearer than every plane of an earlier one.
 - A rig names every layer under its group in one part's cels, a layer riding another (a gouache light on its
@@ -1142,22 +1145,52 @@ must also hold what its blur reads past the frame, about 3 × its sigma + 2 px e
 move and shutter show of it; a back painted short of that is refused, naming the fix in the terms of its lay
 (Camera).
 
+A shot is its camera and its planes, and a plane's entry says everything about it: what it shows and where
+(`source`, `lay`, `depth`), its `visibility`, its own node (`pivot`, `pins`, `marks`, `glow` and `plays`, held by its
+`clock`), and under `occurrences`, by layer or group key alone, what each layer or group it shows does: its
+`visibility`, a group's `rig`, its node's fields and `plays`. A play is written under the node it moves; only the
+camera's plays sit on the camera. So one helper returns one whole thing, a flock or a card, as one `PlaneProps`, and
+a thing spanning planes (a figure on its card, its reflection in the road's sheet) as the entries for each:
+
+```ts
+/**
+ * A flock as one plane, crossing the sky by `flight`: the flock's group bobs as one and boils on threes, and each
+ * bird shows one wing pose at a time, out of step with the bird before.
+ */
+function flockPlane(id: string, depth: number, flight: PlaneLay): PlaneProps {
+  const wings = Object.fromEntries(BIRDS.flatMap((bird, b) => WING_POSES.map((pose, i): [string, OccurrenceProps] => [
+    `${bird}-${pose}`, { visibility: ({ at }) => (wingPoseAt(at + 0.1 * b) === i ? 1 : 0) },
+  ])));
+  const bob: ShotNodePlay = {
+    clip: { kind: 'place', value: paintKeyed([{ at: 0, value: { x: 0, y: 0 } }, { at: 1, value: { x: 0, y: -6 }, curve: 'inOut' }]) },
+    clock: { at: 0, loop: { period: 1, mode: 'pingpong' } }, origin: `${id} bobs`,
+  };
+  return {
+    id, depth, lay: flight, source: layersOf(flock, ['flock']),
+    occurrences: { flock: { pivot: { x: 120, y: 40 }, marks: { boil: { every: 3 } }, plays: [bob] }, ...wings },
+  };
+}
+```
+
+`BIRDS`, `WING_POSES`, `wingPoseAt` and the `flock` evaluation are the scene's own. A problem in an entry is named
+where it's written: `sky.visibility`, `birds.occurrences.flock.marks`, `front.occurrences.heron.rig.parts.neck`.
+
 | Concept | How | Notes |
 |---|---|---|
-| plane | `PlaneProps {id, depth, source, lay?, clock?, sourceClock?, masks?, canvas?}` | farther first; equal depths keep written order. With canvases (HTML among canvases), `canvas` names the plane's: the back's is the first, and a later canvas's planes all lie nearer than every plane of an earlier one (an instanced plane's at all its `depths`), else `<id>.canvas` is refused at load |
+| plane | `PlaneProps {id, depth, source, lay?, clock?, sourceClock?, masks?, canvas?, visibility?, pivot?, pins?, marks?, glow?, plays?, occurrences?}` | farther first; equal depths keep written order. With canvases (HTML among canvases), `canvas` names the plane's: the back's is the first, and a later canvas's planes all lie nearer than every plane of an earlier one (an instanced plane's at all its `depths`), else `<id>.canvas` is refused at load |
 | back and nearer planes | the farthest non-instanced plane is the back, fixed at load: painted on paper, or a picture held everywhere; over HTML, a clear back (below). Nearer painted planes are clear film; picture and three planes lay premultiplied over what's behind | across painted planes: the white/black approximation `C + T × behind`, so a strong coloured glaze over coloured paint reads light. So a nearer watercolour plane tints what's behind it rather than hiding it: a bright far plane (a glitter, a lit pool) shows through its glazes. A gouache body under those glazes hides it. Nearer paint keeps its own grain (Sheets) |
 | ground | a selection's `ground`: paper on the back, transparent elsewhere, when left out | the back is opaque, hiding HTML before the first canvas, and painted wherever the frame reads it: past its document lies bare paper, so a back smaller than the frame, or than the frame and its blur, is refused (Camera). A small painting meant to sit inside the frame goes on a nearer plane with `ground: 'paper'`, before a frame-sized bare back: a document of the same paper with one empty layer (`{ key: 'bare', washes: [] }`). With HTML behind the first canvas inside the `<PaintedShot>` (text, a laid-out element, or a background on a wrapper holding the canvas), the back may be clear (**NEW**): a transparent ground, a picture held less than everywhere, or a three plane, any size, laid as a nearer plane is, its canvas a glaze over that HTML as a later one is. Where no HTML lies behind it inside the shot, the page outside sees it through one alpha: exact over white, lighter and toward its filter's hue over a darker page (HTML among canvases). A transparent back without HTML behind is refused. The page is read again as each frame draws, so the HTML behind a clear back stays mounted while the shot draws: a frame with none behind it fails |
 | selection | `layersOf(evaluation, keys, {ground?, at?})` | layer or group keys; groups include their descendants; composed in document order; an own sheet's layers with their owner, on one plane |
-| occurrence | `<plane id>/<layer or group key>`, at any depth of the tree | the same layer on two planes is two occurrences; a plane's occurrences are fixed by its first evaluation and checked each frame |
+| occurrence | a layer or group a painted plane shows, at any depth of the tree; its entry is the plane's `occurrences[key]`, and a mask reads it as `<plane id>/<key>` | the same layer on two planes is two occurrences; a plane's occurrences are fixed by its first evaluation and checked each frame. An entry naming a key its plane doesn't show is refused, as is any on a picture or three plane |
 | span | `span: {from, to, fps}`, the scene seconds the shot's frames show: `sceneSecondsOf(clock).span` | every value is sampled at its frames and their shutters' ends, for what the shot checks and warns of (Values in time); a render refuses a span at another frame rate than its composition's, or short of its scene's frames |
-| motion | `motion {nodes, plays?}`: `OccurrenceMotionNode`s and the animation feature's plays, none playing when `plays` is left out; node ids are occurrence keys | a node's parent is its enclosing group's node, else its plane. A group's node takes all a layer's does, with one phase, seed and map for everything it holds. A `place` or `poses` play's clip takes a `value` (Values in time) |
-| visibility | `visibility: {[occurrence]: 0..1, or a value in time}` | multiplies the occurrence's composite; a group's fades all it holds as one, and an own sheet's owner, a layer or a group, fades its card with its paint (Sheets). Any other layer's fades its own film, and thins the card it lies on only where its paint alone cut it: what its water did to other layers' paint on the sheet stays (Sheets). A picture or three plane's fades its picture or render, and what a mask reads of it. Inside a rig drawn as pieces, a cel, layer or group fades as it does laid in place, solving nothing, and at 0 lays nothing: `visibility: {'front/mouth-open': paintKeyed([{ at: 2, value: 1 }, { at: 2.4, value: 0 }])}`. Each new level reads the rig's picture back once, a readback a frame while it fades. A cel whose paint alone cut its card keeps that paper whole until it's half gone, so its paint pales on paper rather than thinning to what's behind: a cel to fade card and all owns its sheet. The opaque back takes none, being shown wherever the frame is; a clear back over HTML fades as a nearer plane does |
-| glow, boil, pins, sway, flutter, place | node fields and plays (Reference) | move finished paint on a sheet the occurrence owns, its marks before painting otherwise (Sheets); boil wobble moves finished paint either way. Boil wobble and sway phase follow the occurrence key. `glow` is a constant or a value in time, read at its node's held moment (Reference › Glow): `glow: paintKeyed([{ at: 0, value: { amount: 0, threshold: 0.4 } }, { at: 1, value: { amount: 1.5, threshold: 0.4 } }])` |
-| rig | `rigs: {[group occurrence]: {parts, pose}}` (Reference) | a rigged node takes place, clock, glow and boil, not pins, sway or flutter; drawn as pieces, it lays no glow. On a sheet the group or a cel owns, paint, paper and edge bend as pieces (**NEW** in shots); otherwise the cels' marks are posed before painting (**NEW**) |
+| motion | an entry's node fields (`pivot`, `pins`, `marks`, `glow`; an occurrence's `clock` too) and `plays`, each `{clip, clock, origin}` on the entry's own node | a node field or a play gives the plane or occurrence a node; without one it moves as its nearest enclosing node does. A node's parent is its enclosing group's node, else its plane's. A group's node takes all a layer's does, with one phase, seed and map for everything it holds. A `place` or `poses` play's clip takes a `value` (Values in time) |
+| visibility | an entry's `visibility`: 0..1, or a value in time | multiplies the plane's or occurrence's composite; a group's fades all it holds as one, and an own sheet's owner, a layer or a group, fades its card with its paint (Sheets). Any other layer's fades its own film, and thins the card it lies on only where its paint alone cut it: what its water did to other layers' paint on the sheet stays (Sheets). A picture or three plane's fades its picture or render, and what a mask reads of it. Inside a rig drawn as pieces, a cel, layer or group fades as it does laid in place, solving nothing, and at 0 lays nothing: `occurrences: {'mouth-open': {visibility: paintKeyed([{ at: 2, value: 1 }, { at: 2.4, value: 0 }])}}`. Each new level reads the rig's picture back once, a readback a frame while it fades. A cel whose paint alone cut its card keeps that paper whole until it's half gone, so its paint pales on paper rather than thinning to what's behind: a cel to fade card and all owns its sheet. The opaque back takes none, being shown wherever the frame is; a clear back over HTML fades as a nearer plane does |
+| glow, boil, pins, sway, flutter, place | node fields and plays (Reference) | move finished paint on a sheet the occurrence owns, its marks before painting otherwise (Sheets); boil wobble moves finished paint either way. Boil wobble and sway phase follow the plane and key, so the same layer on two planes wobbles and sways apart. `glow` is a constant or a value in time, read at its node's held moment (Reference › Glow): `glow: paintKeyed([{ at: 0, value: { amount: 0, threshold: 0.4 } }, { at: 1, value: { amount: 1.5, threshold: 0.4 } }])` |
+| rig | a group's entry's `rig: {parts, pose}` (Reference) | a rigged node takes place, clock, glow and boil, not pins, sway or flutter; drawn as pieces, it lays no glow. On a sheet the group or a cel owns, paint, paper and edge bend as pieces (**NEW** in shots); otherwise the cels' marks are posed before painting (**NEW**) |
 | lay | a plane's `lay`: still, moving (a value in time), or on the frame, a pin or a cover | where its document lies in frame px (Lay forms, below) |
-| hold | plane `clock: {hold: n}` holds its presentation and motion: its lay, visibility and rig poses, and its nodes' plays; `sourceClock: {hold: n}` holds what `source` reads (a callback's prefix, property values and dissolve weights, a picture's `pictureAt`, a three scene's `poseAt`) | each callback reads its clock's held moment, floored to the hold's grid. Both start from the frame's moment; neither holds the other's. The camera still moves through the shutter |
+| hold | plane `clock: {hold: n}` holds its presentation and motion: its lay, visibility and rig poses, its own node and its occurrences' nodes and their plays; `sourceClock: {hold: n}` holds what `source` reads (a callback's prefix, property values and dissolve weights, a picture's `pictureAt`, a three scene's `poseAt`) | each callback reads its clock's held moment, floored to the hold's grid. Both start from the frame's moment; neither holds the other's. The camera still moves through the shutter |
 | masks | `alphaOf` (another drawable's coverage, partial alpha included, where it lies this frame: a plane by id, painted, picture, three or instanced, or a painted plane's occurrence), `invert?` | **NEW**, on painted planes only. It cuts the plane's paint, glow and the own-sheet paper it shapes; the ground stays whole. A plane's masks multiply. To leave a layer unmasked, put it on a second plane at the same depth. No mask reads its own plane, through any chain. Paint shown over time, along a path or by a field, is the document's to say: a layer's or group's `reveal` (Time). `alphaOf` reads every drawable where the camera shows it this frame, through both lays and the parallax between their depths: a reader's plane px is found on the frame and read on the drawable's plane there, so the cut stays on what it reads on the frame as the camera pans, while the reader's paint slides by at its own depth. At one depth that's the same plane px, as at rest. A three plane's coverage is read where its render shows it; an instanced plane's items where the camera shows them, sharp and still. A drawable's coverage is cut by its own plane's masks and visibility. A part inside a rig drawn as pieces isn't read apart: read the rig. A reader is laid anew only when what it reads changes: a painted plane's picture, a picture source's new picture, a three render's frame, an instanced plane's items moved, faded or repainted, a drawable's visibility, or where the camera shows it against the reader (each frame a camera move parts their depths). A dissolving plane's masks cut both ends alike, and reading one reads its ends' coverage blended as its picture is. Under an open shutter the reference cuts each exposure where its own views lay it; fast mode cuts at the frame's moment and blurs the cut as the reader moves, so a reader sliding past what it reads smears the cut's edge a little wider (half the difference in their travel over the shutter) |
-| instances | `{kind: 'instanced', depths: {near, far}, variants, instances(m)}` | each item lays its variant as a plane at its depth (`lay` from the variant's document px; clear outside its paint), depth-sorted with every drawable, planes first on ties, all within `depths` and nearer than the back. A variant is solved and laid once, whole and centred on the stage (its document no larger), and every item showing it shares that picture; items lie anywhere through the lens. An item's defocus blurs that picture, and may spread it only as far as the stage leaves round the variant's document: paint a variant on a document tight round its paint. A key is one item's lifetime: the same key at the shutter's two ends blurs the item along its own travel; a key missing at either end draws it as if still on its plane, blurred only by the camera's move; a recycled item takes a new key. An item's `visibility` fades it, the plane's all of them. Items take no motion nodes (**NEW**) |
+| instances | `{kind: 'instanced', depths: {near, far}, variants, instances(m)}` | each item lays its variant as a plane at its depth (`lay` from the variant's document px; clear outside its paint), depth-sorted with every drawable, planes first on ties, all within `depths` and nearer than the back. A variant is solved and laid once, whole and centred on the stage (its document no larger), and every item showing it shares that picture; items lie anywhere through the lens. An item's defocus blurs that picture, and may spread it only as far as the stage leaves round the variant's document: paint a variant on a document tight round its paint. A key is one item's lifetime: the same key at the shutter's two ends blurs the item along its own travel; a key missing at either end draws it as if still on its plane, blurred only by the camera's move; a recycled item takes a new key. An item's `visibility` fades it, the plane's all of them. Its entry holds its visibility, never a node or occurrences (**NEW**) |
 | dissolve | `dissolve(a, b, k)`, nestable | blends the two pictures in the plane's own form (the back's opaque colour, a nearer plane's or a clear back's colour and transmittance, on any canvas), never their pigment; its glow and motion summed alike; its occurrences are both sides', moved alike; every end one document size on one ground; a rig on its plane needs its group cut alike in every end (the same layers in each cel), and each end is posed by the frame's one read of the pose and solved per pose (**NEW**) |
 | three.js | `{kind: 'three', build}`; `paintedTextures: [{id, source, widthPx, heightPx}]` on the shot | the three-layers feature's: posed at each moment (once at 0 as it loads), then its offscreen passes drawn before its scene (a mirror following the exposure's camera, a ground); it may ask for soft shadows (`shadows`) and reads painted textures by id (Painted textures, Lighting a three scene) |
 | picture | `{kind: 'picture', extent, pictureAt}` | a `StampPlaneSource`'s: premultiplied, its `box` in stage texels (the margin included), never mutated once handed over; return the same object while it's still |
@@ -1218,7 +1251,7 @@ const PUSH = paintKeyed<PaintCameraMovePose>([
 ], { between: 'smooth' });
 ```
 
-The walker's play is `paintMotionPlay(walker, { kind: 'place', value: WALK }, …)`, the push's
+The walker's play, in her entry's `plays`, is `{ clip: { kind: 'place', value: WALK }, clock, origin }`, the push's
 `paintCameraPlay({ kind: 'move', value: PUSH }, …)`. Keys written `as const` lead TypeScript to take key 0's literals
 for the value's type: name it, as `paintKeyed<PaintCameraMovePose>(…)` does.
 
@@ -1673,8 +1706,9 @@ work out), or how many px more to paint and how far up and left to lay it then; 
 a pin, its two points nearer; any, how many px more to paint. A back laid by a callback is checked so at each frame's
 moment and shutter ends, the fix for that moment's lay.
 
-**Motion nodes** (`OccurrenceMotionNode`: `PaintMotionNode` without `parent` or `live` marks): `{id, pivot?, pins?,
-marks?, clock?, glow?}`. `pivot` document px (the origin); `marks`: `'stuck'` (default), `{boil: {every, amount?,
+**Motion nodes**, an entry's node fields (`OccurrenceProps` for an occurrence, `PlaneProps` for a plane): `PaintMotionNode`'s
+without `id`, `parent` or `live` marks, `{pivot?, pins?, marks?, clock?, glow?}`, a plane's `clock` its own. `pivot`
+document px (the origin); `marks`: `'stuck'` (default), `{boil: {every, amount?,
 scale?, reseed?}}` (every n frames; wobble `amount` px (2.2) at feature `scale` px (45), document px; no pivot
 needed); `clock`: `{hold: n}` frames or `{freeze: s}`, inside its plane's; `glow`: `{amount, threshold}`, a value in
 time of one, or `'none'` (Glow). Pins:
@@ -1703,7 +1737,7 @@ that light's luminance past the threshold, so its glow falls faster than its pai
 under the threshold. A group's or an own sheet owner's visibility, and the plane's, mix the light after it's measured,
 scaling the glow by v as `amount` does. A rig drawn as pieces lays no glow.
 
-**Plays** (`paintMotionPlay(node, clip, {clock, origin})`): clock `{at, rate?, loop?: {period, mode?: 'repeat' |
+**Plays** (an entry's `plays`, each a `ShotNodePlay`, `{clip, clock, origin}`, on the entry's node): clock `{at, rate?, loop?: {period, mode?: 'repeat' |
 'pingpong', times?}, hold?, until?}` or `{at, freeze}`; `at` scene s, the rest clip s or frames. A play writes its
 node from `at` until its clock's `until`, else until its keyed value settles (a function's, for ever). Two plays
 writing one thing (a node's place, one pin) over the same seconds are refused, as are a plane's moving `lay` and a
@@ -1713,7 +1747,7 @@ rotation?, scale?}` (rigid, about the node's pivot, x and y document px; scale 0
 period}`; `sway {root, direction, length, amount, period}` (direction radians, −π/2 up; length px to the tip; amount px of tip travel; period s);
 `flutter {at, direction, least, period}`.
 
-**Rigs** (`OccurrenceRig`, on a group occurrence): `parts`, each a `PaintRigCutDeclaration` with its `cels`: `{id, z,
+**Rigs** (`OccurrenceRig`, a group's entry's `rig`): `parts`, each a `PaintRigCutDeclaration` with its `cels`: `{id, z,
 parent: null, cels}`, `{id, z, parent, joint: 'skin', pivot, blend, cels}` or `{id, z, parent, joint: 'hinge', pivot,
 cels}`. Every layer under the group lies in exactly one part's cels; a cel is a layer, or a group (a line and its wash
 as one part) whose layers may mix media: a gouache rim light rides its watercolour body as one cel by sharing a group
@@ -1723,7 +1757,7 @@ texel shows the cel giving it most colour. A skin joint bends along its part's o
 skinned part's cel (its rest cel, or the one a pose shows on a rig drawn as pieces) gives some texel most of its
 colour: it lays paint on the document, isn't outweighed everywhere by the cels over or under it (under them, raise
 its z; over them but faint, paint it stronger or past them), and its paint doesn't centre on its pivot. Else the
-frame drawing it is refused at `<occurrence>.parts.<id>`. A hinged part or a root may show a clear cel: a layer with
+frame drawing it is refused at `<plane>.occurrences.<group>.rig.parts.<id>`. A hinged part or a root may show a clear cel: a layer with
 no washes (`{ key: 'seed-clear', washes: [] }`), which checks clean. Parts draw by `z`,
 document order breaking ties. Across a skin joint the two parts' moves blend over `blend` px, so the joint bends as an
 arc keeping the limb's width; a hinge turns rigidly. Chains nest to any depth. `pose` names parts by id: `{x?, y?,
@@ -1762,9 +1796,9 @@ function waderPoseAt(at: number) {
   const leg = paintRigTwoBoneReach(WADER, trunk, { chain: ['thigh', 'shin'], tip: ANKLE, target: footAt(at), bend: 'counterclockwise' });
   return { ...trunk, thigh: { rotation: leg.upper }, shin: { rotation: leg.lower }, foot: { rotation: -leg.turn } };
 }
-rigs: {
-  'lake/wader': { parts: waderParts(false), pose: ({ at }) => waderPoseAt(at) },
-  'lake/reflection': { parts: waderParts(true), pose: ({ at }) => paintRigMirroredPose(waderPoseAt(at), 'y') },
+occurrences: {
+  wader: { rig: { parts: waderParts(false), pose: ({ at }) => waderPoseAt(at) } },
+  reflection: { rig: { parts: waderParts(true), pose: ({ at }) => paintRigMirroredPose(waderPoseAt(at), 'y') } },
 },
 // where the bill points as the strike lands: the ring's centre
 const strikeAt = paintRigPosedPoint(WADER, waderPoseAt(STRIKE), 'head', BILL_TIP);
@@ -1889,10 +1923,10 @@ What the check says today, and what to do:
 | `document.wrap: "z" isn't a wrap: 'x' meets the left edge to the right, …` / `document.paper.image: is a photograph on a wrapped document: its opposite edges meet at the seams, …` / `document.paper.grain.scale: is laid at 0.5 on a document wrapping across x: its mirrored tiles fit the width in whole pairs, …` / `document.paper.grain.scale: is laid 960 × 540 px on a document wrapping down y, not the 960 × 960 its 512 × 512 image asks: …` (warnings, the last from `--solve` and `paint still`) | a wrap that isn't `'x'`, `'y'` or `'xy'`; a photograph on a document that wraps; a grain whose scale is far from 1 ÷ 2n on one wrapping across x; a grain whose height, by its image's aspect, is laid far off on one wrapping down y | `'x'`, `'y'`, `'xy'` or none; a photograph that tiles each way it wraps, or grain alone; a grain scale of 0.5, 0.25, …; a smaller scale, or a document whose sides are the image's in a small whole ratio |
 | `back/stem: lies on flower's own sheet: select flower, or all its sheet's layers, on one plane` / `back.source.layers[0]: names hil, which is unknown in meadow` / `back/neck: is selected twice, through heron and neck` / `back.source.k: 1.5 isn't within 0..1` | a plane's source, as the shot's load reports it (`paintedSourceProblems`) | select it whole; fix keys |
 | `meadow.masks[0].drawable: reads rain, whose mask reads meadow/sky` / `front.masks[1].drawable: names rain/drop, but rain's items aren't occurrences: read rain` / `photo.masks: masks cut painted films, and a picture plane has none` / `tint.masks[0].drawable: names pond/reed-b, inside pond/reeds, drawn as pieces: read pond/reeds` | a plane's masks, as the shot's load reports them (`shotMaskCheck`, and the shot's rigs and instanced planes) | break the chain; read the plane or the rig; mask a painted plane |
-| `rain.depths.far: 2.5 isn't nearer than the back, street at depth 2` / `rain.variants.drop: paints a 64 × 32 document, and the stage is 52 × 44: a variant is laid whole on the stage` / `rain.motion: is an instanced plane: its items take no nodes; …` / `rain: two items are called a at 2.04 s` / `rain: drop-3-0 at 1.04 s blurs drop 18 px past its document, and the stage leaves it 16: paint drop on a smaller document, or lay the item larger` | an instanced plane at load and its items each frame (`compileShotInstancedPlane`, `shotInstanceProblems`, `shotExposureItems`) | keep items nearer than the back; paint a variant no larger than the stage, its document tight round its paint; lay items by `instances`; one key an item |
+| `rain.depths.far: 2.5 isn't nearer than the back, street at depth 2` / `rain.variants.drop: paints a 64 × 32 document, and the stage is 52 × 44: a variant is laid whole on the stage` / `rain: two items are called a at 2.04 s` / `rain: drop-3-0 at 1.04 s blurs drop 18 px past its document, and the stage leaves it 16: paint drop on a smaller document, or lay the item larger` | an instanced plane at load and its items each frame (`compileShotInstancedPlane`, `shotInstanceProblems`, `shotExposureItems`) | keep items nearer than the back; paint a variant no larger than the stage, its document tight round its paint; lay items by `instances`; one key an item |
 | `label.lay.points: both pin 40, 40: two points set a scale and turn only apart` / `label.lay.points[0].element: isn't mounted: …` / `label.lay.points[0].element: names title, the data-pin of 2 elements in the shot: a pin names one` / `label.lay: plane label's picture must hold what the camera shows of it, … widen the stage's margin` / `photo.lay: is a picture plane, which lies where its source puts it: …` | a pin or cover at load (`shotPlacementProblems`), a cover laid as the shot loads and a pin each frame where it's measured (`shotPinnedPlanes`); a lay on a picture or three plane | pin points apart; mount the element, one with its `data-pin`; keep within the stage's margin; move a picture plane by its node |
 | `sky.lay: is the back, painted 0 px past the frame (push from key 0 to 1), its blur reading 5 px past the frame, and past its painting lies bare paper: lay it 2.8% larger about its centre: { placement: { x: 0, y: 0, rotation: 0, scale: 1.028 }, pivot: { x: 960, y: 540 } }, or cover the frame with a box … px inside its painting: lay: { kind: 'cover', box: { … } }, or paint 5 px more on every side and lay it 5 px up and left: { … }` / `backdrop.lay: …: cover a box 13 px smaller on every side (box: { … }), or paint 13 px more past its box on every side …` / `shot: sky.lay: is the back, painted to 4 px inside the frame (at 3 s), …: at that moment, lay it 2.4% larger about its pivot (placement scale 1.05 → 1.076), …` | the back's painting short of what the frame, its blur, the camera's move and the back's own node read, refused, never clamped: a still lay as the shot loads, a cover as it's laid, a pin each frame it's measured (`shotBarePaperProblem`), a callback's lay each frame (`shotBackFrameProblem`) | apply any fix it names: they're worked out for the lay as written, so the shot then holds. A still back's cover fix replaces its lay with a cover, centred and scaled for you. Painting more on the top and left moves every document px of it right and down, so the lay moves up and left with it. A painting meant to sit small inside the frame goes on a nearer plane with `ground: 'paper'`, before a frame-sized bare back (one empty layer) |
-| `meadow/hil.visibility: names no plane or occurrence of this shot` / `rain/drop-3.visibility: fades an item of rain, which isn't an occurrence: …` / `table.visibility: is the back, shown wherever the frame is: fade a nearer plane or its occurrences` / `meadow/sky.visibility: 1.2 at 3 s; visibility is within 0..1` / `shot.warm: 2..1 isn't a span of scene seconds: …` | the shot's `visibility` (`shotVisibilityProblems` and, for the back, `compilePaintedShot` at load; `shotVisibilityProblem` each frame) and `warm` (`shotWarmProblems`) | name an occurrence; fade an item by its own `visibility`; fade a plane nearer than the back |
+| `meadow.occurrences.hil: isn't a layer or group meadow shows` / `photo.occurrences: is a picture plane, which shows no layers or groups` / `table.visibility: is the back, shown wherever the frame is: fade a nearer plane or its occurrences` / `meadow.occurrences.sky.visibility: 1.2 at 3 s; visibility is within 0..1` / `shot.warm: 2..1 isn't a span of scene seconds: …` | a plane's entry, its keys (`shotPlaneEntries`) and visibility (`shotVisibilityProblems` and, for the back, `compilePaintedShot` at load; `shotVisibilityProblem` each frame), and the shot's `warm` (`shotWarmProblems`) | name a layer or group the plane shows; fade a plane nearer than the back |
 | `label.id: names two painted textures: an id names one` / `label.widthPx: is 0: a painted texture is whole px above 0` / `label.source: selects on a transparent ground: a painted texture is opaque, …` / `label.source: blends paintings that wrap otherwise: …` | the shot's painted textures as it compiles (`compilePaintedShot`, each source at moment 0, beside its planes' problems) and a callback's again each frame (`compiledPaintedTextureSourceAt`, which also refuses one wrapping otherwise than at 0) | one id a texture; leave `ground` out; wrap every painting a texture blends alike |
 | `shot.warm: runs to 240 s; its scene ends at 8 s: warm counts scene seconds, not frames, and stops at the scene's end` (warning) | a `warm` past the end of the scene playing the shot, printed by every render and in the warm's costs (`shotWarmPastScene`) | write the span in scene seconds |
 | `scene heron's painted shot (…) stalled: no solve has finished and its GPU has answered nothing in 90 s, so the render stops. It was solving heron at 2.4 s, warming 0–10 s, 12 of 96 solves done. …` | a load, warm or frame that made no progress for 90 s: its GPU process hung, or a solve that never settles (`shot-watch.ts`) | nothing: the render draws its chunk again in halves, each in a fresh browser; a frame that stalls again alone fails it (below), a bug to report with the line |
@@ -1986,10 +2020,10 @@ the rest (`Unscheduled after it: a, b, c, d, e and 30 more`). What the solve say
 | `glaze: fixed at 1 s precedes its predecessor at 3.448 s` | the application before it waited on its `on` past this one's `at` | a later `at`, or an earlier wait |
 | `glaze: unreachable from this committed prefix: on 'dry' held over 80% of its core (needs 100%), at its \`at\` of 6 s [0,0 → 96,64]; move the \`at\` to where \`studio paint check --solve\` says its paper is dry, or drop the \`on\`. Unscheduled after it: …` | a fixed `at` whose `damp` or `dry` doesn't hold then, judged there alone, so the share is exact; the sheet's reasons (`never wetted`, `instant`, `never`) come first | what it says |
 
-`<PaintedShot>` refuses, as it loads, every problem at once: its sources' (as above), a bad rig (`meadow/heron is
-rigged: it takes no pins, sway or flutter`, `meadow/eye: lies under rigged heron and in no part's cels: group it with
-the layer it rides on (a group cel's layers may mix media) and name the group as that part's cel, or give it a part
-of its own: …`), the camera build's problems and `paintChannelConflicts`' channel conflicts, a back painted short of
+`<PaintedShot>` refuses, as it loads, every problem at once: its sources' (as above), a bad rig (`meadow.occurrences.heron:
+is rigged: it takes no pins, sway or flutter`, `meadow.occurrences.heron.rig.parts: hold no cel with eye, which lies
+under heron: group it with the layer it rides on (a group cel's layers may mix media) and name the group as that
+part's cel, or give it a part of its own: …`), the camera build's problems and `paintChannelConflicts`' channel conflicts, a back painted short of
 what the frame and its blur read (`sky.lay: is the back, painted 0 px past the frame …`), a transparent back with no
 HTML behind
 (`back.source.ground: is the back, laid on its paper wherever the frame shows: its ground is transparent only over

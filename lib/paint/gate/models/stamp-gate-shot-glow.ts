@@ -91,14 +91,13 @@ export const STAMP_GATE_LAMP_PULSE = paintKeyed<StampGroupGlow>([
 
 /** The glowing shot, `glowing` as given, the disc shown unless `disc` is false, bloomed by 4 frame px. */
 export function stampGateGlowShot(glowing: StampGateGlowing, { disc = true }: { disc?: boolean } = {}): StampGateShot {
-  const nodes = Object.entries(glowing).map(([layer, glow]) => ({ id: `${layer === 'streak' ? 'night' : 'lamp'}/${layer}`, glow }));
+  const glows = (night: boolean) => Object.fromEntries(Object.entries(glowing).filter(([layer]) => (layer === 'streak') === night).map(([layer, glow]) => [layer, { glow }]));
   return {
     camera: { stage: stampStage(GLOW_FRAME, 2), fov: 35, lens: { bloom: 4, shutter: 'shut' }, plays: [] },
     planes: [
-      { id: 'night', depth: 1, source: layersOf(painting(STAMP_GATE_GLOW_NIGHT), ['sky', 'streak']) },
-      { id: 'lamp', depth: 1, source: layersOf(painting(STAMP_GATE_GLOW_LAMP), disc ? ['glass', 'disc'] : ['glass']) },
+      { id: 'night', depth: 1, source: layersOf(painting(STAMP_GATE_GLOW_NIGHT), ['sky', 'streak']), occurrences: glows(true) },
+      { id: 'lamp', depth: 1, source: layersOf(painting(STAMP_GATE_GLOW_LAMP), disc ? ['glass', 'disc'] : ['glass']), occurrences: glows(false) },
     ],
-    motion: { nodes, plays: [] },
   };
 }
 

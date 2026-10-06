@@ -77,12 +77,14 @@ export function stampGateCardsShot({ down = true, sitting = true, leaf = true }:
   const evaluation = painting(STAMP_GATE_CARDS, { down, sitting, leaf });
   return {
     camera: { stage: stampStage(CARDS, 2), fov: 35, lens: { bloom: 0, shutter: 'shut' }, plays: [] },
-    planes: [{ id: 'cards', depth: 1, source: layersOf(evaluation, leaf ? ['sky', 'collage', 'leaf'] : ['sky', 'collage']) }],
-    rigs: { 'cards/figure': { parts: stampGateCardParts(down), pose: {} } },
-    visibility: {
-      ...(sitting && { 'cards/sitting': visibilityBy(STAMP_GATE_CARDS_SITTING) }),
-      ...(leaf && { 'cards/leaf': visibilityBy(STAMP_GATE_CARDS_LEAF) }),
-    },
+    planes: [{
+      id: 'cards', depth: 1, source: layersOf(evaluation, leaf ? ['sky', 'collage', 'leaf'] : ['sky', 'collage']),
+      occurrences: {
+        figure: { rig: { parts: stampGateCardParts(down), pose: {} } },
+        ...(sitting && { sitting: { visibility: visibilityBy(STAMP_GATE_CARDS_SITTING) } }),
+        ...(leaf && { leaf: { visibility: visibilityBy(STAMP_GATE_CARDS_LEAF) } }),
+      },
+    }],
   };
 }
 
@@ -97,8 +99,15 @@ export function stampGateCardsPosedShot(): StampGateShot {
   const evaluation = painting(STAMP_GATE_CARDS, { down: true, sitting: false, leaf: false });
   return {
     camera: { stage: stampStage(CARDS, 2), fov: 35, lens: { bloom: 0, shutter: 'shut' }, plays: [] },
-    planes: [{ id: 'sky', depth: 2, source: layersOf(evaluation, ['sky']) }, { id: 'collage', depth: 1, source: layersOf(evaluation, ['collage']) }],
-    rigs: { 'collage/figure': { parts: stampGateCardParts(true), pose: ({ at }): Readonly<Record<string, RigPartPose>> => (at < STAMP_GATE_CARDS_POSED_AT.lying ? {} : { figure: { cel: 'down' } }) } },
-    visibility: { 'collage/up': 0 },
+    planes: [
+      { id: 'sky', depth: 2, source: layersOf(evaluation, ['sky']) },
+      {
+        id: 'collage', depth: 1, source: layersOf(evaluation, ['collage']),
+        occurrences: {
+          figure: { rig: { parts: stampGateCardParts(true), pose: ({ at }): Readonly<Record<string, RigPartPose>> => (at < STAMP_GATE_CARDS_POSED_AT.lying ? {} : { figure: { cel: 'down' } }) } },
+          up: { visibility: 0 },
+        },
+      },
+    ],
   };
 }

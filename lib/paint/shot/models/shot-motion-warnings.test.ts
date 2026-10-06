@@ -34,12 +34,17 @@ function flight(arrival: PaintCurve, shutter: PaintCameraShutter, hold?: number)
   const { problems } = compilePaintedShot({
     camera: { stage: stampStage({ width: 320, height: 240 }, 2), fov: 35, lens: { bloom: 0, shutter } },
     span: { from: 0, to: 2, fps: 24 },
-    planes: [{ id: 'back', depth: 4, source: layersOf(pond, ['sky']) }, { id: 'birds', depth: 1, source: layersOf(pond, ['swift', 'swallow', 'swallow-up']) }],
-    motion: {
-      nodes: [{ id: 'birds/swift' }],
-      plays: [{ target: 'birds/swift', clip: { kind: 'place', value: paintKeyed([{ at: 0, value: { x: 0 } }, { at: 1, value: { x: 120 }, curve: arrival }]) }, clock: { at: 0, ...(hold && { hold }) }, origin: 'flight' }],
-    },
-    visibility: { 'birds/swallow': ({ at }) => (at >= 1.5 && at < 1.75 ? 1 : 0), 'birds/swallow-up': ({ at }) => (at < 1.75 ? 0 : 1) },
+    planes: [
+      { id: 'back', depth: 4, source: layersOf(pond, ['sky']) },
+      {
+        id: 'birds', depth: 1, source: layersOf(pond, ['swift', 'swallow', 'swallow-up']),
+        occurrences: {
+          swift: { plays: [{ clip: { kind: 'place', value: paintKeyed([{ at: 0, value: { x: 0 } }, { at: 1, value: { x: 120 }, curve: arrival }]) }, clock: { at: 0, ...(hold && { hold }) }, origin: 'flight' }] },
+          swallow: { visibility: ({ at }) => (at >= 1.5 && at < 1.75 ? 1 : 0) },
+          'swallow-up': { visibility: ({ at }) => (at < 1.75 ? 0 : 1) },
+        },
+      },
+    ],
   } satisfies PaintedShotProps, []);
   return problems.map(({ severity, owner, message }) => `${severity} ${owner}: ${message}`);
 }

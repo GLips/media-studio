@@ -568,9 +568,11 @@ still` and `studio paint check --solve`.
 document's, as a film readback reads one), `bracket` and `dissolve` blend two, `paintedSourceShares` weighs the selections a dissolve blends (linear in
 each form a plane's picture takes, so one weighted sum), and `paintedSourceProblems` is what a shot's load refuses in
 a plane's selection, an own sheet split among them (`shot-selection.ts`); and `PaintedShotProps` (`shot-props.ts`)
-is the shot itself, its planes, motion, rigs and camera in the engine's shapes. A drawable is named by plane id or
-occurrence key, `<plane>/<key>` (`shot-occurrences.ts`), and every frame draws its planes and instanced items far
-to near, planes first on ties (`shot-plan.ts`).
+is the shot itself, its camera and its planes, each plane's entry holding all it and its occurrences do (visibility,
+motion nodes and plays, rigs), in the engine's shapes. A drawable is named by plane id or occurrence key,
+`<plane>/<key>` (`shot-occurrences.ts`): the entries are read into maps by that name as the shot loads
+(`shot-entries.ts`), a problem in one named where it's written (`shotEntryProblem`), and every frame draws its planes
+and instanced items far to near, planes first on ties (`shot-plan.ts`).
 
 `PaintedShot` (`studio/painted-shot.tsx`) is a shot in a scene, beside `StampPainting`: one device owner over its
 canvases, the first opaque and each `PaintedShotCanvas` after it a glaze (`shotCanvasLaying`). A glaze canvas is two
@@ -588,8 +590,8 @@ clear film, its canvas a glaze too: `clearBack`) and must stay there while it is
 shot's element, fills it, no wrapper between them transformed, filtered or contained, and none between a glaze and its
 shot making a stacking context, which would multiply it over that group alone; and where each pinned element (its
 `data-pin` named by the pin) lies. `shot-compile.ts` checks the props as they load, every problem at once: planes far
-to near, each painted plane's occurrences from its first evaluation (read through its `sourceClock`), the rigs,
-visibility, motion and masks over them, and the camera built over each plane's reach (`shot-reach.ts`), every value
+to near, each painted plane's occurrences from its first evaluation (read through its `sourceClock`), the planes'
+entries, their rigs, visibility and motion, and the masks over them, and the camera built over each plane's reach (`shot-reach.ts`), every value
 sampled over the shot's span; then it warns of motion that may read badly there (`shot-motion-warnings.ts`). A plane laid on the
 frame is unchecked in that build and laid through the built camera after it, the inverse of its plane view at the
 lay's `at` (`paintPlaneViewAt`, `shotScreenLaid` in `shot-placement.ts`), then checked by the build's own rule

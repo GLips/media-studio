@@ -195,14 +195,17 @@ export function stampGateRainyStreetShot(): StampGateShot {
         id: 'sky', depth: DEPTHS.sky, lay: SKY_LAY,
         source: ({ at }: PaintMoment) => dissolve(layersOf(dusk, ['sky']), layersOf(night, ['sky']), seg(at, RAMPS.night.from, RAMPS.night.to, motionCurves.linear)),
       },
-      { id: 'street', depth: DEPTHS.street, sourceClock: { hold: 6 }, source: ({ at }: PaintMoment) => layersOf(streetAt(at >= LAMP_ON), STREET_LAYERS, { at }) },
-      { id: 'reflection', depth: DEPTHS.street, source: layersOf(streetAt(true), ['reflection']), masks: [{ kind: 'alphaOf', drawable: 'street/puddle' }] },
+      {
+        id: 'street', depth: DEPTHS.street, sourceClock: { hold: 6 }, source: ({ at }: PaintMoment) => layersOf(streetAt(at >= LAMP_ON), STREET_LAYERS, { at }),
+        occurrences: {
+          walker: { plays: [{ clip: { kind: 'place', value: paintKeyed(WALK.map(({ at, ...value }) => ({ at, value }))) }, clock: { at: 0 }, origin: 'the walker crosses the puddle' }] },
+        },
+      },
+      {
+        id: 'reflection', depth: DEPTHS.street, source: layersOf(streetAt(true), ['reflection']), masks: [{ kind: 'alphaOf', drawable: 'street/puddle' }],
+        visibility: ({ at }) => seg(at, RAMPS.reflection.from, RAMPS.reflection.to, motionCurves.linear),
+      },
       { kind: 'instanced', id: 'rain', depths: STAMP_GATE_RAIN_DEPTHS.rain, variants: { drop: layersOf(painting(STAMP_GATE_RAIN_PAINTING), ['drop']) }, instances: ({ at }) => stampGateRainAt(at) },
     ],
-    motion: {
-      nodes: [{ id: 'street/walker' }],
-      plays: [{ target: 'street/walker', clip: { kind: 'place', value: paintKeyed(WALK.map(({ at, ...value }) => ({ at, value }))) }, clock: { at: 0 }, origin: 'the walker crosses the puddle' }],
-    },
-    visibility: { reflection: ({ at }) => seg(at, RAMPS.reflection.from, RAMPS.reflection.to, motionCurves.linear) },
   };
 }

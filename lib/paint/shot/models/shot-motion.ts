@@ -1,6 +1,7 @@
-// shot-motion.ts: a shot's motion nodes compiled over its occurrences (ENGINE 6.1). A node attaches to an occurrence
-// or a painted plane; its parent is implied: the nearest enclosing group occurrence that has a node, else its plane's
-// node. A group's node moves all it holds with one phase, seed and map, its pins, sway, flutter and boil included.
+// shot-motion.ts: a shot's motion nodes compiled over its occurrences (ENGINE 6.1). A node is a plane's or an
+// occurrence's, as its entry writes it (shot-entries.ts); its parent is implied: the nearest enclosing group occurrence
+// that has a node, else its plane's node. A group's node moves all it holds with one phase, seed and map, its pins,
+// sway, flutter and boil included.
 // The lanes, clocks and channel law are the animation feature's (paint-motion-compile.ts), read per level.
 //
 // A writer beside the plays: a plane whose lay varies in time places its plane node ('place') for all time, so a place
@@ -13,14 +14,14 @@ import {
 } from '#lib/paint/animation/models/paint-clock.ts';
 import { paintIdPhase, paintMotionClipProblem } from '#lib/paint/animation/models/paint-motion-clips.ts';
 import {
-  compilePaintBoil, filePaintLevelPlay, paintGlowProblem, paintLevelLanes, paintLevelLanesSorted, type CompiledPaintLevel, type PaintLevelLanes,
+  compilePaintBoil, filePaintLevelPlay, paintGlowProblem, paintLevelLanes, paintLevelLanesSorted, type CompiledPaintLevel, type PaintLevelLanes, type PaintMotionPlay,
 } from '#lib/paint/animation/models/paint-motion-compile.ts';
 import { paintLevelValueProblems } from '#lib/paint/animation/models/paint-motion-reach.ts';
 import { presentationValueAt, type PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
 import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import type { PaintMoment, StampGroupGlow } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
-import type { OccurrenceKey, OccurrenceMotionNode, PaintedShotProps } from './shot-props.ts';
-import type { ShotOccurrence } from './shot-occurrences.ts';
+import { shotEntryProblem, type ShotOccurrence } from './shot-occurrences.ts';
+import type { OccurrenceKey, OccurrenceMotionNode } from './shot-props.ts';
 
 /**
  * A plane as motion reads it: its id and its clock's steps (paintNodeClockSteps, checked as it loads); `kind`, whether
@@ -31,6 +32,9 @@ export type ShotMotionPlane = {
   readonly id: string; readonly kind: 'painted' | 'picture' | 'three' | 'instanced'; readonly clock: readonly PaintSceneStep[]; readonly movingLay: boolean;
   readonly occurrences: readonly ShotOccurrence[];
 };
+
+/** A shot's motion as its entries write it (shotPlaneEntries): its nodes, each a plane's or occurrence's, and the plays on them. */
+export type ShotMotionEntries = { readonly nodes: readonly OccurrenceMotionNode[]; readonly plays: readonly PaintMotionPlay[] };
 
 /** How a node's marks live: stuck, its rest space wobbled every `every` frames, or its marks re-rolled (ENGINE 4.6). */
 export type CompiledShotMarks =
@@ -70,7 +74,8 @@ export type CompiledShotMotion = {
   readonly moments: readonly PaintMoment[];
 };
 
-const motionError = (owner: string, message: string) => paintingProblem('error', owner, 'motion', message);
+const nodeError = (node: string, field: string, message: string) => shotEntryProblem('error', node, field, message);
+const playError = (play: PaintMotionPlay, message: string) => paintingProblem('error', play.origin, 'motion', message);
 
 /**
  * Why `node`'s glow can't be drawn, or null: a constant's as it loads, a value's at each of `moments` read through its
@@ -97,7 +102,7 @@ function compileShotMarks(node: OccurrenceMotionNode, problems: PaintingProblem[
   const marks = node.marks ?? 'stuck';
   if (marks === 'stuck') return { kind: 'stuck' };
   const boil = compilePaintBoil(marks.boil);
-  problems.push(...boil.problems.map((problem) => motionError(node.id, problem)));
+  problems.push(...boil.problems.map((problem) => nodeError(node.id, 'marks', problem)));
   return boil.marks;
 }
 
@@ -126,26 +131,20 @@ function shotNodeSiteProblem(node: OccurrenceMotionNode, site: ShotNodeSite, rig
 }
 
 /**
- * `motion` checked and compiled over `planes`' occurrences: nodes on names of the shot, one each, none under a rigged
- * group and none bending a picture plane or a rigged group; plays on nodes, their clips and clocks sound, and their
- * values at the shot's `moments`; no two writers clashing, a moving lay among them. `rigged`: the shot's rigged group
- * occurrences.
+ * `motion` checked and compiled over `planes`' occurrences: no node under a rigged group, none bending a picture plane
+ * or a rigged group; plays, their clips and clocks sound, and their values at the shot's `moments`; no two writers
+ * clashing, a moving lay among them. `rigged`: the shot's rigged group occurrences.
  */
 export function compileShotMotion(
-  planes: readonly ShotMotionPlane[], motion: PaintedShotProps['motion'], rigged: ReadonlySet<OccurrenceKey>, animationFps: number, moments: readonly PaintMoment[],
+  planes: readonly ShotMotionPlane[], motion: ShotMotionEntries, rigged: ReadonlySet<OccurrenceKey>, animationFps: number, moments: readonly PaintMoment[],
 ): { readonly motion: CompiledShotMotion; readonly problems: readonly PaintingProblem[] } {
   const problems: PaintingProblem[] = [], sites = shotNodeSites(planes), written = new Map<string, OccurrenceMotionNode>();
-  for (const node of motion?.nodes ?? []) {
-    const site = sites.get(node.id);
-    if (written.has(node.id)) problems.push(motionError(node.id, 'has two nodes; a plane or occurrence takes one'));
-    else if (!site) problems.push(motionError(node.id, 'names no painted plane or occurrence of this shot'));
-    else {
-      const problem = shotNodeSiteProblem(node, site, rigged);
-      if (problem) problems.push(motionError(node.id, problem));
-      else written.set(node.id, node);
-    }
+  for (const node of motion.nodes) {
+    const problem = shotNodeSiteProblem(node, sites.get(node.id)!, rigged);
+    if (problem) problems.push(nodeError(node.id, '', problem));
+    else written.set(node.id, node);
     const clockProblem = node.clock && paintNodeClockProblem(node.clock);
-    if (clockProblem) problems.push(motionError(node.id, clockProblem));
+    if (clockProblem) problems.push(nodeError(node.id, 'clock', clockProblem));
   }
   const planeClocks = new Map(planes.map(({ id, clock }) => [id, clock]));
   // A node's line, nearest first: itself, the enclosing groups that have nodes, then its plane's node.
@@ -158,10 +157,10 @@ export function compileShotMotion(
     const line = lineOf(node.id), site = sites.get(node.id)!;
     const lineProblems: string[] = [];
     lanes.set(node.id, paintLevelLanes(node.id, node.pins, lineProblems));
-    problems.push(...lineProblems.map((message) => motionError(node.id, message)));
+    problems.push(...lineProblems.map((message) => nodeError(node.id, 'pins', message)));
     const clock = [...site.plane.clock, ...line.toReversed().flatMap((id) => paintNodeClockSteps(written.get(id)?.clock))];
     const glowProblem = shotGlowProblem(node, clock, animationFps, moments);
-    if (glowProblem) problems.push(motionError(node.id, glowProblem));
+    if (glowProblem) problems.push(nodeError(node.id, 'glow', glowProblem));
     compiled.set(node.id, {
       id: node.id, plane: site.plane.id, parent: line[1] ?? null, pivot: node.pivot ?? { x: 0, y: 0 }, phase: paintIdPhase(node.id),
       clock, marks: compileShotMarks(node, problems), glow: shotInheritedGlow(line, written),
@@ -171,21 +170,22 @@ export function compileShotMotion(
   for (const plane of planes) {
     if (plane.movingLay) writers.push({ channel: 'place', target: plane.id, start: sceneSeconds(0), end: sceneSeconds(Infinity), origin: `${plane.id}'s moving lay` });
   }
-  for (const play of motion?.plays ?? []) {
+  for (const play of motion.plays) {
+    // Every play's entry wrote its node, so one missing was refused where it lies, a problem already said.
     const node = compiled.get(play.target), problem = paintMotionClipProblem(play.clip) ?? paintPlayClockProblem(play.clock);
-    if (problem) problems.push(motionError(play.origin, problem));
-    else if (!node) problems.push(motionError(play.origin, `plays on ${play.target}, which has no node`));
-    else if (sites.get(node.id)!.plane.kind === 'picture' && play.clip.kind !== 'place') problems.push(motionError(play.origin, `bends picture plane ${node.id}, whose node only places it`));
-    else if (rigged.has(node.id) && play.clip.kind !== 'place') problems.push(motionError(play.origin, `${node.id} is rigged: it takes no pins, sway or flutter`));
+    if (problem) problems.push(playError(play, problem));
+    if (problem || !node) continue;
+    if (sites.get(node.id)!.plane.kind === 'picture' && play.clip.kind !== 'place') problems.push(playError(play, `bends picture plane ${node.id}, whose node only places it`));
+    else if (rigged.has(node.id) && play.clip.kind !== 'place') problems.push(playError(play, `${node.id} is rigged: it takes no pins, sway or flutter`));
     else {
       const playProblems: string[] = [];
       filePaintLevelPlay(node.id, lanes.get(node.id)!, node.clock, play, writers, playProblems);
-      problems.push(...playProblems.map((message) => motionError(play.origin, message)));
+      problems.push(...playProblems.map((message) => playError(play, message)));
     }
   }
   problems.push(...paintChannelConflicts(writers).map((message) => paintingProblem('error', 'motion', '', message)));
   const nodes = new Map([...compiled].map(([id, node]): [string, CompiledShotNode] => [id, { ...node, ...paintLevelLanesSorted(lanes.get(id)!) }]));
-  for (const node of nodes.values()) problems.push(...paintLevelValueProblems(node, moments, animationFps).map((message) => motionError(node.id, message)));
+  for (const node of nodes.values()) problems.push(...paintLevelValueProblems(node, moments, animationFps).map((message) => nodeError(node.id, 'plays', message)));
   const nearest = new Map(planes.flatMap((plane) => plane.occurrences.flatMap(({ key, groups }) => {
     const found = [key, ...groups.toReversed(), plane.id].find((name) => nodes.has(name));
     return found ? [[key, found] as const] : [];

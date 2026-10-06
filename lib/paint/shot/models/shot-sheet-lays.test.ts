@@ -76,8 +76,7 @@ const solvedText = (solved: PaintingPoses) => [...solved].map(([key, pose]) => `
 
 test("a boil's wobble moves finished paint: marks solve alike across epochs, while the lay and its picture's key move", () => {
   const props: PaintedShotProps = {
-    camera, span: SPAN, planes: [{ id: 'front', depth: 1, source: layersOf(pond(false), ['sky', 'heron']) }],
-    motion: { nodes: [{ id: 'front/heron', marks: { boil: { every: 1 } } }] },
+    camera, span: SPAN, planes: [{ id: 'front', depth: 1, source: layersOf(pond(false), ['sky', 'heron']), occurrences: { heron: { marks: { boil: { every: 1 } } } } }],
   };
   const [first, again, next] = [1.5, 1.5, 2.5].map((frame) => planAt(props, paintMoment(frame / FPS)));
   assert.equal(solvedText(next.solved), solvedText(first.solved));
@@ -91,7 +90,8 @@ test("a cel skinned to others solves under its skin's name: ends painted alike t
     { id: 'neck', z: 1, parent: 'body', joint: 'skin', pivot: { x: 60, y: 100 }, blend: 12, cels: ['neck'] },
   ];
   const { shot } = compilePaintedShot({
-    camera, span: SPAN, planes: [{ id: 'front', depth: 1, source: layersOf(pond(false), ['sky', 'heron']) }], rigs: { 'front/heron': { parts, pose: { neck: { rotation: 0.3 } } } },
+    camera, span: SPAN,
+    planes: [{ id: 'front', depth: 1, source: layersOf(pond(false), ['sky', 'heron']), occurrences: { heron: { rig: { parts, pose: { neck: { rotation: 0.3 } } } } } }],
   }, []);
   const [plane] = shot!.planes, rig = shot!.rigs.get('front/heron')!, { motion } = shot!;
   assert.ok(plane.kind === 'painted');
@@ -108,8 +108,8 @@ test("a cel skinned to others solves under its skin's name: ends painted alike t
 test('a layer inside a rig drawn as pieces fades in its picture, its film and its share of the card alike; at 0 it lays nothing', () => {
   const piecesAt = (visibility: PresentationValue<number>) => {
     const { compiled, plan } = planAt({
-      camera, span: SPAN, planes: [{ id: 'front', depth: 1, source: layersOf(pond(true), ['sky', 'heron']) }],
-      rigs: { 'front/heron': { parts: HERON_PARTS, pose: {} } }, visibility: { 'front/neck': visibility },
+      camera, span: SPAN,
+      planes: [{ id: 'front', depth: 1, source: layersOf(pond(true), ['sky', 'heron']), occurrences: { heron: { rig: { parts: HERON_PARTS, pose: {} } }, neck: { visibility } } }],
     }, paintMoment(0));
     const [{ steps, levels }] = plan.pieces;
     return { laid: steps.map((index) => paintingStepNode(compiled, compiled.steps[index])), levels };
@@ -125,8 +125,8 @@ const brightening = (to: number) => paintKeyed([{ at: 0, value: { amount: 0, thr
 
 test("a glow in time is read at the held moment of the node stating it, shared by what it holds; at amount 0 nothing emits", () => {
   const props = (to: number): PaintedShotProps => ({
-    camera, span: SPAN, planes: [{ id: 'front', depth: 1, source: layersOf(pond(false), ['sky', 'heron']) }],
-    motion: { nodes: [{ id: 'front/heron', clock: { hold: 12 }, glow: brightening(to) }, { id: 'front/neck', glow: 'none' }] },
+    camera, span: SPAN,
+    planes: [{ id: 'front', depth: 1, source: layersOf(pond(false), ['sky', 'heron']), occurrences: { heron: { clock: { hold: 12 }, glow: brightening(to) }, neck: { glow: 'none' } } }],
   });
   const glowsAt = (at: number) => {
     const { plan } = planAt(props(1), paintMoment(at));
@@ -135,8 +135,8 @@ test("a glow in time is read at the held moment of the node stating it, shared b
   assert.deepEqual(glowsAt(0.4), { emits: false, glows: [null, null, null] });
   // Held on twelves: at 0.9 s the heron shows its half-second drawing, its glow halfway up.
   assert.deepEqual(glowsAt(0.9), { emits: true, glows: [null, { amount: 0.5, threshold: 0.3 }, null] });
-  assert.deepEqual(compilePaintedShot(props(-1), []).problems.map(({ owner, message }) => `${owner}: ${message}`), [
-    'front/heron: its glow needs an amount of 0 or more and a threshold in 0..1, not -0.5 and 0.3, at 0.5 s',
+  assert.deepEqual(compilePaintedShot(props(-1), []).problems.map(({ path, message }) => `${path}: ${message}`), [
+    'front.occurrences.heron.glow: its glow needs an amount of 0 or more and a threshold in 0..1, not -0.5 and 0.3, at 0.5 s',
   ]);
 });
 
@@ -169,9 +169,11 @@ const cardText = (films: readonly ShotCardFilm[]) => `card of ${films.map(({ fil
 
 test("a card is cut round what shows, a fading layer's share thinned; an own sheet's owner fades card and paint as one", () => {
   const props: PaintedShotProps = {
-    camera, span: SPAN, planes: [{ id: 'front', depth: 1, source: layersOf(collage, ['sky', 'collage', 'leaf']) }],
-    rigs: { 'front/figure': { parts: [{ id: 'figure', z: 0, parent: null, cels: ['up', 'down'] }], pose: {} } },
-    visibility: { 'front/leaf': 0.5, 'front/up': 0.5, 'front/sitting': 0 },
+    camera, span: SPAN,
+    planes: [{
+      id: 'front', depth: 1, source: layersOf(collage, ['sky', 'collage', 'leaf']),
+      occurrences: { figure: { rig: { parts: [{ id: 'figure', z: 0, parent: null, cels: ['up', 'down'] }], pose: {} } }, leaf: { visibility: 0.5 }, up: { visibility: 0.5 }, sitting: { visibility: 0 } },
+    }],
   };
   const { plan } = planAt(props, paintMoment(0));
   const laid = plan.steps.map((step) => step && (step.lay.kind === 'film' ? `${step.lay.layer} at ${step.opacity}` : step.lay.kind === 'card' && cardText(step.lay.films)));
@@ -203,8 +205,11 @@ test('a node placed at scale 0 lays nothing there, and its marks solve where the
   const shrinking = paintKeyed([{ at: 0, value: { scale: 1 } }, { at: 1, value: { scale: 0 } }, { at: 2, value: { scale: 1 } }], { between: 'smooth' });
   // The shutter open, as a move this fast needs.
   const props: PaintedShotProps = {
-    camera: { ...camera, lens: { bloom: 0, shutter: 1 / 48 } }, span: SPAN, planes: [{ id: 'front', depth: 1, source: layersOf(pond(false), ['sky', 'heron']) }],
-    motion: { nodes: [{ id: 'front/heron', pivot: { x: 120, y: 110 } }], plays: [{ target: 'front/heron', clip: { kind: 'place', value: shrinking }, clock: { at: 0 }, origin: 'shrink' }] },
+    camera: { ...camera, lens: { bloom: 0, shutter: 1 / 48 } }, span: SPAN,
+    planes: [{
+      id: 'front', depth: 1, source: layersOf(pond(false), ['sky', 'heron']),
+      occurrences: { heron: { pivot: { x: 120, y: 110 }, plays: [{ clip: { kind: 'place', value: shrinking }, clock: { at: 0 }, origin: 'shrink' }] } },
+    }],
   };
   const opacities = (at: number) => planAt(props, paintMoment(at)).plan.steps.map((step) => step && step.lay.kind === 'film' && `${step.lay.layer} at ${step.opacity}`);
   assert.deepEqual(opacities(0.5), ['sky at 1', 'body at 1', 'neck at 1']);

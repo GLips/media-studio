@@ -128,14 +128,16 @@ export function stampGateMaskedShot({ heron, disc, discVisibility, discHold, tin
   if (heron === 'revealed') planes.push({ id: 'heron', depth: 2, source: ({ at }) => layersOf(revealed, ['heron'], { at }) });
   else if (heron !== 'none') {
     const source = heron === 'dissolving' ? dissolve(layersOf(evaluation, ['heron']), layersOf(evaluation, ['water']), 0.5) : layersOf(evaluation, ['heron']);
-    planes.push({ id: 'heron', depth: 2, source });
+    const visibility = { hidden: 0, half: 0.5, unmasked: undefined, dissolving: undefined }[heron];
+    planes.push({ id: 'heron', depth: 2, source, occurrences: { heron: { visibility } } });
   }
+  const discShown = discVisibility !== undefined && { visibility: discVisibility };
   if (disc === 'spot') {
     const depths = { near: STAMP_GATE_MASKS_DISC.depth - 0.25, far: STAMP_GATE_MASKS_DISC.depth + 0.25 }, variants = { spot: layersOf(painting(STAMP_GATE_MASKS_SPOT), ['spot']) };
-    planes.push({ kind: 'instanced', id: 'disc', depths, variants, instances: ({ at }) => [spotAt(at)] });
+    planes.push({ kind: 'instanced', id: 'disc', depths, variants, instances: ({ at }) => [spotAt(at)], ...discShown });
   } else if (disc) {
     const source = disc === 'picture' ? { kind: 'picture', extent: { kind: 'everywhere' }, pictureAt: ({ at }: PaintMoment) => Promise.resolve(stampGateMaskDisc(at, stage.margin)) } as const : disc;
-    planes.push({ id: 'disc', depth: STAMP_GATE_MASKS_DISC.depth, source, ...(discHold && { sourceClock: { hold: discHold } }) });
+    planes.push({ id: 'disc', depth: STAMP_GATE_MASKS_DISC.depth, source, ...(discHold && { sourceClock: { hold: discHold } }), ...discShown });
   }
   const read = { wing: 'heron/wing', 'not wing': 'heron/wing', heron: 'heron/heron', disc: 'disc' } as const, tinted = { id: 'tint', depth: tintDepth, source: layersOf(evaluation, ['tint']) };
   if (tint === 'uncut') planes.push(tinted);
@@ -146,10 +148,6 @@ export function stampGateMaskedShot({ heron, disc, discVisibility, discHold, tin
   return {
     camera: { stage, fov: 35, lens: shutter === 'film' ? { bloom: 0 } : { bloom: 0, shutter: 'shut' }, plays },
     planes,
-    visibility: {
-      ...(heron === 'hidden' && { 'heron/heron': 0 }), ...(heron === 'half' && { 'heron/heron': 0.5 }),
-      ...(discVisibility !== undefined && { disc: discVisibility }),
-    },
   };
 }
 

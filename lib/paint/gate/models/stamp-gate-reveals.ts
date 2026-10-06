@@ -15,6 +15,7 @@ import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercol
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { stampRevealShownAt } from '#lib/paint/painting/models/stamp-reveal.ts';
 import { stampStage, stampWrapPeriods } from '#lib/paint/painting/models/stamp-stage.ts';
+import type { PlaneProps } from '#lib/paint/shot/models/shot-props.ts';
 import type { PaintedSource } from '#lib/paint/shot/models/shot-selection.ts';
 import { STAMP_GATE_HERON_BODY, STAMP_GATE_HERON_MOVE, stampGatePaperHeronDocument } from './stamp-gate-paper-heron.ts';
 import { stampGateTexelDiffers } from './stamp-gate-frames.ts';
@@ -294,19 +295,19 @@ export const stampGateReedsShownAt = (t: number) => (p: StampPoint) => stampReve
 
 /** A shot of the rigged heron's `source`, its reeds rigged at rest, so drawn as pieces. */
 export function stampGateRevealedReedsShot(source: PresentationValue<PaintedSource>): StampGateShot {
-  return { ...stampGateRevealShot(source), rigs: { 'sheet/reeds': { parts: STAMP_GATE_REED_PARTS, pose: () => ({}) } } };
+  return stampGateRevealShot(source, undefined, { reeds: { rig: { parts: STAMP_GATE_REED_PARTS, pose: () => ({}) } } });
 }
 
 // ---- shots ---------------------------------------------------------------------------------------------------------
 
 /**
  * A shot of a gate reveal's sheet at its size, its camera at rest, so frame px are document px: one plane showing
- * `source`, its source held on `hold`s when given.
+ * `source`, its source held on `hold`s when given, its `occurrences` as given.
  */
-export function stampGateRevealShot(source: PresentationValue<PaintedSource>, hold?: number): StampGateShot {
+export function stampGateRevealShot(source: PresentationValue<PaintedSource>, hold?: number, occurrences?: PlaneProps['occurrences']): StampGateShot {
   return {
     camera: { stage: stampStage(SIZE, 2), fov: 35, lens: { bloom: 0, shutter: 'shut' }, plays: [] },
-    planes: [{ id: 'sheet', depth: 1, source, ...(hold !== undefined && { sourceClock: { hold } }) }],
+    planes: [{ id: 'sheet', depth: 1, source, ...(hold !== undefined && { sourceClock: { hold } }), occurrences }],
   };
 }
 

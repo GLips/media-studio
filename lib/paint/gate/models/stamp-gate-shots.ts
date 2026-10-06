@@ -15,7 +15,7 @@ import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-s
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { stampCanonicalJson, type StampCanonicalDatum } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import type { RigPart, RigPartPose, ScreenPin } from '#lib/paint/shot/models/shot-props.ts';
+import type { OccurrenceProps, PlaneProps, RigPart, RigPartPose, ScreenPin } from '#lib/paint/shot/models/shot-props.ts';
 import { dissolve } from '#lib/paint/shot/models/shot-selection.ts';
 import { STAMP_GATE_CARDS, STAMP_GATE_CARDS_AT, STAMP_GATE_CARDS_LEAF, STAMP_GATE_CARDS_SITTING, stampGateCardParts, stampGateCardsShot } from './stamp-gate-cards.ts';
 import { STAMP_GATE_FRAME_TOLERANCE } from './stamp-gate-frames.ts';
@@ -175,8 +175,9 @@ export function stampGateRiggedDissolveShot({ heard, warm }: { heard?: (group: s
   const day = painting(STAMP_GATE_RIGGED_HERON), dusk = painting(STAMP_GATE_DUSK_HERON), layers = ['water', 'heron', 'reeds'];
   const k = (at: number) => RIGGED_DISSOLVE_KS.findLast(({ from }) => from <= at)!.k;
   return {
-    ...oneSheetShot('paper', day, layers, { heron: HERON_PARTS, reeds: STAMP_GATE_REED_PARTS }, RIGGED_DISSOLVE_POSES, heard),
-    planes: [{ id: 'paper', depth: 1, source: ({ at }: PaintMoment) => dissolve(layersOf(day, layers), layersOf(dusk, layers), k(at)) }],
+    ...oneSheetShot('paper', day, layers, { heron: HERON_PARTS, reeds: STAMP_GATE_REED_PARTS }, RIGGED_DISSOLVE_POSES, {
+      heard, source: ({ at }: PaintMoment) => dissolve(layersOf(day, layers), layersOf(dusk, layers), k(at)),
+    }),
     ...(warm && { warm }),
   };
 }
@@ -192,21 +193,29 @@ const FOOT_POSES: StampGatePoseTable = [
 ];
 
 /**
+ * What a one-sheet shot's plane says beyond its rigs: `heard` hears each pose read, by group; `entries`, its
+ * occurrences' other fields; and the plane's own fields in place of its defaults (its source, `evaluation`'s layers).
+ */
+type OneSheetPlane = { readonly heard?: (group: string) => void; readonly entries?: Readonly<Record<string, OccurrenceProps>> } & Partial<Pick<PlaneProps, 'source' | 'lay' | 'clock' | 'sourceClock'>>;
+
+/**
  * A shot of one painted plane `plane` over `evaluation`'s `layers`, a still camera on its document, its `rigs` posed by
- * `table`; `heard` hears each pose read, by group.
+ * `table`, beside what `written` says of it.
  */
 function oneSheetShot(
-  plane: string, evaluation: PaintingEvaluation, layers: readonly string[], rigs: Readonly<Record<string, readonly RigPart[]>>, table: StampGatePoseTable, heard?: (group: string) => void,
+  plane: string, evaluation: PaintingEvaluation, layers: readonly string[], rigs: Readonly<Record<string, readonly RigPart[]>>, table: StampGatePoseTable,
+  { heard, entries = {}, ...written }: OneSheetPlane = {},
 ): StampGateShot {
   const { widthPx: width, heightPx: height } = evaluation.document;
   const pose = (group: string) => ({ at }: PaintMoment) => {
     heard?.(group);
     return poseAt(table, group, at);
   };
+  const occurrences: Record<string, OccurrenceProps> = { ...entries };
+  for (const [group, parts] of Object.entries(rigs)) occurrences[group] = { ...occurrences[group], rig: { parts, pose: pose(group) } };
   return {
     camera: { stage: stampStage({ width, height }, 2), fov: 35, lens: { bloom: 0, shutter: 'shut' } },
-    planes: [{ id: plane, depth: 1, source: layersOf(evaluation, layers) }],
-    rigs: Object.fromEntries(Object.entries(rigs).map(([group, parts]) => [`${plane}/${group}`, { parts, pose: pose(group) }])),
+    planes: [{ id: plane, depth: 1, source: layersOf(evaluation, layers), ...written, occurrences }],
   };
 }
 
@@ -218,19 +227,20 @@ function riggedHeronVisibility(at: number): number {
   return at < HIDDEN ? 0.5 : 0;
 }
 
-/** The rigged heron's shot; `reedsRigged` false leaves the reeds unrigged, painted as their sheet paints them. */
-export const stampGateRiggedHeronShot = (reedsRigged = true): StampGateShot => ({
-  ...oneSheetShot('paper', painting(STAMP_GATE_RIGGED_HERON), ['water', 'heron', 'reeds'], { heron: HERON_PARTS, ...(reedsRigged && { reeds: STAMP_GATE_REED_PARTS }) }, HERON_POSES),
-  visibility: { 'paper/heron': ({ at }) => riggedHeronVisibility(at) },
-});
+/**
+ * The rigged heron's shot; `reedsRigged` false leaves the reeds unrigged, painted as their sheet paints them; `heron`,
+ * what else the heron's entry says.
+ */
+export const stampGateRiggedHeronShot = (reedsRigged = true, heron: OccurrenceProps = {}): StampGateShot => oneSheetShot(
+  'paper', painting(STAMP_GATE_RIGGED_HERON), ['water', 'heron', 'reeds'], { heron: HERON_PARTS, ...(reedsRigged && { reeds: STAMP_GATE_REED_PARTS }) }, HERON_POSES,
+  { entries: { heron: { visibility: ({ at }) => riggedHeronVisibility(at), ...heron } } },
+);
 
 /** Two frames of consecutive boil epochs of the boiling heron, scene seconds, mid-frame: both before it moves. */
 export const STAMP_GATE_HERON_BOIL_AT = [1.5 / PAINT_ANIMATION_FPS, 2.5 / PAINT_ANIMATION_FPS] as const;
 
 /** The rigged heron boiling every frame, its wobble on the heron's group, whose rig takes it. */
-export const stampGateBoilingHeronShot = (): StampGateShot => ({
-  ...stampGateRiggedHeronShot(), motion: { nodes: [{ id: 'paper/heron', marks: { boil: { every: 1 } } }] },
-});
+export const stampGateBoilingHeronShot = (): StampGateShot => stampGateRiggedHeronShot(true, { marks: { boil: { every: 1 } } });
 
 const FOOT_RIG: readonly RigPart[] = [{ id: 'leg', z: 0, parent: null, cels: ['foot'] }];
 
@@ -240,7 +250,7 @@ const FOOT_RIG: readonly RigPart[] = [{ id: 'leg', z: 0, parent: null, cels: ['f
  */
 export function stampGateClearBackShot(lay?: ScreenPin): StampGateShot {
   const evaluation = painting(STAMP_GATE_RIGGED_HERON), source = layersOf(evaluation, ['heron'], { ground: 'transparent' });
-  return { ...oneSheetShot('paper', evaluation, ['heron'], {}, []), planes: [lay ? { id: 'paper', depth: 1, lay, source } : { id: 'paper', depth: 1, source }] };
+  return oneSheetShot('paper', evaluation, ['heron'], {}, [], { source, ...(lay && { lay }) });
 }
 
 /** The clear back's heron pinned by its document point `sourcePx` to the element whose `data-pin` is `heron`. */
@@ -265,8 +275,9 @@ export function stampGateClearAlpha(alphas: ArrayLike<number>, width: number, he
   return { clear, opaque, corner, centroid: { x: x / sum, y: y / sum } };
 }
 
-/** The wet-contact shot: the shallows and the heron, its foot the one part of its rig. */
-export const stampGateWetContactShot = (): StampGateShot => oneSheetShot('pond', painting(STAMP_GATE_WET_CONTACT), ['shallows', 'heron'], { heron: FOOT_RIG }, FOOT_POSES);
+/** The wet-contact shot: the shallows and the heron, its foot the one part of its rig; `written`, what else its plane says. */
+export const stampGateWetContactShot = (written?: OneSheetPlane): StampGateShot =>
+  oneSheetShot('pond', painting(STAMP_GATE_WET_CONTACT), ['shallows', 'heron'], { heron: FOOT_RIG }, FOOT_POSES, written);
 
 /** The painting-in shot's frames: before the foot's first stroke, so its cel is clear, and posed once it's painted. */
 export const STAMP_GATE_PAINTING_IN_AT = { unpainted: 0.25, posed: STAMP_GATE_WET_CONTACT_AT.posed } as const;
@@ -274,16 +285,14 @@ export const STAMP_GATE_PAINTING_IN_AT = { unpainted: 0.25, posed: STAMP_GATE_WE
 /** The wet-contact shot painted in as it plays: each frame shows the sheet's paint as far as its own moment. */
 export function stampGateWetContactPaintingInShot(): StampGateShot {
   const evaluation = painting(STAMP_GATE_WET_CONTACT);
-  return { ...stampGateWetContactShot(), planes: [{ id: 'pond', depth: 1, source: ({ at }: PaintMoment) => layersOf(evaluation, ['shallows', 'heron'], { at }) }] };
+  return stampGateWetContactShot({ source: ({ at }: PaintMoment) => layersOf(evaluation, ['shallows', 'heron'], { at }) });
 }
 
 /** The hidden-foot shot's frames: the foot at rest and shown, then at rest and hidden. */
 export const STAMP_GATE_HIDDEN_FOOT_AT = { shown: STAMP_GATE_WET_CONTACT_AT.rest, hidden: STAMP_GATE_WET_CONTACT_AT.rest + 1 } as const;
 
 /** The wet-contact shot, its foot hidden from STAMP_GATE_HIDDEN_FOOT_AT.hidden on, before it's posed. */
-export const stampGateHiddenFootShot = (): StampGateShot => ({
-  ...stampGateWetContactShot(), visibility: { 'pond/foot': ({ at }) => (at < STAMP_GATE_HIDDEN_FOOT_AT.hidden ? 1 : 0) },
-});
+export const stampGateHiddenFootShot = (): StampGateShot => stampGateWetContactShot({ entries: { foot: { visibility: ({ at }) => (at < STAMP_GATE_HIDDEN_FOOT_AT.hidden ? 1 : 0) } } });
 
 /** The wet-contact sheet's shallows painted with no heron on it: as they'd be without the foot's water. */
 export const stampGateShallowsAloneShot = (): StampGateShot => oneSheetShot('pond', painting(STAMP_GATE_WET_CONTACT, { heron: false }), ['shallows'], {}, []);
@@ -312,8 +321,10 @@ const WARM_FOOT_POSES: StampGatePoseTable = [
 export function stampGateWarmShot(): StampGateShot {
   const evaluation = painting(STAMP_GATE_WET_CONTACT);
   return {
-    ...oneSheetShot('pond', evaluation, ['shallows', 'heron'], { heron: FOOT_RIG }, WARM_FOOT_POSES), warm: STAMP_GATE_WARM,
-    planes: [{ id: 'pond', depth: 1, clock: { hold: 3 }, sourceClock: { hold: 6 }, source: ({ at }: PaintMoment) => layersOf(evaluation, ['shallows', 'heron'], { at }) }],
+    ...oneSheetShot('pond', evaluation, ['shallows', 'heron'], { heron: FOOT_RIG }, WARM_FOOT_POSES, {
+      clock: { hold: 3 }, sourceClock: { hold: 6 }, source: ({ at }: PaintMoment) => layersOf(evaluation, ['shallows', 'heron'], { at }),
+    }),
+    warm: STAMP_GATE_WARM,
   };
 }
 
@@ -352,9 +363,8 @@ export function stampGateDissolveShot(): StampGateShot {
     camera: { stage: stampStage({ width, height }, 2), fov: 35, lens: { bloom: 0, shutter: 'shut' } },
     planes: [
       { id: 'pond', depth: 1, source: (moment: PaintMoment) => dissolve(layersOf(together, ['shallows', 'heron']), layersOf(shallows, ['shallows']), ks(moment).back) },
-      { id: 'heron', depth: 1, source: (moment: PaintMoment) => dissolve(layersOf(together, ['heron']), layersOf(apart, ['heron']), ks(moment).heron) },
+      { id: 'heron', depth: 1, source: (moment: PaintMoment) => dissolve(layersOf(together, ['heron']), layersOf(apart, ['heron']), ks(moment).heron), visibility: (moment) => ks(moment).shown },
     ],
-    visibility: { heron: (moment) => ks(moment).shown },
   };
 }
 

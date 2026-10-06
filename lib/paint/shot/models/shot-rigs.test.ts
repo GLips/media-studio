@@ -44,11 +44,11 @@ const skinRefusal = (bodyZ: number, [body, neck]: readonly PaintRigPicture[]): s
 test("a rig's cels that leave a skin joint no paint of its own to bend along are refused at the rig's path, before skinning", () => {
   assert.equal(skinRefusal(0, [cel(0, 0, 0, 0), cel(0, 0, 0, 0)]), [
     "painting shot's rig front/heron has a problem:",
-    '  front/heron.parts: lays no paint on the document (0,0 → 320,240): its cels body, neck lie off it, or are clipped or reserved away',
+    '  front.occurrences.heron.rig.parts: lays no paint on the document (0,0 → 320,240): its cels body, neck lie off it, or are clipped or reserved away',
   ].join('\n'));
-  assert.match(skinRefusal(0, [cel(40, 80, 40, 40), cel(60, 60, 8, 8, 0)]), /front\/heron\.parts\.neck: its cel neck lays no paint on the document \(0,0 → 320,240\), and a skin joint/);
+  assert.match(skinRefusal(0, [cel(40, 80, 40, 40), cel(60, 60, 8, 8, 0)]), /front\.occurrences\.heron\.rig\.parts\.neck: its cel neck lays no paint on the document \(0,0 → 320,240\), and a skin joint/);
   // Under the body, or over it too faint to give any texel most of its colour: either way the neck owns nothing.
-  const outweighed = /front\/heron\.parts\.neck: its cel neck gives none of the rig's texels most of their colour/;
+  const outweighed = /front\.occurrences\.heron\.rig\.parts\.neck: its cel neck gives none of the rig's texels most of their colour/;
   assert.match(skinRefusal(2, [cel(40, 80, 40, 40), cel(50, 90, 8, 8)]), outweighed);
   assert.match(skinRefusal(0, [cel(40, 80, 40, 40), cel(50, 90, 8, 8, 0.4)]), outweighed);
   assert.equal(skinRefusal(0, [cel(40, 80, 40, 40), cel(50, 90, 8, 8)]), 'skinned');

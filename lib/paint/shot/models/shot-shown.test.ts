@@ -39,14 +39,20 @@ const { shot } = compilePaintedShot({
   camera: { stage: stampStage({ width: 320, height: 240 }, 2), fov: 35, lens: { bloom: 0, shutter: SHUTTER }, plays: [], animationFps: FPS },
   span: { from: 0, to: 4, fps: FPS },
   planes: [
-    { id: 'back', depth: 4, source: layersOf(pond, ['sky']) }, { id: 'mist', depth: 3, source: layersOf(pond, ['mist']) },
-    { id: 'birds', depth: 2, source: layersOf(pond, ['birds']) }, { id: 'card', depth: 1, source: layersOf(pond, ['swallow'], { ground: 'paper' }) },
+    { id: 'back', depth: 4, source: layersOf(pond, ['sky']) }, { id: 'mist', depth: 3, source: layersOf(pond, ['mist']), visibility: ({ at }) => (at < 1 ? 0 : 1) },
+    {
+      id: 'birds', depth: 2, source: layersOf(pond, ['birds']),
+      occurrences: {
+        birds: {
+          rig: { parts: [{ id: 'bird', z: 0, parent: null, cels: ['swift', 'swallow'] }], pose: ({ at }): Readonly<Record<string, RigPartPose>> => (at < 2.75 ? {} : { bird: { cel: 'swallow' } }) },
+          visibility: ({ at }) => (at < 3 ? 1 : 0),
+        },
+        swift: { visibility: ({ at }) => (at < 2 ? 0 : 1) },
+        swallow: { visibility: 0 },
+      },
+    },
+    { id: 'card', depth: 1, source: layersOf(pond, ['swallow'], { ground: 'paper' }), occurrences: { swallow: { visibility: 0 } } },
   ],
-  rigs: { 'birds/birds': { parts: [{ id: 'bird', z: 0, parent: null, cels: ['swift', 'swallow'] }], pose: ({ at }): Readonly<Record<string, RigPartPose>> => (at < 2.75 ? {} : { bird: { cel: 'swallow' } }) } },
-  visibility: {
-    mist: ({ at }) => (at < 1 ? 0 : 1), 'birds/swift': ({ at }) => (at < 2 ? 0 : 1), 'birds/swallow': 0, 'birds/birds': ({ at }) => (at < 3 ? 1 : 0),
-    'card/swallow': 0,
-  },
 }, []);
 
 test('a frame solves a painted plane only if it lays something at one of its exposures; the back always does', () => {

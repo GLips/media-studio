@@ -1,8 +1,8 @@
 // shot-compile.ts: a PaintedShot's props checked and compiled as it loads (ENGINE 6.1): planes far to near, each on
 // its canvas; painted planes' occurrences from their first evaluation, at moment 0; instanced planes' variants; the
-// rigs, visibility, motion, masks and warm over them; the camera built over each plane's reach; the painted textures
-// three sources read. Every problem is found before any is thrown. Values in time are sampled at the moments its
-// span draws (paint-span-moments.ts), for its reach and its motion's warnings (shot-motion-warnings.ts).
+// planes' entries (shot-entries.ts): rigs, visibility and motion; masks and warm; the camera over each plane's reach;
+// the painted textures three sources read. Every problem is found before any is thrown. Values in time are sampled
+// at the moments its span draws (paint-span-moments.ts), for its reach and motion warnings (shot-motion-warnings.ts).
 //
 // Negative space: refused are visibility on the opaque back, a lay on a picture or three plane, an alphaOf inside a
 // pieces rig, and a dissolve end cutting a rigged group otherwise than its rig does (shotPlaneRigEndProblems).
@@ -20,15 +20,16 @@ import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint
 import { paintMoment, type PaintMoment, type StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
 import { shotPlaneMomentAt } from './shot-frame-plan.ts';
+import { shotPlaneEntries } from './shot-entries.ts';
 import { compileShotInstancedPlane, type CompiledShotInstancedPlane } from './shot-instances.ts';
 import { compileShotMotion, type CompiledShotMotion, type ShotMotionPlane } from './shot-motion.ts';
 import { shotMotionWarnings } from './shot-motion-warnings.ts';
-import { shotOccurrencePlane, shotPlaneOccurrences, type ShotOccurrence } from './shot-occurrences.ts';
+import { shotEntryProblem, shotOccurrencePlane, shotPlaneOccurrences, type ShotOccurrence } from './shot-occurrences.ts';
 import { shotMaskCheck, type ShotMaskGraph } from './shot-masks.ts';
 import { compileShotPaintedTextures, type CompiledShotPaintedTexture } from './shot-painted-texture-compile.ts';
 import { shotCoveredPlanes, shotPlacementProblems, shotStillBackProblem } from './shot-placement.ts';
 import { shotDrawableOrder } from './shot-plan.ts';
-import type { CoverFrame, InstancedPlaneProps, OccurrenceKey, PaintedShotProps, PictureSource, PlaneMask, PlaneProps, ScreenPin, ThreeSource } from './shot-props.ts';
+import type { CoverFrame, InstancedPlaneProps, OccurrenceKey, OccurrenceRig, PaintedShotProps, PictureSource, PlaneMask, PlaneProps, ScreenPin, ThreeSource } from './shot-props.ts';
 import { shotCameraPlanes } from './shot-reach.ts';
 import { compileShotRig, shotPlaneRigEndProblems, shotRigShowsGroup, type CompiledShotRig } from './shot-rigs.ts';
 import { paintedPlaneBlendProblems, paintedSourceEnds, paintedSourceProblems, type PaintedSource, type PaintedSourceEnd, type ShotPlanePaints } from './shot-selection.ts';
@@ -219,20 +220,16 @@ function compilePaintedPlane(
 
 /**
  * Each rig compiled over its group occurrence, cut in the first of its plane's ends showing the group, every end held
- * to that cut; a rig inside another's group refused.
+ * to that cut; a rig inside another's group refused. `rigs` name occurrences of painted planes (shotPlaneEntries).
  */
-function compileShotRigs(rigs: NonNullable<PaintedShotProps['rigs']>, planes: readonly CompiledShotPlane[], problems: PaintingProblem[]) {
+function compileShotRigs(rigs: ReadonlyMap<OccurrenceKey, OccurrenceRig>, planes: readonly CompiledShotPlane[], problems: PaintingProblem[]) {
   const compiled = new Map<OccurrenceKey, CompiledShotRig>();
-  for (const [occurrence, rig] of Object.entries(rigs)) {
-    const plane = planes.find(({ id }) => id === shotOccurrencePlane(occurrence));
-    const found = plane?.kind === 'painted' ? plane.occurrences.find(({ key }) => key === occurrence) : undefined;
-    if (!plane || plane.kind !== 'painted' || !found) {
-      problems.push(shotError(occurrence, 'rig', 'names no group occurrence of a painted plane of this shot'));
-      continue;
-    }
-    const outer = found.groups.find((group) => Object.hasOwn(rigs, group));
+  const painted = new Map(planes.flatMap((plane) => (plane.kind === 'painted' ? [[plane.id, plane] as const] : [])));
+  for (const [occurrence, rig] of rigs) {
+    const plane = painted.get(shotOccurrencePlane(occurrence))!, found = plane.occurrences.find(({ key }) => key === occurrence)!;
+    const outer = found.groups.find((group) => rigs.has(group));
     if (outer) {
-      problems.push(shotError(occurrence, 'rig', `lies in ${outer}, which is rigged: its parts pose all it holds, so nothing in it is rigged again`));
+      problems.push(shotEntryProblem('error', occurrence, 'rig', `lies in ${outer}, which is rigged: its parts pose all it holds, so nothing in it is rigged again`));
       continue;
     }
     // With no end showing it as a group, the first end's tree is where the rig finds it isn't one.
@@ -246,8 +243,8 @@ function compileShotRigs(rigs: NonNullable<PaintedShotProps['rigs']>, planes: re
 }
 
 /** Why `visibility` can't be drawn beyond its names and constants: it fades the opaque back (`opaqueBack`, its id). */
-function visibilityBackProblems(visibility: NonNullable<PaintedShotProps['visibility']>, opaqueBack: string | null): PaintingProblem[] {
-  return opaqueBack !== null && opaqueBack in visibility ? [shotError(opaqueBack, 'visibility', 'is the back, shown wherever the frame is: fade a nearer plane or its occurrences')] : [];
+function visibilityBackProblems(visibility: ReadonlyMap<OccurrenceKey, PresentationValue<number>>, opaqueBack: string | null): PaintingProblem[] {
+  return opaqueBack !== null && visibility.has(opaqueBack) ? [shotEntryProblem('error', opaqueBack, 'visibility', 'is the back, shown wherever the frame is: fade a nearer plane or its occurrences')] : [];
 }
 
 /**
@@ -320,23 +317,23 @@ export function compilePaintedShot(
     const spans = [...planes.map(({ id, canvas, depth }) => ({ id, canvas, near: depth, far: depth })), ...instanced.map(({ id, canvas, depths }) => ({ id, canvas, ...depths }))];
     problems.push(...canvasOrderProblems(spans, canvases));
   }
-  const rigs = compileShotRigs(props.rigs ?? {}, planes, problems);
-  const occurrences = new Map(planes.flatMap((plane) => (plane.kind === 'painted' ? [[plane.id, plane.occurrences.map(({ key }) => key)] as const] : [])));
-  const visibility = props.visibility ?? {};
-  problems.push(...shotVisibilityProblems(visibility, props.planes, occurrences), ...visibilityBackProblems(visibility, back && !clearBack ? back.id : null));
-  const masks = shotMaskCheck(props.planes, occurrences);
-  problems.push(...masks.problems, ...maskPiecesProblems(planes, rigs));
   const motionPlanes = [
     ...planes.map((plane): ShotMotionPlane => ({
       id: plane.id, kind: plane.kind, clock: paintNodeClockSteps(written.get(plane.id)!.clock), movingLay: plane.kind === 'painted' && plane.lay.kind === 'moving',
       occurrences: plane.kind === 'painted' ? plane.occurrences : [],
     })),
-    // Every instanced plane as written, so a node on one that failed to compile is refused for what it is.
+    // An instanced plane for its clock, which its items' moment reads (shotPlaneMomentAt): its entry writes no node.
     ...props.planes.flatMap((plane): ShotMotionPlane[] => (plane.kind === 'instanced' ? [{ id: plane.id, kind: 'instanced', clock: paintNodeClockSteps(plane.clock), movingLay: false, occurrences: [] }] : [])),
   ];
+  const entries = shotPlaneEntries(props.planes, motionPlanes, problems), { visibility } = entries;
+  const rigs = compileShotRigs(entries.rigs, planes, problems);
+  const occurrences = new Map(planes.flatMap((plane) => (plane.kind === 'painted' ? [[plane.id, plane.occurrences.map(({ key }) => key)] as const] : [])));
+  problems.push(...shotVisibilityProblems(visibility), ...visibilityBackProblems(visibility, back && !clearBack ? back.id : null));
+  const masks = shotMaskCheck(props.planes, occurrences);
+  problems.push(...masks.problems, ...maskPiecesProblems(planes, rigs));
   const cameraOptions = paintShotCameraOptions(props.camera, props.span, []);
   const frames = paintSpanFrames(props.span, paintCameraLensBuilt(cameraOptions.lens)), moments = paintSpanMoments(frames);
-  const motion = compileShotMotion(motionPlanes, props.motion, new Set(rigs.keys()), fps, moments);
+  const motion = compileShotMotion(motionPlanes, entries.motion, new Set(rigs.keys()), fps, moments);
   problems.push(...motion.problems);
   for (const plane of planes) if (plane.kind === 'painted') problems.push(...movingLayProblems(plane, motion.motion));
   if (problems.length || !masks.graph || !textures.textures) return answer(null, problems);
@@ -351,7 +348,7 @@ export function compilePaintedShot(
   if (laidProblems.length) return answer(null, laidProblems);
   const shot: CompiledPaintedShot = {
     span: props.span, planes: covered.planes, instanced, written: props.planes, canvases: Math.max(1, canvases.length), clearBack, motion: motion.motion, rigs,
-    visibility: new Map(Object.entries(visibility)), masks: masks.graph, camera: built.camera, warm: props.warm ?? null,
+    visibility, masks: masks.graph, camera: built.camera, warm: props.warm ?? null,
     paintedTextures: textures.textures,
   };
   return answer(shot, [...problems, ...shotMotionWarnings(shot, frames)]);

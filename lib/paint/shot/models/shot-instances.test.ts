@@ -53,7 +53,7 @@ test('items sort with the planes far to near, planes first on a tie, and batch b
 
 const camera: PaintedShotProps['camera'] = { stage: stampStage({ width: 48, height: 40 }, 2), fov: 35, lens: { bloom: 0, shutter: 0.02 }, animationFps: 24 };
 const span: PaintedShotProps['span'] = { from: 0, to: 2, fps: 24 };
-const compiled = (planes: PaintedShotProps['planes'], motion?: PaintedShotProps['motion']) => compilePaintedShot({ camera, span, planes, ...(motion && { motion }) }, []);
+const compiled = (planes: PaintedShotProps['planes']) => compilePaintedShot({ camera, span, planes }, []);
 
 test("an exposure lays each item by its lay at its depth, blurred along its own travel only while its key spans the shutter", () => {
   const rain: InstancedPlaneProps = { ...instanced('rain', []), instances: ({ at }) => [item('a', 2, 'drop', 100 * at), item(`b${Math.round(at * 1000)}`, 1.5)] };
@@ -70,6 +70,13 @@ test("an exposure lays each item by its lay at its depth, blurred along its own 
   assert.equal(lookOf('rain', b).shutter, null);
   const twice = compiled([plane('street', 3), { ...rain, instances: () => [item('a', 2), item('a', 1.5)] }]).shot!;
   assert.throws(() => shotExposureItems(twice.instanced, twice.motion, exposure, paintCameraDepthLooks(twice.camera, 1)), /rain: two items are called a at 1 s/);
+});
+
+test('an instanced plane held on twos reads its items on twos', () => {
+  const rain: InstancedPlaneProps = { ...instanced('rain', []), clock: { hold: 2 }, instances: ({ at }) => [item('a', 2, 'drop', 240 * at)] };
+  const { shot } = compiled([plane('street', 3), rain]);
+  const { items } = shotExposureItems(shot!.instanced, shot!.motion, { at: paintMoment(3 / 24), shutter: null }, paintCameraDepthLooks(shot!.camera, 0));
+  assert.ok(Math.abs(items.get('rain')![0].lay.placement.x - 20) < 1e-9);
 });
 
 /** A drop at depth 1 under a camera focused at depth 3, its aperture `aperture`, and its items at rest. */
@@ -89,9 +96,8 @@ test('a variant lies centred on the stage, and an item blurring it past the stag
 
 test("an instanced plane's load refuses what its items can't be drawn by, every problem at once", () => {
   const big = painting({ default: (): PaintingDocument => ({ ...drops.document, widthPx: 64 }) });
-  assert.deepEqual(compiled([plane('street', 2), { ...instanced('rain', []), variants: { drop: layersOf(big, ['drop']) } }], { nodes: [{ id: 'rain' }] }).problems.map(({ path, message }) => `${path}: ${message}`), [
+  assert.deepEqual(compiled([plane('street', 2), { ...instanced('rain', []), variants: { drop: layersOf(big, ['drop']) } }]).problems.map(({ path, message }) => `${path}: ${message}`), [
     "rain.depths.far: 2.5 isn't nearer than the back, street at depth 2",
     'rain.variants.drop: paints a 64 × 32 document, and the stage is 52 × 44: a variant is laid whole on the stage',
-    'rain.motion: is an instanced plane: its items take no nodes; each lies where its instances lay it',
   ]);
 });
