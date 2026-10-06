@@ -16,15 +16,15 @@ const memoLevels = (name: string, { count, bytes }: StampKeptHeld): FrameCost[] 
 
 /**
  * `costs` as the frame profiler logs them: every count in its printed order; as levels, the GPU cache's bytes kept and
- * in targets, then each page memo's values and bytes; a note a solve or warning.
+ * in targets, then each page memo's values and bytes; a note a line of a plan, a solve or a warning.
  */
-export function shotCostsProfileEntry({ counts, solves, warnings, bytes, kept }: StampPaintCosts): FrameCosts {
+export function shotCostsProfileEntry({ counts, plans, solves, warnings, bytes, kept }: StampPaintCosts): FrameCosts {
   return {
     counts: [...counts].map(([name, value]): FrameCost => (name === 'bytes uploaded' ? { name, value, unit: 'bytes' } : { name, value })),
     levels: [
       { name: 'GPU bytes kept', value: bytes.kept, unit: 'bytes' }, { name: 'GPU bytes in targets', value: bytes.targets, unit: 'bytes' },
       ...memoLevels('compiled selections', kept.compiled), ...memoLevels('posed programs', kept.posed), ...memoLevels('placements', kept.placed),
     ],
-    notes: [...solves.map(({ program, from, entries }) => `solved ${program} from ${from}: ${entries} ${entries === 1 ? 'entry' : 'entries'}`), ...warnings],
+    notes: [...plans, ...solves.map(({ program, from, entries }) => `solved ${program} from ${from}: ${entries} ${entries === 1 ? 'entry' : 'entries'}`), ...warnings],
   };
 }

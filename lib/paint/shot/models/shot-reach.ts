@@ -1,11 +1,10 @@
 // shot-reach.ts: where each plane of a shot can hold paint, as the camera build checks it (ENGINE 6.1). The opaque
 // back holds paper everywhere (its paint: shot-back.ts). A nearer painted plane holds its layers' stated geometry,
-// padded for paint flowing past it, grown along each occurrence's line of motion nodes by the most each moves it at
-// the shot's moments, then laid by its lay, a moving one as it lies at each of those moments; its ground's paper, when
-// it lays one, over the document.
+// padded for paint flowing past it, grown along each occurrence's motion nodes by the most each moves it, then laid
+// by its lay at each of the shot's moments; its ground's paper, when it lays one, over the document.
 //
 // Negative space: a plane whose source is a function or that holds a rig is checked everywhere: neither can be bounded
-// before it's drawn. A pin or cover is checked once laid (shot-placement.ts).
+// before it's drawn. A painting in time paints every drawing as it loads. A pin or cover is checked once laid.
 
 import { paintLevelShift } from '#lib/paint/animation/models/paint-motion-reach.ts';
 import type { PaintCameraPicturePlane, PaintCameraPlaneOptions } from '#lib/paint/animation/models/paint-camera.ts';
@@ -72,7 +71,7 @@ function paintedReach(plane: CompiledShotPaintedPlane, motion: CompiledShotMotio
 export function shotPaintedExtent(plane: CompiledShotPaintedPlane, motion: CompiledShotMotion, rigged: ReadonlySet<OccurrenceKey>): StampPlaneExtent {
   if (plane.opaqueBack) return { kind: 'everywhere' };
   if (plane.lay.kind === 'screen') return { kind: 'unchecked', why: 'laid on the frame through the camera, it is checked where it lies once laid' };
-  if (typeof plane.source === 'function' || plane.occurrences.some(({ key }) => rigged.has(key))) return { kind: 'everywhere' };
+  if ((typeof plane.source === 'function' && !plane.keyDrawings) || plane.occurrences.some(({ key }) => rigged.has(key))) return { kind: 'everywhere' };
   const reach = paintedReach(plane, motion);
   if (!reach) return { kind: 'empty' };
   if (plane.lay.kind === 'moving') {

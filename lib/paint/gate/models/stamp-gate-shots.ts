@@ -48,12 +48,12 @@ export type StampGateShotId = (typeof STAMP_GATE_SHOT_IDS)[number];
 /**
  * The shot cases checked apart from any sheet case, each a page's checks of its shot's frames: the rain's items, the
  * film's shutter, dissolves plain and rigged, a span warmed, the masked shot's cuts, the rainy street's costs, the
- * cards' hidden cel, view off and fading owner, the sprig's swap, layer off, clear cel and fade, what glows, and the
- * kite approaching past the post.
+ * cards' hidden cel, view off and fading owner, the sprig's swap, layer off, clear cel and fade, what glows, the kite
+ * approaching past the post, and a painting in time's key drawings.
  */
 export const STAMP_GATE_SHOT_CASE_IDS = [
   'shot/rain', 'shot/shutter', 'shot/dissolve', 'shot/rigged-dissolve', 'shot/warm', ...STAMP_GATE_SHOT_MASK_IDS, 'shot/rainy-street', 'shot/cards', 'shot/pieces', STAMP_GATE_SHOT_GLOW_ID,
-  STAMP_GATE_SHOT_APPROACH_ID,
+  STAMP_GATE_SHOT_APPROACH_ID, 'shot/properties-in-time',
 ] as const;
 export type StampGateShotCaseId = (typeof STAMP_GATE_SHOT_CASE_IDS)[number];
 

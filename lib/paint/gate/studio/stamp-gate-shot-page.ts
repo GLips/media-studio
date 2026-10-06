@@ -4,7 +4,8 @@
 // dissolve between two sheets over a dissolving back,
 // the rigged heron posed as it dissolves, a warmed span, the cut-out cards, the sprig drawn as pieces, and their
 // baselines' frames. The masked shot's cases are stamp-gate-shot-masks-page.ts's, the rainy street's
-// stamp-gate-rainy-street-page.ts's and the glowing shot's stamp-gate-shot-glow-page.ts's, handed on.
+// stamp-gate-rainy-street-page.ts's, the glowing shot's stamp-gate-shot-glow-page.ts's and the painting in time's
+// stamp-gate-in-time-page.ts's, handed on.
 
 import type { StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { STAMP_GATE_CARDS_AT, STAMP_GATE_CARDS_POSED_AT, stampGateCardsPosedShot, stampGateCardsShot } from '../models/stamp-gate-cards.ts';
@@ -27,6 +28,7 @@ import {
 } from '../models/stamp-gate-shots.ts';
 import { stampGateRgb, stampGateRgbBase64 } from './stamp-gate-page-surface.ts';
 import { stampGateShotFrames, stampGateSolvedText as solvedText } from './stamp-gate-shot-frames.ts';
+import { checkStampGateInTime } from './stamp-gate-in-time-page.ts';
 import { checkStampGateRainyStreet } from './stamp-gate-rainy-street-page.ts';
 import { checkStampGateShotGlowCase } from './stamp-gate-shot-glow-page.ts';
 import { checkStampGateShotApproachCase } from './stamp-gate-shot-approach-page.ts';
@@ -382,6 +384,7 @@ export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGa
   if (id === 'shot/pieces') return checkPieces();
   if (id === 'shot/glow') return checkStampGateShotGlowCase();
   if (id === 'shot/approach') return checkStampGateShotApproachCase();
+  if (id === 'shot/properties-in-time') return checkStampGateInTime();
   return checkStampGateShotMasksCase(id);
 }
 

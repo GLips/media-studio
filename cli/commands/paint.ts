@@ -30,13 +30,16 @@ async function withPaintSourceStack(verb: () => Promise<void>): Promise<void> {
   }
 }
 
-/** `paint check` of the shots a project's scenes render (one scene's, given its file): each problem and warning printed by scene. */
+/** `paint check` of the shots a project's scenes render (one scene's, given its file): each painting in time's key drawings, problem and warning printed by scene. */
 async function checkSceneShots(arg: string): Promise<void> {
   const { paintingErrors, paintingProblemText } = await import('#lib/paint/document/models/painting-problem.ts');
   const { checkProjectSceneShots, shotSceneCheckTarget } = await import('#lib/paint/shot/engine/shot-scene-check.ts');
   const { project, scene } = shotSceneCheckTarget(arg);
   const checked = await checkProjectSceneShots(project, scene), problems = checked.flatMap(({ problems: found }) => found);
-  for (const { scene: id, problems: found } of checked) for (const problem of found) console.log(`scene ${id}: ${paintingProblemText(problem)}`);
+  for (const { scene: id, problems: found, plans } of checked) {
+    for (const line of plans) console.log(`scene ${id}: ${line}`);
+    for (const problem of found) console.log(`scene ${id}: ${paintingProblemText(problem)}`);
+  }
   const errors = paintingErrors(problems).length, warnings = problems.length - errors, shots = checked.length;
   console.error(`paint check: ${shots} ${shots === 1 ? 'shot' : 'shots'}, ${errors} ${errors === 1 ? 'error' : 'errors'}, ${warnings} ${warnings === 1 ? 'warning' : 'warnings'}`);
   if (errors > 0) process.exitCode = 1;
@@ -53,7 +56,7 @@ const checkPaintArgs = {
 const checkPaintCommand = defineCommand({
   meta: {
     name: 'check',
-    description: "Evaluate a painting source at its default property values (or those --set gives) and print every problem found: the schema and values, the factory's purity (called twice, its documents compared), the document's shape and keys, its papers, brushes and assets against work/styles/, its geometry, charges and media, washes, clocks and `on`s that can never hold. Each problem prints as `<path>: <message> [x0,y0 → x1,y1]`, the box in document px; warnings say so. Then, if it has no error, the document's size and medium and each layer's medium, sheet, washes and applications, and how many `on` gates only a solve decides; with --solve, every sheet solved (an application that can't land fails the check, naming where its rule failed). Given a project (its name, folder or video.tsx) or a scene's file (scenes/<id>.tsx, bars/<id>.tsx), render each of its scenes (or that one) in Node at its first, middle and last frames, with no picture, and compile every painted shot rendered as its render would, as if HTML lay behind it, held to its scene's span: print each problem and motion warning (a speed jump at a key, a move or a hold's step too fast for nothing to blur, a visibility popping) as `scene <id>: <path>: <message>`. Fails on any error.",
+    description: "Evaluate a painting source at its default property values (or those --set gives) and print every problem found: the schema and values, the factory's purity (called twice, its documents compared), the document's shape and keys, its papers, brushes and assets against work/styles/, its geometry, charges and media, washes, clocks and `on`s that can never hold. Each problem prints as `<path>: <message> [x0,y0 → x1,y1]`, the box in document px; warnings say so. Then, if it has no error, the document's size and medium and each layer's medium, sheet, washes and applications, and how many `on` gates only a solve decides; with --solve, every sheet solved (an application that can't land fails the check, naming where its rule failed). Given a project (its name, folder or video.tsx) or a scene's file (scenes/<id>.tsx, bars/<id>.tsx), render each of its scenes (or that one) in Node at its first, middle and last frames, with no picture, and compile every painted shot rendered as its render would, as if HTML lay behind it, held to its scene's span: print each painting in time's key drawings (which moments it solves, at what values, and why) as `scene <id>: <plane>: …`, then each problem and motion warning (a speed jump at a key, a move or a hold's step too fast for nothing to blur, a visibility popping) as `scene <id>: <path>: <message>`. Fails on any error.",
   },
   args: checkPaintArgs,
   run: ({ args, rawArgs }) => {

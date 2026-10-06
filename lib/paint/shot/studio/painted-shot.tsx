@@ -32,6 +32,7 @@ import { logRenderPageWarning } from '#lib/platform/browser/studio/render-page-l
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
 import { compilePaintedShot, shotCanvasLayings } from '../models/shot-compile.ts';
 import { SHOT_FRAME_COSTS_LABEL, SHOT_WARM_COSTS_LABEL, shotCostsProfileEntry } from '../models/shot-cost-report.ts';
+import { shotPlanesKeyDrawingsText } from '../models/shot-painting-in-time.ts';
 import { shotWatchName, type ShotWatchName } from '../models/shot-progress.ts';
 import type { PaintedShotProps } from '../models/shot-props.ts';
 import { shotWarmPastScene } from '../models/shot-warm.ts';
@@ -237,6 +238,7 @@ function loadPaintedShotScene(props: PaintedShotProps, canvases: readonly ShotCa
       ...paintSpanShownProblems(props.span, fps, sceneDur).map((message) => paintingProblem('error', 'shot', 'span', message)),
     ];
     if (!shot || placed.length) throw paintingProblemsError('shot', [...placed, ...problems]);
+    for (const line of shotPlanesKeyDrawingsText(shot.planes)) costs.planned(line);
     // Said in every render, once however many tabs load it: what the shot's motion may read badly as.
     for (const warning of problems.filter(({ severity }) => severity === 'warning')) {
       costs.warned(paintingProblemText(warning));

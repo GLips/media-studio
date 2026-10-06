@@ -90,14 +90,14 @@ export function shotPlanePlaceAt(plane: CompiledShotPaintedPlane, motion: Compil
 }
 
 /**
- * The selections plane `plane` of `shot` blends at frame moment `t`, read at its source clock's moment, each weighted
- * (paintedSourceShares). A callback's answer is checked as its load checked the first: throws on its problems
- * (paintedSourceProblems, paintedPlaneBlendProblems, shotPlaneRigEndProblems), and on occurrences other than its
- * first evaluation's, which motion, rigs and visibility were checked against.
+ * The selections plane `plane` of `shot` blends at frame moment `t`, read at its source clock's moment, each weighted.
+ * A callback's answer is checked as its load checked the first: throws on its problems (paintedSourceProblems,
+ * paintedPlaneBlendProblems, shotPlaneRigEndProblems) and on occurrences other than its first evaluation's. A
+ * painting in time's drawings were all checked as it loaded.
  */
 export function shotPlaneSharesAt(shot: Pick<CompiledPaintedShot, 'motion' | 'rigs'>, plane: CompiledShotPaintedPlane, t: PaintMoment): PaintedSourceShare[] {
   const moment = paintNodeTimeAt(plane.sourceClock, t, shot.motion.animationFps), source = presentationValueAt(plane.source, moment);
-  if (typeof plane.source !== 'function') return paintedSourceShares(source);
+  if (typeof plane.source !== 'function' || plane.keyDrawings) return paintedSourceShares(source);
   const at = `shot plane ${plane.id}'s source at ${moment.at} s`, problems = paintedSourceProblems(plane.id, source), ends = paintedSourceEnds(source);
   if (!problems.length) problems.push(...paintedPlaneBlendProblems(plane.id, ends, plane.paints));
   if (!problems.length) problems.push(...shotPlaneRigEndProblems(shot.rigs.values(), plane.id, ends));

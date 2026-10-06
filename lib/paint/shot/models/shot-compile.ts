@@ -29,6 +29,7 @@ import { shotEntryProblem, shotOccurrencePlane, shotPlaneOccurrences, type ShotO
 import { shotMaskCheck, type ShotMaskGraph } from './shot-masks.ts';
 import { compileShotPaintedTextures, type CompiledShotPaintedTexture } from './shot-painted-texture-compile.ts';
 import { shotCanvasDepthProblems, shotPlaneDepthRange, shotPlaneDepths } from './shot-depths.ts';
+import { planShotKeyDrawings, shotKeyDrawingsAt, shotSourceMoments, type ShotKeyDrawings } from './shot-painting-in-time.ts';
 import { shotCoveredPlanes, shotPlacementProblems, shotStillBackProblem } from './shot-placement.ts';
 import { shotDrawableOrder } from './shot-plan.ts';
 import type { CoverFrame, InstancedPlaneProps, OccurrenceKey, OccurrenceRig, PaintedShotProps, PictureSource, PlaneMask, PlaneProps, ScreenPin, ThreeSource } from './shot-props.ts';
@@ -52,14 +53,14 @@ export type ShotPlaneLay =
 type ShotPlaneCommon = { readonly id: string; readonly depth: PresentationValue<number>; readonly canvas: number };
 
 /**
- * A painted plane compiled: its source, read at `sourceClock`'s moment; its lay; its first evaluation's `ends` (every
- * selection it names), the size and ground all paint (`paints`) and their occurrences; `opaqueBack`: it's the opaque
- * back, laid on its root's paper wherever the frame shows (a clear back over HTML is laid as clear film); and its
- * masks, in order.
+ * A painted plane compiled: its source, read at `sourceClock`'s moment; a painting in time's plan (`keyDrawings`),
+ * which its source then reads; its first evaluation's `ends` (a plan's every drawing), the size and ground all paint
+ * and their occurrences; `opaqueBack`: laid on its root's paper wherever the frame shows (a clear back over HTML is
+ * clear film).
  */
 export type CompiledShotPaintedPlane = ShotPlaneCommon & {
-  readonly kind: 'painted'; readonly source: PresentationValue<PaintedSource>; readonly sourceClock: readonly PaintSceneStep[]; readonly lay: ShotPlaneLay;
-  readonly ends: readonly PaintedSourceEnd[]; readonly paints: ShotPlanePaints; readonly occurrences: readonly ShotOccurrence[];
+  readonly kind: 'painted'; readonly source: PresentationValue<PaintedSource>; readonly keyDrawings: ShotKeyDrawings | null; readonly sourceClock: readonly PaintSceneStep[];
+  readonly lay: ShotPlaneLay; readonly ends: readonly PaintedSourceEnd[]; readonly paints: ShotPlanePaints; readonly occurrences: readonly ShotOccurrence[];
   readonly opaqueBack: boolean; readonly masks: readonly PlaneMask[];
 };
 
@@ -180,28 +181,30 @@ function movingLayProblems(plane: CompiledShotPaintedPlane, motion: CompiledShot
 }
 
 /**
- * Plane `props` (a painted one) compiled from its first evaluation, or null and its problems, its source's at `field`.
- * The farthest plane is the back, opaque; with a transparent ground over HTML behind the first canvas, it's clear
- * film instead.
+ * Plane `props` (a painted one) compiled from its first evaluation, or a painting in time's plan, or null and its
+ * problems, its source's at `field`. The farthest plane is the back, opaque; with a transparent ground over HTML
+ * behind the first canvas, it's clear film instead.
  */
 function compilePaintedPlane(
-  props: PlaneProps, source: PresentationValue<PaintedSource>, common: ShotPlaneCommon, farthest: boolean, page: ShotPage, fps: number, problems: PaintingProblem[],
-  field = 'source',
+  props: PlaneProps, given: PresentationValue<PaintedSource> | ShotKeyDrawings, common: ShotPlaneCommon, farthest: boolean, page: ShotPage, fps: number,
+  problems: PaintingProblem[], field = 'source',
 ): CompiledShotPaintedPlane | null {
   const sourceClock = paintNodeClockSteps(props.sourceClock);
+  const keyDrawings = typeof given !== 'function' && given.kind === 'key-drawings' ? given : null;
+  const source: PresentationValue<PaintedSource> = typeof given === 'function' || given.kind !== 'key-drawings' ? given : (moment) => shotKeyDrawingsAt(given, moment);
   const first = presentationValueAt(source, paintNodeTimeAt(sourceClock, paintMoment(0), fps));
   const sourceProblems = paintedSourceProblems(props.id, first, field);
   problems.push(...sourceProblems);
   if (sourceProblems.length) return null;
-  const ends = paintedSourceEnds(first, field), [{ selection: { painting: { document: { widthPx, heightPx } }, ground } }] = ends, paints = { widthPx, heightPx, ground };
+  const ends = keyDrawings?.ends ?? paintedSourceEnds(first, field), [{ selection: { painting: { document: { widthPx, heightPx } }, ground } }] = ends, paints = { widthPx, heightPx, ground };
   problems.push(...paintedPlaneBlendProblems(props.id, ends, paints));
   const clear = ground === 'transparent';
   if (farthest && clear && !page.htmlBehind) {
     problems.push(shotError(props.id, 'source.ground', 'is the back, laid on its paper wherever the frame shows: its ground is transparent only over HTML before the first canvas'));
   }
   return {
-    ...common, kind: 'painted', source, sourceClock, lay: compilePlaneLay(props), opaqueBack: farthest && !clear, ends, paints, occurrences: shotPlaneOccurrences(props.id, first),
-    masks: props.masks ?? [],
+    ...common, kind: 'painted', source, keyDrawings, sourceClock, lay: compilePlaneLay(props), opaqueBack: farthest && !clear, ends, paints,
+    occurrences: shotPlaneOccurrences(props.id, first), masks: props.masks ?? [],
   };
 }
 
@@ -254,7 +257,8 @@ function maskPiecesProblems(planes: readonly CompiledShotPlane[], rigs: Readonly
 export function compilePaintedShot(
   props: PaintedShotProps, canvases: readonly string[], page: ShotPage = SHOT_NO_HTML_BEHIND,
 ): { readonly shot: CompiledPaintedShot | null; readonly problems: readonly PaintingProblem[] } {
-  const problems: PaintingProblem[] = [], fps = props.camera.animationFps ?? PAINT_ANIMATION_FPS;
+  // Warnings found as planes compile, said beside a shot that draws: problems stop the stages after them.
+  const problems: PaintingProblem[] = [], warnings: PaintingProblem[] = [], fps = props.camera.animationFps ?? PAINT_ANIMATION_FPS;
   // A texture reads no plane, so its problems join every answer, whichever stage the planes stop at.
   const textures = compileShotPaintedTextures(props.paintedTextures ?? []);
   const answer = (shot: CompiledPaintedShot | null, found: readonly PaintingProblem[]) => ({ shot, problems: [...found, ...textures.problems] });
@@ -286,6 +290,13 @@ export function compilePaintedShot(
     if (typeof source !== 'function' && source.kind === 'picture') return [{ ...common, sourceClock, kind: 'picture', source }];
     // planePropsProblems refuses a three plane's depth in time.
     if (typeof source !== 'function' && source.kind === 'three') return typeof common.depth === 'number' ? [{ ...common, depth: common.depth, sourceClock, kind: 'three', source }] : [];
+    if (typeof source !== 'function' && source.kind === 'in-time') {
+      const planned = planShotKeyDrawings(plane.id, source, shotSourceMoments(props.span, sourceClock, fps));
+      problems.push(...planned.problems.filter(({ severity }) => severity === 'error'));
+      warnings.push(...planned.problems.filter(({ severity }) => severity === 'warning'));
+      const painted = planned.plan && compilePaintedPlane(plane, planned.plan, common, index === 0, page, fps, problems);
+      return painted ? [painted] : [];
+    }
     const painted = compilePaintedPlane(plane, source, common, index === 0, page, fps, problems);
     return painted ? [painted] : [];
   });
@@ -341,5 +352,5 @@ export function compilePaintedShot(
     visibility, masks: masks.graph, camera: built.camera, warm: props.warm ?? null,
     paintedTextures: textures.textures,
   };
-  return answer(shot, [...problems, ...shotMotionWarnings(shot, frames)]);
+  return answer(shot, [...problems, ...warnings, ...shotMotionWarnings(shot, frames)]);
 }

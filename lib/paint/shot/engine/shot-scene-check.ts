@@ -24,11 +24,15 @@ import { sceneClockAt } from '#lib/timing/timeline/models/video-layout.ts';
 import { compilePaintedShot } from '../models/shot-compile.ts';
 import { shotPlaneDepthRange } from '../models/shot-depths.ts';
 import type { PaintedShotProps } from '../models/shot-props.ts';
+import { shotPlanesKeyDrawingsText } from '../models/shot-painting-in-time.ts';
 import { shotWarmPastScene } from '../models/shot-warm.ts';
 import { PaintedShotSeenContext } from '../studio/painted-shot.tsx';
 
-/** A scene's shot checked: the scene's id, and the shot's problems, errors and warnings both. */
-export type ShotSceneCheck = { readonly scene: string; readonly problems: readonly PaintingProblem[] };
+/**
+ * A scene's shot checked: the scene's id; the shot's problems, errors and warnings both; and, when it compiles, its
+ * paintings in time's key drawings, as lines (shotPlanesKeyDrawingsText).
+ */
+export type ShotSceneCheck = { readonly scene: string; readonly problems: readonly PaintingProblem[]; readonly plans: readonly string[] };
 
 /**
  * The canvases `shot`'s planes name, in the order its page must hold them: the farthest plane's first, a depth in
@@ -85,13 +89,17 @@ export async function checkProjectSceneShots(project: string, sceneId: string | 
   return scenes.flatMap((scene) => {
     const { from, to } = scene.visible, frames = [...new Set([from, Math.floor((from + to - 1) / 2), to - 1])];
     const shots = [...new Set(frames.flatMap((frame) => shotsRenderedAt(scene, frame, { fps, width, height, frames: laid.frames })))];
-    return shots.map((shot): ShotSceneCheck => ({
-      scene: scene.id,
-      problems: [
-        ...paintSpanShownProblems(shot.span, fps, scene.dur).map((message) => paintingProblem('error', 'shot', 'span', message)),
-        ...compilePaintedShot(shot, shotNamedCanvases(shot), { htmlBehind: true }).problems,
-        ...(shot.warm ? shotWarmPastScene(shot.warm, scene.dur) : []),
-      ],
-    }));
+    return shots.map((props): ShotSceneCheck => {
+      const { shot, problems } = compilePaintedShot(props, shotNamedCanvases(props), { htmlBehind: true });
+      return {
+        scene: scene.id,
+        problems: [
+          ...paintSpanShownProblems(props.span, fps, scene.dur).map((message) => paintingProblem('error', 'shot', 'span', message)),
+          ...problems,
+          ...(props.warm ? shotWarmPastScene(props.warm, scene.dur) : []),
+        ],
+        plans: shot ? shotPlanesKeyDrawingsText(shot.planes) : [],
+      };
+    });
   });
 }

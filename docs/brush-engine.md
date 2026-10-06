@@ -568,9 +568,11 @@ brushes and papers from `work/styles/` and has `studio/painting-still-page.ts` s
 still` and `studio paint check --solve`.
 
 **shot** is what a scene puts on screen from evaluations: a plane shows a `LayerSelection` (`layersOf`, the
-document's, as a film readback reads one), `bracket` and `dissolve` blend two, `paintedSourceShares` weighs the selections a dissolve blends (linear in
+document's, as a film readback reads one), `dissolve` blends two, `paintedSourceShares` weighs the selections a dissolve blends (linear in
 each form a plane's picture takes, so one weighted sum), and `paintedSourceProblems` is what a shot's load refuses in
-a plane's selection, an own sheet split among them (`shot-selection.ts`); and `PaintedShotProps` (`shot-props.ts`)
+a plane's selection, an own sheet split among them (`shot-selection.ts`); `paintingInTime` takes a source's
+properties as values in time, the shot choosing its key drawings and dissolving between them
+(`shot-painting-in-time.ts`, the choice in `shot-key-drawings.ts`); and `PaintedShotProps` (`shot-props.ts`)
 is the shot itself, its camera and its planes, each plane's entry holding all it and its occurrences do (visibility,
 motion nodes and plays, rigs), in the engine's shapes. A drawable is named by plane id or occurrence key,
 `<plane>/<key>` (`shot-occurrences.ts`): the entries are read into maps by that name as the shot loads
@@ -711,7 +713,7 @@ pose hides, read through the frame's one rig reader (`shotRigReader`), which its
 evaluations a callback source makes or finds memoised are the change in `paintingEvaluationCounts()` across its
 synchronous read. The cost report's counts are painting's (`painting/models/stamp-paint-costs.ts`, one set of names the document,
 solver, caches and shot all count into); the shot logs a frame's and a warm's under its labels
-(`shot-cost-report.ts`) through `picture/profiling`'s costs channel, which knows nothing of paint, so
+(`shot-cost-report.ts`), a painting in time's plan among their notes (`plans`), through `picture/profiling`'s costs channel, which knows nothing of paint, so
 `studio profile --costs` tables any drawing's counts. Its painted textures (ENGINE 6.3) are compiled with its planes
 by `compilePaintedShot`, their problems reported beside the planes', onto `CompiledPaintedShot.paintedTextures`, in
 `shot-painted-texture-compile.ts` (`compileShotPaintedTextures`: an id each, whole px, each source at moment 0 as a
@@ -795,7 +797,10 @@ shutter, a frame moving only drops solving nothing and laying no picture anew; a
 and shut, drawn as if it stood still. A kite (`stamp-gate-shot-approach.ts`, `shot/approach`) flies in depth from behind
 a post to past it under a camera pushing in: each frame draws it as a kite held at its depth then, the post in
 front before it crosses the post's depth and the kite after, and an open shutter spreads its rim wider than a kite
-held at that depth, which only the push blurs. The masked shot (`stamp-gate-shot-masks.ts`) shows the paper heron part revealed by its document's reveal (`shot/masks`),
+held at that depth, which only the push blurs. A ridge's top swept as a painting in time (`shot/properties-in-time`,
+`stamp-gate-in-time.ts`) keys the moments its rule names, within four drawings; a frame between two keys lies between
+their drawings, each drawing solves once and frames after them solve nothing, and a warm over the sweep solves its
+drawings alone. The masked shot (`stamp-gate-shot-masks.ts`) shows the paper heron part revealed by its document's reveal (`shot/masks`),
 and cuts a tint to the heron's wing, to all but it, and to a disc moving across as a picture plane and as a three
 plane under a panned camera. On a plane nearer than the heron, the tint stays cut to the wing, and to a picture disc,
 as a pan parts their depths (`shot/masks-across`), laid anew each frame they move apart; at the heron's depth, never.

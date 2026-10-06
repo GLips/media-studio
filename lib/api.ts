@@ -147,7 +147,8 @@ export { checkPaintingSource, painting, type PaintingEvaluation, type PaintingFa
 export type { PropertySchema, PropertySpec, PropertyValues } from '#lib/paint/document/models/painting-properties.ts';
 export type { PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 export { layersOf, type LayerSelection, type SelectionGround } from '#lib/paint/document/models/painting-selection.ts';
-export { bracket, dissolve, type Dissolve, type PaintedSource } from '#lib/paint/shot/models/shot-selection.ts';
+export { dissolve, type Dissolve, type PaintedSource } from '#lib/paint/shot/models/shot-selection.ts';
+export { paintingInTime, type PaintingInTime, type PaintingInTimeOptions, type PaintingInTimeValues } from '#lib/paint/shot/models/shot-painting-in-time.ts';
 export type {
   CoverFrame, InstancedPlaneProps, OccurrenceKey, OccurrenceProps, OccurrenceRig, PaintedShotProps, PaintedTexture, PictureSource, PinPoint, PlaneInstance,
   PlaneLay, PlaneMask, PlaneProps, RigPart, RigPartPose, ScreenPin, ShotNodePlay, ThreeSource,

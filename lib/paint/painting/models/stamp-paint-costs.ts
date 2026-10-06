@@ -40,12 +40,13 @@ export type StampPaintSolveCost = { readonly program: string; readonly from: str
 export type StampGpuCacheBytes = { readonly kept: number; readonly targets: number };
 
 /**
- * A frame's or a warmed span's costs: every count by name, in STAMP_PAINT_COST_NAMES' order; every solve; the
- * warnings met, as `studio paint check` prints them; and at its end, the bytes the device's cache held and what the
- * page's memos kept.
+ * A frame's or a warmed span's costs: every count by name, in STAMP_PAINT_COST_NAMES' order; what was planned, as
+ * `studio paint check` prints it (a painting in time's key drawings); every solve; the warnings met, as `studio paint
+ * check` prints them; and at its end, the bytes the device's cache held and what the page's memos kept.
  */
 export type StampPaintCosts = {
   readonly counts: ReadonlyMap<StampPaintCostName, number>;
+  readonly plans: readonly string[];
   readonly solves: readonly StampPaintSolveCost[];
   readonly warnings: readonly string[];
   readonly bytes: StampGpuCacheBytes;
@@ -59,6 +60,8 @@ export type StampPaintCosts = {
 export type StampPaintCostTally = {
   readonly count: (name: StampPaintCostCount, n?: number) => void;
   readonly solved: (solve: StampPaintSolveCost) => void;
+  /** A line of what a load planned to solve, printed: the report says what it chose and why. */
+  readonly planned: (text: string) => void;
   /** A warning met as the frame drew, printed: it fails nothing, so the report is where it's seen. */
   readonly warned: (text: string) => void;
   /** The bytes the device's cache holds now and what the page's memos keep: levels, the latest kept. */
@@ -70,7 +73,7 @@ export type StampPaintCostTally = {
 const noCosts = () => new Map(STAMP_PAINT_COST_NAMES.map((name) => [name, 0]));
 
 export function createStampPaintCostTally(): StampPaintCostTally {
-  let counts = noCosts(), solves: StampPaintSolveCost[] = [], warnings: string[] = [], bytes: StampGpuCacheBytes = { kept: 0, targets: 0 }, kept = keptNothing;
+  let counts = noCosts(), plans: string[] = [], solves: StampPaintSolveCost[] = [], warnings: string[] = [], bytes: StampGpuCacheBytes = { kept: 0, targets: 0 }, kept = keptNothing;
   const add = (name: StampPaintCostName, n: number) => counts.set(name, (counts.get(name) ?? 0) + n);
   return {
     count: (name, n = 1) => { add(name, n); },
@@ -79,15 +82,17 @@ export function createStampPaintCostTally(): StampPaintCostTally {
       add('solves', 1);
       add('entries run', solve.entries);
     },
+    planned: (text) => { plans.push(text); },
     warned: (text) => { warnings.push(text); },
     retained: (held, memos) => {
       bytes = held;
       kept = memos;
     },
-    counted: () => ({ counts, solves, warnings, bytes, kept }),
+    counted: () => ({ counts, plans, solves, warnings, bytes, kept }),
     take: () => {
-      const costs = { counts, solves, warnings, bytes, kept };
+      const costs = { counts, plans, solves, warnings, bytes, kept };
       counts = noCosts();
+      plans = [];
       solves = [];
       warnings = [];
       return costs;

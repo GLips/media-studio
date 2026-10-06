@@ -150,19 +150,3 @@ export function paintedPlaneBlendProblems(plane: string, ends: readonly PaintedS
   }
   return problems;
 }
-
-/**
- * The authored levels either side of `value` and how far between them it sits, `k` 0..1: on a level, or past either
- * end, both ends are that level and `k` is 0. `levels` ascend.
- */
-export function bracket(value: number, levels: readonly number[]): { readonly lower: number; readonly upper: number; readonly k: number } {
-  if (levels.length === 0 || !levels.every((level, i) => Number.isFinite(level) && (i === 0 || level > levels[i - 1]))) {
-    throw new Error(`bracket's levels ${levels.join(', ')} aren't finite and ascending`);
-  }
-  if (!Number.isFinite(value)) throw new Error(`bracket's value ${value} isn't finite`);
-  const upper = levels.findIndex((level) => level >= value);
-  if (upper < 0) return { lower: levels.at(-1)!, upper: levels.at(-1)!, k: 0 };
-  if (levels[upper] === value || upper === 0) return { lower: levels[upper], upper: levels[upper], k: 0 };
-  const below = levels[upper - 1], above = levels[upper];
-  return { lower: below, upper: above, k: (value - below) / (above - below) };
-}

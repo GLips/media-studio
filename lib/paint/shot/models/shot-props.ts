@@ -16,6 +16,7 @@ import type { PaintRigCutDeclaration } from '#lib/paint/rig/models/paint-rig-cut
 import type { PaintRigPartMove } from '#lib/paint/rig/models/paint-rig-pose.ts';
 import type { PaintedThreeSource } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
 import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
+import type { PaintingInTime } from './shot-painting-in-time.ts';
 import type { PaintedSource } from './shot-selection.ts';
 
 /** The engine's picture plane source: a picture handed in at each moment, held within `extent`. */
@@ -87,8 +88,8 @@ type PlaneCommon = {
 
 /**
  * A plane. `sourceClock` holds the moment its `source` reads: a callback's (prefix, properties, dissolve weights), a
- * picture's `pictureAt`, a three scene's `poseAt`. `{ hold: 6 }` repaints on sixes while `clock` runs on. Both start
- * from the frame's moment.
+ * painting in time's values, a picture's `pictureAt`, a three scene's `poseAt`. `{ hold: 6 }` repaints on sixes while
+ * `clock` runs on. Both start from the frame's moment.
  */
 export type PlaneProps = PlaneCommon & ShotNodeFields & {
   readonly kind?: undefined;
@@ -100,7 +101,7 @@ export type PlaneProps = PlaneCommon & ShotNodeFields & {
    */
   readonly depth: PresentationValue<number>;
   readonly masks?: readonly PlaneMask[];
-  readonly source: PresentationValue<PaintedSource> | PictureSource | ThreeSource;
+  readonly source: PresentationValue<PaintedSource> | PaintingInTime | PictureSource | ThreeSource;
   readonly sourceClock?: PaintNodeClock;
   /** Plays on the plane's own node, which its node fields (`pivot`, `pins`, `marks`, `glow`) write: it moves the whole plane. */
   readonly plays?: readonly ShotNodePlay[];

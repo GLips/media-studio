@@ -10,7 +10,7 @@ document), `lib/paint/document/models/painting-properties.ts` (a source's proper
 
 Built: sources and `painting()`; property schemas and values; every check made without solving (Checking); a
 document's tree, its sheets and each sheet's order (`painting-tree.ts`, `painting-sheet-program.ts`); the evaluation
-diff; `layersOf`, `bracket` and `dissolve`, and the problems a shot's load reports in a plane's selection
+diff; `layersOf` and `dissolve`, and the problems a shot's load reports in a plane's selection
 (`paintedSourceProblems`); the shot's types; `studio paint check` and `studio paint diff`; and the solver, for
 every sheet of a document, clocked washes and their prefixes included, each own sheet laid as a cut-out of its paper,
 seen through `studio paint still` and `studio paint check --solve`, each at a scene second with `--at`; posing before
@@ -28,8 +28,9 @@ visibility, a group's fading all it holds as one and a card fading with its owne
 re-solving nothing; instanced planes, many items sharing a few finished variants, each blurred along its own travel;
 values in time, keyed with curves, sampled over the shot's span for its checks and motion warnings, camera moves
 that add, and a plane's depth in time, drawn in depth order each frame (Values in time); `alphaOf` masks; per-plane
-`clock` and `sourceClock` holds; dissolves and `bracket`, each end solved and laid once and their pictures summed by
-weight, a rig posing every end alike; painted textures, paintings a three plane's objects wear, drawn at each frame's moment (Painted textures);
+`clock` and `sourceClock` holds; dissolves, each end solved and laid once and their pictures summed by
+weight, a rig posing every end alike; paintings in time (`paintingInTime`), a source's properties as values in time,
+the shot choosing which moments to solve and dissolving between them (What to paint and what to present); painted textures, paintings a three plane's objects wear, drawn at each frame's moment (Painted textures);
 `warm`; and the cost report, each frame's and the warm's, in a profiling render. **NEW** marks behaviour the brush
 engine (the recipe path, docs/brush-engine.md) lacks too; unmarked behaviour is how it already paints.
 
@@ -238,11 +239,12 @@ A module may import sibling TS modules, hold module-level constants and pure mem
 likes; its factory reads nothing but its values and imports. For seeded randomness use `seededRandom(seed)` from
 `#lib/picture/motion/models/random.ts`. A source imports its types from `#lib/paint/document/models/painting-document.ts`
 and `#lib/paint/document/models/painting-properties.ts`, and pigments from
-`#lib/paint/materials/models/paint-watercolour-pigments.ts`; a scene imports `painting`, `layersOf`, `bracket`,
-`dissolve` and the shot's types from `#studio`. A test, or a shot built in a `*-model.ts`, runs in plain Node, which
-can't load `#studio`: it imports `painting` and `checkPaintingSource` from
+`#lib/paint/materials/models/paint-watercolour-pigments.ts`; a scene imports `painting`, `layersOf`,
+`paintingInTime`, `dissolve` and the shot's types from `#studio`. A test, or a shot built in a `*-model.ts`, runs in
+plain Node, which can't load `#studio`: it imports `painting` and `checkPaintingSource` from
 `#lib/paint/document/models/painting-source.ts`, `layersOf` from `#lib/paint/document/models/painting-selection.ts`,
-and `bracket`, `dissolve` and `paintedSourceProblems` from `#lib/paint/shot/models/shot-selection.ts`. A source one scene uses sits in that scene's folder
+`paintingInTime` from `#lib/paint/shot/models/shot-painting-in-time.ts`, and `dissolve` and `paintedSourceProblems`
+from `#lib/paint/shot/models/shot-selection.ts`. A source one scene uses sits in that scene's folder
 (`scenes/meadow/meadow.painting.ts`); one several scenes share is listed in `project.ts`'s `shared`, and the styles its
 brushes name in its `styles` (docs/private-styles.md). Lint lets any `*.painting.ts` default-export its factory, and
 holds it to a model's imports (no `#studio`, no I/O), since `studio paint check` loads it in plain Node. A helper
@@ -688,7 +690,7 @@ A capped film (`opacityCap`, or a flood's `load`) is thin paint over whatever li
 - **Warming**: `warm: {from, to}` on the shot is a span of scene seconds, not frames: `{ from: 0, to: 8 }` is the
   scene's first eight seconds. It solves the films of the render frames whose scene seconds lie in it (at the
   composition's fps), and of the moments they sample, before the first frame: prefixes, poses, property values,
-  dissolve levels. Each painted plane solves once for each pairing of moments the span's frames read on its source
+  dissolves' ends, a painting in time's key drawings. Each painted plane solves once for each pairing of moments the span's frames read on its source
   clock and its own clock (its nodes' clocks run inside it), so a source held on sixes under a pose held on twos
   solves each pairing, not each frame. It reports what it solved and kept, and promises no residency: a span whose
   films outgrow the cache's budget evicts its beginning, and those frames solve again. Warm spans that fit. It warms
@@ -916,6 +918,7 @@ const TRAM = paintKeyed([
 | marks `boil` (wobble) | warp by a displacement map per epoch | per frame, no solve |
 | marks `boil` with `reseed` | re-placed and repainted | a solve per epoch |
 | `dissolve` `k` | each end's films solved and its picture laid once, kept; the pictures summed by weight | per frame, no solve once both ends are; a rig pose on a shared sheet solves each end at it |
+| a property moving in time (`paintingInTime`) | its values sampled at every moment its plane reads; key drawings chosen among them and each solved once; every frame the two keys either side dissolved by how far its values have come | a solve per drawing, at most its `drawings` however long the shot, cached; then per frame, no solve. `studio paint check` and the cost report print the keys (What to paint and what to present) |
 | a reveal, or the `at` it's read at | the film's cut, recomposed | per frame, no solve; a strokes reveal's arrival map drawn once per film and kept |
 | instance count or poses | draws of shared films | per frame, no solve |
 | a hold | fewer distinct moments | divides all of the above per second |
@@ -926,7 +929,8 @@ order at each pose: put moving elements late in the document (in front), or on o
 only among unclocked work: on a sheet with clocked washes, unclocked work comes first wherever it's written, so an
 unclocked walker repaints every clocked drop shown by then, at each pose. Clock its wash and it lands among them by its
 time, repainting only what lands after it; or hold it. Quantise properties with `step` and hold planes so each distinct
-value is reused, and warm the span a scene plays. A hundred timed applications are a hundred prefixes if a scene shows
+value is reused, and warm the span a scene plays. A property that sweeps across a shot is a painting in time: its
+`drawings` caps its solves, where a callback solves each step the sweep passes. A hundred timed applications are a hundred prefixes if a scene shows
 each: hold the plane, or show fewer steps. `studio paint diff` shows what a property step re-solves; the cost report
 counts what each frame and warmed span solved: `studio profile <project> --frames a:b --costs` tables it frame by frame,
 a run of frames costing alike as one line.
@@ -961,7 +965,7 @@ a run of frames costing alike as one line.
 | 24 | collage cut-out sliding | the layer with `sheet: {kind: 'own', paper}`; motion on its occurrence | its grain travels with it, as paper does |
 | 25 | paint drifting over still paper | the layer left on its parent's sheet; motion on its occurrence, held | a solve per distinct pose, from its first application on |
 | 26 | ink drawn on the beat | the ink layer's `reveal: {kind: 'strokes', strokes}`, its paths shared with its application, a stroke per beat; plane source `(m) => layersOf(p, keys, {at: m.at})` (below) | the overlap limit: where strokes cross in one film, the crossing shows with the first band; band widths held to the pen's visible width (`paintingStrokeVisibleWidthPx`) in a test, then sized by eye |
-| 27 | animated property, smooth | `bracket(v, LEVELS)` → `dissolve(layersOf(lower), layersOf(upper), k)` | ghosting where edges move between levels |
+| 27 | a property moving smoothly | the plane's source `paintingInTime(src, {values: {name: (m) => …}, layers, drawings})` (below) | ghosting where edges move between drawings: an outline that must move goes in presentation (What to paint and what to present) |
 | 28 | one painting, two places | two planes selecting the same evaluation and layers | each is its own occurrence |
 | 29 | a drawing appearing stroke by stroke | a direct wash with `clock: {origin}` and an `at` per application, on any sheet: a direct wash has no say in its drying | or a reveal over the finished drawing (recipe 26), which pens each stroke along its length |
 | 30 | an element fading | `visibility: (m) => …` in its entry, under its plane's `occurrences` by key, or on the plane | a group's visibility fades it as one; a cut-out's owner fades its card with it; on another's card, the paper its paint alone cut goes as it does |
@@ -974,22 +978,35 @@ a run of frames costing alike as one line.
 | 37 | a light moving while the scene dissolves between lights | the light (a sun and its halo) a small painting on a nearer plane of its own, `lay: (m) => …` along its path, in gouache or with `TITANIUM_WHITE` to lie over the sky; the held lights reserve nothing for it | a light reserved in each held solve stays where that solve put it and fades in place through the dissolve, a ghost |
 | 38 | a mark growing along its own path, a vine round a mug | the layer's `reveal: {kind: 'strokes', strokes}`, `paintingEasedRevealStrokes` over each of the application's own subpaths, written past the seam in plain px (below) | a field varies across the document, not along the mark, and tears where a mark crosses a wrapped seam (the check warns); bands wrap with their paint; band widths held to `paintingRevealBandPx` in a test |
 
-Recipe 27 in full, as a plane of the worked example's scene (imports as there, plus `bracket`, `dissolve` and
-`type PlaneProps` from `#studio`):
+Recipe 27 in full, as a plane of the worked example's scene, its hill rising unheld (imports as there, plus
+`paintingInTime` and `type PlaneProps` from `#studio`):
 
 ```tsx
-/** Solved levels, px: five solves, then every frame is a blend of two of them. */
-const LEVELS = [180, 200, 220, 240, 260];
-const hillTopSmooth = (t: number) => 260 - 80 * Math.min(1, Math.max(0, (t - 1) / 3));
+/** The hill's top, px: 260 until 1 s, rising to 180 by 4 s. The shot quantises it to the source's 10 px step. */
+const HILL_TOP = paintKeyed([{ at: 1, value: 260 }, { at: 4, value: 180 }]);
 const smoothPlane: PlaneProps = {
   id: 'meadow',
   depth: 1,
-  source: (moment) => {
-    const { lower, upper, k } = bracket(hillTopSmooth(moment.at), LEVELS);
-    return dissolve(landscapeAt(lower), landscapeAt(upper), k);
-  },
+  // At most five solves; every frame dissolves the two drawings either side of its hill.
+  source: paintingInTime(meadow, { values: { hillTopPx: HILL_TOP }, layers: ['landscape', 'cloud'], drawings: 5 }),
 };
 ```
+
+Over the scene's eight seconds at 30 fps, `studio paint check scenes/meadow.tsx` prints the keys it chose: the first
+and last moments, then halfway along the rise and halfway along each half, one drawing every 20 px.
+
+```
+meadowShot: meadow: meadow in time, 5 drawings (at most 5) solved at 5 keys of the 240 moments it reads
+meadowShot: meadow: key at 0 s (hillTopPx 260): the first moment
+meadowShot: meadow: key at 1.733 s (hillTopPx 240): halfway along a change
+meadowShot: meadow: key at 2.5 s (hillTopPx 220): halfway along a change
+meadowShot: meadow: key at 3.267 s (hillTopPx 200): halfway along a change
+meadowShot: meadow: key at 7.967 s (hillTopPx 180): the last moment
+```
+
+Between two drawings the hill's edge shows at both heights, one fading as the other comes: a dissolve, not a hill
+rising. More drawings set the heights closer, each a solve; an edge that must move crisply goes in presentation
+(What to paint and what to present).
 
 Recipe 26, a skyline inked a stroke a beat from the `ink` cue, each stroke drawn over half a beat. The paths are the
 application's and the reveal's; the band is the pen's visible width and a little more, as a look at the drawn line
@@ -1188,7 +1205,7 @@ where it's written: `sky.visibility`, `birds.occurrences.flock.marks`, `front.oc
 | glow, boil, pins, sway, flutter, place | node fields and plays (Reference) | move finished paint on a sheet the occurrence owns, its marks before painting otherwise (Sheets); boil wobble moves finished paint either way. Boil wobble and sway phase follow the plane and key, so the same layer on two planes wobbles and sways apart. `glow` is a constant or a value in time, read at its node's held moment (Reference › Glow): `glow: paintKeyed([{ at: 0, value: { amount: 0, threshold: 0.4 } }, { at: 1, value: { amount: 1.5, threshold: 0.4 } }])` |
 | rig | a group's entry's `rig: {parts, pose}` (Reference) | a rigged node takes place, clock, glow and boil, not pins, sway or flutter; drawn as pieces, it lays no glow. On a sheet the group or a cel owns, paint, paper and edge bend as pieces (**NEW** in shots); otherwise the cels' marks are posed before painting (**NEW**) |
 | lay | a plane's `lay`: still, moving (a value in time), or on the frame, a pin or a cover | where its document lies in frame px (Lay forms, below) |
-| hold | plane `clock: {hold: n}` holds its presentation and motion: its lay, visibility and rig poses, its own node and its occurrences' nodes and their plays; `sourceClock: {hold: n}` holds what `source` reads (a callback's prefix, property values and dissolve weights, a picture's `pictureAt`, a three scene's `poseAt`) | each callback reads its clock's held moment, floored to the hold's grid. Both start from the frame's moment; neither holds the other's. The camera still moves through the shutter |
+| hold | plane `clock: {hold: n}` holds its presentation and motion: its lay, visibility and rig poses, its own node and its occurrences' nodes and their plays; `sourceClock: {hold: n}` holds what `source` reads (a callback's prefix, property values and dissolve weights, a painting in time's values, a picture's `pictureAt`, a three scene's `poseAt`) | each callback reads its clock's held moment, floored to the hold's grid. Both start from the frame's moment; neither holds the other's. The camera still moves through the shutter |
 | masks | `alphaOf` (another drawable's coverage, partial alpha included, where it lies this frame: a plane by id, painted, picture, three or instanced, or a painted plane's occurrence), `invert?` | **NEW**, on painted planes only. It cuts the plane's paint, glow and the own-sheet paper it shapes; the ground stays whole. A plane's masks multiply. To leave a layer unmasked, put it on a second plane at the same depth. No mask reads its own plane, through any chain. Paint shown over time, along a path or by a field, is the document's to say: a layer's or group's `reveal` (Time). `alphaOf` reads every drawable where the camera shows it this frame, through both lays and the parallax between their depths: a reader's plane px is found on the frame and read on the drawable's plane there, so the cut stays on what it reads on the frame as the camera pans, while the reader's paint slides by at its own depth. At one depth that's the same plane px, as at rest. A three plane's coverage is read where its render shows it; an instanced plane's items where the camera shows them, sharp and still. A drawable's coverage is cut by its own plane's masks and visibility. A part inside a rig drawn as pieces isn't read apart: read the rig. A reader is laid anew only when what it reads changes: a painted plane's picture, a picture source's new picture, a three render's frame, an instanced plane's items moved, faded or repainted, a drawable's visibility, or where the camera shows it against the reader (each frame a camera move parts their depths). A dissolving plane's masks cut both ends alike, and reading one reads its ends' coverage blended as its picture is. Under an open shutter the reference cuts each exposure where its own views lay it; fast mode cuts at the frame's moment and blurs the cut as the reader moves, so a reader sliding past what it reads smears the cut's edge a little wider (half the difference in their travel over the shutter) |
 | instances | `{kind: 'instanced', depths: {near, far}, variants, instances(m)}` | each item lays its variant as a plane at its depth (`lay` from the variant's document px; clear outside its paint), depth-sorted with every drawable, planes first on ties, all within `depths` and nearer than the back. A variant is solved and laid once, whole and centred on the stage (its document no larger), and every item showing it shares that picture; items lie anywhere through the lens. An item's defocus blurs that picture, and may spread it only as far as the stage leaves round the variant's document: paint a variant on a document tight round its paint. A key is one item's lifetime: the same key at the shutter's two ends blurs the item along its own travel; a key missing at either end draws it as if still on its plane, blurred only by the camera's move; a recycled item takes a new key. An item's `visibility` fades it, the plane's all of them. Its entry holds its visibility, never a node or occurrences (**NEW**) |
 | dissolve | `dissolve(a, b, k)`, nestable | blends the two pictures in the plane's own form (the back's opaque colour, a nearer plane's or a clear back's colour and transmittance, on any canvas), never their pigment; its glow and motion summed alike; its occurrences are both sides', moved alike; every end one document size on one ground; a rig on its plane needs its group cut alike in every end (the same layers in each cel), and each end is posed by the frame's one read of the pose and solved per pose (**NEW**) |
@@ -1316,6 +1333,49 @@ do. Between them nothing is drawn but a shutter's smear, so a spring passing its
 drawn nor checked. A render refuses a span at a frame rate other than its composition's, or short of its scene's
 frames, and draws no frame outside it. The same samples drive the motion warnings (Checking).
 
+### What to paint and what to present
+
+A painting's property values are a solve: each distinct set of them is an evaluation, its sheets painted again on the
+GPU, wet into wet. Presentation is what a shot does with finished paint: lays and the camera, motion nodes and their
+plays, rigs and cels, visibility, glow, reveals, instances. It runs every frame and solves nothing. So what must change
+continuously, a position, a size, an angle, an outline sliding, goes in presentation: a figure walks by its node's
+`place`, a gate swings on a rig, a sun climbs on its own plane's `lay`. A painting's properties carry what only a new
+painting can show: the light, a colour, how heavily a wash is charged, a mark there or not.
+
+Such a property may still move through a shot, as light moves through a day. Give its plane a painting in time,
+`paintingInTime(source, {values, layers, ground?, at?, drawings})` (`#studio`; from models,
+`#lib/paint/shot/models/shot-painting-in-time.ts`). `values` gives each property it moves a constant or a value in
+time of its type (`paintKeyed`, or `(m) => …`), the rest keeping their defaults; `layers`, `ground` and `at` are
+`layersOf`'s. The shot samples the values at every moment the plane's source reads (each frame of its span, at its
+`sourceClock`'s held moment), chooses at most `drawings` of those moments to solve, its key drawings, and shows each
+frame as the two keys either side of its values, dissolved by how far they've come from one to the other. A frame
+whose values are a key's draws that key alone. Between keys, an edge a property moves shows in both places, one
+fading as the other comes (ghosting): a dissolve blends pictures, never shapes, so what moves an outline belongs in
+presentation.
+
+How the keys are chosen:
+
+- Each number, at every moment, lies in its range: the first moment one doesn't is refused, named. Off its step, it's
+  quantised to it. It's measured as a share of its range, so properties in any unit weigh alike; the booleans and
+  enums are its run.
+- The first and last moments are keys, and either side of each change of run (a cut): a boolean or an enum never
+  dissolves, it switches between two frames.
+- Then, while `drawings` allows, the stretch between two keys whose values travel farthest is split: where they turn
+  farthest from the straight dissolve between its ends, when that's a quarter of the stretch's travel or more (`where
+  its values turn`), else halfway along it (`halfway along a change`).
+- A split draws only what neither end draws: once each moment of a stretch quantises to one of its ends' drawings, it's
+  done. So `step` is the finest change worth a solve, and a sweep across five steps solves at most five drawings
+  however long it lasts. A key drawing what another already draws costs nothing.
+- `drawings` is the most solves the plane makes. One below what its first and last moments and cuts draw is refused,
+  naming them. One that leaves a turn undrawn (values going out and coming back between two keys) is warned of: the
+  frames there miss their dissolve by more than a step, or a fiftieth of the range for a number with none.
+
+A held `sourceClock` (`{hold: 6}`) holds the values as it holds any source's reads: only the held moments are sampled,
+and the dissolve steps on sixes with them. A painted texture's source and an instanced plane's variants take no
+painting in time. `studio paint check <module>` prints each painting in time's keys, their values and why each is one
+(recipe 27), and a profiling render's cost report notes them with the shot's warnings, in its warm's entry or its
+first frame's.
+
 ### Lay forms
 
 A plane's `lay` takes its document px to plane px, which the camera then shows (Where a plane point lands, below).
@@ -1375,7 +1435,7 @@ figure's feet go at 1360: its nearer plane slides 120 px, twice the back's 60.
 ### Painted textures
 
 A three.js object wears a painting through the shot's `paintedTextures`: each `{id, source, widthPx, heightPx}`,
-its `source` any plane's painted source (`layersOf`, `bracket`, `dissolve`, or a callback of the moment). A texture
+its `source` a selection (`layersOf`), a `dissolve` or a callback of the moment, not a painting in time. A texture
 is the selection laid on its paintings' paper at their document size, then resampled to `widthPx` × `heightPx`;
 match the two, or go smaller when the object never comes near that size, as a smaller texture lays faster. Shown
 smaller than its size, it's read through its mip chain (below). It is opaque, so its selections stay on paper (no
@@ -1857,7 +1917,8 @@ paint check: 0 errors, 0 warnings; 1 `on` gate not checked: --solve decides it
 Given a project (its name, folder or `video.tsx`) or a scene's file (`scenes/<id>.tsx`, `bars/<id>.tsx`), `studio
 paint check` renders each of its scenes, or that one, in Node at its first, middle and last frames, with its clock and
 no picture, and compiles every painted shot rendered as the render would, held to its scene's span, fps and length.
-A shot built from the clock is seen as it plays. Each problem prints as `scene <id>: <owner>.<field>: <message>`. It
+A shot built from the clock is seen as it plays. Each painting in time's key drawings prints first, `scene <id>:
+<plane>: …` (recipe 27); each problem prints as `scene <id>: <owner>.<field>: <message>`. It
 takes HTML to lie behind the shot, which only the page can say, so a clear back passes here and is the render's to
 refuse; a shot a scene shows only between those three frames isn't seen.
 
@@ -1962,6 +2023,8 @@ What the check says today, and what to do:
 | `scene heron's painted shot (…) stalled: no solve has finished and its GPU has answered nothing in 90 s, so the render stops. It was solving heron at 2.4 s, warming 0–10 s, 12 of 96 solves done. …` | a load, warm or frame that made no progress for 90 s: its GPU process hung, or a solve that never settles (`shot-watch.ts`) | nothing: the render draws its chunk again in halves, each in a fresh browser; a frame that stalls again alone fails it (below), a bug to report with the line |
 | `frame 174 (5.80 s, scene lake) failed again, drawn alone in a fresh browser: Page crashed!` | a frame whose page crashed, stalled or lost its GPU in its chunk, and again drawn alone in a fresh browser: the frame alone outgrows the page (its heap, its GPU), or hangs it | `studio profile <project> --frames 174 --costs` for what the frame holds; a frame stuck at the same solve is a bug to report with the line |
 | `back.source.b: paints a 160 × 120 document, and the plane's is 320 × 240: every selection a plane shows, …` / `front.source: lays a transparent ground, and the plane a default one: …` / `meadow.source.b: shows no group heron, which meadow/heron rigs: every end of a rigged plane holds its rigged groups cut alike` / `meadow.source.b: holds beak under heron, in none of meadow/heron's cels: …` | a selection, named at its end's field, painting a document or laying a ground other than the plane's first (`paintedPlaneBlendProblems`); a dissolve end on a rigged plane without the rigged group, or holding it cut otherwise: a cel with other layers, a layer in no cel, its sheet owned otherwise (`shotPlaneRigEndProblems`); both at load and each frame for a callback source | paint every end at one size on one ground; give every end the rigged group with the same layers in each cel, or rig the subject on a plane of its own |
+| `ridge.source.drawings: is 1, and its first and last moments and either side of each cut draw 2: 0 s (dusk false), 0.958 s (dusk false), 1 s (dusk true), 2 s (dusk true)` / `ridge.source.values.ridgePx: ridgePx = 102.5 is outside 0..100 at 1.708 s` / `ridge.source.values.heightPx: names heightPx, which isn't a property of gateRidge` / `ridge.source: at 2 s (dusk true) shows ridge/sky, ridge/stars, and at 0 s (dusk false) ridge/sky: a painting in time shows the same layers and groups at every key` | a painting in time as the shot compiles (`planShotKeyDrawings`): a budget below what its first and last moments and cuts draw, listing those keys; a value off its schema at a moment its plane reads, the first named; a value naming no property; drawings showing different layers | more `drawings`, or fewer cuts; keep each value in its range at every frame; select layers every drawing paints |
+| `ridge.source.drawings: ridgePx strays 100 from the dissolve between its key drawings at 0 s and 2 s at 1 s (its step, 5, allowed): at most 1 drawing, it leaves a turn undrawn; allow more` (warning) | a painting in time's values going out and coming back between two keys its budget allows, so frames there miss their dissolve by more than a step (What to paint and what to present) | more `drawings`; a sweep that's meant to read as a fade stays |
 | `birds/swift.motion: its speed jumps at 1 s, from 5 to 0 px a frame: meet the key at the speed it leaves at (a curve easing into it, or between: 'smooth')` (warning) | a speed jump at a key (Motion warnings), from `studio paint check` on its scene or project and every render | ease into the key (`'out'`, `'inOut'`), or `between: 'smooth'`; a knock that's meant stays |
 | `birds/swift.motion: moves up to 5 px a frame with the shutter shut, from 0 s to 1 s; past 1.9 px a frame it strobes: slow it, or open the shutter` (warning) | a drawable moving faster than the frame's width in 7 s with the shutter shut | what it says |
 | `birds/swift.motion: steps up to 18.3 px at a time as its hold steps, from 0.125 s to 0.917 s; a held drawing holds through the shutter, so a step past 1.9 px strobes: hold it on ones, or slow it` (warning) | a held drawing stepping further than the frame's width in 7 s allows a frame, under any shutter | hold it on ones (drop the play's `hold`), or slow it |
@@ -2073,4 +2136,5 @@ found kept, film and picture hits and misses, solves by sheet from the first app
 decisions reused, hidden solves skipped, evictions, bytes uploaded (three.js's included), GPU bytes kept and in targets
 (the passes' working textures; both under the device's one cache budget), what the page keeps of compiled selections,
 posed programs and placements (each how many and their bytes, held to 2.5 GiB, 256 MiB and 80 MiB, so a long render's page
-stays bounded), and warnings such as a pose folding paint or a warm running past its scene.
+stays bounded), each painting in time's key drawings and why each is one, and warnings such as a pose folding paint
+or a warm running past its scene.
