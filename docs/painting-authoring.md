@@ -1372,7 +1372,7 @@ How the keys are chosen:
 
 A held `sourceClock` (`{hold: 6}`) holds the values as it holds any source's reads: only the held moments are sampled,
 and the dissolve steps on sixes with them. A painted texture's source and an instanced plane's variants take no
-painting in time. `studio paint check <module>` prints each painting in time's keys, their values and why each is one
+painting in time. `studio paint check <project>` prints each painting in time's keys, their values and why each is one
 (recipe 27), and a profiling render's cost report notes them with the shot's warnings, in its warm's entry or its
 first frame's.
 
