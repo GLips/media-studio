@@ -27,20 +27,20 @@ const pond = painting({
 });
 
 /**
- * A swift flying 120 px in a second and stopping by `arrival`, a swallow appearing at 1.5 s and swapped for its wings-up
- * view at 1.75 s, under a shutter `shutter` open.
+ * A swift flying 120 px in a second and stopping by `arrival`, held on `hold`s (unheld when left out), a swallow
+ * appearing at 1.5 s and swapped for its wings-up view at 1.75 s, under a shutter `shutter` open.
  */
-function flight(arrival: PaintCurve, shutter: PaintCameraShutter): string[] {
+function flight(arrival: PaintCurve, shutter: PaintCameraShutter, hold?: number): string[] {
   const { problems } = compilePaintedShot({
     camera: { stage: stampStage({ width: 320, height: 240 }, 2), fov: 35, lens: { bloom: 0, shutter } },
     span: { from: 0, to: 2, fps: 24 },
     planes: [{ id: 'back', depth: 4, source: layersOf(pond, ['sky']) }, { id: 'birds', depth: 1, source: layersOf(pond, ['swift', 'swallow', 'swallow-up']) }],
     motion: {
       nodes: [{ id: 'birds/swift' }],
-      plays: [{ target: 'birds/swift', clip: { kind: 'place', value: paintKeyed([{ at: 0, value: { x: 0 } }, { at: 1, value: { x: 120 }, curve: arrival }]) }, clock: { at: 0 }, origin: 'flight' }],
+      plays: [{ target: 'birds/swift', clip: { kind: 'place', value: paintKeyed([{ at: 0, value: { x: 0 } }, { at: 1, value: { x: 120 }, curve: arrival }]) }, clock: { at: 0, ...(hold && { hold }) }, origin: 'flight' }],
     },
     visibility: { 'birds/swallow': ({ at }) => (at >= 1.5 && at < 1.75 ? 1 : 0), 'birds/swallow-up': ({ at }) => (at < 1.75 ? 0 : 1) },
-  } satisfies PaintedShotProps, [], 24);
+  } satisfies PaintedShotProps, []);
   return problems.map(({ severity, owner, message }) => `${severity} ${owner}: ${message}`);
 }
 
@@ -52,4 +52,11 @@ test('a shot warns, naming drawable, time and pace, of a stop at full speed, a m
   assert.match(warned[2], /^warning birds\/swallow: its visibility steps from 0 to 1 within a frame at 1\.5 s: it pops in or out$/);
   // The same stop eased into under an open shutter warns only of the pop.
   assert.deepEqual(flight('inOut', 1 / 48).map((each) => each.split(':')[0]), ['warning birds/swallow']);
+});
+
+test("a hold's steps strobe through an open shutter, and the warning says to hold on ones", () => {
+  const swift = flight('inOut', 1 / 48, 2).filter((each) => each.startsWith('warning birds/swift'));
+  // One warning for the held stretch, though its steps fall every other frame.
+  assert.equal(swift.length, 1, swift.join('\n'));
+  assert.match(swift[0], /^warning birds\/swift: steps up to [\d.]+ px at a time as its hold steps, from [\d.]+ s to [\d.]+ s; a held drawing holds through the shutter, so a step past 1\.9 px strobes: hold it on ones, or slow it$/);
 });

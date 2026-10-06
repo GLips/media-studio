@@ -8,16 +8,19 @@ import type { ThreeSource } from '#lib/paint/shot/models/shot-props.ts';
 import { stampGateFrameDifference, stampGateFrameDifferenceText as differenceText, stampGateFramePasses, stampGateLaidShare } from '../models/stamp-gate-frames.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import {
-  STAMP_GATE_MASKS_ACROSS, STAMP_GATE_MASKS_AT, STAMP_GATE_MASKS_DISC, STAMP_GATE_MASKS_WING, stampGateMaskDiscBox, stampGateMaskDiscCentre, stampGateMaskedShot,
-  stampGateMaskedView, stampGateNearDiscCentre, stampGateTintSplit, stampGateWellInsideVane,
+  STAMP_GATE_MASKS_ACROSS, STAMP_GATE_MASKS_AT, STAMP_GATE_MASKS_DISC, STAMP_GATE_MASKS_WHIP, STAMP_GATE_MASKS_WING, stampGateMaskDiscBox, stampGateMaskDiscCentre,
+  stampGateMaskedShot, stampGateMaskedView, stampGateNearDiscCentre, stampGateTintAgainstTwin, stampGateTintSplit, stampGateWellInsideVane,
   type StampGateMaskedShot, type StampGateShotMaskId,
 } from '../models/stamp-gate-shot-masks.ts';
+import { paintSimilarityApply } from '#lib/paint/animation/models/paint-similarity.ts';
+import { paintFilmShutter } from '#lib/paint/animation/models/paint-camera.ts';
+import { STAMP_GATE_SHOT_FPS } from '../models/stamp-gate-shot-span.ts';
 import { stampGateRgb } from './stamp-gate-page-surface.ts';
-import { stampGateShotFrames } from './stamp-gate-shot-frames.ts';
+import { stampGateShotFrames, type StampGateShotDraw } from './stamp-gate-shot-frames.ts';
 
-/** The masked shot as `shown` says, drawn at scene seconds `times`: each frame's RGB bytes, and its costs. */
-async function maskedFrames(shown: StampGateMaskedShot, times: readonly number[]) {
-  const { frames, costs } = await stampGateShotFrames(stampGateMaskedShot(shown), times);
+/** The masked shot as `shown` says, drawn as `draws` say: each frame's RGB bytes, and its costs. */
+async function maskedFrames(shown: StampGateMaskedShot, draws: readonly StampGateShotDraw[]) {
+  const { frames, costs } = await stampGateShotFrames(stampGateMaskedShot(shown), draws);
   return { frames: frames.map(stampGateRgb), costs };
 }
 
@@ -210,10 +213,46 @@ async function checkAcrossDepths(): Promise<StampGateWashCheck[]> {
   ];
 }
 
+/**
+ * How far the whip's fast frame may sit from its reference, levels: the cut is laid at the frame's moment and its
+ * motion gathered as the tint moves, twice the wing's pace, so its edge smears a little wider than the reference's
+ * exposures cut it (measured max 53, mean 0.40; without the tint 33 and 0.31).
+ */
+const WHIP_TOLERANCE = { max: 64, mean: 0.6 };
+
+/**
+ * A mask across depths under the film's shutter as the camera whips across, mid-pan: the reference, each exposure cut
+ * at its own views, tints where its shut twin does, within half the wing's travel over the shutter; the fast frame
+ * sits within WHIP_TOLERANCE of the reference.
+ */
+async function checkAcrossDepthsOpen(): Promise<StampGateWashCheck[]> {
+  const { shown, at } = STAMP_GATE_MASKS_WHIP, shut = { ...shown, shutter: 'shut' } as const, { width } = stampGateMaskedShot(shown).camera.stage.frame;
+  const draws = [{ t: at, mode: 'reference' }, { t: at, mode: 'fast' }] as const;
+  const [[reference, fast], [referenceBare, fastBare], [twin], [twinBare]] = await Promise.all([
+    maskedFrames(shown, draws), maskedFrames({ ...shown, tint: 'none' }, draws), maskedFrames(shut, [at]), maskedFrames({ ...shut, tint: 'none' }, [at]),
+  ].map(async (drawn) => (await drawn).frames));
+  // How far the wing moves over the shutter, frame px, and the reach that allows half of it, a texel over.
+  const half = paintFilmShutter(STAMP_GATE_SHOT_FPS) / 2, wingAt = (t: number) => paintSimilarityApply(stampGateMaskedView(shown, 2, t), { x: 0, y: 0 }).x;
+  const travel = Math.abs(wingAt(at + half) - wingAt(at - half)), reach = Math.ceil(travel / 2) + 1;
+  const held = stampGateTintAgainstTwin([reference, referenceBare], [twin, twinBare], width, reach);
+  const apart = stampGateFrameDifference(fast, reference), bareApart = stampGateFrameDifference(fastBare, referenceBare);
+  return [
+    {
+      id: 'shot/masks: across depths open', passed: held.strays === 0 && held.missed === 0 && held.twinTinted > 0,
+      detail: `the tint at depth 1 cut to heron/wing at depth 2, the camera panning ${shown.pan} px over ${shown.panOver} s under the film's shutter, at ${at} s: the reference tints ${held.tinted} texels against its shut twin's ${held.twinTinted}, within ${reach} px (the wing moves ${travel.toFixed(1)} px over the shutter): ${held.strays} past them and ${held.missed} of their inside left (0 and 0 wanted)`,
+    },
+    {
+      id: 'shot/masks: across depths open fast', passed: apart.max <= WHIP_TOLERANCE.max && apart.mean <= WHIP_TOLERANCE.mean,
+      detail: `the fast frame against the reference: ${differenceText(apart)} (past ${WHIP_TOLERANCE.max} or a mean past ${WHIP_TOLERANCE.mean} fails); without the tint, ${differenceText(bareApart)}`,
+    },
+  ];
+}
+
 /** Masked shot case `id`'s checks. */
 export async function checkStampGateShotMasksCase(id: StampGateShotMaskId): Promise<StampGateWashCheck[]> {
   const checks: Record<StampGateShotMaskId, () => Promise<StampGateWashCheck[]>> = {
     'shot/masks: alphaOf': checkAlphaOf, 'shot/masks: alphaOf painted': checkAlphaOfPainted, 'shot/masks: sources': checkSources, 'shot/masks: across depths': checkAcrossDepths,
+    'shot/masks: across depths open': checkAcrossDepthsOpen,
   };
   return checks[id]();
 }

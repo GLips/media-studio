@@ -49,7 +49,7 @@ export type StampGateShotDraw = number | { readonly t: number; readonly mode: Le
  * frame.
  */
 export async function stampGateShotFrames(props: StampGateShot, draws: readonly StampGateShotDraw[], drawing?: () => void): Promise<StampGateShotFrames> {
-  const { shot, problems } = compilePaintedShot(stampGateShotSpanned(props, draws.map((draw) => (typeof draw === 'number' ? draw : draw.t))), [], STAMP_GATE_SHOT_FPS);
+  const { shot, problems } = compilePaintedShot(stampGateShotSpanned(props, draws.map((draw) => (typeof draw === 'number' ? draw : draw.t))), []);
   if (!shot) throw paintingProblemsError('stamp gate shot', problems);
   const canvas = createShotCanvasElements(), tally = createStampPaintCostTally();
   return withGateShotRenderer(shot, [canvas], async (renderer) => {

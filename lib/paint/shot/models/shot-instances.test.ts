@@ -52,10 +52,8 @@ test('items sort with the planes far to near, planes first on a tie, and batch b
 });
 
 const camera: PaintedShotProps['camera'] = { stage: stampStage({ width: 48, height: 40 }, 2), fov: 35, lens: { bloom: 0, shutter: 0.02 }, animationFps: 24 };
-/** The film the shots play in, frames a second. */
-const FILM_FPS = 30;
 const span: PaintedShotProps['span'] = { from: 0, to: 2, fps: 24 };
-const compiled = (planes: PaintedShotProps['planes'], motion?: PaintedShotProps['motion']) => compilePaintedShot({ camera, span, planes, ...(motion && { motion }) }, [], FILM_FPS);
+const compiled = (planes: PaintedShotProps['planes'], motion?: PaintedShotProps['motion']) => compilePaintedShot({ camera, span, planes, ...(motion && { motion }) }, []);
 
 test("an exposure lays each item by its lay at its depth, blurred along its own travel only while its key spans the shutter", () => {
   const rain: InstancedPlaneProps = { ...instanced('rain', []), instances: ({ at }) => [item('a', 2, 'drop', 100 * at), item(`b${Math.round(at * 1000)}`, 1.5)] };
@@ -77,7 +75,7 @@ test("an exposure lays each item by its lay at its depth, blurred along its own 
 /** A drop at depth 1 under a camera focused at depth 3, its aperture `aperture`, and its items at rest. */
 function focusedDrop(aperture: number) {
   const plays: PaintedShotProps['camera']['plays'] = [{ clip: { kind: 'focus', value: { focus: 3, aperture } }, clock: { at: 0 }, origin: 'the camera focuses on the street' }];
-  const shot = compilePaintedShot({ camera: { ...camera, plays }, span, planes: [plane('street', 3), instanced('rain', [item('a', 1)])] }, [], FILM_FPS).shot!;
+  const shot = compilePaintedShot({ camera: { ...camera, plays }, span, planes: [plane('street', 3), instanced('rain', [item('a', 1)])] }, []).shot!;
   return { shot, items: () => shotExposureItems(shot.instanced, shot.motion, { at: paintMoment(0), shutter: null }, paintCameraDepthLooks(shot.camera, 0)) };
 }
 

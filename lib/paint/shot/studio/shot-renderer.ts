@@ -11,6 +11,7 @@ import { paintNodeTimeAt } from '#lib/paint/animation/models/paint-clock.ts';
 import { PAINT_SIMILARITY_IDENTITY, paintSimilarityAfter, paintSimilarityInverse, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import { paintCameraDepthLooks, paintCameraLensFrame, type PaintCameraDepthLooks } from '#lib/paint/animation/models/paint-camera.ts';
 import { paintViewAcross } from '#lib/paint/animation/models/paint-camera-depths.ts';
+import { paintSpanDrawnProblem } from '#lib/paint/animation/models/paint-span-moments.ts';
 import { paintingMemosKept } from '#lib/paint/document/models/painting-document-compile.ts';
 import { paintingProblemsError } from '#lib/paint/document/models/painting-problem.ts';
 import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
@@ -343,9 +344,8 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
       draw: (t, mode, pins = new Map()) => counted(async () => {
         if (disposed) return;
         owner.assertLive();
-        // What the shot's compile checked, reached and warned of was sampled over its span alone.
-        const { from, to } = shot.span;
-        if (t < from - 1e-9 || t >= to - 1e-9) throw new Error(`painted shot: drawn at ${t} s, outside its span, ${from} s to ${to} s`);
+        const outside = paintSpanDrawnProblem(shot.span, t);
+        if (outside) throw new Error(`painted shot: ${outside}`);
         const pinned = shotPinnedPlanes(shot, pins);
         if (pinned.problems.length) throw paintingProblemsError(`the shot's pins at ${t} s`, pinned.problems);
         // One read of each rig's pose a moment for the frame: which planes show, and their solves and lays.

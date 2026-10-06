@@ -22,6 +22,9 @@ import { LENS_REFERENCE_EXPOSURES, type LensMode } from '#lib/picture/lens/model
 import { shutterMomentAt, shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import { useLensMode } from '#lib/picture/lens/studio/lens-mode-context.ts';
 import { paintCameraLensAt, type PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
+import { paintSpanDrawnProblem, paintSpanShownProblems } from '#lib/paint/animation/models/paint-span-moments.ts';
+import { useSceneOrNull } from '#lib/picture/video/studio/scene.tsx';
+import { logRenderPageWarning } from '#lib/platform/browser/studio/render-page-log.ts';
 import type { StampPaintingCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
 import { createStampPaintGpuOwner, type StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { createStampPaintRenderer, type StampPaintFrame } from '#lib/paint/painting/studio/stamp-paint-renderer.ts';
@@ -66,7 +69,19 @@ export function StampPainting({ t, frameAt, width, height, box: given, ...shownP
   const [scene, setScene] = useState<StampPaintingScene | null>(null);
   const { delayRender, continueRender, cancelRender } = useDelayRender();
   const profile = useFrameProfile();
-  const lensMode = useLensMode(), pictureDrawn = usePictureDrawn();
+  const lensMode = useLensMode(), pictureDrawn = usePictureDrawn(), sceneDur = useSceneOrNull()?.dur ?? null;
+
+  // In every render, drawing the picture or not, as a shot's are: its camera's span held to the scene's, and the
+  // warnings of what its motion may read badly as, printed once a render however many tabs load it.
+  useLayoutEffect(() => {
+    if (!painted) return;
+    const problems = paintSpanShownProblems(painted.camera.span, format.fps, sceneDur);
+    if (problems.length) {
+      cancelRender(new Error(`stamp painting: its camera's span ${problems.join("; its camera's span ")}`));
+      return;
+    }
+    for (const { name, message } of painted.warnings) logRenderPageWarning(`a stamp painting: warning: ${name}: ${message}`);
+  }, [painted, format.fps, sceneDur, cancelRender]);
 
   // Each size gets a device and a canvas of its own, made here and let go of with it, so a device still loading when
   // the size changes never shares a canvas with the next. A pass drawing no picture makes none, so paints nothing.
@@ -130,6 +145,12 @@ export function StampPainting({ t, frameAt, width, height, box: given, ...shownP
 
   useLayoutEffect(() => {
     if (!scene) return undefined;
+    // What its camera's build checked and warned of was sampled over its span alone.
+    const outside = camera && paintSpanDrawnProblem(camera.span, t);
+    if (outside) {
+      cancelRender(new Error(`stamp painting: ${outside}`));
+      return undefined;
+    }
     const handle = delayRender('checking the stamp painting drew without a GPU error');
     let open = true, live = true;
     const release = () => {

@@ -22,9 +22,9 @@ export function paintViewAcross(from: PaintSimilarity, to: PaintSimilarity): Pai
   return one ? PAINT_SIMILARITY_IDENTITY : paintSimilarityAfter(paintSimilarityInverse(to), from);
 }
 
-/** `camera` built over no planes (a view needs only a depth), the shot showing `span`, in a film of `filmFps`; throws what its build refuses. */
-function paintShotCameraBuilt(camera: PaintShotCamera, span: SceneShownSpan, filmFps: number): PaintCamera {
-  const build = buildPaintCamera(paintShotCameraOptions(camera, span, filmFps, []));
+/** `camera` built over no planes (a view needs only a depth), the shot showing `span`; throws what its build refuses. */
+function paintShotCameraBuilt(camera: PaintShotCamera, span: SceneShownSpan): PaintCamera {
+  const build = buildPaintCamera(paintShotCameraOptions(camera, span, []));
   if (!build.ok) throw new Error(`paint camera: ${build.problems.join('; ')}`);
   return build.camera;
 }
@@ -40,7 +40,7 @@ function paintShotViewCamera(camera: PaintShotCamera, span: SceneShownSpan): Pai
   paintShotViewCamerasBuilt.set(camera, spans);
   const known = spans.get(spanKey);
   if (known) return known;
-  const built = paintShotCameraBuilt({ ...camera, lens: { bloom: camera.lens.bloom, shutter: 'shut' } }, span, 1);
+  const built = paintShotCameraBuilt({ ...camera, lens: { bloom: camera.lens.bloom, shutter: 'shut' } }, span);
   spans.set(spanKey, built);
   return built;
 }
@@ -67,12 +67,12 @@ const REACH_SLACK = 1e-6;
 
 /**
  * How far past the frame the shot's `camera` reads a plane at `depth` over its `span`, plane px rounded up: its
- * moves, focus and shutter (a lens leaving its own out takes the film's at `filmFps`). A plane painted this far past
- * the frame on each side holds it all.
+ * moves, focus and shutter (a lens leaving its own out takes the film's at the span's fps). A plane painted this far
+ * past the frame on each side holds it all.
  */
-export function paintCameraReachAt(camera: PaintShotCamera, span: SceneShownSpan, depth: number, filmFps: number): PaintCameraReach {
+export function paintCameraReachAt(camera: PaintShotCamera, span: SceneShownSpan, depth: number): PaintCameraReach {
   const { width, height } = camera.stage.frame;
-  const reads = paintCameraShotReads(paintShotCameraBuilt(camera, span, filmFps), depth).map(({ seen, reach }) => stampBoxGrown(seen, reach));
+  const reads = paintCameraShotReads(paintShotCameraBuilt(camera, span), depth).map(({ seen, reach }) => stampBoxGrown(seen, reach));
   const past = (each: (box: (typeof reads)[number]) => number) => Math.max(0, Math.ceil(Math.max(...reads.map(each)) - REACH_SLACK));
   return { left: past((box) => -box.x0), top: past((box) => -box.y0), right: past((box) => box.x1 - width), bottom: past((box) => box.y1 - height) };
 }

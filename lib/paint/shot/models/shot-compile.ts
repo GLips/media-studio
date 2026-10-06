@@ -275,11 +275,11 @@ function maskPiecesProblems(planes: readonly CompiledShotPlane[], rigs: Readonly
 
 /**
  * `props` checked and compiled, drawn in `canvases` (the PaintedShotCanvas names, in document order; none for the
- * shot's own canvas) on `page`, in a film of `filmFps` frames a second, whose shutter a lens leaving its own out
- * takes: the compiled shot, or null and every problem keeping it from being drawn.
+ * shot's own canvas) on `page`, a lens leaving its shutter out taking the film's at its span's fps: the compiled
+ * shot, or null and every problem keeping it from being drawn.
  */
 export function compilePaintedShot(
-  props: PaintedShotProps, canvases: readonly string[], filmFps: number, page: ShotPage = SHOT_NO_HTML_BEHIND,
+  props: PaintedShotProps, canvases: readonly string[], page: ShotPage = SHOT_NO_HTML_BEHIND,
 ): { readonly shot: CompiledPaintedShot | null; readonly problems: readonly PaintingProblem[] } {
   const problems: PaintingProblem[] = [], fps = props.camera.animationFps ?? PAINT_ANIMATION_FPS;
   // A texture reads no plane, so its problems join every answer, whichever stage the planes stop at.
@@ -345,7 +345,7 @@ export function compilePaintedShot(
     // Every instanced plane as written, so a node on one that failed to compile is refused for what it is.
     ...props.planes.flatMap((plane): ShotMotionPlane[] => (plane.kind === 'instanced' ? [{ id: plane.id, kind: 'instanced', clock: paintNodeClockSteps(plane.clock), movingLay: false, occurrences: [] }] : [])),
   ];
-  const cameraOptions = paintShotCameraOptions(props.camera, props.span, filmFps, []);
+  const cameraOptions = paintShotCameraOptions(props.camera, props.span, []);
   const frames = paintSpanFrames(props.span, paintCameraLensBuilt(cameraOptions.lens)), moments = paintSpanMoments(frames);
   const motion = compileShotMotion(motionPlanes, props.motion, new Set(rigs.keys()), fps, moments);
   problems.push(...motion.problems);

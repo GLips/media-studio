@@ -5,8 +5,8 @@
 // there, no plane or focus comes to or behind the camera, and the stage holds the frame's preimage, grown by the
 // widest defocus's reach, on every picture plane where its extent holds anything.
 //
-// A frame's poses (its own and its shutter's ends) bound a box, a pixel of slack covering the camera's move between
-// them. A roll is bounded by its corners' circle. Frame state outside `motion` is the scene's.
+// A frame's poses (its own and its shutter's ends) bound a box with no slack: a reference exposure lies between them
+// unless a move turns inside the shutter, unchecked (a read past the stage takes its edge texel).
 
 import { LENS_SIGMA_STEP, lensGaussianReach, lensSigmaStepped } from '#lib/picture/lens/models/lens-focus.ts';
 import { stampPlaneDepthProblems, stampScenePlanes, type StampLaidPlanes, type StampPlane, type StampPlaneExtent } from '#lib/paint/painting/models/stamp-plane.ts';
@@ -28,6 +28,8 @@ import { clipSeconds, compilePaintPlayClock, paintLaneByStart, paintLaneClipAt, 
 import { paintClipMoment } from './paint-motion-clips.ts';
 import type { PaintMotion } from './paint-motion-compile.ts';
 import { paintGroupLaidReach, paintMotionValueProblems } from './paint-motion-reach.ts';
+import type { PaintMotionWarning } from './paint-motion-warnings.ts';
+import { paintingCameraMotionWarnings } from './paint-painting-motion-warnings.ts';
 import { paintSecondsText, paintSpanFrames, paintSpanMoments, paintSpanProblem, type PaintSpanFrame } from './paint-span-moments.ts';
 import { presentationValueAt, presentationValueLength } from './paint-value.ts';
 
@@ -56,11 +58,11 @@ export type PaintShotLens = Omit<PaintCameraLensOptions, 'shutter'> & { readonly
 export type PaintShotCamera = Omit<PaintCameraOptions, 'planes' | 'lens' | 'span'> & { readonly lens: PaintShotLens };
 
 /**
- * `camera` as the options of a camera over `planes`, the shot showing scene seconds `span`, in a film of `filmFps`
- * frames a second: its shutter, if a lens leaves it out, is the film's.
+ * `camera` as the options of a camera over `planes`, the shot showing scene seconds `span`: its shutter, if a lens
+ * leaves it out, is the film's at the span's fps, which a render holds to the composition's.
  */
-export function paintShotCameraOptions(camera: PaintShotCamera, span: SceneShownSpan, filmFps: number, planes: readonly PaintCameraPlaneOptions[]): PaintCameraOptions {
-  const { bloom, shutter = paintFilmShutter(filmFps) } = camera.lens;
+export function paintShotCameraOptions(camera: PaintShotCamera, span: SceneShownSpan, planes: readonly PaintCameraPlaneOptions[]): PaintCameraOptions {
+  const { bloom, shutter = paintFilmShutter(span.fps) } = camera.lens;
   return { ...camera, lens: { bloom, shutter }, planes, span };
 }
 
@@ -82,10 +84,11 @@ export type PaintCameraBuild =
 export type PaintingCameraOptions = Omit<PaintCameraOptions, 'planes'> & { readonly planes: readonly StampPlane[]; readonly motion: PaintMotion | null };
 
 /**
- * What a StampPainting shows through, as buildPaintingCamera made it: the camera, and its planes laid for the renderer
- * (the same planes in the same order, each painted plane with the painting's groups it shows).
+ * What a StampPainting shows through, as buildPaintingCamera made it: the camera, its planes laid for the renderer
+ * (the same planes in the same order, each painted plane with the painting's groups it shows), and its motion's
+ * warnings, which every render prints.
  */
-export type StampPaintingCamera = { readonly camera: PaintCamera; readonly planes: StampLaidPlanes };
+export type StampPaintingCamera = { readonly camera: PaintCamera; readonly planes: StampLaidPlanes; readonly warnings: readonly PaintMotionWarning[] };
 
 export type PaintingCameraBuild =
   | { readonly ok: true; readonly camera: StampPaintingCamera; readonly magnification: ReadonlyMap<string, number> }
@@ -116,6 +119,7 @@ function framePreimageBox(stage: StampStage, { poses }: PaintCameraPoseSpan, dep
       }
     }
   } else {
+    // A roll that changes is bounded by its corners' circle.
     const reach = Math.hypot(centre.x, centre.y) * k.high;
     x0 = -reach; x1 = reach; y0 = -reach; y1 = reach;
   }
@@ -365,7 +369,7 @@ export function buildPaintingCamera(painting: CompiledStampPaint | null, { plane
   const spanProblem = paintSpanProblem(o.span);
   if (spanProblem) problems.push(`the camera: ${spanProblem}`);
   if (problems.length || !scene) return { ok: false, problems };
-  const { back, nearer } = scene, moments = paintSpanMoments(paintSpanFrames(o.span, paintCameraLensBuilt(o.lens)));
+  const { back, nearer } = scene, frames = paintSpanFrames(o.span, paintCameraLensBuilt(o.lens)), moments = paintSpanMoments(frames);
   problems.push(...(motion ? paintMotionValueProblems(motion, moments) : []));
   if (problems.length) return { ok: false, problems };
   const built = buildPaintCamera({
@@ -381,5 +385,7 @@ export function buildPaintingCamera(painting: CompiledStampPaint | null, { plane
       }
     }),
   });
-  return built.ok ? { ok: true, camera: { camera: built.camera, planes: scene }, magnification: built.magnification } : built;
+  if (!built.ok) return built;
+  const warnings = paintingCameraMotionWarnings(built.camera, scene, painting, motion, frames);
+  return { ok: true, camera: { camera: built.camera, planes: scene, warnings }, magnification: built.magnification };
 }

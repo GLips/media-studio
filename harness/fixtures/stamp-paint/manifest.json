@@ -243,6 +243,15 @@
       "acceptedOver": "6f6895ee",
       "adapter": "apple metal-3"
     },
+    "shot/masks-across-open": {
+      "file": "shot/masks-across-open.png",
+      "output": "93ba7b4ed97fae2f2b2fede43b09b7c416e92d631bb558a40f565cab7cf7c135",
+      "inputs": "8f021e2c8fa5a9d39e94e7d9e8b14d7e63b71fc1a28d4b25d04e608f823acec1",
+      "reason": "the mask across depths under the film's shutter, the lens's default, mid whip pan: fast mode's cut, laid at the frame's moment and gathered",
+      "accepted": "2026-10-06",
+      "acceptedOver": "d33443af",
+      "adapter": "apple metal-3"
+    },
     "shot/painted-cylinder": {
       "file": "shot/painted-cylinder.png",
       "output": "a50d47166eea527e164effdcb139ce4a530cd4a96d0b51c234e0ea2b21a48e57",

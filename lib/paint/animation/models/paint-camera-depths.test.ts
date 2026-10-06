@@ -20,7 +20,7 @@ const CAMERA: PaintShotCamera = {
 const SPAN: SceneShownSpan = { from: 0, to: 2, fps: 30 };
 
 test('a point found on another depth lies on the frame px the camera shows it on, and stays put at one depth or at rest', () => {
-  const built = buildPaintCamera(paintShotCameraOptions(CAMERA, SPAN, 30, [])), sun = { x: 250, y: 60 };
+  const built = buildPaintCamera(paintShotCameraOptions(CAMERA, SPAN, [])), sun = { x: 250, y: 60 };
   assert.ok(built.ok);
   const m = paintMoment(1.3), onWater = paintPointAcrossDepths(CAMERA, SPAN, { depth: 3, point: sun }, 1.5, m);
   const shown = (depth: number, point: { x: number; y: number }) => paintSimilarityApply(paintPlaneViewAt(built.camera, depth, m), point);

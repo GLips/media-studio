@@ -12,7 +12,7 @@ import type { AddressInfo } from 'node:net';
 import type { HeadlessBrowser } from '@remotion/renderer';
 import { acquireStudioGpuLease } from '#lib/platform/gpu/engine/gpu-lease.ts';
 import { isRenderBrowserFailure, renderBrowserFailureText } from '../models/render-browser-failure.ts';
-import { renderPageLogText } from '../models/render-page-log.ts';
+import { renderPageLogText, renderPageWarningText } from '../models/render-page-log.ts';
 import { wholeBrowserPageError } from './browser-page-error.ts';
 import { borrowKeptRenderBrowser, KEPT_RENDER_BROWSERS_ENV, type KeptRenderBrowserLoan } from './kept-render-browsers.ts';
 import { openRenderBrowser, RENDER_CHROME_MODE, RENDER_CHROMIUM } from './render-browser-launch.ts';
@@ -24,8 +24,17 @@ import { openRenderBrowser, RENDER_CHROME_MODE, RENDER_CHROMIUM } from './render
  */
 export const RENDER_TIMEOUT_MS = 2 * 60 * 60_000;
 
-/** Prints a render page's lines for the terminal (render-page-log.ts) on stderr: Remotion's `onBrowserLog`. */
+/** The warnings printed so far: a command renders in a process of its own, its tabs, chunks and passes all here. */
+const renderPageWarningsPrinted = new Set<string>();
+
+/**
+ * Prints a render page's lines for the terminal (render-page-log.ts) on stderr, each distinct warning once however
+ * many tabs and chunks log it: Remotion's `onBrowserLog`.
+ */
 export function printRenderPageLog({ text }: { readonly text: string }): void {
+  const warning = renderPageWarningText(text);
+  if (warning !== null && !renderPageWarningsPrinted.has(warning)) process.stderr.write(`  ${warning}\n`);
+  if (warning !== null) renderPageWarningsPrinted.add(warning);
   const line = renderPageLogText(text);
   if (line !== null) process.stderr.write(`  ${line}\n`);
 }

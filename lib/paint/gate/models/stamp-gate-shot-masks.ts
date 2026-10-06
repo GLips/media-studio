@@ -2,7 +2,7 @@
 // at the back; its heron on a plane of its own, revealed by its document along two strokes; a disc moving across, a
 // picture or three plane or a painted spot's instance, faded or held; and nearest, a tint washed over the whole
 // sheet, cut by an alphaOf mask to the heron's wing, to all but it, to the whole heron, or to the disc, under a camera
-// at rest, panned, or panning. What the checks measure of their frames is here.
+// at rest, panned, or panning, its shutter shut or the film's. What the checks measure of their frames is here.
 
 import { paintShotViewAt } from '#lib/paint/animation/models/paint-camera-depths.ts';
 import { paintKeyed } from '#lib/paint/animation/models/paint-keyed.ts';
@@ -28,7 +28,7 @@ import { stampGateShotSpan, type StampGateShot } from './stamp-gate-shot-span.ts
  * revealed, faded and dissolving; the disc's sources faded, held and instanced, as drawn and as read; and a mask
  * across two depths under a pan.
  */
-export const STAMP_GATE_SHOT_MASK_IDS = ['shot/masks: alphaOf', 'shot/masks: alphaOf painted', 'shot/masks: sources', 'shot/masks: across depths'] as const;
+export const STAMP_GATE_SHOT_MASK_IDS = ['shot/masks: alphaOf', 'shot/masks: alphaOf painted', 'shot/masks: sources', 'shot/masks: across depths', 'shot/masks: across depths open'] as const;
 export type StampGateShotMaskId = (typeof STAMP_GATE_SHOT_MASK_IDS)[number];
 
 /** A yellow-ochre wash over the whole sheet, after the heron: what the tint plane's mask cuts. */
@@ -117,10 +117,12 @@ export type StampGateMaskedShot = {
   readonly pan?: number;
   /** How many seconds the camera takes to pan evenly from rest to `pan`; panned from the start when left out. */
   readonly panOver?: number;
+  /** The camera's shutter: shut (when left out), or the film's, a lens's default, open half a frame. */
+  readonly shutter?: 'shut' | 'film';
 };
 
 /** The gate's masked shot as `shown` says, on the tinted heron's sheet. */
-export function stampGateMaskedShot({ heron, disc, discVisibility, discHold, tint, tintDepth = 1, pan = 0, panOver }: StampGateMaskedShot): StampGateShot {
+export function stampGateMaskedShot({ heron, disc, discVisibility, discHold, tint, tintDepth = 1, pan = 0, panOver, shutter }: StampGateMaskedShot): StampGateShot {
   const stage = stageFor(pan), evaluation = painting(STAMP_GATE_TINTED_HERON), revealed = painting(STAMP_GATE_TINTED_HERON, { revealed: true });
   const planes: (PlaneProps | InstancedPlaneProps)[] = [{ id: 'pond', depth: POND_DEPTH, source: layersOf(evaluation, ['water']), ...(pan > 0 && { lay: pondLay(pan) }) }];
   if (heron === 'revealed') planes.push({ id: 'heron', depth: 2, source: ({ at }) => layersOf(revealed, ['heron'], { at }) });
@@ -142,7 +144,7 @@ export function stampGateMaskedShot({ heron, disc, discVisibility, discHold, tin
   const move = panOver ? paintKeyed([{ at: 0, value: { pan: { x: 0, y: 0 } } }, { at: panOver, value: panned }]) : panned;
   const plays = pan ? [paintCameraPlay({ kind: 'move', value: move }, { clock: { at: 0 }, origin: 'pan' })] : [];
   return {
-    camera: { stage, fov: 35, lens: { bloom: 0, shutter: 'shut' }, plays },
+    camera: { stage, fov: 35, lens: shutter === 'film' ? { bloom: 0 } : { bloom: 0, shutter: 'shut' }, plays },
     planes,
     visibility: {
       ...(heron === 'hidden' && { 'heron/heron': 0 }), ...(heron === 'half' && { 'heron/heron': 0.5 }),
@@ -180,6 +182,14 @@ export const STAMP_GATE_MASKS_BASELINE = { shown: { heron: 'revealed', tint: 'wi
 export const STAMP_GATE_MASKS_ACROSS = {
   shown: { heron: 'unmasked', tint: 'wing', pan: 24, panOver: 1 }, times: [0, 0.5, 1], at: 1,
 } as const satisfies { shown: StampGateMaskedShot; times: readonly number[]; at: number };
+
+/**
+ * The mask across depths under the film's shutter, the lens's default: the camera whipping PAN px across in half a
+ * second, the tint at depth 1 sliding past the wing at depth 2 as it goes; its frame mid-pan, the baseline's too.
+ */
+export const STAMP_GATE_MASKS_WHIP = {
+  shown: { heron: 'unmasked', tint: 'wing', pan: 192, panOver: 0.5, shutter: 'film' }, at: 0.25,
+} as const satisfies { shown: StampGateMaskedShot; at: number };
 
 /** What the baseline's frame is drawn from beside its sheets: its heron's reveal, and what the tint reads. */
 export const STAMP_GATE_MASKS_PRESENTATION = { reveal: MASKS_REVEAL, tint: { drawable: 'heron/wing' } } as const;
@@ -222,3 +232,39 @@ export function stampGateNearDiscCentre(at: number, radius: number): (p: StampPo
   return (p) => Math.hypot(p.x - centre.x, p.y - centre.y) <= radius;
 }
 
+/**
+ * Whether any texel (with `every`, every texel) of `flags`, one a texel `width` wide, within `reach` texels each way of
+ * each texel is set; a texel past the frame counts as unset.
+ */
+function texelsAround(flags: readonly boolean[], width: number, reach: number, every: boolean): boolean[] {
+  const height = flags.length / width;
+  return flags.map((_, i) => {
+    const x = i % width, y = Math.floor(i / width);
+    for (let j = y - reach; j <= y + reach; j++) {
+      for (let k = x - reach; k <= x + reach; k++) {
+        const set = j >= 0 && j < height && k >= 0 && k < width && flags[j * width + k];
+        if (set !== every) return !every;
+      }
+    }
+    return every;
+  });
+}
+
+/**
+ * Where frame `cut`'s tint (its texels changed from `bare`) lies against its twin's (`twinCut` against `twinBare`), RGB
+ * bytes `width` px wide: texels it tints farther than `reach` px from any its twin tints (`strays`), texels its twin
+ * tints `reach` px inside its tint that it leaves (`missed`), and how many each tints.
+ */
+export function stampGateTintAgainstTwin(
+  [cut, bare]: readonly [ArrayLike<number>, ArrayLike<number>], [twinCut, twinBare]: readonly [ArrayLike<number>, ArrayLike<number>], width: number, reach: number,
+): { strays: number; missed: number; tinted: number; twinTinted: number } {
+  const count = cut.length / 3, tinted = Array.from({ length: count }, (_, i) => stampGateTexelDiffers(cut, bare, i, 3));
+  const twin = Array.from({ length: count }, (_, i) => stampGateTexelDiffers(twinCut, twinBare, i, 3));
+  const near = texelsAround(twin, width, reach, false), within = texelsAround(twin, width, reach, true);
+  let strays = 0, missed = 0;
+  for (let i = 0; i < count; i++) {
+    if (tinted[i] && !near[i]) strays++;
+    if (within[i] && !tinted[i]) missed++;
+  }
+  return { strays, missed, tinted: tinted.filter(Boolean).length, twinTinted: twin.filter(Boolean).length };
+}

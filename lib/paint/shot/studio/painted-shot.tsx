@@ -10,10 +10,11 @@
 import { createContext, useContext, useLayoutEffect, useReducer, useRef, useState, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { useDelayRender } from 'remotion';
+import { paintSpanShownProblems } from '#lib/paint/animation/models/paint-span-moments.ts';
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { BrushRef } from '#lib/paint/document/models/painting-document.ts';
 import type { PaintingBrushOf } from '#lib/paint/document/models/painting-deposit-compile.ts';
-import { paintingProblem, paintingProblemsError, paintingProblemText, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
+import { paintingProblem, paintingProblemsError, paintingProblemText } from '#lib/paint/document/models/painting-problem.ts';
 import { createStampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { createStampPaintGpuOwner, type StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import type { ResolvedStampPaintStyle } from '#lib/paint/style/models/style.ts';
@@ -27,9 +28,8 @@ import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { whenLaidOut } from '#lib/picture/measurement/studio/screen-rect.ts';
 import { useFrameCosts, type FrameCostsReport } from '#lib/picture/profiling/studio/frame-profile.ts';
 import { useSceneOrNull } from '#lib/picture/video/studio/scene.tsx';
-import { logRenderPageLine } from '#lib/platform/browser/studio/render-page-log.ts';
+import { logRenderPageWarning } from '#lib/platform/browser/studio/render-page-log.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
-import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
 import { compilePaintedShot, shotCanvasLayings } from '../models/shot-compile.ts';
 import { SHOT_FRAME_COSTS_LABEL, SHOT_WARM_COSTS_LABEL, shotCostsProfileEntry } from '../models/shot-cost-report.ts';
 import { shotWatchName, type ShotWatchName } from '../models/shot-progress.ts';
@@ -80,11 +80,18 @@ export function PaintedShotCanvas({ name }: { readonly name: string }) {
 }
 
 /**
+ * What `studio paint check` hands a scene it renders without a page (shot-scene-check.ts): every PaintedShot rendered
+ * gives it its shot. Null in a render.
+ */
+export const PaintedShotSeenContext = createContext<((shot: PaintedShotProps) => void) | null>(null);
+
+/**
  * Draws `shot` at scene second `t`, holding the frame until its paint is solved. Its element is the camera's frame,
  * scaled to fill `box` (composition px; all of it when left out); `children`, HTML and PaintedShotCanvases, stack in
  * DOM order. Keep `shot` a module constant or memoised: a new one loads anew.
  */
 export function PaintedShot({ shot, t, box: given, children }: { readonly shot: PaintedShotProps; readonly t: number; readonly box?: { x: number; y: number; w: number; h: number }; readonly children?: ReactNode }) {
+  useContext(PaintedShotSeenContext)?.(shot);
   const format = useVideoFormat(), box = given ?? fullFrameRect(format), { frame } = shot.camera.stage, { fps } = format;
   // The scene playing the shot, when it's played in one: its length is what a warm span is held to.
   const sceneDur = useSceneOrNull()?.dur ?? null, report = useFrameCosts(), pictureDrawn = usePictureDrawn();
@@ -203,19 +210,6 @@ type PaintedShotLoadContext = {
 };
 
 /**
- * Why a shot's `span` isn't the one it's drawn over: a frame rate other than the composition's `fps`, or, in a scene
- * `sceneDur` s long, not covering its frames from its cut to its end.
- */
-function shotSpanProblems(span: SceneShownSpan, fps: number, sceneDur: number | null): PaintingProblem[] {
-  const problems: PaintingProblem[] = [], error = (message: string) => problems.push(paintingProblem('error', 'shot', 'span', message));
-  if (span.fps !== fps) error(`is sampled at ${span.fps} fps, and the composition runs at ${fps}: give it its scene's span, sceneSecondsOf(clock).span`);
-  if (sceneDur !== null && !(span.from <= 1e-9 && span.to >= sceneDur - 1e-9)) {
-    error(`runs from ${span.from} s to ${span.to} s, and its scene shows 0 s to ${sceneDur} s at least: give it its scene's span, sceneSecondsOf(clock).span`);
-  }
-  return problems;
-}
-
-/**
  * `props` checked against `names` (its PaintedShotCanvases' names; none when it draws in its own) and its page, once
  * laid out; loaded on a device owner of its own over `canvases`, each laid as shotCanvasLayings says, its warm span
  * solved. Refuses every problem at once. Without the picture, only checked.
@@ -236,14 +230,17 @@ function loadPaintedShotScene(props: PaintedShotProps, canvases: readonly ShotCa
   };
   const ready = watch.watching('loading', (async () => {
     await whenLaidOut(holder);
-    const { shot, problems } = compilePaintedShot(props, names, fps, { htmlBehind: shotHtmlBehind(holder, canvases[0]) });
+    const { shot, problems } = compilePaintedShot(props, names, { htmlBehind: shotHtmlBehind(holder, canvases[0]) });
     const layings = shot ? shotCanvasLayings(shot) : [];
-    const placed = [...shotCanvasFillProblems(holder, canvases, names), ...shotGlazeIsolationProblems(holder, canvases, names, layings), ...shotSpanProblems(props.span, fps, sceneDur)];
+    const placed = [
+      ...shotCanvasFillProblems(holder, canvases, names), ...shotGlazeIsolationProblems(holder, canvases, names, layings),
+      ...paintSpanShownProblems(props.span, fps, sceneDur).map((message) => paintingProblem('error', 'shot', 'span', message)),
+    ];
     if (!shot || placed.length) throw paintingProblemsError('shot', [...placed, ...problems]);
-    // Said in every render: what the shot's motion may read badly as, beside a shot that draws.
+    // Said in every render, once however many tabs load it: what the shot's motion may read badly as.
     for (const warning of problems.filter(({ severity }) => severity === 'warning')) {
       costs.warned(paintingProblemText(warning));
-      logRenderPageLine(`${name.line}: ${paintingProblemText(warning)}`);
+      logRenderPageWarning(`${name.line}: ${paintingProblemText(warning)}`);
     }
     if (!disposed) page = createShotPageWatch(holder, canvases, names, shot, pinsMoved);
     if (!pictureDrawn) return;
@@ -258,7 +255,7 @@ function loadPaintedShotScene(props: PaintedShotProps, canvases: readonly ShotCa
     // Said in every render, not only a profiled one: a span written in frames warms far less than meant.
     for (const warning of sceneDur === null ? [] : shotWarmPastScene(shot.warm, sceneDur)) {
       costs.warned(paintingProblemText(warning));
-      logRenderPageLine(`${name.line}: ${paintingProblemText(warning)}`);
+      logRenderPageWarning(`${name.line}: ${paintingProblemText(warning)}`);
     }
     await unlessLost(renderer.warm({ fps, sceneDur, mode: lensMode, stopped: () => disposed }));
     reportCosts(SHOT_WARM_COSTS_LABEL);

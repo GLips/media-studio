@@ -26,6 +26,25 @@ export function paintSpanProblem(span: SceneShownSpan): string | null {
   return first < end ? null : `its span, ${from} s to ${to} s at ${fps} fps, shows no frame`;
 }
 
+/**
+ * Why `span` isn't the one it's drawn over, worded to follow the span's name: a frame rate other than the
+ * composition's `fps`, or, in a scene `sceneDur` s long (null outside one), not covering it from cut to end. Checks
+ * and warnings sample the span alone, so a shot and a StampPainting's camera both hold to it.
+ */
+export function paintSpanShownProblems(span: SceneShownSpan, fps: number, sceneDur: number | null): string[] {
+  const problems: string[] = [], remedy = "give it its scene's span, sceneSecondsOf(clock).span";
+  if (span.fps !== fps) problems.push(`is sampled at ${span.fps} fps, and the composition runs at ${fps}: ${remedy}`);
+  if (sceneDur !== null && !(span.from <= 1e-9 && span.to >= sceneDur - 1e-9)) {
+    problems.push(`runs from ${span.from} s to ${span.to} s, and its scene shows 0 s to ${sceneDur} s at least: ${remedy}`);
+  }
+  return problems;
+}
+
+/** Why frame `t` can't be drawn over `span`, or null: it lies outside it, where nothing was checked. */
+export function paintSpanDrawnProblem({ from, to }: SceneShownSpan, t: number): string | null {
+  return t < from - 1e-9 || t >= to - 1e-9 ? `drawn at ${t} s, outside its span, ${from} s to ${to} s` : null;
+}
+
 /** Every frame `span` shows through `lens`, checked first by paintSpanProblem. */
 export function paintSpanFrames(span: SceneShownSpan, lens: PaintCameraLens): PaintSpanFrame[] {
   const { first, end } = paintSpanFrameRange(span), shut = paintCameraShutterShut(lens), frames: PaintSpanFrame[] = [];

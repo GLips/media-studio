@@ -98,6 +98,8 @@ export type { StampEdge, StampPoint, StampRegion } from '#lib/paint/painting/mod
 export type { StampArea, StampStandsBefore, StampWithin } from '#lib/paint/painting/models/stamp-area.ts';
 export type { StampBoundaries, StampBoundary, StampBoundaryTreatment } from '#lib/paint/painting/models/stamp-area-boundaries.ts';
 export type { StampNoiseField, StampPaintField } from '#lib/paint/painting/models/stamp-paint-field.ts';
+// StampGroupMotion is the recipe path's (StampPainting): keyed placements, linear between keys. A shot moves a group
+// by a node's place play, its value a PresentationValue.
 export type { StampGroupBoil, StampGroupMotion, StampGroupPaper } from '#lib/paint/painting/models/stamp-group-motion.ts';
 export type { StampWarpMap } from '#lib/paint/painting/models/stamp-group-warp.ts';
 export { paintMoment, type PaintMoment, type StampGroupFrameState, type StampPaintFrameAt, type StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';

@@ -19,8 +19,6 @@ import { dissolve } from './shot-selection.ts';
 import { shotWarmCombinations, shotWarmFrames } from './shot-warm.ts';
 
 const FPS = 24;
-/** The film the shots play in, frames a second. */
-const FILM_FPS = 30;
 /** The shots' span: their first second, through its last frame. */
 const SPAN: SceneShownSpan = { from: 0, to: 1 + 1 / FPS, fps: FPS };
 
@@ -47,14 +45,15 @@ const heronParts: readonly RigPart[] = [
   { id: 'body', z: 0, parent: null, cels: ['body'] },
   { id: 'neck', z: 1, parent: 'body', joint: 'skin', pivot: { x: 60, y: 100 }, blend: 12, cels: ['neck'] },
 ];
-const problemsOf = (props: PaintedShotProps) => compilePaintedShot(props, [], FILM_FPS).problems.map(({ path, message }) => `${path}: ${message}`);
+const problemsOf = (props: PaintedShotProps) => compilePaintedShot(props, []).problems.map(({ path, message }) => `${path}: ${message}`);
 
 /** The sky alone, its lens's shutter `shutter`, left out when undefined. */
 const skyShotWith = (shutter?: PaintCameraShutter): PaintedShotProps => ({
   camera: { ...camera, lens: shutter === undefined ? { bloom: 0 } : { bloom: 0, shutter } }, span: SPAN,
   planes: [{ id: 'front', depth: 1, source: layersOf(pond, ['sky']) }],
 });
-const shutterOf = (props: PaintedShotProps, filmFps: number) => compilePaintedShot(props, [], filmFps).shot!.camera.lens.shutter;
+/** `props`' shutter as compiled, its span counted at `fps`: a lens leaving its shutter out takes that film's. */
+const shutterOf = (props: PaintedShotProps, fps: number) => compilePaintedShot({ ...props, span: { ...props.span, fps } }, []).shot!.camera.lens.shutter;
 
 test("a lens leaving out its shutter opens it half the film's frame; 'shut' keeps it shut, and one open 0 s is refused naming 'shut'", () => {
   assert.equal(shutterOf(skyShotWith(), 30), 1 / 60);
@@ -69,7 +68,7 @@ test('motion hangs each occurrence node from its nearest enclosing node, a paint
     camera, span: SPAN,
     planes: [{ id: 'front', depth: 1, clock: { hold: 2 }, source: layersOf(pond, ['sky', 'heron']) }],
     motion: { nodes: [{ id: 'front' }, { id: 'front/heron', pivot: { x: 60, y: 100 }, clock: { hold: 3 } }, { id: 'front/neck' }] },
-  }, [], FILM_FPS);
+  }, []);
   const { nodes, nearest } = shot!.motion;
   assert.deepEqual([...nodes.values()].map(({ id, parent }) => [id, parent]), [['front', null], ['front/heron', 'front'], ['front/neck', 'front/heron']]);
   assert.deepEqual(nodes.get('front/neck')!.clock, [{ kind: 'hold', frames: 2 }, { kind: 'hold', frames: 3 }]);
@@ -81,7 +80,7 @@ test("a plane's source clock holds what its source reads apart from what its clo
     camera, span: SPAN,
     planes: [{ id: 'front', depth: 1, clock: { hold: 4 }, sourceClock: { hold: 6 }, source: ({ at }) => layersOf(pond, at < 1 ? ['sky', 'heron'] : ['sky', 'egret'], { at }) }],
     motion: { nodes: [{ id: 'front/heron', clock: { hold: 3 } }] },
-  }, [], FILM_FPS);
+  }, []);
   const [front] = shot!.planes, frame9 = paintMoment(9 / FPS);
   assert.ok(front.kind === 'painted');
   assert.equal(shotPlaneSharesAt(shot!, front, frame9)[0].selection.at, 6 / FPS);
@@ -104,7 +103,7 @@ test("a dissolving plane shows both its ends' occurrences, weighed by k on its s
   const sky = layersOf(pond, ['sky']), heron = layersOf(pond, ['heron']);
   const { shot } = compilePaintedShot({
     camera, span: SPAN, planes: [{ id: 'front', depth: 1, sourceClock: { hold: 6 }, source: ({ at }) => dissolve(sky, dissolve(heron, sky, 0.5), Math.min(1, at)) }],
-  }, [], FILM_FPS);
+  }, []);
   const [front] = shot!.planes;
   assert.ok(front.kind === 'painted');
   assert.deepEqual(front.occurrences.map(({ key }) => key), ['front/sky', 'front/heron', 'front/body', 'front/neck']);
@@ -137,7 +136,7 @@ test('a rig on a dissolving plane is held by every end cut alike: one cut otherw
   assert.deepEqual(problemsOf(shotOf(dissolve(heron, layersOf(pond, ['sky', 'heron'], { at: 1 }), 0.5))), []);
   const refused = "front.source.b: holds beak under heron, in none of front/heron's cels: every end of a rigged plane holds its rigged groups cut alike";
   assert.deepEqual(problemsOf(shotOf(dissolve(heron, layersOf(beaked, ['sky', 'heron']), 0.5))), [refused]);
-  const { shot } = compilePaintedShot(shotOf(({ at }) => (at < 1 ? heron : dissolve(heron, layersOf(beaked, ['sky', 'heron']), 0.5))), [], FILM_FPS);
+  const { shot } = compilePaintedShot(shotOf(({ at }) => (at < 1 ? heron : dissolve(heron, layersOf(beaked, ['sky', 'heron']), 0.5))), []);
   const [front] = shot!.planes;
   assert.ok(front.kind === 'painted');
   assert.throws(() => shotPlaneSharesAt(shot!, front, paintMoment(1)), (error: Error) => error.message.includes(refused));
@@ -167,7 +166,7 @@ test('a shot refuses motion its rig or lay already writes, and a painted texture
 test('a transparent back is refused unless HTML lies behind the first canvas, over which it is laid clear and may fade, as the opaque back may not', () => {
   const props: PaintedShotProps = { camera, span: SPAN, planes: [{ id: 'back', depth: 1, source: layersOf(pond, ['sky'], { ground: 'transparent' }) }], visibility: { back: 0.5 } };
   assert.deepEqual(problemsOf(props), ['back.source.ground: is the back, laid on its paper wherever the frame shows: its ground is transparent only over HTML before the first canvas']);
-  const { shot, problems } = compilePaintedShot(props, [], FILM_FPS, { htmlBehind: true });
+  const { shot, problems } = compilePaintedShot(props, [], { htmlBehind: true });
   assert.deepEqual(problems, []);
   assert.equal(shot!.clearBack, true);
   assert.equal(shot!.planes[0].kind === 'painted' && shot!.planes[0].opaqueBack, false);
@@ -228,7 +227,7 @@ const skyPadded = (pad: PaintCameraReach): PlaneProps => ({
 });
 
 test("a back padded by the camera's reach at its depth holds all the camera reads of it, and a px less on a side is refused", () => {
-  const reach = paintCameraReachAt(drifting, SPAN, 2, FILM_FPS), padded = (pad: PaintCameraReach) => problemsOf({ camera: drifting, span: SPAN, planes: [skyPadded(pad)] });
+  const reach = paintCameraReachAt(drifting, SPAN, 2), padded = (pad: PaintCameraReach) => problemsOf({ camera: drifting, span: SPAN, planes: [skyPadded(pad)] });
   assert.ok(reach.right > reach.left && reach.top > reach.bottom, `a drift right and up reads further right and up: ${JSON.stringify(reach)}`);
   assert.deepEqual(padded(reach), []);
   assert.match(padded({ ...reach, right: reach.right - 1 })[0], /^back\.lay: is the back, painted /);
@@ -255,7 +254,7 @@ const laidOnFrame = (lay: ScreenPin | CoverFrame): PaintedShotProps => ({
 });
 
 test('a cover holds the frame through the shot\'s own camera at its second, refused where it lays paint past the stage', () => {
-  const box = { x0: 0, y0: 0, x1: 320, y1: 240 }, { shot } = compilePaintedShot(laidOnFrame({ kind: 'cover', box, at: 1 }), [], FILM_FPS);
+  const box = { x0: 0, y0: 0, x1: 320, y1: 240 }, { shot } = compilePaintedShot(laidOnFrame({ kind: 'cover', box, at: 1 }), []);
   const label = shot!.planes[1];
   assert.ok(label.kind === 'painted' && label.lay.kind === 'still' && label.lay.lay);
   const { placement, pivot } = label.lay.lay, toDocument = paintSimilarityInverse(paintSimilarityAfter(paintPlaneViewAt(shot!.camera, 1, paintMoment(1)), paintSimilarityOf(placement, pivot)));
@@ -268,7 +267,7 @@ test('a cover holds the frame through the shot\'s own camera at its second, refu
 });
 
 test('a pinned plane lies where a frame measures its elements, refused when one is unmounted or its paint passes the stage', () => {
-  const pin = { kind: 'pin', points: [{ sourcePx: { x: 40, y: 100 }, element: 'label' }] } as const, { shot } = compilePaintedShot(laidOnFrame(pin), [], FILM_FPS);
+  const pin = { kind: 'pin', points: [{ sourcePx: { x: 40, y: 100 }, element: 'label' }] } as const, { shot } = compilePaintedShot(laidOnFrame(pin), []);
   const pinnedAt = (x: number, y: number) => shotPinnedPlanes(shot!, new Map([['label', [{ x, y }]]]));
   const { planes, problems } = pinnedAt(60, 90), label = planes.get('label')!;
   assert.deepEqual(problems, []);
@@ -302,5 +301,5 @@ test('an alphaOf mask reads a rig drawn as pieces whole, never a part inside it,
     rigs: { 'bed/reeds': { parts: [{ id: 'a', z: 0, parent: null, cels: ['reed-a'] }, { id: 'b', z: 1, parent: 'a', joint: 'hinge', pivot: { x: 60, y: 110 }, cels: ['reed-b'] }], pose: {} } },
   });
   assert.deepEqual(problemsOf(shotReading('bed/reed-b')), ['tint.masks[0].drawable: names bed/reed-b, inside bed/reeds, drawn as pieces: read bed/reeds']);
-  assert.deepEqual(compilePaintedShot(shotReading('bed/reeds'), [], FILM_FPS).shot!.masks.order, ['back', 'bed', 'tint']);
+  assert.deepEqual(compilePaintedShot(shotReading('bed/reeds'), []).shot!.masks.order, ['back', 'bed', 'tint']);
 });

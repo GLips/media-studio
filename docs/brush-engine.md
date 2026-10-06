@@ -198,7 +198,7 @@ arrives alike on both edges; the document check warns of it (`painting-reveal-se
 through its profile: 32 samples of its share, which the document makes from the profile's curve
 (`painting-reveal-profile.ts`) and the cut's uniform holds, read linearly between, by the pass and its twin alike. The
 engine never sees a curve, so any curve the document names is drawn the same way. The times an author reads off a
-reveal (`revealEnd`, `revealArrivalAt`) come from the arithmetic the pass reads: its arrival span and its arrivals.
+reveal (`paintingRevealEnd`, `paintingRevealArrivalAt`) come from the arithmetic the pass reads: its arrival span and its arrivals.
 The cuts multiply, a group's over its descendants', and each is read where its node's marks were solved: posed paint
 carries its reveal (a warp by its fitted similarity). The root's ground is never cut; the solve, its checkpoints and
 the water never see a reveal, so the evaluation diff lists a reveal edit under its `reveals`, recomposing only. `stamp-film-readback.ts` reads a solved film back for a rig and its tools (ENGINE 5.1): its coverage,
@@ -403,7 +403,9 @@ marks. A group's paint lives one of three ways:
 A moved or bent layer is laid at four texels, then blended, so crayon keeps its tooth under sub-pixel motion. A
 recipe's own `motion`, `boil` (on the 24 fps animation clock, `PAINT_ANIMATION_FPS`) and keyed paint are evaluated
 into the same shape (`stampPaintFrameStateAt`): given marks replace a recipe's boil, and any other field both write is
-an error. A frame held on twos gives every group the keys it had, so it repaints nothing.
+an error. A recipe's `motion` (`StampGroupMotion`, `stamp-group-motion.ts`) belongs to the recipe path and
+StampPainting alone: keys of placements, linear between them. A shot moves a group by a node's `place` play, whose
+`value` is a `PresentationValue` (`paint-value.ts`), keyed by `paintKeyed` or any function of the moment. A frame held on twos gives every group the keys it had, so it repaints nothing.
 
 **animation** writes that frame state, and the renderer never sees a scene, a pose or a clock.
 - **Shape sources** (`models/figure/`): a posed primitive figure, a construction of circles and capsules, or SVG paths.
@@ -434,11 +436,12 @@ an error. A frame held on twos gives every group the keys it had, so it repaints
   similarity) and defocus (a thin lens's circle of confusion, as gaussian sigma) at a time, through
   `paintCameraDepthLooks`, which gives them at any depth, as each instanced item takes them; an instanced plane is
   built by its depths alone, its nearest held from the camera and magnified most. The build checks every plane's
-  extent at each moment its shot's span draws (`paint-span-moments.ts`: each frame and its shutter's ends), with a
-  pixel of slack for what moves between them: the back everywhere the frame looks; a nearer plane where its groups'
-  paint can be laid (`paint-motion-reach.ts`: the painted box grown by the most each step of the `motion` it's given
-  and the recipe's own motion moves it at those moments), or everywhere the frame looks once a group's marks are live
-  or re-seeded. A frame state from anything but that `motion` isn't covered. What the frame reads of a
+  extent at each moment its shot's span draws (`paint-span-moments.ts`: each frame and its shutter's ends): the back
+  everywhere the frame looks, the box those poses bound with no slack (a reference exposure between them lies within
+  it unless a move turns inside the shutter, unchecked); a nearer plane where its groups' paint can be laid
+  (`paint-motion-reach.ts`: the painted box grown by the most each step of the `motion` it's given and the recipe's
+  own motion moves it at those moments, plus 2 px of slack), or everywhere the frame looks once a group's marks are
+  live or re-seeded. A frame state from anything but that `motion` isn't covered. What the frame reads of a
   plane, the plane px it shows and how far past them its defocus reaches (3 sigma + 2 px, 0 while sharp), it gives
   span by span over the shot (`paintCameraShotReads`) or at a frame's moments (`paintCameraFrameReads`), for a shot to
   hold its back's painting to. It reports each plane's greatest magnification and names bad planes. `buildPaintingCamera` lays the scene's planes once
@@ -779,6 +782,9 @@ and shut, drawn as if it stood still. The masked shot (`stamp-gate-shot-masks.ts
 and cuts a tint to the heron's wing, to all but it, and to a disc moving across as a picture plane and as a three
 plane under a panned camera. On a plane nearer than the heron, the tint stays cut to the wing, and to a picture disc,
 as a pan parts their depths (`shot/masks-across`), laid anew each frame they move apart; at the heron's depth, never.
+Under the film's shutter as the camera whips across (`shot/masks-across-open`), the reference, each exposure cut at
+its own views, tints where its shut twin does within half the wing's travel; the fast frame, cut at the frame's moment
+and gathered as the tint moves, smears the cut's edge a little wider, held within 64 levels of the reference.
 Cut to the revealing heron's wing frame after frame, each frame draws as it does alone and a held frame lays nothing anew; cut
 to the heron faded to half, it tints the wing about half as much, and just as much cut to the heron dissolving
 halfway to water lying elsewhere. A picture disc at half visibility lays half of itself and cuts the tint at half its

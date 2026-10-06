@@ -28,7 +28,7 @@ import { STAMP_GATE_PIECES, STAMP_GATE_PIECES_AT, STAMP_GATE_PIECES_PARTS, STAMP
 import { STAMP_GATE_RAIN, STAMP_GATE_RAIN_PAINTING, stampGateRainShot } from './stamp-gate-rain.ts';
 import { STAMP_GATE_RAINY_STREET_AT, STAMP_GATE_RAINY_STREET_PRESENTATION, stampGateRainyStreetEvaluations, stampGateRainyStreetShot } from './stamp-gate-rainy-street.ts';
 import {
-  STAMP_GATE_MASKS_ACROSS, STAMP_GATE_MASKS_BASELINE, STAMP_GATE_MASKS_PRESENTATION, STAMP_GATE_SHOT_MASK_IDS, STAMP_GATE_TINTED_HERON, stampGateMaskedShot,
+  STAMP_GATE_MASKS_ACROSS, STAMP_GATE_MASKS_BASELINE, STAMP_GATE_MASKS_PRESENTATION, STAMP_GATE_MASKS_WHIP, STAMP_GATE_SHOT_MASK_IDS, STAMP_GATE_TINTED_HERON, stampGateMaskedShot,
 } from './stamp-gate-shot-masks.ts';
 import { STAMP_GATE_SHOT_GLOW_ID } from './stamp-gate-shot-glow.ts';
 import { STAMP_GATE_HERON_POSE, STAMP_GATE_SHEET_IMAGES, STAMP_GATE_WET_CONTACT, stampGateSheetBrushOf } from './stamp-gate-sheets.ts';
@@ -38,7 +38,7 @@ export const STAMP_GATE_SHOT_PAGE_IDS = ['shot/page'] as const;
 
 /** The shots accepted by eye: each a baseline subject, one frame of its shot. */
 export const STAMP_GATE_SHOT_IDS = [
-  'shot/paper-heron', 'shot/wet-contact', 'shot/rain', 'shot/dissolve', 'shot/rigged-dissolve', 'shot/masks', 'shot/masks-across', 'shot/rainy-street', 'shot/cards',
+  'shot/paper-heron', 'shot/wet-contact', 'shot/rain', 'shot/dissolve', 'shot/rigged-dissolve', 'shot/masks', 'shot/masks-across', 'shot/masks-across-open', 'shot/rainy-street', 'shot/cards',
   'shot/pieces',
 ] as const;
 export type StampGateShotId = (typeof STAMP_GATE_SHOT_IDS)[number];
@@ -383,6 +383,10 @@ const SHOT_BASELINES: Readonly<Record<StampGateShotId, {
   'shot/masks-across': {
     shot: () => stampGateMaskedShot(STAMP_GATE_MASKS_ACROSS.shown), at: STAMP_GATE_MASKS_ACROSS.at, evaluations: () => [painting(STAMP_GATE_TINTED_HERON)],
     rigs: {}, poses: [], extra: { shown: STAMP_GATE_MASKS_ACROSS.shown },
+  },
+  'shot/masks-across-open': {
+    shot: () => stampGateMaskedShot(STAMP_GATE_MASKS_WHIP.shown), at: STAMP_GATE_MASKS_WHIP.at, evaluations: () => [painting(STAMP_GATE_TINTED_HERON)],
+    rigs: {}, poses: [], extra: { shown: STAMP_GATE_MASKS_WHIP.shown },
   },
   'shot/rainy-street': {
     shot: stampGateRainyStreetShot, at: STAMP_GATE_RAINY_STREET_AT.baseline, evaluations: stampGateRainyStreetEvaluations, rigs: {}, poses: [], extra: STAMP_GATE_RAINY_STREET_PRESENTATION,

@@ -11,8 +11,6 @@ import { shotExposureMoments, shotSolvablesShown, shotWarmShown } from './shot-s
 import { shotWarmFrames } from './shot-warm.ts';
 
 const FPS = 24, SHUTTER = 0.1;
-/** The film the shot plays in, frames a second. */
-const FILM_FPS = 30;
 
 const layer = (key: string): Layer => ({
   key, washes: [{
@@ -49,7 +47,7 @@ const { shot } = compilePaintedShot({
     mist: ({ at }) => (at < 1 ? 0 : 1), 'birds/swift': ({ at }) => (at < 2 ? 0 : 1), 'birds/swallow': 0, 'birds/birds': ({ at }) => (at < 3 ? 1 : 0),
     'card/swallow': 0,
   },
-}, [], FILM_FPS);
+}, []);
 
 test('a frame solves a painted plane only if it lays something at one of its exposures; the back always does', () => {
   const shownAt = (t: number, mode: 'fast' | 'reference') => {

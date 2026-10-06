@@ -72,7 +72,7 @@ export function paintingRevealLinksOf(compiled: PaintingSelectionCompiled, poses
  * The scene second `reveal` finishes, as the pass reads it: its last arrival plus its `softS`. A field's last arrival
  * is its base's latest plus its delay's, wherever each lies.
  */
-export function revealEnd(reveal: Reveal): number {
+export function paintingRevealEnd(reveal: Reveal): number {
   const stamp = paintingStampReveal(reveal);
   return stampRevealArrivalSpan(stamp).last + (stamp.softS ?? 0);
 }
@@ -82,7 +82,7 @@ export function revealEnd(reveal: Reveal): number {
  * band covering the point first touches it; off every band, at its nearest path point. On a wrapped document a band's
  * copy across a seam isn't read: ask on the side its path runs.
  */
-export const revealArrivalAt = (reveal: Reveal, point: StampPoint): number => stampRevealPointArrival(paintingStampReveal(reveal), point);
+export const paintingRevealArrivalAt = (reveal: Reveal, point: StampPoint): number => stampRevealPointArrival(paintingStampReveal(reveal), point);
 
 /** `points` from `s0` to `s1` px along them. */
 function pathBetween(points: readonly StampPoint[], s0: number, s1: number): StampPoint[] {

@@ -30,19 +30,20 @@ async function withPaintSourceStack(verb: () => Promise<void>): Promise<void> {
   }
 }
 
-/** `paint check` of a module exporting painted shots: each one's problems and warnings printed by export. */
-async function checkShotModule(file: string): Promise<void> {
+/** `paint check` of the shots a project's scenes render (one scene's, given its file): each problem and warning printed by scene. */
+async function checkSceneShots(arg: string): Promise<void> {
   const { paintingErrors, paintingProblemText } = await import('#lib/paint/document/models/painting-problem.ts');
-  const { checkPaintedShotModuleFile } = await import('#lib/paint/shot/engine/shot-module-check.ts');
-  const checked = await checkPaintedShotModuleFile(file), problems = checked.flatMap(({ problems: found }) => found);
-  for (const { name, problems: found } of checked) for (const problem of found) console.log(`${name}: ${paintingProblemText(problem)}`);
+  const { checkProjectSceneShots, shotSceneCheckTarget } = await import('#lib/paint/shot/engine/shot-scene-check.ts');
+  const { project, scene } = shotSceneCheckTarget(arg);
+  const checked = await checkProjectSceneShots(project, scene), problems = checked.flatMap(({ problems: found }) => found);
+  for (const { scene: id, problems: found } of checked) for (const problem of found) console.log(`scene ${id}: ${paintingProblemText(problem)}`);
   const errors = paintingErrors(problems).length, warnings = problems.length - errors, shots = checked.length;
   console.error(`paint check: ${shots} ${shots === 1 ? 'shot' : 'shots'}, ${errors} ${errors === 1 ? 'error' : 'errors'}, ${warnings} ${warnings === 1 ? 'warning' : 'warnings'}`);
   if (errors > 0) process.exitCode = 1;
 }
 
 const checkPaintArgs = {
-  source: { type: 'positional', required: true, description: 'The *.painting.ts module, or a module exporting painted shots' },
+  source: { type: 'positional', required: true, description: 'The *.painting.ts module; or a project (its name, folder or video.tsx), or a scene\'s file, whose painted shots to check' },
   set: { type: 'string', valueHint: 'hillTopPx=210,dusk=true', description: 'Property values, held to their schema like any other (an off-step value is an error)' },
   solve: { type: 'boolean', description: 'With no error, solve every sheet on the GPU: print each wash\'s start, damp window and set time, each application\'s landing time and each bloom\'s span damp again, sheet by sheet, and write the painting, and each film on its sheet\'s paper and edge, as PNGs' },
   out: { type: 'string', valueHint: 'meadow.solve', description: 'The folder --solve writes painting.png and films/<layer>.png into, in a folder that exists (default: <source>.solve in its project\'s out/check/, or beside it outside a project)' },
@@ -52,15 +53,15 @@ const checkPaintArgs = {
 const checkPaintCommand = defineCommand({
   meta: {
     name: 'check',
-    description: "Evaluate a painting source at its default property values (or those --set gives) and print every problem found: the schema and values, the factory's purity (called twice, its documents compared), the document's shape and keys, its papers, brushes and assets against work/styles/, its geometry, charges and media, washes, clocks and `on`s that can never hold. Each problem prints as `<path>: <message> [x0,y0 → x1,y1]`, the box in document px; warnings say so. Then, if it has no error, the document's size and medium and each layer's medium, sheet, washes and applications, and how many `on` gates only a solve decides; with --solve, every sheet solved (an application that can't land fails the check, naming where its rule failed). Given any other module, compile every painted shot it exports (camera, planes, span) as its render would, as if HTML lay behind it, and print each problem and motion warning (a speed jump at a key, a move too fast for a shut shutter, a visibility popping) as `<export>: <path>: <message>`. Fails on any error.",
+    description: "Evaluate a painting source at its default property values (or those --set gives) and print every problem found: the schema and values, the factory's purity (called twice, its documents compared), the document's shape and keys, its papers, brushes and assets against work/styles/, its geometry, charges and media, washes, clocks and `on`s that can never hold. Each problem prints as `<path>: <message> [x0,y0 → x1,y1]`, the box in document px; warnings say so. Then, if it has no error, the document's size and medium and each layer's medium, sheet, washes and applications, and how many `on` gates only a solve decides; with --solve, every sheet solved (an application that can't land fails the check, naming where its rule failed). Given a project (its name, folder or video.tsx) or a scene's file (scenes/<id>.tsx, bars/<id>.tsx), render each of its scenes (or that one) in Node at its first, middle and last frames, with no picture, and compile every painted shot rendered as its render would, as if HTML lay behind it, held to its scene's span: print each problem and motion warning (a speed jump at a key, a move or a hold's step too fast for nothing to blur, a visibility popping) as `scene <id>: <path>: <message>`. Fails on any error.",
   },
   args: checkPaintArgs,
   run: ({ args, rawArgs }) => {
     // Read before the verb runs: a malformed flag is the command's to refuse in a line, not a source's stack.
     refuseUnknownCommandFlags(rawArgs, checkPaintArgs);
     if (!args.source.endsWith('.painting.ts')) {
-      if (args.set !== undefined || args.solve || args.at !== undefined || args.out !== undefined) throw new Error('--set, --solve, --at and --out are a painting source\'s: a shot module is checked whole');
-      return withPaintSourceStack(() => checkShotModule(args.source));
+      if (args.set !== undefined || args.solve || args.at !== undefined || args.out !== undefined) throw new Error('--set, --solve, --at and --out are a painting source\'s: a scene\'s shots are checked whole');
+      return withPaintSourceStack(() => checkSceneShots(args.source));
     }
     const set = flagValues('set', args.set), at = sceneSecondFlag(args.at);
     if (at !== null && !args.solve) throw new Error('--at picks the prefix a solve paints: give --solve too');
