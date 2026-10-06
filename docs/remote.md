@@ -78,7 +78,7 @@ as it is on disk:
 - both repositories, uncommitted and untracked files included;
 - every project's media;
 - every brand kit's fonts;
-- every style's current brushes.
+- every style's current brushes and their measured profiles.
 
 Output streams here as it comes. When several scripts run, each line starts with its script's name. The command
 ends with a line per script, then the bill:
@@ -270,7 +270,8 @@ same.
 | Brand kits | Every brand kit, with its fonts | Every brand kit, with its fonts |
 
 Ignored files never go otherwise; a project's `generated/` and `out/` never do. A brush pack goes as its current
-generation, uploaded once under its style, pack and generation, since a generation never changes once made.
+generation, uploaded once under its style, pack and generation, since a generation never changes once made, and its
+measured profiles (`profiles/`), sent as any file is, a profile at a time as it's added.
 
 ## Never for the GPU gate
 

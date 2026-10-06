@@ -1,7 +1,8 @@
 // remote-upload.ts: what a remote call's container needs of this machine's files, named by content, and the upload of
 // what the app's Volume lacks. A render takes its project and the studio code it runs; a check, the whole checkout
-// (docs/remote.md, Uploads). Ignored files go only as named here. A brush pack goes as its `current` and that
-// generation, which never changes once made: it's uploaded once under its name and never hashed. Node only.
+// (docs/remote.md, Uploads). Ignored files go only as named here. A brush pack goes as its `current`, its profiles
+// (hashed like any file) and that generation, which never changes once made: it's uploaded once under its name and never
+// hashed. Node only.
 //
 // Negative space: a project's generated/ and out/ never go. Both are made by a render, and no check reads them.
 import { execFileSync } from 'node:child_process';
@@ -46,11 +47,16 @@ function gitPaths(repo: string, which: 'tracked' | 'unignored', paths: readonly 
 /** Files git lists under `paths` of the repository at `repo`, tracked and new but not ignored, as absolute paths. */
 const gitListed = (repo: string, paths: readonly string[] = []) => gitPaths(repo, 'unignored', paths).map((path) => join(repo, path));
 
-/** Every file under `dir` (a link to a file counts as one), none when it's missing; macOS's .DS_Store left out. */
+/**
+ * Every file under `dir` (a link to a file counts as one), none when it's missing. Dot-files are left out: macOS's
+ * .DS_Store, and a profile still being written (`.<name>.<uuid>`, renamed into place once whole, so it may be gone by
+ * the time it's read).
+ */
 function filesUnder(dir: string): string[] {
   if (!existsSync(dir)) return [];
-  return readdirSync(dir, { recursive: true, encoding: 'utf8' }).map((entry) => join(dir, entry))
-    .filter((file) => !file.endsWith('.DS_Store') && statSync(file).isFile());
+  return readdirSync(dir, { recursive: true, encoding: 'utf8' })
+    .filter((entry) => !entry.split(sep).some((name) => name.startsWith('.')))
+    .map((entry) => join(dir, entry)).filter((file) => statSync(file).isFile());
 }
 
 const isFileHere = (file: string) => existsSync(file) && statSync(file).isFile();
@@ -85,15 +91,15 @@ function hashedFiles(files: readonly string[]): RemoteUploadFile[] {
 
 // ---------- what a render and a check need ----------
 
-/** Each brush pack of `style`: its `current` file, and the generation it names. */
-function brushPacksOf(style: string): { current: string; generation: RemoteUploadGeneration }[] {
+/** Each brush pack of `style`: its `current` file and measured profiles, and the generation it names. */
+function brushPacksOf(style: string): { current: string; profiles: string[]; generation: RemoteUploadGeneration }[] {
   const brushes = join(STUDIO_STYLES_DIR, style, 'brushes');
   if (!existsSync(brushes)) return [];
   return readdirSync(brushes).flatMap((pack) => {
     const current = join(brushes, pack, 'current');
     if (!existsSync(current)) return [];
     const name = readFileSync(current, 'utf8').trim(), local = join(brushes, pack, 'generations', name);
-    return [{ current, generation: { path: studioPath(local), local, key: `${style}/${pack}/${name}` } }];
+    return [{ current, profiles: filesUnder(join(brushes, pack, 'profiles')), generation: { path: studioPath(local), local, key: `${style}/${pack}/${name}` } }];
   });
 }
 
@@ -108,7 +114,7 @@ export async function remoteProjectUpload(project: string): Promise<RemoteUpload
   const files = [
     ...gitListed(STUDIO_ROOT, ['lib', 'cli']), ...STUDIO_ROOT_FILES.map((file) => join(STUDIO_ROOT, file)),
     ...gitListed(STUDIO_WORKSPACE_DIR, [relative(STUDIO_WORKSPACE_DIR, project), ...styles.map((style) => `styles/${style}`), 'brands']),
-    ...PROJECT_MEDIA_DIRS.flatMap((dir) => filesUnder(join(project, dir))), ...brandFonts(), ...packs.map(({ current }) => current),
+    ...PROJECT_MEDIA_DIRS.flatMap((dir) => filesUnder(join(project, dir))), ...brandFonts(), ...packs.flatMap(({ current, profiles }) => [current, ...profiles]),
   ].filter(isFileHere);
   return { files: hashedFiles([...new Set(files)]), generations: packs.map(({ generation }) => generation) };
 }
@@ -124,7 +130,7 @@ export function remoteCheckoutUpload(): RemoteCheckoutUpload {
   const packs = roots.includes(STUDIO_WORKSPACE_DIR) && existsSync(STUDIO_STYLES_DIR) ? readdirSync(STUDIO_STYLES_DIR).flatMap(brushPacksOf) : [];
   const ignored = roots.includes(STUDIO_WORKSPACE_DIR) ? [
     ...listStudioProjects().flatMap((project) => PROJECT_MEDIA_DIRS.flatMap((dir) => filesUnder(join(STUDIO_PROJECTS_DIR, project, dir)))),
-    ...brandFonts(), ...packs.map(({ current }) => current),
+    ...brandFonts(), ...packs.flatMap(({ current, profiles }) => [current, ...profiles]),
   ] : [];
   const files = hashedFiles([...new Set([...listed, ...ignored])]), uploaded = new Set(files.map((file) => file.path));
   return {
