@@ -1,6 +1,6 @@
-// shot-frame-plan.ts: what a shot's painted plane is at one moment, purely (ENGINE 6.2, 6.3): the selections its
-// source blends and the clocks its solve reads, the node poses its marks are solved under, the boil epochs reseeding
-// its layers, where its sheets lie, how visible its occurrences are, and its rigs' poses, read once for every end.
+// shot-frame-plan.ts: a shot's painted plane at one moment, purely (ENGINE 6.2, 6.3): the selections its source
+// blends and the clocks its solve reads, the poses its marks solve under, its layers' boil epochs, where its sheets
+// lie, how visible its occurrences are, the glow its nodes give, and its rigs' poses, read once for every end.
 //
 // A frame's marks are posed at its own moment; its sheets and pieces rigs lie as each exposure or shutter end puts
 // them. Boil wobble moves finished paint: marks are solved without it, and the lay takes it in first, so a lattice
@@ -8,16 +8,17 @@
 
 import { paintBoilEpochAt, paintNodeTimeAt, sceneSeconds, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
 import type { PaintDeform } from '#lib/paint/animation/models/paint-deform.ts';
+import { paintGlowProblem } from '#lib/paint/animation/models/paint-motion-compile.ts';
 import { paintLevelDeformsAt, paintLevelPlacementAt } from '#lib/paint/animation/models/paint-motion-frame.ts';
 import { PAINT_SIMILARITY_IDENTITY, paintSimilarityOf, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import type { NodeKey } from '#lib/paint/document/models/painting-document.ts';
 import { paintingDeformsPose, paintingPoseAfter, paintingSimilarityPose, type PaintingNodePose } from '#lib/paint/document/models/painting-pose.ts';
-import { paintingProblemsError, paintingProblemText } from '#lib/paint/document/models/painting-problem.ts';
+import { paintingProblem, paintingProblemsError, paintingProblemText } from '#lib/paint/document/models/painting-problem.ts';
 import type { LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
-import type { PaintMoment, StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import type { PaintMoment, StampGroupGlow, StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import type { CompiledPaintedShot, CompiledShotPaintedPlane } from './shot-compile.ts';
-import type { CompiledShotMotion, CompiledShotNode } from './shot-motion.ts';
+import type { CompiledShotGlow, CompiledShotMotion, CompiledShotNode } from './shot-motion.ts';
 import type { OccurrenceKey, RigPartPose } from './shot-props.ts';
 import { presentationValueAt } from '#lib/paint/animation/models/paint-value.ts';
 import { shotPlaneOccurrences } from './shot-occurrences.ts';
@@ -161,6 +162,16 @@ export function shotVisibilityAt(shot: CompiledPaintedShot, plane: string, key: 
   const moment = shotPlaneMomentAt(shot.motion, plane, t), visibility = presentationValueAt(value, moment), problem = shotVisibilityProblem(key, visibility, moment.at);
   if (problem) throw new Error(`shot: ${paintingProblemText(problem)}`);
   return visibility;
+}
+
+/**
+ * What `glow` gives at frame moment `t`: its value at its stating node's held moment; null at amount 0, which costs
+ * nothing. Throws on a value that can't be drawn.
+ */
+export function shotNodeGlowAt(motion: CompiledShotMotion, glow: CompiledShotGlow, t: PaintMoment): StampGroupGlow | null {
+  const value = presentationValueAt(glow.value, paintNodeTimeAt(motion.nodes.get(glow.from)!.clock, t, motion.animationFps)), problem = paintGlowProblem(value);
+  if (problem) throw new Error(`shot: ${paintingProblemText(paintingProblem('error', glow.from, 'motion', `${problem}, at ${t.at} s`))}`);
+  return value.amount > 0 ? value : null;
 }
 
 /** The pivot rig `rig`'s roots turn about: its group node's, else the document's origin. */

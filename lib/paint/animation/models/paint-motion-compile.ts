@@ -65,8 +65,8 @@ export type PaintMotionNode<P extends string = string> = {
 /** A clip played on a node through its clock; `origin` names it in errors. */
 export type PaintMotionPlay = { readonly target: string; readonly clip: PaintMotionClip<string>; readonly clock: PaintPlayClock; readonly origin: string };
 
-/** A play on `target`, its clip's pins checked against the target's as it's written. */
-export function paintMotionPlay<P extends string>(target: PaintMotionNode<P>, clip: PaintMotionClip<NoInfer<P>>, timing: { readonly clock: PaintPlayClock; readonly origin: string }): PaintMotionPlay {
+/** A play on `target` (a painting's node or a shot's), its clip's pins checked against the target's as it's written. */
+export function paintMotionPlay<P extends string>(target: Pick<PaintMotionNode<P>, 'id' | 'pins'>, clip: PaintMotionClip<NoInfer<P>>, timing: { readonly clock: PaintPlayClock; readonly origin: string }): PaintMotionPlay {
   return { target: target.id, clip, ...timing };
 }
 
@@ -160,8 +160,8 @@ function compileMarks(node: PaintMotionNode, group: CompiledStampGroup, problems
 export const paintGlowProblem = ({ amount, threshold }: StampGroupGlow) =>
   amount >= 0 && Number.isFinite(amount) && threshold >= 0 && threshold <= 1 ? null : `its glow needs an amount of 0 or more and a threshold in 0..1, not ${amount} and ${threshold}`;
 
-/** The glow `levels` give their first: the nearest whose `glowOf` says, `'none'` none. A painting's nodes and a shot's alike. */
-export function paintInheritedGlow(levels: readonly string[], glowOf: (id: string) => StampGroupGlow | 'none' | undefined): StampGroupGlow | null {
+/** The glow a painting's node `levels` give their first: the nearest whose `glowOf` says, `'none'` none. */
+function paintInheritedGlow(levels: readonly string[], glowOf: (id: string) => StampGroupGlow | 'none' | undefined): StampGroupGlow | null {
   const glow = levels.map(glowOf).find((said) => said !== undefined);
   return glow && glow !== 'none' && !paintGlowProblem(glow) ? glow : null;
 }

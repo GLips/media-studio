@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { paintKeyed } from '#lib/paint/animation/models/paint-keyed.ts';
+import type { PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
 import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { compilePaintingSelection, paintingStepNode } from '#lib/paint/document/models/painting-document-compile.ts';
 import type { Layer, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
@@ -104,15 +105,39 @@ test("a cel skinned to others solves under its skin's name: ends painted alike t
   assert.equal(bodyPose(day), bodyPose(day));
 });
 
-test('a layer inside a rig drawn as pieces shows whole or not at all: refused at load as a constant, as it draws as a callback', () => {
-  const props = (visibility: number | (() => number)): PaintedShotProps => ({
-    camera, span: SPAN, planes: [{ id: 'front', depth: 1, source: layersOf(pond(true), ['sky', 'heron']) }],
-    rigs: { 'front/heron': { parts: HERON_PARTS, pose: {} } }, visibility: { 'front/neck': visibility },
+test('a layer inside a rig drawn as pieces fades in its picture, its film and its share of the card alike; at 0 it lays nothing', () => {
+  const piecesAt = (visibility: PresentationValue<number>) => {
+    const { compiled, plan } = planAt({
+      camera, span: SPAN, planes: [{ id: 'front', depth: 1, source: layersOf(pond(true), ['sky', 'heron']) }],
+      rigs: { 'front/heron': { parts: HERON_PARTS, pose: {} } }, visibility: { 'front/neck': visibility },
+    }, paintMoment(0));
+    const [{ steps, levels }] = plan.pieces;
+    return { laid: steps.map((index) => paintingStepNode(compiled, compiled.steps[index])), levels };
+  };
+  assert.deepEqual(piecesAt(1), { laid: ['heron', 'body', 'neck'], levels: null });
+  // Laid in place: the heron's card, then its body and neck; the sky's sheet is the root's.
+  assert.deepEqual(piecesAt(() => 0.5), { laid: ['heron', 'body', 'neck'], levels: { opacity: [1, 1, 0.5], counted: [[1], [1, 0.5]], fades: [] } });
+  assert.deepEqual(piecesAt(0), { laid: ['heron', 'body'], levels: null });
+});
+
+/** A glow brightening from nothing to amount `to` over a second. */
+const brightening = (to: number) => paintKeyed([{ at: 0, value: { amount: 0, threshold: 0.3 } }, { at: 1, value: { amount: to, threshold: 0.3 } }]);
+
+test("a glow in time is read at the held moment of the node stating it, shared by what it holds; at amount 0 nothing emits", () => {
+  const props = (to: number): PaintedShotProps => ({
+    camera, span: SPAN, planes: [{ id: 'front', depth: 1, source: layersOf(pond(false), ['sky', 'heron']) }],
+    motion: { nodes: [{ id: 'front/heron', clock: { hold: 12 }, glow: brightening(to) }, { id: 'front/neck', glow: 'none' }] },
   });
-  assert.deepEqual(compilePaintedShot(props(0.5), []).problems.map(({ message }) => message), ['is 0.5, inside front/heron, drawn as pieces: a layer or group there shows (1) or doesn\'t (0)']);
-  const { compiled, plan } = planAt(props(0), paintMoment(0));
-  assert.deepEqual(plan.pieces[0].steps.map((index) => paintingStepNode(compiled, compiled.steps[index])), ['heron', 'body']);
-  assert.throws(() => planAt(props(() => 0.5), paintMoment(0)), /front\/neck's visibility is 0.5 at 0 s, inside front\/heron, drawn as pieces/);
+  const glowsAt = (at: number) => {
+    const { plan } = planAt(props(1), paintMoment(at));
+    return { emits: plan.emits, glows: plan.steps.map((step) => step?.glow ?? null) };
+  };
+  assert.deepEqual(glowsAt(0.4), { emits: false, glows: [null, null, null] });
+  // Held on twelves: at 0.9 s the heron shows its half-second drawing, its glow halfway up.
+  assert.deepEqual(glowsAt(0.9), { emits: true, glows: [null, { amount: 0.5, threshold: 0.3 }, null] });
+  assert.deepEqual(compilePaintedShot(props(-1), []).problems.map(({ owner, message }) => `${owner}: ${message}`), [
+    'front/heron: its glow needs an amount of 0 or more and a threshold in 0..1, not -0.5 and 0.3, at 0.5 s',
+  ]);
 });
 
 /** A back laid a twentieth larger than the frame, drifting right 4 px a second: past its 8 px to spare after 2 s. */

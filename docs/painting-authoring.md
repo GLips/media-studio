@@ -1151,9 +1151,9 @@ move and shutter show of it; a back painted short of that is refused, naming the
 | occurrence | `<plane id>/<layer or group key>`, at any depth of the tree | the same layer on two planes is two occurrences; a plane's occurrences are fixed by its first evaluation and checked each frame |
 | span | `span: {from, to, fps}`, the scene seconds the shot's frames show: `sceneSecondsOf(clock).span` | every value is sampled at its frames and their shutters' ends, for what the shot checks and warns of (Values in time); a render refuses a span at another frame rate than its composition's, or short of its scene's frames |
 | motion | `motion {nodes, plays?}`: `OccurrenceMotionNode`s and the animation feature's plays, none playing when `plays` is left out; node ids are occurrence keys | a node's parent is its enclosing group's node, else its plane. A group's node takes all a layer's does, with one phase, seed and map for everything it holds. A `place` or `poses` play's clip takes a `value` (Values in time) |
-| visibility | `visibility: {[occurrence]: 0..1, or a value in time}` | multiplies the occurrence's composite; a group's fades all it holds as one, and an own sheet's owner, a layer or a group, fades its card with its paint (Sheets). Any other layer's fades its own film, and thins the card it lies on only where its paint alone cut it: what its water did to other layers' paint on the sheet stays (Sheets). A picture or three plane's fades its picture or render, and what a mask reads of it. Inside a rig drawn as pieces, a layer or group shows (1) or doesn't (0): fade the rigged group whole. The opaque back takes none, being shown wherever the frame is; a clear back over HTML fades as a nearer plane does |
-| glow, boil, pins, sway, flutter, place | node fields and plays (Reference) | move finished paint on a sheet the occurrence owns, its marks before painting otherwise (Sheets); boil wobble moves finished paint either way. Boil wobble and sway phase follow the occurrence key |
-| rig | `rigs: {[group occurrence]: {parts, pose}}` (Reference) | a rigged node takes place, clock, glow and boil, not pins, sway or flutter. On a sheet the group or a cel owns, paint, paper and edge bend as pieces (**NEW** in shots); otherwise the cels' marks are posed before painting (**NEW**) |
+| visibility | `visibility: {[occurrence]: 0..1, or a value in time}` | multiplies the occurrence's composite; a group's fades all it holds as one, and an own sheet's owner, a layer or a group, fades its card with its paint (Sheets). Any other layer's fades its own film, and thins the card it lies on only where its paint alone cut it: what its water did to other layers' paint on the sheet stays (Sheets). A picture or three plane's fades its picture or render, and what a mask reads of it. Inside a rig drawn as pieces, a cel, layer or group fades as it does laid in place, solving nothing, and at 0 lays nothing: `visibility: {'front/mouth-open': paintKeyed([{ at: 2, value: 1 }, { at: 2.4, value: 0 }])}`. Each new level reads the rig's picture back once, a readback a frame while it fades. A cel whose paint alone cut its card keeps that paper whole until it's half gone, so its paint pales on paper rather than thinning to what's behind: a cel to fade card and all owns its sheet. The opaque back takes none, being shown wherever the frame is; a clear back over HTML fades as a nearer plane does |
+| glow, boil, pins, sway, flutter, place | node fields and plays (Reference) | move finished paint on a sheet the occurrence owns, its marks before painting otherwise (Sheets); boil wobble moves finished paint either way. Boil wobble and sway phase follow the occurrence key. `glow` is a constant or a value in time, read at its node's held moment (Reference › Glow): `glow: paintKeyed([{ at: 0, value: { amount: 0, threshold: 0.4 } }, { at: 1, value: { amount: 1.5, threshold: 0.4 } }])` |
+| rig | `rigs: {[group occurrence]: {parts, pose}}` (Reference) | a rigged node takes place, clock, glow and boil, not pins, sway or flutter; drawn as pieces, it lays no glow. On a sheet the group or a cel owns, paint, paper and edge bend as pieces (**NEW** in shots); otherwise the cels' marks are posed before painting (**NEW**) |
 | lay | a plane's `lay`: still, moving (a value in time), or on the frame, a pin or a cover | where its document lies in frame px (Lay forms, below) |
 | hold | plane `clock: {hold: n}` holds its presentation and motion: its lay, visibility and rig poses, and its nodes' plays; `sourceClock: {hold: n}` holds what `source` reads (a callback's prefix, property values and dissolve weights, a picture's `pictureAt`, a three scene's `poseAt`) | each callback reads its clock's held moment, floored to the hold's grid. Both start from the frame's moment; neither holds the other's. The camera still moves through the shutter |
 | masks | `alphaOf` (another drawable's coverage, partial alpha included, where it lies this frame: a plane by id, painted, picture, three or instanced, or a painted plane's occurrence), `invert?` | **NEW**, on painted planes only. It cuts the plane's paint, glow and the own-sheet paper it shapes; the ground stays whole. A plane's masks multiply. To leave a layer unmasked, put it on a second plane at the same depth. No mask reads its own plane, through any chain. Paint shown over time, along a path or by a field, is the document's to say: a layer's or group's `reveal` (Time). `alphaOf` reads every drawable where the camera shows it this frame, through both lays and the parallax between their depths: a reader's plane px is found on the frame and read on the drawable's plane there, so the cut stays on what it reads on the frame as the camera pans, while the reader's paint slides by at its own depth. At one depth that's the same plane px, as at rest. A three plane's coverage is read where its render shows it; an instanced plane's items where the camera shows them, sharp and still. A drawable's coverage is cut by its own plane's masks and visibility. A part inside a rig drawn as pieces isn't read apart: read the rig. A reader is laid anew only when what it reads changes: a painted plane's picture, a picture source's new picture, a three render's frame, an instanced plane's items moved, faded or repainted, a drawable's visibility, or where the camera shows it against the reader (each frame a camera move parts their depths). A dissolving plane's masks cut both ends alike, and reading one reads its ends' coverage blended as its picture is. Under an open shutter the reference cuts each exposure where its own views lay it; fast mode cuts at the frame's moment and blurs the cut as the reader moves, so a reader sliding past what it reads smears the cut's edge a little wider (half the difference in their travel over the shutter) |
@@ -1172,9 +1172,10 @@ on one sheet share it; presentation of one layer acts on its own film, never on 
 
 Whatever a shot shows that may change takes one type, `PresentationValue<T>` (`#studio`): a constant, or a function
 of the moment, `(m) => T`, read at each exposure (`m.at` the second seen, a shutter's ends included; `m.frame` the
-frame shown). A plane's `lay`, `source` and `visibility`, a rig's `pose`, a node's `place` and `poses` plays, and the
-camera's `move` and `focus` plays all take it, a play as its clip's `value`. A play's value reads its clip's seconds
-(scene seconds less its clock's `at`, through its rate, loop and hold); the rest read their plane's moment.
+frame shown). A plane's `lay`, `source` and `visibility`, a rig's `pose`, a node's `glow`, its `place` and `poses`
+plays, and the camera's `move` and `focus` plays all take it, a play as its clip's `value`. A play's value reads its
+clip's seconds (scene seconds less its clock's `at`, through its rate, loop and hold); a glow, its node's held moment;
+the rest, their plane's moment.
 
 `paintKeyed(keys, { between? })` (`#studio`; from models, `#lib/paint/animation/models/paint-keyed.ts`) makes that
 function from keys, over any value made of numbers: a number, a point, a placement, a camera pose, an object or array
@@ -1675,7 +1676,8 @@ moment and shutter ends, the fix for that moment's lay.
 **Motion nodes** (`OccurrenceMotionNode`: `PaintMotionNode` without `parent` or `live` marks): `{id, pivot?, pins?,
 marks?, clock?, glow?}`. `pivot` document px (the origin); `marks`: `'stuck'` (default), `{boil: {every, amount?,
 scale?, reseed?}}` (every n frames; wobble `amount` px (2.2) at feature `scale` px (45), document px; no pivot
-needed); `clock`: `{hold: n}` frames or `{freeze: s}`, inside its plane's; `glow: {amount, threshold}`. Pins:
+needed); `clock`: `{hold: n}` frames or `{freeze: s}`, inside its plane's; `glow`: `{amount, threshold}`, a value in
+time of one, or `'none'` (Glow). Pins:
 `PaintPinRig`. Marks laid anew at each pose: pose the layer on a sheet it doesn't own.
 
 **Glow** is the light a node's paint adds to its plane, over the paint and paper the plane holds under it, per
@@ -1691,6 +1693,15 @@ darker paint; a moon or a window left as paper, or glazed over paper, glows on n
 none of what's under it: warm paint over a dark road glows warm, so keep a road's `amount` low. A threshold near 0
 glows every veil; raise it to keep only the bright. Thin paint glows by its own light alone, never the backing it's
 measured on, so it wants a lower threshold than thick.
+
+A node's glow lights each layer it holds that states none nearer (`'none'` states no glow), and is read once a moment,
+at the node's held moment, so a group's keyed glow pulses all it holds as one; at an `amount` of 0 it lays no light
+and costs nothing. A glow outside its ranges is refused at load, a callback's naming the second it strays at.
+Visibility acts on glow where it acts on paint. A layer's own visibility, a mask and a reveal thin its film before its
+light is measured, so they act before the threshold: at visibility v the film adds v of its light, and what glows is
+that light's luminance past the threshold, so its glow falls faster than its paint and is gone once that luminance is
+under the threshold. A group's or an own sheet owner's visibility, and the plane's, mix the light after it's measured,
+scaling the glow by v as `amount` does. A rig drawn as pieces lays no glow.
 
 **Plays** (`paintMotionPlay(node, clip, {clock, origin})`): clock `{at, rate?, loop?: {period, mode?: 'repeat' |
 'pingpong', times?}, hold?, until?}` or `{at, freeze}`; `at` scene s, the rest clip s or frames. A play writes its

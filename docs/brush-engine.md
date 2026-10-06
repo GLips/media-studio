@@ -181,7 +181,9 @@ sheet, clocked or not; the gate's `schedule/` and `sheet/` cases hold it to the 
 `stamp-sheet-composite.ts` lays a selection's solved sheets as one picture (ENGINE 5.4): the root's paper as the
 ground, then each film where its layer comes in document order, and an own sheet's card (its paper, wherever the union
 of its films' coverage reaches half, by `STAMP_OPAQUE_COVER`) where its owner comes, before every node under it, so a
-nested sheet lies on its parent's card and a scene layer under the owner glazes over the card. Each sheet lays with its
+nested sheet lies on its parent's card and a scene layer under the owner glazes over the card. Its `shown` levels, a
+rig's pieces fading, lay each film at an opacity, count a card's films as far as they show, and mix spans faded apart
+back by their visibility (`studio/stamp-span-fade-pass.ts`), as a shot's plane lays them. Each sheet lays with its
 own compositor and lay, so one device holds several papers; a sheet its owner's chain poses lays through a rest
 texture, films and edge sampled at the rest point (`drawPlacedRest`, by the map's words and its inverse's,
 `StampSheetPlace`), so its grain moves with it. The edge is the films' union, cached under their keys (producer
@@ -486,7 +488,10 @@ it, so paint a nearer plane covers doesn't glow. The two renderers measure a glo
 group on the plane dims it by its cover (a glaze leaves it). A shot's is the light its group adds past its threshold:
 the painting's linear light over the group's box is kept (f32) before it's laid, and what the lay added, per channel
 and never below 0, goes into the emission, its colour kept, its luminance less the threshold (none at or under it),
-times `amount`. No coverage multiplies it: the lay already holds the film's opacity, visibility and masks. The back
+times `amount`. No coverage multiplies it: the lay already holds the film's opacity, visibility and masks. A glow,
+constant or in time, is read once a moment on the node stating it (`shotNodeGlowAt`, `shot-frame-plan.ts`) and named
+in the plane's key, so a pulse lays its plane anew as it changes; at an `amount` of 0 the film lays no light. A
+pieces picture lays none. The back
 glows on its paper, a clear plane on its black lay (`stampPlaneGlowsOn`): on white, light paint over nothing adds
 nothing. So a veil glows by its thickness, a halo over a lamp's glass adds none of the glass's light, warm paint over
 a dark road glows warm, and a glaze, taking light, glows only by what it scatters. Paper and a ground count as what's
@@ -615,7 +620,11 @@ its index in its sheet's program, whose mixing group is its palette and drying, 
 it (`readSteps` in `studio/shot-rig-pieces.ts` hands the composite each sheet's films whole, `StampSheetKeptFilms`).
 A card is cut round its sheet's films, each counted as far as it shows (its layer's visibility times its groups'
 below the owner; a cel a rig hides, not at all), so a view switched off takes its paper, as a pieces rig's hidden
-cels do: a composite's card counts the films its steps lay on its sheet (`StampSheetsComposite.cardFilms`).
+cels do: a composite's card counts the films its steps lay on its sheet (`StampSheetsComposite.cardFilms`). Inside
+the rig, a node at visibility 0 lays nothing; one between gives the read its levels (`ShotPiecesPlan.levels`,
+`StampSheetsComposite.shown`): each film's opacity, each card's count of its films, and the spans of the groups and own
+sheets' owners faded apart, kept and mixed back as a plane's lay does. The levels join the read's key, so a fade reads
+the rig's picture back once per level; a rig all shown has none.
 `studio/shot-renderer.ts` solves each painted plane once a frame (`studio/shot-painted-plane.ts`,
 through `painting-sheets-solve.ts`), each selection a dissolve blends on its own, if it shows at one of the frame's
 exposures (`shot-shown.ts`: its visibility above 0, and its ground paper or a layer above 0 through its groups; the
@@ -626,7 +635,7 @@ its pieces rigs posed, the spans of the occurrences faded apart, groups and own 
 key naming all of it. `studio/shot-sheets-lay.ts` lays it over `stamp-lattice-pass.ts`: ground, then each card and
 film where its owners and the plane's place put it, a pieces rig's picture at its card by the compositor's
 `layPicture`, a faded group's or own sheet owner's span mixed back by its visibility, card and paint as one
-(`studio/shot-span-fade-pass.ts`). The plane's picture is
+(`painting/studio/stamp-span-fade-pass.ts`). The plane's picture is
 the old renderer's pass (`painting/studio/stamp-plane-picture-pass.ts`), kept in the device's cache under the plan's
 key. A dissolve's selections are each laid, kept and blurred so, then summed by weight into a stage-sized picture
 (`studio/shot-dissolve-pass.ts`): every layer a plane's picture holds (opaque colour, colour and transmittance, glow,
@@ -801,7 +810,10 @@ it; and a leaf owning its card faded halfway, lying between it shown and gone, a
 without it, with nothing solved. The sprig (`stamp-gate-pieces.ts`, `shot/pieces`) owns its card and is drawn as
 pieces: its flag swapped to a cel of another colour, its bud's rim switched off and its seed hidden by a clear cel,
 each ahead of later parts, draw as the sprig painted without what they hide and every cel it holds shown, with
-nothing solved. The reference leaves the hidden layer out: every seed a sheet's solve draws is named by keys, never by
+nothing solved; its bud cel fading draws as the sprig laid in place fading it, halfway no further from that than shown
+and gone are and apart from both, with nothing solved. The lamp's glass (`stamp-gate-shot-glow.ts`, `shot/glow`)
+glowing by a keyed value draws, at its key of 0, as the lamp glowing nowhere and, at its last, as its constant glow,
+spilling between them halfway. The reference leaves the hidden layer out: every seed a sheet's solve draws is named by keys, never by
 a layer's place on its sheet, so a layer left out reseeds no other.
 Each shot's frame is a baseline (`shot/`) accepted by eye. `shot/page`
 (`stamp-gate-shot-dom-page.ts`) holds a shot's element on the page, scaled as a player shows it, and reads it through

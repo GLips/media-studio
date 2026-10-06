@@ -8,7 +8,7 @@ import type { PaintNodeClock } from '#lib/paint/animation/models/paint-clock.ts'
 import type { PaintBoilMarks, PaintMotionNode, PaintMotionPlay } from '#lib/paint/animation/models/paint-motion-compile.ts';
 import type { PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
 import type { NodeKey } from '#lib/paint/document/models/painting-document.ts';
-import type { PaintMoment, StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import type { PaintMoment, StampGroupGlow, StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampPictureAt, StampPlaneExtent } from '#lib/paint/painting/models/stamp-plane.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import type { PaintRigCutDeclaration } from '#lib/paint/rig/models/paint-rig-cuts.ts';
@@ -145,7 +145,11 @@ export type OccurrenceRig = {
  * occurrence, else its plane. A group's node takes pins, sway, flutter and boil with one phase, seed and map for all
  * it holds. Marks stay put or boil; to lay them anew per pose, pose it on a sheet it doesn't own.
  */
-export type OccurrenceMotionNode = Omit<PaintMotionNode, 'parent' | 'marks'> & { readonly marks?: 'stuck' | { readonly boil: PaintBoilMarks } };
+export type OccurrenceMotionNode = Omit<PaintMotionNode, 'parent' | 'marks' | 'glow'> & {
+  readonly marks?: 'stuck' | { readonly boil: PaintBoilMarks };
+  /** Its light, read at its held moment, shared by what it holds that says none (`'none'`: no glow). */
+  readonly glow?: PresentationValue<StampGroupGlow> | 'none';
+};
 
 /** A painting drawn into a texture a three source samples by `id`, `widthPx` × `heightPx`, timed by the shot's moment. */
 export type PaintedTexture = { readonly id: string; readonly source: PresentationValue<PaintedSource>; readonly widthPx: number; readonly heightPx: number };

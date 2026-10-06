@@ -90,6 +90,20 @@ export type StampSheetProgram = {
  */
 export type StampSheetCompositeStep = { readonly kind: 'card'; readonly sheet: number } | { readonly kind: 'film'; readonly sheet: number; readonly film: number };
 
+/** A composite's steps `first` to `last` (places in its steps) laid apart and mixed back by `visibility`, below 1. */
+export type StampSheetCompositeFade = { readonly first: number; readonly last: number; readonly visibility: number };
+
+/**
+ * How much of what a composite's steps lay shows, as visibility fades it: `opacity`, each step's film's (by its place
+ * in the steps; a card's unread); `counted`, how much of each film's coverage its sheet's card counts (by sheet, then
+ * film); `fades`, the spans laid apart, outermost first.
+ */
+export type StampSheetCompositeShown = {
+  readonly opacity: readonly number[];
+  readonly counted: readonly (readonly number[])[];
+  readonly fades: readonly StampSheetCompositeFade[];
+};
+
 /**
  * Each wash's first and last entry in `program`'s order (-1 for a wash with none): where it starts, its clip and
  * checkpoint with it, and where it ends, its set time measured there.

@@ -21,6 +21,7 @@ import { createStampLensFrames, createStampLensSourceLayers, stampLensSourcesBlu
 import { stampLensSourceExposureOf, type StampLensSource, type StampLensSourceExposure } from '#lib/paint/painting/studio/stamp-lens-source.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { loadStampPictureSources } from '#lib/paint/painting/studio/stamp-picture-sources.ts';
+import { createStampSpanFade } from '#lib/paint/painting/studio/stamp-span-fade-pass.ts';
 import { createStampGrowingUniformArena } from '#lib/paint/painting/studio/stamp-uniform-arena.ts';
 import { loadPaintedThreeSources } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
@@ -37,7 +38,6 @@ import { shotDrawableOrder } from '../models/shot-plan.ts';
 import type { ShotMomentAt } from '../models/shot-sheet-lays.ts';
 import { shotWarmFrames } from '../models/shot-warm.ts';
 import { shotCanvasPaintSurfaces, type ShotCanvasSurface } from './shot-canvas.ts';
-import { createShotSpanFade } from './shot-span-fade-pass.ts';
 import { shotItemsCoverages, shotItemsLayer, type ShotItemsCoverage } from './shot-instance-passes.ts';
 import { createShotPaintedPlanes, type ShotPlaneMoment, type ShotPlaneSolved, type ShotSourceRead } from './shot-painted-plane.ts';
 import { createShotPaintedTextures, type ShotWarmSolve } from './shot-painted-textures.ts';
@@ -163,7 +163,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
     const sources = new Map<string, StampLensSource>([...(three?.sources ?? []), ...pictures.sources]);
     const piecesDrawer = [...shot.rigs.values()].some(({ pieces }) => pieces) ? await createShotRigPiecesDrawer(owner, stage) : null;
     if (piecesDrawer) made.push(piecesDrawer);
-    const layer = createShotSheetsLayer(owner, { stage, arena, fade: createShotSpanFade(owner, arena) });
+    const layer = createShotSheetsLayer(owner, { stage, arena, fade: createStampSpanFade(owner, arena) });
     const planes = createShotPaintedPlanes(owner, { shot, stage, brushOf, costs, arena, layer, rigPictures: createShotRigPictures(owner, costs), piecesDrawer });
     made.push(planes);
     const canvases = surfaces.map((surface, index) => {

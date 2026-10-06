@@ -11,7 +11,7 @@ import { STAMP_GATE_CARDS_AT, STAMP_GATE_CARDS_POSED_AT, stampGateCardsPosedShot
 import { STAMP_GATE_FRAME_TOLERANCE, stampGateFrameDifference, stampGateFrameDifferenceText, stampGateFramePasses } from '../models/stamp-gate-frames.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { STAMP_GATE_HERON_MOVE, stampGateHighPass, stampGatePeakShift } from '../models/stamp-gate-paper-heron.ts';
-import { STAMP_GATE_PIECES_AT, stampGatePiecesFlatShot, stampGatePiecesShot } from '../models/stamp-gate-pieces.ts';
+import { STAMP_GATE_PIECES_AT, STAMP_GATE_PIECES_FADE_AT, stampGatePiecesFadingShot, stampGatePiecesFlatShot, stampGatePiecesShot } from '../models/stamp-gate-pieces.ts';
 import { paintFilmShutter } from '#lib/paint/animation/models/paint-camera.ts';
 import {
   STAMP_GATE_LONE_DROP_AT, STAMP_GATE_LONE_DROP_TRAVEL, STAMP_GATE_RAIN, STAMP_GATE_SLIDING_POST, stampGateLoneDropShot, stampGateRainShot, stampGateSlidingPostShot,
@@ -321,9 +321,28 @@ async function checkCards(): Promise<StampGateWashCheck[]> {
 const piecesFlat = async (painted: Parameters<typeof stampGatePiecesFlatShot>[0]) => stampGateRgb((await stampGateShotFrames(stampGatePiecesFlatShot(painted), [STAMP_GATE_PIECES_AT.rest])).frames[0]);
 
 /**
+ * shot/pieces: the sprig's bud cel fading inside its pieces draws as the sprig laid in place does: halfway, no further
+ * from it than shown or gone are, and apart from both; fading solves nothing. Laid in place, a cel whose paint alone
+ * cut its card keeps that paper until its share thins it, so halfway isn't between shown and gone.
+ */
+async function checkPiecesCelFade(): Promise<StampGateWashCheck> {
+  const { shown, faded, gone } = STAMP_GATE_PIECES_FADE_AT, times = [shown, faded, gone];
+  const [{ frames: drawn, costs: taken }, { frames: placed }] = [await stampGateShotFrames(stampGatePiecesFadingShot(), times), await stampGateShotFrames(stampGatePiecesFadingShot(false), times)];
+  const [atShown, atFaded, atGone] = drawn.map(stampGateRgb), [offShown, offFaded, offGone] = drawn.map((frame, i) => stampGateFrameDifference(stampGateRgb(frame), stampGateRgb(placed[i])));
+  const [fromShown, fromGone] = [stampGateFrameDifference(atFaded, atShown), stampGateFrameDifference(atFaded, atGone)], solves = taken.slice(1).flatMap(solvedText);
+  const { max, mean } = STAMP_GATE_FRAME_TOLERANCE, ends = { max: Math.max(offShown.max, offGone.max), mean: Math.max(offShown.mean, offGone.mean) };
+  return {
+    id: 'shot/pieces: cel fade', passed: offFaded.max <= ends.max + max && offFaded.mean <= ends.mean + mean && !stampGateFramePasses(fromShown) && !stampGateFramePasses(fromGone) && !solves.length,
+    detail: `the sprig's bud cel at half visibility, drawn as pieces, lies ${stampGateFrameDifferenceText(offFaded)} from the sprig laid in place (shown, ${stampGateFrameDifferenceText(offShown)}; gone, `
+      + `${stampGateFrameDifferenceText(offGone)}; past those by ${max} levels or ${mean} mean fails), ${stampGateFrameDifferenceText(fromShown)} from it shown and ${stampGateFrameDifferenceText(fromGone)} from it gone `
+      + `(within ${max} levels of either fails), and fading solved ${solves.join(', ') || 'nothing'}`,
+  };
+}
+
+/**
  * shot/pieces: a sprig drawn as pieces lays every film by its own palette, whatever is hidden ahead of it. Its flag
  * swapped to a cel of another colour, its bud's rim switched off and its seed hidden by a clear cel each draw as the
- * sprig painted without what each hides, solving nothing.
+ * sprig painted without what each hides; and its bud fades (checkPiecesCelFade).
  */
 async function checkPieces(): Promise<StampGateWashCheck[]> {
   const { rest, swapped, off, cleared } = STAMP_GATE_PIECES_AT;
@@ -346,6 +365,7 @@ async function checkPieces(): Promise<StampGateWashCheck[]> {
       id: 'shot/pieces: clear cel', passed: stampGateFramePasses(clear) && !solves.length,
       detail: `the sprig with its seed showing its clear cel lies ${stampGateFrameDifferenceText(clear)} from it painted without the seed (${allowed}); swapping, switching and clearing solved ${solves.join(', ') || 'nothing'}`,
     },
+    await checkPiecesCelFade(),
   ];
 }
 

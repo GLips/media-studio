@@ -2,7 +2,7 @@
 // drawn as pieces: a flag of two cels of different colours, a bud whose cel is a petal and a rim, a seed of a painted
 // cel and a clear one, and a leaf last. Every film is laid by its own palette and drying whatever's hidden ahead of
 // it: the flag swapped, the rim switched off and the seed hidden by its clear cel each draw as the sprig painted
-// without what's hidden, every cel left a part of its own.
+// without what's hidden, every cel left a part of its own. Its bud cel fades inside the pieces as laid in place.
 
 import type { Layer, LayerNode, Mix, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
 import type { PropertySchema, PropertyValues } from '#lib/paint/document/models/painting-properties.ts';
@@ -106,6 +106,21 @@ const piecesShot = (painted: Partial<PropertyValues<typeof piecesProperties>>, r
 export const stampGatePiecesShot = (): StampGateShot => ({
   ...piecesShot({}, { parts: STAMP_GATE_PIECES_PARTS, pose: (moment) => rowAt(moment).pose }), visibility: { 'pieces/bud-rim': (moment) => rowAt(moment).rim },
 });
+
+/** The scene seconds the sprig's bud cel is read at as it fades: shown, halfway, and gone. */
+export const STAMP_GATE_PIECES_FADE_AT = { shown: 0, faded: 1, gone: 2 } as const;
+
+/** The bud's visibility from each of STAMP_GATE_PIECES_FADE_AT's seconds on. */
+const BUD_FADE = [{ from: STAMP_GATE_PIECES_FADE_AT.shown, visibility: 1 }, { from: STAMP_GATE_PIECES_FADE_AT.faded, visibility: 0.5 }, { from: STAMP_GATE_PIECES_FADE_AT.gone, visibility: 0 }] as const;
+
+/**
+ * The sprig at rest, its bud cel shown, then at half visibility, then at 0 (STAMP_GATE_PIECES_FADE_AT): drawn as
+ * pieces, or unless `rigged` laid in place, its blue flag cel hidden as the rig's rest hides it.
+ */
+export const stampGatePiecesFadingShot = (rigged = true): StampGateShot => {
+  const shot = piecesShot({}, { parts: STAMP_GATE_PIECES_PARTS, pose: {} }), bud = ({ at }: PaintMoment) => BUD_FADE.findLast(({ from }) => from <= at)!.visibility;
+  return rigged ? { ...shot, visibility: { 'pieces/bud': bud } } : { ...shot, rigs: {}, visibility: { 'pieces/flag-blue': 0, 'pieces/bud': bud } };
+};
 
 /**
  * The sprig painted as `painted` says (a layer whose property is false left out), every cel it holds shown at rest as

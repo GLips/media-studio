@@ -1,7 +1,7 @@
 // shot-sheets-lay.ts: a painted plane's selection laid at one moment onto its painting (ENGINE 5.4, 6.1 step 6): its
 // ground, then each composite step through its lattice (shot-sheet-lays.ts), back to front. A film is laid where its
 // lattice's rest map reads it; a card lays its paper over its films' union, each as far as it shows; a pieces rig's
-// render lays as paint by its alpha. A faded span is mixed back by shot-span-fade-pass.ts. A film's reveals cut it,
+// render lays as paint by its alpha. A faded span is mixed back by stamp-span-fade-pass.ts. A film's reveals cut it,
 // its glow and its card's union. Masks cut all but the ground.
 //
 // Everything lies through rest maps, so the plane's place, its nodes and a frame moment's poses are one path; at rest
@@ -20,13 +20,13 @@ import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-
 import type { StampPaintBacking } from '#lib/paint/painting/studio/stamp-paint-lay-pass.ts';
 import { createStampPlaneGlows } from '#lib/paint/painting/studio/stamp-plane-glow-pass.ts';
 import { createStampRevealPass } from '#lib/paint/painting/studio/stamp-reveal-pass.ts';
+import { stampPlainFaded, type StampFadedTarget, type StampSpanFade, type StampSpanKept } from '#lib/paint/painting/studio/stamp-span-fade-pass.ts';
 import { stampSheetEdge, type StampSheetsLays } from '#lib/paint/painting/studio/stamp-sheet-composite.ts';
 import { keptStampSheetFilm, type StampSheetFilmKept } from '#lib/paint/painting/studio/stamp-sheet-films.ts';
 import type { StampUniformArena } from '#lib/paint/painting/studio/stamp-uniform-arena.ts';
 import type { ShotLattice } from '../models/shot-lattice.ts';
 import type { OccurrenceKey } from '../models/shot-props.ts';
 import type { ShotFadeSpan, ShotGroundLay, ShotMaskAt, ShotPlaneRead, ShotStepFrame } from '../models/shot-sheet-lays.ts';
-import { shotPlainFaded, type ShotFadedTarget, type ShotSpanFade, type ShotSpanKept } from './shot-span-fade-pass.ts';
 import { createShotMaskPasses, type ShotCoverStep, type ShotMaskCoverage } from './shot-mask-passes.ts';
 
 /** A rig's pieces as drawn this moment, stage-sized: their premultiplied linear colour, their motion, and the stage texels they cover. */
@@ -67,7 +67,7 @@ type ShotStagedLattice = { readonly pass: StampLatticePass; readonly span: Stamp
  * gather (shotSheetsLayer's `coverageTarget`) on the lay that traces (null on the black lay, or for no reads).
  */
 export type ShotSheetsLayInto = {
-  readonly painting: ShotFadedTarget;
+  readonly painting: StampFadedTarget;
   readonly backing: StampPaintBacking;
   readonly emission: GPUTexture | null;
   readonly motion: GPUTexture | null;
@@ -129,7 +129,7 @@ function shotLayerTargetStores(owner: StampPaintGpuOwner): ShotLayerTargetStores
 }
 
 /** Lays of painted planes on `owner`'s device onto `stage`, each pass's uniform from `arena`, fading through `fade`. */
-export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena, fade }: { stage: StampStage; arena: StampUniformArena; fade: ShotSpanFade }) {
+export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena, fade }: { stage: StampStage; arena: StampUniformArena; fade: StampSpanFade }) {
   const { device } = owner, { margin } = stage, linearClamp = stampPaintSamplers(device).linearClamp, masking = createShotMaskPasses(owner, { stage, arena });
   const revealing = createStampRevealPass(owner, device, stage), glows = createStampPlaneGlows(owner, { stage, arena });
   const passes = new Map<string, StampLatticePass>();
@@ -270,9 +270,9 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
         if (coverage && !whole) masking.cover(encoder, coverage, frame.reads.map((read) => read.ground), { kind: 'ground', rest: restView, box }, null);
         laid = stampBoxUnion(laid, box);
       }
-      const gathered: ShotFadedTarget[] = coverage ? [{ texture: coverage, shape: { kind: 'array', layers: coverage.depthOrArrayLayers }, view: coverage.createView({ dimension: '2d-array' }) }] : [];
-      const fadeTargets = [into.painting, ...[into.emission, into.motion].flatMap((texture) => (texture ? [shotPlainFaded(texture)] : [])), ...gathered];
-      const open: { span: ShotFadeSpan; kept: ShotSpanKept }[] = [];
+      const gathered: StampFadedTarget[] = coverage ? [{ texture: coverage, shape: { kind: 'array', layers: coverage.depthOrArrayLayers }, view: coverage.createView({ dimension: '2d-array' }) }] : [];
+      const fadeTargets = [into.painting, ...[into.emission, into.motion].flatMap((texture) => (texture ? [stampPlainFaded(texture)] : [])), ...gathered];
+      const open: { span: ShotFadeSpan; kept: StampSpanKept }[] = [];
       frame.steps.forEach((step, index) => {
         for (const span of frame.fades) if (span.first === index) open.push({ span, kept: fade.keep(encoder, fadeTargets, open.length) });
         const staging = staged.steps[index];

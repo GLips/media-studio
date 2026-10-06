@@ -19,11 +19,12 @@ import { paintingSheetInGroup, type PaintingSheet, type PaintingTree } from '#li
 import type { PaintMoment, StampGroupGlow } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampFilmRevealLinks } from '#lib/paint/painting/models/stamp-reveal.ts';
 import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
+import type { StampSheetCompositeShown } from '#lib/paint/painting/models/stamp-sheet-program.ts';
 import type { StampPointBox, StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { PaintRigPicture, PaintRigPiece } from '#lib/paint/rig/models/paint-rig-pieces.ts';
 import { shotBackFrameProblem, shotBackGroundBox } from './shot-back.ts';
 import type { CompiledPaintedShot, CompiledShotPaintedPlane } from './shot-compile.ts';
-import { shotPlanePlaceAt, shotPlanePosesAt, shotRigPosedAt, shotVisibilityAt, type ShotFrameRigs } from './shot-frame-plan.ts';
+import { shotNodeGlowAt, shotPlanePlaceAt, shotPlanePosesAt, shotRigPosedAt, shotVisibilityAt, type ShotFrameRigs } from './shot-frame-plan.ts';
 import { shotFilmLattice, shotPlacedLattice, type ShotLattice, type ShotShutterAt } from './shot-lattice.ts';
 import { shotOccurrenceKey, shotOccurrencePlane } from './shot-occurrences.ts';
 import type { OccurrenceKey } from './shot-props.ts';
@@ -76,8 +77,8 @@ export type ShotStepLay =
   | { readonly kind: 'pieces'; readonly rig: string };
 
 /**
- * A step as one moment lays it: its lay, a film's opacity and the glow its layer gives. A film's opacity is its
- * layer's visibility, or 1 where its layer is faded apart, its own span fading it.
+ * A step as one moment lays it: its lay, a film's opacity and the glow its layer gives then (null: none, or none
+ * this moment). A film's opacity is its layer's visibility, or 1 where its layer is faded apart, its own span fading it.
  */
 export type ShotStepFrame = { readonly lay: ShotStepLay; readonly opacity: number; readonly glow: StampGroupGlow | null };
 
@@ -172,13 +173,14 @@ export type ShotPiecesPose = { readonly posed: ShotRigPosed; readonly place: Pai
 
 /**
  * A pieces rig at one moment, before its pictures are read: its rig; the cel each part shows, in part order; the steps
- * its sheets lay (indices in its compile's steps): their cards and its shown cels' films, none under a node faded out;
- * its pose at the moment and at the shutter's ends; and whether it moves between them.
+ * its sheets lay (in its compile's steps): cards and shown cels' films, none under a node at 0; how much of each
+ * shows (null: all); its pose then and at the shutter's ends; and whether it moves.
  */
 export type ShotPiecesPlan = {
   readonly rig: CompiledShotRig;
   readonly shown: readonly NodeKey[];
   readonly steps: readonly number[];
+  readonly levels: StampSheetCompositeShown | null;
   readonly at: ShotPiecesPose;
   readonly shutter: { readonly open: ShotPiecesPose; readonly close: ShotPiecesPose } | null;
   readonly travels: boolean;
@@ -276,32 +278,57 @@ const piecesPoseText = ({ posed, place }: ShotPiecesPose) => `${paintingPoseText
 const latticeTravels = (lattice: ShotLattice) => lattice.travel?.some((value) => Math.abs(value) > 1e-6) ?? false;
 
 /**
- * `input`'s pieces rig, as found, at `moment`, its plane there (`planeAt`) and at the shutter's ends (`planeEnds`).
- * Throws on a visibility inside it between 0 and 1.
+ * How much of what a pieces rig's `steps` lay shows, as a plane lay fades the same nodes: a film by its layer's
+ * visibility unless faded apart; a card's films counted by their visibility below its owner (1 when not laid); a span
+ * for each node in `apart`, over the places its steps take. Null when all shows.
+ */
+function shotPiecesLevels(compiled: PaintingSelectionCompiled, steps: readonly number[], visibilityOf: (node: NodeKey) => number, apart: ReadonlyMap<NodeKey, number>): StampSheetCompositeShown | null {
+  const { tree, sheets } = compiled, laid = sheets.map(({ layers }) => layers.map(() => false));
+  const opacity = steps.map((index) => {
+    const step = compiled.steps[index], node = paintingStepNode(compiled, step);
+    if (step.kind === 'card') return 1;
+    laid[step.sheet][step.film] = true;
+    return apart.has(node) ? 1 : visibilityOf(node);
+  });
+  const counted = sheets.map(({ layers }, s) => layers.map((layer, f) => (laid[s][f] ? shotLayerMarkKeys(tree, layer).reduce((product, key) => product * visibilityOf(key), 1) : 1)));
+  // A node's steps are contiguous in the compile's, so the places of those the rig lays are contiguous too.
+  const fades = [...apart].flatMap(([node, visibility]) => {
+    const inside = new Set(paintingNodeSteps(compiled, node)), places = steps.flatMap((index, place) => (inside.has(index) ? [place] : []));
+    return places.length ? [{ first: places[0], last: places.at(-1)!, visibility }] : [];
+  }).toSorted((a, b) => a.first - b.first || b.last - a.last);
+  const whole = opacity.every((each) => each === 1) && counted.every((films) => films.every((each) => each === 1)) && !fades.length;
+  return whole ? null : { opacity, counted, fades };
+}
+
+/**
+ * `input`'s pieces rig, as found, at `moment`, its plane there (`planeAt`) and at the shutter's ends (`planeEnds`). A
+ * node inside it at 0 lays nothing; one between 0 and 1 fades in its picture (shotPiecesLevels).
  */
 function shotPiecesPlan(input: ShotPlaneLayInput, found: ShotRigFound, { at, shutter: ends }: ShotMomentAt, planeAt: ShotPlaneAt, planeEnds: ShotShutterAt<ShotPlaneAt>): ShotPiecesPlan {
   const { shot, plane, compiled, rigs: { read } } = input, { rig } = found, { tree } = compiled;
   const sheet = compiled.sheets.find(({ sheet: { owner } }) => owner === rig.group)!.sheet;
   const poseAt = (m: PaintMoment, planeAtM: ShotPlaneAt): ShotPiecesPose => ({ posed: shotRigPosedAt(found, read, m, true), place: shotSheetPlaceAt(tree, sheet, planeAtM) });
   const atPose = poseAt(at, planeAt), shutter = ends && planeEnds && { open: poseAt(ends.open, planeEnds.open), close: poseAt(ends.close, planeEnds.close) };
-  const faded = new Set(plane.occurrences.filter(({ groups }) => groups.includes(rig.occurrence)).flatMap(({ key, node }) => {
-    const visibility = shotVisibilityAt(shot, plane.id, key, at);
-    if (visibility > 0 && visibility < 1) throw new Error(`shot: ${key}'s visibility is ${visibility} at ${at.at} s, inside ${rig.occurrence}, drawn as pieces: a layer or group there shows (1) or doesn't (0)`);
-    return visibility === 0 ? [node] : [];
-  }));
-  const unseen = new Set([...faded].flatMap((key) => paintingNodeSteps(compiled, key))), shown = rig.parts.map(({ id }) => atPose.posed.shown.get(id)!);
-  const showing = new Set(shown.flatMap((cel) => rig.celLayers.get(cel)!));
+  const inside = plane.occurrences.filter(({ groups }) => groups.includes(rig.occurrence));
+  const levels = new Map(inside.map(({ key, node }) => [node, shotVisibilityAt(shot, plane.id, key, at)])), visibilityOf = (node: NodeKey) => levels.get(node) ?? 1;
+  const owners = new Set(compiled.sheets.flatMap(({ sheet: { owner } }) => (owner === null ? [] : [owner])));
+  const apart = new Map([...shotFadedApart(inside, visibilityOf, owners)].filter(([, visibility]) => visibility > 0));
+  const unseen = new Set([...levels].flatMap(([node, visibility]) => (visibility === 0 ? paintingNodeSteps(compiled, node) : [])));
+  const shown = rig.parts.map(({ id }) => atPose.posed.shown.get(id)!), showing = new Set(shown.flatMap((cel) => rig.celLayers.get(cel)!));
   const steps = compiled.steps.flatMap((step, index) => {
     if (!paintingSheetInGroup(tree, compiled.sheets[step.sheet].sheet, rig.group) || unseen.has(index)) return [];
     return step.kind === 'card' || showing.has(paintingStepNode(compiled, step)) ? [index] : [];
   });
-  return { rig, shown, steps, at: atPose, shutter, travels: !!shutter && piecesPoseText(shutter.open) !== piecesPoseText(shutter.close) };
+  return {
+    rig, shown, steps, levels: shotPiecesLevels(compiled, steps, visibilityOf, apart), at: atPose, shutter,
+    travels: !!shutter && piecesPoseText(shutter.open) !== piecesPoseText(shutter.close),
+  };
 }
 
 /**
  * `input`'s plane as it lies at `moment`: its sheets where their owners and its place put them, its pieces rigs posed,
- * its fades, ground and masks. Throws on a callback's visibility outside 0..1 (in a pieces rig, not 0 or 1), or its
- * lay of the back short of what the frame reads.
+ * its fades, glows, ground and masks. Throws on a callback's visibility outside 0..1 or glow that can't be drawn, or
+ * its lay of the back short of what the frame reads.
  */
 export function shotPlaneLayPlan(input: ShotPlaneLayInput, moment: ShotMomentAt): ShotPlaneLayPlan {
   const { at, shutter } = moment;
@@ -312,8 +339,8 @@ export function shotPlaneLayPlan(input: ShotPlaneLayInput, moment: ShotMomentAt)
   const piecesRigs = rigs.filter(({ rig }) => rig.pieces);
   const pieces = piecesRigs.map((found) => shotPiecesPlan(input, found, moment, atMoment, shutterAt));
 
-  // What's inside a pieces rig shows whole or not at all in its pictures: it isn't composited apart.
-  const fadable = plane.occurrences.filter((occurrence) => !piecesRigs.some(({ rig }) => occurrence.groups.includes(rig.occurrence)));
+  // What's inside a pieces rig fades in its picture (shotPiecesLevels), so it isn't composited apart here.
+  const fadable =plane.occurrences.filter((occurrence) => !piecesRigs.some(({ rig }) => occurrence.groups.includes(rig.occurrence)));
   const owners = new Set(compiled.sheets.flatMap(({ sheet: { owner } }) => (owner === null ? [] : [owner])));
   const apart = shotFadedApart(fadable, visibilityOf, owners), fades = shotFadeSpans(compiled, apart);
 
@@ -322,11 +349,18 @@ export function shotPlaneLayPlan(input: ShotPlaneLayInput, moment: ShotMomentAt)
   const lays = shotSelectionStepLays({
     compiled, filmBoxes, solved, at: atMoment, shutter: shutterAt, pieces: new Map(piecesRigs.map(({ rig }) => [rig.group, rig.occurrence])), hidden, visibilityOf,
   });
+  // A glow is read once a moment on the node stating it, however many layers share it.
+  const glows = new Map<string, StampGroupGlow | null>();
+  const glowOf = (layer: NodeKey) => {
+    const nearest = motion.nearest.get(shotOccurrenceKey(plane.id, layer)), glow = nearest === undefined ? null : motion.nodes.get(nearest)!.glow;
+    if (!glow) return null;
+    if (!glows.has(glow.from)) glows.set(glow.from, shotNodeGlowAt(motion, glow, at));
+    return glows.get(glow.from)!;
+  };
   const steps = lays.map((lay): ShotStepFrame | null => {
     if (!lay) return null;
     if (lay.kind !== 'film') return { lay, opacity: 1, glow: null };
-    const nearest = motion.nearest.get(shotOccurrenceKey(plane.id, lay.layer));
-    return { lay, opacity: apart.has(lay.layer) ? 1 : visibilityOf(lay.layer), glow: (nearest !== undefined && motion.nodes.get(nearest)?.glow) || null };
+    return { lay, opacity: apart.has(lay.layer) ? 1 : visibilityOf(lay.layer), glow: glowOf(lay.layer) };
   });
 
   const { widthPx, heightPx } = selection.painting.document, groundKind = selection.ground ?? (plane.opaqueBack ? 'paper' : 'transparent');
@@ -353,7 +387,7 @@ export function shotPlaneLayPlan(input: ShotPlaneLayInput, moment: ShotMomentAt)
     reveals.map((sheet) => sheet.map((film) => film.map(({ toRest, at: shownAt }) => [toRest, shownAt]))),
     shutterAt && [planeAtText(shutterAt.open), planeAtText(shutterAt.close)], [...hidden], steps.map((step) => step && [step.opacity, step.glow, step.lay.kind === 'card' && step.lay.films]), fades,
     ground && (ground.kind === 'stage' ? 'stage' : ground.box), pieces.map((each) => [
-      each.rig.occurrence, each.shown, each.steps, piecesPoseText(each.at), each.shutter && [piecesPoseText(each.shutter.open), piecesPoseText(each.shutter.close)],
+      each.rig.occurrence, each.shown, each.steps, each.levels, piecesPoseText(each.at),each.shutter && [piecesPoseText(each.shutter.open), piecesPoseText(each.shutter.close)],
     ]), masks.map((mask) => [mask.drawable, mask.invert]), reads.map(({ drawable }) => drawable), visibility, emits, travels,
   ]);
   return { key, steps, reveals, fades, ground, pieces, masks, reads, visibility, emits, travels };

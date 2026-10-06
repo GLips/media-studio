@@ -8,12 +8,15 @@
 
 import type { PaintBoilWobble } from '#lib/paint/animation/models/paint-boil-displacement.ts';
 import { paintChannelConflicts, type PaintChannelWriter } from '#lib/paint/animation/models/paint-channels.ts';
-import { paintNodeClockProblem, paintNodeClockSteps, paintPlayClockProblem, sceneSeconds, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
+import {
+  paintNodeClockProblem, paintNodeClockSteps, paintNodeTimeAt, paintPlayClockProblem, sceneSeconds, type PaintSceneStep,
+} from '#lib/paint/animation/models/paint-clock.ts';
 import { paintIdPhase, paintMotionClipProblem } from '#lib/paint/animation/models/paint-motion-clips.ts';
 import {
-  compilePaintBoil, filePaintLevelPlay, paintGlowProblem, paintInheritedGlow, paintLevelLanes, paintLevelLanesSorted, type CompiledPaintLevel, type PaintLevelLanes,
+  compilePaintBoil, filePaintLevelPlay, paintGlowProblem, paintLevelLanes, paintLevelLanesSorted, type CompiledPaintLevel, type PaintLevelLanes,
 } from '#lib/paint/animation/models/paint-motion-compile.ts';
 import { paintLevelValueProblems } from '#lib/paint/animation/models/paint-motion-reach.ts';
+import { presentationValueAt, type PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
 import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import type { PaintMoment, StampGroupGlow } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { OccurrenceKey, OccurrenceMotionNode, PaintedShotProps } from './shot-props.ts';
@@ -36,16 +39,22 @@ export type CompiledShotMarks =
   | { readonly kind: 'reseed'; readonly every: number };
 
 /**
+ * The glow a node gives: `value` as node `from` states it (the node itself, or its nearest ancestor saying a glow),
+ * read at `from`'s held moment, so all that shares it reads it once a moment (shotNodeGlowAt).
+ */
+export type CompiledShotGlow = { readonly from: string; readonly value: PresentationValue<StampGroupGlow> };
+
+/**
  * A node compiled: its own level (id, pivot, phase and lanes), the plane it lies on, its implied `parent` (a node's
  * id; null under none), its `clock` (its plane's, its ancestors' and its own, outermost first), its marks and the glow
- * it gives, its own or its nearest ancestor's.
+ * it gives (null: none).
  */
 export type CompiledShotNode = CompiledPaintLevel & {
   readonly plane: string;
   readonly parent: string | null;
   readonly clock: readonly PaintSceneStep[];
   readonly marks: CompiledShotMarks;
-  readonly glow: StampGroupGlow | null;
+  readonly glow: CompiledShotGlow | null;
 };
 
 /**
@@ -62,6 +71,27 @@ export type CompiledShotMotion = {
 };
 
 const motionError = (owner: string, message: string) => paintingProblem('error', owner, 'motion', message);
+
+/**
+ * Why `node`'s glow can't be drawn, or null: a constant's as it loads, a value's at each of `moments` read through its
+ * node's `clock`, the first it fails at.
+ */
+function shotGlowProblem(node: OccurrenceMotionNode, clock: readonly PaintSceneStep[], animationFps: number, moments: readonly PaintMoment[]): string | null {
+  const { glow } = node;
+  if (glow === undefined || glow === 'none') return null;
+  if (typeof glow !== 'function') return paintGlowProblem(glow);
+  for (const moment of moments) {
+    const problem = paintGlowProblem(presentationValueAt(glow, paintNodeTimeAt(clock, moment, animationFps)));
+    if (problem) return `${problem}, at ${moment.at} s`;
+  }
+  return null;
+}
+
+/** The glow node `line[0]` gives (`line` nearest first, `written` by id): the first that says one, `'none'` none. */
+function shotInheritedGlow(line: readonly string[], written: ReadonlyMap<string, OccurrenceMotionNode>): CompiledShotGlow | null {
+  const from = line.find((id) => written.get(id)?.glow !== undefined), value = from === undefined ? undefined : written.get(from)!.glow;
+  return from === undefined || value === undefined || value === 'none' ? null : { from, value };
+}
 
 function compileShotMarks(node: OccurrenceMotionNode, problems: PaintingProblem[]): CompiledShotMarks {
   const marks = node.marks ?? 'stuck';
@@ -116,8 +146,6 @@ export function compileShotMotion(
     }
     const clockProblem = node.clock && paintNodeClockProblem(node.clock);
     if (clockProblem) problems.push(motionError(node.id, clockProblem));
-    const glowProblem = node.glow && node.glow !== 'none' && paintGlowProblem(node.glow);
-    if (glowProblem) problems.push(motionError(node.id, glowProblem));
   }
   const planeClocks = new Map(planes.map(({ id, clock }) => [id, clock]));
   // A node's line, nearest first: itself, the enclosing groups that have nodes, then its plane's node.
@@ -131,10 +159,12 @@ export function compileShotMotion(
     const lineProblems: string[] = [];
     lanes.set(node.id, paintLevelLanes(node.id, node.pins, lineProblems));
     problems.push(...lineProblems.map((message) => motionError(node.id, message)));
+    const clock = [...site.plane.clock, ...line.toReversed().flatMap((id) => paintNodeClockSteps(written.get(id)?.clock))];
+    const glowProblem = shotGlowProblem(node, clock, animationFps, moments);
+    if (glowProblem) problems.push(motionError(node.id, glowProblem));
     compiled.set(node.id, {
       id: node.id, plane: site.plane.id, parent: line[1] ?? null, pivot: node.pivot ?? { x: 0, y: 0 }, phase: paintIdPhase(node.id),
-      clock: [...site.plane.clock, ...line.toReversed().flatMap((id) => paintNodeClockSteps(written.get(id)?.clock))],
-      marks: compileShotMarks(node, problems), glow: paintInheritedGlow(line, (id) => written.get(id)?.glow),
+      clock, marks: compileShotMarks(node, problems), glow: shotInheritedGlow(line, written),
     });
   }
   const writers: PaintChannelWriter[] = [];

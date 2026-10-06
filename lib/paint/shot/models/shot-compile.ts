@@ -245,20 +245,9 @@ function compileShotRigs(rigs: NonNullable<PaintedShotProps['rigs']>, planes: re
   return compiled;
 }
 
-/**
- * Why `visibility` can't be drawn beyond its names and constants: on the opaque back (`opaqueBack`, its id), or
- * between 0 and 1 inside a rig drawn as pieces (`rigs`), whose layers show whole or not at all.
- */
-function visibilityPlaneProblems(
-  visibility: NonNullable<PaintedShotProps['visibility']>, planes: readonly CompiledShotPlane[], opaqueBack: string | null, rigs: ReadonlyMap<OccurrenceKey, CompiledShotRig>,
-): PaintingProblem[] {
-  return Object.entries(visibility).flatMap(([key, value]) => {
-    if (key === opaqueBack) return [shotError(key, 'visibility', 'is the back, shown wherever the frame is: fade a nearer plane or its occurrences')];
-    const plane = planes.find(({ id }) => id === shotOccurrencePlane(key));
-    const rigged = plane?.kind === 'painted' && plane.occurrences.find((occurrence) => occurrence.key === key)?.groups.find((group) => rigs.get(group)?.pieces);
-    if (!rigged || typeof value !== 'number' || value === 0 || value === 1) return [];
-    return [shotError(key, 'visibility', `is ${value}, inside ${rigged}, drawn as pieces: a layer or group there shows (1) or doesn't (0)`)];
-  });
+/** Why `visibility` can't be drawn beyond its names and constants: it fades the opaque back (`opaqueBack`, its id). */
+function visibilityBackProblems(visibility: NonNullable<PaintedShotProps['visibility']>, opaqueBack: string | null): PaintingProblem[] {
+  return opaqueBack !== null && opaqueBack in visibility ? [shotError(opaqueBack, 'visibility', 'is the back, shown wherever the frame is: fade a nearer plane or its occurrences')] : [];
 }
 
 /**
@@ -334,7 +323,7 @@ export function compilePaintedShot(
   const rigs = compileShotRigs(props.rigs ?? {}, planes, problems);
   const occurrences = new Map(planes.flatMap((plane) => (plane.kind === 'painted' ? [[plane.id, plane.occurrences.map(({ key }) => key)] as const] : [])));
   const visibility = props.visibility ?? {};
-  problems.push(...shotVisibilityProblems(visibility, props.planes, occurrences), ...visibilityPlaneProblems(visibility, planes, back && !clearBack ? back.id : null, rigs));
+  problems.push(...shotVisibilityProblems(visibility, props.planes, occurrences), ...visibilityBackProblems(visibility, back && !clearBack ? back.id : null));
   const masks = shotMaskCheck(props.planes, occurrences);
   problems.push(...masks.problems, ...maskPiecesProblems(planes, rigs));
   const motionPlanes = [
