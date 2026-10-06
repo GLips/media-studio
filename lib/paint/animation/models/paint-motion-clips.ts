@@ -9,9 +9,9 @@
 import type { StampGroupPlacement } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import { clipSeconds, type ClipSeconds } from './paint-clock.ts';
+import { clipSeconds, paintLaneClipAt, type ClipSeconds, type PaintLane } from './paint-clock.ts';
 import type { PaintPlacementMove } from './paint-pins.ts';
-import { presentationValueAt, presentationValueLength, type PresentationValue } from './paint-value.ts';
+import { presentationValueAt, presentationValueLength, presentationValueSnapsBetween, type PresentationValue } from './paint-value.ts';
 
 /** A pose names only the pins it moves; the rest are at rest. */
 export type PaintPose<P extends string> = Partial<Readonly<Record<P, PaintPlacementMove>>>;
@@ -48,6 +48,16 @@ export const paintMotionClipLength = (clip: PaintMotionClip<string>): ClipSecond
 
 /** A clip's moment from a play's: its own seconds, a time below 0 read as 0. */
 export const paintClipMoment = (moment: PaintMoment): PaintMoment => ({ at: Math.max(0, moment.at), frame: Math.max(0, moment.frame) });
+
+/**
+ * Whether the play writing `lane` at moments `a` and `b` means a jump between them: one play writing at both, its
+ * clip's value snapping between the clip moments it reads then (presentationValueSnapsBetween).
+ */
+export function paintLaneSnapsBetween<V>(lane: PaintLane<{ readonly value: PresentationValue<V> }>, a: PaintMoment, b: PaintMoment, animationFps: number): boolean {
+  const from = paintLaneClipAt(lane, a, animationFps), to = paintLaneClipAt(lane, b, animationFps);
+  if (!from || !to || from.play !== to.play) return false;
+  return presentationValueSnapsBetween(from.play.clip.value, paintClipMoment(from.moment), paintClipMoment(to.moment));
+}
 
 const CLIP_START: PaintMoment = { at: 0, frame: 0 };
 

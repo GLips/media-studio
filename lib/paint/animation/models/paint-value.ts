@@ -20,9 +20,21 @@ export const presentationValueAt = <T,>(value: PresentationValue<T>, moment: Pai
 export type PaintKeyed<T> = ((moment: PaintMoment) => T) & {
   /** The second it holds its last value from: its last key's, or later while a spring into it settles. */
   readonly settlesAt: number;
+  /** The seconds of its keys that snap: where its speed changes at once, meant. */
+  readonly snaps: readonly number[];
 };
 
 const isKeyed = <T,>(value: (moment: PaintMoment) => T): value is PaintKeyed<T> => 'settlesAt' in value;
+
+/**
+ * Whether `value` means its speed to jump between moments `a` and `b`, as it reads them: a keyed value with a key
+ * that snaps at a second from one's `at` to the other's. A constant never jumps, and a callback can't say.
+ */
+export function presentationValueSnapsBetween<T>(value: PresentationValue<T>, a: PaintMoment, b: PaintMoment): boolean {
+  if (!variesInTime(value) || !isKeyed(value)) return false;
+  const from = Math.min(a.at, b.at), to = Math.max(a.at, b.at);
+  return value.snaps.some((at) => at >= from && at <= to);
+}
 
 /**
  * How long `value` changes for, played on a clock, in the seconds it reads: a constant never does, a keyed value until

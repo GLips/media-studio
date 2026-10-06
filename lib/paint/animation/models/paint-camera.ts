@@ -16,7 +16,7 @@ import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-
 import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
 import { paintLaneClipAt, paintPlayClipMomentAt, type CompiledPaintPlay, type PaintLane, type PaintPlayClock } from './paint-clock.ts';
 import { paintPxRounded, paintRatioRounded } from './paint-deform.ts';
-import { paintClipMoment } from './paint-motion-clips.ts';
+import { paintClipMoment, paintLaneSnapsBetween } from './paint-motion-clips.ts';
 import { paintSimilaritiesEqual, type PaintSimilarity } from './paint-similarity.ts';
 import { presentationValueAt, type PresentationValue } from './paint-value.ts';
 
@@ -172,6 +172,24 @@ export function paintCameraPoseAt(camera: PaintCamera, t: PaintMoment): PaintCam
     dolly += value.dolly ?? 0; zoom += value.zoom ?? 0; roll += value.roll ?? 0;
   }
   return { pan: { x: paintPxRounded(pan.x), y: paintPxRounded(pan.y) }, dolly: paintRatioRounded(dolly), zoom: paintRatioRounded(zoom), roll: paintRatioRounded(roll) };
+}
+
+/**
+ * The camera's moves whose pose changes between moments `a` and `b` (the playing move's and each adding one), by
+ * origin, and whether one of them means a jump there: a keyed move with a key that snaps.
+ */
+export function paintCameraMovesBetween(camera: PaintCamera, a: PaintMoment, b: PaintMoment): { readonly origins: readonly string[]; readonly snapped: boolean } {
+  const origins = new Set<string>(), fps = camera.animationFps;
+  let snapped = false;
+  for (const lane of [camera.move, ...camera.moveAdds.map((add) => [add])]) {
+    const from = paintLaneClipAt(lane, a, fps), to = paintLaneClipAt(lane, b, fps);
+    if (!from || !to) continue;
+    const posed = (playing: typeof from) => ({ ...PAINT_CAMERA_REST, ...moveValueAt(playing.play.clip, playing.moment) });
+    if (from.play === to.play && paintCameraPosesEqual(posed(from), posed(to))) continue;
+    origins.add(from.play.origin).add(to.play.origin);
+    snapped ||= paintLaneSnapsBetween(lane, a, b, fps);
+  }
+  return { origins: [...origins], snapped };
 }
 
 /** The camera's focus at moment `t`, rounded: the focus play then (before the first starts, its start's); null, every plane sharp, with none. */

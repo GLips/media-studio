@@ -17,11 +17,12 @@ export type PaintKeyThrough<T> = T extends number ? number : { readonly [K in ke
 
 /**
  * A key: `value` at second `at`, reached from the key before by `curve` (its `curves` naming a channel's own), by way
- * of `through`; or a hold, keeping the key before's value until `at`.
+ * of `through`; or a hold, keeping the key before's value until `at`. `snap`: its speed changes at once at `at`,
+ * meant (a strike, a knock), so the motion warnings report no jump there.
  */
 export type PaintKey<T> =
-  | { readonly at: number; readonly value: T; readonly curve?: PaintCurve; readonly curves?: PaintKeyChannelCurves<T>; readonly through?: readonly PaintKeyThrough<T>[] }
-  | { readonly at: number; readonly hold: true };
+  | { readonly at: number; readonly value: T; readonly curve?: PaintCurve; readonly curves?: PaintKeyChannelCurves<T>; readonly through?: readonly PaintKeyThrough<T>[]; readonly snap?: boolean }
+  | { readonly at: number; readonly hold: true; readonly snap?: boolean };
 
 /** How a channel moves between keys that give it no curve: evenly (the default), or `smooth` (see the file's head). */
 export type PaintKeyedOptions = { readonly between?: 'linear' | 'smooth' };
@@ -234,8 +235,9 @@ export function paintKeyed<T extends PaintKeyedValue>(keys: readonly PaintKey<T>
     }
     return numbers;
   };
+  const snaps = keys.flatMap((key) => (key.snap ? [key.at] : []));
   // SAFETY: rebuilt in key 0's layout, which every key's value has, so it is a T.
-  return Object.assign((moment: PaintMoment) => keyedRebuilt(evaluate(moment.at), layout, { i: 0 }) as T, { settlesAt });
+  return Object.assign((moment: PaintMoment) => keyedRebuilt(evaluate(moment.at), layout, { i: 0 }) as T, { settlesAt, snaps });
 }
 
 function stretchInto(from: ResolvedKey, to: ResolvedKey, index: number, layout: KeyedLayout, channels: ReturnType<typeof channelsOf>, between: 'linear' | 'smooth'): Stretch {
@@ -373,8 +375,8 @@ function zeroOf<T extends PaintKeyedValue>(value: T): T {
 
 /**
  * An accent: from rest (every number 0), up to `peak` over `attack` s, on it at second `at`, and back to rest over
- * `settle` s; each stretch `inOut` unless `curves` says. Its rest adds nothing, so it's for a play that adds, as a
- * camera kick on a move does (`blend: 'add'`), or a value added to by hand.
+ * `settle` s; each stretch `inOut` unless `curves` says. Its rest adds nothing: it's for a play that adds (a camera
+ * kick, `blend: 'add'`). Its peak snaps: curves meeting it at speed strike it.
  */
 export function paintKeyedAccent<T extends PaintKeyedValue>(o: {
   readonly at: number; readonly peak: T; readonly attack: number; readonly settle: number; readonly curves?: { readonly attack?: PaintCurve; readonly settle?: PaintCurve };
@@ -382,7 +384,7 @@ export function paintKeyedAccent<T extends PaintKeyedValue>(o: {
   const rest = zeroOf(o.peak);
   return paintKeyed<T>([
     { at: o.at - o.attack, value: rest },
-    { at: o.at, value: o.peak, curve: o.curves?.attack ?? 'inOut' },
+    { at: o.at, value: o.peak, curve: o.curves?.attack ?? 'inOut', snap: true },
     { at: o.at + o.settle, value: rest, curve: o.curves?.settle ?? 'inOut' },
   ]);
 }
@@ -390,7 +392,7 @@ export function paintKeyedAccent<T extends PaintKeyedValue>(o: {
 /**
  * A hit: from rest, back to `anticipate.value` over its `lead` s (the wind-up), then into `peak` over `attack` s, on
  * it at second `at`, and back to rest over `settle` s; each stretch `inOut` unless `curves` says. Its rest adds
- * nothing (paintKeyedAccent).
+ * nothing and its peak snaps (paintKeyedAccent).
  */
 export function paintKeyedHit<T extends PaintKeyedValue>(o: {
   readonly at: number; readonly peak: T; readonly attack: number; readonly settle: number; readonly anticipate: { readonly value: T; readonly lead: number };
@@ -400,7 +402,7 @@ export function paintKeyedHit<T extends PaintKeyedValue>(o: {
   return paintKeyed<T>([
     { at: o.at - o.attack - o.anticipate.lead, value: rest },
     { at: o.at - o.attack, value: o.anticipate.value, curve: o.curves?.anticipate ?? 'inOut' },
-    { at: o.at, value: o.peak, curve: o.curves?.attack ?? 'inOut' },
+    { at: o.at, value: o.peak, curve: o.curves?.attack ?? 'inOut', snap: true },
     { at: o.at + o.settle, value: rest, curve: o.curves?.settle ?? 'inOut' },
   ]);
 }

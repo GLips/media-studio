@@ -1262,14 +1262,19 @@ the rest, their plane's moment.
 
 `paintKeyed(keys, { between? })` (`#studio`; from models, `#lib/paint/animation/models/paint-keyed.ts`) makes that
 function from keys, over any value made of numbers: a number, a point, a placement, a camera pose, an object or array
-of them, every key naming the same numbers. A key is `{at, value, curve?, curves?, through?}` or `{at, hold: true}`:
+of them, every key naming the same numbers. A key is `{at, value, curve?, curves?, through?, snap?}` or `{at, hold:
+true, snap?}`:
 
 - `curve` is how the value moves into this key from the one before. Key 0 has none before it, so takes no curve.
   `curves` gives a channel (a top-level field: `x`, `pan`, `dolly`) its own; a channel it leaves out takes `curve`.
 - `hold: true` keeps the value of the key before until `at`; the next key moves on from there.
 - `through: [p, …]` are points the move into this key passes at speed, on a smooth path its curve paces. For a value
   with channels, each point names the same channels, the ones it routes; the rest move straight.
-- Before its first key the value is that key's, and past its last, the last's. `settlesAt` is when it stops changing.
+- `snap: true` says the speed changes at once at this key, and means to: a strike, a knock, a bounce, a start at
+  speed. It moves nothing; the motion warnings (Checking) take a speed jump there as meant and don't report it. Any
+  key may snap, a hold or key 0 too. A callback can't say it: key the move to mark one.
+- Before its first key the value is that key's, and past its last, the last's. `settlesAt` is when it stops changing,
+  `snaps` the seconds of its keys that snap.
 
 | Curve | Moves into its key | Past the key? |
 |---|---|---|
@@ -1316,7 +1321,8 @@ whole frame, for things that start in turn: a row of windows lighting, a flock t
 **Accents and hits.** `paintKeyedAccent({at, peak, attack, settle, curves?})` rises from rest (every number 0) to
 `peak` over `attack` s, is on it at `at`, and settles back over `settle` s. `paintKeyedHit({at, peak, attack, settle,
 anticipate: {value, lead}, curves?})` first winds back to `anticipate.value` over `lead` s. Each stretch is `inOut`
-unless `curves` names its own (`anticipate`, `attack`, `settle`). They're keyed values resting at 0, so they add.
+unless `curves` names its own (`anticipate`, `attack`, `settle`). They're keyed values resting at 0, so they add. Their
+peak key snaps: curves meeting it at speed strike it, and the motion warnings take that as meant.
 
 **Adding to the camera.** One move plays at a time: two `move` plays over the same moments are refused, as two `focus`
 plays are. A move play with `blend: 'add'` adds its value to the move under it instead, field by field (pan, dolly,
@@ -2012,33 +2018,41 @@ A shot built from the clock is seen as it plays. Each painting in time's key dra
 takes HTML to lie behind the shot, which only the page can say, so a clear back passes here and is the render's to
 refuse; a shot a scene shows only between those three frames isn't seen.
 
-**Motion warnings.** A shot follows each drawable (a plane, and an occurrence with a node or a visibility of its own)
-from document px to frame px at every frame of its span and a quarter frame either side, through the camera, the lay
-and its nodes' places, and warns of what tends to read badly. They're warnings, printed by the check and by every
-render, never refusals: a deliberate snap or pop stays as written.
+**Motion warnings.** A shot's motion is judged at every frame of its span and a quarter frame either side, frame px,
+and each warning names what moved. The camera's own move (pan, dolly, zoom) is judged once, as it carries its nearest
+plane, where it reads largest, and reports as `camera`. Each drawable (a plane, and an occurrence with a node or a
+visibility of its own) is judged on what it adds: its depth, lay and nodes moving with the camera and the nodes above it
+held, so a camera move warns on no plane it carries. They're warnings, printed by the check and by every render, never
+refusals. One owner's warnings of a kind read as one line: the first jump or pop, or the fastest stretch, by its
+numbers, and the others by time.
 
-- **A speed jump**: across two frames, a drawable's speed changes by 2 px a frame or more past what its acceleration
-  either side carries, and by half the faster speed or more. That's a key met at another speed than it's left at,
-  which reads as a knock: a stop at full speed, a start from rest at speed. The share keeps a slow drift's rounding out.
-- **Fast with the shutter shut**: with the shutter shut, a drawable moving more than the frame's width ÷ 7 a second, so
-  width ÷ (7 × fps) px a frame (11.4 px for 1920 px at 24 fps). That's the seven-second rule: a pan crossing the frame
-  in under about 7 s judders on film even with a half-open shutter's blur bridging its frames. With none, each frame is
-  a sharp copy, and past that pace the eye sees copies, not motion; under it, unblurred motion reads crisp.
+- **A speed jump**: across two frames, a speed changes by 2 px a frame or more past what its acceleration either side
+  carries, and by half the faster speed or more. That's a key met at another speed than it's left at, which reads as a
+  knock: a stop at full speed, a start from rest at speed. The share keeps a slow drift's rounding out. A jump that's
+  meant is said on its key, `snap: true` (Values in time), or by an accent's or hit's strike, and isn't reported; the
+  camera's names the plays moving it.
+- **Fast with the shutter shut**: with the shutter shut, moving more than the frame's width ÷ 7 a second, so width ÷
+  (7 × fps) px a frame (11.4 px for 1920 px at 24 fps). That's the seven-second rule: a pan crossing the frame in under
+  about 7 s judders on film even with a half-open shutter's blur bridging its frames. With none, each frame is a sharp
+  copy, and past that pace the eye sees copies, not motion; under it, unblurred motion reads crisp. A drawable that's
+  past it only as the camera carries it is the camera's warning.
 - **A hold's steps past that pace**: a drawing held (a play's `hold`) holds through the shutter too, so no shutter
   blurs its step to the next drawing, and a step past the same width ÷ (7 × fps) strobes. Opening the shutter won't
-  help: hold it on ones, or slow it. A stretch of steps on twos or fours warns once.
+  help: hold it on ones, or slow it.
 - **A pop**: a visibility changing by 0.9 or more between two frames while the drawable is in frame, so it appears or
-  vanishes in one frame. A swap isn't a pop: a drawable on the same plane stepping as far the other way in that
-  frame, where it shows, as a cel or a view switched by visibility does.
+  vanishes in one frame. A swap isn't a pop: a drawable at the same depth stepping as far the other way in that frame,
+  where it shows, as a cel or a view switched by visibility does. A pop that's meant stays reported: no key says it.
 
 An occurrence with no node of its own moves as the nearest node above it does, or its plane, so only that node's
-occurrence, or the plane, warns of that motion. Bends (pins,
-sway, flutter, boil) and rigs' poses move paint within a drawable and aren't followed, nor are an instanced plane's
-items, a three plane, or a plane pinned to HTML, laid only as each frame measures it.
+occurrence, or the plane, warns of that motion. Bends (pins, sway, flutter, boil) and rigs' poses move paint within a
+drawable and aren't followed, nor are an instanced plane's items, a three plane, or a plane pinned to HTML, laid only
+as each frame measures it; their depths still count toward the camera's nearest. A plane's motion is read over its
+layers' paint, or its whole document where it lays paper (the back, a paper ground). A callback can't say a jump is
+meant: key it to.
 
 A `StampPainting` with a camera is held to its span as a shot is, and prints the same warnings with its render, for
-its planes and the groups its `motion` or its recipe's own motion places. Its frame state's visibility isn't followed,
-so nothing there pops.
+its camera and the groups its `motion` or its recipe's own motion places; its planes add no motion of their own. Its
+frame state's visibility isn't followed, so nothing there pops.
 
 Before a render, a look or a still bundles, every painting its project's scenes paint from (in `scenes/` and `bars/`,
 and those `shared` lists) is checked this way at its defaults, with the styles `project.ts` names, and any error stops
@@ -2115,10 +2129,11 @@ What the check says, and what to do:
 | `back.source.b: paints a 160 × 120 document, and the plane's is 320 × 240: every selection a plane shows, …` / `front.source: lays a transparent ground, and the plane a default one: …` / `meadow.source.b: shows no group heron, which meadow/heron rigs: every end of a rigged plane holds its rigged groups cut alike` / `meadow.source.b: holds beak under heron, in none of meadow/heron's cels: …` | a selection, named at its end's field, painting a document or laying a ground other than the plane's first (`paintedPlaneBlendProblems`); a dissolve end on a rigged plane without the rigged group, or holding it cut otherwise: a cel with other layers, a layer in no cel, its sheet owned otherwise (`shotPlaneRigEndProblems`); both at load and each frame for a callback source | paint every end at one size on one ground; give every end the rigged group with the same layers in each cel, or rig the subject on a plane of its own |
 | `ridge.source.drawings: is 1, and its first and last moments and either side of each cut draw 2: 0 s (dusk false), 0.958 s (dusk false), 1 s (dusk true), 2 s (dusk true)` / `ridge.source.values.ridgePx: ridgePx = 102.5 is outside 0..100 at 1.708 s` / `ridge.source.values.heightPx: names heightPx, which isn't a property of gateRidge` / `ridge.source: at 2 s (dusk true) shows ridge/sky, ridge/stars, and at 0 s (dusk false) ridge/sky: a painting in time shows the same layers and groups at every key` | a painting in time as the shot compiles (`planShotKeyDrawings`): a budget below what its first and last moments and cuts draw, listing those keys; a value off its schema at a moment its plane reads, the first named; a value naming no property; drawings showing different layers | more `drawings`, or fewer cuts; keep each value in its range at every frame; select layers every drawing paints |
 | `ridge.source.drawings: ridgePx strays 100 from the dissolve between its key drawings at 0 s and 2 s at 1 s (its step, 5, allowed): at most 1 drawing, it leaves a turn undrawn; allow more` (warning) | a painting in time's values going out and coming back between two keys its budget allows, so frames there miss their dissolve by more than a step (What to paint and what to present) | more `drawings`; a sweep that's meant to read as a fade stays |
-| `birds/swift.motion: its speed jumps at 1 s, from 5 to 0 px a frame: meet the key at the speed it leaves at (a curve easing into it, or between: 'smooth')` (warning) | a speed jump at a key (Motion warnings), from `studio paint check` on its scene or project and every render | ease into the key (`'out'`, `'inOut'`), or `between: 'smooth'`; a knock that's meant stays |
-| `birds/swift.motion: moves up to 5 px a frame with the shutter shut, from 0 s to 1 s; past 1.9 px a frame it strobes: slow it, or open the shutter` (warning) | a drawable moving faster than the frame's width in 7 s with the shutter shut | what it says |
+| `birds/swift.motion: its speed jumps at 1 s, from 5 to 0 px a frame: meet the key at the speed it leaves at (a curve easing into it, or between: 'smooth'), or mark the key snap: true if the jump is meant` (warning) | a drawable's own speed jumping at a key (Motion warnings), from `studio paint check` on its scene or project and every render | ease into the key (`'out'`, `'inOut'`), or `between: 'smooth'`; a knock that's meant: `snap: true` on its key |
+| `camera.motion: its speed jumps between 6.367 s and 6.4 s (drop punch and push), from 0.7 to 11.2 px a frame at depth 2 (and at 8 s, 9.6 s and 11.2 s): meet the key …` (warning) | the camera's own move jumping in speed, read on its nearest plane, the plays moving it named | as above, on the named plays' keys, or an accent (`paintKeyedAccent`), whose strike snaps |
+| `birds/swift.motion: moves up to 5 px a frame with the shutter shut, from 0 s to 1 s; past 1.9 px a frame it strobes: slow it, or open the shutter` (warning) | a drawable, or the camera at its nearest plane (`at depth N`), moving faster than the frame's width in 7 s with the shutter shut | what it says |
 | `birds/swift.motion: steps up to 18.3 px at a time as its hold steps, from 0.125 s to 0.917 s; a held drawing holds through the shutter, so a step past 1.9 px strobes: hold it on ones, or slow it` (warning) | a held drawing stepping further than the frame's width in 7 s allows a frame, under any shutter | hold it on ones (drop the play's `hold`), or slow it |
-| `birds/swallow.motion: its visibility steps from 0 to 1 within a frame at 1.5 s: it pops in or out` (warning) | a visibility changing by 0.9 or more in a frame, in frame | fade it over a few frames; a pop that's meant stays |
+| `birds/swallow.motion: its visibility steps from 0 to 1 within a frame at 1.5 s: it pops in or out; fade it over a few frames` (warning) | a visibility changing by 0.9 or more in a frame, in frame, not swapped at its depth | what it says; a pop that's meant stays reported |
 | `kick writes camera on the camera's move from 2s while push still does (until 6s)` / `drift writes place on front from 1s while front's moving lay still does (without end)` | two camera moves, or two plays on one node's place or pin, over the same seconds; a place on a plane's node beside its moving lay | `blend: 'add'` on a move that adds; for a node, one play at a time; move a plane by its lay or its node, not both |
 | `shot.span: is sampled at 30 fps, and the composition runs at 24: …` / `shot.span: runs from 0 s to 4 s, and its scene shows 0 s to 6 s at least: give it its scene's span, sceneSecondsOf(clock).span` | a span not the scene's, as the render loads the shot | `span: sceneSecondsOf(clock).span` |
 | `paintKeyed: key 0 has a curve or through points, but no key comes before it to move from` / `paintKeyed: key 2 is at 1 s, not after key 1 at 1 s` / `paintKeyed: key 1's value isn't shaped as key 0's: every key names the same numbers` / `paintKeyed: key 1 springs in over 0.512 s to arrive on it, more than the 0.4 s since key 0` | keys `paintKeyed` can't move between, thrown where they're built | move key 0's curve to key 1; keys in order, each naming the same numbers; a shorter spring, or a key before it earlier |
