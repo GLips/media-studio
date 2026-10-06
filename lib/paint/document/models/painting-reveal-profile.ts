@@ -7,10 +7,9 @@ import { stampPaintFieldEnds, type StampSeededPaintField } from '#lib/paint/pain
 import { STAMP_REVEAL_PROFILE_SAMPLES, type StampReveal, type StampRevealProfile, type StampRevealStroke } from '#lib/paint/painting/models/stamp-reveal.ts';
 
 /**
- * How a field reveal's front runs between its base's two values, from the earlier to the later: `'out'` leaves fast
- * and slows into its last texels, `'in'` leaves from rest, `'inOut'` both; `'linear'` (left out) keeps the base's own
- * pace. At a share of its time, the front has come the curve's share of its way. A document is data, so no function;
- * a spring and a move timed in seconds have no seconds here.
+ * How a field reveal's front runs between its base's two values, earlier to later: `'out'` leaves fast and slows,
+ * `'in'` leaves from rest, `'linear'` (left out) keeps the base's pace. A document is data: a key's curve, but no
+ * function, and no spring or move timed in seconds.
  */
 export type RevealProfile = Exclude<PaintCurve, ((share: number) => number) | { readonly spring: unknown } | { readonly accelerate: number }>;
 
