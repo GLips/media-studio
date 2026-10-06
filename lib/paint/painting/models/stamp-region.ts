@@ -44,16 +44,27 @@ export function stampRegionPolygon(region: StampRegion): readonly StampPoint[] {
  */
 export function checkedStampPolygon(region: StampRegion, what: string): readonly StampPoint[] {
   const polygon = stampRegionPolygon(region);
-  let twiceArea = 0;
-  polygon.forEach((a, i) => {
-    const b = polygon[(i + 1) % polygon.length];
-    twiceArea += a.x * b.y - b.x * a.y;
-  });
-  if (polygon.length < 3 || !polygon.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y)) || !twiceArea) {
+  if (polygon.length < 3 || !polygon.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y)) || !stampRingArea(polygon)) {
     throw new Error(`stamp paint: ${what}'s region isn't a shape: it needs at least 3 finite points enclosing some area`);
   }
   return polygon;
 }
+
+/**
+ * A closed ring's signed area, px² (shoelace): positive when it turns clockwise on screen (y down), as
+ * stampGridContours walks an outer loop; negative the other way.
+ */
+export function stampRingArea(ring: readonly StampPoint[]): number {
+  let twice = 0;
+  ring.forEach((a, i) => {
+    const b = ring[(i + 1) % ring.length];
+    twice += a.x * b.y - b.x * a.y;
+  });
+  return twice / 2;
+}
+
+/** `box` grown by `by` px each way. */
+export const stampBoxGrown = ({ x0, y0, x1, y1 }: StampBox, by: number): StampBox => ({ x0: x0 - by, y0: y0 - by, x1: x1 + by, y1: y1 + by });
 
 /** The box round `polygon`, grown by `pad` px each way. */
 export function stampPolygonBox(polygon: readonly StampPoint[], pad = 0): StampBox {
@@ -95,7 +106,7 @@ export function stampSegmentDistanceSquared(segments: StampSegments, k: number, 
 }
 
 /** Whether (x, y) lies inside `polygon` (even-odd): the crossings of its row past x, odd. */
-function stampPolygonInside(polygon: readonly StampPoint[], x: number, y: number): boolean {
+export function stampPolygonInside(polygon: readonly StampPoint[], x: number, y: number): boolean {
   let inside = false;
   for (let k = 0, n = polygon.length; k < n; k++) {
     const a = polygon[k], b = polygon[(k + 1) % n];
@@ -107,12 +118,48 @@ function stampPolygonInside(polygon: readonly StampPoint[], x: number, y: number
 /** Each polygon's segments, made once: a region's distance is read per pixel by gates and figures. */
 const segmentsOfPolygon = new WeakMap<readonly StampPoint[], StampSegments>();
 
-/** How far (x, y) is from `polygon`'s outline, positive inside it (even-odd), negative outside. */
-export function stampPolygonDistance(polygon: readonly StampPoint[], x: number, y: number): number {
+/** The square of how far (x, y) is from `polygon`'s outline. */
+function stampOutlineDistanceSquared(polygon: readonly StampPoint[], x: number, y: number): number {
   const segments = segmentsOfPolygon.get(polygon) ?? segmentsOfPolygon.set(polygon, stampSegmentsOf(polygon)).get(polygon)!;
   let nearest = Infinity;
   for (let k = 0; k < polygon.length; k++) nearest = Math.min(nearest, stampSegmentDistanceSquared(segments, k, x, y));
-  return stampPolygonInside(polygon, x, y) ? Math.sqrt(nearest) : -Math.sqrt(nearest);
+  return nearest;
+}
+
+/** How far (x, y) is from `polygon`'s outline, positive inside it (even-odd), negative outside. */
+export function stampPolygonDistance(polygon: readonly StampPoint[], x: number, y: number): number {
+  const nearest = Math.sqrt(stampOutlineDistanceSquared(polygon, x, y));
+  return stampPolygonInside(polygon, x, y) ? nearest : -nearest;
+}
+
+/**
+ * How far (x, y) is from the outline of a region of `rings`, every ring's segments, positive inside it, negative
+ * outside. The rings read even-odd: one inside another is a hole, one inside a hole an island.
+ */
+export function stampRingsDistance(rings: readonly (readonly StampPoint[])[], x: number, y: number): number {
+  let nearest = Infinity, inside = false;
+  for (const ring of rings) {
+    nearest = Math.min(nearest, stampOutlineDistanceSquared(ring, x, y));
+    if (stampPolygonInside(ring, x, y)) inside = !inside;
+  }
+  return inside ? Math.sqrt(nearest) : -Math.sqrt(nearest);
+}
+
+/** The side of line a→b point p lies on: positive one way, negative the other, 0 on it. */
+const sideOfLine = (a: StampPoint, b: StampPoint, p: StampPoint) => (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+
+/** Whether closed rings `a` and `b` cross: a segment of each strictly crosses one of the other. Touching isn't crossing. */
+export function stampRingsCross(a: readonly StampPoint[], b: readonly StampPoint[]): boolean {
+  const boxA = stampPolygonBox(a), boxB = stampPolygonBox(b);
+  if (boxA.x1 < boxB.x0 || boxB.x1 < boxA.x0 || boxA.y1 < boxB.y0 || boxB.y1 < boxA.y0) return false;
+  for (let i = 0; i < a.length; i++) {
+    const p = a[i], q = a[(i + 1) % a.length];
+    for (let j = 0; j < b.length; j++) {
+      const r = b[j], s = b[(j + 1) % b.length];
+      if (sideOfLine(p, q, r) * sideOfLine(p, q, s) < 0 && sideOfLine(r, s, p) * sideOfLine(r, s, q) < 0) return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -255,15 +302,42 @@ export function stampGridAt(grid: StampGrid, x: number, y: number): number {
   return (at(0, 0) * (1 - fu) + at(1, 0) * fu) * (1 - fv) + (at(0, 1) * (1 - fu) + at(1, 1) * fu) * fv;
 }
 
+/** The union of `grids` at the finest's cell: each point the least any grid holding it gives, 1 where none does. */
+export function stampGridUnion(grids: readonly StampGrid[]): StampGrid {
+  if (grids.length === 1) return grids[0];
+  const cell = Math.min(...grids.map((grid) => grid.cell));
+  const x0 = Math.min(...grids.map((grid) => grid.x0)), y0 = Math.min(...grids.map((grid) => grid.y0));
+  const x1 = Math.max(...grids.map((grid) => grid.x0 + (grid.columns - 1) * grid.cell)), y1 = Math.max(...grids.map((grid) => grid.y0 + (grid.rows - 1) * grid.cell));
+  const columns = Math.ceil((x1 - x0) / cell) + 1, rows = Math.ceil((y1 - y0) / cell) + 1, values = new Float32Array(columns * rows);
+  for (let j = 0; j < rows; j++) {
+    for (let i = 0; i < columns; i++) {
+      const x = x0 + i * cell, y = y0 + j * cell;
+      const holding = grids.filter((grid) => x >= grid.x0 && y >= grid.y0 && x <= grid.x0 + (grid.columns - 1) * grid.cell && y <= grid.y0 + (grid.rows - 1) * grid.cell);
+      values[j * columns + i] = holding.length ? Math.min(...holding.map((grid) => stampGridAt(grid, x, y))) : 1;
+    }
+  }
+  return { x0, y0, cell, columns, rows, values };
+}
+
+/**
+ * Rings laid out for ringsDistance: each ring's point count as a header point (count, 0), then its points. An area
+ * whose points are such a run has STAMP_RINGED_COUNT set in its count.
+ */
+export const stampRingsLayout = (rings: readonly (readonly StampPoint[])[]): StampPoint[] => rings.flatMap((ring) => [{ x: ring.length, y: 0 }, ...ring]);
+
+/** The high bit of an area's point count: set, its points are a stampRingsLayout run rather than one polygon. */
+export const STAMP_RINGED_COUNT = 0x80000000;
+
 /**
  * stampPolygonDistance in WGSL: the polygon's `count` points from `first` in the storage array `points`, which the
  * shader including it declares. Twins, both at runtime: the CPU's lays out a fill's grids, the GPU's reads regions per
- * pixel; the GPU gate holds them together.
+ * pixel; the GPU gate holds them together. ringsDistance twins stampRingsDistance over a stampRingsLayout run of
+ * `total` points from `first`.
  */
 export const STAMP_POLYGON_DISTANCE_WGSL = /* wgsl */ `
-fn polygonDistance(p: vec2f, first: u32, count: u32) -> f32 {
-  var nearest = 1e30;
-  var inside = false;
+struct RingReach { nearest: f32, inside: bool }
+fn ringReach(p: vec2f, first: u32, count: u32, was: RingReach) -> RingReach {
+  var reach = was;
   var j = first + count - 1u;
   for (var i = first; i < first + count; i++) {
     let a = points[j];
@@ -272,11 +346,25 @@ fn polygonDistance(p: vec2f, first: u32, count: u32) -> f32 {
     let q = p - a;
     let along = clamp(dot(q, e) / max(dot(e, e), 1e-12), 0.0, 1.0);
     let d = q - e * along;
-    nearest = min(nearest, dot(d, d));
-    if ((a.y > p.y) != (b.y > p.y) && p.x < a.x + (p.y - a.y) / (b.y - a.y) * e.x) { inside = !inside; }
+    reach.nearest = min(reach.nearest, dot(d, d));
+    if ((a.y > p.y) != (b.y > p.y) && p.x < a.x + (p.y - a.y) / (b.y - a.y) * e.x) { reach.inside = !reach.inside; }
     j = i;
   }
-  return select(-sqrt(nearest), sqrt(nearest), inside);
+  return reach;
+}
+fn polygonDistance(p: vec2f, first: u32, count: u32) -> f32 {
+  let reach = ringReach(p, first, count, RingReach(1e30, false));
+  return select(-sqrt(reach.nearest), sqrt(reach.nearest), reach.inside);
+}
+fn ringsDistance(p: vec2f, first: u32, total: u32) -> f32 {
+  var reach = RingReach(1e30, false);
+  var at = first;
+  while (at < first + total) {
+    let count = u32(points[at].x);
+    reach = ringReach(p, at + 1u, count, reach);
+    at += count + 1u;
+  }
+  return select(-sqrt(reach.nearest), sqrt(reach.nearest), reach.inside);
 }`;
 
 /**

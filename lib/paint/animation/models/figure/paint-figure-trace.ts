@@ -6,22 +6,12 @@
 // Negative space: holes are dropped. A StampRegion is one loop, so a piece is its outer loop with any hole filled; a
 // part seen through a hole is painted after, over it.
 
-import { stampGridContours, type StampGrid, type StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import { stampGridContours, stampRingArea, type StampGrid, type StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 
 /** How a traced outline is cleaned: points within `tolerance` px of a straight run are dropped, then `smoothing` Chaikin rounds. */
 export type PaintFigureTraceSettings = { readonly tolerance: number; readonly smoothing: number };
 
 export const PAINT_FIGURE_TRACE_DEFAULTS: PaintFigureTraceSettings = { tolerance: 0.3, smoothing: 1 };
-
-/** Twice a loop's signed area; positive for an outer loop as stampGridContours walks it (y down), negative for a hole. */
-export function paintFigureLoopArea(loop: readonly StampPoint[]): number {
-  let sum = 0;
-  for (let i = 0; i < loop.length; i++) {
-    const p = loop[i], q = loop[(i + 1) % loop.length];
-    sum += p.x * q.y - q.x * p.y;
-  }
-  return sum / 2;
-}
 
 function simplifyRun(points: readonly StampPoint[], tolerance: number): StampPoint[] {
   if (points.length < 3) return [...points];
@@ -87,7 +77,8 @@ export function tracePaintFigurePieces(grid: StampGrid, settings: PaintFigureTra
   // Specks under a cell across are the grid's noise, not a shape anyone drew.
   const smallest = grid.cell * grid.cell;
   return stampGridContours(cropped, 0)
-    .map((loop) => ({ loop, area: paintFigureLoopArea(loop) }))
+    // An outer loop's area is positive as stampGridContours walks it; a hole's is negative, and dropped here.
+    .map((loop) => ({ loop, area: stampRingArea(loop) }))
     .filter(({ area }) => area > smallest)
     .toSorted((a, b) => b.area - a.area)
     .map(({ loop }) => smoothPaintFigureLoop(simplifyPaintFigureLoop(loop, settings.tolerance), settings.smoothing));

@@ -56,15 +56,16 @@ import the studio's `models` and `studio` code, never a project or `engine` code
 `.brushset`, or the zip it came in) or a Photoshop pack (an `.abr` or `.tpl`, or a zip holding them) into
 `brushes/<pack>/`. Each import writes a whole generation, then switches `current` to name it by one rename, so a
 reader sees the previous import or the new one, never a mix, and an import that fails leaves the previous one as it
-was; older generations are deleted after the switch. `fidelity/` and `reference/` sit beside the generations and
-outlive them. Everything that reads a pack's files resolves `current` once (`readStampPaintPackGeneration`). A pack
+was; older generations are deleted after the switch. `profiles/`, `fidelity/` and `reference/` sit beside the
+generations and outlive them. Everything that reads a pack's files resolves `current` once (`readStampPaintPackGeneration`). A pack
 imported before generations, its manifest straight in its folder, reads as not imported: import it again. Both apps
 become the same brush (`StampBrush`) in the same layout:
 
 ```
 brushes/<pack>/
   current      the name of the generation readers use, switched by rename; .<pack>.lock beside the pack holds
-               one import at a time
+               one import at a time, a second waiting its turn
+  profiles/    each brush's measured profile, a file a brush and key: <brush>-<address>.json
   fidelity/    the brush fidelity sheet, once drawn (npm run brushes:sheet)
   reference/   Photoshop's own renders of the pack's brushes (npm run photoshop -- references, docs/photoshop-capture.md)
   generations/<id>/  what one import wrote:
@@ -97,11 +98,23 @@ into `palette` and a paper into `paper` (`image` for its photograph, `grain` for
 **Profiles.** Every import measures each brush's profile (vid-119) before it publishes: it paints probe strokes
 with the production renderer in the render browser and reads, by trace, how far past its diameter each side's paint
 visibly reaches (by heading where they differ), and how a raster pass builds up, at diameters from its smallest to
-128 px. The manifest's `profiles` keeps them by brush, keyed by a hash of the brush's settings, its images' bytes and
-the probe protocol (lib/paint/brush/models/stamp-brush-profile.ts), or says why a brush was refused. A brush resolved
-from the pack carries its profile; code that needs one refuses a brush without. `studio brushes import --style
-<name> --pack <pack>`, with no archive, imports the pack again from itself, measuring only the brushes whose key has
-changed. It takes some seconds a brush.
+128 px. Each is stored in `profiles/` as a file of its own, addressed by the brush's name and its key: the probe
+protocol, a hash of its settings, of its images' bytes, and of its style's paper and paint as probed
+(lib/paint/brush-packs/engine/stamp-brush-profile-store.ts). A profile says what was measured, or why the brush was
+refused. A reader computes each brush's key as it is now and reads the file at it, so a profile measured under any
+other key is never read, and a style whose paper or paint changes finds none until they're measured again. A brush
+resolved from the pack carries its profile; code that needs one refuses a brush without, naming the command that
+measures it. `studio brushes import --style <name> --pack <pack>`, with no archive, measures each brush whose key
+has no file and adds it, leaving the pack's generation and manifest as they are. It takes some seconds a brush, and
+stores each as it's measured, so one stopped part-way keeps what it measured. An import into a pack another import
+holds waits its turn, then measures only what that one left. Nothing deletes a profile; one no brush's key reaches
+is a few kilobytes left behind.
+
+**Numbers to plan by.** `studio brushes describe --style <name>` prints each of the style's brushes as its packs here
+paint it: the share of its size, opacity and flow (and anything else pressure moves) kept at pressure 0.3, 0.6 and 1;
+its visible width over its diameter at a few diameters, from its profile; the smallest diameter its profile holds; and
+whether it catches the paper's peaks. The packs are private, so these numbers live only here, never in the studio's
+docs.
 
 **Judging the brushes.** `npm run brushes:sheet -- --style <name> --pack <pack>` paints each brush with the studio's GPU
 renderer along the stroke Procreate drew its preview with (one stamp, for a brush Procreate previews that way), at the
@@ -192,6 +205,6 @@ problem with the pack's `source` (which says where to get it), when a pack isn't
 gone, `brushes` names a brush its pack lacks, the paper names a file its pack lacks, or a manifest is from an older
 asset version. Import the pack again from your copy.
 
-**Keeping packs out of git.** `studio workspace init` ignores `styles/*/brushes/`. check:arch refuses a tracked file
+**Keeping packs out of git.** `studio workspace init` ignores `styles/*/brushes`. check:arch refuses a tracked file
 under a style's `brushes/` in the workspace, and a tracked brush archive (`.brushset`, `.abr`) anywhere in the studio,
 except a test fixture you made yourself and listed in `lint/structural/checks/brush-assets.ts`.

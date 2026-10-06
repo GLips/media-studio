@@ -1,0 +1,152 @@
+// shot-selection.ts: what a plane of a shot shows of a painting: a selection of an evaluation's layers and groups
+// (painting-selection.ts's LayerSelection, finished and composed in document order), or two such blended. A source is
+// a description; nothing is solved until a shot draws it. A shot's load holds each plane's source to what a shot can
+// draw (paintedSourceProblems) and reports every problem with its plane's, so the constructors build without judging.
+
+import type { AnyApplication, Key } from '#lib/paint/document/models/painting-document.ts';
+import { paintingField, paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
+import type { LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
+import { paintingLayersUnder, paintingSheetName, type PaintingNodePlace, type PaintingTree } from '#lib/paint/document/models/painting-tree.ts';
+import { shotOccurrenceKey } from './shot-occurrences.ts';
+
+/**
+ * Two finished selections' plane pictures interpolated linearly, `k` 0..1 from a to b, in their native form: opaque
+ * colour on an opaque backing, colour and transmittance for clear pictures, on any canvas. It mixes pictures, never
+ * pigment. Either side may be a dissolve.
+ */
+export type Dissolve = { readonly kind: 'dissolve'; readonly a: PaintedSource; readonly b: PaintedSource; readonly k: number };
+
+export type PaintedSource = LayerSelection | Dissolve;
+
+/** `a` blended toward `b` by `k` 0..1, as one source. */
+export function dissolve(a: PaintedSource, b: PaintedSource, k: number): Dissolve {
+  return { kind: 'dissolve', a, b, k };
+}
+
+/** What a document key names other than a layer or group, for the message refusing it. */
+function nonNodeKind(tree: PaintingTree, key: Key): string | null {
+  for (const { node } of tree.layers) {
+    for (const wash of node.washes) {
+      if (wash.key === key) return 'a wash';
+      const applications: readonly AnyApplication[] = wash.applications;
+      if (applications.some((application) => application.key === key)) return 'an application';
+    }
+  }
+  return null;
+}
+
+/**
+ * Problems in a selection of plane `plane`, at `field` in it: nothing selected, an `at` that isn't a scene second, a
+ * key naming no layer or group, a layer selected twice (by itself and through its group, say), or an own sheet's
+ * layer selected without its owner and the rest of that sheet's layers.
+ */
+function selectionProblems(plane: string, field: string, { painting: evaluation, layers, at }: LayerSelection): PaintingProblem[] {
+  const problems: PaintingProblem[] = [], error = (owner: string, within: string, message: string) => problems.push(paintingProblem('error', owner, within, message));
+  if (layers.length === 0) error(plane, paintingField(field, 'layers'), `selects nothing of ${evaluation.source}: name its layers or groups`);
+  if (at !== undefined && !Number.isFinite(at)) error(plane, paintingField(field, 'at'), `${at} isn't a finite scene second`);
+  const { tree } = evaluation, places: PaintingNodePlace[] = [];
+  layers.forEach((key, i) => {
+    const place = tree.byKey.get(key);
+    if (place) places.push(place);
+    else {
+      const kind = nonNodeKind(tree, key);
+      error(plane, paintingField(field, `layers[${i}]`), `names ${key}, which ${kind ? `is ${kind}: it selects layers and groups` : `is unknown in ${evaluation.source}`}`);
+    }
+  });
+  const chosen = new Map<Key, Key>();
+  for (const place of places) {
+    for (const { node } of paintingLayersUnder(tree, place)) {
+      const before = chosen.get(node.key);
+      if (before !== undefined) error(shotOccurrenceKey(plane, node.key), '', `is selected twice, through ${before} and ${place.node.key}`);
+      else chosen.set(node.key, place.node.key);
+    }
+  }
+  const covered = (owner: Key) => places.some(({ node, kind }) => node.key === owner || (kind === 'group' && tree.byKey.get(owner)?.groups.includes(node.key)));
+  for (const sheet of tree.sheets) {
+    if (sheet.owner === null || covered(sheet.owner)) continue;
+    const onIt = tree.layers.filter((place) => place.sheet === sheet).map(({ node }) => node.key);
+    const picked = onIt.filter((key) => chosen.has(key));
+    if (picked.length > 0 && picked.length < onIt.length) {
+      error(shotOccurrenceKey(plane, picked[0]), '', `lies on ${paintingSheetName(sheet)}: select ${sheet.owner}, or all its sheet's layers, on one plane`);
+    }
+  }
+  return problems;
+}
+
+/**
+ * Every problem in `source`, the source of plane `plane`, that keeps a shot from drawing it: a selection's
+ * (selectionProblems) and a dissolve's `k` outside 0..1, either side's in turn. A shot's load reports them all.
+ */
+export function paintedSourceProblems(plane: string, source: PaintedSource, field = 'source'): PaintingProblem[] {
+  if (source.kind === 'layers') return selectionProblems(plane, field, source);
+  const k = source.k >= 0 && source.k <= 1 ? [] : [paintingProblem('error', plane, paintingField(field, 'k'), `${source.k} isn't within 0..1`)];
+  return [...k, ...paintedSourceProblems(plane, source.a, paintingField(field, 'a')), ...paintedSourceProblems(plane, source.b, paintingField(field, 'b'))];
+}
+
+/** One selection a plane's source blends, and its weight in the plane's picture. */
+export type PaintedSourceShare = { readonly selection: LayerSelection; readonly weight: number };
+
+const sameSelection = (a: LayerSelection, b: LayerSelection) =>
+  a.painting === b.painting && a.ground === b.ground && a.at === b.at && a.layers.length === b.layers.length && a.layers.every((key, i) => key === b.layers[i]);
+
+/** Whether two reads of sources (paintedSourceShares) blend the same selections at the same weights, in one order. */
+export const samePaintedSourceShares = (a: readonly PaintedSourceShare[], b: readonly PaintedSourceShare[]) =>
+  a.length === b.length && a.every(({ selection, weight }, i) => weight === b[i].weight && sameSelection(selection, b[i].selection));
+
+/**
+ * The selections `source` blends, weights summing to 1: `dissolve(a, b, k)` weighs a by 1 − k and b by k, nested ones
+ * multiplying. A dissolve is linear in each form a plane's picture takes, so this weighted sum is the nested blends.
+ * A weight of 0 is dropped (`k` at 0 or 1 solves one side); equal selections merge.
+ */
+export function paintedSourceShares(source: PaintedSource): PaintedSourceShare[] {
+  const shares: { selection: LayerSelection; weight: number }[] = [];
+  const visit = (at: PaintedSource, weight: number) => {
+    if (weight === 0) return;
+    if (at.kind === 'dissolve') {
+      visit(at.a, weight * (1 - at.k));
+      visit(at.b, weight * at.k);
+      return;
+    }
+    const same = shares.find(({ selection }) => sameSelection(selection, at));
+    if (same) same.weight += weight;
+    else shares.push({ selection: at, weight });
+  };
+  visit(source, 1);
+  return shares;
+}
+
+/** A selection a source names, and the field it's written at: `source` itself, or `source.a.b` inside dissolves. */
+export type PaintedSourceEnd = { readonly selection: LayerSelection; readonly field: string };
+
+/**
+ * Every selection `source` (written at `field`) names, each end of each dissolve whatever its `k`, equal ones once at
+ * the first one's field, in order: what its occurrences, reach, document size and rigs are read in.
+ */
+export function paintedSourceEnds(source: PaintedSource, field = 'source'): PaintedSourceEnd[] {
+  if (source.kind === 'layers') return [{ selection: source, field }];
+  const named = paintedSourceEnds(source.a, paintingField(field, 'a'));
+  for (const end of paintedSourceEnds(source.b, paintingField(field, 'b'))) if (!named.some(({ selection }) => sameSelection(selection, end.selection))) named.push(end);
+  return named;
+}
+
+/** What every selection of a painted plane paints, as its first evaluation's first does: its document size, px, and ground. */
+export type ShotPlanePaints = { readonly widthPx: number; readonly heightPx: number; readonly ground: LayerSelection['ground'] };
+
+/**
+ * Why plane `plane` can't show `ends`, its source's as its load or a callback's later read finds them, each at its
+ * end's field: one painting a document or ground other than `paints`, which its reach, lay and the back's canvas are
+ * read with.
+ */
+export function paintedPlaneBlendProblems(plane: string, ends: readonly PaintedSourceEnd[], paints: ShotPlanePaints): PaintingProblem[] {
+  const problems: PaintingProblem[] = [];
+  for (const { selection: { painting: { document: { widthPx, heightPx } }, ground }, field } of ends) {
+    const error = (message: string) => problems.push(paintingProblem('error', plane, field, message));
+    if (widthPx !== paints.widthPx || heightPx !== paints.heightPx) {
+      error(`paints a ${widthPx} × ${heightPx} document, and the plane's is ${paints.widthPx} × ${paints.heightPx}: every selection a plane shows, a dissolve's ends and each frame's, paints one document size`);
+    }
+    if (ground !== paints.ground) {
+      error(`lays a ${ground ?? 'default'} ground, and the plane a ${paints.ground ?? 'default'} one: every selection a plane shows, a dissolve's ends and each frame's, lays one ground`);
+    }
+  }
+  return problems;
+}

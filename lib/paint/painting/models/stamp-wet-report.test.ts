@@ -2,11 +2,12 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
-import { compileStampPaintRecipe } from './stamp-paint-recipe-compile.ts';
+import { compileStampPaintRecipe, stampMixedPainting } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampPaintEnvironment, StampPassageScope, StampWell } from './stamp-paint-recipe-types.ts';
 import { assertStampWetEffects, stampWetReport, stampWetReportStrictFailures, stampWetReportWarnings } from './stamp-wet-report.ts';
-import { compileStampWetness, stampDrying, stampPaintMedia } from './stamp-wetness.ts';
+import { stampDrying, stampPaintMedia } from './stamp-wetness.ts';
+import { compileStampWetness } from './stamp-wash-waits.ts';
 import { stampRoundTipsOf, stampRoundTipStatedProfile } from './stamp-tip-support.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { stampDrawnLine, stampGradedWash } from './stamp-technique-catalogue.ts';
@@ -41,7 +42,7 @@ function reported(body: (wash: StampPassageScope) => void, strict?: boolean) {
     wash.fill('sky', { brush, size: 40, application: { kind: 'flood' }, region: sky, well: { paint: { kind: 'color', color: '#4466aa' } } });
     body(wash);
   }))));
-  return stampWetReport(painting, compileStampWetness(painting, stampPaintMedia(painting, () => medium), stampRoundTipsOf()));
+  return stampWetReport(painting, compileStampWetness(painting, stampPaintMedia(stampMixedPainting(painting), () => medium), stampRoundTipsOf()));
 }
 
 test('a bloom into damp paint and a backrun along a junction act; the report gives their waits and the drying', () => {
@@ -106,7 +107,7 @@ test("the report's dryings are the wash's own, closed where the paper set, whate
     wait(wash);
     wash.stroke('late', { brush, size: 30, path: [{ x: 100, y: 100 }, { x: 200, y: 120 }], well: { paint: { kind: 'color', color: '#224488' } } });
   }).washes[0].dryings.map(({ closes, deposits, rim }) => ({ closes, deposits, rim }));
-  const whenSet = [{ closes: 'wait', deposits: 1, rim: 1 }, { closes: 'end', deposits: 1, rim: 1 }];
+  const whenSet = [{ closes: 'set', deposits: 1, rim: 1 }, { closes: 'end', deposits: 1, rim: 1 }];
   assert.deepEqual(dryings((wash) => wash.wait('set')), whenSet);
   assert.deepEqual(dryings((wash) => wash.wait({ seconds: 3600 })), whenSet);
   assert.deepEqual(dryings((wash) => wash.wait({ seconds: 1 })), [{ closes: 'end', deposits: 2, rim: 1 }]);

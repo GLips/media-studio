@@ -7,9 +7,9 @@
 //
 // A reader of a render goes through loadRenderSnapshot, never out/check/timeline.json: that is `studio check`'s latest
 // report, and says nothing about a render made before it.
-import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
+import { sha256OfFile } from '#lib/platform/files/engine/file-sha256.ts';
 import type { MotionTracks } from '#lib/picture/measurement/models/motion-tracks.ts';
 import type { TimelineClockTable } from '#lib/timing/timeline/models/timeline.ts';
 import type { RenderVoice } from '#lib/timing/voice/models/render-voice.ts';
@@ -61,7 +61,7 @@ export function renderFileStamp(file: string): RenderFileStamp {
   const key = `${mtimeMs}:${size}`;
   const cached = stamps.get(file);
   if (cached?.key === key) return cached.stamp;
-  const stamp = { hash: createHash('sha256').update(readFileSync(file)).digest('hex').slice(0, 10), modified: mtime.toISOString() };
+  const stamp = { hash: sha256OfFile(file).slice(0, 10), modified: mtime.toISOString() };
   stamps.set(file, { key, stamp });
   return stamp;
 }

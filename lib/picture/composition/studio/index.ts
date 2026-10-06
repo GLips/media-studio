@@ -1,3 +1,6 @@
+// First: scenes evaluate paintings as they load, so the render's painting values are set before Root imports them.
+// oxlint-disable-next-line import/no-unassigned-import -- imported for its effect alone, which must come first
+import './composition-painting-values-install.ts';
 import { registerRoot } from 'remotion';
 import { Root } from './Root.tsx';
 

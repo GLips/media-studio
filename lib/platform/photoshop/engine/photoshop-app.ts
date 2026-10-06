@@ -11,10 +11,10 @@
 // in use leaves it running, snapshot pending; nothing starts Photoshop meanwhile.
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, rmdirSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
+import { sha256OfFile } from '#lib/platform/files/engine/file-sha256.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { planPhotoshopSettingsRestore, type PhotoshopRunExit, type PhotoshopSettingsRestorePlan } from '../models/photoshop-settings-restore.ts';
 
@@ -98,15 +98,13 @@ async function quitPhotoshop(): Promise<void> {
 
 type SettingsSnapshot = { takenAt: string; files: Record<string, string> };
 
-const sha256 = (file: string) => createHash('sha256').update(readFileSync(file)).digest('hex');
-
 /** Every file under Photoshop's settings entries, by its path relative to ~/Library/Preferences, with its hash. */
 function hashPhotoshopSettings(root: string): Record<string, string> {
   const files: Record<string, string> = {};
   const walk = (path: string) => {
     if (!existsSync(path)) return;
     if (statSync(path).isDirectory()) for (const entry of readdirSync(path)) walk(join(path, entry));
-    else files[relative(root, path)] = sha256(path);
+    else files[relative(root, path)] = sha256OfFile(path);
   };
   for (const entry of PHOTOSHOP_SETTINGS_ENTRIES) walk(join(root, entry));
   return files;

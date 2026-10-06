@@ -76,6 +76,9 @@ export function projectWebpackOverride(project: string): WebpackOverrideFn {
   const styles = writeProjectStylesModule(project);
   return (config) => ({
     ...config,
+    // A painting source is named by its factory's function name, in Node and on the page alike (`studio look --set`,
+    // its problems). Concatenating modules renames a top-level function that shares another module's name, so it's off.
+    optimization: { ...config.optimization, concatenateModules: false },
     resolve: {
       ...config.resolve,
       alias: { ...(config.resolve?.alias as Record<string, string>), '@video': video, '@stills': stills, '@footage': previsFootageModuleFor(project), '@sfx-cues': sfxCues, '@brand': brand, '@stamp-paint-styles': styles, 'react-dom': studioReactDom(join(dir, 'generated')) },

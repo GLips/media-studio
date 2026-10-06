@@ -77,7 +77,7 @@ export function timedStarterFiles(slug: string, title: string, capability: Timed
   const voice = scenes.some((scene) => scene.span.startsWith('voiceSpan'));
   const files: Record<string, string> = {
     'timeline.ts': timelineModule(slug, title, scenes, { music, voice }),
-    'timeline.test.ts': retimeTest(voice),
+    'timeline.test.ts': retimeTest({ music, voice }),
     'video.tsx': videoModule(title, scenes, { music, voice }),
   };
   for (const scene of scenes) files[`${scene.folder}/${scene.id}.tsx`] = sceneModule(scene);
@@ -114,9 +114,10 @@ ${music ? LANDMARK : ''}});
 `;
 }
 
-function retimeTest(voice: boolean) {
-  const load = voice
-    ? `// The timeline reads the voice from audio/manifest.ts, which imports the WAVs once they're read: the hooks load those as URLs.
+function retimeTest({ music, voice }: { music: boolean; voice: boolean }) {
+  const reads = [voice && 'the voice from audio/manifest.ts', music && 'its fitted track, once it has one, from music/index.ts'].filter(Boolean).join(' and ');
+  const load = reads
+    ? `// The timeline reads ${reads}, which import the audio: the hooks load it as URLs.
 await import('#lib/output/render/engine/tsx-test-hooks.ts');
 const { timeline } = await import('./timeline.ts');`
     : "import { timeline } from './timeline.ts';";
@@ -150,7 +151,9 @@ export const ${binderName(scene)} = (clock: TimelineSceneClock<typeof timeline, 
 }
 
 function videoModule(title: string, scenes: readonly StarterScene[], { music, voice }: { music: boolean; voice: boolean }) {
-  const soundNote = music ? "\n// Once a fitted track replaces the tempo grid, it plays as `music: { track }` here." : '';
+  const soundNote = music
+    ? "\n// Until then a click marks each beat, a draft the render warns of. Once a fitted track replaces the tempo grid, it\n// plays as `music: { track }` here."
+    : '';
   return `// The ${title} video: each scene bound to its clock on timeline.ts, drawn in its own file.${soundNote}
 
 import { bindTimeline } from '#lib/timing/timeline/models/bind-timeline.ts';

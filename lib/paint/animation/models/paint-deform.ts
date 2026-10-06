@@ -10,7 +10,7 @@ import { stampGroupSceneFromLayer, type StampGroupPlacement } from '#lib/paint/p
 import type { StampWarpMap } from '#lib/paint/painting/models/stamp-group-warp.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { paintBoilDisplacementMap, type PaintBoilWobble } from './paint-boil-displacement.ts';
-import { paintKeyNumbers, type CompiledPaintPin, type PaintPinMove } from './paint-pins.ts';
+import { paintKeyNumbers, type CompiledPaintPin, type PaintPlacementMove } from './paint-pins.ts';
 
 /** Steps evaluated amounts are rounded to: 1/1000 px, and a millionth of a radian, of scale and of a flutter's spread. */
 const PX_STEP = 1e-3, RATIO_STEP = 1e-6;
@@ -39,7 +39,7 @@ export type PaintDeform = { readonly owner: string } & (
 );
 
 /** `move` whole and rounded to the steps its key is written in: the placement its map is built from. */
-export function paintPlacementRounded(move: PaintPinMove): StampGroupPlacement {
+export function paintPlacementRounded(move: PaintPlacementMove): StampGroupPlacement {
   return { x: rounded(move.x ?? 0, PX_STEP), y: rounded(move.y ?? 0, PX_STEP), rotation: rounded(move.rotation ?? 0, RATIO_STEP), scale: rounded(move.scale ?? 1, RATIO_STEP) };
 }
 

@@ -196,17 +196,24 @@ test("a lopsided brush's flood turns its nearer-reaching side to the outline, wh
   for (const short of ['left', 'right'] as const) assert.ok(ringOf(short) > 100, `${short} short: ${ringOf(short)} stamps past 105 px`);
 });
 
-test("a flood's barrier is its outline unless its edge is lost, then whole on the outline and gone at the lost edge's reach", () => {
+test("a flood's barrier is its outline unless its edge is lost, then whole on the outline and gone at the lost edge's reach, its paint laid all the way out", () => {
   const square = polygon(40, 40, 160, 40, 160, 160, 40, 160);
-  const barrierOf = (application: StampFillApplication) => {
+  const floodOf = (application: StampFillApplication) => {
     const deposit = compiledFill(square, 24, { application });
-    assert.equal(deposit.kind, 'flood');
-    return deposit.kind === 'flood' ? deposit.flood.barrier : null!;
+    if (deposit.kind !== 'flood') throw new Error(`a flood compiled to a ${deposit.kind}`);
+    return deposit;
   };
+  const barrierOf = (application: StampFillApplication) => floodOf(application).flood.barrier;
   const kept = barrierOf({ kind: 'flood' }), lost = barrierOf({ kind: 'flood', edge: { kind: 'lost', reach: 20 } });
+  // Along a side, clear of the corners, the stamps' centres stop the visible offset (12 px) inside what they lay: the
+  // outline, or the lost edge's reach.
+  const leftmost = (application: StampFillApplication) => Math.min(...floodOf(application).stamps.filter(({ y }) => y > 80 && y < 120).map(({ x }) => x));
+  assert.ok(Math.abs(leftmost({ kind: 'flood' }) - 52) < 1, `kept: ${leftmost({ kind: 'flood' })}`);
+  assert.ok(Math.abs(leftmost({ kind: 'flood', edge: { kind: 'lost', reach: 20 } }) - 32) < 1.5, `lost: ${leftmost({ kind: 'flood', edge: { kind: 'lost', reach: 20 } })}`);
   assert.ok(stampAreaCoverageAt(kept, 41, 100) > 0.99 && stampAreaCoverageAt(kept, 39, 100) < 0.01, 'kept: a pixel either side of the line');
   assert.ok(stampAreaCoverageAt(lost, 40, 100) > 0.99, `lost: on the line ${stampAreaCoverageAt(lost, 40, 100)}`);
   assert.ok(stampAreaCoverageAt(lost, 30, 100) > 0.3 && stampAreaCoverageAt(lost, 30, 100) < 0.7, `lost: halfway ${stampAreaCoverageAt(lost, 30, 100)}`);
   assert.ok(stampAreaCoverageAt(lost, 20, 100) < 0.01, `lost: at its reach ${stampAreaCoverageAt(lost, 20, 100)}`);
   assert.throws(() => barrierOf({ kind: 'flood', edge: { kind: 'lost', reach: 0 } }), /lost edge reaches 0 px/);
+  assert.throws(() => barrierOf({ kind: 'flood', edge: { kind: 'lost', reach: 20, ragged: { amount: 4, scale: 0 } } }), /ragged amount of 0 or more at a positive scale/);
 });

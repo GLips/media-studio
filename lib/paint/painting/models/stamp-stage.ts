@@ -5,7 +5,10 @@
 //
 // Paper, grain, tooth and noise are read at points, never texels: a margin changes nothing within the frame.
 
+import type { StampBox, StampPoint } from './stamp-region.ts';
+
 declare const stampStageMade: unique symbol;
+declare const stampPointBoxMade: unique symbol;
 
 /**
  * A stage: `frame` is what the output shows, and what a painting's relative sizes (its paper's tooth) read. Only
@@ -15,6 +18,12 @@ export type StampStage = {
   readonly frame: { readonly width: number; readonly height: number };
   /** Whole px past each side of the frame. */
   readonly margin: number;
+  /**
+   * The period each axis repeats with, as WGSL reads it (STAGE_WRAP): the frame's width or height on an axis that
+   * wraps, 0 on one that doesn't. On a stage that wraps, its margin is the halo marks are copied into
+   * (stamp-sheet-wrap.ts).
+   */
+  readonly wrapPeriods: StampWrapPeriods;
   /** The targets' size: the frame and the margin each side. */
   readonly width: number;
   readonly height: number;
@@ -22,28 +31,157 @@ export type StampStage = {
 };
 
 /**
- * The stage round a `frame` (whole px, above 0), `margin` px past each side. An even margin: a deposit's edge blur
- * works at half size, and an odd one would pair the frame's pixels otherwise, so the paint inside the frame would move
- * a level.
+ * Which axes a painting's sheets repeat across: 'x' meets the left edge to the right (round a cylinder), 'y' the top
+ * to the bottom (a sky scrolling down), 'xy' both (a tile, as round a torus).
  */
-export function stampStage(frame: { readonly width: number; readonly height: number }, margin = 0): StampStage {
+export type StampWrap = 'x' | 'y' | 'xy';
+
+/** An axis of the painting: x right, y down. */
+export type StampAxis = 'x' | 'y';
+
+/** Every StampWrap, for a check refusing any other. */
+export const STAMP_WRAPS: readonly StampWrap[] = ['x', 'y', 'xy'];
+
+/** Whether `wrap` (null: none) repeats across `axis`. */
+export const stampWrapsAcross = (wrap: StampWrap | null, axis: StampAxis): boolean => wrap !== null && wrap.includes(axis);
+
+/** The period, px, each axis repeats with: 0 on one that doesn't. */
+export type StampWrapPeriods = { readonly x: number; readonly y: number };
+
+/** The periods a `frame` wrapping as `wrap` (null: none) repeats with: its width across x, its height across y. */
+export const stampWrapPeriods = (frame: { readonly width: number; readonly height: number }, wrap: StampWrap | null): StampWrapPeriods =>
+  Object.freeze({ x: stampWrapsAcross(wrap, 'x') ? frame.width : 0, y: stampWrapsAcross(wrap, 'y') ? frame.height : 0 });
+
+/**
+ * The corner of the one wrap a deposit's pixels are read within, a painting point (stageUnwrapped): on each axis that
+ * wraps, where the wrap round where it was planned starts; read as nothing on one that doesn't.
+ */
+export type StampWrapFrom = Readonly<StampPoint>;
+
+/** The wrapFrom of a deposit on a stage that doesn't wrap: unread. */
+export const STAMP_WRAP_FROM_NONE: StampWrapFrom = Object.freeze({ x: 0, y: 0 });
+
+/** A pair by axis (a stage's wrapPeriods, a wrapFrom) as a vec2f's words. */
+export const stampAxisWords = ({ x, y }: { readonly x: number; readonly y: number }): [number, number] => [x, y];
+
+/**
+ * The offsets, px, copying `box` whole periods along each axis that wraps (`periods`; only 0 on one that doesn't) to
+ * every place it lies within `reach` px of the frame, (0, 0) among them; y's outer, each least first. A point is a box
+ * of no size. The region textures' WGSL mask step loops over the same copies.
+ */
+export function stampWrapOffsets(periods: StampWrapPeriods, box: Readonly<StampBox>, reach: number): [number, number][] {
+  const along = (period: number, low: number, high: number) => {
+    if (!period) return [0];
+    const shifts: number[] = [];
+    for (let k = Math.ceil((-reach - high) / period); k <= Math.floor((period + reach - low) / period); k++) shifts.push(k * period);
+    return shifts;
+  };
+  const xs = along(periods.x, box.x0, box.x1);
+  return along(periods.y, box.y0, box.y1).flatMap((dy) => xs.map((dx): [number, number] => [dx, dy]));
+}
+
+/**
+ * The stage round a `frame` (whole px, above 0), `margin` px past each side, each axis `wrap` names repeating with the
+ * frame's side. An even margin: a deposit's edge blur works at half size, and an odd one would pair the frame's
+ * pixels otherwise, so the paint inside the frame would move a level.
+ */
+export function stampStage(frame: { readonly width: number; readonly height: number }, margin = 0, wrap: StampWrap | null = null): StampStage {
   const { width, height } = frame;
   if (!(Number.isInteger(width) && Number.isInteger(height) && width > 0 && height > 0)) throw new Error(`stamp paint: a stage's frame is whole px above 0, not ${width} × ${height}`);
   if (!(Number.isInteger(margin) && margin >= 0 && margin % 2 === 0)) throw new Error(`stamp paint: a stage's margin is whole, even px from 0, not ${margin}`);
   // SAFETY: the brand says stampStage checked the frame and margin and derived the targets' size from them.
-  return Object.freeze({ frame: Object.freeze({ width, height }), margin, width: width + 2 * margin, height: height + 2 * margin }) as StampStage;
+  return Object.freeze({ frame: Object.freeze({ width, height }), margin, wrapPeriods: stampWrapPeriods(frame, wrap), width: width + 2 * margin, height: height + 2 * margin }) as StampStage;
 }
 
+/**
+ * The length a tile `length` px along an axis is laid at round a period `period` px long: the nearest that fits a
+ * whole number of times, or of mirrored pairs when `mirrored` (a mirrored tile meets itself only after its mirror).
+ * So a mirrored tile of half the period or more is laid at half the period.
+ */
+export function stampTileRoundWrap(period: number, length: number, mirrored: boolean): number {
+  const pair = mirrored ? 2 : 1;
+  return period / Math.max(1, Math.round(period / (pair * length))) / pair;
+}
+
+/**
+ * A tile `size` (width, height, px) as `stage` lays it: a wrapped axis's side fitted round its period
+ * (stampTileRoundWrap), an open one's scaled as the fitted side. Both ways each side fits on its own, so the aspect
+ * goes by the frame's: a mirrored square half a wide frame across is squashed to the frame's shape.
+ */
+export function stampStageTile({ wrapPeriods }: StampStage, [width, height]: readonly [number, number], mirrored: boolean): [number, number] {
+  const fitted = (period: number, length: number) => (period ? stampTileRoundWrap(period, length, mirrored) / length : null);
+  const across = fitted(wrapPeriods.x, width), down = fitted(wrapPeriods.y, height), kept = across ?? down ?? 1;
+  return [width * (across ?? kept), height * (down ?? kept)];
+}
+
+/** What a box of texels, a stage's or a texture's, carries: never StampPointBox's mark, so a point box is converted first. */
+export type StampTexelBoxMark = { readonly [stampPointBoxMade]?: never };
+
 /** A box of the stage's whole texels: a point's texel is the point plus the margin. */
-export type StampStageTexels = { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
+export type StampStageTexels = { readonly x: number; readonly y: number; readonly w: number; readonly h: number } & StampTexelBoxMark;
+
+/**
+ * A box of whole painting points: what a region and a kept film hold. On a stage with a margin these aren't its
+ * texels, so it reads as one only through stampStageTexelsOf.
+ */
+export type StampPointBox = { readonly x: number; readonly y: number; readonly w: number; readonly h: number; readonly [stampPointBoxMade]: true };
+
+/** `box`, whole painting points, as a StampPointBox. */
+export const stampPointBox = ({ x, y, w, h }: { readonly x: number; readonly y: number; readonly w: number; readonly h: number }): StampPointBox =>
+  // SAFETY: the mark only says which space the box is in; the caller hands painting points.
+  ({ x, y, w, h }) as StampPointBox;
 
 /** The stage's extent in painting pixels: x0, y0 inclusive, x1, y1 exclusive. `0 - margin`, as -margin is -0 at 0. */
 export const stampStageExtent = ({ margin, frame }: StampStage) => ({ x0: 0 - margin, y0: 0 - margin, x1: frame.width + margin, y1: frame.height + margin });
 
+/** The stage's whole texels within painting points x0..x1, y0..y1, or null for none. */
+export function stampStageTexelsWithin({ width, height, margin }: StampStage, x0: number, y0: number, x1: number, y1: number): StampStageTexels | null {
+  const x = Math.max(0, Math.floor(x0) + margin), y = Math.max(0, Math.floor(y0) + margin);
+  const w = Math.min(width, Math.ceil(x1) + margin) - x, h = Math.min(height, Math.ceil(y1) + margin) - y;
+  return w > 0 && h > 0 ? { x, y, w, h } : null;
+}
+
+/** A box of painting points as `stage`'s texels. */
+export const stampStageTexelsOf = ({ margin }: StampStage, box: StampPointBox): StampStageTexels => ({ x: box.x + margin, y: box.y + margin, w: box.w, h: box.h });
+
+/** What of `box`, `stage`'s texels, lies within the frame, as painting points; null for none. */
+export function stampStageFramed({ margin, frame }: StampStage, box: StampStageTexels): StampPointBox | null {
+  const x = Math.max(0, box.x - margin), y = Math.max(0, box.y - margin);
+  const w = Math.min(frame.width, box.x + box.w - margin) - x, h = Math.min(frame.height, box.y + box.h - margin) - y;
+  return w > 0 && h > 0 ? stampPointBox({ x, y, w, h }) : null;
+}
+
+/** `box` grown by `by` texels each side, held to the stage. */
+export function stampStageTexelsGrown({ width, height }: StampStage, box: StampStageTexels, by: number): StampStageTexels {
+  const x = Math.max(0, box.x - by), y = Math.max(0, box.y - by);
+  return { x, y, w: Math.min(width, box.x + box.w + by) - x, h: Math.min(height, box.y + box.h + by) - y };
+}
+
+/** A region's box (painting points) as a uniform's four words in `stage`'s texels; an empty box for none. */
+export const stampRegionTexelWords = (box: StampPointBox | null | undefined, stage: StampStage): [number, number, number, number] =>
+  (box ? [box.x + stage.margin, box.y + stage.margin, box.w, box.h] : [0, 0, 0, 0]);
+
+/** A region's box as a uniform's four words in painting points, as its own texture's texel 0 lies; empty for none. */
+export const stampPointBoxWords = (box: StampPointBox | null | undefined): [number, number, number, number] => (box ? [box.x, box.y, box.w, box.h] : [0, 0, 0, 0]);
+
+/** The least box holding `a` and `b`, both texels or both painting points; either alone when the other is null. */
+export function stampBoxUnion<B extends StampStageTexels | StampPointBox>(a: B | null, b: B | null): B | null {
+  if (!a || !b) return a ?? b;
+  const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+  // A point box's spread keeps its mark: the union of two boxes in one space is in it.
+  return { ...a, x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
+}
+
 /**
- * WGSL for `stage`: STAGE_MARGIN, and stagePoint(texel), a stage texel's centre as a painting point. At margin 0 it's
- * the texel's centre exactly, so a margin of 0 draws as no stage did.
+ * WGSL for `stage`: STAGE_MARGIN and STAGE_WRAP (its periods); stagePoint(texel), a texel's centre as a painting
+ * point, exactly the texel's centre at margin 0, so a margin of 0 draws as no stage did; and stageUnwrapped(p, start),
+ * `p` as a deposit planned within the wrap from `start` (StampWrapFrom) reads it, so its copies read as it does.
  */
-export const stampStageWgsl = ({ margin }: StampStage) => /* wgsl */ `
+export const stampStageWgsl = ({ margin, wrapPeriods }: StampStage) => /* wgsl */ `
 const STAGE_MARGIN = vec2i(${margin});
-fn stagePoint(texel: vec2i) -> vec2f { return vec2f(texel - STAGE_MARGIN) + 0.5; }`;
+const STAGE_WRAP = vec2f(${wrapPeriods.x.toFixed(1)}, ${wrapPeriods.y.toFixed(1)});
+fn stagePoint(texel: vec2i) -> vec2f { return vec2f(texel - STAGE_MARGIN) + 0.5; }
+fn stageUnwrapped(p: vec2f, start: vec2f) -> vec2f {
+  let period = max(STAGE_WRAP, vec2f(1.0));
+  return select(p, start + (p - start) - period * floor((p - start) / period), STAGE_WRAP > vec2f(0.0));
+}`;

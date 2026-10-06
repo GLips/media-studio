@@ -230,4 +230,4 @@ const probesCommand = defineCommand({
 await runHarnessCommand(defineCommand({
   meta: { name: 'brush-fidelity', description: "How close an imported pack's brushes paint to their targets, fitting the importer to them, and Photoshop's probes scored stage by stage" },
   subCommands: { sheet: sheetCommand, fit: fitCommand, diagnose: diagnoseCommand, hand: handCommand, fills: fillsCommand, 'narrow-fills': narrowFillsCommand, probes: probesCommand },
-}));
+}), 'batch');

@@ -16,18 +16,19 @@ Every step is a `studio` verb. A `<project>` is a slug (`launch-teaser`), a uniq
 | Voice | `studio voice <project>` | `audio/take.wav`, the whole script read in one take, cut into `audio/<line>.wav` plus `audio/manifest.ts`. Any script change re-reads the take. `--read=draft` is a free macOS `say` read, `--read=estimate` times lines from their word count, `--take=<file>` uses a recording. `studio audition` compares voices on one line |
 | Music | `studio music add <project> <file>` | `music/<name>.*` plus `music/index.ts`: the track with its loudness, tempo and beats. Use it with `defineVideo({ music: { track: music.bed } })`. `studio music fit <project>` cuts it to the video's length, ending on its own ending, as `music['bed-fit']` |
 | Preview | `studio preview <project>` | the Remotion Studio: scrub, see scenes and voice lines on the timeline, toggle `captions` in the props panel |
-| Look | `studio look <project> --sheet=1,5,9` | a contact sheet of chosen times, `--strip=4:5` for a stretch of motion, or `--graph=4:6` to plot that stretch's measured motion (position, velocity, size, opacity, reported values) against the words, with its numbers. Open the image to check frames without rendering video |
+| Look | `studio look <project> --sheet=1,5,9` | a contact sheet of chosen times, `--strip=4:5` for a stretch of motion, or `--graph=4:6` to plot that stretch's measured motion (position, velocity, size, opacity, reported values) against the words, with its numbers. Open the image to check frames without rendering video. `--remote` draws the frames on a Modal GPU (`docs/remote.md`) |
 | Check | `studio check <project>` | the framing check and the motion tracks on every frame (`--scene` or `--at=a:b` for less), a table of when each scene and line starts and ends, `out/check/timeline.json` (scenes, lines, words, crossfades) and `out/check/motion.json` (how every tagged element moved) |
 | Mix | `studio mix <project>` | `out/mix.wav`, the mastered mix on its own, to audition |
-| Render | `studio render <project>` | `out/mix.wav`, `out/video.mp4` (captions burned in), `out/video.srt` and `out/video.vtt`, review sheets in `out/check/`, each video with a `.snapshot.json` beside it (the timeline it was rendered from). `--animatic` renders the video as it plays now, unchecked and unmixed, to `out/wip/animatic.mp4`, for approving it in `studio review` before it's voiced or finished; `--frames=a:b` renders just those frames, silent; `--join=<folder>` joins such slices under the mix. A `--read=draft` voice gets a loud warning, and its snapshot says so, so `studio review` shows a DRAFT VOICE banner over it. A transparent video (`format: { transparent: true }`, silent) delivers `out/video.webm` (VP9 with alpha, Chrome and Firefox) and `out/video-hevc.mov` (HEVC with alpha via macOS VideoToolbox, Safari) in place of the MP4, and `studio review` plays it over a checkerboard or a colour |
+| Render | `studio render <project>` | `out/mix.wav`, `out/video.mp4` (captions burned in), `out/video.srt` and `out/video.vtt`, review sheets in `out/check/`, each video with a `.snapshot.json` beside it (the timeline it was rendered from). `--animatic` renders the video as it plays now, unchecked and unmixed, to `out/wip/animatic.mp4`, for approving it in `studio review` before it's voiced or finished; `--frames=a:b` renders just those frames, silent, and keeps them lossless beside it; `--join=<folder>` encodes such slices once, under the mix; `--remote` draws the frames on Modal's GPUs (`studio remote deploy` first, `docs/remote.md`) and joins them here to `out/wip/joined.mp4`, never the delivered video. A `--read=draft` voice gets a loud warning, and its snapshot says so, so `studio review` shows a DRAFT VOICE banner over it. A transparent video (`format: { transparent: true }`, silent) delivers `out/video.webm` (VP9 with alpha, Chrome and Firefox) and `out/video-hevc.mov` (HEVC with alpha via macOS VideoToolbox, Safari) in place of the MP4, and `studio review` plays it over a checkerboard or a colour |
 | Review | `studio review <project>` | the studio app (`web/`, on port 4317) on the project's newest render or still: pin notes on a moment and a point, which save to `review/notes-<render>.json` and copy as markdown; the scrubber carries the render's scene cuts, beats and cues, and a storyboard under it has a card per scene with stills cut from the render |
 
 `studio render` refuses to render if any line is still estimated. It renders the captioned video with the check
 measuring each frame as it's drawn, and delivers nothing if a highlight sits under a tag or the caption, runs off
 the frame or is cut off by its panel, if a scene's `expect` isn't met, or if the motion tracks have tracking errors.
-It then masters the mix to −14 LUFS and muxes it in under the muted video. Renders run at low priority in 3 tabs
-(`--workers` or a video's `renderWorkers` changes that), fail if their browser has only software GL, and end
-with each pass's time, the workers and the GPU backends. Each MP4 must have
+It then masters the mix to −14 LUFS and muxes it in under the muted video. Renders run at low priority in 3 tabs, 1
+for a project that paints (`--workers` or a video's `renderWorkers` changes that), in chunks of frames each in a fresh
+browser, a chunk that crashes or stops making progress drawn once more. They fail if their browser has only software
+GL, and end with each pass's time, the workers and the GPU backends. Each MP4 must have
 the right length and an audio stream, measure −14 ±1 LUFS and peak at −1 dBTP or lower. A `silent` project (no voice,
 music or sound) has no mix, mastering or loudness check, and a sidecar only from a caption table: each MP4 must have no
 audio track instead. A mix
@@ -39,10 +40,13 @@ effects from seeded recipes (`studio sfx list`; `studio sfx showcase` to listen 
 
 `npm run typecheck` checks everything, including that every rect a scene points at was captured. `npm test` runs the
 tests. `npm run check:arch` holds the architecture (where timing is built, what a scene may import, a project's declared
-capability against what it binds, the modules its scenes may share) over what the next commit holds; older
-violations sit in `lint/arch-baseline.json` (the studio's) and `work/arch-baseline.json` (yours), and a new one
-blocks. The pre-commit gate (`.githooks/pre-commit`, switched on by `npm install`) runs `check:arch`, then
-`typecheck:gate` and `test:gate`: the typecheck and tests of what a clean clone holds, which has no `work/`. Your workspace's commits run the rest (Your work, above).
+capability against what it binds, the modules its scenes may share) and `npm run lint` the per-file rules, each over
+the working tree, untracked files included, of the studio and of `work/` both, so your project is judged as its commit
+will be (each hook reads what its commit holds, in its own repository); older violations sit in
+`lint/arch-baseline.json` (the studio's) and `work/arch-baseline.json` (yours), and a new one blocks. The pre-commit
+gate (`.githooks/pre-commit`, switched on by `npm install`) runs `check:arch` and `lint` over the studio, then
+`typecheck:gate` and `test:gate`: the typecheck and tests of what a clean clone holds, which has no `work/`. Your
+workspace's commits run the rest (Your work, above).
 
 ## A project
 
@@ -95,7 +99,7 @@ scene's `expect` says what must be on screen while a word is spoken:
 - `camera`: cameras over captures (`camFit`, `camAt`, `lerpCam`) and views, which map page rects to the frame.
 - `measurement`: the probe that measures each frame (highlights, clicks, tags, the caption, tagged motion) for the
   checks, and piece tracks read from a scene's model without a render.
-- `profiling`: how drawing code offers its work to `studio profile` to be timed.
+- `profiling`: how drawing code offers its work to `studio profile` to be timed, and its costs to be counted (`--costs`).
 - `video`: `defineVideo`, the scene clock, and a timed video's scenes bound to where the timeline placed them.
 - `stills`: `defineStills`, the sizes stills render at, and the check a still must pass.
 - `composition`: the Remotion root and the composition that plays a project's scenes, voice and captions.
@@ -115,8 +119,8 @@ scene's `expect` says what must be on screen while a word is spoken:
   references.
 - `procreate-brushes`: Procreate brushes read into a `StampBrush`, and the stroke Procreate previews them along.
 - `brush-packs`: a pack of brushes on disk, and `studio brushes import` for either app's.
-- `style`: a private painting style (`work/styles/<name>/`), the styles a project names, and `StampPainting`, which
-  paints in one in a scene.
+- `style`: a private painting style (`work/styles/<name>/`), the styles a project names, `StampPainting`, which
+  paints in one in a scene, and `studio brushes describe`, a style's brushes as numbers to plan by.
 - `brush-fidelity`: how close a painted brush comes to its app's own, measured, scored and fitted
   (`npm run brushes:sheet`).
 - `studies`: wet and dry passages, fill and stroke-hand sheets, painted for a person to judge.

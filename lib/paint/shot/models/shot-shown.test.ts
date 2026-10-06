@@ -1,0 +1,79 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import type { Layer, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
+import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
+import { painting } from '#lib/paint/document/models/painting-source.ts';
+import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
+import { compilePaintedShot } from './shot-compile.ts';
+import { shotRigReader } from './shot-frame-plan.ts';
+import type { RigPartPose } from './shot-props.ts';
+import { shotExposureMoments, shotSolvablesShown, shotWarmShown } from './shot-shown.ts';
+import { shotWarmFrames } from './shot-warm.ts';
+
+const FPS = 24, SHUTTER = 0.1;
+
+const layer = (key: string): Layer => ({
+  key, washes: [{
+    key: `${key}-wash`,
+    applications: [{
+      kind: 'stroke', subpaths: [[{ x: 40, y: 100 }, { x: 200, y: 120 }]], brush: { style: 'watercolor', brush: 'wash' }, diameterPx: 20,
+      seed: key, charge: { kind: 'paint', mix: { parts: [{ pigment: '#3a4a6b', amount: 1 }], strength: 0.6 } },
+    }],
+  }],
+});
+
+const pond = painting({
+  default: function pond(): PaintingDocument {
+    return {
+      widthPx: 320, heightPx: 240, paper: { color: '#f4f2ed', absorbency: 0.5 }, medium: 'watercolour',
+      layers: [layer('sky'), layer('mist'), { key: 'birds', children: [layer('swift'), layer('swallow')] }],
+    };
+  },
+});
+
+/**
+ * Over the back: a mist shown from 1 s; birds whose swift shows from 2 s and swallow never, rigged to show the swallow
+ * cel from 2.75 s, their group gone from 3 s; and a card whose one layer is hidden, laid on its paper.
+ */
+const { shot } = compilePaintedShot({
+  camera: { stage: stampStage({ width: 320, height: 240 }, 2), fov: 35, lens: { bloom: 0, shutter: SHUTTER }, plays: [], animationFps: FPS },
+  span: { from: 0, to: 4, fps: FPS },
+  planes: [
+    { id: 'back', depth: 4, source: layersOf(pond, ['sky']) }, { id: 'mist', depth: 3, source: layersOf(pond, ['mist']), visibility: ({ at }) => (at < 1 ? 0 : 1) },
+    {
+      id: 'birds', depth: 2, source: layersOf(pond, ['birds']),
+      occurrences: {
+        birds: {
+          rig: { parts: [{ id: 'bird', z: 0, parent: null, cels: ['swift', 'swallow'] }], pose: ({ at }): Readonly<Record<string, RigPartPose>> => (at < 2.75 ? {} : { bird: { cel: 'swallow' } }) },
+          visibility: ({ at }) => (at < 3 ? 1 : 0),
+        },
+        swift: { visibility: ({ at }) => (at < 2 ? 0 : 1) },
+        swallow: { visibility: 0 },
+      },
+    },
+    { id: 'card', depth: 1, source: layersOf(pond, ['swallow'], { ground: 'paper' }), occurrences: { swallow: { visibility: 0 } } },
+  ],
+}, []);
+
+test('a frame solves a painted plane only if it lays something at one of its exposures; the back always does', () => {
+  const shownAt = (t: number, mode: 'fast' | 'reference') => {
+    const { shown, hidden } = shotSolvablesShown(shot!, shotExposureMoments(SHUTTER, t, mode).map(({ at }) => at), shotRigReader(shot!.motion));
+    return [shown.map(({ id }) => id), [...hidden].map(({ id }) => id)];
+  };
+  assert.deepEqual(shownAt(0.98, 'fast'), [['back', 'card'], ['mist', 'birds']]);
+  // Its shutter, open 0.93..1.03 s, sees the mist arrive in its last exposures.
+  assert.deepEqual(shownAt(0.98, 'reference'), [['back', 'mist', 'card'], ['birds']]);
+  assert.deepEqual(shownAt(2.5, 'fast'), [['back', 'mist', 'birds', 'card'], []]);
+  // The swift shown is a cel its rig's pose hides.
+  assert.deepEqual(shownAt(2.9, 'fast'), [['back', 'mist', 'card'], ['birds']]);
+  // The swift shows, but not through its group.
+  assert.deepEqual(shownAt(3.5, 'fast'), [['back', 'mist', 'card'], ['birds']]);
+});
+
+test('a warm solves a plane at the frames it shows at, counting those it skips', () => {
+  const mist = shot!.planes.find(({ id }) => id === 'mist')!;
+  assert.ok(mist.kind === 'painted');
+  const { frames, hidden } = shotWarmShown(shot!, mist, shotWarmFrames({ from: 0.5, to: 1.5 }, FPS), 'fast', shotRigReader(shot!.motion));
+  assert.deepEqual(frames.map(({ at }) => Math.round(at * FPS)), Array.from({ length: 13 }, (_, i) => 24 + i));
+  assert.equal(hidden, 12);
+});

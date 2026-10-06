@@ -2,13 +2,15 @@
 // (import-procreate-pack.ts, import-photoshop-pack.ts) and read by everything that paints with one. An import writes
 // a whole generation, generations/<id>/ (the manifest and every image it lists), then renames `current` over the old
 // pointer to name it, so a reader sees one generation whole or the one before. Everything else in the pack's folder
-// (a sheet's fidelity/, Photoshop's reference/) sits beside the generations and outlives them. Also here: brush images
-// written as downsized grey PNGs, and the archive's hash.
+// (its profiles/, a sheet's fidelity/, Photoshop's reference/) sits beside the generations and outlives them. Also
+// here: the lock imports into one pack take turns by, and brush images written as downsized grey PNGs.
 
-import { createHash, randomUUID } from 'node:crypto';
-import { closeSync, existsSync, linkSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
+import { releaseStudioLockFile, tryStudioLockFile, type StudioLockFileHold } from '#lib/platform/files/engine/studio-lock-file.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { readStampPaintPack, STAMP_PAINT_PACK_MANIFEST, type StampPaintPack } from '../models/stamp-paint-pack.ts';
 
@@ -72,87 +74,38 @@ export const stampPaintPackDir = ({ stylesDir, style, pack }: StampPaintPackPlac
 /** A brush's or paper's name as a file name: lowercase letters, digits and dashes; empty for a name in another script. */
 export const stampPackSlug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-export function sha256OfFile(file: string): string {
-  const hash = createHash('sha256'), fd = openSync(file, 'r'), chunk = Buffer.alloc(1 << 22);
-  for (let read; (read = readSync(fd, chunk, 0, chunk.length, null)) > 0;) hash.update(chunk.subarray(0, read));
-  closeSync(fd);
-  return hash.digest('hex');
-}
-
 export function fitWithin(width: number, height: number, max: number) {
   const scale = Math.min(1, max / Math.max(width, height));
   return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
 }
 
-/** A filesystem error's code (ENOENT, EEXIST…); undefined for anything else thrown. */
-const fsErrorCode = (error: unknown) => (error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : undefined);
-
-/** Whether process `pid` still runs; signal 0 only asks. */
-function processAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return fsErrorCode(error) === 'EPERM';
-  }
-}
-
-const lockHolder = (text: string) => Number(text.split(' ')[0]);
+const STAMP_PACK_LOCK_POLL_MS = 500;
 
 /**
- * Takes `lock` from a dead holder, or says who holds it. Renamed away first, so of two takers one rename wins and the
- * other retries. What was renamed may turn out live (another taker locked between our read and rename): it's linked
- * back, which fails rather than overwrite a newer lock.
+ * Takes `lock` for this import (tryStudioLockFile: one whose process has gone, a killed import, is taken over),
+ * waiting while a live process holds it, its holder named once (`told`, the pid last named).
  */
-function takeOverStaleStampPackLock(lock: string, pack: string) {
-  let text: string;
-  try {
-    text = readFileSync(lock, 'utf8');
-  } catch (error) {
-    if (fsErrorCode(error) === 'ENOENT') return;
-    throw error;
-  }
-  if (processAlive(lockHolder(text))) throw new Error(`brushes import: process ${lockHolder(text)} is importing into ${pack} now (${lock})`);
-  const taken = `${lock}.stale-${randomUUID()}`;
-  try {
-    renameSync(lock, taken);
-  } catch (error) {
-    if (fsErrorCode(error) === 'ENOENT') return;
-    throw error;
-  }
-  const holder = lockHolder(readFileSync(taken, 'utf8'));
-  if (processAlive(holder)) {
-    try {
-      linkSync(taken, lock);
-    } finally {
-      rmSync(taken, { force: true });
-    }
-    throw new Error(`brushes import: process ${holder} is importing into ${pack} now (${lock})`);
-  }
-  rmSync(taken, { force: true });
+async function takeStampPackLock(lock: string, waiting: string, told?: number): Promise<StudioLockFileHold> {
+  const tried = tryStudioLockFile(lock);
+  if ('held' in tried) return tried.held;
+  const { pid } = tried.holder;
+  if (told !== pid) process.stderr.write(`brushes import: waiting for process ${pid}, importing into ${waiting} now (${lock})\n`);
+  await sleep(STAMP_PACK_LOCK_POLL_MS);
+  return takeStampPackLock(lock, waiting, pid);
 }
 
 /**
- * Holds `brushes/.<pack>.lock` while `body` runs, so two imports into one pack can't interleave their publishing. It's
- * made exclusively (O_EXCL); a lock whose process has gone (a killed import) is taken over, one held by a live process
- * refuses. Released only while it's still this import's.
+ * Holds `brushes/.<pack>.lock` while `body` runs (an import's generation switch, and the profiles it stores), so two
+ * imports into one pack take turns and the second measures only what the first left unstored.
  */
-async function withStampPackLock<T>(brushesDir: string, pack: string, body: () => Promise<T>): Promise<T> {
+export async function withStampPackLock<T>({ stylesDir, style, pack }: StampPaintPackPlace, body: () => Promise<T>): Promise<T> {
+  const brushesDir = join(stylesDir, style, 'brushes');
   mkdirSync(brushesDir, { recursive: true });
-  const lock = join(brushesDir, `.${pack}.lock`), mine = `${process.pid} ${randomUUID()}`;
-  for (;;) {
-    try {
-      writeFileSync(lock, mine, { flag: 'wx' });
-      break;
-    } catch (error) {
-      if (fsErrorCode(error) !== 'EEXIST') throw error;
-      takeOverStaleStampPackLock(lock, pack);
-    }
-  }
+  const hold = await takeStampPackLock(join(brushesDir, `.${pack}.lock`), `${style}'s ${pack}`);
   try {
     return await body();
   } finally {
-    if (existsSync(lock) && readFileSync(lock, 'utf8') === mine) rmSync(lock, { force: true });
+    releaseStudioLockFile(hold);
   }
 }
 
@@ -174,8 +127,8 @@ export function checkStampPaintPackArchive({ archive, ...place }: ImportStampPai
 export async function replaceStampPaintPack<T>(place: StampPaintPackPlace, write: (generation: string) => T | Promise<T>): Promise<T & { dir: string }> {
   const { style, pack } = place;
   if (!/^[a-z0-9][a-z0-9-]*$/.test(pack) || !/^[a-z0-9][a-z0-9-]*$/.test(style)) throw new Error('brushes import: --style and --pack are lowercase names: letters, digits and dashes');
-  const dir = stampPaintPackDir(place), brushesDir = join(dir, '..'), generations = join(dir, STAMP_PACK_GENERATIONS);
-  return withStampPackLock(brushesDir, pack, async () => {
+  const dir = stampPaintPackDir(place), generations = join(dir, STAMP_PACK_GENERATIONS);
+  return withStampPackLock(place, async () => {
     const name = stampPackGenerationName(), generation = join(generations, name), pointer = join(dir, `.${STAMP_PACK_CURRENT}-${name}`);
     mkdirSync(generation, { recursive: true });
     let written: T;

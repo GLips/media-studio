@@ -1,0 +1,29 @@
+// painting-still-request.ts: what a still's page (studio/painting-still-page.ts) is handed and hands back, as JSON
+// across the page's boundary (engine/painting-still.ts).
+
+import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
+import type { StampPaintPackUrls } from '#lib/paint/brush-packs/models/stamp-paint-pack-urls.ts';
+import type { PaintingProblem } from './painting-problem.ts';
+
+/**
+ * What a still's page is handed: the property values as `--set` wrote them, each brush the document names by
+ * `<style>/<brush>`, the packs' URLs, whether to show each film on its sheet's paper and edge too, the scene second
+ * whose prefix to paint (null for all of it), and whether its solve reads damp windows for its lines.
+ */
+export type PaintingStillRequest = {
+  readonly texts: Readonly<Record<string, string>>; readonly brushes: Readonly<Record<string, StampBrush>>; readonly packUrls: StampPaintPackUrls; readonly films: boolean;
+  readonly at: number | null; readonly dampWindows: boolean;
+};
+
+/**
+ * A still as its page returns it: the painting as a PNG data URL, each layer's film when asked, the solve's lines
+ * (paintingSolveLines), its warnings alone, and what it cost, a line (paintingSolveCostsLine); and what the solve found
+ * that the check couldn't, reading its images (paintingWrappedGrainHeightProblem), warnings all.
+ */
+export type PaintingStill = {
+  readonly png: string; readonly films: readonly { readonly name: string; readonly png: string }[]; readonly lines: readonly string[];
+  readonly warnings: readonly string[]; readonly costs: string; readonly problems: readonly PaintingProblem[];
+};
+
+/** What a still's page returns: the still, or what the solve refused to paint (a StampSheetRefusal's message). */
+export type PaintingStillOutcome = { readonly still: PaintingStill } | { readonly refused: string };

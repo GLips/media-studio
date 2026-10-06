@@ -14,7 +14,7 @@ import {
   STAMP_BRUSH_PROFILE_HEADINGS, STAMP_BRUSH_PROFILE_PRECISION, STAMP_BRUSH_PROFILE_TOLERANCE, stampBrushEvenEdge, stampBrushProfileHash, stampBrushProfileHeading,
 } from '#lib/paint/brush/models/stamp-brush-profile.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
-import { paintMediumCan } from '#lib/paint/materials/models/paint-medium.ts';
+import { paintMediumAsProbed, paintMediumCan } from '#lib/paint/materials/models/paint-medium.ts';
 import { paintHexToLinear, paintLinearToLab, srgbToLinear } from '#lib/paint/materials/models/paint-spectrum.ts';
 import type { StampPixelBox } from '#lib/paint/painting/models/stamp-blur-region.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
@@ -30,6 +30,8 @@ export const STAMP_BRUSH_PROFILE_SEEDS = ['a', 'b', 'c', 'd'] as const;
 
 /** Diameters every profile is measured at, px, from the least a ridge narrows to up to the most. */
 const SAMPLED_DIAMETERS = [2, 4, 8, 16, 32, 64, 128, 256] as const;
+/** The least diameter any probe paints, px: a profile starting here was measured as fine as probes go. */
+export const STAMP_BRUSH_PROBE_LEAST_DIAMETER = SAMPLED_DIAMETERS[0];
 /** The most a profile is measured to, px: the largest a pack's tip image is kept. */
 const MOST_DIAMETER = STAMP_PACK_TIP_MAX;
 /** A probe stroke's length, in diameters, and the share of it measured, past its ends' build. */
@@ -81,21 +83,23 @@ export const STAMP_BRUSH_PROBE_BARE_MEDIUM: StampBrushProbeMedium = { paper: { c
  */
 export function stampBrushProbePaint(mixing: StampPaintMixing): PaintMaterial {
   const pigments = mixing.kind === 'pigment' ? Object.values(mixing.pigments) : [];
-  const darkest = pigments.map((pigment) => ({ pigment, lightness: paintLinearToLab(paintHexToLinear(pigment.overWhite))[0] })).toSorted((a, b) => a.lightness - b.lightness)[0];
+  const darkest = pigments.map((pigment) => ({ pigment, lightness: paintLinearToLab(paintHexToLinear('color' in pigment ? pigment.color : pigment.overWhite))[0] })).toSorted((a, b) => a.lightness - b.lightness)[0];
   return darkest ? { kind: 'mixture', parts: [{ pigment: darkest.pigment, amount: 1 }], strength: 1 } : STAMP_BRUSH_PROBE_BARE_MEDIUM.paint;
 }
 
 /**
- * `medium`'s key, as a profile holds it and a style's boundary checks it (stampPackBrushProfile): its paper's images
- * keyed by what fixes their bytes, their pack's archive (`sources`, sha256 by pack folder) and the asset version. A
- * paper whose pack isn't imported keys as none, matching no measured profile.
+ * `medium`'s key, as a profile holds it and a style's boundary checks it (stampPackBrushProfile): its paint medium as
+ * a probe sees it (paintMediumAsProbed), its paper's images keyed by what fixes their bytes, their pack's archive
+ * (`sources`, sha256 by pack folder) and the asset version. A paper whose pack isn't imported keys as none, matching
+ * no measured profile.
  */
 export function stampBrushProbeMediumKey({ paper, mixing, paint }: StampBrushProbeMedium, sources: Readonly<Record<string, string>>): string {
   const image = ({ pack, file }: StampBrushAsset) => ({ archive: sources[pack] ?? null, file });
+  const probed = mixing.kind === 'pigment' ? { ...mixing, medium: paintMediumAsProbed(mixing.medium) } : mixing;
   const keyed = {
     assets: STAMP_PAINT_ASSETS_VERSION,
     paper: { color: paper.color, image: paper.image ? image(paper.image) : null, grain: paper.grain ? { ...paper.grain, image: image(paper.grain.image) } : null },
-    mixing, paint,
+    mixing: probed, paint,
   };
   return stampBrushProfileHash(JSON.stringify(keyed));
 }

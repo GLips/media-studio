@@ -19,7 +19,7 @@ import { FrameProbe } from '#lib/picture/measurement/studio/probe.tsx';
 import { FrameProfiler } from '#lib/picture/profiling/studio/frame-profiler.tsx';
 import { SceneContext } from '#lib/picture/video/studio/scene.tsx';
 import { randomSeedFromKey } from '#lib/picture/motion/models/random.ts';
-import { Sfx, SfxCueListAudio, SfxCueListPlaying } from '#lib/timing/sound/studio/sfx.tsx';
+import { SFX, Sfx, SfxCueListAudio, SfxCueListPlaying } from '#lib/timing/sound/studio/sfx.tsx';
 import { sceneClockAt, sceneTimes, scenesAtFrame } from '#lib/timing/timeline/models/video-layout.ts';
 import { laidVideoOf, videoFormatOf, type LaidScene, type LaidVideo, type VideoDef } from '#lib/picture/video/studio/video.ts';
 import { BurnedCaptions, burnedCaptionPages, CaptionBandContext, sidecarCaptionPages } from '#lib/picture/captions/studio/caption-style.tsx';
@@ -27,6 +27,7 @@ import { captionsToSrt, captionsToVtt } from '#lib/picture/captions/models/capti
 import { captionTrackOfVoice, type CaptionTrack } from '#lib/picture/captions/models/caption-track.ts';
 import { pillCaptions } from '#lib/picture/captions/studio/pill-captions.tsx';
 import type { CaptionStyle } from '#lib/picture/captions/studio/caption-style.tsx';
+import { PictureDrawnContext } from '#lib/picture/frame/studio/picture-drawn.ts';
 import { VideoTransparentContext } from '#lib/picture/frame/studio/video-format.ts';
 import { LensModeContext } from '#lib/picture/lens/studio/lens-mode-context.ts';
 
@@ -73,6 +74,7 @@ function timelineReport(video: VideoDef, tl: LaidVideo, { fps, width, height, du
       return { scene: scene.id, ...promise, start: scene.start + during.start, end: scene.start + during.end };
     })),
     sfxCueList,
+    beatClicks: playsBeatClicks(video),
     sounds: (video.sounds ?? []).map(({ at, sound, id }, i) => {
       const takes = Array.isArray(sound) ? sound : [sound];
       return { id: String(id ?? i), at, sound: takes[randomSeedFromKey(id ?? i) % takes.length].request.sound };
@@ -83,7 +85,7 @@ function timelineReport(video: VideoDef, tl: LaidVideo, { fps, width, height, du
 
 // `reportTimeline` is off in the replay composition: its Freeze can land on frame 0 more than once, and Remotion
 // refuses a second artifact with the same name.
-export function Video({ video, captions, probe, blockouts, auditionSfxCueList = false, profile = false, lens = 'fast', reportTimeline = true }: VideoProps & { video: VideoDef; reportTimeline?: boolean }) {
+export function Video({ video, captions, probe, blockouts, auditionSfxCueList = false, profile = false, lens = 'fast', picture = true, reportTimeline = true }: VideoProps & { video: VideoDef; reportTimeline?: boolean }) {
   const frame = useCurrentFrame();
   const config = useVideoConfig(), { fps } = config;
   const tl = useMemo(() => laidVideoOf(video), [video]);
@@ -99,6 +101,7 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
 
   return (
     <AbsoluteFill ref={root} style={{ background: transparent ? undefined : '#fff', overflow: 'hidden' }}>
+      <PictureDrawnContext value={picture}>
       <LensModeContext value={lens}>
       <CaptionBandContext value={captioned.style.band}>
       <SfxCueListPlaying.Provider value={playsCueList}>
@@ -113,6 +116,7 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
       </SfxCueListPlaying.Provider>
       </CaptionBandContext>
       </LensModeContext>
+      </PictureDrawnContext>
       {playsCueList && sfxCues && <SfxCueListAudio cues={sfxCues} />}
       {video.sounds?.map((s, i) => <Sfx key={i} sound={s.sound} at={s.at} t={t} id={s.id ?? i} volume={s.volume} />)}
       {tl.cues.map((cue) =>
@@ -124,6 +128,7 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
         ) : null,
       )}
       {video.music && <MusicBedAudio video={video} tl={tl} fps={fps} />}
+      {playsBeatClicks(video) && <BeatClickAudio timeline={video.timeline} fps={fps} />}
       {captions && <BurnedCaptions style={captioned.style} pages={pages} t={t} />}
       {reportTimeline && frame === 0 && <Artifact filename={TIMELINE_ARTIFACT} content={timelineReport(video, tl, config, playsCueList, captioned)} />}
       {probe && <FrameProbe root={root} />}
@@ -143,6 +148,26 @@ function MusicBedAudio({ video, tl, fps }: { video: VideoDef; tl: LaidVideo; fps
     <Audio src={bed.track.src} name="music" loop loopVolumeCurveBehavior="extend" trimBefore={Math.round((bed.sourceStartSeconds ?? 0) * fps)}
       volume={(f) => gainAt(f / fps)} />
   );
+}
+
+/**
+ * Whether `video` plays a click on each beat: cut to a tempo grid with no `music` yet, so a render has a beat to hear
+ * the cuts against rather than refusing a silent mix. A draft. Not on a recorded grid: its track exists, so no
+ * `music` there is a video.tsx that forgot it, which clicks would hide.
+ */
+const playsBeatClicks = (video: VideoDef) => !video.music && video.timeline.spec.grid?.kind === 'tempo' && video.timeline.beatFrames.length > 0;
+
+/**
+ * A click on each grid beat, where the music will sound: a beat's hit frame plus the picture's lead over its sound.
+ * Plain audio, so `studio check` and a cue list see no event.
+ */
+function BeatClickAudio({ timeline, fps }: { timeline: VideoDef['timeline']; fps: number }) {
+  const cues = useMemo(() => {
+    const [{ src, seconds, landsAt }] = SFX.click;
+    const lead = timeline.spec.pictureLeadFrames ?? 0;
+    return timeline.beatFrames.map((frame) => ({ id: `beat ${frame}`, at: (frame + lead) / fps, src, seconds, landsAt, volume: 1 }));
+  }, [timeline, fps]);
+  return <SfxCueListAudio cues={cues} />;
 }
 
 // Footage listed for a scene that no longer asks for previs is left unplayed, and kept, since it was paid for.

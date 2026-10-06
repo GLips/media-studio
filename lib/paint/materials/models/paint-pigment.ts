@@ -52,6 +52,15 @@ export type PaintPigmentAppearance = Partial<PaintPigmentHabits> & {
   tint?: { color: PaintHex; strength: number };
 };
 
+/**
+ * A colour standing for a pigment rather than a described swatch: fitted as each medium fits a colour
+ * (paintPigmentFromColor), so a hex in a mixture lays as the same hex laid alone. `id` and `name` as an appearance's.
+ */
+export type PaintColorPigment = { readonly color: PaintHex; readonly id: string; readonly name: string };
+
+/** A pigment as a mixture names it: described by its swatches, or a colour standing for one. */
+export type PaintMixturePigment = PaintPigmentAppearance | PaintColorPigment;
+
 /** A reflectance held inside (0, 1), where the inversions are defined. */
 export const paintHeldReflectance = (v: number, low = 1e-4, high = 1 - 1e-4) => Math.min(high, Math.max(low, v));
 

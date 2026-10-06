@@ -9,6 +9,17 @@ import { createStampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint
 import { createStampPaintSurface, type StampPaintSurface } from '#lib/paint/painting/studio/stamp-paint-surface.ts';
 import type { StampGateImage, StampGatePainting } from '../models/stamp-gate-paintings.ts';
 
+/** A frame's RGBA bytes as RGB, as baselines hold them. */
+export const stampGateRgb = (rgba: Uint8ClampedArray) => rgba.filter((_, i) => i % 4 !== 3);
+
+/** A frame's RGBA bytes as its RGB bytes row by row, in base64: how the page hands a baseline's frame to the gate. */
+export function stampGateRgbBase64(rgba: Uint8ClampedArray): string {
+  const rgb = stampGateRgb(rgba);
+  let binary = '';
+  for (let i = 0; i < rgb.length; i += 0x8000) binary += String.fromCharCode(...rgb.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
 /** A grey image as a PNG data URL, lossless, so the GPU samples the bytes drawn. */
 export function imageUrl({ size, pixels }: StampGateImage): string {
   const canvas = Object.assign(document.createElement('canvas'), { width: size, height: size });
@@ -18,19 +29,24 @@ export function imageUrl({ size, pixels }: StampGateImage): string {
   return canvas.toDataURL('image/png');
 }
 
-/** A surface (and the device owner under it) of its own `width` × `height`, its images at `url`, handed to `use` with what reads its frame; disposed after. */
+/** `canvas`'s RGBA bytes as the browser reads it back, unpremultiplied: a WebGPU canvas off the page, its last frame. */
+export function stampGateCanvasBytes(canvas: HTMLCanvasElement): Uint8ClampedArray {
+  const context = Object.assign(document.createElement('canvas'), { width: canvas.width, height: canvas.height }).getContext('2d')!;
+  context.drawImage(canvas, 0, 0);
+  return context.getImageData(0, 0, canvas.width, canvas.height).data;
+}
+
+/**
+ * An opaque surface (and the device owner under it) of its own `width` × `height`, its images at `url`, handed to
+ * `use` with what reads its frame; disposed after.
+ */
 export async function withGateSurface<T>({ width, height }: { width: number; height: number }, url: (asset: StampBrushAsset) => string, use: (surface: StampPaintSurface, frame: () => Uint8ClampedArray) => Promise<T>): Promise<T> {
   const canvas = Object.assign(document.createElement('canvas'), { width, height });
   const owner = await createStampPaintGpuOwner(url);
   try {
     const surface = await createStampPaintSurface(owner, { canvas, width, height });
-    const frame = () => {
-      const context = Object.assign(document.createElement('canvas'), { width, height }).getContext('2d')!;
-      context.drawImage(canvas, 0, 0);
-      return context.getImageData(0, 0, width, height).data;
-    };
     try {
-      return await use(surface, frame);
+      return await use(surface, () => stampGateCanvasBytes(canvas));
     } finally {
       surface.dispose();
     }

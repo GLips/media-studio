@@ -21,4 +21,4 @@ const paintCommand = defineCommand({
 await runHarnessCommand(defineCommand({
   meta: { name: 'dry-passage-sheet', description: "Dry media's passages, drawn to be judged" },
   subCommands: { paint: paintCommand },
-}));
+}), 'batch');

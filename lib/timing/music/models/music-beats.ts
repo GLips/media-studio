@@ -15,21 +15,23 @@ export function detectMusicBeats(samples: Float32Array, rate: number): MusicBeat
   const period = beatPeriod(onset);
   return {
     bpm: Math.round((60 / (period * hopSeconds)) * 10) / 10,
-    beats: trackBeats(onset, period).map((i) => Math.round((i + WINDOW_HOPS) * hopSeconds * 1000) / 1000),
+    beats: trackBeats(onset, period).map((i) => Math.round(i * hopSeconds * 1000) / 1000),
   };
 }
 
 /**
- * Per 10 ms hop: how sharply loudness rises, with the slow trend taken out. A hop's energy window starts at the hop,
- * so it first catches a hit WINDOW_HOPS early; beat times add that back.
+ * Per 10 ms hop: how sharply loudness rises, the slow trend taken out. Hop f's window ends at f hops, so a hit is
+ * heard in the hop after it lands. Before the track a window reads its opening floor: a steady start (noise, a pad)
+ * makes no onset, and a hit on the first sample rises above it.
  */
 function onsetEnvelope(samples: Float32Array, rate: number): Float64Array {
   const hop = Math.round(rate * HOP_SECONDS), win = hop * WINDOW_HOPS;
-  const frames = Math.max(0, Math.floor((samples.length - win) / hop));
+  const frames = Math.floor(samples.length / hop) + 1;
+  const floor = openingFloor(samples, hop);
   const energy = new Float64Array(frames);
   for (let f = 0; f < frames; f++) {
-    let sum = 0;
-    for (let k = f * hop; k < f * hop + win; k++) sum += samples[k] * samples[k];
+    let sum = Math.max(0, win - f * hop) * floor;
+    for (let k = Math.max(0, f * hop - win); k < f * hop; k++) sum += samples[k] * samples[k];
     energy[f] = Math.log(1e-10 + sum / win);
   }
   const rise = new Float64Array(frames);
@@ -48,6 +50,18 @@ function onsetEnvelope(samples: Float32Array, rate: number): Float64Array {
   const mean = shifted.reduce((s, x) => s + x, 0) / shifted.length;
   const sd = Math.sqrt(shifted.reduce((s, x) => s + (x - mean) ** 2, 0) / shifted.length) || 1;
   return shifted.map((x) => x / sd);
+}
+
+/** The mean square of the quietest whole hop in the track's first quarter second: the level it starts out of. */
+function openingFloor(samples: Float32Array, hop: number): number {
+  const hops = Math.min(Math.round(0.25 / HOP_SECONDS), Math.floor(samples.length / hop));
+  let floor = Infinity;
+  for (let h = 0; h < hops; h++) {
+    let sum = 0;
+    for (let k = h * hop; k < (h + 1) * hop; k++) sum += samples[k] * samples[k];
+    floor = Math.min(floor, sum / hop);
+  }
+  return Number.isFinite(floor) ? floor : 0;
 }
 
 /** The beat period in hops, from 60–180 BPM, favouring tempos near 120 so a half- or double-time reading loses. */

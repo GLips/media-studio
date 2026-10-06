@@ -84,3 +84,11 @@ declare const GPUBufferUsage: { readonly MAP_READ: 1; readonly MAP_WRITE: 2; rea
 declare const GPUTextureUsage: { readonly COPY_SRC: 1; readonly COPY_DST: 2; readonly TEXTURE_BINDING: 4; readonly STORAGE_BINDING: 8; readonly RENDER_ATTACHMENT: 16 };
 declare const GPUMapMode: { readonly READ: 1; readonly WRITE: 2 };
 declare const GPUColorWrite: { readonly RED: 1; readonly GREEN: 2; readonly BLUE: 4; readonly ALPHA: 8; readonly ALL: 15 };
+/** The painting source `studio paint still` paints, bundled into its page (lib/paint/document/engine/painting-still.ts). */
+declare module '@painting-source' {
+  import type { PaintingFactory } from '#lib/paint/document/models/painting-source.ts';
+  import type { PropertySchema } from '#lib/paint/document/models/painting-properties.ts';
+  const factory: PaintingFactory<PropertySchema>;
+  export default factory;
+  export const properties: PropertySchema | undefined;
+}

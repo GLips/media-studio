@@ -2,10 +2,10 @@
 //
 // The `studio` CLI runs from any directory, so everything that reads or writes studio files goes through
 // STUDIO_ROOT rather than the working directory.
-import { existsSync, readdirSync, statSync } from 'node:fs';
-import { basename, join, resolve } from 'node:path';
+import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { ProjectCapability, ProjectDeclaration } from '../models/capability.ts';
+import type { ProjectDeclaration } from '../models/capability.ts';
 
 export const STUDIO_ROOT = resolve(import.meta.dirname, '../../../..');
 /**
@@ -50,12 +50,36 @@ export function resolveStudioProjectWith(arg: string, file: string): string {
 }
 
 /**
- * What the project's project.ts declares it is (check:arch holds that to what it binds), or undefined for an older
- * project with none.
+ * What the project's project.ts declares (its capability, which check:arch holds to what it binds, its shared modules
+ * and styles), or undefined for an older project with none.
  */
-export async function readProjectCapability(project: string): Promise<ProjectCapability | undefined> {
+export async function readProjectDeclaration(project: string): Promise<ProjectDeclaration | undefined> {
   const file = join(project, 'project.ts');
   if (!existsSync(file)) return undefined;
-  const { default: declaration } = (await import(/* @vite-ignore */ pathToFileURL(file).href)) as { default: ProjectDeclaration };
-  return declaration.capability;
+  // SAFETY: check:arch's capability-match refuses a project.ts that default-exports no ProjectDeclaration.
+  return ((await import(/* @vite-ignore */ pathToFileURL(file).href)) as { default: ProjectDeclaration }).default;
+}
+
+/**
+ * The project folder `file` (one that exists) lies in, work/projects/<p>/ as the studio lays projects out; null for a
+ * file outside one. Its real path, as STUDIO_ROOT is, so a symlinked working directory still finds it.
+ */
+export function studioProjectOfFile(file: string): string | null {
+  const [project, ...within] = relative(STUDIO_PROJECTS_DIR, realpathSync(file)).split(sep);
+  return within.length && project !== '..' && !isAbsolute(project) ? join(STUDIO_PROJECTS_DIR, project) : null;
+}
+
+/** The folders a project's scenes live in, each a file per scene with its helpers in a folder of its name. */
+const PROJECT_SCENE_DIRS = ['scenes', 'bars'];
+
+/**
+ * The files a project's scenes are made of, as sorted paths inside it: everything in scenes/ and bars/, however deep,
+ * and the `shared` modules its project.ts lists. A tool's files aren't among them.
+ */
+export function listProjectSceneFiles(project: string, shared: readonly string[] = []): string[] {
+  const inScenes = PROJECT_SCENE_DIRS.flatMap((dir) => (existsSync(join(project, dir))
+    ? readdirSync(join(project, dir), { recursive: true, withFileTypes: true }).filter((entry) => entry.isFile())
+      .map((entry) => relative(project, join(entry.parentPath, entry.name)).split(sep).join('/'))
+    : []));
+  return [...new Set([...inScenes, ...shared])].toSorted();
 }

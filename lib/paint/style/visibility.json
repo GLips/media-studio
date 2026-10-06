@@ -1,5 +1,7 @@
 {
   "lib/output/render": "A project's bundle includes its styles module (`@stamp-paint-styles`), which the style feature writes.",
   "lib/paint/gate": "The private gate paints a pack's brushes with their profiles, checked against the medium their style probes in.",
-  "lib/paint/studies": "A study paints in a style, resolved with its medium and pigments."
+  "lib/paint/studies": "A study paints in a style, resolved with its medium and pigments.",
+  "lib/paint/document": "A document's brushes and paper assets are checked against the styles that serve them.",
+  "lib/paint/shot": "A shot paints its documents with the styles' brushes, from the assets the styles serve."
 }

@@ -2,7 +2,7 @@
 //
 // `export default { capability: 'music-led', shared: ['look.ts'], styles: ['wash'] }
 // satisfies ProjectDeclaration` (lib/platform/project/models/capability.ts). Read statically,
-// never imported: check:arch judges a snapshot, not the working tree. Only
+// never imported: check:arch judges a snapshot's text, not a module it runs. Only
 // literals are read, so a value built at runtime is reported as unreadable
 // rather than guessed at.
 

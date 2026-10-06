@@ -1,8 +1,8 @@
-// ─── The files the checks read, parsed once, from one git snapshot ────
+// ─── The files the checks read, parsed once, from one snapshot ────────
 //
-// Every check reads the same candidate snapshot: the index or a committed tree.
-// Never the working tree, so an untracked file or another agent's half-edit
-// can't change a verdict, and a pre-commit run judges exactly what's committed.
+// Every check reads the same candidate snapshot (lint/candidate-snapshot.ts):
+// the working tree run by hand, the index under a hook (so a pre-commit run
+// judges exactly what's committed), or a committed tree.
 //
 // Imports resolve against that snapshot too. Gitignored generated inputs
 // (`captures/index.ts`, `music/index.ts`) aren't in it: their edges stay, as a
@@ -12,12 +12,10 @@
 // path space (the workspace at `work/` beside the studio's root), so a project's
 // `#studio` resolves to the studio's file and every check sees one tree.
 
-import { execFileSync } from 'node:child_process';
 import { builtinModules } from 'node:module';
 import { parseSync } from 'oxc-parser';
+import { isSourcePath, listSnapshotPaths, readSnapshotTexts, SOURCE_EXTENSIONS, type MountedSnapshot } from '../candidate-snapshot.ts';
 import { expandStudioAlias, normalizeRepoPath } from '../policy/studio-tree.ts';
-
-export type CandidateSnapshot = { kind: 'index' } | { kind: 'commit'; rev: string };
 
 /**
  * Whether the declared tree governs a path. `undeclared` isn't dropped silently: those source files come back in
@@ -70,14 +68,6 @@ export type SourceFile = {
   lineOf: (offset: number) => number;
 };
 
-/**
- * One repository's snapshot and its place in the tree's path space: `mount` is `''` for the root repository,
- * whose package.json names the aliases, or a folder (`work`) prefixing every path it lists.
- * `gitEnv` is the environment git runs in: the process's own for the repository git is committing (a hook's
- * GIT_INDEX_FILE is the index the commit holds), isolatedGitEnv() for any other.
- */
-export type MountedSnapshot = { root: string; mount: string; snapshot: CandidateSnapshot; gitEnv: NodeJS.ProcessEnv };
-
 export type SourceTree = {
   /** Every path in the snapshot, any extension. */
   paths: ReadonlySet<string>;
@@ -90,23 +80,16 @@ export type SourceTree = {
   readTexts: (paths: readonly string[]) => string[];
 };
 
-export const SOURCE_EXTENSIONS = ['ts', 'tsx', 'mts', 'cts', 'js', 'jsx', 'mjs', 'cjs'] as const;
-const SOURCE_RE = new RegExp(`\\.(${SOURCE_EXTENSIONS.join('|')})$`);
-
 /** Every mounted repository's snapshot, read as one tree. Two repositories listing one path is refused. */
 export function loadSourceTree(options: { repos: readonly MountedSnapshot[]; scope: TreeScope }): SourceTree {
   const { repos, scope } = options;
-  const owner = new Map<string, { repo: MountedSnapshot; objectName: string }>();
+  const owner = new Map<string, { repo: MountedSnapshot; own: string }>();
   for (const repo of repos) {
-    const git = (args: string[]) => execFileSync('git', args, { cwd: repo.root, env: repo.gitEnv, encoding: 'utf8', maxBuffer: 1 << 30 });
-    const listed = repo.snapshot.kind === 'index'
-      ? git(['ls-files', '--cached', '-z'])
-      : git(['ls-tree', '-r', '-z', '--name-only', repo.snapshot.rev]);
-    for (const own of listed.split('\0').filter(Boolean)) {
+    for (const own of listSnapshotPaths(repo)) {
       const path = repo.mount ? `${repo.mount}/${own}` : own;
       const mountedThere = repos.find((other) => other !== repo && other.mount && path.startsWith(`${other.mount}/`));
       if (mountedThere) throw new Error(`${repo.root} tracks ${own}, inside ${mountedThere.root}, a repository of its own: untrack it (git rm --cached)`);
-      owner.set(path, { repo, objectName: repo.snapshot.kind === 'index' ? `:${own}` : `${repo.snapshot.rev}:${own}` });
+      owner.set(path, { repo, own });
     }
   }
   const paths: ReadonlySet<string> = new Set(owner.keys());
@@ -115,7 +98,7 @@ export function loadSourceTree(options: { repos: readonly MountedSnapshot[]; sco
     const missing = wanted.filter((path) => !texts.has(path));
     for (const repo of repos) {
       const ours = missing.filter((path) => owner.get(path)?.repo === repo);
-      readBlobs(repo.root, repo.gitEnv, ours.map((path) => owner.get(path)!.objectName)).forEach((text, i) => texts.set(ours[i], text));
+      readSnapshotTexts(repo, ours.map((path) => owner.get(path)!.own)).forEach((text, i) => texts.set(ours[i], text));
     }
     return wanted.map((path) => {
       const text = texts.get(path);
@@ -124,7 +107,7 @@ export function loadSourceTree(options: { repos: readonly MountedSnapshot[]; sco
     });
   };
   const readText = (path: string) => readTexts([path])[0];
-  const candidates = [...paths].filter((path) => SOURCE_RE.test(path) && !path.endsWith('.d.ts'));
+  const candidates = [...paths].filter((path) => isSourcePath(path) && !path.endsWith('.d.ts'));
   const scoped = candidates.map((path) => ({ path, verdict: scope(path) }));
   const governed = scoped.filter(({ verdict }) => verdict === 'governed').map(({ path }) => path);
   readTexts(governed);
@@ -242,36 +225,46 @@ const isRequire = (callee: AstNode) =>
   (callee.type === 'MemberExpression' && (callee.object as AstNode).name === 'require' && (callee.property as AstNode).name === 'resolve');
 
 /** Depth-first over every node; `visit` returning `false` skips that node's children. */
-export function walkAst(node: unknown, visit: (node: AstNode, parent: AstNode | undefined) => boolean | void, parent?: AstNode): void {
-  if (node === null || typeof node !== 'object') return;
-  if (Array.isArray(node)) {
-    for (const child of node) walkAst(child, visit, parent);
-    return;
-  }
-  const record = node as AstNode;
-  if (typeof record.type === 'string') {
-    if (visit(record, parent) === false) return;
-    parent = record;
-  }
-  for (const key in record) if (key !== 'type') walkAst(record[key], visit, parent);
+export function walkAst(node: AstNode, visit: (node: AstNode, parent: AstNode | undefined) => boolean | void, parent?: AstNode): void {
+  if (visit(node, parent) === false) return;
+  for (const child of childrenOf(node)) walkAst(child, visit, node);
 }
 
-/** Many blobs in one `git cat-file --batch`, in order. Sizes are bytes, so the output is sliced as a Buffer. */
-function readBlobs(root: string, gitEnv: NodeJS.ProcessEnv, objectNames: readonly string[]): string[] {
-  if (objectNames.length === 0) return [];
-  const out = execFileSync('git', ['cat-file', '--batch'], { cwd: root, env: gitEnv, input: objectNames.join('\n') + '\n', maxBuffer: 1 << 30 });
-  const texts: string[] = [];
-  let at = 0;
-  for (const name of objectNames) {
-    const headerEnd = out.indexOf(0x0a, at);
-    const header = out.subarray(at, headerEnd).toString('utf8');
-    const match = /^\S+ blob (\d+)$/.exec(header);
-    if (!match) throw new Error(`git cat-file can't read ${name}: ${header}`);
-    const size = Number(match[1]);
-    texts.push(out.subarray(headerEnd + 1, headerEnd + 1 + size).toString('utf8'));
-    at = headerEnd + 1 + size + 1;
+export const isAstNode = (value: unknown): value is AstNode =>
+  typeof value === 'object' && value !== null && 'type' in value && typeof value.type === 'string';
+export const isIdentifier = (value: unknown): value is AstNode & { name: string } =>
+  isAstNode(value) && value.type === 'Identifier' && typeof value.name === 'string';
+export const isStringLiteral = (value: unknown): value is AstNode & { value: string } =>
+  isAstNode(value) && value.type === 'Literal' && typeof value.value === 'string';
+
+/** The node under `key`, if one is. */
+export function childAt(node: AstNode, key: string): AstNode | undefined {
+  const value = node[key];
+  return isAstNode(value) ? value : undefined;
+}
+
+/** The nodes listed under `key`; an array's holes (`[, b]`) are skipped. */
+export function childrenAt(node: AstNode, key: string): AstNode[] {
+  const value = node[key];
+  return Array.isArray(value) ? value.filter(isAstNode) : [];
+}
+
+/** Every node directly under `node`, in the parser's field order. A value that's no node (a regex's parts, a template's text) holds none. */
+export function childrenOf(node: AstNode): AstNode[] {
+  const children: AstNode[] = [];
+  for (const [key, value] of Object.entries(node)) {
+    if (key === 'type') continue;
+    if (Array.isArray(value)) children.push(...value.filter(isAstNode));
+    else if (isAstNode(value)) children.push(value);
   }
-  return texts;
+  return children;
+}
+
+/** The name a member expression reads: `a.b`'s `b`, `a['b']`'s; none for a computed `a[k]`. */
+export function memberName(member: AstNode): string | undefined {
+  const property = childAt(member, 'property');
+  if (member.computed) return isStringLiteral(property) ? property.value : undefined;
+  return isIdentifier(property) ? property.name : undefined;
 }
 
 function readImportsMap(packageJson: string): Record<string, string> {

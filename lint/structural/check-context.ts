@@ -5,14 +5,13 @@
 // specifier themselves, so an alias and a relative spelling can't reach two
 // verdicts.
 
-import { execFileSync } from 'node:child_process';
-import { existsSync, realpathSync } from 'node:fs';
-import { join } from 'node:path';
 import { isolatedGitEnv } from '#lib/platform/git/engine/fixture-git.ts';
 import { classifyStudioPath, STUDIO_WORKSPACE_MOUNT, type StudioPosition } from '../policy/studio-tree.ts';
 import { readDeclaredShared, readDeclaredStyles, type DeclarationProblem, type DeclaredStyles } from './project-declaration.ts';
+import type { CandidateSnapshot, LiveSnapshot, MountedSnapshot } from '../candidate-snapshot.ts';
+import { gateRepository, type GateScope } from '../gate-scope.ts';
 import { createTypeCheckerHost, tsconfigFor, type SourceFile as TypedSourceFile, type TypeCheckerHost, type TypedProgram } from './type-checker.ts';
-import { loadSourceTree, walkAst, type AstNode, type CandidateSnapshot, type ImportTarget, type MountedSnapshot, type ScannedImport, type SourceFile, type SourceTree } from './source-tree.ts';
+import { loadSourceTree, walkAst, type AstNode, type ImportTarget, type ScannedImport, type SourceFile, type SourceTree } from './source-tree.ts';
 
 export type Finding = {
   check: string;
@@ -98,37 +97,24 @@ export function studioScope(path: string): 'governed' | 'exempt' | 'undeclared' 
 
 /**
  * What check:arch reads. `public` is the studio's snapshot alone, as a clean clone holds it, in this process's git
- * environment. `workspace` adds work/'s index, mounted at `work/`: this process's environment is the workspace's
- * (its hook's), and the studio's index is read with none of it.
+ * environment. `workspace` adds work/'s, mounted at `work/`, beside the studio's of the same kind: this process's
+ * environment is the workspace's (its hook's), and the studio's is read with none of it.
  */
-export type CheckTarget = { scope: 'public'; snapshot: CandidateSnapshot } | { scope: 'workspace' };
+export type CheckTarget =
+  | { scope: Extract<GateScope, 'public'>; snapshot: CandidateSnapshot }
+  | { scope: Extract<GateScope, 'workspace'>; snapshot: LiveSnapshot };
 
 export function createCheckContext(root: string, target: CheckTarget): CheckContext {
   if (target.scope === 'public') {
-    const tree = loadSourceTree({ repos: [{ root, mount: '', snapshot: target.snapshot, gitEnv: process.env }], scope: studioScope });
+    const tree = loadSourceTree({ repos: [gateRepository(root, 'public', target.snapshot)], scope: studioScope });
     // `work` itself is the workspace added as a gitlink.
     const tracked = [...tree.paths].find((path) => path === STUDIO_WORKSPACE_MOUNT || path.startsWith(`${STUDIO_WORKSPACE_MOUNT}/`));
-    if (tracked) throw new Error(`the studio tracks ${tracked}, in work/, which is your workspace's repository: untrack it (git rm --cached)`);
+    if (tracked) throw new Error(`the studio holds ${tracked}, in work/, which is your workspace's repository: untrack it (git rm --cached) and ignore it`);
     return contextFor(tree, root);
   }
-  const workspace: MountedSnapshot = { root: join(root, STUDIO_WORKSPACE_MOUNT), mount: STUDIO_WORKSPACE_MOUNT, snapshot: { kind: 'index' }, gitEnv: process.env };
-  assertOwnWorkspaceRepository(workspace);
-  const studio: MountedSnapshot = { root, mount: '', snapshot: { kind: 'index' }, gitEnv: isolatedGitEnv() };
+  const workspace = gateRepository(root, 'workspace', target.snapshot);
+  const studio: MountedSnapshot = { ...gateRepository(root, 'public', target.snapshot), gitEnv: isolatedGitEnv() };
   return contextFor(loadSourceTree({ repos: [studio, workspace], scope: studioScope }), root);
-}
-
-/**
- * work/ must be a repository of its own, and the one this process's git environment names: a folder inside the
- * studio's repository, or a hook's GIT_DIR pointing elsewhere, would read the wrong index as the workspace's.
- */
-function assertOwnWorkspaceRepository({ root, gitEnv }: MountedSnapshot): void {
-  const revParse = (env: NodeJS.ProcessEnv, what: string) =>
-    realpathSync(execFileSync('git', ['rev-parse', what], { cwd: root, env, encoding: 'utf8' }).trim());
-  if (!existsSync(root) || revParse(isolatedGitEnv(), '--show-toplevel') !== realpathSync(root)) {
-    throw new Error(`${root} isn't a repository of its own: run \`studio workspace init\``);
-  }
-  const own = revParse(isolatedGitEnv(), '--absolute-git-dir'), read = revParse(gitEnv, '--absolute-git-dir');
-  if (read !== own) throw new Error(`git reads ${read} for ${root}, not its own ${own}: this process's GIT_DIR names another repository`);
 }
 
 export function contextFor(tree: SourceTree, root: string): CheckContext {

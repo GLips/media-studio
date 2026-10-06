@@ -6,7 +6,9 @@
 // A brush (StampBrush) says how paint is laid down; the paint (pigment in a medium) how it combines and dries.
 
 import { kubelkaMunkFromAppearance } from './paint-kubelka-munk.ts';
-import { paintHeldReflectance, paintPigmentFromAppearance, paintPigmentHabits, type PaintHex, type PaintPigment, type PaintPigmentAppearance, type PaintPigmentHabits } from './paint-pigment.ts';
+import {
+  paintHeldReflectance, paintPigmentFromAppearance, paintPigmentHabits, type PaintHex, type PaintMixturePigment, type PaintPigment, type PaintPigmentAppearance, type PaintPigmentHabits,
+} from './paint-pigment.ts';
 import { paintHexToLinear, type PaintBands } from './paint-spectrum.ts';
 
 /** How a medium lightens a paint: `water` thins its film so the paper shows; `white` mixes white in, at full body. */
@@ -50,9 +52,9 @@ export type PaintMedium = {
   /**
    * Where the paint meets the paper's tooth: a wet medium pools into the valleys (as deep as the paper is, and further
    * by granulation); a dry one catches on the peaks above `tooth` of the mean height, lower as it presses harder.
-   * `dryBrush`: a wet medium's dry-media brush catches the peaks above its `tooth`, its paint still the medium's.
+   * `dryBrush`: its dry-media brush catches the peaks above its `tooth`, skipping the valleys, its paint the medium's.
    */
-  paperContact: { kind: 'valleys'; dryBrush?: { tooth: number } } | { kind: 'peaks'; tooth: number };
+  paperContact: { kind: 'valleys'; dryBrush: { tooth: number } } | { kind: 'peaks'; tooth: number };
   layering: PaintLayering;
   /** How much more a film scatters dry than wet: air between the particles, where water was. Watercolour dries lighter. */
   dryingScatter: number;
@@ -83,6 +85,16 @@ export function checkPaintCapability(medium: PaintMedium | null, capability: Pai
   if (paintMediumCan(medium, capability)) return;
   throw new Error(`stamp paint: ${what} needs '${capability}', which ${medium ? medium.name : 'flat colour, in no medium,'} doesn't declare`);
 }
+
+/**
+ * `medium` as a brush's profile probe sees it: without its dry brush's tooth, since probes paint a pack's brushes as
+ * the pack reads them, never dragged dry. Profiles are keyed on this (stampBrushProbeMediumKey), so tuning what no
+ * probe sees measures nothing anew.
+ */
+export type PaintMediumAsProbed = Omit<PaintMedium, 'paperContact'> & { paperContact: { kind: 'valleys' } | { kind: 'peaks'; tooth: number } };
+
+export const paintMediumAsProbed = (medium: PaintMedium): PaintMediumAsProbed =>
+  (medium.paperContact.kind === 'valleys' ? { ...medium, paperContact: { kind: 'valleys' } } : medium);
 
 /**
  * A masstone medium's colours: each the paint's own, thick. `cover` is what a full load of a perfect white reflects
@@ -145,7 +157,7 @@ export const PAINT_MEDIA = {
   // of white nearly hides black, so a lift thins it toward the paper, paler as it goes (vid-122).
   gouache: {
     name: 'gouache', color: { kind: 'masstone', leastStrength: 0.05, cover: 0.9 }, body: 20, lightening: { kind: 'white', white: TITANIUM_WHITE }, granulation: 0.2,
-    paperContact: { kind: 'valleys' }, layering: { kind: 'mixes' }, dryingScatter: 0.4, pickup: 0.2, liftResidue: { kind: 'staining', films: 0.6 },
+    paperContact: { kind: 'valleys', dryBrush: { tooth: 0.85 } }, layering: { kind: 'mixes' }, dryingScatter: 0.4, pickup: 0.2, liftResidue: { kind: 'staining', films: 0.6 },
     // A first guess (vid-117): it barely travels, dries fast and re-dissolves once dry.
     wetting: { spread: 0.1, drying: 120, openTime: 0, rewetting: 0.9, defaultWater: 0.4, sheen: { shiny: 0.4, damp: 0.35 } },
     capabilities: ['wet-history', 'wet-conditions', 'water', 'lift'],
@@ -208,8 +220,11 @@ export function paintPigmentFromColor(color: PaintHex, medium: PaintMedium, band
 
 /**
  * A named pigment as `medium` paints it: its appearance in a glaze medium; in a masstone one its over-white colour as
- * masstone, since a glaze's fit scatters almost nothing and greys as white is mixed in.
+ * masstone, since a glaze's fit scatters almost nothing and greys as white is mixed in. A colour standing for a
+ * pigment (PaintColorPigment) is fitted as a colour in either.
  */
-export function paintPigmentInMedium(appearance: PaintPigmentAppearance, medium: PaintMedium, bands: PaintBands): PaintPigment {
+export function paintPigmentInMedium(pigment: PaintMixturePigment, medium: PaintMedium, bands: PaintBands): PaintPigment {
+  if ('color' in pigment) return paintPigmentFromColor(pigment.color, medium, bands, { id: pigment.id, name: pigment.name });
+  const appearance = pigment;
   return medium.color.kind === 'glaze' ? paintPigmentFromAppearance(appearance, bands) : paintPigmentFromColor(appearance.overWhite, medium, bands, appearance);
 }

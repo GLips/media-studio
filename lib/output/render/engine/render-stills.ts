@@ -7,7 +7,9 @@ import type { VideoConfig } from 'remotion';
 import { copyFileSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { bundleStudioProject } from './studio-bundle.ts';
-import { inRenderBrowser, RENDER_CHROMIUM } from '#lib/platform/browser/engine/render-browser.ts';
+import { refuseProjectPaintingErrors } from './render-preflight.ts';
+import { RENDER_PAGE_OPTIONS } from '#lib/platform/browser/engine/render-browser.ts';
+import { inWatchedRenderBrowser } from '#lib/platform/browser/engine/render-watch.ts';
 import { artifactSink } from './render-session.ts';
 import { stillProblems, type StillMeasure, type StillPixels, type StillProblem } from '#lib/picture/stills/models/still-check.ts';
 import { isStillFitArtifact, STILL_MEASURE_ARTIFACT, STILL_UI_ZONES, stillName, type StillFitReport, type StillProps, type StillRenderProps } from '#lib/picture/stills/models/still-presets.ts';
@@ -42,10 +44,11 @@ function decodeRgb(file: string, w: number, h: number): StillPixels {
  * written in `format`. `drawnDir` keeps every still as drawn there, failures too, for a sheet (lib/output/review/engine/still-sheet.ts).
  */
 export async function renderProjectStills(project: string, selection: StillSelection, { format, check, drawnDir }: { format: 'png' | 'jpeg'; check: boolean; drawnDir?: string }): Promise<RenderedStill[]> {
+  await refuseProjectPaintingErrors(project);
   const serveUrl = await bundleStudioProject(project);
   return withStudioTemp('stills', async (tmp) => {
-    const { result } = await inRenderBrowser(async (browser) => {
-      const all = (await getCompositions(serveUrl, { puppeteerInstance: browser, chromiumOptions: RENDER_CHROMIUM })).filter((c) => c.id.startsWith('still-'));
+    const { result } = await inWatchedRenderBrowser(async (browser, watch) => {
+      const all = (await getCompositions(serveUrl, { ...RENDER_PAGE_OPTIONS, puppeteerInstance: browser, onBrowserLog: watch.onBrowserLog })).filter((c) => c.id.startsWith('still-'));
       if (!all.length) throw new Error(`${project} has no stills.tsx, or it defines no stills`);
       const keeps = (list: readonly string[] | undefined, value: string) => !list || list.includes(value);
       const chosen = all.filter((c) => {
@@ -69,8 +72,9 @@ export async function renderProjectStills(project: string, selection: StillSelec
         const sink = artifactSink();
         await renderStill({
           composition: { ...composition, props }, serveUrl, output, imageFormat, jpegQuality: imageFormat === 'jpeg' ? 92 : undefined,
-          puppeteerInstance: browser, chromiumOptions: RENDER_CHROMIUM, onArtifact: sink.onArtifact,
+          ...RENDER_PAGE_OPTIONS, puppeteerInstance: browser, onArtifact: sink.onArtifact, cancelSignal: watch.cancelSignal, onBrowserLog: watch.onBrowserLog,
         });
+        watch.progressed();
         return sink;
       };
       const checked: RenderedStill[] = [];
@@ -98,7 +102,7 @@ export async function renderProjectStills(project: string, selection: StillSelec
         }
       }
       return checked;
-    });
+    }, { pass: 'stills' });
     return result;
   });
 }

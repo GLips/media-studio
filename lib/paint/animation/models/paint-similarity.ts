@@ -3,7 +3,7 @@
 // lay; a warp never does, which is why only what follows a group's outermost bend becomes its lay.
 
 import type { StampGroupPlacement } from '#lib/paint/painting/models/stamp-group-motion.ts';
-import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import { stampPolygonBox, type StampBox, type StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 
 /** p ↦ (ma + i·mb)·p + (kx + i·ky), in the painting's y-down px. */
 export type PaintSimilarity = { readonly ma: number; readonly mb: number; readonly kx: number; readonly ky: number };
@@ -24,6 +24,13 @@ export const paintSimilarityAfter = (outer: PaintSimilarity, inner: PaintSimilar
 
 export const paintSimilarityApply = ({ ma, mb, kx, ky }: PaintSimilarity, p: StampPoint): StampPoint => ({ x: ma * p.x - mb * p.y + kx, y: mb * p.x + ma * p.y + ky });
 
+/** Whether `a` and `b` are exactly one map. */
+export const paintSimilaritiesEqual = (a: PaintSimilarity, b: PaintSimilarity) => a.ma === b.ma && a.mb === b.mb && a.kx === b.kx && a.ky === b.ky;
+
+/** The box round `box` (x0..x1, y0..y1) as `s` lays it: its four corners mapped. */
+export const paintSimilarityBox = (s: PaintSimilarity, { x0, y0, x1, y1 }: StampBox): StampBox =>
+  stampPolygonBox([{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x0, y: y1 }, { x: x1, y: y1 }].map((corner) => paintSimilarityApply(s, corner)));
+
 /** The map undoing `s`; its scale must not be 0. */
 export function paintSimilarityInverse({ ma, mb, kx, ky }: PaintSimilarity): PaintSimilarity {
   const n = ma * ma + mb * mb, ia = ma / n, ib = -mb / n;
@@ -37,4 +44,12 @@ export const paintSimilarityScale = ({ ma, mb }: PaintSimilarity) => Math.hypot(
 export function paintPlacementOfSimilarity(s: PaintSimilarity, pivot: StampPoint): StampGroupPlacement {
   const at = paintSimilarityApply(s, pivot);
   return { x: at.x - pivot.x, y: at.y - pivot.y, rotation: Math.atan2(s.mb, s.ma), scale: paintSimilarityScale(s) };
+}
+
+/** The similarity taking `from`'s two points onto `to`'s, a move, uniform scale and turn; `from`'s must differ. */
+export function paintSimilarityThrough([from0, from1]: readonly [StampPoint, StampPoint], [to0, to1]: readonly [StampPoint, StampPoint]): PaintSimilarity {
+  // m = (to1 − to0) / (from1 − from0), as complex numbers: the scale and turn taking one span onto the other.
+  const fx = from1.x - from0.x, fy = from1.y - from0.y, tx = to1.x - to0.x, ty = to1.y - to0.y, n = fx * fx + fy * fy;
+  const ma = (tx * fx + ty * fy) / n, mb = (ty * fx - tx * fy) / n;
+  return { ma, mb, kx: to0.x - (ma * from0.x - mb * from0.y), ky: to0.y - (mb * from0.x + ma * from0.y) };
 }

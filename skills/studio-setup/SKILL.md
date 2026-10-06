@@ -37,7 +37,7 @@ Everything they make lives in `work/`: `work/projects/<yyyy-mm-name>/`, brand ki
 in `work/hosts.json`. It's a git repository of its own that the studio's ignores, so their projects and client names
 never reach the studio's history, and pulling studio updates never touches their work. Recordings, renders and
 generated media stay on the machine (its `.gitignore`); only what they write is committed. Its commits run their own
-gate: `check:arch --scope workspace`, the typecheck and their projects' tests.
+gate: `check:arch --scope workspace`, lint, the typecheck and their projects' tests.
 
 Offer to give it a private remote. With `gh`: `gh repo create <name> --private --source=work --push`.
 
@@ -71,7 +71,7 @@ Every paid request is cached by its inputs in the project's `generated/`, so ask
 - **A product repo** a video shows real components from is a host. `work/hosts.json` maps a name to
   `{ "repo": "<git url>" }`; `work/hosts.local.json` (ignored) maps it to a working copy on this machine instead, used as
   it stands. A project opts in with `host.json` `{ "name", "ref", "browserStubs"? }`, and `studio hosts sync <project>`
-  checks the ref out under `~/.cache/studio/hosts/` and links it at `<project>/host`. A scene imports
+  checks the ref out under `~/.cache/media-studio/hosts/` and links it at `<project>/host`. A scene imports
   `@host/<path from the host root>`; tsc types it `any`, so `studio look` is the check. Plain CSS and CSS modules load;
   Tailwind/PostCSS doesn't.
 

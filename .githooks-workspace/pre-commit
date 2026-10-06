@@ -1,11 +1,13 @@
 #!/bin/sh
 # The workspace's pre-commit gate (work/ is its own repository; lib/platform/project/engine/studio-workspace.ts points its
-# core.hooksPath here): check:arch over the index this commit holds, read against the studio's own index, then the full
-# typecheck, lint over work/'s working tree and the workspace projects' tests. Each runs on its own, so one failure
-# doesn't hide the next.
+# core.hooksPath here): check:arch over the index this commit holds, read against the studio's own index, and lint over
+# the sources that index holds; then the full typecheck and the workspace projects' tests. Each runs on its own, so one
+# failure doesn't hide the next. Another session's untracked, half-written file is nobody's commit yet, and mustn't
+# block this one: check:arch and lint list the sources they left unchecked.
 #
-# Git runs this in work/ with GIT_DIR and GIT_INDEX_FILE possibly relative to it. check:arch reads the studio from
-# its root, so both are made absolute first: it reads the workspace in this environment and the studio without it.
+# Git runs this in work/ with GIT_DIR and GIT_INDEX_FILE possibly relative to it. check:arch and lint run from the
+# studio's root, so both are made absolute first: they read the workspace in this environment, and check:arch reads
+# the studio without it.
 
 GIT_DIR=$(git rev-parse --absolute-git-dir) && export GIT_DIR
 case "${GIT_INDEX_FILE:-}" in
@@ -16,13 +18,13 @@ esac
 cd "$(dirname "$0")/.." || exit 1
 
 failed=''
-npm run -s check:arch -- --scope workspace || failed="$failed check:arch"
+npm run -s check:arch -- --scope workspace --snapshot index || failed="$failed check:arch"
+npm run -s lint -- --scope workspace --snapshot index || failed="$failed lint"
 
 # A test's throwaway repo must never see the hook's git environment, or its git commands land in the workspace.
 for name in $(env | sed -n 's/^\(GIT_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$name"; done
 
 npm run -s typecheck || failed="$failed typecheck"
-npm run -s lint -- --scope workspace || failed="$failed lint"
 log=$(mktemp)
 npm run -s test:workspace > "$log" 2>&1 || { tail -n 60 "$log"; failed="$failed test"; }
 rm -f "$log"

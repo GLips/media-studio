@@ -18,9 +18,8 @@ import { readPhotoshopPreset, type PhotoshopKnownTip } from '#lib/paint/photosho
 import type { StampBrushAsset, StampBrushSupportNote } from '#lib/paint/brush/models/stamp-brush.ts';
 import { STAMP_PACK_GRAIN_MAX, STAMP_PACK_TIP_MAX, STAMP_PAINT_ASSETS_VERSION, type PhotoshopPackBrush, type StoredStampPaintPack } from '../models/stamp-paint-pack.ts';
 import { displayName, readPhotoshopAbr, readPhotoshopTpl, type PhotoshopBrushFile } from '#lib/paint/photoshop-brushes/engine/photoshop-abr.ts';
-import {
-  sha256OfFile, stampPackSlug, writeStampPackGray, type ImportStampPaintPackOptions,
-} from './stamp-paint-pack-files.ts';
+import { stampPackSlug, writeStampPackGray, type ImportStampPaintPackOptions } from './stamp-paint-pack-files.ts';
+import { sha256OfFile } from '#lib/platform/files/engine/file-sha256.ts';
 import { openZipFile } from '#lib/platform/zip/engine/zip-archive.ts';
 
 

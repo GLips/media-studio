@@ -7,5 +7,7 @@
   "lib/paint/brush-fidelity": "A target is read and measured as a StampBrush paints, its reach and dual taken from the brush.",
   "lib/paint/studies": "A study paints its passages with a style's brushes.",
   "lib/paint/gate": "The GPU gate paints with brushes, synthetic and a pack's, to hold the renderer to its baselines.",
-  "lib/paint/animation": "Motion's specs paint their test groups with a synthetic brush, as the painting's own specs do."
+  "lib/paint/animation": "Motion's specs paint their test groups with a synthetic brush, as the painting's own specs do.",
+  "lib/paint/document": "A document lays its marks through the brush's placements, stroke points, hands and assets.",
+  "lib/paint/shot": "A shot hands its documents the brushes their refs name, as its styles carry them."
 }

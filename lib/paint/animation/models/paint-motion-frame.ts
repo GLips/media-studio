@@ -18,25 +18,25 @@ import {
   type PaintDeform, type PaintPinMoved, type PaintWarpChain,
 } from './paint-deform.ts';
 import { paintKeyNumbers } from './paint-pins.ts';
-import { PAINT_LIVE_POSES_KEPT, type CompiledPaintNode, type PaintMotion } from './paint-motion-compile.ts';
+import { PAINT_LIVE_POSES_KEPT, type CompiledPaintLevel, type CompiledPaintNode, type PaintMotion } from './paint-motion-compile.ts';
 import { paintFlutterSpreadAt, paintPinClipMoveAt, paintPlaceClipAt, paintSwayAngleAt } from './paint-motion-clips.ts';
 import { PAINT_SIMILARITY_IDENTITY, paintPlacementOfSimilarity, paintSimilarityAfter, paintSimilarityOf } from './paint-similarity.ts';
 
-/** Each of `node`'s pins moved at `t`, rounded; pins at rest left out. */
-function pinsMovedAt(motion: PaintMotion, node: CompiledPaintNode, t: PaintMoment): PaintPinMoved[] {
-  return [...node.pins].flatMap(([name, { pin, lane }]) => {
-    const playing = paintLaneClipAt(lane, t, motion.animationFps);
+/** Each of `level`'s pins moved at `t`, rounded; pins at rest left out. */
+function pinsMovedAt(level: CompiledPaintLevel, t: PaintMoment, animationFps: number): PaintPinMoved[] {
+  return [...level.pins].flatMap(([name, { pin, lane }]) => {
+    const playing = paintLaneClipAt(lane, t, animationFps);
     if (!playing) return [];
-    const move = paintPlacementRounded(paintPinClipMoveAt(playing.play.clip, name, playing.time));
+    const move = paintPlacementRounded(paintPinClipMoveAt(playing.play.clip, name, playing.moment));
     return paintPlacementIsRest(move) ? [] : [{ name, pin, move }];
   });
 }
 
 /** `node`'s own bend at `t` as data, its pins left out for a live node's own level; empty when nothing bends. */
-function ownDeformsAt(motion: PaintMotion, node: CompiledPaintNode, t: PaintMoment, withPins: boolean): PaintDeform[] {
-  const fps = motion.animationFps, owner = node.id;
+export function paintLevelDeformsAt(node: CompiledPaintLevel, t: PaintMoment, fps: number, withPins: boolean): PaintDeform[] {
+  const owner = node.id;
   const deforms: PaintDeform[] = [];
-  const moves = withPins ? pinsMovedAt(motion, node, t) : [];
+  const moves = withPins ? pinsMovedAt(node, t, fps) : [];
   if (moves.length) deforms.push({ owner, kind: 'pins', moves });
   const flutter = paintLaneClipAt(node.flutter, t, fps);
   if (flutter) {
@@ -53,10 +53,10 @@ function ownDeformsAt(motion: PaintMotion, node: CompiledPaintNode, t: PaintMome
 }
 
 /** `node`'s own placement at `t` about its pivot, rounded; null at rest or when nothing places it. */
-function ownPlacementAt(motion: PaintMotion, node: CompiledPaintNode, t: PaintMoment): PaintDeform | null {
-  const playing = paintLaneClipAt(node.place, t, motion.animationFps);
+export function paintLevelPlacementAt(node: CompiledPaintLevel, t: PaintMoment, fps: number): Extract<PaintDeform, { kind: 'place' }> | null {
+  const playing = paintLaneClipAt(node.place, t, fps);
   if (!playing) return null;
-  const placement = paintPlacementRounded(paintPlaceClipAt(playing.play.clip, playing.time));
+  const placement = paintPlacementRounded(paintPlaceClipAt(playing.play.clip, playing.moment));
   return paintPlacementIsRest(placement) ? null : { owner: node.id, kind: 'place', placement, pivot: node.pivot };
 }
 
@@ -78,11 +78,13 @@ export function paintNodeWarpAt(motion: PaintMotion, node: CompiledPaintNode, t:
   const steps: PaintDeform[] = node.marks.kind === 'wobble' && epoch > 0 ? [{ owner: node.id, kind: 'wobble', seed: node.id, epoch, wobble: node.marks.wobble }] : [];
   for (const [depth, id] of node.levels.entries()) {
     const level = motion.nodes.get(id)!;
-    steps.push(...ownDeformsAt(motion, level, t, depth > 0 || node.marks.kind !== 'live'));
-    const place = ownPlacementAt(motion, level, t);
+    steps.push(...paintLevelDeformsAt(level, t, motion.animationFps, depth > 0 || node.marks.kind !== 'live'));
+    const place = paintLevelPlacementAt(level, t, motion.animationFps);
     if (place) steps.push(place);
   }
   const outermostBend = steps.findLastIndex((step) => step.kind !== 'place');
+  // A placement at scale 0 leaves a bend after it nothing to bend: the node lies on its pivot, at scale 0 too.
+  if (steps.slice(0, outermostBend + 1).some((step) => step.kind === 'place' && step.placement.scale === 0)) return { warp: [], lay: { x: 0, y: 0, rotation: 0, scale: 0 } };
   const places = steps.slice(outermostBend + 1).flatMap((step) => (step.kind === 'place' ? [step] : []));
   return { warp: steps.slice(0, outermostBend + 1), lay: places.length ? composedPlacement(places, node.pivot) : null };
 }
@@ -90,7 +92,7 @@ export function paintNodeWarpAt(motion: PaintMotion, node: CompiledPaintNode, t:
 /** A live node's marks at `t` from its poser, kept by pose key; null at rest, where it draws as written. */
 function liveMarksAt(motion: PaintMotion, node: CompiledPaintNode, t: PaintMoment): { marks: CompiledStampGroup; key: string } | null {
   if (node.marks.kind !== 'live') return null;
-  const moves = pinsMovedAt(motion, node, t);
+  const moves = pinsMovedAt(node, t, motion.animationFps);
   if (!moves.length) return null;
   // Its own pins are fixed for the motion's life, so their names and moves name the pose.
   const key = `${node.id}{${moves.map(({ name, move }) => `${name}=${paintKeyNumbers(move.x, move.y, move.rotation, move.scale)}`).join(';')}}`;

@@ -1,6 +1,7 @@
-// node harness/stamp-paint-gate.ts run (npm run stamp:gate -- run): the GPU gate (lib/paint/gate). It
+// node harness/stamp-paint-gate.ts [run [ids]] (npm run stamp:gate, run by default): the GPU gate (lib/paint/gate). It
 // runs the renderer's formulas, paints synthetic paintings and traces a resolve on the GPU, and holds each to its
-// accepted baseline (harness/fixtures/stamp-paint/), its CPU twin or its frame. `update <ids> --reason` writes
+// accepted baseline (harness/fixtures/stamp-paint/), its CPU twin or its frame; `run <ids>`, only the baselines and
+// cases named. `update <ids> --reason` writes
 // candidates with their differences; `accept <ids>` replaces the baselines with them. `pushed` is what pre-push runs; it runs `tree` inside each pushed commit, written out.
 // `private run|update|accept` does the same for pack brushes, into the workspace's work/validation/stamp-paint/.
 import { defineCommand } from 'citty';
@@ -9,9 +10,8 @@ import { join } from 'node:path';
 import { acceptStampGateCandidates, STAMP_GATE_PUBLIC_STORE } from '#lib/paint/gate/engine/stamp-gate-store.ts';
 import { runStampGatePrivate, updateStampGatePrivate, type StampGatePrivateBrush } from '#lib/paint/gate/engine/stamp-gate-private.ts';
 import { STAMP_GATE_PRIVATE_FLAT_CASES } from '#lib/paint/gate/models/stamp-gate-private-cases.ts';
-import { runPushedStampGate, stampGatePushedCommits } from '#lib/paint/gate/engine/stamp-gate-pushed.ts';
-import { stampGateImportedFiles, stampGateReachedBy } from '#lib/paint/gate/engine/stamp-gate-reach.ts';
-import { runStampGate, STAMP_GATE_PAGE, stampGateBaselineIds, updateStampGate, type StampGateCheck } from '#lib/paint/gate/engine/stamp-gate.ts';
+import { runPushedStampGate, runStampGateOnPushedTree, stampGatePushedCommits } from '#lib/paint/gate/engine/stamp-gate-pushed.ts';
+import { runStampGate, stampGateBaselineIds, updateStampGate, type StampGateCheck } from '#lib/paint/gate/engine/stamp-gate.ts';
 import { STUDIO_STYLES_DIR, STUDIO_WORKSPACE_DIR } from '#lib/platform/project/engine/studio-project.ts';
 import { runHarnessCommand } from './run-harness-command.ts';
 
@@ -41,9 +41,12 @@ const idsArg = (raw: readonly string[]) => (raw.includes('all') ? stampGateBasel
 const reasonArg = { type: 'string', required: true, description: 'Why the baselines change, recorded with them when accepted' } as const;
 
 const runCommand = defineCommand({
-  meta: { name: 'run', description: 'Run the gate: formulas against their baselines or CPU twins, paintings against their baselines, a trace against its frame. Fails on any difference, a missing adapter or a changed input.' },
-  async run() {
-    report(await runStampGate(STAMP_GATE_PUBLIC_STORE));
+  meta: {
+    name: 'run',
+    description: 'Run the gate: formulas against their baselines or CPU twins, paintings against their baselines, a trace against its frame. Fails on any difference, a missing adapter or a changed input. Name baselines or cases (shot/masks "shot/masks: alphaOf") to run only those.',
+  },
+  async run({ args }) {
+    report(await runStampGate(STAMP_GATE_PUBLIC_STORE, args._));
   },
 });
 
@@ -67,7 +70,7 @@ const acceptCommand = defineCommand({
 });
 
 const pushedCommand = defineCommand({
-  meta: { name: 'pushed', description: "Pre-push's gate: pre-push's stdin names the pushed refs; each pushed commit is written out and its own tree verb runs on it, each within its deadline." },
+  meta: { name: 'pushed', description: "Pre-push's gate: pre-push's stdin names the pushed refs; each pushed commit is written out and its own tree verb runs on it." },
   run() {
     const root = process.cwd();
     for (const { sha, paths } of stampGatePushedCommits(root, readFileSync(0, 'utf8'))) {
@@ -79,14 +82,13 @@ const pushedCommand = defineCommand({
 });
 
 const treeCommand = defineCommand({
-  meta: { name: 'tree', description: 'Run inside a written-out commit by pushed: the paths it carries, NUL-separated, on stdin; runs the gate when one of them is a file it imports or reads.' },
+  meta: { name: 'tree', description: 'Run inside a written-out commit by pushed: the paths it carries, NUL-separated, on stdin. When one of them is a file the gate imports or reads, it waits for the whole GPU, then runs the gate within its deadline.' },
   async run() {
-    const carried = readFileSync(0, 'utf8').split('\0').filter(Boolean);
-    const reached = stampGateReachedBy(carried, await stampGateImportedFiles(process.cwd(), STAMP_GATE_PAGE));
-    if (!reached.length) return;
-    const started = performance.now();
-    report(await runStampGate(STAMP_GATE_PUBLIC_STORE));
-    console.log(`stamp gate: ran in ${((performance.now() - started) / 1000).toFixed(1)} s on the pushed tree for ${reached.slice(0, 3).join(', ')}${reached.length > 3 ? ', …' : ''}`);
+    const ran = await runStampGateOnPushedTree(process.cwd(), readFileSync(0, 'utf8').split('\0').filter(Boolean));
+    if (!ran) return;
+    const { checks, reached, seconds } = ran;
+    report(checks);
+    console.log(`stamp gate: ran in ${seconds.toFixed(1)} s on the pushed tree for ${reached.slice(0, 3).join(', ')}${reached.length > 3 ? ', …' : ''}`);
   },
 });
 
@@ -109,5 +111,6 @@ const privateCommand = defineCommand({
 
 await runHarnessCommand(defineCommand({
   meta: { name: 'stamp-paint-gate', description: "The GPU gate: stamp paint's formulas, paintings and traces held to accepted baselines" },
+  default: 'run',
   subCommands: { run: runCommand, update: updateCommand, accept: acceptCommand, pushed: pushedCommand, tree: treeCommand, private: privateCommand },
-}));
+}), 'exclusive');

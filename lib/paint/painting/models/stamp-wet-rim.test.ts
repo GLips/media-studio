@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
-import { compileStampPaintRecipe } from './stamp-paint-recipe-compile.ts';
+import { compileStampPaintRecipe, stampMixedPainting } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampPaintEnvironment, StampPassageOptions, StampPassageScope } from './stamp-paint-recipe-types.ts';
-import { compileStampWetness, stampPaintMedia } from './stamp-wetness.ts';
+import { stampPaintMedia } from './stamp-wetness.ts';
+import { compileStampWetness } from './stamp-wash-waits.ts';
 import { stampRoundTipsOf, stampRoundTipStatedProfile } from './stamp-tip-support.ts';
 import { stampDryingRimBound } from './stamp-wet-rim.ts';
 import type { StampFloodEdge } from './stamp-fill.ts';
@@ -38,7 +39,7 @@ const washOf = (body: (wash: StampPassageScope) => void, options: StampPassageOp
 
 /** The wetness of `painting` in watercolour, and its one wash's dryings. */
 function dried(painting: ReturnType<typeof washOf>) {
-  const wetness = compileStampWetness(painting, stampPaintMedia(painting, () => PAINT_MEDIA.watercolour), stampRoundTipsOf());
+  const wetness = compileStampWetness(painting, stampPaintMedia(stampMixedPainting(painting), () => PAINT_MEDIA.watercolour), stampRoundTipsOf());
   return { wetness, dryings: wetness.washes.get(painting.groups[0].passes[0])!.dryings };
 }
 
@@ -80,13 +81,13 @@ test("a seconds wait the whole wash has set by closes the same drying as wait('s
     stroke(wash, 'a');
     wait(wash);
     stroke(wash, 'b');
-  })).dryings.map(({ id, deposits, closes }) => [id, deposits.map((deposit) => deposit.id), closes === 'end' ? 'end' : closes.until]);
+  })).dryings.map(({ id, deposits, closes }) => [id, deposits.map((deposit) => deposit.id), closes]);
   const set = dried(washOf((wash) => {
     stroke(wash, 'a');
     wash.wait('set');
   })).wetness.washes.values().next().value!.duration;
   assert.deepEqual(dryingsOf((wash) => wash.wait('set')), [['g/w', ['g/w/a'], 'set'], ['g/w|dry1', ['g/w/b'], 'end']]);
-  assert.deepEqual(dryingsOf((wash) => wash.wait({ seconds: set + 1 })), [['g/w', ['g/w/a'], { seconds: set + 1 }], ['g/w|dry1', ['g/w/b'], 'end']]);
+  assert.deepEqual(dryingsOf((wash) => wash.wait({ seconds: set + 1 })), [['g/w', ['g/w/a'], 'set'], ['g/w|dry1', ['g/w/b'], 'end']]);
   // Still workable, though past damp: the two strokes dry together at the end.
   assert.deepEqual(dryingsOf((wash) => wash.wait({ seconds: set - 1 })), [['g/w', ['g/w/a', 'g/w/b'], 'end']]);
 });

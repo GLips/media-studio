@@ -1,9 +1,11 @@
 // stamp-paint-gpu-owner.ts: a studio device owner (gpu-device-owner.ts) with everything on it that outlasts a
-// painting: the images, each tip's mip levels (made on the CPU, stamp-tip-levels.ts), modules, pipelines and samplers, the targets, and the GPU
-// cache (stamp-paint-gpu-cache.ts), whose one budget every painting and output on the device shares. Outputs
-// (stamp-paint-surface.ts) and three.js (the owner's one renderer) render on it too.
+// painting: the images, each tip's mip levels (made on the CPU, stamp-tip-levels.ts), modules, pipelines and samplers,
+// and the GPU cache (stamp-paint-gpu-cache.ts), whose one budget every painting and output on the device shares, the
+// targets passes paint in among its entries. Outputs (stamp-paint-surface.ts) and three.js (the owner's one renderer)
+// render on it too.
 //
-// A painting's buffers and textures go in a scope (StampPaintGpuScope) freed with it.
+// A painting's buffers and textures go in a scope (StampPaintGpuScope) freed with it, and the targets it holds
+// across encoders are held by it.
 
 import type { StampBrushAsset } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampTipLevels, type StampTipLevels } from '#lib/paint/brush/models/stamp-tip-levels.ts';
@@ -13,8 +15,22 @@ import {
   decodeStampTipBitmap, fetchStampPaintBitmaps, type StampPaintDevice, type StampPaintImage, uploadStampPaintBitmaps, uploadStampTipLevels,
 } from './stamp-paint-gpu.ts';
 
-/** A painting's share of a device: what it makes through `device` is destroyed by `destroy`. */
-export type StampPaintGpuScope = { device: StampPaintDevice; destroy: () => void };
+/** What a pass asks of a target: `size` its width and height, and its array layers for an array; its format and usage. */
+export type StampPaintTargetRequest = {
+  readonly size: readonly [number, number] | readonly [number, number, number];
+  readonly format: GPUTextureFormat;
+  readonly usage: GPUTextureUsageFlags;
+};
+
+/** What a scope frees: what was made through `device`, by `destroy`. */
+type StampPaintGpuOwned = { device: StampPaintDevice; destroy: () => void };
+
+/**
+ * A painting's share of a device: what it makes through `device` is destroyed by `destroy`, and each target it takes
+ * (the owner's, by `name` and `shape`) is held from eviction until then, for work across encoders. `encoder` is the
+ * one open as a target is first taken, null at a load.
+ */
+export type StampPaintGpuScope = StampPaintGpuOwned & { target: (name: string, shape: StampPaintTargetRequest, encoder: GPUCommandEncoder | null) => GPUTexture };
 
 export type StampPaintGpuOwner = GpuDeviceOwner & {
   /**
@@ -33,13 +49,18 @@ export type StampPaintGpuOwner = GpuDeviceOwner & {
   drawnImage: (key: string, draw: () => { size: number; pixels: Uint8Array }) => StampPaintImage;
   /** The mip levels `tip` was uploaded with: a tip's from `images` or `drawnImage`. */
   tipLevels: (tip: StampPaintImage) => StampTipLevels;
-  /** What frames keep between them on the device, under one budget: films, pictures, pictures blurred. */
+  /** What the device holds between frames, under one budget: films, pictures, pictures blurred, checkpoints, targets. */
   cache: StampPaintGpuCache;
   /**
-   * The texture `descriptor` makes, made once a device for each `name` (its role) and shape: a painting's targets,
-   * shared by every painting and output of that size. A frame never depends on what an earlier one left in them.
+   * The texture for role `name` as `shape` asks, used by `encoder`'s frame: one a role and shape, cached under the
+   * budget. Scratch, whatever it holds: a pass reading what it last wrote keeps a store of its own; work spanning
+   * encoders takes a scope's.
    */
-  target: (name: string, descriptor: GPUTextureDescriptor) => GPUTexture;
+  target: (name: string, shape: StampPaintTargetRequest, encoder: GPUCommandEncoder) => GPUTexture;
+  /** A 1 × 1 texture of `format`, never written (zeros): what a pass binds where it reads nothing. One a format, for the owner's life. */
+  blank: (format: GPUTextureFormat) => GPUTexture;
+  /** The bytes written and images copied to the device's queue since the owner was made, three.js's too: a cost report counts the change. */
+  uploaded: () => number;
   /** Frees all it holds, then the device and its three.js renderer; dispose what else draws on it first. */
   dispose: () => void;
 };
@@ -54,15 +75,15 @@ type StampDescriptorValue = GPUShaderModule | string | number | boolean | null |
 
 /** An owner of a new device, fetching each image from `imageUrl`. */
 export async function createStampPaintGpuOwner(imageUrl: (asset: StampBrushAsset) => string): Promise<StampPaintGpuOwner> {
-  const base = await createGpuDeviceOwner(), { webgpu, checked } = base;
+  const base = await createGpuDeviceOwner(), { webgpu, checked } = base, queueWritten = countStampQueueWrites(webgpu.queue);
   // Everything the owner makes, freed on dispose.
   const ownGpu = stampPaintGpuScope(cachingStampPaintDevice(webgpu));
   const { device } = ownGpu;
   const images = new Map<string, Promise<StampPaintImage>>();
   const drawn = new Map<string, StampPaintImage>();
   const levels = new Map<StampPaintImage, StampTipLevels>();
-  const targets = new Map<string, GPUTexture>();
-  const cache = stampPaintGpuCache(device);
+  const blanks = new Map<GPUTextureFormat, GPUTexture>();
+  const cache = stampPaintGpuCache(device), targets = cache.store<null>('target');
   const tipImage = (tipLevels: StampTipLevels) => {
     const image = uploadStampTipLevels(device, tipLevels);
     levels.set(image, tipLevels);
@@ -71,7 +92,26 @@ export async function createStampPaintGpuOwner(imageUrl: (asset: StampBrushAsset
 
   return {
     ...base, device, cache,
-    scope: () => stampPaintGpuScope(device),
+    scope: () => {
+      const owned = stampPaintGpuScope(device), taken = new Map<string, { texture: GPUTexture; release: () => void }>();
+      return {
+        device: owned.device,
+        target: (name, shape, encoder) => {
+          const key = stampPaintTargetKey(name, shape);
+          let held = taken.get(key);
+          if (!held) {
+            const { entry, release } = targets.take(key, encoder, [stampPaintTargetTexture(shape)], null);
+            taken.set(key, (held = { texture: entry.textures[0], release }));
+          }
+          return held.texture;
+        },
+        destroy: () => {
+          for (const { release } of taken.values()) release();
+          taken.clear();
+          owned.destroy();
+        },
+      };
+    },
     images: (wanted) => {
       const missing = wanted.filter(({ asset, kind }) => !images.has(`${kind}|${assetKey(asset)}`));
       if (missing.length) {
@@ -101,13 +141,62 @@ export async function createStampPaintGpuOwner(imageUrl: (asset: StampBrushAsset
       return image;
     },
     tipLevels: (tip) => levels.get(tip)!,
-    target: (name, descriptor) => cached(targets, `${name}|${JSON.stringify(descriptor)}`, () => device.createTexture(descriptor)),
+    target: (name, shape, encoder) => {
+      const key = stampPaintTargetKey(name, shape);
+      return (targets.find(key, encoder) ?? targets.make(key, encoder, [stampPaintTargetTexture(shape)], null)).textures[0];
+    },
+    blank: (format) => cached(blanks, format, () => device.createTexture({ size: [1, 1], format, usage: GPUTextureUsage.TEXTURE_BINDING })),
+    uploaded: queueWritten,
     dispose: () => {
       cache.dispose();
       ownGpu.destroy();
       base.dispose();
     },
   };
+}
+
+/** A typed array: a buffer write counts its offset and size in its elements, not bytes. */
+type StampTypedArray = ArrayBufferView & { readonly BYTES_PER_ELEMENT: number };
+
+/** Whether `data` is a typed array: every view but a DataView is one. */
+function isStampTypedArray(data: AllowSharedBufferSource): data is StampTypedArray {
+  return ArrayBuffer.isView(data) && !(data instanceof DataView);
+}
+
+/** The bytes a buffer write sends: `size` elements of `data` (all past `dataOffset` when left out), bytes for a raw buffer. */
+function stampBufferWriteBytes(data: AllowSharedBufferSource, dataOffset = 0, size?: number): number {
+  const element = isStampTypedArray(data) ? data.BYTES_PER_ELEMENT : 1;
+  return (size ?? data.byteLength / element - dataOffset) * element;
+}
+
+/** `size`'s texel count, as a copy or write reads it: width, height and layers, a missing one 1. */
+function stampExtentTexels(size: GPUExtent3D | Iterable<GPUIntegerCoordinate>): number {
+  const [width, height = 1, layers = 1] = Array.isArray(size) || !('width' in size) ? [...size] : [size.width, size.height, size.depthOrArrayLayers];
+  return width * height * layers;
+}
+
+/**
+ * Counts the bytes each buffer and texture write and image copy on `queue` sends, three.js's too, returning the
+ * running total: own properties shadowing the prototype's methods, as a scope's `destroy` does. An image copy counts
+ * 4 bytes a texel, the decoded RGBA it arrives as, whatever format it lands in.
+ */
+function countStampQueueWrites(queue: GPUQueue): () => number {
+  let bytes = 0;
+  const writeBuffer = queue.writeBuffer.bind(queue), writeTexture = queue.writeTexture.bind(queue), copyImage = queue.copyExternalImageToTexture.bind(queue);
+  queue.writeBuffer = (buffer: GPUBuffer, offset: GPUSize64, data: AllowSharedBufferSource, dataOffset?: GPUSize64, size?: GPUSize64) => {
+    bytes += stampBufferWriteBytes(data, dataOffset, size);
+    writeBuffer(buffer, offset, data, dataOffset, size);
+  };
+  queue.writeTexture = (destination: GPUTexelCopyTextureInfo, data: AllowSharedBufferSource, layout: GPUTexelCopyBufferLayout, size: GPUExtent3D | Iterable<GPUIntegerCoordinate>) => {
+    bytes += data.byteLength - (layout.offset ?? 0);
+    writeTexture(destination, data, layout, Array.isArray(size) || 'width' in size ? size : [...size]);
+  };
+  queue.copyExternalImageToTexture = (source: GPUCopyExternalImageSourceInfo, destination: GPUCopyExternalImageDestInfo, size: GPUExtent3D | Iterable<GPUIntegerCoordinate>) => {
+    const extent = Array.isArray(size) || 'width' in size ? size : [...size];
+    bytes += 4 * stampExtentTexels(extent);
+    copyImage(source, destination, extent);
+  };
+  return () => bytes;
 }
 
 /**
@@ -141,8 +230,14 @@ function cachingStampPaintDevice(raw: GPUDevice): StampPaintDevice {
   };
 }
 
+/** A target's key in the cache: its role and shape. */
+const stampPaintTargetKey = (name: string, { size, format, usage }: StampPaintTargetRequest) => `${name}|${size.join('x')}|${format}|${usage}`;
+
+/** The texture a target shaped `shape` is made as. */
+const stampPaintTargetTexture = ({ size: [width, height, layers = 1], format, usage }: StampPaintTargetRequest) => ({ width, height, layers, format, usage });
+
 /** `made`'s entry under `key`, made by `make` the first time. */
-function cached<T>(made: Map<string, T>, key: string, make: () => T): T {
+function cached<K, T>(made: Map<K, T>, key: K, make: () => T): T {
   let found = made.get(key);
   if (!found) {
     found = make();
@@ -155,7 +250,7 @@ function cached<T>(made: Map<string, T>, key: string, make: () => T): T {
  * `device` keeping every buffer and texture made through it, to destroy them together. One destroyed sooner (a boil
  * epoch's evicted bank) leaves the scope then, so a long scene's scope holds only what's live.
  */
-function stampPaintGpuScope(device: StampPaintDevice): StampPaintGpuScope {
+function stampPaintGpuScope(device: StampPaintDevice): StampPaintGpuOwned {
   const owned = new Set<{ destroy: () => void }>();
   const own = <T extends { destroy: () => void }>(resource: T) => {
     owned.add(resource);

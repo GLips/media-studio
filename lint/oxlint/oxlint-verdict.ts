@@ -1,11 +1,8 @@
 // ─── npm run lint's verdict: oxlint over one scope, judged against its baseline ──
 //
-// oxlint reads the working tree, but only the files the scope's index tracks:
-// another session's untracked, half-written file is nobody's commit yet, and
-// must not block one. The public scope is the studio's repository; the
-// workspace scope is work/'s, read in this process's git environment, as
-// check:arch reads it. An error is a finding, counted against the scope's
-// baseline under the id oxlint prints; a warning is advisory and never blocks.
+// A scope's sources (lint/gate-scope.ts) are those its snapshot holds (lint/candidate-snapshot.ts), and oxlint reads
+// them from disk: under a hook, a file's unstaged edits are linted with it. An error is a finding, counted against the
+// baseline the same snapshot holds under the id oxlint prints; a warning is advisory and never blocks.
 //
 // A finding's key is its line's text, trimmed: an edit above it leaves it
 // baselined, and an edit to the line itself is a new finding, as the rule
@@ -14,14 +11,17 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { STUDIO_WORKSPACE_MOUNT } from '../policy/studio-tree.ts';
-import { baselineTier, compareToBaseline, type Baseline, type BaselineComparison } from '../baseline.ts';
+import { baselineTier, compareToBaseline, type BaselineComparison } from '../baseline.ts';
+import { isSourcePath, listSnapshotPaths, type LiveSnapshot } from '../candidate-snapshot.ts';
+import { gateBaselineFile, gateRepository, readGateBaseline, type GateRepository, type GateScope } from '../gate-scope.ts';
 import type { Finding } from '../structural/check-context.ts';
 
-export type OxlintScope = 'public' | 'workspace';
-
 export type OxlintVerdict = BaselineComparison & {
+  /** The repository whose sources are linted: the studio's, or work/'s. */
+  repository: GateRepository;
   baselineFile: string;
+  /** The sources oxlint read, relative to the studio's root. */
+  linted: readonly string[];
   findings: Finding[];
   advisories: Finding[];
 };
@@ -31,8 +31,13 @@ type OxlintReport = {
   diagnostics: { code: string; message: string; severity: 'error' | 'warning'; filename: string; labels: { span: { line: number } }[] }[];
 };
 
-export function judgeOxlint(root: string, scope: OxlintScope): OxlintVerdict {
-  const report = runOxlint(root, trackedSources(root, scope));
+export function judgeOxlint(root: string, scope: GateScope, snapshot: LiveSnapshot): OxlintVerdict {
+  const repository = gateRepository(root, scope, snapshot);
+  const prefix = repository.mount ? `${repository.mount}/` : '';
+  const held = listSnapshotPaths(repository);
+  // An index's file deleted on disk isn't there for oxlint to read: the index run lists it as unstaged.
+  const linted = held.filter(isSourcePath).map((path) => `${prefix}${path}`).filter((path) => existsSync(join(root, path)));
+  const report = runOxlint(root, linted);
   const lines = new Map<string, readonly string[]>();
   const lineOf = (path: string, line: number) => {
     let text = lines.get(path);
@@ -50,23 +55,8 @@ export function judgeOxlint(root: string, scope: OxlintScope): OxlintVerdict {
     };
     (diagnostic.severity === 'error' ? findings : advisories).push(finding);
   }
-  const baselineFile = scope === 'workspace' ? `${STUDIO_WORKSPACE_MOUNT}/arch-baseline.json` : 'lint/arch-baseline.json';
-  const path = join(root, baselineFile);
-  const baseline = existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as Baseline) : {};
-  return { baselineFile, findings, advisories, ...compareToBaseline(findings, baselineTier(baseline, 'oxlint')) };
-}
-
-const LINTED_SOURCE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
-
-/** The scope's tracked sources still on disk, relative to the studio's root. */
-function trackedSources(root: string, scope: OxlintScope): string[] {
-  const repo = scope === 'workspace' ? join(root, STUDIO_WORKSPACE_MOUNT) : root;
-  const prefix = scope === 'workspace' ? `${STUDIO_WORKSPACE_MOUNT}/` : '';
-  return execFileSync('git', ['ls-files', '-z'], { cwd: repo, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
-    .split('\0')
-    .filter((path) => LINTED_SOURCE.test(path))
-    .map((path) => `${prefix}${path}`)
-    .filter((path) => existsSync(join(root, path)));
+  const baseline = baselineTier(readGateBaseline(repository), 'oxlint');
+  return { repository, baselineFile: gateBaselineFile(scope), linted, findings, advisories, ...compareToBaseline(findings, baseline) };
 }
 
 function runOxlint(root: string, files: readonly string[]): OxlintReport {

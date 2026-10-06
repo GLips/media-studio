@@ -74,13 +74,13 @@ export const STAMP_SINGLE_PLANE_ID = 'painting';
 export const stampSinglePlane = (painting: CompiledStampPaint): StampLaidPlanes =>
   ({ back: { id: STAMP_SINGLE_PLANE_ID, kind: 'painted', groups: painting.groups.map((_, i) => i) }, nearer: [] });
 
-/** `planes`' ids and depths checked into `problems`: unique ids, depths above 0. */
-export function stampPlaneDepthProblems(planes: readonly { readonly id: string; readonly depth: number }[], problems: string[]): void {
+/** `planes`' ids and depths checked into `problems`: unique ids, depths above 0 (null: a depth in time, checked where it's sampled). */
+export function stampPlaneDepthProblems(planes: readonly { readonly id: string; readonly depth: number | null }[], problems: string[]): void {
   const ids = new Set<string>();
   for (const { id, depth } of planes) {
     if (ids.has(id)) problems.push(`two planes are called ${id}`);
     ids.add(id);
-    if (!(depth > 0 && Number.isFinite(depth))) problems.push(`plane ${id} is at depth ${depth}; a plane's depth is above 0`);
+    if (depth !== null && !(depth > 0 && Number.isFinite(depth))) problems.push(`plane ${id} is at depth ${depth}; a plane's depth is above 0`);
   }
 }
 

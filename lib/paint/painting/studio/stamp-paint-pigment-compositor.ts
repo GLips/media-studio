@@ -12,14 +12,17 @@
 import { PAINT_KUBELKA_MUNK_WGSL } from '#lib/paint/materials/models/paint-kubelka-munk.ts';
 import { PAINT_PAPER_WGSL, paintPigmentSeed } from '#lib/paint/materials/models/paint-paper.ts';
 import { paintHexToLinear } from '#lib/paint/materials/models/paint-spectrum.ts';
-import type { PaintMedium, PaintStackedLayering } from '#lib/paint/materials/models/paint-medium.ts';
+import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import { STAMP_PIGMENT_GROUP_SLOTS, stampPigmentAmountsAt, stampPigmentGroupLayers, type StampPigmentPaint, type StampPigmentUnderpaint } from '../models/stamp-pigment-paint.ts';
 import { STAMP_WET_LIFT_WGSL, stampLiftPigmentResidueShare, stampLiftResidueWgsl, stampLiftKnockoutKeep } from '../models/stamp-wet-lift.ts';
 import { STAMP_OPAQUE_COVER, type CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
-import type { StampPaintCompositor } from './stamp-paint-compositor.ts';
+import type { StampPaintCompositor, StampWashGroupLayer } from './stamp-paint-compositor.ts';
 import type { StampPaintDevice } from './stamp-paint-gpu.ts';
+import { STAMP_REFLECTANCE_READING_WGSL } from './stamp-reflectance-reading.ts';
+import { STAMP_STACKED_FILL_REACH, stampPigmentLayContactWgsl, stampPigmentLayWgsl } from './stamp-paint-pigment-lay.ts';
 import { gpuUniformLayout, gpuUniformWriter, type GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
+import { gpuWgslFloat as f32 } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 
 /** Words per component in the component buffer: slot, seed, granulation, flocculation. */
 const COMPONENT_WORDS = 4;
@@ -34,8 +37,6 @@ const PIGMENT_PAINT_DEPOSIT = gpuUniformLayout('PaintDeposit', [
   ['amounts', { vec4fArray: STAMP_PIGMENT_GROUP_SLOTS / 2 }],
 ]);
 
-/** A number as a WGSL f32 literal, to the precision an f32 holds. */
-const f32 = (value: number) => value.toPrecision(9);
 const vec4s = (values: ArrayLike<number>, count: number) =>
   Array.from({ length: count }, (_, i) => `vec4f(${[0, 1, 2, 3].map((j) => f32(values[i * 4 + j] ?? 0)).join(', ')})`).join(', ');
 
@@ -57,6 +58,11 @@ fn washPigmentTotal(v: array<vec4f, ${layers}>) -> f32 {
   return total;
 }
 fn washOpen(v: array<vec4f, ${layers}>) -> f32 { return v${at}; }
+fn washSettled(v: array<vec4f, ${layers}>) -> array<vec4f, ${layers}> {
+  var settled = v;
+  settled${at} = 0.0;
+  return settled;
+}
 fn washMoved(now: array<vec4f, ${layers}>, wasPigment: f32) -> array<vec4f, ${layers}> {
   var moved = now;
   let total = washPigmentTotal(now);
@@ -70,70 +76,15 @@ fn washMoved(now: array<vec4f, ${layers}>, wasPigment: f32) -> array<vec4f, ${la
 }
 
 /**
- * A mixing medium's lay: each stroke moves the paint toward its own, carrying `pickup` of the wet paint under it, so
- * where two washes meet they mix rather than one replacing the other.
+ * Where `medium` meets the paper (WGSL), from the paper's height `h`, its mean and valley, by a pigment's granulation
+ * and its share of a full load; a dry medium's by how hard it's pressed and how far wax already fills the tooth.
  */
-const mixedLay = (pickup: number, s: string) => /* wgsl */ `
-fn layDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32) {
-  let cover = clamp(coverage + max(rims.x, rims.y), 0.0, 1.0);
-  if (cover <= 0.0) { return; }
-  let incoming = incomingAt${s}(tooth, at, press, 0.0);
-  let under = textureLoad(layer, pixel, 0u).x;
-  let rate = cover * (1.0 - ${f32(pickup)} * under);
-  for (var l = 0u; l < LAYERS; l++) {
-    if (isKnockoutLayer(l)) { continue; }
-    let was = textureLoad(layer, pixel, l);
-    var now = was + rate * (incoming[l] - was);
-    if (l == 0u) { now.x = cover + under * (1.0 - cover); }
-    textureStore(layer, pixel, l, now);
-  }
-}`;
-
-/** How far round a pixel a stacking medium's tooth fills from, in texels of the paper's grain: about a valley across. */
-const STACKED_FILL_REACH = 6;
-
-/**
- * A stacking medium's lay (PaintStackedLayering): each layer adds its pigment to what the tooth holds, as crossing
- * crayon layers mix. Past `holds` full loads a stroke trades its wax for what's there, its own on top. Wax held fills
- * the valleys `fill` of the way, so each later layer reaches further into them.
- */
-const stackedLay = ({ holds, fill }: PaintStackedLayering, body: number, s: string) => /* wgsl */ `
-// The wax held round \`pixel\` before this deposit, a ring u.beforeReach pixels out and the pixel: a valley fills with
-// wax pressed in from the peaks round it, never having caught any itself.
-fn heldAround${s}(pixel: vec2u) -> f32 {
-  let last = vec2i(textureDimensions(before)) - 1;
-  var held = 0.0;
-  for (var k = 0; k < 9; k++) {
-    let angle = f32(k) * 0.7854;
-    let offset = select(vec2i(round(u.beforeReach * vec2f(cos(angle), sin(angle)))), vec2i(0), k == 8);
-    let q = vec2u(clamp(vec2i(pixel) + offset, vec2i(0), last));
-    for (var l = 0u; l < LAYERS; l++) { if (!isKnockoutLayer(l)) { held += dot(textureLoad(before, q, l, 0), pigmentMask(l)); } }
-  }
-  return held / 9.0;
-}
-fn layDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32) {
-  let cover = clamp(coverage + max(rims.x, rims.y), 0.0, 1.0);
-  if (cover <= 0.0) { return; }
-  var was: array<vec4f, LAYERS>;
-  var held = 0.0;
-  for (var l = 0u; l < LAYERS; l++) {
-    was[l] = textureLoad(layer, pixel, l);
-    if (!isKnockoutLayer(l)) { held += dot(was[l], pigmentMask(l)); }
-  }
-  let incoming = incomingAt${s}(tooth, at, press, heldAround${s}(pixel) / ${f32(holds * body)} * ${f32(fill)});
-  var added = 0.0;
-  for (var l = 0u; l < LAYERS; l++) { if (!isKnockoutLayer(l)) { added += cover * dot(incoming[l], pigmentMask(l)); } }
-  // What's there gives way only as far as the stroke's own wax overfills the tooth.
-  let keep = select(1.0, clamp((${f32(holds * body)} - added) / max(held, 1e-6), 0.0, 1.0), held + added > ${f32(holds * body)});
-  let under = was[0].x;
-  for (var l = 0u; l < LAYERS; l++) {
-    if (isKnockoutLayer(l)) { continue; }
-    // The open share isn't wax: a dry stroke sets it, as any paint laid over it does.
-    var now = mix(was[l] * (1.0 - cover), was[l] * keep + cover * incoming[l], pigmentMask(l));
-    if (l == 0u) { now.x = cover + under * (1.0 - cover); }
-    textureStore(layer, pixel, l, now);
-  }
-}`;
+const contactOf = ({ paperContact }: PaintMedium, depth: string, granulation: string, load: string, press: string, filled: string) => (paperContact.kind === 'peaks'
+  ? `paintDryContact(h, meanHeight, ${f32(paperContact.tooth)}, ${depth}, ${press}, ${filled})`
+  : `paintWetSettle(valley, ${depth}, ${granulation}, ${load})`);
+/** A deposit's own contact in `medium`, a dry brush's as its lay takes it (stampPigmentLayContactWgsl). */
+const layContactOf = (medium: PaintMedium) =>
+  stampPigmentLayContactWgsl(medium, contactOf(medium, 'u.paperDepth', 'c.granulation', `amount / ${f32(medium.body)}`, 'press', 'filled'));
 
 /** The suffix of medium `m`'s own WGSL functions (`incomingAtM0`), which a switch on GROUP_MEDIA reaches. */
 const mediumSuffix = (m: number) => `M${m}`;
@@ -284,31 +235,47 @@ fn liftedUnder(i: u32, covered: vec4f, behind: array<vec4f, UNDER_LAYERS>, left:
 }`;
   };
 
-  // Where `medium` meets the paper, from the paper's height `h`, its mean and valley, by a pigment's granulation and
-  // its share of a full load; a dry medium's by how hard it's pressed and how far wax already fills the tooth.
-  const contactOf = ({ paperContact }: PaintMedium, depth: string, granulation: string, load: string, press: string, filled: string) => (paperContact.kind === 'peaks'
-    ? `paintDryContact(h, meanHeight, ${f32(paperContact.tooth)}, ${depth}, ${press}, ${filled})`
-    : `paintWetSettle(valley, ${depth}, ${granulation}, ${load})`);
-  // A deposit's own contact in `medium`. A dry brush in a wet medium catches the peaks as a dry medium does, at the
-  // hand's press, its paint the medium's: its valleys go as bare as its wet paint would settle into them deep.
-  const layContactOf = (medium: PaintMedium) => {
-    const own = contactOf(medium, 'u.paperDepth', 'c.granulation', `amount / ${f32(medium.body)}`, 'press', 'filled');
-    const { paperContact } = medium, dryBrush = paperContact.kind === 'valleys' ? paperContact.dryBrush : undefined;
-    if (!dryBrush) return own;
-    const depth = `paintSettleDepth(u.paperDepth, c.granulation, amount / ${f32(medium.body)})`;
-    return `select(${own}, paintDryContact(h, meanHeight, ${f32(dryBrush.tooth)}, ${depth}, press, filled), paint.dryBrush != 0u)`;
-  };
   const groupOf = (deposit: CompiledStampDeposit) => {
     const group = paint.deposits.get(deposit)?.group;
     if (group === undefined) throw new Error(`stamp paint: ${deposit.id} isn't in the painting its pigment compositor was made for`);
     return group;
   };
 
+  /** Group `g`'s wash layer: its layers, moved WGSL and hold WGSL, made once. */
+  const washGroups = new Map<number, StampWashGroupLayer>();
+  const washGroup = (g: number): StampWashGroupLayer => {
+    const known = washGroups.get(g);
+    if (known) return known;
+    const group = paint.groups[g], medium = mediumOfGroup(g);
+    // Per channel of the group's layers: its pigment's granulation, flocculation and seed; none for coverage and the open share.
+    const habits = Array.from({ length: group.paintLayers * 4 }, (_, channel) => {
+      const pigment = group.palette[channel - 1];
+      return pigment && channel > 0 ? [pigment.granulation * medium.granulation, pigment.flocculation, paintPigmentSeed(pigment.id)] : [0, 0, 0];
+    });
+    const holdWgsl = /* wgsl */ `
+${PAINT_PAPER_WGSL}
+const WASH_HABITS = array<vec3f, ${habits.length}>(${habits.map((habit) => `vec3f(${habit.map(f32).join(', ')})`).join(', ')});
+fn washHold(l: u32, at: vec2f, tooth: vec2f, depth: f32, held: vec4f, wrap: vec2f) -> vec4f {
+  let h = 1.0 - tooth.x;
+  let meanHeight = 1.0 - tooth.y;
+  let valley = paintValley(h, meanHeight);
+  var hold = vec4f(1.0);
+  for (var i = 0u; i < 4u; i++) {
+    let habit = WASH_HABITS[4u * l + i];
+    hold[i] = max(0.0, ${contactOf(medium, 'depth', 'habit.x', `held[i] / ${f32(medium.body)}`, '1.0', '0.0')} * paintClumpsWrapped(habit.y, at.x, at.y, u32(habit.z), wrap));
+  }
+  return hold;
+}`;
+    const made = { layers: group.paintLayers, movedWgsl: stampWashMovedWgsl(group.paintLayers, medium.body), holdWgsl };
+    washGroups.set(g, made);
+    return made;
+  };
+
   return {
     targets: { layer: { kind: 'array', layers }, painting: { kind: 'array', layers: V + underLayers } },
     readsStampTints: false,
-    // Read for every deposit where any medium needs it: a medium that doesn't reads past it.
-    reads: { press: media.some(({ paperContact }) => paperContact.kind === 'peaks'), before: media.some(({ layering }) => layering.kind === 'stacks') ? { reach: STACKED_FILL_REACH } : null },
+    // Read for every deposit where any medium or dry brush needs it: a deposit that doesn't reads past it.
+    reads: { press: media.some(({ paperContact }) => paperContact.kind === 'peaks') || [...paint.deposits.values()].some(({ dryBrush }) => dryBrush), before: media.some(({ layering }) => layering.kind === 'stacks') ? { reach: STAMP_STACKED_FILL_REACH } : null },
     deposit: {
       layout: PIGMENT_PAINT_DEPOSIT,
       wgsl: /* wgsl */ `
@@ -329,8 +296,9 @@ fn isKnockoutLayer(l: u32) -> bool { return paint.knockoutLayer != 0u && l == pa
 ${groupMediaWgsl}
 ${eachMedium((medium, s) => /* wgsl */ `
 // A full stroke's pigment amounts here, graded between its material's ends by amount, where the paper's tooth and
-// each pigment's habits put them: a dry medium's as hard as it's \`press\`ed, the tooth \`filled\` so far by wax.
-fn incomingAt${s}(tooth: vec2f, at: vec2f, press: f32, filled: f32) -> array<vec4f, LAYERS> {
+// each pigment's habits put them: a dry medium's as hard as it's \`press\`ed, the tooth \`filled\` so far by wax; its
+// clumps repeating every \`wrap\` px across (0 for none).
+fn incomingAt${s}(tooth: vec2f, at: vec2f, press: f32, filled: f32, wrap: vec2f) -> array<vec4f, LAYERS> {
   let h = 1.0 - tooth.x;
   let meanHeight = 1.0 - tooth.y;
   let valley = paintValley(h, meanHeight);
@@ -341,14 +309,14 @@ fn incomingAt${s}(tooth: vec2f, at: vec2f, press: f32, filled: f32) -> array<vec
     let pair = paint.amounts[i / 2u];
     let ends = select(pair.xy, pair.zw, (i & 1u) == 1u);
     let amount = ends.x + (ends.y - ends.x) * graded;
-    let share = max(0.0, ${layContactOf(medium)} * paintClumps(c.flocculation, at.x, at.y, c.seed));
+    let share = max(0.0, ${layContactOf(medium)} * paintClumpsWrapped(c.flocculation, at.x, at.y, c.seed, wrap));
     let channel = c.slot + 1u;
     incoming[channel / 4u][channel % 4u] += amount * share;
   }
   return incoming;
 }
-${medium.layering.kind === 'stacks' ? stackedLay(medium.layering, medium.body, s) : mixedLay(medium.pickup, s)}`)}
-${dispatched('layDeposit', 'pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32', 'pixel, coverage, rims, tooth, at, press')}`,
+${stampPigmentLayWgsl(medium, s)}`)}
+${dispatched('layDeposit', 'pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32, wrap: vec2f', 'pixel, coverage, rims, tooth, at, press, wrap')}`,
       wet: /* wgsl */ `
 ${STAMP_WET_LIFT_WGSL}
 @group(0) @binding(25) var<storage, read> residueShares: array<vec4f>;
@@ -374,7 +342,7 @@ fn noneFresh${s}(pixel: vec2u) {
 // sets the open share to none wherever the paper has settled since it last took water, so whatever reads it after
 // (this landing, the stages, a later landing) reads the paint there as set. Every pixel of the box writes \`fresh\`,
 // none where nothing was laid: the flow reads it there too, where water may land without paint.
-fn landDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, reserved: f32, wet: WetLanding) {
+fn landDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, reserved: f32, wet: WetLanding, wrap: vec2f) {
   let cover = clamp(coverage + max(rims.x, rims.y), 0.0, 1.0);
   if (paint.knockout != 0u) {
     knockOut${s}(pixel, cover, reserved, wet);
@@ -415,7 +383,7 @@ fn landDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: v
     return;
   }
   // A wash's paint is drawn at a firm hand's pressure, the tooth as the paper's own.
-  let incoming = incomingAt${s}(tooth, at, 1.0, 0.0);
+  let incoming = incomingAt${s}(tooth, at, 1.0, 0.0, wrap);
   var kept = 0.0;
   var gained = 0.0;
   for (var l = 0u; l < LAYERS; l++) {
@@ -432,7 +400,7 @@ fn landDeposit${s}(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: v
   now[o.x][o.y] = wetLandOpen(open, kept, gained);
   for (var l = 0u; l < LAYERS; l++) { if (!isKnockoutLayer(l)) { textureStore(layer, pixel, l, now[l]); } }
 }`)}
-${dispatched('landDeposit', 'pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, reserved: f32, wet: WetLanding', 'pixel, coverage, rims, tooth, at, reserved, wet')}`,
+${dispatched('landDeposit', 'pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, reserved: f32, wet: WetLanding, wrap: vec2f', 'pixel, coverage, rims, tooth, at, reserved, wet, wrap')}`,
       writerFor: (deposit) => {
         const writer = writers.get(deposit);
         if (!writer) throw new Error(`stamp paint: ${deposit.id} isn't in the painting its pigment compositor was made for`);
@@ -441,33 +409,10 @@ ${dispatched('landDeposit', 'pixel: vec2u, coverage: f32, rims: vec2f, tooth: ve
       resources: ({ wet }) => [{ buffer: components }, ...(wet ? [{ buffer: residueShares }] : [])],
     },
     wash: {
-      layersOf: (deposit) => paint.groups[groupOf(deposit)].paintLayers,
-      movedWgsl: (deposit) => {
-        const group = groupOf(deposit);
-        return stampWashMovedWgsl(paint.groups[group].paintLayers, mediumOfGroup(group).body);
-      },
-      holdWgsl: (deposit) => {
-        const group = paint.groups[groupOf(deposit)], medium = media[group.medium];
-        // Per channel of the group's layers: its pigment's granulation, flocculation and seed; none for coverage and the open share.
-        const habits = Array.from({ length: group.paintLayers * 4 }, (_, channel) => {
-          const pigment = group.palette[channel - 1];
-          return pigment && channel > 0 ? [pigment.granulation * medium.granulation, pigment.flocculation, paintPigmentSeed(pigment.id)] : [0, 0, 0];
-        });
-        return /* wgsl */ `
-${PAINT_PAPER_WGSL}
-const WASH_HABITS = array<vec3f, ${habits.length}>(${habits.map((habit) => `vec3f(${habit.map(f32).join(', ')})`).join(', ')});
-fn washHold(l: u32, at: vec2f, tooth: vec2f, depth: f32, held: vec4f) -> vec4f {
-  let h = 1.0 - tooth.x;
-  let meanHeight = 1.0 - tooth.y;
-  let valley = paintValley(h, meanHeight);
-  var hold = vec4f(1.0);
-  for (var i = 0u; i < 4u; i++) {
-    let habit = WASH_HABITS[4u * l + i];
-    hold[i] = max(0.0, ${contactOf(medium, 'depth', 'habit.x', `held[i] / ${f32(medium.body)}`, '1.0', '0.0')} * paintClumps(habit.y, at.x, at.y, u32(habit.z)));
-  }
-  return hold;
-}`;
-      },
+      group: washGroup,
+      layersOf: (deposit) => washGroup(groupOf(deposit)).layers,
+      movedWgsl: (deposit) => washGroup(groupOf(deposit)).movedWgsl,
+      holdWgsl: (deposit) => washGroup(groupOf(deposit)).holdWgsl,
     },
     group: {
       cover: `fn groupCover(layer0: vec4f, glaze: bool) -> f32 { return min(1.0, max(layer0.x, 0.0) * select(${STAMP_OPAQUE_COVER.toFixed(1)}, 1.0, glaze)); }`,
@@ -549,6 +494,22 @@ ${bandWgsl}
 fn layPaper(pixel: vec2u, color: vec3f) {
   for (var i = 0u; i < BAND_VEC4S; i++) { textureStore(painting, pixel, i, paperReflectance(i, color)); }
   for (var r = 0u; r < ${underLayers}u; r++) { textureStore(painting, pixel, BAND_VEC4S + r, vec4f(0.0)); }
+}`,
+    card: /* wgsl */ `
+${bandWgsl}
+fn layCard(pixel: vec2u, color: vec3f, cover: f32) {
+  for (var i = 0u; i < BAND_VEC4S; i++) { textureStore(painting, pixel, i, mix(textureLoad(painting, pixel, i), paperReflectance(i, color), cover)); }
+  for (var r = 0u; r < ${underLayers}u; r++) { textureStore(painting, pixel, BAND_VEC4S + r, textureLoad(painting, pixel, BAND_VEC4S + r) * (1.0 - cover)); }
+}`,
+    picture: /* wgsl */ `
+${bandWgsl}
+${STAMP_REFLECTANCE_READING_WGSL}
+// A picture's premultiplied linear \`light\` laid over what's there by its alpha \`cover\`, band by band: its own
+// spectrum is the paper's moved to read as its colour, so a reflectance's linear reading lays it exactly.
+fn layPicture(pixel: vec2u, light: vec3f, cover: f32) {
+  let own = reflectanceReading(clamp(light / cover, vec3f(0.0), vec3f(1.0)), PAPER);
+  for (var i = 0u; i < BAND_VEC4S; i++) { textureStore(painting, pixel, i, mix(textureLoad(painting, pixel, i), own[i], cover)); }
+  for (var r = 0u; r < ${underLayers}u; r++) { textureStore(painting, pixel, BAND_VEC4S + r, textureLoad(painting, pixel, BAND_VEC4S + r) * (1.0 - cover)); }
 }`,
     output: /* wgsl */ `
 ${bandWgsl}

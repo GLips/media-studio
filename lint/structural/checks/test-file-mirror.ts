@@ -12,10 +12,9 @@
 // unpaired spec; a cross-cutting suite is named after the module it enters by.
 
 import type { Finding, StructuralCheck } from '../check-context.ts';
-import { SOURCE_EXTENSIONS } from '../source-tree.ts';
+import { SOURCE_EXTENSIONS, sourcePathStem } from '../../candidate-snapshot.ts';
 
 const ID = 'test-file-mirror';
-const SOURCE_EXTENSION = new RegExp(`\\.(${SOURCE_EXTENSIONS.join('|')})$`);
 const TEST_SUFFIX = '.test';
 const OFF_CONVENTION = [/\.spec$/, /(^|\/)test_[^/]+$/];
 
@@ -25,7 +24,7 @@ export const testFileMirrorCheck: StructuralCheck = {
   run(context) {
     const hasModule = (base: string) => SOURCE_EXTENSIONS.some((extension) => context.tree.paths.has(`${base}.${extension}`));
     return context.tree.sources.flatMap((file): Finding[] => {
-      const bare = file.path.replace(SOURCE_EXTENSION, '');
+      const bare = sourcePathStem(file.path);
       const finding = (key: string, message: string): Finding[] => [{ check: ID, path: file.path, line: 1, key, message }];
       if (!bare.endsWith(TEST_SUFFIX)) {
         return OFF_CONVENTION.some((pattern) => pattern.test(bare))

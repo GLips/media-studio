@@ -387,13 +387,14 @@ fn reaches(field: texture_2d<f32>, origin: vec2f, toward: vec2f, level: f32, mos
   // On paint as even as a plateau, the slope says nothing: there it's well in, and its edge the nearest edge's.
   let near = clamp(select((contourAt(at) - 0.5 * level) / max(slope, 1e-3) - 0.5, far, walled), -${NEAR_EDGE[0]}.0, ${NEAR_EDGE[1]}.0);
   // The line wavers along the edge in width, strength and how far in it sits, and breaks off in stretches, by noise at
-  // the edge (so across the band alike) in the painting's own pixels, keyed to the wash's seed.
+  // the edge (so across the band alike) in the painting's own pixels, keyed to the wash's seed, meeting itself at a
+  // wrapping sheet's seam.
   let sloped = select(nearby * smoothstep(0.01, 0.04, slope), 0.0, walled);
   let start = mix(edge + toward * half, vec2f(p) - gradient / max(slope, 1e-3) * (near + 0.5), sloped) - vec2f(STAGE_MARGIN);
-  let width = sizing.width * (0.6 + 0.8 * paintValueNoise(start.x / 6.0, start.y / 6.0, u.seed));
-  let present = dryingRimPresence(paintValueNoise(start.x / 45.0, start.y / 45.0, u.seed ^ 0x9e3779u), paintValueNoise(start.x / 12.0, start.y / 12.0, u.seed ^ 0x51ed27u));
-  let strength = present * (0.55 + 0.45 * paintValueNoise(start.x / 20.0, start.y / 20.0, u.seed ^ 0x2545f4u));
-  let inset = 1.2 * paintValueNoise(start.x / 9.0, start.y / 9.0, u.seed ^ 0x68e31du);
+  let width = sizing.width * (0.6 + 0.8 * paintNoiseWrapped(start.x, start.y, 6.0, u.seed, STAGE_WRAP));
+  let present = dryingRimPresence(paintNoiseWrapped(start.x, start.y, 45.0, u.seed ^ 0x9e3779u, STAGE_WRAP), paintNoiseWrapped(start.x, start.y, 12.0, u.seed ^ 0x51ed27u, STAGE_WRAP));
+  let strength = present * (0.55 + 0.45 * paintNoiseWrapped(start.x, start.y, 20.0, u.seed ^ 0x2545f4u, STAGE_WRAP));
+  let inset = 1.2 * paintNoiseWrapped(start.x, start.y, 9.0, u.seed ^ 0x68e31du, STAGE_WRAP);
   // An edge pixel the paint only partly covers takes its share of the line, so the line keeps the paint's edge.
   let covered = clamp(textureLoad(layer, p, 0, 0).x / max(level, 1e-3), 0.0, 1.0);
   // A feathered fringe has no line: half-there contours wandering through one would gather the band's paint.

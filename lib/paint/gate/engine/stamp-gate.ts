@@ -1,7 +1,9 @@
-// stamp-gate.ts: the GPU gate. In one headless browser session it runs every formula grid, paints every gate painting
-// and traces a resolve (studio/stamp-gate-page.ts), then holds each to what it answers to: a rendering formula and a
-// painting to their accepted baselines (stamp-gate-store.ts), a runtime twin to its CPU side, a trace to its frame.
-// `node harness/stamp-paint-gate.ts` runs it; pre-commit runs it on the staged tree (stamp-gate-staged.ts).
+// stamp-gate.ts: the GPU gate. In one headless browser session it runs every formula grid, paints every gate painting,
+// solves every sheet case, draws every shot and painted texture and traces a resolve (studio/stamp-gate-page.ts), then
+// holds each to what it answers to: a rendering formula, a painting, a solved sheet's still, a shot's frame and a
+// painted texture's frame to their accepted baselines (stamp-gate-store.ts), a runtime twin to its CPU side, a trace to
+// its frame. `node harness/stamp-paint-gate.ts` runs it; pre-push runs it
+// on each pushed commit's tree (stamp-gate-pushed.ts).
 //
 // Negative space: nothing here skips or retries. No adapter, a missing feature or a failed draw is an error, and an
 // error fails the gate as a difference does.
@@ -28,6 +30,14 @@ import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { STAMP_GATE_REGION_IDS } from '../models/stamp-gate-regions.ts';
 import { STAMP_GATE_CONTACT_IDS } from '../models/stamp-gate-contact.ts';
 import { STAMP_GATE_MASK_IDS } from '../models/stamp-gate-masks.ts';
+import { STAMP_GATE_REVEAL_IDS } from '../models/stamp-gate-reveals.ts';
+import { STAMP_GATE_SHEET_IDS, STAMP_GATE_SOLVED_IDS, stampGateSolvedInputs, stampGateSolvedStill } from '../models/stamp-gate-sheets.ts';
+import { STAMP_GATE_SHOT_CASE_IDS, STAMP_GATE_SHOT_IDS, STAMP_GATE_SHOT_PAGE_IDS, stampGateShotBaseline, stampGateShotInputs } from '../models/stamp-gate-shots.ts';
+import {
+  STAMP_GATE_SHOT_TEXTURE_CASE_IDS, STAMP_GATE_SHOT_TEXTURE_IDS, STAMP_GATE_TEXTURE_IDS, stampGateShotTextureFrame, stampGateShotTextureInputs, stampGateTextureFrame,
+  stampGateTextureInputs,
+} from '../models/stamp-gate-textures.ts';
+import { STAMP_GATE_LIGHTING_IDS, stampGateLightingFrame, stampGateLightingInputs } from '../models/stamp-gate-three-lighting.ts';
 import { readStampGateBaseline, stampGateFrame, stampGateInputsHash, writeStampGateCandidate, type StampGateOutput } from './stamp-gate-store.ts';
 
 /** The gate's browser side, which the private run loads too. */
@@ -48,25 +58,86 @@ export type StampGateSubject = { id: string; output: StampGateOutput; inputs: st
 const formulaId = (grid: StampGateFormulaGrid) => `formula/${grid.formula}`;
 const formulaInputs = (grid: StampGateFormulaGrid) => stampGateInputsHash(`${grid.call}|${grid.width}|${Buffer.from(grid.rows.buffer).toString('base64')}`);
 
-/** Every baseline subject's ID: each rendering formula's and each painting's. */
+/**
+ * A family of frames held to baselines, each case's ID its baseline's: the page function drawing one (its RGB bytes
+ * row by row, in base64), its frame's size and what it's drawn from, as text.
+ */
+type StampGateFrameFamily = {
+  readonly ids: readonly string[];
+  readonly page: string;
+  readonly size: (id: string) => { readonly width: number; readonly height: number };
+  readonly inputs: (id: string) => string;
+};
+
+/** `family`, its functions taking any of its IDs: one of another family's is an error. */
+function stampGateFrameFamily<Id extends string>(family: {
+  ids: readonly Id[]; page: string; size: (id: Id) => { readonly width: number; readonly height: number }; inputs: (id: Id) => string;
+}): StampGateFrameFamily {
+  const own = (id: string): Id => {
+    const found = family.ids.find((each) => each === id);
+    if (found === undefined) throw new Error(`stamp gate: ${id} isn't one of ${family.page}'s cases`);
+    return found;
+  };
+  return { ids: family.ids, page: family.page, size: (id) => family.size(own(id)), inputs: (id) => family.inputs(own(id)) };
+}
+
+/** Every family of frames: a row each, so a new one is added here alone. */
+const STAMP_GATE_FRAME_FAMILIES: readonly StampGateFrameFamily[] = [
+  stampGateFrameFamily({
+    ids: STAMP_GATE_SOLVED_IDS, page: 'paintStampGateSolved', inputs: stampGateSolvedInputs,
+    size: (id) => ({ width: stampGateSolvedStill(id).evaluation.document.widthPx, height: stampGateSolvedStill(id).evaluation.document.heightPx }),
+  }),
+  stampGateFrameFamily({
+    ids: STAMP_GATE_SHOT_IDS, page: 'paintStampGateShot', inputs: stampGateShotInputs, size: (id) => stampGateShotBaseline(id).shot.camera.stage.frame,
+  }),
+  stampGateFrameFamily({ ids: STAMP_GATE_TEXTURE_IDS, page: 'paintStampGateTexture', inputs: stampGateTextureInputs, size: stampGateTextureFrame }),
+  // Shots wearing painted textures, apart from the shots above: the texture page builds the three.js objects wearing them.
+  stampGateFrameFamily({ ids: STAMP_GATE_SHOT_TEXTURE_IDS, page: 'paintStampGateShotTexture', inputs: stampGateShotTextureInputs, size: stampGateShotTextureFrame }),
+  // A shot of lit three.js scenes, shadowed and mirrored: the lighting page builds them.
+  stampGateFrameFamily({ ids: STAMP_GATE_LIGHTING_IDS, page: 'paintStampGateLighting', inputs: stampGateLightingInputs, size: stampGateLightingFrame }),
+];
+
+/** Every baseline subject's ID: each rendering formula's, each painting's and each frame family's cases'. */
 export const stampGateBaselineIds = () => [
   ...stampGateFormulaGrids().filter((grid) => grid.expected.kind === 'baseline').map(formulaId),
   ...STAMP_GATE_PAINTING_IDS.map((id) => `painting/${id}`),
+  ...STAMP_GATE_FRAME_FAMILIES.flatMap(({ ids }) => ids),
 ];
 
-/** Runs the page: every formula grid, the paintings named, the trace, and the wash, animation, flow, stripe, region, mask, media, three-plane, stage, planes, lens and contact cases named. */
-async function collectStampGate(
-  paintings: readonly string[], washes: readonly string[] = [], animations: readonly string[] = [], flows: readonly string[] = [], stripes: readonly string[] = [], regions: readonly string[] = [],
-  masks: readonly string[] = [], media: readonly string[] = [], three: readonly string[] = [], stages: readonly string[] = [], contacts: readonly string[] = [],
-) {
+/** Each kind of case: the page function checking one, and every case of it the gate runs. */
+const STAMP_GATE_CASES = {
+  checkStampGateWash: STAMP_GATE_WASH_IDS,
+  checkStampGateAnimation: STAMP_GATE_ANIMATION_IDS,
+  checkStampGateFlowCase: STAMP_GATE_FLOW_IDS,
+  checkStampGateStripeCase: STAMP_GATE_STRIPE_IDS,
+  checkStampGateRegionCase: STAMP_GATE_REGION_IDS,
+  checkStampGateMaskCase: STAMP_GATE_MASK_IDS,
+  checkStampGateMediaCase: STAMP_GATE_MEDIA_IDS,
+  checkStampGateThreeCase: [...STAMP_GATE_THREE_IDS, STAMP_GATE_THREE_STILL_ID, STAMP_GATE_PICTURE_ID],
+  checkStampGateStageCase: [...STAMP_GATE_STAGE_IDS, ...STAMP_GATE_PLANES_IDS, STAMP_GATE_TRANSPORT_ID, ...STAMP_GATE_LENS_IDS],
+  checkStampGateContactCase: STAMP_GATE_CONTACT_IDS,
+  checkStampGateSheetCase: STAMP_GATE_SHEET_IDS,
+  checkStampGateTextureCase: STAMP_GATE_TEXTURE_IDS,
+  checkStampGateShotTextureCase: STAMP_GATE_SHOT_TEXTURE_CASE_IDS,
+  checkStampGateLightingCase: STAMP_GATE_LIGHTING_IDS,
+  checkStampGateShotPageCase: STAMP_GATE_SHOT_PAGE_IDS,
+  checkStampGateShotCase: STAMP_GATE_SHOT_CASE_IDS,
+  checkStampGateRevealCase: STAMP_GATE_REVEAL_IDS,
+} satisfies Readonly<Record<string, readonly string[]>>;
+
+/** What a run collects: the paintings and family frames (by baseline ID) drawn, and the cases checked, by page function. */
+type StampGateRun = { paintings: readonly string[]; frames: ReadonlySet<string>; cases: Readonly<Record<string, readonly string[]>> };
+
+/** Runs the page: every formula grid, the paintings and family frames named, the trace, and the cases named. */
+async function collectStampGate({ paintings, frames, cases }: StampGateRun) {
   const grids = stampGateFormulaGrids();
   const gates = paintings.map((id) => ({ id, gate: stampGatePainting(id) }));
+  const framed = STAMP_GATE_FRAME_FAMILIES.flatMap((family) => family.ids.filter((id) => frames.has(id)).map((id) => ({ family, id })));
   // The page loads no files; it's served its own folder only because the page server serves one.
   return withBrowserModulePage({ entry: STAMP_GATE_PAGE, filesDir: dirname(STAMP_GATE_PAGE), pages: STAMP_GATE_PAGES }, async (call) => {
     // Every call is issued at once and runs on the first page free; each painting asks for a device of its own, so
     // which page a case lands on, or what ran there before it, can't change what it draws. Promise.all keeps the order.
-    const cases = <R>(name: string, ids: readonly string[]) => Promise.all(ids.map((id) => call<R | R[]>(name, id))).then((checks) => checks.flatMap((check) => check));
-    const [adapter, values, frames, trace, ...checks] = await Promise.all([
+    const [adapter, values, painted, familyFrames, trace, checks] = await Promise.all([
       call<string>('stampGateAdapter'),
       call<number[][]>('runStampGateFormulas', grids.map(({ call: wgsl, width, rows, points, grid, boundaries }) => ({
         call: wgsl, width, rows: Array.from(rows), ...(points && { points: Array.from(points) }), ...(grid && { grid: Array.from(grid) }), ...(boundaries && { boundaries: Array.from(boundaries) }),
@@ -75,19 +146,14 @@ async function collectStampGate(
         const rgb = Buffer.from(await call<string>('paintStampGate', id), 'base64');
         return { id: `painting/${id}`, output: stampGateFrame(new Uint8Array(rgb), gate.width, gate.height), inputs: stampGateInputsHash(stampGatePaintingInputs(gate)) };
       })),
+      Promise.all(framed.map(async ({ family, id }): Promise<StampGateSubject> => {
+        const rgb = Buffer.from(await call<string>(family.page, id), 'base64'), { width, height } = family.size(id);
+        return { id, output: stampGateFrame(new Uint8Array(rgb), width, height), inputs: stampGateInputsHash(family.inputs(id)) };
+      })),
       call<{ worst: number; mean: number; ordinary: StampGateFrameDifference; orders: string[] }>('traceStampGate'),
-      cases<StampGateWashCheck>('checkStampGateWash', washes),
-      cases<StampGateWashCheck>('checkStampGateAnimation', animations),
-      cases<StampGateWashCheck>('checkStampGateFlowCase', flows),
-      cases<StampGateWashCheck>('checkStampGateStripeCase', stripes),
-      cases<StampGateWashCheck>('checkStampGateRegionCase', regions),
-      cases<StampGateWashCheck>('checkStampGateMaskCase', masks),
-      cases<StampGateWashCheck>('checkStampGateMediaCase', media),
-      cases<StampGateWashCheck>('checkStampGateThreeCase', three),
-      cases<StampGateWashCheck>('checkStampGateStageCase', stages),
-      cases<StampGateWashCheck>('checkStampGateContactCase', contacts),
+      Promise.all(Object.entries(cases).flatMap(([name, ids]) => ids.map((id) => call<StampGateWashCheck | StampGateWashCheck[]>(name, id)))),
     ]);
-    return { adapter, grids: grids.map((grid, g) => ({ grid, gpu: Float32Array.from(values[g]) })), frames, trace, washChecks: checks.flat() };
+    return { adapter, grids: grids.map((grid, g) => ({ grid, gpu: Float32Array.from(values[g]) })), frames: [...painted, ...familyFrames], trace, washChecks: checks.flat() };
   });
 }
 
@@ -105,6 +171,7 @@ export function compareStampGateOutputs(id: string, output: StampGateOutput, bas
     return { passed: c.over === 0, detail: `${c.rows} rows, worst ${c.worst.toExponential(2)} at ${c.worstAt} (gpu ${c.gpu}, baseline ${c.expected}), ${c.over} past ${STAMP_GATE_FORMULA_TOLERANCE}` };
   }
   if (output.kind === 'frame' && baseline.kind === 'frame') {
+    if (output.width !== baseline.width || output.height !== baseline.height) return { passed: false, detail: `${output.width} × ${output.height}, its baseline ${baseline.width} × ${baseline.height}` };
     const d = stampGateFrameDifference(output.rgb, baseline.rgb);
     return { passed: stampGateFramePasses(d), detail: `max ${d.max}, mean ${d.mean.toFixed(4)}, ${(d.overTwo * 100).toFixed(3)}% past 2 levels` };
   }
@@ -116,7 +183,7 @@ export function compareStampGateOutputs(id: string, output: StampGateOutput, bas
  * compared. A difference names the baseline's GPU when it was drawn on another, as a new GPU may round differently.
  */
 export function checkStampGateSubject(store: string, { id, output, inputs }: StampGateSubject, adapter: string): StampGateCheck {
-  const accepted = readStampGateBaseline(store, id, output);
+  const accepted = readStampGateBaseline(store, id, output.kind);
   if (!accepted) return { id, passed: false, detail: `no baseline; run update ${id} --reason …, then accept` };
   const { baseline } = accepted;
   if (baseline.inputs !== inputs) return { id, passed: false, detail: `its inputs changed since its baseline was accepted (${baseline.accepted}, over ${baseline.acceptedOver}: ${baseline.reason}); run update ${id} --reason …` };
@@ -152,12 +219,22 @@ function checkTrace({ trace }: Collected): StampGateCheck {
   };
 }
 
-/** The whole gate against the baselines in `store`: every formula, twin, property grid, painting, the trace, every wash, animation, flow, stripe, region, mask, media, three-plane, stage, planes, lens and contact case. */
-export async function runStampGate(store: string): Promise<StampGateCheck[]> {
-  const collected = await collectStampGate(
-    STAMP_GATE_PAINTING_IDS, STAMP_GATE_WASH_IDS, STAMP_GATE_ANIMATION_IDS, STAMP_GATE_FLOW_IDS, STAMP_GATE_STRIPE_IDS, STAMP_GATE_REGION_IDS, STAMP_GATE_MASK_IDS, STAMP_GATE_MEDIA_IDS,
-    [...STAMP_GATE_THREE_IDS, STAMP_GATE_THREE_STILL_ID, STAMP_GATE_PICTURE_ID], [...STAMP_GATE_STAGE_IDS, ...STAMP_GATE_PLANES_IDS, STAMP_GATE_TRANSPORT_ID, ...STAMP_GATE_LENS_IDS], STAMP_GATE_CONTACT_IDS,
-  );
+/**
+ * The gate against the baselines in `store`: every formula, twin, property grid, painting, solved sheet, shot, painted
+ * texture, the trace, and every case. Or, `only` naming any, those baseline subjects and cases alone: one case on the
+ * shared GPU, not minutes of all of them. Throws on a name the gate hasn't.
+ */
+export async function runStampGate(store: string, only: readonly string[] = []): Promise<StampGateCheck[]> {
+  const frames = STAMP_GATE_FRAME_FAMILIES.flatMap(({ ids }) => ids);
+  if (only.length) {
+    const known = new Set([...stampGateBaselineIds(), ...Object.values(STAMP_GATE_CASES).flat()]), unknown = only.filter((id) => !known.has(id));
+    if (unknown.length) throw new Error(`stamp gate: no subject or case ${unknown.join(', ')}; the gate has ${[...known].join(', ')}`);
+    const named = (id: string) => only.includes(id), cases = Object.fromEntries(Object.entries(STAMP_GATE_CASES).map(([page, ids]) => [page, ids.filter(named)]));
+    const collected = await collectStampGate({ paintings: STAMP_GATE_PAINTING_IDS.filter((id) => named(`painting/${id}`)), frames: new Set(frames.filter(named)), cases });
+    const subjects = [...formulaSubjects(collected), ...collected.frames].filter((subject) => named(subject.id));
+    return [...subjects.map((subject) => checkStampGateSubject(store, subject, collected.adapter)), ...collected.washChecks];
+  }
+  const collected = await collectStampGate({ paintings: STAMP_GATE_PAINTING_IDS, frames: new Set(frames), cases: STAMP_GATE_CASES });
   return [
     ...formulaSubjects(collected).map((subject) => checkStampGateSubject(store, subject, collected.adapter)),
     ...checkTwins(collected),
@@ -176,10 +253,10 @@ export async function updateStampGate(store: string, ids: readonly string[], rea
   const known = new Set(stampGateBaselineIds()), unknown = ids.filter((id) => !known.has(id));
   if (unknown.length) throw new Error(`stamp gate: no baseline subject ${unknown.join(', ')}; the gate has ${[...known].join(', ')}`);
   const paintings = ids.flatMap((id) => (id.startsWith('painting/') ? [id.slice('painting/'.length)] : []));
-  const collected = await collectStampGate(paintings);
+  const collected = await collectStampGate({ paintings, frames: new Set(ids), cases: {} });
   const subjects = [...formulaSubjects(collected), ...collected.frames].filter((subject) => ids.includes(subject.id));
   return subjects.map((subject) => {
-    const accepted = readStampGateBaseline(store, subject.id, subject.output);
+    const accepted = readStampGateBaseline(store, subject.id, subject.output.kind);
     const comparison = accepted ? compareStampGateOutputs(subject.id, subject.output, accepted.output).detail : 'no baseline before';
     return { id: subject.id, files: writeStampGateCandidate(store, subject.id, subject.output, { inputs: subject.inputs, reason, comparison, adapter: collected.adapter }), comparison };
   });

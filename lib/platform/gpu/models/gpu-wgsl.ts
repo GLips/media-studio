@@ -1,5 +1,8 @@
 // gpu-wgsl.ts: WGSL pieces every studio pass that assembles its own shader may declare: sRGB's transfer and a
-// full-frame vertex stage. Each is declared once per module that uses it.
+// full-frame vertex stage, each declared once per module that uses it; and a number written in as an f32 literal.
+
+/** `value` as a WGSL f32 literal, to the precision an f32 holds. */
+export const gpuWgslFloat = (value: number) => value.toPrecision(9);
 
 /** sRGB's transfer, both ways: srgbDecoded and srgbEncoded, on linear light per channel. */
 export const GPU_SRGB_WGSL = /* wgsl */ `

@@ -4,8 +4,12 @@
 import { defineCommand, runCommand, runMain } from 'citty';
 import { existsSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { runAsStudioGpuJob } from '#lib/platform/gpu/engine/gpu-lease.ts';
+import { exitStudioProcessOnSignals } from '#lib/platform/process/engine/studio-signal-exit.ts';
 import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
 import { studioTempRoot } from '#lib/platform/temp/engine/studio-temp.ts';
+
+exitStudioProcessOnSignals();
 
 const studioCommand = defineCommand({
   meta: {
@@ -30,11 +34,14 @@ const studioCommand = defineCommand({
     mix: () => import('./commands/mix.ts').then((m) => m.default),
     gen: () => import('./commands/gen.ts').then((m) => m.default),
     render: () => import('./commands/render.ts').then((m) => m.default),
+    remote: () => import('./commands/remote.ts').then((m) => m.default),
     repeatable: () => import('./commands/repeatable.ts').then((m) => m.default),
     profile: () => import('./commands/profile.ts').then((m) => m.default),
     study: () => import('./commands/study.ts').then((m) => m.default),
+    paint: () => import('./commands/paint.ts').then((m) => m.default),
     review: () => import('./commands/review.ts').then((m) => m.default),
     home: () => import('./commands/home.ts').then((m) => m.default),
+    gpu: () => import('./commands/gpu.ts').then((m) => m.default),
     hosts: () => import('./commands/hosts.ts').then((m) => m.default),
     api: () => import('./commands/api.ts').then((m) => m.default),
   },
@@ -64,6 +71,12 @@ function enclosingStudioCheckout(from: string): string | null {
   }
 }
 
+/**
+ * Verbs someone waits at the screen for: they take the GPU's interactive slot, and every other verb that draws (render,
+ * profile, check, mix…) the batch slot (lib/platform/gpu/models/gpu-lease-queue.ts).
+ */
+const INTERACTIVE_GPU_VERBS: ReadonlySet<string> = new Set(['look', 'still', 'paint']);
+
 const rawArgs = process.argv.slice(2);
 const wantsUsage = rawArgs.length === 0 || rawArgs.some((a) => a === '--help' || a === '-h') || (rawArgs.length === 1 && (rawArgs[0] === '--version' || rawArgs[0] === '-v'));
 // runMain prints help and the version, but prints any other error with its stack; a failed command is one line.
@@ -71,7 +84,8 @@ if (wantsUsage) {
   await runMain(studioCommand, { rawArgs });
 } else {
   try {
-    await runCommand(studioCommand, { rawArgs });
+    const gpuJob = { kind: INTERACTIVE_GPU_VERBS.has(rawArgs[0]) ? 'interactive' : 'batch', command: ['studio', ...rawArgs].join(' ') } as const;
+    await runAsStudioGpuJob(gpuJob, () => runCommand(studioCommand, { rawArgs }));
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`, () => process.exit(1));
   }

@@ -1,12 +1,10 @@
 // gpu-uniform-ring.ts: uniforms for passes encoded now and submitted together, a 256-byte slot a pass (WebGPU's
-// uniform offset alignment). Each slot is written into staging as its pass is encoded, and every slot is uploaded by
-// `flush` before the submit. A full chunk opens another, twice as big, so no count of passes need be known first.
+// uniform offset alignment), staged and uploaded before the submit by gpu-staged-ring.ts.
 
 import type { GpuUniformViews } from '../models/gpu-uniform-layout.ts';
+import { createGpuStagedRing } from './gpu-staged-ring.ts';
 
 const GPU_UNIFORM_SLOT = 256;
-
-type GpuUniformChunk = { buffer: GPUBuffer; staging: ArrayBuffer; views: GpuUniformViews; slots: number; used: number };
 
 export type GpuUniformRing = {
   /** A zeroed slot filled by `fill`, which writes its words from 0 into the views it's given. */
@@ -19,35 +17,16 @@ export type GpuUniformRing = {
   destroy: () => void;
 };
 
-export function createGpuUniformRing(device: GPUDevice, { label, slots: first = 64 }: { label: string; slots?: number }): GpuUniformRing {
-  const chunks: GpuUniformChunk[] = [];
-  const open = (slots: number) => {
-    const staging = new ArrayBuffer(slots * GPU_UNIFORM_SLOT);
-    const buffer = device.createBuffer({ label: `${label} uniforms`, size: staging.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    chunks.push({ buffer, staging, views: { floats: new Float32Array(staging), ints: new Int32Array(staging), words: new Uint32Array(staging) }, slots, used: 0 });
-  };
-  open(first);
+export function createGpuUniformRing(device: GPUDevice, { label, slots = 64 }: { label: string; slots?: number }): GpuUniformRing {
+  const ring = createGpuStagedRing(device, { label: `${label} uniforms`, usage: GPUBufferUsage.UNIFORM, unitBytes: GPU_UNIFORM_SLOT, units: slots });
+  const words = GPU_UNIFORM_SLOT / 4;
   return {
     slot: (fill) => {
-      let chunk = chunks.find(({ slots, used }) => used < slots);
-      if (!chunk) {
-        open(chunks.at(-1)!.slots * 2);
-        chunk = chunks.at(-1)!;
-      }
-      const offset = chunk.used++ * GPU_UNIFORM_SLOT, word = offset / 4, words = GPU_UNIFORM_SLOT / 4;
-      const { floats, ints, words: all } = chunk.views;
-      all.fill(0, word, word + words);
-      fill({ floats: floats.subarray(word, word + words), ints: ints.subarray(word, word + words), words: all.subarray(word, word + words) });
-      return { buffer: chunk.buffer, offset, size: GPU_UNIFORM_SLOT };
+      const { buffer, staging, offset, size } = ring.take(1);
+      fill({ floats: new Float32Array(staging, offset, words), ints: new Int32Array(staging, offset, words), words: new Uint32Array(staging, offset, words) });
+      return { buffer, offset, size };
     },
-    flush: () => {
-      for (const chunk of chunks) {
-        if (chunk.used) device.queue.writeBuffer(chunk.buffer, 0, chunk.staging, 0, chunk.used * GPU_UNIFORM_SLOT);
-        chunk.used = 0;
-      }
-    },
-    destroy: () => {
-      for (const { buffer } of chunks.splice(0)) buffer.destroy();
-    },
+    flush: ring.flush,
+    destroy: ring.destroy,
   };
 }

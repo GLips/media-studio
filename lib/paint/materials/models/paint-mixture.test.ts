@@ -2,14 +2,14 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { kubelkaMunkFilm, kubelkaMunkOver } from './paint-kubelka-munk.ts';
 import { PAINT_MEDIA, TITANIUM_WHITE, paintPigmentFromColor } from './paint-medium.ts';
-import { paintFilm, paintLayered, paintMixtureComponents, paintMixtureProblem, paintOpaque, type PaintMixture } from './paint-mixture.ts';
+import { paintComponentsOverWhite, paintFilm, paintLayered, paintMixtureComponents, paintMixtureProblem, paintOpaque, type PaintMixture } from './paint-mixture.ts';
 import { paintPigmentFromAppearance, type PaintPigmentAppearance } from './paint-pigment.ts';
 import { PAINT_BANDS, linearToSrgb, paintBandsToLinearRgb, paintDeltaE, paintHexToLinear, spectralPaintBands, type PaintBands } from './paint-spectrum.ts';
 import { WATERCOLOUR_PIGMENTS as W } from './paint-watercolour-pigments.ts';
 
 const flat = (bands: PaintBands, value: number) => new Float64Array(bands.count).fill(value);
 const overWhite = (mixture: PaintMixture, medium = PAINT_MEDIA.watercolour) =>
-  paintBandsToLinearRgb(PAINT_BANDS, paintLayered(flat(PAINT_BANDS, 1), [paintFilm(paintMixtureComponents(mixture, medium, PAINT_BANDS), medium)]));
+  paintBandsToLinearRgb(PAINT_BANDS, paintComponentsOverWhite(paintMixtureComponents(mixture, medium, PAINT_BANDS), medium));
 
 const body = (hex: `#${string}`) => ({ pigment: paintPigmentFromColor(hex, PAINT_MEDIA.gouache, PAINT_BANDS), amount: 1 });
 

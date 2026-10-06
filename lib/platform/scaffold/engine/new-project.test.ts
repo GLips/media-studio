@@ -1,6 +1,7 @@
 // Each capability, made by `studio new` in a fresh workspace in a copy of the studio's index, then checked as its first
-// commit would be: check:arch over the workspace's index, typecheck over the new project, and its registered tests,
-// with no repair between. The copy has no other project, so the typecheck covers the new project and what it imports.
+// commit would be: check:arch and lint over the workspace's index, typecheck over the new project, and its registered
+// tests, with no repair between. The copy has no other project, so the typecheck covers the new project and what it
+// imports.
 import assert from 'node:assert/strict';
 import { execFile, execFileSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, readdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -73,7 +74,7 @@ async function scaffold(studio: string, capability: ProjectCapability) {
   return project;
 }
 
-const checkWorkspace = (studio: string) => outcome(studio, process.execPath, ['lint/check-arch.ts', '--scope', 'workspace']);
+const checkWorkspace = (studio: string) => outcome(studio, process.execPath, ['lint/check-arch.ts', '--scope', 'workspace', '--snapshot', 'index']);
 
 describe('studio new', { concurrency: true }, () => {
   for (const capability of PROJECT_CAPABILITIES) {
@@ -85,7 +86,7 @@ describe('studio new', { concurrency: true }, () => {
 
         const arch = await checkWorkspace(studio);
         assert.equal(arch.code, 0, arch.output);
-        const lint = await outcome(studio, process.execPath, ['lint/lint.ts', '--scope', 'workspace']);
+        const lint = await outcome(studio, process.execPath, ['lint/lint.ts', '--scope', 'workspace', '--snapshot', 'index']);
         assert.equal(lint.code, 0, lint.output);
 
         writeFileSync(join(studio, 'tsconfig.scaffold.json'), JSON.stringify({
@@ -108,14 +109,17 @@ describe('studio new', { concurrency: true }, () => {
     });
   }
 
-  test('a new project blocks from its first commit: a bar that builds its own timing fails check:arch', async () => {
+  test('a new project blocks from its first commit, and by hand: a bar that builds its own timing fails check:arch', async () => {
     await inStudioCopy(async (studio) => {
       const project = await scaffold(studio, 'music-led');
       appendFileSync(join(studio, 'work/projects', project, 'bars/hook.tsx'), "import { beatSpan } from '#lib/timing/timeline/models/timeline.ts';\nexport const longer = beatSpan(8);\n");
       runFixtureGit(join(studio, 'work'), ['add', '--all']);
-      const arch = await checkWorkspace(studio);
+      const finding = new RegExp(`work/projects/${project}/bars/hook\\.tsx:\\d+ +\\[timing-ownership\\] imports the timing constructor beatSpan`);
+      // A run with no scope judges work/ beside the studio; with --snapshot index, work/'s is its hook's run.
+      const arch = await outcome(studio, process.execPath, ['lint/check-arch.ts', '--snapshot', 'index']);
       assert.equal(arch.code, 1, arch.output);
-      assert.match(arch.output, new RegExp(`work/projects/${project}/bars/hook\\.tsx:\\d+ +\\[timing-ownership\\] imports the timing constructor beatSpan`));
+      assert.match(arch.output, finding);
+      assert.match(arch.output, /check:arch: the studio passed, work\/ failed\./);
     });
   });
 });

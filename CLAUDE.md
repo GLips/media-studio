@@ -4,14 +4,17 @@
 
 - Commands: `npm run check:arch`, `npm run lint`, `npm run typecheck`, `npm test`. Run each on its own; a chained `&&`
   hides every failure after the first. The pre-commit gate (`.githooks/pre-commit`, on after `npm install`) runs
-  check:arch, then `typecheck:gate` and `test:gate` (what a clean clone holds, no `work/`), `typecheck:web` and
-  `lint`, and refuses the commit on any failure. A commit that passed has been gated: don't rerun those checks after
-  it. The GPU gate (`npm run stamp:gate`) takes minutes on the one shared adapter, so pre-push runs it, not
+  check:arch and `lint` over the studio, then `typecheck:gate` and `test:gate` (what a clean clone holds, no `work/`)
+  and `typecheck:web`, and refuses the commit on any failure. A commit that passed has been gated: don't rerun those
+  checks after it. Run by hand with no `--scope`, check:arch and lint judge the studio and `work/` both, each against
+  its own baseline, reading the working tree, untracked files included; each hook passes its own scope and reads what
+  its commit holds. The GPU gate (`npm run stamp:gate`) takes minutes on the one shared adapter, so pre-push runs it, not
   pre-commit; run it yourself only before handing over work that changes rendering.
 - `work/` holds your projects (`work/projects/<p>/`), brand kits (`work/brands/<name>/`, see `docs/brand-kits.md`),
   private painting styles (`work/styles/<name>/`, see `docs/private-styles.md`) and `hosts.json`. The studio's git
-  ignores it; it's a git repository of its own, made by `studio workspace init` (run it first). Its commits run `.githooks-workspace/pre-commit`: `check:arch --scope workspace`, the full typecheck,
-  `lint --scope workspace`, `npm run test:workspace`.
+  ignores it; it's a git repository of its own, made by `studio workspace init` (run it first). Its commits run
+  `.githooks-workspace/pre-commit`: `check:arch --scope workspace`, `lint --scope workspace`, the full typecheck,
+  `npm run test:workspace`.
 - `lib/` is areas (`timing`, `picture`, `paint`, `footage`, `output`, `platform`) of feature folders, each holding
   only the role folders it needs: `models/` (pure, loads in plain Node), `studio/` (renders in the browser),
   `engine/` (Node-side machinery). So `lib/<area>/<feature>/<role>/`, plus `lib/api.ts`, which projects import as

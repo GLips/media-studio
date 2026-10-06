@@ -147,10 +147,10 @@
     "painting/pigment-gouache": {
       "file": "painting/pigment-gouache.png",
       "output": "7737de9a6ab4374c28b55c5487388b9470aa8dbdab0ab8e05979863bc962d610",
-      "inputs": "fd9cd5acf1fc12ac5d910b5c9de04a8369547b2875d7504bef3d0ff69eb6f582",
-      "reason": "vid-119 over main a413b16 (vid-140): floods laid as strokes in rows within a barrier or lost edge, water landed per pixel in each wash's GPU wet field with closed-form waits, brush profiles bounding marks; a layer grain blend held to where the stroke has paint",
-      "accepted": "2026-10-03",
-      "acceptedOver": "afc2f970",
+      "inputs": "78e44ed1cb7a47fe18175b93d6ae8f36a8d0328413cb8c5c5f89335d74cd57cc",
+      "reason": "vid-157 brush-truth: gouache declares its dry brush's tooth (paperContact.dryBrush), so its medium's inputs change; the painting has no dry brush, so its pixels hold",
+      "accepted": "2026-10-04",
+      "acceptedOver": "3933a0fd",
       "adapter": "apple metal-3"
     },
     "painting/pigment-watercolour": {
@@ -196,6 +196,186 @@
       "reason": "vid-119 over main a413b16 (vid-140): floods laid as strokes in rows within a barrier or lost edge, water landed per pixel in each wash's GPU wet field with closed-form waits, brush profiles bounding marks; a layer grain blend held to where the stroke has paint",
       "accepted": "2026-10-03",
       "acceptedOver": "afc2f970",
+      "adapter": "apple metal-3"
+    },
+    "shot/approach": {
+      "file": "shot/approach.png",
+      "output": "2578470df79f5190ecf7b81c21d3201edb7f198029d2126493fedbe9f24f82e7",
+      "inputs": "81549cde6f66f5d4d529f880693ad01a1d3203bf0145ef623bc5e2f5e603fbfe",
+      "reason": "moving-depth: a kite flies in past a post as the camera pushes in, its depth a value in time, blurred along its approach",
+      "accepted": "2026-10-06",
+      "acceptedOver": "d33443af",
+      "adapter": "apple metal-3"
+    },
+    "shot/cards": {
+      "file": "shot/cards.png",
+      "output": "1de27f12e872707cfa82e29e35f1e43c5638e3f471819a7a9bd566e6f799661b",
+      "inputs": "bf0a7a0318e668e15d4237ab79773509763404df6b2ad00288a556f48c227389",
+      "reason": "vid-157 boil-seed-by-key: a deposit's ID, which seeds its colour and water, is made of its layer's, wash's and application's keys (#i for an unkeyed application), not their places on the sheet; a drying's rim is seeded by the last deposit it dries and a proxy by its deposit, never by a film's place or the drying's count; entry datums hold the keys; the sprig's references leave hidden layers out",
+      "accepted": "2026-10-05",
+      "acceptedOver": "5fcf8c2e",
+      "adapter": "apple metal-3"
+    },
+    "shot/dissolve": {
+      "file": "shot/dissolve.png",
+      "output": "50384f87ce3af8dce2df4c742f1cdc2a31308d091f9aa919f8561c4cfb8400ed",
+      "inputs": "cfe7bdf6e40f3a900637ba5e9a3de57a61ec0ef86ee988779cd1620716bc3b41",
+      "reason": "vid-157 boil-seed-by-key: a deposit's ID, which seeds its colour and water, is made of its layer's, wash's and application's keys (#i for an unkeyed application), not their places on the sheet; a drying's rim is seeded by the last deposit it dries and a proxy by its deposit, never by a film's place or the drying's count; entry datums hold the keys; the sprig's references leave hidden layers out",
+      "accepted": "2026-10-05",
+      "acceptedOver": "5fcf8c2e",
+      "adapter": "apple metal-3"
+    },
+    "shot/far-cylinder": {
+      "file": "shot/far-cylinder.png",
+      "output": "6bd48d27961d27370abe40436b5a1b8149ff9144315db3655af656a74cacedae",
+      "inputs": "0d882671cf35dba42c6492036193683b54a0b0366a251f56a03d56ee50275d84",
+      "reason": "vid-157 boil-seed-by-key: a deposit's ID, which seeds its colour and water, is made of its layer's, wash's and application's keys (#i for an unkeyed application), not their places on the sheet; a drying's rim is seeded by the last deposit it dries and a proxy by its deposit, never by a film's place or the drying's count; entry datums hold the keys; the sprig's references leave hidden layers out",
+      "accepted": "2026-10-05",
+      "acceptedOver": "5fcf8c2e",
+      "adapter": "apple metal-3"
+    },
+    "shot/masks": {
+      "file": "shot/masks.png",
+      "output": "cd0098e58e548427aaa92bfe7d018a946b3d3753aa294f024ec50babda5a4149",
+      "inputs": "e0ec1f0022417ab98cf5eaff38e7449a6b9ba0dbb675b4b9b1117db88ab79e80",
+      "reason": "vid-157 boil-seed-by-key: a deposit's ID, which seeds its colour and water, is made of its layer's, wash's and application's keys (#i for an unkeyed application), not their places on the sheet; a drying's rim is seeded by the last deposit it dries and a proxy by its deposit, never by a film's place or the drying's count; entry datums hold the keys; the sprig's references leave hidden layers out",
+      "accepted": "2026-10-05",
+      "acceptedOver": "5fcf8c2e",
+      "adapter": "apple metal-3"
+    },
+    "shot/masks-across": {
+      "file": "shot/masks-across.png",
+      "output": "59081627c6815cef0d926bb6c55b7c204740cd5253015814995547a1d1f2c20a",
+      "inputs": "9f9f4acca85724f996d4a0eb9b05bd5d9a359421b5d9f8f25e11b105c627d78e",
+      "reason": "relations-across-depth: the tint a depth nearer than the heron, cut to its wing, under a 24 px pan at 1 s",
+      "accepted": "2026-10-05",
+      "acceptedOver": "6f6895ee",
+      "adapter": "apple metal-3"
+    },
+    "shot/masks-across-open": {
+      "file": "shot/masks-across-open.png",
+      "output": "93ba7b4ed97fae2f2b2fede43b09b7c416e92d631bb558a40f565cab7cf7c135",
+      "inputs": "8f021e2c8fa5a9d39e94e7d9e8b14d7e63b71fc1a28d4b25d04e608f823acec1",
+      "reason": "the mask across depths under the film's shutter, the lens's default, mid whip pan: fast mode's cut, laid at the frame's moment and gathered",
+      "accepted": "2026-10-06",
+      "acceptedOver": "d33443af",
+      "adapter": "apple metal-3"
+    },
+    "shot/painted-cylinder": {
+      "file": "shot/painted-cylinder.png",
+      "output": "a50d47166eea527e164effdcb139ce4a530cd4a96d0b51c234e0ea2b21a48e57",
+      "inputs": "6c7235b21795fb9a2578fc39e812cac70befce63da82fc4db8da87b4f89cfb58",
+      "reason": "vid-157 boil-seed-by-key: a deposit's ID, which seeds its colour and water, is made of its layer's, wash's and application's keys (#i for an unkeyed application), not their places on the sheet; a drying's rim is seeded by the last deposit it dries and a proxy by its deposit, never by a film's place or the drying's count; entry datums hold the keys; the sprig's references leave hidden layers out",
+      "accepted": "2026-10-05",
+      "acceptedOver": "5fcf8c2e",
+      "adapter": "apple metal-3"
+    },
+    "shot/paper-heron": {
+      "file": "shot/paper-heron.png",
+      "output": "9b613b5764ad5564f2e7c32d64df993ef7da7434cc1b4fe1ac719c1e66d953bc",
+      "inputs": "e61fc9fae61f1140cc024058b8e52f8a37f6d317ae82055a16f3fda8c605b1fd",
+      "reason": "vid-157 boil-seed-by-key: a deposit's ID, which seeds its colour and water, is made of its layer's, wash's and application's keys (#i for an unkeyed application), not their places on the sheet; a drying's rim is seeded by the last deposit it dries and a proxy by its deposit, never by a film's place or the drying's count; entry datums hold the keys; the sprig's references leave hidden layers out",
+      "accepted": "2026-10-05",
+      "acceptedOver": "5fcf8c2e",
+      "adapter": "apple metal-3"
+    },
+    "shot/pieces": {
+      "file": "shot/pieces.png",
+      "output": "49e9df546519d3356b9e21cce129d26eada25afe90f94eec8d8a0e736e348114",
+      "inputs": "f91233c951f76bacb2d4a80c9c3681d4551546a5f7b1355999ab605c2d23e3a7",
+      "reason": "vid-157 boil-seed-by-key: a deposit's ID, which seeds its colour and water, is made of its layer's, wash's and application's keys (#i for an unkeyed application), not their places on the sheet; a drying's rim is seeded by the last deposit it dries and a proxy by its deposit, never by a film's place or the drying's count; entry datums hold the keys; the sprig's references leave hidden layers out",
+      "accepted": "2026-10-05",
+      "acceptedOver": "5fcf8c2e",
+      "adapter": "apple metal-3"
+    },
+    "shot/rain": {
+      "file": "shot/rain.png",
+      "output": "47f0d8754670ce9a3ebc6f9a2648feab49cb4da00cd5b4d4c17a1aad3442bd35",
+      "inputs": "6d33d06a32b3229fe84709ca0ee079561afc58d462bc42cb7be0ab9b33fa79d9",
+      "reason": "vid-157 boil-seed-by-key: a deposit's ID, which seeds its colour and water, is made of its layer's, wash's and application's keys (#i for an unkeyed application), not their places on the sheet; a drying's rim is seeded by the last deposit it dries and a proxy by its deposit, never by a film's place or the drying's count; entry datums hold the keys; the sprig's references leave hidden layers out",
+      "accepted": "2026-10-05",
+      "acceptedOver": "5fcf8c2e",
+      "adapter": "apple metal-3"
+    },
+    "shot/rainy-street": {
+      "file": "shot/rainy-street.png",
+      "output": "9782754c92db5d25a8d954a72956a7da4c4be3ac574419f67955435109741fe4",
+      "inputs": "d05ab070d3da35b00e942031be6798b04cd78f62859f3e04c639d157ceba0264",
+      "reason": "vid-157 boil-seed-by-key: a deposit's ID, which seeds its colour and water, is made of its layer's, wash's and application's keys (#i for an unkeyed application), not their places on the sheet; a drying's rim is seeded by the last deposit it dries and a proxy by its deposit, never by a film's place or the drying's count; entry datums hold the keys; the sprig's references leave hidden layers out",
+      "accepted": "2026-10-05",
+      "acceptedOver": "5fcf8c2e",
+      "adapter": "apple metal-3"
+    },
+    "shot/rigged-dissolve": {
+      "file": "shot/rigged-dissolve.png",
+      "output": "db9ad6b704fba7a3b3600ae5955f90f8259c7e21f4218df45ecc1663b385b7cd",
+      "inputs": "1ff4e84af9f0fcc98ab45e9fe0c36d8589e003f0dabcf82f609aa1486797be2c",
+      "reason": "vid-157 boil-seed-by-key: a deposit's ID, which seeds its colour and water, is made of its layer's, wash's and application's keys (#i for an unkeyed application), not their places on the sheet; a drying's rim is seeded by the last deposit it dries and a proxy by its deposit, never by a film's place or the drying's count; entry datums hold the keys; the sprig's references leave hidden layers out",
+      "accepted": "2026-10-05",
+      "acceptedOver": "5fcf8c2e",
+      "adapter": "apple metal-3"
+    },
+    "shot/shadow": {
+      "file": "shot/shadow.png",
+      "output": "1d29eb936543ed0f33752d8fdc360de59aafe2579facf92315d2c7cd57f70673",
+      "inputs": "6233116732146ce024c65859171d4d053e428fee4bcd245fe06f6a3a2b48ab95",
+      "reason": "vid-157 three-lighting review: the lit shot gains a reference frame at 1 s (third frame), the lens focused on the stands (focus 1, aperture 4 px), and the sun's shadow camera fitted (near 170, far 280); the soft filter searches as far as a blocker on the near plane could shade, with 32 search and 32 filter taps",
+      "accepted": "2026-10-04",
+      "acceptedOver": "f2580f91",
+      "adapter": "apple metal-3"
+    },
+    "shot/wet-contact": {
+      "file": "shot/wet-contact.png",
+      "output": "7666609b32c62fee2179bf66160dffb7b1312928089b37e91f9b7563a0b9900f",
+      "inputs": "15c1544296965041d2082fab3d15d477a67832ce4e7636644345ff41474c5d7b",
+      "reason": "vid-157 boil-seed-by-key: a deposit's ID, which seeds its colour and water, is made of its layer's, wash's and application's keys (#i for an unkeyed application), not their places on the sheet; a drying's rim is seeded by the last deposit it dries and a proxy by its deposit, never by a film's place or the drying's count; entry datums hold the keys; the sprig's references leave hidden layers out",
+      "accepted": "2026-10-05",
+      "acceptedOver": "5fcf8c2e",
+      "adapter": "apple metal-3"
+    },
+    "solved/forward": {
+      "file": "solved/forward.png",
+      "output": "fce62da43695e26780aa2fb04c9f7ab4520dda08db68c924e36d3222ca416dfa",
+      "inputs": "2d02eae4b136a654707bef6ee722ec76bf1e14e6b97c2884bddfe5bf06daba67",
+      "reason": "vid-157 boil-seed-by-key: a deposit's ID, which seeds its colour and water, is made of its layer's, wash's and application's keys (#i for an unkeyed application), not their places on the sheet; a drying's rim is seeded by the last deposit it dries and a proxy by its deposit, never by a film's place or the drying's count; entry datums hold the keys; the sprig's references leave hidden layers out",
+      "accepted": "2026-10-05",
+      "acceptedOver": "5fcf8c2e",
+      "adapter": "apple metal-3"
+    },
+    "solved/paper-heron": {
+      "file": "solved/paper-heron.png",
+      "output": "df8fbe8a2ffadbb3f81e3bb8c37191d488f0ff64167de29937da0b2b5185819f",
+      "inputs": "6070e17bd77f3807eb87006333b74f432a5927cf25f35d131d161d4503e00668",
+      "reason": "vid-157 boil-seed-by-key: a deposit's ID, which seeds its colour and water, is made of its layer's, wash's and application's keys (#i for an unkeyed application), not their places on the sheet; a drying's rim is seeded by the last deposit it dries and a proxy by its deposit, never by a film's place or the drying's count; entry datums hold the keys; the sprig's references leave hidden layers out",
+      "accepted": "2026-10-05",
+      "acceptedOver": "5fcf8c2e",
+      "adapter": "apple metal-3"
+    },
+    "solved/wet-contact": {
+      "file": "solved/wet-contact.png",
+      "output": "d2acc6b9c113b2006296ca55148fde017907ba4b9a866bc7ceab8978515124a3",
+      "inputs": "1f0945b0a6c8ad51c0fbe9dbc71e6ca7a459d778eff6cf08bc4716bce94eca0c",
+      "reason": "vid-157 boil-seed-by-key: a deposit's ID, which seeds its colour and water, is made of its layer's, wash's and application's keys (#i for an unkeyed application), not their places on the sheet; a drying's rim is seeded by the last deposit it dries and a proxy by its deposit, never by a film's place or the drying's count; entry datums hold the keys; the sprig's references leave hidden layers out",
+      "accepted": "2026-10-05",
+      "acceptedOver": "5fcf8c2e",
+      "adapter": "apple metal-3"
+    },
+    "texture/wrapped-cylinder": {
+      "file": "texture/wrapped-cylinder.png",
+      "output": "2d7ffa3d3d95121d043a10b5b48e7867ee9c0177da9b6808b0e7f504dabdeb2e",
+      "inputs": "9c37b949cb90654b4598b3a3f326f6a4e9d36538c290c320e2bb99fb75832b95",
+      "reason": "vid-157 boil-seed-by-key: a deposit's ID, which seeds its colour and water, is made of its layer's, wash's and application's keys (#i for an unkeyed application), not their places on the sheet; a drying's rim is seeded by the last deposit it dries and a proxy by its deposit, never by a film's place or the drying's count; entry datums hold the keys; the sprig's references leave hidden layers out",
+      "accepted": "2026-10-05",
+      "acceptedOver": "5fcf8c2e",
+      "adapter": "apple metal-3"
+    },
+    "texture/wrapped-tile": {
+      "file": "texture/wrapped-tile.png",
+      "output": "9656747fe115e515db1ab7f4dfb9e47601d8f157d217a0fbfd2d3fe0088d08d7",
+      "inputs": "3e8e69d7a517ef43819d4054bff8030b4128c419643ece1bae6d93376a33b83c",
+      "reason": "vid-157 boil-seed-by-key: a deposit's ID, which seeds its colour and water, is made of its layer's, wash's and application's keys (#i for an unkeyed application), not their places on the sheet; a drying's rim is seeded by the last deposit it dries and a proxy by its deposit, never by a film's place or the drying's count; entry datums hold the keys; the sprig's references leave hidden layers out",
+      "accepted": "2026-10-05",
+      "acceptedOver": "5fcf8c2e",
       "adapter": "apple metal-3"
     }
   }

@@ -4,7 +4,7 @@ import { defineCommand } from 'citty';
 const initWorkspaceCommand = defineCommand({
   meta: {
     name: 'init',
-    description: 'Make work/ your workspace, or complete it: work/projects and work/brands, its own git repository (the studio\'s ignores it) whose commits run check:arch, the typecheck and its projects\' tests, its .gitignore, arch-baseline.json and hosts.json. Keeps whatever is already there.',
+    description: 'Make work/ your workspace, or complete it: work/projects and work/brands, its own git repository (the studio\'s ignores it) whose commits run check:arch, lint, the typecheck and its projects\' tests, its .gitignore, arch-baseline.json and hosts.json. Keeps whatever is already there.',
   },
   async run() {
     const { initStudioWorkspace } = await import('#lib/platform/project/engine/studio-workspace.ts');

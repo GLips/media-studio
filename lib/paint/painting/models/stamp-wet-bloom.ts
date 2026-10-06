@@ -39,7 +39,7 @@ export function stampBloomSigma(spread: number, diameter: number, surplus: numbe
  * How far past its stamps a wash deposit carrying `water` can bloom, px, before its wetness is known: three of the
  * widest sigma its water could drive, at its full diameter (a flood's narrow parts are laid smaller, never larger). None for a deposit carrying no water (a lift) or a medium that doesn't spread.
  */
-export function stampBloomReach(deposit: CompiledStampDeposit, medium: PaintMedium, water: number): number {
+export function stampBloomReach(deposit: Pick<CompiledStampDeposit, 'diameter'>, medium: PaintMedium, water: number): number {
   return water > 0 ? Math.ceil(3 * stampBloomSigma(medium.wetting.spread, deposit.diameter, 1)) : 0;
 }
 

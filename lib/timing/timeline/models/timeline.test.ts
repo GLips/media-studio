@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { bindTimeline } from './bind-timeline.ts';
 import { assertTimelineRetimes } from './retime.ts';
+import { sceneSecondsOf } from './scene-seconds.ts';
 import { beatSpan, defineTimeline, fixedSpan, recordedGrid, voiceSpan } from './timeline.ts';
 
 // 120 BPM from 0.5 s: 15 frames a beat, beat 0 on frame 15. Two four-beat scenes end on the final hit, beat 8, at 4.5 s.
@@ -28,6 +29,15 @@ test('a timeline places each scene on the video, and gives it a clock from its o
   assert.deepEqual([clockA.from, clockA.beat(1), clockA.cues.hit, clockB.from, clockB.to, clockB.cues.late, clockB.cue('a.hit')], [-13, 15, 30, 8, 92, 18, -30]);
   assert.throws(() => clockB.beat(-1), /outside the scene.*through its cue/);
   assert.deepEqual(timeline.audio.map((placed) => placed.atSeconds), [0]);
+});
+
+test('a scene clock reads in seconds of its own s.t: cues and beats as times, beatAt undoing beat, the span a crossfade widens', () => {
+  const crossfaded = { ...scenes, b: beatSpan(4, { cutIn: 0.5, crossfade: 0.2, cues: { late: { at: 1, frames: 3 }, stop: 'end' } }) };
+  const b = sceneSecondsOf(defineTimeline({ ...base, scenes: crossfaded, landmarks }).clock('b'));
+  // b's s.t is 0 at its frame 8, where it cuts in; it shows from 3 frames before, faded in over a's last 3.
+  assert.deepEqual([b.cue('late'), b.cue('a.hit'), b.beat(1), b.beats(2), b.frames(3)], [10 / 30, -38 / 30, 7 / 30, 1, 0.1]);
+  assert.deepEqual([b.beatAt(b.beat(1)), b.beatAt(b.beat(1) + 0.25)], [1, 1.5]);
+  assert.deepEqual(b.span, { from: -3 / 30, to: 84 / 30, fps: 30 });
 });
 
 test('a timeline that no longer ends on the music\'s final hit throws at load, naming both fixes', () => {

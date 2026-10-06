@@ -11,10 +11,11 @@ export type StampPictureSourcesLoaded = { readonly sources: ReadonlyMap<string, 
 /**
  * `pictures` as lens sources on `device`: each render writes its picture at the frame's (or exposure's) moment into
  * the plane's texture, clearing what the last left past its box. The texture only grows, so a box changing every frame
- * doesn't remake it; the same picture object handed back isn't uploaded again.
+ * doesn't remake it; the same picture object handed back isn't uploaded again, and keeps its version.
  */
 export function loadStampPictureSources(device: GPUDevice, pictures: ReadonlyMap<string, StampPictureAt>): StampPictureSourcesLoaded {
-  const held = new Map<string, { texture: GPUTexture; picture: StampPictureRgba }>();
+  const held = new Map<string, { texture: GPUTexture; picture: StampPictureRgba; version: number }>();
+  let uploads = 0;
   /** Plane `id`'s texture, at least `w` × `h`, its first `w` × `h` texels to be written and clear past them up to `before`. */
   const textureFor = (id: string, w: number, h: number, before: { w: number; h: number } | null) => {
     const texture = held.get(id)?.texture;
@@ -39,12 +40,13 @@ export function loadStampPictureSources(device: GPUDevice, pictures: ReadonlyMap
       const picture = await pictureAt(paintMoment(exposure?.at ?? t, t));
       if (!picture) return null;
       const { box, rgba } = picture, before = held.get(id);
-      if (before?.picture === picture) return { texture: before.texture, box };
+      if (before?.picture === picture) return { texture: before.texture, box, version: before.version };
       if (rgba.length !== box.w * box.h * 4) throw new Error(`picture plane ${id}: its picture holds ${rgba.length} floats, and its ${box.w} × ${box.h} box takes ${box.w * box.h * 4}`);
       const texture = textureFor(id, box.w, box.h, before ? before.picture.box : null);
       device.queue.writeTexture({ texture }, gpuHalfBitsOf(rgba), { bytesPerRow: box.w * 8 }, [box.w, box.h]);
-      held.set(id, { texture, picture });
-      return { texture, box };
+      const version = ++uploads;
+      held.set(id, { texture, picture, version });
+      return { texture, box, version };
     },
   }]));
   return {

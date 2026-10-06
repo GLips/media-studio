@@ -72,4 +72,4 @@ const reportsCommand = defineCommand({
 await runHarnessCommand(defineCommand({
   meta: { name: 'stamp-paint-guard', description: 'Hold a restructuring of the brush engine to painting nothing differently' },
   subCommands: { fingerprint: fingerprintCommand, brushes: brushesCommand, reports: reportsCommand },
-}));
+}), 'batch');

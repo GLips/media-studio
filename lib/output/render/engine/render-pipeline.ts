@@ -4,8 +4,8 @@
 // (VideoFormat.transparent) delivers as WebM and HEVC with alpha instead of MP4.
 //
 // Progress goes to stderr; each function returns what it made, for the command to print on stdout.
-import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, dirname, extname, join } from 'node:path';
+import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { rasterizeSvgs } from '#lib/platform/raster/engine/html-raster.ts';
 import { framingProblems, takeFitWarnings } from '#lib/output/picture-checks/models/framing-check.ts';
 import { framingArtifactName, type FramingReport } from '#lib/picture/measurement/models/framing-marks.ts';
@@ -14,25 +14,27 @@ import { buildMotionGraph, motionGraphBackdropFrame, type MotionGraphSpace } fro
 import { assembleMotionTracks, formatMotionReport, motionArtifactName, type FrameMotion, type MotionTracks } from '#lib/picture/measurement/models/motion-tracks.ts';
 import { measureLoudness } from '#lib/platform/ffmpeg/engine/loudness.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
-import { artifactSink, DELIVERY_AUDIO_CODEC, formatRenderPasses, TIMELINE_REPORT_NAME, type RenderSession } from './render-session.ts';
-import { loadRenderSnapshot, renderSnapshotPath, writeRenderSnapshot } from './render-snapshot.ts';
+import { artifactSink, DELIVERY_AUDIO_CODEC, DELIVERY_ENCODING, formatRenderPasses, TIMELINE_REPORT_NAME, type RenderSession } from './render-session.ts';
+import { renderSnapshotPath } from './render-snapshot.ts';
+import type { RenderLedger } from './render-ledger.ts';
 import { sfxEventsFrom, type SfxEvent } from '#lib/output/sfx-cues/models/cue-events.ts';
 import { sfxMarkArtifactName, type SfxMark } from '#lib/timing/sound/models/sfx-marks.ts';
 import { sfxCueListReport } from '#lib/output/sfx-cues/engine/project-cue-list.ts';
 import { readSfxCueList } from '#lib/output/sfx-cues/engine/cue-module.ts';
 import { renderVoiceOf } from '#lib/timing/voice/engine/voice-project.ts';
 import type { OnArtifact } from '@remotion/renderer';
+import { frameAtSecond } from '#lib/picture/frame/models/frame.ts';
 import type { VideoProps } from '#lib/picture/video/models/composition-props.ts';
 import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
-import { countVideoFrames, measureWithFfmpeg, runFfmpeg, runFfprobe } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
+import { measureWithFfmpeg, runFfmpeg, runFfprobe } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 
-const outDirFor = (session: RenderSession) => join(session.project, 'out');
+const outDirFor = (ledger: Pick<RenderLedger, 'project'>) => join(ledger.project, 'out');
 const videoFor = (session: RenderSession, captions: boolean) => join(outDirFor(session), captions ? 'video.mp4' : 'video-plain.mp4');
 // Named apart, not video.webm and video.mov, so each has a snapshot of its own (render-snapshot.ts names it by basename).
 const transparentVideosFor = (session: RenderSession) => ({ webm: join(outDirFor(session), 'video.webm'), mov: join(outDirFor(session), 'video-hevc.mov') });
 /** Removes a render that no longer matches the project, and its snapshot. */
 const removeRender = (video: string) => { for (const file of [video, renderSnapshotPath(video)]) rmSync(file, { force: true }); };
-const masterWavFor = (session: RenderSession, auditionSfxCueList = false) => join(outDirFor(session), auditionSfxCueList ? 'mix-sfx-cues.wav' : 'mix.wav');
+const masterWavFor = (ledger: Pick<RenderLedger, 'project'>, auditionSfxCueList = false) => join(outDirFor(ledger), auditionSfxCueList ? 'mix-sfx-cues.wav' : 'mix.wav');
 
 // ---------- the check ----------
 
@@ -166,21 +168,25 @@ const DELIVERY_LUFS = -14, DELIVERY_TRUE_PEAK = -1, MASTER_TRUE_PEAK = -2;
 /**
  * Masters the soundtrack to out/mix.wav: one gain to delivery loudness, then a limiter for the peaks. Not loudnorm:
  * when its linear mode can't reach the target it becomes an AGC, which fills in the music's ducks.
- * `auditionSfxCueList` plays the cue list into out/mix-sfx-cues.wav whether or not the video does. A mix that renders
- * silent fails: something it plays didn't sound.
+ * `auditionSfxCueList` plays the cue list into out/mix-sfx-cues.wav too. `timeline`, the caller's report (a browser
+ * pass to read), says whether it's a beat-click draft.
  */
-export async function renderMasteredMix(session: RenderSession, { auditionSfxCueList = false }: { auditionSfxCueList?: boolean } = {}): Promise<string> {
+export async function renderMasteredMix(session: RenderSession, { timeline, auditionSfxCueList = false }: { timeline: TimelineReport; auditionSfxCueList?: boolean }): Promise<string> {
   if (session.silent) throw new Error(`${basename(session.project)} is silent (project.ts): it plays no voice, music or sound, so it has no mix`);
   return withStudioTemp('mix', async (tmp) => {
     const raw = await session.renderAudio({ out: join(tmp, 'raw.wav'), inputProps: session.props({ auditionSfxCueList }) });
-    return masterMix(session, raw, masterWavFor(session, auditionSfxCueList));
+    return masterRenderedMix(session, raw, { beatClicks: timeline.beatClicks, auditionSfxCueList });
   });
 }
 
-/** Masters `raw`, the video's sound as rendered, to `masterWav` (see renderMasteredMix). */
-function masterMix(session: RenderSession, raw: string, masterWav: string): string {
-  const mastering = performance.now();
-  mkdirSync(outDirFor(session), { recursive: true });
+/**
+ * Masters `raw`, the video's sound as rendered (here or by a remote render), to out/mix.wav, or out/mix-sfx-cues.wav
+ * for `auditionSfxCueList` (see renderMasteredMix). A draft of `beatClicks` gains only to the peak ceiling: sparse
+ * clicks reach delivery loudness only by the limiter crushing each one.
+ */
+export function masterRenderedMix(ledger: Pick<RenderLedger, 'project' | 'passes'>, raw: string, { beatClicks, auditionSfxCueList = false }: { beatClicks: boolean; auditionSfxCueList?: boolean }): string {
+  const mastering = performance.now(), masterWav = masterWavFor(ledger, auditionSfxCueList);
+  mkdirSync(outDirFor(ledger), { recursive: true });
   const before = measureLoudness(raw);
   if (before.lufs === -Infinity) {
     throw new Error("the mix renders silent: a voice, music or sound the video plays didn't sound. A video with no sound at all declares `capability: 'silent'` in project.ts");
@@ -191,21 +197,23 @@ function masterMix(session: RenderSession, raw: string, masterWav: string): stri
       `volume=${gainDb}dB,aresample=192000,alimiter=limit=${10 ** (ceilingDb / 20)}:attack=1:release=60:level=false:latency=true,aresample=48000`,
       '-c:a', 'pcm_s24le', masterWav]);
     const encoded = join(tmp, 'encoded.m4a');
-    let gain = DELIVERY_LUFS - before.lufs, ceiling = MASTER_TRUE_PEAK, encodedPeak = Infinity;
+    let gain = beatClicks ? MASTER_TRUE_PEAK - before.truePeak : DELIVERY_LUFS - before.lufs, ceiling = MASTER_TRUE_PEAK, encodedPeak = Infinity;
     // AAC overshoots sharp transients by more than MASTER_TRUE_PEAK's 1 dB allows (a tattoo needle's bite came out 2.3 dB
     // over its master), so the ceiling comes down by what the encoded master still peaks over delivery's.
     for (let pass = 0; pass < 4 && encodedPeak > DELIVERY_TRUE_PEAK; pass++) {
       if (pass > 0) ceiling -= encodedPeak - DELIVERY_TRUE_PEAK + 0.2;
+      master(gain, ceiling);
       // The limiter shaves a little loudness off the peaks it catches, so a second pass makes that back.
-      master(gain, ceiling);
-      gain += DELIVERY_LUFS - measureLoudness(masterWav).lufs;
-      master(gain, ceiling);
+      if (!beatClicks) {
+        gain += DELIVERY_LUFS - measureLoudness(masterWav).lufs;
+        master(gain, ceiling);
+      }
       runFfmpeg(['-y', '-v', 'error', '-i', masterWav, ...DELIVERY_AUDIO_CODEC, encoded]);
       encodedPeak = measureLoudness(encoded).truePeak;
     }
     const after = measureLoudness(masterWav);
     console.error(`mix: ${before.lufs} LUFS, ${before.truePeak} dBTP → +${gain.toFixed(1)} dB and limited at ${ceiling.toFixed(1)} → ${after.lufs} LUFS, ${after.truePeak} dBTP (${encodedPeak} encoded)`);
-    session.passes.push({ pass: 'mastering', seconds: (performance.now() - mastering) / 1000 });
+    ledger.passes.push({ pass: 'mastering', seconds: (performance.now() - mastering) / 1000 });
     return masterWav;
   });
 }
@@ -213,7 +221,7 @@ function masterMix(session: RenderSession, raw: string, masterWav: string): stri
 // ---------- the videos ----------
 
 /** A render's progress on stderr, every tenth. */
-function renderProgress(out: string) {
+export function renderProgress(out: string) {
   let shown = -1;
   return ({ progress }: { progress: number }) => {
     const pct = Math.floor(progress * 10) * 10;
@@ -222,17 +230,16 @@ function renderProgress(out: string) {
 }
 
 /**
- * A delivered video, under the mastered mix (see renderDeliveredVideo). A silent one keeps the composition's own
- * sound, which is none, so Remotion writes no audio track: a sound playing in it after all shows up as a track its
- * review refuses. `approve` is session.renderVideo's; the soundtrack is the mix it names.
+ * A delivered video, its sound `apart` for the mix, or `none` under a mix made already. A silent one keeps the
+ * composition's own sound, none, so it gets no audio track: a sound playing in it after all is a track its review
+ * refuses. `approve` is session.renderVideo's; the soundtrack is the mix it names.
  */
-async function renderDeliveryVideo(session: RenderSession, { out, inputProps, timeline, separateSound = false, onArtifact, approve }: {
-  out: string; inputProps: VideoProps; timeline: TimelineReport; separateSound?: boolean; onArtifact?: OnArtifact;
+async function renderDeliveryVideo(session: RenderSession, { out, inputProps, timeline, sound, onArtifact, approve }: {
+  out: string; inputProps: VideoProps; timeline: TimelineReport; sound: 'apart' | 'none'; onArtifact?: OnArtifact;
   approve: (rendered: { sound?: string }) => Promise<{ soundtrack?: string; motion: MotionTracks }>;
 }) {
   await session.renderVideo({
-    out, inputProps, muted: !session.silent && !separateSound, separateSound, timeline, approve, ...(onArtifact && { onArtifact }),
-    crf: 18, x264Preset: 'slow', pixelFormat: 'yuv420p', imageFormat: 'jpeg', jpegQuality: 94, onProgress: renderProgress(out),
+    out, inputProps, sound: session.silent ? 'own' : sound, encoding: DELIVERY_ENCODING, timeline, approve, ...(onArtifact && { onArtifact }), onProgress: renderProgress(out),
   });
 }
 
@@ -252,9 +259,10 @@ function reviewDelivery(session: RenderSession, captions: boolean, timeline: Tim
     problems.push('has no audio stream');
   } else {
     const { lufs, truePeak } = measureLoudness(video);
-    if (Math.abs(lufs - DELIVERY_LUFS) > 1) problems.push(`measures ${lufs} LUFS, not ${DELIVERY_LUFS} ± 1`);
+    // A draft of beat clicks is mastered to its peaks alone (see masterRenderedMix).
+    if (!timeline.beatClicks && Math.abs(lufs - DELIVERY_LUFS) > 1) problems.push(`measures ${lufs} LUFS, not ${DELIVERY_LUFS} ± 1`);
     if (truePeak > DELIVERY_TRUE_PEAK) problems.push(`peaks at ${truePeak} dBTP, over ${DELIVERY_TRUE_PEAK}`);
-    sound = `${lufs} LUFS, ${truePeak} dBTP`;
+    sound = `${lufs} LUFS${timeline.beatClicks ? ' (beat clicks, a draft)' : ''}, ${truePeak} dBTP`;
   }
   if (problems.length) throw new Error(`${video} ${problems.join(' and ')}`);
 
@@ -304,19 +312,25 @@ const draftVoiceWarning = (session: RenderSession) => `
 !!!! Voice it for real first: studio voice ${basename(session.project)}
 `;
 
+const beatClicksWarning = (session: RenderSession) => `
+!!!! DRAFT CLICKS: this video is cut to a tempo grid and plays no music yet, so a click marks each beat. It's for timing.
+!!!! Give it its track: studio music add ${basename(session.project)} <track>, studio music fit --bars, then
+!!!! recordedGrid in timeline.ts and \`music: { track }\` in video.tsx
+`;
+
 /**
  * The whole pipeline: video.mp4 with captions, delivered only if its framing check passes; the mastered mix;
  * video-plain.mp4 if `plain`; each checked for delivery; video.srt and video.vtt. Returns what it delivered.
+ * `onDraft` gets each draft's warning (a draft voice, beat clicks) at the start and the end.
  *
- * The check rides on the captioned render so every frame is drawn once: a failing check costs an encode, and
- * `studio check` is still the quick way to one.
+ * The check rides on the captioned render so every frame is drawn once.
  */
-export async function renderDeliveredVideo(session: RenderSession, { plain }: { plain: boolean }): Promise<string[]> {
+export async function renderDeliveredVideo(session: RenderSession, { plain, onDraft }: { plain: boolean; onDraft: (warning: string) => void }): Promise<string[]> {
   const timeline = await session.readTimeline();
   const estimated = timeline.cues.filter((q) => !q.voiced).map((q) => q.id);
   if (estimated.length) throw new Error(`${estimated.join(', ')} ${estimated.length > 1 ? 'are' : 'is'} estimated, not voiced: run studio voice <project> before rendering the video`);
-  const draft = renderVoiceOf(session.project) === 'draft';
-  if (draft) console.error(draftVoiceWarning(session));
+  const drafts = [renderVoiceOf(session.project) === 'draft' && draftVoiceWarning(session), timeline.beatClicks && beatClicksWarning(session)].filter((w) => w !== false);
+  drafts.forEach(onDraft);
   if (timeline.transparent) return renderTransparentDelivery(session, timeline, { plain });
   // An old plain video would no longer match the captioned one beside it.
   if (!plain) removeRender(videoFor(session, false));
@@ -329,23 +343,23 @@ export async function renderDeliveredVideo(session: RenderSession, { plain }: { 
   const sink = artifactSink();
   let delivery: { soundtrack?: string; motion: MotionTracks } | undefined;
   await renderDeliveryVideo(session, {
-    out: videoFor(session, true), inputProps: checkedProps(session), timeline, separateSound: !session.silent, onArtifact: sink.onArtifact,
+    out: videoFor(session, true), inputProps: checkedProps(session), timeline, sound: 'apart', onArtifact: sink.onArtifact,
     approve: async ({ sound }) => {
-      delivery = { soundtrack: deliveredSoundtrack(session, sound), motion: approveCheckedRender(session, sink, timeline).motion };
+      delivery = { soundtrack: deliveredSoundtrack(session, sound, timeline), motion: approveCheckedRender(session, sink, timeline).motion };
       return delivery;
     },
   });
   await session.timed('video.mp4 review', () => reviewDelivery(session, true, timeline));
   if (plain) {
-    await renderDeliveryVideo(session, { out: videoFor(session, false), inputProps: session.props(), timeline, approve: async () => delivery! });
+    await renderDeliveryVideo(session, { out: videoFor(session, false), inputProps: session.props(), timeline, sound: 'none', approve: async () => delivery! });
     await session.timed('video-plain.mp4 review', () => reviewDelivery(session, false, timeline));
   }
   const sidecars = writeCaptionSidecars(session, timeline);
   const variants = plain ? [true, false] : [true];
   const delivered = [...variants.map((captions) => videoFor(session, captions)), ...sidecars];
   for (const line of formatRenderPasses(session)) console.error(line);
-  // Again at the end, where it can't scroll away under the render's progress.
-  if (draft) console.error(draftVoiceWarning(session));
+  // Again at the end, where they can't scroll away under the render's progress.
+  drafts.forEach(onDraft);
   return delivered;
 }
 
@@ -396,8 +410,8 @@ async function renderTransparentDelivery(session: RenderSession, timeline: Timel
 }
 
 /** The delivered videos' soundtrack: `sound`, the captioned render's, mastered to out/mix.wav, or none for a silent project. */
-function deliveredSoundtrack(session: RenderSession, sound: string | undefined): string | undefined {
-  if (!session.silent) return masterMix(session, sound!, masterWavFor(session));
+function deliveredSoundtrack(session: RenderSession, sound: string | undefined, timeline: TimelineReport): string | undefined {
+  if (!session.silent) return masterRenderedMix(session, sound!, { beatClicks: timeline.beatClicks });
   // An old mix would read as this video's.
   rmSync(masterWavFor(session), { force: true });
   console.error('silent (project.ts): no voice, music or sound, so no mix, mastering or loudness review; the video has no audio track');
@@ -408,80 +422,16 @@ function deliveredSoundtrack(session: RenderSession, sound: string | undefined):
 
 /**
  * The whole video at `out` as it plays now, for `studio review`: whatever sound the composition has (none, a tempo
- * guess's silence, a draft voice, the fitted music), captions on, with no framing check, no mix and no refusal of an
+ * guess's clicks, a draft voice, the fitted music), captions on, with no framing check, no mix and no refusal of an
  * estimated line, so a video of blocked scenes can be approved before it's voiced or finished.
  */
 export async function renderAnimatic(session: RenderSession, { out }: { out: string }): Promise<string> {
   mkdirSync(dirname(out), { recursive: true });
   const rendered = await session.renderVideo({
-    out, inputProps: session.props({ captions: true }), crf: 26, x264Preset: 'veryfast', imageFormat: 'jpeg', jpegQuality: 85, onProgress: renderProgress(out),
+    out, inputProps: session.props({ captions: true }), sound: 'own', encoding: { crf: 26, preset: 'veryfast' }, onProgress: renderProgress(out),
   });
   if (renderVoiceOf(session.project) === 'draft') console.error(draftVoiceWarning(session));
   return rendered;
-}
-
-// ---------- slices ----------
-
-/**
- * Frames `from`–`end` (exclusive) of the video, silent, at `out`: to re-render just the part a change touched. No
- * framing check and no mix; its snapshot records where in the video it starts.
- */
-export async function renderVideoSlice(session: RenderSession, { from, end, out }: { from: number; end: number; out: string }): Promise<string> {
-  const timeline = await session.readTimeline();
-  if (!(Number.isInteger(from) && Number.isInteger(end) && from >= 0 && end > from && end <= timeline.durationInFrames)) {
-    throw new Error(`frames ${from}–${end - 1} aren't within the video's 0–${timeline.durationInFrames - 1}`);
-  }
-  mkdirSync(dirname(out), { recursive: true });
-  return session.renderVideo({ out, frames: { from, end }, muted: true, timeline, crf: 20, onProgress: renderProgress(out) });
-}
-
-/**
- * Joins the slices in `dir` at `out`, under a fresh mastered mix, so placed sounds play across the joins. Refuses
- * another timeline, a gap or overlap, or a file short of its snapshot's frames: each puts every later frame off its
- * sound.
- *
- * Negative space: a silent join doesn't check that no sound plays; the delivered render's review does.
- */
-export async function joinVideoSlices(session: RenderSession, { dir, out }: { dir: string; out: string }): Promise<string> {
-  const timeline = await session.readTimeline();
-  const now = JSON.stringify(timeline);
-  // Not the join itself, when it's written among its slices.
-  const slices = readdirSync(dir).filter((name) => extname(name) === '.mp4' && join(dir, name) !== out).map((name) => {
-    const file = join(dir, name);
-    const loaded = loadRenderSnapshot(file);
-    if (loaded.kind === 'none') throw new Error(loaded.reason);
-    const { frames } = loaded.snapshot;
-    if (JSON.stringify(loaded.snapshot.timeline) !== now) throw new Error(`${name} (frames ${frames.from}–${frames.end - 1}) was rendered on another timeline than the video's now (a retime moves every later bar and cue): render it again`);
-    const { gpu } = loaded.snapshot;
-    const counted = countVideoFrames(file);
-    if (counted !== frames.end - frames.from) throw new Error(`${name} holds ${counted} frames, and its snapshot says ${frames.end - frames.from}`);
-    return { file, gpu, ...frames };
-  }).toSorted((a, b) => a.from - b.from);
-  // Each GPU rounds a painted frame its own way, so slices from two would show a seam where they meet.
-  const gpus = [...new Set(slices.map((s) => s.gpu))];
-  if (gpus.length > 1) throw new Error(`the slices in ${dir} were drawn on ${gpus.length} GPUs (${gpus.join('; ')}): render them all on one machine`);
-  let reached = 0;
-  for (const s of slices) {
-    if (s.from !== reached) throw new Error(`${basename(s.file)} starts at frame ${s.from}, but the slices before it reach ${reached}: ${s.from > reached ? 'render the gap' : 'they overlap'}`);
-    reached = s.end;
-  }
-  if (reached !== timeline.durationInFrames) throw new Error(`the slices in ${dir} reach frame ${reached}, short of the video's ${timeline.durationInFrames}`);
-
-  const mix = session.silent ? undefined : await renderMasteredMix(session);
-  mkdirSync(dirname(out), { recursive: true });
-  withStudioTemp('join', (tmp) => {
-    const list = join(tmp, 'slices.txt');
-    writeFileSync(list, slices.map((s) => `file '${s.file.replaceAll("'", "'\\''")}'`).join('\n'));
-    // The mix is padded past the picture and cut half a frame after it, so the last frame keeps its sound.
-    const sound = mix ? ['-i', mix, '-map', '0:v', '-map', '1:a', ...DELIVERY_AUDIO_CODEC, '-af', 'apad'] : ['-map', '0:v'];
-    runFfmpeg(['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, ...sound,
-      '-c:v', 'libx264', '-crf', '16', '-preset', 'medium', '-pix_fmt', 'yuv420p',
-      '-t', String((timeline.durationInFrames + 0.5) / timeline.fps), '-movflags', '+faststart', out]);
-  });
-  const counted = countVideoFrames(out);
-  if (counted !== timeline.durationInFrames) throw new Error(`${out} holds ${counted} frames, not the video's ${timeline.durationInFrames}`);
-  writeRenderSnapshot(out, { frames: { from: 0, end: timeline.durationInFrames }, timeline, clock: session.clock, voice: renderVoiceOf(session.project), gpu: gpus[0] });
-  return out;
 }
 
 // ---------- repeatability ----------
@@ -495,7 +445,7 @@ export async function checkFramesRepeatable(session: RenderSession, times: numbe
   if (!times.length || times.some((t) => !Number.isFinite(t))) throw new Error('give times in seconds, e.g. 2,8.5');
   const composition = await session.compositionFor(session.props());
   const { fps, durationInFrames } = composition;
-  const frames = times.map((t) => Math.round(t * fps));
+  const frames = times.map((t) => frameAtSecond(t, fps, durationInFrames));
   const bad = frames.find((f) => !(f >= 0 && f < durationInFrames));
   if (bad !== undefined) throw new Error(`${bad / fps}s is outside the video`);
   const inVideo = (f: number) => f >= 0 && f < durationInFrames;

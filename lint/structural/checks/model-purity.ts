@@ -1,19 +1,19 @@
 // ─── (c) Model purity ─────────────────────────────────────────────────
 //
-// A model (a lib feature's `models/`, a project's `x-model.ts`, and its `timeline.ts`)
-// loads in plain Node with no browser or I/O code behind it. From each model,
+// A model (a lib feature's `models/`, a project's `x-model.ts`, its painting sources and its
+// `timeline.ts`) loads in plain Node with no browser or I/O code behind it. From each model,
 // every runtime import is followed transitively through first-party code, and a
 // chain is refused where it reaches render or Node-side code (a feature's
 // `studio/`, and `#studio`; its `engine/`; cli; harness; a scene), a package beyond the allowlist, a
-// builtin, or a browser or I/O global.
+// builtin, or a browser or I/O global: a name no scope of the file binds, or one read off globalThis.
 //
 // An `import type` is erased and isn't followed: flagging it would force types
-// to be duplicated. That a model actually loads is held by its evaluator tests,
-// which import it under `node --test`.
+// to be duplicated. Evaluator tests, importing it under `node --test`, hold that a model loads.
 
 import type { StudioPosition } from '../../policy/studio-tree.ts';
-import { walkAst, type AstNode, type SourceFile } from '../source-tree.ts';
+import { childAt, childrenAt, isIdentifier, walkAst, type SourceFile } from '../source-tree.ts';
 import type { CheckContext, Finding, ImportEdge, StructuralCheck } from '../check-context.ts';
+import { globalNamed, globalReferencesIn } from '../lexical-scope.ts';
 
 const ID = 'model-purity';
 
@@ -32,15 +32,16 @@ const IMPURE_GLOBALS = new Set([
   'cancelAnimationFrame', 'getComputedStyle', 'HTMLElement', 'HTMLCanvasElement', 'Image', 'OffscreenCanvas',
   'fetch', 'XMLHttpRequest', 'WebSocket', 'process',
 ]);
+/** The global object's names, a member of which (`globalThis.fetch`) is the global itself. */
 const GLOBAL_OBJECTS = new Set(['globalThis', 'self']);
 
 /** Positions a model may pass through: pure until shown otherwise, and scanned in turn. */
 const isScannable = (position: StudioPosition) =>
   position.kind === 'models' ||
-  (position.kind === 'project' && ['model', 'timeline', 'shared', 'unclassified', 'media', 'sfx', 'brand'].includes(position.role));
+  (position.kind === 'project' && ['model', 'painting-source', 'timeline', 'shared', 'unclassified', 'media', 'sfx', 'brand'].includes(position.role));
 
 const isModel = (position: StudioPosition) =>
-  position.kind === 'models' || (position.kind === 'project' && (position.role === 'model' || position.role === 'timeline'));
+  position.kind === 'models' || (position.kind === 'project' && ['model', 'painting-source', 'timeline'].includes(position.role));
 /** A model's spec is its evaluator, run by `node --test`: it may use node:test and fixtures, and isn't loaded as a model. */
 const isSpec = (path: string) => /\.test\.tsx?$/.test(path);
 
@@ -106,58 +107,24 @@ function offenseOf(context: CheckContext, edge: ImportEdge): string | undefined 
 }
 
 /**
- * Reads of an impure global: `document`, `globalThis.document`, `globalThis['fetch']`, `const { fetch } = globalThis`.
- * By name, not by scope: a model doesn't name a local after a browser global, so a parameter called `window` is
- * reported rather than trusted to shadow every `window` in the file. A binding's own name isn't a read.
+ * Reads of an impure global (`document`, `globalThis.document`, `globalThis['fetch']`, `const { fetch } = globalThis`),
+ * each resolved through the file's lexical scopes (lint/structural/lexical-scope.ts): a local, parameter or import of
+ * the same name shadows the global, as a local `self` does `self.fetch`.
  */
 function impureGlobalsIn(file: SourceFile): { name: string; offset: number }[] {
-  const bindings = new Set<AstNode>();
-  const bind = (pattern: unknown) => {
-    const node = pattern as AstNode | null | undefined;
-    if (!node) return;
-    if (node.type === 'Identifier') bindings.add(node);
-    else if (node.type === 'ObjectPattern') for (const property of node.properties as AstNode[]) bind(property.type === 'Property' ? property.value : property);
-    else if (node.type === 'ArrayPattern') for (const element of node.elements as AstNode[]) bind(element);
-    else if (node.type === 'RestElement') bind(node.argument);
-    // Only the left of `w = window` binds; its default is a read.
-    else if (node.type === 'AssignmentPattern') bind(node.left);
-    else if (node.type === 'TSParameterProperty') bind(node.parameter);
-  };
-  const isImpure = (name: unknown) => typeof name === 'string' && IMPURE_GLOBALS.has(name);
+  const globals = globalReferencesIn(file.program);
   const found: { name: string; offset: number }[] = [];
   walkAst(file.program, (node) => {
-    if (node.type === 'VariableDeclarator') {
-      bind(node.id);
-      const init = node.init as AstNode | null, id = node.id as AstNode;
-      if (init?.type === 'Identifier' && GLOBAL_OBJECTS.has(init.name as string) && id.type === 'ObjectPattern') {
-        for (const property of id.properties as AstNode[]) {
-          const key = property.key as AstNode | undefined;
-          if (key?.type === 'Identifier' && isImpure(key.name)) found.push({ name: key.name as string, offset: property.start });
-        }
+    const init = childAt(node, 'init'), id = childAt(node, 'id');
+    const offGlobalObject = isIdentifier(init) && globals.has(init) && GLOBAL_OBJECTS.has(init.name);
+    if (node.type === 'VariableDeclarator' && offGlobalObject && id?.type === 'ObjectPattern') {
+      for (const property of childrenAt(id, 'properties')) {
+        const key = childAt(property, 'key');
+        if (isIdentifier(key) && IMPURE_GLOBALS.has(key.name)) found.push({ name: key.name, offset: property.start });
       }
     }
-    if (node.type === 'FunctionDeclaration' || node.type === 'FunctionExpression' || node.type === 'ArrowFunctionExpression') {
-      bind(node.id);
-      for (const param of node.params as AstNode[]) bind(param);
-    }
-    if (node.type === 'ClassDeclaration' || node.type === 'ClassExpression') bind(node.id);
-    if (node.type === 'CatchClause') bind(node.param);
-  });
-  walkAst(file.program, (node, parent) => {
-    // Types are erased (`el: HTMLElement` loads nothing), and an import's names are its own.
-    if ((node.type.startsWith('TS') && !node.type.endsWith('Expression')) || node.type === 'ImportDeclaration') return false;
-    if (node.type === 'MemberExpression') {
-      const object = node.object as AstNode, property = node.property as AstNode;
-      const name = node.computed ? (property.type === 'Literal' ? property.value : undefined) : property.name;
-      if (object.type === 'Identifier' && GLOBAL_OBJECTS.has(object.name as string) && isImpure(name)) {
-        found.push({ name: name as string, offset: node.start });
-      }
-    }
-    if (node.type !== 'Identifier' || !isImpure(node.name) || bindings.has(node)) return;
-    if (parent?.type === 'MemberExpression' && parent.property === node && !parent.computed) return;
-    const keyed = parent?.type === 'Property' || parent?.type === 'PropertyDefinition' || parent?.type === 'MethodDefinition';
-    if (keyed && parent.key === node && !parent.computed && !(parent.type === 'Property' && parent.shorthand && parent.value === node)) return;
-    found.push({ name: node.name as string, offset: node.start });
+    const named = globalNamed(node, globals, GLOBAL_OBJECTS);
+    if (named && IMPURE_GLOBALS.has(named.name)) found.push({ name: named.name, offset: node.start });
   });
   return found;
 }

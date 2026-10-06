@@ -17,6 +17,16 @@ test("baselined findings report without blocking, even after they move; a new or
 test("each tier judges and rewrites only its own entries in the scope's one baseline", () => {
   const both = { 'file-size': { 'a.ts': { big: 1 } }, 'arch(no-long-comments)': { 'a.ts': { '// long': 1 } } };
   assert.deepEqual(Object.keys(baselineTier(both, 'oxlint')), ['arch(no-long-comments)']);
-  const rewritten = rebaselineTier(both, 'structural', [{ check: 'file-size', path: 'b.ts', line: 1, key: 'big', message: '' }]);
+  const rewritten = rebaselineTier(both, 'structural', [{ check: 'file-size', path: 'b.ts', line: 1, key: 'big', message: '' }], 'admit');
   assert.deepEqual(rewritten, { 'arch(no-long-comments)': { 'a.ts': { '// long': 1 } }, 'file-size': { 'b.ts': { big: 1 } } });
+});
+
+test('a rewrite only shrinks the baseline unless told to admit: a new finding still blocks after it', () => {
+  const baseline = baselineOf([finding('a.ts', 1), finding('a.ts', 2), finding('fixed.ts', 1)]);
+  // One of a.ts's two fixed, fixed.ts fixed, and a new project's violation staged.
+  const found = [finding('a.ts', 1), finding('work/projects/p/new.ts', 1)];
+  const shrunk = rebaselineTier(baseline, 'structural', found, 'shrink');
+  assert.deepEqual(shrunk, { c: { 'a.ts': { x: 1 } } });
+  assert.deepEqual(compareToBaseline(found, shrunk).fresh.map((f) => f.path), ['work/projects/p/new.ts']);
+  assert.deepEqual(rebaselineTier(baseline, 'structural', found, 'admit'), baselineOf(found));
 });

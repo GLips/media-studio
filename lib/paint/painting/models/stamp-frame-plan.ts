@@ -50,13 +50,15 @@ function stampGroupFrame(group: CompiledStampGroup, state: StampGroupFrameState)
   if (paintAt !== undefined && !Number.isFinite(paintAt)) throw new Error(`stamp paint: ${group.id}'s paint is read at ${paintAt} s`);
   if (lay) {
     const { placement: { x, y, rotation, scale }, pivot } = lay;
-    if (![x, y, rotation, scale, pivot.x, pivot.y].every(Number.isFinite) || !(scale > 0)) throw new Error(`stamp paint: ${group.id}'s lay needs finite values and a positive scale`);
+    if (![x, y, rotation, scale, pivot.x, pivot.y].every(Number.isFinite) || !(scale >= 0)) throw new Error(`stamp paint: ${group.id}'s lay needs finite values and a scale of 0 or more`);
   }
   const moved = lay && !isStill(lay.placement) ? lay : null;
+  // A lay at scale 0 shrinks the group onto its pivot, so it's hidden; its lay stays, for the shutter's travel.
+  const shown = lay?.placement.scale === 0 ? 0 : visibility;
   // A hidden group draws nothing, whatever its marks or lay.
-  const paintKey = visibility === 0 ? 'hidden' : `${marks.kind === 'live' ? `*${JSON.stringify(marks.key)}` : marks.epoch}${paintAt === undefined ? '' : `~${paintAt}`}`;
+  const paintKey = shown === 0 ? 'hidden' : `${marks.kind === 'live' ? `*${JSON.stringify(marks.key)}` : marks.epoch}${paintAt === undefined ? '' : `~${paintAt}`}`;
   return {
-    paintKey, group, marks, lay: moved, warp: warp ? { map: warp.map, key: warp.key, cell: warp.cell ?? STAMP_WARP_CELL } : null, visibility,
+    paintKey, group, marks, lay: moved, warp: warp ? { map: warp.map, key: warp.key, cell: warp.cell ?? STAMP_WARP_CELL } : null, visibility: shown,
     paintAt: paintAt ?? null, glow: stampGroupGlowChecked(group.id, state.glow),
   };
 }
@@ -86,8 +88,11 @@ export function stampFramePlanExposed(
   });
 }
 
+/** Where a group lies and bends, as a frame draws it: all a group's travel reads of a frame. */
+export type StampGroupPose = Pick<StampGroupFrame, 'lay' | 'warp'>;
+
 /** Where `frame` lays a point of its group's layer (rest space) in the scene: its warp, then its placement; null where it lies as painted. */
-export function stampGroupSceneMap({ lay, warp }: Pick<StampGroupFrame, 'lay' | 'warp'>): StampWarpMap | null {
+export function stampGroupSceneMap({ lay, warp }: StampGroupPose): StampWarpMap | null {
   const placed = lay && stampPlacementWarpMap(lay.placement, lay.pivot);
   if (!warp) return placed;
   return placed ? (rest) => placed(warp.map(rest)) : warp.map;
@@ -111,7 +116,29 @@ export type StampMotionSpan =
  */
 export type StampGroupTravel = { readonly travel: StampWarpMap; readonly key: string };
 
-const groupPoseKey = ({ lay, warp }: StampGroupFrame) => JSON.stringify([lay, warp && [warp.key, warp.cell]]);
+const groupPoseKey = ({ lay, warp }: StampGroupPose) => JSON.stringify([lay, warp && [warp.key, warp.cell]]);
+
+/** Where something lies at one end of a span: its map from rest (null: where it was painted), and the key naming it. */
+export type StampTravelEnd = { readonly map: StampWarpMap | null; readonly key: string };
+
+/**
+ * The motion from lying as `from` to lying as `to`; null for one keyed alike at both. The one producer of travel: an
+ * old painting's groups (stampGroupTravel) and a shot's sheets and films each call it, so advected paper hooks here.
+ */
+export function stampTravel(from: StampTravelEnd, to: StampTravelEnd): StampGroupTravel | null {
+  if (from.key === to.key) return null;
+  return {
+    key: `${from.key}>${to.key}`,
+    travel: (rest) => {
+      const a = from.map?.(rest) ?? rest, b = to.map?.(rest) ?? rest;
+      return { x: b.x - a.x, y: b.y - a.y };
+    },
+  };
+}
+
+/** A group's motion from lying as `from` to lying as `to` (stampGroupSceneMap at each): a plane's motion layer reads it per group. */
+export const stampGroupTravel = (from: StampGroupPose, to: StampGroupPose): StampGroupTravel | null =>
+  stampTravel({ map: stampGroupSceneMap(from), key: groupPoseKey(from) }, { map: stampGroupSceneMap(to), key: groupPoseKey(to) });
 
 /**
  * Each of `painting`'s groups' motion over `span`, null for one posed alike at both ends: the one producer of a
@@ -122,16 +149,5 @@ export function stampFramePlanMotion(painting: CompiledStampPaint, held: { t: nu
   const [start, end] = span.kind === 'shutter' ? [span.open, span.close] : [span.from, span.to];
   const started = stampFramePlanExposed(painting, held, { t: start.at, state: start.state });
   const ended = stampFramePlanExposed(painting, held, { t: end.at, state: end.state });
-  return started.map((from, index) => {
-    const to = ended[index];
-    if (groupPoseKey(from) === groupPoseKey(to)) return null;
-    const mapFrom = stampGroupSceneMap(from), mapTo = stampGroupSceneMap(to);
-    return {
-      key: `${groupPoseKey(from)}>${groupPoseKey(to)}`,
-      travel: (rest) => {
-        const a = mapFrom?.(rest) ?? rest, b = mapTo?.(rest) ?? rest;
-        return { x: b.x - a.x, y: b.y - a.y };
-      },
-    };
-  });
+  return started.map((from, index) => stampGroupTravel(from, ended[index]));
 }

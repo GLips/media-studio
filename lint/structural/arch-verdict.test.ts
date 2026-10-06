@@ -14,7 +14,7 @@ const writeFiles = (root: string, files: Record<string, string>) => {
   }
 };
 
-test('the workspace scope judges what work/ has staged, through the studio\'s barrel, against the baseline it has staged', () => {
+test('the workspace scope judges work/\'s index or working tree, through the studio\'s barrel, against that snapshot\'s baseline', () => {
   withStudioTemp('arch-verdict-spec', (root) => {
     runFixtureGit(root, ['init', '-q']);
     writeFiles(root, {
@@ -34,9 +34,12 @@ test('the workspace scope judges what work/ has staged, through the studio\'s ba
     const excused = JSON.stringify({ 'timing-ownership': { 'work/projects/p/video.tsx': { 'fixedSpan from #studio': 1 } } });
     writeFiles(workspace, { 'arch-baseline.json': excused, 'projects/p/video.tsx': 'export {};\n' });
 
-    const timing = () => caught(judgeArchitecture(root, { scope: 'workspace' }).fresh.filter((finding) => finding.check === 'timing-ownership'));
-    assert.deepEqual(timing(), ['work/projects/p/video.tsx:fixedSpan from #studio']);
+    const timing = (kind: 'index' | 'worktree') =>
+      caught(judgeArchitecture(root, { scope: 'workspace', snapshot: { kind } }).fresh.filter((finding) => finding.check === 'timing-ownership'));
+    assert.deepEqual(timing('index'), ['work/projects/p/video.tsx:fixedSpan from #studio']);
+    // Run by hand, the fix is read before it's staged.
+    assert.deepEqual(timing('worktree'), []);
     runFixtureGit(workspace, ['add', 'arch-baseline.json']);
-    assert.deepEqual(timing(), []);
+    assert.deepEqual(timing('index'), []);
   });
 });

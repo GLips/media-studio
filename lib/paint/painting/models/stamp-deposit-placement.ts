@@ -11,12 +11,13 @@ import { placeStrokeStamps, stampFrozenMarks, type FrozenStampMarks, type Placed
 import type { StampPressureCurve } from '#lib/paint/brush/models/stamp-stroke-hand.ts';
 import { stampBrushEdgeOffsetMean, stampBrushMeasuredProfile } from '#lib/paint/brush/models/stamp-brush-profile.ts';
 import type { CompiledStampArea } from './stamp-area.ts';
-import { placeStampFlood, stampBrushFillEdge, stampFloodBarrier, stampFloodEdgeOf, type StampFillApplication } from './stamp-fill.ts';
+import { placeStampFlood, stampBrushFillEdge, stampFloodBarrier, stampFloodEdgeOf, stampFloodLaidPast, type StampFillApplication } from './stamp-fill.ts';
 import { stampFillStrokePath } from './stamp-fill-strokes.ts';
+import { createKeptByBytes, type StampKeptHeld } from './stamp-kept-memo.ts';
 import { stampMarkStamps } from './stamp-marks.ts';
 import { stampPaintFieldAt, type StampSeededPaintField } from './stamp-paint-field.ts';
 import type { CompiledStampFlood } from './stamp-paint-recipe-compile.ts';
-import { stampRegionPolygon, type StampPoint } from './stamp-region.ts';
+import { stampGrownPolygon, stampRegionPolygon, type StampPoint } from './stamp-region.ts';
 import type { StampResolvedGeometry } from './stamp-paint-recipe-types.ts';
 
 /**
@@ -37,15 +38,20 @@ export type StampDepositPlacement = StampDepositMarks<FrozenStampMarks>;
 export const STAMP_PLACEMENTS_KEPT_BYTES = 80 * 2 ** 20;
 
 /**
- * What a placement holds, in bytes, roughly: its stamps (each about 320, and 80 more for what loading works out from
- * it, kept as long as it is: stamp-mark-load.ts), a flood's outline, and its key.
+ * What a kept stamp holds, in bytes, roughly: about 320, and 80 more for what loading works out from it, kept as long
+ * as it is (stamp-mark-load.ts).
  */
-const STAMP_BYTES = 400, POINT_BYTES = 64, ENTRY_BYTES = 1024;
-const bytesOf = ({ stamps, dualStamps, ...placement }: StampDepositPlacement, key: string) => ENTRY_BYTES + 2 * key.length + STAMP_BYTES * (stamps.length + dualStamps.length)
+export const STAMP_KEPT_BYTES = 400;
+
+/** What a placement holds, in bytes, roughly: its stamps, a flood's outline, and its key. */
+const POINT_BYTES = 64, ENTRY_BYTES = 1024;
+const bytesOf = ({ stamps, dualStamps, ...placement }: StampDepositPlacement, key: string) => ENTRY_BYTES + 2 * key.length + STAMP_KEPT_BYTES * (stamps.length + dualStamps.length)
   + (placement.kind === 'flood' ? POINT_BYTES * placement.flood.barrier.polygon.length : 0);
 
-const kept = new Map<string, { placement: StampDepositPlacement; bytes: number }>();
-let keptBytes = 0;
+const kept = createKeptByBytes<string, StampDepositPlacement>(STAMP_PLACEMENTS_KEPT_BYTES);
+
+/** What the placements kept hold now: how many, and their bytes, roughly. */
+export const stampPlacementsKept = (): StampKeptHeld => kept.held();
 
 /** `geometry` placed by `brush` at `diameter`, seeded by `seed`: remembered by their content, or placed now. */
 export function placeStampDeposit(geometry: StampPlacingGeometry, brush: StampBrush, diameter: number, seed: string): StampDepositPlacement {
@@ -53,22 +59,9 @@ export function placeStampDeposit(geometry: StampPlacingGeometry, brush: StampBr
   const keyed = brush.profile.kind === 'measured' ? { ...brush, profile: brush.profile.key } : brush;
   const key = `${stampContentKey(keyed)}\n${diameter}\n${seed}\n${stampContentKey(geometry)}`;
   const found = kept.get(key);
-  if (found) {
-    // Asked for again: the most recent, given up last.
-    kept.delete(key);
-    kept.set(key, found);
-    return found.placement;
-  }
+  if (found) return found;
   const placement = frozenPlacement(placeNow(geometry, brush, diameter, seed));
-  const bytes = bytesOf(placement, key);
-  if (bytes > STAMP_PLACEMENTS_KEPT_BYTES) return placement;
-  kept.set(key, { placement, bytes });
-  keptBytes += bytes;
-  for (const [oldest, entry] of kept) {
-    if (keptBytes <= STAMP_PLACEMENTS_KEPT_BYTES) break;
-    kept.delete(oldest);
-    keptBytes -= entry.bytes;
-  }
+  kept.set(key, placement, bytesOf(placement, key));
   return placement;
 }
 
@@ -105,9 +98,10 @@ function placeNow(geometry: StampPlacingGeometry, brush: StampBrush, diameter: n
   if (geometry.kind === 'fill') {
     const { region, application, direction = 0, load } = geometry;
     if (application.kind === 'flood') {
-      const { scale, stamps, dualStamps } = placeStampFlood(region, brush, diameter, direction, seed);
-      const polygon = stampRegionPolygon(region), edge = stampFloodEdgeOf(application);
-      const flood = { edge, barrier: stampFloodBarrier(polygon, edge), scale, load };
+      const polygon = stampRegionPolygon(region), edge = stampFloodEdgeOf(application), barrier = stampFloodBarrier(polygon, edge, seed);
+      const past = stampFloodLaidPast(barrier), laid = past > 0 ? { kind: 'polygon' as const, points: stampGrownPolygon(polygon, past) } : region;
+      const { scale, stamps, dualStamps } = placeStampFlood(laid, brush, diameter, direction, seed);
+      const flood = { edge, barrier, scale, load };
       return { kind: 'flood', flood, stamps, dualStamps };
     }
     const offset = stampBrushEdgeOffsetMean(stampBrushMeasuredProfile(brush), diameter, brush.name);

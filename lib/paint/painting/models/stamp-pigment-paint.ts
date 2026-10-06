@@ -9,20 +9,21 @@
 import { paintPigmentFromColor, paintPigmentInMedium, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import { paintMixtureComponents } from '#lib/paint/materials/models/paint-mixture.ts';
 import { paintPigmentSeed } from '#lib/paint/materials/models/paint-paper.ts';
-import type { PaintPigment, PaintPigmentAppearance } from '#lib/paint/materials/models/paint-pigment.ts';
+import type { PaintMixturePigment, PaintPigment } from '#lib/paint/materials/models/paint-pigment.ts';
 import type { PaintBands } from '#lib/paint/materials/models/paint-spectrum.ts';
-import type { PlacedStamp } from '#lib/paint/brush/models/stamp-placement.ts';
 import { stampPaintFieldEnds } from './stamp-paint-field.ts';
+import { isStampDryBrush, stampBrushPaperContact } from './stamp-paper-contact.ts';
 import { mapStampKeyList, stampKeySpanAt, type StampKeyList } from './stamp-scene-keys.ts';
-import { stampGroupKnocksOut, stampPassDeposits, type CompiledStampDeposit, type CompiledStampGroup, type CompiledStampPaint } from './stamp-paint-recipe-compile.ts';
+import { stampGroupKnocksOut, type CompiledStampDeposit, type CompiledStampGroup, type StampMixedPainting } from './stamp-paint-recipe-compile.ts';
 import type { CompiledStampKeyedMaterial } from './stamp-paint-recipe-types.ts';
 import type { PaintMaterial, StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
 
 /**
  * Paint as pigment in a `medium`, mixed and dried with Kubelka–Munk. `pigments`, keyed by id, are the ones a mixture
- * may name; a colour is fitted as a pigment of its own, and a medium lightened with white brings its white.
+ * may name: a style's described swatches, or a sheet's colours standing for pigments too; a colour a material names
+ * is fitted as a pigment of its own, and a medium lightened with white brings its white.
  */
-export type StampPigmentMixing<P extends Readonly<Record<string, PaintPigmentAppearance>> = Readonly<Record<string, PaintPigmentAppearance>>> = {
+export type StampPigmentMixing<P extends Readonly<Record<string, PaintMixturePigment>> = Readonly<Record<string, PaintMixturePigment>>> = {
   kind: 'pigment';
   medium: PaintMedium;
   pigments: P;
@@ -114,9 +115,8 @@ export const STAMP_PIGMENT_UNDERPAINT_SLOTS = 16;
 
 /**
  * `knockout`: whether it's in its group's knockout, taking from the paint behind the group rather than laying its own.
- * `dryBrush`: whether its paint catches the paper's peaks as a dry brush does in its medium (PaintMedium's
- * `paperContact.dryBrush`): a dry-media brush in a medium that says how. Its water is the painting's media binding's
- * (StampPaintMedia).
+ * `dryBrush`: whether it drags over the paper as a dry brush does in its medium (stampBrushPaperContact): a
+ * dry-media brush in a wet medium. Its water is the painting's media binding's (StampPaintMedia).
  */
 export type StampPigmentDeposit = { group: number; components: readonly StampPigmentComponent[]; grade: StampPigmentGrade; knockout: boolean; dryBrush: boolean };
 
@@ -132,7 +132,7 @@ export const stampPigmentLayers = (slots: number, washes: boolean) => Math.ceil(
  * The mixing `group` paints in: its own (a group naming another medium, StampGroupOptions' `mixing`), else the
  * painting's.
  */
-export const stampGroupMixing = (group: CompiledStampGroup, painting: StampPigmentMixing): StampPigmentMixing => group.mixing ?? painting;
+export const stampGroupMixing = (group: Pick<CompiledStampGroup, 'mixing'>, painting: StampPigmentMixing): StampPigmentMixing => group.mixing ?? painting;
 
 /** What a medium's pigments are fitted as: each by id, the colours each colour names, and the ids its mixtures may name. */
 type StampMediumFits = { medium: PaintMedium; known: Map<string, PaintPigment>; byColor: Map<StampPaintColor, PaintPigment>; named: Set<string> };
@@ -143,7 +143,7 @@ type StampMediumFits = { medium: PaintMedium; known: Map<string, PaintPigment>; 
  * different pigments with one id in one medium, two medium objects of one name, or a group that mixes more than
  * STAMP_PIGMENT_GROUP_SLOTS pigments.
  */
-export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: StampPigmentMixing, bands: PaintBands): StampPigmentPaint {
+export function compileStampPigmentPaint(painting: StampMixedPainting, mixing: StampPigmentMixing, bands: PaintBands): StampPigmentPaint {
   const media: StampMediumFits[] = [];
   /** `of`'s medium's index among `media`, its pigments fitted: the first mixing's first, so a mixture can't name another by one of theirs. */
   const fitsOf = (of: StampPigmentMixing) => {
@@ -166,7 +166,7 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
     const named = new Set(Object.values(groupMixing.pigments).map(({ id }) => id));
     const white = medium.lightening.kind === 'white' ? medium.lightening.white.id : null;
     const palette: PaintPigment[] = [];
-    for (const [pass, deposit] of group.passes.flatMap((written) => stampPassDeposits(written).map((laid) => [written, laid] as const))) {
+    for (const [pass, deposit] of group.passes.flatMap((written) => written.deposits.map((laid) => [written, laid] as const))) {
       const { action } = deposit;
       // Water and a lift lay no pigment of their own.
       if (action.kind !== 'paint') {
@@ -195,7 +195,7 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
       deposits.set(deposit, {
         group: g,
         knockout: false,
-        dryBrush: deposit.brush.media === 'dry' && medium.paperContact.kind === 'valleys' && !!medium.paperContact.dryBrush,
+        dryBrush: isStampDryBrush(stampBrushPaperContact(medium, deposit.brush.media)),
         grade: kind === 0 ? UNGRADED : { kind, geometry },
         components: pigments.map((pigment) => {
           let slot = palette.findIndex(({ id }) => id === pigment.id);
@@ -220,30 +220,11 @@ export function compileStampPigmentPaint(painting: CompiledStampPaint, mixing: S
 }
 
 /** The medium `group` (by its ID, as written, boiled or live) paints in. */
-export function stampPigmentGroupMedium(paint: StampPigmentPaint, painting: CompiledStampPaint, group: Pick<CompiledStampGroup, 'id'>): PaintMedium {
+export function stampPigmentGroupMedium(paint: StampPigmentPaint, painting: StampMixedPainting, group: Pick<CompiledStampGroup, 'id'>): PaintMedium {
   const g = painting.groups.findIndex(({ id }) => id === group.id);
   if (g < 0) throw new Error(`stamp paint: ${group.id} isn't a group of the painting its paint was compiled for`);
   return paint.media[paint.groups[g].medium];
 }
-
-/** `stamp`'s share of its grain's depth in `medium` (null: flat paint), pressure's share as STAMP_PRESSURE_GRAIN_OWNER says. */
-export const stampGrainDepthIn = (stamp: PlacedStamp, medium: PaintMedium | null): number => stampGrainDepthBy(stamp, stampGrainDepthSourceIn(medium));
-
-/** What owns a stamp's grain response to pressure: the paper's tooth, or the brush (STAMP_PRESSURE_GRAIN_OWNER). */
-export type StampGrainDepthSource = 'tooth' | 'brush';
-
-/**
- * Crayon's grain policy, by the medium's paper contact: in 'peaks' contact the paper's tooth owns the pressure
- * response (paintDryContact presses into it), so the brush's grain depth by pressure, Photoshop's model of the same,
- * is set aside; kept, Kyle's Nupastel laid nothing at half pressure. In 'valleys' the brush owns it. A lift goes alike.
- */
-export const STAMP_PRESSURE_GRAIN_OWNER = { peaks: 'tooth', valleys: 'brush' } as const satisfies Record<PaintMedium['paperContact']['kind'], StampGrainDepthSource>;
-
-/** What owns a stamp's grain response to pressure in `medium`; flat paint, touching no tooth, leaves it to the brush. */
-export const stampGrainDepthSourceIn = (medium: PaintMedium | null): StampGrainDepthSource => (medium ? STAMP_PRESSURE_GRAIN_OWNER[medium.paperContact.kind] : 'brush');
-/** `stamp`'s share of its grain's depth, its pressure's share taken from `source`. */
-export const stampGrainDepthBy = (stamp: PlacedStamp, source: StampGrainDepthSource): number =>
-  stamp.grainDepth * (source === 'tooth' ? 1 : stamp.grainDepthByPressure);
 
 /** Whether two pigments are one: the same absorption, scattering and habits. A name is only for people. */
 const samePigment = (a: PaintPigment, b: PaintPigment) =>
@@ -251,7 +232,7 @@ const samePigment = (a: PaintPigment, b: PaintPigment) =>
   && a.granulation === b.granulation && a.flocculation === b.flocculation && a.staining === b.staining;
 
 /** `painting`'s underpaint (StampPigmentUnderpaint), null with no knockout. Throws past STAMP_PIGMENT_UNDERPAINT_SLOTS. */
-function stampPigmentUnderpaint(painting: CompiledStampPaint, groups: readonly StampPigmentGroup[]): StampPigmentUnderpaint | null {
+function stampPigmentUnderpaint(painting: StampMixedPainting, groups: readonly StampPigmentGroup[]): StampPigmentUnderpaint | null {
   const last = painting.groups.findLastIndex(stampGroupKnocksOut);
   if (last < 0) return null;
   const pigments: PaintPigment[] = [], media: number[] = [];

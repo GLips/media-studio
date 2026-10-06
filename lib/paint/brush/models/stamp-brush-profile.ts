@@ -9,7 +9,7 @@
 // Negative space: no pressure axis, as a fill's edges are firm, and no CPU twin of the renderer's accumulation.
 
 import type {
-  StampBrush, StampBrushEdgeSample, StampBrushMeasuredProfile, StampBrushSupportSample, StampTipSupport,
+  StampBrush, StampBrushEdgeSample, StampBrushMeasuredProfile, StampBrushProfile, StampBrushSupportSample, StampTipSupport,
 } from './stamp-brush.ts';
 
 /**
@@ -53,24 +53,48 @@ export function stampBrushProfileHash(text: string): string {
 /** A hash of the brush's settings (stampBrushProfileSettings), as its profile's key holds it. */
 export const stampBrushProfileSettingsHash = (brush: StampBrush) => stampBrushProfileHash(stampBrushProfileSettings(brush));
 
-/**
- * `brush`'s measured profile, as its boundary settled it; refuses a brush whose profile was refused, saying why, or
- * that has none (read from its source alone, or a brush no pack holds that states none).
- */
-export function stampBrushMeasuredProfile(brush: StampBrush): StampBrushMeasuredProfile {
-  const { profile } = brush;
-  if (profile.kind === 'refused') throw new Error(`stamp brush: ${brush.name} has no profile to plan with: ${profile.why}`);
-  if (profile.kind === 'unmeasured') throw new Error(`stamp brush: ${brush.name} has no profile; resolve it from its imported pack, or state one for a brush no pack holds (stampBrushStatedProfile)`);
+/** `profile` when it's measured, else why a brush holding it can't plan, in words the brush's name goes before. */
+function measuredOrWhy(profile: StampBrushProfile): StampBrushMeasuredProfile | string {
+  if (profile.kind === 'refused') return `has no profile to plan with: ${profile.why}`;
+  if (profile.kind === 'unmeasured') return 'has no profile; resolve it from its imported pack, or state one for a brush no pack holds (stampBrushStatedProfile)';
   return profile;
 }
 
 /** The diameters `profile` supports, px: its first sample's to its last's. */
 export const stampBrushProfileRange = ({ samples }: StampBrushMeasuredProfile) => ({ min: samples[0].diameter, max: samples.at(-1)!.diameter });
 
+/** Why `profile` can't be read at `diameter`, in words its brush's name goes before; null when it spans it. */
+function rangeProblem(profile: StampBrushMeasuredProfile, diameter: number): string | null {
+  const { min, max } = stampBrushProfileRange(profile);
+  return diameter >= min && diameter <= max ? null : `is measured from ${min} to ${max} px, not at ${diameter}`;
+}
+
+/**
+ * Why `brush` can't plan by its profile at `diameter`, in words its name goes before, and what's at fault: the brush,
+ * with no profile measured, or the diameter, outside it. Null when it can. Planning refuses by the same two rules
+ * (stampBrushMeasuredProfile, then bracket), so a check calling this refuses exactly what planning would.
+ */
+export function stampBrushDiameterProblem(brush: StampBrush, diameter: number): { readonly field: 'brush' | 'diameter'; readonly message: string } | null {
+  const profile = measuredOrWhy(brush.profile);
+  if (typeof profile === 'string') return { field: 'brush', message: profile };
+  const outside = rangeProblem(profile, diameter);
+  return outside === null ? null : { field: 'diameter', message: outside };
+}
+
+/**
+ * `brush`'s measured profile, as its boundary settled it; refuses a brush whose profile was refused, saying why, or
+ * that has none (read from its source alone, or a brush no pack holds that states none).
+ */
+export function stampBrushMeasuredProfile(brush: StampBrush): StampBrushMeasuredProfile {
+  const profile = measuredOrWhy(brush.profile);
+  if (typeof profile === 'string') throw new Error(`stamp brush: ${brush.name} ${profile}`);
+  return profile;
+}
+
 /** The samples either side of `diameter` and how far it is between them; refuses one outside the profile. */
 function bracket(profile: StampBrushMeasuredProfile, diameter: number, brush: string) {
-  const { min, max } = stampBrushProfileRange(profile);
-  if (!(diameter >= min && diameter <= max)) throw new Error(`stamp brush: ${brush} is measured from ${min} to ${max} px, not at ${diameter}`);
+  const outside = rangeProblem(profile, diameter);
+  if (outside !== null) throw new Error(`stamp brush: ${brush} ${outside}`);
   const above = profile.samples.findIndex((sample) => sample.diameter >= diameter), below = Math.max(0, above - 1);
   const hi = profile.samples[above], lo = profile.samples[below];
   return { lo, hi, k: hi.diameter === lo.diameter ? 0 : (diameter - lo.diameter) / (hi.diameter - lo.diameter) };
@@ -136,6 +160,10 @@ export function stampBrushEdgeOffsetMean(profile: StampBrushMeasuredProfile, dia
   }
   return sum / (2 * n);
 }
+
+/** How wide a firm stroke at `diameter` reads, px: twice its mean visible offset, as `studio brushes describe` prints it. */
+export const stampBrushVisibleWidth = (profile: StampBrushMeasuredProfile, diameter: number, brush: string): number =>
+  2 * stampBrushEdgeOffsetMean(profile, diameter, brush);
 
 /** A layer's tip support at the samples either side of a diameter: a bound takes the larger of the two. */
 export type StampTipSupportAround = readonly [StampTipSupport, StampTipSupport];

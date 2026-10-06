@@ -62,7 +62,9 @@ export { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 export { useScreenRect } from '#lib/picture/measurement/studio/screen-rect.ts';
 export { defineVideo, videoFormatOf, type ScenePrevis, type VideoSound } from '#lib/picture/video/studio/video.ts';
 export type { LineSpan, SceneClock } from '#lib/timing/timeline/models/video-layout.ts';
-export { sceneCueSeconds, sceneForTimelineClock } from '#lib/picture/video/studio/timeline-scene.tsx';
+export { sceneForTimelineClock } from '#lib/picture/video/studio/timeline-scene.tsx';
+export { sceneCueSeconds } from '#lib/timing/timeline/models/scene-cue-seconds.ts';
+export { sceneSecondsOf, type SceneClockSeconds, type SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
 export type { SceneRung } from '#lib/timing/timeline/models/scene-rung.ts';
 export { blockingScene } from '#lib/footage/previs/studio/blocking-scene.tsx';
 export { SFX, Sfx, SfxCueListAudio, SfxCueListPlaying, type SfxCueSound, type SfxSound } from '#lib/timing/sound/studio/sfx.tsx';
@@ -87,7 +89,7 @@ export type { PaintMaterial, StampPaintColor } from '#lib/paint/materials/models
 export type { StampCondition, StampSheen, StampWaitEffect, StampWashWait, StampWetEffectKind } from '#lib/paint/painting/models/stamp-wash-effects.ts';
 export { stampMarkStamps, stampScatteredStrokePath, stampScatterMarks, type StampMark, type StampMarkAnchor, type StampMarkGeometry, type StampScatterAngle, type StampScatteredMark, type StampScatterOptions, type StampScatterPlacement } from '#lib/paint/painting/models/stamp-marks.ts';
 export { pickStampMaterial, stampMaterialSet, stampMaterialSetProblem, type StampMaterialSet, type StampMaterialSetEntry } from '#lib/paint/painting/models/stamp-material-set.ts';
-export { compileStampWetness } from '#lib/paint/painting/models/stamp-wetness.ts';
+export { compileStampWetness } from '#lib/paint/painting/models/stamp-wash-waits.ts';
 export { assertStampWetEffects, stampWetReport, stampWetReportStrictFailures, stampWetReportWarnings, type StampWetReport, type StampWetReportDrying, type StampWetReportEffect, type StampWetReportTouch, type StampWetReportWait, type StampWetReportWash } from '#lib/paint/painting/models/stamp-wet-report.ts';
 export { stampRegionOutline, stampSmoothRegion, type StampFillApplication } from '#lib/paint/painting/models/stamp-fill.ts';
 export { STAMP_FILL_PATTERNS, stampFillMarks, stampFillStrokePath, type StampFillGuides, type StampFillMark, type StampFillPattern, type StampFillReach, type StampFillStrokes, type StampFillTurns, type StampGuide } from '#lib/paint/painting/models/stamp-fill-strokes.ts';
@@ -96,6 +98,8 @@ export type { StampEdge, StampPoint, StampRegion } from '#lib/paint/painting/mod
 export type { StampArea, StampStandsBefore, StampWithin } from '#lib/paint/painting/models/stamp-area.ts';
 export type { StampBoundaries, StampBoundary, StampBoundaryTreatment } from '#lib/paint/painting/models/stamp-area-boundaries.ts';
 export type { StampNoiseField, StampPaintField } from '#lib/paint/painting/models/stamp-paint-field.ts';
+// StampGroupMotion is the recipe path's (StampPainting): keyed placements, linear between keys. A shot moves a group
+// by a node's place play, its value a PresentationValue.
 export type { StampGroupBoil, StampGroupMotion, StampGroupPaper } from '#lib/paint/painting/models/stamp-group-motion.ts';
 export type { StampWarpMap } from '#lib/paint/painting/models/stamp-group-warp.ts';
 export { paintMoment, type PaintMoment, type StampGroupFrameState, type StampPaintFrameAt, type StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
@@ -115,8 +119,12 @@ export { svgFigureShapes, svgPathRegions, type SvgPathFigure, type SvgPathPlacem
 export { buildPaintMotion, type PaintMotionBuild } from '#lib/paint/animation/models/paint-motion.ts';
 export { paintMotionPlay, type PaintBoilMarks, type PaintLivePose, type PaintLivePoser, type PaintMarks, type PaintMotion, type PaintMotionNode, type PaintMotionPlay } from '#lib/paint/animation/models/paint-motion-compile.ts';
 export { paintMotionFrameAt } from '#lib/paint/animation/models/paint-motion-frame.ts';
-export { paintIdHash, paintIdPhase, type PaintEase, type PaintMotionClip, type PaintPose, type PaintPoseClip } from '#lib/paint/animation/models/paint-motion-clips.ts';
-export type { PaintPartPin, PaintPin, PaintPinMove, PaintPinRig, PaintRadialPin } from '#lib/paint/animation/models/paint-pins.ts';
+export { paintIdHash, paintIdPhase, type PaintMotionClip, type PaintPlaceClip, type PaintPose, type PaintPoseClip } from '#lib/paint/animation/models/paint-motion-clips.ts';
+export type { PaintPartPin, PaintPin, PaintPinRig, PaintPlacementMove, PaintRadialPin } from '#lib/paint/animation/models/paint-pins.ts';
+// Values in time (docs/painting-authoring.md, Composition: Values in time): a constant or a function of the moment, keyed with curves.
+export { presentationValueAt, type PaintKeyed, type PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
+export { paintKeyed, paintKeyedAccent, paintKeyedHit, type PaintKey, type PaintKeyedOptions } from '#lib/paint/animation/models/paint-keyed.ts';
+export type { PaintCurve } from '#lib/paint/animation/models/paint-curves.ts';
 export { type PaintNodeClock, type PaintPlayClock, type PaintPlayLoop } from '#lib/paint/animation/models/paint-clock.ts';
 export { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
 // Pigment paint: a style that paints in pigment names its medium and pigments; a deposit lays a colour or a mixture.
@@ -131,3 +139,19 @@ export { StampPainting } from '#lib/paint/style/studio/stamp-painting.tsx';
 export type { StampPictureAt, StampPictureRgba, StampPlane, StampPlaneSource } from '#lib/paint/painting/models/stamp-plane.ts';
 export type { PaintedThree, PaintedThreeOffscreenPass, PaintedThreeSource, PaintedThreeSourceScene, PaintedThreeSourceTools, PaintedThreeTexture } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
 export { paintedThreeColorNode } from '#lib/paint/three-layers/studio/painted-three-material.ts';
+export { setThreeMirrorCamera } from '#lib/picture/shot-camera/studio/three-mirror-camera.ts';
+export type { PaintedThreeShadows } from '#lib/paint/three-layers/studio/painted-three-shadows.ts';
+// Painting sources (docs/painting-authoring.md): a `*.painting.ts` factory returns a PaintingDocument, whose types a
+// source imports from lib/paint/document/models/painting-document.ts. A scene evaluates it and selects its layers.
+export { checkPaintingSource, painting, type PaintingEvaluation, type PaintingFactory, type PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
+export type { PropertySchema, PropertySpec, PropertyValues } from '#lib/paint/document/models/painting-properties.ts';
+export type { PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
+export { layersOf, type LayerSelection, type SelectionGround } from '#lib/paint/document/models/painting-selection.ts';
+export { dissolve, type Dissolve, type PaintedSource } from '#lib/paint/shot/models/shot-selection.ts';
+export { paintingInTime, type PaintingInTime, type PaintingInTimeOptions, type PaintingInTimeValues } from '#lib/paint/shot/models/shot-painting-in-time.ts';
+export type {
+  CoverFrame, InstancedPlaneProps, OccurrenceKey, OccurrenceProps, OccurrenceRig, PaintedShotProps, PaintedTexture, PictureSource, PinPoint, PlaneInstance,
+  PlaneLay, PlaneMask, PlaneProps, RigPart, RigPartPose, ScreenPin, ShotNodePlay, ThreeSource,
+} from '#lib/paint/shot/models/shot-props.ts';
+export type { PaintShotCamera, PaintShotLens } from '#lib/paint/animation/models/paint-camera-build.ts';
+export { PaintedShot, PaintedShotCanvas } from '#lib/paint/shot/studio/painted-shot.tsx';

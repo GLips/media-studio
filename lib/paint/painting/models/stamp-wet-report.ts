@@ -9,7 +9,8 @@ import type { CompiledStampDeposit, CompiledStampPaint, CompiledStampPass } from
 import type { CompiledStampWashWait, StampWaitEffect, StampWashWait, StampWetEffectKind } from './stamp-wash-effects.ts';
 import { stampBloomBound } from './stamp-wet-bloom.ts';
 import { stampDryingRimBound } from './stamp-wet-rim.ts';
-import { stampWaitDeposits, type StampWashWaitRecord, type StampWetFinds, type StampWetness } from './stamp-wetness.ts';
+import { stampWaitDeposits } from './stamp-wash-waits.ts';
+import type { StampWashDrying, StampWashWaitRecord, StampWetFinds, StampWetness } from './stamp-wetness.ts';
 
 /**
  * A wait: what it waits for and judged, what it stood before (the effect that asked, else its one deposit), its
@@ -38,11 +39,11 @@ export type StampWetReportTouch = {
 export type StampWetReportEffect = { kind: StampWetEffectKind; id: string; mayActing: 'all' | 'some' | 'none'; reason: string | null; touches: readonly StampWetReportTouch[] };
 
 /**
- * A drying (StampWashDrying) of `deposits` laid since the last: at painting second `at`, how far above damp its
- * wettest paper can have been (`wetShare`, 0..1), and the widest its rim's band can be, px (stampDryingRimBound).
- * `rim`: its strength. None for a drying that painted nothing.
+ * A drying (StampWashDrying) of `deposits` laid since the last, closed as its wash `set` or at its `end`: at painting
+ * second `at`, how far above damp its wettest paper can have been (`wetShare`, 0..1), and the widest its rim's band
+ * can be, px (stampDryingRimBound). `rim`: its strength. None for a drying that painted nothing.
  */
-export type StampWetReportDrying = { closes: 'wait' | 'end'; at: number; deposits: number; wetShare: number; band: number; rim: number };
+export type StampWetReportDrying = { closes: StampWashDrying['closes']; at: number; deposits: number; wetShare: number; band: number; rim: number };
 
 /** A wash's report; `strict` when its passage holds it to it (stampWetReportStrictFailures). */
 export type StampWetReportWash = { id: string; duration: number; waits: readonly StampWetReportWait[]; effects: readonly StampWetReportEffect[]; dryings: readonly StampWetReportDrying[]; strict: boolean };
@@ -78,7 +79,7 @@ function washReport(pass: Extract<CompiledStampPass, { kind: 'wash' }>, wetness:
     const bound = stampDryingRimBound(drying, wetness);
     if (!bound) return [];
     const { closes, at, deposits, rim } = drying;
-    return [{ closes: closes === 'end' ? 'end' : 'wait', at, deposits: deposits.length, wetShare: bound.wetShare, band: bound.band, rim }];
+    return [{ closes, at, deposits: deposits.length, wetShare: bound.wetShare, band: bound.band, rim }];
   });
   return { id: pass.id, duration, waits, effects, dryings, strict: pass.wash.strict === true };
 }

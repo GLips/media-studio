@@ -1,5 +1,5 @@
 // A throwaway git repo for a check's spec: the files are written and staged, and the check reads the index, as
-// check:arch does. Checks are looked up through the registry, so a spec fails for a check nobody registered.
+// check:arch does under a hook. Checks are looked up through the registry, so a spec fails for a check nobody registered.
 //
 // One repository holds the fixture's work/ too: the tree is one path space however many repositories feed it, so a
 // check reads `work/projects/p/…` the same either way (arch-verdict.test.ts reads a real nested workspace).

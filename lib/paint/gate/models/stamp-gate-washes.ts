@@ -15,7 +15,7 @@ import { PAINT_BANDS } from '#lib/paint/materials/models/paint-spectrum.ts';
 import { PAINT_MEDIA, paintMediumCan } from '#lib/paint/materials/models/paint-medium.ts';
 import { WATERCOLOUR_PIGMENTS as W } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import type { PaintPigmentAppearance } from '#lib/paint/materials/models/paint-pigment.ts';
-import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
+import { compileStampPaintRecipe, stampMixedPainting } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import type { StampPaintPaper, StampPassageScope } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
@@ -266,8 +266,9 @@ function washCases(): StampGateWashCase[] {
     stampGateLiftColourCase('wash/lift-paler-gouache-wet', 'gouache', false),
     stampGateLiftColourCase('wash/lift-paler-gouache-dry', 'gouache', true),
     stampGateLiftColourCase('wash/lift-paler-crayon', 'crayon', false),
-    // A dry brush and a wet one in watercolour, read against the paper's grain.
-    stampGateDryBrushCase('wash/dry-brush'),
+    // A dry brush and a wet one in each wet medium, read against the paper's grain.
+    stampGateDryBrushCase('wash/dry-brush', 'watercolour'),
+    stampGateDryBrushCase('wash/dry-brush-gouache', 'gouache'),
     {
       id: 'wash/wait', property: 'drawn',
       subject: washPainting('watercolour', null, (wash) => {
@@ -308,7 +309,7 @@ export function stampGateWashCase(id: string): StampGateWashCase {
 export function stampGateLastGroupPigments({ painting }: StampGatePainting): string[] {
   const { mixing } = painting;
   if (mixing.kind !== 'pigment') throw new Error('stamp gate: a wash case paints in pigment');
-  return compileStampPigmentPaint(painting, mixing, PAINT_BANDS).groups.at(-1)!.palette.map(({ id }) => id);
+  return compileStampPigmentPaint(stampMixedPainting(painting), mixing, PAINT_BANDS).groups.at(-1)!.palette.map(({ id }) => id);
 }
 
 /**

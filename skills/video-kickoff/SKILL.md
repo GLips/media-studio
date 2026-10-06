@@ -116,11 +116,15 @@ changing its binding; `timeline.ts` doesn't change.
 **Cut to music** (the high-energy register):
 
 1. Get the track (`video-sound`, music) and cut it to the beat sheet's shape with `studio music fit <p> --bars`. To
-   plan before there's a track, put the timeline on a tempo guess (`tempoGrid(120)`): the animatic plays silent, and
-   the track, fitted later to the same beat counts, swaps in as `recordedGrid(track)`. Guess the tempo you'll use: a
-   different one changes every beat's length, so re-check the pacing once the track is in.
+   plan before there's a track, put the timeline on a tempo guess (`tempoGrid(120)`): with no `music` in `video.tsx`
+   the animatic and a render play a click on each beat (a draft, which the render warns of), and the track, fitted
+   later to the same beat counts, swaps in as `recordedGrid(track)`. Guess the tempo you'll use: a different one
+   changes every beat's length, so re-check the pacing once the track is in.
 2. Write `timeline.ts` from the beat sheet (`video-motion`, "The high-energy register"): a `beatSpan` per bar, a cue
    for each idea that lands on a beat, named for what lands (`ink.strike2`), the replays and the final hit's landmark.
+   The final hit is the last bar's end (`cues: { stop: 'end' }`, landmark `downbeat: -1`), with the recording's ring-out
+   playing on past it: a hit inside a longer bar lets the retime test's lengthened bar through ("the unchanged
+   recording accepts it").
 3. Block each bar in its file, with the beat sheet's text as its `note`: its pieces moving as the idea does, each
    idea's arrival on its cue, so it lands on the beat.
 4. Run `studio render <p> --animatic`, then `studio review <p>`. The animatic plays with the music; the scrubber marks

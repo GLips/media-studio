@@ -10,11 +10,18 @@
 
 import type { StampBlend } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampKeySpanAt, type StampKeyList } from '../models/stamp-scene-keys.ts';
-import { STAMP_OPAQUE_COVER, type CompiledStampDeposit, type CompiledStampPaint } from '../models/stamp-paint-recipe-compile.ts';
+import { STAMP_OPAQUE_COVER, type CompiledStampDeposit, type StampMixedPainting } from '../models/stamp-paint-recipe-compile.ts';
 import { gpuUniformLayout, gpuUniformWriter, type GpuUniformField, type GpuUniformLayout, type GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 
 /** A texture the compositor keeps its paint in: four channels, or an array of `layers` of four. */
 export type StampPaintTarget = { kind: 'plain' } | { kind: 'array'; layers: number };
+
+/** The WGSL declaring a compositor's `target` as `name` at `binding`: storage with `access`, or sampled for null. */
+export function stampPaintTargetWgsl(name: string, binding: number, target: StampPaintTarget, access: 'read_write' | 'write' | null) {
+  const array = target.kind === 'array' ? '_array' : '';
+  const type = access ? `texture_storage_2d${array}<rgba16float, ${access}>` : `texture_2d${array}<f32>`;
+  return `@group(0) @binding(${binding}) var ${name}: ${type};`;
+}
 
 /**
  * A way of mixing paint: WGSL for four passes, each binding its own resources. The renderer declares `layer` and `painting` from `targets`; in the deposit pass `paint` (a
@@ -36,12 +43,13 @@ export type StampPaintCompositor = {
     layout: GpuUniformLayout<readonly GpuUniformField[]>;
     /**
      * Its bindings from 24; `paperKept(tooth, mean, depth)`, `layerCoverage(pixel)` and `layDeposit(pixel, coverage,
-     * rims, tooth, at, press)`: `rims` the main and dual burnt rims apart, `tooth` the paper's paint here and its mean,
-     * `press` 0..1 drawn, PAINT_DRY_BURNISHED_PRESS burnished, 1 unread.
+     * rims, tooth, at, press, wrap)`: `rims` the burnt rims, main and dual, `tooth` the paper's paint here and its
+     * mean, `at` where its paint was planned (its fields and clumps read there), `press` 0..1 drawn,
+     * PAINT_DRY_BURNISHED_PRESS burnished, 1 unread, `wrap` the stage's STAGE_WRAP.
      */
     wgsl: string;
     /**
-     * For a compositor that lays washes: `landDeposit(pixel, coverage, rims, tooth, at, reserved, wet)`, a wash's deposit laid as
+     * For a compositor that lays washes: `landDeposit(pixel, coverage, rims, tooth, at, reserved, wet, wrap)`, a wash's deposit laid as
      * its WetLanding says, coverage hardened already; `reserved`, what masking fluid held off it (a knockout's reserve). The renderer declares WetLanding (with `settled`), the landing
      * laws (stamp-wet-landing.ts), and WET_PAINT, WET_WATER and WET_LIFT. Absent, a painting with a wash is refused.
      */
@@ -65,14 +73,29 @@ export type StampPaintCompositor = {
     resources: (paper: { photograph: GPUTextureView; sampler: GPUSampler }) => GPUBindingResource[];
     /**
      * `groupCover(layer0, glaze)`: how much of a pixel a group's layer covers as laid, 0..1 before its opacity, from its
-     * first layer's texel alone. A glow weighs the light it takes by it. Binds nothing.
+     * first layer's texel alone. StampPainting's glow weighs the light it takes by it and an opaque group dims the glow
+     * under it by it; a shot's alphaOf mask reads it. Binds nothing.
      */
     cover: string;
   };
-  /** For a compositor that lays washes, how a wash group's layer is kept, for the stages that move its paint. */
-  wash?: StampWashLayer;
+  /**
+   * For a compositor that lays washes, how a wash group's layer is kept, for the stages that move its paint: by a
+   * deposit, or by `group(index)` (a sheet solve's film f is its group f).
+   */
+  wash?: StampWashLayer & { group: (index: number) => StampWashGroupLayer };
   /** `layPaper(pixel, color)`, `color` gamma-encoded. */
   paper: string;
+  /**
+   * `layCard(pixel, color, cover)`: paper of `color` (gamma-encoded) over what's there by `cover` 0..1: an own sheet's
+   * card (ENGINE 5.4). Reads and writes `painting`; the includer declares GPU_SRGB_WGSL.
+   */
+  card: string;
+  /**
+   * `layPicture(pixel, light, cover)`: premultiplied linear light over what's there by its alpha `cover` (0 < cover ≤
+   * 1), reading as `light` plus what's there by 1 − cover: a rig's pieces (ENGINE 6.5). Reads and writes `painting`;
+   * the includer declares GPU_SRGB_WGSL.
+   */
+  picture: string;
   /**
    * What the painting shows at a pixel, read from `painting` alone: `screenColor(pixel)` gamma-encoded, as a still is
    * output, and `linearLight(pixel)` within 0..1, as a plane's picture holds it (stamp-paint-plane-passes.ts).
@@ -89,18 +112,22 @@ export type StampWashLayer = {
   layersOf: (deposit: CompiledStampDeposit) => number;
   /**
    * WGSL for `deposit`'s group, of layersOf(deposit) layers in its medium: `washPigmentMask(l)`, 1 on layer `l`'s
-   * pigment channels; `washPigmentTotal(v)` and `washOpen(v)`, a pixel's pigment and open share; and
-   * `washMoved(now, wasPigment)`, the pixel once a stage has moved its pigment total from `wasPigment` to `now`'s, its
-   * other channels as before the move.
+   * pigment channels; `washPigmentTotal(v)` and `washOpen(v)`, a pixel's pigment and open share; `washSettled(v)`, the
+   * pixel with its open share set to none; and `washMoved(now, wasPigment)`, the pixel once a stage has moved its
+   * pigment total from `wasPigment` to `now`'s, its other channels as before the move.
    */
   movedWgsl: (deposit: CompiledStampDeposit) => string;
   /**
-   * WGSL for `deposit`'s group: `washHold(l, at, tooth, depth, held)`, how much of each of layer `l`'s channels the
-   * paper holds at `at` against its mean (1), as the compositor lays paint there; `tooth` the paper's paint here and
-   * its mean, `depth` the paper's, `held` the layer's amounts. Moved paint evens out per unit of it.
+   * WGSL for `deposit`'s group: `washHold(l, at, tooth, depth, held, wrap)`, how much of each of layer `l`'s channels
+   * the paper holds at `at` against its mean (1), as the compositor lays paint there; `tooth` the paper's paint here and
+   * its mean, `depth` the paper's, `held` the layer's amounts, `wrap` the stage's STAGE_WRAP. Moved paint evens out per
+   * unit of it.
    */
   holdWgsl: (deposit: CompiledStampDeposit) => string;
 };
+
+/** One wash group's layer: layersOf, movedWgsl and holdWgsl for any deposit of it. */
+export type StampWashGroupLayer = { layers: number; movedWgsl: string; holdWgsl: string };
 
 const BLENDS: readonly StampBlend[] = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'colorBurn'];
 
@@ -174,7 +201,7 @@ function easedGammaColor(keys: StampKeyList<{ at: number }>, colors: readonly (r
  * pigments, a graded material or a wash: flat colour has no pigment to grade or water to carry it; and on a group on
  * its own paper: flat colour lays no paper under a group, so it has none to carry.
  */
-export function flatStampPaintCompositor(painting: CompiledStampPaint): StampPaintCompositor {
+export function flatStampPaintCompositor(painting: StampMixedPainting): StampPaintCompositor {
   const writers = new Map<CompiledStampDeposit, (views: GpuUniformViews, t: number) => void>();
   const cutOut = painting.groups.find((group) => group.paper === 'own');
   if (cutOut) throw new Error(`stamp paint: ${cutOut.id} lies on its own paper, and a group carries paper only in a style that paints in pigment`);
@@ -224,7 +251,7 @@ fn layerCoverage(pixel: vec2u) -> f32 { return textureLoad(layer, pixel).a; }
 fn depositPaint(under: vec4f, color: vec3f, blend: i32, coverage: f32) -> vec4f {
   return laidOver(under, vec4f(color, 1.0) * clamp(coverage, 0.0, 1.0), blend);
 }
-fn layDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32) {
+fn layDeposit(pixel: vec2u, coverage: f32, rims: vec2f, tooth: vec2f, at: vec2f, press: f32, wrap: vec2f) {
   var color = paint.color;
   if (paint.tinted == 1u) { color = tinted(color, pixel); }
   var over = depositPaint(textureLoad(layer, pixel), color, paint.blend, coverage);
@@ -258,6 +285,13 @@ fn layGroup(pixel: vec2u, glaze: bool, opacity: f32) {
       resources: () => [],
     },
     paper: /* wgsl */ `fn layPaper(pixel: vec2u, color: vec3f) { textureStore(painting, pixel, vec4f(color, 1.0)); }`,
+    card: /* wgsl */ `
+fn layCard(pixel: vec2u, color: vec3f, cover: f32) { textureStore(painting, pixel, mix(textureLoad(painting, pixel), vec4f(color, 1.0), cover)); }`,
+    picture: /* wgsl */ `
+fn layPicture(pixel: vec2u, light: vec3f, cover: f32) {
+  let behind = srgbDecoded(clamp(textureLoad(painting, pixel).rgb, vec3f(0.0), vec3f(1.0)));
+  textureStore(painting, pixel, vec4f(srgbEncoded(clamp(light + (1.0 - cover) * behind, vec3f(0.0), vec3f(1.0))), 1.0));
+}`,
     output: /* wgsl */ `
 fn screenColor(pixel: vec2u) -> vec3f { return textureLoad(painting, pixel, 0).rgb; }
 fn linearLight(pixel: vec2u) -> vec3f { return srgbDecoded(clamp(screenColor(pixel), vec3f(0.0), vec3f(1.0))); }`,

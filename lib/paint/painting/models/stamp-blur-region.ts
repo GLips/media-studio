@@ -3,7 +3,10 @@
 // which sits a quarter texel before a half-size texel's centre: a box starting on an even pixel reads the texel before
 // its own half, and the last pixel reads the texel after.
 
-export type StampPixelBox = { x: number; y: number; w: number; h: number };
+import type { StampTexelBoxMark } from './stamp-stage.ts';
+
+/** A box of a target's whole texels. A box of painting points (StampPointBox) reads as one only through its stage. */
+export type StampPixelBox = { x: number; y: number; w: number; h: number } & StampTexelBoxMark;
 
 /**
  * The texels of a `halfW` × `halfH` blur (a `width` × `height` painting's, halved and rounded up) that the resolve of

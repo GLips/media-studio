@@ -1,3 +1,5 @@
 {
-  "lib/paint/style": "StampPainting loads a scene's three.js sources on its device's owner and renders them each frame."
+  "lib/paint/style": "StampPainting loads a scene's three.js sources on its device's owner and renders them each frame.",
+  "lib/paint/shot": "A shot draws a three.js source as the three layers build it, with its painted textures.",
+  "lib/paint/gate": "The gate loads a three.js cylinder through the three-source loader, its material reading a painted texture as a shot's three source would; and builds the lit shot's stands as three sources (soft shadows, a planar mirror pass following the camera), loading one apart to render exposures and reading them through the camera a three plane renders through (painted-three-camera)."
 }

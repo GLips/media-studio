@@ -45,6 +45,10 @@ scene turns its clock into a scene with `sceneForTimelineClock`, and `sceneCueSe
 `s.t`'s seconds. A finale's replays are declared in the timeline and handed in. A move that must keep its length is a start plus a duration anchored at one end (`{ from:
 { at: 'end', frames: -3.75 }, to: { at: 'end', frames: -1 } }`), never pinned between two scenes' moments: the
 project's `timeline.test.ts` runs the retime runner, which lengthens every scene and fails a move that stretches.
+`clock.beat(n)` reaches every beat of its scene, its end (`beat(beats)`) included. On a recorded grid the music's final
+hit is a landmark (`downbeat: -1`) on the last beat scene's `'end'` cue, so a longer bar pushes it off the recording
+and is refused. A `timeline.test.ts` whose timeline reads `music/index.ts` or `audio/manifest.ts` imports
+`#lib/output/render/engine/tsx-test-hooks.ts` before the timeline, which loads their audio as URLs.
 `studio clock <project>` prints the resolved frames on the video, each scene at its origin. `studio new <slug> --capability voice-led`
 (or `music-led`, `mixed`) writes a timeline of each kind that already passes the retime test; start from it.
 

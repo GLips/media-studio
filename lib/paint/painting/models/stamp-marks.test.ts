@@ -4,12 +4,13 @@ import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampMarkStamps, stampScatterMarks, type StampMark } from './stamp-marks.ts';
 import { stampMaterialSet, type StampMaterialSet } from './stamp-material-set.ts';
-import { compileStampPaintRecipe, stampPassDeposits } from './stamp-paint-recipe-compile.ts';
+import { compileStampPaintRecipe, stampMixedPainting, stampPassDeposits } from './stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampPaintEnvironment, StampPassageScope } from './stamp-paint-recipe-types.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import { stampPolygonDistance, stampRegionPolygon, type StampRegion } from './stamp-region.ts';
-import { compileStampWetness, stampDrying, stampPaintMedia } from './stamp-wetness.ts';
+import { stampDrying, stampPaintMedia } from './stamp-wetness.ts';
+import { compileStampWetness } from './stamp-wash-waits.ts';
 import { stampRoundTipsOf, stampRoundTipStatedProfile } from './stamp-tip-support.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { stampCharge } from './stamp-wet-techniques.ts';
@@ -109,7 +110,7 @@ test("a charge when damp waits for the paper under its touches, not for wetter p
   });
   const [pass] = painting.groups[0].passes;
   const { wetting } = PAINT_MEDIA.watercolour, paper = { color: '#ffffff' } as const;
-  const { waits: [local] } = compileStampWetness(painting, stampPaintMedia(painting, () => PAINT_MEDIA.watercolour), stampRoundTipsOf()).washes.get(pass)!;
+  const { waits: [local] } = compileStampWetness(painting, stampPaintMedia(stampMixedPainting(painting), () => PAINT_MEDIA.watercolour), stampRoundTipsOf()).washes.get(pass)!;
   assert.deepEqual(local.step, { kind: 'wait', until: 'damp', under: { deposits: ['g/w/cool-0', 'g/w/cool-1', 'g/w/cool-2', 'g/w/cool-3'] }, effect: { kind: 'charge', id: 'g/w/cool' }, authored: true });
   // Until the sky's water under the touches is damp, not the puddle's, which is wetter.
   const { rate } = stampDrying(wetting, paper);

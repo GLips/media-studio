@@ -7,6 +7,7 @@
 // lifts erode a stain about 1–2% a lift. Holding it exactly needs a stored stain per pigment, doubling the layer.
 
 import type { PaintLiftResidue } from '#lib/paint/materials/models/paint-medium.ts';
+import { gpuWgslFloat } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 
 /**
  * Of a stain, the share already held while the paint is wet: a staining pigment's finest particles dye the fibres as
@@ -14,13 +15,11 @@ import type { PaintLiftResidue } from '#lib/paint/materials/models/paint-medium.
  */
 const STAMP_LIFT_WET_STAIN_HOLD = 0.4;
 
-const wgslFloat = (value: number) => value.toPrecision(9);
-
 /** `residue` as the WGSL laws read it, a LiftResidue: its depth in films, its share of the coat, its hold while wet. */
 export function stampLiftResidueWgsl(residue: PaintLiftResidue): string {
   switch (residue.kind) {
-    case 'staining': return `LiftResidue(${wgslFloat(residue.films)}, 0.0, LIFT_WET_STAIN_HOLD)`;
-    case 'pressed': return `LiftResidue(0.0, ${wgslFloat(residue.share)}, 1.0)`;
+    case 'staining': return `LiftResidue(${gpuWgslFloat(residue.films)}, 0.0, LIFT_WET_STAIN_HOLD)`;
+    case 'pressed': return `LiftResidue(0.0, ${gpuWgslFloat(residue.share)}, 1.0)`;
     default: return residue satisfies never;
   }
 }
@@ -52,7 +51,7 @@ export function stampLiftKnockoutKeep(residue: PaintLiftResidue, staining: numbe
 
 /** The lift's laws, each as its comment says. `open` is the pixel's open share, how much of its paint hasn't set. */
 export const STAMP_WET_LIFT_WGSL = /* wgsl */ `
-const LIFT_WET_STAIN_HOLD = ${wgslFloat(STAMP_LIFT_WET_STAIN_HOLD)};
+const LIFT_WET_STAIN_HOLD = ${gpuWgslFloat(STAMP_LIFT_WET_STAIN_HOLD)};
 // What a lift leaves of a medium's paint however strong (stampLiftResidueWgsl): \`films\` deep of a stain, \`share\`
 // of a coat of pressed wax, \`wetHold\` of it held while the paint is wet. Each medium sets one of the two.
 struct LiftResidue { films: f32, share: f32, wetHold: f32 }

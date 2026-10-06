@@ -1,17 +1,18 @@
 // stamp-gate-page.ts: the GPU gate's browser side, run by engine/stamp-gate.ts through withBrowserModulePage. It runs
 // the formula grids (stamp-gate-formulas.ts) on the renderer's own WGSL, paints the gate's paintings
-// (stamp-gate-paintings.ts) with the studio's renderer, holds a traced resolve to the frame it draws, and paints each
-// wash case, reading its layer back for the properties it's held to (stamp-gate-washes.ts, stamp-gate-water-marks.ts),
-// animates the animation cases (stamp-gate-animation.ts) and runs the flow, bloom and rim stages alone over layers it writes
-// (stamp-gate-flow.ts, stamp-gate-stripe.ts), and draws the region cases (stamp-gate-regions.ts). Paintings are built
-// here, as a compiled painting's typed arrays don't survive the trip from Node.
+// (stamp-gate-paintings.ts), holds a traced resolve to the frame it draws, and paints each wash case, reading its
+// layer back (stamp-gate-washes.ts, stamp-gate-water-marks.ts), animates the animation cases and runs the flow, bloom
+// and rim stages alone (stamp-gate-flow.ts, stamp-gate-stripe.ts), draws the region cases, solves the sheet cases
+// (stamp-gate-sheet-page.ts), draws the painted textures and a shot over a page (stamp-gate-shot-dom-page.ts), and
+// holds reveals to their twin (stamp-gate-reveals-page.ts). Paintings are built here, as a compiled painting's typed
+// arrays don't survive the trip from Node.
 
 import { PAINT_KUBELKA_MUNK_WGSL } from '#lib/paint/materials/models/paint-kubelka-munk.ts';
 import { PAINT_PAPER_WGSL } from '#lib/paint/materials/models/paint-paper.ts';
 import { COVERAGE_FORMULAS_WGSL } from '#lib/paint/brush/models/coverage-formulas.ts';
 import { STAMP_ACCUMULATION_LAY_WGSL, STAMP_ACCUMULATION_RESOLVE_WGSL } from '#lib/paint/painting/models/stamp-deposit-stages.ts';
 import { STAMP_PAINT_FIELD_SHARE } from '#lib/paint/painting/models/stamp-paint-field.ts';
-import { stampPassDeposits, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
+import { stampMixedPainting, stampPassDeposits, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { STAMP_WET_LAND_WGSL } from '#lib/paint/painting/models/stamp-wet-landing.ts';
 import { STAMP_WET_LIFT_WGSL } from '#lib/paint/painting/models/stamp-wet-lift.ts';
 import { STAMP_WET_BLOOM_WGSL } from '#lib/paint/painting/models/stamp-wet-bloom.ts';
@@ -20,13 +21,15 @@ import { STAMP_TIP_TOUCH_WGSL } from '#lib/paint/painting/models/stamp-wet-conta
 import { STAMP_GRID_AT_WGSL, STAMP_POLYGON_DISTANCE_WGSL, STAMP_REGION_WGSL } from '#lib/paint/painting/models/stamp-region.ts';
 import { STAMP_AREA_COVERAGE_WGSL } from '#lib/paint/painting/models/stamp-area.ts';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
-import { compileStampWetness, STAMP_LANDED_WETNESS_WGSL, STAMP_WET_PAPER_WGSL, stampPaintMedia } from '#lib/paint/painting/models/stamp-wetness.ts';
+import { STAMP_LANDED_WETNESS_WGSL, STAMP_WET_PAPER_WGSL, stampPaintMedia } from '#lib/paint/painting/models/stamp-wetness.ts';
+import { compileStampWetness } from '#lib/paint/painting/models/stamp-wash-waits.ts';
 import { stampRoundTipsOf } from '#lib/paint/painting/models/stamp-tip-support.ts';
 import { requestStudioGpuDevice } from '#lib/platform/gpu/studio/gpu-device-owner.ts';
 import { STAMP_WET_FLOW_STAGE } from '#lib/paint/painting/studio/stamp-wet-flow.ts';
 import { STAMP_BLOOM_STAGE } from '#lib/paint/painting/studio/stamp-wet-bloom.ts';
 import { STAMP_DRYING_RIM_STAGE } from '#lib/paint/painting/studio/stamp-wet-rim.ts';
-import { STAMP_WET_STAGES } from '#lib/paint/painting/studio/stamp-wet-stages.ts';
+import { STAMP_WET_STAGES } from '#lib/paint/painting/studio/stamp-wet-stage-list.ts';
+import { planStampWetStage } from '#lib/paint/painting/studio/stamp-wet-stages.ts';
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { StampBrush, StampBrushAsset } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { StampBrushProbeMedium } from '#lib/paint/brush-packs/models/stamp-brush-profile-probes.ts';
@@ -48,8 +51,14 @@ import {
   checkStampGateFlow, STAMP_GATE_FLOW_SIZE, stampGateFlowCase, stampGateFlowField, stampGateFlowLayer, stampGateFlowPainting,
 } from '../models/stamp-gate-flow.ts';
 import { stampGatePrivatePainting, type StampGatePrivateCase } from '../models/stamp-gate-private-cases.ts';
-import { drawn, drawnImages, gateRenderer, withGateRenderer, withGateSurface } from './stamp-gate-page-surface.ts';
+import { drawn, drawnImages, gateRenderer, stampGateRgbBase64, withGateRenderer, withGateSurface } from './stamp-gate-page-surface.ts';
 import { checkStampGateStageCase, checkStampGateThreeCase } from './stamp-gate-stage-page.ts';
+import { checkStampGateSheetCase, paintStampGateSolved } from './stamp-gate-sheet-page.ts';
+import { checkStampGateShotCase, paintStampGateShot } from './stamp-gate-shot-page.ts';
+import { checkStampGateShotTextureCase, checkStampGateTextureCase, paintStampGateShotTexture, paintStampGateTexture } from './stamp-gate-texture-page.ts';
+import { checkStampGateLightingCase, paintStampGateLighting } from './stamp-gate-three-lighting-page.ts';
+import { checkStampGateShotPageCase } from './stamp-gate-shot-dom-page.ts';
+import { checkStampGateRevealCase } from './stamp-gate-reveals-page.ts';
 import { checkStampGateRegion, stampGateRegionPaintings, type StampGateRegionId } from '../models/stamp-gate-regions.ts';
 import { checkStampGateContact, STAMP_GATE_CONTACT_IDS, stampGateContactPainting } from '../models/stamp-gate-contact.ts';
 import { checkStampGateMask, stampGateMaskPaintings, type StampGateMaskId } from '../models/stamp-gate-masks.ts';
@@ -141,11 +150,7 @@ function paintedFrame(gate: Omit<StampGatePainting, 'images'>, url: (asset: Stam
   return withGateRenderer(gate, url, async (renderer, frame) => {
     await renderer.draw({ kind: 'once', t: gate.t, state: gate.frameAt?.(gate.t) });
     await renderer.finish();
-    const rgba = frame(), rgb = new Uint8Array(gate.width * gate.height * 3);
-    for (let i = 0; i < gate.width * gate.height; i++) rgb.set(rgba.subarray(i * 4, i * 4 + 3), i * 3);
-    let binary = '';
-    for (let i = 0; i < rgb.length; i += 0x8000) binary += String.fromCharCode(...rgb.subarray(i, i + 0x8000));
-    return btoa(binary);
+    return stampGateRgbBase64(frame());
   });
 }
 
@@ -400,14 +405,14 @@ async function checkStampGateFlowCase(id: string): Promise<StampGateWashCheck> {
   const { medium: name, kind } = stampGateFlowCase(id), medium = PAINT_MEDIA[name];
   const painting = stampGateFlowPainting(kind), pass = painting.groups[0].passes[0], deposit = stampPassDeposits(pass)[1];
   const { before, after } = await runStampGateStage(id, painting, medium, { ...STAMP_GATE_FLOW_SIZE, ...stampGateFlowLayer(kind), field: stampGateFlowField() }, ({ context, bank, land }, encoder) => {
-    STAMP_WET_FLOW_STAGE.load(context).plan(bank).encode(encoder, land(encoder, deposit));
+    planStampWetStage(STAMP_WET_FLOW_STAGE.load(context), bank).encode(encoder, land(encoder, deposit));
   });
   return checkStampGateFlow(id, before, after);
 }
 
 /** The stripe's wet field (stampGateStripeField), each patch wet from its flood's painting second in `medium`. */
 function stripeField(painting: CompiledStampPaint, medium: PaintMedium) {
-  const wetness = compileStampWetness(painting, stampPaintMedia(painting, () => medium), stampRoundTipsOf());
+  const wetness = compileStampWetness(painting, stampPaintMedia(stampMixedPainting(painting), () => medium), stampRoundTipsOf());
   const [left, right] = stampPassDeposits(painting.groups[0].passes[0]).filter((deposit) => deposit.kind === 'flood').map((deposit) => wetness.landings.get(deposit)!.tau);
   return stampGateStripeField({ left, right });
 }
@@ -423,7 +428,7 @@ async function checkStampGateStripeCase(id: string): Promise<StampGateWashCheck>
       const painting = stampGateStripePainting(rim), pass = painting.groups[0].passes[0];
       let ownsEdges = false;
       const { before, after } = await runStampGateStage(id, painting, medium, { ...STAMP_GATE_STRIPE_SIZE, ...stampGateStripeLayer(), field: stripeField(painting, medium) }, ({ context, bank, wetness }, encoder) => {
-        const planned = STAMP_DRYING_RIM_STAGE.load(context).plan(bank), [drying] = wetness.washes.get(pass)!.dryings;
+        const planned = planStampWetStage(STAMP_DRYING_RIM_STAGE.load(context), bank), [drying] = wetness.washes.get(pass)!.dryings;
         ownsEdges = drying.deposits.every((deposit) => planned.ownsWetEdges?.(deposit) ?? false);
         planned.encode(encoder, { drying, seed: 0 });
       });
@@ -434,10 +439,10 @@ async function checkStampGateStripeCase(id: string): Promise<StampGateWashCheck>
   const painting = stampGateStripePainting(), pass = painting.groups[0].passes[0], drop = stampPassDeposits(pass).at(-1)!;
   const { before, after } = await runStampGateStage(id, painting, medium, { ...STAMP_GATE_STRIPE_SIZE, ...stampGateStripeLayer(), field: stripeField(painting, medium) }, ({ context, bank, wetness, land }, encoder) => {
     if (stage === 'rim') {
-      STAMP_DRYING_RIM_STAGE.load(context).plan(bank).encode(encoder, { drying: wetness.washes.get(pass)!.dryings[0], seed: 0 });
+      planStampWetStage(STAMP_DRYING_RIM_STAGE.load(context), bank).encode(encoder, { drying: wetness.washes.get(pass)!.dryings[0], seed: 0 });
       return;
     }
-    STAMP_BLOOM_STAGE.load(context).plan(bank).encode(encoder, land(encoder, drop));
+    planStampWetStage(STAMP_BLOOM_STAGE.load(context), bank).encode(encoder, land(encoder, drop));
   });
   return checkStampGateStripe(id, before, after);
 }
@@ -491,5 +496,7 @@ async function stampGateAdapter(): Promise<string> {
 
 Object.assign(globalThis, {
   runStampGateFormulas, paintStampGate, paintStampGatePrivate, traceStampGate, checkStampGateWash, checkStampGateAnimation, checkStampGateFlowCase, checkStampGateStripeCase, checkStampGateRegionCase,
-  checkStampGateContactCase, checkStampGateMaskCase, checkStampGateMediaCase, checkStampGateThreeCase, checkStampGateStageCase, stampGateAdapter,
+  checkStampGateContactCase, checkStampGateMaskCase, checkStampGateMediaCase, checkStampGateThreeCase, checkStampGateStageCase, checkStampGateSheetCase, paintStampGateSolved,
+  checkStampGateShotPageCase, checkStampGateShotCase, paintStampGateShot, checkStampGateTextureCase, paintStampGateTexture, checkStampGateShotTextureCase, paintStampGateShotTexture,
+  checkStampGateRevealCase, checkStampGateLightingCase, paintStampGateLighting, stampGateAdapter,
 });

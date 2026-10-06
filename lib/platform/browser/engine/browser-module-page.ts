@@ -2,7 +2,7 @@
 // in the render browser, outside any Remotion bundle, for a tool that needs the browser's GPU or canvas but not a
 // composition. The module is bundled with esbuild, served beside a folder of the caller's
 // files over loopback HTTP (a secure context, which WebGPU needs, and images untainted), and each call evaluates one
-// of its functions.
+// of its functions, which may ask for a screenshot of its page (studio/browser-module-screenshot.ts).
 //
 // Negative space: no React and no delayRender; a function that waits returns a promise, which the call awaits.
 
@@ -10,9 +10,11 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { extname, join, normalize, sep } from 'node:path';
+import { basename, extname, join, normalize, sep } from 'node:path';
 import { build } from 'esbuild';
 import type { HeadlessBrowser } from '@remotion/renderer';
+import { BROWSER_MODULE_SCREENSHOT_ANSWER, BROWSER_MODULE_SCREENSHOT_BINDING, type BrowserModuleScreenshotAnswer, type BrowserModuleScreenshotRequest } from '../models/browser-module-screenshot.ts';
+import { isRenderTargetClosed } from '../models/render-browser-failure.ts';
 import { inRenderBrowser } from './render-browser.ts';
 
 /** Fonts and sounds a module imports (through `#studio`, say), inlined: nothing serves them. */
@@ -26,6 +28,29 @@ export type BrowserModuleCall = <T>(name: string, ...args: unknown[]) => Promise
 export type BrowserModulePageRun = { gpu: string; bundle: string };
 
 type BrowserModulePage = Awaited<ReturnType<HeadlessBrowser['newPage']>>;
+
+/** The protocol's Runtime.addBinding, through a session's send: its answer is empty, only its size read. */
+type BrowserModuleAddBinding = (method: 'Runtime.addBinding', params: { readonly name: string }) => Promise<{ readonly size: number }>;
+
+/** Answers `page`'s screenshot requests (studio/browser-module-screenshot.ts), each as it comes, from now on. */
+async function answerBrowserModuleScreenshots(page: BrowserModulePage) {
+  const client = page._client();
+  // SAFETY: Remotion's session types only the commands Remotion sends; Runtime.addBinding is the protocol's, taking a name.
+  const addBinding = client.send.bind(client) as BrowserModuleAddBinding;
+  await addBinding('Runtime.addBinding', { name: BROWSER_MODULE_SCREENSHOT_BINDING });
+  client.on('Runtime.bindingCalled', ({ name, payload }: { name: string; payload: string }) => {
+    if (name !== BROWSER_MODULE_SCREENSHOT_BINDING) return;
+    // SAFETY: the binding is called only by browserModuleScreenshot, with a request as JSON.
+    const { id, box } = JSON.parse(payload) as BrowserModuleScreenshotRequest;
+    const answer = (png: string | null, error: string | null) => page.evaluate(
+      // SAFETY: browserModuleScreenshot sets the answer on globalThis before it calls the binding.
+      (fn: string, ...args: Parameters<BrowserModuleScreenshotAnswer>) => (globalThis as typeof globalThis & Record<string, BrowserModuleScreenshotAnswer>)[fn](...args),
+      BROWSER_MODULE_SCREENSHOT_ANSWER, id, png, error,
+    );
+    void client.send('Page.captureScreenshot', { format: 'png', clip: { ...box, scale: 1 }, fromSurface: true, captureBeyondViewport: false })
+      .then(({ value }) => answer(value.data, null), (error: Error) => answer(null, error.message));
+  });
+}
 
 /**
  * The files under `root` that `entry` imports, itself among them, bundled for `platform` as the studio bundles it, as
@@ -68,35 +93,46 @@ export async function withBrowserModulePage<T>(
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  try {
-    const { result } = await inRenderBrowser(async (browser, gpu) => {
-      const opened = await Promise.all(Array.from({ length: pages }, () => browser.newPage({ context: () => null, logLevel: 'error', indent: false, pageIndex: 0, onBrowserLog: null, onLog: () => {} })));
-      // A crashed page (its renderer out of memory) never settles a pending evaluate: each call races its page's crash.
-      const crashes = new Map(opened.map((page) => {
-        const crashed = new Promise<never>((_, reject) => page.on('error', reject));
-        crashed.catch(() => {});
-        return [page, crashed] as const;
+  const inModuleBrowser = () => inRenderBrowser(async (browser, gpu) => {
+    const opened = await Promise.all(Array.from({ length: pages }, () => browser.newPage({ context: () => null, logLevel: 'error', indent: false, pageIndex: 0, onBrowserLog: null, onLog: () => {} })));
+    // A crashed page (its renderer out of memory) never settles a pending evaluate: each call races its page's crash.
+    const crashes = new Map(opened.map((page) => {
+      const crashed = new Promise<never>((_, reject) => page.on('error', reject));
+      crashed.catch(() => {});
+      return [page, crashed] as const;
+    }));
+    try {
+      await Promise.all(opened.map(async (page) => {
+        await answerBrowserModuleScreenshots(page);
+        await page.goto({ url: `${origin}/`, timeout: 30_000 });
       }));
-      try {
-        await Promise.all(opened.map((page) => page.goto({ url: `${origin}/`, timeout: 30_000 })));
-        // The free pages, and the calls waiting for one, first come first served.
-        const free = [...opened], waiting: ((page: BrowserModulePage) => void)[] = [];
-        const release = (page: BrowserModulePage) => (waiting.length ? waiting.shift()!(page) : free.push(page));
-        return await use(async <R>(name: string, ...args: unknown[]) => {
-          const page = free.pop() ?? await new Promise<BrowserModulePage>((resolve) => waiting.push(resolve));
-          try {
-            // SAFETY: the caller names what the module's function returns; evaluate hands back its serialized value.
-            return await Promise.race([page.evaluate(
-              (fn: string, list: unknown[]) => (globalThis as unknown as Record<string, (...a: unknown[]) => unknown>)[fn](...list),
-              name, args as never,
-            ) as Promise<R>, crashes.get(page)!]);
-          } finally {
-            release(page);
-          }
-        }, { gpu, bundle });
-      } finally {
-        await Promise.all(opened.map((page) => page.close()));
-      }
+      // The free pages, and the calls waiting for one, first come first served.
+      const free = [...opened], waiting: ((page: BrowserModulePage) => void)[] = [];
+      const release = (page: BrowserModulePage) => (waiting.length ? waiting.shift()!(page) : free.push(page));
+      return await use(async <R>(name: string, ...args: unknown[]) => {
+        const page = free.pop() ?? await new Promise<BrowserModulePage>((resolve) => waiting.push(resolve));
+        try {
+          // SAFETY: the caller names what the module's function returns; evaluate hands back its serialized value.
+          return await Promise.race([page.evaluate(
+            (fn: string, list: unknown[]) => (globalThis as unknown as Record<string, (...a: unknown[]) => unknown>)[fn](...list),
+            name, args as never,
+          ) as Promise<R>, crashes.get(page)!]);
+        } finally {
+          release(page);
+        }
+      }, { gpu, bundle });
+    } finally {
+      await Promise.all(opened.map((page) => page.close()));
+    }
+  });
+  try {
+    // A target closed under the module is a transient most often seen with the adapter shared: `use` runs once more,
+    // whole, in a fresh browser. Its calls hold no page state, so running them again only repeats work. A crashed page
+    // isn't run again: its renderer ran out of memory, as it would again.
+    const { result } = await inModuleBrowser().catch((error: Error) => {
+      if (!isRenderTargetClosed(error.message)) throw error;
+      process.stderr.write(`  ${basename(entry)}: ${error.message}\n  running it once more in a fresh browser\n`);
+      return inModuleBrowser();
     });
     return result;
   } finally {

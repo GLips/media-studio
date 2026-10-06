@@ -7,7 +7,8 @@ import { join } from 'node:path';
 import { withBrowserModulePage } from '#lib/platform/browser/engine/browser-module-page.ts';
 import { readServedStampPaintPack } from '#lib/paint/brush-packs/engine/stamp-paint-pack-files.ts';
 import { stampBrushImages } from '#lib/paint/brush/models/stamp-brush.ts';
-import { resolveStampPaintPackBrushes } from '#lib/paint/brush-packs/models/stamp-paint-pack.ts';
+import { resolveStampPaintPackBrush } from '#lib/paint/brush-packs/models/stamp-paint-pack.ts';
+import { readProfiledStampPaintPack } from '#lib/paint/brush-packs/engine/stamp-brush-profile-store.ts';
 import { importStampPaintStyle, readStampPaintStyleProbeMedium } from '#lib/paint/style/engine/style-probe-medium.ts';
 import { stampPaintPackKey } from '#lib/paint/brush-packs/models/stamp-paint-pack-urls.ts';
 import { stampGatePaintingInputs } from '../models/stamp-gate-paintings.ts';
@@ -27,9 +28,8 @@ const privateId = ({ style, pack, name }: StampGatePrivateBrush, privateCase: St
  */
 async function paintPrivate(stylesDir: string, brushes: readonly StampGatePrivateBrush[]) {
   const loaded = await Promise.all(brushes.map(async (brush) => {
-    const { manifest } = readServedStampPaintPack(stylesDir, brush.style, brush.pack);
-    const { medium, key } = await readStampPaintStyleProbeMedium(stylesDir, brush.style);
-    const resolved = resolveStampPaintPackBrushes(manifest, key)[brush.name];
+    const place = { stylesDir, style: brush.style, pack: brush.pack }, { medium, key } = await readStampPaintStyleProbeMedium(stylesDir, brush.style);
+    const resolved = resolveStampPaintPackBrush(readProfiledStampPaintPack(place, readServedStampPaintPack(stylesDir, brush.style, brush.pack), key, [brush.name]), brush.name)?.brush;
     if (!resolved) throw new Error(`stamp gate: ${brush.style}/${brush.pack} has no brush ${JSON.stringify(brush.name)}`);
     // Every pack of the style, which the paper's images may come from as well as the brush's.
     const style = await importStampPaintStyle(stylesDir, brush.style), packs = style ? Object.keys(style.packs) : [brush.pack];
@@ -68,7 +68,7 @@ export async function runStampGatePrivate(store: string, stylesDir: string, brus
 export async function updateStampGatePrivate(store: string, stylesDir: string, brushes: readonly StampGatePrivateBrush[], reason: string) {
   const { adapter, subjects } = await paintPrivate(stylesDir, brushes);
   return subjects.map((subject) => {
-    const accepted = readStampGateBaseline(store, subject.id, subject.output);
+    const accepted = readStampGateBaseline(store, subject.id, subject.output.kind);
     const comparison = accepted ? compareStampGateOutputs(subject.id, subject.output, accepted.output).detail : 'no baseline before';
     return { id: subject.id, comparison, files: writeStampGateCandidate(store, subject.id, subject.output, { inputs: subject.inputs, reason, comparison, adapter }) };
   });

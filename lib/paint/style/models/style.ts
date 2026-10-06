@@ -11,7 +11,10 @@ import type { PaintPigmentAppearance } from '#lib/paint/materials/models/paint-p
 import type { StampPaintPaper } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
 import type { StampPaintMixing, StampPigmentMixing } from '#lib/paint/painting/models/stamp-pigment-paint.ts';
-import { resolveStampPaintPackBrush, stampPaintPackArchives, type StampPaintPack } from '#lib/paint/brush-packs/models/stamp-paint-pack.ts';
+import {
+  readStampPaintPack, resolveStampPaintPackBrush, stampBrushProfileFromStored, stampPaintPackArchives, type ProfiledStampPaintPack, type StampPaintPack,
+  type StoredStampBrushProfile,
+} from '#lib/paint/brush-packs/models/stamp-paint-pack.ts';
 import { stampBrushProbeMediumKey, stampBrushProbePaint, type StampBrushProbeMedium } from '#lib/paint/brush-packs/models/stamp-brush-profile-probes.ts';
 
 /** A style's style.ts: `export default { … } satisfies StampPaintStyle`. */
@@ -47,19 +50,32 @@ export type StampPaintStyle = {
 
 /**
  * One style as a bundle serves it (`@stamp-paint-styles`): its style.ts, its packs' manifests as JSON (unread until
- * readStampPaintPack), a URL for each image it paints with.
+ * readStampPaintPack), the profiles found for the brushes it names at their keys now, and a URL for each image it
+ * paints with.
  */
 export type BundledStampPaintStyle = {
   style: StampPaintStyle;
   manifests: Readonly<Record<string, unknown>>;
+  /** By pack, then brush name, each a profile's file as Node read it whole; a brush with none stored is left out. */
+  profiles: Readonly<Record<string, Readonly<Record<string, StoredStampBrushProfile>>>>;
   /** By `<pack>/<file>`. */
   images: Readonly<Record<string, string>>;
 };
 export type BundledStampPaintStyles = Readonly<Record<string, BundledStampPaintStyle>>;
 
+/** The style `name`'s bundled packs, each manifest and profile read, ready for its brushes to be read from. */
+export const readBundledStampPaintPacks = (name: string, { manifests, profiles }: BundledStampPaintStyle): Record<string, ProfiledStampPaintPack> =>
+  Object.fromEntries(Object.entries(manifests).map(([pack, manifest]) => [pack, {
+    style: name, pack, manifest: readStampPaintPack(manifest),
+    profiles: Object.fromEntries(Object.entries(profiles[pack] ?? {}).map(([brush, stored]) => [brush, stampBrushProfileFromStored(stored)])),
+  }]));
+
 /** How a style's paint mixes: in pigment, its own pigments by key, where its `paint` says so; else either way. */
 export type StampPaintStyleMixing<S extends StampPaintStyle> =
   S extends { paint: { pigments: infer P extends Readonly<Record<string, PaintPigmentAppearance>> } } ? StampPigmentMixing<P> : StampPaintMixing;
+
+/** A style's brush as it paints: read from its pack's source, with its media, the role's or else its pack's. */
+export type StampStyleBrush = StampBrush & { media: StampBrushMedia };
 
 /**
  * A style ready to paint with: each of its brushes read from its pack's source with its media, its palette, its paper, and how its
@@ -67,7 +83,7 @@ export type StampPaintStyleMixing<S extends StampPaintStyle> =
  */
 export type ResolvedStampPaintStyle<S extends StampPaintStyle = StampPaintStyle> = {
   name: string;
-  brushes: { readonly [K in keyof S['brushes']]: StampBrush };
+  brushes: { readonly [K in keyof S['brushes']]: StampStyleBrush };
   palette: S['palette'];
   paper: StampPaintPaper;
   mixing: StampPaintStyleMixing<S>;
@@ -86,17 +102,34 @@ export function stampPaintStyleProbeMedium(name: string, style: StampPaintStyle)
   return { paper: stampPaintStylePaper(name, style), mixing, paint: stampBrushProbePaint(mixing) };
 }
 
+/** The key of the medium `style`, named `name`, probes in (stampBrushProbeMediumKey), its packs imported as `packs`. */
+export const stampPaintStyleProbeMediumKey = (name: string, style: StampPaintStyle, packs: Readonly<Record<string, StampPaintPack>>): string =>
+  stampBrushProbeMediumKey(stampPaintStyleProbeMedium(name, style), stampPaintPackArchives(packs));
+
+/** One of a style's brushes read from its pack, or why it can't be: its pack isn't among those given, or lacks it. */
+export type StampPaintStyleBrush = { readonly brush: StampStyleBrush } | { readonly missing: string };
+
 /**
- * `style`, named `name`, with its brushes read from its packs' sources, each brush's profile checked against the
- * medium its style probes in now. Throws on a brush its pack lacks, which the bundle's check
- * (lib/paint/style/engine/project-styles.ts) has already refused, or a pigment keyed by other than its id.
+ * Each of `style`'s brushes (named `name`) by the style's own name, read from `packs` with its media and the profile
+ * its pack found for it (refused, saying why and what measures it, when none is stored at its key now).
  */
-export function resolveStampPaintStyle<S extends StampPaintStyle>(name: string, style: S, packs: Readonly<Record<string, StampPaintPack>>): ResolvedStampPaintStyle<S> {
-  const medium = stampBrushProbeMediumKey(stampPaintStyleProbeMedium(name, style), stampPaintPackArchives(packs));
-  const brushes = Object.fromEntries(Object.entries(style.brushes).map(([key, { pack, brush, media }]) => {
-    const found = packs[pack] && resolveStampPaintPackBrush(packs[pack], brush, medium);
-    if (!found) throw new Error(`stamp paint: ${name}'s brush ${key} is ${pack}'s ${JSON.stringify(brush)}, which its manifest lacks`);
-    return [key, { ...found.brush, media: media ?? style.packs[pack].media }];
+export function stampPaintStyleBrushes(name: string, style: StampPaintStyle, packs: Readonly<Record<string, ProfiledStampPaintPack>>): Map<string, StampPaintStyleBrush> {
+  return new Map(Object.entries(style.brushes).map(([key, { pack, brush, media }]): [string, StampPaintStyleBrush] => {
+    if (!packs[pack]) return [key, { missing: `its pack ${pack} isn't among ${name}'s imported packs` }];
+    const found = resolveStampPaintPackBrush(packs[pack], brush);
+    return [key, found ? { brush: { ...found.brush, media: media ?? style.packs[pack].media } } : { missing: `${pack}'s manifest has no brush ${JSON.stringify(brush)}` }];
+  }));
+}
+
+/**
+ * `style`, named `name`, with its brushes read from its packs' sources (stampPaintStyleBrushes). Throws on a brush its
+ * packs lack, which the bundle's check (lib/paint/style/engine/project-styles.ts) has already refused, or a pigment
+ * keyed by other than its id.
+ */
+export function resolveStampPaintStyle<S extends StampPaintStyle>(name: string, style: S, packs: Readonly<Record<string, ProfiledStampPaintPack>>): ResolvedStampPaintStyle<S> {
+  const brushes = Object.fromEntries([...stampPaintStyleBrushes(name, style, packs)].map(([key, read]) => {
+    if ('missing' in read) throw new Error(`stamp paint: ${name}'s brush ${key}: ${read.missing}`);
+    return [key, read.brush];
   }));
   const misnamed = Object.entries(style.paint?.pigments ?? {}).find(([key, { id }]) => key !== id);
   if (misnamed) throw new Error(`stamp paint: ${name}'s pigment ${misnamed[0]} has the id ${misnamed[1].id}; key each pigment by its id`);
@@ -118,12 +151,15 @@ export function stampPaintStylePaper(name: string, style: StampPaintStyle): Stam
   };
 }
 
-/** Every image a style paints with, by pack and file, each once: its brushes' tips and grains, their duals', its paper's. */
-export function stampPaintStyleImages(resolved: ResolvedStampPaintStyle): Omit<StampBrushAsset, 'style'>[] {
+/**
+ * Every image a style paints with, by pack and file, each once: its brushes' tips and grains, their duals', its
+ * paper's. A project's bundle serves these alone.
+ */
+export function stampPaintStyleImages({ brushes, paper }: Pick<ResolvedStampPaintStyle, 'brushes' | 'paper'>): Omit<StampBrushAsset, 'style'>[] {
   const assets = [
-    ...Object.values(resolved.brushes).flatMap((brush) => stampBrushImages(brush).map(({ image }) => image)),
-    ...(resolved.paper.image ? [resolved.paper.image] : []),
-    ...(resolved.paper.grain ? [resolved.paper.grain.image] : []),
+    ...Object.values(brushes).flatMap((brush) => stampBrushImages(brush).map(({ image }) => image)),
+    ...(paper.image ? [paper.image] : []),
+    ...(paper.grain ? [paper.grain.image] : []),
   ];
   const byKey = new Map(assets.map(({ pack, file }) => [`${pack}/${file}`, { pack, file }]));
   return [...byKey.values()];

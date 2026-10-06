@@ -28,9 +28,10 @@ export type StampGroupWarp = { map: StampWarpMap; key: string; cell?: number };
 export type StampGroupMarks = { kind: 'written'; epoch: number } | { kind: 'live'; marks: CompiledStampGroup; key: string };
 
 /**
- * The light a group gives off: its laid paint brighter than `threshold` (0..1, linear light), `amount` times over,
- * its plane's emission. The lens blooms the frame's emission once (StampLensFrame's bloom), so a glow spreads over
- * what stands in front of it, and paint a nearer plane covers gives off none.
+ * The light a group gives off, past `threshold` in luminance (0..1, linear light), `amount` times over, into its
+ * plane's emission: in a shot, the light its paint adds; in StampPainting, its laid paint's light as much as it
+ * covers (stamp-plane-glow-pass.ts). The lens blooms the frame's emission once (StampLensFrame's bloom), so a glow
+ * spreads over what stands in front of it.
  */
 export type StampGroupGlow = { amount: number; threshold: number };
 

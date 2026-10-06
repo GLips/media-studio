@@ -13,8 +13,9 @@ import { readImportedStampPaintPack } from '#lib/paint/brush-packs/engine/stamp-
 import { STAMP_PAINT_PACK_MANIFEST } from '#lib/paint/brush-packs/models/stamp-paint-pack.ts';
 import type { BundledStampPaintStyles } from '../models/style.ts';
 import { importStampPaintStyle } from './style-probe-medium.ts';
+import { readStampPaintStylePacks, stampPaintStyleStoredProfiles } from './style-packs.ts';
 
-/** Every workspace style, as a bundle would serve it, with every file its imported packs list. */
+/** Every workspace style, as a bundle would serve it, with every file its imported packs list and its brushes' profiles. */
 async function readNodeStampPaintStyles(stylesDir: string): Promise<BundledStampPaintStyles> {
   const names = existsSync(stylesDir) ? readdirSync(stylesDir) : [];
   return Object.fromEntries((await Promise.all(names.map(async (name) => {
@@ -26,10 +27,12 @@ async function readNodeStampPaintStyles(stylesDir: string): Promise<BundledStamp
       return read ? [{ pack, ...read }] : [];
     });
     // Raw JSON, as a bundle serves it: stampPaintStyle reads each manifest itself, and a read one doesn't read again.
-    const manifests = new Map(imported.map(({ pack, dir: generation }) => [pack, readFileSync(join(generation, STAMP_PAINT_PACK_MANIFEST), 'utf8')]));
+    const manifests = Object.fromEntries(imported.map(({ pack, dir: generation }) => [pack, JSON.parse(readFileSync(join(generation, STAMP_PAINT_PACK_MANIFEST), 'utf8'))]));
+    const read = readStampPaintStylePacks(stylesDir, name, style, Object.fromEntries(imported.map(({ pack, dir: generation, manifest }) => [pack, { dir: generation, manifest }])));
+    const profiles = stampPaintStyleStoredProfiles(read);
     const images = Object.fromEntries(imported.flatMap(({ pack, dir: generation, manifest }) =>
       manifest.files.map((file) => [`${pack}/${file}`, pathToFileURL(join(generation, file)).href])));
-    return [[name, { style, manifests: Object.fromEntries([...manifests].map(([pack, json]) => [pack, JSON.parse(json)])), images }] as const];
+    return [[name, { style, manifests, profiles, images }] as const];
   }))).flat());
 }
 

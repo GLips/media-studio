@@ -23,7 +23,8 @@ each brush close, rough or off against its Procreate preview (a score from the b
 painted look on this machine; say so, and offer what the studio's React code can do (SVG strokes, masks, three.js).
 A style whose `brushes/` is missing must be imported first (`studio brushes import`, from a Procreate `.brushset` or a
 Photoshop `.abr` or `.tpl`, docs/private-styles.md); the
-bundle refuses it, naming where the pack came from.
+bundle refuses it, naming where the pack came from. A brush refused for having no profile names the command that
+measures it (`studio brushes import --style <name> --pack <pack>`, no archive): run it, then paint.
 
 A project paints with a style once its `project.ts` names it (`styles: ['watercolor']`); then it imports
 `#styles/<name>/…`. Work in `work/projects/2026-09-watercolor-paintings/` shows a character and a landscape end to end.
@@ -102,7 +103,9 @@ Everything is from `#studio`.
     - `profile` is pressure along the stroke: `'taper'` (light, firm, light) for most marks, `'pressFlick'` (heavy,
       fading fast) for hair, grass and hatching, `'swell'` (thin, full, thin) for leaves and petals, `'drag'` (steady,
       lifting at the end) for washes and fills, or a curve `(along) => pressure`, which can build on
-      `STAMP_PRESSURE_PROFILES`. A stroke shorter than `fullProfileAt` diameters (12) gets a shallower profile.
+      `STAMP_PRESSURE_PROFILES`. A stroke shorter than `fullProfileAt` diameters (12) gets that share of the
+      profile's depth: for a short blade, petal or wing, set `fullProfileAt` to about its length in diameters.
+      `studio brushes describe --style <style>` prints how far each brush's size, opacity and flow follow pressure.
     - `curvature` (0..1, try 0.3) presses harder where the path turns tightly and lightens straight runs by up to that
       share, as a hand does when it slows into a corner.
     - `wobble: { pressure: 0.1, position: 0.1 }` adds seeded unsteadiness (a share of the pressure; diameters sideways),
@@ -264,8 +267,10 @@ picture holds what the camera shows of it over the whole shot (widen the margin 
 wherever its groups' motion can lay their paint, and everywhere the frame looks once a group's marks are live or
 re-seeded and reports each
 plane's greatest magnification (past about 1.3, its paint looks soft). Keep the camera on ones: held on twos it
-judders. Give a group `glow: { amount, threshold }` in its frame state for a soft light; the lens blooms all glow
-once, at `lens.bloom` px of sigma, and opaque paint covering glowing paint, laid after it on its plane or on a nearer one, stops its glow. Show it with
+judders. Give a group `glow: { amount, threshold }` in its frame state for a soft light: its laid paint brighter
+than `threshold` glows, as much as the group covers, and the lens blooms all glow once, at `lens.bloom` px of sigma.
+Glow the emitter (the lamp's glass), not a painted halo round it: a halo glows with whatever light shows through it.
+Opaque paint covering glowing paint, laid after it on its plane or on a nearer one, stops its glow. Show it with
 `<StampPainting painting t frameAt camera />`; a glowing frame without a camera is refused. `lens.shutter` is seconds
 open about each frame (1/60 is 180° at 30 fps). The fast lens gathers each frame's motion: the camera's, a group's own
 travel over the shutter (its plane's motion layer, from its lattice), and a three source's per pixel. `studio render

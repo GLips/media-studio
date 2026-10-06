@@ -24,6 +24,11 @@ export type ProjectRole =
   | { role: 'scene-helper'; scene: string }
   /** A project-specific `x-model.ts`, in its scene's folder or beside its scene file. */
   | { role: 'model'; scene: string }
+  /**
+   * A `*.painting.ts` source (docs/painting-authoring.md), held to a model's imports since `studio paint check` loads it
+   * in plain Node: a scene's, in its folder or beside its file, or shared (no scene) when project.ts's `shared` lists it.
+   */
+  | { role: 'painting-source'; scene?: string }
   /** Listed in its project.ts's `shared` (ProjectDeclaration): scenes may import it; it never imports back into one. */
   | { role: 'shared' }
   | { role: 'sfx' | 'tools' | 'review' }
@@ -103,8 +108,9 @@ export const LIB_LAYERS: readonly LibLayer[] = [
   {
     name: 'platform',
     features: [
-      'platform/temp', 'platform/git', 'platform/zip', 'platform/wav', 'platform/ffmpeg', 'platform/raster', 'platform/paid-generation',
-      'platform/photoshop', 'platform/project', 'platform/host', 'platform/web', 'platform/browser', 'platform/gpu',
+      'platform/process', 'platform/temp', 'platform/git', 'platform/zip', 'platform/wav', 'platform/ffmpeg', 'platform/raster',
+      'platform/paid-generation', 'platform/photoshop', 'platform/project', 'platform/host', 'platform/web', 'platform/browser',
+      'platform/gpu', 'platform/files', 'platform/hash', 'platform/remote',
     ],
   },
   { name: 'vocabulary', features: ['picture/frame', 'picture/motion', 'picture/type', 'picture/color', 'picture/shot-camera', 'picture/lens'] },
@@ -131,6 +137,7 @@ const SUBDIR_ROLES: Record<string, 'sfx' | 'tools' | 'review' | 'media' | 'gener
 const SCENE_DIRS = new Set(['bars', 'scenes']);
 const SOURCE_FILE = /^(.+)\.(ts|tsx)$/;
 const MODEL_FILE = /^(.+)-model\.ts$/;
+const PAINTING_SOURCE_FILE = /^(.+)\.painting\.ts$/;
 const TOOL_CONFIG = /\.config\.[cm]?[jt]s$/;
 const WEB_SERVER_MODULE = /^web\/src\/infrastructure\/.+\.server\.tsx?$/;
 
@@ -142,11 +149,12 @@ export const TERMINAL_PROGRAM_GLOBS: readonly string[] = ['cli/**', 'harness/**'
 
 /**
  * Modules loaded by path for their default export, which is their contract: a CLI command (cli/studio.ts), a
- * project's declaration, capture, brand and sounds, a kit's brand, a style and its fidelity grades, Node's stand-in
- * for the `@stamp-paint-styles` module, and lint's oxlint plugin. oxlint's no-default-export is off in them.
+ * project's declaration, capture, brand and sounds, a kit's brand, a style and its fidelity grades, a painting
+ * source (its factory), Node's stand-in for the `@stamp-paint-styles` module, and lint's oxlint plugin. oxlint's
+ * no-default-export is off in them.
  */
 export const DEFAULT_EXPORT_MODULE_GLOBS: readonly string[] = [
-  'cli/commands/*.ts', 'lint/oxlint/plugin.ts', 'lib/paint/style/engine/node-stamp-paint-styles.ts',
+  'cli/commands/*.ts', 'lint/oxlint/plugin.ts', 'lib/paint/style/engine/node-stamp-paint-styles.ts', '**/*.painting.ts',
   'work/projects/*/project.ts', 'work/projects/*/capture.ts', 'work/projects/*/brand.ts', 'work/projects/*/sfx/*.ts',
   'work/brands/*/brand.ts', 'work/styles/*/style.ts', 'work/styles/*/fidelity.ts',
 ];
@@ -171,6 +179,8 @@ export function classifyStudioPath(path: string, shared: DeclaredShared): Studio
     if (path === 'lib/api.ts') return { kind: 'studio', barrel: true };
     const [, area, feature, role] = parts;
     if (parts.length < 5 || !LIB_AREAS.includes(area) || !isLibRole(role)) return { kind: 'undeclared' };
+    // A painting source loads in plain Node, so in lib it's a model or nothing.
+    if (role !== 'models' && PAINTING_SOURCE_FILE.test(parts.at(-1)!)) return { kind: 'undeclared' };
     return { kind: role, feature: `${area}/${feature}` };
   }
   if (top === 'cli') return { kind: 'cli' };
@@ -206,19 +216,25 @@ function webPlace(inside: string[]): WebPlace | undefined {
   return isWebFeatureLayer(third) ? { place: 'feature', feature: second, layer: third } : undefined;
 }
 
+/** A file `shared` lists: a painting source keeps its role, held as a model; anything else is shared. */
+const sharedRole = (file: string): ProjectRole => (PAINTING_SOURCE_FILE.test(file) ? { role: 'painting-source' } : { role: 'shared' });
+
 function projectRole(inside: string[], shared: readonly string[]): ProjectRole {
   const [first, second] = inside;
   if (inside.length === 1) {
     if (ROOT_ROLES[first]) return { role: ROOT_ROLES[first] };
     const spec = /^(.+)\.test\.tsx?$/.exec(first);
     if (spec && Object.keys(ROOT_ROLES).some((root) => root.replace(/\.tsx?$/, '') === spec[1])) return { role: 'spec' };
-    return shared.includes(first) ? { role: 'shared' } : { role: 'unclassified' };
+    return shared.includes(first) ? sharedRole(first) : { role: 'unclassified' };
   }
   if (SCENE_DIRS.has(first)) {
     if (inside.length > 2) {
+      if (PAINTING_SOURCE_FILE.test(inside.at(-1)!)) return { role: 'painting-source', scene: second };
       const model = MODEL_FILE.exec(inside.at(-1)!);
       return model ? { role: 'model', scene: second } : { role: 'scene-helper', scene: second };
     }
+    const source = PAINTING_SOURCE_FILE.exec(second);
+    if (source) return { role: 'painting-source', scene: source[1] };
     const model = MODEL_FILE.exec(second);
     if (model) return { role: 'model', scene: model[1] };
     const scene = SOURCE_FILE.exec(second);
@@ -226,7 +242,7 @@ function projectRole(inside: string[], shared: readonly string[]): ProjectRole {
   }
   const role = SUBDIR_ROLES[first];
   if (role) return { role };
-  return shared.includes(inside.join('/')) ? { role: 'shared' } : { role: 'unclassified' };
+  return shared.includes(inside.join('/')) ? sharedRole(inside.at(-1)!) : { role: 'unclassified' };
 }
 
 /**

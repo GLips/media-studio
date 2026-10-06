@@ -1,19 +1,19 @@
 // whisper-words.ts: what whisper.cpp hears in a voice line, word by word, with times. Node only.
 //
-// whisper.cpp and its model live outside the repo, in ~/.cache/media-studio, so worktrees share one ~1.5 GB model
-// and one build. The first call installs both.
+// whisper.cpp and its model live outside the repo, in the studio's user cache (~/.cache/media-studio), so worktrees
+// share one ~1.5 GB model and one build. The first call installs both.
 import { downloadWhisperModel, installWhisperCpp, transcribe } from '@remotion/install-whisper-cpp';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { SpokenWord } from '../models/voice-words.ts';
 import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
+import { studioUserCacheDir } from '#lib/platform/temp/engine/studio-user-cache.ts';
 
 const WHISPER_CPP_VERSION = '1.8.6';
 // On our TTS lines, medium.en's DTW word times land within about two frames of the pauses ffmpeg's silencedetect
 // finds, at under two seconds a line once installed.
 const WHISPER_MODEL = 'medium.en';
-const WHISPER_DIR = join(homedir(), '.cache', 'media-studio', `whisper.cpp-${WHISPER_CPP_VERSION}`);
+const WHISPER_DIR = studioUserCacheDir(`whisper.cpp-${WHISPER_CPP_VERSION}`);
 
 let ready: Promise<unknown> | null = null;
 const ensureWhisper = () => (ready ??= installWhisperCpp({ to: WHISPER_DIR, version: WHISPER_CPP_VERSION, printOutput: false })

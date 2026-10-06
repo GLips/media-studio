@@ -12,3 +12,4 @@ export function useVideoFormat(): VideoFormat {
   const { fps, width, height } = useVideoConfig();
   return { fps, width, height, transparent: useContext(VideoTransparentContext) };
 }
+

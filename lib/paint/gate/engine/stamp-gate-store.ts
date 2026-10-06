@@ -69,10 +69,13 @@ export function readStampGateManifest(store: string): StampGateManifest {
   return manifest;
 }
 
-function readRgbPng(file: string, width: number, height: number): Uint8Array {
+/** A PNG's pixels as RGB bytes, at the size it has: a frame's baseline may be another size than the frame now drawn. */
+function readRgbPng(file: string): { rgb: Uint8Array; width: number; height: number } {
+  // The IHDR chunk comes first, after the 8-byte signature and its own length and type: width, height, big-endian.
+  const header = readFileSync(file), width = header.readUInt32BE(16), height = header.readUInt32BE(20);
   const rgb = runFfmpeg(['-nostdin', '-v', 'error', '-i', file, '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'], { maxBuffer: 1 << 28 });
-  if (rgb.length !== width * height * 3) throw new Error(`stamp gate: ${file} isn't ${width} × ${height}`);
-  return new Uint8Array(rgb.buffer, rgb.byteOffset, rgb.length);
+  if (rgb.length !== width * height * 3) throw new Error(`stamp gate: ${file} decoded to ${rgb.length} bytes, not ${width} × ${height} RGB`);
+  return { rgb: new Uint8Array(rgb.buffer, rgb.byteOffset, rgb.length), width, height };
 }
 
 function writeRgbPng(file: string, rgb: Uint8Array, width: number, height: number) {
@@ -81,19 +84,19 @@ function writeRgbPng(file: string, rgb: Uint8Array, width: number, height: numbe
 }
 
 /**
- * `id`'s accepted output shaped like `like`, and its provenance; null when it has none. Throws when the file's bytes
- * aren't the ones accepted: a baseline changes only through `accept`.
+ * `id`'s accepted output, of `kind`, and its provenance; null when it has none. Throws when the file's bytes aren't
+ * the ones accepted: a baseline changes only through `accept`.
  */
-export function readStampGateBaseline(store: string, id: string, like: StampGateOutput): { output: StampGateOutput; baseline: StampGateBaseline } | null {
+export function readStampGateBaseline(store: string, id: string, kind: StampGateOutput['kind']): { output: StampGateOutput; baseline: StampGateBaseline } | null {
   const baseline = readStampGateManifest(store).baselines[id];
   if (!baseline) return null;
   const file = join(store, baseline.file);
   if (fileHash(file) !== baseline.output) throw new Error(`stamp gate: ${file} isn't the file accepted as ${id} (${baseline.accepted}); a baseline changes only by update and accept`);
-  if (like.kind === 'values') {
+  if (kind === 'values') {
     const bytes = readFileSync(file);
     return { output: { kind: 'values', values: new Float32Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length)) }, baseline };
   }
-  return { output: { ...like, rgb: readRgbPng(file, like.width, like.height) }, baseline };
+  return { output: { kind: 'frame', ...readRgbPng(file) }, baseline };
 }
 
 function writeOutput(file: string, output: StampGateOutput) {
@@ -112,8 +115,8 @@ export function writeStampGateCandidate(store: string, id: string, output: Stamp
   writeOutput(file, output);
   const written: StampGateCandidateMeta = { file: name, output: fileHash(file), inputs, reason, comparison, adapter };
   writeFileSync(meta, `${JSON.stringify(written, null, 2)}\n`);
-  const baseline = readStampGateBaseline(store, id, output);
-  if (output.kind === 'values' || baseline?.output.kind !== 'frame') return [file, meta];
+  const baseline = readStampGateBaseline(store, id, output.kind);
+  if (output.kind === 'values' || baseline?.output.kind !== 'frame' || baseline.output.width !== output.width || baseline.output.height !== output.height) return [file, meta];
   const diff = join(dir, `${id}.diff.png`);
   writeRgbPng(diff, stampGateFrameDiffImage(output.rgb, baseline.output.rgb), output.width, output.height);
   return [file, meta, diff];

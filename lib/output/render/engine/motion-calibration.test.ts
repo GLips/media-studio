@@ -1,26 +1,16 @@
 // Renders the calibration video (motion-calibration/video.tsx) and checks its tracks against what each scene promises:
 // the probe's measurements of real layout (transforms, cameras, crossfades) can only be tested in a real render.
 import assert from 'node:assert/strict';
-import { copyFileSync, mkdirSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { buildMotionGraph } from '#lib/output/picture-checks/models/motion-graph.ts';
 import { motionChannelVelocity, type MotionSegment } from '#lib/picture/measurement/models/motion-tracks.ts';
 import { checkProject } from './render-pipeline.ts';
 import { openRenderSession } from './render-session.ts';
-import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
-import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
+import { withFixtureStudioProject } from './fixture-studio-project.ts';
 
-// The project sits in a throwaway studio whose package.json, lib/ and node_modules/ link back to this checkout, so its
-// `#studio` resolves as a real project's does, and webpack, following the links, loads the same lib/ as the
-// bundle's entry: this checkout's working tree, which is what the test is about.
-const { ok, motion, timeline, report } = await withStudioTemp('motion-calibration', async (studio) => {
-  for (const linked of ['package.json', 'lib', 'node_modules']) symlinkSync(join(STUDIO_ROOT, linked), join(studio, linked));
-  const project = join(studio, 'work', 'projects', 'motion-calibration');
-  mkdirSync(project, { recursive: true });
-  copyFileSync(join(import.meta.dirname, 'motion-calibration', 'video.tsx'), join(project, 'video.tsx'));
-  return checkProject(await openRenderSession(project));
-});
+const { ok, motion, timeline, report } = await withFixtureStudioProject('motion-calibration', join(import.meta.dirname, 'motion-calibration'),
+  async (project) => checkProject(await openRenderSession(project)));
 const track = (id: string) => {
   const t = motion.tracks.find((x) => x.id === id);
   assert.ok(t, `no track ${id}: ${motion.tracks.map((x) => x.id).join(', ')}`);

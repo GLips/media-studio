@@ -1,7 +1,8 @@
 #!/bin/sh
-# The pre-commit gate: check:arch; then the typecheck and the tests of what a clean clone holds, then the web app's
-# typecheck and lint (oxlint over every file, against the baseline). Those last two read the working tree, not the
-# index. The GPU gate isn't here: it takes minutes on the one shared adapter, so pre-push runs it.
+# The pre-commit gate: check:arch and lint (oxlint, against the baseline) over the studio's index, what the commit
+# holds (work/ is its own repository, judged by its own hook); then the typecheck and the tests of what a clean clone
+# holds, and the web app's typecheck, which read the working tree.
+# The GPU gate isn't here: it takes minutes on the one shared adapter, so pre-push runs it.
 # Each runs on its own, so one failure doesn't hide the next, and any failure refuses the commit. `npm install`
 # switches it on (package.json's prepare sets core.hooksPath to .githooks, for every worktree of the clone).
 #
@@ -9,8 +10,11 @@
 # `npm run typecheck` and `npm test` cover them in a checkout that has those; `studio new`'s test covers each new kind.
 
 failed=''
-# check:arch reads the index git hands this hook: a partial or `-a` commit's own.
-npm run -s check:arch || failed="$failed check:arch"
+# Both read the index git hands this hook (a partial or `-a` commit's own), so they run before its git environment
+# goes. Another session's untracked, half-written file is nobody's commit yet, and mustn't block this one; each
+# lists the sources it left unchecked. lint's oxlint reads each file from disk, unstaged edits and all.
+npm run -s check:arch -- --scope public --snapshot index || failed="$failed check:arch"
+npm run -s lint -- --scope public --snapshot index || failed="$failed lint"
 
 # Git exports GIT_DIR, GIT_INDEX_FILE and its -c settings to a hook. A test's throwaway repo must never see them, or
 # its git init, config and commit land in this repository.
@@ -18,7 +22,6 @@ for name in $(env | sed -n 's/^\(GIT_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$name"
 
 npm run -s typecheck:gate || failed="$failed typecheck"
 npm run -s typecheck:web || failed="$failed typecheck:web"
-npm run -s lint || failed="$failed lint"
 log=$(mktemp)
 npm run -s test:gate > "$log" 2>&1 || { tail -n 60 "$log"; failed="$failed test"; }
 rm -f "$log"

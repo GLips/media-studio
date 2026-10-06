@@ -11,8 +11,8 @@ import {
   stampGateDefocusLens, stampGateDefocusPainting, stampGateGlowCoverPlanes, stampGateGlowPainting, stampGateGlowState,
 } from '../models/stamp-gate-lens.ts';
 import {
-  checkStampGateThreeDefocus, checkStampGateThreePlane, STAMP_GATE_CARD, STAMP_GATE_THREE_DEFOCUS_LENS, STAMP_GATE_THREE_IDS, stampGateThreeContent, stampGateThreeContentBlurred, stampGateThreeKind, stampGateThreeMotion,
-  stampGateThreePainting, stampGateThreePlanes,
+  checkStampGateThreeDefocus, checkStampGateThreeDefocusEdge, checkStampGateThreePlane, STAMP_GATE_CARD, STAMP_GATE_THREE_DEFOCUS_LENS, STAMP_GATE_THREE_EDGE_LENS, STAMP_GATE_THREE_IDS,
+  stampGateThreeContent, stampGateThreeContentBlurred, stampGateThreeEdgeLayered, stampGateThreeEdgeLayers, stampGateThreeKind, stampGateThreeMotion, stampGateThreePainting, stampGateThreePlanes,
 } from '../models/stamp-gate-three-plane.ts';
 import {
   checkStampGateThreeStill, STAMP_GATE_THREE_STILL_ID, STAMP_GATE_THREE_STILL_LENS, STAMP_GATE_THREE_STILL_SHUTTER, STAMP_GATE_THREE_STILL_T, stampGateThreeStillContent,
@@ -126,12 +126,12 @@ const motionGateFramesDrawn = (draws: (kind: StampGateMotionKind) => StampPaintF
 /**
  * Three-plane case `id` (stamp-gate-three-plane.ts), on one surface, the card's texture written before each frame. A
  * compositor case: the planes without the card; content a, b, a and all clear on one renderer; b on a renderer of its
- * own. The defocus case: the card defocused through the lens, then its content blurred on the CPU, then sharp.
+ * own. A defocus case: the card defocused through the lens, then its content blurred on the CPU, then sharp.
  */
 export async function checkStampGateThreeCase(id: string): Promise<StampGateWashCheck[]> {
   if (id === STAMP_GATE_THREE_STILL_ID) return [await checkThreeStillFront()];
   if (id === STAMP_GATE_PICTURE_ID) return checkPictureSource();
-  const kind = id === 'three/defocus' ? 'flat' : stampGateThreeKind(id);
+  const kind = id === 'three/defocus' || id === 'three/defocus-edge' ? 'flat' : stampGateThreeKind(id);
   if (!kind) throw new Error(`stamp gate: no three-plane case ${JSON.stringify(id)}; the gate has ${[...STAMP_GATE_THREE_IDS, STAMP_GATE_THREE_STILL_ID, STAMP_GATE_PICTURE_ID].join(', ')}`);
   const gate = stampGateThreePainting(kind), { width, height } = gate;
   return withGateSurface(gate, drawnImages(gate), async (surface, frame) => {
@@ -148,9 +148,10 @@ export async function checkStampGateThreeCase(id: string): Promise<StampGateWash
         renderer.dispose();
       }
     };
-    const laid = (renderer: StampPaintRenderer, content: Float32Array | Float64Array, lens?: StampLensFrame) => {
+    // Every texel of `content` at the card's one distance, unless `distances` gives its own motion layer.
+    const laid = (renderer: StampPaintRenderer, content: Float32Array | Float64Array, lens?: StampLensFrame, distances?: Float32Array) => {
       device.queue.writeTexture({ texture }, Uint16Array.from(content, gpuHalfBits), { bytesPerRow: width * 8 }, [width, height]);
-      device.queue.writeTexture({ texture: motion }, Uint16Array.from(stampGateThreeMotion(Float32Array.from(content)), gpuHalfBits), { bytesPerRow: width * 8 }, [width, height]);
+      device.queue.writeTexture({ texture: motion }, Uint16Array.from(distances ?? stampGateThreeMotion(Float32Array.from(content)), gpuHalfBits), { bytesPerRow: width * 8 }, [width, height]);
       return drawn(renderer, frame, gate.t, undefined, lens);
     };
     const a = stampGateThreeContent('a');
@@ -158,6 +159,12 @@ export async function checkStampGateThreeCase(id: string): Promise<StampGateWash
       const cpuBlurred = stampGateThreeContentBlurred();
       return withCard(async (renderer) => [checkStampGateThreeDefocus({
         blurred: await laid(renderer, a, STAMP_GATE_THREE_DEFOCUS_LENS), cpuBlurred: await laid(renderer, cpuBlurred), sharp: await laid(renderer, a),
+      })]);
+    }
+    if (id === 'three/defocus-edge') {
+      const { content, motion: distances } = stampGateThreeEdgeLayers(), layered = stampGateThreeEdgeLayered();
+      return withCard(async (renderer) => [checkStampGateThreeDefocusEdge({
+        blurred: await laid(renderer, content, STAMP_GATE_THREE_EDGE_LENS, distances), layered: await laid(renderer, layered), sharp: await laid(renderer, content),
       })]);
     }
     const b = stampGateThreeContent('b'), clear = new Float32Array(width * height * 4);

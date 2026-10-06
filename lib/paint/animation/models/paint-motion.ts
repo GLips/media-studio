@@ -78,7 +78,7 @@ export function paintMotionFolds(motion: PaintMotion, { from, to }: { from: numb
  */
 export function buildPaintMotion(
   painting: CompiledStampPaint,
-  o: { nodes: readonly PaintMotionNode[]; plays: readonly PaintMotionPlay[]; animationFps?: number; foldCheck?: { from: number; to: number } },
+  o: { nodes: readonly PaintMotionNode[]; plays?: readonly PaintMotionPlay[]; animationFps?: number; foldCheck?: { from: number; to: number } },
 ): PaintMotionBuild {
   const problems: string[] = [], animationFps = o.animationFps ?? PAINT_ANIMATION_FPS;
   const motion = compilePaintMotion(painting, { nodes: o.nodes, plays: o.plays, animationFps }, problems);

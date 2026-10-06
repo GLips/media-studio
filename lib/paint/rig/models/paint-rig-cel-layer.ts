@@ -8,13 +8,19 @@ import type { PaintRigPicture } from './paint-rig-pieces.ts';
 /** A part painted whole on a cel of its own: how it's declared in the layer, and its rest cel. */
 export type PaintRigCelPart = { readonly declaration: PaintRigCutDeclaration; readonly picture: PaintRigPicture };
 
+/** Whether `picture` holds any paint. A cel holding none adds nothing to its layer, and paintRigCelLayer needs one that does. */
+export function paintRigPicturePainted({ rgba }: PaintRigPicture): boolean {
+  for (let a = 3; a < rgba.length; a += 4) if (rgba[a] > 0) return true;
+  return false;
+}
+
 /**
  * `cels` laid as layer `id`: its picture the cels over one another by z (ties in the order given), each texel owned by
  * the cel giving it most of its colour (an upper cel's faint edge leaves it to the paint beneath), the matte their
- * coverage. A cel wholly under others owns nothing, and paintRigSkinMesh refuses to skin it.
+ * coverage. A cel outweighed wherever it paints owns nothing (paintRigSkinProblems). Refuses cels all clear.
  */
 export function paintRigCelLayer(id: string, cels: readonly PaintRigCelPart[]): { picture: PaintRigPicture; cuts: PaintRigCutLayer } {
-  const painted = cels.filter(({ picture }) => picture.w > 0);
+  const painted = cels.filter(({ picture }) => paintRigPicturePainted(picture));
   if (!painted.length) throw new Error(`paint rig: layer ${id}'s cels are all clear`);
   const x0 = Math.min(...painted.map(({ picture }) => picture.x0)), y0 = Math.min(...painted.map(({ picture }) => picture.y0));
   const w = Math.max(...painted.map(({ picture }) => picture.x0 + picture.w)) - x0, h = Math.max(...painted.map(({ picture }) => picture.y0 + picture.h)) - y0;

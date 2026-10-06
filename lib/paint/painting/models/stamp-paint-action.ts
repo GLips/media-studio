@@ -38,22 +38,31 @@ export type CompiledStampAction =
 /** Flat colour's water: in no medium its paint is wet, so a flood of it stops at its water's edge (wetLandCover). */
 const STAMP_FLAT_COLOUR_WATER = 1;
 
+/** What a deposit's water is read from: what it does, and the water it states. */
+export type StampDepositWaterAction = { readonly kind: CompiledStampAction['kind']; readonly water?: number };
+
 /**
- * How wet `deposit` leaves the paper its brush touches, 0..1, resolved once as it compiles in `medium` (null: flat
- * colour): a lift's none, and a dry brush's paint none (crayon, a dry-brush drag), which refuses stated water; water
- * it states, which a medium without 'water' refuses; else the medium's defaultWater. 0 is none.
+ * How wet a deposit doing `action` through a brush of `media` leaves the paper it touches, 0..1, in `medium` (null:
+ * flat colour): a lift's none, a dry brush's paint none (crayon, a dry-brush drag), else the water it states or the
+ * medium's defaultWater. Unchecked: stampDepositWater refuses what can't carry water.
+ */
+export function stampDepositWetness(action: StampDepositWaterAction, media: StampBrush['media'], medium: PaintMedium | null): number {
+  if (action.kind === 'lift' || (action.kind === 'paint' && media === 'dry')) return 0;
+  return action.water ?? (medium ? medium.wetting.defaultWater : STAMP_FLAT_COLOUR_WATER);
+}
+
+/**
+ * How wet `deposit` leaves the paper its brush touches (stampDepositWetness), resolved once as it compiles in `medium`,
+ * refusing water stated through a dry brush's paint, or in a medium without 'water'. 0 is none.
  */
 export function stampDepositWater(
   { id, action, brush }: { id: string; action: CompiledStampAction; brush: Pick<StampBrush, 'media'> }, medium: PaintMedium | null,
 ): number {
-  if (action.kind === 'lift') return 0;
-  if (action.kind === 'paint' && brush.media === 'dry') {
-    if (action.water !== undefined) throw new Error(`stamp paint: ${id} states water, but its brush is dry and carries none`);
-    return 0;
-  }
-  if (action.water === undefined) return medium ? medium.wetting.defaultWater : STAMP_FLAT_COLOUR_WATER;
+  const water = stampDepositWetness(action, brush.media, medium);
+  if (action.kind === 'lift' || action.water === undefined) return water;
+  if (action.kind === 'paint' && brush.media === 'dry') throw new Error(`stamp paint: ${id} states water, but its brush is dry and carries none`);
   checkPaintCapability(medium, 'water', `${id}'s water`);
-  return action.water;
+  return water;
 }
 
 const isMaterialField = (material: StampPaintMaterial): material is StampPaintField<StampKeyedMaterial> => material.kind === 'constant' || material.kind === 'linear' || material.kind === 'radial' || material.kind === 'noise';
@@ -75,7 +84,7 @@ function ownColor(material: CompiledStampKeyedMaterial): StampPaintColor | Compi
 }
 
 /** A field's values mapped, its geometry kept. */
-function mapStampPaintField<T, U>(field: StampSeededPaintField<T>, map: (value: T) => U): StampSeededPaintField<U> {
+export function mapStampPaintField<T, U>(field: StampSeededPaintField<T>, map: (value: T) => U): StampSeededPaintField<U> {
   if (field.kind === 'constant') return { kind: 'constant', value: map(field.value) };
   if (field.kind === 'linear') return { kind: 'linear', from: { ...field.from, value: map(field.from.value) }, to: { ...field.to, value: map(field.to.value) } };
   if (field.kind === 'noise') return { ...field, a: map(field.a), b: map(field.b) };

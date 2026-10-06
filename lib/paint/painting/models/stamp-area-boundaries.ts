@@ -5,7 +5,7 @@
 // past the stretch's ends, so two stretches meet at a point with no notch. stampAreaCoverageAt and areaCoverage in
 // WGSL read it, twins the gate holds together.
 
-import { stampPolygonDistance, type StampPoint } from './stamp-region.ts';
+import { stampRingsDistance, type StampPoint } from './stamp-region.ts';
 
 /**
  * `keep`: the edge holds as the within draws it. `feather`: coverage falls off over `reach` px inside the stretch,
@@ -26,7 +26,7 @@ export type StampBoundaries = { readonly [name: string]: StampBoundary };
 export type CompiledStampBoundary = { name: string; path: readonly StampPoint[]; treatment: 'feather' | 'merge'; reach: number };
 
 /** How far a boundary's point may sit off its area's outline, px. */
-const ON_OUTLINE = 1;
+export const STAMP_BOUNDARY_ON_OUTLINE = 1;
 /** Samples a stretch is checked at for running along another, px apart. */
 const OVERLAP_STEP = 1;
 
@@ -43,29 +43,29 @@ export function stampPolylineDistance(path: readonly StampPoint[], x: number, y:
 }
 
 /**
- * `boundaries` checked against `polygon`, the outline they lie on, for `what`. Throws on a stretch of fewer than two
- * finite points, a point off the outline, a kept stretch given a reach or a treated one without a positive one, or two
+ * `boundaries` checked against `rings`, the outline they lie on, for `what`. Throws on a stretch of fewer than two
+ * finite points, a point off every ring, a kept stretch given a reach or a treated one without a positive one, or two
  * stretches running along each other with different treatments.
  */
-export function compileStampBoundaries(boundaries: StampBoundaries, polygon: readonly StampPoint[], what: string): CompiledStampBoundary[] {
+export function compileStampBoundaries(boundaries: StampBoundaries, rings: readonly (readonly StampPoint[])[], what: string): CompiledStampBoundary[] {
   const entries = Object.entries(boundaries);
   for (const [name, { path, treatment, reach }] of entries) {
     const label = `${what}'s boundary ${name}`;
     if (path.length < 2 || !path.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y))) throw new Error(`stamp paint: ${label} needs at least two finite points`);
-    const off = path.find(({ x, y }) => Math.abs(stampPolygonDistance(polygon, x, y)) > ON_OUTLINE);
+    const off = path.find(({ x, y }) => Math.abs(stampRingsDistance(rings, x, y)) > STAMP_BOUNDARY_ON_OUTLINE);
     if (off) throw new Error(`stamp paint: ${label} has a point at ${off.x}, ${off.y} off its area's outline; a boundary is a stretch of the outline, its points on it`);
     if (treatment === 'keep' && reach !== undefined) throw new Error(`stamp paint: ${label} is kept, and a kept edge has no reach`);
     if (treatment !== 'keep' && !(reach !== undefined && reach > 0 && Number.isFinite(reach))) throw new Error(`stamp paint: ${label} is a ${treatment}, which needs a positive reach, px`);
   }
   entries.forEach(([name, a], i) => entries.slice(i + 1).forEach(([other, b]) => {
     if (a.treatment === b.treatment && a.reach === b.reach) return;
-    if (runsAlong(a.path, b.path)) throw new Error(`stamp paint: ${what}'s boundaries ${name} (${a.treatment}) and ${other} (${b.treatment}) run along the same stretch; stretches with different treatments meet at a point`);
+    if (stampPathsRunAlong(a.path, b.path)) throw new Error(`stamp paint: ${what}'s boundaries ${name} (${a.treatment}) and ${other} (${b.treatment}) run along the same stretch; stretches with different treatments meet at a point`);
   }));
   return entries.flatMap(([name, { path, treatment, reach }]) => (treatment === 'keep' ? [] : [{ name, path, treatment, reach: reach! }]));
 }
 
 /** Whether `a` runs along `b` for any length: two samples of it in a row lie on `b`. */
-function runsAlong(a: readonly StampPoint[], b: readonly StampPoint[]): boolean {
+export function stampPathsRunAlong(a: readonly StampPoint[], b: readonly StampPoint[]): boolean {
   let before = false;
   for (let i = 1; i < a.length; i++) {
     const from = a[i - 1], to = a[i], steps = Math.max(1, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / OVERLAP_STEP));

@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { classifyStudioPath, expandStudioAlias, libFeatureCrossedTo, WEB_ENGINE_DOOR, WEB_SHADOW_MODULE, WEB_THEME_MODULE } from './studio-tree.ts';
 
 test('each path lands in its §4 position', () => {
-  const shared = { p: ['look.ts'] };
+  const shared = { p: ['look.ts', 'paintings/pond.painting.ts'] };
   const cases: Record<string, string> = {
     'lib/timing/timeline/models/clock.ts': 'models',
     'lib/api.ts': 'studio barrel',
@@ -57,6 +57,14 @@ test('each path lands in its §4 position', () => {
     // Adversarial: a model beside its scene file, not in the folder, still belongs to that scene.
     'work/projects/p/bars/01-ink-model.ts': 'model 01-ink',
     'work/projects/p/scenes/intro.tsx': 'scene intro',
+    // A painting source is its scene's, in its folder or beside its file, or shared when project.ts lists it.
+    'work/projects/p/scenes/meadow/meadow.painting.ts': 'painting-source meadow',
+    'work/projects/p/scenes/meadow.painting.ts': 'painting-source meadow',
+    'work/projects/p/paintings/pond.painting.ts': 'painting-source',
+    'work/projects/p/paintings/reeds.painting.ts': 'unclassified',
+    'lib/paint/document/models/meadow.painting.ts': 'models',
+    // Adversarial: a painting source loads in plain Node; in lib, anywhere but models/ places it nowhere.
+    'lib/paint/document/studio/meadow.painting.ts': 'undeclared',
     'work/projects/p/generated/brand.ts': 'generated',
     'work/projects/p/out/ab/video.tsx': 'generated',
     'work/projects/p/parts.tsx': 'unclassified',

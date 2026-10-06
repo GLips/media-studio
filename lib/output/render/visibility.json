@@ -1,5 +1,6 @@
 {
   "lib/output/look": "`studio look` renders frames through a render session and reads the project's timeline as a render loads it.",
+  "lib/output/remote-render": "`studio render --remote` keeps and joins the pieces a remote container drew as `--join` joins slices, under the mix mastered here, and the container renders its pieces and stills through a render session.",
   "lib/output/review": "A review artifact names the render snapshot it was made from, and the still sheet lays out the stills a render produced.",
   "lib/output/sound-check": "`studio mix` loads video.tsx in Node through the render's tsx hooks.",
   "lib/picture/reel": "recap.test loads the reel's studio code in Node through the render's tsx hooks."

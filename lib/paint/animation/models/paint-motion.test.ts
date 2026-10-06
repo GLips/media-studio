@@ -10,6 +10,7 @@ import type { StampGroupOptions, StampPaintEnvironment } from '#lib/paint/painti
 import { paintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { paintMotionPlay, type PaintMotion, type PaintMotionNode } from './paint-motion-compile.ts';
+import { paintKeyed } from './paint-keyed.ts';
 import type { PaintPoseClip } from './paint-motion-clips.ts';
 import { paintMotionFrameAt } from './paint-motion-frame.ts';
 import { buildPaintMotion, type PaintMotionBuild } from './paint-motion.ts';
@@ -55,7 +56,9 @@ const close = (a: StampPoint, b: StampPoint, what: string, within = 1e-6) => ass
 
 const body = { id: 'frog', clock: { hold: 2 }, pins: { chest: { at: { x: 200, y: 200 }, reach: 150 } } } satisfies PaintMotionNode<'chest'>;
 const outline = { id: 'frog-ink', parent: 'frog', marks: { boil: { every: 2 } } } satisfies PaintMotionNode;
-const puff: PaintPoseClip<'chest'> = { kind: 'poses', keys: [{ at: 0, pose: {} }, { at: 0.4, pose: { chest: { scale: 1.3 } }, ease: 'out' }, { at: 1, pose: {} }] };
+const puff: PaintPoseClip<'chest'> = {
+  kind: 'poses', value: paintKeyed([{ at: 0, value: { chest: { scale: 1 } } }, { at: 0.4, value: { chest: { scale: 1.3 } }, curve: 'out' }, { at: 1, value: { chest: { scale: 1 } } }]),
+};
 
 test('a frame is the same in any order, render frames inside one hold share keys, and a key names one map', () => {
   const painting = paintingOf([square('frog'), square('frog-ink')]);
@@ -87,8 +90,8 @@ test('a point goes through its own bend and placement, then its parent\'s, as a 
   const motion = built(buildPaintMotion(painting, {
     nodes: [parent, child],
     plays: [
-      paintMotionPlay(parent, { kind: 'poses', keys: [{ at: 0, pose: { near: { x: 20 } } }] }, { clock: { at: 0 }, origin: 'nudge' }),
-      paintMotionPlay(child, { kind: 'place', keys: [{ at: 0, x: 300, y: 0 }] }, { clock: { at: 0 }, origin: 'carry' }),
+      paintMotionPlay(parent, { kind: 'poses', value: { near: { x: 20 } } }, { clock: { at: 0 }, origin: 'nudge' }),
+      paintMotionPlay(child, { kind: 'place', value: { x: 300, y: 0 } }, { clock: { at: 0 }, origin: 'carry' }),
     ],
   }));
   const state = paintMotionFrameAt(motion, paintMoment(0)).get('c')!;
@@ -104,9 +107,9 @@ test('placements outside every bend compose into one lay about the node\'s pivot
   const motion = built(buildPaintMotion(paintingOf([square('p'), square('c')]), {
     nodes: [parent, child],
     plays: [
-      paintMotionPlay(child, { kind: 'poses', keys: [{ at: 0, pose: { all: { scale: 2 } } }] }, { clock, origin: 'grow' }),
-      paintMotionPlay(child, { kind: 'place', keys: [{ at: 0, x: 0, y: 0, rotation: Math.PI / 2 }] }, { clock, origin: 'turn' }),
-      paintMotionPlay(parent, { kind: 'place', keys: [{ at: 0, x: 5, y: 0, scale: 3 }] }, { clock, origin: 'zoom' }),
+      paintMotionPlay(child, { kind: 'poses', value: { all: { scale: 2 } } }, { clock, origin: 'grow' }),
+      paintMotionPlay(child, { kind: 'place', value: { x: 0, y: 0, rotation: Math.PI / 2 } }, { clock, origin: 'turn' }),
+      paintMotionPlay(parent, { kind: 'place', value: { x: 5, y: 0, scale: 3 } }, { clock, origin: 'zoom' }),
     ],
   }));
   const state = paintMotionFrameAt(motion, paintMoment(0)).get('c')!;
@@ -142,10 +145,10 @@ test('a re-seeding group always has its epoch; a stuck one over a boil is held a
   const reseeded = { id: 'ink', marks: { boil: { every: 2, reseed: true } } } satisfies PaintMotionNode;
   const still = { id: 'rock' } satisfies PaintMotionNode;
   const painting = paintingOf([square('ink', { options: { boil: { every: 2 } } }), square('rock', { options: { boil: { every: 2 } } })]);
-  const motion = built(buildPaintMotion(painting, { nodes: [reseeded, still], plays: [] }));
+  const motion = built(buildPaintMotion(painting, { nodes: [reseeded, still] }));
   assert.deepEqual(paintMotionFrameAt(motion, paintMoment(1.5)).get('ink')?.marks, { kind: 'written', epoch: 18 });
   assert.deepEqual(paintMotionFrameAt(motion, paintMoment(1.5)).get('rock')?.marks, { kind: 'written', epoch: 0 });
-  const unboiled = buildPaintMotion(paintingOf([square('ink')]), { nodes: [reseeded], plays: [] });
+  const unboiled = buildPaintMotion(paintingOf([square('ink')]), { nodes: [reseeded] });
   assert.match(problemsOf(unboiled)[0], /^ink re-seeds its marks, but its group is compiled without a boil/);
 });
 
@@ -161,7 +164,7 @@ test('a live child is posed by its own pins alone, and its parent\'s breath reac
     nodes: [chest, sac],
     plays: [
       paintMotionPlay(chest, { kind: 'breathe', pin: 'chest', amount: 0.05, period: 2 }, { clock: { at: 0 }, origin: 'breath' }),
-      paintMotionPlay(sac, { kind: 'poses', keys: [{ at: 0, pose: {} }, { at: 1, pose: { puff: { scale: 1.9 } } }] }, { clock: { at: 0 }, origin: 'puff' }),
+      paintMotionPlay(sac, { kind: 'poses', value: paintKeyed([{ at: 0, value: { puff: { scale: 1 } } }, { at: 1, value: { puff: { scale: 1.9 } } }]) }, { clock: { at: 0 }, origin: 'puff' }),
     ],
   }));
   assert.equal(paintMotionFrameAt(motion, paintMoment(0)).get('sac'), undefined, 'at rest it draws as written');
@@ -175,7 +178,7 @@ test('a live child is posed by its own pins alone, and its parent\'s breath reac
   assert.equal(poses.filter((key) => key === puffedKey).length, 1, 'each pose is compiled once');
 });
 
-test('the build names conflicts, missing pins and groups, keys out of order, a hold in seconds, a boil that folds and a pose that folds', () => {
+test('the build names conflicts, missing pins and groups, a hold in seconds, a boil that folds and a pose that folds', () => {
   const painting = paintingOf([square('frog'), square('pond')]);
   const problems = problemsOf(buildPaintMotion(painting, {
     nodes: [body, { id: 'tadpole' }, { id: 'frog' }, { id: 'pond', marks: { boil: { every: 2, amount: 100, scale: 10 } } }],
@@ -184,7 +187,7 @@ test('the build names conflicts, missing pins and groups, keys out of order, a h
       paintMotionPlay(body, { kind: 'breathe', pin: 'chest', amount: 0.02, period: 3 }, { clock: { at: 2 }, origin: 'breath' }),
       // SAFETY: a pin the node lacks, as a scene written without the types would name it.
       paintMotionPlay(body, { kind: 'breathe', pin: 'throat' as 'chest', amount: 0.1, period: 2 }, { clock: { at: 0 }, origin: 'gulp' }),
-      paintMotionPlay(body, { kind: 'poses', keys: [{ at: 1, pose: {} }, { at: 0.5, pose: {} }] }, { clock: { at: 0, hold: 1.5 }, origin: 'jumbled' }),
+      paintMotionPlay(body, { kind: 'poses', value: {} }, { clock: { at: 0, hold: 1.5 }, origin: 'held' }),
     ],
   }));
   assert.deepEqual(problems, [
@@ -192,11 +195,10 @@ test('the build names conflicts, missing pins and groups, keys out of order, a h
     'frog is declared twice',
     'pond: its wobble of 100 px at 10 px can fold paint; keep the amount under 1.33 px at that scale',
     'gulp moves pins \'throat\', which frog doesn\'t have',
-    'jumbled: its keys need increasing times; key 1 is at 0.5s after 1s',
-    'jumbled: its hold is 1.5 frames, not a whole number from 1',
+    'held: its hold is 1.5 frames, not a whole number from 1',
     'breath writes deform on frog\'s pin \'chest\' from 2s while puff still does (without end)',
   ]);
-  const shove: PaintPoseClip<'chest'> = { kind: 'poses', keys: [{ at: 0, pose: {} }, { at: 1, pose: { chest: { x: 140 } } }] };
+  const shove: PaintPoseClip<'chest'> = { kind: 'poses', value: paintKeyed([{ at: 0, value: { chest: { x: 0 } } }, { at: 1, value: { chest: { x: 140 } } }]) };
   const folds = problemsOf(buildPaintMotion(painting, { nodes: [body], plays: [paintMotionPlay(body, shove, { clock: { at: 0 }, origin: 'shove' })], foldCheck: { from: 0, to: 1 } }));
   assert.equal(folds.length, 1);
   assert.match(folds[0], /^frog: at 0\.\d+s its warp folds near .*frog's pin 'chest' moves paint there most/);

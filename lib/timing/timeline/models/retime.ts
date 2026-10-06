@@ -113,7 +113,10 @@ export function assertTimelineRetimes(
         refusal = error instanceof Error ? error.message : String(error);
       }
       if (span.driver === 'beat') {
-        if (!refusal) fail('the unchanged recording accepts it; its landmarks should refuse');
+        if (!refusal) {
+          fail('the unchanged recording accepts it, as no landmark moves with the longer scene; its landmarks should refuse. Put '
+            + "the music's final hit on the last beat scene's end (a cue `'end'`, its landmark `downbeat: -1`): the recording rings out past it");
+        }
         else if (!refusal.includes('studio music fit --bars') || !refusal.includes('change the timeline')) fail(`the landmark refusal doesn't name both fixes: ${refusal}`);
       } else if (refusal) {
         fail(`the unchanged recording refuses it, though the music moves with the beats: ${refusal}`);

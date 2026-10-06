@@ -1,22 +1,16 @@
-// stamp-wetness.ts: when a wash's deposits land and how its paper dries, worked out once from the recipe. Painting
-// time starts at 0 with each wash; only its waits advance it.
+// stamp-wetness.ts: how a wash's paper dries and what a deposit lands on, by laws in closed form, and the shapes a
+// painting's wetness is held in: each deposit's landing and each wash's dryings. When deposits land is decided
+// elsewhere: by a recipe's waits (stamp-wash-waits.ts), each wash's bookkeeping kept by its ledger
+// (stamp-wash-ledger.ts).
 //
 // Where water lands is per pixel, in each wash's wet field on the GPU (studio/stamp-wet-field.ts). Wetness and
 // workability follow in closed form by the laws here, which STAMP_WET_PAPER_WGSL runs per pixel.
-//
-// A wait lasts in closed form too (stampWashWaitSeconds): a deposit's water is taken to reach all of its box, so a
-// wait may run long where a stroke touched only part of it, or a lift took water up.
-//
-// Negative space: washes share no water, and water doesn't spread past its brush.
 
 import type { PaintMedium, PaintWetting } from '#lib/paint/materials/models/paint-medium.ts';
 import { stampDepositWater } from './stamp-paint-action.ts';
-import { stampPaintFieldEnds } from './stamp-paint-field.ts';
-import { stampPassDeposits, type CompiledStampDeposit, type CompiledStampGroup, type CompiledStampPaint, type CompiledStampPass } from './stamp-paint-recipe-compile.ts';
+import type { CompiledStampDeposit, CompiledStampGroup, CompiledStampPass, StampMixedPainting } from './stamp-paint-recipe-compile.ts';
 import type { StampPaintPaper } from './stamp-paint-recipe-types.ts';
-import type { CompiledStampWashStep, CompiledStampWashWait, StampWashWait } from './stamp-wash-effects.ts';
-import { stampPolygonBox, type StampBox } from './stamp-region.ts';
-import { stampDepositSupport, type StampTipsOf } from './stamp-tip-support.ts';
+import type { CompiledStampWashWait } from './stamp-wash-effects.ts';
 
 /**
  * How paper dries, from its medium and itself: water leaves at `rate` of a full wash a second, evenly, as standing
@@ -41,6 +35,19 @@ export const stampWetnessAt = (level: number, at: number, tau: number, { rate }:
  */
 export function stampWorkableAt(level: number, at: number, tau: number, { rate, openTime, damp }: StampDrying): number {
   return Math.min(1, Math.max(0, level - rate * Math.max(0, tau - at - openTime)) / damp);
+}
+
+/** When paper wetted to some level passes each sheen, s after it was wetted (stampDryingTimes). */
+export type StampDryingTimes = { shinyUntil: number; matteFrom: number; setFrom: number };
+
+/**
+ * When paper wetted to `level` crosses each line of stampWetnessAt and stampWorkableAt, s after: wetter than shiny
+ * until `shinyUntil`, no wetter than damp from `matteFrom`, unworkable from `setFrom`. The sheet reductions' matteAt
+ * and setAt run these per texel. At rate 0 nothing sets, and paper is matte from the start only if no wetter than damp.
+ */
+export function stampDryingTimes(level: number, { rate, openTime, shiny, damp }: StampDrying): StampDryingTimes {
+  if (rate <= 0) return { shinyUntil: level > shiny ? Infinity : -Infinity, matteFrom: level <= damp ? -Infinity : Infinity, setFrom: Infinity };
+  return { shinyUntil: (level - shiny) / rate, matteFrom: (level - damp) / rate, setFrom: openTime + level / rate };
 }
 
 /**
@@ -113,11 +120,11 @@ export type StampWashWaitRecord = { step: CompiledStampWashWait; from: number; t
 
 /**
  * One drying of a wash: the deposits laid since the last, drying and rimming as one, closed at painting second `at`
- * by a wait the whole wash had set by, or its end. `id` seeds its rim. `rim`, 0..2: its wait('set')'s, else its
+ * once the whole wash had `set`, or at its `end`. `id` seeds its rim. `rim`, 0..2: its wait('set')'s, else its
  * wash's, else 1. `wettest`: the wettest its paper can have stood, at most 1.
  */
 export type StampWashDrying = {
-  pass: CompiledStampPass; id: string; deposits: readonly CompiledStampDeposit[]; rim: number; at: number; closes: CompiledStampWashWait | 'end'; wettest: number;
+  id: string; deposits: readonly CompiledStampDeposit[]; rim: number; at: number; closes: 'set' | 'end'; wettest: number;
 };
 
 /**
@@ -132,12 +139,6 @@ export type StampWetness = {
 };
 
 /**
- * Painting seconds a wash may still have to go and count as set: a seconds wait as long as wait('set') would take
- * lands within rounding of the moment, not on it.
- */
-const STAMP_SET_SLACK = 1e-6;
-
-/**
  * A painting's media, bound once for the renderer and its washes: each group's medium (null in flat colour, which has
  * none), and each deposit's water, resolved in its group's medium (stampDepositWater). Both go by ID, so a boil
  * epoch's and live marks' read the ones written. Washes need a medium (StampPaintMedia<PaintMedium>).
@@ -147,103 +148,7 @@ export type StampPaintMedia<M extends PaintMedium | null = PaintMedium | null> =
 };
 
 /** `painting`'s media, each group's by `mediumOf`: every deposit's water resolved now, so a painting that can't be wet fails first. */
-export function stampPaintMedia<M extends PaintMedium | null>(painting: CompiledStampPaint, mediumOf: (group: Pick<CompiledStampGroup, 'id'>) => M): StampPaintMedia<M> {
-  const water = new Map(painting.groups.flatMap((group) => group.passes.flatMap((pass) => stampPassDeposits(pass).map((deposit) => [deposit.id, stampDepositWater(deposit, mediumOf(group))] as const))));
+export function stampPaintMedia<M extends PaintMedium | null>(painting: StampMixedPainting, mediumOf: (group: Pick<CompiledStampGroup, 'id'>) => M): StampPaintMedia<M> {
+  const water = new Map(painting.groups.flatMap((group) => group.passes.flatMap((pass) => pass.deposits.map((deposit) => [deposit.id, stampDepositWater(deposit, mediumOf(group))] as const))));
   return { mediumOf, waterOf: (deposit) => water.get(deposit.id)! };
-}
-
-/** Water a wash laid: as wet as `level` at painting second `at`, as far as `box` (null for none). */
-type StampWetting = { at: number; level: number; box: StampBox | null };
-
-/**
- * Every wash deposit's landing in `painting`, on its paper, by `media`'s paint and water, each wash starting from dry
- * paper (or its preparation) at painting time 0. What a deposit finds under it is read `margin(deposit, medium, water)`
- * px past where its stamps can lay paint (stampDepositSupport, by `tips`): a stage's `reach`.
- */
-export function compileStampWetness(
-  painting: CompiledStampPaint, media: StampPaintMedia<PaintMedium>, tips: StampTipsOf,
-  margin: (deposit: CompiledStampDeposit, medium: PaintMedium, water: number) => number = () => 0,
-): StampWetness {
-  const { paper } = painting, landings = new Map<CompiledStampDeposit, StampWetLanding>(), washes = new Map<CompiledStampPass, StampWashRecord>();
-  const supportOf = (deposit: CompiledStampDeposit) => stampDepositSupport(deposit, tips(deposit));
-  for (const [group, pass] of painting.groups.flatMap((each) => each.passes.map((laid) => [each, laid] as const))) {
-    if (pass.kind !== 'wash') continue;
-    const medium = media.mediumOf(group), drying = stampDrying(medium.wetting, paper);
-    const { preparation, schedule } = pass.wash;
-    const wettings: StampWetting[] = [];
-    if (preparation) {
-      const { first, second } = stampPaintFieldEnds(preparation.wetness);
-      wettings.push({ at: 0, level: Math.max(first, second), box: stampPolygonBox(preparation.polygon) });
-    }
-    let tau = 0;
-    // The wettest any of the wash's water can still stand: what a drying starts from. A wait judging only the deposits
-    // it names may close one while paper elsewhere is wet.
-    const standing = () => Math.min(1, Math.max(0, ...wettings.map(({ level, at }) => stampWetnessAt(level, at, tau, drying))));
-    let wettest = standing();
-    const waits: StampWashWaitRecord[] = [], dryings: StampWashDrying[] = [];
-    let since: CompiledStampDeposit[] = [];
-    const washRim = pass.wash.rim ?? 1;
-    const dry = (closes: StampWashDrying['closes'], rim: number) => {
-      if (since.length) dryings.push({ pass, id: dryings.length ? `${pass.id}|dry${dryings.length}` : pass.id, deposits: since, rim, at: tau, closes, wettest });
-      since = [];
-      wettest = standing();
-    };
-    for (const [index, step] of schedule.entries()) {
-      if (step.kind === 'wait') {
-        const { under } = step;
-        let boxes: StampBox[] | null = null;
-        if (under !== 'wash') boxes = 'deposits' in under ? stampWaitDeposits(schedule, index).flatMap((next) => supportOf(next) ?? []) : [stampPolygonBox(under.region)];
-        const judged = boxes ? wettings.filter(({ box }) => meetsAny(box, boxes)) : wettings;
-        const from = tau, wet = judged.some(({ level, at }) => stampWetnessAt(level, at, tau, drying) > 0);
-        tau += stampWashWaitSeconds(judged, tau, step.until, drying);
-        waits.push({ step, from, to: tau, judged: judged.length, wet });
-        // The paper decides, not the token: any wait the whole wash has set by closes its drying, as wait('set') does.
-        if (step.until === 'set' || stampWashWaitSeconds(wettings, tau, 'set', drying) <= STAMP_SET_SLACK) dry(step, step.rim ?? washRim);
-        continue;
-      }
-      const { deposit } = step, { action } = deposit, water = media.waterOf(deposit), support = supportOf(deposit);
-      const reach = support && grown(support, margin(deposit, medium, water));
-      const under = wettings.filter(({ box }) => meetsAny(box, reach ? [reach] : []));
-      const finds = {
-        wet: under.some(({ level, at }) => stampWetnessAt(level, at, tau, drying) > 0),
-        workable: under.some(({ level, at }) => stampWorkableAt(level, at, tau, drying) > 0),
-      };
-      landings.set(deposit, { tau, water, medium, drying, finds });
-      if (water > 0 && action.kind !== 'lift') {
-        wettings.push({ at: tau, level: water, box: support });
-        wettest = Math.max(wettest, Math.min(1, water), stampFloodHeldWetness(deposit, { water, medium }));
-      }
-      since.push(deposit);
-    }
-    dry('end', washRim);
-    washes.set(pass, { duration: tau, waits, dryings });
-  }
-  return { landings, washes };
-}
-
-/** `box` grown by `pad` px on every side. */
-const grown = ({ x0, y0, x1, y1 }: StampBox, pad: number): StampBox => ({ x0: x0 - pad, y0: y0 - pad, x1: x1 + pad, y1: y1 + pad });
-
-/** Whether `box` overlaps any of `boxes`: none for a box of nothing. */
-const meetsAny = (box: StampBox | null, boxes: readonly StampBox[]) =>
-  !!box && boxes.some((other) => box.x0 < other.x1 && other.x0 < box.x1 && box.y0 < other.y1 && other.y0 < box.y1);
-
-/**
- * Painting seconds from `tau` until `until` over the paper `wettings` laid: 'shiny' or 'damp' once the wettest is no
- * wetter than that, 'set' once no paint is workable. Each wetting reaches it in closed form, as if it covered its box
- * wholly and nothing wetter came after; the wait lasts to the latest, 0 if all are past it.
- */
-function stampWashWaitSeconds(wettings: readonly StampWetting[], tau: number, until: StampWashWait, { rate, openTime, shiny, damp }: StampDrying): number {
-  if (typeof until === 'object') return until.seconds;
-  const floor = { shiny, damp, set: 0 }[until], lag = until === 'set' ? openTime : 0;
-  let latest = tau;
-  for (const { at, level } of wettings) if (level > floor) latest = Math.max(latest, at + lag + (level - floor) / rate);
-  return latest - tau;
-}
-
-/** The deposits a condition at `index` of `schedule` judges: those it names, as they're laid after it. */
-export function stampWaitDeposits(schedule: readonly CompiledStampWashStep[], index: number): CompiledStampDeposit[] {
-  const step = schedule[index];
-  const named = new Set(step.kind === 'wait' && typeof step.under === 'object' && 'deposits' in step.under ? step.under.deposits : []);
-  return schedule.slice(index + 1).flatMap((later) => (later.kind === 'deposit' && named.has(later.deposit.id) ? [later.deposit] : []));
 }

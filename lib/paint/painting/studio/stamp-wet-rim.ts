@@ -12,9 +12,10 @@ import type { StampWashDrying } from '../models/stamp-wetness.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampStage } from '../models/stamp-stage.ts';
-import type { StampLoadedWetStage, StampWetDryingMoment, StampWetStage, StampWetStageContext, StampWetWall } from './stamp-wet-stages.ts';
+import { stampWetStageExtentOf, type StampLoadedWetStage, type StampWetDryingMoment, type StampWetStage, type StampWetStageContext, type StampWetStageExtent, type StampWetWall } from './stamp-wet-stages.ts';
 import { gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { STAMP_DRYING_RIM_FLOOD_FIRST_STEP, STAMP_DRYING_RIM_SIZING_BYTES, STAMP_DRYING_RIM_UNIFORM, stampDryingRimGroupPasses, stampDryingRimPasses } from './stamp-wet-rim-passes.ts';
+import { destroyStampTexturesOnceSubmitted } from './stamp-paint-gpu.ts';
 import { encodeStampWetTransportSteps, stampWetSpreads, stampWetTransportGate } from './stamp-wet-transport.ts';
 
 /**
@@ -69,12 +70,12 @@ function loadDryingRim({ device, stage, layer, wash, field }: StampWetStageConte
   };
 
   let scratch: RimScratch | null = null;
-  /** Grows the scratch to hold a box as big as `box` and `atLeast` layers: only as a bank plans, between frames. */
-  const grow = ({ w, h }: { w: number; h: number }, atLeast: number) => {
+  /** Grows the scratch to hold a box as big as `extent`'s and its layers. */
+  const reserve = ({ w, h, layers: atLeast }: StampWetStageExtent) => {
     if (scratch && w <= scratch.w && h <= scratch.h && atLeast <= scratch.layers) return;
     const size = { w: Math.max(w, scratch?.w ?? 0), h: Math.max(h, scratch?.h ?? 0) }, layers = Math.max(atLeast, scratch?.layers ?? 1);
-    // The frames that bound the old set are submitted, and destroy waits for them.
-    for (const texture of scratch?.textures ?? []) texture.destroy();
+    // Work already encoded with the old set keeps it until its submit.
+    destroyStampTexturesOnceSubmitted(scratch?.textures ?? []);
     const textures: GPUTexture[] = [];
     // A one-layer array still binds as an array.
     const view = (format: GPUTextureFormat, depth?: number) => {
@@ -126,13 +127,14 @@ function loadDryingRim({ device, stage, layer, wash, field }: StampWetStageConte
   };
 
   return {
-    plan: ({ device: on, wetness, boxOf, wallOf }) => {
-      const rims = new Map<StampWashDrying, PlannedRim>();
+    reserve,
+    plan: ({ device: on, landings, dryings, boxOf, wallOf }) => {
+      const rims = new Map<StampWashDrying, PlannedRim>(), extents: StampWetStageExtent[] = [];
       // Every deposit of a drying the medium could rim, whose brushes' own wet edges would rim it again: a drying at
       // strength 0 owns its edges too, so its brushes' rims don't come back when its own is turned off.
       const rimmed = new Set<CompiledStampDeposit>();
-      for (const drying of [...wetness.washes.values()].flatMap((record) => record.dryings)) {
-        const bound = stampDryingRimBound(drying, wetness);
+      for (const drying of dryings) {
+        const bound = stampDryingRimBound(drying, { landings });
         if (!bound || bound.spread <= 0 || bound.band < STAMP_DRYING_RIM_LEAST_BAND) continue;
         const { painted, spread, damp, band } = bound;
         const box = stageBox(drying.deposits.map(boxOf), stage);
@@ -141,7 +143,7 @@ function loadDryingRim({ device, stage, layer, wash, field }: StampWetStageConte
         // Nothing to gather: the drying keeps its edges, and pays nothing for a rim.
         if (drying.rim === 0) continue;
         const sigma = band / 2, layers = wash.layersOf(painted[0]);
-        grow(box, layers);
+        extents.push({ w: box.w, h: box.h, layers });
         // The line, laid in values[1], spreads back there; what's sent spreads in values[0].
         const spreads = stampWetSpreads(on, [{ sigma, order: 'transposed', layers: 1, from: 1 }, { sigma, order: 'forward', layers, from: 0 }], gate);
         spreads.write(box);
@@ -170,12 +172,14 @@ function loadDryingRim({ device, stage, layer, wash, field }: StampWetStageConte
         rims.set(drying, { box, uniform, writeSeed, walls, layers, moved: wash.movedWgsl(painted[0]), spreads });
       }
       return {
+        extent: stampWetStageExtentOf(extents),
         encode: (encoder, { drying, seed }) => {
           const rim = rims.get(drying);
           if (!rim) return null;
+          const bound = scratch;
+          if (!bound || rim.box.w > bound.w || rim.box.h > bound.h || rim.layers > bound.layers) throw new Error(`stamp paint: the drying rim was given ${drying.id}'s box, past the scratch reserved for it`);
           // A frame encodes a drying once, so its uniform holds one epoch's seed until the frame's submit.
           rim.writeSeed(seed);
-          const bound = scratch!;
           let steps = bound.steps.get(rim);
           if (!steps) {
             steps = rimSteps(rim, bound);

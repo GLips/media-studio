@@ -12,9 +12,10 @@ import { STAMP_BLOOM_BAND_WIDTH, STAMP_BLOOM_CARRY_SPREAD, STAMP_BLOOM_LEAST_SIG
 import { STAMP_WET_LIFT_WGSL } from '../models/stamp-wet-lift.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
-import { stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
-import type { StampLoadedWetStage, StampWetDepositMoment, StampWetStage, StampWetStageContext } from './stamp-wet-stages.ts';
+import { STAMP_WRAP_FROM_NONE, stampAxisWords, stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
+import { stampWetStageExtentOf, type StampLoadedWetStage, type StampWetDepositMoment, type StampWetStage, type StampWetStageContext, type StampWetStageExtent } from './stamp-wet-stages.ts';
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
+import { destroyStampTexturesOnceSubmitted } from './stamp-paint-gpu.ts';
 import { encodeStampWetTransportSteps, stampWetSpreads, stampWetTransportGate, type StampWetTransportStep } from './stamp-wet-transport.ts';
 
 const WORKGROUP = 8;
@@ -28,10 +29,12 @@ const STAMP_BLOOM_SEND_FLOOR = 0.2;
 
 /**
  * A bloom: its box, seed and diameter; the medium's spread, damp and shiny (PaintSheen); the widest its water could
- * spread (stampBloomBound), which its spreads are sized by.
+ * spread (stampBloomBound), which its spreads are sized by; and on a wrapping stage, where its front is keyed within a
+ * wrap of (its deposit's wrapFrom), so a copy past a seam blooms as it does.
  */
 const BLOOM = gpuUniformLayout('Bloom', [
   ['origin', 'vec2u'], ['extent', 'vec2u'], ['seed', 'u32'], ['damp', 'f32'], ['shine', 'f32'], ['spread', 'f32'], ['diameter', 'f32'], ['bound', 'f32'],
+  ['wrapFrom', 'vec2f'],
 ]);
 
 /**
@@ -267,12 +270,15 @@ fn waterRound(local: vec2i, sigma: f32) -> BloomWater {
   let sigma = sigmaAt(p);
   let water = waterRound(local, sigma);
   let before = wetnessBeforeAt(p);
-  let at = bloomFront(stagePoint(p), water, bloomGrip(before, u.damp, u.shine), u.seed, sigma);
+  // The front is keyed where its deposit was planned (\`keyed\`); where it stalled is read back here.
+  let here = stagePoint(p);
+  let keyed = stageUnwrapped(here, u.wrapFrom);
+  let at = bloomFront(keyed, water, bloomGrip(before, u.damp, u.shine), u.seed, sigma);
   let streak = bloomStreak(at.foot, at.d, u.seed, sigma);
   let allowed = clamp(textureLoad(footprint, p, 0).g, 0.0, 1.0);
   var paint: array<vec4f, ${layers}>;
   for (var l = 0; l < ${layers}; l++) { paint[l] = textureLoad(layer, p, l, 0); }
-  let open = bloomPastFront(waterAt(vec2i(floor(at.past)) + STAGE_MARGIN - vec2i(u.origin)));
+  let open = bloomPastFront(waterAt(vec2i(floor(at.past + here - keyed)) + STAGE_MARGIN - vec2i(u.origin)));
   let line = bloomFrontLine(at.held, bloomMerging(before, u.damp, u.shine));
   let weight = bloomBand(at.d, line, streak) * allowed * contactAt(p) * bloomLipPaint(coverageRound(p)) * open * bloomInside(water.inWash);
   let free = liftFree(workableAt(p), washOpen(paint));
@@ -372,13 +378,13 @@ function loadBloom({ device, layer, footprint, field, wash, stage }: StampWetSta
   const gate = stampWetTransportGate(device);
 
   let scratch: BloomScratch | null = null, layers = 1;
-  /** Grows the scratch to hold a box as big as `box` and `atLeast` layers: only as a bank plans, between frames. */
-  const grow = ({ w, h }: { w: number; h: number }, atLeast: number) => {
+  /** Grows the scratch to hold a box as big as `extent`'s and its layers. */
+  const reserve = ({ w, h, layers: atLeast }: StampWetStageExtent) => {
     if (scratch && w <= scratch.w && h <= scratch.h && atLeast <= layers) return;
     const size = { w: Math.max(w, scratch?.w ?? 0), h: Math.max(h, scratch?.h ?? 0) };
     layers = Math.max(layers, atLeast);
-    // The frames that bound the old set are submitted, and destroy waits for them.
-    for (const texture of scratch?.textures ?? []) texture.destroy();
+    // Work already encoded with the old set keeps it until its submit.
+    destroyStampTexturesOnceSubmitted(scratch?.textures ?? []);
     const textures: GPUTexture[] = [];
     const view = (format: GPUTextureFormat, depth?: number, taller = 0) => {
       const texture = device.createTexture({ size: [size.w, size.h + taller, depth ?? 1], format, usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING });
@@ -393,7 +399,7 @@ function loadBloom({ device, layer, footprint, field, wash, stage }: StampWetSta
 
   const encode = (encoder: GPUCommandEncoder, plan: BloomPlan, { deposit, landing, box, seed }: StampWetDepositMoment): StampPixelBox => {
     const { wetting } = landing.medium;
-    if (!scratch || box.w > scratch.w || box.h > scratch.h) throw new Error(`stamp paint: the bloom stage was given ${deposit.id}'s box, past what its bank planned`);
+    if (!scratch || box.w > scratch.w || box.h > scratch.h) throw new Error(`stamp paint: the bloom stage was given ${deposit.id}'s box, past the scratch reserved for it`);
     const words = new ArrayBuffer(BLOOM.words * 4);
     const put = gpuUniformWriter(BLOOM, { floats: new Float32Array(words), ints: new Int32Array(words), words: new Uint32Array(words) });
     put('origin', [box.x, box.y]);
@@ -404,6 +410,7 @@ function loadBloom({ device, layer, footprint, field, wash, stage }: StampWetSta
     put('spread', wetting.spread);
     put('diameter', deposit.diameter);
     put('bound', plan.bound);
+    put('wrapFrom', stampAxisWords(deposit.wrapFrom ?? STAMP_WRAP_FROM_NONE));
     device.queue.writeBuffer(plan.uniform, 0, words);
     plan.spreads.write(box);
 
@@ -452,12 +459,14 @@ function loadBloom({ device, layer, footprint, field, wash, stage }: StampWetSta
     };
   };
   return {
-    plan: ({ device: on, wetness, boxOf }) => {
-      const plans = new Map([...wetness.landings].flatMap(([deposit, landing]): [CompiledStampDeposit, BloomPlan][] => {
+    reserve,
+    plan: ({ device: on, landings, boxOf }) => {
+      const extents: StampWetStageExtent[] = [];
+      const plans = new Map([...landings].flatMap(([deposit, landing]): [CompiledStampDeposit, BloomPlan][] => {
         const { sigma } = stampBloomBound(deposit, landing), box = boxOf(deposit);
         if (sigma === null || !box) return [];
         const layered = wash.layersOf(deposit), carry = STAMP_BLOOM_CARRY_SPREAD * sigma;
-        grow(box, layered);
+        extents.push({ w: box.w, h: box.h, layers: layered });
         const uniform = on.createBuffer({ size: BLOOM.words * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
         // Sized for the widest its water could spread: its paper is narrowed to its own (BloomSizing's ratio).
         // The water spreads from values[0]; the band, laid in values[1], spreads back there; what's sent spreads in values[0].
@@ -467,6 +476,7 @@ function loadBloom({ device, layer, footprint, field, wash, stage }: StampWetSta
         return [[deposit, { bound: sigma, pipelines: pipelinesOf(deposit), uniform, spreads }]];
       }));
       return {
+        extent: stampWetStageExtentOf(extents),
         encode: (encoder, moment) => {
           const plan = plans.get(moment.deposit);
           return plan ? encode(encoder, plan, moment) : null;

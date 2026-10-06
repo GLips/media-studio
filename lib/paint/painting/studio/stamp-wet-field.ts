@@ -9,14 +9,16 @@
 //
 // Its textures are the stage's (stamp-stage.ts); boxes are stage texels, fields and scale grids painting points.
 
-import { STAMP_PAINT_FIELD_SHARE } from '../models/stamp-paint-field.ts';
+import { STAMP_PAINT_FIELD_SHARE, stampPaintFieldEnds, type StampSeededPaintField } from '../models/stamp-paint-field.ts';
 import { STAMP_GRID_AT_WGSL, type StampGrid } from '../models/stamp-region.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import { STAMP_LANDED_WETNESS_WGSL, STAMP_WET_CONTACT_WGSL, STAMP_WET_PAPER_WGSL, stampFloodHeldWetness, type StampDrying, type StampWetLanding } from '../models/stamp-wetness.ts';
 import type { StampPaintDevice } from './stamp-paint-gpu.ts';
-import { stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
+import { STAMP_REGION_AT_WGSL } from './stamp-region-textures.ts';
+import { STAMP_WRAP_FROM_NONE, stampAxisWords, stampRegionTexelWords, stampStageWgsl, type StampPointBox, type StampStage } from '../models/stamp-stage.ts';
 import { gpuUniformLayout, gpuUniformStruct, gpuUniformWriter, type GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
+import { STAMP_REST_IDENTITY, STAMP_REST_POINT_WGSL, type StampRestMap } from '../models/stamp-rest-map.ts';
 
 const WORKGROUP = 8;
 
@@ -32,20 +34,26 @@ export const STAMP_WET_PREPARE = gpuUniformLayout('WetPrepare', [
   ['region', 'vec4f'], ['fluid', 'vec4f'], ['geometry', 'vec4f'], ['ends', 'vec2f'], ['size', 'vec2u'], ['kind', 'i32'], ['prepared', 'u32'],
 ]);
 
-/** Where a deposit's tool's local scale is read in the scale buffer (StampWetScale), by STAMP_GRID_AT_WGSL. */
-export const STAMP_WET_SCALE = gpuUniformLayout('WetScale', [['lattice', 'vec4f'], ['size', 'vec2u'], ['first', 'u32']]);
+/**
+ * Where a deposit's tool's local scale is read in the scale buffer (StampWetScale), by STAMP_GRID_AT_WGSL, at each
+ * pixel's rest point under `rest`, read within a wrap of `wrapFrom` first on a wrapping stage.
+ */
+export const STAMP_WET_SCALE = gpuUniformLayout('WetScale', [['lattice', 'vec4f'], ['rest', 'vec4f'], ['size', 'vec2u'], ['first', 'u32'], ['wrapFrom', 'vec2f']]);
 
 /**
  * A wash deposit landing over its box (origin, extent), found over the box its stages read (foundOrigin, foundExtent):
- * how its paper dries (rate, openTime, damp), its tool's local scale, painting second, water, lift (negative for none), held wetness (stampFloodHeldWetness), diameter.
+ * how its paper dries (stampDryingWords), its tool's local scale, painting second, water, lift (negative for none), held wetness (stampFloodHeldWetness), diameter.
  */
 export const STAMP_WET_LAND = gpuUniformLayout('WetLand', [
   ['origin', 'vec2u'], ['extent', 'vec2u'], ['foundOrigin', 'vec2u'], ['foundExtent', 'vec2u'], ['drying', 'vec4f'],
   ['scale', gpuUniformStruct(STAMP_WET_SCALE)], ['tau', 'f32'], ['water', 'f32'], ['lift', 'f32'], ['held', 'f32'], ['diameter', 'f32'],
 ]);
 
-/** How `drying` dries paper, as STAMP_WET_PAPER_WGSL reads it: rate, openTime and damp. */
-export const stampDryingWords = ({ rate, openTime, damp }: StampDrying): [number, number, number, number] => [rate, openTime, damp, 0];
+/**
+ * How `drying` dries paper: rate, openTime and damp, as STAMP_WET_PAPER_WGSL reads them, then shiny, the sheen a
+ * reduction over the field judges shiny paper by.
+ */
+export const stampDryingWords = ({ rate, openTime, damp, shiny }: StampDrying): [number, number, number, number] => [rate, openTime, damp, shiny];
 
 /**
  * Writes STAMP_WET_LAND for `deposit` landing over `box` as `landing` says, the paper found over `found` (the box
@@ -68,6 +76,26 @@ export function putStampWetLand(views: GpuUniformViews, moment: {
   put('diameter', deposit.diameter);
 }
 
+/**
+ * A wash's preparation as its start reads it: its `wetness` over its `region`, held off where `fluid` masks it, each
+ * region (painting points) null for none on the stage.
+ */
+export type StampWetPreparation = { wetness: StampSeededPaintField<number>; region: StampPointBox | null; fluid: StampPointBox | null };
+
+/** Writes STAMP_WET_PREPARE for a wash starting on `stage`: on dry paper (`preparation` null), or its preparation. */
+export function putStampWetPrepare(views: GpuUniformViews, { stage, preparation }: { stage: StampStage; preparation: StampWetPreparation | null }) {
+  const put = gpuUniformWriter(STAMP_WET_PREPARE, views);
+  put('size', [stage.width, stage.height]);
+  if (!preparation) return;
+  const ends = stampPaintFieldEnds(preparation.wetness);
+  put('region', stampRegionTexelWords(preparation.region, stage));
+  put('fluid', stampRegionTexelWords(preparation.fluid, stage));
+  put('geometry', ends.geometry);
+  put('ends', [ends.first, ends.second]);
+  put('kind', ends.kind);
+  put('prepared', 1);
+}
+
 const prepareWgsl = (stage: StampStage) => /* wgsl */ `
 ${stampStageWgsl(stage)}
 ${STAMP_WET_PREPARE.wgsl}
@@ -76,11 +104,7 @@ ${STAMP_PAINT_FIELD_SHARE.wgsl}
 @group(0) @binding(1) var region: texture_2d<f32>;
 @group(0) @binding(2) var fluid: texture_2d<f32>;
 @group(0) @binding(3) var paper: texture_storage_2d<rgba32float, write>;
-fn regionAt(r: texture_2d<f32>, box: vec4f, p: vec2u) -> f32 {
-  let q = vec2f(p) - box.xy;
-  if (any(q < vec2f(0.0)) || any(q >= box.zw)) { return 0.0; }
-  return textureLoad(r, vec2u(q), 0).r;
-}
+${STAMP_REGION_AT_WGSL}
 // An earlier pass's paint has set: the paper starts settled, as wet as its preparation lays it.
 @compute @workgroup_size(${WORKGROUP}, ${WORKGROUP}) fn run(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.size)) { return; }
@@ -138,7 +162,8 @@ ${stampStageWgsl(stage)}
 ${STAMP_GRID_AT_WGSL}
 @group(0) @binding(2) var touch: texture_2d<f32>;
 @group(0) @binding(3) var footprint: texture_2d<f32>;
-fn scaleAt(p: vec2u) -> f32 { return gridAt(stagePoint(vec2i(p)), u.scale.lattice.xyz, u.scale.size, u.scale.first); }`;
+${STAMP_REST_POINT_WGSL}
+fn scaleAt(p: vec2u) -> f32 { return gridAt(restPoint(u.scale.rest, stageUnwrapped(stagePoint(vec2i(p)), u.scale.wrapFrom)), u.scale.lattice.xyz, u.scale.size, u.scale.first); }`;
 
 // A deposit's water landed over the found box (its box, for a deposit no stage reads): the field advanced over its
 // box and, for its stages, the landing over the found box and the tool's local scale over its box. Each pixel reads
@@ -167,22 +192,22 @@ export type StampWetFieldViews = { paper: GPUTextureView; rim: GPUTextureView; l
 
 /**
  * Where a deposit's tool's local scale is read (STAMP_GRID_AT_WGSL over a scale buffer): a flood's plan's, its narrow
- * parts laid smaller; anyone else's reads 1 everywhere.
+ * parts laid smaller, read where it was planned (`rest`, within a wrap of `wrapFrom`); anyone else's reads 1 everywhere.
  */
-export type StampWetScale = { lattice: [number, number, number, number]; size: [number, number]; first: number };
+export type StampWetScale = { lattice: [number, number, number, number]; rest: StampRestMap; size: [number, number]; first: number; wrapFrom: [number, number] };
 
 /** Every flood's scale grid of `deposits` in one buffer, after a grid of ones for every other deposit. */
 export function stampWetScales(device: StampPaintDevice, deposits: Iterable<CompiledStampDeposit>) {
   const grids = new Map<CompiledStampDeposit, StampGrid>();
   for (const deposit of deposits) if (deposit.kind === 'flood') grids.set(deposit, deposit.flood.scale);
-  const ones: StampWetScale = { lattice: [0, 0, 1e9, 0], size: [2, 2], first: 0 };
+  const ones: StampWetScale = { lattice: [0, 0, 1e9, 0], rest: STAMP_REST_IDENTITY, size: [2, 2], first: 0, wrapFrom: stampAxisWords(STAMP_WRAP_FROM_NONE) };
   const values = new Float32Array(4 + [...grids.values()].reduce((sum, grid) => sum + grid.values.length, 0));
   values.fill(1, 0, 4);
   const at = new Map<CompiledStampDeposit, StampWetScale>();
   let first = 4;
   for (const [deposit, { x0, y0, cell, columns, rows, values: own }] of grids) {
     values.set(own, first);
-    at.set(deposit, { lattice: [x0, y0, cell, 0], size: [columns, rows], first });
+    at.set(deposit, { lattice: [x0, y0, cell, 0], rest: deposit.rest ?? STAMP_REST_IDENTITY, size: [columns, rows], first, wrapFrom: stampAxisWords(deposit.wrapFrom ?? STAMP_WRAP_FROM_NONE) });
     first += own.length;
   }
   const buffer = device.createBuffer({ size: values.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
@@ -196,8 +221,7 @@ type StampWetFieldTarget = { texture: GPUTexture; view: GPUTextureView };
 
 /**
  * The field's passes over its `targets` (STAMP_WET_FIELD_FORMATS, as big as `stage`), each given its uniform slot
- * by the caller, which writes STAMP_WET_PREPARE or STAMP_WET_LAND into it. `blank` stands for a
- * region of none.
+ * by the caller, written by putStampWetPrepare or putStampWetLand. `blank` stands for a region of none.
  */
 export function stampWetField(device: StampPaintDevice, stage: StampStage, targets: Record<keyof typeof STAMP_WET_FIELD_FORMATS, StampWetFieldTarget>, blank: GPUTextureView) {
   const { paper, rim, landing, scale } = targets;

@@ -8,12 +8,13 @@
 // Negative space: nothing moves across washes, or where paint has set (its open share none), however wet again,
 // but by a lift's rewetting. Crayon's spread is 0: it loads nothing.
 
-import { STAMP_WET_FLOW_WGSL, stampWetFlowSigma } from '../models/stamp-wet-flow.ts';
-import { stampWetTransportReach, stampWetTransportStrides } from '../models/stamp-wet-transport.ts';
+import { STAMP_WET_FLOW_WGSL, stampWetFlowReach, stampWetFlowSigma } from '../models/stamp-wet-flow.ts';
+import { stampWetTransportStrides } from '../models/stamp-wet-transport.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import { stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
-import type { StampLoadedWetStage, StampWetDepositMoment, StampWetStage, StampWetStageContext } from './stamp-wet-stages.ts';
+import { stampWetStageExtentOf, type StampLoadedWetStage, type StampWetDepositMoment, type StampWetStage, type StampWetStageContext, type StampWetStageExtent } from './stamp-wet-stages.ts';
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
+import { destroyStampTexturesOnceSubmitted } from './stamp-paint-gpu.ts';
 import { putStampWetTransportSlot, stampWetTransportOpenGate, stampWetTransportPipelines, stampWetTransportSlotBinding } from './stamp-wet-transport.ts';
 
 const WORKGROUP = 8;
@@ -130,7 +131,7 @@ fn coveredAt(p: vec2i) -> f32 { return textureLoad(paint, p, 0, 0).x; }
   let p = vec2i(f.origin + id.xy);
   let held = textureLoad(paint, p, f.chunk, 0);
   let landed = textureLoad(footprint, p, 0);
-  let hold = washHold(f.chunk, stagePoint(p), landed.ba, f.depth, held);
+  let hold = washHold(f.chunk, stagePoint(p), landed.ba, f.depth, held, STAGE_WRAP);
   textureStore(holdOut, id.xy, max(hold, vec4f(${LEAST_HOLD.toFixed(3)})) * max(landed.g, 0.001));
 }
 
@@ -213,12 +214,12 @@ export const STAMP_WET_FLOW_SCRATCH_BYTES = 8 + 4 + 8 + 2 * 8 + 2 * 2 * 16;
 export const STAMP_WET_FLOW_STAGE = {
   id: 'flow',
   after: 'deposit',
-  reach: (deposit, medium) => stampWetTransportReach(stampWetFlowSigma(deposit, medium)),
+  reach: stampWetFlowReach,
   load: loadFlow,
 } satisfies StampWetStage;
 
 function loadFlow(context: StampWetStageContext): StampLoadedWetStage<StampWetDepositMoment> {
-  const { device, layer, footprint, fresh, field, wash, paperDepth, stage } = context;
+  const { device, layer, footprint, fresh, field, wash, stage } = context;
   // Compiled per group, its holds being its palette's: groups alike share one.
   const pipelinesFor = new Map<string, FlowPipelines>();
   const pipelinesOf = (deposit: CompiledStampDeposit) => {
@@ -236,12 +237,12 @@ function loadFlow(context: StampWetStageContext): StampLoadedWetStage<StampWetDe
   // Moves are full floats: this GPU's half-float stores truncate, and a dozen of them lost a tenth of a percent of
   // the pigment. The layer takes one half-float store a layer, in `settle`.
   let scratch: FlowScratch | null = null;
-  /** Grows the scratch to hold a box as big as `box`: only as a bank plans, between frames. */
-  const grow = ({ w, h }: { w: number; h: number }) => {
+  /** Grows the scratch to hold a box as big as `extent`'s: its layers are moved a chunk at a time. */
+  const reserve = ({ w, h }: StampWetStageExtent) => {
     if (scratch && w <= scratch.w && h <= scratch.h) return;
     const size = { w: Math.max(w, scratch?.w ?? 0), h: Math.max(h, scratch?.h ?? 0) };
-    // The frames that bound the old set are submitted, and destroy waits for them.
-    for (const texture of scratch?.textures ?? []) texture.destroy();
+    // Work already encoded with the old set keeps it until its submit.
+    destroyStampTexturesOnceSubmitted(scratch?.textures ?? []);
     const textures: GPUTexture[] = [];
     const view = (tw: number, th: number, count: number, format: GPUTextureFormat, dimension: GPUTextureViewDimension) => {
       const texture = device.createTexture({ size: [tw, th, count], format, usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING });
@@ -257,8 +258,8 @@ function loadFlow(context: StampWetStageContext): StampLoadedWetStage<StampWetDe
     };
   };
 
-  function encodeFlow(encoder: GPUCommandEncoder, plan: FlowPlan, { deposit, landing, box }: StampWetDepositMoment) {
-    if (!scratch || box.w > scratch.w || box.h > scratch.h) throw new Error(`stamp paint: the flow stage was given ${deposit.id}'s box, past what its bank planned`);
+  function encodeFlow(encoder: GPUCommandEncoder, plan: FlowPlan, { deposit, landing, box, paperDepth }: StampWetDepositMoment) {
+    if (!scratch || box.w > scratch.w || box.h > scratch.h) throw new Error(`stamp paint: the flow stage was given ${deposit.id}'s box, past the scratch reserved for it`);
     const { paper, pigment, holds, paths, moved } = scratch;
     const { pipelines } = plan, transport = stampWetTransportPipelines(device), open = { buffer: stampWetTransportOpenGate(device) };
     const data = new ArrayBuffer(plan.slots * SLOT);
@@ -320,20 +321,23 @@ function loadFlow(context: StampWetStageContext): StampLoadedWetStage<StampWetDe
   }
 
   return {
-    plan: ({ device: on, wetness, boxOf }) => {
+    reserve,
+    plan: ({ device: on, landings, boxOf }) => {
       // Deposits that may move paint: carrying water, or landing where it may still be wet, in a medium that spreads.
       // Each pass's slot a uniform: prepare and close, and per layer its holds, settle, and three a stride.
-      const planned = new Map([...wetness.landings].flatMap(([deposit, { medium, water, finds }]): [CompiledStampDeposit, FlowPlan][] => {
+      const extents: StampWetStageExtent[] = [];
+      const planned = new Map([...landings].flatMap(([deposit, { medium, water, finds }]): [CompiledStampDeposit, FlowPlan][] => {
         const sigma = stampWetFlowSigma(deposit, medium), strides = stampWetTransportStrides(sigma);
         if (!strides.length || !(water > 0 || finds.wet)) return [];
         const box = boxOf(deposit);
         if (!box) return [];
-        grow(box);
+        extents.push({ w: box.w, h: box.h, layers: 1 });
         const layers = wash.layersOf(deposit), slots = 2 + layers * (2 + 3 * strides.length);
         const uniforms = on.createBuffer({ size: slots * SLOT, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
         return [[deposit, { layers, sigma, strides, uniforms, slots, pipelines: pipelinesOf(deposit) }]];
       }));
       return {
+        extent: stampWetStageExtentOf(extents),
         encode: (encoder, moment) => {
           const plan = planned.get(moment.deposit);
           return plan ? encodeFlow(encoder, plan, moment) : null;

@@ -26,8 +26,8 @@ export function paintPigmentSeed(id: string): number {
 
 /**
  * The paper in WGSL. `paintWetSettle` is linear in the valley's relative depth, steeper by granulation × load, the load
- * a share of a full one. `paintDryContact`: see its own note. `paintClumps` is value noise in clumps of about 2.5 and
- * 1.2 pixels, its lattice wrapping at 2²⁴ so it stays exact in f32.
+ * a share of a full one. `paintClumps` is value noise in clumps of about 2.5 and 1.2 pixels, its lattice wrapping at
+ * 2²⁴ so it stays exact in f32. The `…Wrapped` two repeat every `wrap.x`, `wrap.y` px (0: not), on whole cells.
  */
 export const PAINT_PAPER_WGSL = /* wgsl */ `
 fn paintValley(h: f32, meanHeight: f32) -> f32 { return (1.0 - h) / max(1.0 - meanHeight, 0.01); }
@@ -66,8 +66,34 @@ fn paintValueNoise(x: f32, y: f32, seed: u32) -> f32 {
   let bottom = c + (d - c) * s.x;
   return top + (bottom - top) * s.y;
 }
+fn paintNoiseWrapped(x: f32, y: f32, cell: f32, seed: u32, wrap: vec2f) -> f32 {
+  if (all(wrap <= vec2f(0.0))) { return paintValueNoise(x / cell, y / cell, seed); }
+  // Each axis alike: one that wraps on whole cells round its period, one that doesn't on 2²⁴ cells, as unwrapped.
+  let wraps = wrap > vec2f(0.0);
+  let cells = select(vec2f(16777216.0), max(vec2f(1.0), round(wrap / cell)), wraps);
+  let q = select(vec2f(x, y) / cell, vec2f(x, y) * cells / max(wrap, vec2f(1.0)), wraps);
+  let i = floor(q);
+  let f = q - i;
+  let s = f * f * (3.0 - 2.0 * f);
+  let n = vec2i(cells);
+  let i0 = vec2u(((vec2i(i) % n) + n) % n);
+  let i1 = (i0 + 1u) % vec2u(n);
+  let a = paintHash01(i0.x, i0.y, seed);
+  let b = paintHash01(i1.x, i0.y, seed);
+  let c = paintHash01(i0.x, i1.y, seed);
+  let d = paintHash01(i1.x, i1.y, seed);
+  let top = a + (b - a) * s.x;
+  let bottom = c + (d - c) * s.x;
+  return top + (bottom - top) * s.y;
+}
 fn paintClumps(flocculation: f32, x: f32, y: f32, seed: u32) -> f32 {
   if (flocculation <= 0.0) { return 1.0; }
   let n = 0.65 * paintValueNoise(x / 2.5, y / 2.5, seed) + 0.35 * paintValueNoise(x / 1.2, y / 1.2, seed ^ 0x5bd1e9u);
+  return 1.0 + flocculation * (2.0 * n - 1.0);
+}
+fn paintClumpsWrapped(flocculation: f32, x: f32, y: f32, seed: u32, wrap: vec2f) -> f32 {
+  if (all(wrap <= vec2f(0.0))) { return paintClumps(flocculation, x, y, seed); }
+  if (flocculation <= 0.0) { return 1.0; }
+  let n = 0.65 * paintNoiseWrapped(x, y, 2.5, seed, wrap) + 0.35 * paintNoiseWrapped(x, y, 1.2, seed ^ 0x5bd1e9u, wrap);
   return 1.0 + flocculation * (2.0 * n - 1.0);
 }`;

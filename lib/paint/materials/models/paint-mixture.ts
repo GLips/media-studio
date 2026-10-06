@@ -10,10 +10,10 @@
 
 import { kubelkaMunkFilm, kubelkaMunkOpaque, kubelkaMunkOver } from './paint-kubelka-munk.ts';
 import { paintPigmentInMedium, type PaintMedium } from './paint-medium.ts';
-import type { PaintPigment, PaintPigmentAppearance } from './paint-pigment.ts';
+import type { PaintMixturePigment, PaintPigment } from './paint-pigment.ts';
 import type { PaintBands, PaintBandValues } from './paint-spectrum.ts';
 
-export type PaintMixturePart = { pigment: PaintPigmentAppearance; amount: number };
+export type PaintMixturePart = { pigment: PaintMixturePigment; amount: number };
 export type PaintMixture = { parts: readonly PaintMixturePart[]; strength: number };
 
 /** One pigment of a paint as laid: how much of it a full stroke lays, in unit films. */
@@ -37,7 +37,7 @@ export function paintMixtureProblem({ parts, strength }: PaintMixture): string |
  * Each pigment's absolute amount (its share of the parts times the strength): what a gradient between two mixtures
  * interpolates, never proportions and strength apart, which disagree where the ends' strengths differ.
  */
-export function paintMixtureAmounts({ parts, strength }: PaintMixture): { pigment: PaintPigmentAppearance; amount: number }[] {
+export function paintMixtureAmounts({ parts, strength }: PaintMixture): { pigment: PaintMixturePigment; amount: number }[] {
   const total = parts.reduce((sum, { amount }) => sum + amount, 0);
   return parts.filter(({ amount }) => amount > 0).map(({ pigment, amount }) => ({ pigment, amount: (strength * amount) / total }));
 }
@@ -57,6 +57,23 @@ export function paintMixtureComponents(mixture: PaintMixture, medium: PaintMediu
     else amounts.push({ pigment: paintPigmentInMedium(lightening.white, medium, bands), amount: more });
   }
   return amounts.toSorted((a, b) => a.pigment.id.localeCompare(b.pigment.id, 'en'));
+}
+
+/**
+ * The components `t` (0..1) of the way from `a` to `b`, as a field of mixes grades its ends' components
+ * (stamp-pigment-paint.ts): each pigment's amount, by id, eased from its amount in `a` to its amount in `b`, an end
+ * lacking it at 0. A medium's white is one of them, so a gouache grade eases its white too.
+ */
+export function paintComponentsBetween(a: readonly PaintComponent[], b: readonly PaintComponent[], t: number): PaintComponent[] {
+  const between = new Map<string, PaintComponent>();
+  for (const [components, share] of [[a, 1 - t], [b, t]] as const) {
+    for (const { pigment, amount } of components) {
+      const kept = between.get(pigment.id);
+      if (kept) kept.amount += share * amount;
+      else between.set(pigment.id, { pigment, amount: share * amount });
+    }
+  }
+  return [...between.values()].toSorted((x, y) => x.pigment.id.localeCompare(y.pigment.id, 'en'));
 }
 
 /** A film as laid: its total absorption and scattering per band. */
@@ -82,6 +99,11 @@ export function paintLayered(under: PaintBandValues, films: readonly PaintFilm[]
     for (let b = 0; b < R.length; b++) R[b] = kubelkaMunkOver(kubelkaMunkFilm({ absorb: film.absorb[b], scatter: film.scatter[b] }), R[b]);
   }
   return R;
+}
+
+/** The reflectance of a full stroke of `components`, dried in `medium`, on white paper: the colour its swatch shows. */
+export function paintComponentsOverWhite(components: readonly PaintComponent[], medium: PaintMedium): PaintBandValues {
+  return paintLayered(new Float64Array(components[0].pigment.K.length).fill(1), [paintFilm(components, medium)]);
 }
 
 /** The reflectance of `film` built thick enough to hide anything under it. */

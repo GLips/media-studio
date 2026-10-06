@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { studioProcessName, thisStudioProcess } from '#lib/platform/process/engine/studio-process.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { STAMP_PAINT_ASSETS_VERSION } from '../models/stamp-paint-pack.ts';
 import { readStampPaintPackGeneration, replaceStampPaintPack } from './stamp-paint-pack-files.ts';
@@ -42,14 +44,27 @@ test('a failed import leaves the previous one readable, and a finished one repla
   assert.equal(readFileSync(join(dir, 'fidelity', 'report.json'), 'utf8'), '{}');
 }));
 
-test("an import takes over a dead import's lock and refuses a live one's", () => withStudioTemp('pack-lock', async (root) => {
+test("an import takes over a dead import's lock, and one whose pid now runs another process, and waits out a live one's", () => withStudioTemp('pack-lock', async (root) => {
   const lock = join(root, 'wash', 'brushes', '.vvds.lock');
   mkdirSync(join(root, 'wash', 'brushes'), { recursive: true });
-  writeFileSync(lock, `${spawnSync('true').pid} killed`);
+  writeFileSync(lock, `${studioProcessName({ pid: spawnSync('true').pid, started: Date.now() })} killed`);
   await publish(root, 'tips/a.png');
   assert.equal(existsSync(lock), false);
 
-  writeFileSync(lock, `${process.pid} importing`);
-  await assert.rejects(publish(root, 'tips/b.png'), new RegExp(`process ${process.pid} is importing into vvds now`));
-  assert.equal(readFileSync(lock, 'utf8'), `${process.pid} importing`);
+  // This process's pid, but a process that started an hour before it: the pid was handed on.
+  writeFileSync(lock, `${studioProcessName({ ...thisStudioProcess(), started: thisStudioProcess().started - 3_600_000 })} killed`);
+  await publish(root, 'tips/b.png');
+  assert.equal(existsSync(lock), false);
+
+  const live = `${studioProcessName(thisStudioProcess())} importing`;
+  writeFileSync(lock, live);
+  let published = false;
+  const waiting = publish(root, 'tips/c.png').then(() => void (published = true));
+  await sleep(50);
+  assert.equal(published, false);
+  assert.equal(readFileSync(lock, 'utf8'), live);
+  // The live import finishes, and the waiting one goes.
+  rmSync(lock);
+  await waiting;
+  assert.deepEqual(readStampPaintPackGeneration(join(root, 'wash', 'brushes', 'vvds')).manifest.files, ['tips/c.png']);
 }));

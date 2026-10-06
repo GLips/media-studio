@@ -5,7 +5,9 @@ import { test } from 'node:test';
 import { studioTempRoot } from '#lib/platform/temp/engine/studio-temp.ts';
 import { STAMP_PAINT_ASSETS_VERSION } from '#lib/paint/brush-packs/models/stamp-paint-pack.ts';
 import { writeProjectStylesModule } from './project-styles.ts';
+import { readStampPaintStyleProbeMedium } from './style-probe-medium.ts';
 import { replaceStampPaintPack } from '#lib/paint/brush-packs/engine/stamp-paint-pack-files.ts';
+import { measureStampPaintPackProfiles } from '#lib/paint/brush-packs/engine/import-stamp-paint-pack.ts';
 
 let workspaces = 0;
 const washBrush = { main: { settings: {}, tip: { style: 'wash', pack: 'vvds', file: 'tips/wash-01.png' } } };
@@ -34,11 +36,11 @@ function washProject(styles: readonly string[]) {
     writeFileSync(join(generation, 'manifest.json'), JSON.stringify(manifest));
     return {};
   });
-  return { project, importPack, writeStyle };
+  return { project, stylesDir: join(root, 'work', 'styles'), importPack, writeStyle };
 }
 
-test('a named style stops the bundle until each pack is imported, whole, at the version the studio reads, then serves the images it paints with', async () => {
-  const { project, importPack } = washProject(['wash']);
+test('a named style stops the bundle until each pack is imported, whole, at the version the studio reads, then serves the images it paints with and the profiles its import stored', async () => {
+  const { project, stylesDir, importPack } = washProject(['wash']);
   await importPack('vvds', packManifest(['tips/wash-01.png', 'grains/paper.png'], {}), ['tips/wash-01.png']);
   assert.throws(() => writeProjectStylesModule(project), {
     message: 'styles: wash can\'t paint until its packs are imported in work/styles/wash/ (brushes/ isn\'t in git, so each machine imports its own; docs/private-styles.md):\n'
@@ -53,10 +55,17 @@ test('a named style stops the bundle until each pack is imported, whole, at the 
     message: new RegExp(`  brushes/grain/: .*manifest\\.json: imported as version ${STAMP_PAINT_ASSETS_VERSION - 1}, and the studio reads version ${STAMP_PAINT_ASSETS_VERSION}; import it again with studio brushes import \\(Grain Pack, from the Grain shop\\)$`),
   });
 
-  await importPack('grain', packManifest([], { Tooth: toothBrush }), []);
+  await importPack('grain', packManifest(['tips/tooth.png'], { Tooth: toothBrush }), ['tips/tooth.png']);
+  // The import keys its profiles in the medium the style probes in, as the bundle finds them.
+  const { medium } = await readStampPaintStyleProbeMedium(stylesDir, 'wash');
+  await measureStampPaintPackProfiles({ stylesDir, style: 'wash', pack: 'vvds' }, {
+    medium, measure: async ({ brushes, onMeasured }) => brushes.forEach(({ name }) => onMeasured(name, { kind: 'refused', why: 'a stand-in' })),
+  });
   const module = readFileSync(writeProjectStylesModule(project), 'utf8');
   assert.match(module, /^import image0_0 from "\.\.\/\.\.\/\.\.\/styles\/wash\/brushes\/vvds\/generations\/[^/]+\/tips\/wash-01\.png";$/m);
   assert.match(module, /^      "vvds\/tips\/wash-01\.png": image0_0,$/m);
+  assert.match(module, /^import profile0_0_0 from "\.\.\/\.\.\/\.\.\/styles\/wash\/brushes\/vvds\/profiles\/wet-wash-[0-9a-f]{32}\.json";$/m);
+  assert.match(module, /^    profiles: \{ "vvds": \{ "Wet Wash": profile0_0_0 \}, "grain": \{\} \},$/m);
 });
 
 test("a style's paper must be a file its pack's import wrote", async () => {
