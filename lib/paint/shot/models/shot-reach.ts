@@ -94,9 +94,9 @@ export const shotPaintedCameraPlane = (plane: CompiledShotPaintedPlane, motion: 
 export function shotCameraPlanes(planes: readonly CompiledShotPlane[], motion: CompiledShotMotion, rigs: ReadonlyMap<OccurrenceKey, unknown>): PaintCameraPlaneOptions[] {
   const rigged = new Set(rigs.keys());
   return planes.map((plane): PaintCameraPlaneOptions => {
-    const { id, depth } = plane;
-    if (plane.kind === 'three') return { id, depth, kind: 'three' };
-    if (plane.kind === 'picture') return { id, depth, kind: 'picture', extent: plane.source.extent };
+    const { id } = plane;
+    if (plane.kind === 'three') return { id, depth: plane.depth, kind: 'three' };
+    if (plane.kind === 'picture') return { id, depth: plane.depth, kind: 'picture', extent: plane.source.extent };
     return shotPaintedCameraPlane(plane, motion, rigged);
   });
 }

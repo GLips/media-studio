@@ -29,6 +29,7 @@ import { stampGateRgb, stampGateRgbBase64 } from './stamp-gate-page-surface.ts';
 import { stampGateShotFrames, stampGateSolvedText as solvedText } from './stamp-gate-shot-frames.ts';
 import { checkStampGateRainyStreet } from './stamp-gate-rainy-street-page.ts';
 import { checkStampGateShotGlowCase } from './stamp-gate-shot-glow-page.ts';
+import { checkStampGateShotApproachCase } from './stamp-gate-shot-approach-page.ts';
 import { checkStampGateShotMasksCase } from './stamp-gate-shot-masks-page.ts';
 
 const shiftText = ({ x, y, r }: { x: number; y: number; r: number }) => `${x}, ${y} (r ${r.toFixed(3)})`;
@@ -380,6 +381,7 @@ export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGa
   if (id === 'shot/cards') return checkCards();
   if (id === 'shot/pieces') return checkPieces();
   if (id === 'shot/glow') return checkStampGateShotGlowCase();
+  if (id === 'shot/approach') return checkStampGateShotApproachCase();
   return checkStampGateShotMasksCase(id);
 }
 

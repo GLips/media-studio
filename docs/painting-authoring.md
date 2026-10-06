@@ -26,8 +26,8 @@ saying all it and its occurrences do, and their motion (nodes hang from their ne
 group's included, clocks chaining);
 visibility, a group's fading all it holds as one and a card fading with its owner; rigs (Composition), a cel swap
 re-solving nothing; instanced planes, many items sharing a few finished variants, each blurred along its own travel;
-values in time, keyed with curves, sampled over the shot's span for its checks and motion warnings, and camera moves
-that add (Values in time); `alphaOf` masks; per-plane
+values in time, keyed with curves, sampled over the shot's span for its checks and motion warnings, camera moves
+that add, and a plane's depth in time, drawn in depth order each frame (Values in time); `alphaOf` masks; per-plane
 `clock` and `sourceClock` holds; dissolves and `bracket`, each end solved and laid once and their pictures summed by
 weight, a rig posing every end alike; painted textures, paintings a three plane's objects wear, drawn at each frame's moment (Painted textures);
 `warm`; and the cost report, each frame's and the warm's, in a profiling render. **NEW** marks behaviour the brush
@@ -551,7 +551,7 @@ paints it.
 | holds, boil `every` | animation frames at `camera.animationFps` | whole ≥ 1 | 24 fps |
 | place `x`, `y`; rig pose `x`, `y`; boil `amount`, `scale` | document px | — | 0; 2.2, 45 |
 | camera `pan` | `{x, y}` px the camera moves, as seen at depth 1: a positive x slides the picture left, a plane at depth d by x · zoom ÷ (d − dolly) (Where a plane point lands) | — | 0 |
-| plane `depth` | depth units, larger farther; 1 is where a pan is measured | > 0 | — |
+| plane `depth` | depth units, larger farther; 1 is where a pan is measured; a value in time moves it (Values in time › Depth in time) | > 0 | — |
 | `lay` `{placement: {x, y, rotation, scale}, pivot}` | frame px, radians, factor; pivot in document px | — | identity |
 | camera `fov`, lens `bloom` | vertical degrees; frame px sigma | — | — |
 | lens `shutter` | seconds open, about each frame's time; or `'shut'`, sharp on purpose | > 0, or `'shut'` (0 is refused) | the film's: half a frame at the composition's fps, 1/60 s at 30 |
@@ -1129,8 +1129,8 @@ Before the first look:
   key, even in different layers (`hill` the layer, `hill-wash`, `hill-flood`). An element built twice by one TS
   function takes a key prefix as an argument. Keys stay flat because a plane's entry names the layers and groups it
   shows by key alone, and a mask reads one as `<plane id>/<key>`.
-- Planes run farthest first. With `<PaintedShotCanvas>`es, the back draws in the first, and each later canvas's
-  planes all lie nearer than every plane of an earlier one.
+- Planes run farthest first, by their depths each frame. With `<PaintedShotCanvas>`es, the back draws in the first,
+  and each later canvas's planes all lie nearer than every plane of an earlier one, at every moment.
 - A rig names every layer under its group in one part's cels, a layer riding another (a gouache light on its
   watercolour) grouped with it as one cel, not named as a further cel (those are swaps, hidden at rest). Each skinned
   part's rest cel paints some of the rig on its own, not outweighed everywhere by the cels over or under it.
@@ -1177,8 +1177,8 @@ where it's written: `sky.visibility`, `birds.occurrences.flock.marks`, `front.oc
 
 | Concept | How | Notes |
 |---|---|---|
-| plane | `PlaneProps {id, depth, source, lay?, clock?, sourceClock?, masks?, canvas?, visibility?, pivot?, pins?, marks?, glow?, plays?, occurrences?}` | farther first; equal depths keep written order. With canvases (HTML among canvases), `canvas` names the plane's: the back's is the first, and a later canvas's planes all lie nearer than every plane of an earlier one (an instanced plane's at all its `depths`), else `<id>.canvas` is refused at load |
-| back and nearer planes | the farthest non-instanced plane is the back, fixed at load: painted on paper, or a picture held everywhere; over HTML, a clear back (below). Nearer painted planes are clear film; picture and three planes lay premultiplied over what's behind | across painted planes: the white/black approximation `C + T × behind`, so a strong coloured glaze over coloured paint reads light. So a nearer watercolour plane tints what's behind it rather than hiding it: a bright far plane (a glitter, a lit pool) shows through its glazes. A gouache body under those glazes hides it. Nearer paint keeps its own grain (Sheets) |
+| plane | `PlaneProps {id, depth, source, lay?, clock?, sourceClock?, masks?, canvas?, visibility?, pivot?, pins?, marks?, glow?, plays?, occurrences?}` | farther first by each frame's depths, so a plane moving in depth passes another where it crosses its depth (Depth in time); equal depths keep written order. With canvases (HTML among canvases), `canvas` names the plane's: the back's is the first, and a later canvas's planes all lie nearer than every plane of an earlier one at every moment (an instanced plane's at all its `depths`), else `<id>.canvas` is refused at load |
+| back and nearer planes | the farthest plane at one depth (not instanced, its `depth` a number) is the back, fixed at load: painted on paper, or a picture held everywhere; over HTML, a clear back (below). Nearer painted planes are clear film; picture and three planes lay premultiplied over what's behind | across painted planes: the white/black approximation `C + T × behind`, so a strong coloured glaze over coloured paint reads light. So a nearer watercolour plane tints what's behind it rather than hiding it: a bright far plane (a glitter, a lit pool) shows through its glazes. A gouache body under those glazes hides it. Nearer paint keeps its own grain (Sheets) |
 | ground | a selection's `ground`: paper on the back, transparent elsewhere, when left out | the back is opaque, hiding HTML before the first canvas, and painted wherever the frame reads it: past its document lies bare paper, so a back smaller than the frame, or than the frame and its blur, is refused (Camera). A small painting meant to sit inside the frame goes on a nearer plane with `ground: 'paper'`, before a frame-sized bare back: a document of the same paper with one empty layer (`{ key: 'bare', washes: [] }`). With HTML behind the first canvas inside the `<PaintedShot>` (text, a laid-out element, or a background on a wrapper holding the canvas), the back may be clear (**NEW**): a transparent ground, a picture held less than everywhere, or a three plane, any size, laid as a nearer plane is, its canvas a glaze over that HTML as a later one is. Where no HTML lies behind it inside the shot, the page outside sees it through one alpha: exact over white, lighter and toward its filter's hue over a darker page (HTML among canvases). A transparent back without HTML behind is refused. The page is read again as each frame draws, so the HTML behind a clear back stays mounted while the shot draws: a frame with none behind it fails |
 | selection | `layersOf(evaluation, keys, {ground?, at?})` | layer or group keys; groups include their descendants; composed in document order; an own sheet's layers with their owner, on one plane |
 | occurrence | a layer or group a painted plane shows, at any depth of the tree; its entry is the plane's `occurrences[key]`, and a mask reads it as `<plane id>/<key>` | the same layer on two planes is two occurrences; a plane's occurrences are fixed by its first evaluation and checked each frame. An entry naming a key its plane doesn't show is refused, as is any on a picture or three plane |
@@ -1205,7 +1205,7 @@ on one sheet share it; presentation of one layer acts on its own film, never on 
 
 Whatever a shot shows that may change takes one type, `PresentationValue<T>` (`#studio`): a constant, or a function
 of the moment, `(m) => T`, read at each exposure (`m.at` the second seen, a shutter's ends included; `m.frame` the
-frame shown). A plane's `lay`, `source` and `visibility`, a rig's `pose`, a node's `glow`, its `place` and `poses`
+frame shown). A plane's `depth`, `lay`, `source` and `visibility`, a rig's `pose`, a node's `glow`, its `place` and `poses`
 plays, and the camera's `move` and `focus` plays all take it, a play as its clip's `value`. A play's value reads its
 clip's seconds (scene seconds less its clock's `at`, through its rate, loop and hold); a glow, its node's held moment;
 the rest, their plane's moment.
@@ -1280,6 +1280,33 @@ moment, and everything under it with it, so a figure can shrink away and grow ba
 and a solve lays its marks where they rest. The back, shown wherever the frame is, can't scale to 0, nor can a pin a
 `poses` play moves.
 
+**Depth in time.** A plane's `depth` may be a value, read at its plane's moment, so a plane with its rig, boil, sway
+and masks approaches, recedes or flies past. Here a kite flies in from behind a mast and past it as the camera
+pushes in:
+
+```ts
+const KITE_DEPTH = paintKeyed([{ at: 0, value: 6 }, { at: 3, value: 1.5, curve: 'in' }]);
+planes: [
+  { id: 'sky', depth: 8, source: layersOf(evaluation, ['sky']) },
+  { id: 'mast', depth: 3, source: layersOf(evaluation, ['mast']) },
+  { id: 'kite', depth: KITE_DEPTH, source: layersOf(evaluation, ['kite']) },
+],
+```
+
+- Each frame draws far to near by that frame's depths, so the kite passes the mast where it crosses depth 3: it's
+  drawn behind it before and in front after. That's meant: draw order follows depth.
+- The depth is sampled over the span, as reach is (The span): no plane states the range it moves over. The camera's
+  checks (what it shows of the plane, how near it comes), a canvas's place and defocus all read the depth sampled.
+- The back keeps one depth: it's the farthest plane whose `depth` is a number. A moving plane stays nearer than it at
+  every moment, and within its canvas's place among the canvases, at every moment. Either refusal names the plane,
+  the second and the depth. A three plane's depth holds still: move what its scene shows (`poseAt`).
+- Defocus follows the depth each frame. An open shutter blurs the plane along its approach, its view at the
+  shutter's ends read at the depths there. The motion warnings follow the plane as the camera shows it each frame.
+- Depth places a plane but doesn't size it. At rest, a plane's document px are frame px at any depth, so the kite
+  grows only as the push nears it. For a growth seen at rest, scale its lay by the depth it was painted for over the
+  depth now: `lay: (m) => ({ placement: { x: 0, y: 0, rotation: 0, scale: 6 / KITE_DEPTH(m) }, pivot: KITE_CENTRE })`.
+- A pin or cover lays its plane through the camera at its `at`, at the depth there.
+
 **The span.** A shot's `span` is the scene seconds its frames show, `sceneSecondsOf(timeline.clock('<scene>')).span`
 (Cues and painting time): from its cut, before 0 while it fades in over the scene before, to its end, past it while
 the next fades in over it. The shot samples every value at each frame of it and, with the shutter open, at each
@@ -1317,7 +1344,9 @@ A document point on a plane at depth d reaches the frame in two steps: the plane
 the camera shows q at `c + R(−roll) · (s · (q − c) + shift)`, c the frame's centre, s = zoom · d ÷ (d − dolly), shift
 = −pan · zoom ÷ (d − dolly) (Reference › Camera). A positive pan x slides every plane left, a nearer plane further.
 Three models in `#lib/paint/animation/models/paint-camera-depths.ts` answer the questions a scene asks across depths,
-through the `camera` it hands `<PaintedShot>`, every play included, and the shot's `span`, so its `*-model.ts` and tests can line things up:
+through the `camera` it hands `<PaintedShot>`, every play included, and the shot's `span`, so its `*-model.ts` and tests can line things up.
+Each takes a depth in time as a plane does, read at the moment asked (the frame's: a plane held by `clock` reads its
+own at its held moment), and the reach at every moment the span draws:
 
 - `paintPointAcrossDepths(camera, span, {depth, point}, toDepth, m)`: the px on a plane at `toDepth` that the frame shows
   where it shows `point`, plane px on a plane at `depth`, at moment `m`. Both are plane px: put a lay on either side
@@ -1923,6 +1952,7 @@ What the check says today, and what to do:
 | `document.wrap: "z" isn't a wrap: 'x' meets the left edge to the right, …` / `document.paper.image: is a photograph on a wrapped document: its opposite edges meet at the seams, …` / `document.paper.grain.scale: is laid at 0.5 on a document wrapping across x: its mirrored tiles fit the width in whole pairs, …` / `document.paper.grain.scale: is laid 960 × 540 px on a document wrapping down y, not the 960 × 960 its 512 × 512 image asks: …` (warnings, the last from `--solve` and `paint still`) | a wrap that isn't `'x'`, `'y'` or `'xy'`; a photograph on a document that wraps; a grain whose scale is far from 1 ÷ 2n on one wrapping across x; a grain whose height, by its image's aspect, is laid far off on one wrapping down y | `'x'`, `'y'`, `'xy'` or none; a photograph that tiles each way it wraps, or grain alone; a grain scale of 0.5, 0.25, …; a smaller scale, or a document whose sides are the image's in a small whole ratio |
 | `back/stem: lies on flower's own sheet: select flower, or all its sheet's layers, on one plane` / `back.source.layers[0]: names hil, which is unknown in meadow` / `back/neck: is selected twice, through heron and neck` / `back.source.k: 1.5 isn't within 0..1` | a plane's source, as the shot's load reports it (`paintedSourceProblems`) | select it whole; fix keys |
 | `meadow.masks[0].drawable: reads rain, whose mask reads meadow/sky` / `front.masks[1].drawable: names rain/drop, but rain's items aren't occurrences: read rain` / `photo.masks: masks cut painted films, and a picture plane has none` / `tint.masks[0].drawable: names pond/reed-b, inside pond/reeds, drawn as pieces: read pond/reeds` | a plane's masks, as the shot's load reports them (`shotMaskCheck`, and the shot's rigs and instanced planes) | break the chain; read the plane or the rig; mask a painted plane |
+| `kite.depth: at 2.5 s lies at depth 8, not nearer than the back, sky at depth 8: a plane whose depth moves stays nearer than the back, which keeps one depth` / `kite.depth: at 1 s lies at depth 0; a plane's depth is above 0` / `shot.planes: has no plane at one depth: the back, the farthest plane, keeps one depth` / `kite.canvas: draws in near and at 0.5 s lies at depth 3, not nearer than mast at depth 3 in far: a later canvas's planes are all nearer, at every moment` / `kite.depth: is a three plane, whose scene stands at its depth in the world it shares: …` / `camera: at 3 s the camera dollies 1.6, at or past plane kite at depth 1.5; a plane stays in front of the camera` | a plane's depth in time, sampled over the span as the shot loads (`shotPlaneDepths`, `shotCanvasDepthProblems`, the camera build) | keep a moving plane nearer than the back, at depths above 0 and in front of the camera, and within its canvas's place at every moment; give the shot a back at one depth; move a three plane's scene, not its depth |
 | `rain.depths.far: 2.5 isn't nearer than the back, street at depth 2` / `rain.variants.drop: paints a 64 × 32 document, and the stage is 52 × 44: a variant is laid whole on the stage` / `rain: two items are called a at 2.04 s` / `rain: drop-3-0 at 1.04 s blurs drop 18 px past its document, and the stage leaves it 16: paint drop on a smaller document, or lay the item larger` | an instanced plane at load and its items each frame (`compileShotInstancedPlane`, `shotInstanceProblems`, `shotExposureItems`) | keep items nearer than the back; paint a variant no larger than the stage, its document tight round its paint; lay items by `instances`; one key an item |
 | `label.lay.points: both pin 40, 40: two points set a scale and turn only apart` / `label.lay.points[0].element: isn't mounted: …` / `label.lay.points[0].element: names title, the data-pin of 2 elements in the shot: a pin names one` / `label.lay: plane label's picture must hold what the camera shows of it, … widen the stage's margin` / `photo.lay: is a picture plane, which lies where its source puts it: …` | a pin or cover at load (`shotPlacementProblems`), a cover laid as the shot loads and a pin each frame where it's measured (`shotPinnedPlanes`); a lay on a picture or three plane | pin points apart; mount the element, one with its `data-pin`; keep within the stage's margin; move a picture plane by its node |
 | `sky.lay: is the back, painted 0 px past the frame (push from key 0 to 1), its blur reading 5 px past the frame, and past its painting lies bare paper: lay it 2.8% larger about its centre: { placement: { x: 0, y: 0, rotation: 0, scale: 1.028 }, pivot: { x: 960, y: 540 } }, or cover the frame with a box … px inside its painting: lay: { kind: 'cover', box: { … } }, or paint 5 px more on every side and lay it 5 px up and left: { … }` / `backdrop.lay: …: cover a box 13 px smaller on every side (box: { … }), or paint 13 px more past its box on every side …` / `shot: sky.lay: is the back, painted to 4 px inside the frame (at 3 s), …: at that moment, lay it 2.4% larger about its pivot (placement scale 1.05 → 1.076), …` | the back's painting short of what the frame, its blur, the camera's move and the back's own node read, refused, never clamped: a still lay as the shot loads, a cover as it's laid, a pin each frame it's measured (`shotBarePaperProblem`), a callback's lay each frame (`shotBackFrameProblem`) | apply any fix it names: they're worked out for the lay as written, so the shot then holds. A still back's cover fix replaces its lay with a cover, centred and scaled for you. Painting more on the top and left moves every document px of it right and down, so the lay moves up and left with it. A painting meant to sit small inside the frame goes on a nearer plane with `ground: 'paper'`, before a frame-sized bare back (one empty layer) |

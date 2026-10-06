@@ -86,15 +86,19 @@ type PlaneCommon = {
 };
 
 /**
- * A plane. `depth`: distance from the camera at rest, above 0, larger farther; 1 is the depth a pan is measured at.
- * `sourceClock` holds the moment its `source` reads: a callback's (prefix, properties, dissolve weights), a picture's
- * `pictureAt`, a three scene's `poseAt`. `{ hold: 6 }` repaints on sixes while `clock` runs on. Both start from the
- * frame's moment.
+ * A plane. `sourceClock` holds the moment its `source` reads: a callback's (prefix, properties, dissolve weights), a
+ * picture's `pictureAt`, a three scene's `poseAt`. `{ hold: 6 }` repaints on sixes while `clock` runs on. Both start
+ * from the frame's moment.
  */
 export type PlaneProps = PlaneCommon & ShotNodeFields & {
   readonly kind?: undefined;
   readonly lay?: PlaneLay;
-  readonly depth: number;
+  /**
+   * Distance from the camera at rest, above 0, larger farther; 1 is the depth a pan is measured at. A value in time,
+   * read at the plane's moment, moves it, drawn in depth order each frame, nearer than the back (which keeps one
+   * depth) and within its canvas's place. A three plane's holds still.
+   */
+  readonly depth: PresentationValue<number>;
   readonly masks?: readonly PlaneMask[];
   readonly source: PresentationValue<PaintedSource> | PictureSource | ThreeSource;
   readonly sourceClock?: PaintNodeClock;

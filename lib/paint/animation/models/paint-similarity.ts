@@ -24,6 +24,9 @@ export const paintSimilarityAfter = (outer: PaintSimilarity, inner: PaintSimilar
 
 export const paintSimilarityApply = ({ ma, mb, kx, ky }: PaintSimilarity, p: StampPoint): StampPoint => ({ x: ma * p.x - mb * p.y + kx, y: mb * p.x + ma * p.y + ky });
 
+/** Whether `a` and `b` are exactly one map. */
+export const paintSimilaritiesEqual = (a: PaintSimilarity, b: PaintSimilarity) => a.ma === b.ma && a.mb === b.mb && a.kx === b.kx && a.ky === b.ky;
+
 /** The box round `box` (x0..x1, y0..y1) as `s` lays it: its four corners mapped. */
 export const paintSimilarityBox = (s: PaintSimilarity, { x0, y0, x1, y1 }: StampBox): StampBox =>
   stampPolygonBox([{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x0, y: y1 }, { x: x1, y: y1 }].map((corner) => paintSimilarityApply(s, corner)));

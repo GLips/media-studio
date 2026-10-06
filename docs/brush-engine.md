@@ -424,7 +424,8 @@ StampPainting alone: keys of placements, linear between them. A shot moves a gro
   (`paint-channels.ts`), and every frame's emitted warp for folds on the renderer's own lattice.
   `paintMotionFrameAt(motion, moment)` is pure in its `PaintMoment`, and writes each group's `StampGroupFrameState`.
 - **Planes and the camera** (`painting/models/stamp-plane.ts`, `paint-camera.ts`, `paint-camera-build.ts`): a scene
-  is planes, each `{ id, depth, source }`, laid far to near. The back, the farthest, is paper to the stage's edge.
+  is planes, each `{ id, depth, source }`, laid far to near by each frame's depths: a depth may be a value in time,
+  so a plane crossing another's depth passes it. The back, the farthest, keeps one depth and is paper to the stage's edge.
   Every nearer painted plane is clear film: its paint, opaque or glazed, hides and filters what's behind, moving,
   warping and fading with its group; as on one sheet over white and black, and close to it over other paint (see
   Planes on the GPU). A three
@@ -436,8 +437,10 @@ StampPainting alone: keys of placements, linear between them. A shot moves a gro
   (pan, dolly, zoom, roll), with moves that add to it (`blend: 'add'`), and `focus` (focus depth, aperture), each a
   value in time (`paint-value.ts`, keyed by `paint-keyed.ts`), plus `fov` and a lens with one `bloom` and its `shutter`, seconds open or `'shut'` (built as 0 s; a shot leaving it out takes `paintFilmShutter`, half its film's frame). `paintCameraLensAt` gives each plane's view (a
   similarity) and defocus (a thin lens's circle of confusion, as gaussian sigma) at a time, through
-  `paintCameraDepthLooks`, which gives them at any depth, as each instanced item takes them; an instanced plane is
-  built by its depths alone, its nearest held from the camera and magnified most. The build checks every plane's
+  `paintCameraDepthLooks`, which gives them at any depth, as each instanced item takes them, and a depth in time
+  read at the frame and at the shutter's ends, so a plane blurs along its approach; an instanced plane is
+  built by its depths alone, its nearest held from the camera and magnified most, and a plane moving in depth by the
+  depths sampled at its span's moments, held from the camera frame by frame. The build checks every plane's
   extent at each moment its shot's span draws (`paint-span-moments.ts`: each frame and its shutter's ends): the back
   everywhere the frame looks, the box those poses bound with no slack (a reference exposure between them lies within
   it unless a move turns inside the shutter, unchecked); a nearer plane where its groups' paint can be laid
@@ -789,7 +792,10 @@ pairing their clocks' moments alike then solving nothing; and rain (`stamp-gate-
 focus spreading alike on every side, blurring along its own fall and drawn as if shut when keyed anew across the
 shutter, a frame moving only drops solving nothing and laying no picture anew; and the post sliding across the street
 (`shot/shutter`), its lens leaving out its shutter: blurred along its slide by the film's, about the frame's time,
-and shut, drawn as if it stood still. The masked shot (`stamp-gate-shot-masks.ts`) shows the paper heron part revealed by its document's reveal (`shot/masks`),
+and shut, drawn as if it stood still. A kite (`stamp-gate-shot-approach.ts`, `shot/approach`) flies in depth from behind
+a post to past it under a camera pushing in: each frame draws it as a kite held at its depth then, the post in
+front before it crosses the post's depth and the kite after, and an open shutter spreads its rim wider than a kite
+held at that depth, which only the push blurs. The masked shot (`stamp-gate-shot-masks.ts`) shows the paper heron part revealed by its document's reveal (`shot/masks`),
 and cuts a tint to the heron's wing, to all but it, and to a disc moving across as a picture plane and as a three
 plane under a panned camera. On a plane nearer than the heron, the tint stays cut to the wing, and to a picture disc,
 as a pan parts their depths (`shot/masks-across`), laid anew each frame they move apart; at the heron's depth, never.

@@ -2,10 +2,11 @@
 // its canvas; painted planes' occurrences from their first evaluation, at moment 0; instanced planes' variants; the
 // planes' entries (shot-entries.ts): rigs, visibility and motion; masks and warm; the camera over each plane's reach;
 // the painted textures three sources read. Every problem is found before any is thrown. Values in time are sampled
-// at the moments its span draws (paint-span-moments.ts), for its reach and motion warnings (shot-motion-warnings.ts).
+// at the moments its span draws (paint-span-moments.ts), for its reach, depths (shot-depths.ts) and motion warnings
+// (shot-motion-warnings.ts).
 //
-// Negative space: refused are visibility on the opaque back, a lay on a picture or three plane, an alphaOf inside a
-// pieces rig, and a dissolve end cutting a rigged group otherwise than its rig does (shotPlaneRigEndProblems).
+// Negative space: refused are the opaque back's visibility, a picture or three plane's lay, a three plane's depth in
+// time, an alphaOf in a pieces rig, and a dissolve end cut otherwise than its rig (shotPlaneRigEndProblems).
 
 import { buildPaintCamera, paintCameraLensBuilt, paintShotCameraOptions } from '#lib/paint/animation/models/paint-camera-build.ts';
 import type { PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
@@ -27,6 +28,7 @@ import { shotMotionWarnings } from './shot-motion-warnings.ts';
 import { shotEntryProblem, shotOccurrencePlane, shotPlaneOccurrences, type ShotOccurrence } from './shot-occurrences.ts';
 import { shotMaskCheck, type ShotMaskGraph } from './shot-masks.ts';
 import { compileShotPaintedTextures, type CompiledShotPaintedTexture } from './shot-painted-texture-compile.ts';
+import { shotCanvasDepthProblems, shotPlaneDepthRange, shotPlaneDepths } from './shot-depths.ts';
 import { shotCoveredPlanes, shotPlacementProblems, shotStillBackProblem } from './shot-placement.ts';
 import { shotDrawableOrder } from './shot-plan.ts';
 import type { CoverFrame, InstancedPlaneProps, OccurrenceKey, OccurrenceRig, PaintedShotProps, PictureSource, PlaneMask, PlaneProps, ScreenPin, ThreeSource } from './shot-props.ts';
@@ -46,7 +48,8 @@ export type ShotPlaneLay =
   | { readonly kind: 'moving'; readonly lay: (moment: PaintMoment) => StampGroupLay }
   | { readonly kind: 'screen'; readonly screen: ScreenPin | CoverFrame };
 
-type ShotPlaneCommon = { readonly id: string; readonly depth: number; readonly canvas: number };
+/** What every compiled plane holds: its id, its canvas, and its depth as a frame moment reads it (shotPlaneDepthValue). */
+type ShotPlaneCommon = { readonly id: string; readonly depth: PresentationValue<number>; readonly canvas: number };
 
 /**
  * A painted plane compiled: its source, read at `sourceClock`'s moment; its lay; its first evaluation's `ends` (every
@@ -60,10 +63,10 @@ export type CompiledShotPaintedPlane = ShotPlaneCommon & {
   readonly opaqueBack: boolean; readonly masks: readonly PlaneMask[];
 };
 
-/** A picture or three plane compiled: its source, posed or pictured at `sourceClock`'s moment. */
+/** A picture or three plane compiled: its source, posed or pictured at `sourceClock`'s moment; a three plane at one depth. */
 export type CompiledShotSourcePlane = ShotPlaneCommon & { readonly sourceClock: readonly PaintSceneStep[] } & (
   | { readonly kind: 'picture'; readonly source: PictureSource }
-  | { readonly kind: 'three'; readonly source: ThreeSource }
+  | { readonly kind: 'three'; readonly source: ThreeSource; readonly depth: number }
 );
 
 export type CompiledShotPlane = CompiledShotPaintedPlane | CompiledShotSourcePlane;
@@ -128,7 +131,10 @@ export function shotPageProblems(shot: CompiledPaintedShot, page: ShotPage): Pai
   return [shotError(shot.planes[0].id, 'source', 'is a clear back, and no HTML lies before the first canvas at this frame: HTML behind a clear back stays mounted while the shot draws')];
 }
 
-/** Why plane `plane` can't be drawn as written: its id, a lay on a picture or three plane, its canvas or its clocks. */
+/**
+ * Why plane `plane` can't be drawn as written: its id, a lay on a picture or three plane, a depth in time on a three
+ * plane, its canvas or its clocks.
+ */
 function planePropsProblems(plane: PaintedShotProps['planes'][number], canvases: readonly string[]): PaintingProblem[] {
   const problems: PaintingProblem[] = [];
   if (!plane.id || plane.id.includes('/')) problems.push(shotError(plane.id, 'id', `${JSON.stringify(plane.id)} isn't a plane id: one holds no "/"`));
@@ -138,6 +144,9 @@ function planePropsProblems(plane: PaintedShotProps['planes'][number], canvases:
     if (lay && typeof source !== 'function' && (source.kind === 'picture' || source.kind === 'three')) {
       problems.push(shotError(plane.id, 'lay', `is a ${source.kind} plane, which lies where its source puts it: a lay places a painted plane; move it by its node`));
     }
+    if (typeof plane.depth === 'function' && typeof source !== 'function' && source.kind === 'three') {
+      problems.push(shotError(plane.id, 'depth', 'is a three plane, whose scene stands at its depth in the world it shares: move what it shows in its scene (poseAt)'));
+    }
   }
   if (canvases.length && plane.canvas === undefined) problems.push(shotError(plane.id, 'canvas', `names no canvas, and the shot draws in ${canvases.join(', ')}: every plane names one`));
   if (plane.canvas !== undefined && !canvases.includes(plane.canvas)) problems.push(shotError(plane.id, 'canvas', `names ${plane.canvas}, which isn't one of the shot's canvases${canvases.length ? ` (${canvases.join(', ')})` : ': it has none'}`));
@@ -145,28 +154,6 @@ function planePropsProblems(plane: PaintedShotProps['planes'][number], canvases:
   for (const [field, clock] of clocks) {
     const problem = clock && paintNodeClockProblem(clock);
     if (problem) problems.push(shotError(plane.id, field, problem));
-  }
-  return problems;
-}
-
-/** The depths a plane's drawables lie between on its canvas: a plane's one depth, an instanced plane's items' `depths`. */
-type ShotCanvasSpan = { readonly id: string; readonly canvas: number; readonly near: number; readonly far: number };
-
-const spanText = ({ near, far }: ShotCanvasSpan) => (near === far ? `at depth ${near}` : `at depths ${near}..${far}`);
-
-/**
- * Why the drawables can't share their canvases: a later canvas's all nearer than an earlier one's, the back (the
- * first of `spans`) on the first.
- */
-function canvasOrderProblems(spans: readonly ShotCanvasSpan[], canvases: readonly string[]): PaintingProblem[] {
-  const problems: PaintingProblem[] = [];
-  if (spans.length && spans[0].canvas !== 0) problems.push(shotError(spans[0].id, 'canvas', `is the back, so it draws in the first canvas, ${canvases[0]}`));
-  for (const far of spans) {
-    for (const near of spans) {
-      if (near.canvas > far.canvas && !(near.far < far.near)) {
-        problems.push(shotError(near.id, 'canvas', `draws in ${canvases[near.canvas]} ${spanText(near)}, not nearer than ${far.id} ${spanText(far)} in ${canvases[far.canvas]}: a later canvas's planes are all nearer`));
-      }
-    }
   }
   return problems;
 }
@@ -284,16 +271,21 @@ export function compilePaintedShot(
     problems.push(...planePropsProblems(plane, canvases));
   }
   if (problems.length) return answer(null, problems);
-  // The farthest plane not instanced is the back; shotDrawableOrder places no items here.
   const written = new Map(props.planes.flatMap((plane) => (plane.kind === 'instanced' ? [] : [[plane.id, plane] as const])));
   if (!written.size) return answer(null, [shotError('shot', 'planes', 'has no planes: a shot draws its back at least')]);
+  const cameraOptions = paintShotCameraOptions(props.camera, props.span, []);
+  const frames = paintSpanFrames(props.span, paintCameraLensBuilt(cameraOptions.lens)), moments = paintSpanMoments(frames);
+  const planeDepths = shotPlaneDepths(props.planes, moments, fps);
+  if (planeDepths.problems.length) return answer(null, planeDepths.problems);
+  // The farthest plane not instanced is the back, which keeps one depth; shotDrawableOrder places no items here.
   const canvasOf = (name: string | undefined) => (name === undefined ? 0 : canvases.indexOf(name));
-  const planes = shotDrawableOrder(props.planes, new Map()).flatMap((drawable, index): CompiledShotPlane[] => {
+  const planes = shotDrawableOrder(props.planes, new Map(), (plane) => shotPlaneDepthRange(plane, moments, fps).far).flatMap((drawable, index): CompiledShotPlane[] => {
     const plane = written.get(drawable.plane)!, canvas = canvasOf(plane.canvas);
-    const common = { id: plane.id, depth: plane.depth, canvas };
+    const common = { id: plane.id, depth: planeDepths.values.get(plane.id)!, canvas };
     const { source } = plane, sourceClock = paintNodeClockSteps(plane.sourceClock);
     if (typeof source !== 'function' && source.kind === 'picture') return [{ ...common, sourceClock, kind: 'picture', source }];
-    if (typeof source !== 'function' && source.kind === 'three') return [{ ...common, sourceClock, kind: 'three', source }];
+    // planePropsProblems refuses a three plane's depth in time.
+    if (typeof source !== 'function' && source.kind === 'three') return typeof common.depth === 'number' ? [{ ...common, depth: common.depth, sourceClock, kind: 'three', source }] : [];
     const painted = compilePaintedPlane(plane, source, common, index === 0, page, fps, problems);
     return painted ? [painted] : [];
   });
@@ -304,18 +296,18 @@ export function compilePaintedShot(
   if (clearBack && !page.htmlBehind && back.kind === 'picture') {
     problems.push(shotError(back.id, 'source.extent', `is the back, a picture held ${back.source.extent.kind === 'box' ? 'within a box' : back.source.extent.kind}; the back's extent is everywhere, unless HTML lies before the first canvas`));
   }
-  const instanced = back ? props.planes.flatMap((plane) => {
+  const backDepth = planeDepths.back, instanced = back && backDepth ? props.planes.flatMap((plane) => {
     if (plane.kind !== 'instanced') return [];
     const common = { id: plane.id, depth: plane.depths.far, canvas: canvasOf(plane.canvas) };
     // Each variant compiles as a painted plane does, under its instanced plane's id (CompiledShotVariant says why).
     const variants = Object.entries(plane.variants).map(([name, source]) =>
       [name, compilePaintedPlane({ id: plane.id, depth: plane.depths.far, source }, source, common, false, page, fps, problems, `variants.${name}`)] as const);
-    const made = compileShotInstancedPlane(plane, common.canvas, back, props.camera.stage, variants, problems);
+    const made = compileShotInstancedPlane(plane, common.canvas, backDepth, props.camera.stage, variants, problems);
     return made ? [made] : [];
   }) : [];
   if (canvases.length) {
-    const spans = [...planes.map(({ id, canvas, depth }) => ({ id, canvas, near: depth, far: depth })), ...instanced.map(({ id, canvas, depths }) => ({ id, canvas, ...depths }))];
-    problems.push(...canvasOrderProblems(spans, canvases));
+    const places = [...planes.map(({ id, canvas, depth }) => ({ id, canvas, depth })), ...instanced.map(({ id, canvas, depths: range }) => ({ id, canvas, depth: range }))];
+    problems.push(...shotCanvasDepthProblems(places, canvases, moments));
   }
   const motionPlanes = [
     ...planes.map((plane): ShotMotionPlane => ({
@@ -331,8 +323,6 @@ export function compilePaintedShot(
   problems.push(...shotVisibilityProblems(visibility), ...visibilityBackProblems(visibility, back && !clearBack ? back.id : null));
   const masks = shotMaskCheck(props.planes, occurrences);
   problems.push(...masks.problems, ...maskPiecesProblems(planes, rigs));
-  const cameraOptions = paintShotCameraOptions(props.camera, props.span, []);
-  const frames = paintSpanFrames(props.span, paintCameraLensBuilt(cameraOptions.lens)), moments = paintSpanMoments(frames);
   const motion = compileShotMotion(motionPlanes, entries.motion, new Set(rigs.keys()), fps, moments);
   problems.push(...motion.problems);
   for (const plane of planes) if (plane.kind === 'painted') problems.push(...movingLayProblems(plane, motion.motion));

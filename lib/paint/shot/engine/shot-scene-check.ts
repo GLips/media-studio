@@ -13,14 +13,16 @@ import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Thumbnail } from '@remotion/player';
 import { Sequence } from 'remotion';
-import { paintSpanShownProblems } from '#lib/paint/animation/models/paint-span-moments.ts';
+import { paintSpanFrames, paintSpanMoments, paintSpanProblem, paintSpanShownProblems } from '#lib/paint/animation/models/paint-span-moments.ts';
 import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
+import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import { PictureDrawnContext } from '#lib/picture/frame/studio/picture-drawn.ts';
 import { SceneContext } from '#lib/picture/video/studio/scene.tsx';
 import { laidVideoOf, videoFormatOf, type LaidScene, type VideoDef } from '#lib/picture/video/studio/video.ts';
 import { resolveStudioProject, studioProjectOfFile } from '#lib/platform/project/engine/studio-project.ts';
 import { sceneClockAt } from '#lib/timing/timeline/models/video-layout.ts';
 import { compilePaintedShot } from '../models/shot-compile.ts';
+import { shotPlaneDepthRange } from '../models/shot-depths.ts';
 import type { PaintedShotProps } from '../models/shot-props.ts';
 import { shotWarmPastScene } from '../models/shot-warm.ts';
 import { PaintedShotSeenContext } from '../studio/painted-shot.tsx';
@@ -28,11 +30,14 @@ import { PaintedShotSeenContext } from '../studio/painted-shot.tsx';
 /** A scene's shot checked: the scene's id, and the shot's problems, errors and warnings both. */
 export type ShotSceneCheck = { readonly scene: string; readonly problems: readonly PaintingProblem[] };
 
-const planeFarthest = (plane: PaintedShotProps['planes'][number]) => (plane.kind === 'instanced' ? plane.depths.far : plane.depth);
-
-/** The canvases `shot`'s planes name, in the order its page must hold them: the farthest plane's first. */
+/**
+ * The canvases `shot`'s planes name, in the order its page must hold them: the farthest plane's first, a depth in
+ * time by the farthest it lies at its span's frames (none when the span has none: the compile says why).
+ */
 function shotNamedCanvases(shot: PaintedShotProps): string[] {
-  return [...new Set(shot.planes.toSorted((a, b) => planeFarthest(b) - planeFarthest(a)).flatMap(({ canvas }) => (canvas === undefined ? [] : [canvas])))];
+  const moments = paintSpanProblem(shot.span) ? [] : paintSpanMoments(paintSpanFrames(shot.span, { bloom: 0, shutter: 0 }));
+  const far = new Map(shot.planes.map((plane) => [plane, shotPlaneDepthRange(plane, moments, shot.camera.animationFps ?? PAINT_ANIMATION_FPS).far]));
+  return [...new Set(shot.planes.toSorted((a, b) => far.get(b)! - far.get(a)!).flatMap(({ canvas }) => (canvas === undefined ? [] : [canvas])))];
 }
 
 /** The shots `scene` renders at video frame `frame`, as the composition lays it there, in render order. */

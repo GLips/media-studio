@@ -164,6 +164,33 @@ test('the lens at a time views each plane by its depth (a pan parallaxes), defoc
   assert.equal(lens.bloom, 3);
 });
 
+test('a plane whose depth moves is seen at its depth each frame, blurred along it over the shutter, and checked over all it reaches', () => {
+  // A kite flies in from depth 3 to 1 as the camera pans 100 px and pushes in 0.5, focused at depth 2.
+  const kite = paintKeyed([{ at: 0, value: 3 }, { at: 1, value: 1 }]);
+  const built = (depth: PresentationValue<number>) => buildPaintCamera({
+    stage, fov: 35, lens: { bloom: 0, shutter: 1 / 48 }, span: spanTo(1),
+    planes: [{ id: 'back', depth: 4, kind: 'picture', extent: { kind: 'everywhere' } }, { id: 'kite', depth, kind: 'picture', extent: { kind: 'box', box: middle } }],
+    plays: [
+      move(paintKeyed([{ at: 0, value: { pan: { x: 0, y: 0 }, dolly: 0 } }, { at: 1, value: { pan: { x: 100, y: 0 }, dolly: 0.5 } }])),
+      paintCameraPlay({ kind: 'focus', value: { focus: 2, aperture: 4 } }, { clock: { at: 0 }, origin: 'focus' }),
+    ],
+  });
+  const build = built(kite);
+  if (!build.ok) assert.fail(build.problems.join('\n'));
+  const { camera, magnification } = build, centre = paintStageCentre(stage), lookAt = (t: number) => paintCameraLensAt(camera, t).planes.get('kite')!;
+  // Halfway it's at depth 2, the camera panned 50 and pushed 0.25; over the shutter it grows as it nears.
+  assert.deepEqual(lookAt(0.5).view, paintPlaneSimilarity(paintCameraPoseAt(camera, paintMoment(0.5)), 2, centre));
+  const ends = lookAt(0.5).shutter!, opens = 0.5 - 1 / 96;
+  assert.deepEqual(ends.open, paintPlaneSimilarity(paintCameraPoseAt(camera, paintMoment(opens, 0.5)), kite(paintMoment(opens, 0.5)), centre));
+  assert.ok(ends.close.ma > ends.open.ma, `kite grows over the shutter: ${ends.open.ma} to ${ends.close.ma}`);
+  // Sharp where it crosses the focus; at depth 1, pushed 0.5, 4·|1 − 1.5/0.5|.
+  assert.ok(lookAt(0).defocus > 0);
+  assert.equal(lookAt(0.5).defocus, 0);
+  assert.equal(lookAt(1).defocus, 8);
+  assert.equal(magnification.get('kite'), 2);
+  assert.match(problemsOf(built(paintKeyed([{ at: 0, value: 3 }, { at: 1, value: 0.5 }]))).join('\n'), /^at 1 s the camera dollies 0\.5, at or past plane kite at depth 0\.5/);
+});
+
 test("a point on a plane, seen through the pose's shot camera, lands where its plane's view puts it", () => {
   const world = paintCameraWorld(stage, { fov: 35 }), centre = paintStageCentre(stage);
   const poses: PaintCameraPose[] = [

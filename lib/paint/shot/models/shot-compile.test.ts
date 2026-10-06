@@ -8,12 +8,14 @@ import { paintCameraReachAt, type PaintCameraReach } from '#lib/paint/animation/
 import { paintKeyed } from '#lib/paint/animation/models/paint-keyed.ts';
 import type { PaintPlacementMove } from '#lib/paint/animation/models/paint-pins.ts';
 import { paintSimilarityApply, paintSimilarityAfter, paintSimilarityInverse, paintSimilarityOf } from '#lib/paint/animation/models/paint-similarity.ts';
+import type { PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
 import { paintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
 import { compilePaintedShot } from './shot-compile.ts';
 import { shotPlaneClocks, shotPlaneMomentAt, shotPlaneSharesAt } from './shot-frame-plan.ts';
 import { shotPinnedPlanes } from './shot-placement.ts';
+import { shotDrawablesAt } from './shot-plan.ts';
 import type { CoverFrame, PaintedShotProps, PlaneProps, RigPart, ScreenPin } from './shot-props.ts';
 import { dissolve } from './shot-selection.ts';
 import { shotWarmCombinations, shotWarmFrames } from './shot-warm.ts';
@@ -328,4 +330,32 @@ test('an alphaOf mask reads a rig drawn as pieces whole, never a part inside it,
   });
   assert.deepEqual(problemsOf(shotReading('bed/reed-b')), ['tint.masks[0].drawable: names bed/reed-b, inside bed/reeds, drawn as pieces: read bed/reeds']);
   assert.deepEqual(compilePaintedShot(shotReading('bed/reeds'), []).shot!.masks.order, ['back', 'bed', 'tint']);
+});
+
+test('a plane moving in depth passes another where it crosses its depth, refused behind the back, out of its canvas, or on a three plane', () => {
+  // The heron flies in from depth 3 to 1, past the reeds at 2, as the camera pushes in.
+  const push = paintCameraPlay({ kind: 'move', value: paintKeyed([{ at: 0, value: { dolly: 0 } }, { at: 1, value: { dolly: 0.5 } }]) }, { clock: { at: 0 }, origin: 'push' });
+  const shotOf = (depth: PresentationValue<number>, canvas?: { readonly back: string; readonly heron: string }): PaintedShotProps => ({
+    camera: { ...camera, plays: [push] }, span: SPAN,
+    planes: [
+      { id: 'back', depth: 4, source: layersOf(pond, ['sky']), canvas: canvas?.back },
+      { id: 'reeds', depth: 2, source: layersOf(pond, ['body']), canvas: canvas?.back },
+      { id: 'heron', depth, source: layersOf(pond, ['heron']), canvas: canvas?.heron },
+    ],
+  });
+  const { shot, problems } = compilePaintedShot(shotOf(paintKeyed([{ at: 0, value: 3 }, { at: 1, value: 1 }])), []);
+  assert.deepEqual(problems.filter(({ severity }) => severity === 'error'), []);
+  const order = (at: number) => shotDrawablesAt(shot!, new Map(), paintMoment(at)).map(({ plane }) => plane);
+  assert.deepEqual([order(0), order(0.5), order(1)], [['back', 'heron', 'reeds'], ['back', 'reeds', 'heron'], ['back', 'reeds', 'heron']]);
+  assert.deepEqual(problemsOf(shotOf(paintKeyed([{ at: 0, value: 3 }, { at: 1, value: 5 }]))), [
+    'heron.depth: at 0.5 s lies at depth 4, not nearer than the back, back at depth 4: a plane whose depth moves stays nearer than the back, which keeps one depth',
+  ]);
+  const crossing = compilePaintedShot(shotOf(paintKeyed([{ at: 0, value: 1.5 }, { at: 1, value: 2.5 }]), { back: 'far', heron: 'near' }), ['far', 'near']);
+  assert.deepEqual(crossing.problems.map(({ path, message }) => `${path}: ${message}`), [
+    "heron.canvas: draws in near and at 0.5 s lies at depth 2, not nearer than reeds at depth 2 in far: a later canvas's planes are all nearer, at every moment",
+  ]);
+  const three: PlaneProps = { id: 'model', depth: paintKeyed([{ at: 0, value: 3 }, { at: 1, value: 1 }]), source: { kind: 'three', build: () => assert.fail('a refused plane is never built') } };
+  assert.deepEqual(problemsOf({ ...shotOf(1), planes: [...shotOf(1).planes, three] }), [
+    'model.depth: is a three plane, whose scene stands at its depth in the world it shares: move what it shows in its scene (poseAt)',
+  ]);
 });

@@ -6,6 +6,7 @@ import { lensSigmaStepped } from '#lib/picture/lens/models/lens-focus.ts';
 import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
 import { paintCameraDepthLooks } from '#lib/paint/animation/models/paint-camera.ts';
 import { paintSimilarityAfter, paintSimilarityApply } from '#lib/paint/animation/models/paint-similarity.ts';
+import { presentationValueAt } from '#lib/paint/animation/models/paint-value.ts';
 import { paintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { compilePaintedShot } from './shot-compile.ts';
@@ -41,7 +42,7 @@ const plane = (id: string, depth: number): PlaneProps => ({ id, depth, source: l
 test('items sort with the planes far to near, planes first on a tie, and batch by plane, variant and stepped blur', () => {
   const rain = instanced('rain', [item('a', 2), item('b', 2), item('c', 2.5, 'big'), item('d', 1)]), mist = instanced('mist', [item('m', 2)]);
   const planes = [plane('street', 3), rain, plane('sign', 2), mist];
-  const drawables = shotDrawableOrder(planes, new Map([['rain', rain.instances({ at: 0, frame: 0 })], ['mist', mist.instances({ at: 0, frame: 0 })]]));
+  const drawables = shotDrawableOrder(planes, new Map([['rain', rain.instances({ at: 0, frame: 0 })], ['mist', mist.instances({ at: 0, frame: 0 })]]), ({ depth }) => presentationValueAt(depth, paintMoment(0)));
   assert.deepEqual(drawables.map((drawable) => (drawable.kind === 'plane' ? drawable.plane : `${drawable.plane}:${drawable.item.key}`)), [
     'street', 'rain:c', 'sign', 'rain:a', 'rain:b', 'mist:m', 'rain:d',
   ]);

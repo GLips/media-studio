@@ -54,7 +54,7 @@ function followedDrawables(shot: CompiledPaintedShot, cameraAt: (sample: number)
     if (!box) continue;
     // Plane px to frame px, then the plane's lay and node.
     const planeAt = (moment: PaintMoment, sample: number): PaintSimilarity => {
-      const view = paintPlaneSimilarity(cameraAt(sample), plane.depth, centre);
+      const view = paintPlaneSimilarity(cameraAt(sample), presentationValueAt(plane.depth, moment), centre);
       const lay = plane.kind === 'painted' ? shotPlaneLayAt(plane, motion, moment) : PAINT_SIMILARITY_IDENTITY;
       return paintSimilarityAfter(paintSimilarityAfter(view, lay), motion.nodes.has(plane.id) ? nodePlaceAt(plane.id, moment, sample) : PAINT_SIMILARITY_IDENTITY);
     };

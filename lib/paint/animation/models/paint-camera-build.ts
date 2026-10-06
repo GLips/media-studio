@@ -1,9 +1,9 @@
 // paint-camera-build.ts: a camera's planes, projection, lens and plays checked, from plane depths and extents alone;
 // a painting is one source (buildPaintingCamera, its nearer planes' extents from paint-motion-reach.ts).
 //
-// The build samples the camera at every moment its span draws (paint-span-moments.ts): each play's value is checked
-// there, no plane or focus comes to or behind the camera, and the stage holds the frame's preimage, grown by the
-// widest defocus's reach, on every picture plane where its extent holds anything.
+// The build samples the camera, and any depth in time, at every moment its span draws (paint-span-moments.ts): each
+// play's value is checked there, no plane or focus comes to or behind the camera, and the stage holds the frame's
+// preimage, grown by the widest defocus's reach, on every picture plane where its extent holds anything.
 //
 // A frame's poses (its own and its shutter's ends) bound a box with no slack: a reference exposure lies between them
 // unless a move turns inside the shutter, unchecked (a read past the stage takes its edge texel).
@@ -17,11 +17,11 @@ import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-moti
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
 import {
-  PAINT_CAMERA_NEAREST, PAINT_CAMERA_REST, paintCameraFocusAt, paintCameraFocusProblem, paintCameraMovePoseProblem, paintCameraPlaneFarthest, paintCameraPlaneNearest, paintCameraPoseAt,
+  PAINT_CAMERA_NEAREST, PAINT_CAMERA_REST, paintCameraFocusAt, paintCameraFocusProblem, paintCameraMovePoseProblem, paintCameraPoseAt,
   paintCameraPoseProblem, paintFilmShutter, paintPlaneDefocus, paintStageCentre,
-  type PaintCamera, type PaintCameraClip, type PaintCameraFocusClip, type PaintCameraInstancedPlane, type PaintCameraLens, type PaintCameraLensOptions, type PaintCameraMoveClip,
-  type PaintCameraPicturePlane, type PaintCameraPlane, type PaintCameraPlaneOptions, type PaintCameraPlay, type PaintCameraPose, type PaintCameraPoseSpan, type PaintCameraShotSamples,
-  type PaintCameraShutter,
+  type PaintCamera, type PaintCameraClip, type PaintCameraFocusClip, type PaintCameraFrameSample, type PaintCameraInstancedPlane, type PaintCameraLens, type PaintCameraLensOptions,
+  type PaintCameraMoveClip, type PaintCameraPicturePlane, type PaintCameraPlane, type PaintCameraPlaneOptions, type PaintCameraPlay, type PaintCameraPose, type PaintCameraPoseSpan,
+  type PaintCameraShotSamples, type PaintCameraShutter,
 } from './paint-camera.ts';
 import { paintChannelConflicts, type PaintChannelWriter } from './paint-channels.ts';
 import { clipSeconds, compilePaintPlayClock, paintLaneByStart, paintLaneClipAt, paintPlayClipMomentAt, paintPlayClockProblem, paintPlayInterval, type CompiledPaintPlay } from './paint-clock.ts';
@@ -31,7 +31,7 @@ import { paintGroupLaidReach, paintMotionValueProblems } from './paint-motion-re
 import type { PaintMotionWarning } from './paint-motion-warnings.ts';
 import { paintingCameraMotionWarnings } from './paint-painting-motion-warnings.ts';
 import { paintSecondsText, paintSpanFrames, paintSpanMoments, paintSpanProblem, type PaintSpanFrame } from './paint-span-moments.ts';
-import { presentationValueAt, presentationValueLength } from './paint-value.ts';
+import { presentationValueAt, presentationValueLength, type PresentationValue } from './paint-value.ts';
 
 /**
  * A camera as written: the `stage` its pictures are painted on, its projection (`fov`, vertical degrees over the
@@ -99,18 +99,55 @@ const MOVE_LANE = 'the camera\'s move', FOCUS_LANE = 'the camera\'s focus';
 /** Plane px per frame px for a plane at `depth`: the inverse of the camera's scale there. */
 const planePxPerFramePx = ({ dolly, zoom }: PaintCameraPose, depth: number) => (depth - dolly) / (zoom * depth);
 
+const posesEqual = (a: PaintCameraPose, b: PaintCameraPose) => a.pan.x === b.pan.x && a.pan.y === b.pan.y && a.dolly === b.dolly && a.zoom === b.zoom && a.roll === b.roll;
+
 const range = (values: readonly number[]) => ({ low: Math.min(...values), high: Math.max(...values) });
 
-/** The plane points the frame shows of a plane at `depth` at any of `span`'s poses, as a box (frame origin, px). */
-function framePreimageBox(stage: StampStage, { poses }: PaintCameraPoseSpan, depth: number): StampBox {
+/** A pose and the depth a plane lies at then: how the camera shows it at one moment. */
+type DepthView = { readonly pose: PaintCameraPose; readonly depth: number };
+
+/** The views some frames of a shot show of a plane, and `when` they are. */
+type DepthViewSpan = { readonly views: readonly DepthView[]; readonly when: string };
+
+const viewsEqual = (a: readonly DepthView[], b: readonly DepthView[]) => a.length === b.length && a.every((view, i) => view.depth === b[i].depth && posesEqual(view.pose, b[i].pose));
+
+const spanWhen = (from: number, to: number) => (from === to ? `at ${paintSecondsText(from)}` : `from ${paintSecondsText(from)} to ${paintSecondsText(to)}`);
+
+/**
+ * The views `camera` shows of a plane at `depth` over its shot, runs of frames showing the same ones as one span: its
+ * pose spans for a still depth; for a depth in time, each frame's poses at the depths read at their moments.
+ */
+function depthViewSpans({ samples }: PaintCamera, depth: PresentationValue<number>): DepthViewSpan[] {
+  if (typeof depth === 'number') return samples.spans.map(({ poses, when }) => ({ views: poses.map((pose) => ({ pose, depth })), when }));
+  const spans: DepthViewSpan[] = [];
+  let run: { views: DepthView[]; from: number; to: number } | null = null;
+  for (const { t, moments, poses } of samples.frames) {
+    const views: DepthView[] = [];
+    for (const [i, moment] of moments.entries()) {
+      const view = { pose: poses[i], depth: depth(moment) };
+      if (!views.some((each) => viewsEqual([each], [view]))) views.push(view);
+    }
+    if (run && viewsEqual(run.views, views)) run.to = t;
+    else {
+      if (run) spans.push({ views: run.views, when: spanWhen(run.from, run.to) });
+      run = { views, from: t, to: t };
+    }
+  }
+  if (run) spans.push({ views: run.views, when: spanWhen(run.from, run.to) });
+  return spans;
+}
+
+/** The plane points the frame shows of a plane at any of `views`, as a box (frame origin, px). */
+function framePreimageBox(stage: StampStage, views: readonly DepthView[]): StampBox {
   const centre = paintStageCentre(stage), { width, height } = stage.frame;
-  const k = range(poses.map((pose) => planePxPerFramePx(pose, depth)));
+  const k = range(views.map(({ pose, depth }) => planePxPerFramePx(pose, depth)));
   const corners = [{ x: -centre.x, y: -centre.y }, { x: width - centre.x, y: -centre.y }, { x: -centre.x, y: height - centre.y }, { x: width - centre.x, y: height - centre.y }];
-  const panX = range(poses.map((pose) => pose.pan.x / depth)), panY = range(poses.map((pose) => pose.pan.y / depth));
+  const panX = range(views.map(({ pose, depth }) => pose.pan.x / depth)), panY = range(views.map(({ pose, depth }) => pose.pan.y / depth));
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-  if (poses.every((pose) => pose.roll === poses[0].roll)) {
-    // p = c + R(roll)·(q − c)·k + pan/d, k within its poses' values.
-    const cos = Math.cos(poses[0].roll), sin = Math.sin(poses[0].roll);
+  const roll = views[0].pose.roll;
+  if (views.every(({ pose }) => pose.roll === roll)) {
+    // p = c + R(roll)·(q − c)·k + pan/d, k and pan/d each within their views' values.
+    const cos = Math.cos(roll), sin = Math.sin(roll);
     for (const q of corners) {
       const rx = cos * q.x - sin * q.y, ry = sin * q.x + cos * q.y;
       for (const scale of [k.low, k.high]) {
@@ -126,9 +163,9 @@ function framePreimageBox(stage: StampStage, { poses }: PaintCameraPoseSpan, dep
   return { x0: centre.x + x0 + panX.low, x1: centre.x + x1 + panX.high, y0: centre.y + y0 + panY.low, y1: centre.y + y1 + panY.high };
 }
 
-/** The widest defocus any frame of `camera`'s shot gives a plane at `depth`, frame px of sigma. */
-function widestDefocus({ samples }: PaintCamera, depth: number): number {
-  return samples.lenses.reduce((most, { focus, dolly }) => (focus ? Math.max(most, paintPlaneDefocus(focus, dolly, depth)) : most), 0);
+/** The widest defocus any frame of `camera`'s shot gives a plane at `depth` (read at each frame's moment), frame px of sigma. */
+function widestDefocus({ samples }: PaintCamera, depth: PresentationValue<number>): number {
+  return samples.frames.reduce((most, { focus, moments, poses }) => (focus ? Math.max(most, paintPlaneDefocus(focus, poses[0].dolly, presentationValueAt(depth, moments[0]))) : most), 0);
 }
 
 const boxText = ({ x0, x1, y0, y1 }: StampBox) => `${x0.toFixed(0)}..${x1.toFixed(0)} × ${y0.toFixed(0)}..${y1.toFixed(0)}`;
@@ -182,23 +219,23 @@ const defocusGrowth = (sigma: number) => lensGaussianReach(lensSigmaStepped(sigm
 export type PaintCameraPlaneRead = { readonly when: string; readonly seen: StampBox; readonly reach: number };
 
 /**
- * What the frame shows of a plane at `depth` over `span`, defocused by `sigma` frame px: the plane px it shows, and
- * how many plane px its defocus spreads past them (defocusGrowth's, so at least 2 px even sharp).
+ * What the frame shows of a plane at `views`, defocused by `sigma` frame px: the plane px it shows, and how many plane
+ * px its defocus spreads past them (defocusGrowth's, so at least 2 px even sharp).
  */
-function spanSight(stage: StampStage, span: PaintCameraPoseSpan, depth: number, sigma: number) {
-  const k = Math.max(...span.poses.map((pose) => planePxPerFramePx(pose, depth)));
-  return { seen: framePreimageBox(stage, span, depth), grow: defocusGrowth(sigma * k) };
+function spanSight(stage: StampStage, views: readonly DepthView[], sigma: number) {
+  const k = Math.max(...views.map(({ pose, depth }) => planePxPerFramePx(pose, depth)));
+  return { seen: framePreimageBox(stage, views), grow: defocusGrowth(sigma * k) };
 }
 
 /**
  * Why picture plane `plane` can't hold what the camera shows of it in some span, defocused by `sigma`, or null. Its
  * extent: where its picture holds anything, beyond which it needs nothing held.
  */
-function pictureProblem(stage: StampStage, { id, depth, extent }: PaintCameraPicturePlane, spans: readonly PaintCameraPoseSpan[], sigma: number): string | null {
+function pictureProblem(stage: StampStage, { id, extent }: PaintCameraPicturePlane, spans: readonly DepthViewSpan[], sigma: number): string | null {
   if (extent.kind === 'empty' || extent.kind === 'unchecked') return null;
   const stageBox = stampStageExtent(stage);
   for (const span of spans) {
-    const { seen, grow } = spanSight(stage, span, depth, sigma), needed = grownBox(seen, grow);
+    const { seen, grow } = spanSight(stage, span.views, sigma), needed = grownBox(seen, grow);
     // The picture's own defocus spreads it `grow` past its extent, and that spread must be on the stage too.
     const held = extent.kind === 'everywhere' ? needed : meet(needed, grownBox(extent.box, grow));
     if (held && !within(held, stageBox)) {
@@ -213,34 +250,33 @@ function pictureProblem(stage: StampStage, { id, depth, extent }: PaintCameraPic
  * extent is known only once the camera is (a lay worked back through its view, an element measured).
  */
 export function paintCameraPictureProblem(camera: PaintCamera, plane: PaintCameraPicturePlane): string | null {
-  return pictureProblem(camera.stage, plane, camera.samples.spans, widestDefocus(camera, plane.depth));
+  return pictureProblem(camera.stage, plane, depthViewSpans(camera, plane.depth), widestDefocus(camera, plane.depth));
 }
 
 /**
- * What `camera` reads of a plane at `depth` anywhere in its shot: a read a span of its samples, defocused by the
- * widest defocus the plane gets. A sharp plane reads only what the frame shows, so a frame-sized one at rest holds it.
+ * What `camera` reads of a plane at `depth` (read at each moment) anywhere in its shot: a read a span of its samples,
+ * defocused by the widest defocus the plane gets. A sharp plane reads only what the frame shows, so a frame-sized one
+ * at rest holds it.
  */
-export function paintCameraShotReads(camera: PaintCamera, depth: number): PaintCameraPlaneRead[] {
+export function paintCameraShotReads(camera: PaintCamera, depth: PresentationValue<number>): PaintCameraPlaneRead[] {
   const sigma = widestDefocus(camera, depth);
-  return camera.samples.spans.map((span) => {
-    const { seen, grow } = spanSight(camera.stage, span, depth, sigma);
-    return { when: span.when, seen, reach: sigma > 0 ? grow : 0 };
+  return depthViewSpans(camera, depth).map(({ views, when }) => {
+    const { seen, grow } = spanSight(camera.stage, views, sigma);
+    return { when, seen, reach: sigma > 0 ? grow : 0 };
   });
 }
 
 /**
  * What `camera` reads of a plane at `depth` at each of `moments` (a frame's own, its shutter's ends), each as the
- * camera stands then and defocused as the frame at `at` is, the lens taking one defocus a frame.
+ * camera stands and the depth lies then, defocused as the frame at `at` is, the lens taking one defocus a frame.
  */
-export function paintCameraFrameReads(camera: PaintCamera, depth: number, at: PaintMoment, moments: readonly PaintMoment[]): PaintCameraPlaneRead[] {
-  const pose = paintCameraPoseAt(camera, at), focus = paintCameraFocusAt(camera, at), sigma = focus ? paintPlaneDefocus(focus, pose.dolly, depth) : 0;
+export function paintCameraFrameReads(camera: PaintCamera, depth: PresentationValue<number>, at: PaintMoment, moments: readonly PaintMoment[]): PaintCameraPlaneRead[] {
+  const pose = paintCameraPoseAt(camera, at), focus = paintCameraFocusAt(camera, at), sigma = focus ? paintPlaneDefocus(focus, pose.dolly, presentationValueAt(depth, at)) : 0;
   return moments.map((moment) => {
-    const posed = paintCameraPoseAt(camera, moment), { seen, grow } = spanSight(camera.stage, { poses: [posed], when: '' }, depth, sigma);
+    const { seen, grow } = spanSight(camera.stage, [{ pose: paintCameraPoseAt(camera, moment), depth: presentationValueAt(depth, moment) }], sigma);
     return { when: `at ${paintSecondsText(moment.at)}`, seen, reach: sigma > 0 ? grow : 0 };
   });
 }
-
-const posesEqual = (a: PaintCameraPose, b: PaintCameraPose) => a.pan.x === b.pan.x && a.pan.y === b.pan.y && a.dolly === b.dolly && a.zoom === b.zoom && a.roll === b.roll;
 
 /**
  * What `camera` (built but for its samples) does over `frames`, and the first problem each play's value has at
@@ -253,13 +289,13 @@ function sampleCamera(camera: PaintCamera, frames: readonly PaintSpanFrame[], pr
     said.add(origin);
     problems.push(`${origin}: at ${paintSecondsText(t)} ${problem}`);
   };
-  const spans: PaintCameraPoseSpan[] = [], lenses: PaintCameraShotSamples['lenses'][number][] = [];
+  const spans: PaintCameraPoseSpan[] = [], sampled: PaintCameraFrameSample[] = [];
   let run: { poses: PaintCameraPose[]; from: number; to: number } | null = null;
   const close = () => {
-    if (run) spans.push({ poses: run.poses, when: run.from === run.to ? `at ${paintSecondsText(run.from)}` : `from ${paintSecondsText(run.from)} to ${paintSecondsText(run.to)}` });
+    if (run) spans.push({ poses: run.poses, when: spanWhen(run.from, run.to) });
   };
   for (const { t, moments } of frames) {
-    const poses: PaintCameraPose[] = [];
+    const poses: PaintCameraPose[] = [], aligned: PaintCameraPose[] = [];
     for (const moment of moments) {
       const playing = paintLaneClipAt(camera.move, moment, fps);
       if (playing && typeof playing.play.clip.value === 'function') report(playing.play.origin, moment.at, paintCameraMovePoseProblem(presentationValueAt(playing.play.clip.value, paintClipMoment(playing.moment))));
@@ -268,11 +304,12 @@ function sampleCamera(camera: PaintCamera, frames: readonly PaintSpanFrame[], pr
       }
       const pose = paintCameraPoseAt(camera, moment);
       report('the camera\'s move', moment.at, paintCameraPoseProblem(pose));
+      aligned.push(pose);
       if (!poses.some((each) => posesEqual(each, pose))) poses.push(pose);
     }
     const focusing = paintLaneClipAt(camera.focus, moments[0], fps);
     if (focusing && typeof focusing.play.clip.value === 'function') report(focusing.play.origin, t, paintCameraFocusProblem(presentationValueAt(focusing.play.clip.value, paintClipMoment(focusing.moment))));
-    lenses.push({ focus: paintCameraFocusAt(camera, moments[0]), dolly: poses[0].dolly });
+    sampled.push({ t, moments, poses: aligned, focus: paintCameraFocusAt(camera, moments[0]) });
     if (run && run.poses.length === poses.length && run.poses.every((pose, i) => posesEqual(pose, poses[i]))) run.to = t;
     else {
       close();
@@ -281,8 +318,38 @@ function sampleCamera(camera: PaintCamera, frames: readonly PaintSpanFrame[], pr
   }
   close();
   // One run is the whole shot: named for that, and for rest when that's where the camera stays.
-  if (spans.length === 1) return { spans: [{ ...spans[0], when: spans[0].poses.every((pose) => posesEqual(pose, PAINT_CAMERA_REST)) ? 'at rest' : 'throughout the shot' }], lenses };
-  return { spans, lenses };
+  if (spans.length === 1) return { spans: [{ ...spans[0], when: spans[0].poses.every((pose) => posesEqual(pose, PAINT_CAMERA_REST)) ? 'at rest' : 'throughout the shot' }], frames: sampled };
+  return { spans, frames: sampled };
+}
+
+/** The depths anything of `plane` lies at over `frames`: an instanced plane's items' bounds, a depth in time's samples. */
+function planeDepthRange(plane: PaintCameraPlaneOptions, frames: readonly PaintSpanFrame[]): { readonly near: number; readonly far: number } {
+  if (plane.kind === 'instanced') return plane.depths;
+  const { depth } = plane;
+  if (typeof depth === 'number') return { near: depth, far: depth };
+  const depths = frames.flatMap(({ moments }) => moments.map(depth));
+  return { near: Math.min(...depths), far: Math.max(...depths) };
+}
+
+/** The first moment of `frames` at which `plane`'s depth in time isn't above 0, worded; null when every one is. */
+function movingDepthProblem({ id }: PaintCameraPicturePlane, depth: (moment: PaintMoment) => number, frames: readonly PaintSpanFrame[]): string | null {
+  for (const moment of frames.flatMap(({ moments }) => moments)) {
+    const at = depth(moment);
+    if (!(at > 0 && Number.isFinite(at))) return `plane ${id} is at depth ${at} at ${paintSecondsText(moment.at)}; a plane's depth is above 0`;
+  }
+  return null;
+}
+
+/**
+ * Why the camera comes to or past `plane`, its depth in time, in some frame, or null: the frame's nearest depth
+ * against its farthest dolly, as a frame's look checks it.
+ */
+function movingNearestProblem({ id }: PaintCameraPicturePlane, depth: (moment: PaintMoment) => number, frames: readonly PaintCameraFrameSample[]): string | null {
+  for (const { t, moments, poses } of frames) {
+    const least = Math.min(...moments.map(depth)), dolly = Math.max(...poses.map((pose) => pose.dolly));
+    if (least - dolly <= PAINT_CAMERA_NEAREST) return `at ${paintSecondsText(t)} the camera dollies ${dolly}, at or past plane ${id} at depth ${least}; a plane stays in front of the camera`;
+  }
+  return null;
 }
 
 /** Why `clip`'s value, a constant, can't be shown, or null; a function's values are checked where they're sampled. */
@@ -291,10 +358,16 @@ function constantClipProblem(clip: PaintCameraClip): string | null {
   return typeof clip.value === 'function' ? null : paintCameraFocusProblem(clip.value);
 }
 
+/** The one depth `plane` is checked at as it's built (an instanced plane's nearest), or null for a depth in time, checked where it's sampled. */
+function planeStillDepth(plane: PaintCameraPlaneOptions): number | null {
+  if (plane.kind === 'instanced') return plane.depths.near;
+  return typeof plane.depth === 'number' ? plane.depth : null;
+}
+
 /** A camera over `o.planes`, checked (see the file's head), with each plane's greatest magnification. */
 export function buildPaintCamera(o: PaintCameraOptions): PaintCameraBuild {
   const problems: string[] = [], fps = o.animationFps ?? PAINT_ANIMATION_FPS;
-  stampPlaneDepthProblems(o.planes.map((plane) => ({ id: plane.id, depth: paintCameraPlaneNearest(plane) })), problems);
+  stampPlaneDepthProblems(o.planes.map((plane) => ({ id: plane.id, depth: planeStillDepth(plane) })), problems);
   for (const plane of o.planes) {
     const problem = plane.kind === 'picture' ? extentBoxProblem(plane.id, plane.extent) : plane.kind === 'instanced' && instancedDepthsProblem(plane);
     if (problem) problems.push(problem);
@@ -318,25 +391,33 @@ export function buildPaintCamera(o: PaintCameraOptions): PaintCameraBuild {
   }
   problems.push(...paintChannelConflicts(writers));
   if (problems.length) return { ok: false, problems };
+  const lens = paintCameraLensBuilt(o.lens), frames = paintSpanFrames(o.span, lens);
+  for (const plane of o.planes) {
+    const problem = plane.kind === 'picture' && typeof plane.depth === 'function' && movingDepthProblem(plane, plane.depth, frames);
+    if (problem) problems.push(problem);
+  }
+  if (problems.length) return { ok: false, problems };
   // Ties keep their written order, as stampScenePlanes keeps them.
-  const written = o.planes.toSorted((a, b) => paintCameraPlaneFarthest(b) - paintCameraPlaneFarthest(a));
-  const lens = paintCameraLensBuilt(o.lens);
+  const far = new Map(o.planes.map((plane) => [plane.id, planeDepthRange(plane, frames).far]));
+  const written = o.planes.toSorted((a, b) => far.get(b.id)! - far.get(a.id)!);
   const unsampled: PaintCamera = {
     stage: o.stage, fov: o.fov, planes: [], lens, animationFps: fps, move: paintLaneByStart(move), moveAdds, focus: paintLaneByStart(focus), span: o.span,
-    samples: { spans: [], lenses: [] },
+    samples: { spans: [], frames: [] },
   };
-  const frames = paintSpanFrames(o.span, lens), samples = sampleCamera(unsampled, frames, problems);
+  const samples = sampleCamera(unsampled, frames, problems);
   if (problems.length) return { ok: false, problems };
   const poses = samples.spans.flatMap((span) => span.poses), nearest = poses.reduce((most, pose) => (pose.dolly > most.dolly ? pose : most));
   for (const plane of written) {
-    const depth = paintCameraPlaneNearest(plane);
-    if (depth - nearest.dolly <= PAINT_CAMERA_NEAREST) problems.push(`the camera dollies ${nearest.dolly}, at or past plane ${plane.id} at depth ${depth}; a plane stays in front of the camera`);
+    if (plane.kind === 'picture' && typeof plane.depth === 'function') {
+      const problem = movingNearestProblem(plane, plane.depth, samples.frames);
+      if (problem) problems.push(problem);
+      continue;
+    }
+    const { near } = planeDepthRange(plane, frames);
+    if (near - nearest.dolly <= PAINT_CAMERA_NEAREST) problems.push(`the camera dollies ${nearest.dolly}, at or past plane ${plane.id} at depth ${near}; a plane stays in front of the camera`);
   }
-  for (const [i, { focus: focused, dolly }] of samples.lenses.entries()) {
-    if (!focused || focused.focus - dolly > PAINT_CAMERA_NEAREST) continue;
-    problems.push(`at ${paintSecondsText(frames[i].t)} the camera focuses at depth ${focused.focus} while dollied ${dolly}, at or behind itself`);
-    break;
-  }
+  const unfocused = samples.frames.find(({ focus: focused, poses: [{ dolly }] }) => focused && focused.focus - dolly <= PAINT_CAMERA_NEAREST);
+  if (unfocused) problems.push(`at ${paintSecondsText(unfocused.t)} the camera focuses at depth ${unfocused.focus!.focus} while dollied ${unfocused.poses[0].dolly}, at or behind itself`);
   if (problems.length) return { ok: false, problems };
   const sampled: PaintCamera = { ...unsampled, samples };
   for (const plane of written) {
@@ -350,10 +431,10 @@ export function buildPaintCamera(o: PaintCameraOptions): PaintCameraBuild {
     const sigma = widestDefocus(sampled, plane.depth);
     return { id: plane.id, depth: plane.depth, kind: 'three', margin: sigma > 0 ? Math.ceil(defocusGrowth(sigma)) : 0 };
   });
-  // zoom·d/(d − dolly), the most any pose drawn shows.
+  // zoom·d/(d − dolly), the most any view drawn shows; an instanced plane's at its nearest items.
   const magnification = new Map(planes.map((plane) => {
-    const depth = paintCameraPlaneNearest(plane);
-    return [plane.id, Math.max(...poses.map(({ zoom, dolly }) => (zoom * depth) / (depth - dolly)))];
+    const views = depthViewSpans(sampled, plane.kind === 'instanced' ? plane.depths.near : plane.depth).flatMap((span) => span.views);
+    return [plane.id, Math.max(...views.map(({ pose: { zoom, dolly }, depth }) => (zoom * depth) / (depth - dolly)))];
   }));
   return { ok: true, camera: { ...sampled, planes }, magnification };
 }

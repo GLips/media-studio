@@ -34,7 +34,7 @@ import { shotPinnedPlanes, type ShotPinCentres } from '../models/shot-placement.
 import { shotNodePoseAt, shotRigReader, shotVisibilityAt } from '../models/shot-frame-plan.ts';
 import { shotDrawSteps, shotExposureItems, type CompiledShotInstancedPlane, type CompiledShotVariant, type ShotExposureItems } from '../models/shot-instances.ts';
 import type { ShotMaskAcross } from '../models/shot-masks.ts';
-import { shotDrawableOrder } from '../models/shot-plan.ts';
+import { shotDrawablesAt } from '../models/shot-plan.ts';
 import type { ShotMomentAt } from '../models/shot-sheet-lays.ts';
 import { shotWarmFrames } from '../models/shot-warm.ts';
 import { shotCanvasPaintSurfaces, type ShotCanvasSurface } from './shot-canvas.ts';
@@ -253,8 +253,8 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
       // Every painted plane laid first, each after those its masks read, whatever canvas or depth it's drawn at.
       const itemsCovered = shotItemsCoverages(encoder, { owner, lenses: canvases.map(({ lens }) => lens), planes, stage }, variantMoments, hidden, items);
       const presented = planes.present(encoder, moments, hidden, (id, reader) => sourceRead(id, reader, exposure, renders, itemsCovered, t), shotExposureAcross(exposure));
-      // The exposure's drawables far to near, consecutive items of a variant blurred alike in one step.
-      const steps = shotDrawSteps(shotDrawableOrder(shot.written, items.items), (plane, item) => items.lookOf(plane, item).sigma);
+      // The exposure's drawables far to near at its moment, consecutive items of a variant blurred alike in one step.
+      const steps = shotDrawSteps(shotDrawablesAt(shot, items.items, exposure.at), (plane, item) => items.lookOf(plane, item).sigma);
       for (const canvas of canvases) {
         const rendered = renders[canvas.index], lookOf = (id: string) => lensFrame.planes.get(id) ?? STAMP_REST_LOOK;
         const own = steps.filter((step) => canvasOf.get(step.plane) === canvas.index), momentOf = (plane: CompiledShotPlane) => moments.get(plane.id);

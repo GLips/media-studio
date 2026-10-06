@@ -1,7 +1,7 @@
 // paint-camera-depths.ts: things at one depth related to another through the multiplane camera. Planes stay parallel
 // to the image, so the camera shows each depth by a similarity (paintPlaneSimilarity), and points on two depths meet
 // where it shows both on one frame px: a point found on another depth, a mask reading its drawable where the camera
-// shows it. And a depth's pads: all the camera reads of it.
+// shows it. And a depth's pads: all the camera reads of it. A depth may be a value in time, read at the moment asked.
 //
 // Negative space: exact only between image-parallel planes. A three.js source's receding ground isn't a plane at one
 // depth, so a point on it has no plane px to be found from.
@@ -11,15 +11,17 @@ import { stampBoxGrown, type StampPoint } from '#lib/paint/painting/models/stamp
 import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
 import { buildPaintCamera, paintCameraShotReads, paintShotCameraOptions, type PaintShotCamera } from './paint-camera-build.ts';
 import { paintPlaneViewAt, type PaintCamera } from './paint-camera.ts';
-import { PAINT_SIMILARITY_IDENTITY, paintSimilarityAfter, paintSimilarityApply, paintSimilarityInverse, type PaintSimilarity } from './paint-similarity.ts';
+import {
+  PAINT_SIMILARITY_IDENTITY, paintSimilaritiesEqual, paintSimilarityAfter, paintSimilarityApply, paintSimilarityInverse, type PaintSimilarity,
+} from './paint-similarity.ts';
+import type { PresentationValue } from './paint-value.ts';
 
 /**
  * Plane px under view `from` to plane px under view `to` (each plane px to frame px), meeting where the two show them
  * on one frame px. Exactly the identity where they're one view, as two planes at one depth are in every frame.
  */
 export function paintViewAcross(from: PaintSimilarity, to: PaintSimilarity): PaintSimilarity {
-  const one = from.ma === to.ma && from.mb === to.mb && from.kx === to.kx && from.ky === to.ky;
-  return one ? PAINT_SIMILARITY_IDENTITY : paintSimilarityAfter(paintSimilarityInverse(to), from);
+  return paintSimilaritiesEqual(from, to) ? PAINT_SIMILARITY_IDENTITY : paintSimilarityAfter(paintSimilarityInverse(to), from);
 }
 
 /** `camera` built over no planes (a view needs only a depth), the shot showing `span`; throws what its build refuses. */
@@ -45,17 +47,18 @@ function paintShotViewCamera(camera: PaintShotCamera, span: SceneShownSpan): Pai
   return built;
 }
 
-/** How the shot's `camera`, over `span`, shows a plane at `depth` at moment `m`, plane px to frame px, its plays read on their clocks. */
-export const paintShotViewAt = (camera: PaintShotCamera, span: SceneShownSpan, depth: number, m: PaintMoment): PaintSimilarity => paintPlaneViewAt(paintShotViewCamera(camera, span), depth, m);
+/** How the shot's `camera`, over `span`, shows a plane at `depth` (read at `m`) at moment `m`, plane px to frame px, its plays read on their clocks. */
+export const paintShotViewAt = (camera: PaintShotCamera, span: SceneShownSpan, depth: PresentationValue<number>, m: PaintMoment): PaintSimilarity =>
+  paintPlaneViewAt(paintShotViewCamera(camera, span), depth, m);
 
 /** A point on a plane at `depth`, plane px. */
-export type PaintDepthPoint = { readonly depth: number; readonly point: StampPoint };
+export type PaintDepthPoint = { readonly depth: PresentationValue<number>; readonly point: StampPoint };
 
 /**
  * Where `from`'s point lies on a plane at depth `to` at moment `m`, plane px: the point the shot's `camera`, over `span`, shows on
  * the same frame px then, its plays read on their clocks. Plane px, not document px: a plane's lay is the caller's.
  */
-export function paintPointAcrossDepths(camera: PaintShotCamera, span: SceneShownSpan, { depth, point }: PaintDepthPoint, to: number, m: PaintMoment): StampPoint {
+export function paintPointAcrossDepths(camera: PaintShotCamera, span: SceneShownSpan, { depth, point }: PaintDepthPoint, to: PresentationValue<number>, m: PaintMoment): StampPoint {
   return paintSimilarityApply(paintViewAcross(paintShotViewAt(camera, span, depth, m), paintShotViewAt(camera, span, to, m)), point);
 }
 
@@ -66,11 +69,11 @@ export type PaintCameraReach = { readonly left: number; readonly top: number; re
 const REACH_SLACK = 1e-6;
 
 /**
- * How far past the frame the shot's `camera` reads a plane at `depth` over its `span`, plane px rounded up: its
- * moves, focus and shutter (a lens leaving its own out takes the film's at the span's fps). A plane painted this far
- * past the frame on each side holds it all.
+ * How far past the frame the shot's `camera` reads a plane at `depth` (a depth in time at each moment) over its
+ * `span`, plane px rounded up: its moves, focus and shutter (a lens leaving its own out takes the film's at the
+ * span's fps). A plane painted this far past the frame on each side holds it all.
  */
-export function paintCameraReachAt(camera: PaintShotCamera, span: SceneShownSpan, depth: number): PaintCameraReach {
+export function paintCameraReachAt(camera: PaintShotCamera, span: SceneShownSpan, depth: PresentationValue<number>): PaintCameraReach {
   const { width, height } = camera.stage.frame;
   const reads = paintCameraShotReads(paintShotCameraBuilt(camera, span), depth).map(({ seen, reach }) => stampBoxGrown(seen, reach));
   const past = (each: (box: (typeof reads)[number]) => number) => Math.max(0, Math.ceil(Math.max(...reads.map(each)) - REACH_SLACK));

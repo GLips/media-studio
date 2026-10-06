@@ -198,6 +198,15 @@
       "acceptedOver": "afc2f970",
       "adapter": "apple metal-3"
     },
+    "shot/approach": {
+      "file": "shot/approach.png",
+      "output": "2578470df79f5190ecf7b81c21d3201edb7f198029d2126493fedbe9f24f82e7",
+      "inputs": "81549cde6f66f5d4d529f880693ad01a1d3203bf0145ef623bc5e2f5e603fbfe",
+      "reason": "moving-depth: a kite flies in past a post as the camera pushes in, its depth a value in time, blurred along its approach",
+      "accepted": "2026-10-06",
+      "acceptedOver": "d33443af",
+      "adapter": "apple metal-3"
+    },
     "shot/cards": {
       "file": "shot/cards.png",
       "output": "1de27f12e872707cfa82e29e35f1e43c5638e3f471819a7a9bd566e6f799661b",

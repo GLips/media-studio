@@ -17,7 +17,7 @@ import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.t
 import { paintLaneClipAt, paintPlayClipMomentAt, type CompiledPaintPlay, type PaintLane, type PaintPlayClock } from './paint-clock.ts';
 import { paintPxRounded, paintRatioRounded } from './paint-deform.ts';
 import { paintClipMoment } from './paint-motion-clips.ts';
-import type { PaintSimilarity } from './paint-similarity.ts';
+import { paintSimilaritiesEqual, type PaintSimilarity } from './paint-similarity.ts';
 import { presentationValueAt, type PresentationValue } from './paint-value.ts';
 
 /** The frame's centre on `stage` (the renderer's: the frame and the margin it paints past it), what planes scale about. */
@@ -80,8 +80,11 @@ export const paintFilmShutter = (filmFps: number) => 1 / (2 * filmFps);
 /** Whether `lens`'s shutter is shut: each frame one instant, nothing smeared along its motion. */
 export const paintCameraShutterShut = (lens: PaintCameraLens) => lens.shutter === 0;
 
-/** A picture plane, `depth` units from the camera at rest: a picture on the stage, held as far as its `extent`. */
-export type PaintCameraPicturePlane = { readonly id: string; readonly depth: number; readonly kind: 'picture'; readonly extent: StampPlaneExtent };
+/**
+ * A picture plane: a picture on the stage, held as far as its `extent`, `depth` units from the camera at rest. A depth
+ * in time is read at the frame's moments, a shot's plane's clock already in it: the plane approaches or recedes.
+ */
+export type PaintCameraPicturePlane = { readonly id: string; readonly depth: PresentationValue<number>; readonly kind: 'picture'; readonly extent: StampPlaneExtent };
 
 /**
  * A three plane, `depth` units from the camera at rest: a three.js render, drawn each frame through the camera's
@@ -102,22 +105,20 @@ export type PaintCameraPlane = PaintCameraPicturePlane | PaintCameraThreePlane |
 /** A plane as written to the build. */
 export type PaintCameraPlaneOptions = PaintCameraPicturePlane | Omit<PaintCameraThreePlane, 'margin'> | PaintCameraInstancedPlane;
 
-/** The nearest depth anything of `plane` lies at. */
-export const paintCameraPlaneNearest = (plane: PaintCameraPlaneOptions): number => (plane.kind === 'instanced' ? plane.depths.near : plane.depth);
-/** The farthest depth anything of `plane` lies at. */
-export const paintCameraPlaneFarthest = (plane: PaintCameraPlaneOptions): number => (plane.kind === 'instanced' ? plane.depths.far : plane.depth);
-
 /** The poses some frames of a shot show (each frame's own and its shutter's ends), and `when` they are. */
 export type PaintCameraPoseSpan = { readonly poses: readonly PaintCameraPose[]; readonly when: string };
 
 /**
- * What the build sampled of the camera over its shot (paint-camera-build.ts): its poses, frame by frame, runs of
- * frames showing the same poses as one span; and each frame's focus (null with no focus play) and dolly.
+ * One frame the build sampled: its scene second `t`, the moments drawing it reads (its own first, then its shutter's
+ * ends), the camera's pose at each, and its focus (null with no focus play).
  */
-export type PaintCameraShotSamples = {
-  readonly spans: readonly PaintCameraPoseSpan[];
-  readonly lenses: readonly { readonly focus: PaintCameraFocus | null; readonly dolly: number }[];
-};
+export type PaintCameraFrameSample = { readonly t: number; readonly moments: readonly PaintMoment[]; readonly poses: readonly PaintCameraPose[]; readonly focus: PaintCameraFocus | null };
+
+/**
+ * What the build sampled of the camera over its shot (paint-camera-build.ts): its poses, frame by frame, runs of
+ * frames showing the same poses as one span; and each frame, for what's read at depths that move.
+ */
+export type PaintCameraShotSamples = { readonly spans: readonly PaintCameraPoseSpan[]; readonly frames: readonly PaintCameraFrameSample[] };
 
 /**
  * A camera checked (paint-camera-build.ts): its `stage`, its projection (`fov`, vertical degrees at rest: how deep a
@@ -194,9 +195,9 @@ export function paintPlaneSimilarity({ pan, dolly, zoom, roll }: PaintCameraPose
   return { ma, mb, kx: centre.x - (ma * centre.x - mb * centre.y) + (ca * shiftX - sa * shiftY), ky: centre.y - (mb * centre.x + ma * centre.y) + (sa * shiftX + ca * shiftY) };
 }
 
-/** How `camera` shows a plane at `depth` at moment `t`, plane px to frame px: paintPlaneSimilarity at its pose then. */
-export const paintPlaneViewAt = (camera: PaintCamera, depth: number, t: PaintMoment): PaintSimilarity =>
-  paintPlaneSimilarity(paintCameraPoseAt(camera, t), depth, paintStageCentre(camera.stage));
+/** How `camera` shows a plane at `depth` (read at `t`) at moment `t`, plane px to frame px: paintPlaneSimilarity at its pose then. */
+export const paintPlaneViewAt = (camera: PaintCamera, depth: PresentationValue<number>, t: PaintMoment): PaintSimilarity =>
+  paintPlaneSimilarity(paintCameraPoseAt(camera, t), presentationValueAt(depth, t), paintStageCentre(camera.stage));
 
 /**
  * A plane's defocus, frame px of gaussian sigma: the lens's (lens-focus.ts) at the plane's distance from the camera,
@@ -207,13 +208,15 @@ export function paintPlaneDefocus({ focus, aperture }: PaintCameraFocus, dolly: 
   return sigma < LENS_DEFOCUS_LEAST ? 0 : sigma;
 }
 
-/**
- * How the camera shows anything at a depth in one frame: `lookAt(depth, name)` gives its look there (its
- * similarity, its defocus with a focus play, its views at the shutter's ends when the camera moves over a fast frame's
- * shutter), throwing on a depth at or behind the camera, which `name` names; and the lens's bloom and focus.
- */
+/** How the camera shows anything at a depth in one frame, and the lens's bloom and focus. */
 export type PaintCameraDepthLooks = {
+  /**
+   * The look at `depth`: its similarity, its defocus with a focus play, its views at the shutter's ends when the
+   * camera moves over a fast frame's shutter. Throws on a depth at or behind the camera, which `name` names.
+   */
   readonly lookAt: (depth: number, name: string) => StampPlaneLook;
+  /** lookAt for a depth in time, read at the frame's moment and at each shutter's end, so it blurs along its approach. */
+  readonly lookOf: (depth: PresentationValue<number>, name: string) => StampPlaneLook;
   readonly bloom: number;
   readonly focus: StampLensFrame['focus'];
 };
@@ -228,25 +231,34 @@ export function paintCameraDepthLooks(camera: PaintCamera, t: number, exposure: 
   if (lens && lens.focus - pose.dolly <= PAINT_CAMERA_NEAREST) throw new Error(`paint camera: at ${seenAt.at}s the camera focuses at depth ${lens.focus}, at or behind itself (dollied ${pose.dolly})`);
   // A fast frame is gathered along the camera's motion over the shutter, if it moves; an exposure is its own moment.
   const { shutter } = camera.lens, opens = shutterOpensAt(t, shutter), opening = !aperture && !paintCameraShutterShut(camera.lens);
-  const openPose = opening ? paintCameraPoseAt(camera, paintMoment(opens, t)) : pose, closePose = opening ? paintCameraPoseAt(camera, paintMoment(opens + shutter, t)) : pose;
+  const openMoment = paintMoment(opens, t), closeMoment = paintMoment(opens + shutter, t);
+  const openPose = opening ? paintCameraPoseAt(camera, openMoment) : pose, closePose = opening ? paintCameraPoseAt(camera, closeMoment) : pose;
   const moving = !paintCameraPosesEqual(openPose, closePose), nearest = Math.max(pose.dolly, openPose.dolly, closePose.dolly);
-  const lookAt = (depth: number, name: string): StampPlaneLook => {
-    if (depth - nearest <= PAINT_CAMERA_NEAREST) throw new Error(`paint camera: at ${t}s the camera, dollied ${nearest}, is at or past ${name} at depth ${depth}`);
+  /** The look at `depth` this moment, the shutter's ends seen at `ends` (null: at `depth` too). */
+  const lookAcross = (depth: number, ends: { readonly open: number; readonly close: number } | null, name: string): StampPlaneLook => {
+    const least = Math.min(depth, ends?.open ?? depth, ends?.close ?? depth);
+    if (least - nearest <= PAINT_CAMERA_NEAREST) throw new Error(`paint camera: at ${t}s the camera, dollied ${nearest}, is at or past ${name} at depth ${least}`);
     const view = paintPlaneSimilarity(pose, depth, centre), distance = depth - pose.dolly;
     if (!aperture) {
-      const seen = moving ? { open: paintPlaneSimilarity(openPose, depth, centre), close: paintPlaneSimilarity(closePose, depth, centre) } : null;
+      const open = paintPlaneSimilarity(openPose, ends?.open ?? depth, centre), close = paintPlaneSimilarity(closePose, ends?.close ?? depth, centre);
+      // At rest a depth moves nothing on the frame: only views that differ blur.
+      const seen = moving || !paintSimilaritiesEqual(open, close) ? { open, close } : null;
       return { view, defocus: lens ? paintPlaneDefocus(lens, pose.dolly, depth) : 0, distance, shutter: seen };
     }
     const slide = lens ? lensApertureSlide({ focus: lens.focus - pose.dolly, aperture: lens.aperture }, distance, aperture) : { x: 0, y: 0 };
     return { view: { ...view, kx: view.kx + slide.x, ky: view.ky + slide.y }, defocus: 0, distance, shutter: null };
   };
+  const lookAt = (depth: number, name: string) => lookAcross(depth, null, name);
+  const lookOf = (depth: PresentationValue<number>, name: string) => (typeof depth === 'number' || !opening
+    ? lookAt(presentationValueAt(depth, seenAt), name)
+    : lookAcross(depth(seenAt), { open: depth(openMoment), close: depth(closeMoment) }, name));
   const focus = lens && !aperture ? { focus: lens.focus - pose.dolly, aperture: lens.aperture } : null;
-  return { lookAt, bloom: camera.lens.bloom, focus };
+  return { lookAt, lookOf, bloom: camera.lens.bloom, focus };
 }
 
-/** `looks` as the frame's lens: each of the camera's planes' looks at its depth, an instanced plane's items looked at one by one. */
+/** `looks` as the frame's lens: each of the camera's planes' looks at its depth then, an instanced plane's items looked at one by one. */
 export function paintCameraLensFrame(camera: PaintCamera, looks: PaintCameraDepthLooks): StampLensFrame {
-  const planes = new Map(camera.planes.flatMap((plane) => (plane.kind === 'instanced' ? [] : [[plane.id, looks.lookAt(plane.depth, `plane ${plane.id}`)] as const])));
+  const planes = new Map(camera.planes.flatMap((plane) => (plane.kind === 'instanced' ? [] : [[plane.id, looks.lookOf(plane.depth, `plane ${plane.id}`)] as const])));
   return { planes, bloom: looks.bloom, focus: looks.focus };
 }
 
