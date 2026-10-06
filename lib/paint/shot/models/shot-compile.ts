@@ -1,5 +1,5 @@
-// shot-compile.ts: a PaintedShot's props checked and compiled as it loads (ENGINE 6.1): planes far to near, each on
-// its canvas; painted planes' occurrences from their first evaluation, at moment 0; instanced planes' variants; the
+// shot-compile.ts: a PaintedShot's props checked and compiled as it loads: planes far to near, each on its
+// canvas; painted planes' occurrences from their first evaluation, at moment 0; instanced planes' variants; the
 // planes' entries (shot-entries.ts): rigs, visibility and motion; masks and warm; the camera over each plane's reach;
 // the painted textures three sources read. Every problem is found before any is thrown. Values in time are sampled
 // at the moments its span draws (paint-span-moments.ts), for its reach, depths (shot-depths.ts) and motion warnings

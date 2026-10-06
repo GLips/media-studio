@@ -46,7 +46,7 @@ const ridgeShot = (values: PaintingInTimeValues<typeof ridgeProperties>, drawing
   planes: [{ id: 'ridge', depth: 1, source: paintingInTime(ridgeSource, { values, layers: ['sky', 'ridge'], drawings }) }],
 });
 
-const compiled = (props: PaintedShotProps) => compilePaintedShot(props, [], 30);
+const compiled = (props: PaintedShotProps) => compilePaintedShot(props, []);
 const messages = (props: PaintedShotProps) => compiled(props).problems.map(({ path, message }) => `${path}: ${message}`);
 
 /** What the plane shows at `t`: each drawing's ridge and dusk, and its weight to 4 places. */

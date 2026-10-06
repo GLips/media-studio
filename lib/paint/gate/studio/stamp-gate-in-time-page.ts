@@ -8,7 +8,7 @@ import { shotPlanesKeyDrawingsText } from '#lib/paint/shot/models/shot-painting-
 import { STAMP_GATE_FRAME_TOLERANCE } from '../models/stamp-gate-frames.ts';
 import { STAMP_GATE_IN_TIME_AT, STAMP_GATE_IN_TIME_KEYS, STAMP_GATE_RIDGE_DRAWINGS, stampGateInTimeShot } from '../models/stamp-gate-in-time.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
-import { STAMP_GATE_SHOT_FPS, stampGateShotSpanned } from '../models/stamp-gate-shot-span.ts';
+import { stampGateShotSpanned } from '../models/stamp-gate-shot-span.ts';
 import { stampGateFadeBetween, stampGateFadeLiesBetween } from '../models/stamp-gate-shots.ts';
 import { stampGateRgb } from './stamp-gate-page-surface.ts';
 import { stampGateShotFrames, stampGateSolvedText as solvedText } from './stamp-gate-shot-frames.ts';
@@ -22,7 +22,7 @@ const anewText = ({ solved, misses }: ReturnType<typeof drawnAnew>) => `solved $
 
 /** The sweep's plan as its frames' span compiles it: its keys, and its lines as `studio paint check` prints them. */
 function inTimePlan() {
-  const { shot } = compilePaintedShot(stampGateShotSpanned(stampGateInTimeShot(), IN_TIME_DRAWS), [], STAMP_GATE_SHOT_FPS);
+  const { shot } = compilePaintedShot(stampGateShotSpanned(stampGateInTimeShot(), IN_TIME_DRAWS), []);
   const plane = shot?.planes[0], keys = plane?.kind === 'painted' ? plane.keyDrawings?.keys ?? [] : [];
   return { keys, lines: shot ? shotPlanesKeyDrawingsText(shot.planes) : [] };
 }
