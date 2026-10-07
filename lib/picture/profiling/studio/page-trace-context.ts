@@ -13,3 +13,8 @@ export const usePageTrace = () => useContext(PageTraceContext);
 export const PageTraceDetailContext = createContext(false);
 
 export const usePageTraceDetail = () => useContext(PageTraceDetailContext);
+
+/** The video's frame drawing now, as a frame's span names it: Video.tsx says, its own frame, not a scene's. */
+export const PageTraceFrameContext = createContext(0);
+
+export const usePageTraceFrame = () => useContext(PageTraceFrameContext);

@@ -11,7 +11,7 @@
 
 import { ExternalTexture, PerspectiveCamera, RepeatWrapping, type Camera, type RenderTarget, type Scene, type WebGPURenderer } from 'three/webgpu';
 import type { FrameSize } from '#lib/picture/frame/models/frame.ts';
-import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
+import type { TraceRecorderSpan } from '#lib/platform/trace/models/trace-recorder.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
 import { shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import { createLensThreeMotion, LENS_THREE_MOTION_NAME, type LensThreeMotion } from '#lib/picture/lens/studio/lens-three-motion.ts';
@@ -110,7 +110,7 @@ export type PaintedThreeTexturesSupplied = { readonly handles: readonly PaintedT
  * Loads `three` on `owner`'s device for `camera`'s three planes, its painted textures each drawn by an old renderer of
  * its compiled painting. Refuses as loadPaintedThreeSources does.
  */
-export async function loadPaintedThree(owner: StampPaintGpuOwner, camera: PaintCamera, three: PaintedThree, profile: FrameProfileStart | null): Promise<PaintedThreeLoaded> {
+export async function loadPaintedThree(owner: StampPaintGpuOwner, camera: PaintCamera, three: PaintedThree, trace: () => TraceRecorderSpan | null): Promise<PaintedThreeLoaded> {
   // Let go of last made first, the textures after the renderers drawing into them.
   const made: { dispose: () => void }[] = [], owned: GPUTexture[] = [];
   const release = () => {
@@ -123,7 +123,7 @@ export async function loadPaintedThree(owner: StampPaintGpuOwner, camera: PaintC
       owned.push(target);
       const surface = await createStampPaintSurface(owner, { frame: target });
       made.push(surface);
-      const renderer = await createStampPaintRenderer(surface, texture.painting, { profile });
+      const renderer = await createStampPaintRenderer(surface, texture.painting, { trace });
       made.push(renderer);
       // An old renderer paints a sheet flat: none wraps.
       return { texture, renderer, handle: { id: texture.id, texture: target, wrap: null } };

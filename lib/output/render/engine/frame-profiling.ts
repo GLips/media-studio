@@ -1,22 +1,16 @@
 // frame-profiling.ts: `studio profile`, where a span of frames spends its time. Node only.
 //
-// Two measures, since a render's frame is its drawing and then its capture:
-//   - the drawing: the span rendered once in one tab with no screenshot, the page timing the work drawing code offers
-//     (lib/picture/profiling/studio/frame-profile.ts), each piece waited for on the GPU, and logging it to the console.
-//   - the whole render: unprofiled in one tab and in the session's, timed from the frames' arrival, captured to PNG
-//     as delivery is and again uncaptured, the difference being capture. Each tab's first frame loads, and is left out.
-// The profiled render also logs what drawing code counts it cost (solves, cache hits); `--costs` tables them.
+// The span rendered whole, timed from the frames' arrival, captured to PNG as delivery is and again uncaptured, the
+// difference being capture; in one tab and in the session's. Each tab's first frame loads, and is left out.
+// The drawing is read from the one-tab PNG pass's trace (the pages' spans under it): each frame span's time, each load's,
+// and what drawing code counted a frame cost, on its frame span (frame-costs-table.ts).
 import { renderFrames } from '@remotion/renderer';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { RENDER_PAGE_OPTIONS } from '#lib/platform/browser/engine/render-browser.ts';
 import { watchedRenderFrames } from '#lib/platform/browser/engine/render-watch.ts';
-import { renderHostLineText } from '#lib/platform/browser/models/render-page-log.ts';
 import type { RenderSession } from './render-session.ts';
-import { traceLabel } from '#lib/platform/trace/models/trace-model.ts';
-import { frameCostsTable } from '#lib/picture/profiling/models/frame-costs-table.ts';
-import {
-  FRAME_PROFILE_LOG_PREFIX, isFrameCostsEntry, type FrameCostsEntry, type FrameProfileEntry, type FrameProfileLine,
-} from '#lib/picture/profiling/models/frame-profile-entry.ts';
+import { traceLabel, traceQuantity, type TraceSpan } from '#lib/platform/trace/models/trace-model.ts';
+import { frameCostsOfTraceAttributes, frameCostsTable, type FrameCostsEntry } from '#lib/picture/profiling/models/frame-costs-table.ts';
 
 /** Milliseconds, over the span's frames. */
 export type FrameTimeSpread = { median: number; p90: number; max: number };
@@ -25,18 +19,24 @@ export type FrameProfileReport = {
   frames: { from: number; end: number };
   size: { width: number; height: number };
   gpu: string;
-  /** Per label, its time in each frame (summed over what offered it, e.g. two paintings in a crossfade). */
+  /** Per label (a frame span's name and its shot), its time in each frame, summed over spans alike in a frame. */
   drawn: { label: string; frames: number; spread: FrameTimeSpread }[];
-  /** A label ending "load": each one's time, from mount to ready, not per frame. */
+  /** Per load (a painted shot's, a stamp painting's), each one's time from begun to ready. */
   loads: { label: string; ms: number[] }[];
   /**
    * A frame's whole render, steady state: wall-clock per frame, in `tabs` at once, captured to PNG and not captured.
    * `null` when the span has no frame past each tab's first, so no steady state to time.
    */
   whole: { tabs: number; png: number | null; uncaptured: number | null }[];
-  /** What the profiled frames' drawing counted it cost, as logged. */
+  /** What the frames' drawing counted it cost, as their frame spans carry it. */
   costs: FrameCostsEntry[];
 };
+
+/** Span kinds of a frame's drawing, and names of a load, as painted-shot.tsx and stamp-painting.tsx trace them. */
+const FRAME_KINDS = new Set(['shot-frame', 'painting-frame']);
+/** A painted shot's warm: its costs counted apart from its frames', at the frame it loaded in. */
+const isWarm = (span: TraceSpan) => span.kind === 'shot-phase' && span.name === 'warm';
+const LOAD_NAMES = new Set(['painted shot load', 'stamp painting load']);
 
 function spreadOf(values: number[]): FrameTimeSpread {
   const sorted = values.toSorted((a, b) => a - b);
@@ -44,33 +44,61 @@ function spreadOf(values: number[]): FrameTimeSpread {
   return { median: at(0.5), p90: at(0.9), max: sorted[sorted.length - 1] };
 }
 
-/** Profiles frames `from`–`end` (exclusive): profiled once, then whole, captured and not, in 1 tab and in the session's. */
+/** `items` grouped by `key`, in first-seen order. */
+function groupedBy<T, K>(items: readonly T[], key: (item: T) => K): Map<K, T[]> {
+  const groups = new Map<K, T[]>();
+  for (const item of items) groups.set(key(item), [...(groups.get(key(item)) ?? []), item]);
+  return groups;
+}
+
+/** The spans under `root`, at any depth, in the order they began. */
+function spansUnder(spans: readonly TraceSpan[], root: string): TraceSpan[] {
+  const children = groupedBy(spans, (s) => s.parent);
+  const under: TraceSpan[] = [], open = [root];
+  for (let id = open.pop(); id !== undefined; id = open.pop()) {
+    for (const child of children.get(id) ?? []) {
+      under.push(child);
+      open.push(child.id);
+    }
+  }
+  return under.toSorted((a, b) => a.start - b.start);
+}
+
+const labelOf = (span: TraceSpan) => {
+  const shot = traceLabel(span, 'shot');
+  return shot ? `${span.name} (${shot})` : span.name;
+};
+
+/** The drawing the pages traced under the pass span `pass`: frame times, loads and costs. */
+function drawingOf(spans: readonly TraceSpan[], pass: string): Pick<FrameProfileReport, 'drawn' | 'loads' | 'costs'> {
+  const under = spansUnder(spans, pass).filter((s) => s.status === 'ok');
+  const framed = under.filter((s) => s.kind !== undefined && FRAME_KINDS.has(s.kind));
+  const perLabel = new Map<string, Map<number, number>>();
+  for (const span of framed) {
+    const label = labelOf(span), frame = traceQuantity(span, 'frame')!, perFrame = perLabel.get(label) ?? new Map<number, number>();
+    perFrame.set(frame, (perFrame.get(frame) ?? 0) + (span.end - span.start) * 1000);
+    perLabel.set(label, perFrame);
+  }
+  const loads = groupedBy(under.filter((s) => LOAD_NAMES.has(s.name)), labelOf);
+  return {
+    drawn: [...perLabel].map(([label, perFrame]) => ({ label, frames: perFrame.size, spread: spreadOf([...perFrame.values()]) })),
+    loads: [...loads].map(([label, done]) => ({ label, ms: done.map((s) => (s.end - s.start) * 1000) })),
+    costs: under.filter((s) => framed.includes(s) || isWarm(s)).flatMap((span) => {
+      const costs = frameCostsOfTraceAttributes(span.attributes ?? {});
+      if (!costs.counts.length && !costs.levels.length && !costs.notes.length) return [];
+      return [{ ...costs, frame: traceQuantity(span, 'frame')!, label: isWarm(span) ? `${traceLabel(span, 'shot')} warm` : traceLabel(span, 'shot') ?? span.name }];
+    }),
+  };
+}
+
+/** Profiles frames `from`–`end` (exclusive): whole, captured and not, in 1 tab and in the session's. */
 export async function profileFrames(session: RenderSession, { from, end }: { from: number; end: number }): Promise<FrameProfileReport> {
-  const frames = Array.from({ length: end - from }, (_, i) => from + i);
-  const lines: FrameProfileLine[] = [];
-  const profiled = session.props({ profile: true });
-
-  const composition = await session.inBrowser('profiled frames', async (browser, watch) => {
-    const composition = await session.compositionFor(profiled, browser);
-    if (end > composition.durationInFrames) throw new Error(`the video has frames 0–${composition.durationInFrames - 1}`);
-    await renderFrames({
-      ...RENDER_PAGE_OPTIONS, ...watchedRenderFrames(watch), composition, serveUrl: session.serveUrl, puppeteerInstance: browser, inputProps: profiled, outputDir: null,
-      // Quiet, so the entries are read, not echoed (frame-profiler.tsx says how they're logged to allow it).
-      concurrency: 1, imageFormat: 'none', frames, logLevel: 'error', onStart: () => {},
-      onBrowserLog: (log) => {
-        watch.onBrowserLog(log);
-        const entry = renderHostLineText(FRAME_PROFILE_LOG_PREFIX, log.text);
-        // SAFETY: frame-profiler.tsx alone logs behind this prefix, and only a FrameProfileLine's JSON.
-        if (entry !== null) lines.push(JSON.parse(entry) as FrameProfileLine);
-      },
-    });
-    return { result: composition, workers: 1 };
-  });
-
+  const frames = Array.from({ length: end - from }, (_, i) => from + i), inputProps = session.props();
+  /** The steady per-frame ms of a pass in `tabs`, null with no frame past each tab's first; and the pass's span. */
   const wholeIn = (tabs: number, capture: boolean) => session.inBrowser(`whole frames, ${capture ? 'PNG' : 'uncaptured'}, ${tabs} tab${tabs > 1 ? 's' : ''}`, async (browser, watch) => {
-    const inputProps = session.props();
-    // Selected again: a composition carries the props it was selected with, and renders with them.
+    // Selected in each browser: a composition carries the props it was selected with, and renders with them.
     const composition = await session.compositionFor(inputProps, browser);
+    if (end > composition.durationInFrames) throw new Error(`the video has frames 0–${composition.durationInFrames - 1}`);
     const arrived: number[] = [];
     await withStudioTemp('profile', (outputDir) => renderFrames({
       ...RENDER_PAGE_OPTIONS, ...watchedRenderFrames(watch, () => arrived.push(performance.now())), composition, serveUrl: session.serveUrl, puppeteerInstance: browser,
@@ -78,28 +106,23 @@ export async function profileFrames(session: RenderSession, { from, end }: { fro
     }));
     // Every tab loads on its first frame; those frames arrive first, and the rest are the steady state.
     const steady = arrived.slice(tabs - 1);
-    return { result: (steady[steady.length - 1] - steady[0]) / (steady.length - 1), workers: tabs };
+    const ms = frames.length > tabs ? (steady[steady.length - 1] - steady[0]) / (steady.length - 1) : null;
+    return { result: { ms, composition, pass: watch.trace!.parent }, workers: tabs };
   });
-  const tabs = session.workersFor(composition);
-  const steadyIn = async (count: number): Promise<FrameProfileReport['whole'][number]> => (frames.length > count
-    ? { tabs: count, png: await wholeIn(count, true), uncaptured: await wholeIn(count, false) }
-    : { tabs: count, png: null, uncaptured: null });
-  const whole = [await steadyIn(1), ...(tabs > 1 ? [await steadyIn(tabs)] : [])];
 
-  const entries = lines.filter((line): line is FrameProfileEntry => !isFrameCostsEntry(line));
-  const labels = [...new Set(entries.map((e) => e.label))];
-  const isLoad = (label: string) => label.endsWith(' load');
+  // The one-tab PNG pass always runs, even for one frame: its trace is the drawing's, cold for a single frame.
+  const one = await wholeIn(1, true), { composition } = one;
+  const uncapturedIn = async (tabs: number) => (frames.length > tabs ? (await wholeIn(tabs, false)).ms : null);
+  const whole: FrameProfileReport['whole'] = [{ tabs: 1, png: one.ms, uncaptured: await uncapturedIn(1) }];
+  const tabs = session.workersFor(composition);
+  if (tabs > 1) whole.push(frames.length > tabs ? { tabs, png: (await wholeIn(tabs, true)).ms, uncaptured: await uncapturedIn(tabs) } : { tabs, png: null, uncaptured: null });
+
+  const { spans } = session.trace.trace();
   return {
     frames: { from, end }, size: { width: composition.width, height: composition.height },
-    gpu: session.trace.trace().spans.flatMap((s) => traceLabel(s, 'gpu') ?? []).at(-1)!,
-    drawn: labels.filter((l) => !isLoad(l)).map((label) => {
-      const perFrame = new Map<number, number>();
-      for (const e of entries) if (e.label === label) perFrame.set(e.frame, (perFrame.get(e.frame) ?? 0) + e.ms);
-      return { label, frames: perFrame.size, spread: spreadOf([...perFrame.values()]) };
-    }),
-    loads: labels.filter(isLoad).map((label) => ({ label, ms: entries.filter((e) => e.label === label).map((e) => e.ms) })),
+    gpu: spans.flatMap((s) => traceLabel(s, 'gpu') ?? []).at(-1)!,
+    ...drawingOf(spans, one.pass),
     whole,
-    costs: lines.filter(isFrameCostsEntry),
   };
 }
 
@@ -119,13 +142,13 @@ export function formatFrameProfile(report: FrameProfileReport, { costs = false }
   const costLines = report.costs.length ? frameCostsTable(report.costs) : ['  nothing in these frames counts its costs'];
   return [
     `${frames.end - frames.from === 1 ? `frame ${frames.from}` : `frames ${frames.from}–${frames.end - 1}`} at ${size.width}×${size.height}, GPU ${gpu}`,
-    'drawing, per frame, waited for on the GPU (1 tab, no screenshot):',
-    ...(report.drawn.length ? report.drawn.map(({ label, frames: n, spread: s }) => `  ${label}: median ${ms(s.median)}, p90 ${ms(s.p90)}, max ${ms(s.max)} over ${counted(n, 'frame')}`) : ['  nothing in these frames offers its work to be timed']),
+    'drawing, per frame, as traced in 1 tab (not waited for on the GPU: studio render --trace detail times its steps there):',
+    ...(report.drawn.length ? report.drawn.map(({ label, frames: n, spread: s }) => `  ${label}: median ${ms(s.median)}, p90 ${ms(s.p90)}, max ${ms(s.max)} over ${counted(n, 'frame')}`) : ['  nothing in these frames traces its drawing']),
     ...report.loads.map(({ label, ms: times }) => `  ${label}: ${formatLoads(times)}`),
     'whole render, per frame, steady state (PNG frames as delivery captures them, then no capture; no encode):',
     ...report.whole.map(({ tabs, png, uncaptured }) => (png === null || uncaptured === null
       ? `  ${counted(tabs, 'tab')}: no steady state from ${counted(frames.end - frames.from, 'frame')}: profile ${tabs + 1} or more`
       : `  ${counted(tabs, 'tab')}: ${ms(png)} captured, ${ms(uncaptured)} uncaptured: capture costs ${ms(png - uncaptured)}`)),
-    ...(costs ? ['costs, as the profiled drawing counted them:', ...costLines] : []),
+    ...(costs ? ['costs, as the frames\' spans carry them:', ...costLines] : []),
   ];
 }

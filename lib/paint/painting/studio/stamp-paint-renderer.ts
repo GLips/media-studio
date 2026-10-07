@@ -38,7 +38,7 @@ import { STAMP_WET_FIELD_FORMATS, stampWetField } from './stamp-wet-field.ts';
 import { stampPlanePictureLayers, type StampPlanePictureLayers } from './stamp-paint-plane-passes.ts';
 import { createStampPlaneGlows } from './stamp-plane-glow-pass.ts';
 import { createLensCompositor, type LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
-import type { FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
+import type { TraceRecorderSpan } from '#lib/platform/trace/models/trace-recorder.ts';
 import { stampWarpCells, stampWarpTriangles, STAMP_WARP_MOST_CELLS } from '../models/stamp-group-warp.ts';
 import { createStampLatticePass, STAMP_LATTICE_VERTEX_FLOATS } from './stamp-lattice-pass.ts';
 import { createStampPlanePictures, type StampPlanePicture } from './stamp-plane-picture-pass.ts';
@@ -204,8 +204,8 @@ export type StampPaintRenderer = {
 };
 
 export type StampPaintRendererOptions = {
-  /** Times the load's parts, for `studio profile`. */
-  profile?: FrameProfileStart | null;
+  /** The span its work is traced under now (its load's as it loads, a frame's as it draws), each part a span in it. */
+  trace?: () => TraceRecorderSpan | null;
   /** The wet stages its washes run: every one, but for a check measuring what some do. */
   wetStages?: readonly StampWetStage[];
   /**
@@ -226,17 +226,20 @@ export type StampPaintRendererOptions = {
 const latticeCellsMost = ({ warp }: StampGroupFrame) => (warp ? STAMP_WARP_MOST_CELLS ** 2 : 1);
 
 /**
- * A renderer for one painting on `surface`, on its paper and mixed as its mixing says; `profile` times the load's parts. Refuses a
+ * A renderer for one painting on `surface`, on its paper and mixed as its mixing says; its parts traced in `trace`. Refuses a
  * painting it can't mix. A frame may round a few pixels a level differently between draws (docs/private-styles.md,
  * "Same pixels"). No render fps reaches it: a boil counts animation frames (stampBoilEpoch).
  */
 export async function createStampPaintRenderer(
   surface: StampPaintSurface, painting: CompiledStampPaint,
-  { profile, wetStages = STAMP_WET_STAGES, stage: given, planes = stampSinglePlane(painting), sources = new Map() }: StampPaintRendererOptions = {},
+  { trace, wetStages = STAMP_WET_STAGES, stage: given, planes = stampSinglePlane(painting), sources = new Map() }: StampPaintRendererOptions = {},
 ): Promise<StampPaintRenderer> {
   const { paper } = painting;
   const { owner } = surface;
-  const span = profile ?? (() => () => {});
+  const span: StampPaintPartSpan = (name) => {
+    const begun = trace?.()?.begin(name, { kind: 'painting-part' });
+    return () => begun?.end();
+  };
   const stage = given ?? stampStage({ width: surface.width, height: surface.height });
   if (stage.frame.width !== surface.width || stage.frame.height !== surface.height) {
     throw new Error(`stamp paint: the stage's frame is ${stage.frame.width} × ${stage.frame.height}, and its surface ${surface.width} × ${surface.height}`);
@@ -282,8 +285,11 @@ type StampRendererLoad = {
   wetnessOf: ((groups: CompiledStampPaint) => StampWetness) | null; media: StampPaintMedia; painting: CompiledStampPaint;
   brushes: StampPaintBrushes; brushedMasks: readonly CompiledStampBrushedMask[];
   wetStages: readonly StampWetStage[]; wetReach: (deposit: CompiledStampDeposit, medium: PaintMedium, water: number) => number;
-  planes: StampLaidPlanes; sources: ReadonlyMap<string, StampLensSource>; span: FrameProfileStart;
+  planes: StampLaidPlanes; sources: ReadonlyMap<string, StampLensSource>; span: StampPaintPartSpan;
 };
+
+/** Begins a part of a renderer's work as a span in its trace; what's returned ends it. */
+type StampPaintPartSpan = (name: string) => () => void;
 
 /**
  * The renderer for `painting`, made in `scope`, its targets `stage`-sized. Runs within one of the surface's checks, so

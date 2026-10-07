@@ -74,4 +74,6 @@ To compare two runs, read their lines:
 tail -n 2 ~/.cache/media-studio/render-history.jsonl | jq '{project, seconds, gpuWaitSeconds, engine}'
 ```
 
-`studio profile <p> --frames a:b` times one span of frames, captured to PNG as delivery captures them and uncaptured.
+`studio profile <p> --frames a:b` times one span of frames, captured to PNG as delivery captures them and uncaptured,
+and tables each drawing's frames and loads from its one-tab pass's trace (`--costs` adds what each frame counted). Its
+trace and history line are a render's.

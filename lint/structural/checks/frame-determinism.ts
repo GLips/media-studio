@@ -8,7 +8,7 @@
 //
 // Held: lib's `models` and `studio` code, private styles, and a project's scenes, helpers, models, painting sources,
 // shared modules, timeline, video, stills and brand. Not held: `engine` code, which never draws, so profiling a render
-// lives there; a project's capture, tools and review; specs; and FRAME_PROFILER, which times a frame's work from
+// lives there; a project's capture, tools and review; specs; and PAGE_TRACE_RECORDER, which times a frame's work from
 // inside the page.
 
 import type { StudioPosition } from '../../policy/studio-tree.ts';
@@ -34,11 +34,6 @@ const reachesPixels = (position: StudioPosition) =>
   position.kind === 'models' || position.kind === 'studio' || position.kind === 'style' || position.kind === 'brand-kit' ||
   (position.kind === 'project' && PIXEL_PROJECT_ROLES.has(position.role));
 const isSpec = (path: string) => /\.test\.tsx?$/.test(path);
-/**
- * Mounted (by Video.tsx) only in a `studio profile` render, and logs its times rather than drawing them. Drawing code
- * reaches it through frame-profile.ts's context, which reads no clock.
- */
-const FRAME_PROFILER = 'lib/picture/profiling/studio/frame-profiler.tsx';
 /** A render page's trace recorder, whose calls return no time: what it reads goes to Node, never into a frame. */
 const PAGE_TRACE_RECORDER = 'lib/platform/trace/studio/page-trace.ts';
 
@@ -47,7 +42,7 @@ export const frameDeterminismCheck: StructuralCheck = {
   run(context) {
     const findings: Finding[] = [];
     for (const file of context.tree.sources) {
-      if (isSpec(file.path) || file.path === FRAME_PROFILER || file.path === PAGE_TRACE_RECORDER || !reachesPixels(context.positionOf(file.path))) continue;
+      if (isSpec(file.path) || file.path === PAGE_TRACE_RECORDER || !reachesPixels(context.positionOf(file.path))) continue;
       for (const { construct, instead, offset } of ambientReadsIn(file.program)) {
         findings.push({
           check: ID, path: file.path, line: file.lineOf(offset), key: construct,

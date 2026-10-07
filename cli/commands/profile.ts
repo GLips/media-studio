@@ -5,7 +5,7 @@ import { openStudioRenderSession, renderLensArg, renderWorkersArg, studioProject
 export default defineCommand({
   meta: {
     name: 'profile',
-    description: "Renders a span of frames three times and says where each frame's time goes: the drawing code that offers its work to be timed (a stamp painting's draw, waited for on the GPU, and its load), in one tab with no screenshot; then each frame's whole render, steady state, captured to PNG as delivery captures it and again uncaptured, in one tab and in the render's tabs, where the span holds a frame past each tab's first. One frame (--frames 120:120) gives its drawing's cold cost. Prints the GPU backends it ran on (WebGL's renderer and WebGPU's adapter). With --costs, also what the drawing counted each frame cost (a painted shot's evaluations, solves, cache hits and misses, readbacks, bytes).",
+    description: "Renders a span of frames whole and says where each frame's time goes: each frame's render, steady state, captured to PNG as delivery captures it and again uncaptured, in one tab and in the render's tabs, where the span holds a frame past each tab's first; and, from the one-tab PNG pass's trace, each painted shot's and stamp painting's drawing per frame and its loads. One frame (--frames 120:120) gives its drawing's cold cost. Prints the GPU backends it ran on (WebGL's renderer and WebGPU's adapter), and writes its trace beside the render history's (npm run trace -- latest reads it). With --costs, also what the drawing counted each frame cost (a painted shot's evaluations, solves, cache hits and misses, readbacks, bytes).",
   },
   args: {
     project: studioProjectArg,
@@ -20,8 +20,14 @@ export default defineCommand({
       throw new Error(`--frames is a first and last frame, the last not before the first, like 330:404 or 120:120, not ${args.frames}`);
     }
     const { profileFrames, formatFrameProfile } = await import('#lib/output/render/engine/frame-profiling.ts');
-    const session = await openStudioRenderSession(args.project, { workers: args.workers, lens: args.lens });
-    const report = await profileFrames(session, { from: range[0], end: range[1] + 1 });
-    for (const line of formatFrameProfile(report, { costs: args.costs })) console.log(line);
+    const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
+    const { openRenderLedger } = await import('#lib/output/render/engine/render-ledger.ts');
+    const { withRenderHistory } = await import('#lib/output/render/engine/render-history.ts');
+    await withRenderHistory(process.argv.slice(2), async ({ trace, keep }) => {
+      const ledger = keep(await openRenderLedger(resolveStudioProjectWith(args.project, 'video.tsx'), trace));
+      const session = await openStudioRenderSession(args.project, { workers: args.workers, lens: args.lens, ledger });
+      const report = await profileFrames(session, { from: range[0], end: range[1] + 1 });
+      for (const line of formatFrameProfile(report, { costs: args.costs })) console.log(line);
+    });
   },
 });

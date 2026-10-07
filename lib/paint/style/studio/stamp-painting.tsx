@@ -13,8 +13,8 @@ import { fullFrameRect } from '#lib/picture/frame/models/frame.ts';
 import { usePictureDrawn } from '#lib/picture/frame/studio/picture-drawn.ts';
 import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
-import { useFrameProfile, type FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
-import { usePageTrace } from '#lib/picture/profiling/studio/page-trace-context.ts';
+import { usePageTrace, usePageTraceDetail, usePageTraceFrame } from '#lib/picture/profiling/studio/page-trace-context.ts';
+import type { TraceRecorderSpan } from '#lib/platform/trace/models/trace-recorder.ts';
 import { paintMoment, type StampPaintFrameAt } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
@@ -69,7 +69,7 @@ export function StampPainting({ t, frameAt, width, height, box: given, ...shownP
   const [gpu, setGpu] = useState<StampPaintingGpu | null>(null);
   const [scene, setScene] = useState<StampPaintingScene | null>(null);
   const { delayRender, continueRender, cancelRender } = useDelayRender();
-  const profile = useFrameProfile(), trace = usePageTrace();
+  const trace = usePageTrace(), detail = usePageTraceDetail(), frame = usePageTraceFrame();
   // How many frames it has drawn: its first is the one a chunk's startup waits for.
   const drawnFrames = useRef(0);
   const lensMode = useLensMode(), pictureDrawn = usePictureDrawn(), sceneDur = useSceneOrNull()?.dur ?? null;
@@ -99,11 +99,9 @@ export function StampPainting({ t, frameAt, width, height, box: given, ...shownP
     const canvas = Object.assign(document.createElement('canvas'), { width: w, height: h });
     Object.assign(canvas.style, { position: 'absolute', inset: '0', width: '100%', height: '100%' });
     holder.current!.append(canvas);
-    const timedSurface = profile?.('stamp paint surface load');
     const traced = trace.begin('stamp painting surface', { kind: 'painting-phase', attributes: { size: `${w} × ${h}` } });
     const making = createStampPaintingGpu(canvas, w, h);
     making.then((ready) => {
-      timedSurface?.();
       traced.end();
       if (!live) return undefined;
       // Set within the hold, so the painting's load holds the frame before this one lets it go.
@@ -120,7 +118,7 @@ export function StampPainting({ t, frameAt, width, height, box: given, ...shownP
       setGpu(null);
       release();
     };
-  }, [w, h, profile, trace, pictureDrawn, delayRender, continueRender, cancelRender]);
+  }, [w, h, trace, pictureDrawn, delayRender, continueRender, cancelRender]);
 
   useLayoutEffect(() => {
     if (!gpu) return undefined;
@@ -130,12 +128,10 @@ export function StampPainting({ t, frameAt, width, height, box: given, ...shownP
       if (open) continueRender(handle);
       open = false;
     };
-    const timedLoad = profile?.('stamp paint load');
     const traced = trace.begin('stamp painting load', { kind: 'painting-phase' });
-    const loading = gpu.loadScene({ shown: painted ? { painting, camera: painted, three, pictures } : { painting }, profile });
+    const loading = gpu.loadScene({ shown: painted ? { painting, camera: painted, three, pictures } : { painting }, span: traced });
     // A load given up as its device goes may fail for want of the device; only a live one's failure is the frame's.
     loading.ready.then(() => {
-      timedLoad?.();
       traced.end();
       if (!live) return undefined;
       flushSync(() => setScene(loading));
@@ -150,7 +146,7 @@ export function StampPainting({ t, frameAt, width, height, box: given, ...shownP
       setScene(null);
       release();
     };
-  }, [gpu, painting, painted, three, pictures, profile, trace, delayRender, continueRender, cancelRender]);
+  }, [gpu, painting, painted, three, pictures, trace, delayRender, continueRender, cancelRender]);
 
   useLayoutEffect(() => {
     if (!scene) return undefined;
@@ -166,11 +162,11 @@ export function StampPainting({ t, frameAt, width, height, box: given, ...shownP
       if (open) continueRender(handle);
       open = false;
     };
-    const drawn = profile?.('stamp paint');
-    const traced = trace.begin(drawnFrames.current++ ? 'stamp painting frame' : 'first draw', { kind: 'painting-frame', attributes: { t: { value: t, unit: 's' } } });
-    // Profiling also holds the frame until the GPU is done, to time the drawing rather than its queueing.
-    scene.draw(stampPaintingFrames(t, frameAt, camera, lensMode), { untilGpuDone: Boolean(drawn) }).then(() => {
-      drawn?.();
+    const traced = trace.begin(drawnFrames.current++ ? 'stamp painting frame' : 'first draw', {
+      kind: 'painting-frame', attributes: { t: { value: t, unit: 's' }, frame: { value: frame, unit: 'frame' } },
+    });
+    // Traced in detail, a frame is held until the GPU is done, to time the drawing rather than its queueing.
+    scene.draw(stampPaintingFrames(t, frameAt, camera, lensMode), { span: traced, untilGpuDone: detail }).then(() => {
       traced.end();
       return release();
     }, (error: Error) => {
@@ -182,7 +178,7 @@ export function StampPainting({ t, frameAt, width, height, box: given, ...shownP
       live = false;
       release();
     };
-  }, [scene, camera, t, frameAt, lensMode, profile, trace, delayRender, continueRender, cancelRender]);
+  }, [scene, camera, t, frame, frameAt, lensMode, detail, trace, delayRender, continueRender, cancelRender]);
 
   return <div ref={holder} {...unmeasuredAttrs('stamp painting')} style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h }} />;
 }
@@ -215,17 +211,18 @@ type StampPaintingGpu = {
   dispose: () => Promise<void>;
 };
 
-type StampPaintingSceneLoad = { shown: StampPaintingShown; profile: FrameProfileStart | null };
+/** What a scene loads, and the span its load is traced in. */
+type StampPaintingSceneLoad = { shown: StampPaintingShown; span: TraceRecorderSpan };
 
 /** A painting or its sources, and its three.js and pictures, loaded on a StampPaintingGpu, drawn a frame at a time. */
 type StampPaintingScene = {
   /** Resolves once loaded, or rejects with the load's error. */
   ready: Promise<void>;
   /**
-   * Draws a frame's `frames` (its exposures, or itself once), one after another, as one task after every earlier one;
-   * with `untilGpuDone`, also waits for the GPU to finish. A no-op once disposed.
+   * Draws a frame's `frames` (its exposures, or itself once), one after another, as one task after every earlier one,
+   * its parts traced in `span`; with `untilGpuDone`, also waits for the GPU to finish. A no-op once disposed.
    */
-  draw: (frames: readonly StampPaintFrame[], options: { untilGpuDone: boolean }) => Promise<void>;
+  draw: (frames: readonly StampPaintFrame[], options: { span: TraceRecorderSpan; untilGpuDone: boolean }) => Promise<void>;
   /** Takes no more draws, waits out the load and the draws queued, then lets go of the renderer and three.js. */
   dispose: () => Promise<void>;
 };
@@ -265,17 +262,21 @@ async function createStampPaintingGpu(canvas: HTMLCanvasElement, width: number, 
  * at a time: the sources' textures and the painted ones are shared by every frame, so two frames at once would
  * overwrite each other's before the earlier composite read them.
  */
-function loadStampPaintingScene(owner: StampPaintGpuOwner, surface: StampPaintSurface, { shown, profile }: StampPaintingSceneLoad): StampPaintingScene {
+function loadStampPaintingScene(owner: StampPaintGpuOwner, surface: StampPaintSurface, { shown, span }: StampPaintingSceneLoad): StampPaintingScene {
   const { camera, three, pictures } = shown;
+  // The span its renderers trace their parts in: the load's, then each frame's as it draws. Its tasks run one at a time.
+  let tracing: TraceRecorderSpan | null = span;
+  const trace = () => tracing;
   let madeThree: PaintedThreeLoaded | null = null, madePictures: StampPictureSourcesLoaded | null = null, made: StampSourcesRenderer | null = null, disposed = false;
   const ready = (async () => {
-    madeThree = camera && three ? await loadPaintedThree(owner, camera.camera, three, profile) : null;
+    madeThree = camera && three ? await loadPaintedThree(owner, camera.camera, three, trace) : null;
     madePictures = pictures ? loadStampPictureSources(owner.webgpu, pictures) : null;
     const sources = new Map<string, StampLensSource>([...(madeThree?.sources ?? []), ...(madePictures?.sources ?? [])]);
     const stage = camera?.camera.stage ?? stampStage({ width: surface.width, height: surface.height });
     made = shown.painting
-      ? await createStampPaintRenderer(surface, shown.painting, { profile, stage, planes: camera?.planes, sources })
+      ? await createStampPaintRenderer(surface, shown.painting, { trace, stage, planes: camera?.planes, sources })
       : await createStampSourcesRenderer(surface, { stage, planes: camera!.planes, sources });
+    tracing = null;
   })();
   // The tasks queued so far, settled either way: one's failure is its caller's, not the next task's.
   let queue: Promise<unknown> = ready.catch(() => {});
@@ -287,14 +288,23 @@ function loadStampPaintingScene(owner: StampPaintGpuOwner, surface: StampPaintSu
   let disposing: Promise<void> | null = null;
   return {
     ready,
-    draw: (frames, { untilGpuDone }) => enqueue(async () => {
+    draw: (frames, { span: drawing, untilGpuDone }) => enqueue(async () => {
       await ready;
-      // One after another: each exposure's sources render into the textures the one before it read.
-      await frames.reduce(async (before, frame) => {
-        await before;
-        await made!.draw(frame);
-      }, Promise.resolve());
-      if (untilGpuDone) await made!.finish();
+      tracing = drawing;
+      try {
+        // One after another: each exposure's sources render into the textures the one before it read.
+        await frames.reduce(async (before, frame) => {
+          await before;
+          await made!.draw(frame);
+        }, Promise.resolve());
+        if (untilGpuDone) {
+          const waiting = drawing.begin('gpu done', { kind: 'painting-part' });
+          await made!.finish();
+          waiting.end();
+        }
+      } finally {
+        tracing = null;
+      }
     }),
     dispose: () => {
       disposed = true;

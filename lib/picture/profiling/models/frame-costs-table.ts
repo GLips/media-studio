@@ -1,7 +1,53 @@
-// frame-costs-table.ts: the costs a profiling render logged (FrameCostsEntry), tabled for `studio profile --costs`:
-// per label, each frame's costs, a run of frames that cost alike as one line, then the span's.
+// frame-costs-table.ts: what drawing code counted a frame cost (a painted shot's evaluations, solves, cache hits),
+// carried on its frame's span in a render's trace and tabled for `studio profile --costs`: per label, each frame's
+// costs, a run of frames that cost alike as one line, then the span's.
+import type { TraceAttributes } from '#lib/platform/trace/models/trace-model.ts';
 
-import type { FrameCost, FrameCosts, FrameCostsEntry } from './frame-profile-entry.ts';
+/** One count of a frame's costs, by `name`; one in `bytes` prints as MB. */
+export type FrameCost = { readonly name: string; readonly value: number; readonly unit?: 'bytes' };
+
+/**
+ * What some work cost, counted rather than timed: `counts` add up over frames (solves, cache misses, bytes uploaded);
+ * `levels` are a state as the frame ends (bytes kept), of which a span reports the most; `notes` say what a count
+ * can't (where a solve started).
+ */
+export type FrameCosts = {
+  readonly counts: readonly FrameCost[];
+  readonly levels: readonly FrameCost[];
+  readonly notes: readonly string[];
+};
+
+/** What `label`'s work cost in the video's `frame`. */
+export type FrameCostsEntry = FrameCosts & { readonly frame: number; readonly label: string };
+
+/** A level's name on a span, apart from its counts. */
+const LEVEL_PREFIX = 'level ';
+
+/**
+ * `costs` as a frame span's attributes: each count, nought too, so frames tabled together keep their order; each level
+ * behind LEVEL_PREFIX; the notes as one.
+ */
+export function frameCostsTraceAttributes({ counts, levels, notes }: FrameCosts): TraceAttributes {
+  const entries: [string, TraceAttributes[string]][] = [
+    ...counts.map(({ name, value, unit }): [string, TraceAttributes[string]] => [name, { value, unit: unit ?? 'times' }]),
+    ...levels.map(({ name, value, unit }): [string, TraceAttributes[string]] => [`${LEVEL_PREFIX}${name}`, { value, unit: unit ?? 'values' }]),
+    ...(notes.length ? [['notes', notes.join('\n')] satisfies [string, string]] : []),
+  ];
+  return Object.fromEntries(entries);
+}
+
+/** The costs a frame span's `attributes` carry (frameCostsTraceAttributes'), its other quantities (its time, its frame) left out. */
+export function frameCostsOfTraceAttributes(attributes: TraceAttributes): FrameCosts {
+  const counts: FrameCost[] = [], levels: FrameCost[] = [];
+  for (const [name, value] of Object.entries(attributes)) {
+    if (typeof value === 'string') continue;
+    const unit = value.unit === 'bytes' ? 'bytes' as const : undefined;
+    if (name.startsWith(LEVEL_PREFIX)) levels.push({ name: name.slice(LEVEL_PREFIX.length), value: value.value, ...(unit && { unit }) });
+    else if (value.unit === 'times' || unit) counts.push({ name, value: value.value, ...(unit && { unit }) });
+  }
+  const notes = attributes.notes;
+  return { counts, levels, notes: typeof notes === 'string' ? notes.split('\n') : [] };
+}
 
 /** `costs` merged by name in first-seen order, each name's values combined by `combine`. */
 function mergedCosts(costs: readonly FrameCost[], combine: (a: number, b: number) => number): FrameCost[] {

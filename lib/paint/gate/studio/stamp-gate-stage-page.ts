@@ -31,6 +31,7 @@ import {
 } from '../models/stamp-gate-stage.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { gpuHalfBits, gpuHalfBitsOf, gpuHalfValue } from '#lib/platform/gpu/models/gpu-half-float.ts';
+import { pageSpanEnds } from '#lib/platform/trace/studio/page-trace.ts';
 import { drawn, drawnExposures, drawnImages, gateRenderer, withGateRenderer, withGateSurface } from './stamp-gate-page-surface.ts';
 import {
   checkStampGateMotion, checkStampGateTransport, STAMP_GATE_MOTION_SHUTTER, STAMP_GATE_MOTION_T, STAMP_GATE_TRANSPORT_ID, STAMP_GATE_TRANSPORT_STEP, stampGateMotionExposures, stampGateMotionFastLens, stampGateMotionPainting, stampGateMotionState, type StampGateMotionKind,
@@ -62,14 +63,15 @@ const againstFresh = (gate: StampGatePainting, drawnFrames: readonly StampGateOr
     return [...await done, { frame: k, difference: stampGateFrameDifference(fresh.rgba, rgba) }];
   }, Promise.resolve([]));
 
-/** A profile counting the spans labelled `label` as they end, and the count so far. */
+/** A trace counting the spans named `label` as they end, and the count so far. */
 function stampGateSpanCounter(label: string) {
   const counted = {
     spans: 0,
-    profile: (span: string) => () => {
-      if (span === label) counted.spans++;
-    },
+    trace: () => span,
   };
+  const span = pageSpanEnds((name) => {
+    if (name === label) counted.spans++;
+  });
   return counted;
 }
 
@@ -284,13 +286,13 @@ export async function checkStampGateStageCase(id: string): Promise<StampGateWash
   }
   if (id === 'stage/film-cache') {
     const gate = stampGateParallaxPainting(), stage = gateStage(gate, STAMP_GATE_STAGE_MARGIN), restores = stampGateSpanCounter('stamp paint film restore');
-    const scrambled = await framesInOrder(gate, STAMP_GATE_PARALLAX_ORDER, { stage, profile: restores.profile });
+    const scrambled = await framesInOrder(gate, STAMP_GATE_PARALLAX_ORDER, { stage, trace: restores.trace });
     return [checkStampGateFilmCache(await againstFresh(gate, scrambled, { stage }), restores.spans)];
   }
   if (id === 'planes/cache') {
     const gate = stampGatePlanesPainting(), options = { stage: gateStage(gate, STAMP_GATE_STAGE_MARGIN), planes: stampGatePlanesOf(gate.painting) };
     const restores = stampGateSpanCounter('stamp paint picture restore');
-    const scrambled = await framesInOrder(gate, STAMP_GATE_PARALLAX_ORDER, { ...options, profile: restores.profile }, stampGatePlanesLens);
+    const scrambled = await framesInOrder(gate, STAMP_GATE_PARALLAX_ORDER, { ...options, trace: restores.trace }, stampGatePlanesLens);
     return [checkStampGatePictureCache(await againstFresh(gate, scrambled, options, stampGatePlanesLens), restores.spans)];
   }
   if (id === STAMP_GATE_TRANSPORT_ID) {

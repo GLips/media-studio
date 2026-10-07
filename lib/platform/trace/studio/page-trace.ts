@@ -112,3 +112,20 @@ function createRenderPageTrace(send: PageTraceSend): PageTrace {
     },
   };
 }
+
+/**
+ * A span recording nothing that tells `ended` each span begun under it, at any depth, as it ends, with its ms: for a
+ * check or a tool timing or counting a renderer's parts on its own page, outside a render's trace.
+ */
+export function pageSpanEnds(ended: (name: string, ms: number) => void): TraceRecorderSpan {
+  const begin = (name: string): TraceRecorderSpan => {
+    const started = performance.now();
+    let open = true;
+    const close = () => {
+      if (open) ended(name, performance.now() - started);
+      open = false;
+    };
+    return { begin, add: () => {}, time: () => () => {}, end: close, fail: close, note: () => {} };
+  };
+  return { ...begin(''), end: () => {}, fail: () => {} };
+}

@@ -193,7 +193,7 @@ A render's browser must have a hardware WebGPU adapter as well as hardware GL, a
 page is one, `about:blank` isn't. The renderer needs the adapter's `texture-formats-tier2` feature (its compute passes
 read and write half-float targets in place).
 
-**Speed.** `studio profile <project> --frames a:b` times each frame's painting on the GPU and its whole render. The
+**Speed.** `studio profile <project> --frames a:b` times each frame's painting as traced and its whole render. The
 watercolor landscape (84 deposits, 1.5M stamps, 1920×1080) paints in about 67 ms a frame on an M1 Max (WebGPU on
 Metal), loads in about 0.4 s, and renders in about 102 ms in one tab and 88 ms in two, so the painting dominates and
 capture is the rest. Holding each frame until WebGPU has checked its draw for errors (so a broken draw fails its own

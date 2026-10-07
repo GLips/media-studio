@@ -828,10 +828,6 @@
       "return page.evaluate((at) => {": 1,
       "return page.evaluate(([elements, at]) => {": 2
     },
-    "lib/output/render/engine/frame-profiling.ts": {
-      "const composition = await session.compositionFor(profiled, browser);": 1,
-      "const composition = await session.compositionFor(inputProps, browser);": 1
-    },
     "lib/output/render/engine/studio-bundle.ts": {
       "const recording: WebpackOverrideFn = async (config) => {": 1
     },
@@ -1319,11 +1315,6 @@
       "}, [target, selector, width]);": 1
     }
   },
-  "react(refs)": {
-    "lib/picture/profiling/studio/frame-profiler.tsx": {
-      "frame.current = useCurrentFrame();": 1
-    }
-  },
   "react(set-state-in-effect)": {
     "lib/picture/measurement/studio/screen-rect.ts": {
       "measure();": 1
@@ -1795,9 +1786,6 @@
       "function motionAmount(track: MotionTrack, req: Pick<MotionGraphRequest, 'first' | 'last'>) {": 1,
       "const valuesOf = (l: Plot['lines'][number]) => l.series.flatMap((s) => s.values).filter((v) => v !== null);": 1,
       "const spreadOf = (vs: number[]) => Math.max(...vs) - Math.min(...vs);": 1
-    },
-    "lib/output/render/engine/frame-profiling.ts": {
-      "export async function profileFrames(session: RenderSession, { from, end }: { from: number; end: number }): Promise<FrameProfileReport> {": 1
     },
     "lib/output/render/engine/render-pipeline.ts": {
       "function judgeCheckedFrames(session: RenderSession, sink: ReturnType<typeof artifactSink>, timeline: TimelineReport, span: { first: number; last: number }): ProjectCheck {": 1,

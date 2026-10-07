@@ -13,8 +13,6 @@ export type VideoProps = {
   blockouts: boolean;
   /** Play the project's cue list (sfx/cues.json) whether or not the video does (`sfxCueList`), to audition it. */
   auditionSfxCueList?: boolean;
-  /** Time the work drawing code offers and log it, for `studio profile` (see frame-profiler.tsx). */
-  profile?: boolean;
   /** The frames a render traces in detail (`studio render --trace`); none when left out. */
   traceDetail?: TraceDetail;
   /** How the lens draws: fast, or the reference the fast path is measured against (lens-mode.ts). */

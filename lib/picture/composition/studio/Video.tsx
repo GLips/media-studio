@@ -5,7 +5,7 @@
 // around each scene and voice line are for the Studio's timeline, where they show up by name, and for mounting.
 
 import { Audio } from '@remotion/media';
-import { useMemo, useRef, type ReactNode } from 'react';
+import { useMemo, useRef } from 'react';
 import { AbsoluteFill, Artifact, Sequence, useCurrentFrame, useRemotionEnvironment, useVideoConfig, type VideoConfig } from 'remotion';
 import { footage as footageList } from '@footage';
 import sfxCues from '@sfx-cues';
@@ -16,8 +16,7 @@ import type { BlockoutSoloProps, VideoProps } from '#lib/picture/video/models/co
 import { PrevisFootagePlayer } from '#lib/footage/previs/studio/previs.tsx';
 import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { FrameProbe } from '#lib/picture/measurement/studio/probe.tsx';
-import { FrameProfiler } from '#lib/picture/profiling/studio/frame-profiler.tsx';
-import { PageTraceContext, PageTraceDetailContext } from '#lib/picture/profiling/studio/page-trace-context.ts';
+import { PageTraceContext, PageTraceDetailContext, PageTraceFrameContext } from '#lib/picture/profiling/studio/page-trace-context.ts';
 import { traceDetailCovers } from '#lib/platform/trace/models/trace-detail.ts';
 import { NO_PAGE_TRACE, renderPageTrace } from '#lib/platform/trace/studio/page-trace.ts';
 import { logToRenderHost } from '#lib/platform/browser/studio/render-page-log.ts';
@@ -89,7 +88,7 @@ function timelineReport(video: VideoDef, tl: LaidVideo, { fps, width, height, du
 
 // `reportTimeline` is off in the replay composition: its Freeze can land on frame 0 more than once, and Remotion
 // refuses a second artifact with the same name.
-export function Video({ video, captions, probe, blockouts, auditionSfxCueList = false, profile = false, traceDetail, lens = 'fast', picture = true, reportTimeline = true }: VideoProps & { video: VideoDef; reportTimeline?: boolean }) {
+export function Video({ video, captions, probe, blockouts, auditionSfxCueList = false, traceDetail, lens = 'fast', picture = true, reportTimeline = true }: VideoProps & { video: VideoDef; reportTimeline?: boolean }) {
   const frame = useCurrentFrame();
   const config = useVideoConfig(), { fps } = config;
   const tl = useMemo(() => laidVideoOf(video), [video]);
@@ -108,22 +107,24 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
     <AbsoluteFill ref={root} style={{ background: transparent ? undefined : '#fff', overflow: 'hidden' }}>
       <PageTraceContext value={trace}>
       <PageTraceDetailContext value={traceDetailCovers(traceDetail, frame)}>
+      <PageTraceFrameContext value={frame}>
       <PictureDrawnContext value={picture}>
       <LensModeContext value={lens}>
       <CaptionBandContext value={captioned.style.band}>
       <SfxCueListPlaying.Provider value={playsCueList}>
-        <ProfiledScenes profile={profile}>{tl.scenes.map((scene, k) => {
+        {tl.scenes.map((scene, k) => {
           const paint = painted.find((p) => p.k === k);
           return (
             <Sequence key={scene.id} name={scene.id} from={scene.visible.from} durationInFrames={Math.max(1, scene.visible.to - scene.visible.from)} layout="none">
               {paint && <SceneLayer scene={scene} t={t} alpha={paint.alpha} transparent={transparent} footage={blockouts ? undefined : footageFor(scene)} />}
             </Sequence>
           );
-        })}</ProfiledScenes>
+        })}
       </SfxCueListPlaying.Provider>
       </CaptionBandContext>
       </LensModeContext>
       </PictureDrawnContext>
+      </PageTraceFrameContext>
       </PageTraceDetailContext>
       </PageTraceContext>
       {playsCueList && sfxCues && <SfxCueListAudio cues={sfxCues} />}
@@ -145,7 +146,6 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
   );
 }
 
-const ProfiledScenes = ({ profile, children }: { profile: boolean; children: ReactNode }) => (profile ? <FrameProfiler>{children}</FrameProfiler> : children);
 
 function MusicBedAudio({ video, tl, fps }: { video: VideoDef; tl: LaidVideo; fps: number }) {
   const bed = video.music!;
