@@ -15,7 +15,7 @@ import { layersOf, type LayerSelection } from '#lib/paint/document/models/painti
 import { painting, type PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import { stampCanonicalJson, type StampCanonicalDatum } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
+import { stampCanonicalJson, type StampCanonicalDatum } from '#lib/paint/painting/models/stamp-canonical.ts';
 import { stampStage, type StampAxis, type StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { PaintedTexture, ThreeSource } from '#lib/paint/shot/models/shot-props.ts';
 import { dissolve } from '#lib/paint/shot/models/shot-selection.ts';

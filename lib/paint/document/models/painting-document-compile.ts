@@ -15,7 +15,7 @@ import type { StampPaintCostTally, StampPaintKept } from '#lib/paint/painting/mo
 import { stampBoilSeed, type CompiledStampDeposit } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { rememberedOnce } from '#lib/paint/painting/models/stamp-remembered.ts';
 import type { StampSheetCompositeStep, StampSheetEntry, StampSheetFilm, StampSheetPrewet, StampSheetProgram, StampSheetWash } from '#lib/paint/painting/models/stamp-sheet-program.ts';
-import { stampCanonicalDigest, stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
+import { stampCanonicalDigest, stampCanonicalJson } from '#lib/paint/painting/models/stamp-canonical.ts';
 import { compilePaintingArea } from './painting-area-compile.ts';
 import { compilePaintingDeposit, compilePaintingFluid, type PaintingBrushOf } from './painting-deposit-compile.ts';
 import type { AnyApplication, LayerKey, NodeKey, Prewet, Wash } from './painting-document.ts';

@@ -3,7 +3,7 @@
 // document declares no boil.
 
 import { stampBoilSeed } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
-import type { StampCanonicalDatum } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
+import type { StampCanonicalDatum } from '#lib/paint/painting/models/stamp-canonical.ts';
 
 const isDatumList = (datum: StampCanonicalDatum): datum is readonly StampCanonicalDatum[] => Array.isArray(datum);
 

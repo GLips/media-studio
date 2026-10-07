@@ -10,7 +10,7 @@
 import type { StampPaintCostTally } from '../models/stamp-paint-costs.ts';
 import { STAMP_FILMS_WHOLE } from '../models/stamp-reveal.ts';
 import type { StampSheetCompositeStep } from '../models/stamp-sheet-program.ts';
-import { stampCanonicalJson } from '../models/stamp-sheet-state-key.ts';
+import { stampCanonicalJson } from '../models/stamp-canonical.ts';
 import { stampBoxUnion, stampPointBox, type StampPointBox } from '../models/stamp-stage.ts';
 import type { StampPaintGpuOwner } from './stamp-paint-gpu-owner.ts';
 import { readStampSheetsPicture, type StampSheetKeptFilms, type StampSheetsComposite, type StampSheetsGround, type StampSheetsPicture } from './stamp-sheet-composite.ts';

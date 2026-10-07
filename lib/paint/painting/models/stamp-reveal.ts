@@ -9,7 +9,7 @@
 import { STAMP_PAINT_FIELD_SHARE, stampPaintFieldAt, stampPaintFieldEnds, stampPaintFieldProblem, type StampSeededPaintField } from './stamp-paint-field.ts';
 import type { StampPoint } from './stamp-region.ts';
 import { stampSimilarityPoint, type StampSimilarityWords } from './stamp-rest-map.ts';
-import { stampCanonicalJson } from './stamp-sheet-state-key.ts';
+import { stampCanonicalJson } from './stamp-canonical.ts';
 import type { StampWrapPeriods } from './stamp-stage.ts';
 
 /** A reveal stroke's ends: `round` reaches half its width past each end; `flat` stops square at them. */

@@ -1,6 +1,6 @@
 // sha256.ts: SHA-256 (FIPS 180-4), fed bytes a run at a time and synchronously, alike in Node and the browser.
 // WebCrypto hashes only a whole buffer and only asynchronously, so an encoding written out as it's made (megabytes of
-// marks, stamp-sheet-state-key.ts) would have to be held whole first; this hashes it as it comes.
+// marks, stamp-canonical.ts) would have to be held whole first; this hashes it as it comes.
 
 const ROUND_CONSTANTS = Int32Array.from([
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,

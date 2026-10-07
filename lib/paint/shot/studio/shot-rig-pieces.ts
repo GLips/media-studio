@@ -11,7 +11,7 @@ import { paintingNodeSteps, type PaintingSelectionCompiled } from '#lib/paint/do
 import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { stampRevealLinksKey, type StampFilmRevealLinks } from '#lib/paint/painting/models/stamp-reveal.ts';
 import type { StampSheetCompositeShown } from '#lib/paint/painting/models/stamp-sheet-program.ts';
-import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
+import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-canonical.ts';
 import { stampBoxUnion, stampStageTexelsWithin, type StampPointBox, type StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { readStampSheetsPictureKept } from '#lib/paint/painting/studio/stamp-film-readback.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';

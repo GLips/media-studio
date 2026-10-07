@@ -15,7 +15,7 @@ import { paintCameraWorld, paintPlaneWorldPoint, type PaintCameraWorld } from '#
 import { srgbToLinear } from '#lib/paint/materials/models/paint-spectrum.ts';
 import { paintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampPictureRgba } from '#lib/paint/painting/models/stamp-plane.ts';
-import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
+import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-canonical.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { ThreeSource } from '#lib/paint/shot/models/shot-props.ts';
 import { paintedThreeShotCamera } from '#lib/paint/three-layers/models/painted-three-camera.ts';

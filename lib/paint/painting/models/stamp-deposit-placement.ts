@@ -14,6 +14,7 @@ import type { CompiledStampArea } from './stamp-area.ts';
 import { placeStampFlood, stampBrushFillEdge, stampFloodBarrier, stampFloodEdgeOf, stampFloodLaidPast, type StampFillApplication } from './stamp-fill.ts';
 import { stampFillStrokePath } from './stamp-fill-strokes.ts';
 import { createKeptByBytes, type StampKeptHeld } from './stamp-kept-memo.ts';
+import { registerStampCanonicalList } from './stamp-canonical.ts';
 import { stampMarkStamps } from './stamp-marks.ts';
 import { stampPaintFieldAt, type StampSeededPaintField } from './stamp-paint-field.ts';
 import type { CompiledStampFlood } from './stamp-paint-recipe-compile.ts';
@@ -61,6 +62,10 @@ export function placeStampDeposit(geometry: StampPlacingGeometry, brush: StampBr
   const found = kept.get(key);
   if (found) return found;
   const placement = frozenPlacement(placeNow(geometry, brush, diameter, seed));
+  // Frozen through every stamp, its marks' digests can be remembered, by the key too: one too large to keep is placed
+  // again the next time, alike.
+  registerStampCanonicalList(placement.stamps, `${key}\nstamps`);
+  registerStampCanonicalList(placement.dualStamps, `${key}\nduals`);
   kept.set(key, placement, bytesOf(placement, key));
   return placement;
 }

@@ -15,7 +15,7 @@ import type { PaintingEvaluation } from '#lib/paint/document/models/painting-sou
 import { paintingLayersUnder, paintingSheetInGroup, type PaintingTree } from '#lib/paint/document/models/painting-tree.ts';
 import type { StampWarpMap } from '#lib/paint/painting/models/stamp-group-warp.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
+import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-canonical.ts';
 import { paintRigCelLayer, paintRigPicturePainted, type PaintRigCelPart } from '#lib/paint/rig/models/paint-rig-cel-layer.ts';
 import type { PaintRigCutLayer } from '#lib/paint/rig/models/paint-rig-cuts.ts';
 import { paintRigSkinGroupPicture, type PaintRigPicture, type PaintRigPiece } from '#lib/paint/rig/models/paint-rig-pieces.ts';

@@ -19,7 +19,7 @@ import type { CompiledStampDeposit, CompiledStampMask } from '#lib/paint/paintin
 import type { StampBox, StampEdge, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import type { StampRestMap, StampSheetPlace } from '#lib/paint/painting/models/stamp-rest-map.ts';
 import type { StampSheetEntry, StampSheetPrewet, StampSheetProgram } from '#lib/paint/painting/models/stamp-sheet-program.ts';
-import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
+import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-canonical.ts';
 import type { NodeKey } from './painting-document.ts';
 import type { PaintingTree } from './painting-tree.ts';
 

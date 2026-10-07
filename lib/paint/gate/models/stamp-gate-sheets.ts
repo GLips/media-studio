@@ -17,7 +17,7 @@ import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
 import type { StampPointBox } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { StampSheetProgram } from '#lib/paint/painting/models/stamp-sheet-program.ts';
 import { stampSheetGrid, stampSheetSeconds, type StampSheetDecision } from '#lib/paint/painting/models/stamp-sheet-schedule.ts';
-import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
+import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-canonical.ts';
 import { stampDrying, stampDryingTimes } from '#lib/paint/painting/models/stamp-wetness.ts';
 import { stampGateSlotAmounts, type StampGateLayer, type StampGateWashCheck } from './stamp-gate-layer.ts';
 import { STAMP_GATE_IMAGES, stampGateBrush, type StampGateImage } from './stamp-gate-paintings.ts';

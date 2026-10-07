@@ -17,7 +17,7 @@ import { stampActiveLayers } from './stamp-deposit-stages.ts';
 import { stampDepositWater } from './stamp-paint-action.ts';
 import type { CompiledStampDeposit, CompiledStampMask } from './stamp-paint-recipe-compile.ts';
 import type { StampSheetProgram, StampSheetPrewet } from './stamp-sheet-program.ts';
-import { stampCanonicalJson } from './stamp-sheet-state-key.ts';
+import { stampCanonicalJson } from './stamp-canonical.ts';
 import { stampStage, stampWrapOffsets, type StampStage, type StampWrapFrom, type StampWrapPeriods } from './stamp-stage.ts';
 import { stampSheetWetReach } from './stamp-wet-reach.ts';
 
