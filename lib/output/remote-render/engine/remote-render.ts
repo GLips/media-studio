@@ -6,7 +6,8 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 import { masterRenderedMix } from '#lib/output/render/engine/render-pipeline.ts';
-import { renderSpanClock, type RenderLedger } from '#lib/output/render/engine/render-ledger.ts';
+import type { RenderLedger } from '#lib/output/render/engine/render-ledger.ts';
+import { traceClock } from '#lib/platform/trace/engine/trace-collector.ts';
 import { concatList, DELIVERY_ENCODING, encodeLosslessList, formatRenderSpans } from '#lib/output/render/engine/render-session.ts';
 import { joinedRenderSlices, joinVideoSlices, losslessSliceFor, readRenderSlices, refuseSliceOutside } from '#lib/output/render/engine/render-slices.ts';
 import { writeRenderSnapshot } from '#lib/output/render/engine/render-snapshot.ts';
@@ -36,7 +37,7 @@ export async function renderRemotely(ledger: RenderLedger, { frames, out, lens, 
   const call = await openRemoteRenderCall(project);
   try {
     const containers = known === undefined ? 1 : remoteContainerCount(known, call.settings.render.maxContainers);
-    const drawing = renderSpanClock();
+    const drawing = traceClock();
     const label = (index: number) => (containers > 1 ? `remote ${index + 1}/${containers}` : 'remote');
     const answers = await call.runJobs(Array.from({ length: containers }, (_, index) => ({
       job: {
@@ -45,7 +46,9 @@ export async function renderRemotely(ledger: RenderLedger, { frames, out, lens, 
       },
       label: label(index),
     })));
-    ledger.addSpan(`remote frames (${containers} container${containers > 1 ? 's' : ''})`, { start: drawing, end: renderSpanClock(), ...(answers[0].report.gpuName && { gpu: answers[0].report.gpuName }) });
+    ledger.trace.record(`remote frames (${containers} container${containers > 1 ? 's' : ''})`, {
+      start: drawing, end: traceClock(), ...(answers[0].report.gpuName && { attributes: { gpu: answers[0].report.gpuName } }),
+    });
     const written = frames
       ? await withStudioTemp('remote-pieces', (dir) => {
         for (const { files } of answers) writeRemoteFiles(files, dir);
@@ -67,9 +70,9 @@ async function keepRemoteSlice(ledger: RenderLedger, dir: string, frames: Remote
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(list, concatList(ordered.map((piece) => piece.file)));
   const made = { frames, timeline, clock: ledger.clock, voice: renderVoiceOf(ledger.project), gpu };
-  await ledger.timed(`${basename(lossless)} join`, () => runFfmpegAsync(['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', lossless]));
+  await ledger.trace.run(`${basename(lossless)} join`, () => runFfmpegAsync(['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', lossless]));
   writeRenderSnapshot(lossless, made);
-  await ledger.timed(`${basename(out)} encode`, () => encodeLosslessList(list, out, DELIVERY_ENCODING));
+  await ledger.trace.run(`${basename(out)} encode`, () => encodeLosslessList(list, out, DELIVERY_ENCODING));
   const counted = countVideoFrames(out);
   if (counted !== frames.end - frames.from) throw new Error(`${out} holds ${counted} frames, not the ${frames.end - frames.from} drawn`);
   writeRenderSnapshot(out, made);

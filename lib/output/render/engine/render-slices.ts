@@ -96,7 +96,7 @@ export function readRenderSlices(dir: string): (RenderSlice & { file: string })[
  * is, under the mastered mix `mixFor` makes now, so sounds play across the joins (joinedRenderSlices says what's
  * refused). A silent project's has no mix.
  */
-export async function joinVideoSlices(ledger: Pick<RenderLedger, 'project' | 'clock' | 'silent' | 'timed'>, { dir, out, mixFor }: {
+export async function joinVideoSlices(ledger: Pick<RenderLedger, 'project' | 'clock' | 'silent' | 'trace'>, { dir, out, mixFor }: {
   dir: string; out: string; mixFor: (timeline: TimelineReport) => Promise<string>;
 }): Promise<string> {
   const { ordered, timeline, gpu } = joinedRenderSlices(readRenderSlices(dir), { dir, clock: ledger.clock });
@@ -105,8 +105,8 @@ export async function joinVideoSlices(ledger: Pick<RenderLedger, 'project' | 'cl
   await withStudioTemp('join', async (tmp) => {
     const list = join(tmp, 'slices.txt'), picture = join(tmp, basename(out));
     writeFileSync(list, concatList(ordered.map((s) => s.file)));
-    await ledger.timed(`${basename(out)} encode`, () => encodeLosslessList(list, picture, DELIVERY_ENCODING));
-    if (mix) await ledger.timed(`${basename(out)} mux`, () => muxDeliveredSound(picture, mix, out, { frames: timeline.durationInFrames, fps: timeline.fps }));
+    await ledger.trace.run(`${basename(out)} encode`, () => encodeLosslessList(list, picture, DELIVERY_ENCODING));
+    if (mix) await ledger.trace.run(`${basename(out)} mux`, () => muxDeliveredSound(picture, mix, out, { frames: timeline.durationInFrames, fps: timeline.fps }));
     else copyFileSync(picture, out);
   });
   const counted = countVideoFrames(out);

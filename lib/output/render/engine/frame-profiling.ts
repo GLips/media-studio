@@ -12,6 +12,7 @@ import { RENDER_PAGE_OPTIONS } from '#lib/platform/browser/engine/render-browser
 import { watchedRenderFrames } from '#lib/platform/browser/engine/render-watch.ts';
 import { renderHostLineText } from '#lib/platform/browser/models/render-page-log.ts';
 import type { RenderSession } from './render-session.ts';
+import { traceLabel } from '#lib/platform/trace/models/trace-model.ts';
 import { frameCostsTable } from '#lib/picture/profiling/models/frame-costs-table.ts';
 import {
   FRAME_PROFILE_LOG_PREFIX, isFrameCostsEntry, type FrameCostsEntry, type FrameProfileEntry, type FrameProfileLine,
@@ -90,7 +91,7 @@ export async function profileFrames(session: RenderSession, { from, end }: { fro
   const isLoad = (label: string) => label.endsWith(' load');
   return {
     frames: { from, end }, size: { width: composition.width, height: composition.height },
-    gpu: session.spans.findLast((s) => s.gpu)!.gpu!,
+    gpu: session.trace.trace().spans.flatMap((s) => traceLabel(s, 'gpu') ?? []).at(-1)!,
     drawn: labels.filter((l) => !isLoad(l)).map((label) => {
       const perFrame = new Map<number, number>();
       for (const e of entries) if (e.label === label) perFrame.set(e.frame, (perFrame.get(e.frame) ?? 0) + e.ms);

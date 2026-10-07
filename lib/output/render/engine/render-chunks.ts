@@ -8,7 +8,8 @@
 import type { HeadlessBrowser } from '@remotion/renderer';
 import { isRenderBrowserFailure, renderBrowserFailureCause } from '#lib/platform/browser/models/render-browser-failure.ts';
 import { inWatchedRenderBrowser, type RenderWatch } from '#lib/platform/browser/engine/render-watch.ts';
-import { renderSpanClock, type RenderSpanRecorder } from './render-ledger.ts';
+import { traceClock, type TraceCollector, type TraceSpanHandle } from '#lib/platform/trace/engine/trace-collector.ts';
+import { recordRenderGpuWait, RENDER_SPAN_KINDS } from './render-ledger.ts';
 
 /**
  * Frames a chunk draws. A fresh browser's page starts cold, solving its paint again (lake dawn-to-dusk: ~28 s), so a
@@ -41,27 +42,29 @@ const inTurn = (pieces: readonly (readonly number[])[], run: (piece: readonly nu
   pieces.reduce((before, piece) => before.then(() => run(piece)), Promise.resolve());
 
 /**
- * Records `piece`'s draw, from `start` to now, as a chunk span under `parent`, with its GPU lease wait (`waited` s),
+ * Records under `chunk`, the span of one attempt at drawing a piece begun at `start`, its GPU lease wait (`waited` s),
  * its startup (the browser opening through its first frame, at `arrivals[0]`) and its steady drawing (first frame to
- * last). Returns the chunk's span, for its packing.
+ * last).
  */
-function recordChunkSpans(spans: RenderChunkSpans, piece: readonly number[], { start, waited, arrivals, failed }: {
-  start: number; waited: number; arrivals: readonly number[]; failed: boolean;
-}): number {
-  const { recorder, parent } = spans;
-  const chunk = recorder.addSpan(failed ? `${framesText(piece)}, failed` : framesText(piece), { start, end: renderSpanClock(), parent, kind: 'chunk', frames: piece.length });
-  recorder.recordGpuWait(waited, { start, parent: chunk });
+function recordChunkPhases(trace: TraceCollector, chunk: TraceSpanHandle, { start, waited, arrivals }: { start: number; waited: number; arrivals: readonly number[] }): void {
+  recordRenderGpuWait(trace, waited, { start, parent: chunk });
   const [first, last] = [arrivals[0], arrivals.at(-1)];
-  if (first === undefined || last === undefined) return chunk;
-  recorder.addSpan('startup', { start: start + waited, end: first, parent: chunk });
+  if (first === undefined || last === undefined) return;
+  trace.record('startup', { start: start + waited, end: first, parent: chunk });
   if (arrivals.length > 1) {
-    recorder.addSpan('drawing', { start: first, end: last, parent: chunk, frames: arrivals.length - 1, msPerFrame: ((last - first) * 1000) / (arrivals.length - 1) });
+    const frames = arrivals.length - 1;
+    trace.record('drawing', {
+      start: first, end: last, parent: chunk,
+      attributes: { frames: { value: frames, unit: 'frames' }, msPerFrame: { value: ((last - first) * 1000) / frames, unit: 'ms/frame' } },
+    });
   }
-  return chunk;
 }
 
-/** Where a chunked draw records its spans (render-ledger.ts): each chunk under `parent`. */
-export type RenderChunkSpans = { readonly recorder: RenderSpanRecorder; readonly parent: number };
+/**
+ * Where a chunked draw records its spans: each attempt at a chunk under `parent`, on its main track, and each chunk's
+ * packing under `parent` too, on a track of its own (it runs while the next chunk draws), caused by the chunk's attempt.
+ */
+export type RenderChunkSpans = { readonly trace: TraceCollector; readonly parent: TraceSpanHandle };
 
 /**
  * Draws `frames` in chunks of `chunkFrames`, each piece in a watched browser of its own given to `draw`, and again as
@@ -73,20 +76,30 @@ export async function renderInChunks<T>(frames: readonly number[], draw: RenderC
 } = {}): Promise<{ gpu: string; drawn: T[] }> {
   const drawn: T[] = [];
   let gpu: string | null = null, taking = Promise.resolve();
+  /** Records a wait on the last chunk's packing, begun at `waiting` (performance.now()), when it queued. */
+  const recordPackingWait = (waiting: number) => {
+    if (spans && performance.now() - waiting >= PACKING_WAIT_RECORDED_MS) spans.trace.record('waiting on packing', { start: traceClock(waiting), end: traceClock(), parent: spans.parent });
+  };
   /** Draws `piece`, its frames having failed once already when `again`. */
   const drawPiece = async (piece: readonly number[], again: boolean): Promise<void> => {
-    const start = renderSpanClock(), arrivals: number[] = [];
+    // Begun before `start` is read, so the startup measured from it lies inside the chunk.
+    const chunk = spans?.trace.begin(framesText(piece), { parent: spans.parent, kind: RENDER_SPAN_KINDS.chunk });
+    const start = traceClock(), arrivals: number[] = [];
     const done = await inWatchedRenderBrowser((browser, watch) => draw(browser, piece, {
       ...watch,
       frameDrawn: (frame) => {
-        arrivals.push(renderSpanClock());
+        arrivals.push(traceClock());
         watch.frameDrawn(frame);
       },
     }), {
       pass: framesText(piece), frames: piece, ...(stallMs !== undefined && { stallMs }),
     }).catch((error: Error) => error);
-    const failed = done instanceof Error;
-    const chunk = spans && recordChunkSpans(spans, piece, { start, waited: failed ? 0 : done.waited, arrivals, failed });
+    if (spans && chunk) {
+      recordChunkPhases(spans.trace, chunk, { start, waited: done instanceof Error ? 0 : done.waited, arrivals });
+      const attributes = { frames: { value: piece.length, unit: 'frames' } };
+      if (done instanceof Error) chunk.fail(done, attributes);
+      else chunk.end({ ...attributes, gpu: done.gpu });
+    }
     if (done instanceof Error) {
       if (!isRenderBrowserFailure(done.message)) throw done;
       if (again && piece.length === 1) throw new Error(`${await describeFrame(piece[0])} failed again, drawn alone in a fresh browser: ${renderBrowserFailureCause(done.message)}`);
@@ -100,15 +113,20 @@ export async function renderInChunks<T>(frames: readonly number[], draw: RenderC
     drawn.push(done.result);
     const waiting = performance.now();
     await taking;
-    if (spans && performance.now() - waiting >= PACKING_WAIT_RECORDED_MS) spans.recorder.addSpan('waiting on packing', { start: renderSpanClock(waiting), end: renderSpanClock(), parent: chunk! });
+    recordPackingWait(waiting);
     const pack = () => take?.(piece, done.result);
-    taking = spans ? spans.recorder.timed('packing', pack, { parent: chunk! }) : pack() ?? Promise.resolve();
+    if (spans && chunk) {
+      taking = spans.trace.run(`packing ${framesText(piece)}`, async (packing) => {
+        spans.trace.flow(chunk, packing);
+        await pack();
+      }, { parent: spans.parent, track: 'packing', kind: RENDER_SPAN_KINDS.packing });
+    } else taking = pack() ?? Promise.resolve();
     // Awaited after the next piece draws; caught now, so a failure meanwhile isn't an unhandled rejection.
     taking.catch(() => {});
   };
   await inTurn(renderChunksOf(frames, chunkFrames), (chunk) => drawPiece(chunk, false));
   const waiting = performance.now();
   await taking;
-  if (spans && performance.now() - waiting >= PACKING_WAIT_RECORDED_MS) spans.recorder.addSpan('waiting on packing', { start: renderSpanClock(waiting), end: renderSpanClock(), parent: spans.parent });
+  recordPackingWait(waiting);
   return { gpu: gpu!, drawn };
 }

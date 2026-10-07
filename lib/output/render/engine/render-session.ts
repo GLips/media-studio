@@ -20,7 +20,9 @@ import { countVideoFrames, runFfmpegAsync } from '#lib/platform/ffmpeg/engine/ff
 import { writeRenderSnapshot, type RenderSnapshot } from './render-snapshot.ts';
 import { renderInChunks } from './render-chunks.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
-import { openRenderLedger, renderGpuWaitSeconds, renderSpanClock, type RenderLedger, type RenderSpan } from './render-ledger.ts';
+import { openRenderLedger, renderGpuWaitSeconds, RENDER_SPAN_KINDS, type RenderLedger } from './render-ledger.ts';
+import { traceClock } from '#lib/platform/trace/engine/trace-collector.ts';
+import { traceLabel, traceQuantity, type TraceSpan } from '#lib/platform/trace/models/trace-model.ts';
 import { renderVoiceOf } from '#lib/timing/voice/engine/voice-project.ts';
 import { RENDER_PAGE_OPTIONS } from '#lib/platform/browser/engine/render-browser.ts';
 import { inWatchedRenderBrowser, watchedRenderFrames, watchedRenderMedia, type RenderWatch } from '#lib/platform/browser/engine/render-watch.ts';
@@ -133,17 +135,17 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   if (workers !== undefined && !(Number.isInteger(workers) && workers > 0)) throw new Error(`--workers is ${workers}: give a whole number above 0`);
   // Only ever lower: raising a process's priority back takes root.
   if (getPriority() < RENDER_NICENESS) setPriority(RENDER_NICENESS);
-  const ledger = opened ?? await openRenderLedger(project), { clock, paints, timed, beginSpan, recordGpuWait } = ledger;
-  const checking = renderSpanClock();
+  const ledger = opened ?? await openRenderLedger(project), { clock, paints, trace, recordGpuWait } = ledger;
+  const checking = traceClock();
   const paintings = await refuseProjectPaintingErrors(project);
-  if (paintings) ledger.addSpan(`${paintings} ${paintings === 1 ? 'painting' : 'paintings'} checked`, { start: checking, end: renderSpanClock() });
-  const serveUrl = await timed('bundle', () => bundleStudioProject(project));
+  if (paintings) trace.record(`${paintings} ${paintings === 1 ? 'painting' : 'paintings'} checked`, { start: checking, end: traceClock() });
+  const serveUrl = await trace.run('bundle', () => bundleStudioProject(project));
   const props = (p: Partial<VideoProps> = {}): VideoProps => ({ captions: false, probe: false, blockouts: false, lens, ...(paintingValues && { paintingValues }), ...p });
   const selectVideo = (inputProps: VideoProps, browser: HeadlessBrowser) => selectComposition({ ...RENDER_PAGE_OPTIONS, serveUrl, id: projectSlug(project), inputProps, puppeteerInstance: browser });
   /** The video's composition with `inputProps`, selected in `browser`, or in a watched one of its own, under the GPU lease. */
   async function compositionFor(inputProps: VideoProps, browser?: HeadlessBrowser): Promise<VideoConfig> {
     if (browser) return selectVideo(inputProps, browser);
-    const start = renderSpanClock();
+    const start = traceClock();
     const { result, waited } = await inWatchedRenderBrowser((own) => selectVideo(inputProps, own), { pass: 'composition' });
     recordGpuWait(waited, { start, parent: null });
     return result;
@@ -166,11 +168,13 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
    * backends it had and the tabs `render` says it used, and under it any wait for the GPU lease.
    */
   async function inBrowser<T>(pass: string, render: (browser: HeadlessBrowser, watch: RenderWatch) => Promise<{ result: T; workers?: number }>): Promise<T> {
-    const span = beginSpan(pass), start = renderSpanClock();
-    const { result: { result, workers: used }, gpu, waited } = await inWatchedRenderBrowser(render, { pass });
-    recordGpuWait(waited, { start, parent: span.id });
-    span.end({ ...(used !== undefined && { workers: used }), gpu });
-    return result;
+    return trace.run(pass, async (span) => {
+      const start = traceClock();
+      const { result: { result, workers: used }, gpu, waited } = await inWatchedRenderBrowser(render, { pass });
+      recordGpuWait(waited, { start, parent: span });
+      span.end({ ...(used !== undefined && { workers: { value: used, unit: 'tabs' } }), gpu });
+      return result;
+    });
   }
 
   /**
@@ -205,17 +209,18 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   async function drawChunks(pass: string, frames: readonly number[], draw: FrameDraw, { into, take, timeline }: {
     into: (piece: readonly number[]) => string; take?: (piece: readonly number[], dir: string) => Promise<void>; timeline?: TimelineReport;
   }): Promise<{ gpu: string; heard: boolean }> {
-    const span = beginSpan(pass);
-    let used = 0;
-    const { gpu, drawn } = await renderInChunks<{ dir: string; heard: boolean }>(frames, async (browser, piece, watch) => {
-      const dir = into(piece), { concurrency, heard } = await drawFrames(browser, watch, piece, dir, draw);
-      used = Math.max(used, concurrency);
-      return { dir, heard };
-    }, {
-      ...(take && { take: (piece, { dir }) => take(piece, dir) }), describeFrame: (frame) => describeRenderFrame(frame, timeline), spans: { recorder: ledger, parent: span.id },
+    return trace.run(pass, async (span) => {
+      let used = 0;
+      const { gpu, drawn } = await renderInChunks<{ dir: string; heard: boolean }>(frames, async (browser, piece, watch) => {
+        const dir = into(piece), { concurrency, heard } = await drawFrames(browser, watch, piece, dir, draw);
+        used = Math.max(used, concurrency);
+        return { dir, heard };
+      }, {
+        ...(take && { take: (piece, { dir }) => take(piece, dir) }), describeFrame: (frame) => describeRenderFrame(frame, timeline), spans: { trace, parent: span },
+      });
+      span.end({ workers: { value: used, unit: 'tabs' }, gpu, frames: { value: frames.length, unit: 'frames' } });
+      return { gpu, heard: drawn.some(({ heard }) => heard) };
     });
-    span.end({ workers: used, gpu, frames: frames.length });
-    return { gpu, heard: drawn.some(({ heard }) => heard) };
   }
 
   /**
@@ -319,13 +324,13 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
     return withStudioTemp('video', async (tmp) => {
       const drawn = await drawLossless(`${name} frames`, span, { inputProps, dir: tmp, timeline, ...(onProgress && { onProgress }), ...(onArtifact && { onArtifact }) });
       const picture = join(tmp, name);
-      await timed(`${name} encode`, () => encodeLosslessList(drawn.list, picture, encoding));
+      await trace.run(`${name} encode`, () => encodeLosslessList(drawn.list, picture, encoding));
       const encoded = countVideoFrames(picture);
       if (encoded !== count) throw new Error(`${name} encoded ${encoded} frames of the ${count} drawn`);
       const wav = sound === 'apart' || (sound === 'own' && drawn.heard) ? await renderAudio({ out: join(tmp, 'sound.wav'), inputProps, frames: span }) : undefined;
       const { soundtrack, motion } = (await approve?.({ ...(sound === 'apart' && { sound: wav }) })) ?? {};
       const track = soundtrack ?? (sound === 'own' ? wav : undefined);
-      if (track) await timed(`${name} mux`, () => muxDeliveredSound(picture, track, out, { frames: count, fps: timeline.fps }));
+      if (track) await trace.run(`${name} mux`, () => muxDeliveredSound(picture, track, out, { frames: count, fps: timeline.fps }));
       else copyFileSync(picture, out);
       const made = { frames: span, timeline, clock, voice: renderVoiceOf(project), gpu: drawn.gpu };
       writeRenderSnapshot(out, { ...made, ...(motion && { motion }) });
@@ -368,7 +373,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
       // Tagged on the frames, which is what the encoders read: -color_primaries and the like are overridden by them. An
       // untagged HEVC's colours shift in AVFoundation, Safari's decoder.
       const bt709 = 'setparams=color_primaries=bt709:color_trc=bt709';
-      await timed(`${basename(webm)} and ${basename(mov)} encode`, () => Promise.all([
+      await trace.run(`${basename(webm)} and ${basename(mov)} encode`, () => Promise.all([
         runFfmpegAsync([...frames, '-vf', `scale=out_color_matrix=bt709,format=yuva420p,${bt709}:colorspace=bt709`, '-c:v', 'libvpx-vp9', '-crf', '18',
           '-b:v', '0', '-row-mt', '1', '-deadline', 'good', '-cpu-used', '2', webm]),
         // hvc1, not hev1, or Safari won't play it. Chromium's PNGs are straight alpha, but AVFoundation reads HEVC's as
@@ -428,19 +433,21 @@ export function artifactSink() {
 }
 
 /** Seconds `spans` took between them. */
-const spanSeconds = (spans: readonly RenderSpan[]) => spans.reduce((sum, s) => sum + s.end - s.start, 0);
+const spanSeconds = (spans: readonly TraceSpan[]) => spans.reduce((sum, s) => sum + s.end - s.start, 0);
 
 /** A chunked pass's chunks in one line: how they started, drew and packed, which their spans hold one by one. */
-function formatChunkSpans(chunks: readonly RenderSpan[], spans: readonly RenderSpan[]): string {
-  const under = (name: string) => spans.filter((s) => s.name === name && chunks.some((c) => c.id === s.parent));
-  const startups = under('startup').map((s) => (s.end - s.start).toFixed(1)), drawing = under('drawing');
-  const frames = drawing.reduce((sum, s) => sum + (s.frames ?? 0), 0);
-  const waits = [...under('waiting on packing'), ...spans.filter((s) => s.name === 'waiting on packing' && s.parent === chunks[0].parent)];
+function formatChunkSpans(pass: TraceSpan, spans: readonly TraceSpan[]): string {
+  const chunks = spans.filter((s) => s.parent === pass.id && s.kind === RENDER_SPAN_KINDS.chunk);
+  const underChunks = (name: string) => spans.filter((s) => s.name === name && chunks.some((c) => c.id === s.parent));
+  const startups = underChunks('startup').map((s) => (s.end - s.start).toFixed(1)), drawing = underChunks('drawing');
+  const frames = drawing.reduce((sum, s) => sum + (traceQuantity(s, 'frames') ?? 0), 0);
+  const ofPass = (test: (s: TraceSpan) => boolean) => spans.filter((s) => s.parent === pass.id && test(s));
+  const failed = chunks.filter((c) => c.status !== 'ok').length;
   return [
-    `${chunks.length} chunk${chunks.length > 1 ? 's' : ''}`,
+    `${chunks.length} chunk${chunks.length > 1 ? 's' : ''}${failed ? ` (${failed} failed)` : ''}`,
     `startup ${startups.join(', ')}s`,
     ...(frames ? [`steady ${Math.round((spanSeconds(drawing) * 1000) / frames)} ms/frame`] : []),
-    `packing ${spanSeconds(under('packing')).toFixed(1)}s (waited on ${spanSeconds(waits).toFixed(1)}s)`,
+    `packing ${spanSeconds(ofPass((s) => s.kind === RENDER_SPAN_KINDS.packing)).toFixed(1)}s (waited on ${spanSeconds(ofPass((s) => s.name === 'waiting on packing')).toFixed(1)}s)`,
   ].join(' · ');
 }
 
@@ -449,24 +456,26 @@ function formatChunkSpans(chunks: readonly RenderSpan[], spans: readonly RenderS
  * top-level span is a row, its children under it, a chunked pass's chunks summed in a line. Spans overlap, so rows don't
  * add up: the wall-clock (the whole process) and the GPU lease wait close it.
  */
-export function formatRenderSpans({ spans }: Pick<RenderLedger, 'spans'>): string[] {
-  const ordered = spans.toSorted((a, b) => a.start - b.start), childrenOf = (id: number | null) => ordered.filter((s) => s.parent === id);
+export function formatRenderSpans({ trace }: Pick<RenderLedger, 'trace'>): string[] {
+  const { spans } = trace.trace();
+  const ordered = spans.toSorted((a, b) => a.start - b.start), childrenOf = (id: string | null) => ordered.filter((s) => s.parent === id);
   const width = Math.max(...ordered.map((s) => s.name.length + 2), 'GPU lease wait'.length);
-  const gpu = [...new Set(spans.flatMap((s) => (s.gpu ? [s.gpu] : [])))];
-  const row = (name: string, seconds: number, at?: number, workers?: number) =>
-    `  ${name.padEnd(width)}  ${seconds.toFixed(1).padStart(6)}s${at === undefined ? '' : `  at ${at.toFixed(1)}s`}${workers ? `  ${workers} worker${workers > 1 ? 's' : ''}` : ''}`;
-  const rowsOf = (span: RenderSpan): string[] => {
-    const children = childrenOf(span.id), chunks = children.filter((c) => c.kind === 'chunk');
+  const gpu = [...new Set(spans.flatMap((s) => traceLabel(s, 'gpu') ?? []))];
+  const row = (span: Pick<TraceSpan, 'name' | 'status'>, seconds: number, at?: number, workers?: number) =>
+    `  ${(span.status === 'ok' ? span.name : `${span.name} (${span.status})`).padEnd(width)}  ${seconds.toFixed(1).padStart(6)}s${at === undefined ? '' : `  at ${at.toFixed(1)}s`}${workers ? `  ${workers} worker${workers > 1 ? 's' : ''}` : ''}`;
+  const chunked = new Set<string>([RENDER_SPAN_KINDS.chunk, RENDER_SPAN_KINDS.packing]);
+  const rowsOf = (span: TraceSpan): string[] => {
+    const children = childrenOf(span.id);
     return [
-      row(span.name, span.end - span.start, span.start, span.workers),
-      ...children.filter((c) => c.kind !== 'chunk' && c.name !== 'waiting on packing').map((c) => `  ${row(c.name, c.end - c.start, c.start)}`),
-      ...(chunks.length ? [`      ${formatChunkSpans(chunks, spans)}`] : []),
+      row(span, span.end - span.start, span.start, traceQuantity(span, 'workers')),
+      ...children.filter((c) => !chunked.has(c.kind ?? '') && c.name !== 'waiting on packing').map((c) => `  ${row(c, c.end - c.start, c.start)}`),
+      ...(children.some((c) => c.kind === RENDER_SPAN_KINDS.chunk) ? [`      ${formatChunkSpans(span, spans)}`] : []),
     ];
   };
   return [
     `timing, GPU ${gpu.join('; ') || 'unused'}:`,
     ...childrenOf(null).flatMap(rowsOf),
-    row('GPU lease wait', renderGpuWaitSeconds(spans)),
-    row('wall-clock', renderSpanClock()),
+    row({ name: 'GPU lease wait', status: 'ok' }, renderGpuWaitSeconds(spans)),
+    row({ name: 'wall-clock', status: 'ok' }, traceClock()),
   ];
 }

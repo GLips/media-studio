@@ -33,7 +33,7 @@ export default defineCommand({
     const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
     const { openRenderLedger } = await import('#lib/output/render/engine/render-ledger.ts');
     const { withRenderHistory } = await import('#lib/output/render/engine/render-history.ts');
-    await withRenderHistory(process.argv.slice(2), async (keep) => {
+    await withRenderHistory(process.argv.slice(2), async ({ trace, keep }) => {
       const project = resolveStudioProjectWith(args.project, 'video.tsx');
       // Each out is checked before its session opens: a render queues for the GPU and draws for minutes before it writes.
       const outOr = (fallback: string) => checkedCommandOutFlag(args.out ?? fallback, { base: project, writes: ['.mp4'], madeIn: join(project, 'out') });
@@ -45,7 +45,7 @@ export default defineCommand({
         if (workers !== undefined && !(Number.isInteger(workers) && workers > 0)) throw new Error(`--workers is ${args.workers}: give a whole number above 0`);
         const frames = range && { from: range[0], end: range[1] + 1 };
         const out = outOr(range ? `out/wip/frames-${range[0]}-${range[1]}.mp4` : 'out/wip/joined.mp4');
-        const written = await renderRemotely(keep(await openRenderLedger(project)), {
+        const written = await renderRemotely(keep(await openRenderLedger(project, trace)), {
           out, ...(frames && { frames }),
           ...(args.lens !== undefined && { lens: lensModeChecked(args.lens) }), ...(workers !== undefined && { workers }),
         });
@@ -54,7 +54,7 @@ export default defineCommand({
       }
       const pipeline = await import('#lib/output/render/engine/render-pipeline.ts');
       const slices = await import('#lib/output/render/engine/render-slices.ts');
-      const openSession = async () => openStudioRenderSession(project, { workers: args.workers, lens: args.lens, ledger: keep(await openRenderLedger(project)) });
+      const openSession = async () => openStudioRenderSession(project, { workers: args.workers, lens: args.lens, ledger: keep(await openRenderLedger(project, trace)) });
       if (range) {
         const [from, last] = range, out = outOr(`out/wip/frames-${from}-${last}.mp4`);
         for (const file of await slices.renderVideoSlice(await openSession(), { from, end: last + 1, out })) console.log(file);

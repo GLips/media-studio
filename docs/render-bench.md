@@ -3,14 +3,23 @@
 Every `studio render` appends one JSON line to `~/.cache/media-studio/render-history.jsonl`
 (`STUDIO_RENDER_HISTORY` points it elsewhere). A line holds the arguments, the studio's and the workspace's commits and
 whether each was dirty, whether the render delivered, the whole command's seconds with the GPU lease wait apart
-(`gpuWaitSeconds`), and every span the render recorded. The code is `lib/output/render/engine/render-history.ts`.
+(`gpuWaitSeconds`), the spans the command recorded in Node, and `trace`, the render's whole trace. The code is
+`lib/output/render/engine/render-history.ts`.
 
-Spans have a start, an end and a parent, so they can overlap. A chunked pass (`video.mp4 frames`) has a span per
-chunk. Each chunk span holds:
+The trace is Chrome trace JSON in `render-traces/` beside the history; drop it on [ui.perfetto.dev](https://ui.perfetto.dev)
+to read the render on a timeline. The newest 100 are kept (under 2 GB between them); a history line outlives its
+trace. The model and the writer are `lib/platform/trace/`.
+
+Spans have a start, an end, a parent and a status (`ok`, `failed`, `cancelled`, or `incomplete` when the render died
+first). A chunked pass (`video.mp4 frames`) has a span per attempt at a chunk, a failed one included. Each chunk holds:
 
 - `startup`: the browser opening through the first frame
 - `drawing`: first frame to last, with `msPerFrame`
-- `packing`: its frames packed to FFV1, while the next chunk draws
+
+Beside the chunks, under the pass:
+
+- `packing frames a–b`: a chunk's frames packed to FFV1 while the next chunk draws, on a `packing` track of its own,
+  with a flow from the chunk that drew them
 - `waiting on packing`: the next chunk waiting for that packing to finish, recorded only when it waits
 
 The table a render prints at its end sums a pass's chunks into one line.

@@ -16,7 +16,8 @@ import { measureLoudness } from '#lib/platform/ffmpeg/engine/loudness.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { artifactSink, DELIVERY_AUDIO_CODEC, DELIVERY_ENCODING, formatRenderSpans, TIMELINE_REPORT_NAME, type RenderSession } from './render-session.ts';
 import { renderSnapshotPath } from './render-snapshot.ts';
-import { renderSpanClock, type RenderLedger } from './render-ledger.ts';
+import type { RenderLedger } from './render-ledger.ts';
+import { traceClock } from '#lib/platform/trace/engine/trace-collector.ts';
 import { sfxEventsFrom, type SfxEvent } from '#lib/output/sfx-cues/models/cue-events.ts';
 import { sfxMarkArtifactName, type SfxMark } from '#lib/timing/sound/models/sfx-marks.ts';
 import { sfxCueListReport } from '#lib/output/sfx-cues/engine/project-cue-list.ts';
@@ -184,8 +185,8 @@ export async function renderMasteredMix(session: RenderSession, { timeline, audi
  * for `auditionSfxCueList` (see renderMasteredMix). A draft of `beatClicks` gains only to the peak ceiling: sparse
  * clicks reach delivery loudness only by the limiter crushing each one.
  */
-export function masterRenderedMix(ledger: Pick<RenderLedger, 'project' | 'addSpan'>, raw: string, { beatClicks, auditionSfxCueList = false }: { beatClicks: boolean; auditionSfxCueList?: boolean }): string {
-  const mastering = renderSpanClock(), masterWav = masterWavFor(ledger, auditionSfxCueList);
+export function masterRenderedMix(ledger: Pick<RenderLedger, 'project' | 'trace'>, raw: string, { beatClicks, auditionSfxCueList = false }: { beatClicks: boolean; auditionSfxCueList?: boolean }): string {
+  const mastering = traceClock(), masterWav = masterWavFor(ledger, auditionSfxCueList);
   mkdirSync(outDirFor(ledger), { recursive: true });
   const before = measureLoudness(raw);
   if (before.lufs === -Infinity) {
@@ -213,7 +214,7 @@ export function masterRenderedMix(ledger: Pick<RenderLedger, 'project' | 'addSpa
     }
     const after = measureLoudness(masterWav);
     console.error(`mix: ${before.lufs} LUFS, ${before.truePeak} dBTP → +${gain.toFixed(1)} dB and limited at ${ceiling.toFixed(1)} → ${after.lufs} LUFS, ${after.truePeak} dBTP (${encodedPeak} encoded)`);
-    ledger.addSpan('mastering', { start: mastering, end: renderSpanClock() });
+    ledger.trace.record('mastering', { start: mastering, end: traceClock() });
     return masterWav;
   });
 }
@@ -349,10 +350,10 @@ export async function renderDeliveredVideo(session: RenderSession, { plain, onDr
       return delivery;
     },
   });
-  await session.timed('video.mp4 review', () => reviewDelivery(session, true, timeline));
+  await session.trace.run('video.mp4 review', () => reviewDelivery(session, true, timeline));
   if (plain) {
     await renderDeliveryVideo(session, { out: videoFor(session, false), inputProps: session.props(), timeline, sound: 'none', approve: async () => delivery! });
-    await session.timed('video-plain.mp4 review', () => reviewDelivery(session, false, timeline));
+    await session.trace.run('video-plain.mp4 review', () => reviewDelivery(session, false, timeline));
   }
   const sidecars = writeCaptionSidecars(session, timeline);
   const variants = plain ? [true, false] : [true];
@@ -403,7 +404,7 @@ async function renderTransparentDelivery(session: RenderSession, timeline: Timel
     webm, mov, inputProps: checkedProps(session), timeline, onArtifact: sink.onArtifact, onProgress: renderProgress(webm),
     approve: async () => ({ motion: approveCheckedRender(session, sink, timeline).motion }),
   });
-  await session.timed('review', () => reviewTransparentDelivery(session, timeline));
+  await session.trace.run('review', () => reviewTransparentDelivery(session, timeline));
   const delivered = [webm, mov, ...writeCaptionSidecars(session, timeline)];
   for (const line of formatRenderSpans(session)) process.stderr.write(`${line}\n`);
   return delivered;
