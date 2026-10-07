@@ -11,10 +11,10 @@ import { inWatchedRenderBrowser, type RenderWatch } from '#lib/platform/browser/
 import { renderSpanClock, type RenderSpanRecorder } from './render-ledger.ts';
 
 /**
- * Frames a chunk draws. A fresh browser costs a few seconds, so a chunk is long; short enough that a page's growth
- * over many distinct frames never reaches a crash.
+ * Frames a chunk draws. A fresh browser's page starts cold, solving its paint again (lake dawn-to-dusk: ~28 s), so a
+ * chunk is long; short enough that a page's growth over many distinct frames never reaches a crash.
  */
-export const RENDER_CHUNK_FRAMES = 150;
+export const RENDER_CHUNK_FRAMES = 300;
 
 /** A wait on the last chunk's packing shorter than this is a promise settling, not a queue, and isn't recorded. */
 const PACKING_WAIT_RECORDED_MS = 50;
