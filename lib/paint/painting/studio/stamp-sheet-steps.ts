@@ -59,7 +59,9 @@ export function createStampSheetSteps(owner: StampPaintGpuOwner, device: StampPa
       work(encoder);
       encoder.copyBufferToBuffer(buffer.storage, 0, buffer.read, 0, buffer.count * 4);
     });
+    const waited = costs?.waiting('readback');
     await buffer.read.mapAsync(GPUMapMode.READ);
+    waited?.();
     const read = new Uint32Array(buffer.read.getMappedRange().slice(0));
     buffer.read.unmap();
     costs?.count('readbacks');

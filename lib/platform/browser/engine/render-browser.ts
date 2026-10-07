@@ -16,6 +16,7 @@ import { renderPageLogText, renderPageWarningText } from '../models/render-page-
 import { wholeBrowserPageError } from './browser-page-error.ts';
 import { borrowKeptRenderBrowser, KEPT_RENDER_BROWSERS_ENV, type KeptRenderBrowserLoan } from './kept-render-browsers.ts';
 import { openRenderBrowser, RENDER_CHROME_MODE, RENDER_CHROMIUM } from './render-browser-launch.ts';
+import type { TraceCollector } from '#lib/platform/trace/engine/trace-collector.ts';
 
 /**
  * The one wall-clock ceiling of a render's page: each delayRender (a painted shot's load and warm, or one frame), each
@@ -101,10 +102,20 @@ function assertHardwareGpu({ gl, webgpu }: GpuBackends, when: 'before' | 'after'
   if (webgpu.fallback) throw gpuBackendError(`the render's browser ${what} a software WebGPU adapter, which renders many times slower`, fellBack);
 }
 
-/** A browser of this process's own, opened once it holds the GPU lease (gpu-lease.ts), and closed when given back. */
-async function openOwnRenderBrowser(): Promise<KeptRenderBrowserLoan> {
+/** Where a render browser's opening is timed: in `trace`, under span `parent`. */
+export type RenderBrowserTrace = { readonly trace: TraceCollector; readonly parent: string };
+
+/** `work` as span `name` in `traced`, or untimed when the render isn't traced. */
+const tracedStep = <T,>(traced: RenderBrowserTrace | undefined, name: string, work: () => Promise<T>) =>
+  (traced ? traced.trace.run(name, work, { parent: traced.parent }) : work());
+
+/**
+ * A browser of this process's own, opened once it holds the GPU lease (gpu-lease.ts), and closed when given back; its
+ * launch timed in `traced`.
+ */
+async function openOwnRenderBrowser(traced?: RenderBrowserTrace): Promise<KeptRenderBrowserLoan> {
   const waited = await acquireStudioGpuLease();
-  const browser = await openRenderBrowser();
+  const browser = await tracedStep(traced, 'browser launch', openRenderBrowser);
   return { browser, waited, giveBack: () => browser.close({ silent: true }) };
 }
 
@@ -122,20 +133,21 @@ function renderBrowserClosed(browser: HeadlessBrowser): Promise<never> {
 }
 
 /**
- * Runs `render` in a browser of its own, or one borrowed from a keeper (KEPT_RENDER_BROWSERS_ENV), told its GPU
- * backends, and closes or gives it back after; `waited` is the seconds this call queued for either. Refuses software GL
- * or WebGPU, and fails if the browser falls back to either by the end. A page's error keeps its whole message.
+ * Runs `render` in a browser of its own or a keeper's (KEPT_RENDER_BROWSERS_ENV), told its GPU backends, and closes or
+ * gives it back after; `waited` is the seconds it queued. Refuses software GL or WebGPU, before and after. A page's
+ * error keeps its whole message. Launch and GPU probes are timed in `traced`, when given.
  */
-export async function inRenderBrowser<T>(render: (browser: HeadlessBrowser, gpu: string) => Promise<T>): Promise<{ result: T; gpu: string; waited: number }> {
+export async function inRenderBrowser<T>(render: (browser: HeadlessBrowser, gpu: string) => Promise<T>, traced?: RenderBrowserTrace): Promise<{ result: T; gpu: string; waited: number }> {
   const keeper = process.env[KEPT_RENDER_BROWSERS_ENV];
-  const { browser, waited, giveBack } = keeper ? await borrowKeptRenderBrowser(keeper) : await openOwnRenderBrowser();
+  const { browser, waited, giveBack } = keeper ? await borrowKeptRenderBrowser(keeper) : await openOwnRenderBrowser(traced);
   const closed = renderBrowserClosed(browser);
+  const probe = (name: string) => tracedStep(traced, name, () => Promise.race([readGpuBackends(browser), closed]));
   let broken = false;
   try {
-    const before = await Promise.race([readGpuBackends(browser), closed]);
+    const before = await probe('GPU probe');
     assertHardwareGpu(before, 'before');
     const result = await render(browser, describeGpu(before)).catch((error: Error) => Promise.reject(wholeBrowserPageError(error)));
-    assertHardwareGpu(await Promise.race([readGpuBackends(browser), closed]), 'after');
+    assertHardwareGpu(await probe('GPU probe after'), 'after');
     return { result, gpu: describeGpu(before), waited };
   } catch (error) {
     broken = error instanceof Error && isRenderBrowserFailure(error.message);

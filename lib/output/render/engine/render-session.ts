@@ -20,7 +20,7 @@ import { countVideoFrames, runFfmpegAsync } from '#lib/platform/ffmpeg/engine/ff
 import { writeRenderSnapshot, type RenderSnapshot } from './render-snapshot.ts';
 import { renderInChunks } from './render-chunks.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
-import { openRenderLedger, renderGpuWaitSeconds, RENDER_SPAN_KINDS, type RenderLedger } from './render-ledger.ts';
+import { openRenderLedger, renderGpuWaitSeconds, RENDER_SPAN_KINDS, RENDER_TRACE_PRODUCER, type RenderLedger } from './render-ledger.ts';
 import { traceClock } from '#lib/platform/trace/engine/trace-collector.ts';
 import { traceLabel, traceQuantity, type TraceSpan } from '#lib/platform/trace/models/trace-model.ts';
 import { renderVoiceOf } from '#lib/timing/voice/engine/voice-project.ts';
@@ -170,7 +170,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   async function inBrowser<T>(pass: string, render: (browser: HeadlessBrowser, watch: RenderWatch) => Promise<{ result: T; workers?: number }>): Promise<T> {
     return trace.run(pass, async (span) => {
       const start = traceClock();
-      const { result: { result, workers: used }, gpu, waited } = await inWatchedRenderBrowser(render, { pass });
+      const { result: { result, workers: used }, gpu, waited } = await inWatchedRenderBrowser(render, { pass, trace: { trace, parent: span.id, name: pass } });
       recordGpuWait(waited, { start, parent: span });
       span.end({ ...(used !== undefined && { workers: { value: used, unit: 'tabs' } }), gpu });
       return result;
@@ -183,7 +183,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
    */
   async function drawFrames(browser: HeadlessBrowser, watch: RenderWatch, frames: readonly number[], outputDir: string | null, draw: FrameDraw): Promise<{ concurrency: number; heard: boolean }> {
     const { inputProps, image, compose = (b: HeadlessBrowser) => selectVideo(inputProps, b), width, tabs, onFrame, onArtifact } = draw;
-    const composition = await compose(browser), concurrency = Math.min(tabs ?? workersFor(composition, inputProps), frames.length);
+    const composition = await (watch.trace ? trace.run('composition select', () => compose(browser), { parent: watch.trace.parent }) : compose(browser)), concurrency = Math.min(tabs ?? workersFor(composition, inputProps), frames.length);
     if (outputDir) mkdirSync(outputDir, { recursive: true });
     const { assetsInfo } = await renderFrames({
       ...RENDER_PAGE_OPTIONS, ...watchedRenderFrames(watch, onFrame), ...image, ...(onArtifact && { onArtifact }), composition, serveUrl, puppeteerInstance: browser, inputProps,
@@ -457,7 +457,8 @@ function formatChunkSpans(pass: TraceSpan, spans: readonly TraceSpan[]): string 
  * add up: the wall-clock (the whole process) and the GPU lease wait close it.
  */
 export function formatRenderSpans({ trace }: Pick<RenderLedger, 'trace'>): string[] {
-  const { spans } = trace.trace();
+  // The command's own spans: its pages' are in the trace, read with `npm run trace`.
+  const spans = trace.trace().spans.filter((s) => s.producer === RENDER_TRACE_PRODUCER);
   const ordered = spans.toSorted((a, b) => a.start - b.start), childrenOf = (id: string | null) => ordered.filter((s) => s.parent === id);
   const width = Math.max(...ordered.map((s) => s.name.length + 2), 'GPU lease wait'.length);
   const gpu = [...new Set(spans.flatMap((s) => traceLabel(s, 'gpu') ?? []))];

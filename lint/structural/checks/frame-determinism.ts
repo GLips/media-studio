@@ -39,13 +39,15 @@ const isSpec = (path: string) => /\.test\.tsx?$/.test(path);
  * reaches it through frame-profile.ts's context, which reads no clock.
  */
 const FRAME_PROFILER = 'lib/picture/profiling/studio/frame-profiler.tsx';
+/** A render page's trace recorder, whose calls return no time: what it reads goes to Node, never into a frame. */
+const PAGE_TRACE_RECORDER = 'lib/platform/trace/studio/page-trace.ts';
 
 export const frameDeterminismCheck: StructuralCheck = {
   id: ID,
   run(context) {
     const findings: Finding[] = [];
     for (const file of context.tree.sources) {
-      if (isSpec(file.path) || file.path === FRAME_PROFILER || !reachesPixels(context.positionOf(file.path))) continue;
+      if (isSpec(file.path) || file.path === FRAME_PROFILER || file.path === PAGE_TRACE_RECORDER || !reachesPixels(context.positionOf(file.path))) continue;
       for (const { construct, instead, offset } of ambientReadsIn(file.program)) {
         findings.push({
           check: ID, path: file.path, line: file.lineOf(offset), key: construct,

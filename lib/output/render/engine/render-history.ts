@@ -16,7 +16,7 @@ import { studioUserCacheDir } from '#lib/platform/temp/engine/studio-user-cache.
 import { openTraceCollector, traceClock, type TraceCollector } from '#lib/platform/trace/engine/trace-collector.ts';
 import { openTraceFile, pruneTraceFiles, traceFileStamp } from '#lib/platform/trace/engine/trace-files.ts';
 import type { TraceSpan } from '#lib/platform/trace/models/trace-model.ts';
-import { renderGpuWaitSeconds, type RenderLedger } from './render-ledger.ts';
+import { renderGpuWaitSeconds, RENDER_TRACE_PRODUCER, type RenderLedger } from './render-ledger.ts';
 
 /** Bumped whenever a record's shape changes, so a reader can tell lines apart. */
 export const RENDER_HISTORY_VERSION = 2;
@@ -62,7 +62,7 @@ export async function withRenderHistory<T>(args: readonly string[], run: (opened
   let kept: RenderLedger | null = null;
   const keep = (ledger: RenderLedger) => (kept = ledger);
   const finish = (error: Error | null) => {
-    const spans = trace.trace().spans.filter((s) => s.producer === 'node'), path = file.finish();
+    const spans = trace.trace().spans.filter((s) => s.producer === RENDER_TRACE_PRODUCER), path = file.finish();
     try {
       pruneTraceFiles(dir, RENDER_TRACES_KEPT);
     } catch (pruning) {

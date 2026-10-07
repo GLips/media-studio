@@ -8,6 +8,8 @@
 import { makeCancelSignal, type BrowserLog, type CancelSignal, type HeadlessBrowser } from '@remotion/renderer';
 import { renderBrowserFailureText } from '../models/render-browser-failure.ts';
 import { renderPageAlive } from '../models/render-page-log.ts';
+import { createPageTraceIntake, type PageTraceIntakeTarget } from '#lib/platform/trace/engine/page-trace-intake.ts';
+import { pageTraceBatchOf } from '#lib/platform/trace/models/page-trace-batch.ts';
 import { inRenderBrowser, printRenderPageLog } from './render-browser.ts';
 
 /**
@@ -27,13 +29,16 @@ export type RenderWatch = {
   readonly frameDrawn: (frame: number) => void;
   /** Any other progress: renderMedia's onProgress, a still drawn. */
   readonly progressed: () => void;
+  /** Where the work times its own steps, when the render is traced: the browser's span. */
+  readonly trace?: PageTraceIntakeTarget;
 };
 
 /**
  * What a watched browser does, for a failure's error: its `pass` (the sound, the stills), and the `frames` it draws in
  * order, when it draws frames, so the error names the one it was drawing. `stallMs`: RENDER_STALL_MS unless given.
+ * `trace`: where the browser's opening and its pages' traces go, when the render is traced.
  */
-export type RenderWatchWork = { readonly pass: string; readonly frames?: readonly number[]; readonly stallMs?: number };
+export type RenderWatchWork = { readonly pass: string; readonly frames?: readonly number[]; readonly stallMs?: number; readonly trace?: PageTraceIntakeTarget };
 
 /** renderFrames' options for `watch`: its cancel signal, its page's lines, and each frame drawn, told on to `onFrame`. */
 export const watchedRenderFrames = (watch: RenderWatch, onFrame?: (frame: number) => void) => ({
@@ -53,7 +58,8 @@ export const watchedRenderMedia = (watch: RenderWatch) => ({ cancelSignal: watch
  * its progress stops (closing the browser) or its browser closes under it. Returns `run`'s result, the browser's GPU and
  * the seconds it waited for the GPU lease, which the watch doesn't count: it starts once the browser opens.
  */
-export async function inWatchedRenderBrowser<T>(run: (browser: HeadlessBrowser, watch: RenderWatch) => Promise<T>, { pass, frames, stallMs = RENDER_STALL_MS }: RenderWatchWork): Promise<{ result: T; gpu: string; waited: number }> {
+export async function inWatchedRenderBrowser<T>(run: (browser: HeadlessBrowser, watch: RenderWatch) => Promise<T>, { pass, frames, stallMs = RENDER_STALL_MS, trace }: RenderWatchWork): Promise<{ result: T; gpu: string; waited: number }> {
+  const intake = trace && createPageTraceIntake(trace);
   return inRenderBrowser(async (browser) => {
     const { cancel, cancelSignal } = makeCancelSignal();
     const drawn = new Set<number>();
@@ -86,6 +92,11 @@ export async function inWatchedRenderBrowser<T>(run: (browser: HeadlessBrowser, 
     const watch: RenderWatch = {
       cancelSignal,
       onBrowserLog: (log) => {
+        const batch = pageTraceBatchOf(log.text);
+        if (batch) {
+          intake?.(batch);
+          return;
+        }
         if (renderPageAlive(log.text)) progressed();
         printRenderPageLog(log);
       },
@@ -94,6 +105,7 @@ export async function inWatchedRenderBrowser<T>(run: (browser: HeadlessBrowser, 
         progressed();
       },
       progressed,
+      ...(trace && { trace }),
     };
     try {
       return await run(browser, watch);
@@ -103,5 +115,5 @@ export async function inWatchedRenderBrowser<T>(run: (browser: HeadlessBrowser, 
       running = false;
       clearInterval(timer);
     }
-  });
+  }, trace);
 }

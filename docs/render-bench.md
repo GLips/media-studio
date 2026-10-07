@@ -6,9 +6,27 @@ whether each was dirty, whether the render delivered, the whole command's second
 (`gpuWaitSeconds`), the spans the command recorded in Node, and `trace`, the render's whole trace. The code is
 `lib/output/render/engine/render-history.ts`.
 
-The trace is Chrome trace JSON in `render-traces/` beside the history; drop it on [ui.perfetto.dev](https://ui.perfetto.dev)
-to read the render on a timeline. The newest 100 are kept (under 2 GB between them); a history line outlives its
-trace. The model and the writer are `lib/platform/trace/`.
+The trace is Chrome trace JSON in `render-traces/` beside the history. Read it as text with
+
+```sh
+npm run trace -- latest                       # the newest render: time by span name, each chunk's startup step by step
+npm run trace -- latest --against latest~1    # two renders side by side, biggest change first
+```
+
+or drop it on [ui.perfetto.dev](https://ui.perfetto.dev) to see it on a timeline. The newest 100 are kept (under 2 GB
+between them); a history line outlives its trace. The model, the recorders and the writer are `lib/platform/trace/`;
+the reader is `harness/trace.ts`.
+
+A trace holds the Node command's spans and every render page's, on one clock. Each page sends its spans by the page-log
+channel in batches, its top spans under the chunk (or pass) that opened its browser. A page traces always:
+
+- its start: `navigation`, then `page scripts` up to the video's first render
+- a painted shot's load (`laid out`, `compile`, `device`, `surfaces`, `renderer`, `warm`), its `first draw` and each
+  `shot frame` after, with what each counted (solves, cache hits and misses, readbacks, bytes uploaded)
+- a span per solve (`solve <plane>`), under the warm or frame that ran it, with its counts and its readback waits
+- a StampPainting's `stamp painting surface`, `stamp painting load` and frames
+
+Node adds each chunk's `browser launch`, `GPU probe` and `composition select`.
 
 Spans have a start, an end, a parent and a status (`ok`, `failed`, `cancelled`, or `incomplete` when the render died
 first). A chunked pass (`video.mp4 frames`) has a span per attempt at a chunk, a failed one included. Each chunk holds:

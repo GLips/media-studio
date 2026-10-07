@@ -7,7 +7,8 @@
 // the next chunk draws, are its own work but not part of it).
 
 /** How a span ended: done, thrown out of, stopped before it finished, or never ended (its producer vanished). */
-export type TraceSpanStatus = 'ok' | 'failed' | 'cancelled' | 'incomplete';
+export const TRACE_SPAN_STATUSES = ['ok', 'failed', 'cancelled', 'incomplete'] as const;
+export type TraceSpanStatus = (typeof TRACE_SPAN_STATUSES)[number];
 
 /** An additive count a span carries, in a unit: frames drawn, bytes uploaded, solves, cache hits. */
 export type TraceQuantity = { readonly value: number; readonly unit: string };
@@ -25,14 +26,26 @@ export type TraceSpan = {
   readonly kind?: string; readonly attributes?: TraceAttributes;
 };
 
+/**
+ * The kind of a span that marks a stretch of its parent measured over other work (a chunk's startup: its start to its
+ * first frame) rather than work of its own: it owns nothing, so it has no self time.
+ */
+export const TRACE_WINDOW_KIND = 'window';
+
 /** A level at a moment (bytes a cache holds), in `unit`, on its producer's counter `name`. */
 export type TraceSample = { readonly producer: string; readonly name: string; readonly at: number; readonly value: number; readonly unit: string };
 
 /** Span `from` caused span `to`. */
 export type TraceFlow = { readonly from: string; readonly to: string };
 
+/**
+ * How a producer's times were put on the trace's clock: `method`, and `lagMs`, how long its first batch took to arrive
+ * by the converted times, which bounds the conversion's error from above (a negative lag is an error that size).
+ */
+export type TraceProducerClock = { readonly method: string; readonly lagMs: number };
+
 /** One producer of a trace: `id` namespaces its spans, `name` is how a viewer labels it (`node`, `page frames 0–299`). */
-export type TraceProducer = { readonly id: string; readonly name: string };
+export type TraceProducer = { readonly id: string; readonly name: string; readonly clock?: TraceProducerClock };
 
 /** A trace folded from its records. */
 export type Trace = {
@@ -40,8 +53,8 @@ export type Trace = {
   readonly samples: readonly TraceSample[]; readonly flows: readonly TraceFlow[];
 };
 
-/** What a span is begun with. */
-export type TraceSpanBegin = Pick<TraceSpan, 'id' | 'producer' | 'parent' | 'name' | 'track' | 'start' | 'kind'>;
+/** What a span is begun with: what it knows from the start (its frame) in `attributes`, so even one never ended has it. */
+export type TraceSpanBegin = Pick<TraceSpan, 'id' | 'producer' | 'parent' | 'name' | 'track' | 'start' | 'kind' | 'attributes'>;
 
 /** What a span is ended with. */
 export type TraceSpanEnd = Pick<TraceSpan, 'id' | 'end' | 'status' | 'error' | 'attributes'>;
@@ -63,7 +76,7 @@ export function traceOfRecords(records: Iterable<TraceRecord>): Trace {
   const samples: TraceSample[] = [], flows: TraceFlow[] = [];
   let last = 0;
   for (const r of records) {
-    if (r.record === 'producer') producers.push({ id: r.id, name: r.name });
+    if (r.record === 'producer') producers.push({ id: r.id, name: r.name, ...(r.clock && { clock: r.clock }) });
     else if (r.record === 'begin') {
       begun.set(r.id, r);
       last = Math.max(last, r.start);
@@ -86,7 +99,8 @@ export function traceOfRecords(records: Iterable<TraceRecord>): Trace {
 export function traceSpanOf(begin: TraceSpanBegin, end: TraceSpanEnd): TraceSpan {
   return {
     id: begin.id, producer: begin.producer, parent: begin.parent, name: begin.name, track: begin.track, start: begin.start, end: end.end, status: end.status,
-    ...(end.error !== undefined && { error: end.error }), ...(begin.kind !== undefined && { kind: begin.kind }), ...(end.attributes && { attributes: end.attributes }),
+    ...(end.error !== undefined && { error: end.error }), ...(begin.kind !== undefined && { kind: begin.kind }),
+    ...((begin.attributes ?? end.attributes) && { attributes: { ...begin.attributes, ...end.attributes } }),
   };
 }
 

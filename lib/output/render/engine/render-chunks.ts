@@ -9,6 +9,7 @@ import type { HeadlessBrowser } from '@remotion/renderer';
 import { isRenderBrowserFailure, renderBrowserFailureCause } from '#lib/platform/browser/models/render-browser-failure.ts';
 import { inWatchedRenderBrowser, type RenderWatch } from '#lib/platform/browser/engine/render-watch.ts';
 import { traceClock, type TraceCollector, type TraceSpanHandle } from '#lib/platform/trace/engine/trace-collector.ts';
+import { TRACE_WINDOW_KIND } from '#lib/platform/trace/models/trace-model.ts';
 import { recordRenderGpuWait, RENDER_SPAN_KINDS } from './render-ledger.ts';
 
 /**
@@ -50,11 +51,11 @@ function recordChunkPhases(trace: TraceCollector, chunk: TraceSpanHandle, { star
   recordRenderGpuWait(trace, waited, { start, parent: chunk });
   const [first, last] = [arrivals[0], arrivals.at(-1)];
   if (first === undefined || last === undefined) return;
-  trace.record('startup', { start: start + waited, end: first, parent: chunk });
+  trace.record('startup', { start: start + waited, end: first, parent: chunk, kind: TRACE_WINDOW_KIND });
   if (arrivals.length > 1) {
     const frames = arrivals.length - 1;
     trace.record('drawing', {
-      start: first, end: last, parent: chunk,
+      start: first, end: last, parent: chunk, kind: TRACE_WINDOW_KIND,
       attributes: { frames: { value: frames, unit: 'frames' }, msPerFrame: { value: ((last - first) * 1000) / frames, unit: 'ms/frame' } },
     });
   }
@@ -93,6 +94,7 @@ export async function renderInChunks<T>(frames: readonly number[], draw: RenderC
       },
     }), {
       pass: framesText(piece), frames: piece, ...(stallMs !== undefined && { stallMs }),
+      ...(spans && chunk && { trace: { trace: spans.trace, parent: chunk.id, name: framesText(piece) } }),
     }).catch((error: Error) => error);
     if (spans && chunk) {
       recordChunkPhases(spans.trace, chunk, { start, waited: done instanceof Error ? 0 : done.waited, arrivals });

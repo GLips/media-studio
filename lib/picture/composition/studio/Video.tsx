@@ -6,7 +6,7 @@
 
 import { Audio } from '@remotion/media';
 import { useMemo, useRef, type ReactNode } from 'react';
-import { AbsoluteFill, Artifact, Sequence, useCurrentFrame, useVideoConfig, type VideoConfig } from 'remotion';
+import { AbsoluteFill, Artifact, Sequence, useCurrentFrame, useRemotionEnvironment, useVideoConfig, type VideoConfig } from 'remotion';
 import { footage as footageList } from '@footage';
 import sfxCues from '@sfx-cues';
 import { levelGain, musicBedGainAt, VOICE_LUFS } from '#lib/timing/sound/models/mix.ts';
@@ -17,6 +17,9 @@ import { PrevisFootagePlayer } from '#lib/footage/previs/studio/previs.tsx';
 import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { FrameProbe } from '#lib/picture/measurement/studio/probe.tsx';
 import { FrameProfiler } from '#lib/picture/profiling/studio/frame-profiler.tsx';
+import { PageTraceContext } from '#lib/picture/profiling/studio/page-trace-context.ts';
+import { NO_PAGE_TRACE, renderPageTrace } from '#lib/platform/trace/studio/page-trace.ts';
+import { logToRenderHost } from '#lib/platform/browser/studio/render-page-log.ts';
 import { SceneContext } from '#lib/picture/video/studio/scene.tsx';
 import { randomSeedFromKey } from '#lib/picture/motion/models/random.ts';
 import { SFX, Sfx, SfxCueListAudio, SfxCueListPlaying } from '#lib/timing/sound/studio/sfx.tsx';
@@ -96,11 +99,13 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
   const t = frame / fps;
   const painted = scenesAtFrame(tl, frame);
   const playsCueList = !!video.sfxCueList || auditionSfxCueList;
+  const trace = useRemotionEnvironment().isRendering ? renderPageTrace(logToRenderHost) : NO_PAGE_TRACE;
   // A check measures the events a draft is made from, so it runs without a list.
   if (playsCueList && !sfxCues && !probe) throw new Error('this project has no sfx/cues.json: run studio sfx draft first');
 
   return (
     <AbsoluteFill ref={root} style={{ background: transparent ? undefined : '#fff', overflow: 'hidden' }}>
+      <PageTraceContext value={trace}>
       <PictureDrawnContext value={picture}>
       <LensModeContext value={lens}>
       <CaptionBandContext value={captioned.style.band}>
@@ -117,6 +122,7 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
       </CaptionBandContext>
       </LensModeContext>
       </PictureDrawnContext>
+      </PageTraceContext>
       {playsCueList && sfxCues && <SfxCueListAudio cues={sfxCues} />}
       {video.sounds?.map((s, i) => <Sfx key={i} sound={s.sound} at={s.at} t={t} id={s.id ?? i} volume={s.volume} />)}
       {tl.cues.map((cue) =>

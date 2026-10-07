@@ -3,7 +3,7 @@
 // render history keeps (render-history.ts). A render session (render-session.ts) opens one and bundles; a command whose
 // frames are drawn elsewhere (remote-render) opens only this, and never a browser.
 import { readProjectDeclaration } from '#lib/platform/project/engine/studio-project.ts';
-import { openTraceCollector, type TraceCollector, type TraceSpanHandle } from '#lib/platform/trace/engine/trace-collector.ts';
+import { NODE_TRACE_PRODUCER, openTraceCollector, type TraceCollector, type TraceSpanHandle } from '#lib/platform/trace/engine/trace-collector.ts';
 import type { TraceSpan } from '#lib/platform/trace/models/trace-model.ts';
 import { readProjectClock } from './project-clock.ts';
 
@@ -12,6 +12,9 @@ import { readProjectClock } from './project-clock.ts';
  * at drawing a chunk of frames, in a browser of its own; or the packing of a chunk's frames, beside the next chunk.
  */
 export const RENDER_SPAN_KINDS = { gpuWait: 'gpu-wait', chunk: 'chunk', packing: 'packing' } as const;
+
+/** The producer a render command's own spans are recorded under, apart from its pages'. */
+export const RENDER_TRACE_PRODUCER = NODE_TRACE_PRODUCER.id;
 
 /** A wait for the GPU lease shorter than this is the lease's own bookkeeping, not a queue, and isn't recorded. */
 const GPU_WAIT_RECORDED_SECONDS = 0.1;

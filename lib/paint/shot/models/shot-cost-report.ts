@@ -1,10 +1,11 @@
 // shot-cost-report.ts: a PaintedShot's costs as the frame profiler logs them. The shot counts a tally per frame and
 // one per warm (stamp-paint-costs.ts, the names its producers share) and hands each to `useFrameCosts()` under these
 // labels; `studio profile --costs` tables them. A warning met goes in as `studio paint check` prints it
-// (paintingProblemText).
+// (paintingProblemText). The same counts go on its trace's spans, a frame's and each solve's.
 
 import type { StampKeptHeld } from '#lib/paint/painting/models/stamp-kept-memo.ts';
-import type { StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
+import type { StampPaintCostName, StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
+import type { TraceAttributes } from '#lib/platform/trace/models/trace-model.ts';
 import type { FrameCost, FrameCosts } from '#lib/picture/profiling/models/frame-profile-entry.ts';
 
 /** The label a frame's costs are logged under, and a warmed span's. */
@@ -27,4 +28,15 @@ export function shotCostsProfileEntry({ counts, plans, solves, warnings, bytes, 
     ],
     notes: [...plans, ...solves.map(({ program, from, entries }) => `solved ${program} from ${from}: ${entries} ${entries === 1 ? 'entry' : 'entries'}`), ...warnings],
   };
+}
+
+/** A count's unit in a trace: bytes for a size, else how many times it happened. */
+const costUnit = (name: StampPaintCostName) => (name === 'bytes uploaded' ? 'bytes' : 'times');
+
+/** The counts in `after` past those in `before` (a tally's counts as a solve began), each that moved, as a trace's quantities. */
+export function shotCostsTraceAttributes(after: ReadonlyMap<StampPaintCostName, number>, before?: ReadonlyMap<StampPaintCostName, number>): TraceAttributes {
+  return Object.fromEntries([...after].flatMap(([name, value]) => {
+    const moved = value - (before?.get(name) ?? 0);
+    return moved ? [[name, { value: moved, unit: costUnit(name) }]] : [];
+  }));
 }

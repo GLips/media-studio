@@ -15,7 +15,7 @@ import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { BrushRef } from '#lib/paint/document/models/painting-document.ts';
 import type { PaintingBrushOf } from '#lib/paint/document/models/painting-deposit-compile.ts';
 import { paintingProblem, paintingProblemsError, paintingProblemText } from '#lib/paint/document/models/painting-problem.ts';
-import { createStampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
+import { createStampPaintCostTally, type StampPaintCostName } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { createStampPaintGpuOwner, type StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import type { ResolvedStampPaintStyle } from '#lib/paint/style/models/style.ts';
 import { stampPaintAssetUrl, stampPaintStyle } from '#lib/paint/style/studio/stamp-paint-styles.ts';
@@ -27,11 +27,13 @@ import { useLensMode } from '#lib/picture/lens/studio/lens-mode-context.ts';
 import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { whenLaidOut } from '#lib/picture/measurement/studio/screen-rect.ts';
 import { useFrameCosts, type FrameCostsReport } from '#lib/picture/profiling/studio/frame-profile.ts';
+import { usePageTrace } from '#lib/picture/profiling/studio/page-trace-context.ts';
+import type { PageTrace, PageTraceSpan } from '#lib/platform/trace/studio/page-trace.ts';
 import { useSceneOrNull } from '#lib/picture/video/studio/scene.tsx';
 import { logRenderPageWarning } from '#lib/platform/browser/studio/render-page-log.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
 import { compilePaintedShot, shotCanvasLayings } from '../models/shot-compile.ts';
-import { SHOT_FRAME_COSTS_LABEL, SHOT_WARM_COSTS_LABEL, shotCostsProfileEntry } from '../models/shot-cost-report.ts';
+import { SHOT_FRAME_COSTS_LABEL, SHOT_WARM_COSTS_LABEL, shotCostsProfileEntry, shotCostsTraceAttributes } from '../models/shot-cost-report.ts';
 import { shotPlanesKeyDrawingsText } from '../models/shot-painting-in-time.ts';
 import { shotWatchName, type ShotWatchName } from '../models/shot-progress.ts';
 import type { PaintedShotProps } from '../models/shot-props.ts';
@@ -41,7 +43,7 @@ import {
 } from './shot-canvas.ts';
 import { createShotPageWatch, shotCanvasFillProblems, shotGlazeIsolationProblems, shotHtmlBehind, type ShotPageWatch } from './shot-dom-points.ts';
 import { createPaintedShotRenderer, type PaintedShotRenderer } from './shot-renderer.ts';
-import { createShotWatch } from './shot-watch.ts';
+import { createShotWatch, type ShotSolveProgress } from './shot-watch.ts';
 
 const resolvedStyles = new Map<string, ResolvedStampPaintStyle>();
 
@@ -95,7 +97,7 @@ export function PaintedShot({ shot, t, box: given, children }: { readonly shot: 
   useContext(PaintedShotSeenContext)?.(shot);
   const format = useVideoFormat(), box = given ?? fullFrameRect(format), { frame } = shot.camera.stage, { fps } = format;
   // The scene playing the shot, when it's played in one: its length is what a warm span is held to.
-  const sceneDur = useSceneOrNull()?.dur ?? null, report = useFrameCosts(), pictureDrawn = usePictureDrawn();
+  const sceneDur = useSceneOrNull()?.dur ?? null, report = useFrameCosts(), pictureDrawn = usePictureDrawn(), trace = usePageTrace();
   const holder = useRef<HTMLDivElement>(null);
   const { delayRender, continueRender, cancelRender } = useDelayRender();
   const lensMode = useLensMode();
@@ -136,7 +138,7 @@ export function PaintedShot({ shot, t, box: given, children }: { readonly shot: 
     if (ownHost) holder.current!.prepend(ownHost);
     const own = ownHost && placeShotCanvas(ownHost), elements = own ? [own] : named.map(([canvas]) => canvas);
     const name = shotWatchName(holder.current!.closest<HTMLElement>('[data-scene]')?.dataset.scene ?? null, shot.planes.map(({ id }) => id));
-    const context = { holder: holder.current!, pinsMoved: layoutMoved, fps, sceneDur, lensMode, report, name, pictureDrawn };
+    const context = { holder: holder.current!, pinsMoved: layoutMoved, fps, sceneDur, lensMode, report, name, pictureDrawn, trace };
     const loading = loadPaintedShotScene(shot, elements, named.map(([, canvasName]) => canvasName), context);
     loading.ready.then(() => {
       if (!live) return undefined;
@@ -152,7 +154,7 @@ export function PaintedShot({ shot, t, box: given, children }: { readonly shot: 
       setScene(null);
       release();
     };
-  }, [shot, canvases, fps, sceneDur, lensMode, report, pictureDrawn, delayRender, continueRender, cancelRender]);
+  }, [shot, canvases, fps, sceneDur, lensMode, report, pictureDrawn, trace, delayRender, continueRender, cancelRender]);
 
   useLayoutEffect(() => {
     if (!scene) return undefined;
@@ -194,10 +196,9 @@ type PaintedShotScene = {
 };
 
 /**
- * Where a shot loads: `holder`, its element, its page checked once laid out; `pinsMoved`, told when a pinned element
- * resizes; the composition's fps and lens mode, which it's compiled and warmed for; its scene's length, s (null
- * outside one); the profiler's cost report (null outside a profiling render); the shot's `name` for its lines; whether
- * the pass draws the picture.
+ * Where a shot loads: `holder`, its element; `pinsMoved`, told when a pinned element resizes; the fps and lens mode
+ * it's compiled and warmed for; its scene's length, s (null outside one); the profiler's cost report (null outside a
+ * profiling render); its `name` for its lines; whether the pass draws; the page's trace, timing its phases and frames.
  */
 type PaintedShotLoadContext = {
   readonly holder: HTMLElement;
@@ -208,6 +209,7 @@ type PaintedShotLoadContext = {
   readonly report: FrameCostsReport | null;
   readonly name: ShotWatchName;
   readonly pictureDrawn: boolean;
+  readonly trace: PageTrace;
 };
 
 /**
@@ -216,58 +218,113 @@ type PaintedShotLoadContext = {
  * solved. Refuses every problem at once. Without the picture, only checked.
  */
 function loadPaintedShotScene(props: PaintedShotProps, canvases: readonly ShotCanvasElements[], names: readonly string[], context: PaintedShotLoadContext): PaintedShotScene {
-  const { holder, pinsMoved, fps, sceneDur, lensMode, report, name, pictureDrawn } = context;
+  const { holder, pinsMoved, fps, sceneDur, lensMode, report, name, pictureDrawn, trace } = context;
   let owner: StampPaintGpuOwner | null = null, renderer: PaintedShotRenderer | null = null, page: ShotPageWatch | null = null, disposed = false;
-  const surfaces: ShotCanvasSurface[] = [], costs = createStampPaintCostTally();
+  // The span the shot's solves run under now (its warm, or the frame drawing), and the solve running in it: the shot's
+  // work runs one task at a time, so each is its own.
+  let solvesUnder: PageTraceSpan | null = null, solveSpan: PageTraceSpan | null = null, solveFrom: ReadonlyMap<StampPaintCostName, number> = new Map();
+  const surfaces: ShotCanvasSurface[] = [], costs = createStampPaintCostTally({ timeWait: (what) => solveSpan?.time(`${what} wait`) ?? (() => {}) });
   const watch = createShotWatch({
     name, costs, gpu: () => owner && { checksSettled: owner.checksSettled(), evictions: owner.cache.evictions(), uploaded: owner.uploaded(), bytes: owner.cache.bytes() },
   });
+  /** The watch told of each solve, and each timed on the trace with the costs it counted. */
+  const progress: ShotSolveProgress = {
+    run: watch.run,
+    solving: (solve) => {
+      watch.solving(solve);
+      solveFrom = new Map(costs.counted().counts);
+      solveSpan = solvesUnder?.begin(`solve ${solve.what}`, { kind: 'solve', attributes: { at: { value: solve.at, unit: 's' } } }) ?? null;
+    },
+    solved: () => {
+      watch.solved();
+      solveSpan?.end(shotCostsTraceAttributes(costs.counted().counts, solveFrom));
+      solveSpan = null;
+    },
+  };
+  /** `work` as phase `phaseName` of `parent`, its begin sent before the work runs, so a page frozen in it shows where. */
+  const phase = async <T,>(parent: PageTraceSpan, phaseName: string, work: (span: PageTraceSpan) => Promise<T> | T): Promise<T> => {
+    const span = parent.begin(phaseName, { kind: 'shot-phase' });
+    await trace.sent();
+    try {
+      const result = await work(span);
+      span.end();
+      return result;
+    } catch (error) {
+      span.fail(error instanceof Error ? error : new Error(String(error)));
+      throw error;
+    }
+  };
   /** `work` raced against the device's loss: rejected with it at once, before any check would see it. */
   const unlessLost = <T,>(work: Promise<T>) => Promise.race([work, owner!.whenLost.then((loss) => Promise.reject(loss))]);
-  /** The costs counted since the last, given to the profiler under `label` in a profiling render. */
-  const reportCosts = (label: string) => {
+  /** The costs counted since the last, given to the profiler under `label` in a profiling render, and onto `span`. */
+  const reportCosts = (label: string, span: PageTraceSpan) => {
     const taken = costs.take();
     report?.(label, shotCostsProfileEntry(taken));
+    span.end(shotCostsTraceAttributes(taken.counts));
+    trace.sample('GPU bytes kept', taken.bytes.kept, 'bytes');
   };
+  const load = trace.begin('painted shot load', { kind: 'shot-load', attributes: { shot: name.line } });
   const ready = watch.watching('loading', (async () => {
-    await whenLaidOut(holder);
-    const { shot, problems } = compilePaintedShot(props, names, { htmlBehind: shotHtmlBehind(holder, canvases[0]) });
-    const layings = shot ? shotCanvasLayings(shot) : [];
-    const placed = [
-      ...shotCanvasFillProblems(holder, canvases, names), ...shotGlazeIsolationProblems(holder, canvases, names, layings),
-      ...paintSpanShownProblems(props.span, fps, sceneDur).map((message) => paintingProblem('error', 'shot', 'span', message)),
-    ];
-    if (!shot || placed.length) throw paintingProblemsError('shot', [...placed, ...problems]);
-    for (const line of shotPlanesKeyDrawingsText(shot.planes)) costs.planned(line);
-    // Said in every render, once however many tabs load it: what the shot's motion may read badly as.
-    for (const warning of problems.filter(({ severity }) => severity === 'warning')) {
-      costs.warned(paintingProblemText(warning));
-      logRenderPageWarning(`${name.line}: ${paintingProblemText(warning)}`);
-    }
+    await phase(load, 'laid out', () => whenLaidOut(holder));
+    const { shot, layings } = await phase(load, 'compile', () => {
+      const compiled = compilePaintedShot(props, names, { htmlBehind: shotHtmlBehind(holder, canvases[0]) });
+      const laid = compiled.shot ? shotCanvasLayings(compiled.shot) : [];
+      const placed = [
+        ...shotCanvasFillProblems(holder, canvases, names), ...shotGlazeIsolationProblems(holder, canvases, names, laid),
+        ...paintSpanShownProblems(props.span, fps, sceneDur).map((message) => paintingProblem('error', 'shot', 'span', message)),
+      ];
+      if (!compiled.shot || placed.length) throw paintingProblemsError('shot', [...placed, ...compiled.problems]);
+      for (const line of shotPlanesKeyDrawingsText(compiled.shot.planes)) costs.planned(line);
+      // Said in every render, once however many tabs load it: what the shot's motion may read badly as.
+      for (const warning of compiled.problems.filter(({ severity }) => severity === 'warning')) {
+        costs.warned(paintingProblemText(warning));
+        logRenderPageWarning(`${name.line}: ${paintingProblemText(warning)}`);
+      }
+      return { shot: compiled.shot, layings: laid };
+    });
     if (!disposed) page = createShotPageWatch(holder, canvases, names, shot, pinsMoved);
     if (!pictureDrawn) return;
-    const made = await createStampPaintGpuOwner(stampPaintAssetUrl);
+    const made = await phase(load, 'device', () => createStampPaintGpuOwner(stampPaintAssetUrl));
     owner = made;
     // One after another: each configures its canvases under the owner's error check.
-    await gpuEachInTurn(canvases, async (canvas, index) => {
+    await phase(load, 'surfaces', () => gpuEachInTurn(canvases, async (canvas, index) => {
       surfaces.push(await createShotCanvasSurface(made, canvas, layings[index], shot.camera.stage.frame));
-    });
-    renderer = await createPaintedShotRenderer(made, surfaces, shot, { brushOf: paintedShotBrushOf, costs, progress: watch });
+    }));
+    renderer = await phase(load, 'renderer', () => createPaintedShotRenderer(made, surfaces, shot, { brushOf: paintedShotBrushOf, costs, progress }));
     if (!shot.warm) return;
     // Said in every render, not only a profiled one: a span written in frames warms far less than meant.
     for (const warning of sceneDur === null ? [] : shotWarmPastScene(shot.warm, sceneDur)) {
       costs.warned(paintingProblemText(warning));
       logRenderPageWarning(`${name.line}: ${paintingProblemText(warning)}`);
     }
-    await unlessLost(renderer.warm({ fps, sceneDur, mode: lensMode, stopped: () => disposed }));
-    reportCosts(SHOT_WARM_COSTS_LABEL);
+    const warming = load.begin('warm', { kind: 'shot-phase' });
+    await trace.sent();
+    solvesUnder = warming;
+    await unlessLost(renderer.warm({ fps, sceneDur, mode: lensMode, stopped: () => disposed })).catch((error: Error) => {
+      warming.fail(error);
+      throw error;
+    });
+    solvesUnder = null;
+    reportCosts(SHOT_WARM_COSTS_LABEL, warming);
   })());
-  /** The frame at `t` drawn once the shot's loaded, its pins laid at `pins`, its costs reported in a profiling render. */
+  ready.then(() => load.end(), (error: Error) => load.fail(error));
+  let drawn = 0;
+  /** The frame at `t` drawn once the shot's loaded, its pins laid at `pins`, its costs reported and traced. */
   const drawFrame = async (t: number, mode: LensMode, pins: Parameters<PaintedShotRenderer['draw']>[2]) => {
     await ready;
     if (!renderer) return;
-    await unlessLost(renderer.draw(t, mode, pins));
-    reportCosts(SHOT_FRAME_COSTS_LABEL);
+    const span = trace.begin(drawn++ ? 'shot frame' : 'first draw', { kind: 'shot-frame', attributes: { shot: name.line, t: { value: t, unit: 's' } } });
+    solvesUnder = span;
+    try {
+      await unlessLost(renderer.draw(t, mode, pins));
+    } catch (error) {
+      span.fail(error instanceof Error ? error : new Error(String(error)));
+      throw error;
+    } finally {
+      solvesUnder = null;
+    }
+    reportCosts(SHOT_FRAME_COSTS_LABEL, span);
+    await trace.sent();
   };
   // The tasks queued so far, settled either way: one's failure is its caller's, not the next task's.
   let queue: Promise<unknown> = ready.catch(() => {});

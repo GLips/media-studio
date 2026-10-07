@@ -27,6 +27,7 @@
     "wet:passages": "node harness/wet-passage-sheet.ts paint",
     "dry:passages": "node harness/dry-passage-sheet.ts paint",
     "stamp:gate": "node harness/stamp-paint-gate.ts",
+    "trace": "node harness/trace.ts",
     "prepare": "git config core.hooksPath .githooks"
   },
   "type": "module",

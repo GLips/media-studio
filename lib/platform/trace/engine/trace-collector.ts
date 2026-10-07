@@ -24,8 +24,11 @@ export type TraceCollector = ReturnType<typeof openTraceCollector>;
 const traceSpanId = (span: TraceSpanHandle | string) => (typeof span === 'string' ? span : span.id);
 const parentId = (parent: TraceSpanPlace['parent']) => (parent ? traceSpanId(parent) : null);
 
+/** The Node process a collector records for, unless told another. */
+export const NODE_TRACE_PRODUCER: TraceProducer = { id: 'node', name: 'node' };
+
 /** A trace recorded by `producer`, each record handed to `sink` as it is made or accepted. */
-export function openTraceCollector({ producer = { id: 'node', name: 'node' }, sink }: { producer?: TraceProducer; sink?: (record: TraceRecord) => void } = {}) {
+export function openTraceCollector({ producer = NODE_TRACE_PRODUCER, sink }: { producer?: TraceProducer; sink?: (record: TraceRecord) => void } = {}) {
   const records: TraceRecord[] = [];
   let nextId = 0;
   const keep = (line: TraceRecord) => {

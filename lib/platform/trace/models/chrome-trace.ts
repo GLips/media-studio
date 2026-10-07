@@ -1,7 +1,7 @@
 // chrome-trace.ts: a trace (trace-model.ts) as Chrome's trace event JSON, which Perfetto (ui.perfetto.dev) opens. Each
 // producer is a process; each of its tracks is a thread, split into lanes where its spans overlap without nesting, since
 // a thread's slices must nest. Pure.
-import type { Trace, TraceSpan } from './trace-model.ts';
+import { TRACE_SPAN_STATUSES, type Trace, type TraceQuantity, type TraceSpan } from './trace-model.ts';
 
 /** A slice's arguments, as Perfetto lists them when it's selected. */
 export type ChromeTraceArgs = Readonly<Record<string, string | number | null>>;
@@ -85,4 +85,31 @@ export function encodeChromeTrace(trace: Trace): ChromeTrace {
     events.push({ ph: 'f', bp: 'e', name: 'flow', cat: 'flow', id: i + 1, pid: target.pid, tid: target.tid, ts: microseconds(target.span.start) + inside(target.span) });
   }
   return { traceEvents: events, displayTimeUnit: 'ms' };
+}
+
+/**
+ * The spans and producers a Chrome trace written by encodeChromeTrace holds, read back from its slices' arguments: a
+ * slice's name loses the status encodeChromeTrace marked it with, and each `name (unit)` argument is a quantity again.
+ * Its samples and flows are not read back.
+ */
+export function traceOfChromeTrace({ traceEvents }: Pick<ChromeTrace, 'traceEvents'>): Trace {
+  const producerOf = new Map<number, string>();
+  for (const e of traceEvents) if (e.ph === 'M' && e.name === 'process_name') producerOf.set(e.pid, e.args.name);
+  const spans = traceEvents.flatMap((e): TraceSpan[] => {
+    if (e.ph !== 'X') return [];
+    const { id, parent, status, error, ...rest } = e.args;
+    const attributes: Record<string, string | TraceQuantity> = {};
+    for (const [key, value] of Object.entries(rest)) {
+      const quantity = /^(.+) \((.+)\)$/.exec(key);
+      if (quantity && typeof value === 'number') attributes[quantity[1]] = { value, unit: quantity[2] };
+      else if (typeof value === 'string') attributes[key] = value;
+    }
+    const traced = TRACE_SPAN_STATUSES.find((s) => s === status) ?? 'ok';
+    return [{
+      id: String(id), producer: producerOf.get(e.pid) ?? String(e.pid), parent: typeof parent === 'string' ? parent : null,
+      name: traced === 'ok' ? e.name : e.name.replace(` [${traced}]`, ''), track: String(e.tid), start: e.ts / 1e6, end: (e.ts + e.dur) / 1e6, status: traced,
+      ...(typeof error === 'string' && { error }), ...(e.cat !== 'span' && { kind: e.cat }), ...(Object.keys(attributes).length && { attributes }),
+    }];
+  });
+  return { producers: [...producerOf.values()].map((name) => ({ id: name, name })), spans, samples: [], flows: [] };
 }

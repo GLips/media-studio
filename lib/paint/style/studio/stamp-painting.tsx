@@ -14,6 +14,7 @@ import { usePictureDrawn } from '#lib/picture/frame/studio/picture-drawn.ts';
 import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { useFrameProfile, type FrameProfileStart } from '#lib/picture/profiling/studio/frame-profile.ts';
+import { usePageTrace } from '#lib/picture/profiling/studio/page-trace-context.ts';
 import { paintMoment, type StampPaintFrameAt } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
@@ -68,7 +69,9 @@ export function StampPainting({ t, frameAt, width, height, box: given, ...shownP
   const [gpu, setGpu] = useState<StampPaintingGpu | null>(null);
   const [scene, setScene] = useState<StampPaintingScene | null>(null);
   const { delayRender, continueRender, cancelRender } = useDelayRender();
-  const profile = useFrameProfile();
+  const profile = useFrameProfile(), trace = usePageTrace();
+  // How many frames it has drawn: its first is the one a chunk's startup waits for.
+  const drawnFrames = useRef(0);
   const lensMode = useLensMode(), pictureDrawn = usePictureDrawn(), sceneDur = useSceneOrNull()?.dur ?? null;
 
   // In every render, drawing the picture or not, as a shot's are: its camera's span held to the scene's, and the
@@ -97,14 +100,17 @@ export function StampPainting({ t, frameAt, width, height, box: given, ...shownP
     Object.assign(canvas.style, { position: 'absolute', inset: '0', width: '100%', height: '100%' });
     holder.current!.append(canvas);
     const timedSurface = profile?.('stamp paint surface load');
+    const traced = trace.begin('stamp painting surface', { kind: 'painting-phase', attributes: { size: `${w} × ${h}` } });
     const making = createStampPaintingGpu(canvas, w, h);
     making.then((ready) => {
       timedSurface?.();
+      traced.end();
       if (!live) return undefined;
       // Set within the hold, so the painting's load holds the frame before this one lets it go.
       flushSync(() => setGpu(ready));
       return release();
     }, (error: Error) => {
+      traced.fail(error);
       if (live) cancelRender(error);
     });
     return () => {
@@ -114,7 +120,7 @@ export function StampPainting({ t, frameAt, width, height, box: given, ...shownP
       setGpu(null);
       release();
     };
-  }, [w, h, profile, pictureDrawn, delayRender, continueRender, cancelRender]);
+  }, [w, h, profile, trace, pictureDrawn, delayRender, continueRender, cancelRender]);
 
   useLayoutEffect(() => {
     if (!gpu) return undefined;
@@ -125,14 +131,17 @@ export function StampPainting({ t, frameAt, width, height, box: given, ...shownP
       open = false;
     };
     const timedLoad = profile?.('stamp paint load');
+    const traced = trace.begin('stamp painting load', { kind: 'painting-phase' });
     const loading = gpu.loadScene({ shown: painted ? { painting, camera: painted, three, pictures } : { painting }, profile });
     // A load given up as its device goes may fail for want of the device; only a live one's failure is the frame's.
     loading.ready.then(() => {
       timedLoad?.();
+      traced.end();
       if (!live) return undefined;
       flushSync(() => setScene(loading));
       return release();
     }, (error: Error) => {
+      traced.fail(error);
       if (live) cancelRender(error);
     });
     return () => {
@@ -141,7 +150,7 @@ export function StampPainting({ t, frameAt, width, height, box: given, ...shownP
       setScene(null);
       release();
     };
-  }, [gpu, painting, painted, three, pictures, profile, delayRender, continueRender, cancelRender]);
+  }, [gpu, painting, painted, three, pictures, profile, trace, delayRender, continueRender, cancelRender]);
 
   useLayoutEffect(() => {
     if (!scene) return undefined;
@@ -158,11 +167,14 @@ export function StampPainting({ t, frameAt, width, height, box: given, ...shownP
       open = false;
     };
     const drawn = profile?.('stamp paint');
+    const traced = trace.begin(drawnFrames.current++ ? 'stamp painting frame' : 'first draw', { kind: 'painting-frame', attributes: { t: { value: t, unit: 's' } } });
     // Profiling also holds the frame until the GPU is done, to time the drawing rather than its queueing.
     scene.draw(stampPaintingFrames(t, frameAt, camera, lensMode), { untilGpuDone: Boolean(drawn) }).then(() => {
       drawn?.();
+      traced.end();
       return release();
     }, (error: Error) => {
+      traced.fail(error);
       // A frame overtaken by new props or an unmount may fail as its scene goes; only a live frame's failure counts.
       if (live) cancelRender(error);
     });
@@ -170,7 +182,7 @@ export function StampPainting({ t, frameAt, width, height, box: given, ...shownP
       live = false;
       release();
     };
-  }, [scene, camera, t, frameAt, lensMode, profile, delayRender, continueRender, cancelRender]);
+  }, [scene, camera, t, frameAt, lensMode, profile, trace, delayRender, continueRender, cancelRender]);
 
   return <div ref={holder} {...unmeasuredAttrs('stamp painting')} style={{ position: 'absolute', left: box.x, top: box.y, width: box.w, height: box.h }} />;
 }

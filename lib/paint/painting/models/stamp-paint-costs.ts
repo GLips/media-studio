@@ -68,11 +68,22 @@ export type StampPaintCostTally = {
   readonly retained: (bytes: StampGpuCacheBytes, kept: StampPaintKept) => void;
   readonly take: () => StampPaintCosts;
   readonly counted: () => StampPaintCosts;
+  /**
+   * Starts a wait on the GPU of kind `what`; what's returned ends it. Timed by whoever made the tally (a shot's trace),
+   * never here: counting reads no clock.
+   */
+  readonly waiting: (what: StampPaintWait) => () => void;
 };
+
+/** A wait a tally's maker may time: a readback's mapping. */
+export type StampPaintWait = 'readback';
+
+const notTimed = () => () => {};
 
 const noCosts = () => new Map(STAMP_PAINT_COST_NAMES.map((name) => [name, 0]));
 
-export function createStampPaintCostTally(): StampPaintCostTally {
+/** A tally, its waits timed by `timeWait` (untimed unless given). */
+export function createStampPaintCostTally({ timeWait = notTimed }: { timeWait?: (what: StampPaintWait) => () => void } = {}): StampPaintCostTally {
   let counts = noCosts(), plans: string[] = [], solves: StampPaintSolveCost[] = [], warnings: string[] = [], bytes: StampGpuCacheBytes = { kept: 0, targets: 0 }, kept = keptNothing;
   const add = (name: StampPaintCostName, n: number) => counts.set(name, (counts.get(name) ?? 0) + n);
   return {
@@ -89,6 +100,7 @@ export function createStampPaintCostTally(): StampPaintCostTally {
       kept = memos;
     },
     counted: () => ({ counts, plans, solves, warnings, bytes, kept }),
+    waiting: timeWait,
     take: () => {
       const costs = { counts, plans, solves, warnings, bytes, kept };
       counts = noCosts();
