@@ -25,7 +25,7 @@ export type PageTrace = {
   readonly sent: () => Promise<void>;
 };
 
-const NO_SPAN: TraceRecorderSpan = { begin: () => NO_SPAN, add: () => {}, time: () => () => {}, end: () => {}, fail: () => {} };
+const NO_SPAN: TraceRecorderSpan = { begin: () => NO_SPAN, add: () => {}, time: () => () => {}, end: () => {}, fail: () => {}, note: () => {} };
 
 /** The trace outside a render (the Studio's preview, a test): records nothing. */
 export const NO_PAGE_TRACE: PageTrace = { begin: () => NO_SPAN, sample: () => {}, sent: () => Promise.resolve() };
@@ -84,6 +84,7 @@ function createRenderPageTrace(send: PageTraceSend): PageTrace {
       },
       end: (given) => close('ok', given),
       fail: (error, given) => close('failed', given, error.message.split('\n')[0]),
+      note: (given) => keep({ record: 'note', id, attributes: given }),
     };
   };
 

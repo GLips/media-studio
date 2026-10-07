@@ -59,21 +59,28 @@ export type TraceSpanBegin = Pick<TraceSpan, 'id' | 'producer' | 'parent' | 'nam
 /** What a span is ended with. */
 export type TraceSpanEnd = Pick<TraceSpan, 'id' | 'end' | 'status' | 'error' | 'attributes'>;
 
+/**
+ * Attributes a span is given once known, which may be after it ended: the GPU time of the work it submitted, read back
+ * later. A note's quantities replace the span's of the same name.
+ */
+export type TraceSpanNote = { readonly id: string; readonly attributes: TraceAttributes };
+
 /** One line of a trace as its producers write it, in the order they did. */
 export type TraceRecord =
   | ({ readonly record: 'producer' } & TraceProducer)
   | ({ readonly record: 'begin' } & TraceSpanBegin)
   | ({ readonly record: 'end' } & TraceSpanEnd)
   | ({ readonly record: 'sample' } & TraceSample)
-  | ({ readonly record: 'flow' } & TraceFlow);
+  | ({ readonly record: 'flow' } & TraceFlow)
+  | ({ readonly record: 'note' } & TraceSpanNote);
 
 /**
  * The trace `records` hold. A span begun and never ended is `incomplete`, ending at the last moment any record names;
- * an end with no begin is dropped, as is a second end of the same span.
+ * an end with no begin is dropped, as is a second end of the same span. A span's notes join its attributes.
  */
 export function traceOfRecords(records: Iterable<TraceRecord>): Trace {
   const producers: TraceProducer[] = [], begun = new Map<string, TraceSpanBegin>(), spans: TraceSpan[] = [];
-  const samples: TraceSample[] = [], flows: TraceFlow[] = [];
+  const samples: TraceSample[] = [], flows: TraceFlow[] = [], notes = new Map<string, TraceAttributes>();
   let last = 0;
   for (const r of records) {
     if (r.record === 'producer') producers.push({ id: r.id, name: r.name, ...(r.clock && { clock: r.clock }) });
@@ -89,10 +96,15 @@ export function traceOfRecords(records: Iterable<TraceRecord>): Trace {
     } else if (r.record === 'sample') {
       samples.push({ producer: r.producer, name: r.name, at: r.at, value: r.value, unit: r.unit });
       last = Math.max(last, r.at);
-    } else flows.push({ from: r.from, to: r.to });
+    } else if (r.record === 'note') notes.set(r.id, { ...notes.get(r.id), ...r.attributes });
+    else flows.push({ from: r.from, to: r.to });
   }
   for (const begin of begun.values()) spans.push(traceSpanOf(begin, { id: begin.id, end: Math.max(last, begin.start), status: 'incomplete' }));
-  return { producers, spans, samples, flows };
+  const noted = (span: TraceSpan): TraceSpan => {
+    const note = notes.get(span.id);
+    return note ? { ...span, attributes: { ...span.attributes, ...note } } : span;
+  };
+  return { producers, spans: notes.size ? spans.map(noted) : spans, samples, flows };
 }
 
 /** The span `begin` and `end` make. */

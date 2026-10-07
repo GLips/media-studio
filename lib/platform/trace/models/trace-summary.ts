@@ -2,7 +2,7 @@
 // time (its own, outside its children), what each chunk's startup was spent on, and the same of two traces side by
 // side. Chunks, startups and first draws are found by the names and kinds the render gives them
 // (lib/output/render/engine/render-ledger.ts, render-chunks.ts), which this reads as plain strings. Pure.
-import { TRACE_WINDOW_KIND, type TraceSpan } from './trace-model.ts';
+import { TRACE_WINDOW_KIND, traceLabel, traceQuantity, type TraceSpan } from './trace-model.ts';
 
 /** Time spent in spans of one name: how many, their seconds, their self seconds, the longest. */
 export type TraceNameTime = { readonly name: string; readonly count: number; readonly seconds: number; readonly selfSeconds: number; readonly maxSeconds: number };
@@ -99,4 +99,22 @@ export function traceTimeByNameChange(before: readonly TraceNameTime[], after: r
     const was = before.find((t) => t.name === name) ?? null, now = after.find((t) => t.name === name) ?? null;
     return { name, before: was, after: now, selfChange: (now?.selfSeconds ?? 0) - (was?.selfSeconds ?? 0) };
   }).toSorted((a, b) => Math.abs(b.selfChange) - Math.abs(a.selfChange));
+}
+
+/** The ms quantities the reader tables by span name: GPU time, encoding and submitting, readback waits, hashing. */
+export const TRACE_MS_QUANTITIES = ['gpu', 'encode', 'submit', 'readback wait', 'digest'] as const;
+
+/** One span name's ms quantities summed, TRACE_MS_QUANTITIES' order, and its spans that went untimed on the GPU. */
+export type TraceNameQuantities = { readonly name: string; readonly count: number; readonly ms: readonly number[]; readonly untimed: number };
+
+/** Each span name (traceGroupName) carrying any of TRACE_MS_QUANTITIES, with their sums, most GPU time first. */
+export function traceQuantitiesByName(spans: readonly TraceSpan[]): TraceNameQuantities[] {
+  const byName = new Map<string, { count: number; ms: number[]; untimed: number }>();
+  for (const span of spans) {
+    const ms = TRACE_MS_QUANTITIES.map((q) => traceQuantity(span, q) ?? 0), untimed = traceLabel(span, 'gpu') === 'untimed' ? 1 : 0;
+    if (!untimed && ms.every((v) => v === 0)) continue;
+    const name = traceGroupName(span.name), was = byName.get(name) ?? { count: 0, ms: TRACE_MS_QUANTITIES.map(() => 0), untimed: 0 };
+    byName.set(name, { count: was.count + 1, ms: was.ms.map((v, i) => v + ms[i]), untimed: was.untimed + untimed });
+  }
+  return [...byName].map(([name, { count, ms, untimed }]) => ({ name, count, ms, untimed })).toSorted((a, b) => b.ms[0] - a.ms[0] || b.ms.reduce((x, y) => x + y) - a.ms.reduce((x, y) => x + y));
 }

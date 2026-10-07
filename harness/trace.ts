@@ -8,7 +8,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { renderHistoryFile, type RenderHistoryRecord } from '#lib/output/render/engine/render-history.ts';
 import { traceOfChromeTrace, type ChromeTrace } from '#lib/platform/trace/models/chrome-trace.ts';
-import { traceChunkStartups, traceTimeByName, traceTimeByNameChange, type TraceChunkStartup, type TraceNameTime } from '#lib/platform/trace/models/trace-summary.ts';
+import {
+  TRACE_MS_QUANTITIES, traceChunkStartups, traceQuantitiesByName, traceTimeByName, traceTimeByNameChange, type TraceChunkStartup, type TraceNameTime,
+} from '#lib/platform/trace/models/trace-summary.ts';
 import type { TraceSpan } from '#lib/platform/trace/models/trace-model.ts';
 import { runHarnessCommand } from './run-harness-command.ts';
 
@@ -38,6 +40,18 @@ function nameTimeLines(times: readonly TraceNameTime[], top: number): string[] {
     `${'self s'.padStart(8)}${'total s'.padStart(8)}${'max s'.padStart(8)}${'count'.padStart(7)}  name`,
     ...times.slice(0, top).map((t) => `${s(t.selfSeconds)}${s(t.seconds)}${s(t.maxSeconds)}${String(t.count).padStart(7)}  ${t.name}`),
     ...(times.length > top ? [`  … ${times.length - top} more names (--top)`] : []),
+  ];
+}
+
+/** Each span name's ms quantities (GPU, encode, submit, readback wait, digest), in seconds; none when no span has one. */
+function quantityLines(spans: readonly TraceSpan[], top: number): string[] {
+  const rows = traceQuantitiesByName(spans);
+  if (!rows.length) return [];
+  return [
+    '', 'GPU, encoding and waits by span name, s (gpu from timestamp queries, on --trace detail steps):',
+    `${TRACE_MS_QUANTITIES.map((q) => q.padStart(14)).join('')}${'count'.padStart(7)}  name`,
+    ...rows.slice(0, top).map((r) => `${r.ms.map((ms) => (ms / 1000).toFixed(3).padStart(14)).join('')}${String(r.count).padStart(7)}  ${r.name}${r.untimed ? ` (${r.untimed} untimed)` : ''}`),
+    ...(rows.length > top ? [`  … ${rows.length - top} more names (--top)`] : []),
   ];
 }
 
@@ -86,7 +100,7 @@ const traceCommand = defineCommand({
     if (!(Number.isInteger(top) && top > 0)) throw new Error(`trace: --top is ${args.top}: give a whole number above 0`);
     const after = readRenderTrace(args.trace);
     if (args.against === undefined) {
-      const lines = [renderHeading(after), '', 'time by span name:', ...nameTimeLines(traceTimeByName(after.spans), top)];
+      const lines = [renderHeading(after), '', 'time by span name:', ...nameTimeLines(traceTimeByName(after.spans), top), ...quantityLines(after.spans, top)];
       for (const startup of traceChunkStartups(after.spans)) lines.push('', ...startupLines(startup));
       console.log(lines.join('\n'));
       return;

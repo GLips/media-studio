@@ -5,6 +5,7 @@
 // The field keeps times after a base (ENGINE 3.4), which the solve's state holds: a step reads a time through its
 // time base, which moves the base up in that step, before anything reads it, once the time runs far past it.
 
+import { gpuStepTimer } from '#lib/platform/gpu/studio/gpu-step-timer.ts';
 import type { TraceNesting } from '#lib/platform/trace/models/trace-recorder.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { StampPaintCostTally } from '../models/stamp-paint-costs.ts';
@@ -45,18 +46,25 @@ export function createStampSheetSteps(owner: StampPaintGpuOwner, device: StampPa
 
   /**
    * Encodes `work` and submits it, named `what` in a GPU error and traced as `traced` (`what` unless given: one without
-   * the entry's name, which its span already has). Resolves what it returns once WebGPU has checked it.
+   * the entry's name, which its span already has), with its encode, its submit and, read back later, its GPU ms.
+   * Resolves what it returns once WebGPU has checked it.
    */
   const step = <T,>(what: string, work: (encoder: GPUCommandEncoder) => T, traced = what): Promise<T> => trace.within(traced, () => owner.checked(what, () => {
-    const span = trace.current(), encoding = span?.time('encode');
+    const span = trace.current(), encoding = span?.time('encode'), timer = span && gpuStepTimer(owner.webgpu);
     const encoder = device.createCommandEncoder();
-    const result = work(encoder);
+    const { result, submitted } = timer
+      ? timer.bracket(encoder, work, (time) => span.note(time ? {
+        gpu: { value: time.ms, unit: 'ms' }, 'gpu busy': { value: time.busyMs, unit: 'ms' }, 'gpu passes': { value: time.passes, unit: 'passes' },
+        ...(time.untimed && { 'gpu passes untimed': { value: time.untimed, unit: 'passes' } }),
+      } : { gpu: 'untimed' }))
+      : { result: work(encoder), submitted: null };
     gpu.arena.flush();
     const commands = encoder.finish();
     encoding?.();
     const submitting = span?.time('submit');
     device.queue.submit([commands]);
     submitting?.();
+    submitted?.();
     gpu.arena.reset();
     return result;
   }), { kind: 'sheet-step' });

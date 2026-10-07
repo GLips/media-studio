@@ -62,7 +62,9 @@ export async function requestStudioGpuDevice(): Promise<GPUDevice> {
   // A painting's stamps sit in one buffer, bound whole as storage, which a large painting takes past WebGPU's
   // defaults (256 MiB a buffer, 128 MiB a binding); a guide render writes several float images at once.
   const { maxBufferSize, maxStorageBufferBindingSize, maxColorAttachmentBytesPerSample } = adapter.limits;
-  return adapter.requestDevice({ requiredFeatures: [...STUDIO_GPU_FEATURES], requiredLimits: { maxBufferSize, maxStorageBufferBindingSize, maxColorAttachmentBytesPerSample } });
+  // Timestamps where the adapter has them, for a trace's GPU times (gpu-step-timer.ts); a device without them draws alike.
+  const timed: GPUFeatureName[] = adapter.features.has('timestamp-query') ? ['timestamp-query'] : [];
+  return adapter.requestDevice({ requiredFeatures: [...STUDIO_GPU_FEATURES, ...timed], requiredLimits: { maxBufferSize, maxStorageBufferBindingSize, maxColorAttachmentBytesPerSample } });
 }
 
 /** An owner of a new device. */

@@ -1,6 +1,6 @@
 // A trace recorded through a collector into a trace file, finished as Perfetto opens it: every thread's slices nest
-// (siblings that overlap take lanes of their own), a failed run and a span never ended keep their status, and a flow
-// binds inside the spans it links.
+// (siblings that overlap take lanes of their own), a failed run and a span never ended keep their status, a note given
+// after a span ended joins it (a step's GPU time), and a flow binds inside the spans it links.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
@@ -22,6 +22,7 @@ test('a finished trace file nests every thread, and keeps failed and unfinished 
     const overlapping = trace.begin('select', { parent: pass });
     await tick();
     chunk.end({ frames: { value: 10, unit: 'frames' } });
+    trace.accept([{ record: 'note', id: chunk.id, attributes: { gpu: { value: 3, unit: 'ms' } } }]);
     const packing = trace.begin('packing', { parent: pass, track: 'packing' });
     trace.flow(chunk, packing);
     await tick();
@@ -48,6 +49,7 @@ test('a finished trace file nests every thread, and keeps failed and unfinished 
     const named = (name: string) => slices.find((s) => s.name.startsWith(name))!;
     assert.notEqual(named('select').tid, named('frames 0–9').tid);
     assert.equal(named('frames 0–9').args['frames (frames)'], 10);
+    assert.equal(named('frames 0–9').args['gpu (ms)'], 3);
     assert.deepEqual([named('encode').args.status, named('encode').args.error], ['failed', 'ffmpeg died']);
     assert.equal(named('mux').args.status, 'incomplete');
     const [start, finish] = (['s', 'f'] as const).map((ph) => events.flatMap((e) => (e.ph === ph ? [e] : []))[0]);

@@ -36,8 +36,11 @@ Node adds each chunk's `browser launch`, `GPU probe` and `composition select`.
 each sheet, a span per entry (`entry <name>`, `decision` made or replayed) holding its parts (`deciding its landing`,
 `deciding its wash start`, `reading when its wash sets`, `reading its damp windows`) and its GPU steps (`landing`,
 `starting its wash`, `keeping a checkpoint`…, each with `encode` and `submit` ms), each readback a span over its
-`reduction` step with its `readback wait`. A warm is detailed when the frame its shot loads in is. That's thousands of
-spans a solve: give it a few frames.
+`reduction` step with its `readback wait`. A step's GPU time comes from timestamp queries on its passes, where the
+adapter has them, noted on it once read back: `gpu` (first pass's start to last's end), `gpu busy` and `gpu passes`,
+or `gpu: untimed` (a copy-only step, or the query pool spent). Chrome rounds timestamps to 100 µs. `npm run trace`
+tables these by span name. A warm is detailed when the frame its shot loads in is. That's thousands of spans a solve:
+give it a few frames.
 
 Spans have a start, an end, a parent and a status (`ok`, `failed`, `cancelled`, or `incomplete` when the render died
 first). A chunked pass (`video.mp4 frames`) has a span per attempt at a chunk, a failed one included. Each chunk holds:

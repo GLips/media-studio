@@ -16,6 +16,8 @@ export type TraceRecorderSpan = {
   readonly time: (name: string) => () => void;
   readonly end: (attributes?: TraceAttributes) => void;
   readonly fail: (error: Error, attributes?: TraceAttributes) => void;
+  /** Gives the span `attributes` learned later, ended or not (TraceSpanNote): what the GPU took for its work. */
+  readonly note: (attributes: TraceAttributes) => void;
 };
 
 /**
