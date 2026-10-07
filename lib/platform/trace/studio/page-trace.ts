@@ -8,29 +8,15 @@
 // hides. The buffer is bounded: past PAGE_TRACE_MAX_BUFFERED, records are dropped and counted in the next batch.
 import { PAGE_TRACE_PREFIX, type PageTraceBatch, type PageTraceRecord } from '../models/page-trace-batch.ts';
 import type { TraceAttributes, TraceQuantity } from '../models/trace-model.ts';
+import type { TraceRecorderBegin, TraceRecorderSpan } from '../models/trace-recorder.ts';
 
 const PAGE_TRACE_FLUSH_MS = 250;
 const PAGE_TRACE_BATCH_RECORDS = 500;
 const PAGE_TRACE_MAX_BUFFERED = 20_000;
 
-/** Where a span is begun: what it's picked out by, the track it's drawn on, and what it knows from the start. */
-export type PageTraceBegin = { readonly kind?: string; readonly track?: string; readonly attributes?: TraceAttributes };
-
-/** A span begun on a page. Its first end or fail records it; any after are ignored. */
-export type PageTraceSpan = {
-  /** Begins a span under this one. */
-  readonly begin: (name: string, options?: PageTraceBegin) => PageTraceSpan;
-  /** Adds `value` in `unit` to the span's quantity `name`. */
-  readonly add: (name: string, value: number, unit: string) => void;
-  /** Starts timing a wait; what's returned stops it, adding its ms to the span's quantity `name`. */
-  readonly time: (name: string) => () => void;
-  readonly end: (attributes?: TraceAttributes) => void;
-  readonly fail: (error: Error, attributes?: TraceAttributes) => void;
-};
-
 /** A page's trace: a span begun at its top (Node puts it under the chunk drawing the page), and a level sampled now. */
 export type PageTrace = {
-  readonly begin: (name: string, options?: PageTraceBegin) => PageTraceSpan;
+  readonly begin: (name: string, options?: TraceRecorderBegin) => TraceRecorderSpan;
   readonly sample: (name: string, value: number, unit: string) => void;
   /**
    * Sends what's waiting, resolving once it's logged. Awaited before work that may freeze the page, so the span begun
@@ -39,7 +25,7 @@ export type PageTrace = {
   readonly sent: () => Promise<void>;
 };
 
-const NO_SPAN: PageTraceSpan = { begin: () => NO_SPAN, add: () => {}, time: () => () => {}, end: () => {}, fail: () => {} };
+const NO_SPAN: TraceRecorderSpan = { begin: () => NO_SPAN, add: () => {}, time: () => () => {}, end: () => {}, fail: () => {} };
 
 /** The trace outside a render (the Studio's preview, a test): records nothing. */
 export const NO_PAGE_TRACE: PageTrace = { begin: () => NO_SPAN, sample: () => {}, sent: () => Promise.resolve() };
@@ -78,7 +64,7 @@ function createRenderPageTrace(send: PageTraceSend): PageTrace {
     else timer ??= setTimeout(flush, PAGE_TRACE_FLUSH_MS);
   };
 
-  const begin = (name: string, parent: string | null, { kind, track = 'main', attributes }: PageTraceBegin = {}): PageTraceSpan => {
+  const begin = (name: string, parent: string | null, { kind, track = 'main', attributes }: TraceRecorderBegin = {}): TraceRecorderSpan => {
     const id = `${producer.id}:${nextId++}`, quantities = new Map<string, TraceQuantity>();
     keep({ record: 'begin', id, producer: producer.id, parent, name, track, start: performance.now(), ...(kind !== undefined && { kind }), ...(attributes && { attributes }) });
     let ended = false;

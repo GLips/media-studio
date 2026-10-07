@@ -8,6 +8,7 @@
 // (stamp-sheet-damp-report.ts).
 
 import { paintPigmentSeed } from '#lib/paint/materials/models/paint-paper.ts';
+import type { TraceNesting } from '#lib/platform/trace/models/trace-recorder.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { StampPaintCostTally } from '../models/stamp-paint-costs.ts';
 import { stampPaintFieldEnds } from '../models/stamp-paint-field.ts';
@@ -39,11 +40,12 @@ import { planStampWetStage, type StampWetBank, type StampWetDepositMoment, type 
 
 /**
  * What a run lays through its loaded GPU work, its paper drying as `drying` says: its brushes, each deposit's water,
- * where it counts costs; `keys`, K₀ onwards as far as it may run, naming its checkpoints; whether it reads damp windows.
+ * where it counts costs and traces its work; `keys`, K₀ onwards as far as it may run, naming its checkpoints; whether it
+ * reads damp windows.
  */
 export type StampSheetRunInput = {
   program: StampSheetProgram; keys: readonly string[]; gpu: StampSheetSolveGpu; drying: StampDrying; brushes: StampPaintBrushes;
-  waterOf: (deposit: CompiledStampDeposit) => number; costs: StampPaintCostTally | null; dampWindows: boolean;
+  waterOf: (deposit: CompiledStampDeposit) => number; costs: StampPaintCostTally | null; trace: TraceNesting; dampWindows: boolean;
 };
 
 /**
@@ -53,10 +55,13 @@ export type StampSheetRunInput = {
  */
 export type StampSheetEntryRun = { lands: true; decision: StampSheetDecision; known: boolean } | { lands: false; scene: number; known: boolean; started: boolean };
 
+/** A part of an entry's run, traced in detail. */
+const PHASE = { kind: 'sheet-phase' } as const;
+
 const pixelBoxMeets = (a: StampPixelBox | null, b: StampPixelBox) => !!a && a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
-/** A solve's run over its loaded GPU work. */
-export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevice, { program, keys, gpu, drying, brushes, waterOf, costs, dampWindows }: StampSheetRunInput) {
+/** A solve's run over its loaded GPU work, each entry a span over its parts and steps when `trace` traces. */
+export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevice, { program, keys, gpu, drying, brushes, waterOf, costs, trace, dampWindows }: StampSheetRunInput) {
   let state: StampSheetSolveState = stampSheetSolveStart(program.films.length, program.washes.length);
   const timeBase: StampSheetTimeBase = {
     base: () => state.base,
@@ -67,7 +72,7 @@ export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevic
       return Math.fround(tau - state.base);
     },
   };
-  const steps = createStampSheetSteps(owner, device, gpu, drying, timeBase, costs);
+  const steps = createStampSheetSteps(owner, device, gpu, drying, timeBase, costs, trace);
   const { targets, passes } = gpu, { clock, washes, entries } = program;
   const clips = createStampSheetClips(program, targets, passes);
   const filmOfEntry = (k: number) => washes[entries[k].wash].film;
@@ -151,7 +156,7 @@ export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevic
       if (!prewet || !region) return;
       settleUnder(encoder, stampStageTexelsOf(gpu.stage, region.box), at, null);
       passes.prewet(encoder, { region, fluid: gpu.fluidOf(prewet.held), water: prewet.water, rest: prewet.rest ?? STAMP_REST_IDENTITY, wrapFrom: prewet.wrapFrom ?? STAMP_WRAP_FROM_NONE }, at, drying);
-    });
+    }, 'starting its wash');
     if (!prewet || !region) return;
     const ends = stampPaintFieldEnds(prewet.water);
     state = stampSheetPrewetted(state, { wash: w, at: start.tau, level: Math.max(ends.first, ends.second), box: stampStageTexelsOf(gpu.stage, region.box) });
@@ -256,7 +261,10 @@ export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevic
    * Entry `k` decided, or replayed from `known`, its remembered decision, and landed, unless its prefix ends at scene
    * second `at` (null for no end) before it; `unscheduled`, the names after it for a failure's message.
    */
-  const entry = async (k: number, known: StampSheetDecision | null, unscheduled: readonly string[], at: number | null): Promise<StampSheetEntryRun> => {
+  const entry = (k: number, known: StampSheetDecision | null, unscheduled: readonly string[], at: number | null): Promise<StampSheetEntryRun> => (
+    trace.within(`entry ${entries[k].name}`, () => entryRun(k, known, unscheduled, at), { kind: 'sheet-entry', attributes: { decision: known ? 'replayed' : 'made' } })
+  );
+  const entryRun = async (k: number, known: StampSheetDecision | null, unscheduled: readonly string[], at: number | null): Promise<StampSheetEntryRun> => {
     const { wash: w, name, orderTime } = entries[k];
     /** `scene` when it's past the prefix's end; null when it lands by it, or off the clock. */
     const beyond = (scene: number | null) => (at !== null && scene !== null && scene > at ? scene : null);
@@ -264,11 +272,11 @@ export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevic
     if (knownBeyond !== null) return { lands: false, scene: knownBeyond, known: true, started: false };
     if (orderTime !== null && state.clockStart === null) state = stampSheetClockStarted(state, clock.kind === 'scale' ? clock.origin : null);
     let begun: StampSheetBegun | null = null;
-    if (spans.first[w] === k) begun = known ? stampSheetBegunOf(known) : await decideWashStart(k, w);
+    if (spans.first[w] === k) begun = known ? stampSheetBegunOf(known) : await trace.within('deciding its wash start', () => decideWashStart(k, w), PHASE);
     if (begun) await beginWash(w, begun);
-    else if (clips.away(w)) await steps.step(`returning to wash ${washes[w].name}`, (encoder) => clips.enter(encoder, w));
+    else if (clips.away(w)) await steps.step(`returning to wash ${washes[w].name}`, (encoder) => clips.enter(encoder, w), 'returning to its wash');
     const from = begun?.start ?? { tau: state.tau, scene: state.scene };
-    const landing = known ? stampSheetLandingOf(known) : await decideLanding(k, from, unscheduled, (scene) => beyond(scene) !== null);
+    const landing = known ? stampSheetLandingOf(known) : await trace.within('deciding its landing', () => decideLanding(k, from, unscheduled, (scene) => beyond(scene) !== null), PHASE);
     costs?.count(known ? 'decisions reused' : 'decisions made');
     const landsBeyond = beyond(landing.scene);
     if (landsBeyond !== null) return { lands: false, scene: landsBeyond, known: false, started: !!begun };
@@ -279,10 +287,10 @@ export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevic
       if (landing.closes) close(encoder, landing.tau, 'set');
       land(encoder, k, gpuTau);
       if (spans.last[w] === k) clips.end(encoder, w);
-    });
-    const measured = !known && spans.last[w] === k ? await washSetAt(k, w) : null;
+    }, 'landing');
+    const measured = !known && spans.last[w] === k ? await trace.within('reading when its wash sets', () => washSetAt(k, w), PHASE) : null;
     const moment = (tau: number) => stampSheetMomentAfter(clock, state, orderTime !== null, tau);
-    const read = dampReport && !known?.dampReport ? await dampReport.after(k, w, { tau: state.tau, touched: touchedBox(w), moment }) : known?.dampReport ?? null;
+    const read = dampReport && !known?.dampReport ? await trace.within('reading its damp windows', () => dampReport.after(k, w, { tau: state.tau, touched: touchedBox(w), moment }), PHASE) : known?.dampReport ?? null;
     return { lands: true, decision: stampSheetDecisionOf(begun, landing, known ? known.washSet : measured, read), known: !!known && read === known.dampReport };
   };
 

@@ -12,6 +12,7 @@ import { compilePaintingSelection, type PaintingSelectionCompiled } from '#lib/p
 import type { PaintingPoses } from '#lib/paint/document/models/painting-pose.ts';
 import type { LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
 import { paintingEvaluationCounts } from '#lib/paint/document/models/painting-source.ts';
+import { UNTRACED_NESTING } from '#lib/platform/trace/models/trace-recorder.ts';
 import { solvePaintingSheetFilms } from '#lib/paint/document/studio/painting-sheets-solve.ts';
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
@@ -39,6 +40,9 @@ import { createShotDissolve, type ShotDissolveShare } from './shot-dissolve-pass
 import { shotCoverageLayers, shotPictureCoverage, type ShotMaskCoverage } from './shot-mask-passes.ts';
 import type { ShotRigPictures, ShotRigPiecesDrawer, ShotRigRestCels } from './shot-rig-pieces.ts';
 import type { ShotPiecesDrawn, ShotSheetsLayer, ShotSheetsLayFrame } from './shot-sheets-lay.ts';
+
+/** A part of a plane's solve, traced under it: its source's evaluation, a selection's compile, lays and sheet solves. */
+const SOLVE_PART = { kind: 'solve-part' } as const;
 
 /**
  * One selection a plane's source blends this frame, solved: its weight in the plane's picture; its compile; its
@@ -146,14 +150,15 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
    * as `read` reads its rigs and solved.
    */
   async function solveShare(plane: CompiledShotPaintedPlane, selection: LayerSelection, weight: number, frameAt: PaintMoment, read: ShotRigRead) {
-    const reseed = shotPlaneReseedAt(plane, motion, selection, frameAt);
-    const compiled = compilePaintingSelection(selection.painting, brushOf, { layers: selection.layers, reseed, costs });
-    const lays = await laysOf(compiled), at = selection.at, rigs = [...shot.rigs.values()].filter((rig) => rig.plane === plane.id);
+    const trace = costs?.trace() ?? UNTRACED_NESTING, reseed = shotPlaneReseedAt(plane, motion, selection, frameAt);
+    // Its digests timed in it (the tally's `digest`): a compile kept from before hashes nothing.
+    const compiled = await trace.within('compile', async () => compilePaintingSelection(selection.painting, brushOf, { layers: selection.layers, reseed, costs }), SOLVE_PART);
+    const lays = await trace.within('lays', () => laysOf(compiled), SOLVE_PART), at = selection.at, rigs = [...shot.rigs.values()].filter((rig) => rig.plane === plane.id);
     let restCels = new Map<string, ShotRigRestCels>();
     if (rigs.length) {
       // A rig's cels as all its paint makes them, unposed, whatever a timed prefix has painted yet: what its axes run
       // along and its skins are built over. Read back once per set of films.
-      const rest = await solvePaintingSheetFilms(owner, compiled, { costs });
+      const rest = await trace.within('rest solve', () => solvePaintingSheetFilms(owner, compiled, { costs }), SOLVE_PART);
       try {
         const films = { compiled, films: rest.solved.map((sheet) => sheet.films), reveals: compiled.sheets.map(() => STAMP_FILMS_WHOLE) };
         restCels = new Map(await Promise.all(rigs.map(async (rig) => [rig.occurrence, await rigPictures.restCels(films, rig)] as const)));
@@ -163,7 +168,7 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
     }
     const found = rigs.map((rig) => shotRigFound(rig, shotRigGroupPivot(rig, motion), rig.parts.map(({ cels: [cel] }) => ({ cel, ...restCels.get(rig.occurrence)!.get(cel)! }))));
     const frameRigs: ShotFrameRigs = { found, read }, solvedPoses = shotPlanePosesAt(plane, motion, frameRigs, frameAt, false);
-    const { solved, release } = await solvePaintingSheetFilms(owner, compiled, { poses: solvedPoses, costs, ...(at !== undefined && { at }) });
+    const { solved, release } = await trace.within('leased solve', () => solvePaintingSheetFilms(owner, compiled, { poses: solvedPoses, costs, ...(at !== undefined && { at }) }), SOLVE_PART);
     const share: ShotShareSolved = { selection, weight, compiled, lays, films: solved.map((sheet) => sheet.films), rigs: frameRigs, restCels, solvedPoses };
     return { share, release };
   }
@@ -251,7 +256,9 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
      */
     async solve(plane: CompiledShotPaintedPlane, frameAt: PaintMoment, read: ShotRigRead): Promise<ShotPlaneSolved> {
       // A callback source evaluates its paintings as it's read: those count as the frame's.
-      const before = paintingEvaluationCounts(), blended = shotPlaneSharesAt(shot, plane, frameAt), after = paintingEvaluationCounts();
+      const before = paintingEvaluationCounts();
+      const blended = await (costs?.trace() ?? UNTRACED_NESTING).within('evaluate', async () => shotPlaneSharesAt(shot, plane, frameAt), SOLVE_PART);
+      const after = paintingEvaluationCounts();
       costs?.count('evaluations made', after.made - before.made);
       costs?.count('evaluation memo hits', after.memoHits - before.memoHits);
       const releases: (() => void)[] = [];

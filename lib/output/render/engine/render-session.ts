@@ -22,6 +22,7 @@ import { renderInChunks } from './render-chunks.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { openRenderLedger, renderGpuWaitSeconds, RENDER_SPAN_KINDS, RENDER_TRACE_PRODUCER, type RenderLedger } from './render-ledger.ts';
 import { traceClock } from '#lib/platform/trace/engine/trace-collector.ts';
+import type { TraceDetail } from '#lib/platform/trace/models/trace-detail.ts';
 import { traceLabel, traceQuantity, type TraceSpan } from '#lib/platform/trace/models/trace-model.ts';
 import { renderVoiceOf } from '#lib/timing/voice/engine/voice-project.ts';
 import { RENDER_PAGE_OPTIONS } from '#lib/platform/browser/engine/render-browser.ts';
@@ -125,12 +126,13 @@ async function keepLossless(list: string, out: string, made: Pick<RenderSnapshot
 }
 
 /**
- * `workers` overrides the video's `renderWorkers` and the default tabs, as --workers does; `lens` is how every render of
- * the session draws the lens, as --lens says; `paintingValues`, what its paintings are painted at over the scenes'
- * values, as `studio look --set` checked them. `ledger`: one the command opened already (`studio render`, for its history).
+ * `workers` overrides the video's `renderWorkers` and the default tabs (--workers); `lens`, how every render draws the
+ * lens (--lens); `paintingValues`, what its paintings are painted at over the scenes' values (`studio look --set`);
+ * `traceDetail`, the frames its renders trace in detail (--trace). `ledger`: one the command opened already (`studio
+ * render`, for its history).
  */
-export async function openRenderSession(project: string, { workers, lens = 'fast', paintingValues, ledger: opened }: {
-  workers?: number; lens?: LensMode; paintingValues?: PaintingValuesProp; ledger?: RenderLedger;
+export async function openRenderSession(project: string, { workers, lens = 'fast', paintingValues, traceDetail, ledger: opened }: {
+  workers?: number; lens?: LensMode; paintingValues?: PaintingValuesProp; traceDetail?: TraceDetail; ledger?: RenderLedger;
 } = {}) {
   if (workers !== undefined && !(Number.isInteger(workers) && workers > 0)) throw new Error(`--workers is ${workers}: give a whole number above 0`);
   // Only ever lower: raising a process's priority back takes root.
@@ -140,7 +142,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   const paintings = await refuseProjectPaintingErrors(project);
   if (paintings) trace.record(`${paintings} ${paintings === 1 ? 'painting' : 'paintings'} checked`, { start: checking, end: traceClock() });
   const serveUrl = await trace.run('bundle', () => bundleStudioProject(project));
-  const props = (p: Partial<VideoProps> = {}): VideoProps => ({ captions: false, probe: false, blockouts: false, lens, ...(paintingValues && { paintingValues }), ...p });
+  const props = (p: Partial<VideoProps> = {}): VideoProps => ({ captions: false, probe: false, blockouts: false, lens, ...(paintingValues && { paintingValues }), ...(traceDetail && { traceDetail }), ...p });
   const selectVideo = (inputProps: VideoProps, browser: HeadlessBrowser) => selectComposition({ ...RENDER_PAGE_OPTIONS, serveUrl, id: projectSlug(project), inputProps, puppeteerInstance: browser });
   /** The video's composition with `inputProps`, selected in `browser`, or in a watched one of its own, under the GPU lease. */
   async function compositionFor(inputProps: VideoProps, browser?: HeadlessBrowser): Promise<VideoConfig> {

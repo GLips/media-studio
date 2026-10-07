@@ -2,6 +2,7 @@
 // and how it renders them: the contract between the renderer (lib/output/render/engine/) and the composition.
 
 import type { LensMode } from '#lib/picture/lens/models/lens-mode.ts';
+import type { TraceDetail } from '#lib/platform/trace/models/trace-detail.ts';
 
 export type VideoProps = {
   /** Burn captions in. */
@@ -14,6 +15,8 @@ export type VideoProps = {
   auditionSfxCueList?: boolean;
   /** Time the work drawing code offers and log it, for `studio profile` (see frame-profiler.tsx). */
   profile?: boolean;
+  /** The frames a render traces in detail (`studio render --trace`); none when left out. */
+  traceDetail?: TraceDetail;
   /** How the lens draws: fast, or the reference the fast path is measured against (lens-mode.ts). */
   lens?: LensMode;
   /**

@@ -23,10 +23,21 @@ channel in batches, its top spans under the chunk (or pass) that opened its brow
 - its start: `navigation`, then `page scripts` up to the video's first render
 - a painted shot's load (`laid out`, `compile`, `device`, `surfaces`, `renderer`, `warm`), its `first draw` and each
   `shot frame` after, with what each counted (solves, cache hits and misses, readbacks, bytes uploaded)
-- a span per solve (`solve <plane>`), under the warm or frame that ran it, with its counts and its readback waits
+- a span per solve (`solve <plane>`), under the warm or frame that ran it, with its counts and the GPU cache's
+  evictions in it by producer (`evicted film`, `evicted checkpoint`…). Under it, its source's `evaluate`, then for each
+  selection its `compile` (with `digest`, the ms spent hashing entries), `lays`, a rigged plane's `rest solve`, and
+  `leased solve`, holding a span per sheet (`sheet <program>`) with its `keys`, `binding brushes` and `loading`, and as
+  attributes its `known prefix`, `resumed from`, `entries run`, `checkpoint bytes` and `readback wait`
 - a StampPainting's `stamp painting surface`, `stamp painting load` and frames
 
 Node adds each chunk's `browser launch`, `GPU probe` and `composition select`.
+
+`studio render --trace detail:a:b` (or `--trace detail`, every frame) traces those frames' solves in detail: under
+each sheet, a span per entry (`entry <name>`, `decision` made or replayed) holding its parts (`deciding its landing`,
+`deciding its wash start`, `reading when its wash sets`, `reading its damp windows`) and its GPU steps (`landing`,
+`starting its wash`, `keeping a checkpoint`…, each with `encode` and `submit` ms), each readback a span over its
+`reduction` step with its `readback wait`. A warm is detailed when the frame its shot loads in is. That's thousands of
+spans a solve: give it a few frames.
 
 Spans have a start, an end, a parent and a status (`ok`, `failed`, `cancelled`, or `incomplete` when the render died
 first). A chunked pass (`video.mp4 frames`) has a span per attempt at a chunk, a failed one included. Each chunk holds:

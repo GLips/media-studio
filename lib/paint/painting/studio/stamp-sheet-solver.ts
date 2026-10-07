@@ -7,6 +7,7 @@
 // where an unfinished prefix stops. A known prefix with kept films solves nothing; else a solve replays what it
 // remembers from its latest checkpoint, reading damp windows, if asked, where a decision lacks them.
 
+import { UNTRACED_NESTING, type TraceNesting } from '#lib/platform/trace/models/trace-recorder.ts';
 import { stampBrushedMasksUnder } from '../models/stamp-brushed-mask.ts';
 import type { StampPaintCostTally } from '../models/stamp-paint-costs.ts';
 import type { StampSheetDecision } from '../models/stamp-sheet-schedule.ts';
@@ -61,11 +62,21 @@ const stampSheetKnownDecision = (key: string) => {
 
 /**
  * `program` (posed: painting-pose.ts) solved on `owner`'s device as `options` say, once every solve asked for before
- * it has finished.
+ * it has finished. Traced in its tally's trace as a span over its keys and loading; in detail, its entries and steps too.
  */
 export function solveStampSheet(owner: StampPaintGpuOwner, program: StampSheetProgram, options: StampSheetSolveOptions = {}): Promise<StampSheetSolved> {
-  return withStampSolveLease(owner, () => solveLeased(owner, program, options));
+  return withStampSolveLease(owner, () => {
+    // Asked for once the lease is held: a solve's spans nest as it runs, and only one runs on a device at a time.
+    const trace = options.costs?.trace() ?? UNTRACED_NESTING;
+    return trace.within(`sheet ${program.name}`, () => solveLeased(owner, program, options, trace), { kind: 'sheet' });
+  });
 }
+
+/** The bytes of checkpoints `owner`'s cache has made, ever: a solve's span reads the change. */
+const stampCheckpointBytesMade = (owner: StampPaintGpuOwner) => owner.cache.producers().get('checkpoint')?.madeBytes ?? 0;
+
+/** A part of a solve outside its entries, traced. */
+const SOLVE_PHASE = { kind: 'sheet-phase' } as const;
 
 /** K₀ (from `head`) to K_`through` for `entries`: each its digest and pose after the key before it. */
 function stampSheetKeys(head: string, entries: StampSheetProgram['entries'], through: number): string[] {
@@ -90,20 +101,23 @@ function stampSheetRemembered(keys: readonly string[], limit: number, at: number
   return { decisions, stop: limit };
 }
 
-async function solveLeased(owner: StampPaintGpuOwner, planned: StampSheetProgram, { through, at, finish, costs, dampWindows = false }: StampSheetSolveOptions): Promise<StampSheetSolved> {
+async function solveLeased(owner: StampPaintGpuOwner, planned: StampSheetProgram, { through, at, finish, costs, dampWindows = false }: StampSheetSolveOptions, trace: TraceNesting): Promise<StampSheetSolved> {
   const { entries } = planned, all = entries.length;
   if (through !== undefined && !(Number.isInteger(through) && through >= 0 && through <= all)) throw new Error(`stamp sheet: a solve goes through 0 to ${all} entries, not ${through}`);
   if (at !== undefined && !Number.isFinite(at)) throw new Error(`stamp sheet: a prefix ends at a finite scene second, not ${at}`);
   // An entry's scene time is never before its order time, by which the clocked run is sorted: none past one ordered after `at` lands by it.
   const limit = Math.min(through ?? all, at === undefined ? all : entries.filter(({ orderTime }) => orderTime === null || orderTime <= at).length);
   // A sheet that wraps is solved banded on a stage holding its halo, in K₀ (stamp-sheet-wrap.ts); its films are kept cropped to the frame.
-  const plan = stampSheetSolvePlan(planned);
-  const keys = stampSheetKeys(plan.head, entries, limit);
   const finished = finish ?? (at !== undefined || (through ?? all) === all);
-  const filmKey = (k: number) => `${keys[k]}|${finished ? 'finished' : 'open'}`;
-  const known = stampSheetRemembered(keys, limit, at, dampWindows);
-  const kept = known.stop === null ? null : keptStampSheetFilms(owner, filmKey(known.stop), planned.films.length);
+  const { plan, keys, known, kept, filmKey } = await trace.within('keys', async () => {
+    const solvePlan = stampSheetSolvePlan(planned), sheetKeys = stampSheetKeys(solvePlan.head, entries, limit);
+    const keyOfFilms = (k: number) => `${sheetKeys[k]}|${finished ? 'finished' : 'open'}`;
+    const found = stampSheetRemembered(sheetKeys, limit, at, dampWindows);
+    return { plan: solvePlan, keys: sheetKeys, known: found, filmKey: keyOfFilms, kept: found.stop === null ? null : keptStampSheetFilms(owner, keyOfFilms(found.stop), planned.films.length) };
+  }, SOLVE_PHASE);
   costs?.count(kept ? 'film hits' : 'film misses', planned.films.length);
+  const span = trace.current();
+  span?.add('known prefix', known.decisions.length, 'entries');
   if (kept) return { key: keys[known.stop!], through: known.stop!, finished, films: kept, decisions: known.decisions };
 
   const program = plan.painted();
@@ -111,16 +125,17 @@ async function solveLeased(owner: StampPaintGpuOwner, planned: StampSheetProgram
   if (!choice.wet) throw new Error('stamp sheet: a sheet solve paints in pigment, its films each in a medium');
   const posed = program.entries.map(({ deposit }) => deposit);
   const brushedMasks = stampBrushedMasksUnder([...posed.map(({ mask }) => mask), ...program.washes.map(({ prewet }) => prewet?.held)]);
-  const brushes = await bindStampPaintBrushes(owner, { deposits: posed, marks: brushedMasks.flatMap(({ marks }) => marks), paper: program.paper });
+  const brushes = await trace.within('binding brushes', () => bindStampPaintBrushes(owner, { deposits: posed, marks: brushedMasks.flatMap(({ marks }) => marks), paper: program.paper }), SOLVE_PHASE);
   const scope = owner.scope();
   try {
-    const gpu = await owner.checked('loading a sheet solve', () => loadStampSheetSolve(owner, scope, {
+    const gpu = await trace.within('loading', () => owner.checked('loading a sheet solve', () => loadStampSheetSolve(owner, scope, {
       program, stage: plan.stage, compositor: choice.compositorOn(scope.device), media: choice.media, brushes, brushedMasks,
-    }));
+    })), SOLVE_PHASE);
     // `never` dries nothing on the sheet, its unclocked run included.
     const drying = { ...stampDrying(program.water.wetting, program.paper), ...(program.clock.kind === 'never' && { rate: 0 }) };
-    const run = stampSheetRun(owner, scope.device, { program, keys, gpu, drying, brushes, waterOf: choice.media.waterOf, costs: costs ?? null, dampWindows });
-    const resumed = await resumeStampSheet(run, known.decisions);
+    const run = stampSheetRun(owner, scope.device, { program, keys, gpu, drying, brushes, waterOf: choice.media.waterOf, costs: costs ?? null, trace: costs?.detailed() ? trace : UNTRACED_NESTING, dampWindows });
+    const checkpointBytes = stampCheckpointBytesMade(owner), resumed = await resumeStampSheet(run, known.decisions);
+    span?.add('resumed from', resumed.from, 'entries');
     if (known.decisions.length) costs?.count(resumed.from ? 'checkpoint hits' : 'checkpoint misses');
     const { stop, decisions } = await runStampSheet(program, run, { keys, limit, at, ...resumed });
     if (stop < all && !run.kept(stop)) await run.steps.step('keeping where the prefix stops', (encoder) => run.keep(encoder, stop));
@@ -131,6 +146,8 @@ async function solveLeased(owner: StampPaintGpuOwner, planned: StampSheetProgram
       return keepStampSheetFilms(owner, encoder, filmKey(stop), gpu.stage, painted);
     });
     costs?.solved({ program: program.name, from: entries[resumed.from]?.name ?? 'no entry', entries: stop - resumed.from });
+    span?.add('entries run', stop - resumed.from, 'entries');
+    span?.add('checkpoint bytes', stampCheckpointBytesMade(owner) - checkpointBytes, 'bytes');
     return { key: keys[stop], through: stop, finished, films, decisions };
   } finally {
     scope.destroy();

@@ -64,7 +64,7 @@ const paintingEntryMarks = (deposit: CompiledStampDeposit, prewet: StampSheetPre
  * `order`, a sheet's order in `evaluation`, as its program at rest, brushes resolved by `brushOf`, each boiling layer
  * reseeded for its epoch in `epochs` (paintingLayerEpochs').
  */
-function compilePaintingSheet(evaluation: PaintingEvaluation, order: PaintingSheetOrder, brushOf: PaintingBrushOf, epochs: ReadonlyMap<number, number>): StampSheetProgram {
+function compilePaintingSheet(evaluation: PaintingEvaluation, order: PaintingSheetOrder, brushOf: PaintingBrushOf, epochs: ReadonlyMap<number, number>, costs: StampPaintCostTally | undefined): StampSheetProgram {
   const { document: paintingDocument, tree } = evaluation;
   const epochOf = (sheetLayer: number) => epochs.get(order.layers[sheetLayer].layer) ?? 0;
   const reads = paintingEntryReads(tree, order);
@@ -96,10 +96,12 @@ function compilePaintingSheet(evaluation: PaintingEvaluation, order: PaintingShe
     const { medium } = films[entry.layer], { charge } = application, firstOfWash = order.entries.findIndex((other) => other.layer === entry.layer && other.wash === entry.wash) === k;
     const capped = charge.kind === 'paint' && charge.maxSpreadPx !== undefined ? paintingCappedMedium(medium, charge.maxSpreadPx, application.diameterPx) : medium;
     const marks = paintingEntryMarks(deposit, firstOfWash ? washes[w].prewet : null);
+    const digesting = costs?.timing('digest'), digest = stampCanonicalDigest({ reads: reads[k].datum, marks, boil: epoch || undefined });
+    digesting?.();
     return {
       wash: w, name: owner, deposit, medium: capped, on: 'on' in application ? application.on ?? null : null, bloom: 'effect' in application && application.effect === 'bloom',
       chain: entry.chain, orderTime: entry.orderTime, at: application.at ?? null, anchors,
-      digest: stampCanonicalDigest({ reads: reads[k].datum, marks, boil: epoch || undefined }), pose: PAINTING_REST_POSE,
+      digest, pose: PAINTING_REST_POSE,
     };
   });
   return {
@@ -218,7 +220,7 @@ export function compilePaintingSelection(evaluation: PaintingEvaluation, brushOf
   const known = selectionsKept.get(key);
   costs?.count(known ? 'selection hits' : 'selections compiled');
   if (known) return known;
-  const compiled = compileSelectedLayers(evaluation, brushOf, selected, epochs);
+  const compiled = compileSelectedLayers(evaluation, brushOf, selected, epochs, costs);
   selectionsKept.set(key, compiled, paintingSelectionBytes(compiled) + 2 * key.length);
   return compiled;
 }
@@ -236,7 +238,7 @@ function paintingFillBrushProblems(tree: PaintingTree, selected: ReadonlySet<num
 }
 
 function compileSelectedLayers(
-  evaluation: PaintingEvaluation, brushOf: PaintingBrushOf, selected: ReadonlySet<number>, epochs: ReadonlyMap<number, number>,
+  evaluation: PaintingEvaluation, brushOf: PaintingBrushOf, selected: ReadonlySet<number>, epochs: ReadonlyMap<number, number>, costs: StampPaintCostTally | undefined,
 ): PaintingSelectionCompiled {
   const { tree } = evaluation;
   // Refused whole, by owner, before any deposit is planned: the planner refuses one alone, naming no application.
@@ -244,7 +246,7 @@ function compileSelectedLayers(
   if (unplannable.length) throw paintingProblemsError(evaluation.source, unplannable);
   const sheets = paintingSheetOrders(tree, selected).flatMap((order, s): PaintingSheetCompiled[] => (s > 0 && order.layers.length === 0
     ? []
-    : [{ sheet: order.sheet, layers: order.layers.map(({ layer }) => layer), ownerChain: order.ownerChain, program: compilePaintingSheet(evaluation, order, brushOf, epochs) }]));
+    : [{ sheet: order.sheet, layers: order.layers.map(({ layer }) => layer), ownerChain: order.ownerChain, program: compilePaintingSheet(evaluation, order, brushOf, epochs, costs) }]));
   const steps = tree.nodes.flatMap((place): StampSheetCompositeStep[] => {
     const sheet = sheets.findIndex((compiled) => compiled.sheet === place.sheet);
     if (sheet < 0) return [];

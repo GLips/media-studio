@@ -5,6 +5,7 @@
 // The field keeps times after a base (ENGINE 3.4), which the solve's state holds: a step reads a time through its
 // time base, which moves the base up in that step, before anything reads it, once the time runs far past it.
 
+import type { TraceNesting } from '#lib/platform/trace/models/trace-recorder.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { StampPaintCostTally } from '../models/stamp-paint-costs.ts';
 import { STAMP_DAMP_HISTOGRAM_WORDS, stampDampHistogram, type StampDampHistogram } from '../models/stamp-damp-histogram.ts';
@@ -30,9 +31,9 @@ export type StampSheetTimeBase = { base: () => number; after: (encoder: GPUComma
 
 /**
  * A solve's steps on `owner` through `device` (its scope's), over `gpu`, the paper drying as `drying` says and its
- * times read through `timeBase`; readbacks counted into `costs`.
+ * times read through `timeBase`; readbacks counted into `costs`, and each traced under what `trace` has open.
  */
-export function createStampSheetSteps(owner: StampPaintGpuOwner, device: StampPaintDevice, gpu: StampSheetSolveGpu, drying: StampDrying, timeBase: StampSheetTimeBase, costs: StampPaintCostTally | null) {
+export function createStampSheetSteps(owner: StampPaintGpuOwner, device: StampPaintDevice, gpu: StampSheetSolveGpu, drying: StampDrying, timeBase: StampSheetTimeBase, costs: StampPaintCostTally | null, trace: TraceNesting) {
   const { after } = timeBase;
   const words = (count: number): StampSheetWords => ({
     count,
@@ -42,31 +43,39 @@ export function createStampSheetSteps(owner: StampPaintGpuOwner, device: StampPa
   const whole = stampSheetFailureGrid({ x: 0, y: 0, w: gpu.stage.width, h: gpu.stage.height });
   const buffers = { totals: words(STAMP_SHEET_TOTALS.words), histogram: words(STAMP_DAMP_HISTOGRAM_WORDS), cells: words(whole.columns * whole.rows) };
 
-  /** Encodes `work` and submits it, named `what` in a GPU error. Resolves what it returns once WebGPU has checked it. */
-  const step = <T,>(what: string, work: (encoder: GPUCommandEncoder) => T): Promise<T> => owner.checked(what, () => {
+  /**
+   * Encodes `work` and submits it, named `what` in a GPU error and traced as `traced` (`what` unless given: one without
+   * the entry's name, which its span already has). Resolves what it returns once WebGPU has checked it.
+   */
+  const step = <T,>(what: string, work: (encoder: GPUCommandEncoder) => T, traced = what): Promise<T> => trace.within(traced, () => owner.checked(what, () => {
+    const span = trace.current(), encoding = span?.time('encode');
     const encoder = device.createCommandEncoder();
     const result = work(encoder);
     gpu.arena.flush();
-    device.queue.submit([encoder.finish()]);
+    const commands = encoder.finish();
+    encoding?.();
+    const submitting = span?.time('submit');
+    device.queue.submit([commands]);
+    submitting?.();
     gpu.arena.reset();
     return result;
-  });
+  }), { kind: 'sheet-step' });
 
   /** `buffer`'s words once `work` has written them from clear. */
-  const readback = async (what: string, buffer: StampSheetWords, work: (encoder: GPUCommandEncoder) => void): Promise<Uint32Array> => {
+  const readback = (what: string, buffer: StampSheetWords, work: (encoder: GPUCommandEncoder) => void): Promise<Uint32Array> => trace.within(what, async () => {
     await step(what, (encoder) => {
       encoder.clearBuffer(buffer.storage);
       work(encoder);
       encoder.copyBufferToBuffer(buffer.storage, 0, buffer.read, 0, buffer.count * 4);
-    });
-    const waited = costs?.waiting('readback');
+    }, 'reduction');
+    const waited = costs?.timing('readback wait');
     await buffer.read.mapAsync(GPUMapMode.READ);
     waited?.();
     const read = new Uint32Array(buffer.read.getMappedRange().slice(0));
     buffer.read.unmap();
     costs?.count('readbacks');
     return read;
-  };
+  }, { kind: 'sheet-readback' });
 
   return {
     step,

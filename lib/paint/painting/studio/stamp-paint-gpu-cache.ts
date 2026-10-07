@@ -7,6 +7,7 @@
 // the one encoder open. Past the budget checkpoints go first, then the least recently used; a frame's own needs may
 // overrun it meanwhile.
 
+import type { TraceQuantity } from '#lib/platform/trace/models/trace-model.ts';
 import type { StampGpuCacheBytes } from '../models/stamp-paint-costs.ts';
 import type { StampPaintDevice } from './stamp-paint-gpu.ts';
 
@@ -22,6 +23,9 @@ export const STAMP_GPU_CACHE_BUDGET = 1536 * 1024 * 1024;
  * holds. Targets count as `targets` in the cache's bytes, the rest as `kept`.
  */
 export type StampGpuCacheProducer = 'film' | 'picture' | 'blurred' | 'edge' | 'arrival' | 'checkpoint' | 'target';
+
+/** What a producer has had of a cache: its entries given up to make room, and the bytes it made. Counters, only growing. */
+export type StampGpuCacheProducerCounts = { readonly evicted: number; readonly madeBytes: number };
 
 /** A texture an entry holds: `layers` array layers of `width` × `height` in `format`. */
 export type StampGpuCacheTexture = { width: number; height: number; layers: number; format: GPUTextureFormat; usage: GPUTextureUsageFlags };
@@ -56,6 +60,8 @@ export type StampPaintGpuCache = {
   bytes: () => StampGpuCacheBytes;
   /** How many entries it has given up to make room since it was made, for profiling: a cost report counts the change. */
   evictions: () => number;
+  /** Each producer's entries given up to make room, and bytes made, since the cache was made: a trace reads the change. */
+  producers: () => ReadonlyMap<StampGpuCacheProducer, StampGpuCacheProducerCounts>;
   dispose: () => void;
 };
 
@@ -93,6 +99,11 @@ function forgetStampGpuCacheStore(store: ReadonlyMap<string, StampGpuCacheHeld>)
 export function stampPaintGpuCache(device: Pick<StampPaintDevice, 'createTexture'>, budget = STAMP_GPU_CACHE_BUDGET): StampPaintGpuCache {
   const stores = new Set<ReadonlyMap<string, StampGpuCacheHeld>>();
   let kept = 0, targets = 0, clock = 0, evicted = 0;
+  const producers = new Map<StampGpuCacheProducer, StampGpuCacheProducerCounts>();
+  const tallied = (producer: StampGpuCacheProducer, change: Partial<StampGpuCacheProducerCounts>) => {
+    const was = producers.get(producer) ?? { evicted: 0, madeBytes: 0 };
+    producers.set(producer, { evicted: was.evicted + (change.evicted ?? 0), madeBytes: was.madeBytes + (change.madeBytes ?? 0) });
+  };
   const counted = (producer: StampGpuCacheProducer, bytes: number) => {
     if (producer === 'target') targets += bytes;
     else kept += bytes;
@@ -108,6 +119,7 @@ export function stampPaintGpuCache(device: Pick<StampPaintDevice, 'createTexture
       if (kept + targets + more <= budget) return;
       entry.forget();
       evicted++;
+      tallied(entry.producer, { evicted: 1 });
     }
   };
   return {
@@ -135,6 +147,7 @@ export function stampPaintGpuCache(device: Pick<StampPaintDevice, 'createTexture
         const entry = { textures, bytes, used: ++clock, encoder, holds: 0, producer, note, forget };
         held.set(key, entry);
         counted(producer, bytes);
+        tallied(producer, { madeBytes: bytes });
         return entry;
       };
       return {
@@ -172,9 +185,20 @@ export function stampPaintGpuCache(device: Pick<StampPaintDevice, 'createTexture
     },
     bytes: () => ({ kept, targets }),
     evictions: () => evicted,
+    producers: () => new Map(producers),
     dispose: () => {
       for (const store of stores) forgetStampGpuCacheStore(store);
       stores.clear();
     },
   };
+}
+
+/** The entries each producer had evicted between two reads of `producers`, as a span's attributes: none where none was. */
+export function stampGpuCacheEvictionAttributes(
+  before: ReadonlyMap<StampGpuCacheProducer, StampGpuCacheProducerCounts>, after: ReadonlyMap<StampGpuCacheProducer, StampGpuCacheProducerCounts>,
+): Record<string, TraceQuantity> {
+  return Object.fromEntries([...after].flatMap(([producer, { evicted }]) => {
+    const more = evicted - (before.get(producer)?.evicted ?? 0);
+    return more ? [[`evicted ${producer}`, { value: more, unit: 'entries' }]] : [];
+  }));
 }

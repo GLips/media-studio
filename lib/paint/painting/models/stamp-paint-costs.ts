@@ -5,6 +5,7 @@
 // frame's or a warmed span's to the profiler (shot-cost-report.ts), and a gate case reads one to hold what a change
 // re-solves. Counting never changes what's drawn.
 
+import { UNTRACED_NESTING, type TraceNesting } from '#lib/platform/trace/models/trace-recorder.ts';
 import type { StampKeptHeld } from './stamp-kept-memo.ts';
 
 /**
@@ -69,21 +70,25 @@ export type StampPaintCostTally = {
   readonly take: () => StampPaintCosts;
   readonly counted: () => StampPaintCosts;
   /**
-   * Starts a wait on the GPU of kind `what`; what's returned ends it. Timed by whoever made the tally (a shot's trace),
-   * never here: counting reads no clock.
+   * The spans the solve running now nests its work in (the tally maker's: a shot's solve), traced once a solve; one
+   * tracing nothing outside a solve, or for a maker that traces none.
    */
-  readonly waiting: (what: StampPaintWait) => () => void;
+  readonly trace: () => TraceNesting;
+  /** Starts timing work of kind `what` in the span open now; what's returned stops it. Timed by the trace, never here. */
+  readonly timing: (what: StampPaintTimed) => () => void;
+  /** Whether the solve running now is traced in detail, each sheet entry and GPU step a span. */
+  readonly detailed: () => boolean;
 };
 
-/** A wait a tally's maker may time: a readback's mapping. */
-export type StampPaintWait = 'readback';
+/** Work a tally times in a trace: the wait for a readback's mapping, a canonical digest's hashing. */
+export type StampPaintTimed = 'readback wait' | 'digest';
 
-const notTimed = () => () => {};
+const notTraced = () => UNTRACED_NESTING, untimed = () => {}, notDetailed = () => false;
 
 const noCosts = () => new Map(STAMP_PAINT_COST_NAMES.map((name) => [name, 0]));
 
-/** A tally, its waits timed by `timeWait` (untimed unless given). */
-export function createStampPaintCostTally({ timeWait = notTimed }: { timeWait?: (what: StampPaintWait) => () => void } = {}): StampPaintCostTally {
+/** A tally, its solves traced in `trace` and in detail when `detailed` says (neither unless given). */
+export function createStampPaintCostTally({ trace = notTraced, detailed = notDetailed }: { trace?: () => TraceNesting; detailed?: () => boolean } = {}): StampPaintCostTally {
   let counts = noCosts(), plans: string[] = [], solves: StampPaintSolveCost[] = [], warnings: string[] = [], bytes: StampGpuCacheBytes = { kept: 0, targets: 0 }, kept = keptNothing;
   const add = (name: StampPaintCostName, n: number) => counts.set(name, (counts.get(name) ?? 0) + n);
   return {
@@ -100,7 +105,9 @@ export function createStampPaintCostTally({ timeWait = notTimed }: { timeWait?: 
       kept = memos;
     },
     counted: () => ({ counts, plans, solves, warnings, bytes, kept }),
-    waiting: timeWait,
+    trace,
+    timing: (what) => trace().current()?.time(what) ?? untimed,
+    detailed,
     take: () => {
       const costs = { counts, plans, solves, warnings, bytes, kept };
       counts = noCosts();

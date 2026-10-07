@@ -17,7 +17,8 @@ import { PrevisFootagePlayer } from '#lib/footage/previs/studio/previs.tsx';
 import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { FrameProbe } from '#lib/picture/measurement/studio/probe.tsx';
 import { FrameProfiler } from '#lib/picture/profiling/studio/frame-profiler.tsx';
-import { PageTraceContext } from '#lib/picture/profiling/studio/page-trace-context.ts';
+import { PageTraceContext, PageTraceDetailContext } from '#lib/picture/profiling/studio/page-trace-context.ts';
+import { traceDetailCovers } from '#lib/platform/trace/models/trace-detail.ts';
 import { NO_PAGE_TRACE, renderPageTrace } from '#lib/platform/trace/studio/page-trace.ts';
 import { logToRenderHost } from '#lib/platform/browser/studio/render-page-log.ts';
 import { SceneContext } from '#lib/picture/video/studio/scene.tsx';
@@ -88,7 +89,7 @@ function timelineReport(video: VideoDef, tl: LaidVideo, { fps, width, height, du
 
 // `reportTimeline` is off in the replay composition: its Freeze can land on frame 0 more than once, and Remotion
 // refuses a second artifact with the same name.
-export function Video({ video, captions, probe, blockouts, auditionSfxCueList = false, profile = false, lens = 'fast', picture = true, reportTimeline = true }: VideoProps & { video: VideoDef; reportTimeline?: boolean }) {
+export function Video({ video, captions, probe, blockouts, auditionSfxCueList = false, profile = false, traceDetail, lens = 'fast', picture = true, reportTimeline = true }: VideoProps & { video: VideoDef; reportTimeline?: boolean }) {
   const frame = useCurrentFrame();
   const config = useVideoConfig(), { fps } = config;
   const tl = useMemo(() => laidVideoOf(video), [video]);
@@ -106,6 +107,7 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
   return (
     <AbsoluteFill ref={root} style={{ background: transparent ? undefined : '#fff', overflow: 'hidden' }}>
       <PageTraceContext value={trace}>
+      <PageTraceDetailContext value={traceDetailCovers(traceDetail, frame)}>
       <PictureDrawnContext value={picture}>
       <LensModeContext value={lens}>
       <CaptionBandContext value={captioned.style.band}>
@@ -122,6 +124,7 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
       </CaptionBandContext>
       </LensModeContext>
       </PictureDrawnContext>
+      </PageTraceDetailContext>
       </PageTraceContext>
       {playsCueList && sfxCues && <SfxCueListAudio cues={sfxCues} />}
       {video.sounds?.map((s, i) => <Sfx key={i} sound={s.sound} at={s.at} t={t} id={s.id ?? i} volume={s.volume} />)}

@@ -25,15 +25,17 @@ export const renderLensArg = {
 
 /**
  * Bundles the project a command-line argument names, which must have a video.tsx; `workers` is a --workers value,
- * `lens` a --lens one, `paintings` a --set of `painting.property=value` pairs (painting-value-overrides.ts). `ledger`,
+ * `lens` a --lens one, `paintings` a --set of `painting.property=value` pairs (painting-value-overrides.ts), `trace`
+ * a --trace one (trace-detail.ts). `ledger`,
  * one the command opened already on the project, records the session's spans.
  */
-export async function openStudioRenderSession(projectArg: string, { workers, lens, paintings, ledger }: {
-  workers?: string; lens?: string; paintings?: string; ledger?: RenderLedger;
+export async function openStudioRenderSession(projectArg: string, { workers, lens, paintings, trace, ledger }: {
+  workers?: string; lens?: string; paintings?: string; trace?: string; ledger?: RenderLedger;
 } = {}) {
   const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
   const { openRenderSession } = await import('#lib/output/render/engine/render-session.ts');
   const { lensModeChecked } = await import('#lib/picture/lens/models/lens-mode.ts');
+  const { traceDetailOf } = await import('#lib/platform/trace/models/trace-detail.ts');
   const project = resolveStudioProjectWith(projectArg, 'video.tsx');
   const readOverrides = async (text: string) => {
     // A painting timed by the project's timeline imports the track's audio, which only the hooks let Node load.
@@ -42,6 +44,6 @@ export async function openStudioRenderSession(projectArg: string, { workers, len
   };
   return openRenderSession(project, {
     workers: workers === undefined ? undefined : Number(workers), lens: lens === undefined ? undefined : lensModeChecked(lens), ...(ledger && { ledger }),
-    ...(paintings !== undefined && { paintingValues: await readOverrides(paintings) }),
+    ...(paintings !== undefined && { paintingValues: await readOverrides(paintings) }), ...(trace !== undefined && { traceDetail: traceDetailOf(trace) }),
   });
 }

@@ -18,6 +18,7 @@ export default defineCommand({
     frames: { type: 'string', valueHint: '120:239', description: 'Render only these frames (inclusive), silent, with no framing check or mix, to out/wip/frames-<a>-<b>.mp4 or --out, and lossless beside it (<name>.lossless.mkv) for --join' },
     join: { type: 'string', valueHint: 'out/wip/bars', description: 'Join the --frames renders\' lossless frames in this folder (relative to the project unless absolute) into the whole video, encoded once under the mastered mix, to out/wip/joined.mp4 or --out. Refuses slices from two timelines or another clock than the project\'s now, a gap or an overlap' },
     remote: { type: 'boolean', description: 'Draw the frames on the remote app\'s GPUs (studio remote deploy), not this machine\'s: --frames as a slice, or the whole video joined under the mastered mix to out/wip/joined.mp4 or --out, never the delivered video. Prints what each container billed' },
+    trace: { type: 'string', valueHint: 'detail:120:239', description: 'Trace these frames\' solves in detail, each sheet entry and GPU step a span (detail for every frame, detail:a:b for frames a to b, inclusive), where the trace npm run trace reads holds each solve whole. A span a step, so a few frames is plenty' },
     out: { type: 'string', valueHint: 'out/wip/v2.mp4', description: 'The .mp4 --frames, --join, --animatic or --remote writes, relative to the project unless absolute, in a folder that exists or under the project\'s out/; checked before anything renders' },
   },
   async run({ args }) {
@@ -25,6 +26,7 @@ export default defineCommand({
     if ([args.frames, args.join, args.animatic].filter(Boolean).length > 1) throw new Error('--frames renders a slice, --join joins slices and --animatic renders the animatic: give one');
     if ((args.frames || args.join || args.animatic) && args.plain) throw new Error('--plain is for the delivered video: leave it out of --frames, --join and --animatic');
     if (args.remote && (args.join || args.animatic || args.plain)) throw new Error('--remote draws frames: a --frames slice, or the whole video joined; leave out --join, --animatic and --plain');
+    if (args.remote && args.trace) throw new Error('--trace traces a render drawn here: leave it out of --remote');
     if (args.out && !args.frames && !args.join && !args.animatic && !args.remote) throw new Error('the delivered video goes to out/video.mp4: --out is for --frames, --join, --animatic and --remote');
     const range = args.frames?.split(':').map(Number);
     if (range && !(range.length === 2 && range.every(Number.isInteger) && range[0] >= 0 && range[1] >= range[0])) {
@@ -54,7 +56,7 @@ export default defineCommand({
       }
       const pipeline = await import('#lib/output/render/engine/render-pipeline.ts');
       const slices = await import('#lib/output/render/engine/render-slices.ts');
-      const openSession = async () => openStudioRenderSession(project, { workers: args.workers, lens: args.lens, ledger: keep(await openRenderLedger(project, trace)) });
+      const openSession = async () => openStudioRenderSession(project, { workers: args.workers, lens: args.lens, trace: args.trace, ledger: keep(await openRenderLedger(project, trace)) });
       if (range) {
         const [from, last] = range, out = outOr(`out/wip/frames-${from}-${last}.mp4`);
         for (const file of await slices.renderVideoSlice(await openSession(), { from, end: last + 1, out })) console.log(file);

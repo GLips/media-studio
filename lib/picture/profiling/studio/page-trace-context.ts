@@ -8,3 +8,8 @@ export const PageTraceContext = createContext<PageTrace>(NO_PAGE_TRACE);
 
 /** The page's trace: the render page's recorder in a render, one that records nothing in the Studio's preview. */
 export const usePageTrace = () => useContext(PageTraceContext);
+
+/** Whether the frame drawing now is traced in detail (trace-detail.ts): Video.tsx says, frame by frame. */
+export const PageTraceDetailContext = createContext(false);
+
+export const usePageTraceDetail = () => useContext(PageTraceDetailContext);
