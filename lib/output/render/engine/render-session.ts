@@ -20,7 +20,7 @@ import { countVideoFrames, runFfmpegAsync } from '#lib/platform/ffmpeg/engine/ff
 import { writeRenderSnapshot, type RenderSnapshot } from './render-snapshot.ts';
 import { renderInChunks } from './render-chunks.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
-import { openRenderLedger, type RenderLedger } from './render-ledger.ts';
+import { openRenderLedger, renderGpuWaitSeconds, renderSpanClock, type RenderLedger, type RenderSpan } from './render-ledger.ts';
 import { renderVoiceOf } from '#lib/timing/voice/engine/voice-project.ts';
 import { RENDER_PAGE_OPTIONS } from '#lib/platform/browser/engine/render-browser.ts';
 import { inWatchedRenderBrowser, watchedRenderFrames, watchedRenderMedia, type RenderWatch } from '#lib/platform/browser/engine/render-watch.ts';
@@ -79,11 +79,6 @@ export const PAINTING_RENDER_WORKERS = 1;
  */
 const RENDER_NICENESS = 10;
 
-/** The pass a wait for the GPU lease is recorded as, so it never reads as a render's own time. */
-const GPU_WAIT_PASS = 'waiting for the GPU';
-/** A wait shorter than this is the lease's own bookkeeping, not a queue, and isn't recorded. */
-const GPU_WAIT_RECORDED_SECONDS = 0.1;
-
 /** How a chunk's frames are written: PNG, JPEG at a quality, or not at all (a pass that only measures). */
 type FrameImage = { imageFormat: 'png' } | { imageFormat: 'jpeg'; jpegQuality: number } | { imageFormat: 'none' };
 
@@ -128,28 +123,29 @@ async function keepLossless(list: string, out: string, made: Pick<RenderSnapshot
 }
 
 /**
- * `workers` overrides the video's `renderWorkers` and the default tabs, as a command's --workers does; `lens` is how
- * every render of the session draws the lens, as --lens says; `paintingValues`, what its paintings are painted at over
- * the scenes' values, as `studio look --set` checked them.
+ * `workers` overrides the video's `renderWorkers` and the default tabs, as --workers does; `lens` is how every render of
+ * the session draws the lens, as --lens says; `paintingValues`, what its paintings are painted at over the scenes'
+ * values, as `studio look --set` checked them. `ledger`: one the command opened already (`studio render`, for its history).
  */
-export async function openRenderSession(
-  project: string, { workers, lens = 'fast', paintingValues }: { workers?: number; lens?: LensMode; paintingValues?: PaintingValuesProp } = {},
-) {
+export async function openRenderSession(project: string, { workers, lens = 'fast', paintingValues, ledger: opened }: {
+  workers?: number; lens?: LensMode; paintingValues?: PaintingValuesProp; ledger?: RenderLedger;
+} = {}) {
   if (workers !== undefined && !(Number.isInteger(workers) && workers > 0)) throw new Error(`--workers is ${workers}: give a whole number above 0`);
   // Only ever lower: raising a process's priority back takes root.
   if (getPriority() < RENDER_NICENESS) setPriority(RENDER_NICENESS);
-  const ledger = await openRenderLedger(project), { clock, paints, passes, timed } = ledger;
-  const checking = performance.now();
+  const ledger = opened ?? await openRenderLedger(project), { clock, paints, timed, beginSpan, recordGpuWait } = ledger;
+  const checking = renderSpanClock();
   const paintings = await refuseProjectPaintingErrors(project);
-  if (paintings) passes.push({ pass: `${paintings} ${paintings === 1 ? 'painting' : 'paintings'} checked`, seconds: (performance.now() - checking) / 1000 });
+  if (paintings) ledger.addSpan(`${paintings} ${paintings === 1 ? 'painting' : 'paintings'} checked`, { start: checking, end: renderSpanClock() });
   const serveUrl = await timed('bundle', () => bundleStudioProject(project));
   const props = (p: Partial<VideoProps> = {}): VideoProps => ({ captions: false, probe: false, blockouts: false, lens, ...(paintingValues && { paintingValues }), ...p });
   const selectVideo = (inputProps: VideoProps, browser: HeadlessBrowser) => selectComposition({ ...RENDER_PAGE_OPTIONS, serveUrl, id: projectSlug(project), inputProps, puppeteerInstance: browser });
   /** The video's composition with `inputProps`, selected in `browser`, or in a watched one of its own, under the GPU lease. */
   async function compositionFor(inputProps: VideoProps, browser?: HeadlessBrowser): Promise<VideoConfig> {
     if (browser) return selectVideo(inputProps, browser);
+    const start = renderSpanClock();
     const { result, waited } = await inWatchedRenderBrowser((own) => selectVideo(inputProps, own), { pass: 'composition' });
-    recordGpuWait(waited);
+    recordGpuWait(waited, { start, parent: null });
     return result;
   }
 
@@ -165,20 +161,15 @@ export async function openRenderSession(
     return Math.min(RENDER_CORES, workers ?? renderWorkers ?? (paints && picture ? PAINTING_RENDER_WORKERS : DEFAULT_RENDER_WORKERS));
   }
 
-  /** Records the wait for the GPU lease a watched browser reports, when it queued. */
-  function recordGpuWait(waited: number) {
-    if (waited >= GPU_WAIT_RECORDED_SECONDS) passes.push({ pass: GPU_WAIT_PASS, seconds: waited });
-  }
-
   /**
-   * Renders in a watched browser of its own (render-watch.ts), `pass` naming it, recording the pass with the GPU
-   * backends it had and the tabs `render` says it used, and apart from it any wait for the GPU lease.
+   * Renders in a watched browser of its own (render-watch.ts), `pass` naming it, recording the pass's span with the GPU
+   * backends it had and the tabs `render` says it used, and under it any wait for the GPU lease.
    */
   async function inBrowser<T>(pass: string, render: (browser: HeadlessBrowser, watch: RenderWatch) => Promise<{ result: T; workers?: number }>): Promise<T> {
-    const started = performance.now();
+    const span = beginSpan(pass), start = renderSpanClock();
     const { result: { result, workers: used }, gpu, waited } = await inWatchedRenderBrowser(render, { pass });
-    recordGpuWait(waited);
-    passes.push({ pass, seconds: (performance.now() - started) / 1000 - waited, workers: used, gpu });
+    recordGpuWait(waited, { start, parent: span.id });
+    span.end({ ...(used !== undefined && { workers: used }), gpu });
     return result;
   }
 
@@ -208,21 +199,22 @@ export async function openRenderSession(
 
   /**
    * `frames` drawn chunk by chunk (render-chunks.ts) as `draw` says, each piece into `into(piece)` and handed to `take`
-   * once drawn; a frame that fails is named by its scene in `timeline` (read then, when not given). Records the pass;
-   * returns the GPU, and whether any frame played sound.
+   * once drawn; a frame that fails is named by its scene in `timeline` (read then, when not given). Records the pass's
+   * span, each chunk's under it; returns the GPU, and whether any frame played sound.
    */
   async function drawChunks(pass: string, frames: readonly number[], draw: FrameDraw, { into, take, timeline }: {
     into: (piece: readonly number[]) => string; take?: (piece: readonly number[], dir: string) => Promise<void>; timeline?: TimelineReport;
   }): Promise<{ gpu: string; heard: boolean }> {
-    const started = performance.now();
+    const span = beginSpan(pass);
     let used = 0;
-    const { gpu, drawn, waited } = await renderInChunks<{ dir: string; heard: boolean }>(frames, async (browser, piece, watch) => {
+    const { gpu, drawn } = await renderInChunks<{ dir: string; heard: boolean }>(frames, async (browser, piece, watch) => {
       const dir = into(piece), { concurrency, heard } = await drawFrames(browser, watch, piece, dir, draw);
       used = Math.max(used, concurrency);
       return { dir, heard };
-    }, { ...(take && { take: (piece, { dir }) => take(piece, dir) }), describeFrame: (frame) => describeRenderFrame(frame, timeline) });
-    recordGpuWait(waited);
-    passes.push({ pass, seconds: (performance.now() - started) / 1000 - waited, workers: used, gpu });
+    }, {
+      ...(take && { take: (piece, { dir }) => take(piece, dir) }), describeFrame: (frame) => describeRenderFrame(frame, timeline), spans: { recorder: ledger, parent: span.id },
+    });
+    span.end({ workers: used, gpu, frames: frames.length });
     return { gpu, heard: drawn.some(({ heard }) => heard) };
   }
 
@@ -435,21 +427,46 @@ export function artifactSink() {
   return { onArtifact, json, names: () => [...files.keys()] };
 }
 
+/** Seconds `spans` took between them. */
+const spanSeconds = (spans: readonly RenderSpan[]) => spans.reduce((sum, s) => sum + s.end - s.start, 0);
+
+/** A chunked pass's chunks in one line: how they started, drew and packed, which their spans hold one by one. */
+function formatChunkSpans(chunks: readonly RenderSpan[], spans: readonly RenderSpan[]): string {
+  const under = (name: string) => spans.filter((s) => s.name === name && chunks.some((c) => c.id === s.parent));
+  const startups = under('startup').map((s) => (s.end - s.start).toFixed(1)), drawing = under('drawing');
+  const frames = drawing.reduce((sum, s) => sum + (s.frames ?? 0), 0);
+  const waits = [...under('waiting on packing'), ...spans.filter((s) => s.name === 'waiting on packing' && s.parent === chunks[0].parent)];
+  return [
+    `${chunks.length} chunk${chunks.length > 1 ? 's' : ''}`,
+    `startup ${startups.join(', ')}s`,
+    ...(frames ? [`steady ${Math.round((spanSeconds(drawing) * 1000) / frames)} ms/frame`] : []),
+    `packing ${spanSeconds(under('packing')).toFixed(1)}s (waited on ${spanSeconds(waits).toFixed(1)}s)`,
+  ].join(' · ');
+}
+
 /**
- * The session's passes as a table, with the workers and GPU backends its renders had: where a command's time went. A
- * render's pass includes opening its browser. The wall-clock runs from the session's opening, so it also holds what
- * no pass times (judging a check, writing reports).
+ * The ledger's spans as a table, with the workers and GPU backends its renders had: where a command's time went. Each
+ * top-level span is a row, its children under it, a chunked pass's chunks summed in a line. Spans overlap, so rows don't
+ * add up: the wall-clock (the whole process) and the GPU lease wait close it.
  */
-export function formatRenderPasses({ passes, opened }: Pick<RenderLedger, 'passes' | 'opened'>): string[] {
-  const width = Math.max(...passes.map((p) => p.pass.length));
-  const gpu = [...new Set(passes.flatMap((p) => (p.gpu ? [p.gpu] : [])))];
-  const total = passes.reduce((sum, p) => sum + p.seconds, 0);
-  const row = (pass: string, seconds: number, workers?: number) =>
-    `  ${pass.padEnd(width)}  ${seconds.toFixed(1).padStart(6)}s${workers ? `  ${workers} worker${workers > 1 ? 's' : ''}` : ''}`;
+export function formatRenderSpans({ spans }: Pick<RenderLedger, 'spans'>): string[] {
+  const ordered = spans.toSorted((a, b) => a.start - b.start), childrenOf = (id: number | null) => ordered.filter((s) => s.parent === id);
+  const width = Math.max(...ordered.map((s) => s.name.length + 2), 'GPU lease wait'.length);
+  const gpu = [...new Set(spans.flatMap((s) => (s.gpu ? [s.gpu] : [])))];
+  const row = (name: string, seconds: number, at?: number, workers?: number) =>
+    `  ${name.padEnd(width)}  ${seconds.toFixed(1).padStart(6)}s${at === undefined ? '' : `  at ${at.toFixed(1)}s`}${workers ? `  ${workers} worker${workers > 1 ? 's' : ''}` : ''}`;
+  const rowsOf = (span: RenderSpan): string[] => {
+    const children = childrenOf(span.id), chunks = children.filter((c) => c.kind === 'chunk');
+    return [
+      row(span.name, span.end - span.start, span.start, span.workers),
+      ...children.filter((c) => c.kind !== 'chunk' && c.name !== 'waiting on packing').map((c) => `  ${row(c.name, c.end - c.start, c.start)}`),
+      ...(chunks.length ? [`      ${formatChunkSpans(chunks, spans)}`] : []),
+    ];
+  };
   return [
     `timing, GPU ${gpu.join('; ') || 'unused'}:`,
-    ...passes.map((p) => row(p.pass, p.seconds, p.workers)),
-    row('passes', total),
-    row('wall-clock', (performance.now() - opened) / 1000),
+    ...childrenOf(null).flatMap(rowsOf),
+    row('GPU lease wait', renderGpuWaitSeconds(spans)),
+    row('wall-clock', renderSpanClock()),
   ];
 }

@@ -1,6 +1,7 @@
 // project-arg.ts: the project positional every per-project command takes, and the render session most open from it.
 // Imported at the top of command files, so lib modules load inside the helper, only when a command runs.
 import type { PositionalArgDef, StringArgDef } from 'citty';
+import type { RenderLedger } from '#lib/output/render/engine/render-ledger.ts';
 
 export const studioProjectArg = {
   type: 'positional',
@@ -24,9 +25,12 @@ export const renderLensArg = {
 
 /**
  * Bundles the project a command-line argument names, which must have a video.tsx; `workers` is a --workers value,
- * `lens` a --lens one, `paintings` a --set of `painting.property=value` pairs (painting-value-overrides.ts).
+ * `lens` a --lens one, `paintings` a --set of `painting.property=value` pairs (painting-value-overrides.ts). `ledger`,
+ * one the command opened already on the project, records the session's spans.
  */
-export async function openStudioRenderSession(projectArg: string, { workers, lens, paintings }: { workers?: string; lens?: string; paintings?: string } = {}) {
+export async function openStudioRenderSession(projectArg: string, { workers, lens, paintings, ledger }: {
+  workers?: string; lens?: string; paintings?: string; ledger?: RenderLedger;
+} = {}) {
   const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
   const { openRenderSession } = await import('#lib/output/render/engine/render-session.ts');
   const { lensModeChecked } = await import('#lib/picture/lens/models/lens-mode.ts');
@@ -37,7 +41,7 @@ export async function openStudioRenderSession(projectArg: string, { workers, len
     return (await import('#lib/paint/document/engine/painting-value-overrides.ts')).readPaintingValueOverrides(project, text);
   };
   return openRenderSession(project, {
-    workers: workers === undefined ? undefined : Number(workers), lens: lens === undefined ? undefined : lensModeChecked(lens),
+    workers: workers === undefined ? undefined : Number(workers), lens: lens === undefined ? undefined : lensModeChecked(lens), ...(ledger && { ledger }),
     ...(paintings !== undefined && { paintingValues: await readOverrides(paintings) }),
   });
 }

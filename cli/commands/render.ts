@@ -31,40 +31,44 @@ export default defineCommand({
       throw new Error(`--frames is a first and last frame like 120:239, not ${args.frames}`);
     }
     const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
-    const project = resolveStudioProjectWith(args.project, 'video.tsx');
-    // Each out is checked before its session opens: a render queues for the GPU and draws for minutes before it writes.
-    const outOr = (fallback: string) => checkedCommandOutFlag(args.out ?? fallback, { base: project, writes: ['.mp4'], madeIn: join(project, 'out') });
-    if (args.remote) {
-      const { renderRemotely } = await import('#lib/output/remote-render/engine/remote-render.ts');
-      const { lensModeChecked } = await import('#lib/picture/lens/models/lens-mode.ts');
-      // Checked here, as a local render's session checks them, so a typo fails before anything uploads.
-      const workers = args.workers === undefined ? undefined : Number(args.workers);
-      if (workers !== undefined && !(Number.isInteger(workers) && workers > 0)) throw new Error(`--workers is ${args.workers}: give a whole number above 0`);
-      const frames = range && { from: range[0], end: range[1] + 1 };
-      const out = outOr(range ? `out/wip/frames-${range[0]}-${range[1]}.mp4` : 'out/wip/joined.mp4');
-      const written = await renderRemotely(project, {
-        out, ...(frames && { frames }),
-        ...(args.lens !== undefined && { lens: lensModeChecked(args.lens) }), ...(workers !== undefined && { workers }),
-      });
-      for (const file of written) console.log(file);
-      return;
-    }
-    const pipeline = await import('#lib/output/render/engine/render-pipeline.ts');
-    const slices = await import('#lib/output/render/engine/render-slices.ts');
-    const openSession = () => openStudioRenderSession(project, { workers: args.workers, lens: args.lens });
-    if (range) {
-      const [from, last] = range, out = outOr(`out/wip/frames-${from}-${last}.mp4`);
-      for (const file of await slices.renderVideoSlice(await openSession(), { from, end: last + 1, out })) console.log(file);
-    } else if (args.animatic) {
-      const out = outOr('out/wip/animatic.mp4');
-      console.log(await pipeline.renderAnimatic(await openSession(), { out }));
-    } else if (args.join) {
-      const out = outOr('out/wip/joined.mp4');
-      const session = await openSession();
-      const mixFor = (timeline: Parameters<typeof pipeline.renderMasteredMix>[1]['timeline']) => pipeline.renderMasteredMix(session, { timeline });
-      console.log(await slices.joinVideoSlices(session, { dir: resolve(project, args.join), out, mixFor }));
-    } else {
-      for (const file of await pipeline.renderDeliveredVideo(await openSession(), { plain: Boolean(args.plain), onDraft: (warning) => console.error(warning) })) console.log(file);
-    }
+    const { openRenderLedger } = await import('#lib/output/render/engine/render-ledger.ts');
+    const { withRenderHistory } = await import('#lib/output/render/engine/render-history.ts');
+    await withRenderHistory(process.argv.slice(2), async (keep) => {
+      const project = resolveStudioProjectWith(args.project, 'video.tsx');
+      // Each out is checked before its session opens: a render queues for the GPU and draws for minutes before it writes.
+      const outOr = (fallback: string) => checkedCommandOutFlag(args.out ?? fallback, { base: project, writes: ['.mp4'], madeIn: join(project, 'out') });
+      if (args.remote) {
+        const { renderRemotely } = await import('#lib/output/remote-render/engine/remote-render.ts');
+        const { lensModeChecked } = await import('#lib/picture/lens/models/lens-mode.ts');
+        // Checked here, as a local render's session checks them, so a typo fails before anything uploads.
+        const workers = args.workers === undefined ? undefined : Number(args.workers);
+        if (workers !== undefined && !(Number.isInteger(workers) && workers > 0)) throw new Error(`--workers is ${args.workers}: give a whole number above 0`);
+        const frames = range && { from: range[0], end: range[1] + 1 };
+        const out = outOr(range ? `out/wip/frames-${range[0]}-${range[1]}.mp4` : 'out/wip/joined.mp4');
+        const written = await renderRemotely(keep(await openRenderLedger(project)), {
+          out, ...(frames && { frames }),
+          ...(args.lens !== undefined && { lens: lensModeChecked(args.lens) }), ...(workers !== undefined && { workers }),
+        });
+        for (const file of written) console.log(file);
+        return;
+      }
+      const pipeline = await import('#lib/output/render/engine/render-pipeline.ts');
+      const slices = await import('#lib/output/render/engine/render-slices.ts');
+      const openSession = async () => openStudioRenderSession(project, { workers: args.workers, lens: args.lens, ledger: keep(await openRenderLedger(project)) });
+      if (range) {
+        const [from, last] = range, out = outOr(`out/wip/frames-${from}-${last}.mp4`);
+        for (const file of await slices.renderVideoSlice(await openSession(), { from, end: last + 1, out })) console.log(file);
+      } else if (args.animatic) {
+        const out = outOr('out/wip/animatic.mp4');
+        console.log(await pipeline.renderAnimatic(await openSession(), { out }));
+      } else if (args.join) {
+        const out = outOr('out/wip/joined.mp4');
+        const session = await openSession();
+        const mixFor = (timeline: Parameters<typeof pipeline.renderMasteredMix>[1]['timeline']) => pipeline.renderMasteredMix(session, { timeline });
+        console.log(await slices.joinVideoSlices(session, { dir: resolve(project, args.join), out, mixFor }));
+      } else {
+        for (const file of await pipeline.renderDeliveredVideo(await openSession(), { plain: Boolean(args.plain), onDraft: (warning) => console.error(warning) })) console.log(file);
+      }
+    });
   },
 });

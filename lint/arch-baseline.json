@@ -608,7 +608,6 @@
       "console.error(`${video}: ${actual.toFixed(2)}s, ${sound} ✓  sheet → ${out}`);": 1,
       "for (const line of lines) console.error(line);": 1,
       "console.error(`  sheet → ${out}`);": 1,
-      "for (const line of formatRenderPasses(session)) console.error(line);": 2,
       "for (const line of check.report) console.error(line);": 1,
       "console.error('silent (project.ts): no voice, music or sound, so no mix, mastering or loudness review; the video has no audio track');": 1,
       "if (renderVoiceOf(session.project) === 'draft') console.error(draftVoiceWarning(session));": 1

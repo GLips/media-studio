@@ -6,7 +6,7 @@ import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { lookFramesOf } from '#lib/output/look/models/look-frames.ts';
 import { renderProgress } from '#lib/output/render/engine/render-pipeline.ts';
-import { formatRenderPasses, type RenderSession } from '#lib/output/render/engine/render-session.ts';
+import { formatRenderSpans, type RenderSession } from '#lib/output/render/engine/render-session.ts';
 import { refuseSliceOutside } from '#lib/output/render/engine/render-slices.ts';
 import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
@@ -61,5 +61,5 @@ export async function runRemoteRenderJob(job: RemoteRenderJob, { out, openSessio
     : await openSession(project, { ...(job.lens !== undefined && { lens: job.lens }), ...(job.set !== undefined && { paintings: job.set }) });
   if (job.kind === 'pieces') await renderRemotePieces(job, session, out);
   else await renderRemoteLook(job, session, out);
-  for (const line of formatRenderPasses(session)) process.stderr.write(`${line}\n`);
+  for (const line of formatRenderSpans(session)) process.stderr.write(`${line}\n`);
 }

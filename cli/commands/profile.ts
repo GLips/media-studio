@@ -5,7 +5,7 @@ import { openStudioRenderSession, renderLensArg, renderWorkersArg, studioProject
 export default defineCommand({
   meta: {
     name: 'profile',
-    description: "Renders a span of frames three times and says where each frame's time goes: the drawing code that offers its work to be timed (a stamp painting's draw, waited for on the GPU, and its load), in one tab with no screenshot; then each frame's whole render as JPEGs, steady state, in one tab and in the render's tabs, where the span holds a frame past each tab's first. One frame (--frames 120:120) gives its drawing's cold cost. Prints the GPU backends it ran on (WebGL's renderer and WebGPU's adapter). With --costs, also what the drawing counted each frame cost (a painted shot's evaluations, solves, cache hits and misses, readbacks, bytes).",
+    description: "Renders a span of frames three times and says where each frame's time goes: the drawing code that offers its work to be timed (a stamp painting's draw, waited for on the GPU, and its load), in one tab with no screenshot; then each frame's whole render, steady state, captured to PNG as delivery captures it and again uncaptured, in one tab and in the render's tabs, where the span holds a frame past each tab's first. One frame (--frames 120:120) gives its drawing's cold cost. Prints the GPU backends it ran on (WebGL's renderer and WebGPU's adapter). With --costs, also what the drawing counted each frame cost (a painted shot's evaluations, solves, cache hits and misses, readbacks, bytes).",
   },
   args: {
     project: studioProjectArg,
