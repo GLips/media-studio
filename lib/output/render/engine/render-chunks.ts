@@ -13,10 +13,11 @@ import { TRACE_WINDOW_KIND } from '#lib/platform/trace/models/trace-model.ts';
 import { recordRenderGpuWait, RENDER_SPAN_KINDS } from './render-ledger.ts';
 
 /**
- * Frames a chunk draws. A fresh browser's page starts cold, solving its paint again (lake dawn-to-dusk: ~28 s), so a
- * chunk is long; short enough that a page's growth over many distinct frames never reaches a crash.
+ * Frames a chunk draws. A fresh browser's page starts cold, compiling and solving its paint again (lake dawn-to-dusk:
+ * ~10 s), so a chunk is long. A page's memory is held to its caches' budgets (the lake's renderer stays 1.3-1.8 GiB
+ * over 420 frames), so the bound is what a crash costs: the piece is drawn again, in halves.
  */
-export const RENDER_CHUNK_FRAMES = 300;
+export const RENDER_CHUNK_FRAMES = 900;
 
 /** A wait on the last chunk's packing shorter than this is a promise settling, not a queue, and isn't recorded. */
 const PACKING_WAIT_RECORDED_MS = 50;
