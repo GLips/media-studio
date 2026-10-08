@@ -77,6 +77,13 @@ const DEFAULT_RENDER_WORKERS = Math.min(3, Math.max(1, RENDER_CORES - 1));
 export const PAINTING_RENDER_WORKERS = 1;
 
 /**
+ * Browsers a render draws its frames in at once, a lane of chunks each (render-chunks.ts): a browser captures its tabs'
+ * frames one at a time, so its tabs share one capture, and a second browser captures beside it. Lake dawn-to-dusk
+ * 81→68 s, the turntable 51→38 s, the motion showcase 137→100 s; a third gained 2-4 s more.
+ */
+const RENDER_BROWSERS = 2;
+
+/**
  * The niceness a render runs at, which its browsers and ffmpeg inherit: the machine's own apps come first, and a
  * render on an otherwise idle machine loses nothing.
  */
@@ -224,10 +231,10 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
         used = Math.max(used, concurrency);
         return { dir, heard };
       }, {
-        ...(take && { take: (piece, { dir }) => take(piece, dir) }), describeFrame: (frame) => describeRenderFrame(frame, timeline), spans: { trace, parent: span },
+        ...(take && { take: (piece, { dir }) => take(piece, dir) }), browsers: RENDER_BROWSERS, describeFrame: (frame) => describeRenderFrame(frame, timeline), spans: { trace, parent: span },
       });
       span.end({ workers: { value: used, unit: 'tabs' }, gpu, frames: { value: frames.length, unit: 'frames' } });
-      return { gpu, heard: drawn.some(({ heard }) => heard) };
+      return { gpu, heard: drawn.some(({ result }) => result.heard) };
     });
   }
 
@@ -241,7 +248,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
     inputProps: VideoProps; dir: string; timeline: TimelineReport; lossless: boolean; alpha?: boolean; encoding?: VideoEncoding;
     onProgress?: (p: { progress: number }) => void; onArtifact?: OnArtifact;
   }): Promise<{ lossless: string | null; encoded: string | null; gpu: string; heard: boolean }> {
-    const frames = Array.from({ length: end - from }, (_, i) => from + i), seen = new Set<number>(), kept: string[] = [], encoded: string[] = [];
+    const frames = Array.from({ length: end - from }, (_, i) => from + i), seen = new Set<number>();
     mkdirSync(dir, { recursive: true });
     const input = ['-y', '-v', 'error', '-f', 'image2pipe', '-c:v', 'png', '-framerate', String(timeline.fps), '-i', '-'];
     return trace.run(pass, async (span) => {
@@ -278,12 +285,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
           throw error;
         }
       }, {
-        take: async (_piece, { files, finish }) => {
-          await finish();
-          if (files.kept) kept.push(files.kept);
-          if (files.encoded) encoded.push(files.encoded);
-        },
-        describeFrame: (frame) => describeRenderFrame(frame, timeline), spans: { trace, parent: span },
+        take: (_piece, { finish }) => finish(), browsers: RENDER_BROWSERS, describeFrame: (frame) => describeRenderFrame(frame, timeline), spans: { trace, parent: span },
       });
       span.end({ workers: { value: used, unit: 'tabs' }, gpu, frames: { value: frames.length, unit: 'frames' } });
       const listOf = (files: readonly string[], name: string) => {
@@ -291,7 +293,8 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
         writeFileSync(list, concatList(files));
         return list;
       };
-      return { lossless: lossless ? listOf(kept, 'kept.txt') : null, encoded: encoding ? listOf(encoded, 'encoded.txt') : null, gpu, heard: drawn.some(({ heard }) => heard) };
+      const filesOf = (which: 'kept' | 'encoded') => drawn.flatMap(({ result: { files } }) => (files[which] ? [files[which]] : []));
+      return { lossless: lossless ? listOf(filesOf('kept'), 'kept.txt') : null, encoded: encoding ? listOf(filesOf('encoded'), 'encoded.txt') : null, gpu, heard: drawn.some(({ result }) => result.heard) };
     });
   }
 

@@ -36,8 +36,8 @@ export async function openRenderLedger(project: string, trace: TraceCollector = 
 }
 
 /** Records `waited` seconds for the GPU lease in `trace`, from `start`, under `parent`, when it queued. */
-export function recordRenderGpuWait(trace: TraceCollector, waited: number, { start, parent }: { start: number; parent: TraceSpanHandle | null }): void {
-  if (waited >= GPU_WAIT_RECORDED_SECONDS) trace.record('waiting for the GPU', { start, end: start + waited, parent, kind: RENDER_SPAN_KINDS.gpuWait });
+export function recordRenderGpuWait(trace: TraceCollector, waited: number, { start, parent, track }: { start: number; parent: TraceSpanHandle | null; track?: string }): void {
+  if (waited >= GPU_WAIT_RECORDED_SECONDS) trace.record('waiting for the GPU', { start, end: start + waited, parent, ...(track && { track }), kind: RENDER_SPAN_KINDS.gpuWait });
 }
 
 /** Seconds the command waited for the GPU lease, over all its spans. */

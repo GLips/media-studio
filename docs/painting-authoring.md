@@ -681,7 +681,7 @@ A capped film (`opacityCap`, or a flood's `load`) is thin paint over whatever li
   its GPU has answered nothing for 90 s, naming the solve it was stuck in, and otherwise only past a two-hour backstop
   no real warm reaches. It prints a line for each warm solve and each slow solve of a frame. A painting project renders
   in one tab, so the warm runs once a chunk of frames (each chunk is a fresh browser); more `--workers` each warm
-  again. A chunk whose page stalls or crashes (its heap filled by several cold solves, say) is drawn again in halves,
+  again. Two browsers draw at once, each a run of the frames, so the second warms at its run's first frame. A chunk whose page stalls or crashes (its heap filled by several cold solves, say) is drawn again in halves,
   each in a fresh browser with a warm of its own, down to a lone frame, which fails the render, named with its scene,
   if it fails again. A plane warms only at the frames it shows at, as a frame solves it (below): the rest count as hidden planes
   skipped.

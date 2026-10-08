@@ -51,7 +51,7 @@ const outcomes = await withFixtureStudioProject('render-chunks', join(import.met
     answer = says;
     // Long enough for a browser to open and load its page while other tests render beside it.
     return renderInChunks(frames, draw, { chunkFrames, stallMs: 15_000, describeFrame: async (frame) => timelineFrameText(timeline, frame) })
-      .then(({ drawn }) => ({ drawn, asks }), (error: Error) => ({ error, asks }));
+      .then(({ drawn }) => ({ drawn: drawn.map(({ result }) => result), asks }), (error: Error) => ({ error, asks }));
   };
   return {
     crashedOnce: await chunked([0, 1, 2, 3], 4, (ask) => (ask === 1 ? 'crash' : 'draw')),

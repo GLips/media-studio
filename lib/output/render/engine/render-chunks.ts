@@ -1,9 +1,9 @@
 // render-chunks.ts: a render's frames drawn chunk by chunk, each chunk in a watched browser of its own
-// (render-watch.ts), so whatever a page holds or leaks lives only as long as one chunk, and a crash costs one chunk. A
-// piece of frames that fails as its browser did (stuck, crashed, its GPU lost: render-browser-failure.ts) is drawn
-// again in halves, each in a fresh browser, down to a lone frame. A crash that grows with what a page has drawn (its
-// heap filled by several cold solves) passes in a smaller piece; one that doesn't narrows to its frame, which then
-// fails the render by name. Node only.
+// (render-watch.ts), so whatever a page holds lives only as long as one chunk, and a crash costs one chunk. Lanes of
+// chunks draw at once: a browser captures its frames one at a time. A piece that fails as its browser did (stuck,
+// crashed, its GPU lost: render-browser-failure.ts) is drawn again in halves, each in a fresh browser, down to a lone
+// frame. A crash that grows with what a page has drawn passes in a smaller piece; one that doesn't narrows to its
+// frame, which then fails the render by name. Node only.
 
 import type { HeadlessBrowser } from '@remotion/renderer';
 import { isRenderBrowserFailure, renderBrowserFailureCause } from '#lib/platform/browser/models/render-browser-failure.ts';
@@ -18,6 +18,12 @@ import { recordRenderGpuWait, RENDER_SPAN_KINDS } from './render-ledger.ts';
  * over 420 frames), so the bound is what a crash costs: the piece is drawn again, in halves.
  */
 export const RENDER_CHUNK_FRAMES = 900;
+
+/**
+ * The fewest frames a lane of browsers drawing at once is given: its cold start (the lake's, ~10-20 s) costs more
+ * than a shorter share of the frames saves.
+ */
+const RENDER_LANE_MIN_FRAMES = 100;
 
 /** A wait on the last chunk's packing shorter than this is a promise settling, not a queue, and isn't recorded. */
 const PACKING_WAIT_RECORDED_MS = 50;
@@ -48,15 +54,15 @@ const inTurn = (pieces: readonly (readonly number[])[], run: (piece: readonly nu
  * its startup (the browser opening through its first frame, at `arrivals[0]`) and its steady drawing (first frame to
  * last).
  */
-function recordChunkPhases(trace: TraceCollector, chunk: TraceSpanHandle, { start, waited, arrivals }: { start: number; waited: number; arrivals: readonly number[] }): void {
-  recordRenderGpuWait(trace, waited, { start, parent: chunk });
+function recordChunkPhases(trace: TraceCollector, chunk: TraceSpanHandle, { start, waited, arrivals, track }: { start: number; waited: number; arrivals: readonly number[]; track: string }): void {
+  recordRenderGpuWait(trace, waited, { start, parent: chunk, track });
   const [first, last] = [arrivals[0], arrivals.at(-1)];
   if (first === undefined || last === undefined) return;
-  trace.record('startup', { start: start + waited, end: first, parent: chunk, kind: TRACE_WINDOW_KIND });
+  trace.record('startup', { start: start + waited, end: first, parent: chunk, track, kind: TRACE_WINDOW_KIND });
   if (arrivals.length > 1) {
     const frames = arrivals.length - 1;
     trace.record('drawing', {
-      start: first, end: last, parent: chunk, kind: TRACE_WINDOW_KIND,
+      start: first, end: last, parent: chunk, track, kind: TRACE_WINDOW_KIND,
       attributes: { frames: { value: frames, unit: 'frames' }, msPerFrame: { value: ((last - first) * 1000) / frames, unit: 'ms/frame' } },
     });
   }
@@ -69,67 +75,85 @@ function recordChunkPhases(trace: TraceCollector, chunk: TraceSpanHandle, { star
 export type RenderChunkSpans = { readonly trace: TraceCollector; readonly parent: TraceSpanHandle };
 
 /**
- * Draws `frames` in chunks of `chunkFrames`, each piece in a watched browser of its own given to `draw`, and again as
- * renderPieceRetries says when its browser failed; a lone frame failing again is named by `describeFrame`. Hands each
- * piece to `take` as the next draws, recording chunks, packing and waits on it in `spans`. Returns the GPU and results.
+ * `frames` split into at most `browsers` lanes, each of at least RENDER_LANE_MIN_FRAMES (all in one when fewer), in
+ * order: a lane is a run of frames, so its page solves each painting forward from one cold start.
  */
-export async function renderInChunks<T>(frames: readonly number[], draw: RenderChunkDraw<T>, { take, chunkFrames = RENDER_CHUNK_FRAMES, stallMs, describeFrame = async (frame) => `frame ${frame}`, spans }: {
-  take?: (frames: readonly number[], drawn: T) => Promise<void>; chunkFrames?: number; stallMs?: number; describeFrame?: (frame: number) => Promise<string>; spans?: RenderChunkSpans;
-} = {}): Promise<{ gpu: string; drawn: T[] }> {
-  const drawn: T[] = [];
-  let gpu: string | null = null, taking = Promise.resolve();
-  /** Records a wait on the last chunk's packing, begun at `waiting` (performance.now()), when it queued. */
-  const recordPackingWait = (waiting: number) => {
-    if (spans && performance.now() - waiting >= PACKING_WAIT_RECORDED_MS) spans.trace.record('waiting on packing', { start: traceClock(waiting), end: traceClock(), parent: spans.parent });
-  };
-  /** Draws `piece`, its frames having failed once already when `again`. */
-  const drawPiece = async (piece: readonly number[], again: boolean): Promise<void> => {
-    // Begun before `start` is read, so the startup measured from it lies inside the chunk.
-    const chunk = spans?.trace.begin(framesText(piece), { parent: spans.parent, kind: RENDER_SPAN_KINDS.chunk });
-    const start = traceClock(), arrivals: number[] = [];
-    const done = await inWatchedRenderBrowser((browser, watch) => draw(browser, piece, {
-      ...watch,
-      frameDrawn: (frame) => {
-        arrivals.push(traceClock());
-        watch.frameDrawn(frame);
-      },
-    }), {
-      pass: framesText(piece), frames: piece, ...(stallMs !== undefined && { stallMs }),
-      ...(spans && chunk && { trace: { trace: spans.trace, parent: chunk.id, name: framesText(piece) } }),
-    }).catch((error: Error) => error);
-    if (spans && chunk) {
-      recordChunkPhases(spans.trace, chunk, { start, waited: done instanceof Error ? 0 : done.waited, arrivals });
-      const attributes = { frames: { value: piece.length, unit: 'frames' } };
-      if (done instanceof Error) chunk.fail(done, attributes);
-      else chunk.end({ ...attributes, gpu: done.gpu });
-    }
-    if (done instanceof Error) {
-      if (!isRenderBrowserFailure(done.message)) throw done;
-      if (again && piece.length === 1) throw new Error(`${await describeFrame(piece[0])} failed again, drawn alone in a fresh browser: ${renderBrowserFailureCause(done.message)}`);
-      const retries = renderPieceRetries(piece);
-      const how = retries.length === 1 ? 'alone in a fresh browser' : `in halves, ${retries.map(framesText).join(' and ')}, each in a fresh browser`;
-      process.stderr.write(`  ${framesText(piece)}: ${done.message}\n  drawing ${framesText(piece)} again ${how}\n`);
-      return inTurn(retries, (retry) => drawPiece(retry, true));
-    }
-    if (gpu !== null && done.gpu !== gpu) throw new Error(`${framesText(piece)} drew on ${done.gpu}, and the frames before on ${gpu}: a GPU rounds a frame its own way`);
-    gpu = done.gpu;
-    drawn.push(done.result);
-    const waiting = performance.now();
+function renderLanesOf(frames: readonly number[], browsers: number): (readonly number[])[] {
+  const lanes = Math.max(1, Math.min(browsers, Math.floor(frames.length / RENDER_LANE_MIN_FRAMES)));
+  return renderChunksOf(frames, Math.ceil(frames.length / lanes));
+}
+
+/**
+ * Draws `frames` in `browsers` lanes at once (renderLanesOf), each in chunks of `chunkFrames` in turn, each piece in a
+ * watched browser given to `draw`, and again as renderPieceRetries says when its browser failed. Hands each piece to
+ * `take` as its lane's next draws, recording spans a lane to a track. Returns the GPU, and each piece's result in
+ * frame order.
+ */
+export async function renderInChunks<T>(frames: readonly number[], draw: RenderChunkDraw<T>, { take, chunkFrames = RENDER_CHUNK_FRAMES, browsers = 1, stallMs, describeFrame = async (frame) => `frame ${frame}`, spans }: {
+  take?: (frames: readonly number[], drawn: T) => Promise<void>; chunkFrames?: number; browsers?: number; stallMs?: number; describeFrame?: (frame: number) => Promise<string>; spans?: RenderChunkSpans;
+} = {}): Promise<{ gpu: string; drawn: { frames: readonly number[]; result: T }[] }> {
+  const drawn: { frames: readonly number[]; result: T }[] = [];
+  let gpu: string | null = null;
+  const lanes = renderLanesOf(frames, browsers);
+  const takings = await Promise.all(lanes.map(async (lane, index) => {
+    const [track, packingTrack] = lanes.length === 1 ? ['main', 'packing'] : [`browser ${index + 1}`, `browser ${index + 1} packing`];
+    let taking = Promise.resolve();
+    /** Records a wait on the lane's last chunk's packing, begun at `waiting` (performance.now()), when it queued. */
+    const recordPackingWait = (waiting: number) => {
+      if (spans && performance.now() - waiting >= PACKING_WAIT_RECORDED_MS) spans.trace.record('waiting on packing', { start: traceClock(waiting), end: traceClock(), parent: spans.parent, track });
+    };
+    /** Draws `piece`, its frames having failed once already when `again`. */
+    const drawPiece = async (piece: readonly number[], again: boolean): Promise<void> => {
+      // Begun before `start` is read, so the startup measured from it lies inside the chunk.
+      const chunk = spans?.trace.begin(framesText(piece), { parent: spans.parent, track, kind: RENDER_SPAN_KINDS.chunk });
+      const start = traceClock(), arrivals: number[] = [];
+      const done = await inWatchedRenderBrowser((browser, watch) => draw(browser, piece, {
+        ...watch,
+        frameDrawn: (frame) => {
+          arrivals.push(traceClock());
+          watch.frameDrawn(frame);
+        },
+      }), {
+        pass: framesText(piece), frames: piece, ...(stallMs !== undefined && { stallMs }),
+        ...(spans && chunk && { trace: { trace: spans.trace, parent: chunk.id, name: framesText(piece) } }),
+      }).catch((error: Error) => error);
+      if (spans && chunk) {
+        recordChunkPhases(spans.trace, chunk, { start, waited: done instanceof Error ? 0 : done.waited, arrivals, track });
+        const attributes = { frames: { value: piece.length, unit: 'frames' } };
+        if (done instanceof Error) chunk.fail(done, attributes);
+        else chunk.end({ ...attributes, gpu: done.gpu });
+      }
+      if (done instanceof Error) {
+        if (!isRenderBrowserFailure(done.message)) throw done;
+        if (again && piece.length === 1) throw new Error(`${await describeFrame(piece[0])} failed again, drawn alone in a fresh browser: ${renderBrowserFailureCause(done.message)}`);
+        const retries = renderPieceRetries(piece);
+        const how = retries.length === 1 ? 'alone in a fresh browser' : `in halves, ${retries.map(framesText).join(' and ')}, each in a fresh browser`;
+        process.stderr.write(`  ${framesText(piece)}: ${done.message}\n  drawing ${framesText(piece)} again ${how}\n`);
+        return inTurn(retries, (retry) => drawPiece(retry, true));
+      }
+      if (gpu !== null && done.gpu !== gpu) throw new Error(`${framesText(piece)} drew on ${done.gpu}, and the frames before on ${gpu}: a GPU rounds a frame its own way`);
+      gpu = done.gpu;
+      drawn.push({ frames: piece, result: done.result });
+      const waiting = performance.now();
+      await taking;
+      recordPackingWait(waiting);
+      const pack = () => take?.(piece, done.result);
+      if (spans && chunk) {
+        taking = spans.trace.run(`packing ${framesText(piece)}`, async (packing) => {
+          spans.trace.flow(chunk, packing);
+          await pack();
+        }, { parent: spans.parent, track: packingTrack, kind: RENDER_SPAN_KINDS.packing });
+      } else taking = pack() ?? Promise.resolve();
+      // Awaited after the lane's next piece draws; caught now, so a failure meanwhile isn't an unhandled rejection.
+      taking.catch(() => {});
+    };
+    await inTurn(renderChunksOf(lane, chunkFrames), (chunk) => drawPiece(chunk, false));
+    return { taking, recordPackingWait };
+  }));
+  const waiting = performance.now();
+  await Promise.all(takings.map(async ({ taking, recordPackingWait }) => {
     await taking;
     recordPackingWait(waiting);
-    const pack = () => take?.(piece, done.result);
-    if (spans && chunk) {
-      taking = spans.trace.run(`packing ${framesText(piece)}`, async (packing) => {
-        spans.trace.flow(chunk, packing);
-        await pack();
-      }, { parent: spans.parent, track: 'packing', kind: RENDER_SPAN_KINDS.packing });
-    } else taking = pack() ?? Promise.resolve();
-    // Awaited after the next piece draws; caught now, so a failure meanwhile isn't an unhandled rejection.
-    taking.catch(() => {});
-  };
-  await inTurn(renderChunksOf(frames, chunkFrames), (chunk) => drawPiece(chunk, false));
-  const waiting = performance.now();
-  await taking;
-  recordPackingWait(waiting);
-  return { gpu: gpu!, drawn };
+  }));
+  return { gpu: gpu!, drawn: drawn.toSorted((a, b) => a.frames[0] - b.frames[0]) };
 }
