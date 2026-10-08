@@ -50,9 +50,9 @@ first). A chunked pass (`video.mp4 frames`) has a span per attempt at a chunk, a
 
 Beside the chunks, under the pass:
 
-- `packing frames a–b`: a chunk's frames encoded to H.264 (a video's), and kept as FFV1 when the render keeps them
-  lossless, while the next chunk draws, on a `packing` track of its own, with a flow from the chunk that drew them; the
-  video's pieces are joined as they are after the last
+- `packing frames a–b`: a chunk's encodes (H.264 for a video, and FFV1 when the render keeps it lossless) finishing
+  after its last frame, while the next chunk draws, on a `packing` track of its own, with a flow from the chunk that
+  drew them. Frames stream into the encodes as they draw; the video's pieces are joined as they are after the last
 - `waiting on packing`: the next chunk waiting for that packing to finish, recorded only when it waits
 
 The table a render prints at its end sums a pass's chunks into one line.
