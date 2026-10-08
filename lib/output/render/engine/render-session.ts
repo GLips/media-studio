@@ -94,11 +94,16 @@ function framesInDir(dir: string): (frame: number) => string {
 /** A concat list of `files`, for ffmpeg's concat demuxer. */
 export const concatList = (files: readonly string[]) => files.map((file) => `file '${file.replaceAll("'", "'\\''")}'`).join('\n');
 
+/** ffmpeg's arguments encoding a picture to H.264 as `encoding` says. */
+const h264Args = (encoding: VideoEncoding) => ['-c:v', 'libx264', '-crf', String(encoding.crf), '-preset', encoding.preset, '-pix_fmt', 'yuv420p'];
+
 /** The lossless frames concat list `list` names, encoded as `encoding` says to H.264 at `out`, silent. */
 export function encodeLosslessList(list: string, out: string, encoding: VideoEncoding): Promise<void> {
-  return runFfmpegAsync(['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c:v', 'libx264', '-crf', String(encoding.crf), '-preset', encoding.preset,
-    '-pix_fmt', 'yuv420p', '-movflags', '+faststart', out]);
+  return runFfmpegAsync(['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, ...h264Args(encoding), '-movflags', '+faststart', out]);
 }
+
+/** The H.264 pieces concat list `list` names, joined as they are into one file at `out`. */
+const joinEncodedList = (list: string, out: string) => runFfmpegAsync(['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', '-movflags', '+faststart', out]);
 
 /**
  * `picture`, `frames` long at `fps`, at `out` with `soundtrack` under it, encoded for delivery. The sound is padded past
@@ -226,14 +231,15 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   }
 
   /**
-   * Frames `from`–`end` (exclusive) of `timeline` drawn chunk by chunk into `dir`, each piece kept as a lossless FFV1
-   * file (with its alpha when `alpha`) as the next draws. Returns a concat list of them in order, the GPU, and whether
-   * any frame played sound.
+   * Frames `from`–`end` (exclusive) of `timeline` drawn chunk by chunk into `dir`, each piece packed as the next draws:
+   * as FFV1 (with alpha when `alpha`) when `lossless`, and as H.264 given an `encoding`, so the encode runs beside the
+   * drawing. Returns each packing's concat list (null when not asked for), the GPU, and whether a frame played sound.
    */
-  async function drawLossless(pass: string, { from, end }: RenderSnapshot['frames'], { inputProps, dir, timeline, alpha = false, onProgress, onArtifact }: {
-    inputProps: VideoProps; dir: string; timeline: TimelineReport; alpha?: boolean; onProgress?: (p: { progress: number }) => void; onArtifact?: OnArtifact;
-  }): Promise<{ list: string; gpu: string; heard: boolean }> {
-    const frames = Array.from({ length: end - from }, (_, i) => from + i), seen = new Set<number>(), files: string[] = [];
+  async function drawPacked(pass: string, { from, end }: RenderSnapshot['frames'], { inputProps, dir, timeline, lossless, alpha = false, encoding, onProgress, onArtifact }: {
+    inputProps: VideoProps; dir: string; timeline: TimelineReport; lossless: boolean; alpha?: boolean; encoding?: VideoEncoding;
+    onProgress?: (p: { progress: number }) => void; onArtifact?: OnArtifact;
+  }): Promise<{ lossless: string | null; encoded: string | null; gpu: string; heard: boolean }> {
+    const frames = Array.from({ length: end - from }, (_, i) => from + i), seen = new Set<number>(), kept: string[] = [], encoded: string[] = [];
     const drawn = await drawChunks(pass, frames, {
       inputProps, image: { imageFormat: 'png' }, ...(onArtifact && { onArtifact }), onFrame: (frame) => onProgress?.({ progress: seen.add(frame).size / frames.length }),
     }, {
@@ -246,17 +252,24 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
         return images;
       },
       take: async (piece, images) => {
-        const file = join(dir, `chunk-${piece[0]}.mkv`);
         // Remotion pads the frame numbers, so the glob's order is the video's.
-        await runFfmpegAsync(['-y', '-v', 'error', '-framerate', String(timeline.fps), '-pattern_type', 'glob', '-i', join(images, 'f-*.png'),
-          '-c:v', 'ffv1', '-level', '3', '-slices', '16', '-pix_fmt', alpha ? 'bgra' : 'bgr0', file]);
+        const input = ['-y', '-v', 'error', '-framerate', String(timeline.fps), '-pattern_type', 'glob', '-i', join(images, 'f-*.png')];
+        const keptFile = join(dir, `chunk-${piece[0]}.mkv`), encodedFile = join(dir, `chunk-${piece[0]}.mp4`);
+        await Promise.all([
+          lossless && runFfmpegAsync([...input, '-c:v', 'ffv1', '-level', '3', '-slices', '16', '-pix_fmt', alpha ? 'bgra' : 'bgr0', keptFile]),
+          encoding && runFfmpegAsync([...input, ...h264Args(encoding), encodedFile]),
+        ]);
         rmSync(images, { recursive: true });
-        files.push(file);
+        if (lossless) kept.push(keptFile);
+        if (encoding) encoded.push(encodedFile);
       },
     });
-    const list = join(dir, 'chunks.txt');
-    writeFileSync(list, concatList(files));
-    return { list, ...drawn };
+    const listOf = (files: readonly string[], name: string) => {
+      const list = join(dir, name);
+      writeFileSync(list, concatList(files));
+      return list;
+    };
+    return { lossless: lossless ? listOf(kept, 'kept.txt') : null, encoded: encoding ? listOf(encoded, 'encoded.txt') : null, ...drawn };
   }
 
   /**
@@ -324,9 +337,12 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
     const name = basename(out), count = span.end - span.from;
     mkdirSync(dirname(out), { recursive: true });
     return withStudioTemp('video', async (tmp) => {
-      const drawn = await drawLossless(`${name} frames`, span, { inputProps, dir: tmp, timeline, ...(onProgress && { onProgress }), ...(onArtifact && { onArtifact }) });
+      const drawn = await drawPacked(`${name} frames`, span, {
+        inputProps, dir: tmp, timeline, lossless: lossless !== undefined, encoding, ...(onProgress && { onProgress }), ...(onArtifact && { onArtifact }),
+      });
       const picture = join(tmp, name);
-      await trace.run(`${name} encode`, () => encodeLosslessList(drawn.list, picture, encoding));
+      // SAFETY: drawPacked lists what it encoded when given an encoding, as here.
+      await trace.run(`${name} join`, () => joinEncodedList(drawn.encoded!, picture));
       const encoded = countVideoFrames(picture);
       if (encoded !== count) throw new Error(`${name} encoded ${encoded} frames of the ${count} drawn`);
       const wav = sound === 'apart' || (sound === 'own' && drawn.heard) ? await renderAudio({ out: join(tmp, 'sound.wav'), inputProps, frames: span }) : undefined;
@@ -336,7 +352,8 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
       else copyFileSync(picture, out);
       const made = { frames: span, timeline, clock, voice: renderVoiceOf(project), gpu: drawn.gpu };
       writeRenderSnapshot(out, { ...made, ...(motion && { motion }) });
-      if (lossless) await keepLossless(drawn.list, lossless, made);
+      // SAFETY: drawPacked kept the frames lossless when asked to, as with `lossless`.
+      if (lossless) await keepLossless(drawn.lossless!, lossless, made);
       return out;
     });
   }
@@ -350,8 +367,9 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   }): Promise<string> {
     mkdirSync(dirname(out), { recursive: true });
     return withStudioTemp('lossless', async (tmp) => {
-      const drawn = await drawLossless(`${basename(out)} frames`, frames, { inputProps: props(), dir: tmp, timeline, ...(onProgress && { onProgress }) });
-      await keepLossless(drawn.list, out, { frames, timeline, clock, voice: renderVoiceOf(project), gpu: drawn.gpu });
+      const drawn = await drawPacked(`${basename(out)} frames`, frames, { inputProps: props(), dir: tmp, timeline, lossless: true, ...(onProgress && { onProgress }) });
+      // SAFETY: drawn lossless, as asked just above.
+      await keepLossless(drawn.lossless!, out, { frames, timeline, clock, voice: renderVoiceOf(project), gpu: drawn.gpu });
       return out;
     });
   }
@@ -367,11 +385,12 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   }): Promise<string[]> {
     // A second of 1080p frames is a few hundred MB, so they go even when the render or an encode fails.
     await withStudioTemp('alpha', async (tmp) => {
-      const { list, gpu } = await drawLossless(`${basename(webm)} frames`, { from: 0, end: timeline.durationInFrames }, {
-        inputProps, dir: tmp, timeline, alpha: true, ...(onProgress && { onProgress }), ...(onArtifact && { onArtifact }),
+      const { lossless: list, gpu } = await drawPacked(`${basename(webm)} frames`, { from: 0, end: timeline.durationInFrames }, {
+        inputProps, dir: tmp, timeline, lossless: true, alpha: true, ...(onProgress && { onProgress }), ...(onArtifact && { onArtifact }),
       });
       const { motion } = (await approve?.()) ?? {};
-      const frames = ['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list];
+      // SAFETY: drawn lossless, as asked just above.
+      const frames = ['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list!];
       // Tagged on the frames, which is what the encoders read: -color_primaries and the like are overridden by them. An
       // untagged HEVC's colours shift in AVFoundation, Safari's decoder.
       const bt709 = 'setparams=color_primaries=bt709:color_trc=bt709';
