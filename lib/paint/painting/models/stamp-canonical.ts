@@ -157,6 +157,18 @@ export function registerStampCanonicalList(list: readonly StampCanonicalDatum[],
   if (!known) registered.set(list, { identity });
 }
 
+/**
+ * Registers `joined`, `parts` laid end to end and frozen as they are: by its parts' inputs when each is known by them,
+ * so a join made afresh at each compile is never read; else by its content, unnamed.
+ */
+export function registerStampCanonicalJoin(joined: readonly StampCanonicalDatum[], parts: readonly (readonly StampCanonicalDatum[])[]): void {
+  const inputs = parts.map((part) => {
+    const identity = registered.get(part)?.identity;
+    return identity && 'inputs' in identity ? identity.inputs : null;
+  });
+  registerStampCanonicalList(joined, inputs.every((each) => each !== null) ? { inputs: JSON.stringify(inputs) } : { content: null });
+}
+
 /** `list`'s digest: its inputs' when registered by them, else its canonical bytes hashed, remembered as registered. */
 function stampCanonicalListDigest(list: StampCanonicalList): string {
   // SAFETY: only a list is ever registered; a typed array finds nothing.

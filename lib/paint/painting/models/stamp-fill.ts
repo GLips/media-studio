@@ -12,7 +12,8 @@ import { stampFirmStroke, type StampBrush, type StampBrushMeasuredProfile } from
 import {
   stampBrushEdgeOffsetMean, stampBrushEdgeReach, stampBrushMeasuredProfile, stampBrushProfileRange, type StampBrushEdgeReach,
 } from '#lib/paint/brush/models/stamp-brush-profile.ts';
-import { placeStrokeStamps, stampFrozenMarks, type PlacedStamp, type StampStrokePoint } from '#lib/paint/brush/models/stamp-placement.ts';
+import { placeStrokeStamps, stampFrozenMarks, type FrozenStampMarks, type PlacedStamp, type StampStrokePoint } from '#lib/paint/brush/models/stamp-placement.ts';
+import { registerStampCanonicalJoin } from './stamp-canonical.ts';
 import { compileStampArea, stampLostEdge, stampRegionSeed, type CompiledStampArea } from './stamp-area.ts';
 import { planStampFloodRuns, type StampFloodReach, type StampFloodRuns } from './stamp-fill-plan.ts';
 import { stampRowFrame, stampRowSpans, type StampFillReach, type StampFillStrokes, type StampRowFrame } from './stamp-fill-strokes.ts';
@@ -162,9 +163,12 @@ function rowSegments({ top, bottom, painting }: StampRowFrame, step: number, spa
  */
 export function stampFillPartsJoined(parts: readonly CompiledStampDeposit[], area: CompiledStampArea): CompiledStampDeposit {
   const [first] = parts;
-  const joined = parts.length === 1 ? first : {
-    ...first, stamps: stampFrozenMarks(parts.flatMap(({ stamps }) => stamps)), dualStamps: stampFrozenMarks(parts.flatMap(({ dualStamps }) => dualStamps)),
+  const joinedMarks = (of: (part: CompiledStampDeposit) => FrozenStampMarks) => {
+    const marks = stampFrozenMarks(parts.flatMap(of));
+    registerStampCanonicalJoin(marks, parts.map(of));
+    return marks;
   };
+  const joined = parts.length === 1 ? first : { ...first, stamps: joinedMarks(({ stamps }) => stamps), dualStamps: joinedMarks(({ dualStamps }) => dualStamps) };
   if (first.kind !== 'flood') return joined;
   const flood: CompiledStampFlood = { ...first.flood, barrier: area, scale: stampGridUnion(parts.flatMap((part) => (part.kind === 'flood' ? [part.flood.scale] : []))) };
   return { ...joined, kind: 'flood', flood };

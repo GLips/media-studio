@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { registerStampCanonicalList, stampCanonicalDigest, stampCanonicalJson, type StampCanonicalDatum } from './stamp-canonical.ts';
+import { registerStampCanonicalJoin, registerStampCanonicalList, stampCanonicalDigest, stampCanonicalJson, type StampCanonicalDatum } from './stamp-canonical.ts';
 
 test('two values share a digest exactly when their canonical JSON is equal, whatever was digested before', () => {
   const long = 'x'.repeat(70_000), marks = Array.from({ length: 100 }, (_, i) => ({ x: i / 3, y: i, tint: { hue: 0 } }));
@@ -43,6 +43,20 @@ test("a registered list's digest is its inputs', or remembered by its name acros
   assert.equal(fromInputs('brush a'), fromInputs('brush a'));
   assert.notEqual(fromInputs('brush a'), fromInputs('brush b'));
   assert.notEqual(fromInputs('brush a'), stampCanonicalDigest({ marks: again }));
+
+  // Joined anew from parts placed from inputs: known by theirs, so two joins alike share a digest.
+  const joinOf = (inputs: readonly string[]) => {
+    const parts = inputs.map((each) => {
+      const part = Object.freeze(Array.from({ length: 40 }, (_, i) => frozenMark(i)));
+      registerStampCanonicalList(part, { inputs: each });
+      return part;
+    });
+    const joined = Object.freeze(parts.flat());
+    registerStampCanonicalJoin(joined, parts);
+    return stampCanonicalDigest({ marks: joined });
+  };
+  assert.equal(joinOf(['ring 1', 'ring 2']), joinOf(['ring 1', 'ring 2']));
+  assert.notEqual(joinOf(['ring 1', 'ring 2']), joinOf(['ring 2', 'ring 1']));
 
   // Frozen but unregistered, holding a record that changes: each digest reads it as it is.
   const tint = { hue: 0 }, held = Object.freeze(Array.from({ length: 100 }, (_, i) => ({ x: i, tint })));
