@@ -363,6 +363,10 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
     const name = basename(out), count = span.end - span.from;
     mkdirSync(dirname(out), { recursive: true });
     return withStudioTemp('video', async (tmp) => {
+      const soundOf = () => renderAudio({ out: join(tmp, 'sound.wav'), inputProps, frames: span });
+      // Sound apart from the picture is gathered as the frames draw; caught now, so a failure meanwhile isn't unhandled.
+      const apart = sound === 'apart' ? soundOf() : null;
+      apart?.catch(() => {});
       const drawn = await drawPacked(`${name} frames`, span, {
         inputProps, dir: tmp, timeline, lossless: lossless !== undefined, encoding, ...(onProgress && { onProgress }), ...(onArtifact && { onArtifact }),
       });
@@ -371,7 +375,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
       await trace.run(`${name} join`, () => joinEncodedList(drawn.encoded!, picture));
       const encoded = countVideoFrames(picture);
       if (encoded !== count) throw new Error(`${name} encoded ${encoded} frames of the ${count} drawn`);
-      const wav = sound === 'apart' || (sound === 'own' && drawn.heard) ? await renderAudio({ out: join(tmp, 'sound.wav'), inputProps, frames: span }) : undefined;
+      const wav = (await apart) ?? (sound === 'own' && drawn.heard ? await soundOf() : undefined);
       const { soundtrack, motion } = (await approve?.({ ...(sound === 'apart' && { sound: wav }) })) ?? {};
       const track = soundtrack ?? (sound === 'own' ? wav : undefined);
       if (track) await trace.run(`${name} mux`, () => muxDeliveredSound(picture, track, out, { frames: count, fps: timeline.fps }));
