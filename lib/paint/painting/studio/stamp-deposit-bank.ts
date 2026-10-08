@@ -15,6 +15,7 @@ import { createStampBinBuffer, STAMP_FLOATS, STAMP_ORDERED_TILE, stampInstanceFl
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampPaintPaper } from '../models/stamp-paint-recipe-types.ts';
 import { STAMP_PRESSURE_GRAIN_OWNER, stampBrushPaperContact } from '../models/stamp-paper-contact.ts';
+import { rememberedFor, rememberedOnce } from '../models/stamp-remembered.ts';
 import { stampStageTexelsWithin, type StampStage } from '../models/stamp-stage.ts';
 import type { StampTipHull } from '../models/stamp-tip-hull.ts';
 import { stampMarksSupport, stampMarksTipHull, stampTipFootprintOf, type StampTipFootprint, type StampTipsOf } from '../models/stamp-tip-support.ts';
@@ -166,9 +167,10 @@ export async function bindStampPaintBrushes(
   const images = new Map(assets.map(({ asset }, i) => [assetKey(asset), loaded[i]]));
   // A bristle tip's images are drawn for each diameter it's painted at, once a surface.
   const image = (source: StampBrushImageSource) => ('draw' in source ? owner.drawnImage(source.key, source.draw) : images.get(assetKey(source))!);
+  const bind = (brush: StampBrush, diameter: number) => rememberedFor(boundOf(owner), brush, diameter, () => bindStampBrushImages(brush, diameter, image));
   const bound = await owner.checked('drawing the brushes\' bristle tips', () => ({
-    deposits: new Map(deposits.map((deposit) => [deposit, bindStampBrushImages(deposit.brush, deposit.diameter, image)] as const)),
-    marks: new Map(marks.map((mark) => [mark, bindStampBrushImages(mark.brush, mark.diameter, image)] as const)),
+    deposits: new Map(deposits.map((deposit) => [deposit, bind(deposit.brush, deposit.diameter)] as const)),
+    marks: new Map(marks.map((mark) => [mark, bind(mark.brush, mark.diameter)] as const)),
   }));
   const byId = new Map([...bound.deposits].map(([deposit, brush]) => [deposit.id, brush]));
   const tipFootprint = (layer: StampBoundLayer) => stampTipFootprintOf(layer.tip, owner.tipLevels);
@@ -178,6 +180,11 @@ export async function bindStampPaintBrushes(
   };
   return { image, ...bound, tipFootprint, tipsOf };
 }
+
+// Kept an owner, so each solve of a painting lays its deposits with the same tips: what's worked out from a tip's
+// footprint (an ordered layer's bins, its marks' support) is worked out once, not again each solve.
+const boundBrushes = new WeakMap<StampPaintGpuOwner, WeakMap<StampBrush, Map<number, StampBrush<StampPaintImage>>>>();
+const boundOf = (owner: StampPaintGpuOwner) => rememberedOnce(boundBrushes, owner, () => new WeakMap());
 
 const assetKey = ({ style, pack, file }: StampBrushAsset) => `${style}/${pack}/${file}`;
 
