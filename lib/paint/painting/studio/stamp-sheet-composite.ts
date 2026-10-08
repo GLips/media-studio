@@ -10,12 +10,12 @@
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { StampPaintCostTally } from '../models/stamp-paint-costs.ts';
 import { stampSimilarityPoint, type StampSheetPlace } from '../models/stamp-rest-map.ts';
-import { stampSheetMixedPainting, type StampSheetCompositeShown, type StampSheetCompositeStep, type StampSheetProgram } from '../models/stamp-sheet-program.ts';
+import { type StampSheetCompositeShown, type StampSheetCompositeStep, type StampSheetProgram } from '../models/stamp-sheet-program.ts';
 import { stampSheetRevealsKey, type StampFilmRevealLinks } from '../models/stamp-reveal.ts';
 import { stampBoxUnion, stampStage, stampStageTexelsOf, stampStageWgsl, stampWrapPeriods, type StampPointBox, type StampStage, type StampWrapPeriods } from '../models/stamp-stage.ts';
 import { copyStampLayerForReadback, readStampLayerCopy, type StampLayerReadback } from './stamp-layer-readback.ts';
 import { stampPaintTargetWgsl, type StampPaintCompositor, type StampPaintTarget } from './stamp-paint-compositor.ts';
-import { stampPaintCompositorFor } from './stamp-paint-compositor-for.ts';
+import { stampSheetCompositorFor } from './stamp-paint-compositor-for.ts';
 import type { StampGpuCacheStore } from './stamp-paint-gpu-cache.ts';
 import { clearStampTarget, copyStampTextureBox, dispatchStampCompute, STAMP_WORKGROUP, stampBindGroup, stampPaintSamplers, type StampPaintDevice } from './stamp-paint-gpu.ts';
 import type { StampPaintGpuOwner } from './stamp-paint-gpu-owner.ts';
@@ -177,7 +177,7 @@ export function stampSheetsLays(
 ): StampSheetsLays {
   const [first] = sheets, stage = on ?? stampStage(first.program), paperFrame = { width: first.program.width, height: first.program.height };
   const blank = owner.blank('r8unorm').createView();
-  const compositors = sheets.map(({ program }) => stampPaintCompositorFor(stampSheetMixedPainting(program)).compositorOn(device));
+  const compositors = sheets.map(({ program }) => stampSheetCompositorFor(program).compositorOn(device));
   const painting = compositors[0].targets.painting;
   compositors.forEach((compositor, s) => {
     if (JSON.stringify(compositor.targets.painting) !== JSON.stringify(painting)) throw new Error(`stamp sheet: ${sheets[s].program.name} keeps its painting otherwise than ${first.program.name}, so the two can't be laid as one`);

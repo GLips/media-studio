@@ -11,12 +11,12 @@ import { UNTRACED_NESTING, type TraceNesting } from '#lib/platform/trace/models/
 import { stampBrushedMasksUnder } from '../models/stamp-brushed-mask.ts';
 import type { StampPaintCostTally } from '../models/stamp-paint-costs.ts';
 import type { StampSheetDecision } from '../models/stamp-sheet-schedule.ts';
-import { stampSheetMixedPainting, stampSheetWashSpans, type StampSheetProgram } from '../models/stamp-sheet-program.ts';
+import { stampSheetWashSpans, type StampSheetProgram } from '../models/stamp-sheet-program.ts';
 import { stampSheetEntryKey, stampSheetHeadKey } from '../models/stamp-sheet-state-key.ts';
 import { stampSheetSolvePlan } from '../models/stamp-sheet-wrap.ts';
 import { stampDrying } from '../models/stamp-wetness.ts';
 import { bindStampPaintBrushes } from './stamp-deposit-bank.ts';
-import { stampPaintCompositorFor } from './stamp-paint-compositor-for.ts';
+import { stampSheetCompositorFor } from './stamp-paint-compositor-for.ts';
 import type { StampPaintGpuOwner } from './stamp-paint-gpu-owner.ts';
 import { keepStampSheetFilms, keptStampSheetFilms, type StampSheetFilmKept } from './stamp-sheet-films.ts';
 import { loadStampSheetSolve } from './stamp-sheet-load.ts';
@@ -121,7 +121,7 @@ async function solveLeased(owner: StampPaintGpuOwner, planned: StampSheetProgram
   if (kept) return { key: keys[known.stop!], through: known.stop!, finished, films: kept, decisions: known.decisions };
 
   const program = plan.painted();
-  const choice = stampPaintCompositorFor(stampSheetMixedPainting(program));
+  const choice = stampSheetCompositorFor(program);
   if (!choice.wet) throw new Error('stamp sheet: a sheet solve paints in pigment, its films each in a medium');
   const posed = program.entries.map(({ deposit }) => deposit);
   const brushedMasks = stampBrushedMasksUnder([...posed.map(({ mask }) => mask), ...program.washes.map(({ prewet }) => prewet?.held)]);

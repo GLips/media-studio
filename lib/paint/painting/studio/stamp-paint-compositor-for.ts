@@ -4,6 +4,7 @@
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import { PAINT_BANDS } from '#lib/paint/materials/models/paint-spectrum.ts';
 import type { StampMixedPainting } from '../models/stamp-paint-recipe-compile.ts';
+import { stampSheetMixedPainting, type StampSheetProgram } from '../models/stamp-sheet-program.ts';
 import { compileStampPigmentPaint, stampPigmentGroupMedium } from '../models/stamp-pigment-paint.ts';
 import { stampPaintMedia, type StampPaintMedia } from '../models/stamp-wetness.ts';
 import { flatStampPaintCompositor, type StampPaintCompositor } from './stamp-paint-compositor.ts';
@@ -35,4 +36,16 @@ export function stampPaintCompositorFor(painting: StampMixedPainting): StampPain
   }
   const flat = flatStampPaintCompositor(painting);
   return { compositorOn: () => flat, media: stampPaintMedia(painting, () => null), wet: false };
+}
+
+const sheetChoices = new WeakMap<StampSheetProgram, StampPaintCompositorChoice>();
+
+/**
+ * How a sheet program's films composite, chosen once a program: compiling its pigments takes tens of ms, and a still
+ * laid each frame (a painted texture revealing) lays the same program again.
+ */
+export function stampSheetCompositorFor(program: StampSheetProgram): StampPaintCompositorChoice {
+  let choice = sheetChoices.get(program);
+  if (!choice) sheetChoices.set(program, (choice = stampPaintCompositorFor(stampSheetMixedPainting(program))));
+  return choice;
 }
