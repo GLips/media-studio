@@ -1,20 +1,21 @@
 // stamp-deposit-placement.ts: a deposit's marks (its stamps, its dual's and a flood's barrier) placed from its geometry,
 // brush, diameter and seed alone. A painting recompiled each frame places mostly the same marks again (a sky staying
 // put under a moving cloud), so placements are remembered by those inputs' content and shared by every painting that
-// asks for them. Shared, a placement owns all it holds and is frozen, so no painting can change another's marks.
+// asks for them. Shared, a placement owns all it holds, frozen or never written, so no painting changes another's marks.
 //
 // Content, not identity: inputs built afresh each frame, or edited in place, get what they place now. A function in
 // them (a hand's pressure curve) is keyed by identity, as its content can't be read: it must answer alike each time.
 
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
-import { placeStrokeStamps, stampFrozenMarks, type FrozenStampMarks, type PlacedStamp, type StampPlacementBrush } from '#lib/paint/brush/models/stamp-placement.ts';
+import { placeStrokeStamps, stampMarksWriterFor, stampPlacementSeed, stampSeedPart, type StampPlacementBrush } from '#lib/paint/brush/models/stamp-placement.ts';
+import { NO_STAMP_MARKS, STAMP_MARK, STAMP_MARK_FIELDS, type FrozenStampMarks } from '#lib/paint/brush/models/stamp-mark-rows.ts';
 import type { StampPressureCurve } from '#lib/paint/brush/models/stamp-stroke-hand.ts';
 import { stampBrushEdgeOffsetMean, stampBrushMeasuredProfile } from '#lib/paint/brush/models/stamp-brush-profile.ts';
 import type { CompiledStampArea } from './stamp-area.ts';
 import { placeStampFlood, stampBrushFillEdge, stampFloodBarrier, stampFloodEdgeOf, stampFloodLaidPast, type StampFillApplication } from './stamp-fill.ts';
 import { stampFillStrokePath } from './stamp-fill-strokes.ts';
 import { createKeptByBytes, type StampKeptHeld } from './stamp-kept-memo.ts';
-import { registerStampCanonicalList } from './stamp-canonical.ts';
+import { registerStampCanonical } from './stamp-canonical.ts';
 import { stampMarkStamps } from './stamp-marks.ts';
 import { stampPaintFieldAt, type StampSeededPaintField } from './stamp-paint-field.ts';
 import type { CompiledStampFlood } from './stamp-paint-recipe-compile.ts';
@@ -27,23 +28,21 @@ import type { StampResolvedGeometry } from './stamp-paint-recipe-types.ts';
  */
 export type StampPlacingGeometry = Exclude<StampResolvedGeometry, { kind: 'fill' }> | (Extract<StampResolvedGeometry, { kind: 'fill' }> & { application: StampFillApplication; load: StampSeededPaintField<number> });
 
-/** A deposit's marks, `M`: every stamp in the order laid, its dual's, and a flood's barrier. */
-type StampDepositMarks<M> = { stamps: M; dualStamps: M } & ({ kind: 'stroke' | 'stamps' } | { kind: 'flood'; flood: CompiledStampFlood });
-/** A deposit's marks as compiled paintings share them, frozen. */
-export type StampDepositPlacement = StampDepositMarks<FrozenStampMarks>;
+/** A deposit's marks: every stamp in the order laid, its dual's, and a flood's barrier, as compiled paintings share them. */
+export type StampDepositPlacement = { stamps: FrozenStampMarks; dualStamps: FrozenStampMarks } & ({ kind: 'stroke' | 'stamps' } | { kind: 'flood'; flood: CompiledStampFlood });
 
 /**
  * The most bytes the remembered placements hold, least recently asked for given up first: a whole 1080p scene's (the
- * lake's are 1.6 GB), as a key drawing recompiles each painting, and one too small misses every one in turn. They're
- * mostly the marks compiled paintings hold anyway, so this adds only what those gave up. One larger is placed again.
+ * lake's 4M stamps are about 0.3 GB), as a key drawing recompiles each painting and one too small misses every one in
+ * turn. They're mostly the marks compiled paintings hold anyway, so this adds only what those gave up.
  */
 export const STAMP_PLACEMENTS_KEPT_BYTES = 2048 * 2 ** 20;
 
 /**
- * What a kept stamp holds, in bytes, roughly: about 320, and 80 more for what loading works out from it, kept as long
- * as it is (stamp-mark-load.ts).
+ * What a kept stamp holds, in bytes, roughly: its row and tint (76), and its share of an ordered layer's bins, kept as
+ * long as it is (stamp-mark-load.ts).
  */
-export const STAMP_KEPT_BYTES = 400;
+export const STAMP_KEPT_BYTES = 84;
 
 /** What a placement holds, in bytes, roughly: its stamps, a flood's outline, and its key. */
 const POINT_BYTES = 64, ENTRY_BYTES = 1024;
@@ -63,38 +62,17 @@ export function placeStampDeposit(geometry: StampPlacingGeometry, brush: StampBr
   const key = `${brushKey.text}\n${diameter}\n${seed}\n${geometryKey.text}`;
   const found = kept.get(key);
   if (found) return found;
-  const placement = frozenPlacement(placeNow(geometry, brush, diameter, seed));
-  // Frozen through every stamp, its marks' digests can be remembered. A key with no function names them in any page,
-  // so it is their digest; a function is named by identity, in this page only, so their content is hashed, once a key.
+  const placement = placeNow(geometry, brush, diameter, seed);
+  // Never written after, its marks' digests can be remembered. A key with no function names them in any page, so it
+  // is their digest; a function is named by identity, in this page only, so their content is hashed, once a key.
   const callable = brushKey.callable || geometryKey.callable;
   const identity = (marks: string) => (callable ? { content: `${key}\n${marks}` } : { inputs: `${key}\n${marks}` });
-  registerStampCanonicalList(placement.stamps, identity('stamps'));
-  registerStampCanonicalList(placement.dualStamps, identity('duals'));
+  // No stamps are one shared value, read as what it is.
+  if (placement.stamps.length) registerStampCanonical(placement.stamps, identity('stamps'));
+  if (placement.dualStamps.length) registerStampCanonical(placement.dualStamps, identity('duals'));
   kept.set(key, placement, bytesOf(placement, key));
   return placement;
 }
-
-/**
- * `placement` frozen, through every stamp and a flood's barrier, its outline and load copied from the caller's
- * region and field.
- */
-function frozenPlacement(placement: StampDepositMarks<PlacedStamp[]>): StampDepositPlacement {
-  const stamps = stampFrozenMarks(placement.stamps), dualStamps = stampFrozenMarks(placement.dualStamps);
-  if (placement.kind !== 'flood') return Object.freeze({ kind: placement.kind, stamps, dualStamps });
-  const { flood } = placement, { load } = flood, polygon = frozenPoints(flood.barrier.polygon);
-  const area = (owned: CompiledStampArea) => Object.freeze({ ...owned, polygon, ...(owned.edge && { edge: Object.freeze({ ...owned.edge }) }) });
-  const owned = Object.freeze({
-    ...flood,
-    edge: Object.freeze({ ...flood.edge }),
-    barrier: area(flood.barrier),
-    load: Object.freeze(ownedLoad(load)),
-    scale: Object.freeze({ ...flood.scale }),
-  });
-  return Object.freeze({ kind: 'flood', flood: owned, stamps, dualStamps });
-}
-
-/** A frozen copy of `points`. */
-const frozenPoints = (points: readonly StampPoint[]) => Object.freeze(points.map(({ x, y }) => Object.freeze({ x, y })));
 
 /** A copy of the caller's `load`, its points frozen with it. */
 function ownedLoad(load: StampSeededPaintField<number>): StampSeededPaintField<number> {
@@ -103,25 +81,50 @@ function ownedLoad(load: StampSeededPaintField<number>): StampSeededPaintField<n
   return { ...load, center: Object.freeze({ ...load.center }) };
 }
 
-function placeNow(geometry: StampPlacingGeometry, brush: StampBrush, diameter: number, seed: string): StampDepositMarks<PlacedStamp[]> {
+/** A frozen copy of `points`. */
+const frozenPoints = (points: readonly StampPoint[]) => Object.freeze(points.map(({ x, y }) => Object.freeze({ x, y })));
+
+/** A flood's barrier, frozen through, its outline and load copied from the caller's region and field. */
+function ownedFlood(flood: CompiledStampFlood): CompiledStampFlood {
+  const { load } = flood, polygon = frozenPoints(flood.barrier.polygon);
+  const area = (owned: CompiledStampArea) => Object.freeze({ ...owned, polygon, ...(owned.edge && { edge: Object.freeze({ ...owned.edge }) }) });
+  return Object.freeze({
+    ...flood,
+    edge: Object.freeze({ ...flood.edge }),
+    barrier: area(flood.barrier),
+    load: Object.freeze(ownedLoad(load)),
+    scale: Object.freeze({ ...flood.scale }),
+  });
+}
+
+function placeNow(geometry: StampPlacingGeometry, brush: StampBrush, diameter: number, seed: string): StampDepositPlacement {
   if (geometry.kind === 'fill') {
     const { region, application, direction = 0, load } = geometry;
     if (application.kind === 'flood') {
       const polygon = stampRegionPolygon(region), edge = stampFloodEdgeOf(application), barrier = stampFloodBarrier(polygon, edge, seed);
       const past = stampFloodLaidPast(barrier), laid = past > 0 ? { kind: 'polygon' as const, points: stampGrownPolygon(polygon, past) } : region;
       const { scale, stamps, dualStamps } = placeStampFlood(laid, brush, diameter, direction, seed);
-      const flood = { edge, barrier, scale, load };
-      return { kind: 'flood', flood, stamps, dualStamps };
+      return Object.freeze({ kind: 'flood', flood: ownedFlood({ edge, barrier, scale, load }), stamps, dualStamps });
     }
     const offset = stampBrushEdgeOffsetMean(stampBrushMeasuredProfile(brush), diameter, brush.name);
     const strokes = stampFillStrokePath(region, { diameter, offset, edge: stampBrushFillEdge(brush, diameter) }, direction, application, seed);
-    const place = (stamping: StampPlacementBrush, scale: number, placing: string) => (strokes.length ? placeStrokeStamps(strokes, stamping, diameter * scale, placing) : []);
-    const stamps = place(brush, 1, seed);
-    for (const stamp of stamps) stamp.opacity *= stampPaintFieldAt(load, stamp.x, stamp.y);
-    return { kind: 'stroke', stamps, dualStamps: brush.dual ? place(brush.dual, brush.dual.scale, `${seed}|dual`) : [] };
+    const root = stampPlacementSeed(seed);
+    const place = (stamping: StampPlacementBrush, scale: number, placing: number, laid?: (rows: Float32Array, length: number) => void) => {
+      if (!strokes.length) return NO_STAMP_MARKS;
+      const into = stampMarksWriterFor(stamping);
+      placeStrokeStamps(strokes, stamping, diameter * scale, placing, into);
+      laid?.(into.rows, into.length);
+      return into.finish();
+    };
+    // The fill's load thins each stamp where it lies.
+    const loaded = (rows: Float32Array, length: number) => {
+      for (let o = 0; o < length * STAMP_MARK_FIELDS; o += STAMP_MARK_FIELDS) rows[o + STAMP_MARK.opacity] *= stampPaintFieldAt(load, rows[o], rows[o + 1]);
+    };
+    const stamps = place(brush, 1, root, loaded);
+    return Object.freeze({ kind: 'stroke', stamps, dualStamps: brush.dual ? place(brush.dual, brush.dual.scale, stampSeedPart(root, 'dual')) : NO_STAMP_MARKS });
   }
   const { stamps, dualStamps } = stampMarkStamps({ brush, diameter, geometry }, seed);
-  return { kind: geometry.kind, stamps, dualStamps };
+  return Object.freeze({ kind: geometry.kind, stamps, dualStamps });
 }
 
 /**

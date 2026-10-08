@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { compileStampPaintRecipe, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
-import { stampFrozenMarks, type PlacedStamp } from '#lib/paint/brush/models/stamp-placement.ts';
+import { stampMarksList, stampMarksOf, type PlacedStamp } from '#lib/paint/brush/models/stamp-mark-rows.ts';
 import { diffStampPaintingPrints, printStampPainting } from './stamp-paint-guard.ts';
 import type { StampPaintEnvironment } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 
@@ -36,9 +36,9 @@ function withStamps(edit: (stamps: PlacedStamp[]) => void): CompiledStampPaint {
   const [group] = painting.groups, [pass] = group.passes;
   if (pass.kind !== 'dry') throw new Error('the painting is one dry pass');
   const [deposit] = pass.deposits;
-  const stamps = deposit.stamps.map((stamp) => ({ ...stamp }));
+  const stamps = stampMarksList(deposit.stamps);
   edit(stamps);
-  return { ...painting, groups: [{ ...group, passes: [{ ...pass, deposits: [{ ...deposit, stamps: stampFrozenMarks(stamps) }] }] }] };
+  return { ...painting, groups: [{ ...group, passes: [{ ...pass, deposits: [{ ...deposit, stamps: stampMarksOf(stamps) }] }] }] };
 }
 
 const before = printStampPainting(painting);
@@ -57,7 +57,7 @@ test('two stamps swapping places, or one moving right as another moves left, are
 
 test('numbers drifting by float order pass, though the hash moves', () => {
   const drifted = printStampPainting(withStamps((stamps) => {
-    for (const stamp of stamps) stamp.x *= 1 + 1e-12;
+    for (const stamp of stamps) stamp.x *= 1 + 4e-7;
   }));
   assert.notEqual(drifted.hash, before.hash);
   assert.deepEqual(diffStampPaintingPrints(before, drifted), []);

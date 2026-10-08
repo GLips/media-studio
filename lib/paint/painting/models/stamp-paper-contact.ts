@@ -3,7 +3,6 @@
 // here, so a dry brush in a wet medium is a dry brush to each of them alike.
 
 import type { StampBrushMedia } from '#lib/paint/brush/models/stamp-brush.ts';
-import type { PlacedStamp } from '#lib/paint/brush/models/stamp-placement.ts';
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 
 /**
@@ -34,6 +33,6 @@ export type StampGrainDepthSource = 'tooth' | 'brush';
  */
 export const STAMP_PRESSURE_GRAIN_OWNER = { peaks: 'tooth', valleys: 'brush', flat: 'brush' } as const satisfies Record<StampPaperContact['kind'], StampGrainDepthSource>;
 
-/** `stamp`'s share of its grain's depth, its pressure's share taken from `source`. */
-export const stampGrainDepthBy = (stamp: PlacedStamp, source: StampGrainDepthSource): number =>
-  stamp.grainDepth * (source === 'tooth' ? 1 : stamp.grainDepthByPressure);
+/** A stamp's share of its grain's depth (STAMP_MARK.grainDepth), its pressure's share (grainDepthByPressure) taken from `source`. */
+export const stampGrainDepthIn = (grainDepth: number, byPressure: number, source: StampGrainDepthSource): number =>
+  grainDepth * (source === 'tooth' ? 1 : byPressure);

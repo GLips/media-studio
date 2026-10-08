@@ -8,6 +8,7 @@ import type { Layer, PaintingDocument } from './painting-document.ts';
 import { painting, type PaintingEvaluation } from './painting-source.ts';
 import { paintingTestBrushOf, paintingTestBrushSpanning } from './painting-test-brush.ts';
 import * as meadow from './meadow.painting.ts';
+import { stampMarksList } from '#lib/paint/brush/models/stamp-mark-rows.ts';
 
 const brushOf = paintingTestBrushOf;
 /** `evaluation`'s root sheet as its program, every layer selected. */
@@ -118,8 +119,8 @@ test('a wrapped document is keyed apart from itself unwrapped and wrapped otherw
   assert.ok(!heads[0].includes('wrap'));
 });
 
-/** Whether `d` px is a whole number of `period`s, to rounding. */
-const wholePeriods = (d: number, period: number) => Math.abs(d / period - Math.round(d / period)) < 1e-9;
+/** Whether `d` px is a whole number of `period`s, to a stored mark's float32 rounding. */
+const wholePeriods = (d: number, period: number) => Math.abs(d / period - Math.round(d / period)) < 1e-6;
 
 test("banded for its solve, a stroke run past a tile's corner lays its copies a period back on each axis and across the corner, each reading as its stamp", () => {
   // Across both seams of a 200 × 120 tile, by its corner: from (150, 90) to (260, 150).
@@ -131,14 +132,14 @@ test("banded for its solve, a stroke run past a tile's corner lays its copies a 
   assert.deepEqual([plan.stage.margin, plan.stage.wrapPeriods], [halo, { x: 200, y: 120 }]);
   const planned = program.entries[0].deposit, banded = plan.painted().entries[0].deposit;
   // Each stamp, then its copies, each keeping where it was placed: whole periods away, within the halo's reach.
-  const originals = banded.stamps.filter((stamp) => stamp.rest === undefined);
-  assert.deepEqual(originals.map(({ x, y }) => [x, y]), planned.stamps.map(({ x, y }) => [x, y]));
-  const copies = banded.stamps.filter((stamp) => stamp.rest !== undefined);
-  assert.ok(copies.every(({ x, y, rest }) => wholePeriods(x - rest!.x, 200) && wholePeriods(y - rest!.y, 120) && x > -2 * halo && x < 200 + 2 * halo && y > -2 * halo && y < 120 + 2 * halo));
-  const shifted = (dx: number, dy: number) => copies.some(({ x, y, rest }) => Math.abs(x - rest!.x - dx) < 1e-9 && Math.abs(y - rest!.y - dy) < 1e-9 && x >= 0 && y >= 0);
+  const originals = stampMarksList(banded.stamps).filter(({ x, y, rest }) => rest.x === x && rest.y === y);
+  assert.deepEqual(originals.map(({ x, y }) => [x, y]), stampMarksList(planned.stamps).map(({ x, y }) => [x, y]));
+  const copies = stampMarksList(banded.stamps).filter(({ x, y, rest }) => rest.x !== x || rest.y !== y);
+  assert.ok(copies.every(({ x, y, rest }) => wholePeriods(x - rest.x, 200) && wholePeriods(y - rest.y, 120) && x > -2 * halo && x < 200 + 2 * halo && y > -2 * halo && y < 120 + 2 * halo));
+  const shifted = (dx: number, dy: number) => copies.some(({ x, y, rest }) => Math.abs(x - rest.x - dx) < 1e-4 && Math.abs(y - rest.y - dy) < 1e-4 && x >= 0 && y >= 0);
   assert.ok(shifted(-200, -120), 'the run past the corner is copied into the frame at its top left');
   assert.ok(shifted(-200, 0) && shifted(0, -120), 'and past each seam, a period back on that axis');
-  const xs = planned.stamps.map(({ x }) => x), ys = planned.stamps.map(({ y }) => y);
+  const xs = stampMarksList(planned.stamps).map(({ x }) => x), ys = stampMarksList(planned.stamps).map(({ y }) => y);
   assert.deepEqual(banded.wrapFrom, { x: (Math.min(...xs) + Math.max(...xs)) / 2 - 100, y: (Math.min(...ys) + Math.max(...ys)) / 2 - 60 });
   assert.notEqual(plan.head, program.head);
   assert.equal(plan.painted().head, plan.head);

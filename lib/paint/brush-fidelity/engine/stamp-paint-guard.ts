@@ -14,7 +14,7 @@ import { gunzipSync, gzipSync } from 'node:zlib';
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import { compileStampPaintRecipe, stampPassDeposits, type CompiledStampDeposit, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
-import type { PlacedStamp } from '#lib/paint/brush/models/stamp-placement.ts';
+import { stampMarksList, type FrozenStampMarks } from '#lib/paint/brush/models/stamp-mark-rows.ts';
 import { readStampPaintPackBrushSources, type StampPaintPack } from '#lib/paint/brush-packs/models/stamp-paint-pack.ts';
 import { readImportedStampPaintPack } from '#lib/paint/brush-packs/engine/stamp-paint-pack-files.ts';
 import { brushFidelityIdentityDifferences, brushFidelityOutcomeScore, type BrushFidelityReport } from '../models/brush-fidelity-report.ts';
@@ -68,8 +68,8 @@ function stampLeaves(value: unknown, path: string, into: (path: string, leaf: un
  * Stamps by column: a painting holds a million stamps, and their keys repeated on each were most of its size. A stamp
  * lacking a leaf its neighbours have leaves null in that column, which the walk reports.
  */
-function stampColumns(stamps: readonly PlacedStamp[]): Record<string, unknown[]> {
-  const columns: Record<string, unknown[]> = {};
+function stampColumns(marks: FrozenStampMarks): Record<string, unknown[]> {
+  const columns: Record<string, unknown[]> = {}, stamps = stampMarksList(marks);
   stamps.forEach((stamp, i) => stampLeaves(stamp, '', (path, leaf) => {
     (columns[path] ??= Array.from({ length: stamps.length }, () => null))[i] = leaf;
   }));

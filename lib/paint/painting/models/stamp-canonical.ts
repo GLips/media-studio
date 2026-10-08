@@ -5,7 +5,7 @@
 // and Maps as arrays. A function is dropped, so what it decides enters a key as what it made: an entry's datum holds
 // its compiled marks (a hand's curve is in the stamps it placed). That's megabytes for a flood, so its digest hashes
 // the same reading as bytes, a long list as its own digest, and marks placed from function-free inputs as those
-// inputs' (registerStampCanonicalList).
+// inputs' (registerStampCanonical).
 
 import { createSha256, type Sha256 } from '#lib/platform/hash/models/sha256.ts';
 import { createKeptByBytes } from './stamp-kept-memo.ts';
@@ -57,6 +57,9 @@ function writeStampCanonical(value: StampCanonicalDatum, write: (piece: string) 
 
 /** A list a datum may be: a list of data, or a typed array. */
 type StampCanonicalList = readonly StampCanonicalDatum[] | Float32Array | Uint32Array | Uint8Array;
+
+/** What may be registered (registerStampCanonical): a list, or a record (a placement's marks). */
+export type StampCanonicalRegistered = readonly StampCanonicalDatum[] | { readonly [field: string]: StampCanonicalDatum };
 
 /** What opens each value in the canonical bytes. */
 const CANONICAL_TAG = { null: 0, false: 1, true: 2, number: 3, byte: 4, string: 5, list: 6, shape: 7, shaped: 8, shapedByte: 9, digested: 10 } as const;
@@ -128,7 +131,7 @@ const CANONICAL_CHUNK_BYTES = 1 << 16;
 const CANONICAL_LIST_DIGESTED = 64;
 
 /**
- * How a registered list is known. By `inputs`: a key placing it alike in any page and render (a placement's, with no
+ * How a registered value is known. By `inputs`: a key placing it alike in any page and render (a placement's, with no
  * function in it), its digest the key's, so its marks are never read. By `content`: hashed once, in this page, and
  * under `name` when given another list of equal content isn't hashed again.
  */
@@ -137,19 +140,20 @@ export type StampCanonicalListIdentity = { readonly inputs: string } | { readonl
 const identityText = (identity: StampCanonicalListIdentity) => ('inputs' in identity ? `inputs ${identity.inputs}` : `content ${identity.content ?? 'nameless'}`);
 
 /**
- * Registered lists (registerStampCanonicalList's): each one's identity, and its digest once read. Only a registered
- * list's digest is remembered by identity: a frozen list may hold something that isn't.
+ * Registered values (registerStampCanonical's): each one's identity, and its digest once read. Only a registered
+ * value's digest is remembered by identity: a frozen list may hold something that isn't.
  */
-const registered = new WeakMap<readonly StampCanonicalDatum[], { readonly identity: StampCanonicalListIdentity; digest?: string }>();
+const registered = new WeakMap<StampCanonicalRegistered | StampCanonicalList, { readonly identity: StampCanonicalListIdentity; digest?: string }>();
 
 /** The digests of lists registered by content under a name, the least recently read given up first. */
 const digestsByName = createKeptByBytes<string, string>(32 * 2 ** 20);
 
 /**
- * Registers `list`, which never changes, through every value it holds (as stampFrozenMarks freezes a placement's), so
- * its digest is remembered, known by `identity`. A list is registered under one identity.
+ * Registers `list`, which never changes through any value it holds (a placement's marks), so its digest is
+ * remembered, known by `identity`, and it enters any digest as that digest, whatever its length. A value is registered
+ * under one identity.
  */
-export function registerStampCanonicalList(list: readonly StampCanonicalDatum[], identity: StampCanonicalListIdentity): void {
+export function registerStampCanonical(list: StampCanonicalRegistered, identity: StampCanonicalListIdentity): void {
   const known = registered.get(list);
   if (known && identityText(known.identity) !== identityText(identity)) {
     throw new Error(`stamp canonical: a list registered as ${identityText(known.identity)} registered again as ${identityText(identity)}`);
@@ -161,18 +165,17 @@ export function registerStampCanonicalList(list: readonly StampCanonicalDatum[],
  * Registers `joined`, `parts` laid end to end and frozen as they are: by its parts' inputs when each is known by them,
  * so a join made afresh at each compile is never read; else by its content, unnamed.
  */
-export function registerStampCanonicalJoin(joined: readonly StampCanonicalDatum[], parts: readonly (readonly StampCanonicalDatum[])[]): void {
+export function registerStampCanonicalJoin(joined: StampCanonicalRegistered, parts: readonly StampCanonicalRegistered[]): void {
   const inputs = parts.map((part) => {
     const identity = registered.get(part)?.identity;
     return identity && 'inputs' in identity ? identity.inputs : null;
   });
-  registerStampCanonicalList(joined, inputs.every((each) => each !== null) ? { inputs: JSON.stringify(inputs) } : { content: null });
+  registerStampCanonical(joined, inputs.every((each) => each !== null) ? { inputs: JSON.stringify(inputs) } : { content: null });
 }
 
 /** `list`'s digest: its inputs' when registered by them, else its canonical bytes hashed, remembered as registered. */
-function stampCanonicalListDigest(list: StampCanonicalList): string {
-  // SAFETY: only a list is ever registered; a typed array finds nothing.
-  const entry = registered.get(list as readonly StampCanonicalDatum[]);
+function stampCanonicalListDigest(list: StampCanonicalList | StampCanonicalRegistered): string {
+  const entry = registered.get(list);
   if (entry?.digest) return entry.digest;
   const identity = entry?.identity, name = identity && 'content' in identity ? identity.content : null;
   let digest = name ? digestsByName.get(name) : undefined;
@@ -263,6 +266,13 @@ function hashStampCanonical(root: StampCanonicalDatum, hash: Sha256, listInline 
     } else {
       // SAFETY: every other kind StampCanonicalDatum admits has been written above.
       const record = value as { readonly [field: string]: StampCanonicalDatum };
+      if (!(listInline && record === root) && registered.has(record)) {
+        const digest = stampCanonicalListDigest(record);
+        room(65);
+        bytes[at++] = CANONICAL_TAG.digested;
+        for (let i = 0; i < 64; i++) bytes[at++] = digest.charCodeAt(i);
+        return;
+      }
       const all = stampCanonicalFields(Object.keys(record));
       let shape = all;
       for (const { key } of all.fields) {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { registerStampCanonicalJoin, registerStampCanonicalList, stampCanonicalDigest, stampCanonicalJson, type StampCanonicalDatum } from './stamp-canonical.ts';
+import { registerStampCanonicalJoin, registerStampCanonical, stampCanonicalDigest, stampCanonicalJson, type StampCanonicalDatum } from './stamp-canonical.ts';
 
 test('two values share a digest exactly when their canonical JSON is equal, whatever was digested before', () => {
   const long = 'x'.repeat(70_000), marks = Array.from({ length: 100 }, (_, i) => ({ x: i / 3, y: i, tint: { hue: 0 } }));
@@ -28,16 +28,16 @@ const frozenMark = (i: number) => Object.freeze({ x: i / 3, y: i, tint: Object.f
 
 test("a registered list's digest is its inputs', or remembered by its name across copies; an unregistered one's is read afresh", () => {
   const placed = Object.freeze(Array.from({ length: 100 }, (_, i) => frozenMark(i))), again = Object.freeze(placed.map((_, i) => frozenMark(i)));
-  registerStampCanonicalList(placed, { content: 'placement' });
-  registerStampCanonicalList(placed, { content: 'placement' });
-  registerStampCanonicalList(again, { content: 'placement' });
+  registerStampCanonical(placed, { content: 'placement' });
+  registerStampCanonical(placed, { content: 'placement' });
+  registerStampCanonical(again, { content: 'placement' });
   assert.equal(stampCanonicalDigest({ marks: again }), stampCanonicalDigest({ marks: placed.map((each) => ({ ...each })) }));
-  assert.throws(() => registerStampCanonicalList(placed, { inputs: 'placement' }));
+  assert.throws(() => registerStampCanonical(placed, { inputs: 'placement' }));
 
   // Placed from inputs: equal inputs share a digest, other inputs don't, whatever the marks hold.
   const fromInputs = (inputs: string) => {
     const list = Object.freeze(Array.from({ length: 100 }, (_, i) => frozenMark(i)));
-    registerStampCanonicalList(list, { inputs });
+    registerStampCanonical(list, { inputs });
     return stampCanonicalDigest({ marks: list });
   };
   assert.equal(fromInputs('brush a'), fromInputs('brush a'));
@@ -48,7 +48,7 @@ test("a registered list's digest is its inputs', or remembered by its name acros
   const joinOf = (inputs: readonly string[]) => {
     const parts = inputs.map((each) => {
       const part = Object.freeze(Array.from({ length: 40 }, (_, i) => frozenMark(i)));
-      registerStampCanonicalList(part, { inputs: each });
+      registerStampCanonical(part, { inputs: each });
       return part;
     });
     const joined = Object.freeze(parts.flat());

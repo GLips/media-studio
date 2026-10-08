@@ -3,7 +3,7 @@
 // there, keeping its noise's seed; an area maps as its outline, densified under a warp. Fields aren't mapped: a posed
 // deposit, area and prewet carry a similarity back to rest (StampRestMap), the best fit under a warp, where the solver
 // reads fields and noise. Anchored clips, reserves and resists stay. An entry's pose text is in its state key.
-import { stampFrozenMarks, type FrozenStampMarks } from '#lib/paint/brush/models/stamp-placement.ts';
+import { createStampMarksWriter, STAMP_MARK, STAMP_MARK_FIELDS, type FrozenStampMarks } from '#lib/paint/brush/models/stamp-mark-rows.ts';
 import { paintWarpChainKey, paintWarpChainMap, type PaintDeform } from '#lib/paint/animation/models/paint-deform.ts';
 import {
   PAINT_SIMILARITY_IDENTITY, paintSimilarityAfter, paintSimilarityApply, paintSimilarityInverse, paintSimilarityOf, paintSimilarityScale, type PaintSimilarity,
@@ -138,7 +138,8 @@ function densified(ring: readonly StampPoint[], closed: boolean): StampPoint[] {
 type PaintingMap = {
   readonly point: (point: StampPoint) => StampPoint;
   readonly local: (point: StampPoint) => { readonly scale: number; readonly turn: number };
-  readonly fit: (points: readonly StampPoint[]) => PaintSimilarity;
+  /** Fits `points`, asked for only under a warp: a similarity is its own fit. */
+  readonly fit: (points: () => readonly StampPoint[]) => PaintSimilarity;
   readonly outline: (ring: readonly StampPoint[], closed: boolean) => readonly StampPoint[];
   readonly tag: string;
 };
@@ -158,26 +159,39 @@ function paintingMapOf(pose: PaintingNodePose, text: string): PaintingMap {
       const a = r.x - l.x, c = r.y - l.y, b = d.x - u.x, e = d.y - u.y;
       return { scale: Math.sqrt(Math.abs(a * e - b * c)), turn: Math.atan2(c - b, a + e) };
     },
-    fit: (points) => paintingFitSimilarity(points, map),
+    fit: (points) => paintingFitSimilarity(points(), map),
     outline: densified,
     tag,
   };
 }
 
 /** What an element's own similarity under `by`, fit over `points`, gives it: a scale for widths, and its way back to rest. */
-function fitOf(by: PaintingMap, points: readonly StampPoint[]): { readonly scale: number; readonly rest: StampRestMap } {
+function fitOf(by: PaintingMap, points: () => readonly StampPoint[]): { readonly scale: number; readonly rest: StampRestMap } {
   const map = by.fit(points);
   return { scale: paintSimilarityScale(map), rest: wordsOf(paintSimilarityInverse(map)) };
 }
 
-/** A stamp where the map puts it, scaled and turned as the map is there, its rest point where it was placed. */
-const mappedStamps = (stamps: FrozenStampMarks, by: PaintingMap) => stampFrozenMarks(stamps.map((stamp) => {
-  const { scale, turn } = by.local(stamp);
-  return {
-    ...stamp, ...by.point(stamp), tint: stamp.tint, diameter: stamp.diameter * scale, rotation: stamp.rotation + turn, grainTurn: stamp.grainTurn + turn,
-    rest: stamp.rest ?? Object.freeze({ x: stamp.x, y: stamp.y }),
-  };
-}));
+/** Where `marks`' stamps lie. */
+function stampMarkPoints({ rows, length }: FrozenStampMarks): StampPoint[] {
+  return Array.from({ length }, (_, i) => ({ x: rows[i * STAMP_MARK_FIELDS], y: rows[i * STAMP_MARK_FIELDS + 1] }));
+}
+
+/** Each stamp where the map puts it, scaled and turned as the map is there, its rest point where it was placed. */
+function mappedStamps(marks: FrozenStampMarks, by: PaintingMap): FrozenStampMarks {
+  const into = createStampMarksWriter(marks.tints !== null, marks.length), M = STAMP_MARK;
+  for (let i = 0; i < marks.length; i++) {
+    const o = into.next(), r = into.rows, from = marks.rows;
+    r.set(from.subarray(o, o + STAMP_MARK_FIELDS), o);
+    const at = { x: from[o], y: from[o + 1] }, { scale, turn } = by.local(at), moved = by.point(at);
+    r[o] = moved.x;
+    r[o + 1] = moved.y;
+    r[o + M.diameter] *= scale;
+    r[o + M.rotation] += turn;
+    r[o + M.grainTurn] += turn;
+  }
+  if (marks.tints) into.tints!.set(marks.tints);
+  return into.finish();
+}
 
 const mappedOutline = (ring: readonly StampPoint[], by: PaintingMap, closed: boolean) => by.outline(ring, closed).map((point) => by.point(point));
 
@@ -190,7 +204,7 @@ const mappedEdge = ({ soft, ragged }: StampEdge, scale: number): StampEdge =>
 
 /** `area` mapped: its outline, rings and treated stretches, its widths scaled, its ragged noise read back at rest. */
 function mappedArea(area: CompiledStampArea, by: PaintingMap): CompiledStampArea {
-  const { scale, rest } = fitOf(by, area.rings?.flat() ?? area.polygon);
+  const { scale, rest } = fitOf(by, () => area.rings?.flat() ?? area.polygon);
   const rings = area.rings?.map((ring) => mappedOutline(ring, by, true));
   return {
     ...area, polygon: rings?.[0] ?? mappedOutline(area.polygon, by, true), ...(rings && { rings }),
@@ -201,7 +215,7 @@ function mappedArea(area: CompiledStampArea, by: PaintingMap): CompiledStampArea
 
 const mappedBrushed = (brushed: CompiledStampBrushedMask, by: PaintingMap): CompiledStampBrushedMask => ({
   ...brushed, id: `${brushed.id}|${by.tag}`,
-  marks: brushed.marks.map((mark) => ({ ...mark, diameter: mark.diameter * fitOf(by, mark.stamps).scale, stamps: mappedStamps(mark.stamps, by), dualStamps: mappedStamps(mark.dualStamps, by) })),
+  marks: brushed.marks.map((mark) => ({ ...mark, diameter: mark.diameter * fitOf(by, () => stampMarkPoints(mark.stamps)).scale, stamps: mappedStamps(mark.stamps, by), dualStamps: mappedStamps(mark.dualStamps, by) })),
 });
 
 /**
@@ -231,7 +245,7 @@ function fluidMapper(by: PaintingMap, anchored: ReadonlySet<CompiledStampMask>, 
 function mappedDeposit(entry: StampSheetEntry, by: PaintingMap, mapFluid: (mask: CompiledStampMask | null) => CompiledStampMask | null): CompiledStampDeposit {
   const { deposit, anchors } = entry;
   const barrier = deposit.kind === 'flood' ? deposit.flood.barrier.rings?.flat() ?? deposit.flood.barrier.polygon : [];
-  const { scale, rest } = fitOf(by, [...deposit.stamps, ...barrier]);
+  const { scale, rest } = fitOf(by, () => [...stampMarkPoints(deposit.stamps), ...barrier]);
   const common = {
     ...deposit, diameter: deposit.diameter * scale, rest,
     stamps: mappedStamps(deposit.stamps, by), dualStamps: mappedStamps(deposit.dualStamps, by), mask: mapFluid(deposit.mask),

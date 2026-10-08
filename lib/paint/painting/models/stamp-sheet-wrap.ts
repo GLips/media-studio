@@ -9,7 +9,7 @@
 
 import { stampBristleTipSpan } from '#lib/paint/brush/models/stamp-bristle-tip.ts';
 import type { StampBrush, StampBrushLayer } from '#lib/paint/brush/models/stamp-brush.ts';
-import { stampFrozenMarks, type FrozenStampMarks } from '#lib/paint/brush/models/stamp-placement.ts';
+import { createStampMarksWriter, STAMP_MARK, STAMP_MARK_FIELDS, STAMP_TINT_FIELDS, type FrozenStampMarks } from '#lib/paint/brush/models/stamp-mark-rows.ts';
 import { stampAreaBox } from './stamp-area.ts';
 import type { StampBox } from './stamp-region.ts';
 import { stampBrushedMasksUnder } from './stamp-brushed-mask.ts';
@@ -28,7 +28,10 @@ import { stampSheetWetReach } from './stamp-wet-reach.ts';
 function stampMarksTipReach(marks: FrozenStampMarks, brush: Pick<StampBrushLayer, 'tip'>): number {
   const { tip } = brush;
   let most = 0;
-  for (const { diameter } of marks) most = Math.max(most, 0.75 * diameter * ('bristles' in tip ? stampBristleTipSpan(tip.bristles, diameter) : tip.span ?? 1));
+  for (let o = STAMP_MARK.diameter; o < marks.length * STAMP_MARK_FIELDS; o += STAMP_MARK_FIELDS) {
+    const diameter = marks.rows[o];
+    most = Math.max(most, 0.75 * diameter * ('bristles' in tip ? stampBristleTipSpan(tip.bristles, diameter) : tip.span ?? 1));
+  }
   return most;
 }
 
@@ -71,14 +74,20 @@ export function stampSheetWrapHalo(program: StampSheetProgram): number {
  * paint from. A copy keeps its stamp's rest, where tip noise and rolling grain are read.
  */
 function stampMarksWrapped(marks: FrozenStampMarks, periods: StampWrapPeriods, reach: number): FrozenStampMarks {
-  const copied: FrozenStampMarks[number][] = [];
-  for (const stamp of marks) {
-    copied.push(stamp);
-    const rest = stamp.rest ?? Object.freeze({ x: stamp.x, y: stamp.y });
-    const at = { x0: stamp.x, y0: stamp.y, x1: stamp.x, y1: stamp.y };
-    for (const [dx, dy] of stampWrapOffsets(periods, at, reach)) if (dx || dy) copied.push({ ...stamp, x: stamp.x + dx, y: stamp.y + dy, rest });
+  const into = createStampMarksWriter(marks.tints !== null, marks.length), from = marks.rows;
+  const copy = (i: number, dx: number, dy: number) => {
+    const o = into.next(), f = i * STAMP_MARK_FIELDS;
+    into.rows.set(from.subarray(f, f + STAMP_MARK_FIELDS), o);
+    into.rows[o] += dx;
+    into.rows[o + 1] += dy;
+    if (marks.tints) into.tints!.set(marks.tints.subarray(i * STAMP_TINT_FIELDS, (i + 1) * STAMP_TINT_FIELDS), (o / STAMP_MARK_FIELDS) * STAMP_TINT_FIELDS);
+  };
+  for (let i = 0; i < marks.length; i++) {
+    copy(i, 0, 0);
+    const x = from[i * STAMP_MARK_FIELDS], y = from[i * STAMP_MARK_FIELDS + 1];
+    for (const [dx, dy] of stampWrapOffsets(periods, { x0: x, y0: y, x1: x, y1: y }, reach)) if (dx || dy) copy(i, dx, dy);
   }
-  return stampFrozenMarks(copied);
+  return into.finish();
 }
 
 /** Where along an axis repeating every `period` px a deposit spanning `low..high` starts the wrap centred on it; 0 unread. */
@@ -93,7 +102,8 @@ const stampWrapFrom = (box: StampBox, periods: StampWrapPeriods): StampWrapFrom 
 
 /** `marks`' places folded into `into`. */
 function stampMarksSpan(marks: FrozenStampMarks, into: StampBox) {
-  for (const { x, y } of marks) {
+  for (let o = 0; o < marks.length * STAMP_MARK_FIELDS; o += STAMP_MARK_FIELDS) {
+    const x = marks.rows[o], y = marks.rows[o + 1];
     into.x0 = Math.min(into.x0, x);
     into.y0 = Math.min(into.y0, y);
     into.x1 = Math.max(into.x1, x);

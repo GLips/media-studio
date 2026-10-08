@@ -5,6 +5,7 @@
 // reaches a point, an eased pull as reveal strokes, how wide a stroke reads, which sizes its band, and the band
 // showing all it lays.
 
+import { STAMP_MARK_FIELDS } from '#lib/paint/brush/models/stamp-mark-rows.ts';
 import { PAINT_SIMILARITY_IDENTITY, paintSimilarityInverse, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import { stampBrushMeasuredProfile, stampBrushVisibleWidth } from '#lib/paint/brush/models/stamp-brush-profile.ts';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
@@ -145,8 +146,11 @@ export function paintingRevealBandPx(
 ): number {
   const { deposit } = compilePaintingDeposit(application, application.key ?? 'band', { id: 'band', wet, brushOf });
   let farthest = 0;
-  for (const marks of [deposit.stamps, deposit.dualStamps]) {
-    for (const { x, y } of marks) farthest = Math.max(farthest, Math.min(...application.subpaths.map((path) => stampPolylineDistance(path, x, y))));
+  for (const { rows, length } of [deposit.stamps, deposit.dualStamps]) {
+    for (let o = 0; o < length * STAMP_MARK_FIELDS; o += STAMP_MARK_FIELDS) {
+      const x = rows[o], y = rows[o + 1];
+      farthest = Math.max(farthest, Math.min(...application.subpaths.map((path) => stampPolylineDistance(path, x, y))));
+    }
   }
   const { charge } = application, own = PAINT_MEDIA[medium];
   const capped = charge.kind === 'paint' && charge.maxSpreadPx !== undefined ? paintingCappedMedium(own, charge.maxSpreadPx, application.diameterPx) : own;

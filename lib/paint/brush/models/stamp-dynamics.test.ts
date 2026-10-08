@@ -1,8 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { StampDynamics } from './stamp-brush.ts';
-import { drawStampSlots, STAMP_DRAW_SLOTS } from './stamp-dynamics.ts';
-import { placeAuthoredStamps, placeStrokeStamps, type StampPlacementBrush } from './stamp-placement.ts';
+import { drawStampSlots, STAMP_DRAW_SLOTS, stampDrawsRecord } from './stamp-dynamics.ts';
+import { stampMarksList } from './stamp-mark-rows.ts';
+import { placedAuthoredMarks, placedStrokeMarks, type StampPlacementBrush } from './stamp-placement.ts';
+
+/** A stroke's stamps, read out. */
+const placeStrokeStamps = (...args: Parameters<typeof placedStrokeMarks>) => stampMarksList(placedStrokeMarks(...args));
+/** An author's placements' stamps, read out. */
+const placeAuthoredStamps = (...args: Parameters<typeof placedAuthoredMarks>) => stampMarksList(placedAuthoredMarks(...args));
+
 
 const brushWith = (dynamics: StampDynamics): StampPlacementBrush => ({
   tip: { roundness: 1, sampling: 'isotropic' },
@@ -27,7 +34,7 @@ test('a curve response is read piecewise-linearly over its sensor, flat past its
   // A stroke heading straight down (π/2) turns its stamps by the curve at its heading: halfway to π, so π/4.
   const turn: StampDynamics = { rotation: { direction: { kind: 'curve', points: [[0, 0], [Math.PI, Math.PI / 2]] } } };
   const stamps = placeStrokeStamps([{ x: 0, y: 0 }, { x: 0, y: 100 }], brushWith(turn), 20, 'curve');
-  assert.ok(stamps.length > 1 && stamps.every((stamp) => Math.abs(stamp.rotation - Math.PI / 4) < 1e-12));
+  assert.ok(stamps.length > 1 && stamps.every((stamp) => Math.abs(stamp.rotation - Math.PI / 4) < 1e-6));
 });
 
 test("a controlled count keeps 1 + floor((count − 1) × its share), and one at the stroke's first step", () => {
@@ -56,9 +63,9 @@ test("a stamp's draws are its stream's, one a slot in STAMP_DRAW_SLOTS' order, a
   // Every painting's randomness hangs on this order: a slot drawn out of turn reseeds every stamp after it.
   let n = 0;
   const counting = () => ++n;
-  assert.deepEqual(Object.entries(drawStampSlots(counting, 'stroke')), STAMP_DRAW_SLOTS.map((slot, i) => [slot, i + 1]));
+  assert.deepEqual(Object.entries(drawStampSlots(counting, 'stroke', stampDrawsRecord())), STAMP_DRAW_SLOTS.map((slot, i) => [slot, i + 1]));
   n = 0;
   const strokeOnly = new Set(['lateral', 'scatterTurn', 'scatterReach']);
   let drawn = 0;
-  assert.deepEqual(Object.entries(drawStampSlots(counting, 'authored')), STAMP_DRAW_SLOTS.map((slot) => [slot, strokeOnly.has(slot) ? 0 : ++drawn]));
+  assert.deepEqual(Object.entries(drawStampSlots(counting, 'authored', stampDrawsRecord())), STAMP_DRAW_SLOTS.map((slot) => [slot, strokeOnly.has(slot) ? 0 : ++drawn]));
 });

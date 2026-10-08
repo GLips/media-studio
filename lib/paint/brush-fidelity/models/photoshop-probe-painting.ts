@@ -18,7 +18,8 @@ import type { StampResolveStage } from '#lib/paint/painting/models/stamp-deposit
 import type { StampBrushAsset } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { CompiledStampDeposit, CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { CompiledStampPaintAction } from '#lib/paint/painting/models/stamp-paint-action.ts';
-import { placeStrokeStamps, stampFrozenMarks } from '#lib/paint/brush/models/stamp-placement.ts';
+import { placedStrokeMarks, placeStrokeStamps, stampMarksWriterFor, stampPlacementSeed } from '#lib/paint/brush/models/stamp-placement.ts';
+import { NO_STAMP_MARKS, STAMP_MARK, STAMP_MARK_FIELDS } from '#lib/paint/brush/models/stamp-mark-rows.ts';
 
 /** A probe image as a pack holds it: grey, row by row, dark where it paints. */
 export type PhotoshopProbeGrayImage = { width: number; height: number; pixels: Uint8Array };
@@ -167,15 +168,16 @@ export function photoshopProbeSheetPainting({ sheet, probes, opacity, tipMax }: 
     // Each stroke finishes and lays over the ones before it, as separate strokes do.
     return cell.strokes.map((stroke, s): CompiledStampDeposit<CompiledStampPaintAction> => {
       const path = photoshopPressuredPath(stroke, pressure), seed = `${probe.name}|${s}`;
-      const stamps = placeStrokeStamps(path, brush, diameter, seed);
+      const laid = stampMarksWriterFor(brush);
+      placeStrokeStamps(path, brush, diameter, stampPlacementSeed(seed), laid);
       // In the build, each stamp's opacity carries the deposit's, which then lays at full. The stamps are this
       // stroke's own, fresh from placement.
-      if (opacity === 'inBuild') for (const stamp of stamps) stamp.opacity *= toolOpacity;
+      if (opacity === 'inBuild') for (let o = STAMP_MARK.opacity; o < laid.length * STAMP_MARK_FIELDS; o += STAMP_MARK_FIELDS) laid.rows[o] *= toolOpacity;
       return {
         kind: 'stroke', id: `probes/cells/${c}-${s}`, brush, action: { kind: 'paint', material: { kind: 'constant', value: { kind: 'color', color: '#000000' } }, burnish: false }, diameter, blend: brush.blend, mask: null,
         opacity: opacity === 'last' ? toolOpacity : 1,
-        stamps: stampFrozenMarks(stamps),
-        dualStamps: stampFrozenMarks(brush.dual ? placeStrokeStamps(path, brush.dual, diameter * brush.dual.scale, `${seed}|dual`) : []),
+        stamps: laid.finish(),
+        dualStamps: brush.dual ? placedStrokeMarks(path, brush.dual, diameter * brush.dual.scale, `${seed}|dual`) : NO_STAMP_MARKS,
         // The pattern is fixed to the sheet, whose pixels these are.
         grainOffset: { main: [0, 0], dual: [0, 0] },
       };

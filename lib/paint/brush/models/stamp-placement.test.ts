@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { placeStrokeStamps, type StampPlacementBrush, type StampStrokePoint } from './stamp-placement.ts';
+import { placedStrokeMarks, type StampPlacementBrush, type StampStrokePoint } from './stamp-placement.ts';
 
 // A brush whose every diameter-read part is live: size jitter, scatter in stamps, count growth and falloff.
 const brush = (stepping: 'spread' | 'eachStamp'): StampPlacementBrush => ({
@@ -20,7 +20,7 @@ const brush = (stepping: 'spread' | 'eachStamp'): StampPlacementBrush => ({
 test('a stroke at scale 0.5 places its stamps as a stroke half its diameter does', () => {
   const path: StampStrokePoint[] = [{ x: 0, y: 0 }, { x: 140, y: 30 }, { x: 260, y: -20 }];
   for (const stepping of ['spread', 'eachStamp'] as const) {
-    const halved = placeStrokeStamps(path.map((p) => ({ ...p, scale: 0.5 })), brush(stepping), 64, 'half');
-    assert.deepEqual(halved, placeStrokeStamps(path, brush(stepping), 32, 'half'), stepping);
+    const halved = placedStrokeMarks(path.map((p) => ({ ...p, scale: 0.5 })), brush(stepping), 64, 'half');
+    assert.deepEqual(halved, placedStrokeMarks(path, brush(stepping), 32, 'half'), stepping);
   }
 });

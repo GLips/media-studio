@@ -8,6 +8,7 @@ import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampPaintEnvironment, StampPassageOptions, StampPassageScope } from './stamp-paint-recipe-types.ts';
 import { stampSizeToken } from './stamp-paint-sizes.ts';
 import { stampCharge } from './stamp-wet-techniques.ts';
+import { stampMarksList } from '#lib/paint/brush/models/stamp-mark-rows.ts';
 
 const brush: StampBrush = {
   name: 'Round', blend: 'normal', accumulation: { kind: 'glaze', build: 0 },
@@ -41,7 +42,7 @@ test('wrapping calls in an apply changes no deposit, and an item of p.each keeps
   const more = depositsOf(leaves(['c', 'b', 'a']));
   assert.deepEqual([a.id, b.id], ['g/p/leaf/a/dab', 'g/p/leaf/b/dab']);
   // Their paths moved with their place in the list; their seeds didn't, so each lays the same stamps along its own.
-  assert.deepEqual(more.find(({ id }) => id === a.id)!.stamps.map(({ rotation }) => rotation), a.stamps.map(({ rotation }) => rotation));
+  assert.deepEqual(stampMarksList(more.find(({ id }) => id === a.id)!.stamps).map(({ rotation }) => rotation), stampMarksList(a.stamps).map(({ rotation }) => rotation));
   assert.throws(() => leaves(['a', 'a']), /two applications are named/);
 });
 

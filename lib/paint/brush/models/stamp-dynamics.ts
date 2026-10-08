@@ -24,18 +24,36 @@ export type StampDrawSlot = (typeof STAMP_DRAW_SLOTS)[number];
 export type StampDraws = Record<StampDrawSlot, number>;
 
 /**
- * A stamp's draws, each 0..1; an authored stamp's stroke-only slots read 0, undrawn. Written out slot by slot in
- * STAMP_DRAW_SLOTS' order (a literal's fields are evaluated in order; stamp-dynamics.test.ts holds the two together):
- * a painting draws this for every stamp, and building it from the list was half its compile.
+ * A stamp's draws, each 0..1, written into `into`; an authored stamp's stroke-only slots read 0, undrawn. Written out
+ * slot by slot in STAMP_DRAW_SLOTS' order (stamp-dynamics.test.ts holds the two together): a painting draws this for
+ * every stamp, so it fills one record rather than making one.
  */
-export function drawStampSlots(random: () => number, placing: 'stroke' | 'authored'): StampDraws {
+export function drawStampSlots(random: () => number, placing: 'stroke' | 'authored', into: StampDraws): StampDraws {
   const stroke = placing === 'stroke';
-  return {
-    lateral: stroke ? random() : 0, scatterTurn: stroke ? random() : 0, scatterReach: stroke ? random() : 0,
-    size: random(), opacity: random(), rotation: random(), flipX: random(), flipY: random(), blur: random(), flow: random(), hue: random(),
-    saturation: random(), lightness: random(), darkness: random(), roundness: random(), grainDepth: random(),
-  };
+  into.lateral = stroke ? random() : 0;
+  into.scatterTurn = stroke ? random() : 0;
+  into.scatterReach = stroke ? random() : 0;
+  into.size = random();
+  into.opacity = random();
+  into.rotation = random();
+  into.flipX = random();
+  into.flipY = random();
+  into.blur = random();
+  into.flow = random();
+  into.hue = random();
+  into.saturation = random();
+  into.lightness = random();
+  into.darkness = random();
+  into.roundness = random();
+  into.grainDepth = random();
+  return into;
 }
+
+/** A record of draws to fill (drawStampSlots), all 0. */
+export const stampDrawsRecord = (): StampDraws => ({
+  lateral: 0, scatterTurn: 0, scatterReach: 0, size: 0, opacity: 0, rotation: 0, flipX: 0, flipY: 0, blur: 0, flow: 0, hue: 0, saturation: 0,
+  lightness: 0, darkness: 0, roundness: 0, grainDepth: 0,
+});
 
 /**
  * The stroke at one spacing step, alike for its stamps. A sensor names the counter it reads: `step` counts steps

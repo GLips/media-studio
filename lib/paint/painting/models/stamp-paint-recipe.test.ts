@@ -10,6 +10,7 @@ import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import { stampBloom, stampSoften } from './stamp-wet-techniques.ts';
 import type { StampPaintEnvironment } from './stamp-paint-recipe-types.ts';
+import { stampMarksList } from '#lib/paint/brush/models/stamp-mark-rows.ts';
 
 /** The masking fluid's ops under a deposit, oldest first, by ID. */
 const fluid = (mask: CompiledStampMask | null): string[] => (mask ? [...fluid(mask.under), mask.id] : []);
@@ -155,17 +156,17 @@ test('a stroke tapers at both ends however short, and turns with its direction f
   const stroke = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 19 }];
   const [deposit] = stampPassDeposits(compileStampPaintRecipe(stampPaintRecipe(FLAT, (paint) => paint.group('g', { composite: 'opaque' }, (group) =>
     group.passage('p', {}, (pass) => pass.stroke('dab', { brush: { ...still, spacing: 0.5 }, well: { paint: ochre }, size: 10, path: stroke }))))).groups[0].passes[0]);
-  const sizes = deposit.stamps.map((stamp) => stamp.diameter);
+  const sizes = stampMarksList(deposit.stamps).map((stamp) => stamp.diameter);
   assert.equal(sizes[0], sizes.at(-1));
   assert.ok(sizes[0] < Math.max(...sizes), `${sizes}`);
-  assert.ok(deposit.stamps.every((stamp) => Math.abs(stamp.rotation - Math.PI / 2) < 1e-9));
+  assert.ok(stampMarksList(deposit.stamps).every((stamp) => Math.abs(stamp.rotation - Math.PI / 2) < 1e-6));
 });
 
 test("a hand-drawn stroke keeps its path's scale: a quarter-scale stroke lays quarter-size stamps", () => {
   const still = { ...brush, dynamics: stampLinearDynamics({ size: { pressure: 0.5 }, opacity: { pressure: 0.5 } }), scatter: { count: 1, radius: 0, lateral: 0 } };
-  const sizesAt = (scale: number) => stampPassDeposits(compileStampPaintRecipe(stampPaintRecipe(FLAT, (paint) => paint.group('g', { composite: 'opaque' }, (group) =>
+  const sizesAt = (scale: number) => stampMarksList(stampPassDeposits(compileStampPaintRecipe(stampPaintRecipe(FLAT, (paint) => paint.group('g', { composite: 'opaque' }, (group) =>
     group.passage('p', {}, (pass) => pass.stroke('line', { brush: still, well: { paint: ochre }, size: 40, hand: {}, path: [{ x: 0, y: 0, scale }, { x: 400, y: 0, scale }] }))))).groups[0].passes[0])[0]
-    .stamps.map((stamp) => stamp.diameter);
+    .stamps).map((stamp) => stamp.diameter);
   const whole = sizesAt(1), quarter = sizesAt(0.25);
   assert.ok(Math.abs(Math.max(...quarter) / Math.max(...whole) - 0.25) < 0.01, `${Math.max(...quarter)} against ${Math.max(...whole)}`);
 });
@@ -177,10 +178,10 @@ test("a dual brush's stamps are its scale times the deposit's diameter, stroked 
     pass.stroke('s', { brush: dualed, well: { paint: ochre }, size: 20, path: [{ x: 0, y: 0 }, { x: 300, y: 0 }] });
     pass.stamps('d', { brush: dualed, well: { paint: ochre }, size: 20, at: [{ x: 0, y: 0, diameter: 8 }] });
   })))).groups[0].passes[0]);
-  assert.ok(stroke.dualStamps.length > 0 && stroke.dualStamps.every((stamp) => stamp.diameter === 30));
-  assert.ok(stroke.stamps.every((stamp) => stamp.diameter === 20));
-  assert.equal(placed.stamps[0].diameter, 8);
-  assert.equal(placed.dualStamps[0].diameter, 12);
+  assert.ok(stroke.dualStamps.length > 0 && stampMarksList(stroke.dualStamps).every((stamp) => stamp.diameter === 30));
+  assert.ok(stampMarksList(stroke.stamps).every((stamp) => stamp.diameter === 20));
+  assert.equal(stampMarksList(placed.stamps)[0].diameter, 8);
+  assert.equal(stampMarksList(placed.dualStamps)[0].diameter, 12);
 });
 
 test("a wash keeps its deposits and waits in painting order, a bloom waiting until it's damp, and each tool's water", () => {

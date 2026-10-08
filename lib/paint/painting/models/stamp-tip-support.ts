@@ -8,7 +8,7 @@
 
 import type { StampBrush, StampBrushMeasuredProfile, StampBrushTip, StampTipSupport } from '#lib/paint/brush/models/stamp-brush.ts';
 import { stampBrushMeasuredProfile, stampBrushStatedProfile, stampBrushSupportAround, type StampTipSupportAround } from '#lib/paint/brush/models/stamp-brush-profile.ts';
-import type { FrozenStampMarks, PlacedStamp } from '#lib/paint/brush/models/stamp-placement.ts';
+import { STAMP_MARK, STAMP_MARK_FIELDS, type FrozenStampMarks } from '#lib/paint/brush/models/stamp-mark-rows.ts';
 import { stampTipLevels, type StampTipLevels } from '#lib/paint/brush/models/stamp-tip-levels.ts';
 import { STAMP_BLUR_LEVELS } from './stamp-deposit-stages.ts';
 import type { CompiledStampDeposit } from './stamp-paint-recipe-compile.ts';
@@ -47,11 +47,15 @@ export function stampTipFootprintOf<Image>(tip: StampBrushTip<Image>, levelsOf: 
 /** What picks the coarsest tip level `marks` read: their smallest diameter, most blur and least roundness. */
 type StampMarksExtremes = { smallest: number; blurred: number; roundest: number };
 /** `marks`' extremes; with none, Infinity, 0 and 1. */
-const marksExtremesOf = (marks: readonly PlacedStamp[]): StampMarksExtremes => ({
-  smallest: marks.reduce((least, s) => Math.min(least, s.diameter), Infinity),
-  blurred: marks.reduce((most, s) => Math.max(most, s.blur), 0),
-  roundest: marks.reduce((least, s) => Math.min(least, s.roundness), 1),
-});
+function marksExtremesOf({ rows, length }: FrozenStampMarks): StampMarksExtremes {
+  let smallest = Infinity, blurred = 0, roundest = 1;
+  for (let o = 0; o < length * STAMP_MARK_FIELDS; o += STAMP_MARK_FIELDS) {
+    smallest = Math.min(smallest, rows[o + STAMP_MARK.diameter]);
+    blurred = Math.max(blurred, rows[o + STAMP_MARK.blur]);
+    roundest = Math.min(roundest, rows[o + STAMP_MARK.roundness]);
+  }
+  return { smallest, blurred, roundest };
+}
 const marksExtremes = new WeakMap<FrozenStampMarks, StampMarksExtremes>();
 /** `marks`' extremes, worked out once. */
 const stampMarksExtremes = (marks: FrozenStampMarks): StampMarksExtremes => rememberedOnce(marksExtremes, marks, () => marksExtremesOf(marks));
@@ -96,24 +100,17 @@ function stampTipHullReach({ span, roundness, center: [cx, cy] }: StampTipFootpr
 }
 
 /**
- * A stamp's place for its tip: from a point of the tip's square (u, v) to the painting, px, as the stamp shader puts
- * it. Never thinner than a pixel, as the shader keeps a flat tip.
+ * Grows `into` (x0, y0, x1, y1) by the box of `hull` placed at stamp `i` of `marks`, as the stamp shader puts its tip's
+ * square: scaled, squashed (never thinner than a pixel, as the shader keeps a flat tip), mirrored and turned. The
+ * shader's sub-pixel sliver past a side is in every bound's rounding out to whole pixels.
  */
-export function stampTipPlace(shape: StampTipFootprint, { x, y, diameter, rotation, roundness, flipX, flipY }: PlacedStamp) {
-  const width = diameter * shape.span, height = width * Math.max(shape.roundness * roundness, 1 / width);
-  const cos = Math.cos(rotation), sin = Math.sin(rotation);
-  const sx = (flipX ? -1 : 1) * width, sy = (flipY ? -1 : 1) * height, [cx, cy] = shape.center;
-  return { width, height, cos, sin, sx, sy, cx, cy, x, y };
-}
-
-/**
- * Grows `into` (x0, y0, x1, y1) by the box of `hull` placed at `stamp`. Past it the stamp lays nothing; the shader's
- * sliver past a side on the square's edge (under a pixel) is in every bound's rounding out to whole pixels.
- */
-export function stampPlacedSupportInto(shape: StampTipFootprint, hull: StampTipHull, stamp: PlacedStamp, into: number[]) {
-  const { cos, sin, sx, sy, cx, cy, x, y } = stampTipPlace(shape, stamp);
-  for (let i = 0; i < hull.length; i += 2) {
-    const lx = (hull[i] - cx) * sx, ly = (hull[i + 1] - cy) * sy;
+export function stampPlacedSupportInto(shape: StampTipFootprint, hull: StampTipHull, marks: FrozenStampMarks, i: number, into: number[]) {
+  const r = marks.rows, o = i * STAMP_MARK_FIELDS, x = r[o], y = r[o + 1], flips = r[o + STAMP_MARK.flips];
+  const width = r[o + STAMP_MARK.diameter] * shape.span, height = width * Math.max(shape.roundness * r[o + STAMP_MARK.roundness], 1 / width);
+  const rotation = r[o + STAMP_MARK.rotation], cos = Math.cos(rotation), sin = Math.sin(rotation);
+  const sx = (flips & 1 ? -1 : 1) * width, sy = (flips & 2 ? -1 : 1) * height, [cx, cy] = shape.center;
+  for (let k = 0; k < hull.length; k += 2) {
+    const lx = (hull[k] - cx) * sx, ly = (hull[k + 1] - cy) * sy;
     const px = x + cos * lx - sin * ly, py = y + sin * lx + cos * ly;
     if (px < into[0]) into[0] = px;
     if (py < into[1]) into[1] = py;
@@ -127,7 +124,7 @@ const marksSupports = new WeakMap<FrozenStampMarks, Map<StampTipFootprint, reado
 export function stampMarksSupport(marks: FrozenStampMarks, shape: StampTipFootprint, into: number[]) {
   const [x0, y0, x1, y1] = rememberedFor(marksSupports, marks, shape, () => {
     const hull = stampMarksTipHull(shape, marks), found = [Infinity, Infinity, -Infinity, -Infinity];
-    for (const stamp of marks) stampPlacedSupportInto(shape, hull, stamp, found);
+    for (let i = 0; i < marks.length; i++) stampPlacedSupportInto(shape, hull, marks, i, found);
     return found;
   });
   into[0] = Math.min(into[0], x0); into[1] = Math.min(into[1], y0); into[2] = Math.max(into[2], x1); into[3] = Math.max(into[3], y1);
@@ -153,7 +150,7 @@ export const STAMP_FLAT_TIP_FLOOR = 1;
  * the coarsest tip level they're drawn to, the larger of the two. A stamp's bound is that times its diameter, plus
  * STAMP_FLAT_TIP_FLOOR.
  */
-export function stampMeasuredStampReach(tips: StampTipSupportAround, marks: readonly PlacedStamp[]): number {
+export function stampMeasuredStampReach(tips: StampTipSupportAround, marks: FrozenStampMarks): number {
   const extremes = marksExtremesOf(marks);
   return Math.max(...tips.map((tip) => tip.reach[coarsestLevelFor(tip, tip.reach.length, extremes)]));
 }
@@ -166,11 +163,11 @@ export function stampMeasuredStampReach(tips: StampTipSupportAround, marks: read
 export function stampDepositMeasuredSupport(deposit: CompiledStampDeposit): StampBox | null {
   const into = [Infinity, Infinity, -Infinity, -Infinity];
   const { main, dual } = stampBrushSupportAround(stampBrushMeasuredProfile(deposit.brush), deposit.diameter, deposit.brush.name);
-  const layers: (readonly [readonly PlacedStamp[], StampTipSupportAround])[] = [[deposit.stamps, main], ...(dual ? [[deposit.dualStamps, dual] as const] : [])];
+  const layers: (readonly [FrozenStampMarks, StampTipSupportAround])[] = [[deposit.stamps, main], ...(dual ? [[deposit.dualStamps, dual] as const] : [])];
   for (const [marks, tips] of layers) {
-    const reach = stampMeasuredStampReach(tips, marks);
-    for (const { x, y, diameter } of marks) {
-      const r = reach * diameter + STAMP_FLAT_TIP_FLOOR;
+    const reach = stampMeasuredStampReach(tips, marks), { rows } = marks;
+    for (let o = 0; o < marks.length * STAMP_MARK_FIELDS; o += STAMP_MARK_FIELDS) {
+      const x = rows[o], y = rows[o + 1], r = reach * rows[o + STAMP_MARK.diameter] + STAMP_FLAT_TIP_FLOOR;
       into[0] = Math.min(into[0], x - r); into[1] = Math.min(into[1], y - r); into[2] = Math.max(into[2], x + r); into[3] = Math.max(into[3], y + r);
     }
   }

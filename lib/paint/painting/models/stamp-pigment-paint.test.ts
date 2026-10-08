@@ -9,9 +9,14 @@ import { stampPaintRecipe } from './stamp-paint-recipe.ts';
 import type { StampPaintMaterial } from './stamp-paint-recipe-types.ts';
 import type { PaintMaterial } from '#lib/paint/materials/models/paint-material.ts';
 import { compileStampPigmentPaint, STAMP_PIGMENT_GROUP_SLOTS, stampPigmentAmountsAt, stampPigmentGroupMedium, type StampPigmentMixing } from './stamp-pigment-paint.ts';
-import { STAMP_PRESSURE_GRAIN_OWNER, stampBrushPaperContact, stampGrainDepthBy } from './stamp-paper-contact.ts';
+import { STAMP_PRESSURE_GRAIN_OWNER, stampBrushPaperContact, stampGrainDepthIn } from './stamp-paper-contact.ts';
 import { stampPaintMedia } from './stamp-wetness.ts';
-import { placeStrokeStamps } from '#lib/paint/brush/models/stamp-placement.ts';
+import { stampMarksList } from '#lib/paint/brush/models/stamp-mark-rows.ts';
+import { placedStrokeMarks } from '#lib/paint/brush/models/stamp-placement.ts';
+
+/** A stroke's stamps, read out. */
+const placeStrokeStamps = (...args: Parameters<typeof placedStrokeMarks>) => stampMarksList(placedStrokeMarks(...args));
+
 
 const brush: StampBrush = {
   profile: STAMP_BRUSH_UNMEASURED,
@@ -96,7 +101,7 @@ test("a deposit on the paper's peaks, a dry medium's or a dry brush's in a wet o
   } as const;
   // Past the first step, a half-pressure stroke's grain depth is half by pressure and half by fade.
   for (const stamp of placeStrokeStamps([{ x: 0, y: 0, pressure: 0.5 }, { x: 200, y: 0, pressure: 0.5 }], stick, 20, 'tooth').slice(1)) {
-    const depthIn = (medium: PaintMedium | null, media: 'wet' | 'dry') => stampGrainDepthBy(stamp, STAMP_PRESSURE_GRAIN_OWNER[stampBrushPaperContact(medium, media).kind]);
+    const depthIn = (medium: PaintMedium | null, media: 'wet' | 'dry') => stampGrainDepthIn(stamp.grainDepth, stamp.grainDepthByPressure, STAMP_PRESSURE_GRAIN_OWNER[stampBrushPaperContact(medium, media).kind]);
     assert.ok(Math.abs(depthIn(PAINT_MEDIA.crayon, 'dry') - 0.5) < 1e-9);
     assert.ok(Math.abs(depthIn(PAINT_MEDIA.watercolour, 'dry') - 0.5) < 1e-9);
     assert.ok(Math.abs(depthIn(PAINT_MEDIA.watercolour, 'wet') - 0.25) < 1e-9);

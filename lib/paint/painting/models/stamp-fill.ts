@@ -12,7 +12,8 @@ import { stampFirmStroke, type StampBrush, type StampBrushMeasuredProfile } from
 import {
   stampBrushEdgeOffsetMean, stampBrushEdgeReach, stampBrushMeasuredProfile, stampBrushProfileRange, type StampBrushEdgeReach,
 } from '#lib/paint/brush/models/stamp-brush-profile.ts';
-import { placeStrokeStamps, stampFrozenMarks, type FrozenStampMarks, type PlacedStamp, type StampStrokePoint } from '#lib/paint/brush/models/stamp-placement.ts';
+import { placeStrokeStamps, stampMarksWriterFor, stampPlacementSeed, stampSeedPart, type StampStrokePoint } from '#lib/paint/brush/models/stamp-placement.ts';
+import { NO_STAMP_MARKS, stampMarksJoined, type FrozenStampMarks } from '#lib/paint/brush/models/stamp-mark-rows.ts';
 import { registerStampCanonicalJoin } from './stamp-canonical.ts';
 import { compileStampArea, stampLostEdge, stampRegionSeed, type CompiledStampArea } from './stamp-area.ts';
 import { planStampFloodRuns, type StampFloodReach, type StampFloodRuns } from './stamp-fill-plan.ts';
@@ -79,7 +80,7 @@ function plannedStampFlood(polygon: readonly StampPoint[], brush: StampBrush, pr
 }
 
 /** A flood placed: its strokes' stamps and its dual's; `scale`, its plan's local share of the diameter, which its flow, bloom and rim reach by point by point. */
-export type StampFloodPlacement = { scale: StampGrid; stamps: PlacedStamp[]; dualStamps: PlacedStamp[] };
+export type StampFloodPlacement = { scale: StampGrid; stamps: FrozenStampMarks; dualStamps: FrozenStampMarks };
 
 /**
  * Places a flood of `region` by `brush` at `diameter`: each run of its plan a firm stroke (stampFirmStroke), as its
@@ -102,11 +103,17 @@ export function placeStampFlood(region: StampRegion, brush: StampBrush, diameter
   const strokes = [...runs.map(({ points }) => points), ...inside(brush.media === 'dry' ? Math.min(pitch, dense) : pitch)];
   // Each its own stroke, so a short one still lays its stamps, which a lift's spacing would skip; all turned by the
   // deposit's one start turn, as a stroke's stamps are, or rows heading alike would differ and meet in dark lines.
-  const firm = stampFirmStroke(brush), stamps = strokes.flatMap((points, r) => placeStrokeStamps(points, firm, diameter, `${seed}|${r}`, seed));
-  let dualStamps: PlacedStamp[] = [];
+  const firm = stampFirmStroke(brush), root = stampPlacementSeed(seed), laid = stampMarksWriterFor(firm);
+  strokes.forEach((points, r) => placeStrokeStamps(points, firm, diameter, stampSeedPart(root, 'run', r), laid, root));
+  const stamps = laid.finish();
+  let dualStamps = NO_STAMP_MARKS;
   if (brush.dual) {
     const path = [...runs.map(({ points }) => points), ...inside(dense)].flatMap((run) => run.map((point, k) => (k === 0 ? { ...point, lift: true } : point)));
-    dualStamps = path.length ? placeStrokeStamps(path, brush.dual, diameter * brush.dual.scale, `${seed}|dual`) : [];
+    if (path.length) {
+      const dual = stampMarksWriterFor(brush.dual);
+      placeStrokeStamps(path, brush.dual, diameter * brush.dual.scale, stampSeedPart(root, 'dual'), dual);
+      dualStamps = dual.finish();
+    }
   }
   return { scale, stamps, dualStamps };
 }
@@ -164,7 +171,7 @@ function rowSegments({ top, bottom, painting }: StampRowFrame, step: number, spa
 export function stampFillPartsJoined(parts: readonly CompiledStampDeposit[], area: CompiledStampArea): CompiledStampDeposit {
   const [first] = parts;
   const joinedMarks = (of: (part: CompiledStampDeposit) => FrozenStampMarks) => {
-    const marks = stampFrozenMarks(parts.flatMap(of));
+    const marks = stampMarksJoined(parts.map(of));
     registerStampCanonicalJoin(marks, parts.map(of));
     return marks;
   };

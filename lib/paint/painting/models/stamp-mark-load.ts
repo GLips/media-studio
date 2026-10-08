@@ -1,13 +1,14 @@
 // stamp-mark-load.ts: what loading a painting onto the GPU works out from a deposit's placed marks (floats, plan,
-// bins), once a set of marks: a recompiled painting shares its unchanged deposits' (stamp-deposit-placement.ts).
+// bins): the plan and bins once a set of marks, as a recompiled painting shares its unchanged deposits'
+// (stamp-deposit-placement.ts); the floats as they load, a copy of the rows.
 //
 // Remembered weakly against the marks, so given up with them: right as FrozenStampMarks never change, and each key
 // holds all else its value reads. What's returned is shared by every renderer: copy it, never write it.
 
 import { stampAccumulationPlan, type StampAccumulationPlan } from './stamp-deposit-stages.ts';
 import type { StampAccumulation } from '#lib/paint/brush/models/stamp-brush.ts';
-import type { FrozenStampMarks } from '#lib/paint/brush/models/stamp-placement.ts';
-import { stampGrainDepthBy, type StampGrainDepthSource } from './stamp-paper-contact.ts';
+import { STAMP_MARK, STAMP_MARK_FIELDS, type FrozenStampMarks } from '#lib/paint/brush/models/stamp-mark-rows.ts';
+import { stampGrainDepthIn, type StampGrainDepthSource } from './stamp-paper-contact.ts';
 import { stampMarksTipHull, stampPlacedSupportInto, type StampTipFootprint } from './stamp-tip-support.ts';
 import { rememberedFor, rememberedOnce } from './stamp-remembered.ts';
 
@@ -24,26 +25,20 @@ export const TINT_FLOATS = 4;
 /** Pixels a side of the tiles an `ordered` layer's stamps are binned by (stampMarksOrderedBins). */
 export const STAMP_ORDERED_TILE = 32;
 
-const instanceFloats = new WeakMap<StampMarks, Map<StampGrainDepthSource, Float32Array>>();
-/** `marks` as instance floats (STAMP_FLOATS each), their grain depth by pressure from `source` (STAMP_PRESSURE_GRAIN_OWNER). */
-export const stampInstanceFloats = (marks: StampMarks, source: StampGrainDepthSource) => rememberedFor(instanceFloats, marks, source, () => {
-  const floats = new Float32Array(marks.length * STAMP_FLOATS);
-  marks.forEach((s, i) => floats.set(
-    [
-      s.x, s.y, s.diameter, s.rotation, s.alpha, s.blur, s.grainTurn, (s.flipX ? 1 : 0) + (s.flipY ? 2 : 0), s.opacity, s.roundness, stampGrainDepthBy(s, source), s.pressure,
-      s.rest?.x ?? s.x, s.rest?.y ?? s.y,
-    ], i * STAMP_FLOATS,
-  ));
-  return floats;
-});
-
-const tintFloats = new WeakMap<StampMarks, Float32Array>();
-/** `marks`' tints as floats (TINT_FLOATS each). */
-export const stampTintFloats = (marks: StampMarks) => rememberedOnce(tintFloats, marks, () => {
-  const floats = new Float32Array(marks.length * TINT_FLOATS);
-  marks.forEach(({ tint: t }, i) => floats.set([t.hue, t.saturation, t.lightness, t.secondary], i * TINT_FLOATS));
-  return floats;
-});
+/**
+ * Writes `marks` as instance floats (STAMP_FLOATS each) into `into` from stamp `at`, their grain depth by pressure from
+ * `source` (STAMP_PRESSURE_GRAIN_OWNER): their rows in the GPU's order, the two grain depths put together.
+ */
+export function stampInstanceFloatsInto(marks: StampMarks, source: StampGrainDepthSource, into: Float32Array, at: number): void {
+  const r = marks.rows, M = STAMP_MARK;
+  for (let i = 0, o = 0, f = at * STAMP_FLOATS; i < marks.length; i++, o += STAMP_MARK_FIELDS, f += STAMP_FLOATS) {
+    into[f] = r[o + M.x]; into[f + 1] = r[o + M.y]; into[f + 2] = r[o + M.diameter]; into[f + 3] = r[o + M.rotation];
+    into[f + 4] = r[o + M.alpha]; into[f + 5] = r[o + M.blur]; into[f + 6] = r[o + M.grainTurn]; into[f + 7] = r[o + M.flips];
+    into[f + 8] = r[o + M.opacity]; into[f + 9] = r[o + M.roundness];
+    into[f + 10] = stampGrainDepthIn(r[o + M.grainDepth], r[o + M.grainDepthByPressure], source);
+    into[f + 11] = r[o + M.pressure]; into[f + 12] = r[o + M.restX]; into[f + 13] = r[o + M.restY];
+  }
+}
 
 const plans = new WeakMap<StampMarks, Map<StampAccumulation['kind'], StampAccumulationPlan>>();
 /** How the GPU lays `marks` under `accumulation` (stampAccumulationPlan), which reads only its kind. */
@@ -65,13 +60,13 @@ export function stampMarksOrderedBins(marks: StampMarks, shape: StampTipFootprin
 function eachStampTile(marks: StampMarks, shape: StampTipFootprint, tilesX: number, tilesY: number, margin: number, visit: (i: number, t: number) => void) {
   const tileOf = (v: number, count: number) => Math.min(count - 1, Math.max(0, Math.floor((v + margin) / STAMP_ORDERED_TILE)));
   const hull = stampMarksTipHull(shape, marks), box = [0, 0, 0, 0];
-  marks.forEach((s, i) => {
+  for (let i = 0; i < marks.length; i++) {
     box[0] = Infinity; box[1] = Infinity; box[2] = -Infinity; box[3] = -Infinity;
-    stampPlacedSupportInto(shape, hull, s, box);
+    stampPlacedSupportInto(shape, hull, marks, i, box);
     for (let ty = tileOf(box[1], tilesY); ty <= tileOf(box[3], tilesY); ty++) {
       for (let tx = tileOf(box[0], tilesX); tx <= tileOf(box[2], tilesX); tx++) visit(i, ty * tilesX + tx);
     }
-  });
+  }
 }
 
 /**

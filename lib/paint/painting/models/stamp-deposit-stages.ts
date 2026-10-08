@@ -4,6 +4,7 @@
 // its tip's mips; and how the GPU lays a layer's stamps, by fixed blend or in order. An accumulation's lay and resolve
 // are WGSL, held to their accepted output by the GPU gate (docs/brush-engine.md).
 
+import { STAMP_MARK, STAMP_MARK_FIELDS, type FrozenStampMarks } from '#lib/paint/brush/models/stamp-mark-rows.ts';
 import { stampDualBeforeGrain, stampWgslSwitch } from '#lib/paint/brush/models/coverage-formulas.ts';
 import type { StampAccumulation, StampBrush, StampBrushBurntEdge, StampBrushGrain, StampBrushLayer, StampBrushWetEdges, StampDualBlend } from '#lib/paint/brush/models/stamp-brush.ts';
 
@@ -55,11 +56,14 @@ export const STAMP_ACCUMULATION_LAY_WGSL = stampWgslSwitch(
  */
 export type StampAccumulationPlan = { kind: 'fixedBlend'; toward: 'full' | 'opacity' } | { kind: 'ordered' };
 
-/** How the GPU lays `stamps` under `accumulation`: ordered only where the blend can't lay what `lay` does. */
-export function stampAccumulationPlan(accumulation: StampAccumulation, stamps: readonly { opacity: number }[]): StampAccumulationPlan {
+/** How the GPU lays `marks` under `accumulation`: ordered only where the blend can't lay what `lay` does. */
+export function stampAccumulationPlan(accumulation: StampAccumulation, marks: FrozenStampMarks): StampAccumulationPlan {
   if (STAMP_ACCUMULATIONS[accumulation.kind].towardFull) return { kind: 'fixedBlend', toward: 'full' };
-  const falls = stamps.some((stamp, i) => i > 0 && stamp.opacity < stamps[i - 1].opacity);
-  return falls ? { kind: 'ordered' } : { kind: 'fixedBlend', toward: 'opacity' };
+  const { rows } = marks;
+  for (let o = STAMP_MARK_FIELDS + STAMP_MARK.opacity; o < marks.length * STAMP_MARK_FIELDS; o += STAMP_MARK_FIELDS) {
+    if (rows[o] < rows[o - STAMP_MARK_FIELDS]) return { kind: 'ordered' };
+  }
+  return { kind: 'fixedBlend', toward: 'opacity' };
 }
 /** The table's resolves in WGSL, by the accumulation's index. */
 export const STAMP_ACCUMULATION_RESOLVE_WGSL = stampWgslSwitch(

@@ -4,7 +4,7 @@
 // Randomness comes from IDs, never order: each deposit is seeded by its ID, so adding a stroke changes no other.
 
 import type { StampBlend, StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
-import type { FrozenStampMarks } from '#lib/paint/brush/models/stamp-placement.ts';
+import type { FrozenStampMarks } from '#lib/paint/brush/models/stamp-mark-rows.ts';
 import { compileDeposit } from './stamp-deposit-compile.ts';
 import type { StampFloodEdge } from './stamp-fill.ts';
 import { stampPaintFieldEnds, stampPaintFieldProblem, stampSeededPaintField, type StampSeededPaintField } from './stamp-paint-field.ts';

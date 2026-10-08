@@ -10,6 +10,7 @@ import { stampAreaCoverageAt } from './stamp-area.ts';
 import { stampBrushEdgeReachOf, stampBrushEvenEdge, stampBrushStatedProfile } from '#lib/paint/brush/models/stamp-brush-profile.ts';
 import { stampRoundTipFootprint, stampRoundTipStatedProfile, stampTipSupportOf } from './stamp-tip-support.ts';
 import type { StampPaintEnvironment } from './stamp-paint-recipe-types.ts';
+import { stampMarksList } from '#lib/paint/brush/models/stamp-mark-rows.ts';
 
 const FLAT: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'flat' } };
 
@@ -52,22 +53,22 @@ test("a flood's edge stroke runs its stamps its brush's visible offset inside th
   const disc = compiledFlood({ kind: 'ellipse', x: 200, y: 200, radiusX: 120, radiusY: 120 }, 50);
   // Untapered at full size, the outermost stamps' centres its visible offset (half a diameter, as stated) in, all the
   // way round; the rows inside stop there.
-  const ring = disc.stamps.filter(({ x, y }) => Math.hypot(x - 200, y - 200) > 93);
+  const ring = stampMarksList(disc.stamps).filter(({ x, y }) => Math.hypot(x - 200, y - 200) > 93);
   assert.ok(ring.length > 50);
-  for (const { x, y, diameter } of disc.stamps) {
+  for (const { x, y, diameter } of stampMarksList(disc.stamps)) {
     assert.equal(diameter, 50);
     assert.ok(Math.hypot(x - 200, y - 200) < 97, `stamp at ${x},${y}`);
   }
   // A U, its notch 200 wide from the top down to y 200: the edge follows the notch's sides, but paints nothing in it.
   const u = compiledFlood(polygon(0, 0, 100, 0, 100, 200, 300, 200, 300, 0, 400, 0, 400, 300, 0, 300), 40);
-  assert.deepEqual(u.stamps.filter(({ x, y }) => x > 100 && x < 300 && y < 200), []);
-  for (const [x, y] of [[80, 20], [320, 20], [120, 220], [280, 220]]) assert.ok(u.stamps.some((s) => Math.hypot(s.x - x, s.y - y) < 6), `no stamp near ${x},${y}`);
+  assert.deepEqual(stampMarksList(u.stamps).filter(({ x, y }) => x > 100 && x < 300 && y < 200), []);
+  for (const [x, y] of [[80, 20], [320, 20], [120, 220], [280, 220]]) assert.ok(stampMarksList(u.stamps).some((s) => Math.hypot(s.x - x, s.y - y) < 6), `no stamp near ${x},${y}`);
   // Reaching half a diameter past, the flood lays the shape grown by that: its edge stamps' centres on the outline, and
   // the notch narrowed by as much from each side, not the shape scaled.
   const past = compiledFill(polygon(0, 0, 100, 0, 100, 200, 300, 200, 300, 0, 400, 0, 400, 300, 0, 300), 40, { application: { kind: 'flood', reach: { past: 0.5 } } });
   if (past.kind !== 'flood') throw new Error(`a flood compiled to a ${past.kind}`);
-  for (const [x, y] of [[0, 150], [200, 300], [100, 100], [300, 100], [200, 200]]) assert.ok(past.stamps.some((s) => Math.hypot(s.x - x, s.y - y) < 4), `no stamp near ${x},${y}`);
-  assert.deepEqual(past.stamps.filter(({ x, y }) => x > 125 && x < 275 && y < 175), []);
+  for (const [x, y] of [[0, 150], [200, 300], [100, 100], [300, 100], [200, 200]]) assert.ok(stampMarksList(past.stamps).some((s) => Math.hypot(s.x - x, s.y - y) < 4), `no stamp near ${x},${y}`);
+  assert.deepEqual(stampMarksList(past.stamps).filter(({ x, y }) => x > 125 && x < 275 && y < 175), []);
   assert.throws(() => compiledFill(polygon(0, 0, 100, 0, 100, 100), 40, { application: { kind: 'flood', reach: { past: -1 } } }), /0 or more diameters/);
 });
 
@@ -79,7 +80,7 @@ test("a flood's dual lies within its edge stroke's centreline, so its edge is th
     pass.fill('fill', { brush: dualed, well: { paint: { kind: 'color', color: '#406585' } }, size: 50, region: { kind: 'ellipse', x: 200, y: 200, radiusX: 120, radiusY: 120 }, application: { kind: 'flood' } }))))).groups[0].passes[0])[0];
   assert.ok(deposit.dualStamps.length > 100);
   // The edge contour runs 95 from the centre; a cell of the plan's grid over.
-  for (const { x, y } of deposit.dualStamps) assert.ok(Math.hypot(x - 200, y - 200) <= 96, `dual stamp at ${x.toFixed(1)},${y.toFixed(1)}`);
+  for (const { x, y } of stampMarksList(deposit.dualStamps)) assert.ok(Math.hypot(x - 200, y - 200) <= 96, `dual stamp at ${x.toFixed(1)},${y.toFixed(1)}`);
 });
 
 test("a fill in strokes lays marks whose edges reach the outline, past it only when it reaches over, and a wide hatch leaves paper between", () => {
@@ -87,18 +88,18 @@ test("a fill in strokes lays marks whose edges reach the outline, past it only w
   for (const pattern of ['zigzag', 'backAndForth', 'hatch', 'crossHatch', 'scribble', 'shading'] as const) {
     const fill = compiledFill(disc, 30, { application: { kind: 'strokes', pattern: { kind: pattern }, variation: 0, hand: {} } });
     assert.equal(fill.kind, 'stroke');
-    const reach = Math.max(...fill.stamps.map(({ x, y }) => Math.hypot(x - 200, y - 200) + 15));
+    const reach = Math.max(...stampMarksList(fill.stamps).map(({ x, y }) => Math.hypot(x - 200, y - 200) + 15));
     assert.ok(reach > 115 && reach < 122, `${pattern} reaches ${reach}`);
   }
   // Reaching over, its marks' middles run out to the outline, round the disc's shape, not its box.
   const over = compiledFill(disc, 30, { application: { kind: 'strokes', pattern: { kind: 'backAndForth' }, variation: 0, reach: { past: 0 } } });
-  const centres = over.stamps.map(({ x, y }) => Math.hypot(x - 200, y - 200));
+  const centres = stampMarksList(over.stamps).map(({ x, y }) => Math.hypot(x - 200, y - 200));
   assert.ok(Math.max(...centres) > 114 && Math.max(...centres) < 122, `centres reach ${Math.max(...centres)}`);
   // A region shorter than a shading stroke is still shaded, not left to a neighbouring patch it hasn't got.
   assert.ok(stampFillStrokePath(polygon(0, 0, 40, 0, 40, 40, 0, 40), { diameter: 20, offset: 10, edge: stampBrushEdgeReachOf(() => 10) }, 0, { pattern: { kind: 'shading' }, variation: 0, hand: {} }, 'small').length > 0);
   // Rows about two diameters apart: every stamp's centre lies within a few px of a row, and between rows lies paper.
   const hatch = compiledFill(disc, 30, { application: { kind: 'strokes', pattern: { kind: 'hatch' }, spacing: 2, variation: 0 } });
-  const rows = hatch.stamps.map(({ y }) => y).toSorted((a, b) => a - b).filter((y, i, ys) => i === 0 || y - ys[i - 1] > 10);
+  const rows = stampMarksList(hatch.stamps).map(({ y }) => y).toSorted((a, b) => a - b).filter((y, i, ys) => i === 0 || y - ys[i - 1] > 10);
   assert.ok(rows.length >= 3 && rows.every((y, i) => i === 0 || y - rows[i - 1] > 55), `rows at ${rows.map(Math.round).join(', ')}`);
 });
 
@@ -136,7 +137,7 @@ const pitches = (rows: number[]) => rows.slice(1).map((y, i) => y - rows[i]);
 test("a flood paints inside its edge in rows of its brush half its visible width apart, a dry brush's closer, so none of it is left bare", () => {
   const square = polygon(0, 0, 300, 0, 300, 300, 0, 300);
   // Rows run along x: the heights its inside stamps (clear of the edge contour, 20 in) lie at.
-  const rowsOf = (media?: StampBrushMedia) => [...new Set(compiledFill(square, 40, { application: { kind: 'flood' } }, media).stamps
+  const rowsOf = (media?: StampBrushMedia) => [...new Set(stampMarksList(compiledFill(square, 40, { application: { kind: 'flood' } }, media).stamps)
     .filter(({ x, y }) => Math.min(x, y, 300 - x, 300 - y) > 25).map(({ y }) => Math.round(y)))].toSorted((a, b) => a - b);
   // Stated, its visible offset is half its diameter: rows half the visible width apart.
   const wet = rowsOf();
@@ -175,7 +176,7 @@ test("two brushes stating different reaches flood as each states, though their s
     stating.profile = stampBrushStatedProfile(stating, offset, support);
     const deposit = stampPassDeposits(compileStampPaintRecipe(stampPaintRecipe(FLAT, (paint) => paint.group('g', { composite: 'opaque' }, (group) => group.passage('p', {}, (pass) =>
       pass.fill('fill', { brush: stating, well: { paint: { kind: 'color', color: '#406585' } }, size: 50, region: disc, application: { kind: 'flood' } }))))).groups[0].passes[0])[0];
-    return Math.max(...deposit.stamps.map(({ x, y }) => Math.hypot(x - 200, y - 200)));
+    return Math.max(...stampMarksList(deposit.stamps).map(({ x, y }) => Math.hypot(x - 200, y - 200)));
   };
   // Half a diameter in, then a quarter: the edge ring 95 px out, then 107.5.
   assert.ok(Math.abs(ringAt(0.5) - 95) < 2 && Math.abs(ringAt(0.25) - 107.5) < 2, `rings at ${ringAt(0.5).toFixed(1)} and ${ringAt(0.25).toFixed(1)}`);
@@ -190,7 +191,7 @@ test("a lopsided brush's flood turns its nearer-reaching side to the outline, wh
     lopsided.profile = { ...stated, key: { ...stated.key, settings: `${short} short` }, samples };
     const deposit = stampPassDeposits(compileStampPaintRecipe(stampPaintRecipe(FLAT, (paint) => paint.group('g', { composite: 'opaque' }, (group) => group.passage('p', {}, (pass) =>
       pass.fill('fill', { brush: lopsided, well: { paint: { kind: 'color', color: '#406585' } }, size: 50, region: disc, application: { kind: 'flood' } }))))).groups[0].passes[0])[0];
-    return deposit.stamps.filter(({ x, y }) => Math.hypot(x - 200, y - 200) > 105).length;
+    return stampMarksList(deposit.stamps).filter(({ x, y }) => Math.hypot(x - 200, y - 200) > 105).length;
   };
   // The short side reaches a quarter diameter: the edge ring runs 107.5 px out, not at the long side's 95.
   for (const short of ['left', 'right'] as const) assert.ok(ringOf(short) > 100, `${short} short: ${ringOf(short)} stamps past 105 px`);
@@ -207,7 +208,7 @@ test("a flood's barrier is its outline unless its edge is lost, then whole on th
   const kept = barrierOf({ kind: 'flood' }), lost = barrierOf({ kind: 'flood', edge: { kind: 'lost', reach: 20 } });
   // Along a side, clear of the corners, the stamps' centres stop the visible offset (12 px) inside what they lay: the
   // outline, or the lost edge's reach.
-  const leftmost = (application: StampFillApplication) => Math.min(...floodOf(application).stamps.filter(({ y }) => y > 80 && y < 120).map(({ x }) => x));
+  const leftmost = (application: StampFillApplication) => Math.min(...stampMarksList(floodOf(application).stamps).filter(({ y }) => y > 80 && y < 120).map(({ x }) => x));
   assert.ok(Math.abs(leftmost({ kind: 'flood' }) - 52) < 1, `kept: ${leftmost({ kind: 'flood' })}`);
   assert.ok(Math.abs(leftmost({ kind: 'flood', edge: { kind: 'lost', reach: 20 } }) - 32) < 1.5, `lost: ${leftmost({ kind: 'flood', edge: { kind: 'lost', reach: 20 } })}`);
   assert.ok(stampAreaCoverageAt(kept, 41, 100) > 0.99 && stampAreaCoverageAt(kept, 39, 100) < 0.01, 'kept: a pixel either side of the line');

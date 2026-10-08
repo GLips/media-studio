@@ -9,6 +9,7 @@ import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { stampRoundTipStatedProfile } from './stamp-tip-support.ts';
 import type { StampPaintEnvironment } from './stamp-paint-recipe-types.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
+import { stampMarksList } from '#lib/paint/brush/models/stamp-mark-rows.ts';
 
 const WET: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: WATERCOLOUR_PIGMENTS } };
 
@@ -86,6 +87,6 @@ test("noise spreads smoothly over nearly all of its range, in a fill's load and 
   assert.ok(steepest < 0.1, `a pixel's step ${steepest}`);
   // Each stroke stamp's opacity follows its load.
   const [sky] = stampPassDeposits(pass);
-  const opacities = sky.stamps.map(({ opacity }) => opacity);
+  const opacities = stampMarksList(sky.stamps).map(({ opacity }) => opacity);
   assert.ok(Math.min(...opacities) < 0.1 && Math.max(...opacities) > 0.9, `stamp opacities ${Math.min(...opacities)}..${Math.max(...opacities)}`);
 });

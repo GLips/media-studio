@@ -11,7 +11,7 @@
 import { stampGrainOffsets, type StampMark } from './stamp-marks.ts';
 import { placeStampDeposit } from './stamp-deposit-placement.ts';
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
-import type { FrozenStampMarks } from '#lib/paint/brush/models/stamp-placement.ts';
+import type { FrozenStampMarks } from '#lib/paint/brush/models/stamp-mark-rows.ts';
 import type { CompiledStampMask, CompiledStampPaint } from './stamp-paint-recipe-compile.ts';
 
 /** A mark as a brushed mask lays it: placed from its key, as paint built from it is. */

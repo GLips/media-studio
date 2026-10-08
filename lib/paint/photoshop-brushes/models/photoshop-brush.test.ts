@@ -3,7 +3,12 @@ import { test } from 'node:test';
 import { normalizePhotoshopBrush, type PhotoshopReading } from './photoshop-brush.ts';
 import { stampLinearDynamics } from '#lib/paint/brush/models/stamp-brush.ts';
 import { PHOTOSHOP_POOLING } from '#lib/paint/brush/models/coverage-formulas.ts';
-import { placeStrokeStamps } from '#lib/paint/brush/models/stamp-placement.ts';
+import { stampMarksList } from '#lib/paint/brush/models/stamp-mark-rows.ts';
+import { placedStrokeMarks } from '#lib/paint/brush/models/stamp-placement.ts';
+
+/** A stroke's stamps, read out. */
+const placeStrokeStamps = (...args: Parameters<typeof placedStrokeMarks>) => stampMarksList(placedStrokeMarks(...args));
+
 import type { PhotoshopDescriptor } from './photoshop-descriptor.ts';
 import { photoshopPaintablePreset, readPhotoshopPreset } from './photoshop-preset.ts';
 import { normalizeProcreateBrush, type ProcreateReading } from '#lib/paint/procreate-brushes/models/procreate-brush.ts';

@@ -5,13 +5,13 @@
 // Brushes are bound to their images first, once a painting (bindStampPaintBrushes).
 
 import { bindStampBrushImages, stampBrushImages, type StampBrush, type StampBrushAsset, type StampBrushImageSource, type StampBrushLayer } from '#lib/paint/brush/models/stamp-brush.ts';
-import type { FrozenStampMarks } from '#lib/paint/brush/models/stamp-placement.ts';
+import type { FrozenStampMarks } from '#lib/paint/brush/models/stamp-mark-rows.ts';
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { CompiledStampMarkPlacement } from '../models/stamp-brushed-mask.ts';
 import { STAMP_RESOLVE_PLANS, stampActiveLayers, stampResolveOrderIndex, stampResolvePlan, type StampAccumulationPlan } from '../models/stamp-deposit-stages.ts';
-import { createStampBinBuffer, STAMP_FLOATS, STAMP_ORDERED_TILE, stampInstanceFloats, stampMarksOrderedBins, stampMarksPlan, stampTintFloats, TINT_FLOATS } from '../models/stamp-mark-load.ts';
+import { createStampBinBuffer, STAMP_FLOATS, STAMP_ORDERED_TILE, stampInstanceFloatsInto, stampMarksOrderedBins, stampMarksPlan, TINT_FLOATS } from '../models/stamp-mark-load.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampPaintPaper } from '../models/stamp-paint-recipe-types.ts';
 import { STAMP_PRESSURE_GRAIN_OWNER, stampBrushPaperContact } from '../models/stamp-paper-contact.ts';
@@ -79,9 +79,9 @@ export function loadStampMarks(on: StampPaintDevice, { stage, tipFootprint }: St
   const stampData = new Float32Array(Math.max(1, total) * STAMP_FLOATS), tintData = new Float32Array(Math.max(1, tints) * TINT_FLOATS);
   entries.forEach(({ marks, brush, medium }, i) => {
     const { main, dual, tint } = placed[i], grainDepthSource = STAMP_PRESSURE_GRAIN_OWNER[stampBrushPaperContact(medium, brush.media).kind];
-    stampData.set(stampInstanceFloats(marks.stamps, grainDepthSource), main * STAMP_FLOATS);
-    stampData.set(stampInstanceFloats(marks.dualStamps, grainDepthSource), dual * STAMP_FLOATS);
-    if (tint !== null) tintData.set(stampTintFloats(marks.stamps), tint * TINT_FLOATS);
+    stampInstanceFloatsInto(marks.stamps, grainDepthSource, stampData, main);
+    stampInstanceFloatsInto(marks.dualStamps, grainDepthSource, stampData, dual);
+    if (tint !== null && marks.stamps.tints) tintData.set(marks.stamps.tints, tint * TINT_FLOATS);
   });
   // A layer laid in order reads its stamps and tints as storage.
   const stampBuffer = stampPaintBuffer(on, stampData, GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE), tintBuffer = stampPaintBuffer(on, tintData, GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE);

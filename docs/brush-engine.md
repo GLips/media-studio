@@ -31,8 +31,9 @@ it, the paper it meets (`paint-paper.ts`), and a deposit's material, a colour or
 tip, spacing, dynamics keyed by target and sensor, scatter, rotation, grain, dual, edges, accumulation). Its tip is an
 image or a bristle tip (`stamp-bristle-tip.ts`), drawn at the diameter a deposit paints at: `bindStampBrushImages`
 binds either at that diameter, and each renderer caches what it draws by key. `stamp-placement.ts` places its stamps
-along a stroke by one rule (`buildStamp`), reading dynamics through `stamp-dynamics.ts` (each step's and stamp's
-context, what each sensor reads from it, each response); a new sensor or target is an entry in `StampTargetSensors`,
+along a stroke by one rule (`writeStamp`), streaming each as a packed row (`stamp-mark-rows.ts`: `FrozenStampMarks`,
+from which the renderer writes its instance floats) and drawing from a numeric stream per stamp, reading dynamics
+through `stamp-dynamics.ts` (each step's and stamp's context, what each sensor reads from it, each response); a new sensor or target is an entry in `StampTargetSensors`,
 its parameters (`StampSensorParams`) and its signal there. `stamp-stroke-hand.ts` is the hand: the pressure and speed
 a painter moves along an authored stroke. `coverage-formulas.ts` is the one registry of every blend, grain
 adjustment, pooling and accumulation, and their WGSL: a brush's modes and the maths they paint by are one table.

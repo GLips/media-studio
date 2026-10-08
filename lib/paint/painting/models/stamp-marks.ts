@@ -7,7 +7,10 @@
 
 import { seededRandom } from '#lib/picture/motion/models/random.ts';
 import type { StampBrush, StampBrushLayer } from '#lib/paint/brush/models/stamp-brush.ts';
-import { placeAuthoredStamps, placeStrokeStamps, type PlacedStamp, type StampPlacementBrush, type StampStrokePoint } from '#lib/paint/brush/models/stamp-placement.ts';
+import {
+  placeAuthoredStamps, placeStrokeStamps, stampMarksWriterFor, stampPlacementSeed, stampSeedPart, type StampPlacementBrush, type StampPlacementSeed, type StampStrokePoint,
+} from '#lib/paint/brush/models/stamp-placement.ts';
+import { NO_STAMP_MARKS, type FrozenStampMarks } from '#lib/paint/brush/models/stamp-mark-rows.ts';
 import { handStampStroke } from '#lib/paint/brush/models/stamp-stroke-hand.ts';
 import { stampPaintFieldAt, stampPaintFieldProblem, stampSeededPaintField, type StampPaintField } from './stamp-paint-field.ts';
 import { stampPolygonBox, stampPolygonDistance, stampRegionPolygon, type StampPoint, type StampRegion } from './stamp-region.ts';
@@ -162,12 +165,16 @@ export function stampGrainOffsets(brush: StampBrush, seed: string) {
  * Everything a mark places, from `seed`: its stamps, its brush's dual's, and its grains' offsets. The one path a
  * stroke or a placement deposit is placed by, so a deposit and anything else built from one mark agree.
  */
-export function stampMarkStamps({ brush, diameter, geometry }: Omit<StampMark, 'key'>, seed: string): { stamps: PlacedStamp[]; dualStamps: PlacedStamp[]; grainOffset: ReturnType<typeof stampGrainOffsets> } {
+export function stampMarkStamps({ brush, diameter, geometry }: Omit<StampMark, 'key'>, seed: string): { stamps: FrozenStampMarks; dualStamps: FrozenStampMarks; grainOffset: ReturnType<typeof stampGrainOffsets> } {
   // The hand's path is worked out once, so the main stamps and the dual's follow the same wobble.
   let path: readonly StampStrokePoint[] = [];
   if (geometry.kind === 'stroke') path = geometry.hand ? handStampStroke(geometry.path, geometry.hand, diameter, `${seed}|hand`) : geometry.path;
-  const place = (stamping: StampPlacementBrush, scale: number, placing: string) => geometry.kind === 'stroke'
-    ? placeStrokeStamps(path, stamping, diameter * scale, placing)
-    : placeAuthoredStamps(geometry.at.map((at) => (at.diameter === undefined ? at : { ...at, diameter: at.diameter * scale })), stamping, diameter * scale, placing);
-  return { stamps: place(brush, 1, seed), dualStamps: brush.dual ? place(brush.dual, brush.dual.scale, `${seed}|dual`) : [], grainOffset: stampGrainOffsets(brush, seed) };
+  const place = (stamping: StampPlacementBrush, scale: number, placing: StampPlacementSeed) => {
+    const into = stampMarksWriterFor(stamping);
+    if (geometry.kind === 'stroke') placeStrokeStamps(path, stamping, diameter * scale, placing, into);
+    else placeAuthoredStamps(geometry.at.map((at) => (at.diameter === undefined ? at : { ...at, diameter: at.diameter * scale })), stamping, diameter * scale, placing, into);
+    return into.finish();
+  };
+  const root = stampPlacementSeed(seed);
+  return { stamps: place(brush, 1, root), dualStamps: brush.dual ? place(brush.dual, brush.dual.scale, stampSeedPart(root, 'dual')) : NO_STAMP_MARKS, grainOffset: stampGrainOffsets(brush, seed) };
 }
