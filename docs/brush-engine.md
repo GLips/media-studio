@@ -481,8 +481,10 @@ a target by name and shape for its frame's encoder (`owner.target`); work spanni
 renderer, takes it from a scope, which holds it until it ends (`scope.target`, given the encoder open as it's first
 taken, none at a load). A pass that reads what it last wrote, a shot's layer target clearing only its last box, keeps
 its targets in a store of its own (`shot-sheets-lay.ts`). Every encoder is made, filled and submitted in one
-synchronous run, so the cache knows the one open. Past the budget the cache gives up checkpoints first, then whatever the frame being encoded doesn't
-use and nobody holds, least recently used first, so a long render's sizes never pile up. A 1 × 1 blank a pass binds
+synchronous run, so the cache knows the one open. Past the budget the cache gives up what the frame being encoded doesn't use and nobody holds,
+cheapest to make again first: checkpoints, then what a pass lays or works in (pictures, targets), then films, which
+only a whole solve makes again (a scene blending two key drawings needs both's films every frame); least recently
+used first within each, so a long render's sizes never pile up. A 1 × 1 blank a pass binds
 for nothing is the owner's for its life (`owner.blank`), and a crop's light measure is a texture of its own, freed
 once read. A surface is one output on it. One painted plane at rest, sharp and not glowing is drawn straight
 to the output, as a still always was. Otherwise each plane's picture is painted (paper, its groups, and each glowing

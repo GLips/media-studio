@@ -4,8 +4,8 @@
 //
 // An entry the frame being encoded uses, or one held, is never given up: destroying a texture an unsubmitted encoder
 // reads is an error. Every encoder is made, filled and submitted in one synchronous run, so the frame being encoded is
-// the one encoder open. Past the budget checkpoints go first, then the least recently used; a frame's own needs may
-// overrun it meanwhile.
+// the one encoder open. Past the budget the cheapest to remake go first (evictionRank), then the least recently used;
+// a frame may overrun it.
 
 import type { TraceQuantity } from '#lib/platform/trace/models/trace-model.ts';
 import type { StampGpuCacheBytes } from '../models/stamp-paint-costs.ts';
@@ -77,8 +77,12 @@ const TEXEL_BYTES: Partial<Record<GPUTextureFormat, number>> = {
   r8unorm: 1, r16float: 2, rg16float: 4, rgba8unorm: 4, rgba16float: 8, r32float: 4, rg32float: 8, rgba32float: 16, rgba32uint: 16,
 };
 
-/** The order the cache gives entries up in: checkpoints first, as a solve can always run again from an earlier one. */
-const evictionRank = (entry: StampGpuCacheHeld) => (entry.producer === 'checkpoint' ? 0 : 1);
+/**
+ * The order the cache gives entries up in, cheapest to make again first: checkpoints, as a solve can always run again
+ * from an earlier one; pictures and targets, laid or made in a pass; films last, as only a whole solve makes one.
+ */
+const EVICTION_RANKS: Record<StampGpuCacheProducer, number> = { checkpoint: 0, picture: 1, blurred: 1, edge: 1, arrival: 1, target: 1, film: 2 };
+const evictionRank = (entry: StampGpuCacheHeld) => EVICTION_RANKS[entry.producer];
 
 function textureBytes({ width, height, layers, format }: StampGpuCacheTexture): number {
   const texel = TEXEL_BYTES[format];
