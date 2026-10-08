@@ -33,10 +33,11 @@ type StampDepositMarks<M> = { stamps: M; dualStamps: M } & ({ kind: 'stroke' | '
 export type StampDepositPlacement = StampDepositMarks<FrozenStampMarks>;
 
 /**
- * The most bytes the remembered placements hold, least recently asked for given up first: three or four paintings of
- * a full 720p landscape (60 to 75 thousand stamps each, about 400 bytes a stamp). One larger is placed, not kept.
+ * The most bytes the remembered placements hold, least recently asked for given up first: a whole 1080p scene's (the
+ * lake's are 1.6 GB), as a key drawing recompiles each painting, and one too small misses every one in turn. They're
+ * mostly the marks compiled paintings hold anyway, so this adds only what those gave up. One larger is placed again.
  */
-export const STAMP_PLACEMENTS_KEPT_BYTES = 80 * 2 ** 20;
+export const STAMP_PLACEMENTS_KEPT_BYTES = 2048 * 2 ** 20;
 
 /**
  * What a kept stamp holds, in bytes, roughly: about 320, and 80 more for what loading works out from it, kept as long

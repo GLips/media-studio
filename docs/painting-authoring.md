@@ -2240,6 +2240,6 @@ for its warmed span (`studio profile <project> --frames a:b --costs`): evaluatio
 found kept, film and picture hits and misses, solves by sheet from the first application re-run, checkpoint hits,
 decisions reused, hidden solves skipped, evictions, bytes uploaded (three.js's included), GPU bytes kept and in targets
 (the passes' working textures; both under the device's one cache budget), what the page keeps of compiled selections,
-posed programs and placements (each how many and their bytes, held to 2.5 GiB, 256 MiB and 80 MiB, so a long render's page
+posed programs and placements (each how many and their bytes, held to 2.5 GiB, 256 MiB and 2 GiB, so a long render's page
 stays bounded), each painting in time's key drawings and why each is one, and warnings such as a pose folding paint
 or a warm running past its scene.
