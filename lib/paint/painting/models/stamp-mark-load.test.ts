@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { stampFrozenMarks, type PlacedStamp } from '#lib/paint/brush/models/stamp-placement.ts';
-import { stampBinsAppended, stampMarksOrderedBins } from './stamp-mark-load.ts';
+import { createStampBinBuffer, stampMarksOrderedBins } from './stamp-mark-load.ts';
 import { stampRoundTipFootprint } from './stamp-tip-support.ts';
 
 const stampAt = (x: number, y: number): PlacedStamp => ({
@@ -17,13 +17,13 @@ test('an ordered layer\'s bins read the same wherever in the bin buffer they lan
   const tilesX = 4, tilesY = 3, tiles = tilesX * tilesY, tip = stampRoundTipFootprint();
   const first = stampFrozenMarks([stampAt(10, 10), stampAt(70, 40)]);
   const second = stampFrozenMarks([stampAt(100, 80), stampAt(40, 40), stampAt(50, 45)]);
-  const alone: number[] = [], shared: number[] = [];
-  stampBinsAppended(stampMarksOrderedBins(second, tip, tilesX, tilesY, 0), alone);
-  stampBinsAppended(stampMarksOrderedBins(first, tip, tilesX, tilesY, 0), shared);
-  const at = stampBinsAppended(stampMarksOrderedBins(second, tip, tilesX, tilesY, 0), shared);
+  const alone = createStampBinBuffer(), shared = createStampBinBuffer();
+  alone.append(stampMarksOrderedBins(second, tip, tilesX, tilesY, 0));
+  shared.append(stampMarksOrderedBins(first, tip, tilesX, tilesY, 0));
+  const at = shared.append(stampMarksOrderedBins(second, tip, tilesX, tilesY, 0));
   assert.ok(at > 0);
-  assert.deepEqual(tilesRead(shared, at, tiles), tilesRead(alone, 0, tiles));
-  assert.ok(tilesRead(alone, 0, tiles).some((tile) => tile.length > 1));
+  assert.deepEqual(tilesRead([...shared.data()], at, tiles), tilesRead([...alone.data()], 0, tiles));
+  assert.ok(tilesRead([...alone.data()], 0, tiles).some((tile) => tile.length > 1));
 });
 
 test('an ordered layer bins a stamp in every tile its tip reaches, an off-centre tip past its diameter', () => {

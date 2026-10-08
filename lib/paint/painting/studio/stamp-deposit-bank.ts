@@ -11,7 +11,7 @@ import type { GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layou
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { CompiledStampMarkPlacement } from '../models/stamp-brushed-mask.ts';
 import { STAMP_RESOLVE_PLANS, stampActiveLayers, stampResolveOrderIndex, stampResolvePlan, type StampAccumulationPlan } from '../models/stamp-deposit-stages.ts';
-import { STAMP_FLOATS, STAMP_ORDERED_TILE, stampBinsAppended, stampInstanceFloats, stampMarksOrderedBins, stampMarksPlan, stampTintFloats, TINT_FLOATS } from '../models/stamp-mark-load.ts';
+import { createStampBinBuffer, STAMP_FLOATS, STAMP_ORDERED_TILE, stampInstanceFloats, stampMarksOrderedBins, stampMarksPlan, stampTintFloats, TINT_FLOATS } from '../models/stamp-mark-load.ts';
 import type { CompiledStampDeposit } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampPaintPaper } from '../models/stamp-paint-recipe-types.ts';
 import { STAMP_PRESSURE_GRAIN_OWNER, stampBrushPaperContact } from '../models/stamp-paper-contact.ts';
@@ -57,10 +57,10 @@ export type StampMarksLoading = { stage: StampStage; tipFootprint: (layer: Stamp
 /** `entries`' marks in buffers made through `on`, each loaded in order. */
 export function loadStampMarks(on: StampPaintDevice, { stage, tipFootprint }: StampMarksLoading, entries: readonly StampMarksToLoad[]): StampLoadedMarks[] {
   const tilesX = Math.ceil(stage.width / STAMP_ORDERED_TILE), tilesY = Math.ceil(stage.height / STAMP_ORDERED_TILE);
-  const binData: number[] = [];
+  const binData = createStampBinBuffer();
   const planOf = (layer: StampBoundLayer, stamps: FrozenStampMarks): StampLoadedPlan => {
     const plan = stampMarksPlan(stamps, layer.accumulation);
-    return plan.kind === 'ordered' ? { kind: 'ordered', bins: stampBinsAppended(stampMarksOrderedBins(stamps, tipFootprint(layer), tilesX, tilesY, stage.margin), binData) } : plan;
+    return plan.kind === 'ordered' ? { kind: 'ordered', bins: binData.append(stampMarksOrderedBins(stamps, tipFootprint(layer), tilesX, tilesY, stage.margin)) } : plan;
   };
   let total = 0, tints = 0;
   const placed = entries.map(({ marks, brush, tinted }) => {
@@ -84,7 +84,7 @@ export function loadStampMarks(on: StampPaintDevice, { stage, tipFootprint }: St
   });
   // A layer laid in order reads its stamps and tints as storage.
   const stampBuffer = stampPaintBuffer(on, stampData, GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE), tintBuffer = stampPaintBuffer(on, tintData, GPUBufferUsage.VERTEX | GPUBufferUsage.STORAGE);
-  const binBuffer = stampPaintBuffer(on, new Uint32Array(binData.length ? binData : [0]), GPUBufferUsage.STORAGE);
+  const binBuffer = stampPaintBuffer(on, binData.data(), GPUBufferUsage.STORAGE);
   return entries.map(({ marks, brush }, i) => ({
     ...placed[i], brush, active: stampActiveLayers(brush, marks.diameter),
     mainHull: stampMarksTipHull(tipFootprint(brush), marks.stamps), dualHull: brush.dual ? stampMarksTipHull(tipFootprint(brush.dual), marks.dualStamps) : null,

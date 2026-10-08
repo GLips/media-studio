@@ -64,9 +64,9 @@ export function stampMarksOrderedBins(marks: StampMarks, shape: StampTipFootprin
 /** Calls `visit` with each of `marks`' tiles its support reaches (stamp `i` in tile `t`), stamp by stamp, in order. */
 function eachStampTile(marks: StampMarks, shape: StampTipFootprint, tilesX: number, tilesY: number, margin: number, visit: (i: number, t: number) => void) {
   const tileOf = (v: number, count: number) => Math.min(count - 1, Math.max(0, Math.floor((v + margin) / STAMP_ORDERED_TILE)));
-  const hull = stampMarksTipHull(shape, marks);
+  const hull = stampMarksTipHull(shape, marks), box = [0, 0, 0, 0];
   marks.forEach((s, i) => {
-    const box = [Infinity, Infinity, -Infinity, -Infinity];
+    box[0] = Infinity; box[1] = Infinity; box[2] = -Infinity; box[3] = -Infinity;
     stampPlacedSupportInto(shape, hull, s, box);
     for (let ty = tileOf(box[1], tilesY); ty <= tileOf(box[3], tilesY); ty++) {
       for (let tx = tileOf(box[0], tilesX); tx <= tileOf(box[2], tilesX); tx++) visit(i, ty * tilesX + tx);
@@ -74,18 +74,33 @@ function eachStampTile(marks: StampMarks, shape: StampTipFootprint, tilesX: numb
   });
 }
 
-/** `marks`' bins as stampMarksOrderedBins lays them, each stamp in every tile its support reaches. */
+/**
+ * `marks`' bins as stampMarksOrderedBins lays them, each stamp in every tile its support reaches: each (stamp, tile)
+ * met is gathered in order, then counted into its tile's place, so a tile's stamps keep their order.
+ */
 function binsOf(marks: StampMarks, shape: StampTipFootprint, tilesX: number, tilesY: number, margin: number): Uint32Array {
-  const tiles = Array.from({ length: tilesX * tilesY }, (): number[] => []);
-  eachStampTile(marks, shape, tilesX, tilesY, margin, (i, t) => tiles[t].push(i));
-  const table: number[] = [];
-  let entry = tiles.length + 1;
-  for (const tile of tiles) {
-    table.push(entry);
-    entry += tile.length;
+  const tiles = tilesX * tilesY, counts = new Uint32Array(tiles);
+  let met = new Uint32Array(Math.max(16, 4 * marks.length)), n = 0;
+  eachStampTile(marks, shape, tilesX, tilesY, margin, (i, t) => {
+    if (n + 2 > met.length) {
+      const grown = new Uint32Array(2 * met.length);
+      grown.set(met);
+      met = grown;
+    }
+    met[n++] = i;
+    met[n++] = t;
+    counts[t]++;
+  });
+  const bins = new Uint32Array(tiles + 1 + n / 2);
+  let entry = tiles + 1;
+  for (let t = 0; t < tiles; t++) {
+    bins[t] = entry;
+    entry += counts[t];
   }
-  table.push(entry);
-  return Uint32Array.from([...table, ...tiles.flat()]);
+  bins[tiles] = entry;
+  const next = bins.slice(0, tiles);
+  for (let k = 0; k < n; k += 2) bins[next[met[k + 1]]++] = met[k];
+  return bins;
 }
 
 /** How long `marks`' bins are (stampMarksOrderedBins), counted without laying them: what a painting's load is weighed by. */
@@ -95,10 +110,30 @@ export function stampMarksOrderedBinsLength(marks: StampMarks, shape: StampTipFo
   return entries;
 }
 
-/** Appends `bins` (stampMarksOrderedBins) to `into`, its table moved to where it lands; returns where. */
-export function stampBinsAppended(bins: Uint32Array, into: number[]): number {
-  // The table's first entry is its own length, the tiles and one past the last, as its stamps start after it.
-  const at = into.length, table = bins[0];
-  bins.forEach((value, i) => into.push(i < table ? value + at : value));
-  return at;
+/**
+ * A bin buffer's contents, gathered: `append` lays an ordered layer's bins (stampMarksOrderedBins) after the last and
+ * says where they start; `data` is them all, each table moved to where its bins landed.
+ */
+export function createStampBinBuffer() {
+  const parts: Uint32Array[] = [];
+  let length = 0;
+  return {
+    append(bins: Uint32Array): number {
+      const at = length;
+      parts.push(bins);
+      length += bins.length;
+      return at;
+    },
+    data(): Uint32Array {
+      const out = new Uint32Array(Math.max(1, length));
+      let at = 0;
+      for (const bins of parts) {
+        out.set(bins, at);
+        // The table's first entry is its own length, the tiles and one past the last, as its stamps start after it.
+        for (let i = 0; i < bins[0]; i++) out[at + i] += at;
+        at += bins.length;
+      }
+      return out;
+    },
+  };
 }
