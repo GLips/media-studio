@@ -4,7 +4,8 @@
 // Canonical JSON: object keys sorted, numbers as JS prints them, undefined and functions left out, typed arrays, Sets
 // and Maps as arrays. A function is dropped, so what it decides enters a key as what it made: an entry's datum holds
 // its compiled marks (a hand's curve is in the stamps it placed). That's megabytes for a flood, so its digest hashes
-// the same reading as bytes, as they're written, a long list as its own digest (stampCanonicalDigest).
+// the same reading as bytes, a long list as its own digest, and marks placed from function-free inputs as those
+// inputs' (registerStampCanonicalList).
 
 import { createSha256, type Sha256 } from '#lib/platform/hash/models/sha256.ts';
 import { createKeptByBytes } from './stamp-kept-memo.ts';
@@ -127,36 +128,52 @@ const CANONICAL_CHUNK_BYTES = 1 << 16;
 const CANONICAL_LIST_DIGESTED = 64;
 
 /**
- * Registered lists (registerStampCanonicalList's): each one's name, and its digest once hashed. Only a registered list's
- * digest is remembered by identity: a frozen list may hold something that isn't.
+ * How a registered list is known. By `inputs`: a key placing it alike in any page and render (a placement's, with no
+ * function in it), its digest the key's, so its marks are never read. By `content`: hashed once, in this page, and
+ * under `name` when given another list of equal content isn't hashed again.
  */
-const registered = new WeakMap<readonly StampCanonicalDatum[], { readonly name: string | null; digest?: string }>();
+export type StampCanonicalListIdentity = { readonly inputs: string } | { readonly content: string | null };
 
-/** The digests of registered lists by name, the least recently read given up first. */
+const identityText = (identity: StampCanonicalListIdentity) => ('inputs' in identity ? `inputs ${identity.inputs}` : `content ${identity.content ?? 'nameless'}`);
+
+/**
+ * Registered lists (registerStampCanonicalList's): each one's identity, and its digest once read. Only a registered
+ * list's digest is remembered by identity: a frozen list may hold something that isn't.
+ */
+const registered = new WeakMap<readonly StampCanonicalDatum[], { readonly identity: StampCanonicalListIdentity; digest?: string }>();
+
+/** The digests of lists registered by content under a name, the least recently read given up first. */
 const digestsByName = createKeptByBytes<string, string>(32 * 2 ** 20);
 
 /**
  * Registers `list`, which never changes, through every value it holds (as stampFrozenMarks freezes a placement's), so
- * its digest is remembered. `name`, when given, names only lists of equal content in this page (a placement's key, which
- * places alike whatever asks): another list under it isn't hashed again. A list is registered under one name.
+ * its digest is remembered, known by `identity`. A list is registered under one identity.
  */
-export function registerStampCanonicalList(list: readonly StampCanonicalDatum[], name: string | null): void {
+export function registerStampCanonicalList(list: readonly StampCanonicalDatum[], identity: StampCanonicalListIdentity): void {
   const known = registered.get(list);
-  if (known && known.name !== name) throw new Error(`stamp canonical: a list registered as ${known.name ?? 'nameless'} registered again as ${name ?? 'nameless'}`);
-  if (!known) registered.set(list, { name });
+  if (known && identityText(known.identity) !== identityText(identity)) {
+    throw new Error(`stamp canonical: a list registered as ${identityText(known.identity)} registered again as ${identityText(identity)}`);
+  }
+  if (!known) registered.set(list, { identity });
 }
 
-/** `list`'s digest, its canonical bytes hashed: remembered for a registered list, and by its name when it has one. */
+/** `list`'s digest: its inputs' when registered by them, else its canonical bytes hashed, remembered as registered. */
 function stampCanonicalListDigest(list: StampCanonicalList): string {
   // SAFETY: only a list is ever registered; a typed array finds nothing.
   const entry = registered.get(list as readonly StampCanonicalDatum[]);
   if (entry?.digest) return entry.digest;
-  let digest = entry?.name ? digestsByName.get(entry.name) : undefined;
+  const identity = entry?.identity, name = identity && 'content' in identity ? identity.content : null;
+  let digest = name ? digestsByName.get(name) : undefined;
   if (digest === undefined) {
     const hash = createSha256();
-    hashStampCanonical(list, hash, true);
+    if (identity && 'inputs' in identity) {
+      // Tagged apart from any canonical reading, so no list's content hashes as another's inputs.
+      hash.update(stampCanonicalStringBytes(`placed from\n${identity.inputs}`));
+    } else {
+      hashStampCanonical(list, hash, true);
+    }
     digest = hash.hex();
-    if (entry?.name) digestsByName.set(entry.name, digest, 2 * entry.name.length + 256);
+    if (name) digestsByName.set(name, digest, 2 * name.length + 256);
   }
   if (entry) entry.digest = digest;
   return digest;

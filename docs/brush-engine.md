@@ -157,7 +157,8 @@ reads the fill's load field, pigment clumps and a flood's local scale there, the
 the prewet its water. The paper's tooth and grain are read where they lie. Keys chain from the program's head through each entry's
 digest (the SHA-256 of what it reads of the document, with the marks it compiled to, as canonical bytes hashed as
 they're written so they're never held whole: `stamp-canonical.ts`, on `platform/hash`'s streaming `createSha256`; a
-placement's frozen marks are registered there, so their digest is hashed once) and its pose's text
+placement's frozen marks are registered there, their digest that of the inputs placing them, or, when a hand's curve
+is among those, of the marks, hashed once) and its pose's text
 (`stamp-sheet-state-key.ts`), so a decision is remembered by its prefix, and a solve's films are kept, cropped, in the device's cache under its last
 key (`stamp-sheet-films.ts`), which a still lays as the renderer lays a painting. The run of entries is
 `stamp-sheet-run.ts`, on the program's clock, whose policy is pure functions in `stamp-sheet-schedule.ts`: a `scale`

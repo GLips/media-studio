@@ -26,13 +26,23 @@ test('two values share a digest exactly when their canonical JSON is equal, what
 
 const frozenMark = (i: number) => Object.freeze({ x: i / 3, y: i, tint: Object.freeze({ hue: 0 }) });
 
-test("a registered list's digest is remembered, by its name across copies, and an unregistered one's is read afresh", () => {
+test("a registered list's digest is its inputs', or remembered by its name across copies; an unregistered one's is read afresh", () => {
   const placed = Object.freeze(Array.from({ length: 100 }, (_, i) => frozenMark(i))), again = Object.freeze(placed.map((_, i) => frozenMark(i)));
-  registerStampCanonicalList(placed, 'placement');
-  registerStampCanonicalList(placed, 'placement');
-  registerStampCanonicalList(again, 'placement');
+  registerStampCanonicalList(placed, { content: 'placement' });
+  registerStampCanonicalList(placed, { content: 'placement' });
+  registerStampCanonicalList(again, { content: 'placement' });
   assert.equal(stampCanonicalDigest({ marks: again }), stampCanonicalDigest({ marks: placed.map((each) => ({ ...each })) }));
-  assert.throws(() => registerStampCanonicalList(placed, 'another'));
+  assert.throws(() => registerStampCanonicalList(placed, { inputs: 'placement' }));
+
+  // Placed from inputs: equal inputs share a digest, other inputs don't, whatever the marks hold.
+  const fromInputs = (inputs: string) => {
+    const list = Object.freeze(Array.from({ length: 100 }, (_, i) => frozenMark(i)));
+    registerStampCanonicalList(list, { inputs });
+    return stampCanonicalDigest({ marks: list });
+  };
+  assert.equal(fromInputs('brush a'), fromInputs('brush a'));
+  assert.notEqual(fromInputs('brush a'), fromInputs('brush b'));
+  assert.notEqual(fromInputs('brush a'), stampCanonicalDigest({ marks: again }));
 
   // Frozen but unregistered, holding a record that changes: each digest reads it as it is.
   const tint = { hue: 0 }, held = Object.freeze(Array.from({ length: 100 }, (_, i) => ({ x: i, tint })));

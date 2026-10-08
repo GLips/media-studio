@@ -59,14 +59,17 @@ export const stampPlacementsKept = (): StampKeptHeld => kept.held();
 export function placeStampDeposit(geometry: StampPlacingGeometry, brush: StampBrush, diameter: number, seed: string): StampDepositPlacement {
   // A measured profile is its key's: its samples, thousands of numbers, would be the key's bulk.
   const keyed = brush.profile.kind === 'measured' ? { ...brush, profile: brush.profile.key } : brush;
-  const key = `${stampContentKey(keyed)}\n${diameter}\n${seed}\n${stampContentKey(geometry)}`;
+  const brushKey = stampContentKey(keyed), geometryKey = stampContentKey(geometry);
+  const key = `${brushKey.text}\n${diameter}\n${seed}\n${geometryKey.text}`;
   const found = kept.get(key);
   if (found) return found;
   const placement = frozenPlacement(placeNow(geometry, brush, diameter, seed));
-  // Frozen through every stamp, its marks' digests can be remembered, by the key too: one too large to keep is placed
-  // again the next time, alike.
-  registerStampCanonicalList(placement.stamps, `${key}\nstamps`);
-  registerStampCanonicalList(placement.dualStamps, `${key}\nduals`);
+  // Frozen through every stamp, its marks' digests can be remembered. A key with no function names them in any page,
+  // so it is their digest; a function is named by identity, in this page only, so their content is hashed, once a key.
+  const callable = brushKey.callable || geometryKey.callable;
+  const identity = (marks: string) => (callable ? { content: `${key}\n${marks}` } : { inputs: `${key}\n${marks}` });
+  registerStampCanonicalList(placement.stamps, identity('stamps'));
+  registerStampCanonicalList(placement.dualStamps, identity('duals'));
   kept.set(key, placement, bytesOf(placement, key));
   return placement;
 }
@@ -136,14 +139,19 @@ let nextFunctionId = 0;
 
 /**
  * `value`'s content as a string two values share only if placing reads them alike: JSON, but a function by its
- * identity, and -0 and the non-finite numbers by name, where JSON would fold them into 0 and null.
+ * identity, and -0 and the non-finite numbers by name, where JSON would fold them into 0 and null; and whether it held
+ * a function.
  */
-const stampContentKey = (value: StampInputField): string => JSON.stringify(value, (_name, field: StampInputField) => {
-  if (isStampPressureCurve(field)) {
-    let id = functionIds.get(field);
-    if (id === undefined) functionIds.set(field, (id = nextFunctionId++));
-    return `ƒ${id}`;
-  }
-  return isMisreadNumber(field) ? `#${Object.is(field, -0) ? '-0' : field}` : field;
-});
-
+function stampContentKey(value: StampInputField): { readonly text: string; readonly callable: boolean } {
+  let callable = false;
+  const text = JSON.stringify(value, (_name, field: StampInputField) => {
+    if (isStampPressureCurve(field)) {
+      callable = true;
+      let id = functionIds.get(field);
+      if (id === undefined) functionIds.set(field, (id = nextFunctionId++));
+      return `ƒ${id}`;
+    }
+    return isMisreadNumber(field) ? `#${Object.is(field, -0) ? '-0' : field}` : field;
+  });
+  return { text, callable };
+}
