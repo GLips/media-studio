@@ -13,6 +13,8 @@ against its references. One file per rig, run as `node harness/<rig>.ts <verb>` 
 - `stamp-paint-gate.ts` (`npm run stamp:gate [-- run [ids]|update <ids> --reason …|accept <ids>|pushed|private …]`):
   the GPU renderer held to accepted formula grids and paintings (fixtures in `fixtures/stamp-paint/`); bare, it runs
   the whole gate, and `run <ids>` only the baselines and cases named; pre-push runs `pushed`.
+- `picture-oracle.ts` (`npm run picture:oracle -- <project> <frames> [--keep <dir>]`): a project's frames as a render
+  reads them back from the page, held against Remotion's screenshot of the same page, frame by frame.
 - `trace.ts` (`npm run trace -- <trace|latest> [--against <trace|latest~1>]`): a render's trace as text, time by span
   name with self time and each chunk's startup step by step, or two renders side by side (`docs/render-bench.md`).
 

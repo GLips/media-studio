@@ -2,15 +2,17 @@
 // out/stills/<design>-<preset>-<variant>.png, checking each first (lib/picture/stills/models/still-check.ts): a still with a problem isn't
 // written, and an older file of its name is removed, so out/stills never holds a still that fails; a full run also
 // removes stills no design makes any more. Node only.
-import { getCompositions, renderStill } from '@remotion/renderer';
+import { getCompositions, renderFrames } from '@remotion/renderer';
 import type { VideoConfig } from 'remotion';
 import { copyFileSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { bundleStudioProject } from './studio-bundle.ts';
 import { refuseProjectPaintingErrors } from './render-preflight.ts';
 import { RENDER_PAGE_OPTIONS } from '#lib/platform/browser/engine/render-browser.ts';
-import { inWatchedRenderBrowser } from '#lib/platform/browser/engine/render-watch.ts';
+import { inWatchedRenderBrowser, watchedRenderFrames } from '#lib/platform/browser/engine/render-watch.ts';
 import { artifactSink } from './render-session.ts';
+import { writeRenderStill, type RenderStillImage } from './render-frame-writes.ts';
+import { serveRenderFrameSink, type RenderFrame } from './render-frame-sink.ts';
 import { stillProblems, type StillMeasure, type StillPixels, type StillProblem } from '#lib/picture/stills/models/still-check.ts';
 import { isStillFitArtifact, STILL_MEASURE_ARTIFACT, STILL_UI_ZONES, stillName, type StillFitReport, type StillProps, type StillRenderProps } from '#lib/picture/stills/models/still-presets.ts';
 import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
@@ -45,7 +47,7 @@ function decodeRgb(file: string, w: number, h: number): StillPixels {
  */
 export async function renderProjectStills(project: string, selection: StillSelection, { format, check, drawnDir }: { format: 'png' | 'jpeg'; check: boolean; drawnDir?: string }): Promise<RenderedStill[]> {
   await refuseProjectPaintingErrors(project);
-  const serveUrl = await bundleStudioProject(project);
+  const serveUrl = await bundleStudioProject(project), frameSink = await serveRenderFrameSink();
   return withStudioTemp('stills', async (tmp) => {
     const { result } = await inWatchedRenderBrowser(async (browser, watch) => {
       const all = (await getCompositions(serveUrl, { ...RENDER_PAGE_OPTIONS, puppeteerInstance: browser, onBrowserLog: watch.onBrowserLog })).filter((c) => c.id.startsWith('still-'));
@@ -68,13 +70,20 @@ export async function renderProjectStills(project: string, selection: StillSelec
         const current = new Set(all.map((c) => stillName(c.defaultProps as StillProps)));
         for (const f of readdirSync(dir)) if (/\.(png|jpg)$/.test(f) && !current.has(f.replace(/\.\w+$/, ''))) rmSync(join(dir, f));
       }
-      const draw = async (composition: VideoConfig, props: StillRenderProps, output: string, imageFormat: 'png' | 'jpeg') => {
-        const sink = artifactSink();
-        await renderStill({
-          composition: { ...composition, props }, serveUrl, output, imageFormat, jpegQuality: imageFormat === 'jpeg' ? 92 : undefined,
-          ...RENDER_PAGE_OPTIONS, puppeteerInstance: browser, onArtifact: sink.onArtifact, cancelSignal: watch.cancelSignal, onBrowserLog: watch.onBrowserLog,
-        });
-        watch.progressed();
+      // The still's page reads its picture back and sends it here (picture-root.tsx), as a render's frames are.
+      const draw = async (composition: VideoConfig, props: StillRenderProps, output: string, image: RenderStillImage) => {
+        const sink = artifactSink(), sent: RenderFrame[] = [];
+        const route = frameSink.open(async (frame) => void sent.push(frame));
+        try {
+          await renderFrames({
+            ...RENDER_PAGE_OPTIONS, ...watchedRenderFrames(watch), composition: { ...composition, props }, serveUrl, puppeteerInstance: browser,
+            inputProps: { frameSink: route.url }, frames: [0], concurrency: 1, outputDir: null, imageFormat: 'none', onStart: () => {}, onArtifact: sink.onArtifact,
+          });
+        } finally {
+          route.close();
+        }
+        if (!sent[0]) throw new Error(`still ${stillName(props)}: its page sent no picture`);
+        await writeRenderStill(sent[0], output, image);
         return sink;
       };
       const checked: RenderedStill[] = [];

@@ -92,6 +92,21 @@ To compare two runs, read their lines:
 tail -n 2 ~/.cache/media-studio/render-history.jsonl | jq '{project, seconds, gpuWaitSeconds, engine}'
 ```
 
-`studio profile <p> --frames a:b` times one span of frames, captured to PNG as delivery captures them and uncaptured,
-and tables each drawing's frames and loads from its one-tab pass's trace (`--costs` adds what each frame counted). Its
-trace and history line are a render's.
+`studio profile <p> --frames a:b` times one span of frames, read back from the page and sent to Node as delivery sends
+them and again sending none, and tables each drawing's frames and loads from its one-tab pass's trace (`--costs` adds
+what each frame counted), then each step of sending a frame: settle (waiting out the frame's drawing), paint, read
+(drawing the page into its canvas and reading it back) and send. Its trace and history line are a render's.
+
+## A Chrome upgrade
+
+A render reads each frame back from the page through Chrome's HTML-in-Canvas (`lib/picture/readback/`), which must
+draw what a screenshot of the page shows. After moving Remotion's Chrome, hold the readback against screenshots:
+
+```sh
+npm run picture:oracle -- 2026-09-pricing-design-story 0,450,900
+npm run picture:oracle -- 2026-10-ceramic-turntable 100
+```
+
+Expect a few px of 3D edges and resampled images apart (max up to about 50, tens of px past 4); a frame missing whole
+elements is a regression. Pricing frame 900 is the case Chrome 149 failed: nested opacity over a later sibling
+dropped unrelated paint.

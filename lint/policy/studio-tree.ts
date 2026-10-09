@@ -113,7 +113,7 @@ export const LIB_LAYERS: readonly LibLayer[] = [
       'platform/gpu', 'platform/files', 'platform/hash', 'platform/remote', 'platform/trace',
     ],
   },
-  { name: 'vocabulary', features: ['picture/frame', 'picture/motion', 'picture/type', 'picture/color', 'picture/shot-camera', 'picture/lens'] },
+  { name: 'vocabulary', features: ['picture/frame', 'picture/motion', 'picture/type', 'picture/color', 'picture/shot-camera', 'picture/lens', 'picture/readback'] },
   { name: 'timing', features: ['timing/voice', 'timing/timeline', 'timing/sound', 'timing/music'] },
   // The camera keeps clear of the caption band a style reserves, so it stands on captions.
   { name: 'framing', features: ['picture/captions', 'picture/camera'] },

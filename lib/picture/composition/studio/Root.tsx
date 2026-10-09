@@ -12,6 +12,7 @@ import { StillProbe } from '#lib/picture/stills/studio/still-probe.tsx';
 import { STILL_PRESETS, stillName, type StillProps, type StillRenderProps } from '#lib/picture/stills/models/still-presets.ts';
 import { StillPresetContext, type StillsDef } from '#lib/picture/stills/studio/stills.tsx';
 import { laidVideoOf, videoFormatOf, type VideoDef } from '#lib/picture/video/studio/video.ts';
+import { PictureRoot } from '#lib/picture/readback/studio/picture-root.tsx';
 import { BlockoutSolo, Video } from './Video.tsx';
 import type { BlockoutSoloProps, CompositionRenderSettings, ReplayProps, VideoProps } from '#lib/picture/video/models/composition-props.ts';
 
@@ -35,19 +36,21 @@ if (video?.clock !== undefined) pinBrowserDate(video.clock);
 
 // The components below render only when Root registered them, which it does only with a video.
 const projectVideo = video as VideoDef;
-const ProjectVideo = (props: VideoProps & CompositionRenderSettings) => <Video video={projectVideo} {...props} />;
+const ProjectVideo = (props: VideoProps & CompositionRenderSettings) => <PictureRoot><Video video={projectVideo} {...props} /></PictureRoot>;
 
 /**
  * Frame i shows the video's frame order[i] (the last one past the end). Rendered in one tab, that gives each frame a
  * chosen history, which renderFrames can't (it sorts the frames it's asked for).
  */
 const ReplayVideo = ({ order, ...props }: ReplayProps & CompositionRenderSettings) => (
-  <Freeze frame={order[Math.min(useCurrentFrame(), order.length - 1)]}>
-    <Video video={projectVideo} {...props} reportTimeline={false} />
-  </Freeze>
+  <PictureRoot>
+    <Freeze frame={order[Math.min(useCurrentFrame(), order.length - 1)]}>
+      <Video video={projectVideo} {...props} reportTimeline={false} />
+    </Freeze>
+  </PictureRoot>
 );
 
-const ProjectBlockout = (props: BlockoutSoloProps & CompositionRenderSettings) => <BlockoutSolo video={projectVideo} {...props} />;
+const ProjectBlockout = (props: BlockoutSoloProps & CompositionRenderSettings) => <PictureRoot><BlockoutSolo video={projectVideo} {...props} /></PictureRoot>;
 
 export function Root() {
   return (
@@ -61,7 +64,7 @@ export function Root() {
 function StillCompositions({ stills }: { stills: StillsDef }) {
   const ProjectStill = ({ design, preset, variant, ground }: StillRenderProps) => {
     const { component: Design, variants } = stills.designs[design];
-    return <StillPresetContext value={preset}><StillProbe ground={ground}><Design {...variants[variant].props} /></StillProbe></StillPresetContext>;
+    return <PictureRoot><StillPresetContext value={preset}><StillProbe ground={ground}><Design {...variants[variant].props} /></StillProbe></StillPresetContext></PictureRoot>;
   };
   return Object.entries(stills.designs).map(([design, { presets, variants }]) => (
     <Folder key={design} name={`stills-${design}`}>

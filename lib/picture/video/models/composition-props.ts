@@ -28,6 +28,8 @@ export type VideoProps = {
   stampPlacements?: string;
   /** Where the render serves its solved-paint cache, for each page's sheet solves (render-paint-cache.ts). */
   paintCache?: string;
+  /** Where the page sends each frame it composites (render-frame-sink.ts); none for a pass that sends no picture. */
+  frameSink?: string;
 };
 
 /** Property values by painting source, then by property: JSON across the page's boundary. */

@@ -9,15 +9,17 @@
 // Every page opens in a watched browser (render-watch.ts); frames draw in chunks (render-chunks.ts), a video's streamed
 // into its encodes as they draw. A pass only measuring frames or gathering sound draws no picture.
 import { renderFrames, renderMedia, RenderInternals, selectComposition, type HeadlessBrowser, type OnArtifact } from '@remotion/renderer';
-import { copyFileSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { getPriority, setPriority } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import type { VideoConfig } from 'remotion';
-import { projectSlug, replaySlug } from './project-bundle.ts';
+import { blockoutSlug, projectSlug, replaySlug } from './project-bundle.ts';
 import { bundleStudioProject } from './studio-bundle.ts';
 import { refuseProjectPaintingErrors } from './render-preflight.ts';
 import { serveRenderPlacements, type RenderPlacements } from './render-placements.ts';
 import { paintCacheNamespace, servePaintCache } from './render-paint-cache.ts';
+import { serveRenderFrameSink, type RenderFrame } from './render-frame-sink.ts';
+import { rawRenderFrameInput, renderFramesInOrder, renderStillsByFrame, renderStillsInto, type RenderStillImage } from './render-frame-writes.ts';
 import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
 import { countVideoFrames, openFfmpegInput, runFfmpegAsync } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { writeRenderSnapshot, type RenderSnapshot } from './render-snapshot.ts';
@@ -32,7 +34,7 @@ import { RENDER_PAGE_OPTIONS } from '#lib/platform/browser/engine/render-browser
 import { inWatchedRenderBrowser, watchedRenderFrames, watchedRenderMedia, type RenderWatch } from '#lib/platform/browser/engine/render-watch.ts';
 import { releaseStudioGpuLease } from '#lib/platform/gpu/engine/gpu-lease.ts';
 import type { MotionTracks } from '#lib/picture/measurement/models/motion-tracks.ts';
-import type { CompositionRenderSettings, PaintingValuesProp, ReplayProps, VideoProps } from '#lib/picture/video/models/composition-props.ts';
+import type { BlockoutSoloProps, CompositionRenderSettings, PaintingValuesProp, ReplayProps, VideoProps } from '#lib/picture/video/models/composition-props.ts';
 import { timelineFrameText, type TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
 import type { LensMode } from '#lib/picture/lens/models/lens-mode.ts';
 
@@ -80,9 +82,9 @@ const DEFAULT_RENDER_WORKERS = Math.min(3, Math.max(1, RENDER_CORES - 1));
 export const PAINTING_RENDER_WORKERS = 1;
 
 /**
- * Browsers a render draws its frames in at once, a lane of chunks each (render-chunks.ts): a browser captures its tabs'
- * frames one at a time, so its tabs share one capture, and a second browser captures beside it. Lake dawn-to-dusk
- * 81→68 s, the turntable 51→38 s, the motion showcase 137→100 s; a third gained 2-4 s more.
+ * Browsers a render draws its frames in at once, a lane of chunks each (render-chunks.ts). A painted video draws in
+ * one tab a browser (PAINTING_RENDER_WORKERS), so a second browser is its only parallel drawing: lake dawn-to-dusk,
+ * warm, 38.1 s in one, 27.1 s in two.
  */
 const RENDER_BROWSERS = 2;
 
@@ -91,15 +93,6 @@ const RENDER_BROWSERS = 2;
  * render on an otherwise idle machine loses nothing.
  */
 const RENDER_NICENESS = 10;
-
-/** How a chunk's frames are written: PNG, JPEG at a quality, or not at all (a pass that only measures). */
-type FrameImage = { imageFormat: 'png' } | { imageFormat: 'jpeg'; jpegQuality: number } | { imageFormat: 'none' };
-
-/** A frame's file in a folder of `f-<frame>` images: Remotion pads the number to the composition's length. */
-function framesInDir(dir: string): (frame: number) => string {
-  const byFrame = new Map(readdirSync(dir).filter((f) => /^f-\d+\.(jpe?g|png)$/.test(f)).map((f) => [Number(/f-(\d+)/.exec(f)![1]), join(dir, f)]));
-  return (frame) => byFrame.get(frame)!;
-}
 
 /** A concat list of `files`, for ffmpeg's concat demuxer. */
 export const concatList = (files: readonly string[]) => files.map((file) => `file '${file.replaceAll("'", "'\\''")}'`).join('\n');
@@ -125,15 +118,18 @@ export function muxDeliveredSound(picture: string, soundtrack: string, out: stri
 }
 
 /**
- * How frames are drawn: of `inputProps`, in `compose`'s composition (the video's unless given), as `image`s `width` px
- * wide (the composition's unless given), in `tabs` (workersFor's unless given); each drawn told to `onFrame`, its
- * artifacts to `onArtifact`, and its image handed to `onFrameBuffer` when given, else written to a folder.
+ * How frames are drawn: of `inputProps`, in `compose`'s composition (the video's unless given), `width` px wide (the
+ * composition's unless given), in `tabs` (workersFor's unless given); each drawn told to `onFrame`, its artifacts to
+ * `onArtifact`, and each frame the pages send to `take`. Without `take`, the pages send none: a pass that measures.
  */
 type FrameDraw = {
-  readonly inputProps: VideoProps | ReplayProps; readonly image: FrameImage; readonly compose?: (browser: HeadlessBrowser) => Promise<VideoConfig>;
   readonly width?: number; readonly tabs?: number; readonly onFrame?: (frame: number) => void; readonly onArtifact?: OnArtifact;
-  readonly onFrameBuffer?: (buffer: Buffer, frame: number) => Promise<void>;
-};
+  readonly take?: (frame: RenderFrame) => Promise<void>;
+} & (
+  | { readonly inputProps: VideoProps }
+  // Another composition, selected by `compose`, names its tabs: workersFor reads the video's props.
+  | { readonly inputProps: ReplayProps | BlockoutSoloProps; readonly compose: (browser: HeadlessBrowser) => Promise<VideoConfig>; readonly tabs: number }
+);
 
 /** The lossless chunks `list` names, copied whole into one file at `out`, with its snapshot. */
 async function keepLossless(list: string, out: string, made: Pick<RenderSnapshot, 'frames' | 'timeline' | 'clock' | 'voice' | 'gpu'>) {
@@ -176,7 +172,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   const checking = traceClock();
   const paintings = await refuseProjectPaintingErrors(project);
   if (paintings) trace.record(`${paintings} ${paintings === 1 ? 'painting' : 'paintings'} checked`, { start: checking, end: traceClock() });
-  const placements = await placing, paintCache = await caching;
+  const placements = await placing, paintCache = await caching, frameSink = await serveRenderFrameSink();
   const serveUrl = await trace.run('bundle', () => bundleStudioProject(project));
   const props = (p: Partial<VideoProps> = {}): VideoProps => ({
     captions: false, probe: false, blockouts: false, lens, ...(paintingValues && { paintingValues }), ...(traceDetail && { traceDetail }), ...(placements && { stampPlacements: placements.url }), ...(paintCache && { paintCache: paintCache.url }), ...p,
@@ -218,18 +214,24 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   }
 
   /**
-   * `frames` drawn as `draw` says by one renderFrames call in `browser`, under `watch`, into `outputDir` (null for
-   * images of 'none'). Returns the tabs it drew in at once, and whether any frame played sound.
+   * `frames` drawn as `draw` says by one renderFrames call in `browser`, under `watch`, its pages sending each frame to
+   * a route of the session's frame sink of its own. Remotion seeks and waits out each frame and screenshots none.
+   * Returns the tabs it drew in at once, and whether any frame played sound.
    */
-  async function drawFrames(browser: HeadlessBrowser, watch: RenderWatch, frames: readonly number[], outputDir: string | null, draw: FrameDraw): Promise<{ concurrency: number; heard: boolean }> {
-    const { inputProps, image, compose = (b: HeadlessBrowser) => selectVideo(inputProps, b), width, tabs, onFrame, onArtifact, onFrameBuffer } = draw;
-    const composition = await (watch.trace ? trace.run('composition select', () => compose(browser), { parent: watch.trace.parent }) : compose(browser)), concurrency = Math.min(tabs ?? workersFor(composition, inputProps), frames.length);
-    if (outputDir) mkdirSync(outputDir, { recursive: true });
-    const { assetsInfo } = await renderFrames({
-      ...RENDER_PAGE_OPTIONS, ...watchedRenderFrames(watch, onFrame), ...image, ...(onArtifact && { onArtifact }), ...(onFrameBuffer && { onFrameBuffer }), composition, serveUrl,
-      puppeteerInstance: browser, inputProps, outputDir, frames: [...frames], concurrency, scale: (width ?? composition.width) / composition.width, imageSequencePattern: 'f-[frame].[ext]', onStart: () => {},
-    });
-    return { concurrency, heard: assetsInfo.assets.some(({ audioAndVideoAssets, inlineAudioAssets }) => audioAndVideoAssets.length + inlineAudioAssets.length > 0) };
+  async function drawFrames(browser: HeadlessBrowser, watch: RenderWatch, frames: readonly number[], draw: FrameDraw): Promise<{ concurrency: number; heard: boolean }> {
+    const { width, onFrame, onArtifact, take } = draw;
+    const compose = 'compose' in draw ? draw.compose : (b: HeadlessBrowser) => selectVideo(draw.inputProps, b);
+    const route = take ? frameSink.open(take) : null, inputProps = route ? { ...draw.inputProps, frameSink: route.url } : draw.inputProps;
+    try {
+      const composition = await (watch.trace ? trace.run('composition select', () => compose(browser), { parent: watch.trace.parent }) : compose(browser)), concurrency = Math.min('compose' in draw ? draw.tabs : (draw.tabs ?? workersFor(composition, draw.inputProps)), frames.length);
+      const { assetsInfo } = await renderFrames({
+        ...RENDER_PAGE_OPTIONS, ...watchedRenderFrames(watch, onFrame), imageFormat: 'none', ...(onArtifact && { onArtifact }), composition, serveUrl,
+        puppeteerInstance: browser, inputProps, outputDir: null, frames: [...frames], concurrency, scale: (width ?? composition.width) / composition.width, onStart: () => {},
+      });
+      return { concurrency, heard: assetsInfo.assets.some(({ audioAndVideoAssets, inlineAudioAssets }) => audioAndVideoAssets.length + inlineAudioAssets.length > 0) };
+    } finally {
+      route?.close();
+    }
   }
 
   /**
@@ -242,21 +244,19 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   }
 
   /**
-   * `frames` drawn chunk by chunk (render-chunks.ts) as `draw` says, each piece into `into(piece)` and handed to `take`
-   * once drawn; a frame that fails is named by its scene in `timeline` (read then, when not given). Records the pass's
-   * span, each chunk's under it; returns the GPU, and whether any frame played sound.
+   * `frames` drawn chunk by chunk (render-chunks.ts) as `draw` says; a frame that fails is named by its scene in
+   * `timeline` (read then, when not given). Records the pass's span, each chunk's under it; returns the GPU, and
+   * whether any frame played sound.
    */
-  async function drawChunks(pass: string, frames: readonly number[], draw: FrameDraw, { into, take, timeline }: {
-    into: (piece: readonly number[]) => string; take?: (piece: readonly number[], dir: string) => Promise<void>; timeline?: TimelineReport;
-  }): Promise<{ gpu: string; heard: boolean }> {
+  async function drawChunks(pass: string, frames: readonly number[], draw: FrameDraw, { timeline }: { timeline?: TimelineReport } = {}): Promise<{ gpu: string; heard: boolean }> {
     return trace.run(pass, async (span) => {
       let used = 0;
-      const { gpu, drawn } = await renderInChunks<{ dir: string; heard: boolean }>(frames, async (browser, piece, watch) => {
-        const dir = into(piece), { concurrency, heard } = await drawFrames(browser, watch, piece, dir, draw);
+      const { gpu, drawn } = await renderInChunks<{ heard: boolean }>(frames, async (browser, piece, watch) => {
+        const { concurrency, heard } = await drawFrames(browser, watch, piece, draw);
         used = Math.max(used, concurrency);
-        return { dir, heard };
+        return { heard };
       }, {
-        ...(take && { take: (piece, { dir }) => take(piece, dir) }), browsers: RENDER_BROWSERS, describeFrame: (frame) => describeRenderFrame(frame, timeline), spans: { trace, parent: span },
+        browsers: RENDER_BROWSERS, describeFrame: (frame) => describeRenderFrame(frame, timeline), spans: { trace, parent: span },
       });
       span.end({ workers: { value: used, unit: 'tabs' }, gpu, frames: { value: frames.length, unit: 'frames' } });
       return { gpu, heard: drawn.some(({ result }) => result.heard) };
@@ -275,7 +275,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   }): Promise<{ lossless: string | null; encoded: string | null; gpu: string; heard: boolean }> {
     const frames = Array.from({ length: end - from }, (_, i) => from + i), seen = new Set<number>();
     mkdirSync(dir, { recursive: true });
-    const input = ['-y', '-v', 'error', '-f', 'image2pipe', '-c:v', 'png', '-framerate', String(timeline.fps), '-i', '-'];
+    const input = ['-y', '-v', 'error', ...rawRenderFrameInput(timeline, timeline.fps)];
     return trace.run(pass, async (span) => {
       let used = 0;
       const { gpu, drawn } = await renderInChunks<{ heard: boolean; files: { kept: string | null; encoded: string | null }; finish: () => Promise<void> }>(frames, async (browser, piece, watch) => {
@@ -284,25 +284,13 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
           ...(files.kept ? [openFfmpegInput([...input, '-c:v', 'ffv1', '-level', '3', '-slices', '16', '-pix_fmt', alpha ? 'bgra' : 'bgr0', files.kept])] : []),
           ...(files.encoded && encoding ? [openFfmpegInput([...input, ...h264Args(encoding), files.encoded])] : []),
         ];
-        // Tabs finish frames out of order: each waits until those before it are written, and one drawn again is dropped.
-        const waiting = new Map<number, Buffer>();
-        let next = piece[0];
-        const onFrameBuffer = async (buffer: Buffer, frame: number) => {
-          if (frame < next || waiting.has(frame)) return;
-          waiting.set(frame, buffer);
-          const ready: Buffer[] = [];
-          for (; waiting.has(next); next++) {
-            ready.push(waiting.get(next)!);
-            waiting.delete(next);
-          }
-          if (ready.length > 0) await Promise.all(packings.map((packing) => packing.write(Buffer.concat(ready))));
-        };
+        const { take, next } = renderFramesInOrder(piece[0], timeline, async (rgba) => void (await Promise.all(packings.map((packing) => packing.write(rgba)))));
         try {
-          const { concurrency, heard } = await drawFrames(browser, watch, piece, null, {
-            inputProps, image: { imageFormat: 'png' }, ...(onArtifact && { onArtifact }), onFrameBuffer,
+          const { concurrency, heard } = await drawFrames(browser, watch, piece, {
+            inputProps, ...(onArtifact && { onArtifact }), take,
             onFrame: (frame) => onProgress?.({ progress: seen.add(frame).size / frames.length }),
           });
-          if (next !== piece.at(-1)! + 1) throw new Error(`${pass}: frames ${piece[0]}–${piece.at(-1)} drew, but only up to ${next - 1} reached their encodes`);
+          if (next() !== piece.at(-1)! + 1) throw new Error(`${pass}: frames ${piece[0]}–${piece.at(-1)} drew, but only up to ${next() - 1} reached their encodes`);
           used = Math.max(used, concurrency);
           return { heard, files, finish: async () => void (await Promise.all(packings.map((packing) => packing.finish()))) };
         } catch (error) {
@@ -331,9 +319,9 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   async function renderStills(dir: string, wanted: number[], { w, captions = false, tabs, lossless }: { w?: number; captions?: boolean; tabs?: number; lossless?: boolean } = {}) {
     const frames = [...new Set(wanted)];
     await drawChunks('stills', frames, {
-      inputProps: props({ captions }), image: lossless ? { imageFormat: 'png' } : { imageFormat: 'jpeg', jpegQuality: 90 }, ...(w !== undefined && { width: w }), ...(tabs !== undefined && { tabs }),
-    }, { into: () => dir });
-    const fileFor = framesInDir(dir);
+      inputProps: props({ captions }), take: renderStillsInto(dir, lossless ? 'png' : 'jpeg'), ...(w !== undefined && { width: w }), ...(tabs !== undefined && { tabs }),
+    });
+    const fileFor = renderStillsByFrame(dir);
     const missing = frames.filter((frame) => !fileFor(frame));
     if (missing.length) throw new Error(`rendered ${frames.length - missing.length} of ${frames.length} stills: none of frame ${missing.join(', ')}`);
     return { fileFor };
@@ -347,13 +335,13 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   async function renderReplay(dir: string, order: number[]) {
     const inputProps: ReplayProps = { ...props(), order }, indices = order.map((_, i) => i);
     await inBrowser('replay', async (browser, watch) => {
-      const { concurrency } = await drawFrames(browser, watch, indices, dir, {
-        inputProps, image: { imageFormat: 'png' }, tabs: 1,
+      const { concurrency } = await drawFrames(browser, watch, indices, {
+        inputProps, take: renderStillsInto(dir, 'png'), tabs: 1,
         compose: (b) => selectComposition({ ...RENDER_PAGE_OPTIONS, serveUrl, puppeteerInstance: b, id: replaySlug(project), inputProps }),
       });
       return { result: undefined, workers: concurrency };
     });
-    return { fileFor: framesInDir(dir) };
+    return { fileFor: renderStillsByFrame(dir) };
   }
 
   /**
@@ -362,7 +350,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
    */
   function measureFrames(pass: string, frames: number[], inputProps: VideoProps, onArtifact: OnArtifact) {
     return inBrowser(pass, async (browser, watch) => {
-      const { concurrency } = await drawFrames(browser, watch, frames, null, { inputProps: { ...inputProps, picture: false }, image: { imageFormat: 'none' }, onArtifact });
+      const { concurrency } = await drawFrames(browser, watch, frames, { inputProps: { ...inputProps, picture: false }, onArtifact });
       return { result: undefined, workers: concurrency };
     });
   }
@@ -477,17 +465,42 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
     return out;
   }
 
-  /** The video's frames as `imageFormat` files in `outputDir`, each `f-<frame>`, its number padded to the video's length. */
-  async function renderFrameFiles({ outputDir, imageFormat, inputProps = props() }: { outputDir: string; imageFormat: 'png' | 'jpeg'; inputProps?: VideoProps }) {
+  /**
+   * Scene `scene`'s blockout alone, `seconds` long (BlockoutSolo), as silent H.264 at `out`, its short side `shortSide`
+   * px: the motion reference a paid video generation is sent.
+   */
+  async function renderBlockoutVideo({ out, scene, seconds, shortSide }: { out: string; scene: string; seconds: number; shortSide: number }): Promise<string> {
+    const inputProps: BlockoutSoloProps = { scene, seconds };
+    await inBrowser('blockout', async (browser, watch) => {
+      const composition = await selectComposition({ ...RENDER_PAGE_OPTIONS, serveUrl, puppeteerInstance: browser, id: blockoutSlug(project), inputProps });
+      const scale = shortSide / Math.min(composition.width, composition.height);
+      const size = { width: Math.round(composition.width * scale), height: Math.round(composition.height * scale) };
+      const encode = openFfmpegInput(['-y', '-v', 'error', ...rawRenderFrameInput(size, composition.fps), '-c:v', 'libx264', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', out]);
+      const { take, next } = renderFramesInOrder(0, size, (rgba) => encode.write(rgba));
+      try {
+        const { concurrency } = await drawFrames(browser, watch, Array.from({ length: composition.durationInFrames }, (_, i) => i), {
+          inputProps, take, width: size.width, tabs: workersFor(composition), compose: async () => composition,
+        });
+        if (next() !== composition.durationInFrames) throw new Error(`the blockout drew ${composition.durationInFrames} frames, but only ${next()} reached its encode`);
+        await encode.finish();
+        return { result: undefined, workers: concurrency };
+      } catch (error) {
+        encode.abandon();
+        throw error;
+      }
+    });
+    return out;
+  }
+
+  /** The video's frames as `imageFormat` files in `outputDir`, each `f-<frame>`. */
+  async function renderFrameFiles({ outputDir, imageFormat, inputProps = props() }: { outputDir: string; imageFormat: RenderStillImage; inputProps?: VideoProps }) {
     const timeline = await readTimeline();
-    await drawChunks('frame files', Array.from({ length: timeline.durationInFrames }, (_, i) => i), {
-      inputProps, image: imageFormat === 'png' ? { imageFormat } : { imageFormat, jpegQuality: 90 },
-    }, { into: () => outputDir, timeline });
+    await drawChunks('frame files', Array.from({ length: timeline.durationInFrames }, (_, i) => i), { inputProps, take: renderStillsInto(outputDir, imageFormat) }, { timeline });
   }
 
   return {
-    ...ledger, serveUrl, lens, props, compositionFor, workersFor, inBrowser,
-    renderStills, renderReplay, measureFrames, readTimeline, renderVideo, renderLosslessVideo, renderTransparentVideo, renderAudio, renderFrameFiles,
+    ...ledger, serveUrl, lens, props, compositionFor, workersFor, inBrowser, frameSink,
+    renderStills, renderReplay, measureFrames, readTimeline, renderVideo, renderLosslessVideo, renderTransparentVideo, renderAudio, renderFrameFiles, renderBlockoutVideo,
     /**
      * Gives the GPU back to the queue before the command ends, for a stretch that doesn't draw (a paid generation's
      * minutes). A render after it queues again.

@@ -5,15 +5,11 @@
 // The blockout is the whole request's content: re-rendering an unchanged scene makes the same MP4 and so the same
 // cache key (lib/platform/paid-generation/engine/paid-generation.ts), while a changed subject, move or prompt pays for a new render. Timing never
 // should: it's fixed afterwards with the scene's `previs.retime`.
-import { renderMedia, selectComposition } from '@remotion/renderer';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { generatePaidMedia } from '#lib/platform/paid-generation/engine/paid-generation.ts';
 import { readPrevisFootageList, writePrevisFootageEntry } from '#lib/footage/previs/engine/previs-footage.ts';
-import { blockoutSlug } from './project-bundle.ts';
-import { RENDER_PAGE_OPTIONS } from '#lib/platform/browser/engine/render-browser.ts';
-import { watchedRenderMedia } from '#lib/platform/browser/engine/render-watch.ts';
 import type { RenderSession } from './render-session.ts';
 import { PREVIS_BLOCKOUT_SHORT_SIDE, PREVIS_MODEL_NAMES, PREVIS_MODELS, previsAspectRatio, previsShotSeconds, type PrevisModelName } from '#lib/footage/previs/models/previs-models.ts';
 import { probeMediaSeconds } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
@@ -84,19 +80,10 @@ function previsCostEstimates(onScreen: number): string[] {
 }
 
 async function renderBlockout(session: RenderSession, sceneId: string, seconds: number): Promise<string> {
-  const inputProps = { scene: sceneId, seconds };
   return withStudioTemp('blockout', async (tmp) => {
     const rendered = join(tmp, 'blockout.mp4');
-    await session.inBrowser('blockout', async (browser, watch) => {
-      const composition = await selectComposition({ ...RENDER_PAGE_OPTIONS, serveUrl: session.serveUrl, puppeteerInstance: browser, id: blockoutSlug(session.project), inputProps });
-      const concurrency = session.workersFor(composition);
-      console.error(`rendering scene ${sceneId}'s blockout, ${composition.durationInFrames / composition.fps}s…`);
-      await renderMedia({
-        ...RENDER_PAGE_OPTIONS, ...watchedRenderMedia(watch), composition, serveUrl: session.serveUrl, puppeteerInstance: browser, concurrency, inputProps,
-        codec: 'h264', muted: true, crf: 20, pixelFormat: 'yuv420p', scale: PREVIS_BLOCKOUT_SHORT_SIDE / Math.min(composition.width, composition.height), outputLocation: rendered,
-      });
-      return { result: undefined, workers: concurrency };
-    });
+    process.stderr.write(`rendering scene ${sceneId}'s blockout, ${seconds}s…\n`);
+    await session.renderBlockoutVideo({ out: rendered, scene: sceneId, seconds, shortSide: PREVIS_BLOCKOUT_SHORT_SIDE });
     // Named by its bytes, so each footage's blockout stays beside it for comparison.
     const hash = createHash('sha256').update(readFileSync(rendered)).digest('hex').slice(0, 12);
     const dir = join(session.project, 'generated');

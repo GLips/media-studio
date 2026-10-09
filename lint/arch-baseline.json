@@ -599,7 +599,6 @@
       "console.error(`images['${request.name}']: ${w}×${h}, ${request.model}`);": 1
     },
     "lib/output/render/engine/previs-render.ts": {
-      "console.error(`rendering scene ${sceneId}'s blockout, ${composition.durationInFrames / composition.fps}s…`);": 1,
       "console.error(`blockout ${kept}`);": 1
     },
     "lib/output/render/engine/render-pipeline.ts": {
