@@ -4,7 +4,7 @@
 // POST is answered once the route's handler has taken the frame, so an encoder's backpressure reaches the page.
 
 import { createServer, type IncomingMessage } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import { listenOnRenderLoopback } from '#lib/platform/browser/engine/render-loopback.ts';
 
 /** A frame a page sent: its number, and its pixels, `width` × `height` RGBA with straight alpha. */
 export type RenderFrame = { readonly frame: number; readonly width: number; readonly height: number; readonly rgba: Buffer };
@@ -42,10 +42,7 @@ export async function serveRenderFrameSink(): Promise<RenderFrameSink> {
       }
     })();
   });
-  await new Promise<void>((listening) => server.listen(0, '127.0.0.1', listening));
-  server.unref();
-  // SAFETY: a server listening on a TCP port is addressed by an AddressInfo.
-  const { port } = server.address() as AddressInfo;
+  const port = await listenOnRenderLoopback(server);
   return {
     open: (take) => {
       const path = `/frames/${++opened}`;

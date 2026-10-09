@@ -7,11 +7,11 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { promisify } from 'node:util';
 import { gzip } from 'node:zlib';
 import { dirname, join, relative } from 'node:path';
 import { studioUserCacheDir } from '#lib/platform/temp/engine/studio-user-cache.ts';
+import { listenOnRenderLoopback } from '#lib/platform/browser/engine/render-loopback.ts';
 
 /** Where solved paint is kept, every namespace's (STUDIO_PAINT_CACHE moves it): delete it to start every painting cold. */
 export const paintCacheDir = () => process.env.STUDIO_PAINT_CACHE || studioUserCacheDir('paint-cache');
@@ -226,9 +226,6 @@ export async function servePaintCache({ dir = paintCacheDir(), namespace, cap = 
       else response.writeHead(500, { 'content-type': 'text/plain' }).end(error.message);
     });
   });
-  await new Promise<void>((listening) => server.listen(0, '127.0.0.1', listening));
-  server.unref();
-  // SAFETY: a server listening on a TCP port is addressed by an AddressInfo.
-  const { port } = server.address() as AddressInfo;
+  const port = await listenOnRenderLoopback(server);
   return { url: `http://127.0.0.1:${port}` };
 }

@@ -281,9 +281,9 @@ join: the difference is too small to see.
 
 ## On Linux
 
-The render browser is Chrome for Testing, because the headless shell has no WebGPU on Linux. It runs ANGLE over the
-NVIDIA driver's EGL, and Chrome is asked for its GPU info before any page asks WebGPU for an adapter
-(`lib/platform/browser/engine/render-browser-launch.ts`). The image needs Mesa's Vulkan drivers and every NVIDIA
+The render browser is Chrome for Testing, because the headless shell has no WebGPU on Linux. It runs ANGLE over
+Vulkan (over the NVIDIA driver's EGL, Chrome 157 hands WebGPU only SwiftShader), and Chrome is asked for its GPU info
+before any page asks WebGPU for an adapter (`lib/platform/browser/engine/render-browser-launch.ts`). The image needs Mesa's Vulkan drivers and every NVIDIA
 driver capability (`NVIDIA_DRIVER_CAPABILITIES=all`). Without them, WebGPU falls back to software and the render
 fails. In a container with no GPU, Chrome's GL is Mesa's llvmpipe, which the render browser refuses too. That's why
 a test runner's check container has a T4.

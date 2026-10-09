@@ -2,18 +2,18 @@
 // is told it runs. Apart from render-browser.ts so a browser keeper (kept-render-browsers.ts) opens browsers as a render
 // would without importing what borrows them. Node only.
 //
-// On Linux (a cloud NVIDIA GPU, remote-render) Chrome is Chrome for Testing with ANGLE over the driver's EGL, and is
-// asked for its GPU info once before any page asks WebGPU for an adapter.
+// On Linux (a cloud NVIDIA GPU, remote-render) Chrome is Chrome for Testing with ANGLE over Vulkan, and is asked for
+// its GPU info once before any page asks WebGPU for an adapter.
 import { openBrowser, type ChromiumOptions, type HeadlessBrowser } from '@remotion/renderer';
 
 const LINUX = process.platform === 'linux';
 
 /**
  * Every render's browser runs on the GPU: Chrome's compositing goes through its GL backend, which Remotion's default
- * software renderer makes crawl; WebGPU needs no flag. On Linux ANGLE goes over the NVIDIA driver's EGL: over Vulkan,
- * Chrome composites in software and a WebGPU canvas screenshots blank.
+ * software renderer makes crawl; WebGPU needs no flag. On Linux ANGLE goes over Vulkan: over the NVIDIA driver's EGL,
+ * Chrome 157 lists the card but hands WebGPU only SwiftShader.
  */
-export const RENDER_CHROMIUM: ChromiumOptions = LINUX ? { gl: 'angle-egl' } : { gl: 'angle' };
+export const RENDER_CHROMIUM: ChromiumOptions = LINUX ? { gl: 'vulkan' } : { gl: 'angle' };
 
 /**
  * The Chrome a render opens, told to every Remotion call so none fetches another. On Linux it's Chrome for Testing:

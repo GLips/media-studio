@@ -8,7 +8,6 @@
 // Under a browser keeper (kept-render-browsers.ts, a remote-render container) a render borrows the keeper's browsers
 // and takes no GPU lease: they are the machine's GPU.
 import { createServer } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import type { HeadlessBrowser } from '@remotion/renderer';
 import { acquireStudioGpuLease } from '#lib/platform/gpu/engine/gpu-lease.ts';
 import { isRenderBrowserFailure, renderBrowserFailureText } from '../models/render-browser-failure.ts';
@@ -16,6 +15,7 @@ import { renderPageLogText, renderPageWarningText } from '../models/render-page-
 import type { RenderPageSettleGlobal } from '../models/render-page-settle.ts';
 import { wholeBrowserPageError } from './browser-page-error.ts';
 import { borrowKeptRenderBrowser, KEPT_RENDER_BROWSERS_ENV, type KeptRenderBrowserLoan } from './kept-render-browsers.ts';
+import { listenOnRenderLoopback } from './render-loopback.ts';
 import { openRenderBrowser, RENDER_CHROME_MODE, RENDER_CHROMIUM } from './render-browser-launch.ts';
 import type { TraceCollector } from '#lib/platform/trace/engine/trace-collector.ts';
 
@@ -57,11 +57,11 @@ type GpuBackends = { gl: string | null; webgpu: { vendor: string; architecture: 
 
 async function readGpuBackends(browser: HeadlessBrowser): Promise<GpuBackends> {
   const server = createServer((_request, response) => response.writeHead(200, { 'content-type': 'text/html' }).end('<!doctype html><title>gpu</title>'));
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = await listenOnRenderLoopback(server);
   try {
     const page = await browser.newPage({ context: () => null, logLevel: 'error', indent: false, pageIndex: 0, onBrowserLog: null, onLog: () => {} });
     try {
-      await page.goto({ url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/`, timeout: 30_000 });
+      await page.goto({ url: `http://127.0.0.1:${port}/`, timeout: 30_000 });
       return await page.mainFrame().evaluate(async (): Promise<GpuBackends> => {
         const canvas = document.createElement('canvas');
         const gl = canvas.getContext('webgl2') ?? document.createElement('canvas').getContext('webgl');

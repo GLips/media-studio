@@ -5,12 +5,12 @@
 // identity in its page alone, and a deposit a frame's values move. Nothing is kept past the render. Node only.
 
 import { createServer } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { Worker } from 'node:worker_threads';
 import { paintingPlacementsFramed, type PaintingPlacementsPacked } from '#lib/paint/document/engine/painting-placements-packed.ts';
 import { projectPaintingSourceFiles } from '#lib/paint/document/engine/painting-source-load.ts';
 import type { PaintingValuesProp } from '#lib/picture/video/models/composition-props.ts';
 import type { RenderPlacementsAsk, RenderPlacementsWork } from './render-placements-worker.ts';
+import { listenOnRenderLoopback } from '#lib/platform/browser/engine/render-loopback.ts';
 
 /**
  * Workers placing a render's paintings at once, each taking the next source as it finishes one: the lake's take ~5 s
@@ -74,10 +74,7 @@ export async function serveRenderPlacements(project: string, { paintingValues }:
       response.end();
     })();
   });
-  await new Promise<void>((listening) => server.listen(0, '127.0.0.1', listening));
-  server.unref();
-  // SAFETY: a server listening on a TCP port is addressed by an AddressInfo.
-  const { port } = server.address() as AddressInfo;
+  const port = await listenOnRenderLoopback(server);
   const placed = parts.then((packed) => ({
     placements: packed.reduce((sum, { placements }) => sum + placements, 0), bytes: packed.reduce((sum, { buffer }) => sum + buffer.byteLength, 0),
     skipped: packed.flatMap(({ skipped }) => skipped),
