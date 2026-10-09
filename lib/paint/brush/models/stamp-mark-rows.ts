@@ -28,7 +28,7 @@ declare const frozenStampMarks: unique symbol;
 
 /**
  * A deposit's marks as a compiled painting holds them: `length` stamps' rows, and their tints, or null where every tint
- * is none. Only a writer's finish or stampMarksJoined makes one, and nothing writes it after.
+ * is none. Only a writer's finish, stampMarksJoined or stampMarksReceived makes one, and nothing writes it after.
  */
 export type FrozenStampMarks = {
   readonly length: number;
@@ -120,6 +120,12 @@ function grown(floats: Float32Array): Float32Array {
 function stampMarksMade(length: number, rows: Float32Array, tints: Float32Array | null): FrozenStampMarks {
   // SAFETY: the brand's makers: rows no one else holds, never written after.
   return Object.freeze({ length, rows, tints }) as FrozenStampMarks;
+}
+
+/** Marks another process placed, their rows and tints views no one else writes: as a render hands them to its pages. */
+export function stampMarksReceived(length: number, rows: Float32Array, tints: Float32Array | null): FrozenStampMarks {
+  if (rows.length !== length * STAMP_MARK_FIELDS || (tints && tints.length !== length * STAMP_TINT_FIELDS)) throw new Error(`stamp marks: ${length} stamps received with ${rows.length} row and ${tints?.length ?? 0} tint numbers`);
+  return stampMarksMade(length, rows, tints);
 }
 
 /** No stamps. */

@@ -50,6 +50,11 @@ const bytesOf = ({ stamps, dualStamps, ...placement }: StampDepositPlacement, ke
   + (placement.kind === 'flood' ? POINT_BYTES * placement.flood.barrier.polygon.length : 0);
 
 const kept = createKeptByBytes<string, StampDepositPlacement>(STAMP_PLACEMENTS_KEPT_BYTES);
+/** Placements whose key names a function by identity, meaningful in this page only. */
+const pageLocal = new WeakSet<StampDepositPlacement>();
+
+/** A placement by the key placeStampDeposit remembers it under. */
+export type StampKeyedPlacement = readonly [key: string, placement: StampDepositPlacement];
 
 /** What the placements kept hold now: how many, and their bytes, roughly. */
 export const stampPlacementsKept = (): StampKeptHeld => kept.held();
@@ -63,15 +68,30 @@ export function placeStampDeposit(geometry: StampPlacingGeometry, brush: StampBr
   const found = kept.get(key);
   if (found) return found;
   const placement = placeNow(geometry, brush, diameter, seed);
-  // Never written after, its marks' digests can be remembered. A key with no function names them in any page, so it
-  // is their digest; a function is named by identity, in this page only, so their content is hashed, once a key.
-  const callable = brushKey.callable || geometryKey.callable;
+  keep(key, placement, brushKey.callable || geometryKey.callable);
+  return placement;
+}
+
+/**
+ * Keeps `placement` under `key`. Never written after, its marks' digests can be remembered. A key with no function
+ * names them in any page, so it is their digest; a `callable` key names a function by identity, in this page only, so
+ * their content is hashed, once a key.
+ */
+function keep(key: string, placement: StampDepositPlacement, callable: boolean) {
   const identity = (marks: string) => (callable ? { content: `${key}\n${marks}` } : { inputs: `${key}\n${marks}` });
   // No stamps are one shared value, read as what it is.
   if (placement.stamps.length) registerStampCanonical(placement.stamps, identity('stamps'));
   if (placement.dualStamps.length) registerStampCanonical(placement.dualStamps, identity('duals'));
+  if (callable) pageLocal.add(placement);
   kept.set(key, placement, bytesOf(placement, key));
-  return placement;
+}
+
+/** The placements kept whose keys mean the same in any page: what a render hands its pages (stamp-placements-transfer.ts). */
+export const stampPlacementsShareable = (): StampKeyedPlacement[] => kept.entries().filter(([, placement]) => !pageLocal.has(placement));
+
+/** Keeps `placements` another process placed, each as if placed here, unless one is kept under its key already. */
+export function adoptStampPlacements(placements: Iterable<StampKeyedPlacement>): void {
+  for (const [key, placement] of placements) if (!kept.get(key)) keep(key, placement, false);
 }
 
 /** A copy of the caller's `load`, its points frozen with it. */

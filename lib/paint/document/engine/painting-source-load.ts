@@ -4,22 +4,28 @@
 // when it has no error, its evaluation to summarise or, for `studio paint diff`, to compare with another. A wrapped
 // document's diff reads its brushes, as a still does.
 
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { STUDIO_STYLES_DIR, studioProjectOfFile } from '#lib/platform/project/engine/studio-project.ts';
+import { listProjectSceneFiles, readProjectDeclaration, STUDIO_STYLES_DIR, studioProjectOfFile } from '#lib/platform/project/engine/studio-project.ts';
 import { projectStyleNames } from '#lib/paint/style/engine/project-styles.ts';
 import { readWorkspacePigmentStyle, type WorkspacePigmentStyle } from '#lib/paint/style/engine/workspace-pigment-style.ts';
 import { paintingBrushRefs } from '../models/painting-brush-refs.ts';
 import type { PaintingBrushOf } from '../models/painting-deposit-compile.ts';
 import { paintingEvaluationDiff, type PaintingEvaluationDiff } from '../models/painting-evaluation-diff.ts';
 import { paintingValuesFromText, type PropertySchema } from '../models/painting-properties.ts';
-import { evaluatePaintingSource, type PaintingEvaluation, type PaintingSourceEvaluation, type PaintingSourceModule } from '../models/painting-source.ts';
+import { evaluatePaintingSource, PAINTING_SOURCE_SUFFIX, type PaintingEvaluation, type PaintingSourceEvaluation, type PaintingSourceModule } from '../models/painting-source.ts';
 import { paintingStyleCatalogue } from '../models/painting-styles.ts';
 
 /** A `*.painting.ts` module as Node imports it: a default export that's a function, and an object for properties. */
 function isPaintingSourceModule(loaded: unknown): loaded is PaintingSourceModule<PropertySchema> {
   if (typeof loaded !== 'object' || loaded === null || !('default' in loaded) || typeof loaded.default !== 'function') return false;
   return !('properties' in loaded) || loaded.properties === undefined || (typeof loaded.properties === 'object' && loaded.properties !== null);
+}
+
+/** The painting sources `project`'s scenes paint from, each its path: what a render checks, and places, before it draws. */
+export async function projectPaintingSourceFiles(project: string): Promise<string[]> {
+  const declaration = await readProjectDeclaration(project);
+  return listProjectSceneFiles(project, declaration?.shared).filter((file) => file.endsWith(PAINTING_SOURCE_SUFFIX)).map((file) => join(project, file));
 }
 
 /**

@@ -10,6 +10,8 @@ export type StampKeptByBytes<K, V> = {
   /** Keeps `value`, giving up the least recently asked for past the budget; one larger than the budget alone isn't kept. */
   readonly set: (key: K, value: V, bytes: number) => void;
   readonly held: () => StampKeptHeld;
+  /** Every key and value kept, least recently asked for first, asking for none. */
+  readonly entries: () => (readonly [K, V])[];
 };
 
 /** A memo keeping the values last asked for, up to `maxBytes` of them. */
@@ -41,5 +43,6 @@ export function createKeptByBytes<K, V>(maxBytes: number): StampKeptByBytes<K, V
       }
     },
     held: () => ({ count: kept.size, bytes: keptBytes }),
+    entries: () => Array.from(kept, ([key, { value }]) => [key, value] as const),
   };
 }

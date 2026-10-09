@@ -13,6 +13,7 @@ import { useDelayRender } from 'remotion';
 import { paintSpanShownProblems } from '#lib/paint/animation/models/paint-span-moments.ts';
 import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { BrushRef } from '#lib/paint/document/models/painting-document.ts';
+import { paintingRenderPlacementsAdopted } from '#lib/paint/document/studio/painting-render-placements.ts';
 import type { PaintingBrushOf } from '#lib/paint/document/models/painting-deposit-compile.ts';
 import { paintingProblem, paintingProblemsError, paintingProblemText } from '#lib/paint/document/models/painting-problem.ts';
 import { createStampPaintCostTally, type StampPaintCostName } from '#lib/paint/painting/models/stamp-paint-costs.ts';
@@ -279,6 +280,9 @@ function loadPaintedShotScene(props: PaintedShotProps, canvases: readonly ShotCa
   };
   const load = trace.begin('painted shot load', { kind: 'shot-load', attributes: { shot: name.line } });
   const ready = watch.watching('loading', (async () => {
+    // Fetched beside the shot's own loading, and adopted before any painting compiles.
+    const placements = paintingRenderPlacementsAdopted();
+    placements.catch(() => {});
     await phase(load, 'laid out', () => whenLaidOut(holder));
     const { shot, layings } = await phase(load, 'compile', () => {
       const compiled = compilePaintedShot(props, names, { htmlBehind: shotHtmlBehind(holder, canvases[0]) });
@@ -304,6 +308,10 @@ function loadPaintedShotScene(props: PaintedShotProps, canvases: readonly ShotCa
     await phase(load, 'surfaces', () => gpuEachInTurn(canvases, async (canvas, index) => {
       surfaces.push(await createShotCanvasSurface(made, canvas, layings[index], shot.camera.stage.frame));
     }));
+    await phase(load, 'placements', async (span) => {
+      const adopted = await placements;
+      if (adopted) span.note({ placements: { value: adopted.placements, unit: 'placements' }, bytes: { value: adopted.bytes, unit: 'B' } });
+    });
     renderer = await phase(load, 'renderer', () => createPaintedShotRenderer(made, surfaces, shot, { brushOf: paintedShotBrushOf, costs, progress }));
     if (!shot.warm) return;
     // Said in every render, not only a profiled one: a span written in frames warms far less than meant.

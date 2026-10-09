@@ -24,6 +24,8 @@ export type VideoProps = {
   paintingValues?: PaintingValuesProp;
   /** Draw the picture (the default); off for a pass that only measures frames or gathers sound (video-format.ts). */
   picture?: boolean;
+  /** Where the render serves the placements it made once in Node, for each page to adopt (render-placements.ts). */
+  stampPlacements?: string;
 };
 
 /** Property values by painting source, then by property: JSON across the page's boundary. */

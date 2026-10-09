@@ -21,7 +21,9 @@ A trace holds the Node command's spans and every render page's, on one clock. Ea
 channel in batches, its top spans under the chunk (or pass) that opened its browser. A page traces always:
 
 - its start: `navigation`, then `page scripts` up to the video's first render
-- a painted shot's load (`laid out`, `compile`, `device`, `surfaces`, `renderer`, `warm`), its `first draw` and each
+- a painted shot's load (`laid out`, `compile`, `device`, `surfaces`, `placements`, `renderer`, `warm`; `placements`
+  waits for and adopts the stamps the command's `placing paintings` placed once in Node, so a page compiles only
+  what they lack), its `first draw` and each
   `shot frame` after, with what each counted (solves, cache hits and misses, readbacks, bytes uploaded)
 - a span per solve (`solve <plane>`), under the warm or frame that ran it, with its counts and the GPU cache's
   evictions in it by producer (`evicted film`, `evicted checkpoint`…). Under it, its source's `evaluate`, then for each

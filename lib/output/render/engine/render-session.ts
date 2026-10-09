@@ -16,6 +16,7 @@ import type { VideoConfig } from 'remotion';
 import { projectSlug, replaySlug } from './project-bundle.ts';
 import { bundleStudioProject } from './studio-bundle.ts';
 import { refuseProjectPaintingErrors } from './render-preflight.ts';
+import { serveRenderPlacements, type RenderPlacements } from './render-placements.ts';
 import { countVideoFrames, openFfmpegInput, runFfmpegAsync } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { writeRenderSnapshot, type RenderSnapshot } from './render-snapshot.ts';
 import { renderInChunks } from './render-chunks.ts';
@@ -139,6 +140,21 @@ async function keepLossless(list: string, out: string, made: Pick<RenderSnapshot
 }
 
 /**
+ * `project`'s paintings placed once, in workers beside its check, its bundle and the browsers' start, and served to its
+ * pages (render-placements.ts), or null when it paints none: recorded in `ledger`'s trace when placed, any source left
+ * to the pages said why.
+ */
+async function placeRenderPaintings(project: string, { trace }: RenderLedger, paintingValues?: PaintingValuesProp): Promise<RenderPlacements | null> {
+  const start = traceClock(), served = await serveRenderPlacements(project, { ...(paintingValues && { paintingValues }) });
+  void served?.placed.then(({ placements, bytes, skipped }) => {
+    trace.record('placing paintings', { start, end: traceClock(), attributes: { placements: { value: placements, unit: 'placements' }, bytes: { value: bytes, unit: 'B' } } });
+    for (const line of skipped) process.stderr.write(`  left to each page to place: ${line}\n`);
+    return skipped.length;
+  }, (error: Error) => process.stderr.write(`  placing the paintings in Node failed: ${error.message}\n`));
+  return served;
+}
+
+/**
  * `workers` overrides the video's `renderWorkers` and the default tabs (--workers); `lens`, how every render draws the
  * lens (--lens); `paintingValues`, what its paintings are painted at over the scenes' values (`studio look --set`);
  * `traceDetail`, the frames its renders trace in detail (--trace). `ledger`: one the command opened already (`studio
@@ -151,11 +167,16 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   // Only ever lower: raising a process's priority back takes root.
   if (getPriority() < RENDER_NICENESS) setPriority(RENDER_NICENESS);
   const ledger = opened ?? await openRenderLedger(project), { clock, paints, trace, recordGpuWait } = ledger;
+  // Placed beside the check: a render the check refuses exits, its workers with it.
+  const placing = placeRenderPaintings(project, ledger, paintingValues);
   const checking = traceClock();
   const paintings = await refuseProjectPaintingErrors(project);
   if (paintings) trace.record(`${paintings} ${paintings === 1 ? 'painting' : 'paintings'} checked`, { start: checking, end: traceClock() });
+  const placements = await placing;
   const serveUrl = await trace.run('bundle', () => bundleStudioProject(project));
-  const props = (p: Partial<VideoProps> = {}): VideoProps => ({ captions: false, probe: false, blockouts: false, lens, ...(paintingValues && { paintingValues }), ...(traceDetail && { traceDetail }), ...p });
+  const props = (p: Partial<VideoProps> = {}): VideoProps => ({
+    captions: false, probe: false, blockouts: false, lens, ...(paintingValues && { paintingValues }), ...(traceDetail && { traceDetail }), ...(placements && { stampPlacements: placements.url }), ...p,
+  });
   const selectVideo = (inputProps: VideoProps, browser: HeadlessBrowser) => selectComposition({ ...RENDER_PAGE_OPTIONS, serveUrl, id: projectSlug(project), inputProps, puppeteerInstance: browser });
   /** The video's composition with `inputProps`, selected in `browser`, or in a watched one of its own, under the GPU lease. */
   async function compositionFor(inputProps: VideoProps, browser?: HeadlessBrowser): Promise<VideoConfig> {
