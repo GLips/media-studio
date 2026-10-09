@@ -7,6 +7,7 @@
 // where an unfinished prefix stops. A known prefix with kept films solves nothing; else a solve replays what it
 // remembers from its latest checkpoint, reading damp windows, if asked, where a decision lacks them.
 
+import { holdRenderPageOpen } from '#lib/platform/browser/studio/render-page-settle.ts';
 import { UNTRACED_NESTING, type TraceNesting } from '#lib/platform/trace/models/trace-recorder.ts';
 import { stampBrushedMasksUnder } from '../models/stamp-brushed-mask.ts';
 import type { StampPaintCostTally } from '../models/stamp-paint-costs.ts';
@@ -166,8 +167,7 @@ async function solveLeased(owner: StampPaintGpuOwner, planned: StampSheetProgram
       if (stampSheetDiskCached()) copies = copyStampSheetFilmsOut(owner, encoder, keptFilms);
       return keptFilms;
     });
-    // Awaited, so nothing is still on its way to the disk when the page closes.
-    if (stampSheetDiskCached()) await trace.within('keeping on disk', () => keepSolvedOnDisk(copies), SOLVE_PHASE);
+    if (stampSheetDiskCached()) holdRenderPageOpen(keepSolvedOnDisk(copies));
     costs?.solved({ program: program.name, from: entries[resumed.from]?.name ?? 'no entry', entries: stop - resumed.from });
     span?.add('entries run', stop - resumed.from, 'entries');
     span?.add('checkpoint bytes', stampCheckpointBytesMade(owner) - checkpointBytes, 'bytes');
@@ -199,11 +199,15 @@ async function solvedOnDisk(owner: StampPaintGpuOwner, keyed: { keys: readonly s
   return { known, kept: records.map((record, f) => adoptStampSheetFilm(owner, `${filmKey}|film${f}`, record!)) };
 }
 
-/** Gives the disk the films a solve kept, copied out as `copies`, and the memos the page has learned since it last gave them. */
+/**
+ * Gives the disk the films a solve kept, copied out as `copies`, and the memos the page has learned since it last gave
+ * them. A solve doesn't wait for it: they read back and cross to Node beside the solves and frames after, and the
+ * page's close waits instead (holdRenderPageOpen).
+ */
 async function keepSolvedOnDisk(copies: readonly StampSheetFilmCopy[]): Promise<void> {
   await Promise.all([
     stampSheetDiskKeepMemos(unsent.splice(0)),
-    ...copies.map(async (copy) => stampSheetDiskKeepFilm(copy.key, await stampSheetFilmRecord(copy))),
+    ...copies.map((copy) => stampSheetDiskKeepFilm(copy.key, stampSheetFilmRecord(copy))),
   ]);
 }
 

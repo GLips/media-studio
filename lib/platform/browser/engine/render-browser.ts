@@ -13,6 +13,7 @@ import type { HeadlessBrowser } from '@remotion/renderer';
 import { acquireStudioGpuLease } from '#lib/platform/gpu/engine/gpu-lease.ts';
 import { isRenderBrowserFailure, renderBrowserFailureText } from '../models/render-browser-failure.ts';
 import { renderPageLogText, renderPageWarningText } from '../models/render-page-log.ts';
+import type { RenderPageSettleGlobal } from '../models/render-page-settle.ts';
 import { wholeBrowserPageError } from './browser-page-error.ts';
 import { borrowKeptRenderBrowser, KEPT_RENDER_BROWSERS_ENV, type KeptRenderBrowserLoan } from './kept-render-browsers.ts';
 import { openRenderBrowser, RENDER_CHROME_MODE, RENDER_CHROMIUM } from './render-browser-launch.ts';
@@ -140,7 +141,7 @@ function renderBrowserClosed(browser: HeadlessBrowser): Promise<never> {
 export async function inRenderBrowser<T>(render: (browser: HeadlessBrowser, gpu: string) => Promise<T>, traced?: RenderBrowserTrace): Promise<{ result: T; gpu: string; waited: number }> {
   const keeper = process.env[KEPT_RENDER_BROWSERS_ENV];
   const { browser, waited, giveBack } = keeper ? await borrowKeptRenderBrowser(keeper) : await openOwnRenderBrowser(traced);
-  const closed = renderBrowserClosed(browser);
+  const closed = renderBrowserClosed(browser), settling = settleRenderPagesOnClose(browser);
   const probe = (name: string) => tracedStep(traced, name, () => Promise.race([readGpuBackends(browser), closed]));
   let broken = false;
   try {
@@ -153,6 +154,52 @@ export async function inRenderBrowser<T>(render: (browser: HeadlessBrowser, gpu:
     broken = error instanceof Error && isRenderBrowserFailure(error.message);
     throw error;
   } finally {
+    await settling.closes();
     await giveBack(broken);
   }
+}
+
+type RenderPage = Awaited<ReturnType<HeadlessBrowser['newPage']>>;
+
+/** The longest a page's close waits for it to settle: a frozen page closes anyway, what it held lost. */
+const RENDER_PAGE_SETTLE_MS = 60_000;
+
+/** Resolves once `page` has settled (render-page-settle.ts), or can't say (crashed, frozen, not a studio page). */
+async function renderPageSettled(page: RenderPage): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  // SAFETY: a page's global holds a RenderPageSettleGlobal's function or nothing: only render-page-settle.ts sets it.
+  const asked = page.evaluate(() => (globalThis as RenderPageSettleGlobal).studioRenderPageSettled?.());
+  const late = new Promise<void>((resolve) => {
+    timer = setTimeout(() => {
+      process.stderr.write(`  a render page hadn't settled in ${RENDER_PAGE_SETTLE_MS / 1000} s, so it closed with work in flight\n`);
+      resolve();
+    }, RENDER_PAGE_SETTLE_MS);
+  });
+  await Promise.race([asked.catch(() => {}), late]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Makes each page `browser` opens from now wait to close until the page has settled (renderPageSettled). Remotion
+ * closes its tabs once their frames are drawn without awaiting it; `closes` awaits those closes, and puts back
+ * `browser`'s own newPage: a kept browser is lent again.
+ */
+function settleRenderPagesOnClose(browser: HeadlessBrowser): { closes: () => Promise<void> } {
+  const closing = new Set<Promise<void>>(), newPage = browser.newPage.bind(browser);
+  // Own properties over the prototype's methods, so deleting them puts the browser's back.
+  browser.newPage = async (options) => {
+    const page = await newPage(options), close = page.close.bind(page);
+    page.close = (closeOptions) => {
+      const closed = renderPageSettled(page).then(() => close(closeOptions));
+      closing.add(closed);
+      void closed.catch(() => {}).finally(() => closing.delete(closed));
+      return closed;
+    };
+    return page;
+  };
+  return {
+    closes: async () => {
+      Reflect.deleteProperty(browser, 'newPage');
+      await Promise.all([...closing].map((closed) => closed.catch(() => {})));
+    },
+  };
 }

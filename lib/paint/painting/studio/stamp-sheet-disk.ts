@@ -77,10 +77,10 @@ export async function stampSheetDiskFilm(key: string): Promise<ArrayBuffer | nul
   })) ?? null;
 }
 
-/** Gives the cache `record`, the film under `key`. */
-export async function stampSheetDiskKeepFilm(key: string, record: Uint8Array<ArrayBuffer>): Promise<void> {
+/** Gives the cache `record` once read back, the film under `key`; one that fails to read back is warned of too. */
+export async function stampSheetDiskKeepFilm(key: string, record: Promise<Uint8Array<ArrayBuffer>>): Promise<void> {
   await asked('keeping a film', async (from) => {
     // A Blob body: an ArrayBuffer one crosses to Node many times slower.
-    okOf(await fetch(`${from}/film/${encodeURIComponent(key)}`, { method: 'PUT', body: new Blob([record]), headers: { 'content-type': 'application/octet-stream' }, signal: signal() }));
+    okOf(await fetch(`${from}/film/${encodeURIComponent(key)}`, { method: 'PUT', body: new Blob([await record]), headers: { 'content-type': 'application/octet-stream' }, signal: signal() }));
   });
 }

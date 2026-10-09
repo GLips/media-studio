@@ -71,7 +71,8 @@ first. `lib/output/render/engine/render-paint-cache.ts` serves it to the pages; 
 
 Nothing checks what it serves. If a render ever looks stale, delete the folder. To time a render cold, point
 `STUDIO_PAINT_CACHE` at an empty folder: other renders on the machine fill the shared one. A solve's span in the trace
-holds `reading the disk` and `keeping on disk`, and counts `films from disk`.
+holds `reading the disk` and counts `films from disk`. What a solve gives the cache crosses to Node beside the frames
+after it, and a page closes only once that has (`render-page-settle.ts`).
 
 ## The suite
 
