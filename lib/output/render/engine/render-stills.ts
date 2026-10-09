@@ -79,10 +79,10 @@ export async function renderProjectStills(project: string, selection: StillSelec
             ...RENDER_PAGE_OPTIONS, ...watchedRenderFrames(watch), composition: { ...composition, props }, serveUrl, puppeteerInstance: browser,
             inputProps: { frameSink: route.url }, frames: [0], concurrency: 1, outputDir: null, imageFormat: 'none', onStart: () => {}, onArtifact: sink.onArtifact,
           });
+          await route.awaitFramesTaken([0]);
         } finally {
           route.close();
         }
-        if (!sent[0]) throw new Error(`still ${stillName(props)}: its page sent no picture`);
         await writeRenderStill(sent[0], output, image);
         return sink;
       };

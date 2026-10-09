@@ -1,6 +1,6 @@
 // picture-root.tsx: the top of a composition's picture. In a render that sends its frames (picture-frame-sink.ts), the
 // page lies inside one drawable canvas (Chrome's HTML-in-Canvas): each frame, once every other hold has cleared, the
-// canvas draws the page's paint, reads it back and sends it, and only then lets Remotion move on. Anywhere else it's a
+// canvas draws the page's paint, reads it back, starts sending it, and lets Remotion move on. Anywhere else it's a
 // plain box.
 //
 // The browser draws everything, effects and nested canvases included: drawElementImage replays the page's own paint,
@@ -12,7 +12,7 @@ import { getRemotionEnvironment, useCurrentFrame, useDelayRender, useVideoConfig
 import { logToRenderHost } from '#lib/platform/browser/studio/render-page-log.ts';
 import { renderPageTrace } from '#lib/platform/trace/studio/page-trace.ts';
 import { PICTURE_READBACK_SPAN_KIND, type PictureReadbackStep } from '../models/picture-readback-span.ts';
-import { pictureFrameSettled, pictureFrameSink, sendPictureFrame } from './picture-frame-sink.ts';
+import { pictureFrameSettled, pictureFrameSink, startPictureFrameSend } from './picture-frame-sink.ts';
 
 /** Chrome's HTML-in-Canvas, which Remotion's browsers enable: not yet in TypeScript's DOM. */
 type DrawableCanvas = HTMLCanvasElement & { requestPaint: () => void; layoutSubtree: boolean };
@@ -68,9 +68,11 @@ export function PictureRoot({ children }: { readonly children?: ReactNode }) {
         ctx.drawElementImage(page, 0, 0);
         return ctx.getImageData(0, 0, canvas.width, canvas.height).data;
       });
-      await step('send', () => sendPictureFrame(frame, pixels, { width: canvas.width, height: canvas.height }));
+      // Remotion moves on once the send has started: the send overlaps the next frame's drawing.
+      const { landed } = await step('send', () => startPictureFrameSend(frame, pixels, { width: canvas.width, height: canvas.height }));
       traced.end();
       release();
+      landed.catch((error: Error) => cancelRender(error));
     })().catch((error: Error) => {
       traced.fail(error);
       if (open) cancelRender(error);

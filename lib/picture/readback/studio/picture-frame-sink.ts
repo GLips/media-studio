@@ -6,6 +6,8 @@
 // Remotion keeps its open holds in window.remotion_delayRenderHandles, replacing the array as each clears, so a
 // setter on it says when to look again.
 
+import { holdRenderPageOpen } from '#lib/platform/browser/studio/render-page-settle.ts';
+
 let sink: string | null = null;
 
 /** Sets the page's frame sink, once, as the bundle loads. */
@@ -53,11 +55,23 @@ export function pictureFrameSettled(own: number): Promise<void> {
   });
 }
 
+/** The page's send in flight, settled either way: a frame's send starts once the one before it has landed. */
+let sendInFlight: Promise<void> = Promise.resolve();
+
 /**
- * Sends frame `frame`'s `pixels` (`width` × `height` RGBA, straight alpha) to the page's sink, resolving once Node
- * holds them. A Blob body: Chrome copies an ArrayBuffer body far more slowly (320 ms a 1080p frame against 14).
+ * Starts sending frame `frame`'s `pixels` (`width` × `height` RGBA, straight alpha) to the page's sink, once the
+ * previous frame's send has landed: one in flight a page, so an encoder's backpressure still reaches it. Resolves once
+ * the send has started, with `landed`, which settles once Node holds the frame; the page stays open until then.
  */
-export async function sendPictureFrame(frame: number, pixels: Uint8ClampedArray<ArrayBuffer>, { width, height }: { width: number; height: number }) {
-  const response = await fetch(`${sink}?frame=${frame}&width=${width}&height=${height}`, { method: 'POST', body: new Blob([pixels]) });
-  if (!response.ok) throw new Error(`the render refused frame ${frame}: ${response.status} ${await response.text()}`);
+export async function startPictureFrameSend(frame: number, pixels: Uint8ClampedArray<ArrayBuffer>, { width, height }: { width: number; height: number }): Promise<{ landed: Promise<void> }> {
+  await sendInFlight;
+  // A Blob body: Chrome copies an ArrayBuffer body far more slowly (320 ms a 1080p frame against 14).
+  const posted = fetch(`${sink}?frame=${frame}&width=${width}&height=${height}`, { method: 'POST', body: new Blob([pixels]) });
+  const landed = (async () => {
+    const response = await posted;
+    if (!response.ok) throw new Error(`the render refused frame ${frame}: ${response.status} ${await response.text()}`);
+  })();
+  sendInFlight = landed.catch(() => {});
+  holdRenderPageOpen(landed);
+  return { landed };
 }

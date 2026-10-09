@@ -112,6 +112,7 @@ export async function profileFrames(session: RenderSession, { from, end }: { fro
         ...RENDER_PAGE_OPTIONS, ...watchedRenderFrames(watch, () => arrived.push(performance.now())), composition, serveUrl: session.serveUrl, puppeteerInstance: browser,
         inputProps: sending, concurrency: tabs, frames, onStart: () => {}, outputDir: null, imageFormat: 'none',
       });
+      await route?.awaitFramesTaken(frames);
       // Every tab loads on its first frame; those frames arrive first, and the rest are the steady state.
       const steady = arrived.slice(tabs - 1);
       const ms = frames.length > tabs ? (steady[steady.length - 1] - steady[0]) / (steady.length - 1) : null;

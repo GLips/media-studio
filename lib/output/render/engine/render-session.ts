@@ -228,6 +228,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
         ...RENDER_PAGE_OPTIONS, ...watchedRenderFrames(watch, onFrame), imageFormat: 'none', ...(onArtifact && { onArtifact }), composition, serveUrl,
         puppeteerInstance: browser, inputProps, outputDir: null, frames: [...frames], concurrency, scale: (width ?? composition.width) / composition.width, onStart: () => {},
       });
+      await route?.awaitFramesTaken(frames);
       return { concurrency, heard: assetsInfo.assets.some(({ audioAndVideoAssets, inlineAudioAssets }) => audioAndVideoAssets.length + inlineAudioAssets.length > 0) };
     } finally {
       route?.close();
