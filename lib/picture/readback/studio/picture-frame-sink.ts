@@ -59,16 +59,16 @@ export function pictureFrameSettled(own: number): Promise<void> {
 let sendInFlight: Promise<void> = Promise.resolve();
 
 /**
- * Starts sending frame `frame`'s `pixels` (`width` × `height` RGBA, straight alpha) to the page's sink, once the
- * previous frame's send has landed: one in flight a page, so an encoder's backpressure still reaches it. Resolves once
- * the send has started, with `landed`, which settles once Node holds the frame; the page stays open until then.
+ * Sends frame `frame`'s `pixels` (`width` × `height` RGBA, straight alpha, as they come back from the GPU) to the
+ * page's sink once the previous frame's send has landed: one in flight a page, so an encoder's backpressure still
+ * reaches it. Resolves once that wait is over, with `landed`, which settles once Node holds the frame; the page stays
+ * open until then.
  */
-export async function startPictureFrameSend(frame: number, pixels: Uint8ClampedArray<ArrayBuffer>, { width, height }: { width: number; height: number }): Promise<{ landed: Promise<void> }> {
+export async function startPictureFrameSend(frame: number, pixels: Promise<Uint8ClampedArray<ArrayBuffer>>, { width, height }: { width: number; height: number }): Promise<{ landed: Promise<void> }> {
   await sendInFlight;
-  // A Blob body: Chrome copies an ArrayBuffer body far more slowly (320 ms a 1080p frame against 14).
-  const posted = fetch(`${sink}?frame=${frame}&width=${width}&height=${height}`, { method: 'POST', body: new Blob([pixels]) });
   const landed = (async () => {
-    const response = await posted;
+    // A Blob body: Chrome copies an ArrayBuffer body far more slowly (320 ms a 1080p frame against 14).
+    const response = await fetch(`${sink}?frame=${frame}&width=${width}&height=${height}`, { method: 'POST', body: new Blob([await pixels]) });
     if (!response.ok) throw new Error(`the render refused frame ${frame}: ${response.status} ${await response.text()}`);
   })();
   sendInFlight = landed.catch(() => {});

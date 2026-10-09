@@ -1,7 +1,7 @@
 // picture-root.tsx: the top of a composition's picture. In a render that sends its frames (picture-frame-sink.ts), the
 // page lies inside one drawable canvas (Chrome's HTML-in-Canvas): each frame, once every other hold has cleared, the
-// canvas draws the page's paint, reads it back, starts sending it, and lets Remotion move on. Anywhere else it's a
-// plain box.
+// canvas draws the page's paint, queues it back from the GPU (picture-gpu-readback.ts) and on to Node, and lets Remotion
+// move on. Anywhere else it's a plain box.
 //
 // The browser draws everything, effects and nested canvases included: drawElementImage replays the page's own paint,
 // so a frame matches a screenshot of the same page (npm run picture:oracle). That holds from Chrome 157; 149 dropped
@@ -13,6 +13,7 @@ import { logToRenderHost } from '#lib/platform/browser/studio/render-page-log.ts
 import { renderPageTrace } from '#lib/platform/trace/studio/page-trace.ts';
 import { PICTURE_READBACK_SPAN_KIND, type PictureReadbackStep } from '../models/picture-readback-span.ts';
 import { pictureFrameSettled, pictureFrameSink, startPictureFrameSend } from './picture-frame-sink.ts';
+import { startPictureGpuReadback } from './picture-gpu-readback.ts';
 
 /** Chrome's HTML-in-Canvas, which Remotion's browsers enable: not yet in TypeScript's DOM. */
 type DrawableCanvas = HTMLCanvasElement & { requestPaint: () => void; layoutSubtree: boolean };
@@ -59,17 +60,17 @@ export function PictureRoot({ children }: { readonly children?: ReactNode }) {
         canvas.addEventListener('paint', () => resolve(), { once: true });
         canvas.requestPaint();
       }));
-      const pixels = await step('read', () => {
+      const readback = await step('read', () => {
         // Read back once a frame: willReadFrequently would move the canvas to the CPU, and draw the page there.
         // SAFETY: Remotion's browsers enable HTML-in-Canvas, whose 2D context draws elements.
         const ctx = canvas.getContext('2d', { willReadFrequently: false }) as DrawableContext;
         // No transform: drawElementImage already draws in device pixels, the render's scale applied.
         ctx.reset();
         ctx.drawElementImage(page, 0, 0);
-        return ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        return startPictureGpuReadback(canvas);
       });
-      // Remotion moves on once the send has started: the send overlaps the next frame's drawing.
-      const { landed } = await step('send', () => startPictureFrameSend(frame, pixels, { width: canvas.width, height: canvas.height }));
+      // Remotion moves on with the frame's pixels still on their way back and on to Node: both overlap the next frame.
+      const { landed } = await step('send', () => startPictureFrameSend(frame, readback.pixels, { width: canvas.width, height: canvas.height }));
       traced.end();
       release();
       landed.catch((error: Error) => cancelRender(error));
