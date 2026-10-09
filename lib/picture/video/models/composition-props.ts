@@ -26,6 +26,8 @@ export type VideoProps = {
   picture?: boolean;
   /** Where the render serves the placements it made once in Node, for each page to adopt (render-placements.ts). */
   stampPlacements?: string;
+  /** Where the render serves its solved-paint cache, for each page's sheet solves (render-paint-cache.ts). */
+  paintCache?: string;
 };
 
 /** Property values by painting source, then by property: JSON across the page's boundary. */

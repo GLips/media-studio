@@ -17,6 +17,8 @@ import { projectSlug, replaySlug } from './project-bundle.ts';
 import { bundleStudioProject } from './studio-bundle.ts';
 import { refuseProjectPaintingErrors } from './render-preflight.ts';
 import { serveRenderPlacements, type RenderPlacements } from './render-placements.ts';
+import { paintCacheNamespace, servePaintCache } from './render-paint-cache.ts';
+import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
 import { countVideoFrames, openFfmpegInput, runFfmpegAsync } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { writeRenderSnapshot, type RenderSnapshot } from './render-snapshot.ts';
 import { renderInChunks } from './render-chunks.ts';
@@ -169,13 +171,15 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   const ledger = opened ?? await openRenderLedger(project), { clock, paints, trace, recordGpuWait } = ledger;
   // Placed beside the check: a render the check refuses exits, its workers with it.
   const placing = placeRenderPaintings(project, ledger, paintingValues);
+  // Opened beside the check too: naming its namespace reads the studio's code.
+  const caching = paints ? trace.run('paint cache', async () => servePaintCache({ namespace: await paintCacheNamespace(STUDIO_ROOT) })) : null;
   const checking = traceClock();
   const paintings = await refuseProjectPaintingErrors(project);
   if (paintings) trace.record(`${paintings} ${paintings === 1 ? 'painting' : 'paintings'} checked`, { start: checking, end: traceClock() });
-  const placements = await placing;
+  const placements = await placing, paintCache = await caching;
   const serveUrl = await trace.run('bundle', () => bundleStudioProject(project));
   const props = (p: Partial<VideoProps> = {}): VideoProps => ({
-    captions: false, probe: false, blockouts: false, lens, ...(paintingValues && { paintingValues }), ...(traceDetail && { traceDetail }), ...(placements && { stampPlacements: placements.url }), ...p,
+    captions: false, probe: false, blockouts: false, lens, ...(paintingValues && { paintingValues }), ...(traceDetail && { traceDetail }), ...(placements && { stampPlacements: placements.url }), ...(paintCache && { paintCache: paintCache.url }), ...p,
   });
   const selectVideo = (inputProps: VideoProps, browser: HeadlessBrowser) => selectComposition({ ...RENDER_PAGE_OPTIONS, serveUrl, id: projectSlug(project), inputProps, puppeteerInstance: browser });
   /** The video's composition with `inputProps`, selected in `browser`, or in a watched one of its own, under the GPU lease. */

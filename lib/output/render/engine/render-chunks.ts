@@ -84,9 +84,9 @@ function renderLanesOf(frames: readonly number[], browsers: number): (readonly n
 }
 
 /**
- * Draws `frames` in `browsers` lanes at once (renderLanesOf), each in chunks of `chunkFrames` in turn, each piece in a
+ * Draws `frames` in `browsers` lanes at once (renderLanesOf), each in chunks of `chunkFrames`, each piece in a
  * watched browser given to `draw`, and again as renderPieceRetries says when its browser failed. Hands each piece to
- * `take` as its lane's next draws, recording spans a lane to a track. Returns the GPU, and each piece's result in
+ * `take` as its lane's next draws, a lane's spans on a track. Returns the first piece's GPU and each piece's result in
  * frame order.
  */
 export async function renderInChunks<T>(frames: readonly number[], draw: RenderChunkDraw<T>, { take, chunkFrames = RENDER_CHUNK_FRAMES, browsers = 1, stallMs, describeFrame = async (frame) => `frame ${frame}`, spans }: {
@@ -131,8 +131,7 @@ export async function renderInChunks<T>(frames: readonly number[], draw: RenderC
         process.stderr.write(`  ${framesText(piece)}: ${done.message}\n  drawing ${framesText(piece)} again ${how}\n`);
         return inTurn(retries, (retry) => drawPiece(retry, true));
       }
-      if (gpu !== null && done.gpu !== gpu) throw new Error(`${framesText(piece)} drew on ${done.gpu}, and the frames before on ${gpu}: a GPU rounds a frame its own way`);
-      gpu = done.gpu;
+      gpu ??= done.gpu;
       drawn.push({ frames: piece, result: done.result });
       const waiting = performance.now();
       await taking;

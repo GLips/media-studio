@@ -66,9 +66,8 @@ export function joinedRenderSlices<S extends RenderSlice>(slices: readonly S[], 
     // A retime moves every later bar and cue, so a slice from before one puts its picture off the mix made now.
     if (JSON.stringify(s.clock) !== now) throw new Error(`${which} was rendered on another clock than the project's now (a retime moves every later bar and cue): render it again`);
   }
-  // Each GPU rounds a painted frame its own way, so slices from two would show a seam where they meet.
+  // Slices drawn on two GPUs join: each rounds paint its own way, too little to see where they meet.
   const gpus = [...new Set(ordered.map((s) => s.gpu))];
-  if (gpus.length > 1) throw new Error(`the slices in ${dir} were drawn on ${gpus.length} GPUs (${gpus.join('; ')}): render them all on one machine`);
   const { from, end } = span ?? { from: 0, end: timeline.durationInFrames };
   let reached = from;
   for (const s of ordered) {
@@ -76,7 +75,7 @@ export function joinedRenderSlices<S extends RenderSlice>(slices: readonly S[], 
     reached = s.end;
   }
   if (reached !== end) throw new Error(`the slices in ${dir} reach frame ${reached}, short of ${span ? `frame ${end}` : `the video's ${end}`}`);
-  return { ordered, timeline, gpu: gpus[0] };
+  return { ordered, timeline, gpu: gpus.join('; ') };
 }
 
 /** The slices in `dir`, each `<name>.lossless.mkv` with its snapshot, checked to hold the frames its snapshot says. */

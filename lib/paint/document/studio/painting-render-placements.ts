@@ -4,6 +4,7 @@
 
 import { adoptStampPlacements } from '#lib/paint/painting/models/stamp-deposit-placement.ts';
 import { stampPlacementsUnframed } from '#lib/paint/painting/models/stamp-placements-transfer.ts';
+import { setStampSheetDiskCache } from '#lib/paint/painting/studio/stamp-sheet-disk.ts';
 
 /** What a page adopted: how many placements, and their bytes. */
 export type PaintingRenderPlacementsAdopted = { readonly placements: number; readonly bytes: number };
@@ -11,9 +12,13 @@ export type PaintingRenderPlacementsAdopted = { readonly placements: number; rea
 let source: string | null = null;
 let adopting: Promise<PaintingRenderPlacementsAdopted | null> | null = null;
 
-/** Where this page's render serves its placements (VideoProps' stampPlacements), set as the bundle loads. */
-export function setPaintingRenderPlacementsSource(url: string): void {
-  source = url;
+/**
+ * What this page's render serves its paintings, set as the bundle loads: its placements (VideoProps' stampPlacements)
+ * and its solved-paint cache (paintCache, stamp-sheet-disk.ts), each when given.
+ */
+export function setPaintingRenderServed({ stampPlacements, paintCache }: { stampPlacements?: string; paintCache?: string }): void {
+  if (stampPlacements) source = stampPlacements;
+  if (paintCache) setStampSheetDiskCache(paintCache);
 }
 
 /** This page's render's placements, adopted: null when it was given none (a still, the studio's preview). */

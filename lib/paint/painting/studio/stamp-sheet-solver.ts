@@ -18,7 +18,10 @@ import { stampDrying } from '../models/stamp-wetness.ts';
 import { bindStampPaintBrushes } from './stamp-deposit-bank.ts';
 import { stampSheetCompositorFor } from './stamp-paint-compositor-for.ts';
 import type { StampPaintGpuOwner } from './stamp-paint-gpu-owner.ts';
-import { keepStampSheetFilms, keptStampSheetFilms, type StampSheetFilmKept } from './stamp-sheet-films.ts';
+import { stampSheetDiskCached, stampSheetDiskFilm, stampSheetDiskKeepFilm, stampSheetDiskKeepMemos, stampSheetDiskMemos } from './stamp-sheet-disk.ts';
+import {
+  adoptStampSheetFilm, copyStampSheetFilmsOut, keepStampSheetFilms, keptStampSheetFilms, stampSheetFilmRecord, type StampSheetFilmCopy, type StampSheetFilmKept,
+} from './stamp-sheet-films.ts';
 import { loadStampSheetSolve } from './stamp-sheet-load.ts';
 import { stampSheetRun, type StampSheetRun } from './stamp-sheet-run.ts';
 import { withStampSolveLease } from './stamp-solve-lease.ts';
@@ -46,9 +49,20 @@ type StampSheetMemo = { decision: StampSheetDecision } | { past: number };
 const STAMP_SHEET_REMEMBERED = 65536;
 const remembered = new Map<string, StampSheetMemo>();
 
-function rememberStampSheet(key: string, memo: StampSheetMemo) {
+/** Memos this page learned and hasn't given the disk yet (stamp-sheet-disk.ts), each with its rank there. */
+const unsent: [string, number, StampSheetMemo][] = [];
+
+/** What a memo knows, as the disk ranks it: an entry past a prefix, its decision, its decision with damp windows. */
+function stampSheetMemoRank(memo: StampSheetMemo): number {
+  if ('past' in memo) return 0;
+  return memo.decision.dampReport ? 2 : 1;
+}
+
+/** Remembers `memo` under `key`; one `learned` here, not read from the disk, is given to it after the solve. */
+function rememberStampSheet(key: string, memo: StampSheetMemo, learned = true) {
   remembered.set(key, memo);
   if (remembered.size > STAMP_SHEET_REMEMBERED) remembered.delete(remembered.keys().next().value!);
+  if (learned && stampSheetDiskCached()) unsent.push([key, stampSheetMemoRank(memo), memo]);
 }
 
 /** The scene second a memo's entry lands at, or was found past a prefix at. */
@@ -109,14 +123,18 @@ async function solveLeased(owner: StampPaintGpuOwner, planned: StampSheetProgram
   const limit = Math.min(through ?? all, at === undefined ? all : entries.filter(({ orderTime }) => orderTime === null || orderTime <= at).length);
   // A sheet that wraps is solved banded on a stage holding its halo, in K₀ (stamp-sheet-wrap.ts); its films are kept cropped to the frame.
   const finished = finish ?? (at !== undefined || (through ?? all) === all);
-  const { plan, keys, known, kept, filmKey } = await trace.within('keys', async () => {
+  const keyed = await trace.within('keys', async () => {
     const solvePlan = stampSheetSolvePlan(planned), sheetKeys = stampSheetKeys(solvePlan.head, entries, limit);
     const keyOfFilms = (k: number) => `${sheetKeys[k]}|${finished ? 'finished' : 'open'}`;
     const found = stampSheetRemembered(sheetKeys, limit, at, dampWindows);
     return { plan: solvePlan, keys: sheetKeys, known: found, filmKey: keyOfFilms, kept: found.stop === null ? null : keptStampSheetFilms(owner, keyOfFilms(found.stop), planned.films.length) };
   }, SOLVE_PHASE);
-  costs?.count(kept ? 'film hits' : 'film misses', planned.films.length);
+  const { plan, keys, filmKey } = keyed;
   const span = trace.current();
+  const fromDisk = !keyed.kept && stampSheetDiskCached();
+  const { known, kept } = fromDisk ? await trace.within('reading the disk', () => solvedOnDisk(owner, keyed, { limit, at, dampWindows, films: planned.films.length }), SOLVE_PHASE) : keyed;
+  costs?.count(kept ? 'film hits' : 'film misses', planned.films.length);
+  if (fromDisk && kept) span?.add('films from disk', kept.length, 'films');
   span?.add('known prefix', known.decisions.length, 'entries');
   if (kept) return { key: keys[known.stop!], through: known.stop!, finished, films: kept, decisions: known.decisions };
 
@@ -139,12 +157,17 @@ async function solveLeased(owner: StampPaintGpuOwner, planned: StampSheetProgram
     if (known.decisions.length) costs?.count(resumed.from ? 'checkpoint hits' : 'checkpoint misses');
     const { stop, decisions } = await runStampSheet(program, run, { keys, limit, at, ...resumed });
     if (stop < all && !run.kept(stop)) await run.steps.step('keeping where the prefix stops', (encoder) => run.keep(encoder, stop));
+    let copies: StampSheetFilmCopy[] = [];
     const films = await run.steps.step('keeping the films', (encoder) => {
       if (finished) run.finish(encoder);
       gpu.targets.putBack(encoder);
       const painted = program.films.map((_, f) => ({ texture: gpu.targets.film(f).texture, box: run.state().painted[f] }));
-      return keepStampSheetFilms(owner, encoder, filmKey(stop), gpu.stage, painted);
+      const keptFilms = keepStampSheetFilms(owner, encoder, filmKey(stop), gpu.stage, painted);
+      if (stampSheetDiskCached()) copies = copyStampSheetFilmsOut(owner, encoder, keptFilms);
+      return keptFilms;
     });
+    // Awaited, so nothing is still on its way to the disk when the page closes.
+    if (stampSheetDiskCached()) await trace.within('keeping on disk', () => keepSolvedOnDisk(copies), SOLVE_PHASE);
     costs?.solved({ program: program.name, from: entries[resumed.from]?.name ?? 'no entry', entries: stop - resumed.from });
     span?.add('entries run', stop - resumed.from, 'entries');
     span?.add('checkpoint bytes', stampCheckpointBytesMade(owner) - checkpointBytes, 'bytes');
@@ -152,6 +175,36 @@ async function solveLeased(owner: StampPaintGpuOwner, planned: StampSheetProgram
   } finally {
     scope.destroy();
   }
+}
+
+/**
+ * What `keyed` knows once the disk is asked: the memos its keys lack, then the films its known prefix ends with, kept
+ * on the device as a solve would keep them (all or none).
+ */
+async function solvedOnDisk(owner: StampPaintGpuOwner, keyed: { keys: readonly string[]; known: ReturnType<typeof stampSheetRemembered>; filmKey: (k: number) => string }, { limit, at, dampWindows, films }: {
+  limit: number; at: number | undefined; dampWindows: boolean; films: number;
+}): Promise<{ known: ReturnType<typeof stampSheetRemembered>; kept: StampSheetFilmKept[] | null }> {
+  const { keys } = keyed;
+  let { known } = keyed;
+  if (known.stop === null) {
+    const memos = await stampSheetDiskMemos<StampSheetMemo>(keys.slice(1).filter((key) => !remembered.has(key)));
+    for (const [key, memo] of memos) rememberStampSheet(key, memo, false);
+    known = stampSheetRemembered(keys, limit, at, dampWindows);
+  }
+  if (known.stop === null) return { known, kept: null };
+  const filmKey = keyed.filmKey(known.stop), kept = keptStampSheetFilms(owner, filmKey, films);
+  if (kept) return { known, kept };
+  const records = await Promise.all(Array.from({ length: films }, (_, f) => stampSheetDiskFilm(`${filmKey}|film${f}`)));
+  if (records.some((record) => record === null)) return { known, kept: null };
+  return { known, kept: records.map((record, f) => adoptStampSheetFilm(owner, `${filmKey}|film${f}`, record!)) };
+}
+
+/** Gives the disk the films a solve kept, copied out as `copies`, and the memos the page has learned since it last gave them. */
+async function keepSolvedOnDisk(copies: readonly StampSheetFilmCopy[]): Promise<void> {
+  await Promise.all([
+    stampSheetDiskKeepMemos(unsent.splice(0)),
+    ...copies.map(async (copy) => stampSheetDiskKeepFilm(copy.key, await stampSheetFilmRecord(copy))),
+  ]);
 }
 
 /** Where `run` resumes: the latest checkpoint after one of the entries `known` decided, restored, and the decisions before it; else the start. */

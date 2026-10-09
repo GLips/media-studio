@@ -78,6 +78,55 @@ export function keptStampSheetFilm(owner: StampPaintGpuOwner, film: StampSheetFi
   return kept.textures[0] ?? null;
 }
 
+/** A kept film's rows as copied out (each padded to 256 bytes, as a copy to a buffer must be), and what lays them back. */
+type StampSheetFilmHeader = { box: StampPointBox | null; layers: number; format: GPUTextureFormat; rowBytes: number };
+
+/** A kept film being copied out, for the disk: its key, its header, and the buffer its rows land in (null for none painted). */
+export type StampSheetFilmCopy = { key: string; header: StampSheetFilmHeader; buffer: GPUBuffer | null };
+
+/** Bytes a texel of a kept film's format: films are rgba16float. */
+const FILM_TEXEL_BYTES = 8;
+
+/** Each of `films` (kept, used by `encoder`) copied in `encoder` into a buffer of its own, to be read once it's submitted. */
+export function copyStampSheetFilmsOut(owner: StampPaintGpuOwner, encoder: GPUCommandEncoder, films: readonly StampSheetFilmKept[]): StampSheetFilmCopy[] {
+  const store = stampSheetFilmStore(owner);
+  return films.map((film) => {
+    const kept = store.find(film.key, encoder)!, texture = kept.textures[0];
+    if (!texture || !film.box) return { key: film.key, header: { box: null, layers: kept.note.layers, format: 'rgba16float', rowBytes: 0 }, buffer: null };
+    const rowBytes = Math.ceil((texture.width * FILM_TEXEL_BYTES) / 256) * 256, layers = texture.depthOrArrayLayers;
+    const buffer = owner.device.createBuffer({ size: rowBytes * texture.height * layers, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+    encoder.copyTextureToBuffer({ texture }, { buffer, bytesPerRow: rowBytes, rowsPerImage: texture.height }, [texture.width, texture.height, layers]);
+    return { key: film.key, header: { box: film.box, layers, format: texture.format, rowBytes }, buffer };
+  });
+}
+
+/** `copy`'s film as one record (a little-endian u32 header length, the header's JSON, padding to 8, the rows), its buffer destroyed. */
+export async function stampSheetFilmRecord({ header, buffer }: StampSheetFilmCopy): Promise<Uint8Array<ArrayBuffer>> {
+  try {
+    const head = new TextEncoder().encode(JSON.stringify(header)), at = Math.ceil((4 + head.byteLength) / 8) * 8;
+    if (buffer) await buffer.mapAsync(GPUMapMode.READ);
+    const rows = buffer ? new Uint8Array(buffer.getMappedRange()) : new Uint8Array(0), record = new Uint8Array(at + rows.byteLength);
+    new DataView(record.buffer).setUint32(0, head.byteLength, true);
+    record.set(head, 4);
+    record.set(rows, at);
+    return record;
+  } finally {
+    buffer?.destroy();
+  }
+}
+
+/** A film's `record` (stampSheetFilmRecord's) kept on `owner`'s device under `key`, as solving it would have. */
+export function adoptStampSheetFilm(owner: StampPaintGpuOwner, key: string, record: ArrayBuffer): StampSheetFilmKept {
+  const length = new DataView(record).getUint32(0, true), at = Math.ceil((4 + length) / 8) * 8;
+  // SAFETY: the record was made by stampSheetFilmRecord, its header that JSON.
+  const { box, layers, format, rowBytes } = JSON.parse(new TextDecoder().decode(new Uint8Array(record, 4, length))) as StampSheetFilmHeader;
+  const usage = GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING;
+  const { entry, release } = stampSheetFilmStore(owner).take(key, null, box ? [{ width: box.w, height: box.h, layers, format, usage }] : [], { box, layers });
+  if (box) owner.device.queue.writeTexture({ texture: entry.textures[0] }, new Uint8Array(record, at), { bytesPerRow: rowBytes, rowsPerImage: box.h }, [box.w, box.h, layers]);
+  release();
+  return { key, box };
+}
+
 /** A kept film's texels over its box, each layer's rgba as floats; null for a film painted nowhere. */
 export async function readStampSheetFilm(owner: StampPaintGpuOwner, film: StampSheetFilmKept): Promise<StampLayerReadback | null> {
   const { box } = film;

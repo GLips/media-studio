@@ -276,8 +276,8 @@ measured profiles (`profiles/`), sent as any file is, a profile at a time as it'
 ## Never for the GPU gate
 
 Each GPU rounds a painted frame its own way. A T4's frames aren't the shared adapter's, so remote output never feeds
-`npm run stamp:gate` or its baselines, and `studio remote run stamp:gate` is refused. For the same reason, `--join`
-refuses slices drawn on two GPUs.
+`npm run stamp:gate` or its baselines, and `studio remote run stamp:gate` is refused. Slices drawn on two GPUs still
+join: the difference is too small to see.
 
 ## On Linux
 

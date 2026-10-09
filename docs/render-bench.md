@@ -60,6 +60,19 @@ Beside the chunks, under the pass:
 
 The table a render prints at its end sums a pass's chunks into one line.
 
+## The solved-paint cache
+
+A render keeps its paintings' sheet solves on disk, in `~/.cache/media-studio/paint-cache/`, and the next render of
+anything painted alike reads them back rather than solving again: a repeat render, or one after an edit, starts warm
+except for the paintings the edit touched. It holds each solve's decisions by state key and its films by film key,
+under a namespace named by the code a solve runs (from `painting-sheets-solve.ts` and `painting-document-compile.ts`,
+through every module they import), the lockfile and the styles' files. It's pruned to 8 GiB, least recently used
+first. `lib/output/render/engine/render-paint-cache.ts` serves it to the pages; `stamp-sheet-disk.ts` is their side.
+
+Nothing checks what it serves. If a render ever looks stale, delete the folder. To time a render cold, point
+`STUDIO_PAINT_CACHE` at an empty folder: other renders on the machine fill the shared one. A solve's span in the trace
+holds `reading the disk` and `keeping on disk`, and counts `films from disk`.
+
 ## The suite
 
 Run it on a quiet M1 Max, one render at a time, with nothing else on the GPU (`studio gpu` shows the queue). Run each
