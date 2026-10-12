@@ -1,13 +1,15 @@
-// render-archive.ts: every render a project has delivered, kept by the hash of its bytes in out/.history/<hash>/ with
-// its snapshot beside it, so review can number a path's versions and compare against one replaced since. `studio
-// render` archives what it writes and prunes after; review archives a render a note is written on that something else
-// put there. A copy is an APFS clone, so a kept version costs no disk until the file it came from is replaced.
+// render-archive.ts: every render a project has made, slices included, kept by the hash of its bytes in
+// out/.history/<hash>/ with its snapshot beside it: review numbers a path's versions, compares against one replaced
+// since, and lays a reply's slice into the cut from here. `studio render` archives what it writes and prunes after;
+// review archives a render a note or reply names that something else put there. A copy is an APFS clone, so a kept
+// version costs no disk until the file it came from is replaced.
 //
 // Negative space: a render without a snapshot (a still, a file from before snapshots) isn't archived; there would be
 // no path or time to list it by.
 import { constants, copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { loadRenderSnapshot, renderSnapshotPath, type RenderSnapshot } from './render-snapshot.ts';
+import type { RenderSnapshot } from '../models/render-snapshot-model.ts';
+import { loadRenderSnapshot, renderSnapshotPath } from './render-snapshot.ts';
 
 /** Versions kept per render path, newest first, besides those a review references. */
 const RENDER_ARCHIVE_KEEP_PER_PATH = 8;
@@ -54,6 +56,17 @@ export function listRenderArchive(projectDir: string): RenderArchiveEntry[] {
     const loaded = file && loadRenderSnapshot(file);
     return file && loaded && loaded.kind === 'snapshot' ? [{ hash, file, snapshot: loaded.snapshot }] : [];
   }).toSorted((a, b) => a.snapshot.made.localeCompare(b.snapshot.made) || a.hash.localeCompare(b.hash));
+}
+
+/** A kept version of one render path: `r` its 1-based place among the path's versions, oldest first. */
+export type RenderVersion = RenderArchiveEntry & { r: number };
+
+/**
+ * Every kept version of the render at `path` (project-relative), oldest first. A prune renumbers what's left, so `r`
+ * names a version for a session, and its hash names it for good.
+ */
+export function listRenderVersions(projectDir: string, path: string): RenderVersion[] {
+  return listRenderArchive(projectDir).filter((entry) => entry.snapshot.render.path === path).map(({ hash, file, snapshot }, i) => ({ hash, file, snapshot, r: i + 1 }));
 }
 
 const archivedSizeOf = (entry: RenderArchiveEntry) => (existsSync(entry.file) ? statSync(entry.file).size : 0);

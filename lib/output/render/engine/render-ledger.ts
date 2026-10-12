@@ -23,16 +23,18 @@ export type RenderLedger = Awaited<ReturnType<typeof openRenderLedger>>;
 
 /**
  * The ledger of a render command on `project`, timing its work in `trace` (one of its own, kept in memory, unless
- * given). Its clock is read now, so every snapshot the command writes holds the clock its renders were made on.
+ * given). Its clock and start are read now, so every snapshot the command writes holds the clock its renders were
+ * made on and when the command began (RenderSnapshot.started).
  */
 export async function openRenderLedger(project: string, trace: TraceCollector = openTraceCollector()) {
+  const started = new Date().toISOString();
   const clock = (await readProjectClock(project)) ?? null;
   const declaration = await readProjectDeclaration(project);
   // A silent video delivers with no mix and no audio track (render-pipeline.ts).
   const silent = declaration?.capability === 'silent', paints = Boolean(declaration?.styles?.length);
 
   const recordGpuWait = (waited: number, at: { start: number; parent: TraceSpanHandle | null }) => recordRenderGpuWait(trace, waited, at);
-  return { project, clock, silent, paints, trace, recordGpuWait };
+  return { project, started, clock, silent, paints, trace, recordGpuWait };
 }
 
 /** Records `waited` seconds for the GPU lease in `trace`, from `start`, under `parent`, when it queued. */

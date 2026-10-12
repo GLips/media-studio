@@ -10,17 +10,21 @@ import { studioProcessRunning, thisStudioProcess, type StudioProcessIdentity } f
 
 /**
  * A render under way: the files it may write, by their paths in the project, and when it started (ISO). A delivered
- * render names every delivery, since only its timeline says which (video.mp4, or a transparent video's two).
+ * render names every delivery, since only its timeline says which. A slice names its scene (--scene) or its frames
+ * (`end` exclusive), for the page to mark that span of the cut as being re-rendered.
  */
-export type RenderProgress = { paths: string[]; startedAt: string };
+export type RenderProgress = { paths: string[]; startedAt: string; scene?: string; frames?: { from: number; end: number } };
+
+/** What the command knows of its render as it starts: the files it may write and, for a slice, what it holds. */
+export type RenderProgressStart = Omit<RenderProgress, 'startedAt'>;
 
 type RenderProgressFile = RenderProgress & { process: StudioProcessIdentity };
 
 const renderProgressFileOf = (projectDir: string) => join(projectDir, 'out', '.render-progress.json');
 
-export function writeRenderProgress(projectDir: string, paths: string[]): void {
+export function writeRenderProgress(projectDir: string, start: RenderProgressStart): void {
   const file = renderProgressFileOf(projectDir);
-  const marker: RenderProgressFile = { paths, startedAt: new Date().toISOString(), process: thisStudioProcess() };
+  const marker: RenderProgressFile = { ...start, startedAt: new Date().toISOString(), process: thisStudioProcess() };
   replaceFileWhole(file, JSON.stringify(marker));
 }
 
@@ -39,6 +43,6 @@ export function readRenderProgress(projectDir: string): RenderProgress | null {
     throw error;
   }
   // SAFETY: only writeRenderProgress writes this file.
-  const { paths, startedAt, process } = JSON.parse(text) as RenderProgressFile;
-  return studioProcessRunning(process) ? { paths, startedAt } : null;
+  const { process, ...progress } = JSON.parse(text) as RenderProgressFile;
+  return studioProcessRunning(process) ? progress : null;
 }

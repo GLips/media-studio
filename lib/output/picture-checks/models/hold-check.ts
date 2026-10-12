@@ -98,7 +98,7 @@ export function holdProblems(motion: MotionTracks, timeline: Pick<TimelineReport
   const secs = (f: number) => `${(f / fps).toFixed(2)}s`;
   for (const h of holds) {
     const id = `${h.scene}/${h.hold}`, span = `${h.start.toFixed(2)}–${h.end.toFixed(2)}s`;
-    // The frames shown within [start, end), as checkedFrames counts them; the epsilons absorb float sums like 0.1 + 0.2.
+    // The frames shown within [start, end), as the check counts them (render-pipeline.ts); the epsilons absorb float sums like 0.1 + 0.2.
     const whole = { from: Math.ceil(h.start * fps - 1e-6), to: Math.ceil(h.end * fps - 1e-6) - 1 }, need = Math.ceil(h.for * fps - 1e-6);
     if (whole.to < motion.frames.first || whole.from > motion.frames.last) continue;
     const from = Math.max(whole.from, motion.frames.first), to = Math.min(whole.to, motion.frames.last);

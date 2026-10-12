@@ -16,6 +16,7 @@ import { measureLoudness } from '#lib/platform/ffmpeg/engine/loudness.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { artifactSink, DELIVERY_AUDIO_CODEC, DELIVERY_ENCODING, formatRenderSpans, TIMELINE_REPORT_NAME, type RenderSession } from './render-session.ts';
 import { renderSnapshotPath } from './render-snapshot.ts';
+import { renderSliceFramesOf } from '../models/render-splice.ts';
 import type { RenderLedger } from './render-ledger.ts';
 import { traceClock } from '#lib/platform/trace/engine/trace-collector.ts';
 import { sfxEventsFrom, type SfxEvent } from '#lib/output/sfx-cues/models/cue-events.ts';
@@ -42,20 +43,17 @@ const masterWavFor = (ledger: Pick<RenderLedger, 'project'>, auditionSfxCueList 
 /** What `studio check` looks at: the whole video, one scene (with its crossfades), or a stretch of seconds. */
 export type CheckScope = { scene?: string; at?: readonly [number, number] };
 
-/** The frames a scope covers, inclusive. */
-export function checkedFrames(timeline: TimelineReport, { scene, at }: CheckScope): { first: number; last: number } {
-  const { fps, durationInFrames } = timeline;
-  let from = 0, to = durationInFrames / fps;
-  if (scene !== undefined) {
-    const s = timeline.scenes.find((x) => x.id === scene);
-    if (!s) throw new Error(`there's no scene "${scene}": ${timeline.scenes.map((x) => x.id).join(', ')}`);
-    from = timeline.crossfades.find((c) => c.to === scene)?.start ?? s.start;
-    to = timeline.crossfades.find((c) => c.from === scene)?.end ?? s.start + s.dur;
-  }
-  if (at) [from, to] = [Math.max(from, at[0]), Math.min(to, at[1])];
-  // The first frame at or after `from`; the epsilon keeps a scene start that's a whole frame from rounding past it.
-  const first = Math.max(0, Math.ceil(from * fps - 1e-6)), last = Math.min(durationInFrames - 1, Math.ceil(to * fps) - 1);
-  if (last < first) throw new Error(`${from.toFixed(2)}–${to.toFixed(2)}s holds no frames of the video`);
+/**
+ * The frames a scope covers, inclusive: a scene's are those it's on screen, its crossfades either side included, as
+ * `studio render --scene` renders them; `at` narrows to a stretch of seconds.
+ */
+function checkScopeFrames(timeline: TimelineReport, { scene, at }: CheckScope): { first: number; last: number } {
+  const { fps } = timeline;
+  const shown = renderSliceFramesOf(timeline, scene === undefined ? { from: 0, end: timeline.durationInFrames } : { scene });
+  let first = shown.from, last = shown.end - 1;
+  // The first frame at or after the stretch's start; the epsilon keeps a start that's a whole frame from rounding past it.
+  if (at) [first, last] = [Math.max(first, Math.ceil(at[0] * fps - 1e-6)), Math.min(last, Math.ceil(at[1] * fps) - 1)];
+  if (last < first) throw new Error(`${(first / fps).toFixed(2)}–${((last + 1) / fps).toFixed(2)}s holds no frames of the video`);
   return { first, last };
 }
 
@@ -72,7 +70,7 @@ export async function checkProject(session: RenderSession, scope: CheckScope = {
   // Frame 0 carries the timeline, which says where a scene is.
   await session.measureFrames('check frame 0', [0], inputProps, sink.onArtifact);
   const timeline = sink.json<TimelineReport>(TIMELINE_REPORT_NAME);
-  const span = checkedFrames(timeline, scope);
+  const span = checkScopeFrames(timeline, scope);
   const frames = Array.from({ length: span.last - span.first + 1 }, (_, i) => span.first + i).filter((f) => f !== 0);
   if (frames.length) await session.measureFrames('check', frames, inputProps, sink.onArtifact);
   return judgeCheckedFrames(session, sink, timeline, span);
@@ -379,7 +377,7 @@ function writeCaptionSidecars(session: RenderSession, timeline: TimelineReport):
  * out/check/, and refused on a problem.
  */
 function approveCheckedRender(session: RenderSession, sink: ReturnType<typeof artifactSink>, timeline: TimelineReport): ProjectCheck {
-  const check = judgeCheckedFrames(session, sink, timeline, checkedFrames(timeline, {}));
+  const check = judgeCheckedFrames(session, sink, timeline, checkScopeFrames(timeline, {}));
   for (const line of check.report) console.error(line);
   writeCheckReports(session, check);
   if (!check.ok) throw new Error('fix the problems above before rendering (look at a stretch with studio look <project> --strip=a:b)');

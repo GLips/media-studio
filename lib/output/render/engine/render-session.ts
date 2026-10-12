@@ -22,7 +22,8 @@ import { serveRenderFrameSink, type RenderFrame } from './render-frame-sink.ts';
 import { rawRenderFrameInput, renderFramesInOrder, renderStillsByFrame, renderStillsInto, type RenderStillImage } from './render-frame-writes.ts';
 import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
 import { countVideoFrames, openFfmpegInput, runFfmpegAsync } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
-import { writeRenderSnapshot, type RenderSnapshot } from './render-snapshot.ts';
+import { writeRenderSnapshot } from './render-snapshot.ts';
+import type { RenderSnapshot } from '../models/render-snapshot-model.ts';
 import { renderInChunks } from './render-chunks.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { openRenderLedger, renderGpuWaitSeconds, RENDER_SPAN_KINDS, RENDER_TRACE_PRODUCER, type RenderLedger } from './render-ledger.ts';
@@ -49,11 +50,17 @@ export const TIMELINE_REPORT_NAME = 'timeline.json';
 /** The delivered soundtrack's codec: a mastered mix is muxed with it, and checked through the same encode. */
 export const DELIVERY_AUDIO_CODEC = ['-c:a', 'aac', '-b:a', '192k'] as const;
 
-/** How a video's picture is encoded from its lossless frames: H.264 at `crf`, with x264's `preset`. */
+/** How a video's picture is encoded from its frames: H.264 at `crf`, with x264's `preset`. */
 export type VideoEncoding = { readonly crf: number; readonly preset: 'veryfast' | 'medium' | 'slow' };
 
-/** A delivered video's encoding, and a slice's and a join's, which stand in for it. */
+/** A delivered video's encoding, and a remote whole video's, which stands in for it. */
 export const DELIVERY_ENCODING: VideoEncoding = { crf: 18, preset: 'slow' };
+
+/**
+ * A slice's: the delivery's quality, encoded fast. A slice is watched in review for a minute and replaced by the next
+ * full render, so its encode shouldn't cost what its drawing saved.
+ */
+export const SLICE_ENCODING: VideoEncoding = { crf: 18, preset: 'veryfast' };
 
 /**
  * A video's sound: `none`; `own`, the composition's, muxed in when any plays; or `apart`, a wav handed to the render's
@@ -132,7 +139,7 @@ type FrameDraw = {
 );
 
 /** The lossless chunks `list` names, copied whole into one file at `out`, with its snapshot. */
-async function keepLossless(list: string, out: string, made: Pick<RenderSnapshot, 'frames' | 'timeline' | 'clock' | 'voice' | 'gpu'>) {
+async function keepLossless(list: string, out: string, made: Pick<RenderSnapshot, 'frames' | 'started' | 'captions' | 'timeline' | 'clock' | 'voice' | 'gpu'>) {
   await runFfmpegAsync(['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', out]);
   writeRenderSnapshot(out, made);
 }
@@ -164,7 +171,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   if (workers !== undefined && !(Number.isInteger(workers) && workers > 0)) throw new Error(`--workers is ${workers}: give a whole number above 0`);
   // Only ever lower: raising a process's priority back takes root.
   if (getPriority() < RENDER_NICENESS) setPriority(RENDER_NICENESS);
-  const ledger = opened ?? await openRenderLedger(project), { clock, paints, trace, recordGpuWait } = ledger;
+  const ledger = opened ?? await openRenderLedger(project), { started, clock, paints, trace, recordGpuWait } = ledger;
   // Placed beside the check: a render the check refuses exits, its workers with it.
   const placing = placeRenderPaintings(project, ledger, paintingValues);
   // Opened beside the check too: naming its namespace reads the studio's code.
@@ -364,12 +371,12 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   }
 
   /**
-   * The video, or `frames` of it, as H.264 at `out` encoded as `encoding` says, with its snapshot; with `lossless`,
-   * its frames kept there too as FFV1, with theirs. `approve` runs after the picture renders, before `out` is
-   * written: it may refuse by throwing, and returns a `soundtrack` wav to mux in and any `motion` it measured.
+   * The video, or `frames` of it, as H.264 at `out` encoded as `encoding` says, with its snapshot. `approve` runs
+   * after the picture renders, before `out` is written: it may refuse by throwing, and returns a `soundtrack` wav to
+   * mux in and any `motion` it measured.
    */
-  async function renderVideo({ out, frames, sound, encoding, lossless, timeline: given, approve, inputProps = props(), onProgress, onArtifact }: {
-    out: string; frames?: RenderSnapshot['frames']; sound: VideoSound; encoding: VideoEncoding; lossless?: string; timeline?: TimelineReport; inputProps?: VideoProps;
+  async function renderVideo({ out, frames, sound, encoding, timeline: given, approve, inputProps = props(), onProgress, onArtifact }: {
+    out: string; frames?: RenderSnapshot['frames']; sound: VideoSound; encoding: VideoEncoding; timeline?: TimelineReport; inputProps?: VideoProps;
     approve?: (rendered: { sound?: string }) => Promise<{ soundtrack?: string; motion?: MotionTracks }>;
     onProgress?: (p: { progress: number }) => void; onArtifact?: OnArtifact;
   }): Promise<string> {
@@ -382,7 +389,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
       const apart = sound === 'apart' ? soundOf() : null;
       apart?.catch(() => {});
       const drawn = await drawPacked(`${name} frames`, span, {
-        inputProps, dir: tmp, timeline, lossless: lossless !== undefined, encoding, ...(onProgress && { onProgress }), ...(onArtifact && { onArtifact }),
+        inputProps, dir: tmp, timeline, lossless: false, encoding, ...(onProgress && { onProgress }), ...(onArtifact && { onArtifact }),
       });
       const picture = join(tmp, name);
       // SAFETY: drawPacked lists what it encoded when given an encoding, as here.
@@ -394,26 +401,24 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
       const track = soundtrack ?? (sound === 'own' ? wav : undefined);
       if (track) await trace.run(`${name} mux`, () => muxDeliveredSound(picture, track, out, { frames: count, fps: timeline.fps }));
       else copyFileSync(picture, out);
-      const made = { frames: span, timeline, clock, voice: renderVoiceOf(project), gpu: drawn.gpu };
-      writeRenderSnapshot(out, { ...made, ...(motion && { motion }) });
-      // SAFETY: drawPacked kept the frames lossless when asked to, as with `lossless`.
-      if (lossless) await keepLossless(drawn.lossless!, lossless, made);
+      writeRenderSnapshot(out, { frames: span, started, captions: inputProps.captions, timeline, clock, voice: renderVoiceOf(project), gpu: drawn.gpu, ...(motion && { motion }) });
       return out;
     });
   }
 
   /**
-   * `frames` of the video kept lossless at `out` as a slice keeps them for --join (FFV1), with its snapshot, and
-   * nothing encoded: a remote render's piece, which the machine that asked for it encodes.
+   * `frames` of the video kept lossless at `out` (FFV1), with its snapshot, and nothing encoded: a remote render's
+   * piece, which the machine that asked for it encodes.
    */
   async function renderLosslessVideo({ out, frames, timeline, onProgress }: {
     out: string; frames: RenderSnapshot['frames']; timeline: TimelineReport; onProgress?: (p: { progress: number }) => void;
   }): Promise<string> {
     mkdirSync(dirname(out), { recursive: true });
     return withStudioTemp('lossless', async (tmp) => {
-      const drawn = await drawPacked(`${basename(out)} frames`, frames, { inputProps: props(), dir: tmp, timeline, lossless: true, ...(onProgress && { onProgress }) });
+      const inputProps = props();
+      const drawn = await drawPacked(`${basename(out)} frames`, frames, { inputProps, dir: tmp, timeline, lossless: true, ...(onProgress && { onProgress }) });
       // SAFETY: drawn lossless, as asked just above.
-      await keepLossless(drawn.lossless!, out, { frames, timeline, clock, voice: renderVoiceOf(project), gpu: drawn.gpu });
+      await keepLossless(drawn.lossless!, out, { frames, started, captions: inputProps.captions, timeline, clock, voice: renderVoiceOf(project), gpu: drawn.gpu });
       return out;
     });
   }
@@ -447,7 +452,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
         runFfmpegAsync([...frames, '-vf', `format=bgra,premultiply=inplace=1,${bt709}`, '-c:v', 'hevc_videotoolbox', '-pix_fmt', 'bgra', '-colorspace', 'bt709', '-q:v', '70', '-alpha_quality', '0.9',
           '-tag:v', 'hvc1', '-movflags', '+faststart', mov]),
       ]));
-      for (const out of [webm, mov]) writeRenderSnapshot(out, { frames: { from: 0, end: timeline.durationInFrames }, timeline, clock, voice: renderVoiceOf(project), gpu, ...(motion && { motion }) });
+      for (const out of [webm, mov]) writeRenderSnapshot(out, { frames: { from: 0, end: timeline.durationInFrames }, started, captions: inputProps.captions, timeline, clock, voice: renderVoiceOf(project), gpu, ...(motion && { motion }) });
     });
     return [webm, mov];
   }

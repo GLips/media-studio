@@ -10,59 +10,15 @@
 import { existsSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, relative, sep } from 'node:path';
 import { sha256OfFile } from '#lib/platform/files/engine/file-sha256.ts';
-import { gitState, type GitState } from '#lib/platform/host/engine/hosts.ts';
+import { gitState } from '#lib/platform/host/engine/hosts.ts';
 import { STUDIO_ROOT, STUDIO_WORKSPACE_DIR, studioProjectOfFile } from '#lib/platform/project/engine/studio-project.ts';
 import { isStudioWorkspaceRepo } from '#lib/platform/project/engine/studio-workspace.ts';
-import type { MotionTracks } from '#lib/picture/measurement/models/motion-tracks.ts';
-import type { TimelineClockTable } from '#lib/timing/timeline/models/timeline.ts';
-import type { RenderVoice } from '#lib/timing/voice/models/render-voice.ts';
-import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
-
-export const RENDER_SNAPSHOT_VERSION = 11;
-
-/** The studio's commit and the workspace's (null with no workspace repo) a render was made from. */
-export type RenderSource = { engine: GitState; workspace: GitState | null };
+import { RENDER_SNAPSHOT_VERSION, type LoadedRenderSnapshot, type RenderFileStamp, type RenderSnapshot, type RenderSource } from '../models/render-snapshot-model.ts';
 
 /** Both repos' commits as they are now. A render reads them as it starts, so a commit made while it draws isn't its. */
 export function readRenderSource(): RenderSource {
   return { engine: gitState(STUDIO_ROOT), workspace: isStudioWorkspaceRepo() ? gitState(STUDIO_WORKSPACE_DIR) : null };
 }
-
-/** Which bytes a file is: `hash` is the first 10 hex digits of its SHA-256, `modified` its mtime as ISO. */
-export type RenderFileStamp = { hash: string; modified: string };
-
-export type RenderSnapshot = {
-  version: typeof RENDER_SNAPSHOT_VERSION;
-  /**
-   * The render's file name, its path inside its project (`out/video.mp4`; null outside one, as a remote piece in a temp
-   * folder is), and the hash of its bytes when the snapshot was written. Review lists a path's versions by it.
-   */
-  render: { file: string; path: string | null; hash: string };
-  /** The composition frames the render holds: its first frame is composition frame `from`; `end` is exclusive. */
-  frames: { from: number; end: number };
-  made: string;
-  timeline: TimelineReport;
-  /**
-   * The project's resolved timeline as `studio clock` prints it, read when the render's session bundled the project,
-   * or null for a project with no timeline.ts. A review note finds its bar and beat on it.
-   */
-  clock: TimelineClockTable | null;
-  /** Whose voice it speaks in, as the project's audio was when it rendered: a review raises a banner on `draft`. */
-  voice: RenderVoice;
-  /**
-   * The GPU its frames were drawn on: WebGL's renderer and WebGPU's adapter, as render-browser.ts names them. Another
-   * GPU rounds a painted frame differently, so slices from two are refused a join (docs/private-styles.md).
-   */
-  gpu: string;
-  source: RenderSource;
-  /** Every tracked element's motion, when the render path measured it (a delivered render's check does). */
-  motion?: MotionTracks;
-};
-
-/** What a render's snapshot says, or why there's none to read. */
-export type LoadedRenderSnapshot =
-  | { kind: 'snapshot'; snapshot: RenderSnapshot }
-  | { kind: 'none'; reason: string };
 
 /** Where a render's snapshot lives: beside it, `<name>.snapshot.json`. */
 export function renderSnapshotPath(render: string): string {
@@ -91,14 +47,14 @@ function renderPathInProject(render: string): string | null {
  * Writes `render`'s snapshot beside it, bound to its bytes as they are now. Call once the file is final. `source`
  * defaults to the commits now; a render that ran long (remote-render.ts) passes the ones it started from.
  */
-export function writeRenderSnapshot(render: string, made: Pick<RenderSnapshot, 'frames' | 'timeline' | 'clock' | 'voice' | 'gpu' | 'motion'> & { source?: RenderSource }): string {
-  const { frames, timeline, clock, voice, gpu, motion, source = readRenderSource() } = made;
+export function writeRenderSnapshot(render: string, made: Pick<RenderSnapshot, 'frames' | 'started' | 'captions' | 'timeline' | 'clock' | 'voice' | 'gpu' | 'motion'> & { source?: RenderSource }): string {
+  const { frames, started, captions, timeline, clock, voice, gpu, motion, source = readRenderSource() } = made;
   if (!(frames.from >= 0 && frames.end > frames.from && frames.end <= timeline.durationInFrames)) {
     throw new Error(`${basename(render)}: frames ${frames.from}–${frames.end - 1} aren't within the composition's 0–${timeline.durationInFrames - 1}`);
   }
   const snapshot: RenderSnapshot = {
-    version: RENDER_SNAPSHOT_VERSION, render: { file: basename(render), path: renderPathInProject(render), hash: renderFileStamp(render).hash }, frames,
-    made: new Date().toISOString(), timeline, clock, voice, gpu, source, ...(motion && { motion }),
+    version: RENDER_SNAPSHOT_VERSION, render: { file: basename(render), path: renderPathInProject(render), hash: renderFileStamp(render).hash }, frames, started,
+    made: new Date().toISOString(), captions, timeline, clock, voice, gpu, source, ...(motion && { motion }),
   };
   const path = renderSnapshotPath(render);
   writeFileSync(path, JSON.stringify(snapshot));

@@ -22,7 +22,8 @@ export type RemoteRenderJob =
 export type RemoteLookAnswer = { readonly composition: LookComposition; readonly frames: readonly number[]; readonly w: number };
 
 /** The files a job sends back: a piece's frames, the raw sound, a look's answer and each of its stills. */
-export const remotePieceFile = ({ from, end }: RemoteFrames) => `frames-${from}-${end - 1}.lossless.mkv`;
+export const REMOTE_PIECE_SUFFIX = '.lossless.mkv';
+export const remotePieceFile = ({ from, end }: RemoteFrames) => `frames-${from}-${end - 1}${REMOTE_PIECE_SUFFIX}`;
 export const REMOTE_SOUND_FILE = 'sound.wav';
 export const REMOTE_LOOK_ANSWER_FILE = 'look.json';
 export const remoteStillFile = (frame: number) => `still-${frame}.jpg`;

@@ -10,7 +10,7 @@ export default defineCommand({
   args: {
     project: studioProjectArg,
     workers: renderWorkersArg,
-    scene: { type: 'string', description: 'Only this scene, its crossfades included' },
+    scene: { type: 'string', description: 'Only the frames this scene is on screen, its crossfades included: the frames studio render --scene renders' },
     at: { type: 'string', valueHint: '12:20', description: 'Only this stretch, in seconds' },
   },
   async run({ args }) {

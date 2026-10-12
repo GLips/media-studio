@@ -1,5 +1,5 @@
-// file-sha256.ts: a file's SHA-256, read a block at a time, so a file of gigabytes (a slice's lossless frames, a brush
-// pack's archive) never sits in memory whole. Node only.
+// file-sha256.ts: a file's SHA-256, read a block at a time, so a file of gigabytes (a remote render's lossless
+// pieces, a brush pack's archive) never sits in memory whole. Node only.
 
 import { createHash } from 'node:crypto';
 import { closeSync, openSync, readSync } from 'node:fs';

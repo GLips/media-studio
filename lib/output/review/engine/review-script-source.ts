@@ -7,7 +7,8 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { renderFileStamp, type RenderFileStamp } from '#lib/output/render/engine/render-snapshot.ts';
+import { renderFileStamp } from '#lib/output/render/engine/render-snapshot.ts';
+import type { RenderFileStamp } from '#lib/output/render/models/render-snapshot-model.ts';
 import type { Voice } from '#lib/timing/voice/models/voice-manifest.ts';
 import type { VoiceTakeFile } from '#lib/timing/voice/models/voice-take.ts';
 import { spokenText, type SpokenWord } from '#lib/timing/voice/models/voice-words.ts';
