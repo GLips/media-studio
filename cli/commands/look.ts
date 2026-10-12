@@ -8,7 +8,8 @@ import { openStudioRenderSession, renderLensArg, studioProjectArg } from '../pro
 export default defineCommand({
   meta: {
     name: 'look',
-    description: 'Look at a render\'s frames without watching it: a labelled sheet of chosen frames, the same frames before and after (--against) with the pixels that changed, a stretch\'s motion stats (--motion), its tracked motion graphed (--graph=a:b), or each piece\'s place and HUD clearance read from its scene model with no render (--graph=models). Frames come from the composition unless --video names a render; --set paints its paintings at other property values. Aim with out/check/timeline.json from `studio check`. Prints its files; open an image with an image viewer or the Read tool.',
+    description: "Look at a render's frames without watching it: sheets, before/after, motion stats and motion graphs.",
+    about: "Frames come from the composition unless --video names a render. One of:\n- a labelled sheet of chosen frames (--frames, --bar, --sheet or --strip);\n- --against: the same frames before and after, with the pixels that changed;\n- --motion: a stretch's motion stats;\n- --graph=a:b: the stretch's tracked motion graphed;\n- --graph=models: each piece's place and HUD clearance read from its scene model, with no render.\n\n--set paints its paintings at other property values. Aim with out/check/timeline.json from `studio check`. Prints its files; open an image with an image viewer or the Read tool.",
   },
   args: {
     project: studioProjectArg,
@@ -31,7 +32,7 @@ export default defineCommand({
     captions: { type: 'boolean', description: 'Burn captions in (the composition only)' },
     lens: { ...renderLensArg, description: `${renderLensArg.description}; the composition only` },
     set: { type: 'string', valueHint: 'heron.reflection=0.5,dusk.level=0.3', description: 'How would a painting look at another value, in its scene? Paint each named painting (by its factory\'s name) at these property values over the scenes\' own, held to its schema as `studio paint check --set` holds them; the composition only' },
-    remote: { type: 'boolean', description: 'Draw the composition\'s frames on the remote app\'s GPU (studio remote deploy; docs/remote.md), not this machine\'s, for a sheet, --against or --motion; the sheet, comparison and measures are made here. Prints what the call billed' },
+    remote: { type: 'boolean', description: 'Draw the composition\'s frames on the remote app\'s GPU (studio remote deploy), not this machine\'s, for a sheet, --against or --motion; the sheet, comparison and measures are made here. Prints what the call billed' },
     out: { type: 'string', valueHint: 'out/check/sky.png', description: 'The file to write, relative to the project unless absolute, in a folder that exists or under the project\'s out/: a .jpg or .png sheet, a .txt for --motion, a .png graph (.jpg too for --graph=a:b); checked before anything renders (default out/check/sheet.jpg, against.jpg, motion.txt, graph.png or models.png)' },
   },
   async run({ args }) {

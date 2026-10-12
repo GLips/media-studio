@@ -5,7 +5,8 @@ import { studioProjectArg } from '../project-arg.ts';
 export default defineCommand({
   meta: {
     name: 'preview',
-    description: 'Open the Remotion Studio on the project: scrub it, see scenes and voice lines on the timeline, toggle captions in the props panel. The project\'s stills are there too, a folder per design. Arguments after -- go to `remotion studio` (e.g. -- --port=3001).',
+    description: "Open the Remotion Studio on a project, to scrub its scenes, voice lines and stills.",
+    about: "Captions toggle in the props panel; the stills are there too, a folder per design. Arguments after -- go to `remotion studio` (e.g. -- --port=3001).",
   },
   args: {
     project: studioProjectArg,

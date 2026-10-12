@@ -10,8 +10,8 @@
     "typecheck": "tsc -p .",
     "typecheck:gate": "tsc -p tsconfig.gate.json",
     "typecheck:web": "tsc -p web/tsconfig.json --noEmit",
-    "test": "node --test 'lib/**/*.test.ts' 'lint/**/*.test.ts' 'work/projects/**/*.test.ts'",
-    "test:gate": "node --test 'lib/**/*.test.ts' 'lint/**/*.test.ts'",
+    "test": "node --test 'lib/**/*.test.ts' 'lint/**/*.test.ts' 'cli/**/*.test.ts' 'work/projects/**/*.test.ts'",
+    "test:gate": "node --test 'lib/**/*.test.ts' 'lint/**/*.test.ts' 'cli/**/*.test.ts'",
     "test:workspace": "node --test 'work/projects/**/*.test.ts'",
     "check:arch": "node lint/check-arch.ts",
     "lint": "node lint/lint.ts",
@@ -28,10 +28,12 @@
     "wet:passages": "node harness/wet-passage-sheet.ts paint",
     "dry:passages": "node harness/dry-passage-sheet.ts paint",
     "stamp:gate": "node harness/stamp-paint-gate.ts",
-    "trace": "node harness/trace.ts",
     "prepare": "git config core.hooksPath .githooks"
   },
   "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
   "imports": {
     "#lib/*": "./lib/*",
     "#studio": "./lib/api.ts",

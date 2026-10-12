@@ -4,7 +4,8 @@ import { defineCommand } from 'citty';
 export default defineCommand({
   meta: {
     name: 'study',
-    description: 'Study a reference video: its cuts against the beat, and per section a dense strip of frames, a sheet, the motion vectors drawn on frames, a per-frame plot of motion energy, cut scores, colour and loudness, and each section\'s palette. Writes them with index.md beside the video (study/, cleared first) and prints index.md. Open the images with the Read tool.',
+    description: "Slice a reference video into what a frame-by-frame study needs: cuts, beats, strips, motion, colour.",
+    about: "Its cuts against the beat, and per section a dense strip of frames, a sheet, the motion vectors drawn on frames, a per-frame plot of motion energy, cut scores, colour and loudness, and the section's palette. Writes them with index.md into study/ beside the video (cleared first) and prints index.md. Open the images with an image viewer or the Read tool.",
   },
   args: {
     video: { type: 'positional', required: true, description: 'The video file' },

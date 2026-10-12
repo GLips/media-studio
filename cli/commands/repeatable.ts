@@ -5,7 +5,8 @@ import { openStudioRenderSession, renderLensArg, studioProjectArg } from '../pro
 export default defineCommand({
   meta: {
     name: 'repeatable',
-    description: "Render chosen times alone, then again in other orders and among other frames, and fail if any differ. Run it on anything drawn with randomness (a painted or generative layer): it must be seeded.",
+    description: "Prove chosen frames are a pure function of time, rendering them alone and in other orders.",
+    about: "Renders the times alone, then again in other orders and among other frames, and fails if any differ. Run it on anything drawn with randomness (a painted or generative layer): it must be seeded.",
   },
   args: {
     project: studioProjectArg,

@@ -555,7 +555,7 @@ function formatChunkSpans(pass: TraceSpan, spans: readonly TraceSpan[]): string 
  * add up: the wall-clock (the whole process) and the GPU lease wait close it.
  */
 export function formatRenderSpans({ trace }: Pick<RenderLedger, 'trace'>): string[] {
-  // The command's own spans: its pages' are in the trace, read with `npm run trace`.
+  // The command's own spans: its pages' are in the trace, read with `studio trace`.
   const spans = trace.trace().spans.filter((s) => s.producer === RENDER_TRACE_PRODUCER);
   const ordered = spans.toSorted((a, b) => a.start - b.start), childrenOf = (id: string | null) => ordered.filter((s) => s.parent === id);
   const width = Math.max(...ordered.map((s) => s.name.length + 2), 'GPU lease wait'.length);

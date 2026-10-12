@@ -5,7 +5,8 @@ import { openStudioRenderSession, renderLensArg, renderWorkersArg, studioProject
 export default defineCommand({
   meta: {
     name: 'profile',
-    description: "Renders a span of frames whole and says where each frame's time goes: each frame's render, steady state, read back from the page and sent to Node as delivery sends it and again sending none, in one tab and in the render's tabs, where the span holds a frame past each tab's first; and, from the one-tab sending pass's trace, each painted shot's and stamp painting's drawing per frame, its loads, and each step of sending a frame (settle, paint, read, send). One frame (--frames 120:120) gives its drawing's cold cost. Prints the GPU backends it ran on (WebGL's renderer and WebGPU's adapter), and writes its trace beside the render history's (npm run trace -- latest reads it). With --costs, also what the drawing counted each frame cost (a painted shot's evaluations, solves, cache hits and misses, readbacks, bytes).",
+    description: "Profile a span of frames: where each frame's render, readback and painting time goes.",
+    about: "Renders the span whole, in one tab and in the render's tabs, and reports each frame's render, its steady state, and reading it back from the page and sending it to Node, as delivery sends it and again sending none. From the one-tab pass's trace: each painted shot's and stamp painting's drawing per frame, its loads, and each step of sending a frame (settle, paint, read, send). One frame (--frames 120:120) gives its drawing's cold cost. Prints the GPU backends it ran on, and writes its trace to the render history, where `studio trace latest` reads it.",
   },
   args: {
     project: studioProjectArg,

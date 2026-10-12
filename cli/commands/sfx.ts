@@ -3,7 +3,11 @@ import { defineCommand } from 'citty';
 import { openStudioRenderSession, studioProjectArg } from '../project-arg.ts';
 
 const kit = defineCommand({
-  meta: { name: 'kit', description: "Rewrite the kit's sounds (SFX.click, SFX.whoosh, …) into lib/timing/sound/studio/, seeded so a rerun writes the same files. Prints the files." },
+  meta: {
+    name: 'kit',
+    description: "Rewrite the studio's own kit sounds (SFX.click, SFX.whoosh, …), seeded so a rerun writes the same files.",
+    hidden: true,
+  },
   async run() {
     const { writeSfxKit } = await import('#lib/timing/sound/engine/sfx-files.ts');
     for (const file of writeSfxKit()) console.log(file);
@@ -11,7 +15,7 @@ const kit = defineCommand({
 });
 
 const list = defineCommand({
-  meta: { name: 'list', description: 'Print every recipe with its presets and parameters.' },
+  meta: { name: 'list', description: "Print every recipe with its presets and parameters." },
   async run() {
     const { describeSfxRecipes } = await import('#lib/timing/sound/engine/sfx-files.ts');
     console.log(describeSfxRecipes());
@@ -21,11 +25,12 @@ const list = defineCommand({
 const render = defineCommand({
   meta: {
     name: 'render',
-    description: 'Render one sound to a .wav and a .ts beside it for the video to import (its default export goes to <Sfx sound>). Prints both.',
+    description: "Render one sound to a .wav, with a .ts beside it for the video to import.",
+    about: "Its default export goes to <Sfx sound>. Prints both files, then the sound's length, where it lands and its loudness.",
   },
   args: {
     sound: { type: 'positional', required: true, description: 'recipe or recipe.preset, e.g. whoosh.whip' },
-    out: { type: 'string', required: true, valueHint: 'work/projects/<p>/sfx/reveal.wav', description: 'The .wav to write, inside the studio' },
+    out: { type: 'string', required: true, valueHint: 'sfx/reveal.wav', description: 'The .wav to write, inside the studio checkout; a relative path starts at the current directory' },
     seed: { type: 'string', description: 'The id of the event it marks, so each event gets its own take' },
     set: { type: 'string', valueHint: 'brightness=0.8,decay=1.2', description: 'Parameters over the preset' },
     mutate: { type: 'string', valueHint: '0.2', description: 'How far (0–1) to vary every parameter, from the seed' },
@@ -48,7 +53,8 @@ const render = defineCommand({
 const rerender = defineCommand({
   meta: {
     name: 'rerender',
-    description: 'Rerender every sound `studio sfx render` wrote into a folder from the request each module records, after a recipe or the renderer changes. Prints the modules.',
+    description: "Rerender every sound `studio sfx render` wrote into a folder, after a recipe or the renderer changes.",
+    about: "Each module records its request, which is rendered again. Prints the modules.",
   },
   args: { dir: { type: 'positional', required: true, description: "A folder of rendered sounds, e.g. a project's sfx/" } },
   async run({ args }) {
@@ -61,7 +67,11 @@ const rerender = defineCommand({
 });
 
 const showcase = defineCommand({
-  meta: { name: 'showcase', description: "Render every recipe's presets and a few mutated variants into one folder, with an index.html to listen from. Prints the index." },
+  meta: {
+    name: 'showcase',
+    description: "Render every recipe's presets and a few variants into a folder, with an index.html to listen from.",
+    about: "Prints the index.",
+  },
   args: { out: { type: 'positional', required: false, default: 'scratch/sfx-showcase', description: 'The folder to write' } },
   async run({ args }) {
     const { resolve } = await import('node:path');
@@ -73,7 +83,8 @@ const showcase = defineCommand({
 const draft = defineCommand({
   meta: {
     name: 'draft',
-    description: "Measure the video's events (clicks, keys, placed sounds, scene changes, camera moves, reveals) with a full studio check and draft a cue for each into sfx/cues.json, keeping its edits. The video plays it with defineVideo({ sfxCueList: true }); studio mix --sfx-cues auditions it first. Prints the cue list and the file.",
+    description: "Draft a cue for each of the video's events into sfx/cues.json, keeping its edits.",
+    about: "Measures the events (clicks, keys, placed sounds, scene changes, camera moves, reveals) with a full studio check. The video plays the cue list with defineVideo({ sfxCueList: true }); `studio mix --sfx-cues` auditions it first. Prints the cue list and the file.",
   },
   args: {
     project: studioProjectArg,
@@ -94,6 +105,10 @@ const draft = defineCommand({
 });
 
 export default defineCommand({
-  meta: { name: 'sfx', description: 'Sound effects from seeded recipes: whoosh, riser, impact, chime, click and more. See `studio sfx list`.' },
+  meta: {
+    name: 'sfx',
+    description: "Render seeded sound effects, and draft a video's cue list from its events.",
+    about: "Recipes include whoosh, riser, impact, chime and click; `studio sfx list` prints them all.",
+  },
   subCommands: { list, render, rerender, kit, showcase, draft },
 });

@@ -8,7 +8,7 @@ const reviewDecideArgs = {
   project: studioProjectArg,
   topic: { type: 'positional', required: false, description: 'A short name for the choice, music-bed say; posting on an open topic again replaces its candidates' },
   question: { type: 'string', valueHint: 'Which bed under the VO?', description: 'What the reviewer is choosing' },
-  candidate: { type: 'string', valueHint: 'out/decisions/music-bed/warm.mp3=Warm', description: 'A candidate, once per candidate: a file in the project (a video, image or audio file; put new ones in out/decisions/<topic>/), or text:<the text>, each optionally =<label>' },
+  candidate: { type: 'string', valueHint: 'out/decisions/music-bed/warm.wav=Warm', description: 'A candidate, once per candidate: a file in the project (a video, image or audio file; put new ones in out/decisions/<topic>/), or text:<the text>, each optionally =<label>' },
   many: { type: 'boolean', description: 'The reviewer may pick several, not one' },
   spec: { type: 'string', valueHint: 'decision.json', description: 'The whole decision as JSON, a file or - for stdin: { topic, question, choose?: "one"|"many", candidates: [{ path? | text?, label?, meta?: { model, seed, cost… } }] }, in place of the other flags' },
 } as const satisfies ArgsDef;
@@ -44,7 +44,8 @@ function decisionSpecOf(text: string, from: string): DecisionSpec {
 export const reviewDecideCommand = defineCommand({
   meta: {
     name: 'decide',
-    description: "Post a choice for the reviewer: a question and two or more candidates, keyed a, b, c… in order. Each file is checked to be media in the project and recorded by its hash, so one changed later shows as stale; text candidates are shown as written. The reviewer surveys them in the studio app at /projects/<p>/decisions/<topic>, compares any two on one transport, picks or rejects each, comments on any, and signs off; watch wakes on each verdict and on the sign-off, and decisions prints them. Posting an open topic again replaces its candidates, keeping verdicts on those that come back unchanged. Prints the decision's id.",
+    description: "Post a choice between two or more candidates for the reviewer to pick from and sign off.",
+    about: "Candidates are keyed a, b, c… in order. Each file is checked to be media in the project and recorded by its hash, so one changed later shows as stale; text candidates are shown as written. The reviewer surveys them in the studio app at /projects/<p>/decisions/<topic>, compares any two on one transport, picks or rejects each, comments on any, and signs off; watch wakes on each verdict and on the sign-off, and decisions prints them. Posting an open topic again replaces its candidates, keeping verdicts on those that come back unchanged. Prints the decision's id.",
   },
   args: reviewDecideArgs,
   async run({ args, rawArgs }) {

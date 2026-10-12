@@ -5,7 +5,8 @@ import { PROJECT_CAPABILITIES } from '#lib/platform/project/models/capability.ts
 export default defineCommand({
   meta: {
     name: 'new',
-    description: 'Start work/projects/<yyyy-mm>-<slug>/ of one capability, declared in its project.ts, that passes check:arch, typecheck and its tests from its first commit. music-led: timeline.ts with bars on a steady tempo (a fitted track replaces it) and a landmark on the final hit, a file per bar in bars/. voice-led: timeline.ts with scenes on voiceover.json\'s lines, each with a speech cue, a file per scene in scenes/, and the lines\' timing estimated. mixed: voiced scenes around a section of bars. silent: timeline.ts with scenes of fixed seconds, a file per scene in scenes/, and no voice, music or sound, so it delivers with no audio track. Each scene starts blocked, flat pieces moving on its cues, so `studio render --animatic` and `studio review open` work at once; timeline.test.ts registers it with the retime runner. still-only: a stills.tsx whose one design (a fitted headline on a ground beside a full-bleed field holding the --url page on a tilted card) renders at og and youtube, in the kit work/brands/<--brand> if given; skills/stills is the workflow. With --url, capture.ts films that page as `home`; without, it starts empty. Prints the project directory.',
+    description: "Start a project of one capability that passes every check from its first commit.",
+    about: "Makes work/projects/<yyyy-mm>-<slug>/, its capability declared in its project.ts:\n- music-led: timeline.ts with bars on a steady tempo (a fitted track replaces it) and a landmark on the final hit, a file per bar in bars/.\n- voice-led: timeline.ts with scenes on voiceover.json's lines, each with a speech cue, a file per scene in scenes/, and the lines' timing estimated.\n- mixed: voiced scenes around a section of bars.\n- silent: timeline.ts with scenes of fixed seconds, a file per scene in scenes/, and no voice, music or sound, so it delivers with no audio track.\n- still-only: a stills.tsx whose one design (a fitted headline on a ground beside a full-bleed field holding the --url page on a tilted card) renders at og and youtube, in the brand kit --brand names.\n\nEach timed scene starts blocked, flat pieces moving on its cues, so `studio render --animatic` and `studio review open` work at once; timeline.test.ts registers it with the retime runner. With --url, capture.ts films that page as `home`; without, it starts empty. Prints the project directory, and the next commands on stderr.",
   },
   args: {
     slug: { type: 'positional', required: true, description: 'Lowercase words joined by dashes, e.g. spring-launch' },
@@ -31,11 +32,11 @@ export default defineCommand({
   studio probe ${name} <url>        see a page as capture.ts will, with selectors for its elements, then write its shots
   studio capture ${name}            film them`;
     if (capability === 'still-only') {
-      console.error(`Next (skills/stills):${shotsFirst}
+      console.error(`Next (the stills skill):${shotsFirst}
   studio still ${name} --sheet   render every variant at each preset, with a sheet to pick from
   studio review open <sheet>     show the sheet for notes`);
     } else {
-      console.error(`Next (skills/video-kickoff):
+      console.error(`Next (the video-kickoff skill):
   studio render ${name} --animatic  the blocked scenes as the video plays now
   studio review open ${name}        approve the storyboard on it, then raise each scene in its own file${shotsFirst}${voiced ? `
   studio voice ${name}              voice it` : ''}

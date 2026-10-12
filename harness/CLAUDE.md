@@ -15,8 +15,6 @@ against its references. One file per rig, run as `node harness/<rig>.ts <verb>` 
   the whole gate, and `run <ids>` only the baselines and cases named; pre-push runs `pushed`.
 - `picture-oracle.ts` (`npm run picture:oracle -- <project> <frames> [--keep <dir>]`): a project's frames as a render
   reads them back from the page, held against Remotion's screenshot of the same page, frame by frame.
-- `trace.ts` (`npm run trace -- <trace|latest> [--against <trace|latest~1>]`): a render's trace as text, time by span
-  name with self time and each chunk's startup step by step, or two renders side by side (`docs/render-bench.md`).
 
 - An entry point stays thin: argument parsing and wiring over `lib/`'s `engine` and `models`, run through
   `run-harness-command.ts`. The machinery lives in `lib/`. It has `cli/`'s import rights (`lint/policy/studio-tree.ts`).

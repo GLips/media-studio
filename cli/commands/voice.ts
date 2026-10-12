@@ -8,7 +8,8 @@ const VOICE_READS = ['paid', 'draft', 'estimate'] as const satisfies readonly Vo
 export default defineCommand({
   meta: {
     name: 'voice',
-    description: 'Read voiceover.json as one take and cut it into audio/<line>.wav and audio/manifest.ts. Only a script change re-reads the take. Prints audio/manifest.ts.',
+    description: "Voice the project's voiceover.json as one take, cut into a .wav per line.",
+    about: "Writes audio/<line>.wav and audio/manifest.ts. Only a script change re-reads the take. Prints audio/manifest.ts.",
   },
   args: {
     project: studioProjectArg,

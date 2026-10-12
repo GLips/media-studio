@@ -1,5 +1,5 @@
-// studio paint: painting sources (`*.painting.ts`, docs/painting-authoring.md): checked, compared, and solved on the
-// GPU to be seen.
+// studio paint: painting sources (`*.painting.ts`, pure factories of a PaintingDocument): checked, compared, and
+// solved on the GPU to be seen.
 import { defineCommand, type ArgsDef } from 'citty';
 import { paintingValueTextPairs } from '#lib/paint/document/models/painting-properties.ts';
 import { checkedCommandOutFlag, refuseUnknownCommandFlags } from '../command-flags.ts';
@@ -56,7 +56,8 @@ const checkPaintArgs = {
 const checkPaintCommand = defineCommand({
   meta: {
     name: 'check',
-    description: "Evaluate a painting source at its default property values (or those --set gives) and print every problem found: the schema and values, the factory's purity (called twice, its documents compared), the document's shape and keys, its papers, brushes and assets against work/styles/, its geometry, charges and media, washes, clocks and `on`s that can never hold. Each problem prints as `<path>: <message> [x0,y0 → x1,y1]`, the box in document px; warnings say so. Then, if it has no error, the document's size and medium and each layer's medium, sheet, washes and applications, and how many `on` gates only a solve decides; with --solve, every sheet solved (an application that can't land fails the check, naming where its rule failed). Given a project (its name, folder or video.tsx) or a scene's file (scenes/<id>.tsx, bars/<id>.tsx), render each of its scenes (or that one) in Node at its first, middle and last frames, with no picture, and compile every painted shot rendered as its render would, as if HTML lay behind it, held to its scene's span: print each painting in time's key drawings (which moments it solves, at what values, and why) as `scene <id>: <plane>: …`, then each problem and motion warning (a speed jump at a key, a move or a hold's step too fast for nothing to blur, a visibility popping) as `scene <id>: <path>: <message>`. Fails on any error.",
+    description: "Check a painting source, or every painted shot in a project or scene, and print each problem.",
+    about: "Given a *.painting.ts: evaluates it at its default property values (or those --set gives) and prints every problem found: the schema and values, the factory's purity (called twice, its documents compared), the document's shape and keys, its papers, brushes and assets against the workspace's styles, its geometry, charges and media, and washes, clocks and `on`s that can never hold. Each prints as `<path>: <message> [x0,y0 → x1,y1]`, the box in document px; warnings say so. With no error, it then prints the document's size and medium, each layer's medium, sheet, washes and applications, and how many `on` gates only a solve decides; with --solve, every sheet solved too (an application that can't land fails the check, naming where its rule failed).\n\nGiven a project (its name, folder or video.tsx) or a scene's file (scenes/<id>.tsx, bars/<id>.tsx): renders each of its scenes (or that one) in Node at its first, middle and last frames, with no picture, and compiles every painted shot as its render would, held to its scene's span. Prints each painting's key drawings (which moments it solves, at what values, and why) as `scene <id>: <plane>: …`, then each problem and motion warning (a speed jump at a key, a move or a hold's step too fast for nothing to blur, a visibility popping) as `scene <id>: <path>: <message>`.\n\nFails on any error.",
   },
   args: checkPaintArgs,
   run: ({ args, rawArgs }) => {
@@ -111,7 +112,8 @@ const stillPaintArgs = {
 const stillPaintCommand = defineCommand({
   meta: {
     name: 'still',
-    description: "Paint a painting source at its default property values (or those --set gives): checked as `paint check` checks it, then its sheets solved on the GPU and laid as one PNG the document's size, each own sheet a cut-out of its paper. Prints its problems and the solve's warnings, and fails on any error, or on an application that can't land.",
+    description: "Paint a painting source to one PNG, at its default property values or those --set gives.",
+    about: "Checked as `paint check` checks it, then its sheets solved on the GPU and laid as one PNG the document's size, each own sheet a cut-out of its paper. Prints its problems and the solve's warnings, and fails on any error, or on an application that can't land.",
   },
   args: stillPaintArgs,
   run: ({ args, rawArgs }) => {
@@ -148,7 +150,8 @@ const diffPaintArgs = {
 const diffPaintCommand = defineCommand({
   meta: {
     name: 'diff',
-    description: "What a solve would redo between two evaluations: a source at --set and at --set with --to on top, or a source and an edited copy (--set on both, --to on the second). Prints the document's fields that differ (paper colour among them, which re-solves nothing), then each wash in its sheet's order: `same`, `content` at the first path that differs in it, or `upstream` after the first change earlier on its sheet; on a wrapped document, a sheet whose margin moves past its power of two reads `upstream` from its start. A renamed layer, wash or application reads `content` at its key, which seeds its deposits; a renamed group never counts. A side with an error prints its problems instead; then it fails.",
+    description: "Show what a solve would redo between two evaluations of a painting source.",
+    about: "Compares a source at --set and at --set with --to on top, or a source and an edited copy (--set on both, --to on the second). Prints the document's fields that differ (paper colour among them, which re-solves nothing), then each wash in its sheet's order: `same`, `content` at the first path that differs in it, or `upstream` after the first change earlier on its sheet; on a wrapped document, a sheet whose margin moves past its power of two reads `upstream` from its start. A renamed layer, wash or application reads `content` at its key, which seeds its deposits; a renamed group never counts. A side with an error prints its problems instead; then it fails.",
   },
   args: diffPaintArgs,
   run: ({ args, rawArgs }) => {
@@ -172,6 +175,10 @@ const diffPaintCommand = defineCommand({
 });
 
 export default defineCommand({
-  meta: { name: 'paint', description: 'Painting sources: pure TS factories returning a PaintingDocument (docs/painting-authoring.md)' },
+  meta: {
+    name: 'paint',
+    description: "Check, paint and diff painting sources (*.painting.ts), solved on the GPU.",
+    about: "A painting source is a pure TS factory returning a PaintingDocument.",
+  },
   subCommands: { check: checkPaintCommand, diff: diffPaintCommand, still: stillPaintCommand },
 });

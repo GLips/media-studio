@@ -5,7 +5,8 @@ import { studioProjectArg } from '../project-arg.ts';
 export default defineCommand({
   meta: {
     name: 'capture',
-    description: "Film the project's shots with its capture.ts: stills (screenshots with the rects scenes point at) and takes (screen recordings with marks). Rebuilds captures/index.ts from every shot captured so far, deleting shots capture.ts no longer makes. Prints captures/index.ts.",
+    description: "Film the project's shots from its capture.ts: screenshots with rects, and recorded takes with marks.",
+    about: "Rebuilds captures/index.ts from every shot captured so far, deleting shots capture.ts no longer makes, and names any shot it couldn't capture with the --only line that retries it. Prints captures/index.ts.",
   },
   args: {
     project: studioProjectArg,

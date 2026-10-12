@@ -1,10 +1,11 @@
-// studio api: the reference for what a video.tsx can import, read from lib/api.ts (lib/platform/scaffold/engine/studio-api-reference.ts).
+// studio api: the reference for what a project imports, read from the code (lib/platform/scaffold/engine/studio-api-reference.ts).
 import { defineCommand } from 'citty';
 
 export default defineCommand({
   meta: {
     name: 'api',
-    description: "What lib/api.ts exports, read from the code: with no name, every export under its file with its doc's first sentence; with a name, its full signature and doc comment.",
+    description: "Print what a project imports: #studio for scenes, the timeline models for timeline.ts; or one export's signature and doc.",
+    about: "Read from the code. With no name, every export under the specifier it's imported by and its file, with its doc's first sentence; with a name, its import line, full signature and doc comment.",
   },
   args: {
     name: { type: 'positional', required: false, description: 'An export, e.g. fitTake' },

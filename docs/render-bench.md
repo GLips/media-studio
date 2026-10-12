@@ -9,13 +9,13 @@ whether each was dirty, whether the render delivered, the whole command's second
 The trace is Chrome trace JSON in `render-traces/` beside the history. Read it as text with
 
 ```sh
-npm run trace -- latest                       # the newest render: time by span name, each chunk's startup step by step
-npm run trace -- latest --against latest~1    # two renders side by side, biggest change first
+studio trace latest                       # the newest render: time by span name, each chunk's startup step by step
+studio trace latest --against latest~1    # two renders side by side, biggest change first
 ```
 
 or drop it on [ui.perfetto.dev](https://ui.perfetto.dev) to see it on a timeline. The newest 100 are kept (under 2 GB
 between them); a history line outlives its trace. The model, the recorders and the writer are `lib/platform/trace/`;
-the reader is `harness/trace.ts`.
+the reader is `studio trace` (`lib/output/render/engine/render-trace-report.ts`).
 
 A trace holds the Node command's spans and every render page's, on one clock. Each page sends its spans by the page-log
 channel in batches, its top spans under the chunk (or pass) that opened its browser. A page traces always:
@@ -40,7 +40,7 @@ each sheet, a span per entry (`entry <name>`, `decision` made or replayed) holdi
 `starting its wash`, `keeping a checkpoint`…, each with `encode` and `submit` ms), each readback a span over its
 `reduction` step with its `readback wait`. A step's GPU time comes from timestamp queries on its passes, where the
 adapter has them, noted on it once read back: `gpu` (first pass's start to last's end), `gpu busy` and `gpu passes`,
-or `gpu: untimed` (a copy-only step, or the query pool spent). Chrome rounds timestamps to 100 µs. `npm run trace`
+or `gpu: untimed` (a copy-only step, or the query pool spent). Chrome rounds timestamps to 100 µs. `studio trace`
 tables these by span name. A warm is detailed when the frame its shot loads in is. That's thousands of spans a solve:
 give it a few frames.
 
@@ -76,7 +76,7 @@ after it, and a page closes only once that has (`render-page-settle.ts`).
 
 ## The suite
 
-Run it on a quiet M1 Max, one render at a time, with nothing else on the GPU (`studio gpu` shows the queue). Run each
+Run it on a quiet Mac, one render at a time, with nothing else on the GPU (`studio gpu` shows the queue). Run each
 command once, and again only when a result is ambiguous.
 
 ```sh

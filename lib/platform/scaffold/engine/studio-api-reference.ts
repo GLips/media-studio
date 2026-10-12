@@ -1,5 +1,6 @@
-// studio-api-reference.ts: what lib/api.ts exports, read from the code by the TypeScript compiler, so the
-// reference can't drift from it. `studio api` prints it.
+// studio-api-reference.ts: what a project imports, read from the code by the TypeScript compiler, so the reference
+// can't drift from it: #studio (lib/api.ts) for scenes, and the models modules timeline.ts and a piece's tracks import,
+// which stay off #studio so they load in plain Node. `studio api` prints it.
 //
 // Signatures are the declarations' own source text (with their inline property comments) where there is one, and
 // the checker's type where a const is an expression.
@@ -9,11 +10,18 @@ import { isArrowFunction, isFunctionDeclaration, isFunctionExpression, isVariabl
 import { API, SymbolFlags, type Checker, type Symbol as TsSymbol } from 'typescript/unstable/sync';
 import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
 
-const API_MODULE = 'lib/api.ts';
+/** Each module the reference reads, by its path and by the specifier a project imports it with. */
+const STUDIO_API_MODULES = [
+  { path: 'lib/api.ts', importFrom: '#studio' },
+  ...['lib/timing/timeline/models/timeline.ts', 'lib/timing/timeline/models/bind-timeline.ts', 'lib/timing/timeline/models/retime.ts', 'lib/picture/measurement/models/piece-tracks.ts']
+    .map((path) => ({ path, importFrom: `#${path}` })),
+] as const;
 const INDEX_WIDTH = 118;
 
 export type StudioApiExport = {
   name: string;
+  /** The specifier a project imports it by. */
+  importFrom: string;
   /** Relative to the studio root. */
   file: string;
   kind: 'function' | 'const' | 'type' | 'class';
@@ -23,38 +31,45 @@ export type StudioApiExport = {
   tags: { name: string; text?: string }[];
 };
 
-/** Every export of lib/api.ts, in file order. */
+/** Every export of each module the reference reads: #studio's first, each module's in file order. */
 export function readStudioApiExports(): StudioApiExport[] {
   const api = new API({ cwd: STUDIO_ROOT });
   try {
     const project = api.updateSnapshot({ openProjects: [`${STUDIO_ROOT}/tsconfig.json`] }).getProjects()[0];
-    const { checker, program } = project;
-    const sourceFile = program.getSourceFile(`${STUDIO_ROOT}/${API_MODULE}`);
-    if (!sourceFile) throw new Error(`${API_MODULE} isn't in tsconfig.json's program`);
-    const moduleSymbol = checker.getSymbolAtLocation(sourceFile);
-    if (!moduleSymbol) throw new Error(`${API_MODULE} isn't a module`);
-
-    const found = checker.getExportsOfModule(moduleSymbol).map((exported) => {
-      const symbol = exported.flags & SymbolFlags.Alias ? checker.getAliasedSymbol(exported) : exported;
-      const declarations = symbol.declarations.map((handle) => handle.resolve(project)).filter((node): node is Node => node !== undefined);
-      const file = declarations[0]?.getSourceFile();
-      return {
-        position: [file?.fileName ?? '', declarations[0]?.getStart() ?? 0] as const,
-        entry: {
-          name: exported.name,
-          file: file ? relative(STUDIO_ROOT, file.fileName) : '?',
-          kind: exportKind(symbol, declarations),
-          signatures: declarations.map((node) => signatureText(node, symbol, checker)),
-          doc: checker.getDocumentationCommentOfSymbol(symbol),
-          tags: checker.getJsDocTagsOfSymbol(symbol).map(({ name, text }) => ({ name, text })),
-        } satisfies StudioApiExport,
-      };
-    });
-    found.sort((a, b) => a.position[0].localeCompare(b.position[0]) || a.position[1] - b.position[1]);
-    return found.map((f) => f.entry);
+    return STUDIO_API_MODULES.flatMap(({ path, importFrom }) => readStudioApiModule(project, path, importFrom));
   } finally {
     api.close();
   }
+}
+
+type StudioApiProject = ReturnType<ReturnType<API['updateSnapshot']>['getProjects']>[number];
+
+function readStudioApiModule(project: StudioApiProject, path: string, importFrom: string): StudioApiExport[] {
+  const { checker, program } = project;
+  const sourceFile = program.getSourceFile(`${STUDIO_ROOT}/${path}`);
+  if (!sourceFile) throw new Error(`${path} isn't in tsconfig.json's program`);
+  const moduleSymbol = checker.getSymbolAtLocation(sourceFile);
+  if (!moduleSymbol) throw new Error(`${path} isn't a module`);
+
+  const found = checker.getExportsOfModule(moduleSymbol).map((exported) => {
+    const symbol = exported.flags & SymbolFlags.Alias ? checker.getAliasedSymbol(exported) : exported;
+    const declarations = symbol.declarations.map((handle) => handle.resolve(project)).filter((node): node is Node => node !== undefined);
+    const file = declarations[0]?.getSourceFile();
+    return {
+      position: [file?.fileName ?? '', declarations[0]?.getStart() ?? 0] as const,
+      entry: {
+        name: exported.name,
+        importFrom,
+        file: file ? relative(STUDIO_ROOT, file.fileName) : '?',
+        kind: exportKind(symbol, declarations),
+        signatures: declarations.map((node) => signatureText(node, symbol, checker)),
+        doc: checker.getDocumentationCommentOfSymbol(symbol),
+        tags: checker.getJsDocTagsOfSymbol(symbol).map(({ name, text }) => ({ name, text })),
+      } satisfies StudioApiExport,
+    };
+  });
+  found.sort((a, b) => a.position[0].localeCompare(b.position[0]) || a.position[1] - b.position[1]);
+  return found.map((f) => f.entry);
 }
 
 function exportKind(symbol: TsSymbol, declarations: readonly Node[]): StudioApiExport['kind'] {
@@ -90,14 +105,17 @@ const summaryOf = (doc: string) => {
   return flat.match(/^.*?(?<!\be\.g|\bi\.e)[.:;](?=\s|$)/)?.[0] ?? flat;
 };
 
-/** Every export, one line each under its file, with the first sentence of its doc comment. */
+/** Every export, one line each under what it's imported from and its file, with its doc comment's first sentence. */
 export function formatStudioApiIndex(exports: readonly StudioApiExport[]): string {
   const byFile = new Map<string, StudioApiExport[]>();
-  for (const e of exports) byFile.set(e.file, [...(byFile.get(e.file) ?? []), e]);
+  for (const e of exports) {
+    const heading = e.importFrom === `#${e.file}` ? e.importFrom : `${e.importFrom}  ${e.file}`;
+    byFile.set(heading, [...(byFile.get(heading) ?? []), e]);
+  }
   const width = Math.max(...exports.map((e) => e.name.length + (e.kind === 'type' ? 5 : 0)));
-  const out = [`${exports.length} exports of ${API_MODULE}; \`studio api <name>\` for one's signature and doc.`];
-  for (const [file, entries] of byFile) {
-    out.push('', file);
+  const out = [`${exports.length} exports a project imports, under the specifier it imports them by; \`studio api <name>\` for one's signature and doc.`];
+  for (const [heading, entries] of byFile) {
+    out.push('', heading);
     for (const e of entries) {
       const label = (e.kind === 'type' ? `type ${e.name}` : e.name).padEnd(width);
       const line = `  ${label}  ${summaryOf(e.doc)}`.trimEnd();
@@ -110,7 +128,8 @@ export function formatStudioApiIndex(exports: readonly StudioApiExport[]): strin
 /** One export's signatures, doc and tags. */
 export function formatStudioApiExport(entry: StudioApiExport): string {
   const tags = entry.tags.map((t) => `@${t.name}${t.text ? ` ${t.text}` : ''}`);
-  return [entry.file, '', ...entry.signatures.flatMap((s) => [s, '']), entry.doc, ...(tags.length ? ['', ...tags] : [])].join('\n').trimEnd();
+  const from = `import { ${entry.name} } from '${entry.importFrom}';`;
+  return [entry.importFrom === `#${entry.file}` ? from : `${from}  // ${entry.file}`, '', ...entry.signatures.flatMap((s) => [s, '']), entry.doc, ...(tags.length ? ['', ...tags] : [])].join('\n').trimEnd();
 }
 
 /** The export called `name`; failing that, a message naming the closest ones. */
@@ -118,5 +137,5 @@ export function findStudioApiExport(exports: readonly StudioApiExport[], name: s
   const exact = exports.find((e) => e.name === name) ?? exports.filter((e) => e.name.toLowerCase() === name.toLowerCase()).at(0);
   if (exact) return exact;
   const near = exports.filter((e) => e.name.toLowerCase().includes(name.toLowerCase())).map((e) => e.name);
-  throw new Error(`${API_MODULE} exports no ${name}${near.length ? `; did you mean ${near.join(', ')}?` : '; `studio api` lists every export'}`);
+  throw new Error(`no module \`studio api\` reads exports ${name}${near.length ? `; did you mean ${near.join(', ')}?` : '; `studio api` lists every export'}`);
 }

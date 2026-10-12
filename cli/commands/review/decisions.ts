@@ -12,7 +12,8 @@ const reviewDecisionsArgs = {
 export const reviewDecisionsCommand = defineCommand({
   meta: {
     name: 'decisions',
-    description: "The project's decisions (posted with decide), newest last: each one's question and state, every candidate with its file from the repo root, its meta and the reviewer's pick or reject, and once signed off, the picks. Comments on a candidate are notes on it, which notes --on decision lists.",
+    description: "Print the project's decisions with their candidates, the reviewer's verdicts and the picks.",
+    about: "Newest last: each one's question and state, every candidate with its file from the studio root, its meta and the reviewer's pick or reject, and once signed off, the picks. Comments on a candidate are notes on it, which `notes --on decision` lists.",
   },
   args: reviewDecisionsArgs,
   async run({ args, rawArgs }) {

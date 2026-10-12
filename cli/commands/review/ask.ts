@@ -31,7 +31,8 @@ function lineFlagOf(value: string): { line: string; word?: number } {
 export const reviewAskCommand = defineCommand({
   meta: {
     name: 'ask',
-    description: "Open a question to the reviewer as the agent: on frames of a render (--at, carried to later renders by its moment like any note), a script line or word (--line), a still (--still), or the project as a whole (none of them). It waits on the reviewer, marked in their page, until they reply; watch wakes on the answer. To ask about an existing note, reply --question to it instead. Prints the question's id.",
+    description: "Open a question to the reviewer on frames of a render, a script line, a still, or the project.",
+    about: "It waits on the reviewer, marked in their page, until they reply; watch wakes on the answer. A question --at frames is carried to later renders by its moment like any note. To ask about an existing note, reply --question to it instead. Prints the question's id.",
   },
   args: reviewAskArgs,
   async run({ args, rawArgs }) {

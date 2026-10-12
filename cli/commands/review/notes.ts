@@ -28,7 +28,8 @@ function listFlagOf<T extends string>(flag: string, value: string, allowed: read
 export const reviewNotesCommand = defineCommand({
   meta: {
     name: 'notes',
-    description: "The project's notes from review/review.json, placed on a render (the newest full render unless --render): open and reopened by default, each with its moment, the render it was written on and its commits, the point in pixels and what's under it, its scene with its source file and frames, the frame the reviewer saw (review/frames/), a ready studio look line, a fix's render --scene and reply line, its replies, and the standing `keep` notes. Paths are from the repo root, but for a scene's source, which is in the project. A note whose moment isn't on this render is listed as unplaced, saying why. Open decisions follow.",
+    description: "Print the project's notes placed on a render, each with the lines that fix and hand it back.",
+    about: "Open and reopened notes by default, placed on the newest full render unless --render: each with its moment, the render it was written on and its commits, the point in pixels and what's under it, its scene with its source file and frames, the frame the reviewer saw (review/frames/), a ready studio look line, a fix's render --scene and reply line, its replies, and the standing `keep` notes. Paths are from the studio root, but for a scene's source, which is in the project. A note whose moment isn't on this render is listed as unplaced, saying why. Open decisions follow.",
   },
   args: reviewNotesArgs,
   async run({ args, rawArgs }) {

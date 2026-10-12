@@ -7,7 +7,8 @@ import { openStudioRenderSession, studioProjectArg } from '../project-arg.ts';
 const video = defineCommand({
   meta: {
     name: 'video',
-    description: 'Render a previs scene (one whose binding declares `previs`) into footage: its blockout alone to generated/blockout-<scene>-<hash>.mp4, sent as the reference video (with the scene\'s stills, for a model that takes them) to the --model you choose. The scene then plays the footage, until this is run again. Prints the blockout, then the footage; --dry prints what the shot would cost with each model. Needs OPENROUTER_API_KEY and the STUDIO_UPLOAD_S3_* bucket settings.',
+    description: "Render a previs scene's blockout and send it to a video model for footage (paid).",
+    about: "For a scene whose binding declares `previs`: its blockout alone goes to generated/blockout-<scene>-<hash>.mp4 and is sent as the reference video (with the scene's stills, for a model that takes them) to the --model you choose. The scene then plays the footage, until this is run again. Prints the blockout, then the footage; --dry prints what the shot would cost with each model. Needs OPENROUTER_API_KEY and the STUDIO_UPLOAD_S3_* bucket settings.",
   },
   args: {
     project: studioProjectArg,
@@ -37,7 +38,8 @@ const video = defineCommand({
 const image = defineCommand({
   meta: {
     name: 'image',
-    description: "Generate a still no capture can give (title-card art, a background, a product shot, an icon) and list it in generated/images.ts: `import { images } from './generated/images.ts'`, then images['<name>'].src, .w, .h. Default model openai/gpt-image-2.5-sunburst ($0.004–0.033, takes references, --aspect and --transparent). Refuses a flag the model would ignore. Needs OPENROUTER_API_KEY. Prints the image, then images.ts.",
+    description: "Generate a still no capture can give, listed in the project's generated/images.ts (paid).",
+    about: "Title-card art, a background, a product shot, an icon. A scene imports it with `import { images } from './generated/images.ts'`, then images['<name>'].src, .w, .h. Default model openai/gpt-image-2.5-sunburst ($0.004–0.033, takes references, --aspect and --transparent). Refuses a flag the model would ignore. Needs OPENROUTER_API_KEY. Prints the image, then images.ts.",
   },
   args: {
     project: studioProjectArg,
@@ -62,6 +64,9 @@ const image = defineCommand({
 });
 
 export default defineCommand({
-  meta: { name: 'gen', description: 'Paid generation through OpenRouter, cached by request: `studio gen image <project> <prompt> --name <name>`, `studio gen video <project> <scene> --model <model>`.' },
+  meta: {
+    name: 'gen',
+    description: "Generate images and previs footage through OpenRouter (paid; cached by request).",
+  },
   subCommands: { image, video },
 });

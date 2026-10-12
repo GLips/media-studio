@@ -95,9 +95,14 @@ export type FixedSpan = SceneOptions & { driver: 'fixed'; seconds: number };
 export type VoiceSpan = VoiceOptions & { driver: 'voice'; lines: readonly string[] };
 export type SceneSpan = BeatSpan | FixedSpan | VoiceSpan;
 
+/**
+ * A scene `beats` long on the timeline's `grid` (a bar of 4/4 is 4). Its cues are beats from its own beat 0, fractions
+ * for off-beats: `beatSpan(4, { cues: { hit: 0, reveal: 2.5, stop: 'end' } })`, read in its binding as `clock.cues.hit`.
+ */
 export const beatSpan = <const O extends BeatOptions<LinesOfBeatOptions<O>> = {}>(beats: number, options?: O) =>
   ({ driver: 'beat', beats, ...options }) as { driver: 'beat'; beats: number } & O;
 
+/** A scene `seconds` long, cut to neither voice nor beat; its cues are seconds from its start. */
 export const fixedSpan = <const O extends SceneOptions<never> = {}>(seconds: number, options?: O) =>
   ({ driver: 'fixed', seconds, ...options }) as { driver: 'fixed'; seconds: number } & O;
 

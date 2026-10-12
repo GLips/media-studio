@@ -17,7 +17,8 @@ const reviewReplyArgs = {
 export const reviewReplyCommand = defineCommand({
   meta: {
     name: 'reply',
-    description: "Reply to a note as the agent; the reviewer's page shows it within a second. --addressed marks it fixed, for the reviewer to verify: give --commit and --render so they can see where. --question asks them instead, and the note waits on them. Only the reviewer resolves or reopens a note, and a `keep` note has nothing to address. Prints the review's revision.",
+    description: "Reply to a note as the agent: mark it addressed with the fix's render, or ask the reviewer back.",
+    about: "The reviewer's page shows it within a second. --addressed marks it fixed, for the reviewer to verify: give --commit and --render so they can see where. --question asks them instead, and the note waits on them. Only the reviewer resolves or reopens a note, and a `keep` note has nothing to address. Prints the review's revision.",
   },
   args: reviewReplyArgs,
   async run({ args, rawArgs }) {

@@ -39,7 +39,8 @@ const reviewOpenArgs = {
 export const reviewOpenCommand = defineCommand({
   meta: {
     name: 'open',
-    description: "Open the studio app on a project's renders and stills: a project lands on its page, a file on its review. The reviewer plays and frame-steps a render (keys as in an NLE; ? lists them), pins a note at a moment, a range or a point, draws on the frame, and sees the agent's replies land live; every change saves to review/review.json at once, with the frame as seen in review/frames/. A newer render loads by itself unless a note is being written; earlier renders are kept in out/.history/ to compare against. Makes no paid calls.",
+    description: "Open the studio app on a project, or on one of its renders or stills, for the reviewer.",
+    about: "A project lands on its page, a file on its review. The reviewer plays and frame-steps a render (keys as in an NLE; ? lists them), pins a note at a moment, a range or a point, draws on the frame, and sees the agent's replies land live; every change saves to review/review.json at once, with the frame as seen in review/frames/. A newer render loads by itself unless a note is being written; earlier renders are kept in out/.history/ to compare against. Makes no paid calls.",
   },
   args: reviewOpenArgs,
   async run({ args, rawArgs }) {

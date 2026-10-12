@@ -6,7 +6,8 @@ import { defineCommand } from 'citty';
 export default defineCommand({
   meta: {
     name: 'review',
-    description: "A project's review in review/review.json: the reviewer pins notes and picks between candidates in the studio app (open), and an agent works them with watch, reply, ask and decide (the video-motion skill's review loop).",
+    description: "Review a project with the reviewer: notes, replies and decisions.",
+    about: "The review lives in the project's review/review.json. The reviewer pins notes and picks between candidates in the studio app (open); an agent works them with watch, notes, reply, ask and decide. The studio-review skill has the loop.",
   },
   subCommands: {
     open: () => import('./review/open.ts').then((m) => m.reviewOpenCommand),

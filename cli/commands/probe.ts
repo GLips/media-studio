@@ -5,7 +5,8 @@ import { studioProjectArg } from '../project-arg.ts';
 export default defineCommand({
   meta: {
     name: 'probe',
-    description: "Open a page the way the project's capture.ts does (signed in by its prepare, with its css) and screenshot the viewport, numbered to match a list of its interactive and landmark elements, each with a selector for capture.ts rects and how many elements it matches. With --at, the element under that point and the meaningful ones around it instead. Prints the screenshot, then the list.",
+    description: "Screenshot a page as capture.ts sees it, with numbered selectors for writing shots.",
+    about: "Opens it as the project's capture.ts does (signed in by its prepare, with its css) and numbers the viewport's interactive and landmark elements to match a list, each with a selector for capture.ts rects and how many elements it matches. With --at, the element under that point and the meaningful ones around it instead. Prints the screenshot, then the list.",
   },
   args: {
     project: studioProjectArg,

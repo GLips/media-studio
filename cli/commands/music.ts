@@ -6,7 +6,8 @@ import { studioProjectArg } from '../project-arg.ts';
 const add = defineCommand({
   meta: {
     name: 'add',
-    description: "Copy a track into the project's music/, measure its loudness, tempo and beats, and write music/index.ts. Use it with defineVideo({ music: { track: music.bed } }). Prints music/index.ts.",
+    description: "Copy a track into the project's music/, measuring its loudness, tempo and beats.",
+    about: "Writes music/index.ts; the video plays it as defineVideo({ music: { track: music.bed } }). Prints music/index.ts.",
   },
   args: {
     project: studioProjectArg,
@@ -24,7 +25,8 @@ const add = defineCommand({
 const gen = defineCommand({
   meta: {
     name: 'gen',
-    description: "Generate a track with Lyria from a prompt (mood, tempo, instruments, structure), then add it like `add` does. A 30 s clip ($0.04) unless --full ($0.08). Cached: the same prompt costs nothing again, and a new one is a new track. Fit it with `fit` before using it. Needs OPENROUTER_API_KEY. Prints music/index.ts.",
+    description: "Generate a track with Lyria from a prompt, then add it as `add` does (paid).",
+    about: "A 30 s clip ($0.04) unless --full ($0.08). Cached: the same prompt costs nothing again, and a new one is a new track. Fit it with `fit` before using it. Needs OPENROUTER_API_KEY. Prints music/index.ts.",
   },
   args: {
     project: studioProjectArg,
@@ -42,7 +44,8 @@ const gen = defineCommand({
 const fit = defineCommand({
   meta: {
     name: 'fit',
-    description: "Cut a track to exactly the video's length, ending on its own ending: its intro, whole bars dropped or repeated by jumping between like-sounding downbeats, then its outro. Or play its bars in the order --bars gives, when the picture needs the time in particular places. Adds it beside the original as music.<as>, with the spans it was cut from. Prints the file, its seams, and each cut and `expect` against the nearest downbeat.",
+    description: "Cut a track to the video's length on its own ending, or to a bar order you give.",
+    about: "Keeps its intro, drops or repeats whole bars by jumping between like-sounding downbeats, then plays its outro. With --bars, plays its bars in that order, for a picture that needs time in particular places. Adds it beside the original as music.<as>, with the spans it was cut from. Prints the file, its seams, and each cut and `expect` against the nearest downbeat.",
   },
   args: {
     project: studioProjectArg,
@@ -111,6 +114,6 @@ function parseMusicBars(list: string): number[] {
 }
 
 export default defineCommand({
-  meta: { name: 'music', description: "Music tracks for a project: `add` one or `gen` one with Lyria, then `fit` it to the video's length." },
+  meta: { name: 'music', description: "Add, generate and fit a project's music track." },
   subCommands: { add, gen, fit },
 });

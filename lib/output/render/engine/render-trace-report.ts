@@ -1,18 +1,13 @@
-// node harness/trace.ts <trace|latest> [--against <trace|latest~1>] (npm run trace -- …): a render's trace as text
-// (lib/platform/trace/models/trace-summary.ts), for deciding what to make faster: time by span name with self time,
-// each chunk's startup step by step, and with --against, each name's time in two renders side by side. A trace is a
-// file `studio render` wrote (render-traces/), or `latest` for the newest render in the history, `latest~1` the one
-// before it.
-import { defineCommand } from 'citty';
+// render-trace-report.ts: a render's trace as text (trace-summary.ts's tables), for deciding what to make faster: time
+// by span name with self time, each chunk's startup step by step, and two renders side by side. `studio trace` prints it.
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { renderHistoryFile, type RenderHistoryRecord } from '#lib/output/render/engine/render-history.ts';
 import { traceOfChromeTrace, type ChromeTrace } from '#lib/platform/trace/models/chrome-trace.ts';
+import type { TraceSpan } from '#lib/platform/trace/models/trace-model.ts';
 import {
   TRACE_MS_QUANTITIES, traceChunkStartups, traceQuantitiesByName, traceTimeByName, traceTimeByNameChange, type TraceChunkStartup, type TraceNameTime,
 } from '#lib/platform/trace/models/trace-summary.ts';
-import type { TraceSpan } from '#lib/platform/trace/models/trace-model.ts';
-import { runHarnessCommand } from './run-harness-command.ts';
+import { renderHistoryFile, type RenderHistoryRecord } from './render-history.ts';
 
 /** The trace `which` names, and the history line it was written with, when it's found there. */
 function readRenderTrace(which: string): { file: string; spans: readonly TraceSpan[]; render: RenderHistoryRecord | null } {
@@ -85,33 +80,21 @@ function changeLines(before: readonly TraceNameTime[], after: readonly TraceName
   ];
 }
 
-const traceCommand = defineCommand({
-  meta: {
-    name: 'trace',
-    description: "A render's trace as text: time by span name, most self time (outside its children) first; each chunk's startup, from the chunk's start to its first frame, step by step, with the solves its steps ran and the time no step covers. With --against, the two renders' self time by name and their startups' steps side by side, biggest change first.",
-  },
-  args: {
-    trace: { type: 'positional', required: true, description: 'A trace file studio render wrote, or latest (the newest render in the history), latest~1 the one before' },
-    against: { type: 'string', valueHint: 'latest~1', description: 'Another trace to compare with: the before, the positional the after' },
-    top: { type: 'string', valueHint: '30', description: 'Names listed in each table (30)' },
-  },
-  run({ args }) {
-    const top = args.top === undefined ? 30 : Number(args.top);
-    if (!(Number.isInteger(top) && top > 0)) throw new Error(`trace: --top is ${args.top}: give a whole number above 0`);
-    const after = readRenderTrace(args.trace);
-    if (args.against === undefined) {
-      const lines = [renderHeading(after), '', 'time by span name:', ...nameTimeLines(traceTimeByName(after.spans), top), ...quantityLines(after.spans, top)];
-      for (const startup of traceChunkStartups(after.spans)) lines.push('', ...startupLines(startup));
-      console.log(lines.join('\n'));
-      return;
-    }
-    const before = readRenderTrace(args.against);
-    console.log([
-      `before: ${renderHeading(before)}`, `after:  ${renderHeading(after)}`, '',
-      'self time by span name:', ...changeLines(traceTimeByName(before.spans), traceTimeByName(after.spans), top, 'name'), '',
-      'startup steps, over every chunk:', ...changeLines(startupStepTimes(traceChunkStartups(before.spans)), startupStepTimes(traceChunkStartups(after.spans)), top, 'step'),
-    ].join('\n'));
-  },
-});
-
-await runHarnessCommand(traceCommand, 'interactive');
+/**
+ * The report on the trace `which` names (a trace file, or `latest`, `latest~N` from the render history), each table
+ * cut to `top` names; with `against`, that trace as the before and `which` the after, biggest change first.
+ */
+export function renderTraceReportLines(which: string, { against, top }: { against?: string; top: number }): string[] {
+  const after = readRenderTrace(which);
+  if (against === undefined) {
+    const lines = [renderHeading(after), '', 'time by span name:', ...nameTimeLines(traceTimeByName(after.spans), top), ...quantityLines(after.spans, top)];
+    for (const startup of traceChunkStartups(after.spans)) lines.push('', ...startupLines(startup));
+    return lines;
+  }
+  const before = readRenderTrace(against);
+  return [
+    `before: ${renderHeading(before)}`, `after:  ${renderHeading(after)}`, '',
+    'self time by span name:', ...changeLines(traceTimeByName(before.spans), traceTimeByName(after.spans), top, 'name'), '',
+    'startup steps, over every chunk:', ...changeLines(startupStepTimes(traceChunkStartups(before.spans)), startupStepTimes(traceChunkStartups(after.spans)), top, 'step'),
+  ];
+}

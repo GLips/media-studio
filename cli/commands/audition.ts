@@ -4,7 +4,8 @@ import { defineCommand } from 'citty';
 export default defineCommand({
   meta: {
     name: 'audition',
-    description: 'Read one line in each of --voices with Gemini TTS on OpenRouter (paid; needs OPENROUTER_API_KEY), to compare them. Prints each <voice>.wav.',
+    description: "Read one line in several TTS voices, to pick a project's voice (paid).",
+    about: "Gemini TTS on OpenRouter; needs OPENROUTER_API_KEY. Writes <voice>.wav into --out and prints each file.",
   },
   args: {
     line: { type: 'positional', required: true, description: 'The line to read' },
