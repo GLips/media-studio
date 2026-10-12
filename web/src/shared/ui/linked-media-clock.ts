@@ -3,7 +3,8 @@
 // every frame shown, played or settled. One rAF loop drives all of it, so nothing else on the page runs its own.
 import { useEffect, useEffectEvent } from 'react';
 import {
-  LINKED_MEDIA_DRIFT_FRAMES, linkedMediaFrameAt, linkedMediaLanded, linkedMediaPhaseAt, linkedMediaTimeOf, type LinkedMediaSpan,
+  linkedMediaFollowerMove, linkedMediaFrameAt, linkedMediaPhaseAt, linkedMediaSeekLanded, linkedMediaTimeOf,
+  type LinkedMediaFollowerState, type LinkedMediaSpan,
 } from '#lib/platform/web/models/linked-media-window.ts';
 
 export type LinkedMediaFollower = {
@@ -19,7 +20,7 @@ export type LinkedMediaFollower = {
 export type LinkedMediaClock = {
   /** The element that sets the frame and is heard. Followers play when it plays, at its rate. */
   attachLeader: (element: HTMLMediaElement | null) => void;
-  /** Keeps `follower` on the leader from now on, muted; hidden (opacity) until its picture lands. Returns the detach. */
+  /** Keeps `follower` on the leader from now on, muted; hidden (opacity) whenever its picture isn't the leader's. Returns the detach. */
   addFollower: (follower: LinkedMediaFollower) => () => void;
   /** Hears each frame shown: every animation frame while running, and each `sync`. */
   onTick: (listener: (frame: number) => void) => () => void;
@@ -41,7 +42,13 @@ type LinkedMediaClockOptions = {
   steer?: (elapsed: number) => void;
 };
 
-type LinkedFollowerRecord = { follower: LinkedMediaFollower; landed: number | null; shown: boolean; frameCallback: number };
+/**
+ * `generation` counts seeks and changes of source; a frame callback asked for under an older one is dropped, since
+ * it may report a picture from before the seek.
+ */
+type LinkedFollowerRecord = LinkedMediaFollowerState & {
+  follower: LinkedMediaFollower; shown: boolean; generation: number; frameCallback: number;
+};
 
 function showLinkedFollower(record: LinkedFollowerRecord, shown: boolean) {
   if (record.shown === shown) return;
@@ -58,21 +65,49 @@ export function createLinkedMediaClock({ frameNow, steer }: LinkedMediaClockOpti
   let running = false;
   let lastTick = 0;
 
+  /** Forgets the follower's picture and hears its frames afresh: after a seek or a change of source. */
+  const restartLinkedFollower = (record: LinkedFollowerRecord, requested: number | null) => {
+    const { element, fps } = record.follower;
+    record.generation += 1;
+    record.requested = requested;
+    record.presented = null;
+    record.ready = false;
+    showLinkedFollower(record, false);
+    element.cancelVideoFrameCallback(record.frameCallback);
+    const generation = record.generation;
+    const hear = () => {
+      record.frameCallback = element.requestVideoFrameCallback((_now, metadata) => {
+        if (record.generation !== generation) return;
+        record.presented = linkedMediaFrameAt(metadata.mediaTime, fps);
+        if (!record.ready && record.requested !== null) {
+          record.ready = linkedMediaSeekLanded(record.requested, record.presented, !element.paused);
+        }
+        aim(record, frameNow());
+        hear();
+      });
+    };
+    hear();
+  };
+
   const aim = (record: LinkedFollowerRecord, frame: number) => {
     const { element, fps, frameOf, span } = record.follower;
     const phase = linkedMediaPhaseAt(span, frame);
     const forward = phase === 'inside' && leader !== null && !leader.paused;
     if (!forward && !element.paused) element.pause();
-    if (phase === 'away') return showLinkedFollower(record, false);
+    // Not seeked before metadata: Chrome applies such a seek as the file loads without a frame callback, so it
+    // would never be heard landing. `loadedmetadata` aims it again.
+    if (phase === 'away' || element.readyState < HTMLMediaElement.HAVE_METADATA) return showLinkedFollower(record, false);
     // Pre-rolled to its first picture, so the entering frame is already decoded when the leader reaches `from`.
     const target = Math.max(0, frameOf(phase === 'preroll' && span ? span.from : frame));
-    const at = linkedMediaFrameAt(element.currentTime, fps);
-    if (Math.abs(at - target) > (forward ? LINKED_MEDIA_DRIFT_FRAMES : 0)) element.currentTime = linkedMediaTimeOf(target, fps);
-    if (phase === 'preroll') return showLinkedFollower(record, false);
-    // Hidden only on entering: once shown, a seek inside the span keeps the last picture up rather than flicker.
-    if (!record.shown) showLinkedFollower(record, linkedMediaLanded(record.landed, target, forward));
+    const move = linkedMediaFollowerMove(record, target, forward);
+    if (move.seekTo !== null) {
+      restartLinkedFollower(record, move.seekTo);
+      element.currentTime = linkedMediaTimeOf(move.seekTo, fps);
+    }
+    showLinkedFollower(record, phase === 'inside' && move.shown);
     if (forward && leader) {
-      element.playbackRate = leader.playbackRate;
+      const rate = leader.playbackRate * move.rate;
+      if (element.playbackRate !== rate) element.playbackRate = rate;
       if (element.paused) element.play().catch(() => undefined);
     }
   };
@@ -99,29 +134,21 @@ export function createLinkedMediaClock({ frameNow, steer }: LinkedMediaClockOpti
     addFollower(follower) {
       const { element } = follower;
       element.muted = true;
-      const record: LinkedFollowerRecord = { follower, landed: null, shown: true, frameCallback: 0 };
-      showLinkedFollower(record, false);
-      const watchLanded = () => {
-        record.frameCallback = element.requestVideoFrameCallback((_now, metadata) => {
-          record.landed = linkedMediaFrameAt(metadata.mediaTime, follower.fps);
-          aim(record, frameNow());
-          watchLanded();
-        });
+      const record: LinkedFollowerRecord = {
+        follower, requested: null, presented: null, ready: false, shown: true, generation: 0, frameCallback: 0,
       };
-      watchLanded();
-      // A seek set before metadata is applied as the file loads, and Chrome presents that first picture without a frame
-      // callback: seeking again where it stands brings one, so the follower can land and show.
-      const onMetadata = () => {
-        const { currentTime } = element;
-        element.currentTime = currentTime;
-        aim(record, frameNow());
-      };
+      restartLinkedFollower(record, null);
+      // `emptied` is a change of source: whatever it presented belongs to the old file.
+      const onEmptied = () => restartLinkedFollower(record, null);
+      const onMetadata = () => aim(record, frameNow());
+      element.addEventListener('emptied', onEmptied);
       element.addEventListener('loadedmetadata', onMetadata);
       followers.add(record);
       aim(record, frameNow());
       return () => {
         followers.delete(record);
         element.cancelVideoFrameCallback(record.frameCallback);
+        element.removeEventListener('emptied', onEmptied);
         element.removeEventListener('loadedmetadata', onMetadata);
         element.pause();
         element.style.opacity = '';
