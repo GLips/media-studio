@@ -1108,9 +1108,6 @@
   "no-scratch": {
     "cli/commands/sfx.ts": {
       "args: { out: { type: 'positional', required: false, default: 'scratch/sfx-showcase', description: 'The folder to write' } },": 1
-    },
-    "skills/video-sound/references/sfx.md": {
-      "To hear the options, `studio sfx showcase` renders every preset and a few variants into `scratch/sfx-showcase/`, with an": 1
     }
   },
   "no-unknown-returns": {

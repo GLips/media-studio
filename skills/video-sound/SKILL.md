@@ -1,31 +1,34 @@
 ---
 name: video-sound
-description: Sound for a video as its own pass once the picture is locked, in three parts: music (a bed under the voice, or the track a voiceless teaser is cut to), sound effects, and the mix. Use when adding or changing a video's music or sound effects, or for notes on sound ("the music's too loud", "add a whoosh on the reveal").
+description: Sound for a video: music (a bed under the voice, or the lead a music-cut piece is planned on, before its motion), sound effects, and the mix. Use when adding or changing a video's music or effects, or for notes on sound ("the music's too loud", "add a whoosh on the reveal").
 ---
 
 # Sound
 
-Work in the studio repo (`cd "$(studio home)"`); paths below are relative to it.
+The studio's projects live under `$(studio home)`: run `studio home` and use absolute paths for Read and Edit, and
+for a file you hand `studio music add`.
 
-Sound is a pass of its own, after the motion pass (`video-motion`) has locked the picture. Beats and effects are
-placed against cuts and moves, so every re-voice or re-timed scene moves them too. The exception is a piece cut to music:
-there the music comes first and the picture is cut to it, so choose the track before the motion pass.
+Sound follows the motion pass (video-motion): beats and effects sit against cuts and moves, so a re-voice or retime
+moves them too. A piece cut to music is the exception: its track is chosen before the motion pass, and the picture
+is cut to it.
 
-Pick the part the task needs and read its reference:
+Read the reference for the part the task needs:
 
 | Part | For | Read |
 |---|---|---|
-| **music** | Importing a track with `studio music add` or generating one with Lyria (`studio music gen`), fitting it to the video with `studio music fit`, using it as a bed or as the lead, and cutting to its beat | `references/music.md` |
-| **sfx** | Drafting a cue list from the video's events (`studio sfx draft`) and editing it, what already makes a sound, when an accent earns its place, and where sounds come from | `references/sfx.md` |
-| **mix** | What's levelled and mastered automatically, and the few levels worth changing | `references/mix.md` |
+| **music** | Choosing a bed or a lead, importing or generating it, fitting it to the video, cutting to its beat | `${CLAUDE_PLUGIN_ROOT}/skills/video-sound/references/music.md` |
+| **sfx** | The drafted cue list, placing a sound by hand, sounds on a music-led video's beat, when an accent earns its place | `${CLAUDE_PLUGIN_ROOT}/skills/video-sound/references/sfx.md` |
+| **sound design** | Making a project's own sound, and turning a note on how one sounds into a parameter | `${CLAUDE_PLUGIN_ROOT}/skills/video-sound/references/sound-design.md` |
+| **mix** | What's levelled and mastered automatically, and the few levels worth changing | `${CLAUDE_PLUGIN_ROOT}/skills/video-sound/references/mix.md` |
 
-A note like "the music drowns the voice" is a mix note, not a music note. Read `mix.md` before you change any level.
+"The music drowns the voice" is a mix note: read `mix.md` before changing any level.
 
 ## Hearing it
 
-You can't listen to the result, so the user's ears are the check. `studio mix <p>` renders just the mastered
-soundtrack to `out/mix.wav`, much faster than a full render. Hand the user that path (or `studio preview <p>`) and say
-what to listen for: the first word after a duck, an effect on a reveal, a cut on a downbeat. For notes on
-particular sounds, `studio review open <p>` shows each one in the timeline's sound lane, and a note aimed at one names
-that sound; work the notes through the review loop (`video-motion`, "The review loop"). To let the user choose
-between beds or mixes, render each to `out/decisions/<topic>/` and post them with `studio review decide`. `docs/directing.md` §8 covers the craft side of sound in brief.
+You can't listen, so the user's ears are the check. `studio mix <p>` renders just the mastered soundtrack to
+`out/mix.wav`, far faster than a full render. Hand the user that path (or `studio preview <p>`) and say what to
+listen for: the first word after a duck, an effect on a reveal, a cut on a downbeat. Put the mix up for review, and
+post competing beds or mixes as a decision (studio-review); a note aimed at one sound names it in the timeline's sound
+lane.
+
+Done when the user has heard the mix and every note on it is resolved.

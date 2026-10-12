@@ -1,23 +1,25 @@
 ---
 name: video-gen
-description: Generated footage for a scene, made the film previs way: block the shot in 3D (or flat, for a 2D shot), get the blockout approved, then pay for one render with `studio gen video`, on the model the user picks (Seedance 2.5 or HeyGen Video 1). Use when a scene needs footage no capture or kit shot can give (a product in use, a place, people), or for notes on generated footage.
+description: Generated footage for a scene, made the film previs way: block the shot in 3D (or flat, for a 2D shot), get the blockout approved, then pay for one render with `studio gen video`. Use when a scene needs footage no capture or kit shot can give (a product in use, a place, people), or for notes on generated footage.
 ---
 
 # Previs
 
-Work in the studio repo (`cd "$(studio home)"`); paths below are relative to it.
+The studio's projects live under `$(studio home)`: run `studio home` and use absolute paths for Read and Edit.
 
-Generated footage is made the way film **previs** is: block the shot, get it approved, then pay for one render.
-The blockout is the draft. Every decision (subjects, where they stand, the camera move, how long it runs) is made and
-approved there, where changes are free. The render only dresses it. Neither model is a draft of the other: a render on
-one doesn't predict what the other makes of the same blockout.
+Generated footage is made the way film **previs** is: block the shot, get it approved, then pay for one render. The
+blockout is the draft. Every decision (subjects, where they stand, the camera move, how long it runs) is made and
+approved there, where changes are free; the render only dresses it. The models aren't drafts of each other: a render
+on one doesn't predict what another makes of the same blockout.
+
+`studio gen video` needs `OPENROUTER_API_KEY` and an upload bucket (`STUDIO_UPLOAD_S3_*`) for the blockout; studio-setup
+sets both up. Models, lengths and prices: `studio gen video --help`.
 
 ## 1. Block it
 
-Block a shot whenever a video model will take its motion: the blockout is the only way to tell the model when things
-move. A previs scene is an ordinary scene with `previs: { blockout, prompt }`, timed to the voice like any other.
-Its `render` draws the blockout: `<Blockout lookAt subjects />` in 3D (`blockout: '3d'`) for a camera moving through
-a place, with the parallax the model copies:
+A previs scene is an ordinary scene with `previs: { blockout, prompt }`, timed to its cues like any other; the
+blockout is the only way to tell the model when things move. For a camera moving through a place, its `render` draws
+`<Blockout lookAt subjects />` (`blockout: '3d'`), whose parallax the model copies:
 
 ```tsx
 // A café counter. Each subject has its own tint, and the prompt names it by that tint.
@@ -42,77 +44,64 @@ const orbit = (clock: TimelineSceneClock<typeof timeline, 'orbit'>) => sceneForT
 });
 ```
 
-A flat shot (a layout assembling, type and panels moving) is blocked in 2D: a timed scene's
-`blockingScene(clock, { note, pieces, previs: { prompt } })` (`video-motion`, "Blocking a flat scene"), which sets
-`blockout: '2d'`. The prompt names each flat piece by its tint or its label. The rest of this section is the 3D
-blockout's.
+A flat shot (a layout assembling, type and panels moving) is blocked in 2D with `blockingScene(clock, { note, pieces,
+previs: { prompt } })` (video-motion covers flat blocking), and its prompt names each piece by its tint or label. The
+rest of this section is the 3D blockout's.
 
-- **Subjects** are grey primitives (`BlockoutSubject`: box, sphere, cylinder, cone, `figure` for a person, `card` for a
-  phone, screen or sign), sized in metres, standing on the ground at y = 0. Give each one its own muted tint. The
-  prompt names subjects by tint, and a saturated block comes back as a saturated object.
-- **The camera really moves.** `orbitMove`, `pushInMove` and `dollyMove` return a `BlockoutLookAt` (where the camera stands, what it looks at, its `fov`) for 0..1 progress, which `<Blockout lookAt>` takes; drive them
-  with `seg(s.t, a, b)`. Move the camera and keep `fov` fixed. A 3D blockout gives the model real perspective and
-  parallax to copy, which is why its moves don't come back as zooms. A change of `fov` does come back as a zoom.
-- **Block the set, not just the subjects.** The model follows the camera path, the easing and where each subject
-  stands closely, but around bare subjects on the empty grid it frames them tighter than blocked. Walls, a window and
-  a counter (big boxes and cards, tinted and named in the prompt) hold the framing: a kitchen blocked with its walls, window
-  and counter came back framed as blocked.
-- **Subjects can move too.** Compute them from `s.t`, like the look-at.
-- **Time the move to its scene's cues** (its words or beats), like any scene (the `video-motion` skill). The footage covers the
-  scene's whole time on screen, crossfades included, rounded up to whole seconds within the model's range (4–30 on
-  Seedance, 5–15 on HeyGen). A longer scene has to be split.
+- **Subjects** are grey primitives (`BlockoutSubject`; `figure` for a person, `card` for a phone, screen or sign),
+  sized in metres, standing on y = 0. Give each its own muted tint: the prompt names subjects by tint, and a saturated
+  block comes back as a saturated object.
+- **The camera really moves.** `orbitMove`, `pushInMove` and `dollyMove` give a `lookAt` for 0..1 progress; drive
+  them with `seg(s.t, a, b)`. Keep `fov` fixed: real perspective is why the moves don't come back as zooms, and a
+  change of `fov` does come back as one.
+- **Block the set, not just the subjects.** The model follows the camera path, the easing and each subject's place
+  closely, but frames bare subjects on the empty grid tighter than blocked. Walls, a window and a counter (big tinted
+  boxes and cards, named in the prompt) hold the framing.
+- **Subjects can move**, computed from `s.t` like the look-at.
+- **Length.** The footage covers the scene's whole time on screen, rounded up to whole seconds within the model's
+  range; a longer scene has to be split.
 
-Done when `studio look` strips show the move landing on its cues, and the user has approved the blockout on its
-animatic in `studio review open <p>`, its notes worked through the review loop
-(`video-motion`, "The review loop"). Once footage is generated, its notes come the same way; when the user should
-choose between takes or models, put each in `out/decisions/<topic>/` and post them with `studio review decide`.
+Done when `studio look` strips show the move landing on its cues and the user has approved the blockout on its
+animatic, its notes worked through review (studio-review).
 
 ## 2. Write the prompt
 
-`previs.prompt` says what the finished shot is, not how the camera moves (the blockout already says that):
+`previs.prompt` says what the finished shot is; the blockout already says how the camera moves. Name what each tint
+is ("the orange box is a brushed-steel espresso machine"), then the place, the light, the lens and the look.
 
-- what each tint is ("the orange box is a brushed-steel espresso machine");
-- the place, the light, the lens and the look.
-
-`studio gen video` puts a preamble ahead of it, worded for a 3D or a 2D blockout, that asks for a new video
-referencing `@Video1`, the blockout. Never
-word the prompt as changing the blockout ("turn the box into…", "replace", "restyle"): the model reads the task type
-from the prompt, and a request that reads as an edit of `@Video1` fails, since OpenRouter can't send what an edit
-needs.
+`studio gen video` heads it with a preamble asking for a new video that references `@Video1`, the blockout. Word
+the prompt as a description of a new shot: one that reads as editing `@Video1` ("turn the box into…", "replace",
+"restyle") makes the model take it for an edit, which fails, since OpenRouter can't send what an edit needs.
 
 `previs.references` are stills of the real subjects (paths relative to the project), sent in order as `@Image1`,
-`@Image2`…, so name them in the prompt ("the machine is the one in @Image1").
-Leave `audio` off unless the shot's own sound matters: the voice and music carry a video's sound, and footage with
-sound can't be retimed.
+`@Image2`…; name them in the prompt ("the machine is the one in @Image1"). Set `audio: true` only when the shot's own
+sound matters: the voice and music carry a video's sound, and footage with sound can't be retimed.
+
+Done when `studio gen video <p> <scene> --model <any> --dry` prints the full prompt and each tint in it is named.
 
 ## 3. Pick a model, render once
 
-Two models can render a blockout. **Ask the user which one before every paid render**, quoting each one's length
-and price for this shot (`--dry` prints them). Don't choose for them, and don't carry an earlier answer over to a new
-shot.
-
-| `--model` | | Length | Price | Notes |
-|---|---|---|---|---|
-| `seedance` | Seedance 2.5 | 4–30 s, 720p | **$0.28/s** ($1.40 for 5 s): it bills the blockout's seconds as well as the footage's | Takes `previs.references` stills; `audio` is honoured |
-| `heygen` | HeyGen Video 1 | 5–15 s, 768p | **about $0.03/s** ($0.18 for 6 s) | No stills: a scene with references is refused. It always makes sound, which the scene mutes unless `audio` is on |
+`--dry` renders the blockout and prints each model's length and cost for this shot, free. **Ask the user which model
+before every paid render**, quoting those numbers, and render only on their explicit yes to the model and its cost;
+an earlier answer doesn't carry over to a new shot. Then:
 
 ```sh
-studio gen video <project> <scene> --model seedance --dry   # renders the blockout, prints the full prompt and each model's cost, free
-"$(studio home)/bin/studio-secrets" studio gen video <project> <scene> --model <the user's pick>
+studio gen video <p> <scene> --model <the user's pick>
 ```
 
-The shot takes the video's shape (16:9, 9:16, 1:1, 4:3, 3:4 or 21:9); a video of any other shape
-can't have one. Never render without the user's explicit yes to the model and its cost. The request is cached by its
-model, blockout, prompt and stills: asking again for an unchanged scene costs nothing, and changing the model, a
-subject, the move or the prompt pays again.
+The shot takes the video's shape, and `gen` refuses a shape no model renders. The request is cached by its model,
+blockout, prompt and stills: an unchanged scene costs nothing again, and a changed model, subject, move or prompt pays
+again. From then on the scene plays its footage, even after its blockout changes, until `gen video` runs again; the
+Studio's `blockouts` prop shows the blockout, and `--dry` says when the footage is stale.
 
-From then on the scene plays its footage, even after its blockout changes, until `studio gen video` runs again.
-Pass `blockouts: true` in the Studio's props panel to see the blockout; `--dry` says when the footage is stale.
+Done when the footage plays in the scene and is up for review (studio-review); when the user should choose between
+takes or models, post them as a decision.
 
 ## 4. Fix timing in the edit
 
 **Timing never pays for a render.** When a re-voice moves the words, retime the footage with
-`previs.retime: (s) => [[sceneTime, blockoutTime], …]`: the moment the blockout showed at `blockoutTime` now plays
-at `sceneTime`. It works the way `fitTake` does for a take, and `studio check` warns the same way: past 1.6× or
-under 0.6×, motion reads as sped up or drifting. Only a change of content, such as a new subject, move or look, calls for
-a new render.
+`previs.retime: (s) => [[sceneTime, blockoutTime], …]`: the moment the blockout showed at `blockoutTime` plays at
+`sceneTime`, as `fitTake` does for a take. `studio check` warns past 1.6× or under 0.6×, where motion reads sped up or
+drifting. Only a change of content (a new subject, move or look) calls for a new render.
+
+Done when `studio check` passes without a retime warning.
