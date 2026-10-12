@@ -19,7 +19,7 @@ work/styles/<name>/
 ```
 
 Read `<name>.md` before painting for its brush judgment. Some speak the recipe path's terms (`paint.ts` groups,
-glazes by `opacity`, `reserve`) or call wet mixing missing: for water, mixing and glazes in a document,
+glazes by `opacity`, `reserve`): for water, mixing and glazes in a document,
 `${CLAUDE_PLUGIN_ROOT}/skills/video-canvas/references/painting-model.md` is the rule. Prefer brushes graded `close` (reads as its
 preview at a glance); read the `fidelity.ts` note before leaning on a `rough` one's look (plainly different in some
 way); avoid `off` ones (shape, density or texture wrong).
