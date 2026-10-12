@@ -10,44 +10,43 @@
   its own baseline, reading the working tree, untracked files included; each hook passes its own scope and reads what
   its commit holds. The GPU gate (`npm run stamp:gate`) takes minutes on the one shared adapter, so pre-push runs it, not
   pre-commit; run it yourself only before handing over work that changes rendering.
+- The painting engine is in flux: renders may shift a little between runs and between commits. Judge a moved GPU-gate
+  baseline by eye at delivery size and accept it when it looks right; save repeatability work for differences a viewer
+  would notice.
 - This Mac is shared by many agents. Run heavy checks in the cloud: `studio remote run typecheck lint test:gate` (any
-  npm script but the GPU gate) runs each in its own Modal container against this checkout as it is on disk, for a few
-  cents (the full suite about $0.06). It needs this checkout's version deployed; a remote command says when it isn't,
-  and deploying (`studio remote deploy`) is Graham's call. `docs/remote.md` has the rest.
-- `work/` holds your projects (`work/projects/<p>/`), brand kits (`work/brands/<name>/`, see `docs/brand-kits.md`),
-  private painting styles (`work/styles/<name>/`, see `docs/private-styles.md`) and `hosts.json`. The studio's git
-  ignores it; it's a git repository of its own, made by `studio workspace init` (run it first). Its commits run
-  `.githooks-workspace/pre-commit`: `check:arch --scope workspace`, `lint --scope workspace`, the full typecheck,
-  `npm run test:workspace`.
+  npm script but the GPU gate) runs each in its own Modal container against this checkout as it is on disk. It needs
+  this checkout's version deployed; a remote command says when it isn't, and deploying (`studio remote deploy`) is
+  Graham's call.
+- Docs have one home each. A verb's flags, defaults, prices and model names live in its `studio <verb> --help`; a
+  `#studio` export's parameters in its JSDoc (`studio api`); workflows and judgment for making videos in the skills
+  (`skills/<name>/`), which run from other projects' directories and so name `studio` verbs and `#studio` exports,
+  never repo paths or `docs/`. `docs/` is for working on the studio itself: `brush-engine.md` (paint's features and
+  how a painting is drawn), `render-bench.md` (timing renders, traces, the solved-paint cache), `remote.md` (Modal),
+  `photoshop-capture.md` (the Photoshop capture rig), `private-styles.md` (importing and fitting brush packs).
+- `work/` holds your projects (`work/projects/<p>/`), brand kits (`work/brands/<name>/`), private painting styles
+  (`work/styles/<name>/`) and `hosts.json`. The studio's git ignores it; it's a git repository of its own, made by
+  `studio workspace init` (run it first). Its commits run `.githooks-workspace/pre-commit`: `check:arch --scope
+  workspace`, `lint --scope workspace`, the full typecheck, `npm run test:workspace`.
 - `lib/` is areas (`timing`, `picture`, `paint`, `footage`, `output`, `platform`) of feature folders, each holding
   only the role folders it needs: `models/` (pure, loads in plain Node), `studio/` (renders in the browser),
   `engine/` (Node-side machinery). So `lib/<area>/<feature>/<role>/`, plus `lib/api.ts`, which projects import as
-  `#studio`. `paint` is the brush engine, its features laid out in `docs/brush-engine.md`. `models` imports only
-  `models`; `studio` imports `models` and `studio`; `engine` imports `models` and `engine`; browser code never
-  imports `engine`. Features stand in layers, lowest first (`LIB_LAYERS` in `lint/policy/studio-tree.ts`): platform,
-  vocabulary (frame, motion, type, color, shot-camera), timing, framing (captions, camera), measurement, authoring (video,
-  stills). A foundation imports only its own layer or lower, and anyone imports it freely; every other feature is a
-  peer, imported only with a reasoned grant in its `visibility.json`. A new area is declared in
-  `lint/policy/studio-tree.ts`. An import into a feature from outside it uses `#lib/*`, never a relative path;
+  `#studio`. `models` imports only `models`; `studio` imports `models` and `studio`; `engine` imports `models` and
+  `engine`; browser code never imports `engine`. Foundation features stand in layers (`LIB_LAYERS` in
+  `lint/policy/studio-tree.ts`, lowest first): a foundation imports only its own layer or lower, and anyone imports it
+  freely; every other feature is a peer, imported only with a reasoned grant in its `visibility.json`. A new area is
+  declared in `studio-tree.ts`. An import into a feature from outside it uses `#lib/*`, never a relative path;
   `node lint/rewrite-lib-imports.ts` rewrites any that slip in.
-- Start a project with `studio new <slug> --capability <music-led|voice-led|mixed|silent|still-only>`. It passes every check
-  from its first commit; a new project isn't baselined, so a violation in it blocks.
-- A project, `work/projects/<p>/`: `project.ts` (its capability, held to what it binds, and the `shared` modules its
-  scenes may import), `timeline.ts`, `timeline.test.ts` (the retime runner), a file per scene in `scenes/` or `bars/`
-  with its helpers in a folder of its name, `video.tsx`, `stills.tsx`.
-- Timing lives in `timeline.ts`. A scene reaches another's moment by its cue, never by importing it. `timeline.ts`
-  imports `models` code (`#lib/<area>/<feature>/models/…`), never `#studio`.
+- A project, `work/projects/<p>/`, starts with `studio new` and passes every check from its first commit; a new project
+  isn't baselined, so a violation in it blocks. It holds `project.ts` (its capability, held to what it binds, and the
+  `shared` modules its scenes may import), `timeline.ts`, `timeline.test.ts` (the retime runner), a file per scene in
+  `scenes/` or `bars/` with its helpers in a folder of its name, `video.tsx`, `stills.tsx`. Timing lives in
+  `timeline.ts`, which imports `models` code (`#lib/<area>/<feature>/models/…`), never `#studio`; a scene reaches
+  another's moment by its cue, never by importing it.
 - Lint and the hooks enforce this; `lint/overview.md` lists the rules. Every rule reads the layout from
   `lint/policy/studio-tree.ts`, so a new folder is declared there, and the quality rules cover all TypeScript. Older
   violations sit in baselines that only shrink, both tiers' in one file per repo: `lint/arch-baseline.json` for the
   studio, `work/arch-baseline.json` for the workspace. Fixing one leaves a stale entry: rewrite the baseline with
   `-- --update-baseline` on the command that reported it.
-- Subagents that draw (painting a picture, posing, render-look-adjust loops, tuning a look by eye) run on Sonnet
-  (`model: "sonnet"`): drawing is many short look-and-respond turns, and faster, cheaper turns buy more iterations.
-  Design, engine code and review stay on the default model.
-- The painting engine is in flux: renders may shift a little between runs and between commits, and that's fine. Don't
-  chase byte-identical output or prove a change leaves images untouched. Judge by eye at delivery size, accept moved
-  baselines when they look right, and save repeatability work for differences a viewer would notice.
 - Fix papercuts where you find them: a small bug in your path (a crash in a tool, an undersized buffer, a stale
   message) gets fixed in your branch, not filed. File a ticket only for work that needs its own design or would
   derail yours.

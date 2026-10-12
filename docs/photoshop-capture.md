@@ -13,9 +13,9 @@ npm run photoshop -- references "<pack>.abr" --style watercolor --pack <pack>
 npm run photoshop -- restore               # put back what a killed or stuck run changed (--force: see below)
 ```
 
-## Graham's Photoshop comes back as it was
+## The user's Photoshop comes back as it was
 
-A run refuses to start if Photoshop is open (it's Graham's, with his documents) or an earlier run's snapshot was never
+A run refuses to start if Photoshop is open (it's the user's, with their documents) or an earlier run's snapshot was never
 restored. Otherwise it copies the whole `~/Library/Preferences/Adobe Photoshop 2026 Settings/` folder (Brushes.psp,
 MRUBrushes.psp, Patterns.psp, tool presets, prefs) and the `Adobe Photoshop 2026 Paths` file, with their hashes, into
 `~/Library/Application Support/media-studio/photoshop-settings/<run>/`. It launches Photoshop with `open -g`, sets
@@ -24,9 +24,9 @@ sees its Photoshop exit it records every settings file's hash (`exited.json`), t
 with its old timestamps, removes any new ones, checks every hash and writes `restored.json`. Photoshop writes its
 settings when it quits, which is why the restore comes after the quit, never before.
 
-A restore never undoes someone else's session. A run's background Photoshop is still Photoshop: Graham once opened it
-mid-run to install brushes, the run's quit hung behind him, and a blind restore of that run's snapshot later wiped his
-191 MB brush install. So:
+A restore never undoes someone else's session. A run's background Photoshop is still Photoshop: a user once opened it
+mid-run to install brushes, the run's quit hung behind them, and a blind restore of that run's snapshot later wiped
+their 191 MB brush install. So:
 
 - the run quits only a Photoshop with no documents open and answering scripts; otherwise someone is using it, and the
   run leaves it running (never closed unsaved, never killed) with its snapshot pending;
@@ -79,10 +79,10 @@ bar 112 × 48), with one thing changed:
 - a dual brush under each of its eight modes, the secondary's dabs apart and overlapping;
 - wet edges; pressure on size, opacity and flow; Fade on each;
 - size, opacity and count jitter, scatter and noise, painted several times each since they're random by design;
-- each control a stroked path can drive (vid-105): angle on pressure, fade, initial direction, tilt, stylus wheel and
+- each control a stroked path can drive: angle on pressure, fade, initial direction, tilt, stylus wheel and
   rotation; scatter, count, roundness and Texture Each Tip depth on pressure, fade and jitter, height modes included;
   and the bristle, erodible and airbrush tips the packs use;
-- vid-97's inputs painted alone beside what combines them, so a combine reads pixel for pixel off two captures: a
+- each stage's inputs painted alone beside what combines them, so a combine reads pixel for pixel off two captures: a
   soft 240 px stamp alone and under each texture mode, a dual's primary and secondary alone and combined under each
   mode, and again over a primary spaced a diameter apart, so the combine reads across primary coverage 0..1, more
   hardnesses and diameters; and probes where two stages meet (texture, dual, wet edges, opacity), which
@@ -93,7 +93,7 @@ half the diameter at half the opacity. The `pressure …` probes and a pack's re
 that way. **Simulated pressure** goes by the share of the path's length: it rises straight from 0 to full at the
 middle and falls to 0 at the end, but is read at 51 even pieces of each anchor-to-anchor segment, straight between
 (lib/paint/photoshop-brushes/models/photoshop-stroke-pressure.ts). So a two-anchor line peaks at 50/51, 0.98, held
-from 49% to 51% (run 20260930-084651 fits the ramp at rms 0.004), while the S-curve, 115 anchors 7 px apart, all but
+from 49% to 51% (the ramp fits at rms 0.004), while the S-curve, 115 anchors 7 px apart, all but
 reaches full: its paint peaks at 0.996–0.998 where a line's holds at 0.98 (`pressure size`), and colour burn over it,
 which a pose at 0.98 leaves at 0.27 where no dual lands, is 0.87 there (`dual colorBurn tiny posed`, rms 0.54 → 0.07).
 The piece count is fitted from the line's peak alone. It drives the brush's own pen-pressure dynamics, so a
@@ -104,18 +104,18 @@ is applied again (the rig applies it afresh on each sheet): size and opacity fol
 save that a size minimum on pen pressure counts twice (the `pressure check …` probes). The sheet paints each
 reference the way it was painted.
 
-**Noise** (vid-105, `random noise`) overlays each stamp's paint a with 0.5 + (2/3)(n − 0.5), n uniform per pixel and
+**Noise** (`random noise`) overlays each stamp's paint a with 0.5 + (2/3)(n − 0.5), n uniform per pixel and
 fresh in every stamp: widest at half coverage, none where the tip is empty or full, and averaged down where stamps pile
 up (the line's soft edge keeps a tenth of a stamp's spread). Both renderers draw n from the same u32 hash
 (`tipNoiseAt`), seeded by the stamp's place.
 
-**Small tips** (vid-105, `tip computed d… sheet`). A computed tip of 7.5 px or less is drawn at its diameter rounded
+**Small tips** (`tip computed d… sheet`). A computed tip of 7.5 px or less is drawn at its diameter rounded
 up (1.5 px paints as 2). At 1 to 3 px, hardness does nothing: the stamp is a product of one profile across and one
 down, dim and spread (a 1 px stamp is four pixels at a quarter), its paint summing to about its diameter. Not yet
 matched: a 1 px line at half pressure is half as dark as ours, 4 px hard sits a third of a pixel smaller than the
 profile, and a squashed small tip (Graphite Pencil, 32% round) is read as the round one squashed.
 
-**Airbrush** (vid-105, `tip airbrush …`; photoshop-airbrush.ts). Pressure is the nozzle's distance: the spray is a disc
+**Airbrush** (`tip airbrush …`; photoshop-airbrush.ts). Pressure is the nozzle's distance: the spray is a disc
 of radius D(1 − p)/2 + 1 px whatever a pose's size, landing evenly at hardness 100 and with a soft rim at 1.
 Granularity 0 sprays smoothly, its flow keeping a line as dark at every pressure; granularity 100 throws 2×1 px grains
 (`tip.pixels`), their count growing as the diameter^1.2 (`scatter.countGrowth`), spread over the disc
@@ -124,7 +124,7 @@ to the spray, where our reference paints it at 0, so that cell misses. Not yet r
 (invisible in every capture), granularity between 0 and 100, the rim at other sizes than the preset's, and an
 airbrush dual. A dense grain spray is hundreds of stamps a pixel.
 
-**Pressed tips** (vid-105). Erodible and bristle tips touch the paper as they're pressed: StampBrush's `tip.pressed`
+**Pressed tips**. Erodible and bristle tips touch the paper as they're pressed: StampBrush's `tip.pressed`
 holds a contact image beside the footprint, the pressure from which each texel lays paint, over a ramp `softness` wide
 (`pressedTip`, on both renderers). A pose sizes neither; it scales their opacity. An unposed probe stamp reads as
 pressed harder than our reference's 0, so those cells miss.
@@ -136,7 +136,7 @@ pressed harder than our reference's 0, so those cells miss.
   the probes' lines paint wider than ours. Lino Crayon's and Pencil's custom maps paint too wide.
 - *Bristle* (`tip bristle …`; photoshop-bristle.ts). The footprint is 100 × density × (1 + 5 × density) bristle
   discs, its width across set by the shape, a flat tip's bristles in about a line. A bristle's mark is fixed in pixels
-  (vid-113: about 2 px wide at both 13 and 100 px, `… streaks d13`/`d100`): its radius is 1.15 px plus 0.28 ×
+  (about 2 px wide at both 13 and 100 px, `… streaks d13`/`d100`): its radius is 1.15 px plus 0.28 ×
   thickness diameters, and only where the bristles sit scales with the diameter. So the tip is data
   (StampBristleTip), drawn by both renderers at the diameter each deposit paints at; the pack holds no image of it.
   Each bristle touches from its own contact, later toward its rim, away from a point's axis, a curve's middle or an
@@ -145,12 +145,12 @@ pressed harder than our reference's 0, so those cells miss.
   along a stroke (Round Angle Low Stiffness), a click's radial dashes, tilt, and clumping, which every capture holds
   at 0.25.
 
-**What the controls do** (vid-105). Angle on pen pressure turns a stamp by p × 360°, and fade turns it a whole turn
+**What the controls do**. Angle on pen pressure turns a stamp by p × 360°, and fade turns it a whole turn
 over its steps; initial direction holds the first heading. A stamp strays in its own diameters, after pressure, a
-pose and size jitter (vid-113: Kyle's size-jittered salts and washes spread as wide as that on their reference lines,
+pose and size jitter (Kyle's size-jittered salts and washes spread as wide as that on their reference lines,
 10–25% narrower than in the deposit's), and scatter on pen pressure keeps p of that reach, so under a pose it keeps
 p² of the deposit's diameter, as the `scatter by pressure` probes read; a fade shrinks it to none over its steps.
-Where size doesn't follow pressure it keeps p (`scatter by pressure unposed`, run 20260930-134958: its line's reach
+Where size doesn't follow pressure it keeps p (`scatter by pressure unposed`: its line's reach
 at each pressure matches ours at p, twice p²'s at half pressure). With 100% size jitter a stamp strays at most about
 three quarters of its own jittered width at 200%, a 10 px stamp 6 px, a 50 px one 35 (`random scatter 200 size jitter
 100`), where the tip's diameter would let every stamp reach 48; and a dual's reach holds at 200%, one dual diameter
@@ -159,7 +159,7 @@ its mass is ours within 1%). Texture Each Tip depth on pressure runs the other w
 minimum depth, a fade climbs from it, and jitter takes each stamp's depth down toward it at random; a canvas texture
 ignores all three. A stamp's depth enters its mode's formula as the texture's depth times its share. In the height
 modes depth on pressure runs with it: a stamp at pressure p cuts at depth × p, its pose's opacity still outside the
-relief (`texture height d5 by pressure`, `d50`, run 20260930-082615's `height 19`; Kyle's pastel settings at every
+relief (`texture height d5 by pressure`, `d50`, `height 19`; Kyle's pastel settings at every
 pose). The relief never lifts paint past the pose's opacity: a pose at 0.98 peaks at 0.9800 and 0.9 at 0.9000
 (`texture height each tip posed`). Its minimum floors depth on pressure as read (`d6.27 … min 31.37`, read back as 6
 and 31: masses 0.85–0.96 of Photoshop's, 0.21–0.73 without the minimum), a fade takes it down step by step (within
@@ -167,13 +167,13 @@ and 31: masses 0.85–0.96 of Photoshop's, 0.21–0.73 without the minimum), a f
 depth 10's paint at its place, on average 0.28 of it, where uniform depth gives about 0.39 (`d10 jitter 100`, whose
 rms of 0.25 is the draws).
 Tilt, stylus wheel and rotation paint as off on a stroked path, Texture Each Tip depth on tilt included (`texture
-depth by tilt minimum 50`, run 20260930-134958). A Brush Pose, and a stroke it lingers into, gives tilt a value: the
+depth by tilt minimum 50`). A Brush Pose, and a stroke it lingers into, gives tilt a value: the
 upright pen's, read as full tilt. That is as off for size, flow, angle, scatter and a height relief's depth, but
-Texture Each Tip depth outside the height modes paints at its minimum (`… posed`, run 20260930-142634; Kyle's G Dry
+Texture Each Tip depth outside the height modes paints at its minimum (`… posed`; Kyle's G Dry
 Out and G Roundup references). A computed tip's short side is drawn in
 whole pixels at the preset's diameter, and a squashed tip steps by it.
 
-**Jitter** (vid-105, run 20260930-111705 and the `random count …` probes). Size jitter spreads a stamp's size either
+**Jitter** (the `random count …` probes). Size jitter spreads a stamp's size either
 way around what pressure gives it, s × (1 + j(2u − 1)), what passes the full diameter folding back under it: at full
 pressure that's the uniform 1 − j·u it always read as, and at p = 0.5 a 100% jitter reaches the full diameter. Each
 step is its first stamp's spacing at that jittered size. Count jitter spreads a step's count the same way, from 0 to
@@ -182,9 +182,9 @@ controlled count's does (every copy of the `random count …` probes). Those pro
 expected paint, within the spread of 68 steps; a single seed of ours read 1.16 by chance. Beside a control, jitter
 spreads the controlled count (count 1 at full pressure lays 0, 1, 2 at ¼, ½, ¼; count 2 lays 0 to 4) and empties a
 further share of the steps, about 0.15 at half pressure and 0.45 at a quarter at 100%, count 1 and count 2 alike,
-since both control to one stamp there (`random count 1 by pressure jitter 100`, `random count 2 …`, run
-20260930-134958: over 952 steps; a count with no jitter never empties one). At 50% it empties none: `random count 1
-by pressure jitter 50` (run 20260930-142634) lays exactly one stamp on all 476 steps at every pose, where j(1 − p)³
+since both control to one stamp there (`random count 1 by pressure jitter 100`, `random count 2 …`: over
+952 steps; a count with no jitter never empties one). At 50% it empties none: `random count 1
+by pressure jitter 50` lays exactly one stamp on all 476 steps at every pose, where j(1 − p)³
 would empty 10 and 57 of them. So the share is read as (2j − 1)(1 − p)³, emptying only past 50%, where a jittered
 count can round to none; between 50% and 100% its shape is unprobed. Roundness jitter over a minimum is scaled into it: 40% jitter over a 60% minimum keeps every stamp at
 0.84 or rounder (`random roundness jitter 40 minimum 60`, the least of 36 stamps 0.84), not 0.6.
@@ -194,7 +194,7 @@ A sample's diameter is its longer side and its stamp keeps its proportions, a du
 wide …`, on a second rig sample 112 × 48). It steps by its narrower side's share of its longer, its roundness left out, in
 whole pixels at the preset's diameter: 64 px steps as 27, 128 px at roundness 50% as 55, a square sample at roundness
 50% and spacing 200% every 256 px, the wide one at roundness 25% every ~110, a square dual at 64 px and roundness 50%
-every 128 (run 20260930-134958). Tall samples step by their narrow side as wide ones do. Photoshop turns each dual dab a random way whatever its
+every 128. Tall samples step by their narrow side as wide ones do. Photoshop turns each dual dab a random way whatever its
 settings, which a round dual never showed, spread evenly all the way round (`dual wide sparse`: 32 dabs, one
 chirality); its flip mirrors about half of them at random (`… flip`: 14 of 33), not all. Its scatter strays across the
 stroke up to half its own diameter, a wide sample's longer side (±32 px at 64 px) and a dual bigger than the brush past
