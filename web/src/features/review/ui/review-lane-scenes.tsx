@@ -9,9 +9,12 @@ import { colors, fonts, spacing, typography } from '#web/shared/ui/theme.stylex.
 import { reviewArtifactQueryOptions } from '../controllers/review-queries.ts';
 import { useReviewScreen } from './review-screen-context.tsx';
 import { useReviewRenderVersions } from './use-review-render-versions.ts';
+import { useReviewSplices } from './use-review-threads.ts';
 
 /** The scene name's inset from its band's left edge: `spacing.tight`. */
 const REVIEW_SCENE_NAME_INSET_PX = 4;
+
+const pulse = stylex.keyframes({ from: { opacity: 1 }, to: { opacity: 0.4 } });
 
 const styles = stylex.create({
   lane: { position: 'relative', height: '100%', overflow: 'hidden' },
@@ -25,6 +28,17 @@ const styles = stylex.create({
   // The blocking rung: 45° stripes over the band, so a scene still blocking reads at a glance without a pill.
   blocking: {
     backgroundImage: `repeating-linear-gradient(45deg, ${colors.hatch} 0 2px, transparent 2px 6px)`,
+  },
+  // A slice laid in: the other diagonal from blocking's, under a cream hairline, so both can show on one band.
+  spliced: {
+    position: 'absolute', top: 0, bottom: 0, pointerEvents: 'none', borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: colors.cream,
+    backgroundImage: `repeating-linear-gradient(-45deg, ${colors.hatch} 0 2px, transparent 2px 6px)`,
+  },
+  rerendering: {
+    // ⟳ at the span's end, clear of the scene's name at its start.
+    position: 'absolute', top: 0, bottom: 0, pointerEvents: 'none', paddingInline: spacing.tight, paddingTop: spacing.hairline, textAlign: 'end',
+    fontFamily: fonts.mono, lineHeight: typography.lineHeight, color: colors.cream, backgroundColor: colors.rangeWash,
+    animationName: pulse, animationDuration: '1.2s', animationIterationCount: 'infinite', animationDirection: 'alternate',
   },
   span: (left: string, width: string) => ({ left, width }),
   // A band begun off the lanes' left edge writes its name from the edge, so a zoomed lane still says where you are.
@@ -55,13 +69,18 @@ function useReviewComparedCuts(): number[] {
 }
 
 /**
- * The scenes as alternating bands, each named in full until its band cuts it short with an ellipsis. Blocking scenes are hatched, final ones
- * solid; the rung's word is on hover. A double-click loops the scene. Comparing, the other render's moved cuts are
- * faint ticks at the foot.
+ * The scenes as alternating bands, named in full until a band cuts the name short. Blocking scenes are hatched, the
+ * rung's word on hover; a double-click loops the scene. Comparing, the other render's moved cuts tick the foot. A laid
+ * slice cross-hatches its frames; a slice rendering now pulses there with ⟳.
  */
 export function ReviewLaneScenes({ view }: { readonly view: ReviewTimelineView }) {
-  const { artifact, timing, playback } = useReviewScreen();
+  const { artifact, timing, playback, pulse: { rendering } } = useReviewScreen();
   const movedCuts = useReviewComparedCuts();
+  const { laid } = useReviewSplices();
+  // The marker's frames are the composition's; the open render's own begin at its startsAt.
+  const startsAt = artifact.timing?.startsAt ?? 0;
+  const rerendering = artifact.kind === 'video' && rendering?.frames
+    && reviewTimelineSpan(view, rendering.frames.from - startsAt, rendering.frames.end - startsAt);
   const loopScene = (from: number, to: number) => {
     playback.setLoop({ from, to: to - 1 });
     playback.seek(from);
@@ -83,6 +102,13 @@ export function ReviewLaneScenes({ view }: { readonly view: ReviewTimelineView }
           </Tooltip>
         );
       })}
+      {laid.map((slice) => {
+        const span = reviewTimelineSpan(view, slice.from - startsAt, slice.end - startsAt);
+        return span && <Box key={`${slice.hash}:${slice.from}`} aria-hidden {...stylex.props(styles.spliced, styles.span(`${span.x}px`, `${span.w}px`))} />;
+      })}
+      {rerendering && (
+        <Text component="span" fz="xs" aria-label="rendering" {...stylex.props(styles.rerendering, styles.span(`${rerendering.x}px`, `${rerendering.w}px`))}>⟳</Text>
+      )}
       {movedCuts.map((frame) => {
         const x = reviewTimelineXOf(view, frame);
         return x >= 0 && x <= view.width && <Box key={frame} aria-hidden {...stylex.props(styles.movedCut, styles.at(`${x}px`))} />;

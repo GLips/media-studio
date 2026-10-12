@@ -1,9 +1,10 @@
 import { Box, Group, Stack, Text, Tooltip, UnstyledButton } from '@mantine/core';
+import { Link } from '@tanstack/react-router';
 import * as stylex from '@stylexjs/stylex';
 import { Bot, Check, CornerUpLeft, Pencil, RotateCcw, Trash2 } from 'lucide-react';
 import { useRef, useState } from 'react';
-import type { ReviewScene } from '#lib/output/review/models/review-context.ts';
-import { type PlacedReviewThread, reviewCueNameOf, reviewThreadFrameOf } from '#lib/output/review/models/review-placement.ts';
+import { reviewSceneAtFrame, type ReviewScene } from '#lib/output/review/models/review-context.ts';
+import { type PlacedReviewThread, type ReviewRefusedSlice, type ReviewSplices, reviewCueNameOf, reviewThreadFrameOf } from '#lib/output/review/models/review-placement.ts';
 import { formatReviewClock } from '#lib/output/review/models/review-timeline-geometry.ts';
 import {
   REVIEW_THREAD_TONES, reviewThreadTone, type ReviewAnchor, type ReviewEntry, type ReviewThread, type ReviewThreadTone,
@@ -45,6 +46,11 @@ const styles = stylex.create({
   reply: { minWidth: 0, flex: 1 },
   commit: {
     fontFamily: fonts.mono, color: colors.dim,
+    paddingInline: spacing.hairline, borderRadius: radius.control, backgroundColor: { default: 'transparent', ':hover': colors.raised },
+  },
+  // Dim like the commit beside it: what's on the link is where it goes, not a state.
+  slice: {
+    fontFamily: fonts.mono, color: { default: colors.dim, ':hover': colors.cream }, textDecoration: 'none', whiteSpace: 'nowrap',
     paddingInline: spacing.hairline, borderRadius: radius.control, backgroundColor: { default: 'transparent', ':hover': colors.raised },
   },
   other: {
@@ -91,6 +97,16 @@ function reviewThreadWhereOf(thread: PlacedReviewThread, place: ReviewThreadRowP
   return anchor.on === 'still' ? (anchor.cell ?? null) : null;
 }
 
+/**
+ * `r11` for a note written on a kept version of this path, `slice` on a reply slice over this cut, and another path's
+ * render (the animatic) by its hash.
+ */
+function reviewCarriedRenderNameOf(carried: { hash: string }, place: NonNullable<ReviewThreadRowPlace>): string {
+  const version = place.versions.find((v) => v.hash === carried.hash);
+  if (version) return `r${version.r}`;
+  return place.splices.laid.some((s) => s.hash === carried.hash) ? 'slice' : carried.hash.slice(0, 7);
+}
+
 export type ReviewThreadRowLook = {
   current: boolean;
   selected: boolean;
@@ -102,13 +118,29 @@ export type ReviewThreadRowLook = {
 
 /** The open file the row is placed on: null on a decision, whose notes are on no file. */
 export type ReviewThreadRowPlace = {
+  project: string;
   fps: number;
   renderHash: string;
   scenes: readonly ReviewScene[];
   versions: readonly ReviewComparedVersion[];
+  /** The reply slices on the cut: a reply whose slice won't splice links to it, to be played alone. */
+  splices: ReviewSplices;
   /** The voiced lines' ids in reading order, which number a script note's line. */
   lines: readonly string[];
 } | null;
+
+/**
+ * `▶ slice` on a reply whose slice can't be laid into the cut, opening it alone; why it can't is its title. A slice
+ * that's laid in needs no link: it's on the stage.
+ */
+function ReviewRefusedSliceLink({ project, slice }: { readonly project: string; readonly slice: ReviewRefusedSlice }) {
+  return (
+    <Link to="/projects/$project/artifacts/$" params={{ project, _splat: slice.path }} search={{ r: slice.hash }}
+      title={`won't splice: ${slice.refusal}`} onClick={(event) => event.stopPropagation()} {...stylex.props(styles.slice)}>
+      <Text component="span" size="xs" inherit>▶ slice</Text>
+    </Link>
+  );
+}
 
 type ReviewThreadRowProps = {
   readonly thread: PlacedReviewThread;
@@ -128,13 +160,12 @@ export function ReviewThreadRow({ thread, look, actions, place }: ReviewThreadRo
   const [note, ...replies] = thread.entries;
   const { glyph, style, word } = reviewThreadGlyphOf(thread);
   const frame = reviewThreadFrameOf(thread);
-  const scene = frame === undefined ? undefined : place?.scenes.find((s) => s.from <= frame && frame < s.to);
+  const scene = frame === undefined || !place ? undefined : reviewSceneAtFrame(place.scenes, frame);
   // On a file's thread, a note on the whole project says so where a time would be.
   const where = place && thread.anchor.on === 'project' ? 'whole project' : reviewThreadWhereOf(thread, place);
   const writtenOn = thread.anchor.on === 'video' || thread.anchor.on === 'still' ? thread.anchor.writtenOn : undefined;
   const carried = writtenOn && place && writtenOn.hash !== place.renderHash ? writtenOn : undefined;
-  // `r11` when the note was written on a kept version of this path; another path's render (the animatic) by its hash.
-  const carriedVersion = carried && place?.versions.find((v) => v.hash === carried.hash);
+  const carriedName = carried && place && reviewCarriedRenderNameOf(carried, place);
   const shown = (look.expanded ? replies : replies.slice(-1)).filter((r) => r.text.trim());
   const inline = look.inline?.id === thread.id ? look.inline : null;
   // The field's text belongs to its field: reopening the same one finds it as left, opening another starts afresh,
@@ -184,7 +215,7 @@ export function ReviewThreadRow({ thread, look, actions, place }: ReviewThreadRo
         {thread.anchor.on === 'video' && thread.anchor.cue && <Text component="span" size="sm" {...stylex.props(styles.scene)}>♪ {reviewCueNameOf(thread.anchor.cue)}</Text>}
         {carried && (
           <Tooltip label={`written on ${carried.path}`} openDelay={400} withinPortal>
-            <Readout>{carriedVersion ? `r${carriedVersion.r}` : carried.hash.slice(0, 7)}</Readout>
+            <Readout>{carriedName}</Readout>
           </Tooltip>
         )}
         {(hot || look.selected) && (
@@ -208,6 +239,7 @@ export function ReviewThreadRow({ thread, look, actions, place }: ReviewThreadRo
         <Stack gap="tight" {...stylex.props(styles.replies)}>
           {shown.map((reply) => {
             const did = reply.asks ? REPLY_GLYPHS.asks : reply.transition && REPLY_GLYPHS[reply.transition];
+            const refused = reply.render && place?.splices.refused.find((s) => s.hash === reply.render?.hash);
             return (
               <Group key={reply.rev} gap="tight" wrap="nowrap" align="flex-start">
                 <Text component="span" size="sm" {...stylex.props(styles.author)}>{reply.author === 'agent' && <Bot size={12} />}</Text>
@@ -219,6 +251,7 @@ export function ReviewThreadRow({ thread, look, actions, place }: ReviewThreadRo
                 <Box {...stylex.props(styles.reply, !look.expanded && styles.clamped)}>
                   <ReviewThreadBody text={reply.text} />
                 </Box>
+                {refused && place && <ReviewRefusedSliceLink project={place.project} slice={refused} />}
                 {reply.commit && (
                   <Tooltip label="Copy commit" openDelay={400} withinPortal>
                     <UnstyledButton

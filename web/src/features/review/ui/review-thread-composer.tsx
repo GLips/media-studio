@@ -2,7 +2,7 @@ import { Box, Group, Text, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { CornerDownLeft, X } from 'lucide-react';
 import { useRef } from 'react';
-import { reviewCueNameOf, reviewVideoAnchorAt } from '#lib/output/review/models/review-placement.ts';
+import { reviewAnchorOnLaidSlice, reviewCueNameOf, reviewVideoAnchorAt } from '#lib/output/review/models/review-placement.ts';
 import { formatReviewClock } from '#lib/output/review/models/review-timeline-geometry.ts';
 import type { NewAnchor } from '#lib/output/review/models/review-ops.ts';
 import type { ReviewThreadKind } from '#lib/output/review/models/review-threads.ts';
@@ -15,6 +15,7 @@ import { useReviewThreadScope, type ReviewThreadScope } from './review-thread-sc
 import type { ReviewDraft } from './use-review-draft.ts';
 import { useReviewComposerHotkeys } from './use-review-composer-hotkeys.ts';
 import { composeShownReviewFrame } from './review-mark-paint.ts';
+import { shownReviewSlicesOf } from './review-slice-layer.tsx';
 
 const styles = stylex.create({
   composer: {
@@ -54,7 +55,8 @@ function anchorOfDraft({ subject, media, draft, timeNow }: ReviewThreadScope): N
     case 'video': {
       if (!media) return null;
       const pinned = anchor.on === 'video' ? anchor : {};
-      return { ...pinned, ...reviewVideoAnchorAt(media.artifact, pinned.frame ?? media.playback.frameNow()), ...strokes };
+      // Read at save, as the frame image is: on a slice only while its picture is the one on screen.
+      return reviewAnchorOnLaidSlice({ ...pinned, ...reviewVideoAnchorAt(media.artifact, pinned.frame ?? media.playback.frameNow()), ...strokes }, shownReviewSlicesOf(media.splices.laid));
     }
     case 'still': {
       if (!media) return null;

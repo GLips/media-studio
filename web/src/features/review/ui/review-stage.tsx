@@ -11,6 +11,7 @@ import { pinReviewDraft, toggleReviewDraw } from './review-draft-pin.ts';
 import { ReviewDrawStrip } from './review-draw-strip.tsx';
 import { ReviewGuidesOverlay } from './review-guides-overlay.tsx';
 import { useReviewScreen, type ReviewScreenValue } from './review-screen-context.tsx';
+import { ReviewSliceLayer } from './review-slice-layer.tsx';
 import { ReviewStageMarks } from './review-stage-marks.tsx';
 import { REVIEW_MEDIA_ATTRIBUTE } from './review-mark-paint.ts';
 import { reviewIsProofed, reviewProofGroundStyles, useReviewProofGround } from './use-review-proof-ground.ts';
@@ -172,6 +173,7 @@ export function ReviewStage() {
             onLoadedMetadata={(e) => setNatural({ w: e.currentTarget.videoWidth, h: e.currentTarget.videoHeight })}
             {...stylex.props(styles.media, flipped && compared && !side && styles.hidden)} />
         )}
+        {artifact.kind === 'video' && <ReviewSliceLayer hidden={flipped && compared !== undefined && !side} />}
         {compared && !side && <ReviewCompareView version={compared} layer={layer === 'wipe' ? 'wipe' : 'flip'} held={flipped} labels={labels} />}
         {guides && frame && <ReviewGuidesOverlay set={guides} frame={frame} />}
         {own && <ReviewStageMarks width={own.width} height={own.height} live={live} />}

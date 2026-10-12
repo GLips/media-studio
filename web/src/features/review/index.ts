@@ -1,6 +1,7 @@
 export { ReviewScreen } from './ui/review-screen.tsx';
 export { ReviewThreadPanel } from './ui/review-thread-panel.tsx';
 export { ReviewScreenThread } from './ui/review-screen-thread.tsx';
+export { ReviewThreadSplit } from './ui/review-thread-split.tsx';
 export { ReviewThreadScopeProvider, type ReviewThreadScope } from './ui/review-thread-scope.tsx';
 export { ReviewDock, type ReviewLaneId } from './ui/review-dock.tsx';
 export { reviewArtifactQueryOptions, reviewFileQueryOptions, reviewReplacementHashOf } from './controllers/review-queries.ts';
