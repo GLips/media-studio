@@ -10,7 +10,7 @@ import type { RenderLedger } from '#lib/output/render/engine/render-ledger.ts';
 import { traceClock } from '#lib/platform/trace/engine/trace-collector.ts';
 import { concatList, DELIVERY_ENCODING, encodeLosslessList, formatRenderSpans } from '#lib/output/render/engine/render-session.ts';
 import { joinedRenderSlices, joinVideoSlices, losslessSliceFor, readRenderSlices, refuseSliceOutside } from '#lib/output/render/engine/render-slices.ts';
-import { writeRenderSnapshot } from '#lib/output/render/engine/render-snapshot.ts';
+import { readRenderSource, writeRenderSnapshot, type RenderSource } from '#lib/output/render/engine/render-snapshot.ts';
 import { countVideoFrames, runFfmpegAsync } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
@@ -34,6 +34,7 @@ export async function renderRemotely(ledger: RenderLedger, { frames, out, lens, 
   // Refused here before anything uploads when the clock knows the length; each container checks again on its page.
   if (frames && ledger.clock) refuseSliceOutside({ durationInFrames: ledger.clock.end }, frames);
   const known = frames ? frames.end - frames.from : ledger.clock?.end;
+  const source = readRenderSource();
   const call = await openRemoteRenderCall(project);
   try {
     const containers = known === undefined ? 1 : remoteContainerCount(known, call.settings.render.maxContainers);
@@ -52,9 +53,9 @@ export async function renderRemotely(ledger: RenderLedger, { frames, out, lens, 
     const written = frames
       ? await withStudioTemp('remote-pieces', (dir) => {
         for (const { files } of answers) writeRemoteFiles(files, dir);
-        return keepRemoteSlice(ledger, dir, frames, out);
+        return keepRemoteSlice(ledger, dir, { frames, out, source });
       })
-      : [await joinRemotePieces(ledger, answers.map((a) => a.files), out)];
+      : [await joinRemotePieces(ledger, answers.map((a) => a.files), { out, source })];
     for (const line of formatRenderSpans(ledger)) process.stderr.write(`${line}\n`);
     return written;
   } finally {
@@ -63,13 +64,16 @@ export async function renderRemotely(ledger: RenderLedger, { frames, out, lens, 
   }
 }
 
-/** The pieces in `dir` (`frames` between them) as one slice at `out`, kept lossless beside it, each with its snapshot. */
-async function keepRemoteSlice(ledger: RenderLedger, dir: string, frames: RemoteFrames, out: string): Promise<string[]> {
+/**
+ * The pieces in `dir` (`frames` between them) as one slice at `out`, kept lossless beside it, each with its snapshot
+ * naming `source`, the commits read before the remote call: the minutes it takes leave room for a commit.
+ */
+async function keepRemoteSlice(ledger: RenderLedger, dir: string, { frames, out, source }: { frames: RemoteFrames; out: string; source: RenderSource }): Promise<string[]> {
   const { ordered, timeline, gpu } = joinedRenderSlices(readRenderSlices(dir), { dir, clock: ledger.clock, span: frames });
   const lossless = losslessSliceFor(out), list = join(dir, 'pieces.txt');
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(list, concatList(ordered.map((piece) => piece.file)));
-  const made = { frames, timeline, clock: ledger.clock, voice: renderVoiceOf(ledger.project), gpu };
+  const made = { frames, timeline, clock: ledger.clock, voice: renderVoiceOf(ledger.project), gpu, source };
   await ledger.trace.run(`${basename(lossless)} join`, () => runFfmpegAsync(['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', lossless]));
   writeRenderSnapshot(lossless, made);
   await ledger.trace.run(`${basename(out)} encode`, () => encodeLosslessList(list, out, DELIVERY_ENCODING));
@@ -79,14 +83,17 @@ async function keepRemoteSlice(ledger: RenderLedger, dir: string, frames: Remote
   return [out, lossless];
 }
 
-/** Every container's pieces kept in out/wip/remote/ and joined at `out` under the mix mastered from their sound. */
-async function joinRemotePieces(ledger: RenderLedger, made: readonly ReadonlyMap<string, Uint8Array>[], out: string): Promise<string> {
+/**
+ * Every container's pieces kept in out/wip/remote/ and joined at `out` under the mix mastered from their sound, its
+ * snapshot naming `source`, the commits read before the remote call.
+ */
+async function joinRemotePieces(ledger: RenderLedger, made: readonly ReadonlyMap<string, Uint8Array>[], { out, source }: { out: string; source: RenderSource }): Promise<string> {
   const dir = join(ledger.project, REMOTE_PIECES_DIR);
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   for (const files of made) writeRemoteFiles(files, dir);
   return joinVideoSlices(ledger, {
-    dir, out,
+    dir, out, source,
     mixFor: async (timeline) => {
       const sound = join(dir, REMOTE_SOUND_FILE);
       if (!existsSync(sound)) throw new Error(`the remote render sent back no sound (${REMOTE_SOUND_FILE}) for ${basename(ledger.project)}'s mix`);

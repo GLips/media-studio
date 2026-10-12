@@ -1,29 +1,43 @@
 // render-snapshot.ts: what a render was made from, written beside it, and the one loader that reads it back. Node only.
 //
-// Every video render writes <name>.snapshot.json beside it: the timeline it laid out, a timed project's resolved
-// clock, the frames the file holds (a slice starts past 0), its voice, its GPU, and on a delivered render the motion
-// its check measured. The snapshot names the render by a hash of its bytes, so a file re-rendered without one, or
-// copied over, reads as having none rather than as the older render's.
+// Every video render writes <name>.snapshot.json beside it: its timeline, a timed project's clock, the frames it
+// holds (a slice starts past 0), its voice, GPU and commits, and on a delivered render the motion its check measured.
+// The snapshot names the render by a hash of its bytes, so a file re-rendered without one, or copied over, reads as
+// having none rather than as the older render's.
 //
 // A reader of a render goes through loadRenderSnapshot, never out/check/timeline.json: that is `studio check`'s latest
 // report, and says nothing about a render made before it.
-import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { basename, dirname, extname, join } from 'node:path';
+import { existsSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { basename, dirname, extname, join, relative, sep } from 'node:path';
 import { sha256OfFile } from '#lib/platform/files/engine/file-sha256.ts';
+import { gitState, type GitState } from '#lib/platform/host/engine/hosts.ts';
+import { STUDIO_ROOT, STUDIO_WORKSPACE_DIR, studioProjectOfFile } from '#lib/platform/project/engine/studio-project.ts';
+import { isStudioWorkspaceRepo } from '#lib/platform/project/engine/studio-workspace.ts';
 import type { MotionTracks } from '#lib/picture/measurement/models/motion-tracks.ts';
 import type { TimelineClockTable } from '#lib/timing/timeline/models/timeline.ts';
 import type { RenderVoice } from '#lib/timing/voice/models/render-voice.ts';
 import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
 
-export const RENDER_SNAPSHOT_VERSION = 10;
+export const RENDER_SNAPSHOT_VERSION = 11;
+
+/** The studio's commit and the workspace's (null with no workspace repo) a render was made from. */
+export type RenderSource = { engine: GitState; workspace: GitState | null };
+
+/** Both repos' commits as they are now. A render reads them as it starts, so a commit made while it draws isn't its. */
+export function readRenderSource(): RenderSource {
+  return { engine: gitState(STUDIO_ROOT), workspace: isStudioWorkspaceRepo() ? gitState(STUDIO_WORKSPACE_DIR) : null };
+}
 
 /** Which bytes a file is: `hash` is the first 10 hex digits of its SHA-256, `modified` its mtime as ISO. */
 export type RenderFileStamp = { hash: string; modified: string };
 
 export type RenderSnapshot = {
   version: typeof RENDER_SNAPSHOT_VERSION;
-  /** The render's file name and the hash of its bytes when the snapshot was written. */
-  render: { file: string; hash: string };
+  /**
+   * The render's file name, its path inside its project (`out/video.mp4`; null outside one, as a remote piece in a temp
+   * folder is), and the hash of its bytes when the snapshot was written. Review lists a path's versions by it.
+   */
+  render: { file: string; path: string | null; hash: string };
   /** The composition frames the render holds: its first frame is composition frame `from`; `end` is exclusive. */
   frames: { from: number; end: number };
   made: string;
@@ -40,6 +54,7 @@ export type RenderSnapshot = {
    * GPU rounds a painted frame differently, so slices from two are refused a join (docs/private-styles.md).
    */
   gpu: string;
+  source: RenderSource;
   /** Every tracked element's motion, when the render path measured it (a delivered render's check does). */
   motion?: MotionTracks;
 };
@@ -66,15 +81,24 @@ export function renderFileStamp(file: string): RenderFileStamp {
   return stamp;
 }
 
-/** Writes `render`'s snapshot beside it, bound to its bytes as they are now. Call once the file is final. */
-export function writeRenderSnapshot(render: string, made: Pick<RenderSnapshot, 'frames' | 'timeline' | 'clock' | 'voice' | 'gpu' | 'motion'>): string {
-  const { frames, timeline, clock, voice, gpu, motion } = made;
+/** `render`'s path inside its project, `/`-separated, or null for a file outside one. */
+function renderPathInProject(render: string): string | null {
+  const project = studioProjectOfFile(render);
+  return project && relative(realpathSync(project), realpathSync(render)).split(sep).join('/');
+}
+
+/**
+ * Writes `render`'s snapshot beside it, bound to its bytes as they are now. Call once the file is final. `source`
+ * defaults to the commits now; a render that ran long (remote-render.ts) passes the ones it started from.
+ */
+export function writeRenderSnapshot(render: string, made: Pick<RenderSnapshot, 'frames' | 'timeline' | 'clock' | 'voice' | 'gpu' | 'motion'> & { source?: RenderSource }): string {
+  const { frames, timeline, clock, voice, gpu, motion, source = readRenderSource() } = made;
   if (!(frames.from >= 0 && frames.end > frames.from && frames.end <= timeline.durationInFrames)) {
     throw new Error(`${basename(render)}: frames ${frames.from}–${frames.end - 1} aren't within the composition's 0–${timeline.durationInFrames - 1}`);
   }
   const snapshot: RenderSnapshot = {
-    version: RENDER_SNAPSHOT_VERSION, render: { file: basename(render), hash: renderFileStamp(render).hash }, frames,
-    made: new Date().toISOString(), timeline, clock, voice, gpu, ...(motion && { motion }),
+    version: RENDER_SNAPSHOT_VERSION, render: { file: basename(render), path: renderPathInProject(render), hash: renderFileStamp(render).hash }, frames,
+    made: new Date().toISOString(), timeline, clock, voice, gpu, source, ...(motion && { motion }),
   };
   const path = renderSnapshotPath(render);
   writeFileSync(path, JSON.stringify(snapshot));

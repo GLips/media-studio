@@ -19,8 +19,8 @@ Every step is a `studio` verb. A `<project>` is a slug (`launch-teaser`), a uniq
 | Look | `studio look <project> --sheet=1,5,9` | a contact sheet of chosen times, `--strip=4:5` for a stretch of motion, or `--graph=4:6` to plot that stretch's measured motion (position, velocity, size, opacity, reported values) against the words, with its numbers. Open the image to check frames without rendering video. `--remote` draws the frames on a Modal GPU (`docs/remote.md`) |
 | Check | `studio check <project>` | the framing check and the motion tracks on every frame (`--scene` or `--at=a:b` for less), a table of when each scene and line starts and ends, `out/check/timeline.json` (scenes, lines, words, crossfades) and `out/check/motion.json` (how every tagged element moved) |
 | Mix | `studio mix <project>` | `out/mix.wav`, the mastered mix on its own, to audition |
-| Render | `studio render <project>` | `out/mix.wav`, `out/video.mp4` (captions burned in), `out/video.srt` and `out/video.vtt`, review sheets in `out/check/`, each video with a `.snapshot.json` beside it (the timeline it was rendered from). `--animatic` renders the video as it plays now, unchecked and unmixed, to `out/wip/animatic.mp4`, for approving it in `studio review` before it's voiced or finished; `--frames=a:b` renders just those frames, silent, and keeps them lossless beside it; `--join=<folder>` encodes such slices once, under the mix; `--remote` draws the frames on Modal's GPUs (`studio remote deploy` first, `docs/remote.md`) and joins them here to `out/wip/joined.mp4`, never the delivered video. A `--read=draft` voice gets a loud warning, and its snapshot says so, so `studio review` shows a DRAFT VOICE banner over it. A transparent video (`format: { transparent: true }`, silent) delivers `out/video.webm` (VP9 with alpha, Chrome and Firefox) and `out/video-hevc.mov` (HEVC with alpha via macOS VideoToolbox, Safari) in place of the MP4, and `studio review` plays it over a checkerboard or a colour |
-| Review | `studio review <project>` | the studio app (`web/`, on port 4317) on the project's newest render or still: pin notes on a moment and a point, which save to `review/notes-<render>.json` and copy as markdown; the scrubber carries the render's scene cuts, beats and cues, and a storyboard under it has a card per scene with stills cut from the render |
+| Render | `studio render <project>` | `out/mix.wav`, `out/video.mp4` (captions burned in), `out/video.srt` and `out/video.vtt`, review sheets in `out/check/`, each video with a `.snapshot.json` beside it (the timeline it was rendered from). `--animatic` renders the video as it plays now, unchecked and unmixed, to `out/wip/animatic.mp4`, for approving it in `studio review open` before it's voiced or finished; `--frames=a:b` renders just those frames, silent, and keeps them lossless beside it; `--join=<folder>` encodes such slices once, under the mix; `--remote` draws the frames on Modal's GPUs (`studio remote deploy` first, `docs/remote.md`) and joins them here to `out/wip/joined.mp4`, never the delivered video. A `--read=draft` voice gets a loud warning, and its snapshot says so, so the review page marks it as the draft voice. A transparent video (`format: { transparent: true }`, silent) delivers `out/video.webm` (VP9 with alpha, Chrome and Firefox) and `out/video-hevc.mov` (HEVC with alpha via macOS VideoToolbox, Safari) in place of the MP4, and the review page plays it over a checkerboard or a colour |
+| Review | `studio review open <project>` | the studio app (`web/`, on port 4317) on the project's newest render or still: the user pins notes on a moment, a range or a point and draws on the frame; they're kept per project in `review/review.json` and carried to each new render by moment. The agent's side: `studio review watch <project>` in the background (woken by each burst of notes), `notes`, `reply --addressed`, `ask`, and `decide` to post candidates for the user to pick from; `video-motion`'s "The review loop" |
 
 `studio render` refuses to render if any line is still estimated. It renders the captioned video with the check
 measuring each frame as it's drawn, and delivers nothing if a highlight sits under a tag or the caption, runs off
@@ -139,8 +139,8 @@ scene's `expect` says what must be on screen while a word is spoken:
 - `picture-checks`: the probe's measurements turned into problems a viewer would notice (framing, holds), and motion
   drawn over time for review.
 - `look`: `studio look`'s sheets, strips and graphs.
-- `review`: what `studio review` shows (a project's reviewable files, pinned notes, the storyboard), and
-  `studio still --sheet`.
+- `review`: `studio review`'s notes, replies, decisions and render history (`review/review.json`, `out/.history/`),
+  what the page shows of a project's files, and `studio still --sheet`.
 - `sfx-cues`: a video's sound-effect cue list, drafted from what `studio check` measured.
 - `sound-check`: each sound a video plays against its music, as the mix plays them.
 
@@ -152,7 +152,7 @@ scene's `expect` says what must be on screen while a word is spoken:
 - `ffmpeg`: the one place ffmpeg runs: loudness, contact sheets.
 - `browser`: the browser every render runs in and the GPU it got, and a studio module run in it outside a bundle.
 - `raster`: graphs, plots and sheets drawn to PNG.
-- `web`: the studio app behind `studio review` (`web/`, on TanStack Start, Mantine and StyleX), served in-process by
+- `web`: the studio app behind `studio review open` (`web/`, on TanStack Start, Mantine and StyleX), served in-process by
   Vite. The app reaches engine code only through `web/src/infrastructure/studio-engine.server.ts`.
 - `host`: a product repo a video is about, whose real React components it composes.
 - `photoshop`: Photoshop driven from Node with no UI, its settings kept as they were.

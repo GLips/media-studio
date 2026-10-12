@@ -1,20 +1,17 @@
 // review-artifact.ts: the shapes the review screen reads, which lib/output/review/engine/ fills from disk and the app draws:
-// a project's reviewable files, and everything about one of them. Pure: the naming rules for a transparent pair and a
-// file's notes live here, so the engine and the screen agree on them.
+// a project's reviewable files, and everything about one of them. Pure: the naming rule for a transparent pair lives
+// here, so the engine and the screen agree on it. A file's threads are read apart, from review/review.json.
 import type { MotionTracks } from '#lib/picture/measurement/models/motion-tracks.ts';
 import type { RenderVoice } from '#lib/timing/voice/models/render-voice.ts';
 import type { ReviewTiming } from './review-moment.ts';
-import type { ReviewMediaKind, ReviewNote, ReviewRenderStamp, ReviewScene, ReviewSoundMarker, ReviewStillCell } from './review-notes.ts';
+import type { ReviewMediaKind, ReviewRenderStamp, ReviewScene, ReviewSoundMarker, ReviewStillCell } from './review-context.ts';
 import type { ReviewStoryboardCard, ReviewTimingMarks } from './review-storyboard.ts';
 
 /**
  * A reviewable file. `pair` names the other encoding of the same transparent delivery (video.webm beside
- * video-hevc.mov): the two are kept apart (each has its own bytes, snapshot and notes) and shown side by side.
+ * video-hevc.mov): the two are kept apart (each has its own bytes and snapshot) and shown side by side.
  */
 export type ProjectArtifact = { path: string; kind: 'video' | 'still'; modified: string; pair?: string };
-
-/** A project folder under work/projects/ with what it has made, for the app's front page. */
-export type ProjectListing = { project: string; artifacts: ProjectArtifact[] };
 
 /** `<stem>.webm` ↔ `<stem>-hevc.mov`, the two files studio render writes for a transparent video. */
 export function transparentPairOf(path: string): string | undefined {
@@ -22,22 +19,6 @@ export function transparentPairOf(path: string): string | undefined {
   if (ext === '.webm') return `${stem}-hevc.mov`;
   if (ext === '.mov' && stem.endsWith('-hevc')) return `${stem.slice(0, -'-hevc'.length)}.webm`;
   return undefined;
-}
-
-/**
- * The file a project opens on: its newest, and of a transparent pair the encoding this browser plays with alpha, the
- * HEVC .mov where QuickTime plays (Safari) and the WebM elsewhere. Undefined when the project has made nothing.
- */
-export function landingArtifactOf(artifacts: readonly ProjectArtifact[], { playsQuickTime }: { playsQuickTime: boolean }): ProjectArtifact | undefined {
-  const newest = artifacts[0];
-  if (!newest?.pair || newest.path.endsWith('.mov') === playsQuickTime) return newest;
-  return artifacts.find((a) => a.path === newest.pair) ?? newest;
-}
-
-/** The name a file's notes go under: its path in the project less out/, folders joined by dots, no extension. */
-export function reviewNotesPathOf(path: string): string {
-  const inOut = path.replace(/^out\//, '');
-  return `review/notes-${inOut.slice(0, -inOut.slice(inOut.lastIndexOf('.')).length).split('/').join('.')}.json`;
 }
 
 /** The file on disk now, and every artifact beside it: polled apart from the loaded review, which never swaps. */
@@ -77,7 +58,4 @@ export type ReviewArtifact = ReviewArtifactStatus & {
   srt?: string;
   /** Each artifact a note field needs that isn't there, with how to make it. */
   missing: string[];
-  notes: ReviewNote[];
-  /** Where the notes save, in the project. */
-  notesPath: string;
 };

@@ -130,7 +130,7 @@ export function stillProblems({ measure, fits, ground, zones }: { measure: Still
 
     for (const z of zones) {
       const o = overlap(t.shown, z.rect);
-      if (o.w > 2 && o.h > 2) add('ui-zone', `text ${quote(t.text)} is under ${z.name} (y ${px(z.rect.y)}–${px(z.rect.y + z.rect.h)})`);
+      if (o.w > 2 && o.h > 2) add('ui-zone', `text ${quote(t.text)} is under the ${z.name} (y ${px(z.rect.y)}–${px(z.rect.y + z.rect.h)})`);
     }
 
     const ratio = textGroundContrast(t, ground);
@@ -150,7 +150,7 @@ export function stillProblems({ measure, fits, ground, zones }: { measure: Still
     if (area(img.shown) < MARK_SHARE_MAX * frame.w * frame.h) {
       for (const z of zones) {
         const o = overlap(img.shown, z.rect);
-        if (o.w > 2 && o.h > 2) add('ui-zone', `${name} is under ${z.name}`);
+        if (o.w > 2 && o.h > 2) add('ui-zone', `${name} is under the ${z.name}`);
       }
       continue;
     }

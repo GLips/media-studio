@@ -62,10 +62,12 @@ export async function readProjectDeclaration(project: string): Promise<ProjectDe
 
 /**
  * The project folder `file` (one that exists) lies in, work/projects/<p>/ as the studio lays projects out; null for a
- * file outside one. Its real path, as STUDIO_ROOT is, so a symlinked working directory still finds it.
+ * file outside one. Both sides real, so a symlinked working directory, or a worktree whose work/ links into another
+ * checkout, still finds it.
  */
 export function studioProjectOfFile(file: string): string | null {
-  const [project, ...within] = relative(STUDIO_PROJECTS_DIR, realpathSync(file)).split(sep);
+  if (!existsSync(STUDIO_PROJECTS_DIR)) return null;
+  const [project, ...within] = relative(realpathSync(STUDIO_PROJECTS_DIR), realpathSync(file)).split(sep);
   return within.length && project !== '..' && !isAbsolute(project) ? join(STUDIO_PROJECTS_DIR, project) : null;
 }
 

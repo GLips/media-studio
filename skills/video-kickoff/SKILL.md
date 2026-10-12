@@ -12,8 +12,8 @@ cheaply before the next rung spends more on it. Each rung needs the user's yes b
 |---|---|---|
 | **Treatment** | the idea, the tone, the takeaway | steps 1–2: the dump, then the angle |
 | **Script or beat sheet** | what happens, in order; the track, if it's cut to music | step 3: the scene table |
-| **Style frames** | the look: two to four finished stills of key moments | `stills` skill, reviewed with `studio review` |
-| **Animatic (blocking)** | pacing and how things move: every scene blocked in simple shapes at its real timing, on the voice or music; flat (`blockingScene`) for a 2D scene, 3D where a camera moves through space | step 4: `studio render --animatic`, then `studio review`; `video-gen` when a video model will take the motion |
+| **Style frames** | the look: two to four finished stills of key moments | `stills` skill, reviewed with `studio review open` |
+| **Animatic (blocking)** | pacing and how things move: every scene blocked in simple shapes at its real timing, on the voice or music; flat (`blockingScene`) for a 2D scene, 3D where a camera moves through space | step 4: `studio render --animatic`, then `studio review open`; `video-gen` when a video model will take the motion |
 | **Polish, then sound** | the finish | `video-motion`, then `video-sound` |
 
 **Choose the path at kickoff, and say which.** The full ladder suits a piece whose pacing or look is uncertain, or
@@ -64,7 +64,7 @@ picks until they say it feels right.
 Start the project with `studio new <slug> --capability <voice-led|music-led|mixed|silent>` (silent: fixed-length
 scenes with no voice, music or sound, delivered with no audio track), adding `--url` only for a public
 page that loads as it is. Every scene starts blocked, a few flat pieces moving on its cues, so `studio render <p> --animatic`
-and `studio review <p>` show the storyboard as it plays before anything is built. If the video is about a product repo's code, give it a host
+and `studio review open <p>` show the storyboard as it plays before anything is built. If the video is about a product repo's code, give it a host
 (step 1). Then write the chosen angle out scene by scene in `work/projects/<p>/storyboard.md`, under the audience,
 source and takeaway:
 
@@ -110,7 +110,7 @@ placeholder that stands for it.
 
 Each binding declares its **rung**, `blocking` or `final`: `blockingScene` sets its own, and a built scene says
 `rung: 'final'` in its `sceneForTimelineClock`. The rung goes into the render's snapshot, so
-`studio review` shows it on each scene of the scrubber, on each storyboard card and in each note. Raise a scene by
+the review page shows it on each scene of the timeline, on the board and in each note. Raise a scene by
 changing its binding; `timeline.ts` doesn't change.
 
 **Cut to music** (the high-energy register):
@@ -127,12 +127,14 @@ changing its binding; `timeline.ts` doesn't change.
    recording accepts it").
 3. Block each bar in its file, with the beat sheet's text as its `note`: its pieces moving as the idea does, each
    idea's arrival on its cue, so it lands on the beat.
-4. Run `studio render <p> --animatic`, then `studio review <p>`. The animatic plays with the music; the scrubber marks
-   the cuts, beats and every cue, replay and landmark; the storyboard under it has a card per scene with a still on
-   each, captioned where `timeline.ts` puts it (`beat 3 +4f`).
-5. Send the user the review page. Their notes name each scene's rung and the cue or beat they're on, in `timeline.ts`'s
+4. Run `studio render <p> --animatic`, then `studio review open <p>`. The animatic plays with the music; the timeline
+   marks the cuts, beats and every cue, replay and landmark; the board (`B`) has a row per scene with stills on its
+   cues, captioned where `timeline.ts` puts it (`beat 3 +4f`).
+5. Send the user the review page and work their notes through the review loop (`video-motion`, "The review loop"),
+   `studio review watch <p>` running in the background. Their notes name each scene's rung and the cue or beat they're on, in `timeline.ts`'s
    words. A pacing note changes `timeline.ts` and, where the length changes, the music's `--bars`; render the
-   animatic again (the page offers the new render, and moves each note to its moment on it) until they sign off. Only then build the bars, and polish nothing before it.
+   animatic again (the page loads the new render and places each note at its moment on it), reply `--addressed`, and
+   repeat until they sign off. Only then build the bars, and polish nothing before it.
 
 **Voiced**, the animatic is `video.tsx`, rough:
 
@@ -144,10 +146,11 @@ changing its binding; `timeline.ts` doesn't change.
    most one highlight per scene, over the captures, declared `rung: 'blocking'`; a scene with no capture yet is a
    `blockingScene`. Anchor the highlight to its word (`s.line(id).word(…)`) now, so it lands again once
    the real voice replaces the estimate. No cursor paths, blur or polish yet.
-4. Run `studio render <p> --animatic`, then `studio review <p>`, and look at its storyboard yourself: a card per scene
-   with a still per line. It's ready to send when every scene's event and each of its listed reads shows in its
+4. Run `studio render <p> --animatic`, then `studio review open <p>`, and look at its board yourself (`studio look`
+   strips show the same frames): a row per scene with a still per line. It's ready to send when every scene's event and each of its listed reads shows in its
    stills, and nothing is off the frame or under the caption.
-5. Send the user the review page. Their notes go into the table, the lines and the animatic, and the animatic is
+5. Send the user the review page and work their notes through the review loop (`video-motion`, "The review loop").
+   Their notes go into the table, the lines and the animatic, and the animatic is
    rendered again, until they sign off.
 
 Once signed off, voice it for real with `studio voice <p>`, which reads the whole script as one take. It needs

@@ -1,5 +1,5 @@
-// review-target.ts: what `studio review <target>` opens in the studio app: a project, which lands on its newest file,
-// or one file inside a project, by the route the app shows it at.
+// review-target.ts: what `studio review open <target>` opens in the studio app: a project, which lands on its project page
+// (a list of its files, decisions and script), or one file inside a project, by the route the app shows it at.
 import { existsSync, realpathSync, statSync } from 'node:fs';
 import { relative, resolve, sep } from 'node:path';
 import { resolveStudioProject, STUDIO_PROJECTS_DIR } from '#lib/platform/project/engine/studio-project.ts';

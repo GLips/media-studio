@@ -1,22 +1,16 @@
 import { createServerFn } from '@tanstack/react-start';
 import { Schema } from 'effect';
-import { readReviewArtifact, readReviewArtifactStatus, saveReviewNotes } from '#web/infrastructure/studio-engine.server.ts';
-import { ReviewArtifactRef, ReviewNoteSchema } from './review-note-schema.ts';
+import { readReviewArtifact, readReviewStatus } from '#web/infrastructure/studio-engine.server.ts';
+import { ReviewArtifactRef, ReviewArtifactVersionRef } from './review-op-schema.ts';
 
 export const fetchReviewArtifact = createServerFn({ method: 'GET' })
-  .validator(Schema.toStandardSchemaV1(ReviewArtifactRef))
-  .handler(({ data }) => readReviewArtifact(data.project, data.path));
+  .validator(Schema.toStandardSchemaV1(ReviewArtifactVersionRef))
+  .handler(({ data }) => readReviewArtifact(data.project, data.path, data.render));
 
-/** The file as it is on disk now, polled apart from the loaded review so a replaced render raises a banner, not a swap. */
-export const fetchReviewArtifactStatus = createServerFn({ method: 'GET' })
+/**
+ * Polled apart from the loaded review: the review's revision, the file as it is on disk now (a replaced render shows
+ * as a new hash, not a swap), the agent's presence and a render under way.
+ */
+export const fetchReviewStatus = createServerFn({ method: 'GET' })
   .validator(Schema.toStandardSchemaV1(ReviewArtifactRef))
-  .handler(({ data }) => readReviewArtifactStatus(data.project, data.path));
-
-/** Every change saves the file's notes whole. */
-export const submitReviewNotes = createServerFn({ method: 'POST' })
-  .validator(Schema.toStandardSchemaV1(Schema.Struct({
-    ...ReviewArtifactRef.fields,
-    notes: Schema.Array(ReviewNoteSchema),
-    fps: Schema.optionalKey(Schema.Number),
-  })))
-  .handler(({ data }) => saveReviewNotes(data.project, data.path, { notes: [...data.notes], ...(data.fps !== undefined && { fps: data.fps }) }));
+  .handler(({ data }) => readReviewStatus(data.project, data.path));

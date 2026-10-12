@@ -16,7 +16,7 @@ import { measureAudibleLoudness } from '#lib/platform/ffmpeg/engine/loudness.ts'
 import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { postOpenRouter } from '#lib/platform/paid-generation/engine/openrouter.ts';
 import type { RenderVoice } from '../models/render-voice.ts';
-import { cutTakeIntoLines, type TakeClip } from '../models/voice-take.ts';
+import { cutTakeIntoLines, type TakeClip, type VoiceTakeFile } from '../models/voice-take.ts';
 import { alignSpokenWords, captionMarkup, estimateSpokenWords, spokenText, ttsText, type SpokenWord } from '../models/voice-words.ts';
 import { samplesFromWav, wavFromPcm, wavFromSamples } from '#lib/platform/wav/models/wav.ts';
 import { heardWords } from './whisper-words.ts';
@@ -35,8 +35,6 @@ const SAY_PARAGRAPH = ' [[slnc 600]] ';
 const sayText = (text: string) => text.replace(/<short pause>/g, ' [[slnc 300]] ').replace(/<long pause>/g, ' [[slnc 800]] ').replace(/<[^>]*>/g, ' ');
 
 type Script = { voice: string; lines: { id: string; text: string; paragraph?: boolean }[] };
-/** audio/take.json: where take.wav came from, and what whisper heard in it and its clips, keyed by each WAV's hash. */
-type TakeInfo = { source: 'tts' | 'draft' | 'recording'; hash?: string; heard?: Record<string, SpokenWord[]> };
 /** A manifest.json entry. `src` is relative to the project, and it, `lufs` and `pauseBefore` are null for an estimate. */
 type Voiced = {
   src: string | null; duration: number; text: string; caption: string; paragraph: boolean; words: SpokenWord[]; lufs: number | null; pauseBefore: number | null;
@@ -62,7 +60,8 @@ export async function voiceStudioProject(project: string, { mode, recording }: {
   const draftHash = hashFor('say', DRAFT_VOICE, sayText(readText(SAY_PARAGRAPH)));
   const lines: ScriptLine[] = script.lines.map((line) => ({ id: line.id, text: spokenText(line.text), caption: captionMarkup(line.text), paragraph: line.paragraph ?? false }));
 
-  let info: TakeInfo | null = existsSync(infoPath) && existsSync(takePath) ? JSON.parse(readFileSync(infoPath, 'utf8')) : null;
+  // SAFETY: take.json is written only by this function, from a VoiceTakeFile.
+  let info: VoiceTakeFile | null = existsSync(infoPath) && existsSync(takePath) ? JSON.parse(readFileSync(infoPath, 'utf8')) as VoiceTakeFile : null;
   // take.json is saved as soon as the take is, and after each transcription, so a failure later never costs a re-read
   // or leaves it describing other audio.
   const saveInfo = () => writeFileSync(infoPath, JSON.stringify(info, null, 2));
@@ -147,7 +146,8 @@ export function renderVoiceOf(project: string): RenderVoice {
   if (!existsSync(manifestPath) || !existsSync(infoPath)) return null;
   const manifest: Record<string, Voiced> = JSON.parse(readFileSync(manifestPath, 'utf8'));
   if (!Object.values(manifest).some((line) => line.src !== null)) return null;
-  const info: TakeInfo = JSON.parse(readFileSync(infoPath, 'utf8'));
+  // SAFETY: take.json is written only by voiceStudioProject, from a VoiceTakeFile.
+  const info = JSON.parse(readFileSync(infoPath, 'utf8')) as VoiceTakeFile;
   return info.source === 'draft' ? 'draft' : 'final';
 }
 

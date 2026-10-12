@@ -63,7 +63,9 @@ blockout's.
   Seedance, 5–15 on HeyGen). A longer scene has to be split.
 
 Done when `studio look` strips show the move landing on its cues, and the user has approved the blockout in
-`studio preview`.
+`studio preview` or on its animatic in `studio review open <p>`, its notes worked through the review loop
+(`video-motion`, "The review loop"). Once footage is generated, its notes come the same way; when the user should
+choose between takes or models, put each in `out/decisions/<topic>/` and post them with `studio review decide`.
 
 ## 2. Write the prompt
 

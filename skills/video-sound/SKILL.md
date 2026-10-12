@@ -26,5 +26,6 @@ A note like "the music drowns the voice" is a mix note, not a music note. Read `
 You can't listen to the result, so the user's ears are the check. `studio mix <p>` renders just the mastered
 soundtrack to `out/mix.wav`, much faster than a full render. Hand the user that path (or `studio preview <p>`) and say
 what to listen for: the first word after a duck, an effect on a reveal, a cut on a downbeat. For notes on
-particular sounds, `studio review <p>` shows each one as a marker under the scrubber, and a note aimed at a marker
-names that sound. `docs/directing.md` §8 covers the craft side of sound in brief.
+particular sounds, `studio review open <p>` shows each one in the timeline's sound lane, and a note aimed at one names
+that sound; work the notes through the review loop (`video-motion`, "The review loop"). To let the user choose
+between beds or mixes, render each to `out/decisions/<topic>/` and post them with `studio review decide`. `docs/directing.md` §8 covers the craft side of sound in brief.

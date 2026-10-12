@@ -204,8 +204,9 @@ pass to `out/stills/<design>-<preset>-<variant>.png`. A full run also clears sti
 - **An empty band of an image at an edge**, where the crop shows page with nothing on it: tighten `focus`.
 
 `--preset` and `--variant` narrow a run. Then show Graham the sheet or the picked stills with
-`studio review <file>`. His notes on a sheet name the variant under each one. Give him the file paths and say which
-variant you'd pick and why.
+`studio review open <file>`, and work his notes through the review loop (`video-motion`, "The review loop"): his
+notes on a sheet name the variant under each one. Say which variant you'd pick and why, or, when it's his call, post
+the stills as a decision (`studio review decide`) and let him pick.
 
 Before calling it done, have a fresh-context subagent read the finished stills at feed size and at full size, given
 only the brief, and ask it what the still says and what it would cut.

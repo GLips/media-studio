@@ -19,3 +19,10 @@ export function Textarea({ onEnter, onEscape, ...props }: TextareaProps & { read
     />
   );
 }
+
+/** Puts the cursor in a note field after what's written, so a restored draft is typed on from its end, not its start. */
+export function focusNoteFieldAtEnd(field: HTMLTextAreaElement | null | undefined) {
+  if (!field) return;
+  field.focus();
+  field.setSelectionRange(field.value.length, field.value.length);
+}

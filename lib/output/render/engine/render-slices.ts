@@ -14,7 +14,7 @@ import type { TimelineClockTable } from '#lib/timing/timeline/models/timeline.ts
 import { renderVoiceOf } from '#lib/timing/voice/engine/voice-project.ts';
 import { renderProgress } from './render-pipeline.ts';
 import { concatList, DELIVERY_ENCODING, encodeLosslessList, muxDeliveredSound, type RenderSession } from './render-session.ts';
-import { loadRenderSnapshot, writeRenderSnapshot } from './render-snapshot.ts';
+import { loadRenderSnapshot, writeRenderSnapshot, type RenderSource } from './render-snapshot.ts';
 import type { RenderLedger } from './render-ledger.ts';
 
 /** What names a slice's lossless frames, beside its video: what --join reads. */
@@ -93,10 +93,10 @@ export function readRenderSlices(dir: string): (RenderSlice & { file: string })[
 /**
  * Joins the slices' lossless frames in `dir` (each `<name>.lossless.mkv`) at `out`, encoded once as a delivered video
  * is, under the mastered mix `mixFor` makes now, so sounds play across the joins (joinedRenderSlices says what's
- * refused). A silent project's has no mix.
+ * refused). A silent project's has no mix. `source` is the commits the slices were drawn from, read now when unsaid.
  */
-export async function joinVideoSlices(ledger: Pick<RenderLedger, 'project' | 'clock' | 'silent' | 'trace'>, { dir, out, mixFor }: {
-  dir: string; out: string; mixFor: (timeline: TimelineReport) => Promise<string>;
+export async function joinVideoSlices(ledger: Pick<RenderLedger, 'project' | 'clock' | 'silent' | 'trace'>, { dir, out, mixFor, source }: {
+  dir: string; out: string; mixFor: (timeline: TimelineReport) => Promise<string>; source?: RenderSource;
 }): Promise<string> {
   const { ordered, timeline, gpu } = joinedRenderSlices(readRenderSlices(dir), { dir, clock: ledger.clock });
   const mix = ledger.silent ? undefined : await mixFor(timeline);
@@ -110,6 +110,6 @@ export async function joinVideoSlices(ledger: Pick<RenderLedger, 'project' | 'cl
   });
   const counted = countVideoFrames(out);
   if (counted !== timeline.durationInFrames) throw new Error(`${out} holds ${counted} frames, not the video's ${timeline.durationInFrames}`);
-  writeRenderSnapshot(out, { frames: { from: 0, end: timeline.durationInFrames }, timeline, clock: ledger.clock, voice: renderVoiceOf(ledger.project), gpu });
+  writeRenderSnapshot(out, { frames: { from: 0, end: timeline.durationInFrames }, timeline, clock: ledger.clock, voice: renderVoiceOf(ledger.project), gpu, source });
   return out;
 }

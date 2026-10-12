@@ -40,7 +40,7 @@ export type ReviewMoment = { scene: string; bar?: number; rung?: SceneRung; cue?
 );
 
 /** Where a moment lands on a render, in composition frames, or why it doesn't. */
-export type ReviewMomentPlacement = { frame: number } | { gone: string };
+export type ReviewMomentPlacement = { frame: number } | { unplaced: string };
 
 /** What the timing is built from: the snapshot's timeline report and, on a timed project, its clock. */
 export type ReviewTimingSources = {
@@ -95,20 +95,27 @@ export function placeReviewMoment(moment: ReviewMoment, timing: ReviewTiming): R
   const cue = moment.cue && timing.cues[moment.cue.name];
   if (cue !== undefined && moment.cue) return { frame: cue + moment.cue.frames };
   const scene = timing.scenes.find((s) => s.id === moment.scene);
-  if (!scene) return { gone: `scene ${moment.scene} isn't in this render` };
+  if (!scene) return { unplaced: `scene ${moment.scene} isn't in this render` };
   if (moment.kind === 'beat') {
     const at = scene.beats[moment.beat];
-    return at === undefined ? { gone: `${sceneName(moment.scene, scene.bar)} has beats 0–${scene.beats.length - 1} now, not beat ${moment.beat}` } : { frame: at + moment.frames };
+    return at === undefined ? { unplaced: `${sceneName(moment.scene, scene.bar)} has beats 0–${scene.beats.length - 1} now, not beat ${moment.beat}` } : { frame: at + moment.frames };
   }
   if (moment.kind === 'word') {
     const line = timing.lines.find((l) => l.id === moment.line);
-    if (!line) return { gone: `line ${moment.line} isn't spoken in this render` };
-    // A re-read line can gain or lose words before this one: the same word nearest its old place.
-    const same = line.words.map((w, i) => ({ ...w, i })).filter((w) => w.text === moment.text).toSorted((a, b) => Math.abs(a.i - moment.word) - Math.abs(b.i - moment.word))[0];
-    return same ? { frame: same.from + moment.frames } : { gone: `line ${moment.line} no longer says "${moment.text}"` };
+    if (!line) return { unplaced: `line ${moment.line} isn't spoken in this render` };
+    const same = placeReviewWord(line.words, moment);
+    return same === undefined ? { unplaced: `line ${moment.line} no longer says "${moment.text}"` } : { frame: line.words[same].from + moment.frames };
   }
   const frame = scene.from + moment.frames;
-  return frame < scene.to ? { frame } : { gone: `${sceneName(moment.scene, scene.bar)} is ${scene.to - scene.from} frames now, and this was ${moment.frames} in` };
+  return frame < scene.to ? { frame } : { unplaced: `${sceneName(moment.scene, scene.bar)} is ${scene.to - scene.from} frames now, and this was ${moment.frames} in` };
+}
+
+/**
+ * Where a word is in a line read again, which can gain or lose words before it: the index of the same word nearest
+ * its old one, or none when the line no longer says it.
+ */
+export function placeReviewWord(words: readonly { text: string }[], { word, text }: { word: number; text: string }): number | undefined {
+  return words.map((w, i) => ({ text: w.text, i })).filter((w) => w.text === text).toSorted((a, b) => Math.abs(a.i - word) - Math.abs(b.i - word))[0]?.i;
 }
 
 const sceneName = (id: string, bar: number | null | undefined) => (bar ? `bar ${bar} (${id})` : `scene ${id}`);

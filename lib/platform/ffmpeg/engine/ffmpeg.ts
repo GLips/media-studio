@@ -76,6 +76,12 @@ export function probeMediaSeconds(file: string): number {
   return Number(runFfprobe(['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file], { encoding: 'utf8' }).trim());
 }
 
+/** A picture's or video's frame in pixels, from its first video stream. */
+export function probeFrameSize(file: string): { w: number; h: number } {
+  const [w, h] = runFfprobe(['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', file], { encoding: 'utf8' }).trim().split(',').map(Number);
+  return { w, h };
+}
+
 /** How many frames a video file's first video stream holds, counted packet by packet rather than taken from its header. */
 export function countVideoFrames(file: string): number {
   return Number(runFfprobe(['-v', 'error', '-select_streams', 'v:0', '-count_packets', '-show_entries', 'stream=nb_read_packets', '-of', 'default=nw=1:nk=1', file], { encoding: 'utf8' }).trim());

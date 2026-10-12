@@ -12,9 +12,12 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiStudioRouteImport } from './routes/api.studio'
 import { Route as MediaProjectRouteImport } from './routes/media.$project'
+import { Route as ReviewPeaksProjectRouteImport } from './routes/review-peaks.$project'
 import { Route as ReviewStillsProjectRouteImport } from './routes/review-stills.$project'
 import { Route as ProjectsProjectIndexRouteImport } from './routes/projects.$project.index'
+import { Route as ProjectsProjectScriptRouteImport } from './routes/projects.$project.script'
 import { Route as ProjectsProjectArtifactsSplatRouteImport } from './routes/projects.$project.artifacts.$'
+import { Route as ProjectsProjectDecisionsTopicRouteImport } from './routes/projects.$project.decisions.$topic'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -31,6 +34,11 @@ const MediaProjectRoute = MediaProjectRouteImport.update({
   path: '/media/$project',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ReviewPeaksProjectRoute = ReviewPeaksProjectRouteImport.update({
+  id: '/review-peaks/$project',
+  path: '/review-peaks/$project',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ReviewStillsProjectRoute = ReviewStillsProjectRouteImport.update({
   id: '/review-stills/$project',
   path: '/review-stills/$project',
@@ -41,10 +49,21 @@ const ProjectsProjectIndexRoute = ProjectsProjectIndexRouteImport.update({
   path: '/projects/$project/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProjectsProjectScriptRoute = ProjectsProjectScriptRouteImport.update({
+  id: '/projects/$project/script',
+  path: '/projects/$project/script',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProjectsProjectArtifactsSplatRoute =
   ProjectsProjectArtifactsSplatRouteImport.update({
     id: '/projects/$project/artifacts/$',
     path: '/projects/$project/artifacts/$',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ProjectsProjectDecisionsTopicRoute =
+  ProjectsProjectDecisionsTopicRouteImport.update({
+    id: '/projects/$project/decisions/$topic',
+    path: '/projects/$project/decisions/$topic',
     getParentRoute: () => rootRouteImport,
   } as any)
 
@@ -52,26 +71,35 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/studio': typeof ApiStudioRoute
   '/media/$project': typeof MediaProjectRoute
+  '/review-peaks/$project': typeof ReviewPeaksProjectRoute
   '/review-stills/$project': typeof ReviewStillsProjectRoute
+  '/projects/$project/script': typeof ProjectsProjectScriptRoute
   '/projects/$project/': typeof ProjectsProjectIndexRoute
   '/projects/$project/artifacts/$': typeof ProjectsProjectArtifactsSplatRoute
+  '/projects/$project/decisions/$topic': typeof ProjectsProjectDecisionsTopicRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/studio': typeof ApiStudioRoute
   '/media/$project': typeof MediaProjectRoute
+  '/review-peaks/$project': typeof ReviewPeaksProjectRoute
   '/review-stills/$project': typeof ReviewStillsProjectRoute
+  '/projects/$project/script': typeof ProjectsProjectScriptRoute
   '/projects/$project': typeof ProjectsProjectIndexRoute
   '/projects/$project/artifacts/$': typeof ProjectsProjectArtifactsSplatRoute
+  '/projects/$project/decisions/$topic': typeof ProjectsProjectDecisionsTopicRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/studio': typeof ApiStudioRoute
   '/media/$project': typeof MediaProjectRoute
+  '/review-peaks/$project': typeof ReviewPeaksProjectRoute
   '/review-stills/$project': typeof ReviewStillsProjectRoute
+  '/projects/$project/script': typeof ProjectsProjectScriptRoute
   '/projects/$project/': typeof ProjectsProjectIndexRoute
   '/projects/$project/artifacts/$': typeof ProjectsProjectArtifactsSplatRoute
+  '/projects/$project/decisions/$topic': typeof ProjectsProjectDecisionsTopicRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -79,34 +107,46 @@ export interface FileRouteTypes {
     | '/'
     | '/api/studio'
     | '/media/$project'
+    | '/review-peaks/$project'
     | '/review-stills/$project'
+    | '/projects/$project/script'
     | '/projects/$project/'
     | '/projects/$project/artifacts/$'
+    | '/projects/$project/decisions/$topic'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/api/studio'
     | '/media/$project'
+    | '/review-peaks/$project'
     | '/review-stills/$project'
+    | '/projects/$project/script'
     | '/projects/$project'
     | '/projects/$project/artifacts/$'
+    | '/projects/$project/decisions/$topic'
   id:
     | '__root__'
     | '/'
     | '/api/studio'
     | '/media/$project'
+    | '/review-peaks/$project'
     | '/review-stills/$project'
+    | '/projects/$project/script'
     | '/projects/$project/'
     | '/projects/$project/artifacts/$'
+    | '/projects/$project/decisions/$topic'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiStudioRoute: typeof ApiStudioRoute
   MediaProjectRoute: typeof MediaProjectRoute
+  ReviewPeaksProjectRoute: typeof ReviewPeaksProjectRoute
   ReviewStillsProjectRoute: typeof ReviewStillsProjectRoute
+  ProjectsProjectScriptRoute: typeof ProjectsProjectScriptRoute
   ProjectsProjectIndexRoute: typeof ProjectsProjectIndexRoute
   ProjectsProjectArtifactsSplatRoute: typeof ProjectsProjectArtifactsSplatRoute
+  ProjectsProjectDecisionsTopicRoute: typeof ProjectsProjectDecisionsTopicRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -132,6 +172,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MediaProjectRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/review-peaks/$project': {
+      id: '/review-peaks/$project'
+      path: '/review-peaks/$project'
+      fullPath: '/review-peaks/$project'
+      preLoaderRoute: typeof ReviewPeaksProjectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/review-stills/$project': {
       id: '/review-stills/$project'
       path: '/review-stills/$project'
@@ -146,11 +193,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/projects/$project/script': {
+      id: '/projects/$project/script'
+      path: '/projects/$project/script'
+      fullPath: '/projects/$project/script'
+      preLoaderRoute: typeof ProjectsProjectScriptRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/projects/$project/artifacts/$': {
       id: '/projects/$project/artifacts/$'
       path: '/projects/$project/artifacts/$'
       fullPath: '/projects/$project/artifacts/$'
       preLoaderRoute: typeof ProjectsProjectArtifactsSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/projects/$project/decisions/$topic': {
+      id: '/projects/$project/decisions/$topic'
+      path: '/projects/$project/decisions/$topic'
+      fullPath: '/projects/$project/decisions/$topic'
+      preLoaderRoute: typeof ProjectsProjectDecisionsTopicRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -160,9 +221,12 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiStudioRoute: ApiStudioRoute,
   MediaProjectRoute: MediaProjectRoute,
+  ReviewPeaksProjectRoute: ReviewPeaksProjectRoute,
   ReviewStillsProjectRoute: ReviewStillsProjectRoute,
+  ProjectsProjectScriptRoute: ProjectsProjectScriptRoute,
   ProjectsProjectIndexRoute: ProjectsProjectIndexRoute,
   ProjectsProjectArtifactsSplatRoute: ProjectsProjectArtifactsSplatRoute,
+  ProjectsProjectDecisionsTopicRoute: ProjectsProjectDecisionsTopicRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

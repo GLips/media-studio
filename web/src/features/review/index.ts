@@ -1,3 +1,18 @@
 export { ReviewScreen } from './ui/review-screen.tsx';
+export { ReviewThreadPanel } from './ui/review-thread-panel.tsx';
+export { ReviewScreenThread } from './ui/review-screen-thread.tsx';
+export { ReviewThreadScopeProvider, type ReviewThreadScope } from './ui/review-thread-scope.tsx';
+export { ReviewDock, type ReviewLaneId } from './ui/review-dock.tsx';
 export { reviewArtifactQueryOptions } from './controllers/review-queries.ts';
+export { reviewStillsFolderOpening } from './ui/review-still-siblings.ts';
+export { reviewSearchValidator, type ReviewSearch } from './controllers/review-search.ts';
 export { respondWithReviewStill } from './controllers/review-still-response.ts';
+export { respondWithReviewPeaks } from './controllers/review-peaks-response.ts';
+export { ReviewScreenProvider, useReviewScreen, useReviewStatus, type ReviewScreenValue } from './ui/review-screen-context.tsx';
+export { REVIEW_FRAME_VAR, useReviewPlaybackClock, useReviewPlaybackState, type ReviewPlayback } from './ui/review-playback-store.ts';
+export { useReviewDraft } from './ui/use-review-draft.ts';
+export { applyReviewOpsAsReviewer, reviewFileOpsTarget, reviewOpsMutationKey, useReviewOps, type ReviewOps, type ReviewOpsTarget } from './controllers/use-review-ops.ts';
+export { useReviewThreads } from './ui/use-review-threads.ts';
+export { drawReviewPeaks, reviewPeaksQueryOptions } from './ui/review-peaks-canvas.ts';
+export type { SetReviewSearch } from './controllers/review-search.ts';
+export type { DecodedReviewOp } from './controllers/review-op-schema.ts';

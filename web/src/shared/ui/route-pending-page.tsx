@@ -1,10 +1,20 @@
-import { Loader, Stack } from '@mantine/core';
+import { Stack } from '@mantine/core';
+import * as stylex from '@stylexjs/stylex';
+import { SkeletonTile } from './skeleton-tile.tsx';
+import { StudioShell } from './studio-shell.tsx';
+import { spacing } from './theme.stylex.ts';
 
-/** The router's default while a route loads. */
+const styles = stylex.create({
+  body: { padding: spacing.inset, height: '100%' },
+});
+
+/** The router's default while a route loads: the shell, and a frame-shaped skeleton where the screen will be. */
 export function RoutePendingPage() {
   return (
-    <Stack p="pageMargin" align="flex-start">
-      <Loader size="sm" />
-    </Stack>
+    <StudioShell>
+      <Stack gap="gap" {...stylex.props(styles.body)}>
+        <SkeletonTile aspect={16 / 9} />
+      </Stack>
+    </StudioShell>
   );
 }

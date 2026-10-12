@@ -11,7 +11,10 @@ export const STILL_PRESETS = {
 } as const;
 export type StillPreset = keyof typeof STILL_PRESETS;
 
-/** A part of a preset's frame the platform draws its own UI over, in frame px. */
+/**
+ * A part of a preset's frame the platform draws its own UI over, in frame px. `name` is short and lower-case, as the
+ * review's guide chips label it beside the feed crops; the still check reads it after "under the".
+ */
 export type StillUiZone = { name: string; rect: { x: number; y: number; w: number; h: number } };
 
 /**
@@ -21,12 +24,12 @@ export type StillUiZone = { name: string; rect: { x: number; y: number; w: numbe
  */
 export const STILL_UI_ZONES: Readonly<Record<StillPreset, readonly StillUiZone[]>> = {
   og: [],
-  youtube: [{ name: "YouTube's duration badge", rect: { x: 1024, y: 612, w: 256, h: 108 } }],
+  youtube: [{ name: 'youtube badge', rect: { x: 1024, y: 612, w: 256, h: 108 } }],
   square: [],
   portrait: [],
   story: [
-    { name: "Instagram's top bar (progress, name, close)", rect: { x: 0, y: 0, w: 1080, h: 250 } },
-    { name: "Instagram's reply bar", rect: { x: 0, y: 1580, w: 1080, h: 340 } },
+    { name: 'instagram top bar', rect: { x: 0, y: 0, w: 1080, h: 250 } },
+    { name: 'instagram reply bar', rect: { x: 0, y: 1580, w: 1080, h: 340 } },
   ],
 };
 

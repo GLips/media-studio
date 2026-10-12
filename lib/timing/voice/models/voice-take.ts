@@ -22,6 +22,9 @@ const QUIET_CEILING = 1500;
 // Every clip holds at least this much speech, so two cuts can't share one pause.
 const MIN_SPEECH_FRAMES = 8;
 
+/** audio/take.json: where take.wav came from, and what whisper heard in it and its clips, keyed by each WAV's hash. */
+export type VoiceTakeFile = { source: 'tts' | 'draft' | 'recording'; hash?: string; heard?: Record<string, SpokenWord[]> };
+
 export type TakeLine = { id: string; text: string };
 export type TakeClip = {
   id: string;

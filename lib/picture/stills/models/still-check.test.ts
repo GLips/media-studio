@@ -49,7 +49,7 @@ test("a story's text under Instagram's bars, cut-off text and an overflowing box
     ],
     images: [],
   }, ground, STILL_UI_ZONES.story), [
-    ['ui-zone', 'text "painfulpleasures.com" is under Instagram\'s reply bar (y 1580 px–1920 px)'],
+    ['ui-zone', 'text "painfulpleasures.com" is under the instagram reply bar (y 1580 px–1920 px)'],
     ['clipped', 'text "off the edge" is cut off (120 px of it lost past its panel or the frame)'],
     ['clipped', 'text "too long for its box" overflows its box'],
   ]);

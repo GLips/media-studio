@@ -2,37 +2,48 @@ import * as stylex from '@stylexjs/stylex';
 
 /**
  * The token source: the only module allowed a raw visual value, everything else names a token. The studio's look: a
- * near-black ground, cream type, red-orange and cobalt, Archivo for display and JetBrains Mono for readouts. `.stylex.ts` is a StyleX compiler requirement: the file may
- * export nothing but `defineVars`.
+ * near-black ground, cream type, colour only where it means a note's state. `.stylex.ts` is a StyleX compiler
+ * requirement: the file may export nothing but `defineVars`.
  */
 
 export const colors = stylex.defineVars({
-  /** The page under every screen. */
+  /** The page under every screen, and the playhead's halo. */
   ground: '#0c0c0e',
-  /** A surface lifted off the ground: panels, cards, the composer. */
+  /** A surface lifted off the ground: panels, the thread, the dock. */
   panel: '#16161a',
-  /** The line between two surfaces, and a track's rail. */
+  /** One step above panel on hover: the "you can click this" signal. Decoration never takes it. */
+  raised: '#202026',
+  /** The line between two surfaces, and a cut through the lanes. */
   line: '#2a2a31',
-  /** Type on the ground. */
+  /** Type, the playhead, the focus ring and the current row's rule. */
   cream: '#f3f0e7',
-  /** Secondary type: readouts, hints, captions. */
+  /** Secondary type, a resolved note, an absent agent. */
   dim: '#8d8a83',
-  /** The studio's accent: the playhead, a note, the primary action. */
+  /** An open or reopened note, and the one primary action on a screen. */
   accent: '#ee4c23',
-  /** The second accent: what's being written, a draft note's pin and range. */
+  /** The draft: its pin, range and strokes, the composer's edge, the read-along word. */
   cobalt: '#4144f4',
-  /** A check that passes, and the scene rung that's final. */
+  /** An addressed note (verify it) and a picked candidate. */
   pass: '#3ccf7a',
-  /** The scene rung that's still blocking. */
-  blocking: '#6f8ff0',
-  /** A named cue on the timing strip. */
-  cue: '#d7b33a',
-  /** A replay on the timing strip. */
-  replay: '#4fb3c8',
-  /** The dark ground under a frame: letterboxing, a still loading. */
-  screen: '#000000',
-  /** A warning that isn't a failure: a replaced render, a stale note, a draft voice. */
+  /** Waiting on you: an agent's question, an open decision, an unsigned script. */
   caution: '#f2b134',
+  /** A failure only: a save or a render that failed. */
+  danger: '#ff4d6d',
+  /** Alternating scene bands in the dock. */
+  laneA: '#1a1a1f',
+  laneB: '#222228',
+  /** The blocking rung's 45° stripes. */
+  hatch: '#33333b',
+  /** Structure: cue, landmark and replay glyphs, the waveform, sfx ticks. */
+  mark: '#6b6962',
+  /** The I/O band and a loop's span, across every lane. */
+  rangeWash: 'rgba(243,240,231,0.08)',
+  /** A reply landing on a row. */
+  flash: 'rgba(65,68,244,0.25)',
+  /** A tile whose picture isn't cut yet. */
+  skeleton: '#18181c',
+  /** The dark ground under a frame: letterboxing. */
+  screen: '#000000',
   /** The light squares of a transparent render's checkerboard. */
   checkerLight: '#ffffff',
   /** Its dark squares. */
@@ -50,31 +61,39 @@ export const fonts = stylex.defineVars({
 });
 
 export const typography = stylex.defineVars({
-  /** A tag inside a readout: a storyboard moment's kind. */
-  micro: '0.625rem',
-  /** A HUD readout: frame numbers, hashes, labels. */
-  readout: '0.75rem',
-  body: '0.875rem',
-  lede: '1.1875rem',
-  section: '1.25rem',
-  title: '2.75rem',
-  brand: '3.5rem',
+  /** Mono readouts: timecode, frame numbers, hashes, key caps. */
+  readout: '11px',
+  /** The chrome: bars, menus, chips, tooltips. */
+  chrome: '12px',
+  /** Note bodies and anything read as prose. */
+  body: '13px',
+  /** A script line on the read-along. */
+  script: '19px',
+  /** Project names on the dashboard, and nowhere else. */
+  display: '16px',
+  /** One line height for every size, so rows line up across panels. */
+  lineHeight: '16px',
 });
 
 export const spacing = stylex.defineVars({
   hairline: '2px',
-  tight: '0.375rem',
-  gap: '0.75rem',
-  inset: '1rem',
-  sectionGap: '1.75rem',
-  pageMargin: '2.5rem',
-  /** The widest the app's column gets. */
-  pageMaxWidth: '1320px',
-  /** The review screen's notes column. */
-  sideWidth: '380px',
+  /** The three steps every gap and inset is drawn from. */
+  tight: '4px',
+  gap: '8px',
+  inset: '12px',
+  /** A list row, and a dense one. */
+  row: '24px',
+  rowDense: '20px',
+  /** The shell's bar and the transport row. */
+  bar: '28px',
+  /** The dock's glyph column. */
+  laneGutter: '20px',
+  /** The thread beside the stage. */
+  sideWidth: '360px',
 });
 
 export const radius = stylex.defineVars({
-  surface: '10px',
+  /** Buttons, chips, tiles and menus. */
+  control: '3px',
   pill: '999px',
 });

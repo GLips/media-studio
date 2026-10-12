@@ -6,3 +6,5 @@ scratch/
 # (lib/platform/project/engine/studio-workspace.ts).
 /work/
 harness/fixtures/stamp-paint/candidates/
+# TanStack Start leaves build temp files here.
+.tanstack/

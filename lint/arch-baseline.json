@@ -80,9 +80,6 @@
     "lib/timing/music/engine/music-track.ts": {
       "export type MusicFitShape = { seconds: number } | { bars: readonly number[]; tailSeconds?: number };": 1
     },
-    "lib/timing/voice/engine/voice-project.ts": {
-      "type TakeInfo = { source: 'tts' | 'draft' | 'recording'; hash?: string; heard?: Record<string, SpokenWord[]> };": 1
-    },
     "lint/oxlint/lib/parameter-shapes.ts": {
       "export function parameterObjectPattern(": 1
     },
@@ -153,9 +150,6 @@
     },
     "lib/output/render/engine/studio-bundle.ts": {
       "const kept = JSON.parse(readFileSync(current, 'utf8')) as KeptBundle;": 1
-    },
-    "lib/output/review/engine/review-artifact.ts": {
-      "const readJson = <T,>(file: string): T | undefined => (existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) as T : undefined);": 1
     },
     "lib/output/sfx-cues/engine/cue-module.ts": {
       "const list = JSON.parse(readFileSync(path, 'utf8')) as SfxCueList;": 1
@@ -673,10 +667,6 @@
       "const where = moment.kind === 'beat' ? `${moment.bar ? `bar ${moment.bar}` : moment.scene}${rung} · beat ${moment.beat}${past(moment.frames)}`": 1,
       "const cue = moment.cue && `${moment.cue.name}${moment.cue.frames > 0 ? ` +${moment.cue.frames}f` : moment.cue.frames < 0 ? ` ${moment.cue.frames}f` : ''}`;": 1
     },
-    "lib/output/review/models/review-notes.ts": {
-      "return note.render === undefined ? 'unrecorded' : note.render === render.hash ? 'this' : 'other';": 1,
-      "const when = note.frame === undefined ? ''": 1
-    },
     "lib/output/sound-check/engine/sound-check.ts": {
       "const row = (cells: string[]) => cells.map((c, i) => (i === 0 ? c.padEnd(widths[0]) : i < widths.length ? c.padStart(widths[i]) : c)).join('  ').trimEnd();": 1,
       "lines.push(!empty.length ? `Empty beats (${where}): none`": 1
@@ -864,9 +854,6 @@
   "eslint(no-unused-vars)": {
     "lib/output/picture-checks/models/framing-check.ts": {
       "return spans.map(({ last: _, ...s }) => s);": 1
-    },
-    "lib/output/review/models/review-notes.ts": {
-      "const first = note.frame, last = note.end ?? note.frame, { fps } = sources;": 1
     },
     "lib/picture/kit/studio/kit.tsx": {
       "import { clamp, lerp, motionCurves, motionDurations, seg, stagger, staggerFinish } from '#lib/picture/motion/models/motion.ts';": 1
@@ -1173,10 +1160,7 @@
       "...(snapshot?.timeline.sounds ?? []).map((s) => ({ ...s, source: 'video' as const })),": 1,
       "].filter((s) => holds(s.at)).map((s) => ({ ...s, at: s.at - shift, frame: reviewFrameAt(s.at - shift, fps) })).toSorted((a, b) => a.at - b.at);": 1
     },
-    "lib/output/review/models/review-moment.ts": {
-      "const same = line.words.map((w, i) => ({ ...w, i })).filter((w) => w.text === moment.text).toSorted((a, b) => Math.abs(a.i - moment.word) - Math.abs(b.i - moment.word))[0];": 1
-    },
-    "lib/output/review/models/review-notes.ts": {
+    "lib/output/review/models/review-context.ts": {
       ".map((s) => ({ id: s.id, sound: s.sound, frame: s.frame, ...(s.id === note.cue && { targeted: true as const }) }));": 1
     },
     "lib/output/review/models/review-storyboard.ts": {
@@ -1583,7 +1567,7 @@
       "const probe = JSON.parse(runFfprobe(['-v', 'error', '-show_entries', 'format=duration:stream=codec_type', '-of', 'json', video]).toString());": 2,
       "const hasAudio = probe.streams.some((s: { codec_type: string }) => s.codec_type === 'audio');": 1
     },
-    "lib/output/review/models/review-notes.test.ts": {
+    "lib/output/review/models/review-context.test.ts": {
       "return { start: 60, end: 90, phase: 'solo', parent: null, attribution: 'scene', screen: { x: of(x), y: of(y), w: of(w), h: of(h), opacity: of(1) }, local: null, values: {} };": 5
     },
     "lib/output/sound-check/engine/sound-check.ts": {
@@ -1623,9 +1607,7 @@
     },
     "lib/timing/voice/engine/voice-project.ts": {
       "const script: Script = JSON.parse(readFileSync(join(project, 'voiceover.json'), 'utf8'));": 1,
-      "let info: TakeInfo | null = existsSync(infoPath) && existsSync(takePath) ? JSON.parse(readFileSync(infoPath, 'utf8')) : null;": 1,
-      "const manifest: Record<string, Voiced> = JSON.parse(readFileSync(manifestPath, 'utf8'));": 1,
-      "const info: TakeInfo = JSON.parse(readFileSync(infoPath, 'utf8'));": 1
+      "const manifest: Record<string, Voiced> = JSON.parse(readFileSync(manifestPath, 'utf8'));": 1
     }
   },
   "typescript(no-unsafe-call)": {
@@ -1697,7 +1679,7 @@
     "lib/output/render/engine/render-session.ts": {
       "return JSON.parse(content);": 1
     },
-    "lib/output/review/models/review-notes.test.ts": {
+    "lib/output/review/models/review-context.test.ts": {
       "const n = 31, of = (v: number) => Array(n).fill(v);": 1
     },
     "lib/paint/brush-packs/engine/import-photoshop-pack.test.ts": {
@@ -1794,10 +1776,7 @@
     "lib/output/review/engine/still-sheet.test.ts": {
       "const look = (headline: number, crop: number) => new Uint8Array(16).fill(headline + crop);": 1
     },
-    "lib/output/review/models/review-moment.test.ts": {
-      "const lineTiming = (words: string[]) => reviewTimingOf({": 1
-    },
-    "lib/output/review/models/review-notes.test.ts": {
+    "lib/output/review/models/review-context.test.ts": {
       "const rect = (x: number) => ({ x, y: 0.1, w: 0.4, h: 0.8 });": 1
     },
     "lib/output/sfx-cues/models/cues.ts": {

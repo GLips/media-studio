@@ -80,7 +80,7 @@ Every paid request is cached by its inputs in the project's `generated/`, so ask
 ```sh
 studio new hello --capability=silent
 studio render hello --animatic
-studio review hello
+studio review open hello
 ```
 
 The review opens the animatic in their browser: the studio works. Then hand over to `video-kickoff` for their first

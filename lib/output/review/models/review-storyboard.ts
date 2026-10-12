@@ -1,5 +1,5 @@
-// review-storyboard.ts: the storyboard `studio review` shows beside a render, and the timing marks on its scrubber,
-// both read from the render's snapshot, so a card shows what was rendered at the rung each scene was on.
+// review-storyboard.ts: the storyboard behind the review screen's Board (`B`), and the timing marks on its dock, both
+// read from the render's snapshot, so a card shows what was rendered at the rung each scene was on.
 //
 // A card per scene with its note, its rung and its stills. A timed video gets a still on each frame the timeline names
 // in a scene, captioned in timeline.ts's words, and one per voiced line from the middle of its words; a scene naming
@@ -82,4 +82,31 @@ export function reviewTimingMarksOf({ frames, clock }: Pick<ReviewStoryboardSour
     moments: clock.bars.flatMap((bar) => bar.moments.filter((m) => m.kind !== 'line' && held(m.frame))
       .map((m) => ({ ...m, frame: m.frame - frames.from, scene: bar.id }))),
   };
+}
+
+/** A row of the Board: a scene's card, or, for a render without a snapshot, one unnamed row across the whole file. */
+export type ReviewBoardRow = Pick<ReviewStoryboardCard, 'from' | 'to' | 'stills'> & { scene?: Omit<ReviewStoryboardCard, 'from' | 'to' | 'stills'> };
+
+/**
+ * What the Board lays out: its rows, and the width over height every tile is drawn at, the render's own. Null aspect
+ * means no snapshot gave the frame's size: the screen learns it from the first still that loads.
+ */
+export type ReviewBoardLayout = { aspect: number | null; rows: ReviewBoardRow[] };
+
+/** How many stills the one row of a render without a snapshot gets, spread evenly across it. */
+const REVIEW_BOARD_UNTIMED_STILLS = 12;
+
+/**
+ * The Board for a render: a row per storyboard card, tiles at the frame's aspect. Without a storyboard (no snapshot)
+ * there are no scenes to row by, so it's one row of stills from the middles of equal slices of the file.
+ */
+export function reviewBoardOf({ storyboard, frameSize, durationInFrames }: {
+  storyboard?: readonly ReviewStoryboardCard[]; frameSize: { w: number; h: number } | null; durationInFrames: number;
+}): ReviewBoardLayout {
+  const aspect = frameSize ? frameSize.w / frameSize.h : null;
+  if (storyboard?.length) return { aspect, rows: storyboard.map(({ from, to, stills, ...scene }) => ({ from, to, stills, scene })) };
+  if (durationInFrames <= 0) return { aspect, rows: [] };
+  const slices = Math.min(REVIEW_BOARD_UNTIMED_STILLS, durationInFrames);
+  const frames = [...new Set(Array.from({ length: slices }, (_, i) => Math.floor((i + 0.5) * durationInFrames / slices)))];
+  return { aspect, rows: [{ from: 0, to: durationInFrames, stills: frames.map((frame) => ({ frame, moments: [] })) }] };
 }

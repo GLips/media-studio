@@ -7,10 +7,11 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { RenderedStill } from '#lib/output/render/engine/render-stills.ts';
-import { formatStillAxes, type ReviewStillCellsFile } from '#lib/output/review/models/review-notes.ts';
+import { formatStillAxes, type ReviewStillCellsFile } from '#lib/output/review/models/review-context.ts';
 import { STILL_FEED_SIZES, STILL_PRESETS, STILL_UI_ZONES, type StillPreset } from '#lib/picture/stills/models/still-presets.ts';
 import { runFfmpegAsync } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { rasterizeHtmlPages } from '#lib/platform/raster/engine/html-raster.ts';
+import { runInReviewCutQueue } from './review-cut-queue.ts';
 
 /** Each still is shown within this box, above its feed row. */
 const SHEET_STILL_BOX = { w: 480, h: 600 };
@@ -99,9 +100,9 @@ const escapeHtml = (text: string) => text.replace(/[&<>"]/g, (c) => ({ '&': '&am
 export async function renderStillSheets(stills: readonly RenderedStill[], { outDir, workDir, project }: { outDir: string; workDir: string; project: string }): Promise<string[]> {
   const sheets = layoutStillSheets(stills);
   const lookAlike = stillAxesThatLookAlike(stills);
-  // The feed sizes scaled as a platform serves them, lanczos, not by the browser drawing the sheet.
-  await Promise.all(stills.flatMap((s) => STILL_FEED_SIZES[s.still.preset].map((f) =>
-    runFfmpegAsync(['-y', '-loglevel', 'error', '-i', s.drawn!, '-vf', `scale=${f.w}:${f.h}:flags=lanczos`, feedFile(workDir, s, f)]))));
+  // The feed sizes scaled as a platform serves them, lanczos, not by the browser drawing the sheet; two at a time.
+  await Promise.all(stills.flatMap((s) => STILL_FEED_SIZES[s.still.preset].map((f) => runInReviewCutQueue(() =>
+    runFfmpegAsync(['-y', '-loglevel', 'error', '-i', s.drawn!, '-vf', `scale=${f.w}:${f.h}:flags=lanczos`, feedFile(workDir, s, f)])))));
 
   mkdirSync(outDir, { recursive: true });
   const pages = sheets.map((sheet) => {

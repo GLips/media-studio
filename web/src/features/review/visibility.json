@@ -1,0 +1,4 @@
+{
+  "web/src/features/script": "The script page is a review of the voice take: it mounts the review's dock and thread on its own screen value (the take as a picture-less video), so it reads the review's playback clock, draft, ops and threads.",
+  "web/src/features/decisions": "A decision's candidates each have a review thread: the decisions page mounts the review's thread panel on its own thread scope, its notes sent as review ops and its draft kept as the review keeps one."
+}

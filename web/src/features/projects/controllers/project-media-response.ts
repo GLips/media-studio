@@ -1,11 +1,11 @@
 import { createServerOnlyFn } from '@tanstack/react-start';
 import { fileResponse } from '#web/infrastructure/media-response.server.ts';
-import { projectMediaTypeOf, ProjectMediaNotFound, renderFileStamp, resolveProjectMedia, STUDIO_ROOT } from '#web/infrastructure/studio-engine.server.ts';
+import { listReviewRenderVersions, projectMediaTypeOf, ProjectMediaNotFound, renderFileStamp, resolveProjectMedia, STUDIO_ROOT } from '#web/infrastructure/studio-engine.server.ts';
 
 /**
  * A project's media file, `?path=<path in the project>`: in the query, since Vite's dev server keeps a URL ending in a
- * media extension for itself. With `?render=<hash>` it serves those bytes or nothing: once the file is replaced a
- * review's buffered frames stay the old render's, never a splice of two.
+ * media extension for itself. `?render=<hash>` pins those bytes, from out/.history/ once the file is replaced, so a
+ * review never splices two renders; a 410 once no copy is kept.
  */
 export const respondWithProjectMedia = createServerOnlyFn((request: Request, project: string): Response => {
   const query = new URL(request.url).searchParams;
@@ -16,8 +16,12 @@ export const respondWithProjectMedia = createServerOnlyFn((request: Request, pro
     if (error instanceof ProjectMediaNotFound) return new Response(error.message, { status: 404 });
     throw error;
   }
-  const pinned = query.get('render');
-  if (pinned && renderFileStamp(file).hash !== pinned) return new Response('replaced on disk since the page loaded it', { status: 410 });
+  const pinned = query.get('render'), path = query.get('path') ?? '';
+  if (pinned && renderFileStamp(file).hash !== pinned) {
+    const kept = listReviewRenderVersions(project, path).find((v) => v.hash === pinned);
+    if (!kept) return new Response(`render ${pinned} of ${path} is no longer kept`, { status: 410 });
+    file = resolveProjectMedia(project, kept.file);
+  }
   return fileResponse(request, file, projectMediaTypeOf(file).type);
 });
 

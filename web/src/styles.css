@@ -5,6 +5,18 @@
  */
 @import "@mantine/core/styles.layer.css";
 
+/*
+ * The studio's focus ring on every Mantine control that draws none of its own: 1px cream, 1px off. Its own layer,
+ * after Mantine's, so it beats Mantine's 2px primary ring and still loses to a component's own StyleX outline.
+ * `--mantine-color-text` is the cream token (mantine-theme.ts): the one way this stylesheet can name it.
+ */
+@layer studio {
+  .mantine-focus-auto:focus-visible {
+    outline: 1px solid var(--mantine-color-text);
+    outline-offset: 1px;
+  }
+}
+
 /* The studio's own faces (lib/picture/type/studio), the ones its renders set, so the app reads in the showcase's type. */
 @font-face {
   font-family: "Archivo";

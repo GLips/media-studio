@@ -112,9 +112,9 @@ kit.tsx's `Odometer`; a bar the pieces don't cover is built directly, or as a ne
 fresh-eyes critique a cut gets before it's done.
 
 **Pacing is signed off before polish.** The first cut is an animatic: each bar blocked (`blockingScene`, below) on its
-cues, on the fitted music, rendered with `studio render <p> --animatic` and sent as the `studio review <p>` page
+cues, on the fitted music, rendered with `studio render <p> --animatic` and sent as the `studio review open <p>` page
 (`video-kickoff`, step 4). Building a bar replaces that binding with its own `sceneForTimelineClock`, declaring
-`rung: 'final'`; studio review shows each scene's rung on its scrubber, its storyboard and its notes. Build and polish
+`rung: 'final'`; the review page shows each scene's rung in its timeline, its board and its notes. Build and polish
 bars only once the user has approved the pacing: a bar polished before then gets re-timed when the notes say it's too
 fast.
 
@@ -130,7 +130,7 @@ scene is
 `(clock) => blockingScene(clock, { note, pieces, view })`: `FlatPiece`s (`box`, `type` set at its box's height,
 `image` a crossed slot), each named and tinted, resting at a `pose` in frame pixels and moved by `keys` on the frames
 of the scene's own clock, `{ at: clock.cues.land, to: { y: 380 }, over: 9 }`, a `view` pushing or panning over them.
-It declares `rung: 'blocking'`, so the animatic and `studio review` show it as blocking; every scene `studio new`
+It declares `rung: 'blocking'`, so the animatic and the review page show it as blocking; every scene `studio new`
 writes starts as one. A few pieces moving on cues, a view pushing in:
 
 ```tsx
@@ -178,16 +178,34 @@ Every question below has one command. A tool or brief points here, never at a sc
 | Where a tracked element goes on the render, and how it eases | `studio look <p> --graph=a:b` (below) |
 | A change in motion, quickly | `studio render <p> --frames=a:b`: a silent slice, the bundle kept between runs |
 | The whole cut again from its slices | `studio render <p> --join=<folder>` |
-| What a render was made from | `<render>.snapshot.json` beside it, which `studio review` and `look --video` read |
-| What the user sees in it | `studio review <p \| render.mp4 \| still.png>` |
+| What a render was made from | `<render>.snapshot.json` beside it, which the review and `look --video` read |
+| What the user sees in it | `studio review open <p \| render.mp4 \| still.png>` |
+| What the user said about it | `studio review notes <p>`, or `studio review watch <p>` in the background (the loop below) |
 
 `studio check` rewrites `out/check/` every run, so it's for what the code does now. A render's timeline is in its own
-snapshot. `studio review` has the user pin notes on a render (or a still) and copy them back as markdown; each names
-its moment (bar, rung and beat in timeline.ts's counting, a named cue near it, or line and word), then its scene, the sounds within 3 frames and the
-tagged elements under the point, from the render's snapshot. After a retime, a note from the earlier render moves to
-its moment's frame on the new one and says where it came from, or says its moment is gone. Reply by the moment, not
-the frame. They're saved to `review/notes-<render>.json`, so read that file instead of asking for a paste. Offer it when motion feel
-needs the user's eyes: the same page approves every rung, the animatic (`studio render <p> --animatic`) through the cut.
+snapshot.
+
+### The review loop
+
+The user reviews in the studio app; you work the other half from the CLI. Every skill that hands work to the user for
+notes (`video-kickoff`, `stills`, `video-sound`, `video-gen`) uses this loop:
+
+1. `studio review open <p>` (or a render or still in it) opens the page for the user. Offer it whenever motion feel
+   needs their eyes: the same page approves every rung, the animatic (`studio render <p> --animatic`) through the cut.
+2. Run `studio review watch <p>` in the background. It blocks until the user adds or changes notes, then prints them,
+   placed on the newest render: each with its moment (bar, rung and beat in timeline.ts's counting, a cue near it, or
+   line and word), its scene's source file, the sounds and tagged elements under it, the frame the user saw
+   (`review/frames/<id>.jpg`, Read it), and a ready `studio look` line. Act on what it prints, then run it again; its
+   cursor means you never miss or repeat a note. `studio review notes <p>` lists the open ones at any time.
+3. Fix a note, render, then `studio review reply <p> <id> "what changed" --addressed --commit HEAD --render out/video.mp4`.
+   Reply by the moment, not the frame. Notes are kept per project and carried to each new render by their moment.
+4. When a note is unclear, `reply <p> <id> "…" --question`; to raise something nobody noted, `studio review ask <p>
+   "…" [--at f120:140 | --line <id> | --still <path>]`. The user's answer wakes `watch`.
+5. Never resolve: only the user resolves or reopens, once they've seen the fix. `keep` notes are standing constraints,
+   listed with every hand-off; hold to them.
+6. When the user should choose between options (two cuts, three music beds, stills, voices), render the candidates to
+   `out/decisions/<topic>/` and post them: `studio review decide <p> <topic> --question "…" --candidate <file>=<label> …`.
+   `watch` prints their pick when they sign off; `studio review decisions <p>` lists them.
 
 To judge timing, read a `--strip` like a viewer: at each tile, where are they looking, and do they understand it
 yet? Time each read from the tiles' timestamps (a default strip's tiles are 0.1 s apart, three video frames each). A

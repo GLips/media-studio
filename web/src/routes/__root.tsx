@@ -1,8 +1,12 @@
 import { ColorSchemeScript, MantineProvider, mantineHtmlProps } from '@mantine/core';
 import type { QueryClient } from '@tanstack/react-query';
+import { HotkeysProvider } from '@tanstack/react-hotkeys';
 import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
+import { studioQuickOpenEntries } from '#web/features/projects/index.ts';
 import { mantineTheme, themeVariables } from '#web/shared/ui/mantine-theme.ts';
+import { QuickOpenEntriesProvider } from '#web/shared/ui/quick-open-entries.tsx';
+import { StudioOverlaysProvider } from '#web/shared/ui/studio-overlays.tsx';
 import appCss from '../styles.css?url';
 
 type RootRouteContext = { queryClient: QueryClient };
@@ -41,7 +45,12 @@ function RootDocument({ children }: { children: ReactNode }) {
       </head>
       <body>
         <MantineProvider theme={mantineTheme} cssVariablesResolver={themeVariables} forceColorScheme="dark">
-          {children}
+          {/* A key bound twice on one target throws, so a collision between two screens' groups shows in dev. */}
+          <HotkeysProvider defaultOptions={{ hotkey: { conflictBehavior: 'error' } }}>
+            <QuickOpenEntriesProvider source={studioQuickOpenEntries}>
+              <StudioOverlaysProvider>{children}</StudioOverlaysProvider>
+            </QuickOpenEntriesProvider>
+          </HotkeysProvider>
         </MantineProvider>
         <Scripts />
       </body>
