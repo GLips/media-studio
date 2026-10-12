@@ -1,8 +1,10 @@
-// review-playback-store.ts: the review's clock, outside React. While playing, a rAF loop writes the frame to the
-// `--review-frame` CSS variable on the screen's root, which the playhead and every lane read; React hears only settled
-// changes (a pause, a seek, a loop or rate change), so playing re-renders nothing.
+// review-playback-store.ts: the review's clock, outside React, on a linked media clock whose leader is the stage's
+// media. Each tick writes the frame to the `--review-frame` CSS variable on the screen's root, which the playhead and
+// every lane read; React hears only settled changes (a pause, a seek, a loop or rate change), so playing re-renders
+// nothing. Anything that must move with each played frame hears `onTick`; a compared render or a slice is a follower.
 import { useEffect, useEffectEvent, useState, useSyncExternalStore } from 'react';
-import { reviewFrameAt } from '#lib/output/review/models/review-context.ts';
+import { linkedMediaFrameAt, linkedMediaTimeOf } from '#lib/platform/web/models/linked-media-window.ts';
+import { createLinkedMediaClock, type LinkedMediaClock } from '#web/shared/ui/linked-media-clock.ts';
 import { playMedia } from '#web/shared/ui/play-media.ts';
 
 /** The CSS custom property the playing frame is written to, a bare number of frames on the render's clock. */
@@ -57,16 +59,13 @@ export type ReviewPlayback = {
   /** The frame on screen this instant, playing or not. */
   frameNow: () => number;
   dispose: () => void;
-};
+} & Pick<LinkedMediaClock, 'addFollower' | 'onTick'>;
 
 /**
  * `durationInFrames` null is learnt from the media once it loads; `durationGuess` (the script's last word) stands in
  * until then, so the dock has a length before the audio does.
  */
 type ReviewPlaybackOptions = { fps: number; durationInFrames: number | null; durationGuess?: number; startFrame: number };
-
-// Seeks land mid-frame, (f + 0.5) / fps, so the decoder can't settle on the neighbour; reviewFrameAt's epsilon keeps
-// a time at a frame's start on that frame.
 
 export function createReviewPlayback({ fps, durationInFrames, durationGuess, startFrame }: ReviewPlaybackOptions): ReviewPlayback {
   let media: HTMLMediaElement | null = null;
@@ -75,8 +74,6 @@ export function createReviewPlayback({ fps, durationInFrames, durationGuess, sta
     frame: startFrame, playing: false, rate: 0, loop: null, loopRate: 1, muted: false, volume: 1, durationInFrames: durationInFrames ?? durationGuess ?? 1,
   };
   const listeners = new Set<() => void>();
-  let raf = 0;
-  let lastTick = 0;
 
   const publish = (patch: Partial<ReviewPlaybackState>) => {
     state = { ...state, ...patch };
@@ -85,37 +82,31 @@ export function createReviewPlayback({ fps, durationInFrames, durationGuess, sta
   const clamp = (frame: number) => Math.max(0, Math.min(state.durationInFrames - 1, Math.round(frame)));
   const writeFrame = (frame: number) => root?.style.setProperty(REVIEW_FRAME_VAR, String(frame));
   // Before its metadata a media element's time is 0, not where the clock is.
-  const frameNow = () => (media && media.readyState >= HTMLMediaElement.HAVE_METADATA ? clamp(reviewFrameAt(media.currentTime, fps)) : state.frame);
+  const frameNow = () => (media && media.readyState >= HTMLMediaElement.HAVE_METADATA ? clamp(linkedMediaFrameAt(media.currentTime, fps)) : state.frame);
   const setMediaFrame = (frame: number) => {
-    if (media) media.currentTime = (frame + 0.5) / fps;
+    if (media) media.currentTime = linkedMediaTimeOf(frame, fps);
   };
 
   // Reverse play is stepped here: a media element can't play backwards.
-  const tick = (now: number) => {
-    if (!media) return;
-    const elapsed = lastTick ? (now - lastTick) / 1000 : 0;
-    lastTick = now;
+  const steer = (elapsed: number) => {
+    if (!media) return halt();
     if (state.rate < 0) media.currentTime = Math.max(0, media.currentTime + elapsed * state.rate);
     const frame = frameNow();
     if (state.loop && (frame > state.loop.to || frame < state.loop.from)) setMediaFrame(state.loop.from);
-    writeFrame(frame);
-    if (state.rate < 0 && media.currentTime <= 0) return halt();
-    raf = requestAnimationFrame(tick);
+    if (state.rate < 0 && media.currentTime <= 0) halt();
   };
-  const startTicking = () => {
-    cancelAnimationFrame(raf);
-    lastTick = 0;
-    raf = requestAnimationFrame(tick);
-  };
+  const clock = createLinkedMediaClock({ frameNow, steer });
+  clock.onTick(writeFrame);
+
   const halt = () => {
-    cancelAnimationFrame(raf);
+    clock.stop();
     media?.pause();
     const frame = frameNow();
     // A paused element shows the last frame it presented, which trails its currentTime by a frame or so: seeking to
     // the frame the readout names makes the picture that frame.
     if (media && media.readyState >= HTMLMediaElement.HAVE_METADATA) setMediaFrame(frame);
-    writeFrame(frame);
     publish({ playing: false, rate: 0, frame });
+    clock.sync();
   };
 
   const run = (rate: number) => {
@@ -127,19 +118,21 @@ export function createReviewPlayback({ fps, durationInFrames, durationGuess, sta
       media.pause();
     }
     publish({ playing: true, rate });
-    startTicking();
+    clock.start();
   };
 
   const seek = (frame: number) => {
     const clamped = clamp(frame);
     setMediaFrame(clamped);
-    writeFrame(clamped);
+    // Published first: before the media's metadata, the frame the clock reads is the settled one.
     publish({ frame: clamped });
+    clock.sync();
   };
 
   return {
     attachMedia(element) {
       media = element;
+      clock.attachLeader(element);
       if (!element) return undefined;
       element.muted = state.muted;
       element.volume = state.volume;
@@ -160,6 +153,7 @@ export function createReviewPlayback({ fps, durationInFrames, durationGuess, sta
         element.removeEventListener('seeked', onSeeked);
         if (state.playing) halt();
         media = null;
+        clock.attachLeader(null);
       };
     },
     attachRoot(element) {
@@ -204,8 +198,10 @@ export function createReviewPlayback({ fps, durationInFrames, durationGuess, sta
     },
     getState: () => state,
     frameNow,
+    addFollower: clock.addFollower,
+    onTick: clock.onTick,
     dispose() {
-      cancelAnimationFrame(raf);
+      clock.dispose();
       listeners.clear();
     },
   };

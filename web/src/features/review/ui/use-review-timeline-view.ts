@@ -1,13 +1,14 @@
 // use-review-timeline-view.ts: the dock's zoom and scroll, kept per clock rather than in the dock, so the transport's
 // stage-edge playhead reads the same view the lanes are drawn in.
+import { useHotkeys } from '@tanstack/react-hotkeys';
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import {
   reviewTimelineFit, reviewTimelineRelengthed, reviewTimelineResized, reviewTimelineScrolledBy, reviewTimelineShowing,
   reviewTimelineXOf, reviewTimelineZoomedAt, type ReviewTimelineView,
 } from '#lib/output/review/models/review-timeline-geometry.ts';
+import { useLinkedMediaTick } from '#web/shared/ui/linked-media-clock.ts';
 import { useReviewDockHover, type ReviewDockHover } from './review-hover-preview.tsx';
 import { useReviewPlaybackState, type ReviewPlayback } from './review-playback-store.ts';
-import { useReviewTimelineHotkeys } from './use-review-timeline-hotkeys.ts';
 
 type ReviewTimelineViewStore = {
   get: () => ReviewTimelineView;
@@ -48,6 +49,8 @@ export function useReviewTimelineView(playback: ReviewPlayback): ReviewTimelineV
 
 /** How much a Mod+wheel's pixel of travel zooms, as a power: a trackpad pinch and a mouse notch both feel even. */
 const REVIEW_TIMELINE_WHEEL_ZOOM = 0.004;
+/** How far one press of `=` or `-` zooms. */
+const REVIEW_TIMELINE_ZOOM_STEP = 2;
 
 export type ReviewTimelineViewport = {
   view: ReviewTimelineView;
@@ -98,14 +101,9 @@ export function useReviewTimelineViewport(playback: ReviewPlayback): ReviewTimel
     };
   }, [lanes, store]);
 
-  useEffect(() => {
-    if (!playing) return undefined;
-    let raf = requestAnimationFrame(function follow() {
-      if (store.get().zoom > 1) store.set((v) => reviewTimelineShowing(v, playback.frameNow()));
-      raf = requestAnimationFrame(follow);
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [playing, playback, store]);
+  useLinkedMediaTick(playback, (frame) => {
+    if (store.get().zoom > 1) store.set((v) => reviewTimelineShowing(v, frame));
+  }, playing);
 
   // At the playhead when it's in view, else at the middle.
   const zoomBy = useCallback((factor: number) => store.set((v) => {
@@ -114,7 +112,11 @@ export function useReviewTimelineViewport(playback: ReviewPlayback): ReviewTimel
     return reviewTimelineZoomedAt(v, v.zoom * factor, at);
   }), [playback, store]);
   const fit = useCallback(() => store.set((v) => reviewTimelineFit(v.durationInFrames, v.width)), [store]);
-  useReviewTimelineHotkeys({ zoomBy, fit });
+  useHotkeys([
+    { hotkey: '=', callback: () => zoomBy(REVIEW_TIMELINE_ZOOM_STEP), options: { meta: { group: 'timeline', name: 'Zoom in' } } },
+    { hotkey: '-', callback: () => zoomBy(1 / REVIEW_TIMELINE_ZOOM_STEP), options: { meta: { group: 'timeline', name: 'Zoom out' } } },
+    { hotkey: '0', callback: fit, options: { meta: { group: 'timeline', name: 'Fit timeline' } } },
+  ]);
   const hover = useReviewDockHover(lanes);
 
   return { view, attachLanes, lanes, setView: store.set, hover };

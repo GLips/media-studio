@@ -1,8 +1,9 @@
 import { Box, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import type { ReviewArtifact } from '#lib/output/review/models/review-artifact.ts';
 import { formatReviewClock, REVIEW_READOUT_CHAR_PX, reviewTimelineFramePx, reviewTimelineSpan, reviewTimelineXOf, type ReviewTimelineView } from '#lib/output/review/models/review-timeline-geometry.ts';
+import { useLinkedMediaTick } from '#web/shared/ui/linked-media-clock.ts';
 import { colors, fonts, radius, spacing, typography } from '#web/shared/ui/theme.stylex.ts';
 import { REVIEW_FRAME_VAR, useReviewPlaybackState, type ReviewLoopRange } from './review-playback-store.ts';
 import { useReviewFrame, useReviewScreen } from './review-screen-context.tsx';
@@ -70,14 +71,9 @@ export function ReviewLanePlayhead({ view, sketch }: ReviewLanePlayheadProps) {
   const playing = useReviewPlaybackState(playback, (s) => s.playing);
   const loop = useReviewPlaybackState(playback, (s) => s.loop);
   const number = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (!playing) return undefined;
-    let raf = requestAnimationFrame(function write() {
-      if (number.current) number.current.textContent = reviewPlayheadFlagOf(artifact, playback.frameNow(), timing.fps);
-      raf = requestAnimationFrame(write);
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [playing, playback, artifact, timing.fps]);
+  useLinkedMediaTick(playback, (now) => {
+    if (number.current) number.current.textContent = reviewPlayheadFlagOf(artifact, now, timing.fps);
+  }, playing);
   const marked = search.in !== undefined || search.out !== undefined
     ? spanStyle(view, search.in ?? 0, (search.out ?? timing.durationInFrames - 1) + 1)
     : null;

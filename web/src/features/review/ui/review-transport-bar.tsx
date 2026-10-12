@@ -1,10 +1,11 @@
 import { Box, Group } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { Grid3x3, LayoutGrid, Pause, Pencil, Play, Repeat, Scan, Volume2, VolumeX } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { nextReviewGuideSet } from '#lib/output/review/models/review-guides.ts';
 import { formatReviewClock } from '#lib/output/review/models/review-timeline-geometry.ts';
 import { IconButton } from '#web/shared/ui/icon-button.tsx';
+import { useLinkedMediaTick } from '#web/shared/ui/linked-media-clock.ts';
 import { Readout } from '#web/shared/ui/readout.tsx';
 import { colors, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { ReviewCompareMenu } from './review-compare-menu.tsx';
@@ -40,20 +41,14 @@ function reviewShownRate({ playing, rate, loop, loopRate }: ReviewPlaybackState)
   return shown === 1 ? null : shown;
 }
 
-/** The time and frame readouts' nodes, written each animation frame while playing, as the playhead is. */
+/** The time and frame readouts' nodes, written on each tick of the clock while playing, as the playhead is. */
 function useReviewPlayingReadouts(playback: ReviewPlayback, playing: boolean, fps: number) {
   const time = useRef<HTMLSpanElement>(null);
   const frameNumber = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (!playing) return undefined;
-    let raf = requestAnimationFrame(function write() {
-      const now = playback.frameNow();
-      if (time.current) time.current.textContent = formatReviewClock(now / fps);
-      if (frameNumber.current) frameNumber.current.textContent = `f${now}`;
-      raf = requestAnimationFrame(write);
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [playing, playback, fps]);
+  useLinkedMediaTick(playback, (now) => {
+    if (time.current) time.current.textContent = formatReviewClock(now / fps);
+    if (frameNumber.current) frameNumber.current.textContent = `f${now}`;
+  }, playing);
   return { time, frameNumber };
 }
 

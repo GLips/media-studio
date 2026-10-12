@@ -1,19 +1,17 @@
 import { Box } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useEffectEvent, useRef, useState, type MouseEvent, type PointerEvent, type RefObject } from 'react';
+import { useState, type MouseEvent, type PointerEvent } from 'react';
 import { placeReviewMoment, reviewMomentAt, type ReviewTiming } from '#lib/output/review/models/review-moment.ts';
 import { reviewMediaUrl } from '#web/shared/media-urls.ts';
+import { useLinkedMediaFollower } from '#web/shared/ui/linked-media-clock.ts';
 import { Readout } from '#web/shared/ui/readout.tsx';
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { reviewArtifactQueryOptions } from '../controllers/review-queries.ts';
-import type { ReviewPlayback } from './review-playback-store.ts';
 import { useReviewScreen } from './review-screen-context.tsx';
 import { reviewIsProofed, reviewProofGroundStyles, useReviewProofGround } from './use-review-proof-ground.ts';
 import type { ReviewComparedVersion } from './use-review-compare-target.ts';
 
-/** How far, in frames, the other render may drift while both play before it's seeked back into step. */
-const REVIEW_COMPARE_DRIFT_FRAMES = 3;
 const REVIEW_WIPE_MIDDLE = 0.5;
 
 const styles = stylex.create({
@@ -53,41 +51,6 @@ function reviewComparedFrameOf(frame: number, shown: ReviewTiming | undefined, o
   return 'frame' in placed ? placed.frame - other.startsAt : frame;
 }
 
-/** Keeps `video` on the frame `frameOf` maps the playhead to: seeked when settled, played alongside while playing. */
-function useReviewCompareSync(video: RefObject<HTMLVideoElement | null>, playback: ReviewPlayback, frameOf: (frame: number) => number, fps: number) {
-  const targetOf = useEffectEvent((frame: number) => (frameOf(frame) + 0.5) / fps);
-  const driftOf = useEffectEvent((frames: number) => frames / fps);
-  useEffect(() => {
-    const element = video.current;
-    if (!element) return undefined;
-    let raf = 0;
-    const sync = () => {
-      const { playing, rate, loop, loopRate } = playback.getState();
-      const target = targetOf(playback.frameNow());
-      const forward = playing && rate > 0;
-      if (forward) {
-        element.playbackRate = loop ? rate * loopRate : rate;
-        // A play cut short by the next pause rejects; the pause is what was wanted.
-        if (element.paused) element.play().catch(() => undefined);
-      } else if (!element.paused) element.pause();
-      if (Math.abs(element.currentTime - target) > driftOf(forward ? REVIEW_COMPARE_DRIFT_FRAMES : 0.5)) element.currentTime = target;
-      if (playing) raf = requestAnimationFrame(sync);
-    };
-    const resync = () => {
-      cancelAnimationFrame(raf);
-      sync();
-    };
-    const unsubscribe = playback.subscribe(resync);
-    element.addEventListener('loadedmetadata', resync);
-    resync();
-    return () => {
-      unsubscribe();
-      cancelAnimationFrame(raf);
-      element.removeEventListener('loadedmetadata', resync);
-    };
-  }, [video, playback]);
-}
-
 type ReviewCompareViewProps = {
   readonly version: ReviewComparedVersion;
   /** `flip` sits over the frame, seen while `\` is held; `wipe` shows its left part; `side` fills its own pane. */
@@ -98,13 +61,14 @@ type ReviewCompareViewProps = {
 };
 
 /**
- * The version compared against, kept in step with the playhead by moment. Muted: the open render is the one heard.
+ * The version compared against, a follower of the review's clock over the whole render, kept in step by moment.
+ * Muted: the open render is the one heard.
  * A wipe's hairline drags across the frame, `r13 | r14` at its foot.
  */
 export function ReviewCompareView({ version, layer, held, labels }: ReviewCompareViewProps) {
   const { project, artifact, playback, timing, search, setSearch } = useReviewScreen();
   const { data: other } = useQuery(reviewArtifactQueryOptions(project, version.file));
-  const video = useRef<HTMLVideoElement>(null);
+  const [video, attachVideo] = useState<HTMLVideoElement | null>(null);
   const [proofGround] = useReviewProofGround();
   // Its own ground, not the frame box's: flipped or wiped over the open render, a transparent render's clear areas
   // would otherwise show that render through. Until it loads, a version of the same path is judged by the open one.
@@ -112,7 +76,7 @@ export function ReviewCompareView({ version, layer, held, labels }: ReviewCompar
   const [wipe, setWipe] = useState(search.w ?? REVIEW_WIPE_MIDDLE);
   const last = other?.durationInFrames ?? Infinity;
   const frameOf = (frame: number) => Math.max(0, Math.min(last - 1, reviewComparedFrameOf(frame, artifact.timing, other?.timing)));
-  useReviewCompareSync(video, playback, frameOf, other?.fps ?? timing.fps);
+  useLinkedMediaFollower(playback, video, { fps: other?.fps ?? timing.fps, span: null, frameOf });
 
   const dragWipe = (e: PointerEvent<HTMLElement>) => {
     const box = e.currentTarget.parentElement?.getBoundingClientRect();
@@ -135,7 +99,7 @@ export function ReviewCompareView({ version, layer, held, labels }: ReviewCompar
   const shown = layer !== 'flip' || held;
   return (
     <Box {...stylex.props(styles.layer)}>
-      <Box component="video" ref={video} src={reviewMediaUrl({ project, path: version.file, render: { hash: version.hash } })}
+      <Box component="video" ref={attachVideo} src={reviewMediaUrl({ project, path: version.file, render: { hash: version.hash } })}
         muted playsInline preload="auto" {...stylex.props(styles.media, ground, !shown && styles.hidden, layer === 'wipe' && !held && styles.wiped(wipe))} />
       {layer === 'wipe' && !held && (
         <Box {...grabWipe} {...stylex.props(styles.gripArea, styles.grip(wipe))}>

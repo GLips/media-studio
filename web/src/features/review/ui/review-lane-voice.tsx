@@ -1,7 +1,8 @@
 import { Box, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { reviewTimelineFramePx, reviewTimelineSpan, type ReviewTimelineView } from '#lib/output/review/models/review-timeline-geometry.ts';
+import { useLinkedMediaTick } from '#web/shared/ui/linked-media-clock.ts';
 import { shadows } from '#web/shared/ui/shadows.ts';
 import { colors, fonts, spacing, typography } from '#web/shared/ui/theme.stylex.ts';
 import { useReviewPlaybackState } from './review-playback-store.ts';
@@ -42,7 +43,7 @@ function reviewSpokenWordAt(lines: readonly ReviewTimelineLine[], frame: number)
 }
 
 /**
- * The word being spoken: at the settled frame, and while playing read off the clock each animation frame, the lane
+ * The word being spoken: at the settled frame, and while playing read off each tick of the clock, the lane
  * re-rendering only when the word changes.
  */
 function useReviewSpokenWord(lines: readonly ReviewTimelineLine[], watching: boolean): ReviewSpokenWord | null {
@@ -50,15 +51,10 @@ function useReviewSpokenWord(lines: readonly ReviewTimelineLine[], watching: boo
   const frame = useReviewFrame();
   const playing = useReviewPlaybackState(playback, (s) => s.playing);
   const [played, setPlayed] = useState<ReviewSpokenWord | null>(null);
-  useEffect(() => {
-    if (!playing || !watching) return undefined;
-    let raf = requestAnimationFrame(function follow() {
-      const now = reviewSpokenWordAt(lines, playback.frameNow());
-      setPlayed((was) => (was?.line === now?.line && was?.from === now?.from ? was : now));
-      raf = requestAnimationFrame(follow);
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [playing, watching, lines, playback]);
+  useLinkedMediaTick(playback, (frameNow) => {
+    const now = reviewSpokenWordAt(lines, frameNow);
+    setPlayed((was) => (was?.line === now?.line && was?.from === now?.from ? was : now));
+  }, playing && watching);
   return playing ? played : reviewSpokenWordAt(lines, frame);
 }
 
