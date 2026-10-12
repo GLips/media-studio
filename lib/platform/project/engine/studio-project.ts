@@ -75,6 +75,19 @@ export function studioProjectOfFile(file: string): string | null {
 const PROJECT_SCENE_DIRS = ['scenes', 'bars'];
 
 /**
+ * Scene `id`'s own file in `project`, as a path inside it (`scenes/hook.tsx`, `bars/04-ink.tsx`: a bar's file may
+ * carry its place in the reel), or null when neither folder has one.
+ */
+export function projectSceneSourceFile(project: string, id: string): string | null {
+  for (const dir of PROJECT_SCENE_DIRS) {
+    if (!existsSync(join(project, dir))) continue;
+    const name = readdirSync(join(project, dir)).find((file) => file.replace(/^\d+-/, '') === `${id}.tsx`);
+    if (name) return `${dir}/${name}`;
+  }
+  return null;
+}
+
+/**
  * The files a project's scenes are made of, as sorted paths inside it: everything in scenes/ and bars/, however deep,
  * and the `shared` modules its project.ts lists. A tool's files aren't among them.
  */

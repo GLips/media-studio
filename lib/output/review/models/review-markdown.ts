@@ -29,7 +29,7 @@ export type ReviewMarkdownOptions = {
   states?: readonly ReviewThreadState[];
   /** The render's context sources, so a video note names what's under it and near it on this render. */
   sources?: ReviewContextSources;
-  /** Each scene's source file, project-relative (`bars/ink.tsx`). */
+  /** Each scene's source file, project-relative (`bars/04-ink.tsx`). */
   sceneSources?: Readonly<Record<string, string>>;
   /** The stills other notes are on, by path, as they are now: a still note is read on its own still, not the render. */
   stills?: Readonly<Record<string, ReviewMarkdownStill>>;
@@ -140,11 +140,14 @@ function formatVideoNoteLines(anchor: Extract<ReviewAnchor, { on: 'video' }>, pl
   };
 }
 
-/** `scene: ink (bars/ink.tsx) · f240–f311 on out/video.mp4 r14`: the scene, its source and the frames it's on screen. */
+/**
+ * `scene: ink (bars/04-ink.tsx) · f240–f311 on out/video.mp4 r14`: the scene, its source file in the project
+ * and the frames it's on screen.
+ */
 function formatSceneLine(scene: string, span: { from: number; to: number } | undefined, options: ReviewMarkdownOptions): string {
   const source = options.sceneSources?.[scene];
   const shown = span ? ` · f${span.from}–f${span.to - 1} on ${options.renderName ?? options.renderPath}` : '';
-  return `scene: ${scene}${source ? ` (${projectPathOf(options.project, source)})` : ''}${shown}`;
+  return `scene: ${scene}${source ? ` (${source})` : ''}${shown}`;
 }
 
 /** The render that shows a fix to `scene` and the reply that hands it over, for note `id`. */

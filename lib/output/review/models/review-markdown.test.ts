@@ -20,7 +20,7 @@ test('the markdown keeps a note\'s paragraphs, lists open and reopened notes by 
     thread(5, 'question', 'reopened', 'why the cut here?'),
   ], {
     project: 'zz-review-sandbox', renderPath: 'out/video.mp4', renderHash: 'a1b2c3d4e5', renderName: 'out/video.mp4 r14', fps: 30, size: { w: 1920, h: 1080 },
-    sceneSources: { ink: 'bars/ink.tsx' },
+    sceneSources: { ink: 'bars/04-ink.tsx' },
     // #1 at f30 is in the crossfade from intro into ink: it's ink's, the scene being cut to.
     sources: { fps: 30, frameSize: { w: 1920, h: 1080 }, scenes: [{ id: 'intro', from: 0, to: 36 }, { id: 'ink', from: 24, to: 312 }] },
   });
@@ -29,7 +29,7 @@ test('the markdown keeps a note\'s paragraphs, lists open and reopened notes by 
   assert.match(markdown, /## Keep\n\n### #4 keep/);
   assert.match(markdown, /frame: work\/projects\/zz-review-sandbox\/review\/frames\/1\.jpg/);
   assert.match(markdown, /look: {2}studio look zz-review-sandbox --video out\/video\.mp4 --frames 27:33 --crop 760,390,400,300/);
-  assert.match(markdown, /scene: ink \(work\/projects\/zz-review-sandbox\/bars\/ink\.tsx\) · f24–f311 on out\/video\.mp4 r14/);
+  assert.match(markdown, /scene: ink \(bars\/04-ink\.tsx\) · f24–f311 on out\/video\.mp4 r14/);
   assert.match(markdown, /fix: {3}studio render zz-review-sandbox --scene ink, commit, then studio review reply zz-review-sandbox 1 "<what changed>" --addressed --commit HEAD --render out\/wip\/slices\/scene-ink\.mp4/);
   // A question has nothing to render.
   assert.doesNotMatch(markdown, /reply zz-review-sandbox 5/);

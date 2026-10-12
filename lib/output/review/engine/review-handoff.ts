@@ -8,7 +8,7 @@ import { existsSync } from 'node:fs';
 import { basename, extname, isAbsolute, join, resolve } from 'node:path';
 import { formatRenderVersionName, newestProjectCut } from '#lib/output/render/engine/render-cuts.ts';
 import { renderFileStamp } from '#lib/output/render/engine/render-snapshot.ts';
-import { STUDIO_ROOT, STUDIO_WORKSPACE_DIR } from '#lib/platform/project/engine/studio-project.ts';
+import { projectSceneSourceFile, STUDIO_ROOT, STUDIO_WORKSPACE_DIR } from '#lib/platform/project/engine/studio-project.ts';
 import { isStudioWorkspaceRepo } from '#lib/platform/project/engine/studio-workspace.ts';
 import { formatReviewDecisionsMarkdown } from '../models/review-decision-markdown.ts';
 import { formatReviewThreadsMarkdown, type ReviewMarkdownOptions, type ReviewMarkdownStill } from '../models/review-markdown.ts';
@@ -44,7 +44,7 @@ export function openReviewHandoff(project: string, renderPath: string): ReviewHa
   const dir = projectFolderNamed(project), artifact = readReviewArtifact(project, renderPath);
   const fps = artifact.fps ?? REVIEW_FALLBACK_FPS;
   const sceneSources = Object.fromEntries((artifact.scenes ?? []).flatMap(({ id }) => {
-    const source = ['scenes', 'bars'].map((folder) => `${folder}/${id}.tsx`).find((path) => existsSync(join(dir, path)));
+    const source = projectSceneSourceFile(dir, id);
     return source ? [[id, source]] : [];
   }));
   const target = reviewPlacementTargetOf(resolveProjectMedia(project, renderPath), renderPath);
