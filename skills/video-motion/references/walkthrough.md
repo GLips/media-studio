@@ -6,12 +6,11 @@ marked with rings and a cursor, and every beat hangs off a word.
 
 ## Scenes on a voice
 
-Each voiced scene is a `voiceSpan` in `timeline.ts` (see the skill's Timing), bound in `video.tsx` with
+Each voiced scene is a `voiceSpan` in `timeline.ts`
+(`${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/timing.md`), bound in `video.tsx` with
 `sceneForTimelineClock(clock, { note, render: (s) => …, expect })`. Inside `render`, `s.t` is seconds since the
-scene's cut (negative while it fades in), and
-`s.line(id)` is one of its lines: `.start`, `.end`, `.word('seventeen')` for when a word is spoken, `.at(0.4)` for a
-fraction of the way through. Lines in a scene keep the pause the read left between them; `gap` overrides it, for every
-line or as `{ lineId: seconds }` before one.
+scene's cut (negative while it fades in), and `s.line(id)` is one of its lines: `.start`, `.end`, `.word('seventeen')`
+for when a word is spoken, `.at(0.4)` for a fraction of the way through.
 
 - Anchor each beat to its word (`s.line('ladder').word('no volume discount').start`, or a speech cue), never raw
   seconds. Re-voicing re-times everything, and the words come from whisper, so they land within a couple of frames.
@@ -47,7 +46,8 @@ A cut from one still to the next state hides the action. Where following the cli
 opening), film a take (the `video-capture` skill) and put it in the scene:
 
 - `fitTake(T[name], [[word.start, 'pick'], [later.start, 'shown']])` pins its marks to words. Keep the speed between
-  pins near 1×; past ~1.5× a scroll or animation reads rushed, so move a pin to an earlier word or refilm slower.
+  pins near 1×: past about 1.5× a scroll or animation reads rushed (`studio check` warns past 1.6×), so move a pin to
+  an earlier word or film it again slower.
 - `takeShot(take, tt)` is the frame showing then, and cameras work on it as on a still. Aim through
   `onTake(take, tt, mark.rects.x)`: it follows the page's scroll.
 - Draw the cursor with `<TakeCursor view fit t />`, not `CursorPath`. It comes from the take's log, clicks included.
@@ -57,17 +57,18 @@ opening), film a take (the `video-capture` skill) and put it in the scene:
 ## Host components
 
 When the video is about a product repo's code, its real React components can be the shot instead of a capture of
-them. With the project's host synced (the `video-kickoff` skill, Take the dump), import from `@host/<path from the host
-root>` in `video.tsx`, lay them out yourself and animate with plain Remotion (`spring`, `interpolate`, or `seg` on
+them. With the project's host synced (`studio hosts sync`), import from `@host/<path from the host root>` in
+`video.tsx`, lay them out yourself and animate with plain Remotion (`spring`, `interpolate`, or `seg` on
 `s.t`). Cameras and capture rects don't apply.
 
 - Import the host's packages through it too (`@host/apps/web/node_modules/@mantine/core`), so the scene shares the
   copy the host's files use, and with it their React contexts.
-- Render them as the app does: wrap them in the provider its root mounts, with its theme (tk: `MantineProvider` with
-  its `theme`, `cssVariablesResolver` and `forceColorScheme`), and import the app's global stylesheet and its UI
-  library's CSS.
+- Render them as the app does: wrap them in the provider its root mounts, with its theme (for a Mantine app,
+  `MantineProvider` with its `theme`, `cssVariablesResolver` and `forceColorScheme`), and import the app's global
+  stylesheet and its UI library's CSS.
 - The app's font `<link>` (Google Fonts) isn't in the bundle, so text silently falls back. Put the font files in
-  the project, import them (an import is the file's URL) and load them with `@remotion/fonts` `loadFont`.
+  the project, import them (an import is the file's URL) and load them with `loadStudioFaces`, which the render
+  waits for.
 - Try the real, exported component first, even a container; feed it fixture data. Server-only files its imports
   reach go in `host.json` `browserStubs`. Fall back to a pure piece inside it only if it won't render.
 - tsc types `@host/…` as `any`, so wrong props only show on screen: `studio look` is the check.
@@ -78,7 +79,7 @@ root>` in `video.tsx`, lay them out yourself and animate with plain Remotion (`s
 
 ## Acting on feel notes
 
-The user's notes come through the review loop (`video-motion`, "The review loop"). Change only what the note names:
+Notes come through the `studio-review` skill. Change only what the note names:
 
 - **"Slow every zoom and pan to 0.7× of current"**: stretch each camera key's span by 1/0.7 around the word it's
   anchored to. Leave cursor, text and line timing alone. If the scene then runs past its voice, raise `tail` or `min`.

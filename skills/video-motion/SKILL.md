@@ -1,264 +1,115 @@
 ---
 name: video-motion
-description: Motion for any video's scenes in the studio's React code, and checking the render. Use when animating an approved storyboard or brief, or for motion feedback ("slow the zooms", "the highlight comes too late").
+description: Motion for a video's scenes in the studio's React code, from blocking on the timeline to a checked render. Use when animating an approved storyboard or animatic (a voiced walkthrough or explainer, a music-cut ad, teaser or reel), or for motion notes ("slow the zooms", "the highlight comes too late").
 ---
 
 # Motion
 
-Work in the studio repo (`cd "$(studio home)"`); paths below are relative to it.
+The studio's projects live under `$(studio home)`: run `studio home` and use absolute paths for Read and Edit.
 
 ## What a scene can be
 
-A scene may render any React whose output depends only on its time, fixed inputs and seed: DOM, SVG, canvas, three.js,
-video, your own components. Remotion renders frames independently, out of order and several tabs at once, so
-nothing may carry over from the frame before (no counters, no `Math.random()`, no stepped physics), and anything that
-loads (an image, a font, a model, a texture) must finish before the frame is captured (`<Img>`, `delayRender`).
-Randomness comes from `seededRandom` / `hashRandom` (`lib/picture/motion/models/random.ts`).
+Any React whose output depends only on its time, fixed inputs and seed: DOM, SVG, canvas, three.js, video, your own
+components. Frames render independently, out of order and in several tabs at once, so each frame is a **pure function
+of time**: nothing carries over from the frame before (no counters, no `Math.random()`, no stepped physics; write
+physics closed-form in time), randomness comes from `seededRandom` / `hashRandom`, and anything that loads (an image,
+a font, a texture) finishes before the frame is captured. The rule holds for every scene, piece and bar.
 
-`lib/api.ts` exports the studio's conveniences: the timeline, curves and springs, cameras over captures, the
-kit and reel pieces, the checks' tags. Use them where they fit, and import anything else a scene needs. `studio api
-<name>` prints any function's signature and doc. The existing projects each show one way to tell one story, not a
-structure to copy.
+`#studio` exports the conveniences: cameras over captures, curves and springs, the kit and reel pieces, the checks'
+tags; timeline.ts imports the timeline models. `studio api` lists both; `studio api <name>` prints one's import,
+signature and doc. Use them where they fit and import anything else a scene needs. Existing projects each show one
+way to tell one story, not a structure to copy.
 
-Pick up the register's own reference before building:
+## The references
 
-- **A real product's UI to a voice** (a walkthrough, an explainer, a PR video): captures, the camera vocabulary,
-  anchoring to words, takes and host components are in [references/walkthrough.md](references/walkthrough.md).
-- **Cut to music at high energy** (an ad, a teaser, a social cut, a promo, a showreel): the high-energy register below.
-- **Anything else** starts from this file and builds what it needs.
+Read the ones your branch reaches before building:
 
-## Timing
+- **Timing**, for every timed project: the timeline, drivers, cues, beats, the final-hit landmark, the frame:
+  `${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/timing.md`.
+- **Curves**, springs, staggers and fast moves: `${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/curves.md`.
+- **A real product's UI to a voice** (walkthrough, explainer, PR video): captures, the camera vocabulary, anchoring
+  to words, takes, host components, feel notes: `${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/walkthrough.md`.
+- **Cut to music at high energy** (ad, teaser, social cut, promo, showreel): The high-energy register, below.
+- **Measuring motion** (tags, `expect` holds, graphs, scene models):
+  `${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/tracks.md`.
+- **Remotion directly** (audio, images, fonts, measuring the DOM), where `#studio` has nothing:
+  `${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/remotion.md`.
+- **Directing vocabulary** (shot sizes, cuts, pacing, the words of a note), for reading a note or giving one:
+  `${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/directing.md`.
 
-A project states its schedule once, in `timeline.ts`: `defineTimeline` (`lib/timing/timeline/models/timeline.ts`) lists the
-scenes in order, each with one driver that sets its length:
+Registers mix: a walkthrough can open on a few bars cut to music and close on a slammed end card, calm in between.
+Keep each stretch in one register, and change register on a cut.
 
-- `voiceSpan(['fix-a', 'fix-b'], { lead, gap, tail, min })`: as long as its recorded lines, whose words are its cues
-  (`onlyOnSale: { line: 'fix-a', phrase: 'showing only' }`, `nth` for a later one).
-- `beatSpan(beats, { cues, moves, cutIn })`: beats on a grid, from a fitted track (`recordedGrid`) or a bare tempo
-  (`tempoGrid(bpm)`) for a piece cut to a beat nobody hears.
-- `fixedSpan(seconds)`: authored time, for a piece cut to neither.
+## The work
 
-A fixed scene never sits inside the music. Each scene counts its own time from 0 and names the moments others need as
-cues (`ink.strike2`); another scene's moment is a cue, never an import or an absolute time. `video.tsx` binds each
-scene with `bindTimeline`, handing it its resolved clock in frames from the scene's beat 0 (`clock.beat(n)`, `clock.cues`, `clock.moves`); a voice
-scene turns its clock into a scene with `sceneForTimelineClock`, and `sceneCueSeconds(clock)` reads its cues in
-`s.t`'s seconds. A finale's replays are declared in the timeline and handed in. A move that must keep its length is a start plus a duration anchored at one end (`{ from:
-{ at: 'end', frames: -3.75 }, to: { at: 'end', frames: -1 } }`), never pinned between two scenes' moments: the
-project's `timeline.test.ts` runs the retime runner, which lengthens every scene and fails a move that stretches.
-`clock.beat(n)` reaches every beat of its scene, its end (`beat(beats)`) included. On a recorded grid the music's final
-hit is a landmark (`downbeat: -1`) on the last beat scene's `'end'` cue, so a longer bar pushes it off the recording
-and is refused. A `timeline.test.ts` whose timeline reads `music/index.ts` or `audio/manifest.ts` imports
-`#lib/output/render/engine/tsx-test-hooks.ts` before the timeline, which loads their audio as URLs.
-`studio clock <project>` prints the resolved frames on the video, each scene at its origin. `studio new <slug> --capability voice-led`
-(or `music-led`, `mixed`) writes a timeline of each kind that already passes the retime test; start from it.
+1. **Block every scene.** A blocked scene is `(clock) => blockingScene(clock, { note, pieces, view })`: flat pieces
+   (`box`, `type`, `image`), each named and tinted, resting at a `pose` in frame pixels and moved by `keys` on its
+   clock's frames (`{ at: clock.cues.land, to: { y: 380 }, over: 9 }`), a `view` pushing or panning over them. Block
+   what the scene really shows, its own pieces moving as they will. Every scene `studio new` writes starts blocked,
+   and a blockout is also the motion reference a video model takes (`video-gen`). Done when the animatic
+   (`studio render <p> --animatic`) is approved in review. Pacing is signed off before polish: a scene polished
+   first gets re-timed when the notes say it's too fast.
+2. **List each scene's reads** (Time it by reads, below), in order, each with a start and an end on the scene's cues.
+   Done when every read fits with time to find it, get it and breathe; where they don't, lengthen the scene in
+   `timeline.ts` or cut a read.
+3. **Build it.** Replace the scene's blocking binding with `sceneForTimelineClock(clock, { note, render, expect,
+   rung: 'final' })`, over the same cues and rhythm; the review page shows each scene's rung. Done when
+   `studio check <p>` passes: framing, every `expect`, no tracking errors.
+4. **Look at it yourself** before reporting back: motion is judged by eye, and the numbers only explain it.
+   `studio look --help` is organised by question (these frames, a bar, a strip, before against after, does it keep
+   moving, where does a piece go); `studio check` prints when each scene, line and word lands, and `studio clock <p>`
+   the timeline's frames. Read a `--strip` as a viewer: at each tile, where are they looking, and do they understand
+   it yet? A read that flashes by in a tile or two, or shares its tiles with another read, will be missed. Done when
+   every read holds on the strip and each hit frame is worth pausing on.
+5. **Hand it over** through the `studio-review` skill. A fix inside one scene goes back as a slice,
+   `studio render <p> --scene <id>`, which the review page lays into the cut.
 
-**The frame.** `defineVideo({ format })` picks the frame rate and size, 30 fps at 1920×1080 by default: `{ width: 1080,
-height: 1920 }` for a vertical cut. A timed video's rate is its timeline's, `defineTimeline({ fps })`. A scene reads
-the frame with `useVideoFormat()` and hands it to what needs it (`camFit(shot, rect, frame)`, `view(shot, cam,
-frame)`); a project laying out outside a scene declares its format once and reads that constant. `{ transparent: true }`
-paints nothing behind the scenes (blocking included), so a scene draws only what sits on the page; `useVideoFormat()`
-says so, for a piece that would otherwise paint a backdrop.
+A subagent you hand a render-look-adjust loop (tuning a bar or a move by eye) runs on Sonnet: the loop is many short
+turns, and faster turns buy more iterations. Design and review stay on the default model.
 
 ## Time it by reads
 
 You know what happens because you wrote the code. The viewer sees it once, at full speed, for the first time.
 
-- Before animating a scene, list its **reads**, in order: each thing the viewer must understand ("typing narrows the
-  list", "to seventeen"), with a start and an end. Each needs time for the eye to find it, to understand it, and a
-  moment before the next.
-- **One read at a time.** Cause, then reaction: the click, then what changed. Never both in the same half-second.
+- A **read** is one thing the viewer must understand ("typing narrows the list", "to seventeen"). Each needs time for
+  the eye to find it, to understand it, and a moment before the next.
+- **One read at a time.** Cause, then reaction: the click, then what changed, never both in the same half-second.
 - **Lead the eye** to where the next read happens before it happens.
-- If the reads don't fit, lengthen the scene or cut a read. Don't squeeze them.
-- **Hold what must be read**: give its element a `motion` name and the scene an `expect` like
-  `{ hold: 'price', for: 1, during: { start, end } }`. The check fails unless it stays put (within 2 px, or `within`)
-  and visible for `for` seconds inside `during`, and names what moved, when and by how much. Steady and visible isn't
-  readable: judge size and contrast by eye.
+- **Hold what must be read**, and have the check hold you to it with an `expect` (the tracks reference).
 
 ## Choreography
 
-- **One dominant read**, with supporting motion allowed: the camera settling, a card's contents following it. Never
+- **One dominant read**, with supporting motion allowed (the camera settling, a card's contents following it); never
   two moves that both ask to be read.
 - **The container moves first**, and its contents follow, overlapping it by 30–50%: a card rises, and its lines start
   when it's half to two-thirds of the way up.
 - **Secondary action waits** until 100 ms or more after the main move lands: a ring, a badge, a count.
 
-## Curves, springs and staggers
+## The high-energy register
 
-- **Curves** (`motionCurves`): `productive` for UI moving as it does in the app, `expressive` for a reveal that
-  should be felt, `expo` for a reel's snap. Each has `standard` (moving within the frame), `entrance` and `exit`. Keep a
-  video to one system. `cubic` is the library pieces' own, `dissolve` is for opacity, and `linear` is for a scroll or a
-  timer. `motionDurations` gives calm UI seconds by action and distance; a register of its own sets its own.
-- **Raw or eased `k`**: a piece that eases `k` itself (Highlight, Tag, Text, GlassCard) says so in its doc. Give it
-  `seg(…, motionCurves.linear)`, or it eases twice.
-- **Springs**: `perceptualSpring(duration, bounce)`. `duration` is its pace, the same feel at every bounce (0.2–0.4 s
-  for a reel's lift, 0.5 s for UI), and `bounce` only sets the overshoot (0.15 felt, 0.3 seen). **On a beat or word,
-  the beat goes on its `arrival`, and so does the move's hit sound**: start it `arrival` early,
-  `pop(t - (beat - pop.arrival))`. `arrival` is when it has covered 98% of the way, so a bouncy spring reaches home
-  on the beat and overshoots after it. `settled` is when it stops moving. Springs are for moves; fades and colour are
-  `seg`.
-- **Staggers**: `stagger(i, n, { each, max, from, fps })` is item `i`'s start offset, on a whole frame of `fps`. `max` caps the
-  spread of a long list, `from` is `'center'`, `'edges'` or an index, and `{ lagRatio, duration }` sets the gap as a
-  fraction of each item's move. `staggerFinish` is when the last one lands. Tag each item with
-  `stagger: { group, index, count }` so the tracks see the group.
+A launch ad, teaser, social cut, promo or showreel is cut to music: one idea per bar, an event on every beat,
+full-bleed colour, display type as the image, hard cuts on the hit. `#studio`'s reel pieces are built for it (a
+bounce, kinetic type, ticker bands, a glyph field, a 3D column field, a capture on a tilted plane, a recap grid, a
+HUD, a lens fringe), with the kit's `Odometer`; a bar they don't cover is built directly, or as a new piece.
 
-## The high-energy register: ads, teasers, promos
+- `${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/reel-system.md`: the reference reel's system, the bar to clear.
+  An ad or teaser takes its clock, cut grammar, easing and type; the HUD and palette are that showreel's identity,
+  and the brand's colours replace them.
+- `${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/reel-assembly.md`: building and proving one bar.
+- `${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/reel-pieces.md`: adding a reusable piece.
+- `${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/reel-critique.md`: the reel's rules, and the fresh-eyes
+  critique a cut gets before it's done.
+- `${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/reel-study-method.md`: breaking down a new reference video.
 
-A launch ad, teaser, social cut or product promo is usually cut to music: one idea per bar, an event on every beat,
-full-bleed colour, display type as the image, hard cuts on the hit. `lib/picture/reel/studio/` has pieces built for it (a
-bounce, kinetic type, ticker bands, a glyph field, a 3D field, a capture on a tilted card, a recap grid, a HUD), and
-kit.tsx's `Odometer`; a bar the pieces don't cover is built directly, or as a new piece.
-`references/reel-assembly.md` builds it bar by bar on a beat grid, `references/reel-pieces.md` adds a piece,
-`references/showreel-breakdown.md` is the reel it's measured against, and `references/reel-critique.md` is the
-fresh-eyes critique a cut gets before it's done.
+## Kit, stills and templates
 
-**Pacing is signed off before polish.** The first cut is an animatic: each bar blocked (`blockingScene`, below) on its
-cues, on the fitted music, rendered with `studio render <p> --animatic` and sent as the `studio review open <p>` page
-(`video-kickoff`, step 4). Building a bar replaces that binding with its own `sceneForTimelineClock`, declaring
-`rung: 'final'`; the review page shows each scene's rung in its timeline, its board and its notes. Build and polish
-bars only once the user has approved the pacing: a bar polished before then gets re-timed when the notes say it's too
-fast.
-
-Registers mix: a walkthrough can open on a few bars of this and close on a slammed end card, calm in between. Keep
-each stretch in one register, and change register on a cut.
-
-## Blocking a flat scene
-
-Every scene starts blocked: what moves on which cue, how long each move takes, whether the scene breathes, settled at
-the real timing before anything is styled, and the reference a video model takes when one will (`video-gen`). Block
-what the scene really shows, its own pieces moving as they will, never a placeholder standing in for it. A blocked
-scene is
-`(clock) => blockingScene(clock, { note, pieces, view })`: `FlatPiece`s (`box`, `type` set at its box's height,
-`image` a crossed slot), each named and tinted, resting at a `pose` in frame pixels and moved by `keys` on the frames
-of the scene's own clock, `{ at: clock.cues.land, to: { y: 380 }, over: 9 }`, a `view` pushing or panning over them.
-It declares `rung: 'blocking'`, so the animatic and the review page show it as blocking; every scene `studio new`
-writes starts as one. A few pieces moving on cues, a view pushing in:
-
-```tsx
-const layout = (clock: Clock<'layout'>) => blockingScene(clock, {
-  note: 'The buy box assembles: the photo and title, then the price.',
-  view: { keys: [{ at: clock.moves.settle.from, to: { cx: 1010, zoom: 1.06 }, over: clock.moves.settle.to - clock.moves.settle.from }] },
-  pieces: [
-    { kind: 'image', name: 'photo', color: '#a9b1bc', pose: { x: 160, y: 180, w: 700, h: 720, opacity: 0 }, keys: [{ at: clock.cues.photo, to: { opacity: 1 } }] },
-    { kind: 'type', name: 'title', text: 'Linen shirt', pose: { x: 960, y: 240, w: 700, h: 80, opacity: 0 }, keys: [{ at: clock.cues.title, to: { opacity: 1, y: 220 } }] },
-    { kind: 'type', name: 'price', text: '$59.99', color: '#b82b2b', pose: { x: 960, y: 620, w: 500, h: 110, opacity: 0 }, keys: [{ at: clock.cues.price, to: { opacity: 1, y: 580 }, over: 9 }] },
-  ],
-});
-```
-
-A scene timed in seconds draws `<FlatBlockout pieces frame={s.t * fps} />` itself and declares `rung: 'blocking'` in its `sceneForTimelineClock`. Get the moves
-approved in review, then build the scene over the same cues and rhythm.
-
-## Kit and generated stills
-
-- **Words coming in, a number rolling, a stroke drawing on**: `WordReveal`, `Odometer` and `DrawPath` in
-  `lib/picture/kit/studio/kit.tsx`. Read [references/kit-recipes.md](references/kit-recipes.md) before using one.
+- **Words coming in, a number rolling, a stroke drawing on**: `WordReveal` (`wordRevealFinish` to finish it on a
+  word), `Odometer` and `DrawPath`. `studio api <name>` gives each one's props, defaults and modes.
 - **A still nothing drawn or captured gives** (title-card art, a background, a physical product's shot, a concept
-  icon) is generated, paid, with `studio gen image`: read [references/generated-stills.md](references/generated-stills.md)
-  first. A product's UI is never generated (the `video-kickoff` skill, Real UI only).
+  icon) is generated, and paid: `${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/generated-stills.md`. A
+  product's UI is captured or built in DOM, never generated (video-kickoff, Real UI only).
+- **Every video becomes a template.** When a shot works and could come back (an end card, a title, a product UI
+  rebuilt in DOM), lift it into the kit with its brand colours and words as props, so the next video changes the skin.
 
-## Checking your work
-
-Look at the rendered frames yourself before reporting back. Motion is judged by eye; the numbers only explain it.
-
-### To know X, run Y
-
-Every question below has one command. A tool or brief points here, never at a script of its own.
-
-| To know | Run |
-|---|---|
-| When each scene, line and word lands, and where scenes crossfade | `studio check <p>`: its table, and `out/check/timeline.json` |
-| A timed project's scene, cue or beat frames | `studio clock <project>` |
-| Whether highlights, clicks and every `expect` hold | `studio check <p>` (`--scene <id>` or `--at a:b` for one stretch) |
-| How each tagged element moved, frame by frame | `studio check <p>`: `out/check/motion.json` (a scoped check's `motion-<scope>.json`) |
-| What frames look like | `studio look <p> --frames a:b` (`a:b:step`, `f1,f2`), `--bar N`, `--sheet`, `--strip` |
-| What a render shows, not the code | `studio look <p> --video <mp4>`: its snapshot places a slice in the video |
-| Which frames and pixels a change moved | `studio look <p> --video <after.mp4> --against <before.mp4>` (`--crop x,y,w,h`) |
-| Whether a stretch keeps moving | `studio look <p> --motion --bar N` (or `--frames a:b`) |
-| Where a piece is on each frame, and its clearance from the HUD, with no render | `studio look <p> --graph models --bar N` (or `--frames a:b`), below |
-| Where a tracked element goes on the render, and how it eases | `studio look <p> --graph a:b` (below) |
-| A change in motion, quickly | `studio render <p> --scene <id>` (or `--frames a:b`): a silent slice, the bundle kept between runs, which a reply hands to the review page (the loop below) |
-| What a render was made from | `<render>.snapshot.json` beside it, which the review and `look --video` read |
-| What the user sees in it | `studio review open <p \| render.mp4 \| still.png>` |
-| What the user said about it | `studio review notes <p>`, or `studio review watch <p>` in the background (the loop below) |
-
-`studio check` rewrites `out/check/` every run, so it's for what the code does now. A render's timeline is in its own
-snapshot.
-
-### The review loop
-
-The user reviews in the studio app; you work the other half from the CLI. Every skill that hands work to the user for
-notes (`video-kickoff`, `stills`, `video-sound`, `video-gen`) uses this loop:
-
-1. `studio review open <p>` (or a render or still in it) opens the page for the user. Offer it whenever motion feel
-   needs their eyes: the same page approves every rung, the animatic (`studio render <p> --animatic`) through the cut.
-2. Run `studio review watch <p>` in the background (one watcher a project). It blocks until the user adds or changes
-   notes, then prints them, placed on the newest full render: each with its moment (bar, rung and beat in
-   timeline.ts's counting, a cue near it, or line and word), the sounds and tagged elements under it, the frame the
-   user saw (`review/frames/<id>.jpg`, Read it), a `scene:` line (its id, source file and frames on screen; in a
-   crossfade, the scene being cut to), a ready `look:` line and, on a fix, a `fix:` line. Fix each note by its `fix:`
-   line, then run watch again; its cursor means you never miss or repeat a note. `studio review notes <p>` lists the
-   open ones at any time.
-3. A fix within one scene: change it, then run the `fix:` line. `studio render <p> --scene <id>` renders just the
-   frames that scene is on screen, crossfades included, silent, to `out/wip/slices/scene-<id>.mp4` in seconds, and
-   prints whether it splices into the newest cut (`splices into out/video.mp4 r14 at f240–f311`, or `won't splice:`
-   and why) and the reply line: commit, then
-   `studio review reply <p> <id> "<what changed>" --addressed --commit HEAD --render out/wip/slices/scene-<id>.mp4`.
-   Within a second the page lays the slice into the cut over that scene, under the cut's sound; the user holds `\` to
-   see the cut as rendered. A slice that won't splice plays alone from its reply.
-   Render the whole video instead (`--animatic` or the delivery) and reply with it when the scene's length changed,
-   the fix is to sound (a slice plays under the cut's), the fix is in a shared component (it changes other scenes,
-   which the slices won't show), several scenes changed, the video is transparent (a slice has no alpha), or you're
-   handing the video over. A new full render retires
-   every slice. Reply by the moment, not the frame: notes are carried to each new render by their moment.
-4. When a note is unclear, `reply <p> <id> "…" --question`; to raise something nobody noted, `studio review ask <p>
-   "…" [--at f120:140 | --line <id> | --still <path>]`. The user's answer wakes `watch`.
-5. Never resolve: only the user resolves or reopens, once they've seen the fix. `keep` notes are standing constraints,
-   listed with every hand-off; hold to them.
-6. When the user should choose between options (two cuts, three music beds, stills, voices), render the candidates to
-   `out/decisions/<topic>/` and post them: `studio review decide <p> <topic> --question "…" --candidate <file>=<label> …`.
-   `watch` prints their pick when they sign off; `studio review decisions <p>` lists them.
-
-To judge timing, read a `--strip` like a viewer: at each tile, where are they looking, and do they understand it
-yet? Time each read from the tiles' timestamps (a default strip's tiles are 0.1 s apart, three video frames each). A
-read that flashes by in a tile or two, or shares its tiles with another read, will be missed.
-
-Then use the tracks to say why, with numbers: when the ring finishes drawing against its word, whether the camera
-lands before the line starts, which of two things moves first. `motion.json` has each tagged element's centre, size,
-opacity and reported values (a ring's `draw`, a camera's `zoom`) on every frame. It has both the screen box and the
-box in the element's owner's frame, so for a ring riding a push-in the screen box moves with the camera while the
-page box holds still.
-
-Before rendering a change to a piece drawn from a model (a ball's bounce, a needle's strikes, a camera path), read
-the model. A scene's `bars/<id>-model.ts` holds the numbers its scene draws from, and exports a `definePieceTracks`
-naming each piece's place on a frame, the box it covers and what it keeps clear of. `--graph models` prints a table per
-piece (position, values, state, clearance in px from the nearest HUD part, negative where it overlaps) and graphs it,
-in about two seconds. Give a new piece a track when you'd otherwise render to find where it is.
-
-A graph shows the shape of a move that a strip only hints at, and prints the numbers it's drawn from:
-
-- **Easing**: an eased move's velocity is a bell; a linear one is a flat plateau that starts and stops dead. Trail dots
-  bunch up where something is slow.
-- **Overshoot and wind-up**: signed velocity crosses zero. A speed curve would hide this.
-- **What leads**: which element moves first, and where each move starts and lands against its word or beat.
-- **Snaps and jitter**: a jump in a single frame, or a "hold" whose velocity keeps flipping.
-
-A graph can't tell you whether a move reads. Check that on the strip, and check the feel in playback.
-
-- Library pieces tag themselves, under names they pick (`camera`, `cursor`, a Highlight's `name`, a Tag's words).
-  Each takes `motion` to give it a name of yours, or `false` for no track. Tag hand-written motion with
-  `data-motion="name"`, or `useMotionTag(ref, 'name', selector)` for an element a host component renders. A tagged
-  element inside another belongs to it, and is measured in that owner's frame.
-- A Highlight on a rect straight from `screenRect` records its camera. Otherwise pass `through`: its view, or
-  `'screen'` for a rect in screen coordinates.
-- The check fails on tracking errors (two elements under one name of yours), and names what it can't see: a take's
-  contents, a generated clip, a canvas or three.js scene, or pieces the library couldn't tell apart until you name
-  them. Tag a canvas you draw with `unmeasuredAttrs('<what>')`, and judge what's inside it by eye.
-
-## Every video becomes a template
-
-When a shot works and could come back (an end card, a title, a product UI rebuilt in DOM), move it into
-`lib/picture/kit/studio/kit.tsx` with its brand colours and words as props. The next video starts from it and changes the skin.
-For something Remotion-specific (fonts, measuring text), see the `remotion` skill. A painted or generative layer is the
-`video-canvas` skill. A shot of the real world (a product in use, a place, people) can be generated footage, blocked
-in 3D (or flat, for a 2D shot) and rendered once: the `video-gen` skill. Music, sound effects and the mix are their own pass once the picture
-is locked: the `video-sound` skill.
+Neighbours: a painted or generative layer is `video-canvas`; real-world footage (a product in use, a place, people)
+is `video-gen`; music, effects and the mix are `video-sound`, once the picture is locked.

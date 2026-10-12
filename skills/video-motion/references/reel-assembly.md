@@ -1,106 +1,64 @@
-# Assembling a reel from its pieces
+# Building a bar of a reel
 
-A reel, in this file's sense, is any music-led marketing video in the high-energy register (an ad, a launch teaser, a
-social cut, a product promo, a showreel, or the open and close of a walkthrough): a run of bars, each one device (a
-bounce, a slam of words, a field, a ticker) doing one thing to the beat, built from the pieces in `lib/picture/reel/studio/`
-(see `reel-pieces.md`) and cut together on the music. This is the shared brief for building one bar of it, whether
-you're building the whole video or one of several builders.
+A reel here is any music-led video in the high-energy register (an ad, a teaser, a social cut, a promo, a showreel,
+or the open and close of a walkthrough): a run of bars, each one device doing one thing to the beat, cut together on
+the music. This is the brief for building and proving one bar, whether you build the whole reel or one bar of it.
 
-Read first: `showreel-breakdown.md` (the system section, then the reference section your bar answers), the project's
-`storyboard.md` (the beat sheet: what each bar does on which frame) and the doc comments of the pieces you'll use.
+Read first, from `${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/`: `reel-system.md` (the system, then the reference bar
+yours answers), `reel-critique.md` (the rules every bar is judged by) and `timing.md` (beats, cues, the picture's
+lead). Then the project's `storyboard.md` (what each bar does on which beat) and the docs of the pieces you'll use
+(`studio api <name>`).
 
-## The clock
+## On the beat
 
-A reel project states its timing once, in `timeline.ts`: `defineTimeline` with the fitted track's grid
-(`recordedGrid(track, { steady: true })`), each bar a `beatSpan(beats, { cues, moves, cutIn })`, the finale's
-`replays`, and a landmark on the music's final hit, so a bar table that no longer ends on it throws, naming both fixes
-(`studio music fit --bars`, or change the timeline). Hits are two frames ahead of the grid's beat frame
-(`pictureLeadFrames: 2`): the tracker hears a hit about 20 ms late, and the picture should lead the sound by about a
-frame. Everything lands on a hit frame: cuts, arrivals, impacts, section labels. `video.tsx` binds each bar to its
-resolved clock, and a bar reaches only its own beats (`clock.beat(n)`, from 0 on its first beat; off-beats are
-fractions, `clock.beat(1.5)` is the "and") and its own cues (`clock.cues.stamp`). Another bar's moment is a cue in
-`timeline.ts`, and a finale gets the bars it replays handed in as replays: never an import or an absolute beat.
+Everything lands on a hit frame: cuts, arrivals, impacts, section labels. A bar reaches only its own beats
+(`clock.beat(n)`) and cues; another bar's moment is a cue in `timeline.ts`.
 
 - A cut or an instant change goes on the hit frame itself.
-- A move that has to *arrive* on a beat starts early (40–190 ms, 1–6 frames): an expo arrival does most of its travel
-  in its first frames, so start it one or two frames before the hit, or the eye reads it late.
+- A move that has to *arrive* on a beat starts early, by 1–6 frames: an expo arrival does most of its travel in its
+  first frames, so started on the hit it reads late. A spring starts its `arrival` early.
 - A fall or a swing that *peaks* on the beat is physics, closed-form in time, solved backwards from the landing.
 
-## A bar
+## The bar
 
-A bar is a module exporting a function of its clock returning a `Bar` (`id`, `note`, `clock`, `render(f)`, `hudRead`):
-`render`, `hudRead`, `kicks`, `glitches` and each sound's `at` take the bar's own frame, 0 on its beat 0 (negative
-before it, for a bar that starts on a pickup), and `reel.tsx` and `video.tsx` add the bar's origin on the video. The
-finale replays any bar live in a cell (`replay.source.render(replay.sourceFrame(f))`). A move that must keep its length when a bar before it
-grows is a start plus a duration anchored at one end, declared in the bar's `moves`; the retime runner in
-`timeline.test.ts` lengthens every bar and fails one that stretches.
-Draw only through the bar's pure function of `f`: no state, no randomness but seeded.
+A bar is a pure function of its own frame, 0 on its beat 0 (negative before it, for a bar that starts on a pickup),
+like every scene. The finale may replay it live in a cell, and a replay plays silent, so:
 
-- **Always moving.** Nothing holds still longer than about half a beat: a held word breathes, drifts or re-lights; a
-  held field punches on the beats. The camera moves at most once per bar, on a phrase.
-- **Full-bleed colour and big type.** A ground is a colour, not a tint. Display type is the image (a quarter of the
-  frame height and up), set tight.
-- **Figure and ground trade places** from word to word and bar to bar, so every cut is a change of value you feel.
-- **Colour runs in an order.** The storyboard's colour script says what each colour means and when the ground
-  changes; a ground that changes for no reason reads as random, however good each frame is.
-- **Every beat carries a strong frame.** No near-black or empty frame before the final fade: a dark ground always
-  holds a big figure. The subject (a product, in an ad) is the hero: push in until it fills the frame, never a small card in a field.
-- **Transitions are built, not dissolved:** a hard cut on the hit, a zoom through a shape into its colour, a match on
-  position or shape, a speed-matched whip. A dissolve is the exception.
-- **One dominant move at a time.** Secondary moves follow it by a frame or two.
-- **The HUD** sits over every bar and reads at 20 px on every frame. `hudRead(slot, f, box)` says how each part reads
-  over what the bar draws under its box: the ink's tone, and a plate where the ground under it is mixed or busy. Read
-  that ground rather than guess it: `reelHudGrounds(box, groundAt)` samples the box edge to edge into each ground's
-  share, and `reelHudReadGrounds(grounds, looks)` picks the ink most of the box wants, plated where the other inks'
-  grounds or busy type show (`lib/picture/reel/models/hud.ts`).
-- **Sounds** the picture lands (a strike, a whip, a stamp) go in the bar's `sounds`, on its clock; `video.tsx` places them on the
-  video (`defineVideo({ sounds })`, `sfx.md`), never as an `<Sfx>` in `render`: the finale replays `render` in its tiles, and
-  a cut would stop a whip that runs across it. The music carries the beat; a sound marks what the music can't: a slam
-  on a beat the track leaves empty, or a hit of its own.
-  - **A sound lands with the music, not the picture.** The music's hits trail their frames by the picture's lead
-    (about 35 ms), so a sound placed on the frame itself strikes that much ahead of the hit, heard as a flam. The
-    project's video delays every bar sound by the lead.
-  - **Check the timing by measuring, not by ear.** `studio mix` prints each placed sound's gap to the music's nearest
-    attack and its loudness against the music there, flagging a flam (15–100 ms apart), a sound buried under the music
-    or one sitting on top of it, and lists the beats the track leaves empty: the places a slam can land alone.
-    `studio mix --check` prints just those rows, without rendering the mix a cut in use was made from.
+- **Sounds the picture lands** (a strike, a whip, a stamp) are placed on the video, `defineVideo({ sounds })`, at
+  the bar's beat plus `timeline.soundLagSeconds`, never as an `<Sfx>` inside the bar's render: a replay would drop
+  it, and a cut would stop a whip that runs across it.
+- **The HUD** sits over every bar and must read at its size on every frame. Have the bar say what it draws under each
+  HUD part rather than guessing: `reelHudGrounds(box, groundAt)` samples the box into each ground's share, and
+  `reelHudReadGrounds` picks the ink most of the box wants, plated where the other grounds or busy type show.
 
 ## Proving it
 
-Preview your bar alone: give the reel project a `barPreview(bar)` beside the function that makes a bar the video's
-scene, returning a video of that one bar with its place on the reel. A scratch project (`scratch/<reel>-<bar>/video.tsx`)
-whose default export is `barPreview` of your bar renders just it, inside the same HUD and grade, with its frame 0 on
-the bar's first frame, and without the other bars in the bundle. Several builders editing bars at once can't break each other's renders that way.
+Preview the bar alone: a scratch project (`scratch/<reel>-<bar>/video.tsx`) whose default export is a video of just
+this bar, with its place on the reel, inside the same HUD and grade, frame 0 on the bar's first frame. Builders
+working in parallel then can't break each other's renders.
 
-1. `studio look scratch/<reel>-<bar> --frames 0:<last>` renders every frame of your bar. Look at the hits: does
-   each arrival land on its hit frame, how hard does it snap, what does it smear, is anything still for more than
-   half a beat?
+1. `studio look scratch/<reel>-<bar> --frames 0:<last>` renders every frame. At each hit: does the arrival land on
+   its frame, how hard does it snap, what does it smear, is anything still for more than half a beat?
 2. Put your strip beside the reference section's (`studio study <reference video>` writes one per section) and fix
    what differs in timing, scale, snap, smear and colour. The reference is the bar to clear, not a script to copy.
-3. `studio look <project> --frames …` at your bar's hit frames: each should be a frame worth pausing on.
-4. A capture on a `CapturePlane`: `studio look scratch/<reel>-<bar> --graph 0:<seconds> --tracks plane` plots its
-   `upscale`, frame px per capture px where the capture is most magnified in frame. Past about 1.3 the page's text
-   goes soft: capture it again at a higher `scale`.
-5. `npx tsc --noEmit -p .` shows no errors in your files.
-6. When the whole reel is assembled: render it and run `studio study` on the render. Its cuts should land on the
-   beat grid, and its motion-energy plot should never sit at zero. Then give it to a critic who didn't build it, with
-   `reel-critique.md` as the brief.
-7. Give a reel a `tools/` folder of the checks the whole reel reruns after each round of fixes. An integrate script
-   renders the reel (`studio render`) and measures the cut: each sound against the music, where each slam's sound lands, each beat's
-   attack, the still runs and every beat frame's luma, and the HUD's legibility on every frame. `studio look <project>
-   --video <after.mp4> --against <before.mp4> --bar N --crop …` tells which frames and regions a change moved, and
-   `--motion --bar N` where a bar stops moving.
+3. A capture on a `CapturePlane`: `--graph 0:<seconds> --tracks plane` plots its `upscale`, frame px per capture px
+   where it's most magnified. Past about 1.3 the page's text goes soft: capture it again at a higher `scale`.
+4. The project typechecks with no errors in your files.
 
-## Fences
+Done when every hit frame is worth pausing on and the strip clears the reference.
 
-For a builder working alongside others; building alone, the whole project is yours.
+When the whole reel is assembled, render it and run `studio study` on the render: its cuts should land on the beat
+grid, and its motion energy never sit at zero. Then hand it to a critic who didn't build it, with
+`${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/reel-critique.md` as the brief. A reel worth several rounds of fixes earns a `tools/` folder of checks it reruns
+after each (each sound against the music, each beat frame's luma, the HUD's legibility on every frame);
+`studio look <project> --video <after.mp4> --against <before.mp4> --bar N` shows which frames a change moved.
 
-- Write only your bar's module. Read anything.
-- Don't edit the pieces (`lib/picture/reel/studio/`), the clock module, `video.tsx` or other bars. If a piece lacks something
-  your bar needs, work around it in your bar and name the gap in your report, so the orchestrator can fix the piece.
+## Building alongside others
+
+- Write only your bar's module and your scratch project. Read anything.
+- Leave the pieces, the timeline, `video.tsx` and other bars to the orchestrator: where a piece lacks something your
+  bar needs, work around it in your bar and name the gap in your report.
 - No paid calls, no `git add`, no commits.
-
-## The report
 
 End with: what the bar does beat by beat (frame numbers), the frames you checked (paths) and what you compared them
 against, and every piece gap or workaround.

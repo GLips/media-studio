@@ -1,6 +1,6 @@
 # Directing a video: a short course
 
-Enough vocabulary and technique to direct product walkthroughs and launch videos, and to give notes an agent can act on. It isn't tied to any engine. The `video-motion` skill (`skills/video-motion`) maps these terms to code.
+Enough vocabulary and technique to direct product walkthroughs and launch videos, and to give or read notes an agent can act on. It isn't tied to any engine; the skill and its references map the terms to code.
 
 The one idea underneath all of it: **every frame has one job, and the viewer's eye should never have to hunt.** Almost every technique below is a way of telling the eye where to look and when.
 
@@ -36,8 +36,6 @@ In film, these are measured against a person. For UI, measure them against the s
 
 **Motivated movement.** Every move should have a reason the viewer can feel: the voice named something, the cursor went there, something changed. An unmotivated move feels like the camera operator got bored. If you can't say why the camera moves, hold it still, or give it a subtle drift.
 
-**One dominant move at a time.** Each moment has one move the viewer reads, and anything else moving only supports it: the camera settling, a card's contents following the card. Don't pan while a highlight draws on while the cursor travels. The container moves first and its contents follow, overlapping it by 30–50%; secondary action (a ring, a badge) starts 100 ms or more after the main move lands. Moves competing to be read are chaos.
-
 **Speed.** Big moves (wide to close-up) need about 1–1.5 s. Small reframes need about 0.5 s. If everything feels rushed, the usual note is "slow every camera move to 0.7×".
 
 ---
@@ -72,15 +70,10 @@ Section cards with the voice continuing straight over them are L-cuts. Cutting s
 ## 4. Timing and pacing
 
 - **A beat** is the smallest unit of timing: one thing happening. Scenes are made of beats.
-- **A read** is one thing the viewer has to *understand*: "the price dropped", "that option is out of stock". Each read
-  needs time for the eye to find it, time to get it, and a moment before the next one starts. Small, fast or subtle
-  things take longer to read than big, central, obvious ones. Listing a scene's reads, each with a start and an end,
-  is the best way to time it.
-- **One read at a time.** When two things happen at once, the viewer sees only one of them.
+- **A read** is one thing the viewer has to *understand*. Small, fast or subtle things take longer to read than big,
+  central, obvious ones.
 - **Fast actions, slow meanings.** A move can be quick if it's anticipated, but what it *means* needs held time. The
   contrast between quick and held is what gives a video rhythm; one constant speed, fast or slow, makes it flat.
-- **Cause, then reaction.** Show the click, then what it did, one after the other. The reaction often matters most, so
-  give it the time.
 - **Let the reads set the length.** A scene with many reads can't be short; one whose reads have landed shouldn't be
   padded. The last read of the video needs time to land before it ends.
 - **Anchor beats to words.** The highlight lands when the voice says "price", not at 3.2 s. With word-level timing we can anchor to the exact word.
@@ -109,10 +102,6 @@ Nothing real starts or stops instantly. Easing curves are how things move:
 | **Weight** | How something starts and stops says how heavy it is | Heavy: slow to start and stop, little bounce. Light: snaps into motion, flutters to rest |
 | **Exaggeration** | Push it past natural, because subtle reads as nothing | A bigger push, a stronger pop, a longer hold |
 | **Secondary action** | Small motion that supports the main one without competing | A badge settling after a card lands |
-
-**Twinning** is the tell of motion made in code: two things moving identically and at the same time (both panels
-zooming in sync, a whole list popping at once). Offset their timing, or give one the action and the other something
-smaller.
 
 Illustrated styles add a few terms:
 
@@ -157,10 +146,10 @@ Use the quietest one that works. If everything gets a spotlight, nothing stands 
 ## 8. Sound
 
 - **Voiceover (VO)** leads. Picture serves the voice, not the other way round.
-- **Music bed:** music under the whole video. **Ducking** lowers it automatically while the voice speaks, by about 10–15 dB, and brings it back up in the gaps.
+- **Music bed:** music under the whole video. **Ducking** lowers it while the voice speaks and brings it back up in the gaps.
 - **Stingers:** short musical hits on key moments or section changes.
 - **SFX:** subtle clicks, whooshes on fast moves, a soft pop when things appear. Used sparingly, they make motion feel physical.
-- **Loudness:** web and social videos target **−14 LUFS** integrated, with true peak under −1 dBTP. That keeps the video from being quieter or louder than whatever plays before and after it.
+- **Loudness:** the delivered level, matched to whatever plays before and after it. The studio masters it (`studio mix --help`).
 - **Room tone / silence:** a completely silent gap feels like a bug. Keep the bed or a tiny bit of ambience under the pauses.
 
 ---
@@ -170,11 +159,6 @@ Use the quietest one that works. If everything gets a spotlight, nothing stands 
 - **Hook → problem → solution → proof → call to action.** It works for almost every launch or walkthrough.
 - **Show, don't tell.** If the voice says "it's instant", show the instant response. Don't put the word "instant" on screen.
 - **One idea per scene.** If a scene needs "and also", split it.
-- **Every scene has an event.** Something changes between its first frame and its last. "The page, sitting there" is
-  not a scene.
-- **Pay it off.** Whatever a scene sets up (a spinner, a question, a "watch this") gets resolved on screen.
-- **Rhyme the ending with the opening:** the same place, shot or motif, changed. The walkthrough that opens on the old
-  buy box can end on the new one in the same framing. It makes the video feel whole.
 - **Sections:** in videos longer than about 90 s, chapter cards help the viewer know where they are.
 - **End card:** what to do next, held for at least 2–3 s.
 
