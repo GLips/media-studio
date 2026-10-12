@@ -1,12 +1,13 @@
 import { Group, Menu, Text, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { useState } from 'react';
+import { projectPulseHashOf } from '#lib/output/review/models/project-pulse.ts';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { Readout } from '#web/shared/ui/readout.tsx';
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { formatReviewVersionCommit, ReviewRenderVersionRow } from './review-render-version-row.tsx';
 import { useReviewScreen } from './review-screen-context.tsx';
-import { useReviewCompareTarget } from './use-review-compare-target.ts';
+import { useReviewRenderVersions } from './use-review-render-versions.ts';
 
 const styles = stylex.create({
   target: {
@@ -23,11 +24,11 @@ const styles = stylex.create({
  * never kept (made outside `studio render`, never noted on) shows its hash.
  */
 export function ReviewRenderMenu() {
-  const { artifact, status, setSearch } = useReviewScreen();
-  const { versions, shown } = useReviewCompareTarget();
+  const { artifact, pulse, setSearch } = useReviewScreen();
+  const { versions, shown } = useReviewRenderVersions();
   // Ages are as of opening the screen: a version's age moving while it's on screen would say nothing.
   const [now] = useState(Date.now);
-  const newest = status?.render.hash ?? artifact.render.hash;
+  const newest = projectPulseHashOf(pulse, artifact.path) ?? artifact.render.hash;
   // A still is the file itself: its name says which, and a hash beside it says nothing more.
   if (!shown && artifact.kind === 'still') return null;
   if (!shown) {

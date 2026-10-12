@@ -1,12 +1,11 @@
 import { Box, Code, Stack, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
-import { useSuspenseQuery } from '@tanstack/react-query';
 import { Fragment, useRef } from 'react';
 import type { ReviewProjectRow } from '#lib/output/review/models/review-dashboard.ts';
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
 import { StudioShell } from '#web/shared/ui/studio-shell.tsx';
 import { colors, spacing } from '#web/shared/ui/theme.stylex.ts';
-import { projectSummaryQueryOptions } from '../controllers/project-queries.ts';
+import { useProjectSummary } from '../controllers/project-queries.ts';
 import { ProjectThreadCounts } from './project-thread-counts.tsx';
 import { ProjectPlaceRow, projectFileFolderOf, projectPlaceKeyOf } from './project-place-row.tsx';
 import { ProjectStillsFolderRow } from './project-stills-folder-row.tsx';
@@ -43,7 +42,7 @@ function projectPageRuns(rows: readonly ReviewProjectRow[]): { label?: string; r
  * Files with notes waiting come first, in the folder with the most waiting first, then the newest; decisions keep open first.
  */
 export function ProjectPage({ project }: { readonly project: string }) {
-  const { data: summary, dataUpdatedAt } = useSuspenseQuery(projectSummaryQueryOptions(project));
+  const { summary, now } = useProjectSummary(project);
   const listRef = useRef<HTMLDivElement>(null);
   useProjectRowHotkeys(listRef);
   const groups = PROJECT_PAGE_GROUPS
@@ -63,7 +62,7 @@ export function ProjectPage({ project }: { readonly project: string }) {
                   {run.label && <ProjectRowGroupLabel>{run.label}</ProjectRowGroupLabel>}
                   {run.label && run.label !== '/' && stillsIn(run.rows) > 1 && <ProjectStillsFolderRow project={project} folder={run.label} stills={stillsIn(run.rows)} />}
                   {run.rows.map((row) => (
-                    <ProjectPlaceRow key={projectPlaceKeyOf(row)} summary={summary} row={row} now={dataUpdatedAt} folderLabelled={run.label !== undefined} />
+                    <ProjectPlaceRow key={projectPlaceKeyOf(row)} summary={summary} row={row} now={now} folderLabelled={run.label !== undefined} />
                   ))}
                 </Fragment>
               ))}

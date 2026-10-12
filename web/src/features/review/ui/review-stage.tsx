@@ -12,11 +12,12 @@ import { ReviewDrawStrip } from './review-draw-strip.tsx';
 import { ReviewGuidesOverlay } from './review-guides-overlay.tsx';
 import { useReviewScreen, type ReviewScreenValue } from './review-screen-context.tsx';
 import { ReviewStageMarks } from './review-stage-marks.tsx';
-import { REVIEW_MEDIA_ATTRIBUTE } from './review-frame-image.ts';
+import { REVIEW_MEDIA_ATTRIBUTE } from './review-mark-paint.ts';
 import { reviewIsProofed, reviewProofGroundStyles, useReviewProofGround } from './use-review-proof-ground.ts';
-import { reviewVersionLabelOf, useReviewCompareTarget, type ReviewComparedVersion } from './use-review-compare-target.ts';
+import { reviewVersionLabelOf, useReviewRenderVersions, type ReviewComparedVersion } from './use-review-render-versions.ts';
 import { useReviewStageHotkeys, type ReviewDrawTool } from './use-review-stage-hotkeys.ts';
 import { useReviewStageZoom, type ReviewStageRect } from './use-review-stage-zoom.ts';
+import { useReviewSplices } from './use-review-threads.ts';
 
 /** How far, in CSS pixels, a press may travel and still be a click that pins rather than a drag that pans. */
 const REVIEW_PRESS_SLOP = 3;
@@ -133,16 +134,16 @@ function useReviewStageControls(screen: ReviewScreenValue, other: ReviewCompared
 const frameBoxStyle = (rect: ReviewStageRect | undefined) => (rect ? styles.at(rect.left, rect.top, rect.width, rect.height) : styles.unmeasured);
 
 /**
- * The frame, fitted and letterboxed (`Z` for 1:1, panned by drag or wheel), with `H`'s guides and the notes' pins and
- * strokes on it, and the version compared against flipped in (`\` held), wiped or beside it. A click pins the draft;
- * `D` draws on it.
+ * The frame, fitted and letterboxed (`Z` for 1:1, panned by drag or wheel), with the reply slices laid into it, `H`'s
+ * guides and the notes' pins and strokes on it, and the version compared against flipped in (`\` held), wiped or
+ * beside it. A click pins the draft; `D` draws on it.
  */
 export function ReviewStage() {
   const screen = useReviewScreen();
   const { artifact, playback, search, mode, draft, guides } = screen;
   const { attachMedia } = playback;
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
-  const { shown, other } = useReviewCompareTarget();
+  const { shown, other } = useReviewRenderVersions();
   const compared = search.vs === undefined ? undefined : other;
   const layer = search.cmp ?? 'flip';
   const side = compared !== undefined && layer === 'side';
@@ -152,7 +153,8 @@ export function ReviewStage() {
   const { live, panning, handlers } = useReviewStagePointer(screen, tool, { pannable, panBy });
   // Side by side, the open render is on the right: older on the left, as the wipe's `r13 | r14` reads.
   const own = rects.at(-1);
-  const labels = { other: compared ? reviewVersionLabelOf(compared, compared.hash) : '', shown: reviewVersionLabelOf(shown, artifact.render.hash) };
+  const sliced = useReviewSplices().laid.length > 0;
+  const labels = { other: compared ? reviewVersionLabelOf(compared, compared.hash) : '', shown: `${reviewVersionLabelOf(shown, artifact.render.hash)}${sliced ? ' + slices' : ''}` };
   return (
     <Box ref={observe} {...stylex.props(styles.stage)}>
       {side && compared && (

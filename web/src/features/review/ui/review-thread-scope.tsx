@@ -1,11 +1,11 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import type { ReviewArtifact } from '#lib/output/review/models/review-artifact.ts';
-import type { PlacedReviewThread, ReviewThreadSubject } from '#lib/output/review/models/review-placement.ts';
+import type { PlacedReviewThread, ReviewSplices, ReviewThreadSubject } from '#lib/output/review/models/review-placement.ts';
 import type { ReviewSearch } from '../controllers/review-search.ts';
 import type { ReviewOps } from '../controllers/use-review-ops.ts';
 import type { ReviewPlayback } from './review-playback-store.ts';
 import type { ReviewScreenTiming } from './review-screen-context.tsx';
-import type { ReviewComparedVersion } from './use-review-compare-target.ts';
+import type { ReviewComparedVersion } from './use-review-render-versions.ts';
 import type { ReviewDraft } from './use-review-draft.ts';
 
 /** The file a thread's notes sit on, with its clock and its kept versions (which name a carried note's `rN`). */
@@ -14,6 +14,8 @@ export type ReviewThreadMedia = {
   timing: ReviewScreenTiming;
   playback: ReviewPlayback;
   versions: readonly ReviewComparedVersion[];
+  /** The reply slices on the open cut, laid in or refused: a note written inside a laid one is written on it. */
+  splices: ReviewSplices;
   /** Strokes are going on the stage: the draw keys are the stage's, so a pin doesn't pull the cursor to the field. */
   drawing: boolean;
 };

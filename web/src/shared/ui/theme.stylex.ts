@@ -1,9 +1,10 @@
 import * as stylex from '@stylexjs/stylex';
 
 /**
- * The token source: the only module allowed a raw visual value, everything else names a token. The studio's look: a
- * near-black ground, cream type, colour only where it means a note's state. `.stylex.ts` is a StyleX compiler
- * requirement: the file may export nothing but `defineVars`.
+ * The token source: the only module allowed a raw visual value. The look: near-black ground, cream type, colour only
+ * for a note's state. Copy on a working screen: no all-caps headings, no zero counts or counts of one, states as
+ * glyphs with words in tooltips, icon tooltips from `useHotkeyLabel`, never typed. StyleX requires `.stylex.ts` to
+ * export only `defineVars`.
  */
 
 export const colors = stylex.defineVars({

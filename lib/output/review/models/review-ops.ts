@@ -7,7 +7,7 @@
 // reviewer resolves, reopens, deletes, picks and signs off.
 import {
   emptyReviewFile, type ReviewAnchor, type ReviewAuthor, type ReviewCandidate, type ReviewDecision, type ReviewEntry, type ReviewEntryCommit,
-  type ReviewFile, type ReviewSignoff, type ReviewThread, type ReviewThreadKind, type ReviewWrittenOn,
+  type ReviewEntryRender, type ReviewFile, type ReviewSignoff, type ReviewThread, type ReviewThreadKind, type ReviewWrittenOn,
 } from './review-threads.ts';
 
 /** The render a new note is on, before the engine adds the commit its snapshot records. */
@@ -29,7 +29,7 @@ export type ReviewOp =
   | { op: 'thread.edit'; id: number; ifRev: number; text?: string; kind?: ReviewThreadKind; anchor?: Partial<NewAnchor>; image?: Uint8Array }
   | {
     op: 'thread.reply'; id: number; text: string; transition?: ReviewEntry['transition']; asks?: true; commit?: ReviewEntryCommit;
-    render?: string;
+    render?: ReviewEntryRender;
   }
   | { op: 'thread.resolveAddressed'; ids: number[] }
   | { op: 'thread.takeBack'; id: number }
@@ -194,12 +194,24 @@ function replyToReviewThread(at: Applying, op: Extract<ReviewOp, { op: 'thread.r
     if (!moves) transition = undefined;
   }
   if (!op.text.trim() && !transition) refuse('a reply needs text');
+  if (op.render) refuseReplyRender(op.render);
   thread.entries.push({
     author: at.author, text: op.text, at: at.now, rev: at.rev,
     ...(op.commit && { commit: op.commit }), ...(op.render && { render: op.render }), ...(transition && { transition }), ...(op.asks && { asks: true as const }),
   });
   if (transition) thread.state = transition;
   touch(at, thread);
+}
+
+/** A render hash as renderFileStamp gives it: the first 10 hex digits of the file's SHA-256. */
+const RENDER_HASH = /^[0-9a-f]{10}$/;
+
+// The page opens a reply's render by its path, so it must be a plain path inside the project; the CLI and the page are
+// both clients, so this is checked here, where every op lands. Normal form only (no `.`), so it matches the
+// `render.path` its archived versions record.
+function refuseReplyRender({ path, hash }: ReviewEntryRender) {
+  if (path.startsWith('/') || path.split('/').some((part) => part === '' || part === '.' || part === '..')) refuse(`${path} isn't a render's path inside the project`);
+  if (!RENDER_HASH.test(hash)) refuse(`${hash} isn't a render's hash (10 hex digits)`);
 }
 
 /** Resolves those of `ids` still addressed: the rest moved on since the reviewer looked, so they're left as they are. */
@@ -251,6 +263,8 @@ function restoredAnchorOf(at: Applying, thread: ReviewThread, bytes: Uint8Array 
 function restoreReviewThread(at: Applying, thread: ReviewThread, bytes: Uint8Array | undefined) {
   reviewerOnly(at, 'restores notes');
   if (at.file.threads.some((t) => t.id === thread.id)) return;
+  // A restored reply's render pins its hash in the archive (reviewReferencedHashes), so it's held to a reply's rules.
+  for (const { render } of thread.entries) if (render) refuseReplyRender(render);
   at.file.threads.push({ ...thread, anchor: restoredAnchorOf(at, thread, bytes), rev: at.rev });
   at.file.nextId = Math.max(at.file.nextId, thread.id + 1);
   at.changed.add(thread.id);

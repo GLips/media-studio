@@ -4,9 +4,8 @@ import type { ReviewDecision } from '#lib/output/review/models/review-threads.ts
 import { useReviewOps } from '#web/features/review/index.ts';
 import { RouteNotFoundPage } from '#web/shared/ui/route-not-found-page.tsx';
 import { StudioShell } from '#web/shared/ui/studio-shell.tsx';
-import { decisionOpsTarget, useReviewDecisionView } from '../controllers/decision-queries.ts';
+import { useReviewDecisionView, type ReviewDecisionView } from '../controllers/decision-queries.ts';
 import { useDecisionSearch } from '../controllers/decision-search.ts';
-import type { ReviewDecisionView } from '../controllers/review-decision.ts';
 import { DecisionHeader } from './decision-header.tsx';
 import { DecisionLayout } from './decision-layout.tsx';
 import { createDecisionPlayback } from './decision-playback.ts';
@@ -18,7 +17,7 @@ type DecisionScreenBodyProps = { readonly project: string; readonly topic: strin
 
 function DecisionScreenBody({ project, topic, view, decision }: DecisionScreenBodyProps) {
   const [search, setSearch] = useDecisionSearch();
-  const ops = useReviewOps(decisionOpsTarget(project, topic));
+  const ops = useReviewOps(project);
   const [playback] = useState(createDecisionPlayback);
   const { candidates } = decision;
   const twoUp = search.view === 'two';
@@ -55,7 +54,7 @@ function DecisionScreenBody({ project, topic, view, decision }: DecisionScreenBo
 
 /**
  * A decision an agent posted: its candidates surveyed or two-up on one clock, judged with Lightroom's keys and
- * signed off. Polled, so a re-post or the agent's reply shows within a second.
+ * signed off. On the project pulse, so a re-post or the agent's reply shows within a second.
  */
 export function DecisionScreen({ project, topic }: { readonly project: string; readonly topic: string }) {
   const view = useReviewDecisionView(project, topic);

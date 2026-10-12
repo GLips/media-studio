@@ -1,10 +1,10 @@
 import { formatReviewThreadsMarkdown } from '#lib/output/review/models/review-markdown.ts';
-import { reviewFileOpsTarget, useReviewOps } from '../controllers/use-review-ops.ts';
+import { useReviewOps } from '../controllers/use-review-ops.ts';
 import { useReviewScreen } from './review-screen-context.tsx';
 import { ReviewThreadPanel } from './review-thread-panel.tsx';
 import { ReviewThreadScopeProvider, type ReviewThreadScope } from './review-thread-scope.tsx';
-import { useReviewCompareTarget } from './use-review-compare-target.ts';
-import { useReviewThreads } from './use-review-threads.ts';
+import { useReviewRenderVersions } from './use-review-render-versions.ts';
+import { useReviewSplices, useReviewThreads } from './use-review-threads.ts';
 
 /**
  * The thread of a screen that reviews one file (a render, a still, the script's take): its scope is the screen's
@@ -13,13 +13,14 @@ import { useReviewThreads } from './use-review-threads.ts';
 export function ReviewScreenThread({ on }: { readonly on: 'video' | 'still' | 'script' }) {
   const { project, artifact, timing, playback, draft, search, setSearch, mode } = useReviewScreen();
   const threads = useReviewThreads()?.threads;
-  const { versions } = useReviewCompareTarget();
-  const ops = useReviewOps(reviewFileOpsTarget(artifact));
+  const { versions } = useReviewRenderVersions();
+  const splices = useReviewSplices();
+  const ops = useReviewOps(project);
   const scope: ReviewThreadScope = {
     project, subject: { on }, threads, ops, draft, search, setSearch,
-    media: { artifact, timing, playback, versions, drawing: mode === 'draw' },
+    media: { artifact, timing, playback, versions, splices, drawing: mode === 'draw' },
     markdownOf: (listed) => formatReviewThreadsMarkdown(listed, {
-      project, renderPath: artifact.path, renderHash: artifact.render.hash, fps: timing.fps, size: artifact.frameSize,
+      project, renderPath: artifact.path, renderHash: artifact.render.hash, fps: timing.fps, size: artifact.frameSize, splices: splices.laid,
       sources: { fps: timing.fps, frameSize: artifact.frameSize, scenes: artifact.scenes, sounds: artifact.sounds, motion: artifact.motion, cells: artifact.cells, timing: artifact.timing },
     }),
   };

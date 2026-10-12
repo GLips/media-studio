@@ -21,10 +21,9 @@ export function transparentPairOf(path: string): string | undefined {
   return undefined;
 }
 
-/** The file on disk now, and every artifact beside it: polled apart from the loaded review, which never swaps. */
-export type ReviewArtifactStatus = { render: ReviewRenderStamp; artifacts: ProjectArtifact[] };
-
-export type ReviewArtifact = ReviewArtifactStatus & {
+export type ReviewArtifact = {
+  /** The bytes loaded. The file on disk now is the project pulse's, which never swaps this. */
+  render: ReviewRenderStamp;
   project: string;
   /** The file's path in the project, e.g. `out/video.mp4`. */
   path: string;

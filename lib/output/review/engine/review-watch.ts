@@ -2,15 +2,14 @@
 // reviewer. It blocks until the reviewer changes something past the agent's cursor, waits for the burst to settle, and
 // returns what changed. The agent's own writes and `keep` threads never wake it.
 //
-// Its state is out/.review/watch-<as>.json (git-ignored with out/): the cursor, so a run never repeats or misses what
-// another showed, and a heartbeat the page reads as the agent's presence.
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+// One watcher per project. Its state is out/.review/watch.json (git-ignored with out/): the cursor, so a run never
+// repeats or misses what the last showed, and a heartbeat the page reads as the agent's presence. Two agents watching
+// one project would race on its replies, so there's no name to keep a second cursor by.
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setInterval as every } from 'node:timers/promises';
 import { replaceFileWhole } from '#lib/platform/files/engine/replace-file-whole.ts';
-import { placeReviewThread, type PlacedReviewThread, type ReviewPlacement, type ReviewPlacementTarget } from '../models/review-placement.ts';
 import type { ReviewDecision, ReviewFile, ReviewThread } from '../models/review-threads.ts';
-import { reviewPlacementTargetOf } from './review-artifact.ts';
 import { readReviewFile } from './review-file.ts';
 
 const REVIEW_WATCH_POLL_MS = 300;
@@ -21,8 +20,7 @@ const REVIEW_WATCH_FRESH_MS = 15_000;
 /** A watcher's saved state: its cursor (a file revision), when it began watching and its last heartbeat (ISO). */
 type ReviewWatchState = { cursor: number; since: string; beat: string };
 
-const reviewWatchDirOf = (projectDir: string) => join(projectDir, 'out', '.review');
-const reviewWatchFileOf = (projectDir: string, as: string) => join(reviewWatchDirOf(projectDir), `watch-${as}.json`);
+const reviewWatchFileOf = (projectDir: string) => join(projectDir, 'out', '.review', 'watch.json');
 
 function readReviewWatchState(file: string): ReviewWatchState | undefined {
   // SAFETY: only this module writes watch files.
@@ -31,15 +29,10 @@ function readReviewWatchState(file: string): ReviewWatchState | undefined {
 
 const beatIsFresh = (state: ReviewWatchState, now: number) => now - Date.parse(state.beat) < REVIEW_WATCH_FRESH_MS;
 
-/** The agent watching the project now, by the freshest heartbeat, with when it began; none when no beat is fresh. */
+/** The agent watching the project now, with when it began; none when its heartbeat isn't fresh. */
 export function readReviewWatchPresence(projectDir: string): { since: string } | undefined {
-  const dir = reviewWatchDirOf(projectDir), now = Date.now();
-  if (!existsSync(dir)) return undefined;
-  const fresh = readdirSync(dir).filter((name) => /^watch-.+\.json$/.test(name))
-    .flatMap((name) => readReviewWatchState(join(dir, name)) ?? [])
-    .filter((state) => beatIsFresh(state, now))
-    .toSorted((a, b) => b.beat.localeCompare(a.beat))[0];
-  return fresh && { since: fresh.since };
+  const state = readReviewWatchState(reviewWatchFileOf(projectDir));
+  return state && beatIsFresh(state, Date.now()) ? { since: state.since } : undefined;
 }
 
 /** Whether the reviewer touched `thread` after `cursor`: wrote it, edited it, replied, resolved or reopened. */
@@ -55,39 +48,25 @@ function reviewerChangesOf(file: ReviewFile, cursor: number) {
   return { threads: file.threads.filter((t) => reviewerChangedThread(t, cursor)), decisions: file.decisions.filter((d) => reviewerChangedDecision(d, cursor)) };
 }
 
-// A watch hands off every kind of thread: one not shown on the render (a script note, a video note elsewhere) says
-// so. A note on another still stands on that still, and needs no render.
-function placeForHandOff(thread: ReviewThread, target: ReviewPlacementTarget | undefined): ReviewPlacement {
-  const placed = target && placeReviewThread(thread, target);
-  if (placed) return placed;
-  if (thread.anchor.on === 'decision' || thread.anchor.on === 'project' || thread.anchor.on === 'still') return { shifted: false };
-  return { unplaced: target ? `not on ${target.path}` : 'no render given to place it on' };
-}
-
 export type ReviewWatchOptions = {
   projectDir: string;
-  /** The watcher's name, `agent` by default in the CLI: each name keeps its own cursor. */
-  as: string;
-  /** A cursor to start from instead of the saved one. */
-  since?: number;
   /** Quiet after the first change before returning, so a burst of notes comes back as one. */
   settleMs: number;
   timeoutMs?: number;
-  /** The render, by its path in the project, to place changed threads on. */
-  render?: string;
 };
 
-export type ReviewWatchChange = { revision: number; changed: PlacedReviewThread[]; decisions: ReviewDecision[] };
+/** What the reviewer changed: threads as stored, for the caller to place on the render it hands off. */
+export type ReviewWatchChange = { revision: number; changed: ReviewThread[]; decisions: ReviewDecision[] };
 
 /**
  * Waits for the reviewer's next change past the cursor, then for `settleMs` with none newer, and returns everything
  * they changed since the cursor, saving the cursor past it. On `timeoutMs` with no change, returns the cursor.
  */
-export async function waitForReviewChange({ projectDir, as, since, settleMs, timeoutMs, render }: ReviewWatchOptions): Promise<ReviewWatchChange | { timeout: number }> {
-  const stateFile = reviewWatchFileOf(projectDir, as), saved = readReviewWatchState(stateFile);
+export async function waitForReviewChange({ projectDir, settleMs, timeoutMs }: ReviewWatchOptions): Promise<ReviewWatchChange | { timeout: number }> {
+  const stateFile = reviewWatchFileOf(projectDir), saved = readReviewWatchState(stateFile);
   const startedAt = Date.now();
   const watchingSince = saved && beatIsFresh(saved, startedAt) ? saved.since : new Date(startedAt).toISOString();
-  const cursor = since ?? saved?.cursor ?? 0;
+  const cursor = saved?.cursor ?? 0;
   const beat = (now: number, at: number) => {
     const state: ReviewWatchState = { cursor: at, since: watchingSince, beat: new Date(now).toISOString() };
     replaceFileWhole(stateFile, JSON.stringify(state));
@@ -103,9 +82,8 @@ export async function waitForReviewChange({ projectDir, as, since, settleMs, tim
     if (latest > newest) [newest, newestAt] = [latest, now];
     const settled = newest > 0 && now - newestAt >= settleMs;
     if (settled && (threads.length || decisions.length)) {
-      const target = render ? reviewPlacementTargetOf(join(projectDir, render), render) : undefined;
       beat(now, file.revision);
-      return { revision: file.revision, changed: threads.map((t) => Object.assign({}, t, { placement: placeForHandOff(t, target) })), decisions };
+      return { revision: file.revision, changed: threads, decisions };
     }
     // What woke it can be gone by the time the burst settles (a note resolved, then cleared): with nothing left to
     // hand off, it goes back to waiting rather than waking the agent for nothing.

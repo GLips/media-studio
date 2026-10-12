@@ -47,12 +47,18 @@ export type ReviewEntry = {
   at: string;
   rev: number;
   commit?: ReviewEntryCommit;
-  /** The render hash the agent says shows the fix. */
-  render?: string;
+  /**
+   * The render the agent says shows the fix, by its path and the hash of its bytes then. A slice (render --scene) is
+   * laid into the cut over its frames where it fits (render-splice.ts); a cut replaces the one open.
+   */
+  render?: ReviewEntryRender;
   transition?: Exclude<ReviewThreadState, 'open'>;
   /** An agent's question: the thread waits on the reviewer. */
   asks?: true;
 };
+
+/** A render a reply points at: its path in the project and its bytes' hash, as `writtenOn` names a note's. */
+export type ReviewEntryRender = { path: string; hash: string };
 
 /** 0–1 across the frame. */
 export type ReviewPoint = { x: number; y: number };
@@ -125,7 +131,7 @@ export const emptyReviewFile = (): ReviewFile => ({ version: REVIEW_FILE_VERSION
 export function reviewReferencedHashes(file: ReviewFile): Set<string> {
   return new Set([
     ...file.threads.flatMap(({ anchor }) => (anchor.on === 'video' || anchor.on === 'still' ? [anchor.writtenOn.hash] : [])),
-    ...file.threads.flatMap(({ entries }) => entries.flatMap((e) => (e.render ? [e.render] : []))),
+    ...file.threads.flatMap(({ entries }) => entries.flatMap((e) => (e.render ? [e.render.hash] : []))),
     ...file.decisions.flatMap((d) => d.candidates.flatMap((c) => (c.media ? [c.media.hash] : []))),
   ]);
 }

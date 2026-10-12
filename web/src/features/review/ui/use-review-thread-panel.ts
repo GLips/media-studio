@@ -6,7 +6,7 @@ import { type PlacedReviewThread, reviewThreadFrameOf, reviewVideoAnchorAt } fro
 import type { ReviewThread } from '#lib/output/review/models/review-threads.ts';
 import { projectFileUrl } from '#web/shared/media-urls.ts';
 import type { DecodedReviewOp } from '../controllers/review-op-schema.ts';
-import { composeShownReviewFrame } from './review-frame-image.ts';
+import { composeShownReviewFrame } from './review-mark-paint.ts';
 import type { ReviewPlayback } from './review-playback-store.ts';
 import { useReviewThreadScope } from './review-thread-scope.tsx';
 

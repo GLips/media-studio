@@ -44,7 +44,7 @@ export function ReviewThreadPanel({ head }: { readonly head?: ReactNode }) {
     noteStepGroup: subject.on === 'still' ? 'still' : 'playback' });
 
   const place = media && {
-    fps: media.timing.fps, renderHash: media.artifact.render.hash, scenes: media.artifact.scenes ?? [], versions: media.versions,
+    project: scope.project, fps: media.timing.fps, renderHash: media.artifact.render.hash, scenes: media.artifact.scenes ?? [], versions: media.versions, splices: media.splices,
     lines: media.artifact.timing?.lines.map((line) => line.id) ?? [],
   };
   const rowOf = (thread: PlacedReviewThread) => (

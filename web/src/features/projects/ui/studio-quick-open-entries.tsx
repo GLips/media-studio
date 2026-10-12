@@ -1,9 +1,8 @@
-import { useQuery } from '@tanstack/react-query';
 import { useParams, useRouter } from '@tanstack/react-router';
 import { Film, Folder, ImageIcon, ScrollText, Split } from 'lucide-react';
 import type { ReviewProjectSummary } from '#lib/output/review/models/review-dashboard.ts';
 import type { QuickOpenEntriesBody, QuickOpenEntriesSource, QuickOpenEntry } from '#web/shared/ui/quick-open-entries.tsx';
-import { projectSummariesQueryOptions } from '../controllers/project-queries.ts';
+import { useProjectSummariesIfLoaded } from '../controllers/project-queries.ts';
 
 const GLYPH_SIZE = 12;
 
@@ -40,7 +39,7 @@ function quickOpenEntriesOf({ project, rows }: ReviewProjectSummary, router: Stu
  * screen's places are `near`, listed and ranked first.
  */
 function StudioQuickOpenEntries({ body }: { readonly body: QuickOpenEntriesBody }) {
-  const { data } = useQuery(projectSummariesQueryOptions);
+  const data = useProjectSummariesIfLoaded();
   const router = useRouter();
   const here = useParams({ strict: false }).project;
   return body(data?.flatMap((summary) => quickOpenEntriesOf(summary, router, summary.project === here)));

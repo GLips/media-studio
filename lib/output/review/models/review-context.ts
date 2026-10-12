@@ -18,6 +18,14 @@ export type ReviewSoundMarker = { id: string; at: number; frame: number; sound: 
 export type ReviewScene = { id: string; from: number; to: number; rung?: SceneRung };
 
 /**
+ * The scene a note at `frame` is about. In a crossfade, the one being cut to: the incoming picture is what a note in a
+ * dissolve is usually about, and it's the scene `render --scene` re-renders for it.
+ */
+export function reviewSceneAtFrame<S extends Pick<ReviewScene, 'from' | 'to'>>(scenes: readonly S[], frame: number): S | undefined {
+  return scenes.filter((s) => s.from <= frame && frame < s.to).toSorted((a, b) => b.from - a.from)[0];
+}
+
+/**
  * One cell of a variant sheet (`studio still --sheet`), from the `.cells.json` beside it: the variant, where it sits on
  * each axis, and whether the still check refused it. `rect` is 0–1 across the sheet.
  */
@@ -57,10 +65,10 @@ export type ReviewContextSources = {
   timing?: ReviewTiming;
 };
 
-/** The frame a moment in video seconds shows. The epsilon keeps a sound placed on a frame from rounding to the one before. */
 /** The fps a render without a snapshot is counted at: the page plays it and the hand-off numbers its frames by it. */
 export const REVIEW_FALLBACK_FPS = 30;
 
+/** The frame a moment in video seconds shows. The epsilon keeps a sound placed on a frame from rounding to the one before. */
 export const reviewFrameAt = (seconds: number, fps: number) => Math.floor(seconds * fps + 1e-6);
 
 export function reviewNoteContext(note: ReviewNotePlace, sources: ReviewContextSources): ReviewNoteContext {

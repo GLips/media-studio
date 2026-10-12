@@ -11,7 +11,7 @@ const reviewNotesArgs = {
   all: { type: 'boolean', description: 'Every note, resolved and addressed ones too' },
   state: { type: 'string', valueHint: 'open,reopened', description: `The states to list, of ${REVIEW_THREAD_STATES.join(', ')}; open and reopened by default` },
   on: { type: 'string', valueHint: 'video', description: `Only notes on one kind of thing: ${REVIEW_ANCHOR_KINDS.join(', ')}` },
-  render: { type: 'string', valueHint: 'out/video.mp4', description: 'The render or still (its path in the project) to place notes on; the newest video by default' },
+  render: { type: 'string', valueHint: 'out/video.mp4', description: 'The render or still (its path in the project) to place notes on; the newest full render by default, with the reply slices laid into it' },
   since: { type: 'string', valueHint: 'revision', description: 'Only notes changed after this review revision' },
   json: { type: 'boolean', description: 'Print { revision, threads, decisions } as JSON, each thread with its placement, instead of markdown' },
 } as const satisfies ArgsDef;
@@ -28,7 +28,7 @@ function listFlagOf<T extends string>(flag: string, value: string, allowed: read
 export const reviewNotesCommand = defineCommand({
   meta: {
     name: 'notes',
-    description: "The project's notes from review/review.json, placed on a render (the newest video unless --render): open and reopened by default, each with its moment, the render it was written on and its commits, the point in pixels and what's under it, its scene's source file, the frame the reviewer saw (review/frames/), a ready studio look line, its replies, and the standing `keep` notes. Paths are from the repo root. A note whose moment isn't on this render is listed as unplaced, saying why. Open decisions follow.",
+    description: "The project's notes from review/review.json, placed on a render (the newest full render unless --render): open and reopened by default, each with its moment, the render it was written on and its commits, the point in pixels and what's under it, its scene with its source file and frames, the frame the reviewer saw (review/frames/), a ready studio look line, a fix's render --scene and reply line, its replies, and the standing `keep` notes. Paths are from the repo root. A note whose moment isn't on this render is listed as unplaced, saying why. Open decisions follow.",
   },
   args: reviewNotesArgs,
   async run({ args, rawArgs }) {

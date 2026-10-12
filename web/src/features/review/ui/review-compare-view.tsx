@@ -10,7 +10,7 @@ import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { reviewArtifactQueryOptions } from '../controllers/review-queries.ts';
 import { useReviewScreen } from './review-screen-context.tsx';
 import { reviewIsProofed, reviewProofGroundStyles, useReviewProofGround } from './use-review-proof-ground.ts';
-import type { ReviewComparedVersion } from './use-review-compare-target.ts';
+import type { ReviewComparedVersion } from './use-review-render-versions.ts';
 
 const REVIEW_WIPE_MIDDLE = 0.5;
 

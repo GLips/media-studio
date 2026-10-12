@@ -1,13 +1,12 @@
 import { Box, Code, Stack, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
-import { useSuspenseQuery } from '@tanstack/react-query';
 import { Ellipsis } from 'lucide-react';
 import { Fragment, useRef } from 'react';
 import { reviewRowAwaitsYou, type ReviewProjectRow, type ReviewProjectSummary } from '#lib/output/review/models/review-dashboard.ts';
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
 import { StudioShell } from '#web/shared/ui/studio-shell.tsx';
 import { colors, spacing } from '#web/shared/ui/theme.stylex.ts';
-import { projectSummariesQueryOptions } from '../controllers/project-queries.ts';
+import { useProjectSummaries } from '../controllers/project-queries.ts';
 import { ProjectDashboardRow } from './project-dashboard-row.tsx';
 import { ProjectPlaceRow, projectPlaceKeyOf } from './project-place-row.tsx';
 import { projectListStyles, ProjectRow } from './project-row.tsx';
@@ -44,7 +43,7 @@ const projectHasRender = (summary: ReviewProjectSummary) => summary.rows.some((r
  * unsigned script), then every project, the most recently active first, and last those with nothing rendered.
  */
 export function ProjectsDashboardPage() {
-  const { data: summaries, dataUpdatedAt } = useSuspenseQuery(projectSummariesQueryOptions);
+  const { summaries, now } = useProjectSummaries();
   const listRef = useRef<HTMLDivElement>(null);
   useProjectRowHotkeys(listRef);
   const awaiting = awaitingByProject(summaries);
@@ -60,7 +59,7 @@ export function ProjectsDashboardPage() {
               {awaiting.map(({ summary, rows, more }) => (
                 <Fragment key={summary.project}>
                   <ProjectRowGroupLabel>{summary.project}</ProjectRowGroupLabel>
-                  {rows.map((row) => <ProjectPlaceRow key={projectPlaceKeyOf(row)} summary={summary} row={row} now={dataUpdatedAt} />)}
+                  {rows.map((row) => <ProjectPlaceRow key={projectPlaceKeyOf(row)} summary={summary} row={row} now={now} />)}
                   {more > 0 && (
                     <ProjectRow target={{ project: summary.project, on: 'project' }} thumbnail={<ProjectThumbnail glyph={<Ellipsis size={14} />} />}
                       title={<Text component="span" inherit {...stylex.props(styles.more)}>+{more}</Text>} />
@@ -70,7 +69,7 @@ export function ProjectsDashboardPage() {
               <Box aria-hidden {...stylex.props(styles.rule)} />
             </>
           )}
-          {projects.map((summary) => <ProjectDashboardRow key={summary.project} summary={summary} now={dataUpdatedAt} />)}
+          {projects.map((summary) => <ProjectDashboardRow key={summary.project} summary={summary} now={now} />)}
         </Stack>
       </FadeScroll>
     </StudioShell>

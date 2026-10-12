@@ -1,8 +1,8 @@
 import { createServerFn } from '@tanstack/react-start';
 import { setResponseStatus } from '@tanstack/react-start/server';
 import { Schema } from 'effect';
-import { applyReviewOps, projectFolderNamed, readPlacedReviewThreads } from '#web/infrastructure/studio-engine.server.ts';
-import { ReviewArtifactVersionRef, ReviewOpsInput } from './review-op-schema.ts';
+import { applyReviewOps, projectFolderNamed, readReviewFile } from '#web/infrastructure/studio-engine.server.ts';
+import { ReviewOpsInput } from './review-op-schema.ts';
 
 /**
  * Applies the screen's ops as the reviewer. Answers the new revision and the ids it touched, or, for an edit to a note
@@ -19,7 +19,7 @@ export const applyReviewOpsFn = createServerFn({ method: 'POST' })
     return { revision: applied.file.revision, changed: applied.changed };
   });
 
-/** The project's threads placed on the open file (or its version `render`), with its decisions and sign-offs. */
-export const readReviewThreadsFn = createServerFn({ method: 'GET' })
-  .validator(Schema.toStandardSchemaV1(ReviewArtifactVersionRef))
-  .handler(({ data }) => readPlacedReviewThreads(data.project, data.path, data.render));
+/** The project's review/review.json as it is, unplaced: each screen places its threads on what it shows. */
+export const readReviewFileFn = createServerFn({ method: 'GET' })
+  .validator(Schema.toStandardSchemaV1(Schema.Struct({ project: Schema.String })))
+  .handler(({ data }) => readReviewFile(projectFolderNamed(data.project)));

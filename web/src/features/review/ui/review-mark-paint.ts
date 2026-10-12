@@ -1,4 +1,4 @@
-// review-frame-image.ts: the one mark renderer. The stage draws a note's point and strokes with it over the frame, and
+// review-mark-paint.ts: the one mark renderer. The stage draws a note's point and strokes with it over the frame, and
 // the composer burns them into the frame image the note carries, so the agent reading review/frames/<id>.jpg sees the
 // marks the reviewer drew, drawn the same way.
 import type { ReviewMark, ReviewPoint } from '#lib/output/review/models/review-threads.ts';
@@ -113,7 +113,9 @@ export const REVIEW_MEDIA_ATTRIBUTE = 'data-review-media';
  * up): the image is optional, and the note still saves.
  */
 export async function composeShownReviewFrame(options: { point?: ReviewPoint; marks?: readonly ReviewMark[]; transparent: boolean }): Promise<Uint8Array | undefined> {
-  const media = document.querySelector(`video[${REVIEW_MEDIA_ATTRIBUTE}], img[${REVIEW_MEDIA_ATTRIBUTE}]`);
+  // The topmost one showing: a slice laid in over the cut comes later in the stage, and is hidden (opacity) off its span.
+  const media = [...document.querySelectorAll(`video[${REVIEW_MEDIA_ATTRIBUTE}], img[${REVIEW_MEDIA_ATTRIBUTE}]`)]
+    .findLast((m) => m.checkVisibility({ opacityProperty: true }));
   if (!(media instanceof HTMLVideoElement || media instanceof HTMLImageElement)) return undefined;
   return composeReviewFrameImage(media, options);
 }

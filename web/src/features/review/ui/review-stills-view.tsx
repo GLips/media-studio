@@ -7,9 +7,8 @@ import { ReviewFilmstrip } from './review-filmstrip.tsx';
 import { useReviewScreen } from './review-screen-context.tsx';
 import { ReviewStage } from './review-stage.tsx';
 import { ReviewStillGrid } from './review-still-grid.tsx';
-import { useReviewStillSiblings } from './review-still-siblings.ts';
+import { useReviewStillPixels, useReviewStillSiblings } from './review-still-siblings.ts';
 import { ReviewStillsBar } from './review-stills-bar.tsx';
-import { useReviewStillPixels } from './use-review-proof-ground.ts';
 
 const styles = stylex.create({
   view: { display: 'grid', height: '100%', minHeight: 0, gridTemplateRows: 'minmax(0, 1fr) auto' },

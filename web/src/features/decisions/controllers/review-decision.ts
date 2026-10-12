@@ -1,12 +1,11 @@
 import { createServerFn } from '@tanstack/react-start';
 import { Schema } from 'effect';
-import { readReviewDecisionView } from '#web/infrastructure/studio-engine.server.ts';
+import { readReviewCandidateFileStates } from '#web/infrastructure/studio-engine.server.ts';
 
 /** A project's decision, by its topic. */
 const ReviewDecisionRef = Schema.Struct({ project: Schema.String, topic: Schema.String });
 
-export const fetchReviewDecision = createServerFn({ method: 'GET' })
+/** By candidate key, the candidates of the topic's decision whose file moved on since it was posted. */
+export const fetchReviewCandidateFileStates = createServerFn({ method: 'GET' })
   .validator(Schema.toStandardSchemaV1(ReviewDecisionRef))
-  .handler(({ data }) => readReviewDecisionView(data.project, data.topic));
-
-export type ReviewDecisionView = Awaited<ReturnType<typeof fetchReviewDecision>>;
+  .handler(({ data }) => readReviewCandidateFileStates(data.project, data.topic));

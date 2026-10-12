@@ -13,7 +13,7 @@ import { Readout } from '#web/shared/ui/readout.tsx';
 import { Textarea } from '#web/shared/ui/textarea.tsx';
 import { colors, fonts, radius, spacing, typography } from '#web/shared/ui/theme.stylex.ts';
 import { ReviewThreadBody } from './review-thread-body.tsx';
-import type { ReviewComparedVersion } from './use-review-compare-target.ts';
+import type { ReviewComparedVersion } from './use-review-render-versions.ts';
 import type { ReviewThreadActions, ReviewThreadInline } from './use-review-thread-panel.ts';
 
 const flashIn = stylex.keyframes({ from: { backgroundColor: colors.flash }, to: { backgroundColor: 'transparent' } });

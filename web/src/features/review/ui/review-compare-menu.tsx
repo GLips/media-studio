@@ -8,7 +8,8 @@ import { IconButton } from '#web/shared/ui/icon-button.tsx';
 import { Readout } from '#web/shared/ui/readout.tsx';
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { useReviewScreen } from './review-screen-context.tsx';
-import { reviewVersionLabelOf, useReviewCompareTarget } from './use-review-compare-target.ts';
+import { reviewVersionLabelOf, useReviewRenderVersions } from './use-review-render-versions.ts';
+import { useReviewSplices } from './use-review-threads.ts';
 
 const styles = stylex.create({
   target: {
@@ -28,11 +29,13 @@ function formatReviewVersionMade(at: string): string {
 
 /**
  * `⇆ r13 ▾ ◫` in the transport: the version compared against (`V` opens the list) and side by side. Holding `\`
- * flips to it and `W` wipes. With no other version kept there's nothing to compare, and nothing shows.
+ * flips to it and `W` wipes. While slices are laid in, the cut as rendered heads the list and is the default. With
+ * nothing to compare against, nothing shows.
  */
 export function ReviewCompareMenu() {
   const { artifact, search, setSearch } = useReviewScreen();
-  const { versions, shown, other } = useReviewCompareTarget();
+  const { versions, shown, other } = useReviewRenderVersions();
+  const sliced = useReviewSplices().laid.length > 0;
   const [opened, setOpened] = useState(false);
   // Left out, not disabled, with nothing to choose: a disabled key still holds its binding.
   useHotkeys(other ? [{ hotkey: 'V', callback: () => setOpened((o) => !o), options: { meta: { group: 'compare', name: 'Compare with' } } }] : []);
@@ -54,10 +57,15 @@ export function ReviewCompareMenu() {
           </Menu.Target>
         </HotkeyTooltip>
         <Menu.Dropdown>
+          {shown && sliced && (
+            <Menu.Item onClick={() => setSearch({ vs: shown.hash })}>
+              <Readout bright={other.asRendered}>{reviewVersionLabelOf({ ...shown, asRendered: true }, shown.hash)}</Readout>
+            </Menu.Item>
+          )}
           {choices.map((v) => (
             <Menu.Item key={v.hash} onClick={() => setSearch({ vs: v.hash })}>
               <Group gap="gap" wrap="nowrap">
-                <Readout bright={v.hash === other.hash}>r{v.r}</Readout>
+                <Readout bright={!other.asRendered && v.hash === other.hash}>r{v.r}</Readout>
                 <Readout>{v.hash.slice(0, 6)}{v.source.workspace?.dirty || v.source.engine.dirty ? '*' : ''}</Readout>
                 <Readout>{formatReviewVersionMade(v.at)}</Readout>
               </Group>

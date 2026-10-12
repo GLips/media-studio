@@ -10,10 +10,7 @@ import { loadRenderSnapshot } from '#lib/output/render/engine/render-snapshot.ts
 import { replaceFileWhole } from '#lib/platform/files/engine/replace-file-whole.ts';
 import { releaseStudioLockFile, tryStudioLockFile } from '#lib/platform/files/engine/studio-lock-file.ts';
 import { applyReviewOpsToFile, ReviewOpRefused, type ReviewOp, type ReviewOpsApplied, type ReviewOpsConflict, type ReviewRenderRef } from '../models/review-ops.ts';
-import { placeReviewThread, type PlacedReviewThread, type ReviewPlacementTarget } from '../models/review-placement.ts';
-import { emptyReviewFile, REVIEW_FILE_VERSION, type ReviewDecision, type ReviewFile, type ReviewAuthor, type ReviewSignoff, type ReviewWrittenOn } from '../models/review-threads.ts';
-import { reviewedVersionOf, reviewPlacementTargetOf } from './review-artifact.ts';
-import { projectFolderNamed } from './project-media.ts';
+import { emptyReviewFile, REVIEW_FILE_VERSION, type ReviewFile, type ReviewAuthor, type ReviewWrittenOn } from '../models/review-threads.ts';
 
 /** How long a writer waits for another's lock, and how often it tries again. Writers hold it for milliseconds. */
 const REVIEW_LOCK_WAIT_MS = 2000;
@@ -108,22 +105,4 @@ export function applyReviewOps(projectDir: string, ops: readonly ReviewOp[], aut
     replaceFileWhole(path, `${JSON.stringify(applied.file, null, 2)}\n`);
     return applied;
   });
-}
-
-/** The threads shown on a render or still, placed on it, with the project's decisions and sign-offs. */
-export type PlacedReviewFile = { revision: number; threads: PlacedReviewThread[]; decisions: ReviewDecision[]; signoffs: ReviewSignoff[] };
-
-/** The review placed on `target`; threads about something else (another still, the script) are left out. */
-export function placeReviewFileOn(file: ReviewFile, target: ReviewPlacementTarget): PlacedReviewFile {
-  const threads = file.threads.flatMap((thread) => {
-    const placement = placeReviewThread(thread, target);
-    return placement ? [{ ...thread, placement }] : [];
-  });
-  return { revision: file.revision, threads, decisions: file.decisions, signoffs: file.signoffs };
-}
-
-/** The project's review as the screen shows it on the file at `renderPath`, or on its kept version `render`. */
-export function readPlacedReviewThreads(project: string, renderPath: string, render?: string): PlacedReviewFile {
-  const target = reviewPlacementTargetOf(reviewedVersionOf(project, renderPath, render), renderPath);
-  return placeReviewFileOn(readReviewFile(projectFolderNamed(project)), target);
 }

@@ -2,7 +2,7 @@ import { createContext, useContext, type ReactNode } from 'react';
 import type { ReviewCandidate, ReviewDecision } from '#lib/output/review/models/review-threads.ts';
 import type { DecodedReviewOp, ReviewOps } from '#web/features/review/index.ts';
 import type { DecisionSearch, SetDecisionSearch } from '../controllers/decision-search.ts';
-import type { ReviewDecisionView } from '../controllers/review-decision.ts';
+import type { ReviewDecisionView } from '../controllers/decision-queries.ts';
 import type { DecisionPlayback } from './decision-playback.ts';
 import type { DecisionTwoUpPair } from './decision-two-up-pair.ts';
 

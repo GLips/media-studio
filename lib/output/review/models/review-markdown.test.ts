@@ -11,19 +11,38 @@ const thread = (id: number, kind: ReviewThreadKind, state: ReviewThreadState, te
   placement: { frame: id * 30, shifted: false },
 });
 
-test('the markdown keeps a note\'s paragraphs, lists open and reopened notes by default, and always lists keeps', () => {
+test('the markdown keeps a note\'s paragraphs, lists open and reopened notes by default, and always lists keeps, each fix with its scene and the render that hands it over', () => {
   const markdown = formatReviewThreadsMarkdown([
     thread(1, 'fix', 'open', 'The second strike lands soft.\n\nGive it the ease the first one has.'),
     thread(2, 'fix', 'resolved', 'whip is late'),
     thread(3, 'fix', 'addressed', 'logo too small'),
     thread(4, 'keep', 'open', 'the end card holds two seconds'),
     thread(5, 'question', 'reopened', 'why the cut here?'),
-  ], { project: 'zz-review-sandbox', renderPath: 'out/video.mp4', renderHash: 'a1b2c3d4e5', fps: 30, size: { w: 1920, h: 1080 } });
+  ], {
+    project: 'zz-review-sandbox', renderPath: 'out/video.mp4', renderHash: 'a1b2c3d4e5', renderName: 'out/video.mp4 r14', fps: 30, size: { w: 1920, h: 1080 },
+    sceneSources: { ink: 'bars/ink.tsx' },
+    // #1 at f30 is in the crossfade from intro into ink: it's ink's, the scene being cut to.
+    sources: { fps: 30, frameSize: { w: 1920, h: 1080 }, scenes: [{ id: 'intro', from: 0, to: 36 }, { id: 'ink', from: 24, to: 312 }] },
+  });
   assert.match(markdown, /The second strike lands soft\.\n\nGive it the ease the first one has\./);
   assert.deepEqual([...markdown.matchAll(/^### #(\d+)/gm)].map((m) => Number(m[1])), [1, 5, 4]);
   assert.match(markdown, /## Keep\n\n### #4 keep/);
   assert.match(markdown, /frame: work\/projects\/zz-review-sandbox\/review\/frames\/1\.jpg/);
-  assert.match(markdown, /look: studio look zz-review-sandbox --video out\/video\.mp4 --frames 27:33 --crop 760,390,400,300/);
+  assert.match(markdown, /look: {2}studio look zz-review-sandbox --video out\/video\.mp4 --frames 27:33 --crop 760,390,400,300/);
+  assert.match(markdown, /scene: ink \(work\/projects\/zz-review-sandbox\/bars\/ink\.tsx\) · f24–f311 on out\/video\.mp4 r14/);
+  assert.match(markdown, /fix: {3}studio render zz-review-sandbox --scene ink, commit, then studio review reply zz-review-sandbox 1 "<what changed>" --addressed --commit HEAD --render out\/wip\/slices\/scene-ink\.mp4/);
+  // A question has nothing to render.
+  assert.doesNotMatch(markdown, /reply zz-review-sandbox 5/);
+});
+
+test('a note written on a slice laid into the cut is looked at on the slice, at its own frames, and isn\'t called moved', () => {
+  const slice = { path: 'out/wip/slices/scene-ink.mp4', hash: 'b2c3d4e5f6' };
+  const note: PlacedReviewThread = { ...thread(1, 'fix', 'open', 'still soft'), anchor: { on: 'video', writtenOn: slice, frame: 12 }, placement: { frame: 72, shifted: false } };
+  const markdown = formatReviewThreadsMarkdown([note], {
+    project: 'zz-review-sandbox', renderPath: 'out/video.mp4', renderHash: 'a1b2c3d4e5', fps: 30, size: { w: 1920, h: 1080 }, splices: [{ hash: slice.hash }],
+  });
+  assert.match(markdown, /look: {2}studio look zz-review-sandbox --video out\/wip\/slices\/scene-ink\.mp4 --frames 9:15/);
+  assert.match(markdown, /written on out\/wip\/slices\/scene-ink\.mp4 `b2c3d4e5f6` at f12, laid into this render/);
 });
 
 test('a note on another still is read in that still\'s own pixels, never the render\'s', () => {

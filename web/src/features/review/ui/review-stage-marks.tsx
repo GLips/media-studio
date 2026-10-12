@@ -5,7 +5,7 @@ import type { PlacedReviewThread } from '#lib/output/review/models/review-placem
 import type { ReviewMark, ReviewPoint } from '#lib/output/review/models/review-threads.ts';
 import { shadows } from '#web/shared/ui/shadows.ts';
 import { colors, fonts, radius, spacing, typography } from '#web/shared/ui/theme.stylex.ts';
-import { drawReviewMarks, reviewTokenColorOf } from './review-frame-image.ts';
+import { drawReviewMarks, reviewTokenColorOf } from './review-mark-paint.ts';
 import { useReviewPlaybackState } from './review-playback-store.ts';
 import { useReviewFrame, useReviewScreen } from './review-screen-context.tsx';
 import { REVIEW_COMPOSER_ATTRIBUTE } from './review-thread-composer.tsx';

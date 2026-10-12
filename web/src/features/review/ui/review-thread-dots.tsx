@@ -5,7 +5,7 @@ import { reviewThreadTone } from '#lib/output/review/models/review-threads.ts';
 import { Readout } from '#web/shared/ui/readout.tsx';
 import { shadows } from '#web/shared/ui/shadows.ts';
 import { colors, radius } from '#web/shared/ui/theme.stylex.ts';
-import { useReviewPlacedThreads } from './use-review-placed-threads.ts';
+import { useReviewThreads } from './use-review-threads.ts';
 
 /** Past this many, the rest are a count. */
 const REVIEW_THREAD_DOTS_SHOWN = 6;
@@ -37,7 +37,7 @@ type ReviewThreadDotsProps = {
  * reacts to nothing, and the thread panel is where they're read.
  */
 export function ReviewThreadDots({ path, frames }: ReviewThreadDotsProps) {
-  const threads = useReviewPlacedThreads(path);
+  const threads = useReviewThreads(path)?.threads ?? [];
   const tones = threads.flatMap((thread) => {
     const frame = placedFrameOf(thread);
     if (frames && (frame === undefined || frame < frames.from || frame >= frames.to)) return [];

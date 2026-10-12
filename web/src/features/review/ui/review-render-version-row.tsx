@@ -7,7 +7,7 @@ import { formatStudioAgo } from '#web/shared/ui/studio-ago.ts';
 import { colors, radius } from '#web/shared/ui/theme.stylex.ts';
 import { reviewStillUrl } from '#web/shared/media-urls.ts';
 import { useReviewFrame, useReviewScreen } from './review-screen-context.tsx';
-import type { ReviewComparedVersion } from './use-review-compare-target.ts';
+import type { ReviewComparedVersion } from './use-review-render-versions.ts';
 
 const styles = stylex.create({
   item: { cursor: 'pointer', backgroundColor: { default: 'transparent', ':hover': colors.raised } },

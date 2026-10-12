@@ -58,3 +58,13 @@ test('a restored thread writes and later deletes its frame image only at review/
   assert.deepEqual(restored.writes.map((w) => w.path), ['review/frames/1.jpg']);
   assert.deepEqual(applied(apply(restored.file, 'reviewer', { op: 'thread.delete', id: 1 })).deletes, ['review/frames/1.jpg']);
 });
+
+test('an agent\'s reply names the render that shows the fix by path and hash, and one outside the project is refused', () => {
+  const slice = { path: 'out/wip/slices/scene-ink.mp4', hash: '0f1e2d3c4b' };
+  const replied = applied(apply(withNote, 'agent', { op: 'thread.reply', id: 1, text: 'eased', transition: 'addressed', render: slice })).file;
+  assert.deepEqual(replied.threads[0].entries.at(-1)?.render, slice);
+  assert.throws(() => apply(withNote, 'agent', { op: 'thread.reply', id: 1, text: 'eased', render: { path: '../secrets.mp4', hash: '0f1e2d3c4b' } }), ReviewOpRefused);
+  assert.throws(() => apply(withNote, 'agent', { op: 'thread.reply', id: 1, text: 'eased', render: { ...slice, hash: 'HEAD' } }), ReviewOpRefused);
+  // Not in normal form, it would match no archived version's path.
+  assert.throws(() => apply(withNote, 'agent', { op: 'thread.reply', id: 1, text: 'eased', render: { ...slice, path: `./${slice.path}` } }), ReviewOpRefused);
+});

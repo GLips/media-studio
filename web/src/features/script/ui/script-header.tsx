@@ -2,7 +2,7 @@ import { Button, Group, Text, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { reviewScriptSignoffStale } from '#lib/output/review/models/review-script.ts';
 import { countReviewThreadTones } from '#lib/output/review/models/review-threads.ts';
-import { reviewFileOpsTarget, useReviewOps, useReviewScreen, useReviewThreads } from '#web/features/review/index.ts';
+import { useReviewOps, useReviewScreen, useReviewThreads } from '#web/features/review/index.ts';
 import { AgentPresence, formatStudioClock } from '#web/shared/ui/agent-presence.tsx';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
@@ -29,8 +29,8 @@ type ScriptHeaderProps = { readonly script: ReviewScriptRead; readonly take: Rev
  * on these words it stands as `✓ signed off` in `pass`.
  */
 export function ScriptHeader({ script, take }: ScriptHeaderProps) {
-  const { project, artifact, status } = useReviewScreen();
-  const ops = useReviewOps(reviewFileOpsTarget(artifact));
+  const { project, pulse } = useReviewScreen();
+  const ops = useReviewOps(project);
   const placed = useReviewThreads();
   const signoffs = placed?.signoffs;
   const open = countReviewThreadTones((placed?.threads ?? []).filter((t) => t.anchor.on === 'script')).open;
@@ -52,7 +52,7 @@ export function ScriptHeader({ script, take }: ScriptHeaderProps) {
         {ops.failed && (
           <UnstyledButton onClick={ops.retry} {...stylex.props(styles.failed)}><Text component="span" size="sm">not saved · retry</Text></UnstyledButton>
         )}
-        <AgentPresence agent={status?.agent} />
+        <AgentPresence agent={pulse.agent} />
         {state === 'signed' && signed && (
           <HotkeyTooltip name={`signed off ${formatStudioClock(signed.at)}`}>
             <Text component="span" size="sm" {...stylex.props(styles.signed)}>✓ signed off</Text>

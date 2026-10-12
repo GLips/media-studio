@@ -1,30 +1,31 @@
 // project-artifacts.ts: what a project has made that a person reviews, newest first: the videos directly in out/ and
-// out/wip/ (delivered renders, the animatic, slices named by hand), the stills in out/stills/ and the variant sheets in
-// out/still-sheets/. The app's switcher, project page and dashboard read this list; a file outside it still opens by
-// its path (resolveProjectMedia decides what may be served).
+// out/wip/ as render-cuts.ts lists them (delivered renders, the animatic, a remote joined.mp4), and the stills in out/,
+// out/wip/, out/stills/ and out/still-sheets/. The app's switcher, project page and dashboard read this list; a file
+// outside it still opens by its path (resolveProjectMedia decides what may be served).
 //
-// Negative space: deeper folders (out/wip/bars, out/reel, out/check, out/storyboard) hold pieces, passes and review
-// sheets of a cut, not the cut, so they aren't listed.
+// Negative space: slices in out/wip/slices/ aren't listed. They reach the page only as the render a reply names, laid
+// into the cut (review-splices.ts).
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { listProjectOutVideos } from '#lib/output/render/engine/render-cuts.ts';
 import { transparentPairOf, type ProjectArtifact } from '../models/review-artifact.ts';
 import { projectFolderNamed, projectMediaTypeOf, projectPathOf } from './project-media.ts';
 
-const ARTIFACT_FOLDERS = ['out', 'out/wip', 'out/stills', 'out/still-sheets'] as const;
+const STILL_FOLDERS = ['out', 'out/wip', 'out/stills', 'out/still-sheets'] as const;
 
 /** The project's reviewable files, newest first. */
 export function listProjectArtifacts(project: string): ProjectArtifact[] {
   const dir = projectFolderNamed(project);
-  const found = ARTIFACT_FOLDERS.flatMap((folder) => {
+  const stills = STILL_FOLDERS.flatMap((folder) => {
     const at = join(dir, ...folder.split('/'));
     if (!existsSync(at)) return [];
     return readdirSync(at, { withFileTypes: true }).flatMap((entry) => {
-      const kind = entry.isFile() ? projectMediaTypeOf(entry.name)?.kind : undefined;
-      if (kind !== 'video' && kind !== 'still') return [];
       const file = join(at, entry.name);
-      return [{ path: projectPathOf(dir, file), kind, modified: statSync(file).mtime.toISOString() }];
+      return entry.isFile() && projectMediaTypeOf(entry.name)?.kind === 'still' ? [{ path: projectPathOf(dir, file), file, kind: 'still' as const }] : [];
     });
   });
+  const found = [...listProjectOutVideos(dir).map(({ path, file }) => ({ path, file, kind: 'video' as const })), ...stills]
+    .map(({ path, file, kind }) => ({ path, kind, modified: statSync(file).mtime.toISOString() }));
   const paths = new Set(found.map((a) => a.path));
   return found
     .map((artifact) => {
@@ -33,4 +34,3 @@ export function listProjectArtifacts(project: string): ProjectArtifact[] {
     })
     .toSorted((a, b) => b.modified.localeCompare(a.modified));
 }
-

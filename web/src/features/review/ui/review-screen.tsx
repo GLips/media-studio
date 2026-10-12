@@ -2,13 +2,14 @@ import { useState } from 'react';
 import type { ReviewArtifact } from '#lib/output/review/models/review-artifact.ts';
 import { REVIEW_FALLBACK_FPS } from '#lib/output/review/models/review-context.ts';
 import type { ReviewGuideSet } from '#lib/output/review/models/review-guides.ts';
+import { useProjectPulse } from '#web/features/projects/index.ts';
 import { StudioShell } from '#web/shared/ui/studio-shell.tsx';
 import { useReviewSearch, type ReviewSearch, type SetReviewSearch } from '../controllers/review-search.ts';
 import { ReviewHeader } from './review-header.tsx';
 import { useReviewPlaybackClock, useReviewPlaybackState } from './review-playback-store.ts';
-import { ReviewScreenProvider, useReviewStatus, type ReviewScreenMode, type ReviewScreenValue } from './review-screen-context.tsx';
+import { ReviewScreenProvider, type ReviewScreenMode, type ReviewScreenValue } from './review-screen-context.tsx';
 import { ReviewScreenLayout } from './review-screen-layout.tsx';
-import { useReviewDraft } from './use-review-draft.ts';
+import type { ReviewDraft } from './use-review-draft.ts';
 
 /**
  * How the stage is shown: the mode (the Board is in the URL as `view`, so Back leaves it; drawing is not) and its
@@ -26,11 +27,18 @@ function useReviewScreenView(search: ReviewSearch, setSearch: SetReviewSearch): 
   return { mode, setMode, guides, setGuides };
 }
 
+type ReviewScreenProps = {
+  readonly artifact: ReviewArtifact;
+  /** The file's draft, which the route holds: it decides whether a newer render loads under it. */
+  readonly draft: ReviewDraft;
+  readonly onLoadReplacement: () => void;
+};
+
 /**
  * The review of one file, bound to the render it loaded. It holds what every slot shares: the clock, the draft, the
- * URL, the polled status and the stage's view.
+ * URL, the project pulse and the stage's view.
  */
-export function ReviewScreen({ artifact, onLoadReplacement }: { readonly artifact: ReviewArtifact; readonly onLoadReplacement: () => void }) {
+export function ReviewScreen({ artifact, draft, onLoadReplacement }: ReviewScreenProps) {
   const fps = artifact.fps ?? REVIEW_FALLBACK_FPS;
   const [search, setSearch] = useReviewSearch();
   const playback = useReviewPlaybackClock(
@@ -38,11 +46,10 @@ export function ReviewScreen({ artifact, onLoadReplacement }: { readonly artifac
     (f) => setSearch({ f }),
   );
   const durationInFrames = useReviewPlaybackState(playback, (s) => s.durationInFrames);
-  const draft = useReviewDraft(`${artifact.project}/${artifact.path}`);
-  const status = useReviewStatus(artifact.project, artifact.path);
+  const pulse = useProjectPulse(artifact.project);
   const view = useReviewScreenView(search, setSearch);
   const screen: ReviewScreenValue = {
-    project: artifact.project, artifact, timing: { fps, durationInFrames }, status, playback, draft, search, setSearch, ...view,
+    project: artifact.project, artifact, timing: { fps, durationInFrames }, pulse, playback, draft, search, setSearch, ...view,
   };
   return (
     <ReviewScreenProvider value={screen}>

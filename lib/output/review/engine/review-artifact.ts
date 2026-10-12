@@ -1,7 +1,7 @@
 // review-artifact.ts: everything the review screen shows about one file of a project, read fresh from disk: its hash,
 // its own snapshot (never out/check's, which is the latest check's and may postdate this render), the project's cue
 // list and a variant sheet's cells. The screen stays bound to these bytes until the person loads another version.
-// Its threads are read apart (review-file.ts), placed on it through the timing read here.
+// Its threads are read apart (review-file.ts), and the page places them on it through the timing read here.
 //
 // Negative space: nothing here renders, measures or regenerates an artifact. A missing one is named in `missing`, with
 // the command that makes it, so the screen can say which note fields it can't fill.
@@ -14,10 +14,9 @@ import type { RenderSnapshot } from '#lib/output/render/models/render-snapshot-m
 import { probeFrameSize } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { reviewTimingOf, type ReviewTiming } from '../models/review-moment.ts';
 import { reviewStoryboardOf, reviewTimingMarksOf } from '../models/review-storyboard.ts';
-import { reviewFrameAt, type ReviewMediaKind, type ReviewStillCellsFile } from '../models/review-context.ts';
+import { REVIEW_FALLBACK_FPS, reviewFrameAt, type ReviewMediaKind, type ReviewStillCellsFile } from '../models/review-context.ts';
 import type { ReviewPlacementTarget } from '../models/review-placement.ts';
 import type { ReviewArtifact } from '../models/review-artifact.ts';
-import { listProjectArtifacts } from './project-artifacts.ts';
 import { listReviewRenderVersions } from './review-history.ts';
 import { readReviewScript } from './review-script-source.ts';
 import { projectFolderNamed, projectMediaTypeOf, ProjectMediaNotFound, resolveProjectMedia } from './project-media.ts';
@@ -79,7 +78,7 @@ export function readReviewArtifact(project: string, path: string, render?: strin
   const kind = reviewedKindOf(media);
   const srt = join(dirname(media), 'video.srt');
   const artifact: ReviewArtifact = {
-    render: renderFileStamp(media), artifacts: listProjectArtifacts(project), project, path, kind, title: path.split('/').at(-1)!,
+    render: renderFileStamp(media), project, path, kind, title: path.split('/').at(-1)!,
     fps: null, durationInFrames: null, startsAt: null, frameSize: null, transparent: false, voice: null, missing: [],
     ...(kind === 'video' && dirname(path) === 'out' && existsSync(srt) && { srt: 'out/video.srt' }),
   };
@@ -94,7 +93,7 @@ export function readReviewArtifact(project: string, path: string, render?: strin
   const snapshot = loaded.kind === 'snapshot' ? loaded.snapshot : undefined;
   const cueList = readSfxCueList(dir);
   if (loaded.kind === 'none') artifact.missing.push(`timeline for this render (scenes, sounds, what's under a point): ${loaded.reason}`);
-  const fps = snapshot?.timeline.fps ?? 30;
+  const fps = snapshot?.timeline.fps ?? REVIEW_FALLBACK_FPS;
   // Seconds and frames of the video, moved onto the render's clock: a slice starts `from` frames in.
   const from = snapshot?.frames.from ?? 0, end = snapshot?.frames.end ?? Infinity;
   const shift = from / fps, holds = (at: number) => at >= shift && at < end / fps;

@@ -14,7 +14,7 @@ import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { useReviewThreadScope, type ReviewThreadScope } from './review-thread-scope.tsx';
 import type { ReviewDraft } from './use-review-draft.ts';
 import { useReviewComposerHotkeys } from './use-review-composer-hotkeys.ts';
-import { composeShownReviewFrame } from './review-frame-image.ts';
+import { composeShownReviewFrame } from './review-mark-paint.ts';
 
 const styles = stylex.create({
   composer: {
@@ -43,9 +43,9 @@ const KIND_GLYPHS: Readonly<Record<ReviewThreadKind, string>> = { fix: '●', qu
 const isEmptyDraft = (draft: ReviewDraft) => !draft.text.trim() && draft.marks.length === 0;
 
 /**
- * The draft as a whole anchor. A video note with no pin of its own is on the playhead; any video note gets the moment
- * that carries it to the next render. A decision's note is on its candidate, at the transport's time if it plays.
- * Null where the panel can't anchor alone: a script note needs its line.
+ * The draft as a whole anchor. A video note without a pin is on the playhead, on the slice laid in there if any, with
+ * the moment that carries it on. A decision's note is on its candidate, at the transport's time if it plays. Null
+ * where the panel can't anchor alone: a script note needs its line.
  */
 function anchorOfDraft({ subject, media, draft, timeNow }: ReviewThreadScope): NewAnchor | null {
   const { anchor, marks } = draft;

@@ -2,17 +2,17 @@ import { Box, Group, Menu, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { useNavigate } from '@tanstack/react-router';
 import { Download } from 'lucide-react';
-import { useEffect, useEffectEvent } from 'react';
 import { projectFileUrl } from '#web/shared/media-urls.ts';
 import { AgentPresence, formatStudioClock } from '#web/shared/ui/agent-presence.tsx';
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { IconButton } from '#web/shared/ui/icon-button.tsx';
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
-import { reviewFileOpsTarget, useReviewOps } from '../controllers/use-review-ops.ts';
+import { reviewReplacementHashOf } from '../controllers/review-queries.ts';
+import { useReviewOps } from '../controllers/use-review-ops.ts';
 import { ReviewRenderMenu } from './review-render-menu.tsx';
 import { useReviewScreen } from './review-screen-context.tsx';
-import { reviewVersionLabelOf, useReviewCompareTarget } from './use-review-compare-target.ts';
+import { reviewVersionLabelOf, useReviewRenderVersions } from './use-review-render-versions.ts';
 
 const styles = stylex.create({
   header: { flex: 1, minWidth: 0 },
@@ -48,21 +48,16 @@ function downloadReviewFile(project: string, path: string) {
 
 /**
  * The review's part of the shell's bar. Left: `project / file ▾`, the render, a newer render waiting while a draft is
- * open (with none open it loads by itself), and a render under way. Right: a save that failed
+ * open (with none open the route loads it by itself), and a render under way. Right: a save that failed
  * (a save that works says nothing), the agent's presence, and the download, unpinned so a replaced render never 410s.
  */
 export function ReviewHeader({ onLoadReplacement }: { readonly onLoadReplacement: () => void }) {
-  const { project, artifact, status, draft, search } = useReviewScreen();
+  const { project, artifact, pulse, draft, search } = useReviewScreen();
   const navigate = useNavigate();
-  const ops = useReviewOps(reviewFileOpsTarget(artifact));
-  const { versions } = useReviewCompareTarget();
-  const files = status?.artifacts ?? artifact.artifacts;
-  // A version chosen by `r` is meant to be older than the file: only the file itself is replaced.
-  const replaced = status !== undefined && search.r === undefined && status.render.hash !== artifact.render.hash;
-  const loadReplacement = useEffectEvent(onLoadReplacement);
-  useEffect(() => {
-    if (replaced && !draft.isOpen) loadReplacement();
-  }, [replaced, draft.isOpen]);
+  const ops = useReviewOps(project);
+  const { versions } = useReviewRenderVersions();
+  const { files, rendering } = pulse;
+  const replacement = reviewReplacementHashOf(pulse, artifact, search.r);
   return (
     <Group justify="space-between" wrap="nowrap" gap="gap" {...stylex.props(styles.header)}>
       <Group gap="tight" wrap="nowrap">
@@ -91,16 +86,16 @@ export function ReviewHeader({ onLoadReplacement }: { readonly onLoadReplacement
           </Menu.Dropdown>
         </Menu>
         <ReviewRenderMenu />
-        {status?.rendering && (
-          <Tooltip label={`${status.rendering.paths.join(', ')} since ${formatStudioClock(status.rendering.startedAt)}`} openDelay={400} withinPortal>
+        {rendering && (
+          <Tooltip label={`${rendering.paths.join(', ')} since ${formatStudioClock(rendering.startedAt)}`} openDelay={400} withinPortal>
             <Text component="span" size="sm" {...stylex.props(styles.rendering)}>
-              ⟳ {status.rendering.paths.includes(artifact.path) || status.rendering.paths.length > 1 ? 'rendering' : `rendering ${status.rendering.paths[0]}`}
+              ⟳ {rendering.paths.includes(artifact.path) || rendering.paths.length > 1 ? 'rendering' : `rendering ${rendering.paths[0]}`}
             </Text>
           </Tooltip>
         )}
-        {replaced && draft.isOpen && (
+        {replacement !== undefined && draft.isOpen && (
           <HotkeyTooltip name="Load the newer render">
-            <UnstyledButton onClick={onLoadReplacement} {...stylex.props(styles.crumb)}><Text component="span" size="sm">{reviewVersionLabelOf(versions.find((v) => v.hash === status.render.hash), status.render.hash)} ↻</Text></UnstyledButton>
+            <UnstyledButton onClick={onLoadReplacement} {...stylex.props(styles.crumb)}><Text component="span" size="sm">{reviewVersionLabelOf(versions.find((v) => v.hash === replacement), replacement)} ↻</Text></UnstyledButton>
           </HotkeyTooltip>
         )}
       </Group>
@@ -108,7 +103,7 @@ export function ReviewHeader({ onLoadReplacement }: { readonly onLoadReplacement
         {ops.failed && (
           <UnstyledButton onClick={ops.retry} {...stylex.props(styles.crumb)}><Text component="span" size="sm" {...stylex.props(styles.failed)}>not saved · retry</Text></UnstyledButton>
         )}
-        <AgentPresence agent={status?.agent} />
+        <AgentPresence agent={pulse.agent} />
         <IconButton name="Download" onClick={() => downloadReviewFile(project, artifact.path)}>
           <Download size={14} />
         </IconButton>

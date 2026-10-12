@@ -8,7 +8,7 @@ const reviewAskArgs = {
   project: studioProjectArg,
   text: { type: 'positional', required: true, description: 'The question, in markdown' },
   at: { type: 'string', valueHint: 'f120:140', description: 'On these frames of the render (one, or a first and last), on the render\'s own clock' },
-  render: { type: 'string', valueHint: 'out/video.mp4', description: 'The render --at counts on; the newest video by default' },
+  render: { type: 'string', valueHint: 'out/video.mp4', description: 'The render --at counts on; the newest full render by default' },
   line: { type: 'string', valueHint: 'intro:3', description: 'On a script line by its id, and optionally a word in it, counted from 0' },
   still: { type: 'string', valueHint: 'out/stills/og.png', description: 'On a still, by its path in the project' },
 } as const satisfies ArgsDef;

@@ -8,7 +8,7 @@ import {
 import { colors, fonts, spacing, typography } from '#web/shared/ui/theme.stylex.ts';
 import { reviewArtifactQueryOptions } from '../controllers/review-queries.ts';
 import { useReviewScreen } from './review-screen-context.tsx';
-import { useReviewCompareTarget } from './use-review-compare-target.ts';
+import { useReviewRenderVersions } from './use-review-render-versions.ts';
 
 /** The scene name's inset from its band's left edge: `spacing.tight`. */
 const REVIEW_SCENE_NAME_INSET_PX = 4;
@@ -48,7 +48,7 @@ function reviewMovedCutsOf(shown: ReviewScenes, other: ReviewScenes): number[] {
 /** While a version is compared (`vs`), where its cuts were. Its artifact is the one the stage's compare view loads. */
 function useReviewComparedCuts(): number[] {
   const { project, artifact, search } = useReviewScreen();
-  const { other } = useReviewCompareTarget();
+  const { other } = useReviewRenderVersions();
   const compared = search.vs === undefined ? undefined : other;
   const { data } = useQuery({ ...reviewArtifactQueryOptions(project, compared?.file ?? ''), enabled: compared !== undefined });
   return data ? reviewMovedCutsOf(artifact.scenes ?? [], data.scenes ?? []) : [];

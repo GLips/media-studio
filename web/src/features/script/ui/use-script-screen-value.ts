@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { ReviewArtifact } from '#lib/output/review/models/review-artifact.ts';
-import { useReviewDraft, useReviewPlaybackClock, useReviewPlaybackState, useReviewStatus, type ReviewScreenValue, type ReviewSearch, type SetReviewSearch } from '#web/features/review/index.ts';
+import { useProjectPulse } from '#web/features/projects/index.ts';
+import { useReviewDraft, useReviewPlaybackClock, useReviewPlaybackState, type ReviewScreenValue, type ReviewSearch, type SetReviewSearch } from '#web/features/review/index.ts';
 import type { ReviewScriptRead, ReviewScriptTakeRead } from '../controllers/review-script.ts';
 import { useScriptSearch } from '../controllers/script-search.ts';
 import { SCRIPT_READ_ALONG_FPS, scriptLineIndexAt, scriptTimedLinesOf, scriptTimingOf } from './script-read-along.ts';
@@ -11,7 +12,7 @@ import { SCRIPT_READ_ALONG_FPS, scriptLineIndexAt, scriptTimedLinesOf, scriptTim
  */
 function scriptTakeArtifactOf(project: string, script: ReviewScriptRead, take: ReviewScriptTakeRead): ReviewArtifact {
   return {
-    render: { hash: take.hash, modified: take.modified }, artifacts: [], project, path: take.path, kind: 'video', title: 'script',
+    render: { hash: take.hash, modified: take.modified }, project, path: take.path, kind: 'video', title: 'script',
     fps: SCRIPT_READ_ALONG_FPS, durationInFrames: null, startsAt: 0, frameSize: null, transparent: false,
     voice: take.label === 'draft' ? 'draft' : 'final', timing: scriptTimingOf(script.lines), missing: [],
   };
@@ -19,7 +20,7 @@ function scriptTakeArtifactOf(project: string, script: ReviewScriptRead, take: R
 
 /**
  * Everything the review's slots share, for the script: the take's clock (its settled frame writes `line`), the draft,
- * the polled status, and the review search, of which the URL keeps only the thread and its filter.
+ * the project pulse, the lines its threads are placed on, and the review search, of which the URL keeps only the thread and its filter.
  */
 export function useScriptScreenValue(project: string, script: ReviewScriptRead, take: ReviewScriptTakeRead): ReviewScreenValue {
   const [scriptSearch, setScriptSearch] = useScriptSearch();
@@ -33,7 +34,7 @@ export function useScriptScreenValue(project: string, script: ReviewScriptRead, 
   });
   const durationInFrames = useReviewPlaybackState(playback, (s) => s.durationInFrames);
   const draft = useReviewDraft(`${project}/script`);
-  const status = useReviewStatus(project, take.path);
+  const pulse = useProjectPulse(project);
   // The range marks and the settled frame live on the page alone: the script's URL is its line.
   const [marks, setMarks] = useState<ReviewSearch>({});
   const search: ReviewSearch = { ...marks, ...(scriptSearch.note !== undefined && { note: scriptSearch.note }), ...(scriptSearch.filter && { filter: scriptSearch.filter }) };
@@ -43,7 +44,7 @@ export function useScriptScreenValue(project: string, script: ReviewScriptRead, 
     if (Object.keys(rest).length) setMarks((current) => ({ ...current, ...rest }));
   };
   return {
-    project, artifact, timing: { fps: SCRIPT_READ_ALONG_FPS, durationInFrames }, status, playback, draft, search, setSearch,
+    project, artifact, timing: { fps: SCRIPT_READ_ALONG_FPS, durationInFrames }, pulse, scriptLines: script.lines, playback, draft, search, setSearch,
     mode: 'stage', setMode: () => undefined, guides: null, setGuides: () => undefined,
   };
 }

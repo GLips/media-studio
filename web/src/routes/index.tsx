@@ -1,8 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { ProjectRowsPending, ProjectsDashboardPage, projectSummariesQueryOptions } from '#web/features/projects/index.ts';
+import { loadProjectSummaries, ProjectRowsPending, ProjectsDashboardPage } from '#web/features/projects/index.ts';
 
 export const Route = createFileRoute('/')({
-  loader: ({ context }) => context.queryClient.ensureQueryData(projectSummariesQueryOptions),
+  loader: ({ context }) => loadProjectSummaries(context.queryClient),
   component: ProjectsDashboardPage,
   pendingComponent: ProjectRowsPending,
 });

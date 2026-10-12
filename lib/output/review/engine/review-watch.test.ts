@@ -14,7 +14,7 @@ const SETTLE_MS = 900;
 
 test("a watch sleeps through the agent's own writes and wakes once for a burst of reviewer notes, then not again for them", async () => {
   await withStudioTemp('review-watch', async (projectDir) => {
-    const watching = waitForReviewChange({ projectDir, as: 'agent', settleMs: SETTLE_MS });
+    const watching = waitForReviewChange({ projectDir, settleMs: SETTLE_MS });
     note(projectDir, 'agent', 'which logo, the outline or the fill?');
     await sleep(300);
     note(projectDir, 'reviewer', 'the second strike lands soft');
@@ -28,6 +28,6 @@ test("a watch sleeps through the agent's own writes and wakes once for a burst o
     assert.equal(woke.revision, 3);
     assert.ok(Date.now() - second >= SETTLE_MS);
 
-    assert.deepEqual(await waitForReviewChange({ projectDir, as: 'agent', settleMs: SETTLE_MS, timeoutMs: 500 }), { timeout: 3 });
+    assert.deepEqual(await waitForReviewChange({ projectDir, settleMs: SETTLE_MS, timeoutMs: 500 }), { timeout: 3 });
   });
 });

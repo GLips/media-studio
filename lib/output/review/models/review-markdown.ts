@@ -4,9 +4,10 @@
 //
 // The list holds the states asked for, open and reopened by default; keep threads, the reviewer's standing
 // constraints, are always listed in their own section until resolved.
+import { formatSliceReplyCommand, renderSlicePathOf } from '#lib/output/render/models/render-splice.ts';
 import { formatReviewMomentPlace } from './review-moment.ts';
-import { formatReviewMoment, formatStillAxes, reviewNoteContext, type ReviewContextSources, type ReviewNoteContext } from './review-context.ts';
-import type { PlacedReviewThread, ReviewPlacement } from './review-placement.ts';
+import { formatReviewMoment, formatStillAxes, reviewNoteContext, reviewSceneAtFrame, type ReviewContextSources, type ReviewNoteContext } from './review-context.ts';
+import type { PlacedReviewThread, ReviewLaidSlice, ReviewPlacement } from './review-placement.ts';
 import { formatReviewClock } from './review-timeline-geometry.ts';
 import type { ReviewAnchor, ReviewEntry, ReviewRenderSource, ReviewThreadState, ReviewWrittenOn } from './review-threads.ts';
 
@@ -20,6 +21,8 @@ export type ReviewMarkdownOptions = {
   /** The render the threads are placed on, project-relative. */
   renderPath: string;
   renderHash: string;
+  /** The render as a scene's span names it, `out/video.mp4 r14`: its path and version, when it has been kept. */
+  renderName?: string;
   fps: number;
   /** The render's frame in pixels, from its snapshot; null without one, which leaves points as fractions. */
   size: { w: number; h: number } | null;
@@ -30,6 +33,8 @@ export type ReviewMarkdownOptions = {
   sceneSources?: Readonly<Record<string, string>>;
   /** The stills other notes are on, by path, as they are now: a still note is read on its own still, not the render. */
   stills?: Readonly<Record<string, ReviewMarkdownStill>>;
+  /** The slices laid into the render: a note written on one is looked at on the slice, its fixed picture. */
+  splices?: readonly Pick<ReviewLaidSlice, 'hash'>[];
 };
 
 /** A still as it is on disk: its bytes' hash and its size in pixels (null for an SVG). */
@@ -69,7 +74,10 @@ type AnchorLines = { head: string; lines: string[] };
 function formatAnchorLines(thread: PlacedReviewThread, options: ReviewMarkdownOptions): AnchorLines {
   const { anchor } = thread;
   switch (anchor.on) {
-    case 'video': return formatVideoNoteLines(anchor, thread.placement, options);
+    case 'video': {
+      const fix = thread.kind === 'fix' && (thread.state === 'open' || thread.state === 'reopened') ? thread.id : undefined;
+      return formatVideoNoteLines(anchor, thread.placement, options, fix);
+    }
     case 'still': return formatStillNoteLines(anchor, options);
     case 'script': {
       const word = anchor.word === undefined ? '' : `, word ${anchor.word + 1}${anchor.text ? ` "${anchor.text}"` : ''}`;
@@ -96,7 +104,11 @@ function formatReviewThreadItem(thread: PlacedReviewThread, options: ReviewMarkd
   ].join('\n\n');
 }
 
-function formatVideoNoteLines(anchor: Extract<ReviewAnchor, { on: 'video' }>, placement: ReviewPlacement, options: ReviewMarkdownOptions): AnchorLines {
+/**
+ * A video note's lines. `fix` is the note's id when it's a fix still to make (open or reopened), which gets the render
+ * and reply that hand the fix over.
+ */
+function formatVideoNoteLines(anchor: Extract<ReviewAnchor, { on: 'video' }>, placement: ReviewPlacement, options: ReviewMarkdownOptions, fix: number | undefined): AnchorLines {
   const { project, renderPath, renderHash, fps, size, sources } = options;
   const placed = 'frame' in placement ? placement : undefined;
   const context: ReviewNoteContext = placed && sources
@@ -106,21 +118,38 @@ function formatVideoNoteLines(anchor: Extract<ReviewAnchor, { on: 'video' }>, pl
   const when = (frame: number, end: number | undefined) => `${formatReviewMoment(frame, fps)}${end !== undefined && end !== frame ? `–${formatReviewMoment(end, fps)}` : ''}`;
   const head = [moment && ` · ${formatReviewMomentPlace(moment)}`, placed && ` — ${when(placed.frame, placed.end)} on ${renderPath} \`${renderHash}\``].filter(Boolean).join('')
     || ` — written at ${when(anchor.frame, anchor.end)}`;
+  // A note on a laid slice sits over the very picture it was written on: no shift to report, and it's looked at there.
+  const onSlice = placed && options.splices?.some((s) => s.hash === anchor.writtenOn.hash);
+  const moved = placed && !onSlice ? ` · now f${placed.frame} (${signed(placed.frame - anchor.frame)})` : '';
   const written = anchor.writtenOn.hash === renderHash ? undefined
-    : `written on ${formatWrittenOn(anchor.writtenOn)} at f${anchor.frame}${placed ? ` · now f${placed.frame} (${signed(placed.frame - anchor.frame)})` : ''}`;
-  const scene = context.scenes?.[0] ?? moment?.scene;
-  const source = scene && options.sceneSources?.[scene];
+    : `written on ${formatWrittenOn(anchor.writtenOn)} at f${anchor.frame}${onSlice ? ', laid into this render' : moved}`;
+  const look = onSlice ? { path: anchor.writtenOn.path, frames: { frame: anchor.frame, ...(anchor.end !== undefined && { end: anchor.end }) } } : placed && { path: renderPath, frames: placed };
+  const span = placed && sources?.scenes && reviewSceneAtFrame(sources.scenes, placed.frame);
+  const scene = span?.id ?? moment?.scene;
   return {
     head,
     lines: [
       written,
       // Unplaced, the render may not be a video of this size at all (a still): the point stays a fraction.
       [formatPoint(anchor.point, placed ? size : null), ...formatContextBits(context)].filter(Boolean).join(' · '),
-      source && `scene source: ${projectPathOf(project, source)}`,
       anchor.image && `frame: ${projectPathOf(project, anchor.image)}`,
-      placed && `look: ${formatLookCommand(project, renderPath, placed, anchor.point, size)}`,
+      scene && formatSceneLine(scene, span, options),
+      look && `look:  ${formatLookCommand(project, look.path, look.frames, anchor.point, size)}`,
+      placed && scene && fix && `fix:   ${formatFixCommand(project, scene, fix)}`,
     ].filter((line): line is string => Boolean(line)),
   };
+}
+
+/** `scene: ink (bars/ink.tsx) · f240–f311 on out/video.mp4 r14`: the scene, its source and the frames it's on screen. */
+function formatSceneLine(scene: string, span: { from: number; to: number } | undefined, options: ReviewMarkdownOptions): string {
+  const source = options.sceneSources?.[scene];
+  const shown = span ? ` · f${span.from}–f${span.to - 1} on ${options.renderName ?? options.renderPath}` : '';
+  return `scene: ${scene}${source ? ` (${projectPathOf(options.project, source)})` : ''}${shown}`;
+}
+
+/** The render that shows a fix to `scene` and the reply that hands it over, for note `id`. */
+function formatFixCommand(project: string, scene: string, id: number): string {
+  return `studio render ${project} --scene ${scene}, commit, then ${formatSliceReplyCommand(project, id, renderSlicePathOf({ scene }))}`;
 }
 
 function formatStillNoteLines(anchor: Extract<ReviewAnchor, { on: 'still' }>, options: ReviewMarkdownOptions): AnchorLines {
@@ -174,7 +203,7 @@ function formatReviewReply(entry: ReviewEntry): string {
   const about = [
     `r${entry.rev}`,
     entry.commit && `commit ${[entry.commit.workspace && `workspace ${entry.commit.workspace.slice(0, 7)}`, `engine ${entry.commit.engine.slice(0, 7)}`].filter(Boolean).join(', ')}`,
-    entry.render && `render \`${entry.render}\``,
+    entry.render && `render ${entry.render.path} \`${entry.render.hash}\``,
   ].filter(Boolean).join(', ');
   const did = [entry.transition, entry.asks && 'asks'].filter(Boolean).map((d) => ` · ${d}`).join('');
   const lead = `  > ${entry.author}${did} (${about})`;

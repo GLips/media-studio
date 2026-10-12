@@ -11,7 +11,7 @@ const reviewReplyArgs = {
   addressed: { type: 'boolean', description: 'Mark the note addressed: fixed, for the reviewer to verify and resolve' },
   question: { type: 'boolean', description: 'Ask the reviewer: the note waits on them until they answer' },
   commit: { type: 'string', valueHint: 'HEAD', description: 'The commit with the fix, resolved to hashes in the studio and the workspace now, so it stays meaningful after the branch moves' },
-  render: { type: 'string', valueHint: 'out/video.mp4', description: 'The render (its path in the project) that shows the fix, recorded by its hash' },
+  render: { type: 'string', valueHint: 'out/wip/slices/scene-ink.mp4', description: 'The render (its path in the project) that shows the fix, recorded by its path and hash and kept in out/.history/: a slice (render --scene) is laid into the cut over its frames; a cut replaces it. Prints whether the slice splices' },
 } as const satisfies ArgsDef;
 
 export const reviewReplyCommand = defineCommand({
@@ -26,15 +26,24 @@ export const reviewReplyCommand = defineCommand({
     const id = Number(args.id.replace(/^#/, ''));
     if (!(Number.isInteger(id) && id > 0)) throw new Error(`${args.id} isn't a note's id: notes and watch print them as #12`);
 
+    const { realpathSync } = await import('node:fs');
     const { basename } = await import('node:path');
     const { resolveStudioProject } = await import('#lib/platform/project/engine/studio-project.ts');
-    const { renderFileStamp } = await import('#lib/output/render/engine/render-snapshot.ts');
-    const { resolveProjectMedia } = await import('#lib/output/review/engine/project-media.ts');
+    const { archiveRender } = await import('#lib/output/render/engine/render-archive.ts');
+    const { formatRenderSpliceVerdict } = await import('#lib/output/render/engine/render-cuts.ts');
+    const { loadRenderSnapshot, renderFileStamp } = await import('#lib/output/render/engine/render-snapshot.ts');
+    const { projectPathOf, resolveProjectMedia } = await import('#lib/output/review/engine/project-media.ts');
     const { applyReviewOps } = await import('#lib/output/review/engine/review-file.ts');
     const { resolveReviewCommit } = await import('#lib/output/review/engine/review-handoff.ts');
     const dir = resolveStudioProject(args.project), project = basename(dir);
     const commit = args.commit === undefined ? undefined : resolveReviewCommit(args.commit);
-    const render = args.render === undefined ? undefined : renderFileStamp(resolveProjectMedia(project, args.render)).hash;
+    // Recorded in normal form (`./out/…` as `out/…`), the path a snapshot's archived versions are listed by.
+    const file = args.render === undefined ? undefined : resolveProjectMedia(project, args.render);
+    const rendered = file === undefined ? undefined : { path: projectPathOf(realpathSync(dir), file), file };
+    const render = rendered && { path: rendered.path, hash: renderFileStamp(rendered.file).hash };
+    const loaded = rendered && loadRenderSnapshot(rendered.file), snapshot = loaded?.kind === 'snapshot' ? loaded.snapshot : undefined;
+    // Kept by its hash before the reply names it, so the page finds it there however soon the file is rendered over.
+    if (rendered && snapshot) archiveRender(dir, rendered.file, snapshot);
     const applied = applyReviewOps(dir, [{
       op: 'thread.reply', id, text: args.text,
       ...(args.addressed && { transition: 'addressed' as const }), ...(args.question && { asks: true as const }), ...(commit && { commit }), ...(render && { render }),
@@ -42,5 +51,7 @@ export const reviewReplyCommand = defineCommand({
     // A reply never conflicts; only an edit of a note changed since it was read does.
     if ('conflict' in applied) throw new Error(`#${id} changed while replying: run it again`);
     console.log(`replied to #${id}${args.addressed ? ', addressed' : ''}${args.question ? ', asking' : ''} (revision ${applied.file.revision})`);
+    const verdict = snapshot && formatRenderSpliceVerdict(dir, snapshot);
+    if (verdict) console.log(verdict);
   },
 });

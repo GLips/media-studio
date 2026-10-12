@@ -72,7 +72,7 @@ const Transition = Schema.Literals(['addressed', 'resolved', 'reopened']);
 const ReviewEntrySchema = Schema.Struct({
   author: Schema.Literals(['reviewer', 'agent']), text: Schema.String, at: Schema.String, rev: Schema.Number,
   commit: Schema.optionalKey(Schema.Struct({ engine: Schema.String, workspace: Schema.optionalKey(Schema.String) })),
-  render: Schema.optionalKey(Schema.String), transition: Schema.optionalKey(Transition), asks: Schema.optionalKey(Schema.Literal(true)),
+  render: Schema.optionalKey(RenderRef), transition: Schema.optionalKey(Transition), asks: Schema.optionalKey(Schema.Literal(true)),
 });
 const ReviewThreadSchema = Schema.Struct({
   id: Id, kind: Kind, state: Schema.Literals(['open', 'addressed', 'resolved', 'reopened']), rev: Schema.Number,

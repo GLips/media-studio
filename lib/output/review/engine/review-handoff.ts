@@ -1,34 +1,39 @@
 // review-handoff.ts: the review as the CLI hands it to an agent and takes its answers back. `studio review notes` and
-// `watch` place threads on one render and print them with everything needed to find and see each; `reply`, `ask` and
+// `watch` place threads on one render (the newest cut unless named, with the reply slices laid into it) and print them
+// with everything needed to find and see each; `reply`, `ask` and
 // `decide` turn the agent's flags into ops: a commit resolved to hashes, an anchor with the moment it's at, a
 // candidate with its file's hash. The page builds the same ops from what it has on screen.
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { basename, extname, isAbsolute, join, resolve } from 'node:path';
+import { formatRenderVersionName, newestProjectCut } from '#lib/output/render/engine/render-cuts.ts';
 import { renderFileStamp } from '#lib/output/render/engine/render-snapshot.ts';
 import { STUDIO_ROOT, STUDIO_WORKSPACE_DIR } from '#lib/platform/project/engine/studio-project.ts';
 import { isStudioWorkspaceRepo } from '#lib/platform/project/engine/studio-workspace.ts';
 import { formatReviewDecisionsMarkdown } from '../models/review-decision-markdown.ts';
 import { formatReviewThreadsMarkdown, type ReviewMarkdownOptions, type ReviewMarkdownStill } from '../models/review-markdown.ts';
-import { REVIEW_FALLBACK_FPS, reviewNoteContext } from '../models/review-context.ts';
+import { REVIEW_FALLBACK_FPS } from '../models/review-context.ts';
 import type { NewAnchor, NewDecision } from '../models/review-ops.ts';
-import { placeReviewThread, type PlacedReviewThread, type ReviewPlacement, type ReviewPlacementTarget } from '../models/review-placement.ts';
+import { placeReviewThread, reviewVideoAnchorAt, type PlacedReviewThread, type ReviewPlacement, type ReviewPlacementTarget } from '../models/review-placement.ts';
 import { reviewScriptLineWords } from '../models/review-script.ts';
 import type { ReviewCandidate, ReviewDecision, ReviewEntryCommit, ReviewThread, ReviewThreadState } from '../models/review-threads.ts';
-import { listProjectArtifacts } from './project-artifacts.ts';
 import { projectFolderNamed, projectMediaTypeOf, projectPathOf, resolveProjectMedia } from './project-media.ts';
 import { readReviewArtifact, reviewPlacementTargetOf, reviewStillSizeOf } from './review-artifact.ts';
 import { readReviewScript } from './review-script-source.ts';
+import { readReviewSplices } from './review-splices.ts';
 
-/** The file `--render` names (a path in the project), or the project's newest video. */
+/**
+ * The file `--render` names (a path in the project), or the project's newest cut: never a slice, which shows only the
+ * frames it was rendered for.
+ */
 export function reviewHandoffRenderOf(project: string, render: string | undefined): string {
   if (render !== undefined) {
     resolveProjectMedia(project, render);
     return render;
   }
-  const newest = listProjectArtifacts(project).find((a) => a.kind === 'video');
-  if (!newest) throw new Error(`${project} has no video to place notes on: render one (studio render), or name a still with --render`);
-  return newest.path;
+  const cut = newestProjectCut(projectFolderNamed(project));
+  if (!cut) throw new Error(`${project} has no full render to place notes on: render one (studio render, or --animatic), or name a file with --render`);
+  return cut.path;
 }
 
 /** One render's hand-off: what threads are placed on and the markdown's options for it. */
@@ -42,11 +47,14 @@ export function openReviewHandoff(project: string, renderPath: string): ReviewHa
     const source = ['scenes', 'bars'].map((folder) => `${folder}/${id}.tsx`).find((path) => existsSync(join(dir, path)));
     return source ? [[id, source]] : [];
   }));
+  const target = reviewPlacementTargetOf(resolveProjectMedia(project, renderPath), renderPath);
+  // A note written on a slice laid into this cut is placed over that slice's picture.
+  const splices = target.kind === 'video' ? readReviewSplices(project, { path: renderPath, hash: target.hash }).laid : [];
   return {
     project,
-    target: reviewPlacementTargetOf(resolveProjectMedia(project, renderPath), renderPath),
+    target: { ...target, ...(splices.length && { splices }) },
     markdown: {
-      project, renderPath, renderHash: artifact.render.hash, fps, size: artifact.frameSize, sceneSources,
+      project, renderPath, renderHash: artifact.render.hash, renderName: formatRenderVersionName(dir, { path: renderPath, hash: artifact.render.hash }), fps, size: artifact.frameSize, sceneSources, splices,
       sources: { fps, frameSize: artifact.frameSize, scenes: artifact.scenes, sounds: artifact.sounds, motion: artifact.motion, cells: artifact.cells, timing: artifact.timing },
     },
   };
@@ -112,12 +120,8 @@ export type ReviewAskPlace =
 export function reviewAskAnchorOf(project: string, place: ReviewAskPlace): NewAnchor {
   switch (place.on) {
     case 'video': {
-      const { markdown } = openReviewHandoff(project, place.render);
-      const { moment } = markdown.sources ? reviewNoteContext({ frame: place.frame, end: place.end }, markdown.sources) : {};
-      return {
-        on: 'video', writtenOn: { path: place.render, hash: markdown.renderHash }, frame: place.frame,
-        ...(place.end !== undefined && { end: place.end }), ...(moment && { moment }),
-      };
+      const anchor = reviewVideoAnchorAt(readReviewArtifact(project, place.render), place.frame);
+      return { ...anchor, ...(place.end !== undefined && { end: place.end }) };
     }
     case 'still': {
       const { hash } = renderFileStamp(resolveProjectMedia(project, place.still));
