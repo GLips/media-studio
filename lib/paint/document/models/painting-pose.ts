@@ -1,4 +1,4 @@
-// painting-pose.ts: a sheet program posed before it's solved (ENGINE 5.3). Each entry's marks, planned at rest, are
+// painting-pose.ts: a sheet program posed before it's solved. Each entry's marks, planned at rest, are
 // mapped by its chain's map (its nodes' maps, outermost first). A stamp goes where the map puts it, scaled and turned
 // there, keeping its noise's seed; an area maps as its outline, densified under a warp. Fields aren't mapped: a posed
 // deposit, area and prewet carry a similarity back to rest (StampRestMap), the best fit under a warp, where the solver

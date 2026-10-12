@@ -163,7 +163,7 @@ export function stampSheetFieldPasses(device: StampPaintDevice, stage: StampStag
     settle(encoder: GPUCommandEncoder, film: GPUTextureView, layout: StampWashGroupLayer, box: StampPixelBox, tau: number, drying: StampDrying) {
       run(encoder, filmPipelines(layout).settle, [fieldSlot(box, { tau, drying }), targets.paper, film], box);
     },
-    /** Settles all of `film`'s paint over `box`, as its painting finishes (ENGINE 4.4). */
+    /** Settles all of `film`'s paint over `box`, as its painting finishes. */
     settleAll(encoder: GPUCommandEncoder, film: GPUTextureView, layout: StampWashGroupLayer, box: StampPixelBox) {
       // The paper isn't read, so it's not in this pipeline's layout.
       run(encoder, filmPipelines(layout).settleAll, [fieldSlot(box, {}), null, film], box);

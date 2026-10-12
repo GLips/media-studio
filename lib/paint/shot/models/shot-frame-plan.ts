@@ -1,10 +1,10 @@
-// shot-frame-plan.ts: a shot's painted plane at one moment, purely (ENGINE 6.2, 6.3): the selections its source
+// shot-frame-plan.ts: a shot's painted plane at one moment, purely: the selections its source
 // blends and the clocks its solve reads, the poses its marks solve under, its layers' boil epochs, where its sheets
 // lie, how visible its occurrences are, the glow its nodes give, and its rigs' poses, read once for every end.
 //
 // A frame's marks are posed at its own moment; its sheets and pieces rigs lie as each exposure or shutter end puts
 // them. Boil wobble moves finished paint: marks are solved without it, and the lay takes it in first, so a lattice
-// carries the solved film where the wobble puts it (ENGINE 5.3). A rigged group's wobble goes inside its rig.
+// carries the solved film where the wobble puts it. A rigged group's wobble goes inside its rig.
 
 import { paintBoilEpochAt, paintNodeTimeAt, sceneSeconds, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
 import type { PaintDeform } from '#lib/paint/animation/models/paint-deform.ts';

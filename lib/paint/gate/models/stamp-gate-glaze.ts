@@ -1,4 +1,4 @@
-// stamp-gate-glaze.ts: the gate's glaze over a page (ENGINE 6.3, shot/page): a violet watercolour wash in a later
+// stamp-gate-glaze.ts: the gate's glaze over a page (shot/page): a violet watercolour wash in a later
 // canvas, laid over a coloured HTML block and the back's flat colour, or as a clear back over the block and nothing
 // past it; and the same wash drawn in one canvas over a flat picture of each colour, which is what the page should
 // show. What the checks measure of them is here, pure.

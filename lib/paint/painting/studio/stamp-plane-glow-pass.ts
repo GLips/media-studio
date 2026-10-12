@@ -1,5 +1,5 @@
 // stamp-plane-glow-pass.ts: a plane's emission as its groups glow (stamp-paint-plane-passes.ts' glow passes), measured
-// one way per renderer until the old path goes (ENGINE "Built beside"). A shot's group glows with the light its lay
+// one way per renderer until the old path goes. A shot's group glows with the light its lay
 // adds over what its plane holds under it: a faint veil faintly, a halo over a lamp's glass with none of the glass's
 // light, warm paint over a dark road in its own warmth. StampPainting's glows with its laid paint's light, as much as
 // the group covers, dimmed by each later opaque group on the plane.

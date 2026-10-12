@@ -1,4 +1,4 @@
-// shot-rigs.ts: a group occurrence cut into parts and posed (ENGINE 6.5), purely. A part is a cut declaration with
+// shot-rigs.ts: a group occurrence cut into parts and posed, purely. A part is a cut declaration with
 // its cels under the rigged group; a pose moves and turns it about its pivot in its parent's frame and bends it from
 // pivot to farthest rest paint, as main's rig composes sway and placement (paint-deform.ts).
 //
@@ -237,7 +237,7 @@ export function shotRigHiddenCels(rig: CompiledShotRig, pose: Readonly<Record<st
 /**
  * `rig` posed by `pose` (shotRigPoseProblem's checked): each part's own bend and placement about its pivot, then its
  * parent's, and so up, a root turning about `groupPivot`; a bend along its part's axis in `axes`. `wobble`, its group
- * node's boil as laid, goes first: the rest picture boiled, then cut and posed (ENGINE 6.5).
+ * node's boil as laid, goes first: the rest picture boiled, then cut and posed.
  */
 export function shotRigPosed(
   rig: CompiledShotRig, pose: Readonly<Record<string, RigPartPose>>, groupPivot: StampPoint, axes: ReadonlyMap<string, ShotRigAxis>, wobble: PaintDeform | null,
@@ -348,7 +348,7 @@ export function shotRigFound(rig: CompiledShotRig, groupPivot: StampPoint, cels:
   return { rig, axes, skin: rig.pieces ? null : shotRigSkin(rig, cels).skin };
 }
 
-/** A skin joint's band at one pose: how far its triangles stretch, for a warning when one folds (ENGINE 6.5). */
+/** A skin joint's band at one pose: how far its triangles stretch, for a warning when one folds. */
 export type ShotRigStretch = { readonly joint: string; readonly least: number; readonly most: number; readonly flips: number };
 
 /**

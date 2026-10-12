@@ -1,4 +1,4 @@
-// stamp-sheet-run.ts: a sheet solve's run over its loaded GPU work (ENGINE 3, 4): each entry decided against the paper
+// stamp-sheet-run.ts: a sheet solve's run over its loaded GPU work: each entry decided against the paper
 // the entries before it left (stamp-sheet-decide.ts), then landed into the wet field and its film; a drying closes
 // once all since the last has set. Its state is one value the schedule's transitions move on.
 //
@@ -131,7 +131,7 @@ export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevic
   };
 
   /**
-   * When wash `w`, its first entry `k`'s, starts (ENGINE 3.5), and whether a drying closes there, its prewet landing
+   * When wash `w`, its first entry `k`'s, starts, and whether a drying closes there, its prewet landing
    * once all since the last has set. Refused where it can't start: its layer's earlier wet washes still wet past its
    * origin, or never setting.
    */
@@ -314,7 +314,7 @@ export function stampSheetRun(owner: StampPaintGpuOwner, device: StampPaintDevic
     entry,
     /** The solve's state now. */
     state: () => state,
-    /** Ends the painting at the last τ (ENGINE 4.4): its last drying closed, then every film's open share settled. */
+    /** Ends the painting at the last τ: its last drying closed, then every film's open share settled. */
     finish(encoder: GPUCommandEncoder) {
       close(encoder, state.tau, 'end');
       for (const f of openFilms) {

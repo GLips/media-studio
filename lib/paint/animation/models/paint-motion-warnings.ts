@@ -3,7 +3,7 @@
 // it carries its nearest plane; each drawable the caller follows (a shot's planes and occurrences,
 // shot-motion-warnings.ts; a StampPainting's moving groups, paint-painting-motion-warnings.ts) on the motion it adds,
 // what carries it held as it stands that frame, so a camera knock warns on the camera alone, not on every plane.
-// docs/painting-authoring.md says what each warning means.
+// The video-canvas skill's troubleshooting says what each warning means.
 
 import { paintCameraMovesBetween, paintCameraPoseAt, paintCameraShutterShut, paintPlaneSimilarity, paintStageCentre, type PaintCamera, type PaintCameraPose } from './paint-camera.ts';
 import { paintSimilarityApply, paintSimilarityInverse, type PaintSimilarity } from './paint-similarity.ts';

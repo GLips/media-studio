@@ -43,7 +43,7 @@ test('a named style stops the bundle until each pack is imported, whole, at the 
   const { project, stylesDir, importPack } = washProject(['wash']);
   await importPack('vvds', packManifest(['tips/wash-01.png', 'grains/paper.png'], {}), ['tips/wash-01.png']);
   assert.throws(() => writeProjectStylesModule(project), {
-    message: 'styles: wash can\'t paint until its packs are imported in work/styles/wash/ (brushes/ isn\'t in git, so each machine imports its own; docs/private-styles.md):\n'
+    message: 'styles: wash can\'t paint until its packs are imported in work/styles/wash/ (brushes/ isn\'t in git, so each machine imports its own; studio brushes import --help):\n'
       + '  brushes/vvds/grains/paper.png: VVDS Watercolor Studio, from Creative Market\n'
       + '  brushes/grain/: not imported: Grain Pack, from the Grain shop\n'
       + '  brushes.wash: vvds has no brush "Wet Wash"; import it again from VVDS Watercolor Studio, from Creative Market',

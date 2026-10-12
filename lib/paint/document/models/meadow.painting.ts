@@ -1,7 +1,7 @@
 // meadow.painting.ts: a watercolour sky painted wet-in-wet with a treeline charged into it while it shines, then,
 // once it has set, a hill laid over it in a second wash of the same layer; and a cloud in a layer of its own, free
-// to drift. One paper, three brushes, three mixes. The worked example of docs/painting-authoring.md, checked by its
-// spec and painted by `studio paint still`.
+// to drift. One paper, three brushes, three mixes. The worked example the video-canvas skill's first painting reads, checked
+// by its spec and painted by `studio paint still`.
 
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import type { BrushRef, Clip, Mix, PaintingDocument, Paper, Ring, Subpath } from '#lib/paint/document/models/painting-document.ts';

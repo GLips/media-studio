@@ -1,4 +1,4 @@
-// shot-dom-points.ts: a PaintedShot's page as its paint reads it (ENGINE 6.3), once layout is final (whenLaidOut), as
+// shot-dom-points.ts: a PaintedShot's page as its paint reads it, once layout is final (whenLaidOut), as
 // it loads and as each frame draws: whether HTML lies behind its first canvas, that every canvas fills its frame and
 // a glaze reaches the HTML behind it, and where its pinned elements' centres lie in frame px. A pinned element
 // (`data-pin`) resized so its centre moves draws its frame again.

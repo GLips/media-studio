@@ -1,8 +1,8 @@
-// stamp-sheet-solver.ts: a sheet program, posed, solved forward (ENGINE 3, 4) through a prefix: its first `through`
+// stamp-sheet-solver.ts: a sheet program, posed, solved forward through a prefix: its first `through`
 // entries, or those landing by a scene second `at`. Each entry is run by stamp-sheet-run.ts; a finished prefix has
 // its last drying closed and every film settled, its films kept under its last key (stamp-sheet-films.ts).
 //
-// Remembered by state key (ENGINE 4.2): each landed entry's decision, or the scene second of an entry past a prefix's
+// Remembered by state key: each landed entry's decision, or the scene second of an entry past a prefix's
 // `at`. Checkpoints (stamp-sheet-checkpoints.ts) are kept before each wash's first entry, the first posed one, and
 // where an unfinished prefix stops. A known prefix with kept films solves nothing; else a solve replays what it
 // remembers from its latest checkpoint, reading damp windows, if asked, where a decision lacks them.
@@ -30,7 +30,7 @@ import { withStampSolveLease } from './stamp-solve-lease.ts';
 export type StampSheetSolveOptions = {
   /** How many entries are solved, from the first: all of them when left out. */
   through?: number;
-  /** The scene second the prefix shows (ENGINE 4.4): the unclocked run and each clocked entry landing by it. */
+  /** The scene second the prefix shows: the unclocked run and each clocked entry landing by it. */
   at?: number;
   /** Whether the painting ends after them, its last drying closed: when they're all of it or `at` is given, unless said. */
   finish?: boolean;

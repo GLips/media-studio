@@ -1,5 +1,5 @@
 // stamp-span-fade-pass.ts: a span of steps faded apart (a group, or an own sheet's owner, below 1) composited apart
-// and mixed back (ENGINE 5.4, 6.1 step 6). Before its first step its targets are kept (a shot's painting, emission and
+// and mixed back. Before its first step its targets are kept (a shot's painting, emission and
 // motion; a composite's painting); after its last, each is mixed from what was kept toward what the span laid by its
 // visibility, so all it holds, an own sheet's card included, fades as one, never layer by layer.
 //

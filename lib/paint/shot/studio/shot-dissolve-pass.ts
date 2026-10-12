@@ -1,4 +1,4 @@
-// shot-dissolve-pass.ts: a dissolving plane's picture (ENGINE 6.3, "Dissolve"). Each selection its source blends is laid
+// shot-dissolve-pass.ts: a dissolving plane's picture. Each selection its source blends is laid
 // into a picture of its own, kept under its plan's key; this sums them by weight into one picture over the stage, in
 // the form the plane holds them: the back's opaque colour, or a nearer plane's colour C and taken share 1 − T, with its
 // emission and motion. A dissolve is linear in each, so the weighted sum is its nested blends, and the lens's

@@ -25,7 +25,7 @@ export type ProjectRole =
   /** A project-specific `x-model.ts`, in its scene's folder or beside its scene file. */
   | { role: 'model'; scene: string }
   /**
-   * A `*.painting.ts` source (docs/painting-authoring.md), held to a model's imports since `studio paint check` loads it
+   * A `*.painting.ts` source (the video-canvas skill), held to a model's imports since `studio paint check` loads it
    * in plain Node: a scene's, in its folder or beside its file, or shared (no scene) when project.ts's `shared` lists it.
    */
   | { role: 'painting-source'; scene?: string }

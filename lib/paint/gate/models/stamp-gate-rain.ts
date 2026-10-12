@@ -1,4 +1,4 @@
-// stamp-gate-rain.ts: the gate's rain (ENGINE test 5's still-camera rain, drawn through a PaintedShot): a street, a
+// stamp-gate-rain.ts: the gate's rain (still-camera rain, drawn through a PaintedShot): a street, a
 // post nearer, and an instanced plane of drops falling between them and in front of the post, under a still camera
 // focused on the street, its shutter open half a frame. A drop's key is one fall: it takes a new key each time it
 // starts again at the top. A lone drop over the street measures its own blur, and the post sliding across it the

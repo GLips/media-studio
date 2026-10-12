@@ -1,5 +1,5 @@
-// painting-sheets-solve.ts: a compiled selection's sheets solved on a device and laid as one composite (ENGINE 5.3,
-// 5.4). Poses split at each sheet's owner: the nodes below it pose its entries' marks before its solve
+// painting-sheets-solve.ts: a compiled selection's sheets solved on a device and laid as one composite.
+// Poses split at each sheet's owner: the nodes below it pose its entries' marks before its solve
 // (painting-pose.ts); its owner and the nodes above move its finished films, card and paper, as the composite's
 // placement of the sheet. The root's sheet has no owner, so all its posing comes before painting.
 //

@@ -1,4 +1,4 @@
-// shot-sheets-lay.ts: a painted plane's selection laid at one moment onto its painting (ENGINE 5.4, 6.1 step 6): its
+// shot-sheets-lay.ts: a painted plane's selection laid at one moment onto its painting: its
 // ground, then each composite step through its lattice (shot-sheet-lays.ts), back to front. A film is laid where its
 // lattice's rest map reads it; a card lays its paper over its films' union, each as far as it shows; a pieces rig's
 // render lays as paint by its alpha. A faded span is mixed back by stamp-span-fade-pass.ts. A film's reveals cut it,

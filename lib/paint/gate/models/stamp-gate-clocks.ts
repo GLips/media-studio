@@ -1,4 +1,4 @@
-// stamp-gate-clocks.ts: the gate's clocked sheets (ENGINE 9, test 4): one wash on a sheet drying at a scale, at
+// stamp-gate-clocks.ts: the gate's clocked sheets: one wash on a sheet drying at a scale, at
 // `instant` and at `never`; a later wash at a `'set'` origin with its prewet; two layers' clocked washes interleaving,
 // played back through checkpoints holding clips;
 // a fixed `at` refused, and one landing on an empty core; a clocked crayon drawing beside a clocked wash; and the

@@ -1,4 +1,4 @@
-// stamp-gate-rainy-street-page.ts: the gate page's rainy street (stamp-gate-rainy-street.ts, ENGINE test 5), drawn
+// stamp-gate-rainy-street-page.ts: the gate page's rainy street (stamp-gate-rainy-street.ts), drawn
 // through the shot's renderer (stamp-gate-shot-frames.ts), its cost report read frame by frame: a warmed span costing
 // nothing, the lamp's property step, the reflection unsolved until it fades in, a repeated pose, and the walker
 // re-solving every frame while the street's prefix steps on sixes.

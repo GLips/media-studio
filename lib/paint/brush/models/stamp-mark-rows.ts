@@ -69,7 +69,7 @@ export type PlacedStamp = {
   grainDepthByPressure: number;
   /** The pen's pressure at it, 0..1, as its taper lets it through: what a pressed tip touches by. */
   pressure: number;
-  /** Where it was placed (ENGINE 5.3): where it lies until a pose moves it. */
+  /** Where it was placed: where it lies until a pose moves it. */
   rest: { readonly x: number; readonly y: number };
   tint: StampTint;
 };

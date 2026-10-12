@@ -1,4 +1,4 @@
-// shot-lattice.ts: the lattices a shot lays its sheets through (ENGINE 6.2), purely: triangles from where a point
+// shot-lattice.ts: the lattices a shot lays its sheets through, purely: triangles from where a point
 // lies on the plane back to where its sheet holds it, and each vertex's travel over the shutter. A film's marks were
 // solved posed at the frame's moment; where they pose otherwise at the moment laid (an exposure, a shutter's end),
 // the lattice carries the solved paint there: each rest point lies where the marks then put it and is read where the

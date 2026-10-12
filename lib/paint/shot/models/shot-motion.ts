@@ -1,4 +1,4 @@
-// shot-motion.ts: a shot's motion nodes compiled over its occurrences (ENGINE 6.1). A node is a plane's or an
+// shot-motion.ts: a shot's motion nodes compiled over its occurrences. A node is a plane's or an
 // occurrence's, as its entry writes it (shot-entries.ts); its parent is implied: the nearest enclosing group occurrence
 // that has a node, else its plane's node. A group's node moves all it holds with one phase, seed and map, its pins,
 // sway, flutter and boil included.
@@ -36,7 +36,7 @@ export type ShotMotionPlane = {
 /** A shot's motion as its entries write it (shotPlaneEntries): its nodes, each a plane's or occurrence's, and the plays on them. */
 export type ShotMotionEntries = { readonly nodes: readonly OccurrenceMotionNode[]; readonly plays: readonly PaintMotionPlay[] };
 
-/** How a node's marks live: stuck, its rest space wobbled every `every` frames, or its marks re-rolled (ENGINE 4.6). */
+/** How a node's marks live: stuck, its rest space wobbled every `every` frames, or its marks re-rolled. */
 export type CompiledShotMarks =
   | { readonly kind: 'stuck' }
   | { readonly kind: 'wobble'; readonly every: number; readonly wobble: PaintBoilWobble }

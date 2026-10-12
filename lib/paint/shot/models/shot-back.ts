@@ -1,4 +1,4 @@
-// shot-back.ts: the opaque back (ENGINE 5.4, 6.1). Its ground lays paper over the stage, but its paint stops at its
+// shot-back.ts: the opaque back. Its ground lays paper over the stage, but its paint stops at its
 // document, past which lies bare paper that a defocus or a move reads into the frame's edge as a pale fringe. So its
 // painting must hold all the frame reads of it: refused short, never clamped, the fix put in its lay's terms. Checked
 // once the lay is known: a still lay as the shot compiles, a cover as it's laid, a pin as it's measured

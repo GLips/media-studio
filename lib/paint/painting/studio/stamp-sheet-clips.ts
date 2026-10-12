@@ -1,4 +1,4 @@
-// stamp-sheet-clips.ts: each wash's clip coverage in a sheet solve (ENGINE 4.1's state). Every deposit draws its
+// stamp-sheet-clips.ts: each wash's clip coverage in a sheet solve. Every deposit draws its
 // coverage into the one clip target, so it holds one wash's at a time: a wash that's clipped, or clipped to, keeps its
 // own in a target of its own while other washes' entries land, and has it back before its next. A wash clipped to
 // leaves its coverage as a base when it ends, for each wash clipping to it to start from.

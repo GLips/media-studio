@@ -4,13 +4,12 @@ import { test } from 'node:test';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { stampDrying, stampDryingTimes } from './stamp-wetness.ts';
 
-const AUTHORING = new URL('../../../../docs/painting-authoring.md', import.meta.url);
+const PAINTING_MODEL_PAGE = new URL('../../../../skills/video-canvas/references/painting-model.md', import.meta.url);
 
-/** The drying table's rows in docs/painting-authoring.md, each split into its cells: the header first. */
+/** The drying table's rows in the video-canvas skill's painting model, each split into its cells: the header first. */
 function dryingTableRows(): string[][] {
-  const lines = readFileSync(AUTHORING, 'utf8').split('\n'), from = lines.findIndex((line) => line.startsWith('**Drying times.**'));
-  assert.ok(from >= 0, 'the authoring doc has its drying table');
-  const start = lines.findIndex((line, i) => i > from && line.startsWith('|'));
+  const lines = readFileSync(PAINTING_MODEL_PAGE, 'utf8').split('\n'), start = lines.findIndex((line) => line.startsWith('| Medium, water |'));
+  assert.ok(start >= 0, 'the painting model has its drying table');
   const table = lines.slice(start, lines.findIndex((line, i) => i > start && !line.startsWith('|')));
   return table.filter((line) => !line.startsWith('|---')).map((line) => line.split('|').slice(1, -1).map((cell) => cell.trim()));
 }
@@ -18,7 +17,7 @@ function dryingTableRows(): string[][] {
 /** A time as the table writes it: model seconds to a tenth. */
 const tableSeconds = (seconds: number) => String(Math.round(seconds * 10) / 10);
 
-test("the authoring doc's drying table is the laws' own, at each medium's sheen and drying, and its default water", () => {
+test("the painting model's drying table is the laws' own, at each medium's sheen and drying, and its default water", () => {
   const [header, ...rows] = dryingTableRows();
   const absorbencies = header.slice(1).map((cell) => Number(/^(?:absorbency )?([\d.]+)/.exec(cell)![1]));
   const media = rows.map(([label]) => {

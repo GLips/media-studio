@@ -1,4 +1,4 @@
-// stamp-gate-sheets.ts: the gate's sheet solves (ENGINE 9, tests 3, 6's sheets, 7 and 8; test 4's clocks are in
+// stamp-gate-sheets.ts: the gate's sheet solves (the clocked ones are in
 // stamp-gate-clocks.ts): painting documents compiled and solved forward on the GPU, held to the wet laws' closed forms
 // on the 1 ms grid, to what an appended application, a posed group or a separate sheet may change, and the reductions
 // to exact integer totals. Three are accepted by eye (STAMP_GATE_SOLVED_IDS). Every brush a gate document names is the
@@ -231,7 +231,7 @@ const wetContactProperties = { heron: { type: 'boolean', default: true }, apart:
 /**
  * Shallows flooded across the sheet's foot from 0 s, and, `heron`, a rigged heron whose foot charges across their
  * edge at 0.5 s while they shine, their paint walking into its water, and glazes at 6 s once all under it has set
- * (`on: 'dry'`), on one sheet (ENGINE 4.1); `apart`, each on an own sheet at that scale.
+ * (`on: 'dry'`), on one sheet; `apart`, each on an own sheet at that scale.
  */
 export const STAMP_GATE_WET_CONTACT: PaintingSourceModule<typeof wetContactProperties> = {
   properties: wetContactProperties,

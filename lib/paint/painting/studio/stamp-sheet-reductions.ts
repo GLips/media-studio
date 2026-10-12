@@ -1,5 +1,5 @@
-// stamp-sheet-reductions.ts: what the forward scheduler reads off the wet field over an application's core
-// (ENGINE 3.3, 3.4), decided in f64 on the CPU (models/stamp-sheet-schedule.ts). The core is where its touch, drawn
+// stamp-sheet-reductions.ts: what the forward scheduler reads off the wet field over an application's core,
+// decided in f64 on the CPU (models/stamp-sheet-schedule.ts). The core is where its touch, drawn
 // before wet hardening, reaches STAMP_SHEET_CORE_CONTACT; each texel weighs its touch times the share it may land
 // there: off its fluid (reserves and wax, as the deposit pass weighs them), within its region, inside the clip base.
 // A wash's core, for a report, adds its prewet's contact.

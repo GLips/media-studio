@@ -1,4 +1,4 @@
-// painting-sheet-program.ts: each sheet's order (docs/painting-authoring.md, Sheets), the one physical history every
+// painting-sheet-program.ts: each sheet's order (the video-canvas painting model), the one physical history every
 // application on a sheet takes part in, whichever layer it paints: the unclocked run in document order, then the
 // clocked run sorted by order time, ties in document order. A pure function of the document, so validation,
 // comparison and the compiler read one order. Entries name layers, washes and groups by ordinal; keys reach a solve
@@ -35,7 +35,7 @@ export type PaintingSheetEntry = {
 
 /**
  * A sheet's order: its record, its clock, the layers on it back to front, and its entries; `ownerChain`, the nodes
- * whose poses move the finished sheet, paper and all (ENGINE 5.3): its owner and every group enclosing it, as node
+ * whose poses move the finished sheet, paper and all: its owner and every group enclosing it, as node
  * ordinals outermost first, none for the root's.
  */
 export type PaintingSheetOrder = {

@@ -38,8 +38,8 @@ const shiftText = ({ x, y, r }: { x: number; y: number; r: number }) => `${x}, $
 const boxText = (box: { x0: number; y0: number; x1: number; y1: number } | null) => (box ? `x ${box.x0}..${box.x1}, y ${box.y0}..${box.y1}` : 'nothing');
 
 /**
- * paper/heron through a shot (ENGINE test 6, its rig): its root moved, the body's grain stays and the wing's goes; the
- * reeds, drawn as pieces (ENGINE 6.5), solve at rest as unrigged and swing when posed; a neck cel swap changes only
+ * paper/heron through a shot (its rig): its root moved, the body's grain stays and the wing's goes; the
+ * reeds, drawn as pieces, solve at rest as unrigged and swing when posed; a neck cel swap changes only
  * the necks; the heron fades as one; boiling, it wobbles each epoch. Neither swap, fade nor boil re-solves.
  */
 export async function checkStampGateRiggedHeron(): Promise<StampGateWashCheck[]> {
@@ -82,7 +82,7 @@ export async function checkStampGateRiggedHeron(): Promise<StampGateWashCheck[]>
 }
 
 /**
- * sheet/wet-contact through a shot (ENGINE test 7): its foot posed re-solves from the charge, the flood's checkpoint
+ * sheet/wet-contact through a shot: its foot posed re-solves from the charge, the flood's checkpoint
  * and decisions reused. Painted in as it plays, its rig draws before the foot is painted and poses it once it is.
  * Hidden, the foot's paint goes, what its water did to the shallows stays, and nothing re-solves.
  */
@@ -124,7 +124,7 @@ const spreadPast = (narrow: ReturnType<typeof stampGateDifferenceBox>, wide: Ret
 const loneDropFrame = async (kind: Parameters<typeof stampGateLoneDropShot>[0]) => stampGateRgb((await stampGateShotFrames(stampGateLoneDropShot(kind), [STAMP_GATE_LONE_DROP_AT])).frames[0]);
 
 /**
- * shot/rain (ENGINE test 5, the camera still): a lone drop out of focus spreads alike on every side; shutter open, it
+ * shot/rain (the camera still): a lone drop out of focus spreads alike on every side; shutter open, it
  * blurs along its fall, longer than shut and no wider; keyed anew across the shutter, it draws as if shut; a frame
  * moving only drops solves nothing and lays no picture anew.
  */

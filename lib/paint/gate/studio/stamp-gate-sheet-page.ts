@@ -171,7 +171,7 @@ function paperHeronFilm(evaluation: PaintingEvaluation, compiled: PaintingSelect
 }
 
 /**
- * paper/heron (ENGINE test 6, its sheets): the heron moved, the paper's grain inside the body's paint stays where it
+ * paper/heron (its sheets): the heron moved, the paper's grain inside the body's paint stays where it
  * was and inside the wing's it goes with the wing; turned and grown, the body's paint lands where the pose puts it, its
  * area grown by the pose's scale squared; a coverage read twice is read back once.
  */

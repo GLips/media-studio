@@ -1,5 +1,5 @@
 // painting-selection.ts: some of an evaluation's layers and groups, as a shot's plane shows them and a film readback
-// reads them (ENGINE 5.1, 6.3): the evaluation, the keys selected, and the prefix. A selection is a description;
+// reads them: the evaluation, the keys selected, and the prefix. A selection is a description;
 // nothing is compiled or solved until something draws or reads it. The shot builds its sources on it (shot-selection.ts).
 
 import type { NodeKey } from './painting-document.ts';

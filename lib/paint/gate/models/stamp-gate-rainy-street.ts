@@ -1,4 +1,4 @@
-// stamp-gate-rainy-street.ts: the gate's rainy street (ENGINE 9, test 5), everything a shot presents at once: a sky
+// stamp-gate-rainy-street.ts: the gate's rainy street, everything a shot presents at once: a sky
 // dissolving to night at the back; a street painted in on sixes, its lamp lit by a property step, its puddle clocked
 // with drops landing in it at their times, and a walker on that wet paper placed by a play, re-solving the sheet at
 // each pose; the lamp's reflection cut to the puddle and fading in; the rain; and the camera pushing in. The walk,

@@ -1,4 +1,4 @@
-// shot-renderer.ts: a compiled shot drawn on one owner's device into its canvases (ENGINE 6.1). A frame solves each
+// shot-renderer.ts: a compiled shot drawn on one owner's device into its canvases. A frame solves each
 // painted plane and variant it shows, once, at its moment; then each exposure (a fast frame's one, a reference
 // frame's many) lays every plane where it lies, in its masks' order, reads its items, and composites each canvas far
 // to near through its lens. The first canvas holds the back. A pinned plane lies where the frame's measures put it.

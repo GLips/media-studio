@@ -1,4 +1,4 @@
-// shot-reach.ts: where each plane of a shot can hold paint, as the camera build checks it (ENGINE 6.1). The opaque
+// shot-reach.ts: where each plane of a shot can hold paint, as the camera build checks it. The opaque
 // back holds paper everywhere (its paint: shot-back.ts). A nearer painted plane holds its layers' stated geometry,
 // padded for paint flowing past it, grown along each occurrence's motion nodes by the most each moves it, then laid
 // by its lay at each of the shot's moments; its ground's paper, when it lays one, over the document.

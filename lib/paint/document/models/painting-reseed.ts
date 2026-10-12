@@ -1,4 +1,4 @@
-// painting-reseed.ts: a layer's applications reseeded for a boil epoch (ENGINE 4.6): every seed in them suffixed as
+// painting-reseed.ts: a layer's applications reseeded for a boil epoch: every seed in them suffixed as
 // the renderer suffixes a boiling op's (stampBoilSeed), so the epoch lays every mark anew. The compiler reseeds; a
 // document declares no boil.
 

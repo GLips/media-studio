@@ -1,4 +1,4 @@
-// shot-mask-passes.ts: a painted plane's presentation masks on the GPU (ENGINE 6.3). Before its sheets are laid, its
+// shot-mask-passes.ts: a painted plane's presentation masks on the GPU. Before its sheets are laid, its
 // masks multiply into one factor over the stage, 1 where all shows: each alphaOf mask's drawable's laid coverage,
 // read where the camera shows it. The lay takes each film's opacity, card's union and pieces picture times it, glow
 // and all, never the ground.

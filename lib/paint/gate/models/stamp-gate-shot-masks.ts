@@ -1,4 +1,4 @@
-// stamp-gate-shot-masks.ts: the gate's masked shot (ENGINE 6.3's masks through a PaintedShot). The paper heron's pond
+// stamp-gate-shot-masks.ts: the gate's masked shot (masks through a PaintedShot). The paper heron's pond
 // at the back; its heron on a plane of its own, revealed by its document along two strokes; a disc moving across, a
 // picture or three plane or a painted spot's instance, faded or held; and nearest, a tint washed over the whole
 // sheet, cut by an alphaOf mask to the heron's wing, to all but it, to the whole heron, or to the disc, under a camera

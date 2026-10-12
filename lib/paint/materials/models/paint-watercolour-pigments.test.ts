@@ -15,7 +15,7 @@ function driedGouache(pigment: PaintPigmentAppearance): [number, number, number]
 
 const lightness = (linear: readonly number[]) => Math.round(paintLinearToLab(linear)[0]);
 
-/** The author page's Pigments table as the pigment table and the pure mixer write it, a row a pigment in its order. */
+/** video-canvas's Pigments table as the pigment table and the pure mixer write it, a row a pigment in its order. */
 function pigmentReferenceTable(): string {
   const rows = Object.entries(WATERCOLOUR_PIGMENTS).map(([key, pigment]) => {
     const { overWhite, granulation, flocculation, staining } = pigment, gouache = driedGouache(pigment);
@@ -24,8 +24,8 @@ function pigmentReferenceTable(): string {
   return ['| Pigment | Over white | L* | Gouache | L* | Granulation | Flocculation | Staining |', '|---|---|---|---|---|---|---|---|', ...rows].join('\n');
 }
 
-test("the author page's Pigments table is the pigment table: each pigment over white and dried in gouache, their lightness, and its habits", () => {
-  const page = readFileSync(new URL('../../../../docs/painting-authoring.md', import.meta.url), 'utf8');
+test("the video-canvas skill's Pigments table is the pigment table: each pigment over white and dried in gouache, their lightness, and its habits", () => {
+  const page = readFileSync(new URL('../../../../skills/video-canvas/references/techniques.md', import.meta.url), 'utf8');
   const table = pigmentReferenceTable();
-  assert.ok(page.includes(table), `docs/painting-authoring.md's Reference › Pigments should read, as the pigment table now does:\n${table}`);
+  assert.ok(page.includes(table), `skills/video-canvas/references/techniques.md's Pigments should read, as the pigment table now does:\n${table}`);
 });

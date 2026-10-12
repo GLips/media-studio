@@ -1,4 +1,4 @@
-// stamp-reveal.ts: finished paint shown over time, as a document's reveal cuts it (docs/painting-authoring.md, Time).
+// stamp-reveal.ts: finished paint shown over time, as a document's reveal cuts it (video-canvas, Reveals).
 // A reveal gives each texel an arrival time: strokes advance along their paths by arclength at constant speed, the
 // earliest winning where they cross; a field reads it off fields, base (through its profile) plus delay. A texel shows
 // its covered share once the time passes its arrival, ramped over `softS` seconds and a texel of the front's travel;

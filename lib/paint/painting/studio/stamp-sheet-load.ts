@@ -1,6 +1,6 @@
 // stamp-sheet-load.ts: a sheet program's solve on the GPU, loaded before its first application lands: its compositor,
 // targets and passes, its deposits' marks, its regions and brushed masks, its proxies, and its wet stages with their
-// scratch reserved for the largest box any of them is given (ENGINE 4.7), so nothing grows mid-solve. Synchronous: it
+// scratch reserved for the largest box any of them is given, so nothing grows mid-solve. Synchronous: it
 // runs inside one of the owner's checks.
 //
 // A wet stage moves paint in a film laid out as the film's group is (film f is group f): `filmOf` says whose film a

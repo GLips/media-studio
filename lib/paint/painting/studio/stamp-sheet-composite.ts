@@ -1,4 +1,4 @@
-// stamp-sheet-composite.ts: the films of several sheets laid as one picture (ENGINE 5.4, 5.5). The root sheet's paper
+// stamp-sheet-composite.ts: the films of several sheets laid as one picture. The root sheet's paper
 // is the ground; then, back to front, each film by its own sheet's lay (its compositor, paper colour and photograph),
 // and an own sheet's card where its owner comes: its paper laid as far as the union of its laid films' coverage
 // reaches, cover = min(1, STAMP_OPAQUE_COVER × union). A placed sheet is laid moved by a similarity. A film cut by

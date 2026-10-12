@@ -1,5 +1,5 @@
-// painting-reveal-seam-check.ts: a field reveal on a wrapped document, held to its seams (docs/painting-authoring.md,
-// Wrapping and Reveals). A field is read at each texel's own document px and has no period, so a mark crossing a
+// painting-reveal-seam-check.ts: a field reveal on a wrapped document, held to its seams (the video-canvas
+// skill's Wrapping and Reveals). A field is read at each texel's own document px and has no period, so a mark crossing a
 // seam arrives in two halves wherever the field's arrivals on the seam's two edges differ. A strokes reveal wraps
 // with its paint (stampRevealSegments), so only fields are held here.
 

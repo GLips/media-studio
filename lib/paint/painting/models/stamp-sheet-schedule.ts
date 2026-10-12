@@ -1,5 +1,5 @@
 // stamp-sheet-schedule.ts: the forward scheduler's decisions, in f64 on the CPU, from the GPU's reductions over an
-// application's core: model time on a 1 ms grid anchored at each predecessor, the clock's policy (ENGINE 3.5).
+// application's core: model time on a 1 ms grid anchored at each predecessor, the clock's policy.
 //
 // The laws (stampDryingTimes), per texel wetted to ℓ at a, drying at rate r with open time o, sheen shiny h and damp
 // d: wet while τ < U = a + (ℓ − h)/r; matte from L = a + (ℓ − d)/r; set from Z = a + o + ℓ/r; under `never` (r = 0),
@@ -98,7 +98,7 @@ export function stampSheetSceneOf(clock: StampSheetClock, state: StampSheetSolve
 export type StampSheetWashStart = { kind: 'starts'; at: StampSheetTimed } | { kind: 'never-sets' } | { kind: 'still-wet'; origin: number; until: number };
 
 /**
- * When a wash can start after `state` (ENGINE 3.5), its first entry `clocked` or not, `set` (Y) the latest its
+ * When a wash can start after `state`, its first entry `clocked` or not, `set` (Y) the latest its
  * layer's earlier wet washes set (null for none, +∞ for never): at Y on the grid, or on a scale at its numeric
  * origin, refused before Y. Direct washes hold no water to wait on.
  */
@@ -296,7 +296,7 @@ export type StampSheetWater = {
 };
 
 /**
- * A solve's state between steps, all a checkpoint keeps beside its GPU state (ENGINE 4.5): the time base, the last τ
+ * A solve's state between steps, all a checkpoint keeps beside its GPU state: the time base, the last τ
  * and its scene second; τc (null before the clocked run); each film's painted box, each wash's touched boxes, the box
  * water touched; the paper touched since the last drying, whether anything landed there, when it sets (-Infinity
  * unread); water.

@@ -1,4 +1,4 @@
-// stamp-gate-reveals.ts: the gate's reveals (docs/painting-authoring.md, Time), each frame held to the CPU twin of
+// stamp-gate-reveals.ts: the gate's reveals (video-canvas, Reveals), each frame held to the CPU twin of
 // what it shows (stampRevealShownAt): drawn mid-reveal, it matches the all-hidden frame wherever the twin shows
 // nothing and the all-shown frame wherever it shows all. The ink: a flood revealed by three strokes of mixed widths
 // and caps; wrapped, by one across its seam. The fields: a flood, a moon and a petal, revealed by a linear, a radial

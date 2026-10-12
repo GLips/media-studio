@@ -1,4 +1,4 @@
-// stamp-sheet-state-key.ts: a sheet program's state keys (ENGINE 4.2): K₀ hashes the program's head, each Kₖ the key
+// stamp-sheet-state-key.ts: a sheet program's state keys: K₀ hashes the program's head, each Kₖ the key
 // before it and entry k as read: its digest (stamp-canonical.ts) and pose. SHA-256, alike in Node and the browser, so
 // equal keys mean equal state on any machine.
 

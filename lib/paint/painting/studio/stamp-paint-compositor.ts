@@ -87,12 +87,12 @@ export type StampPaintCompositor = {
   paper: string;
   /**
    * `layCard(pixel, color, cover)`: paper of `color` (gamma-encoded) over what's there by `cover` 0..1: an own sheet's
-   * card (ENGINE 5.4). Reads and writes `painting`; the includer declares GPU_SRGB_WGSL.
+   * card. Reads and writes `painting`; the includer declares GPU_SRGB_WGSL.
    */
   card: string;
   /**
    * `layPicture(pixel, light, cover)`: premultiplied linear light over what's there by its alpha `cover` (0 < cover ≤
-   * 1), reading as `light` plus what's there by 1 − cover: a rig's pieces (ENGINE 6.5). Reads and writes `painting`;
+   * 1), reading as `light` plus what's there by 1 − cover: a rig's pieces. Reads and writes `painting`;
    * the includer declares GPU_SRGB_WGSL.
    */
   picture: string;

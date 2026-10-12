@@ -1,4 +1,4 @@
-// shot-instance-passes.ts: an instanced plane's items laid through the lens (ENGINE 6.3). Each variant is solved and
+// shot-instance-passes.ts: an instanced plane's items laid through the lens. Each variant is solved and
 // laid as a painted plane is (shot-painted-plane.ts), its picture kept under its plan's key, so a variant whose films
 // and visibility hold is laid once for the shot. A batch of items (shotDrawSteps) lays that picture, blurred once for
 // the batch's stepped sigma, through each item's own look as the lens's items layer: one picture and one bind group,

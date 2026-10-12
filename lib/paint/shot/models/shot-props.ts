@@ -2,7 +2,7 @@
 // plane's entry saying everything about it (its visibility, its node and plays, and its occurrences' own, rigs among
 // them), masks, instances and painted textures. Camera, clocks, motion, placements, rig declarations, picture and
 // three sources are the engine's, imported; everything declared here is the painting path's own.
-// docs/painting-authoring.md's Composition section is the author's page for it.
+// The video-canvas skill's shots reference is the author's page for it.
 
 import type { PaintShotCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
 import type { PaintNodeClock } from '#lib/paint/animation/models/paint-clock.ts';

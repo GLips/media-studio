@@ -1,5 +1,5 @@
 // painting-film-readback.ts: a selected layer's film, at rest through the selection's prefix, read back as the rig and
-// tools read it (ENGINE 5.1): `paintingFilmCoverage` and `paintingFilmPicture`. The selection compiles to the programs
+// tools read it: `paintingFilmCoverage` and `paintingFilmPicture`. The selection compiles to the programs
 // its sheets run; the layer's sheet is solved (a prefix already solved, its films kept, paints nothing) and its films
 // held while its film is read back through painting's readbacks (stamp-film-readback.ts), kept per device by what
 // makes its pixels.

@@ -2,7 +2,7 @@
 // techniques and geometry stay in the source's TS. Values sit where they're used (a paper, a brush, a mix); keys name
 // only the tree. Lengths are paper px, x right, y down; angles radians, positive turning clockwise on screen.
 //
-// docs/painting-authoring.md is the author's page for all of it; painting-document-check.ts holds a document to it.
+// The video-canvas skill's references are the author's pages for all of it; painting-document-check.ts holds a document to it.
 
 import type { StampBrushAsset } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { StampPlacement, StampStrokePoint } from '#lib/paint/brush/models/stamp-placement.ts';
@@ -54,7 +54,7 @@ export type Region =
 
 /**
  * A stroke point. `pressure` 0..1 (1), times the hand's profile, drives what the brush binds to pressure (size,
- * opacity, flow: the author page's brush table). `scale` above 0 (1) multiplies the diameter. To close a loop,
+ * opacity, flow: video-canvas's brush table). `scale` above 0 (1) multiplies the diameter. To close a loop,
  * repeat the first point last.
  */
 export type StrokePoint = Omit<StampStrokePoint, 'lift'>;
@@ -114,7 +114,7 @@ export type MixPart = { readonly pigment: PaintPigmentAppearance | Hex; readonly
  */
 export type Mix = { readonly parts: readonly MixPart[]; readonly strength: number };
 
-/** A brush by its style's own name for it (the author page's brush table). It paints in any medium. */
+/** A brush by its style's own name for it (video-canvas's brush table). It paints in any medium. */
 export type BrushRef = { readonly style: string; readonly brush: string };
 
 /**

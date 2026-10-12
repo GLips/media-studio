@@ -1,4 +1,4 @@
-// painting-entry-reads.ts: what a sheet's solve reads of a document, as data: its head (K₀'s part, ENGINE 4.2) and each
+// painting-entry-reads.ts: what a sheet's solve reads of a document, as data: its head (K₀'s part) and each
 // entry's datum in the sheet's order. The compiler keys entries by it (with their compiled marks) and the evaluation
 // diff compares it, so both read one account of what an entry depends on.
 
@@ -9,7 +9,7 @@ import type { PaintingSheetOrder } from './painting-sheet-program.ts';
 import type { PaintingTree } from './painting-tree.ts';
 
 /**
- * What a sheet's every solve starts from (ENGINE 4.2's K₀): the document's size and wrap, the paper's solve half, its
+ * What a sheet's every solve starts from (K₀): the document's size and wrap, the paper's solve half, its
  * water and its clock. Neither its edge nor its paper's colour is solved.
  */
 export const paintingSheetHead = (paintingDocument: PaintingDocument, order: PaintingSheetOrder): PaintingDatum => ({

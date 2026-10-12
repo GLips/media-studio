@@ -1,8 +1,8 @@
-// stamp-sheet-steps.ts: a sheet solve's GPU work a step at a time (ENGINE 4.7), and the probes its schedule reads.
+// stamp-sheet-steps.ts: a sheet solve's GPU work a step at a time, and the probes its schedule reads.
 // A step is encoded and submitted inside one of the owner's checks, its uniforms flushed before the submit and the
 // arena reset after; a readback's mapping is awaited outside it, so no encoder is held across an await.
 //
-// The field keeps times after a base (ENGINE 3.4), which the solve's state holds: a step reads a time through its
+// The field keeps times after a base, which the solve's state holds: a step reads a time through its
 // time base, which moves the base up in that step, before anything reads it, once the time runs far past it.
 
 import { gpuStepTimer } from '#lib/platform/gpu/studio/gpu-step-timer.ts';

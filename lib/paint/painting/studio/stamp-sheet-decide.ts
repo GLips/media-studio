@@ -1,4 +1,4 @@
-// stamp-sheet-decide.ts: when one application lands (ENGINE 3.5), read off the wet field over its core: at τ0 for
+// stamp-sheet-decide.ts: when one application lands, read off the wet field over its core: at τ0 for
 // `wet`, failing there (wetness only falls); at the first 1 ms step a damp histogram finds for `damp`; once the core's
 // latest texel sets for `dry`; then checked by the field's own law, a millisecond at a time while f32 rounding keeps
 // it from holding. A bloom must find open paint on workable paper under its core. The CPU decides in f64.

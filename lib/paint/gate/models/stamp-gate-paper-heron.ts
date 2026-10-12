@@ -1,4 +1,4 @@
-// stamp-gate-paper-heron.ts: the gate's paper heron (ENGINE 9, test 6's sheets; the rigged one built from it is
+// stamp-gate-paper-heron.ts: the gate's paper heron (the rigged one built from it is
 // stamp-gate-shots.ts'), a heron whose body lies on the scene's paper, whose wing is a cut-out of a warm paper, and
 // whose wing tip is a cut-out of a cool one inside it, a feather left on it. Posed before painting, the body's paint is
 // repainted on still paper; the wing's sheets move whole, paper and all. What the cases measure of their frames is
@@ -91,7 +91,7 @@ export const STAMP_GATE_PAPER_HERON: PaintingSourceModule = {
   },
 };
 
-/** The heron moved between the case's two frames, document px (ENGINE test 6). */
+/** The heron moved between the case's two frames, document px. */
 export const STAMP_GATE_HERON_MOVE = { x: 17, y: 9 } as const;
 
 /** The heron turned and grown about its middle: what its similarity check and its solved still pose it by. */

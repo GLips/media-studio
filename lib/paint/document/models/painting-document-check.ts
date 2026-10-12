@@ -1,5 +1,5 @@
 // painting-document-check.ts: a PaintingDocument held to what the engine can paint, before anything is solved
-// (docs/painting-authoring.md, Checking). Three stages, each run only if those before it found no error, so references
+// (video-canvas troubleshooting). Three stages, each run only if those before it found no error, so references
 // resolve before ranges are read: the document's shape and keys; papers, layers, washes and their applications in
 // their resolved media; then each sheet's order (painting-sheet-check.ts), the pigments each layer's film holds, and
 // field reveals at a wrapped document's seams (painting-reveal-seam-check.ts). What only solving can tell (an `on`

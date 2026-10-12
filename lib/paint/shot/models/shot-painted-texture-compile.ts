@@ -1,4 +1,4 @@
-// shot-painted-texture-compile.ts: a shot's painted textures (ENGINE 6.3) checked and compiled as the shot loads,
+// shot-painted-texture-compile.ts: a shot's painted textures checked and compiled as the shot loads,
 // before they're drawn (shot-painted-textures.ts): each id once, a size in whole px, and a source a painted source on
 // its paper, every painting it blends wrapping alike. A texture is opaque, so a transparent ground has nothing to show
 // through to; and it repeats across u, v, both or neither, so a dissolve can't blend paintings that wrap otherwise.

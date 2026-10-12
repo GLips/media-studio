@@ -1,4 +1,4 @@
-// bloom-rims.painting.ts: the bloom chart of docs/painting-authoring.md (docs/images/bloom-rims.png), painted by
+// bloom-rims.painting.ts: the bloom chart of video-canvas's techniques (its references/bloom-rims.png), painted by
 // `studio paint still`. Three rows of crisp watercolour floods at water 0.85, each row a wash of its own `rim`, 0.5, 1
 // and 2 from the top; into each flood, once it's damp, a bloom drop whose water lies 0.1, 0.2 and 0.35 over damp,
 // left to right.

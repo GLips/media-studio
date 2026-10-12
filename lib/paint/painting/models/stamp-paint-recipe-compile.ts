@@ -63,7 +63,7 @@ type CompiledStampDepositCommon<A extends CompiledStampAction> = {
   /** The brush's dual stamps, placed by its own settings along the same stroke, in the order laid; none without one. */
   dualStamps: FrozenStampMarks;
   /**
-   * For a deposit a pose moved (ENGINE 5.3), the map back to where it was planned: its paint's and a flood's load
+   * For a deposit a pose moved, the map back to where it was planned: its paint's and a flood's load
    * fields, a flood's local scale and its pigment's clumps are read there. Absent: where it lies.
    */
   rest?: StampRestMap;

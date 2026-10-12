@@ -1,4 +1,4 @@
-// stamp-film-readback.ts: a solved film read back to the CPU (ENGINE 5.1): its coverage as a document-sized array, or
+// stamp-film-readback.ts: a solved film read back to the CPU: its coverage as a document-sized array, or
 // its picture, premultiplied linear RGBA laid clear or on its sheet's paper and edge. Each is kept per device under
 // everything that makes its pixels, the film's key (its solve's last key, finished or open, and its index) first, so
 // a rig reading a cel every frame reads it back once. A selection's layer is read through these by

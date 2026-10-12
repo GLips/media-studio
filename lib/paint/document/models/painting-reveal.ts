@@ -1,4 +1,4 @@
-// painting-reveal.ts: a document's reveals as a selection's lays read them (docs/painting-authoring.md, Time). A film
+// painting-reveal.ts: a document's reveals as a selection's lays read them (video-canvas, Reveals). A film
 // is cut by its layer's reveal and every enclosing group's, multiplied. Each is read in its node's frame: a node posed
 // on a sheet it doesn't own carries its reveal with its marks, while one at or above the sheet's owner moves the
 // finished sheet, so its reveal is read where the sheet was painted. And for authors: when a reveal ends and when it

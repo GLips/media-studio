@@ -1,4 +1,4 @@
-// shot-shown.ts: which of a shot's painted planes and instanced variants a frame solves (ENGINE 6.1 step 1): those
+// shot-shown.ts: which of a shot's painted planes and instanced variants a frame solves: those
 // showing at one of its exposures, read before anything is solved. A plane faded to nothing, or whose every layer is
 // (by itself or a group holding it) on a transparent ground, lays nothing and covers nothing for a mask reading it, so
 // it goes unsolved; the opaque back always shows. A layer in a cel its rig's pose hides shows nothing either, so its

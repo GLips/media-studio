@@ -182,7 +182,7 @@ renderer and the solver read a layered target back through `stamp-layer-readback
 key is that solve (`keptStampSheetFilms`): a pose met again solves nothing. Whoever draws or reads films holds them
 (`holdStampSheetFilms`) until it's done, so another solve making room in the cache can't give them up. It solves any
 sheet, clocked or not; the gate's `schedule/` and `sheet/` cases hold it to the wet laws' closed forms.
-`stamp-sheet-composite.ts` lays a selection's solved sheets as one picture (ENGINE 5.4): the root's paper as the
+`stamp-sheet-composite.ts` lays a selection's solved sheets as one picture: the root's paper as the
 ground, then each film where its layer comes in document order, and an own sheet's card (its paper, wherever the union
 of its films' coverage reaches half, by `STAMP_OPAQUE_COVER`) where its owner comes, before every node under it, so a
 nested sheet lies on its parent's card and a scene layer under the owner glazes over the card. Its `shown` levels, a
@@ -207,7 +207,7 @@ engine never sees a curve, so any curve the document names is drawn the same way
 reveal (`paintingRevealEnd`, `paintingRevealArrivalAt`) come from the arithmetic the pass reads: its arrival span and its arrivals.
 The cuts multiply, a group's over its descendants', and each is read where its node's marks were solved: posed paint
 carries its reveal (a warp by its fitted similarity). The root's ground is never cut; the solve, its checkpoints and
-the water never see a reveal, so the evaluation diff lists a reveal edit under its `reveals`, recomposing only. `stamp-film-readback.ts` reads a solved film back for a rig and its tools (ENGINE 5.1): its coverage,
+the water never see a reveal, so the evaluation diff lists a reveal edit under its `reveals`, recomposing only. `stamp-film-readback.ts` reads a solved film back for a rig and its tools: its coverage,
 document-sized, or its picture, premultiplied linear, laid clear or on its sheet's paper and edge (the root's paper
 over the document, an own sheet's card over its union, as its program's `edge` says). A clear picture is laid over
 white and over black and read as the two-point reading against each backing's light, so laid back over any ground it
@@ -436,7 +436,7 @@ StampPainting alone: keys of placements, linear between them. A shot moves a gro
   plane is a lens source (`stamp-lens-source.ts`): a picture and motion layer rendered for each frame and exposure,
   which three.js fills (`painted-three-sources.ts`: `loadPaintedThreeSources` over painted textures supplied as
   handles with a hook drawing them each frame, a shot's by `createShotPaintedTextures`, `loadPaintedThree` supplying
-  them from old renderers) and any other renderer can. A painted plane's picture doesn't depend on the camera and is kept on the device while
+  them from StampPainting) and any other renderer can. A painted plane's picture doesn't depend on the camera and is kept on the device while
   its groups hold. The camera is one description: its plays, if any (none: at rest, every plane sharp), set `move`
   (pan, dolly, zoom, roll), with moves that add to it (`blend: 'add'`), and `focus` (focus depth, aperture), each a
   value in time (`paint-value.ts`, keyed by `paint-keyed.ts`), plus `fov` and a lens with one `bloom` and its `shutter`, seconds open or `'shut'` (built as 0 s; a shot leaving it out takes `paintFilmShutter`, half its film's frame). `paintCameraLensAt` gives each plane's view (a
@@ -519,7 +519,7 @@ pictures, three sources and the composite are rgba16float, premultiplied linear;
 rgba16float, gamma-encoded and opaque in every mip level it has, decoded by `paintedThreeColorNode`, and read
 repeating on each axis its handle's `wrap` names, u along x and v along y. three reads every handle trilinearly
 across whatever levels it has and makes none of its own; a handle with a mip chain (a shot's) is read with
-anisotropy 8 as well, an old renderer's (one level) without it. A glowing frame drawn without a lens is refused.
+anisotropy 8 as well, StampPainting's (one level) without it. A glowing frame drawn without a lens is refused.
 
 **rig** is a painted rig's geometry and its drawing: layers (whole paintings at rest) cut into parts that meet at
 skin joints or hinges. `paint-rig-cuts.ts` holds a layer's parts with each joint resolved to its parent's index (a
@@ -535,7 +535,7 @@ vertices the lens's motion layer follows; `paint-rig-pieces-gpu.ts` draws them f
 by its part's map up the chain, as the shot builds each part's (exact wherever the skin moves paint wholly with its
 part), a two-bone reach, and a pose mirrored. A rig's files, poses and clocks stay with the projects that use them.
 
-**document** is the painting language a source writes, which docs/painting-authoring.md teaches. A `*.painting.ts`
+**document** is the painting language a source writes, which the video-canvas skill teaches. A `*.painting.ts`
 source's factory returns a `PaintingDocument` (`painting-document.ts`: a paper, a medium and a tree of layers, washes
 and applications), its values held to its schema (`painting-properties.ts`). `painting()` (`painting-source.ts`)
 evaluates a source, memoised by its values, and refuses a document with any error. `painting-document-check.ts` checks
@@ -649,7 +649,7 @@ key naming all of it. `studio/shot-sheets-lay.ts` lays it over `stamp-lattice-pa
 film where its owners and the plane's place put it, a pieces rig's picture at its card by the compositor's
 `layPicture`, a faded group's or own sheet owner's span mixed back by its visibility, card and paint as one
 (`painting/studio/stamp-span-fade-pass.ts`). The plane's picture is
-the old renderer's pass (`painting/studio/stamp-plane-picture-pass.ts`), kept in the device's cache under the plan's
+StampPainting's pass (`painting/studio/stamp-plane-picture-pass.ts`), kept in the device's cache under the plan's
 key. A dissolve's selections are each laid, kept and blurred so, then summed by weight into a stage-sized picture
 (`studio/shot-dissolve-pass.ts`): every layer a plane's picture holds (opaque colour, colour and transmittance, glow,
 motion) is linear in what's laid, so the sum is the dissolve, never a pigment mix. Its ends paint one document size
@@ -657,8 +657,7 @@ on one ground. A marks rig on it solves each end at each pose; a sheet's keys ha
 text, so an end resumes another's checkpoint only where both paint and pose agree, the skin's key keeping a skinned
 cel apart wherever any rest cel differs, and a warm covers both ends. A pieces rig finds its skin in each end and
 draws each share of the blend into a target of its own, since three.js renders at once and one submit lays every
-share. Picture
-and three planes are the old path's sources, laid through `stamp-lens-source-layers.ts`, each read at its
+share. Picture and three planes, StampPainting's sources too, are laid through `stamp-lens-source-layers.ts`, each read at its
 `sourceClock`'s moment (a picture's `pictureAt`, a three scene's `poseAt`) and faded by its visibility, the lens
 layer's `visibility` (`lens-compositor.ts`). Three planes read the shot's
 painted textures (`studio/shot-painted-textures.ts`): made by `createShotPaintedTextures` before
@@ -673,7 +672,7 @@ layer (`studio/shot-instance-passes.ts`): a quad per item, its view, shutter end
 (`lens-compositor.ts`, `platform/gpu/studio/gpu-instance-ring.ts`), its filter then its add before the next. An
 item's travel is its views at the shutter's ends, as a plane's is; its picture's own motion isn't read.
 
-Masks (ENGINE 6.3) are drawn. The `alphaOf` graph is checked acyclic and sorted so each read plane composites first
+Masks are drawn. The `alphaOf` graph is checked acyclic and sorted so each read plane composites first
 (`shot-masks.ts`); the plan holds each mask and what other planes read of it (`shot-sheet-lays.ts`), and each film's
 reveals at the selection's time, read under the poses its marks were solved by, so a moving reveal moves the
 picture's key and solves nothing. Each exposure lays every painted plane first, in the graph's order (`present` in
@@ -720,7 +719,7 @@ evaluations a callback source makes or finds memoised are the change in `paintin
 synchronous read. The cost report's counts are painting's (`painting/models/stamp-paint-costs.ts`, one set of names the document,
 solver, caches and shot all count into); the shot logs a frame's and a warm's under its labels
 (`shot-cost-report.ts`), a painting in time's plan among their notes (`plans`), through `picture/profiling`'s costs channel, which knows nothing of paint, so
-`studio profile --costs` tables any drawing's counts. Its painted textures (ENGINE 6.3) are compiled with its planes
+`studio profile --costs` tables any drawing's counts. Its painted textures are compiled with its planes
 by `compilePaintedShot`, their problems reported beside the planes', onto `CompiledPaintedShot.paintedTextures`, in
 `shot-painted-texture-compile.ts` (`compileShotPaintedTextures`: an id each, whole px, each source at moment 0 as a
 plane's is, never on a transparent ground, never blending paintings that wrap otherwise than each other; how it
@@ -817,7 +816,7 @@ Cut to the revealing heron's wing frame after frame, each frame draws as it does
 to the heron faded to half, it tints the wing about half as much, and just as much cut to the heron dissolving
 halfway to water lying elsewhere. A picture disc at half visibility lays half of itself and cuts the tint at half its
 coverage; a three disc hidden draws and cuts as none; a disc held on sixes keeps still, its tint with it, within a
-hold; and the tint cut to an instanced plane's painted spot follows it and fades with it. The rainy street (`stamp-gate-rainy-street.ts`, ENGINE test 5) draws them together
+hold; and the tint cut to an instanced plane's painted spot follows it and fades with it. The rainy street (`stamp-gate-rainy-street.ts`) draws them together
 in one shot under a camera pushing in: a sky dissolving to night at the back; a street painted in on sixes, its
 puddle clocked with drops landing in it at their times and a walker on its wet paper placed by a play; the lamp's
 reflection cut to the puddle and fading in; and the rain. Warmed, frames moving only the camera, the rain, `k` or

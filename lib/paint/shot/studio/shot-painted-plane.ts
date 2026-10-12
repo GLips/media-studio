@@ -1,4 +1,4 @@
-// shot-painted-plane.ts: a shot's painted plane drawn for a frame (ENGINE 6.1 steps 1-4 and 6, 6.5). Each selection its
+// shot-painted-plane.ts: a shot's painted plane drawn for a frame. Each selection its
 // source blends at the frame's source moment is compiled, its rigs found over its paint, its marks posed (poses
 // read once a frame: shotRigReader) and its sheets solved. Each moment laid is planned per selection
 // (shotPlaneLayPlan); this reads pieces rigs back and lays each selection's picture, kept under its key so a plane

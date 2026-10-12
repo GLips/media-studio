@@ -1,4 +1,4 @@
-// stamp-solve-lease.ts: the device's solve lease (ENGINE 4.7), a FIFO async mutex beside its owner. A solve holds it
+// stamp-solve-lease.ts: the device's solve lease, a FIFO async mutex beside its owner. A solve holds it
 // from its first encode to its last readback, so two solves on one device never interleave: they share stage scratch,
 // targets and the cache's eviction, each of which another's encodes would rewrite or destroy under it.
 //

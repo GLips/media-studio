@@ -1,4 +1,4 @@
-// painted-shot.tsx: a PaintedShot in a scene (ENGINE 6.3): an element the camera's frame, one CSS px a frame px,
+// painted-shot.tsx: a PaintedShot in a scene: an element the camera's frame, one CSS px a frame px,
 // scaled to fill its box, its HTML children laid out in frame px among PaintedShotCanvases. One device owner draws
 // every canvas; a shot with no PaintedShotCanvas draws in one of its own, under its children.
 //

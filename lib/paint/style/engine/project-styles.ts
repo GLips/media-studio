@@ -71,7 +71,7 @@ export function projectStyleProblems(projectDir: string): string[] {
       return [`styles: ${basename(resolve(projectDir))}'s project.ts names ${JSON.stringify(name)}, which isn't a style (work/styles/ has ${listStyles(projectDir).join(', ') || 'none'})`];
     }
     const lines = styleAssetProblems(join(stylesDirFor(projectDir), name), requireDefault<StampPaintStyle>(file));
-    return lines.length ? [`styles: ${name} can't paint until its packs are imported in work/styles/${name}/ (brushes/ isn't in git, so each machine imports its own; docs/private-styles.md):\n${lines.join('\n')}`] : [];
+    return lines.length ? [`styles: ${name} can't paint until its packs are imported in work/styles/${name}/ (brushes/ isn't in git, so each machine imports its own; studio brushes import --help):\n${lines.join('\n')}`] : [];
   });
 }
 

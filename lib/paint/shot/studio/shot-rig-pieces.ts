@@ -1,4 +1,4 @@
-// shot-rig-pieces.ts: what a rig in a shot reads back and draws on the GPU (ENGINE 6.5). A cel's rest picture is its
+// shot-rig-pieces.ts: what a rig in a shot reads back and draws on the GPU. A cel's rest picture is its
 // films (on a shared sheet, with the cards of sheets it owns) as the whole selection paints them unposed; a rig's
 // axes and a marks rig's skin are found over them. A pieces rig skins its shown cels' rest paint, reads its sheets
 // laid with those cels' films, faded as their visibility says, cuts that by the skin, and draws the pieces through

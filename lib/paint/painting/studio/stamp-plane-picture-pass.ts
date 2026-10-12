@@ -1,5 +1,5 @@
 // stamp-plane-picture-pass.ts: a painted plane's picture as the lens takes it (lens-passes.ts), kept in the device's
-// cache (ENGINE 6.2). The back is laid on its paper; a nearer plane is laid on white, its light measured, laid again on
+// cache. The back is laid on its paper; a nearer plane is laid on white, its light measured, laid again on
 // black, and the picture pass reads what it lets through against the backings' own light. Defocused, a picture is
 // blurred by a stepped sigma. The old renderer and a shot's painted planes both draw theirs here, each under a key
 // naming what makes its pixels, so a plane held still is laid once.

@@ -1,4 +1,4 @@
-// stamp-gate-shot-dom-page.ts: the gate's shot over a page (ENGINE 6.3), held as a PaintedShot holds one (shot-canvas.ts
+// stamp-gate-shot-dom-page.ts: the gate's shot over a page, held as a PaintedShot holds one (shot-canvas.ts
 // makes its element and canvases) and read by its DOM adapter (shot-dom-points.ts). The heron, a clear back, is drawn
 // as a glaze, then pinned to an element. A violet wash glazed over an HTML block, from a later canvas and as a clear
 // back, is photographed as the browser composites it, matched per channel to the wash over a flat picture.

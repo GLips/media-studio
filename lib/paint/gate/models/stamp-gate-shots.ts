@@ -1,4 +1,4 @@
-// stamp-gate-shots.ts: the gate's shots (ENGINE 9, tests 6 and 7 through a PaintedShot): the rigged paper heron (neck
+// stamp-gate-shots.ts: the gate's shots (through a PaintedShot): the rigged paper heron (neck
 // skinned, wing a cel on its own sheet, reeds drawn as pieces), boiling, and dissolving from day to dusk as it's posed;
 // the wet-contact sheet, its foot rigged: painted in, on sixes over a warmed span, hidden, and dissolving over a
 // dissolving back; the heron alone over HTML, also pinned (shot/page); the rain (stamp-gate-rain.ts); the cut-out

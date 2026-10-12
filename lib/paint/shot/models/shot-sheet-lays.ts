@@ -1,4 +1,4 @@
-// shot-sheet-lays.ts: how a painted plane lays its selection's sheets at one moment (ENGINE 5.3, 5.4, 6.2), purely.
+// shot-sheet-lays.ts: how a painted plane lays its selection's sheets at one moment, purely.
 // Poses split at each sheet's owner: the owner's node and those enclosing it, then the plane's place, carry the sheet
 // whole; the nodes below it posed its marks before the solve, and a lattice carries the solved paint where they pose
 // it now. Each composite step becomes a lattice (a card over its films as far as each shows, a film over its paint);

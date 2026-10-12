@@ -21,7 +21,7 @@ import type { StampWrap, StampWrapFrom } from './stamp-stage.ts';
 export type StampSheetWetness = 'wet' | 'damp' | 'dry';
 
 /**
- * A film's layout (ENGINE 4.2's slot schema): `palette`, pigment ids a slot each in first-use order; `paintLayers`, the
+ * A film's layout, its slot schema: `palette`, pigment ids a slot each in first-use order; `paintLayers`, the
  * four-channel layers holding coverage and a channel per slot; `open`, the channel of its open share (null for none).
  */
 export type StampSheetFilmSlots = { palette: readonly string[]; paintLayers: number; open: number | null };
@@ -51,7 +51,7 @@ export type StampSheetWash = {
 };
 
 /**
- * A sheet's one clock (ENGINE 4.1), once a clocked wet wash paints it: `scale`, a model second taking `scale` scene
+ * A sheet's one clock, once a clocked wet wash paints it: `scale`, a model second taking `scale` scene
  * seconds from `origin` (S, its clocked washes' earliest start) at its unclocked run's end; `instant`, the sheet set
  * before each clocked application; `never`, nothing drying. `none`, a scale alone timing nothing: model time only,
  * clocked scene times their order times.
@@ -67,7 +67,7 @@ export type StampSheetAnchors = { within: ReadonlySet<number>; masks: ReadonlySe
 /**
  * One application in its sheet's order: its deposit, as posed; its paint's medium (its film's, spread capped); what
  * it waits for; the node ordinals posing it, outermost first, its layer's too; its order time and fixed `at`, scene s
- * (null when unclocked or untimed); `digest`, the hash of all it reads at rest (ENGINE 4.2); `pose`, its map's text.
+ * (null when unclocked or untimed); `digest`, the hash of all it reads at rest; `pose`, its map's text.
  */
 export type StampSheetEntry = {
   wash: number; name: string; deposit: CompiledStampDeposit; medium: PaintMedium; on: StampSheetWetness | null; bloom: boolean;
@@ -85,7 +85,7 @@ export type StampSheetProgram = {
 };
 
 /**
- * A step of a composite of sheets, back to front (ENGINE 5.4): an own sheet's card, its paper as far as the union of
+ * A step of a composite of sheets, back to front: an own sheet's card, its paper as far as the union of
  * its films' paint reaches; or film `film` of sheet `sheet` (indexes into the composite's sheets).
  */
 export type StampSheetCompositeStep = { readonly kind: 'card'; readonly sheet: number } | { readonly kind: 'film'; readonly sheet: number; readonly film: number };

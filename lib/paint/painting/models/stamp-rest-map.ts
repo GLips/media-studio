@@ -1,4 +1,4 @@
-// stamp-rest-map.ts: where posed paint was planned (ENGINE 5.3). A pose maps a sheet's marks before painting; what
+// stamp-rest-map.ts: where posed paint was planned. A pose maps a sheet's marks before painting; what
 // travels with the paint (its fields, a ragged edge's noise, a stamp's tip noise, a flood's local scale, pigment
 // clumps) is read at the rest point a map takes each paper point back to. The paper's grain and absorbency are the
 // paper's, read where they lie. A sheet its owner's chain moves is placed whole, read back to rest the same way.

@@ -1,11 +1,11 @@
 // stamp-sheet-checkpoints.ts: a sheet solve's state after an entry, kept in the device's cache as producer
-// 'checkpoint' (ENGINE 4.5): its GPU state as pieces, each cropped to where it was drawn and naming where it goes
+// 'checkpoint': its GPU state as pieces, each cropped to where it was drawn and naming where it goes
 // back (a film, the field's paper and rim, each clip a later entry reads), and in its note the CPU's state. Resuming
 // from one equals replaying to it; the decisions before it are the solve's memo's.
 //
 // A piece names its film, so programs sharing a prefix share its checkpoints whatever layers follow. The cache gives
 // checkpoints up first, as a solve can run from an earlier one; one a solve must go back to is held from the step
-// keeping it (ENGINE 4.7).
+// keeping it.
 
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { StampSheetSolveState } from '../models/stamp-sheet-schedule.ts';

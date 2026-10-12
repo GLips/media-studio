@@ -1,8 +1,8 @@
 // painting-document-compile.ts: a selection of an evaluation's layers as the programs the wash solver runs
-// (stamp-sheet-program.ts), one per sheet they lie on (ENGINE 4.1): a film per selected layer, its washes and
+// (stamp-sheet-program.ts), one per sheet they lie on: a film per selected layer, its washes and
 // applications in the sheet's order with their order times, the sheet's clock, each deposit planned at rest, with the
-// digest of what each entry reads (ENGINE 4.2) and the text of the sheet's head, which a solve chains its keys from;
-// and the steps compositing them (ENGINE 5.4). A deposit's ID is made of keys, never places, and seeds its colour and
+// digest of what each entry reads and the text of the sheet's head, which a solve chains its keys from;
+// and the steps compositing them. A deposit's ID is made of keys, never places, and seeds its colour and
 // water; its marks are its tip's seed's. Posing comes after (painting-pose.ts). Compiles are kept across evaluations
 // by bytes.
 
@@ -146,7 +146,7 @@ export function paintingNodeSteps(compiled: PaintingSelectionCompiled, key: Node
 
 /**
  * What a selection's compile is told: `layers`, the layers and groups selected (all when left out); `reseed`, boil
- * epochs by the key of the layer or group boiling (ENGINE 4.6), the innermost naming a layer winning. A reseeded
+ * epochs by the key of the layer or group boiling, the innermost naming a layer winning. A reseeded
  * layer's every seed is suffixed for its epoch and its entries keyed by it; one at 0 is as written. `costs` counts.
  */
 export type PaintingSelectionCompileOptions = { readonly layers?: readonly NodeKey[]; readonly reseed?: ReadonlyMap<NodeKey, number>; readonly costs?: StampPaintCostTally };
