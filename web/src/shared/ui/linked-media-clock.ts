@@ -92,7 +92,9 @@ export function createLinkedMediaClock({ frameNow, steer }: LinkedMediaClockOpti
   const aim = (record: LinkedFollowerRecord, frame: number) => {
     const { element, fps, frameOf, span } = record.follower;
     const phase = linkedMediaPhaseAt(span, frame);
-    const forward = phase === 'inside' && leader !== null && !leader.paused;
+    // A leader landing its own seek stands still, so the follower waits paused on that frame. Played on, it would run
+    // frames ahead of the stalled leader and stay hidden for most of a second while the slow rate caught it up.
+    const forward = phase === 'inside' && leader !== null && !leader.paused && !leader.seeking;
     if (!forward && !element.paused) element.pause();
     // Not seeked before metadata: Chrome applies such a seek as the file loads without a frame callback, so it
     // would never be heard landing. `loadedmetadata` aims it again.
