@@ -76,7 +76,7 @@ Studio: the checks written for this repo's own shape. All structural, all over t
 | no-scratch, studio-temp, render-snapshot, brush-assets | no tracked file names scratch/; temp folders come from studio-temp; a render is read through its own snapshot; bought brush packs stay out of git |
 | folder-width (advisory) | a lib folder past 15 source files groups them |
 
-All TypeScript: quality rules extended to the whole repo by vid-107.
+All TypeScript: quality rules over every TypeScript file in the repo.
 
 | Rule | Tier | Holds |
 |---|---|---|
@@ -93,10 +93,11 @@ All TypeScript: quality rules extended to the whole repo by vid-107.
 | no-opaque-record, no-widen-then-assert, no-known-value-widening, no-broad-parameters, no-unknown-returns, no-unknown-type-aliases, no-runtime-typeof | structural | type declarations say something: no open bags, `unknown` contracts or widen-then-assert round trips |
 | file-size | structural | a source file stays under 600 lines |
 | trampolines (advisory) | structural | an exported function that only forwards |
-| doc-budgets | structural | each doc in docs/doc-budgets.manifest.json stays under its word ceiling |
+| doc-budgets | structural | every standing doc (each CLAUDE.md, skill SKILL.md, skill references/ folder as one sum, docs/*.md) has a word ceiling in docs/doc-budgets.manifest.json and stays under it; a ceiling more than 40 words or 5% above its doc fails, and `--update-baseline` ratchets it down |
+| skill-links | structural | a skill's `${CLAUDE_PLUGIN_ROOT}/…` and relative links resolve, and it names no bare `docs/` or `lib/` path, `npm run` or `node cli/` |
 | barrel-discoverability | structural | a barrel names what it exports |
 | test-file-mirror (advisory) | structural | a spec sits beside the module it's named for |
-| feature-layers | structural | a lib foundation (`LIB_LAYERS`: platform, vocabulary, timing, framing, measurement, authoring, lowest first) imports only foundations of its own layer or a lower one |
+| feature-layers | structural | a lib foundation (`LIB_LAYERS`, lowest first) imports only foundations of its own layer or a lower one |
 | feature-visibility | structural | a feature imported from another feature grants it, with a reason, in its visibility.json (one finding per ungranted pair); a foundation needs no grant and keeps no grant file |
 | feature-cycles | structural | no feature imports one that imports it back (one finding per import inside a cycle) |
 | no-test-imports | structural | only a spec imports a spec |

@@ -9,10 +9,11 @@
 //   npm run check:arch -- --scope workspace   work/ alone, read with the studio's (its hook adds it too)
 //   npm run check:arch -- --rev main          a committed tree of the studio's
 //   npm run check:arch -- --list              every baselined finding, not just counts
-//   npm run check:arch -- --update-baseline   shrink each baseline to its index; scoped, --admit-new grows it
+//   npm run check:arch -- --update-baseline   shrink baselines to the index, ratchet doc budgets
 //
-// Snapshots: lint/candidate-snapshot.ts. Scopes: lint/gate-scope.ts; none named, lint/gate-every-scope.ts.
+// Snapshots: lint/candidate-snapshot.ts. Scopes, and --admit-new: lint/gate-scope.ts; none named, gate-every-scope.ts.
 
+import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -22,6 +23,7 @@ import { describeLeftOutOfIndex } from './candidate-snapshot.ts';
 import { judgeEveryGateScope } from './gate-every-scope.ts';
 import { describeUnexcused, gateRunSnapshot, parseBaselineRewrite, parseGateScope, rewriteGateBaseline, type GateScope } from './gate-scope.ts';
 import type { CheckTarget } from './structural/check-context.ts';
+import { DOC_BUDGETS_MANIFEST, isRatchetedDocBudgetFinding, ratchetDocBudgets } from './structural/checks/doc-budgets.ts';
 import { STRUCTURAL_CHECKS } from './structural/registry.ts';
 
 const script = fileURLToPath(import.meta.url);
@@ -61,8 +63,15 @@ function reportArchitecture(scope: GateScope, options: ArchRunOptions, rewrite: 
 
   if (rewrite) {
     if (crashed.length) throw new Error(`not rewriting the baseline while a check crashes:\n${crashed.join('\n')}`);
-    const { file, unexcused } = rewriteGateBaseline(root, scope, 'structural', findings, rewrite);
-    console.log(`Wrote ${findings.length - unexcused.length} findings to ${file}, counted over ${where}: stage it${scope === 'workspace' ? ' in work/' : ''} for the hook to read it.`);
+    // Doc budgets ratchet in their own manifest, never the baseline: what the ratchet settles isn't excused, it's gone.
+    const ratchet = scope === 'public' ? ratchetDocBudgets(context.tree) : undefined;
+    if (ratchet) {
+      writeFileSync(join(root, DOC_BUDGETS_MANIFEST), ratchet.manifestText);
+      console.log(`Ratcheted ${DOC_BUDGETS_MANIFEST}, stage it:\n${ratchet.moves.map((move) => `  ${move}`).join('\n')}\n`);
+    }
+    const counted = ratchet ? findings.filter((finding) => !isRatchetedDocBudgetFinding(finding)) : findings;
+    const { file, unexcused } = rewriteGateBaseline(root, scope, 'structural', counted, rewrite);
+    console.log(`Wrote ${counted.length - unexcused.length} findings to ${file}, counted over ${where}: stage it${scope === 'workspace' ? ' in work/' : ''} for the hook to read it.`);
     if (leftOut.length) console.log(`\n${leftOut.join('\n')}`);
     const unexcusedLines = describeUnexcused(scope, unexcused);
     if (unexcusedLines.length) console.log(`\n${unexcusedLines.join('\n')}`);

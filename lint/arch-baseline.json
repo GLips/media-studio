@@ -355,9 +355,6 @@
       "return value?.type === 'Literal' && PROJECT_CAPABILITIES.includes(value.value as ProjectCapability) ? value.value as ProjectCapability : undefined;": 2,
       "return (object.properties as AstNode[]).flatMap((p) => (p.type === 'Property' ? [propertyKeyName(p)].filter((k): k is string => k !== undefined) : []));": 1
     },
-    "lint/structural/checks/doc-budgets.ts": {
-      "return [finding(DOC_BUDGETS_MANIFEST, 'unreadable', `doesn't parse (${(error as Error).message}): every budgeted doc goes uncounted`)];": 1
-    },
     "lint/structural/checks/feature-visibility.ts": {
       "return { kind: 'malformed', reason: (error as Error).message };": 1
     },
@@ -1076,9 +1073,6 @@
     "lint/oxlint/lib/rule-options.ts": {
       "typeof option": 1,
       "typeof value": 1
-    },
-    "lint/structural/checks/doc-budgets.ts": {
-      "typeof ceiling": 1
     },
     "lint/structural/checks/feature-visibility.ts": {
       "typeof reason": 1

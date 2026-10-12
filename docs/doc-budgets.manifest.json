@@ -1,1 +1,25 @@
-{}
+{
+  "CLAUDE.md": 793,
+  "cli/CLAUDE.md": 139,
+  "docs/brush-engine.md": 16059,
+  "docs/photoshop-capture.md": 3708,
+  "docs/private-styles.md": 2016,
+  "docs/remote.md": 1783,
+  "docs/render-bench.md": 1229,
+  "harness/CLAUDE.md": 308,
+  "skills/stills/references/": 852,
+  "skills/stills/SKILL.md": 1457,
+  "skills/studio-review/SKILL.md": 976,
+  "skills/studio-setup/references/": 454,
+  "skills/studio-setup/SKILL.md": 856,
+  "skills/video-canvas/references/": 14544,
+  "skills/video-canvas/SKILL.md": 800,
+  "skills/video-capture/SKILL.md": 1025,
+  "skills/video-gen/SKILL.md": 1167,
+  "skills/video-kickoff/references/": 794,
+  "skills/video-kickoff/SKILL.md": 1707,
+  "skills/video-motion/references/": 10670,
+  "skills/video-motion/SKILL.md": 1326,
+  "skills/video-sound/references/": 2650,
+  "skills/video-sound/SKILL.md": 399
+}
