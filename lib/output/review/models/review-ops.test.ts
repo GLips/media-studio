@@ -18,7 +18,11 @@ test('the agent marks a note addressed and only the reviewer resolves or reopens
   assert.equal(addressed.threads[0].state, 'addressed');
   assert.throws(() => apply(addressed, 'agent', { op: 'thread.reply', id: 1, text: '', transition: 'resolved' }), ReviewOpRefused);
   assert.throws(() => apply(addressed, 'agent', { op: 'thread.reply', id: 1, text: '', transition: 'reopened' }), ReviewOpRefused);
-  assert.equal(applied(apply(addressed, 'reviewer', { op: 'thread.resolveAddressed', ids: [1] })).file.threads[0].state, 'resolved');
+  const refixed = applied(apply(addressed, 'agent', { op: 'thread.reply', id: 1, text: 'harder still', transition: 'addressed', render })).file.threads[0];
+  assert.deepEqual([refixed.state, refixed.entries.length, refixed.entries.at(-1)?.render], ['addressed', 3, render]);
+  const resolved = applied(apply(addressed, 'reviewer', { op: 'thread.resolveAddressed', ids: [1] })).file;
+  assert.equal(resolved.threads[0].state, 'resolved');
+  assert.throws(() => apply(resolved, 'agent', { op: 'thread.reply', id: 1, text: 'again', transition: 'addressed' }), ReviewOpRefused);
   const answered = applied(apply(addressed, 'reviewer', { op: 'thread.reply', id: 1, text: 'still soft' })).file.threads[0];
   assert.deepEqual([answered.state, answered.entries.at(-1)?.transition], ['reopened', 'reopened']);
 });

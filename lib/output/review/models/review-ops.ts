@@ -184,7 +184,8 @@ function replyToReviewThread(at: Applying, op: Extract<ReviewOp, { op: 'thread.r
     if (transition === 'resolved' || transition === 'reopened') refuse(`only the reviewer resolves or reopens #${op.id}; reply --addressed once it's fixed`);
     if (transition && op.asks) refuse('a reply either asks or marks the note addressed, not both');
     if (transition === 'addressed' && thread.kind === 'keep') refuse(`#${op.id} is a keep: a standing constraint, with nothing to address`);
-    if (transition === 'addressed' && thread.state !== 'open' && thread.state !== 'reopened') refuse(`#${op.id} is ${thread.state} already`);
+    // Addressed again is a fresh fix (a new render after more thought) on a note still waiting on the reviewer.
+    if (transition === 'addressed' && thread.state === 'resolved') refuse(`#${op.id} is resolved already`);
   } else {
     if (transition === 'addressed') refuse('the agent marks a note addressed; resolve it instead');
     if (op.asks) refuse('a question from the reviewer is a note of kind question');
