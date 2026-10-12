@@ -2,7 +2,7 @@
 // that the studio's repository ignores. The studio is shared; what you make with it isn't.
 //
 //   work/projects/<p>/        a project (studio new)
-//   work/brands/<name>/       a brand kit (docs/brand-kits.md)
+//   work/brands/<name>/       a brand kit (the studio-setup skill)
 //   work/styles/<name>/       a private stamp-paint style (docs/private-styles.md)
 //   work/hosts.json           host name → { repo } (lib/platform/host/engine/hosts.ts); hosts.local.json beside it, ignored
 //   work/arch-baseline.json   check:arch's baseline for the workspace's files, as lint/arch-baseline.json is the studio's

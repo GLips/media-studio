@@ -25,12 +25,15 @@ frame is code, and a note like "hold that shot longer" is an edit and a re-rende
 You need a Mac with Node 24 and ffmpeg.
 
 1. Clone it somewhere it can stay: `git clone https://github.com/GLips/media-studio.git`
-2. Add the skills to Claude Code, once per machine:
+2. Add the skills to Claude Code from your clone, once per machine:
 
    ```
    /plugin marketplace add <path to your clone>
    /plugin install media-studio@media-studio
    ```
+
+   Installed from a local clone, the skills load from the clone itself, so a `git pull` there updates the studio and
+   its skills together, from your next session (or `/reload-plugins`).
 
 3. Tell your agent: *"Set up media-studio."* It walks you through the rest, including the optional
    [OpenRouter](https://openrouter.ai) key that unlocks a real voice and generated media.
@@ -38,15 +41,18 @@ You need a Mac with Node 24 and ffmpeg.
 Then ask for a video, from any repo: *"make a 30-second teaser for our new pricing page."*
 
 Your projects live in `work/`, a git repository of your own inside the clone, so they stay private while the studio
-updates with a `git pull`.
+updates.
 
-## For agents
+## The skills
 
-- **Setting up:** the `studio-setup` skill (`skills/studio-setup/SKILL.md`) installs it and walks your person through
-  keys, their workspace, brand kits and product repos.
-- **Making a video:** start with `video-kickoff`; `skills/video-kickoff/references/studio-map.md` maps every
-  `studio` verb, a project's files and the studio's code. `studio <verb> --help` has the flags.
-- **Working on the studio itself:** `CLAUDE.md`.
+- `studio-setup`: installs the studio and walks you through keys, your workspace, brand kits and product repos.
+- `video-kickoff`: from a brief to an animatic you've signed off. Start every video here.
+- `video-capture`, `video-motion`, `video-canvas`, `video-gen`, `video-sound`: the production passes: filming a site,
+  motion, painted and drawn layers, generated footage, and sound.
+- `stills`: OG images, thumbnails and social posts.
+- `studio-review`: handing work over in the review app, notes and choices.
+
+Every verb documents itself: `studio --help`, then `studio <verb> --help`. Working on the studio itself: `CLAUDE.md`.
 
 ## License
 

@@ -26,7 +26,7 @@ export function scaffoldStudioProject({ slug, capability, url, title, brand }: N
   assertStudioWorkspace();
   if (brand && !existsSync(join(STUDIO_BRANDS_DIR, brand, 'brand.ts'))) {
     const kits = existsSync(STUDIO_BRANDS_DIR) ? readdirSync(STUDIO_BRANDS_DIR).filter((d) => existsSync(join(STUDIO_BRANDS_DIR, d, 'brand.ts'))) : [];
-    throw new Error(`there's no work/brands/${brand}/brand.ts (${kits.length ? `the kits are ${kits.join(', ')}` : 'there are no kits yet'}; docs/brand-kits.md says how to make one)`);
+    throw new Error(`there's no work/brands/${brand}/brand.ts (${kits.length ? `the kits are ${kits.join(', ')}` : 'there are no kits yet'}; the studio-setup skill says how to make one)`);
   }
   const name = title || slug.replace(/-/g, ' ').replace(/^./, (ch) => ch.toUpperCase());
   const month = new Date().toISOString().slice(0, 7);

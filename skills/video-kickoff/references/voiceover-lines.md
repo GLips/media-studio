@@ -19,25 +19,28 @@ showing a colleague something they know well: whole sentences, plain words, and 
 
 - **Vary the length the way speech does.** A string of short declaratives reads as ad copy, and a paragraph-long
   sentence loses the listener. Most lines sit in the middle, and a short one lands only because the others aren't.
-- **No stacked numbers.** A listener holds one figure at a time. Round it, compare it to something ("twice as fast"),
+- **One number at a time.** A listener holds one figure at once. Round it, compare it to something ("twice as fast"),
   or put it on screen and let the voice point at it.
 - **Write numbers, symbols and names the way they should be spoken**: "two point five", "about forty percent", a
   product name spelled the way it's said.
-- **No asides.** Parentheses and dashes are invisible to the ear, so an aside becomes its own sentence or is cut.
+- **Asides become sentences.** Parentheses and dashes are invisible to the ear: give an aside its own sentence, or cut it.
 
 ## Cadences to cut
 
-The reflexes of written ad copy, which read worst aloud:
+The reflexes of written ad copy, which read worst aloud, each with what to write instead:
 
-- **The tagline kicker.** A short fragment buttoning up the line before: "Other tools guess. This one knows."
-- **The twist ending.** A setup, then a reversal for a wry payoff: "Everything changed. Your workflow didn't."
-- **"Not X, it's Y."** Negating a small idea to swap in a grander one. Say Y.
-- **The marching three.** "Faster, simpler, smarter" or three clauses that all open on the same word.
-- **The thwarted expectation.** "The button that should respond doesn't." Say what the button does.
-- **The rhetorical question** the next line answers.
+- **The tagline kicker**, a fragment buttoning up the line before ("Other tools guess. This one knows."): end on the
+  line's fact.
+- **The twist ending**, a setup reversed for a wry payoff ("Everything changed. Your workflow didn't."): state the
+  outcome plainly.
+- **"Not X, it's Y"**, a small idea negated to swap in a grander one: say Y.
+- **The marching three** ("Faster, simpler, smarter", or three clauses opening on one word): keep the one that the
+  video proves.
+- **The thwarted expectation** ("The button that should respond doesn't."): say what the button does.
+- **The rhetorical question** the next line answers: say the answer.
 
 ## Check it
 
-Read the script aloud at speaking pace, start to finish, before `--read=estimate`. Mark every place you ran out of
+Read the script aloud at speaking pace, start to finish, before it's voiced. Mark every place you ran out of
 breath, stumbled, or would have lost the thread as a listener, and rewrite those lines. Then, for each line, ask what
 the video loses if it's cut. If nothing, cut it.
