@@ -72,13 +72,13 @@ scene, returning a video of that one bar with its place on the reel. A scratch p
 whose default export is `barPreview` of your bar renders just it, inside the same HUD and grade, with its frame 0 on
 the bar's first frame, and without the other bars in the bundle. Several builders editing bars at once can't break each other's renders that way.
 
-1. `studio look scratch/<reel>-<bar> --frames=0:<last>` renders every frame of your bar. Look at the hits: does
+1. `studio look scratch/<reel>-<bar> --frames 0:<last>` renders every frame of your bar. Look at the hits: does
    each arrival land on its hit frame, how hard does it snap, what does it smear, is anything still for more than
    half a beat?
 2. Put your strip beside the reference section's (`studio study <reference video>` writes one per section) and fix
    what differs in timing, scale, snap, smear and colour. The reference is the bar to clear, not a script to copy.
-3. `studio look <project> --frames=…` at your bar's hit frames: each should be a frame worth pausing on.
-4. A capture on a `CapturePlane`: `studio look scratch/<reel>-<bar> --graph=0:<seconds> --tracks=plane` plots its
+3. `studio look <project> --frames …` at your bar's hit frames: each should be a frame worth pausing on.
+4. A capture on a `CapturePlane`: `studio look scratch/<reel>-<bar> --graph 0:<seconds> --tracks plane` plots its
    `upscale`, frame px per capture px where the capture is most magnified in frame. Past about 1.3 the page's text
    goes soft: capture it again at a higher `scale`.
 5. `npx tsc --noEmit -p .` shows no errors in your files.
@@ -86,11 +86,10 @@ the bar's first frame, and without the other bars in the bundle. Several builder
    beat grid, and its motion-energy plot should never sit at zero. Then give it to a critic who didn't build it, with
    `reel-critique.md` as the brief.
 7. Give a reel a `tools/` folder of the checks the whole reel reruns after each round of fixes. An integrate script
-   (`integrate.sh 3 5`) re-renders the bars a change touched (`studio render --frames`), joins every bar under the
-   mix (`studio render --join`, which encodes the bars' lossless frames once and refuses bars from two timelines or an older clock) and measures the cut: each sound against the music, where each slam's sound lands, each beat's
+   renders the reel (`studio render`) and measures the cut: each sound against the music, where each slam's sound lands, each beat's
    attack, the still runs and every beat frame's luma, and the HUD's legibility on every frame. `studio look <project>
-   --video <after.mp4> --against <before.mp4> --bar=N --crop=…` tells which frames and regions a change moved, and
-   `--motion --bar=N` where a bar stops moving.
+   --video <after.mp4> --against <before.mp4> --bar N --crop …` tells which frames and regions a change moved, and
+   `--motion --bar N` where a bar stops moving.
 
 ## Fences
 

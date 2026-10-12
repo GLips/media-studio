@@ -3,8 +3,7 @@
 Three things can run on Modal instead of this machine:
 
 - `studio render --remote` and `studio look --remote` draw frames on cloud GPUs. This machine hashes the project,
-  uploads what the cloud lacks, and gets frames back. It then joins them and masters the mix, as `studio render
-  --join` does.
+  uploads what the cloud lacks, and gets frames back. It then joins them in order and masters the mix here.
 - `studio remote run <script…>` runs the repo's checks (`typecheck`, `lint`, `check:arch`, `test:gate` or any other
   npm script but the GPU gate) in cloud containers, against this checkout as it is on disk.
 
@@ -145,18 +144,18 @@ run billed $0.11, about $0.10 of it for the 3 minutes the containers waited betw
 
 ```
 studio render <project> --remote                 # the whole video → out/wip/joined.mp4
-studio render <project> --remote --frames=0:299  # a slice → out/wip/frames-0-299.mp4, lossless beside it
+studio render <project> --remote --frames=0:299  # a slice → out/wip/slices/frames-0-299.mp4
 ```
 
 The frames are shared over up to `--max-containers` containers, and each container's share over its browsers. Each
 piece comes back as lossless FFV1, about 1.3 MB a painted 1080p frame. The whole video's pieces are kept in
 `out/wip/remote/`. The first container also gathers the mix's raw sound there, in one more browser it keeps for
-that, and this machine masters it and muxes the result under the joined pieces. `studio render <project> --join
-out/wip/remote` joins those pieces again, under a mix made here.
+that, and this machine masters it and muxes the result under the joined pieces. The pieces join only when every one
+was drawn on one timeline and on the project's clock as it is now, with no gap or overlap.
 
-A remote render is a work-in-progress render, like `--frames` and `--join`. It has no framing check, no captions and
-no sidecars. It never writes `out/video.mp4`: a local `studio render` delivers the video. `--remote` refuses
-`--join`, `--animatic` and `--plain`. It passes on `--lens`, and `--workers`, which sets the tabs per browser. Tabs
+A remote render is a work-in-progress render, like `--frames`. It has no framing check, no captions and no sidecars.
+It never writes `out/video.mp4`: a local `studio render` delivers the video. `--remote` refuses `--scene`,
+`--animatic` and `--plain`. It passes on `--lens`, and `--workers`, which sets the tabs per browser. Tabs
 are capped at the cores Remotion counts, which is 2 in a container. A project with a host (`work/hosts.json`) is
 refused, because its host's checkout isn't in the studio.
 
@@ -169,7 +168,7 @@ several containers. Each container has an hour for its share. A 600-frame share 
 
 ```
 studio look <project> --remote --sheet=0.5,4,9
-studio look <project> --remote --frames=200:210 --against=out/wip/frames-200-210.mp4
+studio look <project> --remote --frames=200:210 --against=out/wip/slices/frames-200-210.mp4
 studio look <project> --remote --bar=3 --motion
 ```
 

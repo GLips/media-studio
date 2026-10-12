@@ -168,16 +168,15 @@ Every question below has one command. A tool or brief points here, never at a sc
 |---|---|
 | When each scene, line and word lands, and where scenes crossfade | `studio check <p>`: its table, and `out/check/timeline.json` |
 | A timed project's scene, cue or beat frames | `studio clock <project>` |
-| Whether highlights, clicks and every `expect` hold | `studio check <p>` (`--scene=<id>` or `--at=a:b` for one stretch) |
+| Whether highlights, clicks and every `expect` hold | `studio check <p>` (`--scene <id>` or `--at a:b` for one stretch) |
 | How each tagged element moved, frame by frame | `studio check <p>`: `out/check/motion.json` (a scoped check's `motion-<scope>.json`) |
-| What frames look like | `studio look <p> --frames=a:b` (`a:b:step`, `f1,f2`), `--bar=N`, `--sheet`, `--strip` |
+| What frames look like | `studio look <p> --frames a:b` (`a:b:step`, `f1,f2`), `--bar N`, `--sheet`, `--strip` |
 | What a render shows, not the code | `studio look <p> --video <mp4>`: its snapshot places a slice in the video |
-| Which frames and pixels a change moved | `studio look <p> --video <after.mp4> --against <before.mp4>` (`--crop=x,y,w,h`) |
-| Whether a stretch keeps moving | `studio look <p> --motion --bar=N` (or `--frames=a:b`) |
-| Where a piece is on each frame, and its clearance from the HUD, with no render | `studio look <p> --graph=models --bar=N` (or `--frames=a:b`), below |
-| Where a tracked element goes on the render, and how it eases | `studio look <p> --graph=a:b` (below) |
-| A change in motion, quickly | `studio render <p> --frames=a:b`: a silent slice, the bundle kept between runs |
-| The whole cut again from its slices | `studio render <p> --join=<folder>` |
+| Which frames and pixels a change moved | `studio look <p> --video <after.mp4> --against <before.mp4>` (`--crop x,y,w,h`) |
+| Whether a stretch keeps moving | `studio look <p> --motion --bar N` (or `--frames a:b`) |
+| Where a piece is on each frame, and its clearance from the HUD, with no render | `studio look <p> --graph models --bar N` (or `--frames a:b`), below |
+| Where a tracked element goes on the render, and how it eases | `studio look <p> --graph a:b` (below) |
+| A change in motion, quickly | `studio render <p> --scene <id>` (or `--frames a:b`): a silent slice, the bundle kept between runs, which a reply hands to the review page (the loop below) |
 | What a render was made from | `<render>.snapshot.json` beside it, which the review and `look --video` read |
 | What the user sees in it | `studio review open <p \| render.mp4 \| still.png>` |
 | What the user said about it | `studio review notes <p>`, or `studio review watch <p>` in the background (the loop below) |
@@ -192,13 +191,25 @@ notes (`video-kickoff`, `stills`, `video-sound`, `video-gen`) uses this loop:
 
 1. `studio review open <p>` (or a render or still in it) opens the page for the user. Offer it whenever motion feel
    needs their eyes: the same page approves every rung, the animatic (`studio render <p> --animatic`) through the cut.
-2. Run `studio review watch <p>` in the background. It blocks until the user adds or changes notes, then prints them,
-   placed on the newest render: each with its moment (bar, rung and beat in timeline.ts's counting, a cue near it, or
-   line and word), its scene's source file, the sounds and tagged elements under it, the frame the user saw
-   (`review/frames/<id>.jpg`, Read it), and a ready `studio look` line. Act on what it prints, then run it again; its
-   cursor means you never miss or repeat a note. `studio review notes <p>` lists the open ones at any time.
-3. Fix a note, render, then `studio review reply <p> <id> "what changed" --addressed --commit HEAD --render out/video.mp4`.
-   Reply by the moment, not the frame. Notes are kept per project and carried to each new render by their moment.
+2. Run `studio review watch <p>` in the background (one watcher a project). It blocks until the user adds or changes
+   notes, then prints them, placed on the newest full render: each with its moment (bar, rung and beat in
+   timeline.ts's counting, a cue near it, or line and word), the sounds and tagged elements under it, the frame the
+   user saw (`review/frames/<id>.jpg`, Read it), a `scene:` line (its id, source file and frames on screen; in a
+   crossfade, the scene being cut to), a ready `look:` line and, on a fix, a `fix:` line. Fix each note by its `fix:`
+   line, then run watch again; its cursor means you never miss or repeat a note. `studio review notes <p>` lists the
+   open ones at any time.
+3. A fix within one scene: change it, then run the `fix:` line. `studio render <p> --scene <id>` renders just the
+   frames that scene is on screen, crossfades included, silent, to `out/wip/slices/scene-<id>.mp4` in seconds, and
+   prints whether it splices into the newest cut (`splices into out/video.mp4 r14 at f240–f311`, or `won't splice:`
+   and why) and the reply line: commit, then
+   `studio review reply <p> <id> "<what changed>" --addressed --commit HEAD --render out/wip/slices/scene-<id>.mp4`.
+   Within a second the page lays the slice into the cut over that scene, under the cut's sound; the user holds `\` to
+   see the cut as rendered. A slice that won't splice plays alone from its reply.
+   Render the whole video instead (`--animatic` or the delivery) and reply with it when the scene's length changed,
+   the fix is to sound (a slice plays under the cut's), the fix is in a shared component (it changes other scenes,
+   which the slices won't show), several scenes changed, the video is transparent (a slice has no alpha), or you're
+   handing the video over. A new full render retires
+   every slice. Reply by the moment, not the frame: notes are carried to each new render by their moment.
 4. When a note is unclear, `reply <p> <id> "…" --question`; to raise something nobody noted, `studio review ask <p>
    "…" [--at f120:140 | --line <id> | --still <path>]`. The user's answer wakes `watch`.
 5. Never resolve: only the user resolves or reopens, once they've seen the fix. `keep` notes are standing constraints,
@@ -219,7 +230,7 @@ page box holds still.
 
 Before rendering a change to a piece drawn from a model (a ball's bounce, a needle's strikes, a camera path), read
 the model. A scene's `bars/<id>-model.ts` holds the numbers its scene draws from, and exports a `definePieceTracks`
-naming each piece's place on a frame, the box it covers and what it keeps clear of. `--graph=models` prints a table per
+naming each piece's place on a frame, the box it covers and what it keeps clear of. `--graph models` prints a table per
 piece (position, values, state, clearance in px from the nearest HUD part, negative where it overlaps) and graphs it,
 in about two seconds. Give a new piece a track when you'd otherwise render to find where it is.
 

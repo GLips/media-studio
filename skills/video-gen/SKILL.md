@@ -62,8 +62,8 @@ blockout's.
   scene's whole time on screen, crossfades included, rounded up to whole seconds within the model's range (4–30 on
   Seedance, 5–15 on HeyGen). A longer scene has to be split.
 
-Done when `studio look` strips show the move landing on its cues, and the user has approved the blockout in
-`studio preview` or on its animatic in `studio review open <p>`, its notes worked through the review loop
+Done when `studio look` strips show the move landing on its cues, and the user has approved the blockout on its
+animatic in `studio review open <p>`, its notes worked through the review loop
 (`video-motion`, "The review loop"). Once footage is generated, its notes come the same way; when the user should
 choose between takes or models, put each in `out/decisions/<topic>/` and post them with `studio review decide`.
 

@@ -78,7 +78,7 @@ root>` in `video.tsx`, lay them out yourself and animate with plain Remotion (`s
 
 ## Acting on feel notes
 
-The user watches in the Studio (`studio preview <p>`) and says what feels off. Change only what the note names:
+The user's notes come through the review loop (`video-motion`, "The review loop"). Change only what the note names:
 
 - **"Slow every zoom and pan to 0.7× of current"**: stretch each camera key's span by 1/0.7 around the word it's
   anchored to. Leave cursor, text and line timing alone. If the scene then runs past its voice, raise `tail` or `min`.

@@ -130,11 +130,10 @@ changing its binding; `timeline.ts` doesn't change.
 4. Run `studio render <p> --animatic`, then `studio review open <p>`. The animatic plays with the music; the timeline
    marks the cuts, beats and every cue, replay and landmark; the board (`B`) has a row per scene with stills on its
    cues, captioned where `timeline.ts` puts it (`beat 3 +4f`).
-5. Send the user the review page and work their notes through the review loop (`video-motion`, "The review loop"),
-   `studio review watch <p>` running in the background. Their notes name each scene's rung and the cue or beat they're on, in `timeline.ts`'s
-   words. A pacing note changes `timeline.ts` and, where the length changes, the music's `--bars`; render the
-   animatic again (the page loads the new render and places each note at its moment on it), reply `--addressed`, and
-   repeat until they sign off. Only then build the bars, and polish nothing before it.
+5. Send the user the review page and work their notes through the review loop (`video-motion`, "The review loop").
+   Pacing lives in `timeline.ts`, and a note that changes a scene's length changes the music's `--bars` too and means
+   rendering the animatic again, not a slice. Repeat until they sign off. Only then build the bars, and polish nothing
+   before it.
 
 **Voiced**, the animatic is `video.tsx`, rough:
 
@@ -150,8 +149,8 @@ changing its binding; `timeline.ts` doesn't change.
    strips show the same frames): a row per scene with a still per line. It's ready to send when every scene's event and each of its listed reads shows in its
    stills, and nothing is off the frame or under the caption.
 5. Send the user the review page and work their notes through the review loop (`video-motion`, "The review loop").
-   Their notes go into the table, the lines and the animatic, and the animatic is
-   rendered again, until they sign off.
+   Their notes go into the table, the lines and the animatic; a change of length means rendering the animatic again,
+   not a slice. Repeat until they sign off.
 
 Once signed off, voice it for real with `studio voice <p>`, which reads the whole script as one take. It needs
 `OPENROUTER_API_KEY` in the environment; if that isn't set, don't go looking for it: ask the user to run

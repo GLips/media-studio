@@ -185,8 +185,8 @@ what's promised depends on where it renders:
   the bar.
 - Across machines, never compare pixels. The same recipe can differ by a level or two where stamps overlap, which
   reads the same but fails a byte or snapshot comparison. Judge by eye (the fidelity sheet, `--strip`).
-- A video's slices render on one machine. Each render snapshot records the GPU it drew on (`gpu`: WebGL's renderer
-  and WebGPU's adapter), and `studio render --join` refuses slices from more than one.
+- Each render snapshot records the GPU it drew on (`gpu`: WebGL's renderer and WebGPU's adapter). A remote render's
+  pieces may come from several, joined with every GPU named; the difference is too small to see where they meet.
 
 A render's browser must have a hardware WebGPU adapter as well as hardware GL, and a render fails without one
 (lib/platform/browser/engine/render-browser.ts). WebGPU exists only in a secure context: Remotion's `http://localhost`
