@@ -13,7 +13,7 @@ import type { RenderLedger } from '#lib/output/render/engine/render-ledger.ts';
 import { traceClock } from '#lib/platform/trace/engine/trace-collector.ts';
 import { concatList, DELIVERY_ENCODING, encodeLosslessList, formatRenderSpans, muxDeliveredSound, SLICE_ENCODING, type VideoEncoding } from '#lib/output/render/engine/render-session.ts';
 import { refuseSliceOutside } from '#lib/output/render/engine/render-slices.ts';
-import { loadRenderSnapshot, readRenderSource, writeRenderSnapshot } from '#lib/output/render/engine/render-snapshot.ts';
+import { loadRenderSnapshot, placeRenderWithSnapshot, readRenderSource, renderStagingPathOf } from '#lib/output/render/engine/render-snapshot.ts';
 import type { RenderSource } from '#lib/output/render/models/render-snapshot-model.ts';
 import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
 import type { TimelineClockTable } from '#lib/timing/timeline/models/timeline.ts';
@@ -129,17 +129,17 @@ async function encodeRemotePieces(ledger: RenderLedger, dir: string, { out, span
   const frames = span ?? { from: 0, end: timeline.durationInFrames }, count = frames.end - frames.from;
   const mix = mixFor && !ledger.silent ? await mixFor(timeline) : undefined;
   mkdirSync(dirname(out), { recursive: true });
+  const staged = renderStagingPathOf(out);
   await withStudioTemp('join', async (tmp) => {
     const list = join(tmp, 'pieces.txt'), picture = join(tmp, basename(out));
     writeFileSync(list, concatList(ordered.map((p) => p.file)));
     await ledger.trace.run(`${basename(out)} encode`, () => encodeLosslessList(list, picture, encoding));
-    if (mix) await ledger.trace.run(`${basename(out)} mux`, () => muxDeliveredSound(picture, mix, out, { frames: count, fps: timeline.fps }));
-    else copyFileSync(picture, out);
+    if (mix) await ledger.trace.run(`${basename(out)} mux`, () => muxDeliveredSound(picture, mix, staged, { frames: count, fps: timeline.fps }));
+    else copyFileSync(picture, staged);
   });
-  const counted = countVideoFrames(out);
+  const counted = countVideoFrames(staged);
   if (counted !== count) throw new Error(`${out} holds ${counted} frames, not the ${count} drawn`);
-  writeRenderSnapshot(out, { frames, started: ledger.started, captions, timeline, clock: ledger.clock, voice: renderVoiceOf(ledger.project), gpu, source });
-  return out;
+  return placeRenderWithSnapshot(staged, out, { frames, started: ledger.started, captions, timeline, clock: ledger.clock, voice: renderVoiceOf(ledger.project), gpu, source });
 }
 
 /** Every container's pieces kept in out/wip/remote/ and joined at `out` under the mix mastered from their sound. */

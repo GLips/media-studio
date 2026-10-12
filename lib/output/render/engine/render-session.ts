@@ -22,7 +22,7 @@ import { serveRenderFrameSink, type RenderFrame } from './render-frame-sink.ts';
 import { rawRenderFrameInput, renderFramesInOrder, renderStillsByFrame, renderStillsInto, type RenderStillImage } from './render-frame-writes.ts';
 import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
 import { countVideoFrames, openFfmpegInput, runFfmpegAsync } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
-import { writeRenderSnapshot } from './render-snapshot.ts';
+import { placeRenderWithSnapshot, renderStagingPathOf } from './render-snapshot.ts';
 import type { RenderSnapshot } from '../models/render-snapshot-model.ts';
 import { renderInChunks } from './render-chunks.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
@@ -140,8 +140,9 @@ type FrameDraw = {
 
 /** The lossless chunks `list` names, copied whole into one file at `out`, with its snapshot. */
 async function keepLossless(list: string, out: string, made: Pick<RenderSnapshot, 'frames' | 'started' | 'captions' | 'timeline' | 'clock' | 'voice' | 'gpu'>) {
-  await runFfmpegAsync(['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', out]);
-  writeRenderSnapshot(out, made);
+  const staged = renderStagingPathOf(out);
+  await runFfmpegAsync(['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', staged]);
+  placeRenderWithSnapshot(staged, out, made);
 }
 
 /**
@@ -399,9 +400,10 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
       const wav = (await apart) ?? (sound === 'own' && drawn.heard ? await soundOf() : undefined);
       const { soundtrack, motion } = (await approve?.({ ...(sound === 'apart' && { sound: wav }) })) ?? {};
       const track = soundtrack ?? (sound === 'own' ? wav : undefined);
-      if (track) await trace.run(`${name} mux`, () => muxDeliveredSound(picture, track, out, { frames: count, fps: timeline.fps }));
-      else copyFileSync(picture, out);
-      writeRenderSnapshot(out, { frames: span, started, captions: inputProps.captions, timeline, clock, voice: renderVoiceOf(project), gpu: drawn.gpu, ...(motion && { motion }) });
+      const staged = renderStagingPathOf(out);
+      if (track) await trace.run(`${name} mux`, () => muxDeliveredSound(picture, track, staged, { frames: count, fps: timeline.fps }));
+      else copyFileSync(picture, staged);
+      placeRenderWithSnapshot(staged, out, { frames: span, started, captions: inputProps.captions, timeline, clock, voice: renderVoiceOf(project), gpu: drawn.gpu, ...(motion && { motion }) });
       return out;
     });
   }
@@ -443,16 +445,17 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
       // Tagged on the frames, which is what the encoders read: -color_primaries and the like are overridden by them. An
       // untagged HEVC's colours shift in AVFoundation, Safari's decoder.
       const bt709 = 'setparams=color_primaries=bt709:color_trc=bt709';
+      const staged = { webm: renderStagingPathOf(webm), mov: renderStagingPathOf(mov) };
       await trace.run(`${basename(webm)} and ${basename(mov)} encode`, () => Promise.all([
         runFfmpegAsync([...frames, '-vf', `scale=out_color_matrix=bt709,format=yuva420p,${bt709}:colorspace=bt709`, '-c:v', 'libvpx-vp9', '-crf', '18',
-          '-b:v', '0', '-row-mt', '1', '-deadline', 'good', '-cpu-used', '2', webm]),
+          '-b:v', '0', '-row-mt', '1', '-deadline', 'good', '-cpu-used', '2', staged.webm]),
         // hvc1, not hev1, or Safari won't play it. Chromium's PNGs are straight alpha, but AVFoundation reads HEVC's as
         // premultiplied (a translucent colour brighter than its alpha comes out white), so it's premultiplied here, and
         // VP9's isn't. VideoToolbox converts to YUV itself, so the matrix is an encoder option.
         runFfmpegAsync([...frames, '-vf', `format=bgra,premultiply=inplace=1,${bt709}`, '-c:v', 'hevc_videotoolbox', '-pix_fmt', 'bgra', '-colorspace', 'bt709', '-q:v', '70', '-alpha_quality', '0.9',
-          '-tag:v', 'hvc1', '-movflags', '+faststart', mov]),
+          '-tag:v', 'hvc1', '-movflags', '+faststart', staged.mov]),
       ]));
-      for (const out of [webm, mov]) writeRenderSnapshot(out, { frames: { from: 0, end: timeline.durationInFrames }, started, captions: inputProps.captions, timeline, clock, voice: renderVoiceOf(project), gpu, ...(motion && { motion }) });
+      for (const out of [webm, mov]) placeRenderWithSnapshot(renderStagingPathOf(out), out, { frames: { from: 0, end: timeline.durationInFrames }, started, captions: inputProps.captions, timeline, clock, voice: renderVoiceOf(project), gpu, ...(motion && { motion }) });
     });
     return [webm, mov];
   }

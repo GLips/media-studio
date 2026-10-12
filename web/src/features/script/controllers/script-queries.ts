@@ -1,10 +1,11 @@
 import { queryOptions, useSuspenseQuery, type QueryClient } from '@tanstack/react-query';
 import { useDeferredValue } from 'react';
+import { projectScriptBeatOf } from '#lib/output/review/models/project-pulse.ts';
 import { projectPulseQueryOptions, type ProjectPulse } from '#web/features/projects/index.ts';
 import { fetchReviewScript } from './review-script.ts';
 
-/** voiceover.json's hash and the take's: an agent editing the words or re-voicing moves one, and the script is read again. */
-const reviewScriptBeatOf = ({ script }: Pick<ProjectPulse, 'script'>) => `${script?.voiceover ?? ''}:${script?.take ?? ''}`;
+/** Every file the script is read from: an agent editing the words or re-voicing moves one, and it's read again. */
+const reviewScriptBeatOf = ({ script }: Pick<ProjectPulse, 'script'>) => projectScriptBeatOf(script);
 
 const reviewScriptQueryOptions = (project: string, beat: string) => queryOptions({
   queryKey: ['review-script', project, beat],

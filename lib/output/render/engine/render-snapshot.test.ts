@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import type { RenderSnapshot, RenderSource } from '../models/render-snapshot-model.ts';
-import { loadRenderSnapshot, renderSnapshotPath, writeRenderSnapshot } from './render-snapshot.ts';
+import { loadRenderSnapshot, placeRenderWithSnapshot, renderSnapshotPath, renderStagingPathOf, writeRenderSnapshot } from './render-snapshot.ts';
 
 const timeline = (title: string): TimelineReport => ({
   title, fps: 30, width: 1920, height: 1080, transparent: false, duration: 10, durationInFrames: 300, scenes: [], cues: [], crossfades: [], expectations: [], sfxCueList: false, beatClicks: false, sounds: [], captions: null,
@@ -27,6 +27,12 @@ test('a render reads back the timeline and commits it was made with, and a file 
     const replaced = loadRenderSnapshot(render);
     assert.equal(replaced.kind, 'none');
     assert.match(replaced.kind === 'none' ? replaced.reason : '', /made without one/);
+
+    const staged = renderStagingPathOf(render);
+    writeFileSync(staged, 'bar three, rendered again by studio render');
+    placeRenderWithSnapshot(staged, render, { frames: { from: 120, end: 240 }, started: '2026-10-11T12:05:00.000Z', captions: true, timeline: timeline('after the retime'), clock: null, voice: null, gpu: 'Apple M1 Max', source });
+    const placed = loadRenderSnapshot(render);
+    assert.equal(placed.kind === 'snapshot' && placed.snapshot.timeline.title, 'after the retime');
   });
 });
 

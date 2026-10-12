@@ -7,7 +7,7 @@
 //
 // A reader of a render goes through loadRenderSnapshot, never out/check/timeline.json: that is `studio check`'s latest
 // report, and says nothing about a render made before it.
-import { existsSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, relative, sep } from 'node:path';
 import { sha256OfFile } from '#lib/platform/files/engine/file-sha256.ts';
 import { gitState } from '#lib/platform/host/engine/hosts.ts';
@@ -37,28 +37,52 @@ export function renderFileStamp(file: string): RenderFileStamp {
   return stamp;
 }
 
-/** `render`'s path inside its project, `/`-separated, or null for a file outside one. */
+/** `render`'s path inside its project, `/`-separated, or null for a file outside one. Its folder need only exist. */
 function renderPathInProject(render: string): string | null {
-  const project = studioProjectOfFile(render);
-  return project && relative(realpathSync(project), realpathSync(render)).split(sep).join('/');
+  const project = studioProjectOfFile(dirname(render));
+  return project && relative(realpathSync(project), join(realpathSync(dirname(render)), basename(render))).split(sep).join('/');
 }
 
+type RenderSnapshotMade = Pick<RenderSnapshot, 'frames' | 'started' | 'captions' | 'timeline' | 'clock' | 'voice' | 'gpu' | 'motion'> & { source?: RenderSource };
+
 /**
- * Writes `render`'s snapshot beside it, bound to its bytes as they are now. Call once the file is final. `source`
- * defaults to the commits now; a render that ran long (remote-render.ts) passes the ones it started from.
+ * Writes `render`'s snapshot beside it, bound to the bytes in `bytes` (the file itself unless it's still staged) as
+ * they are now. Call once those are final. `source` defaults to the commits now; a render that ran long
+ * (remote-render.ts) passes the ones it started from.
  */
-export function writeRenderSnapshot(render: string, made: Pick<RenderSnapshot, 'frames' | 'started' | 'captions' | 'timeline' | 'clock' | 'voice' | 'gpu' | 'motion'> & { source?: RenderSource }): string {
+export function writeRenderSnapshot(render: string, made: RenderSnapshotMade, bytes = render): string {
   const { frames, started, captions, timeline, clock, voice, gpu, motion, source = readRenderSource() } = made;
   if (!(frames.from >= 0 && frames.end > frames.from && frames.end <= timeline.durationInFrames)) {
     throw new Error(`${basename(render)}: frames ${frames.from}–${frames.end - 1} aren't within the composition's 0–${timeline.durationInFrames - 1}`);
   }
   const snapshot: RenderSnapshot = {
-    version: RENDER_SNAPSHOT_VERSION, render: { file: basename(render), path: renderPathInProject(render), hash: renderFileStamp(render).hash }, frames, started,
+    version: RENDER_SNAPSHOT_VERSION, render: { file: basename(render), path: renderPathInProject(render), hash: renderFileStamp(bytes).hash }, frames, started,
     made: new Date().toISOString(), captions, timeline, clock, voice, gpu, source, ...(motion && { motion }),
   };
   const path = renderSnapshotPath(render);
   writeFileSync(path, JSON.stringify(snapshot));
   return path;
+}
+
+/**
+ * Where a render at `out` is written before it's placed: out/.writing/ beside it, a folder no listing of renders
+ * reads, on the same disk so the move is a rename, and under its own name, whose extension ffmpeg picks a format by.
+ */
+export function renderStagingPathOf(out: string): string {
+  const staging = join(dirname(out), '.writing');
+  mkdirSync(staging, { recursive: true });
+  return join(staging, basename(out));
+}
+
+/**
+ * Moves the render staged at `staged` (renderStagingPathOf) to `out`, its snapshot written first: the pulse advertises
+ * a file's hash as soon as it's at its path, and a reader then (the page, a thumbnail cached by that hash) must find
+ * the snapshot naming those bytes, never the old one or none.
+ */
+export function placeRenderWithSnapshot(staged: string, out: string, made: RenderSnapshotMade): string {
+  writeRenderSnapshot(out, made, staged);
+  renameSync(staged, out);
+  return out;
 }
 
 /**

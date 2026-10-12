@@ -5,14 +5,22 @@
 export type ProjectPulseFacts = {
   revision: number;
   files: readonly { path: string; hash: string }[];
-  /** voiceover.json's hash and the take's, each the first 10 hex of its sha256; null without a voiceover.json. */
-  script: { voiceover: string; take: string | null } | null;
+  /**
+   * The hashes (first 10 hex of each sha256) of every file the script is read from: voiceover.json, the take, what
+   * whisper heard in it (audio/take.json) and the voiced lines' words (audio/manifest.json), each null when absent.
+   * Null without a voiceover.json. `studio voice` writes them one after another, so each counts on its own.
+   */
+  script: { voiceover: string; take: string | null; heard: string | null; manifest: string | null } | null;
 };
+
+/** One string that changes whenever any file the script is read from does: a query key part, never parsed. */
+export const projectScriptBeatOf = (script: ProjectPulseFacts['script']): string =>
+  (script ? [script.voiceover, script.take, script.heard, script.manifest].map((hash) => hash ?? '').join(':') : '');
 
 /** One string that changes whenever a project's summary would: a query key part, compared and never parsed. */
 export function projectPulseBeatOf({ revision, files, script }: ProjectPulseFacts): string {
   const bytes = files.map((f) => `${f.path}:${f.hash}`).toSorted().join(',');
-  return `${revision}|${bytes}|${script ? `${script.voiceover}:${script.take ?? ''}` : ''}`;
+  return `${revision}|${bytes}|${projectScriptBeatOf(script)}`;
 }
 
 /** The hash of the file at `path` as the pulse last saw it; undefined for a file the pulse doesn't list. */

@@ -30,10 +30,12 @@ export type ProjectPulse = Omit<ProjectPulseFacts, 'files'> & {
   rendering?: RenderProgress;
 };
 
+/** Each file readReviewScript reads, by its hash. */
 function scriptPulseOf(dir: string): ProjectPulse['script'] {
-  const voiceover = join(dir, 'voiceover.json'), take = join(dir, 'audio', 'take.wav');
+  const voiceover = join(dir, 'voiceover.json');
   if (!existsSync(voiceover)) return null;
-  return { voiceover: renderFileStamp(voiceover).hash, take: existsSync(take) ? renderFileStamp(take).hash : null };
+  const hashOf = (...path: string[]) => (existsSync(join(dir, ...path)) ? renderFileStamp(join(dir, ...path)).hash : null);
+  return { voiceover: renderFileStamp(voiceover).hash, take: hashOf('audio', 'take.wav'), heard: hashOf('audio', 'take.json'), manifest: hashOf('audio', 'manifest.json') };
 }
 
 /** `project`'s pulse, by its folder name under work/projects/. */
