@@ -58,7 +58,6 @@ export type ReviewPlayback = {
   getState: () => ReviewPlaybackState;
   /** The frame on screen this instant, playing or not. */
   frameNow: () => number;
-  dispose: () => void;
 } & Pick<LinkedMediaClock, 'addFollower' | 'onTick'>;
 
 /**
@@ -200,10 +199,6 @@ export function createReviewPlayback({ fps, durationInFrames, durationGuess, sta
     frameNow,
     addFollower: clock.addFollower,
     onTick: clock.onTick,
-    dispose() {
-      clock.dispose();
-      listeners.clear();
-    },
   };
 }
 
@@ -214,18 +209,16 @@ export function createReviewPlayback({ fps, durationInFrames, durationGuess, sta
 export function useReviewPlaybackClock(options: ReviewPlaybackOptions, onSettle: (frame: number) => void): ReviewPlayback {
   const [playback] = useState(() => createReviewPlayback(options));
   const settle = useEffectEvent(onSettle);
+  // The cleanup only unsubscribes: the clock outlives this effect, which StrictMode and a hot update re-run on the
+  // same clock. Its loop stops when the stage's media detaches (`attachMedia`'s cleanup halts it).
   useEffect(() => {
     let settled = playback.getState().frame;
-    const unsubscribe = playback.subscribe(() => {
+    return playback.subscribe(() => {
       const { frame } = playback.getState();
       if (frame === settled) return;
       settled = frame;
       settle(frame);
     });
-    return () => {
-      unsubscribe();
-      playback.dispose();
-    };
   }, [playback]);
   return playback;
 }

@@ -1,5 +1,5 @@
-// studio review reply: the agent's answer on a note: a reply, marking it addressed with the commit and render that
-// show the fix, or a question back to the reviewer.
+// studio review reply: the agent's word on any note, any time: a plain reply (a thread of them, as long as it takes),
+// one marking it addressed with the commit and render that show the fix, or a question back to the reviewer.
 import { defineCommand, type ArgsDef } from 'citty';
 import { refuseUnknownCommandFlags } from '../../command-flags.ts';
 import { studioProjectArg } from '../../project-arg.ts';
@@ -17,8 +17,8 @@ const reviewReplyArgs = {
 export const reviewReplyCommand = defineCommand({
   meta: {
     name: 'reply',
-    description: "Reply to a note as the agent: mark it addressed with the fix's render, or ask the reviewer back.",
-    about: "The reviewer's page shows it within a second. --addressed marks it fixed, for the reviewer to verify: give --commit and --render so they can see where. --question asks them instead, and the note waits on them. Only the reviewer resolves or reopens a note, and a `keep` note has nothing to address. Prints the review's revision.",
+    description: "Reply to a note as the agent: talk, hand back a fix with its render, or ask the reviewer back.",
+    about: "The reviewer's page shows it within a second, under the note as its thread. A plain reply suits any note at any time (a plan, a clarification, an answer) and leaves its state alone. --addressed marks it fixed, for the reviewer to verify: give --commit and --render so they can see where. --question asks them instead, and the note waits on them. Only the reviewer resolves or reopens a note, and a `keep` note has nothing to address. Prints the review's revision.",
   },
   args: reviewReplyArgs,
   async run({ args, rawArgs }) {

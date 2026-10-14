@@ -2,13 +2,14 @@ import { Box, Text, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import type { PlacedReviewThread } from '#lib/output/review/models/review-placement.ts';
-import type { ReviewMark, ReviewPoint } from '#lib/output/review/models/review-threads.ts';
+import type { ReviewMark, ReviewPoint, ReviewThreadKind } from '#lib/output/review/models/review-threads.ts';
 import { shadows } from '#web/shared/ui/shadows.ts';
 import { colors, fonts, radius, spacing, typography } from '#web/shared/ui/theme.stylex.ts';
 import { drawReviewMarks, reviewTokenColorOf } from './review-mark-paint.ts';
 import { useReviewPlaybackState } from './review-playback-store.ts';
 import { useReviewFrame, useReviewScreen } from './review-screen-context.tsx';
 import { REVIEW_COMPOSER_ATTRIBUTE } from './review-thread-composer.tsx';
+import { ReviewThreadKindIcon } from './review-thread-kind.tsx';
 import { useReviewThreads } from './use-review-threads.ts';
 
 /** A saved note's state as its marks show it: colour means state, and nothing else. */
@@ -33,7 +34,8 @@ const styles = stylex.create({
   pin: {
     position: 'absolute', transform: 'translate(-50%, -50%)', minWidth: spacing.rowDense, height: spacing.rowDense, paddingInline: spacing.tight,
     borderRadius: radius.pill, borderWidth: spacing.hairline, borderStyle: 'solid', boxSizing: 'border-box',
-    fontFamily: fonts.mono, lineHeight: typography.lineHeight, textAlign: 'center',
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: spacing.hairline,
+    fontFamily: fonts.mono, lineHeight: typography.lineHeight,
     pointerEvents: 'auto', cursor: 'pointer', backgroundColor: colors.ground,
   },
   // Hollow at rest, filled under the pointer: the marks' "you can click this".
@@ -69,7 +71,7 @@ function reviewMarkToneOf(thread: PlacedReviewThread): ReviewMarkTone {
   return thread.state === 'addressed' ? 'addressed' : 'open';
 }
 
-type ReviewNoteOnFrame = { id: number; tone: ReviewMarkTone; point?: ReviewPoint; marks: readonly ReviewMark[] };
+type ReviewNoteOnFrame = { id: number; kind: ReviewThreadKind; tone: ReviewMarkTone; point?: ReviewPoint; marks: readonly ReviewMark[] };
 
 /** The notes on the still, or the video notes covering `frame`; resolved ones left out unless it's the note in focus. */
 function reviewNotesOnFrame(threads: readonly PlacedReviewThread[], frame: number, focused: number | undefined): ReviewNoteOnFrame[] {
@@ -79,7 +81,7 @@ function reviewNotesOnFrame(threads: readonly PlacedReviewThread[], frame: numbe
     if (anchor.on === 'video' && (!('frame' in placement) || frame < placement.frame || frame > (placement.end ?? placement.frame))) return [];
     if ('unplaced' in placement) return [];
     if (thread.state === 'resolved' && thread.id !== focused) return [];
-    return [{ id: thread.id, tone: reviewMarkToneOf(thread), marks: anchor.marks ?? [], ...(anchor.point && { point: anchor.point }) }];
+    return [{ id: thread.id, kind: thread.kind, tone: reviewMarkToneOf(thread), marks: anchor.marks ?? [], ...(anchor.point && { point: anchor.point }) }];
   });
 }
 
@@ -92,8 +94,8 @@ type ReviewStageMarksProps = {
 };
 
 /**
- * The notes on this frame over it: each one's strokes in its state's colour and its pin with its id (a click focuses
- * the note), then the draft's pin and strokes in cobalt. Shown on a settled frame only: while playing, nothing.
+ * The notes on this frame over it: each one's strokes in its state's colour and its pin with its kind and id (a click
+ * focuses the note), then the draft's pin and strokes in cobalt. Shown on a settled frame only: while playing, nothing.
  */
 export function ReviewStageMarks({ width, height, live }: ReviewStageMarksProps) {
   const { draft, search, setSearch, playback, mode } = useReviewScreen();
@@ -127,8 +129,9 @@ export function ReviewStageMarks({ width, height, live }: ReviewStageMarksProps)
     <Box {...stylex.props(styles.layer)}>
       <canvas ref={canvas} width={Math.round(width * window.devicePixelRatio)} height={Math.round(height * window.devicePixelRatio)} {...stylex.props(styles.canvas)} />
       {notes.map((note) => note.point && (
-        <UnstyledButton key={note.id} aria-label={`note ${note.id}`} onPointerDown={(e) => e.stopPropagation()} onClick={() => setSearch({ note: note.id })}
+        <UnstyledButton key={note.id} aria-label={`${note.kind} note ${note.id}`} onPointerDown={(e) => e.stopPropagation()} onClick={() => setSearch({ note: note.id })}
           {...stylex.props(styles.pin, styles[note.tone], styles.pinAt(note.point.x, note.point.y), search.note === note.id && styles.focused)}>
+          <ReviewThreadKindIcon kind={note.kind} size={11} />
           <Text component="span" size="xs" inherit>{note.id}</Text>
         </UnstyledButton>
       ))}

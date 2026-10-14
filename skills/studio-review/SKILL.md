@@ -31,7 +31,11 @@ watcher below is running.
 2. **Read each note whole.** Read its frame image: the reviewer's marks are on it, and the words are often terse
    because the drawing says the rest. Its moment, scene, sounds and tagged elements tell you where (a reviewer's
    "scene 3" is the third in `studio clock <p>`); its `look:` line shows the frames around it. Read `keep` notes too: they are standing constraints, not work.
-3. **Fix, then hand the fix back.** One fix per note, held to every `keep`. Then reply `--addressed` with a commit and
+3. **Talk on any note, any time.** A plain `reply` leaves the note's state alone: answer a question, even one inside a
+   fix note; say your plan; check which reading they meant. Their answers wake `watch`; go back and forth freely.
+   `reply --question` is for when you're blocked: the note then waits on them. Raise something nobody noted with
+   `studio review ask`, on its frames, script line, still or the project.
+4. **Fix, then hand the fix back.** One fix per note, held to every `keep`. Then reply `--addressed` with a commit and
    the render that shows it:
    - A fix inside one scene: the note's `fix:` line, a `render --scene` slice, which the page lays into the cut over
      that scene. Its output says whether it splices; a `won't splice` names why, and the fix is usually a full
@@ -43,15 +47,12 @@ watcher below is running.
    Write the reply by the moment ("the ring now lands on *faster*"), not the frame number: notes follow their moment
    to each new render. A second thought on a note still waiting on the reviewer is another `--addressed` reply with
    the newer render.
-4. **Ask when a note is unclear** (`reply --question`) rather than guess between two readings; raise something nobody
-   noted with `studio review ask`, on its frames, script line, still or the project. Answer a reviewer's question-note
-   with a plain reply. Every question wakes `watch` when they answer.
 5. **Leave resolving to the reviewer.** They resolve or reopen once they've seen the fix; a reopened note comes back
    through `watch` like a new one.
 
-Done when `studio review notes <p>` lists nothing open or reopened that you haven't addressed or asked about, every
-addressed note names the render that shows it, and the reviewer has said it's approved or resolved every note.
-Approval is explicit: their word, a resolve, or a sign-off.
+Done when `studio review notes <p>` lists nothing open or reopened that you haven't addressed, answered or asked
+about, every addressed note names the render that shows it, and the reviewer has said it's approved or resolved every
+note. Approval is explicit: their word, a resolve, or a sign-off.
 
 The script takes notes on its lines and words, and the reviewer signs it off in its read-along. Editing a signed line
 unsigns it, so say which lines changed when you hand it back.

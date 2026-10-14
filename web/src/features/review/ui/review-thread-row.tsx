@@ -14,6 +14,7 @@ import { Readout } from '#web/shared/ui/readout.tsx';
 import { Textarea } from '#web/shared/ui/textarea.tsx';
 import { colors, fonts, radius, spacing, typography } from '#web/shared/ui/theme.stylex.ts';
 import { ReviewThreadBody } from './review-thread-body.tsx';
+import { ReviewThreadKindIcon } from './review-thread-kind.tsx';
 import type { ReviewComparedVersion } from './use-review-render-versions.ts';
 import type { ReviewThreadActions, ReviewThreadInline } from './use-review-thread-panel.ts';
 
@@ -32,6 +33,9 @@ const styles = stylex.create({
   flash: { animationName: flashIn, animationDuration: '1s', animationTimingFunction: 'ease-out' },
   head: { height: spacing.rowDense, minWidth: 0 },
   glyph: { width: spacing.inset, flexShrink: 0, textAlign: 'center' },
+  // Neutral beside the state's colour: the kind is what the note is, the colour where it stands.
+  kind: { display: 'inline-flex', alignItems: 'center', gap: spacing.hairline, flexShrink: 0, color: colors.cream },
+  earlier: { color: colors.dim, paddingInlineStart: spacing.inset },
   open: { color: colors.accent },
   addressed: { color: colors.pass },
   asks: { color: colors.caution },
@@ -150,8 +154,9 @@ type ReviewThreadRowProps = {
 };
 
 /**
- * One note: its state glyph, number, time and scene, then its words and the replies under it. A carried note shows
- * the render it was written on, dim. Its actions appear on hover or focus, never at rest.
+ * One note: its state glyph, kind (a fix by its icon alone), number, time and scene, then its words and replies: the
+ * last at rest with a count of the rest, all in focus. A carried note shows the render it was written on, dim. Its
+ * actions appear on hover or focus, never at rest.
  */
 export function ReviewThreadRow({ thread, look, actions, place }: ReviewThreadRowProps) {
   const [hot, setHot] = useState(false);
@@ -166,7 +171,8 @@ export function ReviewThreadRow({ thread, look, actions, place }: ReviewThreadRo
   const writtenOn = thread.anchor.on === 'video' || thread.anchor.on === 'still' ? thread.anchor.writtenOn : undefined;
   const carried = writtenOn && place && writtenOn.hash !== place.renderHash ? writtenOn : undefined;
   const carriedName = carried && place && reviewCarriedRenderNameOf(carried, place);
-  const shown = (look.expanded ? replies : replies.slice(-1)).filter((r) => r.text.trim());
+  const said = replies.filter((r) => r.text.trim());
+  const shown = look.expanded ? said : said.slice(-1);
   const inline = look.inline?.id === thread.id ? look.inline : null;
   // The field's text belongs to its field: reopening the same one finds it as left, opening another starts afresh,
   // an edit from the note's words.
@@ -209,6 +215,12 @@ export function ReviewThreadRow({ thread, look, actions, place }: ReviewThreadRo
         <Tooltip label={word} openDelay={400} withinPortal>
           <Text component="span" size="sm" {...stylex.props(styles.glyph, styles[style])}>{glyph}</Text>
         </Tooltip>
+        <Tooltip label={thread.kind} openDelay={400} withinPortal>
+          <Text component="span" size="sm" {...stylex.props(styles.kind)}>
+            <ReviewThreadKindIcon kind={thread.kind} />
+            {thread.kind !== 'fix' && thread.kind}
+          </Text>
+        </Tooltip>
         <Readout bright>#{thread.id}</Readout>
         {where && <Readout>{where}</Readout>}
         {scene && <Text component="span" size="sm" {...stylex.props(styles.scene)}>{scene.id}</Text>}
@@ -237,6 +249,11 @@ export function ReviewThreadRow({ thread, look, actions, place }: ReviewThreadRo
       )}
       {shown.length > 0 && (
         <Stack gap="tight" {...stylex.props(styles.replies)}>
+          {said.length > shown.length && (
+            <Text component="span" size="xs" {...stylex.props(styles.earlier)}>
+              {said.length - shown.length} earlier {said.length - shown.length === 1 ? 'reply' : 'replies'}
+            </Text>
+          )}
           {shown.map((reply) => {
             const did = reply.asks ? REPLY_GLYPHS.asks : reply.transition && REPLY_GLYPHS[reply.transition];
             const refused = reply.render && place?.splices.refused.find((s) => s.hash === reply.render?.hash);

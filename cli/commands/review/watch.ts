@@ -58,6 +58,6 @@ export const reviewWatchCommand = defineCommand({
       return;
     }
     process.stdout.write(handoffs.formatReviewHandoff(handoff, changed, change.decisions, ['open', 'addressed', 'resolved', 'reopened']));
-    console.log(`\nrevision ${change.revision}\nnext: fix each note (its fix: line), then studio review watch ${project}`);
+    console.log(`\nrevision ${change.revision}\nnext: fix each note (its fix: line) or reply to it, then studio review watch ${project}`);
   },
 });

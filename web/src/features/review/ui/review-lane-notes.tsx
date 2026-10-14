@@ -1,10 +1,11 @@
-import { Box, Text, Tooltip, UnstyledButton } from '@mantine/core';
+import { Box, Group, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { useEffect, useRef, useState } from 'react';
 import { reviewThreadTone } from '#lib/output/review/models/review-threads.ts';
 import { REVIEW_READOUT_CHAR_PX, reviewTimelineFramePx, reviewTimelineSpan, type ReviewTimelineView } from '#lib/output/review/models/review-timeline-geometry.ts';
 import { colors, fonts, radius, typography } from '#web/shared/ui/theme.stylex.ts';
 import { useReviewScreen } from './review-screen-context.tsx';
+import { ReviewThreadKindIcon } from './review-thread-kind.tsx';
 import type { ReviewTimelineNote } from './use-review-dock-lanes.ts';
 
 /** A moment note's dot, and a range note's bar height. */
@@ -114,6 +115,16 @@ function noteStateStyle(state: (typeof REVIEW_NOTE_STATES)[number]) {
 
 const reviewNoteSummary = (note: ReviewTimelineNote) => `#${note.id} ${(note.entries[0]?.text ?? '').split('\n')[0]}`;
 
+/** A note's line in the mark's tooltip: its kind's icon, then its id and first line. */
+function ReviewNoteSummaryLine({ note }: { readonly note: ReviewTimelineNote }) {
+  return (
+    <Group gap="tight" wrap="nowrap" align="center">
+      <ReviewThreadKindIcon kind={note.kind} />
+      <Text component="span" size="sm">{reviewNoteSummary(note)}</Text>
+    </Group>
+  );
+}
+
 /** The ids of notes that just took an agent's reply, pulsing for a second as the thread's row flashes. */
 function useReviewNotesPulsing(notes: readonly ReviewTimelineNote[]): ReadonlySet<number> {
   const seen = useRef<Map<number, number> | null>(null);
@@ -158,7 +169,7 @@ export function ReviewLaneNotes({ view, notes }: { readonly view: ReviewTimeline
         return (
           // Beside the mark, over the lanes: above, it'd cover the transport and the hover preview, and the dock's foot
           // leaves no room below.
-          <Tooltip key={here[0].id} label={<Box>{here.map((n) => <Text key={n.id} component="div" size="sm">{reviewNoteSummary(n)}</Text>)}</Box>}
+          <Tooltip key={here[0].id} label={<Box>{here.map((n) => <ReviewNoteSummaryLine key={n.id} note={n} />)}</Box>}
             openDelay={300} withinPortal multiline maw={320} position="right">
             <UnstyledButton aria-label={here.map((n) => `note ${n.id}`).join(', ')} onClick={() => select(here[(at + 1) % here.length])}
               fz="xs" {...stylex.props(styles.note, counted && styles.counted, noteStateStyle(state), at >= 0 && styles.selected,

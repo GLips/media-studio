@@ -5,7 +5,6 @@ import { useRef } from 'react';
 import { reviewAnchorOnLaidSlice, reviewCueNameOf, reviewVideoAnchorAt } from '#lib/output/review/models/review-placement.ts';
 import { formatReviewClock } from '#lib/output/review/models/review-timeline-geometry.ts';
 import type { NewAnchor } from '#lib/output/review/models/review-ops.ts';
-import type { ReviewThreadKind } from '#lib/output/review/models/review-threads.ts';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { IconButton } from '#web/shared/ui/icon-button.tsx';
 import { Readout } from '#web/shared/ui/readout.tsx';
@@ -14,6 +13,7 @@ import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { useReviewThreadScope, type ReviewThreadScope } from './review-thread-scope.tsx';
 import type { ReviewDraft } from './use-review-draft.ts';
 import { useReviewComposerHotkeys } from './use-review-composer-hotkeys.ts';
+import { REVIEW_THREAD_KINDS, ReviewThreadKindIcon } from './review-thread-kind.tsx';
 import { composeShownReviewFrame } from './review-mark-paint.ts';
 import { shownReviewSlicesOf } from './review-slice-layer.tsx';
 
@@ -27,18 +27,17 @@ const styles = stylex.create({
     borderRadius: radius.control, borderWidth: '1px', borderStyle: 'solid', backgroundColor: colors.ground,
     borderColor: { default: colors.line, ':focus-within': colors.cream },
   },
+  kinds: { borderRadius: radius.control, borderWidth: '1px', borderStyle: 'solid', borderColor: colors.line, padding: '1px' },
   kind: {
-    color: colors.cream, paddingInline: spacing.tight,
+    display: 'inline-flex', alignItems: 'center', gap: spacing.tight, paddingInline: spacing.tight, height: spacing.rowDense,
+    color: { default: colors.dim, ':hover': colors.cream },
     borderRadius: radius.control, backgroundColor: { default: 'transparent', ':hover': colors.raised },
   },
+  kindPicked: { color: colors.cream, backgroundColor: colors.raised },
   pin: { color: colors.cobalt },
   // The stage pin's own mark, solid: a glyph this small in cobalt on the panel can't be seen.
   pinDot: { width: '10px', height: '10px', flexShrink: 0, borderRadius: radius.pill, backgroundColor: colors.cobalt },
-  // The kind's glyph as the thread draws it, muted: the note isn't in that state until it's saved.
-  kindGlyph: { color: colors.dim },
 });
-
-const KIND_GLYPHS: Readonly<Record<ReviewThreadKind, string>> = { fix: '●', question: '?', keep: '◇' };
 
 /** Nothing worth keeping: no words, no strokes. A pin alone is one click to set again, so Escape throws it away too. */
 const isEmptyDraft = (draft: ReviewDraft) => !draft.text.trim() && draft.marks.length === 0;
@@ -79,8 +78,9 @@ function anchorOfDraft({ subject, media, draft, timeNow }: ReviewThreadScope): N
 export const REVIEW_COMPOSER_ATTRIBUTE = 'data-review-composer';
 
 /**
- * The draft's field, docked at the thread's foot so the list never jumps. `Tab` cycles the kind, `Mod+Enter` saves
- * with the frame as seen, `Escape` leaves the draft standing (its pin dims on the stage) and discards only an empty one.
+ * The draft's field, docked at the thread's foot so the list never jumps. A click picks the kind and `Tab` cycles it,
+ * either one the next note's too; `Mod+Enter` saves with the frame as seen, `Escape` leaves the draft standing (its
+ * pin dims on the stage) and discards only an empty one.
  */
 export function ReviewThreadComposer() {
   const scope = useReviewThreadScope();
@@ -120,11 +120,17 @@ export function ReviewThreadComposer() {
     <Box ref={composerRef} {...{ [REVIEW_COMPOSER_ATTRIBUTE]: true }} {...stylex.props(styles.composer)}>
       <Group gap="tight" wrap="nowrap" justify="space-between">
         <Group gap="tight" wrap="nowrap">
-          <HotkeyTooltip name="Kind" hotkey="Kind">
-            <UnstyledButton onClick={draft.cycleKind} {...stylex.props(styles.kind)}>
-              <Text component="span" size="sm" inherit><Text component="span" inherit {...stylex.props(styles.kindGlyph)}>{KIND_GLYPHS[draft.kind]}</Text> {draft.kind}</Text>
-            </UnstyledButton>
-          </HotkeyTooltip>
+          <Group gap={0} wrap="nowrap" role="radiogroup" aria-label="Kind" {...stylex.props(styles.kinds)}>
+            {REVIEW_THREAD_KINDS.map((kind) => (
+              <HotkeyTooltip key={kind} name="Kind" hotkey="Kind">
+                <UnstyledButton role="radio" aria-checked={draft.kind === kind} onClick={() => draft.setKind(kind)}
+                  {...stylex.props(styles.kind, draft.kind === kind && styles.kindPicked)}>
+                  <ReviewThreadKindIcon kind={kind} />
+                  <Text component="span" size="sm" inherit>{kind}</Text>
+                </UnstyledButton>
+              </HotkeyTooltip>
+            ))}
+          </Group>
           {media && pinned?.frame !== undefined && (
             <Readout>{formatReviewClock(pinned.frame / media.timing.fps)}{pinned.end !== undefined && `–${formatReviewClock(pinned.end / media.timing.fps)}`}</Readout>
           )}

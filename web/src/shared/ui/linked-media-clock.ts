@@ -29,7 +29,6 @@ export type LinkedMediaClock = {
   stop: () => void;
   /** One pass at the frame now, for a settled change (a seek, a pause): followers re-aim, listeners hear it. */
   sync: () => void;
-  dispose: () => void;
 };
 
 type LinkedMediaClockOptions = {
@@ -171,11 +170,6 @@ export function createLinkedMediaClock({ frameNow, steer }: LinkedMediaClockOpti
       cancelAnimationFrame(raf);
     },
     sync: pass,
-    dispose() {
-      running = false;
-      cancelAnimationFrame(raf);
-      listeners.clear();
-    },
   };
 }
 
