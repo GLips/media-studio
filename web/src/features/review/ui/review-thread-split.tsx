@@ -24,7 +24,7 @@ type ReviewThreadSplitProps = {
 };
 
 /**
- * A screen's body with its thread full height beside it, as the review, the script and a decision all lay out.
+ * A screen's body with its thread full height beside it, as the review, the plan and a decision all lay out.
  * `Mod+\` folds the thread to no width; folded, it stays mounted, so its keys still work, and focus landing in it
  * (`G N`) unfolds it.
  */

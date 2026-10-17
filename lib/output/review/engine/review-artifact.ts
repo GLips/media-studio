@@ -18,7 +18,6 @@ import { REVIEW_FALLBACK_FPS, reviewFrameAt, type ReviewMediaKind, type ReviewSt
 import type { ReviewPlacementTarget } from '../models/review-placement.ts';
 import type { ReviewArtifact } from '../models/review-artifact.ts';
 import { listReviewRenderVersions } from './review-history.ts';
-import { readReviewScript } from './review-script-source.ts';
 import { projectFolderNamed, projectMediaTypeOf, ProjectMediaNotFound, resolveProjectMedia } from './project-media.ts';
 
 // SAFETY: these sidecars are written by the studio's own commands in the shape their types name.
@@ -47,16 +46,8 @@ export function reviewedVersionOf(project: string, path: string, render: string 
   return resolveProjectMedia(project, kept.file);
 }
 
-/**
- * What threads are placed on when `media` (the file at `path` in its project) is open. Audio is the voice take the
- * script page reads along with: its notes are on the script's lines, so it carries them, and no frames.
- */
+/** What threads are placed on when `media` (the file at `path` in its project) is open. */
 export function reviewPlacementTargetOf(media: string, path: string): ReviewPlacementTarget {
-  if (projectMediaTypeOf(media)?.kind === 'audio') {
-    const projectDir = join(media, ...path.split('/').map(() => '..'));
-    const scripted = existsSync(join(projectDir, 'voiceover.json'));
-    return { kind: 'audio', hash: renderFileStamp(media).hash, path, durationInFrames: Infinity, ...(scripted && { scriptLines: readReviewScript(projectDir).lines }) };
-  }
   const kind = reviewedKindOf(media), { hash } = renderFileStamp(media);
   const loaded = kind === 'video' ? loadRenderSnapshot(media) : undefined;
   // Without a snapshot there's no timing, so only notes written on these very bytes place, at their own frames, and

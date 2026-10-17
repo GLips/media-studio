@@ -44,7 +44,7 @@ function focusRowAfter(event: KeyboardEvent) {
 
 /** Focuses the screen thread's row `id`, else its first: where `G N` lands. */
 function focusThreadRow(id: number | null) {
-  const thread = document.querySelector(['video', 'still', 'script'].map((on) => `[${REVIEW_THREAD_ATTRIBUTE}="${on}"]`).join(', '));
+  const thread = document.querySelector(['video', 'still', 'plan'].map((on) => `[${REVIEW_THREAD_ATTRIBUTE}="${on}"]`).join(', '));
   (thread?.querySelector<HTMLElement>(`[data-thread-id="${id}"]`) ?? thread?.querySelector<HTMLElement>('[data-thread-id]'))?.focus();
 }
 
@@ -60,7 +60,7 @@ type ReviewThreadHotkeysOptions = {
    * a second panel would bind them twice.
    */
   readonly screenThread: boolean;
-  /** The clock `[` `]` step notes on, where they sit on frames (a render, not the script). */
+  /** The clock `[` `]` step notes on, where they sit on frames (a render, not the plan). */
   readonly screenPlayback: ReviewPlayback | undefined;
   /** Where the cheatsheet lists `[` `]`: with a video's playback keys, or a still's own. */
   readonly noteStepGroup: 'playback' | 'still';

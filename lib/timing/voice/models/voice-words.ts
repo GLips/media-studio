@@ -86,6 +86,18 @@ export function alignSpokenWords(text: string, heard: readonly SpokenWord[], dur
 export const estimateSpokenWords = (text: string, duration: number) =>
   fillUnheard(scriptWords(text), scriptWords(text).map(() => null), duration);
 
+// Callirrhoe reads about three words a second; estimates only need to be close enough to lay scenes out.
+const ESTIMATED_WORDS_PER_SECOND = 3.0;
+
+/**
+ * A line's read guessed from its word count, before it has audio: its seconds (hyphen pieces count as words, plus a
+ * breath), and its words spread over them by length. `text` is the line as spokenText gives it.
+ */
+export function estimateSpokenLine(text: string): { duration: number; words: SpokenWord[] } {
+  const duration = Number((text.split(/[\s-]+/).length / ESTIMATED_WORDS_PER_SECOND + 0.3).toFixed(2));
+  return { duration, words: estimateSpokenWords(text, duration) };
+}
+
 function fillUnheard(script: string[], partner: (SpokenWord | null)[], duration: number): SpokenWord[] {
   const out: SpokenWord[] = [];
   for (let i = 0; i < script.length;) {
@@ -112,14 +124,25 @@ function fillUnheard(script: string[], partner: (SpokenWord | null)[], duration:
 }
 
 /**
+ * Where `phrase`'s words run in `words` (each a script word, punctuation and case aside), as its first and last index;
+ * `nth` picks a later run, counting from 1. Null when there's none, or `phrase` has no words.
+ */
+export function findScriptPhrase(words: readonly string[], phrase: string, nth = 1): [number, number] | null {
+  const want = scriptWords(phrase).map(normalWord).filter(Boolean), have = words.map(normalWord);
+  if (!want.length) return null;
+  let seen = 0;
+  for (let i = 0; i + want.length <= have.length; i++) {
+    if (want.every((w, k) => have[i + k] === w) && ++seen === nth) return [i, i + want.length - 1];
+  }
+  return null;
+}
+
+/**
  * Where a word or phrase is spoken: from its first word's start to its last word's end. `nth` picks a later
  * occurrence, counting from 1. Throws with the line's words when there's no match, so a typo shows what's there.
  */
 export function findSpokenPhrase(words: readonly SpokenWord[], phrase: string, nth = 1): { start: number; end: number } {
-  const want = scriptWords(phrase).map(normalWord), have = words.map((w) => normalWord(w.text));
-  let seen = 0;
-  for (let i = 0; i + want.length <= have.length; i++) {
-    if (want.every((w, k) => have[i + k] === w) && ++seen === nth) return { start: words[i].start, end: words[i + want.length - 1].end };
-  }
-  throw new Error(`"${phrase}"${nth > 1 ? ` (#${nth})` : ''} isn't in "${words.map((w) => w.text).join(' ')}"`);
+  const run = findScriptPhrase(words.map((w) => w.text), phrase, nth);
+  if (!run) throw new Error(`"${phrase}"${nth > 1 ? ` (#${nth})` : ''} isn't in "${words.map((w) => w.text).join(' ')}"`);
+  return { start: words[run[0]].start, end: words[run[1]].end };
 }

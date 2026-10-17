@@ -5,8 +5,7 @@
 
 import { useLayoutEffect } from 'react';
 import { defineVideo, sceneForTimelineClock } from '#studio';
-import { bindTimeline } from '#lib/timing/timeline/models/bind-timeline.ts';
-import { defineTimeline, fixedSpan } from '#lib/timing/timeline/models/timeline.ts';
+import { defineStoryboard } from '#lib/timing/storyboard/models/storyboard.ts';
 
 // Deliberately module state: a tab's first draw is the one that differs.
 let tabHasDrawn = false;
@@ -22,9 +21,12 @@ function FirstDrawDiffers() {
   );
 }
 
-const timeline = defineTimeline({ scenes: { grey: fixedSpan(2) } });
+const storyboard = defineStoryboard({
+  title: 'Repeatability check', target: { seconds: 2 },
+  scenes: { grey: { onScreen: 'A grey frame', motion: 'None', seconds: 2 } },
+});
 
 export default defineVideo({
-  title: 'Repeatability check', format: { width: 320, height: 180 }, timeline, voice: {},
-  scenes: bindTimeline(timeline, { grey: (clock) => sceneForTimelineClock(clock, { render: () => <FirstDrawDiffers /> }) }),
+  title: 'Repeatability check', format: { width: 320, height: 180 }, storyboard,
+  scenes: { grey: (clock) => sceneForTimelineClock(clock, { render: () => <FirstDrawDiffers /> }) },
 });

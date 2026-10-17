@@ -9,7 +9,7 @@ these conventions; for the API itself, query the Remotion docs (context7 `/remot
   during a crossfade, and everything stays a pure function of it.
 - **Imports, not `staticFile()`.** There is no `public/`: assets live in the project folder and are imported (an
   import is the file's URL), so each project bundles on its own and a missing file fails to compile.
-- **No `TransitionSeries`.** The timeline centres crossfades on the cuts (a span's `crossfade`); a `TransitionSeries`
+- **No `TransitionSeries`.** The storyboard centres crossfades on the cuts (a scene's `timing.crossfade`); a `TransitionSeries`
   would shorten the video instead.
 - **Images** go through Remotion's `<Img>`, which holds the frame until the image has loaded; a bare `<img>` can be
   captured blank.

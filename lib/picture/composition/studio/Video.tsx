@@ -36,7 +36,7 @@ import { LensModeContext } from '#lib/picture/lens/studio/lens-mode-context.ts';
 
 export const TIMELINE_ARTIFACT = 'timeline.json';
 
-// Here, not in timeline.ts, which plain Node loads: a style is React.
+// Made here, in the composition, rather than in a models module plain Node loads: a style is React.
 const HOUSE_CAPTIONS = pillCaptions();
 
 /** The video's caption style and what it captions: its table, or its voiced lines. */
@@ -137,7 +137,7 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
           </Sequence>
         ) : null,
       )}
-      {video.music && <MusicBedAudio video={video} tl={tl} fps={fps} />}
+      {video.bed && <MusicBedAudio video={video} tl={tl} fps={fps} />}
       {playsBeatClicks(video) && <BeatClickAudio timeline={video.timeline} fps={fps} />}
       {captions && <BurnedCaptions style={captioned.style} pages={pages} t={t} />}
       {reportTimeline && frame === 0 && <Artifact filename={TIMELINE_ARTIFACT} content={timelineReport(video, tl, config, playsCueList, captioned)} />}
@@ -148,7 +148,7 @@ export function Video({ video, captions, probe, blockouts, auditionSfxCueList = 
 
 
 function MusicBedAudio({ video, tl, fps }: { video: VideoDef; tl: LaidVideo; fps: number }) {
-  const bed = video.music!;
+  const bed = video.bed!;
   const { durationInFrames } = useVideoConfig();
   // Ducked around every line, estimated ones included, so the Studio previews the final mix.
   const gainAt = useMemo(() => musicBedGainAt(bed, tl.cues, fps, durationInFrames / fps), [bed, tl, fps, durationInFrames]);
@@ -160,11 +160,11 @@ function MusicBedAudio({ video, tl, fps }: { video: VideoDef; tl: LaidVideo; fps
 }
 
 /**
- * Whether `video` plays a click on each beat: cut to a tempo grid with no `music` yet, so a render has a beat to hear
+ * Whether `video` plays a click on each beat: cut to a tempo grid with no `bed` yet, so a render has a beat to hear
  * the cuts against rather than refusing a silent mix. A draft. Not on a recorded grid: its track exists, so no
- * `music` there is a video.tsx that forgot it, which clicks would hide.
+ * `bed` there is a video.tsx that forgot it, which clicks would hide.
  */
-const playsBeatClicks = (video: VideoDef) => !video.music && video.timeline.spec.grid?.kind === 'tempo' && video.timeline.beatFrames.length > 0;
+const playsBeatClicks = (video: VideoDef) => !video.bed && video.timeline.spec.grid?.kind === 'tempo' && video.timeline.beatFrames.length > 0;
 
 /**
  * A click on each grid beat, where the music will sound: a beat's hit frame plus the picture's lead over its sound.

@@ -60,17 +60,14 @@ export type ReviewPlayback = {
   frameNow: () => number;
 } & Pick<LinkedMediaClock, 'addFollower' | 'onTick'>;
 
-/**
- * `durationInFrames` null is learnt from the media once it loads; `durationGuess` (the script's last word) stands in
- * until then, so the dock has a length before the audio does.
- */
-type ReviewPlaybackOptions = { fps: number; durationInFrames: number | null; durationGuess?: number; startFrame: number };
+/** `durationInFrames` null is learnt from the media once it loads. */
+type ReviewPlaybackOptions = { fps: number; durationInFrames: number | null; startFrame: number };
 
-export function createReviewPlayback({ fps, durationInFrames, durationGuess, startFrame }: ReviewPlaybackOptions): ReviewPlayback {
+export function createReviewPlayback({ fps, durationInFrames, startFrame }: ReviewPlaybackOptions): ReviewPlayback {
   let media: HTMLMediaElement | null = null;
   let root: HTMLElement | null = null;
   let state: ReviewPlaybackState = {
-    frame: startFrame, playing: false, rate: 0, loop: null, loopRate: 1, muted: false, volume: 1, durationInFrames: durationInFrames ?? durationGuess ?? 1,
+    frame: startFrame, playing: false, rate: 0, loop: null, loopRate: 1, muted: false, volume: 1, durationInFrames: durationInFrames ?? 1,
   };
   const listeners = new Set<() => void>();
 

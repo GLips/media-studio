@@ -44,8 +44,8 @@ const isEmptyDraft = (draft: ReviewDraft) => !draft.text.trim() && draft.marks.l
 
 /**
  * The draft as a whole anchor. A video note without a pin is on the playhead, on the slice laid in there if any, with
- * the moment that carries it on. A decision's note is on its candidate, at the transport's time if it plays. Null
- * where the panel can't anchor alone: a script note needs its line.
+ * the moment that carries it on. A decision's note is on its candidate, at the transport's time if it plays. Null for
+ * a plan note, whose target the plan page sets.
  */
 function anchorOfDraft({ subject, media, draft, timeNow }: ReviewThreadScope): NewAnchor | null {
   const { anchor, marks } = draft;
@@ -68,7 +68,7 @@ function anchorOfDraft({ subject, media, draft, timeNow }: ReviewThreadScope): N
       const at = timeNow && { at: Math.round(timeNow() * 100) / 100 };
       return { on: 'decision', decision: subject.decision, ...(subject.candidate && { candidate: subject.candidate }), ...at };
     }
-    case 'script': return anchor.on === 'script' && anchor.line && anchor.scriptHash ? { ...anchor, on: 'script', line: anchor.line, scriptHash: anchor.scriptHash } : null;
+    case 'plan': return anchor.on === 'plan' && anchor.planHash && anchor.field ? { ...anchor, on: 'plan', planHash: anchor.planHash, field: anchor.field } : null;
     case 'project': return { on: 'project' };
   }
   return null;

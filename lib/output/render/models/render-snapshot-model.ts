@@ -38,7 +38,7 @@ export type RenderSnapshot = {
   timeline: TimelineReport;
   /**
    * The project's resolved timeline as `studio clock` prints it, read when the render's session bundled the project,
-   * or null for a project with no timeline.ts. A review note finds its bar and beat on it.
+   * or null for a project with no storyboard.ts. A review note finds its bar and beat on it.
    */
   clock: TimelineClockTable | null;
   /** Whose voice it speaks in, as the project's audio was when it rendered: a review raises a banner on `draft`. */

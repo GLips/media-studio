@@ -1,5 +1,5 @@
 // studio-api-reference.ts: what a project imports, read from the code by the TypeScript compiler, so the reference
-// can't drift from it: #studio (lib/api.ts) for scenes, and the models modules timeline.ts and a piece's tracks import,
+// can't drift from it: #studio (lib/api.ts) for scenes, and the models modules storyboard.ts and a piece's tracks import,
 // which stay off #studio so they load in plain Node. `studio api` prints it.
 //
 // Signatures are the declarations' own source text (with their inline property comments) where there is one, and
@@ -13,7 +13,7 @@ import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
 /** Each module the reference reads, by its path and by the specifier a project imports it with. */
 const STUDIO_API_MODULES = [
   { path: 'lib/api.ts', importFrom: '#studio' },
-  ...['lib/timing/timeline/models/timeline.ts', 'lib/timing/timeline/models/bind-timeline.ts', 'lib/timing/timeline/models/retime.ts', 'lib/picture/measurement/models/piece-tracks.ts']
+  ...['lib/timing/storyboard/models/storyboard.ts', 'lib/timing/timeline/models/timeline.ts', 'lib/timing/timeline/models/bind-timeline.ts', 'lib/picture/measurement/models/piece-tracks.ts']
     .map((path) => ({ path, importFrom: `#${path}` })),
 ] as const;
 const INDEX_WIDTH = 118;

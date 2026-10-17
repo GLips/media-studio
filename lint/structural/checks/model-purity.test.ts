@@ -35,8 +35,8 @@ test('a model reaching render, I/O or browser code is caught through any chain; 
       // A template-literal specifier and a computed one.
       'const os = require(`os`);', 'const m = await import(name);',
     ].join('\n'),
-    // A project's timeline is a model too.
-    'work/projects/p/timeline.ts': "import { Scene } from '../../../lib/api.ts';\nexport const t = Scene;\n",
+    // A project's storyboard is a model too.
+    'work/projects/p/storyboard.ts': "import { Scene } from '../../../lib/api.ts';\nexport const t = Scene;\n",
     // So is a painting source, which `studio paint check` loads in plain Node.
     'work/projects/p/scenes/pond/pond.painting.ts': "import { Scene } from '#studio';\nexport default () => Scene;\n",
   });
@@ -52,6 +52,6 @@ test('a model reaching render, I/O or browser code is caught through any chain; 
     'lib/picture/reel/models/needle.ts: a model reaches the global document',
     'lib/timing/timeline/models/cues.ts: a model reaches the package react',
     'work/projects/p/scenes/pond/pond.painting.ts: a model reaches studio code (lib/api.ts)',
-    'work/projects/p/timeline.ts: a model reaches studio code (lib/api.ts)',
+    'work/projects/p/storyboard.ts: a model reaches studio code (lib/api.ts)',
   ]);
 });

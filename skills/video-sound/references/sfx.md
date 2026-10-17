@@ -52,15 +52,15 @@ Redraft after adding one, so the list's accents keep clear of it.
 ## Sounds on the music's beat
 
 A music-led video places its hits and whips on the video's clock instead:
-`defineVideo({ sounds: [{ at, sound, id, volume }] })`, `at` in video seconds from the timeline's frames (a cue's
-frame over `fps`, plus `timeline.soundLagSeconds`). These ring on across cuts, and a scene replayed elsewhere doesn't
+`defineVideo({ sounds: [{ at, sound, id, volume }] })`, `at` in video seconds from the resolved storyboard's frames
+(`storyboardTimeline(storyboard, { music })`: a cue's frame over `fps`, plus its `soundLagSeconds`). These ring on across cuts, and a scene replayed elsewhere doesn't
 replay them.
 
 `studio mix <p>` (or `--check`, which skips rendering the mix) prints each against the music; `studio mix --help`
 says what the flags mean. The fixes:
 
 - **FLAM**: move the sound by its gap. If every hit flams early by about the same amount, that's the picture's lead:
-  set `soundLagSeconds` in `timeline.ts` to it.
+  set the storyboard's `soundLagSeconds` to it.
 - **BURIED**: raise its `volume` if it's under 1, else lower `bedRelativeLu`.
 - **OVER**: lower its `volume`, unless it's meant to ride on top.
 - **An empty beat** is where a sound can speak for the picture alone: a slam there has no hit to flam with.

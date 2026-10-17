@@ -57,7 +57,7 @@ export function reviewTimingOf({ fps, startsAt, scenes, lines, clock }: ReviewTi
   // A moment in seconds shows from the first frame at or after it. A line starts on a frame, which seconds hold a hair
   // either side of, so the epsilon keeps that frame.
   const frameOf = (seconds: number) => Math.ceil((seconds - 1e-6) * fps);
-  // The rung is the composition's, which the timeline report holds; a clock knows only the timeline.ts side of a scene.
+  // The rung is the composition's, which the timeline report holds; a clock knows only the storyboard's side of a scene.
   const rungOf = (id: string) => { const rung = scenes.find((s) => s.id === id)?.rung; return rung ? { rung } : {}; };
   const placed = clock
     ? clock.bars.map((b) => ({ id: b.id, bar: b.n, from: b.from, to: b.to, beats: b.beatFrames, ...rungOf(b.id) }))
@@ -114,7 +114,7 @@ export function placeReviewMoment(moment: ReviewMoment, timing: ReviewTiming): R
  * Where a word is in a line read again, which can gain or lose words before it: the index of the same word nearest
  * its old one, or none when the line no longer says it.
  */
-export function placeReviewWord(words: readonly { text: string }[], { word, text }: { word: number; text: string }): number | undefined {
+function placeReviewWord(words: readonly { text: string }[], { word, text }: { word: number; text: string }): number | undefined {
   return words.map((w, i) => ({ text: w.text, i })).filter((w) => w.text === text).toSorted((a, b) => Math.abs(a.i - word) - Math.abs(b.i - word))[0]?.i;
 }
 
@@ -122,7 +122,7 @@ const sceneName = (id: string, bar: number | null | undefined) => (bar ? `bar ${
 const past = (frames: number) => (frames ? ` +${frames}f` : '');
 
 /**
- * `bar 8 · blocking · beat 3 +4f · pay-less.stamp`: the scene, its rung, then the moment in timeline.ts's words, so a
+ * `bar 8 · blocking · beat 3 +4f · pay-less.stamp`: the scene, its rung, then the moment in the plan's words, so a
  * beat is counted from the scene's beat 0 as its cues are and can be pasted into one. Words count from 1, as read.
  */
 export function formatReviewMomentPlace(moment: ReviewMoment): string {

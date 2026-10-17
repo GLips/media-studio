@@ -52,7 +52,7 @@ export function useGlobalHotkeys({ toggleCheatsheet, openQuickOpen }: GlobalHotk
     { sequence: ['G', 'D'], callback: () => void navigate({ to: '/' }), options: { meta: { group: 'global', name: 'Dashboard' } } },
     ...(project === undefined ? [] : [
       { sequence: ['G', 'P'], callback: () => void navigate({ to: '/projects/$project', params: { project } }), options: { meta: { group: 'global', name: 'Project' } } },
-      { sequence: ['G', 'S'], callback: () => void navigate({ to: '/projects/$project/script', params: { project } }), options: { meta: { group: 'global', name: 'Script' } } },
+      { sequence: ['G', 'S'], callback: () => void navigate({ to: '/projects/$project/plan', params: { project } }), options: { meta: { group: 'global', name: 'Plan' } } },
     ] satisfies Parameters<typeof useHotkeySequences>[0]),
   ]);
 }

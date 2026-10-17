@@ -6,10 +6,11 @@
 // constraints, are always listed in their own section until resolved.
 import { formatSliceReplyCommand, renderSlicePathOf } from '#lib/output/render/models/render-splice.ts';
 import { formatReviewMomentPlace } from './review-moment.ts';
+import { formatReviewPlanNoteWhere } from './review-plan.ts';
 import { formatReviewMoment, formatStillAxes, reviewNoteContext, reviewSceneAtFrame, type ReviewContextSources, type ReviewNoteContext } from './review-context.ts';
 import type { PlacedReviewThread, ReviewLaidSlice, ReviewPlacement } from './review-placement.ts';
 import { formatReviewClock } from './review-timeline-geometry.ts';
-import type { ReviewAnchor, ReviewEntry, ReviewRenderSource, ReviewThreadState, ReviewWrittenOn } from './review-threads.ts';
+import type { ReviewAnchor, ReviewEntry, ReviewPlanAnchor, ReviewRenderSource, ReviewThreadState, ReviewWrittenOn } from './review-threads.ts';
 
 /** How much of a frame the `look:` line crops around a note's point, in render pixels. */
 const LOOK_CROP = { w: 400, h: 300 };
@@ -18,9 +19,9 @@ const LOOK_REACH_FRAMES = 3;
 
 export type ReviewMarkdownOptions = {
   project: string;
-  /** The render the threads are placed on, project-relative. */
-  renderPath: string;
-  renderHash: string;
+  /** The render the threads are placed on, project-relative, and its hash; absent before anything is rendered. */
+  renderPath?: string;
+  renderHash?: string;
   /** The render as a scene's span names it, `out/video.mp4 r14`: its path and version, when it has been kept. */
   renderName?: string;
   fps: number;
@@ -44,7 +45,8 @@ export function formatReviewThreadsMarkdown(items: readonly PlacedReviewThread[]
   const { project, renderPath, renderHash, fps } = options, states = options.states ?? ['open', 'reopened'];
   const listed = items.filter((t) => t.kind !== 'keep' && states.includes(t.state)).toSorted(byPlace);
   const keeps = items.filter((t) => t.kind === 'keep' && t.state !== 'resolved').toSorted(byPlace);
-  const head = [`## Review notes: ${project}`, `\`${projectPathOf(project, renderPath)}\` \`${renderHash}\` · ${fps} fps`];
+  const on = renderPath === undefined ? 'nothing rendered yet' : `\`${projectPathOf(project, renderPath)}\` \`${renderHash}\` · ${fps} fps`;
+  const head = [`## Review notes: ${project}`, on];
   const sections = [
     head.join('\n'),
     listed.length ? listed.map((t) => formatReviewThreadItem(t, options)).join('\n\n') : `(no ${states.join(' or ')} notes)`,
@@ -55,9 +57,9 @@ export function formatReviewThreadsMarkdown(items: readonly PlacedReviewThread[]
 
 const projectPathOf = (project: string, path: string) => `work/projects/${project}/${path}`;
 
-const ANCHOR_ORDER = ['video', 'still', 'script', 'decision', 'project'] as const;
+const ANCHOR_ORDER = ['video', 'still', 'plan', 'decision', 'project'] as const;
 
-/** Placed video notes in time order, then stills, the script by line, decisions, the project; the unplaced last. */
+/** Placed video notes in time order, then stills, the plan in time order, decisions, the project; the unplaced last. */
 function byPlace(a: PlacedReviewThread, b: PlacedReviewThread): number {
   return placeRankOf(a) - placeRankOf(b) || placeOrderOf(a) - placeOrderOf(b) || a.id - b.id;
 }
@@ -66,7 +68,7 @@ const placeRankOf = (t: PlacedReviewThread) => ('unplaced' in t.placement ? ANCH
 
 function placeOrderOf({ placement }: PlacedReviewThread): number {
   if ('frame' in placement) return placement.frame;
-  return 'word' in placement ? (placement.word ?? -1) : -1;
+  return 'plan' in placement ? (placement.plan.frame ?? -1) : -1;
 }
 
 type AnchorLines = { head: string; lines: string[] };
@@ -79,10 +81,7 @@ function formatAnchorLines(thread: PlacedReviewThread, options: ReviewMarkdownOp
       return formatVideoNoteLines(anchor, thread.placement, options, fix);
     }
     case 'still': return formatStillNoteLines(anchor, options);
-    case 'script': {
-      const word = anchor.word === undefined ? '' : `, word ${anchor.word + 1}${anchor.text ? ` "${anchor.text}"` : ''}`;
-      return { head: ` — script line ${anchor.line}${word}${anchor.take ? ` in take \`${anchor.take}\`` : ''}`, lines: [] };
-    }
+    case 'plan': return formatPlanNoteLines(anchor, thread.placement, options.project);
     case 'decision': {
       const at = anchor.at === undefined ? '' : ` at ${formatReviewClock(anchor.at)}`;
       return { head: ` — decision #${anchor.decision}${anchor.candidate ? `, candidate ${anchor.candidate}` : ''}${at}`, lines: [] };
@@ -123,7 +122,7 @@ function formatVideoNoteLines(anchor: Extract<ReviewAnchor, { on: 'video' }>, pl
   const moved = placed && !onSlice ? ` · now f${placed.frame} (${signed(placed.frame - anchor.frame)})` : '';
   const written = anchor.writtenOn.hash === renderHash ? undefined
     : `written on ${formatWrittenOn(anchor.writtenOn)} at f${anchor.frame}${onSlice ? ', laid into this render' : moved}`;
-  const look = onSlice ? { path: anchor.writtenOn.path, frames: { frame: anchor.frame, ...(anchor.end !== undefined && { end: anchor.end }) } } : placed && { path: renderPath, frames: placed };
+  const look = onSlice ? { path: anchor.writtenOn.path, frames: { frame: anchor.frame, ...(anchor.end !== undefined && { end: anchor.end }) } } : placed && renderPath !== undefined && { path: renderPath, frames: placed };
   const span = placed && sources?.scenes && reviewSceneAtFrame(sources.scenes, placed.frame);
   const scene = span?.id ?? moment?.scene;
   return {
@@ -138,6 +137,18 @@ function formatVideoNoteLines(anchor: Extract<ReviewAnchor, { on: 'video' }>, pl
       placed && scene && fix && `fix:   ${formatFixCommand(project, scene, fix)}`,
     ].filter((line): line is string => Boolean(line)),
   };
+}
+
+/**
+ * A plan note's lines: `plan · plate · line verdict · ‘FODMAPs’ · underline +2f`, where it is (its scene, what it's
+ * on, the words it quotes) and the nearest cue at or before them, then its frame on the plan's clock.
+ */
+function formatPlanNoteLines(anchor: ReviewPlanAnchor, placement: ReviewPlacement, project: string): AnchorLines {
+  const plan = 'plan' in placement ? placement.plan : undefined;
+  const cue = plan?.cue && `${plan.cue.name}${plan.cue.frames > 0 ? ` +${plan.cue.frames}f` : ''}`;
+  const head = ['plan', formatReviewPlanNoteWhere(anchor), cue].filter(Boolean).join(' · ');
+  const frame = plan?.frame ?? null;
+  return { head: ` — ${head}`, lines: frame === null ? [] : [`plan:  f${frame} on the plan's clock (studio clock ${project})`] };
 }
 
 /**
@@ -158,7 +169,7 @@ function formatFixCommand(project: string, scene: string, id: number): string {
 function formatStillNoteLines(anchor: Extract<ReviewAnchor, { on: 'still' }>, options: ReviewMarkdownOptions): AnchorLines {
   const { project, renderPath, renderHash, size, sources } = options;
   // Read on the render when it is this still; else on the still as it is now, never in the render's pixels.
-  const own = anchor.writtenOn.path === renderPath;
+  const own = anchor.writtenOn.path === renderPath && renderHash !== undefined;
   const still: ReviewMarkdownStill | undefined = own ? { hash: renderHash, size } : options.stills?.[anchor.writtenOn.path];
   const { cell } = own && anchor.point && sources ? reviewNoteContext({ x: anchor.point.x, y: anchor.point.y }, sources) : {};
   const written = anchor.writtenOn.hash === still?.hash ? undefined : `written on ${formatWrittenOn(anchor.writtenOn)}`;

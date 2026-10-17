@@ -3,7 +3,7 @@
 Decide the music's role first; it decides who sets the timing:
 
 - **A bed under the narration.** The voice sets the timing; the music sits under it and ducks under each line.
-- **The lead in a piece cut to music.** The music sets the timing, and the picture is cut to its beat in `timeline.ts`.
+- **The lead in a piece cut to music.** The music sets the timing, and the picture is cut to its beat in `storyboard.ts`.
   Choose this track before the motion pass.
 
 ## Getting a track
@@ -37,7 +37,8 @@ bed has come back reading 133).
 
 Once the picture is locked, `studio music fit <p> --name=<track>` cuts the track to exactly the video's length, so
 the track's own ending finishes the video, and adds it as `music['<track>-fit']` beside the original. A generated
-track always goes through it. Point `video.tsx` at the fit: `music: { track: music['bed-a-fit'] }`.
+track always goes through it. Point `video.tsx` at the fit: `bed: { track: music['bed-a-fit'] }`, and pass `music`
+beside it too when the storyboard's grid is `{ music: '<track>' }`.
 
 Read what `fit` prints:
 
@@ -58,22 +59,22 @@ that beat on the video's first frame.
 
 ## The lead
 
-The picture is cut to the music, so the beat lives in `timeline.ts`. The timing model (grids, `beatSpan`, cues,
+The picture is cut to the music, so the beat lives in `storyboard.ts`. The timing model (grids, bars, cues,
 landmarks, the picture lead) is in `${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/timing.md`. The music's side:
 
-1. **Draft on a tempo.** Until there's a track, `grid: tempoGrid(bpm)` drives the `beatSpan` scenes and the render
+1. **Draft on a tempo.** Until there's a track, `grid: { tempo: bpm }` drives the bars and the render
    clicks each beat. Done when the cut reads on the clicks.
 2. **Cut the track to the bars.** `studio music fit <p> --name=<track> --bars=<list>` plays the source's bars in the
    order given (bar 1 on its first downbeat), so the music's builds, drops and hits fall where the scenes need them.
    The bars' beats add up to the beat scenes'. Done when the seams it prints pass the user's ear.
-3. **Switch the grid.** `grid: recordedGrid(music['<track>-fit'])` in `timeline.ts` (with `{ steady: true }` for a
-   track made to a click, as generated and electronic music is), and `music: { track }` on the same fit in
-   `video.tsx`. Done when `studio clock <p>` resolves, the final-hit landmark included: it fails wherever the
-   timeline and the music disagree.
+3. **Switch the grid.** `grid: { music: '<track>-fit' }` in `storyboard.ts` (with `steady: true` for a track made
+   to a click, as generated and electronic music is), and in `video.tsx` hand `defineVideo` music/index.ts's `music`
+   and a `bed` on the same fit. Done when `studio clock <p>` resolves, the final-hit landmark included: it fails
+   wherever the storyboard and the music disagree.
 4. **Lift the level.** With no voice to duck under, raise `bedRelativeLu` toward 0 (`mix.md`).
 
 A retime that changes a beat scene's length fails the landmark check at load: refit with a new `--bars` list, or
-change the timeline back.
+change the bars back.
 
 ## Cutting to it
 

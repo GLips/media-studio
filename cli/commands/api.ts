@@ -4,7 +4,7 @@ import { defineCommand } from 'citty';
 export default defineCommand({
   meta: {
     name: 'api',
-    description: "Print what a project imports: #studio for scenes, the timeline models for timeline.ts; or one export's signature and doc.",
+    description: "Print what a project imports: #studio for scenes, the storyboard models for storyboard.ts; or one export's signature and doc.",
     about: "Read from the code. With no name, every export under the specifier it's imported by and its file, with its doc's first sentence; with a name, its import line, full signature and doc comment.",
   },
   args: {

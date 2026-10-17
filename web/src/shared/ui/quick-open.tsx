@@ -188,7 +188,7 @@ function QuickOpenBody({ entries, onClose }: QuickOpenBodyProps) {
   );
 }
 
-/** `Mod+K`: jump to any project, file, decision or script by typing a few letters of its name. */
+/** `Mod+K`: jump to any project, file, decision or plan by typing a few letters of its name. */
 export function QuickOpen({ opened, onClose }: { readonly opened: boolean; readonly onClose: () => void }) {
   const withEntries = useQuickOpenEntriesSource();
   return (

@@ -37,15 +37,14 @@ export function ReviewThreadPanel({ head }: { readonly head?: ReactNode }) {
   const actions = useReviewThreadActions(listing.scoped);
   const live = useReviewThreadLive(listed, media?.playback);
   useReviewNoteFocusRelease(threads && [...listed, ...unplaced]);
-  // Only a file's thread (a render, a still, the script) binds the screen-wide keys: there's one per screen.
-  const screenThread = subject.on === 'video' || subject.on === 'still' || subject.on === 'script';
+  // Only a screen's own thread (a render's, a still's, the plan's) binds the screen-wide keys: there's one per screen.
+  const screenThread = subject.on === 'video' || subject.on === 'still' || subject.on === 'plan';
   const screenPlayback = subject.on === 'video' || subject.on === 'still' ? media?.playback : undefined;
   useReviewThreadHotkeys({ threadRef, listed, actions, currentId: search.note ?? live.currentId, screenThread, screenPlayback,
     noteStepGroup: subject.on === 'still' ? 'still' : 'playback' });
 
   const place = media && {
     project: scope.project, fps: media.timing.fps, renderHash: media.artifact.render.hash, scenes: media.artifact.scenes ?? [], versions: media.versions, splices: media.splices,
-    lines: media.artifact.timing?.lines.map((line) => line.id) ?? [],
   };
   const rowOf = (thread: PlacedReviewThread) => (
     <ReviewThreadRow

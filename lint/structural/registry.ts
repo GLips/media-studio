@@ -20,7 +20,6 @@ import { importPolicyCheck } from './checks/import-policy.ts';
 import { modelPurityCheck } from './checks/model-purity.ts';
 import { noScratchCheck } from './checks/no-scratch.ts';
 import { renderSnapshotCheck } from './checks/render-snapshot.ts';
-import { retimeRegistrationCheck } from './checks/retime-registration.ts';
 import { sceneOwnershipCheck } from './checks/scene-ownership.ts';
 import { sdkContainmentCheck } from './checks/sdk-containment.ts';
 import { studioTempCheck } from './checks/studio-temp.ts';
@@ -50,7 +49,6 @@ export const STRUCTURAL_CHECKS: readonly StructuralCheck[] = [
   sdkContainmentCheck,
   studioTempCheck,
   renderSnapshotCheck,
-  retimeRegistrationCheck,
   capabilityMatchCheck,
   folderWidthCheck,
   brushAssetsCheck,

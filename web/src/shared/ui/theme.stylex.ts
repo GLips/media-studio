@@ -22,11 +22,11 @@ export const colors = stylex.defineVars({
   dim: '#8d8a83',
   /** An open or reopened note, and the one primary action on a screen. */
   accent: '#ee4c23',
-  /** The draft: its pin, range and strokes, the composer's edge, the read-along word. */
+  /** The draft: its pin, range and strokes, the composer's edge; the word being read and a cue's chip on the plan. */
   cobalt: '#4144f4',
   /** An addressed note (verify it) and a picked candidate. */
   pass: '#3ccf7a',
-  /** Waiting on you: an agent's question, an open decision, an unsigned script. */
+  /** Waiting on you: an agent's question, an open decision, an unsigned scene; a plan's timing flag. */
   caution: '#f2b134',
   /** A failure only: a save or a render that failed. */
   danger: '#ff4d6d',
@@ -68,8 +68,10 @@ export const typography = stylex.defineVars({
   chrome: '12px',
   /** Note bodies and anything read as prose. */
   body: '13px',
-  /** A script line on the read-along. */
-  script: '19px',
+  /** A plan's spoken line, the words its page is read for. */
+  line: '15px',
+  /** Text read for itself, large: a decision's text candidate. */
+  reading: '19px',
   /** Project names on the dashboard, and nowhere else. */
   display: '16px',
   /** One line height for every size, so rows line up across panels. */

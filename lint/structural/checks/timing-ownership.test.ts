@@ -10,10 +10,11 @@ const STUDIO = {
   'lib/api.ts': "export * from '#lib/timing/timeline/models/beat-grid.ts';\nexport { defineVideo } from '#lib/picture/video/studio/video.ts';\nexport { fixedSpan } from '#lib/timing/timeline/models/timeline.ts';\n",
 };
 
-test('a timing constructor imported outside timeline.ts is caught, however it is spelled', () => {
+test('a timing constructor imported in a project is caught, however it is spelled', () => {
   const findings = runCheckOnFiles('timing-ownership', {
     ...STUDIO,
-    'work/projects/p/timeline.ts': "import { beatGrid, fixedSpan } from '#studio';\nexport const g = beatGrid();\n",
+    // Obvious: the storyboard building a timeline beside its plan.
+    'work/projects/p/storyboard.ts': "import { beatGrid } from '#studio';\nexport const g = beatGrid();\n",
     // Obvious: through the barrel alias.
     'work/projects/p/video.tsx': "import { fixedSpan, defineVideo } from '#studio';\n",
     // Adversarial: a namespace import of the barrel by relative path, read by member and by destructuring.
@@ -39,20 +40,26 @@ test('a timing constructor imported outside timeline.ts is caught, however it is
     'work/projects/p/bars/nested.tsx:fixedSpan from ../../../../lib/picture/kit/studio/kit.ts',
     'work/projects/p/bars/outro.tsx:scene from ../helpers.ts',
     'work/projects/p/helpers.ts:fixedSpan from #studio',
+    'work/projects/p/storyboard.ts:beatGrid from #studio',
     'work/projects/p/video.tsx:fixedSpan from #studio',
   ]);
 });
 
-test('the timeline\'s constructors stay in timeline.ts, and binding it is the composition\'s', () => {
+test('defineStoryboard is storyboard.ts\'s alone, and resolving and binding it are defineVideo\'s', () => {
   const findings = runCheckOnFiles('timing-ownership', {
     ...STUDIO,
-    'lib/timing/timeline/models/timeline.ts': 'export const defineTimeline = (s: unknown) => s; export const beatSpan = (n: number) => n;\n',
+    'lib/timing/storyboard/models/storyboard.ts': 'export const defineStoryboard = (s: unknown) => s;\n',
+    'lib/timing/storyboard/models/resolve-storyboard.ts': 'export const resolveStoryboard = (s: unknown) => s;\n',
     'lib/timing/timeline/models/bind-timeline.ts': 'export const bindTimeline = (t: unknown, b: unknown) => [t, b];\n',
-    'work/projects/p/timeline.ts': "import { beatSpan, defineTimeline } from '../../../lib/timing/timeline/models/timeline.ts';\nexport const t = defineTimeline({ a: beatSpan(4) });\n",
-    // Legal: the composition binds the resolved timeline.
-    'work/projects/p/video.tsx': "import { bindTimeline } from '../../../lib/timing/timeline/models/bind-timeline.ts';\nimport { t } from './timeline.ts';\nbindTimeline(t, {});\n",
-    // Obvious: a scene sizing itself with a driver.
-    'work/projects/p/bars/intro.tsx': "import { beatSpan } from '../../../../lib/timing/timeline/models/timeline.ts';\nexport const span = beatSpan(8);\n",
+    'work/projects/p/storyboard.ts': "import { defineStoryboard } from '#lib/timing/storyboard/models/storyboard.ts';\nexport const storyboard = defineStoryboard({});\n",
+    // Legal: the composition hands the storyboard to defineVideo, and a helper may bind a resolved timeline.
+    'work/projects/p/video.tsx': "import { defineVideo } from '#studio';\nimport { bindTimeline } from '#lib/timing/timeline/models/bind-timeline.ts';\nimport { storyboard } from './storyboard.ts';\ndefineVideo({ storyboard }); bindTimeline;\n",
+    // Obvious: a scene re-stating the plan, and one resolving it for itself.
+    'work/projects/p/bars/intro.tsx': "import { defineStoryboard } from '#lib/timing/storyboard/models/storyboard.ts';\nexport const plan = defineStoryboard({});\n",
+    'work/projects/p/bars/outro.tsx': "import { resolveStoryboard } from '#lib/timing/storyboard/models/resolve-storyboard.ts';\nexport const resolved = resolveStoryboard({});\n",
   });
-  assert.deepEqual(caught(findings), ['work/projects/p/bars/intro.tsx:beatSpan from ../../../../lib/timing/timeline/models/timeline.ts']);
+  assert.deepEqual(caught(findings), [
+    'work/projects/p/bars/intro.tsx:defineStoryboard from #lib/timing/storyboard/models/storyboard.ts',
+    'work/projects/p/bars/outro.tsx:resolveStoryboard from #lib/timing/storyboard/models/resolve-storyboard.ts',
+  ]);
 });

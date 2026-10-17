@@ -1,5 +1,5 @@
-// timeline.ts: a timed video's schedule, stated once in its project's timeline.ts and resolved here into the one result
-// the render, `studio clock` and the checks all read.
+// timeline.ts: a timed video's schedule, resolved into the one result everything reads. A project states it in its
+// storyboard.ts, which resolveStoryboard (lib/timing/storyboard/) builds a spec from.
 //
 // Each scene has exactly one driver: `beatSpan`, `fixedSpan` or `voiceSpan`. The beat scenes form one musical section
 // on one grid. A speech cue sits on a word, so a re-recorded line moves it. Landmarks throw at load where the table and
@@ -256,6 +256,10 @@ export type Timeline<Scenes extends AnyScenes = AnyScenes, Replays extends Repla
   musicBeats: readonly (number | null)[];
 };
 
+// An instant is a sum of hundredths of a second, so one on a half frame can land a hair either side of it, and a
+// scene a second longer would move what follows by 29 or 31 frames. Snapped to a millionth first, a half frame rounds up.
+const roundFrame = (frames: number) => Math.round(Number(frames.toFixed(6)));
+
 /** Resolves a timeline, or throws where it contradicts itself or its recordings. */
 export function defineTimeline<const Scenes extends AnyScenes, const Replays extends ReplayTable<Scenes> = {}>(
   spec: TimelineSpec<Scenes, Replays> & {
@@ -283,7 +287,7 @@ export function defineTimeline<const Scenes extends AnyScenes, const Replays ext
   const speaker = new Map<string, string>();
   const takeOf = (k: number, id: string): VoiceTake => {
     const take = voice[id];
-    if (!take) throw new Error(`scene ${keys[k]} speaks line ${id}, which the timeline's voice hasn't recorded: add it to voiceover.json and run studio voice`);
+    if (!take) throw new Error(`scene ${keys[k]} speaks line ${id}, which the timeline's voice has no take of`);
     if (!(take.duration > 0)) throw new Error(`line ${id} lasts ${take.duration} s`);
     const owner = speaker.get(id);
     if (owner !== undefined) throw new Error(`line ${id} is spoken in scene ${owner} and again in ${keys[k]}`);
@@ -303,8 +307,8 @@ export function defineTimeline<const Scenes extends AnyScenes, const Replays ext
   const sectionStart = musical.length ? nonMusicalBefore(musical[0]) : 0;
   const startBeat = spans.map((_, k) => spans.slice(musical[0] ?? 0, k).reduce((sum, span) => sum + (span.driver === 'beat' ? span.beats : 0), 0));
   const gridSeconds = (beat: number) => sectionStart + grid!.at(beat);
-  const beatFrame = (beat: number) => Math.round(gridSeconds(beat) * fps) - lead;
-  const plainFrame = (seconds: number) => Math.round(seconds * fps);
+  const beatFrame = (beat: number) => roundFrame(gridSeconds(beat) * fps) - lead;
+  const plainFrame = (seconds: number) => roundFrame(seconds * fps);
   const lastBeat = musical.length ? startBeat[musical.at(-1)!] + (spans[musical.at(-1)!] as BeatSpan).beats : 0;
   const sectionEnd = musical.length ? gridSeconds(lastBeat) : 0;
   const after = (k: number) => musical.length > 0 && k > musical.at(-1)!;
@@ -555,7 +559,7 @@ export type TimelineClockTable = {
   bars: {
     n: number; id: string; driver: SceneSpan['driver']; origin: number; from: number; to: number; visible: { from: number; to: number };
     beats: number; beatFrames: number[]; musicBeat: number | null;
-    /** Its cues, the replays landing in it, its landmarks and its lines, in frame order and timeline.ts's words. */
+    /** Its cues, the replays landing in it, its landmarks and its lines, in frame order and the plan's words. */
     moments: TimelineMoment[];
   }[];
   cues: Record<string, number>;

@@ -1,16 +1,18 @@
 // ─── (a) Timing ownership ─────────────────────────────────────────────
 //
-// A project builds its timing only in `timeline.ts`: no other project file
-// imports a timing constructor. Each imported name is followed to the module
-// that defines it, so `#studio`, a relative path into lib, a project helper
-// re-exporting it and a namespace import all reach the same verdict.
+// A project states its timing only in `storyboard.ts`, through
+// defineStoryboard: no other project file imports a timing constructor, and
+// none, storyboard.ts included, builds a timeline of its own. Each imported
+// name is followed to the module that defines it, so `#studio`, a relative
+// path into lib, a project helper re-exporting it and a namespace import all
+// reach the same verdict.
 //
 // A type-only import is left alone: it names the constructor's type and builds
 // nothing. A dynamic `import()` of a module offering a constructor is reported
 // unless it destructures names that aren't one. A computed `import(expr)` is
 // reported unless it destructures only names no constructor has.
 
-import { isTimingConstructor, TIMING_CONSTRUCTORS } from '../../policy/timing-constructors.ts';
+import { isStoryboardConstructor, isTimingConstructor, TIMING_CONSTRUCTORS } from '../../policy/timing-constructors.ts';
 import { walkAst, type AstNode } from '../source-tree.ts';
 import type { Finding, StructuralCheck } from '../check-context.ts';
 
@@ -22,15 +24,16 @@ export const timingOwnershipCheck: StructuralCheck = {
     const findings: Finding[] = [];
     for (const file of context.tree.sources) {
       const position = context.positionOf(file.path);
-      if (position.kind !== 'project' || position.role === 'timeline') continue;
-      const offers = (path: string, name: string) => context.originsOf(path, name).some(isTimingConstructor);
+      if (position.kind !== 'project') continue;
+      const allowed = (origin: { path: string; name: string }) => position.role === 'storyboard' && isStoryboardConstructor(origin);
+      const offers = (path: string, name: string) => context.originsOf(path, name).some((origin) => isTimingConstructor(origin) && !allowed(origin));
       const namespacesOf = (path: string, name: string) =>
         context.originsOf(path, name).filter((origin) => origin.name === '*').map((origin) => origin.path);
       for (const edge of context.edgesFrom(file)) {
         if (edge.scanned.typeOnly) continue;
         const report = (name: string, line: number) => findings.push({
           check: ID, path: file.path, line, key: `${name} from ${edge.scanned.specifier}`,
-          message: `imports the timing constructor ${name}; a project's timing is built in its timeline.ts`,
+          message: `imports the timing constructor ${name}; a project's timing is stated in its storyboard.ts, with defineStoryboard`,
         });
         if (edge.target.kind === 'computed') {
           // Its module is unknown, but names it destructures can still be told apart from every constructor's.

@@ -6,13 +6,13 @@ the music. This is the brief for building and proving one bar, whether you build
 
 Read first, from `${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/`: `reel-system.md` (the system, then the reference bar
 yours answers), `reel-critique.md` (the rules every bar is judged by) and `timing.md` (beats, cues, the picture's
-lead). Then the project's `storyboard.md` (what each bar does on which beat) and the docs of the pieces you'll use
+lead). Then the project's `storyboard.ts` (what each bar does on which beat) and the docs of the pieces you'll use
 (`studio api <name>`).
 
 ## On the beat
 
 Everything lands on a hit frame: cuts, arrivals, impacts, section labels. A bar reaches only its own beats
-(`clock.beat(n)`) and cues; another bar's moment is a cue in `timeline.ts`.
+(`clock.beat(n)`) and cues; another bar's moment is its cue, by name.
 
 - A cut or an instant change goes on the hit frame itself.
 - A move that has to *arrive* on a beat starts early, by 1–6 frames: an expo arrival does most of its travel in its
@@ -25,7 +25,7 @@ A bar is a pure function of its own frame, 0 on its beat 0 (negative before it, 
 like every scene. The finale may replay it live in a cell, and a replay plays silent, so:
 
 - **Sounds the picture lands** (a strike, a whip, a stamp) are placed on the video, `defineVideo({ sounds })`, at
-  the bar's beat plus `timeline.soundLagSeconds`, never as an `<Sfx>` inside the bar's render: a replay would drop
+  the bar's beat plus the storyboard's `soundLagSeconds`, never as an `<Sfx>` inside the bar's render: a replay would drop
   it, and a cut would stop a whip that runs across it.
 - **The HUD** sits over every bar and must read at its size on every frame. Have the bar say what it draws under each
   HUD part rather than guessing: `reelHudGrounds(box, groundAt)` samples the box into each ground's share, and
@@ -56,7 +56,7 @@ after each (each sound against the music, each beat frame's luma, the HUD's legi
 ## Building alongside others
 
 - Write only your bar's module and your scratch project. Read anything.
-- Leave the pieces, the timeline, `video.tsx` and other bars to the orchestrator: where a piece lacks something your
+- Leave the pieces, `storyboard.ts`, `video.tsx` and other bars to the orchestrator: where a piece lacks something your
   bar needs, work around it in your bar and name the gap in your report.
 - No paid calls, no `git add`, no commits.
 

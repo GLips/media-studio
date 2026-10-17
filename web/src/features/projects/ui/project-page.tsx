@@ -18,8 +18,8 @@ const styles = stylex.create({
   empty: { padding: spacing.inset, color: colors.dim },
 });
 
-/** The page's groups, in order: the project's own notes pinned first, then its files, decisions and script. */
-const PROJECT_PAGE_GROUPS = ['project', 'file', 'decision', 'script'] as const satisfies readonly ReviewProjectRow['on'][];
+/** The page's groups, in order: the project's own notes pinned first, then its files, decisions and plan. */
+const PROJECT_PAGE_GROUPS = ['project', 'file', 'decision', 'plan'] as const satisfies readonly ReviewProjectRow['on'][];
 
 const stillsIn = (rows: readonly ReviewProjectRow[]) => rows.filter((row) => row.on === 'file' && row.artifact.kind === 'still').length;
 
@@ -38,7 +38,7 @@ function projectPageRuns(rows: readonly ReviewProjectRow[]): { label?: string; r
 }
 
 /**
- * A project's page: its files by folder, its decisions and its script, each a row that opens it, a rule between kinds.
+ * A project's page: its files by folder, its decisions and its plan, each a row that opens it, a rule between kinds.
  * Files with notes waiting come first, in the folder with the most waiting first, then the newest; decisions keep open first.
  */
 export function ProjectPage({ project }: { readonly project: string }) {

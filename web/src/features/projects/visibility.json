@@ -1,5 +1,5 @@
 {
   "web/src/features/review": "The review screen is one of a project's screens: it reads the project pulse (revision, files, agent, render under way) that every screen of the project shares, and keys its own queries on it.",
-  "web/src/features/script": "The read-along is one of a project's screens: the project pulse says when the script or its take moved and whether an agent is watching.",
+  "web/src/features/plan": "The plan page is one of a project's screens: the project pulse says when storyboard.ts or the review moved, which render to link and whether an agent is watching.",
   "web/src/features/decisions": "The decisions screen is one of a project's screens: the project pulse's revision says when the decision changed, and its agent who is watching."
 }

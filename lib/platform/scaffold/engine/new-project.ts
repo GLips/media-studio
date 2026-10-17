@@ -3,8 +3,8 @@
 //
 // Writes work/projects/<yyyy-mm>-<slug>/ with a project.ts declaring the capability and a capture script, which films
 // the URL as `home` if given one and otherwise starts empty, for a site that needs a sign-in or a server first. A timed
-// project gets timeline.ts, its retime test and a scene file per scene, blocked in flat pieces on its cues. A
-// still-only one gets a stills.tsx registering one design.
+// project gets its plan in storyboard.ts and a scene file per scene, blocked in flat pieces on its cues. A still-only
+// one gets a stills.tsx registering one design.
 //
 // Negative space: it writes no render snapshot and no timing report; a project's first `studio render --animatic`
 // writes the snapshot `studio review` reads.
@@ -54,7 +54,7 @@ const CAPABILITY_NOTES: Record<ProjectCapability, string> = {
 };
 
 function projectDeclaration(title: string, capability: ProjectCapability) {
-  return `// What ${title} is: ${CAPABILITY_NOTES[capability]}. check:arch holds this to what the project binds (its timeline's
+  return `// What ${title} is: ${CAPABILITY_NOTES[capability]}. check:arch holds this to what the project binds (its storyboard's
 // grid and voice, its stills), so a project that takes on a part it didn't declare changes this line on purpose.
 import type { ProjectDeclaration } from '#lib/platform/project/models/capability.ts';
 

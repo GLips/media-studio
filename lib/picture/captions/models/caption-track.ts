@@ -1,6 +1,6 @@
 // caption-track.ts: what a video's captions say and when, before any style pages it: every word in video seconds,
 // in phrases. A voiced video's track is its timeline's lines as spoken, word for word; a silent one's is a caption
-// table in its timeline.ts, each row shown from its moment until the next.
+// table its video.tsx states (`captions: { table }`), each row shown from its moment until the next.
 //
 // Caption markup: `*word*` (or `*a few words*`) is emphasis and `` `key` `` a keycap, each a whole word. Negative
 // space: nothing else is markup, so a row's text is never HTML.
@@ -58,14 +58,16 @@ export type CaptionRowMoment<Cue extends string> = number | Cue | { cue: Cue; se
 /** A row of a caption table: from its moment to the next row's (or its scene's end), `text` in caption markup. */
 export type CaptionTableRow<Cue extends string> = readonly [from: CaptionRowMoment<Cue>, text: string];
 
+/** A caption table's rows, per scene of `Scenes`, each starting on a moment of its own scene. */
+export type CaptionTableRows<Scenes extends Readonly<Record<string, SceneSpan>>> = {
+  readonly [K in keyof Scenes & string]?: readonly CaptionTableRow<CueNamesOf<Scenes[K]>>[];
+};
+
 /**
- * A silent video's captions, stated in its timeline.ts: rows per scene, each a phrase of its own. A row's words share
- * its time by length, so a style that times words (pops) still steps through them.
+ * A silent video's captions, as its video.tsx states them and defineVideo times them: rows per scene, each a phrase
+ * of its own. A row's words share its time by length, so a style that times words (pops) still steps through them.
  */
-export function captionTable<const Scenes extends Readonly<Record<string, SceneSpan>>>(
-  timeline: Timeline<Scenes>,
-  rows: { readonly [K in keyof Scenes & string]?: readonly CaptionTableRow<CueNamesOf<Scenes[K]>>[] },
-): CaptionTrack {
+export function captionTable<const Scenes extends Readonly<Record<string, SceneSpan>>>(timeline: Timeline<Scenes>, rows: CaptionTableRows<Scenes>): CaptionTrack {
   const { fps } = timeline;
   return timeline.keys.flatMap((key) => {
     const scene = timeline.scene(key), sceneRows = rows[key] ?? [];

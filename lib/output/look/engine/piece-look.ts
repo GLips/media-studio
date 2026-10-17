@@ -1,6 +1,6 @@
 // piece-look.ts: `studio look --graph=models`. Loads a timed project's scene models (`bars/<id>-model.ts`,
 // `scenes/<id>-model.ts`, or one inside a scene's folder), binds each `definePieceTracks` to its scene's clock from
-// timeline.ts, and samples its pieces over the frames asked: a table a piece and a graph, with no render.
+// its resolved storyboard.ts, and samples its pieces over the frames asked: a table a piece and a graph, with no render.
 import { writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -22,7 +22,7 @@ const sceneModelFiles = (project: string) => listProjectSceneFiles(project).filt
  */
 export async function lookPieceModels(project: string, { frames, tracks, out }: { frames: readonly number[]; tracks?: readonly string[]; out: string }): Promise<string[]> {
   const timeline = await readProjectTimeline(project);
-  if (!timeline) throw new Error(`${project} has no timeline.ts: --graph=models binds each scene model to its scene's clock`);
+  if (!timeline) throw new Error(`${project} has no storyboard.ts: --graph=models binds each scene model to its scene's clock`);
   const files = sceneModelFiles(project);
   const definitions: PieceTracksDefinition[] = [];
   for (const file of files) {
@@ -33,7 +33,7 @@ export async function lookPieceModels(project: string, { frames, tracks, out }: 
     throw new Error(`${project} has no piece tracks: a scene model (bars/<id>-model.ts) exports one made with definePieceTracks`);
   }
   const scenes = definitions.map((d) => {
-    if (!timeline.keys.includes(d.scene)) throw new Error(`piece tracks for scene ${d.scene}, which timeline.ts doesn't have: its scenes are ${timeline.keys.join(', ')}`);
+    if (!timeline.keys.includes(d.scene)) throw new Error(`piece tracks for scene ${d.scene}, which storyboard.ts doesn't have: its scenes are ${timeline.keys.join(', ')}`);
     return { scene: timeline.scene(d.scene), pieces: d.bind(timeline.clock(d.scene)) };
   });
   const sampled = samplePieceTracks(scenes, frames, tracks);

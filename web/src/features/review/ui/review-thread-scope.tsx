@@ -40,6 +40,8 @@ export type ReviewThreadScope = {
   timeNow?: () => number;
   /** The listed notes as the markdown an agent acts on (`Mod+Shift+C`); absent where there's no file to hand off. */
   markdownOf?: (threads: readonly PlacedReviewThread[]) => string;
+  /** What the group of notes with no place here is called; `unplaced` by default (a render's), `moved or removed` on the plan. */
+  unplacedLabel?: string;
 };
 
 const ReviewThreadScopeContext = createContext<ReviewThreadScope | null>(null);

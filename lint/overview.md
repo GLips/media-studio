@@ -68,7 +68,7 @@ Studio: the checks written for this repo's own shape. All structural, all over t
 |---|---|
 | declared-tree | every source file sits at a position studio-tree.ts declares |
 | import-policy | projects never import each other; lib crossings use `#lib/*`; studio never reaches engine; work/ stays private; the web app's rows: a feature is reached through its barrel, its layers import downward, shared and infrastructure never import upward, only `WEB_ENGINE_DOOR` reaches engine code, and client code reaches `.server` modules only from a feature's controllers |
-| timing-ownership, scene-ownership, retime-registration | a project builds timing only in timeline.ts; a scene reaches only its own folder, shared modules and the timeline; every timeline registers with the retime runner |
+| timing-ownership, scene-ownership | a project states timing only in storyboard.ts, with defineStoryboard, and builds no timeline; a scene reaches only its own folder, shared modules and the storyboard |
 | model-purity | a model reaches no render, I/O or browser code through any chain |
 | frame-determinism | a frame never reads a clock or randomness |
 | capability-match | a project binds what its capability declares |

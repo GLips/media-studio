@@ -38,8 +38,6 @@ const styles = stylex.create({
   notes: { height: typography.lineHeight, flexShrink: 0 },
   voice: { height: typography.lineHeight, flexShrink: 0 },
   sound: { height: '32px', flexShrink: 0 },
-  // Under the script, where the dock is the only picture of the take, the waveform gets room to read its shape.
-  soundTall: { height: '64px', flexShrink: 0 },
   folded: { height: spacing.tight, flexShrink: 0 },
   overview: { position: 'relative', height: spacing.tight, flexShrink: 0, backgroundColor: { default: colors.laneA, ':hover': colors.raised } },
   overviewSpacer: { height: spacing.tight, flexShrink: 0 },
@@ -79,19 +77,16 @@ const toggled = (lanes: ReadonlySet<ReviewLaneId>, lane: ReviewLaneId) =>
 
 /**
  * The timeline under the stage, the whole of it a scrubber: ruler, scenes, marks, notes, voice and sound, each with
- * its glyph in the gutter. `tall` gives the sound lane twice the height, for a screen with no stage above it. The playhead is CSS on the clock's `--review-frame`, so playing renders nothing here.
+ * its glyph in the gutter. The playhead is CSS on the clock's `--review-frame`, so playing renders nothing here.
  */
-export function ReviewDock({ lanes: wanted, tall = false }: { readonly lanes?: readonly ReviewLaneId[]; readonly tall?: boolean }) {
+export function ReviewDock({ lanes: wanted }: { readonly lanes?: readonly ReviewLaneId[] }) {
   const { timing, playback } = useReviewScreen();
   const data = useReviewDockLanes(wanted);
   const [folded, setFolded] = useState<ReadonlySet<ReviewLaneId>>(new Set());
   const { view, attachLanes, lanes, setView, hover } = useReviewTimelineViewport(playback);
   const scrub = useReviewDockScrub(view, lanes);
   const frame = useReviewFrame();
-  const heightOf = (lane: ReviewLaneId) => {
-    if (folded.has(lane)) return styles.folded;
-    return tall && lane === 'sound' ? styles.soundTall : styles[lane];
-  };
+  const heightOf = (lane: ReviewLaneId) => (folded.has(lane) ? styles.folded : styles[lane]);
   return (
     <Box role="slider" tabIndex={0} aria-label="Timeline" aria-valuemin={0} aria-valuemax={timing.durationInFrames - 1} aria-valuenow={frame}
       aria-valuetext={`${formatReviewTimecode(frame, timing.fps)}, frame ${frame}`} onPointerDown={scrub.onPointerDown}

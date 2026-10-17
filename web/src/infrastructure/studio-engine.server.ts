@@ -16,7 +16,6 @@ export { readReviewSplices } from '#lib/output/review/engine/review-splices.ts';
 export { runInReviewCutQueue } from '#lib/output/review/engine/review-cut-queue.ts';
 export { reviewPeaksFileOf } from '#lib/output/review/engine/review-peaks.ts';
 export { listReviewRenderVersions, type ReviewRenderVersion } from '#lib/output/review/engine/review-history.ts';
-export { readReviewScript, type ReviewScript } from '#lib/output/review/engine/review-script-source.ts';
 export { summarizeReviewProjects, type ReviewProjectSummary } from '#lib/output/review/engine/review-dashboard.ts';
 
 /** The server's Board and thumbnail stills, cut on demand and kept for its life: removed with its process's temp root. */

@@ -41,9 +41,10 @@ const StillAnchorFields = {
   on: Schema.Literal('still'), point: Schema.optionalKey(ReviewPointSchema), marks: Schema.optionalKey(Schema.mutable(Schema.Array(ReviewMarkSchema))),
   cell: Schema.optionalKey(Schema.String),
 };
-const ScriptAnchor = Schema.Struct({
-  on: Schema.Literal('script'), scriptHash: Schema.String, line: Schema.String, word: Schema.optionalKey(FrameNumber), wordEnd: Schema.optionalKey(FrameNumber),
-  text: Schema.optionalKey(Schema.String), take: Schema.optionalKey(Schema.String),
+const PlanAnchor = Schema.Struct({
+  on: Schema.Literal('plan'), planHash: Schema.String, scene: Schema.optionalKey(Schema.String), section: Schema.optionalKey(Schema.String),
+  field: Schema.Literals(['brief', 'scene', 'onScreen', 'motion', 'reads', 'line', 'leftOut']), line: Schema.optionalKey(Schema.String),
+  text: Schema.optionalKey(Schema.String),
 });
 const DecisionAnchor = Schema.Struct({
   on: Schema.Literal('decision'), decision: Id, candidate: Schema.optionalKey(Schema.String),
@@ -53,18 +54,18 @@ const ProjectAnchor = Schema.Struct({ on: Schema.Literal('project') });
 
 const NewVideoAnchor = Schema.Struct({ ...VideoAnchorFields, writtenOn: RenderRef });
 const NewStillAnchor = Schema.Struct({ ...StillAnchorFields, writtenOn: RenderRef });
-const NewAnchorSchema = Schema.Union([NewVideoAnchor, NewStillAnchor, ScriptAnchor, DecisionAnchor, ProjectAnchor]);
+const NewAnchorSchema = Schema.Union([NewVideoAnchor, NewStillAnchor, PlanAnchor, DecisionAnchor, ProjectAnchor]);
 /** An edit moves part of an anchor: each variant with every field optional. */
 const everyFieldOptional = Struct.map(Schema.optionalKey);
 const NewAnchorPatch = Schema.Union([
-  NewVideoAnchor.mapFields(everyFieldOptional), NewStillAnchor.mapFields(everyFieldOptional), ScriptAnchor.mapFields(everyFieldOptional),
+  NewVideoAnchor.mapFields(everyFieldOptional), NewStillAnchor.mapFields(everyFieldOptional), PlanAnchor.mapFields(everyFieldOptional),
   DecisionAnchor.mapFields(everyFieldOptional), ProjectAnchor.mapFields(everyFieldOptional),
 ]);
 
 const ReviewAnchorSchema = Schema.Union([
   Schema.Struct({ ...VideoAnchorFields, writtenOn: WrittenOn, image: Schema.optionalKey(Schema.String) }),
   Schema.Struct({ ...StillAnchorFields, writtenOn: WrittenOn, image: Schema.optionalKey(Schema.String) }),
-  ScriptAnchor, DecisionAnchor, ProjectAnchor,
+  PlanAnchor, DecisionAnchor, ProjectAnchor,
 ]);
 
 const Kind = Schema.Literals(['fix', 'question', 'keep']);
@@ -95,7 +96,7 @@ const ReviewOpSchema = Schema.Union([
   Schema.Struct({
     op: Schema.Literal('signoff'),
     signoff: Schema.Union([
-      Schema.Struct({ on: Schema.Literal('script'), hash: Schema.String, at: Schema.String }),
+      Schema.Struct({ on: Schema.Literal('plan'), scene: Schema.String, hash: Schema.String, at: Schema.String }),
       Schema.Struct({ on: Schema.Literal('render'), path: Schema.String, hash: Schema.String, rung: Schema.optionalKey(Rung), at: Schema.String }),
     ]),
   }),

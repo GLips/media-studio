@@ -2,9 +2,9 @@
 //
 // Advisory. `x.test.ts` pairs with an `x.ts`/`x.tsx` in its folder, so a search
 // for the module turns up the spec that constrains it; one qualifier is part of
-// the convention (`x.integration.test.ts` covers `x.ts`). A project's
-// `timeline.test.ts` is its retime runner and pairs with `timeline.ts` like any
-// other. `.spec.` and `test_` names are reported too: they sit beside their
+// the convention (`x.integration.test.ts` covers `x.ts`). A project's spec
+// pairs with its root module (`video.test.ts`, `video.tsx`) like any other.
+// `.spec.` and `test_` names are reported too: they sit beside their
 // module but don't come up in a search for `.test.`.
 //
 // Never asks whether a module has a spec: many rightly have none. The tree

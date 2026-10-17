@@ -1,7 +1,6 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import type { ReviewArtifact } from '#lib/output/review/models/review-artifact.ts';
 import type { ReviewGuideSet } from '#lib/output/review/models/review-guides.ts';
-import type { ReviewScriptLine } from '#lib/output/review/models/review-script.ts';
 import type { ProjectPulse } from '#web/features/projects/index.ts';
 import type { ReviewSearch, SetReviewSearch } from '../controllers/review-search.ts';
 import { useReviewPlaybackState, type ReviewPlayback } from './review-playback-store.ts';
@@ -20,8 +19,6 @@ export type ReviewScreenValue = {
   timing: ReviewScreenTiming;
   /** The project's pulse, polled each second: the review's revision, its files on disk, the agent, a render under way. */
   pulse: ProjectPulse;
-  /** On the script's read-along, its lines: its threads are placed on them, as notes on the voice take. */
-  scriptLines?: readonly ReviewScriptLine[];
   playback: ReviewPlayback;
   draft: ReviewDraft;
   search: ReviewSearch;

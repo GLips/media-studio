@@ -1,10 +1,11 @@
 // capability.ts: what a project is made of, declared once in its project.ts (`studio new` writes it) and held by
 // check:arch's capability match to what the project actually binds.
 //
-// A project's parts: music, when its timeline.ts cuts scenes to a beat grid; voice, when its timeline.ts lays scenes
-// on recorded lines; stills, when its stills.tsx registers designs. One part names its capability; two or more make
-// it mixed. A music bed under a voice is sound, not a part: the voice still sets the timing. A timeline with neither
-// is a silent video on fixed spans: it plays no voice, music or sound at all, and delivers with no audio track.
+// A project's parts: music, when its storyboard.ts cuts scenes to a beat grid; voice, when its storyboard.ts names
+// the voice its lines are read in; stills, when its stills.tsx registers designs. One part names its capability; two
+// or more make it mixed. A music bed under a voice is sound, not a part: the voice still sets the timing. A
+// storyboard with neither is a silent video on fixed spans: it plays no voice, music or sound at all, and delivers
+// with no audio track.
 
 export const PROJECT_CAPABILITIES = ['music-led', 'voice-led', 'still-only', 'mixed', 'silent'] as const;
 export type ProjectCapability = (typeof PROJECT_CAPABILITIES)[number];

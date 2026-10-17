@@ -182,7 +182,7 @@ function trackSecondsAt(bed: MusicBed, t: number): number {
  * Null unless the video has both. Sources are files: `src` is a file URL, as it is when the video loads in Node.
  */
 export function checkVideoSoundsAgainstMusic(video: VideoDef): VideoSoundCheck | null {
-  const bed = video.music, sounds = video.sounds ?? [];
+  const bed = video.bed, sounds = video.sounds ?? [];
   if (!bed || !sounds.length) return null;
   const { fps } = videoFormatOf(video);
   const tl = laidVideoOf(video), videoSeconds = tl.frames / fps;

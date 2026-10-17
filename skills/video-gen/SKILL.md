@@ -29,9 +29,8 @@ const COUNTER: BlockoutSubject[] = [
   { shape: 'cylinder', at: [0.25, 0.9, 0.12], size: [0.09, 0.1, 0.09], color: '#e8e4dc' },
 ];
 
-// timeline.ts: `orbit: fixedSpan(5)`
-const orbit = (clock: TimelineSceneClock<typeof timeline, 'orbit'>) => sceneForTimelineClock(clock, {
-  note: 'An 80° orbit around the counter, the machine turning from three-quarter to profile.',
+// storyboard.ts: `orbit: { onScreen: 'An 80° orbit around the counter, …', motion, seconds: 5 }`; onScreen is its note
+const orbit = (clock: StoryboardSceneClock<typeof storyboard, 'orbit'>) => sceneForTimelineClock(clock, {
   previs: {
     blockout: '3d',
     prompt: 'A small café in the morning. The long stone-grey block is a pale oak and concrete counter; the orange box '
@@ -44,7 +43,7 @@ const orbit = (clock: TimelineSceneClock<typeof timeline, 'orbit'>) => sceneForT
 });
 ```
 
-A flat shot (a layout assembling, type and panels moving) is blocked in 2D with `blockingScene(clock, { note, pieces,
+A flat shot (a layout assembling, type and panels moving) is blocked in 2D with `blockingScene(clock, { pieces,
 previs: { prompt } })` (video-motion covers flat blocking), and its prompt names each piece by its tint or label. The
 rest of this section is the 3D blockout's.
 

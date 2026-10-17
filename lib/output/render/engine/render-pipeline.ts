@@ -314,7 +314,7 @@ const draftVoiceWarning = (session: RenderSession) => `
 const beatClicksWarning = (session: RenderSession) => `
 !!!! DRAFT CLICKS: this video is cut to a tempo grid and plays no music yet, so a click marks each beat. It's for timing.
 !!!! Give it its track: studio music add ${basename(session.project)} <track>, studio music fit --bars, then
-!!!! recordedGrid in timeline.ts and \`music: { track }\` in video.tsx
+!!!! \`grid: { music: '<fit>' }\` in storyboard.ts and \`bed: { track: music['<fit>'] }\` in video.tsx
 `;
 
 /**

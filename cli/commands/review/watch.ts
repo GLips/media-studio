@@ -20,7 +20,7 @@ const reviewWatchArgs = {
   project: studioProjectArg,
   settle: { type: 'string', default: '3s', description: 'Quiet to wait for after the first change, so a burst of notes comes as one' },
   timeout: { type: 'string', valueHint: '30m', description: `Give up after this long with no change, exiting ${REVIEW_WATCH_TIMEOUT_EXIT}; waits for good by default` },
-  render: { type: 'string', valueHint: 'out/video.mp4', description: 'The render or still to place notes on; the newest full render by default, with the reply slices laid into it' },
+  render: { type: 'string', valueHint: 'out/video.mp4', description: 'The render or still to place notes on; the newest full render by default, with the reply slices laid into it. Plan notes are placed on storyboard.ts' },
   json: { type: 'boolean', description: 'Print { revision, changed, decisions } as JSON instead of markdown' },
 } as const satisfies ArgsDef;
 
@@ -41,7 +41,8 @@ export const reviewWatchCommand = defineCommand({
     const { waitForReviewChange } = await import('#lib/output/review/engine/review-watch.ts');
     const handoffs = await import('#lib/output/review/engine/review-handoff.ts');
     const dir = resolveStudioProject(args.project), project = basename(dir);
-    // Found before blocking, so a missing render fails now, and read after: it may be rendered again meanwhile.
+    // Found before blocking, so a missing --render fails now, and read after: it may be rendered again meanwhile. Before
+    // the first render there is none, and the plan's notes are placed on the storyboard alone.
     const renderPath = handoffs.reviewHandoffRenderOf(project, args.render);
     process.stderr.write(`watching ${project}'s review${timeoutMs === undefined ? '' : ` for ${args.timeout}`}\n`);
     const change = await waitForReviewChange({ projectDir: dir, settleMs, ...(timeoutMs !== undefined && { timeoutMs }) });
@@ -52,7 +53,7 @@ export const reviewWatchCommand = defineCommand({
     }
     // The watch hands threads back as stored; placed here on the render, as `notes` places them.
     const handoff = handoffs.openReviewHandoff(project, renderPath);
-    const changed = handoffs.placeReviewHandoff(handoff, change.changed);
+    const changed = await handoffs.placeReviewHandoff(handoff, change.changed);
     if (args.json) {
       console.log(JSON.stringify({ revision: change.revision, changed, decisions: change.decisions }, null, 2));
       return;

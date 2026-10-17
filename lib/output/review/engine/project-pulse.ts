@@ -1,5 +1,5 @@
 // project-pulse.ts: what every screen of the app polls once a second, one poll a project: the review's revision, its
-// files with their hashes, the script's hashes, whether an agent is watching and whether a render is under way. Every
+// files with their hashes, the plan's hashes, whether an agent is watching and whether a render is under way. Every
 // other query is fetched once per part of it that moved (models/project-pulse.ts), so the screens never disagree.
 // Each part costs a stat while nothing changes: hashes are cached by mtime (renderFileStamp), the review file by inode.
 //
@@ -30,12 +30,12 @@ export type ProjectPulse = Omit<ProjectPulseFacts, 'files'> & {
   rendering?: RenderProgress;
 };
 
-/** Each file readReviewScript reads, by its hash. */
-function scriptPulseOf(dir: string): ProjectPulse['script'] {
-  const voiceover = join(dir, 'voiceover.json');
-  if (!existsSync(voiceover)) return null;
+/** The files the plan is timed from, by their hashes. */
+function planPulseOf(dir: string): ProjectPulse['plan'] {
+  const storyboard = join(dir, 'storyboard.ts');
+  if (!existsSync(storyboard)) return null;
   const hashOf = (...path: string[]) => (existsSync(join(dir, ...path)) ? renderFileStamp(join(dir, ...path)).hash : null);
-  return { voiceover: renderFileStamp(voiceover).hash, take: hashOf('audio', 'take.wav'), heard: hashOf('audio', 'take.json'), manifest: hashOf('audio', 'manifest.json') };
+  return { storyboard: renderFileStamp(storyboard).hash, manifest: hashOf('audio', 'manifest.json'), take: hashOf('audio', 'take.wav') };
 }
 
 /** `project`'s pulse, by its folder name under work/projects/. */
@@ -45,7 +45,7 @@ export function readProjectPulse(project: string): ProjectPulse {
   return {
     revision: readReviewFile(dir).revision,
     files: listProjectArtifacts(project).map((artifact): ProjectPulseFile => Object.assign(artifact, { hash: renderFileStamp(resolveProjectMedia(project, artifact.path)).hash })),
-    script: scriptPulseOf(dir),
+    plan: planPulseOf(dir),
     ...(agent && { agent }), ...(rendering && { rendering }),
   };
 }

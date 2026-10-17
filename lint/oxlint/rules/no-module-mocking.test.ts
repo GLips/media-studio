@@ -5,7 +5,7 @@ import { noModuleMockingRule } from "./no-module-mocking.ts";
 // other rule here skips.
 const SPEC = "web/src/features/billing/service/invoices.test.ts";
 const SERVICE = "web/src/features/billing/service/invoices.ts";
-const PROJECT_SPEC = "work/projects/launch/timeline.test.ts";
+const PROJECT_SPEC = "work/projects/launch/storyboard.test.ts";
 
 describeRule("no-module-mocking", noModuleMockingRule, {
   obvious: [
@@ -34,7 +34,7 @@ describeRule("no-module-mocking", noModuleMockingRule, {
     {
       name: "a project's retime spec, far from the web app",
       filename: PROJECT_SPEC,
-      code: `vi.mock("./timeline.ts");`,
+      code: `vi.mock("./storyboard.ts");`,
       errors: [{ messageId: "moduleMock" }],
     },
     {

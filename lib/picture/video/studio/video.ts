@@ -1,16 +1,20 @@
-// timeline.ts: a video as its project defines it (defineVideo): the scenes bound to its timeline, its voice, music and
-// sounds. The schedule is the timeline's alone (lib/timing/timeline/models/timeline.ts); laidVideoOf only pairs each
-// scene's picture with where the timeline placed it (video-layout.ts).
+// video.ts: a video as its project defines it (defineVideo): its storyboard resolved against the recorded voice and
+// the music, each scene's picture bound to the clock that gives it, and its music bed and sounds. The schedule is the
+// storyboard's alone (lib/timing/storyboard/); laidVideoOf only pairs each scene's picture with where the resolved
+// timeline placed it (video-layout.ts).
 
 import type { ReactNode } from 'react';
 import { DEFAULT_VIDEO_FORMAT, type VideoFormat } from '#lib/picture/frame/models/frame.ts';
 import type { MusicBed } from '#lib/timing/sound/models/mix.ts';
+import { resolveStoryboard, storyboardDiagnosticsMessage, type StoryboardMusic } from '#lib/timing/storyboard/models/resolve-storyboard.ts';
+import type { Storyboard, StoryboardTimelineScenes, TimelineOfStoryboard } from '#lib/timing/storyboard/models/storyboard.ts';
+import { bindTimeline, type TimelineBinding } from '#lib/timing/timeline/models/bind-timeline.ts';
 import type { SceneRung } from '#lib/timing/timeline/models/scene-rung.ts';
 import type { Timeline } from '#lib/timing/timeline/models/timeline.ts';
 import { videoLayoutOf, type SceneClock, type ScenePlacement, type SceneTimes, type VideoLayout } from '#lib/timing/timeline/models/video-layout.ts';
-import type { Voice } from '#lib/timing/voice/models/voice-manifest.ts';
+import type { RecordedVoice, Voice } from '#lib/timing/voice/models/voice-manifest.ts';
 import type { SfxSound } from '#lib/timing/sound/studio/sfx.tsx';
-import type { CaptionTrack } from '#lib/picture/captions/models/caption-track.ts';
+import { captionTable, type CaptionTableRows, type CaptionTrack } from '#lib/picture/captions/models/caption-track.ts';
 import type { CaptionStyle } from '#lib/picture/captions/studio/caption-style.tsx';
 
 /**
@@ -55,11 +59,9 @@ export type ScenePrevis = {
   }
 );
 
-/** A scene's picture, bound to its timeline scene by `sceneForTimelineClock`. Its timing is the timeline's. */
+/** A scene's picture, bound to its storyboard scene by `sceneForTimelineClock`. Its timing is the storyboard's. */
 export type SceneDef = {
   id: string;
-  /** What the shot shows and why, in a sentence, for the storyboard. */
-  note?: string;
   /** How far up the fidelity ladder it is. Undeclared, the snapshot and review name no rung for it rather than guess one. */
   rung?: SceneRung;
   previs?: ScenePrevis;
@@ -67,11 +69,12 @@ export type SceneDef = {
   expect?(s: SceneTimes): readonly SceneExpectation[];
 };
 
-export type VideoDef = {
+/** What a project's video.tsx states, beside its scenes: its look, its sound, how it renders. */
+type VideoSettings = {
   title: string;
   /**
    * Its size, defaulting to 1920×1080: `{ width: 1080, height: 1920 }` for a vertical cut, `{ transparent: true }` for
-   * an overlay. It plays at its timeline's fps (`defineTimeline({ fps })`); a rate named here must agree with it.
+   * an overlay. It plays at its storyboard's fps (`fps` on defineStoryboard); a rate named here must agree with it.
    */
   format?: Partial<VideoFormat>;
   /**
@@ -80,20 +83,8 @@ export type VideoDef = {
    * device of its own.
    */
   renderWorkers?: number;
-  /** The project's timeline.ts `timeline`: where every scene and line falls. */
-  timeline: Timeline;
-  /** Its scenes, in the timeline's order: `bindTimeline(timeline, { … })`. */
-  scenes: readonly SceneDef[];
-  /** The recorded lines the timeline places (audio/manifest.ts's `voice`); `{}` for a video with none. */
-  voice: Voice;
-  /**
-   * How it's captioned: a `style` (`pillCaptions()` unless named, or `wordPopCaptions()`), and for a silent video the
-   * `table` its timeline.ts states (`captionTable`). A voiced video captions its lines. The .srt and .vtt page the same
-   * track by the style's sidecar rule.
-   */
-  captions?: { style?: CaptionStyle; table?: CaptionTrack };
-  /** A music bed under the whole video, ducked under the voice. See `studio music`. */
-  music?: MusicBed;
+  /** A music bed under the whole video, ducked under the voice: `bed: { track: music.bed }`. See `studio music`. */
+  bed?: MusicBed;
   /**
    * Play the project's sound-effect cue list, sfx/cues.json, which `studio sfx draft` writes. It plays the clicks,
    * keys, scene changes, camera moves and reveals, so the CursorPath and TakeCursor `<Sfx>` go silent; sounds a scene
@@ -113,15 +104,59 @@ export type VideoDef = {
   clock?: string;
 };
 
+/** What `defineVideo` takes: the storyboard, what it's timed against, and a binding per scene. */
+export type VideoSpec<S extends Storyboard> = VideoSettings & {
+  /**
+   * How it's captioned: a `style` (`pillCaptions()` unless named, or `wordPopCaptions()`), and for a silent video a
+   * `table` of rows per scene, each from a moment of its scene, which defineVideo times on the resolved storyboard. A
+   * voiced video captions its lines. The .srt and .vtt page the same track by the style's sidecar rule.
+   */
+  captions?: { style?: CaptionStyle; table?: CaptionTableRows<StoryboardTimelineScenes<S['scenes']>> };
+  /** The project's storyboard.ts `storyboard`: every scene, line and cue, and so where each falls. */
+  storyboard: S;
+  /** audio/manifest.ts's `voice`, the recorded lines; leave it out for a video with none yet. */
+  voice?: RecordedVoice;
+  /** music/index.ts's `music`, which a `{ music }` grid is fitted to. */
+  music?: StoryboardMusic;
+  /**
+   * Each scene's picture, keyed by its storyboard id: a binding gets its scene's clock and, for a scene that replays
+   * others, their bindings (bind-timeline.ts).
+   */
+  scenes: { readonly [K in keyof S['scenes'] & string]: TimelineBinding<TimelineOfStoryboard<S>, K, SceneDef> };
+};
+
+/** A video resolved: its storyboard's timeline, every line it places (estimated ones with no `src`), its scenes bound. */
+export type VideoDef = VideoSettings & {
+  /** Its caption style, and a silent video's table timed to the frame. */
+  captions?: { style?: CaptionStyle; table?: CaptionTrack };
+  storyboard: Storyboard;
+  timeline: Timeline;
+  voice: Voice;
+  /** Its scenes, in the timeline's order. */
+  scenes: readonly SceneDef[];
+};
+
 /** A sound in `VideoDef.sounds`. Given several takes, `id` picks one, as `<Sfx>`'s does. */
 export type VideoSound = { at: number; sound: SfxSound | readonly SfxSound[]; id?: string | number; volume?: number };
 
-export const defineVideo = (video: VideoDef): VideoDef => video;
+/**
+ * The project's video: its storyboard resolved against `voice` and `music`, and each scene bound to its clock. Throws,
+ * listing every diagnostic, unless the storyboard resolves cleanly: a cue whose word has gone stops it here.
+ */
+export function defineVideo<const S extends Storyboard>({ storyboard, voice, music, scenes, captions, ...settings }: VideoSpec<S>): VideoDef {
+  const { timeline, voice: placed, diagnostics } = resolveStoryboard(storyboard, { voice, music });
+  if (!timeline || diagnostics.length) throw new Error(storyboardDiagnosticsMessage(`the storyboard of ${settings.title}`, diagnostics));
+  const table = captions?.table && captionTable(timeline, captions.table);
+  return {
+    ...settings, ...(captions && { captions: { style: captions.style, table } }),
+    storyboard, timeline, voice: placed, scenes: bindTimeline(timeline, scenes),
+  };
+}
 
 /** The format the video renders at: its timeline's fps, and what it names or the defaults for the rest. */
 export function videoFormatOf(video: VideoDef): VideoFormat {
   const { fps } = video.timeline, named = video.format?.fps;
-  if (named !== undefined && named !== fps) throw new Error(`the video names ${named} fps, but its timeline resolves at ${fps}: set the rate on defineTimeline({ fps }) alone`);
+  if (named !== undefined && named !== fps) throw new Error(`the video names ${named} fps, but its storyboard resolves at ${fps}: set the rate on defineStoryboard({ fps }) alone`);
   const format = { ...DEFAULT_VIDEO_FORMAT, ...video.format, fps };
   for (const key of ['width', 'height'] as const) {
     const value = format[key];
@@ -132,14 +167,13 @@ export function videoFormatOf(video: VideoDef): VideoFormat {
   return format;
 }
 
-/** A scene's picture where the timeline placed it. */
-export type LaidScene = SceneDef & ScenePlacement;
+/** A scene's picture where the timeline placed it, with its storyboard row's on-screen as its note. */
+export type LaidScene = SceneDef & ScenePlacement & { note: string };
 export type LaidVideo = Omit<VideoLayout, 'scenes'> & { scenes: readonly LaidScene[] };
 
-/** Each of the video's scenes paired with its place on the timeline; throws unless they're the timeline's scenes, in order. */
+/** Each of the video's scenes paired with its place on the timeline. defineVideo bound them in the timeline's order. */
 export function laidVideoOf(video: VideoDef): LaidVideo {
   const layout = videoLayoutOf(video.timeline, video.voice);
-  const ids = video.scenes.map((scene) => scene.id), keys = layout.scenes.map((scene) => scene.id);
-  if (ids.join('\n') !== keys.join('\n')) throw new Error(`the video's scenes are ${ids.join(', ')}, but its timeline's are ${keys.join(', ')}: bind them with bindTimeline`);
-  return { ...layout, scenes: layout.scenes.map((placed, k) => ({ ...video.scenes[k], ...placed })) };
+  const scenes = layout.scenes.map((placed, k): LaidScene => Object.assign({}, video.scenes[k], placed, { note: video.storyboard.scenes[placed.id].onScreen }));
+  return { ...layout, scenes };
 }

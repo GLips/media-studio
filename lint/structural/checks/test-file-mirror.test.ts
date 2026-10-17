@@ -10,8 +10,8 @@ test('a spec pairs with the module it is named for, beside it; off-convention na
     'lib/timing/sound/models/mix.levels.test.ts': 'export {};\n',
     'lib/picture/kit/studio/wheel.tsx': 'export {};\n',
     'lib/picture/kit/studio/wheel.test.ts': 'export {};\n',
-    'work/projects/p/timeline.ts': 'export {};\n',
-    'work/projects/p/timeline.test.ts': 'export {};\n',
+    'work/projects/p/storyboard.ts': 'export {};\n',
+    'work/projects/p/storyboard.test.ts': 'export {};\n',
     // Obvious: no module beside it. Adversarial: its module in another folder; a dotted folder isn't a qualifier.
     'lib/timing/sound/models/cues.test.ts': 'export {};\n',
     'lib/timing/sound/engine/mix.test.ts': 'export {};\n',

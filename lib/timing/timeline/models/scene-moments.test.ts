@@ -6,7 +6,7 @@ import { beatSpan, defineTimeline, recordedGrid } from './timeline.ts';
 // 120 BPM from 0.5 s: 15 frames a beat, bars on beats 0, 4 and 8. Two four-beat scenes end on the final hit, beat 8.
 const track = { bpm: 120, duration: 5.5, beats: Array.from({ length: 11 }, (_, i) => 0.5 + i * 0.5), fit: { downbeats: [0.5, 2.5, 4.5] } };
 
-test('each scene names its moments in timeline.ts\'s words, in frame order', () => {
+test('each scene names its moments in the plan\'s words, in frame order', () => {
   const timeline = defineTimeline({
     grid: recordedGrid(track, { steady: true }), pictureLeadFrames: 2,
     scenes: {

@@ -7,7 +7,7 @@ const add = defineCommand({
   meta: {
     name: 'add',
     description: "Copy a track into the project's music/, measuring its loudness, tempo and beats.",
-    about: "Writes music/index.ts; the video plays it as defineVideo({ music: { track: music.bed } }). Prints music/index.ts.",
+    about: "Writes music/index.ts; the video plays it as defineVideo({ bed: { track: music.bed } }). Prints music/index.ts.",
   },
   args: {
     project: studioProjectArg,

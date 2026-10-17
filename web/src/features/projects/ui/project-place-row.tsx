@@ -3,6 +3,7 @@ import * as stylex from '@stylexjs/stylex';
 import { MessageSquare, ScrollText, Split } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { ReviewProjectRow, ReviewProjectSummary } from '#lib/output/review/models/review-dashboard.ts';
+import { useProjectPlanSignoffs, type ProjectPlanSignoffs } from '#web/features/storyboard/index.ts';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { Readout } from '#web/shared/ui/readout.tsx';
 import { colors, fonts } from '#web/shared/ui/theme.stylex.ts';
@@ -17,7 +18,7 @@ const styles = stylex.create({
 
 const GLYPH_SIZE = 14;
 
-/** `✓` after a settled decision or a signed script, its word in the tooltip. What still waits tints its glyph instead. */
+/** `✓` after a settled decision or a fully signed plan, its word in the tooltip. What still waits tints its glyph instead. */
 function SettledMark({ name }: { readonly name: string }) {
   return (
     <HotkeyTooltip name={name}>
@@ -28,13 +29,32 @@ function SettledMark({ name }: { readonly name: string }) {
 
 type PlaceView = { target: ProjectRowTarget; thumbnail: ReactNode; title: ReactNode; marks?: ReactNode; end?: ReactNode };
 
-/** What waits on the reviewer in an unsigned script, said beside it and in its glyph's tooltip. */
-const SCRIPT_WAITING = { signed: undefined, unsigned: 'not signed off', stale: 'changed since signed off' } as const;
+type PlanRow = Extract<ReviewProjectRow, { on: 'plan' }>;
+
+/**
+ * `plan · 3 of 4 signed`, and what waits in its glyph's tooltip: a scene unsigned or changed since signed off. Until
+ * the storyboard resolves, or when it doesn't, the row says `plan` alone and waits on nothing.
+ */
+function planViewOf(project: string, row: PlanRow, signoffs: ProjectPlanSignoffs | null, now: number): PlaceView {
+  const signed = signoffs?.filter((s) => s.state === 'signed').length ?? 0;
+  const stale = signoffs?.filter((s) => s.state === 'stale').length ?? 0;
+  const all = signoffs !== null && signoffs.length > 0 && signed === signoffs.length;
+  const unsettled = stale > 0 ? `${stale} scene${stale === 1 ? '' : 's'} changed since signed off` : 'scenes not signed off';
+  const waiting = signoffs === null || all ? undefined : unsettled;
+  const lastSigned = row.signoffs.map((s) => s.at).toSorted().at(-1);
+  return {
+    target: { project, on: 'plan' },
+    thumbnail: <ProjectThumbnail glyph={<ScrollText size={GLYPH_SIZE} />} waiting={waiting} />,
+    title: <>plan{signoffs !== null && <Text component="span" inherit {...stylex.props(styles.dim)}> · {signed} of {signoffs.length} signed</Text>}</>,
+    marks: all ? <SettledMark name="every scene signed off" /> : undefined,
+    end: all && lastSigned !== undefined ? <ProjectAge now={now} at={lastSigned} what="signed off" /> : <ProjectAge now={now} at={row.modified} what="written" />,
+  };
+}
 
 /** A file's folder with its trailing slash (`out/stills/`), or `''` at the project's root. */
 export const projectFileFolderOf = (path: string) => path.slice(0, path.lastIndexOf('/') + 1);
 
-function placeViewOf({ project, rows }: ReviewProjectSummary, row: ReviewProjectRow, now: number, folderLabelled: boolean): PlaceView {
+function placeViewOf({ project, rows }: ReviewProjectSummary, row: Exclude<ReviewProjectRow, PlanRow>, now: number, folderLabelled: boolean): PlaceView {
   switch (row.on) {
     case 'file': {
       const { path, modified } = row.artifact, folder = projectFileFolderOf(path);
@@ -55,13 +75,6 @@ function placeViewOf({ project, rows }: ReviewProjectSummary, row: ReviewProject
         end: <ProjectAge now={now} at={row.at} what={open ? 'posted' : 'decided'} />,
       };
     }
-    case 'script': return {
-      target: { project, on: 'script' },
-      thumbnail: <ProjectThumbnail glyph={<ScrollText size={GLYPH_SIZE} />} waiting={SCRIPT_WAITING[row.signoff]} />,
-      title: <>script <Text component="span" inherit {...stylex.props(styles.dim)}>{SCRIPT_WAITING[row.signoff]}</Text></>,
-      marks: row.signoff === 'signed' ? <SettledMark name="signed off" /> : undefined,
-      end: <ProjectAge now={now} at={row.at} what={row.signoff === 'signed' ? 'signed off' : 'written'} />,
-    };
     default: {
       // 'project': notes on the whole project, or whose place is gone; they're read beside the newest video (not a still).
       const newest = rows.find((r) => r.on === 'file' && r.artifact.kind === 'video');
@@ -80,7 +93,7 @@ export function projectPlaceKeyOf(row: ReviewProjectRow): string {
   switch (row.on) {
     case 'file': return `file:${row.artifact.path}`;
     case 'decision': return `decision:${row.id}`;
-    case 'script': return 'script';
+    case 'plan': return 'plan';
     default: return 'project';
   }
 }
@@ -94,8 +107,14 @@ type ProjectPlaceRowProps = {
   readonly folderLabelled?: boolean;
 };
 
-/** A file, decision, the script or the project's own notes, as a project's page and the dashboard's awaiting list show it. */
+/** A file, decision, the plan or the project's own notes, as a project's page and the dashboard's awaiting list show it. */
 export function ProjectPlaceRow({ summary, row, now, folderLabelled = false }: ProjectPlaceRowProps) {
+  if (row.on === 'plan') return <ProjectPlanPlaceRow project={summary.project} row={row} now={now} />;
   const { target, thumbnail, title, marks, end } = placeViewOf(summary, row, now, folderLabelled);
+  return <ProjectRow target={target} thumbnail={thumbnail} title={title} threads={row.threads} marks={marks} end={end} />;
+}
+
+function ProjectPlanPlaceRow({ project, row, now }: { readonly project: string; readonly row: PlanRow; readonly now: number }) {
+  const { target, thumbnail, title, marks, end } = planViewOf(project, row, useProjectPlanSignoffs(project, row.signoffs), now);
   return <ProjectRow target={target} thumbnail={thumbnail} title={title} threads={row.threads} marks={marks} end={end} />;
 }

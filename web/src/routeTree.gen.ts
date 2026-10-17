@@ -15,7 +15,7 @@ import { Route as MediaProjectRouteImport } from './routes/media.$project'
 import { Route as ReviewPeaksProjectRouteImport } from './routes/review-peaks.$project'
 import { Route as ReviewStillsProjectRouteImport } from './routes/review-stills.$project'
 import { Route as ProjectsProjectIndexRouteImport } from './routes/projects.$project.index'
-import { Route as ProjectsProjectScriptRouteImport } from './routes/projects.$project.script'
+import { Route as ProjectsProjectPlanRouteImport } from './routes/projects.$project.plan'
 import { Route as ProjectsProjectArtifactsSplatRouteImport } from './routes/projects.$project.artifacts.$'
 import { Route as ProjectsProjectDecisionsTopicRouteImport } from './routes/projects.$project.decisions.$topic'
 
@@ -49,9 +49,9 @@ const ProjectsProjectIndexRoute = ProjectsProjectIndexRouteImport.update({
   path: '/projects/$project/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ProjectsProjectScriptRoute = ProjectsProjectScriptRouteImport.update({
-  id: '/projects/$project/script',
-  path: '/projects/$project/script',
+const ProjectsProjectPlanRoute = ProjectsProjectPlanRouteImport.update({
+  id: '/projects/$project/plan',
+  path: '/projects/$project/plan',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProjectsProjectArtifactsSplatRoute =
@@ -73,7 +73,7 @@ export interface FileRoutesByFullPath {
   '/media/$project': typeof MediaProjectRoute
   '/review-peaks/$project': typeof ReviewPeaksProjectRoute
   '/review-stills/$project': typeof ReviewStillsProjectRoute
-  '/projects/$project/script': typeof ProjectsProjectScriptRoute
+  '/projects/$project/plan': typeof ProjectsProjectPlanRoute
   '/projects/$project/': typeof ProjectsProjectIndexRoute
   '/projects/$project/artifacts/$': typeof ProjectsProjectArtifactsSplatRoute
   '/projects/$project/decisions/$topic': typeof ProjectsProjectDecisionsTopicRoute
@@ -84,7 +84,7 @@ export interface FileRoutesByTo {
   '/media/$project': typeof MediaProjectRoute
   '/review-peaks/$project': typeof ReviewPeaksProjectRoute
   '/review-stills/$project': typeof ReviewStillsProjectRoute
-  '/projects/$project/script': typeof ProjectsProjectScriptRoute
+  '/projects/$project/plan': typeof ProjectsProjectPlanRoute
   '/projects/$project': typeof ProjectsProjectIndexRoute
   '/projects/$project/artifacts/$': typeof ProjectsProjectArtifactsSplatRoute
   '/projects/$project/decisions/$topic': typeof ProjectsProjectDecisionsTopicRoute
@@ -96,7 +96,7 @@ export interface FileRoutesById {
   '/media/$project': typeof MediaProjectRoute
   '/review-peaks/$project': typeof ReviewPeaksProjectRoute
   '/review-stills/$project': typeof ReviewStillsProjectRoute
-  '/projects/$project/script': typeof ProjectsProjectScriptRoute
+  '/projects/$project/plan': typeof ProjectsProjectPlanRoute
   '/projects/$project/': typeof ProjectsProjectIndexRoute
   '/projects/$project/artifacts/$': typeof ProjectsProjectArtifactsSplatRoute
   '/projects/$project/decisions/$topic': typeof ProjectsProjectDecisionsTopicRoute
@@ -109,7 +109,7 @@ export interface FileRouteTypes {
     | '/media/$project'
     | '/review-peaks/$project'
     | '/review-stills/$project'
-    | '/projects/$project/script'
+    | '/projects/$project/plan'
     | '/projects/$project/'
     | '/projects/$project/artifacts/$'
     | '/projects/$project/decisions/$topic'
@@ -120,7 +120,7 @@ export interface FileRouteTypes {
     | '/media/$project'
     | '/review-peaks/$project'
     | '/review-stills/$project'
-    | '/projects/$project/script'
+    | '/projects/$project/plan'
     | '/projects/$project'
     | '/projects/$project/artifacts/$'
     | '/projects/$project/decisions/$topic'
@@ -131,7 +131,7 @@ export interface FileRouteTypes {
     | '/media/$project'
     | '/review-peaks/$project'
     | '/review-stills/$project'
-    | '/projects/$project/script'
+    | '/projects/$project/plan'
     | '/projects/$project/'
     | '/projects/$project/artifacts/$'
     | '/projects/$project/decisions/$topic'
@@ -143,7 +143,7 @@ export interface RootRouteChildren {
   MediaProjectRoute: typeof MediaProjectRoute
   ReviewPeaksProjectRoute: typeof ReviewPeaksProjectRoute
   ReviewStillsProjectRoute: typeof ReviewStillsProjectRoute
-  ProjectsProjectScriptRoute: typeof ProjectsProjectScriptRoute
+  ProjectsProjectPlanRoute: typeof ProjectsProjectPlanRoute
   ProjectsProjectIndexRoute: typeof ProjectsProjectIndexRoute
   ProjectsProjectArtifactsSplatRoute: typeof ProjectsProjectArtifactsSplatRoute
   ProjectsProjectDecisionsTopicRoute: typeof ProjectsProjectDecisionsTopicRoute
@@ -193,11 +193,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/projects/$project/script': {
-      id: '/projects/$project/script'
-      path: '/projects/$project/script'
-      fullPath: '/projects/$project/script'
-      preLoaderRoute: typeof ProjectsProjectScriptRouteImport
+    '/projects/$project/plan': {
+      id: '/projects/$project/plan'
+      path: '/projects/$project/plan'
+      fullPath: '/projects/$project/plan'
+      preLoaderRoute: typeof ProjectsProjectPlanRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/projects/$project/artifacts/$': {
@@ -223,7 +223,7 @@ const rootRouteChildren: RootRouteChildren = {
   MediaProjectRoute: MediaProjectRoute,
   ReviewPeaksProjectRoute: ReviewPeaksProjectRoute,
   ReviewStillsProjectRoute: ReviewStillsProjectRoute,
-  ProjectsProjectScriptRoute: ProjectsProjectScriptRoute,
+  ProjectsProjectPlanRoute: ProjectsProjectPlanRoute,
   ProjectsProjectIndexRoute: ProjectsProjectIndexRoute,
   ProjectsProjectArtifactsSplatRoute: ProjectsProjectArtifactsSplatRoute,
   ProjectsProjectDecisionsTopicRoute: ProjectsProjectDecisionsTopicRoute,

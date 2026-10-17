@@ -90,21 +90,22 @@ A scene shows paintings through `<PaintedShot>`: a camera and planes, each plane
 ```tsx
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { layersOf, painting, PaintedShot, sceneForTimelineClock, sceneSecondsOf, type PaintedShotProps } from '#studio';
-import type { TimelineSceneClock } from '#lib/timing/timeline/models/bind-timeline.ts';
-import { timeline } from '../timeline.ts';
+import type { StoryboardSceneClock } from '#lib/timing/storyboard/models/storyboard.ts';
+import { storyboardTimeline } from '#lib/timing/storyboard/models/storyboard-timeline.ts';
+import { storyboard } from '../storyboard.ts';
 import * as meadow from './meadow/meadow.painting.ts';
 
 const meadowShot: PaintedShotProps = {
   // The frame, and 2 px of margin past each side (whole and even; more for blur or a move).
   camera: { stage: stampStage({ width: 1920, height: 1080 }, 2), fov: 30, lens: { bloom: 0 } },
-  span: sceneSecondsOf(timeline.clock('meadow')).span,
+  span: sceneSecondsOf(storyboardTimeline(storyboard).clock('meadow')).span,
   planes: [{
     id: 'meadow', depth: 1, source: layersOf(painting(meadow, { hillTopPx: 200 }), ['landscape', 'cloud']),
     lay: { kind: 'cover', box: { x0: 0, y0: 0, x1: 640, y1: 360 } },
   }],
 };
 
-export const meadowScene = (clock: TimelineSceneClock<typeof timeline, 'meadow'>) =>
+export const meadowScene = (clock: StoryboardSceneClock<typeof storyboard, 'meadow'>) =>
   sceneForTimelineClock(clock, { render: (s) => <PaintedShot shot={meadowShot} t={s.t} /> });
 ```
 

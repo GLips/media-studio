@@ -38,10 +38,11 @@
   `node lint/rewrite-lib-imports.ts` rewrites any that slip in.
 - A project, `work/projects/<p>/`, starts with `studio new` and passes every check from its first commit; a new project
   isn't baselined, so a violation in it blocks. It holds `project.ts` (its capability, held to what it binds, and the
-  `shared` modules its scenes may import), `timeline.ts`, `timeline.test.ts` (the retime runner), a file per scene in
-  `scenes/` or `bars/` with its helpers in a folder of its name, `video.tsx`, `stills.tsx`. Timing lives in
-  `timeline.ts`, which imports `models` code (`#lib/<area>/<feature>/models/…`), never `#studio`; a scene reaches
-  another's moment by its cue, never by importing it.
+  `shared` modules its scenes may import), `storyboard.ts` (its plan: the brief, a row per scene with its lines and
+  cues, the left-out list), a file per scene in `scenes/` or `bars/` with its helpers in a folder of its name,
+  `video.tsx`, `stills.tsx`. Timing lives in `storyboard.ts` alone, declared with `defineStoryboard` and never built
+  by hand; the workspace's retime check times every project's. A scene reaches another's moment by its cue, never by
+  importing it.
 - Lint and the hooks enforce this; `lint/overview.md` lists the rules. Every rule reads the layout from
   `lint/policy/studio-tree.ts`, so a new folder is declared there, and the quality rules cover all TypeScript. Older
   violations sit in baselines that only shrink, both tiers' in one file per repo: `lint/arch-baseline.json` for the

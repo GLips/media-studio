@@ -1,7 +1,8 @@
 import { Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { Folder, MessageSquare, ScrollText, Split } from 'lucide-react';
-import { reviewRowAwaitsYou, type ReviewProjectSummary } from '#lib/output/review/models/review-dashboard.ts';
+import { reviewRowAwaitsYou, type ReviewProjectRow, type ReviewProjectSummary } from '#lib/output/review/models/review-dashboard.ts';
+import { useProjectPlanSignoffs } from '#web/features/storyboard/index.ts';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { Readout } from '#web/shared/ui/readout.tsx';
 import { colors, fonts, spacing } from '#web/shared/ui/theme.stylex.ts';
@@ -20,22 +21,30 @@ const styles = stylex.create({
 
 const GLYPH_SIZE = 12;
 
+/** The plan's glyph while a scene is unsigned or changed since signed off; nothing once all are, or until it resolves. */
+function ProjectPlanMark({ project, row }: { readonly project: string; readonly row: Extract<ReviewProjectRow, { on: 'plan' }> }) {
+  const signoffs = useProjectPlanSignoffs(project, row.signoffs);
+  const waiting = signoffs?.filter((s) => s.state === 'unsigned' || s.state === 'stale');
+  if (!signoffs || !waiting?.length) return null;
+  return (
+    <HotkeyTooltip name={`plan: ${waiting.length} of ${signoffs.length} scenes to sign off`}>
+      <Text component="span" size="sm" {...stylex.props(styles.mark)}><ScrollText size={GLYPH_SIZE} /></Text>
+    </HotkeyTooltip>
+  );
+}
+
 /** A project on the dashboard: its newest picture, its name, what waits on whom, and when it was last rendered and reviewed. */
 export function ProjectDashboardRow({ summary, now }: { readonly summary: ReviewProjectSummary; readonly now: number }) {
   const { project, rows, threads, reviewedAt } = summary;
   const newest = rows.find((r) => r.on === 'file');
-  const openDecisions = rows.filter((r) => r.on === 'decision' && reviewRowAwaitsYou(r)).length;
-  const script = rows.find((r) => r.on === 'script');
+  const openDecisions = rows.filter((r) => r.on === 'decision' && reviewRowAwaitsYou(r, null)).length;
+  const plan = rows.find((r) => r.on === 'plan');
   const marks = (
     <>
       {openDecisions > 0 && (
         <HotkeyTooltip name={`${openDecisions} open decision${openDecisions === 1 ? '' : 's'}`}><Text component="span" size="sm" {...stylex.props(styles.mark)}><Split size={GLYPH_SIZE} />{openDecisions}</Text></HotkeyTooltip>
       )}
-      {script?.on === 'script' && script.signoff !== 'signed' && (
-        <HotkeyTooltip name={script.signoff === 'stale' ? 'script changed since signed off' : 'script not signed off'}>
-          <Text component="span" size="sm" {...stylex.props(styles.mark)}><ScrollText size={GLYPH_SIZE} /></Text>
-        </HotkeyTooltip>
-      )}
+      {plan?.on === 'plan' && <ProjectPlanMark project={project} row={plan} />}
     </>
   );
   const end = (

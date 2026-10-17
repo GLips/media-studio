@@ -6,13 +6,13 @@ marked with rings and a cursor, and every beat hangs off a word.
 
 ## Scenes on a voice
 
-Each voiced scene is a `voiceSpan` in `timeline.ts`
+Each voiced scene is a row of `storyboard.ts` with `lines`
 (`${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/timing.md`), bound in `video.tsx` with
-`sceneForTimelineClock(clock, { note, render: (s) => …, expect })`. Inside `render`, `s.t` is seconds since the
+`sceneForTimelineClock(clock, { render: (s) => …, expect })`. Inside `render`, `s.t` is seconds since the
 scene's cut (negative while it fades in), and `s.line(id)` is one of its lines: `.start`, `.end`, `.word('seventeen')`
 for when a word is spoken, `.at(0.4)` for a fraction of the way through.
 
-- Anchor each beat to its word (`s.line('ladder').word('no volume discount').start`, or a speech cue), never raw
+- Anchor each beat to its word (`s.line('ladder').word('no volume discount').start`, or its word cue), never raw
   seconds. Re-voicing re-times everything, and the words come from whisper, so they land within a couple of frames.
   Camera and cursor keys must rise in time: word-anchored keys can swap after a re-voice, and the scene throws rather
   than snapping.
@@ -24,14 +24,14 @@ for when a word is spoken, `.at(0.4)` for a fraction of the way through.
 
 ## Camera vocabulary
 
-The user and you should mean the same thing by each word; the storyboard's Motion column is written in them.
+The user and you should mean the same thing by each word; the storyboard's `motion` is written in them.
 
 | Term | Means | Build it with |
 |---|---|---|
 | **Push in** | The camera moves closer until one part fills the frame | `camAt(s.t, [[a, camTop(shot, frame)], [b, camFit(shot, shot.rects.price, frame)]])` into `view(shot, cam, frame)`, `frame` being `useVideoFormat()`. Zoom interpolates in log space, so the speed reads as constant |
 | **Pull back** | The reverse: out from a detail to the whole | Swap the two cameras |
 | **Pan** | The camera slides sideways or up and down, zoom unchanged | Keep one `zoom` and move the centre: `const a = camFit(shot, rect, frame)`, `b = { ...a, cx: centerOf(next).x }`. Two `camFit`s can land at different zooms, since `maxZoom` is only a ceiling |
-| **Hard cut** | One shot ends and the next starts on the very next frame | No `crossfade` on the later scene's span in `timeline.ts` (`crossfade: 0.5` dissolves over half a second, centred on the cut) |
+| **Hard cut** | One shot ends and the next starts on the very next frame | No `crossfade` in the later scene's `timing` in `storyboard.ts` (`crossfade: 0.5` dissolves over half a second, centred on the cut) |
 | **Match cut** | Something lines up across two shots, so the cut reads as one move | End shot A and start shot B with the matching element at the same **screen** position (`screenRect(view, rect)`), moving the same way, on a hard cut |
 | **Split / side by side** | Today and the new version in two panels | `SplitCompare` with `splitLeftRect(frame)` / `splitRightRect(frame)` boxes; each side's camera is `camFit(shot, rect, frame, opts, splitLeftRect(frame))`. Put a side's rings, cursor and state changes in its `over`, which clips them to the panel so the check catches a ring cut off at the seam. Only what floats over the whole window (a native menu, a browser dialog) goes in `children` |
 | **State change** | The page changes under a still camera (a click's result) | `CaptureStates` with `[shot, at]` pairs; it dissolves between captures of the same page |

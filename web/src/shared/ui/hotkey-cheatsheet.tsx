@@ -8,7 +8,7 @@ import { studioHotkeyBindings, useHotkeyRegistryString } from './use-hotkey-labe
 
 /** The cheatsheet's sections in reading order: what works everywhere, then the screen's own groups. */
 const HOTKEY_GROUP_ORDER: readonly StudioHotkeyGroup[] = [
-  'global', 'playback', 'still', 'timeline', 'notes', 'composer', 'compare', 'draw', 'board', 'decision', 'script', 'dashboard',
+  'global', 'playback', 'still', 'timeline', 'notes', 'composer', 'compare', 'draw', 'board', 'decision', 'plan', 'dashboard',
 ];
 
 /**

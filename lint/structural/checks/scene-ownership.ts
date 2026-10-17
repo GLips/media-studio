@@ -3,8 +3,8 @@
 // A scene's helpers live in its own folder (`bars/<id>/`, `scenes/<id>/`), so
 // splitting a big scene file can't launder its tangle into a sibling. Within a
 // project, a scene and its helpers reach only their own folder, declared shared
-// modules, the timeline, sounds, media and generated modules. Nothing a scene
-// can reach (a shared module, the timeline, a sound) imports back into a scene
+// modules, the storyboard, sounds, media and generated modules. Nothing a scene
+// can reach (a shared module, the storyboard, a sound) imports back into a scene
 // or into an unclassified project file.
 //
 // Type-only imports count: they still couple two scenes' code. Edges to another
@@ -21,9 +21,9 @@ const ID = 'scene-ownership';
  * Roles a scene's code can reach, and so roles held to this check. An unclassified file is here too: a scene already
  * reaching one (baselined) mustn't become a silent path into another scene.
  */
-const SCENE_REACHABLE = new Set(['scene', 'scene-helper', 'model', 'painting-source', 'shared', 'timeline', 'sfx', 'brand', 'unclassified']);
+const SCENE_REACHABLE = new Set(['scene', 'scene-helper', 'model', 'painting-source', 'shared', 'storyboard', 'sfx', 'brand', 'unclassified']);
 /** Roles any scene-reachable file may import, and a painting source project.ts shares. */
-const OPEN_TARGETS = new Set(['shared', 'timeline', 'sfx', 'media', 'generated', 'brand']);
+const OPEN_TARGETS = new Set(['shared', 'storyboard', 'sfx', 'media', 'generated', 'brand']);
 const isOpenTarget = (role: ProjectRole) => OPEN_TARGETS.has(role.role) || (role.role === 'painting-source' && role.scene === undefined);
 
 const sceneOf = (role: ProjectRole) => ('scene' in role ? role.scene : undefined);

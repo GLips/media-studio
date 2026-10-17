@@ -3,6 +3,7 @@ import * as stylex from '@stylexjs/stylex';
 import { Ellipsis } from 'lucide-react';
 import { Fragment, useRef } from 'react';
 import { reviewRowAwaitsYou, type ReviewProjectRow, type ReviewProjectSummary } from '#lib/output/review/models/review-dashboard.ts';
+import { useProjectsPlanSignoffs, type ProjectPlanSignoffs } from '#web/features/storyboard/index.ts';
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
 import { StudioShell } from '#web/shared/ui/studio-shell.tsx';
 import { colors, spacing } from '#web/shared/ui/theme.stylex.ts';
@@ -27,9 +28,9 @@ const AWAITING_ROWS_PER_PROJECT = 3;
 type AwaitingGroup = { summary: ReviewProjectSummary; rows: ReviewProjectRow[]; more: number };
 
 /** "Awaiting you" by project, so each project's name shows once over its first few rows. */
-const awaitingByProject = (summaries: readonly ReviewProjectSummary[]): AwaitingGroup[] =>
+const awaitingByProject = (summaries: readonly ReviewProjectSummary[], plans: ReadonlyMap<string, ProjectPlanSignoffs | null>): AwaitingGroup[] =>
   summaries.flatMap((summary) => {
-    const rows = summary.rows.filter(reviewRowAwaitsYou);
+    const rows = summary.rows.filter((row) => reviewRowAwaitsYou(row, plans.get(summary.project) ?? null));
     if (!rows.length) return [];
     // One row more than the cap shows itself rather than a `+1` row in its place.
     const shown = rows.length > AWAITING_ROWS_PER_PROJECT + 1 ? rows.slice(0, AWAITING_ROWS_PER_PROJECT) : rows;
@@ -40,13 +41,14 @@ const projectHasRender = (summary: ReviewProjectSummary) => summary.rows.some((r
 
 /**
  * The front page: what waits on you across every project (a fix to verify, an agent's question, a decision, an
- * unsigned script), then every project, the most recently active first, and last those with nothing rendered.
+ * unsigned plan), then every project, the most recently active first, and last those with nothing rendered.
  */
 export function ProjectsDashboardPage() {
   const { summaries, now } = useProjectSummaries();
   const listRef = useRef<HTMLDivElement>(null);
   useProjectRowHotkeys(listRef);
-  const awaiting = awaitingByProject(summaries);
+  const plans = useProjectsPlanSignoffs(summaries.flatMap(({ project, rows }) => rows.flatMap((row) => (row.on === 'plan' ? [{ project, signoffs: row.signoffs }] : []))));
+  const awaiting = awaitingByProject(summaries, plans);
   const projects = [...summaries.filter(projectHasRender), ...summaries.filter((summary) => !projectHasRender(summary))];
   return (
     <StudioShell start={<Text size="sm">studio</Text>}>

@@ -6,8 +6,8 @@ import { AnchorLink } from '#web/shared/ui/anchor-link.tsx';
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { ProjectThreadCounts } from './project-thread-counts.tsx';
 
-/** Where a row leads: a project's page, one of its files, a decision or its script. */
-export type ProjectRowTarget = { project: string } & ({ on: 'project' } | { on: 'file'; path: string } | { on: 'decision'; topic: string } | { on: 'script' });
+/** Where a row leads: a project's page, one of its files, a decision or its plan. */
+export type ProjectRowTarget = { project: string } & ({ on: 'project' } | { on: 'file'; path: string } | { on: 'decision'; topic: string } | { on: 'plan' });
 
 /** Marks the rows the arrow keys walk (use-project-row-hotkeys.ts). */
 export const PROJECT_ROW_ATTRIBUTE = 'data-project-row';
@@ -42,7 +42,7 @@ type ProjectRowProps = {
   readonly thumbnail: ReactNode;
   readonly title: ReactNode;
   readonly threads?: ReviewThreadCounts;
-  /** State glyphs after the counts: an open decision, an unsigned script. */
+  /** State glyphs after the counts: an open decision, an unsigned plan. */
   readonly marks?: ReactNode;
   /** Readouts, right-aligned: a file's age, where a row leads. */
   readonly end?: ReactNode;
@@ -70,7 +70,7 @@ function ProjectRowLink({ target, children }: { readonly target: ProjectRowTarge
     case 'project': return <AnchorLink to="/projects/$project" params={{ project }} {...row}>{children}</AnchorLink>;
     case 'file': return <AnchorLink to="/projects/$project/artifacts/$" params={{ project, _splat: target.path }} {...row}>{children}</AnchorLink>;
     case 'decision': return <AnchorLink to="/projects/$project/decisions/$topic" params={{ project, topic: target.topic }} {...row}>{children}</AnchorLink>;
-    default: return <AnchorLink to="/projects/$project/script" params={{ project }} {...row}>{children}</AnchorLink>;
+    default: return <AnchorLink to="/projects/$project/plan" params={{ project }} {...row}>{children}</AnchorLink>;
   }
 }
 

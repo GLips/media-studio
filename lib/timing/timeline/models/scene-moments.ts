@@ -1,11 +1,11 @@
 // scene-moments.ts: each scene of a resolved timeline with the moments named in it: its cues, the replays landing in
-// it, the landmarks tied to the music and its voiced lines, each on its frame and in timeline.ts's own words. The clock
+// it, the landmarks tied to the music and its voiced lines, each on its frame and in the plan's own words. The clock
 // table carries them into a render's snapshot, and studio review's storyboard takes a music-led video's stills on them,
 // so a pacing note reads straight back onto the line it changes.
 
 import type { SceneMoment, SceneSpan, Timeline } from './timeline.ts';
 
-/** A named moment in a scene: where it lands, and where timeline.ts puts it. */
+/** A named moment in a scene: where it lands, and where the plan puts it. */
 export type TimelineMoment = { kind: 'cue' | 'replay' | 'landmark' | 'line'; name: string; frame: number; at: string };
 
 export type TimelineSceneMoments = {
@@ -45,7 +45,7 @@ export function timelineSceneMoments(timeline: Timeline): TimelineSceneMoments[]
   });
 }
 
-/** A cue's position as timeline.ts writes it: `beat 3 +4f`, `after land`, `"click" in fix-a`. */
+/** A cue's position as the plan writes it: `beat 3 +4f`, `after land`, `"click" in fix-a`. */
 function momentWords(moment: SceneMoment, driver: SceneSpan['driver']): string {
   const unit = (at: number | 'end') => (at === 'end' ? 'end' : driver === 'beat' ? `beat ${at}` : `${at} s`);
   const nudge = (frames = 0) => (frames ? ` ${frames > 0 ? '+' : ''}${frames}f` : '');

@@ -1,7 +1,8 @@
 # Writing the voiceover lines
 
-The lines are heard once, at the speed of the read, with no going back. Write them the way a person talks when
-showing a colleague something they know well: whole sentences, plain words, and the actual thing named.
+Each line is written once, in its scene's `lines` in `storyboard.ts`, and heard once, at the speed of the read, with
+no going back. Write them the way a person talks when showing a colleague something they know well: whole sentences,
+plain words, and the actual thing named.
 
 ## Say it
 
@@ -41,6 +42,6 @@ The reflexes of written ad copy, which read worst aloud, each with what to write
 
 ## Check it
 
-Read the script aloud at speaking pace, start to finish, before it's voiced. Mark every place you ran out of
+Read the lines aloud at speaking pace, start to finish, before they're voiced. Mark every place you ran out of
 breath, stumbled, or would have lost the thread as a listener, and rewrite those lines. Then, for each line, ask what
 the video loses if it's cut. If nothing, cut it.

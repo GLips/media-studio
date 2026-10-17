@@ -49,12 +49,14 @@ Pick by what should change:
 
 ## Cues
 
-A painting's times are the scene seconds its selection's `at` counts. Moments come from `timeline.ts`, never typed
-into a scene (the cue system is video-motion's: `${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/timing.md`).
+A painting's times are the scene seconds its selection's `at` counts. Moments come from the cues in `storyboard.ts`,
+never typed into a scene (the cue system is video-motion's:
+`${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/timing.md`).
 
-- **Land paint on a cue**: fix the application's `at` from `sceneCueSeconds(timeline.clock('<scene>'))`, imported from
-  `#lib/timing/timeline/models/scene-cue-seconds.ts` so the source stays in plain Node. Moving the cue moves what the
-  paint meets: a later cue finds the sky drier, and past its shine `on: 'wet'` fails, naming the fix.
+- **Land paint on a cue**: fix the application's `at` from
+  `sceneCueSeconds(storyboardTimeline(storyboard).clock('<scene>'))`, imported from their models modules so the source
+  stays in plain Node. Moving the cue moves what the paint meets: a later cue finds the sky drier, and past its shine
+  `on: 'wet'` fails, naming the fix.
 - **Play a painting at another pace**: `layersOf(p, keys, {at: (moment.at - CUE.paint) * 2})` starts it on the
   `paint` cue at double speed. That retimes playback only; to change what the water does, change the document's times
   or `dryingScale`.

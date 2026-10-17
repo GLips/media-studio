@@ -1,5 +1,5 @@
 // review-threads.ts: review/review.json, the one file a project's review lives in: its threads (notes on a render, a
-// still, the script, a decision or the whole project, each with its replies), the decisions an agent posts for the
+// still, the plan, a decision or the whole project, each with its replies), the decisions an agent posts for the
 // reviewer to choose, and the reviewer's sign-offs.
 //
 // The file changes only through ops (review-ops.ts), each bumping `revision`, so the page and an agent's `watch` learn
@@ -86,10 +86,22 @@ export type ReviewAnchor =
     cue?: string; moment?: ReviewMoment; image?: string;
   }
   | { on: 'still'; writtenOn: ReviewWrittenOn; point?: ReviewPoint; marks?: ReviewMark[]; cell?: string; image?: string }
-  | { on: 'script'; scriptHash: string; line: string; word?: number; wordEnd?: number; text?: string; take?: string }
+  | ReviewPlanAnchor
   /** `at`: seconds into a sound or video candidate on the decision's shared transport, where the note was written. */
   | { on: 'decision'; decision: number; candidate?: string; at?: number }
   | { on: 'project' };
+
+/** Which part of the plan a note is on: a brief section, a scene row's cell, one of its lines, or a left-out item. */
+export type ReviewPlanField = 'brief' | 'scene' | 'onScreen' | 'motion' | 'reads' | 'line' | 'leftOut';
+
+/**
+ * A note on the plan (storyboard.ts), anchored by quoted words rather than positions, so it is found again after the
+ * line is edited around it (review-plan.ts) and reads as unplaced once its quote is gone. `planHash` is the whole
+ * storyboard's hash when the note was written; `section` is the brief heading for a `brief` note.
+ */
+export type ReviewPlanAnchor = {
+  on: 'plan'; planHash: string; scene?: string; section?: string; field: ReviewPlanField; line?: string; text?: string;
+};
 
 export type ReviewCandidate = {
   /** 'a', 'b', … */
@@ -117,9 +129,12 @@ export type ReviewDecision = {
   decided?: { picks: string[]; at: string };
 };
 
-/** A script sign-off holds the script's hash (review-script.ts), so an edited script reads as unsigned. */
+/**
+ * A plan sign-off is per scene and holds the scene's storyboardSceneHash, so an edited scene reads as stale while the
+ * others stay signed (review-plan.ts).
+ */
 export type ReviewSignoff =
-  | { on: 'script'; hash: string; at: string }
+  | { on: 'plan'; scene: string; hash: string; at: string }
   | { on: 'render'; path: string; hash: string; rung?: SceneRung; at: string };
 
 export const emptyReviewFile = (): ReviewFile => ({ version: REVIEW_FILE_VERSION, revision: 0, nextId: 1, threads: [], decisions: [], signoffs: [] });

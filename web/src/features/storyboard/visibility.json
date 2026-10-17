@@ -1,0 +1,4 @@
+{
+  "web/src/features/plan": "The plan page draws the project's storyboard as the browser imports and resolves it, re-timed on each hot update of storyboard.ts.",
+  "web/src/features/projects": "A project's plan row counts its signed scenes, which only a resolved storyboard can say, and only the browser resolves one: the app server never imports a project's TypeScript."
+}

@@ -45,8 +45,8 @@ test('each path lands in its §4 position', () => {
     'work/styles/wash/recipes/tree.ts': 'style',
     // Adversarial: brushes/ is what the importer writes, never source.
     'work/styles/wash/brushes/loader.ts': 'undeclared',
-    'work/projects/p/timeline.ts': 'timeline',
-    'work/projects/p/timeline.test.ts': 'spec',
+    'work/projects/p/storyboard.ts': 'storyboard',
+    'work/projects/p/storyboard.test.ts': 'spec',
     // Adversarial: a test named for no root module is just another project file.
     'work/projects/p/parts.test.ts': 'unclassified',
     'work/projects/p/brand.ts': 'brand',
@@ -74,7 +74,7 @@ test('each path lands in its §4 position', () => {
     // another, and the old top-level folders place nothing.
     'work/lib/timing/timeline/models/clock.ts': 'undeclared',
     'work/stray.ts': 'undeclared',
-    'projects/p/timeline.ts': 'undeclared',
+    'projects/p/storyboard.ts': 'undeclared',
     'brands/kit/brand.ts': 'undeclared',
     'odd.ts': 'undeclared',
   };

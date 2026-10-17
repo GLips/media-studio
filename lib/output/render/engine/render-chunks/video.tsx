@@ -5,8 +5,7 @@
 import { useLayoutEffect } from 'react';
 import { getInputProps, useCurrentFrame, useDelayRender } from 'remotion';
 import { defineVideo, sceneForTimelineClock } from '#studio';
-import { bindTimeline } from '#lib/timing/timeline/models/bind-timeline.ts';
-import { defineTimeline, fixedSpan } from '#lib/timing/timeline/models/timeline.ts';
+import { defineStoryboard } from '#lib/timing/storyboard/models/storyboard.ts';
 
 function AsksBeforeFrameTwo() {
   const frame = useCurrentFrame();
@@ -21,9 +20,12 @@ function AsksBeforeFrameTwo() {
   return <div style={{ position: 'absolute', inset: 0, background: 'rgb(128, 128, 128)' }} />;
 }
 
-const timeline = defineTimeline({ scenes: { grey: fixedSpan(1) } });
+const storyboard = defineStoryboard({
+  title: 'Chunk watchdog check', target: { seconds: 1 },
+  scenes: { grey: { onScreen: 'A grey frame', motion: 'None', seconds: 1 } },
+});
 
 export default defineVideo({
-  title: 'Chunk watchdog check', format: { width: 320, height: 180 }, timeline, voice: {},
-  scenes: bindTimeline(timeline, { grey: (clock) => sceneForTimelineClock(clock, { render: () => <AsksBeforeFrameTwo /> }) }),
+  title: 'Chunk watchdog check', format: { width: 320, height: 180 }, storyboard,
+  scenes: { grey: (clock) => sceneForTimelineClock(clock, { render: () => <AsksBeforeFrameTwo /> }) },
 });

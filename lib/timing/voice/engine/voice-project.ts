@@ -1,13 +1,13 @@
 // voice-project.ts: voices a project's script as one take, and cuts it into lines. `studio voice` runs it.
 //
-// voiceover.json: { "voice": "Kore", "lines": [{ "id": "s1", "text": "…", "paragraph": true }] }
-// A line with `"paragraph": true` starts a new paragraph of the read (and of the captions). The model reads the text
-// verbatim, so a delivery note would be spoken; direct it with its inline tags (`<short pause>`, `<breath>`…), which
-// captions and word times leave out. `*word*` emphasises a word, and `` `key` `` draws it as a keycap; the model never
-// sees either.
+// The script is the storyboard's `voice` and lines, in plan order; `paragraph: true` starts a new paragraph of the
+// read. The model reads the text verbatim, so direct it with its inline tags (`<short pause>`, `<breath>`…), which
+// captions and word times leave out. `*word*` (emphasis) and `` `key` `` (a keycap) it never sees.
 //
 // The take is one read, so any change to the script re-reads it whole: a spliced-in line would stand out. A
 // recording is never replaced: deleting audio/take.wav hands the script back to TTS.
+//
+// Negative space: the manifest holds real reads only. Before there's a take, resolveStoryboard estimates each line.
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -16,16 +16,15 @@ import { measureAudibleLoudness } from '#lib/platform/ffmpeg/engine/loudness.ts'
 import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { postOpenRouter } from '#lib/platform/paid-generation/engine/openrouter.ts';
 import type { RenderVoice } from '../models/render-voice.ts';
+import type { RecordedVoiceLine } from '../models/voice-manifest.ts';
 import { cutTakeIntoLines, type TakeClip, type VoiceTakeFile } from '../models/voice-take.ts';
-import { alignSpokenWords, captionMarkup, estimateSpokenWords, spokenText, ttsText, type SpokenWord } from '../models/voice-words.ts';
+import { alignSpokenWords, captionMarkup, spokenText, ttsText, type SpokenWord } from '../models/voice-words.ts';
 import { samplesFromWav, wavFromPcm, wavFromSamples } from '#lib/platform/wav/models/wav.ts';
 import { heardWords } from './whisper-words.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 
 const MODEL = 'google/gemini-3.8-flash-tts';
 const DRAFT_VOICE = 'Samantha';
-// Callirrhoe reads about three words a second; estimates only need to be close enough to lay scenes out.
-const WORDS_PER_SECOND = 3.0;
 // Cutting rounds before settling for the last one's cuts; the second round usually finds they didn't move.
 const MAX_CUT_ROUNDS = 4;
 // A quiet stretch shorter than this between two lines means they were read as one phrase, and the cut is audible.
@@ -34,27 +33,24 @@ const TIGHT_PAUSE = 0.08;
 const SAY_PARAGRAPH = ' [[slnc 600]] ';
 const sayText = (text: string) => text.replace(/<short pause>/g, ' [[slnc 300]] ').replace(/<long pause>/g, ' [[slnc 800]] ').replace(/<[^>]*>/g, ' ');
 
-type Script = { voice: string; lines: { id: string; text: string; paragraph?: boolean }[] };
-/** A manifest.json entry. `src` is relative to the project, and it, `lufs` and `pauseBefore` are null for an estimate. */
-type Voiced = {
-  src: string | null; duration: number; text: string; caption: string; paragraph: boolean; words: SpokenWord[]; lufs: number | null; pauseBefore: number | null;
-};
+/** What one take reads: the voice, and every line in plan order (a storyboard's, by readProjectVoiceScript). */
+export type VoiceScript = { voice: string; lines: readonly { id: string; text: string; paragraph?: boolean }[] };
 type ScriptLine = { id: string; text: string; caption: string; paragraph: boolean };
 
 /**
  * How to get the take: `paid` reads it with Gemini TTS (needs OPENROUTER_API_KEY), `draft` with macOS `say` (free,
- * flat; the next paid run re-reads it), and `estimate` times each line from its word count with no audio at all.
+ * flat; the next paid run re-reads it).
  */
-export type VoiceMode = 'estimate' | 'draft' | 'paid';
+export type VoiceMode = 'draft' | 'paid';
 
-/** Voices the project and returns the path of the audio/manifest.ts it wrote. `recording` imports a human read as the take. */
-export async function voiceStudioProject(project: string, { mode, recording }: { mode: VoiceMode; recording?: string }): Promise<string> {
-  const script: Script = JSON.parse(readFileSync(join(project, 'voiceover.json'), 'utf8'));
+const hashFor = (...key: unknown[]) => createHash('sha256').update(JSON.stringify(key)).digest('hex').slice(0, 16);
+
+/** Voices `script` for the project and returns the path of the audio/manifest.ts it wrote. `recording` imports a human read as the take. */
+export async function voiceStudioProject(project: string, script: VoiceScript, { mode, recording }: { mode: VoiceMode; recording?: string }): Promise<string> {
   const dir = join(project, 'audio');
   mkdirSync(dir, { recursive: true });
   const takePath = join(dir, 'take.wav'), infoPath = join(dir, 'take.json');
 
-  const hashFor = (...key: unknown[]) => createHash('sha256').update(JSON.stringify(key)).digest('hex').slice(0, 16);
   const readText = (paragraphBreak: string) => script.lines.map((line, i) => (i === 0 ? '' : line.paragraph ? paragraphBreak : ' ') + ttsText(line.text)).join('');
   const paidHash = hashFor(MODEL, script.voice, readText('\n\n'));
   const draftHash = hashFor('say', DRAFT_VOICE, sayText(readText(SAY_PARAGRAPH)));
@@ -74,7 +70,6 @@ export async function voiceStudioProject(project: string, { mode, recording }: {
   // A draft never matches the paid hash, so a paid run re-reads it.
   const current = info && (info.source === 'recording' || info.hash === paidHash || (mode !== 'paid' && info.hash === draftHash));
   if (!current) {
-    if (mode === 'estimate') return writeManifest(dir, estimateLines(lines));
     const { wav, duration } = mode === 'draft' ? speakDraft(sayText(readText(SAY_PARAGRAPH))) : await speak(readText('\n\n'), script.voice);
     writeFileSync(takePath, wav);
     info = { source: mode === 'draft' ? 'draft' : 'tts', hash: mode === 'draft' ? draftHash : paidHash };
@@ -114,7 +109,7 @@ export async function voiceStudioProject(project: string, { mode, recording }: {
     takeWords = clips.flatMap((clip, i) => clipWords[i].map((w) => ({ text: w.text, start: w.start + clip.from, end: w.end + clip.from })));
   }
 
-  const manifest: Record<string, Voiced> = {};
+  const manifest: Record<string, RecordedVoiceLine> = {};
   for (const [i, clip] of clips.entries()) {
     const file = clipFile(clip.id), { text, caption, paragraph } = lines[i];
     const duration = samplesFromWav(readFileSync(file)).samples.length / rate;
@@ -138,55 +133,39 @@ export async function voiceStudioProject(project: string, { mode, recording }: {
 
 /**
  * Whose voice the project's lines are in: `draft` when they were cut from a `--read=draft` take (macOS say, fine for
- * timing, never for delivery), `final` for a real take, null when no line has audio yet. take.json can outlive the
- * take the manifest used only when the manifest is estimated, and then no line has audio.
+ * timing, never for delivery), `final` for a real take, null before the first take.
  */
 export function renderVoiceOf(project: string): RenderVoice {
   const manifestPath = join(project, 'audio', 'manifest.json'), infoPath = join(project, 'audio', 'take.json');
   if (!existsSync(manifestPath) || !existsSync(infoPath)) return null;
-  const manifest: Record<string, Voiced> = JSON.parse(readFileSync(manifestPath, 'utf8'));
-  if (!Object.values(manifest).some((line) => line.src !== null)) return null;
   // SAFETY: take.json is written only by voiceStudioProject, from a VoiceTakeFile.
   const info = JSON.parse(readFileSync(infoPath, 'utf8')) as VoiceTakeFile;
   return info.source === 'draft' ? 'draft' : 'final';
 }
 
-function estimateLines(lines: readonly ScriptLine[]) {
-  const manifest: Record<string, Voiced> = {};
-  for (const { id, text, caption, paragraph } of lines) {
-    const duration = Number((text.split(/[\s-]+/).length / WORDS_PER_SECOND + 0.3).toFixed(2));
-    manifest[id] = { src: null, duration, text, caption, paragraph, words: estimateSpokenWords(text, duration), lufs: null, pauseBefore: null };
-  }
-  console.error(`estimated ${lines.length} lines from their word counts`);
-  return manifest;
-}
-
-function writeManifest(dir: string, manifest: Record<string, Voiced>) {
+function writeManifest(dir: string, manifest: Record<string, RecordedVoiceLine>) {
   writeFileSync(join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2));
-  writeFileSync(join(dir, 'manifest.ts'), voiceModule(manifest));
+  writeFileSync(join(dir, 'manifest.ts'), voiceManifestModule(manifest));
   const total = Object.values(manifest).reduce((sum, line) => sum + line.duration, 0);
   console.error(`${Object.keys(manifest).length} lines, ${total.toFixed(1)}s of voice`);
   return join(dir, 'manifest.ts');
 }
 
-// A module rather than JSON so the video imports each WAV and the bundler serves it.
-function voiceModule(manifest: Record<string, Voiced>) {
+/**
+ * audio/manifest.ts's source for `manifest`: a module rather than JSON, so the video imports each WAV and the bundler
+ * serves it. `studio new` writes it with no lines, before the first take.
+ */
+export function voiceManifestModule(manifest: Record<string, RecordedVoiceLine>) {
   const ids = Object.keys(manifest);
-  const imports = ids.flatMap((id, i) => {
-    const { src } = manifest[id];
-    return src ? [`import wav${i} from './${basename(src)}';`] : [];
-  }).join('\n');
+  const imports = ids.map((id, i) => `import wav${i} from './${basename(manifest[id].src)}';`).join('\n');
   const entries = ids.map((id, i) => {
-    const { src, duration, text, caption, paragraph, words, lufs, pauseBefore } = manifest[id];
-    return `  ${JSON.stringify(id)}: { src: ${src ? `wav${i}` : 'null'}, duration: ${duration}, lufs: ${lufs}, pauseBefore: ${pauseBefore}, paragraph: ${paragraph},\n    text: ${JSON.stringify(text)},\n    caption: ${JSON.stringify(caption)},\n    words: ${JSON.stringify(words)} },`;
+    const { duration, text, caption, paragraph, words, lufs, pauseBefore } = manifest[id];
+    return `  ${JSON.stringify(id)}: { src: wav${i}, duration: ${duration}, lufs: ${lufs}, pauseBefore: ${pauseBefore}, paragraph: ${paragraph},\n    text: ${JSON.stringify(text)},\n    caption: ${JSON.stringify(caption)},\n    words: ${JSON.stringify(words)} },`;
   }).join('\n');
   return `// Written by \`studio voice\`. Edits here are lost on the next run.
-import type { Voice } from '#lib/timing/voice/models/voice-manifest.ts';
-${imports}
-
-export const voice = {
-${entries}
-} as const satisfies Voice;
+import type { RecordedVoice } from '#lib/timing/voice/models/voice-manifest.ts';
+${imports && `${imports}\n`}
+export const voice = {${entries && `\n${entries}\n`}} as const satisfies RecordedVoice;
 `;
 }
 

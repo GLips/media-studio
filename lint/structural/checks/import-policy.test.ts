@@ -15,9 +15,9 @@ test('a project importing another project is caught through an alias; an unknown
       "import { h } from '/etc/hosts.ts';",
       "import { u } from '../../../../elsewhere/x.ts';",
       // Legal neighbour: its own file.
-      "import { t } from './timeline.ts';",
+      "import { t } from './storyboard.ts';",
     ].join('\n'),
-    'work/projects/p/timeline.ts': 'export const t = 0;\n',
+    'work/projects/p/storyboard.ts': 'export const t = 0;\n',
   });
   assert.deepEqual(caught(findings), [
     'work/projects/p/video.tsx:#nowhere',
@@ -145,11 +145,11 @@ test('a project uses only the styles its project.ts names, public code none, and
     'work/styles/wash/style.ts': [
       "import { ink } from '#lib/picture/kit/models/ink.ts';",
       "import { run } from '#lib/output/render/engine/run.ts';",
-      "import { t } from '../../projects/p/timeline.ts';",
+      "import { t } from '../../projects/p/storyboard.ts';",
     ].join('\n'),
     'work/styles/ink/style.ts': 'export default {};\n',
     'work/projects/p/project.ts': "export default { capability: 'silent', styles: ['wash', 'gone/../ink'] };\n",
-    'work/projects/p/timeline.ts': 'export const t = 0;\n',
+    'work/projects/p/storyboard.ts': 'export const t = 0;\n',
     'work/projects/p/scenes/intro.tsx': [
       // Legal neighbour: a style the project names, by alias and relatively.
       "import wash from '#styles/wash/style.ts';",
@@ -165,7 +165,7 @@ test('a project uses only the styles its project.ts names, public code none, and
     'work/projects/p/project.ts:styles gone/../ink',
     'work/projects/p/scenes/intro.tsx:#styles/ink/style.ts',
     'work/styles/wash/style.ts:#lib/output/render/engine/run.ts',
-    'work/styles/wash/style.ts:../../projects/p/timeline.ts',
+    'work/styles/wash/style.ts:../../projects/p/storyboard.ts',
   ]);
 });
 

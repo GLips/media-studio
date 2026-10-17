@@ -4,7 +4,7 @@ import { readProjectPulse, readStudioPulseBeat } from '#web/infrastructure/studi
 
 export type { ProjectPulse } from '#web/infrastructure/studio-engine.server.ts';
 
-/** A project's pulse: its review's revision, its files' hashes, the script's, the agent's presence and a render under way. */
+/** A project's pulse: its review's revision, its files' hashes, its plan's, the agent's presence and a render under way. */
 export const fetchProjectPulse = createServerFn({ method: 'GET' })
   .validator(Schema.toStandardSchemaV1(Schema.Struct({ project: Schema.String })))
   .handler(({ data }) => readProjectPulse(data.project));

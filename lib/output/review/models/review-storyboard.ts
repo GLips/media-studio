@@ -2,7 +2,7 @@
 // read from the render's snapshot, so a card shows what was rendered at the rung each scene was on.
 //
 // A card per scene with its note, its rung and its stills. A timed video gets a still on each frame the timeline names
-// in a scene, captioned in timeline.ts's words, and one per voiced line from the middle of its words; a scene naming
+// in a scene, captioned in the plan's words, and one per voiced line from the middle of its words; a scene naming
 // nothing gets one from its middle. A video without a clock gets a still per line, or one from each scene's middle.
 //
 // Every frame here is on the render's clock: a slice keeps only what's inside it.
@@ -53,7 +53,7 @@ export function reviewStoryboardOf({ fps, frames, scenes, lines, clock }: Review
   });
 
   return scenes.flatMap((scene, i) => {
-    // A video whose timeline isn't its project's timeline.ts has no clock: its scenes name no moments.
+    // A video with no storyboard.ts of its own has no clock: its scenes name no moments.
     const bar = clock?.bars.find((b) => b.id === scene.id);
     const from = onRender(scene.from), to = onRender(scene.to);
     if (to <= 0 || from >= length) return [];

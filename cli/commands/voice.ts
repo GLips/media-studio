@@ -3,13 +3,13 @@ import { defineCommand } from 'citty';
 import type { VoiceMode } from '#lib/timing/voice/engine/voice-project.ts';
 import { studioProjectArg } from '../project-arg.ts';
 
-const VOICE_READS = ['paid', 'draft', 'estimate'] as const satisfies readonly VoiceMode[];
+const VOICE_READS = ['paid', 'draft'] as const satisfies readonly VoiceMode[];
 
 export default defineCommand({
   meta: {
     name: 'voice',
-    description: "Voice the project's voiceover.json as one take, cut into a .wav per line.",
-    about: "Writes audio/<line>.wav and audio/manifest.ts. Only a script change re-reads the take. Prints audio/manifest.ts.",
+    description: "Voice the lines of the project's storyboard.ts as one take, cut into a .wav per line.",
+    about: "Reads storyboard.ts's `voice` and its scenes' lines in plan order. Writes audio/<line>.wav and audio/manifest.ts, which hold real reads only: until a line is read, the storyboard times it from its word count. Only a script change re-reads the take. Prints audio/manifest.ts.",
   },
   args: {
     project: studioProjectArg,
@@ -17,7 +17,7 @@ export default defineCommand({
       type: 'enum',
       options: [...VOICE_READS],
       default: 'paid',
-      description: 'paid: Gemini TTS on OpenRouter (needs OPENROUTER_API_KEY in the environment). draft: macOS say, free, offline and flat, for hearing the timing; the next paid run re-reads it. estimate: with no take yet, time each line from its word count, with no audio, so scenes can be built before the voice exists',
+      description: 'paid: Gemini TTS on OpenRouter (needs OPENROUTER_API_KEY in the environment). draft: macOS say, free, offline and flat, for hearing the timing; the next paid run re-reads it',
     },
     take: { type: 'string', valueHint: 'read.m4a', description: 'Use a recording of the script (a human read) as the take. A recording is never replaced by TTS' },
   },
@@ -25,7 +25,8 @@ export default defineCommand({
     const { resolve } = await import('node:path');
     const { resolveStudioProjectWith } = await import('#lib/platform/project/engine/studio-project.ts');
     const { voiceStudioProject } = await import('#lib/timing/voice/engine/voice-project.ts');
-    const project = resolveStudioProjectWith(args.project, 'voiceover.json');
-    console.log(await voiceStudioProject(project, { mode: args.read, recording: args.take && resolve(args.take) }));
+    const { readProjectVoiceScript } = await import('#lib/timing/storyboard/engine/project-storyboard.ts');
+    const project = resolveStudioProjectWith(args.project, 'storyboard.ts');
+    console.log(await voiceStudioProject(project, await readProjectVoiceScript(project), { mode: args.read, recording: args.take && resolve(args.take) }));
   },
 });

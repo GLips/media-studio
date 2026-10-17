@@ -1,5 +1,5 @@
 // review-dashboard.ts: every project as the studio's front page, a project's page and quick-open show it, read off
-// disk: its files with a picture of each, its review (review/review.json) and its script's hash. What waits on whom is
+// disk: its files with a picture of each, its review (review/review.json) and when its plan last changed. What waits on whom is
 // worked out in models/review-dashboard.ts.
 import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -10,7 +10,6 @@ import { summarizeReviewProject, type ReviewProjectFacts, type ReviewProjectSumm
 import { listProjectArtifacts } from './project-artifacts.ts';
 import { projectFolderNamed, resolveProjectMedia } from './project-media.ts';
 import { readReviewFile, reviewFilePathOf } from './review-file.ts';
-import { readReviewScript } from './review-script-source.ts';
 
 export type { ReviewProjectSummary } from '../models/review-dashboard.ts';
 
@@ -31,9 +30,9 @@ function thumbnailOf(project: string, artifact: ProjectArtifact): ReviewProjectT
   return { kind: 'video', path: artifact.path, hash: renderFileStamp(media).hash, ...at };
 }
 
-function scriptFactsOf(dir: string): ReviewProjectFacts['script'] {
-  const file = join(dir, 'voiceover.json');
-  return existsSync(file) ? { hash: readReviewScript(dir).hash, modified: statSync(file).mtime.toISOString() } : null;
+function planFactsOf(dir: string): ReviewProjectFacts['plan'] {
+  const file = join(dir, 'storyboard.ts');
+  return existsSync(file) ? { modified: statSync(file).mtime.toISOString() } : null;
 }
 
 function summarizeOnDisk(project: string): ReviewProjectSummary {
@@ -41,7 +40,7 @@ function summarizeOnDisk(project: string): ReviewProjectSummary {
   const files = listProjectArtifacts(project).map((artifact) => ({ artifact, thumbnail: thumbnailOf(project, artifact) }));
   return summarizeReviewProject({
     project, files, review: readReviewFile(dir),
-    script: scriptFactsOf(dir),
+    plan: planFactsOf(dir),
     reviewedAt: existsSync(reviewFile) ? statSync(reviewFile).mtime.toISOString() : null,
   });
 }

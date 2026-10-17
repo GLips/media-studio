@@ -12,7 +12,7 @@ H is the frame height. Rates per frame are at the reference's 60 fps unless they
 - Every event lands on the first frame at or after its beat line; the HUD's beat squares switch exactly there.
 - Moves that must arrive on a beat start early: a band entry 4 frames, a collapse 8, a morph 12 (at 60). Reactions
   trail by 1–2 frames: a HUD square and a callout dot +1, a ground ring +2.
-- The music's onsets trail the lines by about 40 ms, so picture leads sound by 25–45 ms. That is the timeline's
+- The music's onsets trail the lines by about 40 ms, so picture leads sound by 25–45 ms. That is the storyboard's
   `pictureLeadFrames` (`${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/timing.md`).
 
 ## Cut grammar

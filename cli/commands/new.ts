@@ -6,7 +6,7 @@ export default defineCommand({
   meta: {
     name: 'new',
     description: "Start a project of one capability that passes every check from its first commit.",
-    about: "Makes work/projects/<yyyy-mm>-<slug>/, its capability declared in its project.ts:\n- music-led: timeline.ts with bars on a steady tempo (a fitted track replaces it) and a landmark on the final hit, a file per bar in bars/.\n- voice-led: timeline.ts with scenes on voiceover.json's lines, each with a speech cue, a file per scene in scenes/, and the lines' timing estimated.\n- mixed: voiced scenes around a section of bars.\n- silent: timeline.ts with scenes of fixed seconds, a file per scene in scenes/, and no voice, music or sound, so it delivers with no audio track.\n- still-only: a stills.tsx whose one design (a fitted headline on a ground beside a full-bleed field holding the --url page on a tilted card) renders at og and youtube, in the brand kit --brand names.\n\nEach timed scene starts blocked, flat pieces moving on its cues, so `studio render --animatic` and `studio review open` work at once; timeline.test.ts registers it with the retime runner. With --url, capture.ts films that page as `home`; without, it starts empty. Prints the project directory, and the next commands on stderr.",
+    about: "Makes work/projects/<yyyy-mm>-<slug>/, its capability declared in its project.ts, and for a video its plan in storyboard.ts: the brief, then a row per scene (on screen, motion, and what times it, with the cues its picture moves on):\n- music-led: bars on a steady tempo (a fitted track replaces it) and a landmark on the final hit, a file per bar in bars/.\n- voice-led: scenes on voiced lines, each with a word cue, timed from their word counts until `studio voice` reads them, a file per scene in scenes/.\n- mixed: voiced scenes around a section of bars.\n- silent: scenes of fixed seconds, a file per scene in scenes/, and no voice, music or sound, so it delivers with no audio track.\n- still-only: a stills.tsx whose one design (a fitted headline on a ground beside a full-bleed field holding the --url page on a tilted card) renders at og and youtube, in the brand kit --brand names.\n\nEach timed scene starts blocked, flat pieces moving on its cues and its row as its note, so `studio render --animatic` and `studio review open` work at once; the workspace's retime check times its storyboard. With --url, capture.ts films that page as `home`; without, it starts empty. Prints the project directory, and the next commands on stderr.",
   },
   args: {
     slug: { type: 'positional', required: true, description: 'Lowercase words joined by dashes, e.g. spring-launch' },
@@ -23,10 +23,6 @@ export default defineCommand({
     const dir = scaffoldStudioProject({ slug: args.slug, capability, url: args.url, title: args.title, brand: args.brand });
     if (args.url) await captureStudioProject(dir);
     const voiced = capability === 'voice-led' || capability === 'mixed';
-    if (voiced) {
-      const { voiceStudioProject } = await import('#lib/timing/voice/engine/voice-project.ts');
-      await voiceStudioProject(dir, { mode: 'estimate' });
-    }
     const name = basename(dir);
     const shotsFirst = args.url ? '' : `
   studio probe ${name} <url>        see a page as capture.ts will, with selectors for its elements, then write its shots

@@ -32,12 +32,9 @@ export function useReviewSplices(): ReviewSplices {
   return useQuery({ ...reviewSplicesQueryOptions(project, cut, pulse.revision), enabled: current }).data ?? NO_REVIEW_SPLICES;
 }
 
-/**
- * What threads are placed on for `path`: the open render with its timing and the slices laid into it, the voice take on
- * the script's read-along, or a still beside the open file.
- */
+/** What threads are placed on for `path`: the open render with its timing and the slices laid into it, or a still beside it. */
 function reviewPlacementTargetOf(
-  { artifact, files, scriptLines }: Pick<ReviewScreenValue, 'artifact' | 'scriptLines'> & { files: ReviewScreenValue['pulse']['files'] },
+  { artifact, files }: Pick<ReviewScreenValue, 'artifact'> & { files: ReviewScreenValue['pulse']['files'] },
   path: string, { laid }: ReviewSplices,
 ): ReviewPlacementTarget {
   if (path !== artifact.path) {
@@ -45,7 +42,6 @@ function reviewPlacementTargetOf(
     return { kind: file?.kind ?? 'still', hash: file?.hash ?? '', path, durationInFrames: Infinity };
   }
   const { kind, render: { hash } } = artifact;
-  if (scriptLines) return { kind: 'audio', hash, path, durationInFrames: Infinity, scriptLines };
   // Without a snapshot there's no timing: only notes written on these very bytes place, and the length isn't consulted.
   if (!artifact.timing) return { kind, hash, path, durationInFrames: Infinity };
   return { kind, hash, path, timing: artifact.timing, durationInFrames: artifact.durationInFrames ?? Infinity, ...(laid.length > 0 && { splices: laid }) };
@@ -56,16 +52,16 @@ function reviewPlacementTargetOf(
  * Undefined until the first file loads.
  */
 export function useReviewThreads(path?: string): ReviewPlacedThreads | undefined {
-  const { artifact, pulse: { files }, scriptLines } = useReviewScreen();
+  const { artifact, pulse: { files } } = useReviewScreen();
   const file = useReviewFile(), splices = useReviewSplices();
   const on = path ?? artifact.path;
   // Each input keeps its identity until it changes (query data is structurally shared), so a poll that moved nothing
   // places nothing again.
-  const target = useMemo(() => reviewPlacementTargetOf({ artifact, files, scriptLines }, on, splices), [artifact, files, scriptLines, on, splices]);
+  const target = useMemo(() => reviewPlacementTargetOf({ artifact, files }, on, splices), [artifact, files, on, splices]);
   return useMemo(() => file && placeReviewFileOn(file, target), [file, target]);
 }
 
-/** `file` placed on `target`; threads about something else (another still, the script elsewhere) are left out. */
+/** `file` placed on `target`; threads about something else (another still, the plan) are left out. */
 function placeReviewFileOn(file: ReviewFile, target: ReviewPlacementTarget): ReviewPlacedThreads {
   const threads = file.threads.flatMap((thread) => {
     const placement = placeReviewThread(thread, target);

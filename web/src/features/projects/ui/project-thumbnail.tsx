@@ -40,7 +40,7 @@ type ProjectThumbnailProps =
 
 /**
  * A row's 64px picture: the file's frame, a skeleton until it's cut, the bare ground when it can't be (a slice too short
- * for its guessed frame). A decision or the script shows its glyph in the same box, so rows line up.
+ * for its guessed frame). A decision or the plan shows its glyph in the same box, so rows line up.
  */
 export function ProjectThumbnail({ project, thumbnail, glyph, waiting }: ProjectThumbnailProps) {
   const [state, setState] = useState<'pending' | 'shown' | 'failed'>('pending');

@@ -1,4 +1,4 @@
-// bind-timeline.ts: a composition's scenes bound to its resolved timeline, in video.tsx. Each scene key gets exactly one
+// bind-timeline.ts: a composition's scenes bound to its resolved timeline, by defineVideo. Each scene key gets exactly one
 // binding, which receives its scene's clock (frames from the scene's own origin) and, for a scene that replays others,
 // those scenes' bindings with the replay's mapping from its frames to theirs. Scenes never import one another: the composition hands a replayed scene over.
 //

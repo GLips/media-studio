@@ -37,8 +37,8 @@ export const reviewPlayheadLeft = (view: ReviewTimelineView) =>
   `calc((var(${REVIEW_FRAME_VAR}, 0) - ${view.start - 0.5}) * ${reviewTimelineFramePx(view)}px)`;
 
 /**
- * The flag's words: `▼136` on a picture, whose frames are what a note pins; `▼0:04.12` on sound alone (the script's
- * take), where a frame number means nothing.
+ * The flag's words: `▼136` on a render with a snapshot, whose frames are what a note pins; `▼0:04.12` on one with
+ * none, whose frames aren't known.
  */
 export const reviewPlayheadFlagOf = (artifact: ReviewArtifact, frame: number, fps: number) =>
   `▼${artifact.frameSize === null ? formatReviewClock(frame / fps) : frame}`;

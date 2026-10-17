@@ -29,7 +29,7 @@ const AMBIENT: Readonly<Record<string, Readonly<Record<string, string>>>> = {
 /** The global object's names, a member of which (`window.Math`) is the global itself. */
 const GLOBAL_OBJECTS = new Set(['globalThis', 'window', 'self', 'global']);
 
-const PIXEL_PROJECT_ROLES = new Set(['scene', 'scene-helper', 'model', 'painting-source', 'shared', 'timeline', 'video', 'stills', 'brand']);
+const PIXEL_PROJECT_ROLES = new Set(['scene', 'scene-helper', 'model', 'painting-source', 'shared', 'storyboard', 'video', 'stills', 'brand']);
 const reachesPixels = (position: StudioPosition) =>
   position.kind === 'models' || position.kind === 'studio' || position.kind === 'style' || position.kind === 'brand-kit' ||
   (position.kind === 'project' && PIXEL_PROJECT_ROLES.has(position.role));

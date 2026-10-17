@@ -51,7 +51,7 @@ export function parseLookCrop(spec: string): LookCrop {
 
 /** Every frame of bar `n` of `clock`. */
 export function lookBarFrames(clock: LookBars | undefined, n: string, project: string): number[] {
-  if (!clock) throw new Error(`${project} has no bar clock (a timeline.ts): give --frames`);
+  if (!clock) throw new Error(`${project} has no bar clock (a storyboard.ts): give --frames`);
   const bar = clock.bars.find((b) => b.n === Number(n));
   if (!bar) throw new Error(`there's no bar ${n}: bars are ${clock.bars.map((b) => b.n).join(', ')}`);
   return Array.from({ length: bar.to - bar.from }, (_, i) => bar.from + i);

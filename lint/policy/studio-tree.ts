@@ -14,9 +14,12 @@
 // stripped, so a `work/lib/x.ts` is undeclared, not lib.
 
 export type ProjectRole =
-  /** `project.ts` declares the project's capability (lib/platform/project/models/capability.ts). */
-  | { role: 'timeline' | 'video' | 'stills' | 'brand' | 'capture' | 'project' }
-  /** A spec beside a root module (`timeline.test.ts`): run by `node --test`, it may bind the whole project; nothing imports it. */
+  /**
+   * `storyboard.ts` is the plan (defineStoryboard), a model that times every scene; `project.ts` declares the
+   * project's capability (lib/platform/project/models/capability.ts).
+   */
+  | { role: 'storyboard' | 'video' | 'stills' | 'brand' | 'capture' | 'project' }
+  /** A spec beside a root module (`video.test.ts`): run by `node --test`, it may bind the whole project; nothing imports it. */
   | { role: 'spec' }
   /** `bars/<id>.tsx` or `scenes/<id>.tsx`: one scene per file. */
   | { role: 'scene'; scene: string }
@@ -114,7 +117,7 @@ export const LIB_LAYERS: readonly LibLayer[] = [
     ],
   },
   { name: 'vocabulary', features: ['picture/frame', 'picture/motion', 'picture/type', 'picture/color', 'picture/shot-camera', 'picture/lens', 'picture/readback'] },
-  { name: 'timing', features: ['timing/voice', 'timing/timeline', 'timing/sound', 'timing/music'] },
+  { name: 'timing', features: ['timing/voice', 'timing/timeline', 'timing/sound', 'timing/music', 'timing/storyboard'] },
   // The camera keeps clear of the caption band a style reserves, so it stands on captions.
   { name: 'framing', features: ['picture/captions', 'picture/camera'] },
   { name: 'measurement', features: ['picture/measurement', 'picture/profiling'] },
@@ -127,8 +130,8 @@ export function libFoundationLayer(feature: string): number | undefined {
   return index < 0 ? undefined : index;
 }
 
-const ROOT_ROLES: Record<string, 'timeline' | 'video' | 'stills' | 'brand' | 'capture' | 'project'> = {
-  'timeline.ts': 'timeline', 'video.tsx': 'video', 'stills.tsx': 'stills', 'brand.ts': 'brand', 'capture.ts': 'capture', 'project.ts': 'project',
+const ROOT_ROLES: Record<string, 'storyboard' | 'video' | 'stills' | 'brand' | 'capture' | 'project'> = {
+  'storyboard.ts': 'storyboard', 'video.tsx': 'video', 'stills.tsx': 'stills', 'brand.ts': 'brand', 'capture.ts': 'capture', 'project.ts': 'project',
 };
 const SUBDIR_ROLES: Record<string, 'sfx' | 'tools' | 'review' | 'media' | 'generated'> = {
   sfx: 'sfx', tools: 'tools', review: 'review', generated: 'generated', out: 'generated',

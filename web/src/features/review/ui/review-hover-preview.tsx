@@ -119,7 +119,7 @@ export function ReviewHoverPreview({ view, hover }: { readonly view: ReviewTimel
     <Box {...stylex.props(styles.layer)}>
       <Box {...stylex.props(styles.ghost, styles.at(`${ghost}px`))} />
       {time && <Text component="span" fz="xs" {...stylex.props(styles.time, styles.at(`${time.x}px`))}>{time.text}</Text>}
-      {/* The script's take is a video with no picture: nothing to preview. */}
+      {/* A render with no snapshot has no frame size to cut a preview at. */}
       {artifact.kind === 'video' && artifact.frameSize !== null && (
         <Box {...stylex.props(styles.preview, styles.sized(aspect), styles.at(`${previewLeft}px`))}>
           {shown !== null && <Image src={reviewStillUrl(artifact, shown, timing.fps)} alt="" fit="cover" h="100%" />}

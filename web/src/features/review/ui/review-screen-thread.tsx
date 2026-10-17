@@ -7,10 +7,10 @@ import { useReviewRenderVersions } from './use-review-render-versions.ts';
 import { useReviewSplices, useReviewThreads } from './use-review-threads.ts';
 
 /**
- * The thread of a screen that reviews one file (a render, a still, the script's take): its scope is the screen's
+ * The thread of a screen that reviews one file (a render or a still): its scope is the screen's
  * file, clock, draft and URL, so a pin on the stage and the composer are one draft.
  */
-export function ReviewScreenThread({ on }: { readonly on: 'video' | 'still' | 'script' }) {
+export function ReviewScreenThread({ on }: { readonly on: 'video' | 'still' }) {
   const { project, artifact, timing, playback, draft, search, setSearch, mode } = useReviewScreen();
   const threads = useReviewThreads()?.threads;
   const { versions } = useReviewRenderVersions();

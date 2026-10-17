@@ -16,7 +16,7 @@ physics closed-form in time), randomness comes from `seededRandom` / `hashRandom
 a font, a texture) finishes before the frame is captured. The rule holds for every scene, piece and bar.
 
 `#studio` exports the conveniences: cameras over captures, curves and springs, the kit and reel pieces, the checks'
-tags; timeline.ts imports the timeline models. `studio api` lists both; `studio api <name>` prints one's import,
+tags; storyboard.ts imports `defineStoryboard`. `studio api` lists both; `studio api <name>` prints one's import,
 signature and doc. Use them where they fit and import anything else a scene needs. Existing projects each show one
 way to tell one story, not a structure to copy.
 
@@ -24,7 +24,7 @@ way to tell one story, not a structure to copy.
 
 Read the ones your branch reaches before building:
 
-- **Timing**, for every timed project: the timeline, drivers, cues, beats, the final-hit landmark, the frame:
+- **Timing**, for every timed project: the storyboard, drivers, cues, beats, the final-hit landmark, the frame:
   `${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/timing.md`.
 - **Curves**, springs, staggers and fast moves: `${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/curves.md`.
 - **A real product's UI to a voice** (walkthrough, explainer, PR video): captures, the camera vocabulary, anchoring
@@ -42,23 +42,23 @@ Keep each stretch in one register, and change register on a cut.
 
 ## The work
 
-1. **Block every scene.** A blocked scene is `(clock) => blockingScene(clock, { note, pieces, view })`: flat pieces
-   (`box`, `type`, `image`), each named and tinted, resting at a `pose` in frame pixels and moved by `keys` on its
-   clock's frames (`{ at: clock.cues.land, to: { y: 380 }, over: 9 }`), a `view` pushing or panning over them. Block
-   what the scene really shows, its own pieces moving as they will. Every scene `studio new` writes starts blocked,
-   and a blockout is also the motion reference a video model takes (`video-gen`). Done when the animatic
+1. **Block every scene.** A blocked scene is `(clock) => blockingScene(clock, { pieces, view })`, its note the
+   row's `onScreen`: flat pieces (`box`, `type`, `image`), each named and tinted, resting at a `pose` in frame pixels
+   and moved by `keys` on its clock's frames (`{ at: clock.cues.land, to: { y: 380 }, over: 9 }`), a `view` pushing or
+   panning over them. Block what the scene really shows, its own pieces moving as they will. Every scene `studio new`
+   writes starts blocked, and a blockout is also the motion reference a video model takes (`video-gen`). Done when the animatic
    (`studio render <p> --animatic`) is approved in review. Pacing is signed off before polish: a scene polished
    first gets re-timed when the notes say it's too fast.
 2. **List each scene's reads** (Time it by reads, below), in order, each with a start and an end on the scene's cues.
    Done when every read fits with time to find it, get it and breathe; where they don't, lengthen the scene in
-   `timeline.ts` or cut a read.
-3. **Build it.** Replace the scene's blocking binding with `sceneForTimelineClock(clock, { note, render, expect,
+   `storyboard.ts` (its `timing`, or its seconds or beats) or cut a read.
+3. **Build it.** Replace the scene's blocking binding with `sceneForTimelineClock(clock, { render, expect,
    rung: 'final' })`, over the same cues and rhythm; the review page shows each scene's rung. Done when
    `studio check <p>` passes: framing, every `expect`, no tracking errors.
 4. **Look at it yourself** before reporting back: motion is judged by eye, and the numbers only explain it.
    `studio look --help` is organised by question (these frames, a bar, a strip, before against after, does it keep
    moving, where does a piece go); `studio check` prints when each scene, line and word lands, and `studio clock <p>`
-   the timeline's frames. Read a `--strip` as a viewer: at each tile, where are they looking, and do they understand
+   the storyboard's frames. Read a `--strip` as a viewer: at each tile, where are they looking, and do they understand
    it yet? A read that flashes by in a tile or two, or shares its tiles with another read, will be missed. Done when
    every read holds on the strip and each hit frame is worth pausing on.
 5. **Hand it over** through the `studio-review` skill. A fix inside one scene goes back as a slice,

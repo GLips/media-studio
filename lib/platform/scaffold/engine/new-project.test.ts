@@ -1,7 +1,6 @@
 // Each capability, made by `studio new` in a fresh workspace in a copy of the studio's index, then checked as its first
-// commit would be: check:arch and lint over the workspace's index, typecheck over the new project, and its registered
-// tests, with no repair between. The copy has no other project, so the typecheck covers the new project and what it
-// imports.
+// commit would be: check:arch and lint over the workspace's index, typecheck over the new project, and the workspace
+// retime check, with no repair between. The copy has no other project, so each covers the new project alone.
 import assert from 'node:assert/strict';
 import { execFile, execFileSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, readdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -96,10 +95,11 @@ describe('studio new', { concurrency: true }, () => {
         const types = await outcome(studio, join(studio, 'node_modules/.bin/tsc'), ['-p', 'tsconfig.scaffold.json']);
         assert.equal(types.code, 0, types.output);
 
-        const specs = files.filter((file) => file.endsWith('.test.ts')).map((file) => join(projectDir, file));
-        assert.equal(specs.length > 0, capability !== 'still-only', `${capability} registers ${specs.length} tests`);
-        if (specs.length) {
-          const tests = await outcome(studio, process.execPath, ['--test', ...specs]);
+        // A timed project is held by the workspace retime check, which finds its storyboard.ts; it writes no test of its own.
+        assert.equal(files.includes('storyboard.ts'), capability !== 'still-only', `${capability} writes ${files.join(', ')}`);
+        assert.deepEqual(files.filter((file) => file.endsWith('.test.ts')), []);
+        if (capability !== 'still-only') {
+          const tests = await outcome(studio, process.execPath, ['--test', 'lib/output/render/engine/workspace-retime-check.ts']);
           assert.equal(tests.code, 0, tests.output);
           // Its own report, not a parent runner's: tests ran, and none failed.
           assert.match(tests.output, /ℹ pass [1-9]/, tests.output);

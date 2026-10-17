@@ -109,7 +109,7 @@ type ReviewThreadListProps = {
 
 /** The notes and each delete's Undo in time order, the resolved under their fold row, and the unplaced group last. */
 export function ReviewThreadList({ listing, actions, live, rowOf }: ReviewThreadListProps) {
-  const { project, setSearch } = useReviewThreadScope();
+  const { project, setSearch, unplacedLabel } = useReviewThreadScope();
   const { listed, shownResolved, unplaced, counts, filter } = listing;
   // Unfolded from its row, the resolved are brought into view: they open under the row, often below the fold.
   const revealResolved = useRef(false);
@@ -150,7 +150,7 @@ export function ReviewThreadList({ listing, actions, live, rowOf }: ReviewThread
             </Group>
           )}
           {shownResolved.map(rowOf)}
-          <ReviewThreadUnplaced threads={unplaced} project={project} actions={actions} />
+          <ReviewThreadUnplaced threads={unplaced} project={project} actions={actions} label={unplacedLabel} />
         </Stack>
       </FadeScroll>
     </Box>

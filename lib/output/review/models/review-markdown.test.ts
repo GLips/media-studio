@@ -68,3 +68,14 @@ test('a note on a playing decision candidate says the time it was heard at', () 
   const markdown = formatReviewThreadsMarkdown([heard], { project: 'zz-review-sandbox', renderPath: 'out/video.mp4', renderHash: 'a1b2c3d4e5', fps: 30, size: { w: 1920, h: 1080 } });
   assert.match(markdown, /### #12 fix · open — decision #7, candidate b at 0:12\.04/);
 });
+
+test('a plan note names its scene, line, quote and nearest cue, and needs no render', () => {
+  const note: PlacedReviewThread = {
+    id: 3, kind: 'fix', state: 'open', rev: 3, entries: [{ author: 'reviewer', text: 'say which ones', at: '2026-10-16T12:00:00Z', rev: 3 }],
+    anchor: { on: 'plan', planHash: '0123456789abcdef', scene: 'plate', field: 'line', line: 'verdict', text: 'FODMAPs' },
+    placement: { shifted: false, plan: { frame: 75, words: [4, 4], cue: { name: 'underline', frames: 2 } } },
+  };
+  const markdown = formatReviewThreadsMarkdown([note], { project: 'zz-review-sandbox', fps: 30, size: null });
+  assert.match(markdown, /nothing rendered yet/);
+  assert.match(markdown, /### #3 fix · open — plan · plate · line verdict · ‘FODMAPs’ · underline \+2f\nplan: {2}f75 on the plan's clock/);
+});

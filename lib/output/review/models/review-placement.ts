@@ -2,35 +2,35 @@
 // stored, so the render a note was written on (`writtenOn`) stays as written.
 //
 // A video note shows on every video render of the project: on its own render at its frame, on a cut a slice it was
-// written on is laid into at the same picture, on another at its moment's frame there (review-moment.ts). A still note shows on its still's path. A script note shows on the script,
-// on its line's same word. Decision and project threads show anywhere.
+// written on is laid into at the same picture, on another at its moment's frame there (review-moment.ts). A still note
+// shows on its still's path. Decision and project threads show anywhere.
+//
+// Negative space: a plan note shows on no render. The plan page and the hand-off place it on the storyboard itself
+// (review-plan.ts).
 import type { ReviewArtifact } from './review-artifact.ts';
-import { placeReviewMoment, placeReviewWord, reviewMomentAt, type ReviewTiming } from './review-moment.ts';
+import { placeReviewMoment, reviewMomentAt, type ReviewTiming } from './review-moment.ts';
 import type { NewAnchor } from './review-ops.ts';
 import type { ReviewMediaKind } from './review-context.ts';
-import { reviewScriptLineWords, type ReviewScriptLine } from './review-script.ts';
+import type { ReviewPlanNotePlace } from './review-plan.ts';
 import type { ReviewAnchor, ReviewThread } from './review-threads.ts';
 
 /**
- * A video note's frame (and range end) on this render; a script note's word; or why it can't be placed. `shifted`
- * says it landed elsewhere than it was written.
+ * A video note's frame (and range end) on this render; a plan note's place on the plan, for the hand-off; placed with
+ * no frame (a still's note, a decision's); or why it can't be placed. `shifted` says it landed elsewhere than written.
  */
 export type ReviewPlacement =
   | { frame: number; end?: number; shifted: boolean }
-  | { word?: number; wordEnd?: number; shifted: boolean }
+  | { shifted: false; plan: ReviewPlanNotePlace }
+  | { shifted: boolean }
   | { unplaced: string };
 
-/**
- * What's open: a render (`timing` from its snapshot, when it has one), a still, or the voice take, with the script's
- * lines where it's shown.
- */
+/** What's open: a render (`timing` from its snapshot, when it has one), or a still. */
 export type ReviewPlacementTarget = {
-  kind: ReviewMediaKind | 'audio';
+  kind: ReviewMediaKind;
   hash: string;
   path: string;
   timing?: ReviewTiming;
   durationInFrames: number;
-  scriptLines?: readonly ReviewScriptLine[];
   /**
    * The slices laid into this cut (review-splices.ts), by hash, each with the composition frame it starts at. A note
    * written on one shows over that very picture, so it's placed by frame, never by moment.
@@ -82,13 +82,13 @@ export function reviewAnchorOnLaidSlice<A extends Pick<ReviewVideoAnchor, 'frame
 
 export type PlacedReviewThread = ReviewThread & { placement: ReviewPlacement };
 
-/** Where `thread` shows on `target`, or null when it's about something else (another still, the script elsewhere). */
+/** Where `thread` shows on `target`, or null when it's about something else (another still, the plan). */
 export function placeReviewThread(thread: ReviewThread, target: ReviewPlacementTarget): ReviewPlacement | null {
   const { anchor } = thread;
   switch (anchor.on) {
     case 'video': return target.kind === 'video' ? placeReviewVideoNote(anchor, target) : null;
     case 'still': return target.kind === 'still' && anchor.writtenOn.path === target.path ? { shifted: false } : null;
-    case 'script': return target.scriptLines ? placeReviewScriptNote(anchor, target.scriptLines) : null;
+    case 'plan': return null;
     // About the cut as a whole ("is 24 s right?"): beside a video, where it's answered, and noise beside a still.
     case 'project': return target.kind === 'video' ? { shifted: false } : null;
   }
@@ -113,23 +113,10 @@ function placeReviewVideoNote(anchor: Extract<ReviewAnchor, { on: 'video' }>, ta
   return { frame, ...(anchor.end !== undefined && { end: Math.min(anchor.end + shift, last) }), shifted: shift !== 0 };
 }
 
-function placeReviewScriptNote(anchor: Extract<ReviewAnchor, { on: 'script' }>, lines: readonly ReviewScriptLine[]): ReviewPlacement {
-  const line = lines.find((l) => l.id === anchor.line);
-  if (!line) return { unplaced: `line ${anchor.line} isn't in the script` };
-  if (anchor.word === undefined) return { shifted: false };
-  const words = reviewScriptLineWords(line);
-  // A note on a selection keeps its first word's text to find it by.
-  const text = anchor.text?.split(/\s+/).find(Boolean) ?? words[anchor.word]?.text;
-  const word = text === undefined ? undefined : placeReviewWord(words, { word: anchor.word, text });
-  if (word === undefined) return { unplaced: text === undefined ? `line ${anchor.line} has ${words.length} words now` : `line ${anchor.line} no longer says "${text}"` };
-  const shift = word - anchor.word;
-  return { word, ...(anchor.wordEnd !== undefined && { wordEnd: anchor.wordEnd + shift }), shifted: shift !== 0 };
-}
-
 export type ReviewVideoAnchor = Extract<NewAnchor, { on: 'video' }>;
 
 /**
- * What a thread is about: a video, a still, the script, or a decision (with `candidate`, that candidate). It lists
+ * What a thread is about: a video, a still, the plan, or a decision (with `candidate`, that candidate). It lists
  * what's anchored there, on a render or still the project's own notes too, and on a candidate the whole decision's.
  */
 export type ReviewThreadSubject = { on: ReviewAnchor['on']; decision?: number; candidate?: string };

@@ -125,7 +125,7 @@ function lineRefusal(cut: TimelineReport, slice: TimelineReport, span: FrameSpan
 
 function clockRefusal(cut: RenderSpliceSide, slice: RenderSpliceSide, span: FrameSpan): string | null {
   if (!cut.clock && !slice.clock) return null;
-  if (!cut.clock || !slice.clock) return `the ${slice.clock ? 'cut' : 'slice'} was made with no timeline.ts clock`;
+  if (!cut.clock || !slice.clock) return `the ${slice.clock ? 'cut' : 'slice'} was made with no storyboard.ts clock`;
   const before = cut.clock, now = slice.clock;
   const bars = [...new Set([...now.bars, ...before.bars].filter((b) => overlaps(span, b.visible.from, b.visible.to)).map((b) => b.id))];
   for (const id of bars) {

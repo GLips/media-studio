@@ -59,7 +59,7 @@ behind it inside the shot at every frame; over a dark page, put an opaque backgr
 
 - `stage: stampStage(frame, margin)`: margin whole, even, at least 2; more for defocus or a lay carrying paint past
   the frame. `fov` vertical degrees. `animationFps` (24) is the grid holds count on: give it the span's `fps`
-  (`sceneSecondsOf(clock).span.fps`, the timeline's, 30 by default), or a hold of 3 lasts 4, 4, 4, 3 frames, a stutter.
+  (`sceneSecondsOf(clock).span.fps`, the storyboard's, 30 by default), or a hold of 3 lasts 4, 4, 4, 3 frames, a stutter.
 - `lens: {bloom, shutter?}`: bloom is frame px of sigma; the shutter left out is the film's, half a frame open (1/60 s
   at 30 fps); `'shut'` draws every frame sharp, on purpose.
 - `plays: [paintCameraPlay({kind: 'move', value}, {clock, origin, blend?})]`, `origin` the name errors give it,
@@ -138,7 +138,7 @@ same numbers. A key is `{at, value, curve?, curves?, through?, snap?}` or `{at, 
 `between: 'smooth'` runs uncurved channels on a monotone cubic through the keys, never past one. `paintKeyedAccent`
 (rise to `peak`, settle) and `paintKeyedHit` (wind back first) rest at 0, so they add, and their peak snaps. Key with
 these, never a hand-written ease; `#studio`'s motion functions (`sineInOutEase`, `powerOutEase(3)`, `stagger`) are for
-where a function of the share is wanted. Moment times come from the timeline, never typed in
+where a function of the share is wanted. Moment times come from the storyboard's cues, never typed in
 (`${CLAUDE_PLUGIN_ROOT}/skills/video-canvas/references/painting-over-time.md`, Cues).
 
 - **Moves on moves.** Node moves compose by level: an occurrence's play rides its group's node, and that its plane's.

@@ -1,6 +1,6 @@
 import { createContext, useContext, type ReactNode } from 'react';
 
-/** One place quick-open can go: a project, a file, a decision, a script. */
+/** One place quick-open can go: a project, a file, a decision, a plan. */
 export type QuickOpenEntry = {
   key: string;
   glyph: ReactNode;

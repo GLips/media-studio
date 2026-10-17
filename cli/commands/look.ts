@@ -52,7 +52,7 @@ export default defineCommand({
       const { lookBarFrames, parseLookFrames } = await import('#lib/output/look/models/look-frames.ts');
       const { readProjectClock } = await import('#lib/output/render/engine/project-clock.ts');
       const { lookPieceModels } = await import('#lib/output/look/engine/piece-look.ts');
-      const project = resolveStudioProjectWith(args.project, 'timeline.ts');
+      const project = resolveStudioProjectWith(args.project, 'storyboard.ts');
       const out = outOr(project, 'out/check/models.png', ['.png']);
       const frames = args.frames ? parseLookFrames(args.frames) : lookBarFrames(await readProjectClock(project), args.bar ?? '', project);
       const lines = await lookPieceModels(project, { frames, tracks: args.tracks?.split(',').map((t) => t.trim()).filter(Boolean), out });

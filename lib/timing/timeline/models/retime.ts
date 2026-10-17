@@ -1,4 +1,4 @@
-// retime.ts: the one retime runner every timed project's timeline.test.ts calls.
+// retime.ts: the one retime runner; workspace-retime-check.ts runs it on every project.
 //
 // A retime is lengthening one scene: a beat scene by a beat, a fixed one by a second, and a voiced one by re-recording
 // its first line a second slower. On a grid re-fitted as `studio music fit --bars` would, everything after the scene

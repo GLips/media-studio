@@ -30,7 +30,7 @@ storyboard meant. Run the critique before calling a cut done, and again after th
 
 ## Inputs
 
-The render (an MP4 with its music), the project's `storyboard.md` (the beat sheet and its colour script), and the
+The render (an MP4 with its music), the project's `storyboard.ts` (the beat sheet, and its colour script in the brief), and the
 reference it answers, if any, with its breakdown.
 
 ## Method

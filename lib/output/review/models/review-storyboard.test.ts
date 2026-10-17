@@ -13,7 +13,7 @@ const scenes = [
   { id: 'price', from: 60, to: 120, note: 'the price rolls down', rung: 'blocking' as const, lines: [] },
 ];
 
-test('a card per scene carries its rung and note, with a still on each cue captioned in timeline.ts\'s words; a slice keeps what it holds', () => {
+test('a card per scene carries its rung and note, with a still on each cue captioned in the plan\'s words; a slice keeps what it holds', () => {
   const whole = reviewStoryboardOf({ fps: 30, frames: { from: 0, end: 120 }, scenes, lines: [], clock });
   assert.deepEqual(whole.map((c) => [c.id, c.rung, c.from, c.to, c.timing]), [['bounce', undefined, 0, 60, '4 beats'], ['price', 'blocking', 60, 120, '4 beats']]);
   assert.deepEqual(whole[1].stills, [{ frame: 75, moments: [{ kind: 'cue', name: 'clack', frame: 75, at: 'beat 1' }] }]);

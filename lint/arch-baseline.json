@@ -130,9 +130,6 @@
     "lib/output/render/engine/project-bundle.ts": {
       "alias: { ...(config.resolve?.alias as Record<string, string>), '@video': video, '@stills': stills, '@footage': previsFootageModuleFor(project), '@sfx-cues': sfxCues, '@brand': brand, '@stamp-paint-styles': styles, 'react-dom': studioReactDom(join(dir, 'generated')) },": 1
     },
-    "lib/output/render/engine/project-clock.ts": {
-      "const { timeline } = (await import(pathToFileURL(file).href)) as { timeline?: Timeline };": 1
-    },
     "lib/output/render/engine/render-pipeline.ts": {
       "for (const [kind, file] of Object.entries(files) as ['srt' | 'vtt', string][]) {": 1
     },
@@ -351,7 +348,6 @@
       "const name = node.name as string;": 1
     },
     "lint/structural/checks/capability-match.ts": {
-      "const spec = call && unwrapExpression((call.arguments as AstNode[])[0]);": 1,
       "return value?.type === 'Literal' && PROJECT_CAPABILITIES.includes(value.value as ProjectCapability) ? value.value as ProjectCapability : undefined;": 2,
       "return (object.properties as AstNode[]).flatMap((p) => (p.type === 'Property' ? [propertyKeyName(p)].filter((k): k is string => k !== undefined) : []));": 1
     },
@@ -634,7 +630,6 @@
       "console.error(`${mode === 'draft' ? 'drafted' : 'voiced'} the take  ${duration.toFixed(2)}s`);": 1,
       "console.error(`cut ${clip.id}  ${duration.toFixed(2)}s${pause}${unheard.length ? `  (misheard, timed from their neighbours: ${unheard.join(' ')})` : ''}`);": 1,
       "if (problem) console.error(`listen to ${clip.id}: the read ${problem} before it, so the cut may be heard. Add <short pause> before it, or move the line break`);": 1,
-      "console.error(`estimated ${lines.length} lines from their word counts`);": 1,
       "console.error(`${Object.keys(manifest).length} lines, ${total.toFixed(1)}s of voice`);": 1,
       "console.error(`${voice}  ${duration.toFixed(2)}s`);": 1
     }
@@ -1200,9 +1195,6 @@
     "lib/picture/reel/studio/type-slant.tsx": {
       "const dots = dotsAt(m, pose.scale).map((d) => ({ ...d, swap: tittle?.(d) }));": 1
     },
-    "lib/picture/video/studio/video.ts": {
-      "return { ...layout, scenes: layout.scenes.map((placed, k) => ({ ...video.scenes[k], ...placed })) };": 1
-    },
     "lib/platform/paid-generation/engine/paid-generation.ts": {
       "const references = (request.references ?? []).map((ref) => ({ ...ref, bytes: readFileSync(ref.path) }))": 1,
       ".map((ref) => ({ ...ref, sha256: createHash('sha256').update(ref.bytes).digest('hex') }));": 1,
@@ -1595,10 +1587,6 @@
     },
     "lib/timing/music/models/music-fit.ts": {
       "const steps: (Step | undefined)[][][] = Array.from({ length: maxBars + 1 }, () => downbeats.map(() => Array(MIN_SPAN_BARS + 1)));": 1
-    },
-    "lib/timing/voice/engine/voice-project.ts": {
-      "const script: Script = JSON.parse(readFileSync(join(project, 'voiceover.json'), 'utf8'));": 1,
-      "const manifest: Record<string, Voiced> = JSON.parse(readFileSync(manifestPath, 'utf8'));": 1
     }
   },
   "typescript(no-unsafe-call)": {
@@ -1885,7 +1873,6 @@
       "const end = (ref: ReplaySpec['from']) => (typeof ref === 'string' ? { cue: ref, frames: 0 } : ref);": 1
     },
     "lib/timing/voice/engine/voice-project.ts": {
-      "export async function voiceStudioProject(project: string, { mode, recording }: { mode: VoiceMode; recording?: string }): Promise<string> {": 1,
       "const round = (x: number) => Math.round(x * 1000) / 1000;": 1
     },
     "lib/timing/voice/models/voice-take.ts": {

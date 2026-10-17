@@ -10,8 +10,8 @@ import {
   Capture, CursorPath, DrawPath, Highlight, Odometer, Text, WordReveal, camAt, camTop, clamp, defineVideo, lerp,
   motionCurves, motionAttrs, on, sceneForTimelineClock, screenRect, seg, useMotionTag, useVideoFormat, view, type Rect, type Shot,
 } from '#studio';
-import { bindTimeline } from '#lib/timing/timeline/models/bind-timeline.ts';
-import { defineTimeline, fixedSpan, type ResolvedSceneClock } from '#lib/timing/timeline/models/timeline.ts';
+import { defineStoryboard } from '#lib/timing/storyboard/models/storyboard.ts';
+import type { ResolvedSceneClock } from '#lib/timing/timeline/models/timeline.ts';
 
 const INK = '#1c365e';
 
@@ -189,14 +189,22 @@ const kit = (clock: ResolvedSceneClock) => sceneForTimelineClock(clock, {
 });
 
 // Each scene dissolves into the next over half a second, but for the hard cuts into `end` and `kit`.
-const fade = { crossfade: 0.5 };
-const timeline = defineTimeline({
+const fade = { timing: { crossfade: 0.5 } };
+const storyboard = defineStoryboard({
+  title: 'Motion calibration', target: { seconds: 22.5 },
   scenes: {
-    glide: fixedSpan(3), push: fixedSpan(3, fade), rise: fixedSpan(2, fade), counter: fixedSpan(2.5, fade), nested: fixedSpan(2.5, fade),
-    blink: fixedSpan(2, fade), after: fixedSpan(2, fade), end: fixedSpan(1.5), kit: fixedSpan(4),
+    glide: { onScreen: 'An eased card beside a linear one', motion: 'Both travel 1000px; the linear one jitters as it holds', seconds: 3 },
+    push: { onScreen: 'The grid, a ring on its centre square', motion: 'A push in, zoom 1 → 2.4, no pan', seconds: 3, ...fade },
+    rise: { onScreen: 'The grid and the ring', motion: 'Both rise 120px in their wrapper, the camera still', seconds: 2, ...fade },
+    counter: { onScreen: 'A counter and a ring', motion: 'It counts 0 → 120 as the ring draws on, neither moving', seconds: 2.5, ...fade },
+    nested: { onScreen: 'A 2× stage, a tilted card and a chip', motion: 'A dot moves inside the stage', seconds: 2.5, ...fade },
+    blink: { onScreen: 'A mark', motion: 'It is gone mid-scene and comes back', seconds: 2, ...fade },
+    after: { onScreen: '"Same words"', motion: 'They rise 100px', seconds: 2, ...fade },
+    end: { onScreen: '"Same words" again', motion: 'A hard cut in', seconds: 1.5 },
+    kit: { onScreen: 'The kit\'s builds', motion: 'Words rise, a check draws on, a total rolls', seconds: 4 },
   },
 });
 
 export default defineVideo({
-  title: 'Motion calibration', timeline, voice: {}, scenes: bindTimeline(timeline, { glide, push, rise, counter, nested, blink, after, end, kit }),
+  title: 'Motion calibration', storyboard, scenes: { glide, push, rise, counter, nested, blink, after, end, kit },
 });

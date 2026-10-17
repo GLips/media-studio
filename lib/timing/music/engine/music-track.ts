@@ -3,7 +3,7 @@
 //
 // `add` copies the track to <project>/music/ and writes music/index.ts, which the video imports:
 //   import { music } from './music/index.ts';
-//   defineVideo({ …, music: { track: music.bed } })
+//   defineVideo({ …, bed: { track: music.bed } })
 // Each track carries its loudness (the mix levels it against the voice), its tempo, and its beat times in the track,
 // for placing accents or cuts on the beat by hand. `fit` cuts a new track from one of them (lib/timing/music/models/music-fit.ts) and adds
 // it beside the original, with the spans it was cut from.

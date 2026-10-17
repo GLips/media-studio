@@ -25,19 +25,21 @@ type ReviewThreadUnplacedProps = {
   readonly threads: readonly PlacedReviewThread[];
   readonly project: string;
   readonly actions: ReviewThreadActions;
+  readonly label?: string;
 };
 
 /**
- * `▸ unplaced 2`: notes this render has no place for, folded at the foot. Each shows the frame it was written against,
- * with Re-pin (to the playhead here) and Resolve.
+ * `▸ unplaced 2`: notes this render has no place for, folded at the foot; `label` names the group where a subject
+ * says it otherwise (the plan's `moved or removed`). Each shows the frame it was written against, with Re-pin (to the
+ * playhead here) and Resolve.
  */
-export function ReviewThreadUnplaced({ threads, project, actions }: ReviewThreadUnplacedProps) {
+export function ReviewThreadUnplaced({ threads, project, actions, label = 'unplaced' }: ReviewThreadUnplacedProps) {
   const [open, setOpen] = useState(false);
   if (!threads.length) return null;
   return (
     <Box {...stylex.props(styles.group)}>
       <UnstyledButton aria-expanded={open} onClick={() => setOpen((o) => !o)} {...stylex.props(styles.toggle)}>
-        <Text component="span" size="sm" inherit>{open ? '▾' : '▸'} unplaced{threads.length > 1 && ` ${threads.length}`}</Text>
+        <Text component="span" size="sm" inherit>{open ? '▾' : '▸'} {label}{threads.length > 1 && ` ${threads.length}`}</Text>
       </UnstyledButton>
       {open && (
         <Stack gap="gap" role="list">

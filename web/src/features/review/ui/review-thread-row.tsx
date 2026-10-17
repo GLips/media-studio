@@ -4,10 +4,11 @@ import * as stylex from '@stylexjs/stylex';
 import { Bot, Check, CornerUpLeft, Pencil, RotateCcw, Trash2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { reviewSceneAtFrame, type ReviewScene } from '#lib/output/review/models/review-context.ts';
+import { formatReviewPlanNoteWhere } from '#lib/output/review/models/review-plan.ts';
 import { type PlacedReviewThread, type ReviewRefusedSlice, type ReviewSplices, reviewCueNameOf, reviewThreadFrameOf } from '#lib/output/review/models/review-placement.ts';
 import { formatReviewClock } from '#lib/output/review/models/review-timeline-geometry.ts';
 import {
-  REVIEW_THREAD_TONES, reviewThreadTone, type ReviewAnchor, type ReviewEntry, type ReviewThread, type ReviewThreadTone,
+  REVIEW_THREAD_TONES, reviewThreadTone, type ReviewEntry, type ReviewThread, type ReviewThreadTone,
 } from '#lib/output/review/models/review-threads.ts';
 import { IconButton } from '#web/shared/ui/icon-button.tsx';
 import { Readout } from '#web/shared/ui/readout.tsx';
@@ -82,20 +83,13 @@ const REPLY_GLYPHS: Readonly<Record<NonNullable<ReviewEntry['transition']> | 'as
   asks: { ...REVIEW_THREAD_TONES.asks, style: 'asks' },
 };
 
-/** A script note's place as the script numbers it, `5 · ‘Snap the menu’`; a line the take doesn't voice by its id. */
-function reviewScriptWhereOf(anchor: Extract<ReviewAnchor, { on: 'script' }>, lines: readonly string[]): string {
-  const index = lines.indexOf(anchor.line);
-  const line = index === -1 ? anchor.line : `${index + 1}`;
-  return anchor.text ? `${line} · ‘${anchor.text}’` : line;
-}
-
 /**
  * `0:04.12`, `0:07.00–0:08.10`, or for a note off the timeline what it's on. A decision's note says nothing: its
  * thread is already the candidate's.
  */
 function reviewThreadWhereOf(thread: PlacedReviewThread, place: ReviewThreadRowPlace): string | null {
   const { placement, anchor } = thread;
-  if (anchor.on === 'script') return reviewScriptWhereOf(anchor, place?.lines ?? []);
+  if (anchor.on === 'plan') return formatReviewPlanNoteWhere(anchor, { short: true });
   if ('frame' in placement && place) return `${formatReviewClock(placement.frame / place.fps)}${placement.end !== undefined && placement.end !== placement.frame ? `–${formatReviewClock(placement.end / place.fps)}` : ''}`;
   if (anchor.on === 'decision') return anchor.at === undefined ? null : formatReviewClock(anchor.at);
   return anchor.on === 'still' ? (anchor.cell ?? null) : null;
@@ -129,8 +123,6 @@ export type ReviewThreadRowPlace = {
   versions: readonly ReviewComparedVersion[];
   /** The reply slices on the cut: a reply whose slice won't splice links to it, to be played alone. */
   splices: ReviewSplices;
-  /** The voiced lines' ids in reading order, which number a script note's line. */
-  lines: readonly string[];
 } | null;
 
 /**

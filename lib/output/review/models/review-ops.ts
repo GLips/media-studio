@@ -319,10 +319,10 @@ function closeReviewDecision(at: Applying, id: number) {
   at.changed.add(id);
 }
 
-/** A sign-off replaces the last on the same thing: the script, or a render's path. */
+/** A sign-off replaces the last on the same thing: a plan scene, or a render's path. */
 function signOffReview(at: Applying, signoff: ReviewSignoff) {
   reviewerOnly(at, 'signs off');
-  const same = (s: ReviewSignoff) => s.on === signoff.on && (s.on === 'script' || (signoff.on === 'render' && s.path === signoff.path));
+  const same = (s: ReviewSignoff) => (s.on === 'plan' ? signoff.on === 'plan' && s.scene === signoff.scene : signoff.on === 'render' && s.path === signoff.path);
   at.file.signoffs = [...at.file.signoffs.filter((s) => !same(s)), signoff];
 }
 

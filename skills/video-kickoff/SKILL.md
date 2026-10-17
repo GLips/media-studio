@@ -18,7 +18,7 @@ yes before the next spends more on it.
 | Rung | Settles | Where |
 |---|---|---|
 | **Treatment** | the idea, the tone, the takeaway | steps 1–2 |
-| **Scene table or beat sheet** | what happens, in order; the track, when it's cut to music | step 3 |
+| **Scene table or beat sheet** | what happens, in order, and what's said; the track, when it's cut to music | step 3: `storyboard.ts`, on the plan page |
 | **Style frames** | the look: two to four finished stills of key moments | the `stills` skill |
 | **Animatic** | pacing and movement: every scene blocked at its real timing, on the voice or the music | step 4; `video-gen` where a video model takes the motion |
 | **Polish, then sound** | the finish | `video-motion`, then `video-sound` |
@@ -59,46 +59,49 @@ Done when you can state the purpose, takeaway, audience and driver in one line e
 Give **5 story angles of 2–3 sentences each**, in the chat: different ways into the story (the problem first, a
 number that surprises), not five wordings of one idea. Refine the one the user picks. Done when they say it feels right.
 
-## 3. Scene table
+## 3. The plan
 
-Start the project: `studio new <slug> --capability <…>` (`studio new --help`). Its scenes start blocked, so
-`studio render <p> --animatic` shows the storyboard as it plays from the first minute. Write the angle out in the
-project's `storyboard.md`, under the audience, source and takeaway:
+Start the project: `studio new <slug> --capability <…>` (`studio new --help`). Its plan is `storyboard.ts`, and its
+scenes start blocked, so `studio render <p> --animatic` shows the plan as it plays from the first minute. Rewrite the
+plan from the angle: `title`, `target` seconds, the `brief` (who it's for, the takeaway, the angle, the sources, the
+rules), then a row per scene. A voiced scene, its lines written by
+`${CLAUDE_PLUGIN_ROOT}/skills/video-kickoff/references/voiceover-lines.md`:
 
+```ts
+intro: {
+  onScreen: 'Add To Cart, big and centred',
+  motion: 'The cursor comes in and clicks on "click"; the page locks under the spinner',
+  lines: {
+    intro: { text: 'Every click on Add To Cart used to lock the page.', paragraph: true, cues: { click: 'click' } },
+  },
+  reads: ['The button the whole video is about.'],
+},
 ```
-| #  | Scene     | On screen                              | Motion                  | Lines        |
-|----|-----------|----------------------------------------|-------------------------|--------------|
-| 1  | intro     | Add To Cart button, big and centred    | cursor comes in, clicks | intro        |
-| 2  | lock      | Page locks under the spinner           | push in on the spinner  | control-lock |
-| 3  | instant   | Same click on the new buy box          | match cut, same spot    | new-instant  |
-```
 
-- **Scene** and **Lines** become the ids in the timeline and `voiceover.json`.
-- Every scene has an **event**: something changes between its first frame and its last. Under the table, list each
-  scene's reads, what the viewer must understand, in order: the motion pass times from them.
+- Scene and line ids are the names everything else uses. A cue sits on its word (`{ phrase, nth }` for a later one),
+  so a reworded line changes one place; a cue whose word has gone is flagged on its scene. `paragraph: true` starts a
+  new beat: the read pauses, and no caption runs across it.
+- Every scene has an **event**: something changes between its first frame and its last. Its `reads` list what the
+  viewer must understand, in order: the motion pass times from them.
 - Plan the whole video: what's set up is paid off, and the ending rhymes with the opening where it can.
-- Write each Motion entry so it turns straight into code, over captures in the camera vocabulary (`video-motion`).
+- Write each `motion` so it turns straight into code, over captures in the camera vocabulary (`video-motion`).
+- Leave `timing` out until the animatic: each line is timed from its word count until it's voiced.
 - An ad, teaser, social or promo cut to music takes the high-energy register (`video-motion`): a beat sheet, one bar
-  per idea on the music's grid, in place of scenes on a voice. Each row becomes a bar (`bars/<id>.tsx`) and its
-  `note`:
+  per idea on the storyboard's `grid` (`{ tempo: 120 }` until there's a track), in place of scenes on a voice. Each
+  bar is a scene with `beats` and its cues on them, drawn in `bars/<id>.tsx`; a mixed project puts lines on beats
+  (`at`):
 
+  ```ts
+  drop: {
+    onScreen: 'The scattered notes snap into one graph', motion: 'Hit on 1; the graph settles by 3',
+    beats: 4, cues: { hit: 0, settled: 2 },
+  },
   ```
-  | Bar | id   | On screen                                  | On the beats                     |
-  |-----|------|--------------------------------------------|----------------------------------|
-  | 1   | open | Black; "Ideas don't wait." one word a beat | cursor blinks on 1, words on 2–4 |
-  | 8   | drop | The scattered notes snap into one graph    | hit on 1; the graph settles by 3 |
-  ```
-- End with **Deliberately left out**: true things the video skips, one line each with the reason. It keeps them from
-  creeping back in during review.
+- End with `leftOut`: true things the video skips, one line each with the reason. It keeps them from creeping back
+  in.
 
-  ```
-  ## Deliberately left out
-
-  - The URL parameter and A/B test setup. They're internal; the rollout scene just says it's tested.
-  - Logged-in pro pricing. That needs test accounts, so the pricing scene states it as text instead.
-  ```
-
-Done when the user says yes to the table.
+Hand it over on the plan page (`studio-review`): it times the plan, flags long silences and holds, and takes the
+reviewer's notes on any cell, line or word. Done when every scene is signed off.
 
 ## 4. The animatic
 
@@ -108,29 +111,25 @@ blockout, `video-gen`).
 
 **Cut to music:**
 
-1. Put the timeline on the track's tempo. A track the user brings is added and fitted first (`video-sound`).
-   Otherwise draft on `tempoGrid(bpm)`, a click, at the tempo you'll generate at (120 BPM: a 4/4 bar is 2 s), and
-   generate after sign-off. `music fit` never stretches a track: at another tempo cues keep their beats, but a move's
-   `over` in frames takes another share of the beat.
-2. Write `timeline.ts` from the beat sheet, a `beatSpan` per bar with a cue for each idea that lands on a beat (the
-   music-led starter `studio new` writes is the pattern), and block each bar with its beat-sheet row as its `note`.
+1. Put the plan on the track's grid. A track the user brings is added and fitted first (`video-sound`), and the grid
+   names it (`{ music: '<track>-fit' }`). Otherwise draft on `{ tempo: 120 }`, a click, at the tempo you'll generate
+   at (a 4/4 bar is 2 s), and generate after sign-off. `music fit` never stretches a track: at another tempo cues
+   keep their beats, but a move's `over` in frames takes another share of the beat.
+2. Block each bar on its cues (the music-led starter `studio new` writes is the pattern); its row is its note.
 3. Render the animatic and read it yourself, bar by bar (`studio look <p> --video out/wip/animatic.mp4 --bar N`).
    Ready to send when each idea arrives on its beat and the cut lands on the final hit.
 
 **Voiced:**
 
-1. Write the lines by `${CLAUDE_PLUGIN_ROOT}/skills/video-kickoff/references/voiceover-lines.md` into
-   `voiceover.json` (`"paragraph": true` where a new beat starts, so the read pauses and no caption runs across it) and
-   time them free with `studio voice <p> --read=estimate`.
-2. Capture the states the table needs (`video-capture`), by **Real UI only** below.
-3. Block each scene over its captures, its table text as its `note`: one camera and at most one highlight, the
-   highlight anchored to its word so it lands again on the real voice. No cursor paths, blur or polish yet.
-4. Render the animatic and read it yourself as a strip (`studio look <p> --video out/wip/animatic.mp4 --strip a:b`).
+1. Capture the states the plan needs (`video-capture`), by **Real UI only** below.
+2. Block each scene over its captures, its row as its note: one camera and at most one highlight, the highlight on
+   its word's cue so it lands again on the real voice. No cursor paths, blur or polish yet.
+3. Render the animatic and read it yourself as a strip (`studio look <p> --video out/wip/animatic.mp4 --strip a:b`).
    Ready to send when every scene's event and each of its reads shows in its frames, and nothing sits off the frame or
    under the caption.
 
-Hand it to the user for review (`studio-review`); pacing notes go into the table, the lines and `timeline.ts`. Done
-when the user signs the animatic off.
+Hand it to the user for review (`studio-review`); pacing notes go into `storyboard.ts`: the row, its lines, its
+`timing` (lead, gap, tail, `nudge`). Done when the user signs the animatic off.
 
 Then voice it for real with `studio voice <p>` (its key: `studio voice --help`; without it, the user runs the command
 under their secret launcher, `studio-setup`). A `--read=draft` is for timing only. Render the animatic again to check
@@ -143,16 +142,15 @@ button breaks it for all of them.
 
 - Capture it (`video-capture`), or compose the host's real components (`video-motion`). A product with nothing to
   capture yet (pre-launch, no build) gets its screens built in DOM, consistent with each other and the brief, each
-  named in the On screen column so the user approves it as the product. A state that can't be
+  named in its scene's `onScreen` for the user to approve as the product. A state that can't be
   photographed (an open native `<select>`, a `confirm()` dialog) is rebuilt in DOM from the product's own words and
   styles, as `ConfirmDialog` and `NativeMenu` in `#studio` are.
 - Pull real icons and logos from the site's assets. On a Mac, an app's icon is in its bundle:
   `sips -s format png /Applications/X.app/Contents/Resources/*.icns --out icon.png`. A coloured square standing in for
   an icon fails review.
 - **Generate only around the product**: title-card art, a background, a physical product's shot from its real photo,
-  a concept icon (`video-motion`, generated stills). Name each in the table's On screen column so the user approves it
-  with the rest.
+  a concept icon (`video-motion`, generated stills). Name each in its scene's `onScreen`.
 - **Show only what the scene needs**: the one part the story is about, large, on a clean background. `camFit` stops
   at 1.6× because captures soften past it; to go bigger, capture that element at a higher `scale`.
-- Check each claim in the source against the live product, and note where they disagree in `storyboard.md` under
-  a dated heading (`## Checked against the dev theme, <yyyy-mm-dd>`), a row per claim and what the product shows.
+- Check each claim in the source against the live product, and note where they disagree in the plan's `brief` under
+  a dated heading (`'Checked against the dev theme, <yyyy-mm-dd>'`), a line per claim and what the product shows.
