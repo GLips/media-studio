@@ -18,8 +18,8 @@ import { formatReviewThreadsMarkdown, type ReviewMarkdownOptions, type ReviewMar
 import { REVIEW_FALLBACK_FPS } from '../models/review-context.ts';
 import type { NewAnchor, NewDecision } from '../models/review-ops.ts';
 import { placeReviewThread, reviewVideoAnchorAt, type PlacedReviewThread, type ReviewPlacement, type ReviewPlacementTarget } from '../models/review-placement.ts';
-import { reviewPlanNotePlacementOf, storyboardPlanHash } from '../models/review-plan.ts';
-import type { ReviewCandidate, ReviewDecision, ReviewEntryCommit, ReviewPlanAnchor, ReviewPlanField, ReviewThread, ReviewThreadState } from '../models/review-threads.ts';
+import { reviewPlanFieldText, reviewPlanNotePlacementOf, reviewPlanSignoffs, type ReviewPlanFieldChange } from '../models/review-plan.ts';
+import type { ReviewCandidate, ReviewDecision, ReviewEntryCommit, ReviewPlanAnchor, ReviewPlanField, ReviewSignoff, ReviewThread, ReviewThreadState } from '../models/review-threads.ts';
 import { projectFolderNamed, projectMediaTypeOf, projectPathOf, resolveProjectMedia } from './project-media.ts';
 import { readReviewArtifact, reviewPlacementTargetOf, reviewStillSizeOf } from './review-artifact.ts';
 import { readReviewSplices } from './review-splices.ts';
@@ -80,6 +80,17 @@ export async function placeReviewHandoff(handoff: ReviewHandoff, threads: readon
 const placeAway = (thread: ReviewThread, target: ReviewPlacementTarget | null): ReviewPlacement =>
   thread.anchor.on === 'project' || thread.anchor.on === 'still' ? { shifted: false } : { unplaced: target ? `not on ${target.path}` : 'nothing is rendered yet' };
 
+/**
+ * The plan's scenes changed since the reviewer signed them off, each with its reworded fields; the storyboard is
+ * imported only when a scene has a sign-off to go stale.
+ */
+export async function reviewHandoffStalePlan(project: string, signoffs: readonly ReviewSignoff[]): Promise<{ scene: string; changes: ReviewPlanFieldChange[] }[]> {
+  if (!signoffs.some((s) => s.on === 'plan')) return [];
+  const plan = await readProjectStoryboard(projectFolderNamed(project));
+  if (!plan) return [];
+  return reviewPlanSignoffs(plan.storyboard, plan.resolved, signoffs).flatMap(({ scene, state, changes }) => (state === 'stale' ? [{ scene, changes: changes ?? [] }] : []));
+}
+
 /** The stills `threads` are on, other than the render itself, as they are now; a still since deleted is left out. */
 function reviewHandoffStillsOf(project: string, renderPath: string | undefined, threads: readonly ReviewThread[]): Record<string, ReviewMarkdownStill> {
   const paths = new Set(threads.flatMap((t) => (t.anchor.on === 'still' && t.anchor.writtenOn.path !== renderPath ? [t.anchor.writtenOn.path] : [])));
@@ -126,7 +137,8 @@ export type ReviewAskPlace =
 
 /**
  * The anchor an agent's question is on: stamped with the render's hash and the moment its frame is at, or with the
- * plan's hash, its scene, line and quote checked against the storyboard so a typo fails here, not as an unplaced note.
+ * plan field's text as it is now, its scene, line and quote checked against the storyboard so a typo fails here, not
+ * as an unplaced note.
  */
 export async function reviewAskAnchorOf(project: string, place: ReviewAskPlace): Promise<NewAnchor> {
   switch (place.on) {
@@ -155,11 +167,13 @@ async function reviewAskPlanAnchorOf(project: string, place: Extract<ReviewAskPl
   if (place.field !== 'brief' && place.field !== 'leftOut' && scene === undefined) {
     throw new Error(place.line === undefined ? `name the scene: ${Object.keys(storyboard.scenes).join(', ')}` : `no scene has a line ${place.line}`);
   }
-  const anchor: ReviewPlanAnchor = {
-    on: 'plan', planHash: storyboardPlanHash(storyboard), field: place.field,
+  const quoted: ReviewPlanAnchor = {
+    on: 'plan', field: place.field,
     ...(scene !== undefined && { scene }), ...(place.section !== undefined && { section: place.section }),
     ...(place.line !== undefined && { line: place.line }), ...(place.quote !== undefined && { text: place.quote }),
   };
+  const was = reviewPlanFieldText(storyboard, quoted);
+  const anchor: ReviewPlanAnchor = { ...quoted, ...(was !== undefined && { was }) };
   const placed = reviewPlanNotePlacementOf(anchor, storyboard, resolved);
   if ('unplaced' in placed) throw new Error(`can't ask there: ${placed.unplaced}`);
   return anchor;

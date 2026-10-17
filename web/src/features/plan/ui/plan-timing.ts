@@ -10,7 +10,7 @@ import { findScriptPhrase, type SpokenWord } from '#lib/timing/voice/models/voic
 
 /** A silence longer than this, between two things said or before the first, is flagged. */
 export const PLAN_SILENCE_FLAG_SECONDS = 0.5;
-/** A stretch longer than this with nothing planned on it (no cut, cue, line or move) is flagged as a hold. */
+/** A stretch longer than this with nothing planned on it (no cut, cue, line being said, or move) is flagged as a hold. */
 export const PLAN_HOLD_FLAG_SECONDS = 2;
 
 /** A word as said and as captioned: `*emphasis*` and `` `keycap` `` marked, the markup itself left off `text`. */
@@ -46,6 +46,7 @@ export type PlanTiming = {
   end: number;
   scenes: readonly PlanScene[];
   lines: readonly PlanLine[];
+  /** In the order they start. */
   flags: readonly PlanFlag[];
   audio: readonly PlanAudio[];
 };
@@ -107,7 +108,8 @@ export function planTimingOf({ storyboard, resolved, music }: ProjectStoryboard)
   });
   const moves = timeline.scenes.flatMap((s) => Object.values<{ from: number; to: number }>(s.moves));
   const events = [0, ...scenes.map((s) => s.from), ...scenes.flatMap((s) => s.cues.map((c) => c.frame)), ...lines.map((l) => l.from), timeline.end];
-  return { fps, end: timeline.end, scenes, lines, flags: [...planSilencesOf(lines, fps), ...planHoldsOf(events, moves, fps)], audio };
+  const flags = [...planSilencesOf(lines, fps), ...planHoldsOf(events, [...moves, ...lines], fps)].toSorted((a, b) => a.from - b.from);
+  return { fps, end: timeline.end, scenes, lines, flags, audio };
 }
 
 /** A voiced scene's lead before its first line, the gaps between its lines, and its tail after the last. */
@@ -129,16 +131,27 @@ function planSilencesOf(lines: readonly PlanLine[], fps: number): PlanFlag[] {
   return quiet.filter((q) => (q.to - q.from) / fps > PLAN_SILENCE_FLAG_SECONDS).map((q): PlanFlag => ({ kind: 'silence', from: q.from, to: q.to }));
 }
 
-/** Stretches over 2 s between planned events (cuts, cues, line starts), less what a move is running over. */
-function planHoldsOf(events: readonly number[], moves: readonly { from: number; to: number }[], fps: number): PlanFlag[] {
+/**
+ * Stretches over 2 s between planned events (cuts, cues, line starts), less what is running over them: a move, or a
+ * line being said. Speech is itself something happening, so a long line holds nothing up.
+ */
+function planHoldsOf(events: readonly number[], covered: readonly { from: number; to: number }[], fps: number): PlanFlag[] {
   const frames = [...new Set(events)].toSorted((a, b) => a - b);
   const holds: PlanFlag[] = [];
   for (let i = 1; i < frames.length; i++) {
     let pieces = [{ from: frames[i - 1], to: frames[i] }];
-    for (const m of moves) pieces = pieces.flatMap((p) => [{ from: p.from, to: Math.min(p.to, m.from) }, { from: Math.max(p.from, m.to), to: p.to }].filter((q) => q.to > q.from));
+    for (const m of covered) pieces = pieces.flatMap((p) => [{ from: p.from, to: Math.min(p.to, m.from) }, { from: Math.max(p.from, m.to), to: p.to }].filter((q) => q.to > q.from));
     holds.push(...pieces.filter((p) => (p.to - p.from) / fps > PLAN_HOLD_FLAG_SECONDS).map((p): PlanFlag => ({ kind: 'hold', from: p.from, to: p.to })));
   }
   return holds;
+}
+
+/**
+ * The flag `F` (`by` 1) or `Shift+F` (`by` -1) steps to from `frame`: the first starting after it, or the last starting
+ * before it; undefined past the last or before the first. Flags starting on one frame are one step.
+ */
+export function planFlagStepFrom(flags: readonly PlanFlag[], frame: number, by: 1 | -1): PlanFlag | undefined {
+  return by === 1 ? flags.find((f) => f.from > frame) : flags.findLast((f) => f.from < frame);
 }
 
 /** The scene playing at `frame`: the last whose cut is at or before it; the first before any. */

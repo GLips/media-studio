@@ -3,7 +3,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import { HotkeysProvider } from '@tanstack/react-hotkeys';
 import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
-import { studioQuickOpenEntries } from '#web/features/projects/index.ts';
+import { StudioWaitingTitle, studioQuickOpenEntries } from '#web/features/projects/index.ts';
 import { mantineTheme, themeVariables } from '#web/shared/ui/mantine-theme.ts';
 import { QuickOpenEntriesProvider } from '#web/shared/ui/quick-open-entries.tsx';
 import { StudioOverlaysProvider } from '#web/shared/ui/studio-overlays.tsx';
@@ -13,8 +13,10 @@ type RootRouteContext = { queryClient: QueryClient };
 
 export const Route = createRootRouteWithContext<RootRouteContext>()({
   head: () => ({
-    meta: [{ charSet: 'utf-8' }, { name: 'viewport', content: 'width=device-width, initial-scale=1' }, { title: 'Studio' }],
-    // An empty icon: the app has none, and without one every page load asks for /favicon.ico and logs its 404.
+    // No title: StudioWaitingTitle owns it, counting what waits, and a head title would reset it on a navigation.
+    meta: [{ charSet: 'utf-8' }, { name: 'viewport', content: 'width=device-width, initial-scale=1' }],
+    // An empty icon: the app has none, and without one every page load asks for /favicon.ico and logs its 404. While
+    // anything waits, use-studio-waiting-title.ts rewrites its href to a dot.
     links: [{ rel: 'stylesheet', href: appCss }, { rel: 'icon', href: 'data:,' }],
   }),
   shellComponent: RootDocument,
@@ -48,6 +50,7 @@ function RootDocument({ children }: { children: ReactNode }) {
           {/* A key bound twice on one target throws, so a collision between two screens' groups shows in dev. */}
           <HotkeysProvider defaultOptions={{ hotkey: { conflictBehavior: 'error' } }}>
             <QuickOpenEntriesProvider source={studioQuickOpenEntries}>
+              <StudioWaitingTitle />
               <StudioOverlaysProvider>{children}</StudioOverlaysProvider>
             </QuickOpenEntriesProvider>
           </HotkeysProvider>

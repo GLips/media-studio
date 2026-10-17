@@ -11,6 +11,7 @@ const applied = (result: ReturnType<typeof apply>): ReviewOpsApplied => {
   return result;
 };
 const note = (text: string): ReviewOp => ({ op: 'thread.add', kind: 'fix', anchor: { on: 'video', writtenOn: render, frame: 120 }, text });
+const planSignoff = (scene: string): ReviewOp => ({ op: 'signoff', signoff: { on: 'plan', scene, hash: 'h', texts: {}, at: '2026-10-11T12:00:00Z' } });
 const withNote = applied(apply(emptyReviewFile(), 'reviewer', note('the price lands soft'))).file;
 
 test('the agent marks a note addressed and only the reviewer resolves or reopens it; a reviewer reply reopens an addressed note', () => {
@@ -53,6 +54,16 @@ test('a decision that asks for one is refused sign-off until the reviewer picks 
   assert.throws(() => apply(posted, 'reviewer', { op: 'decision.close', id: 2 }), /pick a candidate before signing off/);
   const picked = applied(apply(posted, 'reviewer', { op: 'decision.verdict', id: 2, candidate: 'b', verdict: 'pick' }, { op: 'decision.close', id: 2 })).file;
   assert.deepEqual(picked.decisions[0].decided?.picks, ['b']);
+});
+
+test('only the agent hands the plan over, and only the reviewer takes back a scene\'s sign-off, leaving the others', () => {
+  assert.throws(() => apply(withNote, 'reviewer', { op: 'plan.handover' }), ReviewOpRefused);
+  const handedOver = applied(apply(withNote, 'agent', { op: 'plan.handover' })).file;
+  assert.deepEqual(handedOver.planHandover, { at: '2026-10-11T12:00:00Z' });
+  const signed = applied(apply(handedOver, 'reviewer', planSignoff('plate'), planSignoff('close'))).file;
+  assert.throws(() => apply(signed, 'agent', { op: 'signoff.takeBack', scene: 'plate' }), ReviewOpRefused);
+  const takenBack = applied(apply(signed, 'reviewer', { op: 'signoff.takeBack', scene: 'plate' })).file;
+  assert.deepEqual(takenBack.signoffs.map((s) => s.on === 'plan' && s.scene), ['close']);
 });
 
 test('a restored thread writes and later deletes its frame image only at review/frames/<id>, whatever path it arrives with', () => {

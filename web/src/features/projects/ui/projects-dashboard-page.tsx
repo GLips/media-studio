@@ -2,7 +2,7 @@ import { Box, Code, Stack, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { Ellipsis } from 'lucide-react';
 import { Fragment, useRef } from 'react';
-import { reviewRowAwaitsYou, type ReviewProjectRow, type ReviewProjectSummary } from '#lib/output/review/models/review-dashboard.ts';
+import { reviewPlanMayAwaitYou, reviewRowAwaitsYou, type ReviewProjectRow, type ReviewProjectSummary } from '#lib/output/review/models/review-dashboard.ts';
 import { useProjectsPlanSignoffs, type ProjectPlanSignoffs } from '#web/features/storyboard/index.ts';
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
 import { StudioShell } from '#web/shared/ui/studio-shell.tsx';
@@ -41,13 +41,13 @@ const projectHasRender = (summary: ReviewProjectSummary) => summary.rows.some((r
 
 /**
  * The front page: what waits on you across every project (a fix to verify, an agent's question, a decision, an
- * unsigned plan), then every project, the most recently active first, and last those with nothing rendered.
+ * plan handed over or changed since signed off), then every project, the most recently active first, and last those with nothing rendered.
  */
 export function ProjectsDashboardPage() {
   const { summaries, now } = useProjectSummaries();
   const listRef = useRef<HTMLDivElement>(null);
   useProjectRowHotkeys(listRef);
-  const plans = useProjectsPlanSignoffs(summaries.flatMap(({ project, rows }) => rows.flatMap((row) => (row.on === 'plan' ? [{ project, signoffs: row.signoffs }] : []))));
+  const plans = useProjectsPlanSignoffs(summaries.flatMap(({ project, rows }) => rows.flatMap((row) => (row.on === 'plan' && reviewPlanMayAwaitYou(row) ? [{ project, signoffs: row.signoffs }] : []))));
   const awaiting = awaitingByProject(summaries, plans);
   const projects = [...summaries.filter(projectHasRender), ...summaries.filter((summary) => !projectHasRender(summary))];
   return (

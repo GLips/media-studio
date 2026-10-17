@@ -68,7 +68,7 @@ function anchorOfDraft({ subject, media, draft, timeNow }: ReviewThreadScope): N
       const at = timeNow && { at: Math.round(timeNow() * 100) / 100 };
       return { on: 'decision', decision: subject.decision, ...(subject.candidate && { candidate: subject.candidate }), ...at };
     }
-    case 'plan': return anchor.on === 'plan' && anchor.planHash && anchor.field ? { ...anchor, on: 'plan', planHash: anchor.planHash, field: anchor.field } : null;
+    case 'plan': return anchor.on === 'plan' && anchor.field ? { ...anchor, on: 'plan', field: anchor.field } : null;
     case 'project': return { on: 'project' };
   }
   return null;

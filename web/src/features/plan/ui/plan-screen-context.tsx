@@ -1,6 +1,6 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import type { ReviewArtifact } from '#lib/output/review/models/review-artifact.ts';
-import type { ReviewPlanSignoffState } from '#lib/output/review/models/review-plan.ts';
+import type { ReviewPlanFieldChange, ReviewPlanSignoffState } from '#lib/output/review/models/review-plan.ts';
 import type { ReviewThread } from '#lib/output/review/models/review-threads.ts';
 import type { ProjectPulse } from '#web/features/projects/index.ts';
 import type { ReviewOps, useReviewDraft } from '#web/features/review/index.ts';
@@ -30,7 +30,8 @@ export type PlanScreenValue = {
   threads: readonly PlanPlacedThread[] | undefined;
   /** The video review's notes, by the scene each sits in. */
   videoNotes: ReadonlyMap<string, readonly ReviewThread[]>;
-  signoffs: ReadonlyMap<string, { state: ReviewPlanSignoffState; at?: string }>;
+  /** Each scene's sign-off; a stale one's `changes` are its fields reworded since. */
+  signoffs: ReadonlyMap<string, { state: ReviewPlanSignoffState; at?: string; changes?: readonly ReviewPlanFieldChange[] }>;
   render: PlanRender | null;
   /** What `N` notes when nothing is selected: the cell, line, section or item last clicked. */
   target: PlanTarget | null;
@@ -38,6 +39,10 @@ export type PlanScreenValue = {
   /** The scene in focus: the URL's, else the first. */
   focusedScene: string | null;
   signOff: (scene: string) => void;
+  takeBack: (scene: string) => void;
+  /** The scene a first `S` was refused on for its open notes, and how many: a second `S` inside two seconds signs. */
+  signOffArmed: { scene: string; open: number } | null;
+  armSignOff: (armed: { scene: string; open: number } | null) => void;
 };
 
 const PlanScreenContext = createContext<PlanScreenValue | null>(null);

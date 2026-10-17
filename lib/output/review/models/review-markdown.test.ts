@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { formatReviewThreadsMarkdown } from './review-markdown.ts';
+import { formatReviewPlanStaleMarkdown, formatReviewThreadsMarkdown } from './review-markdown.ts';
 import type { PlacedReviewThread } from './review-placement.ts';
 import type { ReviewThreadKind, ReviewThreadState } from './review-threads.ts';
 
@@ -72,10 +72,23 @@ test('a note on a playing decision candidate says the time it was heard at', () 
 test('a plan note names its scene, line, quote and nearest cue, and needs no render', () => {
   const note: PlacedReviewThread = {
     id: 3, kind: 'fix', state: 'open', rev: 3, entries: [{ author: 'reviewer', text: 'say which ones', at: '2026-10-16T12:00:00Z', rev: 3 }],
-    anchor: { on: 'plan', planHash: '0123456789abcdef', scene: 'plate', field: 'line', line: 'verdict', text: 'FODMAPs' },
+    anchor: { on: 'plan', scene: 'plate', field: 'line', line: 'verdict', text: 'FODMAPs' },
     placement: { shifted: false, plan: { frame: 75, words: [4, 4], cue: { name: 'underline', frames: 2 } } },
   };
   const markdown = formatReviewThreadsMarkdown([note], { project: 'zz-review-sandbox', fps: 30, size: null });
   assert.match(markdown, /nothing rendered yet/);
   assert.match(markdown, /### #3 fix · open — plan · plate · line verdict · ‘FODMAPs’ · underline \+2f\nplan: {2}f75 on the plan's clock/);
+});
+
+test('a plan note on a reworded line prints its line then and now, word-diffed, and stale scenes follow with theirs', () => {
+  const was = "You'll see which FODMAPs are in it.", now = "You'll see which ingredients are in it.";
+  const fixed: PlacedReviewThread = {
+    id: 4, kind: 'fix', state: 'addressed', rev: 5, entries: [{ author: 'reviewer', text: 'plainer word', at: '2026-10-16T12:00:00Z', rev: 4 }],
+    anchor: { on: 'plan', scene: 'plate', field: 'line', line: 'verdict', text: 'FODMAPs', was },
+    placement: { shifted: false, plan: { frame: 60, words: null, changed: { was, now } } },
+  };
+  const markdown = formatReviewThreadsMarkdown([fixed], { project: 'zz-review-sandbox', fps: 30, size: null, states: ['addressed'] });
+  assert.match(markdown, /was: {3}You'll see which FODMAPs are in it\.\nnow: {3}You'll see which \[-FODMAPs-\] \{\+ingredients\+\} are in it\./);
+  const stale = formatReviewPlanStaleMarkdown([{ scene: 'close', changes: [{ key: 'motion', was: 'It fades in', now: 'It slides up' }] }]);
+  assert.match(stale, /### close · changed since signed off\nmotion:\nwas: {3}It fades in\nnow: {3}It \[-fades in-\] \{\+slides up\+\}/);
 });

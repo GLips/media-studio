@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { reviewPlanSignoffs } from '#lib/output/review/models/review-plan.ts';
+import { reviewPlanSceneTexts, reviewPlanSignoffs } from '#lib/output/review/models/review-plan.ts';
 import { storyboardSceneHash } from '#lib/timing/storyboard/models/storyboard-sign-off.ts';
 import type { ReviewFile, ReviewThread } from '#lib/output/review/models/review-threads.ts';
 import { useProjectPulse, type ProjectPulse } from '#web/features/projects/index.ts';
@@ -14,6 +14,9 @@ import { planTimingOf } from './plan-timing.ts';
 
 /** The render the plan links to: the newest animatic (out/wip/animatic.mp4) or delivered video (out/*.mp4). */
 const PLAN_RENDER_PATH = /^out\/(?:wip\/animatic|[^/]+)\.mp4$/;
+
+/** How long a first `S` on a scene with open notes waits for the second that signs it anyway. */
+const PLAN_SIGN_OFF_ARMED_MS = 2000;
 
 /** The newest render on disk, by the pulse, which lists the project's files newest first. */
 const newestPlanRenderOf = (pulse: ProjectPulse) => pulse.files.find((f) => f.kind === 'video' && PLAN_RENDER_PATH.test(f.path));
@@ -51,6 +54,12 @@ export function usePlanScreenValue(project: string, plan: ProjectStoryboard): Pl
   }, [playback, timing]);
   useEffect(() => () => playback.dispose(), [playback]);
   const [target, setTarget] = useState<PlanTarget | null>(null);
+  const [signOffArmed, armSignOff] = useState<PlanScreenValue['signOffArmed']>(null);
+  useEffect(() => {
+    if (!signOffArmed) return undefined;
+    const disarm = window.setTimeout(() => armSignOff(null), PLAN_SIGN_OFF_ARMED_MS);
+    return () => window.clearTimeout(disarm);
+  }, [signOffArmed]);
   const threads = useMemo(() => file && placePlanThreads(file, plan), [file, plan]);
   const signoffList = useMemo(() => reviewPlanSignoffs(plan.storyboard, plan.resolved, file?.signoffs ?? []), [plan, file?.signoffs]);
   const sceneIds = Object.keys(plan.storyboard.scenes);
@@ -60,8 +69,12 @@ export function usePlanScreenValue(project: string, plan: ProjectStoryboard): Pl
     signoffs: new Map(signoffList.map(({ scene, ...state }) => [scene, state])),
     focusedScene: sceneIds.find((id) => id === search.scene) ?? sceneIds[0] ?? null,
     signOff: (scene) => {
+      armSignOff(null);
       const hash = storyboardSceneHash(plan.storyboard, plan.resolved, scene);
-      if (hash !== null) void ops.apply([{ op: 'signoff', signoff: { on: 'plan', scene, hash, at: new Date().toISOString() } }]);
+      const texts = reviewPlanSceneTexts(plan.storyboard, scene);
+      if (hash !== null) void ops.apply([{ op: 'signoff', signoff: { on: 'plan', scene, hash, texts, at: new Date().toISOString() } }]);
     },
+    takeBack: (scene) => void ops.apply([{ op: 'signoff.takeBack', scene }]),
+    signOffArmed, armSignOff,
   };
 }

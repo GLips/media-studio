@@ -16,6 +16,7 @@ import { Textarea } from '#web/shared/ui/textarea.tsx';
 import { colors, fonts, radius, spacing, typography } from '#web/shared/ui/theme.stylex.ts';
 import { ReviewThreadBody } from './review-thread-body.tsx';
 import { ReviewThreadKindIcon } from './review-thread-kind.tsx';
+import { useReviewThreadScope } from './review-thread-scope.tsx';
 import type { ReviewComparedVersion } from './use-review-render-versions.ts';
 import type { ReviewThreadActions, ReviewThreadInline } from './use-review-thread-panel.ts';
 
@@ -154,6 +155,7 @@ export function ReviewThreadRow({ thread, look, actions, place }: ReviewThreadRo
   const [hot, setHot] = useState(false);
   const [field, setField] = useState<{ key: string | null; text: string }>({ key: null, text: '' });
   const rowRef = useRef<HTMLDivElement>(null);
+  const { noteAside: NoteAside } = useReviewThreadScope();
   const [note, ...replies] = thread.entries;
   const { glyph, style, word } = reviewThreadGlyphOf(thread);
   const frame = reviewThreadFrameOf(thread);
@@ -239,6 +241,7 @@ export function ReviewThreadRow({ thread, look, actions, place }: ReviewThreadRo
           <ReviewThreadBody text={note.text} dim={thread.state === 'resolved'} />
         </Box>
       )}
+      {NoteAside && <NoteAside thread={thread} />}
       {shown.length > 0 && (
         <Stack gap="tight" {...stylex.props(styles.replies)}>
           {said.length > shown.length && (

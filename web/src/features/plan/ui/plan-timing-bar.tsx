@@ -62,8 +62,14 @@ const styles = stylex.create({
     lineHeight: typography.lineHeight, color: colors.mark, whiteSpace: 'nowrap', cursor: 'default',
   },
   beat: { position: 'absolute', bottom: 0, height: spacing.tight, width: '1px', backgroundColor: colors.mark },
-  flag: { position: 'absolute', top: 0, bottom: 0, minWidth: spacing.hairline, borderRadius: radius.control, backgroundColor: colors.caution },
+  flag: { position: 'absolute', top: 0, bottom: 0, minWidth: spacing.hairline },
+  flagFill: { position: 'absolute', inset: 0, borderRadius: radius.control, backgroundColor: colors.caution },
   flagHold: { opacity: 0.55 },
+  // The flag the playhead is in, which `F` lands on: lit cream, pure CSS on the frame variable as the lit word is.
+  flagCurrent: (from: number, to: number) => ({
+    position: 'absolute', inset: 0, borderRadius: radius.control, backgroundColor: colors.cream,
+    opacity: `min(clamp(0, calc((${FRAME} - ${from}) * 1000 + 1), 1), clamp(0, calc((${to} - ${FRAME}) * 1000), 1))`,
+  }),
   tick: { position: 'absolute', top: 0, height: spacing.tight, width: '1px', backgroundColor: colors.line },
   tickLabel: {
     position: 'absolute', top: 0, paddingInlineStart: spacing.hairline, fontFamily: fonts.mono,
@@ -183,7 +189,10 @@ function PlanTimingStrip({ timing }: { readonly timing: PlanTiming }) {
       <Box {...stylex.props(styles.row, styles.flags)}>
         {timing.flags.map((flag) => (
           <HotkeyTooltip key={`${flag.kind}:${flag.from}`} name={flagWords(flag, fps)}>
-            <Box {...stylex.props(styles.flag, flag.kind === 'hold' && styles.flagHold, styles.at(x(flag.from), x(flag.to)))} />
+            <Box {...stylex.props(styles.flag, styles.at(x(flag.from), x(flag.to)))}>
+              <Box {...stylex.props(styles.flagFill, flag.kind === 'hold' && styles.flagHold)} />
+              <Box aria-hidden {...stylex.props(styles.flagCurrent(flag.from, flag.to))} />
+            </Box>
           </HotkeyTooltip>
         ))}
       </Box>
@@ -204,8 +213,8 @@ function PlanTimingStrip({ timing }: { readonly timing: PlanTiming }) {
 
 /**
  * The whole video to scale: its scenes; its lines, each word lit as it's read; cue ticks labelled with their names; the
- * leads, gaps and tails hatched; amber flags under silences and stretches with nothing planned; the target as a dashed
- * line. Click or drag to seek.
+ * leads, gaps and tails hatched; amber flags under silences and stretches with nothing planned, the one the playhead
+ * is in lit cream; the target as a dashed line. Click or drag to seek.
  */
 export function PlanTimingBar() {
   const { timing } = usePlanScreen();

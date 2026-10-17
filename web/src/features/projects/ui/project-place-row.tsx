@@ -2,7 +2,7 @@ import { Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { MessageSquare, ScrollText, Split } from 'lucide-react';
 import type { ReactNode } from 'react';
-import type { ReviewProjectRow, ReviewProjectSummary } from '#lib/output/review/models/review-dashboard.ts';
+import { reviewPlanScenesAwaitYou, type ReviewProjectRow, type ReviewProjectSummary } from '#lib/output/review/models/review-dashboard.ts';
 import { useProjectPlanSignoffs, type ProjectPlanSignoffs } from '#web/features/storyboard/index.ts';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { Readout } from '#web/shared/ui/readout.tsx';
@@ -31,23 +31,32 @@ type PlaceView = { target: ProjectRowTarget; thumbnail: ReactNode; title: ReactN
 
 type PlanRow = Extract<ReviewProjectRow, { on: 'plan' }>;
 
+/** The plan's latest step, which its row's age counts from: every scene signed off, else handed over, else written. */
+function planLatestStepOf(row: PlanRow, allSigned: boolean): { at: string; what: string } {
+  const lastSigned = row.signoffs.map((s) => s.at).toSorted().at(-1);
+  if (allSigned && lastSigned !== undefined) return { at: lastSigned, what: 'signed off' };
+  if (row.handedOverAt !== null) return { at: row.handedOverAt, what: 'handed over' };
+  return { at: row.modified, what: 'written' };
+}
+
 /**
- * `plan · 3 of 4 signed`, and what waits in its glyph's tooltip: a scene unsigned or changed since signed off. Until
- * the storyboard resolves, or when it doesn't, the row says `plan` alone and waits on nothing.
+ * `plan · 3 of 4 signed`, and what waits in its glyph's tooltip: a scene changed since signed off, or one unsigned once
+ * the plan has been handed over. Until the storyboard resolves, or when it doesn't, the row says `plan` alone and
+ * waits on nothing.
  */
 function planViewOf(project: string, row: PlanRow, signoffs: ProjectPlanSignoffs | null, now: number): PlaceView {
   const signed = signoffs?.filter((s) => s.state === 'signed').length ?? 0;
   const stale = signoffs?.filter((s) => s.state === 'stale').length ?? 0;
   const all = signoffs !== null && signoffs.length > 0 && signed === signoffs.length;
   const unsettled = stale > 0 ? `${stale} scene${stale === 1 ? '' : 's'} changed since signed off` : 'scenes not signed off';
-  const waiting = signoffs === null || all ? undefined : unsettled;
-  const lastSigned = row.signoffs.map((s) => s.at).toSorted().at(-1);
+  const waiting = reviewPlanScenesAwaitYou(row, signoffs) ? unsettled : undefined;
+  const { at, what } = planLatestStepOf(row, all);
   return {
     target: { project, on: 'plan' },
     thumbnail: <ProjectThumbnail glyph={<ScrollText size={GLYPH_SIZE} />} waiting={waiting} />,
     title: <>plan{signoffs !== null && <Text component="span" inherit {...stylex.props(styles.dim)}> · {signed} of {signoffs.length} signed</Text>}</>,
     marks: all ? <SettledMark name="every scene signed off" /> : undefined,
-    end: all && lastSigned !== undefined ? <ProjectAge now={now} at={lastSigned} what="signed off" /> : <ProjectAge now={now} at={row.modified} what="written" />,
+    end: <ProjectAge now={now} at={at} what={what} />,
   };
 }
 

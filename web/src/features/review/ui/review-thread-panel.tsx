@@ -9,6 +9,7 @@ import { ReviewThreadFilter } from './review-thread-filter.tsx';
 import { ReviewThreadList, reviewThreadListEmpty, reviewThreadListingOf } from './review-thread-list.tsx';
 import { ReviewThreadRow } from './review-thread-row.tsx';
 import { useReviewThreadScope } from './review-thread-scope.tsx';
+import { useReviewCheckQueue } from './use-review-check-queue.ts';
 import { REVIEW_THREAD_ATTRIBUTE, useReviewThreadHotkeys } from './use-review-thread-hotkeys.ts';
 import { useReviewNoteFocusRelease, useReviewThreadActions, useReviewThreadLive } from './use-review-thread-panel.ts';
 
@@ -37,6 +38,8 @@ export function ReviewThreadPanel({ head }: { readonly head?: ReactNode }) {
   const actions = useReviewThreadActions(listing.scoped);
   const live = useReviewThreadLive(listed, media?.playback);
   useReviewNoteFocusRelease(threads && [...listed, ...unplaced]);
+  // After the focus release: a resolve that drops the note from the list lets go of it, then the queue names the next.
+  const check = useReviewCheckQueue(listing.scoped, actions, subject.on === 'video');
   // Only a screen's own thread (a render's, a still's, the plan's) binds the screen-wide keys: there's one per screen.
   const screenThread = subject.on === 'video' || subject.on === 'still' || subject.on === 'plan';
   const screenPlayback = subject.on === 'video' || subject.on === 'still' ? media?.playback : undefined;
@@ -61,7 +64,7 @@ export function ReviewThreadPanel({ head }: { readonly head?: ReactNode }) {
 
   return (
     <Stack ref={threadRef} gap={0} tabIndex={-1} aria-label="Thread" {...{ [REVIEW_THREAD_ATTRIBUTE]: subject.on }} {...stylex.props(styles.panel, stylex.defaultMarker())}>
-      <ReviewThreadFilter head={head} counts={counts} filter={filter} onFilter={(next) => setSearch({ filter: next })} actions={actions} />
+      <ReviewThreadFilter head={head} counts={counts} filter={filter} onFilter={(next) => setSearch({ filter: next })} actions={actions} check={check} />
       {reviewThreadListEmpty(listing, actions) ? (
         <Group gap="tight" wrap="nowrap" {...stylex.props(styles.empty, draft.isOpen && styles.hidden)}>
           <Text component="span" size="sm" inherit>New note</Text>

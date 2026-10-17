@@ -25,6 +25,8 @@ export type ReviewFile = {
   threads: ReviewThread[];
   decisions: ReviewDecision[];
   signoffs: ReviewSignoff[];
+  /** When the agent last handed the plan over for review (`studio review open --plan`): until then a plan waits on no one. */
+  planHandover?: { at: string };
 };
 
 export type ReviewThread = {
@@ -96,11 +98,11 @@ export type ReviewPlanField = 'brief' | 'scene' | 'onScreen' | 'motion' | 'reads
 
 /**
  * A note on the plan (storyboard.ts), anchored by quoted words rather than positions, so it is found again after the
- * line is edited around it (review-plan.ts) and reads as unplaced once its quote is gone. `planHash` is the whole
- * storyboard's hash when the note was written; `section` is the brief heading for a `brief` note.
+ * line is edited around it (review-plan.ts). `was` is its field's whole text when written (reviewPlanFieldText), so
+ * every surface shows what changed since; a note on a whole scene has none. `section` names a `brief` note's heading.
  */
 export type ReviewPlanAnchor = {
-  on: 'plan'; planHash: string; scene?: string; section?: string; field: ReviewPlanField; line?: string; text?: string;
+  on: 'plan'; scene?: string; section?: string; field: ReviewPlanField; line?: string; text?: string; was?: string;
 };
 
 export type ReviewCandidate = {
@@ -131,10 +133,10 @@ export type ReviewDecision = {
 
 /**
  * A plan sign-off is per scene and holds the scene's storyboardSceneHash, so an edited scene reads as stale while the
- * others stay signed (review-plan.ts).
+ * others stay signed, and its fields' texts as signed (reviewPlanSceneTexts), so a stale scene shows what changed.
  */
 export type ReviewSignoff =
-  | { on: 'plan'; scene: string; hash: string; at: string }
+  | { on: 'plan'; scene: string; hash: string; texts: Record<string, string>; at: string }
   | { on: 'render'; path: string; hash: string; rung?: SceneRung; at: string };
 
 export const emptyReviewFile = (): ReviewFile => ({ version: REVIEW_FILE_VERSION, revision: 0, nextId: 1, threads: [], decisions: [], signoffs: [] });

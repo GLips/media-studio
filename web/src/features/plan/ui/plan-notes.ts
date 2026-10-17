@@ -2,7 +2,7 @@
 // (review-plan.ts), shown beside what it quotes and listed in the thread; a new one is anchored on what the reviewer
 // selected or clicked, by the words it quotes, never by their positions.
 import type { PlacedReviewThread } from '#lib/output/review/models/review-placement.ts';
-import { findReviewPlanQuote, placeReviewPlanThread, reviewPlanNotePlacementOf, storyboardPlanHash, type ReviewPlanPlacement } from '#lib/output/review/models/review-plan.ts';
+import { findReviewPlanQuote, placeReviewPlanThread, reviewPlanFieldText, reviewPlanNotePlacementOf, type ReviewPlanPlacement } from '#lib/output/review/models/review-plan.ts';
 import { REVIEW_THREAD_TONES, reviewThreadTone, type ReviewFile, type ReviewPlanAnchor, type ReviewThread, type ReviewThreadTone } from '#lib/output/review/models/review-threads.ts';
 import type { ProjectStoryboard } from '#web/features/storyboard/index.ts';
 
@@ -24,6 +24,10 @@ export function placePlanThreads(file: ReviewFile, { storyboard, resolved }: Pro
     return [{ ...thread, anchor, placement, plan: placed }];
   });
 }
+
+/** Open notes that stop a sign-off at the first `S`: on the scene, neither resolved nor a standing `keep`. */
+export const planSceneOpenNoteCount = (threads: readonly PlanPlacedThread[] | undefined, scene: string) =>
+  (threads ?? []).filter((t) => t.plan.scene === scene && t.state !== 'resolved' && t.kind !== 'keep').length;
 
 /** What a new note is about, before its quote: a cell, a line, a brief section or a left-out item. */
 export type PlanTarget =
@@ -82,16 +86,22 @@ export function planSelectionIn(root: HTMLElement): { target: PlanTarget; text: 
   return target && text ? { target, text } : null;
 }
 
-/** A new plan note's anchor on `target`, quoting `text` (a left-out note always quotes its item). */
-export function planNoteAnchorOf(target: PlanTarget, text: string | null, plan: ProjectStoryboard): ReviewPlanAnchor {
-  const planHash = storyboardPlanHash(plan.storyboard);
+/** What a new note on `target` quotes, `text` (a left-out note always quotes its item). */
+function planQuotedAnchorOf(target: PlanTarget, text: string | null, plan: ProjectStoryboard): ReviewPlanAnchor {
   const quote = text ? { text } : {};
   switch (target.field) {
-    case 'brief': return { on: 'plan', planHash, field: 'brief', section: target.section, ...quote };
-    case 'leftOut': return { on: 'plan', planHash, field: 'leftOut', text: plan.storyboard.leftOut?.[target.item] ?? text ?? '' };
-    case 'line': return { on: 'plan', planHash, field: 'line', scene: target.scene, line: target.line, ...quote };
-    default: return { on: 'plan', planHash, field: target.field, scene: target.scene, ...quote };
+    case 'brief': return { on: 'plan', field: 'brief', section: target.section, ...quote };
+    case 'leftOut': return { on: 'plan', field: 'leftOut', text: plan.storyboard.leftOut?.[target.item] ?? text ?? '' };
+    case 'line': return { on: 'plan', field: 'line', scene: target.scene, line: target.line, ...quote };
+    default: return { on: 'plan', field: target.field, scene: target.scene, ...quote };
   }
+}
+
+/** A new plan note's anchor, with its field's whole text as it is now (`was`), so the note shows what changes after. */
+export function planNoteAnchorOf(target: PlanTarget, text: string | null, plan: ProjectStoryboard): ReviewPlanAnchor {
+  const anchor = planQuotedAnchorOf(target, text, plan);
+  const was = reviewPlanFieldText(plan.storyboard, anchor);
+  return { ...anchor, ...(was !== undefined && { was }) };
 }
 
 /** True when `anchor` is about `target`: the cell, line, section or item it was written on. */

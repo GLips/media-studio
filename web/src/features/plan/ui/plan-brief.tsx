@@ -2,8 +2,8 @@ import { Box, Text, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
+import { StudioMarkdown } from '#web/shared/ui/studio-markdown.tsx';
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
-import { PlanMarkdown } from './plan-markdown.tsx';
 import type { PlanPlacedThread } from './plan-notes.ts';
 import { usePlanScreen } from './plan-screen-context.tsx';
 import { PlanTargetBox } from './plan-target-box.tsx';
@@ -60,7 +60,7 @@ export function PlanBrief() {
             </Box>
             {shown && (
               <Box {...stylex.props(styles.body)}>
-                <PlanTargetBox target={{ field: 'brief', section }}><PlanMarkdown markdown={markdown} /></PlanTargetBox>
+                <PlanTargetBox target={{ field: 'brief', section }}><StudioMarkdown markdown={markdown} /></PlanTargetBox>
               </Box>
             )}
           </Box>

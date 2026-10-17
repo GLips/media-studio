@@ -18,7 +18,10 @@ export function ReviewScreenThread({ on }: { readonly on: 'video' | 'still' }) {
   const ops = useReviewOps(project);
   const scope: ReviewThreadScope = {
     project, subject: { on }, threads, ops, draft, search, setSearch,
-    media: { artifact, timing, playback, versions, splices, drawing: mode === 'draw' },
+    media: {
+      artifact, timing, playback, versions, splices, drawing: mode === 'draw',
+      compare: { vs: search.vs, cmp: search.cmp, w: search.w }, setCompare: setSearch,
+    },
     markdownOf: (listed) => formatReviewThreadsMarkdown(listed, {
       project, renderPath: artifact.path, renderHash: artifact.render.hash, fps: timing.fps, size: artifact.frameSize, splices: splices.laid,
       sources: { fps: timing.fps, frameSize: artifact.frameSize, scenes: artifact.scenes, sounds: artifact.sounds, motion: artifact.motion, cells: artifact.cells, timing: artifact.timing },

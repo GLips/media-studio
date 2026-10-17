@@ -33,8 +33,11 @@ export const projectStoryboardQueryOptions = (project: string, version: number) 
   retry: false,
 });
 
-/** The storyboard modules' version, bumped on each hot update: a part of every storyboard query's key. */
-export const useStoryboardModulesVersion = (): number => useSyncExternalStore(onStoryboardModulesChange, storyboardModulesVersion);
+/**
+ * The storyboard modules' version, bumped on each hot update: a part of every storyboard query's key. The server's
+ * render reads the same counter: the tab title, rendered from the root, calls this on every page.
+ */
+export const useStoryboardModulesVersion = (): number => useSyncExternalStore(onStoryboardModulesChange, storyboardModulesVersion, storyboardModulesVersion);
 
 /**
  * `project`'s storyboard, imported and resolved here in the browser, and again whenever storyboard.ts, the manifest or

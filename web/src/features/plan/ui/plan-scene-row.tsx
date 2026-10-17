@@ -1,5 +1,6 @@
 import { Box, Button, Group, Stack, Text, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
+import { Fragment, useState } from 'react';
 import { formatReviewPlanNoteWhere } from '#lib/output/review/models/review-plan.ts';
 import { formatReviewClock } from '#lib/output/review/models/review-timeline-geometry.ts';
 import { REVIEW_THREAD_TONES, reviewThreadTone, type ReviewThread } from '#lib/output/review/models/review-threads.ts';
@@ -8,12 +9,13 @@ import { formatStudioClock } from '#web/shared/ui/agent-presence.tsx';
 import { AnchorLink } from '#web/shared/ui/anchor-link.tsx';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { Readout } from '#web/shared/ui/readout.tsx';
+import { StudioInline } from '#web/shared/ui/studio-inline.tsx';
 import { colors, fonts, radius, spacing, typography } from '#web/shared/ui/theme.stylex.ts';
 import { PlanLine } from './plan-line.tsx';
-import { PlanInline } from './plan-inline.tsx';
-import { planThreadMarkOf, type PlanPlacedThread } from './plan-notes.ts';
+import { planSceneOpenNoteCount, planThreadMarkOf, type PlanPlacedThread } from './plan-notes.ts';
 import { usePlanScreen } from './plan-screen-context.tsx';
 import { PlanTargetBox } from './plan-target-box.tsx';
+import { PlanSceneChanges, PlanWordDiff } from './plan-word-diff.tsx';
 import { PlanThreadMarks } from './plan-thread-marks.tsx';
 import { formatPlanSeconds, type PlanScene } from './plan-timing.ts';
 
@@ -63,6 +65,13 @@ const styles = stylex.create({
   signOff: { color: colors.cream, backgroundColor: { default: colors.accent, ':disabled': colors.raised }, borderWidth: 0, borderRadius: radius.control },
   again: { color: colors.caution, backgroundColor: 'transparent', borderWidth: '1px', borderStyle: 'solid', borderColor: colors.caution, borderRadius: radius.control },
   signed: { color: colors.pass, fontWeight: 600, cursor: 'default', whiteSpace: 'nowrap', paddingInline: spacing.tight },
+  takeBack: { color: colors.dim, paddingInline: spacing.tight },
+  armed: { color: colors.caution, whiteSpace: 'nowrap', paddingInline: spacing.tight },
+  changes: {
+    display: 'flex', flexDirection: 'column', gap: spacing.tight, paddingBlock: spacing.tight,
+    borderLeftWidth: spacing.hairline, borderLeftStyle: 'solid', borderLeftColor: colors.caution,
+  },
+  noteChange: { paddingInlineStart: spacing.inset },
   link: {
     color: { default: colors.dim, ':hover': colors.cream }, paddingInline: spacing.tight, borderRadius: radius.control,
     textDecoration: 'none', whiteSpace: 'nowrap', backgroundColor: { default: 'transparent', ':hover': colors.raised },
@@ -76,21 +85,35 @@ function drivenBy(row: StoryboardScene): string {
   return '';
 }
 
-/** The scene's sign-off: Sign off, Sign off again once it changed, `✓ signed`, or nothing to sign while the plan doesn't time. */
+/**
+ * The scene's sign-off: Sign off, Sign off changes once it changed, `✓ signed` with Take back on hover, or nothing to
+ * sign while the plan doesn't time. After a first `S` refused for open notes, it says a second signs anyway.
+ */
 function PlanSceneSignOff({ scene }: { readonly scene: string }) {
-  const { signoffs, signOff, threads } = usePlanScreen();
+  const { signoffs, signOff, takeBack, threads, signOffArmed } = usePlanScreen();
+  const [hot, setHot] = useState(false);
   const signoff = signoffs.get(scene);
-  const open = (threads ?? []).filter((t) => t.plan.scene === scene && reviewThreadTone(t) === 'open').length;
+  const open = planSceneOpenNoteCount(threads, scene);
   const openNote = open > 0 ? ` · ${open} open` : '';
+  if (signOffArmed?.scene === scene) {
+    return <Text component="span" size="sm" role="status" {...stylex.props(styles.armed)}>S again to sign with {signOffArmed.open} open</Text>;
+  }
   switch (signoff?.state) {
     case 'signed': return (
-      <HotkeyTooltip name={`signed off ${signoff.at ? formatStudioClock(signoff.at) : ''}`}>
-        <Text component="span" size="sm" {...stylex.props(styles.signed)}>✓ signed</Text>
-      </HotkeyTooltip>
+      <Group component="span" gap="tight" wrap="nowrap" onMouseEnter={() => setHot(true)} onMouseLeave={() => setHot(false)}>
+        <HotkeyTooltip name={`signed off ${signoff.at ? formatStudioClock(signoff.at) : ''}`}>
+          <Text component="span" size="sm" {...stylex.props(styles.signed)}>✓ signed</Text>
+        </HotkeyTooltip>
+        {hot && (
+          <HotkeyTooltip name="Take back this sign-off" hotkey="Take back sign-off">
+            <Button size="compact-xs" variant="subtle" onClick={() => takeBack(scene)} {...stylex.props(styles.takeBack)}>Take back</Button>
+          </HotkeyTooltip>
+        )}
+      </Group>
     );
     case 'stale': return (
       <HotkeyTooltip name={`changed since signed off${signoff.at ? ` ${formatStudioClock(signoff.at)}` : ''}${openNote}`} hotkey="Sign off scene">
-        <Button size="compact-xs" onClick={() => signOff(scene)} {...stylex.props(styles.again)}>Sign off again</Button>
+        <Button size="compact-xs" onClick={() => signOff(scene)} {...stylex.props(styles.again)}>Sign off changes</Button>
       </HotkeyTooltip>
     );
     case 'unknown': return (
@@ -115,12 +138,15 @@ function PlanSceneNotes({ scene, threads, videoNotes }: { readonly scene: string
       {shown.map((thread) => {
         const mark = planThreadMarkOf(thread);
         return (
-          <UnstyledButton key={thread.id} onClick={() => setSearch({ note: thread.id, scene })} {...stylex.props(styles.note)}>
-            <Text component="span" size="sm" {...stylex.props(styles[mark.tone === 'dim' ? 'dim' : mark.tone])}>{mark.glyph}</Text>
-            <Readout>#{thread.id}</Readout>
-            <Text component="span" size="sm" {...stylex.props(styles.noteText)}>{thread.entries[0].text}</Text>
-            <Text component="span" size="sm" {...stylex.props(styles.noteWhere)}>{formatReviewPlanNoteWhere(thread.anchor, { short: true })}</Text>
-          </UnstyledButton>
+          <Fragment key={thread.id}>
+            <UnstyledButton onClick={() => setSearch({ note: thread.id, scene })} {...stylex.props(styles.note)}>
+              <Text component="span" size="sm" {...stylex.props(styles[mark.tone === 'dim' ? 'dim' : mark.tone])}>{mark.glyph}</Text>
+              <Readout>#{thread.id}</Readout>
+              <Text component="span" size="sm" {...stylex.props(styles.noteText)}>{thread.entries[0].text}</Text>
+              <Text component="span" size="sm" {...stylex.props(styles.noteWhere)}>{formatReviewPlanNoteWhere(thread.anchor, { short: true })}</Text>
+            </UnstyledButton>
+            {thread.plan.changed && <Box {...stylex.props(styles.noteChange)}><PlanWordDiff was={thread.plan.changed.was} now={thread.plan.changed.now} /></Box>}
+          </Fragment>
         );
       })}
       {videoNotes.map((thread) => {
@@ -146,7 +172,7 @@ function PlanSceneNotes({ scene, threads, videoNotes }: { readonly scene: string
  * on screen, the motion and what it reads as, each a cell a note can quote; then its diagnostics and its notes.
  */
 export function PlanSceneRow({ id, n, timed }: { readonly id: string; readonly n: number; readonly timed: PlanScene | null }) {
-  const { project, plan, timing, threads, videoNotes, render, focusedScene, setSearch, playback } = usePlanScreen();
+  const { project, plan, timing, threads, videoNotes, render, focusedScene, setSearch, playback, signoffs } = usePlanScreen();
   const row = plan.storyboard.scenes[id];
   const fps = timing?.fps ?? 1;
   const onScene = (threads ?? []).filter((t) => !t.plan.unplaced && t.plan.scene === id);
@@ -155,6 +181,7 @@ export function PlanSceneRow({ id, n, timed }: { readonly id: string; readonly n
   const moment = render?.artifact?.timing?.scenes.find((s) => s.id === id);
   const sceneCues = timed?.cues.filter((c) => c.word === null) ?? [];
   const video = videoNotes.get(id) ?? [];
+  const stale = signoffs.get(id)?.state === 'stale' ? signoffs.get(id)?.changes ?? [] : null;
   return (
     <Box data-plan-scene={id} onClick={() => focusedScene !== id && setSearch({ scene: id })} {...stylex.props(planSceneColumnStyles.columns, styles.row, focusedScene === id && styles.focused)}>
       <Box {...stylex.props(styles.meta)}>
@@ -197,21 +224,22 @@ export function PlanSceneRow({ id, n, timed }: { readonly id: string; readonly n
         )}
       </Box>
       <PlanTargetBox target={{ field: 'onScreen', scene: id }}>
-        <Text component="div" size="md" {...stylex.props(styles.cell)}><Box component="span" {...stylex.props(styles.cellMarks)}><PlanThreadMarks threads={onField('onScreen')} /></Box><PlanInline text={row.onScreen} /></Text>
+        <Text component="div" size="md" {...stylex.props(styles.cell)}><Box component="span" {...stylex.props(styles.cellMarks)}><PlanThreadMarks threads={onField('onScreen')} /></Box><StudioInline text={row.onScreen} /></Text>
       </PlanTargetBox>
       <PlanTargetBox target={{ field: 'motion', scene: id }}>
-        <Text component="div" size="md" {...stylex.props(styles.cell)}><Box component="span" {...stylex.props(styles.cellMarks)}><PlanThreadMarks threads={onField('motion')} /></Box><PlanInline text={row.motion} /></Text>
+        <Text component="div" size="md" {...stylex.props(styles.cell)}><Box component="span" {...stylex.props(styles.cellMarks)}><PlanThreadMarks threads={onField('motion')} /></Box><StudioInline text={row.motion} /></Text>
       </PlanTargetBox>
       <PlanTargetBox target={{ field: 'reads', scene: id }}>
         <Text component="div" size="md" {...stylex.props(styles.cell)}>
           <Box component="span" {...stylex.props(styles.cellMarks)}><PlanThreadMarks threads={onField('reads')} /></Box>
           {row.reads?.length
-            ? row.reads.map((read) => <Text key={read} component="p" size="md" inherit><PlanInline text={read} /></Text>)
+            ? row.reads.map((read) => <Text key={read} component="p" size="md" inherit><StudioInline text={read} /></Text>)
             : <Text component="span" inherit {...stylex.props(styles.dim)}>—</Text>}
         </Text>
       </PlanTargetBox>
-      {(diagnostics.length > 0 || onScene.some((t) => t.state !== 'resolved') || video.length > 0) && (
+      {(diagnostics.length > 0 || onScene.some((t) => t.state !== 'resolved') || video.length > 0 || stale !== null) && (
         <Box {...stylex.props(styles.under)}>
+          {stale !== null && <Box {...stylex.props(styles.changes)}><PlanSceneChanges changes={stale} /></Box>}
           {diagnostics.map((d) => (
             <Text key={d.message} size="sm" {...stylex.props(styles.diagnostic)}>⚠ {[d.line, d.cue && `cue ${d.cue}`].filter(Boolean).join(' · ')}{(d.line || d.cue) && ': '}{d.message}</Text>
           ))}

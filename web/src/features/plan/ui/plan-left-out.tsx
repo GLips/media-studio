@@ -1,7 +1,7 @@
 import { Box, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
+import { StudioInline } from '#web/shared/ui/studio-inline.tsx';
 import { colors, spacing } from '#web/shared/ui/theme.stylex.ts';
-import { PlanInline } from './plan-inline.tsx';
 import { usePlanScreen } from './plan-screen-context.tsx';
 import { PlanTargetBox } from './plan-target-box.tsx';
 import { PlanThreadMarks } from './plan-thread-marks.tsx';
@@ -30,7 +30,7 @@ export function PlanLeftOut() {
           <PlanTargetBox key={item} component="li" target={{ field: 'leftOut', item: k }}>
             <Box {...stylex.props(styles.item)}>
               <Text component="span" size="md" {...stylex.props(styles.dash)}>–</Text>
-              <Text component="span" size="md" {...stylex.props(styles.text)}><PlanInline text={item} /></Text>
+              <Text component="span" size="md" {...stylex.props(styles.text)}><StudioInline text={item} /></Text>
               <PlanThreadMarks threads={placed.filter((t) => t.plan.item === k)} />
             </Box>
           </PlanTargetBox>

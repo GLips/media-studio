@@ -3,8 +3,8 @@
 // clobber each other: ops name threads by id and re-apply cleanly onto whatever landed first. The one true conflict is
 // an edit to a note someone else edited since it was loaded.
 //
-// Who may do what is checked here, not by the channel: the agent opens, replies, asks and marks addressed; only the
-// reviewer resolves, reopens, deletes, picks and signs off.
+// Who may do what is checked here, not by the channel: the agent opens, replies, asks, marks addressed and hands the
+// plan over; only the reviewer resolves, reopens, deletes, picks, and signs off or takes a sign-off back.
 import {
   emptyReviewFile, type ReviewAnchor, type ReviewAuthor, type ReviewCandidate, type ReviewDecision, type ReviewEntry, type ReviewEntryCommit,
   type ReviewEntryRender, type ReviewFile, type ReviewSignoff, type ReviewThread, type ReviewThreadKind, type ReviewWrittenOn,
@@ -38,7 +38,9 @@ export type ReviewOp =
   | { op: 'decision.put'; decision: NewDecision }
   | { op: 'decision.verdict'; id: number; candidate: string; verdict: 'pick' | 'reject' | null }
   | { op: 'decision.close'; id: number }
-  | { op: 'signoff'; signoff: ReviewSignoff };
+  | { op: 'signoff'; signoff: ReviewSignoff }
+  | { op: 'signoff.takeBack'; scene: string }
+  | { op: 'plan.handover' };
 
 /** The file after the ops, and the frame images to write and delete (project-relative) with it. `changed` holds ids. */
 export type ReviewOpsApplied = { file: ReviewFile; writes: { path: string; bytes: Uint8Array }[]; deletes: string[]; changed: number[] };
@@ -89,6 +91,8 @@ function applyReviewOp(at: Applying, op: ReviewOp): ReviewThread | undefined {
     case 'decision.verdict': setReviewVerdict(at, op); break;
     case 'decision.close': closeReviewDecision(at, op.id); break;
     case 'signoff': signOffReview(at, op.signoff); break;
+    case 'signoff.takeBack': takeBackPlanSignoff(at, op.scene); break;
+    case 'plan.handover': handOverReviewPlan(at); break;
   }
   return undefined;
 }
@@ -324,6 +328,17 @@ function signOffReview(at: Applying, signoff: ReviewSignoff) {
   reviewerOnly(at, 'signs off');
   const same = (s: ReviewSignoff) => (s.on === 'plan' ? signoff.on === 'plan' && s.scene === signoff.scene : signoff.on === 'render' && s.path === signoff.path);
   at.file.signoffs = [...at.file.signoffs.filter((s) => !same(s)), signoff];
+}
+
+// Taking back a scene that isn't signed does nothing: two tabs can send the same.
+function takeBackPlanSignoff(at: Applying, scene: string) {
+  reviewerOnly(at, 'takes back a sign-off');
+  at.file.signoffs = at.file.signoffs.filter((s) => !(s.on === 'plan' && s.scene === scene));
+}
+
+function handOverReviewPlan(at: Applying) {
+  if (at.author !== 'agent') refuse('only the agent hands the plan over');
+  at.file.planHandover = { at: at.now };
 }
 
 /**

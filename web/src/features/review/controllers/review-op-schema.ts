@@ -42,9 +42,9 @@ const StillAnchorFields = {
   cell: Schema.optionalKey(Schema.String),
 };
 const PlanAnchor = Schema.Struct({
-  on: Schema.Literal('plan'), planHash: Schema.String, scene: Schema.optionalKey(Schema.String), section: Schema.optionalKey(Schema.String),
+  on: Schema.Literal('plan'), scene: Schema.optionalKey(Schema.String), section: Schema.optionalKey(Schema.String),
   field: Schema.Literals(['brief', 'scene', 'onScreen', 'motion', 'reads', 'line', 'leftOut']), line: Schema.optionalKey(Schema.String),
-  text: Schema.optionalKey(Schema.String),
+  text: Schema.optionalKey(Schema.String), was: Schema.optionalKey(Schema.String),
 });
 const DecisionAnchor = Schema.Struct({
   on: Schema.Literal('decision'), decision: Id, candidate: Schema.optionalKey(Schema.String),
@@ -96,10 +96,13 @@ const ReviewOpSchema = Schema.Union([
   Schema.Struct({
     op: Schema.Literal('signoff'),
     signoff: Schema.Union([
-      Schema.Struct({ on: Schema.Literal('plan'), scene: Schema.String, hash: Schema.String, at: Schema.String }),
+      Schema.Struct({
+        on: Schema.Literal('plan'), scene: Schema.String, hash: Schema.String, texts: Schema.Record(Schema.String, Schema.String), at: Schema.String,
+      }),
       Schema.Struct({ on: Schema.Literal('render'), path: Schema.String, hash: Schema.String, rung: Schema.optionalKey(Rung), at: Schema.String }),
     ]),
   }),
+  Schema.Struct({ op: Schema.Literal('signoff.takeBack'), scene: Schema.String }),
 ]);
 
 /** Which project a request is about, and a file in it. */

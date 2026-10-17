@@ -6,7 +6,7 @@
 // constraints, are always listed in their own section until resolved.
 import { formatSliceReplyCommand, renderSlicePathOf } from '#lib/output/render/models/render-splice.ts';
 import { formatReviewMomentPlace } from './review-moment.ts';
-import { formatReviewPlanNoteWhere } from './review-plan.ts';
+import { formatReviewPlanNoteWhere, formatReviewPlanTextKey, formatReviewPlanWordDiff, reviewPlanWordDiff, type ReviewPlanFieldChange } from './review-plan.ts';
 import { formatReviewMoment, formatStillAxes, reviewNoteContext, reviewSceneAtFrame, type ReviewContextSources, type ReviewNoteContext } from './review-context.ts';
 import type { PlacedReviewThread, ReviewLaidSlice, ReviewPlacement } from './review-placement.ts';
 import { formatReviewClock } from './review-timeline-geometry.ts';
@@ -141,14 +141,38 @@ function formatVideoNoteLines(anchor: Extract<ReviewAnchor, { on: 'video' }>, pl
 
 /**
  * A plan note's lines: `plan · plate · line verdict · ‘FODMAPs’ · underline +2f`, where it is (its scene, what it's
- * on, the words it quotes) and the nearest cue at or before them, then its frame on the plan's clock.
+ * on, the words it quotes) and the nearest cue at or before them, then its frame on the plan's clock, and what its
+ * field said when the note was written against what it says now, once that has changed.
  */
 function formatPlanNoteLines(anchor: ReviewPlanAnchor, placement: ReviewPlacement, project: string): AnchorLines {
   const plan = 'plan' in placement ? placement.plan : undefined;
   const cue = plan?.cue && `${plan.cue.name}${plan.cue.frames > 0 ? ` +${plan.cue.frames}f` : ''}`;
   const head = ['plan', formatReviewPlanNoteWhere(anchor), cue].filter(Boolean).join(' · ');
   const frame = plan?.frame ?? null;
-  return { head: ` — ${head}`, lines: frame === null ? [] : [`plan:  f${frame} on the plan's clock (studio clock ${project})`] };
+  return {
+    head: ` — ${head}`,
+    lines: [
+      ...(frame === null ? [] : [`plan:  f${frame} on the plan's clock (studio clock ${project})`]),
+      ...(plan?.changed ? formatPlanChangeLines(plan.changed) : []),
+    ],
+  };
+}
+
+/** `was:` the old text, then `now:` the new one with its removed words `[-…-]` and added `{+…+}`. */
+const formatPlanChangeLines = ({ was, now }: { was: string; now: string }) =>
+  [`was:   ${was.replaceAll('\n', ' / ') || '(nothing)'}`, `now:   ${formatReviewPlanWordDiff(reviewPlanWordDiff(was, now))}`];
+
+/**
+ * The plan's scenes changed since they were signed off, each field reworded with its diff, as `studio review notes`
+ * lists them after the notes; a scene whose words held but whose timing moved says so. Empty when none is stale.
+ */
+export function formatReviewPlanStaleMarkdown(stale: readonly { scene: string; changes: readonly ReviewPlanFieldChange[] }[]): string {
+  if (!stale.length) return '';
+  const items = stale.map(({ scene, changes }) => [
+    `### ${scene} · changed since signed off`,
+    ...(changes.length ? changes.flatMap((c) => [`${formatReviewPlanTextKey(c.key)}:`, ...formatPlanChangeLines(c)]) : ['its words are as signed; its timing moved']),
+  ].join('\n'));
+  return `## Stale sign-offs\n\n${items.join('\n\n')}\n`;
 }
 
 /**

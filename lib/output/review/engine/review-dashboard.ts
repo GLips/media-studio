@@ -2,14 +2,14 @@
 // disk: its files with a picture of each, its review (review/review.json) and when its plan last changed. What waits on whom is
 // worked out in models/review-dashboard.ts.
 import { existsSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { loadRenderSnapshot, renderFileStamp } from '#lib/output/render/engine/render-snapshot.ts';
 import { listStudioProjects } from '#lib/platform/project/engine/studio-project.ts';
 import type { ProjectArtifact } from '../models/review-artifact.ts';
 import { summarizeReviewProject, type ReviewProjectFacts, type ReviewProjectSummary, type ReviewProjectThumbnail } from '../models/review-dashboard.ts';
 import { listProjectArtifacts } from './project-artifacts.ts';
 import { projectFolderNamed, resolveProjectMedia } from './project-media.ts';
-import { readReviewFile, reviewFilePathOf } from './review-file.ts';
+import { applyReviewOps, readReviewFile, reviewFilePathOf } from './review-file.ts';
 
 export type { ReviewProjectSummary } from '../models/review-dashboard.ts';
 
@@ -52,4 +52,16 @@ function summarizeOnDisk(project: string): ReviewProjectSummary {
 export function summarizeReviewProjects(projects: readonly string[] = listStudioProjects()): ReviewProjectSummary[] {
   return projects.map((project) => summarizeOnDisk(project))
     .toSorted((a, b) => (b.activeAt ?? '').localeCompare(a.activeAt ?? '') || a.project.localeCompare(b.project));
+}
+
+/**
+ * Hands the project's plan over for review (`studio review open --plan`): from now its unsigned scenes wait on the
+ * reviewer. Returns the review's revision. Throws for a project with no storyboard.ts, which has no plan to hand over.
+ */
+export function handOverReviewPlan(projectDir: string): number {
+  if (planFactsOf(projectDir) === null) throw new Error(`${basename(projectDir)} has no storyboard.ts: there's no plan to hand over`);
+  const applied = applyReviewOps(projectDir, [{ op: 'plan.handover' }], 'agent');
+  // A handover edits no thread, so nothing it reads can have changed under it.
+  if ('conflict' in applied) throw new Error(`${basename(projectDir)}'s plan handover conflicted: run it again`);
+  return applied.file.revision;
 }

@@ -1,7 +1,7 @@
 import { Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { Folder, MessageSquare, ScrollText, Split } from 'lucide-react';
-import { reviewRowAwaitsYou, type ReviewProjectRow, type ReviewProjectSummary } from '#lib/output/review/models/review-dashboard.ts';
+import { reviewPlanMayAwaitYou, reviewPlanScenesAwaitYou, reviewRowAwaitsYou, type ReviewProjectRow, type ReviewProjectSummary } from '#lib/output/review/models/review-dashboard.ts';
 import { useProjectPlanSignoffs } from '#web/features/storyboard/index.ts';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { Readout } from '#web/shared/ui/readout.tsx';
@@ -21,13 +21,22 @@ const styles = stylex.create({
 
 const GLYPH_SIZE = 12;
 
-/** The plan's glyph while a scene is unsigned or changed since signed off; nothing once all are, or until it resolves. */
-function ProjectPlanMark({ project, row }: { readonly project: string; readonly row: Extract<ReviewProjectRow, { on: 'plan' }> }) {
+type PlanRow = Extract<ReviewProjectRow, { on: 'plan' }>;
+
+/**
+ * The plan's glyph while its scenes wait (reviewPlanScenesAwaitYou); nothing otherwise, or until it resolves. A plan
+ * that can't wait isn't resolved at all, so the dashboard imports only the storyboards in play.
+ */
+function ProjectPlanMark({ project, row }: { readonly project: string; readonly row: PlanRow }) {
+  return reviewPlanMayAwaitYou(row) ? <ProjectPlanMarkResolved project={project} row={row} /> : null;
+}
+
+function ProjectPlanMarkResolved({ project, row }: { readonly project: string; readonly row: PlanRow }) {
   const signoffs = useProjectPlanSignoffs(project, row.signoffs);
-  const waiting = signoffs?.filter((s) => s.state === 'unsigned' || s.state === 'stale');
-  if (!signoffs || !waiting?.length) return null;
+  if (!signoffs || !reviewPlanScenesAwaitYou(row, signoffs)) return null;
+  const waiting = signoffs.filter((s) => s.state === 'stale' || s.state === 'unsigned').length;
   return (
-    <HotkeyTooltip name={`plan: ${waiting.length} of ${signoffs.length} scenes to sign off`}>
+    <HotkeyTooltip name={`plan: ${waiting} of ${signoffs.length} scenes to sign off`}>
       <Text component="span" size="sm" {...stylex.props(styles.mark)}><ScrollText size={GLYPH_SIZE} /></Text>
     </HotkeyTooltip>
   );

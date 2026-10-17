@@ -1,4 +1,4 @@
-import { Box, Group, Text } from '@mantine/core';
+import { Box, Group, Text, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import type { ReactNode } from 'react';
 import type { ReviewThreadCounts } from '#lib/output/review/models/review-dashboard.ts';
@@ -60,6 +60,25 @@ export function ProjectRow({ target, thumbnail, title, threads, marks, end }: Pr
       </Box>
       {end && <Group gap="gap" wrap="nowrap" {...stylex.props(styles.end)}>{end}</Group>}
     </ProjectRowLink>
+  );
+}
+
+type ProjectRowButtonProps = {
+  readonly thumbnail: ReactNode;
+  readonly title: ReactNode;
+  readonly expanded: boolean;
+  readonly onToggle: () => void;
+};
+
+/** A row that opens and closes the rows below it in place, as a folded run of older work does. */
+export function ProjectRowButton({ thumbnail, title, expanded, onToggle }: ProjectRowButtonProps) {
+  return (
+    <UnstyledButton {...stylex.props(styles.row)} {...{ [PROJECT_ROW_ATTRIBUTE]: '' }} aria-expanded={expanded} onClick={onToggle}>
+      {thumbnail}
+      <Box component="span" {...stylex.props(styles.lead)}>
+        <Text component="span" size="md" {...stylex.props(styles.title)}>{title}</Text>
+      </Box>
+    </UnstyledButton>
   );
 }
 

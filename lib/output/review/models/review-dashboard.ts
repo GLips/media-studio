@@ -4,7 +4,7 @@
 //
 // Negative space: the plan row carries its sign-offs, never which scenes are left to sign. That needs the storyboard
 // resolved, which the long-running server never does: the browser works it out with reviewPlanSignoffs and hands it
-// to reviewRowAwaitsYou.
+// to reviewRowAwaitsYou. A plan never handed over (`studio review open --plan`) waits only on its stale scenes.
 import type { ProjectArtifact } from './review-artifact.ts';
 import { reviewDecisionTopics } from './review-decisions.ts';
 import type { ReviewPlanSignoffState } from './review-plan.ts';
@@ -26,11 +26,20 @@ export type ReviewProjectPlace =
   | { on: 'file'; artifact: ProjectArtifact; thumbnail: ReviewProjectThumbnail }
   /** `at`: when it was signed off, or when the agent last posted it while it's open. */
   | { on: 'decision'; id: number; topic: string; question: string; state: ReviewDecision['state']; at: string }
-  /** The plan's scene sign-offs, the last on each scene; `modified`: when storyboard.ts was last written. */
-  | { on: 'plan'; signoffs: ReviewPlanSignoff[]; modified: string }
+  /**
+   * The plan's scene sign-offs, the last on each scene; `modified`: when storyboard.ts was last written;
+   * `handedOverAt`: when the agent last handed it over, null until it has.
+   */
+  | { on: 'plan'; signoffs: ReviewPlanSignoff[]; modified: string; handedOverAt: string | null }
   | { on: 'project' };
 
 export type ReviewProjectRow = ReviewProjectPlace & { threads: ReviewThreadCounts };
+
+/** Where a thread is read: the file, decision topic or plan it places on, or the project for notes with no place. */
+export type ReviewThreadPlace = { on: 'file'; path: string } | { on: 'decision'; topic: string } | { on: 'plan' } | { on: 'project' };
+
+/** A waiting state's first thread (the lowest id) and where it's read, which the project header's count links to. */
+export type ReviewFirstThread = { id: number; place: ReviewThreadPlace };
 
 export type ReviewProjectSummary = {
   project: string;
@@ -38,6 +47,8 @@ export type ReviewProjectSummary = {
   rows: ReviewProjectRow[];
   /** Every thread in the project. */
   threads: ReviewThreadCounts;
+  /** Each waiting state's first thread; a state with none is absent. */
+  firstThreads: Partial<Record<keyof ReviewThreadCounts, ReviewFirstThread>>;
   /** When review/review.json last changed (ISO), or null with no review yet. */
   reviewedAt: string | null;
   /** The later of its newest file and its last review: the dashboard's order. Null for a project with neither. */
@@ -57,9 +68,18 @@ export type ReviewProjectFacts = {
 
 const noThreads = (): ReviewThreadCounts => ({ open: 0, addressed: 0, asks: 0 });
 
-function countThread(counts: ReviewThreadCounts, thread: ReviewThread) {
+const waitingToneOf = (thread: ReviewThread): keyof ReviewThreadCounts | null => {
   const tone = reviewThreadTone(thread);
-  if (tone === 'open' || tone === 'addressed' || tone === 'asks') counts[tone]++;
+  return tone === 'open' || tone === 'addressed' || tone === 'asks' ? tone : null;
+};
+
+function placeOfRow(row: ReviewProjectRow): ReviewThreadPlace {
+  switch (row.on) {
+    case 'file': return { on: 'file', path: row.artifact.path };
+    case 'decision': return { on: 'decision', topic: row.topic };
+    case 'plan': return { on: 'plan' };
+    default: return { on: 'project' };
+  }
 }
 
 export type ReviewPlanSignoff = Extract<ReviewSignoff, { on: 'plan' }>;
@@ -67,7 +87,7 @@ export type ReviewPlanSignoff = Extract<ReviewSignoff, { on: 'plan' }>;
 function planRowOf(review: ReviewFile, { modified }: NonNullable<ReviewProjectFacts['plan']>): ReviewProjectRow {
   // ops.ts keeps one sign-off a scene, the newest.
   const signoffs = review.signoffs.filter((s): s is ReviewPlanSignoff => s.on === 'plan');
-  return { on: 'plan', signoffs, modified, threads: noThreads() };
+  return { on: 'plan', signoffs, modified, handedOverAt: review.planHandover?.at ?? null, threads: noThreads() };
 }
 
 /**
@@ -94,28 +114,76 @@ export function summarizeReviewProject({ project, files, review, plan, reviewedA
     }
   };
   const threads = noThreads();
-  for (const thread of review.threads) {
-    countThread(threads, thread);
-    countThread(rowOf(thread).threads, thread);
+  const firstThreads: ReviewProjectSummary['firstThreads'] = {};
+  for (const thread of review.threads.toSorted((a, b) => a.id - b.id)) {
+    const tone = waitingToneOf(thread);
+    if (tone === null) continue;
+    const row = rowOf(thread);
+    threads[tone]++;
+    row.threads[tone]++;
+    firstThreads[tone] ??= { id: thread.id, place: placeOfRow(row) };
   }
   const { open, addressed, asks } = projectRow.threads;
   const rows = [...fileRows, ...decisionRows.values(), ...(planRow ? [planRow] : []), ...(open + addressed + asks ? [projectRow] : [])];
   const newest = files[0]?.artifact.modified ?? null;
   const activeAt = [newest, reviewedAt].filter((at) => at !== null).toSorted().at(-1) ?? null;
-  return { project, rows, threads, reviewedAt, activeAt };
+  return { project, rows, threads, firstThreads, reviewedAt, activeAt };
 }
 
 /** A plan scene's sign-off state, as reviewPlanSignoffs works it out from the resolved storyboard. */
 export type ReviewPlanSceneSignoff = { state: ReviewPlanSignoffState };
 
+type ReviewPlanRow = Extract<ReviewProjectRow, { on: 'plan' }>;
+
 /**
- * True when the row waits on the reviewer: a fix to verify, an agent's question, an open decision, or a plan scene
- * unsigned or changed since signed off. `planSignoffs` are the plan's scenes (see the header), null until its
- * storyboard resolves or when it can't: a plan with no known scenes waits on no one.
+ * True when the plan's scenes wait on the reviewer: one changed since signed off, or, once the agent has handed the
+ * plan over, one not yet signed. `planSignoffs` are the plan's scenes, null until its storyboard resolves or when it
+ * can't: a plan with no known scenes waits on no one.
+ */
+export function reviewPlanScenesAwaitYou(row: ReviewPlanRow, planSignoffs: readonly ReviewPlanSceneSignoff[] | null): boolean {
+  return planSignoffs?.some((s) => s.state === 'stale' || (row.handedOverAt !== null && s.state === 'unsigned')) ?? false;
+}
+
+/**
+ * False when the plan's scenes can't wait whatever its storyboard says: never handed over and nothing signed. The
+ * browser skips resolving such a storyboard.
+ */
+export const reviewPlanMayAwaitYou = (row: ReviewPlanRow): boolean => row.handedOverAt !== null || row.signoffs.length > 0;
+
+/**
+ * True when the row waits on the reviewer: a fix to verify, an agent's question, an open decision, or a plan whose
+ * scenes do (reviewPlanScenesAwaitYou).
  */
 export function reviewRowAwaitsYou(row: ReviewProjectRow, planSignoffs: readonly ReviewPlanSceneSignoff[] | null): boolean {
   if (row.threads.addressed + row.threads.asks > 0) return true;
   if (row.on === 'decision') return row.state === 'open';
-  if (row.on !== 'plan') return false;
-  return planSignoffs?.some((s) => s.state === 'unsigned' || s.state === 'stale') ?? false;
+  return row.on === 'plan' && reviewPlanScenesAwaitYou(row, planSignoffs);
+}
+
+/**
+ * How many things in the project wait on the reviewer, as the tab title counts them: agent questions, addressed notes,
+ * open decisions, and the plan when its scenes wait. A plan waiting only on its threads counts them, not itself.
+ */
+export function reviewProjectWaitingCount(summary: ReviewProjectSummary, planSignoffs: readonly ReviewPlanSceneSignoff[] | null): number {
+  const decisions = summary.rows.filter((row) => row.on === 'decision' && row.state === 'open').length;
+  const plan = summary.rows.find((row) => row.on === 'plan');
+  const planWaits = plan?.on === 'plan' && reviewPlanScenesAwaitYou(plan, planSignoffs) ? 1 : 0;
+  return summary.threads.asks + summary.threads.addressed + decisions + planWaits;
+}
+
+/**
+ * The project page's rungs, in its order after the plan, decisions and project notes: a video made as the animatic
+ * (named `animatic` in out/wip/), a cut (`out/video*`), a delivered still (out/stills/, out/still-sheets/). The rest
+ * is `older`: check frames, probes and test renders, which the page folds away.
+ */
+export type ProjectPageRung = 'animatic' | 'cut' | 'stills' | 'older';
+
+/** A file's rung on its project's page, by its path in the project. */
+export function projectPageRungOf(path: string): ProjectPageRung {
+  const slash = path.lastIndexOf('/'), folder = path.slice(0, slash + 1), name = path.slice(slash + 1);
+  const video = /\.(mp4|webm|mov)$/i.test(name);
+  if (folder === 'out/wip/' && video && name.includes('animatic')) return 'animatic';
+  if (folder === 'out/' && video && name.startsWith('video')) return 'cut';
+  if (folder === 'out/stills/' || folder === 'out/still-sheets/') return 'stills';
+  return 'older';
 }

@@ -50,9 +50,9 @@ Approval is explicit: their word, a resolve, or a sign-off.
 
 ## The plan
 
-The scene table or beat sheet is reviewed before anything renders, on its own page, `/projects/<p>/plan`. It reads
-`storyboard.ts` live, so a saved edit re-times it at once: the brief, a timing bar (each line timed by its read, or
-its word count until voiced; cues on their words; long silences and holds flagged), then a row per scene.
+Hand the scene table or beat sheet over before anything renders: `studio review open <p> --plan` queues it on a page
+reading `storyboard.ts` live, so an edit re-times it: the brief, a timing bar (each line timed by its read, or its
+word count until voiced; cues on their words; long silences and holds flagged), then a row per scene.
 
 - The reviewer notes a brief section, a scene's cell, a line or words in it, or a left-out item. A note quotes what
   it's on, so it follows the words through your edits and is unplaced once they've gone. `watch` wakes on them;

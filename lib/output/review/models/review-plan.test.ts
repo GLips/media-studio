@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { resolveStoryboard } from '#lib/timing/storyboard/models/resolve-storyboard.ts';
 import { defineStoryboard } from '#lib/timing/storyboard/models/storyboard.ts';
 import { storyboardSceneHash } from '#lib/timing/storyboard/models/storyboard-sign-off.ts';
-import { placeReviewPlanThread, reviewPlanSignoffs, storyboardPlanHash } from './review-plan.ts';
+import { formatReviewPlanWordDiff, placeReviewPlanThread, reviewPlanSceneTexts, reviewPlanSignoffs, reviewPlanWordDiff } from './review-plan.ts';
 import type { ReviewPlanAnchor } from './review-threads.ts';
 
 const plan = (verdict: string, closeMotion = 'It fades in') => defineStoryboard({
@@ -23,7 +23,7 @@ const plan = (verdict: string, closeMotion = 'It fades in') => defineStoryboard(
   },
 });
 
-const note = (text: string): ReviewPlanAnchor => ({ on: 'plan', planHash: storyboardPlanHash(plan('x')), scene: 'plate', field: 'line', line: 'verdict', text });
+const note = (text: string): ReviewPlanAnchor => ({ on: 'plan', scene: 'plate', field: 'line', line: 'verdict', text });
 
 test('a quoted phrase is found again after the line is edited around it, and lands on its word', () => {
   const after = plan("Then you'll see straight away which FODMAPs are in it.");
@@ -46,8 +46,22 @@ test('a note whose quote has gone reads as unplaced, at its scene', () => {
 test('a scene edited after its sign-off reads as stale while another stays signed', () => {
   const signedPlan = plan("You'll see which FODMAPs are in it.");
   const signedResolved = resolveStoryboard(signedPlan);
-  const signoffs = (['plate', 'close'] as const).map((scene) => ({ on: 'plan' as const, scene, hash: storyboardSceneHash(signedPlan, signedResolved, scene)!, at: '2026-10-16T09:00:00Z' }));
+  const signoffs = (['plate', 'close'] as const).map((scene) => ({
+    on: 'plan' as const, scene, hash: storyboardSceneHash(signedPlan, signedResolved, scene)!, texts: reviewPlanSceneTexts(signedPlan, scene), at: '2026-10-16T09:00:00Z',
+  }));
   // Only the close's motion changes, and it's the last scene, so the plate's timing doesn't move either.
   const edited = plan("You'll see which FODMAPs are in it.", 'It slides up');
-  assert.deepEqual(reviewPlanSignoffs(edited, resolveStoryboard(edited), signoffs).map((s) => [s.scene, s.state]), [['plate', 'signed'], ['close', 'stale']]);
+  const states = reviewPlanSignoffs(edited, resolveStoryboard(edited), signoffs);
+  assert.deepEqual(states.map((s) => [s.scene, s.state]), [['plate', 'signed'], ['close', 'stale']]);
+  // The stale scene says what changed, field by field, from the texts its sign-off kept.
+  assert.deepEqual(states[1].changes, [{ key: 'motion', was: 'It fades in', now: 'It slides up' }]);
+});
+
+test('a word diff keeps the words both say and marks the rest removed, then added', () => {
+  const runs = reviewPlanWordDiff("You'll see which FODMAPs are in it.", "You'll see straight away which ingredients are in it.");
+  assert.deepEqual(runs, [
+    { kind: 'same', text: "You'll see" }, { kind: 'added', text: 'straight away' }, { kind: 'same', text: 'which' },
+    { kind: 'removed', text: 'FODMAPs' }, { kind: 'added', text: 'ingredients' }, { kind: 'same', text: 'are in it.' },
+  ]);
+  assert.equal(formatReviewPlanWordDiff(runs), "You'll see {+straight away+} which [-FODMAPs-] {+ingredients+} are in it.");
 });

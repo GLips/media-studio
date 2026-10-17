@@ -1,12 +1,13 @@
 import { Box, Group, Text, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
-import { Check, CheckCheck, Copy } from 'lucide-react';
+import { Check, CheckCheck, Copy, ScanEye } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { REVIEW_THREAD_TONES, type ReviewThreadTone } from '#lib/output/review/models/review-threads.ts';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { IconButton } from '#web/shared/ui/icon-button.tsx';
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 import type { ReviewSearch } from '../controllers/review-search.ts';
+import type { ReviewCheck, ReviewCheckStep } from './use-review-check-queue.ts';
 import type { ReviewThreadActions } from './use-review-thread-panel.ts';
 
 const styles = stylex.create({
@@ -39,6 +40,8 @@ type ReviewThreadFilterProps = {
   readonly filter: NonNullable<ReviewSearch['filter']>;
   readonly onFilter: (filter: NonNullable<ReviewSearch['filter']>) => void;
   readonly actions: ReviewThreadActions;
+  /** The check queue, on a render's thread: its button by ◐, and the row it becomes while checking. */
+  readonly check?: ReviewCheck;
 };
 
 function Count({ children, glyphStyle, word }: { readonly children: ReactNode; readonly glyphStyle: keyof typeof styles; readonly word: string }) {
@@ -49,11 +52,27 @@ function Count({ children, glyphStyle, word }: { readonly children: ReactNode; r
   );
 }
 
+/** `Checking 3 of 12 · Esc   vs r12`: the row while the check queue walks the addressed notes; Esc, or a click, leaves. */
+function ReviewCheckRow({ head, step }: { readonly head?: ReactNode; readonly step: ReviewCheckStep }) {
+  return (
+    <Group gap="tight" wrap="nowrap" {...stylex.props(styles.row)}>
+      {head}
+      <Text component="span" size="sm" {...stylex.props(styles.count, styles.addressed)}>Checking {step.at} of {step.of} ·</Text>
+      <HotkeyTooltip name="Leave check">
+        <UnstyledButton onClick={step.leave} {...stylex.props(styles.chip, styles.resolved)}><Text component="span" size="sm" inherit>Esc</Text></UnstyledButton>
+      </HotkeyTooltip>
+      <Box {...stylex.props(styles.end)} />
+      <Text component="span" size="sm" {...stylex.props(styles.count, step.compare.vs ? styles.cream : styles.resolved)}>{step.compare.label}</Text>
+    </Group>
+  );
+}
+
 /**
  * `●4 ◐2 ?1 ◇1 … ✓9`: the thread's states by glyph and count, zero counts left out. `●` narrows to the open notes and
- * `✓` lets the resolved in; both again, or `F`, go back. With rows selected, the row becomes their actions.
+ * `✓` lets the resolved in; both again, or `F`, go back. With rows selected, the row becomes their actions; while the
+ * check queue walks, its place.
  */
-export function ReviewThreadFilter({ head, counts, filter, onFilter, actions }: ReviewThreadFilterProps) {
+export function ReviewThreadFilter({ head, counts, filter, onFilter, actions, check }: ReviewThreadFilterProps) {
   const toggle = (to: 'open' | 'all') => onFilter(filter === to ? 'active' : to);
   if (actions.selected.size) {
     const ids = [...actions.selected];
@@ -67,6 +86,7 @@ export function ReviewThreadFilter({ head, counts, filter, onFilter, actions }: 
       </Group>
     );
   }
+  if (check?.step) return <ReviewCheckRow head={head} step={check.step} />;
   // Nothing to name, count or copy (a fresh thread): no row at all, not an empty band.
   if (!head && !actions.copy && !counts.open && !counts.addressed && !counts.asks && !counts.keep && !counts.resolved) return null;
   return (
@@ -80,6 +100,7 @@ export function ReviewThreadFilter({ head, counts, filter, onFilter, actions }: 
         </HotkeyTooltip>
       )}
       {counts.addressed > 0 && <Count glyphStyle="addressed" word={REVIEW_THREAD_TONES.addressed.word}>{REVIEW_THREAD_TONES.addressed.glyph}{counts.addressed}</Count>}
+      {check?.start && <IconButton name="Check addressed" onClick={check.start}><ScanEye size={14} /></IconButton>}
       {counts.asks > 0 && <Count glyphStyle="asks" word={REVIEW_THREAD_TONES.asks.word}>{REVIEW_THREAD_TONES.asks.glyph}{counts.asks}</Count>}
       {counts.keep > 0 && <Count glyphStyle="keep" word={REVIEW_THREAD_TONES.keep.word}>{REVIEW_THREAD_TONES.keep.glyph}{counts.keep}</Count>}
       <Box {...stylex.props(styles.end)} />

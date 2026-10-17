@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, type ComponentType, type ReactNode } from 'react';
 import type { ReviewArtifact } from '#lib/output/review/models/review-artifact.ts';
 import type { PlacedReviewThread, ReviewSplices, ReviewThreadSubject } from '#lib/output/review/models/review-placement.ts';
 import type { ReviewSearch } from '../controllers/review-search.ts';
@@ -18,7 +18,14 @@ export type ReviewThreadMedia = {
   splices: ReviewSplices;
   /** Strokes are going on the stage: the draw keys are the stage's, so a pin doesn't pull the cursor to the field. */
   drawing: boolean;
+  /** The screen's compare as the URL holds it, which the check queue sets per note and puts back on leaving. */
+  compare: ReviewThreadCompare;
+  /** Writes the note in focus and the compare in one go, so neither write lands over the other. */
+  setCompare: (patch: ReviewThreadCompare & Pick<ReviewSearch, 'note'>) => void;
 };
+
+/** The render compared against (`vs`) and how (`cmp`, `w`). */
+export type ReviewThreadCompare = Pick<ReviewSearch, 'vs' | 'cmp' | 'w'>;
 
 /** The thread's share of its screen's URL: the note in focus and the filter. */
 export type ReviewThreadSearch = Pick<ReviewSearch, 'note' | 'filter'>;
@@ -42,6 +49,8 @@ export type ReviewThreadScope = {
   markdownOf?: (threads: readonly PlacedReviewThread[]) => string;
   /** What the group of notes with no place here is called; `unplaced` by default (a render's), `moved or removed` on the plan. */
   unplacedLabel?: string;
+  /** What the subject draws under a note's words: on the plan, its field's text reworded since the note, as a diff. */
+  noteAside?: ComponentType<{ readonly thread: PlacedReviewThread }>;
 };
 
 const ReviewThreadScopeContext = createContext<ReviewThreadScope | null>(null);

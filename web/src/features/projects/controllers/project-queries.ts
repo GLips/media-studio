@@ -75,3 +75,13 @@ export function useProjectSummariesIfLoaded() {
   const beat = useQuery(studioPulseQueryOptions).data;
   return useQuery({ ...projectSummariesQueryOptions(beat ?? ''), enabled: beat !== undefined, placeholderData: keepPreviousData }).data;
 }
+
+/**
+ * The project's summary for what mustn't suspend (the tab title, on every screen of the project): undefined until the
+ * first answer. It shares the pulse the project's screens poll, so it adds no poll of its own.
+ */
+export function useProjectSummaryIfLoaded(project: string) {
+  const pulse = useQuery(projectPulseQueryOptions(project)).data;
+  const beat = pulse === undefined ? '' : projectPulseBeatOf(pulse);
+  return useQuery({ ...projectSummaryQueryOptions(project, beat), enabled: pulse !== undefined, placeholderData: keepPreviousData }).data;
+}
