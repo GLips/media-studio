@@ -22,6 +22,7 @@ const styles = stylex.create({
     flexShrink: 0, padding: spacing.gap, backgroundColor: colors.panel,
     borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: colors.line,
   },
+  on: { marginTop: spacing.tight, paddingInline: spacing.gap, color: colors.dim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   field: {
     marginTop: spacing.tight, paddingInline: spacing.gap, paddingBlock: spacing.tight,
     borderRadius: radius.control, borderWidth: '1px', borderStyle: 'solid', backgroundColor: colors.ground,
@@ -79,8 +80,8 @@ export const REVIEW_COMPOSER_ATTRIBUTE = 'data-review-composer';
 
 /**
  * The draft's field, docked at the thread's foot so the list never jumps. A click picks the kind and `Tab` cycles it,
- * either one the next note's too; `Mod+Enter` saves with the frame as seen, `Escape` leaves the draft standing (its
- * pin dims on the stage) and discards only an empty one.
+ * either one the next note's too; `Enter` (or `Mod+Enter`) saves with the frame as seen, `Shift+Enter` breaks the
+ * line, `Escape` leaves the draft standing (its pin dims on the stage) and discards only an empty one.
  */
 export function ReviewThreadComposer() {
   const scope = useReviewThreadScope();
@@ -88,6 +89,7 @@ export function ReviewThreadComposer() {
   const composerRef = useRef<HTMLDivElement>(null);
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   const pinned = draft.anchor.on === 'video' ? draft.anchor : undefined;
+  const onLabel = anchorOfDraft(scope) ? scope.draftOnLabel : scope.draftFallback?.label;
 
   const leave = () => {
     if (isEmptyDraft(draft)) draft.discard();
@@ -96,7 +98,7 @@ export function ReviewThreadComposer() {
   const save = async () => {
     if (!draft.text.trim()) return;
     media?.playback.pause();
-    const anchor = anchorOfDraft(scope);
+    const anchor = anchorOfDraft(scope) ?? scope.draftFallback?.anchor;
     if (!anchor) return;
     const point = 'point' in anchor ? anchor.point : undefined;
     const { kind, text, marks } = draft;
@@ -143,8 +145,10 @@ export function ReviewThreadComposer() {
           <IconButton name="Save note" onClick={() => void save()} disabled={!draft.text.trim()}><CornerDownLeft size={14} /></IconButton>
         </Group>
       </Group>
+      {onLabel !== undefined && <Text size="xs" {...stylex.props(styles.on)}>{onLabel}</Text>}
       <Box {...stylex.props(styles.field)}>
         <Textarea
+          placeholder={onLabel === undefined ? undefined : 'Write a note…'}
           ref={fieldRef}
           aria-label="Note"
           autosize
@@ -154,6 +158,7 @@ export function ReviewThreadComposer() {
           size="md"
           value={draft.text}
           onChange={(event) => draft.setText(event.currentTarget.value)}
+          onEnter={() => void save()}
         />
       </Box>
     </Box>

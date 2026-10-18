@@ -68,14 +68,21 @@ export const typography = stylex.defineVars({
   chrome: '12px',
   /** Note bodies and anything read as prose. */
   body: '13px',
-  /** A plan's spoken line, the words its page is read for. */
-  line: '15px',
+  /** Prose read for its content, a step up from note bodies: a plan's brief and scene fields. */
+  prose: '15px',
+  /** A plan's spoken line, read along with the picture: the words its page is for. */
+  line: '22px',
+  /** What a page is about, named once at its top: the plan's current scene. */
+  heading: '30px',
   /** Text read for itself, large: a decision's text candidate. */
   reading: '19px',
   /** Project names on the dashboard, and nowhere else. */
   display: '16px',
   /** One line height for every size, so rows line up across panels. */
   lineHeight: '16px',
+  /** The large sizes read as running text, so they open up past the one shared height. */
+  proseLeading: '22px',
+  lineLeading: '34px',
 });
 
 export const spacing = stylex.defineVars({

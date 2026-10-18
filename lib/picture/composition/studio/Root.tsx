@@ -4,6 +4,8 @@
 // folder per design.
 
 import { Composition, Folder, Freeze, useCurrentFrame } from 'remotion';
+import { footage } from '@footage';
+import sfxCues from '@sfx-cues';
 import stills from '@stills';
 import video from '@video';
 import { DEFAULT_VIDEO_FORMAT } from '#lib/picture/frame/models/frame.ts';
@@ -36,7 +38,7 @@ if (video?.clock !== undefined) pinBrowserDate(video.clock);
 
 // The components below render only when Root registered them, which it does only with a video.
 const projectVideo = video as VideoDef;
-const ProjectVideo = (props: VideoProps & CompositionRenderSettings) => <PictureRoot><Video video={projectVideo} {...props} /></PictureRoot>;
+const ProjectVideo = (props: VideoProps & CompositionRenderSettings) => <PictureRoot><Video video={projectVideo} footage={footage} sfxCues={sfxCues} {...props} /></PictureRoot>;
 
 /**
  * Frame i shows the video's frame order[i] (the last one past the end). Rendered in one tab, that gives each frame a
@@ -45,7 +47,7 @@ const ProjectVideo = (props: VideoProps & CompositionRenderSettings) => <Picture
 const ReplayVideo = ({ order, ...props }: ReplayProps & CompositionRenderSettings) => (
   <PictureRoot>
     <Freeze frame={order[Math.min(useCurrentFrame(), order.length - 1)]}>
-      <Video video={projectVideo} {...props} reportTimeline={false} />
+      <Video video={projectVideo} footage={footage} sfxCues={sfxCues} {...props} reportTimeline={false} />
     </Freeze>
   </PictureRoot>
 );

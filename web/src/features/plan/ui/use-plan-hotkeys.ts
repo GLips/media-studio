@@ -39,21 +39,13 @@ export function usePlanHotkeys(screen: PlanScreenValue, body: RefObject<HTMLElem
     // The S of `G S` goes to the plan, which this already is.
     if (hotkeySequencePending() || focusedScene === null) return;
     const scene = focusedScene, state = signoffs.get(scene)?.state;
-    if (state === 'unknown') return;
-    if (state !== 'signed') {
-      const open = planSceneOpenNoteCount(screen.threads, scene);
-      if (open > 0 && screen.signOffArmed?.scene !== scene) {
-        screen.armSignOff({ scene, open });
-        return;
-      }
-      signOff(scene);
+    if (state === 'unknown' || state === 'signed') return;
+    const open = planSceneOpenNoteCount(screen.threads, scene);
+    if (open > 0 && screen.signOffArmed?.scene !== scene) {
+      screen.armSignOff({ scene, open });
+      return;
     }
-    // On to the next scene after this one still to sign; past the last, the focus stays.
-    const next = scenes.slice(scenes.indexOf(scene) + 1).find((id) => {
-      const later = signoffs.get(id)?.state;
-      return later === 'unsigned' || later === 'stale';
-    });
-    if (next !== undefined) focusScene(next);
+    signOff(scene);
   };
   const takeBackFocused = () => {
     if (hotkeySequencePending() || focusedScene === null) return;

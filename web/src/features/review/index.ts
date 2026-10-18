@@ -17,3 +17,4 @@ export { useReviewThreads } from './ui/use-review-threads.ts';
 export { drawReviewPeaks, reviewPeaksQueryOptions } from './ui/review-peaks-canvas.ts';
 export type { SetReviewSearch } from './controllers/review-search.ts';
 export type { DecodedReviewOp } from './controllers/review-op-schema.ts';
+export { ReviewThreadKindIcon } from './ui/review-thread-kind.tsx';

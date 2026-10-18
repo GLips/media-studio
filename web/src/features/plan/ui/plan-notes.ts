@@ -48,7 +48,7 @@ export function planTargetOfElement(element: Element | null): PlanTarget | null 
 
 const elementOf = (node: Node | null) => (node instanceof Element ? node : node?.parentElement ?? null);
 
-/** Marks text that is the page's, not the plan's (a note's glyph): a quote never takes it. */
+/** Marks text that is the page's, not the plan's (a note's mark, a cue's tag): a quote never takes it. */
 export const planUnquotedAttributes = { 'data-plan-unquoted': '' } as const;
 
 /** The elements whose edges part a cell's words, so two selected paragraphs quote as `end. Start`, not `end.Start`. */
@@ -119,8 +119,8 @@ export function planAnchorOn(anchor: Partial<ReviewPlanAnchor>, target: PlanTarg
   }
 }
 
-/** How a thread's state reads beside its anchor: its glyph, and the colour role it takes. */
-export type PlanThreadMark = { glyph: string; tone: 'accent' | 'pass' | 'caution' | 'dim'; word: string };
+/** How a thread's state reads beside its anchor: the colour role it takes, and its word. */
+export type PlanThreadMark = { tone: 'accent' | 'pass' | 'caution' | 'dim'; word: string };
 
 const PLAN_THREAD_COLOURS: Readonly<Record<ReviewThreadTone, PlanThreadMark['tone']>> = {
   open: 'accent', addressed: 'pass', asks: 'caution', keep: 'dim', resolved: 'dim',
@@ -128,5 +128,5 @@ const PLAN_THREAD_COLOURS: Readonly<Record<ReviewThreadTone, PlanThreadMark['ton
 
 export function planThreadMarkOf(thread: Pick<ReviewThread, 'kind' | 'state' | 'entries'>): PlanThreadMark {
   const tone = reviewThreadTone(thread);
-  return { ...REVIEW_THREAD_TONES[tone], tone: PLAN_THREAD_COLOURS[tone] };
+  return { word: REVIEW_THREAD_TONES[tone].word, tone: PLAN_THREAD_COLOURS[tone] };
 }

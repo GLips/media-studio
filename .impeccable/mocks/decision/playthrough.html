@@ -1,0 +1,79 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1440px;height:900px;overflow:hidden;background:#0c0c0e;color:#f3f0e7;font:13px/1.45 Archivo,sans-serif}
+.mono{font-family:"JetBrains Mono",monospace}
+.top{height:52px;display:flex;align-items:center;gap:18px;padding:0 20px;border-bottom:1px solid #2a2a31}
+.top h1{font-size:16px;font-weight:900}
+.pill{padding:4px 10px;border-radius:999px;background:#16161a;font-size:12px;color:#8d8a83}
+.pill b{color:#f2b134;font-weight:500}
+.spacer{flex:1}
+.btn{padding:7px 14px;border-radius:6px;background:#ee4c23;color:#fff;font-weight:700;font-size:12px}
+.ghost{padding:7px 14px;border-radius:6px;border:1px solid #2a2a31;font-size:12px}
+.main{display:grid;grid-template-columns:1fr 560px;height:686px}
+.stage{display:flex;align-items:center;justify-content:center;background:#000;position:relative}
+.phone{width:300px;height:650px;border-radius:26px;background:linear-gradient(#e9e4da 0 70%,#2f4a2a 70%);position:relative;overflow:hidden}
+.phone .feed{position:absolute;inset:18px 18px 210px;background:#c9b49a;border-radius:10px}
+.phone .card{position:absolute;left:30px;right:30px;bottom:240px;height:120px;background:#fff;border-radius:14px;box-shadow:0 8px 30px #0005}
+.phone .cap{position:absolute;left:24px;right:24px;bottom:40px;color:#fff;font-size:22px;font-weight:700;line-height:1.2}
+.scene{padding:28px 32px;border-left:1px solid #2a2a31;overflow:hidden}
+.kick{font-size:12px;color:#8d8a83;display:flex;gap:10px;align-items:center}
+.scene h2{font-size:28px;font-weight:900;margin:6px 0 4px}
+.field{margin-top:18px}
+.field label{font-size:12px;color:#8d8a83;display:block;margin-bottom:4px}
+.field p{font-size:15px;padding:8px 10px;border-radius:6px;background:#16161a}
+.line{font-size:24px;line-height:1.35;margin-top:22px;font-weight:500}
+.line .said{color:#f3f0e7}.line .todo{color:#5d5b56}
+.line .now{background:#4144f4;border-radius:4px;padding:0 3px}
+.cue{display:inline-block;font-size:11px;color:#9ea0ff;border:1px solid #4144f4;border-radius:999px;padding:0 6px;vertical-align:middle;margin-left:4px}
+.comment{margin-top:22px;padding:12px 14px;border-radius:8px;background:#16161a;border-left:3px solid #f2b134}
+.comment small{color:#8d8a83}
+.dock{height:162px;border-top:1px solid #2a2a31;padding:14px 20px}
+.transport{display:flex;gap:14px;align-items:center;margin-bottom:12px}
+.play{width:34px;height:34px;border-radius:50%;background:#f3f0e7}
+.track{display:flex;height:74px;gap:3px;position:relative}
+.ch{border-radius:6px;padding:8px 10px;background:#1a1a1f;position:relative}
+.ch b{font-size:13px}
+.ch span{display:block;font-size:11px;color:#8d8a83}
+.ch.on{background:#222228;outline:1px solid #f3f0e7}
+.ch .ok{position:absolute;right:8px;top:8px;color:#3ccf7a;font-size:12px}
+.ch .wait{position:absolute;right:8px;top:8px;color:#f2b134;font-size:12px}
+.head{position:absolute;left:18%;top:-6px;bottom:-6px;width:2px;background:#f3f0e7}
+.target{position:absolute;left:92%;top:-6px;bottom:-6px;border-left:1px dashed #f2b134}
+.target i{position:absolute;top:-16px;left:4px;font-size:11px;color:#f2b134;font-style:normal;white-space:nowrap}
+</style></head><body>
+<div class="top">
+  <span style="color:#8d8a83">‹ FODMAP Scanner</span><h1>Plan</h1>
+  <span class="pill">26.1 s long · <b>2.1 s over the 24 s target</b></span>
+  <span class="pill">1 of 4 scenes approved</span>
+  <span class="pill">Voice timed from word counts</span>
+  <div class="spacer"></div>
+  <span class="ghost">3 questions from the agent</span><span class="btn">Send notes to agent</span>
+</div>
+<div class="main">
+  <div class="stage">
+    <div class="phone"><div class="feed"></div><div class="card"></div><div class="cap">Take a photo of what you're about to eat.</div></div>
+  </div>
+  <div class="scene">
+    <div class="kick"><span>Scene 1 of 4</span><span class="mono">0:00 – 0:08.6</span><span style="color:#3ccf7a">✓ Approved</span></div>
+    <h2>The plate</h2>
+    <div class="line"><span class="said">Take a <span class="now">photo</span></span><span class="cue">shutter fires</span><span class="todo"> of what you're about to eat.</span></div>
+    <div class="line"><span class="todo">You'll see which FODMAPs</span><span class="cue">underline</span><span class="todo"> are in it, and whether FODZYME can help.</span></div>
+    <div class="field"><label>On screen</label><p>The real camera screen with the trattoria feed in its viewfinder, already on the spaghetti.</p></div>
+    <div class="field"><label>Motion</label><p>Shutter on "photo", flash; a hard cut over the scan wait; the answer up 1 s after the shutter.</p></div>
+    <div class="comment"><small>You · on "FODZYME can help"</small><br>Too salesy for the first scene. Say what it found, not what to buy.</div>
+  </div>
+</div>
+<div class="dock">
+  <div class="transport"><div class="play"></div><span class="mono" style="font-size:12px">0:01.40 / 0:26.10</span><span style="color:#8d8a83;font-size:12px">Space to play · click a word to jump to it</span></div>
+  <div class="track">
+    <div class="ch on" style="width:33%"><b>1 · The plate</b><span>8.6 s · 2 lines</span><span class="ok">✓</span></div>
+    <div class="ch" style="width:29%"><b>2 · The label</b><span>7.7 s · 2 lines · 1 question</span><span class="wait">?</span></div>
+    <div class="ch" style="width:22%"><b>3 · The menu</b><span>5.7 s · 1 line</span></div>
+    <div class="ch" style="width:16%"><b>4 · Close</b><span>4.2 s</span></div>
+    <div class="head"></div><div class="target"><i>24 s target</i></div>
+  </div>
+</div>
+</body></html>

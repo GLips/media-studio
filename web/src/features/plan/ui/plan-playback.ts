@@ -10,6 +10,9 @@ import type { PlanAudio } from './plan-timing.ts';
 /** The CSS variable each tick writes the frame into, which the playhead and the lit word read. */
 export const PLAN_FRAME_VAR = '--plan-frame';
 
+/** 1 while playing and 0 while paused, so what only reads while playing (words dimmed once said) can be pure CSS. */
+export const PLAN_PLAYING_VAR = '--plan-playing';
+
 /** A clip further than this off the clock is put back on it. */
 const PLAN_AUDIO_DRIFT_SECONDS = 0.12;
 
@@ -46,6 +49,7 @@ export function createPlanPlayback(): PlanPlayback {
   const frameNow = () => (state.playing ? Math.min(end, startFrame + ((performance.now() - startedAt) / 1000) * fps) : state.frame);
   const set = (next: PlanPlaybackState) => {
     state = next;
+    root?.style.setProperty(PLAN_PLAYING_VAR, next.playing ? '1' : '0');
     for (const listener of listeners) listener();
   };
   const show = (frame: number) => {

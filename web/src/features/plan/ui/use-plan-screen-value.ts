@@ -72,7 +72,14 @@ export function usePlanScreenValue(project: string, plan: ProjectStoryboard): Pl
       armSignOff(null);
       const hash = storyboardSceneHash(plan.storyboard, plan.resolved, scene);
       const texts = reviewPlanSceneTexts(plan.storyboard, scene);
-      if (hash !== null) void ops.apply([{ op: 'signoff', signoff: { on: 'plan', scene, hash, texts, at: new Date().toISOString() } }]);
+      if (hash === null) return;
+      void ops.apply([{ op: 'signoff', signoff: { on: 'plan', scene, hash, texts, at: new Date().toISOString() } }]);
+      // On to the next scene after this one still to approve, its start under the playhead; past the last, it stays.
+      const next = sceneIds.slice(sceneIds.indexOf(scene) + 1).find((later) => signoffList.find((s) => s.scene === later)?.state !== 'signed');
+      if (next === undefined) return;
+      setSearch({ scene: next });
+      const placed = timing?.scenes.find((s) => s.id === next);
+      if (placed) playback.seek(placed.from);
     },
     takeBack: (scene) => void ops.apply([{ op: 'signoff.takeBack', scene }]),
     signOffArmed, armSignOff,

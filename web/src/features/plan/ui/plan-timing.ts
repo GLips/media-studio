@@ -159,3 +159,9 @@ export const planSceneIndexAt = (scenes: readonly PlanScene[], frame: number) =>
 
 /** `23.8 s`: a length in seconds to a tenth. */
 export const formatPlanSeconds = (seconds: number) => `${seconds.toFixed(1)} s`;
+
+/** A scene's id as its title: `plate` reads `Plate`, `title-card` reads `Title card`. */
+export const planSceneTitle = (id: string) => {
+  const words = id.replace(/[-_]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+};

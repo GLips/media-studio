@@ -1,0 +1,3 @@
+{
+  "web/src/features/plan": "The plan page plays the project's video beside its plan, live from video.tsx, so an edit to storyboard.ts shows in the picture before anything renders."
+}

@@ -10,6 +10,6 @@ export const shadows = stylex.create({
   spokenUnderline: { boxShadow: `inset 0 -2px 0 ${colors.cobalt}` },
   /** A note dot ringed in the ground's dark, so it holds on a picture of its own colour. */
   groundRing: { boxShadow: `0 0 0 1px ${colors.ground}` },
-  /** The scene in focus on the plan's timing bar: a cream rule along its top, inside its box. */
-  focusTopRule: { boxShadow: `inset 0 2px 0 ${colors.cream}` },
+  /** A control floating over the page, as the plan's Comment button over a selection: lifted with a soft drop. */
+  float: { boxShadow: `0 4px 14px ${colors.screen}` },
 });

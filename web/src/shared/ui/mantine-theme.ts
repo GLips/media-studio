@@ -21,8 +21,8 @@ export const mantineTheme = createTheme({
   cursorType: 'pointer',
   fontFamily: fonts.display,
   fontFamilyMonospace: fonts.mono,
-  lineHeights: { xs: typography.lineHeight, sm: typography.lineHeight, md: typography.lineHeight },
-  fontSizes: { xs: typography.readout, sm: typography.chrome, md: typography.body, lg: typography.reading, xl: typography.display, line: typography.line },
+  lineHeights: { xs: typography.lineHeight, sm: typography.lineHeight, md: typography.lineHeight, prose: typography.proseLeading, line: typography.lineLeading, heading: typography.lineLeading },
+  fontSizes: { xs: typography.readout, sm: typography.chrome, md: typography.body, lg: typography.reading, xl: typography.display, prose: typography.prose, line: typography.line, heading: typography.heading },
   // The studio's spacing steps by name beside Mantine's xs–xl, so `gap="tight"` is the theme's step, not a number.
   spacing: { hairline: spacing.hairline, tight: spacing.tight, gap: spacing.gap, inset: spacing.inset },
   headings: {

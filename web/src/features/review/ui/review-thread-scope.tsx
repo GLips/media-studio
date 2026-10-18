@@ -1,6 +1,7 @@
 import { createContext, useContext, type ComponentType, type ReactNode } from 'react';
 import type { ReviewArtifact } from '#lib/output/review/models/review-artifact.ts';
 import type { PlacedReviewThread, ReviewSplices, ReviewThreadSubject } from '#lib/output/review/models/review-placement.ts';
+import type { NewAnchor } from '#lib/output/review/models/review-ops.ts';
 import type { ReviewSearch } from '../controllers/review-search.ts';
 import type { ReviewOps } from '../controllers/use-review-ops.ts';
 import type { ReviewPlayback } from './review-playback-store.ts';
@@ -51,6 +52,10 @@ export type ReviewThreadScope = {
   unplacedLabel?: string;
   /** What the subject draws under a note's words: on the plan, its field's text reworded since the note, as a diff. */
   noteAside?: ComponentType<{ readonly thread: PlacedReviewThread }>;
+  /** What a new note is on when the draft names nothing (the plan's scene in view), and how the composer says so. */
+  draftFallback?: { anchor: NewAnchor; label: string };
+  /** How the composer names what the draft is on, when it names something. */
+  draftOnLabel?: string;
 };
 
 const ReviewThreadScopeContext = createContext<ReviewThreadScope | null>(null);

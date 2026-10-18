@@ -17,6 +17,7 @@ export { runInReviewCutQueue } from '#lib/output/review/engine/review-cut-queue.
 export { reviewPeaksFileOf } from '#lib/output/review/engine/review-peaks.ts';
 export { listReviewRenderVersions, type ReviewRenderVersion } from '#lib/output/review/engine/review-history.ts';
 export { summarizeReviewProjects, type ReviewProjectSummary } from '#lib/output/review/engine/review-dashboard.ts';
+export { editProjectStoryboardText, type StoryboardTextEdit } from '#lib/timing/storyboard/engine/storyboard-source-edit.ts';
 
 /** The server's Board and thumbnail stills, cut on demand and kept for its life: removed with its process's temp root. */
 export const reviewStills = createReviewStillCutter(join(studioTempRoot(), 'review-stills'));

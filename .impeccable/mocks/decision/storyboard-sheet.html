@@ -1,0 +1,61 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1440px;height:900px;overflow:hidden;background:#0c0c0e;color:#f3f0e7;font:13px/1.45 Archivo,sans-serif}
+.mono{font-family:"JetBrains Mono",monospace}
+.top{height:52px;display:flex;align-items:center;gap:18px;padding:0 20px;border-bottom:1px solid #2a2a31}
+.top h1{font-size:16px;font-weight:900}
+.pill{padding:4px 10px;border-radius:999px;background:#16161a;font-size:12px;color:#8d8a83}
+.pill b{color:#f2b134;font-weight:500}
+.spacer{flex:1}
+.btn{padding:7px 14px;border-radius:6px;background:#ee4c23;color:#fff;font-weight:700;font-size:12px}
+.ruler{display:flex;height:44px;margin:16px 24px 0;gap:4px;position:relative}
+.ruler div{border-radius:6px;background:#1a1a1f;display:flex;align-items:center;padding:0 10px;font-size:12px;color:#8d8a83}
+.ruler .on{background:#222228;color:#f3f0e7;outline:1px solid #f3f0e7}
+.ruler .tgt{position:absolute;left:91.9%;top:-4px;bottom:-4px;border-left:1px dashed #f2b134}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;padding:20px 24px}
+.panel{border-radius:12px;background:#16161a;overflow:hidden}
+.panel.on{outline:2px solid #f3f0e7}
+.frame{height:430px;position:relative;background:#000;display:flex;justify-content:center}
+.frame .ph{width:198px;height:430px;background:linear-gradient(#e9e4da 0 70%,#2f4a2a 70%);position:relative}
+.frame .ph .cap{position:absolute;left:12px;right:12px;bottom:24px;color:#fff;font-size:14px;font-weight:700}
+.scrub{position:absolute;left:0;right:0;bottom:0;height:4px;background:#2a2a31}
+.scrub i{position:absolute;left:0;top:0;bottom:0;width:40%;background:#f3f0e7}
+.state{position:absolute;top:10px;left:10px;padding:3px 8px;border-radius:999px;font-size:11px;background:#0c0c0ecc}
+.body{padding:14px 16px}
+.body h2{font-size:18px;font-weight:900;display:flex;justify-content:space-between;align-items:baseline}
+.body h2 span{font-size:11px;font-weight:400;color:#8d8a83}
+.body .l{font-size:15px;margin-top:10px;line-height:1.4}
+.body .d{font-size:12px;color:#8d8a83;margin-top:10px}
+.now{background:#4144f4;border-radius:3px;padding:0 2px}
+.foot{display:flex;gap:8px;padding:0 16px 14px}
+.foot span{font-size:11px;padding:4px 9px;border-radius:5px;background:#222228}
+.foot .ap{background:#ee4c23;color:#fff;font-weight:700}
+.foot .q{color:#f2b134}
+</style></head><body>
+<div class="top">
+  <span style="color:#8d8a83">‹ FODMAP Scanner</span><h1>Plan</h1>
+  <span class="pill">26.1 s · <b>2.1 s over the 24 s target</b></span><span class="pill">1 of 4 approved</span>
+  <span class="pill">Brief ▾</span>
+  <div class="spacer"></div><span class="btn">Send notes to agent</span>
+</div>
+<div class="ruler">
+  <div class="on" style="width:33%">1 · The plate · 8.6 s</div><div style="width:29%">2 · The label · 7.7 s</div><div style="width:22%">3 · The menu · 5.7 s</div><div style="width:16%">4 · Close · 4.2 s</div><span class="tgt"></span>
+</div>
+<div class="grid">
+  <div class="panel on"><div class="frame"><div class="ph"><div class="cap">Take a photo of what you're about to eat.</div></div><span class="state" style="color:#3ccf7a">✓ Approved</span><div class="scrub"><i></i></div></div>
+    <div class="body"><h2>The plate <span class="mono">0:00–0:08.6</span></h2><p class="l">Take a <span class="now">photo</span> of what you're about to eat. You'll see which FODMAPs are in it…</p><p class="d">Camera on the spaghetti; shutter on "photo"; answer 1 s later.</p></div>
+    <div class="foot"><span>Edit</span><span>Comment</span></div></div>
+  <div class="panel"><div class="frame"><div class="ph" style="background:linear-gradient(#d8d2c4 0 70%,#2f4a2a 70%)"><div class="cap">It reads labels too, so you'll catch the onion powder.</div></div><span class="state" style="color:#f2b134">? 1 question</span></div>
+    <div class="body"><h2>The label <span class="mono">0:08.6–0:16.2</span></h2><p class="l">FODZYME is an enzyme you sprinkle on your food. It reads labels too…</p><p class="d">Dismiss on "enzyme"; Photos; pick the jar's panel.</p></div>
+    <div class="foot"><span class="ap">Approve</span><span>Edit</span><span class="q">1 question</span></div></div>
+  <div class="panel"><div class="frame"><div class="ph" style="background:linear-gradient(#efe6d2 0 70%,#2f4a2a 70%)"><div class="cap">Photograph a menu, and every dish gets its own answer.</div></div></div>
+    <div class="body"><h2>The menu <span class="mono">0:16.2–0:22.0</span></h2><p class="l">Photograph a menu, and every dish gets its own answer.</p><p class="d">Shutter on "menu"; boxes on the dishes; tap one.</p></div>
+    <div class="foot"><span class="ap">Approve</span><span>Edit</span></div></div>
+  <div class="panel"><div class="frame"><div class="ph" style="background:#e8dcc3"><div class="cap">It's free, and there's no account to make.</div></div></div>
+    <div class="body"><h2>Close <span class="mono">0:22.0–0:26.1</span></h2><p class="l">It's free, and there's no account to make.</p><p class="d">Icon, name and tagline on Travertine.</p></div>
+    <div class="foot"><span class="ap">Approve</span><span>Edit</span></div></div>
+</div>
+</body></html>

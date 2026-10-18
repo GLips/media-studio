@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { studioTempRoot } from '#lib/platform/temp/engine/studio-temp.ts';
 import { STAMP_PAINT_ASSETS_VERSION } from '#lib/paint/brush-packs/models/stamp-paint-pack.ts';
-import { writeProjectStylesModule } from './project-styles.ts';
+import { workspaceStampPaintStylesModule, writeProjectStylesModule } from './project-styles.ts';
 import { readStampPaintStyleProbeMedium } from './style-probe-medium.ts';
 import { replaceStampPaintPack } from '#lib/paint/brush-packs/engine/stamp-paint-pack-files.ts';
 import { measureStampPaintPackProfiles } from '#lib/paint/brush-packs/engine/import-stamp-paint-pack.ts';
@@ -83,4 +83,17 @@ test('a project that names no style bundles without one, and a name work/styles/
   assert.throws(() => writeProjectStylesModule(washProject(['wahs']).project), {
     message: 'styles: p\'s project.ts names "wahs", which isn\'t a style (work/styles/ has wash)',
   });
+});
+
+test("the studio app serves every workspace style, and one that can't paint here throws its problems only when a scene asks for it", async () => {
+  const { stylesDir, importPack } = washProject([]);
+  const refused = workspaceStampPaintStylesModule(stylesDir).source;
+  assert.doesNotMatch(refused, /^import style0/m);
+  assert.match(refused, /^Object\.defineProperty\(styles, "wash", \{ get\(\) \{ throw new Error\("styles: wash can't paint until its packs are imported.*brushes\/grain\/: not imported/m);
+
+  await importPack('vvds', packManifest(['tips/wash-01.png'], { 'Wet Wash': washBrush }), ['tips/wash-01.png']);
+  await importPack('grain', packManifest(['tips/tooth.png'], { Tooth: toothBrush }), ['tips/tooth.png']);
+  const served = workspaceStampPaintStylesModule(stylesDir).source;
+  assert.ok(served.includes(`import style0 from ${JSON.stringify(join(stylesDir, 'wash', 'style.ts'))};`));
+  assert.doesNotMatch(served, /defineProperty/);
 });

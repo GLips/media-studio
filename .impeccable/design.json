@@ -1,0 +1,450 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-18T21:38:47.123Z",
+  "title": "Design System: Media Studio",
+  "extensions": {
+    "colorMeta": {
+      "ground": {
+        "role": "neutral",
+        "displayName": "Screening Black",
+        "canonical": "#0c0c0e",
+        "tonalRamp": [
+          "oklch(15% 0.004 285.9)",
+          "oklch(26% 0.004 285.9)",
+          "oklch(38% 0.004 285.9)",
+          "oklch(50% 0.004 285.9)",
+          "oklch(62% 0.004 285.9)",
+          "oklch(74% 0.004 285.9)",
+          "oklch(85% 0.004 285.9)",
+          "oklch(95% 0.004 285.9)"
+        ]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Panel Charcoal",
+        "canonical": "#16161a",
+        "tonalRamp": [
+          "oklch(15% 0.008 285.7)",
+          "oklch(26% 0.008 285.7)",
+          "oklch(38% 0.008 285.7)",
+          "oklch(50% 0.008 285.7)",
+          "oklch(62% 0.008 285.7)",
+          "oklch(74% 0.008 285.7)",
+          "oklch(85% 0.008 285.7)",
+          "oklch(95% 0.008 285.7)"
+        ]
+      },
+      "raised": {
+        "role": "neutral",
+        "displayName": "Raised Slate",
+        "canonical": "#202026",
+        "tonalRamp": [
+          "oklch(15% 0.011 285.5)",
+          "oklch(26% 0.011 285.5)",
+          "oklch(38% 0.011 285.5)",
+          "oklch(50% 0.011 285.5)",
+          "oklch(62% 0.011 285.5)",
+          "oklch(74% 0.011 285.5)",
+          "oklch(85% 0.011 285.5)",
+          "oklch(95% 0.011 285.5)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Seam",
+        "canonical": "#2a2a31",
+        "tonalRamp": [
+          "oklch(15% 0.013 285.6)",
+          "oklch(26% 0.013 285.6)",
+          "oklch(38% 0.013 285.6)",
+          "oklch(50% 0.013 285.6)",
+          "oklch(62% 0.013 285.6)",
+          "oklch(74% 0.013 285.6)",
+          "oklch(85% 0.013 285.6)",
+          "oklch(95% 0.013 285.6)"
+        ]
+      },
+      "cream": {
+        "role": "neutral",
+        "displayName": "Cream",
+        "canonical": "#f3f0e7",
+        "tonalRamp": [
+          "oklch(15% 0.012 91.5)",
+          "oklch(26% 0.012 91.5)",
+          "oklch(38% 0.012 91.5)",
+          "oklch(50% 0.012 91.5)",
+          "oklch(62% 0.012 91.5)",
+          "oklch(74% 0.012 91.5)",
+          "oklch(85% 0.012 91.5)",
+          "oklch(95% 0.012 91.5)"
+        ]
+      },
+      "dim": {
+        "role": "neutral",
+        "displayName": "Dim Stone",
+        "canonical": "#8d8a83",
+        "tonalRamp": [
+          "oklch(15% 0.011 87.5)",
+          "oklch(26% 0.011 87.5)",
+          "oklch(38% 0.011 87.5)",
+          "oklch(50% 0.011 87.5)",
+          "oklch(62% 0.011 87.5)",
+          "oklch(74% 0.011 87.5)",
+          "oklch(85% 0.011 87.5)",
+          "oklch(95% 0.011 87.5)"
+        ]
+      },
+      "mark": {
+        "role": "neutral",
+        "displayName": "Mark Grey",
+        "canonical": "#6b6962",
+        "tonalRamp": [
+          "oklch(15% 0.011 93.7)",
+          "oklch(26% 0.011 93.7)",
+          "oklch(38% 0.011 93.7)",
+          "oklch(50% 0.011 93.7)",
+          "oklch(62% 0.011 93.7)",
+          "oklch(74% 0.011 93.7)",
+          "oklch(85% 0.011 93.7)",
+          "oklch(95% 0.011 93.7)"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Ember",
+        "canonical": "#ee4c23",
+        "tonalRamp": [
+          "oklch(15% 0.200 34.7)",
+          "oklch(26% 0.200 34.7)",
+          "oklch(38% 0.200 34.7)",
+          "oklch(50% 0.200 34.7)",
+          "oklch(62% 0.200 34.7)",
+          "oklch(74% 0.200 34.7)",
+          "oklch(85% 0.200 34.7)",
+          "oklch(95% 0.200 34.7)"
+        ]
+      },
+      "cobalt": {
+        "role": "secondary",
+        "displayName": "Reading Cobalt",
+        "canonical": "#4144f4",
+        "tonalRamp": [
+          "oklch(15% 0.200 272.4)",
+          "oklch(26% 0.200 272.4)",
+          "oklch(38% 0.200 272.4)",
+          "oklch(50% 0.200 272.4)",
+          "oklch(62% 0.200 272.4)",
+          "oklch(74% 0.200 272.4)",
+          "oklch(85% 0.200 272.4)",
+          "oklch(95% 0.200 272.4)"
+        ]
+      },
+      "pass": {
+        "role": "tertiary",
+        "displayName": "Pass Green",
+        "canonical": "#3ccf7a",
+        "tonalRamp": [
+          "oklch(15% 0.173 153.2)",
+          "oklch(26% 0.173 153.2)",
+          "oklch(38% 0.173 153.2)",
+          "oklch(50% 0.173 153.2)",
+          "oklch(62% 0.173 153.2)",
+          "oklch(74% 0.173 153.2)",
+          "oklch(85% 0.173 153.2)",
+          "oklch(95% 0.173 153.2)"
+        ]
+      },
+      "caution": {
+        "role": "tertiary",
+        "displayName": "Caution Amber",
+        "canonical": "#f2b134",
+        "tonalRamp": [
+          "oklch(15% 0.151 78.9)",
+          "oklch(26% 0.151 78.9)",
+          "oklch(38% 0.151 78.9)",
+          "oklch(50% 0.151 78.9)",
+          "oklch(62% 0.151 78.9)",
+          "oklch(74% 0.151 78.9)",
+          "oklch(85% 0.151 78.9)",
+          "oklch(95% 0.151 78.9)"
+        ]
+      },
+      "danger": {
+        "role": "tertiary",
+        "displayName": "Failure Red",
+        "canonical": "#ff4d6d",
+        "tonalRamp": [
+          "oklch(15% 0.200 14.7)",
+          "oklch(26% 0.200 14.7)",
+          "oklch(38% 0.200 14.7)",
+          "oklch(50% 0.200 14.7)",
+          "oklch(62% 0.200 14.7)",
+          "oklch(74% 0.200 14.7)",
+          "oklch(85% 0.200 14.7)",
+          "oklch(95% 0.200 14.7)"
+        ]
+      },
+      "lane-a": {
+        "role": "neutral",
+        "displayName": "Lane Band A",
+        "canonical": "#1a1a1f",
+        "tonalRamp": [
+          "oklch(15% 0.010 285.6)",
+          "oklch(26% 0.010 285.6)",
+          "oklch(38% 0.010 285.6)",
+          "oklch(50% 0.010 285.6)",
+          "oklch(62% 0.010 285.6)",
+          "oklch(74% 0.010 285.6)",
+          "oklch(85% 0.010 285.6)",
+          "oklch(95% 0.010 285.6)"
+        ]
+      },
+      "lane-b": {
+        "role": "neutral",
+        "displayName": "Lane Band B",
+        "canonical": "#222228",
+        "tonalRamp": [
+          "oklch(15% 0.011 285.6)",
+          "oklch(26% 0.011 285.6)",
+          "oklch(38% 0.011 285.6)",
+          "oklch(50% 0.011 285.6)",
+          "oklch(62% 0.011 285.6)",
+          "oklch(74% 0.011 285.6)",
+          "oklch(85% 0.011 285.6)",
+          "oklch(95% 0.011 285.6)"
+        ]
+      },
+      "screen": {
+        "role": "neutral",
+        "displayName": "Letterbox",
+        "canonical": "#000000",
+        "tonalRamp": [
+          "oklch(15% 0.000 0.0)",
+          "oklch(26% 0.000 0.0)",
+          "oklch(38% 0.000 0.0)",
+          "oklch(50% 0.000 0.0)",
+          "oklch(62% 0.000 0.0)",
+          "oklch(74% 0.000 0.0)",
+          "oklch(85% 0.000 0.0)",
+          "oklch(95% 0.000 0.0)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "heading": {
+        "displayName": "Heading",
+        "purpose": "What a page is about, named once at its top: the plan's current scene."
+      },
+      "line": {
+        "displayName": "Line",
+        "purpose": "A plan's spoken line, read along with the picture."
+      },
+      "reading": {
+        "displayName": "Reading",
+        "purpose": "Text read for itself, large: a decision's text candidate."
+      },
+      "display": {
+        "displayName": "Display",
+        "purpose": "Project names on the dashboard, and nowhere else."
+      },
+      "prose": {
+        "displayName": "Prose",
+        "purpose": "A plan's brief and scene fields."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Note bodies and anything read as prose in the chrome."
+      },
+      "chrome": {
+        "displayName": "Chrome",
+        "purpose": "Bars, menus, chips, tooltips, labels, buttons. The default Text size."
+      },
+      "readout": {
+        "displayName": "Readout",
+        "purpose": "Mono figures: timecode, frame numbers, hashes, key caps."
+      }
+    },
+    "shadows": [
+      {
+        "name": "pinHalo",
+        "value": "0 0 0 2px #f3f0e7, 0 2px 8px #000000",
+        "purpose": "A review pin on the frame, holding on any footage."
+      },
+      {
+        "name": "spokenUnderline",
+        "value": "inset 0 -2px 0 #4144f4",
+        "purpose": "The word being spoken in the voice lane."
+      },
+      {
+        "name": "groundRing",
+        "value": "0 0 0 1px #0c0c0e",
+        "purpose": "A note dot ringed so it holds on a picture of its own colour."
+      },
+      {
+        "name": "float",
+        "value": "0 4px 14px #000000",
+        "purpose": "A control floating over the page: the Comment button over a selection."
+      }
+    ],
+    "motion": [
+      {
+        "name": "reply-flash",
+        "value": "1s ease-out, background from rgba(65,68,244,0.25) to transparent",
+        "purpose": "A reply landing on a thread row."
+      },
+      {
+        "name": "word-wash",
+        "value": "frame-driven CSS variable, no transition",
+        "purpose": "The spoken word lights and said words dim on the playhead frame, without re-rendering."
+      }
+    ],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one primary action on a screen: Approve scene.",
+      "html": "<button class=\"ds-btn-primary\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6 9 17l-5-5\"/></svg><span>Approve with 1 open note</span></button>",
+      "css": ".ds-btn-primary{font-family: Archivo, -apple-system, \"Helvetica Neue\", Arial, sans-serif; display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 14px;font-size:12px;line-height:16px;font-weight:600;color:#f3f0e7;background:#ee4c23;border:none;border-radius:3px;cursor:pointer;} .ds-btn-primary:hover{filter:brightness(1.08);} .ds-btn-primary:focus-visible{outline:1px solid #f3f0e7;outline-offset:1px;}"
+    },
+    {
+      "name": "Approve the Changes",
+      "kind": "button",
+      "refersTo": "button-approve-changes",
+      "description": "Re-approval of a scene that changed since it was signed: amber, because it waits on you.",
+      "html": "<button class=\"ds-btn-again\">Approve the changes</button>",
+      "css": ".ds-btn-again{font-family: Archivo, -apple-system, \"Helvetica Neue\", Arial, sans-serif; height:30px;padding:0 14px;font-size:12px;line-height:16px;font-weight:600;color:#0c0c0e;background:#f2b134;border:none;border-radius:3px;cursor:pointer;} .ds-btn-again:hover{filter:brightness(1.08);} .ds-btn-again:focus-visible{outline:1px solid #f3f0e7;outline-offset:1px;}"
+    },
+    {
+      "name": "Default Button",
+      "kind": "button",
+      "refersTo": "button-default",
+      "description": "Every other action: panel fill, raised on hover.",
+      "html": "<button class=\"ds-btn-default\">Brief</button>",
+      "css": ".ds-btn-default{font-family: Archivo, -apple-system, \"Helvetica Neue\", Arial, sans-serif; height:30px;padding:0 14px;font-size:12px;line-height:16px;color:#f3f0e7;background:#16161a;border:1px solid #2a2a31;border-radius:3px;cursor:pointer;} .ds-btn-default:hover{background:#202026;} .ds-btn-default:focus-visible{outline:1px solid #f3f0e7;outline-offset:1px;}"
+    },
+    {
+      "name": "Icon Button",
+      "kind": "button",
+      "refersTo": "icon-button",
+      "description": "A lucide icon that does one thing, named in its tooltip.",
+      "html": "<button class=\"ds-icon-btn\" aria-label=\"Edit this line\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z\"/></svg></button>",
+      "css": ".ds-icon-btn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;color:#8d8a83;background:transparent;border:none;border-radius:3px;cursor:pointer;} .ds-icon-btn:hover{color:#f3f0e7;background:#202026;} .ds-icon-btn:focus-visible{outline:1px solid #f3f0e7;outline-offset:1px;}"
+    },
+    {
+      "name": "Bar Pills",
+      "kind": "chip",
+      "refersTo": "bar-pill",
+      "description": "Top-bar facts in words, with the agent questions pill filled amber.",
+      "html": "<div class=\"ds-pills\"><span class=\"ds-pill\"><b>26.1 s</b> <span class=\"ds-over\">2.1 s over the 24 s target</span></span><span class=\"ds-pill\">0 of 4 scenes approved</span><button class=\"ds-pill ds-pill-asks\"><svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3\"/><path d=\"M12 17h.01\"/></svg> 3 questions for you</button></div>",
+      "css": ".ds-pills{font-family: Archivo, -apple-system, \"Helvetica Neue\", Arial, sans-serif; display:flex;gap:8px;padding:8px;background:#0c0c0e;} .ds-pill{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;font-size:12px;line-height:16px;color:#8d8a83;background:#16161a;border:none;border-radius:999px;white-space:nowrap;font-family:inherit;} .ds-pill b{color:#f3f0e7;font-weight:700;} .ds-over{color:#f2b134;} .ds-pill-asks{color:#0c0c0e;background:#f2b134;cursor:pointer;} .ds-pill-asks:hover{filter:brightness(1.12);} .ds-pill-asks:focus-visible{outline:1px solid #f3f0e7;outline-offset:1px;}"
+    },
+    {
+      "name": "Spoken Line",
+      "kind": "custom",
+      "refersTo": "cue-tag",
+      "description": "A plan line at 22px: its start time in mono, the word being said lit solid cobalt, a cue tag outlined in cobalt.",
+      "html": "<div class=\"ds-line\"><button class=\"ds-stamp\">0:12.40</button><p class=\"ds-words\"><span class=\"ds-said\">It</span> <span class=\"ds-tag\">answer</span> <span class=\"ds-lit\">reads</span> labels too, so you'll catch the <span class=\"ds-noted\">onion</span> <span class=\"ds-tag\">underline</span> <span class=\"ds-noted\">powder.</span></p></div>",
+      "css": ".ds-line{font-family: Archivo, -apple-system, \"Helvetica Neue\", Arial, sans-serif; display:grid;grid-template-columns:64px minmax(0,1fr);column-gap:12px;align-items:baseline;padding:8px 0;background:#0c0c0e;} .ds-stamp{font-family:\"JetBrains Mono\",ui-monospace,Menlo,monospace;font-size:11px;line-height:16px;color:#8d8a83;background:transparent;border:none;border-radius:3px;padding:0 4px;text-align:start;cursor:pointer;} .ds-stamp:hover{background:#202026;} .ds-words{margin:0;font-size:22px;line-height:34px;font-weight:500;color:#f3f0e7;} .ds-said{opacity:.55;} .ds-lit{background:rgba(65,68,244,.8);border-radius:3px;padding:0 2px;} .ds-noted{text-decoration:underline 2px #f2b134;text-underline-offset:6px;} .ds-tag{display:inline-block;vertical-align:middle;font-size:11px;line-height:16px;font-weight:500;color:#4144f4;border:1px solid #4144f4;border-radius:3px;padding:0 4px;}"
+    },
+    {
+      "name": "Scene Strip",
+      "kind": "custom",
+      "refersTo": "scene-block",
+      "description": "The video as proportional scene blocks with the playhead and the dashed amber target line.",
+      "html": "<div class=\"ds-strip\"><div class=\"ds-scene\" style=\"left:0;width:34%\"><span class=\"ds-name\">1 · Plate</span><span class=\"ds-facts\">8.6 s · 2 lines</span><span class=\"ds-state ds-ok\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6 9 17l-5-5\"/></svg></span></div><div class=\"ds-scene ds-focused\" style=\"left:34.4%;width:29%\"><span class=\"ds-name\">2 · Label</span><span class=\"ds-facts\">7.7 s · 2 lines · 1 question</span><span class=\"ds-state ds-wait\"><svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3\"/><path d=\"M12 17h.01\"/></svg></span></div><div class=\"ds-scene\" style=\"left:63.8%;width:21%\"><span class=\"ds-name\">3 · Menu</span><span class=\"ds-facts\">5.7 s · 1 line</span></div><div class=\"ds-target\" style=\"left:80%\"><span>24 s target · 2.1 s over</span></div><div class=\"ds-playhead\" style=\"left:45%\"></div></div>",
+      "css": ".ds-strip{font-family: Archivo, -apple-system, \"Helvetica Neue\", Arial, sans-serif; position:relative;height:64px;margin:22px 12px 12px;background:#0c0c0e;} .ds-scene{position:absolute;top:0;bottom:0;box-sizing:border-box;padding:8px 10px;display:flex;flex-direction:column;justify-content:space-between;background:#1a1a1f;border-radius:3px;outline:1px solid transparent;outline-offset:-1px;cursor:pointer;overflow:hidden;} .ds-scene:hover{background:#202026;} .ds-focused{background:#202026;outline-color:#f3f0e7;} .ds-name{font-size:13px;line-height:16px;font-weight:600;color:#f3f0e7;white-space:nowrap;} .ds-facts{font-size:11px;line-height:16px;color:#8d8a83;white-space:nowrap;} .ds-state{position:absolute;top:8px;right:8px;display:flex;} .ds-ok{color:#3ccf7a;} .ds-wait{color:#f2b134;} .ds-target{position:absolute;top:-18px;bottom:-6px;border-left:1px dashed #f2b134;} .ds-target span{position:absolute;top:-2px;left:4px;font-size:11px;line-height:16px;color:#f2b134;white-space:nowrap;} .ds-playhead{position:absolute;top:-6px;bottom:-6px;width:2px;margin-left:-1px;background:#f3f0e7;}"
+    },
+    {
+      "name": "Comment Button",
+      "kind": "button",
+      "refersTo": "button-comment",
+      "description": "Rises over selected words to open a note quoting them; floats with the one panel-free shadow.",
+      "html": "<button class=\"ds-btn-comment\">Comment</button>",
+      "css": ".ds-btn-comment{font-family: Archivo, -apple-system, \"Helvetica Neue\", Arial, sans-serif; height:26px;padding:0 10px;font-size:12px;line-height:16px;color:#f3f0e7;background:#4144f4;border:none;border-radius:3px;box-shadow:0 4px 14px #000000;cursor:pointer;} .ds-btn-comment:hover{filter:brightness(1.1);} .ds-btn-comment:focus-visible{outline:1px solid #f3f0e7;outline-offset:1px;}"
+    },
+    {
+      "name": "Tooltip",
+      "kind": "custom",
+      "refersTo": "tooltip",
+      "description": "Panel on the dark screen, never a light box: the words for a state live here.",
+      "html": "<span class=\"ds-tooltip\">Play from here · this line runs 3.4 s</span>",
+      "css": ".ds-tooltip{font-family: Archivo, -apple-system, \"Helvetica Neue\", Arial, sans-serif; display:inline-block;padding:2px 8px;font-size:12px;line-height:16px;color:#f3f0e7;background:#16161a;border:1px solid #2a2a31;border-radius:3px;}"
+    },
+    {
+      "name": "List Row",
+      "kind": "card",
+      "refersTo": "list-row",
+      "description": "A dashboard row: transparent at rest, raised on hover or keyboard focus.",
+      "html": "<a class=\"ds-row\" href=\"#\"><span class=\"ds-thumb\"></span><span>FODMAP Scanner (demo copy)</span><span class=\"ds-row-end\">2 h ago</span></a>",
+      "css": ".ds-row{font-family: Archivo, -apple-system, \"Helvetica Neue\", Arial, sans-serif; display:flex;align-items:center;gap:12px;height:40px;padding:0 8px;font-size:12px;line-height:16px;color:#f3f0e7;text-decoration:none;border-radius:3px;background:transparent;} .ds-row:hover,.ds-row:focus-visible{background:#202026;} .ds-row:focus-visible{outline:1px solid #f3f0e7;outline-offset:-1px;} .ds-thumb{width:32px;height:32px;border-radius:3px;background:#18181c;} .ds-row-end{margin-left:auto;font-family:\"JetBrains Mono\",ui-monospace,Menlo,monospace;font-size:11px;color:#8d8a83;}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Screening Room",
+    "overview": "A dark room built for watching: a near-black ground, the picture large, cream type read beside it, and colour held back until it means something. Every screen is a working screen for one expert who opens it between agent turns, so it is dense and quiet. Rows line up across panels on one shared line height; surfaces lift off the ground by tone, not by shadow; and the only bright things on the page are the word being spoken, the one action to take, and whatever waits on a decision.\n\nThe values live in one file, `web/src/shared/ui/theme.stylex.ts`, and every shadow in `web/src/shared/ui/shadows.ts`. Mantine's components take the same tokens through `web/src/shared/ui/mantine-theme.ts`, and the type scale reaches components as Mantine `Text size` keys (xs, sm, md, prose, line, lg, heading, xl). Copy is plain: no all-caps headings, no zero counts, and states spoken in words in tooltips.\n\nThe plan page shows the system at full size: the player letterboxed on the left, the scene under the playhead in a 440 to 560px column beside it, its spoken lines large and lit in cobalt word by word, and the whole video as a strip of scenes along the foot.",
+    "keyCharacteristics": [
+      "Near-black ground, cream type, tonal lift from ground to panel to raised.",
+      "Colour is a signal, never decoration: each hue has one job.",
+      "One sans face (Archivo) for everything read; mono (JetBrains Mono) only for machine figures.",
+      "One 16px line height for the chrome; larger sizes open up for reading.",
+      "Small, square-ish controls (3px corners); pills only in the top bar.",
+      "Hover is always the raised tone; focus is always a 1px cream ring."
+    ],
+    "rules": [
+      {
+        "name": "The One Job Rule",
+        "body": "Solid cobalt marks the spoken word and drafts. Accent is the one primary action. Amber marks what waits on someone. Dim marks neutral facts. Green is approved; red is failure. No hue is borrowed for emphasis or decoration.",
+        "section": "colors"
+      },
+      {
+        "name": "The Outline Not Fill Rule",
+        "body": "A cue's tag under its word is outlined in cobalt with cobalt type, never filled: a solid cobalt fill is the word being said.",
+        "section": "colors"
+      },
+      {
+        "name": "The Dim Fact Rule",
+        "body": "Something worth knowing that asks nothing of anyone (a silent stretch, a stretch with nothing happening, a line's start time) is dim, not amber.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Primary Rule",
+        "body": "A screen fills one button with accent. Other actions sit on panel and lift to raised on hover.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Line Height Rule",
+        "body": "Every size up to body sits on a 16px line, so rows line up across panels. Only the reading sizes (prose, line, reading, heading) open up, to 22px or 34px.",
+        "section": "typography"
+      },
+      {
+        "name": "The Machine Mono Rule",
+        "body": "Mono is for figures a machine produced: times, frame numbers, hashes, key caps, a note's anchor reference. Words people read are Archivo.",
+        "section": "typography"
+      },
+      {
+        "name": "The Tonal Lift Rule",
+        "body": "Panels never cast shadows. A shadow exists only to keep a mark legible over a picture or to float a control above the text it acts on.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** take every colour, size, step and radius from `theme.stylex.ts` and every shadow from `shadows.ts`.",
+      "**Do** give each hue its one job: solid cobalt for the spoken word and drafts, accent for the one primary action, amber for what waits on someone, dim for neutral facts.",
+      "**Do** lift what can be clicked to raised (#202026) on hover, and ring focus in 1px cream.",
+      "**Do** say states and counts in plain words, with the detail in the tooltip (\"2.1 s over the 24 s target\", \"Changed since you approved it\").",
+      "**Do** set times, frame numbers and hashes in mono at readout size with tabular figures.",
+      "**Do** keep the chrome on the 16px line height so rows line up across panels."
+    ],
+    "donts": [
+      "**Don't** fill a second button with accent on the same screen.",
+      "**Don't** fill anything solid cobalt except the word being spoken, the draft and the Comment action; a cue tag is outlined.",
+      "**Don't** colour a neutral fact amber; amber means someone has to act.",
+      "**Don't** cast a shadow under a panel or card; lift by tone.",
+      "**Don't** set headings in all caps, or show a count of zero.",
+      "**Don't** set words people read in mono."
+    ]
+  }
+}
