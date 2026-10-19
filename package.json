@@ -7,12 +7,12 @@
     "studio": "cli/studio.ts"
   },
   "scripts": {
-    "typecheck": "$(command -v gate-slot) tsc -p .",
-    "typecheck:gate": "$(command -v gate-slot) tsc -p tsconfig.gate.json",
-    "typecheck:web": "$(command -v gate-slot) tsc -p web/tsconfig.json --noEmit",
-    "test": "$(command -v gate-slot) node --test 'lib/**/*.test.ts' 'lint/**/*.test.ts' 'cli/**/*.test.ts' 'web/src/**/*.test.ts' 'work/projects/**/*.test.ts' lib/output/render/engine/workspace-retime-check.ts",
-    "test:gate": "$(command -v gate-slot) node --test 'lib/**/*.test.ts' 'lint/**/*.test.ts' 'cli/**/*.test.ts' 'web/src/**/*.test.ts'",
-    "test:workspace": "$(command -v gate-slot) node --test 'work/projects/**/*.test.ts' lib/output/render/engine/workspace-retime-check.ts",
+    "typecheck": "tsc -p .",
+    "typecheck:gate": "tsc -p tsconfig.gate.json",
+    "typecheck:web": "tsc -p web/tsconfig.json --noEmit",
+    "test": "node --test 'lib/**/*.test.ts' 'lint/**/*.test.ts' 'cli/**/*.test.ts' 'web/src/**/*.test.ts' 'work/projects/**/*.test.ts' lib/output/render/engine/workspace-retime-check.ts",
+    "test:gate": "node --test 'lib/**/*.test.ts' 'lint/**/*.test.ts' 'cli/**/*.test.ts' 'web/src/**/*.test.ts'",
+    "test:workspace": "node --test 'work/projects/**/*.test.ts' lib/output/render/engine/workspace-retime-check.ts",
     "check:arch": "node lint/check-arch.ts",
     "lint": "node lint/lint.ts",
     "photoshop": "node harness/photoshop.ts",
