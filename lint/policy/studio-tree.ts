@@ -66,7 +66,7 @@ export type StudioPosition =
   | { kind: 'lint' }
   /** Tool config: `remotion.config.ts` at the root, `web/vite.config.ts` beside the app. */
   | { kind: 'root-config' }
-  /** Deliberately ungoverned (§4): `scratch/`, `node_modules/`, `skills/`. */
+  /** Deliberately ungoverned (§4): `scratch/`, `node_modules/`, `skills/`, and `.claude/` (vendored skills and agents). */
   | { kind: 'ungoverned' }
   | { kind: 'undeclared' };
 
@@ -175,7 +175,7 @@ export type DeclaredShared = Readonly<Record<string, readonly string[]>>;
 export function classifyStudioPath(path: string, shared: DeclaredShared): StudioPosition {
   const parts = path.split('/');
   const [top, second] = parts;
-  if (top === 'scratch' || top === 'node_modules' || top === 'skills') return { kind: 'ungoverned' };
+  if (top === 'scratch' || top === 'node_modules' || top === 'skills' || top === '.claude') return { kind: 'ungoverned' };
   if (top === 'lint') return { kind: 'lint' };
   if (parts.length === 1) return TOOL_CONFIG.test(top) ? { kind: 'root-config' } : { kind: 'undeclared' };
   if (top === 'lib') {

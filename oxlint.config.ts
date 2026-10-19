@@ -16,7 +16,8 @@ export default defineConfig({
   // plugin is missing here is dropped silently. `import` and `promise` carry the `import/` rules named below.
   plugins: ['react', 'unicorn', 'typescript', 'oxc', 'import', 'promise'],
 
-  // Generated output, fixtures (which name violations on purpose), dependencies and build output.
+  // Generated output, fixtures (which name violations on purpose), dependencies, build output, and `.claude/`, whose
+  // skills and agents are vendored third-party code like node_modules.
   ignorePatterns: [
     '**/*.gen.ts',
     '**/generated/**',
@@ -24,6 +25,7 @@ export default defineConfig({
     '**/fixture/**',
     '**/fixtures/**',
     '**/node_modules/**',
+    '.claude/**',
     '**/dist/**',
     '**/.output/**',
     '**/.tanstack/**',
