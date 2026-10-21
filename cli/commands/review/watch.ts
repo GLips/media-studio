@@ -21,17 +21,17 @@ function durationFlagMs(flag: string, value: string): number {
 const reviewWatchArgs = {
   project: studioProjectArg,
   settle: { type: 'string', default: '3s', description: 'Quiet to wait for after the first change, so a burst of notes comes as one' },
-  follow: { type: 'boolean', description: 'Keep running and print one line per reviewer act, each with the command that prints it whole, instead of exiting on the first change' },
+  follow: { type: 'boolean', description: 'Keep running, a line per reviewer act' },
   timeout: { type: 'string', valueHint: '30m', description: `Give up after this long with no change, exiting ${REVIEW_WATCH_TIMEOUT_EXIT}; waits for good by default` },
   render: { type: 'string', valueHint: 'out/video.mp4', description: 'The render or still to place notes on; the newest full render by default, with the reply slices laid into it. Plan notes are placed on storyboard.ts' },
-  json: { type: 'boolean', description: 'Print { revision, changed, decisions, signoffs } as JSON instead of markdown; with --follow, one event a line as JSON' },
+  json: { type: 'boolean', description: 'Print JSON instead of markdown; with --follow, a JSON object a line' },
 } as const satisfies ArgsDef;
 
 export const reviewWatchCommand = defineCommand({
   meta: {
     name: 'watch',
     description: "Wake on the reviewer's changes: a line per act for good (--follow), or the next change in full, then exit.",
-    about: "Wakes on what the reviewer does past the project's watch cursor (one watcher a project): a note added or edited, a reply, a resolve or reopen, a verdict or a decision's sign-off, a plan scene or render signed off; waits --settle for the burst to end, and saves the cursor past it, so nothing is repeated or missed across runs. The agent's own replies and `keep` notes never wake it; a first run reports the whole backlog. --follow never exits: it prints a line per act, `r<revision> #<id> <act> · <state> · <where> · \"<words>\" → <command>`, the command printing it whole (`studio review notes <p> --id <id>`, or `decisions`), for a harness that wakes the agent on each line (Claude Code's Monitor). Without it, it prints every note and decision changed, as `studio review notes` does, each fix on a video with its scene, frames and fix: line (the `studio render --scene` that re-renders that scene and the reply that hands the slice over), and exits 0, for a harness that wakes the agent when a background command ends: act on it, then run it again. On --timeout with no change, prints `no change since rN` and exits 2.",
+    about: "One watcher a project; its cursor means nothing is repeated or missed across runs, and a first run reports the whole backlog. The agent's own replies and `keep` notes never wake it. --follow never exits: each line names a note or decision and the command that prints it whole. Without it, prints the change as `studio review notes` does and exits 0; on --timeout with no change, exits 2.",
   },
   args: reviewWatchArgs,
   async run({ args, rawArgs }) {
