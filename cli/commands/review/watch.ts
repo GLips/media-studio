@@ -21,7 +21,7 @@ function durationFlagMs(flag: string, value: string): number {
 const reviewWatchArgs = {
   project: studioProjectArg,
   settle: { type: 'string', default: '3s', description: 'Quiet to wait for after the first change, so a burst of notes comes as one' },
-  follow: { type: 'boolean', description: 'Keep running, a line per reviewer act' },
+  follow: { type: 'boolean', description: 'Keep running, a line per reviewer act: run it under Claude Code\'s Monitor tool' },
   timeout: { type: 'string', valueHint: '30m', description: `Give up after this long with no change, exiting ${REVIEW_WATCH_TIMEOUT_EXIT}; waits for good by default` },
   render: { type: 'string', valueHint: 'out/video.mp4', description: 'The render or still to place notes on; the newest full render by default, with the reply slices laid into it. Plan notes are placed on storyboard.ts' },
   json: { type: 'boolean', description: 'Print JSON instead of markdown; with --follow, a JSON object a line' },
@@ -31,7 +31,7 @@ export const reviewWatchCommand = defineCommand({
   meta: {
     name: 'watch',
     description: "Wake on the reviewer's changes: a line per act for good (--follow), or the next change in full, then exit.",
-    about: "One watcher a project; its cursor means nothing is repeated or missed across runs, and a first run reports the whole backlog. The agent's own replies and `keep` notes never wake it. --follow never exits: each line names a note or decision and the command that prints it whole. Without it, prints the change as `studio review notes` does and exits 0; on --timeout with no change, exits 2.",
+    about: "One watcher a project; its cursor means nothing is repeated or missed across runs, and a first run reports the whole backlog. The agent's own replies and `keep` notes never wake it. --follow never exits: each line names a note or decision and the command that prints it whole; run it under Claude Code's Monitor tool, which wakes you on each line. Without it, prints the change as `studio review notes` does and exits 0, so run it in the background and again after each wake; on --timeout with no change, exits 2.",
   },
   args: reviewWatchArgs,
   async run({ args, rawArgs }) {
