@@ -24,9 +24,9 @@ watcher below is running.
 
 ## The loop
 
-1. **Watch.** Run `studio review watch <p>` as a background command (in Claude Code, `run_in_background`), one
-   watcher a project: its exit wakes you. It prints what the reviewer changed; act on it, then run it again. Its
-   cursor means nothing is missed or repeated. `studio review notes <p>` lists what's open at any time.
+1. **Watch**, one watcher a project. Under Claude Code's Monitor, `studio review watch <p> --follow` prints a line
+   per reviewer act, naming the command that prints it whole. Without Monitor, run it in the background without
+   `--follow`: its exit wakes you; rerun it after acting. Nothing is missed or repeated.
 2. **Read each note whole.** Read its frame image: the reviewer's marks say what terse words leave out. Its moment,
    scene, sounds and tagged elements tell you where (a reviewer's "scene 3" is the third in `studio clock <p>`); its
    `look:` line shows the frames around it. `keep` notes are standing constraints, not work.
@@ -58,8 +58,9 @@ word count until voiced; cues on their words; long silences and holds flagged), 
   it's on, so it follows the words through your edits and is unplaced once they've gone. `watch` wakes on them;
   `studio review notes <p> --on plan` lists them. A fix is an edit to `storyboard.ts`, replied `--addressed` with
   its commit and no render.
-- The reviewer signs off scene by scene. A sign-off holds the scene's row and its own timing, not where it starts,
-  so an edit unsigns only the scene it touches: say which scenes changed. Done when every scene is signed off.
+- The reviewer signs off scene by scene, waking `watch`. A sign-off holds the scene's row and its own
+  timing, not where it starts, so an edit unsigns only the scene it touches: say which scenes changed. Done when every
+  scene is signed off.
 
 ## Decisions
 

@@ -47,7 +47,7 @@ test('a scene edited after its sign-off reads as stale while another stays signe
   const signedPlan = plan("You'll see which FODMAPs are in it.");
   const signedResolved = resolveStoryboard(signedPlan);
   const signoffs = (['plate', 'close'] as const).map((scene) => ({
-    on: 'plan' as const, scene, hash: storyboardSceneHash(signedPlan, signedResolved, scene)!, texts: reviewPlanSceneTexts(signedPlan, scene), at: '2026-10-16T09:00:00Z',
+    on: 'plan' as const, scene, hash: storyboardSceneHash(signedPlan, signedResolved, scene)!, texts: reviewPlanSceneTexts(signedPlan, scene), at: '2026-10-16T09:00:00Z', rev: 1,
   }));
   // Only the close's motion changes, and it's the last scene, so the plate's timing doesn't move either.
   const edited = plan("You'll see which FODMAPs are in it.", 'It slides up');

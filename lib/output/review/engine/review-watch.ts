@@ -1,6 +1,7 @@
 // review-watch.ts: `studio review watch`, the call an agent leaves running in the background to be woken by the
-// reviewer. It blocks until the reviewer changes something past the agent's cursor, waits for the burst to settle, and
-// returns what changed. The agent's own writes and `keep` threads never wake it.
+// reviewer. It blocks until the reviewer changes something past the agent's cursor (a note, a reply, a resolve or
+// reopen, a verdict, a sign-off), waits for the burst to settle, and returns what changed; `--follow` takes every
+// burst. The agent's own writes and `keep` threads never wake it.
 //
 // One watcher per project. Its state is out/.review/watch.json (git-ignored with out/): the cursor, so a run never
 // repeats or misses what the last showed, and a heartbeat the page reads as the agent's presence. Two agents watching
@@ -9,7 +10,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setInterval as every } from 'node:timers/promises';
 import { replaceFileWhole } from '#lib/platform/files/engine/replace-file-whole.ts';
-import type { ReviewDecision, ReviewFile, ReviewThread } from '../models/review-threads.ts';
+import type { ReviewDecision, ReviewFile, ReviewSignoff, ReviewThread } from '../models/review-threads.ts';
 import { readReviewFile } from './review-file.ts';
 
 const REVIEW_WATCH_POLL_MS = 300;
@@ -45,7 +46,11 @@ const reviewerChangedDecision = (decision: ReviewDecision, cursor: number) =>
   decision.rev > cursor && (decision.state !== 'open' || decision.candidates.some((c) => c.verdict));
 
 function reviewerChangesOf(file: ReviewFile, cursor: number) {
-  return { threads: file.threads.filter((t) => reviewerChangedThread(t, cursor)), decisions: file.decisions.filter((d) => reviewerChangedDecision(d, cursor)) };
+  return {
+    threads: file.threads.filter((t) => reviewerChangedThread(t, cursor)),
+    decisions: file.decisions.filter((d) => reviewerChangedDecision(d, cursor)),
+    signoffs: file.signoffs.filter((s) => s.rev > cursor),
+  };
 }
 
 export type ReviewWatchOptions = {
@@ -55,18 +60,22 @@ export type ReviewWatchOptions = {
   timeoutMs?: number;
 };
 
-/** What the reviewer changed: threads as stored, for the caller to place on the render it hands off. */
-export type ReviewWatchChange = { revision: number; changed: ReviewThread[]; decisions: ReviewDecision[] };
+/**
+ * What the reviewer changed since `cursor`, the revision the watch waited from: threads as stored, for the caller to
+ * place on the render it hands off.
+ */
+export type ReviewWatchChange = { cursor: number; revision: number; changed: ReviewThread[]; decisions: ReviewDecision[]; signoffs: ReviewSignoff[] };
 
 /**
- * Waits for the reviewer's next change past the cursor, then for `settleMs` with none newer, and returns everything
- * they changed since the cursor, saving the cursor past it. On `timeoutMs` with no change, returns the cursor.
+ * Each burst of the reviewer's changes past the cursor in turn, for good: waits for a change, then for `settleMs` with
+ * none newer, and yields everything they changed since the cursor, saving the cursor past it. On `timeoutMs` with no
+ * change since it began, yields the cursor and ends.
  */
-export async function waitForReviewChange({ projectDir, settleMs, timeoutMs }: ReviewWatchOptions): Promise<ReviewWatchChange | { timeout: number }> {
+export async function* watchReviewChanges({ projectDir, settleMs, timeoutMs }: ReviewWatchOptions): AsyncGenerator<ReviewWatchChange | { timeout: number }> {
   const stateFile = reviewWatchFileOf(projectDir), saved = readReviewWatchState(stateFile);
   const startedAt = Date.now();
   const watchingSince = saved && beatIsFresh(saved, startedAt) ? saved.since : new Date(startedAt).toISOString();
-  const cursor = saved?.cursor ?? 0;
+  let cursor = saved?.cursor ?? 0;
   const beat = (now: number, at: number) => {
     const state: ReviewWatchState = { cursor: at, since: watchingSince, beat: new Date(now).toISOString() };
     replaceFileWhole(stateFile, JSON.stringify(state));
@@ -75,20 +84,23 @@ export async function waitForReviewChange({ projectDir, settleMs, timeoutMs }: R
 
   // `newest` is the newest reviewer revision seen and `newestAt` when: the burst has settled once nothing newer comes
   // for settleMs.
-  let newest = 0, newestAt = 0, lastBeat = 0;
+  let newest = 0, newestAt = 0, lastBeat = 0, woke = false;
   const poll = (): ReviewWatchChange | { timeout: number } | undefined => {
-    const now = Date.now(), file = readReviewFile(projectDir), { threads, decisions } = reviewerChangesOf(file, cursor);
-    const latest = Math.max(0, ...threads.flatMap((t) => t.entries.map((e) => (e.author === 'reviewer' ? e.rev : 0))), ...decisions.map((d) => d.rev));
+    const now = Date.now(), file = readReviewFile(projectDir), { threads, decisions, signoffs } = reviewerChangesOf(file, cursor);
+    const latest = Math.max(
+      0, ...threads.flatMap((t) => t.entries.map((e) => (e.author === 'reviewer' ? e.rev : 0))), ...decisions.map((d) => d.rev), ...signoffs.map((s) => s.rev),
+    );
     if (latest > newest) [newest, newestAt] = [latest, now];
     const settled = newest > 0 && now - newestAt >= settleMs;
-    if (settled && (threads.length || decisions.length)) {
-      beat(now, file.revision);
-      return { revision: file.revision, changed: threads, decisions };
+    if (settled && (threads.length || decisions.length || signoffs.length)) {
+      const change = { cursor, revision: file.revision, changed: threads, decisions, signoffs };
+      [cursor, newest, newestAt, lastBeat, woke] = [file.revision, 0, 0, beat(now, file.revision), true];
+      return change;
     }
     // What woke it can be gone by the time the burst settles (a note resolved, then cleared): with nothing left to
     // hand off, it goes back to waiting rather than waking the agent for nothing.
     if (settled) [newest, newestAt] = [0, 0];
-    if (!newest && timeoutMs !== undefined && now - startedAt >= timeoutMs) {
+    if (!newest && !woke && timeoutMs !== undefined && now - startedAt >= timeoutMs) {
       beat(now, cursor);
       return { timeout: cursor };
     }
@@ -97,10 +109,16 @@ export async function waitForReviewChange({ projectDir, settleMs, timeoutMs }: R
   };
   // A loop over a timer, not a poll that awaits itself: a watch left running for hours holds no growing promise chain.
   const first = poll();
-  if (first) return first;
+  if (first) yield first;
   for await (const _tick of every(REVIEW_WATCH_POLL_MS)) {
     const polled = poll();
-    if (polled) return polled;
+    if (polled) yield polled;
+    if (polled && 'timeout' in polled) return;
   }
+}
+
+/** The reviewer's next burst of changes, or the cursor on `timeoutMs` with none: `watchReviewChanges`' first. */
+export async function waitForReviewChange(options: ReviewWatchOptions): Promise<ReviewWatchChange | { timeout: number }> {
+  for await (const change of watchReviewChanges(options)) return change;
   throw new Error('the watch timer ended');
 }

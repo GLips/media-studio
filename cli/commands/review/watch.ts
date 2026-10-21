@@ -1,5 +1,7 @@
-// studio review watch: what an agent leaves running in the background: it blocks until the reviewer adds or changes
-// notes, prints them once the burst settles, and exits so the agent is woken to act and runs it again.
+// studio review watch: what an agent leaves running to be woken by the reviewer. With --follow it never exits and
+// prints a line per reviewer act, for a harness that wakes the agent on each line (Claude Code's Monitor); without, it
+// blocks until the reviewer changes something, prints it in full once the burst settles, and exits, for a harness that
+// wakes the agent only when a background command ends, so the agent runs it again.
 import { defineCommand, type ArgsDef } from 'citty';
 import { refuseUnknownCommandFlags } from '../../command-flags.ts';
 import { studioProjectArg } from '../../project-arg.ts';
@@ -19,28 +21,40 @@ function durationFlagMs(flag: string, value: string): number {
 const reviewWatchArgs = {
   project: studioProjectArg,
   settle: { type: 'string', default: '3s', description: 'Quiet to wait for after the first change, so a burst of notes comes as one' },
+  follow: { type: 'boolean', description: 'Keep running and print one line per reviewer act, each with the command that prints it whole, instead of exiting on the first change' },
   timeout: { type: 'string', valueHint: '30m', description: `Give up after this long with no change, exiting ${REVIEW_WATCH_TIMEOUT_EXIT}; waits for good by default` },
   render: { type: 'string', valueHint: 'out/video.mp4', description: 'The render or still to place notes on; the newest full render by default, with the reply slices laid into it. Plan notes are placed on storyboard.ts' },
-  json: { type: 'boolean', description: 'Print { revision, changed, decisions } as JSON instead of markdown' },
+  json: { type: 'boolean', description: 'Print { revision, changed, decisions, signoffs } as JSON instead of markdown; with --follow, one event a line as JSON' },
 } as const satisfies ArgsDef;
 
 export const reviewWatchCommand = defineCommand({
   meta: {
     name: 'watch',
-    description: "Block until the reviewer changes a note or decision, print what changed, and exit.",
-    about: "Wakes on a note added, edited, replied to, resolved or reopened, or a decision picked or signed off, past the project's watch cursor (one watcher a project); waits --settle for the burst to end; prints every note and decision changed, as `studio review notes` does, saves the cursor past them and exits 0. Each fix on a video names its scene and the frames it's on screen, and a fix: line: the `studio render --scene` that re-renders that scene and the reply that hands the slice over. Run it in the background, act on what it prints, then run it again: it never repeats what a run showed nor misses what landed while you worked. A first run prints the whole backlog. The agent's own replies and `keep` notes never wake it. On --timeout with no change, prints `no change since rN` and exits 2.",
+    description: "Wake on the reviewer's changes: a line per act for good (--follow), or the next change in full, then exit.",
+    about: "Wakes on what the reviewer does past the project's watch cursor (one watcher a project): a note added or edited, a reply, a resolve or reopen, a verdict or a decision's sign-off, a plan scene or render signed off; waits --settle for the burst to end, and saves the cursor past it, so nothing is repeated or missed across runs. The agent's own replies and `keep` notes never wake it; a first run reports the whole backlog. --follow never exits: it prints a line per act, `r<revision> #<id> <act> · <state> · <where> · \"<words>\" → <command>`, the command printing it whole (`studio review notes <p> --id <id>`, or `decisions`), for a harness that wakes the agent on each line (Claude Code's Monitor). Without it, it prints every note and decision changed, as `studio review notes` does, each fix on a video with its scene, frames and fix: line (the `studio render --scene` that re-renders that scene and the reply that hands the slice over), and exits 0, for a harness that wakes the agent when a background command ends: act on it, then run it again. On --timeout with no change, prints `no change since rN` and exits 2.",
   },
   args: reviewWatchArgs,
   async run({ args, rawArgs }) {
     refuseUnknownCommandFlags(rawArgs, reviewWatchArgs);
+    if (args.follow && args.timeout !== undefined) throw new Error('--follow runs for good: leave out --timeout');
+    if (args.follow && args.render !== undefined) throw new Error('--follow prints a line per act, placed on no render: leave out --render, and give it to notes');
     const settleMs = durationFlagMs('settle', args.settle);
     const timeoutMs = args.timeout === undefined ? undefined : durationFlagMs('timeout', args.timeout);
 
     const { basename } = await import('node:path');
     const { resolveStudioProject } = await import('#lib/platform/project/engine/studio-project.ts');
-    const { waitForReviewChange } = await import('#lib/output/review/engine/review-watch.ts');
+    const { waitForReviewChange, watchReviewChanges } = await import('#lib/output/review/engine/review-watch.ts');
     const handoffs = await import('#lib/output/review/engine/review-handoff.ts');
     const dir = resolveStudioProject(args.project), project = basename(dir);
+    if (args.follow) {
+      const { reviewWatchEventsOf, formatReviewWatchEvent } = await import('#lib/output/review/models/review-watch-events.ts');
+      process.stderr.write(`following ${project}'s review: a line per reviewer act\n`);
+      for await (const change of watchReviewChanges({ projectDir: dir, settleMs })) {
+        if ('timeout' in change) throw new Error('a watch with no --timeout timed out');
+        const events = reviewWatchEventsOf({ threads: change.changed, decisions: change.decisions, signoffs: change.signoffs }, change.cursor);
+        for (const event of events) console.log(args.json ? JSON.stringify(event) : formatReviewWatchEvent(project, event));
+      }
+    }
     // Found before blocking, so a missing --render fails now, and read after: it may be rendered again meanwhile. Before
     // the first render there is none, and the plan's notes are placed on the storyboard alone.
     const renderPath = handoffs.reviewHandoffRenderOf(project, args.render);
@@ -55,10 +69,11 @@ export const reviewWatchCommand = defineCommand({
     const handoff = handoffs.openReviewHandoff(project, renderPath);
     const changed = await handoffs.placeReviewHandoff(handoff, change.changed);
     if (args.json) {
-      console.log(JSON.stringify({ revision: change.revision, changed, decisions: change.decisions }, null, 2));
+      console.log(JSON.stringify({ revision: change.revision, changed, decisions: change.decisions, signoffs: change.signoffs }, null, 2));
       return;
     }
     process.stdout.write(handoffs.formatReviewHandoff(handoff, changed, change.decisions, ['open', 'addressed', 'resolved', 'reopened']));
-    console.log(`\nrevision ${change.revision}\nnext: fix each note (its fix: line) or reply to it, then studio review watch ${project}`);
+    for (const s of change.signoffs) console.log(`signed off: ${s.on === 'plan' ? `plan scene ${s.scene}` : `render ${s.path}`}`);
+    console.log(`\nrevision ${change.revision}\nnext: fix each note (its fix: line) or reply to it, then run this watch again (under --follow it runs on)`);
   },
 });

@@ -7,7 +7,7 @@
 // plan over; only the reviewer resolves, reopens, deletes, picks, and signs off or takes a sign-off back.
 import {
   emptyReviewFile, type ReviewAnchor, type ReviewAuthor, type ReviewCandidate, type ReviewDecision, type ReviewEntry, type ReviewEntryCommit,
-  type ReviewEntryRender, type ReviewFile, type ReviewSignoff, type ReviewThread, type ReviewThreadKind, type ReviewWrittenOn,
+  type ReviewEntryRender, type ReviewFile, type NewReviewSignoff, type ReviewSignoff, type ReviewThread, type ReviewThreadKind, type ReviewWrittenOn,
 } from './review-threads.ts';
 
 /** The render a new note is on, before the engine adds the commit its snapshot records. */
@@ -38,7 +38,7 @@ export type ReviewOp =
   | { op: 'decision.put'; decision: NewDecision }
   | { op: 'decision.verdict'; id: number; candidate: string; verdict: 'pick' | 'reject' | null }
   | { op: 'decision.close'; id: number }
-  | { op: 'signoff'; signoff: ReviewSignoff }
+  | { op: 'signoff'; signoff: NewReviewSignoff }
   | { op: 'signoff.takeBack'; scene: string }
   | { op: 'plan.handover' };
 
@@ -324,10 +324,10 @@ function closeReviewDecision(at: Applying, id: number) {
 }
 
 /** A sign-off replaces the last on the same thing: a plan scene, or a render's path. */
-function signOffReview(at: Applying, signoff: ReviewSignoff) {
+function signOffReview(at: Applying, signoff: NewReviewSignoff) {
   reviewerOnly(at, 'signs off');
   const same = (s: ReviewSignoff) => (s.on === 'plan' ? signoff.on === 'plan' && s.scene === signoff.scene : signoff.on === 'render' && s.path === signoff.path);
-  at.file.signoffs = [...at.file.signoffs.filter((s) => !same(s)), signoff];
+  at.file.signoffs = [...at.file.signoffs.filter((s) => !same(s)), { ...signoff, rev: at.rev }];
 }
 
 // Taking back a scene that isn't signed does nothing: two tabs can send the same.

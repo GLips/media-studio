@@ -14,6 +14,7 @@ const reviewNotesArgs = {
   on: { type: 'string', valueHint: 'video', description: `Only notes on one kind of thing: ${REVIEW_ANCHOR_KINDS.join(', ')}` },
   render: { type: 'string', valueHint: 'out/video.mp4', description: 'The render or still (its path in the project) to place notes on; the newest full render by default, with the reply slices laid into it' },
   since: { type: 'string', valueHint: 'revision', description: 'Only notes changed after this review revision' },
+  id: { type: 'string', valueHint: '12,14', description: 'Only these notes, as `watch --follow` names them, in whatever state: --state still narrows them' },
   json: { type: 'boolean', description: 'Print { revision, threads, decisions, stale } as JSON, each thread with its placement and each stale plan scene with its changed fields, instead of markdown' },
 } as const satisfies ArgsDef;
 
@@ -36,7 +37,12 @@ export const reviewNotesCommand = defineCommand({
   async run({ args, rawArgs }) {
     refuseUnknownCommandFlags(rawArgs, reviewNotesArgs);
     if (args.all && args.state) throw new Error('--all lists every state: leave out --state');
-    const states = args.all ? [...REVIEW_THREAD_STATES] : listFlagOf('state', args.state ?? 'open,reopened', REVIEW_THREAD_STATES);
+    const ids = args.id?.split(',').map((v) => {
+      const id = Number(v.trim().replace(/^#/, ''));
+      if (!(Number.isInteger(id) && id > 0)) throw new Error(`--id takes note ids like 12 or #12, not ${v}`);
+      return id;
+    });
+    const states = args.all || (ids && !args.state) ? [...REVIEW_THREAD_STATES] : listFlagOf('state', args.state ?? 'open,reopened', REVIEW_THREAD_STATES);
     const on = args.on === undefined ? undefined : listFlagOf('on', args.on, REVIEW_ANCHOR_KINDS);
     const since = args.since === undefined ? 0 : Number(args.since);
     if (!(Number.isInteger(since) && since >= 0)) throw new Error(`--since is a review revision, a whole number, not ${args.since}`);
@@ -48,9 +54,9 @@ export const reviewNotesCommand = defineCommand({
     const dir = resolveStudioProject(args.project), project = basename(dir);
     const file = readReviewFile(dir);
     const handoff = handoffs.openReviewHandoff(project, handoffs.reviewHandoffRenderOf(project, args.render));
-    const threads = await handoffs.placeReviewHandoff(handoff, file.threads.filter((t) => t.rev > since && (!on || on.includes(t.anchor.on))));
-    const decisions = file.decisions.filter((d) => d.rev > since && (since > 0 || d.state === 'open'));
-    const stale = !on || on.includes('plan') ? await handoffs.reviewHandoffStalePlan(project, file.signoffs) : [];
+    const threads = await handoffs.placeReviewHandoff(handoff, file.threads.filter((t) => t.rev > since && (!on || on.includes(t.anchor.on)) && (!ids || ids.includes(t.id))));
+    const decisions = ids ? [] : file.decisions.filter((d) => d.rev > since && (since > 0 || d.state === 'open'));
+    const stale = !ids && (!on || on.includes('plan')) ? await handoffs.reviewHandoffStalePlan(project, file.signoffs) : [];
     if (args.json) {
       console.log(JSON.stringify({ revision: file.revision, threads: threads.filter((t) => t.kind === 'keep' || states.includes(t.state)), decisions, stale }, null, 2));
       return;

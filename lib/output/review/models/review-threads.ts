@@ -135,9 +135,16 @@ export type ReviewDecision = {
  * A plan sign-off is per scene and holds the scene's storyboardSceneHash, so an edited scene reads as stale while the
  * others stay signed, and its fields' texts as signed (reviewPlanSceneTexts), so a stale scene shows what changed.
  */
-export type ReviewSignoff =
+export type ReviewSignoff = (
   | { on: 'plan'; scene: string; hash: string; texts: Record<string, string>; at: string }
-  | { on: 'render'; path: string; hash: string; rung?: SceneRung; at: string };
+  | { on: 'render'; path: string; hash: string; rung?: SceneRung; at: string }
+) & {
+  /** The file revision it was given at, stamped by the op, so `watch` wakes on it. */
+  rev: number;
+};
+
+/** A sign-off as a client sends it: the op stamps its revision. */
+export type NewReviewSignoff = ReviewSignoff extends infer S ? S extends ReviewSignoff ? Omit<S, 'rev'> : never : never;
 
 export const emptyReviewFile = (): ReviewFile => ({ version: REVIEW_FILE_VERSION, revision: 0, nextId: 1, threads: [], decisions: [], signoffs: [] });
 

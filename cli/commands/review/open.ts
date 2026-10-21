@@ -61,7 +61,7 @@ export const reviewOpenCommand = defineCommand({
     process.stderr.write([
       `reviewing ${target.project} on ${url}${app.startedHere ? ' (Ctrl-C to stop)' : ', in the studio app already running'}`,
       ...(target.artifacts.length ? ['its renders and stills, newest first:', ...target.artifacts.map((a) => `  ${a.modified}  ${a.path}`)] : [`${target.project} has made nothing to review yet`]),
-      `an agent follows the notes with: studio review watch ${target.project}`,
+      `an agent follows the notes with: studio review watch ${target.project} --follow (under a line-waking monitor), or without --follow, run again after each wake`,
     ].join('\n') + '\n');
     if (args.open) {
       const { spawn } = await import('node:child_process');
