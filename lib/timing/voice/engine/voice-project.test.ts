@@ -96,11 +96,11 @@ beforeEach(() => {
   fakeWhisper.collapsesRepeats = false;
 });
 
-test("a pickup reads after the line before it, and its clip holds its own words whole and none of the lead-in's", async () => {
-  await syncVoice(project, script('Hello.', 'Order. Wherever.', 'Wherever. Hello.', 'Again.'), { draft: false });
-  // The lead-in ends on the word the pickup starts with, so a cut placed by drifting word times would double it.
-  await syncVoice(project, script('Hello.', 'Order. Wherever.', 'Wherever. Farewell.', 'Again.'), { draft: false });
-  assert.deepEqual(inputs.slice(1), ['Order. Wherever. Wherever. Farewell.']);
+test("a pickup reads between the lines around it, and its clip holds its own words whole and none of theirs", async () => {
+  await syncVoice(project, script('Hello.', 'Order. Wherever.', 'Wherever. Hello.', 'Farewell. Again.'), { draft: false });
+  // Each line around it starts or ends on the word the pickup does, so a cut placed by drifting word times would double it.
+  await syncVoice(project, script('Hello.', 'Order. Wherever.', 'Wherever. Farewell.', 'Farewell. Again.'), { draft: false });
+  assert.deepEqual(inputs.slice(1), ['Order. Wherever. Wherever. Farewell. Farewell. Again.']);
 
   const words = wordsInSamples(samplesFromWav(clip('c')).samples, RATE);
   assert.deepEqual(words.map((w) => w.text), ['Wherever.', 'Farewell.']);
@@ -111,20 +111,22 @@ test("a pickup reads after the line before it, and its clip holds its own words 
   for (const [id, line] of Object.entries(manifest())) {
     played.push(...quiet(line.pauseBefore ?? 0), ...samplesFromWav(clip(id)).samples);
   }
-  assert.deepEqual(wordsInSamples(Int16Array.from(played), RATE).map((w) => w.text), ['Hello.', 'Order.', 'Wherever.', 'Wherever.', 'Farewell.', 'Again.']);
+  assert.deepEqual(wordsInSamples(Int16Array.from(played), RATE).map((w) => w.text), ['Hello.', 'Order.', 'Wherever.', 'Wherever.', 'Farewell.', 'Farewell.', 'Again.']);
 });
 
-test("a pickup whose join a whisper misplaces is refused, and the paid take kept, but one heard in more words is not", async () => {
-  await syncVoice(project, script('Hello.', 'Order. Wherever.', 'Wherever. Hello.', 'Again.'), { draft: false });
+test("a pickup whose join a whisper misplaces, on either side, is refused with the paid take kept, but one heard in more words is not", async () => {
+  await syncVoice(project, script('Hello.', 'Order. Wherever.', 'Wherever. Hello.', 'Farewell. Again.'), { draft: false });
   const published = manifestText();
   fakeWhisper.collapsesRepeats = true;
-  await assert.rejects(syncVoice(project, script('Hello.', 'Order. Wherever.', 'Wherever. Farewell.', 'Again.'), { draft: false }), /take 2 reads c after b.*studio voice reread \S+ c/s);
+  await assert.rejects(syncVoice(project, script('Hello.', 'Order. Wherever.', 'Wherever. Farewell.', 'Farewell. Again.'), { draft: false }), /take 2 reads c between b and d.*studio voice reread \S+ c/s);
   assert.ok(existsSync(join(project, 'audio', 'takes', '2.wav')));
+  // Only the trailing join repeats a word here.
+  await assert.rejects(syncVoice(project, script('Hello.', 'Order. Wherever.', 'Hello. Farewell.', 'Farewell. Again.'), { draft: false }), /take 3 reads c between b and d, but [^.]*\bd\b/s);
   assert.equal(manifestText(), published);
 
-  // "End-to-end." heard as "End to end." is its own three words, none of the lead-in's.
+  // "End-to-end." heard as "End to end." is its own three words, none of the lines around it.
   fakeWhisper.collapsesRepeats = false;
-  await syncVoice(project, script('Hello.', 'Order. Wherever.', 'End-to-end. Farewell.', 'Again.'), { draft: false });
+  await syncVoice(project, script('Hello.', 'Order. Wherever.', 'End-to-end. Farewell.', 'Farewell. Again.'), { draft: false });
   assert.deepEqual(manifest().c.words.map((w) => w.text), ['End-to-end.', 'Farewell.']);
 });
 
@@ -133,7 +135,7 @@ test("a reread changes only its lines, and a failed one leaves the voice as it w
   await syncVoice(project, lines, { draft: false });
   const before = manifest(), [a, c] = [clip('a'), clip('c')];
   await rereadVoiceLines(project, lines, ['b']);
-  assert.deepEqual(inputs.slice(1), ['Hello. Order.']);
+  assert.deepEqual(inputs.slice(1), ['Hello. Order. Again.']);
   assert.deepEqual([clip('a'), clip('c')], [a, c]);
   const after = manifest();
   assert.notEqual(after.b.pauseBefore, before.b.pauseBefore);

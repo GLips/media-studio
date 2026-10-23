@@ -3,11 +3,11 @@
 //
 // A take reads a line as it is now when the line's text and paragraph and the take's settings match. A recording is
 // judged on its text alone, so a new voice never makes one stale.
-import type { VoiceScript, VoiceScriptLine, VoiceTakeFile, VoiceTakeSettings } from './voice-take.ts';
+import type { VoiceScript, VoiceScriptLine, VoiceTakeContext, VoiceTakeFile, VoiceTakeSettings } from './voice-take.ts';
 import { ttsText } from './voice-words.ts';
 
 /** Why a take doesn't read a line as the script has it now. */
-export type VoiceStaleReason = 'text' | 'paragraph' | 'voice' | 'direction' | 'model' | 'generation settings unavailable' | 'a draft' | 'not read' | 'lead-in only' | 'never voiced';
+export type VoiceStaleReason = 'text' | 'paragraph' | 'voice' | 'direction' | 'model' | 'generation settings unavailable' | 'a draft' | 'not read' | 'context only' | 'never voiced';
 
 /** What would read each way now: the script's Gemini settings, and say's voice for a draft. */
 export type VoiceSettingsNow = { tts: Extract<VoiceTakeSettings, { model: string }>; sayVoice: string };
@@ -15,12 +15,23 @@ export type VoiceSettingsNow = { tts: Extract<VoiceTakeSettings, { model: string
 /** A kept take as the comp sees it: its number and its info. */
 export type VoiceCompTake = { number: number; info: VoiceTakeFile };
 
-/** A run of consecutive lines to read in one pickup, after `context`, the line before them, when there is one. */
-export type VoicePickup = { context?: VoiceScriptLine; lines: VoiceScriptLine[] };
+/** A run of consecutive lines to read in one pickup, between the lines around it (when there are), read for context. */
+export type VoicePickup = { before?: VoiceScriptLine; lines: VoiceScriptLine[]; after?: VoiceScriptLine };
+
+/** Whether `take` read line `id` only as context around its run. */
+export const isVoiceContextLine = (context: VoiceTakeContext | undefined, id: string) => context?.before === id || context?.after === id;
+
+/** "after a and before d": the context a pickup is read in, for messages; empty for none. */
+export function voiceContextPhrase(context: VoiceTakeContext | undefined): string {
+  const { before, after } = context ?? {};
+  if (before && after) return `between ${before} and ${after}`;
+  if (before) return `after ${before}`;
+  return after ? `before ${after}` : '';
+}
 
 /** Every reason `take` doesn't read `line` as it is now; none when it does. A draft counts only with `draft`. */
 export function voiceLineStaleReasons(take: VoiceTakeFile, line: VoiceScriptLine, now: VoiceSettingsNow, draft = true): VoiceStaleReason[] {
-  if (take.context === line.id) return ['lead-in only'];
+  if (isVoiceContextLine(take.context, line.id)) return ['context only'];
   const read = take.lines.find((l) => l.id === line.id);
   if (!read) return ['not read'];
   const reasons: VoiceStaleReason[] = [];
@@ -39,15 +50,16 @@ export function voiceLineStaleReasons(take: VoiceTakeFile, line: VoiceScriptLine
   return reasons;
 }
 
-/** Each run of consecutive script lines that `wanted` picks, with the line before it as its context. */
+/** Each run of consecutive script lines that `wanted` picks, with the lines before and after it as its context. */
 export function voicePickupsOf(script: VoiceScript, wanted: (id: string) => boolean): VoicePickup[] {
   const runs: VoicePickup[] = [];
   script.lines.forEach((line, i) => {
     if (!wanted(line.id)) return;
     const last = runs.at(-1);
     if (last && last.lines.at(-1) === script.lines[i - 1]) last.lines.push(line);
-    else runs.push({ context: script.lines[i - 1], lines: [line] });
+    else runs.push({ before: script.lines[i - 1], lines: [line] });
   });
+  for (const run of runs) run.after = script.lines[script.lines.indexOf(run.lines.at(-1)!) + 1];
   return runs;
 }
 
@@ -71,7 +83,7 @@ export function planVoiceSync<T extends VoiceCompTake>(script: VoiceScript, kept
   const plan: VoiceSyncPlan<T> = { comp: new Map(), reused: new Map(), pickups: [], stale: [], oldRecordings: [] };
   for (const line of script.lines) {
     const chosen = kept.find((take) => take.number === chosenBefore[line.id]?.take);
-    if (chosen?.info.source === 'recording' && chosen.info.context !== line.id && chosen.info.lines.some((l) => l.id === line.id)) {
+    if (chosen?.info.source === 'recording' && !isVoiceContextLine(chosen.info.context, line.id) && chosen.info.lines.some((l) => l.id === line.id)) {
       if (voiceLineStaleReasons(chosen.info, line, now).length) plan.oldRecordings.push({ id: line.id, take: chosen.number });
       plan.comp.set(line.id, chosen);
       continue;

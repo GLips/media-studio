@@ -30,18 +30,23 @@ export type VoiceScriptLine = { id: string; text: string; paragraph?: boolean };
 
 /** One line a take reads, as the script had it when read. */
 export type VoiceTakeLine = { id: string; text: string; paragraph: boolean };
+/**
+ * The lines a pickup reads around its run and never chooses: `before` for the lead-in, `after` for the run's ending
+ * intonation (a line mid-sentence ends rising when more follows).
+ */
+export type VoiceTakeContext = { before?: string; after?: string };
 /** What read a take: Gemini's model, voice and direction for a `tts` take, say's voice for a `draft`. */
 export type VoiceTakeSettings = { model: string; voice: string; direction: string | null } | { sayVoice: string };
 /**
  * audio/takes/<n>.json: where take n came from, what read it (`settings`: none for a recording, or when unknown), the
- * lines it reads in order (a pickup's first is its `context`, read for the lead-in, never chosen), when it was read
+ * lines it reads in order (a pickup's first and last may be its `context`, the lines read around it, never chosen), when it was read
  * and last chosen, and what whisper heard in it and its clips, keyed by each WAV's hash.
  */
 export type VoiceTakeFile = {
   source: 'tts' | 'draft' | 'recording';
   settings?: VoiceTakeSettings;
   lines: VoiceTakeLine[];
-  context?: string;
+  context?: VoiceTakeContext;
   madeAt: string;
   chosenAt: string;
   heard?: Record<string, SpokenWord[]>;

@@ -1,12 +1,10 @@
 // voice-project.ts: voices a project's script line by line, each voiced line cut from the take chosen for it (the
-// comp). `studio voice` runs it.
-//
-// The model reads the text verbatim: direct it with inline tags (`<short pause>`…), which captions leave out.
+// comp). `studio voice` runs it. The model reads the text verbatim: direct it with inline tags (`<short pause>`…).
 //
 // Contract: a line left unchanged keeps its own audio, duration and pauseBefore; its place in the video still moves
-// when an earlier line changes length. A pickup reads the line before it too (cut, never chosen) so the join holds;
-// takes join only at clip boundaries, in measured quiet. Every take is kept (voice-takes.ts), and each run publishes
-// a whole generation of manifest and comp (voice-generations.ts).
+// when an earlier line changes length. A pickup reads the lines around it too (cut, never chosen) for its lead-in
+// and ending intonation; takes join only at clip boundaries, in measured quiet, with a warning where they'd be heard
+// apart (voice-drift.ts). Every take is kept (voice-takes.ts); a run publishes one generation (voice-generations.ts).
 //
 // Negative space: the manifest holds voiced lines only; resolveStoryboard estimates the rest.
 import { createHash } from 'node:crypto';
@@ -20,8 +18,9 @@ import { releaseStudioLockFile, tryStudioLockFile } from '#lib/platform/files/en
 import { postOpenRouter } from '#lib/platform/paid-generation/engine/openrouter.ts';
 import type { RenderVoice } from '../models/render-voice.ts';
 import type { RecordedVoiceLine } from '../models/voice-manifest.ts';
-import { planVoiceSync, voiceLineStaleReasons, voicePickupsOf, type VoicePickup, type VoiceSettingsNow, type VoiceStaleReason } from '../models/voice-comp.ts';
-import { cutTakeIntoLines, pinWordsToTaggedPauses, type TakeClip, type VoiceCompFile, type VoiceScript, type VoiceTakeFile } from '../models/voice-take.ts';
+import { isVoiceContextLine, planVoiceSync, voiceContextPhrase, voiceLineStaleReasons, voicePickupsOf, type VoicePickup, type VoiceSettingsNow, type VoiceStaleReason } from '../models/voice-comp.ts';
+import { measureVoiceClip, voiceDrift, type VoiceClipMeasure } from '../models/voice-drift.ts';
+import { cutTakeIntoLines, pinWordsToTaggedPauses, type TakeClip, type VoiceCompFile, type VoiceScript, type VoiceTakeFile, type VoiceTakeLine } from '../models/voice-take.ts';
 import { alignSpokenWords, captionMarkup, scriptWords, spokenText, ttsText, type SpokenWord } from '../models/voice-words.ts';
 import { samplesFromWav, wavFromPcm, wavFromSamples } from '#lib/platform/wav/models/wav.ts';
 import { heardWords } from './whisper-words.ts';
@@ -84,7 +83,7 @@ export function voiceSyncDryRun(project: string, script: VoiceScript, { draft }:
   const out = plan.stale.map(({ id, reasons }) => `${id}: stale (${reasons.join(', ')})`);
   for (const [take, ids] of plan.reused) out.push(`reuse take ${take.number} for ${ids.join(', ')}`);
   for (const { id, take } of plan.oldRecordings) out.push(`${id}: keeps recording take ${take}, which reads an older text`);
-  for (const pickup of plan.pickups) out.push(`read ${pickup.lines.map((line) => line.id).join(', ')}${pickup.context ? ` after ${pickup.context.id}` : ''} (${draft ? 'say, free' : 'paid'})`);
+  for (const pickup of plan.pickups) out.push(`read ${[pickup.lines.map((line) => line.id).join(', '), voiceContextPhrase(pickupContext(pickup))].filter(Boolean).join(' ')} (${draft ? 'say, free' : 'paid'})`);
   return out.length ? out : ['every line is voiced as it is now: nothing to do'];
 }
 
@@ -118,7 +117,7 @@ export async function rereadVoiceLines(project: string, script: VoiceScript, ids
   });
 }
 
-/** Keeps a recording of exactly `ids`, in script order with no lead-in, as a new take, chosen for them. Never pays. */
+/** Keeps a recording of exactly `ids`, in script order with no context around them, as a new take, chosen for them. Never pays. */
 export async function importVoiceRecording(project: string, script: VoiceScript, recording: string, ids: readonly string[]): Promise<string> {
   const wanted = scriptLineIds(script, ids);
   return withVoiceLock(project, async () => {
@@ -135,7 +134,7 @@ export async function importVoiceRecording(project: string, script: VoiceScript,
 export type VoiceTakeUse = { manifest: string; chosen: string[]; skipped: { id: string; reasons: VoiceStaleReason[] }[] };
 
 /**
- * Chooses kept take `number` for `ids` (without, every line it reads as the script is now, never its lead-in), with no
+ * Chooses kept take `number` for `ids` (without, every line it reads as the script is now, never its context), with no
  * paid call. A named line it doesn't read as it is now (a recording: its text) fails before anything changes.
  */
 export async function useVoiceTake(project: string, script: VoiceScript, number: number, ids?: readonly string[]): Promise<VoiceTakeUse> {
@@ -156,8 +155,10 @@ export async function useVoiceTake(project: string, script: VoiceScript, number:
   });
 }
 
+const pickupContext = ({ before, after }: VoicePickup) => (before || after ? { ...(before && { before: before.id }), ...(after && { after: after.id }) } : undefined);
+
 async function readPickup(project: string, script: VoiceScript, pickup: VoicePickup, draft: boolean) {
-  const read = pickup.context ? [pickup.context, ...pickup.lines] : pickup.lines;
+  const read = [pickup.before, ...pickup.lines, pickup.after].filter((line) => line !== undefined);
   const readText = (paragraphBreak: string) => read.map((line, i) => readBreakBefore(line.paragraph, i, paragraphBreak) + ttsText(line.text)).join('');
   const { wav, duration } = draft ? speakDraft(sayText(readText(SAY_PARAGRAPH))) : await speak(readText('\n\n'), script.voice, script.direction);
   const now = settingsNow(script);
@@ -166,9 +167,10 @@ async function readPickup(project: string, script: VoiceScript, pickup: VoicePic
     settings: draft ? { sayVoice: now.sayVoice } : now.tts,
     lines: read.map((line) => ({ id: line.id, text: line.text, paragraph: line.paragraph ?? false })),
   };
-  if (pickup.context) info.context = pickup.context.id;
+  const context = pickupContext(pickup);
+  if (context) info.context = context;
   const take = keepVoiceTake(project, info, (path) => writeFileSync(path, wav));
-  const what = pickup.lines.length === script.lines.length ? 'the script' : `${pickup.lines.map((line) => line.id).join(', ')}${pickup.context ? `, after ${pickup.context.id}` : ''}`;
+  const what = pickup.lines.length === script.lines.length ? 'the script' : [pickup.lines.map((line) => line.id).join(', '), voiceContextPhrase(context)].filter(Boolean).join(', ');
   process.stderr.write(`${draft ? 'drafted' : 'voiced'} take ${take.number} (${what})  ${duration.toFixed(2)}s\n`);
   return take;
 }
@@ -181,6 +183,7 @@ function readBreakBefore(paragraph: boolean | undefined, i: number, paragraphBre
 /** One kept take, for `studio voice takes`: the lines it reads (`now` false for a stale one) and those it's chosen for. */
 export type VoiceTakeListing = {
   number: number; source: VoiceTakeFile['source']; madeAt: string; seconds: number;
+  /** "between a and d": the lines it read around its run, never chosen. */
   context?: string; lines: { id: string; now: boolean }[]; chosenFor: string[];
 };
 
@@ -195,31 +198,44 @@ export function listVoiceTakes(project: string, script: VoiceScript): VoiceTakeL
   return readVoiceTakes(project).map((take) => {
     const listing: VoiceTakeListing = {
       number: take.number, source: take.info.source, madeAt: take.info.madeAt, seconds: takeSeconds(take),
-      lines: take.info.lines.filter((line) => line.id !== take.info.context).map((line) => {
+      lines: take.info.lines.filter((line) => !isVoiceContextLine(take.info.context, line.id)).map((line) => {
         const current = script.lines.find((l) => l.id === line.id);
         return { id: line.id, now: !!current && !voiceLineStaleReasons(take.info, current, now).length };
       }),
       chosenFor: script.lines.map((line) => line.id).filter((id) => comp[id]?.take === take.number),
     };
-    if (take.info.context) listing.context = take.info.context;
+    if (take.info.context) listing.context = voiceContextPhrase(take.info.context);
     return listing;
   });
 }
 
-/** One take's read of a line, for `studio voice takes <p> <line>`: whether it can be used for it now, and if not why. */
-export type VoiceLineTakeListing = { number: number; source: VoiceTakeFile['source']; madeAt: string; seconds: number; excerpt: string; reasons: VoiceStaleReason[] };
+/**
+ * One take's read of a line, for `studio voice takes <p> <line>`: whether it can be used for it now (if not, why), and
+ * for one that can, how it would be heard against the takes the line's neighbours are cut from (voiceJoinDrift).
+ */
+export type VoiceLineTakeListing = { number: number; source: VoiceTakeFile['source']; madeAt: string; seconds: number; excerpt: string; reasons: VoiceStaleReason[]; drift: string[] };
 
-/** The take line `id` is cut from (null while unvoiced), and every kept take that reads it. */
-export function listVoiceLineTakes(project: string, script: VoiceScript, id: string): { current: number | null; takes: VoiceLineTakeListing[] } {
+/**
+ * The take line `id` is cut from (null while unvoiced), and every kept take that reads it. The takes joined are cut to
+ * measure them: whisper's hearing is kept on each take, so that's free after its first cut.
+ */
+export async function listVoiceLineTakes(project: string, script: VoiceScript, id: string): Promise<{ current: number | null; takes: VoiceLineTakeListing[] }> {
   const [lineId] = scriptLineIds(script, [id]);
   const line = script.lines.find((l) => l.id === lineId)!, now = settingsNow(script);
-  const takes = readVoiceTakes(project).flatMap((take) => {
-    const read = take.info.lines.find((l) => l.id === lineId);
-    if (!read) return [];
-    const text = spokenText(read.text);
-    return [{ number: take.number, source: take.info.source, madeAt: take.info.madeAt, seconds: takeSeconds(take), excerpt: text.length > 48 ? `${text.slice(0, 47)}…` : text, reasons: voiceLineStaleReasons(take.info, line, now) }];
+  const { kept, comp } = readComp(project, script);
+  const listed = kept.filter((take) => take.info.lines.some((l) => l.id === lineId)).map((take) => {
+    const text = spokenText(take.info.lines.find((l) => l.id === lineId)!.text), reasons = voiceLineStaleReasons(take.info, line, now);
+    const joins = reasons.length ? [] : voiceJoinsOf(script, (other) => (other === lineId ? take : comp.get(other)), (l) => l === lineId);
+    return { take, text, reasons, joins };
   });
-  return { current: readVoiceComp(project)[lineId]?.take ?? null, takes };
+  const drift = await voiceJoinDrift(project, listed.flatMap((t) => t.joins));
+  let next = 0;
+  const takes = listed.map(({ take, text, reasons, joins }) => ({
+    number: take.number, source: take.info.source, madeAt: take.info.madeAt, seconds: takeSeconds(take),
+    excerpt: text.length > 48 ? `${text.slice(0, 47)}…` : text, reasons,
+    drift: drift.slice(next, (next += joins.length)).filter((said) => said !== null),
+  }));
+  return { current: comp.get(lineId)?.number ?? null, takes };
 }
 
 /**
@@ -234,7 +250,7 @@ async function publishVoiceComp(project: string, script: VoiceScript, before: Vo
   const manifest: Record<string, RecordedVoiceLine> = {};
   await settleAll([...new Set(comp.values())].map((take) => withStudioTemp('voice-cut', async (tmp) => {
     const cut = await cutVoiceTake(project, take, tmp);
-    if (take.info.context && comp.get(take.info.lines[1].id) === take) checkPickupJoin(project, take, cut);
+    if (take.info.context && runOfTake(take).some((line) => comp.get(line.id) === take)) checkPickupJoins(project, take, cut);
     for (const [i, clip] of cut.clips.entries()) {
       if (comp.get(clip.id) !== take) continue;
       manifest[clip.id] = manifestLine(take, i, clip, keepVoiceClip(dir, clip.id, cut.files[i]), cut.words[i], cut.rate, clip.id === script.lines[0].id);
@@ -248,9 +264,52 @@ async function publishVoiceComp(project: string, script: VoiceScript, before: Vo
     'comp.json': JSON.stringify(compFile, null, 2),
   });
   stampChosenVoiceTakes(project, before, comp);
+  // Each join between takes once, from the newer take's line: the read just made, heard against what it joins.
+  const joins = voiceJoinsOf(script, (id) => comp.get(id), (id, neighbour) => comp.get(id)!.number > comp.get(neighbour)!.number);
+  (await voiceJoinDrift(project, joins)).forEach((said, i) => said && process.stderr.write(`listen to ${joins[i].id}: ${said}\n`));
   const total = Object.values(ordered).reduce((sum, line) => sum + line.duration, 0);
   process.stderr.write(`${voiced.length} lines voiced, ${total.toFixed(1)}s of voice\n`);
   return join(dir, 'manifest.ts');
+}
+
+/**
+ * Where a line on `take` meets a neighbour on `other`, a different take, and the line both read to compare them on:
+ * the neighbour, when `take` read it (a pickup always reads its neighbours), else the line itself, when `other` did.
+ */
+type VoiceJoin = { id: string; side: 'before' | 'after'; neighbour: string; take: KeptVoiceTake; other: KeptVoiceTake; on: string };
+
+const readsLine = (take: KeptVoiceTake, id: string) => take.info.lines.some((line) => line.id === id);
+
+/** Each join between takes in the comp `takeOf` gives (undefined for an unvoiced line), from the lines `from` picks. */
+function voiceJoinsOf(script: VoiceScript, takeOf: (id: string) => KeptVoiceTake | undefined, from: (id: string, neighbour: string) => boolean): VoiceJoin[] {
+  return script.lines.flatMap(({ id }, at) => ([[script.lines[at - 1], 'before'], [script.lines[at + 1], 'after']] as const).flatMap(([line, side]) => {
+    const take = takeOf(id), other = line && takeOf(line.id);
+    if (!take || !other || take === other || !from(id, line.id)) return [];
+    const on = [line.id, id].find((both) => readsLine(take, both) && readsLine(other, both));
+    return on ? [{ id, side, neighbour: line.id, take, other, on }] : [];
+  }));
+}
+
+/**
+ * What a listener would hear at each join, by voiceDrift on the line both takes read; null where nothing. Cuts each
+ * take involved once, to measure the lines it's compared on.
+ */
+async function voiceJoinDrift(project: string, joins: readonly VoiceJoin[]): Promise<(string | null)[]> {
+  const wanted = new Map<KeptVoiceTake, Set<string>>();
+  for (const { take, other, on } of joins) for (const read of [take, other]) wanted.set(read, (wanted.get(read) ?? new Set()).add(on));
+  const measured = new Map<string, VoiceClipMeasure>();
+  await settleAll([...wanted].map(([take, ids]) => withStudioTemp('voice-drift', async (tmp) => {
+    const cut = await cutVoiceTake(project, take, tmp);
+    cut.clips.forEach((clip, i) => {
+      if (!ids.has(clip.id)) return;
+      const { samples, rate } = samplesFromWav(readFileSync(cut.files[i]));
+      measured.set(`${take.number}:${clip.id}`, measureVoiceClip(spokenText(take.info.lines[i].text), samples, rate));
+    });
+  })));
+  return joins.map(({ side, neighbour, take, other, on }) => {
+    const drift = voiceDrift(measured.get(`${take.number}:${on}`)!, measured.get(`${other.number}:${on}`)!);
+    return drift.length ? `${neighbour}, ${side} it, is from take ${other.number}, and take ${take.number} reads ${on} ${drift.join(' and ')} than take ${other.number} does` : null;
+  });
 }
 
 /**
@@ -264,25 +323,46 @@ function keepVoiceClip(dir: string, id: string, file: string) {
   return path;
 }
 
-/**
- * A pickup's join must be clean to publish: a clear cut at least TIGHT_PAUSE long, every word
- * of the lead-in in its own clip, and none in the line's. The line's clip is aligned to the lead-in's words then its
- * own; the alignment pairs from the end, so a word repeated at the join goes to the line.
- */
-function checkPickupJoin(project: string, take: KeptVoiceTake, cut: { clips: TakeClip[]; words: SpokenWord[][] }) {
-  const [lead, first] = take.info.lines;
-  const leadText = spokenText(lead.text), leadWords = scriptWords(leadText).length;
-  const inLead = alignSpokenWords(leadText, cut.words[0], 0).paired, inFirst = alignSpokenWords(`${leadText} ${spokenText(first.text)}`, cut.words[1], 0).heard;
-  const missing = scriptWords(leadText).filter((_, k) => !inLead[k]), leaked = scriptWords(leadText).filter((_, k) => inFirst[k]);
+/** The lines a take reads for itself, without its context. */
+const runOfTake = (take: KeptVoiceTake) => take.info.lines.filter((line) => !isVoiceContextLine(take.info.context, line.id));
+
+/** A pickup's joins must be clean to publish any of its lines: both sides held as contextJoinProblems holds them. */
+function checkPickupJoins(project: string, take: KeptVoiceTake, cut: { clips: TakeClip[]; words: SpokenWord[][] }) {
+  const { before, after } = take.info.context ?? {}, lines = take.info.lines, run = runOfTake(take);
+  const firstAt = before ? 1 : 0, lastAt = lines.length - (after ? 2 : 1);
   const problems = [
-    !cut.clips[1].cutIsClear && 'the cut before it is in no one clear pause',
-    cut.clips[1].cutPause < TIGHT_PAUSE && `the cut before it is in only ${Math.round(cut.clips[1].cutPause * 1000)} ms of quiet`,
-    missing.length && `${lead.id}, its lead-in, was heard without ${missing.join(' ')}`,
-    leaked.length && `its clip holds ${leaked.join(' ')} of ${lead.id}'s ${leadWords} words`,
-  ].filter(Boolean);
+    ...(before ? contextJoinProblems(lines[0], lines[firstAt], cut.words[0], cut.words[firstAt], cut.clips[firstAt], 'before') : []),
+    ...(after ? contextJoinProblems(lines.at(-1)!, lines[lastAt], cut.words.at(-1)!, cut.words[lastAt], cut.clips.at(-1)!, 'after') : []),
+  ];
   if (!problems.length) return;
-  const lines = take.info.lines.slice(1).map((line) => line.id).join(' ');
-  throw new Error(`take ${take.number} reads ${first.id} after ${lead.id}, but ${problems.join('; ')}, so nothing was published. The take is kept; read it again with studio voice reread ${basename(project)} ${lines}`);
+  const ids = run.map((line) => line.id);
+  throw new Error(`take ${take.number} reads ${ids.join(', ')} ${voiceContextPhrase(take.info.context)}, but ${problems.join('; ')}, so nothing was published. The take is kept; read it again with studio voice reread ${basename(project)} ${ids.join(' ')}`);
+}
+
+// Words and their hyphen pieces back to front: an alignment pairs from the end, so aligning mirrored words pairs from the start.
+const mirrorWord = (word: string) => word.split('-').toReversed().join('-');
+const mirroredText = (text: string) => scriptWords(text).toReversed().map(mirrorWord).join(' ');
+const mirroredHeard = (heard: readonly SpokenWord[]) => heard.toReversed().map((w) => ({ text: mirrorWord(w.text), start: w.start, end: w.end }));
+
+/**
+ * A context line's join with the run is clean with a clear cut at least TIGHT_PAUSE long, every word of the context in
+ * its own clip, and none in the line's. The line's clip is aligned to both lines from the context's side, so a word
+ * repeated at the join goes to the line.
+ */
+function contextJoinProblems(context: VoiceTakeLine, line: VoiceTakeLine, contextHeard: SpokenWord[], lineHeard: SpokenWord[], cutClip: TakeClip, side: 'before' | 'after'): string[] {
+  const cutAt = side === 'before' ? `the cut after ${context.id}` : `the cut before ${context.id}`;
+  const text = spokenText(context.text), words = scriptWords(text), own = spokenText(line.text);
+  const inContext = alignSpokenWords(text, contextHeard, 0).paired;
+  const inLine = side === 'before'
+    ? alignSpokenWords(`${text} ${own}`, lineHeard, 0).heard.slice(0, words.length)
+    : alignSpokenWords(mirroredText(`${own} ${text}`), mirroredHeard(lineHeard), 0).heard.slice(0, words.length).toReversed();
+  const missing = words.filter((_, k) => !inContext[k]), leaked = words.filter((_, k) => inLine[k]);
+  return [
+    !cutClip.cutIsClear && `${cutAt} is in no one clear pause`,
+    cutClip.cutPause < TIGHT_PAUSE && `${cutAt} is in only ${Math.round(cutClip.cutPause * 1000)} ms of quiet`,
+    missing.length && `${context.id} was heard without ${missing.join(' ')}`,
+    leaked.length && `${line.id}'s clip holds ${leaked.join(' ')} of ${context.id}`,
+  ].filter((problem) => typeof problem === 'string');
 }
 
 /** Awaits every one of `work`, so none outlives the caller, then throws if any failed. */

@@ -131,10 +131,10 @@ blockout, `video-gen`).
 Hand it to the user for review (`studio-review`); pacing notes go into `storyboard.ts`: the row, its lines, its
 `timing` (lead, gap, tail, `nudge`). Done when the user signs the animatic off.
 
-Then voice it with `studio voice sync <p>` (its key: `studio voice sync --help`; without it, the user runs the command
-under their secret launcher, `studio-setup`). `--draft` is for timing only. Every take is kept: `reread` for
-another performance, `use` to go back to one. Render the animatic again to check the timing, then hand over to
-`video-motion` and `video-sound`.
+Then voice it with `studio voice sync <p>` (keyless: the user runs it under their secret launcher,
+`studio-setup`). `--draft` is for timing only. Takes are all kept: `reread` for another performance, `use` to return
+to one; `listen to <line>` means two takes may sound apart (`studio voice takes <p> <line>`).
+Re-render the animatic, then hand over to `video-motion` and `video-sound`.
 
 ## Real UI only
 

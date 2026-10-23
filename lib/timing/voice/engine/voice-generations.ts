@@ -35,6 +35,13 @@ export function readVoiceComp(project: string): VoiceCompFile['lines'] {
   return generation ? (JSON.parse(readFileSync(join(generation, 'comp.json'), 'utf8')) as VoiceCompFile).lines : {};
 }
 
+/** The current generation's voiced lines, by id: empty before the first. */
+export function readVoiceManifest(project: string): RecordedVoice {
+  const generation = currentVoiceGeneration(project);
+  // SAFETY: a generation's manifest.json is written only by publishVoiceGeneration, as a RecordedVoice.
+  return generation ? (JSON.parse(readFileSync(join(generation, 'manifest.json'), 'utf8')) as RecordedVoice) : {};
+}
+
 /**
  * Writes a generation of these files (unless one with the same contents is kept) and makes it current with one
  * rename of the pointer. The generation it replaces is stamped, so it's kept a day from now for the readers holding it.

@@ -49,7 +49,7 @@ const syncCommand = defineCommand({
   meta: {
     name: 'sync',
     description: "Voice every line of storyboard.ts as it is now, reading only the lines no kept take reads.",
-    about: "Reads storyboard.ts's `voice`, `voiceDirection` and its scenes' lines in plan order. Each line keeps the take chosen for it while that take reads it as it is now (its text and paragraph, and the take's model, voice and direction), else uses a kept take that does, and nothing is paid. The rest are read, one pickup per run of lines, each after the line before it, which is read for the lead-in and keeps its own take. A line cut from a recording is kept even when its text changed, with a warning. An unchanged line keeps its own audio, duration and pause before; its place in the video still moves when an earlier line changes length. Writes each line's clip as audio/clips/<line>-<hash>.wav, never written over, and the manifest and comp (the take each line is cut from) as a new audio/generations/<hash>/, which audio/manifest.ts then names: one switch, so a reader sees one voice whole. A generation is deleted a day after it stops being current, and a clip a day after no kept generation names it, so a render under way keeps its voice. A pickup whose join isn't clean is refused, its take kept. Prints audio/manifest.ts.",
+    about: "Reads storyboard.ts's `voice`, `voiceDirection` and its scenes' lines in plan order. Each line keeps the take chosen for it while that take reads it as it is now (its text and paragraph, and the take's model, voice and direction), else uses a kept take that does, and nothing is paid. The rest are read, one pickup per run of lines, each between the lines around it, read for the lead-in and the run's ending intonation, which keep their own takes. A line cut from a recording is kept even when its text changed, with a warning. An unchanged line keeps its own audio, duration and pause before; its place in the video still moves when an earlier line changes length. Writes each line's clip as audio/clips/<line>-<hash>.wav, never written over, and the manifest and comp (the take each line is cut from) as a new audio/generations/<hash>/, which audio/manifest.ts then names: one switch, so a reader sees one voice whole. A generation is deleted a day after it stops being current, and a clip a day after no kept generation names it, so a render under way keeps its voice. A pickup whose joins aren't clean is refused, its take kept. Where two takes join, a line both read is compared, and `listen to <line>` says when they'd be heard apart by pitch or pace (never refused: hear it). Prints audio/manifest.ts.",
   },
   args: syncArgs,
   async run({ args, rawArgs }) {
@@ -71,7 +71,7 @@ const rereadCommand = defineCommand({
   meta: {
     name: 'reread',
     description: 'Pay for a new read of exactly these lines and choose it for them.',
-    about: "Gemini TTS on OpenRouter (needs OPENROUTER_API_KEY), to hear another performance: it reads differently every time. Each run of the lines is read after the line before it, for the lead-in, which keeps its own take. Nothing else changes: other lines keep their takes, and lines still unvoiced stay so. The takes the lines had stay kept: use goes back to one. Prints audio/manifest.ts and any lines still unvoiced.",
+    about: "Gemini TTS on OpenRouter (needs OPENROUTER_API_KEY), to hear another performance: it reads differently every time. Each run of the lines is read between the lines around it, for context, which keep their own takes. Nothing else changes: other lines keep their takes, and lines still unvoiced stay so. The takes the lines had stay kept: use goes back to one. Prints audio/manifest.ts and any lines still unvoiced.",
   },
   args: rereadArgs,
   async run({ args, rawArgs }) {
@@ -94,7 +94,7 @@ const useCommand = defineCommand({
   meta: {
     name: 'use',
     description: 'Choose a kept take for some lines, or every line it reads as it is now, without paying.',
-    about: "Without lines, the take is chosen for every line it reads as the script is now, never the line it read only for its lead-in. A named line it can't be used for (another text, voice or direction; a recording: another text) fails before anything changes. Prints audio/manifest.ts, what it chose and skipped, and any lines still unvoiced.",
+    about: "Without lines, the take is chosen for every line it reads as the script is now, never the lines it read only for context. A named line it can't be used for (another text, voice or direction; a recording: another text) fails before anything changes. Prints audio/manifest.ts, what it chose and skipped, and any lines still unvoiced.",
   },
   args: useArgs,
   async run({ args, rawArgs }) {
@@ -123,7 +123,7 @@ const importCommand = defineCommand({
   meta: {
     name: 'import',
     description: 'Keep a recording (a human read) of these lines as a new take and choose it for them.',
-    about: "The file must hold exactly these lines, in storyboard order, with nothing before the first: no lead-in. Never pays. A recorded line is judged on its text alone, so a new voice or direction never replaces it; sync keeps it even when its text changes, and reread or use replaces it. Prints audio/manifest.ts and any lines still unvoiced.",
+    about: "The file must hold exactly these lines, in storyboard order, with nothing around them: no context. Never pays. A recorded line is judged on its text alone, so a new voice or direction never replaces it; sync keeps it even when its text changes, and reread or use replaces it. Prints audio/manifest.ts and any lines still unvoiced.",
   },
   args: importArgs,
   async run({ args, rawArgs }) {
@@ -145,8 +145,8 @@ const takesArgs = {
 const takesCommand = defineCommand({
   meta: {
     name: 'takes',
-    description: "List the kept takes, or the takes of one line. Reads and cuts nothing.",
-    about: "Without a line: each take's number, source, when read, length, the lines it reads (old: it reads them as they were, not as they are now; after: the line it read only for its lead-in) and the lines it's chosen for, then the lines still unvoiced. With a line: the take it's cut from, and every take that reads it, with its source, length, when read, its text and whether use can choose it (if not, why).",
+    description: "List the kept takes, or the takes of one line. Never pays.",
+    about: "Without a line: each take's number, source, when read, length, the lines it reads (old: it reads them as they were, not as they are now; between, after or before: the lines it read only for context) and the lines it's chosen for, then the lines still unvoiced. With a line: the take it's cut from, and every take that reads it, with its source, length, when read, its text and whether use can choose it (if not, why); for one it can, whether it would be heard apart from the takes its neighbours are cut from, by pitch or pace (it cuts the takes to measure them, with whisper's hearing kept on each take).",
   },
   args: takesArgs,
   async run({ args, rawArgs }) {
@@ -155,10 +155,10 @@ const takesCommand = defineCommand({
     const { project, script } = await loadVoiceProject(args.project);
     const { listVoiceLineTakes, listVoiceTakes } = await import('#lib/timing/voice/engine/voice-project.ts');
     if (args.line) {
-      const { current, takes } = listVoiceLineTakes(project, script, args.line);
+      const { current, takes } = await listVoiceLineTakes(project, script, args.line);
       console.log(`${args.line}: ${current === null ? 'unvoiced' : `cut from take ${current}`}`);
       for (const take of takes) {
-        const verdict = take.reasons.length ? `can't use: ${take.reasons.join(', ')}` : 'usable';
+        const verdict = take.reasons.length ? `can't use: ${take.reasons.join(', ')}` : ['usable', ...take.drift].join('; ');
         console.log(`${String(take.number).padStart(3)}  ${take.source.padEnd(9)}  ${when(take.madeAt)}  ${take.seconds.toFixed(1).padStart(6)}s  "${take.excerpt}"  ${verdict}`);
       }
       return;
@@ -166,7 +166,7 @@ const takesCommand = defineCommand({
     for (const take of listVoiceTakes(project, script)) {
       const reads = take.lines.map((line) => (line.now ? line.id : `${line.id} (old)`)).join(' ') || 'nothing in the script';
       const chosen = take.chosenFor.length ? `  chosen for ${take.chosenFor.join(' ')}` : '';
-      console.log(`${String(take.number).padStart(3)}  ${take.source.padEnd(9)}  ${when(take.madeAt)}  ${take.seconds.toFixed(1).padStart(6)}s  reads ${reads}${take.context ? ` after ${take.context}` : ''}${chosen}`);
+      console.log(`${String(take.number).padStart(3)}  ${take.source.padEnd(9)}  ${when(take.madeAt)}  ${take.seconds.toFixed(1).padStart(6)}s  reads ${reads}${take.context ? ` ${take.context}` : ''}${chosen}`);
     }
     await printUnvoiced(project, script);
   },
