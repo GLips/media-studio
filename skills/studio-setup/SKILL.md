@@ -54,10 +54,10 @@ keep it local.
 
 ## 4. Keys (only for what they want to make)
 
-Ask what they want to make first: captures, motion, a draft voice (`studio voice --read=draft`), sound effects, the
+Ask what they want to make first: captures, motion, a draft voice (`studio voice sync --draft`), sound effects, the
 mix, renders and review all run free.
 
-- **`OPENROUTER_API_KEY`** (openrouter.ai/keys, with credit): a real voice (`studio voice`, `studio audition`) and
+- **`OPENROUTER_API_KEY`** (openrouter.ai/keys, with credit): a real voice (`studio voice sync`, `studio audition`) and
   generation (`studio music gen`, `studio gen image`, `studio gen video`). Each verb's `--help` gives its price.
 - **An S3-compatible bucket** (Cloudflare R2 works), for the reference video `studio gen video` uploads for its
   provider to fetch: `STUDIO_UPLOAD_S3_ENDPOINT`, `STUDIO_UPLOAD_S3_BUCKET`, `STUDIO_UPLOAD_S3_ACCESS_KEY_ID`,

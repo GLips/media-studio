@@ -4,7 +4,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { VoiceScript } from '#lib/timing/voice/engine/voice-project.ts';
+import type { VoiceScript } from '#lib/timing/voice/models/voice-take.ts';
 import type { Storyboard } from '../models/storyboard.ts';
 
 /** The project's storyboard.ts `storyboard`, or undefined for a project with none. Throws if it exports none. */

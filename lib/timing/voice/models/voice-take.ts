@@ -24,22 +24,29 @@ const MIN_SPEECH_FRAMES = 8;
 // The shortest quiet that counts as a performed pause tag: shorter, and it's a stop inside a word.
 const MIN_TAGGED_PAUSE_FRAMES = 15;
 
-/** One line a take reads, as the script had it when read, and its hash (voice-project.ts) to tell whether it still does. */
-export type VoiceTakeLine = { id: string; text: string; paragraph: boolean; hash: string };
+/** What the project reads: the voice, how it reads, and every line in plan order (a storyboard's, by readProjectVoiceScript). */
+export type VoiceScript = { voice: string; direction?: string; lines: readonly VoiceScriptLine[] };
+export type VoiceScriptLine = { id: string; text: string; paragraph?: boolean };
+
+/** One line a take reads, as the script had it when read. */
+export type VoiceTakeLine = { id: string; text: string; paragraph: boolean };
+/** What read a take: Gemini's model, voice and direction for a `tts` take, say's voice for a `draft`. */
+export type VoiceTakeSettings = { model: string; voice: string; direction: string | null } | { sayVoice: string };
 /**
- * audio/takes/<n>.json: where take n came from, the lines it reads in order (a pickup's first is its `context`, read
- * for the lead-in and never chosen), when it was read and last chosen, and what whisper heard in it and its clips,
- * keyed by each WAV's hash.
+ * audio/takes/<n>.json: where take n came from, what read it (`settings`: none for a recording, or when unknown), the
+ * lines it reads in order (a pickup's first is its `context`, read for the lead-in, never chosen), when it was read
+ * and last chosen, and what whisper heard in it and its clips, keyed by each WAV's hash.
  */
 export type VoiceTakeFile = {
   source: 'tts' | 'draft' | 'recording';
+  settings?: VoiceTakeSettings;
   lines: VoiceTakeLine[];
   context?: string;
   madeAt: string;
   chosenAt: string;
   heard?: Record<string, SpokenWord[]>;
 };
-/** audio/comp.json: the take each line of the script is cut from, and where that take came from. */
+/** audio/comp.json: the take each voiced line is cut from, and where that take came from. A line not in it is unvoiced. */
 export type VoiceCompFile = { lines: Record<string, { take: number; source: VoiceTakeFile['source'] }> };
 
 export type TakeLine = { id: string; text: string };

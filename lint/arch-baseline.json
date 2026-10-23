@@ -623,7 +623,6 @@
       "console.error(`${name}: ${basename(source)}, ${duration.toFixed(1)}s, ${lufs} LUFS, ${bpm} BPM, first beats ${beats.slice(0, 4).join(', ')}s`);": 1
     },
     "lib/timing/voice/engine/voice-project.ts": {
-      "console.error(`${Object.keys(manifest).length} lines, ${total.toFixed(1)}s of voice`);": 1,
       "console.error(`${voice}  ${duration.toFixed(2)}s`);": 1
     }
   },
@@ -918,9 +917,6 @@
     "lib/platform/paid-generation/engine/paid-generation.ts": {
       "value: unknown": 2,
       "request: unknown[]": 1
-    },
-    "lib/timing/voice/engine/voice-project.ts": {
-      "key: unknown[]": 1
     },
     "lint/oxlint/lib/rule-options.ts": {
       "option: unknown": 1
@@ -1860,9 +1856,6 @@
     },
     "lib/timing/timeline/models/timeline.ts": {
       "const end = (ref: ReplaySpec['from']) => (typeof ref === 'string' ? { cue: ref, frames: 0 } : ref);": 1
-    },
-    "lib/timing/voice/engine/voice-project.ts": {
-      "const round = (x: number) => Math.round(x * 1000) / 1000;": 1
     },
     "lib/timing/voice/models/voice-take.ts": {
       "export function cutTakeIntoLines(lines: readonly TakeLine[], heard: readonly SpokenWord[], samples: Int16Array, rate: number): TakeClip[] {": 1,

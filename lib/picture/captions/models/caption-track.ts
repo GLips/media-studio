@@ -48,7 +48,7 @@ export function captionTrackOfVoice(timeline: Timeline, voice: Voice): CaptionTr
     const line = voice[id];
     if (!line) throw new Error(`scene ${scene.id} speaks line ${id}, which the video's voice doesn't have: pass defineVideo the manifest its timeline reads`);
     const tokens = captionTokens(line.caption), at = frame / timeline.fps;
-    if (tokens.length !== line.words.length) throw new Error(`line ${id}'s caption has ${tokens.length} words and its take ${line.words.length}: run studio voice again`);
+    if (tokens.length !== line.words.length) throw new Error(`line ${id}'s caption has ${tokens.length} words and its take ${line.words.length}: run studio voice sync again`);
     return { id, paragraph: line.paragraph, words: tokens.map((token, k) => ({ ...token, start: at + line.words[k].start, end: at + line.words[k].end })) };
   }));
 }

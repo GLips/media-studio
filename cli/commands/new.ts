@@ -35,7 +35,7 @@ export default defineCommand({
       console.error(`Next (the video-kickoff skill):
   studio render ${name} --animatic  the blocked scenes as the video plays now
   studio review open ${name}        approve the storyboard on it, then raise each scene in its own file${shotsFirst}${voiced ? `
-  studio voice ${name}              voice it` : ''}
+  studio voice sync ${name}         voice it` : ''}
   studio clock ${name}              every scene's frames, beats and cues`);
     }
     console.log(dir);
