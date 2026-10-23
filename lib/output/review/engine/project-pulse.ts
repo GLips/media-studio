@@ -34,8 +34,8 @@ export type ProjectPulse = Omit<ProjectPulseFacts, 'files'> & {
 function planPulseOf(dir: string): ProjectPulse['plan'] {
   const storyboard = join(dir, 'storyboard.ts');
   if (!existsSync(storyboard)) return null;
-  const hashOf = (...path: string[]) => (existsSync(join(dir, ...path)) ? renderFileStamp(join(dir, ...path)).hash : null);
-  return { storyboard: renderFileStamp(storyboard).hash, manifest: hashOf('audio', 'manifest.json'), comp: hashOf('audio', 'comp.json') };
+  const voice = join(dir, 'audio', 'manifest.ts');
+  return { storyboard: renderFileStamp(storyboard).hash, voice: existsSync(voice) ? renderFileStamp(voice).hash : null };
 }
 
 /** `project`'s pulse, by its folder name under work/projects/. */

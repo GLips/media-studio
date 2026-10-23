@@ -42,9 +42,9 @@ const hyphenPieces = (word: string) => word.split('-').map(normalWord).filter(Bo
 /**
  * Times each script word from whisper's words. An edit-distance alignment pairs them in order; a substitution still
  * lends its timing, and a script word with no partner shares the gap between its neighbours by length. `heard` says
- * which script words whisper heard as written.
+ * which script words whisper heard as written, `paired` which it heard anything for (as written or misheard).
  */
-export function alignSpokenWords(text: string, heard: readonly SpokenWord[], duration: number): { words: SpokenWord[]; heard: boolean[] } {
+export function alignSpokenWords(text: string, heard: readonly SpokenWord[], duration: number): { words: SpokenWord[]; heard: boolean[]; paired: boolean[] } {
   const script = scriptWords(text);
   const a = script.flatMap((word, owner) => hyphenPieces(word).map((piece) => ({ piece, owner })));
   // A heard word's time is shared among its pieces by length.
@@ -79,7 +79,7 @@ export function alignSpokenWords(text: string, heard: readonly SpokenWord[], dur
     else j--;
   }
   a.forEach(({ owner }, i) => { if (!pieceHeard[i]) asWritten[owner] = false; });
-  return { words: fillUnheard(script, partner, duration), heard: asWritten };
+  return { words: fillUnheard(script, partner, duration), heard: asWritten, paired: partner.map(Boolean) };
 }
 
 /** Words for a line with no audio yet, spread over its estimated duration by length. */

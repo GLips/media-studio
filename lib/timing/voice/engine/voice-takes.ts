@@ -1,9 +1,8 @@
-// voice-takes.ts: every take of a project's lines, kept in audio/takes/, and the comp: which take each voiced line is
-// cut from. Node only.
+// voice-takes.ts: every take of a project's lines, kept in audio/takes/. Node only.
 //
 // A paid read can never be had again (Gemini reads differently every time) and audio/ is outside git, so a take is
-// never overwritten or deleted: take n is audio/takes/<n>.wav with its audio/takes/<n>.json. audio/comp.json names,
-// per voiced line, the take its clip and its manifest entry are cut from; voice-project.ts publishes it.
+// never overwritten or deleted: take n is audio/takes/<n>.wav with its audio/takes/<n>.json. Which take each voiced
+// line is cut from (the comp) is published with its manifest, in voice-generations.ts.
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { VoiceCompFile, VoiceTakeFile } from '../models/voice-take.ts';
@@ -12,7 +11,6 @@ import type { VoiceCompFile, VoiceTakeFile } from '../models/voice-take.ts';
 export type KeptVoiceTake = { number: number; wav: string; info: VoiceTakeFile };
 
 const takesDir = (project: string) => join(project, 'audio', 'takes');
-export const voiceCompPath = (project: string) => join(project, 'audio', 'comp.json');
 const takeJsonPath = (project: string, number: number) => join(takesDir(project), `${number}.json`);
 
 /** The project's kept takes, by number. */
@@ -26,12 +24,6 @@ export function readVoiceTakes(project: string): KeptVoiceTake[] {
     if (!Array.isArray(info.lines)) throw new Error(`${join(dir, file)} is a take written before takes kept their lines: move it and its .wav out of audio/takes/`);
     return [{ number: Number(number), wav: join(dir, `${number}.wav`), info }];
   }).toSorted((a, b) => a.number - b.number);
-}
-
-/** The take each line is cut from, by line id: empty before the first take. */
-export function readVoiceComp(project: string): VoiceCompFile['lines'] {
-  // SAFETY: comp.json is written only by voice-project.ts, from a VoiceCompFile.
-  return existsSync(voiceCompPath(project)) ? (JSON.parse(readFileSync(voiceCompPath(project), 'utf8')) as VoiceCompFile).lines : {};
 }
 
 /**

@@ -46,7 +46,7 @@ export type VoiceTakeFile = {
   chosenAt: string;
   heard?: Record<string, SpokenWord[]>;
 };
-/** audio/comp.json: the take each voiced line is cut from, and where that take came from. A line not in it is unvoiced. */
+/** A generation's comp.json: the take each voiced line is cut from, and where that take came from. A line not in it is unvoiced. */
 export type VoiceCompFile = { lines: Record<string, { take: number; source: VoiceTakeFile['source'] }> };
 
 export type TakeLine = { id: string; text: string };

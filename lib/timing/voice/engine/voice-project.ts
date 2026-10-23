@@ -1,17 +1,17 @@
 // voice-project.ts: voices a project's script line by line, each voiced line cut from the take chosen for it (the
 // comp). `studio voice` runs it.
 //
-// The model reads the text verbatim, so direct it with inline tags (`<short pause>`, `<breath>`…), which captions and
-// word times leave out; `*word*` and `` `key` `` it never sees.
+// The model reads the text verbatim: direct it with inline tags (`<short pause>`…), which captions leave out.
 //
 // Contract: a line left unchanged keeps its own audio, duration and pauseBefore; its place in the video still moves
 // when an earlier line changes length. A pickup reads the line before it too (cut, never chosen) so the join holds;
-// takes join only at clip boundaries, in measured quiet. Every take is kept (voice-takes.ts).
+// takes join only at clip boundaries, in measured quiet. Every take is kept (voice-takes.ts), and each run publishes
+// a whole generation of manifest and comp (voice-generations.ts).
 //
 // Negative space: the manifest holds voiced lines only; resolveStoryboard estimates the rest.
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { measureAudibleLoudness } from '#lib/platform/ffmpeg/engine/loudness.ts';
 import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
@@ -19,13 +19,14 @@ import { replaceFileWhole } from '#lib/platform/files/engine/replace-file-whole.
 import { releaseStudioLockFile, tryStudioLockFile } from '#lib/platform/files/engine/studio-lock-file.ts';
 import { postOpenRouter } from '#lib/platform/paid-generation/engine/openrouter.ts';
 import type { RenderVoice } from '../models/render-voice.ts';
-import type { RecordedVoice, RecordedVoiceLine } from '../models/voice-manifest.ts';
+import type { RecordedVoiceLine } from '../models/voice-manifest.ts';
 import { planVoiceSync, voiceLineStaleReasons, voicePickupsOf, type VoicePickup, type VoiceSettingsNow, type VoiceStaleReason } from '../models/voice-comp.ts';
 import { cutTakeIntoLines, pinWordsToTaggedPauses, type TakeClip, type VoiceCompFile, type VoiceScript, type VoiceTakeFile } from '../models/voice-take.ts';
 import { alignSpokenWords, captionMarkup, scriptWords, spokenText, ttsText, type SpokenWord } from '../models/voice-words.ts';
 import { samplesFromWav, wavFromPcm, wavFromSamples } from '#lib/platform/wav/models/wav.ts';
 import { heardWords } from './whisper-words.ts';
-import { keepVoiceTake, readVoiceComp, readVoiceTakes, saveKeptVoiceTake, stampChosenVoiceTakes, voiceCompPath, type KeptVoiceTake } from './voice-takes.ts';
+import { publishVoiceGeneration, readVoiceComp, sweepVoiceGenerations } from './voice-generations.ts';
+import { keepVoiceTake, readVoiceTakes, saveKeptVoiceTake, stampChosenVoiceTakes, type KeptVoiceTake } from './voice-takes.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 
 const MODEL = 'google/gemini-3.8-flash-tts';
@@ -63,7 +64,7 @@ async function withVoiceLock<T>(project: string, step: () => Promise<T>): Promis
   const tried = tryStudioLockFile(join(project, 'audio', 'voice.lock'));
   if ('holder' in tried) throw new Error(`another studio voice (process ${tried.holder.pid}) is working on this project: wait for it`);
   try {
-    sweepVoiceFiles(project);
+    sweepVoiceGenerations(project);
     return await step();
   } finally {
     releaseStudioLockFile(tried.held);
@@ -223,8 +224,8 @@ export function listVoiceLineTakes(project: string, script: VoiceScript, id: str
 
 /**
  * Cuts each take in `comp` into its lines, keeps each voiced line's clip from its own take in audio/clips/ under its
- * bytes' hash, then writes comp.json, manifest.json and manifest.ts. A failure before them leaves all three as they
- * were; one among them puts back those already written. Returns audio/manifest.ts.
+ * bytes' hash, then publishes the manifest and comp as one generation. A failure leaves the voice as it was. Returns
+ * audio/manifest.ts.
  */
 async function publishVoiceComp(project: string, script: VoiceScript, before: VoiceCompFile['lines'], comp: ReadonlyMap<string, KeptVoiceTake>): Promise<string> {
   const dir = join(project, 'audio');
@@ -241,35 +242,20 @@ async function publishVoiceComp(project: string, script: VoiceScript, before: Vo
   })));
   const ordered = Object.fromEntries(voiced.map((line) => [line.id, manifest[line.id]]));
   const compFile: VoiceCompFile = { lines: Object.fromEntries(voiced.map((line) => [line.id, { take: comp.get(line.id)!.number, source: comp.get(line.id)!.info.source }])) };
-  replaceVoiceFiles([
-    [voiceCompPath(project), JSON.stringify(compFile, null, 2)],
-    [join(dir, 'manifest.json'), JSON.stringify(ordered, null, 2)],
-    [join(dir, 'manifest.ts'), voiceManifestModule(ordered)],
-  ]);
+  publishVoiceGeneration(project, {
+    'manifest.json': JSON.stringify(ordered, null, 2),
+    'manifest.ts': voiceManifestModule(ordered, voiceReadOf(compFile.lines)),
+    'comp.json': JSON.stringify(compFile, null, 2),
+  });
   stampChosenVoiceTakes(project, before, comp);
   const total = Object.values(ordered).reduce((sum, line) => sum + line.duration, 0);
   process.stderr.write(`${voiced.length} lines voiced, ${total.toFixed(1)}s of voice\n`);
   return join(dir, 'manifest.ts');
 }
 
-/** Writes each file whole, in order; on a failure, puts back each one already written and rethrows. */
-function replaceVoiceFiles(files: readonly (readonly [string, string])[]) {
-  const undo: (() => void)[] = [];
-  try {
-    for (const [path, text] of files) {
-      const previous = existsSync(path) ? readFileSync(path) : null;
-      undo.push(() => (previous === null ? rmSync(path, { force: true }) : replaceFileWhole(path, previous)));
-      replaceFileWhole(path, text);
-    }
-  } catch (error) {
-    for (const step of undo.toReversed()) step();
-    throw error;
-  }
-}
-
 /**
- * Keeps a clip as audio/clips/<line>-<hash>.wav, named by its bytes and never written over, so a manifest a reader
- * holds always finds its clips. Returns its path.
+ * Keeps a clip as audio/clips/<line>-<hash>.wav, named by its bytes and never written over, so a generation a reader
+ * holds finds its clips while it's kept (sweepVoiceGenerations). Returns its path.
  */
 function keepVoiceClip(dir: string, id: string, file: string) {
   const bytes = readFileSync(file);
@@ -279,32 +265,20 @@ function keepVoiceClip(dir: string, id: string, file: string) {
 }
 
 /**
- * Under the lock, before a run: removes what a failed write left (`.tmp` files) and the clips no manifest names. A
- * render reading the manifest as it was keeps its clips, since the manifest names them until this run replaces it.
- */
-function sweepVoiceFiles(project: string) {
-  const dir = join(project, 'audio'), clips = join(dir, 'clips'), manifest = join(dir, 'manifest.json');
-  // SAFETY: manifest.json is written only by publishVoiceComp, as a RecordedVoice.
-  const named = new Set(existsSync(manifest) ? Object.values(JSON.parse(readFileSync(manifest, 'utf8')) as RecordedVoice).map((line) => basename(line.src)) : []);
-  for (const file of readdirSync(dir)) if (file.endsWith('.tmp')) rmSync(join(dir, file), { force: true });
-  if (!existsSync(clips)) return;
-  for (const file of readdirSync(clips)) if (file.endsWith('.tmp') || !named.has(file)) rmSync(join(clips, file), { force: true });
-}
-
-const scriptWordCount = (text: string) => scriptWords(spokenText(text)).length;
-
-/**
- * A pickup's join must be clean before its first line is published: a clear cut at least TIGHT_PAUSE long, the lead-in
- * heard whole (short, its tail went into the line), and the line heard with no more words than it has (more, the
- * lead-in's tail is in it).
+ * A pickup's join must be clean to publish: a clear cut at least TIGHT_PAUSE long, every word
+ * of the lead-in in its own clip, and none in the line's. The line's clip is aligned to the lead-in's words then its
+ * own; the alignment pairs from the end, so a word repeated at the join goes to the line.
  */
 function checkPickupJoin(project: string, take: KeptVoiceTake, cut: { clips: TakeClip[]; words: SpokenWord[][] }) {
   const [lead, first] = take.info.lines;
+  const leadText = spokenText(lead.text), leadWords = scriptWords(leadText).length;
+  const inLead = alignSpokenWords(leadText, cut.words[0], 0).paired, inFirst = alignSpokenWords(`${leadText} ${spokenText(first.text)}`, cut.words[1], 0).heard;
+  const missing = scriptWords(leadText).filter((_, k) => !inLead[k]), leaked = scriptWords(leadText).filter((_, k) => inFirst[k]);
   const problems = [
     !cut.clips[1].cutIsClear && 'the cut before it is in no one clear pause',
     cut.clips[1].cutPause < TIGHT_PAUSE && `the cut before it is in only ${Math.round(cut.clips[1].cutPause * 1000)} ms of quiet`,
-    cut.words[0].length < scriptWordCount(lead.text) && `${lead.id}, its lead-in, was heard as ${cut.words[0].length} of its ${scriptWordCount(lead.text)} words`,
-    cut.words[1].length > scriptWordCount(first.text) && `it was heard as ${cut.words[1].length} words, more than its ${scriptWordCount(first.text)}`,
+    missing.length && `${lead.id}, its lead-in, was heard without ${missing.join(' ')}`,
+    leaked.length && `its clip holds ${leaked.join(' ')} of ${lead.id}'s ${leadWords} words`,
   ].filter(Boolean);
   if (!problems.length) return;
   const lines = take.info.lines.slice(1).map((line) => line.id).join(' ');
@@ -385,31 +359,34 @@ async function cutVoiceTake(project: string, take: KeptVoiceTake, tmp: string) {
   return { clips, files, words: clipWords, rate };
 }
 
-/**
- * Whose voice the project's lines are in: `draft` when any was cut from a draft take (macOS say, fine for timing,
- * never for delivery), `final` when all are real reads, null before the first.
- */
-export function renderVoiceOf(project: string): RenderVoice {
-  const comp = Object.values(readVoiceComp(project));
-  if (!existsSync(join(project, 'audio', 'manifest.json')) || !comp.length) return null;
-  return comp.some((line) => line.source === 'draft') ? 'draft' : 'final';
-}
+/** `draft` when any line of `comp` is cut from a draft take (macOS say, fine for timing, never for delivery), null for none. */
+const voiceReadOf = (comp: VoiceCompFile['lines']): RenderVoice => {
+  const lines = Object.values(comp);
+  if (!lines.length) return null;
+  return lines.some((line) => line.source === 'draft') ? 'draft' : 'final';
+};
+
+/** Whose voice the project's current generation is in (voiceReadOf), for a render's snapshot and warnings. */
+export const renderVoiceOf = (project: string): RenderVoice => voiceReadOf(readVoiceComp(project));
 
 /**
- * audio/manifest.ts's source for `manifest`: a module rather than JSON, so the video imports each WAV and the bundler
- * serves it. `studio new` writes it with no lines, before the first take.
+ * A generation's manifest.ts, for `manifest` cut from a comp read as `voiceRead`: a module rather than JSON, so the
+ * video imports each WAV and the bundler serves it. Its imports reach audio/clips/ from audio/generations/<hash>/.
+ * `studio new` writes one with no lines, and so no imports, as audio/manifest.ts itself.
  */
-export function voiceManifestModule(manifest: Record<string, RecordedVoiceLine>) {
+export function voiceManifestModule(manifest: Record<string, RecordedVoiceLine>, voiceRead: RenderVoice) {
   const ids = Object.keys(manifest);
-  const imports = ids.map((id, i) => `import wav${i} from './${manifest[id].src.replace(/^audio\//, '')}';`).join('\n');
+  const imports = ids.map((id, i) => `import wav${i} from '../../${manifest[id].src.replace(/^audio\//, '')}';`).join('\n');
   const entries = ids.map((id, i) => {
     const { duration, text, caption, paragraph, words, lufs, pauseBefore } = manifest[id];
     return `  ${JSON.stringify(id)}: { src: wav${i}, duration: ${duration}, lufs: ${lufs}, pauseBefore: ${pauseBefore}, paragraph: ${paragraph},\n    text: ${JSON.stringify(text)},\n    caption: ${JSON.stringify(caption)},\n    words: ${JSON.stringify(words)} },`;
   }).join('\n');
   return `// Written by \`studio voice\`. Edits here are lost on the next run.
+import type { RenderVoice } from '#lib/timing/voice/models/render-voice.ts';
 import type { RecordedVoice } from '#lib/timing/voice/models/voice-manifest.ts';
 ${imports && `${imports}\n`}
 export const voice = {${entries && `\n${entries}\n`}} as const satisfies RecordedVoice;
+export const voiceRead: RenderVoice = ${JSON.stringify(voiceRead)};
 `;
 }
 

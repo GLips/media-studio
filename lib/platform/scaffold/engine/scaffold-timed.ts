@@ -97,7 +97,7 @@ export function timedStarterFiles(slug: string, title: string, capability: Timed
   };
   for (const scene of scenes) files[`${scene.folder}/${scene.id}.tsx`] = sceneModule(scene);
   // No line is read yet: until `studio voice` is, the storyboard times each from its word count.
-  if (voice) files['audio/manifest.ts'] = voiceManifestModule({});
+  if (voice) files['audio/manifest.ts'] = voiceManifestModule({}, null);
   return files;
 }
 

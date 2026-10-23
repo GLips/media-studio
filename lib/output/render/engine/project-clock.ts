@@ -9,7 +9,7 @@ import { resolveStoryboard, storyboardDiagnosticsMessage, type ResolvedStoryboar
 import { importProjectStoryboard } from '#lib/timing/storyboard/engine/project-storyboard.ts';
 import type { Storyboard } from '#lib/timing/storyboard/models/storyboard.ts';
 import { timelineClockTable, type Timeline, type TimelineClockTable } from '#lib/timing/timeline/models/timeline.ts';
-import { renderVoiceOf } from '#lib/timing/voice/engine/voice-project.ts';
+import type { RenderVoice } from '#lib/timing/voice/models/render-voice.ts';
 import type { RecordedVoice } from '#lib/timing/voice/models/voice-manifest.ts';
 
 export type ProjectStoryboard = { file: string; storyboard: Storyboard; resolved: ResolvedStoryboard<Storyboard> };
@@ -23,17 +23,18 @@ export async function readProjectStoryboard(project: string): Promise<ProjectSto
   if (!found) return undefined;
   // The manifest and music/index.ts import their audio: the hooks load it as URLs.
   await import('./tsx-test-hooks.ts');
-  const voice = await importExport<RecordedVoice>(join(project, 'audio', 'manifest.ts'), 'voice');
-  const music = await importExport<StoryboardMusic>(join(project, 'music', 'index.ts'), 'music');
-  const read = renderVoiceOf(project);
+  // `voice` and `voiceRead` from one import, so both are of the one generation audio/manifest.ts names.
+  const manifest = await importModule<{ voice: RecordedVoice; voiceRead: RenderVoice }>(join(project, 'audio', 'manifest.ts'));
+  const voice = manifest?.voice, read = manifest?.voiceRead;
+  const music = (await importModule<{ music: StoryboardMusic }>(join(project, 'music', 'index.ts')))?.music;
   const resolved = resolveStoryboard(found.storyboard, { voice, music, ...(read && { voiceRead: read }) });
   return { ...found, resolved };
 }
 
-async function importExport<T>(file: string, name: string): Promise<T | undefined> {
+async function importModule<T>(file: string): Promise<T | undefined> {
   if (!existsSync(file)) return undefined;
-  // SAFETY: both files are written only by their studio command (`studio voice`, `studio music`), with this export.
-  return ((await import(pathToFileURL(file).href)) as Record<string, T>)[name];
+  // SAFETY: both files are written only by their studio command (`studio voice`, `studio music`), with these exports.
+  return (await import(pathToFileURL(file).href)) as T;
 }
 
 /** The project's resolved timeline, or undefined for a project with no storyboard.ts. Throws, listing them, on any diagnostic. */

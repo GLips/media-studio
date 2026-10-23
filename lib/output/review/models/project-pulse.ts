@@ -6,16 +6,15 @@ export type ProjectPulseFacts = {
   revision: number;
   files: readonly { path: string; hash: string }[];
   /**
-   * The hashes (first 10 hex of each sha256) of the files the plan is timed from: storyboard.ts, the voiced lines
-   * (audio/manifest.json) and audio/comp.json, naming the take each was cut from, each null when absent.
-   * Null without a storyboard.ts.
+   * The hashes (first 10 hex of each sha256) of the files the plan is timed from: storyboard.ts, and audio/manifest.ts
+   * (null when absent), which names the voice's generation, never changed once written. Null without a storyboard.ts.
    */
-  plan: { storyboard: string; manifest: string | null; comp: string | null } | null;
+  plan: { storyboard: string; voice: string | null } | null;
 };
 
 /** One string that changes whenever any file the plan is timed from does: a query key part, never parsed. */
 export const projectPlanBeatOf = (plan: ProjectPulseFacts['plan']): string =>
-  (plan ? [plan.storyboard, plan.manifest, plan.comp].map((hash) => hash ?? '').join(':') : '');
+  (plan ? [plan.storyboard, plan.voice].map((hash) => hash ?? '').join(':') : '');
 
 /** One string that changes whenever a project's summary would: a query key part, compared and never parsed. */
 export function projectPulseBeatOf({ revision, files, plan }: ProjectPulseFacts): string {
