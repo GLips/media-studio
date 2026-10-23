@@ -9,19 +9,20 @@
 // takes join only at clip boundaries, in measured quiet. Every take is kept (voice-takes.ts).
 //
 // Negative space: the manifest holds voiced lines only; resolveStoryboard estimates the rest.
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { measureAudibleLoudness } from '#lib/platform/ffmpeg/engine/loudness.ts';
 import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
+import { replaceFileWhole } from '#lib/platform/files/engine/replace-file-whole.ts';
 import { releaseStudioLockFile, tryStudioLockFile } from '#lib/platform/files/engine/studio-lock-file.ts';
 import { postOpenRouter } from '#lib/platform/paid-generation/engine/openrouter.ts';
 import type { RenderVoice } from '../models/render-voice.ts';
-import type { RecordedVoiceLine } from '../models/voice-manifest.ts';
+import type { RecordedVoice, RecordedVoiceLine } from '../models/voice-manifest.ts';
 import { planVoiceSync, voiceLineStaleReasons, voicePickupsOf, type VoicePickup, type VoiceSettingsNow, type VoiceStaleReason } from '../models/voice-comp.ts';
 import { cutTakeIntoLines, pinWordsToTaggedPauses, type TakeClip, type VoiceCompFile, type VoiceScript, type VoiceTakeFile } from '../models/voice-take.ts';
-import { alignSpokenWords, captionMarkup, spokenText, ttsText, type SpokenWord } from '../models/voice-words.ts';
+import { alignSpokenWords, captionMarkup, scriptWords, spokenText, ttsText, type SpokenWord } from '../models/voice-words.ts';
 import { samplesFromWav, wavFromPcm, wavFromSamples } from '#lib/platform/wav/models/wav.ts';
 import { heardWords } from './whisper-words.ts';
 import { keepVoiceTake, readVoiceComp, readVoiceTakes, saveKeptVoiceTake, stampChosenVoiceTakes, voiceCompPath, type KeptVoiceTake } from './voice-takes.ts';
@@ -62,6 +63,7 @@ async function withVoiceLock<T>(project: string, step: () => Promise<T>): Promis
   const tried = tryStudioLockFile(join(project, 'audio', 'voice.lock'));
   if ('holder' in tried) throw new Error(`another studio voice (process ${tried.holder.pid}) is working on this project: wait for it`);
   try {
+    sweepVoiceFiles(project);
     return await step();
   } finally {
     releaseStudioLockFile(tried.held);
@@ -95,7 +97,7 @@ export async function syncVoice(project: string, script: VoiceScript, { draft }:
     const plan = planVoiceSync(script, kept, before, settingsNow(script), draft);
     for (const [take, ids] of plan.reused) process.stderr.write(`take ${take.number} reads ${ids.join(', ')} already: using it, nothing paid\n`);
     for (const { id, take } of plan.oldRecordings) process.stderr.write(`line ${id}: its recording (take ${take}) reads an older text; studio voice reread or import replaces it\n`);
-    const read = await Promise.all(plan.pickups.map((pickup) => readPickup(project, script, pickup, draft)));
+    const read = await settleAll(plan.pickups.map((pickup) => readPickup(project, script, pickup, draft)));
     plan.pickups.forEach((pickup, i) => pickup.lines.forEach((line) => plan.comp.set(line.id, read[i])));
     const unvoiced = script.lines.filter((line) => !plan.comp.has(line.id));
     if (unvoiced.length) throw new Error(`sync left ${unvoiced.map((line) => line.id).join(', ')} unvoiced`);
@@ -109,7 +111,7 @@ export async function rereadVoiceLines(project: string, script: VoiceScript, ids
   return withVoiceLock(project, async () => {
     const { before, comp } = readComp(project, script);
     const pickups = voicePickupsOf(script, (id) => wanted.includes(id));
-    const read = await Promise.all(pickups.map((pickup) => readPickup(project, script, pickup, false)));
+    const read = await settleAll(pickups.map((pickup) => readPickup(project, script, pickup, false)));
     pickups.forEach((pickup, i) => pickup.lines.forEach((line) => comp.set(line.id, read[i])));
     return publishVoiceComp(project, script, before, comp);
   });
@@ -220,48 +222,102 @@ export function listVoiceLineTakes(project: string, script: VoiceScript, id: str
 }
 
 /**
- * Cuts each take in `comp` into its lines, and publishes each voiced line's clip from its own take, then the manifest,
- * then comp.json. Everything is staged first, so a failure leaves the previous comp, manifest and clips as they were.
- * Returns audio/manifest.ts.
+ * Cuts each take in `comp` into its lines, keeps each voiced line's clip from its own take in audio/clips/ under its
+ * bytes' hash, then writes comp.json, manifest.json and manifest.ts. A failure before them leaves all three as they
+ * were; one among them puts back those already written. Returns audio/manifest.ts.
  */
 async function publishVoiceComp(project: string, script: VoiceScript, before: VoiceCompFile['lines'], comp: ReadonlyMap<string, KeptVoiceTake>): Promise<string> {
-  const dir = join(project, 'audio'), stage = join(dir, `.staging-${randomUUID()}`);
-  mkdirSync(stage);
-  try {
-    const voiced = script.lines.filter((line) => comp.has(line.id));
-    const manifest: Record<string, RecordedVoiceLine> = {};
-    await Promise.all([...new Set(comp.values())].map((take) => withStudioTemp('voice-cut', async (tmp) => {
-      const cut = await cutVoiceTake(project, take, tmp);
-      for (const [i, clip] of cut.clips.entries()) {
-        if (comp.get(clip.id) !== take) continue;
-        const staged = join(stage, `${clip.id}.wav`);
-        copyFileSync(cut.files[i], staged);
-        manifest[clip.id] = manifestLine(take, i, clip, staged, cut.words[i], cut.rate, clip.id === script.lines[0].id);
-      }
-    })));
-    const ordered = Object.fromEntries(voiced.map((line) => [line.id, manifest[line.id]]));
-    const compFile: VoiceCompFile = { lines: Object.fromEntries(voiced.map((line) => [line.id, { take: comp.get(line.id)!.number, source: comp.get(line.id)!.info.source }])) };
-    writeFileSync(join(stage, 'manifest.json'), JSON.stringify(ordered, null, 2));
-    writeFileSync(join(stage, 'manifest.ts'), voiceManifestModule(ordered));
-    writeFileSync(join(stage, 'comp.json'), JSON.stringify(compFile, null, 2));
-
-    // Readers find the least wrong state between renames: new clips under the old manifest, then the new manifest,
-    // and comp.json, which names the takes, last.
-    for (const line of voiced) {
-      const staged = join(stage, `${line.id}.wav`), live = join(dir, `${line.id}.wav`);
-      if (!existsSync(live) || !readFileSync(live).equals(readFileSync(staged))) renameSync(staged, live);
+  const dir = join(project, 'audio');
+  mkdirSync(join(dir, 'clips'), { recursive: true });
+  const voiced = script.lines.filter((line) => comp.has(line.id));
+  const manifest: Record<string, RecordedVoiceLine> = {};
+  await settleAll([...new Set(comp.values())].map((take) => withStudioTemp('voice-cut', async (tmp) => {
+    const cut = await cutVoiceTake(project, take, tmp);
+    if (take.info.context && comp.get(take.info.lines[1].id) === take) checkPickupJoin(project, take, cut);
+    for (const [i, clip] of cut.clips.entries()) {
+      if (comp.get(clip.id) !== take) continue;
+      manifest[clip.id] = manifestLine(take, i, clip, keepVoiceClip(dir, clip.id, cut.files[i]), cut.words[i], cut.rate, clip.id === script.lines[0].id);
     }
-    renameSync(join(stage, 'manifest.json'), join(dir, 'manifest.json'));
-    renameSync(join(stage, 'manifest.ts'), join(dir, 'manifest.ts'));
-    renameSync(join(stage, 'comp.json'), voiceCompPath(project));
-    for (const file of readdirSync(dir)) if (file.endsWith('.wav') && !comp.has(basename(file, '.wav'))) rmSync(join(dir, file));
-    stampChosenVoiceTakes(project, before, comp);
-    const total = Object.values(ordered).reduce((sum, line) => sum + line.duration, 0);
-    process.stderr.write(`${voiced.length} lines voiced, ${total.toFixed(1)}s of voice\n`);
-    return join(dir, 'manifest.ts');
-  } finally {
-    rmSync(stage, { recursive: true, force: true });
+  })));
+  const ordered = Object.fromEntries(voiced.map((line) => [line.id, manifest[line.id]]));
+  const compFile: VoiceCompFile = { lines: Object.fromEntries(voiced.map((line) => [line.id, { take: comp.get(line.id)!.number, source: comp.get(line.id)!.info.source }])) };
+  replaceVoiceFiles([
+    [voiceCompPath(project), JSON.stringify(compFile, null, 2)],
+    [join(dir, 'manifest.json'), JSON.stringify(ordered, null, 2)],
+    [join(dir, 'manifest.ts'), voiceManifestModule(ordered)],
+  ]);
+  stampChosenVoiceTakes(project, before, comp);
+  const total = Object.values(ordered).reduce((sum, line) => sum + line.duration, 0);
+  process.stderr.write(`${voiced.length} lines voiced, ${total.toFixed(1)}s of voice\n`);
+  return join(dir, 'manifest.ts');
+}
+
+/** Writes each file whole, in order; on a failure, puts back each one already written and rethrows. */
+function replaceVoiceFiles(files: readonly (readonly [string, string])[]) {
+  const undo: (() => void)[] = [];
+  try {
+    for (const [path, text] of files) {
+      const previous = existsSync(path) ? readFileSync(path) : null;
+      undo.push(() => (previous === null ? rmSync(path, { force: true }) : replaceFileWhole(path, previous)));
+      replaceFileWhole(path, text);
+    }
+  } catch (error) {
+    for (const step of undo.toReversed()) step();
+    throw error;
   }
+}
+
+/**
+ * Keeps a clip as audio/clips/<line>-<hash>.wav, named by its bytes and never written over, so a manifest a reader
+ * holds always finds its clips. Returns its path.
+ */
+function keepVoiceClip(dir: string, id: string, file: string) {
+  const bytes = readFileSync(file);
+  const path = join(dir, 'clips', `${id}-${createHash('sha256').update(bytes).digest('hex').slice(0, 8)}.wav`);
+  if (!existsSync(path)) replaceFileWhole(path, bytes);
+  return path;
+}
+
+/**
+ * Under the lock, before a run: removes what a failed write left (`.tmp` files) and the clips no manifest names. A
+ * render reading the manifest as it was keeps its clips, since the manifest names them until this run replaces it.
+ */
+function sweepVoiceFiles(project: string) {
+  const dir = join(project, 'audio'), clips = join(dir, 'clips'), manifest = join(dir, 'manifest.json');
+  // SAFETY: manifest.json is written only by publishVoiceComp, as a RecordedVoice.
+  const named = new Set(existsSync(manifest) ? Object.values(JSON.parse(readFileSync(manifest, 'utf8')) as RecordedVoice).map((line) => basename(line.src)) : []);
+  for (const file of readdirSync(dir)) if (file.endsWith('.tmp')) rmSync(join(dir, file), { force: true });
+  if (!existsSync(clips)) return;
+  for (const file of readdirSync(clips)) if (file.endsWith('.tmp') || !named.has(file)) rmSync(join(clips, file), { force: true });
+}
+
+const scriptWordCount = (text: string) => scriptWords(spokenText(text)).length;
+
+/**
+ * A pickup's join must be clean before its first line is published: a clear cut at least TIGHT_PAUSE long, the lead-in
+ * heard whole (short, its tail went into the line), and the line heard with no more words than it has (more, the
+ * lead-in's tail is in it).
+ */
+function checkPickupJoin(project: string, take: KeptVoiceTake, cut: { clips: TakeClip[]; words: SpokenWord[][] }) {
+  const [lead, first] = take.info.lines;
+  const problems = [
+    !cut.clips[1].cutIsClear && 'the cut before it is in no one clear pause',
+    cut.clips[1].cutPause < TIGHT_PAUSE && `the cut before it is in only ${Math.round(cut.clips[1].cutPause * 1000)} ms of quiet`,
+    cut.words[0].length < scriptWordCount(lead.text) && `${lead.id}, its lead-in, was heard as ${cut.words[0].length} of its ${scriptWordCount(lead.text)} words`,
+    cut.words[1].length > scriptWordCount(first.text) && `it was heard as ${cut.words[1].length} words, more than its ${scriptWordCount(first.text)}`,
+  ].filter(Boolean);
+  if (!problems.length) return;
+  const lines = take.info.lines.slice(1).map((line) => line.id).join(' ');
+  throw new Error(`take ${take.number} reads ${first.id} after ${lead.id}, but ${problems.join('; ')}, so nothing was published. The take is kept; read it again with studio voice reread ${basename(project)} ${lines}`);
+}
+
+/** Awaits every one of `work`, so none outlives the caller, then throws if any failed. */
+async function settleAll<T>(work: readonly Promise<T>[]): Promise<T[]> {
+  const settled = await Promise.allSettled(work);
+  const failures = settled.flatMap((result) => (result.status === 'rejected' ? [result.reason instanceof Error ? result.reason : new Error(String(result.reason))] : []));
+  if (failures.length === 1) throw failures[0];
+  if (failures.length) throw new Error(failures.map((failure) => failure.message).join('\n'));
+  return settled.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []));
 }
 
 const roundToMs = (x: number) => Math.round(x * 1000) / 1000;
@@ -279,7 +335,7 @@ function manifestLine(take: KeptVoiceTake, i: number, clip: TakeClip, file: stri
   process.stderr.write(`cut ${clip.id} from take ${take.number}  ${duration.toFixed(2)}s${pause}${unheard.length ? `  (misheard, timed from their neighbours: ${unheard.join(' ')})` : ''}\n`);
   const problem = i === 0 ? null : cutProblem(clip);
   if (problem) process.stderr.write(`listen to ${clip.id}: take ${take.number} ${problem} before it, so the cut may be heard. Add <short pause> before it, or move the line break\n`);
-  return { src: `audio/${clip.id}.wav`, duration, text, caption: captionMarkup(line.text), paragraph: line.paragraph, words, lufs: measureAudibleLoudness(file).lufs, pauseBefore };
+  return { src: `audio/clips/${basename(file)}`, duration, text, caption: captionMarkup(line.text), paragraph: line.paragraph, words, lufs: measureAudibleLoudness(file).lufs, pauseBefore };
 }
 
 function cutProblem(clip: TakeClip) {
@@ -345,7 +401,7 @@ export function renderVoiceOf(project: string): RenderVoice {
  */
 export function voiceManifestModule(manifest: Record<string, RecordedVoiceLine>) {
   const ids = Object.keys(manifest);
-  const imports = ids.map((id, i) => `import wav${i} from './${basename(manifest[id].src)}';`).join('\n');
+  const imports = ids.map((id, i) => `import wav${i} from './${manifest[id].src.replace(/^audio\//, '')}';`).join('\n');
   const entries = ids.map((id, i) => {
     const { duration, text, caption, paragraph, words, lufs, pauseBefore } = manifest[id];
     return `  ${JSON.stringify(id)}: { src: wav${i}, duration: ${duration}, lufs: ${lufs}, pauseBefore: ${pauseBefore}, paragraph: ${paragraph},\n    text: ${JSON.stringify(text)},\n    caption: ${JSON.stringify(caption)},\n    words: ${JSON.stringify(words)} },`;

@@ -1,5 +1,6 @@
 // studio sfx: sound effects from the seeded recipes in lib/timing/sound/models/recipes.ts.
 import { defineCommand } from 'citty';
+import { refuseOptionsBeforeSubcommand } from '../command-flags.ts';
 import { openStudioRenderSession, studioProjectArg } from '../project-arg.ts';
 
 const kit = defineCommand({
@@ -110,5 +111,6 @@ export default defineCommand({
     description: "Render seeded sound effects, and draft a video's cue list from its events.",
     about: "Recipes include whoosh, riser, impact, chime and click; `studio sfx list` prints them all.",
   },
+  setup: refuseOptionsBeforeSubcommand,
   subCommands: { list, render, rerender, kit, showcase, draft },
 });

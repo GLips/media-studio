@@ -3,7 +3,7 @@
 // takes lists what's kept.
 import { defineCommand, type ArgsDef } from 'citty';
 import type { VoiceScript } from '#lib/timing/voice/models/voice-take.ts';
-import { refuseUnknownCommandFlags } from '../command-flags.ts';
+import { refuseOptionsBeforeSubcommand, refuseUnknownCommandFlags } from '../command-flags.ts';
 import { studioProjectArg } from '../project-arg.ts';
 
 const linesArg = { type: 'positional', required: false, description: "Line ids, the keys of the scenes' `lines` in storyboard.ts" } as const;
@@ -49,7 +49,7 @@ const syncCommand = defineCommand({
   meta: {
     name: 'sync',
     description: "Voice every line of storyboard.ts as it is now, reading only the lines no kept take reads.",
-    about: "Reads storyboard.ts's `voice`, `voiceDirection` and its scenes' lines in plan order. Each line keeps the take chosen for it while that take reads it as it is now (its text and paragraph, and the take's model, voice and direction), else uses a kept take that does, and nothing is paid. The rest are read, one pickup per run of lines, each after the line before it, which is read for the lead-in and keeps its own take. A line cut from a recording is kept even when its text changed, with a warning. An unchanged line keeps its own audio, duration and pause before; its place in the video still moves when an earlier line changes length. Writes audio/<line>.wav, audio/manifest.ts and audio/comp.json (the take each line is cut from). Prints audio/manifest.ts.",
+    about: "Reads storyboard.ts's `voice`, `voiceDirection` and its scenes' lines in plan order. Each line keeps the take chosen for it while that take reads it as it is now (its text and paragraph, and the take's model, voice and direction), else uses a kept take that does, and nothing is paid. The rest are read, one pickup per run of lines, each after the line before it, which is read for the lead-in and keeps its own take. A line cut from a recording is kept even when its text changed, with a warning. An unchanged line keeps its own audio, duration and pause before; its place in the video still moves when an earlier line changes length. Writes each line's clip as audio/clips/<line>-<hash>.wav (never written over, so a render under way keeps its clips), audio/manifest.ts and audio/comp.json (the take each line is cut from); a pickup whose join isn't clean is refused, its take kept. Prints audio/manifest.ts.",
   },
   args: syncArgs,
   async run({ args, rawArgs }) {
@@ -178,5 +178,6 @@ export default defineCommand({
     description: "Voice the lines of a project's storyboard.ts, each cut from the take chosen for it.",
     about: "A take reads some lines, and every take is kept in audio/takes/, never written over; audio/comp.json names the take each voiced line is cut from. Lines not yet voiced are timed from their word count. sync brings every line up to the script, reading only what no kept take reads; reread pays for another performance of named lines; use goes back to a kept take; import keeps a human read; takes lists them.",
   },
+  setup: refuseOptionsBeforeSubcommand,
   subCommands: { sync: syncCommand, reread: rereadCommand, use: useCommand, import: importCommand, takes: takesCommand },
 });

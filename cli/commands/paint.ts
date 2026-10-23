@@ -2,7 +2,7 @@
 // solved on the GPU to be seen.
 import { defineCommand, type ArgsDef } from 'citty';
 import { paintingValueTextPairs } from '#lib/paint/document/models/painting-properties.ts';
-import { checkedCommandOutFlag, refuseUnknownCommandFlags } from '../command-flags.ts';
+import { checkedCommandOutFlag, refuseOptionsBeforeSubcommand, refuseUnknownCommandFlags } from '../command-flags.ts';
 
 /** `--at`'s scene second, null when it's left out. */
 function sceneSecondFlag(text: string | undefined): number | null {
@@ -180,5 +180,6 @@ export default defineCommand({
     description: "Check, paint and diff painting sources (*.painting.ts), solved on the GPU.",
     about: "A painting source is a pure TS factory returning a PaintingDocument.",
   },
+  setup: refuseOptionsBeforeSubcommand,
   subCommands: { check: checkPaintCommand, diff: diffPaintCommand, still: stillPaintCommand },
 });

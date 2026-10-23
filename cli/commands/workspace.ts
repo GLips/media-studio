@@ -1,5 +1,6 @@
 // studio workspace: work/, the git repository your own projects and brand kits live in. See lib/platform/project/engine/studio-workspace.ts.
 import { defineCommand } from 'citty';
+import { refuseOptionsBeforeSubcommand } from '../command-flags.ts';
 
 const initWorkspaceCommand = defineCommand({
   meta: {
@@ -19,5 +20,6 @@ export default defineCommand({
     name: 'workspace',
     description: "Set up work/, the private git repository of your projects, brand kits, styles and hosts.",
   },
+  setup: refuseOptionsBeforeSubcommand,
   subCommands: { init: initWorkspaceCommand },
 });

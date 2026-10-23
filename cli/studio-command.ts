@@ -1,6 +1,7 @@
 // studio-command.ts: the `studio` command tree, every verb in cli/commands/<verb>.ts loaded lazily. Apart from
 // studio.ts, which runs it, so a spec can walk the tree without running a command.
 import { defineCommand } from 'citty';
+import { refuseOptionsBeforeSubcommand } from './command-flags.ts';
 import type { StudioVerbGroups } from './command-help.ts';
 
 /** Every verb, under the heading the root index lists it by; the index refuses a registered verb missing here. */
@@ -17,6 +18,7 @@ export const studioCommand = defineCommand({
     description: 'Videos and stills made in code. `studio <verb> --help` gives a verb\'s modes, outputs, failures and every flag.',
     about: 'A <project> is its slug, part of its name, or a path; projects, brand kits and styles live in the workspace, work/ under `studio home`. A project\'s own paths (out/, music/, review/) are inside it. Payload goes to stdout, progress to stderr.',
   },
+  setup: refuseOptionsBeforeSubcommand,
   subCommands: {
     workspace: () => import('./commands/workspace.ts').then((m) => m.default),
     brushes: () => import('./commands/brushes.ts').then((m) => m.default),

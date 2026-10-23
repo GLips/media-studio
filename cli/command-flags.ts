@@ -4,13 +4,33 @@ import type { ArgsDef } from 'citty';
 import { existsSync, statSync } from 'node:fs';
 import { dirname, extname, isAbsolute, relative, resolve, sep } from 'node:path';
 
-/** Throws on a flag `args` doesn't define: citty would drop it, and a misspelt flag would run on its defaults. */
+/**
+ * Throws on an option `args` doesn't define: citty would drop it, and a misspelt one would run on its defaults. A
+ * single-dash option must be a defined alias, so `-dry` for `--dry` fails rather than run without it.
+ */
 export function refuseUnknownCommandFlags(rawArgs: readonly string[], args: ArgsDef) {
   const flags = Object.entries(args).flatMap(([name, def]) => (def.type === 'positional' ? [] : [name]));
+  const aliases = new Set(Object.values(args).flatMap((def) => (def.type === 'positional' || !('alias' in def) ? [] : [def.alias ?? []].flat())));
+  const takes = () => `it takes ${flags.map((flag) => `--${flag}`).join(', ') || 'no options'}`;
   for (const arg of rawArgs) {
-    const name = arg.startsWith('--') ? arg.slice(2).split('=')[0] : null;
-    if (name !== null && !flags.includes(name)) throw new Error(`--${name} isn't a flag of this command; it takes ${flags.map((flag) => `--${flag}`).join(', ')}`);
+    if (arg === '--') return;
+    if (arg.startsWith('--')) {
+      const name = arg.slice(2).split('=')[0];
+      if (!flags.includes(name)) throw new Error(`--${name} isn't a flag of this command; ${takes()}`);
+    } else if (/^-[^\d.]/.test(arg) && !aliases.has(arg.slice(1).split('=')[0])) {
+      throw new Error(`${arg} isn't an option of this command (flags take two dashes); ${takes()}`);
+    }
   }
+}
+
+/**
+ * A command's `setup` for one with subcommands: refuses an option before the subcommand's name, which citty would
+ * drop, so `studio voice --dry sync` fails rather than run a sync for real.
+ */
+export function refuseOptionsBeforeSubcommand({ rawArgs }: { rawArgs: readonly string[] }) {
+  const named = rawArgs.findIndex((arg) => !arg.startsWith('-'));
+  const before = rawArgs.slice(0, named < 0 ? rawArgs.length : named).filter((arg) => arg !== '--');
+  if (before.length) throw new Error(`${before.join(' ')} goes after the command it's for: put it after the last command word`);
 }
 
 /**

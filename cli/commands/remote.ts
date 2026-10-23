@@ -2,6 +2,7 @@
 // `studio remote run` runs the repo's checks on; its deployment and its containers; and the two verbs its render
 // containers run (`job`, `keep-browsers`). docs/remote.md.
 import { defineCommand } from 'citty';
+import { refuseOptionsBeforeSubcommand } from '../command-flags.ts';
 import { openStudioRenderSession } from '../project-arg.ts';
 
 const numberFlag = (text: string | undefined) => (text === undefined ? undefined : Number(text));
@@ -123,5 +124,6 @@ export default defineCommand({
     description: "Run renders and the repo's checks on the studio's Modal app.",
     about: "Each checkout deploys its own version, and stops its containers when it's done.",
   },
+  setup: refuseOptionsBeforeSubcommand,
   subCommands: { deploy: deployCommand, status: statusCommand, stop: stopCommand, run: runCommand, job: jobCommand, 'keep-browsers': keepBrowsersCommand },
 });

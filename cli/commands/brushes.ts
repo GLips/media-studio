@@ -1,5 +1,6 @@
 // studio brushes: a private style's brush assets, imported from packs you bought (lib/paint/brush-packs/engine/import-stamp-paint-pack.ts).
 import { defineCommand } from 'citty';
+import { refuseOptionsBeforeSubcommand } from '../command-flags.ts';
 
 const importBrushesCommand = defineCommand({
   meta: {
@@ -71,5 +72,6 @@ export default defineCommand({
     name: 'brushes',
     description: "Import a private style's brush packs, and print the numbers its brushes paint with.",
   },
+  setup: refuseOptionsBeforeSubcommand,
   subCommands: { import: importBrushesCommand, describe: describeBrushesCommand },
 });

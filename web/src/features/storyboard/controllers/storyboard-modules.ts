@@ -55,7 +55,7 @@ export type StoryboardModules = {
   voice: RecordedVoice;
   /** music/index.ts's tracks, each with its `src` to play; empty with none. */
   music: Readonly<Record<string, MusicTrack>> & StoryboardMusic;
-  /** `draft` when any of the manifest's clips is from a `--read=draft` take (macOS say), for timing only. */
+  /** `draft` when any of the manifest's clips is from a `studio voice sync --draft` take (macOS say), for timing only. */
   voiceRead: 'draft' | 'final';
 };
 

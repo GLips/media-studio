@@ -1,5 +1,6 @@
 // studio hosts: the product repos videos are about. See lib/platform/host/engine/hosts.ts.
 import { defineCommand } from 'citty';
+import { refuseOptionsBeforeSubcommand } from '../command-flags.ts';
 import { studioProjectArg } from '../project-arg.ts';
 
 const syncHostsCommand = defineCommand({
@@ -34,5 +35,6 @@ export default defineCommand({
     description: "Link projects to the product repos they're about, each checked out at a pinned ref.",
     about: "work/hosts.json maps a host's name to its git repo; work/hosts.local.json (gitignored) maps it to a working copy on this machine. A project opts in with <project>/host.json { name, ref, browserStubs? }, browserStubs being globs of server-only host files the bundle empties.",
   },
+  setup: refuseOptionsBeforeSubcommand,
   subCommands: { sync: syncHostsCommand, list: listHostsCommand },
 });

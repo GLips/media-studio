@@ -80,7 +80,7 @@ export function planVoiceSync<T extends VoiceCompTake>(script: VoiceScript, kept
     const latest = (withDrafts: boolean) => kept.filter((take) => !voiceLineStaleReasons(take.info, line, now, withDrafts).length)
       .toSorted((a, b) => Number(b === chosen) - Number(a === chosen) || b.info.chosenAt.localeCompare(a.info.chosenAt))[0];
     const reading = latest(false) ?? (draft ? latest(true) : undefined);
-    if (reading !== chosen) plan.stale.push({ id: line.id, reasons });
+    if (!chosen || reading !== chosen) plan.stale.push({ id: line.id, reasons });
     if (!reading) continue;
     if (reading !== chosen) plan.reused.set(reading, [...(plan.reused.get(reading) ?? []), line.id]);
     plan.comp.set(line.id, reading);

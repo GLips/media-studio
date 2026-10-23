@@ -20,8 +20,11 @@ export function readVoiceTakes(project: string): KeptVoiceTake[] {
   const dir = takesDir(project);
   return (existsSync(dir) ? readdirSync(dir) : []).flatMap((file) => {
     const number = /^(\d+)\.json$/.exec(file)?.[1];
-    // SAFETY: audio/takes/<n>.json is written only by this module, from a VoiceTakeFile.
-    return number ? [{ number: Number(number), wav: join(dir, `${number}.wav`), info: JSON.parse(readFileSync(join(dir, file), 'utf8')) as VoiceTakeFile }] : [];
+    if (!number) return [];
+    // SAFETY: audio/takes/<n>.json is written only by this module, from a VoiceTakeFile; `lines` is checked below.
+    const info = JSON.parse(readFileSync(join(dir, file), 'utf8')) as VoiceTakeFile;
+    if (!Array.isArray(info.lines)) throw new Error(`${join(dir, file)} is a take written before takes kept their lines: move it and its .wav out of audio/takes/`);
+    return [{ number: Number(number), wav: join(dir, `${number}.wav`), info }];
   }).toSorted((a, b) => a.number - b.number);
 }
 

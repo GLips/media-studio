@@ -1,6 +1,7 @@
 // studio music: adds a music track to a project, supplied or generated, and fits one to the video's length
 // (lib/timing/music/engine/music-track.ts).
 import { defineCommand } from 'citty';
+import { refuseOptionsBeforeSubcommand } from '../command-flags.ts';
 import { studioProjectArg } from '../project-arg.ts';
 
 const add = defineCommand({
@@ -115,5 +116,6 @@ function parseMusicBars(list: string): number[] {
 
 export default defineCommand({
   meta: { name: 'music', description: "Add, generate and fit a project's music track." },
+  setup: refuseOptionsBeforeSubcommand,
   subCommands: { add, gen, fit },
 });

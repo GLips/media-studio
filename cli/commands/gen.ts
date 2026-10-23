@@ -1,6 +1,7 @@
 // studio gen: paid generation through OpenRouter (lib/platform/paid-generation/engine/paid-generation.ts), one verb per kind of media. Every result is
 // cached, so asking again costs nothing.
 import { defineCommand } from 'citty';
+import { refuseOptionsBeforeSubcommand } from '../command-flags.ts';
 import { PREVIS_MODEL_NAMES, PREVIS_MODELS } from '#lib/footage/previs/models/previs-models.ts';
 import { openStudioRenderSession, studioProjectArg } from '../project-arg.ts';
 
@@ -97,5 +98,6 @@ export default defineCommand({
     name: 'gen',
     description: "Generate images, clips and previs footage through OpenRouter (paid; cached by request).",
   },
+  setup: refuseOptionsBeforeSubcommand,
   subCommands: { image, clip, video },
 });
