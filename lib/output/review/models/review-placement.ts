@@ -80,6 +80,15 @@ export function reviewAnchorOnLaidSlice<A extends Pick<ReviewVideoAnchor, 'frame
   };
 }
 
+/**
+ * Where the playhead goes before a new note's frame image is cut: back to its pinned frame (a range's first) when it
+ * has left the note's frames, as it does playing on after a sound is aimed at; null to cut the frame on screen.
+ */
+export function reviewNoteImageFrameOf(pinned: Pick<Partial<ReviewVideoAnchor>, 'frame' | 'end'>, playhead: number): number | null {
+  if (pinned.frame === undefined) return null;
+  return playhead >= pinned.frame && playhead <= (pinned.end ?? pinned.frame) ? null : pinned.frame;
+}
+
 export type PlacedReviewThread = ReviewThread & { placement: ReviewPlacement };
 
 /** Where `thread` shows on `target`, or null when it's about something else (another still, the plan). */

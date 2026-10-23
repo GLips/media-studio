@@ -2,7 +2,7 @@ import { Box, Group, Text, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { CornerDownLeft, X } from 'lucide-react';
 import { useRef } from 'react';
-import { reviewAnchorOnLaidSlice, reviewCueNameOf, reviewVideoAnchorAt } from '#lib/output/review/models/review-placement.ts';
+import { reviewAnchorOnLaidSlice, reviewCueNameOf, reviewNoteImageFrameOf, reviewVideoAnchorAt } from '#lib/output/review/models/review-placement.ts';
 import { formatReviewClock } from '#lib/output/review/models/review-timeline-geometry.ts';
 import type { NewAnchor } from '#lib/output/review/models/review-ops.ts';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
@@ -88,6 +88,8 @@ export function ReviewThreadComposer() {
   const { media, draft, ops } = scope;
   const composerRef = useRef<HTMLDivElement>(null);
   const fieldRef = useRef<HTMLTextAreaElement>(null);
+  // Set while a save waits for its frame to land, so a second Enter meanwhile doesn't post the note twice.
+  const saving = useRef(false);
   const pinned = draft.anchor.on === 'video' ? draft.anchor : undefined;
   const onLabel = anchorOfDraft(scope) ? scope.draftOnLabel : scope.draftFallback?.label;
 
@@ -96,8 +98,17 @@ export function ReviewThreadComposer() {
     fieldRef.current?.blur();
   };
   const save = async () => {
-    if (!draft.text.trim()) return;
+    if (!draft.text.trim() || saving.current) return;
     media?.playback.pause();
+    if (media?.artifact.kind === 'video') {
+      // The image is the note's own frame, and a laid slice's picture is shown only once its seek lands: the anchor
+      // reads which picture that is, so both wait for it.
+      const back = reviewNoteImageFrameOf(pinned ?? {}, media.playback.frameNow());
+      if (back !== null) media.playback.seek(back);
+      saving.current = true;
+      await media.playback.settled();
+      saving.current = false;
+    }
     const anchor = anchorOfDraft(scope) ?? scope.draftFallback?.anchor;
     if (!anchor) return;
     const point = 'point' in anchor ? anchor.point : undefined;

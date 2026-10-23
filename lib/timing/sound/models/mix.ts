@@ -50,7 +50,7 @@ export type MusicBed = {
   sourceStartSeconds?: number;
   /** Music level between lines, in LU relative to the voice. Default −8. */
   bedRelativeLu?: number;
-  /** Music level under a line, in LU relative to the voice. Default −18. */
+  /** Music level under a line, in LU relative to the voice. Default −14: a 6 LU dip from the bed, which keeps the music present under the words. */
   duckedRelativeLu?: number;
 };
 
@@ -75,7 +75,7 @@ export function duckSpans(cues: readonly { start: number; end: number }[]): { st
 export function musicLevels(bed: MusicBed): { bedDb: number; duckedDb: number } {
   const bedDb = VOICE_LUFS + (bed.bedRelativeLu ?? -8) - bed.track.lufs;
   if (bedDb > 0.0001) throw new Error(`the music measures ${bed.track.lufs} LUFS, too quiet for a bed at ${VOICE_LUFS + (bed.bedRelativeLu ?? -8)} LUFS`);
-  return { bedDb, duckedDb: VOICE_LUFS + (bed.duckedRelativeLu ?? -18) - bed.track.lufs };
+  return { bedDb, duckedDb: VOICE_LUFS + (bed.duckedRelativeLu ?? -14) - bed.track.lufs };
 }
 
 /**

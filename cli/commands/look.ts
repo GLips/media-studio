@@ -80,7 +80,7 @@ export default defineCommand({
     if (args.remote && args.video) throw new Error('--remote draws the composition on a remote GPU: leave out --video (a render is read here)');
     if (args.motion && args.against) throw new Error('--motion measures one render: leave out --against');
     const { lookAgainst, lookFrameSheet, lookMotion, openLookSource } = await import('#lib/output/look/engine/frame-look.ts');
-    const { lookFramesOf, parseLookCrop } = await import('#lib/output/look/models/look-frames.ts');
+    const { lookFramesOf, lookFramesToEnd, parseLookCrop } = await import('#lib/output/look/models/look-frames.ts');
     const { readProjectClock } = await import('#lib/output/render/engine/project-clock.ts');
     const project = resolveStudioProjectWith(args.project, 'video.tsx');
     const inProject = (file: string) => resolve(project, file);
@@ -115,7 +115,8 @@ export default defineCommand({
         throw new Error(`${source.name} holds frames ${source.first}–${source.end - 1}, which is neither the whole reel (0–${clock.end - 1}) nor one bar: ` +
           'render it again with studio render --frames, whose snapshot places it, or give one without a snapshot --starts-at=<its bar\'s first frame>');
       }
-      const frames = asked ? [...asked] : lookFramesOf(ask, source, { clock, project });
+      const { frames, past } = lookFramesToEnd(asked ?? lookFramesOf(ask, source, { clock, project }), source);
+      if (past) console.log(`${source.name} ends at frame ${source.end - 1}: read to it, leaving out the ${past} frame${past === 1 ? '' : 's'} asked past it`);
       if (args.motion) {
         if (frames.some((f, i) => i && f !== frames[i - 1] + 1)) throw new Error('--motion measures a stretch: --frames=a:b or --bar=N');
         return lookMotion(source, frames[0], frames.at(-1)!, { crop, still, clock, out });

@@ -116,9 +116,10 @@ async function printSpliceVerdict(projectDir: string, out: string) {
   const { formatRenderSpliceVerdict } = await import('#lib/output/render/engine/render-cuts.ts');
   const { loadRenderSnapshot } = await import('#lib/output/render/engine/render-snapshot.ts');
   const { formatSliceReplyCommand } = await import('#lib/output/render/models/render-splice.ts');
+  const { projectTrackedInWorkspace } = await import('#lib/platform/project/engine/studio-workspace.ts');
   const loaded = loadRenderSnapshot(out);
   if (loaded.kind === 'none') throw new Error(loaded.reason);
   const verdict = formatRenderSpliceVerdict(projectDir, loaded.snapshot);
   if (verdict) console.log(verdict);
-  console.log(`commit, then ${formatSliceReplyCommand(basename(projectDir), '<id>', relative(projectDir, out).split(sep).join('/'))}`);
+  console.log(formatSliceReplyCommand(basename(projectDir), '<id>', relative(projectDir, out).split(sep).join('/'), projectTrackedInWorkspace(projectDir)));
 }

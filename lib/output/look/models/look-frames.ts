@@ -75,3 +75,13 @@ export function lookFramesOf(ask: LookFrameAsk, span: LookFrameSpan, { clock, pr
   if (frames.some((f) => !Number.isFinite(f))) throw new Error('frames and times are numbers');
   return frames;
 }
+
+/**
+ * `frames` within what `span` holds, a range or strip that runs past its end read to its last frame, with what was
+ * cut short, to say so. All of them past the end are kept, to fail as frames it doesn't hold.
+ */
+export function lookFramesToEnd(frames: readonly number[], span: Pick<LookFrameSpan, 'end'>): { frames: number[]; past: number } {
+  const inside = frames.filter((f) => f < span.end), past = frames.length - inside.length;
+  if (!past || !inside.length) return { frames: [...frames], past: 0 };
+  return { frames: inside.at(-1) === span.end - 1 ? inside : [...inside, span.end - 1], past };
+}

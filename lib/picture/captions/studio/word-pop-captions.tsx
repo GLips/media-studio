@@ -7,7 +7,7 @@ import { layoutGlyphLine, type GlyphLineSlot } from '#lib/picture/type/models/gl
 import { DISPLAY_FONT, MONO_ADVANCE_EM, MONO_FONT } from '#lib/picture/type/models/faces.ts';
 import { useStudioFontsReady } from '#lib/picture/type/studio/fonts.ts';
 import type { CaptionBand, CaptionBandRule } from '../models/caption-band.ts';
-import { READABLE_CAPTION_RULE, type CaptionMeasure, type CaptionPagingRule } from '../models/caption-pages.ts';
+import { CAPTION_WORD_LEAD_SECONDS, READABLE_CAPTION_RULE, type CaptionMeasure, type CaptionPagingRule } from '../models/caption-pages.ts';
 import type { CaptionWord } from '../models/caption-track.ts';
 import type { CaptionRenderProps, CaptionStyle } from './caption-style.tsx';
 
@@ -60,8 +60,9 @@ function WordPopCaption({ state: { page, held }, band: { bottom, maxWidth, scale
       {page.lines.map((line, j) => (
         <div key={j} style={{ whiteSpace: 'nowrap' }}>
           {line.map((word, i) => {
-            const k = popEase(seg(t, word.start, word.start + POP));
-            const lit = word.emphasis || (t >= word.start && t < word.end + 0.05);
+            const from = word.start - CAPTION_WORD_LEAD_SECONDS;
+            const k = popEase(seg(t, from, from + POP));
+            const lit = word.emphasis || (t >= from && t < word.end + 0.05 - CAPTION_WORD_LEAD_SECONDS);
             return (
               <span key={i}>
                 {i > 0 && ' '}

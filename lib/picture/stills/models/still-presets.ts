@@ -8,6 +8,8 @@ export const STILL_PRESETS = {
   square: { width: 1080, height: 1080 },
   portrait: { width: 1080, height: 1350 },
   story: { width: 1080, height: 1920 },
+  /** App Store Connect's 6.9" iPhone screenshot, portrait: Apple scales it down for every smaller iPhone. */
+  'appstore-iphone': { width: 1320, height: 2868 },
 } as const;
 export type StillPreset = keyof typeof STILL_PRESETS;
 
@@ -31,6 +33,7 @@ export const STILL_UI_ZONES: Readonly<Record<StillPreset, readonly StillUiZone[]
     { name: 'instagram top bar', rect: { x: 0, y: 0, w: 1080, h: 250 } },
     { name: 'instagram reply bar', rect: { x: 0, y: 1580, w: 1080, h: 340 } },
   ],
+  'appstore-iphone': [],
 };
 
 /**
@@ -44,6 +47,8 @@ export const STILL_FEED_SIZES: Readonly<Record<StillPreset, readonly { name: str
   square: [{ name: 'feed', w: 300, h: 300 }],
   portrait: [{ name: 'feed', w: 300, h: 375 }],
   story: [{ name: 'feed', w: 300, h: 534 }],
+  // A search result shows three screenshots side by side; the product page's gallery shows them about twice that.
+  'appstore-iphone': [{ name: 'search', w: 110, h: 239 }, { name: 'product page', w: 230, h: 500 }],
 };
 
 /**

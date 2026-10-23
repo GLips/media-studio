@@ -63,10 +63,22 @@ function projectModule(project: string, file: string) {
   return absent;
 }
 
+/** `@music`: the project's music/index.ts tracks as a default export, for `studio mix --bed` to name one; null with none. */
+function projectMusicModule(project: string) {
+  if (!existsSync(join(resolve(project), 'music', 'index.ts'))) return projectModule(project, 'music/index.ts');
+  const path = join(resolve(project), 'generated', 'music.ts');
+  const module = "// Written on every bundle: music/index.ts's tracks, by name, for `studio mix --bed`.\nexport { music as default } from '../music/index.ts';\n";
+  if (!existsSync(path) || readFileSync(path, 'utf8') !== module) {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, module);
+  }
+  return path;
+}
+
 export function projectWebpackOverride(project: string): WebpackOverrideFn {
   const dir = resolve(project);
   if (!existsSync(join(dir, 'video.tsx')) && !existsSync(join(dir, 'stills.tsx'))) throw new Error(`${projectSlug(project)} has neither a video.tsx nor a stills.tsx`);
-  const video = projectModule(project, 'video.tsx'), stills = projectModule(project, 'stills.tsx');
+  const video = projectModule(project, 'video.tsx'), stills = projectModule(project, 'stills.tsx'), music = projectMusicModule(project);
   const hostPlugins = hostResolvePlugins(project);
   // Written before every bundle, so the import always resolves and never names a deleted file. An open Studio
   // watches it, and picks up footage as `studio gen video` rewrites it.
@@ -81,7 +93,8 @@ export function projectWebpackOverride(project: string): WebpackOverrideFn {
     optimization: { ...config.optimization, concatenateModules: false },
     resolve: {
       ...config.resolve,
-      alias: { ...(config.resolve?.alias as Record<string, string>), '@video': video, '@stills': stills, '@footage': previsFootageModuleFor(project), '@sfx-cues': sfxCues, '@brand': brand, '@stamp-paint-styles': styles, 'react-dom': studioReactDom(join(dir, 'generated')) },
+      // SAFETY: Remotion's base webpack config gives resolve.alias as an object of paths, never webpack's array form.
+      alias: { ...(config.resolve?.alias as Record<string, string>), '@video': video, '@stills': stills, '@footage': previsFootageModuleFor(project), '@sfx-cues': sfxCues, '@music': music, '@brand': brand, '@stamp-paint-styles': styles, 'react-dom': studioReactDom(join(dir, 'generated')) },
       plugins: [...(config.resolve?.plugins ?? []), ...hostPlugins],
     },
     plugins: [...(config.plugins ?? []), new webpack.DefinePlugin({ PROJECT_SLUG: JSON.stringify(projectSlug(project)), REPLAY_SLUG: JSON.stringify(replaySlug(project)), BLOCKOUT_SLUG: JSON.stringify(blockoutSlug(project)) })],

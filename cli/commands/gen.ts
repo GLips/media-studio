@@ -48,6 +48,7 @@ const image = defineCommand({
     model: { type: 'string', description: 'An OpenRouter image model, e.g. x-ai/grok-imagine-image-2.0 (closest product likeness, slow), recraft/recraft-v4.1-vector (SVG), openai/gpt-image-2 (if the default is gone)' },
     ref: { type: 'string', valueHint: 'a.png,b.png', description: 'Reference images sent with the prompt (a product still, brand art): png, jpg or webp' },
     aspect: { type: 'string', description: 'Aspect ratio, e.g. 16:9, for models that take one' },
+    resolution: { type: 'string', valueHint: '2K', description: "Output resolution, e.g. 1K, 2K or 4K, for models that take one (google/gemini-3-pro-image does; the default model doesn't)" },
     transparent: { type: 'boolean', description: 'A transparent background, for models that can (the default can)' },
   },
   async run({ args }) {
@@ -56,17 +57,45 @@ const image = defineCommand({
     const { generateProjectImage, DEFAULT_IMAGE_MODEL } = await import('#lib/footage/generation/engine/generated-image.ts');
     const { file, index } = await generateProjectImage(resolveStudioProject(args.project), {
       name: args.name, prompt: args.prompt, model: args.model ?? DEFAULT_IMAGE_MODEL,
-      references: (args.ref?.split(',') ?? []).map((ref) => resolve(ref)), aspect: args.aspect, transparent: Boolean(args.transparent),
+      references: (args.ref?.split(',') ?? []).map((ref) => resolve(ref)), aspect: args.aspect, resolution: args.resolution, transparent: Boolean(args.transparent),
     });
     console.log(file);
     console.log(index);
   },
 });
 
+const clip = defineCommand({
+  meta: {
+    name: 'clip',
+    description: 'Generate a shot from a prompt, pinned to a first and last frame (paid).',
+    about: "For a move between two stills the project already has, where no blockout is needed: a handheld pan from one subject to the next. Silent. Checked against the model's durations, shapes, resolutions and pinned frames before paying (https://openrouter.ai/api/v1/videos/models lists them). Writes generated/<name>-<key>.mp4 and prints its path; a scene plays it like any footage. Needs OPENROUTER_API_KEY.",
+  },
+  args: {
+    project: studioProjectArg,
+    prompt: { type: 'positional', required: true, description: 'What happens between the frames: the move, its pace, the light, the look' },
+    name: { type: 'string', required: true, description: 'Names the file, generated/<name>-<key>.mp4' },
+    model: { type: 'string', description: `An OpenRouter video model. Default ${PREVIS_MODELS.seedance.id}, the studio's pick (${PREVIS_MODELS.seedance.resolution}, ${PREVIS_MODELS.seedance.seconds.min}–${PREVIS_MODELS.seedance.seconds.max}s, about $${PREVIS_MODELS.seedance.usdPerSecond}/s)` },
+    seconds: { type: 'string', required: true, description: 'Length in whole seconds, one the model renders' },
+    aspect: { type: 'string', required: true, description: "Aspect ratio, e.g. 9:16: the video's own shape, or the viewfinder's nearest" },
+    resolution: { type: 'string', default: PREVIS_MODELS.seedance.resolution, description: 'e.g. 720p or 1080p, one the model renders' },
+    first: { type: 'string', valueHint: 'a.png', description: 'The still the shot starts on' },
+    last: { type: 'string', valueHint: 'b.png', description: 'The still the shot ends on' },
+  },
+  async run({ args }) {
+    const { resolve } = await import('node:path');
+    const { resolveStudioProject } = await import('#lib/platform/project/engine/studio-project.ts');
+    const { generateProjectClip } = await import('#lib/footage/generation/engine/generated-clip.ts');
+    console.log(await generateProjectClip(resolveStudioProject(args.project), {
+      name: args.name, prompt: args.prompt, model: args.model ?? PREVIS_MODELS.seedance.id, seconds: Number(args.seconds), aspect: args.aspect, resolution: args.resolution,
+      first: args.first && resolve(args.first), last: args.last && resolve(args.last),
+    }));
+  },
+});
+
 export default defineCommand({
   meta: {
     name: 'gen',
-    description: "Generate images and previs footage through OpenRouter (paid; cached by request).",
+    description: "Generate images, clips and previs footage through OpenRouter (paid; cached by request).",
   },
-  subCommands: { image, video },
+  subCommands: { image, clip, video },
 });

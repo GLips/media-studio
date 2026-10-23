@@ -12,7 +12,7 @@
 //
 // Negative space: no package.json in work/. A project's `#studio` and `#lib/*` resolve through the studio's
 // package.json because none sits between them.
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isolatedGitEnv } from '#lib/platform/git/engine/fixture-git.ts';
@@ -33,6 +33,15 @@ const WORKSPACE_IGNORES = [
 
 export function isStudioWorkspaceRepo(): boolean {
   return existsSync(join(STUDIO_WORKSPACE_DIR, '.git'));
+}
+
+/**
+ * Whether git tracks any of `projectDir`: a project in the workspace's history, whose fixes are committed. One never
+ * added, or outside any repository, has nothing to commit.
+ */
+export function projectTrackedInWorkspace(projectDir: string): boolean {
+  const listed = spawnSync('git', ['ls-files', '--', '.'], { cwd: projectDir, encoding: 'utf8' });
+  return listed.status === 0 && listed.stdout.trim() !== '';
 }
 
 export function assertStudioWorkspace(): void {

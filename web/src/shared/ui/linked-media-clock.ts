@@ -29,7 +29,15 @@ export type LinkedMediaClock = {
   stop: () => void;
   /** One pass at the frame now, for a settled change (a seek, a pause): followers re-aim, listeners hear it. */
   sync: () => void;
+  /**
+   * Resolves once the picture on screen is the frame now: the leader's seek landed and each follower over that frame
+   * showing it. Given up on after LINKED_MEDIA_SETTLE_FRAMES, for a decoder that never lands its seek.
+   */
+  settled: () => Promise<void>;
 };
+
+/** Animation frames `settled` waits for the picture to land, about two seconds. */
+const LINKED_MEDIA_SETTLE_FRAMES = 120;
 
 type LinkedMediaClockOptions = {
   /** The leader's frame this instant, clamped and with its fallback before metadata: the owner's to say. */
@@ -109,7 +117,9 @@ export function createLinkedMediaClock({ frameNow, steer }: LinkedMediaClockOpti
     if (forward && leader) {
       const rate = leader.playbackRate * move.rate;
       if (element.playbackRate !== rate) element.playbackRate = rate;
-      if (element.paused) element.play().catch(() => undefined);
+      // A follower run to its end (a hair ahead of the leader, or seeked past it) holds its last picture: play() on an
+      // ended video restarts it from its first frame, shown for a paint at the hand-back to the leader.
+      if (element.paused && !element.ended) element.play().catch(() => undefined);
     }
   };
 
@@ -170,6 +180,20 @@ export function createLinkedMediaClock({ frameNow, steer }: LinkedMediaClockOpti
       cancelAnimationFrame(raf);
     },
     sync: pass,
+    settled() {
+      return new Promise<void>((resolve) => {
+        let waited = 0;
+        const check = () => {
+          const frame = frameNow();
+          const followersShow = [...followers].every(({ follower, shown }) => shown
+            || follower.element.readyState < HTMLMediaElement.HAVE_METADATA || linkedMediaPhaseAt(follower.span, frame) !== 'inside');
+          const landed = leader !== null && !leader.seeking && leader.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && followersShow;
+          if (landed || ++waited > LINKED_MEDIA_SETTLE_FRAMES) resolve();
+          else requestAnimationFrame(check);
+        };
+        requestAnimationFrame(check);
+      });
+    },
   };
 }
 

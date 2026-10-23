@@ -58,7 +58,7 @@ export type ReviewPlayback = {
   getState: () => ReviewPlaybackState;
   /** The frame on screen this instant, playing or not. */
   frameNow: () => number;
-} & Pick<LinkedMediaClock, 'addFollower' | 'onTick'>;
+} & Pick<LinkedMediaClock, 'addFollower' | 'onTick' | 'settled'>;
 
 /** `durationInFrames` null is learnt from the media once it loads. */
 type ReviewPlaybackOptions = { fps: number; durationInFrames: number | null; startFrame: number };
@@ -196,6 +196,7 @@ export function createReviewPlayback({ fps, durationInFrames, startFrame }: Revi
     frameNow,
     addFollower: clock.addFollower,
     onTick: clock.onTick,
+    settled: clock.settled,
   };
 }
 

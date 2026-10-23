@@ -12,7 +12,7 @@ import { readProjectStoryboard } from '#lib/output/render/engine/project-clock.t
 import { formatRenderVersionName, newestProjectCut } from '#lib/output/render/engine/render-cuts.ts';
 import { renderFileStamp } from '#lib/output/render/engine/render-snapshot.ts';
 import { projectSceneSourceFile, STUDIO_ROOT, STUDIO_WORKSPACE_DIR } from '#lib/platform/project/engine/studio-project.ts';
-import { isStudioWorkspaceRepo } from '#lib/platform/project/engine/studio-workspace.ts';
+import { isStudioWorkspaceRepo, projectTrackedInWorkspace } from '#lib/platform/project/engine/studio-workspace.ts';
 import { formatReviewDecisionsMarkdown } from '../models/review-decision-markdown.ts';
 import { formatReviewThreadsMarkdown, type ReviewMarkdownOptions, type ReviewMarkdownStill } from '../models/review-markdown.ts';
 import { REVIEW_FALLBACK_FPS } from '../models/review-context.ts';
@@ -55,7 +55,7 @@ export function openReviewHandoff(project: string, renderPath: string | undefine
     project,
     target: { ...target, ...(splices.length && { splices }) },
     markdown: {
-      project, renderPath, renderHash: artifact.render.hash, renderName: formatRenderVersionName(dir, { path: renderPath, hash: artifact.render.hash }), fps, size: artifact.frameSize, sceneSources, splices,
+      project, renderPath, renderHash: artifact.render.hash, renderName: formatRenderVersionName(dir, { path: renderPath, hash: artifact.render.hash }), fps, size: artifact.frameSize, sceneSources, splices, tracked: projectTrackedInWorkspace(dir),
       sources: { fps, frameSize: artifact.frameSize, scenes: artifact.scenes, sounds: artifact.sounds, motion: artifact.motion, cells: artifact.cells, timing: artifact.timing },
     },
   };

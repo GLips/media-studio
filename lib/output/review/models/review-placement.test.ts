@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { beatSpan, defineTimeline, tempoGrid, timelineClockTable } from '#lib/timing/timeline/models/timeline.ts';
 import { reviewMomentAt, reviewTimingOf, type ReviewTiming } from './review-moment.ts';
-import { layReviewSlices, placeReviewThread } from './review-placement.ts';
+import { layReviewSlices, placeReviewThread, reviewNoteImageFrameOf } from './review-placement.ts';
 import type { ReviewThread } from './review-threads.ts';
 
 // 120 bpm at 30 fps, a beat every 15 frames. The final cut gives `swatches` two more beats, so `price` starts 30 later.
@@ -37,4 +37,13 @@ test('overlapping slices are laid newest first per frame: an older one shows onl
   // A spans 0–100, B (newer) 40–60 inside it, C (newest) 50–120 across B's end and A's.
   const laid = layReviewSlices([slice('A', 0, 100, '2026-10-11T12:01:00Z'), slice('B', 40, 60, '2026-10-11T12:02:00Z'), slice('C', 50, 120, '2026-10-11T12:03:00Z')]);
   assert.deepEqual(laid.map((s) => [s.hash, s.from, s.end, s.startsAt]), [['A', 0, 40, 0], ['B', 40, 50, 40], ['C', 50, 120, 50]]);
+});
+
+test('a note aimed at a sound, saved after playing on, has its image cut back at its own frame; a range keeps the frame shown inside it', () => {
+  // #13: aimed at the whoosh on f5, saved at f29.
+  assert.equal(reviewNoteImageFrameOf({ frame: 5 }, 29), 5);
+  assert.equal(reviewNoteImageFrameOf({ frame: 5 }, 5), null);
+  assert.equal(reviewNoteImageFrameOf({ frame: 10, end: 40 }, 20), null);
+  assert.equal(reviewNoteImageFrameOf({ frame: 10, end: 40 }, 41), 10);
+  assert.equal(reviewNoteImageFrameOf({}, 29), null);
 });

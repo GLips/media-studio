@@ -69,9 +69,33 @@ export async function fetchOpenRouterImageModel(model: string): Promise<OpenRout
   const { data }: { data: OpenRouterImageModel[] } = await (await fetchOpenRouter('/images/models')).json();
   const found = data.find((m) => m.id === model);
   if (!found) throw new Error(`OpenRouter has no image model ${model}; list them at ${API}/images/models`);
-  // A listed model can have no provider serving it, and a request then fails upstream as a misleading 401.
+  // A listed model can have no provider serving it, and a request then fails upstream as a misleading 401. The image
+  // API's own endpoint list can be empty for a model it still serves (meta/muse-image), so the general list decides.
   const { endpoints }: { endpoints: unknown[] } = await (await fetchOpenRouter(`/images/models/${model}/endpoints`)).json();
-  if (!endpoints.length) throw new Error(`no provider is serving ${model} on OpenRouter right now; try again later or pick another --model`);
+  if (!endpoints.length) {
+    // SAFETY: OpenRouter's documented /models/{id}/endpoints shape; both fields are optional-chained, so a missing one reads as unserved.
+    const general = (await (await fetchOpenRouter(`/models/${model}/endpoints`)).json()) as { data?: { endpoints?: unknown[] } };
+    if (!general.data?.endpoints?.length) throw new Error(`no provider is serving ${model} on OpenRouter right now; try again later or pick another --model`);
+  }
+  return found;
+}
+
+/** A video model as the video API's own list describes it: what it renders, and which frames it can pin. */
+export type OpenRouterVideoModel = {
+  id: string;
+  supported_resolutions: string[] | null;
+  supported_aspect_ratios: string[] | null;
+  supported_durations: number[] | null;
+  supported_frame_images: ('first_frame' | 'last_frame')[] | null;
+  /** null when the model always makes sound, which the video then mutes. */
+  generate_audio: boolean | null;
+};
+
+export async function fetchOpenRouterVideoModel(model: string): Promise<OpenRouterVideoModel> {
+  // SAFETY: OpenRouter's documented /videos/models shape, from a response fetchOpenRouter has already checked is 2xx.
+  const { data } = (await (await fetchOpenRouter('/videos/models')).json()) as { data: OpenRouterVideoModel[] };
+  const found = data.find((m) => m.id === model);
+  if (!found) throw new Error(`OpenRouter has no video model ${model}; list them at ${API}/videos/models`);
   return found;
 }
 

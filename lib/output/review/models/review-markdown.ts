@@ -36,6 +36,8 @@ export type ReviewMarkdownOptions = {
   stills?: Readonly<Record<string, ReviewMarkdownStill>>;
   /** The slices laid into the render: a note written on one is looked at on the slice, its fixed picture. */
   splices?: readonly Pick<ReviewLaidSlice, 'hash'>[];
+  /** The project is in the workspace's git, so a fix is committed and its reply names the commit. */
+  tracked?: boolean;
 };
 
 /** A still as it is on disk: its bytes' hash and its size in pixels (null for an SVG). */
@@ -134,7 +136,7 @@ function formatVideoNoteLines(anchor: Extract<ReviewAnchor, { on: 'video' }>, pl
       anchor.image && `frame: ${projectPathOf(project, anchor.image)}`,
       scene && formatSceneLine(scene, span, options),
       look && `look:  ${formatLookCommand(project, look.path, look.frames, anchor.point, size)}`,
-      placed && scene && fix && `fix:   ${formatFixCommand(project, scene, fix)}`,
+      placed && scene && fix && `fix:   ${formatFixCommand(project, scene, fix, options.tracked === true)}`,
     ].filter((line): line is string => Boolean(line)),
   };
 }
@@ -186,8 +188,8 @@ function formatSceneLine(scene: string, span: { from: number; to: number } | und
 }
 
 /** The render that shows a fix to `scene` and the reply that hands it over, for note `id`. */
-function formatFixCommand(project: string, scene: string, id: number): string {
-  return `studio render ${project} --scene ${scene}, commit, then ${formatSliceReplyCommand(project, id, renderSlicePathOf({ scene }))}`;
+function formatFixCommand(project: string, scene: string, id: number, tracked: boolean): string {
+  return `studio render ${project} --scene ${scene}, ${tracked ? '' : 'then '}${formatSliceReplyCommand(project, id, renderSlicePathOf({ scene }), tracked)}`;
 }
 
 function formatStillNoteLines(anchor: Extract<ReviewAnchor, { on: 'still' }>, options: ReviewMarkdownOptions): AnchorLines {

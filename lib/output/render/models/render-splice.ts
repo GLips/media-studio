@@ -34,11 +34,12 @@ export const renderSlicePathOf = (span: RenderSliceSpan) =>
   `${RENDER_SLICES_DIR}/${'scene' in span ? `scene-${span.scene}` : `frames-${span.from}-${span.end - 1}`}.mp4`;
 
 /**
- * The reply that hands the slice at `path` over for note `id` (`<id>` when the agent fills it in), once the fix is
- * committed. The render CLI and watch's `fix:` line both print it.
+ * The reply that hands the slice at `path` over for note `id` (`<id>` when the agent fills it in): once the fix is
+ * committed, naming it, when the project is `tracked` in the workspace's git; else straight after the render, as
+ * there's nothing to commit. The render CLI and watch's `fix:` line both print it.
  */
-export const formatSliceReplyCommand = (project: string, id: number | '<id>', path: string) =>
-  `studio review reply ${project} ${id} "<what changed>" --addressed --commit HEAD --render ${path}`;
+export const formatSliceReplyCommand = (project: string, id: number | '<id>', path: string, tracked: boolean) =>
+  `${tracked ? 'commit, then ' : ''}studio review reply ${project} ${id} "<what changed>" --addressed${tracked ? ' --commit HEAD' : ''} --render ${path}`;
 
 /** What the check reads of a render: when it started, the frames it holds, whether it has captions, its timeline and clock. */
 export type RenderSpliceSide = Pick<RenderSnapshot, 'started' | 'frames' | 'captions' | 'timeline' | 'clock'>;

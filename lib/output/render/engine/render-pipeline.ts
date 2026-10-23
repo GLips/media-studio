@@ -165,16 +165,18 @@ export async function renderMotionGraph(session: RenderSession, { at, tracks, sp
 const DELIVERY_LUFS = -14, DELIVERY_TRUE_PEAK = -1, MASTER_TRUE_PEAK = -2;
 
 /**
- * Masters the soundtrack to out/mix.wav: one gain to delivery loudness, then a limiter for the peaks. Not loudnorm:
- * when its linear mode can't reach the target it becomes an AGC, which fills in the music's ducks.
- * `auditionSfxCueList` plays the cue list into out/mix-sfx-cues.wav too. `timeline`, the caller's report (a browser
- * pass to read), says whether it's a beat-click draft.
+ * Masters the soundtrack to out/mix.wav (or `out`): one gain to delivery loudness, then a limiter. Not loudnorm: short
+ * of its target, its linear mode turns AGC and fills in the music's ducks. `auditionSfxCueList` plays the cue list,
+ * into out/mix-sfx-cues.wav. `timeline` says if it's a beat-click draft, which a `bedTrack` (another track as the
+ * bed) never is.
  */
-export async function renderMasteredMix(session: RenderSession, { timeline, auditionSfxCueList = false }: { timeline: TimelineReport; auditionSfxCueList?: boolean }): Promise<string> {
+export async function renderMasteredMix(session: RenderSession, { timeline, auditionSfxCueList = false, bedTrack, out }: {
+  timeline: TimelineReport; auditionSfxCueList?: boolean; bedTrack?: string; out?: string;
+}): Promise<string> {
   if (session.silent) throw new Error(`${basename(session.project)} is silent (project.ts): it plays no voice, music or sound, so it has no mix`);
   return withStudioTemp('mix', async (tmp) => {
-    const raw = await session.renderAudio({ out: join(tmp, 'raw.wav'), inputProps: session.props({ auditionSfxCueList }) });
-    return masterRenderedMix(session, raw, { beatClicks: timeline.beatClicks, auditionSfxCueList });
+    const raw = await session.renderAudio({ out: join(tmp, 'raw.wav'), inputProps: session.props({ auditionSfxCueList, ...(bedTrack !== undefined && { bedTrack }) }) });
+    return masterRenderedMix(session, raw, { beatClicks: timeline.beatClicks && bedTrack === undefined, auditionSfxCueList, ...(out !== undefined && { out }) });
   });
 }
 
@@ -183,9 +185,9 @@ export async function renderMasteredMix(session: RenderSession, { timeline, audi
  * for `auditionSfxCueList` (see renderMasteredMix). A draft of `beatClicks` gains only to the peak ceiling: sparse
  * clicks reach delivery loudness only by the limiter crushing each one.
  */
-export function masterRenderedMix(ledger: Pick<RenderLedger, 'project' | 'trace'>, raw: string, { beatClicks, auditionSfxCueList = false }: { beatClicks: boolean; auditionSfxCueList?: boolean }): string {
-  const mastering = traceClock(), masterWav = masterWavFor(ledger, auditionSfxCueList);
-  mkdirSync(outDirFor(ledger), { recursive: true });
+export function masterRenderedMix(ledger: Pick<RenderLedger, 'project' | 'trace'>, raw: string, { beatClicks, auditionSfxCueList = false, out }: { beatClicks: boolean; auditionSfxCueList?: boolean; out?: string }): string {
+  const mastering = traceClock(), masterWav = out ?? masterWavFor(ledger, auditionSfxCueList);
+  mkdirSync(dirname(masterWav), { recursive: true });
   const before = measureLoudness(raw);
   if (before.lufs === -Infinity) {
     throw new Error("the mix renders silent: a voice, music or sound the video plays didn't sound. A video with no sound at all declares `capability: 'silent'` in project.ts");

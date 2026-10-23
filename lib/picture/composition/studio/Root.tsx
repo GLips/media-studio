@@ -5,6 +5,7 @@
 
 import { Composition, Folder, Freeze, useCurrentFrame } from 'remotion';
 import { footage } from '@footage';
+import music from '@music';
 import sfxCues from '@sfx-cues';
 import stills from '@stills';
 import video from '@video';
@@ -38,7 +39,18 @@ if (video?.clock !== undefined) pinBrowserDate(video.clock);
 
 // The components below render only when Root registered them, which it does only with a video.
 const projectVideo = video as VideoDef;
-const ProjectVideo = (props: VideoProps & CompositionRenderSettings) => <PictureRoot><Video video={projectVideo} footage={footage} sfxCues={sfxCues} {...props} /></PictureRoot>;
+const bedVideos = new Map<string, VideoDef>();
+/** The video with its bed on `track` of the project's music, made once a track so Video's memos hold across frames. */
+function videoOnBed(track: string): VideoDef {
+  const played = music?.[track];
+  if (!played) throw new Error(`there's no music.${track} to play as the bed: music/index.ts has ${Object.keys(music ?? {}).join(', ') || 'none'}`);
+  const made = bedVideos.get(track) ?? { ...projectVideo, bed: { ...projectVideo.bed, track: played } };
+  bedVideos.set(track, made);
+  return made;
+}
+const ProjectVideo = ({ bedTrack, ...props }: VideoProps & CompositionRenderSettings) => (
+  <PictureRoot><Video video={bedTrack === undefined ? projectVideo : videoOnBed(bedTrack)} footage={footage} sfxCues={sfxCues} {...props} /></PictureRoot>
+);
 
 /**
  * Frame i shows the video's frame order[i] (the last one past the end). Rendered in one tab, that gives each frame a

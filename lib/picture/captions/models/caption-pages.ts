@@ -19,10 +19,23 @@ export type CaptionPagingRule = {
   pauseBreak: number;
   /** A gap this short or shorter between two pages is held: the first stays up until the next. */
   holdGap: number;
-  /** How early a page shows before its first word, and how long it stays after its last. */
+  /** How early a page shows before its first word, and how long it stays after its last. A page always shows a little before its first word lights, whatever `leadIn` says. */
   leadIn: number;
   hang: number;
+  /**
+   * A page that would run past this many lines ends at a clause (a comma or stop) in its middle instead, so a long
+   * sentence reads as two thoughts; one with no clause there still runs to `maxLines`. Unset, pages fill `maxLines`.
+   */
+  clauseLines?: number;
 };
+
+/**
+ * A word becomes the spoken one this long before its voice starts: lit exactly on the word reads as late, as the eye
+ * wants to be there before the ear. A style that animates a word in from its start leads by the same amount.
+ */
+export const CAPTION_WORD_LEAD_SECONDS = 0.25;
+/** A page is up at least this long before its first word lights, so the eye lands on it before the highlight does. */
+const PAGE_BEFORE_LEAD_SECONDS = 0.05;
 
 /** Subtitles anyone can read: the house pill's rule and the default for a sidecar. */
 export const READABLE_CAPTION_RULE: CaptionPagingRule = { maxChars: 48, maxLines: 2, maxSeconds: 6, pauseBreak: 0.5, holdGap: 1, leadIn: 0.05, hang: 0.15 };
@@ -33,6 +46,7 @@ export type CaptionMeasure = { lineWidth(words: readonly CaptionWord[]): number;
 /** Text on screen at once, from `start` to `end`, in lines. */
 export type CaptionPage = { start: number; end: number; lines: readonly (readonly CaptionWord[])[] };
 
+const clauseEnd = (w: CaptionWord) => /[.,;:?!…—]$/.test(w.text + w.trail);
 const charsOf = (words: readonly CaptionWord[]) => words.reduce((n, w) => n + w.text.length + w.trail.length + (w.key ? 2 : 0), 0) + words.length - 1;
 
 export function pageCaptions(track: CaptionTrack, rule: CaptionPagingRule, measure?: CaptionMeasure): CaptionPage[] {
@@ -70,11 +84,18 @@ export function pageCaptions(track: CaptionTrack, rule: CaptionPagingRule, measu
     let page: CaptionWord[] = [];
     for (const word of run) {
       if (!page.length || fitsPage([...page, word])) {
+        const stop = rule.clauseLines && linesOf([...page, word]).length > rule.clauseLines
+          ? page.findLastIndex((w, j) => j < page.length - 1 && j >= page.length / 3 - 1 && clauseEnd(w))
+          : -1;
+        if (stop >= 0) {
+          out.push(page.slice(0, stop + 1));
+          page = page.slice(stop + 1);
+        }
         page.push(word);
         continue;
       }
       // End the page after its last sentence or clause, if that's in its second half, so a page reads as a thought.
-      const stop = page.findLastIndex((w, j) => j < page.length - 1 && j >= page.length / 2 - 1 && /[.,;:?!…—]$/.test(w.text + w.trail));
+      const stop = page.findLastIndex((w, j) => j < page.length - 1 && j >= page.length / 2 - 1 && clauseEnd(w));
       const carried = stop >= 0 ? page.slice(stop + 1) : [];
       if (carried.length && fitsPage([...carried, word])) {
         out.push(page.slice(0, stop + 1));
@@ -95,7 +116,8 @@ export function pageCaptions(track: CaptionTrack, rule: CaptionPagingRule, measu
     return out;
   });
 
-  const shown = pages.map((words) => ({ start: Math.max(0, words[0].start - rule.leadIn), end: words.at(-1)!.end + rule.hang, lines: linesOf(words) }));
+  const leadIn = Math.max(rule.leadIn, CAPTION_WORD_LEAD_SECONDS + PAGE_BEFORE_LEAD_SECONDS);
+  const shown = pages.map((words) => ({ start: Math.max(0, words[0].start - leadIn), end: words.at(-1)!.end + rule.hang, lines: linesOf(words) }));
   shown.forEach((page, k) => {
     const next = shown[k + 1];
     if (next && next.start - page.end <= rule.holdGap) page.end = next.start;
@@ -104,8 +126,8 @@ export function pageCaptions(track: CaptionTrack, rule: CaptionPagingRule, measu
 }
 
 /**
- * What a caption shows at `t`: its page, and which word of it is being spoken (counted through its lines; −1 before
- * the first). `held` says whether the pages before and after meet it end to end, so a style swaps them without a fade.
+ * What a caption shows at `t`: its page, and which word of it is being spoken, from CAPTION_WORD_LEAD_SECONDS before its
+ * start (counted through its lines; −1 before the first lights). `held` says whether the pages before and after meet it end to end, so a style swaps them without a fade.
  */
 export type CaptionState = { page: CaptionPage; word: number; held: { before: boolean; after: boolean } };
 
@@ -113,6 +135,6 @@ export function captionStateAt(pages: readonly CaptionPage[], t: number): Captio
   const k = pages.findIndex((p) => t >= p.start && t < p.end);
   if (k < 0) return null;
   const page = pages[k];
-  const word = page.lines.flat().findLastIndex((w) => w.start <= t);
+  const word = page.lines.flat().findLastIndex((w) => w.start - CAPTION_WORD_LEAD_SECONDS <= t);
   return { page, word, held: { before: pages[k - 1]?.end === page.start, after: pages[k + 1]?.start === page.end } };
 }

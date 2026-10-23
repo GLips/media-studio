@@ -1,7 +1,7 @@
 // Lets a node:test file, or a command or script reading a video in Node (`studio mix`'s sound check), load .tsx:
 // import this first, then the module dynamically (a static import would load before this module runs). Node strips
 // types from .ts but can't read JSX, so .tsx is transpiled with esbuild (a pinned dependency) as it loads. What only
-// a bundler or a browser does at import stands in: an asset import (a face, a sound) is its file URL,
+// a bundler or a browser does at import stands in: an asset import (a face, a sound, a clip) is its file URL,
 // @remotion/fonts' loadFont settles at once, and @stamp-paint-styles is every workspace style.
 
 import { readFileSync } from 'node:fs';
@@ -9,7 +9,7 @@ import { registerHooks } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
 
-const ASSET_FILE = /\.(ttf|otf|woff2?|wav|mp3|png|jpe?g|webp)$/;
+const ASSET_FILE = /\.(ttf|otf|woff2?|wav|mp3|png|jpe?g|webp|mp4|mov|webm)$/;
 
 registerHooks({
   resolve(specifier, context, nextResolve) {

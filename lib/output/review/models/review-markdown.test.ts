@@ -20,7 +20,7 @@ test('the markdown keeps a note\'s paragraphs, lists open and reopened notes by 
     thread(5, 'question', 'reopened', 'why the cut here?'),
   ], {
     project: 'zz-review-sandbox', renderPath: 'out/video.mp4', renderHash: 'a1b2c3d4e5', renderName: 'out/video.mp4 r14', fps: 30, size: { w: 1920, h: 1080 },
-    sceneSources: { ink: 'bars/04-ink.tsx' },
+    sceneSources: { ink: 'bars/04-ink.tsx' }, tracked: true,
     // #1 at f30 is in the crossfade from intro into ink: it's ink's, the scene being cut to.
     sources: { fps: 30, frameSize: { w: 1920, h: 1080 }, scenes: [{ id: 'intro', from: 0, to: 36 }, { id: 'ink', from: 24, to: 312 }] },
   });

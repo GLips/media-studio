@@ -27,6 +27,8 @@ export type GeneratedImageRequest = {
   references: readonly string[];
   /** e.g. '16:9'; left to the model when absent. */
   aspect?: string;
+  /** e.g. '2K', for models that take an output resolution; their default (often 1K) when absent. */
+  resolution?: string;
   /** A transparent background, for an icon or cutout laid over a scene. */
   transparent: boolean;
 };
@@ -46,6 +48,7 @@ export async function generateProjectImage(project: string, request: GeneratedIm
   }
   const params = {
     ...(request.aspect !== undefined && { aspect_ratio: request.aspect }),
+    ...(request.resolution !== undefined && { resolution: request.resolution }),
     ...(request.transparent && { background: 'transparent' }),
   };
   const [file] = await generatePaidMedia(project, {
@@ -63,7 +66,7 @@ export async function generateProjectImage(project: string, request: GeneratedIm
 }
 
 /** Refuses a request `model` would silently ignore part of, or fail upstream. */
-function checkOpenRouterImageRequest(model: OpenRouterImageModel, { aspect, transparent, references }: GeneratedImageRequest) {
+function checkOpenRouterImageRequest(model: OpenRouterImageModel, { aspect, resolution, transparent, references }: GeneratedImageRequest) {
   const supported = model.supported_parameters;
   const enumValues = (param: string) => {
     const spec = supported[param];
@@ -75,6 +78,12 @@ function checkOpenRouterImageRequest(model: OpenRouterImageModel, { aspect, tran
       throw new Error(aspects.length
         ? `${model.id} takes --aspect ${aspects.join(', ')}, not ${aspect}`
         : `${model.id} ignores --aspect: leave it off and frame the still with objectFit: 'cover', or pick a model that takes it`);
+    }
+  }
+  if (resolution !== undefined) {
+    const resolutions = enumValues('resolution');
+    if (!resolutions.includes(resolution)) {
+      throw new Error(resolutions.length ? `${model.id} takes --resolution ${resolutions.join(', ')}, not ${resolution}` : `${model.id} ignores --resolution; pick a model that takes it`);
     }
   }
   if (transparent && !enumValues('background').includes('transparent')) {

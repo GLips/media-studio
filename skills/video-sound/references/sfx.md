@@ -52,9 +52,9 @@ Redraft after adding one, so the list's accents keep clear of it.
 ## Sounds on the music's beat
 
 A music-led video places its hits and whips on the video's clock instead:
-`defineVideo({ sounds: [{ at, sound, id, volume }] })`, `at` in video seconds from the resolved storyboard's frames
-(`storyboardTimeline(storyboard, { music })`: a cue's frame over `fps`, plus its `soundLagSeconds`). These ring on across cuts, and a scene replayed elsewhere doesn't
-replay them.
+`defineVideo({ sounds: [{ at, sound, id, volume }] })`, `at` in video seconds: `storyboardTimeline(storyboard, { music
+}).cue('menu.tap')` over `fps`, plus its `soundLagSeconds`. Not a `.clock()`'s frames, which count from its scene's
+start. These ring on across cuts, and a scene replayed elsewhere doesn't replay them.
 
 `studio mix <p>` (or `--check`, which skips rendering the mix) prints each against the music; `studio mix --help`
 says what the flags mean. The fixes:

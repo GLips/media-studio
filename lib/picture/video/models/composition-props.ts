@@ -13,6 +13,8 @@ export type VideoProps = {
   blockouts: boolean;
   /** Play the project's cue list (sfx/cues.json) whether or not the video does (`sfxCueList`), to audition it. */
   auditionSfxCueList?: boolean;
+  /** The bed plays this track of the project's music/index.ts in place of video.tsx's, to hear it (`studio mix --bed`). */
+  bedTrack?: string;
   /** The frames a render traces in detail (`studio render --trace`); none when left out. */
   traceDetail?: TraceDetail;
   /** How the lens draws: fast, or the reference the fast path is measured against (lens-mode.ts). */

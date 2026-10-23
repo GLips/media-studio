@@ -68,6 +68,12 @@ declare module '@sfx-cues' {
   const cues: readonly import('#lib/timing/sound/studio/sfx.tsx').SfxCueSound[] | null;
   export default cues;
 }
+/** The project's music/index.ts tracks by name, through generated/music.ts, or null without one (lib/output/render/engine/project-bundle.ts). */
+declare module '@music' {
+  import type { MusicTrack } from '#lib/timing/sound/models/mix.ts';
+  const music: Readonly<Record<string, MusicTrack>> | null;
+  export default music;
+}
 /** The project's generated/stamp-paint-styles.ts: each style its project.ts names, with its manifests and image URLs (lib/paint/style/engine/project-styles.ts). */
 declare module '@stamp-paint-styles' {
   const styles: import('#lib/paint/style/models/style.ts').BundledStampPaintStyles;

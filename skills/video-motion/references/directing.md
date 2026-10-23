@@ -120,6 +120,7 @@ Notes you'll give: **"floaty"** (the ease is too long or too gentle; tighten it)
 - **Rule of thirds.** Put the subject on a third line, not dead centre, when there's text or a second element to balance. Centre is fine for a single hero element.
 - **Lead room.** Leave space in the direction something is moving or pointing. A cursor heading right needs empty space on its right.
 - **Safe areas.** Keep the subject out of the caption band and away from the edges. Platforms put their own UI over the bottom and right.
+- **Captions lead the voice.** A word lights 0.25 s before it's spoken (`CAPTION_WORD_LEAD_SECONDS`): on the word reads as late. A style animating words uses the same lead.
 - **Negative space.** Empty space around the subject reads as confident. A crowded frame reads as a screenshot.
 - **Scale up.** UI at 1:1 is unreadable in video. Show only what the scene needs, about 1.5–2× bigger, on a clean background.
 

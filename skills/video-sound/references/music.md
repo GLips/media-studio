@@ -24,8 +24,8 @@ Write a Lyria prompt for the role, naming mood, tempo, instruments and structure
 
 There's no seed, so a near miss can't be nudged: change the prompt. **Try two or three** under their own names
 (`--name=bed-a`, `--name=bed-b`), fit each, and post them as a decision (studio-review) for the user to hear in
-context. A bed is heard under the real voice: for each, point `video.tsx` at its fit, run `studio mix <p>` and copy
-`out/mix.wav` to `out/decisions/music-bed/<name>.wav`, leaving `video.tsx` on the one in use. A lead is heard against
+context. A bed is heard under the real voice: for each, `studio mix <p> --bed <its fit> --out
+out/decisions/music-bed/<name>.wav`, which leaves `video.tsx` on the one in use. A lead is heard against
 the cut: `studio render <p> --animatic --out out/decisions/music-lead/<name>.mp4` carries the fitted track as it
 stands. Beds can be made and chosen while picture notes are still open; fit again once the length settles.
 
