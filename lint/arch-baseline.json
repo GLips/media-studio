@@ -623,8 +623,6 @@
       "console.error(`${name}: ${basename(source)}, ${duration.toFixed(1)}s, ${lufs} LUFS, ${bpm} BPM, first beats ${beats.slice(0, 4).join(', ')}s`);": 1
     },
     "lib/timing/voice/engine/voice-project.ts": {
-      "console.error(`cut ${clip.id}  ${duration.toFixed(2)}s${pause}${unheard.length ? `  (misheard, timed from their neighbours: ${unheard.join(' ')})` : ''}`);": 1,
-      "if (problem) console.error(`listen to ${clip.id}: the read ${problem} before it, so the cut may be heard. Add <short pause> before it, or move the line break`);": 1,
       "console.error(`${Object.keys(manifest).length} lines, ${total.toFixed(1)}s of voice`);": 1,
       "console.error(`${voice}  ${duration.toFixed(2)}s`);": 1
     }
@@ -754,10 +752,6 @@
     "lib/timing/timeline/models/timeline.ts": {
       "return span.driver === 'fixed' ? span.seconds : span.driver === 'voice' ? voiceLayouts[k]!.seconds : 0;": 1,
       "const at = typeof moment === 'object' ? ('at' in moment ? moment.at : undefined) : moment;": 1
-    },
-    "lib/timing/voice/engine/voice-project.ts": {
-      "const readText = (paragraphBreak: string) => script.lines.map((line, i) => (i === 0 ? '' : line.paragraph ? paragraphBreak : ' ') + ttsText(line.text)).join('');": 1,
-      "const problem = !clip.cutIsClear ? 'has no one clear pause' : clip.cutPause < TIGHT_PAUSE ? `pauses only ${Math.round(clip.cutPause * 1000)} ms` : null;": 1
     },
     "lib/timing/voice/models/voice-words.ts": {
       "const cost = Array.from({ length: n + 1 }, (_, i) => Array.from({ length: m + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)));": 1

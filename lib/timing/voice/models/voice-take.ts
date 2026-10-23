@@ -1,4 +1,4 @@
-// voice-take.ts: where to cut one continuous read of a script (a take) into its lines. Pure; lib/timing/voice/engine/voice-project.ts does the IO.
+// voice-take.ts: where to cut one continuous read of some of a script's lines (a take) into those lines. Pure; lib/timing/voice/engine/voice-project.ts does the IO.
 //
 // A take reads as one performance: pace, pitch and breath carry from line to line, which separate reads never do.
 // Whisper's word times over a whole take drift by up to half a second, so they only say roughly where each line is;
@@ -24,13 +24,23 @@ const MIN_SPEECH_FRAMES = 8;
 // The shortest quiet that counts as a performed pause tag: shorter, and it's a stop inside a word.
 const MIN_TAGGED_PAUSE_FRAMES = 15;
 
+/** One line a take reads, as the script had it when read, and its hash (voice-project.ts) to tell whether it still does. */
+export type VoiceTakeLine = { id: string; text: string; paragraph: boolean; hash: string };
 /**
- * audio/takes/<n>.json: where take n came from, the hash of what it reads (none for a recording), when it was read and
- * last made current, and what whisper heard in it and its clips, keyed by each WAV's hash.
+ * audio/takes/<n>.json: where take n came from, the lines it reads in order (a pickup's first is its `context`, read
+ * for the lead-in and never chosen), when it was read and last chosen, and what whisper heard in it and its clips,
+ * keyed by each WAV's hash.
  */
-export type VoiceTakeFile = { source: 'tts' | 'draft' | 'recording'; hash?: string; madeAt: string; chosenAt: string; heard?: Record<string, SpokenWord[]> };
-/** audio/current-take.json: the kept take the lines and manifest are cut from, and where it came from. */
-export type VoiceCurrentTakeFile = { take: number; source: VoiceTakeFile['source'] };
+export type VoiceTakeFile = {
+  source: 'tts' | 'draft' | 'recording';
+  lines: VoiceTakeLine[];
+  context?: string;
+  madeAt: string;
+  chosenAt: string;
+  heard?: Record<string, SpokenWord[]>;
+};
+/** audio/comp.json: the take each line of the script is cut from, and where that take came from. */
+export type VoiceCompFile = { lines: Record<string, { take: number; source: VoiceTakeFile['source'] }> };
 
 export type TakeLine = { id: string; text: string };
 export type TakeClip = {

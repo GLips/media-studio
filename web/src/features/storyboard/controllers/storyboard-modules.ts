@@ -1,5 +1,5 @@
 // storyboard-modules.ts: a project's storyboard.ts and what it's timed against (audio/manifest.ts, music/index.ts,
-// audio/current-take.json), imported in the browser through Vite. The long-running app server never imports a project's
+// audio/comp.json), imported in the browser through Vite. The long-running app server never imports a project's
 // TypeScript, so the page does: Vite transforms each file as it's asked for, and re-sends it when it changes.
 //
 // Re-timing live: this module accepts its own updates, so an edit to a file it imports stops here rather than
@@ -19,7 +19,7 @@ type StoryboardModuleSources = {
   storyboards: Record<string, () => Promise<{ storyboard?: Storyboard }>>;
   manifests: Record<string, () => Promise<{ voice?: RecordedVoice }>>;
   music: Record<string, () => Promise<{ music?: Readonly<Record<string, MusicTrack>> }>>;
-  takes: Record<string, () => Promise<{ source?: string }>>;
+  comps: Record<string, () => Promise<{ lines?: Readonly<Record<string, { source: string }>> }>>;
 };
 
 /** What every copy of this module shares across hot updates: the newest globs, a version, and who's listening. */
@@ -31,7 +31,7 @@ shared.sources = {
   storyboards: import.meta.glob<{ storyboard?: Storyboard }>('../../../../../work/projects/*/storyboard.ts'),
   manifests: import.meta.glob<{ voice?: RecordedVoice }>('../../../../../work/projects/*/audio/manifest.ts'),
   music: import.meta.glob<{ music?: Readonly<Record<string, MusicTrack>> }>('../../../../../work/projects/*/music/index.ts'),
-  takes: import.meta.glob<{ source?: string }>('../../../../../work/projects/*/audio/current-take.json'),
+  comps: import.meta.glob<{ lines?: Readonly<Record<string, { source: string }>> }>('../../../../../work/projects/*/audio/comp.json'),
 };
 shared.version = (shared.version ?? -1) + 1;
 shared.listeners ??= new Set();
@@ -55,24 +55,24 @@ export type StoryboardModules = {
   voice: RecordedVoice;
   /** music/index.ts's tracks, each with its `src` to play; empty with none. */
   music: Readonly<Record<string, MusicTrack>> & StoryboardMusic;
-  /** `draft` when the manifest's clips are a `--read=draft` take (macOS say), for timing only. */
+  /** `draft` when any of the manifest's clips is from a `--read=draft` take (macOS say), for timing only. */
   voiceRead: 'draft' | 'final';
 };
 
 /** `project`'s modules, or null for a project with no storyboard.ts. Throws when one doesn't load (a syntax error mid-edit). */
 export async function importStoryboardModules(project: string): Promise<StoryboardModules | null> {
-  const { storyboards, manifests, music, takes } = shared.sources ?? {};
+  const { storyboards, manifests, music, comps } = shared.sources ?? {};
   const at = (file: string) => `${STORYBOARD_PROJECTS_PREFIX}${project}/${file}`;
   const loadStoryboard = storyboards?.[at('storyboard.ts')];
   if (!loadStoryboard) return null;
-  const [board, manifest, tracks, take] = await Promise.all([
-    loadStoryboard(), manifests?.[at('audio/manifest.ts')]?.(), music?.[at('music/index.ts')]?.(), takes?.[at('audio/current-take.json')]?.(),
+  const [board, manifest, tracks, comp] = await Promise.all([
+    loadStoryboard(), manifests?.[at('audio/manifest.ts')]?.(), music?.[at('music/index.ts')]?.(), comps?.[at('audio/comp.json')]?.(),
   ]);
   if (!board.storyboard?.scenes) throw new Error(`${project}/storyboard.ts exports no \`storyboard\` made with defineStoryboard`);
   return {
     storyboard: board.storyboard,
     voice: manifest?.voice ?? {},
     music: tracks?.music ?? {},
-    voiceRead: take?.source === 'draft' ? 'draft' : 'final',
+    voiceRead: Object.values(comp?.lines ?? {}).some((line) => line.source === 'draft') ? 'draft' : 'final',
   };
 }
