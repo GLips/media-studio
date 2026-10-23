@@ -7,7 +7,8 @@ export type ProjectPulseFacts = {
   files: readonly { path: string; hash: string }[];
   /**
    * The hashes (first 10 hex of each sha256) of the files the plan is timed from: storyboard.ts, the voiced lines
-   * (audio/manifest.json) and the take they were cut from, each null when absent. Null without a storyboard.ts.
+   * (audio/manifest.json) and audio/current-take.json, naming the take they were cut from, each null when absent.
+   * Null without a storyboard.ts.
    */
   plan: { storyboard: string; manifest: string | null; take: string | null } | null;
 };

@@ -35,7 +35,7 @@ function planPulseOf(dir: string): ProjectPulse['plan'] {
   const storyboard = join(dir, 'storyboard.ts');
   if (!existsSync(storyboard)) return null;
   const hashOf = (...path: string[]) => (existsSync(join(dir, ...path)) ? renderFileStamp(join(dir, ...path)).hash : null);
-  return { storyboard: renderFileStamp(storyboard).hash, manifest: hashOf('audio', 'manifest.json'), take: hashOf('audio', 'take.wav') };
+  return { storyboard: renderFileStamp(storyboard).hash, manifest: hashOf('audio', 'manifest.json'), take: hashOf('audio', 'current-take.json') };
 }
 
 /** `project`'s pulse, by its folder name under work/projects/. */

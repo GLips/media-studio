@@ -5,7 +5,7 @@
 // the cuts go in the longest quiet stretches around the boundaries, found in the audio and chosen together, so short
 // lines ("filter, / search, / and…") each keep their own speech. The quiet trimmed off between two lines comes back
 // as `pauseBefore`, so the timeline can replay the read's timing.
-import { alignSpokenWords, scriptWords, type SpokenWord } from './voice-words.ts';
+import { alignSpokenWords, scriptWords, spokenText, type SpokenWord } from './voice-words.ts';
 
 // What each clip keeps of the quiet around its words: a breath before, and a little longer after so it doesn't end
 // clipped.
@@ -21,9 +21,16 @@ const AMBIGUOUS_PAUSE = 0.6;
 const QUIET_CEILING = 1500;
 // Every clip holds at least this much speech, so two cuts can't share one pause.
 const MIN_SPEECH_FRAMES = 8;
+// The shortest quiet that counts as a performed pause tag: shorter, and it's a stop inside a word.
+const MIN_TAGGED_PAUSE_FRAMES = 15;
 
-/** audio/take.json: where take.wav came from, and what whisper heard in it and its clips, keyed by each WAV's hash. */
-export type VoiceTakeFile = { source: 'tts' | 'draft' | 'recording'; hash?: string; heard?: Record<string, SpokenWord[]> };
+/**
+ * audio/takes/<n>.json: where take n came from, the hash of what it reads (none for a recording), when it was read and
+ * last made current, and what whisper heard in it and its clips, keyed by each WAV's hash.
+ */
+export type VoiceTakeFile = { source: 'tts' | 'draft' | 'recording'; hash?: string; madeAt: string; chosenAt: string; heard?: Record<string, SpokenWord[]> };
+/** audio/current-take.json: the kept take the lines and manifest are cut from, and where it came from. */
+export type VoiceCurrentTakeFile = { take: number; source: VoiceTakeFile['source'] };
 
 export type TakeLine = { id: string; text: string };
 export type TakeClip = {
@@ -68,6 +75,44 @@ export function cutTakeIntoLines(lines: readonly TakeLine[], heard: readonly Spo
     clips.push({ id: line.id, from: round(from), to: round(to), pauseBefore: before ? round(from - before.to) : null, cutIsClear: cuts[i].clear, cutPause: round(cuts[i].pause) });
   });
   return clips;
+}
+
+/**
+ * Whisper's word times can slide across a long pause. A line's pause tags say which words a pause separates, so each
+ * stretch between tags is fitted to its own speech, between the clip's longest quiet runs in order. With fewer pauses
+ * than tags, whisper's times stand.
+ */
+export function pinWordsToTaggedPauses(text: string, words: readonly SpokenWord[], samples: Int16Array, rate: number): SpokenWord[] {
+  const stretches = text.split(/<[^>]*pause>/).map((piece) => scriptWords(spokenText(piece)).length).filter((n) => n > 0);
+  if (stretches.length < 2) return [...words];
+  const levels = frameLevels(samples, rate);
+  const quiet = quietLevel(levels);
+  const loud = levels.flatMap((level, f) => (level >= quiet ? [f] : []));
+  if (!loud.length) return [...words];
+  const runs: Pause[] = [];
+  for (let f = loud[0]; f <= loud.at(-1)!; f++) {
+    if (levels[f] >= quiet) continue;
+    const run = runs.at(-1);
+    if (run && run.from + run.frames === f) run.frames++;
+    else runs.push({ from: f, frames: 1 });
+  }
+  const pauses = runs.filter((run) => run.frames >= MIN_TAGGED_PAUSE_FRAMES).toSorted((x, y) => y.frames - x.frames)
+    .slice(0, stretches.length - 1).toSorted((x, y) => x.from - y.from);
+  if (pauses.length < stretches.length - 1) return [...words];
+
+  const pinned: SpokenWord[] = [];
+  let next = 0;
+  stretches.forEach((count, k) => {
+    const from = (k === 0 ? loud[0] : pauses[k - 1].from + pauses[k - 1].frames) * FRAME;
+    const to = (k === stretches.length - 1 ? loud.at(-1)! + 1 : pauses[k].from) * FRAME;
+    const stretch = words.slice(next, next + count);
+    next += count;
+    const a = stretch[0].start, span = stretch.at(-1)!.end - a;
+    // A stretch whisper squeezed to nothing shares its speech evenly.
+    const at = (t: number, i: number, edge: 0 | 1) => from + (to - from) * (span > 0 ? (t - a) / span : (i + edge) / count);
+    stretch.forEach((w, i) => pinned.push({ text: w.text, start: at(w.start, i, 0), end: at(w.end, i, 1) }));
+  });
+  return pinned;
 }
 
 /** RMS of each 10 ms frame, in 16-bit sample units. The last frame may be shorter. */

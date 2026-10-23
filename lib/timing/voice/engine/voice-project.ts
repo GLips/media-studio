@@ -4,8 +4,8 @@
 // read. The model reads the text verbatim, so direct it with its inline tags (`<short pause>`, `<breath>`…), which
 // captions and word times leave out. `*word*` (emphasis) and `` `key` `` (a keycap) it never sees.
 //
-// The take is one read, so any change to the script re-reads it whole: a spliced-in line would stand out. A
-// recording is never replaced: deleting audio/take.wav hands the script back to TTS.
+// The take is one read, so any change to the script reads a new take whole: a spliced-in line would stand out. Every
+// take is kept (voice-takes.ts), so no script is paid for twice.
 //
 // Negative space: the manifest holds real reads only. Before there's a take, resolveStoryboard estimates each line.
 import { createHash } from 'node:crypto';
@@ -17,10 +17,11 @@ import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { postOpenRouter } from '#lib/platform/paid-generation/engine/openrouter.ts';
 import type { RenderVoice } from '../models/render-voice.ts';
 import type { RecordedVoiceLine } from '../models/voice-manifest.ts';
-import { cutTakeIntoLines, type TakeClip, type VoiceTakeFile } from '../models/voice-take.ts';
+import { cutTakeIntoLines, pinWordsToTaggedPauses, type TakeClip, type VoiceTakeFile } from '../models/voice-take.ts';
 import { alignSpokenWords, captionMarkup, spokenText, ttsText, type SpokenWord } from '../models/voice-words.ts';
 import { samplesFromWav, wavFromPcm, wavFromSamples } from '#lib/platform/wav/models/wav.ts';
 import { heardWords } from './whisper-words.ts';
+import { keepVoiceTake, makeVoiceTakeCurrent, readCurrentVoiceTakeSource, readVoiceTakes, saveKeptVoiceTake, type KeptVoiceTake } from './voice-takes.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 
 const MODEL = 'google/gemini-3.8-flash-tts';
@@ -33,8 +34,8 @@ const TIGHT_PAUSE = 0.08;
 const SAY_PARAGRAPH = ' [[slnc 600]] ';
 const sayText = (text: string) => text.replace(/<short pause>/g, ' [[slnc 300]] ').replace(/<long pause>/g, ' [[slnc 800]] ').replace(/<[^>]*>/g, ' ');
 
-/** What one take reads: the voice, and every line in plan order (a storyboard's, by readProjectVoiceScript). */
-export type VoiceScript = { voice: string; lines: readonly { id: string; text: string; paragraph?: boolean }[] };
+/** What one take reads: the voice, how it reads, and every line in plan order (a storyboard's, by readProjectVoiceScript). */
+export type VoiceScript = { voice: string; direction?: string; lines: readonly { id: string; text: string; paragraph?: boolean }[] };
 type ScriptLine = { id: string; text: string; caption: string; paragraph: boolean };
 
 /**
@@ -45,57 +46,114 @@ export type VoiceMode = 'draft' | 'paid';
 
 const hashFor = (...key: unknown[]) => createHash('sha256').update(JSON.stringify(key)).digest('hex').slice(0, 16);
 
-/** Voices `script` for the project and returns the path of the audio/manifest.ts it wrote. `recording` imports a human read as the take. */
-export async function voiceStudioProject(project: string, script: VoiceScript, { mode, recording }: { mode: VoiceMode; recording?: string }): Promise<string> {
-  const dir = join(project, 'audio');
-  mkdirSync(dir, { recursive: true });
-  const takePath = join(dir, 'take.wav'), infoPath = join(dir, 'take.json');
-
+/**
+ * What reading `script` would hash to, each way: a kept take with one of these hashes reads it as it is now. A draft
+ * never matches the paid hash, so a paid run reads afresh over one.
+ */
+function voiceScriptHashes(script: VoiceScript) {
   const readText = (paragraphBreak: string) => script.lines.map((line, i) => (i === 0 ? '' : line.paragraph ? paragraphBreak : ' ') + ttsText(line.text)).join('');
-  const paidHash = hashFor(MODEL, script.voice, readText('\n\n'));
-  const draftHash = hashFor('say', DRAFT_VOICE, sayText(readText(SAY_PARAGRAPH)));
-  const lines: ScriptLine[] = script.lines.map((line) => ({ id: line.id, text: spokenText(line.text), caption: captionMarkup(line.text), paragraph: line.paragraph ?? false }));
+  const paidText = readText('\n\n'), draftText = sayText(readText(SAY_PARAGRAPH));
+  return { paidText, draftText, paid: hashFor(MODEL, script.voice, paidText, script.direction ?? null), draft: hashFor('say', DRAFT_VOICE, draftText) };
+}
 
-  // SAFETY: take.json is written only by this function, from a VoiceTakeFile.
-  let info: VoiceTakeFile | null = existsSync(infoPath) && existsSync(takePath) ? JSON.parse(readFileSync(infoPath, 'utf8')) as VoiceTakeFile : null;
-  // take.json is saved as soon as the take is, and after each transcription, so a failure later never costs a re-read
-  // or leaves it describing other audio.
-  const saveInfo = () => writeFileSync(infoPath, JSON.stringify(info, null, 2));
+/**
+ * The kept take that already reads the script as `mode` would: a paid one first, then (for a draft run) a draft.
+ * Among takes of one script, the current one, else the one chosen last.
+ */
+function keptTakeReading(kept: readonly KeptVoiceTake[], current: KeptVoiceTake | null, hashes: { paid: string; draft: string }, mode: VoiceMode) {
+  const latest = (hash: string) => kept.filter((take) => take.info.hash === hash)
+    .toSorted((a, b) => Number(b === current) - Number(a === current) || b.info.chosenAt.localeCompare(a.info.chosenAt))[0];
+  return latest(hashes.paid) ?? (mode === 'draft' ? latest(hashes.draft) : undefined);
+}
+
+/**
+ * Voices `script` for the project and returns the path of the audio/manifest.ts it wrote. A kept take that reads the
+ * script is reused rather than paid for again, and a recording stays current. `recording` imports a human read as a
+ * new take; `reread` reads a new take whatever is kept. Either way, every earlier take stays kept.
+ */
+export async function voiceStudioProject(project: string, script: VoiceScript, { mode, recording, reread = false }: { mode: VoiceMode; recording?: string; reread?: boolean }): Promise<string> {
+  if (reread && mode === 'draft') throw new Error('--reread is for paid reads: say reads a script the same way every time');
+  const hashes = voiceScriptHashes(script);
+  const { kept, current } = readVoiceTakes(project);
+  let take: KeptVoiceTake;
   if (recording) {
-    runFfmpeg(['-v', 'error', '-y', '-i', recording, '-ac', '1', '-ar', '24000', '-sample_fmt', 's16', '-map_metadata', '-1', takePath]);
-    info = { source: 'recording' };
-    saveInfo();
-    console.error(`imported ${recording} as the take`);
+    take = keepVoiceTake(project, { source: 'recording' }, (wav) => runFfmpeg(['-v', 'error', '-y', '-i', recording, '-ac', '1', '-ar', '24000', '-sample_fmt', 's16', '-map_metadata', '-1', wav]));
+    process.stderr.write(`imported ${recording} as take ${take.number}\n`);
+  } else if (current?.info.source === 'recording' && !reread) {
+    take = current;
+  } else {
+    const reading = reread ? undefined : keptTakeReading(kept, current, hashes, mode);
+    if (reading && reading !== current) process.stderr.write(`take ${reading.number} reads this script already: using it, nothing paid\n`);
+    take = reading ?? await readNewTake(project, script, hashes, mode);
   }
-  // A draft never matches the paid hash, so a paid run re-reads it.
-  const current = info && (info.source === 'recording' || info.hash === paidHash || (mode !== 'paid' && info.hash === draftHash));
-  if (!current) {
-    const { wav, duration } = mode === 'draft' ? speakDraft(sayText(readText(SAY_PARAGRAPH))) : await speak(readText('\n\n'), script.voice);
-    writeFileSync(takePath, wav);
-    info = { source: mode === 'draft' ? 'draft' : 'tts', hash: mode === 'draft' ? draftHash : paidHash };
-    saveInfo();
-    console.error(`${mode === 'draft' ? 'drafted' : 'voiced'} the take  ${duration.toFixed(2)}s`);
-  }
+  makeVoiceTakeCurrent(project, take);
+  return cutVoiceTake(project, script, take);
+}
 
-  const heard = (info!.heard ??= {});
+/**
+ * Makes kept take `number` current and cuts it into lines, with no paid call. It must read the script as it is now
+ * (a recording always may), so the next `studio voice` keeps it rather than reading afresh.
+ */
+export async function chooseVoiceTake(project: string, script: VoiceScript, number: number): Promise<string> {
+  const { kept } = readVoiceTakes(project);
+  const take = kept.find((t) => t.number === number);
+  if (!take) throw new Error(`there's no take ${number}: the kept takes are ${kept.map((t) => t.number).join(', ') || 'none'}`);
+  const hashes = voiceScriptHashes(script);
+  if (take.info.source !== 'recording' && take.info.hash !== hashes.paid && take.info.hash !== hashes.draft) {
+    throw new Error(`take ${number} reads another script, voice or direction: put storyboard.ts back as it was, and studio voice uses it unasked`);
+  }
+  makeVoiceTakeCurrent(project, take);
+  process.stderr.write(`take ${number} is current\n`);
+  return cutVoiceTake(project, script, take);
+}
+
+/** One kept take, for `studio voice --takes`. `readsScript` is false for a take of another script, voice or direction. */
+export type VoiceTakeListing = { number: number; source: VoiceTakeFile['source']; madeAt: string; seconds: number; current: boolean; readsScript: boolean };
+
+/** Every kept take of the project, oldest first. Reads nothing aloud and cuts nothing. */
+export function listVoiceTakes(project: string, script: VoiceScript): VoiceTakeListing[] {
+  const { kept, current } = readVoiceTakes(project);
+  const hashes = voiceScriptHashes(script);
+  return kept.map((take) => {
+    const { samples, rate } = samplesFromWav(readFileSync(take.wav));
+    return {
+      number: take.number, source: take.info.source, madeAt: take.info.madeAt, seconds: samples.length / rate, current: take === current,
+      readsScript: take.info.source === 'recording' || take.info.hash === hashes.paid || take.info.hash === hashes.draft,
+    };
+  });
+}
+
+async function readNewTake(project: string, script: VoiceScript, hashes: ReturnType<typeof voiceScriptHashes>, mode: VoiceMode) {
+  const { wav, duration } = mode === 'draft' ? speakDraft(hashes.draftText) : await speak(hashes.paidText, script.voice, script.direction);
+  const take = keepVoiceTake(project, { source: mode === 'draft' ? 'draft' : 'tts', hash: mode === 'draft' ? hashes.draft : hashes.paid }, (path) => writeFileSync(path, wav));
+  process.stderr.write(`${mode === 'draft' ? 'drafted' : 'voiced'} take ${take.number}  ${duration.toFixed(2)}s\n`);
+  return take;
+}
+
+/** Cuts `take` into audio/<line>.wav and writes audio/manifest.ts. Returns the manifest's path. */
+async function cutVoiceTake(project: string, script: VoiceScript, take: KeptVoiceTake): Promise<string> {
+  const dir = join(project, 'audio');
+  const lines: ScriptLine[] = script.lines.map((line) => ({ id: line.id, text: spokenText(line.text), caption: captionMarkup(line.text), paragraph: line.paragraph ?? false }));
+  // The take's info is saved after each transcription, so a failure later never costs one again.
+  const heard = (take.info.heard ??= {});
   const used = new Set<string>();
   const hear = async (file: string) => {
     const key = createHash('sha256').update(readFileSync(file)).digest('hex').slice(0, 16);
     used.add(key);
     if (!heard[key]) {
       heard[key] = await heardWords(file);
-      saveInfo();
+      saveKeptVoiceTake(project, take);
     }
     return heard[key];
   };
 
-  const { samples, rate } = samplesFromWav(readFileSync(takePath));
+  const { samples, rate } = samplesFromWav(readFileSync(take.wav));
   const clipFile = (id: string) => join(dir, `${id}.wav`);
-  for (const file of readdirSync(dir)) if (file.endsWith('.wav') && file !== 'take.wav') rmSync(join(dir, file));
+  for (const file of readdirSync(dir)) if (file.endsWith('.wav')) rmSync(join(dir, file));
   // Whisper drifts over a whole take (by a second, at worst), but not over one clip. So each round cuts with the best
   // word times so far and hears every clip, and the clips' words, placed back in the take, time the next round's cuts.
   // It stops once the cuts stop moving.
-  let takeWords = await hear(takePath);
+  let takeWords = await hear(take.wav);
   let clips: TakeClip[] = [];
   const clipWords: SpokenWord[][] = [];
   for (let round = 0; round < MAX_CUT_ROUNDS; round++) {
@@ -112,10 +170,11 @@ export async function voiceStudioProject(project: string, script: VoiceScript, {
   const manifest: Record<string, RecordedVoiceLine> = {};
   for (const [i, clip] of clips.entries()) {
     const file = clipFile(clip.id), { text, caption, paragraph } = lines[i];
-    const duration = samplesFromWav(readFileSync(file)).samples.length / rate;
+    const clipSamples = samplesFromWav(readFileSync(file)).samples;
+    const duration = clipSamples.length / rate;
     const aligned = alignSpokenWords(text, clipWords[i], duration);
     const round = (x: number) => Math.round(x * 1000) / 1000;
-    const words = aligned.words.map((w) => ({ text: w.text, start: round(w.start), end: round(w.end) }));
+    const words = pinWordsToTaggedPauses(script.lines[i].text, aligned.words, clipSamples, rate).map((w) => ({ text: w.text, start: round(w.start), end: round(w.end) }));
     manifest[clip.id] = { src: `audio/${clip.id}.wav`, duration, text, caption, paragraph, words, lufs: measureAudibleLoudness(file).lufs, pauseBefore: clip.pauseBefore };
 
     const pause = clip.pauseBefore === null ? '' : `  after ${clip.pauseBefore.toFixed(2)}s`;
@@ -127,7 +186,7 @@ export async function voiceStudioProject(project: string, script: VoiceScript, {
     if (problem) console.error(`listen to ${clip.id}: the read ${problem} before it, so the cut may be heard. Add <short pause> before it, or move the line break`);
   }
   for (const key of Object.keys(heard)) if (!used.has(key)) delete heard[key];
-  saveInfo();
+  saveKeptVoiceTake(project, take);
   return writeManifest(dir, manifest);
 }
 
@@ -136,11 +195,9 @@ export async function voiceStudioProject(project: string, script: VoiceScript, {
  * timing, never for delivery), `final` for a real take, null before the first take.
  */
 export function renderVoiceOf(project: string): RenderVoice {
-  const manifestPath = join(project, 'audio', 'manifest.json'), infoPath = join(project, 'audio', 'take.json');
-  if (!existsSync(manifestPath) || !existsSync(infoPath)) return null;
-  // SAFETY: take.json is written only by voiceStudioProject, from a VoiceTakeFile.
-  const info = JSON.parse(readFileSync(infoPath, 'utf8')) as VoiceTakeFile;
-  return info.source === 'draft' ? 'draft' : 'final';
+  const source = readCurrentVoiceTakeSource(project);
+  if (!existsSync(join(project, 'audio', 'manifest.json')) || !source) return null;
+  return source === 'draft' ? 'draft' : 'final';
 }
 
 function writeManifest(dir: string, manifest: Record<string, RecordedVoiceLine>) {
@@ -183,8 +240,9 @@ export async function auditionVoices(text: string, voices: string[], out: string
   return files;
 }
 
-async function speak(text: string, voice: string) {
-  const response = await postOpenRouter('/audio/speech', { model: MODEL, input: text, voice, response_format: 'pcm' });
+// Gemini TTS reads `input` verbatim, so the direction goes in `instructions`, which it takes as the read's style.
+async function speak(text: string, voice: string, direction?: string) {
+  const response = await postOpenRouter('/audio/speech', { model: MODEL, input: text, voice, response_format: 'pcm', ...(direction && { instructions: direction }) });
   const pcm = Buffer.from(await response.arrayBuffer());
   const rate = Number(/rate=(\d+)/.exec(response.headers.get('content-type') || '')?.[1] || 24000);
   return { wav: wavFromPcm(pcm, rate), duration: pcm.length / (rate * 2) };

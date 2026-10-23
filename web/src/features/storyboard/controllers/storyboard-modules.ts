@@ -1,5 +1,5 @@
 // storyboard-modules.ts: a project's storyboard.ts and what it's timed against (audio/manifest.ts, music/index.ts,
-// audio/take.json), imported in the browser through Vite. The long-running app server never imports a project's
+// audio/current-take.json), imported in the browser through Vite. The long-running app server never imports a project's
 // TypeScript, so the page does: Vite transforms each file as it's asked for, and re-sends it when it changes.
 //
 // Re-timing live: this module accepts its own updates, so an edit to a file it imports stops here rather than
@@ -31,7 +31,7 @@ shared.sources = {
   storyboards: import.meta.glob<{ storyboard?: Storyboard }>('../../../../../work/projects/*/storyboard.ts'),
   manifests: import.meta.glob<{ voice?: RecordedVoice }>('../../../../../work/projects/*/audio/manifest.ts'),
   music: import.meta.glob<{ music?: Readonly<Record<string, MusicTrack>> }>('../../../../../work/projects/*/music/index.ts'),
-  takes: import.meta.glob<{ source?: string }>('../../../../../work/projects/*/audio/take.json'),
+  takes: import.meta.glob<{ source?: string }>('../../../../../work/projects/*/audio/current-take.json'),
 };
 shared.version = (shared.version ?? -1) + 1;
 shared.listeners ??= new Set();
@@ -66,7 +66,7 @@ export async function importStoryboardModules(project: string): Promise<Storyboa
   const loadStoryboard = storyboards?.[at('storyboard.ts')];
   if (!loadStoryboard) return null;
   const [board, manifest, tracks, take] = await Promise.all([
-    loadStoryboard(), manifests?.[at('audio/manifest.ts')]?.(), music?.[at('music/index.ts')]?.(), takes?.[at('audio/take.json')]?.(),
+    loadStoryboard(), manifests?.[at('audio/manifest.ts')]?.(), music?.[at('music/index.ts')]?.(), takes?.[at('audio/current-take.json')]?.(),
   ]);
   if (!board.storyboard?.scenes) throw new Error(`${project}/storyboard.ts exports no \`storyboard\` made with defineStoryboard`);
   return {

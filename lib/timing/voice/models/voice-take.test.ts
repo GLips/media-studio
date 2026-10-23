@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cutTakeIntoLines } from './voice-take.ts';
+import { cutTakeIntoLines, pinWordsToTaggedPauses } from './voice-take.ts';
 
 const RATE = 24000;
 // A take with speech (a loud tone) over each [start, end], and silence elsewhere.
@@ -45,4 +45,14 @@ test('short lines whose search windows overlap each keep their own speech', () =
   const heard = [w('a', 0.2, 0.3), w('list', 0.3, 0.7), w('you', 0.7, 0.9), w('can', 0.9, 1.1), w('filter,', 1.2, 2.2), w('search,', 2.2, 3.4), w('and', 3.4, 3.6), w('preview', 3.6, 4.1), w('images.', 4.1, 4.6)];
   const [a, b, c] = cutTakeIntoLines(lines, heard, samples, RATE);
   assert.ok(a.to <= 2.2 && b.from < 2.2 && b.to > 2.8 && c.from < 3.5, `${a.to} ${b.from}–${b.to} ${c.from}`);
+});
+
+test("a line's pause tags pin its words to the read's own pauses when whisper slid them across one", () => {
+  const text = 'Photograph a meal, <short pause> barcode, <short pause> or menu.';
+  const samples = take(3.8, [[0.15, 1.1], [1.83, 2.37], [2.95, 3.58]]);
+  // Whisper put "meal" at the start of "barcode", and "barcode" in its middle.
+  const heard = [w('Photograph', 0.15, 1.2), w('a', 1.2, 1.76), w('meal,', 1.76, 1.98), w('barcode,', 1.98, 3.05), w('or', 3.05, 3.16), w('menu.', 3.16, 3.58)];
+  const words = pinWordsToTaggedPauses(text, heard, samples, RATE);
+  assert.deepEqual(words.map((x) => x.text), heard.map((x) => x.text));
+  assert.ok(words[2].end <= 1.11 && Math.abs(words[3].start - 1.83) < 0.02 && Math.abs(words[4].start - 2.95) < 0.02, JSON.stringify(words));
 });

@@ -27,7 +27,7 @@ const stylexVitePlugin: PluginOption = stylexUnplugin.vite({
 const watchProjectStoryboards: PluginOption = {
   name: 'studio-watch-project-storyboards',
   configureServer(server) {
-    const files = ['storyboard.ts', 'audio/manifest.ts', 'music/index.ts', 'audio/take.json'];
+    const files = ['storyboard.ts', 'audio/manifest.ts', 'music/index.ts', 'audio/current-take.json'];
     server.watcher.add(files.map((file) => join(STUDIO_ROOT, 'work', 'projects', '*', file)));
   },
 };

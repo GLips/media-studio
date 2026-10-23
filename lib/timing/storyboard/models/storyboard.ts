@@ -132,6 +132,11 @@ export type Storyboard<Scenes extends StoryboardScenes = StoryboardScenes, Repla
   target: { seconds: number; max?: number };
   /** The TTS voice `studio voice` reads its lines in; a storyboard with no lines names none. It makes the project voiced. */
   voice?: string;
+  /**
+   * How the voice reads: tone, pace, warmth, in plain words ("warm and conversational, like telling a friend"). TTS
+   * takes it as its style direction, never reading it aloud; changing it re-reads the take.
+   */
+  voiceDirection?: string;
   /** The frame rate every instant rounds to. Default 30. */
   fps?: number;
   /** The beat scenes' grid. A storyboard with no beat scene needs none. */

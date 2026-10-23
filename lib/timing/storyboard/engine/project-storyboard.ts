@@ -25,5 +25,5 @@ export async function readProjectVoiceScript(project: string): Promise<VoiceScri
     .map(([id, { text, paragraph }]) => ({ id, text, paragraph })));
   if (!lines.length) throw new Error(`${found.file} has no lines to voice`);
   if (found.storyboard.voice === undefined) throw new Error(`${found.file} names no voice: add \`voice\` (e.g. 'Callirrhoe') to read its lines in`);
-  return { voice: found.storyboard.voice, lines };
+  return { voice: found.storyboard.voice, direction: found.storyboard.voiceDirection, lines };
 }

@@ -127,9 +127,6 @@
     "lib/output/render/engine/host-module-resolution.ts": {
       "const json = parseJsonc(readFileSync(configPath, 'utf8')) as TsconfigJson;": 1
     },
-    "lib/output/render/engine/project-bundle.ts": {
-      "alias: { ...(config.resolve?.alias as Record<string, string>), '@video': video, '@stills': stills, '@footage': previsFootageModuleFor(project), '@sfx-cues': sfxCues, '@brand': brand, '@stamp-paint-styles': styles, 'react-dom': studioReactDom(join(dir, 'generated')) },": 1
-    },
     "lib/output/render/engine/render-pipeline.ts": {
       "for (const [kind, file] of Object.entries(files) as ['srt' | 'vtt', string][]) {": 1
     },
@@ -626,8 +623,6 @@
       "console.error(`${name}: ${basename(source)}, ${duration.toFixed(1)}s, ${lufs} LUFS, ${bpm} BPM, first beats ${beats.slice(0, 4).join(', ')}s`);": 1
     },
     "lib/timing/voice/engine/voice-project.ts": {
-      "console.error(`imported ${recording} as the take`);": 1,
-      "console.error(`${mode === 'draft' ? 'drafted' : 'voiced'} the take  ${duration.toFixed(2)}s`);": 1,
       "console.error(`cut ${clip.id}  ${duration.toFixed(2)}s${pause}${unheard.length ? `  (misheard, timed from their neighbours: ${unheard.join(' ')})` : ''}`);": 1,
       "if (problem) console.error(`listen to ${clip.id}: the read ${problem} before it, so the cut may be heard. Add <short pause> before it, or move the line break`);": 1,
       "console.error(`${Object.keys(manifest).length} lines, ${total.toFixed(1)}s of voice`);": 1,
