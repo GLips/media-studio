@@ -5,17 +5,14 @@
 Levels are loudness, set relative to the voice, and mastering sets the delivered loudness. So only the balance between
 voice, music and effects is yours; leave gain, `loudnorm` and compressors out of it.
 
-- **Voice.** Every line is levelled to −20 LUFS. A line quieter than that throws rather than being boosted (Remotion
-  clips each source at full scale, and a voice peaks close to it): re-read it.
+- **Voice.** Every line is levelled to −20 LUFS. A line too quiet to reach it without clipping fails: re-read it,
+  never boost it.
 - **Music** sits at `bedRelativeLu` (default −8 LU) between lines and ducks to `duckedRelativeLu` (default −14)
-  under each, starting 0.25 s before the line so the first word lands clear and releasing over 0.5 s after. Gaps too
-  short to come back up in stay ducked. With no voice, nothing ducks, and a default bed sits level with the accents.
-- **Effects** are levelled by category when `studio sfx` renders them (clicks 17 LU under the voice, accents 8 LU
-  under), then play at their `volume`, unducked.
-- **Mastering.** One gain lifts the mix to −14 LUFS and a true-peak limiter catches the peaks; when the AAC encode
-  still overshoots −1 dBTP, the limiter's ceiling comes down and it masters again. `studio render` then fails a
-  delivered file outside −14 ± 1 LUFS or over −1 dBTP, and any mix that renders silent. A video meant to have no
-  sound declares `capability: 'silent'` in `project.ts` and delivers with no audio track.
+  under each, clear of its first word. With no voice nothing ducks, and a default bed sits level with the accents.
+- **Effects** are levelled by category (`ui` or `accent`) when `studio sfx` writes them, then play at their
+  `volume`, unducked.
+- **Mastering** lifts the mix to −14 LUFS under a true-peak limiter, and `studio render` fails a delivered file
+  that misses it or renders silent. A video meant to have no sound declares `capability: 'silent'` in `project.ts`.
 
 ## Changing a level
 

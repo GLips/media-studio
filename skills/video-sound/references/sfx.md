@@ -17,9 +17,9 @@ those to them. Once the video plays a cue list, the list plays them instead and 
 2. **Hear it** before the video plays it: `studio mix <p> --sfx-cues`, and hand the user both mixes.
 3. **Edit `cues.json`.** `clickStyle` sets every click. Change a cue with fields at its top level, which a redraft
    keeps: `"sound"` (copy in one of its `alternatives`, any `{ "sound": "recipe.preset", "seed", "set" }`, or `null`
-   to silence it; a generated sound plays only from an `<Sfx>`), `"nudge"` (seconds after the event, negative before) and `"volume"` (0–1). `studio check` names
-   each edit that breaks a rule; the rules are defaults, so keep such an edit only as a choice. Restart an open
-   `studio preview` to hear a hand edit.
+   to silence it; a generated sound plays only from an `<Sfx>`), `"nudge"` (seconds after the event, negative
+   before) and `"volume"` (0–1). `studio check` names each edit that breaks a rule: keep one only as a choice.
+   Restart an open `studio preview` to hear a hand edit.
 4. **Play it** with `defineVideo({ ..., sfxCueList: true })`, and commit `cues.json` (the sounds it renders are
    generated). Done when the user has heard the mix with the list in it.
 
@@ -56,8 +56,7 @@ A music-led video places its hits and whips on the video's clock instead:
 }).cue('menu.tap')` over `fps`, plus its `soundLagSeconds`. Not a `.clock()`'s frames, which count from its scene's
 start. These ring on across cuts, and a scene replayed elsewhere doesn't replay them.
 
-`studio mix <p>` (or `--check`, which skips rendering the mix) prints each against the music; `studio mix --help`
-says what the flags mean. The fixes:
+`studio mix <p>` (or `--check`, which skips rendering the mix) prints each against the music. The fixes:
 
 - **FLAM**: move the sound by its gap. If every hit flams early by about the same amount, that's the picture's lead:
   set the storyboard's `soundLagSeconds` to it.
@@ -67,8 +66,8 @@ says what the flags mean. The fixes:
 
 ## When to add one
 
-An accent (a whoosh, hit or ding) needs a reason you can name. The draft follows these rules and `studio check`
-reports an edit that breaks one; they're working rules, so tune them by ear with the user:
+An accent (a whoosh, hit or ding) needs a reason you can name. These are the rules the draft and `studio check`
+hold, working rules to tune by ear with the user:
 
 - **At most one every 4 s**, and only on a scene change, a reveal or a big camera move.
 - **Leave most cuts bare**: when every cut has one, none of them stand out.
@@ -76,4 +75,3 @@ reports an edit that breaks one; they're working rules, so tune them by ear with
   into its reveal.
 - **The picture leads the sound**: a whoosh on the move's peak speed lasting as long as the move or dissolve, a hit on
   the frame the thing arrives, a riser peaking on its reveal.
-- A click within 150 ms of the one before stays silent.

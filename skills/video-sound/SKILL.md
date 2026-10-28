@@ -12,7 +12,7 @@ Sound follows the motion pass (video-motion): beats and effects sit against cuts
 moves them too. A piece cut to music is the exception: its track is chosen before the motion pass, and the picture
 is cut to it.
 
-Read the reference for the part the task needs:
+Read the reference for the part the task needs; a note on loudness ("the music drowns the voice") is a mix note:
 
 | Part | For | Read |
 |---|---|---|
@@ -21,14 +21,11 @@ Read the reference for the part the task needs:
 | **sound design** | Making a project's own sound, and turning a note on how one sounds into a parameter | `${CLAUDE_PLUGIN_ROOT}/skills/video-sound/references/sound-design.md` |
 | **mix** | What's levelled and mastered automatically, and the few levels worth changing | `${CLAUDE_PLUGIN_ROOT}/skills/video-sound/references/mix.md` |
 
-"The music drowns the voice" is a mix note: read `mix.md` before changing any level.
-
 ## Hearing it
 
 You can't listen, so the user's ears are the check. `studio mix <p>` renders just the mastered soundtrack to
 `out/mix.wav`, far faster than a full render. Hand the user that path (or `studio preview <p>`) and say what to
 listen for: the first word after a duck, an effect on a reveal, a cut on a downbeat. Put the mix up for review, and
-post competing beds or mixes as a decision (studio-review); a note aimed at one sound names it in the timeline's sound
-lane.
+post competing beds, mixes or takes as a decision (studio-review).
 
 Done when the user has heard the mix and every note on it is resolved.

@@ -29,9 +29,8 @@ out/decisions/music-bed/<name>.wav`, which leaves `video.tsx` on the one in use.
 the cut: `studio render <p> --animatic --out out/decisions/music-lead/<name>.mp4` carries the fitted track as it
 stands. Beds can be made and chosen while picture notes are still open; fit again once the length settles.
 
-Check the tempo `add` or `gen` prints against the user's sense of the track. The tracker reads 60–180 BPM and leans
-toward 120, so a slow or fast track can read at half or double time, and Lyria drifts from the asked tempo (a 100 BPM
-bed has come back reading 133).
+Check the tempo `add` or `gen` prints against the user's sense of the track: a slow or fast one can read at half or
+double time, and Lyria drifts from the tempo asked for.
 
 ## A bed
 
@@ -51,11 +50,8 @@ Read what `fit` prints:
   shifts every downbeat. The rest of the cuts stay where the voice puts them.
 
 Fit again after any retime or re-voice: a fit that no longer matches the video's length fades out like any track.
-Adding or generating a track under a name drops the fits cut from its old audio.
-
-Unfitted, the track plays from `sourceStartSeconds` (fading in over 1 s when that's partway in), and a video that
-outlasts it loops back with a hard splice that breaks the beat. Setting `sourceStartSeconds` to a beat's time puts
-that beat on the video's first frame.
+Unfitted, a video that outlasts its track loops it with a hard splice that breaks the beat. `sourceStartSeconds` set
+to a beat's time puts that beat on the video's first frame.
 
 ## The lead
 
@@ -77,8 +73,6 @@ A retime that changes a beat scene's length fails the landmark check at load: re
 change the bars back.
 
 ## Cutting to it
-
-From editing practice:
 
 - Put major cuts on **downbeats**; cutting on every beat reads as a slideshow.
 - Under a voice, change scenes every **4 or 8 bars**. The high-energy register is the exception: one idea a bar,

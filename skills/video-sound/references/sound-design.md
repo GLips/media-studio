@@ -15,7 +15,7 @@ files. `studio sfx list` prints every recipe, its presets and its parameters wit
    Seed it with the id of the event it marks. It writes the `.wav` and a `.ts` beside it: import the `.ts` and pass
    its default export as `sound`, or put it in a cue's `"sound"`. `--category accent` levels a sound whose job is
    bigger than its recipe's (a pop marking a music-led video's colour flood) as an accent; `ui` goes the other way.
-   After a recipe changes, `studio sfx rerender <dir>` rebuilds every sound there from the request its `.ts` records.
+   After a recipe changes, `studio sfx rerender <dir>` rebuilds every sound in a folder.
 3. **Audition.** `studio sfx showcase` renders every preset and a few variants with an `index.html` to play them
    from: hand the user that path when they'd rather pick by ear.
 4. **Generated**, only for a real thing no recipe can make (a bite, an egg cracking, a yawn). Paid:
