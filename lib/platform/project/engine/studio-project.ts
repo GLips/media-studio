@@ -3,7 +3,7 @@
 // The `studio` CLI runs from any directory, so everything that reads or writes studio files goes through
 // STUDIO_ROOT rather than the working directory.
 import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
-import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { ProjectDeclaration } from '../models/capability.ts';
 
@@ -61,14 +61,22 @@ export async function readProjectDeclaration(project: string): Promise<ProjectDe
 }
 
 /**
- * The project folder `file` (one that exists) lies in, work/projects/<p>/ as the studio lays projects out; null for a
- * file outside one. Both sides real, so a symlinked working directory, or a worktree whose work/ links into another
- * checkout, still finds it.
+ * The project folder `file` lies in, work/projects/<p>/ as the studio lays projects out; null for a file outside one.
+ * `file` may be one yet to be written. Both sides real, so a symlinked working directory, or a worktree whose work/
+ * links into another checkout, still finds it.
  */
 export function studioProjectOfFile(file: string): string | null {
   if (!existsSync(STUDIO_PROJECTS_DIR)) return null;
-  const [project, ...within] = relative(realpathSync(STUDIO_PROJECTS_DIR), realpathSync(file)).split(sep);
+  const [project, ...within] = relative(realpathSync(STUDIO_PROJECTS_DIR), realOfPath(file)).split(sep);
   return within.length && project !== '..' && !isAbsolute(project) ? join(STUDIO_PROJECTS_DIR, project) : null;
+}
+
+/** `path` with its nearest existing ancestor made real, the rest as given. */
+function realOfPath(path: string): string {
+  const absolute = resolve(path);
+  if (existsSync(absolute)) return realpathSync(absolute);
+  const parent = dirname(absolute);
+  return parent === absolute ? absolute : join(realOfPath(parent), basename(absolute));
 }
 
 /** The folders a project's scenes live in, each a file per scene with its helpers in a folder of its name. */

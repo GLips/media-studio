@@ -61,7 +61,7 @@ const gen = defineCommand({
   meta: {
     name: 'gen',
     description: "Generate a sound no recipe makes (a munch, an egg crack, a yawn) with ElevenLabs, written as `render` writes (paid).",
-    about: "Each take is levelled as a recipe of its --category and lands on its first attack. There's no seed: a take is generated once and cached by its request and number (in the project's generated/, or the workspace's outside one), so asking again costs nothing and --takes 4 after --takes 2 pays for two. Outside the studio, --out gets a plain clip: no module, no lead-in silence. Needs ELEVENLABS_API_KEY and ELEVENLABS_PLAN (the key's plan, recorded on every take: the free plan is non-commercial and needs attribution). Prints each take's .wav, its .ts, then its length, where it lands and its loudness.",
+    about: "Each take is levelled as a recipe of its --category and lands on its first attack. There's no seed: a take is generated once and cached by its request and number (in the workspace's generated/, wherever it's written), so asking again costs nothing and --takes 4 after --takes 2 pays for two. Outside the studio, --out gets a plain clip: no module, no lead-in silence. Needs ELEVENLABS_API_KEY and ELEVENLABS_PLAN (the key's plan, recorded on every take: the free plan is non-commercial and needs attribution). Prints each take's .wav, its .ts, then its length, where it lands and its loudness.",
   },
   args: {
     prompt: { type: 'positional', required: true, description: 'The sound: what makes it, the material, the space, e.g. "a crisp apple munch, close"' },
@@ -74,22 +74,26 @@ const gen = defineCommand({
     decide: { type: 'boolean', description: "With --takes 2 or more in a project: post the takes as a `studio review` decision, sfx-<name>, so the reviewer picks by ear" },
   },
   async run({ args }) {
-    const { basename, dirname, resolve } = await import('node:path');
+    const { basename, resolve } = await import('node:path');
     if (args.category !== 'ui' && args.category !== 'accent') throw new Error(`--category is ui or accent, not "${args.category}"`);
     const takes = numberFlag('takes', args.takes)!, out = resolve(args.out);
     if (args.decide && takes < 2) throw new Error('--decide needs --takes 2 or more to choose between');
     const { generateSfxFiles } = await import('#lib/timing/sound/engine/sfx-files.ts');
     const { studioProjectOfFile } = await import('#lib/platform/project/engine/studio-project.ts');
-    const project = args.decide ? studioProjectOfFile(dirname(out)) : null;
+    const project = args.decide ? studioProjectOfFile(out) : null;
     if (args.decide && !project) throw new Error(`--decide posts to a project's review, and ${args.out} isn't in one`);
-    const made = await generateSfxFiles({
+    const settled = await generateSfxFiles({
       prompt: args.prompt, out, takes, model: args.model, category: args.category,
       durationSeconds: numberFlag('duration', args.duration), influence: numberFlag('influence', args.influence),
     });
+    const made = settled.flatMap((s) => (s.status === 'fulfilled' ? [s.value] : []));
     for (const take of made) {
       if (take.plan === 'free') console.error(`${take.wav} was made on ElevenLabs' free plan: non-commercial use only, crediting ElevenLabs`);
       console.log([take.wav, take.module, `${take.seconds.toFixed(2)} s, lands at ${take.landsAt.toFixed(2)} s, ${take.lufs.toFixed(1)} LUFS`].filter(Boolean).join('\n'));
     }
+    // Printed first, so takes already paid for are named before a refused one fails the run.
+    const refused = settled.find((s) => s.status === 'rejected');
+    if (refused) throw refused.reason;
     if (!project) return;
     const { applyReviewOps } = await import('#lib/output/review/engine/review-file.ts');
     const { reviewCandidateOf } = await import('#lib/output/review/engine/review-handoff.ts');

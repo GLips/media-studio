@@ -4,7 +4,7 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { basename, dirname, join, relative } from 'node:path';
 import { decodeAudioChannels } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { generatePaidMedia } from '#lib/platform/paid-generation/engine/paid-generation.ts';
-import { STUDIO_ROOT, STUDIO_WORKSPACE_DIR, studioProjectOfFile } from '#lib/platform/project/engine/studio-project.ts';
+import { STUDIO_ROOT, STUDIO_WORKSPACE_DIR } from '#lib/platform/project/engine/studio-project.ts';
 import { wavFromSamples } from '#lib/platform/wav/models/wav.ts';
 import { detectAudioAttacks } from '../models/audio-attacks.ts';
 import { SFX_RATE } from '../models/dsp.ts';
@@ -126,11 +126,11 @@ export type SfxGenerationAsk = {
 export type GeneratedSfxTake = { take: number; wav: string; module: string | null; seconds: number; landsAt: number; lufs: number; plan: string };
 
 /**
- * Generates each take with ElevenLabs (paid, once: a take is cached by its request and number, in the generated/ of
- * the project `out` is in, else the workspace's), then levels it as a recipe of `category` and writes it, with its
- * module when it's inside the studio. Outside the studio it writes a plain clip: no module, no pre-roll.
+ * Generates each take with ElevenLabs (paid once, cached by its request and number), levels it as a recipe of
+ * `category` and writes it, with its module inside the studio, else as a plain clip with no pre-roll. Every take
+ * settles, so those paid for are written beside any refused.
  */
-export async function generateSfxFiles(ask: SfxGenerationAsk): Promise<GeneratedSfxTake[]> {
+export async function generateSfxFiles(ask: SfxGenerationAsk): Promise<PromiseSettledResult<GeneratedSfxTake>[]> {
   if (!ask.out.endsWith('.wav')) throw new Error(`--out must be a .wav file, not ${ask.out}`);
   if (!(Number.isInteger(ask.takes) && ask.takes >= 1)) throw new Error(`--takes must be a whole number, 1 or more, not ${ask.takes}`);
   if (!ELEVENLABS_SFX_MODELS.some((m) => m === ask.model)) throw new Error(`--model is one of ${ELEVENLABS_SFX_MODELS.join(', ')}, not ${ask.model}`);
@@ -141,8 +141,7 @@ export async function generateSfxFiles(ask: SfxGenerationAsk): Promise<Generated
   if (ask.influence !== undefined && !(ask.influence >= 0 && ask.influence <= 1)) throw new Error(`--influence must be 0–1, not ${ask.influence}`);
   mkdirSync(dirname(ask.out), { recursive: true });
   const takes = Array.from({ length: ask.takes }, (_, i) => i + 1);
-  // Every take settles before any failure is thrown, so the ones paid for are cached and written.
-  const settled = await Promise.allSettled(takes.map(async (take): Promise<GeneratedSfxTake> => {
+  return Promise.allSettled(takes.map(async (take): Promise<GeneratedSfxTake> => {
     const generated = {
       prompt: ask.prompt, model: ask.model, take,
       ...(ask.durationSeconds !== undefined && { durationSeconds: ask.durationSeconds }), ...(ask.influence !== undefined && { influence: ask.influence }),
@@ -151,23 +150,18 @@ export async function generateSfxFiles(ask: SfxGenerationAsk): Promise<Generated
     const { file, plan } = await generatedSfxTake(generated, out, { pay: true });
     return writeGeneratedSfxFile({ generated: { ...generated, plan }, category: ask.category }, file, out);
   }));
-  return settled.map((s) => {
-    if (s.status === 'rejected') throw s.reason;
-    return s.value;
-  });
 }
 
 /**
- * A generated take's raw file and the plan it was made on, from the cache or, with `pay`, from ElevenLabs. The cache
- * is the generated/ of the project `out` is in, else the workspace's.
+ * A generated take's raw file and the plan it was made on, from the cache or, with `pay`, from ElevenLabs. One cache
+ * for every take, wherever it's written, so moving a sound never pays for it again.
  */
 async function generatedSfxTake(generated: Omit<SfxGeneratedRequest['generated'], 'plan'>, out: string, { pay }: { pay: boolean }) {
-  const root = studioProjectOfFile(dirname(out)) ?? STUDIO_WORKSPACE_DIR;
-  const { files: [file], provenance } = await generatePaidMedia(root, {
+  const { files: [file], provenance } = await generatePaidMedia(STUDIO_WORKSPACE_DIR, {
     kind: 'sound-effect', model: generated.model, name: `sfx-${basename(out, '.wav')}`, prompt: generated.prompt, take: generated.take,
     params: { ...(generated.durationSeconds !== undefined && { duration_seconds: generated.durationSeconds }), ...(generated.influence !== undefined && { prompt_influence: generated.influence }) },
     beforePaying: async () => {
-      if (!pay) throw new Error(`${out}: its take is no longer in ${join(root, 'generated')}; \`studio sfx gen\` with the same request pays for it again`);
+      if (!pay) throw new Error(`${out}: its take is no longer in ${join(STUDIO_WORKSPACE_DIR, 'generated')}; \`studio sfx gen\` with the same request pays for it again`);
     },
   });
   // SAFETY: a sound effect's provenance always records its plan: generateElevenLabsSoundEffect refuses without one.
