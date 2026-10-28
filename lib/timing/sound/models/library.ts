@@ -40,6 +40,28 @@ export type SfxRequest = {
   category?: SfxCategory;
 };
 
+/**
+ * A sound `studio sfx gen` generated with ElevenLabs, as its module records it: what was asked for, which take, the
+ * plan its licence follows, and the loudness it's levelled to. No recipe renders it again.
+ */
+export type SfxGeneratedRequest = {
+  generated: { prompt: string; model: string; take: number; durationSeconds?: number; influence?: number; plan: string };
+  category: SfxCategory;
+};
+
+/** What made a placed sound: a recipe request, or a generation. */
+export type SfxSoundRequest = SfxRequest | SfxGeneratedRequest;
+
+export const isSfxGenerated = (request: SfxSoundRequest): request is SfxGeneratedRequest => 'generated' in request;
+
+/** The loudness category a sound is levelled to: a generation's own, or a recipe's unless the request moves it. */
+export const sfxSoundCategory = (request: SfxSoundRequest): SfxCategory =>
+  isSfxGenerated(request) ? request.category : request.category ?? sfxRecipeNamed(request.sound.split('.')[0]).category;
+
+/** A short name for a sound in reports: `whoosh.whip`, or `generated "a crisp apple munch"`. */
+export const sfxSoundLabel = (request: SfxSoundRequest): string =>
+  isSfxGenerated(request) ? `generated ${JSON.stringify(request.generated.prompt)}` : request.sound;
+
 export type RenderedSfx = {
   sound: string;
   samples: Int16Array;
@@ -98,7 +120,17 @@ export function renderSfx(request: SfxRequest): RenderedSfx {
   const { recipe, params } = resolveSfxParams(request);
   const { samples: dry, landsAt } = recipe.render(params, randomSeedFromKey(request.seed ?? 0));
   const samples = params.room > 0 ? addRoom(dry, roomWetDb(params.room)) : dry;
-  const target = VOICE_LUFS + SFX_LOUDNESS_UNDER_VOICE[request.category ?? recipe.category];
+  const { samples: out, lufs } = levelSfxSamples(samples, request.category ?? recipe.category);
+  return { sound: request.sound, samples: out, seconds: out.length / SFX_RATE, landsAt: landsAt + SFX_PRE_ROLL_SECONDS, lufs, params };
+}
+
+/**
+ * Mono samples at SFX_RATE levelled to `category`'s loudness under the voice, short of the peak ceiling, after
+ * SFX_PRE_ROLL_SECONDS of silence (none with `preRoll: false`, for a clip that plays outside a video). `lufs` is the
+ * level reached.
+ */
+export function levelSfxSamples(samples: Float64Array, category: SfxCategory, { preRoll = true } = {}): { samples: Int16Array; lufs: number } {
+  const target = VOICE_LUFS + SFX_LOUDNESS_UNDER_VOICE[category];
   const peakDb = 20 * Math.log10(samples.reduce((m, v) => Math.max(m, Math.abs(v)), 0));
   // Measured twice: the −70 LUFS gate is absolute, so scaling a long tail changes which of its blocks count.
   let gainDb = 0;
@@ -107,15 +139,8 @@ export function renderSfx(request: SfxRequest): RenderedSfx {
     gainDb = Math.min(gainDb + target - lufs, SFX_PEAK_CEILING_DB - peakDb);
   }
   const levelled = samples.map((v) => v * 10 ** (gainDb / 20));
-  const preRoll = Math.round(SFX_PRE_ROLL_SECONDS * SFX_RATE);
-  const out = new Int16Array(preRoll + levelled.length);
-  out.set(Int16Array.from(levelled, (v) => Math.round(v * 32767)), preRoll);
-  return {
-    sound: request.sound,
-    samples: out,
-    seconds: out.length / SFX_RATE,
-    landsAt: landsAt + preRoll / SFX_RATE,
-    lufs: measureSfxLufs(levelled),
-    params,
-  };
+  const silence = preRoll ? Math.round(SFX_PRE_ROLL_SECONDS * SFX_RATE) : 0;
+  const out = new Int16Array(silence + levelled.length);
+  out.set(Int16Array.from(levelled, (v) => Math.round(v * 32767)), silence);
+  return { samples: out, lufs: measureSfxLufs(levelled) };
 }

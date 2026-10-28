@@ -2,15 +2,15 @@
 // The key comes from the environment only; the owner's secret launcher puts it there for one process.
 //
 // Paid generation reaches three different endpoints, one per kind of media: images answer in one JSON response, video
-// is a job to submit and poll, and audio (Lyria) streams out of chat completions. Each returns the same OpenRouterMedia,
+// is a job to submit and poll, and audio (Lyria) streams out of chat completions. Each returns the same PaidMedia,
 // so lib/platform/paid-generation/engine/paid-generation.ts caches and records them all alike.
+
+import type { PaidMedia } from './paid-media.ts';
 
 const API = 'https://openrouter.ai/api/v1';
 // OpenRouter's own advice for video jobs, which take from half a minute to several.
 const VIDEO_POLL_MS = 30_000;
 
-/** What one paid generation returned: the media's bytes, what it cost in USD, and OpenRouter's id for the request. */
-export type OpenRouterMedia = { outputs: Buffer[]; cost: number | null; requestId: string | null };
 /** A video job as OpenRouter reports it; `id` is what a later run polls to pick the job back up. */
 export type OpenRouterVideoJob = {
   id: string;
@@ -48,7 +48,7 @@ export function postOpenRouter(path: string, body: object): Promise<Response> {
 }
 
 // The image API's body carries no request id; its X-Generation-Id header does.
-export async function generateOpenRouterImage(body: object): Promise<OpenRouterMedia> {
+export async function generateOpenRouterImage(body: object): Promise<PaidMedia> {
   const response = await postOpenRouter('/images', body);
   const result: { data: { b64_json: string }[]; usage?: { cost?: number | null } } = await response.json();
   return { outputs: result.data.map((image) => Buffer.from(image.b64_json, 'base64')), cost: result.usage?.cost ?? null, requestId: response.headers.get('x-generation-id') };
@@ -115,14 +115,14 @@ export async function awaitOpenRouterVideoJob(jobId: string, onStatus: (status: 
 }
 
 /** Downloads what a completed video job made. */
-export async function downloadOpenRouterVideo(job: OpenRouterVideoJob): Promise<OpenRouterMedia> {
+export async function downloadOpenRouterVideo(job: OpenRouterVideoJob): Promise<PaidMedia> {
   // The content URLs aren't presigned; they take the key like any other call.
   const outputs = await Promise.all((job.unsigned_urls ?? []).map(async (url) => Buffer.from(await (await fetchOpenRouter(url)).arrayBuffer())));
   return { outputs, cost: job.usage?.cost ?? null, requestId: job.generation_id ?? job.id };
 }
 
 /** Chat completions with audio out, which only streams: the audio arrives as base64 pieces, and the cost in the last chunk. */
-export async function generateOpenRouterAudio(body: object): Promise<OpenRouterMedia> {
+export async function generateOpenRouterAudio(body: object): Promise<PaidMedia> {
   const response = await postOpenRouter('/chat/completions', { ...body, stream: true });
   let base64 = '', buffered = '', cost: number | null = null, requestId: string | null = null;
   const decoder = new TextDecoder();

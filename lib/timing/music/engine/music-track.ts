@@ -10,7 +10,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import { measureAudibleLoudness } from '#lib/platform/ffmpeg/engine/loudness.ts';
-import { probeMediaSeconds, runFfmpeg, runFfprobe } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
+import { decodeAudioChannels, probeMediaSeconds, runFfmpeg, runFfprobe } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { generatePaidMedia } from '#lib/platform/paid-generation/engine/paid-generation.ts';
 import { detectMusicBeats } from '../models/music-beats.ts';
 import { planMusicArrangement, planMusicFit, spliceMusicSpans } from '../models/music-fit.ts';
@@ -31,7 +31,7 @@ export const LYRIA_PRO_MODEL = 'google/lyria-3-pro-preview';
  */
 export async function generateProjectMusicTrack(project: string, { prompt, name, full }: { prompt: string; name: string; full: boolean }): Promise<string> {
   const model = full ? LYRIA_PRO_MODEL : LYRIA_CLIP_MODEL;
-  const [file] = await generatePaidMedia(project, { kind: 'audio', model, name: `music-${name}`, prompt });
+  const { files: [file] } = await generatePaidMedia(project, { kind: 'audio', model, name: `music-${name}`, prompt });
   return addProjectMusicTrack(project, file, name, { model, prompt });
 }
 
@@ -48,7 +48,7 @@ export function addProjectMusicTrack(project: string, source: string, name: stri
 
   const duration = probeMediaSeconds(path);
   const { lufs } = measureAudibleLoudness(path);
-  const { bpm, beats } = detectMusicBeats(decodeAudio(path, 1, ANALYSIS_RATE)[0], ANALYSIS_RATE);
+  const { bpm, beats } = detectMusicBeats(decodeAudioChannels(path, 1, ANALYSIS_RATE)[0], ANALYSIS_RATE);
   // A fit cut from the audio this replaces would keep playing it: drop it, so a video still using it fails to typecheck.
   const manifest = readMusicManifest(dir);
   const staleFits = Object.keys(manifest).filter((n) => manifest[n].fit?.source === name);
@@ -82,14 +82,14 @@ export function fitProjectMusicTrack(project: string, { name, as, shape }: { nam
   if (source.fit) throw new Error(`music.${name} is itself a fit of music.${source.fit.source}; fit from that`);
 
   const sourcePath = join(dir, source.file);
-  const analysis = { samples: decodeAudio(sourcePath, 1, ANALYSIS_RATE)[0], rate: ANALYSIS_RATE, beats: source.beats };
+  const analysis = { samples: decodeAudioChannels(sourcePath, 1, ANALYSIS_RATE)[0], rate: ANALYSIS_RATE, beats: source.beats };
   const plan = 'bars' in shape
     ? planMusicArrangement({ ...analysis, bars: shape.bars, tailSeconds: shape.tailSeconds })
     : { ...planMusicFit({ ...analysis, targetSeconds: shape.seconds }), seconds: shape.seconds };
   const { seconds } = plan;
   const [stream] = JSON.parse(runFfprobe(['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=channels,sample_rate', '-of', 'json', sourcePath]).toString()).streams;
   const channels = Number(stream.channels), rate = Number(stream.sample_rate);
-  const spliced = spliceMusicSpans(decodeAudio(sourcePath, channels, rate), rate, plan.spans, seconds);
+  const spliced = spliceMusicSpans(decodeAudioChannels(sourcePath, channels, rate), rate, plan.spans, seconds);
 
   const file = `${as}.wav`, path = join(dir, file);
   const interleaved = new Float32Array(spliced[0].length * channels);
@@ -114,13 +114,6 @@ function writeMusicManifest(dir: string, manifest: Record<string, Entry>): strin
   const index = join(dir, 'index.ts');
   writeFileSync(index, musicModule(manifest));
   return index;
-}
-
-/** Each channel's samples, resampled to `rate`. */
-function decodeAudio(path: string, channels: number, rate: number): Float32Array[] {
-  const pcm = runFfmpeg(['-v', 'error', '-i', path, '-ac', String(channels), '-ar', String(rate), '-f', 'f32le', '-'], { maxBuffer: 1 << 30 });
-  const all = new Float32Array(pcm.buffer, pcm.byteOffset, pcm.byteLength / 4);
-  return Array.from({ length: channels }, (_, c) => Float32Array.from({ length: all.length / channels }, (_, i) => all[i * channels + c]));
 }
 
 function musicModule(tracks: Record<string, Entry>) {

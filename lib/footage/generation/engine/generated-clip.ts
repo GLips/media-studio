@@ -37,7 +37,7 @@ export async function generateProjectClip(project: string, request: GeneratedCli
     references.push({ path, frame });
   }
   const model = await fetchOpenRouterVideoModel(request.model);
-  const [file] = await generatePaidMedia(project, {
+  const { files: [file] } = await generatePaidMedia(project, {
     kind: 'video', model: request.model, name: request.name, prompt: request.prompt,
     params: {
       duration: request.seconds, resolution: request.resolution, aspect_ratio: request.aspect,

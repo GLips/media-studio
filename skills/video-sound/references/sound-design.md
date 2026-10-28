@@ -1,7 +1,7 @@
 # Sound design
 
-Every sound is synthesized from a seeded recipe (after Farnell's *Designing Sound*): nothing to license, and a rerun
-writes identical files. `studio sfx list` prints every recipe, its presets and its parameters with their ranges.
+Sounds start from seeded recipes (after Farnell's *Designing Sound*): nothing to license, and a rerun writes identical
+files. `studio sfx list` prints every recipe, its presets and its parameters with their ranges.
 
 1. **The kit first.** `SFX.click`, `SFX.whoosh`, `SFX.riser`, `SFX.impact` and the rest (from `#studio`) are already
    rendered, with several takes of the ones that repeat.
@@ -18,6 +18,14 @@ writes identical files. `studio sfx list` prints every recipe, its presets and i
    After a recipe changes, `studio sfx rerender <dir>` rebuilds every sound there from the request its `.ts` records.
 3. **Audition.** `studio sfx showcase` renders every preset and a few variants with an `index.html` to play them
    from: hand the user that path when they'd rather pick by ear.
+4. **Generated**, only for a real thing no recipe can make (a bite, an egg cracking, a yawn). Paid:
+
+   ```sh
+   "$(studio home)/bin/studio-secrets" studio sfx gen "a crisp apple munch, close" --takes 3 --decide --out work/projects/<p>/sfx/munch.wav
+   ```
+
+   Name the source, material and distance; the user picks a take by ear. Pass a refusal to the user, don't retry.
+   On the free plan (each `.ts` names it), say it can't be used commercially.
 
 ## Notes to parameters
 

@@ -10,9 +10,9 @@ import { dirname, join, resolve } from 'node:path';
 import type { SfxCueSound } from '#lib/timing/sound/studio/sfx.tsx';
 import { wavFromSamples } from '#lib/platform/wav/models/wav.ts';
 import { roundSfxSeconds } from '../models/cue-events.ts';
-import { SFX_CLICK_STYLES, SFX_CUE_LIST_VERSION, sfxCuePlays, type SfxCueList } from '../models/cues.ts';
+import { SFX_CLICK_STYLES, SFX_CUE_LIST_VERSION, sfxCuePlays, type SfxCueList, type SfxCuePlay } from '../models/cues.ts';
 import { SFX_RATE } from '#lib/timing/sound/models/dsp.ts';
-import { renderSfx, type SfxRequest } from '#lib/timing/sound/models/library.ts';
+import { isSfxGenerated, renderSfx, sfxSoundLabel, type SfxRequest } from '#lib/timing/sound/models/library.ts';
 
 /** The cue list an agent edits. */
 export const sfxCueListFor = (project: string) => join(resolve(project), 'sfx', 'cues.json');
@@ -35,6 +35,13 @@ export function writeSfxCueList(project: string, list: SfxCueList): string {
   return path;
 }
 
+/** The recipe a cue the list plays renders. */
+function listedRecipe(play: SfxCuePlay): SfxRequest {
+  // Only a hand edit to cues.json can get here: a generated sound has no recipe to render it again.
+  if (isSfxGenerated(play.sound)) throw new Error(`sfx/cues.json: cue ${play.id} sounds ${sfxSoundLabel(play.sound)}, which plays only from its <Sfx>; a cue list plays recipes`);
+  return play.sound;
+}
+
 /** A sound's file, named by what renders it. Renders are seeded, so the same request is the same file. */
 const sfxCueSoundFile = (sound: SfxRequest) => `${sound.sound}-${createHash('sha256').update(JSON.stringify(sound)).digest('hex').slice(0, 12)}.wav`;
 
@@ -47,7 +54,7 @@ export function writeSfxCueModule(project: string): string {
   const path = sfxCueModuleFor(project), dir = sfxCueSoundsDirFor(project), list = readSfxCueList(project);
   mkdirSync(dir, { recursive: true });
   const plays = list ? sfxCuePlays(list).filter((p) => !p.inline) : [];
-  const files = new Map(plays.map((p) => [sfxCueSoundFile(p.sound), p.sound]));
+  const files = new Map(plays.map((p) => [sfxCueSoundFile(listedRecipe(p)), listedRecipe(p)]));
   const timing = new Map<string, { seconds: number; landsAt: number }>();
   for (const [file, sound] of files) {
     const rendered = renderSfx(sound);
@@ -60,7 +67,7 @@ export function writeSfxCueModule(project: string): string {
 
   const imports = [...files.keys()];
   const cue = (p: (typeof plays)[number]): string => {
-    const file = sfxCueSoundFile(p.sound), sound: Omit<SfxCueSound, 'src'> = { id: p.id, at: roundSfxSeconds(p.at), volume: p.volume, ...timing.get(file)! };
+    const file = sfxCueSoundFile(listedRecipe(p)), sound: Omit<SfxCueSound, 'src'> = { id: p.id, at: roundSfxSeconds(p.at), volume: p.volume, ...timing.get(file)! };
     return `  { ...${JSON.stringify(sound)}, src: s${imports.indexOf(file)} },`;
   };
   const module = list

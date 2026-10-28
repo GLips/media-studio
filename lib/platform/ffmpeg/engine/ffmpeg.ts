@@ -71,6 +71,13 @@ export function openFfmpegInput(args: readonly string[]) {
   };
 }
 
+/** Each channel of a file's audio as float samples, resampled to `rate`. */
+export function decodeAudioChannels(path: string, channels: number, rate: number): Float32Array[] {
+  const pcm = runFfmpeg(['-v', 'error', '-i', path, '-ac', String(channels), '-ar', String(rate), '-f', 'f32le', '-'], { maxBuffer: 1 << 30 });
+  const all = new Float32Array(pcm.buffer, pcm.byteOffset, pcm.byteLength / 4);
+  return Array.from({ length: channels }, (_, c) => Float32Array.from({ length: all.length / channels }, (_sample, i) => all[i * channels + c]));
+}
+
 /** A media file's duration in seconds, from its container. */
 export function probeMediaSeconds(file: string): number {
   return Number(runFfprobe(['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file], { encoding: 'utf8' }).trim());

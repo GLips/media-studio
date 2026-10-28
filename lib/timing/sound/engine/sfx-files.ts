@@ -1,12 +1,18 @@
-// sfx-files.ts: sound recipes out to WAV files: the kit in lib/timing/sound/studio/, one sound for a project, and a showcase
-// folder to listen through. `studio sfx` runs these. Node only.
+// sfx-files.ts: sounds out to WAV files: the kit in lib/timing/sound/studio/, one recipe's sound or ElevenLabs' takes
+// of a prompt for a project, and a showcase folder to listen through. `studio sfx` runs these. Node only.
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
-import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
+import { decodeAudioChannels } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
+import { generatePaidMedia } from '#lib/platform/paid-generation/engine/paid-generation.ts';
+import { STUDIO_ROOT, STUDIO_WORKSPACE_DIR, studioProjectOfFile } from '#lib/platform/project/engine/studio-project.ts';
 import { wavFromSamples } from '#lib/platform/wav/models/wav.ts';
+import { detectAudioAttacks } from '../models/audio-attacks.ts';
 import { SFX_RATE } from '../models/dsp.ts';
-import { renderSfx, sfxParamSpecs, SFX_LOUDNESS_UNDER_VOICE, type RenderedSfx, type SfxRequest } from '../models/library.ts';
-import { SFX_RECIPES, type SfxRecipe } from '../models/recipes.ts';
+import {
+  isSfxGenerated, levelSfxSamples, renderSfx, sfxParamSpecs, SFX_LOUDNESS_UNDER_VOICE, SFX_PRE_ROLL_SECONDS,
+  type RenderedSfx, type SfxGeneratedRequest, type SfxRequest, type SfxSoundRequest,
+} from '../models/library.ts';
+import { SFX_RECIPES, type SfxCategory, type SfxRecipe } from '../models/recipes.ts';
 
 /**
  * The kit's sounds, as `SFX.<name>` in lib/timing/sound/studio/kit.ts. Sounds that repeat within a scene get several seeded
@@ -73,35 +79,138 @@ const describeRequest = ({ sound, seed, mutate, set, category }: SfxRequest, out
 export function writeSfxFile(request: SfxRequest, out: string): { wav: string; module: string; rendered: RenderedSfx } {
   if (!out.endsWith('.wav')) throw new Error(`--out must be a .wav file, not ${out}`);
   // Its module imports `#studio`, which resolves only under the studio's package.json.
-  if (relative(STUDIO_ROOT, out).startsWith('..')) throw new Error(`--out must be inside the studio (${STUDIO_ROOT}), not ${out}`);
+  if (!isInStudio(out)) throw new Error(`--out must be inside the studio (${STUDIO_ROOT}), not ${out}`);
   const rendered = renderSfx(request);
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, wavFromSamples(rendered.samples, SFX_RATE));
-  const module = out.replace(/\.wav$/, '.ts');
-  // `satisfies` checks the sound where it's written and keeps its `category` a literal: widened to a string, it
-  // wouldn't pass as an SfxSound.
-  writeFileSync(module, [
-    `// Written by \`${describeRequest(request, out)}\`. Rerun that to change it.`,
-    "import type { SfxSound } from '#lib/timing/sound/studio/sfx.tsx';",
-    `import src from './${basename(out)}';`,
-    '',
-    `export default { src, seconds: ${round(rendered.seconds)}, landsAt: ${round(rendered.landsAt)}, request: ${JSON.stringify(request)} } satisfies SfxSound;`,
-    '',
-  ].join('\n'));
+  const module = writeSfxModule(out, `Written by \`${describeRequest(request, out)}\`. Rerun that to change it.`, { ...rendered, request });
   return { wav: out, module, rendered };
 }
 
+const isInStudio = (file: string) => !relative(STUDIO_ROOT, file).startsWith('..');
+
+/** Writes the module beside `wav` that a video imports, and returns its path. Its first line is `comment`. */
+function writeSfxModule(wav: string, comment: string, { seconds, landsAt, request }: { seconds: number; landsAt: number; request: SfxSoundRequest }): string {
+  const module = wav.replace(/\.wav$/, '.ts');
+  // `satisfies` checks the sound where it's written and keeps its `category` a literal: widened to a string, it
+  // wouldn't pass as an SfxSound.
+  writeFileSync(module, [
+    `// ${comment}`,
+    "import type { SfxSound } from '#lib/timing/sound/studio/sfx.tsx';",
+    `import src from './${basename(wav)}';`,
+    '',
+    `export default { src, seconds: ${round(seconds)}, landsAt: ${round(landsAt)}, request: ${JSON.stringify(request)} } satisfies SfxSound;`,
+    '',
+  ].join('\n'));
+  return module;
+}
+
+/** ElevenLabs' sound-effects models, its own default first. */
+export const ELEVENLABS_SFX_MODELS = ['eleven_text_to_sound_v2', 'eleven_text_to_sound_v3'] as const;
+/** What ElevenLabs makes, in seconds. */
+export const ELEVENLABS_SFX_SECONDS = { min: 0.5, max: 30 } as const;
+
+/** What `studio sfx gen` asks for: `takes` generations of one prompt, written to `out` (or `<out>-1.wav`, `-2`… for several). */
+export type SfxGenerationAsk = {
+  prompt: string;
+  out: string;
+  takes: number;
+  model: string;
+  category: SfxCategory;
+  /** Left out, ElevenLabs guesses the length from the prompt. */
+  durationSeconds?: number;
+  /** ElevenLabs' prompt_influence, 0–1 (its default 0.3): higher follows the prompt closer and varies less. */
+  influence?: number;
+};
+
+export type GeneratedSfxTake = { take: number; wav: string; module: string | null; seconds: number; landsAt: number; lufs: number; plan: string };
+
 /**
- * Rerenders every sound module `studio sfx render` wrote into `dir` from the request its last line records, so a change
- * to a recipe or to rendering reaches the sounds a video already places. Returns the modules rewritten.
+ * Generates each take with ElevenLabs (paid, once: a take is cached by its request and number, in the generated/ of
+ * the project `out` is in, else the workspace's), then levels it as a recipe of `category` and writes it, with its
+ * module when it's inside the studio. Outside the studio it writes a plain clip: no module, no pre-roll.
  */
-export function rerenderSfxFiles(dir: string): string[] {
-  return readdirSync(dir).filter((file) => file.endsWith('.ts')).toSorted().flatMap((file) => {
-    const text = readFileSync(join(dir, file), 'utf8');
-    const request = text.match(/request: (\{.*\}) \} satisfies SfxSound;$/m)?.[1];
-    if (!text.startsWith('// Written by `studio sfx render') || !request) return [];
-    return [writeSfxFile(JSON.parse(request) as SfxRequest, join(dir, file.replace(/\.ts$/, '.wav'))).module];
+export async function generateSfxFiles(ask: SfxGenerationAsk): Promise<GeneratedSfxTake[]> {
+  if (!ask.out.endsWith('.wav')) throw new Error(`--out must be a .wav file, not ${ask.out}`);
+  if (!(Number.isInteger(ask.takes) && ask.takes >= 1)) throw new Error(`--takes must be a whole number, 1 or more, not ${ask.takes}`);
+  if (!ELEVENLABS_SFX_MODELS.some((m) => m === ask.model)) throw new Error(`--model is one of ${ELEVENLABS_SFX_MODELS.join(', ')}, not ${ask.model}`);
+  const { min, max } = ELEVENLABS_SFX_SECONDS;
+  if (ask.durationSeconds !== undefined && !(ask.durationSeconds >= min && ask.durationSeconds <= max)) {
+    throw new Error(`--duration must be ${min}–${max} seconds, not ${ask.durationSeconds}: ElevenLabs makes nothing shorter or longer`);
+  }
+  if (ask.influence !== undefined && !(ask.influence >= 0 && ask.influence <= 1)) throw new Error(`--influence must be 0–1, not ${ask.influence}`);
+  mkdirSync(dirname(ask.out), { recursive: true });
+  const takes = Array.from({ length: ask.takes }, (_, i) => i + 1);
+  // Every take settles before any failure is thrown, so the ones paid for are cached and written.
+  const settled = await Promise.allSettled(takes.map(async (take): Promise<GeneratedSfxTake> => {
+    const generated = {
+      prompt: ask.prompt, model: ask.model, take,
+      ...(ask.durationSeconds !== undefined && { durationSeconds: ask.durationSeconds }), ...(ask.influence !== undefined && { influence: ask.influence }),
+    };
+    const out = ask.takes > 1 ? ask.out.replace(/\.wav$/, `-${take}.wav`) : ask.out;
+    const { file, plan } = await generatedSfxTake(generated, out, { pay: true });
+    return writeGeneratedSfxFile({ generated: { ...generated, plan }, category: ask.category }, file, out);
+  }));
+  return settled.map((s) => {
+    if (s.status === 'rejected') throw s.reason;
+    return s.value;
   });
+}
+
+/**
+ * A generated take's raw file and the plan it was made on, from the cache or, with `pay`, from ElevenLabs. The cache
+ * is the generated/ of the project `out` is in, else the workspace's.
+ */
+async function generatedSfxTake(generated: Omit<SfxGeneratedRequest['generated'], 'plan'>, out: string, { pay }: { pay: boolean }) {
+  const root = studioProjectOfFile(dirname(out)) ?? STUDIO_WORKSPACE_DIR;
+  const { files: [file], provenance } = await generatePaidMedia(root, {
+    kind: 'sound-effect', model: generated.model, name: `sfx-${basename(out, '.wav')}`, prompt: generated.prompt, take: generated.take,
+    params: { ...(generated.durationSeconds !== undefined && { duration_seconds: generated.durationSeconds }), ...(generated.influence !== undefined && { prompt_influence: generated.influence }) },
+    beforePaying: async () => {
+      if (!pay) throw new Error(`${out}: its take is no longer in ${join(root, 'generated')}; \`studio sfx gen\` with the same request pays for it again`);
+    },
+  });
+  // SAFETY: a sound effect's provenance always records its plan: generateElevenLabsSoundEffect refuses without one.
+  return { file, plan: provenance.plan! };
+}
+
+/**
+ * Levels a generated take as a recipe of its category, from its first audible sample (within 50 dB of its peak), and
+ * writes it to `out`. It lands on its first attack, or its start where it swells in without one.
+ */
+function writeGeneratedSfxFile(request: SfxGeneratedRequest, raw: string, out: string): GeneratedSfxTake {
+  const inStudio = isInStudio(out);
+  const [decoded] = decodeAudioChannels(raw, 1, SFX_RATE);
+  const floor = decoded.reduce((m, v) => Math.max(m, Math.abs(v)), 0) * 10 ** (-50 / 20);
+  const audible = decoded.subarray(Math.max(0, decoded.findIndex((v) => Math.abs(v) >= floor)));
+  const attack = detectAudioAttacks(audible, SFX_RATE, 10)[0]?.t ?? 0;
+  const { samples, lufs } = levelSfxSamples(Float64Array.from(audible), request.category, { preRoll: inStudio });
+  writeFileSync(out, wavFromSamples(samples, SFX_RATE));
+  const seconds = samples.length / SFX_RATE, landsAt = attack + (inStudio ? SFX_PRE_ROLL_SECONDS : 0);
+  const { prompt, model, take, plan } = request.generated;
+  const module = inStudio
+    ? writeSfxModule(out, `Written by \`studio sfx gen\`: take ${take} of ${JSON.stringify(prompt)} (${model}, ElevenLabs ${plan} plan). \`studio sfx rerender\` relevels it.`, { seconds, landsAt, request })
+    : null;
+  return { take, wav: out, module, seconds, landsAt, lufs, plan };
+}
+
+/**
+ * Rerenders every sound module `studio sfx render` or `gen` wrote into `dir` from the request its last line records,
+ * so a change to a recipe, to rendering or to levelling reaches the sounds a video already places. A generated
+ * sound is levelled again from its cached take, never paid for. Returns the modules rewritten.
+ */
+export async function rerenderSfxFiles(dir: string): Promise<string[]> {
+  const written = await Promise.all(readdirSync(dir).filter((f) => f.endsWith('.ts')).toSorted().map(async (file) => {
+    const text = readFileSync(join(dir, file), 'utf8');
+    const json = text.match(/request: (\{.*\}) \} satisfies SfxSound;$/m)?.[1];
+    if (!/^\/\/ Written by `studio sfx (render|gen)/.test(text) || !json) return null;
+    // SAFETY: the line was written by writeSfxModule from a request of this shape.
+    const request = JSON.parse(json) as SfxSoundRequest, wav = join(dir, file.replace(/\.ts$/, '.wav'));
+    if (!isSfxGenerated(request)) return writeSfxFile(request, wav).module;
+    const { file: raw } = await generatedSfxTake(request.generated, wav, { pay: false });
+    return writeGeneratedSfxFile(request, raw, wav).module;
+  }));
+  return written.filter((module) => module !== null);
 }
 
 /** Every recipe's parameters and presets, for `studio sfx list`. */

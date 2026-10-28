@@ -9,6 +9,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, extname, join } from 'node:path';
 import { readSfxCueList } from '#lib/output/sfx-cues/engine/cue-module.ts';
 import { sfxCuePlays } from '#lib/output/sfx-cues/models/cues.ts';
+import { sfxSoundLabel } from '#lib/timing/sound/models/library.ts';
 import { loadRenderSnapshot, renderFileStamp } from '#lib/output/render/engine/render-snapshot.ts';
 import type { RenderSnapshot } from '#lib/output/render/models/render-snapshot-model.ts';
 import { probeFrameSize } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
@@ -106,7 +107,7 @@ export function readReviewArtifact(project: string, path: string, render?: strin
   if (snapshot || cueList) {
     artifact.sounds = [
       ...(snapshot?.timeline.sounds ?? []).map((s) => ({ ...s, source: 'video' as const })),
-      ...(cueList ? sfxCuePlays(cueList) : []).map((c) => ({ id: c.id, at: c.at, sound: c.sound.sound, source: 'cue-list' as const })),
+      ...(cueList ? sfxCuePlays(cueList) : []).map((c) => ({ id: c.id, at: c.at, sound: sfxSoundLabel(c.sound), source: 'cue-list' as const })),
     ].filter((s) => holds(s.at)).map((s) => ({ ...s, at: s.at - shift, frame: reviewFrameAt(s.at - shift, fps) })).toSorted((a, b) => a.at - b.at);
   }
   if (cueList && snapshot) artifact.cueListPlayed = snapshot.timeline.sfxCueList;

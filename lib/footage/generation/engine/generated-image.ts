@@ -51,7 +51,7 @@ export async function generateProjectImage(project: string, request: GeneratedIm
     ...(request.resolution !== undefined && { resolution: request.resolution }),
     ...(request.transparent && { background: 'transparent' }),
   };
-  const [file] = await generatePaidMedia(project, {
+  const { files: [file] } = await generatePaidMedia(project, {
     kind: 'image', model: request.model, name: request.name, prompt: request.prompt, params,
     references: request.references.map((path) => ({ path })),
     beforePaying: async () => checkOpenRouterImageRequest(await fetchOpenRouterImageModel(request.model), request),

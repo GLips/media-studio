@@ -7,15 +7,15 @@ import { createContext, useContext } from 'react';
 import { Sequence, useCurrentFrame, useVideoConfig } from 'remotion';
 import type { SfxMarkAttr, SfxMarkedEvent } from '../models/sfx-marks.ts';
 import { randomSeedFromKey } from '#lib/picture/motion/models/random.ts';
-import type { SfxRequest } from '../models/library.ts';
+import type { SfxSoundRequest } from '../models/library.ts';
 
 export { SFX } from './kit.ts';
 
 /**
  * A rendered sound and where in it its event lands: 0 for a click, the pass of a whoosh, the end of a riser. `request`
- * is what rendered it, so a cue list can take the sound over.
+ * is what rendered or generated it, so a cue list can take a recipe's sound over.
  */
-export type SfxSound = { src: string; seconds: number; landsAt: number; request: SfxRequest };
+export type SfxSound = { src: string; seconds: number; landsAt: number; request: SfxSoundRequest };
 
 /** A cue list's cue, rendered, landing `at` video seconds: what `@sfx-cues` exports. */
 export type SfxCueSound = { id: string; at: number; volume: number } & Omit<SfxSound, 'request'>;

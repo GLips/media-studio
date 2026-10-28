@@ -8,7 +8,7 @@
 
 import type { MotionSegment, MotionTracks } from '#lib/picture/measurement/models/motion-tracks.ts';
 import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
-import type { SfxRequest } from '#lib/timing/sound/models/library.ts';
+import type { SfxSoundRequest } from '#lib/timing/sound/models/library.ts';
 import type { SfxMark, SfxMarkedEvent } from '#lib/timing/sound/models/sfx-marks.ts';
 
 /**
@@ -19,7 +19,7 @@ import type { SfxMark, SfxMarkedEvent } from '#lib/timing/sound/models/sfx-marks
  * - `reveal`: a highlight, dialog, card or text arriving drawn.
  */
 export type SfxEvent = { id: string; scene: string; at: number } & (
-  | { kind: SfxMarkedEvent; request: SfxRequest; volume: number }
+  | { kind: SfxMarkedEvent; request: SfxSoundRequest; volume: number }
   | { kind: 'scene'; index: number; dissolve?: { from: number; to: number } }
   | { kind: 'camera-move'; track: string; from: number; to: number; big: boolean }
   | { kind: 'reveal'; track: string }

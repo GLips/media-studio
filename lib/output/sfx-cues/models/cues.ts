@@ -10,7 +10,7 @@
 
 import type { SpokenWord } from '#lib/timing/voice/models/voice-words.ts';
 import { roundSfxSeconds, sfxEventSeries, type SfxEvent } from './cue-events.ts';
-import { resolveSfxParams, type SfxRequest } from '#lib/timing/sound/models/library.ts';
+import { isSfxGenerated, resolveSfxParams, sfxSoundCategory, sfxSoundLabel, type SfxSoundRequest } from '#lib/timing/sound/models/library.ts';
 
 export const SFX_CUE_RULES = {
   /** Seconds after a sounding click that another stays silent. */
@@ -32,9 +32,10 @@ export type SfxClickStyle = keyof typeof SFX_CLICK_STYLES;
  */
 export type SfxCue = {
   event: SfxEvent;
-  draft: { sound: SfxRequest | null; why: string };
-  alternatives: SfxRequest[];
-  sound?: SfxRequest | null;
+  // A placed cue's draft is its `<Sfx>`'s own sound, which may be generated; the list's own cues are recipes.
+  draft: { sound: SfxSoundRequest | null; why: string };
+  alternatives: SfxSoundRequest[];
+  sound?: SfxSoundRequest | null;
   /** Seconds to land after (or, negative, before) the event. */
   nudge?: number;
   volume?: number;
@@ -48,7 +49,7 @@ export const SFX_CUE_LIST_VERSION = 1;
  * A cue as it sounds, landing `at` video seconds. `inline`: a sound a scene placed, which its `<Sfx>` plays; the list
  * plays the rest.
  */
-export type SfxCuePlay = { id: string; event: SfxEvent; sound: SfxRequest; at: number; volume: number; inline: boolean };
+export type SfxCuePlay = { id: string; event: SfxEvent; sound: SfxSoundRequest; at: number; volume: number; inline: boolean };
 
 const EDITS = ['sound', 'nudge', 'volume'] as const;
 /** Whether a cue carries a hand edit (`sound`, `nudge` or `volume`), which a redraft keeps. */
@@ -56,7 +57,7 @@ export const isSfxCueEdited = (cue: SfxCue) => EDITS.some((k) => cue[k] !== unde
 /** The volume a cue plays at unless its `volume` is edited: a marked event's own, else full. */
 export const sfxCueOwnVolume = (cue: SfxCue) => ('volume' in cue.event ? cue.event.volume : 1);
 
-export function sfxCueSound(cue: SfxCue, clickStyle: SfxClickStyle): SfxRequest | null {
+export function sfxCueSound(cue: SfxCue, clickStyle: SfxClickStyle): SfxSoundRequest | null {
   const { event } = cue;
   if (event.kind === 'placed') return event.request;
   if (cue.sound !== undefined) return cue.sound;
@@ -64,7 +65,7 @@ export function sfxCueSound(cue: SfxCue, clickStyle: SfxClickStyle): SfxRequest 
   return cue.draft.sound;
 }
 
-function sfxCuePlay(cue: SfxCue, sound: SfxRequest): SfxCuePlay {
+function sfxCuePlay(cue: SfxCue, sound: SfxSoundRequest): SfxCuePlay {
   const { event } = cue, inline = event.kind === 'placed';
   const own = sfxCueOwnVolume(cue);
   return { id: event.id, event, sound, at: event.at + (inline ? 0 : cue.nudge ?? 0), volume: inline ? own : cue.volume ?? own, inline };
@@ -78,15 +79,16 @@ export function sfxCuePlays(list: SfxCueList): SfxCuePlay[] {
   }).toSorted((a, b) => a.at - b.at);
 }
 
-const recipeOf = (sound: SfxRequest) => sound.sound.split('.')[0];
-const isAccent = (sound: SfxRequest) => resolveSfxParams(sound).recipe.category === 'accent';
+/** The recipe a sound is rendered from; null for a generated one. */
+const recipeOf = (sound: SfxSoundRequest) => (isSfxGenerated(sound) ? null : sound.sound.split('.')[0]);
+const isAccent = (sound: SfxSoundRequest) => sfxSoundCategory(sound) === 'accent';
 const seconds = (x: number) => x.toFixed(2);
 
 /**
  * The part of an accent that's loud, in seconds around where it lands: a whoosh's pass, a riser's peak, a hit's
  * attack. Only this has to fall between words.
  */
-function loudSpan(sound: SfxRequest): [number, number] {
+function loudSpan(sound: SfxSoundRequest): [number, number] {
   switch (recipeOf(sound)) {
     case 'whoosh': return [-0.15, 0.2];
     case 'riser': return [-0.25, 0.1];
@@ -116,7 +118,7 @@ function whooshFit(at: number, { from, to }: { from: number; to: number }): Reco
 }
 
 /** What the draft would sound for an event, first, then its alternatives. A placed sound has none: its scene chose it. */
-function sfxEventOptions(event: SfxEvent, clickStyle: SfxClickStyle): SfxRequest[] {
+function sfxEventOptions(event: SfxEvent, clickStyle: SfxClickStyle): SfxSoundRequest[] {
   const seed = event.id, span = sfxEventSpan(event);
   const sounds = (names: string[]) => names.map((sound) => ({ sound, seed, ...(span && sound.startsWith('whoosh') && { set: whooshFit(event.at, span) }) }));
   switch (event.kind) {
@@ -180,7 +182,7 @@ export function draftSfxCues(events: readonly SfxEvent[], words: readonly Spoken
   }
 
   const cues: SfxCue[] = events.map((event) => ({ event, draft: { sound: null, why: '' }, alternatives: sfxEventOptions(event, clickStyle), ...edits.get(event.id) }));
-  const decide = (cue: SfxCue, sound: SfxRequest | null, why: string) => {
+  const decide = (cue: SfxCue, sound: SfxSoundRequest | null, why: string) => {
     cue.draft = { sound, why };
     if (sound) cue.alternatives = cue.alternatives.filter((a) => a !== sound);
   };
@@ -242,7 +244,7 @@ export function sfxCueOverrides(list: SfxCueList, words: readonly SpokenWord[]):
     if (play.inline) continue;
     if (Math.abs(play.at - play.event.at) > 1e-3) note(`lands ${seconds(play.at - play.event.at)} s off its event`);
     const span = sfxEventSpan(play.event);
-    if (span && recipeOf(play.sound) === 'whoosh') {
+    if (span && !isSfxGenerated(play.sound) && recipeOf(play.sound) === 'whoosh') {
       const want = whooshFit(play.event.at, span), got = resolveSfxParams(play.sound).params;
       if (Math.abs(got.approach - want.approach) > SFX_CUE_RULES.fitTolerance || Math.abs(got.recede - want.recede) > SFX_CUE_RULES.fitTolerance) {
         note(`a whoosh of ${seconds(got.approach)} + ${seconds(got.recede)} s on a ${play.event.kind === 'scene' ? 'dissolve' : 'move'} of ${seconds(want.approach)} + ${seconds(want.recede)} s: it should last as long`);
@@ -290,7 +292,7 @@ export function formatSfxCueReport(list: SfxCueList, { stale, overrides }: { sta
 export function formatSfxCueList(list: SfxCueList): string[] {
   return list.cues.map((cue) => {
     const sound = sfxCueSound(cue, list.clickStyle);
-    const set = sound?.set && Object.keys(sound.set).length ? ` ${Object.entries(sound.set).map(([k, v]) => `${k}=${v}`).join(',')}` : '';
-    return `${cue.event.at.toFixed(2).padStart(7)}  ${cue.event.id.padEnd(38)} ${sound ? `${sound.sound}${set}` : `– ${cue.draft.why}`}${isSfxCueEdited(cue) ? '  (edited)' : ''}`;
+    const set = sound && !isSfxGenerated(sound) && sound.set && Object.keys(sound.set).length ? ` ${Object.entries(sound.set).map(([k, v]) => `${k}=${v}`).join(',')}` : '';
+    return `${cue.event.at.toFixed(2).padStart(7)}  ${cue.event.id.padEnd(38)} ${sound ? `${sfxSoundLabel(sound)}${set}` : `– ${cue.draft.why}`}${isSfxCueEdited(cue) ? '  (edited)' : ''}`;
   });
 }

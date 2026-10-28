@@ -17,7 +17,7 @@ those to them. Once the video plays a cue list, the list plays them instead and 
 2. **Hear it** before the video plays it: `studio mix <p> --sfx-cues`, and hand the user both mixes.
 3. **Edit `cues.json`.** `clickStyle` sets every click. Change a cue with fields at its top level, which a redraft
    keeps: `"sound"` (copy in one of its `alternatives`, any `{ "sound": "recipe.preset", "seed", "set" }`, or `null`
-   to silence it), `"nudge"` (seconds after the event, negative before) and `"volume"` (0–1). `studio check` names
+   to silence it; a generated sound plays only from an `<Sfx>`), `"nudge"` (seconds after the event, negative before) and `"volume"` (0–1). `studio check` names
    each edit that breaks a rule; the rules are defaults, so keep such an edit only as a choice. Restart an open
    `studio preview` to hear a hand edit.
 4. **Play it** with `defineVideo({ ..., sfxCueList: true })`, and commit `cues.json` (the sounds it renders are

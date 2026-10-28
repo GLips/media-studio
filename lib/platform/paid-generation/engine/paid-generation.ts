@@ -1,5 +1,5 @@
-// paid-generation.ts: every paid OpenRouter generation (`studio gen` verbs, `studio music`'s generated beds) goes
-// through generatePaidMedia, which writes the results into the project's generated/ and returns their paths.
+// paid-generation.ts: every paid generation (`studio gen`, `studio music gen` on OpenRouter; `studio sfx gen` on
+// ElevenLabs) goes through generatePaidMedia, which writes the results into a folder's generated/.
 //
 // Outputs aren't reproducible (most models ignore a seed), so the cache, keyed by kind, model, prompt, params and
 // reference bytes, is the only way to get a result twice. generated/provenance.json records what made each and its
@@ -11,14 +11,16 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { extname, join, relative } from 'node:path';
+import { generateElevenLabsSoundEffect } from './elevenlabs.ts';
 import { uploadS3Reference } from './s3-upload.ts';
-import {
-  awaitOpenRouterVideoJob, downloadOpenRouterVideo, generateOpenRouterAudio, generateOpenRouterImage, submitOpenRouterVideo,
-  type OpenRouterMedia,
-} from './openrouter.ts';
+import { awaitOpenRouterVideoJob, downloadOpenRouterVideo, generateOpenRouterAudio, generateOpenRouterImage, submitOpenRouterVideo } from './openrouter.ts';
+import type { PaidMedia } from './paid-media.ts';
 
-/** Which OpenRouter API makes it: `/images`, `/videos` (a job to poll), or chat completions with audio out (Lyria). */
-export type PaidGenerationKind = 'image' | 'video' | 'audio';
+/**
+ * Which API makes it: OpenRouter's `/images`, `/videos` (a job to poll) or chat completions with audio out (Lyria),
+ * or ElevenLabs' sound effects.
+ */
+export type PaidGenerationKind = 'image' | 'video' | 'audio' | 'sound-effect';
 /** A local file sent with the prompt. `frame` pins an image as a video's first or last frame, rather than a reference. */
 export type PaidGenerationReference = { path: string; frame?: 'first_frame' | 'last_frame' };
 export type PaidGenerationRequest = {
@@ -30,26 +32,38 @@ export type PaidGenerationRequest = {
   /** The rest of the request body as the endpoint takes it, e.g. `{ aspect_ratio: '16:9', duration: 5 }`. */
   params?: Record<string, unknown>;
   references?: readonly PaidGenerationReference[];
+  /**
+   * Which of several takes of the same request, for a model with no seed: each is paid for once, and asking for it
+   * again finds it. Part of the key, never sent.
+   */
+  take?: number;
   /** Runs only on a cache miss, just before paying: a check that throws to refuse the request. Not part of the key. */
   beforePaying?: () => Promise<void>;
 };
 
-type GeneratedProvenance = {
+/** generated/provenance.json's record of one generation, keyed by its cache key. */
+export type PaidGenerationProvenance = {
   name: string;
   kind: PaidGenerationKind;
   model: string;
   prompt: string;
   params: Record<string, unknown>;
+  take?: number;
   references: { path: string; sha256: string; frame?: PaidGenerationReference['frame'] }[];
   /** Relative to the project. */
   files: string[];
   cost: number | null;
   requestId: string | null;
+  /** The account's plan, where the licence of what it made depends on it (ElevenLabs). */
+  plan?: string;
   generatedAt: string;
 };
 
-/** Makes what the request asks for, or finds it already made, and returns the absolute paths of the files. */
-export async function generatePaidMedia(project: string, request: PaidGenerationRequest): Promise<string[]> {
+/**
+ * Makes what the request asks for, or finds it already made, into `project`/generated/, and returns the absolute
+ * paths of the files with the record of what made them.
+ */
+export async function generatePaidMedia(project: string, request: PaidGenerationRequest): Promise<{ files: string[]; provenance: PaidGenerationProvenance }> {
   const dir = join(project, 'generated');
   mkdirSync(dir, { recursive: true });
   const provenancePath = join(dir, 'provenance.json'), pendingPath = join(dir, 'pending.json');
@@ -57,18 +71,23 @@ export async function generatePaidMedia(project: string, request: PaidGeneration
   const params = request.params ?? {};
   const references = (request.references ?? []).map((ref) => ({ ...ref, bytes: readFileSync(ref.path) }))
     .map((ref) => ({ ...ref, sha256: createHash('sha256').update(ref.bytes).digest('hex') }));
-  const key = paidGenerationKey(request.kind, request.model, request.prompt, params, references.map((ref) => [ref.sha256, ref.frame ?? null]));
+  const refKeys = references.map((ref) => [ref.sha256, ref.frame ?? null]);
+  // Only a given take joins the key: a request without one keeps the key its cached files are filed under.
+  const key = paidGenerationKey(request.kind, request.model, request.prompt, params, refKeys, ...(request.take === undefined ? [] : [request.take]));
 
-  const made = readJsonRecord<GeneratedProvenance>(provenancePath)[key];
+  const made = readJsonRecord<PaidGenerationProvenance>(provenancePath)[key];
   if (made && made.files.every((file) => existsSync(join(project, file)))) {
     for (const file of made.files) console.error(`cached ${file}`);
-    return made.files.map((file) => join(project, file));
+    return { files: made.files.map((file) => join(project, file)), provenance: made };
   }
 
   await request.beforePaying?.();
-  let media: OpenRouterMedia;
+  let media: PaidMedia;
   if (request.kind === 'image') media = await generateOpenRouterImage(await requestBody(request, params, references));
-  else if (request.kind === 'audio') media = await generateOpenRouterAudio(await requestBody(request, params, references));
+  else if (request.kind === 'sound-effect') {
+    if (references.length) throw new Error('a sound effect takes no references');
+    media = await generateElevenLabsSoundEffect({ text: request.prompt, model_id: request.model, ...params });
+  } else if (request.kind === 'audio') media = await generateOpenRouterAudio(await requestBody(request, params, references));
   else {
     let jobId = readJsonRecord<string>(pendingPath)[key];
     if (jobId) console.error(`picking up video job ${jobId}`);
@@ -85,23 +104,24 @@ export async function generatePaidMedia(project: string, request: PaidGeneration
     }
     media = await downloadOpenRouterVideo(job);
   }
-  if (!media.outputs.length) throw new Error(`OpenRouter ${request.model} returned nothing`);
+  if (!media.outputs.length) throw new Error(`${request.model} returned nothing`);
 
   const files = media.outputs.map((bytes, i) => {
     const file = join('generated', `${request.name}-${key}${media.outputs.length > 1 ? `-${i + 1}` : ''}.${generatedMediaExtension(bytes)}`);
     writeFileSync(join(project, file), bytes);
     return file;
   });
-  writeJsonRecordEntry(provenancePath, key, {
-    name: request.name, kind: request.kind, model: request.model, prompt: request.prompt, params,
+  const provenance: PaidGenerationProvenance = {
+    name: request.name, kind: request.kind, model: request.model, prompt: request.prompt, params, ...(request.take !== undefined && { take: request.take }),
     references: references.map(({ path, sha256, frame }) => ({ path: relative(project, path), sha256, ...(frame && { frame }) })),
-    files, cost: media.cost, requestId: media.requestId, generatedAt: new Date().toISOString(),
-  });
+    files, cost: media.cost, requestId: media.requestId, ...(media.plan && { plan: media.plan }), generatedAt: new Date().toISOString(),
+  };
+  writeJsonRecordEntry(provenancePath, key, provenance);
   // Only once the files and their provenance are written: until then a lost download can still be picked up.
   if (request.kind === 'video') writeJsonRecordEntry(pendingPath, key, undefined);
   const cost = media.cost === null ? 'cost unknown' : `$${media.cost.toFixed(3)}`;
   for (const file of files) console.error(`generated ${file}  ${cost}${media.requestId ? `  (${media.requestId})` : ''}`);
-  return files.map((file) => join(project, file));
+  return { files: files.map((file) => join(project, file)), provenance };
 }
 
 const readJsonRecord = <T>(path: string): Record<string, T> => (existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {});

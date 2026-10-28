@@ -276,7 +276,6 @@
       "if (result instanceof Promise) return result.finally(remove) as T;": 1
     },
     "lib/timing/sound/engine/sfx-files.ts": {
-      "return [writeSfxFile(JSON.parse(request) as SfxRequest, join(dir, file.replace(/\\.ts$/, '.wav'))).module];": 1,
       "...Object.entries(sfxParamSpecs(recipe as unknown as SfxRecipe)).map(([param, { min, max, doc }]) =>": 2,
       "`  ${param} ${min}–${max} (default ${round((recipe.defaults as Record<string, number>)[param])}): ${doc}`),": 1
     },
@@ -807,9 +806,6 @@
     "lib/picture/reel/studio/bounce.tsx": {
       "const drawn = 56 * clamp(since / (3 * REF_F)) + 31 * motionCurves.cubic.entrance((since - 3 * REF_F) / (5 * REF_F));": 1
     },
-    "lib/timing/music/engine/music-track.ts": {
-      "return Array.from({ length: channels }, (_, c) => Float32Array.from({ length: all.length / channels }, (_, i) => all[i * channels + c]));": 1
-    },
     "lib/timing/timeline/models/retime.ts": {
       "const shiftOf = (i: number, anchoredAtEnd = false) => (i > k || (i === k && anchoredAtEnd) ? added : 0);": 1,
       "const musicAt = (timeline: Timeline) => timeline.audio.find((placed) => placed.kind === 'music')?.atSeconds ?? 0;": 1
@@ -1275,7 +1271,7 @@
   },
   "typescript(consistent-return)": {
     "lib/output/sfx-cues/models/cues.ts": {
-      "function sfxEventOptions(event: SfxEvent, clickStyle: SfxClickStyle): SfxRequest[] {": 1
+      "function sfxEventOptions(event: SfxEvent, clickStyle: SfxClickStyle): SfxSoundRequest[] {": 1
     },
     "lib/paint/brush-fidelity/engine/brush-fidelity-score.ts": {
       "export function brushFidelityOutcome(scored: BrushFidelityScore): BrushFidelityOutcome {": 1
@@ -1547,9 +1543,6 @@
     "lib/paint/brush-packs/engine/import-photoshop-pack.test.ts": {
       "const m = stored();": 1
     },
-    "lib/picture/composition/studio/Video.tsx": {
-      "return { id: String(id ?? i), at, sound: takes[randomSeedFromKey(id ?? i) % takes.length].request.sound };": 1
-    },
     "lib/picture/reel/engine/reel-study-files.ts": {
       "const probe = JSON.parse(runFfprobe(['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height,r_frame_rate:format=duration', '-of', 'json', video]).toString());": 1
     },
@@ -1609,9 +1602,6 @@
       "refused((m) => void (m.brushes.Chalk.pattern.width = 'wrong'), /brushes\\.Chalk\\.pattern\\.width/);": 1,
       "refused((m) => void (m.brushes.Chalk.tip.kind = 'round'), /brushes\\.Chalk\\.tip\\.kind is \"round\", not one of sampled/);": 1,
       "refused((m) => void (m.brushes.Pencil.preset.Brsh.Dmtr = { _unit: '#Pxl' }), /brushes\\.Pencil\\.preset\\.Brsh\\.Dmtr isn't a descriptor value/);": 1
-    },
-    "lib/picture/composition/studio/Video.tsx": {
-      "return { id: String(id ?? i), at, sound: takes[randomSeedFromKey(id ?? i) % takes.length].request.sound };": 1
     },
     "lib/picture/reel/engine/reel-study-files.ts": {
       "const [num, den] = String(probe.streams[0].r_frame_rate).split('/').map(Number);": 1,

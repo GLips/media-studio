@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { isSfxGenerated, type SfxSoundRequest } from '#lib/timing/sound/models/library.ts';
 import type { SpokenWord } from '#lib/timing/voice/models/voice-words.ts';
 import type { SfxEvent } from './cue-events.ts';
 import { draftSfxCues, sfxCueOverrides, sfxCueSound, staleSfxCues, type SfxCueList } from './cues.ts';
@@ -16,7 +17,12 @@ const events: SfxEvent[] = [
   { id: 'placed:c:1', kind: 'placed', scene: 'c', at: 14, request: { sound: 'whoosh' }, volume: 1 },
 ];
 const cueOf = (list: SfxCueList, id: string) => list.cues.find((c) => c.event.id === id)!;
-const soundOf = (list: SfxCueList, id: string) => sfxCueSound(cueOf(list, id), list.clickStyle);
+// Every sound these tests cue is a recipe's.
+const recipeOf = (sound: SfxSoundRequest | null) => {
+  assert.ok(sound === null || !isSfxGenerated(sound));
+  return sound;
+};
+const soundOf = (list: SfxCueList, id: string) => recipeOf(sfxCueSound(cueOf(list, id), list.clickStyle));
 
 test('the draft debounces clicks, spaces accents, skips a cut beside an accented one, keeps them off words, and fits a whoosh to its move', () => {
   const { list } = draftSfxCues(events, words, { clickStyle: 'tick' });
@@ -29,7 +35,7 @@ test('the draft debounces clicks, spaces accents, skips a cut beside an accented
   assert.ok(soundOf(list, 'scene:d'));
   assert.equal(soundOf(list, 'reveal:d/ring:1'), null, 'a reveal under "price"');
   assert.equal(soundOf(list, 'move:d:1'), null, '2 s after the accent on scene:d');
-  assert.deepEqual(cueOf(list, 'move:d:1').alternatives[0].set, { approach: 0.6, recede: 0.9 }, "a whoosh's offered shape is its move's");
+  assert.deepEqual(recipeOf(cueOf(list, 'move:d:1').alternatives[0])?.set, { approach: 0.6, recede: 0.9 }, "a whoosh's offered shape is its move's");
   assert.deepEqual(sfxCueOverrides(list, words), [], 'the draft breaks no rule');
   assert.equal(soundOf({ ...list, clickStyle: 'pop' }, 'click:a:1')?.sound, 'pop.soft', 'editing the click style changes every click');
 });

@@ -59,7 +59,7 @@ export async function renderPrevisFootage(session: RenderSession, sceneId: strin
   const stale = Boolean(playing && playing.blockout !== basename(blockout));
   if (dry) return { blockout, footage: null, prompt, stale, estimates: previsCostEstimates(previs.duration) };
 
-  const [footage] = await generatePaidMedia(project, {
+  const { files: [footage] } = await generatePaidMedia(project, {
     kind: 'video', model: chosen.id, name: sceneId, prompt,
     params: { duration: seconds, resolution: chosen.resolution, aspect_ratio: aspect, ...(chosen.audioOptional && { generate_audio: previs.audio }) },
     references: [{ path: blockout }, ...previs.references.map((ref) => ({ path: join(project, ref) }))],

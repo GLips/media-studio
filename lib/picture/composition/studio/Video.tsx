@@ -7,6 +7,7 @@
 import { Audio } from '@remotion/media';
 import { useMemo, useRef } from 'react';
 import { AbsoluteFill, Artifact, Sequence, useCurrentFrame, useRemotionEnvironment, useVideoConfig, type VideoConfig } from 'remotion';
+import { sfxSoundLabel } from '#lib/timing/sound/models/library.ts';
 import { levelGain, musicBedGainAt, VOICE_LUFS } from '#lib/timing/sound/models/mix.ts';
 import { previsRequestFor, previsSpan, type PrevisFootage } from '#lib/footage/previs/studio/previs.ts';
 import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
@@ -77,8 +78,8 @@ function timelineReport(video: VideoDef, tl: LaidVideo, { fps, width, height, du
     sfxCueList,
     beatClicks: playsBeatClicks(video),
     sounds: (video.sounds ?? []).map(({ at, sound, id }, i) => {
-      const takes = Array.isArray(sound) ? sound : [sound];
-      return { id: String(id ?? i), at, sound: takes[randomSeedFromKey(id ?? i) % takes.length].request.sound };
+      const takes = [sound].flat();
+      return { id: String(id ?? i), at, sound: sfxSoundLabel(takes[randomSeedFromKey(id ?? i) % takes.length].request) };
     }),
   };
   return JSON.stringify(report);
