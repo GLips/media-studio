@@ -526,8 +526,9 @@ skin joints or hinges. `paint-rig-cuts.ts` holds a layer's parts with each joint
 part whose parent isn't on the layer is loose, a group of its own) and which part owns each texel; how a painter's
 drawn regions become that is the painting tool's. `paint-rig-cel-layer.ts` lays parts painted on cels of their own
 and skinned to each other as one such layer, each cel keeping its z inside it. `paint-rig-skin.ts` meshes a layer's skin-joined parts and poses
-the mesh by rotation-blend skinning, each vertex turning by its share of a joint's angle, from each part's
-rest-to-posed map; it measures folds across a joint's band. `paint-rig-pieces.ts` is what a posed rig is drawn from:
+the mesh from each part's rest-to-posed map: each part's paint goes exactly by its map, and a band `blend` px wide
+along each skin seam is placed as rigidly as it can be (`paint-rig-arap.ts`, as-rigid-as-possible shape manipulation);
+it measures folds across a joint's band. `paint-rig-pieces.ts` is what a posed rig is drawn from:
 pictures through posed triangles (a group through its skin mesh, a cel through its lattice), posed on the CPU once
 for renderer and measures alike. `paint-rig-piece-meshes.ts` draws them on the GPU as three.js meshes whose posed
 vertices the lens's motion layer follows; `paint-rig-pieces-gpu.ts` draws them for a Node tool and reads them back.

@@ -21,7 +21,7 @@ import type { PaintRigCutLayer } from '#lib/paint/rig/models/paint-rig-cuts.ts';
 import { paintRigSkinGroupPicture, type PaintRigPicture, type PaintRigPiece } from '#lib/paint/rig/models/paint-rig-pieces.ts';
 import {
   paintRigBandStretch, paintRigSkinGroups, paintRigSkinMesh, paintRigSkinProblems, paintRigSkinRestMap, paintRigSkinTriangles,
-  type PaintRigBoneless, type PaintRigSkinGroup, type PaintRigSkinMesh,
+  type PaintRigSkinGroup, type PaintRigSkinProblem, type PaintRigSkinMesh,
 } from '#lib/paint/rig/models/paint-rig-skin.ts';
 import { paintedSourceNodeKeys, shotEntryProblem } from './shot-occurrences.ts';
 import type { OccurrenceKey, OccurrenceRig, RigPart, RigPartPose } from './shot-props.ts';
@@ -268,16 +268,16 @@ export type ShotRigCel = ShotRigKeyedPicture & { readonly cel: NodeKey };
 /** Problems that leave `rig`'s cels unskinnable, as one error naming the rig. */
 const shotRigSkinError = (rig: CompiledShotRig, problems: readonly PaintingProblem[]) => paintingProblemsError(`shot's rig ${rig.occurrence}`, problems);
 
-/** Why part `k` of `rig`, showing `shown`, has no bone to bend its skin joint along (`boneless`, paintRigSkinProblems'). */
-function shotRigBonelessProblem(rig: CompiledShotRig, k: number, shown: ShotRigCel, boneless: PaintRigBoneless, onDocument: string): PaintingProblem {
-  const at = `parts.${rig.parts[k].id}`, bends = "a skin joint bends along its part's own paint";
-  if (boneless === 'centred') {
-    return rigError(rig.occurrence, at, `its cel ${shown.cel}'s own paint centres on its pivot, and ${bends}, out from the pivot: set the pivot where the part meets its parent`);
+/** Why part `k` of `rig`, showing `shown`, can't be posed by its own paint (`problem`, paintRigSkinProblems'). */
+function shotRigSkinProblem(rig: CompiledShotRig, k: number, shown: ShotRigCel, problem: PaintRigSkinProblem, onDocument: string): PaintingProblem {
+  const at = `parts.${rig.parts[k].id}`, posed = 'a skinned part is posed through its own paint';
+  if (problem === 'unreached') {
+    return rigError(rig.occurrence, at, `its cel ${shown.cel}'s paint is narrower than a skin cell or lies wholly within its skin bands, and ${posed}: widen the part, or narrow the blend of the skin joints beside it`);
   }
-  if (!paintRigPicturePainted(shown.picture)) return rigError(rig.occurrence, at, `its cel ${shown.cel} lays no paint on ${onDocument}, and ${bends}: paint it there, or leave the part out`);
+  if (!paintRigPicturePainted(shown.picture)) return rigError(rig.occurrence, at, `its cel ${shown.cel} lays no paint on ${onDocument}, and ${posed}: paint it there, or leave the part out`);
   return rigError(
     rig.occurrence, at,
-    `its cel ${shown.cel} gives none of the rig's texels most of their colour, outweighed everywhere it paints by the cels over or under it, and ${bends}: where it lies under them, raise its z; where it lies over them, paint it stronger, or out past them`,
+    `its cel ${shown.cel} gives none of the rig's texels most of their colour, outweighed everywhere it paints by the cels over or under it, and ${posed}: where it lies under them, raise its z; where it lies over them, paint it stronger, or out past them`,
   );
 }
 
@@ -291,8 +291,8 @@ export type ShotRigSkin = {
 
 /**
  * `cels` (the cel each part shows, in part order) laid as one cel layer and skinned: its cuts, groups and meshes.
- * Refuses at the rig's path, by the rig engine's own rules, what it would refuse naming no rig: no cel painted, a
- * skin joint with no bone. A hinged part or a root may show a clear cel.
+ * Refuses at the rig's path, by the rig engine's own rules: no cel painted, a skinned part
+ * its own paint can't pose. A hinged part or a root may show a clear cel.
  */
 export function shotRigSkin(rig: CompiledShotRig, cels: readonly ShotRigCel[]): { picture: PaintRigPicture; skin: ShotRigSkin } {
   const { widthPx, heightPx } = rig.size, onDocument = `the document (0,0 → ${widthPx},${heightPx})`;
@@ -301,8 +301,8 @@ export function shotRigSkin(rig: CompiledShotRig, cels: readonly ShotRigCel[]): 
   }
   const parts: PaintRigCelPart[] = rig.parts.map((part, k) => ({ declaration: part, picture: cels[k].picture }));
   const { picture, cuts } = paintRigCelLayer(rig.occurrence, parts), key = stampCanonicalJson(cels.map((cel) => cel.key));
-  const boneless = paintRigSkinProblems(cuts);
-  if (boneless.length) throw shotRigSkinError(rig, boneless.map((problem) => shotRigBonelessProblem(rig, problem.part, cels[problem.part], problem.boneless, onDocument)));
+  const problems = paintRigSkinProblems(cuts);
+  if (problems.length) throw shotRigSkinError(rig, problems.map(({ part, problem }) => shotRigSkinProblem(rig, part, cels[part], problem, onDocument)));
   return { picture, skin: { key, cuts, groups: paintRigSkinGroups(cuts).map((group) => ({ group, mesh: paintRigSkinMesh(cuts, group) })) } };
 }
 

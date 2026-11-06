@@ -17,7 +17,7 @@ export function paintRigPicturePainted({ rgba }: PaintRigPicture): boolean {
 /**
  * `cels` laid as layer `id`: its picture the cels over one another by z (ties in the order given), each texel owned by
  * the cel giving it most of its colour (an upper cel's faint edge leaves it to the paint beneath), the matte their
- * coverage. A cel outweighed wherever it paints owns nothing (paintRigSkinProblems). Refuses cels all clear.
+ * coverage. A cel outweighed wherever it paints owns nothing (paintRigSkinProblems).
  */
 export function paintRigCelLayer(id: string, cels: readonly PaintRigCelPart[]): { picture: PaintRigPicture; cuts: PaintRigCutLayer } {
   const painted = cels.filter(({ picture }) => paintRigPicturePainted(picture));

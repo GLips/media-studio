@@ -1,13 +1,14 @@
-// paint-rig-skin.ts: a layer's cut parts posed. Parts joined by skin joints form one group, a triangle mesh
-// of 6 px cells over their texels; each vertex's share in a skin joint's child ramps over `blend` px across the joint
-// line (a parent's fading away from the child's paint), and it is posed by rotation-blend skinning: it turns by its
-// share of the joint's angle about the joint's rest pivot, so a bend is a circular arc that keeps the limb's width. A
-// hinge child starts its own group, a rigid piece with its overlap, above or below by z.
+// paint-rig-skin.ts: a layer's cut parts posed. Parts joined by skin joints form one group, a triangle mesh of 6 px
+// cells over their texels. Each part's paint goes exactly by its own map, except within a band `blend` px wide along
+// the seam where a skin joint's two sides meet: there the mesh finds its own shape, as rigid as it can (paint-rig-arap.ts),
+// so a bend curves the paint round without shearing or squeezing what lies off the seam. A hinge child starts its own
+// group, a rigid piece, above or below by z.
 //
-// A mesh is data a renderer can take whole: triangles over a vertex grid, and each vertex's share in each joint.
+// A mesh is data a renderer can take whole: triangles over a vertex grid, each vertex's part, and the factored solve.
 
 import type { StampWarpMap } from '#lib/paint/painting/models/stamp-group-warp.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import { paintRigArapPose, paintRigArapSystem, type PaintRigArapSystem } from './paint-rig-arap.ts';
 import type { PaintRigCutLayer, PaintRigTexelBox } from './paint-rig-cuts.ts';
 
 /** A skin mesh's cell, px. */
@@ -22,17 +23,18 @@ export type PaintRigSkinGroup = {
   readonly root: number; readonly members: readonly number[]; readonly z: number; readonly mover: Int16Array; readonly cover: Float32Array;
 };
 
-/** A skin joint of a group: its `child` and `parent` (indices into the layer's parts) and the child's rest pivot. */
-export type PaintRigSkinJoint = { readonly child: number; readonly parent: number; readonly pivot: StampPoint };
+/** A skin joint of a group: its `child` and `parent` (indices into the layer's parts) and its band's width, `blend` px. */
+export type PaintRigSkinJoint = { readonly child: number; readonly parent: number; readonly blend: number };
 
 /**
  * A group's mesh at rest: a vertex grid of `cell` px from the layer box's corner, its triangles (three vertex indices
- * each), the group's `root` and skin `joints` (each after its parent's own), each vertex's share in each joint's child
- * (`joints.length` a vertex), and each joint's band, by child: the painted triangles with a vertex part-way across it.
+ * each), its skin `joints`, each vertex's part (−1 off the mesh) and whether a band frees it (else its part's map pins it), each
+ * joint's band by child (none if the child shows no paint), and the solve.
  */
 export type PaintRigSkinMesh = {
   readonly box: PaintRigTexelBox; readonly cell: number; readonly columns: number; readonly rows: number; readonly triangles: Uint32Array;
-  readonly root: number; readonly joints: readonly PaintRigSkinJoint[]; readonly shares: Float32Array; readonly bands: ReadonlyMap<number, Uint32Array>;
+  readonly joints: readonly PaintRigSkinJoint[]; readonly owners: Int16Array; readonly free: Uint8Array;
+  readonly bands: ReadonlyMap<number, Uint32Array>; readonly arap: PaintRigArapSystem;
 };
 
 /** The layer's groups, back to front by z (ties in the order their roots were cut). */
@@ -74,56 +76,19 @@ function nearest(box: PaintRigTexelBox, x: number, y: number, reach: number, is:
   return best;
 }
 
-/** Why a skin joint has no bone to bend along: its child owns none of the layer's texels, or their middle is its pivot. */
-export type PaintRigBoneless = 'unowned' | 'centred';
+/** A skin mesh before its solve is factored, its rest vertices, and the members its own pose never reaches (`unreached`). */
+type PaintRigSkinLayout = Omit<PaintRigSkinMesh, 'arap'> & { readonly rest: Float64Array; readonly unreached: readonly number[] };
 
-/**
- * Skin joint `child`'s bone (pivot `pivot`): from its pivot toward the middle of the texels the child owns, as a unit
- * vector, or why it has none. A skinned part's texels are the ones its group moves it by, so this is the mesh's bone.
- */
-function skinBone({ box, owner }: PaintRigCutLayer, child: number, pivot: StampPoint): { readonly bone: StampPoint } | { readonly boneless: PaintRigBoneless } {
-  let x = 0, y = 0, owned = false;
-  for (let t = 0; t < owner.length; t++) {
-    if (owner[t] !== child) continue;
-    owned = true;
-    x += box.x0 + (t % box.w) + 0.5 - pivot.x; y += box.y0 + Math.floor(t / box.w) + 0.5 - pivot.y;
-  }
-  const length = Math.hypot(x, y);
-  if (!owned) return { boneless: 'unowned' };
-  return length > 0 ? { bone: { x: x / length, y: y / length } } : { boneless: 'centred' };
-}
-
-/**
- * The skin joints of `layer` with no bone to bend along, by child (an index into its parts) and why
- * (PaintRigBoneless): what paintRigSkinMesh refuses, for a caller to name before it skins.
- */
-export function paintRigSkinProblems(layer: PaintRigCutLayer): { readonly part: number; readonly boneless: PaintRigBoneless }[] {
-  return layer.parts.flatMap(({ joint }, part) => {
-    if (joint.kind !== 'skin') return [];
-    const found = skinBone(layer, part, joint.pivot);
-    return 'boneless' in found ? [{ part, boneless: found.boneless }] : [];
-  });
-}
-
-/** `group`'s mesh over `layer`: the cells any of whose texels (or their neighbours) it covers, and each vertex's share in each skin joint's child. */
-export function paintRigSkinMesh(layer: PaintRigCutLayer, group: PaintRigSkinGroup): PaintRigSkinMesh {
+/** `group`'s mesh over `layer`, unfactored: the cells any of whose texels (or their neighbours) it covers, each vertex's part, and its bands. */
+function paintRigSkinLayout(layer: PaintRigCutLayer, group: PaintRigSkinGroup): PaintRigSkinLayout {
   const { box, parts } = layer, cell = SKIN_CELL, { mover, cover } = group;
   const columns = Math.ceil(box.w / cell), rows = Math.ceil(box.h / cell), stride = columns + 1;
-  const boneOf = (child: number, pivot: StampPoint) => {
-    const found = skinBone(layer, child, pivot);
-    if ('boneless' in found) {
-      throw new Error(`paint rig: ${parts[child].id} is skinned on ${layer.id} ${found.boneless === 'unowned' ? 'with no paint of its own there' : 'with its paint centred on its pivot'}, so its joint has no bone`);
-    }
-    return found.bone;
-  };
-  const skinJoints = group.members.flatMap((child) => {
+  const joints = group.members.flatMap((child) => {
     const { joint } = parts[child];
-    return joint.kind === 'skin' ? [{ child, parent: joint.parent, pivot: joint.pivot, bone: boneOf(child, joint.pivot), blend: joint.blend }] : [];
+    return joint.kind === 'skin' ? [{ child, parent: joint.parent, blend: joint.blend }] : [];
   });
-  const parentOf = new Map(skinJoints.map(({ child, parent }) => [child, parent]));
-  const depth = (k: number): number => (parentOf.has(k) ? 1 + depth(parentOf.get(k)!) : 0);
+  const parentOf = new Map(joints.map(({ child, parent }) => [child, parent]));
   const within = (k: number, child: number): boolean => k === child || (parentOf.has(k) && within(parentOf.get(k)!, child));
-  const joints = skinJoints.toSorted((a, b) => depth(a.child) - depth(b.child));
   const kept: number[] = [];
   for (let cj = 0; cj < rows; cj++) for (let ci = 0; ci < columns; ci++) {
     let any = false;
@@ -142,95 +107,85 @@ export function paintRigSkinMesh(layer: PaintRigCutLayer, group: PaintRigSkinGro
       if (cover[j * box.w + i] > 0) painted[2 * n + (i - ci * cell >= j - cj * cell ? 0 : 1)] = 1;
     }
   });
-  const vertices = (rows + 1) * stride, shares = new Float32Array(vertices * joints.length), blending = new Uint32Array(vertices);
+  const vertices = (rows + 1) * stride, owners = new Int16Array(vertices).fill(-1);
+  const inBandOf = joints.map(() => new Uint8Array(vertices));
+  const rest = new Float64Array(vertices * 2);
+  for (let v = 0; v < vertices; v++) rest.set([box.x0 + (v % stride) * cell, box.y0 + Math.floor(v / stride) * cell], 2 * v);
   for (const v of new Set(triangles)) {
-    const x = box.x0 + (v % stride) * cell, y = box.y0 + Math.floor(v / stride) * cell;
+    const x = rest[2 * v], y = rest[2 * v + 1];
     // A kept cell holds a covered texel within a texel of it, so every vertex has one within 2 cells.
-    const found = nearest(box, x, y, 2 * cell, (t) => mover[t] >= 0)!, own = mover[found.texel];
-    joints.forEach(({ child, parent, pivot, bone, blend }, n) => {
-      // Across the joint the share is a linear ramp of the distance past the joint line (through the pivot, square to
-      // the bone), so the joint's angle accrues evenly along the bone and the bend is a circular arc.
-      const past = (x - pivot.x) * bone.x + (y - pivot.y) * bone.y, ramp = Math.min(1, Math.max(0, past / blend + 0.5));
-      let share = within(own, child) ? 1 : 0;
-      if (own === child) share = ramp;
-      if (own === parent) {
-        // The parent's paint follows the child only near the child's: a body painted round a neck's root, or shoulders
-        // wider than the neck, must not swing with it. Within blend / 2 of the child's paint the ramp is whole; past
-        // that it fades over a further `blend`, gently enough not to crease.
-        const near = ramp > 0 ? nearest(box, x, y, 1.5 * blend, (t) => mover[t] >= 0 && within(mover[t], child)) : null;
-        share = near ? ramp * Math.min(1, 1.5 - near.distance / blend) : 0;
-      }
-      shares[v * joints.length + n] = share;
-      if (share > 0 && share < 1) blending[v] |= 1 << n;
+    const own = mover[nearest(box, x, y, 2 * cell, (t) => mover[t] >= 0)!.texel];
+    owners[v] = own;
+    // In a joint's band: within half its blend of paint on the joint's other side (the child's and what hangs from it,
+    // or the rest of the group). Paint of the parent's far from the child's isn't, so it stays put as the child turns.
+    joints.forEach(({ child, blend }, n) => {
+      const inside = within(own, child);
+      if (nearest(box, x, y, blend / 2, (t) => mover[t] >= 0 && within(mover[t], child) !== inside)) inBandOf[n][v] = 1;
     });
   }
-  const bands = new Map(joints.map(({ child }, n) => {
+  // A triangle spanning a seam is in its band whatever the blend, else a blend under a cell would leave it stretched
+  // between two parts' maps with no vertex free to give.
+  for (let t = 0; t < triangles.length / 3; t++) joints.forEach(({ child }, n) => {
+    const inside = [0, 1, 2].filter((k) => within(owners[triangles[3 * t + k]], child)).length;
+    if (inside > 0 && inside < 3) for (let k = 0; k < 3; k++) inBandOf[n][triangles[3 * t + k]] = 1;
+  });
+  const free = Uint8Array.from(owners, (_, v) => (inBandOf.some((inBand) => inBand[v]) ? 1 : 0));
+  // A part's pose reaches its paint only through vertices pinned to it.
+  const showing = new Set(mover), pinned = new Set([...owners.keys()].filter((v) => owners[v] >= 0 && !free[v]).map((v) => owners[v]));
+  const unreached = group.members.filter((k) => showing.has(k) && !pinned.has(k));
+  // A joint whose child shows no paint here has no band.
+  const bands = new Map(joints.flatMap(({ child }, n) => {
     const inBand: number[] = [];
-    for (let t = 0; t < triangles.length / 3; t++) if (painted[t] && (blending[triangles[3 * t]] | blending[triangles[3 * t + 1]] | blending[triangles[3 * t + 2]]) & (1 << n)) inBand.push(t);
-    return [child, Uint32Array.from(inBand)];
+    for (let t = 0; t < triangles.length / 3; t++) if (painted[t] && (inBandOf[n][triangles[3 * t]] || inBandOf[n][triangles[3 * t + 1]] || inBandOf[n][triangles[3 * t + 2]])) inBand.push(t);
+    return inBand.length ? [[child, Uint32Array.from(inBand)] as const] : [];
   }));
-  return { box, cell, columns, rows, triangles, root: group.root, joints: joints.map(({ child, parent, pivot }) => ({ child, parent, pivot })), shares, bands };
+  return { box, cell, columns, rows, triangles, joints, owners, free, bands, rest, unreached };
 }
 
 /**
- * A skin joint's turn this frame: the child's map against its parent's near the rest `pivot`, as rest-space
- * L(v) = pivot + shift + R(angle)·S·(v − pivot), S what's left after the turn (a stretch, the identity for a rigid
- * joint). Exact when the parent's map is affine; a bent or boiled parent is read at the pivot.
+ * Why a skinned part can't be posed by its own paint: it owns none of the layer's texels (`unowned`: its cel is clear,
+ * or outweighed wherever it paints), or its paint is narrower than a mesh cell or lies wholly within skin bands, so no
+ * vertex pinned to it reaches it (`unreached`).
  */
-type SkinTurn = { pivot: StampPoint; angle: number; stretch: readonly [number, number, number, number]; shift: StampPoint };
+export type PaintRigSkinProblem = 'unowned' | 'unreached';
 
-function skinTurnOf(parent: StampWarpMap, child: StampWarpMap, pivot: StampPoint): SkinTurn {
-  const jacobian = (map: StampWarpMap) => {
-    const at = map(pivot), across = map({ x: pivot.x + 1, y: pivot.y }), down = map({ x: pivot.x, y: pivot.y + 1 });
-    return { at, a: across.x - at.x, b: down.x - at.x, c: across.y - at.y, d: down.y - at.y };
-  };
-  const p = jacobian(parent), q = jacobian(child), det = p.a * p.d - p.b * p.c;
-  // The parent's linear part undone: m = P⁻¹·Q, shift = P⁻¹·(child(pivot) − parent(pivot)).
-  const undo = (x: number, y: number) => ({ x: (p.d * x - p.b * y) / det, y: (p.a * y - p.c * x) / det });
-  const first = undo(q.a, q.c), second = undo(q.b, q.d), shift = undo(q.at.x - p.at.x, q.at.y - p.at.y);
-  const angle = Math.atan2(first.y - second.x, first.x + second.y), cos = Math.cos(angle), sin = Math.sin(angle);
-  // S = R(−angle)·m, symmetric: the polar decomposition's stretch.
-  const stretch = [cos * first.x + sin * first.y, cos * second.x + sin * second.y, cos * first.y - sin * first.x, cos * second.y - sin * second.x] as const;
-  return { pivot, angle, stretch, shift };
+/** The skinned parts of `layer` paintRigSkinMesh refuses, by index into its parts and why, for a caller to name before it skins. */
+export function paintRigSkinProblems(layer: PaintRigCutLayer): { readonly part: number; readonly problem: PaintRigSkinProblem }[] {
+  const owned = new Set(layer.owner);
+  const unowned = layer.parts.flatMap(({ joint }, part) => (joint.kind === 'skin' && !owned.has(part) ? [{ part, problem: 'unowned' as const }] : []));
+  if (unowned.length) return unowned;
+  return paintRigSkinGroups(layer).flatMap((group) => paintRigSkinLayout(layer, group).unreached.map((part) => ({ part, problem: 'unreached' as const })));
 }
 
-/** `v` carried by `share` of `turn`: the shift by share, the angle by share, the stretch eased in by share. */
-function skinTurnBy({ pivot, angle, stretch: [a, b, c, d], shift }: SkinTurn, share: number, v: StampPoint): StampPoint {
-  const dx = v.x - pivot.x, dy = v.y - pivot.y;
-  const sx = dx + share * ((a - 1) * dx + b * dy), sy = dy + share * (c * dx + (d - 1) * dy);
-  const cos = Math.cos(share * angle), sin = Math.sin(share * angle);
-  return { x: pivot.x + share * shift.x + cos * sx - sin * sy, y: pivot.y + share * shift.y + sin * sx + cos * sy };
+/** `group`'s mesh over `layer`, its solve factored. Refuses what paintRigSkinProblems names. */
+export function paintRigSkinMesh(layer: PaintRigCutLayer, group: PaintRigSkinGroup): PaintRigSkinMesh {
+  const owned = new Set(layer.owner), name = (k: number) => layer.parts[k].id;
+  const unowned = group.members.filter((k) => layer.parts[k].joint.kind === 'skin' && !owned.has(k));
+  if (unowned.length) throw new Error(`paint rig: ${unowned.map(name).join(', ')} skinned on ${layer.id} with no paint of its own there`);
+  const { rest, unreached, ...mesh } = paintRigSkinLayout(layer, group);
+  if (unreached.length) {
+    throw new Error(`paint rig: ${unreached.map(name).join(', ')}'s paint on ${layer.id} is narrower than a ${mesh.cell} px cell or lies wholly within its skin bands, so its own pose never reaches it: widen the part or narrow the blend`);
+  }
+  return { ...mesh, arap: paintRigArapSystem(rest, mesh.triangles, (v) => mesh.free[v] === 1) };
 }
 
 /**
- * `mesh` posed by each part's rest-to-posed map, by index: a vertex by the map of the deepest part it lies wholly
- * within, after its share of each joint below that it straddles, deepest first, so one wholly in a part goes exactly
- * by its map. Triangles as the rasteriser takes them: posed x, y, rest x, y a vertex.
+ * `mesh` posed by each part's rest-to-posed map, by index: a vertex out of every band exactly by its part's map, one in
+ * a band where the mesh keeps its triangles' shapes best between them. Triangles as the GPU takes them: posed x, y,
+ * rest x, y a vertex.
  */
 export function paintRigSkinTriangles(mesh: PaintRigSkinMesh, mapOf: (part: number) => StampWarpMap): Float32Array {
-  const { box, cell, columns, triangles, root, joints, shares } = mesh, stride = columns + 1;
-  const turns = joints.map(({ child, parent, pivot }) => skinTurnOf(mapOf(parent), mapOf(child), pivot));
-  const posed = new Map<number, StampPoint>(), out = new Float32Array(triangles.length * 4);
-  const pose = (v: number) => {
-    const known = posed.get(v);
-    if (known) return known;
-    let anchor = root, at = { x: box.x0 + (v % stride) * cell, y: box.y0 + Math.floor(v / stride) * cell };
-    const partial: number[] = [];
-    // Joints run root first, so a vertex wholly past a joint has its anchor at the joint's parent by then.
-    joints.forEach(({ child, parent }, n) => {
-      const share = shares[v * joints.length + n];
-      if (share >= 1 && parent === anchor) anchor = child;
-      else if (share > 0) partial.push(n);
-    });
-    for (const n of partial.toReversed()) at = skinTurnBy(turns[n], shares[v * joints.length + n], at);
-    const point = mapOf(anchor)(at);
-    posed.set(v, point);
-    return point;
-  };
-  triangles.forEach((v, n) => {
-    const at = pose(v);
-    out.set([at.x, at.y, box.x0 + (v % stride) * cell, box.y0 + Math.floor(v / stride) * cell], n * 4);
-  });
+  const { triangles, owners, arap } = mesh, { rest } = arap, maps = new Map<number, StampWarpMap>();
+  const targets = new Float64Array(rest.length);
+  for (let v = 0; v < owners.length; v++) {
+    const own = owners[v];
+    if (own < 0) continue;
+    if (!maps.has(own)) maps.set(own, mapOf(own));
+    const at = maps.get(own)!({ x: rest[2 * v], y: rest[2 * v + 1] });
+    targets[2 * v] = at.x; targets[2 * v + 1] = at.y;
+  }
+  const posed = paintRigArapPose(arap, targets), out = new Float32Array(triangles.length * 4);
+  triangles.forEach((v, n) => out.set([posed[2 * v], posed[2 * v + 1], rest[2 * v], rest[2 * v + 1]], n * 4));
   return out;
 }
 

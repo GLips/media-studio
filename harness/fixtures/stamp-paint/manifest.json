@@ -272,11 +272,11 @@
     },
     "shot/paper-heron": {
       "file": "shot/paper-heron.png",
-      "output": "9b613b5764ad5564f2e7c32d64df993ef7da7434cc1b4fe1ac719c1e66d953bc",
+      "output": "47d7ce291f5f44bdac4b3cd5578576295ecaf3aa512fbf6d1aad37f7aa4e6d70",
       "inputs": "c58410b99bf247bb853def4272979e88200c7c240ea6345a112625e7db48d7a7",
-      "reason": "vid-163 packed-placement: a deposit's stamps stream into packed float32 rows from numeric per-stamp draws, no stamp objects; jitter reshuffles once and stored marks round to float32",
-      "accepted": "2026-10-08",
-      "acceptedOver": "b8f7369c",
+      "reason": "vid-150 follow-up: skin posed as-rigid-as-possible (paint-rig-arap); the heron's neck bends through its band instead of by rotation-blend shares",
+      "accepted": "2026-11-06",
+      "acceptedOver": "d7a17692",
       "adapter": "apple metal-3"
     },
     "shot/pieces": {
@@ -308,11 +308,11 @@
     },
     "shot/rigged-dissolve": {
       "file": "shot/rigged-dissolve.png",
-      "output": "db9ad6b704fba7a3b3600ae5955f90f8259c7e21f4218df45ecc1663b385b7cd",
+      "output": "4274f02539eb555468c7f1679eb13c2e900308382af42fbed18909448fc42f06",
       "inputs": "5fb0a1fba19de18eee5e48cc2fe0188b2e377061e93c68782b51848614bc290e",
-      "reason": "vid-163 packed-placement: a deposit's stamps stream into packed float32 rows from numeric per-stamp draws, no stamp objects; jitter reshuffles once and stored marks round to float32",
-      "accepted": "2026-10-08",
-      "acceptedOver": "b8f7369c",
+      "reason": "vid-150 follow-up: skin posed as-rigid-as-possible (paint-rig-arap); the heron's neck bends through its band instead of by rotation-blend shares",
+      "accepted": "2026-11-06",
+      "acceptedOver": "d7a17692",
       "adapter": "apple metal-3"
     },
     "shot/shadow": {

@@ -20,34 +20,50 @@ const turn = (degrees: number, pivot: StampPoint) => {
   return ({ x, y }: StampPoint) => ({ x: pivot.x + c * (x - pivot.x) - s * (y - pivot.y), y: pivot.y + s * (x - pivot.x) + c * (y - pivot.y) });
 };
 
-test('a skin joint\'s share in its child runs from 0 to 1 across its blend, half on the joint', () => {
-  const layer = limb(24), [group] = paintRigSkinGroups(layer), mesh = paintRigSkinMesh(layer, group), stride = mesh.columns + 1;
-  const down = [18, 24, 30, 36, 48, 54, 60, 66].map((y) => mesh.shares[(y / mesh.cell) * stride + 2]);
-  assert.deepEqual([down[0], down.at(-1)], [0, 1]);
-  for (let k = 1; k < down.length; k++) assert.ok(down[k] >= down[k - 1]);
-  // Rows 36 and 48 lie 6 px either side of the joint line: their shares mirror each other.
-  assert.ok(down[3] > 0 && down[3] < 0.5 && Math.abs(down[3] + down[4] - 1) < 1e-6);
-});
+/** `limb(blend)` with its lower part turned `degrees` about the pivot: its mesh, posed triangles and the lower's map. */
+function bent(blend: number, degrees: number) {
+  const layer = limb(blend), [group] = paintRigSkinGroups(layer), mesh = paintRigSkinMesh(layer, group), lower = turn(degrees, { x: 12, y: 42 });
+  const triangles = paintRigSkinTriangles(mesh, (k) => (k === 1 ? lower : (p) => p));
+  return { mesh, triangles, lower, stretch: paintRigBandStretch(triangles, mesh.bands.get(1)!) };
+}
 
-test('a bend turns the band through an arc, folding only under a blend of about the angle × the half-width, and the child lands where its map puts it', () => {
-  const pivot = { x: 12, y: 42 }, bent = (blend: number, degrees: number, shift = { x: 0, y: 0 }) => {
-    const layer = limb(blend), [group] = paintRigSkinGroups(layer), mesh = paintRigSkinMesh(layer, group), lower = turn(degrees, pivot);
-    const map = (p: StampPoint) => ({ x: lower(p).x + shift.x, y: lower(p).y + shift.y });
-    const triangles = paintRigSkinTriangles(mesh, (k) => (k === 1 ? map : (p) => p));
-    return { stretch: paintRigBandStretch(triangles, mesh.bands.get(1)!), triangles, map };
-  };
-  assert.deepEqual(bent(24, 0).stretch, { least: 1, most: 1, flips: 0 });
-  // The angle accrues evenly across the blend: 90° on a limb 12 px either side of its bone folds the inside under
-  // ~19 px of blend (π/2 × 12), and not well over it.
-  assert.ok(bent(16, 90).stretch.flips > 0);
-  const { stretch } = bent(28, 90);
+test('a bend curves the band round without folding it or pinching the limb, each part past it going exactly by its map', () => {
+  const still = bent(24, 0).stretch;
+  assert.ok(Math.abs(still.least - 1) < 1e-9 && Math.abs(still.most - 1) < 1e-9);
+  // A right angle about a pivot mid-limb brings the band's pinned inner corners within √2·(blend/2 − 12) px of each
+  // other, so a band much narrower than the limb creases its inside; one of 40 px bends cleanly.
+  const { triangles, lower, stretch } = bent(40, 90);
   assert.equal(stretch.flips, 0);
-  assert.ok(stretch.least > 0.2 && stretch.most < 2.5);
-  // A joint that also moves off its pivot (a stretch from IK) still carries the far end exactly by the child's map.
-  const { triangles, map } = bent(24, 45, { x: 5, y: 3 }), end = triangles.length - 4, far = map({ x: triangles[end + 2], y: triangles[end + 3] });
-  assert.ok(Math.hypot(triangles[end] - far.x, triangles[end + 1] - far.y) < 1e-4);
+  assert.ok(stretch.least > 0.1 && stretch.most < 1.4, JSON.stringify(stretch));
+  const posedAt = (x: number, y: number) => {
+    for (let v = 0; v < triangles.length; v += 4) if (triangles[v + 2] === x && triangles[v + 3] === y) return { x: triangles[v], y: triangles[v + 1] };
+    throw new Error(`no vertex at ${x}, ${y}`);
+  };
+  // Across the middle of the band the limb keeps most of its 24 px width: the inside of the bend isn't squeezed shut.
+  const width = Math.hypot(posedAt(0, 42).x - posedAt(24, 42).x, posedAt(0, 42).y - posedAt(24, 42).y);
+  assert.ok(width > 18 && width < 30, `width ${width}`);
+  const far = lower({ x: 24, y: 84 }), end = posedAt(24, 84);
+  assert.ok(Math.hypot(end.x - far.x, end.y - far.y) < 1e-9);
 });
 
+test('a blend under a cell still bends the seam\'s own triangles, and measures them', () => {
+  // A band of one cell squeezes hard at 45°, but it gives rather than folds, and the measure sees it.
+  const { stretch } = bent(2, 45);
+  assert.equal(stretch.flips, 0);
+  assert.ok(stretch.least > 0 && stretch.most < 2, JSON.stringify(stretch));
+});
+
+test('a part\'s paint away from its seam goes rigidly by its own map, wherever its pivot lies', () => {
+  // The pivot well inside the lower part, as a head's sits with its throat and beak painted either side of it.
+  const layer = limb(24), parts = paintRigCutParts([{ id: 'upper', parent: null, z: 0 }, { id: 'lower', parent: 'upper', z: 0, joint: 'skin', blend: 24, pivot: { x: 12, y: 66 } }]);
+  const [group] = paintRigSkinGroups({ ...layer, parts }), mesh = paintRigSkinMesh({ ...layer, parts }, group), lower = turn(-40, { x: 12, y: 66 });
+  const triangles = paintRigSkinTriangles(mesh, (k) => (k === 1 ? lower : (p) => p));
+  for (let v = 0; v < triangles.length; v += 4) {
+    if (triangles[v + 3] < 42 + 12) continue;
+    const want = lower({ x: triangles[v + 2], y: triangles[v + 3] });
+    assert.ok(Math.hypot(triangles[v] - want.x, triangles[v + 1] - want.y) < 1e-4);
+  }
+});
 
 test('a parent painted wide past its joint line keeps its paint far from the child\'s, as cels laid as one layer are', () => {
   // A body 120 px wide, a neck 24 px wide rising from its middle; the body's cel runs past the neck's joint line.
