@@ -54,7 +54,7 @@
     "oxc-resolver": "11.24.2",
     "oxlint": "1.80.0",
     "oxlint-tsgolint": "7.0.2002",
-    "playwright": "^1.63.0",
+    "playwright": "^1.65.0",
     "postcss": "8.5.26",
     "postcss-preset-mantine": "1.18.0",
     "postcss-simple-vars": "7.0.1",
