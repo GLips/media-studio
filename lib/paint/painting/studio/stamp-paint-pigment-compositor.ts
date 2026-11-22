@@ -501,6 +501,15 @@ fn layCard(pixel: vec2u, color: vec3f, cover: f32) {
   for (var i = 0u; i < BAND_VEC4S; i++) { textureStore(painting, pixel, i, mix(textureLoad(painting, pixel, i), paperReflectance(i, color), cover)); }
   for (var r = 0u; r < ${underLayers}u; r++) { textureStore(painting, pixel, BAND_VEC4S + r, textureLoad(painting, pixel, BAND_VEC4S + r) * (1.0 - cover)); }
 }`,
+    // Reflectance band by band, times a spectrum reading as the tint: a shade darkens the paint under it as the light
+    // on it does, its pigment left as it was.
+    shade: /* wgsl */ `
+${bandWgsl}
+${STAMP_REFLECTANCE_READING_WGSL}
+fn layShade(pixel: vec2u, tint: vec3f, amount: f32) {
+  let shaded = reflectanceReading(srgbDecoded(tint), PAPER);
+  for (var i = 0u; i < BAND_VEC4S; i++) { textureStore(painting, pixel, i, textureLoad(painting, pixel, i) * mix(vec4f(1.0), shaded[i], amount)); }
+}`,
     picture: /* wgsl */ `
 ${bandWgsl}
 ${STAMP_REFLECTANCE_READING_WGSL}

@@ -21,6 +21,7 @@ import type { LayerSelection } from '#lib/paint/document/models/painting-selecti
 import { paintingSheetInGroup, type PaintingSheet, type PaintingTree } from '#lib/paint/document/models/painting-tree.ts';
 import type { PaintMoment, StampGroupGlow } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampFilmRevealLinks } from '#lib/paint/painting/models/stamp-reveal.ts';
+import type { StampCardLook } from '#lib/paint/painting/models/stamp-card-relief.ts';
 import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
 import type { StampSheetCompositeShown } from '#lib/paint/painting/models/stamp-sheet-program.ts';
 import type { StampPointBox, StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
@@ -70,14 +71,18 @@ export const shotLayerMarksAt = (tree: PaintingTree, layer: number, poses: Paint
 export type ShotCardFilm = { readonly film: number; readonly shown: number };
 
 /**
- * How a step lays this moment: a card's paper over its sheet's `edge` (document px), cut round the sheet's films
- * `films` (those showing, painted somewhere); a film through its lattice; or a rig's pieces (`rig`, its group
- * occurrence) in place of its group's sheet. `shade`: its sheet's tone under the light (paint-card-face.ts).
+ * How a step lays this moment: a card's paper over its sheet's `edge` (document px), cut round its showing `films`,
+ * lit as its `look` says; a film through its lattice; a card's rim, once its films are laid; or a rig's pieces in
+ * place of its group's sheet. `shade`: the sheet's tone under the light as folded (paint-card-face.ts).
  */
 export type ShotStepLay =
-  | { readonly kind: 'card'; readonly sheet: number; readonly films: readonly ShotCardFilm[]; readonly edge: StampBox; readonly lattice: ShotLattice; readonly shade: number }
+  | { readonly kind: 'card'; readonly sheet: number; readonly films: readonly ShotCardFilm[]; readonly edge: StampBox; readonly lattice: ShotLattice; readonly look: StampCardLook; readonly shade: number }
   | { readonly kind: 'film'; readonly sheet: number; readonly film: number; readonly layer: NodeKey; readonly lattice: ShotLattice; readonly shade: number }
-  | { readonly kind: 'pieces'; readonly rig: string };
+  | { readonly kind: 'rim'; readonly sheet: number }
+  | { readonly kind: 'pieces'; readonly rig: string; readonly look: StampCardLook };
+
+/** Whether `lay` is laid through a lattice of its own: a card or a film. */
+export const shotStepLatticed = (lay: ShotStepLay): lay is Extract<ShotStepLay, { readonly lattice: ShotLattice }> => lay.kind === 'card' || lay.kind === 'film';
 
 /**
  * A step as one moment lays it: its lay, a film's opacity and the glow its layer gives then (null: none, or none
@@ -103,7 +108,7 @@ export type ShotSelectionLayInput = {
 };
 
 /**
- * Each of the selection's steps as it lays at `input.at`: null for one with nothing to lay (a film painted nowhere or
+ * Each of the selection's steps as it lays at `input.at`: null for one laying nothing (a film painted nowhere or
  * turned away, a card of no paint showing, a step pieces stand in for, a hidden cel's, any edge-on). A card is cut
  * round each film as far as it shows.
  */
@@ -119,7 +124,8 @@ export function shotSelectionStepLays({ compiled, filmBoxes, solved, at, shutter
     if (unseen(paintingStepNode(compiled, step))) return null;
     // Groups drawn as pieces never nest: nothing in a rigged group is rigged again.
     const group = [...pieces.keys()].find((each) => paintingSheetInGroup(tree, sheet, each));
-    if (group !== undefined) return step.kind === 'card' && sheet.owner === group ? { kind: 'pieces', rig: pieces.get(group)! } : null;
+    if (group !== undefined) return step.kind === 'card' && sheet.owner === group ? { kind: 'pieces', rig: pieces.get(group)!, look: sheet.card } : null;
+    if (step.kind === 'rim') return { kind: 'rim', sheet: step.sheet };
     const placed = placeOf(step.sheet);
     if (placed.side === 'edge' || (placed.side === 'back' && step.kind === 'film')) return null;
     if (step.kind === 'card') {
@@ -131,7 +137,7 @@ export function shotSelectionStepLays({ compiled, filmBoxes, solved, at, shutter
         return shown > 0 ? [{ film: f, shown }] : [];
       });
       const edge = films.reduce<StampBox | undefined>((union, { film }) => paintingBoxUnion(union, filmBoxes[step.sheet][film]!), undefined);
-      return edge ? { kind: 'card', sheet: step.sheet, films, edge, lattice: shotPlacedLattice(edge, placed.at, placed.shutter), shade: placed.shade } : null;
+      return edge ? { kind: 'card', sheet: step.sheet, films, edge, lattice: shotPlacedLattice(edge, placed.at, placed.shutter), look: sheet.card, shade: placed.shade } : null;
     }
     const box = filmBoxes[step.sheet][step.film];
     if (!box) return null;
@@ -292,7 +298,7 @@ function shotPiecesLevels(compiled: PaintingSelectionCompiled, steps: readonly n
   const { tree, sheets } = compiled, laid = sheets.map(({ layers }) => layers.map(() => false));
   const opacity = steps.map((index) => {
     const step = compiled.steps[index], node = paintingStepNode(compiled, step);
-    if (step.kind === 'card') return 1;
+    if (step.kind !== 'film') return 1;
     laid[step.sheet][step.film] = true;
     return apart.has(node) ? 1 : visibilityOf(node);
   });
@@ -384,7 +390,7 @@ export function shotPlaneLayPlan(input: ShotPlaneLayInput, moment: ShotMomentAt)
   const reveals = paintingRevealLinksOf(compiled, solved, selection.at);
   const masks = shotMasksOf(input), reads = shotPlaneReads(input);
   const visibility = plane.opaqueBack ? 1 : shotVisibilityAt(shot, plane.id, plane.id, at), emits = steps.some((step) => step?.glow && step.opacity > 0);
-  const travels = !!shutter && ((ground?.kind === 'placed' && latticeTravels(ground.lattice)) || steps.some((step) => step && step.lay.kind !== 'pieces' && latticeTravels(step.lay.lattice)) || pieces.some((each) => each.travels));
+  const travels = !!shutter && ((ground?.kind === 'placed' && latticeTravels(ground.lattice)) || steps.some((step) => step && shotStepLatticed(step.lay) && latticeTravels(step.lay.lattice)) || pieces.some((each) => each.travels));
   // All the lay reads: the compile and its films, every pose at the moment and the shutter's ends, how much shows of
   // what, the ground, the pieces, the masks and the drawables read, and the light. The stage's own store keeps the
   // pictures. Reveals are the compile's, so only when each shows and where it lies are new.

@@ -11,7 +11,7 @@ import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
 import { stampRevealProblems } from '#lib/paint/painting/models/stamp-reveal.ts';
 import { STAMP_WRAPS, stampStage, stampStageTile, stampTileRoundWrap, stampWrapsAcross, type StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
 import { checkPaintingApplication, checkPaintingFootprint, type PaintingApplicationSetting } from './painting-application-check.ts';
-import type { AnyApplication, DryingScale, Key, LayerNode, MediumName, PaintingDocument, Paper, Reveal, Wash } from './painting-document.ts';
+import type { AnyApplication, DryingScale, Key, LayerNode, MediumName, PaintingDocument, Paper, Reveal, SheetCard, Wash } from './painting-document.ts';
 import { paintingBoxUnion, paintingGeometryBox, paintingNodeBox, paintingWashBox } from './painting-footprint.ts';
 import {
   isPaintingHexColor, isPaintingList, isPaintingPositive, isPaintingShare, paintingApplicationOwner, paintingField, paintingProblem, PaintingProblemList, type PaintingProblem,
@@ -75,6 +75,7 @@ function checkPaintingTreeAndKeys(list: PaintingProblemList, paintingDocument: P
     const sheet: string | undefined = node.sheet?.kind;
     if (sheet !== undefined && sheet !== 'own' && sheet !== 'scene') list.error(owner, 'sheet.kind', `'${sheet}' isn't own or scene`, box);
     if (node.sheet?.kind === 'own' && !node.sheet.paper) list.error(owner, 'sheet.paper', 'an own sheet needs its paper', box);
+    if (node.sheet?.kind === 'own' && node.sheet.card !== undefined) checkSheetCard(list, owner, node.sheet.card, box);
     const sceneScale: unknown = node.sheet?.kind === 'scene' ? node.sheet.dryingScale : undefined;
     if (sceneScale !== undefined) list.error(owner, 'sheet.dryingScale', "sheet is the scene's: its dryingScale is the document's", box);
     if (isPaintingGroup(node)) {
@@ -99,6 +100,18 @@ function checkPaintingTreeAndKeys(list: PaintingProblemList, paintingDocument: P
     });
   };
   paintingDocument.layers.forEach((node, i) => visit(node, `layers[${i}]`));
+}
+
+/** An own sheet's `card`: `flat`, or its known fields, each of its type, a lift of at least 0. */
+function checkSheetCard(list: PaintingProblemList, owner: string, card: SheetCard, box: StampBox | undefined): void {
+  if (card === 'flat') return;
+  if (typeof card !== 'object' || card === null) {
+    list.error(owner, 'sheet.card', `${JSON.stringify(card)} isn't 'flat' or { shadow?, rim?, lift? }`, box);
+    return;
+  }
+  for (const field of Object.keys(card)) if (!['shadow', 'rim', 'lift'].includes(field)) list.error(owner, `sheet.card.${field}`, "isn't a card's: it takes shadow, rim and lift", box);
+  for (const field of ['shadow', 'rim'] as const) if (card[field] !== undefined && typeof card[field] !== 'boolean') list.error(owner, `sheet.card.${field}`, `${String(card[field])} isn't true or false`, box);
+  if (card.lift !== undefined && !(card.lift >= 0 && Number.isFinite(card.lift))) list.error(owner, 'sheet.card.lift', `${card.lift} isn't a finite lift of 0 or more px`, box);
 }
 
 function checkPaper(list: PaintingProblemList, owner: string, field: string, paper: Paper, styles: PaintingStyleCatalogue | undefined): void {

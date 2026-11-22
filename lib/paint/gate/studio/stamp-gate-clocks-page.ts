@@ -21,6 +21,7 @@ import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
 import { stampGateFilmsEqual, stampGateForwardTimes, stampGateSheetProgram } from '../models/stamp-gate-sheets.ts';
 import { withGateSurface } from './stamp-gate-page-surface.ts';
 import { stampGateRefusedAs, stampGateRejection, stampGateSheetImageUrl, stampGateSolvedFilms, withStampGateSheetOwner } from './stamp-gate-sheet-owner.ts';
+import { PAPER_KEY_LIGHT } from '#lib/paint/painting/models/stamp-form.ts';
 
 const ID = 'schedule/clocks';
 const namesOf = ({ entries }: StampSheetProgram) => entries.map(({ name }) => name);
@@ -121,7 +122,7 @@ async function checkUnclockedScale(owner: StampPaintGpuOwner): Promise<StampGate
 async function stillOf(program: StampSheetProgram, options: StampSheetSolveOptions) {
   return withGateSurface(program, stampGateSheetImageUrl, async (surface, frame) => {
     const solved = await solveStampSheet(surface.owner, program, options);
-    await drawStampSheetsStill(surface, aloneOnPaper(program, solved.films));
+    await drawStampSheetsStill(surface, aloneOnPaper(program, solved.films), PAPER_KEY_LIGHT);
     await surface.owner.device.queue.onSubmittedWorkDone();
     return { through: solved.through, frame: frame() };
   });
@@ -136,7 +137,7 @@ async function checkPlayback(name: string, program: StampSheetProgram, plan: rea
   const costs = createStampPaintCostTally();
   const shown = await withGateSurface(program, stampGateSheetImageUrl, (surface, frame) => plan.reduce<Promise<{ through: number; from: string; frame: Uint8ClampedArray }[]>>(async (done, { at }) => {
     const list = await done, solved = await solveStampSheet(surface.owner, program, { at, costs });
-    await drawStampSheetsStill(surface, aloneOnPaper(program, solved.films));
+    await drawStampSheetsStill(surface, aloneOnPaper(program, solved.films), PAPER_KEY_LIGHT);
     await surface.owner.device.queue.onSubmittedWorkDone();
     list.push({ through: solved.through, from: costs.take().solves[0]?.from ?? 'nothing solved', frame: frame() });
     return list;

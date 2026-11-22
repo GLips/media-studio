@@ -37,6 +37,7 @@ import { stampGateShotSpanned, type StampGateShot } from '../models/stamp-gate-s
 import { stampGateCanvasBytes, stampGateRgb, withGateSurface } from './stamp-gate-page-surface.ts';
 import { stampGateShotFrames, stampGateSolvedText, withGateShotRenderer } from './stamp-gate-shot-frames.ts';
 import { stampGateSheetImageUrl } from './stamp-gate-sheet-owner.ts';
+import { PAPER_KEY_LIGHT } from '#lib/paint/painting/models/stamp-form.ts';
 
 const { lo: LO, hi: HI } = STAMP_GATE_REVEAL_ENDS;
 
@@ -54,7 +55,7 @@ function revealStills(stills: readonly RevealStill[]): Promise<{ frames: StampGa
     const frames = await gpuEachInTurn(stills, async ({ evaluation, at, poses }) => {
       const compiled = compilePaintingSelection(evaluation, stampGateSheetBrushOf);
       const { composite, release } = await solvePaintingSheets(surface.owner, compiled, { at, costs: tally, ...(poses && { poses }) });
-      await drawStampSheetsStill(surface, composite);
+      await drawStampSheetsStill(surface, composite, PAPER_KEY_LIGHT);
       release();
       await surface.owner.device.queue.onSubmittedWorkDone();
       costs.push(tally.take());

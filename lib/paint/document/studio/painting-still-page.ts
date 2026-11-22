@@ -24,6 +24,7 @@ import { painting } from '../models/painting-source.ts';
 import { paintingSheetName } from '../models/painting-tree.ts';
 import { paintingFilmPicture } from './painting-film-readback.ts';
 import { solvePaintingSheets } from './painting-sheets-solve.ts';
+import { PAPER_KEY_LIGHT } from '#lib/paint/painting/models/stamp-form.ts';
 
 /** `picture` (premultiplied linear light) as an sRGB PNG data URL `width` × `height`, clear where it doesn't reach. */
 function paintingPicturePng(picture: StampSheetsPicture, width: number, height: number): string {
@@ -58,7 +59,7 @@ async function paintingStillOf({ texts, brushes, packUrls, films, at, dampWindow
     try {
       const prefix = at === null ? {} : { at };
       const costs = createStampPaintCostTally(), { solved, composite, release } = await solvePaintingSheets(owner, compiled, { costs, dampWindows, ...prefix });
-      await drawStampSheetsStill(surface, composite);
+      await drawStampSheetsStill(surface, composite, PAPER_KEY_LIGHT);
       release();
       copy.getContext('2d')!.drawImage(canvas, 0, 0);
       const png = copy.toDataURL('image/png');

@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { stampSheetEntryKey, stampSheetHeadKey } from '#lib/paint/painting/models/stamp-sheet-state-key.ts';
 import { stampSheetSolvePlan, stampSheetWrapHalo } from '#lib/paint/painting/models/stamp-sheet-wrap.ts';
+import type { StampSheetCompositeStep } from '#lib/paint/painting/models/stamp-sheet-program.ts';
 import type { StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
 import { compilePaintingSelection } from './painting-document-compile.ts';
-import type { Layer, PaintingDocument } from './painting-document.ts';
+import type { Layer, PaintingDocument, SheetCard } from './painting-document.ts';
 import { painting, type PaintingEvaluation } from './painting-source.ts';
 import { paintingTestBrushOf, paintingTestBrushSpanning } from './painting-test-brush.ts';
 import * as meadow from './meadow.painting.ts';
@@ -80,7 +81,9 @@ const dab = (key: string): Layer => ({
 });
 const OWN = { kind: 'own', paper: { color: '#efe6d2', absorbency: 0.4 } } as const;
 
-test("a selection's sheets: an own sheet's card before all under its owner, a nested one inside its parent's run, a scene layer in the root's program", () => {
+const stepText = (step: StampSheetCompositeStep) => (step.kind === 'film' ? `${step.sheet}/${step.film}` : `${step.kind} ${step.sheet}`);
+
+test("a selection's sheets: an own sheet's card before all under its owner, a nested one inside its parent's run, its rim after its last film, a scene layer in the root's program", () => {
   const heron = painting({
     default: (): PaintingDocument => ({
       widthPx: 100, heightPx: 100, paper: { color: '#ffffff', absorbency: 0.5 }, medium: 'watercolour',
@@ -91,11 +94,22 @@ test("a selection's sheets: an own sheet's card before all under its owner, a ne
   });
   const all = compilePaintingSelection(heron, brushOf);
   assert.deepEqual(all.sheets.map(({ sheet, program }) => [sheet.owner, program.films.map(({ name }) => name)]), [[null, ['water', 'body', 'shadow']], ['wing', ['vane']], ['tip', ['feather']]]);
-  assert.deepEqual(all.steps.map((step) => (step.kind === 'card' ? `card ${step.sheet}` : `${step.sheet}/${step.film}`)), ['0/0', '0/1', 'card 1', 'card 2', '2/0', '1/0', '0/2']);
+  // The wing's vane is laid over the tip's card, so the wing's rim waits for it: a rim at the card would be painted over.
+  assert.deepEqual(all.steps.map(stepText), ['0/0', '0/1', 'card 1', 'card 2', '2/0', 'rim 2', '1/0', 'rim 1', '0/2']);
   // The root's sheet is always there, its paper the ground; a selection paints its own layers as a painting of their own.
   const wing = compilePaintingSelection(heron, brushOf, { layers: ['wing'] });
   assert.deepEqual(wing.sheets.map(({ sheet, layers }) => [sheet.owner, layers]), [[null, [4]], ['wing', [3]], ['tip', [2]]]);
   assert.deepEqual(wing.sheets[0].program.entries.map(({ chain }) => chain), [[1, 3, 7]]);
+});
+
+test("a flat own sheet lays its card and no rim; one turning only its shadow off keeps its rim", () => {
+  const document = (card: SheetCard): PaintingDocument => ({
+    widthPx: 100, heightPx: 100, paper: { color: '#ffffff', absorbency: 0.5 }, medium: 'watercolour',
+    layers: [{ key: 'leaf', sheet: { ...OWN, card }, children: [dab('blade')] }],
+  });
+  const steps = (card: SheetCard) => compilePaintingSelection(painting({ default: () => document(card) }), brushOf).steps.map(stepText);
+  assert.deepEqual(steps('flat'), ['card 1', '1/0']);
+  assert.deepEqual(steps({ shadow: false }), ['card 1', '1/0', 'rim 1']);
 });
 
 test("a boil epoch reseeds its layer's marks and keys alone: each epoch lays them anew, the same epoch alike", () => {

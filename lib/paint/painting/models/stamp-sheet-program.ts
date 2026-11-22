@@ -9,6 +9,7 @@
 
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { CompiledStampArea } from './stamp-area.ts';
+import type { StampCardLook } from './stamp-card-relief.ts';
 import type { StampSeededPaintField } from './stamp-paint-field.ts';
 import type { CompiledStampPaintAction } from './stamp-paint-action.ts';
 import type { CompiledStampDeposit, CompiledStampMask, StampMixedPainting, StampMixedPass } from './stamp-paint-recipe-compile.ts';
@@ -75,20 +76,24 @@ export type StampSheetEntry = {
 };
 
 /**
- * A sheet program: its name (for a cost report), size, paper, where that lies (`document`, the root's; `union`, a
- * card, as far as its films' paint reaches), the medium its water dries by, its clock, its document's `wrap`, its
- * films, washes and entries, and `head`, its incoming state's text (K₀). No solve reads the edge: the head omits it.
+ * A sheet program: its name (for a cost report), size, paper, where that lies (`document`; `union`, a card's) and how
+ * its card is lit (`card`), the medium its water dries by, its clock, `wrap`, its films, washes and entries, and
+ * `head`, its incoming state's text (K₀). No solve reads the edge or the card: the head omits them.
  */
 export type StampSheetProgram = {
-  name: string; width: number; height: number; paper: StampPaintPaper; edge: 'document' | 'union'; water: PaintMedium; clock: StampSheetClock;
+  name: string; width: number; height: number; paper: StampPaintPaper; edge: 'document' | 'union'; card: StampCardLook; water: PaintMedium; clock: StampSheetClock;
   wrap: StampWrap | null; films: readonly StampSheetFilm[]; washes: readonly StampSheetWash[]; entries: readonly StampSheetEntry[]; head: string;
 };
 
 /**
  * A step of a composite of sheets, back to front: an own sheet's card, its paper as far as the union of
- * its films' paint reaches; or film `film` of sheet `sheet` (indexes into the composite's sheets).
+ * its films' paint reaches; film `film` of sheet `sheet` (indexes into the composite's sheets); or an own sheet's rim,
+ * its cut line and lip, laid after its last film (stampSheetStepsRimmed) so its paint doesn't cover them.
  */
-export type StampSheetCompositeStep = { readonly kind: 'card'; readonly sheet: number } | { readonly kind: 'film'; readonly sheet: number; readonly film: number };
+export type StampSheetCompositeStep =
+  | { readonly kind: 'card'; readonly sheet: number }
+  | { readonly kind: 'film'; readonly sheet: number; readonly film: number }
+  | { readonly kind: 'rim'; readonly sheet: number };
 
 /** A composite's steps `first` to `last` (places in its steps) laid apart and mixed back by `visibility`, below 1. */
 export type StampSheetCompositeFade = { readonly first: number; readonly last: number; readonly visibility: number };

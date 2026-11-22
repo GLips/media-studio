@@ -133,6 +133,11 @@ const brokenSources: readonly { readonly name: string; readonly check: () => rea
     expect: { severity: 'error', path: 'card.sheet.dryingScale', message: "0 isn't above 0, 'instant' or 'never'" },
   },
   {
+    name: "an own sheet's card lifted below its ground",
+    check: () => checkPaintingSource(sourceOf(documentOf([{ key: 'card', sheet: { kind: 'own', paper: { color: '#ffffff', absorbency: 0.5 }, card: { lift: -1 } }, children: [layer('leaf', [])] }]))),
+    expect: { severity: 'error', path: 'card.sheet.card.lift', message: "-1 isn't a finite lift of 0 or more px" },
+  },
+  {
     name: 'a wet wash on a crayon-owned sheet',
     check: () => {
       const sky: Layer = { key: 'sky', medium: 'watercolour', washes: [{ key: 'sky-wash', applications: [flood({ key: 'sky-flood', water: 0.85 })] }] };

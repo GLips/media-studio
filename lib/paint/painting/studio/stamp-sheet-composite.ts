@@ -1,18 +1,21 @@
-// stamp-sheet-composite.ts: the films of several sheets laid as one picture. The root sheet's paper
-// is the ground; then, back to front, each film by its own sheet's lay (its compositor, paper colour and photograph),
-// and an own sheet's card where its owner comes: its paper laid as far as the union of its laid films' coverage
-// reaches, cover = min(1, STAMP_OPAQUE_COVER × union). A placed sheet is laid moved by a similarity. A film cut by
-// reveals is laid, and joins its card's union, as they show it; the union is cached under its films' keys and reveals.
+// stamp-sheet-composite.ts: the films of several sheets laid as one picture. The root sheet's paper is the ground;
+// then, back to front, each film by its own sheet's lay, and an own sheet's card where its owner comes: its paper laid
+// as far as its laid films' union reaches. A placed sheet is laid moved by a similarity. Reveals cut a film and its
+// card's union, cached under its films' keys and reveals. A card's relief (stamp-card-relief-pass.ts): its shadow
+// before it, its rim after its sheet's last film.
 //
 // Whoever solved a composite's films holds them until it's laid (holdStampSheetFilms): another solve meanwhile may
 // make entries past the cache's budget.
 
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
 import type { StampPaintCostTally } from '../models/stamp-paint-costs.ts';
+import { stampCardReliefSteps, type StampCardReliefStepIn } from '../models/stamp-card-relief.ts';
+import type { PaintLight } from '../models/stamp-form.ts';
 import { stampSimilarityPoint, type StampSheetPlace } from '../models/stamp-rest-map.ts';
 import { type StampSheetCompositeShown, type StampSheetCompositeStep, type StampSheetProgram } from '../models/stamp-sheet-program.ts';
 import { stampSheetRevealsKey, type StampFilmRevealLinks } from '../models/stamp-reveal.ts';
 import { stampBoxUnion, stampStage, stampStageTexelsOf, stampStageWgsl, stampWrapPeriods, type StampPointBox, type StampStage, type StampWrapPeriods } from '../models/stamp-stage.ts';
+import { createStampCardRelief, stampCardReliefSlots } from './stamp-card-relief-pass.ts';
 import { copyStampLayerForReadback, readStampLayerCopy, type StampLayerReadback } from './stamp-layer-readback.ts';
 import { stampPaintTargetWgsl, type StampPaintCompositor, type StampPaintTarget } from './stamp-paint-compositor.ts';
 import { stampSheetCompositorFor } from './stamp-paint-compositor-for.ts';
@@ -149,12 +152,14 @@ const revealSlots = (sheet: StampSheetLaid, film: number) => stampRevealSlots(sh
 
 /**
  * How many uniform slots laying `composite` may take: the ground, a rest map a sheet, a mix a faded span, a card and
- * its edge's joins (each film cut first), a lay a film and its cut.
+ * its edge's joins (each film cut first) and its light, a lay a film and its cut.
  */
 const compositeSlots = (composite: StampSheetsComposite) => {
   const { sheets, steps } = composite, cardFilms = stampSheetsCardFilms(composite);
-  return 1 + sheets.length + (composite.shown?.fades.length ?? 0) + steps.reduce((sum, step) => {
+  const cards = steps.filter((step) => step.kind === 'card').length;
+  return 1 + sheets.length + (composite.shown?.fades.length ?? 0) + stampCardReliefSlots(cards, sheets.length) + steps.reduce((sum, step) => {
     const sheet = sheets[step.sheet];
+    if (step.kind === 'rim') return sum;
     return sum + (step.kind === 'card' ? 1 + cardFilms[step.sheet].reduce((joins, f) => joins + 1 + revealSlots(sheet, f), 0) : 1 + revealSlots(sheet, step.film));
   }, 0);
 };
@@ -199,14 +204,19 @@ export function stampSheetCompositeTarget(owner: StampPaintGpuOwner, name: strin
 
 /**
  * `composite`'s steps laid in `encoder` onto `painting` (a target the lays' compositors keep, `ground` laid on it: the
- * root's paper, or a measuring backing); a reserve or lift showing `ground` too. Lists a reveal's arrival map is drawn
- * from are made through `device`: a scope's, freeing them once the work is submitted.
+ * root's paper, or a measuring backing); a reserve or lift showing `ground` too; its cards lit by `light`, or unlit
+ * for null (a readback). Lists a reveal's arrival map is drawn from are made through `device`, a scope's.
  */
 function encodeStampSheetsSteps(
   owner: StampPaintGpuOwner, device: StampPaintDevice, encoder: GPUCommandEncoder, arena: StampUniformArena, composite: StampSheetsComposite,
-  { stage, compositors, lays }: StampSheetsLays, painting: StampFadedTarget, ground: StampPaintBacking,
+  { stage, compositors, lays }: StampSheetsLays, painting: StampFadedTarget, ground: StampPaintBacking, light: PaintLight | null,
 ) {
   const revealing = createStampRevealPass(owner, device, stage), size = { width: stage.width, height: stage.height }, cardFilms = stampSheetsCardFilms(composite);
+  const carding = light && createStampCardRelief(owner, { stage, arena });
+  const lit = light ? stampCardReliefSteps(composite.steps.map((step): StampCardReliefStepIn => {
+    if (step.kind === 'card') return { kind: 'card', sheet: step.sheet, look: composite.sheets[step.sheet].program.card };
+    return step.kind === 'rim' ? step : { kind: 'other' };
+  })) : [];
   const { shown } = composite, fade = shown?.fades.length ? createStampSpanFade(owner, arena) : null;
   const periodsOf = (s: number) => stampWrapPeriods(composite.sheets[s].program, composite.sheets[s].program.wrap);
   const rests = composite.sheets.map(({ place }, s) => {
@@ -217,13 +227,20 @@ function encodeStampSheetsSteps(
     return view;
   });
   const layStep = (step: StampSheetCompositeStep, index: number) => {
-    const { films, place, reveals } = composite.sheets[step.sheet], rest = rests[step.sheet];
+    const { films, place, reveals } = composite.sheets[step.sheet], rest = rests[step.sheet], lighting = lit[index];
+    const onto = { compositor: compositors[step.sheet], painting: painting.view, light: light! };
+    if (step.kind === 'rim') {
+      if (carding && lighting?.kind === 'rim') carding.rim(encoder, lighting.level, onto);
+      return;
+    }
     if (step.kind === 'card') {
       const counted = cardFilms[step.sheet], cutting = { reveals: counted.map((f) => reveals[f] ?? []), pass: revealing, stage, size, periods: periodsOf(step.sheet) };
       const edge = stampSheetEdge(owner, device, encoder, arena, counted.map((f) => ({ film: films[f], shown: shown?.counted[step.sheet][f] ?? 1 })), cutting);
       const edgeBox = edge && stampStageTexelsOf(stage, edge.box);
       const box = edgeBox && (place ? placedBox(stage, edgeBox, place) : edgeBox);
-      if (edge && edgeBox && box) lays[step.sheet].layCard(encoder, { edge: edge.view, edgeBox, painting: painting.view, box, rest });
+      if (!edge || !edgeBox || !box) return;
+      if (carding && lighting?.kind === 'cast') carding.cast(encoder, lighting, { kind: 'card', edge: edge.view, edgeBox, rest, box, mask: null }, onto);
+      lays[step.sheet].layCard(encoder, { edge: edge.view, edgeBox, painting: painting.view, box, rest });
       return;
     }
     const opacity = shown?.opacity[index] ?? 1, film = films[step.film], filmBox = film.box && stampStageTexelsOf(stage, film.box);
@@ -251,8 +268,11 @@ function encodeStampSheetsSteps(
   });
 }
 
-/** `composite` laid on its root's paper and shown on `surface`, the document's size. */
-export async function drawStampSheetsStill(surface: StampPaintSurface, composite: StampSheetsComposite): Promise<void> {
+/**
+ * `composite` laid on its root's paper and shown on `surface`, the document's size, its cards catching `light`: a
+ * painting's own still takes PAPER_KEY_LIGHT; a print another renderer lights (a three card's texture) takes null.
+ */
+export async function drawStampSheetsStill(surface: StampPaintSurface, composite: StampSheetsComposite, light: PaintLight | null): Promise<void> {
   const { owner } = surface, { program } = composite.sheets[0];
   if (surface.width !== program.width || surface.height !== program.height) {
     throw new Error(`stamp sheet: a ${program.width} × ${program.height} painting is shown on a surface its size, not ${surface.width} × ${surface.height}`);
@@ -266,7 +286,7 @@ export async function drawStampSheetsStill(surface: StampPaintSurface, composite
       const encoder = device.createCommandEncoder();
       const painting = stampSheetCompositeTarget(owner, 'painting', stage, lays.painting, GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC, encoder);
       lays.lays[0].drawPaper(encoder, painting.view, 'paper', stage.width, stage.height);
-      encodeStampSheetsSteps(owner, device, encoder, arena, composite, lays, { texture: painting.texture, shape: lays.painting, view: painting.view }, 'paper');
+      encodeStampSheetsSteps(owner, device, encoder, arena, composite, lays, { texture: painting.texture, shape: lays.painting, view: painting.view }, 'paper', light);
       const module = device.createShaderModule({ code: stampPaintOutputWgsl(compositors[0], surface.format.endsWith('8unorm'), stage) });
       const output = device.createRenderPipeline({ layout: 'auto', vertex: { module }, fragment: { module, targets: [{ format: surface.format }] } });
       const pass = encoder.beginRenderPass({ colorAttachments: [{ view: surface.frameTexture().createView(), loadOp: 'clear', storeOp: 'store' }] });
@@ -311,9 +331,8 @@ export type StampSheetsGround = 'paper' | 'clear';
 
 /**
  * `composite` read back over `crop` (painting points) as a premultiplied picture on `ground`: on the root's paper, or
- * clear, measured on white and on black, the light over each backing taken as C + T·b per channel (the plane passes'
- * reading, stampPlanePictureWgsl), each backing's own light measured before anything lies on it. Each backing's
- * readback is counted into `costs`.
+ * clear, measured on white and on black and read as C + T·b per channel (stampPlanePictureWgsl). Its cards cast no shadow and show no
+ * rim: a rig's pieces are lit as they're posed. Each readback is counted into `costs`.
  */
 export async function readStampSheetsPicture(
   owner: StampPaintGpuOwner, composite: StampSheetsComposite, crop: StampPointBox, ground: StampSheetsGround, costs?: StampPaintCostTally,
@@ -341,7 +360,7 @@ export async function readStampSheetsPicture(
       };
       lays.lays[0].drawPaper(encoder, painting.view, backing, stage.width, stage.height);
       const texels = stampStageTexelsOf(stage, crop), groundCopy = measure({ x: texels.x, y: texels.y, w: 1, h: 1 });
-      encodeStampSheetsSteps(owner, device, encoder, arena, composite, lays, { texture: painting.texture, shape: lays.painting, view: painting.view }, backing);
+      encodeStampSheetsSteps(owner, device, encoder, arena, composite, lays, { texture: painting.texture, shape: lays.painting, view: painting.view }, backing, null);
       const lightCopy = measure(texels);
       arena.flush();
       device.queue.submit([encoder.finish()]);

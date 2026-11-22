@@ -185,10 +185,15 @@ test("a card is cut round what shows, a fading layer's share thinned; an own she
     }],
   };
   const { plan } = planAt(props, paintMoment(0));
-  const laid = plan.steps.map((step) => step && (step.lay.kind === 'film' ? `${step.lay.layer} at ${step.opacity}` : step.lay.kind === 'card' && cardText(step.lay.films)));
-  // The hidden cel `down` and the view switched off cut no paper; `up` half shown counts half its coverage.
-  assert.deepEqual(laid, ['sky at 1', 'card of 0 × 0.5', 'up at 0.5', null, 'seat at 1', 'card of 0 × 1', 'leaf at 1']);
-  assert.deepEqual(plan.fades, [{ node: 'sitting', first: 4, last: 4, visibility: 0 }, { node: 'leaf', first: 5, last: 6, visibility: 0.5 }]);
+  const laid = plan.steps.map((step) => {
+    if (!step) return null;
+    if (step.lay.kind === 'film') return `${step.lay.layer} at ${step.opacity}`;
+    return step.lay.kind === 'card' ? cardText(step.lay.films) : step.lay.kind;
+  });
+  // The hidden cel `down` and the view switched off cut no paper; `up` half shown counts half its coverage. Each card's
+  // rim follows its last film, the leaf's inside its fade.
+  assert.deepEqual(laid, ['sky at 1', 'card of 0 × 0.5', 'up at 0.5', null, 'seat at 1', 'rim', 'card of 0 × 1', 'leaf at 1', 'rim']);
+  assert.deepEqual(plan.fades, [{ node: 'sitting', first: 4, last: 4, visibility: 0 }, { node: 'leaf', first: 6, last: 8, visibility: 0.5 }]);
 });
 
 /** The pond revealed: the heron's group by a field arriving left to right, its neck by a stroke of its own as well. */
@@ -233,11 +238,12 @@ test('a leaf folding over lays its card shaded by the light, then turned away it
     camera, span: SPAN,
     planes: [{ id: 'front', depth: 1, source: layersOf(collage, ['sky', 'leaf']), occurrences: { leaf: { plays: [{ clip: { kind: 'fold', angle: turn }, clock: { at: 0 }, origin: 'turn' }] } } }],
   };
-  const laidAt = (t: number) => planAt(props, paintMoment(t)).plan.steps.map((step) => step && (step.lay.kind === 'pieces' ? 'pieces' : `${step.lay.kind} ${step.lay.shade.toFixed(3)}`));
-  assert.deepEqual(laidAt(0), ['film 1.000', 'card 1.000', 'film 1.000']);
-  // Tipped back below its level crease, toward the light's 50° up from screen-left, it darkens a little; past π/2 it's paper.
+  const laidAt = (t: number) => planAt(props, paintMoment(t)).plan.steps.map((step) => step && (step.lay.kind === 'pieces' || step.lay.kind === 'rim' ? step.lay.kind : `${step.lay.kind} ${step.lay.shade.toFixed(3)}`));
+  assert.deepEqual(laidAt(0), ['film 1.000', 'card 1.000', 'film 1.000', 'rim']);
+  // Tipped back below its level crease, toward the light's 50° up from screen-left, it darkens a little; past π/2 it's
+  // paper. Its rim step stays: the relief lays a rim only where its card was cast.
   const [, tipped] = laidAt(0.25);
   assert.ok(tipped && Number(tipped.split(' ')[1]) < 1, tipped ?? '');
-  assert.deepEqual(laidAt(0.5).slice(1), [null, null]);
-  assert.deepEqual(laidAt(0.75).slice(1).map((each) => each?.split(' ')[0] ?? null), ['card', null]);
+  assert.deepEqual(laidAt(0.5).slice(1), [null, null, 'rim']);
+  assert.deepEqual(laidAt(0.75).slice(1).map((each) => each?.split(' ')[0] ?? null), ['card', null, 'rim']);
 });
