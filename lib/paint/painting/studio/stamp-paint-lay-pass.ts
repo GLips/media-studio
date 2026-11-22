@@ -268,7 +268,8 @@ ${compositor.output}
 }`;
 
 const channel = (hex: string, i: number) => parseInt(hex.slice(i, i + 2), 16) / 255;
-const rgb = (hex: string): [number, number, number] => [channel(hex, 1), channel(hex, 3), channel(hex, 5)];
+/** `#rrggbb` as three gamma-encoded channels 0..1, as a compositor's paper and card hooks take colour. */
+export const stampHexRgb = (hex: string): [number, number, number] => [channel(hex, 1), channel(hex, 3), channel(hex, 5)];
 
 /**
  * What a lay is made for: its stage and compositor, the paper and its photograph (null for none), a texture bound for
@@ -324,7 +325,7 @@ export function createStampPaintLay(device: StampPaintDevice, arena: StampUnifor
       put('color', backing === 'white' ? [1, 1, 1] : [0, 0, 0]);
       return;
     }
-    put('color', rgb(paper.color));
+    put('color', stampHexRgb(paper.color));
     if (!photograph) return;
     const fit = Math.max(frame.width / photograph.width, frame.height / photograph.height);
     put('hasImage', 1);

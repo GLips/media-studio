@@ -136,12 +136,19 @@ export type Paper = {
 export type DryingScale = number | 'instant' | 'never';
 
 /**
- * What a layer or group is painted on. Left out: its parent's sheet. `own`: a new sheet of `paper`, a cut-out hiding
- * what's behind as far as its layers' paint lies, at its own `dryingScale` (1). `scene`: the root's sheet, past any
- * enclosing own sheet, at the root's scale. Layers on one sheet share its wet history and clock.
+ * How an own sheet's card catches its shot's light. Left out, as cut paper: a short soft shadow away from the light,
+ * lifted `lift` px (0.7), and a `rim`, a dark cut line with a pale lip where the edge faces the light. `flat`:
+ * neither. A field left out stays on.
+ */
+export type SheetCard = 'flat' | { readonly shadow?: boolean; readonly rim?: boolean; readonly lift?: number };
+
+/**
+ * What a layer or group is painted on. Left out: its parent's sheet. `own`: a new sheet of `paper`, a card hiding
+ * what's behind as far as its layers' paint lies, at its own `dryingScale` (1), lit as `card` says. `scene`: the
+ * root's sheet, at the root's scale. Layers on one sheet share its wet history and clock.
  */
 export type Sheet =
-  | { readonly kind: 'own'; readonly paper: Paper; readonly dryingScale?: DryingScale }
+  | { readonly kind: 'own'; readonly paper: Paper; readonly dryingScale?: DryingScale; readonly card?: SheetCard }
   | { readonly kind: 'scene'; readonly dryingScale?: never };
 
 // ---- what an application lays ---------------------------------------------------------------------------------------

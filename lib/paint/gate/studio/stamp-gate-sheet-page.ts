@@ -33,6 +33,7 @@ import { stampGateRgbBase64, withGateSurface } from './stamp-gate-page-surface.t
 import { checkStampGateReductions } from './stamp-gate-reductions-page.ts';
 import { checkStampGateRiggedHeron, checkStampGateRiggedWetContact } from './stamp-gate-shot-page.ts';
 import { stampGateRefusedAs, stampGateRejection, stampGateSheetImageUrl, stampGateSolvedFilms, withStampGateSheetOwner } from './stamp-gate-sheet-owner.ts';
+import { PAPER_KEY_LIGHT } from '#lib/paint/painting/models/stamp-form.ts';
 
 /**
  * An eraser rubbed across a crayon line in its direct wash takes up all but the pressed residue under its core, and
@@ -241,7 +242,7 @@ export function paintStampGateSolved(id: StampGateSolvedId): Promise<string> {
   const { evaluation, compiled, poses } = stampGateSolvedStill(id), { widthPx: width, heightPx: height } = evaluation.document;
   return withGateSurface({ width, height }, stampGateSheetImageUrl, async (surface, frame) => {
     const { composite, release } = await solvePaintingSheets(surface.owner, compiled, { poses });
-    await drawStampSheetsStill(surface, composite);
+    await drawStampSheetsStill(surface, composite, PAPER_KEY_LIGHT);
     release();
     await surface.owner.device.queue.onSubmittedWorkDone();
     return stampGateRgbBase64(frame());

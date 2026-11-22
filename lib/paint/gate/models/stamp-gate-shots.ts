@@ -18,6 +18,7 @@ import { stampCanonicalJson, type StampCanonicalDatum } from '#lib/paint/paintin
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import type { OccurrenceProps, PlaneProps, RigPart, RigPartPose, ScreenPin } from '#lib/paint/shot/models/shot-props.ts';
 import { dissolve } from '#lib/paint/shot/models/shot-selection.ts';
+import { STAMP_GATE_CARD_SHADOWS, STAMP_GATE_CARD_SHADOWS_AT, STAMP_GATE_CARD_SHADOWS_FADE, STAMP_GATE_CARD_SHADOWS_PAINTING, stampGateCardShadowsShot } from './stamp-gate-card-shadows.ts';
 import { STAMP_GATE_CARDS, STAMP_GATE_CARDS_AT, STAMP_GATE_CARDS_LEAF, STAMP_GATE_CARDS_SITTING, stampGateCardParts, stampGateCardsShot } from './stamp-gate-cards.ts';
 import { STAMP_GATE_FRAME_TOLERANCE } from './stamp-gate-frames.ts';
 import { STAMP_GATE_SHOT_FPS, type StampGateShot } from './stamp-gate-shot-span.ts';
@@ -41,18 +42,18 @@ export const STAMP_GATE_SHOT_PAGE_IDS = ['shot/page'] as const;
 /** The shots accepted by eye: each a baseline subject, one frame of its shot. */
 export const STAMP_GATE_SHOT_IDS = [
   'shot/paper-heron', 'shot/wet-contact', 'shot/rain', 'shot/dissolve', 'shot/rigged-dissolve', 'shot/masks', 'shot/masks-across', 'shot/masks-across-open', 'shot/rainy-street', 'shot/cards',
-  'shot/pieces', 'shot/approach',
+  'shot/pieces', 'shot/approach', 'shot/card-shadows',
 ] as const;
 export type StampGateShotId = (typeof STAMP_GATE_SHOT_IDS)[number];
 
 /**
  * The shot cases checked apart from any sheet case, each a page's checks of its shot's frames: the rain's items, the
  * shutter, dissolves, a warm, the masks' cuts, the rainy street's costs, the cards, the sprig's pieces, what glows, the
- * kite approaching past the post, a painting in time's key drawings.
+ * kite approaching past the post, a painting in time's key drawings, cards catching the light.
  */
 export const STAMP_GATE_SHOT_CASE_IDS = [
   'shot/rain', 'shot/shutter', 'shot/dissolve', 'shot/rigged-dissolve', 'shot/warm', ...STAMP_GATE_SHOT_MASK_IDS, 'shot/rainy-street', 'shot/cards', 'shot/pieces', STAMP_GATE_SHOT_GLOW_ID,
-  STAMP_GATE_SHOT_APPROACH_ID, 'shot/properties-in-time',
+  STAMP_GATE_SHOT_APPROACH_ID, 'shot/properties-in-time', 'shot/card-shadows',
 ] as const;
 export type StampGateShotCaseId = (typeof STAMP_GATE_SHOT_CASE_IDS)[number];
 
@@ -412,6 +413,10 @@ const SHOT_BASELINES: Readonly<Record<StampGateShotId, {
   },
   'shot/approach': {
     shot: () => stampGateApproachShot(), at: STAMP_GATE_APPROACH.at.past, evaluations: () => [painting(STAMP_GATE_APPROACH_PAINTING)], rigs: {}, poses: [], extra: STAMP_GATE_APPROACH,
+  },
+  'shot/card-shadows': {
+    shot: () => stampGateCardShadowsShot(), at: STAMP_GATE_CARD_SHADOWS_AT.mid, evaluations: () => [painting(STAMP_GATE_CARD_SHADOWS_PAINTING)], rigs: {}, poses: [],
+    extra: { fade: STAMP_GATE_CARD_SHADOWS_FADE, cards: STAMP_GATE_CARD_SHADOWS },
   },
 };
 

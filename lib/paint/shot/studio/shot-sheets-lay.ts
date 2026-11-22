@@ -1,8 +1,8 @@
-// shot-sheets-lay.ts: a painted plane's selection laid at one moment onto its painting: its
-// ground, then each composite step through its lattice (shot-sheet-lays.ts), back to front. A film is laid where its
-// lattice's rest map reads it; a card lays its paper over its films' union, each as far as it shows; a pieces rig's
-// render lays as paint by its alpha. A faded span is mixed back by stamp-span-fade-pass.ts. A film's reveals cut it,
-// its glow and its card's union. Masks cut all but the ground.
+// shot-sheets-lay.ts: a painted plane's selection laid at one moment onto its painting: its ground, then each
+// composite step through its lattice (shot-sheet-lays.ts), back to front. A film is laid where its rest map reads it;
+// a card, its paper over its films' union; a pieces rig's render, as paint by its alpha. Each card and rig
+// casts a shadow before it and shows a rim once its films are laid (stamp-card-relief-pass.ts), within its fade.
+// stamp-span-fade-pass.ts mixes a faded span back. Reveals cut a film; masks, all but the ground.
 //
 // Everything lies through rest maps, so the plane's place, its nodes and a frame moment's poses are one path; at rest
 // a lattice is one exact cell.
@@ -10,10 +10,12 @@
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 import type { StampPixelBox } from '#lib/paint/painting/models/stamp-blur-region.ts';
+import { stampCardReliefSteps, type StampCardReliefStepIn } from '#lib/paint/painting/models/stamp-card-relief.ts';
 import type { PaintLight } from '#lib/paint/painting/models/stamp-form.ts';
 import type { StampFilmRevealLinks } from '#lib/paint/painting/models/stamp-reveal.ts';
 import { stampBoxUnion, stampStageTexelsOf, stampStageTexelsWithin, stampStageWgsl, type StampStage, type StampWrapPeriods } from '#lib/paint/painting/models/stamp-stage.ts';
 import { createStampLatticePass, STAMP_LATTICE_VERTEX_FLOATS, type StampLatticePass, type StampLatticeSpan } from '#lib/paint/painting/studio/stamp-lattice-pass.ts';
+import { createStampCardRelief } from '#lib/paint/painting/studio/stamp-card-relief-pass.ts';
 import { stampPaintTargetWgsl, type StampPaintCompositor, type StampPaintTarget } from '#lib/paint/painting/studio/stamp-paint-compositor.ts';
 import { copyStampTextureBox, dispatchStampCompute, STAMP_WORKGROUP, stampPaintSamplers } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
 import type { StampGpuCacheStore } from '#lib/paint/painting/studio/stamp-paint-gpu-cache.ts';
@@ -27,7 +29,7 @@ import { keptStampSheetFilm, type StampSheetFilmKept } from '#lib/paint/painting
 import type { StampUniformArena } from '#lib/paint/painting/studio/stamp-uniform-arena.ts';
 import type { ShotLattice } from '../models/shot-lattice.ts';
 import type { OccurrenceKey } from '../models/shot-props.ts';
-import type { ShotFadeSpan, ShotGroundLay, ShotMaskAt, ShotPlaneRead, ShotStepFrame } from '../models/shot-sheet-lays.ts';
+import { shotStepLatticed, type ShotFadeSpan, type ShotGroundLay, type ShotMaskAt, type ShotPlaneRead, type ShotStepFrame } from '../models/shot-sheet-lays.ts';
 import { createShotMaskPasses, type ShotCoverStep, type ShotMaskCoverage } from './shot-mask-passes.ts';
 
 /** A rig's pieces as drawn this moment, stage-sized: their premultiplied linear colour, their motion, and the stage texels they cover. */
@@ -106,6 +108,15 @@ ${masked ? '@group(0) @binding(5) var mask: texture_2d<f32>;' : ''}
   layPicture(pixel, max(c.rgb, vec3f(0.0)), a);
 }`;
 
+/** The relief over `frame`'s steps: each card and pieces rig catching the light as its sheet's look says. */
+const shotCardReliefSteps = ({ steps }: ShotSheetsLayFrame) => stampCardReliefSteps(steps.map((step): StampCardReliefStepIn | null => {
+  if (!step) return null;
+  const { lay } = step;
+  if (lay.kind === 'card') return { kind: 'card', sheet: lay.sheet, look: lay.look };
+  if (lay.kind === 'pieces') return { kind: 'pieces', look: lay.look };
+  return lay.kind === 'rim' ? lay : { kind: 'other' };
+}));
+
 /** What tells layer targets apart for one stage: plain, or an array of how many layers. */
 const layerTargetKind = (shape: StampPaintTarget) => (shape.kind === 'array' ? `array ${shape.layers}` : 'plain');
 
@@ -134,7 +145,7 @@ function shotLayerTargetStores(owner: StampPaintGpuOwner): ShotLayerTargetStores
 /** Lays of painted planes on `owner`'s device onto `stage`, each pass's uniform from `arena`, fading through `fade`. */
 export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena, fade }: { stage: StampStage; arena: StampUniformArena; fade: StampSpanFade }) {
   const { device } = owner, { margin } = stage, linearClamp = stampPaintSamplers(device).linearClamp, masking = createShotMaskPasses(owner, { stage, arena });
-  const revealing = createStampRevealPass(owner, device, stage), glows = createStampPlaneGlows(owner, { stage, arena });
+  const revealing = createStampRevealPass(owner, device, stage), glows = createStampPlaneGlows(owner, { stage, arena }), carding = createStampCardRelief(owner, { stage, arena });
   const passes = new Map<string, StampLatticePass>();
   const passOf = (shape: StampPaintTarget) => {
     const key = layerTargetKind(shape);
@@ -222,7 +233,7 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
       const room = (shape: StampPaintTarget, lattice: ShotLattice) => floats.set(passOf(shape), (floats.get(passOf(shape)) ?? 0) + latticeFloats(lattice));
       for (const frame of frames) {
         if (frame.ground?.kind === 'placed') room(frame.lays.compositors[0].targets.layer, frame.ground.lattice);
-        for (const step of frame.steps) if (step && step.lay.kind !== 'pieces') room(frame.lays.compositors[step.lay.sheet].targets.layer, step.lay.lattice);
+        for (const step of frame.steps) if (step && shotStepLatticed(step.lay)) room(frame.lays.compositors[step.lay.sheet].targets.layer, step.lay.lattice);
       }
       for (const pass of passes.values()) pass.reset(floats.get(pass) ?? 0);
       revealing.release();
@@ -235,7 +246,7 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
       const groundShape = frame.lays.compositors[0].targets.layer, ground = frame.ground?.kind === 'placed' ? stageLattice(groundShape, frame.ground.lattice) : null;
       return {
         ground,
-        steps: frame.steps.map((step) => (step && step.lay.kind !== 'pieces' ? stageLattice(frame.lays.compositors[step.lay.sheet].targets.layer, step.lay.lattice) : null)),
+        steps: frame.steps.map((step) => (step && shotStepLatticed(step.lay) ? stageLattice(frame.lays.compositors[step.lay.sheet].targets.layer, step.lay.lattice) : null)),
         masks: frame.masks.map((mask): ShotMaskStaged => ({ coverage: coverageOf(mask.drawable), invert: mask.invert })),
       };
     },
@@ -276,17 +287,24 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
       const gathered: StampFadedTarget[] = coverage ? [{ texture: coverage, shape: { kind: 'array', layers: coverage.depthOrArrayLayers }, view: coverage.createView({ dimension: '2d-array' }) }] : [];
       const fadeTargets = [into.painting, ...[into.emission, into.motion].flatMap((texture) => (texture ? [stampPlainFaded(texture)] : [])), ...gathered];
       const open: { span: ShotFadeSpan; kept: StampSpanKept }[] = [];
+      const lit = shotCardReliefSteps(frame), { light } = frame, maskView = mask?.createView() ?? null;
+      carding.begin();
       frame.steps.forEach((step, index) => {
         for (const span of frame.fades) if (span.first === index) open.push({ span, kept: fade.keep(encoder, fadeTargets, open.length) });
-        const staging = staged.steps[index];
-        if (step && step.lay.kind === 'pieces') {
+        const staging = staged.steps[index], lighting = lit[index];
+        if (step && step.lay.kind === 'rim') {
+          if (lighting?.kind === 'rim') carding.rim(encoder, lighting.level, { compositor: compositors[step.lay.sheet], painting, light });
+        } else if (step && step.lay.kind === 'pieces') {
           const drawn = frame.pieces.get(step.lay.rig);
           if (drawn) {
+            const onto = { compositor: compositors[0], painting, light };
+            const shadow = lighting?.kind === 'cast' ? carding.cast(encoder, lighting, { kind: 'picture', picture: drawn.colour, box: drawn.box, mask: maskView }, onto) : null;
             layPieces(encoder, compositors[0], painting, drawn, motion, mask);
+            if (lighting?.kind === 'cast' && lighting.rim === 'now') carding.rim(encoder, lighting.level, onto);
             gather(encoder, frame, into, index, { kind: 'pieces', pieces: drawn.colour, box: drawn.box });
-            laid = stampBoxUnion(laid, drawn.box);
+            laid = stampBoxUnion(stampBoxUnion(laid, drawn.box), shadow);
           }
-        } else if (step && step.lay.kind !== 'pieces' && staging?.box) {
+        } else if (step && shotStepLatticed(step.lay) && staging?.box) {
           const lay = step.lay, { pass, span, box } = staging, compositor = compositors[lay.sheet];
           if (lay.kind === 'card') {
             const edge = stampSheetEdge(owner, device, encoder, arena, lay.films.map(({ film, shown }) => ({ film: films[lay.sheet][film], shown })), {
@@ -295,9 +313,11 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
             if (edge) {
               const edgeBox = stampStageTexelsOf(stage, edge.box);
               pass.draw(encoder, span, { rest: 'region', motion: !!traced }, { rest: restView, motion: traced, source: null });
-              lays[lay.sheet].layCard(encoder, { edge: edge.view, edgeBox, painting, box, rest: restView, mask: mask?.createView() ?? null });
+              const caster = { kind: 'card', edge: edge.view, edgeBox, rest: restView, box, mask: maskView } as const;
+              const shadow = lighting?.kind === 'cast' ? carding.cast(encoder, lighting, caster, { compositor, painting, light }) : null;
+              lays[lay.sheet].layCard(encoder, { edge: edge.view, edgeBox, painting, box, rest: restView, mask: maskView });
               gather(encoder, frame, into, index, { kind: 'card', edge: edge.view, edgeBox, rest: restView, box });
-              laid = stampBoxUnion(laid, box);
+              laid = stampBoxUnion(stampBoxUnion(laid, box), shadow);
             }
           } else if (step.opacity > 0) {
             const copied = copyFilm(encoder, frame, lay.sheet, films[lay.sheet][lay.film]);
@@ -305,7 +325,7 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
               const { view: layer } = copied, reveal = cutOf(encoder, frame, lay.sheet, lay.film, copied.at);
               pass.draw(encoder, span, { rest: 'paint', motion: !!traced }, { rest: restView, motion: traced, source: layer });
               glows.layAdding(encoder, step.glow && emission ? { compositor, painting, box, emission, glow: step.glow } : null, () => lays[lay.sheet].layGroup(encoder, {
-                layer, painting, index: lay.film, opacity: step.opacity, glaze: true, box, backing: into.backing, rest: restView, paperFromRest: true, mask: mask?.createView() ?? null, reveal,
+                layer, painting, index: lay.film, opacity: step.opacity, glaze: true, box, backing: into.backing, rest: restView, paperFromRest: true, mask: maskView, reveal,
               }));
               gather(encoder, frame, into, index, { kind: 'film', compositor, layer, rest: restView, reveal, opacity: step.opacity, box });
               laid = stampBoxUnion(laid, box);

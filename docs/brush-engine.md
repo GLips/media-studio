@@ -194,7 +194,11 @@ texture, films and edge sampled at the rest point (`drawPlacedRest`, by the map'
 `edge`). A film a reveal cuts (a document's `reveal`, `stamp-reveal.ts`) is laid through `studio/stamp-reveal-pass.ts`:
 an r32float cut over the layer target, each texel's share shown at the selection's time, which the lay takes into
 its opacity before compositing (pigment, before colour) and the card's union takes into that film's coverage, so the
-paper follows the revealed paint. A strokes reveal's arrivals (first arrival and its cover, the first at full cover
+paper follows the revealed paint. Under a light (a still's or a shot's, none for a readback) each card has relief
+(`models/stamp-card-relief.ts`, `studio/stamp-card-relief-pass.ts`): its stage-space coverage as laid is drawn into a
+level, blurred and multiplied into what's behind, offset away from the light, before the card; a `rim` step after its
+sheet's last film lays a cut line and a lip from that level, masked by every card laid over it meanwhile. A rig's
+pieces cast as one from their render's alpha. A strokes reveal's arrivals (first arrival and its cover, the first at full cover
 and the cover its arrived bands' union reaches, seconds per px) are drawn once into an rgba32uint map over the box its
 bands reach, from tile lists of segments, and
 kept under producer `arrival` by the reveal, its mapping, wrap and resolution; on a wrapped sheet its segments are
@@ -806,7 +810,9 @@ front before it crosses the post's depth and the kite after, and an open shutter
 held at that depth, which only the push blurs. A ridge's top swept as a painting in time (`shot/properties-in-time`,
 `stamp-gate-in-time.ts`) keys the moments its rule names, within four drawings; a frame between two keys lies between
 their drawings, each drawing solves once and frames after them solve nothing, and a warm over the sweep solves its
-drawings alone. The masked shot (`stamp-gate-shot-masks.ts`) shows the paper heron part revealed by its document's reveal (`shot/masks`),
+drawings alone. Six cards over a sky (`shot/card-shadows`, `stamp-gate-card-shadows.ts`), measured against
+themselves laid flat, cast shadows away from the light that fade with their card and move with it, a turning card's
+lip stays toward the light, a flat card changes nothing, and a parent's rim stays under its child card. The masked shot (`stamp-gate-shot-masks.ts`) shows the paper heron part revealed by its document's reveal (`shot/masks`),
 and cuts a tint to the heron's wing, to all but it, and to a disc moving across as a picture plane and as a three
 plane under a panned camera. On a plane nearer than the heron, the tint stays cut to the wing, and to a picture disc,
 as a pan parts their depths (`shot/masks-across`), laid anew each frame they move apart; at the heron's depth, never.

@@ -91,6 +91,13 @@ export type StampPaintCompositor = {
    */
   card: string;
   /**
+   * `layShade(pixel, tint, amount)`: what's there multiplied, as light, by mix(1, `tint`, `amount`) (`tint`
+   * gamma-encoded, `amount` 0..1): a card's cast shadow, which only darkens. On a clear plane's measuring backings it
+   * leaves black as it is and darkens white, so the plane passes the shade on to what's behind. Reads and writes
+   * `painting`; the includer declares GPU_SRGB_WGSL.
+   */
+  shade: string;
+  /**
    * `layPicture(pixel, light, cover)`: premultiplied linear light over what's there by its alpha `cover` (0 < cover ≤
    * 1), reading as `light` plus what's there by 1 − cover: a rig's pieces. Reads and writes `painting`;
    * the includer declares GPU_SRGB_WGSL.
@@ -287,6 +294,12 @@ fn layGroup(pixel: vec2u, glaze: bool, opacity: f32) {
     paper: /* wgsl */ `fn layPaper(pixel: vec2u, color: vec3f) { textureStore(painting, pixel, vec4f(color, 1.0)); }`,
     card: /* wgsl */ `
 fn layCard(pixel: vec2u, color: vec3f, cover: f32) { textureStore(painting, pixel, mix(textureLoad(painting, pixel), vec4f(color, 1.0), cover)); }`,
+    shade: /* wgsl */ `
+fn layShade(pixel: vec2u, tint: vec3f, amount: f32) {
+  let was = textureLoad(painting, pixel);
+  let lit = srgbDecoded(clamp(was.rgb, vec3f(0.0), vec3f(1.0))) * mix(vec3f(1.0), srgbDecoded(tint), amount);
+  textureStore(painting, pixel, vec4f(srgbEncoded(lit), was.a));
+}`,
     picture: /* wgsl */ `
 fn layPicture(pixel: vec2u, light: vec3f, cover: f32) {
   let behind = srgbDecoded(clamp(textureLoad(painting, pixel).rgb, vec3f(0.0), vec3f(1.0)));

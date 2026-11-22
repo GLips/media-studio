@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Layer, PaintingDocument, Paper, Sheet } from './painting-document.ts';
+import { STAMP_CARD_FLAT, STAMP_CARD_LOOK } from '#lib/paint/painting/models/stamp-card-relief.ts';
 import { paintingTree } from './painting-tree.ts';
 
 const ROOT_PAPER: Paper = { color: '#f4f2ed', absorbency: 0.5 };
@@ -17,8 +18,8 @@ test("a document's sheets: the root's over the document, an own sheet edged by i
   };
   const tree = paintingTree(pond);
   assert.deepEqual(tree.sheets, [
-    { owner: null, paper: ROOT_PAPER, edge: 'document', water: 'watercolour', dryingScale: 0.025 },
-    { owner: 'heron', paper: HERON_PAPER, edge: 'union', water: 'gouache', dryingScale: 1 },
+    { owner: null, paper: ROOT_PAPER, edge: 'document', card: STAMP_CARD_FLAT, water: 'watercolour', dryingScale: 0.025 },
+    { owner: 'heron', paper: HERON_PAPER, edge: 'union', card: STAMP_CARD_LOOK, water: 'gouache', dryingScale: 1 },
   ]);
   assert.deepEqual(tree.layers.map(({ node, sheet, groups, medium }) => [node.key, sheet.owner, groups, medium]), [
     ['sky', null, [], 'watercolour'], ['body', 'heron', ['heron'], 'gouache'], ['neck', 'heron', ['heron'], 'gouache'], ['shadow', null, ['heron'], 'gouache'],

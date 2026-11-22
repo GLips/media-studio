@@ -3,17 +3,19 @@
 // edge); the root's covers the document, an own sheet's lies as far as its layers' paint does. The checks read media
 // from here; each sheet's order, the compiler and the solver read its layers, groups and sheets.
 
-import type { DryingScale, GroupKey, Key, Layer, LayerGroup, LayerNode, MediumName, Paper, PaintingDocument } from './painting-document.ts';
+import { STAMP_CARD_FLAT, STAMP_CARD_LOOK, type StampCardLook } from '#lib/paint/painting/models/stamp-card-relief.ts';
+import type { DryingScale, GroupKey, Key, Layer, LayerGroup, LayerNode, MediumName, Paper, PaintingDocument, SheetCard } from './painting-document.ts';
 
 /**
- * A resolved sheet: the node that declared it (null for the root's: no key can name it), its paper, its edge
- * (`document`, the whole document rectangle, the root's; `union`, as far as its layers' paint lies), `water`, the
- * medium its water dries by (its owner's), and the scale its clock runs at, its own, never an enclosing sheet's.
+ * A resolved sheet: the node that declared it (null for the root's), its paper, its edge (`document`, the root's;
+ * `union`, as far as its layers' paint lies), how its card is lit (`card`; the root's lies flat), `water`, the medium
+ * its water dries by, and its clock's scale, its own, never an enclosing sheet's.
  */
 export type PaintingSheet = {
   readonly owner: Key | null;
   readonly paper: Paper;
   readonly edge: 'document' | 'union';
+  readonly card: StampCardLook;
   readonly water: MediumName;
   readonly dryingScale: DryingScale;
 };
@@ -48,11 +50,15 @@ export type PaintingTree = {
   readonly groups: readonly PaintingGroupPlace[];
 };
 
+/** How an own sheet's `card` catches the light: as cut paper, flat, or as cut paper with what it names changed. */
+export const paintingSheetCardLook = (card: SheetCard | undefined): StampCardLook =>
+  card === 'flat' ? STAMP_CARD_FLAT : { ...STAMP_CARD_LOOK, ...card };
+
 /** The sheet `node` lies on: its parent's, the root's for `scene`, or a new one of its own. */
 function paintingNodeSheet(node: LayerNode, medium: MediumName, parent: PaintingSheet, root: PaintingSheet): PaintingSheet {
   if (!node.sheet) return parent;
   if (node.sheet.kind === 'scene') return root;
-  return { owner: node.key, paper: node.sheet.paper, edge: 'union', water: medium, dryingScale: node.sheet.dryingScale ?? 1 };
+  return { owner: node.key, paper: node.sheet.paper, edge: 'union', card: paintingSheetCardLook(node.sheet.card), water: medium, dryingScale: node.sheet.dryingScale ?? 1 };
 }
 
 /** A sheet as problems and summaries name it: "the root's sheet", "heron's own sheet". */
@@ -73,7 +79,7 @@ export const isPaintingGroup = (node: LayerNode): node is LayerGroup => Array.is
  * Expects a tree whose shape and keys are checked (painting-document-check.ts).
  */
 export function paintingTree(paintingDocument: PaintingDocument): PaintingTree {
-  const root: PaintingSheet = { owner: null, paper: paintingDocument.paper, edge: 'document', water: paintingDocument.medium, dryingScale: paintingDocument.dryingScale ?? 1 };
+  const root: PaintingSheet = { owner: null, paper: paintingDocument.paper, edge: 'document', card: STAMP_CARD_FLAT, water: paintingDocument.medium, dryingScale: paintingDocument.dryingScale ?? 1 };
   const sheets: PaintingSheet[] = [root];
   const nodes: PaintingNodePlace[] = [];
   const visit = (node: LayerNode, path: string, groups: readonly GroupKey[], medium: MediumName, parent: PaintingSheet) => {

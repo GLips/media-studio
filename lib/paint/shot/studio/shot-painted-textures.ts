@@ -174,7 +174,8 @@ export function createShotPaintedTextures(owner: StampPaintGpuOwner, textures: r
   /** One share laid on its paper and summed by its weight into `light`, cleared first when `first`. */
   const sumShare = async ({ texture, light }: ShotPaintedTextureSlot, { compiled, weight, sheets }: ShotTextureShareSolved, first: boolean) => {
     const { width, height } = compiled.sheets[0].program, picture = await pictureOf(width, height);
-    await drawStampSheetsStill(picture.surface, sheets.composite);
+    // A print: the three card it's mapped onto catches the light itself.
+    await drawStampSheetsStill(picture.surface, sheets.composite, null);
     await owner.checked(`summing painted texture ${texture.id}`, () => {
       const taps = [width / texture.widthPx, height / texture.heightPx].map((ratio) => Math.min(SHOT_TEXTURE_MOST_TAPS, Math.max(1, Math.ceil(ratio))));
       const slot = arena.slot((views) => {

@@ -185,10 +185,15 @@ test("a card is cut round what shows, a fading layer's share thinned; an own she
     }],
   };
   const { plan } = planAt(props, paintMoment(0));
-  const laid = plan.steps.map((step) => step && (step.lay.kind === 'film' ? `${step.lay.layer} at ${step.opacity}` : step.lay.kind === 'card' && cardText(step.lay.films)));
-  // The hidden cel `down` and the view switched off cut no paper; `up` half shown counts half its coverage.
-  assert.deepEqual(laid, ['sky at 1', 'card of 0 × 0.5', 'up at 0.5', null, 'seat at 1', 'card of 0 × 1', 'leaf at 1']);
-  assert.deepEqual(plan.fades, [{ node: 'sitting', first: 4, last: 4, visibility: 0 }, { node: 'leaf', first: 5, last: 6, visibility: 0.5 }]);
+  const laid = plan.steps.map((step) => {
+    if (!step) return null;
+    if (step.lay.kind === 'film') return `${step.lay.layer} at ${step.opacity}`;
+    return step.lay.kind === 'card' ? cardText(step.lay.films) : step.lay.kind;
+  });
+  // The hidden cel `down` and the view switched off cut no paper; `up` half shown counts half its coverage. Each card's
+  // rim follows its last film, the leaf's inside its fade.
+  assert.deepEqual(laid, ['sky at 1', 'card of 0 × 0.5', 'up at 0.5', null, 'seat at 1', 'rim', 'card of 0 × 1', 'leaf at 1', 'rim']);
+  assert.deepEqual(plan.fades, [{ node: 'sitting', first: 4, last: 4, visibility: 0 }, { node: 'leaf', first: 6, last: 8, visibility: 0.5 }]);
 });
 
 /** The pond revealed: the heron's group by a field arriving left to right, its neck by a stroke of its own as well. */

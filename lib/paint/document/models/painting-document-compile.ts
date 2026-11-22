@@ -8,6 +8,7 @@
 
 import { PAINT_MEDIA, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { PaintMixturePigment } from '#lib/paint/materials/models/paint-pigment.ts';
+import { stampSheetStepsRimmed } from '#lib/paint/painting/models/stamp-card-relief.ts';
 import { stampBrushedMasksUnder } from '#lib/paint/painting/models/stamp-brushed-mask.ts';
 import { STAMP_KEPT_BYTES, stampPlacementsKept } from '#lib/paint/painting/models/stamp-deposit-placement.ts';
 import { createKeptByBytes } from '#lib/paint/painting/models/stamp-kept-memo.ts';
@@ -105,7 +106,7 @@ function compilePaintingSheet(evaluation: PaintingEvaluation, order: PaintingShe
     };
   });
   return {
-    name: `${evaluation.source}, ${paintingSheetName(order.sheet)}`, width: paintingDocument.widthPx, height: paintingDocument.heightPx, paper: order.sheet.paper, edge: order.sheet.edge, water: PAINT_MEDIA[order.sheet.water],
+    name: `${evaluation.source}, ${paintingSheetName(order.sheet)}`, width: paintingDocument.widthPx, height: paintingDocument.heightPx, paper: order.sheet.paper, edge: order.sheet.edge, card: order.sheet.card, water: PAINT_MEDIA[order.sheet.water],
     clock: order.clock, wrap: paintingDocument.wrap ?? null, films, washes, entries, head: stampCanonicalJson(paintingSheetHead(paintingDocument, order)),
   };
 }
@@ -126,16 +127,16 @@ export type PaintingSheetCompiled = {
  */
 export type PaintingSelectionCompiled = { readonly tree: PaintingTree; readonly sheets: readonly PaintingSheetCompiled[]; readonly steps: readonly StampSheetCompositeStep[] };
 
-/** The node a composite step paints for: a card's sheet's owner, a film's layer. */
+/** The node a composite step paints for: a card's or rim's sheet's owner, a film's layer. */
 export function paintingStepNode({ tree, sheets }: PaintingSelectionCompiled, step: StampSheetCompositeStep): NodeKey {
   const { sheet, layers } = sheets[step.sheet];
-  // A card is an own sheet's: the root's paper is the ground, laid apart, never a step.
-  return step.kind === 'card' ? sheet.owner! : tree.layers[layers[step.film]].node.key;
+  // A card or rim is an own sheet's: the root's paper is the ground, laid apart, never a step.
+  return step.kind === 'film' ? tree.layers[layers[step.film]].node.key : sheet.owner!;
 }
 
 /**
  * The composite steps (indices in `compiled.steps`) painting what `key` holds: films of the layers it is or holds, and
- * cards of sheets owned by it or by a node under it.
+ * cards and rims of sheets owned by it or by a node under it.
  */
 export function paintingNodeSteps(compiled: PaintingSelectionCompiled, key: NodeKey): number[] {
   return compiled.steps.flatMap((step, index) => {
@@ -210,9 +211,9 @@ const idOf = <O extends object>(ids: WeakMap<O, number>, of: O) => rememberedOnc
 export const paintingMemosKept = (): StampPaintKept => ({ compiled: selectionsKept.held(), posed: paintingPosesKept(), placed: stampPlacementsKept() });
 
 /**
- * The selected layers of `evaluation`, each sheet they lie on compiled at rest. A film comes where its layer does in
- * document order; a card where its owner does, before every node under it, so a nested sheet lies on its parent's
- * card and a scene layer under the owner glazes over it. Kept as PAINTING_SELECTIONS_KEPT_BYTES holds.
+ * The selected layers of `evaluation`, each sheet they lie on compiled at rest. A film comes where its layer does; a
+ * card where its owner does, before every node under it, so a nested sheet lies on its parent's card; a rim after its
+ * sheet's last film. Kept as PAINTING_SELECTIONS_KEPT_BYTES holds.
  */
 export function compilePaintingSelection(evaluation: PaintingEvaluation, brushOf: PaintingBrushOf, { layers, reseed, costs }: PaintingSelectionCompileOptions = {}): PaintingSelectionCompiled {
   const selected = paintingSelectedLayers(evaluation.tree, layers), epochs = paintingLayerEpochs(evaluation.tree, reseed);
@@ -255,5 +256,5 @@ function compileSelectedLayers(
     if (film >= 0) placed.push({ kind: 'film', sheet, film });
     return placed;
   });
-  return { tree, sheets, steps };
+  return { tree, sheets, steps: stampSheetStepsRimmed(steps, (sheet) => sheets[sheet].sheet.card.rim) };
 }

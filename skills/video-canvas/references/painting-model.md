@@ -122,12 +122,15 @@ taken as meant: a rig's clear cel, or a bare-paper back.
 | `sheet` | Lies on | Posed by a scene | Use |
 |---|---|---|---|
 | left out | its parent's sheet (the root's at the top) | repainted into that sheet at each distinct pose: grain still, edges shifting a little solve to solve, its water meeting the sheet's | almost everything; an element touching a painted scene |
-| `{kind: 'own', paper, dryingScale?}` | a new sheet of `paper`, a cut-out hiding what's behind as far as its paint lies | moves whole, paper and paint, with no solve | collage; a cut-out that slides, turns or bends |
+| `{kind: 'own', paper, dryingScale?, card?}` | a new sheet of `paper`, a card hiding what's behind as far as its paint lies | moves whole, paper and paint, with no solve | collage; a cut-out that slides, turns or bends |
 | `{kind: 'scene'}` | the root's sheet, past any enclosing own sheet | as left out | a shadow under a cut-out, on the scene's paper |
 
 - An own sheet's card is its paper cut round its paint at twice the paint's gain, so a `feather` or `bleed` outline
   shows a rim of paper past the paint. Keep a card's outline crisp, tint its paper where it should read as paint
   alone, and paint an edge meant to melt into what's behind on the parent's sheet.
+- In a shot a card catches its `light`: a short soft shadow away from it, a dark cut line round its edge, a pale lip
+  where the edge faces it. `card: {shadow?, rim?, lift?}` turns either off or lifts it further (`lift` px, 0.7: the
+  shadow's length and softness); `card: 'flat'` lays it flat, as for a card meant to melt into what's behind.
 - Posing on shared paper re-solves from the element's first application at each distinct pose; a node's hold sets
   how many poses a second. Shared-sheet paint stays inside the document rectangle: an element leaving it needs a wider
   document or an own sheet.
