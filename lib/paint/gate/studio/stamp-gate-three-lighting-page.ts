@@ -8,6 +8,7 @@ import {
   RenderTarget, Scene, Vector3,
 } from 'three/webgpu';
 import { float, screenUV, texture } from 'three/tsl';
+import { PAPER_KEY_LIGHT } from '#lib/paint/painting/models/stamp-form.ts';
 import { copyStampLayerForReadback, readStampLayerCopy } from '#lib/paint/painting/studio/stamp-layer-readback.ts';
 import { loadPaintedThreeSources, type PaintedThreeSourceScene, type PaintedThreeSourceTools } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
@@ -104,7 +105,7 @@ async function withStampGateAnimationHeld<T>(work: () => Promise<T>): Promise<T>
 async function drawStampGateLightingExposed(): Promise<StampGateLitRender[]> {
   const { camera } = stampGateLightingPaintCamera(), { t, before, apertures } = STAMP_GATE_LIGHTING_EXPOSED;
   return withGateSurface(stampGateLightingFrame(), stampGateSheetImageUrl, async ({ owner }) => {
-    const loaded = await loadPaintedThreeSources(owner, camera, [{ id: 'shadowed', build: (tools) => stampGateStandScene('shadowed', tools) }], { handles: [], update: () => Promise.resolve() });
+    const loaded = await loadPaintedThreeSources(owner, camera, PAPER_KEY_LIGHT, [{ id: 'shadowed', build: (tools) => stampGateStandScene('shadowed', tools) }], { handles: [], update: () => Promise.resolve() });
     try {
       const source = loaded.sources.get('shadowed');
       if (source?.kind !== 'three') throw new Error('stamp gate: the shadowed stand loaded as no three source');

@@ -8,6 +8,7 @@ import type { Layer, PaintingDocument } from '#lib/paint/document/models/paintin
 import { paintingPoseText, type PaintingPoses } from '#lib/paint/document/models/painting-pose.ts';
 import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
 import { painting } from '#lib/paint/document/models/painting-source.ts';
+import { PAPER_KEY_LIGHT } from '#lib/paint/painting/models/stamp-form.ts';
 import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampPointBox, stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { stampRoundTipStatedProfile } from '#lib/paint/painting/models/stamp-tip-support.ts';
@@ -82,6 +83,14 @@ test("a boil's wobble moves finished paint: marks solve alike across epochs, whi
   assert.equal(solvedText(next.solved), solvedText(first.solved));
   assert.equal(again.plan.key, first.plan.key);
   assert.notEqual(next.plan.key, first.plan.key);
+});
+
+test("the shot's light is in its planes' lay key, PAPER_KEY_LIGHT when it names none: another light re-lays a still plane", () => {
+  const props: PaintedShotProps = { camera, span: SPAN, planes: [{ id: 'front', depth: 1, source: layersOf(pond(true), ['sky', 'heron']) }] };
+  const at = paintMoment(1);
+  const named = (light: PaintedShotProps['light']) => planAt({ ...props, light }, at).plan.key;
+  assert.equal(planAt(props, at).plan.key, named(PAPER_KEY_LIGHT));
+  assert.notEqual(named({ direction: 0, elevation: 0.5 }), named(PAPER_KEY_LIGHT));
 });
 
 test("a cel skinned to others solves under its skin's name: ends painted alike to the body, their necks apart, pose the body apart", () => {

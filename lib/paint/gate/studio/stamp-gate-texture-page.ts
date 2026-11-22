@@ -7,6 +7,7 @@
 
 import { CylinderGeometry, Mesh, MeshBasicNodeMaterial, PlaneGeometry, Scene, type BufferGeometry } from 'three/webgpu';
 import { buildPaintCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
+import { PAPER_KEY_LIGHT } from '#lib/paint/painting/models/stamp-form.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { stampBindGroup } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
@@ -120,7 +121,7 @@ function drawStampGateTextureFrame(id: StampGateTextureId): Promise<Uint8Clamped
     try {
       const centre = { x: drawn.view.width / 2, y: drawn.view.height / 2 };
       const build = (tools: PaintedThreeSourceTools) => stampGateTexturedScene(tools, centre, texture.id, STAMP_GATE_TEXTURE_OBJECTS[id](tools));
-      const loaded = await loadPaintedThreeSources(owner, built.camera, [{ id: SOURCE_ID, build }], textures);
+      const loaded = await loadPaintedThreeSources(owner, built.camera, PAPER_KEY_LIGHT, [{ id: SOURCE_ID, build }], textures);
       try {
         const source = loaded.sources.get(SOURCE_ID)!;
         if (source.kind !== 'three') throw new Error(`stamp gate: ${id}'s source isn't a three source`);

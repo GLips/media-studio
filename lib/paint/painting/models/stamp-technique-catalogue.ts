@@ -10,7 +10,7 @@ import type { StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { StampStrokePoint } from '#lib/paint/brush/models/stamp-placement.ts';
 import type { StampStrokeHand } from '#lib/paint/brush/models/stamp-stroke-hand.ts';
 import { stampCheckedGuides, type StampFillReach, type StampGuide } from './stamp-fill-strokes.ts';
-import { stampRoundedForm, type StampFormEllipse, type StampFormLight } from './stamp-form.ts';
+import { stampRoundedForm, type StampFormEllipse, type PaintLight } from './stamp-form.ts';
 import { pickStampMaterial } from './stamp-material-set.ts';
 import { stampScatteredStrokePath, stampScatterMarks, type StampMark, type StampMarkAnchor } from './stamp-marks.ts';
 import type { StampPaintField } from './stamp-paint-field.ts';
@@ -128,7 +128,7 @@ export const stampGuidedMarks = defineStampTechnique<StampGuidedMarksOptions, { 
 });
 
 /** A face of a faceted form: its region, and which way it faces (`facing`, as a light's direction and elevation). */
-export type StampFormFace = { id: string; region: StampRegion; facing: StampFormLight };
+export type StampFormFace = { id: string; region: StampRegion; facing: PaintLight };
 /** How lit a face is: Lambert's term against the light. `lit` from `bands.lit` up, `half` from `bands.half`, else `shade`. */
 export type StampFormValue = 'lit' | 'half' | 'shade';
 
@@ -141,7 +141,7 @@ export type StampChargedFormOptions = StampToolOptions & {
   model:
     | { kind: 'ellipsoid'; outline: StampRegion; ellipse?: StampFormEllipse; terminator?: number; half?: number }
     | { kind: 'faces'; outline: StampRegion; faces: readonly StampFormFace[]; bands?: { lit: number; half: number } };
-  light: StampFormLight;
+  light: PaintLight;
   wells?: { lit?: StampWell; half?: StampWell; shade?: StampWell; core?: StampWell; undercut?: StampWell };
   /** Where the core runs: an ellipsoid's is derived when left out, a faceted form's only where given. */
   core?: readonly (readonly StampPoint[])[];
@@ -156,10 +156,10 @@ export type StampChargedFormOptions = StampToolOptions & {
 const STAMP_FACE_BANDS = { lit: 0.6, half: 0.3 };
 
 /** A unit vector pointing as `facing` says: in the picture plane toward `direction`, `elevation` toward the viewer. */
-const facingVector = ({ direction, elevation }: StampFormLight) => [Math.cos(elevation) * Math.cos(direction), Math.cos(elevation) * Math.sin(direction), Math.sin(elevation)];
+const facingVector = ({ direction, elevation }: PaintLight) => [Math.cos(elevation) * Math.cos(direction), Math.cos(elevation) * Math.sin(direction), Math.sin(elevation)];
 
 /** Each face's value under `light`, by Lambert's law over its facing, banded by `bands`. */
-export function stampFaceValues(faces: readonly StampFormFace[], light: StampFormLight, bands = STAMP_FACE_BANDS): { id: string; light: number; value: StampFormValue }[] {
+export function stampFaceValues(faces: readonly StampFormFace[], light: PaintLight, bands = STAMP_FACE_BANDS): { id: string; light: number; value: StampFormValue }[] {
   const toward = facingVector(light);
   return faces.map(({ id, facing }) => {
     const normal = facingVector(facing), lambert = Math.max(0, normal.reduce((sum, n, i) => sum + n * toward[i], 0));

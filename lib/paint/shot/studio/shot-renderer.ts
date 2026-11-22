@@ -154,7 +154,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
     // Only three sources read painted textures, so a shot without one draws none.
     const textures = threeSources.length ? createShotPaintedTextures(owner, shot.paintedTextures, { brushOf, costs }) : null;
     if (textures) made.push(textures);
-    const three = textures && (await loadPaintedThreeSources(owner, camera, threeSources, textures));
+    const three = textures && (await loadPaintedThreeSources(owner, camera, shot.light, threeSources, textures));
     if (three) made.push(three);
     const pictures = loadStampPictureSources(webgpu, new Map(shot.planes.flatMap((plane) => (plane.kind === 'picture'
       ? [[plane.id, (moment: PaintMoment) => plane.source.pictureAt(paintNodeTimeAt(plane.sourceClock, moment, sourceFps))] as const]

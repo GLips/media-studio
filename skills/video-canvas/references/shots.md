@@ -16,11 +16,14 @@ is charged, a mark there or not. A property that sweeps through a shot is a pain
 ## A shot is a camera and planes
 
 ```
-PaintedShotProps {camera, span, planes, paintedTextures?, warm?}
+PaintedShotProps {camera, span, light?, planes, paintedTextures?, warm?}
 ```
 
 - `span` is the scene seconds its frames show: `sceneSecondsOf(clock).span`. Every value is sampled at its frames
   and their shutters' ends, for what the shot checks and warns of; a render refuses a span not its scene's.
+- `light` is the world's one light for the whole shot (a `PaintLight`, `{direction, elevation}`, not a value in time;
+  `PAPER_KEY_LIGHT`, upper left, when left out). It lights cards and three sources (`paintWorldLightDirection` aims a
+  `DirectionalLight` by it); a painting's shading shares it only by importing the same constant from a model file.
 - A plane's entry says everything about it: what and where (`source`, `lay`, `depth`), `visibility`, its own motion
   node (`pivot`, `pins`, `marks`, `glow`, `plays`, held by `clock`), and under `occurrences`, by layer or group key,
   what each layer or group it shows does. A play is written under the node it moves; only the camera's plays sit on

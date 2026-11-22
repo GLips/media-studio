@@ -16,6 +16,7 @@ import { paintSecondsText, paintSpanFrames, paintSpanMoments, paintSpanProblem }
 import { presentationValueAt, type PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
 import type { PaintingBrushOf } from '#lib/paint/document/models/painting-deposit-compile.ts';
 import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
+import { PAPER_KEY_LIGHT, paintLightProblem, type PaintLight } from '#lib/paint/painting/models/stamp-form.ts';
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { paintMoment, type PaintMoment, type StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
@@ -75,7 +76,7 @@ export type CompiledShotPlane = CompiledShotPaintedPlane | CompiledShotSourcePla
 /**
  * A shot compiled: its planes far to near, the back first; its instanced planes; both as `written`, which a frame
  * orders with its items; its canvas count; `clearBack`: the back is clear where it lays nothing, over HTML; its
- * motion, rigs, visibility by occurrence, masks' graph, camera, span, warm span (null: none) and painted textures.
+ * motion, rigs, visibility by occurrence, masks' graph, camera, light, span, warm span (null: none) and painted textures.
  */
 export type CompiledPaintedShot = {
   readonly span: SceneShownSpan;
@@ -89,6 +90,7 @@ export type CompiledPaintedShot = {
   readonly visibility: ReadonlyMap<OccurrenceKey, PresentationValue<number>>;
   readonly masks: ShotMaskGraph;
   readonly camera: PaintCamera;
+  readonly light: PaintLight;
   readonly warm: ShotWarm | null;
   readonly paintedTextures: readonly CompiledShotPaintedTexture[];
 };
@@ -265,6 +267,8 @@ export function compilePaintedShot(
   if (props.warm) problems.push(...shotWarmProblems(props.warm));
   const spanProblem = paintSpanProblem(props.span);
   if (spanProblem) problems.push(shotError('shot', 'span', spanProblem));
+  const lightProblem = props.light && paintLightProblem(props.light);
+  if (lightProblem) problems.push(shotError('shot', 'light', lightProblem));
   canvases.forEach((name, index) => {
     if (canvases.indexOf(name) !== index) problems.push(shotError('shot', 'canvas', `names two of its canvases ${name}: each PaintedShotCanvas takes a name of its own`));
   });
@@ -349,7 +353,7 @@ export function compilePaintedShot(
   if (laidProblems.length) return answer(null, laidProblems);
   const shot: CompiledPaintedShot = {
     span: props.span, planes: covered.planes, instanced, written: props.planes, canvases: Math.max(1, canvases.length), clearBack, motion: motion.motion, rigs,
-    visibility, masks: masks.graph, camera: built.camera, warm: props.warm ?? null,
+    visibility, masks: masks.graph, camera: built.camera, light: props.light ?? PAPER_KEY_LIGHT, warm: props.warm ?? null,
     paintedTextures: textures.textures,
   };
   return answer(shot, [...problems, ...warnings, ...shotMotionWarnings(shot, frames)]);

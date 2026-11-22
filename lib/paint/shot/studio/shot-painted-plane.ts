@@ -294,7 +294,7 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
           share, plan, pieces,
           frame: {
             document: { width: widthPx, height: heightPx, periods }, lays: share.lays, films, reveals: plan.reveals, steps: plan.steps, ground: plan.ground, fades: plan.fades,
-            masks: plan.masks, reads: plan.reads,
+            masks: plan.masks, reads: plan.reads, light: shot.light,
           },
         };
       }));

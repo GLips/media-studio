@@ -12,18 +12,34 @@ import { stampDistanceGrid, stampGridContours, stampPolygonBox, stampPolygonDist
 export type StampFormEllipse = { x: number; y: number; radiusX: number; radiusY: number; rotation: number };
 
 /**
- * Where the light comes from. `direction`: radians in the picture plane toward the light (0 to the right, π/2 down,
+ * Where the light comes from, a rounded form's or a shot's. `direction`: radians in the picture plane toward the light (0 to the right, π/2 down,
  * as the painting's y runs). `elevation`: radians from the picture plane toward the viewer, π/2 lighting the form
  * from the front, 0 grazing it from the side, below 0 from behind it.
  */
-export type StampFormLight = { direction: number; elevation: number };
+export type PaintLight = { direction: number; elevation: number };
+
+// The papercraft key: 55° off the camera's axis toward screen-left, 50° up. As a unit vector (x right, y down, z toward
+// the viewer) that's (−sin55·cos50, −sin50, cos55·cos50) ≈ (−0.527, −0.766, 0.369): direction atan2(y, x) ≈ −2.17,
+// upper left; elevation asin(z) ≈ 0.378, about 21.6° off the picture plane.
+const PAPER_KEY_AZIMUTH = (55 * Math.PI) / 180, PAPER_KEY_HEIGHT = (50 * Math.PI) / 180;
+
+/** Why `light` can't light anything, as a clause after its name (null: it can): a direction not finite, or an elevation outside -π/2..π/2. */
+export function paintLightProblem(light: PaintLight): string | null {
+  return Math.abs(light.elevation) <= Math.PI / 2 && Number.isFinite(light.direction) ? null : `needs a finite direction and an elevation of -π/2..π/2, not ${JSON.stringify(light)}`;
+}
+
+/** The light a shot naming none is lit by: a papercraft key from the upper left, low across the picture plane. */
+export const PAPER_KEY_LIGHT: PaintLight = {
+  direction: Math.atan2(-Math.sin(PAPER_KEY_HEIGHT), -Math.sin(PAPER_KEY_AZIMUTH) * Math.cos(PAPER_KEY_HEIGHT)),
+  elevation: Math.asin(Math.cos(PAPER_KEY_AZIMUTH) * Math.cos(PAPER_KEY_HEIGHT)),
+};
 
 /**
  * A rounded form to shade. `outline`: its silhouette, which shade and lit edges keep to. `ellipse`: the form's
  * ellipsoid, fitted to the outline by its moments when left out. `terminator`: the light (0..1 Lambert) below which
  * it's in shade, 0 when left out: where the light grazes it.
  */
-export type StampRoundedFormSettings = { outline: StampRegion; ellipse?: StampFormEllipse; light: StampFormLight; terminator?: number };
+export type StampRoundedFormSettings = { outline: StampRegion; ellipse?: StampFormEllipse; light: PaintLight; terminator?: number };
 
 /** A rounded form's guides, and the ellipse it was assumed over. */
 export type StampRoundedForm = {
@@ -50,7 +66,8 @@ export function stampRoundedForm({ outline, ellipse: given, light, terminator = 
   if (![ellipse.x, ellipse.y, ellipse.rotation].every(Number.isFinite) || !(ellipse.radiusX > 0 && ellipse.radiusY > 0 && Number.isFinite(ellipse.radiusX * ellipse.radiusY))) {
     throw new Error(`stamp paint: a rounded form needs an ellipse of finite place and positive radii, not ${JSON.stringify(ellipse)}`);
   }
-  if (!(Math.abs(light.elevation) <= Math.PI / 2 && Number.isFinite(light.direction))) throw new Error(`stamp paint: a rounded form's light needs a finite direction and an elevation of -π/2..π/2, not ${JSON.stringify(light)}`);
+  const lightProblem = paintLightProblem(light);
+  if (lightProblem) throw new Error(`stamp paint: a rounded form's light ${lightProblem}`);
   if (!(terminator > -1 && terminator < 1)) throw new Error(`stamp paint: a rounded form's terminator is a light between -1 and 1, not ${terminator}`);
   const lambert = stampEllipsoidLambert(ellipse, light);
   const shorter = Math.min(ellipse.radiusX, ellipse.radiusY), cell = Math.max(1, shorter / FORM_GRID_CELLS);
@@ -96,7 +113,7 @@ export function stampFittedEllipse(polygon: readonly StampPoint[]): StampFormEll
  * The Lambert term (unclipped, -1..1) at a point of `ellipse`'s ellipsoid, its depth the shorter radius; past its rim,
  * the rim's nearest normal, so the light carries on smoothly to an outline the ellipse doesn't quite cover.
  */
-function stampEllipsoidLambert({ x: ex, y: ey, radiusX: a, radiusY: b, rotation }: StampFormEllipse, { direction, elevation }: StampFormLight) {
+function stampEllipsoidLambert({ x: ex, y: ey, radiusX: a, radiusY: b, rotation }: StampFormEllipse, { direction, elevation }: PaintLight) {
   const c = Math.min(a, b), cos = Math.cos(rotation), sin = Math.sin(rotation);
   const flat = Math.cos(elevation), toward = [flat * Math.cos(direction), flat * Math.sin(direction), Math.sin(elevation)];
   return (x: number, y: number) => {

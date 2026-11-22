@@ -6,6 +6,7 @@
 // lies d·depthUnit away, depthUnit the rest lens's focal length in px. The fov sets how deep the world looks, never
 // where a plane lands.
 
+import type { PaintLight } from '#lib/paint/painting/models/stamp-form.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { shotCameraRolled, type ShotCamera } from '#lib/picture/shot-camera/models/shot-camera.ts';
 import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
@@ -42,6 +43,19 @@ export type PaintWorldPlane = { readonly depth: number; readonly point: (point: 
 /** `world`'s plane at `depth`, so whatever lies on it is placed and sized by its depth stated once. */
 export const paintWorldPlane = (world: PaintCameraWorld, depth: number): PaintWorldPlane =>
   ({ depth, point: (point) => paintPlaneWorldPoint(world, point, depth), length: (px) => worldUnits(px * depth) });
+
+/** A unit vector in the world, three's axes: x right, y up, z toward the camera at rest. */
+export type PaintWorldDirection = { readonly x: number; readonly y: number; readonly z: number };
+
+/**
+ * The world-space direction toward `light`, for a three.js DirectionalLight placed along it from its target. The light
+ * is the world's: a camera's pan, dolly or roll moves the view, never this.
+ */
+export function paintWorldLightDirection({ direction, elevation }: PaintLight): PaintWorldDirection {
+  // The light's picture-plane y runs down as the painting's does, the world's up; toward the viewer is the world's +z.
+  const across = Math.cos(elevation);
+  return { x: across * Math.cos(direction), y: -across * Math.sin(direction), z: Math.sin(elevation) };
+}
 
 /** How deep a three.js source sees, in depth units: its content lies between, and anything nearer than `near` is cut. */
 export const PAINT_WORLD_DEPTH_RANGE = { near: 0.02, far: 200 } as const;

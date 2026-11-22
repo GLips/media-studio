@@ -10,6 +10,7 @@ import type { PaintBoilMarks, PaintMotionNode, PaintMotionPlay } from '#lib/pain
 import type { PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
 import type { NodeKey } from '#lib/paint/document/models/painting-document.ts';
 import type { PaintMoment, StampGroupGlow, StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import type { PaintLight } from '#lib/paint/painting/models/stamp-form.ts';
 import type { StampPictureAt, StampPlaneExtent } from '#lib/paint/painting/models/stamp-plane.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import type { PaintRigCutDeclaration } from '#lib/paint/rig/models/paint-rig-cuts.ts';
@@ -193,6 +194,8 @@ export type PaintedTexture = { readonly id: string; readonly source: Presentatio
 export type PaintedShotProps = {
   readonly camera: PaintShotCamera;
   readonly span: SceneShownSpan;
+  /** The world's one light, beside the camera so a roll doesn't swing it; PAPER_KEY_LIGHT when left out. */
+  readonly light?: PaintLight;
   readonly planes: readonly (PlaneProps | InstancedPlaneProps)[];
   readonly paintedTextures?: readonly PaintedTexture[];
   readonly warm?: { readonly from: number; readonly to: number };

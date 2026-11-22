@@ -10,6 +10,7 @@
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 import type { StampPixelBox } from '#lib/paint/painting/models/stamp-blur-region.ts';
+import type { PaintLight } from '#lib/paint/painting/models/stamp-form.ts';
 import type { StampFilmRevealLinks } from '#lib/paint/painting/models/stamp-reveal.ts';
 import { stampBoxUnion, stampStageTexelsOf, stampStageTexelsWithin, stampStageWgsl, type StampStage, type StampWrapPeriods } from '#lib/paint/painting/models/stamp-stage.ts';
 import { createStampLatticePass, STAMP_LATTICE_VERTEX_FLOATS, type StampLatticePass, type StampLatticeSpan } from '#lib/paint/painting/studio/stamp-lattice-pass.ts';
@@ -48,6 +49,8 @@ export type ShotSheetsLayFrame = {
   readonly pieces: ReadonlyMap<string, ShotPiecesDrawn>;
   readonly masks: readonly ShotMaskAt[];
   readonly reads: readonly ShotPlaneRead[];
+  /** The shot's light, in plane px, so a card turning keeps it where the world has it. */
+  readonly light: PaintLight;
 };
 
 /** A frame's alphaOf mask as its lay multiplies it in: its drawable's coverage (null: it covers nothing). */

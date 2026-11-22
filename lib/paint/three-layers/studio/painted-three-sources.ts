@@ -18,6 +18,7 @@ import { createLensThreeMotion, LENS_THREE_MOTION_NAME, type LensThreeMotion } f
 import { setThreeShotCamera } from '#lib/picture/shot-camera/studio/three-shot-camera.ts';
 import { paintCameraWorld, paintWorldPlane, type PaintCameraWorld, type PaintWorldPlane } from '#lib/paint/animation/models/paint-camera-world.ts';
 import type { PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
+import { PAPER_KEY_LIGHT, type PaintLight } from '#lib/paint/painting/models/stamp-form.ts';
 import { paintMoment, type PaintMoment, type StampPaintFrameAt } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampLensSource, StampLensSourceExposure } from '#lib/paint/painting/studio/stamp-lens-source.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
@@ -52,7 +53,11 @@ export type PaintedThreeTexture = {
  * and size what it shows by it), each painted texture by id, and `frame`, the px it renders: the stage's frame grown
  * on every side by its plane's defocus margin, which `screenUV` spans in its render.
  */
-export type PaintedThreeSourceTools = { world: PaintCameraWorld; plane: PaintWorldPlane; textures: ReadonlyMap<string, ExternalTexture>; frame: FrameSize };
+export type PaintedThreeSourceTools = {
+  world: PaintCameraWorld; plane: PaintWorldPlane; textures: ReadonlyMap<string, ExternalTexture>; frame: FrameSize;
+  /** The shot's light: paintWorldLightDirection aims a DirectionalLight by it. */
+  light: PaintLight;
+};
 
 /**
  * A scene a source renders through `camera` into a target of its own before its own scene, each render, for its
@@ -131,7 +136,8 @@ export async function loadPaintedThree(owner: StampPaintGpuOwner, camera: PaintC
     const update = async (t: number) => {
       await Promise.all(painted.map(({ texture, renderer }) => renderer.draw({ kind: 'once', t, state: texture.frameAt?.(paintMoment(t)) })));
     };
-    const loaded = await loadPaintedThreeSources(owner, camera, three.sources, { handles: painted.map(({ handle }) => handle), update });
+    // A StampPainting has no shot to name a light, so its sources are lit as a shot naming none is.
+    const loaded = await loadPaintedThreeSources(owner, camera, PAPER_KEY_LIGHT, three.sources, { handles: painted.map(({ handle }) => handle), update });
     return {
       sources: loaded.sources,
       dispose: () => {
@@ -182,11 +188,13 @@ function drawPaintedThreeSource(renderer: WebGPURenderer, { built, shadowsOn, ca
 }
 
 /**
- * Loads `sources` on `owner`'s device for `camera`'s three planes, a source for each and none else, their materials
- * reading the `supplied` painted textures. Refuses a source with no three plane in the camera, and a three plane with
+ * Loads `sources` on `owner`'s device for `camera`'s three planes, a source for each and none else, built under
+ * `light`, their materials reading the `supplied` painted textures. Refuses a source with no three plane in the camera, and a three plane with
  * no source.
  */
-export async function loadPaintedThreeSources(owner: StampPaintGpuOwner, camera: PaintCamera, sources: readonly PaintedThreeSource[], supplied: PaintedThreeTexturesSupplied): Promise<PaintedThreeLoaded> {
+export async function loadPaintedThreeSources(
+  owner: StampPaintGpuOwner, camera: PaintCamera, light: PaintLight, sources: readonly PaintedThreeSource[], supplied: PaintedThreeTexturesSupplied,
+): Promise<PaintedThreeLoaded> {
   const threePlanes = new Map(camera.planes.flatMap((plane) => (plane.kind === 'three' ? [[plane.id, plane] as const] : [])));
   const sourced = sources.map((source) => {
     const plane = threePlanes.get(source.id);
@@ -228,7 +236,7 @@ export async function loadPaintedThreeSources(owner: StampPaintGpuOwner, camera:
       return sourced.map(({ source, plane: { depth, margin } }) => {
         // The frame grown on every side by the plane's margin, so its defocus has what lies past the frame's edge.
         const w = frame.width + 2 * margin, h = frame.height + 2 * margin;
-        const built = source.build({ world, plane: paintWorldPlane(world, depth), textures, frame: { width: w, height: h } });
+        const built = source.build({ world, plane: paintWorldPlane(world, depth), textures, frame: { width: w, height: h }, light });
         made.push(built);
         const shadowsOn = createPaintedThreeShadowsOn(source.id, [built.scene, ...(built.offscreen ?? []).map(({ scene }) => scene)], built.shadows);
         const shotAt = (moment: PaintMoment, aperture: StampLensSourceExposure['aperture'] | null = null) => paintedThreeShotCamera(camera, world, margin, moment, aperture);

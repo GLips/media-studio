@@ -96,7 +96,7 @@ export { compileStampWetness } from '#lib/paint/painting/models/stamp-wash-waits
 export { assertStampWetEffects, stampWetReport, stampWetReportStrictFailures, stampWetReportWarnings, type StampWetReport, type StampWetReportDrying, type StampWetReportEffect, type StampWetReportTouch, type StampWetReportWait, type StampWetReportWash } from '#lib/paint/painting/models/stamp-wet-report.ts';
 export { stampRegionOutline, stampSmoothRegion, type StampFillApplication } from '#lib/paint/painting/models/stamp-fill.ts';
 export { STAMP_FILL_PATTERNS, stampFillMarks, stampFillStrokePath, type StampFillGuides, type StampFillMark, type StampFillPattern, type StampFillReach, type StampFillStrokes, type StampFillTurns, type StampGuide } from '#lib/paint/painting/models/stamp-fill-strokes.ts';
-export { stampFittedEllipse, stampRoundedForm, type StampFormEllipse, type StampFormLight, type StampRoundedForm, type StampRoundedFormSettings } from '#lib/paint/painting/models/stamp-form.ts';
+export { PAPER_KEY_LIGHT, stampFittedEllipse, stampRoundedForm, type PaintLight, type StampFormEllipse, type StampRoundedForm, type StampRoundedFormSettings } from '#lib/paint/painting/models/stamp-form.ts';
 export type { StampEdge, StampPoint, StampRegion } from '#lib/paint/painting/models/stamp-region.ts';
 export type { StampArea, StampStandsBefore, StampWithin } from '#lib/paint/painting/models/stamp-area.ts';
 export type { StampBoundaries, StampBoundary, StampBoundaryTreatment } from '#lib/paint/painting/models/stamp-area-boundaries.ts';
@@ -142,6 +142,7 @@ export { StampPainting } from '#lib/paint/style/studio/stamp-painting.tsx';
 export type { StampPictureAt, StampPictureRgba, StampPlane, StampPlaneSource } from '#lib/paint/painting/models/stamp-plane.ts';
 export type { PaintedThree, PaintedThreeOffscreenPass, PaintedThreeSource, PaintedThreeSourceScene, PaintedThreeSourceTools, PaintedThreeTexture } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
 export { paintedThreeColorNode } from '#lib/paint/three-layers/studio/painted-three-material.ts';
+export { paintWorldLightDirection, type PaintWorldDirection } from '#lib/paint/animation/models/paint-camera-world.ts';
 export { setThreeMirrorCamera } from '#lib/picture/shot-camera/studio/three-mirror-camera.ts';
 export type { PaintedThreeShadows } from '#lib/paint/three-layers/studio/painted-three-shadows.ts';
 // Painting sources (the video-canvas skill): a `*.painting.ts` factory returns a PaintingDocument, whose types a

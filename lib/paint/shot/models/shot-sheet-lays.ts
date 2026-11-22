@@ -380,10 +380,10 @@ export function shotPlaneLayPlan(input: ShotPlaneLayInput, moment: ShotMomentAt)
   const visibility = plane.opaqueBack ? 1 : shotVisibilityAt(shot, plane.id, plane.id, at), emits = steps.some((step) => step?.glow && step.opacity > 0);
   const travels = !!shutter && ((ground?.kind === 'placed' && latticeTravels(ground.lattice)) || steps.some((step) => step && step.lay.kind !== 'pieces' && latticeTravels(step.lay.lattice)) || pieces.some((each) => each.travels));
   // All the lay reads: the compile and its films, every pose at the moment and the shutter's ends, how much shows of
-  // what, the ground, the pieces, the masks and the drawables read. The stage's own store keeps the pictures. Reveals
-  // are the compile's, so only the time each shows at and where it lies are new.
+  // what, the ground, the pieces, the masks and the drawables read, and the light. The stage's own store keeps the
+  // pictures. Reveals are the compile's, so only when each shows and where it lies are new.
   const key = JSON.stringify([
-    plane.id, plane.opaqueBack, compileId(compiled), films.map((sheet) => sheet.map((film) => film.key)), posesText(solved), planeAtText(atMoment),
+    plane.id, plane.opaqueBack, shot.light, compileId(compiled), films.map((sheet) => sheet.map((film) => film.key)), posesText(solved), planeAtText(atMoment),
     reveals.map((sheet) => sheet.map((film) => film.map(({ toRest, at: shownAt }) => [toRest, shownAt]))),
     shutterAt && [planeAtText(shutterAt.open), planeAtText(shutterAt.close)], [...hidden], steps.map((step) => step && [step.opacity, step.glow, step.lay.kind === 'card' && step.lay.films]), fades,
     ground && (ground.kind === 'stage' ? 'stage' : ground.box), pieces.map((each) => [
