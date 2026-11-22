@@ -22,6 +22,7 @@ export { wordPopCaptionBand, wordPopCaptions } from '#lib/picture/captions/studi
 export { FilmGrain, Vignette } from '#lib/picture/film/studio/grade.tsx';
 export { ClickToBlur, ConfirmDialog, DrawPath, EndCard, GlassCard, MotionTitle, NativeMenu, ODOMETER_DIGIT_EM, Odometer, Phone, SPLIT_LABEL_STRIP, SectionCard, SplitCompare, WordReveal, phoneView, splitLeftRect, splitRightRect, wordRevealFinish, type OdometerMode, type OdometerProps, type SplitSide, type WordRevealTiming } from '#lib/picture/kit/studio/kit.tsx';
 export { backOutEase, clamp, lerp, motionCurves, motionDurations, off, on, perceptualSpring, powerOutEase, seg, sineInOutEase, stagger, staggerFinish, type CurveRoles, type EaseFn, type PerceptualSpring, type StaggerFrom, type StaggerTiming } from '#lib/picture/motion/models/motion.ts';
+export { CONTACT_SHARPNESS, STRAIN_ROUND, contactLoad, mixStrain, scaleStrain, strainAbout, strainAffine, strainAlong, strainAlongPath, strainAlongVelocity, strainCssMatrix, strainEllipse, strainExtent, strainMatrix, strainMatrix3, strainOfContact, strainOfLift, type Strain } from '#lib/picture/motion/models/strain.ts';
 export { ShutterBlur } from '#lib/picture/film/studio/motion-blur.tsx';
 export { REEL_SHUTTER, shutterOpensAt, shutterTravel, smearSigma } from '#lib/picture/lens/models/lens-shutter.ts';
 export { motionAttrs, motionEchoAttrs, pieceMotionAttrs, unmeasuredAttrs, useMotionTag, type MotionTag } from '#lib/picture/measurement/studio/motion-tag.ts';
@@ -32,6 +33,8 @@ export { hashRandom, randomSeedFromKey, seededRandom } from '#lib/picture/motion
 export { BounceBall, FieldSwell, type BounceCallout } from '#lib/picture/reel/studio/bounce.tsx';
 export { bouncingBallAt, type BallLaunch, type BallPhase, type BallPose, type BounceParams, type BounceTiming } from '#lib/picture/reel/models/bounce.ts';
 export { fieldSwellAt, type FieldSwellOptions, type SwellFrom, type SwellPose } from '#lib/picture/reel/models/bounce-swell.ts';
+export { DropWord } from '#lib/picture/reel/studio/letter-drop.tsx';
+export { letterDropAt, letterDropDuration, type LetterDropOptions, type LetterDropPose } from '#lib/picture/reel/models/letter-drop.ts';
 export { CapturePlane, type CapturePlaneProps } from '#lib/picture/reel/studio/capture-plane.tsx';
 export { PLANE_REST_POSE, capturePlaneProjection, capturePlaneView, lerpPlanePose, planeLiftStart, type CapturePlaneProjection, type PlaneLift, type PlanePose } from '#lib/picture/reel/models/capture-plane.ts';
 export { ColumnField, type ColumnFieldProps } from '#lib/picture/reel/studio/column-field.tsx';

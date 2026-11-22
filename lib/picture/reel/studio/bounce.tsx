@@ -5,7 +5,8 @@
 
 import { MONO_FONT } from '#lib/picture/type/models/faces.ts';
 import { clamp, motionCurves } from '#lib/picture/motion/models/motion.ts';
-import { DEG, REF_F, shapeOfStrain, smoothstep } from '../models/bounce-shape.ts';
+import { strainEllipse } from '#lib/picture/motion/models/strain.ts';
+import { DEG, REF_F, smoothstep } from '../models/bounce-units.ts';
 import { SWELL_TIME, fieldSwellAt, swellCentres, type FieldSwellOptions, type SwellPose } from '../models/bounce-swell.ts';
 import {
   ballEllipse, bounceModel, contactTime, contactX, groundDents, guidePath, launchSwell, markEase, rawPoseAt, shutterCentres,
@@ -218,7 +219,7 @@ export function BounceBall(props: BounceParams & {
           );
         })}
         {drawBall && (
-          <g {...ballTag(shapeOfStrain(pose.s).aspect, 0)} style={{ isolation: 'isolate' }}>
+          <g {...ballTag(strainEllipse(pose.s).aspect, 0)} style={{ isolation: 'isolate' }}>
             {centres.map((at, j) => (
               <ellipse key={j} {...ballEllipse(pose, at)} fill={color} opacity={1 / centres.length} style={centres.length > 1 ? { mixBlendMode: 'plus-lighter' } : undefined} />
             ))}

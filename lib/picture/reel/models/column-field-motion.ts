@@ -4,6 +4,7 @@
 import { Matrix4, Quaternion, Vector3 } from 'three';
 import { fullFrameRect, type FrameSize } from '#lib/picture/frame/models/frame.ts';
 import { clamp, lerp, sineInOutEase } from '#lib/picture/motion/models/motion.ts';
+import { strainMatrix3 } from '#lib/picture/motion/models/strain.ts';
 import { shotCameraFocalPx, shotCameraFromAxes } from '#lib/picture/shot-camera/models/shot-camera.ts';
 import { columnFieldPoint, type ColumnBall, type ColumnBallState, type ColumnCameraMove, type ColumnCameraPose, type ColumnCameraState, type ColumnCell, type ColumnFieldSpec } from './column-field.ts';
 
@@ -146,7 +147,7 @@ export function columnBallAt<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: 
     // Squashed about the point it rests on: deepest a third of the way through the contact, round again by its end.
     const s = contact.squash * Math.sin(Math.PI * ((t - contact.t0) / (contact.t1 - contact.t0)) ** 0.7) ** 2;
     const position = new Vector3(...columnFieldPoint(spec, t, contact.cell, r * (1 - s)));
-    const matrix = new Matrix4().makeTranslation(position).multiply(new Matrix4().makeScale(1 + s / 2, 1 - s, 1 + s / 2)).multiply(roll);
+    const matrix = new Matrix4().makeTranslation(position).multiply(ballStrainMatrix(Math.log(1 - s), worldUp())).multiply(roll);
     return { position, velocity: new Vector3(), matrix, squash: s, radius: r };
   }
   const flight = path.flights.find((f) => t >= f.t0 && t <= f.t1)!;
@@ -154,11 +155,16 @@ export function columnBallAt<C extends ColumnCell>(spec: ColumnFieldSpec<C>, t: 
   const position = flight.p0.clone().addScaledVector(flight.v0, dt).addScaledVector(worldUp(), -0.5 * g * dt * dt);
   const velocity = flight.v0.clone().addScaledVector(worldUp(), -g * dt);
   const speed = velocity.length();
-  const along = 1 + (ball.stretch ?? 0.12) * Math.min(speed / 50, 1.5), across = 1 / Math.sqrt(along);
-  const toPath = new Quaternion().setFromUnitVectors(worldUp(), speed > 1e-6 ? velocity.clone().divideScalar(speed) : worldUp());
-  const stretch = new Matrix4().makeRotationFromQuaternion(toPath).multiply(new Matrix4().makeScale(across, along, across)).multiply(new Matrix4().makeRotationFromQuaternion(toPath.clone().invert()));
+  const along = 1 + (ball.stretch ?? 0.12) * Math.min(speed / 50, 1.5);
+  const stretch = ballStrainMatrix(Math.log(along), speed > 1e-6 ? velocity.clone().divideScalar(speed) : worldUp());
   const matrix = new Matrix4().makeTranslation(position).multiply(stretch).multiply(roll);
   return { position, velocity, matrix, squash: 0, radius: r };
+}
+
+/** The ball's squash or stretch along `axis` as a three.js matrix: volume-keeping, so a squash bulges as it flattens. */
+function ballStrainMatrix(logStretch: number, axis: Vector3) {
+  const [a, b, c, d, e, f, g, h, i] = strainMatrix3(logStretch, axis);
+  return new Matrix4().set(a, b, c, 0, d, e, f, 0, g, h, i, 0, 0, 0, 0, 1);
 }
 
 /**

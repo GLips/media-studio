@@ -3,7 +3,7 @@
 // Each source is decoded once per command: one ffmpeg pass selects every frame the command needs, however many.
 import { copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import { tileLabelledImages } from '#lib/platform/ffmpeg/engine/contact-sheet.ts';
+import { tileLabelledImages } from '#lib/platform/raster/engine/contact-sheet.ts';
 import { formatFrameMotion, type MotionClock } from './frame-motion.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import type { RenderSession } from '#lib/output/render/engine/render-session.ts';
@@ -134,7 +134,7 @@ export async function lookFrameSheet(source: OpenLookSource, frames: number[], {
     const input = await inputFor(source, frames, crop ? source.width : w);
     runFilterGraph([input], `[0:v]${input.chain},${cropFilter(crop)}scale=${w}:${h}[t]`, [imagesOut('t', join(work, 't'))]);
     const files = readImages(join(work, 't'), frames);
-    tileLabelledImages(frames.map((f, i) => ({ file: files[i], label: frameLabel(f, source.fps) })), out, { cols, w, h });
+    await tileLabelledImages(frames.map((f, i) => ({ file: files[i], label: frameLabel(f, source.fps) })), out, { cols, w, h });
   });
   return [`${source.name}: ${frames.length} frames, ${cols}×${Math.ceil(frames.length / cols)}`, out];
 }
@@ -176,7 +176,7 @@ export async function lookAgainst(before: OpenLookSource, after: OpenLookSource,
 
     const rows = frames.map((_, i) => i);
     const shown = rows.length <= MAX_AGAINST_ROWS ? rows : rows.toSorted((x, y) => changed[y] - changed[x]).slice(0, MAX_AGAINST_ROWS).toSorted((x, y) => x - y);
-    tileLabelledImages(shown.flatMap((i) => [
+    await tileLabelledImages(shown.flatMap((i) => [
       { file: a[i], label: `${frames[i]} before` }, { file: b[i], label: `${frames[i]} after` }, { file: m[i], label: `${frames[i]} changed: ${describe(i)}` },
     ]), out, { cols: 3 * cols, w, h });
     const countsFile = out.replace(/\.[^./]+$/, '') + '.txt';

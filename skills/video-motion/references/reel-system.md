@@ -100,8 +100,8 @@ reaches it, plated where the ground is mixed. Where the tone is wrong a part van
 
 | Bar | Device | Pieces |
 |---|---|---|
-| 1 Squash & stretch | A ball bouncing on a baseline that rings like a string, callouts typed in, then swelling to fill the frame with the next ground | `BounceBall`, `bouncingBallAt`, `FieldSwell` |
-| 2 Kinetic type | One word a beat, each its own mechanism and ground: rise through a mask, weight sweep in a selection box, slant into a zooming tittle, scramble with glitches, out on a CRT collapse | `RiseWord`, `WeightWord`, `SelectionBox`, `SlantWord`, `ScrambleText` |
+| 1 Squash & stretch | A ball bouncing on a baseline that rings like a string, callouts typed in, then swelling to fill the frame with the next ground; anything else wears its squash about a pivot | `BounceBall`, `bouncingBallAt`, `FieldSwell`, `strainOfContact`, `strainCssMatrix` |
+| 2 Kinetic type | One word a beat, each its own mechanism and ground: rise through a mask, letters dropping and squashing on the baseline, weight sweep in a selection box, slant into a zooming tittle, scramble with glitches, out on a CRT collapse | `RiseWord`, `DropWord`, `WeightWord`, `SelectionBox`, `SlantWord`, `ScrambleText` |
 | 3 Generative grid | A 19×11 field of glyphs; each beat a wave (radial, diagonal, inward) morphs every cell into the next shape | `GlyphField`, `FieldFlash`, `ShockRing` |
 | 4 3D / depth | The grid's squares become column tops; the camera cranes into 3D while a ball bounces a beat at a time, then whips out | `ColumnField` on `ThreeStage` |
 | 5 Variable fonts | Seven full-width bands of one word scrolling in turn, breathing between light-condensed and heavy-wide, kicked on each beat | `TickerBands` |

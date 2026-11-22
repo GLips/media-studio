@@ -3,7 +3,8 @@
 
 import type { FrameSize, VideoFormat } from '#lib/picture/frame/models/frame.ts';
 import { clamp, lerp, powerOutEase } from '#lib/picture/motion/models/motion.ts';
-import { DEG, REF_F, scaleStrain, shapeOfStrain, smoothstep, strainOf } from './bounce-shape.ts';
+import { scaleStrain, strainAlong, strainEllipse } from '#lib/picture/motion/models/strain.ts';
+import { DEG, REF_F, smoothstep } from './bounce-units.ts';
 
 // Launch to a covered frame: 17 reference frames, from the last one crouched.
 export const SWELL_TIME = 17 * REF_F;
@@ -66,10 +67,10 @@ export function fieldSwellAt(k: number, { format, from, to = { x: format.width /
   // The stretch lies along the launch (toward where the hop peaks), strongest for a circle that travels far for its size.
   const dx = 0.7 * (to.x - from.x), dy = 0.7 * (to.y - from.y) - 0.84 * lift;
   const reach = clamp(Math.hypot(dx, dy) / (4 * from.r));
-  const along = scaleStrain(strainOf(stretch, Math.atan2(dy, dx)), reach * smoothstep(u / 0.16) * (1 - smoothstep((u - 0.3) / 0.32)));
+  const along = scaleStrain(strainAlong(stretch, Math.atan2(dy, dx)), reach * smoothstep(u / 0.16) * (1 - smoothstep((u - 0.3) / 0.32)));
   // A squashed start (a crouch) springs round within the swell's first frame.
-  const start = scaleStrain(strainOf(from.aspect ?? 1, (from.angle ?? 0) / DEG), 1 - smoothstep(u / 0.07));
-  const { aspect, angle } = shapeOfStrain({ x: along.x + start.x, y: along.y + start.y });
+  const start = scaleStrain(strainAlong(from.aspect ?? 1, (from.angle ?? 0) / DEG), 1 - smoothstep(u / 0.07));
+  const { aspect, angle } = strainEllipse({ x: along.x + start.x, y: along.y + start.y });
   const soft = Math.max(1, (r * grow * (0.5 + u) * shutter) / (duration * format.fps));
   const covered = k >= 1 || r / Math.sqrt(aspect) - soft / 2 >= farthestCorner(x, y, format);
   return { x, y, r, aspect, angle: angle * DEG, soft, covered };

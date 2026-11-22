@@ -6,7 +6,7 @@
 
 import { rmSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { tileLabelledImages } from '#lib/platform/ffmpeg/engine/contact-sheet.ts';
+import { tileLabelledImages } from '#lib/platform/raster/engine/contact-sheet.ts';
 import {
   beatLabel, buildStudyPlot, detectStudyCuts, formatStudyIndex, measureStudyFrames, parseStudySections, sectionsFromCuts,
   studyBeatGrid, studyPalette, type StudyFrame, type StudyReport, type StudySection,
@@ -65,16 +65,18 @@ export async function studyReel(video: string, { at: stretch, sections: sectionS
   const plots: { svg: string; width: number; height: number; out: string }[] = [];
   const overview = join(out, 'overview.png');
   plots.push({ ...buildStudyPlot({ measures, fps, loudness, grid, cuts, sections, from: at[0], to: at[1] }), out: overview });
-  const sectionFiles = sections.map((s) => {
+  const sectionFiles = await Promise.all(sections.map(async (s) => {
     const dir = join(out, `${String(s.index + 1).padStart(2, '0')}-${s.start.toFixed(2)}-${s.end.toFixed(2)}`);
     const files = { strip: join(dir, 'strip.jpg'), sheet: join(dir, 'sheet.jpg'), vectors: join(dir, 'vectors.jpg'), plot: join(dir, 'plot.png') };
     plots.push({ ...buildStudyPlot({ measures, fps, loudness, grid, cuts, sections, from: s.start, to: s.end }), out: files.plot });
-    renderStrip(video, s, fps, grid, { step: Math.max(1, Math.round(fps / stripFps)), w: 320, cols: 6 }, files.strip);
-    renderStrip(video, s, fps, grid, { step: Math.max(1, Math.round((s.end - s.start) * fps / 12)), w: 640, cols: 3 }, files.sheet);
-    renderStrip(video, s, fps, grid, { step: Math.max(1, Math.round(fps / stripFps) * 2), w: 480, cols: 4, vectors: true }, files.vectors);
+    await Promise.all([
+      renderStrip(video, s, fps, grid, { step: Math.max(1, Math.round(fps / stripFps)), w: 320, cols: 6 }, files.strip),
+      renderStrip(video, s, fps, grid, { step: Math.max(1, Math.round((s.end - s.start) * fps / 12)), w: 640, cols: 3 }, files.sheet),
+      renderStrip(video, s, fps, grid, { step: Math.max(1, Math.round(fps / stripFps) * 2), w: 480, cols: 4, vectors: true }, files.vectors),
+    ]);
     console.error(`section ${s.index + 1}/${sections.length} ${s.label}`);
     return files;
-  });
+  }));
   await rasterizeSvgs(plots);
   const index = join(out, 'index.md');
   writeFileSync(index, `${formatStudyIndex(report, { overview, sections: sectionFiles })}\n`);
@@ -115,8 +117,8 @@ function loudnessPerFrame(samples: Float32Array, fps: number, count: number): nu
  * Every `step`th frame of a section, tiled with each frame's time and bar.beat. With `vectors`, the encoder's motion
  * vectors are drawn on the frames (ffmpeg codecview): where things move, and which way, without an optical-flow pass.
  */
-function renderStrip(video: string, s: StudySection, fps: number, grid: ReturnType<typeof studyBeatGrid>, { step, w, cols, vectors = false }: { step: number; w: number; cols: number; vectors?: boolean }, out: string) {
-  withStudioTemp('reel-study', (dir) => {
+async function renderStrip(video: string, s: StudySection, fps: number, grid: ReturnType<typeof studyBeatGrid>, { step, w, cols, vectors = false }: { step: number; w: number; cols: number; vectors?: boolean }, out: string) {
+  await withStudioTemp('reel-study', async (dir) => {
     const first = Math.round(s.start * fps), count = Math.max(1, Math.round((s.end - s.start) * fps));
     const filters = [...(vectors ? ['codecview=mv=pf+bf+bb'] : []), `select=not(mod(n\\,${step}))`, `scale=${w}:-2`];
     // Seek half a frame early: a seek to first/fps rounded up (1/60 s → 0.0167) skips the first frame and labels every
@@ -125,7 +127,7 @@ function renderStrip(video: string, s: StudySection, fps: number, grid: ReturnTy
       '-frames:v', String(Math.ceil(count / step)), '-vf', filters.join(','), '-fps_mode', 'vfr', '-q:v', '3', join(dir, '%04d.jpg')]);
     const files = readdirSync(dir).filter((f) => f.endsWith('.jpg')).toSorted();
     const h = 2 * Math.round((w * 9) / 16 / 2);
-    tileLabelledImages(files.map((file, k) => {
+    await tileLabelledImages(files.map((file, k) => {
       const t = (first + k * step) / fps;
       return { file: join(dir, file), label: `${t.toFixed(3)}s  ${beatLabel(grid, t)}` };
     }), out, { cols, w, h });

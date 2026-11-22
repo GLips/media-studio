@@ -9,8 +9,9 @@ import type { VideoFormat } from '#lib/picture/frame/models/frame.ts';
 import { clamp, lerp, powerOutEase } from '#lib/picture/motion/models/motion.ts';
 import { hashRandom } from '#lib/picture/motion/models/random.ts';
 import {
-  DEG, REF_F, ROUND, TAU, halfHeight, lawStrain, mixStrain, scaleStrain, shapeOfStrain, strainOf, type Strain,
-} from './bounce-shape.ts';
+  contactLoad, mixStrain, strainAlong, strainAlongVelocity, strainExtent, strainOfContact, strainOfLift, strainEllipse, type Strain,
+} from '#lib/picture/motion/models/strain.ts';
+import { DEG, REF_F, TAU } from './bounce-units.ts';
 import { SWELL_TIME, fieldSwellAt, smearSamples } from './bounce-swell.ts';
 
 // ---------- the reference's measures ----------
@@ -25,8 +26,6 @@ const REF = {
   squash: 3.4,
   stretchPerSpeed: 1 / 6420,
 };
-/** How sharply a landing squashes and recovers: 1 − |u|^1.7 over the contact, u −1 at touch to 1 at lift-off. */
-const HUMP = 1.7;
 /** The shortest crouch a launch waits for by default: two frames at 30 fps. */
 const CROUCH_MIN = 4 * REF_F;
 // The line rings at 6.9 Hz losing 45% a half-cycle (ζ 0.19); its first swing up is 0.6 of the dent it rebounds from.
@@ -34,9 +33,8 @@ const RING_WD = TAU * 6.9;
 const RING_DECAY = (0.19 * RING_WD) / Math.sqrt(1 - 0.19 ** 2);
 const RING_GAIN = 0.6;
 
-/** Leaving the ground the stretch overshoots its law (1.6 against 1.4), dips under, and settles within 0.13 s. */
-const liftSpring = (τ: number) => 1 - Math.exp(-τ / 0.008) + 0.7 * Math.exp(-τ / 0.05) * Math.sin((TAU * τ) / 0.13);
-const hump = (u: number) => 1 - Math.abs(u) ** HUMP;
+/** Straight down the frame: a ball's bottom is its extent this way. */
+const DOWN = { x: 0, y: 1 };
 /** The impact marks' ease-out, fitted to the reference ring's per-frame steps (5, 3, 4, 3, 3, 3, 2, 2, 2, 2, 1 px). */
 export const markEase = powerOutEase(1.5);
 
@@ -162,7 +160,7 @@ export function bounceModel(p: BounceParams, format: VideoFormat): BounceModel {
     if (!(from < groundY - size)) throw new RangeError(`bouncingBallAt: the drop starts at y ${from}, not above the ground`);
     // Falls until its stretched bottom meets the line: the stretch comes from the speed there, found in two steps.
     const T0 = Math.sqrt((2 * (groundY - r - from)) / g);
-    const T = Math.sqrt((2 * (groundY - halfHeight(r, lawStrain(dx / T0, g * T0, k)) - from)) / g);
+    const T = Math.sqrt((2 * (groundY - strainExtent(r, strainAlongVelocity({ x: dx / T0, y: g * T0 }, k), DOWN) - from)) / g);
     drop = { start: ts[0] - half - T, x: x - dx, y: from, dx, T };
   }
 
@@ -170,7 +168,7 @@ export function bounceModel(p: BounceParams, format: VideoFormat): BounceModel {
   if (p.launch) {
     const L = p.launch, pad = ts[n - 1];
     const fill = L.fill ?? pad + spb - 1 / format.fps;
-    const crouch = L.anticipation === false ? null : { squash: strainOf(L.anticipation?.squash ?? 3.9, 0), dent: L.anticipation?.dent ?? 0.139 * size };
+    const crouch = L.anticipation === false ? null : { squash: strainAlong(L.anticipation?.squash ?? 3.9, 0), dent: L.anticipation?.dent ?? 0.139 * size };
     const at = crouch ? (L.at ?? Math.max(pad + CROUCH_MIN, fill - SWELL_TIME)) : pad + half;
     if (crouch && !(at > pad)) throw new RangeError(`bouncingBallAt: the launch leaves the ground at ${at.toFixed(3)} s, not after the last landing's squash at ${pad.toFixed(3)} s`);
     if (!(fill > at)) throw new RangeError(`bouncingBallAt: the launch fills the frame at ${fill.toFixed(3)} s, before it leaves the ground at ${at.toFixed(3)} s`);
@@ -179,7 +177,7 @@ export function bounceModel(p: BounceParams, format: VideoFormat): BounceModel {
 
   return {
     format, ts, n, x, step, groundY, r, half, g, k, spb, drop, launch,
-    squash: strainOf(p.squash ?? REF.squash, 0),
+    squash: strainAlong(p.squash ?? REF.squash, 0),
     dent: p.dent ?? (12 / REF.size) * size,
     before: gaps[0] ?? spb,
     after: gaps[gaps.length - 1] ?? spb,
@@ -207,22 +205,22 @@ function lastTouched(m: BounceModel, t: number): number {
 function arcInto(m: BounceModel, j: number) {
   const lift = contactTime(m, j - 1) + m.half, T = contactTime(m, j) - m.half - lift;
   const x0 = contactX(m, j - 1), x1 = contactX(m, j), vx = (x1 - x0) / T;
-  const y0 = m.groundY - m.r, y1 = m.groundY - halfHeight(m.r, lawStrain(vx, (m.g * T) / 2, m.k));
+  const y0 = m.groundY - m.r, y1 = m.groundY - strainExtent(m.r, strainAlongVelocity({ x: vx, y: (m.g * T) / 2 }, m.k), DOWN);
   return { lift, T, x0, y0, vx, vy0: (y1 - y0) / T - (m.g * T) / 2 };
 }
 
 function arrivalStrain(m: BounceModel, j: number): Strain {
-  if (j === 0 && m.drop) return lawStrain(m.drop.dx / m.drop.T, m.g * m.drop.T, m.k);
+  if (j === 0 && m.drop) return strainAlongVelocity({ x: m.drop.dx / m.drop.T, y: m.g * m.drop.T }, m.k);
   const a = arcInto(m, j);
-  return lawStrain(a.vx, a.vy0 + m.g * a.T, m.k);
+  return strainAlongVelocity({ x: a.vx, y: a.vy0 + m.g * a.T }, m.k);
 }
 
 export type RawPose = { x: number; y: number; s: Strain; r: number; phase: BallPhase; contact: number; since: number; dent: number; swell: number };
 
 function contactPose(m: BounceModel, i: number, u: number): RawPose {
-  const h = hump(u), s = mixStrain(u < 0 ? arrivalStrain(m, i) : ROUND, m.squash, h), dent = m.dent * h;
+  const s = strainOfContact(u, m.squash, arrivalStrain(m, i)), dent = m.dent * contactLoad(u);
   // Its bottom rides the dent; x holds still through the landing (no skid).
-  return { x: contactX(m, i), y: m.groundY + dent - halfHeight(m.r, s), s, r: m.r, phase: 'contact', contact: i, since: u * m.half, dent, swell: 0 };
+  return { x: contactX(m, i), y: m.groundY + dent - strainExtent(m.r, s, DOWN), s, r: m.r, phase: 'contact', contact: i, since: u * m.half, dent, swell: 0 };
 }
 
 /** How far the pad's crouch has pressed `since` its landing's biggest squash: 0 there, 1 as it leaves the ground. */
@@ -236,14 +234,14 @@ const crouchLoad = (m: BounceModel, since: number) => clamp(since / (m.launch!.a
 function crouchPose(m: BounceModel, since: number): RawPose {
   const c = m.launch!.crouch!, pad = m.n - 1, k = crouchLoad(m, since);
   const s = mixStrain(m.squash, c.squash, k), dent = lerp(m.dent, c.dent, k);
-  return { x: contactX(m, pad), y: m.groundY + dent - halfHeight(m.r, s), s, r: m.r, phase: 'crouch', contact: pad, since, dent, swell: 0 };
+  return { x: contactX(m, pad), y: m.groundY + dent - strainExtent(m.r, s, DOWN), s, r: m.r, phase: 'crouch', contact: pad, since, dent, swell: 0 };
 }
 
 /** The swell the launch hands over to: from the ball's pose as it leaves, over the launch's own span. */
 export function launchSwell(m: BounceModel) {
   const L = m.launch!, pad = m.n - 1;
   const from = L.crouch ? crouchPose(m, L.at - contactTime(m, pad)) : contactPose(m, pad, 1);
-  const shape = shapeOfStrain(from.s);
+  const shape = strainEllipse(from.s);
   return {
     at: L.at,
     options: { format: m.format, from: { x: from.x, y: from.y, r: m.r, aspect: shape.aspect, angle: shape.angle * DEG }, to: L.to, lift: L.lift, stretch: L.stretch, duration: L.fill - L.at },
@@ -254,11 +252,11 @@ export function rawPoseAt(m: BounceModel, t: number): RawPose {
   const L = m.launch, pad = m.n - 1;
   if (L && t >= L.at) {
     const { at, options } = launchSwell(m), k = (t - at) / options.duration, sw = fieldSwellAt(k, options);
-    return { x: sw.x, y: sw.y, s: strainOf(sw.aspect, sw.angle / DEG), r: sw.r, phase: k >= 1 ? 'field' : 'swell', contact: pad, since: t - contactTime(m, pad), dent: 0, swell: clamp(k) };
+    return { x: sw.x, y: sw.y, s: strainAlong(sw.aspect, sw.angle / DEG), r: sw.r, phase: k >= 1 ? 'field' : 'swell', contact: pad, since: t - contactTime(m, pad), dent: 0, swell: clamp(k) };
   }
   if (m.drop && t < contactTime(m, 0) - m.half) {
     const { start, x, y, dx, T } = m.drop, τ = Math.max(0, t - start);
-    return { x: x + (dx * τ) / T, y: y + 0.5 * m.g * τ * τ, s: lawStrain(dx / T, m.g * τ, m.k), r: m.r, phase: t < start ? 'waiting' : 'drop', contact: -1, since: t - m.ts[0], dent: 0, swell: 0 };
+    return { x: x + (dx * τ) / T, y: y + 0.5 * m.g * τ * τ, s: strainAlongVelocity({ x: dx / T, y: m.g * τ }, m.k), r: m.r, phase: t < start ? 'waiting' : 'drop', contact: -1, since: t - m.ts[0], dent: 0, swell: 0 };
   }
   const i = lastTouched(m, t), since = t - contactTime(m, i);
   if (L?.crouch && i === pad && since > 0) return crouchPose(m, since);
@@ -266,7 +264,7 @@ export function rawPoseAt(m: BounceModel, t: number): RawPose {
   const a = arcInto(m, i + 1), τ = t - a.lift;
   return {
     x: a.x0 + a.vx * τ, y: a.y0 + a.vy0 * τ + 0.5 * m.g * τ * τ,
-    s: scaleStrain(lawStrain(a.vx, a.vy0 + m.g * τ, m.k), liftSpring(τ)),
+    s: strainOfLift(strainAlongVelocity({ x: a.vx, y: a.vy0 + m.g * τ }, m.k), τ),
     r: m.r, phase: 'air', contact: i, since, dent: 0, swell: 0,
   };
 }
@@ -279,7 +277,7 @@ export function rawPoseAt(m: BounceModel, t: number): RawPose {
 export function bouncingBallAt(t: number, params: BounceParams, format: VideoFormat): BallPose {
   const m = bounceModel(params, format), p = rawPoseAt(m, t), dt = 1e-3;
   const before = rawPoseAt(m, t - dt), after = rawPoseAt(m, t + dt);
-  const { aspect, angle } = shapeOfStrain(p.s), sq = Math.sqrt(aspect);
+  const { aspect, angle } = strainEllipse(p.s), sq = Math.sqrt(aspect);
   return {
     x: p.x, y: p.y, w: 2 * p.r * sq, h: (2 * p.r) / sq, angle: angle * DEG,
     vx: (after.x - before.x) / (2 * dt), vy: (after.y - before.y) / (2 * dt),
@@ -299,7 +297,7 @@ function landingDent(m: BounceModel, i: number, t: number): number {
     const τ = t - L.at;
     return L.crouch.dent * Math.exp(-RING_DECAY * τ) * (Math.cos(RING_WD * τ) + (RING_DECAY / RING_WD) * Math.sin(RING_WD * τ));
   }
-  if (u <= 1) return m.dent * hump(u);
+  if (u <= 1) return m.dent * contactLoad(u);
   const τ = t - ti - m.half;
   return -RING_GAIN * m.dent * Math.exp(-RING_DECAY * τ) * Math.sin(RING_WD * τ);
 }
@@ -339,7 +337,7 @@ export function typeOnScramble(text: string, since: number, seed: string, { fps,
 
 /** The ball as an SVG ellipse: `shape`'s squash and stretch, centred where `at` is. */
 export function ballEllipse(shape: RawPose, at: { x: number; y: number } = shape) {
-  const { aspect, angle } = shapeOfStrain(shape.s), sq = Math.sqrt(aspect);
+  const { aspect, angle } = strainEllipse(shape.s), sq = Math.sqrt(aspect);
   return { cx: at.x, cy: at.y, rx: shape.r * sq, ry: shape.r / sq, transform: `rotate(${angle * DEG} ${at.x} ${at.y})` };
 }
 
@@ -349,11 +347,11 @@ export function ballEllipse(shape: RawPose, at: { x: number; y: number } = shape
  * the ball's lowest point then, as a landing's centre sinks only because the ball flattens.
  */
 export function shutterCentres(m: BounceModel, t: number, exposure: number): { x: number; y: number }[] {
-  const frame = rawPoseAt(m, t), below = halfHeight(frame.r, frame.s);
+  const frame = rawPoseAt(m, t), below = strainExtent(frame.r, frame.s, DOWN);
   if (exposure <= 0) return [frame];
   return smearSamples((k) => {
     const p = rawPoseAt(m, t + exposure * (k - 0.5));
-    return { x: p.x, y: p.y + halfHeight(p.r, p.s) - below };
+    return { x: p.x, y: p.y + strainExtent(p.r, p.s, DOWN) - below };
   }, 2.5, 31);
 }
 

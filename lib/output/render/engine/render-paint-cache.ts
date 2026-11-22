@@ -178,10 +178,12 @@ export async function servePaintCache({ dir = paintCacheDir(), namespace, cap = 
       // Answered once received: the page solves on while Node packs and writes. One cut short by the render's exit
       // leaves only its temporary file.
       response.writeHead(204).end();
-      // A film is the same whoever solved it: the first to send it keeps it.
-      if (bytes.byteLength > cap || filmsSending.has(key) || await stat(file).catch(() => null)) return response;
+      // A film is the same whoever solved it: the first to send it keeps it. Claimed before anything awaits, or a
+      // second sender arriving during the first's stat would write too.
+      if (bytes.byteLength > cap || filmsSending.has(key)) return response;
       filmsSending.add(key);
       try {
+        if (await stat(file).catch(() => null)) return response;
         const kept = await gzipped(bytes, { level: 1 });
         await writeWhole(file, kept);
         wrote(kept.byteLength);

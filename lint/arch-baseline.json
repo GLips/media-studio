@@ -67,9 +67,6 @@
     "lib/paint/photoshop-brushes/models/photoshop-probes.ts": {
       "const shape = (d: { size?: PhotoshopDynamic; minimumDiameter?: number; angle?: PhotoshopDynamic; roundness?: PhotoshopDynamic; minimumRoundness?: number }): ProbeParts => ({": 1
     },
-    "lib/picture/reel/models/bounce-shape.ts": {
-      "export function shapeOfStrain(s: Strain) {": 1
-    },
     "lib/picture/reel/models/glyph-field.ts": {
       "export type GlyphShape = { L: number; w: number; r: number; theta: number };": 1,
       "export type GlyphShapeKey = { at: number; value: Partial<GlyphShape>; ease?: EaseFn };": 1
@@ -725,9 +722,6 @@
     },
     "lib/picture/type/studio/fonts.ts": {
       "const format = url.endsWith('.otf') ? 'opentype' : url.endsWith('.woff2') ? 'woff2' : url.endsWith('.woff') ? 'woff' : 'truetype';": 2
-    },
-    "lib/platform/ffmpeg/engine/contact-sheet.ts": {
-      "const escapeDrawtext = (text: string) => text.replace(/[\\\\':,;%]/g, (c) => (c === \"'\" ? '’' : c === '%' ? '\\\\%' : `\\\\${c}`));": 1
     },
     "lib/platform/paid-generation/engine/paid-generation.ts": {
       "const sorted = (value: unknown): unknown => Array.isArray(value) ? value.map(sorted)": 1,
