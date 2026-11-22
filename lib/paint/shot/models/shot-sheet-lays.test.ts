@@ -225,3 +225,19 @@ test('a node placed at scale 0 lays nothing there, and its marks solve where the
   assert.deepEqual(opacities(1), ['sky at 1', 'body at 0', 'neck at 0']);
   assert.equal(solvedText(planAt(props, paintMoment(1)).solved), solvedText(planAt(props, paintMoment(0)).solved));
 });
+
+test('a leaf folding over lays its card shaded by the light, then turned away its card alone, and edge-on nothing', () => {
+  // Through edge-on within a frame, so no sliver lingers: exactly π/2 at 0.5 s.
+  const turn = paintKeyed([{ at: 0, value: 0 }, { at: 11 / 24, value: 1.3 }, { at: 0.5, value: Math.PI / 2 }, { at: 13 / 24, value: 1.85 }, { at: 1, value: Math.PI }]);
+  const props: PaintedShotProps = {
+    camera, span: SPAN,
+    planes: [{ id: 'front', depth: 1, source: layersOf(collage, ['sky', 'leaf']), occurrences: { leaf: { plays: [{ clip: { kind: 'fold', angle: turn }, clock: { at: 0 }, origin: 'turn' }] } } }],
+  };
+  const laidAt = (t: number) => planAt(props, paintMoment(t)).plan.steps.map((step) => step && (step.lay.kind === 'pieces' ? 'pieces' : `${step.lay.kind} ${step.lay.shade.toFixed(3)}`));
+  assert.deepEqual(laidAt(0), ['film 1.000', 'card 1.000', 'film 1.000']);
+  // Tipped back below its level crease, toward the light's 50° up from screen-left, it darkens a little; past π/2 it's paper.
+  const [, tipped] = laidAt(0.25);
+  assert.ok(tipped && Number(tipped.split(' ')[1]) < 1, tipped ?? '');
+  assert.deepEqual(laidAt(0.5).slice(1), [null, null]);
+  assert.deepEqual(laidAt(0.75).slice(1).map((each) => each?.split(' ')[0] ?? null), ['card', null]);
+});

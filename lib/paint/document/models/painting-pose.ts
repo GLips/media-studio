@@ -4,7 +4,8 @@
 // deposit, area and prewet carry a similarity back to rest (StampRestMap), the best fit under a warp, where the solver
 // reads fields and noise. Anchored clips, reserves and resists stay. An entry's pose text is in its state key.
 import { createStampMarksWriter, STAMP_MARK, STAMP_MARK_FIELDS, type FrozenStampMarks } from '#lib/paint/brush/models/stamp-mark-rows.ts';
-import { paintWarpChainKey, paintWarpChainMap, type PaintDeform } from '#lib/paint/animation/models/paint-deform.ts';
+import { foldTurnAfter, foldTurnInPlane, type FoldTurn } from '#lib/picture/motion/models/fold.ts';
+import { paintWarpChainKey, paintWarpChainMap, paintWarpChainTurn, type PaintDeform } from '#lib/paint/animation/models/paint-deform.ts';
 import {
   PAINT_SIMILARITY_IDENTITY, paintSimilarityAfter, paintSimilarityApply, paintSimilarityInverse, paintSimilarityOf, paintSimilarityScale, type PaintSimilarity,
 } from '#lib/paint/animation/models/paint-similarity.ts';
@@ -24,10 +25,13 @@ import type { NodeKey } from './painting-document.ts';
 import type { PaintingTree } from './painting-tree.ts';
 
 /**
- * A node's map in its parent's frame: a similarity, or a warp (pins, sway, flutter, a rig's part or skin) whose
- * canonical `text` names every number it's built from, so equal texts are equal maps.
+ * A node's map in its parent's frame: a similarity, or a warp (pins, sway, flutter, strain, fold, a rig's part or
+ * skin) whose canonical `text` names every number it's built from, so equal texts are equal maps, and whose `turn`
+ * says which way its paint faces (fold.ts), which its text decides too.
  */
-export type PaintingNodePose = { readonly kind: 'similarity'; readonly map: PaintSimilarity } | { readonly kind: 'warp'; readonly map: StampWarpMap; readonly text: string };
+export type PaintingNodePose =
+  | { readonly kind: 'similarity'; readonly map: PaintSimilarity }
+  | { readonly kind: 'warp'; readonly map: StampWarpMap; readonly text: string; readonly turn: FoldTurn };
 
 /** Each posed node's map by its key; a node left out stands at rest. */
 export type PaintingPoses = ReadonlyMap<NodeKey, PaintingNodePose>;
@@ -42,6 +46,9 @@ export const PAINTING_REST_POSE = stampCanonicalJson(PAINT_SIMILARITY_IDENTITY);
 /** `pose`'s canonical text: a similarity's words as JSON, a warp's own. */
 export const paintingPoseText = (pose: PaintingNodePose) => (pose.kind === 'similarity' ? stampCanonicalJson(pose.map) : pose.text);
 
+/** Which way `pose` turns its paint: a similarity only in the picture plane, facing the viewer. */
+export const paintingPoseTurn = (pose: PaintingNodePose): FoldTurn => (pose.kind === 'warp' ? pose.turn : foldTurnInPlane(Math.atan2(pose.map.mb, pose.map.ma)));
+
 /** `pose` as a map of points. */
 export const paintingPoseMap = (pose: PaintingNodePose): StampWarpMap => (pose.kind === 'warp' ? pose.map : (point) => paintSimilarityApply(pose.map, point));
 
@@ -52,7 +59,7 @@ export const paintingPoseMap = (pose: PaintingNodePose): StampWarpMap => (pose.k
 export function paintingDeformsPose(steps: readonly PaintDeform[], text = ''): PaintingNodePose {
   let similarity = PAINT_SIMILARITY_IDENTITY;
   for (const step of steps) {
-    if (step.kind !== 'place') return { kind: 'warp', map: paintWarpChainMap(steps), text: `${text}${paintWarpChainKey(steps)}` };
+    if (step.kind !== 'place') return { kind: 'warp', map: paintWarpChainMap(steps), text: `${text}${paintWarpChainKey(steps)}`, turn: paintWarpChainTurn(steps) };
     similarity = paintSimilarityAfter(paintSimilarityOf(step.placement, step.pivot), similarity);
   }
   return paintingSimilarityPose(similarity);
@@ -64,7 +71,7 @@ export function paintingPoseAfter(outer: PaintingNodePose, inner: PaintingNodePo
   if (paintingPoseText(outer) === PAINTING_REST_POSE) return inner;
   if (paintingPoseText(inner) === PAINTING_REST_POSE) return outer;
   const o = paintingPoseMap(outer), i = paintingPoseMap(inner);
-  return { kind: 'warp', map: (rest) => o(i(rest)), text: `${paintingPoseText(outer)}∘${paintingPoseText(inner)}` };
+  return { kind: 'warp', map: (rest) => o(i(rest)), text: `${paintingPoseText(outer)}∘${paintingPoseText(inner)}`, turn: foldTurnAfter(paintingPoseTurn(outer), paintingPoseTurn(inner)) };
 }
 
 /** The pose `chain` (ordinals in `tree.nodes`, outermost first) poses by under `poses`. */
@@ -132,12 +139,13 @@ function densified(ring: readonly StampPoint[], closed: boolean): StampPoint[] {
 }
 
 /**
- * A pose's map as the marks it moves read it: each point mapped, the map's local scale (√|det J|) and turn at a
- * point, the similarity it fits over some points (a deposit's, an area's), an outline made ready to map, and a tag.
+ * A pose's map as the marks it moves read it: each point mapped, the map's local scale (√|det J|), turn and whether it
+ * mirrors there (a card folded past edge-on), the similarity it fits over some points (a deposit's, an area's), an
+ * outline made ready to map, and a tag.
  */
 type PaintingMap = {
   readonly point: (point: StampPoint) => StampPoint;
-  readonly local: (point: StampPoint) => { readonly scale: number; readonly turn: number };
+  readonly local: (point: StampPoint) => { readonly scale: number; readonly turn: number; readonly mirrored: boolean };
   /** Fits `points`, asked for only under a warp: a similarity is its own fit. */
   readonly fit: (points: () => readonly StampPoint[]) => PaintSimilarity;
   readonly outline: (ring: readonly StampPoint[], closed: boolean) => readonly StampPoint[];
@@ -147,17 +155,20 @@ type PaintingMap = {
 function paintingMapOf(pose: PaintingNodePose, text: string): PaintingMap {
   const tag = `posed${text}`;
   if (pose.kind === 'similarity') {
-    const { map } = pose, local = { scale: paintSimilarityScale(map), turn: Math.atan2(map.mb, map.ma) };
+    const { map } = pose, local = { scale: paintSimilarityScale(map), turn: Math.atan2(map.mb, map.ma), mirrored: false };
     return { point: (point) => paintSimilarityApply(map, point), local: () => local, fit: () => map, outline: (ring) => ring, tag };
   }
   const { map } = pose;
   return {
     point: map,
-    // J by central differences half a pixel each way: its polar decomposition's turn, and √|det J| its scale.
+    // J by central differences half a pixel each way: its polar decomposition's turn, and √|det J| its scale. A J that
+    // mirrors (det < 0) is a turn after a mirror across x: the turn is J·diag(1, −1)'s.
     local: ({ x, y }) => {
       const r = map({ x: x + 0.5, y }), l = map({ x: x - 0.5, y }), d = map({ x, y: y + 0.5 }), u = map({ x, y: y - 0.5 });
-      const a = r.x - l.x, c = r.y - l.y, b = d.x - u.x, e = d.y - u.y;
-      return { scale: Math.sqrt(Math.abs(a * e - b * c)), turn: Math.atan2(c - b, a + e) };
+      const a = r.x - l.x, c = r.y - l.y, b = d.x - u.x, e = d.y - u.y, det = a * e - b * c;
+      return det < 0
+        ? { scale: Math.sqrt(-det), turn: Math.atan2(c + b, a - e), mirrored: true }
+        : { scale: Math.sqrt(det), turn: Math.atan2(c - b, a + e), mirrored: false };
     },
     fit: (points) => paintingFitSimilarity(points(), map),
     outline: densified,
@@ -182,12 +193,14 @@ function mappedStamps(marks: FrozenStampMarks, by: PaintingMap): FrozenStampMark
   for (let i = 0; i < marks.length; i++) {
     const o = into.next(), r = into.rows, from = marks.rows;
     r.set(from.subarray(o, o + STAMP_MARK_FIELDS), o);
-    const at = { x: from[o], y: from[o + 1] }, { scale, turn } = by.local(at), moved = by.point(at);
+    const at = { x: from[o], y: from[o + 1] }, { scale, turn, mirrored } = by.local(at), moved = by.point(at);
     r[o] = moved.x;
     r[o + 1] = moved.y;
     r[o + M.diameter] *= scale;
-    r[o + M.rotation] += turn;
-    r[o + M.grainTurn] += turn;
+    // Mirrored across x, a stamp at angle ρ lies at −ρ, flipped across its length; then the turn.
+    r[o + M.rotation] = mirrored ? turn - r[o + M.rotation] : r[o + M.rotation] + turn;
+    r[o + M.grainTurn] = mirrored ? turn - r[o + M.grainTurn] : r[o + M.grainTurn] + turn;
+    if (mirrored) r[o + M.flips] = r[o + M.flips] ^ 2;
   }
   if (marks.tints) into.tints!.set(marks.tints);
   return into.finish();

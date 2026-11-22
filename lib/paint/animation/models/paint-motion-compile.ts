@@ -1,7 +1,7 @@
 // paint-motion-compile.ts: a scene's motion as written (a node per group that moves, plays of clips on them) checked
 // and compiled over the painting it moves. What the painting already says is read from it, never restated: each
 // group's painted box (where folds are checked: paintGroupPaintedBox). Each node's plays are filed in lanes typed by
-// what they write: a lane per pin, its sway, its flutter, its placement.
+// what they write: a lane per pin, its sway, its flutter, its strain, its fold, its placement.
 //
 // Boiling is per group: strokes that should boil apart go in groups of their own.
 
@@ -18,7 +18,7 @@ import {
 } from './paint-clock.ts';
 import {
   paintIdPhase, paintMotionClipLength, paintMotionClipPins, paintMotionClipProblem,
-  type PaintFlutterClip, type PaintMotionClip, type PaintPinClip, type PaintPlaceClip, type PaintSwayClip,
+  type PaintFlutterClip, type PaintFoldClip, type PaintMotionClip, type PaintPinClip, type PaintPlaceClip, type PaintStrainClip, type PaintSwayClip,
 } from './paint-motion-clips.ts';
 import { compilePaintPin, paintPinProblem, type CompiledPaintPin, type PaintPinRig } from './paint-pins.ts';
 
@@ -95,6 +95,8 @@ export type CompiledPaintNode = {
   readonly pins: ReadonlyMap<string, { readonly pin: CompiledPaintPin; readonly lane: PaintLane<PaintPinClip<string>> }>;
   readonly sway: PaintLane<PaintSwayClip>;
   readonly flutter: PaintLane<PaintFlutterClip>;
+  readonly strain: PaintLane<PaintStrainClip>;
+  readonly fold: PaintLane<PaintFoldClip>;
   readonly place: PaintLane<PaintPlaceClip>;
 };
 
@@ -102,7 +104,10 @@ export type CompiledPaintNode = {
  * A node's own motion, as one level of any chain reads it: its id, pivot and sway phase, and its lanes. A painting's
  * node is one; a shot's occurrence node (lib/paint/shot) is another, over no group.
  */
-export type CompiledPaintLevel = Pick<CompiledPaintNode, 'id' | 'pivot' | 'phase' | 'pins' | 'sway' | 'flutter' | 'place'>;
+export type CompiledPaintLevel = Pick<CompiledPaintNode, 'id' | 'pivot' | 'phase' | PaintLaneName>;
+
+/** A level's lanes by name. */
+export type PaintLaneName = 'pins' | 'sway' | 'flutter' | 'strain' | 'fold' | 'place';
 
 /** A scene's motion, checked and ready to evaluate (paintMotionFrameAt). Its caches only remember. */
 export type PaintMotion = {
@@ -177,10 +182,11 @@ function nodeLevels(node: PaintMotionNode, byId: ReadonlyMap<string, PaintMotion
   return levels;
 }
 
-/** A level's lanes as its plays are filed into them, unsorted: a lane per pin, its sway, its flutter, its placement. */
+/** A level's lanes as its plays are filed into them, unsorted: a lane per pin, its sway, its flutter, strain, fold and placement. */
 export type PaintLevelLanes = {
   pins: Map<string, { pin: CompiledPaintPin; lane: CompiledPaintPlay<PaintPinClip<string>>[] }>;
-  sway: CompiledPaintPlay<PaintSwayClip>[]; flutter: CompiledPaintPlay<PaintFlutterClip>[]; place: CompiledPaintPlay<PaintPlaceClip>[];
+  sway: CompiledPaintPlay<PaintSwayClip>[]; flutter: CompiledPaintPlay<PaintFlutterClip>[];
+  strain: CompiledPaintPlay<PaintStrainClip>[]; fold: CompiledPaintPlay<PaintFoldClip>[]; place: CompiledPaintPlay<PaintPlaceClip>[];
 };
 
 /** Empty lanes for node `id`'s `pins`, each pin checked into `problems`. */
@@ -191,16 +197,17 @@ export function paintLevelLanes(id: string, pins: PaintPinRig<string> | undefine
     if (problem) problems.push(`${id}'s pin '${name}': ${problem}`);
     else compiled.set(name, { pin: compilePaintPin(pin), lane: [] });
   }
-  return { pins: compiled, sway: [], flutter: [], place: [] };
+  return { pins: compiled, sway: [], flutter: [], strain: [], fold: [], place: [] };
 }
 
 /** `lanes` sorted by start, as a compiled level keeps them. */
-export const paintLevelLanesSorted = (lanes: PaintLevelLanes): Pick<CompiledPaintLevel, 'pins' | 'sway' | 'flutter' | 'place'> => ({
+export const paintLevelLanesSorted = (lanes: PaintLevelLanes): Pick<CompiledPaintLevel, PaintLaneName> => ({
   pins: new Map([...lanes.pins].map(([name, { pin, lane }]) => [name, { pin, lane: paintLaneByStart(lane) }])),
-  sway: paintLaneByStart(lanes.sway), flutter: paintLaneByStart(lanes.flutter), place: paintLaneByStart(lanes.place),
+  sway: paintLaneByStart(lanes.sway), flutter: paintLaneByStart(lanes.flutter), strain: paintLaneByStart(lanes.strain), fold: paintLaneByStart(lanes.fold),
+  place: paintLaneByStart(lanes.place),
 });
 
-type MutableNode = Omit<CompiledPaintNode, 'pins' | 'sway' | 'flutter' | 'place'> & PaintLevelLanes;
+type MutableNode = Omit<CompiledPaintNode, PaintLaneName> & PaintLevelLanes;
 
 function compileNodes(painting: CompiledStampPaint, nodes: readonly PaintMotionNode[], problems: string[]): Map<string, MutableNode> {
   const groups = new Map(painting.groups.map((group) => [group.id, group]));
@@ -253,6 +260,8 @@ export function filePaintLevelPlay(id: string, lanes: PaintLevelLanes, nodeClock
     }
     case 'sway': lanes.sway.push(written(clip)); writer('deform', `${id}'s sway`); return;
     case 'flutter': lanes.flutter.push(written(clip)); writer('deform', `${id}'s flutter`); return;
+    case 'strain': lanes.strain.push(written(clip)); writer('deform', `${id}'s strain`); return;
+    case 'fold': lanes.fold.push(written(clip)); writer('deform', `${id}'s fold`); return;
     case 'place': lanes.place.push(written(clip)); writer('place', id); return;
     default: clip satisfies never;
   }

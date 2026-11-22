@@ -154,7 +154,7 @@ function keyedPath(points: readonly (readonly number[])[], where: string): Keyed
 type NumberMove =
   | { readonly kind: 'hold' }
   | { readonly kind: 'ease'; readonly ease: (share: number) => number }
-  | { readonly kind: 'spring'; readonly timing: Extract<PaintCurveTiming, { kind: 'spring' }> }
+  | { readonly kind: 'settling'; readonly timing: Extract<PaintCurveTiming, { kind: 'settling' }> }
   | { readonly kind: 'smooth' }
   | { readonly kind: 'path'; readonly dimension: number };
 
@@ -172,7 +172,7 @@ type Stretch = {
 function shareAt(timing: PaintCurveTiming | null, stretch: Pick<Stretch, 't0' | 't1'>, t: number): number {
   if (!timing) return (t - stretch.t0) / (stretch.t1 - stretch.t0);
   if (timing.kind === 'ease') return timing.ease(Math.min(1, Math.max(0, (t - stretch.t0) / (stretch.t1 - stretch.t0))));
-  return timing.spring(t - (stretch.t1 - timing.spring.arrival));
+  return timing.curve(t - (stretch.t1 - timing.curve.arrival));
 }
 
 // ---- keys checked and laid out -----------------------------------------------------------------------------------
@@ -227,9 +227,9 @@ export function paintKeyed<T extends PaintKeyedValue>(keys: readonly PaintKey<T>
     for (let s = 0; s < index; s++) {
       const stretch = stretches[s];
       if (stretch.springSettles === null || t >= stretch.springSettles) continue;
-      const walked = stretch.path?.progress?.kind === 'spring' ? stretch.path.path.at(shareAt(stretch.path.progress, stretch, t)) : null;
+      const walked = stretch.path?.progress?.kind === 'settling' ? stretch.path.path.at(shareAt(stretch.path.progress, stretch, t)) : null;
       for (const [n, move] of stretch.moves.entries()) {
-        if (move.kind === 'spring') numbers[n] += (stretch.b[n] - stretch.a[n]) * (move.timing.spring(t - (stretch.t1 - move.timing.spring.arrival)) - 1);
+        if (move.kind === 'settling') numbers[n] += (stretch.b[n] - stretch.a[n]) * (move.timing.curve(t - (stretch.t1 - move.timing.curve.arrival)) - 1);
         else if (move.kind === 'path' && walked) numbers[n] += walked[move.dimension] - stretch.b[n];
       }
     }
@@ -249,8 +249,8 @@ function stretchInto(from: ResolvedKey, to: ResolvedKey, index: number, layout: 
     const problem = paintCurveProblem(curve, seconds);
     if (problem) throw new RangeError(`paintKeyed: ${where}${what}: ${problem}`);
     const made = paintCurveTiming(curve, seconds);
-    if (made.kind === 'spring' && made.spring.arrival > seconds + 1e-9) {
-      throw new RangeError(`paintKeyed: ${where}${what} springs in over ${made.spring.arrival.toFixed(3)} s to arrive on it, more than the ${seconds} s since key ${index - 1}`);
+    if (made.kind === 'settling' && made.curve.arrival > seconds + 1e-9) {
+      throw new RangeError(`paintKeyed: ${where}${what} springs in over ${made.curve.arrival.toFixed(3)} s to arrive on it, more than the ${seconds} s since key ${index - 1}`);
     }
     return made;
   };
@@ -287,12 +287,12 @@ function stretchInto(from: ResolvedKey, to: ResolvedKey, index: number, layout: 
     for (let n = channel.from; n < channel.to; n++) {
       if (routed.has(channel.name)) {
         moves.push({ kind: 'path', dimension: routedNumbers.indexOf(n) });
-        if (timing?.kind === 'spring') springSettles = Math.max(springSettles, to.at - timing.spring.arrival + timing.spring.settled);
+        if (timing?.kind === 'settling') springSettles = Math.max(springSettles, to.at - timing.curve.arrival + timing.curve.settled);
       }
       else if (!timing) moves.push(between === 'smooth' ? { kind: 'smooth' } : { kind: 'ease', ease: (u) => u });
-      else if (timing.kind === 'spring') {
-        moves.push({ kind: 'spring', timing });
-        springSettles = Math.max(springSettles, to.at - timing.spring.arrival + timing.spring.settled);
+      else if (timing.kind === 'settling') {
+        moves.push({ kind: 'settling', timing });
+        springSettles = Math.max(springSettles, to.at - timing.curve.arrival + timing.curve.settled);
       } else moves.push({ kind: 'ease', ease: timing.ease });
     }
   }
@@ -310,7 +310,7 @@ function stretchAt(stretch: Stretch, t: number, smooth: SmoothTangents | null): 
     switch (move.kind) {
       case 'hold': return a[n];
       case 'ease': return a[n] + (b[n] - a[n]) * move.ease(u);
-      case 'spring': return t < t1 - move.timing.spring.arrival ? a[n] : a[n] + (b[n] - a[n]) * move.timing.spring(t - (t1 - move.timing.spring.arrival));
+      case 'settling': return t < t1 - move.timing.curve.arrival ? a[n] : a[n] + (b[n] - a[n]) * move.timing.curve(t - (t1 - move.timing.curve.arrival));
       case 'path': return walked![move.dimension];
       case 'smooth': {
         const u2 = u * u, u3 = u2 * u;
@@ -325,7 +325,7 @@ function stretchAt(stretch: Stretch, t: number, smooth: SmoothTangents | null): 
 function stretchSpeedAt(stretch: Stretch, n: number, end: 'start' | 'end'): number {
   const move = stretch.moves[n];
   // A spring's motion past its key is carried by the spring itself, so what follows leaves the key from rest.
-  if (move.kind === 'hold' || move.kind === 'spring') return 0;
+  if (move.kind === 'hold' || move.kind === 'settling') return 0;
   const eps = (stretch.t1 - stretch.t0) * 1e-4, t = end === 'start' ? stretch.t0 : stretch.t1;
   const [p, q] = end === 'start' ? [t, t + eps] : [t - eps, t];
   // Its smooth numbers, if any, aren't read: zeros stand in for tangents not yet found.

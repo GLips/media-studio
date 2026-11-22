@@ -14,11 +14,21 @@ import type { PaintRigSkinGroup } from './paint-rig-skin.ts';
 export type PaintRigPicture = { readonly x0: number; readonly y0: number; readonly w: number; readonly h: number; readonly rgba: Float32Array };
 
 /**
- * A picture drawn through `triangles`: three vertices each of (posed x, posed y, rest x, rest y), plane px, the
- * layout paintRigSkinTriangles writes. A piece keeps its vertices in one order from moment to moment, so a vertex's
- * motion over the shutter is its own.
+ * How a piece's card shows: `shade` multiplies its colour (paint-card-face.ts: 1 flat, its light's tone folded), and
+ * `blank`, linear RGB, stands for its picture where its back shows and it has no back of its own to print: its paper,
+ * cut to its coverage.
  */
-export type PaintRigPiece = { readonly picture: PaintRigPicture; readonly triangles: Float32Array };
+export type PaintRigPieceFace = { readonly shade: number; readonly blank: readonly [number, number, number] | null };
+
+/** A piece's face lying flat, printed. */
+export const PAINT_RIG_PIECE_FLAT: PaintRigPieceFace = { shade: 1, blank: null };
+
+/**
+ * A picture drawn through `triangles`: three vertices each of (posed x, posed y, rest x, rest y), plane px, the
+ * layout paintRigSkinTriangles writes, showing as `face` says. A piece keeps its vertices in one order from moment to
+ * moment, so a vertex's motion over the shutter is its own.
+ */
+export type PaintRigPiece = { readonly picture: PaintRigPicture; readonly triangles: Float32Array; readonly face: PaintRigPieceFace };
 
 /** A part's lattice's spacing, px: a cel is drawn through cells this size, enough for a bend to curve. */
 export const PAINT_RIG_LATTICE_CELL = 16;

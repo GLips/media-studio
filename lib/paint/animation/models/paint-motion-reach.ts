@@ -1,12 +1,14 @@
 // paint-motion-reach.ts: where a group's paint can be laid over a shot, from its motion sampled at the moments the shot
 // draws (paint-span-moments.ts). Each step a point goes through (paint-motion-frame.ts's order: wobble, then each
-// level's pins, flutter, sway and placement, then the recipe's own motion) moves a box's points by at most a radius:
-// a value's the most any sample shows, a generator's its amplitude. So the box grown step by step holds every frame's
-// lay; paintLevelPlacedHeld bounds it within. A placement scaled to 0 draws nothing.
+// level's pins, flutter, sway, strain, fold and placement, then the recipe's own motion) moves a box's points by at
+// most a radius: a value's the most any sample shows, a generator's its amplitude. Each step is bounded on the box the
+// steps before it grew, so the grown box holds every frame's lay; paintLevelPlacedHeld bounds it within.
 //
 // Negative space: live marks (re-placed by a poser) and re-seeded marks (re-rolled) can land anywhere, so a group
 // drawing either has no bound here.
 
+import { foldMatrix } from '#lib/picture/motion/models/fold.ts';
+import { strainMatrix } from '#lib/picture/motion/models/strain.ts';
 import type { StampGroupPlacement } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { CompiledStampGroup } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
@@ -14,7 +16,9 @@ import { stampBoxGrown, type StampBox, type StampPoint } from '#lib/paint/painti
 import { paintLaneClipAt, type PaintLane } from './paint-clock.ts';
 import { paintPlacementRounded } from './paint-deform.ts';
 import { paintGroupPaintedBox, type CompiledPaintLevel, type PaintMotion } from './paint-motion-compile.ts';
-import { paintClipMoment, paintMotionClipValueProblem, paintPinClipMoveAt, paintPlaceClipAt, type PaintMotionClip } from './paint-motion-clips.ts';
+import {
+  paintClipMoment, paintFoldClipAt, paintMotionClipValueProblem, paintPinClipMoveAt, paintPlaceClipAt, paintStrainClipAt, type PaintMotionClip,
+} from './paint-motion-clips.ts';
 import { paintSecondsText } from './paint-span-moments.ts';
 
 /** Where a group's paint can lie anywhere in the shot (null: it paints nothing), or why that can't be bounded. */
@@ -44,12 +48,29 @@ const extremesWith = (e: Extremes, value: number): Extremes => ({ low: Math.min(
 
 /**
  * A level's values sampled at a shot's moments: its placement's range and each part's extremes (a scale of 0 among
- * them when any sample vanishes), and each pin's range.
+ * them when any sample vanishes), each pin's range, and the most its strain and fold (F·S about its pivot) move a point
+ * per px from the pivot: ‖F·S − I‖.
  */
 type LevelSamples = {
   readonly place: { readonly range: PlacementRange; readonly x: Extremes; readonly y: Extremes; readonly scale: Extremes; readonly turn: number } | null;
   readonly pins: ReadonlyMap<string, PlacementRange>;
+  readonly shape: number;
 };
+
+/** The largest singular value of the 2×2 [[a, b], [c, d]]: the most it stretches any vector. */
+function matrixNorm(a: number, b: number, c: number, d: number): number {
+  const sum = a * a + b * b + c * c + d * d, det = a * d - b * c;
+  return Math.sqrt((sum + Math.sqrt(Math.max(0, sum * sum - 4 * det * det))) / 2);
+}
+
+/** ‖F·S − I‖ for `level`'s strain and fold at `moment`: 0 where neither plays. */
+function foldStrainStretchAt(level: CompiledPaintLevel, moment: PaintMoment, fps: number): number {
+  const strain = paintLaneClipAt(level.strain, moment, fps), fold = paintLaneClipAt(level.fold, moment, fps);
+  if (!strain && !fold) return 0;
+  const [[s00, s01], [s10, s11]] = strainMatrix(strain ? paintStrainClipAt(strain.play.clip, strain.moment) : { x: 0, y: 0 });
+  const [[f00, f01], [f10, f11]] = foldMatrix(fold ? paintFoldClipAt(fold.play.clip, fold.moment) : 0, fold?.play.clip.crease ?? 0);
+  return matrixNorm(f00 * s00 + f01 * s10 - 1, f00 * s01 + f01 * s11, f10 * s00 + f11 * s10, f10 * s01 + f11 * s11 - 1);
+}
 
 // Keyed by the moments array, then the level: a shot samples each level once over its moments.
 const sampled = new WeakMap<readonly PaintMoment[], WeakMap<CompiledPaintLevel, LevelSamples>>();
@@ -83,7 +104,9 @@ function levelSamples(level: CompiledPaintLevel, moments: readonly PaintMoment[]
     }
     pins.set(name, range);
   }
-  const samples = { place, pins };
+  let shape = 0;
+  if (level.strain.length || level.fold.length) for (const moment of moments) shape = Math.max(shape, foldStrainStretchAt(level, moment, fps));
+  const samples = { place, pins, shape };
   byLevel.set(level, samples);
   return samples;
 }
@@ -93,11 +116,14 @@ function levelSamples(level: CompiledPaintLevel, moments: readonly PaintMoment[]
  * own level.
  */
 export function paintLevelShift(level: CompiledPaintLevel, box: StampBox, withPins: boolean, moments: readonly PaintMoment[], fps: number): number {
-  const { place } = levelSamples(level, moments, fps);
-  return paintLevelBendShift(level, box, withPins, moments, fps) + (place ? placementShift(place.range, level.pivot, box) : 0);
+  const { place } = levelSamples(level, moments, fps), bend = paintLevelBendShift(level, box, withPins, moments, fps);
+  return bend + (place ? placementShift(place.range, level.pivot, stampBoxGrown(box, bend)) : 0);
 }
 
-/** The most `level`'s bend (its pins, flutter and sway, all before its placement) moves a point of `box` at `moments`. */
+/**
+ * The most `level`'s bend (its pins, flutter, sway, strain and fold, all before its placement) moves a point of `box`
+ * at `moments`: its strain and fold bounded on the box its pins, flutter and sway grew.
+ */
 export function paintLevelBendShift(level: CompiledPaintLevel, box: StampBox, withPins: boolean, moments: readonly PaintMoment[], fps: number): number {
   let shift = 0;
   // Pins' displacements add, each at most its whole move (a weight is at most 1).
@@ -110,7 +136,8 @@ export function paintLevelBendShift(level: CompiledPaintLevel, box: StampBox, wi
   }
   // A sway turns a point about its root by at most amount/length radians.
   for (const { clip } of level.sway) shift += farthest(box, clip.root) * (Math.abs(clip.amount) / clip.length);
-  return shift;
+  const { shape } = levelSamples(level, moments, fps);
+  return shape > 0 ? shift + shape * farthest(stampBoxGrown(box, shift), level.pivot) : shift;
 }
 
 /**
@@ -159,7 +186,8 @@ export function paintGroupLaidReach(group: CompiledStampGroup, motion: PaintMoti
   return { kind: 'bounded', box: stampBoxGrown(box, REACH_SLACK) };
 }
 
-const hasFunctionValue = (clip: PaintMotionClip<string>) => (clip.kind === 'poses' || clip.kind === 'place') && typeof clip.value === 'function';
+const hasFunctionValue = (clip: PaintMotionClip<string>) =>
+  clip.kind === 'fold' ? typeof clip.angle === 'function' : (clip.kind === 'poses' || clip.kind === 'place' || clip.kind === 'strain') && typeof clip.value === 'function';
 
 /**
  * The first problem each of `lane`'s plays' values has at any of `moments` where it plays, named by its origin and
@@ -178,10 +206,12 @@ function laneValueProblems(lane: PaintLane<PaintMotionClip<string>>, moments: re
   }
 }
 
-/** Every problem `level`'s values (its pins' poses and its placement) have at `moments`, each once. */
+/** Every problem `level`'s values (its pins' poses, strain, fold and placement) have at `moments`, each once. */
 export function paintLevelValueProblems(level: CompiledPaintLevel, moments: readonly PaintMoment[], fps: number): string[] {
   const problems: string[] = [];
   laneValueProblems(level.place, moments, fps, problems);
+  laneValueProblems(level.strain, moments, fps, problems);
+  laneValueProblems(level.fold, moments, fps, problems);
   for (const { lane } of level.pins.values()) laneValueProblems(lane, moments, fps, problems);
   return [...new Set(problems)];
 }

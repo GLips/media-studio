@@ -5,7 +5,7 @@
 // The lanes, clocks and channel law are the animation feature's (paint-motion-compile.ts), read per level.
 //
 // A writer beside the plays: a plane whose lay varies in time places its plane node ('place') for all time, so a place
-// play on that node clashes. A rigged group's node takes no pins, sway or flutter: its rig deforms all it holds.
+// play on that node clashes. A rigged group's node takes no pins, sway, flutter, strain or fold: its rig deforms all it holds.
 
 import type { PaintBoilWobble } from '#lib/paint/animation/models/paint-boil-displacement.ts';
 import { paintChannelConflicts, type PaintChannelWriter } from '#lib/paint/animation/models/paint-channels.ts';
@@ -122,7 +122,7 @@ function shotNodeSites(planes: readonly ShotMotionPlane[]): Map<string, ShotNode
 function shotNodeSiteProblem(node: OccurrenceMotionNode, site: ShotNodeSite, rigged: ReadonlySet<OccurrenceKey>): string | null {
   const riggedAbove = site.groups.find((group) => rigged.has(group));
   if (riggedAbove) return `lies in ${riggedAbove}, which is rigged: its rig's parts pose all it holds, so nothing in it takes a node`;
-  if (rigged.has(node.id) && Object.keys(node.pins ?? {}).length) return 'is rigged: it takes no pins, sway or flutter';
+  if (rigged.has(node.id) && Object.keys(node.pins ?? {}).length) return 'is rigged: it takes no pins, sway, flutter, strain or fold; its parts take strain and fold';
   if (node.id !== site.plane.id || site.plane.kind === 'painted') return null;
   if (site.plane.kind === 'three') return 'is a three plane, drawn through the camera: no node moves it';
   if (site.plane.kind === 'instanced') return 'is an instanced plane: its items take no nodes; each lies where its instances lay it';
@@ -176,7 +176,7 @@ export function compileShotMotion(
     if (problem) problems.push(playError(play, problem));
     if (problem || !node) continue;
     if (sites.get(node.id)!.plane.kind === 'picture' && play.clip.kind !== 'place') problems.push(playError(play, `bends picture plane ${node.id}, whose node only places it`));
-    else if (rigged.has(node.id) && play.clip.kind !== 'place') problems.push(playError(play, `${node.id} is rigged: it takes no pins, sway or flutter`));
+    else if (rigged.has(node.id) && play.clip.kind !== 'place') problems.push(playError(play, `${node.id} is rigged: it takes no pins, sway, flutter, strain or fold; its parts take strain and fold`));
     else {
       const playProblems: string[] = [];
       filePaintLevelPlay(node.id, lanes.get(node.id)!, node.clock, play, writers, playProblems);

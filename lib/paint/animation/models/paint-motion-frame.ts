@@ -1,8 +1,8 @@
 // paint-motion-frame.ts: a compiled motion evaluated at scene time `t` into each group's frame state, purely.
 //
 // Composition, per level as a rigger builds it: a rest point goes through its node's boil wobble, its node's own bend
-// (pins, then flutter, then sway), its node's placement, then its parent's bend, its parent's placement, and so up.
-// The steps up to the outermost bend become the group's warp; the placements after it, rigid, its lay. The camera
+// (pins, then flutter, sway, strain and fold), its node's placement, then its parent's bend, its parent's placement,
+// and so up. The steps up to the outermost bend become the group's warp; the placements after it, rigid, its lay. The camera
 // never reaches a lay: it places the plane the group is on (paint-camera.ts).
 //
 // A live node's own pins are its pose, handed to its poser, never a warp; what follows them reaches its marks as
@@ -19,7 +19,7 @@ import {
 } from './paint-deform.ts';
 import { paintKeyNumbers } from './paint-pins.ts';
 import { PAINT_LIVE_POSES_KEPT, type CompiledPaintLevel, type CompiledPaintNode, type PaintMotion } from './paint-motion-compile.ts';
-import { paintFlutterSpreadAt, paintPinClipMoveAt, paintPlaceClipAt, paintSwayAngleAt } from './paint-motion-clips.ts';
+import { paintFlutterSpreadAt, paintFoldClipAt, paintPinClipMoveAt, paintPlaceClipAt, paintStrainClipAt, paintSwayAngleAt } from './paint-motion-clips.ts';
 import { PAINT_SIMILARITY_IDENTITY, paintPlacementOfSimilarity, paintSimilarityAfter, paintSimilarityOf } from './paint-similarity.ts';
 
 /** Each of `level`'s pins moved at `t`, rounded; pins at rest left out. */
@@ -40,14 +40,25 @@ export function paintLevelDeformsAt(node: CompiledPaintLevel, t: PaintMoment, fp
   if (moves.length) deforms.push({ owner, kind: 'pins', moves });
   const flutter = paintLaneClipAt(node.flutter, t, fps);
   if (flutter) {
-    const { clip } = flutter.play, spreadSteps = paintRatioSteps(paintFlutterSpreadAt(clip, node.phase, flutter.time));
-    if (spreadSteps !== paintRatioSteps(1)) deforms.push({ owner, kind: 'flutter', origin: clip.at, direction: clip.direction, spreadSteps });
+    // A flutter is a fold toward its axis: open is flat, `least` the fold whose cosine it is.
+    const { clip } = flutter.play, foldSteps = paintRatioSteps(Math.acos(paintFlutterSpreadAt(clip, node.phase, flutter.time)));
+    if (foldSteps !== 0) deforms.push({ owner, kind: 'fold', pivot: clip.at, crease: clip.direction, foldSteps });
   }
   const sway = paintLaneClipAt(node.sway, t, fps);
   if (sway) {
     const angleSteps = paintRatioSteps(paintSwayAngleAt(sway.play.clip, node.phase, sway.time));
     const { root, direction, length } = sway.play.clip;
     if (angleSteps !== 0) deforms.push({ owner, kind: 'sway', root, direction, length, angleSteps });
+  }
+  const strain = paintLaneClipAt(node.strain, t, fps);
+  if (strain) {
+    const { x, y } = paintStrainClipAt(strain.play.clip, strain.moment), strainSteps = [paintRatioSteps(x), paintRatioSteps(y)] as const;
+    if (strainSteps[0] !== 0 || strainSteps[1] !== 0) deforms.push({ owner, kind: 'strain', pivot: node.pivot, strainSteps });
+  }
+  const fold = paintLaneClipAt(node.fold, t, fps);
+  if (fold) {
+    const foldSteps = paintRatioSteps(paintFoldClipAt(fold.play.clip, fold.moment));
+    if (foldSteps !== 0) deforms.push({ owner, kind: 'fold', pivot: node.pivot, crease: fold.play.clip.crease ?? 0, foldSteps });
   }
   return deforms;
 }

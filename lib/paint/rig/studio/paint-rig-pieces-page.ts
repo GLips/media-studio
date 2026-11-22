@@ -4,15 +4,15 @@
 
 import { createGpuDeviceOwner, type GpuDeviceOwner } from '#lib/platform/gpu/studio/gpu-device-owner.ts';
 import type { PaintRigTexelBox } from '../models/paint-rig-cuts.ts';
-import type { PaintRigPicture } from '../models/paint-rig-pieces.ts';
+import type { PaintRigPicture, PaintRigPieceFace } from '../models/paint-rig-pieces.ts';
 import { createPaintRigPiecesDrawer, type PaintRigPiecesDrawer } from './paint-rig-pieces-draw.ts';
 
 /** A picture the tool wrote to `/files/<file>`: its rgba as raw f32 bytes, its box here. */
 export type PaintRigPiecesPageSource = PaintRigTexelBox & { readonly file: string };
 
-/** One draw: each piece names its picture's file and carries its triangles (paintRigSkinTriangles' layout). */
+/** One draw: each piece names its picture's file and carries its triangles (paintRigSkinTriangles' layout) and face. */
 export type PaintRigPiecesPageDraw = {
-  readonly pieces: readonly { readonly picture: PaintRigPiecesPageSource; readonly triangles: readonly number[] }[];
+  readonly pieces: readonly { readonly picture: PaintRigPiecesPageSource; readonly triangles: readonly number[]; readonly face: PaintRigPieceFace }[];
   readonly box: PaintRigTexelBox;
 };
 
@@ -38,7 +38,7 @@ async function paintRigDrawPieces(request: PaintRigPiecesPageDraw): Promise<stri
     const owner = await createGpuDeviceOwner();
     drawing = { owner, drawer: createPaintRigPiecesDrawer((await owner.three()).renderer) };
   }
-  const pieces = await Promise.all(request.pieces.map(async ({ picture, triangles }) => ({ picture: await pictureOf(picture), triangles: Float32Array.from(triangles) })));
+  const pieces = await Promise.all(request.pieces.map(async ({ picture, triangles, face }) => ({ picture: await pictureOf(picture), triangles: Float32Array.from(triangles), face })));
   const { rgba } = await drawing.drawer.draw(pieces, request.box);
   // The render browser's Chrome encodes natively, far faster than btoa over char codes.
   // SAFETY: Chrome has had Uint8Array.prototype.toBase64 since 140; the ES2023 lib the studio types against lacks it.

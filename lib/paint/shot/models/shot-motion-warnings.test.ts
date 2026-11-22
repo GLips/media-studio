@@ -4,6 +4,7 @@ import { paintKeyed, paintKeyedAccent } from '#lib/paint/animation/models/paint-
 import type { PaintShotCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
 import { paintCameraPlay, type PaintCameraMovePose, type PaintCameraShutter } from '#lib/paint/animation/models/paint-camera.ts';
 import type { PaintCurve } from '#lib/paint/animation/models/paint-curves.ts';
+import type { PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
 import type { Layer, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
 import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
 import { painting } from '#lib/paint/document/models/painting-source.ts';
@@ -83,4 +84,15 @@ test('a camera knock warns once, on the camera, not on each plane it carries, un
   // An accent's strike snaps, so its knock is meant however its curves meet it.
   const accent = paintKeyedAccent<PaintCameraMovePose>({ at: 1, peak: { dolly: 0.2 }, attack: 0.5, settle: 0.5, curves: { attack: 'in', settle: 'out' } });
   assert.deepEqual(warningsOf({ lens: { bloom: 0, shutter: 1 / 48 }, plays: [paintCameraPlay({ kind: 'move', value: accent }, { clock: { at: 0 }, origin: 'kick', blend: 'add' })] }), []);
+});
+
+/** The edge-on warnings of the swift folding over its crease as `angle` says, over two seconds. */
+const foldWarnings = (angle: PresentationValue<number>) =>
+  warningsOf({ lens: { bloom: 0, shutter: 1 / 48 } }, { swift: { plays: [{ clip: { kind: 'fold', angle }, clock: { at: 0 }, origin: 'turn' }] } }).filter((each) => each.includes('edge-on'));
+
+test('a card lingering edge-on warns, naming when; a flip snapping through it in a frame does not', () => {
+  const lingering = foldWarnings(paintKeyed([{ at: 0, value: 0 }, { at: 0.5, value: 1.5 }, { at: 1, value: 1.6 }, { at: 1.5, value: 0 }]));
+  assert.equal(lingering.length, 1, lingering.join('\n'));
+  assert.match(lingering[0], /^warning birds\/swift: birds\/swift is folded within about 10° of edge-on from 0\.\d+ s to 1\.\d+ s; it reads as a sliver/);
+  assert.deepEqual(foldWarnings(paintKeyed([{ at: 0, value: 0 }, { at: 1, value: Math.PI, curve: { spring: { duration: 0.3 } } }])), []);
 });

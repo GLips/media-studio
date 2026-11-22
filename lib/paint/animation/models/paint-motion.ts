@@ -1,7 +1,8 @@
 // paint-motion.ts: a scene's motion built over its painting: compiled (paint-motion-compile.ts), then each node's warp
 // checked for folds over a span of the scene. The check reads the warp each frame emits, boil wobble included, through
 // the lattice the renderer lays it on (stampWarpTriangles over the group's painted box), so it judges the triangles
-// that will actually be drawn.
+// that will actually be drawn. A warp a fold turns over (its facing below 0) is judged mirrored: its flip is meant,
+// and only a triangle turning against it folds.
 
 import { STAMP_WARP_CELL, stampWarpCells, stampWarpTriangles } from '#lib/paint/painting/models/stamp-group-warp.ts';
 import type { CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
@@ -9,18 +10,20 @@ import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-regi
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import { paintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { paintAnimationFrameStart, type AnimationFrame } from './paint-clock.ts';
-import { paintDeformMap, paintDeformShifts, paintWarpChainKey, paintWarpChainMap, type PaintWarpChain } from './paint-deform.ts';
+import { paintDeformMap, paintDeformShifts, paintWarpChainKey, paintWarpChainMap, paintWarpChainTurn, type PaintWarpChain } from './paint-deform.ts';
 import { compilePaintMotion, paintGroupPaintedBox, type PaintMotion, type PaintMotionNode, type PaintMotionPlay } from './paint-motion-compile.ts';
 import { paintNodeWarpAt } from './paint-motion-frame.ts';
+import { PAINT_EDGE_ON } from './paint-card-face.ts';
 
 /** A motion built: usable, or the problems that keep it from being. */
 export type PaintMotionBuild = { readonly ok: true; readonly motion: PaintMotion } | { readonly ok: false; readonly problems: readonly string[] };
 
 /**
  * The worst-squeezed triangle of `map` over `box` on the renderer's lattice: its rest centroid and the ratio of its
- * area after to before. At or below 0 the map folds there: paint passes over paint, and the lattice shows a seam.
+ * area after to before, times `facing` (−1 for a map meant to mirror the paint, a card flipped). At or below 0 the map
+ * folds there: paint passes over paint, and the lattice shows a seam.
  */
-export function paintWarpWorstFold(map: (rest: StampPoint) => StampPoint, box: StampBox): { at: StampPoint; det: number } {
+export function paintWarpWorstFold(map: (rest: StampPoint) => StampPoint, box: StampBox, facing: 1 | -1 = 1): { at: StampPoint; det: number } {
   // As the renderer lays it: a pixel past the painted box, cells STAMP_WARP_CELL apart, at most STAMP_WARP_MOST_CELLS.
   const rest = { x: box.x0 - 1, y: box.y0 - 1, w: box.x1 - box.x0 + 2, h: box.y1 - box.y0 + 2 };
   const { columns, rows } = stampWarpCells(rest.w, rest.h, STAMP_WARP_CELL);
@@ -30,7 +33,7 @@ export function paintWarpWorstFold(map: (rest: StampPoint) => StampPoint, box: S
   for (let v = 0; v < triangles.length; v += 12) {
     const corner = (k: number, offset: number) => triangles[v + 4 * k + offset];
     const area = (offset: number) => (corner(1, offset) - corner(0, offset)) * (corner(2, offset + 1) - corner(0, offset + 1)) - (corner(1, offset + 1) - corner(0, offset + 1)) * (corner(2, offset) - corner(0, offset));
-    const det = area(0) / area(2);
+    const det = (facing * area(0)) / area(2);
     if (det < worst.det) worst = { at: { x: (corner(0, 2) + corner(1, 2) + corner(2, 2)) / 3, y: (corner(0, 3) + corner(1, 3) + corner(2, 3)) / 3 }, det };
   }
   return worst;
@@ -61,7 +64,10 @@ export function paintMotionFolds(motion: PaintMotion, { from, to }: { from: numb
       const t = paintAnimationFrameStart(frame as AnimationFrame, fps), { warp } = paintNodeWarpAt(motion, node, paintMoment(t)), key = paintWarpChainKey(warp);
       if (!warp.length || checked.has(key)) continue;
       checked.add(key);
-      const { at, det } = paintWarpWorstFold(paintWarpChainMap(warp), box);
+      // Edge-on, a card draws nothing: there's no paint to fold.
+      const { facing } = paintWarpChainTurn(warp);
+      if (Math.abs(facing) < PAINT_EDGE_ON) continue;
+      const { at, det } = paintWarpWorstFold(paintWarpChainMap(warp), box, facing < 0 ? -1 : 1);
       if (det > 0) continue;
       const most = mostMoving(warp, at);
       found.push(`${node.id}: at ${t.toFixed(3)}s its warp folds near (${at.x.toFixed(0)}, ${at.y.toFixed(0)}), area ×${det.toFixed(2)}; ${most.name} moves paint there most (${most.shift.toFixed(1)} px)`);

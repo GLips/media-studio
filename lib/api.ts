@@ -21,7 +21,8 @@ export { CaptionKeycap, pillCaptions } from '#lib/picture/captions/studio/pill-c
 export { wordPopCaptionBand, wordPopCaptions } from '#lib/picture/captions/studio/word-pop-captions.tsx';
 export { FilmGrain, Vignette } from '#lib/picture/film/studio/grade.tsx';
 export { ClickToBlur, ConfirmDialog, DrawPath, EndCard, GlassCard, MotionTitle, NativeMenu, ODOMETER_DIGIT_EM, Odometer, Phone, SPLIT_LABEL_STRIP, SectionCard, SplitCompare, WordReveal, phoneView, splitLeftRect, splitRightRect, wordRevealFinish, type OdometerMode, type OdometerProps, type SplitSide, type WordRevealTiming } from '#lib/picture/kit/studio/kit.tsx';
-export { backOutEase, clamp, lerp, motionCurves, motionDurations, off, on, perceptualSpring, powerOutEase, seg, sineInOutEase, stagger, staggerFinish, type CurveRoles, type EaseFn, type PerceptualSpring, type StaggerFrom, type StaggerTiming } from '#lib/picture/motion/models/motion.ts';
+export { backOutEase, clamp, latchCurve, lerp, motionCurves, motionDurations, off, on, perceptualSpring, powerOutEase, seg, sineInOutEase, stagger, staggerFinish, type CurveRoles, type EaseFn, type PerceptualSpring, type SettlingCurve, type StaggerFrom, type StaggerTiming } from '#lib/picture/motion/models/motion.ts';
+export { foldAbout, foldMatrix, type FoldMatrix } from '#lib/picture/motion/models/fold.ts';
 export { CONTACT_SHARPNESS, STRAIN_ROUND, contactLoad, mixStrain, scaleStrain, strainAbout, strainAffine, strainAlong, strainAlongPath, strainAlongVelocity, strainCssMatrix, strainEllipse, strainExtent, strainMatrix, strainMatrix3, strainOfContact, strainOfLift, type Strain } from '#lib/picture/motion/models/strain.ts';
 export { ShutterBlur } from '#lib/picture/film/studio/motion-blur.tsx';
 export { REEL_SHUTTER, shutterOpensAt, shutterTravel, smearSigma } from '#lib/picture/lens/models/lens-shutter.ts';
@@ -155,7 +156,7 @@ export { dissolve, type Dissolve, type PaintedSource } from '#lib/paint/shot/mod
 export { paintingInTime, type PaintingInTime, type PaintingInTimeOptions, type PaintingInTimeValues } from '#lib/paint/shot/models/shot-painting-in-time.ts';
 export type {
   CoverFrame, InstancedPlaneProps, OccurrenceKey, OccurrenceProps, OccurrenceRig, PaintedShotProps, PaintedTexture, PictureSource, PinPoint, PlaneInstance,
-  PlaneLay, PlaneMask, PlaneProps, RigPart, RigPartPose, ScreenPin, ShotNodePlay, ThreeSource,
+  PlaneLay, PlaneMask, PlaneProps, RigPart, RigPartPose, RigPose, ScreenPin, ShotNodePlay, ThreeSource,
 } from '#lib/paint/shot/models/shot-props.ts';
 export type { PaintShotCamera, PaintShotLens } from '#lib/paint/animation/models/paint-camera-build.ts';
 export { PaintedShot, PaintedShotCanvas } from '#lib/paint/shot/studio/painted-shot.tsx';

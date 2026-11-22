@@ -132,14 +132,17 @@ export type InstancedPlaneProps = PlaneCommon & {
 // ---- rigs ----------------------------------------------------------------------------------------------------------
 
 /**
- * A part: the rig's cut declaration (`id`, draw order `z`, and below a root its parent, joint, rest `pivot` and skin
- * `blend` px) and its cels, layers or groups under the rigged group, each painted whole at rest. The first shows at
- * rest; the others only when a pose names them.
+ * A part: the rig's cut declaration (paint-rig-cuts.ts) and its cels, layers or groups under the rigged group, each
+ * painted whole at rest. The first shows at rest; the others when a pose names them. `back`, one of its cels, shows
+ * while a fold turns the part away; without one, a part drawn as pieces shows its sheet's blank paper.
  */
-export type RigPart = PaintRigCutDeclaration & { readonly cels: readonly NodeKey[] };
+export type RigPart = PaintRigCutDeclaration & { readonly cels: readonly NodeKey[]; readonly back?: NodeKey };
 
 /** A part's pose: its move in its parent's frame about its pivot (a root's, the group node's pivot), and the `cel` it shows. */
 export type RigPartPose = PaintRigPartMove & { readonly cel?: NodeKey };
+
+/** A rig's pose: one value in time for the whole rig, or each part's own, so parts can be keyed apart (a stagger). */
+export type RigPose = PresentationValue<Readonly<Record<string, RigPartPose>>> | Readonly<Record<string, PresentationValue<RigPartPose>>>;
 
 /**
  * A group occurrence cut into parts by its layers, as its entry's `rig`: each layer under the group lies in exactly
@@ -148,7 +151,7 @@ export type RigPartPose = PaintRigPartMove & { readonly cel?: NodeKey };
  */
 export type OccurrenceRig = {
   readonly parts: readonly RigPart[];
-  readonly pose: PresentationValue<Readonly<Record<string, RigPartPose>>>;
+  readonly pose: RigPose;
 };
 
 // ---- motion nodes --------------------------------------------------------------------------------------------------

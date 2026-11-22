@@ -125,8 +125,14 @@ export const off = (t: number, a: number, len = 0.4) => 1 - seg(t, a, a + len);
 // "Settled": within 0.05% of home, and staying there.
 const SPRING_SETTLED = 0.0005;
 
+/**
+ * Progress 0→1 (past 1 while it bounces) at `t` seconds after it starts, timed in its own seconds: it arrives at
+ * `arrival`, where a key lands it, and holds exactly 1 from `settled`.
+ */
+export type SettlingCurve = ((t: number) => number) & { readonly arrival: number; readonly settled: number };
+
 /** Progress 0→1 (past 1 while it bounces) at `t` seconds after the spring starts. */
-export type PerceptualSpring = ((t: number) => number) & {
+export type PerceptualSpring = SettlingCurve & {
   /** The perceptual duration it was asked for: the period it swings at, whatever its bounce. */
   duration: number;
   /**
@@ -171,6 +177,58 @@ export function perceptualSpring(duration: number, bounce = 0): PerceptualSpring
   }
   const at = (t: number) => (t <= 0 ? 0 : t >= settled ? 1 : 1 - gap(t));
   return Object.assign(at, { duration, arrival, settled });
+}
+
+// ---------- latch ----------
+
+/** The latch's simulation step, s: semi-implicit Euler at 240 Hz, as the papercraft flap spring steps. */
+const LATCH_STEP = 1 / 240;
+/** At rest once this near 1 and this slow (per s): it snaps there and holds. */
+const LATCH_REST = { gap: 0.002, speed: 0.024 } as const;
+/** Long enough for any size to snap to rest. */
+const LATCH_HORIZON = 4;
+
+const latched = new Map<number, SettlingCurve>();
+
+/**
+ * A paper flap popping up and latching, after the papercraft flap spring: a soft rise to 1, where it latches into a
+ * stiff 4.5 Hz quiver settling in two or three cycles (8–15% over, still within about a second). `size`, 0.12 small to
+ * 0.7 large, rises slower and quivers less. `arrival` is the latch, where a key lands it.
+ */
+export function latchCurve(size = 0.4): SettlingCurve {
+  if (!(size > 0 && Number.isFinite(size))) throw new RangeError(`latchCurve: size must be a finite number above 0, got ${size}`);
+  const known = latched.get(size);
+  if (known) return known;
+  const sizeT = clamp((size - 0.12) / 0.58), fs = 1.14 - 0.26 * sizeT, wobble = 1 + sizeT;
+  const rise = { k: 62 * fs * fs, c: 5 * fs * (1 - 0.5 * sizeT) };
+  const quiver = { w: 2 * Math.PI * 4.5, z: 0.04 / Math.sqrt(wobble), drag: 3.5 / Math.sqrt(wobble), friction: 2.2 * fs * (1 + 0.8 * sizeT) };
+  const table = [0];
+  let p = 0, v = 0, arrival = NaN, settled = NaN;
+  for (let step = 1; step * LATCH_STEP <= LATCH_HORIZON && Number.isNaN(settled); step++) {
+    const a = Number.isNaN(arrival)
+      ? rise.k * (1 - p) - rise.c * v
+      : quiver.w * quiver.w * (1 - p) - 2 * quiver.z * quiver.w * v - quiver.drag * v * Math.abs(v) - quiver.friction * Math.sign(v);
+    const before = p;
+    v += a * LATCH_STEP;
+    p += v * LATCH_STEP;
+    // Where the table, read linearly, crosses 1: so a key lands exactly on its value.
+    if (Number.isNaN(arrival) && p >= 1) arrival = (step - 1 + (1 - before) / (p - before)) * LATCH_STEP;
+    if (!Number.isNaN(arrival) && Math.abs(p - 1) < LATCH_REST.gap && Math.abs(v) < LATCH_REST.speed) {
+      p = 1;
+      settled = step * LATCH_STEP;
+    }
+    table.push(p);
+  }
+  if (Number.isNaN(settled)) throw new Error(`latchCurve: a flap of size ${size} hasn't come to rest within ${LATCH_HORIZON} s`);
+  const at = (t: number) => {
+    if (t <= 0) return 0;
+    if (t >= settled) return 1;
+    const i = Math.floor(t / LATCH_STEP), k = t / LATCH_STEP - i;
+    return table[i] + (table[i + 1] - table[i]) * k;
+  };
+  const curve = Object.assign(at, { arrival, settled });
+  latched.set(size, curve);
+  return curve;
 }
 
 // ---------- staggers ----------

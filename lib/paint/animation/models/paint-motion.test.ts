@@ -14,6 +14,7 @@ import { paintKeyed } from './paint-keyed.ts';
 import type { PaintPoseClip } from './paint-motion-clips.ts';
 import { paintMotionFrameAt } from './paint-motion-frame.ts';
 import { buildPaintMotion, type PaintMotionBuild } from './paint-motion.ts';
+import { paintGroupLaidReach } from './paint-motion-reach.ts';
 
 const FLAT: StampPaintEnvironment = { paper: { color: '#ffffff' }, mixing: { kind: 'flat' } };
 
@@ -202,4 +203,45 @@ test('the build names conflicts, missing pins and groups, a hold in seconds, a b
   const folds = problemsOf(buildPaintMotion(painting, { nodes: [body], plays: [paintMotionPlay(body, shove, { clock: { at: 0 }, origin: 'shove' })], foldCheck: { from: 0, to: 1 } }));
   assert.equal(folds.length, 1);
   assert.match(folds[0], /^frog: at 0\.\d+s its warp folds near .*frog's pin 'chest' moves paint there most/);
+});
+
+test('a fold of π flips paint over its crease through the pivot, and the fold check lets it be', () => {
+  const card = { id: 'card', pivot: { x: 200, y: 100 } } satisfies PaintMotionNode;
+  const painting = paintingOf([square('card')]);
+  const flip = paintKeyed([{ at: 0, value: 0 }, { at: 1, value: Math.PI, curve: 'inOut' }]);
+  const build = buildPaintMotion(painting, { nodes: [card], plays: [paintMotionPlay(card, { kind: 'fold', angle: flip }, { clock: { at: 0 }, origin: 'flip' })], foldCheck: { from: 0, to: 1.5 } });
+  const motion = built(build);
+  const warp = paintMotionFrameAt(motion, paintMoment(1.2)).get('card')!.warp!;
+  // A level crease through (200, 100): along it nothing moves; across it, y mirrors.
+  close(warp.map({ x: 50, y: 100 }), { x: 50, y: 100 }, 'the crease stays');
+  close(warp.map({ x: 50, y: 160 }), { x: 50, y: 40 }, 'below the crease goes above');
+  const half = paintMotionFrameAt(motion, paintMoment(0.5)).get('card')!.warp!;
+  close(half.map({ x: 50, y: 160 }), { x: 50, y: 100 }, 'halfway, edge-on: flat along its crease', 1e-3);
+});
+
+test('a strained and folded group\'s reach holds every frame\'s corners', () => {
+  const card = { id: 'card', pivot: { x: 0, y: 400 } } satisfies PaintMotionNode;
+  const painting = paintingOf([square('card')]);
+  const land = paintKeyed([{ at: 0, value: { x: 0, y: 0 } }, { at: 0.5, value: { x: 0.4, y: -0.2 } }, { at: 1, value: { x: 0, y: 0 } }]);
+  const tip = paintKeyed([{ at: 0, value: 0 }, { at: 1, value: 2.5 }]);
+  const motion = built(buildPaintMotion(painting, {
+    nodes: [card],
+    plays: [
+      paintMotionPlay(card, { kind: 'strain', value: land }, { clock: { at: 0 }, origin: 'land' }),
+      paintMotionPlay(card, { kind: 'fold', angle: tip, crease: 0.3 }, { clock: { at: 0 }, origin: 'tip' }),
+      paintMotionPlay(card, { kind: 'place', value: { x: 0, y: 0, scale: 1.5 } }, { clock: { at: 0 }, origin: 'grow' }),
+    ],
+  }));
+  const moments = Array.from({ length: 25 }, (_, f) => paintMoment(f / 24));
+  const reach = paintGroupLaidReach(painting.groups[0], motion, moments);
+  assert.equal(reach.kind, 'bounded');
+  const box = reach.kind === 'bounded' ? reach.box! : assert.fail();
+  for (const moment of moments) {
+    const state = paintMotionFrameAt(motion, moment).get('card')!;
+    for (const corner of [{ x: -5, y: -5 }, { x: 405, y: -5 }, { x: -5, y: 405 }, { x: 405, y: 405 }]) {
+      const warped = state.warp ? state.warp.map(corner) : corner;
+      const laid = state.lay ? stampGroupSceneFromLayer(state.lay.placement, warped, state.lay.pivot) : warped;
+      assert.ok(laid.x >= box.x0 && laid.x <= box.x1 && laid.y >= box.y0 && laid.y <= box.y1, `at ${moment.at}s (${laid.x}, ${laid.y}) is outside the reach`);
+    }
+  }
 });

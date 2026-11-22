@@ -107,20 +107,22 @@ chose and why.
 ## Rigs: a figure that bends
 
 A group's entry takes `rig: {parts, pose}`. Each part is `{id, z, parent: null, cels}`, or a child joined by
-`joint: 'skin'` (bending along its own paint over `blend` px, keeping a limb's width) or `'hinge'` (rigid), with a
-`pivot`.
+`joint: 'skin'` (bending along its own paint over `blend` px, keeping a limb's width) or `'hinge'` (rigid, folding
+about `crease?` radians through its pivot), with a `pivot`. `back?`, one of its cels, shows while a fold turns it away;
+paint it as seen through the card from the front.
 
 - Every layer under the group lies in exactly one part's cels. A cel is a layer or a group (a line and its wash as one
   part, media mixed). A part's cels after its first are swaps, shown one at a time: a layer meant to show with a part
   goes in its group cel.
 - Paint each part whole, running under its neighbours where a joint turns; a texel shows the cel giving it most
   colour. A skinned part's cel must win some texels and not centre its paint on its pivot, or the frame is refused.
-- `pose` names parts by id: `{x?, y?, rotation?, bend?, cel?}` in its parent's frame about its pivot. Views a joint
-  can't reach are groups switched by `visibility`.
+- `pose` names parts by id: `{x?, y?, rotation?, bend?, strain?, fold?, cel?}` in its parent's frame about its
+  pivot; it's one value in time or each part's own (`{flap: paintKeyed(…)}`), for staggers. A skinned part folds less
+  than π/2. Views a joint can't reach are groups switched by `visibility`.
 - On an own sheet the rig bends paint and paper as pieces with no solve; on shared paper each pose repaints it into
   the sheet's water. Every cel is painted, shown or not, into its sheet's water: give each later cel's first
   application `on: 'dry'` to paint them apart.
-- A rig never mirrors paint: a reflection is a second rig on paint drawn flipped.
+- A rig mirrors paint only by a fold past π/2: a reflection is a second rig on paint drawn flipped.
 - Pose helpers (`#lib/paint/rig/models/paint-rig-pose.ts`): `paintRigTwoBoneReach` turns a two-part chain so its tip
   lands on a target (a planted foot that never slides; keep targets inside the reach, where a knee straightens fast);
   `paintRigMirroredPose(pose, 'y')` poses a reflection in level water; `paintRigPosedPoint` gives where a pose puts a

@@ -5,15 +5,16 @@
 //
 // Each mesh moves of itself (lens-three-motion.ts), so a three plane's motion layer follows the posed vertices, not
 // only the plane. Its colour leaves the shader unpremultiplied for NormalBlending to premultiply again: the render
-// stays premultiplied, as painted-three-sources.ts asks.
+// stays premultiplied, as painted-three-sources.ts asks. A piece's face (paint-rig-pieces.ts) tones its colour, or
+// stands its blank paper in for its print, cut to the print's coverage; both sides draw, so a fold past π/2 shows.
 
 import {
-  BufferAttribute, ClampToEdgeWrapping, DataTexture, DoubleSide, Group, HalfFloatType, LinearFilter, Mesh, MeshBasicNodeMaterial, NormalBlending, RGBAFormat, type BufferGeometry,
+  BufferAttribute, ClampToEdgeWrapping, Color, DataTexture, DoubleSide, Group, HalfFloatType, LinearFilter, Mesh, MeshBasicNodeMaterial, NormalBlending, RGBAFormat, type BufferGeometry,
 } from 'three/webgpu';
-import { attribute, max, texture } from 'three/tsl';
+import { attribute, max, mix, texture, uniform } from 'three/tsl';
 import { gpuHalfBitsOf } from '#lib/platform/gpu/models/gpu-half-float.ts';
 import { createLensThreeSelfMovingGeometry } from '#lib/picture/lens/studio/lens-three-motion.ts';
-import type { PaintRigPicture, PaintRigPiece } from '../models/paint-rig-pieces.ts';
+import type { PaintRigPicture, PaintRigPiece, PaintRigPieceFace } from '../models/paint-rig-pieces.ts';
 
 /** The attribute a piece's vertices carry their rest point in, as a uv over its picture. */
 const REST_UV = 'paintRigRestUv';
@@ -50,19 +51,32 @@ export function createPaintRigPictureTextures(): PaintRigPictureTextures {
   };
 }
 
-type PieceMesh = { readonly mesh: Mesh<BufferGeometry, MeshBasicNodeMaterial>; readonly moving: ReturnType<typeof createLensThreeSelfMovingGeometry> };
+type PieceMesh = {
+  readonly mesh: Mesh<BufferGeometry, MeshBasicNodeMaterial>;
+  readonly moving: ReturnType<typeof createLensThreeSelfMovingGeometry>;
+  readonly face: (face: PaintRigPieceFace) => void;
+};
 
-/** A mesh drawing `made` through whatever triangles it's given. */
+/** A mesh drawing `made` through whatever triangles it's given, as its face says. */
 function pieceMesh(made: DataTexture): PieceMesh {
   const sampled = texture(made, attribute(REST_UV, 'vec2'));
+  const shade = uniform(1), blank = uniform(new Color(0, 0, 0)), blanked = uniform(0);
   // Unpremultiplied for NormalBlending's own multiply: where nothing is painted the colour is unread.
   const material = new MeshBasicNodeMaterial({ transparent: true, blending: NormalBlending, depthTest: false, depthWrite: false, side: DoubleSide });
-  material.colorNode = sampled.rgb.div(max(sampled.a, 1e-4));
+  material.colorNode = mix(sampled.rgb.div(max(sampled.a, 1e-4)), blank, blanked).mul(shade);
   material.opacityNode = sampled.a;
   // The geometry is set by setTriangles before the mesh is first drawn.
   const moving = createLensThreeSelfMovingGeometry(), mesh = new Mesh(undefined, material);
   mesh.frustumCulled = false;
-  return { mesh, moving };
+  return {
+    mesh, moving,
+    face: (face) => {
+      shade.value = face.shade;
+      blanked.value = face.blank ? 1 : 0;
+      // Linear already, as three's working colour space is.
+      if (face.blank) blank.value.setRGB(...face.blank);
+    },
+  };
 }
 
 /** Writes `triangles` into `mesh`'s geometry: posed points as positions, rest points as uvs over `picture`. */
@@ -94,7 +108,7 @@ export function createPaintRigPieceMeshes(shared?: PaintRigPictureTextures): Pai
     object,
     show: (pieces) => {
       const shown = new Set<PaintRigPicture>();
-      pieces.forEach(({ picture, triangles }, order) => {
+      pieces.forEach(({ picture, triangles, face }, order) => {
         if (shown.has(picture)) throw new Error('paint rig: a picture is shown twice in one pose; each piece has its own');
         shown.add(picture);
         // A clear cel (a wing at rest behind the body) draws nothing, and a texture can't be empty.
@@ -106,6 +120,7 @@ export function createPaintRigPieceMeshes(shared?: PaintRigPictureTextures): Pai
           object.add(piece.mesh);
         }
         setTriangles(piece, picture, triangles);
+        piece.face(face);
         piece.mesh.renderOrder = order;
         piece.mesh.visible = true;
       });

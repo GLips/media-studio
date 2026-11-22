@@ -33,7 +33,7 @@ export function withPaintRigPiecesGpu<T>(use: (draw: PaintRigPiecesGpuDraw) => P
     return use(async (pieces, { x0, y0, w, h }) => {
       // Only the box's numbers: a picture handed in as the box would carry its whole rgba across.
       const box = { x0, y0, w, h };
-      const request: PaintRigPiecesPageDraw = { pieces: pieces.map(({ picture, triangles }) => ({ picture: sourceOf(picture), triangles: Array.from(triangles) })), box };
+      const request: PaintRigPiecesPageDraw = { pieces: pieces.map(({ picture, triangles, face }) => ({ picture: sourceOf(picture), triangles: Array.from(triangles), face })), box };
       const bytes = Buffer.from(await call<string>('paintRigDrawPieces', request), 'base64');
       return { ...box, rgba: new Float32Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)) };
     });

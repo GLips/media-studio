@@ -1,11 +1,13 @@
-// paint-motion-clips.ts: what a play plays, over the clip's own time (seconds, from 0): poses (pins' moves) and place
-// (a group's rigid placement), each a value of the moment (paint-value.ts, keyed by paint-keyed.ts); and generators,
-// pure functions of their time: breathe (a pin's scale on a period), sway (a part bending from its root) and flutter
-// (a part narrowing across an axis and opening again). The play's clock (paint-clock.ts) makes that time, and
+// paint-motion-clips.ts: what a play plays, over the clip's own time (seconds, from 0): poses (pins' moves), strain
+// (squash and stretch about the node's pivot), fold (a card turning about a crease through its pivot) and place (a
+// group's rigid placement), each a value of the moment (paint-value.ts, keyed by paint-keyed.ts); and generators, pure
+// functions of their time: breathe (a pin's scale on a period), sway (a part bending from its root) and flutter (a
+// part folding toward its axis and opening again). The play's clock (paint-clock.ts) makes that time, and
 // paint-deform.ts the bend.
 //
 // A time below 0 reads as 0, so a clip waiting for its cue shows its first drawing.
 
+import type { Strain } from '#lib/picture/motion/models/strain.ts';
 import type { StampGroupPlacement } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
@@ -33,6 +35,17 @@ export type PaintSwayClip = { readonly kind: 'sway'; readonly root: StampPoint; 
  */
 export type PaintFlutterClip = { readonly kind: 'flutter'; readonly at: StampPoint; readonly direction: number; readonly least: number; readonly period: number };
 /**
+ * Deform: squash and stretch (strain.ts: strainAlong, strainOfContact, mixStrain) about the node's pivot, a value of
+ * the clip's moment. It keeps the paint's area; lay and place stay rigid.
+ */
+export type PaintStrainClip = { readonly kind: 'strain'; readonly value: PresentationValue<Strain> };
+/**
+ * Deform: the node's paint folds `angle` radians (a value of the clip's moment) about a crease through its pivot at
+ * `crease` radians (0, level, left out), narrowing across it by cos(angle). Past π/2 its back shows, its own sheet's
+ * blank paper; π flips it. A positive angle tips the side below a level crease away from the viewer.
+ */
+export type PaintFoldClip = { readonly kind: 'fold'; readonly angle: PresentationValue<number>; readonly crease?: number };
+/**
  * Place: a group's rigid placement about its pivot, a value of the clip's moment: offsets px, rotation radians, scale.
  * A scale of 0 draws nothing.
  */
@@ -40,11 +53,14 @@ export type PaintPlaceClip = { readonly kind: 'place'; readonly value: Presentat
 
 /** A clip moving pins: what a node's pin lane holds. */
 export type PaintPinClip<P extends string> = PaintPoseClip<P> | PaintBreatheClip<P>;
-export type PaintMotionClip<P extends string> = PaintPinClip<P> | PaintSwayClip | PaintFlutterClip | PaintPlaceClip;
+export type PaintMotionClip<P extends string> = PaintPinClip<P> | PaintSwayClip | PaintFlutterClip | PaintStrainClip | PaintFoldClip | PaintPlaceClip;
 
 /** The clip's length in its own seconds: how long its value changes for (presentationValueLength), a generator for ever. */
-export const paintMotionClipLength = (clip: PaintMotionClip<string>): ClipSeconds =>
-  clipSeconds(clip.kind === 'poses' || clip.kind === 'place' ? presentationValueLength(clip.value) : Infinity);
+export function paintMotionClipLength(clip: PaintMotionClip<string>): ClipSeconds {
+  if (clip.kind === 'fold') return clipSeconds(presentationValueLength(clip.angle));
+  if (clip.kind === 'poses' || clip.kind === 'place' || clip.kind === 'strain') return clipSeconds(presentationValueLength(clip.value));
+  return clipSeconds(Infinity);
+}
 
 /** A clip's moment from a play's: its own seconds, a time below 0 read as 0. */
 export const paintClipMoment = (moment: PaintMoment): PaintMoment => ({ at: Math.max(0, moment.at), frame: Math.max(0, moment.frame) });
@@ -81,6 +97,11 @@ export function paintPlacementMoveProblem(move: PaintPlacementMove, mustShow: 'a
   return `it scales by ${scale}; ${mustShow ? `${mustShow} scales by more than 0` : 'a placement scales by 0 or more'}`;
 }
 
+/** Why `strain` can't be drawn, or null. */
+const strainProblem = (strain: Strain) => (finite(strain.x, strain.y) ? null : `its strain ${JSON.stringify(strain)} isn't finite`);
+/** Why a fold of `angle` can't be drawn, or null. */
+const foldAngleProblem = (angle: number) => (Number.isFinite(angle) ? null : `its fold's angle ${angle} isn't finite`);
+
 /** Why `pose` can't be drawn, or null; `pins` the only pins it may name (null: any). */
 function poseProblem(pose: PaintPose<string>, pins: readonly string[] | null): string | null {
   for (const [pin, move] of Object.entries(pose)) {
@@ -98,6 +119,8 @@ function poseProblem(pose: PaintPose<string>, pins: readonly string[] | null): s
 export function paintMotionClipValueProblem(clip: PaintMotionClip<string>, moment: PaintMoment): string | null {
   if (clip.kind === 'poses') return poseProblem(presentationValueAt(clip.value, moment), paintMotionClipPins(clip));
   if (clip.kind === 'place') return paintPlacementMoveProblem(presentationValueAt(clip.value, moment), null);
+  if (clip.kind === 'strain') return strainProblem(presentationValueAt(clip.value, moment));
+  if (clip.kind === 'fold') return foldAngleProblem(presentationValueAt(clip.angle, moment));
   return null;
 }
 
@@ -113,6 +136,11 @@ export function paintMotionClipProblem(clip: PaintMotionClip<string>): string | 
     case 'breathe': return clip.period > 0 && clip.amount > -1 && Number.isFinite(clip.amount) ? null : `its breathe needs a positive period and an amount above −1, not ${clip.period}s and ${clip.amount}`;
     case 'sway': return clip.period > 0 && clip.length > 0 && finite(clip.amount, clip.direction, clip.root.x, clip.root.y) ? null : `its sway needs a positive period and length, not ${clip.period}s and ${clip.length} px`;
     case 'flutter': return clip.period > 0 && clip.least > 0 && clip.least <= 1 && finite(clip.direction, clip.at.x, clip.at.y) ? null : `its flutter needs a positive period and a least spread in (0, 1], not ${clip.period}s and ${clip.least}`;
+    case 'strain': return typeof clip.value === 'function' ? null : strainProblem(clip.value);
+    case 'fold': {
+      if (!finite(clip.crease)) return `its fold's crease ${clip.crease} isn't finite`;
+      return typeof clip.angle === 'function' ? null : foldAngleProblem(clip.angle);
+    }
     default: return clip satisfies never;
   }
 }
@@ -149,6 +177,12 @@ export function paintSwayAngleAt({ amount, length, period }: PaintSwayClip, phas
   const t = Math.max(0, time), ramp = Math.min(1, (2 * t) / period), easeIn = ramp * ramp * (3 - 2 * ramp);
   return (amount / length) * easeIn * Math.sin(2 * Math.PI * (t / period + phase));
 }
+
+/** The strain at clip moment `moment` of a strain clip. */
+export const paintStrainClipAt = (clip: PaintStrainClip, moment: PaintMoment): Strain => presentationValueAt(clip.value, paintClipMoment(moment));
+
+/** The fold's angle at clip moment `moment` of a fold clip, radians. */
+export const paintFoldClipAt = (clip: PaintFoldClip, moment: PaintMoment): number => presentationValueAt(clip.angle, paintClipMoment(moment));
 
 /** How open a flutter is, time s in, for a target of phase `phase`: 1 open, `least` closed. */
 export function paintFlutterSpreadAt({ least, period }: PaintFlutterClip, phase: number, time: ClipSeconds): number {

@@ -7,7 +7,7 @@ import { paintKeyed, paintKeyedHit } from './paint-keyed.ts';
 const sampled = <T,>(value: (moment: ReturnType<typeof paintMoment>) => T, from: number, to: number) =>
   Array.from({ length: Math.round((to - from) * 100) + 1 }, (_, i) => value(paintMoment(from + i / 100)));
 
-test('smooth passes each key at speed and never past it; only a spring or back overshoots, then settles on its key', () => {
+test('smooth passes each key at speed and never past it; only a spring, a latch or back overshoots, then settles on its key', () => {
   const rising = paintKeyed([{ at: 0, value: 0 }, { at: 1, value: 10 }, { at: 2, value: 12 }, { at: 3, value: 40 }], { between: 'smooth' });
   const steps = sampled(rising, 0, 3);
   assert.ok(steps.every((v, i) => i === 0 || v >= steps[i - 1] - 1e-9), 'it never turns back between rising keys');
@@ -20,6 +20,12 @@ test('smooth passes each key at speed and never past it; only a spring or back o
   const sprung = paintKeyed([{ at: 0, value: 0 }, { at: 1, value: 10, curve: { spring: { duration: 0.5, bounce: 0.3 } } }]);
   assert.ok(Math.max(...sampled(sprung, 0, 3)) > 10.2, 'a bouncing spring passes its key');
   assert.ok(Math.abs(sprung(paintMoment(sprung.settlesAt)) - 10) < 0.05, 'and has settled by settlesAt');
+  // A latch rises in the quarter second before its key, latches on it and quivers past it.
+  const latched = paintKeyed([{ at: 0, value: 0 }, { at: 1, value: 10, curve: { latch: {} } }]);
+  assert.equal(latched(paintMoment(0.7)), 0);
+  assert.ok(Math.abs(latched(paintMoment(1)) - 10) < 0.05, 'it latches on its key');
+  assert.ok(Math.max(...sampled(latched, 1, 2)) > 10.8, 'and quivers past it');
+  assert.equal(latched(paintMoment(latched.settlesAt)), 10);
   const backed = paintKeyed([{ at: 0, value: 0 }, { at: 1, value: 10, curve: { back: 0.1 } }]);
   assert.ok(Math.max(...sampled(backed, 0, 1)) > 10.5);
   assert.equal(backed(paintMoment(1)), 10);

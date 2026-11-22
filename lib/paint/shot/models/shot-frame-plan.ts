@@ -22,7 +22,7 @@ import type { CompiledShotGlow, CompiledShotMotion, CompiledShotNode } from './s
 import type { OccurrenceKey, RigPartPose } from './shot-props.ts';
 import { presentationValueAt } from '#lib/paint/animation/models/paint-value.ts';
 import { shotPlaneOccurrences } from './shot-occurrences.ts';
-import { shotPlaneRigEndProblems, shotRigCelPoses, shotRigPosed, shotRigPoseProblem, type CompiledShotRig, type ShotRigFound, type ShotRigPosed } from './shot-rigs.ts';
+import { shotPlaneRigEndProblems, shotRigCelPoses, shotRigPoseAt, shotRigPosed, shotRigPoseProblem, type CompiledShotRig, type ShotRigFound, type ShotRigPosed } from './shot-rigs.ts';
 import { paintedPlaneBlendProblems, paintedSourceEnds, paintedSourceProblems, paintedSourceShares, type PaintedSourceShare } from './shot-selection.ts';
 import { shotVisibilityProblem } from './shot-visibility.ts';
 
@@ -177,6 +177,10 @@ export function shotNodeGlowAt(motion: CompiledShotMotion, glow: CompiledShotGlo
 /** The pivot rig `rig`'s roots turn about: its group node's, else the document's origin. */
 export const shotRigGroupPivot = (rig: CompiledShotRig, motion: CompiledShotMotion): StampPoint => motion.nodes.get(rig.occurrence)?.pivot ?? { x: 0, y: 0 };
 
+/** The moment rig `rig`'s pose reads at frame moment `t`: its group node's held moment (its own hold, else its plane's). */
+export const shotRigMomentAt = (rig: CompiledShotRig, motion: CompiledShotMotion, t: PaintMoment): PaintMoment =>
+  paintNodeTimeAt(motion.nodes.get(rig.occurrence)?.clock ?? motion.planeClocks.get(rig.plane) ?? [], t, motion.animationFps);
+
 /** A rig at one moment: its pose, the pivot its roots turn about (shotRigGroupPivot), and its group node's boil wobble (null: none). */
 export type ShotRigAt = { readonly pose: Readonly<Record<string, RigPartPose>>; readonly groupPivot: StampPoint; readonly wobble: PaintDeform | null };
 
@@ -185,8 +189,8 @@ export type ShotRigAt = { readonly pose: Readonly<Record<string, RigPartPose>>; 
  * Throws on a pose its rig can't take. Read only through a frame's shotRigReader, which reads each moment once.
  */
 function shotRigAt(rig: CompiledShotRig, motion: CompiledShotMotion, t: PaintMoment): ShotRigAt {
-  const node = motion.nodes.get(rig.occurrence), moment = paintNodeTimeAt(node ? node.clock : motion.planeClocks.get(rig.plane) ?? [], t, motion.animationFps);
-  const pose = presentationValueAt(rig.pose, moment), problem = shotRigPoseProblem(rig, pose);
+  const node = motion.nodes.get(rig.occurrence), moment = shotRigMomentAt(rig, motion, t);
+  const pose = shotRigPoseAt(rig.pose, moment), problem = shotRigPoseProblem(rig, pose);
   if (problem) throw new Error(`shot: ${rig.occurrence}'s rig at ${moment.at} s ${problem}`);
   return { pose, groupPivot: shotRigGroupPivot(rig, motion), wobble: node ? shotNodeWobbleAt(node, t, motion.animationFps) : null };
 }

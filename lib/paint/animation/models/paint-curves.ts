@@ -1,30 +1,33 @@
 // paint-curves.ts: how a keyed value (paint-keyed.ts) moves into a key from the one before: lib/picture/motion's eases,
-// said on keys. Most shape the share of the way covered across the stretch between the two keys; two are timed in
+// said on keys. Most shape the share of the way covered across the stretch between the two keys; three are timed in
 // seconds of their own: a spring, which arrives on its key (98% of the way, motion.ts's `arrival`) and settles after
-// it, and a move that accelerates, cruises and brakes.
+// it; a latch, a paper flap rising soft and latching on its key into a quiver; and a move that accelerates, cruises
+// and brakes.
 //
-// Only a spring and `back` overshoot their key; every other curve stays between its two keys' values.
+// Only a spring, a latch and `back` overshoot their key; every other curve stays between its two keys' values.
 
-import { backOutEase, perceptualSpring, powerOutEase, type PerceptualSpring } from '#lib/picture/motion/models/motion.ts';
+import { backOutEase, latchCurve, perceptualSpring, powerOutEase, type SettlingCurve } from '#lib/picture/motion/models/motion.ts';
 
 /**
  * `linear`: an even pace. `in`, `out`, `inOut`: quadratic from rest, to rest, or both; `{ in: p }` and the rest, at
- * power p. `{ back: o }`: past the key by `o` of the way, settling back. `{ spring }`: perceptualSpring, arriving on
- * the key. `{ accelerate, brake }`: seconds speeding up and slowing down. Or an ease of the share, 0 to 1.
+ * power p. `{ back: o }`: overshooting by `o`. `{ spring }`: perceptualSpring; `{ latch }`:
+ * latchCurve (size 0.4 left out); both arrive on the key. `{ accelerate, brake }`: seconds speeding up and
+ * slowing down. Or an ease of the share, 0 to 1.
  */
 export type PaintCurve =
   | 'linear' | 'in' | 'out' | 'inOut'
   | { readonly in: number } | { readonly out: number } | { readonly inOut: number }
   | { readonly back: number }
   | { readonly spring: { readonly duration: number; readonly bounce?: number } }
+  | { readonly latch: { readonly size?: number } }
   | { readonly accelerate: number; readonly brake: number }
   | ((share: number) => number);
 
 /**
- * A curve over one stretch: an ease of its share (0..1, past 1 for `back`), or a spring, timed from `arrival`
- * seconds before its key.
+ * A curve over one stretch: an ease of its share (0..1, past 1 for `back`), or a settling curve (a spring, a latch),
+ * timed from `arrival` seconds before its key.
  */
-export type PaintCurveTiming = { readonly kind: 'ease'; readonly ease: (share: number) => number } | { readonly kind: 'spring'; readonly spring: PerceptualSpring };
+export type PaintCurveTiming = { readonly kind: 'ease'; readonly ease: (share: number) => number } | { readonly kind: 'settling'; readonly curve: SettlingCurve };
 
 const powerIn = (power: number) => (u: number) => u ** power;
 const powerInOut = (power: number) => (u: number) => (u < 0.5 ? 2 ** (power - 1) * u ** power : 1 - (2 - 2 * u) ** power / 2);
@@ -61,6 +64,10 @@ export function paintCurveProblem(curve: PaintCurve, seconds: number): string | 
     const { duration, bounce = 0 } = curve.spring;
     return positive(duration) && bounce >= 0 && bounce < 1 ? null : `its spring takes a duration above 0 and a bounce in 0..1 (1 left out), not ${duration} s and ${bounce}`;
   }
+  if ('latch' in curve) {
+    const { size = 0.4 } = curve.latch;
+    return positive(size) ? null : `its latch's size is ${size}, not above 0`;
+  }
   if ('accelerate' in curve) {
     const { accelerate, brake } = curve;
     if (!(accelerate >= 0 && brake >= 0 && Number.isFinite(accelerate + brake))) return `it accelerates over ${accelerate} s and brakes over ${brake} s; each is 0 s or more`;
@@ -83,6 +90,7 @@ export function paintCurveTiming(curve: PaintCurve, seconds: number): PaintCurve
   if ('out' in curve) return eased(powerOutEase(curve.out));
   if ('inOut' in curve) return eased(powerInOut(curve.inOut));
   if ('back' in curve) return eased(backOutEase(curve.back));
-  if ('spring' in curve) return { kind: 'spring', spring: perceptualSpring(curve.spring.duration, curve.spring.bounce) };
+  if ('spring' in curve) return { kind: 'settling', curve: perceptualSpring(curve.spring.duration, curve.spring.bounce) };
+  if ('latch' in curve) return { kind: 'settling', curve: latchCurve(curve.latch.size) };
   return eased(acceleratingEase(curve.accelerate / seconds, curve.brake / seconds));
 }

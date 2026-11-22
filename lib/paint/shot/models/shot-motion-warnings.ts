@@ -2,13 +2,15 @@
 // check and the render print. The judge takes the camera's own move; each drawable here (a plane, an occurrence with a
 // node or visibility of its own) is followed on what it adds: a plane its depth, lay and node, the camera held; an
 // occurrence its own node, its plane and the nodes above held. One with no node of its own adds nothing: what carries
-// it warns for it.
+// it warns for it. A card held near edge-on warns too (shotEdgeOnWarnings).
 //
 // Negative space: bends, sway, boil and rigs' poses move paint within a drawable and aren't followed; nor are
 // instanced planes' items, three planes, or a plane pinned to HTML.
 
 import { paintPlaneSimilarity, paintStageCentre } from '#lib/paint/animation/models/paint-camera.ts';
-import { paintLaneSnapsBetween } from '#lib/paint/animation/models/paint-motion-clips.ts';
+import { PAINT_CARD_SLIVER, PAINT_EDGE_ON } from '#lib/paint/animation/models/paint-card-face.ts';
+import { paintLaneClipAt } from '#lib/paint/animation/models/paint-clock.ts';
+import { paintFoldClipAt, paintLaneSnapsBetween } from '#lib/paint/animation/models/paint-motion-clips.ts';
 import { paintLevelPlacementAt } from '#lib/paint/animation/models/paint-motion-frame.ts';
 import { paintMotionWarnings, type PaintMotionFollowed, type PaintMotionSamples } from '#lib/paint/animation/models/paint-motion-warnings.ts';
 import { PAINT_SIMILARITY_IDENTITY, paintSimilarityAfter, paintSimilarityOf, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
@@ -20,7 +22,9 @@ import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-s
 import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
 import { stampStageExtent } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { CompiledPaintedShot, CompiledShotPaintedPlane, CompiledShotPlane } from './shot-compile.ts';
-import { shotPlaneLayAt, shotPlaneMomentAt } from './shot-frame-plan.ts';
+import { shotPlaneLayAt, shotPlaneMomentAt, shotRigMomentAt } from './shot-frame-plan.ts';
+import type { CompiledShotMotion } from './shot-motion.ts';
+import { shotRigPartFacing, shotRigPoseAt } from './shot-rigs.ts';
 
 /** The occurrence `key` of `plane`'s box: its node's in the first end showing it. */
 function occurrenceBox(plane: CompiledShotPaintedPlane, node: string): StampBox | undefined {
@@ -116,7 +120,57 @@ function planeBox(shot: CompiledPaintedShot, plane: CompiledShotPlane): StampBox
   return extent.kind === 'everywhere' ? stampStageExtent(shot.camera.stage) : undefined;
 }
 
+/** Node `id`'s facing at `t`: the product of its line's folds' cosines (fold.ts), its own and its ancestors'. */
+function shotNodeFacingAt(motion: CompiledShotMotion, id: string, t: PaintMoment): number {
+  let facing = 1;
+  for (let at: string | null = id; at !== null; at = motion.nodes.get(at)!.parent) {
+    const playing = paintLaneClipAt(motion.nodes.get(at)!.fold, t, motion.animationFps);
+    if (playing) facing *= Math.cos(paintFoldClipAt(playing.play.clip, playing.moment));
+  }
+  return facing;
+}
+
+/** The first run of drawn frames, two or more long, in which `facing` says a card is a sliver; null for none. Edge-on it draws nothing, so is none. */
+function sliverRun(frames: readonly PaintSpanFrame[], facing: (t: PaintMoment) => number): { from: number; to: number } | null {
+  let start = -1;
+  for (let i = 0; i <= frames.length; i++) {
+    const shown = i < frames.length ? Math.abs(facing(frames[i].moments[0])) : 1, sliver = shown >= PAINT_EDGE_ON && shown < PAINT_CARD_SLIVER;
+    if (sliver && start < 0) start = i;
+    if (!sliver && start >= 0) {
+      if (i - start >= 2) return { from: frames[start].t, to: frames[i - 1].t };
+      start = -1;
+    }
+  }
+  return null;
+}
+
+const SLIVER_ADVICE = 'it reads as a sliver, not a turn: pass through edge-on within a frame, or hold it further round';
+
+/**
+ * Each folding node, and each rig part a pose folds, held within about 10° of edge-on (|facing| below
+ * PAINT_CARD_SLIVER) for two drawn frames or more running, once each.
+ */
+function shotEdgeOnWarnings(shot: CompiledPaintedShot, frames: readonly PaintSpanFrame[]): PaintingProblem[] {
+  const { motion } = shot, warnings: PaintingProblem[] = [];
+  const say = (owner: string, what: string, run: { from: number; to: number }) =>
+    warnings.push(paintingProblem('warning', owner, 'motion', `${what} is folded within about 10° of edge-on from ${run.from.toFixed(3)} s to ${run.to.toFixed(3)} s; ${SLIVER_ADVICE}`));
+  for (const node of motion.nodes.values()) {
+    if (!node.fold.length) continue;
+    const run = sliverRun(frames, (t) => shotNodeFacingAt(motion, node.id, t));
+    if (run) say(node.id, node.id, run);
+  }
+  // Read unchecked: a pose a rig can't take is refused where a frame poses it, and a fold that isn't finite is no sliver.
+  for (const rig of shot.rigs.values()) {
+    for (const part of rig.parts) {
+      const run = sliverRun(frames, (t) => shotRigPartFacing(rig, shotRigPoseAt(rig.pose, shotRigMomentAt(rig, motion, t)), part.id));
+      if (run) say(rig.occurrence, `its part ${part.id}`, run);
+    }
+  }
+  return warnings;
+}
+
 /** `shot`'s motion over `frames` judged (paint-motion-warnings.ts), as warnings by owner: the camera, or a drawable. */
 export function shotMotionWarnings(shot: CompiledPaintedShot, frames: readonly PaintSpanFrame[]): PaintingProblem[] {
-  return paintMotionWarnings(shot.camera, frames, (samples) => followedDrawables(shot, samples)).map(({ name, message }) => paintingProblem('warning', name, 'motion', message));
+  const moving = paintMotionWarnings(shot.camera, frames, (samples) => followedDrawables(shot, samples)).map(({ name, message }) => paintingProblem('warning', name, 'motion', message));
+  return [...moving, ...shotEdgeOnWarnings(shot, frames)];
 }

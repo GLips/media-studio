@@ -1,14 +1,18 @@
-// shot-rigs.ts: a group occurrence cut into parts and posed, purely. A part is a cut declaration with
-// its cels under the rigged group; a pose moves and turns it about its pivot in its parent's frame and bends it from
-// pivot to farthest rest paint, as main's rig composes sway and placement (paint-deform.ts).
+// shot-rigs.ts: a group occurrence cut into parts and posed, purely. A part is a cut declaration with its cels under
+// the rigged group; a pose bends, strains, folds, turns and moves it in its parent's frame.
 //
 // A group owning its sheet is drawn as pieces: its sheet laid with its shown cels' films, cut by their cel layer's
 // ownership, posed by skin (shotRigPieces). Otherwise its cels' marks are posed before painting (shotRigCelPoses): a
 // rest cel by its skin mesh where it has one, any other by its part's rigid map; a cel owning a sheet moves it whole.
+// A part folded past π/2 shows its `back` cel; a pieces rig's part without one shows its blank paper (shotRigPieces).
 
+import { paintCardShade, paintCardSide, PAINT_EDGE_ON } from '#lib/paint/animation/models/paint-card-face.ts';
 import { paintPlacementIsRest, paintPlacementRounded, paintRatioSteps, type PaintDeform } from '#lib/paint/animation/models/paint-deform.ts';
+import { presentationValueAt } from '#lib/paint/animation/models/paint-value.ts';
 import type { NodeKey } from '#lib/paint/document/models/painting-document.ts';
-import { PAINTING_REST_POSE, paintingDeformsPose, paintingPoseMap, paintingPoseText, type PaintingNodePose } from '#lib/paint/document/models/painting-pose.ts';
+import { PAINTING_REST_POSE, paintingDeformsPose, paintingPoseMap, paintingPoseText, paintingPoseTurn, type PaintingNodePose } from '#lib/paint/document/models/painting-pose.ts';
+import type { PaintLight } from '#lib/paint/painting/models/stamp-form.ts';
+import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { paintingField, paintingProblem, paintingProblemsError, isPaintingFinitePoint, isPaintingPositive, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import type { LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
 import type { PaintingEvaluation } from '#lib/paint/document/models/painting-source.ts';
@@ -17,14 +21,14 @@ import type { StampWarpMap } from '#lib/paint/painting/models/stamp-group-warp.t
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-canonical.ts';
 import { paintRigCelLayer, paintRigPicturePainted, type PaintRigCelPart } from '#lib/paint/rig/models/paint-rig-cel-layer.ts';
-import type { PaintRigCutLayer } from '#lib/paint/rig/models/paint-rig-cuts.ts';
-import { paintRigSkinGroupPicture, type PaintRigPicture, type PaintRigPiece } from '#lib/paint/rig/models/paint-rig-pieces.ts';
+import { paintRigPartCrease, type PaintRigCutLayer } from '#lib/paint/rig/models/paint-rig-cuts.ts';
+import { paintRigSkinGroupPicture, type PaintRigPicture, type PaintRigPiece, type PaintRigPieceFace } from '#lib/paint/rig/models/paint-rig-pieces.ts';
 import {
   paintRigBandStretch, paintRigSkinGroups, paintRigSkinMesh, paintRigSkinProblems, paintRigSkinRestMap, paintRigSkinTriangles,
   type PaintRigSkinGroup, type PaintRigSkinProblem, type PaintRigSkinMesh,
 } from '#lib/paint/rig/models/paint-rig-skin.ts';
 import { paintedSourceNodeKeys, shotEntryProblem } from './shot-occurrences.ts';
-import type { OccurrenceKey, OccurrenceRig, RigPart, RigPartPose } from './shot-props.ts';
+import type { OccurrenceKey, OccurrenceRig, RigPart, RigPartPose, RigPose } from './shot-props.ts';
 import type { PaintedSourceEnd } from './shot-selection.ts';
 
 /**
@@ -66,12 +70,14 @@ function rigLines(occurrence: OccurrenceKey, parts: readonly RigPart[], problems
   return lines;
 }
 
-/** Why `part`'s declaration can't be posed, or null: a z, pivot and blend that aren't numbers a pose can use. */
+/** Why `part`'s declaration can't be posed, or null: a z, pivot, blend and crease that aren't numbers a pose can use, a back that isn't its cel. */
 function partProblem(part: RigPart): string | null {
   if (!Number.isFinite(part.z)) return `its z is ${part.z}, not a finite number`;
+  if (part.back !== undefined && !part.cels.includes(part.back)) return `its back ${part.back} isn't one of its cels (${part.cels.join(', ')})`;
   if (part.parent === null) return null;
   if (!isPaintingFinitePoint(part.pivot)) return `its pivot (${part.pivot.x}, ${part.pivot.y}) isn't a finite point`;
   if (part.joint === 'skin' && !isPaintingPositive(part.blend)) return `its skin blends over ${part.blend} px; a blend is a finite px above 0`;
+  if (part.joint === 'hinge' && !Number.isFinite(part.crease ?? 0)) return `its crease is ${part.crease}, not a finite angle`;
   return null;
 }
 
@@ -181,18 +187,39 @@ export function compileShotRig(occurrence: OccurrenceKey, plane: string, paintin
   };
 }
 
-/** Why `pose` can't pose `rig`, or null: a part it doesn't have, a cel not that part's, a number that isn't finite. */
+/**
+ * `pose` at `moment`, by part: a whole rig's value read, or each part's own. Throws on a part's value that isn't a
+ * pose (shotRigPoseProblem checks the rest).
+ */
+export function shotRigPoseAt(pose: RigPose, moment: PaintMoment): Readonly<Record<string, RigPartPose>> {
+  if (typeof pose === 'function') return pose(moment);
+  return Object.fromEntries(Object.entries(pose).map(([id, value]) => [id, presentationValueAt(value, moment)]));
+}
+
+/**
+ * Why `pose` can't pose `rig`, or null: a part it doesn't have, a cel not that part's, a number that isn't finite, or a
+ * skinned part folded to edge-on or past it, which its skin band can't turn over with.
+ */
 export function shotRigPoseProblem(rig: CompiledShotRig, pose: Readonly<Record<string, RigPartPose>>): string | null {
   for (const [id, partPose] of Object.entries(pose)) {
     const part = rig.parts.find((each) => each.id === id);
     if (!part) return `poses ${id}, which isn't one of its parts`;
     if (partPose.cel !== undefined && !part.cels.includes(partPose.cel)) return `shows ${id}'s cel ${partPose.cel}; its cels are ${part.cels.join(', ')}`;
-    for (const name of ['x', 'y', 'rotation', 'bend'] as const) {
+    for (const name of ['x', 'y', 'rotation', 'bend', 'fold'] as const) {
       const value = partPose[name];
       if (value !== undefined && !Number.isFinite(value)) return `poses ${id}'s ${name} at ${value}, not a finite number`;
     }
+    if (partPose.strain && !(Number.isFinite(partPose.strain.x) && Number.isFinite(partPose.strain.y))) return `poses ${id}'s strain at ${JSON.stringify(partPose.strain)}, not finite`;
+    if (part.parent !== null && part.joint === 'skin' && Math.cos(partPose.fold ?? 0) < PAINT_EDGE_ON) {
+      return `folds ${id} by ${partPose.fold}, to edge-on or past it, and ${id} meets ${part.parent} by a skin joint, whose band can't turn over: fold it less than π/2, or hinge it`;
+    }
   }
   return null;
+}
+
+/** Which way `part` faces at `pose`: the product of its line's folds' cosines (fold.ts), below 0 its back showing. */
+export function shotRigPartFacing(rig: CompiledShotRig, pose: Readonly<Record<string, RigPartPose>>, part: string): number {
+  return rig.lines.get(part)!.reduce((facing, level) => facing * Math.cos(pose[level.id]?.fold ?? 0), 1);
 }
 
 /** What a part bends along: from its pivot toward its farthest rest paint, `length` px. */
@@ -221,9 +248,12 @@ export const shotRigPartPivot = (part: RigPart, groupPivot: StampPoint): StampPo
  */
 export type ShotRigPosed = { readonly maps: ReadonlyMap<string, PaintingNodePose>; readonly shown: ReadonlyMap<string, NodeKey> };
 
-/** The cel each of `rig`'s parts shows at `pose`, by part id: the one its pose names, else its first. */
+/**
+ * The cel each of `rig`'s parts shows at `pose`, by part id: its `back` while a fold turns its back to the viewer, else
+ * the one its pose names, else its first.
+ */
 export const shotRigShownCels = (rig: CompiledShotRig, pose: Readonly<Record<string, RigPartPose>>): ReadonlyMap<string, NodeKey> =>
-  new Map(rig.parts.map((part) => [part.id, pose[part.id]?.cel ?? part.cels[0]]));
+  new Map(rig.parts.map((part) => [part.id, (part.back !== undefined && shotRigPartFacing(rig, pose, part.id) < 0 ? part.back : undefined) ?? pose[part.id]?.cel ?? part.cels[0]]));
 
 /**
  * `rig`'s cels `pose` doesn't show. They stay in their sheet's program, so a swap never re-solves and what their water
@@ -246,8 +276,11 @@ export function shotRigPosed(
   for (const part of rig.parts) {
     const steps: PaintDeform[] = wobble ? [wobble] : [];
     for (const level of rig.lines.get(part.id)!) {
-      const { x = 0, y = 0, rotation = 0, bend = 0 } = pose[level.id] ?? {}, pivot = shotRigPartPivot(level, groupPivot), angleSteps = paintRatioSteps(bend);
+      const { x = 0, y = 0, rotation = 0, bend = 0, strain, fold = 0 } = pose[level.id] ?? {}, pivot = shotRigPartPivot(level, groupPivot), angleSteps = paintRatioSteps(bend);
       if (angleSteps !== 0) steps.push({ owner: level.id, kind: 'sway', root: pivot, ...axes.get(level.id)!, angleSteps });
+      const strainSteps = [paintRatioSteps(strain?.x ?? 0), paintRatioSteps(strain?.y ?? 0)] as const, foldSteps = paintRatioSteps(fold);
+      if (strainSteps[0] !== 0 || strainSteps[1] !== 0) steps.push({ owner: level.id, kind: 'strain', pivot, strainSteps });
+      if (foldSteps !== 0) steps.push({ owner: level.id, kind: 'fold', pivot, crease: paintRigPartCrease(level), foldSteps });
       const placement = paintPlacementRounded({ x, y, rotation });
       if (!paintPlacementIsRest(placement)) steps.push({ owner: level.id, kind: 'place', placement, pivot });
     }
@@ -329,7 +362,7 @@ export function shotRigCelPoses(rig: CompiledShotRig, posed: ShotRigPosed, skin:
     const part = rig.parts.find(({ id }) => id === partId)!, map = skinned.get(partId);
     // A skin mesh covers its part's rest cel alone: a swapped-in cel moves rigidly with its part. Every rest cel shapes
     // the mesh, so the skin's key is in the text: a body solved in one end isn't resumed by an end whose neck differs.
-    if (map && cel === part.cels[0]) poses.set(cel, { kind: 'warp', map, text: `${rig.text}:skin(${partId}@${skin.key}):${allTexts}` });
+    if (map && cel === part.cels[0]) poses.set(cel, { kind: 'warp', map, text: `${rig.text}:skin(${partId}@${skin.key}):${allTexts}`, turn: paintingPoseTurn(posed.maps.get(partId)!) });
     else poses.set(cel, posed.maps.get(partId)!);
   }
   return poses;
@@ -359,28 +392,44 @@ export const shotRigPiecePictures = (picture: PaintRigPicture, skin: ShotRigSkin
   skin.groups.map(({ group }) => paintRigSkinGroupPicture(picture, skin.cuts, group, () => true));
 
 /**
- * A pieces rig's pieces at `posed`, in its group's frame: each of `pictures` (shotRigPiecePictures over `skin`)
- * through its skin group's mesh posed by each member's map. And each skin joint's stretch.
+ * How a pieces rig's cards show: the shot's `light`, and its sheet's `paper` (linear RGB), the blank back of a part
+ * turned past edge-on with no `back` cel to show.
  */
-export function shotRigPieces(posed: ShotRigPosed, pictures: readonly PaintRigPicture[], skin: ShotRigSkin): { pieces: PaintRigPiece[]; stretches: ShotRigStretch[] } {
+export type ShotRigCardLook = { readonly light: PaintLight; readonly paper: readonly [number, number, number] };
+
+/** How the piece of skin group `group` shows at `posed`: by its root part's turn, its whole mesh one card. */
+function shotRigPieceFace(rig: CompiledShotRig, posed: ShotRigPosed, group: PaintRigSkinGroup, skin: ShotRigSkin, look: ShotRigCardLook): PaintRigPieceFace | null {
+  const id = skin.cuts.parts[group.root].id, turn = paintingPoseTurn(posed.maps.get(id)!), side = paintCardSide(turn);
+  if (side === 'edge') return null;
+  const backed = rig.parts.find((part) => part.id === id)!.back !== undefined;
+  return { shade: paintCardShade(turn, look.light), blank: side === 'back' && !backed ? look.paper : null };
+}
+
+/**
+ * A pieces rig's pieces at `posed`, in its group's frame: each of `pictures` (shotRigPiecePictures over `skin`)
+ * through its skin group's mesh posed by each member's map, shaded by `look`'s light, blank where its back shows and
+ * nothing edge-on. And each skin joint's stretch.
+ */
+export function shotRigPieces(rig: CompiledShotRig, posed: ShotRigPosed, pictures: readonly PaintRigPicture[], skin: ShotRigSkin, look: ShotRigCardLook): { pieces: PaintRigPiece[]; stretches: ShotRigStretch[] } {
   const pieces: PaintRigPiece[] = [], stretches: ShotRigStretch[] = [], { parts } = skin.cuts;
-  skin.groups.forEach(({ mesh }, g) => {
+  skin.groups.forEach(({ group, mesh }, g) => {
     const triangles = paintRigSkinTriangles(mesh, (k) => paintingPoseMap(posed.maps.get(parts[k].id)!));
     for (const [child, band] of mesh.bands) stretches.push({ joint: parts[child].id, ...paintRigBandStretch(triangles, band) });
-    pieces.push({ picture: pictures[g], triangles });
+    const face = shotRigPieceFace(rig, posed, group, skin, look);
+    if (face) pieces.push({ picture: pictures[g], triangles, face });
   });
   return { pieces, stretches };
 }
 
 /** `pieces` with their posed points carried by `map` (the group's sheet's placement), their rest points kept. */
 export function shotRigPiecesPlaced(pieces: readonly PaintRigPiece[], map: StampWarpMap): PaintRigPiece[] {
-  return pieces.map(({ picture, triangles }) => {
+  return pieces.map(({ picture, triangles, face }) => {
     const placed = triangles.slice();
     for (let v = 0; v < placed.length; v += 4) {
       const at = map({ x: placed[v], y: placed[v + 1] });
       placed[v] = at.x;
       placed[v + 1] = at.y;
     }
-    return { picture, triangles: placed };
+    return { picture, triangles: placed, face };
   });
 }

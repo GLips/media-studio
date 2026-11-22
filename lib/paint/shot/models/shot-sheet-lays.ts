@@ -3,16 +3,19 @@
 // whole; the nodes below it posed its marks before the solve, and a lattice carries the solved paint where they pose
 // it now. Each composite step becomes a lattice (a card over its films as far as each shows, a film over its paint);
 // a sheet drawn as pieces gives way to its pieces at its card. A span faded apart is mixed back by its visibility; a
-// film is cut by its reveals. shotPlaneLayPlan plans and keys a moment.
+// film is cut by its reveals; a sheet folded away lays blank paper. shotPlaneLayPlan plans and keys a moment.
 
 import { PAINT_SIMILARITY_IDENTITY } from '#lib/paint/animation/models/paint-similarity.ts';
+import { paintCardShade, paintCardSide } from '#lib/paint/animation/models/paint-card-face.ts';
+import { paintHexToLinear } from '#lib/paint/materials/models/paint-spectrum.ts';
+import type { PaintLight } from '#lib/paint/painting/models/stamp-form.ts';
 import type { NodeKey } from '#lib/paint/document/models/painting-document.ts';
 import { paintingProblem, paintingProblemText } from '#lib/paint/document/models/painting-problem.ts';
 import { paintingNodeSteps, paintingStepNode, type PaintingSelectionCompiled } from '#lib/paint/document/models/painting-document-compile.ts';
 import { paintingRevealLinksOf } from '#lib/paint/document/models/painting-reveal.ts';
 import { paintingBoxUnion, paintingNodeBox } from '#lib/paint/document/models/painting-footprint.ts';
 import {
-  PAINTING_REST_POSE, paintingPoseAfter, paintingPoseMap, paintingPoseText, paintingSimilarityPose, type PaintingNodePose, type PaintingPoses,
+  PAINTING_REST_POSE, paintingPoseAfter, paintingPoseMap, paintingPoseText, paintingPoseTurn, paintingSimilarityPose, type PaintingNodePose, type PaintingPoses,
 } from '#lib/paint/document/models/painting-pose.ts';
 import type { LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
 import { paintingSheetInGroup, type PaintingSheet, type PaintingTree } from '#lib/paint/document/models/painting-tree.ts';
@@ -29,7 +32,7 @@ import { shotFilmLattice, shotPlacedLattice, type ShotLattice, type ShotShutterA
 import { shotOccurrenceKey, shotOccurrencePlane } from './shot-occurrences.ts';
 import type { OccurrenceKey } from './shot-props.ts';
 import {
-  shotRigHiddenCels, shotRigPieces, shotRigPiecesPlaced, type CompiledShotRig, type ShotRigFound, type ShotRigPosed, type ShotRigSkin, type ShotRigStretch,
+  shotRigHiddenCels, shotRigPieces, shotRigPiecesPlaced, type CompiledShotRig, type ShotRigCardLook, type ShotRigFound, type ShotRigPosed, type ShotRigSkin, type ShotRigStretch,
 } from './shot-rigs.ts';
 import { shotFadedApart } from './shot-visibility.ts';
 
@@ -69,11 +72,11 @@ export type ShotCardFilm = { readonly film: number; readonly shown: number };
 /**
  * How a step lays this moment: a card's paper over its sheet's `edge` (document px), cut round the sheet's films
  * `films` (those showing, painted somewhere); a film through its lattice; or a rig's pieces (`rig`, its group
- * occurrence) in place of its group's sheet.
+ * occurrence) in place of its group's sheet. `shade`: its sheet's tone under the light (paint-card-face.ts).
  */
 export type ShotStepLay =
-  | { readonly kind: 'card'; readonly sheet: number; readonly films: readonly ShotCardFilm[]; readonly edge: StampBox; readonly lattice: ShotLattice }
-  | { readonly kind: 'film'; readonly sheet: number; readonly film: number; readonly layer: NodeKey; readonly lattice: ShotLattice }
+  | { readonly kind: 'card'; readonly sheet: number; readonly films: readonly ShotCardFilm[]; readonly edge: StampBox; readonly lattice: ShotLattice; readonly shade: number }
+  | { readonly kind: 'film'; readonly sheet: number; readonly film: number; readonly layer: NodeKey; readonly lattice: ShotLattice; readonly shade: number }
   | { readonly kind: 'pieces'; readonly rig: string };
 
 /**
@@ -96,18 +99,19 @@ export type ShotSelectionLayInput = {
   readonly pieces: ReadonlyMap<NodeKey, string>;
   readonly hidden: ReadonlySet<NodeKey>;
   readonly visibilityOf: (node: NodeKey) => number;
+  readonly light: PaintLight;
 };
 
 /**
- * Each of the selection's steps as it lays at `input.at`: null for one with nothing to lay (a film painted nowhere, a
- * card of no paint showing, a step a rig's pieces stand in for, or one in a hidden cel). A card is cut round each
- * film as far as it shows; a pieces group's card lays its pieces.
+ * Each of the selection's steps as it lays at `input.at`: null for one with nothing to lay (a film painted nowhere or
+ * turned away, a card of no paint showing, a step pieces stand in for, a hidden cel's, any edge-on). A card is cut
+ * round each film as far as it shows.
  */
-export function shotSelectionStepLays({ compiled, filmBoxes, solved, at, shutter, pieces, hidden, visibilityOf }: ShotSelectionLayInput): (ShotStepLay | null)[] {
+export function shotSelectionStepLays({ compiled, filmBoxes, solved, at, shutter, pieces, hidden, visibilityOf, light }: ShotSelectionLayInput): (ShotStepLay | null)[] {
   const { tree, sheets, steps } = compiled;
   const placeOf = (s: number) => {
-    const { sheet } = sheets[s], place = (moment: ShotPlaneAt) => shotSheetPlaceAt(tree, sheet, moment);
-    return { at: place(at), shutter: shutter && { open: place(shutter.open), close: place(shutter.close) } };
+    const { sheet } = sheets[s], place = (moment: ShotPlaneAt) => shotSheetPlaceAt(tree, sheet, moment), placed = place(at), turn = paintingPoseTurn(placed);
+    return { at: placed, shutter: shutter && { open: place(shutter.open), close: place(shutter.close) }, side: paintCardSide(turn), shade: paintCardShade(turn, light) };
   };
   const unseen = (key: NodeKey) => [key, ...tree.byKey.get(key)!.groups].some((each) => hidden.has(each));
   return steps.map((step): ShotStepLay | null => {
@@ -117,6 +121,7 @@ export function shotSelectionStepLays({ compiled, filmBoxes, solved, at, shutter
     const group = [...pieces.keys()].find((each) => paintingSheetInGroup(tree, sheet, each));
     if (group !== undefined) return step.kind === 'card' && sheet.owner === group ? { kind: 'pieces', rig: pieces.get(group)! } : null;
     const placed = placeOf(step.sheet);
+    if (placed.side === 'edge' || (placed.side === 'back' && step.kind === 'film')) return null;
     if (step.kind === 'card') {
       // A film counts as far as it shows, so a view switched off takes its paper as a hidden cel does, and one fading
       // thins the paper its paint alone cut.
@@ -126,7 +131,7 @@ export function shotSelectionStepLays({ compiled, filmBoxes, solved, at, shutter
         return shown > 0 ? [{ film: f, shown }] : [];
       });
       const edge = films.reduce<StampBox | undefined>((union, { film }) => paintingBoxUnion(union, filmBoxes[step.sheet][film]!), undefined);
-      return edge ? { kind: 'card', sheet: step.sheet, films, edge, lattice: shotPlacedLattice(edge, placed.at, placed.shutter) } : null;
+      return edge ? { kind: 'card', sheet: step.sheet, films, edge, lattice: shotPlacedLattice(edge, placed.at, placed.shutter), shade: placed.shade } : null;
     }
     const box = filmBoxes[step.sheet][step.film];
     if (!box) return null;
@@ -134,7 +139,7 @@ export function shotSelectionStepLays({ compiled, filmBoxes, solved, at, shutter
     const atMoment = { place: placed.at, marks: marks(at.poses) };
     const shutterAt = shutter && placed.shutter && { open: { place: placed.shutter.open, marks: marks(shutter.open.poses) }, close: { place: placed.shutter.close, marks: marks(shutter.close.poses) } };
     const { node } = tree.layers[layer];
-    return { kind: 'film', sheet: step.sheet, film: step.film, layer: node.key, lattice: shotFilmLattice(box, marks(solved), atMoment, shutterAt, paintingNodeBox(node)) };
+    return { kind: 'film', sheet: step.sheet, film: step.film, layer: node.key, lattice: shotFilmLattice(box, marks(solved), atMoment, shutterAt, paintingNodeBox(node)), shade: placed.shade };
   });
 }
 
@@ -172,12 +177,13 @@ export type ShotMomentAt = { readonly at: PaintMoment; readonly shutter: { reado
 export type ShotPiecesPose = { readonly posed: ShotRigPosed; readonly place: PaintingNodePose };
 
 /**
- * A pieces rig at one moment, before its pictures are read: its rig; the cel each part shows, in part order; the steps
- * its sheets lay (in its compile's steps): cards and shown cels' films, none under a node at 0; how much of each
- * shows (null: all); its pose then and at the shutter's ends; and whether it moves.
+ * A pieces rig at one moment, before its pictures are read: its rig and `look`; the cel each part shows, in part
+ * order; the steps its sheets lay: cards and shown cels' films, none under a node at 0; how much of each shows (null:
+ * all); its pose then and at the shutter's ends; and whether it moves.
  */
 export type ShotPiecesPlan = {
   readonly rig: CompiledShotRig;
+  readonly look: ShotRigCardLook;
   readonly shown: readonly NodeKey[];
   readonly steps: readonly number[];
   readonly levels: StampSheetCompositeShown | null;
@@ -195,7 +201,7 @@ export type ShotRigPiecesAt = { readonly at: readonly PaintRigPiece[]; readonly 
  */
 export function shotPiecesPlaced(plan: ShotPiecesPlan, skin: ShotRigSkin, pictures: readonly PaintRigPicture[]): ShotRigPiecesAt & { readonly stretches: readonly ShotRigStretch[] } {
   const placed = ({ posed, place }: ShotPiecesPose) => {
-    const { pieces, stretches } = shotRigPieces(posed, pictures, skin);
+    const { pieces, stretches } = shotRigPieces(plan.rig, posed, pictures, skin, plan.look);
     return { pieces: shotRigPiecesPlaced(pieces, paintingPoseMap(place)), stretches };
   };
   const at = placed(plan.at);
@@ -320,7 +326,7 @@ function shotPiecesPlan(input: ShotPlaneLayInput, found: ShotRigFound, { at, shu
     return step.kind === 'card' || showing.has(paintingStepNode(compiled, step)) ? [index] : [];
   });
   return {
-    rig, shown, steps, levels: shotPiecesLevels(compiled, steps, visibilityOf, apart), at: atPose, shutter,
+    rig, look: { light: shot.light, paper: paintHexToLinear(sheet.paper.color) }, shown, steps, levels: shotPiecesLevels(compiled, steps, visibilityOf, apart), at: atPose, shutter,
     travels: !!shutter && piecesPoseText(shutter.open) !== piecesPoseText(shutter.close),
   };
 }
@@ -347,7 +353,7 @@ export function shotPlaneLayPlan(input: ShotPlaneLayInput, moment: ShotMomentAt)
   const hidden = new Set(rigs.filter(({ rig }) => !rig.pieces).flatMap(({ rig }) => shotRigHiddenCels(rig, read(rig, at).pose)));
   const filmBoxes = films.map((sheet) => sheet.map(({ box }): StampBox | null => box && { x0: box.x, y0: box.y, x1: box.x + box.w, y1: box.y + box.h }));
   const lays = shotSelectionStepLays({
-    compiled, filmBoxes, solved, at: atMoment, shutter: shutterAt, pieces: new Map(piecesRigs.map(({ rig }) => [rig.group, rig.occurrence])), hidden, visibilityOf,
+    compiled, filmBoxes, solved, at: atMoment, shutter: shutterAt, pieces: new Map(piecesRigs.map(({ rig }) => [rig.group, rig.occurrence])), hidden, visibilityOf, light: shot.light,
   });
   // A glow is read once a moment on the node stating it, however many layers share it.
   const glows = new Map<string, StampGroupGlow | null>();

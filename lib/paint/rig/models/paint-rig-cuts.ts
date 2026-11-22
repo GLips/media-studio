@@ -12,12 +12,16 @@ export type PaintRigTexelBox = { readonly x0: number; readonly y0: number; reado
 
 /**
  * A part as it's declared cut from a layer: its draw order and, below the root, its parent by id and how it meets it
- * there, at its rest `pivot`: a skin joint blending the two parts' moves over `blend` px, or a hinge.
+ * at its rest `pivot`: a skin joint blending the two parts' moves over `blend` px, or a hinge, folding about the line
+ * through its pivot at `crease` radians (level when left out).
  */
 export type PaintRigCutDeclaration = { readonly id: string; readonly z: number } & (
   | { readonly parent: null }
   | { readonly parent: string; readonly joint: 'skin'; readonly pivot: StampPoint; readonly blend: number }
-  | { readonly parent: string; readonly joint: 'hinge'; readonly pivot: StampPoint });
+  | { readonly parent: string; readonly joint: 'hinge'; readonly pivot: StampPoint; readonly crease?: number });
+
+/** The crease `part` folds about: a hinge's own, else level. */
+export const paintRigPartCrease = (part: PaintRigCutDeclaration): number => ('joint' in part && part.joint === 'hinge' ? part.crease ?? 0 : 0);
 
 /**
  * How a part meets its parent within its layer, the parent an index into the layer's parts. `loose`: its parent isn't

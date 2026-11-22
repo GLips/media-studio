@@ -164,7 +164,7 @@ test('a shot refuses motion its rig or lay already writes, and a painted texture
     paintedTextures: [{ id: 'mug', source: layersOf(pond, ['sky'], { ground: 'transparent' }), widthPx: 64, heightPx: 64 }],
   }), [
     'front.occurrences.neck: lies in front/heron, which is rigged: its rig\'s parts pose all it holds, so nothing in it takes a node',
-    'heron sways.motion: front/heron is rigged: it takes no pins, sway or flutter',
+    'heron sways.motion: front/heron is rigged: it takes no pins, sway, flutter, strain or fold; its parts take strain and fold',
     'motion: push writes place on front from 1s while front\'s moving lay still does (without end)',
     "mug.source: selects on a transparent ground: a painted texture is opaque, shown on its paintings' paper",
   ]);

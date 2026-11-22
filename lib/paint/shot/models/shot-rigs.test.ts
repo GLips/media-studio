@@ -6,7 +6,9 @@ import { paintingPoseMap } from '#lib/paint/document/models/painting-pose.ts';
 import type { PaintRigPicture } from '#lib/paint/rig/models/paint-rig-pieces.ts';
 import { paintRigPosedPoint } from '#lib/paint/rig/models/paint-rig-pose.ts';
 import type { RigPart } from './shot-props.ts';
-import { compileShotRig, shotRigCelPoses, shotRigFound, shotRigPosed, shotRigSkin } from './shot-rigs.ts';
+import { compileShotRig, shotRigCelPoses, shotRigFound, shotRigPoseAt, shotRigPosed, shotRigPoseProblem, shotRigShownCels, shotRigSkin } from './shot-rigs.ts';
+import { paintKeyed } from '#lib/paint/animation/models/paint-keyed.ts';
+import { paintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 
 const layer = (key: string): Layer => ({
   key, washes: [{
@@ -66,4 +68,26 @@ test("a posed point is where the shot draws its part's paint, skinned, wherever 
     // The shot keys a move to a thousandth of a px and a millionth of a radian.
     assert.ok(Math.hypot(at.x - posed.x, at.y - posed.y) < 2e-3, `${part} at (${point.x}, ${point.y})`);
   }
+});
+
+const flapped = painting({
+  default: function flapped(): PaintingDocument {
+    return { widthPx: 320, heightPx: 240, paper: { color: '#f4f2ed', absorbency: 0.5 }, medium: 'watercolour', layers: [{ key: 'heron', children: [layer('body'), layer('neck'), layer('neck-back')] }] };
+  },
+});
+
+test('a hinged part folded past π/2 shows its back cel, each part keyed on its own; a skinned part folds no further than edge-on', () => {
+  const parts: readonly RigPart[] = [
+    { id: 'body', z: 0, parent: null, cels: ['body'] },
+    { id: 'neck', z: 1, parent: 'body', joint: 'hinge', pivot: { x: 60, y: 100 }, crease: 0.2, cels: ['neck', 'neck-back'], back: 'neck-back' },
+  ];
+  const pose = { body: { x: 0 }, neck: paintKeyed([{ at: 0, value: { fold: 0 } }, { at: 1, value: { fold: Math.PI } }]) };
+  const { rig, problems } = compileShotRig('front/heron', 'front', flapped, { parts, pose });
+  assert.deepEqual(problems, []);
+  const shownAt = (t: number) => shotRigShownCels(rig!, shotRigPoseAt(pose, paintMoment(t))).get('neck');
+  assert.equal(shownAt(0.3), 'neck');
+  assert.equal(shownAt(0.9), 'neck-back');
+  const skinned = rigOf(0);
+  assert.equal(shotRigPoseProblem(skinned, { neck: { fold: 1.2 } }), null);
+  assert.match(shotRigPoseProblem(skinned, { neck: { fold: 2 } }) ?? '', /neck/);
 });

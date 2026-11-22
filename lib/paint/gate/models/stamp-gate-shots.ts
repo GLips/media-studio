@@ -33,6 +33,7 @@ import {
 } from './stamp-gate-shot-masks.ts';
 import { STAMP_GATE_SHOT_GLOW_ID } from './stamp-gate-shot-glow.ts';
 import { STAMP_GATE_APPROACH, STAMP_GATE_APPROACH_PAINTING, STAMP_GATE_SHOT_APPROACH_ID, stampGateApproachShot } from './stamp-gate-shot-approach.ts';
+import { STAMP_GATE_FOLDS, STAMP_GATE_FOLDS_KEYS, STAMP_GATE_FOLDS_PARTS, stampGateFoldsShot } from './stamp-gate-folds.ts';
 import { STAMP_GATE_HERON_POSE, STAMP_GATE_SHEET_IMAGES, STAMP_GATE_WET_CONTACT, stampGateSheetBrushOf } from './stamp-gate-sheets.ts';
 
 /** The shot over a page: its DOM adapter's reads, and a clear back pinned to an element, drawn and read back. */
@@ -41,7 +42,7 @@ export const STAMP_GATE_SHOT_PAGE_IDS = ['shot/page'] as const;
 /** The shots accepted by eye: each a baseline subject, one frame of its shot. */
 export const STAMP_GATE_SHOT_IDS = [
   'shot/paper-heron', 'shot/wet-contact', 'shot/rain', 'shot/dissolve', 'shot/rigged-dissolve', 'shot/masks', 'shot/masks-across', 'shot/masks-across-open', 'shot/rainy-street', 'shot/cards',
-  'shot/pieces', 'shot/approach',
+  'shot/pieces', 'shot/approach', 'shot/folds',
 ] as const;
 export type StampGateShotId = (typeof STAMP_GATE_SHOT_IDS)[number];
 
@@ -412,6 +413,9 @@ const SHOT_BASELINES: Readonly<Record<StampGateShotId, {
   },
   'shot/approach': {
     shot: () => stampGateApproachShot(), at: STAMP_GATE_APPROACH.at.past, evaluations: () => [painting(STAMP_GATE_APPROACH_PAINTING)], rigs: {}, poses: [], extra: STAMP_GATE_APPROACH,
+  },
+  'shot/folds': {
+    shot: stampGateFoldsShot, at: STAMP_GATE_FOLDS_KEYS.at, evaluations: () => [painting(STAMP_GATE_FOLDS)], rigs: { hinged: STAMP_GATE_FOLDS_PARTS }, poses: [], extra: { keys: STAMP_GATE_FOLDS_KEYS },
   },
 };
 

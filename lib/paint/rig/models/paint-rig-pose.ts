@@ -4,16 +4,21 @@
 // (shot-rigs.ts), so a point found here is where the shot draws it.
 //
 // Negative space: no point is carried through a bend. A bend curls a part along its farthest paint at rest, which only
-// the shot sees once the paint is solved.
+// the shot sees once the paint is solved. A strain and a fold are exact maps, so points ride them.
 
+import { foldMatrix } from '#lib/picture/motion/models/fold.ts';
+import { strainMatrix, type Strain } from '#lib/picture/motion/models/strain.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import type { PaintRigCutDeclaration } from './paint-rig-cuts.ts';
+import { paintRigPartCrease, type PaintRigCutDeclaration } from './paint-rig-cuts.ts';
 
 /**
- * A part's move in its parent's frame: `x`, `y` document px and a turn `rotation` (radians) about its pivot, and a
- * `bend` (radians) curling it from its pivot along its farthest paint at rest.
+ * A part's move in its parent's frame, about its pivot: `x`, `y` document px, a turn `rotation` (radians), a `bend`
+ * (radians) curling it along its farthest paint, a `strain` (strain.ts), and a `fold` (radians) about its crease (a
+ * hinge's `crease`, else level), its back showing past π/2. Applied bend, strain, fold, then turn and move.
  */
-export type PaintRigPartMove = { readonly x?: number; readonly y?: number; readonly rotation?: number; readonly bend?: number };
+export type PaintRigPartMove = {
+  readonly x?: number; readonly y?: number; readonly rotation?: number; readonly bend?: number; readonly strain?: Strain; readonly fold?: number;
+};
 
 /** A pose's moves by part id; a part left out rests. */
 export type PaintRigMoves = Readonly<Record<string, PaintRigPartMove>>;
@@ -45,9 +50,11 @@ function movedLine(skeleton: PaintRigSkeleton, pose: PaintRigMoves, id: string, 
   return line;
 }
 
-/** `p` moved by `move` about `pivot`: turned, then shifted. */
-function moved(p: StampPoint, pivot: StampPoint, { x = 0, y = 0, rotation = 0 }: PaintRigPartMove): StampPoint {
-  const c = Math.cos(rotation), s = Math.sin(rotation), dx = p.x - pivot.x, dy = p.y - pivot.y;
+/** `p` moved by `move` about `pivot`, `crease` the line its fold turns about: strained, folded, turned, then shifted. */
+function moved(p: StampPoint, pivot: StampPoint, crease: number, { x = 0, y = 0, rotation = 0, strain, fold = 0 }: PaintRigPartMove): StampPoint {
+  let dx = p.x - pivot.x, dy = p.y - pivot.y;
+  for (const [[a, b], [c, d]] of [strainMatrix(strain ?? { x: 0, y: 0 }), foldMatrix(fold, crease)]) [dx, dy] = [a * dx + b * dy, c * dx + d * dy];
+  const c = Math.cos(rotation), s = Math.sin(rotation);
   return { x: pivot.x + c * dx - s * dy + x, y: pivot.y + s * dx + c * dy + y };
 }
 
@@ -57,7 +64,7 @@ function moved(p: StampPoint, pivot: StampPoint, { x = 0, y = 0, rotation = 0 }:
  * and only paint within that band of a joint bends between the two parts' moves (paint-rig-skin.ts).
  */
 export function paintRigPosedPoint(skeleton: PaintRigSkeleton, pose: PaintRigMoves, part: string, point: StampPoint): StampPoint {
-  return movedLine(skeleton, pose, part, `${part}'s point`).reduce((at, { part: level, move }) => moved(at, pivotOf(skeleton, level), move), point);
+  return movedLine(skeleton, pose, part, `${part}'s point`).reduce((at, { part: level, move }) => moved(at, pivotOf(skeleton, level), paintRigPartCrease(level), move), point);
 }
 
 /** `part`'s turn from rest in its group's frame: its own and every parent's. */
@@ -95,6 +102,9 @@ export function paintRigTwoBoneReach(skeleton: PaintRigSkeleton, pose: PaintRigM
   if (lower.parent !== upperId) throw new Error(`paint rig: a two-bone chain is a part and its child, and ${lowerId} hangs from ${lower.parent ?? 'nothing'}, not ${upperId}`);
   const upperMove = pose[upperId] ?? {}, lowerMove = pose[lowerId] ?? {};
   if (upperMove.bend || lowerMove.bend) throw new Error(`paint rig: ${upperId} → ${lowerId} reaches straight bones, and its pose bends one`);
+  if ([upperMove, lowerMove].some(({ strain, fold }) => fold || (strain && (strain.x || strain.y)))) {
+    throw new Error(`paint rig: ${upperId} → ${lowerId} reaches bones of their rest length, and its pose strains or folds one`);
+  }
   const upperPivot = pivotOf(skeleton, upper), lowerPivot = pivotOf(skeleton, lower);
   const shifted = { x: upperPivot.x + (upperMove.x ?? 0), y: upperPivot.y + (upperMove.y ?? 0) };
   const root = upper.parent === null ? shifted : paintRigPosedPoint(skeleton, pose, upper.parent, shifted);
@@ -121,8 +131,8 @@ export function paintRigTwoBoneReach(skeleton: PaintRigSkeleton, pose: PaintRigM
 
 /**
  * `pose` for the rig drawn mirrored: `'y'` flips top for bottom (a reflection in level water), `'x'` left for right.
- * Turns and bends reverse, each move flips on that axis, and a part's cel is kept. The mirrored rig is a rig of its
- * own, its pivots and group pivot mirrored as its paint is.
+ * Turns and bends reverse, moves flip on that axis, a strain's axis mirrors; cels and folds are kept. The mirrored rig
+ * is a rig of its own, its pivots, creases and group pivot mirrored as its paint is.
  */
 export function paintRigMirroredPose<P extends PaintRigPartMove>(pose: Readonly<Record<string, P>>, flipped: 'x' | 'y'): Record<string, P> {
   const mirrored = (move: P): P => ({
@@ -131,6 +141,8 @@ export function paintRigMirroredPose<P extends PaintRigPartMove>(pose: Readonly<
     ...(flipped === 'y' && move.y !== undefined && { y: -move.y }),
     ...(move.rotation !== undefined && { rotation: -move.rotation }),
     ...(move.bend !== undefined && { bend: -move.bend }),
+    // Mirrored on either axis, an axis at θ lies at −θ or π − θ: twice it, the same either way.
+    ...(move.strain !== undefined && { strain: { x: move.strain.x, y: -move.strain.y } }),
   });
   return Object.fromEntries(Object.entries(pose).map(([id, move]) => [id, mirrored(move)]));
 }

@@ -56,3 +56,16 @@ test('a mirrored pose poses the rig drawn mirrored as the mirror image of the ri
     assert.ok(near(paintRigPosedPoint(reflection, mirrored, 'shin', mirror(point)), mirror(paintRigPosedPoint(LEG, pose, 'shin', point))));
   }
 });
+
+test('a hinge folds its part about its crease through its pivot, riding its parent; a two-bone reach refuses a fold', () => {
+  const flap: PaintRigSkeleton = {
+    parts: [{ id: 'body', z: 0, parent: null }, { id: 'flap', z: 1, parent: 'body', joint: 'hinge', pivot: HIP, crease: Math.PI / 2 }],
+    pivot: LEG.pivot,
+  };
+  // An upright crease through the hip: a point 40 px right of it comes in to 20 px at 60°, and the flap rides the body.
+  const folded = paintRigPosedPoint(flap, { flap: { fold: Math.PI / 3 } }, 'flap', { x: HIP.x + 40, y: HIP.y + 10 });
+  assert.ok(near(folded, { x: HIP.x + 20, y: HIP.y + 10 }), `(${folded.x}, ${folded.y})`);
+  const carried = paintRigPosedPoint(flap, { body: { x: 7 }, flap: { fold: Math.PI } }, 'flap', { x: HIP.x + 40, y: HIP.y });
+  assert.ok(near(carried, { x: HIP.x - 33, y: HIP.y }), 'a fold of π mirrors it over its crease, then the body carries it');
+  assert.throws(() => paintRigTwoBoneReach(LEG, { thigh: { fold: 0.3 } }, { chain: ['thigh', 'shin'], tip: ANKLE, target: { x: 150, y: 210 }, bend: 'clockwise' }), /strains or folds one/);
+});
