@@ -86,3 +86,23 @@ return { scene, poseAt: () => {}, shadows: { softness: 4 }, dispose,
 
 The reflection adds to the floor's own lit colour; a shadow darkens the floor and leaves the reflection be. A mip
 level is a fair stand-in for a rough surface's spread, not a measured one: set `ROUGHNESS` by eye at delivery size.
+
+## Paper cards and pop-ups
+
+`paperPopUpPlane` (`#studio`) returns `{plane, paintedTextures}`: a three plane of cards hinged on a base tipped back
+`pitch` radians, and each card's painting as its texture. Pass both to `PaintedShot`.
+
+```ts
+const { plane, paintedTextures } = paperPopUpPlane({ id: 'popup', depth: 1, popUp: {
+  at: { x: 960, y: 700 }, pitch: 0.85, scale: 0.6,
+  base: { source: layersOf(ground, ['ground']), widthPx: 1400, heightPx: 900, outline: { shape: GROUND } },
+  cards: [{ id: 'house', source: layersOf(house, ['house']), widthPx: 400, heightPx: 500,
+    outline: { shape: HOUSE, hinge: { from: { x: 0, y: 500 }, to: { x: 400, y: 500 } } },
+    at: { x: 600, y: 520 }, angle: paintKeyed([{ at: 0, value: 0 }, { at: 0.6, value: 0.85 }]) }],
+} });
+```
+
+- Outlines are points or SVG path data; a hinge gets no cut edge.
+- `angle` stands a card up from flat; at `pitch` it faces the camera. `on: 'house'` nests a card on another.
+- The shot's `light` lights them; never relit, a print shows at most 1.05× as painted. Backs show kraft.
+- `createPaintedThreeCard` and `createPaintedThreeCardLights` build cards in a hand-made scene.

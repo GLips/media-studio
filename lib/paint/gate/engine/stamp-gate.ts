@@ -38,6 +38,7 @@ import {
   stampGateTextureInputs,
 } from '../models/stamp-gate-textures.ts';
 import { STAMP_GATE_LIGHTING_IDS, stampGateLightingFrame, stampGateLightingInputs } from '../models/stamp-gate-three-lighting.ts';
+import { STAMP_GATE_PAPER_CARD_IDS, stampGatePaperCardFrame, stampGatePaperCardInputs } from '../models/stamp-gate-paper-card.ts';
 import { readStampGateBaseline, stampGateFrame, stampGateInputsHash, writeStampGateCandidate, type StampGateOutput } from './stamp-gate-store.ts';
 
 /** The gate's browser side, which the private run loads too. */
@@ -95,6 +96,8 @@ const STAMP_GATE_FRAME_FAMILIES: readonly StampGateFrameFamily[] = [
   stampGateFrameFamily({ ids: STAMP_GATE_SHOT_TEXTURE_IDS, page: 'paintStampGateShotTexture', inputs: stampGateShotTextureInputs, size: stampGateShotTextureFrame }),
   // A shot of lit three.js scenes, shadowed and mirrored: the lighting page builds them.
   stampGateFrameFamily({ ids: STAMP_GATE_LIGHTING_IDS, page: 'paintStampGateLighting', inputs: stampGateLightingInputs, size: stampGateLightingFrame }),
+  // three.js paper cards and a pop-up, lit as paper: the paper card page builds them.
+  stampGateFrameFamily({ ids: STAMP_GATE_PAPER_CARD_IDS, page: 'paintStampGatePaperCard', inputs: stampGatePaperCardInputs, size: stampGatePaperCardFrame }),
 ];
 
 /** Every baseline subject's ID: each rendering formula's, each painting's and each frame family's cases'. */
@@ -120,6 +123,7 @@ const STAMP_GATE_CASES = {
   checkStampGateTextureCase: STAMP_GATE_TEXTURE_IDS,
   checkStampGateShotTextureCase: STAMP_GATE_SHOT_TEXTURE_CASE_IDS,
   checkStampGateLightingCase: STAMP_GATE_LIGHTING_IDS,
+  checkStampGatePaperCardCase: STAMP_GATE_PAPER_CARD_IDS,
   checkStampGateShotPageCase: STAMP_GATE_SHOT_PAGE_IDS,
   checkStampGateShotCase: STAMP_GATE_SHOT_CASE_IDS,
   checkStampGateRevealCase: STAMP_GATE_REVEAL_IDS,

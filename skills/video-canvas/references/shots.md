@@ -163,11 +163,10 @@ where a function of the share is wanted. Moment times come from the storyboard's
   `breathe`, `sway {root, direction, length, amount, period}` (reeds, a hanging leaf), `flutter`, `strain {value}`
   (squash and stretch about the pivot, keeping area: `#studio`'s `Strain`), `fold {angle, crease?}`. Two plays
   writing one thing (a place, one pin) over the same seconds are refused; a place and a sway on one node compose.
-- **Cut paper folds.** Put a card on an own sheet and `fold` its group's node: it turns `angle` radians about a crease
-  through its pivot (`crease` radians, level by default; a positive angle tips the side below it away), narrowing by
-  cos(angle) and shaded by the shot's `light`. Past π/2 its back shows, its own paper blank; a flip is a fold of π.
-  Exactly π/2 draws nothing. Pass through edge-on within a frame (a lingering sliver warns), and pop a card up with
-  the `latch` curve. Nested folds multiply planar (two 60° folds face +0.25): an approximation, not true 3D.
+- **Cut paper folds.** `fold` a card's group node: it turns `angle` about a crease through its pivot (`crease`, level
+  by default; positive tips the side below away), narrowing by cos(angle), shaded by the shot's `light`. Past π/2 its
+  blank paper shows (a flip is a fold of π); π/2 draws nothing, a lingering sliver warns. Pop cards up with `latch`.
+  Nested folds multiply in the plane, not true 3D.
 - **Glow** (`{amount, threshold}`, a value in time) is light a node's paint adds past a luminance threshold, bloomed
   by the lens at `lens.bloom`. Glow the emitter (the lamp's glass, the lit window), never a painted halo: a halo glows
   only by its own thin film. Light comes only from paint that adds it, so an emitter is opaque paint (gouache, white

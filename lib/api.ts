@@ -143,6 +143,12 @@ export { StampPainting } from '#lib/paint/style/studio/stamp-painting.tsx';
 export type { StampPictureAt, StampPictureRgba, StampPlane, StampPlaneSource } from '#lib/paint/painting/models/stamp-plane.ts';
 export type { PaintedThree, PaintedThreeOffscreenPass, PaintedThreeSource, PaintedThreeSourceScene, PaintedThreeSourceTools, PaintedThreeTexture } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
 export { paintedThreeColorNode } from '#lib/paint/three-layers/studio/painted-three-material.ts';
+// Paper cards in three.js: an authored outline cut from a painted texture, lit as paper; a pop-up of them on a base.
+export { PAINTED_THREE_CARD_LIGHT_SHARES, type PaintedThreeCard, type PaintedThreeCardLeak, type PaintedThreeCardLightShares, type PaintedThreeCardOutline } from '#lib/paint/three-layers/models/painted-three-card.ts';
+export { createPaintedThreeCard, createPaintedThreeCardLights, type PaintedThreeCardLights, type PaintedThreeCardLook } from '#lib/paint/three-layers/studio/painted-three-card.ts';
+export type { PaintedThreePopUp, PaintedThreePopUpCard } from '#lib/paint/three-layers/models/painted-three-pop-up.ts';
+export { paintedThreePopUp, type PaintedThreePopUpLook } from '#lib/paint/three-layers/studio/painted-three-pop-up.ts';
+export { paperPopUpPlane, type PaperPopUpPlaneOptions } from '#lib/paint/shot/studio/shot-paper-pop-up.ts';
 export { paintWorldLightDirection, type PaintWorldDirection } from '#lib/paint/animation/models/paint-camera-world.ts';
 export { setThreeMirrorCamera } from '#lib/picture/shot-camera/studio/three-mirror-camera.ts';
 export type { PaintedThreeShadows } from '#lib/paint/three-layers/studio/painted-three-shadows.ts';
