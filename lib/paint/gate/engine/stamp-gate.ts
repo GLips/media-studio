@@ -37,6 +37,7 @@ import {
   STAMP_GATE_SHOT_TEXTURE_CASE_IDS, STAMP_GATE_SHOT_TEXTURE_IDS, STAMP_GATE_TEXTURE_IDS, stampGateShotTextureFrame, stampGateShotTextureInputs, stampGateTextureFrame,
   stampGateTextureInputs,
 } from '../models/stamp-gate-textures.ts';
+import { STAMP_GATE_LENS_TILT_IDS } from '../models/stamp-gate-lens-tilt.ts';
 import { STAMP_GATE_LIGHTING_IDS, stampGateLightingFrame, stampGateLightingInputs } from '../models/stamp-gate-three-lighting.ts';
 import { STAMP_GATE_PAPER_CARD_IDS, stampGatePaperCardFrame, stampGatePaperCardInputs } from '../models/stamp-gate-paper-card.ts';
 import { readStampGateBaseline, stampGateFrame, stampGateInputsHash, writeStampGateCandidate, type StampGateOutput } from './stamp-gate-store.ts';
@@ -123,6 +124,7 @@ const STAMP_GATE_CASES = {
   checkStampGateTextureCase: STAMP_GATE_TEXTURE_IDS,
   checkStampGateShotTextureCase: STAMP_GATE_SHOT_TEXTURE_CASE_IDS,
   checkStampGateLightingCase: STAMP_GATE_LIGHTING_IDS,
+  checkStampGateLensTiltCase: STAMP_GATE_LENS_TILT_IDS,
   checkStampGatePaperCardCase: STAMP_GATE_PAPER_CARD_IDS,
   checkStampGateShotPageCase: STAMP_GATE_SHOT_PAGE_IDS,
   checkStampGateShotCase: STAMP_GATE_SHOT_CASE_IDS,
