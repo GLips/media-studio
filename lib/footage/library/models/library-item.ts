@@ -29,6 +29,15 @@ export type LibraryScreenDisplay = {
 /** An editing proxy: constant frame rate, edit-friendly size, made once from the track. The original stays the source for final render. */
 export type LibraryTrackProxy = { file: string; width: number; height: number; fps: number };
 
+/**
+ * A speech track's sound levelled for the mix: a copy on the track's own media time, brought up (or down) to about
+ * LIBRARY_LEVELLED_LUFS, and its loudness as measured. A raw mic can sit 20 dB under a voice line; the mix only lowers.
+ */
+export type LibraryTrackLevelled = { file: string; lufs: number };
+
+/** Where a levelled copy is brought to: above the mix's voice level, so the mix only ever lowers it. */
+export const LIBRARY_LEVELLED_LUFS = -16;
+
 export type LibraryTrack = LibraryTrackStreams & {
   /** In the item's media folder. */
   file: string;
@@ -43,6 +52,7 @@ export type LibraryTrack = LibraryTrackStreams & {
   device?: string;
   display?: LibraryScreenDisplay;
   proxy?: LibraryTrackProxy;
+  levelled?: LibraryTrackLevelled;
 };
 
 /** Where an item came from: the recorder's folder for a recording, else the files it was added from. */

@@ -11,6 +11,7 @@ import { transcribeFootage } from '#lib/footage/transcript/engine/transcribe-foo
 import { runFfprobe } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { libraryItemDuration, librarySlug, librarySpeechTrack, LIBRARY_ITEM_FORMAT, unusedLibraryItemId, type LibraryItem, type LibraryTrack, type LibraryTrackStreams } from '../models/library-item.ts';
 import { namedFilesAddSource, recorderAddSource, type LibraryAddSource, type RecorderRecordingJson } from '../models/library-sources.ts';
+import { levelLibrarySpeech } from './library-levelled.ts';
 import { makeLibraryProxies } from './library-proxies.ts';
 import { libraryItemDir, libraryMediaPath, listLibraryItemIds, onlineLibraryMediaFolder, readLibraryItem, readLibraryTranscript, writeLibraryItem, writeLibraryTranscript } from './library-store.ts';
 
@@ -87,7 +88,7 @@ export async function addLibraryItem(request: LibraryAddRequest): Promise<Librar
 }
 
 /**
- * Makes what an item lacks from its media: its transcript, then the proxies its tracks need (with `proxies`). An add
+ * Makes what an item lacks from its media: its transcript, its speech levelled for the mix, then the proxies its tracks need (with `proxies`). An add
  * ends with it; run again, it picks up where a failed or interrupted add stopped.
  */
 export async function finishLibraryItem(id: string, { proxies, log }: { proxies: boolean; log: (line: string) => void }): Promise<LibraryItem> {
@@ -97,7 +98,9 @@ export async function finishLibraryItem(id: string, { proxies, log }: { proxies:
     const transcript = await transcribeFootage(libraryMediaPath(item, item.tracks[item.speech].file));
     writeLibraryTranscript(id, { track: item.speech, ...transcript });
   }
-  return proxies ? makeLibraryProxies(id, log) : item;
+  // Levelling is a quick pass over the sound alone, so it's made even when proxies are left for later.
+  await levelLibrarySpeech(id, log);
+  return proxies ? makeLibraryProxies(id, log) : readLibraryItem(id);
 }
 
 // How long a take's files must have been still before an unfinished one counts as killed rather than live.
