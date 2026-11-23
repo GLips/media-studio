@@ -24,7 +24,7 @@ import { cutTakeIntoLines, pinWordsToTaggedPauses, type TakeClip, type VoiceComp
 import { alignSpokenWords, captionMarkup, scriptWords, spokenText, ttsText } from '../models/voice-words.ts';
 import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 import { samplesFromWav, wavFromPcm, wavFromSamples } from '#lib/platform/wav/models/wav.ts';
-import { heardWords } from '#lib/footage/transcript/engine/transcribe-footage.ts';
+import { transcribeFootage } from '#lib/footage/transcript/engine/transcribe-footage.ts';
 import { publishVoiceGeneration, readVoiceComp, sweepVoiceGenerations } from './voice-generations.ts';
 import { keepVoiceTake, readVoiceTakes, saveKeptVoiceTake, stampChosenVoiceTakes, type KeptVoiceTake } from './voice-takes.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
@@ -410,7 +410,7 @@ async function cutVoiceTake(project: string, take: KeptVoiceTake, tmp: string) {
     const key = createHash('sha256').update(readFileSync(file)).digest('hex').slice(0, 16);
     used.add(key);
     if (!heard[key]) {
-      heard[key] = await heardWords(file);
+      heard[key] = (await transcribeFootage(file)).words;
       saveKeptVoiceTake(project, take);
     }
     return heard[key];

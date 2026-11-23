@@ -47,7 +47,7 @@ Object.assign(globalThis, { heardWordsForTest });
 registerHooks({
   resolve(specifier, context, nextResolve) {
     if (specifier !== '#lib/footage/transcript/engine/transcribe-footage.ts') return nextResolve(specifier, context);
-    return { url: 'data:text/javascript,export const heardWords = async (path) => globalThis.heardWordsForTest(path);', shortCircuit: true };
+    return { url: 'data:text/javascript,export const transcribeFootage = async (path) => ({ words: globalThis.heardWordsForTest(path) });', shortCircuit: true };
   },
 });
 const { importVoiceRecording, rereadVoiceLines, syncVoice, unvoicedVoiceLines, useVoiceTake } = await import('./voice-project.ts');

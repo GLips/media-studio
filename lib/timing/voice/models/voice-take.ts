@@ -7,6 +7,7 @@
 // as `pauseBefore`, so the timeline can replay the read's timing.
 import { alignSpokenWords, scriptWords, spokenText } from './voice-words.ts';
 import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
+import { AUDIO_LEVEL_FRAME, audioFrameLevels, quietAudioLevel, quietRuns, type QuietRun } from '#lib/footage/transcript/models/transcript-audio.ts';
 
 // What each clip keeps of the quiet around its words: a breath before, and a little longer after so it doesn't end
 // clipped.
@@ -14,12 +15,9 @@ const LEAD_IN = 0.06;
 const TAIL = 0.15;
 // How far past whisper's words the search for a cut reaches, beyond its drift.
 const CUT_REACH = 0.2;
-const FRAME = 0.01;
 // A second pause at least this long relative to the longest makes the cut a guess: a stop inside a word can look like
 // the pause between lines.
 const AMBIGUOUS_PAUSE = 0.6;
-// About −27 dBFS: above this nothing counts as quiet, however loud the take's floor.
-const QUIET_CEILING = 1500;
 // Every clip holds at least this much speech, so two cuts can't share one pause.
 const MIN_SPEECH_FRAMES = 8;
 // The shortest quiet that counts as a performed pause tag: shorter, and it's a stop inside a word.
@@ -83,8 +81,8 @@ export function cutTakeIntoLines(lines: readonly TakeLine[], heard: readonly Spo
     return { first: hits[0], last: hits.at(-1)! };
   });
 
-  const levels = frameLevels(samples, rate);
-  const quiet = quietLevel(levels);
+  const levels = audioFrameLevels(samples, rate);
+  const quiet = quietAudioLevel(levels);
   // Between the start of one line's last word and the end of the next line's first: whichever way whisper drifted,
   // the pause between them is inside.
   const windows = spans.slice(1).map((span, i) => [spans[i].last.start, span.first.end] as const);
@@ -108,26 +106,19 @@ export function cutTakeIntoLines(lines: readonly TakeLine[], heard: readonly Spo
 export function pinWordsToTaggedPauses(text: string, words: readonly SpokenWord[], samples: Int16Array, rate: number): SpokenWord[] {
   const stretches = text.split(/<[^>]*pause>/).map((piece) => scriptWords(spokenText(piece)).length).filter((n) => n > 0);
   if (stretches.length < 2) return [...words];
-  const levels = frameLevels(samples, rate);
-  const quiet = quietLevel(levels);
+  const levels = audioFrameLevels(samples, rate);
+  const quiet = quietAudioLevel(levels);
   const loud = levels.flatMap((level, f) => (level >= quiet ? [f] : []));
   if (!loud.length) return [...words];
-  const runs: Pause[] = [];
-  for (let f = loud[0]; f <= loud.at(-1)!; f++) {
-    if (levels[f] >= quiet) continue;
-    const run = runs.at(-1);
-    if (run && run.from + run.frames === f) run.frames++;
-    else runs.push({ from: f, frames: 1 });
-  }
-  const pauses = runs.filter((run) => run.frames >= MIN_TAGGED_PAUSE_FRAMES).toSorted((x, y) => y.frames - x.frames)
+  const pauses = quietRuns(levels, quiet, loud[0], loud.at(-1)).filter((run) => run.frames >= MIN_TAGGED_PAUSE_FRAMES).toSorted((x, y) => y.frames - x.frames)
     .slice(0, stretches.length - 1).toSorted((x, y) => x.from - y.from);
   if (pauses.length < stretches.length - 1) return [...words];
 
   const pinned: SpokenWord[] = [];
   let next = 0;
   stretches.forEach((count, k) => {
-    const from = (k === 0 ? loud[0] : pauses[k - 1].from + pauses[k - 1].frames) * FRAME;
-    const to = (k === stretches.length - 1 ? loud.at(-1)! + 1 : pauses[k].from) * FRAME;
+    const from = (k === 0 ? loud[0] : pauses[k - 1].from + pauses[k - 1].frames) * AUDIO_LEVEL_FRAME;
+    const to = (k === stretches.length - 1 ? loud.at(-1)! + 1 : pauses[k].from) * AUDIO_LEVEL_FRAME;
     const stretch = words.slice(next, next + count);
     next += count;
     const a = stretch[0].start, span = stretch.at(-1)!.end - a;
@@ -138,27 +129,6 @@ export function pinWordsToTaggedPauses(text: string, words: readonly SpokenWord[
   return pinned;
 }
 
-/** RMS of each 10 ms frame, in 16-bit sample units. The last frame may be shorter. */
-function frameLevels(samples: Int16Array, rate: number) {
-  const step = Math.round(rate * FRAME), levels: number[] = [];
-  for (let at = 0; at < samples.length; at += step) {
-    const end = Math.min(samples.length, at + step);
-    let sum = 0;
-    for (let k = at; k < end; k++) sum += samples[k] * samples[k];
-    levels.push(Math.sqrt(sum / (end - at)));
-  }
-  return levels;
-}
-
-// Quiet is relative to the take's own floor, so room noise in a recording isn't read as speech. The floor is the
-// 10th-percentile frame, which a take with any pauses in it reaches; 300 (about −40 dBFS) covers a digitally silent one.
-function quietLevel(levels: number[]) {
-  const sorted = levels.toSorted((a, b) => a - b);
-  return Math.min(QUIET_CEILING, Math.max(300, 2 * (sorted[Math.floor(sorted.length * 0.1)] ?? 0)));
-}
-
-type Pause = { from: number; frames: number };
-
 /**
  * One cut per window, in order, each in a pause (or, with none, the window's quietest frame), with speech between
  * every two. Of the orders that allow, the one with the longest pauses in total wins. A cut is clear when it took its
@@ -168,18 +138,12 @@ function chooseCuts(levels: number[], quiet: number, windows: readonly (readonly
   const speechBefore = [0];
   for (const level of levels) speechBefore.push(speechBefore.at(-1)! + (level >= quiet ? 1 : 0));
   const hasSpeech = (fromFrame: number, toFrame: number) => toFrame > fromFrame && speechBefore[toFrame] - speechBefore[fromFrame] >= MIN_SPEECH_FRAMES;
-  const endOf = (p: Pause) => p.from + Math.max(1, p.frames);
+  const endOf = (p: QuietRun) => p.from + Math.max(1, p.frames);
 
   const options = windows.map(([a, b]) => {
-    const first = Math.max(0, Math.floor((Math.min(a, b) - CUT_REACH) / FRAME));
-    const last = Math.min(levels.length - 1, Math.ceil((Math.max(a, b) + CUT_REACH) / FRAME));
-    const runs: Pause[] = [];
-    for (let f = first; f <= last; f++) {
-      if (levels[f] >= quiet) continue;
-      const run = runs.at(-1);
-      if (run && run.from + run.frames === f) run.frames++;
-      else runs.push({ from: f, frames: 1 });
-    }
+    const first = Math.max(0, Math.floor((Math.min(a, b) - CUT_REACH) / AUDIO_LEVEL_FRAME));
+    const last = Math.min(levels.length - 1, Math.ceil((Math.max(a, b) + CUT_REACH) / AUDIO_LEVEL_FRAME));
+    const runs = quietRuns(levels, quiet, first, last);
     let lowest = first;
     for (let f = first; f <= last; f++) if (levels[f] < levels[lowest]) lowest = f;
     const longest = runs.toSorted((x, y) => y.frames - x.frames);
@@ -213,7 +177,7 @@ function chooseCuts(levels: number[], quiet: number, windows: readonly (readonly
   const picked: { at: number; clear: boolean; pause: number }[] = [];
   for (let i = lastCut; i >= 0; i--) {
     const p = options[i].pauses[k];
-    picked.unshift({ at: (p.from + Math.max(1, p.frames) / 2) * FRAME, clear: p === options[i].clearRun, pause: p.frames * FRAME });
+    picked.unshift({ at: (p.from + Math.max(1, p.frames) / 2) * AUDIO_LEVEL_FRAME, clear: p === options[i].clearRun, pause: p.frames * AUDIO_LEVEL_FRAME });
     k = from[i][k];
   }
   return picked;
@@ -221,11 +185,11 @@ function chooseCuts(levels: number[], quiet: number, windows: readonly (readonly
 
 function trimToVoice(levels: number[], quiet: number, from: number, to: number, duration: number) {
   let first = -1, last = -1;
-  for (let f = Math.floor(from / FRAME); f < Math.min(levels.length, Math.ceil(to / FRAME)); f++) {
+  for (let f = Math.floor(from / AUDIO_LEVEL_FRAME); f < Math.min(levels.length, Math.ceil(to / AUDIO_LEVEL_FRAME)); f++) {
     if (levels[f] < quiet) continue;
     if (first < 0) first = f;
     last = f;
   }
   if (first < 0) return { from, to };
-  return { from: Math.max(from, first * FRAME - LEAD_IN), to: Math.min(to, duration, (last + 1) * FRAME + TAIL) };
+  return { from: Math.max(from, first * AUDIO_LEVEL_FRAME - LEAD_IN), to: Math.min(to, duration, (last + 1) * AUDIO_LEVEL_FRAME + TAIL) };
 }
