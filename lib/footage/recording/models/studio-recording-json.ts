@@ -20,6 +20,13 @@ export const RecordingScreenDisplay = Schema.Struct({
 export interface RecordingScreenDisplay extends Schema.Schema.Type<typeof RecordingScreenDisplay> {}
 
 /**
+ * The window a screen track recorded. Where it sat, and where its picture sat in the track, are lines of `file`
+ * (window.jsonl, recording-window-log.ts), since the window can move or be resized through the take.
+ */
+export const RecordingScreenWindow = Schema.Struct({ title: Schema.String, app: Schema.String, file: Schema.String });
+export interface RecordingScreenWindow extends Schema.Schema.Type<typeof RecordingScreenWindow> {}
+
+/**
  * One track as recording.json lists it. `startSeconds` is when its first sample arrived on the host clock, from the
  * take's start; an early recorder listed a camera that sent nothing, with no start.
  */
@@ -30,7 +37,9 @@ export const RecordingTrackJson = Schema.Struct({
   /** How far the host clock ran ahead of the track's own sample clock over the take (the mic's). */
   hostDriftSeconds: Schema.optionalKey(Schema.Finite),
   device: Schema.optionalKey(Schema.String),
+  /** A screen track names the display it recorded, or the window. */
   display: Schema.optionalKey(RecordingScreenDisplay),
+  window: Schema.optionalKey(RecordingScreenWindow),
   sourceFormat: Schema.optionalKey(Schema.String),
   channel: Schema.optionalKey(Schema.Finite),
   sampleRate: Schema.optionalKey(Schema.Finite),

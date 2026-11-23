@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { Effect, Layer } from 'effect';
+import { Effect, Layer, Result } from 'effect';
+import { parseRecorderInputLog } from '#lib/footage/input-log/models/input-log.ts';
 import { FootageTranscriber } from '#lib/footage/transcript/engine/footage-transcriber.ts';
 import { makeLibraryMediaFolderLayer } from '#lib/footage/library-media/engine/library-media-folder.ts';
 import { StudioFfmpeg } from '#lib/platform/ffmpeg/engine/studio-ffmpeg.ts';
@@ -13,6 +14,7 @@ import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { addLibraryItem } from './add-library-item.ts';
 import { listLibraryRecorderTakes, removeLibraryRecorderTake } from './library-recorder-takes.ts';
 import { LibraryFileUnreadable } from '../models/library-errors.ts';
+import { libraryFootage } from '../models/library-footage.ts';
 import { makeRecorderDeviceLatenciesLayer, RecorderDeviceLatencies } from './library-recorder-latencies.ts';
 import { makeLibraryStoreLayer } from './library-store.ts';
 
@@ -44,15 +46,17 @@ const libraryAt = (root: string, latencies = makeRecorderDeviceLatenciesLayer(jo
 );
 
 /** A take folder as the recorder leaves it, its files last changed `stillFor` ms ago. */
-function writeTake(root: string, { status, stillFor, input, name = '2026-11-22 18.19.29' }: { status: 'recording' | 'complete'; stillFor: number; input: string; name?: string }) {
+function writeTake(root: string, { status, stillFor, input, name = '2026-11-22 18.19.29', windowLog }: { status: 'recording' | 'complete'; stillFor: number; input: string; name?: string; windowLog?: string }) {
   const take = join(root, 'Studio Recordings', name);
   mkdirSync(take, { recursive: true });
+  const window = windowLog === undefined ? {} : { window: { title: 'Notes', app: 'Notes', file: 'window.jsonl' } };
   writeFileSync(join(take, 'recording.json'), JSON.stringify({
     format: 'studio-recording/1', status, startedAt: '2026-11-22T18:19:29.847-08:00',
-    tracks: { screen: { file: 'screen.mp4', startSeconds: 0.34, device: 'Built-in Display' }, mic: { file: 'mic.m4a', startSeconds: 0.83 } },
+    tracks: { screen: { file: 'screen.mp4', startSeconds: 0.34, device: 'Built-in Display', ...window }, mic: { file: 'mic.m4a', startSeconds: 0.83 } },
     input: { file: 'input.jsonl', coordinates: 'global-points' },
   }));
   for (const file of ['screen.mp4', 'mic.m4a']) writeFileSync(join(take, file), file);
+  if (windowLog !== undefined) writeFileSync(join(take, 'window.jsonl'), windowLog);
   writeFileSync(join(take, 'input.jsonl'), input);
   const changed = new Date(Date.now() - stillFor);
   for (const file of readdirSync(take)) utimesSync(join(take, file), changed, changed);
@@ -71,6 +75,23 @@ test('a complete take is moved into the library, transcribed and its speech leve
   assert.deepEqual(readdirSync(join(root, 'work/library/media', item.id)).toSorted(), ['input.jsonl', 'mic.m4a', 'proxies', 'recording.json', 'screen.mp4']);
   assert.match(readFileSync(join(root, 'work/library/items', item.id, 'transcript.json'), 'utf8'), /"track": *"mic"/);
   assert.deepEqual(item.tracks.mic.levelled, { file: 'proxies/mic-levelled.wav', lufs: -16.2 });
+}));
+
+test("a window's take carries where the window sat into item.json, which places clicks in its pixels and tells those outside it", () => withStudioTemp('library-add', async (root) => {
+  // An 800×600-point window on a 2× display, at (100, 50) and then, from 2 s, moved to (500, 50).
+  const windowLog = [
+    { t: 0.2, boundsPoints: [100, 50, 800, 600], contentPixels: [0, 0, 1600, 1200] },
+    { t: 2, boundsPoints: [500, 50, 800, 600], contentPixels: [0, 0, 1600, 1200] },
+  ].map((line) => JSON.stringify(line)).join('\n');
+  const clicks = [[1, 150, 60], [3, 150, 60], [3.5, 550, 70]].map(([t, x, y]) => JSON.stringify({ t, type: 'mouseDown', x, y, button: 'left' })).join('\n');
+  const take = writeTake(root, { status: 'complete', stillFor: 0, input: clicks, windowLog });
+  const item = await runStudioEffect(addLibraryItem({ paths: [take], ...MOVE }), libraryAt(root));
+  assert.equal(existsSync(take), false);
+  assert.deepEqual(item.tracks.screen.window?.placements.map((p) => p.t), [0.2, 2]);
+  const log = parseRecorderInputLog(clicks, 'input.jsonl');
+  const placed = libraryFootage(item).waypointsOn('screen', Result.getOrThrow(log));
+  // The same spot is in the window before it moves and outside it after; a click that followed it lands where the first did.
+  assert.deepEqual(placed.map(({ x, y, inside }) => [x, y, inside]), [[100, 20, true], [-700, 20, false], [100, 40, true]]);
 }));
 
 test('a take still being written is refused, and one whose input log is broken mid-way is refused before anything moves', () => withStudioTemp('library-add', async (root) => {

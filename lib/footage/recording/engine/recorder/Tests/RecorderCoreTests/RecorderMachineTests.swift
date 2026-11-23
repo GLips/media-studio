@@ -6,6 +6,7 @@ import Testing
 
 struct FakeTake: RecorderTake, Equatable {
   let id: Int
+  var startProblems: [RecorderTrack: String] = [:]
   var folder: URL { URL(fileURLWithPath: "/takes/2026-11-22 18.0\(id).00") }
   var startedAt: Date { Date(timeIntervalSince1970: 1_795_000_000 + Double(id) * 60) }
 }
@@ -44,9 +45,12 @@ func names(_ effects: [Effect]) -> [String] {
     case .stopLibraryAdd: "stopLibraryAdd"
     case .loadRecentTakes: "loadRecentTakes"
     case .reveal(let folder): "reveal \(folder.path)"
+    case .openLibraryItem(let item): "openLibraryItem \(item)"
     case .confirmThrowAway: "confirmThrowAway"
     case .throwAway: "throwAway"
     case .saveInputPick: "saveInputPick"
+    case .presentScreenPicker: "presentScreenPicker"
+    case .dismissScreenPicker: "dismissScreenPicker"
     case .replyToQuit: "replyToQuit"
     case .scheduleOneTakeStop: "scheduleOneTakeStop"
     case .exitProcess(let code): "exit \(code)"
@@ -93,6 +97,36 @@ var atIdle: RecorderStep<FakeTake> { State.launch(missing: []) }
 
   let next = run(state, [.toggleRequested, .takeStarted(FakeTake(id: 2))]).state
   #expect(next.trackProblems.isEmpty)
+}
+
+let notes = RecorderWindowChoice(id: 42, bundleID: "com.apple.Notes", title: "Notes", app: "Notes", display: "LG UltraFine")
+
+@Test func aWindowPickedInThePickerIsSavedForTheNextTakeAndTheKeyStillRecordsWhilePicking() {
+  var (state, effects) = run(atIdle, [.screenPickerRequested, .toggleRequested])
+  #expect(names(effects) == ["loadRecentTakes", "presentScreenPicker", "dismissScreenPicker", "beginTake"])
+  // A pick arriving after the key started a take is dropped: the take records what was picked before.
+  (state, effects) = run(state, [.screenPickerChose(.window(notes))])
+  #expect(state.phase.name == .starting && effects.isEmpty)
+
+  (state, effects) = run(atIdle.state, [.screenPickerRequested, .screenPickerChose(.window(notes))])
+  #expect(state.phase.name == .idle)
+  guard case .saveInputPick(.screen(.window(let saved)))? = effects.last else {
+    Issue.record("no window saved: \(names(effects))")
+    return
+  }
+  #expect(saved == notes)
+}
+
+@Test func aTakeWhosePickedWindowHadClosedSaysSoAndAlerts() {
+  let fellBack = FakeTake(id: 1, startProblems: [.screen: "the picked window had closed"])
+  let (state, effects) = run(atIdle, [.toggleRequested, .takeStarted(fellBack), .toggleRequested])
+  #expect(names(effects).contains("alert"))
+  #expect(state.trackProblems == [.screen: "the picked window had closed"])
+  guard case .endTake(_, let written)? = effects.last else {
+    Issue.record("no endTake")
+    return
+  }
+  #expect(written == [.screen: "the picked window had closed"])
 }
 
 @Test func permissionsGrantedInSettingsUnblockOrRelaunch() {
@@ -152,7 +186,7 @@ func recent(_ id: Int, _ place: RecorderRecentTake.Place) -> RecorderRecentTake 
   ])
   // The listing is the truth for takes at rest: the one that's gone from it is gone from the menu.
   #expect(state.recentTakes.map(\.folder) == [take.folder])
-  #expect(names(effects) == ["reveal /media/two"])
+  #expect(names(effects) == ["openLibraryItem two"])
 }
 
 @Test func theTakeRecordingNowIsNeverListedSoNeverThrownAway() {
@@ -250,7 +284,9 @@ func randomEvent(_ rng: inout SeededGenerator) -> Event {
     .takeThrownAway(FakeTake(id: Int.random(in: 1...3, using: &rng)).folder),
     .throwAwayFailed(FakeTake(id: Int.random(in: 1...3, using: &rng)).folder, reason: "no"),
     .menuOpened, .menuClosed,
-    .inputPicked(RecorderInputPick(kind: .mic, name: "Scarlett")),
+    .inputPicked(.mic("Scarlett")),
+    .screenPickerRequested, .screenPickerRequested,
+    .screenPickerChose(.window(notes)), .screenPickerClosed(failure: nil),
     .allowRequested(Permission.allCases.randomElement(using: &rng)!),
     .permissionsChecked(granted: permissions),
     .permissionsPolled(granted: permissions, grantedInFreshProcess: fresh),
@@ -310,8 +346,10 @@ func randomEvent(_ rng: inout SeededGenerator) -> Event {
   var mic = RecordingTrackEntry(file: "mic.m4a", startSeconds: 0.25)
   mic.channel = 1
   mic.hostDriftSeconds = 0.001
+  var screen = RecordingTrackEntry(file: "screen.mp4", startSeconds: 0.1)
+  screen.window = RecordedWindow(title: "Notes", app: "Notes")
   let file = StudioRecordingFile(
-    status: .complete, startedAt: "2026-11-22T18:19:29.847-08:00", durationSeconds: 12.5, tracks: [.mic: mic],
+    status: .complete, startedAt: "2026-11-22T18:19:29.847-08:00", durationSeconds: 12.5, tracks: [.mic: mic, .screen: screen],
     leftOut: [.camera: .noSamples], problems: [.mic: "sent nothing"])
   let json = try #require(try JSONSerialization.jsonObject(with: file.encoded()) as? [String: Any])
   #expect(Set(json.keys) == ["format", "status", "startedAt", "durationSeconds", "tracks", "input", "clockLog", "leftOut", "problems"])
@@ -319,4 +357,9 @@ func randomEvent(_ rng: inout SeededGenerator) -> Event {
   #expect(json["status"] as? String == "complete")
   #expect(json["leftOut"] as? [String: String] == ["camera": "no samples arrived"])
   #expect(Set(((json["tracks"] as? [String: Any])?["mic"] as? [String: Any] ?? [:]).keys) == ["file", "startSeconds", "channel", "hostDriftSeconds"])
+  let window = ((json["tracks"] as? [String: Any])?["screen"] as? [String: Any])?["window"] as? [String: String]
+  #expect(window == ["title": "Notes", "app": "Notes", "file": "window.jsonl"])
+  // recording-window-log.ts reads these keys.
+  let line = try JSONSerialization.jsonObject(with: JSONEncoder().encode(RecordingWindowLine(t: 1, boundsPoints: [0, 0, 1, 1], contentPixels: [0, 0, 2, 2]))) as? [String: Any]
+  #expect(Set((line ?? [:]).keys) == ["t", "boundsPoints", "contentPixels"])
 }

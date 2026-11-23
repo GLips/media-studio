@@ -17,7 +17,7 @@ export interface RecorderInstallHost {
 }
 
 /**
- * The studio commands the recorder runs, by their Info.plist key; each is run with one folder appended. They run this
+ * The studio commands the recorder runs, by their Info.plist key; each is run with one folder or item id appended. They run this
  * checkout's CLI under this node, with this shell's PATH, since an app launchd starts has no ffmpeg on its own PATH.
  * Reinstall after moving the checkout.
  */
@@ -31,6 +31,8 @@ export const recorderStudioCommands = (host: RecorderInstallHost) => {
     StudioLibraryRecordings: [...studio, 'library', 'recordings', '--json', '--limit', '5', '--inbox'],
     // A take's folder: the menu's Throw Away removes it from the library and the recordings folder.
     StudioLibraryRemoveTake: [...studio, 'library', 'remove', '--take'],
+    // An item id: the menu opens a recent take that's in the library on its page in the studio app.
+    StudioLibraryOpen: [...studio, 'library', 'open'],
   } satisfies Readonly<Record<string, readonly string[]>>;
 };
 
@@ -49,7 +51,7 @@ export const recorderBundlePropertyList = (host: RecorderInstallHost): string =>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1</string>
   <key>CFBundleVersion</key><string>1</string>
-  <key>LSMinimumSystemVersion</key><string>15.0</string>
+  <key>LSMinimumSystemVersion</key><string>15.2</string>
   <key>LSUIElement</key><true/>
   <key>NSCameraUsageDescription</key><string>Records the camera as its own track.</string>
   <key>NSMicrophoneUsageDescription</key><string>Records the mic as its own track.</string>

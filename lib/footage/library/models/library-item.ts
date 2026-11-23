@@ -8,6 +8,7 @@
 // wrong one is fixed by editing item.json, and transcript, scenes and review all line tracks up the same way.
 import { Schema } from 'effect';
 import type { InputLogCoordinates } from '#lib/footage/input-log/models/input-log.ts';
+import { RecordingWindowPlacement } from '#lib/footage/recording/models/recording-window-log.ts';
 import { RecordingScreenDisplay } from '#lib/footage/recording/models/studio-recording-json.ts';
 
 export const LIBRARY_ITEM_FORMAT = 'studio-library-item/1';
@@ -23,6 +24,17 @@ export type LibraryTrackStreams = typeof LibraryTrackStreams.Type;
 /** The geometry of the display a screen track recorded, as the recorder wrote it: maps an input log's points onto its pixels. */
 export const LibraryScreenDisplay = RecordingScreenDisplay;
 export type LibraryScreenDisplay = RecordingScreenDisplay;
+
+/**
+ * The window a screen track recorded, and where it sat through the take, on item time: each placement holds from its
+ * `t` until the next. Maps an input log's points onto the track's pixels moment by moment, as the window moved.
+ */
+export const LibraryScreenWindow = Schema.Struct({
+  title: Schema.String,
+  app: Schema.String,
+  placements: Schema.NonEmptyArray(RecordingWindowPlacement),
+});
+export type LibraryScreenWindow = typeof LibraryScreenWindow.Type;
 
 /** An editing proxy: constant frame rate, edit-friendly size, made once from the track. The original stays the source for final render. */
 export const LibraryTrackProxy = Schema.Struct({ file: Schema.String, width: Schema.Finite, height: Schema.Finite, fps: Schema.Finite });
@@ -51,7 +63,9 @@ export const LibraryTrack = Schema.Struct({
   /** How far the track's sample clock ran from the host clock over its whole length (a mic's drift); none is none. */
   hostDriftSeconds: Schema.optionalKey(Schema.Finite),
   device: Schema.optionalKey(Schema.String),
+  /** A screen track's display, or its window. */
   display: Schema.optionalKey(LibraryScreenDisplay),
+  window: Schema.optionalKey(LibraryScreenWindow),
   proxy: Schema.optionalKey(LibraryTrackProxy),
   levelled: Schema.optionalKey(LibraryTrackLevelled),
 });
@@ -109,6 +123,33 @@ export function libraryItemTimeOf(track: LibraryTrack, mediaSeconds: number): nu
 export function libraryMediaTimeOf(track: LibraryTrack, itemSeconds: number): number {
   const rate = 1 + (track.hostDriftSeconds ?? 0) / track.mediaSeconds;
   return (itemSeconds - track.startSeconds + (track.latencySeconds ?? 0)) / rate;
+}
+
+/**
+ * A global point as it lands in a screen track's own pixels (the original's, not a proxy's). `inside`: on the display
+ * it recorded, or within its window as the window sat then.
+ */
+export type LibraryScreenPoint = { x: number; y: number; inside: boolean };
+
+/**
+ * Where `point`, in an input log's global points, lands in screen track `track` at item second `t`. A point outside
+ * is placed where it would be, beside the picture. A click on another window lying over the recorded one counts as
+ * inside: the input log doesn't say which window took it. Throws for a track with no display or window.
+ */
+export function libraryScreenPointOf(track: LibraryTrack, t: number, point: { x: number; y: number }): LibraryScreenPoint {
+  const { boundsPoints: [left, top, width, height], contentPixels: [pictureLeft, pictureTop, pictureWidth, pictureHeight] } = screenPlacementAt(track, t);
+  return {
+    x: pictureLeft + ((point.x - left) * pictureWidth) / width,
+    y: pictureTop + ((point.y - top) * pictureHeight) / height,
+    inside: point.x >= left && point.x < left + width && point.y >= top && point.y < top + height,
+  };
+}
+
+/** Where a screen track's picture came from on screen at item second `t`, and where it sits in the track. */
+function screenPlacementAt({ file, display, window }: LibraryTrack, t: number): Pick<RecordingWindowPlacement, 'boundsPoints' | 'contentPixels'> {
+  if (window) return window.placements.findLast((p) => p.t <= t) ?? window.placements[0];
+  if (display) return { boundsPoints: display.boundsPoints, contentPixels: [0, 0, display.widthPixels, display.heightPixels] };
+  throw new Error(`${file} has no display or window to place a point on: is it a screen track?`);
 }
 
 /** Item time from 0 to the latest track's end. */

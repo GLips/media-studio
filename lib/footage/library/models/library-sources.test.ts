@@ -20,3 +20,14 @@ test("a killed take is added as interrupted, and a track the recorder listed but
   assert.deepEqual(source.leftOut, { camera: 'camera.mp4 was never written' });
   assert.equal(source.input?.path, '/r/2026-11-22 18.19.29/input.jsonl');
 });
+
+test("a window track whose window log is gone is added with the loss said, its other problem kept", () => {
+  const recording: StudioRecordingJson = {
+    format: 'studio-recording/1', status: 'complete', startedAt: '2026-11-22T18:19:29.847-08:00',
+    tracks: { screen: { file: 'screen.mp4', startSeconds: 0.34, window: { title: 'Notes', app: 'Notes', file: 'window.jsonl' } } },
+    problems: { screen: 'the window closed at 3.0 s' },
+  };
+  const source = Result.getOrThrow(recorderAddSource('/r/t', 't', recording, new Set(['screen.mp4', 'recording.json']), 'complete'));
+  assert.equal(source.tracks[0].window, undefined);
+  assert.equal(source.problems?.screen, "the window closed at 3.0 s; window.jsonl holds no placements: input can't be placed on the window");
+});

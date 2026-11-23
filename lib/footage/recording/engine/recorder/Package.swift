@@ -5,7 +5,7 @@ import PackageDescription
 // AppKit or AVFoundation, so `swift test` checks it without touching a device.
 let package = Package(
   name: "StudioRecorder",
-  platforms: [.macOS(.v15)],
+  platforms: [.macOS("15.2")],
   targets: [
     .target(name: "RecorderCore", path: "Sources/RecorderCore"),
     .executableTarget(

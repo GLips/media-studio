@@ -1,4 +1,5 @@
-// One take: a folder holding a file per track, the input log, the clock log and recording.json, which says how the
+// One take: a folder holding a file per track, the input log, the clock log (and a window capture's window log) and
+// recording.json, which says how the
 // tracks line up. Tracks are never retimed to fit: each file starts at its own first sample, and its offset and
 // corrections are numbers in recording.json, applied by whoever reads the recording. Which tracks started is fixed
 // when the take begins; what goes wrong later is the machine's (RecorderCore), handed in to be written.
@@ -54,7 +55,7 @@ final class Recording: RecorderTake {
     }
     var screen: ScreenTrack?
     do {
-      let track = try await ScreenTrack.make(config: config.screen, url: folder.appendingPathComponent("screen.mp4"))
+      let track = try await ScreenTrack.make(config: config.screen, folder: folder, start: start)
       try await track.start()
       screen = track
     } catch { failures[.screen] = error }
@@ -71,7 +72,7 @@ final class Recording: RecorderTake {
       folder: folder, start: start, startedAt: startedAt, screen: screen, camera: camera, mic: mic, input: input, clockLog: clockLog,
       startFailures: failures)
     await recording.awaitFirstSamples()
-    recording.write(status: .recording, problems: [:], stoppedAt: nil)
+    recording.write(status: .recording, problems: recording.startProblems, stoppedAt: nil)
     return recording
   }
 
@@ -88,6 +89,11 @@ final class Recording: RecorderTake {
     self.input = input
     self.clockLog = clockLog
     self.startFailures = startFailures
+  }
+
+  /// What was already wrong as the take began, which the machine keeps as the take's first problems.
+  var startProblems: [RecorderTrack: String] {
+    screen?.startProblem.map { [.screen: $0] } ?? [:]
   }
 
   private var writers: [(RecorderTrack, TrackWriter)] {
@@ -117,6 +123,9 @@ final class Recording: RecorderTake {
       }
     }
     if known[.screen] == nil, let error = screen?.stopError { found[.screen] = "stopped: \(error)" }
+    if known[.screen] == nil, found[.screen] == nil, let closed = screen?.windowClosedAt {
+      found[.screen] = "the window closed at \(String(format: "%.1f", closed)) s"
+    }
     return found
   }
 
@@ -160,7 +169,11 @@ final class Recording: RecorderTake {
       var entry = RecordingTrackEntry(file: writer.url.lastPathComponent, startSeconds: seconds(first))
       switch track {
       case .screen:
-        entry.display = screen?.geometry
+        switch screen?.captured {
+        case .display(let geometry): entry.display = geometry
+        case .window(let window): entry.window = window
+        case nil: break
+        }
         entry.writerDroppedFrames = writer.progress.notReady
       case .camera:
         entry.device = camera?.deviceName

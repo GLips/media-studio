@@ -10,12 +10,12 @@
 import { Result, Schema } from 'effect';
 import { FootageTranscript } from '#lib/footage/transcript/models/footage-transcript.ts';
 import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
-import { inputLogWaypoints, type InputLog } from '#lib/footage/input-log/models/input-log.ts';
+import { inputLogWaypoints, type InputLog, type InputWaypoint } from '#lib/footage/input-log/models/input-log.ts';
 import type { TimedPoint } from '#lib/picture/camera/models/follow-point.ts';
 import type { SceneClock } from '#lib/timing/timeline/models/video-layout.ts';
 import type { RecordedSpeech } from '#lib/timing/voice/models/recorded-speech.ts';
 import { LibraryFileUnreadable } from './library-errors.ts';
-import { LIBRARY_ITEM_FORMAT, LibraryItem, libraryItemTimeOf, libraryMediaTimeOf } from './library-item.ts';
+import { LIBRARY_ITEM_FORMAT, LibraryItem, libraryItemTimeOf, libraryMediaTimeOf, libraryScreenPointOf } from './library-item.ts';
 
 /** An item's transcript.json: what its speech track says, on that track's media time. */
 export const LibraryTranscriptFile = Schema.Struct({ track: Schema.String, ...FootageTranscript.fields });
@@ -23,6 +23,12 @@ export type LibraryTranscriptFile = typeof LibraryTranscriptFile.Type;
 
 /** transcript.json's text, parsed and decoded. */
 export const LibraryTranscriptFileText = Schema.fromJsonString(LibraryTranscriptFile);
+
+/**
+ * A cursor waypoint on a screen track, in its video pixels and item seconds. `inside`: on the display it recorded, or
+ * within its window then; a waypoint outside is placed where it would be, beside the picture.
+ */
+export type LibraryScreenWaypoint = InputWaypoint & { inside: boolean };
 
 /** A library item as a project uses it (libraryFootage). */
 export type LibraryFootage = {
@@ -41,8 +47,13 @@ export type LibraryFootage = {
    */
   timeAt(s: SceneClock): number;
   /**
-   * Where the cursor went over screen track `track`, in that track's video pixels and item seconds, from the item's
-   * input log (useLibraryInputLog loads it): for followPointAt to aim a camera. Moves off that screen are left out.
+   * Every move, drag and click of the item's input log (useLibraryInputLog loads it) on screen track `track`, in
+   * that track's video pixels and item seconds, each saying whether it was on what the track recorded.
+   */
+  waypointsOn(track: string, log: InputLog): LibraryScreenWaypoint[];
+  /**
+   * Where the cursor went over screen track `track`, as waypointsOn places it: for followPointAt to aim a camera.
+   * Moves off the recorded display or outside the recorded window are left out.
    */
   cursorOn(track: string, log: InputLog): TimedPoint[];
 };
@@ -102,6 +113,15 @@ export function libraryFootage(itemJson: LibraryItemJsonImport, transcriptJson?:
       to: round(after ? after.start + Math.min(CUT_QUIET_AFTER, (after.end - after.start) / 2) : (end + (words[last + 1]?.start ?? end)) / 2),
     };
   };
+  const waypointsOn = (name: string, log: InputLog): LibraryScreenWaypoint[] => {
+    const track = item.tracks[name];
+    if (!track) throw new Error(`${item.id} has no track ${name}`);
+    if (log.coordinates !== 'global-points') throw new Error(`${item.id}'s input log is in ${log.coordinates}, not the screen's points`);
+    return inputLogWaypoints(log).map(({ t, x, y, click }) => {
+      const placed = libraryScreenPointOf(track, t, { x, y });
+      return { t, x: placed.x, y: placed.y, click, inside: placed.inside };
+    });
+  };
   return {
     item,
     words,
@@ -119,15 +139,9 @@ export function libraryFootage(itemJson: LibraryItemJsonImport, transcriptJson?:
       const sound = levelled ? { item: item.id, file: levelled.file, start: libraryMediaTimeOf(speechTrack, from), lufs: levelled.lufs } : null;
       return { item: item.id, from, to, heard, sound };
     },
+    waypointsOn,
     cursorOn(name, log) {
-      const { display, video } = item.tracks[name] ?? {};
-      if (!display || !video) throw new Error(`${item.id}'s ${name} has no display geometry to place the cursor on: is it a screen track?`);
-      if (log.coordinates !== 'global-points') throw new Error(`${item.id}'s input log is in ${log.coordinates}, not the display's points`);
-      // To the video's own pixels, which a recorder may have scaled from the display's.
-      const [left, top, width, height] = display.boundsPoints, scale = video.width / width;
-      return inputLogWaypoints(log).flatMap((p) => (p.x >= left && p.x < left + width && p.y >= top && p.y < top + height
-        ? [{ t: p.t, x: (p.x - left) * scale, y: (p.y - top) * scale }]
-        : []));
+      return waypointsOn(name, log).flatMap(({ t, x, y, inside }) => (inside ? [{ t, x, y }] : []));
     },
     timeAt(s) {
       const spans = s.lines.flatMap((id) => {

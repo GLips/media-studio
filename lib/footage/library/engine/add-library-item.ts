@@ -11,7 +11,7 @@ import { copyFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { DateTime, Effect, FileSystem, Option, Path, PlatformError, Ref, Schema, Stream } from 'effect';
 import { FootageTranscriber } from '#lib/footage/transcript/engine/footage-transcriber.ts';
-import { streamRecordingClockLog, streamRecordingInputLog } from '#lib/footage/recording/engine/recording-take-logs.ts';
+import { streamRecordingClockLog, streamRecordingInputLog, streamRecordingWindowLog } from '#lib/footage/recording/engine/recording-take-logs.ts';
 import { LibraryMediaFolder } from '#lib/footage/library-media/engine/library-media-folder.ts';
 import { thisStudioProcess } from '#lib/platform/process/engine/studio-process.ts';
 import { LIBRARY_ADD_MARKER_FILE, LibraryAddMarkerText, type LibraryAddMarker } from '../models/library-add-marker.ts';
@@ -99,7 +99,7 @@ const bringIntoLibrary = Effect.fn('LibraryAdd.bring')(function* (source: Librar
     tracks[track.name] = {
       file, ...track.streams, mediaSeconds: track.mediaSeconds, startSeconds: track.startSeconds,
       ...(latencySeconds && { latencySeconds }), ...(track.hostDriftSeconds && { hostDriftSeconds: track.hostDriftSeconds }),
-      ...(track.device && { device: track.device }), ...(track.display && { display: track.display }),
+      ...(track.device && { device: track.device }), ...(track.display && { display: track.display }), ...(track.window && { window: track.window }),
     };
   }
   if (source.input) yield* bring(source.input.path, path.join(itemMedia, 'input.jsonl'));
@@ -169,7 +169,10 @@ const recorderTakeSource = Effect.fn('LibraryAdd.recorderTake')(function* (folde
   const path = yield* Path.Path;
   const { recording, files, ending } = yield* readRecorderTakeFolder(folder, named);
   if (!ending) return yield* new LibraryTakeStillRecording({ named });
-  return yield* Effect.fromResult(recorderAddSource(folder, path.basename(folder), recording, files, ending));
+  // A window log is read whole, before anything is touched: its placements go into item.json.
+  const windowLogs = Object.entries(recording.tracks).flatMap(([track, json]) => (json.window && files.has(json.window.file) ? [[track, path.join(folder, json.window.file)] as const] : []));
+  const windowPlacements = Object.fromEntries(yield* Effect.forEach(windowLogs, ([track, log]) => Effect.map(Stream.runCollect(streamRecordingWindowLog(log)), (placements) => [track, placements] as const)));
+  return yield* Effect.fromResult(recorderAddSource(folder, path.basename(folder), recording, files, ending, windowPlacements));
 });
 
 /** `2026-11-22-181929` for a recording, on its own clock; `2026-11-22-<title>` for files, dated today here. */

@@ -1,17 +1,37 @@
-// The screen, through ScreenCaptureKit, at the display's full pixel size in HEVC. SCK stamps frames on the host
-// clock already, and sends none while the screen sits still, so the file has a variable frame rate.
+// The screen, through ScreenCaptureKit, in HEVC: a whole display at its full pixel size, or one window at its size
+// when the take began. SCK stamps frames on the host clock already, and sends none while the picture sits still, so
+// the file has a variable frame rate.
 import AVFoundation
 import RecorderCore
 import ScreenCaptureKit
 
+/// What a screen track recorded, as recording.json's screen entry describes it.
+enum ScreenCaptured {
+  case display(DisplayGeometry)
+  case window(RecordedWindow)
+}
+
 final class ScreenTrack: NSObject, SCStreamOutput, SCStreamDelegate {
   let writer: TrackWriter
-  let geometry: DisplayGeometry
+  let captured: ScreenCaptured
+  /// Why it isn't recording what was picked (the picked window had closed); recording.json's screen problem.
+  let startProblem: String?
+  /// A window capture's window.jsonl, fed from the capture queue.
+  private let placements: WindowPlacementLog?
   private let queue = DispatchQueue(label: "recorder.screen", qos: .userInteractive)
 
-  static func make(config: ScreenConfig, url: URL) async throws(TrackFailure) -> ScreenTrack {
+  static func make(config: ScreenConfig, folder: URL, start: CMTime) async throws(TrackFailure) -> ScreenTrack {
     let content: SCShareableContent
-    do { content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true) } catch { throw .system(error) }
+    // Every window, not only those on screen: a picked window on another Space or minimized is still there to record.
+    do { content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false) } catch { throw .system(error) }
+    var startProblem: String?
+    if let picked = config.window {
+      if let window = content.windows.first(where: { $0.windowID == picked.id && $0.owningApplication?.bundleIdentifier == picked.bundleID }) {
+        return try windowTrack(window, picked: picked, config: config, folder: folder, start: start)
+      }
+      startProblem = "the picked window \"\(picked.title)\" (\(picked.app)) had closed: recorded its display, \(config.display), instead"
+    }
+
     let screens = RecorderInputs.screens()
     func name(_ display: SCDisplay) -> String {
       screens.first { $0.displayID == display.displayID }?.localizedName ?? "display \(display.displayID)"
@@ -30,7 +50,38 @@ final class ScreenTrack: NSObject, SCStreamOutput, SCStreamDelegate {
     let geometry = DisplayGeometry(
       name: name(display), boundsPoints: [bounds.origin.x, bounds.origin.y, bounds.width, bounds.height].map(Double.init),
       scale: scale, widthPixels: width, heightPixels: height)
+    let streamConfig = streamConfiguration(config, width: width, height: height)
+    return ScreenTrack(
+      filter: filter, configuration: streamConfig, writer: try writer(config, folder: folder, width: width, height: height),
+      captured: .display(geometry), startProblem: startProblem, placements: nil)
+  }
 
+  private static func windowTrack(_ window: SCWindow, picked: WindowConfig, config: ScreenConfig, folder: URL, start: CMTime) throws(TrackFailure) -> ScreenTrack {
+    let filter = SCContentFilter(desktopIndependentWindow: window)
+    let info = SCShareableContent.info(for: filter)
+    let scale = CGFloat(info.pointPixelScale)
+    // Even sides, as HEVC's 4:2:0 needs: a window can be any size.
+    func even(_ points: CGFloat) -> Int { Int((points * scale / 2).rounded(.up)) * 2 }
+    let (width, height) = (even(info.contentRect.width), even(info.contentRect.height))
+    let streamConfig = streamConfiguration(config, width: width, height: height)
+    // Without its shadow, the picture is the window's frame, so the window's bounds map onto it edge to edge.
+    streamConfig.ignoreShadowsSingleWindow = true
+    let placements: WindowPlacementLog
+    do {
+      placements = try WindowPlacementLog(
+        url: folder.appendingPathComponent(RecordedWindow.fileName), windowID: window.windowID, start: start, firstBounds: window.frame,
+        firstContentPixels: CGRect(x: 0, y: 0, width: info.contentRect.width * scale, height: info.contentRect.height * scale))
+    } catch {
+      throw .system(error)
+    }
+    // The title as it is now: a window's title follows what it shows.
+    let recorded = RecordedWindow(title: window.title ?? picked.title, app: window.owningApplication?.applicationName ?? picked.app)
+    return ScreenTrack(
+      filter: filter, configuration: streamConfig, writer: try writer(config, folder: folder, width: width, height: height),
+      captured: .window(recorded), startProblem: nil, placements: placements)
+  }
+
+  private static func streamConfiguration(_ config: ScreenConfig, width: Int, height: Int) -> SCStreamConfiguration {
     let streamConfig = SCStreamConfiguration()
     streamConfig.width = width
     streamConfig.height = height
@@ -39,9 +90,12 @@ final class ScreenTrack: NSObject, SCStreamOutput, SCStreamDelegate {
     streamConfig.colorSpaceName = CGColorSpace.sRGB
     streamConfig.showsCursor = config.showsCursor
     streamConfig.queueDepth = 8
+    return streamConfig
+  }
 
-    let writer = try TrackWriter(
-      track: .screen, url: url, fileType: .mp4, mediaType: .video,
+  private static func writer(_ config: ScreenConfig, folder: URL, width: Int, height: Int) throws(TrackFailure) -> TrackWriter {
+    try TrackWriter(
+      track: .screen, url: folder.appendingPathComponent("screen.mp4"), fileType: .mp4, mediaType: .video,
       settings: [
         AVVideoCodecKey: AVVideoCodecType.hevc,
         AVVideoWidthKey: width,
@@ -53,19 +107,41 @@ final class ScreenTrack: NSObject, SCStreamOutput, SCStreamDelegate {
           AVVideoAllowFrameReorderingKey: false,
         ],
       ])
-    return ScreenTrack(filter: filter, configuration: streamConfig, writer: writer, geometry: geometry)
   }
 
   private var stream: SCStream!
+  /// Polls the window's bounds on the capture queue: a window moved without changing its picture sends no frame.
+  private var boundsPoll: DispatchSourceTimer?
+  /// The capture queue's own: the poll found the window gone.
+  private var windowGone = false
 
-  private init(filter: SCContentFilter, configuration: SCStreamConfiguration, writer: TrackWriter, geometry: DisplayGeometry) {
+  private init(
+    filter: SCContentFilter, configuration: SCStreamConfiguration, writer: TrackWriter, captured: ScreenCaptured, startProblem: String?,
+    placements: WindowPlacementLog?
+  ) {
     self.writer = writer
-    self.geometry = geometry
+    self.captured = captured
+    self.startProblem = startProblem
+    self.placements = placements
     super.init()
     stream = SCStream(filter: filter, configuration: configuration, delegate: self)
   }
 
   func start() async throws(TrackFailure) {
+    if let placements {
+      let poll = DispatchSource.makeTimerSource(queue: queue)
+      poll.schedule(deadline: .now(), repeating: .milliseconds(33))
+      poll.setEventHandler { [weak self] in
+        guard !placements.pollBounds(at: HostClock.now()), let self, !self.windowGone else { return }
+        // SCK may go quiet rather than stop when the window closes: the track watch says so either way.
+        self.windowGone = true
+        let at = (HostClock.now() - placements.start).seconds
+        log("screen: the window closed at \(String(format: "%.1f", at)) s")
+        DispatchQueue.main.async { self.windowClosedAt = at }
+      }
+      poll.resume()
+      boundsPoll = poll
+    }
     do {
       try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
       try await stream.startCapture()
@@ -76,7 +152,10 @@ final class ScreenTrack: NSObject, SCStreamOutput, SCStreamDelegate {
 
   func stop(at end: CMTime) async {
     try? await stream.stopCapture()
-    queue.sync {}
+    queue.sync {
+      boundsPoll?.cancel()
+      placements?.close()
+    }
     await writer.finish(at: end)
   }
 
@@ -84,16 +163,75 @@ final class ScreenTrack: NSObject, SCStreamOutput, SCStreamDelegate {
     // Idle and blank frames carry no picture: the last complete frame holds until the next.
     guard type == .screen, sample.isValid, sample.imageBuffer != nil,
       let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
-      let raw = attachments.first?[.status] as? Int, SCFrameStatus(rawValue: raw) == .complete
+      let info = attachments.first, let raw = info[.status] as? Int, SCFrameStatus(rawValue: raw) == .complete
     else { return }
+    if let placements, let rect = info[.contentRect].flatMap({ CGRect(dictionaryRepresentation: $0 as! CFDictionary) }),
+      let pointScale = info[.scaleFactor] as? CGFloat
+    {
+      // The content rect is in the frame's points; at the frame's scale it's the track's pixels.
+      let pixels = CGRect(x: rect.minX * pointScale, y: rect.minY * pointScale, width: rect.width * pointScale, height: rect.height * pointScale)
+      placements.frameContent(pixels, at: sample.presentationTimeStamp)
+    }
     writer.append(sample)
   }
 
-  /// Why SCK stopped the stream mid-take (a display unplugged, the permission revoked); read on the main thread.
+  /// Why SCK stopped the stream mid-take (a display unplugged, the window closed, the permission revoked); read on
+  /// the main thread.
   @MainActor private(set) var stopError: String?
+  /// When the recorded window closed, in seconds from the take's start; read on the main thread.
+  @MainActor private(set) var windowClosedAt: Double?
 
   func stream(_ stream: SCStream, didStopWithError error: Error) {
     log("screen: capture stopped: \(error.localizedDescription)")
     DispatchQueue.main.async { self.stopError = error.localizedDescription }
+  }
+}
+
+/// window.jsonl: a line each time the window's bounds or its picture's place in the track change. Used only on the
+/// screen track's capture queue.
+final class WindowPlacementLog {
+  private let lines: JSONLines<RecordingWindowLine>
+  private let windowID: CGWindowID
+  let start: CMTime
+  private var bounds: CGRect
+  private var contentPixels: CGRect
+  private var written: RecordingWindowLine?
+
+  /// Writes the first placement at once, so the log is never empty: where the window was as the take opened it.
+  init(url: URL, windowID: CGWindowID, start: CMTime, firstBounds: CGRect, firstContentPixels: CGRect) throws(JSONLinesFailure) {
+    lines = try JSONLines(url: url)
+    self.windowID = windowID
+    self.start = start
+    bounds = firstBounds
+    contentPixels = firstContentPixels
+    note(at: HostClock.now())
+  }
+
+  /// Reads where the window is now; false once it's gone, when it keeps its last bounds.
+  func pollBounds(at now: CMTime) -> Bool {
+    let ids = [UnsafeRawPointer(bitPattern: UInt(windowID))] as CFArray
+    guard let found = CGWindowListCreateDescriptionFromArray(ids) as? [[CFString: Any]],
+      let boundsDictionary = found.first?[kCGWindowBounds], let polled = CGRect(dictionaryRepresentation: boundsDictionary as! CFDictionary)
+    else { return false }
+    bounds = polled
+    note(at: now)
+    return true
+  }
+
+  func frameContent(_ pixels: CGRect, at time: CMTime) {
+    contentPixels = pixels
+    note(at: time)
+  }
+
+  func close() { lines.close() }
+
+  private func note(at time: CMTime) {
+    let line = RecordingWindowLine(
+      // A frame is stamped when it was shown, a poll when it ran: neither may take the log back in time.
+      t: max(written?.t ?? 0, (time - start).seconds), boundsPoints: [bounds.minX, bounds.minY, bounds.width, bounds.height].map(Double.init),
+      contentPixels: [contentPixels.minX, contentPixels.minY, contentPixels.width, contentPixels.height].map(Double.init))
+    if let written, written.boundsPoints == line.boundsPoints && written.contentPixels == line.contentPixels { return }
+    lines.write(line)
+    written = line
   }
 }

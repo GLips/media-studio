@@ -4,7 +4,8 @@
 // Each finished take is handed to the library (`library add --move --no-proxies`) so it appears there with no manual
 // step. That add runs detached: transcribing takes minutes, and the recorder is ready for the next take at once. A
 // take it fails on stays in the recordings folder, named in the log and the menu, to add by hand. The menu's recent
-// takes come from `library recordings`, and Throw Away is `library remove --take`.
+// takes come from `library recordings`, a click on one in the library is `library open`, and Throw Away is
+// `library remove --take`.
 import Foundation
 import RecorderCore
 
@@ -14,10 +15,35 @@ private func studioCommand(_ key: String) -> [String]? {
 }
 
 private func studioProcess(_ command: [String], folder: URL) -> Process {
+  studioProcess(command, argument: folder.path)
+}
+
+private func studioProcess(_ command: [String], argument: String) -> Process {
   let process = Process()
   process.executableURL = URL(fileURLWithPath: command[0])
-  process.arguments = Array(command.dropFirst()) + [folder.path]
+  process.arguments = Array(command.dropFirst()) + [argument]
   return process
+}
+
+/// Writes a child's stderr to the end of the recorder's log, interleaved with the recorder's own lines.
+private func logStderr(of process: Process) {
+  process.standardOutput = FileHandle.nullDevice
+  let descriptor = open(logURL.path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
+  if descriptor >= 0 { process.standardError = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true) }
+}
+
+/// Opens a library item's page, detached: when no studio app is running, the verb serves one and keeps running.
+func openLibraryItem(_ item: String) {
+  guard let command = studioCommand("StudioLibraryOpen") else {
+    log("can't open \(item): this build has no StudioLibraryOpen command")
+    return
+  }
+  let process = studioProcess(command, argument: item)
+  logStderr(of: process)
+  process.terminationHandler = { done in
+    if done.terminationStatus != 0 { log("opening \(item) in the library exited \(done.terminationStatus)") }
+  }
+  do { try process.run() } catch { log("couldn't open \(item) in the library: \(error)") }
 }
 
 /// Starts adding `folder` to the library; `ended` is called on the main actor when it exits, with why it failed if it
@@ -28,11 +54,8 @@ func handOffToLibrary(_ folder: URL, ended: @escaping @MainActor (LibraryHandoff
     return nil
   }
   let process = studioProcess(command, folder: folder)
-  // Its progress goes to the recorder's log, so a failed add can be read there. Opened to append, so its lines and
-  // the recorder's own interleave rather than overwrite each other.
-  process.standardOutput = FileHandle.nullDevice
-  let descriptor = open(logURL.path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
-  if descriptor >= 0 { process.standardError = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true) }
+  // Its progress goes to the recorder's log, so a failed add can be read there.
+  logStderr(of: process)
   process.terminationHandler = { done in
     let status = done.terminationStatus
     log(status == 0 ? "added \(folder.lastPathComponent) to the library" : "library add of \(folder.lastPathComponent) exited \(status)")
