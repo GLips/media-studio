@@ -1,3 +1,4 @@
 {
-  "web/src/features/projects": "Quick-open, which the projects feature supplies to the root, lists the library and its items beside the projects, and the dashboard links to the library."
+  "web/src/features/projects": "Quick-open, which the projects feature supplies to the root, lists the library and its items beside the projects, and the dashboard links to the library.",
+  "web/src/features/decisions": "A take choice's candidate can be a range of a library item, which the decisions screen plays from the library with sound and picture."
 }

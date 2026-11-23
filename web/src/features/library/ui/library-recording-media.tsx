@@ -1,6 +1,6 @@
 import { Box } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { libraryMediaTimeOf, type LibraryItem, type LibraryTrack } from '#lib/footage/library/models/library-item.ts';
 import { libraryMediaUrl } from '#lib/footage/library/studio/library-media.ts';
 import { linkedMediaFrameAt } from '#lib/platform/web/models/linked-media-window.ts';
@@ -23,8 +23,11 @@ const styles = stylex.create({
   hidden: { display: 'none' },
 });
 
-/** Where a clock's frames sit on an item: the item second at frame 0, and how many frames a second. */
-export type LibraryClockPlacement = { offsetSeconds: number; fps: number };
+/**
+ * Where a clock's frames sit on an item: the item second at frame 0, and how many frames a second. A range played on
+ * a longer clock (a take choice's candidate) holds its picture at `untilSeconds` past its end.
+ */
+export type LibraryClockPlacement = { offsetSeconds: number; fps: number; untilSeconds?: number };
 
 type LibraryTrackFollowerProps = {
   readonly item: LibraryItem;
@@ -43,11 +46,14 @@ function LibraryTrackFollower({ item, track, clock, placement, inset }: LibraryT
   const { proxy, video } = track;
   const fps = proxy?.fps ?? video?.fps ?? 30;
   const reach = libraryTrackReach(track);
-  const frameAt = (seconds: number) => (seconds - placement.offsetSeconds) * placement.fps;
+  const { offsetSeconds, untilSeconds = Infinity } = placement;
+  const frameAt = (seconds: number) => (seconds - offsetSeconds) * placement.fps;
+  // Held on its last picture past the range's end, unless the track runs out first.
+  const holdAfter = untilSeconds < reach.end;
   useLinkedMediaFollower(clock, element, {
     fps,
-    span: { from: Math.ceil(frameAt(reach.start)), end: Math.floor(frameAt(reach.end)) },
-    frameOf: (frame) => linkedMediaFrameAt(libraryMediaTimeOf(track, placement.offsetSeconds + frame / placement.fps), fps),
+    span: { from: Math.ceil(frameAt(reach.start)), end: Math.floor(frameAt(Math.min(untilSeconds, reach.end))), holdAfter },
+    frameOf: (frame) => linkedMediaFrameAt(libraryMediaTimeOf(track, offsetSeconds + frame / placement.fps), fps),
     offGrid: !proxy && (video?.variableRate ?? true),
   });
   return (
@@ -83,13 +89,15 @@ type LibraryRecordingMediaProps = {
   readonly clock: Pick<LinkedMediaClock, 'addFollower'>;
   readonly placement: LibraryClockPlacement;
   readonly heard: LibraryHeardMedia;
+  /** Shown in place of a picture for an item with none (a voice take): its words, say. */
+  readonly children?: ReactNode;
 };
 
 /**
  * A recording on a linked media clock: its screen with the camera inset, each track lined up by its sync corrections,
- * and the heard track as the clock's leader. An item with no picture is its sound alone.
+ * and the heard track as the clock's leader. An item with no picture is its sound alone, under `children`.
  */
-export function LibraryRecordingMedia({ item, clock, placement, heard }: LibraryRecordingMediaProps) {
+export function LibraryRecordingMedia({ item, clock, placement, heard, children }: LibraryRecordingMediaProps) {
   const { main, insets } = libraryPictureTracksOf(item);
   const video = main ? item.tracks[main].video : undefined;
   const slot = (name: string, inset?: boolean) => (name === heard.track
@@ -104,6 +112,7 @@ export function LibraryRecordingMedia({ item, clock, placement, heard }: Library
           {insets.map((name) => <Box key={name} {...stylex.props(styles.inset)}>{slot(name, true)}</Box>)}
         </Box>
       )}
+      {!main && children}
     </Box>
   );
 }

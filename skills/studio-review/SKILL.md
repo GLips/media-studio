@@ -69,7 +69,8 @@ variants, headlines (`text:` candidates). When one is clearly better, pick it yo
 
 - **Cull first.** Two to four candidates, each one you'd ship, differing along the axis the question names. Render
   each to `out/decisions/<topic>/`, identical but for that axis: a bed is heard in its mix, a lead against the cut
-  (`${CLAUDE_PLUGIN_ROOT}/skills/video-sound/references/music.md`).
+  (`${CLAUDE_PLUGIN_ROOT}/skills/video-sound/references/music.md`). Recorded takes:
+  `library:<item>@<from>-<to>`.
 - **Ask one question**, the axis in words ("Which bed under the VO?"). `--many` when they may keep several. For
   generated candidates, carry the model, seed and cost as meta (`--spec`), so the pick can be made again.
 - **Say what it's for**: `--scene`, or `--line` for a take; they're walked in story order.

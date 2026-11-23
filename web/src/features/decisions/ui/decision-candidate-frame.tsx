@@ -85,7 +85,7 @@ export function DecisionCandidateFrame({ candidate }: { readonly candidate: Revi
   const meta = candidateMetaLine(candidate);
   const faded = candidate.verdict === 'reject' || (decision.state === 'decided' && !decision.decided?.picks.includes(key));
   // A text candidate whose label is its words says them once, in its body.
-  const label = candidate.media || candidate.label !== candidate.text ? candidate.label : '';
+  const label = candidate.media || candidate.library || candidate.label !== candidate.text ? candidate.label : '';
   return (
     <Box
       aria-label={candidate.label}
@@ -118,7 +118,7 @@ export function DecisionCandidateFrame({ candidate }: { readonly candidate: Revi
           </Box>
         )}
       </Group>
-      <Box {...stylex.props(styles.media, !candidate.media && styles.words, faded && styles.faded)}>
+      <Box {...stylex.props(styles.media, !candidate.media && !candidate.library && styles.words, faded && styles.faded)}>
         <DecisionCandidateMedia candidate={candidate} missing={fileState === 'missing'} />
       </Box>
       {meta && <Box title={meta} {...stylex.props(styles.meta)}><Readout>{meta}</Readout></Box>}

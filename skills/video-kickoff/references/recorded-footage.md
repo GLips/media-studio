@@ -7,6 +7,7 @@ media stays in the library; the project names the item by its id.
 
 `studio library search "<words>"` finds where something is said; `studio library show <item>` prints the transcript
 with times. A line's stretch is two item seconds, `from` and `to`: put each edge in the quiet just past the words.
+The speaker flags takes they like in the studio app's library (G L); `show` prints the flags.
 
 ## Name the item once
 

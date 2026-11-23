@@ -285,7 +285,8 @@ function putReviewDecision(at: Applying, decision: NewDecision) {
   if (new Set(keys).size !== keys.length) refuse(`each candidate needs its own key: ${keys.join(', ')}`);
   const open = at.file.decisions.find((d) => d.topic === decision.topic && d.state === 'open');
   const verdictOf = (c: NewDecision['candidates'][number]) => {
-    const was = open?.candidates.find((o) => o.key === c.key && o.media?.hash === c.media?.hash && o.text === c.text);
+    const sameRange = (o: ReviewCandidate) => o.library?.item === c.library?.item && o.library?.from === c.library?.from && o.library?.to === c.library?.to;
+    const was = open?.candidates.find((o) => o.key === c.key && o.media?.hash === c.media?.hash && o.text === c.text && sameRange(o));
     return was?.verdict ? { verdict: was.verdict } : {};
   };
   const candidates = decision.candidates.map((c) => ({ ...c, ...verdictOf(c) }));

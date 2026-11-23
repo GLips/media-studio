@@ -1,12 +1,13 @@
 // library-app.ts: what the studio app reads and changes of the library, as Effects its server runs: the shelf of
 // items, a search, one item with its transcript, and its flags. Committed metadata alone, so every page but playback
-// works with the media offline, and says when it is. Node only.
+// works with the media offline, and says when it is; and a range checked for a take choice. Node only.
 import { Effect, Option } from 'effect';
 import { LibraryMediaFolder } from '#lib/footage/library-media/engine/library-media-folder.ts';
 import type { ReviewAuthor } from '#lib/output/review/models/review-threads.ts';
 import type { LibraryFlagOp, LibraryFlagsFile } from '../models/library-flags.ts';
-import type { LibraryTranscriptFile } from '../models/library-footage.ts';
+import { libraryFootage, type LibraryTranscriptFile } from '../models/library-footage.ts';
 import type { LibraryItem } from '../models/library-item.ts';
+import { libraryRangeOf, libraryWordsSaidIn } from '../models/library-range.ts';
 import { searchLibrary, type LibrarySearchHit } from '../models/library-search.ts';
 import { LibraryStore } from './library-store.ts';
 
@@ -67,4 +68,17 @@ export const changeLibraryFlagsEffect = Effect.fn('LibraryApp.changeFlags')(func
   const store = yield* LibraryStore;
   yield* store.changeFlags(id, op, by);
   return yield* store.readFlags(id);
+});
+
+/** A range of an item, named by its id or a part of it, checked against the item, with what's said in it. */
+export type LibraryRangeRead = { item: string; from: number; to: number; said: string };
+
+export const readLibraryRangeEffect = Effect.fn('LibraryApp.range')(function* (named: string, from: number, to: number) {
+  const store = yield* LibraryStore;
+  const id = yield* store.resolveItemId(named);
+  const item = yield* store.readItem(id);
+  const range = yield* Effect.fromResult(libraryRangeOf(item, from, to));
+  const transcript = Option.getOrUndefined(yield* store.readTranscript(id));
+  const read: LibraryRangeRead = { item: id, ...range, said: libraryWordsSaidIn(libraryFootage(item, transcript).words, range.from, range.to) };
+  return read;
 });
