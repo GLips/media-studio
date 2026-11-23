@@ -5,12 +5,15 @@ import AVFoundation
 
 enum RecorderInputKind: String { case mic, camera, screen }
 
+/// The width of the check's views, which sets the menu's: the camera's picture fills it less a 20 pt inset a side.
+private let inputMenuItemWidth: CGFloat = 440
+
 @MainActor
 final class InputMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
   /// In menu order, for the menu bar dot to insert.
   let items: [NSMenuItem]
   private let recorder: Recorder
-  private let check = InputCheck()
+  private let check: InputCheck
   private let micPicker = NSMenuItem(title: "", action: nil, keyEquivalent: "")
   private let cameraPicker = NSMenuItem(title: "", action: nil, keyEquivalent: "")
   private let screenPicker = NSMenuItem(title: "", action: nil, keyEquivalent: "")
@@ -23,6 +26,7 @@ final class InputMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
 
   init(recorder: Recorder) {
     self.recorder = recorder
+    check = InputCheck(pictureRenderer: preview.renderer)
     meterItem.view = meter
     previewItem.view = preview
     items = [micPicker, meterItem, cameraPicker, previewItem, screenPicker]
@@ -60,7 +64,6 @@ final class InputMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
     guard idle else { return }
     showCheckItems(true)
     check.start(config: recorder.config)
-    preview.show(session: check.previewSession)
     showCheck()
     // Common modes: a menu tracks in its own run loop mode, where a default-mode timer never fires.
     let timer = Timer(timeInterval: 1.0 / 20, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.showCheck() } }
@@ -77,13 +80,14 @@ final class InputMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
     showCheckItems(false)
     tick?.invalidate()
     tick = nil
-    preview.show(session: nil)
     if waiting { check.stopAndWait() } else { check.stop() }
   }
 
   private func showCheck() {
     meter.signal = check.micSignal
-    preview.picture = check.picture
+    let picture = check.picture
+    if picture != .live && preview.picture == .live { check.clearPicture() }
+    preview.picture = picture
   }
 
   private func updatePickerTitles() {
@@ -135,7 +139,7 @@ final class InputMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
 final class LevelMeterView: NSView {
   var signal = MicSignal.level(-120) { didSet { if signal != oldValue { needsDisplay = true } } }
 
-  init() { super.init(frame: NSRect(x: 0, y: 0, width: 280, height: 22)) }
+  init() { super.init(frame: NSRect(x: 0, y: 0, width: inputMenuItemWidth, height: 22)) }
   required init?(coder: NSCoder) { fatalError("not from a nib") }
 
   override func draw(_ dirtyRect: NSRect) {
@@ -162,25 +166,25 @@ final class LevelMeterView: NSView {
   }
 }
 
-/// The camera's picture, 16:9, with what's wrong written over it when there's no picture.
+/// The camera's picture, 16:9, with what's wrong written over it when there's no picture. `InputCheck` feeds its
+/// renderer frames already at the picture's pixel size.
 final class CameraPreviewView: NSView {
+  static let pictureSize = NSSize(width: 400, height: 225)
   var picture = CameraPicture.opening { didSet { if picture != oldValue { showPicture() } } }
-  private let previewLayer = AVCaptureVideoPreviewLayer()
+  var renderer: AVSampleBufferVideoRenderer { displayLayer.sampleBufferRenderer }
+  private let displayLayer = AVSampleBufferDisplayLayer()
   private let label = NSTextField(labelWithString: "")
 
   init() {
-    super.init(frame: NSRect(x: 0, y: 0, width: 280, height: 142))
+    super.init(frame: NSRect(x: 0, y: 0, width: inputMenuItemWidth, height: Self.pictureSize.height + 7))
     wantsLayer = true
-    let frame = NSRect(x: 20, y: 6, width: 240, height: 135)
-    let backdrop = CALayer()
-    backdrop.frame = frame
-    backdrop.backgroundColor = NSColor.black.cgColor
-    backdrop.cornerRadius = 4
-    backdrop.masksToBounds = true
-    previewLayer.frame = backdrop.bounds
-    previewLayer.videoGravity = .resizeAspect
-    backdrop.addSublayer(previewLayer)
-    layer?.addSublayer(backdrop)
+    let frame = NSRect(origin: NSPoint(x: 20, y: 6), size: Self.pictureSize)
+    displayLayer.frame = frame
+    displayLayer.videoGravity = .resizeAspect
+    displayLayer.backgroundColor = NSColor.black.cgColor
+    displayLayer.cornerRadius = 4
+    displayLayer.masksToBounds = true
+    layer?.addSublayer(displayLayer)
     label.frame = NSRect(x: frame.minX, y: frame.midY - 9, width: frame.width, height: 18)
     label.alignment = .center
     label.textColor = .white
@@ -190,8 +194,6 @@ final class CameraPreviewView: NSView {
   }
 
   required init?(coder: NSCoder) { fatalError("not from a nib") }
-
-  func show(session: AVCaptureSession?) { previewLayer.session = session }
 
   private func showPicture() {
     label.stringValue = switch picture {

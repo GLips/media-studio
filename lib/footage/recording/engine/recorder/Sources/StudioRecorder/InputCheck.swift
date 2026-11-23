@@ -1,6 +1,7 @@
 // The menu's live check of the picked mic and camera, before a take: the mic's level on its configured input,
-// and whether the camera sends a picture. It runs only while the menu is open and the recorder idles, and never
-// locks a device's configuration: its session may pick the camera's format, which a recording then sets its own.
+// and the camera's picture, which it also reads for whether one arrives. It runs only while the menu is open and
+// the recorder idles, and never locks a device's configuration: its session may pick the camera's format, which a
+// recording then sets its own.
 import AVFoundation
 
 /// What the menu shows for the camera.
@@ -27,6 +28,7 @@ final class InputCheck: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, 
   private let sessionQueue = DispatchQueue(label: "recorder.input-check")
   private let frameQueue = DispatchQueue(label: "recorder.input-check.frames")
   private var cameraSession: AVCaptureSession?
+  private var cameraOutput: AVCaptureVideoDataOutput?
   private var micSession: AVCaptureSession?
   private var micConnection: AVCaptureConnection?
   private var micChannel = 1
@@ -36,15 +38,19 @@ final class InputCheck: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, 
   /// Written on the frame queue, read on the main thread, under `lock`.
   private var lastFrame: (at: Date, black: Bool)?
   private let lock = NSLock()
+  /// Shows each camera frame as it arrives; used on the frame queue only.
+  private let pictureRenderer: AVSampleBufferVideoRenderer
 
-  /// The preview layer's session, for the menu to show; nil while stopped or with no camera to show.
-  private(set) var previewSession: AVCaptureSession?
+  init(pictureRenderer: AVSampleBufferVideoRenderer) {
+    self.pictureRenderer = pictureRenderer
+  }
 
   @MainActor
   func start(config: RecorderConfig) {
     stop()
     startedAt = Date()
     lock.withLock { lastFrame = nil }
+    clearPicture()
     if let camera = config.camera { startCamera(named: camera.device) }
     if let mic = config.mic { startMic(config: mic) }
   }
@@ -53,13 +59,21 @@ final class InputCheck: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, 
   @MainActor
   func stop() {
     let sessions = [cameraSession, micSession].compactMap { $0 }
+    // A stopping session still sends frames until `stopRunning` returns; cut them off now, so none lands after
+    // the next start's `clearPicture` and shows the old camera.
+    cameraOutput?.setSampleBufferDelegate(nil, queue: nil)
+    cameraOutput = nil
     cameraSession = nil
     micSession = nil
     micConnection = nil
-    previewSession = nil
     cameraFailure = nil
     micFailure = nil
     sessionQueue.async { for session in sessions { session.stopRunning() } }
+  }
+
+  /// Takes the last image off the menu's picture, so a warning isn't read over a frozen one.
+  func clearPicture() {
+    frameQueue.async { [pictureRenderer] in pictureRenderer.flush(removingDisplayedImage: true, completionHandler: nil) }
   }
 
   /// Stops both sessions and returns once they have: a recording is about to open the same devices.
@@ -80,19 +94,23 @@ final class InputCheck: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, 
       return
     }
     session.addInput(input)
-    // Small frames: the check reads only whether a picture arrives and whether it's black.
+    // Frames at the menu picture's Retina pixel width, drawn 1:1. The output's scaler shrinks the camera's 4K
+    // cleanly; an AVCaptureVideoPreviewLayer shrinks it on the GPU at draw time, which blurs and aliases. The
+    // height keeps the camera's aspect, as the output requires: a 4:3 camera letterboxes in the 16:9 picture.
+    let source = device.activeFormat.formatDescription.dimensions
+    let width = Int(CameraPreviewView.pictureSize.width * 2)
     let output = AVCaptureVideoDataOutput()
     output.videoSettings = [
       kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
-      kCVPixelBufferWidthKey as String: 160,
-      kCVPixelBufferHeightKey as String: 90,
+      kCVPixelBufferWidthKey as String: width,
+      kCVPixelBufferHeightKey as String: width * Int(source.height) / Int(source.width) / 2 * 2,
     ]
     output.alwaysDiscardsLateVideoFrames = true
     output.setSampleBufferDelegate(self, queue: frameQueue)
     if session.canAddOutput(output) { session.addOutput(output) }
     session.commitConfiguration()
     cameraSession = session
-    previewSession = session
+    cameraOutput = output
     sessionQueue.async { session.startRunning() }
   }
 
@@ -143,11 +161,19 @@ final class InputCheck: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, 
     guard output is AVCaptureVideoDataOutput, let image = sample.imageBuffer else { return }
     let black = isBlack(image)
     lock.withLock { lastFrame = (Date(), black) }
+    if pictureRenderer.status == .failed || pictureRenderer.requiresFlushToResumeDecoding { pictureRenderer.flush() }
+    // A late frame is dropped rather than queued: the picture should be now, not a backlog.
+    guard pictureRenderer.isReadyForMoreMediaData else { return }
+    if let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: true) as? [NSMutableDictionary] {
+      attachments.first?[kCMSampleAttachmentKey_DisplayImmediately] = true
+    }
+    pictureRenderer.enqueue(sample)
   }
 }
 
 /// Whether a 420v frame is black throughout: no luma sample above the video-range black level (16) plus a margin.
-/// A real room, however dim, has something brighter.
+/// A real room, however dim, has something brighter. It reads a grid about 160 samples wide, whatever the
+/// frame's size.
 private func isBlack(_ image: CVPixelBuffer) -> Bool {
   CVPixelBufferLockBaseAddress(image, .readOnly)
   defer { CVPixelBufferUnlockBaseAddress(image, .readOnly) }
@@ -156,8 +182,9 @@ private func isBlack(_ image: CVPixelBuffer) -> Bool {
   let height = CVPixelBufferGetHeightOfPlane(image, 0)
   let stride = CVPixelBufferGetBytesPerRowOfPlane(image, 0)
   let luma = base.assumingMemoryBound(to: UInt8.self)
-  for y in Swift.stride(from: 0, to: height, by: 2) {
-    for x in Swift.stride(from: 0, to: width, by: 2) where luma[y * stride + x] > 28 { return false }
+  let step = max(1, width / 160)
+  for y in Swift.stride(from: 0, to: height, by: step) {
+    for x in Swift.stride(from: 0, to: width, by: step) where luma[y * stride + x] > 28 { return false }
   }
   return true
 }
