@@ -45,6 +45,7 @@ export function recorderAddSource(
   windowPlacements: Readonly<Record<string, readonly RecordingWindowPlacement[]>> = {},
 ): Result.Result<LibraryAddSource, LibraryNoTrackToAdd> {
   const extras = [`${folder}/recording.json`];
+  const problems: Record<string, string> = { ...recording.problems };
   const leftOut: Record<string, string> = { ...recording.leftOut };
   const tracks: LibraryTrackSource[] = [];
   for (const [track, json] of Object.entries(recording.tracks)) {
@@ -54,6 +55,8 @@ export function recorderAddSource(
       const placements = windowPlacements[track] ?? [];
       const window = json.window && placements.length ? { title: json.window.title, app: json.window.app, placements: [placements[0], ...placements.slice(1)] as const } : undefined;
       if (json.window && present.has(json.window.file)) extras.push(`${folder}/${json.window.file}`);
+      // The track still plays; only placing input on it is lost, so it's added and the loss said.
+      if (json.window && !window) problems[track] = [problems[track], `${json.window.file} holds no placements: input can't be placed on the window`].filter(Boolean).join('; ');
       tracks.push({
         name: track, path: `${folder}/${json.file}`, startSeconds: json.startSeconds,
         ...(json.latencySeconds && { latencySeconds: json.latencySeconds }),
@@ -69,7 +72,7 @@ export function recorderAddSource(
     tracks, title: `Recording ${name}`, recordedAt: recording.startedAt,
     source: { kind: 'studio-recorder', folder, status: ending },
     ...(input && { input }), ...(clockLog && { clockLog }), extras,
-    ...(recording.problems && { problems: recording.problems }), ...(Object.keys(leftOut).length && { leftOut }),
+    ...(Object.keys(problems).length && { problems }), ...(Object.keys(leftOut).length && { leftOut }),
   });
 }
 
