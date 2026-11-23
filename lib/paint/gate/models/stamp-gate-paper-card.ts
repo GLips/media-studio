@@ -1,7 +1,7 @@
 // stamp-gate-paper-card.ts: the gate's three.js paper cards (shot/paper-card), five pop-up views under the paper key:
 // a house-shaped test card square to the camera under the key alone (the recipe's key-only diagnosis), then fully lit;
 // the card half risen; a small pop-up mid-rise; a box folded from one sheet with a tent roof, a window and a tab.
-// Prints are flat colours, so the checks know their values.
+// Prints are flat colours, so the checks know their values. A sixth view, a diorama, goes through a shot's lens.
 //
 // Held to: the shadow falling away from the light, the recipe's depth and warm; a cut edge on the cut sides, none on
 // the hinge; the lip toward the light only; the print as painted where the card faces the camera, never past 1.05.
@@ -9,6 +9,10 @@
 import { Matrix4, Vector3 } from 'three';
 import { buildPaintCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
 import { presentationValueAt } from '#lib/paint/animation/models/paint-value.ts';
+import type { Hex, Layer, Mix, PaintingDocument, Region } from '#lib/paint/document/models/painting-document.ts';
+import type { PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
+import { TITANIUM_WHITE } from '#lib/paint/materials/models/paint-medium.ts';
+import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
 import type { PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
 import { paintCameraWorld, paintWorldLightDirection, paintWorldPlane, type PaintCameraWorld } from '#lib/paint/animation/models/paint-camera-world.ts';
 import { linearToSrgb, srgbToLinear } from '#lib/paint/materials/models/paint-spectrum.ts';
@@ -23,6 +27,8 @@ import { paintedThreePopUpRig, PAINTED_THREE_POP_UP_BASE, type PaintedThreePopUp
 import { PAINTED_THREE_SHEET_ROOT, type PaintedThreeSheet, type PaintedThreeSheetFold } from '#lib/paint/three-layers/models/painted-three-sheet.ts';
 import { shotCameraProject } from '#lib/picture/shot-camera/models/shot-camera.ts';
 import type { StampGateWashCheck } from './stamp-gate-layer.ts';
+import { stampGateHeronLayer, stampGateHeronPaper, stampGateHeronPolygon } from './stamp-gate-paper-heron.ts';
+import { STAMP_GATE_ROUND_REF } from './stamp-gate-sheets.ts';
 import { stampGateShotSpan } from './stamp-gate-shot-span.ts';
 
 export const STAMP_GATE_PAPER_CARD_ID = 'shot/paper-card';
@@ -181,8 +187,8 @@ export function stampGatePaperCardCamera(): { readonly camera: PaintCamera; read
   return { camera: built.camera, world: paintCameraWorld(stage, { fov }) };
 }
 
-/** The baseline's frame: the views side by side. */
-export const stampGatePaperCardFrame = () => ({ width: STAMP_GATE_PAPER_CARD_VIEW.frame.width * STAMP_GATE_PAPER_CARD_VIEW_IDS.length, height: STAMP_GATE_PAPER_CARD_VIEW.frame.height });
+/** The baseline's frame: the views side by side, then the diorama. */
+export const stampGatePaperCardFrame = () => ({ width: STAMP_GATE_PAPER_CARD_VIEW.frame.width * (STAMP_GATE_PAPER_CARD_VIEW_IDS.length + 1), height: STAMP_GATE_PAPER_CARD_VIEW.frame.height });
 
 /** What the baseline is drawn from, as text: the views' pop-ups are their angles at their moments. */
 export const stampGatePaperCardInputs = (id: StampGatePaperCardId) => stampCanonicalJson({
@@ -198,6 +204,7 @@ export const stampGatePaperCardInputs = (id: StampGatePaperCardId) => stampCanon
       sheets: popUp.sheets.map((each) => ({ id: each.id, sheet: sheet(each), on: each.on ?? null, at: each.at, angle: presentationValueAt(each.angle, moment) })),
     };
   }),
+  diorama: stampGatePaperCardDioramaInputs(),
 });
 
 /** A view as rendered: premultiplied linear rgba floats over the frame, row by row. */
@@ -370,3 +377,74 @@ function stampGatePaperCardPrintChecks(pictureOf: StampGatePaperCardPictureOf): 
 export function checkStampGatePaperCard(pictureOf: StampGatePaperCardPictureOf): StampGateWashCheck[] {
   return [...stampGatePaperCardShadowChecks(pictureOf('lit')), ...stampGatePaperCardEdgeChecks(pictureOf('lit')), ...stampGatePaperCardPrintChecks(pictureOf)];
 }
+
+/** The diorama's moment, its lens's bloom (frame px) and its dusk back's depth: drawn through the shot's renderer so the lens blooms its glow. */
+export const STAMP_GATE_PAPER_CARD_DIORAMA = { at: 0, bloom: 4, backDepth: 3 } as const;
+
+const { ultramarine, yellowOchre, phthaloGreen, burntUmber, hansaYellow, cadmiumRed } = WATERCOLOUR_PIGMENTS;
+const CREAM: Mix = { parts: [{ pigment: hansaYellow, amount: 1 }, { pigment: cadmiumRed, amount: 0.15 }, { pigment: TITANIUM_WHITE, amount: 1 }], strength: 0.95 };
+
+/** A gouache layer filling `region` with `mix`, whole. */
+const dioramaFill = (key: string, region: Region, mix: Mix): Layer => ({
+  key, medium: 'gouache',
+  washes: [{
+    key: `${key}-wash`,
+    applications: [{ key: `${key}-fill`, on: 'dry', kind: 'fill', area: { region }, brush: STAMP_GATE_ROUND_REF, diameterPx: 12, seed: key, charge: { kind: 'paint', mix, opacityCap: 1 } }],
+  }],
+});
+/** A diorama painting: its source, the layers it shows, its size. */
+export type StampGateDioramaPrint = { readonly module: PaintingSourceModule; readonly layers: readonly string[]; readonly widthPx: number; readonly heightPx: number };
+
+/** A painting of `layers` on `paper`, its factory's `name` naming its sheets. */
+function dioramaPrint(name: string, widthPx: number, heightPx: number, paper: Hex, layers: readonly Layer[]): StampGateDioramaPrint {
+  const factory = (): PaintingDocument => ({ widthPx, heightPx, paper: stampGateHeronPaper(paper, 1), medium: 'gouache', layers: [...layers] });
+  return { module: { default: Object.defineProperty(factory, 'name', { value: name }) }, layers: layers.map(({ key }) => key), widthPx, heightPx };
+}
+const dioramaWhole = (width: number, height: number) => stampGateHeronPolygon(-10, -10, width + 10, -10, width + 10, height + 10, -10, height + 10);
+const dioramaBox = ({ x0, y0, x1, y1 }: { x0: number; y0: number; x1: number; y1: number }) => stampGateHeronPolygon(x0, y0, x1, y0, x1, y1, x0, y1);
+const { width: FRAME_WIDTH, height: FRAME_HEIGHT } = STAMP_GATE_PAPER_CARD_VIEW.frame;
+
+/**
+ * The diorama's paintings, by key: a dusk back the frame's size; and its prints: the ground, a fir every tree shares,
+ * the house with its window unlit, and the window's glow map, black but for the window.
+ */
+export const STAMP_GATE_PAPER_CARD_DIORAMA_PRINTS = {
+  dusk: dioramaPrint('gatePaperDusk', FRAME_WIDTH, FRAME_HEIGHT, '#f3eee2', [
+    stampGateHeronLayer('dusk', dioramaWhole(FRAME_WIDTH, FRAME_HEIGHT), { parts: [{ pigment: ultramarine, amount: 1 }], strength: 0.8 }, 0.8),
+  ]),
+  ground: dioramaPrint('gatePaperGround', 400, 300, '#e8dcc0', [dioramaFill('ground', dioramaWhole(400, 300), { parts: [{ pigment: yellowOchre, amount: 1 }, { pigment: phthaloGreen, amount: 0.25 }], strength: 0.6 })]),
+  tree: dioramaPrint('gatePaperTree', 120, 220, '#f3eee2', [
+    dioramaFill('crown', dioramaWhole(120, 220), { parts: [{ pigment: phthaloGreen, amount: 1 }, { pigment: yellowOchre, amount: 1.2 }], strength: 0.8 }),
+    dioramaFill('trunk', dioramaBox({ x0: 40, y0: 165, x1: 80, y1: 230 }), { parts: [{ pigment: burntUmber, amount: 1 }], strength: 0.8 }),
+  ]),
+  house: dioramaPrint('gatePaperHouse', 140, 200, '#f3eee2', [
+    dioramaFill('walls', dioramaWhole(140, 200), { parts: [{ pigment: ultramarine, amount: 0.4 }, { pigment: burntUmber, amount: 1 }, { pigment: TITANIUM_WHITE, amount: 1 }], strength: 0.8 }),
+    dioramaFill('window', dioramaBox(HOUSE_PATCH), { parts: [{ pigment: burntUmber, amount: 1 }, { pigment: yellowOchre, amount: 1 }], strength: 0.8 }),
+  ]),
+  window: dioramaPrint('gatePaperWindow', 140, 200, '#000000', [dioramaFill('lit', dioramaBox(HOUSE_PATCH), CREAM)]),
+} as const satisfies Readonly<Record<string, StampGateDioramaPrint>>;
+
+/** A sheet as the diorama writes it: its print by key, its size the print's. */
+export type StampGateDioramaSheet = Omit<PaintedThreePopUpSheet, 'widthPx' | 'heightPx'>;
+const DIORAMA_FIR = { print: 'tree', root: TREE.root } as const;
+
+/**
+ * The diorama's pop-up but its prints: a base turned half a radian on its turntable; three firs from the one print,
+ * each yawed and tinted its own way, behind the house, its window glowing twice its map; each square to the base.
+ */
+export const STAMP_GATE_PAPER_CARD_DIORAMA_POP_UP: Omit<PaintedThreePopUp, 'base' | 'sheets'> & { readonly base: Omit<PaintedThreeSheet, 'widthPx' | 'heightPx'>; readonly sheets: readonly StampGateDioramaSheet[] } = {
+  at: { x: 160, y: 140 }, pitch: PITCH, scale: 0.5, turn: 0.5,
+  base: { print: 'ground', root: BASE.root },
+  sheets: [
+    { ...DIORAMA_FIR, id: 'fir-left', at: { x: 80, y: 110 }, yaw: -0.6, angle: Math.PI / 2 },
+    { ...DIORAMA_FIR, id: 'fir-middle', at: { x: 190, y: 80 }, yaw: 0, angle: Math.PI / 2, tint: { hue: 0.4, value: -0.2 } },
+    { ...DIORAMA_FIR, id: 'fir-right', at: { x: 310, y: 120 }, yaw: 0.25, angle: Math.PI / 2, tint: { hue: -0.35, value: 0.15 } },
+    { print: 'house', root: HOUSE.root, id: 'house', at: { x: 230, y: 260 }, yaw: -0.5, angle: Math.PI / 2, glow: 'window', glowStrength: 2 },
+  ],
+};
+
+/** The diorama's part of the baseline's inputs: its numbers, pop-up and each painting's document. */
+export const stampGatePaperCardDioramaInputs = () => ({
+  ...STAMP_GATE_PAPER_CARD_DIORAMA, popUp: STAMP_GATE_PAPER_CARD_DIORAMA_POP_UP,
+  prints: Object.fromEntries(Object.entries(STAMP_GATE_PAPER_CARD_DIORAMA_PRINTS).map(([key, { module, layers }]) => [key, { document: module.default({}), layers }])),
+});
