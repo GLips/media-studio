@@ -1,13 +1,15 @@
 // transcript-cache.ts: transcripts already heard, kept in the studio's user cache (~/.cache/media-studio/transcripts)
 // so asking again for a file costs a few reads, from any checkout. Node only.
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from 'effect';
 import type { PlatformError } from 'effect/PlatformError';
 import { FootageTranscript } from '../models/footage-transcript.ts';
+import { makeReplaceFileWholeEffect } from '#lib/platform/files/engine/replace-file-whole-effect.ts';
 import { studioUserCacheDir } from '#lib/platform/temp/engine/studio-user-cache.ts';
 
 // Bytes read from the start, middle and end of a file for its cache key, beside its size and modified time. The time
 // catches an edit that keeps the size and misses the samples (a word patched mid-WAV); a copy is transcribed afresh.
+// The time is whole milliseconds, as Effect's FileSystem reports it: APFS keeps finer, which the key drops.
 const KEY_SAMPLE = 2 ** 20;
 
 const TranscriptEntryJson = Schema.fromJsonString(FootageTranscript);
@@ -26,7 +28,7 @@ export class TranscriptCache extends Context.Service<TranscriptCache, {
 
 /** The cache kept in `folder`; transcriptCacheLayer is the user cache's. */
 export const transcriptCacheLayerIn = (folder: string) => Layer.effect(TranscriptCache, Effect.gen(function* () {
-  const fs = yield* FileSystem.FileSystem, path = yield* Path.Path;
+  const fs = yield* FileSystem.FileSystem, path = yield* Path.Path, replaceWhole = yield* makeReplaceFileWholeEffect;
   const entry = (key: string) => path.join(folder, `${key}.json`);
 
   const keyOf = Effect.fn('TranscriptCache.keyOf')(function* (footage: string, transcriber: string) {
@@ -49,11 +51,7 @@ export const transcriptCacheLayerIn = (folder: string) => Layer.effect(Transcrip
       return yield* fs.readFileString(entry(key)).pipe(Effect.flatMap(Schema.decodeEffect(TranscriptEntryJson)), Effect.option);
     }),
     write: Effect.fn('TranscriptCache.write')(function* (key: string, transcript: FootageTranscript) {
-      const json = yield* Schema.encodeEffect(TranscriptEntryJson)(transcript);
-      const temp = `${entry(key)}.${randomUUID()}.tmp`;
-      yield* fs.makeDirectory(folder, { recursive: true });
-      yield* fs.writeFileString(temp, json);
-      yield* fs.rename(temp, entry(key));
+      yield* replaceWhole(entry(key), yield* Schema.encodeEffect(TranscriptEntryJson)(transcript));
     }),
   });
 }));
