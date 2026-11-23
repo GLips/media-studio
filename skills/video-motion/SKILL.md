@@ -111,5 +111,5 @@ HUD, a lens fringe), with the kit's `Odometer`; a bar they don't cover is built 
 - **Every video becomes a template.** When a shot works and could come back (an end card, a title, a product UI
   rebuilt in DOM), lift it into the kit with its brand colours and words as props, so the next video changes the skin.
 
-Neighbours: a painted or generative layer is `paint`; real-world footage (a product in use, a place, people)
+Neighbours: a painted layer (brushed paint, pencil and ink lines, cut paper) is `paint`; real-world footage (a product in use, a place, people)
 is `video-gen`; music, effects and the mix are `video-sound`, once the picture is locked.

@@ -36,7 +36,8 @@ shapes and type are big enough to be the image, and something is always moving.
   with a `motion?: string | false` prop. A piece of hundreds of parts tags the whole and reports its progress as a
   value; a canvas carries `unmeasuredAttrs('<what>')` (`ThreeStage` does this itself).
 - **Cost.** A reel renders hundreds of frames. Past about 2,000 DOM nodes a frame, draw into a canvas (2D redrawn in
-  a `useLayoutEffect` each frame, or `ThreeStage`).
+  a `useLayoutEffect` each frame, deferred drawing flushed at its end so one frame's marks never turn up in the
+  next; or `ThreeStage`).
 - **SVG filters** do post work on DOM and canvases alike, but Chrome has four traps:
   - It recomputes a filter result once for every step that reads it: have each tap read the source rather than
     chaining stages.
