@@ -104,18 +104,13 @@ final class MenuBarDot: NSObject {
 
   private func refresh() {
     let missing = recorder.permissions?.missing ?? []
-    let color: NSColor
-    switch recorder.state {
-    case .idle where !missing.isEmpty: color = .systemYellow
-    case .idle: color = .tertiaryLabelColor
-    case .starting, .stopping: color = .systemOrange
-    case .recording: color = .systemRed
+    let glyph = switch recorder.state {
+    case .idle where !missing.isEmpty: "MenuBarNeedsPermission"
+    case .idle: "MenuBarIdleTemplate"
+    case .starting, .stopping: "MenuBarBusyTemplate"
+    case .recording: "MenuBarRecording"
     }
-    item.button?.image = NSImage(size: NSSize(width: 14, height: 14), flipped: false) { rect in
-      color.setFill()
-      NSBezierPath(ovalIn: rect.insetBy(dx: 2, dy: 2)).fill()
-      return true
-    }
+    item.button?.image = menuBarGlyph(glyph)
     item.button?.toolTip = missing.isEmpty
       ? "\(recorderDisplayName) (\(recorder.config.hotkey))"
       : "\(recorderDisplayName) needs \(missing.map(\.title).joined(separator: ", "))"
@@ -145,6 +140,16 @@ final class MenuBarDot: NSObject {
     try? FileManager.default.createDirectory(at: recorder.config.recordingsURL, withIntermediateDirectories: true)
     NSWorkspace.shared.open(recorder.config.recordingsURL)
   }
+}
+
+/// A menu-bar glyph from the bundle's Resources/menu-bar/ (Resources/ in the package). A `…Template` glyph takes
+/// the menu bar's own colour; the recording and permission glyphs keep theirs.
+@MainActor
+func menuBarGlyph(_ name: String) -> NSImage? {
+  guard let url = Bundle.main.resourceURL?.appendingPathComponent("menu-bar/\(name).pdf"), let image = NSImage(contentsOf: url) else { return nil }
+  image.size = NSSize(width: 18, height: 18)
+  image.isTemplate = name.hasSuffix("Template")
+  return image
 }
 
 let arguments = CommandLine.arguments

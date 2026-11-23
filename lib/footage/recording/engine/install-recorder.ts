@@ -20,6 +20,7 @@ const recorderBundlePropertyList = `<?xml version="1.0" encoding="UTF-8"?>
   <key>CFBundleName</key><string>${RECORDER_DISPLAY_NAME}</string>
   <key>CFBundleDisplayName</key><string>${RECORDER_DISPLAY_NAME}</string>
   <key>CFBundleExecutable</key><string>StudioRecorder</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1</string>
   <key>CFBundleVersion</key><string>1</string>
@@ -48,6 +49,10 @@ export function installStudioRecorder(options: { identity?: string; launch: bool
   mkdirSync(macos, { recursive: true });
   cpSync(join(RECORDER_PACKAGE_DIR, '.build', 'release', 'StudioRecorder'), join(macos, 'StudioRecorder'));
   writeFileSync(join(RECORDER_APP_PATH, 'Contents', 'Info.plist'), recorderBundlePropertyList);
+  // Resources/ isn't a SwiftPM resource bundle: the app reads its icon and menu-bar glyphs from Contents/Resources.
+  const resources = join(RECORDER_APP_PATH, 'Contents', 'Resources');
+  cpSync(join(RECORDER_PACKAGE_DIR, 'Resources', 'AppIcon.icns'), join(resources, 'AppIcon.icns'));
+  cpSync(join(RECORDER_PACKAGE_DIR, 'Resources', 'menu-bar'), join(resources, 'menu-bar'), { recursive: true });
   execFileSync('codesign', ['--force', '--sign', options.identity ?? appleDevelopmentIdentity(), RECORDER_APP_PATH], { stdio: 'inherit' });
   if (options.launch) execFileSync('open', [RECORDER_APP_PATH]);
   return RECORDER_APP_PATH;
