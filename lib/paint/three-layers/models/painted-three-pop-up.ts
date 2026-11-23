@@ -1,118 +1,123 @@
-// painted-three-pop-up.ts: a pop-up's rig, its pure side: cards hinged on a pitched base, each standing up from its
-// parent by an angle in time, nested cards riding their parents. The studio side (painted-three-pop-up.ts there)
-// builds its meshes and sets each card's matrix from here; checks read where a card's point lands the same way.
+// painted-three-pop-up.ts: a pop-up's rig, its pure side: folded sheets standing on a pitched base, each up from a
+// face of its parent by an angle in time, nested sheets riding their parents' faces. The studio side
+// (painted-three-pop-up.ts there) builds each sheet's meshes and sets each face's matrix from here; checks read where a
+// face's point lands the same way.
 //
-// Card space is a card's print px with y turned up (x, −y) and z out of its front, its back at −thickness/2. The
-// pop-up's space is print px too, its origin the base's centre, before it's placed and scaled on its plane.
+// Each sheet's own space is its sheet space (painted-three-sheet.ts). The pop-up's space is print px too, its origin
+// the base's centre, before it's placed and scaled on its plane.
 
 import { Matrix4, Vector3 } from 'three';
 import { presentationValueAt, type PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import { PAINTED_THREE_CARD_LOOK, paintedThreeCardCut, type PaintedThreeCard } from './painted-three-card.ts';
+import { PAINTED_THREE_SHEET_ROOT, PAINTED_THREE_SHEET_THICKNESS, paintedThreeSheetFolding, paintedThreeSheetHingeAxis, type PaintedThreeSheet, type PaintedThreeSheetFolding } from './painted-three-sheet.ts';
 
 /**
- * A card standing on its parent (`on`, a card's id; the base when left out). Flat, its hinge's middle sits at `at` on
- * its parent's front (parent print px), upright as drawn. It stands toward the viewer by `angle`, radians from flat:
- * on the base it faces the camera at the pitch. A keyed angle on a latch curve overshoots.
+ * A sheet standing on a face of another: `on`, that sheet and face (the base's root by default, a sheet's root when
+ * no face is named). Flat, its root's hinge's middle sits at `at` on that face's front (print px). It stands toward
+ * the viewer by `angle`, radians from flat: on the base it faces the camera at the pitch.
  */
-export type PaintedThreePopUpCard = PaintedThreeCard & {
+export type PaintedThreePopUpSheet = PaintedThreeSheet & {
   readonly id: string;
-  readonly on?: string;
+  readonly on?: { readonly sheet: string; readonly face?: string };
   readonly at: StampPoint;
   readonly angle: PresentationValue<number>;
 };
 
 /**
- * A pop-up: `base`, a card cut all round, centred at `at` (frame px on its plane), tipped back from facing the camera
- * by `pitch` radians (the recipe looks 40–55° down); `cards`, any order; `scale`, frame px per print px (default 1).
- * `thicknessPx`: every card's paper unless one names its own; 2% of the tallest card's height by default.
+ * A pop-up: `base`, a sheet centred at `at` (frame px on its plane), its root tipped back from facing the camera by
+ * `pitch` radians (the recipe looks 40–55° down); `sheets`, any order; `scale`, frame px per print px (default 1).
+ * `thicknessPx`: every sheet's paper unless one names its own; PAINTED_THREE_SHEET_THICKNESS of the tallest sheet's
+ * height by default.
  */
 export type PaintedThreePopUp = {
   readonly at: StampPoint;
   readonly pitch: number;
   readonly scale?: number;
   readonly thicknessPx?: number;
-  readonly base: PaintedThreeCard;
-  readonly cards: readonly PaintedThreePopUpCard[];
+  readonly base: PaintedThreeSheet;
+  readonly sheets: readonly PaintedThreePopUpSheet[];
 };
 
-/** A pop-up's id for its base, which no card may take. */
+/** A pop-up's id for its base, which no sheet may take. */
 export const PAINTED_THREE_POP_UP_BASE = 'base';
 
-/** A card's hinge in card space: the pivot on its back face, and the axis it stands up about (unit length). */
-type PaintedThreeHinge = { readonly pivot: Vector3; readonly axis: Vector3 };
-
-/** A card's hinge in card space (PaintedThreeHinge): its axis turns the card's body, beyond the hinge, toward +z. */
-function paintedThreePopUpHinge(card: PaintedThreePopUpCard, thickness: number): PaintedThreeHinge {
-  const { polygon } = paintedThreeCardCut(card), { from, to } = card.outline.hinge!;
-  // The body's side of the hinge: toward the outline's mean point, in card space (y up).
-  const middle = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 }, mean = polygon.reduce((sum, p) => ({ x: sum.x + p.x / polygon.length, y: sum.y + p.y / polygon.length }), { x: 0, y: 0 });
-  const along = new Vector3(to.x - from.x, -(to.y - from.y), 0).normalize(), body = new Vector3(mean.x - middle.x, -(mean.y - middle.y), 0);
-  body.addScaledVector(along, -body.dot(along)).normalize();
-  // Turning by +θ about body × z carries the body toward z.
-  return { pivot: new Vector3(middle.x, -middle.y, -thickness / 2), axis: body.clone().cross(new Vector3(0, 0, 1)) };
-}
-
-/** A pop-up's rig, checked: each card's id in parents-first order, and the matrix of each (and the base) at a moment. */
+/** A pop-up's rig, checked: each sheet's id in parents-first order, its folding, and each face's matrix at a moment. */
 export type PaintedThreePopUpRig = {
-  /** The base's id, then each card's, every parent before its children. */
+  /** The base's id, then each sheet's, every parent before its children. */
   readonly order: readonly string[];
-  /** Card space into the pop-up's space at `moment`, by id. */
-  readonly poseAt: (moment: PaintMoment) => ReadonlyMap<string, Matrix4>;
-  /** Each card's paper thickness, print px, by id. */
-  readonly thickness: ReadonlyMap<string, number>;
+  /** Each sheet folded, its paper the pop-up's unless it names its own, by id. */
+  readonly folding: ReadonlyMap<string, PaintedThreeSheetFolding>;
+  /** Sheet space into the pop-up's space at `moment`, by sheet id, then face id. */
+  readonly poseAt: (moment: PaintMoment) => ReadonlyMap<string, ReadonlyMap<string, Matrix4>>;
   /** A sphere about the base's centre holding the pop-up at any pose, print px: what a shadow camera is fitted to. */
   readonly reach: number;
 };
 
+/** Every face's box diagonal: no point of a folded sheet lies further from any other along its faces. */
+const sheetSpan = (folding: PaintedThreeSheetFolding) => [...folding.faces.values()].reduce((sum, { box }) => sum + Math.hypot(box.x1 - box.x0, box.y1 - box.y0), 0);
+
 /**
- * `popUp`'s rig. Refuses a card with no hinge, an id taken twice or the base's, a parent that isn't a card, and cards
- * that stand on each other round a loop.
+ * `popUp`'s rig. Refuses a sheet whose root has no hinge to stand on, an id taken twice or the base's, a parent that
+ * isn't a sheet or a face it hasn't, sheets that stand on each other round a loop, and whatever a sheet's folding
+ * refuses (paintedThreeSheetFolding).
  */
 export function paintedThreePopUpRig(popUp: PaintedThreePopUp): PaintedThreePopUpRig {
-  const { base, cards, pitch } = popUp;
-  paintedThreeCardCut(base);
-  const byId = new Map<string, PaintedThreePopUpCard>();
-  for (const card of cards) {
-    if (card.id === PAINTED_THREE_POP_UP_BASE || byId.has(card.id)) throw new Error(`painted three pop-up: card id ${card.id} is taken`);
-    if (!card.outline.hinge) throw new Error(`painted three pop-up: card ${card.id}'s outline has no hinge to stand on`);
-    byId.set(card.id, card);
+  const { base, sheets, pitch } = popUp, byId = new Map<string, PaintedThreePopUpSheet>();
+  for (const sheet of sheets) {
+    if (sheet.id === PAINTED_THREE_POP_UP_BASE || byId.has(sheet.id)) throw new Error(`painted three pop-up: sheet id ${sheet.id} is taken`);
+    if (!sheet.root.hinge) throw new Error(`painted three pop-up: sheet ${sheet.id}'s root has no hinge to stand on`);
+    byId.set(sheet.id, sheet);
   }
+  const parentOf = (sheet: PaintedThreePopUpSheet) => sheet.on?.sheet ?? PAINTED_THREE_POP_UP_BASE;
   const order: string[] = [], placed = new Set([PAINTED_THREE_POP_UP_BASE]);
-  while (order.length < cards.length) {
-    const ready = cards.filter((card) => !placed.has(card.id) && placed.has(card.on ?? PAINTED_THREE_POP_UP_BASE));
+  while (order.length < sheets.length) {
+    const ready = sheets.filter((sheet) => !placed.has(sheet.id) && placed.has(parentOf(sheet)));
     if (!ready.length) {
-      const stuck = cards.filter((card) => !placed.has(card.id));
-      const missing = stuck.find((card) => card.on !== undefined && !byId.has(card.on));
-      throw new Error(missing ? `painted three pop-up: card ${missing.id} stands on ${missing.on}, which is no card` : `painted three pop-up: cards ${stuck.map(({ id }) => id).join(', ')} stand on each other round a loop`);
+      const stuck = sheets.filter((sheet) => !placed.has(sheet.id)), missing = stuck.find((sheet) => !byId.has(parentOf(sheet)));
+      throw new Error(missing ? `painted three pop-up: sheet ${missing.id} stands on ${parentOf(missing)}, which is no sheet` : `painted three pop-up: sheets ${stuck.map(({ id }) => id).join(', ')} stand on each other round a loop`);
     }
-    for (const card of ready) {
-      order.push(card.id);
-      placed.add(card.id);
+    for (const sheet of ready) {
+      order.push(sheet.id);
+      placed.add(sheet.id);
     }
   }
-  const paper = popUp.thicknessPx ?? PAINTED_THREE_CARD_LOOK.thickness * Math.max(...cards.map(({ heightPx }) => heightPx), cards.length ? 0 : base.heightPx);
-  const thickness = new Map([[PAINTED_THREE_POP_UP_BASE, base.thicknessPx ?? paper], ...cards.map((card) => [card.id, card.thicknessPx ?? paper] as const)]);
-  const hinges = new Map(cards.map((card) => [card.id, paintedThreePopUpHinge(card, thickness.get(card.id)!)]));
+  const paper = popUp.thicknessPx ?? PAINTED_THREE_SHEET_THICKNESS * Math.max(...sheets.map(({ heightPx }) => heightPx), sheets.length ? 0 : base.heightPx);
+  const folding = new Map([
+    [PAINTED_THREE_POP_UP_BASE, paintedThreeSheetFolding({ ...base, thicknessPx: base.thicknessPx ?? paper })],
+    ...sheets.map((sheet) => [sheet.id, paintedThreeSheetFolding({ ...sheet, thicknessPx: sheet.thicknessPx ?? paper })] as const),
+  ]);
+  for (const sheet of sheets) {
+    const face = sheet.on?.face ?? PAINTED_THREE_SHEET_ROOT;
+    if (!folding.get(parentOf(sheet))!.faces.has(face)) throw new Error(`painted three pop-up: sheet ${sheet.id} stands on ${parentOf(sheet)}'s face ${face}, which it hasn't`);
+  }
+  // Each sheet stands about its root's hinge, pivoting on its back face, which lies on its parent face's front.
+  const stands = new Map(sheets.map((sheet) => {
+    const { from, to } = sheet.root.hinge!, thickness = folding.get(sheet.id)!.thickness;
+    const pivot = new Vector3((from.x + to.x) / 2, -(from.y + to.y) / 2, -thickness / 2);
+    return [sheet.id, { pivot, axis: paintedThreeSheetHingeAxis(sheet.root.hinge!, folding.get(sheet.id)!.faces.get(PAINTED_THREE_SHEET_ROOT)!.rings[0]) }] as const;
+  }));
   // The base's centre to the origin, tipped back about x: its top edge goes away from the camera.
   const baseMatrix = new Matrix4().makeRotationX(-pitch).multiply(new Matrix4().makeTranslation(-base.widthPx / 2, base.heightPx / 2, 0));
-  // Each card's own reach from its hinge, the base's half diagonal, all stacked: no pose reaches past their sum.
-  const reach = Math.hypot(base.widthPx, base.heightPx) / 2 + cards.reduce((sum, card) => sum + Math.hypot(card.widthPx, card.heightPx), 0);
+  const baseFolding = folding.get(PAINTED_THREE_POP_UP_BASE)!, { x0, y0, x1, y1 } = baseFolding.faces.get(PAINTED_THREE_SHEET_ROOT)!.box, cx = base.widthPx / 2, cy = base.heightPx / 2;
+  // The base's root's farthest corner from its centre, its other faces, then every face of every sheet stacked: no pose reaches past their sum.
+  const rootReach = Math.hypot(Math.max(Math.abs(x0 - cx), Math.abs(x1 - cx)), Math.max(Math.abs(y0 - cy), Math.abs(y1 - cy)));
+  const reach = rootReach + sheetSpan(baseFolding) - Math.hypot(x1 - x0, y1 - y0) + sheets.reduce((sum, sheet) => sum + sheetSpan(folding.get(sheet.id)!), 0);
   return {
     order: [PAINTED_THREE_POP_UP_BASE, ...order],
-    thickness,
+    folding,
     reach,
     poseAt: (moment) => {
-      const matrices = new Map([[PAINTED_THREE_POP_UP_BASE, baseMatrix]]);
+      const placedAt = (id: string, sheet: Matrix4) => new Map([...folding.get(id)!.poseAt(moment)].map(([face, matrix]) => [face, sheet.clone().multiply(matrix)]));
+      const poses = new Map([[PAINTED_THREE_POP_UP_BASE, placedAt(PAINTED_THREE_POP_UP_BASE, baseMatrix)]]);
       for (const id of order) {
-        const card = byId.get(id)!, { pivot, axis } = hinges.get(id)!, parent = card.on ?? PAINTED_THREE_POP_UP_BASE;
-        // On the parent's front at `at`, the card's back face down on it, turned up about its hinge.
-        const onParent = new Matrix4().makeTranslation(card.at.x, -card.at.y, thickness.get(parent)! / 2);
-        const turned = new Matrix4().makeRotationAxis(axis, presentationValueAt(card.angle, moment));
-        matrices.set(id, matrices.get(parent)!.clone().multiply(onParent).multiply(turned).multiply(new Matrix4().makeTranslation(-pivot.x, -pivot.y, -pivot.z)));
+        const sheet = byId.get(id)!, { pivot, axis } = stands.get(id)!, parent = parentOf(sheet), face = poses.get(parent)!.get(sheet.on?.face ?? PAINTED_THREE_SHEET_ROOT)!;
+        // On the parent face's front at `at`, the sheet's back face down on it, turned up about its hinge.
+        const onParent = new Matrix4().makeTranslation(sheet.at.x, -sheet.at.y, folding.get(parent)!.thickness / 2);
+        const turned = new Matrix4().makeRotationAxis(axis, presentationValueAt(sheet.angle, moment));
+        poses.set(id, placedAt(id, face.clone().multiply(onParent).multiply(turned).multiply(new Matrix4().makeTranslation(-pivot.x, -pivot.y, -pivot.z))));
       }
-      return matrices;
+      return poses;
     },
   };
 }

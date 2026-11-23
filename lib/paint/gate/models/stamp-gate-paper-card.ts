@@ -1,24 +1,26 @@
-// stamp-gate-paper-card.ts: the gate's three.js paper cards (shot/paper-card), four pop-up views under the paper key:
-// a house-shaped test card square to the camera on a tipped base, under the key alone (no fill or sky, a black leak:
-// the recipe's key-only diagnosis), then fully lit; the card half risen; a small pop-up mid-rise, a pennant folding
-// out of its house. Prints are flat colours, so the checks know their values.
+// stamp-gate-paper-card.ts: the gate's three.js paper cards (shot/paper-card), five pop-up views under the paper key:
+// a house-shaped test card square to the camera under the key alone (the recipe's key-only diagnosis), then fully lit;
+// the card half risen; a small pop-up mid-rise; a box folded from one sheet with a tent roof, a window and a tab.
+// Prints are flat colours, so the checks know their values.
 //
 // Held to: the shadow falling away from the light, the recipe's depth and warm; a cut edge on the cut sides, none on
 // the hinge; the lip toward the light only; the print as painted where the card faces the camera, never past 1.05.
 
 import { Matrix4, Vector3 } from 'three';
 import { buildPaintCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
+import { presentationValueAt } from '#lib/paint/animation/models/paint-value.ts';
 import type { PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
 import { paintCameraWorld, paintWorldLightDirection, paintWorldPlane, type PaintCameraWorld } from '#lib/paint/animation/models/paint-camera-world.ts';
 import { linearToSrgb, srgbToLinear } from '#lib/paint/materials/models/paint-spectrum.ts';
 import { stampCanonicalJson } from '#lib/paint/painting/models/stamp-canonical.ts';
 import { PAPER_KEY_LIGHT } from '#lib/paint/painting/models/stamp-form.ts';
 import { paintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
-import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
-import { PAINTED_THREE_CARD_LOOK, type PaintedThreeCard } from '#lib/paint/three-layers/models/painted-three-card.ts';
+import { stampPolygonInside, type StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { paintedThreeShotCamera } from '#lib/paint/three-layers/models/painted-three-camera.ts';
-import { paintedThreePopUpRig, PAINTED_THREE_POP_UP_BASE, type PaintedThreePopUp, type PaintedThreePopUpCard } from '#lib/paint/three-layers/models/painted-three-pop-up.ts';
+import { PAINTED_THREE_PAPER_LOOK } from '#lib/paint/three-layers/models/painted-three-paper.ts';
+import { paintedThreePopUpRig, PAINTED_THREE_POP_UP_BASE, type PaintedThreePopUp, type PaintedThreePopUpSheet } from '#lib/paint/three-layers/models/painted-three-pop-up.ts';
+import { PAINTED_THREE_SHEET_ROOT, type PaintedThreeSheet, type PaintedThreeSheetFold } from '#lib/paint/three-layers/models/painted-three-sheet.ts';
 import { shotCameraProject } from '#lib/picture/shot-camera/models/shot-camera.ts';
 import type { StampGateWashCheck } from './stamp-gate-layer.ts';
 import { stampGateShotSpan } from './stamp-gate-shot-span.ts';
@@ -32,52 +34,114 @@ const STAMP_GATE_PAPER_CARD_VIEW = { frame: { width: 320, height: 240 }, fov: 30
 /** The grey a view's clear lies over, linear. */
 const STAMP_GATE_PAPER_CARD_CLEAR = 0.18;
 
-/** A flat print: `ground` over all of it, `patch` (box, colour) over part. Colours sRGB hex. */
+/** A flat print: `ground` over all of it, each of `patches` (a polygon, its colour) over part, the last on top. Colours sRGB hex. */
 export type StampGatePaperCardPrint = {
   readonly id: string;
   readonly width: number;
   readonly height: number;
   readonly ground: string;
-  readonly patch?: { readonly x0: number; readonly y0: number; readonly x1: number; readonly y1: number; readonly colour: string };
+  readonly patches?: readonly { readonly points: readonly StampPoint[]; readonly colour: string }[];
 };
 
-/** The prints: the test card's sage with a red patch, the base's sand, the tree's green, the pennant's red. */
+const rectangle = (x0: number, y0: number, x1: number, y1: number): StampPoint[] => [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
+
+/**
+ * The box's net, its own px before it's turned onto its print (y down): the front wall standing on its foot at y 0,
+ * the side walls and back folding off it round the box, the roof's two slopes above the front, a tab below the right
+ * wall. A window is cut through the front.
+ */
+const BOX = { wide: 100, deep: 70, tall: 70, rise: 30, tab: 18, inset: 10 } as const;
+const BOX_SLOPE = Math.atan2(BOX.rise, BOX.deep / 2), BOX_ROOF = Math.hypot(BOX.rise, BOX.deep / 2);
+/** Radians the box's net is turned on its print, so it stands turned on the base and shows its right side. */
+const BOX_TURN = -0.45;
+/** How far the turned net lies in from its print's edges, px. */
+const BOX_MARGIN = 4;
+const boxNet = (() => {
+  const { wide, deep, tall, tab, inset } = BOX;
+  const faces = {
+    front: rectangle(0, -tall, wide, 0), left: rectangle(-deep, -tall, 0, 0), right: rectangle(wide, -tall, wide + deep, 0), back: rectangle(wide + deep, -tall, 2 * wide + deep, 0),
+    roofFront: rectangle(0, -tall - BOX_ROOF, wide, -tall), roofBack: rectangle(0, -tall - 2 * BOX_ROOF, wide, -tall - BOX_ROOF), tab: rectangle(wide + inset, 0, wide + deep - inset, tab),
+    window: rectangle(14, -tall + 14, 40, -tall + 36), door: rectangle(58, -36, 82, 0), sideWindow: rectangle(wide + 22, -tall + 18, wide + 48, -tall + 40),
+  };
+  const turn = (p: StampPoint) => ({ x: p.x * Math.cos(BOX_TURN) - p.y * Math.sin(BOX_TURN), y: p.x * Math.sin(BOX_TURN) + p.y * Math.cos(BOX_TURN) });
+  const all = Object.values(faces).flat().map(turn), x0 = Math.min(...all.map(({ x }) => x)), y0 = Math.min(...all.map(({ y }) => y));
+  const place = (p: StampPoint) => {
+    const { x, y } = turn(p);
+    return { x: x - x0 + BOX_MARGIN, y: y - y0 + BOX_MARGIN };
+  };
+  return {
+    place, face: (id: keyof typeof faces) => faces[id].map(place),
+    width: Math.ceil(Math.max(...all.map(({ x }) => x)) - x0 + 2 * BOX_MARGIN), height: Math.ceil(Math.max(...all.map(({ y }) => y)) - y0 + 2 * BOX_MARGIN),
+  };
+})();
+
+/** The test card's patch, where its print is read. */
+const HOUSE_PATCH = { x0: 50, y0: 100, x1: 90, y1: 140 } as const;
+
+/** The prints: the test card's sage with a red patch, the base's sand, the tree's green, the pennant's red; the box's cream walls, red roof, dark door and yellow window. */
 export const STAMP_GATE_PAPER_CARD_PRINTS: readonly StampGatePaperCardPrint[] = [
-  { id: 'house', width: 140, height: 200, ground: '#86a07c', patch: { x0: 50, y0: 100, x1: 90, y1: 140, colour: '#b5523b' } },
+  { id: 'house', width: 140, height: 200, ground: '#86a07c', patches: [{ points: rectangle(HOUSE_PATCH.x0, HOUSE_PATCH.y0, HOUSE_PATCH.x1, HOUSE_PATCH.y1), colour: '#b5523b' }] },
   { id: 'base', width: 400, height: 300, ground: '#cdb98f' },
-  { id: 'tree', width: 120, height: 220, ground: '#6f8a55', patch: { x0: 45, y0: 170, x1: 75, y1: 220, colour: '#7a5232' } },
+  { id: 'tree', width: 120, height: 220, ground: '#6f8a55', patches: [{ points: rectangle(45, 170, 75, 220), colour: '#7a5232' }] },
   { id: 'pennant', width: 60, height: 30, ground: '#b5523b' },
+  {
+    id: 'box', width: boxNet.width, height: boxNet.height, ground: '#e3cfa8',
+    patches: [
+      { points: boxNet.face('roofFront'), colour: '#a4503a' }, { points: boxNet.face('roofBack'), colour: '#8e4632' },
+      { points: boxNet.face('door'), colour: '#6b4a2e' }, { points: boxNet.face('sideWindow'), colour: '#e8c25a' },
+    ],
+  },
 ];
 
 /** A print's colour at its px (x, y), sRGB 0..1: as the page writes its texture. */
-export function stampGatePaperCardPrintAt({ ground, patch }: StampGatePaperCardPrint, x: number, y: number): readonly [number, number, number] {
-  const hex = patch && x >= patch.x0 && x < patch.x1 && y >= patch.y0 && y < patch.y1 ? patch.colour : ground;
+export function stampGatePaperCardPrintAt({ ground, patches = [] }: StampGatePaperCardPrint, x: number, y: number): readonly [number, number, number] {
+  const hex = patches.findLast(({ points }) => stampPolygonInside(points, x, y))?.colour ?? ground;
   const channel = (at: number) => parseInt(hex.slice(at, at + 2), 16) / 255;
   return [channel(1), channel(3), channel(5)];
 }
 
-const BASE: PaintedThreeCard = {
-  print: 'base', widthPx: 400, heightPx: 300, outline: { shape: [{ x: 0, y: 0 }, { x: 400, y: 0 }, { x: 400, y: 300 }, { x: 0, y: 300 }] },
-};
-/** The test card's outline: a house, walls 0 and 140, eaves at 30, its ridge at 0, hinged along its foot at 200. */
+const BASE: PaintedThreeSheet = { print: 'base', widthPx: 400, heightPx: 300, root: { outline: rectangle(0, 0, 400, 300) } };
+/** The test card's outline: a house, walls 0 and 140, eaves at 30, its ridge at 0, standing on its foot at 200. */
 const HOUSE_OUTLINE: readonly StampPoint[] = [{ x: 0, y: 200 }, { x: 140, y: 200 }, { x: 140, y: 30 }, { x: 70, y: 0 }, { x: 0, y: 30 }];
-const HOUSE: PaintedThreeCard = { print: 'house', widthPx: 140, heightPx: 200, outline: { shape: HOUSE_OUTLINE, hinge: { from: { x: 0, y: 200 }, to: { x: 140, y: 200 } } } };
-/** A fir on a trunk, its trunk's foot the hinge, cut from SVG path data as a traced drawing would be. */
-const TREE: PaintedThreeCard = {
+const HOUSE: PaintedThreeSheet = { print: 'house', widthPx: 140, heightPx: 200, root: { outline: HOUSE_OUTLINE, hinge: { from: { x: 0, y: 200 }, to: { x: 140, y: 200 } } } };
+/** A fir on a trunk, standing on its trunk's foot, cut from SVG path data as a traced drawing would be. */
+const TREE: PaintedThreeSheet = {
   print: 'tree', widthPx: 120, heightPx: 220,
-  outline: { shape: 'M 60 0 L 120 170 L 75 170 L 75 220 L 45 220 L 45 170 L 0 170 Z', hinge: { from: { x: 45, y: 220 }, to: { x: 75, y: 220 } } },
+  root: { outline: 'M 60 0 L 120 170 L 75 170 L 75 220 L 45 220 L 45 170 L 0 170 Z', hinge: { from: { x: 45, y: 220 }, to: { x: 75, y: 220 } } },
 };
 /** A pennant hinged along its left edge, folding out sideways. */
-const PENNANT: PaintedThreeCard = {
-  print: 'pennant', widthPx: 60, heightPx: 30, outline: { shape: [{ x: 0, y: 0 }, { x: 60, y: 15 }, { x: 0, y: 30 }], hinge: { from: { x: 0, y: 0 }, to: { x: 0, y: 30 } } },
+const PENNANT: PaintedThreeSheet = {
+  print: 'pennant', widthPx: 60, heightPx: 30, root: { outline: [{ x: 0, y: 0 }, { x: 60, y: 15 }, { x: 0, y: 30 }], hinge: { from: { x: 0, y: 0 }, to: { x: 0, y: 30 } } },
 };
+
+/**
+ * The box as one sheet: its front wall the root, standing on its foot; the walls folded back square round it, the
+ * roof's slopes folded off the front's top into a tent, and the tab folded out flat from the right wall's foot.
+ */
+const BOX_SHEET: PaintedThreeSheet = (() => {
+  const { wide, deep, tall, inset } = BOX, { place, face } = boxNet;
+  const edge = (from: StampPoint, to: StampPoint) => ({ from: place(from), to: place(to) });
+  const fold = (id: Parameters<typeof face>[0], on: string, hinge: { from: StampPoint; to: StampPoint }, angle: number): PaintedThreeSheetFold => ({ id, on, outline: face(id), hinge, angle });
+  return {
+    print: 'box', widthPx: boxNet.width, heightPx: boxNet.height,
+    root: { outline: face('front'), holes: [face('window')], hinge: edge({ x: 0, y: 0 }, { x: wide, y: 0 }) },
+    folds: [
+      fold('left', PAINTED_THREE_SHEET_ROOT, edge({ x: 0, y: -tall }, { x: 0, y: 0 }), -Math.PI / 2),
+      fold('right', PAINTED_THREE_SHEET_ROOT, edge({ x: wide, y: -tall }, { x: wide, y: 0 }), -Math.PI / 2),
+      fold('back', 'right', edge({ x: wide + deep, y: -tall }, { x: wide + deep, y: 0 }), -Math.PI / 2),
+      fold('roofFront', PAINTED_THREE_SHEET_ROOT, edge({ x: 0, y: -tall }, { x: wide, y: -tall }), BOX_SLOPE - Math.PI / 2),
+      fold('roofBack', 'roofFront', edge({ x: 0, y: -tall - BOX_ROOF }, { x: wide, y: -tall - BOX_ROOF }), -2 * BOX_SLOPE),
+      fold('tab', 'right', edge({ x: wide + inset, y: 0 }, { x: wide + deep - inset, y: 0 }), Math.PI / 2),
+    ],
+  };
+})();
 
 /** Radians the base tips back from facing the camera: the recipe's 40–55° down. */
 const PITCH = 0.9;
 /** A rise over `seconds` from `from` s, linear, to `angle`. */
 const rising = (from: number, seconds: number, angle: number) => ({ at }: { at: number }) => angle * Math.min(1, Math.max(0, (at - from) / seconds));
 
-export const STAMP_GATE_PAPER_CARD_VIEW_IDS = ['key', 'lit', 'rising', 'pop-up'] as const;
+export const STAMP_GATE_PAPER_CARD_VIEW_IDS = ['key', 'lit', 'rising', 'pop-up', 'box'] as const;
 export type StampGatePaperCardViewId = (typeof STAMP_GATE_PAPER_CARD_VIEW_IDS)[number];
 
 /** A view: its pop-up, the moment it's drawn at, and whether its lights are the key alone. */
@@ -85,7 +149,7 @@ type StampGatePaperCardView = { readonly popUp: PaintedThreePopUp; readonly at: 
 
 /** The test card on the base, standing up by `angle`. */
 const testCard = (angle: number): PaintedThreePopUp => ({
-  at: { x: 160, y: 150 }, pitch: PITCH, scale: 0.7, base: BASE, cards: [{ ...HOUSE, id: 'house', at: { x: 200, y: 200 }, angle }],
+  at: { x: 160, y: 150 }, pitch: PITCH, scale: 0.7, base: BASE, sheets: [{ ...HOUSE, id: 'house', at: { x: 200, y: 200 }, angle }],
 });
 
 export const STAMP_GATE_PAPER_CARD_VIEWS: Readonly<Record<StampGatePaperCardViewId, StampGatePaperCardView>> = {
@@ -95,14 +159,15 @@ export const STAMP_GATE_PAPER_CARD_VIEWS: Readonly<Record<StampGatePaperCardView
   'pop-up': {
     popUp: {
       at: { x: 160, y: 140 }, pitch: PITCH, scale: 0.5, base: BASE,
-      cards: [
+      sheets: [
         { ...HOUSE, id: 'house', at: { x: 140, y: 220 }, angle: rising(0, 0.8, PITCH) },
         { ...TREE, id: 'tree', at: { x: 290, y: 180 }, angle: rising(0.15, 0.8, PITCH) },
-        { ...PENNANT, id: 'pennant', on: 'house', at: { x: 120, y: 95 }, angle: rising(0.3, 0.8, 1.4) },
-      ] satisfies PaintedThreePopUpCard[],
+        { ...PENNANT, id: 'pennant', on: { sheet: 'house' }, at: { x: 120, y: 95 }, angle: rising(0.3, 0.8, 1.4) },
+      ] satisfies PaintedThreePopUpSheet[],
     },
     at: 0.6, keyOnly: false,
   },
+  box: { popUp: { at: { x: 160, y: 130 }, pitch: PITCH, scale: 0.6, base: BASE, sheets: [{ ...BOX_SHEET, id: 'box', at: { x: 190, y: 210 }, angle: Math.PI / 2 }] }, at: 0, keyOnly: false },
 };
 
 /** The camera seeing every view: a still lens, a three plane per view at the pop-ups' depth. */
@@ -121,10 +186,17 @@ export const stampGatePaperCardFrame = () => ({ width: STAMP_GATE_PAPER_CARD_VIE
 
 /** What the baseline is drawn from, as text: the views' pop-ups are their angles at their moments. */
 export const stampGatePaperCardInputs = (id: StampGatePaperCardId) => stampCanonicalJson({
-  id, view: STAMP_GATE_PAPER_CARD_VIEW, clear: STAMP_GATE_PAPER_CARD_CLEAR, prints: STAMP_GATE_PAPER_CARD_PRINTS, look: PAINTED_THREE_CARD_LOOK, light: PAPER_KEY_LIGHT,
+  id, view: STAMP_GATE_PAPER_CARD_VIEW, clear: STAMP_GATE_PAPER_CARD_CLEAR, prints: STAMP_GATE_PAPER_CARD_PRINTS, look: PAINTED_THREE_PAPER_LOOK, light: PAPER_KEY_LIGHT,
   views: STAMP_GATE_PAPER_CARD_VIEW_IDS.map((view) => {
-    const { popUp, at, keyOnly } = STAMP_GATE_PAPER_CARD_VIEWS[view];
-    return { view, at, keyOnly, pitch: popUp.pitch, scale: popUp.scale ?? 1, base: popUp.base, cards: popUp.cards.map(({ id: card, print, widthPx, heightPx, outline, on, at: placed, angle }) => ({ id: card, print, widthPx, heightPx, outline, on: on ?? null, at: placed, angle: typeof angle === 'number' ? angle : angle(paintMoment(at)) })) };
+    const { popUp, at, keyOnly } = STAMP_GATE_PAPER_CARD_VIEWS[view], moment = paintMoment(at);
+    const sheet = ({ print, widthPx, heightPx, root, folds = [] }: PaintedThreeSheet) => ({
+      print, widthPx, heightPx, root,
+      folds: folds.map(({ id: face, on, outline, holes, hinge, angle }) => ({ id: face, on: on ?? null, outline, holes: holes ?? null, hinge, angle: presentationValueAt(angle, moment) })),
+    });
+    return {
+      view, at, keyOnly, pitch: popUp.pitch, scale: popUp.scale ?? 1, base: sheet(popUp.base),
+      sheets: popUp.sheets.map((each) => ({ id: each.id, sheet: sheet(each), on: each.on ?? null, at: each.at, angle: presentationValueAt(each.angle, moment) })),
+    };
   }),
 });
 
@@ -158,19 +230,22 @@ const luma = ([r, g, b]: readonly number[]) => 0.2126 * r + 0.7152 * g + 0.0722 
 const warmth = ([r, , b]: readonly number[]) => r / b;
 const text = (v: number) => v.toFixed(3);
 
-/** A view's pose, read through its camera: where a card's point (card space) lands in its picture, and its rig's matrices. */
+/** A sheet's root face's matrix in a pose. */
+const rootOf = (pose: ReadonlyMap<string, ReadonlyMap<string, Matrix4>>, sheet: string) => pose.get(sheet)!.get(PAINTED_THREE_SHEET_ROOT)!;
+
+/** A view's pose, read through its camera: where a card's point (sheet space) lands in its picture, and its rig's matrices. */
 function stampGatePaperCardSeen(view: StampGatePaperCardViewId) {
   const { popUp, at } = STAMP_GATE_PAPER_CARD_VIEWS[view], { camera, world } = stampGatePaperCardCamera();
   const plane = paintWorldPlane(world, STAMP_GATE_PAPER_CARD_VIEW.depth), centre = plane.point(popUp.at), rig = paintedThreePopUpRig(popUp), pose = rig.poseAt(paintMoment(at));
   const scale = plane.length(popUp.scale ?? 1), root = new Matrix4().makeTranslation(centre.x, centre.y, centre.z).multiply(new Matrix4().makeScale(scale, scale, scale));
   const shot = paintedThreeShotCamera(camera, world, 0, paintMoment(at), null);
   const project = (card: string, point: Vector3): StampPoint => {
-    const seen = shotCameraProject(shot, point.clone().applyMatrix4(pose.get(card)!).applyMatrix4(root));
+    const seen = shotCameraProject(shot, point.clone().applyMatrix4(rootOf(pose, card)).applyMatrix4(root));
     if (!seen) throw new Error(`stamp gate: ${STAMP_GATE_PAPER_CARD_ID}'s ${card} lies behind the camera`);
     return seen;
   };
-  // A print px on a card's front, in card space.
-  const front = (card: string, { x, y }: StampPoint) => new Vector3(x, -y, rig.thickness.get(card)! / 2);
+  // A print px on a sheet's front, in sheet space.
+  const front = (card: string, { x, y }: StampPoint) => new Vector3(x, -y, rig.folding.get(card)!.thickness / 2);
   return { pose, project, front };
 }
 
@@ -179,9 +254,9 @@ function stampGatePaperCardSeen(view: StampGatePaperCardViewId) {
  * from it onto the base's front.
  */
 function stampGatePaperCardShadowOf(view: StampGatePaperCardViewId, on: StampPoint): StampPoint {
-  const { pose, front } = stampGatePaperCardSeen(view), base = pose.get(PAINTED_THREE_POP_UP_BASE)!;
+  const { pose, front } = stampGatePaperCardSeen(view), base = rootOf(pose, PAINTED_THREE_POP_UP_BASE);
   const toward = paintWorldLightDirection(PAPER_KEY_LIGHT), light = new Vector3(toward.x, toward.y, toward.z);
-  const caster = front('house', on).applyMatrix4(pose.get('house')!), onBase = front(PAINTED_THREE_POP_UP_BASE, { x: 0, y: 0 }).applyMatrix4(base);
+  const caster = front('house', on).applyMatrix4(rootOf(pose, 'house')), onBase = front(PAINTED_THREE_POP_UP_BASE, { x: 0, y: 0 }).applyMatrix4(base);
   const normal = new Vector3(0, 0, 1).transformDirection(base), cast = caster.addScaledVector(light, -caster.clone().sub(onBase).dot(normal) / light.dot(normal));
   const local = cast.applyMatrix4(base.clone().invert());
   return { x: local.x, y: -local.y };
@@ -203,7 +278,7 @@ const STAMP_GATE_PAPER_CARD_CLEAR_OF_CARD = 3;
  * recipe's depth, and warmer: the leak keeps red over blue.
  */
 function stampGatePaperCardShadowChecks(picture: StampGatePaperCardPicture): StampGateWashCheck[] {
-  const { project, front } = stampGatePaperCardSeen('lit'), hingeX = STAMP_GATE_PAPER_CARD_VIEWS.lit.popUp.cards[0].at.x;
+  const { project, front } = stampGatePaperCardSeen('lit'), hingeX = STAMP_GATE_PAPER_CARD_VIEWS.lit.popUp.sheets[0].at.x;
   const right = Math.max(...HOUSE_OUTLINE.map((p) => project('house', front('house', p)).x));
   const onBase = (at: StampPoint) => stampGatePaperCardRgbAt(picture, project(PAINTED_THREE_POP_UP_BASE, front(PAINTED_THREE_POP_UP_BASE, at)));
   const seen = STAMP_GATE_PAPER_CARD_CASTERS.map((caster) => stampGatePaperCardShadowOf('lit', caster))
@@ -264,7 +339,7 @@ function stampGatePaperCardEdgeChecks(picture: StampGatePaperCardPicture): Stamp
   ];
 }
 
-/** How near the print a card facing the camera shows, of it; and how far past PAINTED_THREE_CARD_LOOK.printLightMost one turned to the light may go. */
+/** How near the print a card facing the camera shows, of it; and how far past PAINTED_THREE_PAPER_LOOK.printLightMost one turned to the light may go. */
 const STAMP_GATE_PAPER_CARD_PRINT = { within: 0.02, past: 0.01 } as const;
 
 /**
@@ -272,13 +347,13 @@ const STAMP_GATE_PAPER_CARD_PRINT = { within: 0.02, past: 0.01 } as const;
  * up toward the key in the rising view, at least as bright and never past printLightMost of it.
  */
 function stampGatePaperCardPrintChecks(pictureOf: StampGatePaperCardPictureOf): StampGateWashCheck[] {
-  const print = STAMP_GATE_PAPER_CARD_PRINTS.find(({ id }) => id === 'house')!, { x0, y0, x1, y1 } = print.patch!, middle = { x: (x0 + x1) / 2, y: (y0 + y1) / 2 };
+  const print = STAMP_GATE_PAPER_CARD_PRINTS.find(({ id }) => id === 'house')!, { x0, y0, x1, y1 } = HOUSE_PATCH, middle = { x: (x0 + x1) / 2, y: (y0 + y1) / 2 };
   const painted = luma(stampGatePaperCardPrintAt(print, middle.x, middle.y).map(srgbToLinear));
   const shown = (view: StampGatePaperCardViewId) => {
     const { project, front } = stampGatePaperCardSeen(view);
     return luma(stampGatePaperCardRgbAt(pictureOf(view), project('house', front('house', middle)))) / painted;
   };
-  const key = shown('key'), lit = shown('lit'), turned = shown('rising'), most = PAINTED_THREE_CARD_LOOK.printLightMost + STAMP_GATE_PAPER_CARD_PRINT.past;
+  const key = shown('key'), lit = shown('lit'), turned = shown('rising'), most = PAINTED_THREE_PAPER_LOOK.printLightMost + STAMP_GATE_PAPER_CARD_PRINT.past;
   return [
     {
       id: `${STAMP_GATE_PAPER_CARD_ID}: print as painted`, passed: Math.abs(key - 1) <= STAMP_GATE_PAPER_CARD_PRINT.within && Math.abs(lit - 1) <= STAMP_GATE_PAPER_CARD_PRINT.within,
@@ -291,7 +366,7 @@ function stampGatePaperCardPrintChecks(pictureOf: StampGatePaperCardPictureOf): 
   ];
 }
 
-/** The case's checks, given each view as rendered. The pop-up view is judged by eye. */
+/** The case's checks, given each view as rendered. The pop-up and box views are judged by eye. */
 export function checkStampGatePaperCard(pictureOf: StampGatePaperCardPictureOf): StampGateWashCheck[] {
   return [...stampGatePaperCardShadowChecks(pictureOf('lit')), ...stampGatePaperCardEdgeChecks(pictureOf('lit')), ...stampGatePaperCardPrintChecks(pictureOf)];
 }
