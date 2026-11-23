@@ -7,7 +7,8 @@
 
 import { motionCurves } from '#lib/picture/motion/models/motion.ts';
 import type { Voice } from '#lib/timing/voice/models/voice-manifest.ts';
-import { findSpokenPhrase, type SpokenWord } from '#lib/timing/voice/models/voice-words.ts';
+import { findSpokenPhrase } from '#lib/timing/voice/models/voice-words.ts';
+import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 import type { Timeline } from './timeline.ts';
 
 /** A voiced line's place in its scene, in scene seconds. */

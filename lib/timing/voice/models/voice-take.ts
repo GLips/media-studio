@@ -5,7 +5,8 @@
 // the cuts go in the longest quiet stretches around the boundaries, found in the audio and chosen together, so short
 // lines ("filter, / search, / and…") each keep their own speech. The quiet trimmed off between two lines comes back
 // as `pauseBefore`, so the timeline can replay the read's timing.
-import { alignSpokenWords, scriptWords, spokenText, type SpokenWord } from './voice-words.ts';
+import { alignSpokenWords, scriptWords, spokenText } from './voice-words.ts';
+import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 
 // What each clip keeps of the quiet around its words: a breath before, and a little longer after so it doesn't end
 // clipped.

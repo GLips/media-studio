@@ -1,10 +1,10 @@
-// whisper-words.ts: what whisper.cpp hears in a voice line, word by word, with times. Node only.
+// transcribe-footage.ts: what whisper.cpp hears in a file's audio, word by word, with times. Node only.
 //
 // whisper.cpp and its model live outside the repo, in the studio's user cache (~/.cache/media-studio), so worktrees
 // share one ~1.5 GB model and one build. The first call installs both.
 import { downloadWhisperModel, installWhisperCpp, transcribe } from '@remotion/install-whisper-cpp';
 import { join } from 'node:path';
-import type { SpokenWord } from '../models/voice-words.ts';
+import type { SpokenWord } from '../models/spoken-word.ts';
 import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { studioUserCacheDir } from '#lib/platform/temp/engine/studio-user-cache.ts';

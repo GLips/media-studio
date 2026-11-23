@@ -6,7 +6,8 @@
 import type { ProjectStoryboard } from '#web/features/storyboard/index.ts';
 import type { StoryboardLineRead } from '#lib/timing/storyboard/models/resolve-storyboard.ts';
 import type { StoryboardWordCue } from '#lib/timing/storyboard/models/storyboard.ts';
-import { findScriptPhrase, type SpokenWord } from '#lib/timing/voice/models/voice-words.ts';
+import { findScriptPhrase } from '#lib/timing/voice/models/voice-words.ts';
+import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 
 /** A silence longer than this, between two things said or before the first, is flagged. */
 export const PLAN_SILENCE_FLAG_SECONDS = 0.5;
