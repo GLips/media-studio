@@ -5,14 +5,16 @@
 // A geometry whose vertices move of themselves (a posed mesh: positions written each moment) is made by
 // createLensThreeSelfMovingGeometry, which keeps open and close positions beside `position`, always its size; `record`
 // copies the posed positions into them. Negative space: three's own skinning, morphs and instance matrices aren't
-// read, so a mesh deformed by those moves with its object alone.
+// read, so a mesh deformed by those moves with its object alone. The MRT also carries emission, to bloom.
 
 import { BlendMode, BufferAttribute, BufferGeometry, MaterialBlending, Matrix4, type Camera, type NodeBuilder, type Object3D, type Scene } from 'three/webgpu';
-import { attribute, Fn, mrt, output, positionLocal, positionView, uniform, varying, vec2, vec4 } from 'three/tsl';
+import { attribute, emissive, Fn, mrt, output, positionLocal, positionView, uniform, varying, vec2, vec4 } from 'three/tsl';
 import { isThreeGeometryDrawable } from '#lib/platform/gpu/studio/studio-three-renderer.ts';
 
 /** The name a target's motion attachment takes (targetInto), the colour's being 'output'. */
 export const LENS_THREE_MOTION_NAME = 'lensMotion';
+/** The name a target's emission attachment takes: a target without one leaves it out (three's MRT skips it). */
+export const LENS_THREE_EMISSION_NAME = 'lensEmission';
 
 /** The attributes a self-moving geometry keeps its positions in as the shutter opens and closes. */
 const LENS_THREE_OPEN_POSITION = 'lensOpenPosition';
@@ -100,7 +102,9 @@ export function createLensThreeMotion({ width, height, distanceUnit }: { width: 
   const travel = closed.xy.div(closed.w).sub(opened.xy.div(opened.w)).mul(px).mul(moving);
   const distance = positionView.z.negate().div(distanceUnit);
   // three blends an attachment other than `output` not at all unless told to.
-  const node = mrt({ output, [LENS_THREE_MOTION_NAME]: vec4(travel, distance, output.a) }).setBlendMode(LENS_THREE_MOTION_NAME, new BlendMode(MaterialBlending));
+  // Emission is blended as the colour is, so what stands in front hides it; a material emitting nothing leaves 0.
+  const node = mrt({ output, [LENS_THREE_MOTION_NAME]: vec4(travel, distance, output.a), [LENS_THREE_EMISSION_NAME]: vec4(emissive, output.a) })
+    .setBlendMode(LENS_THREE_MOTION_NAME, new BlendMode(MaterialBlending)).setBlendMode(LENS_THREE_EMISSION_NAME, new BlendMode(MaterialBlending));
   return {
     mrt: node,
     record: (moment, scene, camera) => {

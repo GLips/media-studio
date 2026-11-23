@@ -86,11 +86,15 @@ export const LENS_DEFOCUS = gpuUniformLayout('LensDefocus', [['lean', 'vec4f'], 
 const LENS_DEFOCUS_NEARER = 0.05;
 
 /**
- * A per-pixel defocus over a two-layer picture, colour (0) and motion (1, its distance setting the sigma): binds the
- * uniform (0), source (1) and storage result (2). Depth-aware: a nearer texel spreads its blur over what's behind;
- * one at or behind reaches a texel only by the narrower blur, so a soft background stays off a sharp edge.
+ * A per-pixel defocus over `layers` layers, colour (0), motion (1, its distance setting the sigma) and any more (an
+ * emission) blurred as the colour: binds the uniform (0), source (1) and storage result (2). Depth-aware: a nearer
+ * texel spreads its blur over what's behind; one behind reaches a texel only by the narrower blur.
  */
-export function lensDefocusWgsl(workgroup: number) {
+export function lensDefocusWgsl({ layers, workgroup }: { layers: number; workgroup: number }) {
+  const more = layers - 2;
+  // Each layer past the motion, gathered with the colour's weight into `into`'s array.
+  const gather = (into: string) => (more ? `
+      for (var l = 0u; l < ${more}u; l++) { ${into}[l] += textureLoad(source, at, l + 2u, 0) * w; }` : '');
   return /* wgsl */ `
 ${LENS_DEFOCUS.wgsl}
 @group(0) @binding(0) var<uniform> u: LensDefocus;
@@ -117,7 +121,9 @@ ${LENS_GAUSSIAN_TAPS_WGSL}
   var nearColour = vec4f(0.0);
   var nearMotion = vec4f(0.0);
   var seenColour = vec4f(0.0);
-  var seenMotion = vec4f(0.0);
+  var seenMotion = vec4f(0.0);${more ? `
+  var nearMore: array<vec4f, ${more}>;
+  var seenMore: array<vec4f, ${more}>;` : ''}
   var seen = 0.0;
   var seenWeight = 0.0;
   var hidden = 0.0;
@@ -133,7 +139,7 @@ ${LENS_GAUSSIAN_TAPS_WGSL}
       let w = spread(i, tapSigma, kernelSum(tapSigma));
       if (w == 0.0) { continue; }
       nearColour += textureLoad(source, at, 0, 0) * w;
-      nearMotion += tapMotion * w;
+      nearMotion += tapMotion * w;${gather('nearMore')}
     } else {
       // Seen on this texel's own kernel, clear taps too, so the fill below can't stretch a silhouette's cover.
       seen += ownWeight;
@@ -142,7 +148,7 @@ ${LENS_GAUSSIAN_TAPS_WGSL}
       seenWeight += w;
       if (w == 0.0) { continue; }
       seenColour += textureLoad(source, at, 0, 0) * w;
-      seenMotion += tapMotion * w;
+      seenMotion += tapMotion * w;${gather('seenMore')}
     }
   }
   // What nearer texels hide of this one's blur is filled from what it still sees: else a sharp edge beside a blurred
@@ -154,6 +160,7 @@ ${LENS_GAUSSIAN_TAPS_WGSL}
   // Near texels' blurs overlapping can still pass full cover: what's laid is scaled back to it.
   let over = max(1.0, colour.a);
   textureStore(defocused, pixel, 0, colour / over);
-  textureStore(defocused, pixel, 1, (nearMotion + seenMotion * under) / over);
+  textureStore(defocused, pixel, 1, (nearMotion + seenMotion * under) / over);${more ? `
+  for (var l = 0u; l < ${more}u; l++) { textureStore(defocused, pixel, l + 2u, (nearMore[l] + seenMore[l] * under) / over); }` : ''}
 }`;
 }

@@ -47,10 +47,11 @@ export async function createStampSourcesRenderer(
           look: lensFrame?.planes.get(plane.id) ?? STAMP_REST_LOOK, focus: lensFrame?.focus ?? null, moving, back: index === 0, visibility: 1,
         }));
         const { frame: exposures, last } = lensFrameOf(paintFrame.kind === 'exposure' ? paintFrame.exposure : undefined);
-        exposures.exposure(encoder, layers, { glowing: false, moving });
-        // Negative space: no bloom, as a source has no emission to glow.
+        const glowing = !!lensFrame && renders.glowing.size > 0;
+        exposures.exposure(encoder, layers, { glowing, moving });
         if (last) {
-          exposures.develop(encoder, { bloom: null, into: surface.frameTexture().createView(), format, encoding: { kind: 'encoded', dithered } });
+          const bloom = glowing ? { sigma: lensFrame.bloom, strength: 1, glow: 'emission' as const } : null;
+          exposures.develop(encoder, { bloom, into: surface.frameTexture().createView(), format, encoding: { kind: 'encoded', dithered } });
         }
         lens.flush();
         device.queue.submit([encoder.finish()]);
