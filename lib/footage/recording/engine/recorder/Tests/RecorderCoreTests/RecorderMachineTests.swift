@@ -134,23 +134,40 @@ func recent(_ id: Int, _ place: RecorderRecentTake.Place) -> RecorderRecentTake 
 @Test func aFinishedTakeIsListedAsItIsAddedAndALateListingCantMoveIt() {
   let take = FakeTake(id: 2)
   var (state, effects) = run(atIdle, [
-    .recentTakesLoaded([recent(1, .inLibrary(item: "one", mediaFolder: URL(fileURLWithPath: "/media/one")))]),
+    .recentTakesLoaded([recent(1, .inLibrary(item: "one", mediaFolder: URL(fileURLWithPath: "/media/one")))], asked: 1),
     .toggleRequested, .takeStarted(take), .toggleRequested, .takeEnded(durationSeconds: 61),
     // Listed before the add moved it: the recorder knows better.
-    .recentTakesLoaded([recent(2, .inRecordings), recent(1, .inLibrary(item: "one", mediaFolder: URL(fileURLWithPath: "/media/one")))]),
+    .recentTakesLoaded([recent(2, .inRecordings), recent(1, .inLibrary(item: "one", mediaFolder: URL(fileURLWithPath: "/media/one")))], asked: 1),
   ])
   #expect(state.recentTakes.map(\.place) == [.addingToLibrary, .inLibrary(item: "one", mediaFolder: URL(fileURLWithPath: "/media/one"))])
   #expect(state.recentTakes.first?.durationSeconds == 61)
 
   (state, effects) = run(state, [.libraryAddEnded(take.folder, failure: nil)])
   #expect(names(effects) == ["loadRecentTakes"])
+  // The listing asked for before the add ended is stale: it's ignored.
   (state, effects) = run(state, [
-    .recentTakesLoaded([recent(2, .inLibrary(item: "two", mediaFolder: URL(fileURLWithPath: "/media/two")))]),
+    .recentTakesLoaded([], asked: 1),
+    .recentTakesLoaded([recent(2, .inLibrary(item: "two", mediaFolder: URL(fileURLWithPath: "/media/two")))], asked: 2),
     .openRecentTakeRequested(take.folder),
   ])
   // The listing is the truth for takes at rest: the one that's gone from it is gone from the menu.
   #expect(state.recentTakes.map(\.folder) == [take.folder])
   #expect(names(effects) == ["reveal /media/two"])
+}
+
+@Test func theTakeRecordingNowIsNeverListedSoNeverThrownAway() {
+  let (state, effects) = run(atIdle, [
+    .toggleRequested, .takeStarted(FakeTake(id: 3)),
+    // A still screen-only take looks killed to the library.
+    .recentTakesLoaded([recent(3, .inRecordings), recent(1, .inLibrary(item: "one", mediaFolder: nil))], asked: 1),
+    .throwAwayRequested,
+  ])
+  #expect(state.recentTakes.map(\.folder) == [FakeTake(id: 1).folder])
+  guard case .confirmThrowAway(let asked)? = effects.last else {
+    Issue.record("no confirmation asked")
+    return
+  }
+  #expect(asked.folder == FakeTake(id: 1).folder)
 }
 
 @Test func throwingAwayATakeStillBeingAddedStopsTheAddFirst() {
@@ -177,7 +194,7 @@ func recent(_ id: Int, _ place: RecorderRecentTake.Place) -> RecorderRecentTake 
 
 @Test func aThrowAwayTheLibraryRefusesIsShownAndTheTakeRelisted() {
   let (state, effects) = run(atIdle, [
-    .recentTakesLoaded([recent(1, .inLibrary(item: "one", mediaFolder: nil))]),
+    .recentTakesLoaded([recent(1, .inLibrary(item: "one", mediaFolder: nil))], asked: 1),
     .throwAwayConfirmed(FakeTake(id: 1).folder),
     .throwAwayFailed(FakeTake(id: 1).folder, reason: "one is used by demo"),
   ])
@@ -227,7 +244,7 @@ func randomEvent(_ rng: inout SeededGenerator) -> Event {
     .takeEnded(durationSeconds: 12), .takeEnded(durationSeconds: 3),
     .takeClockTicked(seconds: Double.random(in: 0...100, using: &rng)),
     .libraryAddEnded(FakeTake(id: Int.random(in: 1...3, using: &rng)).folder, failure: Bool.random(using: &rng) ? nil : .exited(status: 1)),
-    .recentTakesLoaded([recent(Int.random(in: 1...3, using: &rng), .inRecordings)]),
+    .recentTakesLoaded([recent(Int.random(in: 1...3, using: &rng), .inRecordings)], asked: Int.random(in: 1...4, using: &rng)),
     .throwAwayRequested,
     .throwAwayConfirmed(FakeTake(id: Int.random(in: 1...3, using: &rng)).folder),
     .takeThrownAway(FakeTake(id: Int.random(in: 1...3, using: &rng)).folder),

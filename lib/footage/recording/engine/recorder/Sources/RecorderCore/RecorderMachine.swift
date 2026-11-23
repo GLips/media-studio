@@ -115,6 +115,8 @@ public struct RecorderState<Take: RecorderTake> {
   public fileprivate(set) var recentTakes: [RecorderRecentTake] = []
   /// Why the last throw-away failed; shown until the next take starts.
   public fileprivate(set) var throwAwayFailure: String?
+  /// The latest listing asked for: an earlier one may have read the library before a throw-away, so it's ignored.
+  public fileprivate(set) var recentTakesAsked = 0
   public fileprivate(set) var menuOpen = false
   /// The command-line take (`--record-seconds`): one take, stopped after its length, then the process exits, 0 if
   /// it recorded and 1 if it never started. It skips permissions (it runs under the terminal's) and the library.
@@ -122,10 +124,9 @@ public struct RecorderState<Take: RecorderTake> {
 
   /// The menu-bar app at launch, and its first effects.
   public static func launch(missing: [Permission]) -> RecorderStep<Take> {
-    if missing.isEmpty { return RecorderStep(state: RecorderState(phase: .idle, oneTake: false), effects: [.loadRecentTakes]) }
-    return RecorderStep(
-      state: RecorderState(phase: .needsPermission(missing: missing, watching: false), oneTake: false),
-      effects: [.askForPermissions(missing), .loadRecentTakes])
+    var state = RecorderState(phase: missing.isEmpty ? .idle : .needsPermission(missing: missing, watching: false), oneTake: false)
+    let load = state.askForRecentTakes()
+    return RecorderStep(state: state, effects: (missing.isEmpty ? [] : [.askForPermissions(missing)]) + [load])
   }
 
   /// The command-line take at launch: it starts recording at once.
@@ -198,7 +199,7 @@ public enum RecorderEvent<Take: RecorderTake> {
   /// The library add of the take at this folder exited: added, or with why not.
   case libraryAddEnded(URL, failure: LibraryHandoffFailure?)
   /// `studio library recordings`' answer, each take in the library or the recordings folder.
-  case recentTakesLoaded([RecorderRecentTake])
+  case recentTakesLoaded([RecorderRecentTake], asked: Int)
   case recentTakesUnavailable(String)
   /// A recent take's menu item.
   case openRecentTakeRequested(URL)
@@ -245,7 +246,7 @@ public enum RecorderEffect<Take: RecorderTake> {
   /// `.libraryAddEnded`.
   case stopLibraryAdd(URL)
   /// Asks `studio library recordings` for the recent takes; sends `.recentTakesLoaded` or `.recentTakesUnavailable`.
-  case loadRecentTakes
+  case loadRecentTakes(asked: Int)
   /// Shows a folder in the Finder: the take's media in the library, else its folder in the recordings folder.
   case reveal(URL)
   /// Asks before throwing the take away; sends `.throwAwayConfirmed` on yes.
@@ -350,11 +351,12 @@ extension RecorderState {
         return [.throwAway(folder)]
       }
       if let index { recentTakes[index].place = failure == nil ? .added : .inRecordings }
-      guard let failure else { return [.loadRecentTakes] }
+      guard let failure else { return [askForRecentTakes()] }
       libraryFailure = failure
       return []
 
-    case (.recentTakesLoaded(let loaded), _):
+    case (.recentTakesLoaded(let loaded, let asked), _):
+      guard asked == recentTakesAsked else { return [] }
       remember(listed: loaded)
       return []
     case (.recentTakesUnavailable(let reason), _):
@@ -382,12 +384,12 @@ extension RecorderState {
       return [.log("throwing away \(folder.lastPathComponent)"), .throwAway(folder)]
     case (.takeThrownAway(let folder), _):
       recentTakes.removeAll { $0.folder == folder }
-      return [.log("threw away \(folder.lastPathComponent)"), .loadRecentTakes]
+      return [.log("threw away \(folder.lastPathComponent)"), askForRecentTakes()]
     case (.throwAwayFailed(let folder, let reason), _):
       throwAwayFailure = reason
       // Where it is now is the library's to say: what failed may have removed part of it.
       recentTakes.removeAll { $0.folder == folder }
-      return [.log("couldn't throw away \(folder.lastPathComponent): \(reason)"), .loadRecentTakes]
+      return [.log("couldn't throw away \(folder.lastPathComponent): \(reason)"), askForRecentTakes()]
 
     case (.menuOpened, _):
       menuOpen = true
@@ -442,8 +444,14 @@ extension RecorderState {
   /// A listing's takes as the recent ones, newest first: a take in flight keeps its own place over what it says.
   fileprivate mutating func remember(listed: [RecorderRecentTake]) {
     let inFlight = recentTakes.filter(\.inFlight)
-    let kept = Set(inFlight.map(\.name))
+    // The take recording now: a still screen writes nothing for long enough that the library judges it killed.
+    let kept = Set(inFlight.map(\.name) + (phase.take.map { [$0.folder.lastPathComponent] } ?? []))
     keepNewest(inFlight + listed.filter { !kept.contains($0.name) })
+  }
+
+  fileprivate mutating func askForRecentTakes() -> RecorderEffect<Take> {
+    recentTakesAsked += 1
+    return .loadRecentTakes(asked: recentTakesAsked)
   }
 
   /// The newest takes, each once: of two the same, the first given wins.

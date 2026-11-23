@@ -91,13 +91,13 @@ final class RecorderApp {
       }
     case .stopLibraryAdd(let folder):
       libraryAdds[folder]?.terminate()
-    case .loadRecentTakes:
+    case .loadRecentTakes(let asked):
       let recordings = config.recordingsURL
       Task {
         do throws(StudioCommandFailure) {
           let listed = try await runStudioCommand("StudioLibraryRecordings", folder: recordings)
           do {
-            send(.recentTakesLoaded(try RecorderRecentTake.listed(fromJSON: listed)))
+            send(.recentTakesLoaded(try RecorderRecentTake.listed(fromJSON: listed), asked: asked))
           } catch {
             send(.recentTakesUnavailable("studio library recordings printed what the recorder can't read: \(error)"))
           }
