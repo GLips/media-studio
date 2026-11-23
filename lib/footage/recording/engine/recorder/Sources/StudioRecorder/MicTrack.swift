@@ -2,6 +2,8 @@
 // its first sample; how that count runs against the host clock goes to the clock log, so drift is measured, and
 // corrected as metadata rather than by resampling.
 import AVFoundation
+import RecorderCore
+import Synchronization
 
 final class MicTrack: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
   let writer: TrackWriter
@@ -10,28 +12,31 @@ final class MicTrack: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
   /// This device's latency from the config, for recording.json.
   let latencySeconds: Double
   let sampleRate: Double
-  private(set) var frames: Int64 = 0
   /// How far the host clock ran ahead of the mic's sample count by the last buffer, in seconds: positive means
   /// the interface's clock is slow, so its audio needs stretching by (elapsed + drift) / elapsed to meet the host.
-  private(set) var driftSeconds = 0.0
+  var driftSeconds: Double { drift.withLock { $0 } }
+  /// Written on the capture queue, read on the main thread.
+  private let drift = Mutex(0.0)
   private let session = AVCaptureSession()
   private let queue = DispatchQueue(label: "recorder.mic", qos: .userInteractive)
   private let clockLog: ClockLog
+  /// The capture queue's own: where the file's timeline starts, and how far it has run.
   private var firstHost: CMTime?
+  private var frames: Int64 = 0
   private var buffers = 0
   private var monoFormat: CMAudioFormatDescription?
 
-  init(config: MicConfig, url: URL, clockLog: ClockLog) throws {
+  init(config: MicConfig, url: URL, clockLog: ClockLog) throws(TrackFailure) {
     let mics = RecorderInputs.mics()
     guard let device = RecorderInputs.device(named: config.device, in: mics) else {
-      throw RecorderError("no mic named like \"\(config.device)\"; there are: \(mics.map(\.localizedName).joined(separator: ", "))")
+      throw .noDevice(.mic, named: config.device, connected: mics.map(\.localizedName))
     }
     guard let source = CMAudioFormatDescriptionGetStreamBasicDescription(device.activeFormat.formatDescription)?.pointee else {
-      throw RecorderError("\(device.localizedName) has no audio format")
+      throw .noAudioFormat(device: device.localizedName)
     }
     let channels = Int(source.mChannelsPerFrame)
     let channel = config.channel(forDevice: device.localizedName)
-    guard (1...channels).contains(channel) else { throw RecorderError("\(device.localizedName) has \(channels) inputs, not \(channel)") }
+    guard (1...channels).contains(channel) else { throw .noSuchInput(device: device.localizedName, inputs: channels, wanted: channel) }
     deviceName = device.localizedName
     self.channel = channel
     latencySeconds = (settingForDevice(config.latencyMsByDevice, named: device.localizedName) ?? 0) / 1000
@@ -39,7 +44,7 @@ final class MicTrack: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     self.clockLog = clockLog
 
     writer = try TrackWriter(
-      name: "mic", url: url, fileType: .m4a, mediaType: .audio,
+      track: .mic, url: url, fileType: .m4a, mediaType: .audio,
       settings: [
         AVFormatIDKey: kAudioFormatMPEG4AAC,
         AVSampleRateKey: sampleRate,
@@ -50,9 +55,26 @@ final class MicTrack: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
 
     // The writer has made its file by now: a device that can't be set up takes it away again.
     do {
+      try configureSession(device: device, channels: channels)
+    } catch {
+      writer.discard()
+      throw error
+    }
+
+    var mono = AudioStreamBasicDescription(
+      mSampleRate: sampleRate, mFormatID: kAudioFormatLinearPCM, mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
+      mBytesPerPacket: 4, mFramesPerPacket: 1, mBytesPerFrame: 4, mChannelsPerFrame: 1, mBitsPerChannel: 32, mReserved: 0)
+    CMAudioFormatDescriptionCreate(
+      allocator: nil, asbd: &mono, layoutSize: 0, layout: nil, magicCookieSize: 0, magicCookie: nil, extensions: nil,
+      formatDescriptionOut: &monoFormat)
+  }
+
+  private func configureSession(device: AVCaptureDevice, channels: Int) throws(TrackFailure) {
     session.beginConfiguration()
-    let input = try AVCaptureDeviceInput(device: device)
-    guard session.canAddInput(input) else { throw RecorderError("can't add \(device.localizedName) to a capture session") }
+    defer { session.commitConfiguration() }
+    let input: AVCaptureDeviceInput
+    do { input = try AVCaptureDeviceInput(device: device) } catch { throw .system(error) }
+    guard session.canAddInput(input) else { throw .cantAddToSession(device: device.localizedName) }
     session.addInput(input)
     let output = AVCaptureAudioDataOutput()
     // Every input, unmixed, as float planes: the configured one is picked out below at full level.
@@ -66,20 +88,8 @@ final class MicTrack: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
       AVLinearPCMIsBigEndianKey: false,
     ]
     output.setSampleBufferDelegate(self, queue: queue)
-    guard session.canAddOutput(output) else { throw RecorderError("can't read audio from \(device.localizedName)") }
+    guard session.canAddOutput(output) else { throw .cantReadAudio(device: device.localizedName) }
     session.addOutput(output)
-    session.commitConfiguration()
-    } catch {
-      writer.discard()
-      throw error
-    }
-
-    var mono = AudioStreamBasicDescription(
-      mSampleRate: sampleRate, mFormatID: kAudioFormatLinearPCM, mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
-      mBytesPerPacket: 4, mFramesPerPacket: 1, mBytesPerFrame: 4, mChannelsPerFrame: 1, mBitsPerChannel: 32, mReserved: 0)
-    CMAudioFormatDescriptionCreate(
-      allocator: nil, asbd: &mono, layoutSize: 0, layout: nil, magicCookieSize: 0, magicCookie: nil, extensions: nil,
-      formatDescriptionOut: &monoFormat)
   }
 
   /// Starts on its own queue: startRunning blocks for as long as the device takes to open.
@@ -95,10 +105,11 @@ final class MicTrack: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     guard let sessionClock = session.synchronizationClock, let monoFormat else { return }
     let host = CMSyncConvertTime(sample.presentationTimeStamp, from: sessionClock, to: HostClock.clock)
     let count = CMSampleBufferGetNumSamples(sample)
-    if firstHost == nil { firstHost = host }
-    let pts = firstHost! + CMTime(value: frames, timescale: CMTimeScale(sampleRate))
-    driftSeconds = (host - pts).seconds
-    if buffers % 50 == 0 { clockLog.write(track: "mic", host: host, media: pts, arrival: HostClock.now()) }
+    let firstHost = self.firstHost ?? host
+    self.firstHost = firstHost
+    let pts = firstHost + CMTime(value: frames, timescale: CMTimeScale(sampleRate))
+    drift.withLock { $0 = (host - pts).seconds }
+    if buffers % 50 == 0 { clockLog.write(track: .mic, host: host, media: pts, arrival: HostClock.now()) }
     buffers += 1
     frames += Int64(count)
 

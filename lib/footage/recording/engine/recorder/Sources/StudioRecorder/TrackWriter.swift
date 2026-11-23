@@ -1,6 +1,8 @@
 // One track's file. Every track is written in movie fragments, so a recording killed mid-take keeps everything up
 // to its last fragment; keyframes come at the fragment interval so each fragment decodes on its own.
 import AVFoundation
+import RecorderCore
+import Synchronization
 
 /// The one clock every track's timestamps are put on before they're written: the Mac's host clock.
 enum HostClock {
@@ -10,68 +12,67 @@ enum HostClock {
 
 let fragmentSeconds = 2.0
 
+/// The host times of the first and latest samples, and samples the writer wasn't ready for (in real time they are
+/// dropped, not queued).
+struct TrackProgress {
+  var firstPTS: CMTime?
+  var lastPTS: CMTime?
+  var notReady = 0
+}
+
 final class TrackWriter {
-  let name: String
+  let track: RecorderTrack
   let url: URL
   private let writer: AVAssetWriter
   private let input: AVAssetWriterInput
-  private(set) var lastEnd: CMTime?
+  /// Read on the main thread while the capture queue writes. A lock, not an actor: an append runs in the capture
+  /// callback, which must never wait on an actor hop, and a queued hop could reorder samples.
+  private let shared = Mutex(TrackProgress())
+  /// The capture queue's own: never read elsewhere until the queue has drained.
+  private var lastEnd: CMTime?
   private(set) var appended = 0
   private var failureLogged = false
-  /// What the main thread reads while the capture queue writes, under `lock`.
-  private var shared = TrackProgress()
-  private let lock = NSLock()
 
-  /// The host times of the first and latest samples, and samples the writer wasn't ready for (in real time they
-  /// are dropped, not queued).
-  struct TrackProgress {
-    var firstPTS: CMTime?
-    var lastPTS: CMTime?
-    var notReady = 0
-  }
-
-  var progress: TrackProgress {
-    lock.lock()
-    defer { lock.unlock() }
-    return shared
-  }
+  var progress: TrackProgress { shared.withLock { $0 } }
   var firstPTS: CMTime? { progress.firstPTS }
 
-  init(name: String, url: URL, fileType: AVFileType, mediaType: AVMediaType, settings: [String: Any]) throws {
-    self.name = name
+  init(track: RecorderTrack, url: URL, fileType: AVFileType, mediaType: AVMediaType, settings: [String: Any]) throws(TrackFailure) {
+    self.track = track
     self.url = url
-    writer = try AVAssetWriter(outputURL: url, fileType: fileType)
+    do {
+      writer = try AVAssetWriter(outputURL: url, fileType: fileType)
+    } catch {
+      throw .system(error)
+    }
     writer.movieFragmentInterval = CMTime(seconds: fragmentSeconds, preferredTimescale: 600)
     input = AVAssetWriterInput(mediaType: mediaType, outputSettings: settings)
     input.expectsMediaDataInRealTime = true
     writer.add(input)
-    guard writer.startWriting() else { throw writer.error ?? RecorderError("\(name): the writer wouldn't start") }
+    guard writer.startWriting() else { throw writer.error.map(TrackFailure.system) ?? .writerWouldNotStart(track) }
   }
 
-  /// Appends a sample already on the host clock. Not thread-safe: call from the track's one capture queue.
+  /// Appends a sample already on the host clock. Call from the track's one capture queue.
   func append(_ sample: CMSampleBuffer) {
     let pts = sample.presentationTimeStamp
-    let first = progress.firstPTS == nil
+    let first = shared.withLock { progress in
+      defer { progress.lastPTS = pts }
+      guard progress.firstPTS == nil else { return false }
+      progress.firstPTS = pts
+      return true
+    }
     if first { writer.startSession(atSourceTime: pts) }
-    lock.lock()
-    if first { shared.firstPTS = pts }
-    shared.lastPTS = pts
-    lock.unlock()
     guard writer.status == .writing else {
-      if !failureLogged { log("\(name): writer \(writer.status.rawValue): \(writer.error?.localizedDescription ?? "?")") }
+      if !failureLogged { log("\(track.rawValue): writer \(writer.status.rawValue): \(writer.error?.localizedDescription ?? "?")") }
       failureLogged = true
       return
     }
     guard input.isReadyForMoreMediaData else {
-      lock.lock()
-      shared.notReady += 1
-      lock.unlock()
+      shared.withLock { $0.notReady += 1 }
       return
     }
     if input.append(sample) {
       appended += 1
-      let duration = sample.duration.isValid ? sample.duration : .zero
-      lastEnd = pts + duration
+      lastEnd = pts + (sample.duration.isValid ? sample.duration : .zero)
     }
   }
 
@@ -87,11 +88,6 @@ final class TrackWriter {
     input.markAsFinished()
     if let end, let lastEnd, end > lastEnd { writer.endSession(atSourceTime: end) }
     await writer.finishWriting()
-    if writer.status == .failed { log("\(name): finishing failed: \(writer.error?.localizedDescription ?? "?")") }
+    if writer.status == .failed { log("\(track.rawValue): finishing failed: \(writer.error?.localizedDescription ?? "?")") }
   }
-}
-
-struct RecorderError: Error, CustomStringConvertible {
-  let description: String
-  init(_ description: String) { self.description = description }
 }

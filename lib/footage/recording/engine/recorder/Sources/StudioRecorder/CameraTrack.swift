@@ -1,6 +1,8 @@
 // The camera, through AVFoundation, scaled to the configured size and written as HEVC. Frames are restamped
 // from the capture session's clock onto the host clock, so the camera file shares the screen's timeline.
 import AVFoundation
+import RecorderCore
+import Synchronization
 
 final class CameraTrack: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
   let writer: TrackWriter
@@ -9,15 +11,17 @@ final class CameraTrack: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate 
   let latencySeconds: Double
   /// The device format's own size and rate, before scaling.
   let sourceFormat: String
-  private(set) var droppedByCapture = 0
+  /// Counted on the capture queue, read on the main thread.
+  private let capturedDrops = Atomic(0)
+  var droppedByCapture: Int { capturedDrops.load(ordering: .relaxed) }
   private let session = AVCaptureSession()
   private let queue = DispatchQueue(label: "recorder.camera", qos: .userInteractive)
   private let clockLog: ClockLog
 
-  init(config: CameraConfig, url: URL, clockLog: ClockLog) throws {
+  init(config: CameraConfig, url: URL, clockLog: ClockLog) throws(TrackFailure) {
     let cameras = RecorderInputs.cameras()
     guard let device = RecorderInputs.device(named: config.device, in: cameras) else {
-      throw RecorderError("no camera named like \"\(config.device)\"; there are: \(cameras.map(\.localizedName).joined(separator: ", "))")
+      throw .noDevice(.camera, named: config.device, connected: cameras.map(\.localizedName))
     }
     deviceName = device.localizedName
     latencySeconds = (settingForDevice(config.latencyMsByDevice, named: device.localizedName) ?? 0) / 1000
@@ -30,14 +34,14 @@ final class CameraTrack: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate 
       return Int(size.width) >= config.width && Int(size.height) >= config.height
     }
     guard let format = candidates.min(by: { area($0) < area($1) }) ?? device.formats.max(by: { area($0) < area($1) }) else {
-      throw RecorderError("\(device.localizedName) offers no formats")
+      throw .noFormats(device: device.localizedName)
     }
     let range = format.videoSupportedFrameRateRanges.min { abs($0.maxFrameRate - Double(config.fps)) < abs($1.maxFrameRate - Double(config.fps)) }!
     let size = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
     sourceFormat = "\(size.width)x\(size.height)@\(String(format: "%.3f", range.maxFrameRate))"
 
     writer = try TrackWriter(
-      name: "camera", url: url, fileType: .mp4, mediaType: .video,
+      track: .camera, url: url, fileType: .mp4, mediaType: .video,
       settings: [
         AVVideoCodecKey: AVVideoCodecType.hevc,
         AVVideoWidthKey: config.width,
@@ -53,9 +57,19 @@ final class CameraTrack: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate 
 
     // The writer has made its file by now: a device that can't be set up takes it away again.
     do {
+      try configureSession(device: device, format: format, frameDuration: range.minFrameDuration, config: config)
+    } catch {
+      writer.discard()
+      throw error
+    }
+  }
+
+  private func configureSession(device: AVCaptureDevice, format: AVCaptureDevice.Format, frameDuration: CMTime, config: CameraConfig) throws(TrackFailure) {
     session.beginConfiguration()
-    let input = try AVCaptureDeviceInput(device: device)
-    guard session.canAddInput(input) else { throw RecorderError("can't add \(device.localizedName) to a capture session") }
+    defer { session.commitConfiguration() }
+    let input: AVCaptureDeviceInput
+    do { input = try AVCaptureDeviceInput(device: device) } catch { throw .system(error) }
+    guard session.canAddInput(input) else { throw .cantAddToSession(device: device.localizedName) }
     session.addInput(input)
     let output = AVCaptureVideoDataOutput()
     output.videoSettings = [
@@ -65,18 +79,13 @@ final class CameraTrack: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate 
     ]
     output.alwaysDiscardsLateVideoFrames = true
     output.setSampleBufferDelegate(self, queue: queue)
-    guard session.canAddOutput(output) else { throw RecorderError("can't read frames from \(device.localizedName)") }
+    guard session.canAddOutput(output) else { throw .cantReadFrames(device: device.localizedName) }
     session.addOutput(output)
-    try device.lockForConfiguration()
+    do { try device.lockForConfiguration() } catch { throw .system(error) }
     device.activeFormat = format
-    device.activeVideoMinFrameDuration = range.minFrameDuration
-    device.activeVideoMaxFrameDuration = range.minFrameDuration
+    device.activeVideoMinFrameDuration = frameDuration
+    device.activeVideoMaxFrameDuration = frameDuration
     device.unlockForConfiguration()
-    session.commitConfiguration()
-    } catch {
-      writer.discard()
-      throw error
-    }
   }
 
   /// Starts on its own queue: startRunning blocks for as long as the device takes to open.
@@ -92,7 +101,7 @@ final class CameraTrack: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate 
     guard let sessionClock = session.synchronizationClock else { return }
     let raw = sample.presentationTimeStamp
     let host = CMSyncConvertTime(raw, from: sessionClock, to: HostClock.clock)
-    if writer.appended % 30 == 0 { clockLog.write(track: "camera", host: host, media: raw, arrival: HostClock.now()) }
+    if writer.appended % 30 == 0 { clockLog.write(track: .camera, host: host, media: raw, arrival: HostClock.now()) }
     var timing = CMSampleTimingInfo(duration: sample.duration, presentationTimeStamp: host, decodeTimeStamp: .invalid)
     var restamped: CMSampleBuffer?
     CMSampleBufferCreateCopyWithNewTiming(allocator: nil, sampleBuffer: sample, sampleTimingEntryCount: 1, sampleTimingArray: &timing, sampleBufferOut: &restamped)
@@ -100,7 +109,7 @@ final class CameraTrack: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate 
   }
 
   func captureOutput(_ output: AVCaptureOutput, didDrop sample: CMSampleBuffer, from connection: AVCaptureConnection) {
-    droppedByCapture += 1
+    capturedDrops.add(1, ordering: .relaxed)
   }
 }
 

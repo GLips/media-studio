@@ -6,86 +6,81 @@
 // display's top left, y down; recording.json's screen geometry maps them onto the screen track's pixels.
 import AppKit
 import CoreMedia
+import RecorderCore
 
 final class InputLog {
-  private let lines: JSONLines
+  private let lines: JSONLines<InputLogLine>
   private let start: CMTime
-  private var tap: CFMachPort?
-  private var source: CFRunLoopSource?
+  /// The tap and its run-loop source, from `begin` until `end`.
+  private var tap: (port: CFMachPort, source: CFRunLoopSource)?
 
   init(url: URL, start: CMTime) throws {
     lines = try JSONLines(url: url)
     self.start = start
   }
 
-  func begin() throws {
+  func begin() throws(TrackFailure) {
     let types: [CGEventType] = [
       .keyDown, .keyUp, .flagsChanged, .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp, .otherMouseDown,
       .otherMouseUp, .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .scrollWheel,
     ]
     let mask = types.reduce(CGEventMask(0)) { $0 | (1 << $1.rawValue) }
     guard
-      let tap = CGEvent.tapCreate(
+      let port = CGEvent.tapCreate(
         tap: .cgSessionEventTap, place: .tailAppendEventTap, options: .listenOnly, eventsOfInterest: mask,
         callback: { _, type, event, context in
           Unmanaged<InputLog>.fromOpaque(context!).takeUnretainedValue().record(type, event)
           return Unmanaged.passUnretained(event)
         }, userInfo: Unmanaged.passUnretained(self).toOpaque())
-    else { throw RecorderError("the input log needs Input Monitoring: System Settings › Privacy & Security › Input Monitoring") }
-    self.tap = tap
-    source = CFMachPortCreateRunLoopSource(nil, tap, 0)
+    else { throw .inputMonitoringNeeded }
+    let source = CFMachPortCreateRunLoopSource(nil, port, 0)!
+    tap = (port, source)
     CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-    CGEvent.tapEnable(tap: tap, enable: true)
+    CGEvent.tapEnable(tap: port, enable: true)
   }
 
   func end() {
-    if let tap { CGEvent.tapEnable(tap: tap, enable: false); CFMachPortInvalidate(tap) }
-    if let source { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
+    if let tap {
+      CGEvent.tapEnable(tap: tap.port, enable: false)
+      CFMachPortInvalidate(tap.port)
+      CFRunLoopRemoveSource(CFRunLoopGetMain(), tap.source, .commonModes)
+    }
+    tap = nil
     lines.close()
   }
 
   private func record(_ type: CGEventType, _ event: CGEvent) {
     // A tap the system disabled for being slow is turned back on; the events it missed are gone.
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-      if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
-      lines.write(["t": (HostClock.now() - start).seconds, "type": "gap"])
+      if let tap { CGEvent.tapEnable(tap: tap.port, enable: true) }
+      lines.write(InputLogLine(t: (HostClock.now() - start).seconds, event: .gap, modifiers: []))
       return
     }
     // CGEvent timestamps are host-clock nanoseconds (CLOCK_UPTIME_RAW), the clock every track is on.
-    var line: [String: Any] = ["t": (CMTime(value: CMTimeValue(event.timestamp), timescale: 1_000_000_000) - start).seconds]
-    let location = event.location
-    let modifiers = modifierNames(event.flags)
+    let t = (CMTime(value: CMTimeValue(event.timestamp), timescale: 1_000_000_000) - start).seconds
+    let (x, y) = (event.location.x, event.location.y)
+    let logged: InputLogLine.Event
     switch type {
     case .keyDown, .keyUp:
-      line["type"] = type == .keyDown ? "keyDown" : "keyUp"
       let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-      line["keyCode"] = keyCode
-      if let key = namedKeys[keyCode] ?? NSEvent(cgEvent: event)?.charactersIgnoringModifiers, !key.isEmpty { line["key"] = key }
-      if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 { line["repeat"] = true }
+      let key = (namedKeys[keyCode] ?? NSEvent(cgEvent: event)?.charactersIgnoringModifiers).flatMap { $0.isEmpty ? nil : $0 }
+      logged = .key(down: type == .keyDown, keyCode: keyCode, key: key, isRepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0)
     case .flagsChanged:
-      line["type"] = "modifiers"
+      logged = .modifiers
     case .leftMouseDown, .rightMouseDown, .otherMouseDown, .leftMouseUp, .rightMouseUp, .otherMouseUp:
       let down = type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown
-      line["type"] = down ? "mouseDown" : "mouseUp"
-      line["button"] = buttonName(type, event)
-      line["clicks"] = event.getIntegerValueField(.mouseEventClickState)
+      logged = .mouseButton(down: down, button: buttonName(type, event), clicks: event.getIntegerValueField(.mouseEventClickState), x: x, y: y)
     case .mouseMoved:
-      line["type"] = "mouseMove"
+      logged = .mouseMove(x: x, y: y)
     case .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
-      line["type"] = "mouseDrag"
+      logged = .mouseDrag(x: x, y: y)
     case .scrollWheel:
-      line["type"] = "scroll"
-      line["dx"] = event.getDoubleValueField(.scrollWheelEventPointDeltaAxis2)
-      line["dy"] = event.getDoubleValueField(.scrollWheelEventPointDeltaAxis1)
+      logged = .scroll(
+        dx: event.getDoubleValueField(.scrollWheelEventPointDeltaAxis2), dy: event.getDoubleValueField(.scrollWheelEventPointDeltaAxis1), x: x, y: y)
     default:
       return
     }
-    if type != .keyDown && type != .keyUp && type != .flagsChanged {
-      line["x"] = location.x
-      line["y"] = location.y
-    }
-    line["modifiers"] = modifiers
-    lines.write(line)
+    lines.write(InputLogLine(t: t, event: logged, modifiers: modifierNames(event.flags)))
   }
 }
 

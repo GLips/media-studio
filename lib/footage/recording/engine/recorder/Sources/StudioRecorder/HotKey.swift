@@ -8,7 +8,7 @@ final class HotKey {
   private let action: () -> Void
 
   /// `spec` is modifiers and one key joined by `+`: ctrl, opt (alt), cmd, shift; a letter, digit, f1–f20, space.
-  init(_ spec: String, action: @escaping () -> Void) throws {
+  init(_ spec: String, action: @escaping () -> Void) throws(HotKeyFailure) {
     self.action = action
     var modifiers: UInt32 = 0
     var keyCode: UInt32?
@@ -19,11 +19,11 @@ final class HotKey {
       case "cmd", "command": modifiers |= UInt32(cmdKey)
       case "shift": modifiers |= UInt32(shiftKey)
       default:
-        guard let code = keyCodes[part] else { throw RecorderError("hotkey \"\(spec)\": no key named \"\(part)\"") }
+        guard let code = keyCodes[part] else { throw .noKeyNamed(part, spec: spec) }
         keyCode = code
       }
     }
-    guard let keyCode else { throw RecorderError("hotkey \"\(spec)\" names no key") }
+    guard let keyCode else { throw .namesNoKey(spec: spec) }
 
     var pressed = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
     InstallEventHandler(
@@ -34,7 +34,21 @@ final class HotKey {
       }, 1, &pressed, Unmanaged.passUnretained(self).toOpaque(), &handler)
     let status = RegisterEventHotKey(
       keyCode, modifiers, EventHotKeyID(signature: OSType(0x5354_5243), id: 1), GetApplicationEventTarget(), 0, &ref)
-    guard status == noErr else { throw RecorderError("hotkey \"\(spec)\" is taken by another app (\(status))") }
+    guard status == noErr else { throw .taken(spec: spec, status: status) }
+  }
+}
+
+enum HotKeyFailure: Error, CustomStringConvertible {
+  case noKeyNamed(String, spec: String)
+  case namesNoKey(spec: String)
+  case taken(spec: String, status: OSStatus)
+
+  var description: String {
+    switch self {
+    case .noKeyNamed(let part, let spec): "hotkey \"\(spec)\": no key named \"\(part)\""
+    case .namesNoKey(let spec): "hotkey \"\(spec)\" names no key"
+    case .taken(let spec, let status): "hotkey \"\(spec)\" is taken by another app (\(status))"
+    }
   }
 }
 

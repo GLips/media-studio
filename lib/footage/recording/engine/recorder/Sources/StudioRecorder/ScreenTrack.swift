@@ -1,25 +1,17 @@
 // The screen, through ScreenCaptureKit, at the display's full pixel size in HEVC. SCK stamps frames on the host
 // clock already, and sends none while the screen sits still, so the file has a variable frame rate.
 import AVFoundation
+import RecorderCore
 import ScreenCaptureKit
-
-struct DisplayGeometry: Codable {
-  var name: String
-  /// The display's rectangle in global points: origin at the main display's top left, y down (Quartz).
-  var boundsPoints: [Double]
-  /// Pixels per point: the screen track's pixel = (point - bounds origin) × scale.
-  var scale: Double
-  var widthPixels: Int
-  var heightPixels: Int
-}
 
 final class ScreenTrack: NSObject, SCStreamOutput, SCStreamDelegate {
   let writer: TrackWriter
   let geometry: DisplayGeometry
   private let queue = DispatchQueue(label: "recorder.screen", qos: .userInteractive)
 
-  static func make(config: ScreenConfig, url: URL) async throws -> ScreenTrack {
-    let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+  static func make(config: ScreenConfig, url: URL) async throws(TrackFailure) -> ScreenTrack {
+    let content: SCShareableContent
+    do { content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true) } catch { throw .system(error) }
     let screens = RecorderInputs.screens()
     func name(_ display: SCDisplay) -> String {
       screens.first { $0.displayID == display.displayID }?.localizedName ?? "display \(display.displayID)"
@@ -27,7 +19,7 @@ final class ScreenTrack: NSObject, SCStreamOutput, SCStreamDelegate {
     guard let screen = RecorderInputs.screen(named: config.display),
       let display = content.displays.first(where: { $0.displayID == screen.displayID })
     else {
-      throw RecorderError("no display named like \"\(config.display)\"; there are: \(content.displays.map(name).joined(separator: ", "))")
+      throw .noDevice(.screen, named: config.display, connected: content.displays.map(name))
     }
     let filter = SCContentFilter(display: display, excludingWindows: [])
     let info = SCShareableContent.info(for: filter)
@@ -49,7 +41,7 @@ final class ScreenTrack: NSObject, SCStreamOutput, SCStreamDelegate {
     streamConfig.queueDepth = 8
 
     let writer = try TrackWriter(
-      name: "screen", url: url, fileType: .mp4, mediaType: .video,
+      track: .screen, url: url, fileType: .mp4, mediaType: .video,
       settings: [
         AVVideoCodecKey: AVVideoCodecType.hevc,
         AVVideoWidthKey: width,
@@ -73,9 +65,13 @@ final class ScreenTrack: NSObject, SCStreamOutput, SCStreamDelegate {
     stream = SCStream(filter: filter, configuration: configuration, delegate: self)
   }
 
-  func start() async throws {
-    try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
-    try await stream.startCapture()
+  func start() async throws(TrackFailure) {
+    do {
+      try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
+      try await stream.startCapture()
+    } catch {
+      throw .system(error)
+    }
   }
 
   func stop(at end: CMTime) async {

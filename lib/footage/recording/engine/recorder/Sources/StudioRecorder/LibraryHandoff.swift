@@ -4,12 +4,13 @@
 // take minutes, and the recorder is ready for the next take at once. A recording it fails on stays in the recordings
 // folder, named in the log and the menu, to add by hand.
 import Foundation
+import RecorderCore
 
 /// The command that adds a recording to the library, from the bundle; none when run outside one (tests, `swift run`).
 let libraryAddCommand = Bundle.main.object(forInfoDictionaryKey: "StudioLibraryAdd") as? [String]
 
 /// Starts adding `folder` to the library; `failed` is called on the main actor with what went wrong.
-func handOffToLibrary(_ folder: URL, failed: @escaping @MainActor (String) -> Void) {
+func handOffToLibrary(_ folder: URL, failed: @escaping @MainActor (LibraryHandoffFailure) -> Void) {
   guard let command = libraryAddCommand, let executable = command.first else {
     log("not added to the library: this build has no StudioLibraryAdd command")
     return
@@ -25,13 +26,13 @@ func handOffToLibrary(_ folder: URL, failed: @escaping @MainActor (String) -> Vo
   process.terminationHandler = { done in
     let status = done.terminationStatus
     log(status == 0 ? "added \(folder.lastPathComponent) to the library" : "library add of \(folder.lastPathComponent) exited \(status)")
-    if status != 0 { Task { @MainActor in failed("wasn't added to the library (exit \(status)); see the log") } }
+    if status != 0 { Task { @MainActor in failed(.exited(status: status)) } }
   }
   do {
     try process.run()
     log("adding \(folder.lastPathComponent) to the library")
   } catch {
     log("couldn't start the library add: \(error)")
-    Task { @MainActor in failed("wasn't added to the library: \(error.localizedDescription)") }
+    Task { @MainActor in failed(.couldNotStart(reason: error.localizedDescription)) }
   }
 }
