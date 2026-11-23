@@ -1,35 +1,28 @@
 // ─── no-disable-validation ─────────────────────────────────────
 //
-// Makes sure: no Effect Schema construction switches its check off with
-// `disableValidation`, through `Invoice.make(props, opts)` or
-// `new Person(props, opts)`, so a value with a schema's type has passed it.
+// Makes sure: no Effect Schema construction switches its checks off with
+// `disableChecks`, through `Invoice.make(props, opts)`, `makeOption`,
+// `makeEffect` or `new Person(props, opts)`, so a value with a schema's type
+// has passed it.
 //
 // Any value but the literal `false` reports: a shorthand, a forwarded flag and a
 // ternary each leave the check off on some path. The finding is anchored on the
 // constructor call, so an unrelated API's option of the same name is silent.
 //
-// NEGATIVE SPACE: `Struct.make(props, true)` and an options object built in
-// another statement are the same bypass, and a per-file rule can't tell them
-// from ordinary calls.
+// NEGATIVE SPACE: an options object built in another statement is the same
+// bypass, and a per-file rule can't follow it to the call.
 // ──────────────────────────────────────────────────────────────────────
 
 import { defineSourceRule } from "../lib/rule-file.ts";
+import { calledMemberName } from "../lib/called-member-name.ts";
 import { staticKeyName } from "../lib/static-key-name.ts";
 import { type ESTree } from "@oxlint/plugins";
 
-const OPT_OUT_PROPERTY = "disableValidation";
-const SCHEMA_CONSTRUCTOR_METHODS = new Set(["make"]);
+const OPT_OUT_PROPERTY = "disableChecks";
+const SCHEMA_CONSTRUCTOR_METHODS = new Set(["make", "makeOption", "makeEffect"]);
 
-/** The last segment of a callee — `make` for all of `make`, `Struct.make`, `Schema.Struct.make`. */
-function calleeMethodName(callee: ESTree.Node): string | undefined {
-  if (callee.type === "Identifier") return callee.name;
-  return callee.type === "MemberExpression"
-    ? staticKeyName(callee.property, callee.computed)
-    : undefined;
-}
-
-// The option is only an opt-out where something reads it, and Effect Schema reads it in exactly two
-// places. Anchoring on the call is what stops an unrelated API's identically named flag from
+// The option is only an opt-out where something reads it: a schema's constructor methods and a
+// class's `new`. Anchoring on the call is what stops an unrelated API's identically named flag from
 // collecting a diagnostic about schemas.
 function isSchemaConstructorArgument(objectLiteral: ESTree.Node): boolean {
   const call = objectLiteral.parent;
@@ -38,7 +31,7 @@ function isSchemaConstructorArgument(objectLiteral: ESTree.Node): boolean {
   if (!call.arguments.some((argument) => argument === objectLiteral)) return false;
   // `new Person(props, { … })` — the class IS the schema, so there is no method name to match.
   if (call.type === "NewExpression") return true;
-  const method = calleeMethodName(call.callee);
+  const method = calledMemberName(call.callee);
   return method !== undefined && SCHEMA_CONSTRUCTOR_METHODS.has(method);
 }
 
@@ -47,9 +40,9 @@ export const noDisableValidationRule = defineSourceRule({
     type: "problem",
     messages: {
       validationDisabled:
-        "disableValidation turns the constructor into a cast: the value keeps the schema's type and nothing checks it against the schema. Delete the option and fix the data or the schema — and where the input genuinely may not conform, decode with Schema.decodeUnknownEither and handle the failure branch.",
+        "disableChecks turns the constructor into a cast: the value keeps the schema's type and nothing checks it against the schema. Delete the option and fix the data or the schema; where the input may not conform, decode it with Schema.decodeUnknownEffect or Schema.decodeUnknownResult and handle the failure.",
       validationDisabledConditionally:
-        "A runtime-valued disableValidation leaves the check off on some path, and no reader can tell which. Delete the option so every construction validates — if one caller needs to accept non-conforming input, give it its own schema that describes what it actually accepts.",
+        "A runtime-valued disableChecks leaves the checks off on some path, and no reader can tell which. Delete the option so every construction validates; if one caller accepts other input, give it a schema that describes what it accepts.",
     },
   },
   create(context) {

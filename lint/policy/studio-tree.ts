@@ -138,6 +138,20 @@ export function libFoundationLayer(feature: string): number | undefined {
   return index < 0 ? undefined : index;
 }
 
+/**
+ * Features built on Effect throughout: their engine reaches files and processes only through Effect services, fails
+ * only with Schema.TaggedError and returns no promise, and their code decodes JSON with Schema. The effect-native rules
+ * hold these features alone, so a feature joins by being listed here.
+ */
+export const EFFECT_NATIVE_FEATURES: readonly string[] = ['footage/library', 'footage/library-media', 'footage/transcript', 'footage/recording'];
+
+/** The lib role a position holds in an Effect-native feature, or undefined anywhere else. */
+export function effectNativeRole(position: StudioPosition): LibRole | undefined {
+  if (position.kind !== 'models' && position.kind !== 'studio' && position.kind !== 'engine') return undefined;
+  if (!('feature' in position) || !EFFECT_NATIVE_FEATURES.includes(position.feature)) return undefined;
+  return position.kind;
+}
+
 const ROOT_ROLES: Record<string, 'storyboard' | 'video' | 'stills' | 'brand' | 'capture' | 'project'> = {
   'storyboard.ts': 'storyboard', 'video.tsx': 'video', 'stills.tsx': 'stills', 'brand.ts': 'brand', 'capture.ts': 'capture', 'project.ts': 'project',
 };

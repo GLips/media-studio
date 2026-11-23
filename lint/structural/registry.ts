@@ -7,6 +7,7 @@ import { capabilityMatchCheck } from './checks/capability-match.ts';
 import { barrelDiscoverabilityCheck } from './checks/barrel-discoverability.ts';
 import { declaredTreeCheck } from './checks/declared-tree.ts';
 import { docBudgetsCheck } from './checks/doc-budgets.ts';
+import { effectNativeExportsCheck } from './checks/effect-native-exports.ts';
 import { skillLinksCheck } from './checks/skill-links.ts';
 import { featureCyclesCheck } from './checks/feature-cycles.ts';
 import { featureLayersCheck } from './checks/feature-layers.ts';
@@ -69,6 +70,7 @@ export const STRUCTURAL_CHECKS: readonly StructuralCheck[] = [
   noUnknownReturnsCheck,
   noUnknownTypeAliasesCheck,
   noRuntimeTypeofCheck,
+  effectNativeExportsCheck,
   noTestImportsCheck,
   barrelPurityCheck,
   cssTokensCheck,
