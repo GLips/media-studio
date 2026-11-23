@@ -1,10 +1,11 @@
 // stamp-gate-folds.ts: the gate's folding cards (shot/folds), on one plane at one frame, each its own sheet: a pop-up
 // card latching upright from lying flat (caught past upright, in its quiver), a card squashed about its foot landing,
-// a card flipped over its upright crease showing its blank back, and a rigged base whose hinged flap folds back. The
-// frame is accepted by eye: the flipped card shows its paper alone, its cut mirrored; the flap narrows over its crease.
+// a card flipped over its upright crease showing its blank back over the card standing on it, and a rigged base whose
+// hinged flap folds back. Accepted by eye: the flipped card shows one clean back, its cut mirrored, nothing of its
+// nested card; the flap narrows over its crease.
 
 import { paintKeyed } from '#lib/paint/animation/models/paint-keyed.ts';
-import type { Mix, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
+import type { LayerGroup, LayerNode, Mix, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
 import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
 import { painting, type PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
@@ -23,6 +24,8 @@ const POPUP = { outline: [14, 60, 54, 60, 54, 104, 14, 104], pivot: { x: 34, y: 
 const LANDING = { outline: [66, 64, 96, 64, 96, 104, 66, 104], pivot: { x: 81, y: 104 } } as const;
 /** The flip's paint lies off its crease's middle, so its front would show which way round it is. */
 const FLIP = { outline: [110, 60, 150, 60, 150, 104, 110, 104], stripe: [110, 60, 124, 60, 124, 104, 110, 104], pivot: { x: 130, y: 82 } } as const;
+/** A card of its own standing on the flip's front, turned over with it. */
+const FLIP_TAB = [133, 68, 146, 68, 146, 92, 133, 92] as const;
 const BASE = [160, 80, 196, 80, 196, 104, 160, 104] as const;
 const FLAP = [162, 48, 194, 48, 194, 80, 162, 80] as const;
 const HINGE = { x: 178, y: 80 } as const;
@@ -30,17 +33,20 @@ const HINGE = { x: 178, y: 80 } as const;
 /** A card's layer over `outline`, dry over what's before it. */
 const cardLayer = (key: string, outline: readonly number[], mix: Mix) => stampGateHeronLayer(key, stampGateHeronPolygon(...outline), mix, 0.7);
 
-/** A sky and a ground line; the four cards, each an own sheet of warm paper; the hinged one, a base and a flap. */
+/** A sky and a ground line; the four cards, each an own sheet of warm paper, the flip with a tab card on it; the hinged one, a base and a flap. */
 export const STAMP_GATE_FOLDS: PaintingSourceModule = {
   default: function gateFolds(): PaintingDocument {
-    const card = (key: string, ...layers: ReturnType<typeof cardLayer>[]) => ({ key, sheet: { kind: 'own', paper: CARD_PAPER } as const, children: layers });
+    const card = (key: string, ...children: LayerNode[]): LayerGroup => ({ key, sheet: { kind: 'own', paper: CARD_PAPER }, children });
     return {
       widthPx: FOLDS.width, heightPx: FOLDS.height, paper: stampGateHeronPaper('#f3eee2', 1), medium: 'watercolour',
       layers: [
         stampGateHeronLayer('sky', stampGateHeronPolygon(0, 0, 200, 0, 200, 104, 0, 104), mixOf(cerulean, 0.3), 0.8),
         card('popup', cardLayer('popup-face', POPUP.outline, mixOf(quinacridoneRose, 0.55))),
         card('landing', cardLayer('landing-face', LANDING.outline, mixOf(yellowOchre, 0.65))),
-        card('flip', cardLayer('flip-face', FLIP.outline, mixOf(phthaloGreen, 0.4)), cardLayer('flip-stripe', FLIP.stripe, mixOf(ultramarine, 0.6))),
+        card(
+          'flip', cardLayer('flip-face', FLIP.outline, mixOf(phthaloGreen, 0.4)), cardLayer('flip-stripe', FLIP.stripe, mixOf(ultramarine, 0.6)),
+          card('flip-tab', cardLayer('flip-tab-face', FLIP_TAB, mixOf(quinacridoneRose, 0.6))),
+        ),
         card('hinged', cardLayer('base', BASE, mixOf(burntSienna, 0.55)), cardLayer('flap', FLAP, mixOf(ultramarine, 0.45))),
       ],
     };
