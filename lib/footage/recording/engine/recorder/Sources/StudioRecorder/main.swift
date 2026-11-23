@@ -272,7 +272,7 @@ var keepAlive: [AnyObject] = []
 
 if let seconds = argument("--check-inputs").flatMap(Double.init) {
   MainActor.assumeIsolated {
-    let check = InputCheck()
+    let check = InputCheck(pictureRenderer: AVSampleBufferVideoRenderer())
     log("inputs: mics \(RecorderInputs.mics().map(\.localizedName)), cameras \(RecorderInputs.cameras().map(\.localizedName)), screens \(RecorderInputs.screens().map(\.localizedName))")
     log("inputs: picked mic \(config.mic?.device ?? "off"), camera \(config.camera?.device ?? "off"), screen \(RecorderInputs.screen(named: config.screen.display)?.localizedName ?? "none")")
     check.start(config: config)
