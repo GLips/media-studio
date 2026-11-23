@@ -70,7 +70,8 @@ const listCommand = defineCommand({
       console.log(JSON.stringify(items.map(({ item }) => item), null, 2));
       return;
     }
-    if (!store.libraryMediaIsOnline()) log(`media offline: ${store.libraryMediaFolder().path} isn't there; listing from metadata`);
+    const media = await import('#lib/footage/library-media/engine/library-media-folder.ts');
+    if (!media.libraryMediaIsOnline()) log(`media offline: ${media.libraryMediaFolder().path} isn't there; listing from metadata`);
     if (!items.length) log('the library is empty: `studio library add <file>` adds footage');
     for (const { item, flags } of items) {
       const interrupted = item.source.kind === 'studio-recorder' && item.source.status === 'interrupted' ? ' (interrupted)' : '';
@@ -120,9 +121,10 @@ const showCommand = defineCommand({
       console.log(JSON.stringify({ item, flags, transcript }, null, 2));
       return;
     }
-    const online = store.libraryMediaIsOnline();
+    const media = await import('#lib/footage/library-media/engine/library-media-folder.ts');
+    const online = media.libraryMediaIsOnline();
     console.log(`${item.id}  ${item.title}\n${formatReviewClock(item.durationSeconds)} long, ${item.recordedAt ? `recorded ${item.recordedAt}, ` : ''}added ${item.addedAt}`);
-    console.log(`media: ${online ? store.libraryMediaFolder().path : `offline (${store.libraryMediaFolder().path} isn't there)`}`);
+    console.log(`media: ${online ? media.libraryMediaFolder().path : `offline (${media.libraryMediaFolder().path} isn't there)`}`);
     for (const [name, track] of Object.entries(item.tracks)) {
       const what = [track.video && `${track.video.width}×${track.video.height} ${track.video.codec} ${track.video.fps} fps${track.video.variableRate ? ' variable' : ''}`, track.audio && `${track.audio.codec} ${track.audio.sampleRate} Hz`].filter(Boolean).join(', ');
       const sync = [`starts ${track.startSeconds.toFixed(3)} s`, track.latencySeconds && `latency ${track.latencySeconds} s`, track.hostDriftSeconds && `drift ${(track.hostDriftSeconds * 1000).toFixed(2)} ms`].filter(Boolean).join(', ');
@@ -204,15 +206,15 @@ const configCommand = defineCommand({
   },
   args: { 'media-folder': { type: 'string', description: 'Where the media is now: a path, or "default" for work/library/media/' } },
   async run({ args }) {
-    const store = await import('#lib/footage/library/engine/library-store.ts');
+    const media = await import('#lib/footage/library-media/engine/library-media-folder.ts');
     const folder = args['media-folder'];
     if (folder !== undefined) {
       const { resolve } = await import('node:path');
-      const { mediaFolder: _, ...rest } = store.readLibraryMachineSettings();
-      store.writeLibraryMachineSettings(folder === 'default' ? rest : { ...rest, mediaFolder: resolve(folder) });
+      const { mediaFolder: _, ...rest } = media.readLibraryMachineSettings();
+      media.writeLibraryMachineSettings(folder === 'default' ? rest : { ...rest, mediaFolder: resolve(folder) });
     }
-    const { path, configured } = store.libraryMediaFolder();
-    console.log(JSON.stringify({ mediaFolder: path, default: !configured, online: store.libraryMediaIsOnline() }, null, 2));
+    const { path, configured } = media.libraryMediaFolder();
+    console.log(JSON.stringify({ mediaFolder: path, default: !configured, online: media.libraryMediaIsOnline() }, null, 2));
   },
 });
 

@@ -8,7 +8,8 @@ import { mkdirSync, renameSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { runFfmpegAsync } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { libraryProxyNeeded, type LibraryItem } from '../models/library-item.ts';
-import { libraryMediaPath, onlineLibraryMediaFolder, readLibraryItem, writeLibraryItem } from './library-store.ts';
+import { onlineLibraryMediaFolder } from '#lib/footage/library-media/engine/library-media-folder.ts';
+import { libraryMediaPath, readLibraryItem, writeLibraryItem } from './library-store.ts';
 
 // macOS's hardware encoder: a 20-minute 5K screen takes minutes, not an hour. Its bitrate is for HD that edits cleanly.
 const PROXY_ENCODER = ['-c:v', 'h264_videotoolbox', '-b:v', '8M', '-pix_fmt', 'yuv420p', '-tag:v', 'avc1'];

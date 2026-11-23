@@ -13,7 +13,8 @@ import { libraryItemDuration, librarySlug, librarySpeechTrack, LIBRARY_ITEM_FORM
 import { namedFilesAddSource, recorderAddSource, type LibraryAddSource, type RecorderRecordingJson } from '../models/library-sources.ts';
 import { levelLibrarySpeech } from './library-levelled.ts';
 import { makeLibraryProxies } from './library-proxies.ts';
-import { libraryItemDir, libraryMediaPath, listLibraryItemIds, onlineLibraryMediaFolder, readLibraryItem, readLibraryTranscript, writeLibraryItem, writeLibraryTranscript } from './library-store.ts';
+import { onlineLibraryMediaFolder } from '#lib/footage/library-media/engine/library-media-folder.ts';
+import { libraryItemDir, libraryMediaPath, listLibraryItemIds, readLibraryItem, readLibraryTranscript, writeLibraryItem, writeLibraryTranscript } from './library-store.ts';
 
 /** What to add: one file or a recorder's folder by its path, or several files as named tracks (`screen=display.mp4`). */
 export type LibraryAddRequest = {
