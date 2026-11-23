@@ -5,7 +5,6 @@
 // The copy keeps its track's media time, sample for sample, so the track's sync numbers and its transcript's times
 // apply to it unchanged. PCM, not AAC: AAC's encoder delay would shift it.
 import { Effect, FileSystem, Path, Schema } from 'effect';
-import { measureAudibleLoudness } from '#lib/platform/ffmpeg/engine/loudness.ts';
 import { StudioFfmpeg } from '#lib/platform/ffmpeg/engine/studio-ffmpeg.ts';
 import { LibraryMediaFolder } from '#lib/footage/library-media/engine/library-media-folder.ts';
 import { LibrarySpeechUnmeasured } from '../models/library-errors.ts';
@@ -21,6 +20,18 @@ const LoudnormReport = Schema.fromJsonString(Schema.Struct({
 }));
 
 const lastLine = (text: string) => text.trim().split('\n').at(-1) ?? '';
+
+// ebur128 prints silence's integrated loudness as R128's absolute gate.
+const ABSOLUTE_GATE_LUFS = -70;
+
+/**
+ * Integrated loudness from ebur128's summary on stderr; undefined for silence or a summary it can't find. Measured
+ * with `dualmono`, as the mix hears a mono voice line from both speakers, so the levelled copy compares with one.
+ */
+const ebur128IntegratedLufs = (stderr: string) => {
+  const integrated = Number(/I:\s+(-?[\d.]+) LUFS/.exec(stderr.slice(stderr.lastIndexOf('Summary:')))?.[1]);
+  return Number.isFinite(integrated) && integrated > ABSOLUTE_GATE_LUFS ? integrated : undefined;
+};
 
 /** Levels `id`'s speech track, if it has one and it isn't yet, and records it in item.json; returns the item. */
 export const levelLibrarySpeech = Effect.fn('LibraryLevelled.levelSpeech')(function* (id: string) {
@@ -49,9 +60,9 @@ export const levelLibrarySpeech = Effect.fn('LibraryLevelled.levelSpeech')(funct
   yield* fs.makeDirectory(path.dirname(out), { recursive: true });
   yield* ffmpeg.run(['-v', 'error', '-y', '-i', source, '-vn', '-af', second, '-ar', String(track.audio?.sampleRate ?? 48000), '-c:a', 'pcm_s16le', temp]);
   yield* fs.rename(temp, out);
-  const { lufs } = yield* Effect.try({
-    try: () => measureAudibleLoudness(out),
-    catch: (cause) => new LibrarySpeechUnmeasured({ id, track: name, why: cause instanceof Error ? cause.message : String(cause) }),
-  });
+  const check = yield* ffmpeg.report(['-nostats', '-hide_banner', '-i', out, '-af', 'ebur128=dualmono=true', '-f', 'null', '-']);
+  if (check.exitCode !== 0) return yield* new LibrarySpeechUnmeasured({ id, track: name, why: lastLine(check.stderr) });
+  const lufs = ebur128IntegratedLufs(check.stderr);
+  if (lufs === undefined) return yield* new LibrarySpeechUnmeasured({ id, track: name, why: `its levelled copy ${file} measures silent` });
   return yield* store.updateItem(id, (now) => ({ ...now, tracks: { ...now.tracks, [name]: { ...now.tracks[name], levelled: { file, lufs: Math.round(lufs * 10) / 10 } } } }));
 });

@@ -99,6 +99,16 @@ export class LibraryFlagRefused extends Schema.TaggedError<LibraryFlagRefused>()
   }
 }
 
+/** Another process held an item's flags past the wait for their lock, so nothing was changed. `why` is the lock's own account. */
+export class LibraryFlagsLocked extends Schema.TaggedError<LibraryFlagsLocked>()('LibraryFlagsLocked', {
+  path: Schema.String,
+  why: Schema.String,
+}) {
+  override get message(): string {
+    return `${this.why}: no flag was changed, so try again once it lets go`;
+  }
+}
+
 /** ffmpeg's loudness pass over an item's speech failed, so it can't be levelled. */
 export class LibrarySpeechUnmeasured extends Schema.TaggedError<LibrarySpeechUnmeasured>()('LibrarySpeechUnmeasured', {
   id: Schema.String,

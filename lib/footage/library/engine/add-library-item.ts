@@ -40,7 +40,9 @@ export const addLibraryItem = Effect.fn('LibraryAdd.add')(function* (request: Li
   const store = yield* LibraryStore;
   const source = yield* libraryAddSourceOf(request);
   for (const id of yield* store.itemIds()) {
-    if (sameSource(yield* store.readItem(id), source)) return yield* new LibraryFootageAlreadyAdded({ source: describeSource(source), id });
+    // One item.json this studio can't read is that item's problem: it mustn't hold every new take in its folder.
+    const item = yield* store.readItem(id).pipe(Effect.map(Option.some), Effect.catchTag('LibraryFileUnreadable', (error) => Effect.as(Effect.logWarning(`skipping ${id} in the already-added check: ${error.message}`), Option.none<LibraryItem>())));
+    if (Option.isSome(item) && sameSource(item.value, source)) return yield* new LibraryFootageAlreadyAdded({ source: describeSource(source), id });
   }
   // A take's logs are checked before anything is touched, so a log no reader can use never reaches the library.
   if (source.input) yield* Stream.runDrain(streamRecordingInputLog(source.input.path));
@@ -55,8 +57,13 @@ export const addLibraryItem = Effect.fn('LibraryAdd.add')(function* (request: Li
     const fs = yield* FileSystem.FileSystem;
     for (const { from, to } of plan.moves) yield* bringLibraryFile(to, from, true);
     if (plan.media) yield* fs.remove(plan.media, { recursive: true, force: true });
-  });
-  return yield* bringIntoLibrary(source, request, step).pipe(Effect.tapError(() => undo));
+  }).pipe(
+    // The add fails with what broke it; an undo that fails too is said beside it, and stops before the media
+    // folder is removed, so a file it couldn't move back stays there.
+    Effect.catch((error) => Effect.logError(`couldn't undo the add: ${error.message}`)),
+  );
+  // onError, not tapError: a defect or an interruption undoes the add too.
+  return yield* bringIntoLibrary(source, request, step).pipe(Effect.onError(() => undo));
 });
 
 const bringIntoLibrary = Effect.fn('LibraryAdd.bring')(function* (source: LibraryAddSource, request: LibraryAddRequest, step: (event: Parameters<typeof libraryAddStep>[1]) => Effect.Effect<void>) {
@@ -73,7 +80,8 @@ const bringIntoLibrary = Effect.fn('LibraryAdd.bring')(function* (source: Librar
   const id = unusedLibraryItemId(yield* itemIdBase(source), taken), itemMedia = path.join(mediaFolder, id);
   yield* step({ type: 'probed', media: itemMedia });
   yield* fs.makeDirectory(itemMedia, { recursive: true });
-  const bring = (from: string, to: string) => bringLibraryFile(from, to, request.move).pipe(Effect.andThen(step({ type: 'fileBrought', file: { from, to, moved: request.move } })));
+  // Uninterruptible: a move interrupted between its copy and its record would leave a file no undo knows of.
+  const bring = (from: string, to: string) => bringLibraryFile(from, to, request.move).pipe(Effect.andThen(step({ type: 'fileBrought', file: { from, to, moved: request.move } })), Effect.uninterruptible);
 
   const tracks: Record<string, LibraryTrack> = {};
   for (const track of probed) {

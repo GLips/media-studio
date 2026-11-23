@@ -12,7 +12,7 @@ import type { ReviewAuthor } from '#lib/output/review/models/review-threads.ts';
 import { STUDIO_PROJECTS_DIR, STUDIO_WORKSPACE_DIR } from '#lib/platform/project/engine/studio-project.ts';
 import { assertStudioWorkspace } from '#lib/platform/project/engine/studio-workspace.ts';
 import type { LibraryFlagRefused } from '../models/library-errors.ts';
-import { LibraryFileUnreadable, LibraryItemAmbiguous, LibraryItemMissing, LibraryItemUnknown, LibraryRequestRefused } from '../models/library-errors.ts';
+import { LibraryFileUnreadable, LibraryFlagsLocked, LibraryItemAmbiguous, LibraryItemMissing, LibraryItemUnknown, LibraryRequestRefused } from '../models/library-errors.ts';
 import { applyLibraryFlagOp, emptyLibraryFlagsFile, LIBRARY_FLAGS_VERSION, LibraryFlagsFile, type LibraryFlag, type LibraryFlagChange, type LibraryFlagOp } from '../models/library-flags.ts';
 import { LibraryTranscriptFileText, type LibraryTranscriptFile } from '../models/library-footage.ts';
 import { LIBRARY_ITEM_FORMAT, LibraryItemText, type LibraryItem } from '../models/library-item.ts';
@@ -40,7 +40,7 @@ export class LibraryStore extends Context.Service<LibraryStore, {
   readonly writeTranscript: (id: string, transcript: LibraryTranscriptFile) => Effect.Effect<void, PlatformError.PlatformError>;
   readonly readFlags: (id: string) => Effect.Effect<LibraryFlagsFile, LibraryFileUnreadable>;
   /** Applies `op` to the item's newest flags under their lock, as `by`; the flag it touched. */
-  readonly changeFlags: (id: string, op: LibraryFlagOp, by: ReviewAuthor) => Effect.Effect<LibraryFlag, LibraryFlagRefused | LibraryItemMissing | StoreFailure>;
+  readonly changeFlags: (id: string, op: LibraryFlagOp, by: ReviewAuthor) => Effect.Effect<LibraryFlag, LibraryFlagRefused | LibraryFlagsLocked | LibraryItemMissing | StoreFailure>;
   /** The projects (work/projects/<name>) whose source imports item `id`'s metadata, by name, sorted. */
   readonly projectsUsing: (id: string) => Effect.Effect<string[], PlatformError.PlatformError>;
   /** What search reads of every item: committed metadata alone, never the media. */
@@ -58,6 +58,12 @@ const jsonLines = (items: readonly (LibraryTranscriptFile['words'][number] | Lib
 /** Why a flags file can't be read or written, as review's store words it. */
 const reviewStoreFailure = (path: string) => (cause: unknown) =>
   new LibraryFileUnreadable({ path, reason: `can't be used: ${cause instanceof Error ? cause.message : String(cause)}` });
+
+// review-store throws plain Errors; its lock's timeout, the one a caller can simply retry, is told apart by its wording.
+const REVIEW_STORE_LOCK_TIMEOUT = /has been locked by process \d+/;
+
+const reviewStoreWriteFailure = (path: string) => (cause: unknown) =>
+  (cause instanceof Error && REVIEW_STORE_LOCK_TIMEOUT.test(cause.message) ? new LibraryFlagsLocked({ path, why: cause.message }) : reviewStoreFailure(path)(cause));
 
 const decodeFlags = Schema.decodeUnknownResult(LibraryFlagsFile);
 const decodeFormatOnly = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ format: Schema.String })));
@@ -116,11 +122,13 @@ export const makeLibraryStoreLayer = ({ libraryDir, projectsDir, workspaceRequir
     return Option.some(transcript);
   });
 
+  // Entry types, never stat: a symlink is never followed, so a link loop inside a project can't recurse forever.
   const projectImports = (dir: string, id: string): Effect.Effect<boolean, PlatformError.PlatformError> => Effect.gen(function* () {
-    for (const name of yield* fs.readDirectory(dir)) {
+    for (const { name, type: listed } of yield* fs.readDirectoryEntries(dir)) {
       if (name.startsWith('.')) continue;
-      const entry = path.join(dir, name), info = yield* fs.stat(entry);
-      if (info.type === 'Directory' ? !PROJECT_GENERATED_DIRS.has(name) && (yield* projectImports(entry, id))
+      const entry = path.join(dir, name), type = listed === 'Unknown' ? (yield* fs.lstat(entry)).type : listed;
+      if (type === 'SymbolicLink') continue;
+      if (type === 'Directory' ? !PROJECT_GENERATED_DIRS.has(name) && (yield* projectImports(entry, id))
         : /\.tsx?$/.test(name) && libraryItemsImportedBy(yield* fs.readFileString(entry)).has(id)) return true;
     }
     return false;
@@ -158,7 +166,7 @@ export const makeLibraryStoreLayer = ({ libraryDir, projectsDir, workspaceRequir
           if (Result.isFailure(decoded)) return Result.fail(new LibraryFileUnreadable({ path: scope.path, reason: `isn't flags the library wrote: ${decoded.failure.message}` }));
           return applyLibraryFlagOp(decoded.success, op, { by, now, durationSeconds });
         }, (applied) => (Result.isSuccess(applied) ? applied.success.file : undefined)),
-        catch: reviewStoreFailure(scope.path),
+        catch: reviewStoreWriteFailure(scope.path),
       });
       return (yield* Effect.fromResult(change)).flag;
     }),

@@ -18,9 +18,16 @@ const FfprobeStreams = Schema.fromJsonString(Schema.Struct({
   })),
 }));
 
+// ffprobe prints `0/0` or `N/A` for a rate or count it doesn't know; item.json takes finite numbers alone.
 const ratio = (text: string | undefined) => {
   const [n, d] = (text ?? '0/1').split('/').map(Number);
-  return d ? n / d : 0;
+  const value = n / d;
+  return Number.isFinite(value) ? value : 0;
+};
+
+const positiveNumber = (text: string | undefined) => {
+  const value = Number(text);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
 };
 
 /** What a file's first video and audio streams are. Variable rate: ffprobe's nominal and average rates differ. */
@@ -32,9 +39,10 @@ export const probeLibraryStreams = Effect.fn('LibraryProbe.streams')(function* (
   const video = streams.find((s) => s.codec_type === 'video' && s.width), audio = streams.find((s) => s.codec_type === 'audio');
   if (!video && !audio) return yield* new LibraryTrackUnreadable({ path, lacks: 'streams' });
   const nominal = ratio(video?.r_frame_rate), average = ratio(video?.avg_frame_rate);
+  const sampleRate = positiveNumber(audio?.sample_rate);
   const read: LibraryTrackStreams = {
     ...(video && { video: { width: video.width ?? 0, height: video.height ?? 0, fps: Math.round((average || nominal) * 1000) / 1000, variableRate: Math.abs(nominal - average) > 0.01, codec: video.codec_name ?? '' } }),
-    ...(audio && { audio: { sampleRate: Number(audio.sample_rate), channels: audio.channels ?? 1, codec: audio.codec_name ?? '' } }),
+    ...(audio && { audio: { ...(sampleRate && { sampleRate }), channels: audio.channels ?? 1, codec: audio.codec_name ?? '' } }),
   };
   return read;
 });
