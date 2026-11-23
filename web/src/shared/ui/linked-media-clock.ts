@@ -119,6 +119,7 @@ export function createLinkedMediaClock({ frameNow, steer }: LinkedMediaClockOpti
       if (element.playbackRate !== rate) element.playbackRate = rate;
       // A follower run to its end (a hair ahead of the leader, or seeked past it) holds its last picture: play() on an
       // ended video restarts it from its first frame, shown for a paint at the hand-back to the leader.
+      // oxlint-disable-next-line arch/no-discarding-catch -- play() rejects only when a pause or seek interrupts it, which is the intent.
       if (element.paused && !element.ended) element.play().catch(() => undefined);
     }
   };

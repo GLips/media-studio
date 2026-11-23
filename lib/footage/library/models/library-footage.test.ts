@@ -43,7 +43,8 @@ const spokenPlan = (speech: RecordedSpeech) => defineStoryboard({
 });
 
 test('a spoken line with no text says what the transcript heard, and one not yet levelled stops the plan', () => {
-  const unlevelledItem = { ...item, tracks: { mic: { ...item.tracks.mic, levelled: undefined } } };
+  const { levelled: _, ...unlevelledMic } = item.tracks.mic;
+  const unlevelledItem = { ...item, tracks: { mic: unlevelledMic } };
   const unlevelled = libraryFootage(unlevelledItem, transcript);
   assert.equal(resolveStoryboard(spokenPlan(footage.speech(1.45, 3.4))).voice.definition.text, 'Each agent has a definition');
   const { diagnostics } = resolveStoryboard(spokenPlan(unlevelled.speech(1.45, 3.4)));

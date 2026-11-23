@@ -6,83 +6,94 @@
 //
 // Sync corrections are numbers on each track, applied when read (libraryItemTimeOf), never baked into the media: a
 // wrong one is fixed by editing item.json, and transcript, scenes and review all line tracks up the same way.
+import { Schema } from 'effect';
 import type { InputLogCoordinates } from '#lib/footage/input-log/models/input-log.ts';
+import { RecordingScreenDisplay } from '#lib/footage/recording/models/studio-recording-json.ts';
 
 export const LIBRARY_ITEM_FORMAT = 'studio-library-item/1';
 
 /** What a track's file holds, from ffprobe when it was added. */
-export type LibraryTrackStreams = {
-  video?: { width: number; height: number; fps: number; variableRate: boolean; codec: string };
-  audio?: { sampleRate: number; channels: number; codec: string };
-};
+export const LibraryTrackStreams = Schema.Struct({
+  video: Schema.optionalKey(Schema.Struct({ width: Schema.Finite, height: Schema.Finite, fps: Schema.Finite, variableRate: Schema.Boolean, codec: Schema.String })),
+  audio: Schema.optionalKey(Schema.Struct({ sampleRate: Schema.Finite, channels: Schema.Finite, codec: Schema.String })),
+});
+export type LibraryTrackStreams = typeof LibraryTrackStreams.Type;
 
-/** The geometry of the display a screen track recorded, which maps an input log's global points onto its pixels. */
-export type LibraryScreenDisplay = {
-  name: string;
-  /** The display's [x, y, width, height] in global points: origin at the main display's top left, y down. */
-  boundsPoints: readonly [number, number, number, number];
-  scale: number;
-  widthPixels: number;
-  heightPixels: number;
-};
+/** The geometry of the display a screen track recorded, as the recorder wrote it: maps an input log's points onto its pixels. */
+export const LibraryScreenDisplay = RecordingScreenDisplay;
+export type LibraryScreenDisplay = RecordingScreenDisplay;
 
 /** An editing proxy: constant frame rate, edit-friendly size, made once from the track. The original stays the source for final render. */
-export type LibraryTrackProxy = { file: string; width: number; height: number; fps: number };
+export const LibraryTrackProxy = Schema.Struct({ file: Schema.String, width: Schema.Finite, height: Schema.Finite, fps: Schema.Finite });
+export type LibraryTrackProxy = typeof LibraryTrackProxy.Type;
 
 /**
  * A speech track's sound levelled for the mix: a copy on the track's own media time, brought up (or down) to about
  * LIBRARY_LEVELLED_LUFS, and its loudness as measured. A raw mic can sit 20 dB under a voice line; the mix only lowers.
  */
-export type LibraryTrackLevelled = { file: string; lufs: number };
+export const LibraryTrackLevelled = Schema.Struct({ file: Schema.String, lufs: Schema.Finite });
+export type LibraryTrackLevelled = typeof LibraryTrackLevelled.Type;
 
 /** Where a levelled copy is brought to: above the mix's voice level, so the mix only ever lowers it. */
 export const LIBRARY_LEVELLED_LUFS = -16;
 
-export type LibraryTrack = LibraryTrackStreams & {
+export const LibraryTrack = Schema.Struct({
+  ...LibraryTrackStreams.fields,
   /** In the item's media folder. */
-  file: string;
+  file: Schema.String,
   /** The file's own length, in its media time. */
-  mediaSeconds: number;
+  mediaSeconds: Schema.Finite,
   /** Item time at the track's media time 0. */
-  startSeconds: number;
+  startSeconds: Schema.Finite,
   /** How late the device delivers against the world (the Elgato camera path is about 0.16 s). */
-  latencySeconds?: number;
+  latencySeconds: Schema.optionalKey(Schema.Finite),
   /** How far the track's sample clock ran from the host clock over its whole length (a mic's drift); none is none. */
-  hostDriftSeconds?: number;
-  device?: string;
-  display?: LibraryScreenDisplay;
-  proxy?: LibraryTrackProxy;
-  levelled?: LibraryTrackLevelled;
-};
+  hostDriftSeconds: Schema.optionalKey(Schema.Finite),
+  device: Schema.optionalKey(Schema.String),
+  display: Schema.optionalKey(LibraryScreenDisplay),
+  proxy: Schema.optionalKey(LibraryTrackProxy),
+  levelled: Schema.optionalKey(LibraryTrackLevelled),
+});
+export type LibraryTrack = typeof LibraryTrack.Type;
 
-/** Where an item came from: the recorder's folder for a recording, else the files it was added from. */
-export type LibraryItemSource =
-  /** `interrupted`: the recorder was killed mid-take, so it lost up to its last 2 s and wrote no duration. */
-  | { kind: 'studio-recorder'; folder: string; status: 'complete' | 'interrupted' }
-  | { kind: 'files'; paths: readonly string[] };
+/**
+ * Where an item came from: the recorder's folder for a recording, else the files it was added from. `interrupted`:
+ * the recorder was killed mid-take, so it lost up to its last 2 s and wrote no duration.
+ */
+export const LibraryItemSource = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal('studio-recorder'), folder: Schema.String, status: Schema.Literals(['complete', 'interrupted']) }),
+  Schema.Struct({ kind: Schema.Literal('files'), paths: Schema.Array(Schema.String) }),
+]);
+export type LibraryItemSource = typeof LibraryItemSource.Type;
 
-export type LibraryItem = {
-  format: typeof LIBRARY_ITEM_FORMAT;
+const LibraryInputCoordinates = Schema.Literals(['global-points', 'viewport-css-pixels'] satisfies readonly InputLogCoordinates[]);
+
+export const LibraryItem = Schema.Struct({
+  format: Schema.Literal(LIBRARY_ITEM_FORMAT),
   /** Its folder's name in the library and the media folder: `2026-11-22-181929`, or `2026-11-22-<title slug>`. */
-  id: string;
-  title: string;
-  source: LibraryItemSource;
+  id: Schema.String,
+  title: Schema.String,
+  source: LibraryItemSource,
   /** ISO time the footage began, where known. */
-  recordedAt?: string;
-  addedAt: string;
+  recordedAt: Schema.optionalKey(Schema.String),
+  addedAt: Schema.String,
   /** Item time from 0 to the last track's end. */
-  durationSeconds: number;
+  durationSeconds: Schema.Finite,
   /** By name: `screen`, `camera`, `mic` for a recording, `video` or `audio` for a single file, else the caller's. */
-  tracks: Readonly<Record<string, LibraryTrack>>;
+  tracks: Schema.Record(Schema.String, LibraryTrack),
   /** The track transcript.json was heard from; none when no track has sound. */
-  speech?: string;
+  speech: Schema.optionalKey(Schema.String),
   /** The input log (input.jsonl in the media folder), on item time. */
-  input?: { file: string; coordinates: InputLogCoordinates };
+  input: Schema.optionalKey(Schema.Struct({ file: Schema.String, coordinates: LibraryInputCoordinates })),
   /** What went wrong with a track during the take, by track, as the recorder reported it. */
-  problems?: Readonly<Record<string, string>>;
+  problems: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   /** Tracks the source named that the item holds no file for, and why. */
-  leftOut?: Readonly<Record<string, string>>;
-};
+  leftOut: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+});
+export type LibraryItem = typeof LibraryItem.Type;
+
+/** item.json's text, parsed and decoded. */
+export const LibraryItemText = Schema.fromJsonString(LibraryItem);
 
 /**
  * The item time of `mediaSeconds` into `track`: its start, plus media time stretched by its clock's drift against the
@@ -107,11 +118,14 @@ export const libraryItemDuration = (tracks: Readonly<Record<string, LibraryTrack
 const PROXY_MAX_WIDTH = 1920, PROXY_MAX_HEIGHT = 1080;
 export const LIBRARY_PROXY_FPS = 30;
 
+/** The size and rate of a proxy a track needs. */
+export type LibraryProxySize = { width: number; height: number; fps: number };
+
 /**
  * The proxy a track needs, by its size and rate, or none: one whose video is variable-rate, larger than HD or not
  * H.264 (HEVC may not decode on Linux render workers) gets one at HD size and LIBRARY_PROXY_FPS.
  */
-export function libraryProxyNeeded({ video }: LibraryTrackStreams): { width: number; height: number; fps: number } | undefined {
+export function libraryProxyNeeded({ video }: LibraryTrackStreams): LibraryProxySize | undefined {
   if (!video) return undefined;
   const large = video.width > PROXY_MAX_WIDTH || video.height > PROXY_MAX_HEIGHT;
   if (!large && !video.variableRate && video.codec === 'h264') return undefined;
@@ -120,6 +134,13 @@ export function libraryProxyNeeded({ video }: LibraryTrackStreams): { width: num
   const even = (v: number) => Math.max(2, Math.round((v * scale) / 2) * 2);
   return { width: even(video.width), height: even(video.height), fps: LIBRARY_PROXY_FPS };
 }
+
+/** The proxies `item` needs and hasn't made yet, by track: derived from item.json, the one record of what's made. */
+export const libraryProxiesWanted = (item: LibraryItem): { track: string; size: LibraryProxySize }[] =>
+  Object.entries(item.tracks).flatMap(([track, streams]) => {
+    const size = libraryProxyNeeded(streams);
+    return size && !streams.proxy ? [{ track, size }] : [];
+  });
 
 /** The track to hear speech from: the mic, else the first with sound. */
 export function librarySpeechTrack(tracks: Readonly<Record<string, LibraryTrackStreams>>): string | undefined {

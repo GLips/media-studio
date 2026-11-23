@@ -14,7 +14,7 @@
         "diagnostics": true,
         // Effect 4.1 tags its platform modules unstable. The studio pins one exact Effect version in package.json, so
         // their changes arrive only with a deliberate bump: Node's file system, paths, terminal and child processes,
-        // which runStudioEffect provides beneath every program.
+        // which runStudioEffect provides beneath every program, and the sink the library's media server streams files into.
         "allowedUnstableApis": [
           "effect/FileSystem",
           "effect/Path",
@@ -22,7 +22,8 @@
           "effect/Stdio",
           "effect/Terminal",
           "effect/process",
-          "@effect/platform-node/NodeServices"
+          "@effect/platform-node/NodeServices",
+          "@effect/platform-node-shared/NodeSink"
         ],
         "diagnosticSeverity": {
           // Correctness: code that does something other than what it reads as. An effect that never runs, a

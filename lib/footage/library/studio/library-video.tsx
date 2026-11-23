@@ -109,6 +109,7 @@ function PlayedLibraryVideo({ src, mediaTime, style }: { src: string; mediaTime:
     const playing = advanced >= 1 && advanced <= 3 && Math.abs(mediaTime - previous!.mediaTime - advanced / fps) < 0.5 / fps;
     if (playing) {
       if (Math.abs(element.currentTime - mediaTime) > PLAYING_DRIFT_SECONDS) element.currentTime = mediaTime;
+      // oxlint-disable-next-line arch/no-discarding-catch -- play() rejects only when the next frame's pause or seek interrupts it, which is the intent.
       if (element.paused) element.play().catch(() => {});
     } else {
       if (!element.paused) element.pause();

@@ -1,6 +1,8 @@
 // library-search.ts: finding footage by what's said in it and what its flags note. Pure: it reads each item's committed
 // transcript and flags, never its media, so search works with the media folder offline.
+import { Result } from 'effect';
 import { transcriptLines, type FootageTranscript } from '#lib/footage/transcript/models/footage-transcript.ts';
+import { LibraryRequestRefused } from './library-errors.ts';
 import type { LibraryFlag } from './library-flags.ts';
 import { libraryItemTimeOf, type LibraryItem } from './library-item.ts';
 
@@ -19,15 +21,15 @@ const searchToken = (word: string) => word.toLowerCase().normalize('NFKD').repla
  * Every place in `items` that says `query` (its words in order, ignoring case and punctuation), and every flag whose
  * note says it (its words in order, as the transcript is matched), in the order of `items`, each item's in time order.
  */
-export function searchLibrary(items: readonly LibrarySearchItem[], query: string): LibrarySearchHit[] {
+export function searchLibrary(items: readonly LibrarySearchItem[], query: string): Result.Result<LibrarySearchHit[], LibraryRequestRefused> {
   const wanted = query.split(/\s+/).map(searchToken).filter(Boolean);
-  if (!wanted.length) throw new Error('search for at least one word');
-  return items.flatMap(({ item, transcript, flags }) => {
+  if (!wanted.length) return Result.fail(new LibraryRequestRefused({ reason: 'search for at least one word' }));
+  return Result.succeed(items.flatMap(({ item, transcript, flags }) => {
     const spoken = transcript && item.speech ? transcriptHits(item, item.tracks[item.speech], transcript, wanted) : [];
     const flagged = flags.filter((f) => f.note && holdsTokens(f.note.split(/\s+/).map(searchToken).filter(Boolean), wanted))
       .map((f): LibrarySearchHit => ({ item: item.id, on: 'flag', flag: f.id, start: f.start, end: f.end, text: f.note ?? '' }));
     return [...spoken, ...flagged].toSorted((a, b) => a.start - b.start);
-  });
+  }));
 }
 
 const tokensAt = (tokens: readonly string[], i: number, wanted: readonly string[]) => wanted.every((token, k) => tokens[i + k] === token);

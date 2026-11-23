@@ -13,6 +13,7 @@ import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { getPriority, setPriority } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import type { VideoConfig } from 'remotion';
+import { Layer } from 'effect';
 import { blockoutSlug, projectSlug, replaySlug } from './project-bundle.ts';
 import { bundleStudioProject } from './studio-bundle.ts';
 import { refuseProjectPaintingErrors } from './render-preflight.ts';
@@ -22,6 +23,7 @@ import { serveRenderFrameSink, type RenderFrame } from './render-frame-sink.ts';
 import { measuredRenderFrames, rawRenderFrameInput, renderFramesInOrder, renderStillsByFrame, renderStillsInto, type RenderStillImage } from './render-frame-writes.ts';
 import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
 import { serveLibraryMedia } from '#lib/footage/library-media/engine/library-media-server.ts';
+import { runStudioEffect } from '#lib/platform/process/engine/studio-effect-runtime.ts';
 import { countVideoFrames, openFfmpegInput, runFfmpegAsync } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { placeRenderWithSnapshot, renderStagingPathOf } from './render-snapshot.ts';
 import type { RenderSnapshot } from '../models/render-snapshot-model.ts';
@@ -181,7 +183,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   const checking = traceClock();
   const paintings = await refuseProjectPaintingErrors(project);
   if (paintings) trace.record(`${paintings} ${paintings === 1 ? 'painting' : 'paintings'} checked`, { start: checking, end: traceClock() });
-  const placements = await placing, paintCache = await caching, frameSink = await serveRenderFrameSink(), libraryMedia = await serveLibraryMedia();
+  const placements = await placing, paintCache = await caching, frameSink = await serveRenderFrameSink(), libraryMedia = await runStudioEffect(serveLibraryMedia(), Layer.empty);
   const serveUrl = await trace.run('bundle', () => bundleStudioProject(project));
   const props = (p: Partial<VideoProps> = {}): VideoProps => ({
     captions: false, probe: false, blockouts: false, lens, libraryMedia: libraryMedia.url, ...(paintingValues && { paintingValues }), ...(traceDetail && { traceDetail }), ...(placements && { stampPlacements: placements.url }), ...(paintCache && { paintCache: paintCache.url }), ...p,

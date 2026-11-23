@@ -68,7 +68,7 @@ export const whisperFootageTranscriberLayer = Layer.effect(FootageTranscriber, E
       const { samples, rate } = yield* Effect.try({
         try: () => samplesFromWav(Buffer.from(wav.buffer, wav.byteOffset, wav.byteLength)),
         // samplesFromWav throws only Errors, saying what the WAV lacks.
-        catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+        catch: (error) => new TranscriptionFailed({ path: footage, reason: error instanceof Error ? error.message : String(error) }),
       });
       return { type: 'audioExtracted' as const, samples, rate };
     }),

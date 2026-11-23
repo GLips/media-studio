@@ -58,6 +58,7 @@ export function useReviewOps(project: string) {
   };
   return {
     /** The server's answer, or undefined when the batch failed: it's kept for `retry`, and `failed` says so. */
+    // oxlint-disable-next-line arch/no-discarding-catch -- the mutation keeps the failure for `failed` and `retry`; callers only need the answer or its absence.
     apply: (ops: DecodedReviewOp[]): Promise<ReviewOpsAnswer | undefined> => send.mutateAsync(ops).catch(() => undefined),
     pending: send.isPending,
     failed,

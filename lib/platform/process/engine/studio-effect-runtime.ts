@@ -5,7 +5,7 @@
 // A failure rejects with the program's own error (a Schema.TaggedError whose message is its sentence), which
 // cli/studio.ts prints as one line; a defect rejects with the thrown value, its stack intact.
 import { NodeServices } from '@effect/platform-node';
-import { Cause, Effect, Exit, Formatter, Layer, Logger } from 'effect';
+import { Cause, Console, Effect, Exit, Formatter, Layer, Logger, Schema } from 'effect';
 
 const isLogText = (part: unknown): part is string => typeof part === 'string';
 
@@ -35,3 +35,8 @@ export async function runStudioEffect<A, E, R, LE>(
   if (Exit.isSuccess(exit)) return exit.value;
   throw Cause.squash(exit.cause);
 }
+
+const StudioJsonOutput = Schema.fromJsonString(Schema.Json, { space: 2 });
+
+/** `value` as indented JSON on stdout, a verb's payload. */
+export const printStudioJson = (value: Schema.Json) => Schema.encodeEffect(StudioJsonOutput)(value).pipe(Effect.flatMap(Console.log));
