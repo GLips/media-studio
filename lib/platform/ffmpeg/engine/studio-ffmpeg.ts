@@ -41,7 +41,7 @@ export class StudioFfmpeg extends Context.Service<StudioFfmpeg, {
  */
 export const startStudioFfmpegOutput = (args: readonly string[]) => Effect.gen(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  return yield* spawner.spawn(ChildProcess.make('ffmpeg', [...args], { stdin: 'ignore', stderr: 'ignore' })).pipe(
+  return yield* spawner.spawn(ChildProcess.make('ffmpeg', [...args], { ...STUDIO_CHILD_PROCESS, stdin: 'ignore', stderr: 'ignore' })).pipe(
     Effect.mapError((error) => new FfmpegFailed({ tool: 'ffmpeg', args: [...args], stderr: error.message })),
   );
 });

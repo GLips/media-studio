@@ -9,7 +9,8 @@
   checks after it. Run by hand with no `--scope`, check:arch and lint judge the studio and `work/` both, each against
   its own baseline, reading the working tree, untracked files included; each hook passes its own scope and reads what
   its commit holds. The GPU gate (`npm run stamp:gate`) takes minutes on the one shared adapter, so pre-push runs it, not
-  pre-commit; run it yourself only before handing over work that changes rendering.
+  pre-commit; run it yourself only before handing over work that changes rendering. Pre-commit runs `npm run test:recorder`
+  only for commits touching the recorder; pre-push always does.
 - The painting engine is in flux: renders may shift a little between runs and between commits. Judge a moved GPU-gate
   baseline by eye at delivery size and accept it when it looks right; save repeatability work for differences a viewer
   would notice.

@@ -1,21 +1,7 @@
 {
   "arch(effect-native-io)": {
-    "lib/footage/library-media/engine/library-frame-decoder.ts": {
-      "import { spawnFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';": 1
-    },
     "lib/footage/library-media/engine/library-media-server.ts": {
       "import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';": 1
-    }
-  },
-  "arch(effect-native-promises)": {
-    "lib/footage/library-media/engine/library-frame-decoder.ts": {
-      "const decoder: Decoder = { key, path: source.path, start, fps: source.fps, process: libraryFrameDecoderStarted(), frames: new Map(), waiters: new Set(), child, queue: Promise.resolve(), idle: null, used: Date.now() };": 1,
-      "return new Promise((resolve) => {": 1,
-      "const read = decoder.queue.then(() => readFrame(decoder, index)).finally(() => {": 2,
-      "Effect.promise(() => readFrameAt(source, seconds)).pipe(Effect.flatMap(FrameRead.$match({": 1
-    },
-    "lib/footage/library-media/engine/library-media-server.ts": {
-      "return { url: `http://127.0.0.1:${yield* Effect.promise(() => listenOnRenderLoopback(server))}` };": 1
     }
   },
   "arch(no-chained-type-assertions)": {
