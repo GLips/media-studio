@@ -290,20 +290,20 @@
     },
     "shot/paper-card": {
       "file": "shot/paper-card.png",
-      "output": "7d6a272027cdfccbd7e801686aaa27706ba0eea319a4338c156d57340daba5eb",
+      "output": "2cd588c3fa79d5b1b85d73315a8fd5b01df6ec2340d7c7275d7b4cf78b1838aa",
       "inputs": "f19f6493ab4a498208e73c0e43ddbfc7a86641a5bd538987f42d1402f051ad4d",
-      "reason": "vid-187: diorama view (shared prints, yaw, tint, turn, glow) and the paper kit through its presets",
+      "reason": "vid-187: the pop-up's shadow fits its furthest sheet (a tighter map: smooth soft shadows where the loose fit stippled) and its normal bias is at least a shadow texel",
       "accepted": "2026-11-23",
-      "acceptedOver": "69fb3ff4",
+      "acceptedOver": "1cd008cd",
       "adapter": "apple metal-3"
     },
     "shot/paper-diorama": {
       "file": "shot/paper-diorama.png",
-      "output": "61024f78a7daf0e20cb02d8b4cad44c1a97461a3ebb6bc441a06d51864dde38a",
+      "output": "88302315ef076866038b1ba71455c2e89a67c4cd7ee91c404357ee1ff28266ba",
       "inputs": "f2477819d1adca33b63184b61393abd5f489cf85a85bc3c82d80397a4b2083fe",
-      "reason": "vid-187: diorama view (shared prints, yaw, tint, turn, glow) and the paper kit through its presets",
+      "reason": "vid-187: the pop-up's shadow fits its furthest sheet (a tighter map: smooth soft shadows where the loose fit stippled) and its normal bias is at least a shadow texel",
       "accepted": "2026-11-23",
-      "acceptedOver": "69fb3ff4",
+      "acceptedOver": "1cd008cd",
       "adapter": "apple metal-3"
     },
     "shot/paper-heron": {
