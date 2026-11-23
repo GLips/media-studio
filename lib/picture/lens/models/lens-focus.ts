@@ -16,8 +16,8 @@ type LensFramePoint = { readonly x: number; readonly y: number };
 
 /**
  * A tilt-shift lens's tilt. `angle`, radians within ±π/2: how far the plane of sharp focus turns from facing the
- * camera, about a line through the focus straight ahead; positive leans its top away, as a ground seen from above
- * recedes, so a band across it stays sharp. `axis`, radians y-down, turns that line from across the frame (0).
+ * camera, about a line through the focus straight ahead; positive leans its top away. Upright across a receding
+ * ground (paperDioramaFocus), only a band of it is sharp. `axis`, radians y-down, turns that line from across the frame (0).
  */
 export type LensFocusTilt = { readonly angle: number; readonly axis?: number };
 

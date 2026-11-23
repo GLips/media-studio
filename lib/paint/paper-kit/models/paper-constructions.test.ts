@@ -19,10 +19,13 @@ test('a stand-up rises square to the ground while its tab lies turned over flat 
     widthPx: 100, heightPx: 140, outline: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 120 }, { x: 0, y: 120 }], foot: { from: { x: 0, y: 120 }, to: { x: 100, y: 120 } },
     tab: [{ x: 10, y: 120 }, { x: 90, y: 120 }, { x: 90, y: 140 }, { x: 10, y: 140 }], rise: ({ at }) => at,
   })({ id: 'card', print: 'card', at: { x: 200, y: 200 } });
-  for (const rise of [0, 0.5, 1]) {
+  // Face down once standing; while the card lies flat the tab tucks a sliver short of over, under the card's slab.
+  for (const [rise, tuck] of [[0, 0.08], [0.5, 0.04], [1, 0]]) {
     const pose = posed(card, rise), ground = facing(pose.get(PAINTED_THREE_POP_UP_BASE)!.get(PAINTED_THREE_SHEET_ROOT)!);
-    assert.ok(facing(pose.get('card')!.get(PAPER_STAND_UP_TAB)!).distanceTo(ground.clone().negate()) < 1e-9, `the tab face down at rise ${rise}`);
+    assert.ok(Math.abs(facing(pose.get('card')!.get(PAPER_STAND_UP_TAB)!).angleTo(ground.clone().negate()) - tuck) < 1e-9, `the tab ${tuck} short of face down at rise ${rise}`);
   }
+  const flat = posed(card, 0), normal = facing(flat.get(PAINTED_THREE_POP_UP_BASE)!.get(PAINTED_THREE_SHEET_ROOT)!);
+  assert.ok(landed(flat.get('card')!.get(PAPER_STAND_UP_TAB)!, 50, 140).dot(normal) < landed(flat.get('card')!.get(PAINTED_THREE_SHEET_ROOT)!, 50, 100).dot(normal) - 1);
   const risen = posed(card, 1), ground = facing(risen.get(PAINTED_THREE_POP_UP_BASE)!.get(PAINTED_THREE_SHEET_ROOT)!);
   assert.ok(Math.abs(facing(risen.get('card')!.get(PAINTED_THREE_SHEET_ROOT)!).dot(ground)) < 1e-9);
   // Behind the foot: the tab's far edge lies farther up the ground than the foot does.

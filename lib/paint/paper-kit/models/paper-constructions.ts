@@ -53,6 +53,9 @@ export type PaperStandUpOptions = {
 /** An outline in print px (y down): its points, or one closed SVG path's data. */
 export type PaperOutline = PaintedThreeSheetRing;
 
+/** Radians short of turned over a stand-up's tab lies while its card is flat, so the two never share a slab. */
+const PAPER_STAND_UP_TUCK = 0.08;
+
 /** The fold-back tab's face id on a stand-up's sheet. */
 export const PAPER_STAND_UP_TAB = 'tab';
 
@@ -61,8 +64,10 @@ export function paperStandUp({ widthPx, heightPx, outline, holes, foot, tab, ris
   return (place) => [{
     ...placed(place), print: place.print, widthPx, heightPx,
     root: { outline, ...(holes && { holes }), hinge: foot },
-    // The tab's angle less the card's is −π throughout: it lies turned over, flat, wherever the card stands.
-    folds: tab ? [{ id: PAPER_STAND_UP_TAB, outline: tab, hinge: foot, angle: angleOfRise(rise, (r) => r * QUARTER - Math.PI) }] : [],
+    // The tab's angle less the card's is −π once it stands: turned over, flat on the ground. Turned exactly over while
+    // the card lies flat, the tab fills the card's own slab and its kraft fights the print; a sliver short of over
+    // tucks it into the ground below instead, closing as the card rises.
+    folds: tab ? [{ id: PAPER_STAND_UP_TAB, outline: tab, hinge: foot, angle: angleOfRise(rise, (r) => r * QUARTER - Math.PI + PAPER_STAND_UP_TUCK * Math.max(0, 1 - r)) }] : [],
     angle: angleOfRise(rise, (r) => r * QUARTER),
   }];
 }
@@ -209,7 +214,7 @@ export function paperBoxHouseNet(options: PaperBoxHouseOptions): PaperBoxHouseNe
     return [{ x: x0, y: footY }, { x: x1, y: footY }, { x: x1 - tabPx, y: footY + tabPx }, { x: x0 + tabPx, y: footY + tabPx }];
   };
   return {
-    walls: { widthPx: 2 * (w + d), heightPx: Math.ceil(footY + tabPx), eavesY, footY, outlines: eachPaperWall(wall), tabs: eachPaperWall(tab) },
+    walls: { widthPx: Math.ceil(2 * (w + d)), heightPx: Math.ceil(footY + tabPx), eavesY, footY, outlines: eachPaperWall(wall), tabs: eachPaperWall(tab) },
     roof: { widthPx: Math.ceil(w + 2 * overhangPx), heightPx: Math.ceil(2 * slope), ridgeY: slope },
   };
 }

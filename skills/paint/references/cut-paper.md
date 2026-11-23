@@ -38,8 +38,8 @@ const { plane, paintedTextures } = paperPopUpPlane({ id: 'village', depth: 1, po
   *at their spot*, since the line swings across the frame.
 - **Scatter.** `seededScatter` places pieces clear of paths and sites; clump small things, never in rows.
 - **Light and lens.** `paperDioramaLight(pitch)` gives a low warm sun with `{light, leak, lights}`, and
-  `paperDioramaFocus({ focus, aperture })` leans the focus plane onto the ground: the band of sharp focus that sells
-  scale. An aperture of 20 or more makes the band narrow.
+  `paperDioramaFocus({ focus, aperture })` stands the focus plane upright across the ground: a band of sharp focus
+  that sells scale. An aperture of 20 or more makes the band narrow.
 - **Life.** `glow` names an emission print (black where nothing glows), and `glowStrength` keys it: lit windows bloom.
 - **Motion.** Pieces rise from flat back to front, 0.1–0.3 s apart; the camera drifts.
 

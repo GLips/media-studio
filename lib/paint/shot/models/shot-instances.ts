@@ -180,8 +180,8 @@ function shotItemLook(looks: PaintCameraDepthLooks, plane: string, item: PlaneIn
   const unpictured = paintSimilarityInverse(picture), name = `${plane}'s item ${item.key}`;
   const seen = (camera: PaintSimilarity, laid: PlaneInstance) => paintSimilarityAfter(camera, paintSimilarityAfter(paintSimilarityOf(laid.lay.placement, laid.lay.pivot), unpictured));
   const look = looks.lookAt(item.depth, name), unsheared = seen(look.view, item);
-  // Under a tilted focus an item takes the defocus and an exposure's shear at its anchor: it's small beside how they vary.
-  const anchor = paintSimilarityApply(look.view, item.lay.placement), sheared = look.shear && lensFrameAffineApply(look.shear, anchor);
+  // Under a tilted focus an item takes the defocus and an exposure's shear at its pivot as laid: small beside how they vary.
+  const anchor = paintSimilarityApply(look.view, { x: item.lay.pivot.x + item.lay.placement.x, y: item.lay.pivot.y + item.lay.placement.y }), sheared = look.shear && lensFrameAffineApply(look.shear, anchor);
   const view = sheared ? { ...unsheared, kx: unsheared.kx + sheared.x - anchor.x, ky: unsheared.ky + sheared.y - anchor.y } : unsheared;
   const defocus = look.defocusField ? Math.abs(lensDefocusFieldAt(look.defocusField, anchor)) : look.defocus;
   const end = (laid: PlaneInstance, which: 'open' | 'close') => {
