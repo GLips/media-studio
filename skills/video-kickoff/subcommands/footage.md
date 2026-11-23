@@ -53,8 +53,8 @@ its answer.
 
 ## 3. Story options
 
-Start the project (`studio new <slug> --capability voice-led`) and name each recording in it once (the reference
-above). Then propose **two or
+Start the project (`studio new <slug> --capability voice-led`), name each recording in it once (the reference
+above), and write the intake's answers into the brief. Then propose **two or
 three structures**, really different ways to tell it, each built from the log's sections:
 
 - **Through-line**: the one sentence the piece argues.
@@ -65,13 +65,14 @@ three structures**, really different ways to tell it, each built from the log's 
 - **Left out**: the sections it drops, and why.
 - **Pickups it needs**, if any (step 4).
 
-Post them as one decision with a `text:` candidate each (`studio review decide <p> story --question "Which way do we
-tell it?" --candidate "text:…"`, the `studio-review` skill), and say them in the chat too. The speaker picks one or
-combines them. Done when they have.
+Time each order from the transcript: `studio library show <item> --json` has every word's time. Post them as one
+decision, each `text:` candidate its through-line, opening and order (`studio review decide <p> story --question
+"Which way do we tell it?" --candidate "text:…"`, the `studio-review` skill), give them whole in the chat, and watch
+for the pick. The speaker picks one or combines them. Done when they have.
 
 ## 4. Pickups
 
-Name the short, specific things the speaker could record to make the chosen story work: a sentence bridging two
+Once the story is picked, name the short, specific things the speaker could record to make the chosen story work: a sentence bridging two
 thoughts that were recorded apart, a hook that states the problem, the missing step a tutorial skips, a clean read of a
 point they stumbled through every time. For each: what to say (a draft they put in their own words), where it goes,
 why, on camera or voice only, and what the cut does without it.
