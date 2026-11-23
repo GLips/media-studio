@@ -31,11 +31,13 @@ needs no `voice` unless some lines are read too. A line not yet levelled is flag
 
 ## The scenes
 
+Each component's props: `studio api <name>`.
+
 - `recording.timeAt(s)` is the item second a scene shows now, on the words being said.
-- `<LibraryVideo footage={recording} track="camera" at={…} />` fills its box with a track at that second.
+- `<LibraryVideo footage={recording} track="camera" at={…} />` fills its box with that track.
 - `<PictureInPicture main={screen} inset={face} k={…} />`: the face full frame at `k` 0, a circle in the corner at 1.
 - To follow the cursor: `useLibraryInputLog(recording)`, `recording.cursorOn('screen', log)`, `followPointAt(path,
   at, { seconds })`, and `<ZoomOnPoint picture focus zoom>` around the screen.
 - To keep tabs or a side panel out of frame: `<ZoomOnPoint>` on a fixed `focus` and `zoom`.
 
-A render needs the library's media online; `studio library config` says where it is.
+A render needs the library's media online (`studio library config`).

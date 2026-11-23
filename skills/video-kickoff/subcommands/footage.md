@@ -45,7 +45,8 @@ each from what you heard:
 - **The takeaway**: the one thing a viewer should leave with, when the recording doesn't make it plain.
 - **Platform and length**: where it's posted sets the length and the frame.
 - **The private data in the log**, range by range: cut it, zoom the screen past it when it sits at an edge (tabs, a
-  side panel), cover it with the speaker's face full frame, or fine to show. Nothing goes to posting until each range
+  side panel; a zoom can't part it from what's shown beside it in the page), cover it with the speaker's face full
+  frame, or fine to show. Nothing goes to posting until each range
   has an answer.
 
 Done when the purpose, kind, audience, platform, length and takeaway each fit one line, and every private range has
@@ -96,7 +97,7 @@ a stretch of the recording whose edges land in silence (the reference above). Th
 - Cut every retake, aside, stumble and dead air in the log: a line splits around what it drops.
 - A short even `timing` gap stands in for the pauses cut; `text` cleans the captions.
 
-**Then picture**, by **layout**:
+**Then picture**, by **layout**, each scene's code written as `video-motion` writes it:
 
 - Open on the speaker's face, full frame: the viewer meets a person before a screen.
 - When they show something on screen, the screen fills the frame with their face in a corner circle, switching as
