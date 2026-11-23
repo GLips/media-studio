@@ -110,6 +110,10 @@ final class Recorder {
         await recording.end()
         log("recorded \(recording.folder.path)")
         state = .idle
+        handOffToLibrary(recording.folder) { problem in
+          self.problems["library"] = problem
+          self.onChange?()
+        }
       }
     case .starting, .stopping:
       return
