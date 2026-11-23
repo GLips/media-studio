@@ -9,6 +9,9 @@ export type { FlatKey, FlatPose, FlatView } from '#lib/footage/previs/models/fla
 export { transcriptCutBefore, transcriptLines, type FootageTranscript } from '#lib/footage/transcript/models/footage-transcript.ts';
 export type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 export { libraryFootage, type LibraryFootage, type LibraryTranscriptFile } from '#lib/footage/library/models/library-footage.ts';
+export { followPointAt, pointOnPathAt, type TimedPoint } from '#lib/picture/camera/models/follow-point.ts';
+export { pointZoomOf, type PointZoom } from '#lib/picture/camera/models/point-zoom.ts';
+export { ZoomOnPoint } from '#lib/picture/camera/studio/zoom-on-point.tsx';
 export type { RecordedSpeech, SpokenStretch } from '#lib/timing/voice/models/recorded-speech.ts';
 export { inputLogKeyStrikes, inputLogWaypoints, parseRecorderInputLog, type InputEvent, type InputLog, type InputLogCoordinates, type InputModifier, type InputWaypoint } from '#lib/footage/input-log/models/input-log.ts';
 export { beatGrid, steadyBeatGrid, type BeatGrid } from '#lib/timing/timeline/models/beat-grid.ts';
