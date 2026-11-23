@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { isSfxGenerated, type SfxSoundRequest } from '#lib/timing/sound/models/library.ts';
-import type { SpokenWord } from '#lib/timing/voice/models/voice-words.ts';
+import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 import type { SfxEvent } from './cue-events.ts';
 import { draftSfxCues, sfxCueOverrides, sfxCueSound, staleSfxCues, type SfxCueList } from './cues.ts';
 
