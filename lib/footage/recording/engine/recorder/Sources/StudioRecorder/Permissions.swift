@@ -1,6 +1,6 @@
 // The four permissions a recording needs, asked for by the app itself so each is one click from a prompt it
-// raised. Screen Recording and Input Monitoring take effect only in a new process: once both are granted the app
-// relaunches itself.
+// raised. Screen Recording and Input Monitoring take effect only in a new process: the app relaunches itself on
+// each new grant of either.
 import AppKit
 import AVFoundation
 
@@ -52,12 +52,17 @@ enum Permission: String, CaseIterable, Codable {
 
 @MainActor
 final class Permissions {
-  /// What this process holds; the recorder records only with all four.
+  /// What the config needs and this process lacks; the recorder records only once it's empty.
   private(set) var missing: [Permission]
   var onChange: (() -> Void)?
   private var poll: Timer?
 
-  init() { missing = Permission.allCases.filter { !$0.granted } }
+  init(config: RecorderConfig) {
+    var needed: [Permission] = [.screen, .input]
+    if config.camera != nil { needed.append(.camera) }
+    if config.mic != nil { needed.append(.microphone) }
+    missing = needed.filter { !$0.granted }
+  }
 
   /// Asks for each missing permission in turn, then watches for the rest being granted in System Settings.
   func requestMissing() async {
@@ -91,6 +96,9 @@ final class Permissions {
         let fresh = grantedInFreshProcess()
         if let granted = self.missing.first(where: { ($0 == .screen || $0 == .input) && fresh.contains($0) }) {
           log("\(granted.title) granted: relaunching")
+          // Stop polling first: a slow launch would otherwise see the same grant and start a second copy.
+          self.poll?.invalidate()
+          self.poll = nil
           relaunch()
         }
       }

@@ -6,7 +6,7 @@ const installRecorderCommand = defineCommand({
   meta: {
     name: 'install',
     description: 'Build the recorder, install it as ~/Applications/Studio Recorder.app and start it.',
-    about: "Needs Xcode's Swift toolchain and an Apple Development signing identity, which keeps its permissions across rebuilds. Its first start asks for Screen Recording, Input Monitoring, Camera and Microphone; quit and reopen it after granting the first two. Settings are ~/Library/Application Support/StudioRecorder/config.json (hotkey, recordingsDir, screen display, camera and mic by name, the mic's input, each device's latency), written with defaults on first start; it reads them when it starts. Its log is ~/Library/Logs/StudioRecorder.log.",
+    about: "Needs Xcode's Swift toolchain and an Apple Development signing identity, which keeps its permissions across rebuilds. Its first start asks for Screen Recording, Input Monitoring, Camera and Microphone; it relaunches itself as each of the first two is granted. Settings are ~/Library/Application Support/StudioRecorder/config.json (hotkey, recordingsDir, screen display, camera and mic by name, the mic's input, each device's latency), written with defaults on first start; it reads them when it starts. Its log is ~/Library/Logs/StudioRecorder.log.",
   },
   args: {
     identity: { type: 'string', description: 'The codesigning identity (SHA-1 or name); the first Apple Development one by default' },

@@ -44,6 +44,8 @@ final class MicTrack: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
       ])
     super.init()
 
+    // The writer has made its file by now: a device that can't be set up takes it away again.
+    do {
     session.beginConfiguration()
     let input = try AVCaptureDeviceInput(device: device)
     guard session.canAddInput(input) else { throw RecorderError("can't add \(device.localizedName) to a capture session") }
@@ -63,6 +65,10 @@ final class MicTrack: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     guard session.canAddOutput(output) else { throw RecorderError("can't read audio from \(device.localizedName)") }
     session.addOutput(output)
     session.commitConfiguration()
+    } catch {
+      writer.discard()
+      throw error
+    }
 
     var mono = AudioStreamBasicDescription(
       mSampleRate: sampleRate, mFormatID: kAudioFormatLinearPCM, mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
@@ -105,7 +111,13 @@ final class MicTrack: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
       blockBufferMemoryAllocator: nil, flags: 0, blockBufferOut: &blockOut)
     guard status == noErr else { log("mic: unreadable buffer (\(status))"); return }
     let planes = UnsafeMutableAudioBufferListPointer(list)
-    guard channel - 1 < planes.count, let data = planes[channel - 1].mData else { return }
+    // One plane per input is what audioSettings asked for; anything else would be written as garbled mono.
+    guard channel - 1 < planes.count, planes[channel - 1].mNumberChannels == 1, Int(planes[channel - 1].mDataByteSize) >= count * 4,
+      let data = planes[channel - 1].mData
+    else {
+      log("mic: buffer isn't one float plane per input (\(planes.count) planes)")
+      return
+    }
     let bytes = count * 4
 
     var block: CMBlockBuffer?

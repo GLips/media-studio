@@ -28,7 +28,17 @@ func log(_ message: String) {
 @MainActor
 final class Recorder {
   enum State { case idle, starting, recording(Recording), stopping }
-  private(set) var state = State.idle { didSet { onChange?() } }
+  private(set) var state = State.idle {
+    didSet {
+      onChange?()
+      if quitting { finishForQuit() }
+    }
+  }
+  /// The current or latest take's track problems, kept after it stops so the menu still shows them.
+  private(set) var problems: [String: String] = [:]
+  private var trackCheck: Timer?
+  /// Set by Quit (or SIGTERM) during a take: the take is stopped and finished, then the app quits.
+  private var quitting = false
   var onChange: (() -> Void)?
   let config: RecorderConfig
   /// Absent in the command-line test mode, which runs under the terminal's permissions.
@@ -39,7 +49,35 @@ final class Recorder {
     self.permissions = permissions
   }
 
+  /// A track failing mid-take sounds an alert (there's no window to show one) and lists itself in the menu.
+  private func watch(_ recording: Recording) {
+    trackCheck = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+      MainActor.assumeIsolated {
+        guard let self, recording.checkTracks() else { return }
+        self.problems = recording.problems
+        NSSound(named: "Basso")?.play()
+        self.onChange?()
+      }
+    }
+  }
+
   var isRecording: Bool { if case .recording = state { true } else { false } }
+
+  /// Whether the app may quit now; if not, it stops the take and replies to the pending terminate once finished.
+  func mayQuitNow() -> Bool {
+    if case .idle = state { return true }
+    quitting = true
+    finishForQuit()
+    return false
+  }
+
+  private func finishForQuit() {
+    switch state {
+    case .recording: toggle()
+    case .idle: NSApp.reply(toApplicationShouldTerminate: true)
+    case .starting, .stopping: break
+    }
+  }
 
   /// Presses while a recording starts or stops are ignored, so a double press can't start a second one.
   func toggle() {
@@ -56,7 +94,9 @@ final class Recorder {
         do {
           let recording = try await Recording.begin(config: config)
           log("recording to \(recording.folder.path)")
+          problems = [:]
           state = .recording(recording)
+          watch(recording)
         } catch {
           log("couldn't start: \(error)")
           state = .idle
@@ -64,6 +104,8 @@ final class Recorder {
       }
     case .recording(let recording):
       state = .stopping
+      trackCheck?.invalidate()
+      trackCheck = nil
       Task {
         await recording.end()
         log("recorded \(recording.folder.path)")
@@ -105,25 +147,34 @@ final class MenuBarDot: NSObject {
   private func refresh() {
     let missing = recorder.permissions?.missing ?? []
     let glyph = switch recorder.state {
-    case .idle where !missing.isEmpty: "MenuBarNeedsPermission"
+    // The amber mark means "look at the menu": a missing permission, or a track that failed in the last take.
+    case .idle where !missing.isEmpty || !recorder.problems.isEmpty: "MenuBarNeedsPermission"
     case .idle: "MenuBarIdleTemplate"
     case .starting, .stopping: "MenuBarBusyTemplate"
     case .recording: "MenuBarRecording"
     }
     item.button?.image = menuBarGlyph(glyph)
-    item.button?.toolTip = missing.isEmpty
-      ? "\(recorderDisplayName) (\(recorder.config.hotkey))"
-      : "\(recorderDisplayName) needs \(missing.map(\.title).joined(separator: ", "))"
-    // Each missing permission is a menu item at the top that asks for it again.
+    let problems = recorder.problems.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }
+    item.button?.toolTip = !missing.isEmpty
+      ? "\(recorderDisplayName) needs \(missing.map(\.title).joined(separator: ", "))"
+      : problems.isEmpty ? "\(recorderDisplayName) (\(recorder.config.hotkey))" : "\(recorderDisplayName): \(problems.joined(separator: "; "))"
+    // Each missing permission is a menu item at the top that asks for it again; each track problem a line above it.
     for old in permissionItems { menu.removeItem(old) }
-    permissionItems = missing.map { permission in
+    let problemItems = recorder.problems.sorted { $0.key < $1.key }.map { track, problem in
+      NSMenuItem(title: "⚠︎ \(track.capitalized) \(problem)", action: nil, keyEquivalent: "")
+    }
+    permissionItems = problemItems + missing.map { permission in
       let item = NSMenuItem(title: "Allow \(permission.title)…", action: #selector(allow(_:)), keyEquivalent: "")
       item.target = self
       item.representedObject = permission.rawValue
       return item
     }
     for (index, permissionItem) in permissionItems.enumerated() { menu.insertItem(permissionItem, at: index) }
-    if !permissionItems.isEmpty { permissionItems.append(.separator()); menu.insertItem(permissionItems.last!, at: missing.count) }
+    if !permissionItems.isEmpty {
+      let separator = NSMenuItem.separator()
+      menu.insertItem(separator, at: permissionItems.count)
+      permissionItems.append(separator)
+    }
     toggleItem.title = recorder.isRecording ? "Stop Recording (\(recorder.config.hotkey))" : "Start Recording (\(recorder.config.hotkey))"
   }
 
@@ -152,6 +203,12 @@ func menuBarGlyph(_ name: String) -> NSImage? {
   return image
 }
 
+final class RecorderAppDelegate: NSObject, NSApplicationDelegate {
+  func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    MainActor.assumeIsolated { recorder.mayQuitNow() ? .terminateNow : .terminateLater }
+  }
+}
+
 let arguments = CommandLine.arguments
 func argument(_ name: String) -> String? {
   arguments.firstIndex(of: name).flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
@@ -173,7 +230,7 @@ do {
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 let testSeconds = argument("--record-seconds").flatMap(Double.init)
-let recorder = MainActor.assumeIsolated { Recorder(config: config, permissions: testSeconds == nil ? Permissions() : nil) }
+let recorder = MainActor.assumeIsolated { Recorder(config: config, permissions: testSeconds == nil ? Permissions(config: config) : nil) }
 var keepAlive: [AnyObject] = []
 
 if let seconds = testSeconds {
@@ -182,7 +239,8 @@ if let seconds = testSeconds {
     var stopScheduled = false
     recorder.onChange = {
       switch recorder.state {
-      case .idle: exit(0)
+      // A run that never reached recording failed to start: the tests must see that.
+      case .idle: exit(stopScheduled ? 0 : 1)
       case .recording where !stopScheduled:
         stopScheduled = true
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { recorder.toggle() }
@@ -200,6 +258,15 @@ if let seconds = testSeconds {
   }
 } else {
   MainActor.assumeIsolated {
+    let delegate = RecorderAppDelegate()
+    app.delegate = delegate
+    keepAlive.append(delegate)
+    // pkill (a reinstall) quits the way the menu does, finishing a take first.
+    Foundation.signal(SIGTERM, SIG_IGN)
+    let terminate = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+    terminate.setEventHandler { NSApp.terminate(nil) }
+    terminate.resume()
+    keepAlive.append(terminate)
     keepAlive.append(MenuBarDot(recorder: recorder))
     do {
       keepAlive.append(try HotKey(config.hotkey) { MainActor.assumeIsolated { recorder.toggle() } })

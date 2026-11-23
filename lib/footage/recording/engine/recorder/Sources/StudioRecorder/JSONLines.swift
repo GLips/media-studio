@@ -5,6 +5,8 @@ import Foundation
 final class JSONLines {
   private let handle: FileHandle
   private let lock = NSLock()
+  /// Writes after close are dropped: an event tap can still be mid-callback when the recording ends.
+  private var closed = false
 
   init(url: URL) throws {
     FileManager.default.createFile(atPath: url.path, contents: nil)
@@ -14,14 +16,16 @@ final class JSONLines {
   func write(_ object: [String: Any]) {
     guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) else { return }
     lock.lock()
+    defer { lock.unlock() }
+    guard !closed else { return }
     handle.write(data + Data([0x0A]))
-    lock.unlock()
   }
 
   func close() {
     lock.lock()
+    defer { lock.unlock() }
+    closed = true
     try? handle.close()
-    lock.unlock()
   }
 }
 

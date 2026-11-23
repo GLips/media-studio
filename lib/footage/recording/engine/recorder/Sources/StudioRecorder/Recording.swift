@@ -14,6 +14,8 @@ final class Recording {
   private let clockLog: ClockLog
   private let config: RecorderConfig
   private var failures: [String: String] = [:]
+  /// What went wrong with a track during the take, by track: shown in the menu, written to recording.json.
+  private(set) var problems: [String: String] = [:]
   private var stoppedAt: CMTime?
 
   static func begin(config: RecorderConfig) async throws -> Recording {
@@ -67,10 +69,35 @@ final class Recording {
     writeMetadata(status: "recording")
   }
 
+  /// Looks for a camera or mic that went quiet (an HDMI signal lost, a cable pulled) or a screen stream that
+  /// stopped. Call each second while recording; returns whether it found a new problem. The screen isn't timed out:
+  /// a still screen sends no frames.
+  @MainActor
+  func checkTracks() -> Bool {
+    let now = HostClock.now()
+    var found: [String: String] = [:]
+    for (name, writer) in [("camera", camera?.writer), ("mic", mic?.writer)] {
+      guard let writer, problems[name] == nil else { continue }
+      let progress = writer.progress
+      if let last = progress.lastPTS {
+        if (now - last).seconds > 2 { found[name] = "stopped sending at \(String(format: "%.1f", (last - start).seconds)) s" }
+      } else if (now - start).seconds > 5 {
+        found[name] = "sent nothing"
+      }
+    }
+    if problems["screen"] == nil, let error = screen?.stopError { found["screen"] = "stopped: \(error)" }
+    guard !found.isEmpty else { return false }
+    problems.merge(found) { old, _ in old }
+    for (name, problem) in found { log("\(name) \(problem)") }
+    writeMetadata(status: "recording")
+    return true
+  }
+
   func end() async {
     let end = HostClock.now()
     stoppedAt = end
-    input.end()
+    // The tap's callbacks run on the main run loop: tear it down there, between callbacks.
+    await MainActor.run { input.end() }
     async let screenDone: Void? = screen?.stop(at: end)
     async let cameraDone: Void? = camera?.stop(at: end)
     async let micDone: Void? = mic?.stop()
@@ -83,25 +110,31 @@ final class Recording {
 
   private func writeMetadata(status: String) {
     var tracks: [String: Any] = [:]
-    if let screen {
+    // A track that never got a sample (a camera with no HDMI signal) has no file: it's left out, not listed.
+    if stoppedAt != nil {
+      for (name, writer) in [("screen", screen?.writer), ("camera", camera?.writer), ("mic", mic?.writer)] where writer != nil && writer?.firstPTS == nil {
+        failures[name] = "no samples arrived"
+      }
+    }
+    if let screen, screen.writer.firstPTS != nil {
       let geometry = screen.geometry
       tracks["screen"] = compact([
         "file": "screen.mp4", "startSeconds": seconds(screen.writer.firstPTS),
-        "writerDroppedFrames": screen.writer.notReady,
+        "writerDroppedFrames": screen.writer.progress.notReady,
         "display": [
           "name": geometry.name, "boundsPoints": geometry.boundsPoints, "scale": geometry.scale,
           "widthPixels": geometry.widthPixels, "heightPixels": geometry.heightPixels,
         ],
       ])
     }
-    if let camera, let cameraConfig = config.camera {
+    if let camera, camera.writer.firstPTS != nil, let cameraConfig = config.camera {
       tracks["camera"] = compact([
         "file": "camera.mp4", "startSeconds": seconds(camera.writer.firstPTS), "device": camera.deviceName,
         "sourceFormat": camera.sourceFormat, "latencySeconds": cameraConfig.latencyMs / 1000,
-        "captureDroppedFrames": camera.droppedByCapture, "writerDroppedFrames": camera.writer.notReady,
+        "captureDroppedFrames": camera.droppedByCapture, "writerDroppedFrames": camera.writer.progress.notReady,
       ])
     }
-    if let mic, let micConfig = config.mic {
+    if let mic, mic.writer.firstPTS != nil, let micConfig = config.mic {
       tracks["mic"] = compact([
         "file": "mic.m4a", "startSeconds": seconds(mic.writer.firstPTS), "device": mic.deviceName, "channel": mic.channel,
         "sampleRate": mic.sampleRate, "latencySeconds": micConfig.latencyMs / 1000,
@@ -120,6 +153,7 @@ final class Recording {
       "input": failures["input"] == nil ? ["file": "input.jsonl", "coordinates": "global-points"] : nil,
       "clockLog": "clock.jsonl",
       "leftOut": failures.isEmpty ? nil : failures,
+      "problems": problems.isEmpty ? nil : problems,
     ])
     guard let data = try? JSONSerialization.data(withJSONObject: metadata, options: [.prettyPrinted, .sortedKeys]) else { return }
     try? data.write(to: folder.appendingPathComponent("recording.json"), options: .atomic)

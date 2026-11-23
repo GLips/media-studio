@@ -16,7 +16,6 @@ struct DisplayGeometry: Codable {
 final class ScreenTrack: NSObject, SCStreamOutput, SCStreamDelegate {
   let writer: TrackWriter
   let geometry: DisplayGeometry
-  private let stream: SCStream
   private let queue = DispatchQueue(label: "recorder.screen", qos: .userInteractive)
 
   static func make(config: ScreenConfig, url: URL) async throws -> ScreenTrack {
@@ -68,14 +67,16 @@ final class ScreenTrack: NSObject, SCStreamOutput, SCStreamDelegate {
           AVVideoAllowFrameReorderingKey: false,
         ],
       ])
-    return ScreenTrack(stream: SCStream(filter: filter, configuration: streamConfig, delegate: nil), writer: writer, geometry: geometry)
+    return ScreenTrack(filter: filter, configuration: streamConfig, writer: writer, geometry: geometry)
   }
 
-  private init(stream: SCStream, writer: TrackWriter, geometry: DisplayGeometry) {
-    self.stream = stream
+  private var stream: SCStream!
+
+  private init(filter: SCContentFilter, configuration: SCStreamConfiguration, writer: TrackWriter, geometry: DisplayGeometry) {
     self.writer = writer
     self.geometry = geometry
     super.init()
+    stream = SCStream(filter: filter, configuration: configuration, delegate: self)
   }
 
   func start() async throws {
@@ -98,7 +99,11 @@ final class ScreenTrack: NSObject, SCStreamOutput, SCStreamDelegate {
     writer.append(sample)
   }
 
+  /// Why SCK stopped the stream mid-take (a display unplugged, the permission revoked); read on the main thread.
+  @MainActor private(set) var stopError: String?
+
   func stream(_ stream: SCStream, didStopWithError error: Error) {
     log("screen: capture stopped: \(error.localizedDescription)")
+    DispatchQueue.main.async { self.stopError = error.localizedDescription }
   }
 }

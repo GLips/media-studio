@@ -49,6 +49,8 @@ final class CameraTrack: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate 
       ])
     super.init()
 
+    // The writer has made its file by now: a device that can't be set up takes it away again.
+    do {
     session.beginConfiguration()
     let input = try AVCaptureDeviceInput(device: device)
     guard session.canAddInput(input) else { throw RecorderError("can't add \(device.localizedName) to a capture session") }
@@ -69,6 +71,10 @@ final class CameraTrack: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate 
     device.activeVideoMaxFrameDuration = range.minFrameDuration
     device.unlockForConfiguration()
     session.commitConfiguration()
+    } catch {
+      writer.discard()
+      throw error
+    }
   }
 
   /// Starts on its own queue: startRunning blocks for as long as the device takes to open.

@@ -15,14 +15,27 @@ final class TrackWriter {
   let url: URL
   private let writer: AVAssetWriter
   private let input: AVAssetWriterInput
-  private(set) var firstPTS: CMTime?
   private(set) var lastEnd: CMTime?
   private(set) var appended = 0
-  /// Samples the writer wasn't ready for: in real time they are dropped, not queued.
-  private(set) var notReady = 0
   private var failureLogged = false
-  /// Called once, with the host time of the track's first sample.
-  var onFirstSample: ((CMTime) -> Void)?
+  /// What the main thread reads while the capture queue writes, under `lock`.
+  private var shared = TrackProgress()
+  private let lock = NSLock()
+
+  /// The host times of the first and latest samples, and samples the writer wasn't ready for (in real time they
+  /// are dropped, not queued).
+  struct TrackProgress {
+    var firstPTS: CMTime?
+    var lastPTS: CMTime?
+    var notReady = 0
+  }
+
+  var progress: TrackProgress {
+    lock.lock()
+    defer { lock.unlock() }
+    return shared
+  }
+  var firstPTS: CMTime? { progress.firstPTS }
 
   init(name: String, url: URL, fileType: AVFileType, mediaType: AVMediaType, settings: [String: Any]) throws {
     self.name = name
@@ -38,17 +51,23 @@ final class TrackWriter {
   /// Appends a sample already on the host clock. Not thread-safe: call from the track's one capture queue.
   func append(_ sample: CMSampleBuffer) {
     let pts = sample.presentationTimeStamp
-    if firstPTS == nil {
-      writer.startSession(atSourceTime: pts)
-      firstPTS = pts
-      onFirstSample?(pts)
-    }
+    let first = progress.firstPTS == nil
+    if first { writer.startSession(atSourceTime: pts) }
+    lock.lock()
+    if first { shared.firstPTS = pts }
+    shared.lastPTS = pts
+    lock.unlock()
     guard writer.status == .writing else {
       if !failureLogged { log("\(name): writer \(writer.status.rawValue): \(writer.error?.localizedDescription ?? "?")") }
       failureLogged = true
       return
     }
-    guard input.isReadyForMoreMediaData else { notReady += 1; return }
+    guard input.isReadyForMoreMediaData else {
+      lock.lock()
+      shared.notReady += 1
+      lock.unlock()
+      return
+    }
     if input.append(sample) {
       appended += 1
       let duration = sample.duration.isValid ? sample.duration : .zero
@@ -56,9 +75,15 @@ final class TrackWriter {
     }
   }
 
+  /// Removes the file of a track that never got going.
+  func discard() {
+    writer.cancelWriting()
+    try? FileManager.default.removeItem(at: url)
+  }
+
   /// Ends the file at `end` on the host clock (a screen that sat still has its last frame held until then).
   func finish(at end: CMTime?) async {
-    guard firstPTS != nil else { writer.cancelWriting(); try? FileManager.default.removeItem(at: url); return }
+    guard firstPTS != nil else { discard(); return }
     input.markAsFinished()
     if let end, let lastEnd, end > lastEnd { writer.endSession(atSourceTime: end) }
     await writer.finishWriting()
