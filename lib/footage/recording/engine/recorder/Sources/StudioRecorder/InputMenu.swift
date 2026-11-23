@@ -85,7 +85,9 @@ final class InputMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
 
   private func showCheck() {
     meter.signal = check.micSignal
-    preview.picture = check.picture
+    let picture = check.picture
+    if picture != .live && preview.picture == .live { check.clearPicture() }
+    preview.picture = picture
   }
 
   private func updatePickerTitles() {
