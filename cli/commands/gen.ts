@@ -26,13 +26,13 @@ const video = defineCommand({
     dry: { type: 'boolean', description: 'Render the blockout and print the prompt and each model\'s cost without paying, and say if the footage the scene plays is from an earlier blockout' },
   },
   async run({ args }) {
-    const { renderPrevisFootage } = await import('#lib/output/render/engine/previs-render.ts');
+    const { renderPrevisClip } = await import('#lib/output/render/engine/previs-render.ts');
     const session = await openStudioRenderSession(args.project);
-    const { blockout, footage, prompt, stale, estimates } = await renderPrevisFootage(session, args.scene, { model: args.model, dry: Boolean(args.dry) });
+    const { blockout, clip, prompt, stale, estimates } = await renderPrevisClip(session, args.scene, { model: args.model, dry: Boolean(args.dry) });
     if (args.dry) console.error(`prompt:\n${prompt}\n\ncost:\n${estimates.join('\n')}`);
     if (stale) console.error(`scene ${args.scene} still plays footage of an earlier blockout: run this without --dry to render this one`);
     console.log(blockout);
-    if (footage) console.log(footage);
+    if (clip) console.log(clip);
   },
 });
 

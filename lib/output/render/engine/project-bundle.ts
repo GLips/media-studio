@@ -12,7 +12,7 @@ import { createRequire } from 'node:module';
 import { basename, dirname, join, resolve } from 'node:path';
 import { webpack, type WebpackOverrideFn } from '@remotion/bundler';
 import { HostImportPlugin, HostModuleStubPlugin, HostTsconfigPathsPlugin } from './host-module-resolution.ts';
-import { previsFootageModuleFor, writePrevisFootageModule } from '#lib/footage/previs/engine/previs-footage.ts';
+import { previsClipsModuleFor, writePrevisClipsModule } from '#lib/footage/previs/engine/previs-clips.ts';
 import { writeProjectBrandModule } from '#lib/picture/brand/engine/project-brand.ts';
 import { writeProjectStylesModule } from '#lib/paint/style/engine/project-styles.ts';
 import { projectHostLink, readProjectHostSpec } from '#lib/platform/host/engine/project-host-spec.ts';
@@ -81,8 +81,8 @@ export function projectWebpackOverride(project: string): WebpackOverrideFn {
   const video = projectModule(project, 'video.tsx'), stills = projectModule(project, 'stills.tsx'), music = projectMusicModule(project);
   const hostPlugins = hostResolvePlugins(project);
   // Written before every bundle, so the import always resolves and never names a deleted file. An open Studio
-  // watches it, and picks up footage as `studio gen video` rewrites it.
-  writePrevisFootageModule(project);
+  // watches it, and picks up previs clips as `studio gen video` rewrites it.
+  writePrevisClipsModule(project);
   const sfxCues = writeSfxCueModule(project);
   const brand = writeProjectBrandModule(project);
   const styles = writeProjectStylesModule(project);
@@ -94,7 +94,7 @@ export function projectWebpackOverride(project: string): WebpackOverrideFn {
     resolve: {
       ...config.resolve,
       // SAFETY: Remotion's base webpack config gives resolve.alias as an object of paths, never webpack's array form.
-      alias: { ...(config.resolve?.alias as Record<string, string>), '@video': video, '@stills': stills, '@footage': previsFootageModuleFor(project), '@sfx-cues': sfxCues, '@music': music, '@brand': brand, '@stamp-paint-styles': styles, 'react-dom': studioReactDom(join(dir, 'generated')) },
+      alias: { ...(config.resolve?.alias as Record<string, string>), '@video': video, '@stills': stills, '@previs-clips': previsClipsModuleFor(project), '@sfx-cues': sfxCues, '@music': music, '@brand': brand, '@stamp-paint-styles': styles, 'react-dom': studioReactDom(join(dir, 'generated')) },
       plugins: [...(config.resolve?.plugins ?? []), ...hostPlugins],
     },
     plugins: [...(config.plugins ?? []), new webpack.DefinePlugin({ PROJECT_SLUG: JSON.stringify(projectSlug(project)), REPLAY_SLUG: JSON.stringify(replaySlug(project)), BLOCKOUT_SLUG: JSON.stringify(blockoutSlug(project)) })],

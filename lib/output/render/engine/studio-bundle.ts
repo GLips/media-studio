@@ -24,7 +24,7 @@ const KEPT_BUNDLES = 3, KEPT_BUNDLE_MS = 60 * 60 * 1000, KEPT_BUNDLES_MAX = 8;
 const BUNDLE_CONFIG_MODULES = [
   'lib/output/render/engine/project-bundle.ts', 'lib/output/render/engine/studio-bundle.ts',
   'lib/output/render/engine/host-module-resolution.ts', 'lib/output/render/engine/host-modules.d.ts',
-  'lib/output/render/engine/tsx-test-hooks.ts', 'lib/footage/previs/engine/previs-footage.ts',
+  'lib/output/render/engine/tsx-test-hooks.ts', 'lib/footage/previs/engine/previs-clips.ts',
   'lib/picture/brand/engine/project-brand.ts', 'lib/platform/host/engine/hosts.ts',
   'lib/platform/host/engine/project-host-spec.ts', 'lib/output/sfx-cues/engine/cue-module.ts',
 ].map((path) => join(STUDIO_ROOT, path));
