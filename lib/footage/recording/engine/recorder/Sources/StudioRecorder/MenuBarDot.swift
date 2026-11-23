@@ -76,7 +76,7 @@ final class MenuBarDot: NSObject, NSMenuDelegate {
       let takeItem = NSMenuItem(title: take.title, action: take.enabled ? #selector(openRecentTake(_:)) : nil, keyEquivalent: "")
       takeItem.target = self
       takeItem.representedObject = take.folder
-      takeItem.toolTip = "Show it in the Finder"
+      takeItem.toolTip = take.toolTip
       recentTakeItems.append(takeItem)
     }
     if let throwAwayTitle = status.throwAwayTitle {

@@ -106,6 +106,8 @@ final class RecorderApp {
           send(.recentTakesUnavailable(error.description))
         }
       }
+    case .openLibraryItem(let item):
+      openLibraryItem(item)
     case .reveal(let folder):
       // A take being added has left its folder part way: the recordings folder shows where it was.
       let shown = FileManager.default.fileExists(atPath: folder.path) ? folder : folder.deletingLastPathComponent()

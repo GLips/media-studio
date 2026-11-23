@@ -14,4 +14,5 @@ test("the recorder runs this checkout's library verbs under this node and PATH",
   assert.deepEqual(command('StudioLibraryAdd'), [...studio, 'library', 'add', '--move', '--no-proxies']);
   assert.deepEqual(command('StudioLibraryRecordings'), [...studio, 'library', 'recordings', '--json', '--limit', '5', '--inbox']);
   assert.deepEqual(command('StudioLibraryRemoveTake'), [...studio, 'library', 'remove', '--take']);
+  assert.deepEqual(command('StudioLibraryOpen'), [...studio, 'library', 'open']);
 });

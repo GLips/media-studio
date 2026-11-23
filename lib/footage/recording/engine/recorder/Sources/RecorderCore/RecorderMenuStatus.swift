@@ -31,6 +31,8 @@ public struct RecorderMenuStatus: Equatable {
     public let folder: URL
     /// False while it's being thrown away.
     public let enabled: Bool
+    /// What a click does: open its page in the library, or show its folder.
+    public let toolTip: String
 
     /// When it began and how long it is, then where it is unless it's in the library: `Today 18:19 · 4:12`.
     public static func title(of take: RecorderRecentTake, now: Date = Date(), calendar: Calendar = .current) -> String {
@@ -74,7 +76,8 @@ public struct RecorderMenuStatus: Equatable {
     }
     recentTakes = state.recentTakes.map { take in
       let enabled = if case .throwingAway = take.place { false } else { true }
-      return RecentTakeItem(title: RecentTakeItem.title(of: take, now: now, calendar: calendar), folder: take.folder, enabled: enabled)
+      let toolTip = if case .inLibrary = take.place { "Open it in the studio's library" } else { "Show it in the Finder" }
+      return RecentTakeItem(title: RecentTakeItem.title(of: take, now: now, calendar: calendar), folder: take.folder, enabled: enabled, toolTip: toolTip)
     }
     throwAwayTitle = state.recentTakes.first.flatMap { newest in
       if case .throwingAway = newest.place { return nil }

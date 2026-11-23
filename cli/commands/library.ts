@@ -308,6 +308,32 @@ const pathCommand = defineCommand({
   },
 });
 
+const openCommand = defineCommand({
+  meta: {
+    name: 'open',
+    description: "Open an item's page in the studio app, to watch, read and flag it.",
+    about: 'Opens the app already serving this checkout, or serves it here until Ctrl-C. Studio Recorder opens a recent take this way. Reads committed metadata, so the page opens with the media offline; it says so where it would play.',
+  },
+  args: { item: libraryItemArg, port: { type: 'string', default: '4317', description: 'Port the studio app is on, or is served on' } },
+  async run({ args }) {
+    const { Effect } = await import('effect');
+    const { ChildProcess, ChildProcessSpawner } = await import('effect/process');
+    const { LibraryStore } = await import('#lib/footage/library/engine/library-store.ts');
+    const { openStudioAppServer } = await import('#lib/platform/web/engine/studio-app-server.ts');
+    const { STUDIO_CHILD_PROCESS } = await import('#lib/platform/process/engine/studio-child-process.ts');
+    const app = await runLibraryProgram(Effect.gen(function* () {
+      const id = yield* (yield* LibraryStore).resolveItemId(args.item);
+      const server = yield* Effect.promise(() => openStudioAppServer({ port: Number(args.port) }));
+      const url = `${server.url}/library/${encodeURIComponent(id)}`;
+      yield* Effect.sync(() => process.stderr.write(`${id} on ${url}${server.startedHere ? ' (Ctrl-C to stop)' : ', in the studio app already running'}\n`));
+      yield* (yield* ChildProcessSpawner.ChildProcessSpawner).exitCode(ChildProcess.make('open', [url], STUDIO_CHILD_PROCESS));
+      return server;
+    }));
+    // Serve until interrupted.
+    if (app.startedHere) await new Promise(() => {});
+  },
+});
+
 const configCommand = defineCommand({
   meta: {
     name: 'config',
@@ -339,5 +365,5 @@ export default defineCommand({
     about: "Each item's metadata (item.json, its transcript and flags) is committed in work/library/items/<id>/; its media lives in this machine's media folder (`studio library config`), which may be an external drive. Listing, search, show and flags read the metadata alone and work with the media offline; whatever needs the media says plainly when it's offline. A recording is one item with several tracks on one clock; each track's start, latency and drift are numbers in item.json, applied when read, never baked into the media.",
   },
   setup: refuseOptionsBeforeSubcommand,
-  subCommands: { add: addCommand, finish: finishCommand, list: listCommand, search: searchCommand, show: showCommand, flag: flagCommand, recordings: recordingsCommand, remove: removeCommand, path: pathCommand, config: configCommand },
+  subCommands: { add: addCommand, finish: finishCommand, list: listCommand, search: searchCommand, show: showCommand, flag: flagCommand, recordings: recordingsCommand, remove: removeCommand, path: pathCommand, open: openCommand, config: configCommand },
 });

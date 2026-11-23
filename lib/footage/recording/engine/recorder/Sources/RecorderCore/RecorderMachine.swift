@@ -281,8 +281,10 @@ public enum RecorderEffect<Take: RecorderTake> {
   case stopLibraryAdd(URL)
   /// Asks `studio library recordings` for the recent takes; sends `.recentTakesLoaded` or `.recentTakesUnavailable`.
   case loadRecentTakes(asked: Int)
-  /// Shows a folder in the Finder: the take's media in the library, else its folder in the recordings folder.
+  /// Shows a take's folder in the recordings folder in the Finder.
   case reveal(URL)
+  /// Opens a library item's page in the studio app (`studio library open`), serving the app if it isn't running.
+  case openLibraryItem(String)
   /// Asks before throwing the take away; sends `.throwAwayConfirmed` on yes.
   case confirmThrowAway(RecorderRecentTake)
   /// Removes the take wherever it went (`studio library remove --take`); sends `.takeThrownAway` or `.throwAwayFailed`.
@@ -412,10 +414,8 @@ extension RecorderState {
 
     case (.openRecentTakeRequested(let folder), _):
       guard let take = recentTakes.first(where: { $0.folder == folder }) else { return [] }
-      if case .inLibrary(let item, let mediaFolder) = take.place {
-        guard let mediaFolder else { return [.log("can't open \(item): the library's media is offline")] }
-        return [.reveal(mediaFolder)]
-      }
+      // The page reads the item's metadata, so it opens with the media offline too.
+      if case .inLibrary(let item, _) = take.place { return [.openLibraryItem(item)] }
       return [.reveal(take.folder)]
 
     case (.throwAwayRequested, _):

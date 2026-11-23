@@ -45,6 +45,7 @@ func names(_ effects: [Effect]) -> [String] {
     case .stopLibraryAdd: "stopLibraryAdd"
     case .loadRecentTakes: "loadRecentTakes"
     case .reveal(let folder): "reveal \(folder.path)"
+    case .openLibraryItem(let item): "openLibraryItem \(item)"
     case .confirmThrowAway: "confirmThrowAway"
     case .throwAway: "throwAway"
     case .saveInputPick: "saveInputPick"
@@ -185,7 +186,7 @@ func recent(_ id: Int, _ place: RecorderRecentTake.Place) -> RecorderRecentTake 
   ])
   // The listing is the truth for takes at rest: the one that's gone from it is gone from the menu.
   #expect(state.recentTakes.map(\.folder) == [take.folder])
-  #expect(names(effects) == ["reveal /media/two"])
+  #expect(names(effects) == ["openLibraryItem two"])
 }
 
 @Test func theTakeRecordingNowIsNeverListedSoNeverThrownAway() {
