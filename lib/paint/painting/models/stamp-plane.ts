@@ -6,7 +6,7 @@
 // painted plane is clear film, measured on white and on black: a two-point linearisation between them
 // (stamp-paint-plane-passes.ts says where that's close). A group's knockout, lift or glaze reads only its own plane.
 
-import type { LensFocus } from '#lib/picture/lens/models/lens-focus.ts';
+import type { LensDefocusField, LensFocus, LensFrameAffine } from '#lib/picture/lens/models/lens-focus.ts';
 import type { CompiledStampPaint } from './stamp-paint-recipe-compile.ts';
 import type { StampBox } from './stamp-region.ts';
 import type { PaintMoment } from './stamp-paint-frame-state.ts';
@@ -126,19 +126,21 @@ export function stampScenePlanes(painting: CompiledStampPaint | null, planes: re
 export type StampPlaneView = { readonly ma: number; readonly mb: number; readonly kx: number; readonly ky: number };
 
 /**
- * How a frame shows one plane: `view`; `defocus`, a gaussian's sigma in frame px over its picture (0 sharp);
- * `distance`, from the camera, depth units; `shutter`, its views as the shutter opens and closes in a fast frame when
- * they differ, else null.
+ * How a frame shows one plane: `view`; `defocus`, a gaussian's sigma in frame px (0 sharp) straight ahead, varying
+ * as `defocusField` says under a tilted focus; `distance` from the camera, depth units; `shutter`, its views at a
+ * fast frame's shutter ends when they differ; `shear`, a tilted reference exposure's map past `view`.
  */
 export type StampPlaneLook = {
   readonly view: StampPlaneView;
   readonly defocus: number;
+  readonly defocusField: LensDefocusField | null;
   readonly distance: number;
   readonly shutter: { readonly open: StampPlaneView; readonly close: StampPlaneView } | null;
+  readonly shear: LensFrameAffine | null;
 };
 
 /** Rest: a plane where it's painted, sharp. */
-export const STAMP_REST_LOOK: StampPlaneLook = { view: { ma: 1, mb: 0, kx: 0, ky: 0 }, defocus: 0, distance: 1, shutter: null };
+export const STAMP_REST_LOOK: StampPlaneLook = { view: { ma: 1, mb: 0, kx: 0, ky: 0 }, defocus: 0, defocusField: null, distance: 1, shutter: null, shear: null };
 
 /**
  * What a frame's lens does: each plane's look by id (a plane left out is at rest and sharp), and its bloom's sigma,

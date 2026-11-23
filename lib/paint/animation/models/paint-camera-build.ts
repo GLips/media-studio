@@ -18,7 +18,7 @@ import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-s
 import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
 import {
   PAINT_CAMERA_NEAREST, PAINT_CAMERA_REST, paintCameraFocusAt, paintCameraFocusProblem, paintCameraMovePoseProblem, paintCameraPoseAt,
-  paintCameraPoseProblem, paintFilmShutter, paintPlaneDefocus, paintStageCentre,
+  paintCameraPoseProblem, paintFilmShutter, paintPlaneDefocusWidest, paintStageCentre,
   type PaintCamera, type PaintCameraClip, type PaintCameraFocusClip, type PaintCameraFrameSample, type PaintCameraInstancedPlane, type PaintCameraLens, type PaintCameraLensOptions,
   type PaintCameraMoveClip, type PaintCameraPicturePlane, type PaintCameraPlane, type PaintCameraPlaneOptions, type PaintCameraPlay, type PaintCameraPose, type PaintCameraPoseSpan,
   type PaintCameraShotSamples, type PaintCameraShutter,
@@ -163,9 +163,12 @@ function framePreimageBox(stage: StampStage, views: readonly DepthView[]): Stamp
   return { x0: centre.x + x0 + panX.low, x1: centre.x + x1 + panX.high, y0: centre.y + y0 + panY.low, y1: centre.y + y1 + panY.high };
 }
 
-/** The widest defocus any frame of `camera`'s shot gives a plane at `depth` (read at each frame's moment), frame px of sigma. */
-function widestDefocus({ samples }: PaintCamera, depth: PresentationValue<number>): number {
-  return samples.frames.reduce((most, { focus, moments, poses }) => (focus ? Math.max(most, paintPlaneDefocus(focus, poses[0].dolly, presentationValueAt(depth, moments[0]))) : most), 0);
+/**
+ * The widest defocus any frame of `camera`'s shot gives a plane at `depth` (read at each frame's moment) anywhere in
+ * the frame, frame px of sigma: a tilted focus's where its focal plane lies nearest or farthest.
+ */
+function widestDefocus(camera: PaintCamera, depth: PresentationValue<number>): number {
+  return camera.samples.frames.reduce((most, { focus, moments, poses }) => (focus ? Math.max(most, paintPlaneDefocusWidest(camera, focus, poses[0], presentationValueAt(depth, moments[0]))) : most), 0);
 }
 
 const boxText = ({ x0, x1, y0, y1 }: StampBox) => `${x0.toFixed(0)}..${x1.toFixed(0)} × ${y0.toFixed(0)}..${y1.toFixed(0)}`;
@@ -271,7 +274,7 @@ export function paintCameraShotReads(camera: PaintCamera, depth: PresentationVal
  * camera stands and the depth lies then, defocused as the frame at `at` is, the lens taking one defocus a frame.
  */
 export function paintCameraFrameReads(camera: PaintCamera, depth: PresentationValue<number>, at: PaintMoment, moments: readonly PaintMoment[]): PaintCameraPlaneRead[] {
-  const pose = paintCameraPoseAt(camera, at), focus = paintCameraFocusAt(camera, at), sigma = focus ? paintPlaneDefocus(focus, pose.dolly, presentationValueAt(depth, at)) : 0;
+  const pose = paintCameraPoseAt(camera, at), focus = paintCameraFocusAt(camera, at), sigma = focus ? paintPlaneDefocusWidest(camera, focus, pose, presentationValueAt(depth, at)) : 0;
   return moments.map((moment) => {
     const { seen, grow } = spanSight(camera.stage, [{ pose: paintCameraPoseAt(camera, moment), depth: presentationValueAt(depth, moment) }], sigma);
     return { when: `at ${paintSecondsText(moment.at)}`, seen, reach: sigma > 0 ? grow : 0 };

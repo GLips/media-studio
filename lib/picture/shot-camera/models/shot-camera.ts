@@ -16,9 +16,18 @@ import type { FrameSize } from '#lib/picture/frame/models/frame.ts';
 export type ShotPoint = Readonly<Vector3Tuple>;
 
 /**
+ * A linear map of the picture about the point straight ahead, frame px (y down): a pinhole's offset (x, y) from it
+ * lands at (xx·x + xy·y, yx·x + yy·y). The identity for a plain lens; an exposure off the aperture's middle under a
+ * tilted focus shears its picture so the focal plane holds still (lens-focus.ts).
+ */
+export type ShotCameraShear = { readonly xx: number; readonly xy: number; readonly yx: number; readonly yy: number };
+
+export const SHOT_CAMERA_NO_SHEAR: ShotCameraShear = { xx: 1, xy: 0, yx: 0, yy: 1 };
+
+/**
  * A camera making a `frame` of px. `quaternion` turns it from rest (looking down −z, y up). `fov` is vertical degrees
- * over the frame. `shift` (px, y down) slides the picture as a lens shift does: the point straight ahead lands that far
- * from the frame's centre. Things nearer than `near` or past `far` (world units) aren't drawn.
+ * over the frame. `shift` (px, y down) slides the picture, as a lens shift does: the point straight ahead lands that
+ * far off centre; `shear` maps the picture about it. Nothing short of `near` or past `far` shows.
  */
 export type ShotCamera = {
   readonly frame: FrameSize;
@@ -26,6 +35,7 @@ export type ShotCamera = {
   readonly quaternion: Readonly<QuaternionTuple>;
   readonly fov: number;
   readonly shift: { readonly x: number; readonly y: number };
+  readonly shear: ShotCameraShear;
   readonly near: number;
   readonly far: number;
 };
@@ -53,7 +63,7 @@ function checkedShotCamera(lens: ShotCameraLens, position: Vector3, quaternion: 
   if (problem) throw new Error(`shot camera: ${problem}`);
   if (![...position.toArray(), ...quaternion.toArray()].every(Number.isFinite)) throw new Error('shot camera: its position and turn need finite numbers');
   const { frame, fov, near, far, shift = NO_SHIFT } = lens;
-  return { frame, fov, near, far, shift, position: position.toArray(), quaternion: quaternion.toArray() };
+  return { frame, fov, near, far, shift, shear: SHOT_CAMERA_NO_SHEAR, position: position.toArray(), quaternion: quaternion.toArray() };
 }
 
 /** A camera at `position` looking at `target`, its top toward `up` (y unless given). */
@@ -96,15 +106,19 @@ export function shotCameraProject(camera: ShotCamera, point: ShotPoint | Vector3
   const v = (point instanceof Vector3 ? point.clone() : new Vector3(...point)).sub(new Vector3(...camera.position));
   const depth = v.dot(forward);
   if (!(depth > 0)) return null;
-  const scale = shotCameraFocalPx(camera) / depth, centre = principalPoint(camera);
-  return { x: centre.x + v.dot(right) * scale, y: centre.y - v.dot(up) * scale, depth, scale };
+  const scale = shotCameraFocalPx(camera) / depth, centre = principalPoint(camera), { xx, xy, yx, yy } = camera.shear;
+  const x = v.dot(right) * scale, y = -v.dot(up) * scale;
+  return { x: centre.x + xx * x + xy * y, y: centre.y + yx * x + yy * y, depth, scale };
 }
 
 /** The ray from the camera through frame px `at`: its origin, and its direction (unit length), both new. */
 export function shotCameraRay(camera: ShotCamera, at: { x: number; y: number }): { origin: Vector3; direction: Vector3 } {
   const { right, up, forward } = shotCameraAxes(camera);
-  const f = shotCameraFocalPx(camera), centre = principalPoint(camera);
-  const direction = forward.addScaledVector(right, (at.x - centre.x) / f).addScaledVector(up, (centre.y - at.y) / f).normalize();
+  const f = shotCameraFocalPx(camera), centre = principalPoint(camera), { xx, xy, yx, yy } = camera.shear;
+  // The pinhole's offset the shear carried to `at`: its inverse, by the 2 × 2's adjugate.
+  const dx = at.x - centre.x, dy = at.y - centre.y, det = xx * yy - xy * yx;
+  const x = (yy * dx - xy * dy) / det, y = (xx * dy - yx * dx) / det;
+  const direction = forward.addScaledVector(right, x / f).addScaledVector(up, -y / f).normalize();
   return { origin: new Vector3(...camera.position), direction };
 }
 

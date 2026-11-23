@@ -19,7 +19,7 @@ export const STAMP_GATE_LENS_IDS = ['lens/defocus', 'lens/glow', 'lens/motion'];
 const LENS_SIZE = { width: 160, height: 100 };
 const LENS_FLAT: StampPaintEnvironment = { paper: STAMP_GATE_WHITE, mixing: { kind: 'flat' } };
 /** A plane where it's painted, sharp. */
-export const STAMP_GATE_REST_LOOK: StampPlaneLook = { view: { ma: 1, mb: 0, kx: 0, ky: 0 }, defocus: 0, distance: 1, shutter: null };
+export const STAMP_GATE_REST_LOOK: StampPlaneLook = { view: { ma: 1, mb: 0, kx: 0, ky: 0 }, defocus: 0, defocusField: null, distance: 1, shutter: null, shear: null };
 
 /** The defocus case's sigma, frame px, and the scale it's also seen at: its picture then blurs by the sigma over it. */
 export const STAMP_GATE_DEFOCUS_SIGMA = 4;

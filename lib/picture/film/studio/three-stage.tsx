@@ -21,7 +21,7 @@ import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import type { ShotCamera } from '#lib/picture/shot-camera/models/shot-camera.ts';
 import { setThreeShotCamera } from '#lib/picture/shot-camera/studio/three-shot-camera.ts';
 import { lensExposures, type LensExposure } from '#lib/picture/lens/models/lens-exposures.ts';
-import { shotCameraExposed, type ShotCameraLensFocus } from '#lib/picture/lens/models/lens-focus.ts';
+import { shotCameraExposed, type LensFocusTilt, type ShotCameraLensFocus } from '#lib/picture/lens/models/lens-focus.ts';
 import { shutterMomentAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import { createThreeStageGpu, threeSceneResources, type ThreeBloom, type ThreeEnvironment, type ThreeStageGpu, type ThreeStageLook } from './three-stage-gpu.ts';
 
@@ -48,9 +48,9 @@ export type ThreeSample = {
 /**
  * A thin lens: `focus`, the distance held sharp along the view, and `aperture`, the opening's diameter, scene units.
  * The aperture is apodised (lens-exposures.ts): its sigma is a quarter of the diameter, so a point blurs about as
- * wide as a disc that diameter would blur it.
+ * wide as a disc that diameter would. `tilt` leans the plane of sharp focus, as a tilt-shift lens does (LensFocusTilt).
  */
-export type ThreeLens = { focus: number; aperture: number };
+export type ThreeLens = { focus: number; aperture: number; tilt?: LensFocusTilt };
 
 /**
  * Draws `draw()`'s scene through its camera over the whole frame (or `box`), averaging `samples` exposures. Holds the
@@ -250,4 +250,4 @@ function jitterLights(scene: Scene, at: LensExposure['light'], softShadows: numb
 }
 
 /** A ThreeLens as the shot camera's: its opening's diameter is four sigmas of the apodised aperture. */
-const threeShotLens = ({ focus, aperture }: ThreeLens): ShotCameraLensFocus => ({ focus, aperture: aperture / 4 });
+const threeShotLens = ({ focus, aperture, tilt }: ThreeLens): ShotCameraLensFocus => ({ focus, aperture: aperture / 4, ...(tilt && { tilt }) });

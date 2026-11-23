@@ -18,6 +18,7 @@ import type { PresentationValue } from './paint-value.ts';
 import { paintMotionPlay, type PaintMotion, type PaintMotionNode } from './paint-motion-compile.ts';
 import { buildPaintMotion, type PaintMotionBuild } from './paint-motion.ts';
 import { shotCameraProject } from '#lib/picture/shot-camera/models/shot-camera.ts';
+import { lensDefocusFieldAt } from '#lib/picture/lens/models/lens-focus.ts';
 import { paintCameraShotAt, paintCameraWorld, paintPlaneWorldPoint } from './paint-camera-world.ts';
 import { paintSimilarityApply } from './paint-similarity.ts';
 
@@ -162,6 +163,23 @@ test('the lens at a time views each plane by its depth (a pan parallaxes), defoc
   // Focused at depth 1 with aperture 4: depth 2 blurs 4·|1 − 1/2|, the frog none, depth 0.5 4·|1 − 2|.
   assert.deepEqual(['back', 'frog', 'leaf'].map((id) => lens.planes.get(id)?.defocus), [2, 0, 4]);
   assert.equal(lens.bloom, 3);
+});
+
+test('a tilted focus leans the band: each plane is sharp along the row where the focal plane meets it, and an exposure shears it', () => {
+  const tilt = { angle: 1.2 }, focusPlay = paintCameraPlay({ kind: 'focus', value: { focus: 1, aperture: 4, tilt } }, { clock: { at: 0 }, origin: 'focus' });
+  const build = buildPaintingCamera(threePlanes, { stage, fov: 35, lens: { bloom: 0, shutter: 'shut' }, span: spanTo(1), planes: threePlaneScene, motion: null, plays: [focusPlay] });
+  if (!build.ok) assert.fail(build.problems.join('\n'));
+  const { camera } = build.camera, lens = paintCameraLensAt(camera, 1), rise = Math.tan(tilt.angle) / (300 / Math.tan((17.5 * Math.PI) / 180));
+  // The focal plane meets depth d where its lean is 1/d: the back (2) up the frame, the leaf (0.5) down it.
+  for (const [id, depth] of [['back', 2], ['frog', 1], ['leaf', 0.5]] as const) {
+    const { defocusField } = lens.planes.get(id)!, row = 300 + (1 / depth - 1) / rise;
+    assert.ok(Math.abs(lensDefocusFieldAt(defocusField!, { x: 123, y: row })) < 1e-6, `${id} sharp at row ${row}`);
+  }
+  assert.ok(lens.focus?.lean, 'the frame focus leans');
+  // An exposure off the aperture's middle shifts the frame's centre as an untilted lens would, and shears the rest.
+  const exposed = paintCameraLensAt(camera, 1, { at: 1, aperture: [1, 0] }).planes.get('back')!;
+  assert.equal(exposed.view.kx, 2);
+  assert.ok(exposed.shear && exposed.shear.xy !== 0, 'the back is sheared');
 });
 
 test('a plane whose depth moves is seen at its depth each frame, blurred along it over the shutter, and checked over all it reaches', () => {
