@@ -3,14 +3,17 @@
 //
 // The transcript keeps every utterance in the order spoken, retakes included: "each agent has a definition" said
 // twice is two runs of its words.
-import type { AudioSpan } from './transcript-audio.ts';
-import type { SpokenWord } from './spoken-word.ts';
+import { Schema } from 'effect';
+import { AudioSpan } from './transcript-audio.ts';
+import { SpokenWord } from './spoken-word.ts';
 
 /**
  * What's said in a file and when: its `duration` and its `words` in seconds from its start, and its `pauses`, every
  * quiet stretch of at least 40 ms, so a cut can be placed without the audio.
  */
-export type FootageTranscript = { duration: number; words: SpokenWord[]; pauses: AudioSpan[] };
+export const FootageTranscript = Schema.Struct({ duration: Schema.Number, words: Schema.Array(SpokenWord), pauses: Schema.Array(AudioSpan) });
+// A type alias for the reason SpokenWord is one.
+export type FootageTranscript = typeof FootageTranscript.Type;
 
 // How far a word's edge may be off from its sound: at 85% of pauses a transcript's edges land within 0.1 s of them.
 const WORD_TIME_SLACK = 0.1;

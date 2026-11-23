@@ -7,7 +7,8 @@
 import { constants, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, extname, join, resolve } from 'node:path';
-import { transcribeFootage } from '#lib/footage/transcript/engine/transcribe-footage.ts';
+import { FootageTranscriber, footageTranscriberLayer } from '#lib/footage/transcript/engine/footage-transcriber.ts';
+import { runStudioEffect } from '#lib/platform/process/engine/studio-effect-runtime.ts';
 import { runFfprobe } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { libraryItemDuration, librarySlug, librarySpeechTrack, LIBRARY_ITEM_FORMAT, unusedLibraryItemId, type LibraryItem, type LibraryTrack, type LibraryTrackStreams } from '../models/library-item.ts';
 import { namedFilesAddSource, recorderAddSource, type LibraryAddSource, type RecorderRecordingJson } from '../models/library-sources.ts';
@@ -96,7 +97,8 @@ export async function finishLibraryItem(id: string, { proxies, log }: { proxies:
   const item = readLibraryItem(id);
   if (item.speech && !readLibraryTranscript(id)) {
     log(`transcribing ${item.speech}`);
-    const transcript = await transcribeFootage(libraryMediaPath(item, item.tracks[item.speech].file));
+    const speech = libraryMediaPath(item, item.tracks[item.speech].file);
+    const transcript = await runStudioEffect(FootageTranscriber.use((transcriber) => transcriber.transcribe(speech)), footageTranscriberLayer);
     writeLibraryTranscript(id, { track: item.speech, ...transcript });
   }
   // Levelling is a quick pass over the sound alone, so it's made even when proxies are left for later.
