@@ -119,6 +119,7 @@ ${LENS_GAUSSIAN_TAPS_WGSL}
   var seenColour = vec4f(0.0);
   var seenMotion = vec4f(0.0);
   var seen = 0.0;
+  var seenWeight = 0.0;
   var hidden = 0.0;
   for (var i = -i32(u.reach); i <= i32(u.reach); i++) {
     let at = pixel + step * i;
@@ -136,8 +137,9 @@ ${LENS_GAUSSIAN_TAPS_WGSL}
     } else {
       // Seen on this texel's own kernel, clear taps too, so the fill below can't stretch a silhouette's cover.
       seen += ownWeight;
-      let sigma = min(tapSigma, ownSigma);
+      let sigma = select(min(tapSigma, ownSigma), ownSigma, tapMotion.w < 1e-4);
       let w = spread(i, sigma, select(kernelSum(sigma), ownSum, sigma == ownSigma));
+      seenWeight += w;
       if (w == 0.0) { continue; }
       seenColour += textureLoad(source, at, 0, 0) * w;
       seenMotion += tapMotion * w;
@@ -145,7 +147,9 @@ ${LENS_GAUSSIAN_TAPS_WGSL}
   }
   // What nearer texels hide of this one's blur is filled from what it still sees: else a sharp edge beside a blurred
   // one passes full cover on one side and falls short on the other, a dark fringe once composited. It sees itself.
-  let under = (1.0 - min(nearColour.a, 1.0)) * (seen + hidden) / seen;
+  // Taps each blurred by the narrower of two sigmas weigh short of the seen share where sigma varies (a slope, a
+  // tilted focus): they're averaged over it, else cover leaks.
+  let under = (1.0 - min(nearColour.a, 1.0)) * (seen + hidden) / max(seenWeight, 1e-6);
   let colour = nearColour + seenColour * under;
   // Near texels' blurs overlapping can still pass full cover: what's laid is scaled back to it.
   let over = max(1.0, colour.a);
