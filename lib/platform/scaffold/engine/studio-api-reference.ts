@@ -6,7 +6,7 @@
 // the checker's type where a const is an expression.
 import { relative } from 'node:path';
 import type { Node } from 'typescript/unstable/ast';
-import { isArrowFunction, isFunctionDeclaration, isFunctionExpression, isVariableDeclaration } from 'typescript/unstable/ast/is';
+import { isArrowFunction, isFunctionDeclaration, isFunctionExpression, isInterfaceDeclaration, isTypeAliasDeclaration, isTypeReferenceNode, isVariableDeclaration } from 'typescript/unstable/ast/is';
 import { API, SymbolFlags, type Checker, type Symbol as TsSymbol } from 'typescript/unstable/sync';
 import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
 
@@ -62,7 +62,7 @@ function readStudioApiModule(project: StudioApiProject, path: string, importFrom
         importFrom,
         file: file ? relative(STUDIO_ROOT, file.fileName) : '?',
         kind: exportKind(symbol, declarations),
-        signatures: declarations.map((node) => signatureText(node, symbol, checker)),
+        signatures: declarations.flatMap((node) => [signatureText(node, symbol, checker)].concat(optionsTypeText(node, project))),
         doc: checker.getDocumentationCommentOfSymbol(symbol),
         tags: checker.getJsDocTagsOfSymbol(symbol).map(({ name, text }) => ({ name, text })),
       } satisfies StudioApiExport,
@@ -70,6 +70,19 @@ function readStudioApiModule(project: StudioApiProject, path: string, importFrom
   });
   found.sort((a, b) => a.position[0].localeCompare(b.position[0]) || a.position[1] - b.position[1]);
   return found.map((f) => f.entry);
+}
+
+/**
+ * The declaration of the named type a function's first parameter takes, as written with its property comments: a
+ * component's props or a function's options, which the signature only names. Empty when it takes none.
+ */
+function optionsTypeText(node: Node, project: StudioApiProject): string[] {
+  const typed = isFunctionDeclaration(node) ? node.parameters[0]?.type : undefined;
+  if (!typed || !isTypeReferenceNode(typed)) return [];
+  const symbol = project.checker.getSymbolAtLocation(typed.typeName);
+  const declaration = symbol?.declarations.map((handle) => handle.resolve(project)).find((d) => d && (isTypeAliasDeclaration(d) || isInterfaceDeclaration(d)));
+  if (!declaration) return [];
+  return [declaration.getSourceFile().text.slice(declaration.getStart(declaration.getSourceFile()), declaration.end).trim().replace(/^export\s+/, '')];
 }
 
 function exportKind(symbol: TsSymbol, declarations: readonly Node[]): StudioApiExport['kind'] {

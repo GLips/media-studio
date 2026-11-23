@@ -11,4 +11,6 @@ test("every export a project imports, #studio's and the storyboard's, resolves t
   assert.match(fit.signatures[0], /^function fitTake<T extends Take>\(take: T, pins:/);
   assert.match(fit.doc, /^Pins take moments to scene times/);
   assert.equal(findStudioApiExport(exports, 'defineStoryboard').importFrom, '#lib/timing/storyboard/models/storyboard.ts');
+  // A component's props, which its signature only names, are printed as declared, comments and all.
+  assert.match(findStudioApiExport(exports, 'ZoomOnPoint').signatures.join('\n'), /type ZoomOnPointProps = \{[\s\S]*Where to aim, in the picture's pixels[\s\S]*focus: Point/);
 });
