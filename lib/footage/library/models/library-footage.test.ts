@@ -13,29 +13,36 @@ const item = {
   tracks: { mic: { file: 'mic.ogg', mediaSeconds: 9.5, startSeconds: 0.5, audio: { sampleRate: 48000, channels: 1, codec: 'opus' }, levelled: { file: 'proxies/mic-levelled.wav', lufs: -13 } } },
 };
 const said = [['Each', 1.0, 1.3], ['agent', 1.3, 1.7], ['has', 1.8, 2.0], ['a', 2.0, 2.1], ['definition', 2.1, 2.8], ['um', 3.5, 3.8]];
-const transcript = { track: 'mic', duration: 9.5, pauses: [], words: said.map(([text, start, end]) => ({ text: String(text), start: Number(start), end: Number(end) })) };
+const pauses = [{ start: 0.2, end: 1.0 }, { start: 2.8, end: 3.5 }, { start: 3.8, end: 9.5 }];
+const transcript = { track: 'mic', duration: 9.5, pauses, words: said.map(([text, start, end]) => ({ text: String(text), start: Number(start), end: Number(end) })) };
 const footage = libraryFootage(item, transcript);
 
-test('a line spoken in a recording is timed, worded and sounded by its stretch, with no voice named', () => {
+test('a line spoken in a recording is timed, worded and sounded by its stretch, cut in its pauses, with no voice named', () => {
+  // Asked from the line's first word to the next one's, as `studio library show` prints them, or from inside the
+  // pauses: either way each edge lands in the pause beside the words, 0.15 s before "Each" and 0.25 s after "definition".
+  const speech = footage.speech(1.5, 4.0);
+  assert.deepEqual(footage.speech(1.45, 3.4), speech);
+  assert.deepEqual([speech.from, speech.to], [1.35, 3.55]);
   const plan = defineStoryboard({
     title: 'Recorded', target: { seconds: 5 },
-    scenes: { agents: { onScreen: 'The editor', motion: 'None', lines: { definition: { speech: footage.speech(1.45, 3.4), text: 'Each *agent* has a definition', cues: { named: 'definition' } } }, timing: { lead: 0.5, tail: 0.5 } } },
+    scenes: { agents: { onScreen: 'The editor', motion: 'None', lines: { definition: { speech, text: 'Each *agent* has a definition', cues: { named: 'definition' } } }, timing: { lead: 0.5, tail: 0.5 } } },
   });
   const { timeline, voice, lines, diagnostics } = resolveStoryboard(plan);
   assert.deepEqual(diagnostics, []);
   assert.deepEqual(lines, [{ scene: 'agents', line: 'definition', read: 'spoken' }]);
-  // The stretch runs 1.95 s; the transcript's words sit 0.5 s later on item time, so "definition" is 1.15 s in,
-  // its cue 1.65 s into the scene (frame 50) after the 0.5 s lead.
+  // The transcript's words sit 0.5 s later on item time, so "definition" is 1.25 s into the stretch, its cue 1.75 s
+  // into the scene (frame 53) after the 0.5 s lead.
   const line = voice.definition;
-  assert.equal(line.duration, 1.95);
+  assert.equal(line.duration.toFixed(3), '2.200');
   assert.equal(line.caption, 'Each *agent* has a definition');
-  assert.deepEqual(line.src, { item: 'take', file: 'proxies/mic-levelled.wav', start: 0.95 });
+  const src = line.src as { start: number };
+  assert.deepEqual({ ...src, start: Math.round(src.start * 1000) / 1000 }, { item: 'take', file: 'proxies/mic-levelled.wav', start: 0.85 });
   assert.equal(line.lufs, -13);
-  assert.equal(timeline!.clock('agents').cues.named, 50);
+  assert.equal(timeline!.clock('agents').cues.named, 53);
   // The picture keeps to the line: 0.5 s into the scene is its start, and the lead runs up to it.
   const scene = videoLayoutOf(timeline!, voice).scenes[0];
   const at = (t: number) => footage.timeAt({ ...sceneTimes(scene), t });
-  assert.deepEqual([at(0), at(0.5), at(1.5)].map((x) => Math.round(x * 100) / 100), [0.95, 1.45, 2.45]);
+  assert.deepEqual([at(0), at(0.5), at(1.5)].map((x) => Math.round(x * 100) / 100), [0.85, 1.35, 2.35]);
 });
 
 const spokenPlan = (speech: RecordedSpeech) => defineStoryboard({

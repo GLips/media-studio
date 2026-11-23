@@ -30,8 +30,9 @@ export type LibraryFootage = {
   /** Every word said in it, on item time; none for an item with no speech or no transcript yet. */
   words: readonly SpokenWord[];
   /**
-   * The stretch from `from` to `to`, in item seconds, as a storyboard line's `speech`: what's said in it and its
-   * levelled sound. Find the seconds with `studio library search` or `show`.
+   * The words said between `from` and `to`, in item seconds, as a storyboard line's `speech`: what's said and its
+   * levelled sound. A word is in when its middle is; each edge then moves into the pause beside the words kept, so
+   * the times `studio library search` and `show` print (a line's start, the next line's start) cut cleanly.
    */
   speech(from: number, to: number): RecordedSpeech;
   /**
@@ -51,6 +52,13 @@ export type LibraryFootage = {
  * decoded, never trusted.
  */
 type LibraryItemJsonImport = { readonly format: string; readonly id: string };
+
+// Quiet a spoken line keeps beside its words, at most half the pause it's cut in: a soft first consonant can sit under
+// the quiet level, and a last word's decay runs longer than its attack.
+const CUT_QUIET_BEFORE = 0.15, CUT_QUIET_AFTER = 0.25;
+// A transcript places a word's edge at the pause beside it (wordsTimedAtPauses), give or take a frame of rounding.
+const WORD_EDGE_SLACK = 0.02;
+const round = (seconds: number) => Math.round(seconds * 1000) / 1000;
 
 const decodeLibraryItem = Schema.decodeUnknownResult(LibraryItem);
 const decodeLibraryTranscript = Schema.decodeUnknownResult(LibraryTranscriptFile);
@@ -73,12 +81,33 @@ export function libraryFootage(itemJson: LibraryItemJsonImport, transcriptJson?:
   const words = speechTrack && transcript
     ? transcript.words.map((w) => ({ text: w.text, start: libraryItemTimeOf(speechTrack, w.start), end: libraryItemTimeOf(speechTrack, w.end) }))
     : [];
+  const pauses = speechTrack && transcript
+    ? transcript.pauses.map((p) => ({ start: libraryItemTimeOf(speechTrack, p.start), end: libraryItemTimeOf(speechTrack, p.end) }))
+    : [];
+  /**
+   * `from` and `to` moved into the pauses touching the words whose middles lie between them: a cut on a word's raw
+   * time clips its first or last sound. Words that run into the next with no pause are cut midway. With no transcript
+   * there are no pauses to cut in, so they stay.
+   */
+  const cutInPauses = (from: number, to: number) => {
+    if (!transcript) return { from, to };
+    const first = words.findIndex((w) => (w.start + w.end) / 2 >= from);
+    const last = words.findLastIndex((w) => (w.start + w.end) / 2 <= to);
+    if (first < 0 || last < first) throw new Error(`${item.id} has no words said between ${from} and ${to} s to speak a line from`);
+    const start = words[first].start, end = words[last].end;
+    const before = pauses.findLast((p) => Math.abs(p.end - start) <= WORD_EDGE_SLACK && p.start < start);
+    const after = pauses.find((p) => Math.abs(p.start - end) <= WORD_EDGE_SLACK && p.end > end);
+    return {
+      from: round(before ? before.end - Math.min(CUT_QUIET_BEFORE, (before.end - before.start) / 2) : (start + (words[first - 1]?.end ?? start)) / 2),
+      to: round(after ? after.start + Math.min(CUT_QUIET_AFTER, (after.end - after.start) / 2) : (end + (words[last + 1]?.start ?? end)) / 2),
+    };
+  };
   return {
     item,
     words,
-    speech(from, to) {
+    speech(asked, askedTo) {
       if (!speechTrack) throw new Error(`${item.id} has no speech track to speak a line from`);
-      // A word belongs to the stretch its middle falls in, so a cut a little inside its edge keeps or drops it whole.
+      const { from, to } = cutInPauses(asked, askedTo);
       const heard = words.filter((w) => (w.start + w.end) / 2 >= from && (w.start + w.end) / 2 <= to)
         .map((w) => ({ text: w.text, start: Math.max(0, w.start - from), end: Math.min(to - from, w.end - from) }));
       // A stretch reaching outside the speech track has no sound there to play.
