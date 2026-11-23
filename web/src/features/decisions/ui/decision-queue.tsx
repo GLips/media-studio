@@ -1,7 +1,7 @@
 import { Box, Stack, Text, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { Split } from 'lucide-react';
-import { Fragment, useEffect, useRef } from 'react';
+import { Fragment, useCallback } from 'react';
 import type { ReviewDecision } from '#lib/output/review/models/review-threads.ts';
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
@@ -35,15 +35,14 @@ function DecisionStateGlyph({ state }: { readonly state: ReviewDecision['state']
     : <Text component="span" size="sm" {...stylex.props(styles.glyph, styles.closed)}>✓</Text>;
 }
 
-/** The pass in runs by scene, each run under its scene's name; those about no scene last, under `no scene`. */
+/**
+ * The pass grouped by scene, in the order the scenes first come, each under its scene's name. Grouped, not split into
+ * runs: decisions about a scene since cut sort last with those about none, by posting order, and would interleave.
+ */
 function sceneRunsOf(decisions: readonly ReviewDecision[]): { scene: string | undefined; decisions: ReviewDecision[] }[] {
-  const runs: { scene: string | undefined; decisions: ReviewDecision[] }[] = [];
-  for (const d of decisions) {
-    const last = runs.at(-1);
-    if (last && last.scene === d.about?.scene) last.decisions.push(d);
-    else runs.push({ scene: d.about?.scene, decisions: [d] });
-  }
-  return runs;
+  const runs = new Map<string | undefined, ReviewDecision[]>();
+  for (const d of decisions) runs.set(d.about?.scene, [...(runs.get(d.about?.scene) ?? []), d]);
+  return [...runs].map(([scene, run]) => ({ scene, decisions: run }));
 }
 
 /**
@@ -53,12 +52,12 @@ function sceneRunsOf(decisions: readonly ReviewDecision[]): { scene: string | un
  */
 export function DecisionQueue() {
   const { pass, topic, openDecision } = useDecisionScreen();
-  const here = useRef<HTMLButtonElement>(null);
   const at = pass.decisions.findIndex((d) => d.topic === topic);
   const open = pass.decisions.filter((d) => d.state === 'open').length;
-  // The queue mounts with each decision, so the one on show is brought into view, not left where a long list scrolled.
-  useEffect(() => {
-    here.current?.scrollIntoView({ block: 'nearest' });
+  // The queue mounts with each decision, so the one on show is brought into view as its row first appears. Stable, so
+  // a re-render (the pulse's, every second) doesn't scroll back a list the reviewer moved.
+  const here = useCallback((row: HTMLButtonElement | null) => {
+    row?.scrollIntoView({ block: 'nearest' });
   }, []);
   return (
     <Box {...stylex.props(styles.queue)}>
@@ -68,7 +67,8 @@ export function DecisionQueue() {
       </Text>
       <FadeScroll>
         <Stack gap={0} {...stylex.props(styles.list)}>
-          {sceneRunsOf(pass.decisions).map((run) => (
+          {/* Shown once in story order, so the list doesn't jump from posting order as the storyboard loads. */}
+          {pass.ordered && sceneRunsOf(pass.decisions).map((run) => (
             <Fragment key={run.decisions[0].id}>
               <Text component="h3" size="sm" {...stylex.props(styles.scene)}>{run.scene ?? 'no scene'}</Text>
               {run.decisions.map((d) => {

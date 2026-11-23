@@ -29,7 +29,7 @@ export type ReviewDecisionView = {
   files: CandidateFileStates;
   /** The threads about this decision, on its candidates or on the whole. */
   threads: ReviewThread[];
-  /** One decision per topic, for the topic menu. */
+  /** One decision per topic, which the pass is taken from. */
   topics: ReviewDecision[];
   agent?: { since: string };
 };

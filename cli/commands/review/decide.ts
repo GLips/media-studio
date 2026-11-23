@@ -53,7 +53,7 @@ export const reviewDecideCommand = defineCommand({
   meta: {
     name: 'decide',
     description: "Post a choice between two or more candidates for the reviewer to pick from and sign off.",
-    about: "Candidates are keyed a, b, c… in order. Each file is checked to be media in the project and recorded by its hash, so one changed later shows as stale; text candidates are shown as written. The reviewer surveys them in the studio app at /projects/<p>/decisions/<topic>, walking every open decision in the project in one pass, in story order by --scene and --line (those without come last), compares any two on one transport, picks or rejects each, comments on any, and signs off; watch wakes on each verdict and on the sign-off, and decisions prints them. Posting an open topic again replaces its candidates, keeping verdicts on those that come back unchanged. Prints the decision's id.",
+    about: "Candidates are keyed a, b, c… in order. Each file is checked to be media in the project and recorded by its hash, so one changed later shows as stale; text candidates are shown as written. The reviewer surveys them in the studio app at /projects/<p>/decisions/<topic>, walking every open decision in the project in one pass, in story order by --scene and --line (those without come last; a topic posted again without them keeps its place), compares any two on one transport, picks or rejects each, comments on any, and signs off; watch wakes on each verdict and on the sign-off, and decisions prints them. Posting an open topic again replaces its candidates, keeping verdicts on those that come back unchanged. Prints the decision's id.",
   },
   args: reviewDecideArgs,
   async run({ args, rawArgs }) {

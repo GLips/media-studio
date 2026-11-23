@@ -289,7 +289,9 @@ function putReviewDecision(at: Applying, decision: NewDecision) {
     return was?.verdict ? { verdict: was.verdict } : {};
   };
   const candidates = decision.candidates.map((c) => ({ ...c, ...verdictOf(c) }));
-  const fields = { topic: decision.topic, question: decision.question, choose: decision.choose, ...(decision.about && { about: decision.about }), candidates };
+  // A round posted without its place keeps the one its topic last had, so it stays where it was in the reviewer's pass.
+  const about = decision.about ?? at.file.decisions.findLast((d) => d.topic === decision.topic)?.about;
+  const fields = { topic: decision.topic, question: decision.question, choose: decision.choose, ...(about && { about }), candidates };
   const id = open?.id ?? at.file.nextId;
   const posted: ReviewDecision = { id, ...fields, state: 'open', rev: at.rev, at: open?.at ?? at.now };
   if (open) at.file.decisions = at.file.decisions.map((d) => (d === open ? posted : d));

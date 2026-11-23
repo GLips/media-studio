@@ -5,7 +5,7 @@ import type { DecisionScreenValue } from './decision-screen-context.tsx';
 /** How many candidates the number keys reach: `1`–`9`. */
 export const DECISION_NUMBER_KEYS = 9;
 
-const decisionKey = (hotkey: UseHotkeyDefinition['hotkey'], name: string, callback: () => void, ignoreInputs?: boolean): UseHotkeyDefinition =>
+const decisionKey = (hotkey: UseHotkeyDefinition['hotkey'], name: string, callback: (event: KeyboardEvent) => void, ignoreInputs?: boolean): UseHotkeyDefinition =>
   ({ hotkey, callback, options: { ...(ignoreInputs !== undefined && { ignoreInputs }), meta: { group: 'decision', name } } });
 
 /** The cheatsheet's and the tooltips' name for a number key: `Candidate A`. */
@@ -34,8 +34,9 @@ export function useDecisionHotkeys(screen: DecisionScreenValue) {
   ];
   const at = pass.decisions.findIndex((d) => d.topic === topic);
   const before = pass.decisions[at - 1], after = pass.decisions.at(at + 1);
-  if (before) defs.push(decisionKey('ArrowUp', 'Previous decision', () => openDecision(before.topic)));
-  if (after) defs.push(decisionKey('ArrowDown', 'Next decision', () => openDecision(after.topic)));
+  // Only in story order: a step taken while the storyboard loads would follow the posting order.
+  if (before && pass.ordered) defs.push(decisionKey('ArrowUp', 'Previous decision', () => openDecision(before.topic)));
+  if (after && pass.ordered) defs.push(decisionKey('ArrowDown', 'Next decision', () => openDecision(after.topic)));
   // Escape, not a letter: the cards are lettered A, B, … so a letter key reads as a candidate. Not from a field, which
   // Escape leaves.
   if (twoUp) defs.push(decisionKey('Escape', 'Survey', () => openTwoUp(null), true));
@@ -56,8 +57,11 @@ export function useDecisionHotkeys(screen: DecisionScreenValue) {
       decisionKey('P', 'Pick', verdict('pick')),
       decisionKey('X', 'Reject', verdict('reject')),
       decisionKey('U', 'Unflag', verdict(null)),
-      // Not from inside the thread's composer, whose own Mod+Enter saves the note.
-      decisionKey('Mod+Enter', 'Sign off', signOff, true),
+      // Not from inside the thread's composer, whose own Mod+Enter saves the note. A held key's repeats are dropped:
+      // signing off opens the next decision, which a repeat would sign off unseen.
+      decisionKey('Mod+Enter', 'Sign off', (event) => {
+        if (!event.repeat) signOff();
+      }, true),
     );
   }
   useHotkeys(defs);

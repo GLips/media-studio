@@ -56,6 +56,15 @@ test('a decision that asks for one is refused sign-off until the reviewer picks 
   assert.deepEqual(picked.decisions[0].decided?.picks, ['b']);
 });
 
+test('a round posted without its scene and line keeps the place its topic had, so it stays put in the reviewer\'s pass', () => {
+  const candidates: NewDecision['candidates'] = [{ key: 'a', label: 'take 1', meta: {} }, { key: 'b', label: 'take 2', meta: {} }];
+  const put = (about?: NewDecision['about']): ReviewOp => ({ op: 'decision.put', decision: { topic: 'take-open', question: 'Which take?', choose: 'one', candidates, ...(about && { about }) } });
+  const first = applied(apply(emptyReviewFile(), 'agent', put({ scene: 'hook', line: 'open' }))).file;
+  const signed = applied(apply(first, 'reviewer', { op: 'decision.verdict', id: 1, candidate: 'a', verdict: 'pick' }, { op: 'decision.close', id: 1 })).file;
+  const again = applied(apply(signed, 'agent', put())).file;
+  assert.deepEqual(again.decisions.map((d) => [d.id, d.about]), [[1, { scene: 'hook', line: 'open' }], [2, { scene: 'hook', line: 'open' }]]);
+});
+
 test('only the agent hands the plan over, and only the reviewer takes back a scene\'s sign-off, leaving the others', () => {
   assert.throws(() => apply(withNote, 'reviewer', { op: 'plan.handover' }), ReviewOpRefused);
   const handedOver = applied(apply(withNote, 'agent', { op: 'plan.handover' })).file;

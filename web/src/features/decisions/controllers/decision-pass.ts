@@ -15,6 +15,8 @@ export type DecisionPass = {
   decisions: readonly ReviewDecision[];
   /** The storyboard's scenes, for the line a decision is about; null before it loads, or with no storyboard. */
   scenes: StoryboardScenes | null;
+  /** False until the storyboard has loaded (or proved absent): until then the order is the posting order, not the story's. */
+  ordered: boolean;
 };
 
 /** The pass through `topics` (one decision per topic) that the screen opened on `topic`. */
@@ -27,5 +29,5 @@ export function useDecisionPass(project: string, topic: string, topics: readonly
   const missing = due.filter((t) => !walked.has(t));
   if (missing.length) setWalked(new Set([...walked, ...missing]));
   const order = load.state === 'ready' ? reviewStoryOrderOf(load.plan.storyboard) : [];
-  return { decisions: reviewDecisionPass(topics, new Set([...walked, ...missing]), order), scenes };
+  return { decisions: reviewDecisionPass(topics, new Set([...walked, ...missing]), order), scenes, ordered: load.state !== 'loading' };
 }
