@@ -38,7 +38,5 @@ flagged: `studio library finish <item>`.
   1. When it switches, and how, is each scene's call.
 - To follow the cursor: `useLibraryInputLog(recording)`, `recording.cursorOn('screen', log)`, `followPointAt(path,
   at, { seconds })`, and `<ZoomOnPoint picture focus zoom>` around the screen's `LibraryVideo`.
-- A window's screen track has `window`, not `display`; `recording.waypointsOn('screen', log)` keeps clicks
-  outside it, `inside: false`.
 
 A render needs the library's media online; `studio library config` says where it is.
