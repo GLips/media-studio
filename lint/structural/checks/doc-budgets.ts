@@ -3,7 +3,7 @@
 // docs/doc-budgets.manifest.json maps a doc to its ceiling in words; a key
 // ending in `/` budgets the sum of every .md beneath it, so a new skill
 // reference spends from its skill's budget. Every standing doc is budgeted
-// (each CLAUDE.md, skill SKILL.md and references/, docs/*.md). Adding words
+// (each CLAUDE.md, skill SKILL.md, references/ and subcommands/, docs/*.md). Adding words
 // past a ceiling costs a manifest diff someone approves.
 //
 // A ceiling further above its doc than 40 words or 5% fails too, and
@@ -26,10 +26,10 @@ const CEILING_FLOOR_WORDS = 40;
 export const countDocWords = (text: string) => text.split(/\s+/).filter(Boolean).length;
 const highestCeilingFor = (words: number) => words + Math.max(CEILING_FLOOR_WORDS, Math.ceil(words * CEILING_HEADROOM));
 
-/** The budget key a path falls under when it's a standing doc: itself, or its skill's references/ folder. */
+/** The budget key a path falls under when it's a standing doc: itself, or its skill's references/ or subcommands/ folder. */
 function standingDocBudgetKey(path: string): string | undefined {
   if (path.startsWith('work/')) return undefined;
-  const reference = /^(skills\/[^/]+\/references\/).+\.md$/.exec(path);
+  const reference = /^(skills\/[^/]+\/(?:references|subcommands)\/).+\.md$/.exec(path);
   if (reference) return reference[1];
   return /^skills\/[^/]+\/SKILL\.md$|^docs\/[^/]+\.md$|(^|\/)CLAUDE\.md$/.test(path) ? path : undefined;
 }
