@@ -13,6 +13,7 @@
     "test": "node --test 'lib/**/*.test.ts' 'lint/**/*.test.ts' 'cli/**/*.test.ts' 'web/src/**/*.test.ts' 'work/projects/**/*.test.ts' lib/output/render/engine/workspace-retime-check.ts",
     "test:gate": "node --test 'lib/**/*.test.ts' 'lint/**/*.test.ts' 'cli/**/*.test.ts' 'web/src/**/*.test.ts'",
     "test:workspace": "node --test 'work/projects/**/*.test.ts' lib/output/render/engine/workspace-retime-check.ts",
+    "test:recorder": "swift test --package-path lib/footage/recording/engine/recorder --scratch-path lib/footage/recording/engine/recorder/.build/gate",
     "check:arch": "node lint/check-arch.ts",
     "lint": "node lint/lint.ts",
     "photoshop": "node harness/photoshop.ts",

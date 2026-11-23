@@ -7,6 +7,7 @@ import { definePlugin } from "@oxlint/plugins";
 import { effectNativeFailuresRule } from "./rules/effect-native-failures.ts";
 import { effectNativeIoRule } from "./rules/effect-native-io.ts";
 import { effectNativeJsonRule } from "./rules/effect-native-json.ts";
+import { effectNativePromisesRule } from "./rules/effect-native-promises.ts";
 import { hookCountRule } from "./rules/hook-count.ts";
 import { noAsyncEffectRule } from "./rules/no-async-effect.ts";
 import { noChainedTypeAssertionsRule } from "./rules/no-chained-type-assertions.ts";
@@ -64,10 +65,11 @@ export default definePlugin({
     "no-service-option": noServiceOptionRule,
     "require-error-message": requireErrorMessageRule,
 
-    // Effect-native features (EFFECT_NATIVE_FEATURES in studio-tree.ts), by the file's position.
+    // Effect-native features (EFFECT_NATIVE_FEATURES in studio-tree.ts) and their CLI verbs, by the file's position.
     "effect-native-io": effectNativeIoRule,
     "effect-native-failures": effectNativeFailuresRule,
     "effect-native-json": effectNativeJsonRule,
+    "effect-native-promises": effectNativePromisesRule,
 
     // The web app: each decides from the file's position or from what it imports.
     "route-thinness": routeThinnessRule,

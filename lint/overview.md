@@ -66,7 +66,7 @@ unrun, a failure goes unhandled or a `try` sits in a generator are questions abo
 the checker answers. `tsconfig.effect.json` is its policy: tsconfig.json and web/tsconfig.json extend it, and it names
 every diagnostic `@effect/tsgo` ships at `error` or `off`, each `off` with its reason. `npm run typecheck` (and `:gate`,
 `:web`) runs `effect-tsgo tsc`, the language service's build of the installed TypeScript, which reports type errors and
-the policy in one pass; plain `tsc` ignores `plugins`. `language-service-policy.test.ts` fails when an upgrade adds or
+the policy in one pass; plain `tsc` ignores `plugins`. Both commit hooks typecheck through it, the workspace's too. `language-service-policy.test.ts` fails when an upgrade adds or
 drops a diagnostic, until the policy names it. A source exception is `// @effect-diagnostics-next-line <rule>:off` with
 the reason beside it. The oxlint Effect rules below hold what the checker doesn't: bans on named APIs and shapes.
 
@@ -124,8 +124,8 @@ Web app: rules whose subject only the web app has.
 | css-tokens, shadow-source, token-equality | structural | stylesheet values, shadows and spacing name their tokens |
 
 Effect: rules over Effect code wherever it sits, then rules for the Effect-native features (`EFFECT_NATIVE_FEATURES` in
-studio-tree.ts), which a feature joins by being listed. Rows marked *pending* are registered and specced but not yet
-enabled: the footage features they hold still carry the code their Effect rewrites delete.
+studio-tree.ts), which a feature joins by being listed. Their CLI verbs (`EFFECT_NATIVE_CLI_VERBS`, beside it) are
+thin doors that run the features' Effects, held by the io, failures and json rules as an engine is.
 
 | Rule | Tier | Holds |
 |---|---|---|
@@ -137,11 +137,12 @@ enabled: the footage features they hold still carry the code their Effect rewrit
 | no-manual-tag-comparison | oxlint | code branches on `_tag` through Match, `Predicate.isTagged` or `catchTag`, so a new variant is a compile error |
 | no-service-option | oxlint | a service stays in its program's requirements, so a missing layer is a compile error |
 | require-error-message | oxlint | a tagged error says what went wrong in its own `message`, the line the CLI prints |
-| no-discarding-catch (*pending*) | oxlint | in the web app and Effect-native features, a catch handler reads the failure it was handed |
-| effect-native-io (*pending*) | oxlint | an Effect-native engine reaches files and processes only through Effect services |
-| effect-native-failures (*pending*) | oxlint | an Effect-native engine fails only with tagged errors: no `throw`, `try` or native `Error` |
-| effect-native-json (*pending*) | oxlint | an Effect-native feature decodes JSON with its Schema, never `JSON.parse` |
-| effect-native-exports (*pending*, advisory) | structural | an Effect-native engine exports no function returning a promise; a promise-world caller runs its Effects through runStudioEffect |
+| no-discarding-catch | oxlint | in the web app and Effect-native features, a catch handler reads the failure it was handed |
+| effect-native-io | oxlint | an Effect-native engine or verb reaches files, processes and the network only through Effect services: no Node disk, process, network, stream or thread module, no process launcher, no promise-world `ffmpeg.ts` (StudioFfmpeg instead) |
+| effect-native-failures | oxlint | an Effect-native engine or verb fails only with tagged errors: no `throw`, `try` or native `Error` |
+| effect-native-json | oxlint | an Effect-native feature or verb decodes JSON with its Schema, never `JSON.parse`, destructured or not |
+| effect-native-promises | oxlint | an Effect-native engine builds and chains no promise: no `Effect.promise` (`tryPromise` with a tagged `catch`), `new Promise`, `Promise.*`, or `.then`/`.catch`/`.finally` off anything but Effect's own modules |
+| effect-native-exports | structural | an Effect-native engine exports no function returning a promise; a promise-world caller runs its Effects through runStudioEffect |
 
 Not ported from tk2's Effect rules: `no-sql-type-parameter` (the studio has no SQL) and `require-failure-disclosure`,
 whose subject is tk2's public answer at a door. Its half that fits here is require-error-message: the studio's one

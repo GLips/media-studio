@@ -17,6 +17,18 @@ describeRule("effect-native-io", effectNativeIoRule, {
       code: `import { execFileSync } from "node:child_process";\nexport const runWhisper = (args: string[]) => execFileSync("whisper-cli", args);`,
       errors: [{ messageId: "nodeIoModule" }],
     },
+    {
+      name: "serving files through node:http",
+      filename: "lib/footage/library-media/engine/library-media-server.ts",
+      code: `import { createServer } from "node:http";\nexport const serveMedia = () => createServer((request, response) => response.end());`,
+      errors: [{ messageId: "nodeIoModule" }],
+    },
+    {
+      name: "decoding frames through the promise-world ffmpeg owner",
+      filename: "lib/footage/library-media/engine/library-frame-decoder.ts",
+      code: `import { spawnFfmpeg } from "#lib/platform/ffmpeg/engine/ffmpeg.ts";\nexport const decode = (args: string[]) => spawnFfmpeg(args);`,
+      errors: [{ messageId: "promiseFfmpeg" }],
+    },
   ],
 
   adversarial: [
@@ -38,9 +50,25 @@ describeRule("effect-native-io", effectNativeIoRule, {
       code: `import { spawn } from "#lib/platform/process/engine/process-run.ts";\nexport const encode = (args: string[]) => spawn("ffmpeg", args);`,
       errors: [{ messageId: "processLauncher" }],
     },
+    {
+      name: "a footage CLI verb reading the disk, which no lib position covers",
+      filename: "cli/commands/library.ts",
+      code: `import { readFileSync } from "node:fs";\nexport const readFlags = (path: string) => readFileSync(path, "utf8");`,
+      errors: [{ messageId: "nodeIoModule" }],
+    },
   ],
 
   legal: [
+    {
+      name: "a type-only import from the ffmpeg owner",
+      filename: ENGINE,
+      code: `import type { FfmpegArgs } from "#lib/platform/ffmpeg/engine/ffmpeg.ts";\nexport const withInput = (args: FfmpegArgs, path: string) => [...args, "-i", path];`,
+    },
+    {
+      name: "a CLI verb outside the footage features",
+      filename: "cli/commands/render.ts",
+      code: `import { readFileSync } from "node:fs";\nexport const readManifest = (path: string) => readFileSync(path, "utf8");`,
+    },
     {
       name: "the Effect services the message points to",
       filename: ENGINE,
