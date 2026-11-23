@@ -1,0 +1,207 @@
+{
+  // The Effect language-service policy. tsconfig.json and web/tsconfig.json extend this file, so every program carries
+  // it; `npm run typecheck` (and :gate, :web) checks each with @effect/tsgo's build of tsc, which reports type errors
+  // and these findings in one pass. Plain `tsc` ignores `plugins`, so an editor's tsc alone reports type errors only.
+  //
+  // Every rule in the installed catalog (node_modules/@effect/tsgo/schema.json) is named here at `error` or `off`, but
+  // a deprecated one, which tsc warns about by name; lint/language-service-policy.test.ts fails when an upgrade adds
+  // or drops one. A source exception is
+  // `// @effect-diagnostics-next-line <rule>:off -- <reason>` on the line above the expression.
+  "compilerOptions": {
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "diagnostics": true,
+        // Effect 4.1 tags its platform modules unstable. The studio pins one exact Effect version in package.json, so
+        // their changes arrive only with a deliberate bump: Node's file system, paths, terminal and child processes,
+        // which runStudioEffect provides beneath every program.
+        "allowedUnstableApis": [
+          "effect/FileSystem",
+          "effect/Path",
+          "effect/PlatformError",
+          "effect/Stdio",
+          "effect/Terminal",
+          "effect/process",
+          "@effect/platform-node/NodeServices"
+        ],
+        "diagnosticSeverity": {
+          // Correctness: code that does something other than what it reads as. An effect that never runs, a
+          // requirement or failure nobody handles, a handler that can't fire, a nested Effect returned where its
+          // result was meant, a failure typed so loosely (`Error`, `unknown`) that no caller tells one from another.
+          "anyUnknownInErrorContext": "error",
+          "catchUnfailableEffect": "error",
+          "classSelfMismatch": "error",
+          "duplicatePackage": "error",
+          "effectFnIife": "error",
+          "effectFnImplicitAny": "error",
+          "effectGenUsesAdapter": "error",
+          "effectInFailure": "error",
+          "effectInVoidSuccess": "error",
+          "effectTryWithoutCatch": "error",
+          "errorPayloadShadowsName": "error",
+          "experimentalApiUsage": "error",
+          "floatingEffect": "error",
+          "floatingEffectInVitest": "error",
+          "genericEffectServices": "error",
+          "globalErrorInEffectCatch": "error",
+          "globalErrorInEffectFailure": "error",
+          "layerMergeAllWithDependencies": "error",
+          "lazyPromiseInEffectSync": "error",
+          "leakingRequirements": "error",
+          "missingEffectContext": "error",
+          "missingEffectError": "error",
+          "missingEffectServiceDependency": "error",
+          "missingLayerContext": "error",
+          "missingStarInYieldEffectGen": "error",
+          "multipleEffectProvide": "error",
+          "nonObjectEffectServiceType": "error",
+          "obsoleteMatchImport": "error",
+          "obsoleteSchemaImport": "error",
+          "outdatedApi": "error",
+          "overriddenSchemaConstructor": "error",
+          "promiseInEffectSuccess": "error",
+          "returnEffectInGen": "error",
+          "runEffectInsideEffect": "error",
+          "schemaClassObjectLiteral": "error",
+          "schemaLiteralNonFinite": "error",
+          "schemaOpaqueInstanceMember": "error",
+          "schemaSyncInEffect": "error",
+          "scopeInLayerEffect": "error",
+          "tryCatchInEffectGen": "error",
+          "unknownInEffectCatch": "error",
+          "unsafeEffectTypeAssertion": "error",
+          "unstableApiUsage": "error",
+
+          // The studio's Effect conventions: a service is a Context.Service class, an expected failure a
+          // Schema.TaggedError whose message is its sentence.
+          "preferSchemaTaggedError": "error",
+          "serviceNotAsClass": "error",
+
+          // Inside Effect code the ambients go through services, so a test provides them: time through Clock and
+          // DateTime, waits through Effect.sleep and Schedule, logs through Effect.log (runStudioEffect prints them),
+          // configuration through Config, JSON through Schema, randomness through Random.
+          "abortControllerInEffect": "error",
+          "cryptoRandomUUIDInEffect": "error",
+          "globalConsoleInEffect": "error",
+          "globalDateInEffect": "error",
+          "globalFetchInEffect": "error",
+          "globalJsonInEffect": "error",
+          "globalRandomInEffect": "error",
+          "globalTimersInEffect": "error",
+          "processEnvInEffect": "error",
+
+          // The same ambients outside Effect code, off. Remotion scenes, the paint engine, the web app, the CLI's
+          // promise world and the harness read the clock, the console, the disk and process.env directly; moving
+          // them is an adoption of its own, not a lint fix. Effect-native features are held by lint/'s
+          // effect-native rules instead, by position.
+          "asyncFunction": "off",
+          "cryptoRandomUUID": "off",
+          "extendsNativeError": "off",
+          "globalConsole": "off",
+          "globalDate": "off",
+          "globalFetch": "off",
+          "globalJson": "off",
+          "globalRandom": "off",
+          "globalTimers": "off",
+          "newPromise": "off",
+          "nodeBuiltinImport": "off",
+          "processEnv": "off",
+
+          // Off because decoding happens where no Effect runs: a model decodes synchronously, and a JSON value can't
+          // carry NaN or Infinity, so Schema.Number from JSON is already finite.
+          "instanceOfSchema": "off",
+          "schemaNumber": "off",
+          "schemaSync": "off",
+
+          // Off as design calls rather than defects. A bare `yield* Effect.fail(…)` already ends the generator, and
+          // the `return` this asks for fights oxlint's consistent-return. A zero-argument operation keeps its
+          // siblings' call shape. Tests provide layers where they run. A service key is written by hand, so a file
+          // move doesn't rename it. The runtime re-exports the platform services it provides, by design. Errors
+          // tell themselves apart by `_tag`, so a brand adds nothing. Effect.all runs in sequence unless told.
+          "apiStabilityLeak": "off",
+          "deterministicKeys": "off",
+          "lazyEffect": "off",
+          "missingConcurrencyOption": "off",
+          "missingReturnYieldStar": "off",
+          "schemaClassMissingBrand": "off",
+          "strictEffectProvide": "off",
+
+          // Off as style: each fires on working code to name another spelling. This map holds correctness and the
+          // studio's conventions; formatting, imports and conditionals belong to oxlint.
+          "acquireReleaseDisposable": "off",
+          "allOfMapToForEach": "off",
+          "catchAllTagDispatchToCatchTag": "off",
+          "catchAllToMapError": "off",
+          "catchChainToFirstSuccessOf": "off",
+          "catchConditionalRefailToCatchIf": "off",
+          "catchDieToOrDie": "off",
+          "catchIfTagToCatchTag": "off",
+          "catchRefailToTapError": "off",
+          "catchTagToCatchReason": "off",
+          "catchToIgnore": "off",
+          "catchToOrElseSucceed": "off",
+          "effectDoNotation": "off",
+          "effectFnOpportunity": "off",
+          "effectMapFlatten": "off",
+          "effectMapVoid": "off",
+          "effectSleepZeroToYieldNow": "off",
+          "effectSucceedWithUndefined": "off",
+          "effectSucceedWithVoid": "off",
+          "failCauseToConstructor": "off",
+          "flatMapConditionalToFilterOrFail": "off",
+          "flatMapIdentityToFlatten": "off",
+          "flatMapIgnoredParamToAndThen": "off",
+          "flatMapToMap": "off",
+          "flatMapToTap": "off",
+          "manualMetricTapToTrack": "off",
+          "mapConstToAs": "off",
+          "mapMapErrorToMapBoth": "off",
+          "mapSomeCatchNoSuchElement": "off",
+          "mapSomeToAsSome": "off",
+          "matchBooleanToIsSuccess": "off",
+          "matchEffectToMapBoth": "off",
+          "matchEffectToMatch": "off",
+          "matchToResultOrOption": "off",
+          "missedPipeableOpportunity": "off",
+          "missingPipeableSignature": "off",
+          "multipleCatchTag": "off",
+          "nestedEffectGenYield": "off",
+          "newSchemaClass": "off",
+          "onExitFailureToOnError": "off",
+          "optionMatchToFromOption": "off",
+          "preferBarrelImport": "off",
+          "preferEffectArray": "off",
+          "preferEffectRecord": "off",
+          "preferEffectString": "off",
+          "preferNamespaceImport": "off",
+          "preferSchemaTypeProperty": "off",
+          "preferSucceedSomeOrNone": "off",
+          "preferTypedSchemaDecoder": "off",
+          "preferUnsafeConstructor": "off",
+          "provideLayerSucceedToProvideService": "off",
+          "provideMergeAllToArray": "off",
+          "raceFirstWithSleepToTimeout": "off",
+          "redundantMapError": "off",
+          "redundantOrDie": "off",
+          "redundantSchemaTagIdentifier": "off",
+          "resultMatchToFromResult": "off",
+          "runOfExitToRunExit": "off",
+          "schemaStructWithTag": "off",
+          "schemaUnionOfLiterals": "off",
+          "strictBooleanExpressions": "off",
+          "suspendFailToFailSync": "off",
+          "syncToSucceed": "off",
+          "timeoutCatchTagToTimeoutOrElse": "off",
+          "typeUnionToSchemaUnion": "off",
+          "unnecessaryArrowBlock": "off",
+          "unnecessaryEffectGen": "off",
+          "unnecessaryFailYieldableError": "off",
+          "unnecessaryPipe": "off",
+          "unnecessaryPipeChain": "off",
+          "unnecessaryTypeofType": "off",
+          "yieldInCallArgument": "off"
+        }
+      }
+    ]
+  }
+}

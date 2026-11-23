@@ -12,6 +12,7 @@ gate-scope.ts           a scope (the studio, or work/): its repository, mount an
 gate-every-scope.ts     a run with no --scope: each scope there is, side by side
 baseline.ts             how both tiers count findings against a baseline
 arch-baseline.json      the studio's baselined findings, both tiers; work/arch-baseline.json is the workspace's
+language-service-policy.test.ts   tsconfig.effect.json against the diagnostics @effect/tsgo ships
 ```
 
 **Layout comes from `studio-tree.ts` alone.** No rule lists directories. A rule about features, barrels, layers or
@@ -59,6 +60,15 @@ scope. `oxlint/lib/rule-file.ts` turns oxlint's filename into a studio position.
 
 A rule belongs to the tier that can answer its question. Where an import lands, what a barrel drags in and what a type
 resolves to are structural questions. What one file writes is a per-file question.
+
+**The Effect language service** is a third tier, run by the typecheck rather than by lint. Whether an Effect is left
+unrun, a failure goes unhandled or a `try` sits in a generator are questions about types inside Effect code, which only
+the checker answers. `tsconfig.effect.json` is its policy: tsconfig.json and web/tsconfig.json extend it, and it names
+every diagnostic `@effect/tsgo` ships at `error` or `off`, each `off` with its reason. `npm run typecheck` (and `:gate`,
+`:web`) runs `effect-tsgo tsc`, the language service's build of the installed TypeScript, which reports type errors and
+the policy in one pass; plain `tsc` ignores `plugins`. `language-service-policy.test.ts` fails when an upgrade adds or
+drops a diagnostic, until the policy names it. A source exception is `// @effect-diagnostics-next-line <rule>:off` with
+the reason beside it. The oxlint Effect rules below hold what the checker doesn't: bans on named APIs and shapes.
 
 ## Rules
 
@@ -109,7 +119,30 @@ Web app: rules whose subject only the web app has.
 |---|---|---|
 | route-thinness | oxlint | a route reaches no server module or engine code |
 | server-fn-placement, server-fn-validation, no-deprecated-input-validator, no-plain-export-in-server-fn-module | oxlint | server functions live in controllers, validate their input, and share no module with plain exports |
-| no-disable-validation | oxlint | an Effect Schema never skips validation |
 | no-inline-color, no-inline-font-size, no-inline-style-prop, no-raw-primitives, no-stylex-border-shorthand, vendor-component-containment | oxlint | styling goes through the design system's tokens and primitives |
 | barrel-purity | structural | a feature barrel never reaches a server-only package |
 | css-tokens, shadow-source, token-equality | structural | stylesheet values, shadows and spacing name their tokens |
+
+Effect: rules over Effect code wherever it sits, then rules for the Effect-native features (`EFFECT_NATIVE_FEATURES` in
+studio-tree.ts), which a feature joins by being listed. Rows marked *pending* are registered and specced but not yet
+enabled: the footage features they hold still carry the code their Effect rewrites delete.
+
+| Rule | Tier | Holds |
+|---|---|---|
+| Effect language service | tsc | Effect code does what it reads as: no unrun Effect, unhandled failure or requirement, `try` in a generator, `Error`-typed failure, or clock, console, env or JSON read around its services (tsconfig.effect.json) |
+| no-disable-validation | oxlint | a schema's constructor never skips its checks (`disableChecks`) |
+| no-nested-layer-provide | oxlint | each `Layer.provide` edge is one line between named layers |
+| no-effect-catchcause | oxlint | a handler sees only declared errors; a defect reaches runStudioEffect with its stack |
+| no-silent-error-swallow | oxlint | no catch handler answers a failure with `Effect.void` |
+| no-manual-tag-comparison | oxlint | code branches on `_tag` through Match, `Predicate.isTagged` or `catchTag`, so a new variant is a compile error |
+| no-service-option | oxlint | a service stays in its program's requirements, so a missing layer is a compile error |
+| require-error-message | oxlint | a tagged error says what went wrong in its own `message`, the line the CLI prints |
+| no-discarding-catch (*pending*) | oxlint | in the web app and Effect-native features, a catch handler reads the failure it was handed |
+| effect-native-io (*pending*) | oxlint | an Effect-native engine reaches files and processes only through Effect services |
+| effect-native-failures (*pending*) | oxlint | an Effect-native engine fails only with tagged errors: no `throw`, `try` or native `Error` |
+| effect-native-json (*pending*) | oxlint | an Effect-native feature decodes JSON with its Schema, never `JSON.parse` |
+| effect-native-exports (*pending*, advisory) | structural | an Effect-native engine exports no function returning a promise; a promise-world caller runs its Effects through runStudioEffect |
+
+Not ported from tk2's Effect rules: `no-sql-type-parameter` (the studio has no SQL) and `require-failure-disclosure`,
+whose subject is tk2's public answer at a door. Its half that fits here is require-error-message: the studio's one
+door is the CLI, which prints an error's message.
