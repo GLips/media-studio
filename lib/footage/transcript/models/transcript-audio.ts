@@ -8,6 +8,8 @@ import type { SpokenWord } from './spoken-word.ts';
 export const AUDIO_LEVEL_FRAME = 0.01;
 // About −27 dBFS: above this nothing counts as quiet, however loud the file's floor.
 const QUIET_CEILING = 1500;
+// About −64 dBFS: below this everything is quiet, so a digitally silent or gated stretch is never read as speech.
+const QUIET_FLOOR = 20;
 
 /** RMS of each 10 ms frame, in 16-bit sample units. The last frame may be shorter. */
 export function audioFrameLevels(samples: Int16Array, rate: number): number[] {
@@ -23,12 +25,12 @@ export function audioFrameLevels(samples: Int16Array, rate: number): number[] {
 
 /**
  * The level below which a frame is quiet: twice the 10th-percentile frame, which audio with any pauses in it reaches,
- * and at least 300 (about −40 dBFS), which covers a digitally silent file, unless its speech is quiet: a raw mic
- * recording's 95th-percentile frame can sit near 500, so the floor drops to a sixth of that.
+ * and at least 300 (about −40 dBFS) unless its speech is quiet: a raw mic recording's 95th-percentile frame can sit
+ * near 500, so that minimum drops to a sixth of it, though never below QUIET_FLOOR.
  */
 export function quietAudioLevel(levels: readonly number[]): number {
   const sorted = levels.toSorted((a, b) => a - b), at = (p: number) => sorted[Math.floor(sorted.length * p)] ?? 0;
-  return Math.min(QUIET_CEILING, Math.max(Math.min(300, at(0.95) / 6), 2 * at(0.1)));
+  return Math.min(QUIET_CEILING, Math.max(QUIET_FLOOR, Math.min(300, at(0.95) / 6), 2 * at(0.1)));
 }
 
 /** A run of quiet frames: its first frame and how many. */
@@ -147,16 +149,20 @@ export function audioPauses(levels: readonly number[], quiet: number): AudioSpan
     .map((run) => ({ start: toMs(run.from * AUDIO_LEVEL_FRAME), end: toMs((run.from + run.frames) * AUDIO_LEVEL_FRAME) }));
 }
 
-/** A word whisper heard, and when: the middle of it, by whisper's DTW alignment, in seconds into the file. */
+/** A word whisper heard, and when: a moment inside it, by whisper's DTW alignment, in seconds into the file. */
 export type HeardWord = { text: string; at: number };
 
 // Quiet this short between two words may be a stop consonant inside one, so it doesn't bound a word.
 const WORD_GAP = 0.1;
+// Whisper's DTW time falls late in a word (0.2 s after it starts, under 0.1 s before it ends), so two words with no
+// quiet between them meet this far from one's time to the next's: within 10 ms of short pauses (median) on a TTS take
+// and a raw mic recording, where halfway was 30–50 ms late.
+const WORD_MEETING = 0.3;
 
 /**
  * When each heard word starts and ends. Whisper's DTW times say where a word sits, not where it starts, so the audio
  * decides its edges: quiet whose middle lies between two words' times bounds both, and two words with no quiet between
- * them meet halfway between their times.
+ * them meet WORD_MEETING of the way from one time to the next.
  */
 export function wordsTimedAtPauses(heard: readonly HeardWord[], pauses: readonly AudioSpan[], duration: number): SpokenWord[] {
   const gaps = pauses.filter((p) => p.end - p.start >= WORD_GAP);
@@ -169,8 +175,8 @@ export function wordsTimedAtPauses(heard: readonly HeardWord[], pauses: readonly
     return inside.length ? { start: inside[0].start, end: inside.at(-1)!.end } : null;
   };
   const edges = at.slice(1).map((next, i) => {
-    const quiet = between(at[i], next);
-    return quiet ?? { start: (at[i] + next) / 2, end: (at[i] + next) / 2 };
+    const meeting = at[i] + WORD_MEETING * (next - at[i]);
+    return between(at[i], next) ?? { start: meeting, end: meeting };
   });
   const first = between(0, at[0] ?? 0), last = between(at.at(-1) ?? duration, duration);
   return heard.map((word, i) => ({

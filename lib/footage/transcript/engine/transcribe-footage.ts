@@ -36,7 +36,7 @@ const ensureWhisper = () => (ready ??= installWhisperCpp({ to: WHISPER_DIR, vers
 
 /**
  * What's said in `path` (any file ffmpeg reads with an audio track) and when. Asking again for the same file answers
- * from the user cache, keyed by the file's size and sampled bytes, so a multi-GB file costs a few reads. Whisper's
+ * from the user cache, keyed by the file's size, modified time and sampled bytes, so a multi-GB file costs a few reads. Whisper's
  * spelling is not a script's; see alignSpokenWords.
  */
 export async function transcribeFootage(path: string): Promise<FootageTranscript> {
@@ -67,15 +67,15 @@ export async function transcribeFootage(path: string): Promise<FootageTranscript
   return transcript;
 }
 
-// Bytes read from the start, middle and end of a file for its cache key. Media differing only elsewhere at the same
-// size is far-fetched: an edit or re-encode moves the size or the container's header and index.
+// Bytes read from the start, middle and end of a file for its cache key, beside its size and modified time. The time
+// catches an edit that keeps the size and misses the samples (a word patched mid-WAV); a copy is transcribed afresh.
 const KEY_SAMPLE = 2 ** 20;
 
-/** A key for `path`'s transcript from its size and three sampled megabytes, not a hash of all of it. */
+/** A key for `path`'s transcript from its size, modified time and three sampled megabytes, not a hash of all of it. */
 function transcriptCacheKey(path: string): string {
   const fd = openSync(path, 'r');
   try {
-    const { size } = fstatSync(fd), hash = createHash('sha256').update(`${TRANSCRIBER}\n${size}\n`);
+    const { size, mtimeMs } = fstatSync(fd), hash = createHash('sha256').update(`${TRANSCRIBER}\n${size}\n${mtimeMs}\n`);
     const block = Buffer.alloc(KEY_SAMPLE);
     for (const at of new Set([0, Math.max(0, Math.floor(size / 2) - KEY_SAMPLE / 2), Math.max(0, size - KEY_SAMPLE)])) {
       hash.update(block.subarray(0, readSync(fd, block, 0, KEY_SAMPLE, at)));
@@ -122,8 +122,9 @@ function heardInFile(tokens: readonly WhisperToken[], piece: TranscriptPiece): H
     if (spoken && token.t_dtw >= 0) words.at(-1)!.times.push(token.t_dtw / 100);
   }
   let at = 0;
-  return words.map(({ text, times }) => {
+  // Whisper writes what it hears that isn't speech as a tag: [BLANK_AUDIO], (music), [laughs].
+  return words.flatMap(({ text, times }) => {
     if (times.length) at = (times[0] + times.at(-1)!) / 2;
-    return { text, at: fileTimeInPiece(piece, at) };
+    return /^[[(].*[\])]$/.test(text) ? [] : [{ text, at: fileTimeInPiece(piece, at) }];
   });
 }

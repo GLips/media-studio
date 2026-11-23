@@ -24,15 +24,22 @@ test('whisper hears every stretch of speech once, a retake after a pause on its 
   assert.equal(Math.round(fileTimeInPiece(first, 2.31) * 100) / 100, 2.46);
 });
 
-test('a word ends where the quiet after it begins, and words with no quiet between them meet halfway', () => {
+test('silent audio holds nothing for whisper to hear', () => {
+  const silent = levelsOf([false, 60]).map(() => 0);
+  assert.deepEqual(planTranscriptPieces(silent, quietAudioLevel(silent)), []);
+  const gated = [...levelsOf([false, 58]).map(() => 0), ...levelsOf([true, 1.8])];
+  assert.equal(planTranscriptPieces(gated, quietAudioLevel(gated)).length, 1);
+});
+
+test('a word ends where the quiet after it begins, and words with no quiet between them meet nearer the first', () => {
   const levels = levelsOf([false, 1], [true, 1], [false, 0.6], [true, 0.8], [false, 1]);
   const pauses = audioPauses(levels, quietAudioLevel(levels));
-  // Whisper's DTW times sit mid-word, one of them in the quiet beside its word.
+  // Whisper's DTW times sit late in each word, one of them in the quiet after its word.
   const words = wordsTimedAtPauses([{ text: 'one', at: 1.3 }, { text: 'two', at: 1.7 }, { text: 'three', at: 2.1 }, { text: 'four', at: 2.9 }], pauses, 4.4);
   assert.deepEqual(words, [
-    { text: 'one', start: 1, end: 1.5 },
-    { text: 'two', start: 1.5, end: 1.9 },
-    { text: 'three', start: 1.9, end: 2 },
+    { text: 'one', start: 1, end: 1.42 },
+    { text: 'two', start: 1.42, end: 1.82 },
+    { text: 'three', start: 1.82, end: 2 },
     { text: 'four', start: 2.6, end: 3.4 },
   ]);
 });
