@@ -13,7 +13,7 @@ import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { getPriority, setPriority } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import type { VideoConfig } from 'remotion';
-import { Layer } from 'effect';
+import { ManagedRuntime } from 'effect';
 import { blockoutSlug, projectSlug, replaySlug } from './project-bundle.ts';
 import { bundleStudioProject } from './studio-bundle.ts';
 import { refuseProjectPaintingErrors } from './render-preflight.ts';
@@ -22,8 +22,7 @@ import { paintCacheNamespace, servePaintCache } from './render-paint-cache.ts';
 import { serveRenderFrameSink, type RenderFrame } from './render-frame-sink.ts';
 import { measuredRenderFrames, rawRenderFrameInput, renderFramesInOrder, renderStillsByFrame, renderStillsInto, type RenderStillImage } from './render-frame-writes.ts';
 import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
-import { serveLibraryMedia } from '#lib/footage/library-media/engine/library-media-server.ts';
-import { runStudioEffect } from '#lib/platform/process/engine/studio-effect-runtime.ts';
+import { LibraryMediaServer, libraryMediaServerLayer } from '#lib/footage/library-media/engine/library-media-server.ts';
 import { countVideoFrames, openFfmpegInput, runFfmpegAsync } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { placeRenderWithSnapshot, renderStagingPathOf } from './render-snapshot.ts';
 import type { RenderSnapshot } from '../models/render-snapshot-model.ts';
@@ -183,10 +182,13 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   const checking = traceClock();
   const paintings = await refuseProjectPaintingErrors(project);
   if (paintings) trace.record(`${paintings} ${paintings === 1 ? 'painting' : 'paintings'} checked`, { start: checking, end: traceClock() });
-  const placements = await placing, paintCache = await caching, frameSink = await serveRenderFrameSink(), libraryMedia = await runStudioEffect(serveLibraryMedia(), Layer.empty);
+  // The library's media server lives as long as the process, as the frame sink and the others do: none of them keeps
+  // the process alive, decoders included, and a session is never closed.
+  const libraryMediaRuntime = ManagedRuntime.make(libraryMediaServerLayer);
+  const placements = await placing, paintCache = await caching, frameSink = await serveRenderFrameSink(), libraryMedia = await libraryMediaRuntime.runPromise(LibraryMediaServer.useSync(({ url }) => url));
   const serveUrl = await trace.run('bundle', () => bundleStudioProject(project));
   const props = (p: Partial<VideoProps> = {}): VideoProps => ({
-    captions: false, probe: false, blockouts: false, lens, libraryMedia: libraryMedia.url, ...(paintingValues && { paintingValues }), ...(traceDetail && { traceDetail }), ...(placements && { stampPlacements: placements.url }), ...(paintCache && { paintCache: paintCache.url }), ...p,
+    captions: false, probe: false, blockouts: false, lens, libraryMedia, ...(paintingValues && { paintingValues }), ...(traceDetail && { traceDetail }), ...(placements && { stampPlacements: placements.url }), ...(paintCache && { paintCache: paintCache.url }), ...p,
   });
   const selectVideo = (inputProps: VideoProps, browser: HeadlessBrowser) => selectComposition({ ...RENDER_PAGE_OPTIONS, serveUrl, id: projectSlug(project), inputProps, puppeteerInstance: browser });
   /** The video's composition with `inputProps`, selected in `browser`, or in a watched one of its own, under the GPU lease. */
