@@ -6,7 +6,8 @@ import Testing
 
 struct FakeTake: RecorderTake, Equatable {
   let id: Int
-  var folder: URL { URL(fileURLWithPath: "/takes/\(id)") }
+  var folder: URL { URL(fileURLWithPath: "/takes/2026-11-22 18.0\(id).00") }
+  var startedAt: Date { Date(timeIntervalSince1970: 1_795_000_000 + Double(id) * 60) }
 }
 
 typealias State = RecorderState<FakeTake>
@@ -40,6 +41,11 @@ func names(_ effects: [Effect]) -> [String] {
     case .alertTrackProblem: "alert"
     case .endTake: "endTake"
     case .handOffToLibrary: "handOff"
+    case .stopLibraryAdd: "stopLibraryAdd"
+    case .loadRecentTakes: "loadRecentTakes"
+    case .reveal(let folder): "reveal \(folder.path)"
+    case .confirmThrowAway: "confirmThrowAway"
+    case .throwAway: "throwAway"
     case .saveInputPick: "saveInputPick"
     case .replyToQuit: "replyToQuit"
     case .scheduleOneTakeStop: "scheduleOneTakeStop"
@@ -55,18 +61,18 @@ var atIdle: RecorderStep<FakeTake> { State.launch(missing: []) }
   var (state, effects) = run(atIdle, [.menuOpened, .toggleRequested, .toggleRequested])
   #expect(state.phase.name == .starting)
   // The check lets go of the devices before the take opens them, and the second press starts nothing.
-  #expect(names(effects) == ["start inputCheck", "stop inputCheck", "beginTake"])
+  #expect(names(effects) == ["loadRecentTakes", "start inputCheck", "stop inputCheck", "beginTake"])
 
-  (state, effects) = run(state, [.takeStarted(take), .toggleRequested, .takeEnded])
+  (state, effects) = run(state, [.takeStarted(take), .toggleRequested, .takeEnded(durationSeconds: 12)])
   #expect(state.phase.name == .idle)
-  #expect(names(effects) == ["log", "start trackWatch", "stop trackWatch", "endTake", "log", "handOff", "start inputCheck"])
+  #expect(names(effects) == ["log", "start trackWatch", "start takeClock", "stop trackWatch", "stop takeClock", "endTake", "log", "handOff", "start inputCheck"])
 }
 
 @Test func aQuitDuringATakeFinishesItHandsItOffThenQuits() {
   let take = FakeTake(id: 1)
-  let (state, effects) = run(atIdle, [.toggleRequested, .quitRequested, .takeStarted(take), .toggleRequested, .takeEnded])
+  let (state, effects) = run(atIdle, [.toggleRequested, .quitRequested, .takeStarted(take), .toggleRequested, .takeEnded(durationSeconds: 12)])
   #expect(state.phase.name == .exited)
-  #expect(names(effects) == ["beginTake", "log", "endTake", "log", "handOff", "replyToQuit"])
+  #expect(names(effects) == ["loadRecentTakes", "beginTake", "log", "endTake", "log", "handOff", "replyToQuit"])
 }
 
 @Test func aTrackProblemIsKeptThroughTheTakeAndClearedByTheNext() {
@@ -74,7 +80,7 @@ var atIdle: RecorderStep<FakeTake> { State.launch(missing: []) }
     .toggleRequested, .takeStarted(FakeTake(id: 1)),
     .trackProblemsFound([.camera: "sent nothing"]),
     .trackProblemsFound([.camera: "stopped sending at 9.0 s", .mic: "sent nothing"]),
-    .toggleRequested, .takeEnded,
+    .toggleRequested, .takeEnded(durationSeconds: 12),
   ])
   #expect(state.trackProblems == [.camera: "sent nothing", .mic: "sent nothing"])
   #expect(names(effects).filter { $0 == "alert" }.count == 2)
@@ -91,10 +97,10 @@ var atIdle: RecorderStep<FakeTake> { State.launch(missing: []) }
 
 @Test func permissionsGrantedInSettingsUnblockOrRelaunch() {
   let launch = State.launch(missing: [.screen, .camera])
-  #expect(names(launch.effects) == ["askForPermissions"])
+  #expect(names(launch.effects) == ["askForPermissions", "loadRecentTakes"])
   var (state, effects) = run(launch, [.toggleRequested, .permissionsChecked(granted: [.camera])])
   // A press while a permission is missing asks again instead of recording; screen waits on a fresh process.
-  #expect(names(effects) == ["askForPermissions", "log", "request screen", "start permissionPoll"])
+  #expect(names(effects) == ["askForPermissions", "loadRecentTakes", "log", "request screen", "start permissionPoll"])
   #expect(state.missingPermissions == [.screen])
 
   (state, effects) = run(state, [
@@ -107,6 +113,93 @@ var atIdle: RecorderStep<FakeTake> { State.launch(missing: []) }
 
   let cameraOnly = run(State.launch(missing: [.camera]), [.permissionsChecked(granted: [.camera])]).state
   #expect(cameraOnly.phase.name == .idle)
+}
+
+func recent(_ id: Int, _ place: RecorderRecentTake.Place) -> RecorderRecentTake {
+  let take = FakeTake(id: id)
+  return RecorderRecentTake(folder: take.folder, recordedAt: take.startedAt, durationSeconds: 30, place: place)
+}
+
+@Test func theMenuBarClockShowsHowMuchOfTheTakeIsWrittenOnlyWhileRecording() {
+  var state = run(atIdle, [.toggleRequested, .takeStarted(FakeTake(id: 1))]).state
+  #expect(RecorderMenuStatus(state, hotkey: "k", appName: "R").clock == "0:00")
+  state = run(state, [.takeClockTicked(seconds: 65.9)]).state
+  #expect(RecorderMenuStatus(state, hotkey: "k", appName: "R").clock == "1:05")
+  state = run(state, [.takeClockTicked(seconds: 3723)]).state
+  #expect(RecorderMenuStatus(state, hotkey: "k", appName: "R").clock == "1:02:03")
+  state = run(state, [.toggleRequested]).state
+  #expect(RecorderMenuStatus(state, hotkey: "k", appName: "R").clock == nil)
+}
+
+@Test func aFinishedTakeIsListedAsItIsAddedAndALateListingCantMoveIt() {
+  let take = FakeTake(id: 2)
+  var (state, effects) = run(atIdle, [
+    .recentTakesLoaded([recent(1, .inLibrary(item: "one", mediaFolder: URL(fileURLWithPath: "/media/one")))]),
+    .toggleRequested, .takeStarted(take), .toggleRequested, .takeEnded(durationSeconds: 61),
+    // Listed before the add moved it: the recorder knows better.
+    .recentTakesLoaded([recent(2, .inRecordings), recent(1, .inLibrary(item: "one", mediaFolder: URL(fileURLWithPath: "/media/one")))]),
+  ])
+  #expect(state.recentTakes.map(\.place) == [.addingToLibrary, .inLibrary(item: "one", mediaFolder: URL(fileURLWithPath: "/media/one"))])
+  #expect(state.recentTakes.first?.durationSeconds == 61)
+
+  (state, effects) = run(state, [.libraryAddEnded(take.folder, failure: nil)])
+  #expect(names(effects) == ["loadRecentTakes"])
+  (state, effects) = run(state, [
+    .recentTakesLoaded([recent(2, .inLibrary(item: "two", mediaFolder: URL(fileURLWithPath: "/media/two")))]),
+    .openRecentTakeRequested(take.folder),
+  ])
+  // The listing is the truth for takes at rest: the one that's gone from it is gone from the menu.
+  #expect(state.recentTakes.map(\.folder) == [take.folder])
+  #expect(names(effects) == ["reveal /media/two"])
+}
+
+@Test func throwingAwayATakeStillBeingAddedStopsTheAddFirst() {
+  let take = FakeTake(id: 1)
+  var (state, effects) = run(atIdle, [.toggleRequested, .takeStarted(take), .toggleRequested, .takeEnded(durationSeconds: 5), .throwAwayRequested])
+  guard case .confirmThrowAway(let asked)? = effects.last else {
+    Issue.record("no confirmation asked")
+    return
+  }
+  #expect(asked.folder == take.folder)
+  (state, effects) = run(state, [.throwAwayConfirmed(take.folder), .throwAwayRequested])
+  // A second Throw Away while it goes asks nothing.
+  #expect(names(effects) == ["log", "stopLibraryAdd"])
+  #expect(RecorderMenuStatus(state, hotkey: "k", appName: "R").throwAwayTitle == nil)
+
+  // The stopped add exits non-zero: that's the throw-away going ahead, not a failed add.
+  (state, effects) = run(state, [.libraryAddEnded(take.folder, failure: .exited(status: 143))])
+  #expect(names(effects) == ["throwAway"])
+  #expect(state.libraryFailure == nil)
+  (state, effects) = run(state, [.takeThrownAway(take.folder)])
+  #expect(state.recentTakes.isEmpty)
+  #expect(names(effects) == ["log", "loadRecentTakes"])
+}
+
+@Test func aThrowAwayTheLibraryRefusesIsShownAndTheTakeRelisted() {
+  let (state, effects) = run(atIdle, [
+    .recentTakesLoaded([recent(1, .inLibrary(item: "one", mediaFolder: nil))]),
+    .throwAwayConfirmed(FakeTake(id: 1).folder),
+    .throwAwayFailed(FakeTake(id: 1).folder, reason: "one is used by demo"),
+  ])
+  #expect(names(effects) == ["loadRecentTakes", "log", "throwAway", "log", "loadRecentTakes"])
+  let status = RecorderMenuStatus(state, hotkey: "k", appName: "R")
+  #expect(status.warnings == ["⚠︎ Throw away failed: one is used by demo"])
+  #expect(status.glyph == .needsAttention)
+}
+
+@Test func recentTakesReadStudioLibraryRecordingsJson() throws {
+  let json = Data("""
+    [{"folder": "/r/2026-11-22 18.19.29", "recordedAt": "2026-11-22T18:19:29.847-08:00", "durationSeconds": 252.4, "item": {"id": "2026-11-22-181929", "mediaFolder": "/m/2026-11-22-181929"}},
+     {"folder": "/r/2026-11-22 17.00.00", "recordedAt": "2026-11-22T17:00:00-08:00", "durationSeconds": null, "item": null}]
+    """.utf8)
+  let takes = try RecorderRecentTake.listed(fromJSON: json)
+  #expect(takes.map(\.place) == [.inLibrary(item: "2026-11-22-181929", mediaFolder: URL(fileURLWithPath: "/m/2026-11-22-181929")), .inRecordings])
+  var calendar = Calendar(identifier: .gregorian)
+  calendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+  let now = try #require(ISO8601DateFormatter().date(from: "2026-11-23T09:00:00-08:00"))
+  #expect(takes.map { RecorderMenuStatus.RecentTakeItem.title(of: $0, now: now, calendar: calendar) } == [
+    "Yesterday 18:19 · 4:12", "Yesterday 17:00 · interrupted · not in the library",
+  ])
 }
 
 /// SplitMix64: a seeded generator, so a failing order can be replayed by its seed.
@@ -131,8 +224,14 @@ func randomEvent(_ rng: inout SeededGenerator) -> Event {
     .takeStarted(FakeTake(id: Int.random(in: 1...3, using: &rng))), .takeStarted(FakeTake(id: Int.random(in: 1...3, using: &rng))),
     .takeFailedToStart(.noTrackStarted([:])),
     .trackProblemsFound([track: "problem \(Int.random(in: 1...3, using: &rng))"]),
-    .takeEnded, .takeEnded,
-    .libraryAddFailed(.exited(status: 1)),
+    .takeEnded(durationSeconds: 12), .takeEnded(durationSeconds: 3),
+    .takeClockTicked(seconds: Double.random(in: 0...100, using: &rng)),
+    .libraryAddEnded(FakeTake(id: Int.random(in: 1...3, using: &rng)).folder, failure: Bool.random(using: &rng) ? nil : .exited(status: 1)),
+    .recentTakesLoaded([recent(Int.random(in: 1...3, using: &rng), .inRecordings)]),
+    .throwAwayRequested,
+    .throwAwayConfirmed(FakeTake(id: Int.random(in: 1...3, using: &rng)).folder),
+    .takeThrownAway(FakeTake(id: Int.random(in: 1...3, using: &rng)).folder),
+    .throwAwayFailed(FakeTake(id: Int.random(in: 1...3, using: &rng)).folder, reason: "no"),
     .menuOpened, .menuClosed,
     .inputPicked(RecorderInputPick(kind: .mic, name: "Scarlett")),
     .allowRequested(Permission.allCases.randomElement(using: &rng)!),
@@ -179,6 +278,8 @@ func randomEvent(_ rng: inout SeededGenerator) -> Event {
         #expect([.idle, .exited].contains(next.phase.name), "a stop ended elsewhere: \(context)")
       }
       if case .needsPermission(let missing, _) = next.phase { #expect(!missing.isEmpty, "\(context)") }
+      let recentNames = next.recentTakes.map(\.folder.lastPathComponent)
+      #expect(recentNames.count <= recorderRecentTakeCount && recentNames == recentNames.sorted(by: >) && Set(recentNames).count == recentNames.count, "recent takes out of order: \(context)")
       if let take = state.phase.take, next.phase.take == take {
         for (track, problem) in state.trackProblems { #expect(next.trackProblems[track] == problem, "a problem changed mid-take: \(context)") }
       }
