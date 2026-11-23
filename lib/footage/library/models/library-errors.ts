@@ -129,3 +129,13 @@ export class LibraryItemInUse extends Schema.TaggedError<LibraryItemInUse>()('Li
     return `${this.id} is used by ${this.projects.join(', ')}: it stays until they stop using it`;
   }
 }
+
+/** A contact sheet of a track couldn't be drawn from its frames: `reason` says how. */
+export class LibrarySheetFailed extends Schema.TaggedError<LibrarySheetFailed>()('LibrarySheetFailed', {
+  path: Schema.String,
+  reason: Schema.String,
+}) {
+  override get message(): string {
+    return `couldn't draw ${this.path}: ${this.reason}`;
+  }
+}

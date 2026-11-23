@@ -308,6 +308,32 @@ const pathCommand = defineCommand({
   },
 });
 
+const optionalSeconds = (text: string | undefined) => (text === undefined ? undefined : Number(text));
+
+const lookCommand = defineCommand({
+  meta: {
+    name: 'look',
+    description: "Draw contact sheets of an item's track: a frame every few seconds, each labelled with its item time.",
+    about: "For skimming a recording without watching it: what's on screen when, when the speaker is on camera, and private data showing (client names, inboxes, keys). A sheet is 1920 px wide: four across (24 frames) shows what's on screen, two across (6) or one (a frame alone) reads its text. Frames come from the track's proxy when it has one; a long stretch makes several sheets. Sheets are kept in the item's media folder and read back when asked again. Prints each sheet's path; open it with an image viewer or the Read tool. Needs the media online.",
+  },
+  args: {
+    item: libraryItemArg,
+    track: { type: 'positional', required: false, description: 'The track with a picture (screen, camera…); the first by default' },
+    every: { type: 'string', default: '10', description: 'Seconds between frames' },
+    columns: { type: 'string', default: '4', description: 'Frames across a sheet, 1 to 8' },
+    from: { type: 'string', description: 'Item second to start at (default 0)' },
+    to: { type: 'string', description: "Item second to stop at (default the item's end)" },
+  },
+  async run({ args }) {
+    const { Console, Effect } = await import('effect');
+    const { lookAtLibraryTrack } = await import('#lib/footage/library/engine/library-look.ts');
+    await runLibraryProgram(Effect.gen(function* () {
+      const sheets = yield* lookAtLibraryTrack({ item: args.item, track: args.track, every: Number(args.every), from: optionalSeconds(args.from), to: optionalSeconds(args.to), columns: Number(args.columns) });
+      for (const sheet of sheets) yield* Console.log(sheet);
+    }));
+  },
+});
+
 const configCommand = defineCommand({
   meta: {
     name: 'config',
@@ -339,5 +365,5 @@ export default defineCommand({
     about: "Each item's metadata (item.json, its transcript and flags) is committed in work/library/items/<id>/; its media lives in this machine's media folder (`studio library config`), which may be an external drive. Listing, search, show and flags read the metadata alone and work with the media offline; whatever needs the media says plainly when it's offline. A recording is one item with several tracks on one clock; each track's start, latency and drift are numbers in item.json, applied when read, never baked into the media.",
   },
   setup: refuseOptionsBeforeSubcommand,
-  subCommands: { add: addCommand, finish: finishCommand, list: listCommand, search: searchCommand, show: showCommand, flag: flagCommand, recordings: recordingsCommand, remove: removeCommand, path: pathCommand, config: configCommand },
+  subCommands: { add: addCommand, finish: finishCommand, list: listCommand, search: searchCommand, show: showCommand, flag: flagCommand, recordings: recordingsCommand, remove: removeCommand, path: pathCommand, look: lookCommand, config: configCommand },
 });
