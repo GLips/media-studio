@@ -226,6 +226,65 @@ const flagCommand = defineCommand({
   },
 });
 
+const recordingsCommand = defineCommand({
+  meta: {
+    name: 'recordings',
+    description: "List Studio Recorder's takes, newest first: those in the library, and with --inbox those still in its recordings folder.",
+    about: "A take is named by its folder in the recorder's recordings folder; once added it lives in the library, and its folder is gone. A take the add failed on stays in the recordings folder, and --inbox lists it too; one still being recorded is left out. The recorder's menu lists its recent takes with this.",
+  },
+  args: {
+    inbox: { type: 'string', description: "The recorder's recordings folder, to list the takes still in it" },
+    limit: { type: 'string', description: 'List only the newest this many' },
+    json: { type: 'boolean', description: 'Print the takes as JSON: folder, recordedAt, durationSeconds, and item (id, mediaFolder) once added' },
+  },
+  async run({ args }) {
+    const { Console, Effect, Path } = await import('effect');
+    const { listLibraryRecorderTakes } = await import('#lib/footage/library/engine/library-recorder-takes.ts');
+    const { LibraryRequestRefused } = await import('#lib/footage/library/models/library-errors.ts');
+    const { formatReviewClock } = await import('#lib/output/review/models/review-timeline-geometry.ts');
+    const { printStudioJson } = await import('#lib/platform/process/engine/studio-effect-runtime.ts');
+    await runLibraryProgram(Effect.gen(function* () {
+      const limit = args.limit === undefined ? undefined : Number(args.limit);
+      if (limit !== undefined && !(Number.isInteger(limit) && limit > 0)) yield* new LibraryRequestRefused({ reason: `--limit is a count, not ${args.limit}` });
+      const path = yield* Path.Path;
+      const takes = yield* listLibraryRecorderTakes({ inbox: args.inbox && path.resolve(args.inbox), limit });
+      if (args.json) {
+        yield* printStudioJson(takes);
+        return;
+      }
+      if (!takes.length) yield* Effect.log('no recorder takes yet');
+      for (const take of takes) {
+        const length = take.durationSeconds === null ? 'interrupted' : formatReviewClock(take.durationSeconds);
+        yield* Console.log(`${path.basename(take.folder)}  ${length}  ${take.item ? take.item.id : `not added: ${take.folder}`}`);
+      }
+    }));
+  },
+});
+
+const removeCommand = defineCommand({
+  meta: {
+    name: 'remove',
+    description: 'Remove an item, its media and its metadata (transcript and flags too); or a recorder take wherever it went.',
+    about: "With --take, the recorder take at that folder in its recordings folder: the item added from it, and the folder if the take is still there. Refused while a project uses the item, while the media is offline (its media would be left behind), and for a take still being recorded. Removes files for good; the item's metadata leaves work/ as an uncommitted deletion.",
+  },
+  args: {
+    item: { type: 'positional', required: false, description: 'The item, by its id or a part of it only one id holds' },
+    take: { type: 'string', description: "A recorder take's folder, as the recorder named it" },
+  },
+  async run({ args }) {
+    const { Effect, Path } = await import('effect');
+    const { LibraryStore } = await import('#lib/footage/library/engine/library-store.ts');
+    const { removeLibraryItem, removeLibraryRecorderTake } = await import('#lib/footage/library/engine/library-recorder-takes.ts');
+    const { LibraryRequestRefused } = await import('#lib/footage/library/models/library-errors.ts');
+    await runLibraryProgram(Effect.gen(function* () {
+      const refused = new LibraryRequestRefused({ reason: 'name an item, or a take with --take, not both' });
+      if (args.take) return yield* (args.item ? refused : removeLibraryRecorderTake((yield* Path.Path).resolve(args.take)));
+      if (!args.item) return yield* refused;
+      return yield* removeLibraryItem(yield* (yield* LibraryStore).resolveItemId(args.item));
+    }));
+  },
+});
+
 const pathCommand = defineCommand({
   meta: { name: 'path', description: "Print the path of an item's track media, its proxy, or its input log.", about: 'Fails with "media offline" when the media folder isn\'t there.' },
   args: {
@@ -280,9 +339,9 @@ const configCommand = defineCommand({
 export default defineCommand({
   meta: {
     name: 'library',
-    description: 'The footage library: add, list, search, show and flag footage any project can use.',
+    description: 'The footage library: add, list, search, show, flag and remove footage any project can use.',
     about: "Each item's metadata (item.json, its transcript and flags) is committed in work/library/items/<id>/; its media lives in this machine's media folder (`studio library config`), which may be an external drive. Listing, search, show and flags read the metadata alone and work with the media offline; whatever needs the media says plainly when it's offline. A recording is one item with several tracks on one clock; each track's start, latency and drift are numbers in item.json, applied when read, never baked into the media.",
   },
   setup: refuseOptionsBeforeSubcommand,
-  subCommands: { add: addCommand, finish: finishCommand, list: listCommand, search: searchCommand, show: showCommand, flag: flagCommand, path: pathCommand, config: configCommand },
+  subCommands: { add: addCommand, finish: finishCommand, list: listCommand, search: searchCommand, show: showCommand, flag: flagCommand, recordings: recordingsCommand, remove: removeCommand, path: pathCommand, config: configCommand },
 });

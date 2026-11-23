@@ -119,3 +119,13 @@ export class LibrarySpeechUnmeasured extends Schema.TaggedError<LibrarySpeechUnm
     return `ffmpeg couldn't measure ${this.id}'s ${this.track}: ${this.why}`;
   }
 }
+
+/** Projects use the item a remove names, so it stays: removing it would break their scenes. */
+export class LibraryItemInUse extends Schema.TaggedError<LibraryItemInUse>()('LibraryItemInUse', {
+  id: Schema.String,
+  projects: Schema.Array(Schema.String),
+}) {
+  override get message(): string {
+    return `${this.id} is used by ${this.projects.join(', ')}: it stays until they stop using it`;
+  }
+}
