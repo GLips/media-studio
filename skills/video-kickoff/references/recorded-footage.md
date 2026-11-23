@@ -26,17 +26,16 @@ export const recording = libraryFootage(item, transcript);
 ## The plan
 
 A line is `{ speech: recording.speech(from, to) }`: timed by its stretch, worded by the transcript, its sound the
-recording's levelled speech. Add `text` to clean up the captions; its words are timed from the transcript, as a read
-line's are from its clip. The storyboard needs no `voice` unless some lines are read too. A line not yet levelled is
-flagged: `studio library finish <item>`.
+recording's levelled speech. `text` cleans up the captions, its words timed from the transcript. The storyboard
+needs no `voice` unless some lines are read too. A line not yet levelled is flagged: `studio library finish <item>`.
 
 ## The scenes
 
 - `recording.timeAt(s)` is the item second a scene shows now, on the words being said through every cut.
 - `<LibraryVideo footage={recording} track="camera" at={…} />` fills its box with a track at that second.
-- `<PictureInPicture main={screen} inset={face} k={…} />`: the face full frame at `k` 0, a circle in the corner at
-  1. When it switches, and how, is each scene's call.
+- `<PictureInPicture main={screen} inset={face} k={…} />`: the face full frame at `k` 0, a circle in the corner at 1.
 - To follow the cursor: `useLibraryInputLog(recording)`, `recording.cursorOn('screen', log)`, `followPointAt(path,
   at, { seconds })`, and `<ZoomOnPoint picture focus zoom>` around the screen's `LibraryVideo`.
+- To keep tabs or a side panel out of frame: `<ZoomOnPoint>` on a fixed `focus` and `zoom`.
 
 A render needs the library's media online; `studio library config` says where it is.

@@ -16,7 +16,7 @@ Find the recordings: `studio library list`, `studio library recordings --inbox` 
 library search` by what's said. For each one:
 
 - Read its transcript whole: `studio library show <item>`. Each line is one utterance, at its item time.
-- Skim its picture: `studio library look <item> screen --every 15`, and the camera's every minute or so.
+- Skim its picture: `studio library look <item> screen --every 15 --columns 2`, and the camera's every minute.
 
 Write the **log**: the recording divided into sections by idea, each with its item range, what's said in a line, what's
 on screen, and its takes. Mark what the cut drops:
@@ -27,23 +27,26 @@ on screen, and its takes. Mark what the cut drops:
   abandons, muttering, a clipped ending.
 - **Dead air**: silence while they click about or think.
 - **Private data on screen**: client and customer names, other people's names, inboxes, messages, keys, URLs of
-  client work. Read the suspect stretches one frame across (`studio library look <item> screen --every 5 --from <s>
-  --to <s> --columns 1`) and log each range with what shows.
+  client work, in the page and in what's around it (tabs, bookmarks, side panels). Where the skim shows a page that
+  could hold some but is too small to read, read one frame of it across (`--from <s> --to <s> --columns 1`), and log
+  each range with what shows and where on screen.
 
-Done when every minute of every recording is in a section or marked dropped, and every stretch of screen has been
-checked for private data.
+Done when every minute of every recording is in a section or marked dropped, and every page the screen shows has been
+read for private data.
 
 ## 2. Intake
 
-Ask only what the material doesn't answer, in one message with your guess for each from what you heard:
+Show the speaker the log, then ask only what the material doesn't answer, in the same message, with your guess for
+each from what you heard:
 
 - **The kind of piece**: a tutorial, a marketing piece, a short post that needs a hook in its first seconds, a
   walkthrough for the team, or whatever else fits.
 - **Audience**: who watches, and what they already know.
 - **The takeaway**: the one thing a viewer should leave with, when the recording doesn't make it plain.
 - **Platform and length**: where it's posted sets the length and the frame.
-- **The private data in the log**, range by range: cut it, cover it with the speaker's face full frame, or fine to
-  show. Nothing goes to posting until each range has an answer.
+- **The private data in the log**, range by range: cut it, zoom the screen past it when it sits at an edge (tabs, a
+  side panel), cover it with the speaker's face full frame, or fine to show. Nothing goes to posting until each range
+  has an answer.
 
 Done when the purpose, kind, audience, platform, length and takeaway each fit one line, and every private range has
 its answer.
@@ -98,7 +101,7 @@ a stretch of the recording whose edges land in silence (the reference above). Th
 - When they show something on screen, the screen fills the frame with their face in a corner circle, switching as
   they start showing it. Zoom on the cursor when what they point at is too small to read.
 - Close on their face again.
-- A private range answered "cover it" stays on the face full frame.
+- A private range stays as its answer says: zoomed past, or on the face full frame.
 
 Render the delivery (`studio render <p>`) and check it yourself:
 
