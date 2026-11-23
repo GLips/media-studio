@@ -1,8 +1,9 @@
 // ─── Capability match ─────────────────────────────────────────────────
 //
 // A project's capability, declared in project.ts, is held to what the project
-// binds: its storyboard's grid (music) and voice (voice), read off the
-// defineStoryboard call, and its stills.tsx's defineStills (stills). A bound
+// binds: its storyboard's grid (music) and voice (voice, or a line's `speech`
+// from a recording), read off the defineStoryboard call, and its stills.tsx's
+// defineStills (stills). A bound
 // storyboard with neither is silent. A storyboard counts only when video.tsx
 // hands it to defineVideo; a video.tsx without a storyboard.ts fits no
 // capability.
@@ -15,7 +16,7 @@
 import { STORYBOARD_CONSTRUCTOR } from '../../policy/timing-constructors.ts';
 import { capabilityOfParts, PROJECT_CAPABILITIES, type ProjectCapability, type ProjectPart } from '#lib/platform/project/models/capability.ts';
 import { declaredProperty, propertyKeyName, unwrapExpression } from '../project-declaration.ts';
-import type { AstNode, SourceFile } from '../source-tree.ts';
+import { walkAst, type AstNode, type SourceFile } from '../source-tree.ts';
 import { callsTo, type CheckContext, type Finding, type StructuralCheck } from '../check-context.ts';
 
 const ID = 'capability-match';
@@ -57,6 +58,7 @@ function matchProject(context: CheckContext, { project, storyboard, video, still
       report(storyboard, 1, 'storyboard unreadable', 'states no defineStoryboard({ … }) whose grid and voice can be read');
     } else {
       for (const key of propertyNames(plan)) if (STORYBOARD_PARTS[key]) parts.push(STORYBOARD_PARTS[key]);
+      if (!parts.includes('voice') && speaksRecordedLines(plan)) parts.push('voice');
     }
     if (!video || !callsTo(context, video, DEFINE_VIDEO).length) {
       report(storyboard, 1, 'storyboard unbound', 'no video.tsx hands this storyboard to defineVideo, so no picture plays on it');
@@ -91,6 +93,16 @@ function matchProject(context: CheckContext, { project, storyboard, video, still
 function declaredCapability(file: SourceFile): ProjectCapability | undefined {
   const value = declaredProperty(file, 'capability');
   return value?.type === 'Literal' && PROJECT_CAPABILITIES.includes(value.value as ProjectCapability) ? value.value as ProjectCapability : undefined;
+}
+
+/** Whether a line anywhere in the plan is spoken in a recording: its `speech` binds a voice as a read line's does. */
+function speaksRecordedLines(plan: AstNode): boolean {
+  let found = false;
+  walkAst(plan, (node) => {
+    if (node.type === 'Property' && propertyKeyName(node) === 'speech') found = true;
+    return !found;
+  });
+  return found;
 }
 
 function propertyNames(object: AstNode): string[] {

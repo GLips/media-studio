@@ -1,6 +1,7 @@
 // resolve-storyboard.ts: a storyboard timed into its Timeline, the one resolution the plan page, `studio clock`, the
-// render and the retime test all read. Each line is timed by its recorded clip while the clip still says the line, and
-// otherwise estimated from its word count right here, never stored, so a reworded line re-times the plan at once.
+// render and the retime test all read. A line spoken in a recording is timed by its stretch; a read line by its clip
+// while the clip still says it, else estimated from its word count here, never stored, so a reworded line re-times
+// the plan at once.
 //
 // It never throws: what's wrong comes back as diagnostics, each on the scene, line or cue it's about, so the page can
 // show a half-broken plan. A cue whose word has gone falls to its line's start so the rest still times; its
@@ -9,14 +10,17 @@
 import { defineTimeline, recordedGrid, tempoGrid, type FittedTrack, type SceneMoment, type SceneSpan, type TimelineGrid, type TimelineSpec } from '#lib/timing/timeline/models/timeline.ts';
 import type { RenderVoice } from '#lib/timing/voice/models/render-voice.ts';
 import type { RecordedVoice, RecordedVoiceLine, Voice, VoiceLine } from '#lib/timing/voice/models/voice-manifest.ts';
-import { captionMarkup, estimateSpokenLine, findSpokenPhrase, spokenText } from '#lib/timing/voice/models/voice-words.ts';
-import type { Storyboard, StoryboardBeatLine, StoryboardBeatScene, StoryboardFixedScene, StoryboardLine, StoryboardScene, StoryboardWordCue, TimelineOfStoryboard } from './storyboard.ts';
+import { alignSpokenWords, captionMarkup, estimateSpokenLine, findSpokenPhrase, spokenText } from '#lib/timing/voice/models/voice-words.ts';
+import type { Storyboard, StoryboardBeatLine, StoryboardBeatScene, StoryboardFixedScene, StoryboardLine, StoryboardReadLine, StoryboardScene, StoryboardSpokenLine, StoryboardWordCue, TimelineOfStoryboard } from './storyboard.ts';
 
 /** music/index.ts's tracks, as far as a grid reads them: a `{ music }` grid needs its track fitted (`studio music fit --bars`). */
 export type StoryboardMusic = Readonly<Record<string, Omit<FittedTrack, 'fit'> & { fit?: FittedTrack['fit'] }>>;
 
-/** How a line is timed: by a real take's clip, by a `--read=draft` take's (fine for timing, never for delivery), or by its word count. */
-export type StoryboardLineRead = 'recorded' | 'draft' | 'estimated';
+/**
+ * How a line is timed: by a real take's clip, by a `--read=draft` take's (fine for timing, never for delivery), by its
+ * stretch of a library recording (`spoken`), or by its word count.
+ */
+export type StoryboardLineRead = 'recorded' | 'draft' | 'spoken' | 'estimated';
 
 /** Something wrong with the plan, on the scene (and line, and cue) it's about where it's about one. */
 export type StoryboardDiagnostic = { scene?: string; line?: string; cue?: string; message: string };
@@ -49,12 +53,13 @@ export function resolveStoryboard<const S extends AnyStoryboard>(storyboard: S, 
 
   for (const [scene, row] of sceneEntries) {
     for (const [id, line] of linesOf(row)) {
-      const { line: voiced, read } = voicedLine(line, inputs.voice?.[id], inputs.voiceRead ?? 'final');
+      const { line: voiced, read } = line.speech ? spokenLine(scene, id, line, diagnostics) : voicedLine(line, inputs.voice?.[id], inputs.voiceRead ?? 'final');
       voice[id] = voiced;
       lines.push({ scene, line: id, read });
     }
   }
-  if (lines.length && storyboard.voice === undefined) diagnostics.push({ message: 'it has lines but names no voice: add `voice` for studio voice to read them in' });
+  const readLines = sceneEntries.some(([, row]) => linesOf(row).some(([, line]) => !line.speech));
+  if (readLines && storyboard.voice === undefined) diagnostics.push({ message: 'it has lines to read but names no voice: add `voice` for studio voice to read them in' });
   const scenes = Object.fromEntries(sceneEntries.map(([scene, row]) => [scene, sceneSpan(scene, row, voice, diagnostics)]));
 
   const grid = gridOf(storyboard, inputs.music, diagnostics);
@@ -92,8 +97,26 @@ function linesOf(row: StoryboardScene): [string, StoryboardLine][] {
   return Object.entries(row.lines ?? {});
 }
 
+/**
+ * A line spoken in a recording, timed by its stretch: its words are what the transcript heard there, or its `text`'s
+ * words placed on them. Until the item's speech is levelled it can't play, which stops a render.
+ */
+function spokenLine(scene: string, id: string, line: StoryboardSpokenLine, diagnostics: StoryboardDiagnostic[]): { line: VoiceLine; read: StoryboardLineRead } {
+  const { speech } = line, duration = speech.to - speech.from;
+  const said = line.text ?? speech.heard.map((w) => w.text).join(' ');
+  const text = spokenText(said), caption = captionMarkup(said), paragraph = line.paragraph ?? false;
+  if (!(duration > 0)) diagnostics.push({ scene, line: id, message: `its speech runs ${speech.from} to ${speech.to} s of ${speech.item}: give it an end after its start` });
+  if (!text) diagnostics.push({ scene, line: id, message: `nothing is said in ${speech.item} from ${speech.from} to ${speech.to} s: widen the stretch, or give the line its text` });
+  if (!speech.sound) {
+    diagnostics.push({ scene, line: id, message: `${speech.item}'s speech isn't levelled for the mix yet: run studio library finish ${speech.item}` });
+    return { line: { src: null, duration, words: alignSpokenWords(text, speech.heard, duration).words, text, caption, paragraph, lufs: null, pauseBefore: null }, read: 'estimated' };
+  }
+  const { lufs, ...src } = speech.sound;
+  return { line: { src, lufs, speech: { item: speech.item, from: speech.from, to: speech.to }, duration, words: alignSpokenWords(text, speech.heard, duration).words, text, caption, paragraph, pauseBefore: null }, read: 'spoken' };
+}
+
 /** A line's clip while it still says the line, its caption and paragraph always the storyboard's; else an estimate. */
-function voicedLine(line: StoryboardLine, clip: RecordedVoiceLine | undefined, voiceRead: Exclude<RenderVoice, null>): { line: VoiceLine; read: StoryboardLineRead } {
+function voicedLine(line: StoryboardReadLine, clip: RecordedVoiceLine | undefined, voiceRead: Exclude<RenderVoice, null>): { line: VoiceLine; read: StoryboardLineRead } {
   const text = spokenText(line.text), caption = captionMarkup(line.text), paragraph = line.paragraph ?? false;
   if (clip && clip.text === text) return { line: { ...clip, caption, paragraph }, read: voiceRead === 'draft' ? 'draft' : 'recorded' };
   return { line: { src: null, ...estimateSpokenLine(text), text, caption, paragraph, lufs: null, pauseBefore: null }, read: 'estimated' };

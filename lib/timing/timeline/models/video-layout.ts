@@ -6,7 +6,8 @@
 // past `dur` while the next fades in over it.
 
 import { motionCurves } from '#lib/picture/motion/models/motion.ts';
-import type { Voice } from '#lib/timing/voice/models/voice-manifest.ts';
+import type { SpokenStretch } from '#lib/timing/voice/models/recorded-speech.ts';
+import type { Voice, VoiceLine } from '#lib/timing/voice/models/voice-manifest.ts';
 import { findSpokenPhrase } from '#lib/timing/voice/models/voice-words.ts';
 import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 import type { Timeline } from './timeline.ts';
@@ -25,12 +26,21 @@ export type LineSpan = {
    * punctuation don't matter; `nth` picks a later occurrence. The anchor to reach for when a beat lands on a word.
    */
   word(phrase: string, nth?: number): { start: number; end: number };
+  /** For a line spoken in a library recording, where: the item, and the stretch's edges in item seconds. */
+  speech?: SpokenStretch;
 };
 
 /** A scene's length and where its lines fall, in scene seconds. */
 export type SceneTimes = {
   dur: number;
   line(id: string): LineSpan;
+  /** Its lines' ids, in the order it speaks them. */
+  lines: readonly string[];
+  /**
+   * When one of its own cues falls, or another scene's named `<scene>.<cue>`, in scene seconds: the time `t` is
+   * compared with. (Its binding's `clock.cues` are frames from the scene's origin.)
+   */
+  cue(name: string): number;
 };
 
 /** What a scene draws from: its own time, and its times. */
@@ -52,13 +62,16 @@ export type ScenePlacement = {
   dur: number;
   /** The crossfade into it, in seconds, centred on its cut; 0 for a hard cut or the first scene. */
   xfade: number;
-  /** Its lines, in scene seconds, with their words from each line's start. */
-  spans: Readonly<Record<string, { start: number; end: number; words: readonly SpokenWord[] }>>;
+  /** Its lines, in scene seconds, with their words from each line's start, and a spoken line's stretch. */
+  spans: Readonly<Record<string, { start: number; end: number; words: readonly SpokenWord[]; speech?: SpokenStretch }>>;
+  /** Every cue of the video, its own by name and the rest as `<scene>.<cue>`, in this scene's seconds. */
+  cues: Readonly<Record<string, number>>;
 };
 
 export type VoiceCue = {
   id: string;
-  src: string | null;
+  /** A clip, a stretch of a library item's media, or null for a line with no sound yet. */
+  src: VoiceLine['src'];
   /** In video seconds, from its first frame. */
   start: number;
   end: number;
@@ -78,18 +91,21 @@ export type VideoLayout = {
 export function videoLayoutOf(timeline: Timeline, voice: Voice): VideoLayout {
   const { fps } = timeline;
   const cues: VoiceCue[] = [];
+  // Every cue in video frames, its scene's own by name only within that scene.
+  const videoCues = timeline.scenes.flatMap((placed) => Object.entries(placed.cues).map(([name, frame]) => ({ scene: placed.id, name, frame })));
   const scenes = timeline.scenes.map((placed, k): ScenePlacement => {
     const spans: Record<string, ScenePlacement['spans'][string]> = {};
     placed.lines.forEach(({ id, frame, duration }) => {
       const line = voice[id];
       if (!line) throw new Error(`scene ${placed.id} speaks line ${id}, which the video's voice doesn't have: pass defineVideo the manifest its timeline reads`);
       const start = (frame - placed.from) / fps;
-      spans[id] = { start, end: start + duration, words: line.words };
+      spans[id] = { start, end: start + duration, words: line.words, ...('speech' in line && { speech: line.speech }) };
       cues.push({ id, src: line.src, start: frame / fps, end: frame / fps + duration, text: line.text, lufs: line.lufs });
     });
     return {
       id: placed.id, from: placed.from, to: placed.to, visible: placed.visible,
       start: placed.from / fps, dur: (placed.to - placed.from) / fps, xfade: k === 0 ? 0 : placed.crossfade, spans,
+      cues: Object.fromEntries(videoCues.map(({ scene, name, frame }) => [scene === placed.id ? name : `${scene}.${name}`, (frame - placed.from) / fps])),
     };
   });
   // scenesAtFrame paints at most two scenes, so a scene shorter than its two half-fades can't be shown.
@@ -120,12 +136,19 @@ export function scenesAtFrame({ scenes, fps }: VideoLayout, frame: number): { k:
 export function sceneTimes(scene: ScenePlacement): SceneTimes {
   return {
     dur: scene.dur,
+    lines: Object.keys(scene.spans),
+    cue: (name) => {
+      const at = scene.cues[name];
+      if (at === undefined) throw new Error(`scene ${scene.id} has no cue ${name}${name.includes('.') ? '' : "; another scene's is named <scene>.<cue>"}`);
+      return at;
+    },
     line: (id) => {
       const span = scene.spans[id];
       if (!span) throw new Error(`scene ${scene.id} has no line "${id}"`);
       return {
         start: span.start,
         end: span.end,
+        ...(span.speech && { speech: span.speech }),
         at: (f) => span.start + (span.end - span.start) * f,
         word: (phrase, nth) => {
           const w = findSpokenPhrase(span.words, phrase, nth);

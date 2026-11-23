@@ -17,13 +17,13 @@ export async function importProjectStoryboard(project: string): Promise<{ file: 
   return { file, storyboard };
 }
 
-/** What `studio voice` reads for the project: its storyboard's voice, and its scenes' lines in plan order. */
+/** What `studio voice` reads for the project: its storyboard's voice, and its scenes' read lines in plan order. A line spoken in a recording isn't read. */
 export async function readProjectVoiceScript(project: string): Promise<VoiceScript> {
   const found = await importProjectStoryboard(project);
   if (!found) throw new Error(`${project} has no storyboard.ts: studio voice reads its lines`);
   const lines = Object.values(found.storyboard.scenes).flatMap((scene) => Object.entries(scene.lines ?? {})
-    .map(([id, { text, paragraph }]) => ({ id, text, paragraph })));
-  if (!lines.length) throw new Error(`${found.file} has no lines to voice`);
+    .flatMap(([id, line]) => (line.speech ? [] : [{ id, text: line.text, paragraph: line.paragraph }])));
+  if (!lines.length) throw new Error(`${found.file} has no lines to voice: a line with \`speech\` is spoken in its recording`);
   if (found.storyboard.voice === undefined) throw new Error(`${found.file} names no voice: add \`voice\` (e.g. 'Callirrhoe') to read its lines in`);
   return { voice: found.storyboard.voice, direction: found.storyboard.voiceDirection, lines };
 }

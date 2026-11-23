@@ -11,7 +11,7 @@
 // every path into it is the folder joined with an item's id and a track's file.
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
-import type { FootageTranscript } from '#lib/footage/transcript/models/footage-transcript.ts';
+import type { LibraryTranscriptFile } from '../models/library-footage.ts';
 import { readReviewStore, writeReviewStore, type ReviewStoreScope } from '#lib/output/review/engine/review-store.ts';
 import type { ReviewAuthor } from '#lib/output/review/models/review-threads.ts';
 import { replaceFileWhole } from '#lib/platform/files/engine/replace-file-whole.ts';
@@ -108,9 +108,6 @@ export function resolveLibraryItemId(arg: string): string {
 export function writeLibraryItem(item: LibraryItem): void {
   replaceFileWhole(join(libraryItemDir(item.id), 'item.json'), `${JSON.stringify(item, null, 2)}\n`);
 }
-
-/** The speech track's transcript, as committed; none for an item without speech. */
-export type LibraryTranscriptFile = FootageTranscript & { track: string };
 
 export function readLibraryTranscript(id: string): LibraryTranscriptFile | undefined {
   const file = join(libraryItemDir(id), 'transcript.json');

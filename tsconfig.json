@@ -9,6 +9,7 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
+    "resolveJsonModule": true,
     "types": ["node"]
   },
   // Deliberately no host files: a scene imports its host as `@host/…`, which lib/output/render/engine/host-modules.d.ts types as `any`, so

@@ -38,7 +38,8 @@
     "#lib/*": "./lib/*",
     "#studio": "./lib/api.ts",
     "#styles/*": "./work/styles/*",
-    "#web/*": "./web/src/*"
+    "#web/*": "./web/src/*",
+    "#library/*": "./work/library/items/*"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.80.0",

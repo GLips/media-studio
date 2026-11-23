@@ -8,6 +8,8 @@ export { FlatBlockout, type FlatPiece, type FlatPieceKind, type FlatViewMoves } 
 export type { FlatKey, FlatPose, FlatView } from '#lib/footage/previs/models/flat-blockout-pose.ts';
 export { transcriptCutBefore, transcriptLines, type FootageTranscript } from '#lib/footage/transcript/models/footage-transcript.ts';
 export type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
+export { libraryFootage, type LibraryFootage, type LibraryTranscriptFile } from '#lib/footage/library/models/library-footage.ts';
+export type { RecordedSpeech, SpokenStretch } from '#lib/timing/voice/models/recorded-speech.ts';
 export { inputLogKeyStrikes, inputLogWaypoints, parseRecorderInputLog, type InputEvent, type InputLog, type InputLogCoordinates, type InputModifier, type InputWaypoint } from '#lib/footage/input-log/models/input-log.ts';
 export { beatGrid, steadyBeatGrid, type BeatGrid } from '#lib/timing/timeline/models/beat-grid.ts';
 export { assertKeysInOrder, camAt, camFit, camTop, camWhole, clampCam, lerpCam, pagePoint, rectToScreen, scaleFor, screenPoint, screenRect, view, viewOf, viewOfScreenRect, viewScale, type Cam, type Shot, type View } from '#lib/picture/camera/models/camera.ts';

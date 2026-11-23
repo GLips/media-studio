@@ -154,7 +154,7 @@ function cellTexts(anchor: ReviewPlanAnchor, storyboard: Storyboard): readonly s
   const row = anchor.scene === undefined ? undefined : storyboard.scenes[anchor.scene];
   if (!row || anchor.field === 'line') return null;
   const reads = row.reads ?? [];
-  const cells = { onScreen: [row.onScreen], motion: [row.motion], reads, scene: [row.onScreen, row.motion, ...reads, ...Object.values(row.lines ?? {}).map((l) => l.text)] };
+  const cells = { onScreen: [row.onScreen], motion: [row.motion], reads, scene: [row.onScreen, row.motion, ...reads, ...Object.values(row.lines ?? {}).flatMap((l) => l.text ?? [])] };
   return cells[anchor.field];
 }
 

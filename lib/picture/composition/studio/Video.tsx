@@ -9,6 +9,7 @@ import { useMemo, useRef } from 'react';
 import { AbsoluteFill, Artifact, Sequence, useCurrentFrame, useRemotionEnvironment, useVideoConfig, type VideoConfig } from 'remotion';
 import { sfxSoundLabel } from '#lib/timing/sound/models/library.ts';
 import { levelGain, musicBedGainAt, VOICE_LUFS } from '#lib/timing/sound/models/mix.ts';
+import { libraryMediaUrl } from '#lib/footage/library/studio/library-media.ts';
 import { previsRequestFor, previsSpan, type PrevisClip } from '#lib/footage/previs/studio/previs.ts';
 import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
 import type { BlockoutSoloProps, VideoProps } from '#lib/picture/video/models/composition-props.ts';
@@ -143,7 +144,10 @@ export function Video({ video, previsClips, sfxCues, captions, probe, blockouts,
         cue.src ? (
           // One frame of slack past the line's end, so rounding the start to a frame never clips its last samples.
           <Sequence key={cue.id} name={`voice: ${cue.id}`} from={Math.round(cue.start * fps)} durationInFrames={Math.ceil((cue.end - cue.start) * fps) + 1} layout="none">
-            <Audio src={cue.src} volume={levelGain(cue.lufs!, VOICE_LUFS, `line ${cue.id}`)} />
+            {typeof cue.src === 'string'
+              ? <Audio src={cue.src} volume={levelGain(cue.lufs!, VOICE_LUFS, `line ${cue.id}`)} />
+              // A stretch of a recording plays from where it starts in the file, with no copy cut.
+              : <Audio src={libraryMediaUrl(cue.src.item, cue.src.file)} trimBefore={cue.src.start * fps} volume={levelGain(cue.lufs!, VOICE_LUFS, `line ${cue.id}`)} />}
           </Sequence>
         ) : null,
       )}

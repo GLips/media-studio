@@ -8,6 +8,8 @@ import type { StoryboardLineRead } from '#lib/timing/storyboard/models/resolve-s
 import type { StoryboardWordCue } from '#lib/timing/storyboard/models/storyboard.ts';
 import { findScriptPhrase } from '#lib/timing/voice/models/voice-words.ts';
 import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
+import { libraryMediaUrl } from '#lib/footage/library/studio/library-media.ts';
+import type { VoiceLine } from '#lib/timing/voice/models/voice-manifest.ts';
 
 /** A silence longer than this, between two things said or before the first, is flagged. */
 export const PLAN_SILENCE_FLAG_SECONDS = 0.5;
@@ -17,7 +19,7 @@ export const PLAN_HOLD_FLAG_SECONDS = 2;
 /** A word as said and as captioned: `*emphasis*` and `` `keycap` `` marked, the markup itself left off `text`. */
 export type PlanWord = { text: string; mark: 'emphasis' | 'keycap' | null; from: number; to: number };
 
-export type PlanLine = { id: string; scene: string; read: StoryboardLineRead; from: number; to: number; words: readonly PlanWord[]; src: string | null };
+export type PlanLine = { id: string; scene: string; read: StoryboardLineRead; from: number; to: number; words: readonly PlanWord[]; voiced: boolean };
 
 /** A cue on its frame; a word cue with the word it sits on (its first, for a phrase). */
 export type PlanCue = { name: string; frame: number; word: { line: string; k: number } | null };
@@ -40,7 +42,8 @@ export type PlanScene = {
 export type PlanFlag = { kind: 'silence' | 'hold'; from: number; to: number };
 
 /** What plays: each recorded line at its second, and the grid's music from where the section starts. */
-export type PlanAudio = { src: string; atSeconds: number; duration: number; what: string };
+/** A sound the plan plays: `src` from `from` seconds into it, at `atSeconds` of the video. */
+export type PlanAudio = { src: string; from: number; atSeconds: number; duration: number; what: string };
 
 export type PlanTiming = {
   fps: number;
@@ -86,7 +89,7 @@ export function planTimingOf({ storyboard, resolved, music }: ProjectStoryboard)
         from: frame + Math.round(w.start * fps),
         to: Math.max(frame + Math.round(w.end * fps), frame + Math.round(w.start * fps) + 1),
       }));
-      return { id, scene: placed.id, read: readOf.get(id) ?? 'estimated', from: frame, to: frame + Math.round(duration * fps), words, src: said.src };
+      return { id, scene: placed.id, read: readOf.get(id) ?? 'estimated', from: frame, to: frame + Math.round(duration * fps), words, voiced: said.src !== null };
     });
     const wordOfCue = new Map<string, { line: string; k: number }>();
     for (const [id, line] of Object.entries(row?.lines ?? {})) {
@@ -101,17 +104,23 @@ export function planTimingOf({ storyboard, resolved, music }: ProjectStoryboard)
   const lines = scenes.flatMap((s) => s.lines);
   const audio: PlanAudio[] = timeline.audio.flatMap((placed): PlanAudio[] => {
     if (placed.kind === 'voice') {
-      const src = voice[placed.line]?.src;
-      return src ? [{ src, atSeconds: placed.atSeconds, duration: placed.duration, what: placed.line }] : [];
+      const sound = planSoundOf(voice[placed.line]?.src ?? null);
+      return sound ? [{ ...sound, atSeconds: placed.atSeconds, duration: placed.duration, what: placed.line }] : [];
     }
     const grid = storyboard.grid, track = grid && 'music' in grid ? music[grid.music] : undefined;
-    return track ? [{ src: track.src, atSeconds: placed.atSeconds, duration: track.duration, what: 'music' }] : [];
+    return track ? [{ src: track.src, from: 0, atSeconds: placed.atSeconds, duration: track.duration, what: 'music' }] : [];
   });
   const moves = timeline.scenes.flatMap((s) => Object.values<{ from: number; to: number }>(s.moves));
   const events = [0, ...scenes.map((s) => s.from), ...scenes.flatMap((s) => s.cues.map((c) => c.frame)), ...lines.map((l) => l.from), timeline.end];
   const flags = [...planSilencesOf(lines, fps), ...planHoldsOf(events, [...moves, ...lines], fps)].toSorted((a, b) => a.from - b.from);
   return { fps, end: timeline.end, scenes, lines, flags, audio };
 }
+
+/** Where a line's sound plays from: its clip, or the stretch of a library recording it's spoken in. */
+const planSoundOf = (src: VoiceLine['src']): { src: string; from: number } | null => {
+  if (src === null) return null;
+  return typeof src === 'string' ? { src, from: 0 } : { src: libraryMediaUrl(src.item, src.file), from: src.start };
+};
 
 /** A voiced scene's lead before its first line, the gaps between its lines, and its tail after the last. */
 function planShadesOf(driver: string, from: number, to: number, lines: readonly PlanLine[]): PlanShade[] {

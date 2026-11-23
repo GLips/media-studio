@@ -8,6 +8,7 @@
 // Negative space: the grid is data (`{ music: 'drive-fit' }`), never an imported track, so a plan loads with no audio.
 
 import type { TimelineSceneClock } from '#lib/timing/timeline/models/bind-timeline.ts';
+import type { RecordedSpeech } from '#lib/timing/voice/models/recorded-speech.ts';
 import type { CueName, Landmark, MomentRef, MoveSpan, ReplayTable, SceneMoment, SpeechCue, Timeline } from '#lib/timing/timeline/models/timeline.ts';
 
 // ---------- lines and cues ----------
@@ -18,14 +19,28 @@ import type { CueName, Landmark, MomentRef, MoveSpan, ReplayTable, SceneMoment, 
  */
 export type StoryboardWordCue = string | { phrase: string; nth?: number } | { at: 'start' };
 
-export type StoryboardLine = {
-  /** What's read: the voice's inline tags (`<short pause>`) are performed, `*emphasis*` and `` `key` `` captioned. */
-  text: string;
+type StoryboardLineMarks = {
   /** Moments on its words, each a cue of its scene. */
   cues?: Readonly<Record<string, StoryboardWordCue>>;
   /** It starts a new paragraph of the read, so no caption page runs into it. */
   paragraph?: boolean;
 };
+
+/** A line the storyboard's voice reads. */
+export type StoryboardReadLine = StoryboardLineMarks & {
+  /** What's read: the voice's inline tags (`<short pause>`) are performed, `*emphasis*` and `` `key` `` captioned. */
+  text: string;
+  speech?: never;
+};
+
+/**
+ * A line spoken in a recording: `speech` is its stretch (`footage.speech(from, to)`, in item seconds), which times,
+ * captions and sounds it. `text`, when given, is how it's captioned and cued in place of what the transcript heard
+ * (a misheard name, `*emphasis*`), a word for each word said.
+ */
+export type StoryboardSpokenLine = StoryboardLineMarks & { speech: RecordedSpeech; text?: string };
+
+export type StoryboardLine = StoryboardReadLine | StoryboardSpokenLine;
 
 /** A line voiced over a beat scene, from beat `at` of its own beat 0. It must end by the scene's last beat. */
 export type StoryboardBeatLine = StoryboardLine & { at: number };
@@ -130,7 +145,10 @@ export type Storyboard<Scenes extends StoryboardScenes = StoryboardScenes, Repla
   title: string;
   /** The length it's planned to, and the most it may run (a store's cap, say): a plan past `max` is a diagnostic. */
   target: { seconds: number; max?: number };
-  /** The TTS voice `studio voice` reads its lines in; a storyboard with no lines names none. It makes the project voiced. */
+  /**
+   * The TTS voice `studio voice` reads its lines in. Only read lines need one: a line with `speech` is spoken in a
+   * recording, and a storyboard of those alone names none. Lines of either kind make the project voiced.
+   */
   voice?: string;
   /**
    * How the voice reads: tone, pace, warmth, in plain words ("warm and conversational, like telling a friend"). TTS

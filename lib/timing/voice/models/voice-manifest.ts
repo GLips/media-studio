@@ -1,11 +1,13 @@
 // voice-manifest.ts: a project's lines, as `studio voice` records them to its audio/manifest.ts (RecordedVoice), and
-// as a storyboard times them (Voice): a recorded line's clip while it still says the line, else an estimate. The
+// as a storyboard times them (Voice): a line spoken in a library recording by its stretch, a voiced line's clip while
+// it still says the line, else an estimate. The
 // timeline places a line from its take alone; the video plays it and captions it from the rest.
 //
 // Negative space: the manifest holds real reads only. An estimate is worked out by resolveStoryboard each time it
 // resolves, and never stored.
 
 import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
+import type { LibraryVoiceSound, SpokenStretch } from './recorded-speech.ts';
 
 /** A line's timing: its length, its words from its start, and the pause the read left before it. */
 export type VoiceTake = {
@@ -31,7 +33,13 @@ export type RecordedVoiceLine = VoiceTake & VoiceLineText & { src: string; lufs:
 /** A line timed from its word count, with no audio yet. */
 export type EstimatedVoiceLine = VoiceTake & VoiceLineText & { src: null; lufs: null; pauseBefore: null };
 
-export type VoiceLine = RecordedVoiceLine | EstimatedVoiceLine;
+/**
+ * A line spoken in a library recording (recorded-speech.ts): its stretch's levelled sound, at its loudness, and the
+ * stretch itself, item and edges in item seconds, for a picture to keep to.
+ */
+export type LibraryVoiceLine = VoiceTake & VoiceLineText & { src: LibraryVoiceSound; lufs: number; pauseBefore: null; speech: SpokenStretch };
+
+export type VoiceLine = RecordedVoiceLine | EstimatedVoiceLine | LibraryVoiceLine;
 
 /** audio/manifest.ts's `voice`: the recorded lines by id, in script order. */
 export type RecordedVoice = Readonly<Record<string, RecordedVoiceLine>>;

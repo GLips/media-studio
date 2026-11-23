@@ -67,7 +67,7 @@ export function createPlanPlayback(): PlanPlayback {
         if (!clip.element.paused) clip.element.pause();
         continue;
       }
-      if (Math.abs(clip.element.currentTime - into) > PLAN_AUDIO_DRIFT_SECONDS) clip.element.currentTime = into;
+      if (Math.abs(clip.element.currentTime - clip.from - into) > PLAN_AUDIO_DRIFT_SECONDS) clip.element.currentTime = clip.from + into;
       if (clip.element.paused) playMedia(clip.element);
     }
   };
@@ -134,10 +134,10 @@ export function createPlanPlayback(): PlanPlayback {
     setProgramme: (programme) => {
       fps = programme.fps;
       end = Math.max(1, programme.end);
-      const kept = new Map(clips.map((c) => [`${c.src}@${c.atSeconds}`, c]));
+      const kept = new Map(clips.map((c) => [`${c.src}@${c.from}@${c.atSeconds}`, c]));
       clips = programme.audio.map((audio) => {
-        const same = kept.get(`${audio.src}@${audio.atSeconds}`);
-        kept.delete(`${audio.src}@${audio.atSeconds}`);
+        const same = kept.get(`${audio.src}@${audio.from}@${audio.atSeconds}`);
+        kept.delete(`${audio.src}@${audio.from}@${audio.atSeconds}`);
         return same ? { ...audio, element: same.element } : { ...audio, element: Object.assign(new Audio(audio.src), { preload: 'auto' }) };
       });
       for (const gone of kept.values()) gone.element.pause();
