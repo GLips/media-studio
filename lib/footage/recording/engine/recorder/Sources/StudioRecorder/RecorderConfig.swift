@@ -1,5 +1,6 @@
-// The recorder's settings, set once in a JSON file: no window ever asks. First launch writes the defaults
-// (Graham's desk: the LG display, the A6400 through the Cam Link, the Scarlett Solo) for him to edit.
+// The recorder's settings, in a JSON file. First launch writes the defaults (Graham's desk: the LG display, the
+// A6400 through the Cam Link, the Scarlett Solo). The menu picks the screen, camera and mic and writes them back;
+// everything else is edited in the file.
 import Foundation
 
 struct RecorderConfig: Codable {
@@ -17,8 +18,8 @@ struct RecorderConfig: Codable {
     hotkey: "ctrl+opt+cmd+r",
     recordingsDir: "~/Movies/Studio Recordings",
     screen: ScreenConfig(display: "LG UltraFine", fps: 30, bitrateMbps: 16, showsCursor: true),
-    camera: CameraConfig(device: "Cam Link", width: 3840, height: 2160, fps: 30, bitrateMbps: 30, latencyMs: 160),
-    mic: MicConfig(device: "Scarlett Solo", channel: 1, bitrateKbps: 192, latencyMs: 0)
+    camera: CameraConfig(device: "Cam Link", width: 3840, height: 2160, fps: 30, bitrateMbps: 30, latencyMsByDevice: ["Cam Link": 160]),
+    mic: MicConfig(device: "Scarlett Solo", channelByDevice: ["Scarlett": 1], bitrateKbps: 192, latencyMsByDevice: [:])
   )
 
   var recordingsURL: URL { URL(fileURLWithPath: (recordingsDir as NSString).expandingTildeInPath) }
@@ -30,16 +31,26 @@ struct RecorderConfig: Codable {
   static func load(from url: URL) throws -> RecorderConfig {
     if !FileManager.default.fileExists(atPath: url.path) {
       try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-      let encoder = JSONEncoder()
-      encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-      try encoder.encode(defaults).write(to: url)
+      try defaults.save(to: url)
     }
     return try JSONDecoder().decode(RecorderConfig.self, from: Data(contentsOf: url))
   }
+
+  func save(to url: URL) throws {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+    try encoder.encode(self).write(to: url, options: .atomic)
+  }
+}
+
+/// A per-device setting from a table keyed by part of the device's name: the longest key the name contains wins,
+/// so `"Scarlett Solo"` beats `"Scarlett"`. Nil when no key matches.
+func settingForDevice<Value>(_ table: [String: Value], named deviceName: String) -> Value? {
+  table.filter { deviceName.localizedCaseInsensitiveContains($0.key) }.max { $0.key.count < $1.key.count }?.value
 }
 
 struct ScreenConfig: Codable {
-  /// `main`, or part of a display's name as System Settings shows it.
+  /// `main`, or part of a display's name as System Settings shows it; the menu writes the whole name.
   var display: String
   var fps: Int
   var bitrateMbps: Double
@@ -47,22 +58,27 @@ struct ScreenConfig: Codable {
 }
 
 struct CameraConfig: Codable {
-  /// Part of the capture device's name.
+  /// Part of the capture device's name; the menu writes the whole name.
   var device: String
   /// The size written; the device's own format is scaled to it.
   var width: Int
   var height: Int
   var fps: Int
   var bitrateMbps: Double
-  /// How late the device's frames arrive against the world (the Elgato path is about 160 ms). Copied into each
-  /// recording's metadata as its correction; never applied to the media.
-  var latencyMs: Double
+  /// How late each device's frames arrive against the world (the Elgato path is about 160 ms), by part of its
+  /// name; a device not listed is taken as 0. Copied into each recording's metadata as its correction, never
+  /// applied to the media. Kept per device so picking another camera in the menu never carries the Elgato's over.
+  var latencyMsByDevice: [String: Double]
 }
 
 struct MicConfig: Codable {
   var device: String
-  /// The interface input that carries the mic, 1-based: the Scarlett Solo's XLR is input 1, its instrument jack 2.
-  var channel: Int
+  /// The interface input that carries the mic, 1-based, by part of the device's name; a device not listed uses
+  /// input 1. The Scarlett Solo's XLR is input 1, its instrument jack 2.
+  var channelByDevice: [String: Int]
   var bitrateKbps: Int
-  var latencyMs: Double
+  /// As the camera's `latencyMsByDevice`.
+  var latencyMsByDevice: [String: Double]
+
+  func channel(forDevice deviceName: String) -> Int { settingForDevice(channelByDevice, named: deviceName) ?? 1 }
 }

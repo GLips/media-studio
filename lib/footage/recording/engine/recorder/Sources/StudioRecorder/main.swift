@@ -4,6 +4,8 @@
 //   StudioRecorder                         the menu-bar app (run as its app bundle, so permissions stick)
 //   StudioRecorder --record-seconds 60     record once for 60 s and exit; SIGINT/SIGTERM stop it early
 //   StudioRecorder --granted               print the permissions a fresh process holds, as JSON (see Permissions.swift)
+//   StudioRecorder --check-inputs 5        log what the menu's live check sees of the picked inputs for 5 s, and exit;
+//                                          run it through the bundle (`open -a … --args`) so it holds the app's grants
 //   --config <path>                        another config file than ~/Library/Application Support/StudioRecorder/config.json
 import AppKit
 import AVFoundation
@@ -40,13 +42,36 @@ final class Recorder {
   /// Set by Quit (or SIGTERM) during a take: the take is stopped and finished, then the app quits.
   private var quitting = false
   var onChange: (() -> Void)?
-  let config: RecorderConfig
+  /// Read as each recording begins, so an input picked in the menu takes effect at the next one.
+  private(set) var config: RecorderConfig
+  private let configURL: URL
   /// Absent in the command-line test mode, which runs under the terminal's permissions.
   let permissions: Permissions?
 
-  init(config: RecorderConfig, permissions: Permissions?) {
+  init(config: RecorderConfig, configURL: URL, permissions: Permissions?) {
     self.config = config
+    self.configURL = configURL
     self.permissions = permissions
+  }
+
+  /// Makes `name` the input of its kind for the next recording and writes it to config.json. The menu offers this
+  /// only while idle, and only for a camera or mic the config already records. It applies the pick to the file as
+  /// it stands now, so edits made there since launch are kept, and take effect, rather than overwritten.
+  func pickInput(_ kind: RecorderInputKind, named name: String) {
+    do {
+      var picked = try RecorderConfig.load(from: configURL)
+      switch kind {
+      case .mic: picked.mic?.device = name
+      case .camera: picked.camera?.device = name
+      case .screen: picked.screen.display = name
+      }
+      try picked.save(to: configURL)
+      config = picked
+      log("picked \(kind.rawValue) \(name)")
+    } catch {
+      log("couldn't pick \(kind.rawValue) \(name): \(error)")
+    }
+    onChange?()
   }
 
   /// A track failing mid-take sounds an alert (there's no window to show one) and lists itself in the menu.
@@ -118,15 +143,17 @@ final class Recorder {
 }
 
 @MainActor
-final class MenuBarDot: NSObject {
+final class MenuBarDot: NSObject, NSMenuDelegate {
   private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
   private let recorder: Recorder
   private let toggleItem = NSMenuItem(title: "", action: #selector(toggle), keyEquivalent: "")
   private let menu = NSMenu()
   private var permissionItems: [NSMenuItem] = []
+  private let inputMenu: InputMenu
 
   init(recorder: Recorder) {
     self.recorder = recorder
+    inputMenu = InputMenu(recorder: recorder)
     super.init()
     toggleItem.target = self
     menu.addItem(toggleItem)
@@ -134,12 +161,18 @@ final class MenuBarDot: NSObject {
     open.target = self
     menu.addItem(open)
     menu.addItem(.separator())
+    for inputItem in inputMenu.items { menu.addItem(inputItem) }
+    menu.addItem(.separator())
     let about = NSMenuItem(title: "About \(recorderDisplayName)", action: #selector(showAbout), keyEquivalent: "")
     about.target = self
     menu.addItem(about)
     menu.addItem(NSMenuItem(title: "Quit \(recorderDisplayName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     item.menu = menu
-    recorder.onChange = { [weak self] in self?.refresh() }
+    menu.delegate = self
+    recorder.onChange = { [weak self] in
+      self?.inputMenu.recorderChanged()
+      self?.refresh()
+    }
     recorder.permissions?.onChange = { [weak self] in self?.refresh() }
     refresh()
   }
@@ -177,6 +210,9 @@ final class MenuBarDot: NSObject {
     }
     toggleItem.title = recorder.isRecording ? "Stop Recording (\(recorder.config.hotkey))" : "Start Recording (\(recorder.config.hotkey))"
   }
+
+  func menuWillOpen(_ menu: NSMenu) { inputMenu.menuOpened() }
+  func menuDidClose(_ menu: NSMenu) { inputMenu.menuClosed() }
 
   @objc private func toggle() { recorder.toggle() }
   @objc private func showAbout() {
@@ -219,9 +255,10 @@ if arguments.contains("--granted") {
   exit(0)
 }
 
+let configURL = argument("--config").map { URL(fileURLWithPath: $0) } ?? RecorderConfig.defaultURL
 let config: RecorderConfig
 do {
-  config = try RecorderConfig.load(from: argument("--config").map { URL(fileURLWithPath: $0) } ?? RecorderConfig.defaultURL)
+  config = try RecorderConfig.load(from: configURL)
 } catch {
   log("config: \(error)")
   exit(1)
@@ -230,10 +267,26 @@ do {
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 let testSeconds = argument("--record-seconds").flatMap(Double.init)
-let recorder = MainActor.assumeIsolated { Recorder(config: config, permissions: testSeconds == nil ? Permissions(config: config) : nil) }
+let recorder = MainActor.assumeIsolated { Recorder(config: config, configURL: configURL, permissions: testSeconds == nil ? Permissions(config: config) : nil) }
 var keepAlive: [AnyObject] = []
 
-if let seconds = testSeconds {
+if let seconds = argument("--check-inputs").flatMap(Double.init) {
+  MainActor.assumeIsolated {
+    let check = InputCheck()
+    log("inputs: mics \(RecorderInputs.mics().map(\.localizedName)), cameras \(RecorderInputs.cameras().map(\.localizedName)), screens \(RecorderInputs.screens().map(\.localizedName))")
+    log("inputs: picked mic \(config.mic?.device ?? "off"), camera \(config.camera?.device ?? "off"), screen \(RecorderInputs.screen(named: config.screen.display)?.localizedName ?? "none")")
+    check.start(config: config)
+    let ticks = Timer(timeInterval: 0.5, repeats: true) { _ in
+      MainActor.assumeIsolated { log("inputs: mic \(check.micSignal), camera \(check.picture)") }
+    }
+    RunLoop.main.add(ticks, forMode: .common)
+    keepAlive.append(ticks)
+    DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
+      check.stopAndWait()
+      exit(0)
+    }
+  }
+} else if let seconds = testSeconds {
   // One recording, then exit: how the sync and crash tests run without the menu bar.
   MainActor.assumeIsolated {
     var stopScheduled = false

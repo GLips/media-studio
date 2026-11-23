@@ -20,20 +20,14 @@ final class ScreenTrack: NSObject, SCStreamOutput, SCStreamDelegate {
 
   static func make(config: ScreenConfig, url: URL) async throws -> ScreenTrack {
     let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-    let screens = NSScreen.screens
+    let screens = RecorderInputs.screens()
     func name(_ display: SCDisplay) -> String {
-      screens.first { ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == display.displayID }?
-        .localizedName ?? "display \(display.displayID)"
+      screens.first { $0.displayID == display.displayID }?.localizedName ?? "display \(display.displayID)"
     }
-    let display: SCDisplay
-    if config.display == "main" {
-      guard let main = content.displays.first(where: { $0.displayID == CGMainDisplayID() }) else { throw RecorderError("no main display") }
-      display = main
-    } else {
-      guard let named = content.displays.first(where: { name($0).localizedCaseInsensitiveContains(config.display) }) else {
-        throw RecorderError("no display named like \"\(config.display)\"; there are: \(content.displays.map(name).joined(separator: ", "))")
-      }
-      display = named
+    guard let screen = RecorderInputs.screen(named: config.display),
+      let display = content.displays.first(where: { $0.displayID == screen.displayID })
+    else {
+      throw RecorderError("no display named like \"\(config.display)\"; there are: \(content.displays.map(name).joined(separator: ", "))")
     }
     let filter = SCContentFilter(display: display, excludingWindows: [])
     let info = SCShareableContent.info(for: filter)

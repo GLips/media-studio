@@ -5,6 +5,8 @@ import AVFoundation
 final class CameraTrack: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
   let writer: TrackWriter
   let deviceName: String
+  /// This device's latency from the config, for recording.json.
+  let latencySeconds: Double
   /// The device format's own size and rate, before scaling.
   let sourceFormat: String
   private(set) var droppedByCapture = 0
@@ -13,12 +15,12 @@ final class CameraTrack: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate 
   private let clockLog: ClockLog
 
   init(config: CameraConfig, url: URL, clockLog: ClockLog) throws {
-    let discovery = AVCaptureDevice.DiscoverySession(
-      deviceTypes: [.external, .builtInWideAngleCamera, .continuityCamera], mediaType: .video, position: .unspecified)
-    guard let device = discovery.devices.first(where: { $0.localizedName.localizedCaseInsensitiveContains(config.device) }) else {
-      throw RecorderError("no camera named like \"\(config.device)\"; there are: \(discovery.devices.map(\.localizedName).joined(separator: ", "))")
+    let cameras = RecorderInputs.cameras()
+    guard let device = RecorderInputs.device(named: config.device, in: cameras) else {
+      throw RecorderError("no camera named like \"\(config.device)\"; there are: \(cameras.map(\.localizedName).joined(separator: ", "))")
     }
     deviceName = device.localizedName
+    latencySeconds = (settingForDevice(config.latencyMsByDevice, named: device.localizedName) ?? 0) / 1000
     self.clockLog = clockLog
 
     // The device sends what its HDMI source sends (the Cam Link offers only 4K at 29.97 from a 4K camera): take
