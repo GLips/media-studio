@@ -32,6 +32,11 @@ export type VideoProps = {
   paintCache?: string;
   /** Where the page sends each frame it composites (render-frame-sink.ts); none for a pass that sends no picture. */
   frameSink?: string;
+  /**
+   * The origin serving the library's media and a render's frames of it (library-media-server.ts), set by a render and
+   * `studio preview`; the studio app serves them on its own origin and leaves it out.
+   */
+  libraryMedia?: string;
 };
 
 /** Property values by painting source, then by property: JSON across the page's boundary. */

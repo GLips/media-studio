@@ -21,6 +21,7 @@ import { paintCacheNamespace, servePaintCache } from './render-paint-cache.ts';
 import { serveRenderFrameSink, type RenderFrame } from './render-frame-sink.ts';
 import { rawRenderFrameInput, renderFramesInOrder, renderStillsByFrame, renderStillsInto, type RenderStillImage } from './render-frame-writes.ts';
 import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
+import { serveLibraryMedia } from '#lib/footage/library-media/engine/library-media-server.ts';
 import { countVideoFrames, openFfmpegInput, runFfmpegAsync } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { placeRenderWithSnapshot, renderStagingPathOf } from './render-snapshot.ts';
 import type { RenderSnapshot } from '../models/render-snapshot-model.ts';
@@ -180,10 +181,10 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   const checking = traceClock();
   const paintings = await refuseProjectPaintingErrors(project);
   if (paintings) trace.record(`${paintings} ${paintings === 1 ? 'painting' : 'paintings'} checked`, { start: checking, end: traceClock() });
-  const placements = await placing, paintCache = await caching, frameSink = await serveRenderFrameSink();
+  const placements = await placing, paintCache = await caching, frameSink = await serveRenderFrameSink(), libraryMedia = await serveLibraryMedia();
   const serveUrl = await trace.run('bundle', () => bundleStudioProject(project));
   const props = (p: Partial<VideoProps> = {}): VideoProps => ({
-    captions: false, probe: false, blockouts: false, lens, ...(paintingValues && { paintingValues }), ...(traceDetail && { traceDetail }), ...(placements && { stampPlacements: placements.url }), ...(paintCache && { paintCache: paintCache.url }), ...p,
+    captions: false, probe: false, blockouts: false, lens, libraryMedia: libraryMedia.url, ...(paintingValues && { paintingValues }), ...(traceDetail && { traceDetail }), ...(placements && { stampPlacements: placements.url }), ...(paintCache && { paintCache: paintCache.url }), ...p,
   });
   const selectVideo = (inputProps: VideoProps, browser: HeadlessBrowser) => selectComposition({ ...RENDER_PAGE_OPTIONS, serveUrl, id: projectSlug(project), inputProps, puppeteerInstance: browser });
   /** The video's composition with `inputProps`, selected in `browser`, or in a watched one of its own, under the GPU lease. */

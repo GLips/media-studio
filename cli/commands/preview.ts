@@ -17,10 +17,14 @@ export default defineCommand({
     const { spawn } = await import('node:child_process');
     const { join } = await import('node:path');
     const { resolveStudioProject, STUDIO_ROOT } = await import('#lib/platform/project/engine/studio-project.ts');
+    const { serveLibraryMedia } = await import('#lib/footage/library-media/engine/library-media-server.ts');
     const project = resolveStudioProject(args.project);
+    // The library's media, served from this process for as long as the Studio runs; its pages are handed the origin
+    // as props (composition-render-served-install.ts).
+    const libraryMedia = await serveLibraryMedia();
     // remotion.config.ts reads PROJECT, and the Studio finds that config in its working directory.
     const remotion = join(STUDIO_ROOT, 'node_modules', '.bin', 'remotion');
-    const child = spawn(remotion, ['studio', ...passThrough], { cwd: STUDIO_ROOT, stdio: 'inherit', env: { ...process.env, PROJECT: project } });
+    const child = spawn(remotion, ['studio', `--props=${JSON.stringify({ libraryMedia: libraryMedia.url })}`, ...passThrough], { cwd: STUDIO_ROOT, stdio: 'inherit', env: { ...process.env, PROJECT: project } });
     // code is null when a signal killed it, which is a failure too.
     process.exitCode = await new Promise<number>((done) => child.on('exit', (code) => done(code ?? 1)));
   },
