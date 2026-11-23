@@ -329,7 +329,7 @@ const beatClicksWarning = (session: RenderSession) => `
 export async function renderDeliveredVideo(session: RenderSession, { plain, onDraft }: { plain: boolean; onDraft: (warning: string) => void }): Promise<string[]> {
   const timeline = await session.readTimeline();
   const estimated = timeline.cues.filter((q) => !q.voiced).map((q) => q.id);
-  if (estimated.length) throw new Error(`${estimated.join(', ')} ${estimated.length > 1 ? 'are' : 'is'} estimated, not voiced: run studio voice sync <project> before rendering the video`);
+  if (estimated.length) throw new Error(`${estimated.join(', ')} ${estimated.length > 1 ? 'are' : 'is'} estimated, not voiced: run studio voice sync <project> for a read line, or studio library finish <item> for one spoken in a recording, before rendering the video`);
   const drafts = [renderVoiceOf(session.project) === 'draft' && draftVoiceWarning(session), timeline.beatClicks && beatClicksWarning(session)].filter((w) => w !== false);
   drafts.forEach(onDraft);
   if (timeline.transparent) return renderTransparentDelivery(session, timeline, { plain });

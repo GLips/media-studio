@@ -147,7 +147,8 @@ export function Video({ video, previsClips, sfxCues, captions, probe, blockouts,
             {typeof cue.src === 'string'
               ? <Audio src={cue.src} volume={levelGain(cue.lufs!, VOICE_LUFS, `line ${cue.id}`)} />
               // A stretch of a recording plays from where it starts in the file, with no copy cut.
-              : <Audio src={libraryMediaUrl(cue.src.item, cue.src.file)} trimBefore={cue.src.start * fps} volume={levelGain(cue.lufs!, VOICE_LUFS, `line ${cue.id}`)} />}
+              // …and stops at its out point: unlike a clip, the recording runs on past it.
+              : <Audio src={libraryMediaUrl(cue.src.item, cue.src.file)} trimBefore={cue.src.start * fps} trimAfter={(cue.src.start + cue.end - cue.start) * fps} volume={levelGain(cue.lufs!, VOICE_LUFS, `line ${cue.id}`)} />}
           </Sequence>
         ) : null,
       )}

@@ -64,6 +64,9 @@ export function libraryFootage(itemJson: LibraryItemJson, transcript?: LibraryTr
       // A word belongs to the stretch its middle falls in, so a cut a little inside its edge keeps or drops it whole.
       const heard = words.filter((w) => (w.start + w.end) / 2 >= from && (w.start + w.end) / 2 <= to)
         .map((w) => ({ text: w.text, start: Math.max(0, w.start - from), end: Math.min(to - from, w.end - from) }));
+      // A stretch reaching outside the speech track has no sound there to play.
+      const first = libraryItemTimeOf(speechTrack, 0), last = libraryItemTimeOf(speechTrack, speechTrack.mediaSeconds);
+      if (from < first || to > last) throw new Error(`${item.id}'s speech runs ${first.toFixed(3)}–${last.toFixed(3)} s: a line can't be spoken from ${from}–${to} s`);
       const { levelled } = speechTrack;
       const sound = levelled ? { item: item.id, file: levelled.file, start: libraryMediaTimeOf(speechTrack, from), lufs: levelled.lufs } : null;
       return { item: item.id, from, to, heard, sound };
