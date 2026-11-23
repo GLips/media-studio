@@ -2,6 +2,7 @@
 // hears one at a time, the pauses a transcript keeps, and where its words' edges fall. Pure.
 //
 // Quiet is relative to the file's own floor, so room noise in a recording isn't read as speech.
+import { Schema } from 'effect';
 import type { SpokenWord } from './spoken-word.ts';
 
 /** Seconds per level frame. */
@@ -49,7 +50,8 @@ export function quietRuns(levels: readonly number[], quiet: number, first = 0, l
 }
 
 /** A stretch of a file's audio, in seconds. */
-export type AudioSpan = { start: number; end: number };
+export const AudioSpan = Schema.Struct({ start: Schema.Number, end: Schema.Number });
+export type AudioSpan = typeof AudioSpan.Type;
 
 // Whisper hears 30 s at a time; a piece inside one window is decoded whole, so its words can't slide between windows.
 const MAX_PIECE = 25;

@@ -1,4 +1,4 @@
-// studio transcribe: what's said in any audio or video file, word-timed (lib/footage/transcript/engine/transcribe-footage.ts).
+// studio transcribe: what's said in any audio or video file, word-timed (lib/footage/transcript/engine/footage-transcriber.ts).
 import { defineCommand } from 'citty';
 
 const minutesAndSeconds = (seconds: number) => `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(1).padStart(4, '0')}`;
@@ -14,9 +14,10 @@ export default defineCommand({
     json: { type: 'boolean', description: 'Print the transcript as JSON' },
   },
   async run({ args }) {
-    const { transcribeFootage } = await import('#lib/footage/transcript/engine/transcribe-footage.ts');
+    const { FootageTranscriber, footageTranscriberLayer } = await import('#lib/footage/transcript/engine/footage-transcriber.ts');
     const { transcriptLines } = await import('#lib/footage/transcript/models/footage-transcript.ts');
-    const transcript = await transcribeFootage(args.file);
+    const { runStudioEffect } = await import('#lib/platform/process/engine/studio-effect-runtime.ts');
+    const transcript = await runStudioEffect(FootageTranscriber.use((transcriber) => transcriber.transcribe(args.file)), footageTranscriberLayer);
     if (args.json) {
       console.log(JSON.stringify(transcript));
       return;

@@ -24,7 +24,8 @@ import { cutTakeIntoLines, pinWordsToTaggedPauses, type TakeClip, type VoiceComp
 import { alignSpokenWords, captionMarkup, scriptWords, spokenText, ttsText } from '../models/voice-words.ts';
 import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 import { samplesFromWav, wavFromPcm, wavFromSamples } from '#lib/platform/wav/models/wav.ts';
-import { transcribeFootage } from '#lib/footage/transcript/engine/transcribe-footage.ts';
+import { FootageTranscriber, footageTranscriberLayer } from '#lib/footage/transcript/engine/footage-transcriber.ts';
+import { runStudioEffect } from '#lib/platform/process/engine/studio-effect-runtime.ts';
 import { publishVoiceGeneration, readVoiceComp, sweepVoiceGenerations } from './voice-generations.ts';
 import { keepVoiceTake, readVoiceTakes, saveKeptVoiceTake, stampChosenVoiceTakes, type KeptVoiceTake } from './voice-takes.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
@@ -328,7 +329,7 @@ function keepVoiceClip(dir: string, id: string, file: string) {
 const runOfTake = (take: KeptVoiceTake) => take.info.lines.filter((line) => !isVoiceContextLine(take.info.context, line.id));
 
 /** A pickup's joins must be clean to publish any of its lines: both sides held as contextJoinProblems holds them. */
-function checkPickupJoins(project: string, take: KeptVoiceTake, cut: { clips: TakeClip[]; words: SpokenWord[][] }) {
+function checkPickupJoins(project: string, take: KeptVoiceTake, cut: { clips: TakeClip[]; words: (readonly SpokenWord[])[] }) {
   const { before, after } = take.info.context ?? {}, lines = take.info.lines, run = runOfTake(take);
   const firstAt = before ? 1 : 0, lastAt = lines.length - (after ? 2 : 1);
   const problems = [
@@ -350,7 +351,7 @@ const mirroredHeard = (heard: readonly SpokenWord[]) => heard.toReversed().map((
  * its own clip, and none in the line's. The line's clip is aligned to both lines from the context's side, so a word
  * repeated at the join goes to the line.
  */
-function contextJoinProblems(context: VoiceTakeLine, line: VoiceTakeLine, contextHeard: SpokenWord[], lineHeard: SpokenWord[], cutClip: TakeClip, side: 'before' | 'after'): string[] {
+function contextJoinProblems(context: VoiceTakeLine, line: VoiceTakeLine, contextHeard: readonly SpokenWord[], lineHeard: readonly SpokenWord[], cutClip: TakeClip, side: 'before' | 'after'): string[] {
   const cutAt = side === 'before' ? `the cut after ${context.id}` : `the cut before ${context.id}`;
   const text = spokenText(context.text), words = scriptWords(text), own = spokenText(line.text);
   const inContext = alignSpokenWords(text, contextHeard, 0).paired;
@@ -377,7 +378,7 @@ async function settleAll<T>(work: readonly Promise<T>[]): Promise<T[]> {
 
 const roundToMs = (x: number) => Math.round(x * 1000) / 1000;
 
-function manifestLine(take: KeptVoiceTake, i: number, clip: TakeClip, file: string, heard: SpokenWord[], rate: number, first: boolean): RecordedVoiceLine {
+function manifestLine(take: KeptVoiceTake, i: number, clip: TakeClip, file: string, heard: readonly SpokenWord[], rate: number, first: boolean): RecordedVoiceLine {
   const line = take.info.lines[i];
   const text = spokenText(line.text), clipSamples = samplesFromWav(readFileSync(file)).samples;
   const duration = clipSamples.length / rate;
@@ -410,7 +411,7 @@ async function cutVoiceTake(project: string, take: KeptVoiceTake, tmp: string) {
     const key = createHash('sha256').update(readFileSync(file)).digest('hex').slice(0, 16);
     used.add(key);
     if (!heard[key]) {
-      heard[key] = (await transcribeFootage(file)).words;
+      heard[key] = (await runStudioEffect(FootageTranscriber.use((transcriber) => transcriber.transcribe(file)), footageTranscriberLayer)).words;
       saveKeptVoiceTake(project, take);
     }
     return heard[key];
@@ -424,7 +425,7 @@ async function cutVoiceTake(project: string, take: KeptVoiceTake, tmp: string) {
   // It stops once the cuts stop moving.
   let takeWords = await hear(take.wav);
   let clips: TakeClip[] = [];
-  const clipWords: SpokenWord[][] = [];
+  const clipWords: (readonly SpokenWord[])[] = [];
   for (let round = 0; round < MAX_CUT_ROUNDS; round++) {
     const previous = clips;
     clips = cutTakeIntoLines(lines, takeWords, samples, rate);

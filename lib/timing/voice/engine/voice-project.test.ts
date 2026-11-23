@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, utimesSync, writeFile
 import { registerHooks } from 'node:module';
 import { join } from 'node:path';
 import { beforeEach, test } from 'node:test';
+import { Effect, Layer } from 'effect';
+import { FootageTranscriber, TranscriptionFailed } from '#lib/footage/transcript/engine/footage-transcriber.ts';
 import { studioTempRoot } from '#lib/platform/temp/engine/studio-temp.ts';
 import { samplesFromWav, wavFromSamples } from '#lib/platform/wav/models/wav.ts';
 import type { RecordedVoice } from '../models/voice-manifest.ts';
@@ -38,16 +40,27 @@ function heardWordsForTest(wavPath: string): SpokenWord[] {
   if (!fakeWhisper.collapsesRepeats) return words;
   return words.reduce<SpokenWord[]>((heard, word) => {
     const last = heard.at(-1);
-    if (last?.text === word.text) last.end = word.end;
-    else heard.push({ ...word });
+    if (last?.text === word.text) heard[heard.length - 1] = { ...last, end: word.end };
+    else heard.push(word);
     return heard;
   }, []);
 }
-Object.assign(globalThis, { heardWordsForTest });
+// voice-project.ts imports the transcriber module after this hook, and is handed this stand-in for it; the static import
+// above loaded the real one first, so the stand-in provides the real service tag.
+const fakeTranscriberModule = {
+  FootageTranscriber,
+  footageTranscriberLayer: Layer.succeed(FootageTranscriber, FootageTranscriber.of({
+    transcribe: (path) => Effect.try({
+      try: () => ({ duration: 0, words: heardWordsForTest(path), pauses: [] }),
+      catch: (error) => new TranscriptionFailed({ path, reason: String(error) }),
+    }),
+  })),
+};
+Object.assign(globalThis, { fakeTranscriberModule });
 registerHooks({
   resolve(specifier, context, nextResolve) {
-    if (specifier !== '#lib/footage/transcript/engine/transcribe-footage.ts') return nextResolve(specifier, context);
-    return { url: 'data:text/javascript,export const transcribeFootage = async (path) => ({ words: globalThis.heardWordsForTest(path) });', shortCircuit: true };
+    if (specifier !== '#lib/footage/transcript/engine/footage-transcriber.ts') return nextResolve(specifier, context);
+    return { url: 'data:text/javascript,export const { FootageTranscriber, footageTranscriberLayer } = globalThis.fakeTranscriberModule;', shortCircuit: true };
   },
 });
 const { importVoiceRecording, rereadVoiceLines, syncVoice, unvoicedVoiceLines, useVoiceTake } = await import('./voice-project.ts');
