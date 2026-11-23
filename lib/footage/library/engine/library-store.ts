@@ -33,6 +33,8 @@ export class LibraryStore extends Context.Service<LibraryStore, {
    * have changed item.json. Returns the item written.
    */
   readonly updateItem: (id: string, change: (item: LibraryItem) => LibraryItem) => Effect.Effect<LibraryItem, LibraryItemMissing | StoreFailure>;
+  /** Removes item `id`'s metadata whole: item.json, its transcript and its flags. */
+  readonly removeItemMetadata: (id: string) => Effect.Effect<void, PlatformError.PlatformError>;
   /** An item named by its whole id, or a part of it only one id holds. */
   readonly resolveItemId: (named: string) => Effect.Effect<string, LibraryItemUnknown | LibraryItemAmbiguous | LibraryRequestRefused | PlatformError.PlatformError>;
   readonly readTranscript: (id: string) => Effect.Effect<Option.Option<LibraryTranscriptFile>, StoreFailure>;
@@ -138,6 +140,7 @@ export const makeLibraryStoreLayer = ({ libraryDir, projectsDir, workspaceRequir
       yield* writeItem(changed);
       return changed;
     }),
+    removeItemMetadata: (id) => fs.remove(itemDir(id), { recursive: true }),
     resolveItemId: Effect.fn('LibraryStore.resolveItemId')(function* (named) {
       const ids = yield* itemIds();
       if (ids.includes(named)) return named;

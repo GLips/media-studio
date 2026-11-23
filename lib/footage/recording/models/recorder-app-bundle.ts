@@ -1,5 +1,5 @@
 // recorder-app-bundle.ts: what Studio Recorder.app says about itself in its Info.plist, the recorder's names and the
-// command it hands each finished recording to. Pure: the installer passes in the machine's facts (this checkout,
+// studio commands it runs. Pure: the installer passes in the machine's facts (this checkout,
 // this node, this shell's PATH) and writes the text.
 
 /** The one place the recorder's name is set: its app, menu, tooltips and About read it from the bundle. */
@@ -17,14 +17,22 @@ export interface RecorderInstallHost {
 }
 
 /**
- * How the recorder hands a finished recording to the library (LibraryHandoff.swift appends the take's folder): this
+ * The studio commands the recorder runs, by their Info.plist key; each is run with one folder appended. They run this
  * checkout's CLI under this node, with this shell's PATH, since an app launchd starts has no ffmpeg on its own PATH.
- * Reinstall after moving the checkout. No proxies: their hardware encodes would compete with the next take's;
- * `studio library finish` makes them.
+ * Reinstall after moving the checkout.
  */
-export const recorderLibraryAddCommand = (host: RecorderInstallHost): readonly string[] => [
-  '/usr/bin/env', `PATH=${host.shellPath}`, host.nodePath, `${host.studioRoot}/cli/studio.ts`, 'library', 'add', '--move', '--no-proxies',
-];
+export const recorderStudioCommands = (host: RecorderInstallHost) => {
+  const studio = ['/usr/bin/env', `PATH=${host.shellPath}`, host.nodePath, `${host.studioRoot}/cli/studio.ts`];
+  return {
+    // A finished take's folder (LibraryHandoff.swift). No proxies: their hardware encodes would compete with the next
+    // take's; `studio library finish` makes them.
+    StudioLibraryAdd: [...studio, 'library', 'add', '--move', '--no-proxies'],
+    // The recordings folder: the menu's recent takes, wherever they went.
+    StudioLibraryRecordings: [...studio, 'library', 'recordings', '--json', '--limit', '5', '--inbox'],
+    // A take's folder: the menu's Throw Away removes it from the library and the recordings folder.
+    StudioLibraryRemoveTake: [...studio, 'library', 'remove', '--take'],
+  } satisfies Readonly<Record<string, readonly string[]>>;
+};
 
 const xmlText = (text: string) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 
@@ -45,7 +53,6 @@ export const recorderBundlePropertyList = (host: RecorderInstallHost): string =>
   <key>LSUIElement</key><true/>
   <key>NSCameraUsageDescription</key><string>Records the camera as its own track.</string>
   <key>NSMicrophoneUsageDescription</key><string>Records the mic as its own track.</string>
-  <key>StudioLibraryAdd</key><array>${recorderLibraryAddCommand(host).map((arg) => `<string>${xmlText(arg)}</string>`).join('')}</array>
-</dict>
+${Object.entries(recorderStudioCommands(host)).map(([key, command]) => `  <key>${key}</key><array>${command.map((arg) => `<string>${xmlText(arg)}</string>`).join('')}</array>\n`).join('')}</dict>
 </plist>
 `;

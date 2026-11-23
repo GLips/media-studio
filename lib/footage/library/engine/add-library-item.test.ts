@@ -11,6 +11,7 @@ import { StudioFfmpeg } from '#lib/platform/ffmpeg/engine/studio-ffmpeg.ts';
 import { runStudioEffect } from '#lib/platform/process/engine/studio-effect-runtime.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { addLibraryItem } from './add-library-item.ts';
+import { listLibraryRecorderTakes, removeLibraryRecorderTake } from './library-recorder-takes.ts';
 import { LibraryFileUnreadable } from '../models/library-errors.ts';
 import { makeRecorderDeviceLatenciesLayer, RecorderDeviceLatencies } from './library-recorder-latencies.ts';
 import { makeLibraryStoreLayer } from './library-store.ts';
@@ -43,8 +44,8 @@ const libraryAt = (root: string, latencies = makeRecorderDeviceLatenciesLayer(jo
 );
 
 /** A take folder as the recorder leaves it, its files last changed `stillFor` ms ago. */
-function writeTake(root: string, { status, stillFor, input }: { status: 'recording' | 'complete'; stillFor: number; input: string }) {
-  const take = join(root, 'Studio Recordings', '2026-11-22 18.19.29');
+function writeTake(root: string, { status, stillFor, input, name = '2026-11-22 18.19.29' }: { status: 'recording' | 'complete'; stillFor: number; input: string; name?: string }) {
+  const take = join(root, 'Studio Recordings', name);
   mkdirSync(take, { recursive: true });
   writeFileSync(join(take, 'recording.json'), JSON.stringify({
     format: 'studio-recording/1', status, startedAt: '2026-11-22T18:19:29.847-08:00',
@@ -101,5 +102,44 @@ test("an add whose undo fails too fails with what broke the add, and leaves the 
   } finally {
     chmodSync(take, 0o755);
   }
-  assert.deepEqual(readdirSync(join(root, 'work/library/media', '2026-11-22-181929')), ['screen.mp4']);
+  // The marker stays too, naming the take, so throwing it away finds this media.
+  assert.deepEqual(readdirSync(join(root, 'work/library/media', '2026-11-22-181929')).toSorted(), ['.adding.json', 'screen.mp4']);
+}));
+
+test("the recorder's takes are listed wherever they went, and a take thrown away leaves nothing in the library or the inbox", () => withStudioTemp('library-add', async (root) => {
+  const added = writeTake(root, { status: 'complete', stillFor: 0, input: CLICK });
+  const { id } = await runStudioEffect(addLibraryItem({ paths: [added], ...MOVE }), libraryAt(root));
+  const failed = writeTake(root, { status: 'complete', stillFor: 0, input: CLICK, name: '2026-11-22 19.00.00' });
+  writeTake(root, { status: 'recording', stillFor: 0, input: CLICK, name: '2026-11-22 19.30.00' });
+  const inbox = join(root, 'Studio Recordings');
+
+  const takes = await runStudioEffect(listLibraryRecorderTakes({ inbox }), libraryAt(root));
+  // The live take is left out: the recorder is still writing it.
+  assert.deepEqual(takes.map((take) => [take.folder, take.item]), [
+    [failed, null],
+    [added, { id, mediaFolder: join(root, 'work/library/media', id) }],
+  ]);
+
+  await runStudioEffect(removeLibraryRecorderTake(added), libraryAt(root));
+  await runStudioEffect(removeLibraryRecorderTake(failed), libraryAt(root));
+  assert.equal(existsSync(join(root, 'work/library/items', id)), false);
+  assert.equal(existsSync(join(root, 'work/library/media', id)), false);
+  assert.equal(existsSync(failed), false);
+  await assert.rejects(runStudioEffect(removeLibraryRecorderTake(join(inbox, '2026-11-22 19.30.00')), libraryAt(root)), { message: /is still recording/ });
+}));
+
+test('throwing away a take whose add was stopped part way removes the media it left, and waits while an add still runs', () => withStudioTemp('library-add', async (root) => {
+  const take = writeTake(root, { status: 'complete', stillFor: 0, input: CLICK });
+  const left = join(root, 'work/library/media/2026-11-22-181929');
+  mkdirSync(left, { recursive: true });
+  writeFileSync(join(left, 'screen.mp4'), 'screen.mp4');
+  const marker = (process: { pid: number; started: number }) => writeFileSync(join(left, '.adding.json'), JSON.stringify({ take, process }));
+
+  marker({ pid: process.pid, started: Math.round(performance.timeOrigin) });
+  await assert.rejects(runStudioEffect(removeLibraryRecorderTake(take), libraryAt(root)), { message: /is still being added/ });
+  // The add was stopped before it moved recording.json: the take's rest is still in the inbox.
+  marker({ pid: process.pid, started: 1 });
+  await runStudioEffect(removeLibraryRecorderTake(take), libraryAt(root));
+  assert.equal(existsSync(left), false);
+  assert.equal(existsSync(take), false);
 }));

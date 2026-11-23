@@ -8,7 +8,7 @@ import RecorderCore
 final class Recording: RecorderTake {
   let folder: URL
   private let start: CMTime
-  private let startedAt: Date
+  let startedAt: Date
   private let screen: ScreenTrack?
   private let camera: CameraTrack?
   private let mic: MicTrack?
@@ -120,12 +120,20 @@ final class Recording: RecorderTake {
     return found
   }
 
+  /// How much of the take its tracks have written: to the end of the latest sample any of them has appended, on the
+  /// take's own clock. Appended samples reach the file at the next fragment, at most `fragmentSeconds` later.
+  @MainActor
+  var writtenSeconds: Double {
+    writers.compactMap { $0.1.progress.appendedEnd }.map(seconds).max() ?? 0
+  }
+
   /// Rewrites recording.json mid-take with the take's problems.
   func recordProblems(_ problems: [RecorderTrack: String]) {
     write(status: .recording, problems: problems, stoppedAt: nil)
   }
 
-  func end(problems: [RecorderTrack: String]) async {
+  /// Returns the take's length.
+  func end(problems: [RecorderTrack: String]) async -> Double {
     let end = HostClock.now()
     // The tap's callbacks run on the main run loop: tear it down there, between callbacks.
     await MainActor.run { input.end() }
@@ -135,6 +143,7 @@ final class Recording: RecorderTake {
     _ = await (screenDone, cameraDone, micDone)
     clockLog.close()
     write(status: .complete, problems: problems, stoppedAt: end)
+    return seconds(end)
   }
 
   private func seconds(_ time: CMTime) -> Double { (time - start).seconds }

@@ -1,12 +1,15 @@
 // The recorder's lifecycle, whole: every phase it can be in, every event that moves it, and the one pure transition
 // that owns every change, returning the next state and the effects to perform. The app performs the effects and
 // feeds what happens back as events; nothing else writes the state. What runs alongside a phase (the menu's input
-// check, the track watch, the permission poll) is derived from the state, and started and stopped by the diff.
+// check, the track watch, the take's clock, the permission poll) is derived from the state, and started and stopped
+// by the diff. Beside the phase it keeps the recent takes the menu lists, each where it is now: being added to the
+// library, in it, left in the recordings folder, or being thrown away.
 import Foundation
 
-/// A take as the machine sees it: its folder. The app's take is its `Recording`.
+/// A take as the machine sees it: its folder and when it began. The app's take is its `Recording`.
 public protocol RecorderTake {
   var folder: URL { get }
+  var startedAt: Date { get }
 }
 
 /// A recording's tracks, as recording.json's `tracks`, `leftOut` and `problems` key them.
@@ -28,7 +31,9 @@ public enum RecorderPhase<Take: RecorderTake> {
   /// Opening the tracks. A press is ignored, so a double press can't start a second take; a stop or quit asked
   /// for meanwhile waits for the take to start, then ends it.
   case starting(then: AfterStart)
-  case recording(Take)
+  /// `elapsedSeconds`: how much of the take its tracks have written, in whole seconds, so the menu bar's clock is
+  /// never ahead of what's on disk.
+  case recording(Take, elapsedSeconds: Int)
   /// Finishing the take's files; `quitAfter` when Quit or SIGTERM came during the take.
   case stopping(Take, quitAfter: Bool)
   /// The app may quit. Terminal: every later event is ignored.
@@ -46,6 +51,8 @@ public enum RecorderActivity: CaseIterable, Sendable {
   case inputCheck
   /// Each second, looks for a camera or mic gone quiet or a screen stream stopped: while recording.
   case trackWatch
+  /// Reads how much of the take is written, several times a second, for the menu bar's clock: while recording.
+  case takeClock
   /// Polls a fresh process for screen and input grants: while waiting on them.
   case permissionPoll
 }
@@ -61,6 +68,42 @@ public struct RecorderInputPick: Equatable, Sendable {
 
 public enum RecorderInputKind: String, Sendable { case mic, camera, screen }
 
+/// A recent take, as the menu lists it. Named by its folder in the recordings folder, which it leaves once added.
+public struct RecorderRecentTake: Equatable, Sendable {
+  public enum Place: Equatable, Sendable {
+    /// The library add is running on it.
+    case addingToLibrary
+    /// Its add finished; the library hasn't been asked for its item yet.
+    case added
+    /// `mediaFolder` is none while the library's media is offline.
+    case inLibrary(item: String, mediaFolder: URL?)
+    /// Still in the recordings folder: its add failed, or the recorder was killed in it.
+    case inRecordings
+    /// Being thrown away; `afterAdd` while its add is stopped first, so nothing it moves is left behind.
+    case throwingAway(afterAdd: Bool)
+  }
+
+  public let folder: URL
+  public let recordedAt: Date?
+  /// None for a take the recorder was killed in.
+  public let durationSeconds: Double?
+  public var place: Place
+
+  public init(folder: URL, recordedAt: Date?, durationSeconds: Double?, place: Place) {
+    self.folder = folder
+    self.recordedAt = recordedAt
+    self.durationSeconds = durationSeconds
+    self.place = place
+  }
+
+  /// A take's folder is named by when it began (`2026-11-22 18.19.29`): the same take wherever it went, and the
+  /// newest sorts first.
+  var name: String { folder.lastPathComponent }
+}
+
+/// How many recent takes the menu lists; `studio library recordings` is asked for as many.
+public let recorderRecentTakeCount = 5
+
 public struct RecorderState<Take: RecorderTake> {
   public fileprivate(set) var phase: RecorderPhase<Take>
   /// The current or latest take's track problems: kept after it stops so the menu still shows them, cleared when
@@ -68,6 +111,12 @@ public struct RecorderState<Take: RecorderTake> {
   public fileprivate(set) var trackProblems: [RecorderTrack: String] = [:]
   /// Why a finished take didn't reach the library; shown until the next take starts.
   public fileprivate(set) var libraryFailure: LibraryHandoffFailure?
+  /// The newest takes first, at most `recorderRecentTakeCount`.
+  public fileprivate(set) var recentTakes: [RecorderRecentTake] = []
+  /// Why the last throw-away failed; shown until the next take starts.
+  public fileprivate(set) var throwAwayFailure: String?
+  /// The latest listing asked for: an earlier one may have read the library before a throw-away, so it's ignored.
+  public fileprivate(set) var recentTakesAsked = 0
   public fileprivate(set) var menuOpen = false
   /// The command-line take (`--record-seconds`): one take, stopped after its length, then the process exits, 0 if
   /// it recorded and 1 if it never started. It skips permissions (it runs under the terminal's) and the library.
@@ -75,9 +124,9 @@ public struct RecorderState<Take: RecorderTake> {
 
   /// The menu-bar app at launch, and its first effects.
   public static func launch(missing: [Permission]) -> RecorderStep<Take> {
-    if missing.isEmpty { return RecorderStep(state: RecorderState(phase: .idle, oneTake: false), effects: []) }
-    return RecorderStep(
-      state: RecorderState(phase: .needsPermission(missing: missing, watching: false), oneTake: false), effects: [.askForPermissions(missing)])
+    var state = RecorderState(phase: missing.isEmpty ? .idle : .needsPermission(missing: missing, watching: false), oneTake: false)
+    let load = state.askForRecentTakes()
+    return RecorderStep(state: state, effects: (missing.isEmpty ? [] : [.askForPermissions(missing)]) + [load])
   }
 
   /// The command-line take at launch: it starts recording at once.
@@ -104,7 +153,7 @@ public struct RecorderState<Take: RecorderTake> {
   public var activities: Set<RecorderActivity> {
     var running: Set<RecorderActivity> = []
     if menuOpen && atRest { running.insert(.inputCheck) }
-    if case .recording = phase { running.insert(.trackWatch) }
+    if case .recording = phase { running.formUnion([.trackWatch, .takeClock]) }
     if case .needsPermission(_, watching: true) = phase { running.insert(.permissionPoll) }
     return running
   }
@@ -126,7 +175,7 @@ extension RecorderPhase {
   /// The take recording or finishing, if any.
   public var take: Take? {
     switch self {
-    case .recording(let take), .stopping(let take, _): take
+    case .recording(let take, _), .stopping(let take, _): take
     default: nil
     }
   }
@@ -143,9 +192,23 @@ public enum RecorderEvent<Take: RecorderTake> {
   case takeFailedToStart(TakeStartFailure)
   /// What the track watch found this second; problems already known come again and are ignored.
   case trackProblemsFound([RecorderTrack: String])
-  /// The stopping take's files are finished.
-  case takeEnded
-  case libraryAddFailed(LibraryHandoffFailure)
+  /// How much of the recording take is written, in seconds: the take clock's tick.
+  case takeClockTicked(seconds: Double)
+  /// The stopping take's files are finished, this long.
+  case takeEnded(durationSeconds: Double)
+  /// The library add of the take at this folder exited: added, or with why not.
+  case libraryAddEnded(URL, failure: LibraryHandoffFailure?)
+  /// `studio library recordings`' answer, each take in the library or the recordings folder.
+  case recentTakesLoaded([RecorderRecentTake], asked: Int)
+  case recentTakesUnavailable(String)
+  /// A recent take's menu item.
+  case openRecentTakeRequested(URL)
+  /// The menu's Throw Away item, for the newest take; it asks first.
+  case throwAwayRequested
+  /// Graham said yes to throwing away the take at this folder.
+  case throwAwayConfirmed(URL)
+  case takeThrownAway(URL)
+  case throwAwayFailed(URL, reason: String)
   case menuOpened
   case menuClosed
   case inputPicked(RecorderInputPick)
@@ -177,8 +240,19 @@ public enum RecorderEffect<Take: RecorderTake> {
   case alertTrackProblem
   /// Stops the take's tracks and finishes its files with these problems, then sends `.takeEnded`.
   case endTake(Take, problems: [RecorderTrack: String])
-  /// Runs the bundle's library add on the take's folder, detached; sends `.libraryAddFailed` if it fails.
+  /// Runs the bundle's library add on the take's folder, detached; sends `.libraryAddEnded` when it exits.
   case handOffToLibrary(URL)
+  /// Stops the library add running on the take's folder, which undoes what it hadn't finished; it still sends
+  /// `.libraryAddEnded`.
+  case stopLibraryAdd(URL)
+  /// Asks `studio library recordings` for the recent takes; sends `.recentTakesLoaded` or `.recentTakesUnavailable`.
+  case loadRecentTakes(asked: Int)
+  /// Shows a folder in the Finder: the take's media in the library, else its folder in the recordings folder.
+  case reveal(URL)
+  /// Asks before throwing the take away; sends `.throwAwayConfirmed` on yes.
+  case confirmThrowAway(RecorderRecentTake)
+  /// Removes the take wherever it went (`studio library remove --take`); sends `.takeThrownAway` or `.throwAwayFailed`.
+  case throwAway(URL)
   /// Writes the pick to config.json, for the next take.
   case saveInputPick(RecorderInputPick)
   /// Lets a quit that waited on a take go ahead.
@@ -216,7 +290,7 @@ extension RecorderState {
     case (.toggleRequested, .idle):
       phase = .starting(then: .record)
       return [.beginTake]
-    case (.toggleRequested, .recording(let take)), (.stopRequested, .recording(let take)):
+    case (.toggleRequested, .recording(let take, _)), (.stopRequested, .recording(let take, _)):
       phase = .stopping(take, quitAfter: false)
       return [.endTake(take, problems: trackProblems)]
     case (.stopRequested, .starting(.record)):
@@ -229,7 +303,7 @@ extension RecorderState {
     case (.quitRequested, .starting):
       phase = .starting(then: .quit)
       return []
-    case (.quitRequested, .recording(let take)):
+    case (.quitRequested, .recording(let take, _)):
       phase = .stopping(take, quitAfter: true)
       return [.endTake(take, problems: trackProblems)]
     case (.quitRequested, .stopping(let take, _)):
@@ -239,10 +313,11 @@ extension RecorderState {
     case (.takeStarted(let take), .starting(let then)):
       trackProblems = [:]
       libraryFailure = nil
+      throwAwayFailure = nil
       let started = RecorderEffect<Take>.log("recording to \(take.folder.path)")
       switch then {
       case .record:
-        phase = .recording(take)
+        phase = .recording(take, elapsedSeconds: 0)
         return [started] + (oneTake ? [.scheduleOneTakeStop] : [])
       case .stop, .quit:
         phase = .stopping(take, quitAfter: then == .quit)
@@ -252,21 +327,69 @@ extension RecorderState {
       phase = then == .quit ? .exited : .idle
       return [.log("couldn't start: \(failure)")] + (then == .quit ? [.replyToQuit] : []) + (oneTake ? [.exitProcess(1)] : [])
 
-    case (.trackProblemsFound(let found), .recording(let take)):
+    case (.takeClockTicked(let seconds), .recording(let take, _)):
+      phase = .recording(take, elapsedSeconds: max(0, Int(seconds)))
+      return []
+
+    case (.trackProblemsFound(let found), .recording(let take, _)):
       let new = found.filter { trackProblems[$0.key] == nil }
       guard !new.isEmpty else { return [] }
       trackProblems.merge(new) { known, _ in known }
       return new.sorted { $0.key < $1.key }.map { .log("\($0.key.rawValue) \($0.value)") }
         + [.recordTrackProblems(take, trackProblems), .alertTrackProblem]
 
-    case (.takeEnded, .stopping(let take, let quitAfter)):
+    case (.takeEnded(let seconds), .stopping(let take, let quitAfter)):
       phase = quitAfter ? .exited : .idle
       if oneTake { return [.log("recorded \(take.folder.path)"), .exitProcess(0)] }
+      keepNewest([RecorderRecentTake(folder: take.folder, recordedAt: take.startedAt, durationSeconds: seconds, place: .addingToLibrary)] + recentTakes)
       return [.log("recorded \(take.folder.path)"), .handOffToLibrary(take.folder)] + (quitAfter ? [.replyToQuit] : [])
 
-    case (.libraryAddFailed(let failure), _):
+    case (.libraryAddEnded(let folder, let failure), _):
+      let index = recentTakes.firstIndex { $0.folder == folder }
+      if let index, recentTakes[index].place == .throwingAway(afterAdd: true) {
+        recentTakes[index].place = .throwingAway(afterAdd: false)
+        return [.throwAway(folder)]
+      }
+      if let index { recentTakes[index].place = failure == nil ? .added : .inRecordings }
+      guard let failure else { return [askForRecentTakes()] }
       libraryFailure = failure
       return []
+
+    case (.recentTakesLoaded(let loaded, let asked), _):
+      guard asked == recentTakesAsked else { return [] }
+      remember(listed: loaded)
+      return []
+    case (.recentTakesUnavailable(let reason), _):
+      return [.log("couldn't list the recent takes: \(reason)")]
+
+    case (.openRecentTakeRequested(let folder), _):
+      guard let take = recentTakes.first(where: { $0.folder == folder }) else { return [] }
+      if case .inLibrary(let item, let mediaFolder) = take.place {
+        guard let mediaFolder else { return [.log("can't open \(item): the library's media is offline")] }
+        return [.reveal(mediaFolder)]
+      }
+      return [.reveal(take.folder)]
+
+    case (.throwAwayRequested, _):
+      guard let newest = recentTakes.first, !newest.isBeingThrownAway else { return [] }
+      return [.confirmThrowAway(newest)]
+    case (.throwAwayConfirmed(let folder), _):
+      guard let index = recentTakes.firstIndex(where: { $0.folder == folder }), !recentTakes[index].isBeingThrownAway else { return [] }
+      throwAwayFailure = nil
+      if recentTakes[index].place == .addingToLibrary {
+        recentTakes[index].place = .throwingAway(afterAdd: true)
+        return [.log("throwing away \(folder.lastPathComponent): stopping its library add"), .stopLibraryAdd(folder)]
+      }
+      recentTakes[index].place = .throwingAway(afterAdd: false)
+      return [.log("throwing away \(folder.lastPathComponent)"), .throwAway(folder)]
+    case (.takeThrownAway(let folder), _):
+      recentTakes.removeAll { $0.folder == folder }
+      return [.log("threw away \(folder.lastPathComponent)"), askForRecentTakes()]
+    case (.throwAwayFailed(let folder, let reason), _):
+      throwAwayFailure = reason
+      // Where it is now is the library's to say: what failed may have removed part of it.
+      recentTakes.removeAll { $0.folder == folder }
+      return [.log("couldn't throw away \(folder.lastPathComponent): \(reason)"), askForRecentTakes()]
 
     case (.menuOpened, _):
       menuOpen = true
@@ -303,9 +426,71 @@ extension RecorderState {
   }
 }
 
+extension RecorderRecentTake {
+  fileprivate var isBeingThrownAway: Bool {
+    if case .throwingAway = place { true } else { false }
+  }
+
+  /// Where the recorder itself is moving the take: what a listing says of it can't be newer.
+  fileprivate var inFlight: Bool {
+    switch place {
+    case .addingToLibrary, .throwingAway: true
+    case .added, .inLibrary, .inRecordings: false
+    }
+  }
+}
+
+extension RecorderState {
+  /// A listing's takes as the recent ones, newest first: a take in flight keeps its own place over what it says.
+  fileprivate mutating func remember(listed: [RecorderRecentTake]) {
+    let inFlight = recentTakes.filter(\.inFlight)
+    // The take recording now: a still screen writes nothing for long enough that the library judges it killed.
+    let kept = Set(inFlight.map(\.name) + (phase.take.map { [$0.folder.lastPathComponent] } ?? []))
+    keepNewest(inFlight + listed.filter { !kept.contains($0.name) })
+  }
+
+  fileprivate mutating func askForRecentTakes() -> RecorderEffect<Take> {
+    recentTakesAsked += 1
+    return .loadRecentTakes(asked: recentTakesAsked)
+  }
+
+  /// The newest takes, each once: of two the same, the first given wins.
+  fileprivate mutating func keepNewest(_ takes: [RecorderRecentTake]) {
+    var seen: Set<String> = []
+    let once = takes.filter { seen.insert($0.name).inserted }
+    recentTakes = Array(once.sorted { $0.name > $1.name }.prefix(recorderRecentTakeCount))
+  }
+}
+
 extension [Permission] {
   /// Camera and mic grants reach this process at once; screen and input wait for the relaunch.
   fileprivate func stillMissing(granted: Set<Permission>) -> [Permission] {
     filter { $0.takesEffectOnRelaunch || !granted.contains($0) }
+  }
+}
+
+extension RecorderRecentTake {
+  /// `studio library recordings --json`'s takes (LibraryRecorderTake in library-recorder-takes.ts).
+  public static func listed(fromJSON data: Data) throws -> [RecorderRecentTake] {
+    struct Listed: Decodable {
+      struct Item: Decodable {
+        let id: String
+        let mediaFolder: String?
+      }
+      let folder: String
+      let recordedAt: String?
+      let durationSeconds: Double?
+      let item: Item?
+    }
+    let withFraction = ISO8601DateFormatter()
+    withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let whole = ISO8601DateFormatter()
+    return try JSONDecoder().decode([Listed].self, from: data).map { take in
+      RecorderRecentTake(
+        folder: URL(fileURLWithPath: take.folder),
+        recordedAt: take.recordedAt.flatMap { withFraction.date(from: $0) ?? whole.date(from: $0) },
+        durationSeconds: take.durationSeconds,
+        place: take.item.map { .inLibrary(item: $0.id, mediaFolder: $0.mediaFolder.map { URL(fileURLWithPath: $0) }) } ?? .inRecordings)
+    }
   }
 }

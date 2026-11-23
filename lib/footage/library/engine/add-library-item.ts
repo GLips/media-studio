@@ -9,20 +9,21 @@ import { constants } from 'node:fs';
 // oxlint-disable-next-line arch/effect-native-io -- the FileSystem service's copy never clones; see bringLibraryFile.
 import { copyFile } from 'node:fs/promises';
 import { basename } from 'node:path';
-import { Clock, DateTime, Effect, FileSystem, Option, Path, PlatformError, Ref, Schema, Stream } from 'effect';
+import { DateTime, Effect, FileSystem, Option, Path, PlatformError, Ref, Schema, Stream } from 'effect';
 import { FootageTranscriber } from '#lib/footage/transcript/engine/footage-transcriber.ts';
 import { streamRecordingClockLog, streamRecordingInputLog } from '#lib/footage/recording/engine/recording-take-logs.ts';
-import { StudioRecordingJsonText } from '#lib/footage/recording/models/studio-recording-json.ts';
 import { LibraryMediaFolder } from '#lib/footage/library-media/engine/library-media-folder.ts';
+import { thisStudioProcess } from '#lib/platform/process/engine/studio-process.ts';
+import { LIBRARY_ADD_MARKER_FILE, LibraryAddMarkerText, type LibraryAddMarker } from '../models/library-add-marker.ts';
 import { libraryAddStarted, libraryAddStep, libraryAddUndo } from '../models/library-add-machine.ts';
-import { LibraryFileUnreadable, LibraryFootageAlreadyAdded, LibraryRequestRefused, LibraryTakeStillRecording } from '../models/library-errors.ts';
+import { LibraryFootageAlreadyAdded, LibraryRequestRefused, LibraryTakeStillRecording } from '../models/library-errors.ts';
 import { libraryItemDuration, librarySlug, librarySpeechTrack, LIBRARY_ITEM_FORMAT, unusedLibraryItemId, type LibraryItem, type LibraryTrack } from '../models/library-item.ts';
 import { namedFilesAddSource, recorderAddSource, type LibraryAddSource, type LibraryTrackValues } from '../models/library-sources.ts';
-import { observeRecorderTake, recorderTakeEnding, recorderTakeUnread } from '../models/library-take-machine.ts';
 import { levelLibrarySpeech } from './library-levelled.ts';
 import { probeLibrarySeconds, probeLibraryStreams } from './library-probe.ts';
 import { makeLibraryProxies } from './library-proxies.ts';
 import { RecorderDeviceLatencies } from './library-recorder-latencies.ts';
+import { readRecorderTakeFolder } from './recorder-take-folder.ts';
 import { LibraryStore } from './library-store.ts';
 
 /** What to add: one file or a recorder's folder by its path, or several files as named tracks (`screen=display.mp4`). */
@@ -80,6 +81,12 @@ const bringIntoLibrary = Effect.fn('LibraryAdd.bring')(function* (source: Librar
   const id = unusedLibraryItemId(yield* itemIdBase(source), taken), itemMedia = path.join(mediaFolder, id);
   yield* step({ type: 'probed', media: itemMedia });
   yield* fs.makeDirectory(itemMedia, { recursive: true });
+  const marker = path.join(itemMedia, LIBRARY_ADD_MARKER_FILE);
+  if (source.source.kind === 'studio-recorder') {
+    const written: LibraryAddMarker = { take: source.source.folder, process: thisStudioProcess() };
+    // A marker always encodes.
+    yield* fs.writeFileString(marker, yield* Schema.encodeEffect(LibraryAddMarkerText)(written).pipe(Effect.orDie));
+  }
   // Uninterruptible: a move interrupted between its copy and its record would leave a file no undo knows of.
   const bring = (from: string, to: string) => bringLibraryFile(from, to, request.move).pipe(Effect.andThen(step({ type: 'fileBrought', file: { from, to, moved: request.move } })), Effect.uninterruptible);
 
@@ -113,6 +120,7 @@ const bringIntoLibrary = Effect.fn('LibraryAdd.bring')(function* (source: Librar
   yield* Effect.log(`added ${id} to ${store.itemDir(id)}`);
   const finished = yield* finishLibraryItem(id, { proxies: request.proxies });
   yield* step({ type: 'finished' });
+  yield* fs.remove(marker, { force: true });
   return finished;
 });
 
@@ -158,21 +166,10 @@ const libraryAddSourceOf = Effect.fn('LibraryAdd.sourceOf')(function* ({ paths, 
 
 /** A recorder take's folder as an add source, refused while the recorder is still writing it. */
 const recorderTakeSource = Effect.fn('LibraryAdd.recorderTake')(function* (folder: string, named: string) {
-  const fs = yield* FileSystem.FileSystem, path = yield* Path.Path;
-  const recordingFile = path.join(folder, 'recording.json');
-  if (!(yield* fs.exists(recordingFile))) return yield* refused(`${named} is a folder without a recording.json: add its files as named tracks (name=path)`);
-  const recording = yield* Schema.decodeUnknownEffect(StudioRecordingJsonText)(yield* fs.readFileString(recordingFile)).pipe(
-    Effect.mapError((error) => new LibraryFileUnreadable({ path: recordingFile, reason: `isn't a recording this studio reads: ${error.message}` })),
-  );
-  const files = yield* fs.readDirectory(folder);
-  const changes = yield* Effect.forEach(files, (file) => Effect.map(fs.stat(path.join(folder, file)), (info) => Option.getOrElse(Option.map(info.mtime, (at) => at.getTime()), () => 0)));
-  const take = observeRecorderTake(
-    observeRecorderTake(recorderTakeUnread(), { type: 'recordingRead', recording }),
-    { type: 'filesSeen', newestChangeMs: Math.max(0, ...changes), nowMs: yield* Clock.currentTimeMillis },
-  );
-  const ending = recorderTakeEnding(take);
+  const path = yield* Path.Path;
+  const { recording, files, ending } = yield* readRecorderTakeFolder(folder, named);
   if (!ending) return yield* new LibraryTakeStillRecording({ named });
-  return yield* Effect.fromResult(recorderAddSource(folder, path.basename(folder), recording, new Set(files), ending));
+  return yield* Effect.fromResult(recorderAddSource(folder, path.basename(folder), recording, files, ending));
 });
 
 /** `2026-11-22-181929` for a recording, on its own clock; `2026-11-22-<title>` for files, dated today here. */

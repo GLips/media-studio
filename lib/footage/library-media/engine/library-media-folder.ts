@@ -62,6 +62,8 @@ export class LibraryMediaFolder extends Context.Service<LibraryMediaFolder, {
   readonly online: (options?: { readonly make?: boolean }) => Effect.Effect<string, LibraryMediaOffline | LibrarySettingsUnreadable | PlatformError.PlatformError>;
   /** Whether the media folder is there now. */
   readonly isOnline: () => Effect.Effect<boolean, LibrarySettingsUnreadable | PlatformError.PlatformError>;
+  /** The folder holding item `id`'s media, refused when the media is offline. */
+  readonly itemFolder: (id: string) => Effect.Effect<string, LibraryMediaOffline | LibrarySettingsUnreadable | PlatformError.PlatformError>;
   /** The absolute path of `file` in item `id`'s media, refused when the media is offline or the file has gone. */
   readonly itemFile: (id: string, file: string) => Effect.Effect<string, LibraryMediaOffline | LibraryMediaFileMissing | LibrarySettingsUnreadable | PlatformError.PlatformError>;
 }>()('LibraryMediaFolder') {}
@@ -105,6 +107,9 @@ export const makeLibraryMediaFolderLayer = (workspaceDir: string) => Layer.effec
     }),
     isOnline: Effect.fn('LibraryMediaFolder.isOnline')(function* () {
       return yield* fs.exists((yield* location()).path);
+    }),
+    itemFolder: Effect.fn('LibraryMediaFolder.itemFolder')(function* (id) {
+      return path.join(yield* online(), id);
     }),
     itemFile: Effect.fn('LibraryMediaFolder.itemFile')(function* (id, file) {
       const full = path.join(yield* online(), id, file);

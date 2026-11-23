@@ -12,11 +12,13 @@ enum HostClock {
 
 let fragmentSeconds = 2.0
 
-/// The host times of the first and latest samples, and samples the writer wasn't ready for (in real time they are
-/// dropped, not queued).
+/// The host times of the first and latest samples, where the samples appended so far end, and samples the writer
+/// wasn't ready for (in real time they are dropped, not queued).
 struct TrackProgress {
   var firstPTS: CMTime?
   var lastPTS: CMTime?
+  /// None until a sample is appended; a dropped sample or a failed writer never moves it.
+  var appendedEnd: CMTime?
   var notReady = 0
 }
 
@@ -72,7 +74,9 @@ final class TrackWriter {
     }
     if input.append(sample) {
       appended += 1
-      lastEnd = pts + (sample.duration.isValid ? sample.duration : .zero)
+      let end = pts + (sample.duration.isValid ? sample.duration : .zero)
+      lastEnd = end
+      shared.withLock { $0.appendedEnd = end }
     }
   }
 
