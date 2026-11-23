@@ -8,6 +8,7 @@ import { unplugin as stylexUnplugin } from '@stylexjs/unplugin';
 import { tanstackStart } from '@tanstack/react-start/plugin/vite';
 import viteReact from '@vitejs/plugin-react';
 import { defineConfig, type Plugin, type PluginOption } from 'vite';
+import type { StudioAppLibraryMediaPlugin } from '#lib/footage/library-media/engine/studio-app-library-media.ts';
 import type { StudioAppProjectModulesPlugin } from '#lib/output/render/engine/studio-app-project-modules.ts';
 
 const WEB_ROOT = import.meta.dirname;
@@ -42,6 +43,14 @@ const projectBundleModules = async (): Promise<Plugin> => {
   return studioAppProjectModulesPlugin();
 };
 
+// The library's media, from its media folder, where library-media.ts names it. Imported as the server starts, as above.
+const libraryMedia = async (): Promise<Plugin> => {
+  const engine = pathToFileURL(join(STUDIO_ROOT, 'lib', 'footage', 'library-media', 'engine', 'studio-app-library-media.ts')).href;
+  // SAFETY: the module at that path, whose plugin's type is imported from it by its specifier.
+  const { studioAppLibraryMediaPlugin } = (await import(engine)) as { studioAppLibraryMediaPlugin: () => StudioAppLibraryMediaPlugin };
+  return studioAppLibraryMediaPlugin();
+};
+
 export default defineConfig({
   root: WEB_ROOT,
   // lib/ reaches past web/, and Vite serves only what it's allowed to read.
@@ -63,5 +72,6 @@ export default defineConfig({
     viteReact(),
     watchProjectStoryboards,
     projectBundleModules(),
+    libraryMedia(),
   ],
 });

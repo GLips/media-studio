@@ -1,0 +1,4 @@
+{
+  "lib/footage/library": "The library keeps its media in the media folder this feature finds.",
+  "lib/output/render": "A render serves the library's media and its tracks' frames to its pages (library-media-server.ts)."
+}

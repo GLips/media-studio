@@ -1,16 +1,12 @@
 // library-store.ts: where the library lives. Its metadata is committed in the workspace; its media is in a media folder
-// set once per machine, which may be an external drive. Node only.
+// set once per machine (library-media-folder.ts). Node only.
 //
 //   work/library/items/<id>/item.json        the item (library-item.ts)
 //   work/library/items/<id>/transcript.json  what its speech track says, on that track's media time
 //   work/library/items/<id>/flags.json       its flags, the library's review scope (library-flags.ts)
-//   <media folder>/<id>/                      its tracks' files, its input log, proxies/
-//   work/library.local.json                  this machine's settings, ignored: { "mediaFolder": "/Volumes/…" }
-//
-// The media folder defaults to work/library/media/, ignored too. Moving it to a drive is a setting, not a migration:
-// every path into it is the folder joined with an item's id and a track's file.
-import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
-import { isAbsolute, join, resolve } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { onlineLibraryMediaFolder } from '#lib/footage/library-media/engine/library-media-folder.ts';
 import type { LibraryTranscriptFile } from '../models/library-footage.ts';
 import { readReviewStore, writeReviewStore, type ReviewStoreScope } from '#lib/output/review/engine/review-store.ts';
 import type { ReviewAuthor } from '#lib/output/review/models/review-threads.ts';
@@ -24,53 +20,6 @@ import { libraryItemsImportedBy } from '../models/library-uses.ts';
 
 export const LIBRARY_DIR = join(STUDIO_WORKSPACE_DIR, 'library');
 const LIBRARY_ITEMS_DIR = join(LIBRARY_DIR, 'items');
-const DEFAULT_MEDIA_FOLDER = join(LIBRARY_DIR, 'media');
-const LIBRARY_SETTINGS_FILE = join(STUDIO_WORKSPACE_DIR, 'library.local.json');
-
-/** This machine's library settings. */
-export type LibraryMachineSettings = { mediaFolder?: string };
-
-export function readLibraryMachineSettings(): LibraryMachineSettings {
-  // SAFETY: writeLibraryMachineSettings writes it; a hand edit that breaks the shape fails where it's read.
-  return existsSync(LIBRARY_SETTINGS_FILE) ? (JSON.parse(readFileSync(LIBRARY_SETTINGS_FILE, 'utf8')) as LibraryMachineSettings) : {};
-}
-
-export function writeLibraryMachineSettings(settings: LibraryMachineSettings): void {
-  replaceFileWhole(LIBRARY_SETTINGS_FILE, `${JSON.stringify(settings, null, 2)}\n`);
-}
-
-/** The media folder this machine keeps the library's media in, whether or not it's there now. */
-export function libraryMediaFolder(): { path: string; configured: boolean } {
-  const { mediaFolder } = readLibraryMachineSettings();
-  return mediaFolder ? { path: isAbsolute(mediaFolder) ? mediaFolder : resolve(STUDIO_WORKSPACE_DIR, mediaFolder), configured: true } : { path: DEFAULT_MEDIA_FOLDER, configured: false };
-}
-
-/** The library's media folder isn't there: a drive unplugged, or a setting pointing nowhere. */
-export class LibraryMediaOffline extends Error {}
-
-/**
- * The media folder, refused with LibraryMediaOffline when it isn't there. The default folder is the workspace's own and
- * is made when `make` is set (adding an item); a configured one is never made, since its absence means a missing drive.
- */
-export function onlineLibraryMediaFolder({ make = false }: { make?: boolean } = {}): string {
-  const { path, configured } = libraryMediaFolder();
-  if (!existsSync(path)) {
-    if (make && !configured) mkdirSync(path, { recursive: true });
-    else throw new LibraryMediaOffline(`media offline: the library's media folder ${path} isn't there. Plug in the drive it's on, or point the library at where it is now with \`studio library config --media-folder <path>\``);
-  }
-  return path;
-}
-
-/** Whether the media folder is there now: false when it's offline. */
-export function libraryMediaIsOnline(): boolean {
-  try {
-    onlineLibraryMediaFolder();
-    return true;
-  } catch (error) {
-    if (error instanceof LibraryMediaOffline) return false;
-    throw error;
-  }
-}
 
 /** The absolute path of a file in `item`'s media, refused when the media is offline or the file has gone. */
 export function libraryMediaPath(item: LibraryItem, file: string): string {

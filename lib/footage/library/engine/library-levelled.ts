@@ -9,7 +9,8 @@ import { join } from 'node:path';
 import { measureWithFfmpeg, runFfmpegAsync } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { measureAudibleLoudness } from '#lib/platform/ffmpeg/engine/loudness.ts';
 import { LIBRARY_LEVELLED_LUFS, type LibraryItem } from '../models/library-item.ts';
-import { libraryMediaPath, onlineLibraryMediaFolder, readLibraryItem, writeLibraryItem } from './library-store.ts';
+import { onlineLibraryMediaFolder } from '#lib/footage/library-media/engine/library-media-folder.ts';
+import { libraryMediaPath, readLibraryItem, writeLibraryItem } from './library-store.ts';
 
 // Speech's usual range and a ceiling under clipping once the mix brings it down to the voice's level.
 const LEVELLED_LRA = 11, LEVELLED_TRUE_PEAK = -1.5;

@@ -1,3 +1,3 @@
 {
-  "lib/picture/composition": "A video plays lines spoken in a library recording, from the library's media (library-media.ts)."
+  "lib/picture/composition": "A video plays lines spoken in a library recording, from the library's media (library-media.ts), whose origin a page is handed as it loads."
 }
