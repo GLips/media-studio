@@ -69,10 +69,11 @@ export function libraryFootage(itemJson: LibraryItemJson, transcript?: LibraryTr
       return { item: item.id, from, to, heard, sound };
     },
     cursorOn(name, log) {
-      const display = item.tracks[name]?.display;
-      if (!display) throw new Error(`${item.id}'s ${name} has no display geometry to place the cursor on: is it a screen track?`);
+      const { display, video } = item.tracks[name] ?? {};
+      if (!display || !video) throw new Error(`${item.id}'s ${name} has no display geometry to place the cursor on: is it a screen track?`);
       if (log.coordinates !== 'global-points') throw new Error(`${item.id}'s input log is in ${log.coordinates}, not the display's points`);
-      const [left, top, width, height] = display.boundsPoints, scale = display.widthPixels / width;
+      // To the video's own pixels, which a recorder may have scaled from the display's.
+      const [left, top, width, height] = display.boundsPoints, scale = video.width / width;
       return inputLogWaypoints(log).flatMap((p) => (p.x >= left && p.x < left + width && p.y >= top && p.y < top + height
         ? [{ t: p.t, x: (p.x - left) * scale, y: (p.y - top) * scale }]
         : []));
