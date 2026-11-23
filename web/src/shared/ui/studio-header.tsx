@@ -26,7 +26,10 @@ type StudioHeaderProps = {
 };
 
 /** `◂`'s tooltip: where it leads, since a level up isn't always the crumb beside it. */
-const studioUpLabelOf = (up: StudioUpTarget) => (up.to === '/' ? 'Up to studio' : `Up to ${up.params.project}`);
+function studioUpLabelOf(up: StudioUpTarget): string {
+  if (up.to === '/') return 'Up to studio';
+  return up.to === '/library' ? 'Up to library' : `Up to ${up.params.project}`;
+}
 
 /** The 28px bar over every screen: `◂` up a level (none on the dashboard), the screen's own items, then quick-open and the keys. */
 export function StudioHeader({ start, end, onQuickOpen, onCheatsheet }: StudioHeaderProps) {

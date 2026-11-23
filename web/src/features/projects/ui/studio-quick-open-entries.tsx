@@ -1,6 +1,7 @@
 import { useParams, useRouter } from '@tanstack/react-router';
 import { Film, Folder, ImageIcon, ScrollText, Split } from 'lucide-react';
 import type { ReviewProjectSummary } from '#lib/output/review/models/review-dashboard.ts';
+import { useLibraryQuickOpenEntries } from '#web/features/library/index.ts';
 import type { QuickOpenEntriesBody, QuickOpenEntriesSource, QuickOpenEntry } from '#web/shared/ui/quick-open-entries.tsx';
 import { useProjectSummariesIfLoaded } from '../controllers/project-queries.ts';
 
@@ -36,13 +37,14 @@ function quickOpenEntriesOf({ project, rows }: ReviewProjectSummary, router: Stu
 
 /**
  * Quick-open's places: every project, the most recently active first, each followed by what it holds; the project on
- * screen's places are `near`, listed and ranked first.
+ * screen's places are `near`, listed and ranked first. Then the library and its items, once the projects are listed.
  */
 function StudioQuickOpenEntries({ body }: { readonly body: QuickOpenEntriesBody }) {
   const data = useProjectSummariesIfLoaded();
+  const library = useLibraryQuickOpenEntries();
   const router = useRouter();
   const here = useParams({ strict: false }).project;
-  return body(data?.flatMap((summary) => quickOpenEntriesOf(summary, router, summary.project === here)));
+  return body(data && [...data.flatMap((summary) => quickOpenEntriesOf(summary, router, summary.project === here)), ...library ?? []]);
 }
 
 /** The root's source for quick-open: the studio's projects and what each holds, loaded while it's open. */

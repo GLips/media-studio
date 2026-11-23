@@ -12,11 +12,15 @@ export function hotkeySequencePending(): boolean {
     .some((s) => s.matchedStepCount > 0 && now - s.partialMatchLastKeyTime <= (s.options.timeout ?? DEFAULT_SEQUENCE_TIMEOUT));
 }
 
-/** One level up from where the app is: a project's screens go to its page, its page to the dashboard. */
-export type StudioUpTarget = { to: '/' } | { to: '/projects/$project'; params: { project: string } };
+/**
+ * One level up from where the app is: a project's screens go to its page, its page to the dashboard; a library item
+ * to the library.
+ */
+export type StudioUpTarget = { to: '/' } | { to: '/library' } | { to: '/projects/$project'; params: { project: string } };
 
 /** Null on the dashboard, which has nothing above it. */
 export function studioUpOf(pathname: string, project: string | undefined): StudioUpTarget | null {
+  if (/^\/library\/[^/]+/.test(pathname)) return { to: '/library' };
   if (project === undefined) return pathname === '/' ? null : { to: '/' };
   const projectPage = `/projects/${encodeURIComponent(project)}`;
   return pathname.replace(/\/$/, '') === projectPage ? { to: '/' } : { to: '/projects/$project', params: { project } };
@@ -50,6 +54,7 @@ export function useGlobalHotkeys({ toggleCheatsheet, openQuickOpen }: GlobalHotk
   ]);
   useHotkeySequences([
     { sequence: ['G', 'D'], callback: () => void navigate({ to: '/' }), options: { meta: { group: 'global', name: 'Dashboard' } } },
+    { sequence: ['G', 'L'], callback: () => void navigate({ to: '/library' }), options: { meta: { group: 'global', name: 'Library' } } },
     ...(project === undefined ? [] : [
       { sequence: ['G', 'P'], callback: () => void navigate({ to: '/projects/$project', params: { project } }), options: { meta: { group: 'global', name: 'Project' } } },
       { sequence: ['G', 'S'], callback: () => void navigate({ to: '/projects/$project/plan', params: { project } }), options: { meta: { group: 'global', name: 'Plan' } } },

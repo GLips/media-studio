@@ -11,6 +11,8 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiStudioRouteImport } from './routes/api.studio'
+import { Route as LibraryIndexRouteImport } from './routes/library.index'
+import { Route as LibraryItemRouteImport } from './routes/library.$item'
 import { Route as MediaProjectRouteImport } from './routes/media.$project'
 import { Route as ReviewPeaksProjectRouteImport } from './routes/review-peaks.$project'
 import { Route as ReviewStillsProjectRouteImport } from './routes/review-stills.$project'
@@ -27,6 +29,16 @@ const IndexRoute = IndexRouteImport.update({
 const ApiStudioRoute = ApiStudioRouteImport.update({
   id: '/api/studio',
   path: '/api/studio',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LibraryIndexRoute = LibraryIndexRouteImport.update({
+  id: '/library/',
+  path: '/library/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LibraryItemRoute = LibraryItemRouteImport.update({
+  id: '/library/$item',
+  path: '/library/$item',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MediaProjectRoute = MediaProjectRouteImport.update({
@@ -70,9 +82,11 @@ const ProjectsProjectDecisionsTopicRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/studio': typeof ApiStudioRoute
+  '/library/$item': typeof LibraryItemRoute
   '/media/$project': typeof MediaProjectRoute
   '/review-peaks/$project': typeof ReviewPeaksProjectRoute
   '/review-stills/$project': typeof ReviewStillsProjectRoute
+  '/library/': typeof LibraryIndexRoute
   '/projects/$project/plan': typeof ProjectsProjectPlanRoute
   '/projects/$project/': typeof ProjectsProjectIndexRoute
   '/projects/$project/artifacts/$': typeof ProjectsProjectArtifactsSplatRoute
@@ -81,9 +95,11 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/studio': typeof ApiStudioRoute
+  '/library/$item': typeof LibraryItemRoute
   '/media/$project': typeof MediaProjectRoute
   '/review-peaks/$project': typeof ReviewPeaksProjectRoute
   '/review-stills/$project': typeof ReviewStillsProjectRoute
+  '/library': typeof LibraryIndexRoute
   '/projects/$project/plan': typeof ProjectsProjectPlanRoute
   '/projects/$project': typeof ProjectsProjectIndexRoute
   '/projects/$project/artifacts/$': typeof ProjectsProjectArtifactsSplatRoute
@@ -93,9 +109,11 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/studio': typeof ApiStudioRoute
+  '/library/$item': typeof LibraryItemRoute
   '/media/$project': typeof MediaProjectRoute
   '/review-peaks/$project': typeof ReviewPeaksProjectRoute
   '/review-stills/$project': typeof ReviewStillsProjectRoute
+  '/library/': typeof LibraryIndexRoute
   '/projects/$project/plan': typeof ProjectsProjectPlanRoute
   '/projects/$project/': typeof ProjectsProjectIndexRoute
   '/projects/$project/artifacts/$': typeof ProjectsProjectArtifactsSplatRoute
@@ -106,9 +124,11 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/api/studio'
+    | '/library/$item'
     | '/media/$project'
     | '/review-peaks/$project'
     | '/review-stills/$project'
+    | '/library/'
     | '/projects/$project/plan'
     | '/projects/$project/'
     | '/projects/$project/artifacts/$'
@@ -117,9 +137,11 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/api/studio'
+    | '/library/$item'
     | '/media/$project'
     | '/review-peaks/$project'
     | '/review-stills/$project'
+    | '/library'
     | '/projects/$project/plan'
     | '/projects/$project'
     | '/projects/$project/artifacts/$'
@@ -128,9 +150,11 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/api/studio'
+    | '/library/$item'
     | '/media/$project'
     | '/review-peaks/$project'
     | '/review-stills/$project'
+    | '/library/'
     | '/projects/$project/plan'
     | '/projects/$project/'
     | '/projects/$project/artifacts/$'
@@ -140,9 +164,11 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiStudioRoute: typeof ApiStudioRoute
+  LibraryItemRoute: typeof LibraryItemRoute
   MediaProjectRoute: typeof MediaProjectRoute
   ReviewPeaksProjectRoute: typeof ReviewPeaksProjectRoute
   ReviewStillsProjectRoute: typeof ReviewStillsProjectRoute
+  LibraryIndexRoute: typeof LibraryIndexRoute
   ProjectsProjectPlanRoute: typeof ProjectsProjectPlanRoute
   ProjectsProjectIndexRoute: typeof ProjectsProjectIndexRoute
   ProjectsProjectArtifactsSplatRoute: typeof ProjectsProjectArtifactsSplatRoute
@@ -163,6 +189,20 @@ declare module '@tanstack/react-router' {
       path: '/api/studio'
       fullPath: '/api/studio'
       preLoaderRoute: typeof ApiStudioRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/library/': {
+      id: '/library/'
+      path: '/library'
+      fullPath: '/library/'
+      preLoaderRoute: typeof LibraryIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/library/$item': {
+      id: '/library/$item'
+      path: '/library/$item'
+      fullPath: '/library/$item'
+      preLoaderRoute: typeof LibraryItemRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/media/$project': {
@@ -220,9 +260,11 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiStudioRoute: ApiStudioRoute,
+  LibraryItemRoute: LibraryItemRoute,
   MediaProjectRoute: MediaProjectRoute,
   ReviewPeaksProjectRoute: ReviewPeaksProjectRoute,
   ReviewStillsProjectRoute: ReviewStillsProjectRoute,
+  LibraryIndexRoute: LibraryIndexRoute,
   ProjectsProjectPlanRoute: ProjectsProjectPlanRoute,
   ProjectsProjectIndexRoute: ProjectsProjectIndexRoute,
   ProjectsProjectArtifactsSplatRoute: ProjectsProjectArtifactsSplatRoute,
