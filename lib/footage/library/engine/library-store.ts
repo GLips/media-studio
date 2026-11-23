@@ -135,7 +135,6 @@ export function changeLibraryFlags(id: string, op: LibraryFlagOp, by: ReviewAuth
   return writeReviewStore(libraryFlagsScope(id), (current) => applyLibraryFlagOp(current, op, { by, now: new Date().toISOString(), durationSeconds }), (applied) => applied.file).flag;
 }
 
-/** What search reads of every item: committed metadata alone, never the media. */
 // A project's generated folders: renders, audio and captures hold no source that could import an item.
 const PROJECT_GENERATED_DIRS = new Set(['out', 'audio', 'captures', 'node_modules']);
 
@@ -151,4 +150,5 @@ export function projectsUsingLibraryItem(id: string): string[] {
   return readdirSync(STUDIO_PROJECTS_DIR, { withFileTypes: true }).filter((d) => d.isDirectory() && imports(join(STUDIO_PROJECTS_DIR, d.name))).map((d) => d.name).toSorted();
 }
 
+/** What search reads of every item: committed metadata alone, never the media. */
 export const readLibraryForSearch = (): LibrarySearchItem[] => listLibraryItemIds().map((id) => ({ item: readLibraryItem(id), transcript: readLibraryTranscript(id), flags: readLibraryFlags(id).flags }));
