@@ -30,6 +30,8 @@ export type PaintedThreePopUpSheet = PaintedThreeSheet & {
   readonly at: StampPoint;
   /** Radians turned about the parent face's normal at `at` before it stands, counter-clockwise seen from the front; 0 keeps its print upright on the face. */
   readonly yaw?: PresentationValue<number>;
+  /** Its print px per print px of the face it stands on (1): one print standing at several sizes. Sheets on it take it too. */
+  readonly scale?: number;
   readonly angle: PresentationValue<number>;
   readonly tint?: PaintedThreePrintTint;
   /** The painted texture id of an emission map spanning its print as the print does, black where nothing glows: added unlit after lighting. */
@@ -83,6 +85,7 @@ export function paintedThreePopUpRig(popUp: PaintedThreePopUp): PaintedThreePopU
   for (const sheet of sheets) {
     if (sheet.id === PAINTED_THREE_POP_UP_BASE || byId.has(sheet.id)) throw new Error(`painted three pop-up: sheet id ${sheet.id} is taken`);
     if (!sheet.root.hinge) throw new Error(`painted three pop-up: sheet ${sheet.id}'s root has no hinge to stand on`);
+    if (sheet.scale !== undefined && !(sheet.scale > 0 && Number.isFinite(sheet.scale))) throw new Error(`painted three pop-up: sheet ${sheet.id} is scaled by ${sheet.scale}, and a scale is above 0`);
     byId.set(sheet.id, sheet);
   }
   const parentOf = (sheet: PaintedThreePopUpSheet) => sheet.on?.sheet ?? PAINTED_THREE_POP_UP_BASE;
@@ -119,7 +122,9 @@ export function paintedThreePopUpRig(popUp: PaintedThreePopUp): PaintedThreePopU
   const baseFolding = folding.get(PAINTED_THREE_POP_UP_BASE)!, { x0, y0, x1, y1 } = baseFolding.faces.get(PAINTED_THREE_SHEET_ROOT)!.box, cx = base.widthPx / 2, cy = base.heightPx / 2;
   // The base's root's farthest corner from its centre, its other faces, then every face of every sheet stacked: no pose reaches past their sum.
   const rootReach = Math.hypot(Math.max(Math.abs(x0 - cx), Math.abs(x1 - cx)), Math.max(Math.abs(y0 - cy), Math.abs(y1 - cy)));
-  const reach = rootReach + sheetSpan(baseFolding) - Math.hypot(x1 - x0, y1 - y0) + sheets.reduce((sum, sheet) => sum + sheetSpan(folding.get(sheet.id)!), 0);
+  // A sheet's scale compounds through the sheets it stands on, so the largest product bounds every sheet's.
+  const grownOf = (sheet: PaintedThreePopUpSheet): number => (sheet.scale ?? 1) * (sheet.on ? grownOf(byId.get(sheet.on.sheet)!) : 1);
+  const reach = rootReach + sheetSpan(baseFolding) - Math.hypot(x1 - x0, y1 - y0) + sheets.reduce((sum, sheet) => sum + grownOf(sheet) * sheetSpan(folding.get(sheet.id)!), 0);
   return {
     order: [PAINTED_THREE_POP_UP_BASE, ...order],
     folding,
@@ -130,7 +135,7 @@ export function paintedThreePopUpRig(popUp: PaintedThreePopUp): PaintedThreePopU
       for (const id of order) {
         const sheet = byId.get(id)!, { pivot, axis } = stands.get(id)!, parent = parentOf(sheet), face = poses.get(parent)!.get(sheet.on?.face ?? PAINTED_THREE_SHEET_ROOT)!;
         // On the parent face's front at `at`, yawed about its normal there, the sheet's back face down on it, turned up about its hinge.
-        const onParent = new Matrix4().makeTranslation(sheet.at.x, -sheet.at.y, folding.get(parent)!.thickness / 2).multiply(new Matrix4().makeRotationZ(presentationValueAt(sheet.yaw ?? 0, moment)));
+        const onParent = new Matrix4().makeTranslation(sheet.at.x, -sheet.at.y, folding.get(parent)!.thickness / 2).multiply(new Matrix4().makeRotationZ(presentationValueAt(sheet.yaw ?? 0, moment))).multiply(new Matrix4().makeScale(sheet.scale ?? 1, sheet.scale ?? 1, sheet.scale ?? 1));
         const turned = new Matrix4().makeRotationAxis(axis, presentationValueAt(sheet.angle, moment));
         poses.set(id, placedAt(id, face.clone().multiply(onParent).multiply(turned).multiply(new Matrix4().makeTranslation(-pivot.x, -pivot.y, -pivot.z))));
       }

@@ -64,3 +64,14 @@ test('a yawed sheet stands turned about the normal at its spot, and a turn spins
   assert.ok(middle.clone().applyMatrix4(base).distanceTo(middle.clone().applyMatrix4(rootOf(plain, 'base'))) < 1e-9);
   assert.ok(normal.distanceTo(facingOf(rootOf(plain, 'base'))) < 1e-12);
 });
+
+test('a scaled sheet stands smaller about its hinge, and a sheet on it shrinks with it', () => {
+  const [door, house] = POP_UP.sheets;
+  const pose = paintedThreePopUpRig({ ...POP_UP, sheets: [door, { ...house, scale: 0.5 }] }).poseAt(paintMoment(2));
+  const hinge = new Vector3(50, -100, -1), top = new Vector3(50, 0, -1), onBase = new Vector3(200, -200, 1);
+  assert.ok(hinge.clone().applyMatrix4(rootOf(pose, 'house')).distanceTo(onBase.clone().applyMatrix4(rootOf(pose, 'base'))) < 1e-9);
+  assert.ok(Math.abs(hinge.clone().applyMatrix4(rootOf(pose, 'house')).distanceTo(top.clone().applyMatrix4(rootOf(pose, 'house'))) - 50) < 1e-9);
+  const doorSide = new Vector3(0, 0, 0).applyMatrix4(rootOf(pose, 'door')).distanceTo(new Vector3(40, 0, 0).applyMatrix4(rootOf(pose, 'door')));
+  assert.ok(Math.abs(doorSide - 20) < 1e-9);
+  assert.throws(() => paintedThreePopUpRig({ ...POP_UP, sheets: [{ ...house, scale: 0 }] }), /scaled by 0/);
+});

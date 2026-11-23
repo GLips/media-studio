@@ -16,9 +16,9 @@ import { stampPolygonInside, stampRingsCross, type StampPoint } from '#lib/paint
 
 /**
  * Where a construction goes in a pop-up: `id`, its sheets' id or their prefix; `print`, the painted texture its sheets
- * show (one id, or one per part); `at`, `on`, `yaw` and `tint` as PaintedThreePopUpSheet's, for its standing sheet.
+ * show (one id, or one per part); `at`, `on`, `yaw`, `scale` and `tint` as PaintedThreePopUpSheet's, for its standing sheet.
  */
-export type PaperConstructionPlace<Print = string> = Pick<PaintedThreePopUpSheet, 'id' | 'at' | 'on' | 'yaw' | 'tint'> & { readonly print: Print };
+export type PaperConstructionPlace<Print = string> = Pick<PaintedThreePopUpSheet, 'id' | 'at' | 'on' | 'yaw' | 'scale' | 'tint'> & { readonly print: Print };
 
 /** A construction placed: its sheets, ready for a pop-up's `sheets`. */
 export type PaperConstruction<Print = string> = (place: PaperConstructionPlace<Print>) => PaintedThreePopUpSheet[];
@@ -33,7 +33,7 @@ const angleOfRise = (rise: PaperRise, angle: (rise: number) => number): Presenta
 const QUARTER = Math.PI / 2;
 
 /** A place's own fields, but its print, for a sheet. */
-const placed = ({ id, at, on, yaw, tint }: PaperConstructionPlace<unknown>) => ({ id, at, ...(on && { on }), ...(yaw !== undefined && { yaw }), ...(tint && { tint }) });
+const placed = ({ id, at, on, yaw, scale, tint }: PaperConstructionPlace<unknown>) => ({ id, at, ...(on && { on }), ...(yaw !== undefined && { yaw }), ...(scale !== undefined && { scale }), ...(tint && { tint }) });
 
 /**
  * A card standing on `foot`, an edge of its `outline`, in a print `widthPx` × `heightPx` (print px, y down), `holes`
