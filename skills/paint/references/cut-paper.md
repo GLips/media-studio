@@ -30,23 +30,27 @@ multiply in the plane, not in true 3D. A rig part folds the same way: `crease` o
 
 ## Pop-ups in three
 
-`paperPopUpPlane` (`#studio`) returns `{plane, paintedTextures}`: a three plane of cards hinged on a base tipped back
-`pitch` radians, and each card's painting as its texture. Pass both to `PaintedShot`.
+`paperPopUpPlane` (`#studio`) returns `{plane, paintedTextures}`: a three plane of sheets standing on a base tipped
+back `pitch` radians, and each sheet's painting as its texture. Pass both to `PaintedShot`.
 
 ```ts
 const { plane, paintedTextures } = paperPopUpPlane({ id: 'popup', depth: 1, popUp: {
   at: { x: 960, y: 700 }, pitch: 0.85, scale: 0.6,
-  base: { source: layersOf(ground, ['ground']), widthPx: 1400, heightPx: 900, outline: { shape: GROUND } },
-  cards: [{ id: 'house', source: layersOf(house, ['house']), widthPx: 400, heightPx: 500,
-    outline: { shape: HOUSE, hinge: { from: { x: 0, y: 500 }, to: { x: 400, y: 500 } } },
+  base: { source: layersOf(ground, ['ground']), widthPx: 1400, heightPx: 900, root: { outline: GROUND } },
+  sheets: [{ id: 'house', source: layersOf(house, ['house']), widthPx: 400, heightPx: 560,
+    root: { outline: HOUSE, hinge: { from: { x: 0, y: 500 }, to: { x: 400, y: 500 } } },
+    folds: [{ id: 'tab', outline: TAB, hinge: { from: { x: 40, y: 500 }, to: { x: 360, y: 500 } }, angle: 0.85 - Math.PI }],
     at: { x: 600, y: 520 }, angle: paintKeyed([{ at: 0, value: 0 }, { at: 0.6, value: 0.85 }]) }],
 } });
 ```
 
-- Outlines are points or SVG path data; a hinge gets no cut edge.
-- `angle` stands a card up from flat; at `pitch` it faces the camera. `on: 'house'` nests a card on another.
+- A sheet's faces (points or SVG paths, `holes` for windows) lie in its print's px: a `root`, and `folds` hinged
+  `on` a parent face, turning by `angle` (positive toward the front; the tab folds back under). A card has no folds.
+  Folds and the root's `hinge` get no cut edge.
+- `angle` stands a sheet up on its root's `hinge`; at `pitch` it faces the camera. `on: { sheet, face? }` stands it
+  on another sheet's face.
 - A print shows at most 1.05× as painted: the light never relights paint. Backs show kraft.
-- `createPaintedThreeCard` and `createPaintedThreeCardLights` build cards in a hand-made scene.
+- `createPaintedThreeSheet`, `paintedThreePaperMaterial` and `createPaintedThreePaperLights` build sheets by hand.
 
 ## Check
 

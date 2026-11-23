@@ -143,10 +143,16 @@ export { StampPainting } from '#lib/paint/style/studio/stamp-painting.tsx';
 export type { StampPictureAt, StampPictureRgba, StampPlane, StampPlaneSource } from '#lib/paint/painting/models/stamp-plane.ts';
 export type { PaintedThree, PaintedThreeOffscreenPass, PaintedThreeSource, PaintedThreeSourceScene, PaintedThreeSourceTools, PaintedThreeTexture } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
 export { paintedThreeColorNode } from '#lib/paint/three-layers/studio/painted-three-material.ts';
-// Paper cards in three.js: an authored outline cut from a painted texture, lit as paper; a pop-up of them on a base.
-export { PAINTED_THREE_CARD_LIGHT_SHARES, type PaintedThreeCard, type PaintedThreeCardLeak, type PaintedThreeCardLightShares, type PaintedThreeCardOutline } from '#lib/paint/three-layers/models/painted-three-card.ts';
-export { createPaintedThreeCard, createPaintedThreeCardLights, type PaintedThreeCardLights, type PaintedThreeCardLook } from '#lib/paint/three-layers/studio/painted-three-card.ts';
-export type { PaintedThreePopUp, PaintedThreePopUpCard } from '#lib/paint/three-layers/models/painted-three-pop-up.ts';
+// Folded sheets in three.js: a print cut into faces hinged in a tree, each folding by an angle in time (a card is one
+// face); paper is their material preset, lit as paper; a pop-up stands sheets on faces of a base and of each other.
+export {
+  PAINTED_THREE_SHEET_ROOT, paintedThreeSheetFolding, type PaintedThreeSheet, type PaintedThreeSheetEdge, type PaintedThreeSheetFace, type PaintedThreeSheetFaceCut, type PaintedThreeSheetFold,
+  type PaintedThreeSheetFolding, type PaintedThreeSheetRing, type PaintedThreeSheetRoot,
+} from '#lib/paint/three-layers/models/painted-three-sheet.ts';
+export { createPaintedThreeSheet, type PaintedThreeSheetMaterial, type PaintedThreeSheetMeshes } from '#lib/paint/three-layers/studio/painted-three-sheet.ts';
+export { PAINTED_THREE_PAPER_LIGHT_SHARES, type PaintedThreePaperLeak, type PaintedThreePaperLightShares } from '#lib/paint/three-layers/models/painted-three-paper.ts';
+export { createPaintedThreePaperLights, paintedThreePaperMaterial, type PaintedThreePaperLights, type PaintedThreePaperLook } from '#lib/paint/three-layers/studio/painted-three-paper.ts';
+export type { PaintedThreePopUp, PaintedThreePopUpSheet } from '#lib/paint/three-layers/models/painted-three-pop-up.ts';
 export { paintedThreePopUp, type PaintedThreePopUpLook } from '#lib/paint/three-layers/studio/painted-three-pop-up.ts';
 export { paperPopUpPlane, type PaperPopUpPlaneOptions } from '#lib/paint/shot/studio/shot-paper-pop-up.ts';
 export { paintWorldLightDirection, type PaintWorldDirection } from '#lib/paint/animation/models/paint-camera-world.ts';
