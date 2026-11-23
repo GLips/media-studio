@@ -12,10 +12,9 @@ import { assertKeysInOrder, type Shot } from '#lib/picture/camera/models/camera.
 import { type Rect } from '#lib/picture/frame/models/geometry.ts';
 import { noteTakeFitStrain } from '#lib/picture/measurement/studio/take-fit-strain.ts';
 import { type TakeFitStrain } from '#lib/picture/measurement/models/framing-marks.ts';
+import { inputLogWaypoints, type InputLog } from '#lib/footage/input-log/models/input-log.ts';
 
 export type TakeFrame = { src: string; t: number; scrollY: number };
-/** [t, x, y, click]: a cursor waypoint in viewport pixels; `click` is 1 where it clicked. */
-export type TakeMouse = readonly [number, number, number, 0 | 1];
 export type TakeMark = { t: number; scrollY: number; rects: Readonly<Record<string, Rect | readonly Rect[]>> };
 export type Take = {
   /** Viewport size in CSS pixels. */
@@ -26,9 +25,11 @@ export type Take = {
   /** In time order, the first at 0. A frame shows until the next: Chrome only sends one when the page repaints. */
   frames: readonly TakeFrame[];
   marks: Readonly<Record<string, TakeMark>>;
-  mouse: readonly TakeMouse[];
-  /** When each typed key was struck. */
-  keys: readonly number[];
+  /**
+   * What the take did, in viewport CSS pixels: each glide's two ends as mouseMove, a click as mouseDown then mouseUp,
+   * each typed character as keyDown. The first event is the cursor's start, at 0.
+   */
+  input: InputLog;
 };
 
 /** The frame showing at take time `time`. */
@@ -103,13 +104,13 @@ export function pinnedSourceTime(pins: readonly (readonly [number, number])[], t
 
 /** Where the logged cursor is at take time `time`, straight between waypoints. */
 export function takeMouseAt(take: Take, time: number): { x: number; y: number } {
-  const { mouse } = take;
+  const mouse = inputLogWaypoints(take.input);
   let i = 0;
-  while (i + 1 < mouse.length && mouse[i + 1][0] <= time) i++;
-  const [t0, x0, y0] = mouse[i], next = mouse[i + 1];
-  if (!next || next[0] === t0) return { x: x0, y: y0 };
-  const k = Math.min(1, Math.max(0, (time - t0) / (next[0] - t0)));
-  return { x: x0 + (next[1] - x0) * k, y: y0 + (next[2] - y0) * k };
+  while (i + 1 < mouse.length && mouse[i + 1].t <= time) i++;
+  const { t: t0, x: x0, y: y0 } = mouse[i], next = mouse[i + 1];
+  if (!next || next.t === t0) return { x: x0, y: y0 };
+  const k = Math.min(1, Math.max(0, (time - t0) / (next.t - t0)));
+  return { x: x0 + (next.x - x0) * k, y: y0 + (next.y - y0) * k };
 }
 
 /** Scene time when the take reaches `time`: the first, if a hold keeps it there. */
