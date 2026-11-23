@@ -25,6 +25,8 @@ type Decoder = {
   /** The grid index the next decoded frame will have. */
   next: number;
   ended: boolean;
+  /** Ended at the file's end, so its last frame stands for any time past it; not when killed. */
+  reachedEnd: boolean;
   failure: Error | null;
   /** Wakes whoever waits on the next frame or the end. */
   waiters: Set<() => void>;
@@ -58,14 +60,16 @@ function onJpegs(child: ChildProcess, take: (jpeg: Buffer) => void) {
 const EOI = Buffer.from([0xff, 0xd9]);
 
 function openDecoder(source: LibraryFrameSource, key: string, start: number): Decoder {
-  // VideoToolbox decodes 4K/5K HEVC and H.264 several times faster; ffmpeg falls back to software where it can't.
+  // VideoToolbox decodes 4K/5K HEVC and H.264 several times faster on a Mac; elsewhere ffmpeg won't open an input
+  // with a hwaccel it doesn't have, so it's asked for only there.
+  const hwaccel = process.platform === 'darwin' ? ['-hwaccel', 'videotoolbox'] : [];
   const child = spawnFfmpeg([
-    '-v', 'error', '-hwaccel', 'videotoolbox', '-ss', start.toFixed(6), '-i', source.path, '-an',
+    '-v', 'error', ...hwaccel, '-ss', start.toFixed(6), '-i', source.path, '-an',
     // start_time=0 pads the grid back to the seek, so frame k is always `start + k / fps`.
     '-vf', `fps=fps=${source.fps}:start_time=0,scale=${source.width}:-2:flags=lanczos`,
     '-c:v', 'mjpeg', '-q:v', '2', '-pix_fmt', 'yuvj444p', '-f', 'image2pipe', '-',
   ], { stdio: ['ignore', 'pipe', 'pipe'] });
-  const decoder: Decoder = { key, start, fps: source.fps, frames: new Map(), next: 0, ended: false, failure: null, waiters: new Set(), child, queue: Promise.resolve(), idle: null, used: Date.now() };
+  const decoder: Decoder = { key, start, fps: source.fps, frames: new Map(), next: 0, ended: false, reachedEnd: false, failure: null, waiters: new Set(), child, queue: Promise.resolve(), idle: null, used: Date.now() };
   const wake = () => {
     // Taken before they run: a waiter still short of its frame waits again.
     const waiting = [...decoder.waiters];
@@ -90,6 +94,7 @@ function openDecoder(source: LibraryFrameSource, key: string, start: number): De
   });
   child.on('close', (code) => {
     decoder.ended = true;
+    decoder.reachedEnd = code === 0;
     if (code && !decoder.frames.size) decoder.failure = new Error(`ffmpeg couldn't decode ${source.path} from ${start.toFixed(3)} s: ${stderr.trim() || `exit ${code}`}`);
     wake();
   });
@@ -112,7 +117,7 @@ function decoderFor(source: LibraryFrameSource, seconds: number): { decoder: Dec
   const reaching = decoders.filter((d) => d.key === key).map((d) => ({ decoder: d, index: Math.round((seconds - d.start) * d.fps) }))
     .filter(({ decoder, index }) => decoder.frames.has(index)
       // An ended decoder holds its last frame for any time past it; a running one reads on a little way.
-      || (index >= decoder.next && (decoder.ended ? decoder.frames.size > 0 : index < decoder.next + READ_AHEAD_FRAMES)));
+      || (index >= decoder.next && (decoder.ended ? decoder.reachedEnd && decoder.frames.size > 0 : index < decoder.next + READ_AHEAD_FRAMES)));
   const found = reaching.toSorted((a, b) => Math.max(0, a.index - a.decoder.next) - Math.max(0, b.index - b.decoder.next))[0];
   if (found) return found;
   if (decoders.length >= MAX_DECODERS) closeDecoder(decoders.reduce((a, b) => (a.used <= b.used ? a : b)));
@@ -121,14 +126,18 @@ function decoderFor(source: LibraryFrameSource, seconds: number): { decoder: Dec
   return { decoder, index: Math.round((seconds - start) * decoder.fps) };
 }
 
-/** Frame `index` of `decoder`'s grid, or its last when the file ends first: a track holds its last picture. */
-function readFrame(decoder: Decoder, index: number): Promise<Buffer> {
+/**
+ * Frame `index` of `decoder`'s grid, or its last when the file ends first: a track holds its last picture. Null when
+ * this decoder can no longer give it: the frame fell out of its window, or it was closed (for another, or idle).
+ */
+function readFrame(decoder: Decoder, index: number): Promise<Buffer | null> {
   return new Promise((resolve, reject) => {
     // Looked at again on each frame decoded, until it's there or the file ends.
     const look = () => {
       if (decoder.failure) return reject(decoder.failure);
-      const frame = decoder.frames.get(index) ?? (decoder.ended ? decoder.frames.get(decoder.next - 1) : undefined);
+      const frame = decoder.frames.get(index) ?? (decoder.reachedEnd && index >= decoder.next ? decoder.frames.get(decoder.next - 1) : undefined);
       if (frame) return resolve(frame);
+      if (index < decoder.next || (decoder.ended && !decoder.reachedEnd)) return resolve(null);
       if (decoder.ended) return reject(new Error(`the file ended before ${(decoder.start + index / decoder.fps).toFixed(3)} s, and decoded nothing`));
       decoder.waiters.add(look);
       decoder.child.stdout!.resume();
@@ -139,7 +148,12 @@ function readFrame(decoder: Decoder, index: number): Promise<Buffer> {
 }
 
 /** The JPEG of `source`'s picture at `seconds` of its media time, on its grid. */
-export function libraryFrameAt(source: LibraryFrameSource, seconds: number): Promise<Buffer> {
+export async function libraryFrameAt(source: LibraryFrameSource, seconds: number): Promise<Buffer> {
+  // A decoder chosen as the read was asked for may have moved past it, or closed, by its turn: then one that can.
+  return (await readFrameAt(source, seconds)) ?? libraryFrameAt(source, seconds);
+}
+
+function readFrameAt(source: LibraryFrameSource, seconds: number): Promise<Buffer | null> {
   const { decoder, index } = decoderFor(source, seconds);
   decoder.used = Date.now();
   if (decoder.idle) clearTimeout(decoder.idle);
