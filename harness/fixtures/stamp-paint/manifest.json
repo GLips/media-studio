@@ -245,11 +245,11 @@
     },
     "shot/folds": {
       "file": "shot/folds.png",
-      "output": "5021aea9ac16da5ca88ccaf2a66f399854555b9da8c3252ec1f9ad3c338aae7b",
-      "inputs": "9ae2bf4729d86ff1dfbe3284a2f93dd6776ba2fea808cc73c9a3b6660cdd39e8",
-      "reason": "vid-183/184/185: new cut-paper shots",
-      "accepted": "2026-11-22",
-      "acceptedOver": "4247cd66",
+      "output": "49e79730c2be212f3f71ae8367a9aa3742e5a11f0cc0dcc0a713d8348b84c000",
+      "inputs": "b54592be8fb11990641a94a7ec1287ac147c47178ba2c37337d39e5232cb88bc",
+      "reason": "vid-187: folded sheets, nested flip order, tilt-aware defocus",
+      "accepted": "2026-11-23",
+      "acceptedOver": "3b2ce5d2",
       "adapter": "apple metal-3"
     },
     "shot/masks": {
@@ -290,11 +290,11 @@
     },
     "shot/paper-card": {
       "file": "shot/paper-card.png",
-      "output": "28a1b0705a4dacf4b488500b4908cff3657c03775efab46ea3f38b3ce714bf61",
-      "inputs": "310552aa8ac42bbc2bd143d60085b8ebd1216846f41f71107f579d133b0733c2",
-      "reason": "vid-183/184/185: new cut-paper shots",
-      "accepted": "2026-11-22",
-      "acceptedOver": "4247cd66",
+      "output": "e4cbca02832f046b0ee1dfda20e48c9d1dc53190e9ddcc74fecc891e428d2cbd",
+      "inputs": "65fcd7398c414b8538a1f86df4f32a918c320723c11caa149656d2b7d4ef7e37",
+      "reason": "vid-187: folded sheets, nested flip order, tilt-aware defocus",
+      "accepted": "2026-11-23",
+      "acceptedOver": "3b2ce5d2",
       "adapter": "apple metal-3"
     },
     "shot/paper-heron": {
@@ -344,11 +344,11 @@
     },
     "shot/shadow": {
       "file": "shot/shadow.png",
-      "output": "f7e3c8f85bb5f304252786afa9c2767009931d3293c826d7cfd98bdebdcab946",
+      "output": "9948ab3e347e375b75a0aa25b5ff518971d69861f2331a81bd442a56775a062e",
       "inputs": "6233116732146ce024c65859171d4d053e428fee4bcd245fe06f6a3a2b48ab95",
-      "reason": "p.vid-10 cut paper: own sheets are cards by default (shadow, cut line, lip under the shot's light), fold shading, PCSS receiver-plane bias",
+      "reason": "vid-187: folded sheets, nested flip order, tilt-aware defocus",
       "accepted": "2026-11-23",
-      "acceptedOver": "4247cd66",
+      "acceptedOver": "3b2ce5d2",
       "adapter": "apple metal-3"
     },
     "shot/wet-contact": {
