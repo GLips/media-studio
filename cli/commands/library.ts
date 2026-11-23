@@ -108,16 +108,17 @@ const searchCommand = defineCommand({
 });
 
 const showCommand = defineCommand({
-  meta: { name: 'show', description: 'Print an item: its tracks and their sync, whether its media is online, its flags and its transcript.', about: 'Reads committed metadata; works with the media offline.' },
-  args: { item: libraryItemArg, json: { type: 'boolean', description: 'Print item.json, the flags file and the transcript as JSON' } },
+  meta: { name: 'show', description: 'Print an item: its tracks and sync, whether its media is online, the projects using it, its flags and transcript.', about: 'Reads committed metadata; works with the media offline. A project uses an item when its source imports `#library/<id>/item.json` or `transcript.json`.' },
+  args: { item: libraryItemArg, json: { type: 'boolean', description: 'Print item.json, the projects that use it (usedBy), the flags file and the transcript as JSON' } },
   async run({ args }) {
     const store = await import('#lib/footage/library/engine/library-store.ts');
     const { transcriptLines } = await import('#lib/footage/transcript/models/footage-transcript.ts');
     const { libraryItemTimeOf } = await import('#lib/footage/library/models/library-item.ts');
     const { formatReviewClock, formatReviewClockRange } = await import('#lib/output/review/models/review-timeline-geometry.ts');
     const id = store.resolveLibraryItemId(args.item), item = store.readLibraryItem(id), flags = store.readLibraryFlags(id), transcript = store.readLibraryTranscript(id);
+    const usedBy = store.projectsUsingLibraryItem(id);
     if (args.json) {
-      console.log(JSON.stringify({ item, flags, transcript }, null, 2));
+      console.log(JSON.stringify({ item, usedBy, flags, transcript }, null, 2));
       return;
     }
     const online = store.libraryMediaIsOnline();
@@ -130,6 +131,7 @@ const showCommand = defineCommand({
     }
     for (const [name, why] of Object.entries({ ...item.leftOut })) console.log(`  ${name}: left out, ${why}`);
     for (const [name, what] of Object.entries({ ...item.problems })) console.log(`  ${name}: ${what}`);
+    console.log(usedBy.length ? `used by: ${usedBy.join(', ')}` : 'used by no project');
     if (flags.flags.length) console.log('flags:');
     for (const flag of flags.flags) console.log(`  #${flag.id}  ${formatReviewClockRange(flag.start, flag.end)}  ${flag.note ?? ''}  (${flag.by})`);
     if (transcript) {

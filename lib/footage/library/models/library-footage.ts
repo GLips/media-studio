@@ -6,7 +6,7 @@
 //   import transcript from '#library/<id>/transcript.json' with { type: 'json' };
 //   const footage = libraryFootage(item, transcript);
 //
-// Those imports are how a project refers to footage: `studio library uses` finds an item's projects by them.
+// Those imports are how a project refers to footage: `studio library show` lists an item's projects by them.
 import type { FootageTranscript } from '#lib/footage/transcript/models/footage-transcript.ts';
 import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 import { inputLogWaypoints, type InputLog } from '#lib/footage/input-log/models/input-log.ts';

@@ -15,11 +15,12 @@ import type { LibraryTranscriptFile } from '../models/library-footage.ts';
 import { readReviewStore, writeReviewStore, type ReviewStoreScope } from '#lib/output/review/engine/review-store.ts';
 import type { ReviewAuthor } from '#lib/output/review/models/review-threads.ts';
 import { replaceFileWhole } from '#lib/platform/files/engine/replace-file-whole.ts';
-import { STUDIO_WORKSPACE_DIR } from '#lib/platform/project/engine/studio-project.ts';
+import { STUDIO_PROJECTS_DIR, STUDIO_WORKSPACE_DIR } from '#lib/platform/project/engine/studio-project.ts';
 import { assertStudioWorkspace } from '#lib/platform/project/engine/studio-workspace.ts';
 import { applyLibraryFlagOp, emptyLibraryFlagsFile, LIBRARY_FLAGS_VERSION, type LibraryFlag, type LibraryFlagOp, type LibraryFlagsFile } from '../models/library-flags.ts';
 import { LIBRARY_ITEM_FORMAT, type LibraryItem } from '../models/library-item.ts';
 import type { LibrarySearchItem } from '../models/library-search.ts';
+import { libraryItemsImportedBy } from '../models/library-uses.ts';
 
 export const LIBRARY_DIR = join(STUDIO_WORKSPACE_DIR, 'library');
 const LIBRARY_ITEMS_DIR = join(LIBRARY_DIR, 'items');
@@ -135,4 +136,19 @@ export function changeLibraryFlags(id: string, op: LibraryFlagOp, by: ReviewAuth
 }
 
 /** What search reads of every item: committed metadata alone, never the media. */
+// A project's generated folders: renders, audio and captures hold no source that could import an item.
+const PROJECT_GENERATED_DIRS = new Set(['out', 'audio', 'captures', 'node_modules']);
+
+/** The projects (work/projects/<name>) whose source imports item `id`'s metadata, by name, sorted. */
+export function projectsUsingLibraryItem(id: string): string[] {
+  if (!existsSync(STUDIO_PROJECTS_DIR)) return [];
+  const imports = (dir: string): boolean => readdirSync(dir, { withFileTypes: true }).some((entry) => {
+    if (entry.name.startsWith('.')) return false;
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return !PROJECT_GENERATED_DIRS.has(entry.name) && imports(path);
+    return /\.tsx?$/.test(entry.name) && libraryItemsImportedBy(readFileSync(path, 'utf8')).has(id);
+  });
+  return readdirSync(STUDIO_PROJECTS_DIR, { withFileTypes: true }).filter((d) => d.isDirectory() && imports(join(STUDIO_PROJECTS_DIR, d.name))).map((d) => d.name).toSorted();
+}
+
 export const readLibraryForSearch = (): LibrarySearchItem[] => listLibraryItemIds().map((id) => ({ item: readLibraryItem(id), transcript: readLibraryTranscript(id), flags: readLibraryFlags(id).flags }));
