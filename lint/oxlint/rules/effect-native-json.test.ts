@@ -32,6 +32,18 @@ describeRule("effect-native-json", effectNativeJsonRule, {
       code: `export const readItem = (text: string) => JSON["parse"](text);`,
       errors: [{ messageId: "jsonParse" }],
     },
+    {
+      name: "the parser destructured off JSON",
+      filename: "lib/footage/library/engine/library-store.ts",
+      code: `const { parse } = JSON;\nexport const readItem = (text: string) => parse(text);`,
+      errors: [{ messageId: "jsonParse" }],
+    },
+    {
+      name: "a footage CLI verb parsing a flag's JSON",
+      filename: "cli/commands/transcribe.ts",
+      code: `export const readOptions = (text: string) => JSON.parse(text);`,
+      errors: [{ messageId: "jsonParse" }],
+    },
   ],
 
   legal: [
@@ -44,6 +56,11 @@ describeRule("effect-native-json", effectNativeJsonRule, {
       name: "writing JSON",
       filename: MODEL,
       code: `export const itemText = (item: { id: string }) => \`\${JSON.stringify(item, null, 2)}\\n\`;`,
+    },
+    {
+      name: "destructuring stringify",
+      filename: MODEL,
+      code: `const { stringify } = JSON;\nexport const itemText = (item: { id: string }) => stringify(item);`,
     },
     {
       name: "a feature not yet on Effect",

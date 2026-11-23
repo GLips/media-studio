@@ -1,10 +1,10 @@
 // ─── effect-native-failures ────────────────────────────────────
 //
 // Makes sure: the engine of an Effect-native feature (EFFECT_NATIVE_FEATURES
-// in studio-tree.ts) fails only through the error channel. No `throw`, no
-// `try`, no native `Error` built or extended: an expected failure is a
-// Schema.TaggedError yielded or failed, so its type names every way the call
-// can go wrong and a caller recovers by tag. A thrown value is a defect, which
+// in studio-tree.ts), and its CLI verbs, fail only through the error channel.
+// No `throw`, no `try`, no native `Error` built or extended: an expected
+// failure is a Schema.TaggedError yielded or failed, so its type names every
+// way the call can go wrong and a caller recovers by tag. A thrown value is a defect, which
 // runStudioEffect reports with its stack.
 //
 // A promise from the world outside Effect enters through Effect.tryPromise,
@@ -15,7 +15,7 @@
 // ──────────────────────────────────────────────────────────────────────
 
 import { defineSourceRule } from "../lib/rule-file.ts";
-import { effectNativeRole } from "../../policy/studio-tree.ts";
+import { effectNativePlace } from "../../policy/studio-tree.ts";
 import { type ESTree } from "@oxlint/plugins";
 
 const NATIVE_ERRORS = new Set(["Error", "TypeError", "RangeError", "SyntaxError", "ReferenceError", "AggregateError"]);
@@ -35,7 +35,8 @@ export const effectNativeFailuresRule = defineSourceRule({
     },
   },
   create(context, file) {
-    if (effectNativeRole(file.position) !== "engine") return {};
+    const place = effectNativePlace(file.path, file.position);
+    if (place !== "engine" && place !== "verb") return {};
 
     const reportExtends = (node: ESTree.Class) => {
       if (isNativeError(node.superClass)) context.report({ node: node.superClass ?? node, messageId: "nativeError" });

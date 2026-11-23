@@ -31,7 +31,7 @@ export const MODEL_PACKAGE_ALLOWLIST: Readonly<Record<string, readonly string[]>
     'Order', 'Equal', 'Brand', 'Predicate', 'Function', 'pipe', 'Array', 'Record', 'Struct', 'Tuple', 'Number', 'String',
     'Boolean', 'Duration', 'DateTime', 'HashMap', 'HashSet', 'Chunk', 'Formatter',
   ],
-  xstate: ['setup', 'createMachine', 'assign', 'emit', 'raise', 'enqueueActions', 'types', 'assertEvent', 'transition', 'initialTransition', 'getNextTransitions', 'matchesState', 'isMachineSnapshot', 'createActor'],
+  xstate: ['setup', 'createMachine', 'assign', 'emit', 'raise', 'enqueueActions', 'types', 'assertEvent', 'transition', 'initialTransition', 'getNextTransitions', 'matchesState', 'isMachineSnapshot'],
 };
 
 /** Globals that mean a browser or I/O. `fetch` and `process` exist in Node, and are I/O all the same. */

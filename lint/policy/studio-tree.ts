@@ -152,6 +152,19 @@ export function effectNativeRole(position: StudioPosition): LibRole | undefined 
   return position.kind;
 }
 
+/**
+ * The CLI verbs of the Effect-native features. Each is a thin door: it reads its flags and runs the feature's Effects
+ * through runStudioEffect, so the rules that keep I/O, throws and JSON.parse out of an engine hold it too. Listed by
+ * path because `cli/` has no features to name.
+ */
+export const EFFECT_NATIVE_CLI_VERBS: readonly string[] = ['cli/commands/library.ts', 'cli/commands/transcribe.ts', 'cli/commands/recorder.ts'];
+
+/** Where a file stands among the Effect-native features: a lib role, one of their CLI verbs, or undefined anywhere else. */
+export function effectNativePlace(path: string, position: StudioPosition): LibRole | 'verb' | undefined {
+  if (position.kind === 'cli') return EFFECT_NATIVE_CLI_VERBS.includes(path) ? 'verb' : undefined;
+  return effectNativeRole(position);
+}
+
 const ROOT_ROLES: Record<string, 'storyboard' | 'video' | 'stills' | 'brand' | 'capture' | 'project'> = {
   'storyboard.ts': 'storyboard', 'video.tsx': 'video', 'stills.tsx': 'stills', 'brand.ts': 'brand', 'capture.ts': 'capture', 'project.ts': 'project',
 };

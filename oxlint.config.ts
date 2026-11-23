@@ -68,6 +68,7 @@ export default defineConfig({
     'arch/effect-native-io': 'error',
     'arch/effect-native-failures': 'error',
     'arch/effect-native-json': 'error',
+    'arch/effect-native-promises': 'error',
     'arch/no-discarding-catch': 'error',
     'arch/no-nested-layer-provide': 'error',
     'arch/no-effect-catchcause': 'error',

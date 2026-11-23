@@ -37,7 +37,6 @@ function returnsPromise(typed: TypedProgram, type: Type): boolean {
 
 export const effectNativeExportsCheck: StructuralCheck = {
   id: ID,
-  // Advisory until the footage rewrites land: the features listed still hold the promise code they replace.
   run(context) {
     const findings: Finding[] = [];
     for (const source of typedSources(context)) {
