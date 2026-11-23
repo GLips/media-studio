@@ -4,8 +4,10 @@
 //
 // A take is named by its folder in the recordings folder, which its item records as its source; an item and an inbox
 // folder are the same take when their folder names match, as the add's already-added check judges.
-import { Effect, FileSystem, Option, Path } from 'effect';
+import { Effect, FileSystem, Option, Path, Schema } from 'effect';
 import { LibraryMediaFolder } from '#lib/footage/library-media/engine/library-media-folder.ts';
+import { studioProcessRunning } from '#lib/platform/process/engine/studio-process.ts';
+import { LIBRARY_ADD_MARKER_FILE, LibraryAddMarkerText, type LibraryAddMarker } from '../models/library-add-marker.ts';
 import { LibraryItemInUse, LibraryRequestRefused } from '../models/library-errors.ts';
 import type { LibraryItem } from '../models/library-item.ts';
 import { LibraryStore } from './library-store.ts';
@@ -52,7 +54,11 @@ export const listLibraryRecorderTakes = Effect.fn('LibraryRecorderTakes.list')(f
       if (known.has(name) || !(yield* fs.exists(path.join(folder, 'recording.json')))) continue;
       const read = yield* readRecorderTakeFolder(folder, folder).pipe(
         Effect.map(Option.some),
-        Effect.catchTags({ LibraryFileUnreadable: (error) => Effect.as(Effect.logWarning(`skipping ${error.message}`), Option.none()) }),
+        Effect.catchTags({
+          LibraryFileUnreadable: (error) => Effect.as(Effect.logWarning(`skipping ${error.message}`), Option.none()),
+          // A take being added moves its files out while this reads them: it's listed once it's an item.
+          PlatformError: (error) => Effect.as(Effect.logWarning(`skipping ${folder}: ${error.message}`), Option.none()),
+        }),
       );
       if (Option.isNone(read) || !read.value.ending) continue;
       const { recording } = read.value;
@@ -77,22 +83,45 @@ export const removeLibraryItem = Effect.fn('LibraryRemove.item')(function* (id: 
   yield* Effect.log(`removed ${id}`);
 });
 
+/** The add marker in an item's media folder, if one is there and reads. */
+const readAddMarker = Effect.fn('LibraryRecorderTakes.readAddMarker')(function* (itemMedia: string) {
+  const fs = yield* FileSystem.FileSystem, path = yield* Path.Path;
+  const file = path.join(itemMedia, LIBRARY_ADD_MARKER_FILE);
+  if (!(yield* fs.exists(file))) return Option.none<LibraryAddMarker>();
+  return Schema.decodeUnknownOption(LibraryAddMarkerText)(yield* fs.readFileString(file));
+});
+
 /**
- * Removes a recorder take wherever it went: the item added from it, and its folder in the inbox if it's still there.
- * Refused while the recorder is still writing it, and for a folder that isn't a take.
+ * Removes a recorder take wherever it went: the item added from it, media an add stopped part way left without an
+ * item, and its folder in the inbox. Refused while the recorder is still writing it or an add is still running on it.
  */
 export const removeLibraryRecorderTake = Effect.fn('LibraryRemove.recorderTake')(function* (folder: string) {
-  const fs = yield* FileSystem.FileSystem, path = yield* Path.Path;
+  const fs = yield* FileSystem.FileSystem, path = yield* Path.Path, store = yield* LibraryStore, media = yield* LibraryMediaFolder;
   const name = path.basename(folder);
-  const items = (yield* recorderItems()).filter((added) => path.basename(added.folder) === name);
+  const items = (yield* recorderItems()).filter((added) => path.basename(added.folder) === name).map(({ item }) => item.id);
+  const leftByAdds: string[] = [];
+  if (yield* media.isOnline()) {
+    const ids = new Set(yield* store.itemIds());
+    for (const id of yield* fs.readDirectory(yield* media.online())) {
+      const marker = yield* readAddMarker(path.join(yield* media.online(), id));
+      if (Option.isNone(marker) || path.basename(marker.value.take) !== name) continue;
+      if (studioProcessRunning(marker.value.process)) yield* new LibraryRequestRefused({ reason: `${name} is still being added to the library: throw it away once that's done` });
+      if (!ids.has(id)) leftByAdds.push(id);
+    }
+  }
   const inInbox = yield* fs.exists(folder);
-  if (inInbox) {
-    // Only a take's folder is ever removed whole: a path given wrong must not take anything else with it.
+  const found = items.length > 0 || leftByAdds.length > 0;
+  // A folder is removed whole only when it's this take's: a take the add hasn't taken, or one the library names.
+  if (inInbox && (!found || (yield* fs.exists(path.join(folder, 'recording.json'))))) {
     const { ending } = yield* readRecorderTakeFolder(folder, folder);
     if (!ending) yield* new LibraryRequestRefused({ reason: `${folder} is still recording` });
   }
-  if (!items.length && !inInbox) yield* new LibraryRequestRefused({ reason: `no take ${name} is in the library or at ${folder}` });
-  for (const { item } of items) yield* removeLibraryItem(item.id);
+  if (!found && !inInbox) yield* new LibraryRequestRefused({ reason: `no take ${name} is in the library or at ${folder}` });
+  for (const id of items) yield* removeLibraryItem(id);
+  for (const id of leftByAdds) {
+    yield* fs.remove(yield* media.itemFolder(id), { recursive: true });
+    yield* Effect.log(`removed ${id}'s media, which a stopped add left`);
+  }
   if (inInbox) {
     yield* fs.remove(folder, { recursive: true });
     yield* Effect.log(`removed ${folder}`);

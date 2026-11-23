@@ -9,10 +9,12 @@ import { constants } from 'node:fs';
 // oxlint-disable-next-line arch/effect-native-io -- the FileSystem service's copy never clones; see bringLibraryFile.
 import { copyFile } from 'node:fs/promises';
 import { basename } from 'node:path';
-import { DateTime, Effect, FileSystem, Option, Path, PlatformError, Ref, Stream } from 'effect';
+import { DateTime, Effect, FileSystem, Option, Path, PlatformError, Ref, Schema, Stream } from 'effect';
 import { FootageTranscriber } from '#lib/footage/transcript/engine/footage-transcriber.ts';
 import { streamRecordingClockLog, streamRecordingInputLog } from '#lib/footage/recording/engine/recording-take-logs.ts';
 import { LibraryMediaFolder } from '#lib/footage/library-media/engine/library-media-folder.ts';
+import { thisStudioProcess } from '#lib/platform/process/engine/studio-process.ts';
+import { LIBRARY_ADD_MARKER_FILE, LibraryAddMarkerText, type LibraryAddMarker } from '../models/library-add-marker.ts';
 import { libraryAddStarted, libraryAddStep, libraryAddUndo } from '../models/library-add-machine.ts';
 import { LibraryFootageAlreadyAdded, LibraryRequestRefused, LibraryTakeStillRecording } from '../models/library-errors.ts';
 import { libraryItemDuration, librarySlug, librarySpeechTrack, LIBRARY_ITEM_FORMAT, unusedLibraryItemId, type LibraryItem, type LibraryTrack } from '../models/library-item.ts';
@@ -79,6 +81,12 @@ const bringIntoLibrary = Effect.fn('LibraryAdd.bring')(function* (source: Librar
   const id = unusedLibraryItemId(yield* itemIdBase(source), taken), itemMedia = path.join(mediaFolder, id);
   yield* step({ type: 'probed', media: itemMedia });
   yield* fs.makeDirectory(itemMedia, { recursive: true });
+  const marker = path.join(itemMedia, LIBRARY_ADD_MARKER_FILE);
+  if (source.source.kind === 'studio-recorder') {
+    const written: LibraryAddMarker = { take: source.source.folder, process: thisStudioProcess() };
+    // A marker always encodes.
+    yield* fs.writeFileString(marker, yield* Schema.encodeEffect(LibraryAddMarkerText)(written).pipe(Effect.orDie));
+  }
   // Uninterruptible: a move interrupted between its copy and its record would leave a file no undo knows of.
   const bring = (from: string, to: string) => bringLibraryFile(from, to, request.move).pipe(Effect.andThen(step({ type: 'fileBrought', file: { from, to, moved: request.move } })), Effect.uninterruptible);
 
@@ -112,6 +120,7 @@ const bringIntoLibrary = Effect.fn('LibraryAdd.bring')(function* (source: Librar
   yield* Effect.log(`added ${id} to ${store.itemDir(id)}`);
   const finished = yield* finishLibraryItem(id, { proxies: request.proxies });
   yield* step({ type: 'finished' });
+  yield* fs.remove(marker, { force: true });
   return finished;
 });
 

@@ -102,7 +102,8 @@ test("an add whose undo fails too fails with what broke the add, and leaves the 
   } finally {
     chmodSync(take, 0o755);
   }
-  assert.deepEqual(readdirSync(join(root, 'work/library/media', '2026-11-22-181929')), ['screen.mp4']);
+  // The marker stays too, naming the take, so throwing it away finds this media.
+  assert.deepEqual(readdirSync(join(root, 'work/library/media', '2026-11-22-181929')).toSorted(), ['.adding.json', 'screen.mp4']);
 }));
 
 test("the recorder's takes are listed wherever they went, and a take thrown away leaves nothing in the library or the inbox", () => withStudioTemp('library-add', async (root) => {
@@ -125,4 +126,20 @@ test("the recorder's takes are listed wherever they went, and a take thrown away
   assert.equal(existsSync(join(root, 'work/library/media', id)), false);
   assert.equal(existsSync(failed), false);
   await assert.rejects(runStudioEffect(removeLibraryRecorderTake(join(inbox, '2026-11-22 19.30.00')), libraryAt(root)), { message: /is still recording/ });
+}));
+
+test('throwing away a take whose add was stopped part way removes the media it left, and waits while an add still runs', () => withStudioTemp('library-add', async (root) => {
+  const take = writeTake(root, { status: 'complete', stillFor: 0, input: CLICK });
+  const left = join(root, 'work/library/media/2026-11-22-181929');
+  mkdirSync(left, { recursive: true });
+  writeFileSync(join(left, 'screen.mp4'), 'screen.mp4');
+  const marker = (process: { pid: number; started: number }) => writeFileSync(join(left, '.adding.json'), JSON.stringify({ take, process }));
+
+  marker({ pid: process.pid, started: Math.round(performance.timeOrigin) });
+  await assert.rejects(runStudioEffect(removeLibraryRecorderTake(take), libraryAt(root)), { message: /is still being added/ });
+  // The add was stopped before it moved recording.json: the take's rest is still in the inbox.
+  marker({ pid: process.pid, started: 1 });
+  await runStudioEffect(removeLibraryRecorderTake(take), libraryAt(root));
+  assert.equal(existsSync(left), false);
+  assert.equal(existsSync(take), false);
 }));
