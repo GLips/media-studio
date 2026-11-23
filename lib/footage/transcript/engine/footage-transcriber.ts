@@ -86,9 +86,16 @@ export const whisperFootageTranscriberLayer = Layer.effect(FootageTranscriber, E
     const work = yield* fs.makeTempDirectoryScoped({ directory: yield* Effect.sync(studioTempRoot), prefix: 'transcribe-' })
       .pipe(Effect.mapError((error) => new TranscriptionFailed({ path: footage, reason: error.message })));
     let [job] = initialTransition(transcriptionJobMachine, { path: footage });
-    while (job.status === 'active') [job] = transition(transcriptionJobMachine, job, yield* runStep(footage, work, transcriptionStepDue(job)));
+    while (job.status === 'active') {
+      const due = transcriptionStepDue(job);
+      // A state the lookup misses would answer no event and rerun its step forever.
+      if (Option.isNone(due)) return yield* Effect.die(`transcription job state ${job.value} has no step`);
+      [job] = transition(transcriptionJobMachine, job, yield* runStep(footage, work, due.value));
+    }
     // A job only stops in a final state; an error snapshot is a transition that threw, a bug here.
     if (job.status !== 'done') return yield* Effect.die(job.error);
+    const uncached = job.getInputs().transcribedUncached;
+    if (uncached) yield* Effect.logWarning(`transcribed ${footage}, but couldn't cache its transcript: ${uncached.reason}`);
     return yield* Result.match(job.output, {
       onSuccess: Effect.succeed,
       onFailure: ({ step, reason }) => Effect.fail(new TranscriptionFailed({ path: footage, reason: `${step}: ${reason}` })),

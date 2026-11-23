@@ -5,8 +5,10 @@
 // A sequence, not a lifecycle: each step runs once, in order, and the first failure ends the install.
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { Config, Effect, FileSystem, Schema } from 'effect';
+import { Config, Effect, FileSystem, Schema, Stream } from 'effect';
 import { ChildProcess, ChildProcessSpawner } from 'effect/process';
+import { STUDIO_CHILD_PROCESS } from '#lib/platform/process/engine/studio-child-process.ts';
+import { toolStderrReason } from '#lib/platform/process/models/tool-stderr-reason.ts';
 import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
 import { RECORDER_DISPLAY_NAME, RECORDER_EXECUTABLE_NAME, recorderBundlePropertyList } from '../models/recorder-app-bundle.ts';
 
@@ -20,16 +22,19 @@ export class NoAppleDevelopmentIdentity extends Schema.TaggedError<NoAppleDevelo
   }
 }
 
-/** A tool the install runs exited non-zero or couldn't start. Its own output, inherited by the terminal, says why. */
+/**
+ * A tool the install runs exited non-zero or couldn't start. `reason` says why when the install read its output;
+ * otherwise its output, inherited by the terminal, does.
+ */
 export class RecorderInstallStepFailed extends Schema.TaggedError<RecorderInstallStepFailed>()('RecorderInstallStepFailed', {
-  step: Schema.Literals(['swift build', 'codesign', 'open']),
+  step: Schema.Literals(['swift build', 'security find-identity', 'codesign', 'open']),
   exitCode: Schema.optional(Schema.Number),
   reason: Schema.optional(Schema.String),
 }) {
   override get message(): string {
     return this.exitCode === undefined
       ? `${this.step} couldn't start${this.reason ? `: ${this.reason}` : ''}`
-      : `${this.step} exited with ${this.exitCode}: its output above says why`;
+      : `${this.step} exited with ${this.exitCode}: ${this.reason ?? 'its output above says why'}`;
   }
 }
 
@@ -42,16 +47,25 @@ const runInstallStep = Effect.fn('RecorderInstall.runStep')(function* (step: Rec
   if (exitCode !== 0) yield* new RecorderInstallStepFailed({ step, exitCode });
 });
 
-const inheritOutput = { stdin: 'ignore', stdout: 'inherit', stderr: 'inherit' } as const;
+const inheritOutput = { ...STUDIO_CHILD_PROCESS, stdin: 'ignore', stdout: 'inherit', stderr: 'inherit' } as const;
 
 /** The first Apple Development signing identity in the login keychain, by its SHA-1. */
 const appleDevelopmentIdentity = Effect.fn('RecorderInstall.appleDevelopmentIdentity')(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const identities = yield* spawner.string(ChildProcess.make('security', ['find-identity', '-v', '-p', 'codesigning']));
+  const step = 'security find-identity';
+  const couldntStart = (error: { readonly message: string }) => new RecorderInstallStepFailed({ step, reason: error.message });
+  const handle = yield* spawner.spawn(ChildProcess.make('security', ['find-identity', '-v', '-p', 'codesigning'], STUDIO_CHILD_PROCESS)).pipe(Effect.mapError(couldntStart));
+  const [identities, stderr, exitCode] = yield* Effect.all([
+    handle.stdout.pipe(Stream.decodeText(), Stream.mkString),
+    handle.stderr.pipe(Stream.decodeText(), Stream.mkString),
+    handle.exitCode,
+  ], { concurrency: 'unbounded' }).pipe(Effect.mapError(couldntStart));
+  // A locked or missing keychain fails here; it isn't the same as a keychain holding no identity.
+  if (exitCode !== 0) return yield* new RecorderInstallStepFailed({ step, exitCode, reason: toolStderrReason(stderr) || 'it printed nothing' });
   const match = APPLE_DEVELOPMENT_IDENTITY.exec(identities);
   if (!match) return yield* new NoAppleDevelopmentIdentity();
   return match[1];
-});
+}, Effect.scoped);
 
 /** Writes the app bundle from the release build: its executable, Info.plist and Resources, over any older one. */
 const writeRecorderAppBundle = Effect.fn('RecorderInstall.writeAppBundle')(function* () {
@@ -74,7 +88,7 @@ export const installStudioRecorder = Effect.fn('RecorderInstall.install')(functi
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   yield* runInstallStep('swift build', ChildProcess.make('swift', ['build', '-c', 'release', '--package-path', RECORDER_PACKAGE_DIR], inheritOutput));
   // pkill exits 1 when no recorder is running, which is as good as quitting one.
-  yield* spawner.exitCode(ChildProcess.make('pkill', ['-x', RECORDER_EXECUTABLE_NAME]));
+  yield* spawner.exitCode(ChildProcess.make('pkill', ['-x', RECORDER_EXECUTABLE_NAME], STUDIO_CHILD_PROCESS));
   yield* writeRecorderAppBundle();
   const identity = options.identity ?? (yield* appleDevelopmentIdentity());
   yield* runInstallStep('codesign', ChildProcess.make('codesign', ['--force', '--sign', identity, RECORDER_APP_PATH], inheritOutput));

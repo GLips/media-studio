@@ -7,9 +7,9 @@
 //
 // The media folder defaults to work/library/media/, ignored too. Moving it to a drive is a setting, not a migration:
 // every path into it is the folder joined with an item's id and a track's file.
-import { randomUUID } from 'node:crypto';
 import type { PlatformError } from 'effect';
 import { Context, Effect, FileSystem, Layer, Path, Schema } from 'effect';
+import { makeReplaceFileWholeEffect } from '#lib/platform/files/engine/replace-file-whole-effect.ts';
 import { STUDIO_WORKSPACE_DIR } from '#lib/platform/project/engine/studio-project.ts';
 
 /** This machine's library settings, work/library.local.json. */
@@ -70,6 +70,7 @@ export class LibraryMediaFolder extends Context.Service<LibraryMediaFolder, {
 export const makeLibraryMediaFolderLayer = (workspaceDir: string) => Layer.effect(LibraryMediaFolder, Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
+  const replaceWhole = yield* makeReplaceFileWholeEffect;
   const settingsFile = path.join(workspaceDir, 'library.local.json');
   const defaultFolder = path.join(workspaceDir, 'library', 'media');
 
@@ -97,13 +98,10 @@ export const makeLibraryMediaFolderLayer = (workspaceDir: string) => Layer.effec
     settings,
     location,
     online,
-    // Written beside and renamed over, so another process reading it finds the old settings or the new, never half.
+    // Replaced whole, so another process reading it finds the old settings or the new, never half.
     writeSettings: Effect.fn('LibraryMediaFolder.writeSettings')(function* (next) {
-      const temp = `${settingsFile}.${randomUUID()}.tmp`;
-      yield* fs.makeDirectory(workspaceDir, { recursive: true });
       // A value of the settings type always encodes.
-      yield* fs.writeFileString(temp, `${yield* Schema.encodeEffect(LibraryMachineSettingsText)(next).pipe(Effect.orDie)}\n`);
-      yield* fs.rename(temp, settingsFile);
+      yield* replaceWhole(settingsFile, `${yield* Schema.encodeEffect(LibraryMachineSettingsText)(next).pipe(Effect.orDie)}\n`);
     }),
     isOnline: Effect.fn('LibraryMediaFolder.isOnline')(function* () {
       return yield* fs.exists((yield* location()).path);

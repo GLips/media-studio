@@ -4,11 +4,11 @@
 //   work/library/items/<id>/item.json        the item (library-item.ts)
 //   work/library/items/<id>/transcript.json  what its speech track says, on that track's media time
 //   work/library/items/<id>/flags.json       its flags, the library's review scope (library-flags.ts)
-import { randomUUID } from 'node:crypto';
 import type { PlatformError } from 'effect';
 import { Context, DateTime, Effect, FileSystem, Layer, Option, Path, Result, Schema } from 'effect';
 import { readReviewStore, writeReviewStore, type ReviewStoreScope } from '#lib/output/review/engine/review-store.ts';
 import type { ReviewAuthor } from '#lib/output/review/models/review-threads.ts';
+import { makeReplaceFileWholeEffect } from '#lib/platform/files/engine/replace-file-whole-effect.ts';
 import { STUDIO_PROJECTS_DIR, STUDIO_WORKSPACE_DIR } from '#lib/platform/project/engine/studio-project.ts';
 import { assertStudioWorkspace } from '#lib/platform/project/engine/studio-workspace.ts';
 import type { LibraryFlagRefused } from '../models/library-errors.ts';
@@ -68,13 +68,7 @@ export const makeLibraryStoreLayer = ({ libraryDir, projectsDir, workspaceRequir
   const itemsDir = path.join(libraryDir, 'items');
   const itemDir = (id: string) => path.join(itemsDir, id);
 
-  /** Written beside and renamed over, so a reader finds the old file or the new one, never half. */
-  const replaceWhole = Effect.fn('LibraryStore.replaceWhole')(function* (file: string, text: string) {
-    const temp = `${file}.${randomUUID()}.tmp`;
-    yield* fs.makeDirectory(path.dirname(file), { recursive: true });
-    yield* fs.writeFileString(temp, text);
-    yield* fs.rename(temp, file);
-  });
+  const replaceWhole = yield* makeReplaceFileWholeEffect;
 
   const itemIds = Effect.fn('LibraryStore.itemIds')(function* () {
     if (workspaceRequired) yield* Effect.try({ try: assertStudioWorkspace, catch: (cause) => new LibraryRequestRefused({ reason: cause instanceof Error ? cause.message : String(cause) }) });

@@ -6,14 +6,14 @@ import { downloadWhisperModel, installWhisperCpp } from '@remotion/install-whisp
 import { Context, Effect, FileSystem, Layer, Path, Schema, Stream } from 'effect';
 import { ChildProcess, ChildProcessSpawner } from 'effect/process';
 import { WhisperFullJson, type WhisperToken } from '../models/whisper-heard-words.ts';
+import { STUDIO_CHILD_PROCESS } from '#lib/platform/process/engine/studio-child-process.ts';
+import { toolStderrReason } from '#lib/platform/process/models/tool-stderr-reason.ts';
 import { studioUserCacheDir } from '#lib/platform/temp/engine/studio-user-cache.ts';
 
 const WHISPER_CPP_VERSION = '1.8.6';
 // On a 21-minute raw mic recording, medium.en's words, edged by the pauses, start and end within 0.1 s of the pauses
 // around them at 85% of pauses (median 0); it hears the file in about a twelfth of its length on an M-series GPU.
 const WHISPER_MODEL = 'medium.en';
-// whisper-cli's stderr is a progress log; its end says why a run failed.
-const STDERR_TAIL = 4000;
 
 /** Installing whisper.cpp or its model failed, or whisper-cli failed over a run's files. */
 export class WhisperFailed extends Schema.TaggedError<WhisperFailed>()('WhisperFailed', {
@@ -64,14 +64,18 @@ export const whisperCppLayer = Layer.effect(WhisperCpp, Effect.gen(function* () 
       '-m', path.join(home, `ggml-${WHISPER_MODEL}.bin`), '--dtw', WHISPER_MODEL, '-nfa',
       // A segment per token, each JSON beside its WAV; -mc 0 keeps one piece's words from steering the next's.
       '-ml', '1', '-oj', '-ojf', '-mc', '0', '-np', ...wavs,
-    ]);
+    ], STUDIO_CHILD_PROCESS);
     const handle = yield* spawner.spawn(run).pipe(Effect.mapError(whisperFailed));
     const [stderr, exitCode] = yield* Effect.all([
       handle.stderr.pipe(Stream.decodeText(), Stream.mkString),
       handle.exitCode,
       handle.stdout.pipe(Stream.runDrain),
     ], { concurrency: 'unbounded' }).pipe(Effect.mapError(whisperFailed));
-    if (exitCode !== 0) return yield* new WhisperFailed({ reason: `whisper-cli exited with ${exitCode}: ${stderr.trim().slice(-STDERR_TAIL)}` });
+    if (exitCode !== 0) {
+      // whisper-cli's stderr is a log of loading the model; its last lines say why a run failed.
+      const why = toolStderrReason(stderr);
+      return yield* new WhisperFailed({ reason: `whisper-cli exited with ${exitCode}${why ? `: ${why}` : ''}` });
+    }
     return yield* Effect.forEach(wavs, readTokens);
   }, Effect.scoped);
 

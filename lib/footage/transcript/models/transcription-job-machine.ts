@@ -4,8 +4,9 @@
 //
 // checkingCache ─cacheHit─────────────────────────────────────────────────────────────────────────▶ transcribed
 //      └─cacheMissed▶ installingWhisper ─▶ extractingAudio ─▶ hearingPieces ─▶ timingWords ─▶ caching ─▶ transcribed
-// Every working state but timingWords goes to its own failed state on stepFailed; every final state ends the job.
-import { Data, Result } from 'effect';
+// Every working state but timingWords and caching goes to its own failed state on stepFailed; a failed write to the
+// cache ends in transcribedUncached, which still delivers the transcript. Every final state ends the job.
+import { Data, Option, Result } from 'effect';
 import { setup, types } from 'xstate';
 import type { SnapshotFrom } from 'xstate';
 import type { FootageTranscript } from './footage-transcript.ts';
@@ -55,12 +56,13 @@ const s = setup({
     timingWords: { id: 'timingWords', schemas: { input: types<AudioHeard>() } },
     caching: { id: 'caching', schemas: { input: types<CacheKeyed & { readonly transcript: FootageTranscript }>() } },
     transcribed: { id: 'transcribed', type: 'final', schemas: { input: types<{ readonly transcript: FootageTranscript }>() } },
+    // Heard, but not kept for next time: `reason` says why the cache refused it.
+    transcribedUncached: { id: 'transcribedUncached', type: 'final', schemas: { input: types<StepFailure & { readonly transcript: FootageTranscript }>() } },
     // The footage's own bytes couldn't be read for its cache key: it's missing or unreadable.
     footageUnreadable: { id: 'footageUnreadable', type: 'final', schemas: { input: types<StepFailure>() } },
     whisperInstallFailed: { id: 'whisperInstallFailed', type: 'final', schemas: { input: types<StepFailure>() } },
     audioExtractionFailed: { id: 'audioExtractionFailed', type: 'final', schemas: { input: types<StepFailure>() } },
     hearingFailed: { id: 'hearingFailed', type: 'final', schemas: { input: types<StepFailure>() } },
-    cachingFailed: { id: 'cachingFailed', type: 'final', schemas: { input: types<StepFailure>() } },
   },
 });
 
@@ -111,15 +113,16 @@ export const transcriptionJobMachine = s.createMachine({
     caching: {
       on: {
         transcriptCached: ({ input }) => ({ target: '#transcribed', input: { transcript: input.transcript } }),
-        stepFailed: ({ event }) => ({ target: '#cachingFailed', input: { reason: event.reason } }),
+        // A whole whisper run is worth more than the cache entry, so the job delivers the transcript anyway.
+        stepFailed: ({ input, event }) => ({ target: '#transcribedUncached', input: { transcript: input.transcript, reason: event.reason } }),
       },
     },
     transcribed: { output: ({ input }) => Result.succeed(input.transcript) },
+    transcribedUncached: { output: ({ input }) => Result.succeed(input.transcript) },
     footageUnreadable: { output: failedAt('reading the file') },
     whisperInstallFailed: { output: failedAt('installing whisper.cpp') },
     audioExtractionFailed: { output: failedAt('reading its sound') },
     hearingFailed: { output: failedAt('hearing it with whisper') },
-    cachingFailed: { output: failedAt('caching its transcript') },
   },
 });
 
@@ -136,14 +139,16 @@ export type TranscriptionStepDue = Data.TaggedEnum<{
 export const TranscriptionStepDue = Data.taggedEnum<TranscriptionStepDue>();
 
 /**
- * The step an active `job` waits on. Only the active state has an input; checkingCache has none, and timingWords is
- * never at rest. A finished job's outcome is its output: the transcript, or the step that failed.
+ * The step an active `job` waits on; none for a state with no step, which a driver treats as a bug, never as a step
+ * to retry. Only the active state has an input; timingWords is never at rest. A finished job's outcome is its output:
+ * the transcript, or the step that failed.
  */
-export function transcriptionStepDue(job: TranscriptionJobSnapshot): TranscriptionStepDue {
+export function transcriptionStepDue(job: TranscriptionJobSnapshot): Option.Option<TranscriptionStepDue> {
   const inputs = job.getInputs();
-  if (inputs.installingWhisper) return TranscriptionStepDue.InstallWhisper();
-  if (inputs.extractingAudio) return TranscriptionStepDue.ExtractAudio();
-  if (inputs.hearingPieces) return TranscriptionStepDue.HearPieces({ audio: inputs.hearingPieces.audio });
-  if (inputs.caching) return TranscriptionStepDue.CacheTranscript(inputs.caching);
-  return TranscriptionStepDue.CheckCache();
+  if (job.matches('checkingCache')) return Option.some(TranscriptionStepDue.CheckCache());
+  if (inputs.installingWhisper) return Option.some(TranscriptionStepDue.InstallWhisper());
+  if (inputs.extractingAudio) return Option.some(TranscriptionStepDue.ExtractAudio());
+  if (inputs.hearingPieces) return Option.some(TranscriptionStepDue.HearPieces({ audio: inputs.hearingPieces.audio }));
+  if (inputs.caching) return Option.some(TranscriptionStepDue.CacheTranscript(inputs.caching));
+  return Option.none();
 }

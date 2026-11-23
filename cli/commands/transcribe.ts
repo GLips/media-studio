@@ -14,14 +14,14 @@ export default defineCommand({
     json: { type: 'boolean', description: 'Print the transcript as JSON' },
   },
   async run({ args }) {
+    const { Console, Effect } = await import('effect');
     const { FootageTranscriber, footageTranscriberLayer } = await import('#lib/footage/transcript/engine/footage-transcriber.ts');
     const { transcriptLines } = await import('#lib/footage/transcript/models/footage-transcript.ts');
-    const { runStudioEffect } = await import('#lib/platform/process/engine/studio-effect-runtime.ts');
-    const transcript = await runStudioEffect(FootageTranscriber.use((transcriber) => transcriber.transcribe(args.file)), footageTranscriberLayer);
-    if (args.json) {
-      console.log(JSON.stringify(transcript));
-      return;
-    }
-    for (const line of transcriptLines(transcript)) console.log(`${minutesAndSeconds(line.start)}  ${line.text}`);
+    const { printStudioJson, runStudioEffect } = await import('#lib/platform/process/engine/studio-effect-runtime.ts');
+    await runStudioEffect(Effect.gen(function* () {
+      const transcript = yield* FootageTranscriber.use((transcriber) => transcriber.transcribe(args.file));
+      if (args.json) yield* printStudioJson(transcript);
+      else for (const line of transcriptLines(transcript)) yield* Console.log(`${minutesAndSeconds(line.start)}  ${line.text}`);
+    }), footageTranscriberLayer);
   },
 });
