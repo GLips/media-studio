@@ -37,8 +37,8 @@ export type StampCardReliefOnto = { readonly compositor: StampPaintCompositor; r
 /** Uniform slots a card's cast may take beside its occluding: its coverage, two blurs and its shadow. */
 const CAST_SLOTS = 4;
 
-/** Uniform slots a card's relief may take over a composite of `cards` card steps among `sheets` sheets, rims included. */
-export const stampCardReliefSlots = (cards: number, sheets: number) => cards * (CAST_SLOTS + sheets + 1);
+/** Uniform slots a card's relief may take over a composite of `cards` card steps among `sheets` sheets: rims and tones included. */
+export const stampCardReliefSlots = (cards: number, sheets: number) => cards * (CAST_SLOTS + sheets + 2);
 
 const CARD_CAST = gpuUniformLayout('CardCast', [['origin', 'vec2u'], ['extent', 'vec2u'], ['edgeOrigin', 'vec2u'], ['edgeExtent', 'vec2u'], ['moved', 'u32']]);
 // A caster's coverage over its box into a level: (cover, 0, 0, 0), its waiting-rim channel cleared.
@@ -116,17 +116,34 @@ ${CARD_SHADOW.wgsl}
 }`;
 
 const CARD_RIM = gpuUniformLayout('CardRim', [['origin', 'vec2u'], ['extent', 'vec2u'], ['boxOrigin', 'vec2u'], ['boxExtent', 'vec2u'], ['lipToward', 'vec2f'], ['tone', 'f32']]);
+// A shader takes one compositor hook: the pigment compositor's hooks each declare its paper's constants.
 const arrayView = (texture: GPUTexture) => texture.createView({ dimension: '2d-array' });
 const wgslColor = (hex: string) => `vec3f(${stampHexRgb(hex).map((c) => c.toFixed(4)).join(', ')})`;
+// A folded card's face takes its tone, paper and paint alike, as far as it shows past what was laid over it since.
+const toneWgsl = (compositor: StampPaintCompositor, stage: StampStage) => /* wgsl */ `
+${stampStageWgsl(stage)}
+${stampPaintTargetWgsl('painting', 2, compositor.targets.painting, 'read_write')}
+${GPU_SRGB_WGSL}
+${compositor.shade}
+${BOXED_WGSL}
+${CARD_RIM.wgsl}
+@group(0) @binding(0) var<uniform> u: CardRim;
+@group(0) @binding(1) var level: texture_2d<f32>;
+@compute @workgroup_size(${STAMP_WORKGROUP}, ${STAMP_WORKGROUP}) fn cardTone(@builtin(global_invocation_id) id: vec3u) {
+  if (any(id.xy >= u.extent)) { return; }
+  let pixel = u.origin + id.xy;
+  let held = boxedTexel(level, vec2i(pixel), vec2i(u.boxOrigin), vec2i(u.boxOrigin + u.boxExtent));
+  let shown = held.r * (1.0 - clamp(held.g, 0.0, 1.0));
+  if (shown > 0.0) { layShade(pixel, vec3f(u.tone), shown); }
+}`;
 // A card's rim from its level: each texel's distance inside the coverage's edge (to the nearest texel under half
-// cover), its outward normal toward that texel. A folded face takes its tone first, paper and paint alike; then the
-// cut line and the lip where the normal faces the light, all thinned by what was laid over the card since.
+// cover), its outward normal toward that texel. The cut line lies over the band, the lip where the normal faces the
+// light; both thinned by what was laid over the card since.
 const rimWgsl = (compositor: StampPaintCompositor, stage: StampStage) => /* wgsl */ `
 ${stampStageWgsl(stage)}
 ${stampPaintTargetWgsl('painting', 2, compositor.targets.painting, 'read_write')}
 ${GPU_SRGB_WGSL}
 ${compositor.card}
-${compositor.shade}
 ${BOXED_WGSL}
 ${CARD_RIM.wgsl}
 @group(0) @binding(0) var<uniform> u: CardRim;
@@ -141,7 +158,6 @@ fn band(d: f32, width: f32) -> f32 { return 1.0 - smoothstep(width - 0.5, width 
   let held = boxedTexel(level, p, vec2i(u.boxOrigin), vec2i(u.boxOrigin + u.boxExtent));
   let shown = held.r * (1.0 - clamp(held.g, 0.0, 1.0));
   if (shown <= 0.0) { return; }
-  if (u.tone < 1.0) { layShade(pixel, vec3f(u.tone), shown); }
   var inside = f32(RIM_REACH) + 1.0;
   var outward = vec2f(0.0);
   if (held.r <= 0.5) {
@@ -281,7 +297,7 @@ export function createStampCardRelief(owner: StampPaintGpuOwner, { stage, arena 
       boxes.delete(level);
       // A texel round the box, for the edge's antialiasing just past what was drawn.
       const laid = stampStageTexelsGrown(stage, box, 1), { compositor } = onto, toward = stampCardLipToward(onto.light);
-      dispatchStampCompute(device, encoder, pipelineOf(`rim ${compositorKey(compositor)}`, () => rimWgsl(compositor, stage)), [
+      const pass = (name: string, code: () => string) => dispatchStampCompute(device, encoder, pipelineOf(`${name} ${compositorKey(compositor)}`, code), [
         arena.slot((views) => {
           const put = gpuUniformWriter(CARD_RIM, views);
           put('origin', [laid.x, laid.y]);
@@ -293,6 +309,8 @@ export function createStampCardRelief(owner: StampPaintGpuOwner, { stage, arena 
         }),
         stageTarget(`level ${level}`, encoder).createView(), onto.painting,
       ], laid.w, laid.h);
+      if (tone < 1) pass('tone', () => toneWgsl(compositor, stage));
+      pass('rim', () => rimWgsl(compositor, stage));
     },
   };
 }

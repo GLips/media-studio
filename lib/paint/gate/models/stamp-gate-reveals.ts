@@ -278,12 +278,22 @@ const REEDS_REVEAL = { kind: 'field', base: { kind: 'linear', from: { x: 0, y: 1
 
 const reedsProperties = { revealed: { type: 'boolean', default: true } } as const satisfies PropertySchema;
 
-/** The rigged heron, its reeds (a group owning its sheet, so a rig of it is drawn as pieces) revealed by REEDS_REVEAL when `revealed`. */
+/** `nodes` with the reeds' own sheet laid flat. */
+const flatReeds = (nodes: readonly LayerNode[]): LayerNode[] => nodes.map((node) => {
+  const flat = node.key === 'reeds' && node.sheet?.kind === 'own' ? { ...node, sheet: { ...node.sheet, card: 'flat' as const } } : node;
+  return flat.children ? { ...flat, children: flatReeds(flat.children) } : flat;
+});
+
+/**
+ * The rigged heron, its reeds (a group owning its sheet, so a rig of it is drawn as pieces) revealed by REEDS_REVEAL
+ * when `revealed`. Their card lies flat: its rim and shadow would follow the reveal's front a few px past the cut
+ * this page holds to.
+ */
 export const STAMP_GATE_REVEALED_REEDS: PaintingSourceModule<typeof reedsProperties> = {
   properties: reedsProperties,
   default: function gateRevealedReeds({ revealed }: PropertyValues<typeof reedsProperties>): PaintingDocument {
-    const heron = STAMP_GATE_RIGGED_HERON.default({});
-    return revealed ? { ...heron, layers: revealedNodes(heron.layers, { reeds: REEDS_REVEAL }) } : heron;
+    const heron = STAMP_GATE_RIGGED_HERON.default({}), layers = flatReeds(heron.layers);
+    return { ...heron, layers: revealed ? revealedNodes(layers, { reeds: REEDS_REVEAL }) : layers };
   },
 };
 

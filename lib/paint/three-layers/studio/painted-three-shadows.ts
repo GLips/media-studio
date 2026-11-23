@@ -1,15 +1,15 @@
 // painted-three-shadows.ts: shadow maps for a three source that asks for them (PaintedThreeSourceScene.shadows), on
 // around that source's renders alone and put back after, as the renderer is the device's one.
 //
-// Soft shadows are percentage-closer soft shadows: a search round the receiver finds how far its blockers lie,
-// and the penumbra widens with the gap behind them, so a contact stays tight and a cast shadow softens. The search
-// reaches as far as a blocker on the shadow camera's near plane could shade. The taps' noise is fixed per pixel,
-// so a fast frame and a reference exposure draw one shadow.
+// Soft shadows are percentage-closer soft shadows: a search round the receiver finds how far its blockers lie, and
+// the penumbra widens with the gap behind them. The search reaches as far as a near-plane blocker could shade. Tap
+// noise is fixed per pixel, so a fast frame and a reference draw one shadow. Each tap compares against the
+// receiver's plane there (receiver-plane depth bias), or a face the light grazes shades itself.
 // Negative space: a reversed depth buffer would turn the search's comparison round; the studio's renderer has none.
 
 import { DirectionalLight, PCFShadowMap, SpotLight, Vector3, type DepthTexture, type LightShadow, type Node, type Scene, type TextureNode, type WebGPURenderer } from 'three/webgpu';
 import {
-  float, Fn, int, interleavedGradientNoise, ivec2, Loop, orthographicDepthToViewZ, perspectiveDepthToViewZ, reference, screenCoordinate, step, tan, texture, textureLoad, uniform,
+  dFdx, dFdy, float, Fn, int, interleavedGradientNoise, ivec2, Loop, orthographicDepthToViewZ, perspectiveDepthToViewZ, reference, screenCoordinate, step, tan, texture, textureLoad, uniform,
   vec2, vogelDiskSample,
 } from 'three/tsl';
 
@@ -26,6 +26,11 @@ export type PaintedThreeShadows = { readonly softness?: number };
  * lie too far apart to find a caster's edge.
  */
 const PAINTED_THREE_SOFTNESS_MOST = 20;
+/**
+ * The steepest a receiver's plane is taken to run, depth per shadow-map uv: about 85° to the light. Past it, nearly
+ * edge-on, the plane's depth jumps between pixels and would push taps behind real blockers.
+ */
+const PAINTED_THREE_RECEIVER_SLOPE_MOST = 10;
 /** Taps finding a receiver's blockers (raw depth reads), then filtering its penumbra (each a hardware 2 × 2 comparison). */
 const PAINTED_THREE_SEARCH_TAPS = 32;
 const PAINTED_THREE_FILTER_TAPS = 32;
@@ -53,6 +58,12 @@ function paintedThreeSoftShadowFilter(light: DirectionalLight | SpotLight, tange
     const mapSize = reference('mapSize', 'vec2', shadow), texel = vec2(1).div(mapSize);
     const distanceAt = (depth: Node<'float'>): Node<'float'> => (spot ? perspectiveDepthToViewZ(depth, near, far) : orthographicDepthToViewZ(depth, near, far)).negate();
     const receiver = shadowCoord.z, reached = distanceAt(receiver).toVar();
+    // The receiver's depth gradient over shadow-map uv, from its screen derivatives; none where they're degenerate.
+    const dx = dFdx(shadowCoord), dy = dFdy(shadowCoord), det = dx.x.mul(dy.y).sub(dx.y.mul(dy.x));
+    const solved = vec2(dy.y.mul(dx.z).sub(dx.y.mul(dy.z)), dx.x.mul(dy.z).sub(dy.x.mul(dx.z))).div(det);
+    const slope = det.abs().greaterThan(1e-12).select(solved, vec2(0)).toVar();
+    slope.assign(slope.mul(float(PAINTED_THREE_RECEIVER_SLOPE_MOST).div(slope.length().max(PAINTED_THREE_RECEIVER_SLOPE_MOST))));
+    const receiverAt = (offset: Node<'vec2'>) => receiver.add(slope.dot(offset));
     // Shadow-map uv a world unit spans across the light's view where the receiver lies.
     const uvPerUnit = spot
       ? vec2(at('aspect').reciprocal(), 1).mul(zoom.div(reached.mul(2).mul(tan(at('fov').mul(Math.PI / 360)))))
@@ -70,10 +81,11 @@ function paintedThreeSoftShadowFilter(light: DirectionalLight | SpotLight, tange
     const search = uvPerUnit.mul(penumbra(near)).max(texel);
     const blockers = float(0).toVar(), blockersReach = float(0).toVar();
     Loop(PAINTED_THREE_SEARCH_TAPS, ({ i }) => {
-      const tap = shadowCoord.xy.add(vogelDiskSample(i, int(PAINTED_THREE_SEARCH_TAPS), phi).mul(search)).mul(mapSize).clamp(vec2(0), mapSize.sub(1));
+      const offset = vogelDiskSample(i, int(PAINTED_THREE_SEARCH_TAPS), phi).mul(search);
+      const tap = shadowCoord.xy.add(offset).mul(mapSize).clamp(vec2(0), mapSize.sub(1));
       // A depth texture reads as one float; @types/three types it a vec4, whose .r three passes over.
       const depth = layered(textureLoad(depthTexture, ivec2(tap), int(0))).r.toVar();
-      const blocks = step(depth, receiver);
+      const blocks = step(depth, receiverAt(offset));
       blockers.addAssign(blocks);
       blockersReach.addAssign(distanceAt(depth).mul(blocks));
     });
@@ -82,7 +94,8 @@ function paintedThreeSoftShadowFilter(light: DirectionalLight | SpotLight, tange
     const spread = uvPerUnit.mul(penumbra(blockersReach.div(blockers.max(1)))).max(texel);
     const lit = float(0).toVar();
     Loop(PAINTED_THREE_FILTER_TAPS, ({ i }) => {
-      lit.addAssign(layered(texture(depthTexture, shadowCoord.xy.add(vogelDiskSample(i, int(PAINTED_THREE_FILTER_TAPS), phi).mul(spread)))).compare(receiver));
+      const offset = vogelDiskSample(i, int(PAINTED_THREE_FILTER_TAPS), phi).mul(spread);
+      lit.addAssign(layered(texture(depthTexture, shadowCoord.xy.add(offset))).compare(receiverAt(offset)));
     });
     // No blocker found: lit, unless one too thin for the search's taps covers the receiver itself.
     return blockers.greaterThan(0).select(lit.div(PAINTED_THREE_FILTER_TAPS), own);

@@ -47,21 +47,21 @@ const TURNER_PIVOT = { x: 168, y: 34 } as const;
 export const STAMP_GATE_CARD_SHADOWS_FADE = [{ from: 0, visibility: 1 }, { from: 1, visibility: 0.5 }, { from: 2, visibility: 0 }] as const;
 
 /**
- * Where the checks look, frame px: just past the still card's lower edge (where its shadow falls) and upper edge
- * (where none may); a band round the flat card and the fader; the nest's right edge under the chip and below it; the
- * turner's top and bottom edge bands; and past the mover's lower edge once moved.
+ * Where the checks look, frame px: 2–3 px past the still card's low left edge, where its shadow falls, and its upper
+ * edge, where none may; bands round the flat card and the fader; the nest's right edge under the chip and below it;
+ * the turner's top and bottom edges; past the mover's lower edge once moved.
  */
 export const STAMP_GATE_CARD_SHADOWS_LOOK = {
-  belowStill: { x0: 24, y0: 61, x1: 56, y1: 64 },
+  belowStill: { x0: 20, y0: 60, x1: 36, y1: 62 },
   aboveStill: { x0: 22, y0: 8, x1: 56, y1: 12 },
   aroundFlat: { x0: 72, y0: 72, x1: 132, y1: 132 },
   aroundFader: { x0: 8, y0: 72, x1: 68, y1: 132 },
-  belowFader: { x0: 22, y0: 125, x1: 58, y1: 129 },
+  belowFader: { x0: 22, y0: 124, x1: 58, y1: 127 },
   nestEdgeUnderChip: { x0: 121, y0: 31, x1: 126, y1: 45 },
   nestEdgeBelowChip: { x0: 117, y0: 53, x1: 124, y1: 59 },
   turnerTop: { x0: 154, y0: 16, x1: 182, y1: 18 },
   turnerBottom: { x0: 154, y0: 50, x1: 182, y1: 52 },
-  belowMover: { x0: 166, y0: 111, x1: 186, y1: 114 },
+  belowMover: { x0: 166, y0: 110, x1: 186, y1: 113 },
 } as const satisfies Readonly<Record<string, StampGateCardShadowsBox>>;
 
 const cardShadowsProperties = { lit: { type: 'boolean', default: true }, nestRim: { type: 'boolean', default: true } } as const satisfies PropertySchema;
