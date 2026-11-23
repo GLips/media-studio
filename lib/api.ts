@@ -9,6 +9,7 @@ export type { FlatKey, FlatPose, FlatView } from '#lib/footage/previs/models/fla
 export { transcriptCutBefore, transcriptLines, type FootageTranscript } from '#lib/footage/transcript/models/footage-transcript.ts';
 export type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 export { libraryFootage, type LibraryFootage, type LibraryTranscriptFile } from '#lib/footage/library/models/library-footage.ts';
+export { LibraryVideo, type LibraryVideoProps } from '#lib/footage/library/studio/library-video.tsx';
 export type { RecordedSpeech, SpokenStretch } from '#lib/timing/voice/models/recorded-speech.ts';
 export { inputLogKeyStrikes, inputLogWaypoints, parseRecorderInputLog, type InputEvent, type InputLog, type InputLogCoordinates, type InputModifier, type InputWaypoint } from '#lib/footage/input-log/models/input-log.ts';
 export { beatGrid, steadyBeatGrid, type BeatGrid } from '#lib/timing/timeline/models/beat-grid.ts';
