@@ -14,9 +14,10 @@ export const STAMP_LATTICE_VERTEX_FLOATS = 6;
 
 /**
  * What a lattice's draw writes: each pixel's rest point where the film it reads holds paint (`paint`), over all it
- * covers (`region`) or nowhere; and its travel (`motion`), where it writes rest, or over all it covers when it writes none.
+ * covers (`region`) or nowhere; and its travel (`motion`) where it writes rest, or all it covers when it writes none:
+ * `over` the motion target, or `fresh`, a travel map cleared first for a reader to blend by its cover.
  */
-export type StampLatticeDraw = { readonly rest: 'paint' | 'region' | null; readonly motion: boolean };
+export type StampLatticeDraw = { readonly rest: 'paint' | 'region' | null; readonly motion: 'over' | 'fresh' | null };
 
 const STILL = { x: 0, y: 0 };
 
@@ -48,7 +49,7 @@ struct LatticeLaid { ${outputs.join(', ')} };
 /** Where a lattice's vertices lie in a frame's vertex buffer, and how many it has. */
 export type StampLatticeSpan = { readonly first: number; readonly floats: number; readonly vertices: number };
 
-/** What a lattice's draw writes into: the rest map (rg32float, cleared to no rest first), the motion (kept), and the film a `paint` rest reads. */
+/** What a lattice's draw writes into: the rest map (rg32float, cleared to no rest first), the motion (rgba16float), and the film a `paint` rest reads. */
 export type StampLatticeTargets = { readonly rest: GPUTextureView | null; readonly motion: GPUTextureView | null; readonly source: GPUTextureView | null };
 
 /**
@@ -59,7 +60,7 @@ export function createStampLatticePass(device: StampPaintDevice, { layer, stage,
   const pipelines = new Map<string, GPURenderPipeline>();
   let staging = new Float32Array(0), vertices: GPUBuffer | null = null, used = 0;
   const pipelineOf = (draw: StampLatticeDraw) => {
-    const key = `${draw.rest}|${draw.motion}`;
+    const key = `${draw.rest}|${!!draw.motion}`;
     let pipeline = pipelines.get(key);
     if (!pipeline) {
       const module = device.createShaderModule({ code: stampLatticeWgsl(layer, stage, draw) });
@@ -103,7 +104,7 @@ export function createStampLatticePass(device: StampPaintDevice, { layer, stage,
     draw(encoder: GPUCommandEncoder, span: StampLatticeSpan, draw: StampLatticeDraw, targets: StampLatticeTargets) {
       const attachments: GPURenderPassColorAttachment[] = [];
       if (draw.rest) attachments.push({ view: targets.rest!, loadOp: 'clear', clearValue: [STAMP_NO_REST, STAMP_NO_REST, 0, 0], storeOp: 'store' });
-      if (draw.motion) attachments.push({ view: targets.motion!, loadOp: 'load', storeOp: 'store' });
+      if (draw.motion) attachments.push({ view: targets.motion!, loadOp: draw.motion === 'fresh' ? 'clear' : 'load', clearValue: [0, 0, 0, 0], storeOp: 'store' });
       const pipeline = pipelineOf(draw), pass = encoder.beginRenderPass({ colorAttachments: attachments });
       pass.setPipeline(pipeline);
       // Only a paint rest reads its film: the others bind nothing.

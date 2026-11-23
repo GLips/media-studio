@@ -2,12 +2,13 @@
 // rigged heron's grain, pieces and boil (test 6), the wet-contact foot posed by its rig, painted in and hidden (test
 // 7), the rain's drops blurred along their own falls (test 5), a plane blurred by the film's shutter unless shut, a
 // dissolve between two sheets over a dissolving back,
-// the rigged heron posed as it dissolves, a warmed span, the cut-out cards, the sprig drawn as pieces, and their
+// the rigged heron posed as it dissolves, a warmed span, the cut-out cards, a card sliding under the open shutter, the sprig drawn as pieces, and their
 // baselines' frames. The masked shot's cases are stamp-gate-shot-masks-page.ts's, the rainy street's
 // stamp-gate-rainy-street-page.ts's, the glowing shot's stamp-gate-shot-glow-page.ts's and the painting in time's
 // stamp-gate-in-time-page.ts's and the lit cards' stamp-gate-card-shadows-page.ts's, handed on.
 
 import type { StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
+import { checkStampGateCardShutter, STAMP_GATE_CARD_SHUTTER, stampGateCardShutterShot } from '../models/stamp-gate-card-shutter.ts';
 import { STAMP_GATE_CARDS_AT, STAMP_GATE_CARDS_POSED_AT, stampGateCardsPosedShot, stampGateCardsShot } from '../models/stamp-gate-cards.ts';
 import { STAMP_GATE_FRAME_TOLERANCE, stampGateFrameDifference, stampGateFrameDifferenceText, stampGateFramePasses } from '../models/stamp-gate-frames.ts';
 import type { StampGateWashCheck } from '../models/stamp-gate-layer.ts';
@@ -321,6 +322,18 @@ async function checkCards(): Promise<StampGateWashCheck[]> {
   ];
 }
 
+/** The sliding card's shot made as `made` says, its checked frame as RGB bytes. */
+const cardShutterFrame = async (made: Parameters<typeof stampGateCardShutterShot>[0]) =>
+  stampGateRgb((await stampGateShotFrames(stampGateCardShutterShot(made), [STAMP_GATE_CARD_SHUTTER.at])).frames[0]);
+
+/** shot/card-shutter: the card sliding under the film's shutter and shut, each against the ground alone. */
+async function checkCardShutter(): Promise<StampGateWashCheck[]> {
+  return checkStampGateCardShutter({
+    open: await cardShutterFrame({}), shut: await cardShutterFrame({ shut: true }),
+    groundOpen: await cardShutterFrame({ card: false }), groundShut: await cardShutterFrame({ card: false, shut: true }),
+  });
+}
+
 /** The sprig painted as `painted` says, every cel it holds shown, its one frame as RGB bytes. */
 const piecesFlat = async (painted: Parameters<typeof stampGatePiecesFlatShot>[0]) => stampGateRgb((await stampGateShotFrames(stampGatePiecesFlatShot(painted), [STAMP_GATE_PIECES_AT.rest])).frames[0]);
 
@@ -387,6 +400,7 @@ export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGa
   if (id === 'shot/approach') return checkStampGateShotApproachCase();
   if (id === 'shot/properties-in-time') return checkStampGateInTime();
   if (id === 'shot/card-shadows') return checkStampGateCardShadowsCase();
+  if (id === 'shot/card-shutter') return checkCardShutter();
   return checkStampGateShotMasksCase(id);
 }
 

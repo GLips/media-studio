@@ -156,6 +156,10 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
   const rest = (encoder: GPUCommandEncoder) => owner.target('shot rest', {
     size: [stage.width, stage.height], format: 'rg32float', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
   }, encoder).createView();
+  /** Where a moving card's lattice draws its travel, cleared by each draw. */
+  const cardTravel = (encoder: GPUCommandEncoder) => owner.target('shot card travel', {
+    size: [stage.width, stage.height], format: 'rgba16float', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+  }, encoder).createView();
   /** The size of the layer target a frame's films are copied into and cut over: its document a margin in, or the stage. */
   const layerSize = ({ document }: ShotSheetsLayFrame) =>
     ({ width: Math.max(stage.width, document.width + 2 * margin), height: Math.max(stage.height, document.height + 2 * margin) });
@@ -279,7 +283,7 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
       let laid: StampPixelBox | null = frame.ground?.kind === 'stage' ? { x: 0, y: 0, w: stage.width, h: stage.height } : null;
       if (staged.ground?.box) {
         const { pass, span, box } = staged.ground;
-        pass.draw(encoder, span, { rest: 'region', motion: !!traced }, { rest: restView, motion: traced, source: null });
+        pass.draw(encoder, span, { rest: 'region', motion: traced ? 'over' : null }, { rest: restView, motion: traced, source: null });
         lays[0].drawPlacedPaper(encoder, painting, restView, box);
         if (coverage && !whole) masking.cover(encoder, coverage, frame.reads.map((read) => read.ground), { kind: 'ground', rest: restView, box }, null);
         laid = stampBoxUnion(laid, box);
@@ -315,10 +319,13 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
             });
             if (edge) {
               const edgeBox = stampStageTexelsOf(stage, edge.box);
-              pass.draw(encoder, span, { rest: 'region', motion: !!traced }, { rest: restView, motion: traced, source: null });
+              // The lattice covers the card's edge box, ground beside its cut included: its travel goes to a map the
+              // card lays by its own cover.
+              const moving = traced && { travel: cardTravel(encoder), into: traced };
+              pass.draw(encoder, span, { rest: 'region', motion: moving ? 'fresh' : null }, { rest: restView, motion: moving ? moving.travel : null, source: null });
               const caster = { kind: 'card', edge: edge.view, edgeBox, rest: restView, box, mask: maskView } as const;
               const shadow = lighting?.kind === 'cast' ? carding.cast(encoder, lighting, caster, { compositor, painting, light }) : null;
-              lays[lay.sheet].layCard(encoder, { edge: edge.view, edgeBox, painting, box, rest: restView, mask: maskView });
+              lays[lay.sheet].layCard(encoder, { edge: edge.view, edgeBox, painting, box, rest: restView, mask: maskView, motion: moving || null });
               gather(encoder, frame, into, index, { kind: 'card', edge: edge.view, edgeBox, rest: restView, box });
               laid = stampBoxUnion(stampBoxUnion(laid, box), shadow);
             }
@@ -326,7 +333,7 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
             const copied = copyFilm(encoder, frame, lay.sheet, films[lay.sheet][lay.film]);
             if (copied) {
               const { view: layer } = copied, reveal = cutOf(encoder, frame, lay.sheet, lay.film, copied.at);
-              pass.draw(encoder, span, { rest: 'paint', motion: !!traced }, { rest: restView, motion: traced, source: layer });
+              pass.draw(encoder, span, { rest: 'paint', motion: traced ? 'over' : null }, { rest: restView, motion: traced, source: layer });
               glows.layAdding(encoder, step.glow && emission ? { compositor, painting, box, emission, glow: step.glow } : null, () => lays[lay.sheet].layGroup(encoder, {
                 layer, painting, index: lay.film, opacity: step.opacity, glaze: true, box, backing: into.backing, rest: restView, paperFromRest: true, mask: maskView, reveal,
               }));
