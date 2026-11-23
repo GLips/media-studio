@@ -69,7 +69,7 @@ final class ScreenTrack: NSObject, SCStreamOutput, SCStreamDelegate {
     let placements: WindowPlacementLog
     do {
       placements = try WindowPlacementLog(
-        url: folder.appendingPathComponent(RecordedWindow.fileName), windowID: window.windowID, start: start,
+        url: folder.appendingPathComponent(RecordedWindow.fileName), windowID: window.windowID, start: start, firstBounds: window.frame,
         firstContentPixels: CGRect(x: 0, y: 0, width: info.contentRect.width * scale, height: info.contentRect.height * scale))
     } catch {
       throw .system(error)
@@ -112,6 +112,8 @@ final class ScreenTrack: NSObject, SCStreamOutput, SCStreamDelegate {
   private var stream: SCStream!
   /// Polls the window's bounds on the capture queue: a window moved without changing its picture sends no frame.
   private var boundsPoll: DispatchSourceTimer?
+  /// The capture queue's own: the poll found the window gone.
+  private var windowGone = false
 
   private init(
     filter: SCContentFilter, configuration: SCStreamConfiguration, writer: TrackWriter, captured: ScreenCaptured, startProblem: String?,
@@ -129,7 +131,14 @@ final class ScreenTrack: NSObject, SCStreamOutput, SCStreamDelegate {
     if let placements {
       let poll = DispatchSource.makeTimerSource(queue: queue)
       poll.schedule(deadline: .now(), repeating: .milliseconds(33))
-      poll.setEventHandler { placements.pollBounds(at: HostClock.now()) }
+      poll.setEventHandler { [weak self] in
+        guard !placements.pollBounds(at: HostClock.now()), let self, !self.windowGone else { return }
+        // SCK may go quiet rather than stop when the window closes: the track watch says so either way.
+        self.windowGone = true
+        let at = (HostClock.now() - placements.start).seconds
+        log("screen: the window closed at \(String(format: "%.1f", at)) s")
+        DispatchQueue.main.async { self.windowClosedAt = at }
+      }
       poll.resume()
       boundsPoll = poll
     }
@@ -169,6 +178,8 @@ final class ScreenTrack: NSObject, SCStreamOutput, SCStreamDelegate {
   /// Why SCK stopped the stream mid-take (a display unplugged, the window closed, the permission revoked); read on
   /// the main thread.
   @MainActor private(set) var stopError: String?
+  /// When the recorded window closed, in seconds from the take's start; read on the main thread.
+  @MainActor private(set) var windowClosedAt: Double?
 
   func stream(_ stream: SCStream, didStopWithError error: Error) {
     log("screen: capture stopped: \(error.localizedDescription)")
@@ -181,26 +192,30 @@ final class ScreenTrack: NSObject, SCStreamOutput, SCStreamDelegate {
 final class WindowPlacementLog {
   private let lines: JSONLines<RecordingWindowLine>
   private let windowID: CGWindowID
-  private let start: CMTime
-  private var bounds: CGRect?
+  let start: CMTime
+  private var bounds: CGRect
   private var contentPixels: CGRect
   private var written: RecordingWindowLine?
 
-  init(url: URL, windowID: CGWindowID, start: CMTime, firstContentPixels: CGRect) throws(JSONLinesFailure) {
+  /// Writes the first placement at once, so the log is never empty: where the window was as the take opened it.
+  init(url: URL, windowID: CGWindowID, start: CMTime, firstBounds: CGRect, firstContentPixels: CGRect) throws(JSONLinesFailure) {
     lines = try JSONLines(url: url)
     self.windowID = windowID
     self.start = start
+    bounds = firstBounds
     contentPixels = firstContentPixels
+    note(at: HostClock.now())
   }
 
-  /// Reads where the window is now; a closed window keeps its last bounds.
-  func pollBounds(at now: CMTime) {
+  /// Reads where the window is now; false once it's gone, when it keeps its last bounds.
+  func pollBounds(at now: CMTime) -> Bool {
     let ids = [UnsafeRawPointer(bitPattern: UInt(windowID))] as CFArray
     guard let found = CGWindowListCreateDescriptionFromArray(ids) as? [[CFString: Any]],
       let boundsDictionary = found.first?[kCGWindowBounds], let polled = CGRect(dictionaryRepresentation: boundsDictionary as! CFDictionary)
-    else { return }
+    else { return false }
     bounds = polled
     note(at: now)
+    return true
   }
 
   func frameContent(_ pixels: CGRect, at time: CMTime) {
@@ -211,7 +226,6 @@ final class WindowPlacementLog {
   func close() { lines.close() }
 
   private func note(at time: CMTime) {
-    guard let bounds else { return }
     let line = RecordingWindowLine(
       // A frame is stamped when it was shown, a poll when it ran: neither may take the log back in time.
       t: max(written?.t ?? 0, (time - start).seconds), boundsPoints: [bounds.minX, bounds.minY, bounds.width, bounds.height].map(Double.init),

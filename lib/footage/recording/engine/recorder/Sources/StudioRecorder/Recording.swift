@@ -123,6 +123,9 @@ final class Recording: RecorderTake {
       }
     }
     if known[.screen] == nil, let error = screen?.stopError { found[.screen] = "stopped: \(error)" }
+    if known[.screen] == nil, found[.screen] == nil, let closed = screen?.windowClosedAt {
+      found[.screen] = "the window closed at \(String(format: "%.1f", closed)) s"
+    }
     return found
   }
 
