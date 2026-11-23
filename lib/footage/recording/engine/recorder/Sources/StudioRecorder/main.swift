@@ -3,6 +3,7 @@
 //
 //   StudioRecorder                         the menu-bar app (run as StudioRecorder.app, so permissions stick)
 //   StudioRecorder --record-seconds 60     record once for 60 s and exit; SIGINT/SIGTERM stop it early
+//   StudioRecorder --granted               print the permissions a fresh process holds, as JSON (see Permissions.swift)
 //   --config <path>                        another config file than ~/Library/Application Support/StudioRecorder/config.json
 import AppKit
 import AVFoundation
@@ -21,25 +22,19 @@ func log(_ message: String) {
   }
 }
 
-/// Asks for every permission at launch, so the first recording doesn't stall on a dialog. Screen Recording and
-/// Input Monitoring take effect only after a relaunch.
-func requestPermissions() async {
-  if !CGPreflightScreenCaptureAccess() { log("asking for Screen Recording"); CGRequestScreenCaptureAccess() }
-  if !CGPreflightListenEventAccess() { log("asking for Input Monitoring"); CGRequestListenEventAccess() }
-  for media in [AVMediaType.video, .audio] where AVCaptureDevice.authorizationStatus(for: media) != .authorized {
-    let granted = await AVCaptureDevice.requestAccess(for: media)
-    log("\(media == .video ? "Camera" : "Microphone") access \(granted ? "granted" : "refused")")
-  }
-}
-
 @MainActor
 final class Recorder {
   enum State { case idle, starting, recording(Recording), stopping }
   private(set) var state = State.idle { didSet { onChange?() } }
   var onChange: (() -> Void)?
   let config: RecorderConfig
+  /// Absent in the command-line test mode, which runs under the terminal's permissions.
+  let permissions: Permissions?
 
-  init(config: RecorderConfig) { self.config = config }
+  init(config: RecorderConfig, permissions: Permissions?) {
+    self.config = config
+    self.permissions = permissions
+  }
 
   var isRecording: Bool { if case .recording = state { true } else { false } }
 
@@ -47,6 +42,12 @@ final class Recorder {
   func toggle() {
     switch state {
     case .idle:
+      // A recording missing a track would be found out only afterwards: ask again instead of recording.
+      if let missing = permissions?.missing.first {
+        log("not recording: \(missing.title) isn't allowed")
+        Task { await permissions?.request(missing) }
+        return
+      }
       state = .starting
       Task {
         do {
@@ -76,11 +77,12 @@ final class MenuBarDot: NSObject {
   private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
   private let recorder: Recorder
   private let toggleItem = NSMenuItem(title: "", action: #selector(toggle), keyEquivalent: "")
+  private let menu = NSMenu()
+  private var permissionItems: [NSMenuItem] = []
 
   init(recorder: Recorder) {
     self.recorder = recorder
     super.init()
-    let menu = NSMenu()
     toggleItem.target = self
     menu.addItem(toggleItem)
     let open = NSMenuItem(title: "Open Recordings Folder", action: #selector(openFolder), keyEquivalent: "")
@@ -90,12 +92,15 @@ final class MenuBarDot: NSObject {
     menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     item.menu = menu
     recorder.onChange = { [weak self] in self?.refresh() }
+    recorder.permissions?.onChange = { [weak self] in self?.refresh() }
     refresh()
   }
 
   private func refresh() {
+    let missing = recorder.permissions?.missing ?? []
     let color: NSColor
     switch recorder.state {
+    case .idle where !missing.isEmpty: color = .systemYellow
     case .idle: color = .tertiaryLabelColor
     case .starting, .stopping: color = .systemOrange
     case .recording: color = .systemRed
@@ -105,11 +110,27 @@ final class MenuBarDot: NSObject {
       NSBezierPath(ovalIn: rect.insetBy(dx: 2, dy: 2)).fill()
       return true
     }
-    item.button?.toolTip = "Studio Recorder (\(recorder.config.hotkey))"
+    item.button?.toolTip = missing.isEmpty
+      ? "Studio Recorder (\(recorder.config.hotkey))"
+      : "Studio Recorder needs \(missing.map(\.title).joined(separator: ", "))"
+    // Each missing permission is a menu item at the top that asks for it again.
+    for old in permissionItems { menu.removeItem(old) }
+    permissionItems = missing.map { permission in
+      let item = NSMenuItem(title: "Allow \(permission.title)…", action: #selector(allow(_:)), keyEquivalent: "")
+      item.target = self
+      item.representedObject = permission.rawValue
+      return item
+    }
+    for (index, permissionItem) in permissionItems.enumerated() { menu.insertItem(permissionItem, at: index) }
+    if !permissionItems.isEmpty { permissionItems.append(.separator()); menu.insertItem(permissionItems.last!, at: missing.count) }
     toggleItem.title = recorder.isRecording ? "Stop Recording (\(recorder.config.hotkey))" : "Start Recording (\(recorder.config.hotkey))"
   }
 
   @objc private func toggle() { recorder.toggle() }
+  @objc private func allow(_ sender: NSMenuItem) {
+    guard let permission = (sender.representedObject as? String).flatMap(Permission.init(rawValue:)) else { return }
+    Task { await recorder.permissions?.request(permission) }
+  }
   @objc private func openFolder() {
     try? FileManager.default.createDirectory(at: recorder.config.recordingsURL, withIntermediateDirectories: true)
     NSWorkspace.shared.open(recorder.config.recordingsURL)
@@ -119,6 +140,11 @@ final class MenuBarDot: NSObject {
 let arguments = CommandLine.arguments
 func argument(_ name: String) -> String? {
   arguments.firstIndex(of: name).flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
+}
+
+if arguments.contains("--granted") {
+  printGrantedPermissions()
+  exit(0)
 }
 
 let config: RecorderConfig
@@ -131,10 +157,11 @@ do {
 
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
-let recorder = MainActor.assumeIsolated { Recorder(config: config) }
+let testSeconds = argument("--record-seconds").flatMap(Double.init)
+let recorder = MainActor.assumeIsolated { Recorder(config: config, permissions: testSeconds == nil ? Permissions() : nil) }
 var keepAlive: [AnyObject] = []
 
-if let seconds = argument("--record-seconds").flatMap(Double.init) {
+if let seconds = testSeconds {
   // One recording, then exit: how the sync and crash tests run without the menu bar.
   MainActor.assumeIsolated {
     var stopScheduled = false
@@ -164,7 +191,7 @@ if let seconds = argument("--record-seconds").flatMap(Double.init) {
     } catch {
       log("\(error)")
     }
-    Task { await requestPermissions() }
+    Task { await recorder.permissions?.requestMissing() }
   }
 }
 app.run()
