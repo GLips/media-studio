@@ -17,7 +17,9 @@ async function resolveStudioReviewTarget(target: string, plan: boolean): Promise
   const { resolveStudioProject, STUDIO_PROJECTS_DIR } = await import('#lib/platform/project/engine/studio-project.ts');
   const { listProjectArtifacts } = await import('#lib/output/review/engine/project-artifacts.ts');
   const { projectMediaTypeOf } = await import('#lib/output/review/engine/project-media.ts');
-  const file = resolve(target);
+  // A path from here, or one inside a project named as `studio` commands name it: rec-proto/out/video.mp4.
+  const [first, ...within] = target.split('/');
+  const file = existsSync(resolve(target)) || !within.length ? resolve(target) : join(resolveStudioProject(first), ...within);
   if (existsSync(file) && statSync(file).isFile()) {
     if (plan) throw new Error(`--plan opens a project's plan, not a file: give the project, as in studio review open <p> --plan`);
     // With no work/projects/ (a fresh clone), every file is outside it.
@@ -27,6 +29,7 @@ async function resolveStudioReviewTarget(target: string, plan: boolean): Promise
     }
     return { route: `/projects/${encodeURIComponent(project)}/artifacts/${path.map(encodeURIComponent).join('/')}`, project, artifacts: listProjectArtifacts(project) };
   }
+  if (within.length && !existsSync(file)) throw new Error(`${target}: there's no ${file}`);
   const [project, ...rest] = relative(STUDIO_PROJECTS_DIR, resolveStudioProject(target)).split(sep);
   if (project === '..' || rest.length) throw new Error(`${target} isn't a project under work/projects/`);
   if (plan) {
@@ -39,7 +42,7 @@ async function resolveStudioReviewTarget(target: string, plan: boolean): Promise
 }
 
 const reviewOpenArgs = {
-  target: { type: 'positional', required: true, description: 'A project, or a render or still inside one (.mp4, .webm, .mov, .png, .jpg, .webp)' },
+  target: { type: 'positional', required: true, description: 'A project, or a render or still inside one (.mp4, .webm, .mov, .png, .jpg, .webp), as a path or from the project: <p>/out/video.mp4' },
   plan: { type: 'boolean', description: "Hand the project's plan (storyboard.ts) over for review and open its page: until then its unsigned scenes wait on no one" },
   port: { type: 'string', default: '4317', description: 'Port the studio app is on, or is served on' },
   open: { type: 'boolean', default: true, description: 'Open it in the browser (--no-open to just serve)' },
