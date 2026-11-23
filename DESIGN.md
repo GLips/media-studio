@@ -66,6 +66,7 @@ spacing:
   row: "24px"
   bar: "28px"
   side-width: "360px"
+  queue-width: "240px"
 components:
   button-primary:
     backgroundColor: "{colors.accent}"
@@ -219,6 +220,7 @@ Full-viewport working screens, no page scroll: a CSS grid of a bar, a body that 
 
 - **Plan page:** header row; then two columns, the player (`minmax(0, 1fr)`) and the scene panel (`minmax(440px, 560px)`) split by a 1px seam; the thread at the side width (360px) on the right; the scene strip and transport along the foot.
 - **Review page:** stage, a 28px transport bar, then the dock of lanes; the thread beside the stage at 360px.
+- **Decisions page:** the queue of the project's decisions down the left at 240px, then the line the decision is for over its candidates and their transport, and the thread at 360px.
 - **Dashboard and project pages:** lists capped at 960px so a row's end readouts stay near its name.
 
 Spacing is drawn from three steps, 4px (tight), 8px (gap) and 12px (inset), with 2px for hairline nudges and 24px as a list row's height and a panel's padding. Rows are 24px, dense rows 20px, bars 28px. The plan's scene panel pads 24px and separates its fields by 24px; a field's label sits 4px above its text.

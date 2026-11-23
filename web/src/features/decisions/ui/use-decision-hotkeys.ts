@@ -12,12 +12,12 @@ const decisionKey = (hotkey: UseHotkeyDefinition['hotkey'], name: string, callba
 export const decisionCandidateKeyName = (key: string) => `Candidate ${key.toUpperCase()}`;
 
 /**
- * Lightroom's culling on the decisions screen: arrows and `1`–`9` move focus (time kept), `P` `X` `U` judge it,
- * `Enter` two-ups it against the pick, `Escape` returns to the survey, `F` shows picks only, `Mod+Enter` signs off.
- * Left out: judging and signing off once closed, number keys past the last candidate, and focus keys with none shown.
+ * Lightroom's culling: `←` `→` `1`–`9` move focus, `P` `X` `U` judge it, `Enter` two-ups it, `Escape` surveys, `F`
+ * shows picks only, `Mod+Enter` signs off and opens the next open decision; `↑` `↓` step the queue, as the plan's
+ * scenes. Left out: judging once closed, keys past the last candidate or either end of the queue.
  */
 export function useDecisionHotkeys(screen: DecisionScreenValue) {
-  const { decision, shown, focused, pair, search, setSearch, decide, playback, focus, openTwoUp } = screen;
+  const { decision, shown, focused, pair, search, setSearch, decide, signOff, playback, focus, openTwoUp, pass, topic, openDecision } = screen;
   const twoUp = search.view === 'two';
   const keys = (twoUp ? decision.candidates : shown).map((c) => c.key);
   const stepTo = (from: string) => (direction: -1 | 1) => () => {
@@ -32,6 +32,10 @@ export function useDecisionHotkeys(screen: DecisionScreenValue) {
       decisionKey(String(i + 1) as UseHotkeyDefinition['hotkey'], decisionCandidateKeyName(c.key), () => focus(c.key))),
     decisionKey('F', 'Picks only', () => setSearch({ filter: search.filter === 'picks' ? undefined : 'picks' })),
   ];
+  const at = pass.decisions.findIndex((d) => d.topic === topic);
+  const before = pass.decisions[at - 1], after = pass.decisions.at(at + 1);
+  if (before) defs.push(decisionKey('ArrowUp', 'Previous decision', () => openDecision(before.topic)));
+  if (after) defs.push(decisionKey('ArrowDown', 'Next decision', () => openDecision(after.topic)));
   // Escape, not a letter: the cards are lettered A, B, … so a letter key reads as a candidate. Not from a field, which
   // Escape leaves.
   if (twoUp) defs.push(decisionKey('Escape', 'Survey', () => openTwoUp(null), true));
@@ -53,7 +57,7 @@ export function useDecisionHotkeys(screen: DecisionScreenValue) {
       decisionKey('X', 'Reject', verdict('reject')),
       decisionKey('U', 'Unflag', verdict(null)),
       // Not from inside the thread's composer, whose own Mod+Enter saves the note.
-      decisionKey('Mod+Enter', 'Sign off', () => decide([{ op: 'decision.close', id: decision.id }]), true),
+      decisionKey('Mod+Enter', 'Sign off', signOff, true),
     );
   }
   useHotkeys(defs);

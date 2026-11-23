@@ -42,11 +42,12 @@ export function reviewDecisionsInStoryOrder(decisions: readonly ReviewDecision[]
 }
 
 /**
- * The decisions one pass walks, in story order: every topic open now, and each in `walked`, the topics shown or open
- * since the pass began. So one signed off stays in place and "3 of 12" holds still, while one posted mid-pass joins.
+ * The decisions one pass walks, in story order, from `topics` (reviewDecisionTopics): every one open now, and each in
+ * `walked`, the topics shown or open since the pass began. So one signed off stays in place and "3 of 12" holds
+ * still, while one posted mid-pass joins.
  */
-export function reviewDecisionPass(decisions: readonly ReviewDecision[], walked: ReadonlySet<string>, order: ReviewStoryOrder): ReviewDecision[] {
-  return reviewDecisionsInStoryOrder(reviewDecisionTopics(decisions).filter((d) => d.state === 'open' || walked.has(d.topic)), order);
+export function reviewDecisionPass(topics: readonly ReviewDecision[], walked: ReadonlySet<string>, order: ReviewStoryOrder): ReviewDecision[] {
+  return reviewDecisionsInStoryOrder(topics.filter((d) => d.state === 'open' || walked.has(d.topic)), order);
 }
 
 /**

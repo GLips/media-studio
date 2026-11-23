@@ -1,6 +1,7 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import type { ReviewCandidate, ReviewDecision } from '#lib/output/review/models/review-threads.ts';
 import type { DecodedReviewOp, ReviewOps } from '#web/features/review/index.ts';
+import type { DecisionPass } from '../controllers/decision-pass.ts';
 import type { DecisionSearch, SetDecisionSearch } from '../controllers/decision-search.ts';
 import type { ReviewDecisionView } from '../controllers/decision-queries.ts';
 import type { DecisionPlayback } from './decision-playback.ts';
@@ -11,6 +12,8 @@ export type DecisionScreenValue = {
   topic: string;
   view: ReviewDecisionView;
   decision: ReviewDecision;
+  /** The queue this decision is one of. */
+  pass: DecisionPass;
   /** The candidates the survey shows: all, or with `F` only the picks. */
   shown: readonly ReviewCandidate[];
   playback: DecisionPlayback;
@@ -21,8 +24,12 @@ export type DecisionScreenValue = {
   pair: DecisionTwoUpPair;
   /** Verdicts, sign-off and the thread's notes, sent as the review's ops. */
   ops: ReviewOps;
-  /** Sends a verdict or the sign-off unless the decision would refuse it (reviewDecisionRefusalOf). */
-  decide: (ops: DecodedReviewOp[]) => void;
+  /** Sends a verdict or the sign-off unless the decision would refuse it (reviewDecisionRefusalOf); false when refused. */
+  decide: (ops: DecodedReviewOp[]) => boolean;
+  /** Signs this decision off and opens the pass's next open one, if any is left. */
+  signOff: () => void;
+  /** Opens another decision of the pass, by topic. */
+  openDecision: (topic: string) => void;
   /** Hears `key` from the time now; on the two-up, swaps it in if it isn't on show. */
   focus: (key: string) => void;
   /** Opens the two-up on `key`, or returns to the survey with null. */

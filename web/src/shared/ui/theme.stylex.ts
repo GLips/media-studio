@@ -100,6 +100,8 @@ export const spacing = stylex.defineVars({
   laneGutter: '20px',
   /** The thread beside the stage. */
   sideWidth: '360px',
+  /** The decisions' queue down the left of their screen. */
+  queueWidth: '240px',
 });
 
 export const radius = stylex.defineVars({
