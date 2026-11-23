@@ -18,7 +18,10 @@ const styles = stylex.create({
 /** The day and time footage began, as Graham reads it. */
 const recordedOn = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
-/** The item's part of the bar: `library / title`, when it was recorded, its length, and the projects that use it. */
+/**
+ * The item's part of the bar: `library / title`, when it was recorded, its length, the window its screen recorded,
+ * and the projects that use it.
+ */
 export function LibraryItemHeader() {
   const { view } = useLibraryItemScreen();
   const { item, usedBy, media } = view;
@@ -31,6 +34,11 @@ export function LibraryItemHeader() {
       <Readout>{recordedOn(item.recordedAt ?? item.addedAt)}</Readout>
       <Readout>{formatReviewClock(item.durationSeconds)}</Readout>
       <Readout>{Object.keys(item.tracks).join('+')}</Readout>
+      {Object.values(item.tracks).flatMap(({ window }) => (window ? [window] : [])).map(({ title, app }) => (
+        <Text component="span" size="sm" key={`${app} ${title}`} title={`The screen track recorded this window of ${app}`} {...stylex.props(styles.used)}>
+          {title ? `${title} — ${app}` : app}
+        </Text>
+      ))}
       {usedBy.length > 0 && (
         <Text component="span" size="sm" {...stylex.props(styles.used)}>
           in {usedBy.map((project, i) => (
