@@ -247,3 +247,42 @@ test('a leaf folding over lays its card shaded by the light, then turned away it
   assert.deepEqual(laidAt(0.5).slice(1), [null, null, 'rim']);
   assert.deepEqual(laidAt(0.75).slice(1).map((each) => each?.split(' ')[0] ?? null), ['card', null, 'rim']);
 });
+
+/** A sky, and a book: an own sheet holding a cover and two cards standing on it, a tab and a flag, each its own sheet. */
+const book = painting({
+  default: function bookDocument(): PaintingDocument {
+    const card = (key: string) => ({ key, sheet: { kind: 'own', paper: CARD_PAPER } as const, children: [layer(`${key}-face`)] });
+    return {
+      widthPx: 320, heightPx: 240, paper: { color: '#f4f2ed', absorbency: 0.5 }, medium: 'watercolour',
+      layers: [layer('sky'), { key: 'book', sheet: { kind: 'own', paper: CARD_PAPER }, children: [layer('cover'), card('tab'), card('flag')] }],
+    };
+  },
+});
+
+test('a card turned over lays the cards standing on it first, each whole and last one first, under its blank back', () => {
+  const props = (angle: number): PaintedShotProps => ({
+    camera, span: SPAN,
+    planes: [{
+      id: 'front', depth: 1, source: layersOf(book, ['sky', 'book']),
+      occurrences: { book: { plays: [{ clip: { kind: 'fold', angle }, clock: { at: 0 }, origin: 'turn' }] }, flag: { visibility: 0.5 } },
+    }],
+  });
+  const laidAt = (angle: number) => {
+    const { compiled, plan } = planAt(props(angle), paintMoment(0));
+    const steps = plan.order.map((index, place) => {
+      const step = compiled.steps[index];
+      return `${step.kind} ${paintingStepNode(compiled, step)}${plan.steps[place] ? '' : ' (nothing)'}`;
+    });
+    return { steps, fades: plan.fades.map(({ node, first, last }) => `${node} ${first}..${last}`), key: plan.key };
+  };
+  const open = laidAt(0.4), shut = laidAt(2.4);
+  assert.deepEqual(open.steps, [
+    'film sky', 'card book', 'film cover', 'rim book', 'card tab', 'film tab-face', 'rim tab', 'card flag', 'film flag-face', 'rim flag',
+  ]);
+  // Turned past upright, its paint and its cards' faces turn away; the flag's fade follows its run.
+  assert.deepEqual(shut.steps, [
+    'film sky', 'card flag', 'film flag-face (nothing)', 'rim flag', 'card tab', 'film tab-face (nothing)', 'rim tab', 'card book', 'film cover (nothing)', 'rim book',
+  ]);
+  assert.deepEqual([open.fades, shut.fades], [['flag 7..9'], ['flag 1..3']]);
+  assert.notEqual(shut.key, open.key);
+});
