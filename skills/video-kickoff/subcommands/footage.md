@@ -110,7 +110,7 @@ Render the delivery (`studio render <p>`) and check it yourself:
 - Every line is heard whole: run `studio transcribe` on the render and compare it with the plan's lines; a missing
   first or last word is a clipped cut.
 - Every layout switch lands where the speaker starts or stops showing something (`studio look <p> --video
-  out/video.mp4 --strip a:b`).
+  out/video.mp4 --strip a:b --step 1`).
 - No private range shows that the speaker didn't clear.
 
 Hand it over for review (`studio-review`), saying what the cut left out and which pickups would improve it. Done
