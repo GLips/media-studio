@@ -7,6 +7,8 @@ test('a follower over [240, 312) parks just before its span and follows inside i
   const phases = [0, 240 - LINKED_MEDIA_PREROLL_FRAMES - 1, 240 - LINKED_MEDIA_PREROLL_FRAMES, 239, 240, 311, 312].map((f) => linkedMediaPhaseAt(span, f));
   assert.deepEqual(phases, ['away', 'away', 'preroll', 'preroll', 'inside', 'inside', 'away']);
   assert.equal(linkedMediaPhaseAt(null, 0), 'inside');
+  // A range on a longer clock holds its last picture past its end instead.
+  assert.deepEqual([311, 312, 900].map((f) => linkedMediaPhaseAt({ ...span, holdAfter: true }, f)), ['inside', 'held', 'held']);
 });
 
 test('a follower hides through every seek and shows only on the leader frame: exactly paused, within one playing', () => {

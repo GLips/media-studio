@@ -123,13 +123,16 @@ export function createLinkedMediaClock({ frameNow, steer }: LinkedMediaClockOpti
     // would never be heard landing. `loadedmetadata` aims it again.
     if (phase === 'away' || element.readyState < HTMLMediaElement.HAVE_METADATA) return showLinkedFollower(record, false);
     // Pre-rolled to its first picture, so the entering frame is already decoded when the leader reaches `from`.
-    const target = Math.max(0, frameOf(phase === 'preroll' && span ? span.from : frame));
+    let at = frame;
+    if (span && phase === 'preroll') at = span.from;
+    if (span && phase === 'held') at = span.end - 1;
+    const target = Math.max(0, frameOf(at));
     const move = linkedMediaFollowerMove(record, target, forward);
     if (move.seekTo !== null) {
       restartLinkedFollower(record, move.seekTo);
       element.currentTime = linkedMediaTimeOf(move.seekTo, fps);
     }
-    showLinkedFollower(record, phase === 'inside' && move.shown);
+    showLinkedFollower(record, phase !== 'preroll' && move.shown);
     if (forward && leader) {
       const rate = leader.playbackRate * move.rate;
       if (element.playbackRate !== rate) element.playbackRate = rate;
@@ -206,7 +209,7 @@ export function createLinkedMediaClock({ frameNow, steer }: LinkedMediaClockOpti
         const check = () => {
           const frame = frameNow();
           const followersShow = [...followers].every(({ follower, shown }) => shown
-            || follower.element.readyState < HTMLMediaElement.HAVE_METADATA || linkedMediaPhaseAt(follower.span, frame) !== 'inside');
+            || follower.element.readyState < HTMLMediaElement.HAVE_METADATA || ['away', 'preroll'].includes(linkedMediaPhaseAt(follower.span, frame)));
           const landed = leader !== null && !leader.seeking && leader.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && followersShow;
           if (landed || ++waited > LINKED_MEDIA_SETTLE_FRAMES) resolve();
           else requestAnimationFrame(check);
@@ -235,9 +238,10 @@ export function useLinkedMediaFollower(
   const mapped = useEffectEvent(frameOf);
   const from = span?.from;
   const end = span?.end;
+  const holdAfter = span?.holdAfter;
   useEffect(() => {
     if (!element) return undefined;
-    const followed = from === undefined || end === undefined ? null : { from, end };
+    const followed = from === undefined || end === undefined ? null : { from, end, ...(holdAfter && { holdAfter }) };
     return clock.addFollower({ element, fps, span: followed, frameOf: (frame) => mapped(frame), ...(offGrid && { offGrid }) });
-  }, [clock, element, fps, from, end, offGrid]);
+  }, [clock, element, fps, from, end, holdAfter, offGrid]);
 }
