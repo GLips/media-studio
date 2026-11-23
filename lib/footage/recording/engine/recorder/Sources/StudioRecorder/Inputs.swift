@@ -21,10 +21,13 @@ enum RecorderInputs {
 
   static func screens() -> [NSScreen] { NSScreen.screens }
 
-  /// Whether the window server still has the window: an id is never reused while the window lives.
-  static func windowIsOpen(_ id: UInt32) -> Bool {
-    let ids = [UnsafeRawPointer(bitPattern: UInt(id))] as CFArray
-    return !((CGWindowListCreateDescriptionFromArray(ids) as? [Any]) ?? []).isEmpty
+  /// Whether the picked window is still open: a window with its id, of its app (see RecorderWindowChoice).
+  static func windowIsOpen(_ window: WindowConfig) -> Bool {
+    let ids = [UnsafeRawPointer(bitPattern: UInt(window.id))] as CFArray
+    guard let found = (CGWindowListCreateDescriptionFromArray(ids) as? [[CFString: Any]])?.first,
+      let pid = found[kCGWindowOwnerPID] as? pid_t
+    else { return false }
+    return NSRunningApplication(processIdentifier: pid)?.bundleIdentifier == window.bundleID
   }
 
   /// The display a screen config names: `main`, or the first whose name contains it.

@@ -12,7 +12,7 @@ export const StudioRecorderConfig = Schema.Struct({
   screen: Schema.Struct({
     display: Schema.String,
     /** A picked window, recorded instead of `display`, the display it was on, until it closes. */
-    window: Schema.optionalKey(Schema.Struct({ id: Schema.Finite, title: Schema.String, app: Schema.String })),
+    window: Schema.optionalKey(Schema.Struct({ id: Schema.Finite, bundleID: Schema.String, title: Schema.String, app: Schema.String })),
     fps: Schema.Finite, bitrateMbps: Schema.Finite, showsCursor: Schema.Boolean,
   }),
   camera: Schema.optionalKey(Schema.Struct({

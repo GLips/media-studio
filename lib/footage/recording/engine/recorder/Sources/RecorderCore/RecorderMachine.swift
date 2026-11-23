@@ -77,16 +77,19 @@ public enum RecorderScreenChoice: Equatable, Sendable {
   case window(RecorderWindowChoice)
 }
 
-/// A picked window. `id` is the window server's, which lasts only as long as the window: once it closes, takes
-/// record `display`, the one it was on when picked, and say so.
+/// A picked window. `id` is the window server's, which lasts only as long as the window and starts over when the
+/// window server does, so a window is the picked one only while both its id and its app's `bundleID` match. Once it
+/// closes, takes record `display`, the one it was on when picked, and say so.
 public struct RecorderWindowChoice: Equatable, Sendable {
   public let id: UInt32
+  public let bundleID: String
   public let title: String
   public let app: String
   public let display: String
 
-  public init(id: UInt32, title: String, app: String, display: String) {
+  public init(id: UInt32, bundleID: String, title: String, app: String, display: String) {
     self.id = id
+    self.bundleID = bundleID
     self.title = title
     self.app = app
     self.display = display

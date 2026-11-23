@@ -98,7 +98,7 @@ var atIdle: RecorderStep<FakeTake> { State.launch(missing: []) }
   #expect(next.trackProblems.isEmpty)
 }
 
-let notes = RecorderWindowChoice(id: 42, title: "Notes", app: "Notes", display: "LG UltraFine")
+let notes = RecorderWindowChoice(id: 42, bundleID: "com.apple.Notes", title: "Notes", app: "Notes", display: "LG UltraFine")
 
 @Test func aWindowPickedInThePickerIsSavedForTheNextTakeAndTheKeyStillRecordsWhilePicking() {
   var (state, effects) = run(atIdle, [.screenPickerRequested, .toggleRequested])

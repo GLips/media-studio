@@ -63,14 +63,16 @@ final class ScreenPicker: NSObject, SCContentSharingPickerObserver {
 
 /// What the picker picked, read off its filter where it arrives, so only plain values cross to the main thread.
 private enum PickedContent: Sendable {
-  case window(id: CGWindowID, title: String, app: String, frame: CGRect)
+  case window(id: CGWindowID, bundleID: String, title: String, app: String, frame: CGRect)
   case display(CGDirectDisplayID)
 
   init?(_ filter: SCContentFilter) {
     switch filter.style {
     case .window:
       guard let window = filter.includedWindows.first else { return nil }
-      self = .window(id: window.windowID, title: window.title ?? "", app: window.owningApplication?.applicationName ?? "", frame: window.frame)
+      let app = window.owningApplication
+      self = .window(
+        id: window.windowID, bundleID: app?.bundleIdentifier ?? "", title: window.title ?? "", app: app?.applicationName ?? "", frame: window.frame)
     case .display:
       guard let display = filter.includedDisplays.first else { return nil }
       self = .display(display.displayID)
@@ -81,8 +83,8 @@ private enum PickedContent: Sendable {
 
   @MainActor var choice: RecorderScreenChoice {
     switch self {
-    case .window(let id, let title, let app, let frame):
-      .window(RecorderWindowChoice(id: id, title: title, app: app, display: displayName(holding: frame)))
+    case .window(let id, let bundleID, let title, let app, let frame):
+      .window(RecorderWindowChoice(id: id, bundleID: bundleID, title: title, app: app, display: displayName(holding: frame)))
     case .display(let id):
       .display(name: displayName(of: id))
     }

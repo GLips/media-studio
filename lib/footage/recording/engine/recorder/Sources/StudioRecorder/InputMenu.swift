@@ -81,7 +81,7 @@ final class InputMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
     let display = RecorderInputs.screen(named: screen.display)?.localizedName ?? "\(screen.display) (not connected)"
     guard let window = screen.window else { return display }
     let named = window.title.isEmpty ? window.app : "\(window.title) — \(window.app)"
-    return RecorderInputs.windowIsOpen(window.id) ? named : "\(named) (closed: records \(display))"
+    return RecorderInputs.windowIsOpen(window) ? named : "\(named) (closed: records \(display))"
   }
 
   /// A track left out of config.json has no picker: turning it back on means its settings, which live there.

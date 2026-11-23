@@ -85,6 +85,7 @@ struct ScreenConfig: Codable {
 /// A window picked in the menu, by the window server's id: see RecorderWindowChoice.
 struct WindowConfig: Codable {
   var id: UInt32
+  var bundleID: String
   var title: String
   var app: String
 }
@@ -92,7 +93,7 @@ struct WindowConfig: Codable {
 extension ScreenConfig {
   var choice: RecorderScreenChoice {
     guard let window else { return .display(name: display) }
-    return .window(RecorderWindowChoice(id: window.id, title: window.title, app: window.app, display: display))
+    return .window(RecorderWindowChoice(id: window.id, bundleID: window.bundleID, title: window.title, app: window.app, display: display))
   }
 
   mutating func pick(_ choice: RecorderScreenChoice) {
@@ -102,7 +103,7 @@ extension ScreenConfig {
       window = nil
     case .window(let picked):
       display = picked.display
-      window = WindowConfig(id: picked.id, title: picked.title, app: picked.app)
+      window = WindowConfig(id: picked.id, bundleID: picked.bundleID, title: picked.title, app: picked.app)
     }
   }
 }

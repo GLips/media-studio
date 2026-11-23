@@ -26,7 +26,7 @@ final class ScreenTrack: NSObject, SCStreamOutput, SCStreamDelegate {
     do { content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false) } catch { throw .system(error) }
     var startProblem: String?
     if let picked = config.window {
-      if let window = content.windows.first(where: { $0.windowID == picked.id }) {
+      if let window = content.windows.first(where: { $0.windowID == picked.id && $0.owningApplication?.bundleIdentifier == picked.bundleID }) {
         return try windowTrack(window, picked: picked, config: config, folder: folder, start: start)
       }
       startProblem = "the picked window \"\(picked.title)\" (\(picked.app)) had closed: recorded its display, \(config.display), instead"
