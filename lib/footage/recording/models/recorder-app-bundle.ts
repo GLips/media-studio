@@ -49,7 +49,7 @@ export const recorderBundlePropertyList = (host: RecorderInstallHost): string =>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1</string>
   <key>CFBundleVersion</key><string>1</string>
-  <key>LSMinimumSystemVersion</key><string>15.0</string>
+  <key>LSMinimumSystemVersion</key><string>15.2</string>
   <key>LSUIElement</key><true/>
   <key>NSCameraUsageDescription</key><string>Records the camera as its own track.</string>
   <key>NSMicrophoneUsageDescription</key><string>Records the mic as its own track.</string>

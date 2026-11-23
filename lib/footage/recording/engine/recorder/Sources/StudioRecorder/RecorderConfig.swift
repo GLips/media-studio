@@ -1,7 +1,8 @@
 // The recorder's settings, in a JSON file. First launch writes the defaults (Graham's desk: the LG display, the
-// A6400 through the Cam Link, the Scarlett Solo). The menu picks the screen, camera and mic and writes them back;
-// everything else is edited in the file.
+// A6400 through the Cam Link, the Scarlett Solo). The menu picks the screen (a display or a window), camera and mic
+// and writes them back; everything else is edited in the file.
 import Foundation
+import RecorderCore
 
 struct RecorderConfig: Codable {
   /// The global key that starts and stops a recording, as `ctrl+opt+cmd+r`; see HotKey.swift for the names.
@@ -71,11 +72,39 @@ func settingForDevice<Value>(_ table: [String: Value], named deviceName: String)
 }
 
 struct ScreenConfig: Codable {
-  /// `main`, or part of a display's name as System Settings shows it; the menu writes the whole name.
+  /// `main`, or part of a display's name as System Settings shows it; the menu writes the whole name. With a
+  /// `window`, the display it was on when picked, which a take records once the window has closed.
   var display: String
+  /// Absent records the whole display.
+  var window: WindowConfig?
   var fps: Int
   var bitrateMbps: Double
   var showsCursor: Bool
+}
+
+/// A window picked in the menu, by the window server's id: see RecorderWindowChoice.
+struct WindowConfig: Codable {
+  var id: UInt32
+  var title: String
+  var app: String
+}
+
+extension ScreenConfig {
+  var choice: RecorderScreenChoice {
+    guard let window else { return .display(name: display) }
+    return .window(RecorderWindowChoice(id: window.id, title: window.title, app: window.app, display: display))
+  }
+
+  mutating func pick(_ choice: RecorderScreenChoice) {
+    switch choice {
+    case .display(let name):
+      display = name
+      window = nil
+    case .window(let picked):
+      display = picked.display
+      window = WindowConfig(id: picked.id, title: picked.title, app: picked.app)
+    }
+  }
 }
 
 struct CameraConfig: Codable {

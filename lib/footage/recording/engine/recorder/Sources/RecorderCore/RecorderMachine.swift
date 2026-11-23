@@ -6,10 +6,12 @@
 // library, in it, left in the recordings folder, or being thrown away.
 import Foundation
 
-/// A take as the machine sees it: its folder and when it began. The app's take is its `Recording`.
+/// A take as the machine sees it: its folder, when it began, and what was already wrong as it began (a picked
+/// window that had closed). The app's take is its `Recording`.
 public protocol RecorderTake {
   var folder: URL { get }
   var startedAt: Date { get }
+  var startProblems: [RecorderTrack: String] { get }
 }
 
 /// A recording's tracks, as recording.json's `tracks`, `leftOut` and `problems` key them.
@@ -28,6 +30,9 @@ public enum RecorderPhase<Take: RecorderTake> {
   /// A screen or input grant arrived: a new copy of the app is opening, and this one quits once it has.
   case relaunching(missing: [Permission])
   case idle
+  /// The system's window and display picker is up, from the menu; what it picks is what the screen track records
+  /// from the next take on.
+  case pickingScreen
   /// Opening the tracks. A press is ignored, so a double press can't start a second take; a stop or quit asked
   /// for meanwhile waits for the take to start, then ends it.
   case starting(then: AfterStart)
@@ -42,7 +47,7 @@ public enum RecorderPhase<Take: RecorderTake> {
 
 /// The phases by name, so a test can check every one is reachable.
 public enum RecorderPhaseName: CaseIterable, Sendable {
-  case needsPermission, relaunching, idle, starting, recording, stopping, exited
+  case needsPermission, relaunching, idle, pickingScreen, starting, recording, stopping, exited
 }
 
 /// What runs alongside a phase, started and stopped as the state enters and leaves it.
@@ -57,16 +62,36 @@ public enum RecorderActivity: CaseIterable, Sendable {
   case permissionPoll
 }
 
-public struct RecorderInputPick: Equatable, Sendable {
-  public let kind: RecorderInputKind
-  public let name: String
-  public init(kind: RecorderInputKind, name: String) {
-    self.kind = kind
-    self.name = name
-  }
+/// An input picked in the menu, by name as the system shows it, or the screen's picked content.
+public enum RecorderInputPick: Equatable, Sendable {
+  case mic(String)
+  case camera(String)
+  case screen(RecorderScreenChoice)
 }
 
 public enum RecorderInputKind: String, Sendable { case mic, camera, screen }
+
+/// What the screen track records: a whole display, or one window.
+public enum RecorderScreenChoice: Equatable, Sendable {
+  case display(name: String)
+  case window(RecorderWindowChoice)
+}
+
+/// A picked window. `id` is the window server's, which lasts only as long as the window: once it closes, takes
+/// record `display`, the one it was on when picked, and say so.
+public struct RecorderWindowChoice: Equatable, Sendable {
+  public let id: UInt32
+  public let title: String
+  public let app: String
+  public let display: String
+
+  public init(id: UInt32, title: String, app: String, display: String) {
+    self.id = id
+    self.title = title
+    self.app = app
+    self.display = display
+  }
+}
 
 /// A recent take, as the menu lists it. Named by its folder in the recordings folder, which it leaves once added.
 public struct RecorderRecentTake: Equatable, Sendable {
@@ -165,6 +190,7 @@ extension RecorderPhase {
     case .needsPermission: .needsPermission
     case .relaunching: .relaunching
     case .idle: .idle
+    case .pickingScreen: .pickingScreen
     case .starting: .starting
     case .recording: .recording
     case .stopping: .stopping
@@ -212,6 +238,11 @@ public enum RecorderEvent<Take: RecorderTake> {
   case menuOpened
   case menuClosed
   case inputPicked(RecorderInputPick)
+  /// The menu's Choose Window or Display item.
+  case screenPickerRequested
+  case screenPickerChose(RecorderScreenChoice)
+  /// The picker closed with nothing picked, or couldn't open (`failure`).
+  case screenPickerClosed(failure: String?)
   /// The menu's Allow item for a missing permission.
   case allowRequested(Permission)
   /// What this process holds after a prompt: camera and mic grants show here, screen and input never do.
@@ -255,6 +286,10 @@ public enum RecorderEffect<Take: RecorderTake> {
   case throwAway(URL)
   /// Writes the pick to config.json, for the next take.
   case saveInputPick(RecorderInputPick)
+  /// Shows the system's window and display picker; sends `.screenPickerChose` or `.screenPickerClosed`.
+  case presentScreenPicker
+  /// Takes the picker down unanswered: a take or a quit came first.
+  case dismissScreenPicker
   /// Lets a quit that waited on a take go ahead.
   case replyToQuit
   /// Sends `.stopRequested` once the command-line take has run its length.
@@ -290,6 +325,10 @@ extension RecorderState {
     case (.toggleRequested, .idle):
       phase = .starting(then: .record)
       return [.beginTake]
+    case (.toggleRequested, .pickingScreen):
+      // The key records at once, as it always does: with what was picked before.
+      phase = .starting(then: .record)
+      return [.dismissScreenPicker, .beginTake]
     case (.toggleRequested, .recording(let take, _)), (.stopRequested, .recording(let take, _)):
       phase = .stopping(take, quitAfter: false)
       return [.endTake(take, problems: trackProblems)]
@@ -300,6 +339,9 @@ extension RecorderState {
     case (.quitRequested, .needsPermission), (.quitRequested, .relaunching), (.quitRequested, .idle):
       phase = .exited
       return []
+    case (.quitRequested, .pickingScreen):
+      phase = .exited
+      return [.dismissScreenPicker]
     case (.quitRequested, .starting):
       phase = .starting(then: .quit)
       return []
@@ -311,17 +353,20 @@ extension RecorderState {
       return []
 
     case (.takeStarted(let take), .starting(let then)):
-      trackProblems = [:]
+      trackProblems = take.startProblems
       libraryFailure = nil
       throwAwayFailure = nil
-      let started = RecorderEffect<Take>.log("recording to \(take.folder.path)")
+      // A take that began wrong sounds the alert a problem mid-take does: Graham hears it before he starts talking.
+      let started: [RecorderEffect<Take>] = [.log("recording to \(take.folder.path)")]
+        + take.startProblems.sorted { $0.key < $1.key }.map { .log("\($0.key.rawValue) \($0.value)") }
+        + (take.startProblems.isEmpty ? [] : [.alertTrackProblem])
       switch then {
       case .record:
         phase = .recording(take, elapsedSeconds: 0)
-        return [started] + (oneTake ? [.scheduleOneTakeStop] : [])
+        return started + (oneTake ? [.scheduleOneTakeStop] : [])
       case .stop, .quit:
         phase = .stopping(take, quitAfter: then == .quit)
-        return [started, .endTake(take, problems: [:])]
+        return started + [.endTake(take, problems: trackProblems)]
       }
     case (.takeFailedToStart(let failure), .starting(let then)):
       phase = then == .quit ? .exited : .idle
@@ -399,6 +444,15 @@ extension RecorderState {
       return []
     case (.inputPicked(let pick), _) where atRest:
       return [.saveInputPick(pick)]
+    case (.screenPickerRequested, .idle):
+      phase = .pickingScreen
+      return [.presentScreenPicker]
+    case (.screenPickerChose(let choice), .pickingScreen):
+      phase = .idle
+      return [.saveInputPick(.screen(choice))]
+    case (.screenPickerClosed(let failure), .pickingScreen):
+      phase = .idle
+      return failure.map { [.log("the screen picker couldn't open: \($0)")] } ?? []
 
     case (.allowRequested(let permission), .needsPermission(let missing, _)) where missing.contains(permission):
       return [.requestPermission(permission)]

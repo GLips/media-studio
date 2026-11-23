@@ -1,5 +1,6 @@
 // The menu's inputs section: a picker each for mic, camera and screen, the mic's live level under its picker and
-// the camera's picture under its. The machine says when the check runs (`RecorderActivity.inputCheck`) and when a
+// the camera's picture under its. The screen's picker opens the system's window and display picker, or picks a
+// display by name. The machine says when the check runs (`RecorderActivity.inputCheck`) and when a
 // pick is taken; this draws them.
 import AppKit
 import AVFoundation
@@ -44,7 +45,7 @@ final class InputMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
     let config = app.config
     micPicker.title = "Mic: " + pickedName(config.mic.map { RecorderInputs.device(named: $0.device, in: RecorderInputs.mics())?.localizedName ?? "\($0.device) (not connected)" })
     cameraPicker.title = "Camera: " + pickedName(config.camera.map { RecorderInputs.device(named: $0.device, in: RecorderInputs.cameras())?.localizedName ?? "\($0.device) (not connected)" })
-    screenPicker.title = "Screen: " + (RecorderInputs.screen(named: config.screen.display)?.localizedName ?? "\(config.screen.display) (not connected)")
+    screenPicker.title = "Screen: " + screenTitle(config.screen)
   }
 
   func startCheck() {
@@ -76,6 +77,13 @@ final class InputMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
     preview.picture = picture
   }
 
+  private func screenTitle(_ screen: ScreenConfig) -> String {
+    let display = RecorderInputs.screen(named: screen.display)?.localizedName ?? "\(screen.display) (not connected)"
+    guard let window = screen.window else { return display }
+    let named = window.title.isEmpty ? window.app : "\(window.title) — \(window.app)"
+    return RecorderInputs.windowIsOpen(window.id) ? named : "\(named) (closed: records \(display))"
+  }
+
   /// A track left out of config.json has no picker: turning it back on means its settings, which live there.
   private func pickedName(_ name: String?) -> String { name ?? "off (config.json)" }
 
@@ -83,18 +91,25 @@ final class InputMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
   func menuNeedsUpdate(_ menu: NSMenu) {
     menu.removeAllItems()
     let config = app.config
-    let (kind, names, picked): (RecorderInputKind, [String], String?) = switch menu {
+    let (pick, names, picked): ((String) -> RecorderInputPick, [String], String?) = switch menu {
     case micPicker.submenu:
-      (.mic, RecorderInputs.mics().map(\.localizedName), config.mic.flatMap { RecorderInputs.device(named: $0.device, in: RecorderInputs.mics())?.localizedName })
+      (RecorderInputPick.mic, RecorderInputs.mics().map(\.localizedName), config.mic.flatMap { RecorderInputs.device(named: $0.device, in: RecorderInputs.mics())?.localizedName })
     case cameraPicker.submenu:
-      (.camera, RecorderInputs.cameras().map(\.localizedName), config.camera.flatMap { RecorderInputs.device(named: $0.device, in: RecorderInputs.cameras())?.localizedName })
+      (RecorderInputPick.camera, RecorderInputs.cameras().map(\.localizedName), config.camera.flatMap { RecorderInputs.device(named: $0.device, in: RecorderInputs.cameras())?.localizedName })
     default:
-      (.screen, RecorderInputs.screens().map(\.localizedName), RecorderInputs.screen(named: config.screen.display)?.localizedName)
+      ({ .screen(.display(name: $0)) }, RecorderInputs.screens().map(\.localizedName),
+       config.screen.window == nil ? RecorderInputs.screen(named: config.screen.display)?.localizedName : nil)
+    }
+    if menu == screenPicker.submenu {
+      let choose = NSMenuItem(title: "Choose Window or Display…", action: #selector(chooseScreen), keyEquivalent: "")
+      choose.target = self
+      menu.addItem(choose)
+      menu.addItem(.separator())
     }
     for name in names {
       let item = NSMenuItem(title: name, action: #selector(pick(_:)), keyEquivalent: "")
       item.target = self
-      item.representedObject = PickedInput(RecorderInputPick(kind: kind, name: name))
+      item.representedObject = PickedInput(pick(name))
       item.state = name == picked ? .on : .off
       menu.addItem(item)
     }
@@ -103,9 +118,21 @@ final class InputMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
 
   /// A pick is only for a camera or mic the config already records, and only while no take holds the devices.
   func validateMenuItem(_ item: NSMenuItem) -> Bool {
+    if item.action == #selector(chooseScreen) {
+      if case .idle = app.state.phase { return true }
+      return false
+    }
     guard let pick = (item.representedObject as? PickedInput)?.pick else { return true }
     let config = app.config
-    return app.state.atRest && (pick.kind == .screen || (pick.kind == .mic ? config.mic != nil : config.camera != nil))
+    return switch pick {
+    case .mic: app.state.atRest && config.mic != nil
+    case .camera: app.state.atRest && config.camera != nil
+    case .screen: app.state.atRest
+    }
+  }
+
+  @objc private func chooseScreen() {
+    app.send(.screenPickerRequested)
   }
 
   // A take the hotkey started while this submenu was open leaves its items enabled until AppKit revalidates: the

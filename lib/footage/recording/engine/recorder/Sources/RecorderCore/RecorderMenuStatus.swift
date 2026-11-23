@@ -56,7 +56,7 @@ public struct RecorderMenuStatus: Equatable {
       .sorted { $0.0 < $1.0 }
     glyph = switch state.phase {
     case .needsPermission, .relaunching: .needsAttention
-    case .idle: problems.isEmpty ? .idle : .needsAttention
+    case .idle, .pickingScreen: problems.isEmpty ? .idle : .needsAttention
     case .starting, .stopping, .exited: .busy
     case .recording: .recording
     }

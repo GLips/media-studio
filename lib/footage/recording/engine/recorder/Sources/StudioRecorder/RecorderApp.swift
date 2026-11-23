@@ -20,6 +20,7 @@ final class RecorderApp {
   private var timers: [RecorderActivity: Timer] = [:]
   /// The library adds running, by their take's folder, for a throw-away to stop.
   private var libraryAdds: [URL: Process] = [:]
+  private lazy var screenPicker = ScreenPicker { [weak self] event in self?.send(event) }
 
   init(config: RecorderConfig, configURL: URL, launch: RecorderStep<Recording>, oneTakeSeconds: Double = 0) {
     self.config = config
@@ -126,6 +127,10 @@ final class RecorderApp {
       }
     case .saveInputPick(let pick):
       saveInputPick(pick)
+    case .presentScreenPicker:
+      screenPicker.present()
+    case .dismissScreenPicker:
+      screenPicker.dismiss()
     case .replyToQuit:
       NSApp.reply(toApplicationShouldTerminate: true)
     case .scheduleOneTakeStop:
@@ -186,16 +191,28 @@ final class RecorderApp {
   private func saveInputPick(_ pick: RecorderInputPick) {
     do {
       var picked = try RecorderConfig.load(from: configURL)
-      switch pick.kind {
-      case .mic: picked.mic?.device = pick.name
-      case .camera: picked.camera?.device = pick.name
-      case .screen: picked.screen.display = pick.name
+      switch pick {
+      case .mic(let name): picked.mic?.device = name
+      case .camera(let name): picked.camera?.device = name
+      case .screen(let choice): picked.screen.pick(choice)
       }
       try picked.save(to: configURL)
       config = picked
-      log("picked \(pick.kind.rawValue) \(pick.name)")
+      log("picked \(pick.logged)")
     } catch {
-      log("couldn't pick \(pick.kind.rawValue) \(pick.name): \(error)")
+      log("couldn't pick \(pick.logged): \(error)")
+    }
+  }
+}
+
+extension RecorderInputPick {
+  /// As the log names it: `mic Scarlett Solo`, `screen window "Notes" (Notes)`.
+  fileprivate var logged: String {
+    switch self {
+    case .mic(let name): "mic \(name)"
+    case .camera(let name): "camera \(name)"
+    case .screen(.display(let name)): "screen display \(name)"
+    case .screen(.window(let window)): "screen window \"\(window.title)\" (\(window.app))"
     }
   }
 }

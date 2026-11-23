@@ -28,13 +28,45 @@ public struct DisplayGeometry: Encodable, Sendable {
   }
 }
 
+/// The window a screen track recorded. Where it sat on screen, and where its picture sat in the track's pixels, can
+/// change through the take, so they're lines of `file` (window.jsonl), which map the input log's global points onto
+/// the track's pixels moment by moment.
+public struct RecordedWindow: Encodable, Sendable {
+  public var title: String
+  public var app: String
+  public static let fileName = "window.jsonl"
+  public let file = RecordedWindow.fileName
+
+  public init(title: String, app: String) {
+    self.title = title
+    self.app = app
+  }
+}
+
+/// A window.jsonl line: from `t` (seconds from the take's start, on the host clock) until the next line, the window
+/// covered `boundsPoints` in global points (origin at the main display's top left, y down), and its picture covered
+/// `contentPixels` of the screen track. Both are [x, y, width, height].
+public struct RecordingWindowLine: Encodable, Sendable, Equatable {
+  public let t: Double
+  public let boundsPoints: [Double]
+  public let contentPixels: [Double]
+
+  public init(t: Double, boundsPoints: [Double], contentPixels: [Double]) {
+    self.t = t
+    self.boundsPoints = boundsPoints
+    self.contentPixels = contentPixels
+  }
+}
+
 /// One track as recording.json lists it; each track fills the fields it has.
 public struct RecordingTrackEntry: Encodable, Sendable {
   public var file: String
   /// When its first sample arrived on the host clock, from the take's start.
   public var startSeconds: Double
   public var device: String?
+  /// A screen track names the display it recorded, or the window.
   public var display: DisplayGeometry?
+  public var window: RecordedWindow?
   public var sourceFormat: String?
   public var channel: Int?
   public var sampleRate: Double?

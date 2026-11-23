@@ -21,6 +21,12 @@ enum RecorderInputs {
 
   static func screens() -> [NSScreen] { NSScreen.screens }
 
+  /// Whether the window server still has the window: an id is never reused while the window lives.
+  static func windowIsOpen(_ id: UInt32) -> Bool {
+    let ids = [UnsafeRawPointer(bitPattern: UInt(id))] as CFArray
+    return !((CGWindowListCreateDescriptionFromArray(ids) as? [Any]) ?? []).isEmpty
+  }
+
   /// The display a screen config names: `main`, or the first whose name contains it.
   static func screen(named name: String) -> NSScreen? {
     if name == "main" { return NSScreen.screens.first { $0.displayID == CGMainDisplayID() } }
