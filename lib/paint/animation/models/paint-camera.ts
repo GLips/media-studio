@@ -6,7 +6,9 @@
 // Planes stay parallel to the image: the camera pans, dollies, zooms and rolls. A plane is painted the size it looks
 // at rest, so at rest every plane's similarity is the identity. Unless a play holds it, the camera is on ones.
 
-import { LENS_DEFOCUS_LEAST, lensApertureSlide, lensDefocusSigned } from '#lib/picture/lens/models/lens-focus.ts';
+import {
+  LENS_DEFOCUS_LEAST, lensApertureSlide, lensDefocusField, lensDefocusFieldWidest, lensDefocusSigned, lensFocusLean, lensFocusTiltProblem, type LensFocus, type LensFocusTilt,
+} from '#lib/picture/lens/models/lens-focus.ts';
 import type { LensExposure } from '#lib/picture/lens/models/lens-exposures.ts';
 import { shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
@@ -33,10 +35,11 @@ export type PaintCameraPose = { readonly pan: StampPoint; readonly dolly: number
 export const PAINT_CAMERA_REST: PaintCameraPose = { pan: { x: 0, y: 0 }, dolly: 0, zoom: 1, roll: 0 };
 
 /**
- * The lens's focus: `focus` is the depth held sharp (a depth like a plane's, so a dolly keeps the same plane sharp);
- * `aperture` is the defocus, frame px of gaussian sigma, a plane at infinity gets (paintPlaneDefocus).
+ * The lens's focus: `focus`, the depth held sharp straight ahead; `aperture`, the frame px of sigma a plane at
+ * infinity gets there. `tilt` leans the plane of sharp focus as a tilt-shift lens does (LensFocusTilt: `angle`
+ * radians, positive receding up the frame; `axis` radians, 0 across). Keyed with the rest, so a shot racks the band.
  */
-export type PaintCameraFocus = { readonly focus: number; readonly aperture: number };
+export type PaintCameraFocus = { readonly focus: number; readonly aperture: number; readonly tilt?: LensFocusTilt };
 
 /** What a move sets: the parts of a pose it names, the rest at rest (or, for a move that adds, adding nothing). */
 export type PaintCameraMovePose = { readonly pan?: StampPoint; readonly dolly?: number; readonly zoom?: number; readonly roll?: number };
@@ -147,9 +150,11 @@ export function paintCameraMovePoseProblem({ pan = { x: 0, y: 0 }, dolly = 0, zo
 export const paintCameraPoseProblem = ({ zoom }: PaintCameraPose): string | null =>
   (zoom > 0 ? null : `it zooms to ${zoom}; a zoom must be above 0 (1 at rest) as rounded to a millionth`);
 
-/** Why `focus` can't be focused, or null: a focus depth at or below 0, a negative aperture, or either not finite. */
-export const paintCameraFocusProblem = ({ focus, aperture }: PaintCameraFocus): string | null =>
-  (focus > 0 && Number.isFinite(focus) && aperture >= 0 && Number.isFinite(aperture) ? null : `it needs a focus depth above 0 and an aperture of 0 or more, not ${focus} and ${aperture}`);
+/** Why `focus` can't be focused, or null: a focus depth at or below 0, a negative aperture, either not finite, or a tilt that doesn't lean. */
+export function paintCameraFocusProblem({ focus, aperture, tilt }: PaintCameraFocus): string | null {
+  if (!(focus > 0 && Number.isFinite(focus) && aperture >= 0 && Number.isFinite(aperture))) return `it needs a focus depth above 0 and an aperture of 0 or more, not ${focus} and ${aperture}`;
+  return tilt ? lensFocusTiltProblem(tilt) : null;
+}
 
 /** The move a play sets at clip moment `moment`, its parts as written. */
 const moveValueAt = (clip: PaintCameraMoveClip, moment: PaintMoment): PaintCameraMovePose => presentationValueAt(clip.value, paintClipMoment(moment));
@@ -196,8 +201,17 @@ export function paintCameraMovesBetween(camera: PaintCamera, a: PaintMoment, b: 
 export function paintCameraFocusAt(camera: PaintCamera, t: PaintMoment): PaintCameraFocus | null {
   const playing = paintLaneClipAt(camera.focus, t, camera.animationFps);
   if (!playing) return null;
-  const { focus, aperture } = presentationValueAt(playing.play.clip.value, paintClipMoment(playing.moment));
-  return { focus: paintRatioRounded(focus), aperture: paintPxRounded(aperture) };
+  const { focus, aperture, tilt } = presentationValueAt(playing.play.clip.value, paintClipMoment(playing.moment));
+  return { focus: paintRatioRounded(focus), aperture: paintPxRounded(aperture), ...(tilt && { tilt: { angle: paintRatioRounded(tilt.angle), axis: paintRatioRounded(tilt.axis ?? 0) } }) };
+}
+
+/**
+ * `focus` as the frame's lens at `pose` (lens-focus.ts): its focus measured from the dollied camera, and a tilt's
+ * lean about the frame's centre, by the zoomed lens's focal length (the depth unit times the zoom).
+ */
+export function paintCameraLensFocus({ stage: { frame }, fov }: Pick<PaintCamera, 'stage' | 'fov'>, { focus, aperture, tilt }: PaintCameraFocus, { dolly, zoom }: PaintCameraPose): LensFocus {
+  const focalPx = (zoom * frame.height) / 2 / Math.tan((fov * Math.PI) / 360);
+  return { focus: focus - dolly, aperture, ...(tilt && { lean: lensFocusLean(tilt, { x: frame.width / 2, y: frame.height / 2 }, focalPx) }) };
 }
 
 /**
@@ -218,12 +232,22 @@ export const paintPlaneViewAt = (camera: PaintCamera, depth: PresentationValue<n
   paintPlaneSimilarity(paintCameraPoseAt(camera, t), presentationValueAt(depth, t), paintStageCentre(camera.stage));
 
 /**
- * A plane's defocus, frame px of gaussian sigma: the lens's (lens-focus.ts) at the plane's distance from the camera,
- * depth − dolly, its focus focus − dolly away.
+ * A plane's defocus, frame px of gaussian sigma straight ahead: the lens's (lens-focus.ts) at the plane's distance
+ * from the camera, depth − dolly, its focus focus − dolly away.
  */
 export function paintPlaneDefocus({ focus, aperture }: PaintCameraFocus, dolly: number, depth: number): number {
   const sigma = paintPxRounded(Math.abs(lensDefocusSigned({ focus: focus - dolly, aperture }, depth - dolly)));
   return sigma < LENS_DEFOCUS_LEAST ? 0 : sigma;
+}
+
+/**
+ * The widest defocus `camera`, posed at `pose`, gives a plane at `depth` anywhere in the frame, frame px of sigma: a
+ * tilted focus's at the frame's corner where its focal plane lies nearest or farthest, else paintPlaneDefocus's.
+ */
+export function paintPlaneDefocusWidest(camera: Pick<PaintCamera, 'stage' | 'fov'>, focus: PaintCameraFocus, pose: PaintCameraPose, depth: number): number {
+  const lens = paintCameraLensFocus(camera, focus, pose), { width, height } = camera.stage.frame;
+  if (!lens.lean) return paintPlaneDefocus(focus, pose.dolly, depth);
+  return paintPxRounded(lensDefocusFieldWidest(lensDefocusField(lens, lens.lean, depth - pose.dolly), { x0: 0, y0: 0, x1: width, y1: height }));
 }
 
 /** How the camera shows anything at a depth in one frame, and the lens's bloom and focus. */
@@ -246,6 +270,7 @@ export type PaintCameraDepthLooks = {
 export function paintCameraDepthLooks(camera: PaintCamera, t: number, exposure: { at: number; aperture: LensExposure['aperture'] } | null = null): PaintCameraDepthLooks {
   const aperture = exposure?.aperture, seenAt = paintMoment(exposure?.at ?? t, t);
   const pose = paintCameraPoseAt(camera, seenAt), lens = paintCameraFocusAt(camera, seenAt), centre = paintStageCentre(camera.stage);
+  const framed = lens && paintCameraLensFocus(camera, lens, pose);
   if (lens && lens.focus - pose.dolly <= PAINT_CAMERA_NEAREST) throw new Error(`paint camera: at ${seenAt.at}s the camera focuses at depth ${lens.focus}, at or behind itself (dollied ${pose.dolly})`);
   // A fast frame is gathered along the camera's motion over the shutter, if it moves; an exposure is its own moment.
   const { shutter } = camera.lens, opens = shutterOpensAt(t, shutter), opening = !aperture && !paintCameraShutterShut(camera.lens);
@@ -261,17 +286,17 @@ export function paintCameraDepthLooks(camera: PaintCamera, t: number, exposure: 
       const open = paintPlaneSimilarity(openPose, ends?.open ?? depth, centre), close = paintPlaneSimilarity(closePose, ends?.close ?? depth, centre);
       // At rest a depth moves nothing on the frame: only views that differ blur.
       const seen = moving || !paintSimilaritiesEqual(open, close) ? { open, close } : null;
-      return { view, defocus: lens ? paintPlaneDefocus(lens, pose.dolly, depth) : 0, distance, shutter: seen };
+      const defocusField = framed?.lean ? lensDefocusField(framed, framed.lean, distance) : null;
+      return { view, defocus: lens ? paintPlaneDefocus(lens, pose.dolly, depth) : 0, defocusField, distance, shutter: seen, shear: null };
     }
-    const slide = lens ? lensApertureSlide({ focus: lens.focus - pose.dolly, aperture: lens.aperture }, distance, aperture) : { x: 0, y: 0 };
-    return { view: { ...view, kx: view.kx + slide.x, ky: view.ky + slide.y }, defocus: 0, distance, shutter: null };
+    const { shift, shear } = framed ? lensApertureSlide(framed, distance, aperture) : { shift: { x: 0, y: 0 }, shear: null };
+    return { view: { ...view, kx: view.kx + shift.x, ky: view.ky + shift.y }, defocus: 0, defocusField: null, distance, shutter: null, shear };
   };
   const lookAt = (depth: number, name: string) => lookAcross(depth, null, name);
   const lookOf = (depth: PresentationValue<number>, name: string) => (typeof depth === 'number' || !opening
     ? lookAt(presentationValueAt(depth, seenAt), name)
     : lookAcross(depth(seenAt), { open: depth(openMoment), close: depth(closeMoment) }, name));
-  const focus = lens && !aperture ? { focus: lens.focus - pose.dolly, aperture: lens.aperture } : null;
-  return { lookAt, lookOf, bloom: camera.lens.bloom, focus };
+  return { lookAt, lookOf, bloom: camera.lens.bloom, focus: aperture ? null : framed };
 }
 
 /** `looks` as the frame's lens: each of the camera's planes' looks at its depth then, an instanced plane's items looked at one by one. */

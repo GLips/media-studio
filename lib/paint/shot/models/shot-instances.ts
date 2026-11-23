@@ -4,12 +4,12 @@
 // variant at one stepped defocus draw as one batch, and an item keyed alike at the shutter's two ends blurs along its
 // own travel. Items aren't occurrences: no motion nodes, rigs, visibility keys or masks reach them.
 
-import { paintSimilarityAfter, paintSimilarityInverse, paintSimilarityOf, paintSimilarityScale, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
+import { paintSimilarityAfter, paintSimilarityApply, paintSimilarityInverse, paintSimilarityOf, paintSimilarityScale, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import type { PaintCameraDepthLooks } from '#lib/paint/animation/models/paint-camera.ts';
 import { paintingProblem, paintingProblemsError, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import type { PaintMoment, StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
-import { lensGaussianReach, lensSigmaStepped } from '#lib/picture/lens/models/lens-focus.ts';
+import { lensDefocusFieldAt, lensFrameAffineApply, lensGaussianReach, lensSigmaStepped } from '#lib/picture/lens/models/lens-focus.ts';
 import type { CompiledShotPaintedPlane } from './shot-compile.ts';
 import { shotPlaneMomentAt } from './shot-frame-plan.ts';
 import type { CompiledShotMotion } from './shot-motion.ts';
@@ -179,14 +179,18 @@ const sameSimilarity = (a: PaintSimilarity, b: PaintSimilarity) => a.ma === b.ma
 function shotItemLook(looks: PaintCameraDepthLooks, plane: string, item: PlaneInstance, travel: ShotInstanceTravel | undefined, picture: PaintSimilarity): ShotItemLook {
   const unpictured = paintSimilarityInverse(picture), name = `${plane}'s item ${item.key}`;
   const seen = (camera: PaintSimilarity, laid: PlaneInstance) => paintSimilarityAfter(camera, paintSimilarityAfter(paintSimilarityOf(laid.lay.placement, laid.lay.pivot), unpictured));
-  const look = looks.lookAt(item.depth, name), view = seen(look.view, item);
+  const look = looks.lookAt(item.depth, name), unsheared = seen(look.view, item);
+  // Under a tilted focus an item takes the defocus and an exposure's shear at its anchor: it's small beside how they vary.
+  const anchor = paintSimilarityApply(look.view, item.lay.placement), sheared = look.shear && lensFrameAffineApply(look.shear, anchor);
+  const view = sheared ? { ...unsheared, kx: unsheared.kx + sheared.x - anchor.x, ky: unsheared.ky + sheared.y - anchor.y } : unsheared;
+  const defocus = look.defocusField ? Math.abs(lensDefocusFieldAt(look.defocusField, anchor)) : look.defocus;
   const end = (laid: PlaneInstance, which: 'open' | 'close') => {
     const there = laid.depth === item.depth ? look : looks.lookAt(laid.depth, name);
     return seen(there.shutter?.[which] ?? there.view, laid);
   };
   const open = end(travel?.open ?? item, 'open'), close = end(travel?.close ?? item, 'close');
   return {
-    view, shutter: sameSimilarity(open, close) ? null : { open, close }, distance: look.distance, sigma: look.defocus / paintSimilarityScale(view), visibility: item.visibility ?? 1,
+    view, shutter: sameSimilarity(open, close) ? null : { open, close }, distance: look.distance, sigma: defocus / paintSimilarityScale(view), visibility: item.visibility ?? 1,
   };
 }
 
