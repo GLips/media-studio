@@ -1,12 +1,15 @@
-// StudioRecorder: a menu-bar app with no window. One global key starts a recording of screen, camera, mic and
+// Studio Recorder: a menu-bar app with no window. One global key starts a recording of screen, camera, mic and
 // input log, and stops it; the menu-bar dot is red while it records.
 //
-//   StudioRecorder                         the menu-bar app (run as StudioRecorder.app, so permissions stick)
+//   StudioRecorder                         the menu-bar app (run as its app bundle, so permissions stick)
 //   StudioRecorder --record-seconds 60     record once for 60 s and exit; SIGINT/SIGTERM stop it early
 //   StudioRecorder --granted               print the permissions a fresh process holds, as JSON (see Permissions.swift)
 //   --config <path>                        another config file than ~/Library/Application Support/StudioRecorder/config.json
 import AppKit
 import AVFoundation
+
+/// The name a person sees, set once in the bundle by `studio recorder install`.
+let recorderDisplayName = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "Studio Recorder"
 
 let logURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/StudioRecorder.log")
 
@@ -89,7 +92,10 @@ final class MenuBarDot: NSObject {
     open.target = self
     menu.addItem(open)
     menu.addItem(.separator())
-    menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+    let about = NSMenuItem(title: "About \(recorderDisplayName)", action: #selector(showAbout), keyEquivalent: "")
+    about.target = self
+    menu.addItem(about)
+    menu.addItem(NSMenuItem(title: "Quit \(recorderDisplayName)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     item.menu = menu
     recorder.onChange = { [weak self] in self?.refresh() }
     recorder.permissions?.onChange = { [weak self] in self?.refresh() }
@@ -111,8 +117,8 @@ final class MenuBarDot: NSObject {
       return true
     }
     item.button?.toolTip = missing.isEmpty
-      ? "Studio Recorder (\(recorder.config.hotkey))"
-      : "Studio Recorder needs \(missing.map(\.title).joined(separator: ", "))"
+      ? "\(recorderDisplayName) (\(recorder.config.hotkey))"
+      : "\(recorderDisplayName) needs \(missing.map(\.title).joined(separator: ", "))"
     // Each missing permission is a menu item at the top that asks for it again.
     for old in permissionItems { menu.removeItem(old) }
     permissionItems = missing.map { permission in
@@ -127,6 +133,10 @@ final class MenuBarDot: NSObject {
   }
 
   @objc private func toggle() { recorder.toggle() }
+  @objc private func showAbout() {
+    NSApp.activate()
+    NSApp.orderFrontStandardAboutPanel(nil)
+  }
   @objc private func allow(_ sender: NSMenuItem) {
     guard let permission = (sender.representedObject as? String).flatMap(Permission.init(rawValue:)) else { return }
     Task { await recorder.permissions?.request(permission) }

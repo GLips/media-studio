@@ -9,7 +9,7 @@ export const STUDIO_VERB_GROUPS = {
   make: ['new', 'capture', 'voice', 'audition', 'music', 'sfx', 'gen', 'paint', 'brushes', 'still', 'render'],
   inspect: ['look', 'check', 'clock', 'mix', 'probe', 'study', 'repeatable', 'profile', 'trace', 'api', 'gpu'],
   review: ['review', 'preview'],
-  setup: ['workspace', 'hosts', 'remote', 'home'],
+  setup: ['workspace', 'hosts', 'remote', 'home', 'recorder'],
 } as const satisfies StudioVerbGroups;
 
 export const studioCommand = defineCommand({
@@ -21,6 +21,7 @@ export const studioCommand = defineCommand({
   setup: refuseOptionsBeforeSubcommand,
   subCommands: {
     workspace: () => import('./commands/workspace.ts').then((m) => m.default),
+    recorder: () => import('./commands/recorder.ts').then((m) => m.default),
     brushes: () => import('./commands/brushes.ts').then((m) => m.default),
     new: () => import('./commands/new.ts').then((m) => m.default),
     capture: () => import('./commands/capture.ts').then((m) => m.default),
