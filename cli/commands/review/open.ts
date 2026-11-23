@@ -13,13 +13,14 @@ type StudioReviewTarget = { route: string; project: string; artifacts: { path: s
  */
 async function resolveStudioReviewTarget(target: string, plan: boolean): Promise<StudioReviewTarget> {
   const { existsSync, realpathSync, statSync } = await import('node:fs');
-  const { join, relative, resolve, sep } = await import('node:path');
+  const { isAbsolute, join, relative, resolve, sep } = await import('node:path');
   const { resolveStudioProject, STUDIO_PROJECTS_DIR } = await import('#lib/platform/project/engine/studio-project.ts');
   const { listProjectArtifacts } = await import('#lib/output/review/engine/project-artifacts.ts');
   const { projectMediaTypeOf } = await import('#lib/output/review/engine/project-media.ts');
   // A path from here, or one inside a project named as `studio` commands name it: rec-proto/out/video.mp4.
   const [first, ...within] = target.split('/');
-  const file = existsSync(resolve(target)) || !within.length ? resolve(target) : join(resolveStudioProject(first), ...within);
+  // An absolute path names a file, never a project.
+  const file = existsSync(resolve(target)) || !within.length || isAbsolute(target) ? resolve(target) : join(resolveStudioProject(first), ...within);
   if (existsSync(file) && statSync(file).isFile()) {
     if (plan) throw new Error(`--plan opens a project's plan, not a file: give the project, as in studio review open <p> --plan`);
     // With no work/projects/ (a fresh clone), every file is outside it.
