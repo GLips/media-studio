@@ -1,6 +1,6 @@
 // The menu's live check of the picked mic and camera, before a take: the mic's level on its configured input,
-// and whether the camera sends a picture. It runs only while the menu is open and the recorder idles, and it
-// never locks a device's format, so it leaves nothing behind that a recording's own sessions would fight.
+// and whether the camera sends a picture. It runs only while the menu is open and the recorder idles, and never
+// locks a device's configuration: its session may pick the camera's format, which a recording then sets its own.
 import AVFoundation
 
 /// What the menu shows for the camera.

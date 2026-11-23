@@ -19,6 +19,7 @@ final class InputMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
   private let meter = LevelMeterView()
   private let preview = CameraPreviewView()
   private var tick: Timer?
+  private var menuIsOpen = false
 
   init(recorder: Recorder) {
     self.recorder = recorder
@@ -36,23 +37,28 @@ final class InputMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
 
   /// Called as the menu opens: names the picked inputs and starts the live check.
   func menuOpened() {
+    menuIsOpen = true
     updatePickerTitles()
     startCheck()
   }
 
-  func menuClosed() { stopCheck(waiting: false) }
+  func menuClosed() {
+    menuIsOpen = false
+    stopCheck(waiting: false)
+  }
 
   /// Called on every recorder state change. A recording is about to open the same devices: the check lets go of
-  /// them before `Recording.begin` runs, which is why this waits.
+  /// them before `Recording.begin` runs, which is why this waits. Back to idle with the menu open, it checks again.
   func recorderChanged() {
+    guard menuIsOpen else { return }
+    updatePickerTitles()
+    if idle && tick == nil { startCheck() }
     if !idle { stopCheck(waiting: true) }
   }
 
   private func startCheck() {
-    let showing = idle
-    meterItem.isHidden = !showing || recorder.config.mic == nil
-    previewItem.isHidden = !showing || recorder.config.camera == nil
-    guard showing else { return }
+    guard idle else { return }
+    showCheckItems(true)
     check.start(config: recorder.config)
     preview.show(session: check.previewSession)
     showCheck()
@@ -62,7 +68,13 @@ final class InputMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
     tick = timer
   }
 
+  private func showCheckItems(_ showing: Bool) {
+    meterItem.isHidden = !showing || recorder.config.mic == nil
+    previewItem.isHidden = !showing || recorder.config.camera == nil
+  }
+
   private func stopCheck(waiting: Bool) {
+    showCheckItems(false)
     tick?.invalidate()
     tick = nil
     preview.show(session: nil)
@@ -113,7 +125,8 @@ final class InputMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
   }
 
   @objc private func pick(_ sender: NSMenuItem) {
-    guard let pair = sender.representedObject as? [String], let kind = RecorderInputKind(rawValue: pair[0]) else { return }
+    // A take the hotkey started while this submenu was open leaves its items enabled until AppKit revalidates.
+    guard idle, let pair = sender.representedObject as? [String], let kind = RecorderInputKind(rawValue: pair[0]) else { return }
     recorder.pickInput(kind, named: pair[1])
   }
 }

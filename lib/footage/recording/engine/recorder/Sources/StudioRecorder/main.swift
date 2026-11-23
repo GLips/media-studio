@@ -55,18 +55,21 @@ final class Recorder {
   }
 
   /// Makes `name` the input of its kind for the next recording and writes it to config.json. The menu offers this
-  /// only while idle, and only for a camera or mic the config already records.
+  /// only while idle, and only for a camera or mic the config already records. It applies the pick to the file as
+  /// it stands now, so edits made there since launch are kept, and take effect, rather than overwritten.
   func pickInput(_ kind: RecorderInputKind, named name: String) {
-    switch kind {
-    case .mic: config.mic?.device = name
-    case .camera: config.camera?.device = name
-    case .screen: config.screen.display = name
-    }
     do {
-      try config.save(to: configURL)
+      var picked = try RecorderConfig.load(from: configURL)
+      switch kind {
+      case .mic: picked.mic?.device = name
+      case .camera: picked.camera?.device = name
+      case .screen: picked.screen.display = name
+      }
+      try picked.save(to: configURL)
+      config = picked
       log("picked \(kind.rawValue) \(name)")
     } catch {
-      log("couldn't save the \(kind.rawValue) picked: \(error)")
+      log("couldn't pick \(kind.rawValue) \(name): \(error)")
     }
     onChange?()
   }
