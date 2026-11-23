@@ -206,10 +206,10 @@ fn cardUnionAt(pixel: vec2u, origin: vec2u, extent: vec2u, moved: bool) -> vec3f
 const STAMP_LAY_CARD = gpuUniformLayout('Card', [
   ['paper', gpuUniformStruct(PAPER)], ['origin', 'vec2u'], ['extent', 'vec2u'], ['edgeOrigin', 'vec2u'], ['edgeExtent', 'vec2u'], ['moved', 'u32'],
 ]);
-// An own sheet's card: its paper laid over what's behind as far as its union reaches, cover = min(1, STAMP_OPAQUE_COVER
-// × union), read where each pixel was painted when the sheet is moved, its photograph too. `masked`: the union is
-// taken where a shot's presentation mask leaves its paint, so a masked word's card follows its ink.
-const cardWgsl = (compositor: StampPaintCompositor, stage: StampStage, masked: boolean) => /* wgsl */ `
+// An own sheet's card: its paper over what's behind as far as its union reaches, cover = min(1, STAMP_OPAQUE_COVER
+// × union), read where each pixel was painted when moved. `masked`: the union taken where a shot's mask leaves its
+// paint, so a masked word's card follows its ink. `traced`: its travel laid by that cover, not over its whole box.
+const cardWgsl = (compositor: StampPaintCompositor, stage: StampStage, masked: boolean, traced: boolean) => /* wgsl */ `
 ${stampStageWgsl(stage)}
 ${stampPaintTargetWgsl('painting', 2, compositor.targets.painting, 'read_write')}
 ${GPU_SRGB_WGSL}
@@ -222,6 +222,8 @@ ${STAMP_LAY_CARD.wgsl}
 @group(0) @binding(4) var edge: texture_2d<f32>;
 @group(0) @binding(5) var rest: texture_2d<f32>;
 ${masked ? '@group(0) @binding(6) var mask: texture_2d<f32>;' : ''}
+${traced ? `@group(0) @binding(7) var travel: texture_2d<f32>;
+@group(0) @binding(8) var motion: texture_storage_2d<rgba16float, read_write>;` : ''}
 ${STAMP_BILINEAR_OR_ZERO_WGSL}
 ${STAMP_CARD_UNION_WGSL}
 @compute @workgroup_size(${STAMP_WORKGROUP}, ${STAMP_WORKGROUP}) fn card(@builtin(global_invocation_id) id: vec3u) {
@@ -229,7 +231,10 @@ ${STAMP_CARD_UNION_WGSL}
   let pixel = u.origin + id.xy;
   let read = cardUnionAt(pixel, u.edgeOrigin, u.edgeExtent, u.moved == 1u);
   let cover = min(1.0, read.z${masked ? ' * textureLoad(mask, pixel, 0).r' : ''} * ${STAMP_OPAQUE_COVER.toFixed(1)});
-  if (cover <= 0.0) { return; }
+  if (cover <= 0.0) { return; }${traced ? `
+  let was = textureLoad(motion, pixel);
+  let moved = textureLoad(travel, pixel, 0).xy;
+  textureStore(motion, pixel, vec4f(was.xy * (1.0 - cover) + moved * cover, was.z * (1.0 - cover), was.w * (1.0 - cover) + cover));` : ''}
   layCard(pixel, paperColor(image, photographSampler, u.paper, read.xy), cover);
 }`;
 
@@ -251,7 +256,11 @@ ${STAMP_LAY_PLACE.wgsl}
  * first), onto `painting` over `box`; through `rest`, a placement's rest points, when the sheet is moved; its union
  * cut by `mask` (a shot's presentation mask, r32float over the stage) when given.
  */
-export type StampCardLay = { edge: GPUTextureView; edgeBox: StampPixelBox; painting: GPUTextureView; box: StampPixelBox; rest: GPUTextureView | null; mask?: GPUTextureView | null };
+export type StampCardLay = {
+  edge: GPUTextureView; edgeBox: StampPixelBox; painting: GPUTextureView; box: StampPixelBox; rest: GPUTextureView | null; mask?: GPUTextureView | null;
+  /** When traced: its `travel` (a `fresh` lattice draw's map) laid where it covers over the plane's motion `into` (rgba16float storage). */
+  motion?: { readonly travel: GPUTextureView; readonly into: GPUTextureView } | null;
+};
 
 // The frame's window of the stage, a painting shown as it is: an output pixel is the stage's texel a margin in.
 export const stampPaintOutputWgsl = (compositor: StampPaintCompositor, dithered: boolean, stage: StampStage) => /* wgsl */ `
@@ -306,10 +315,11 @@ export function createStampPaintLay(device: StampPaintDevice, arena: StampUnifor
     if (!made) groups.set(key, (made = compute(groupWgsl(compositor, stage, variant))));
     return made;
   };
-  const cards = new Map<boolean, GPUComputePipeline>();
-  const cardPipeline = (masked: boolean) => {
-    let made = cards.get(masked);
-    if (!made) cards.set(masked, (made = compute(cardWgsl(compositor, stage, masked))));
+  const cards = new Map<string, GPUComputePipeline>();
+  const cardPipeline = (masked: boolean, traced: boolean) => {
+    const key = `${masked}|${traced}`;
+    let made = cards.get(key);
+    if (!made) cards.set(key, (made = compute(cardWgsl(compositor, stage, masked, traced))));
     return made;
   };
   let placeRest: GPUComputePipeline | null = null, placedPaper: GPUComputePipeline | null = null;
@@ -376,8 +386,8 @@ export function createStampPaintLay(device: StampPaintDevice, arena: StampUnifor
     },
     /** Lays an own sheet's card as `lay` says, its paper this lay's. */
     layCard(encoder: GPUCommandEncoder, lay: StampCardLay) {
-      const { box, edgeBox } = lay, mask = lay.mask ?? null;
-      dispatchStampCompute(device, encoder, cardPipeline(mask !== null), [
+      const { box, edgeBox } = lay, mask = lay.mask ?? null, motion = lay.motion ?? null;
+      dispatchStampCompute(device, encoder, cardPipeline(mask !== null, motion !== null), [
         arena.slot((views) => {
           const put = gpuUniformWriter(STAMP_LAY_CARD, views);
           writePaper(views, STAMP_LAY_CARD.at.paper, 'paper');
@@ -387,7 +397,7 @@ export function createStampPaintLay(device: StampPaintDevice, arena: StampUnifor
           put('edgeExtent', [edgeBox.w, edgeBox.h]);
           put('moved', lay.rest ? 1 : 0);
         }),
-        photograph?.view ?? blank, lay.painting, sampler, lay.edge, lay.rest ?? blank, mask,
+        photograph?.view ?? blank, lay.painting, sampler, lay.edge, lay.rest ?? blank, mask, motion?.travel ?? null, motion?.into ?? null,
       ], box.w, box.h);
     },
     /** Writes into `rest` (rg32float, the stage's size) each stage texel's rest point under `map`. */

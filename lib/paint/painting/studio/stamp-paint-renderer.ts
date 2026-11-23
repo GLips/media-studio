@@ -524,8 +524,8 @@ function rendererOnSurface({
       latticeRest ??= target('rest', width, height, GPUTextureUsage.RENDER_ATTACHMENT, 'rg32float', encoder);
       const targetsOf = { rest: latticeRest.view, motion: traced?.into ?? null, source: targets.layer.view };
       // A region's motion is drawn on its own: the rest's pass drops what holds no paint.
-      latticePass.draw(encoder, latticeSpan, { rest: 'paint', motion: traced?.cover === 'paint' }, targetsOf);
-      if (traced?.cover === 'region') latticePass.draw(encoder, latticeSpan, { rest: null, motion: true }, targetsOf);
+      latticePass.draw(encoder, latticeSpan, { rest: 'paint', motion: traced?.cover === 'paint' ? 'over' : null }, targetsOf);
+      if (traced?.cover === 'region') latticePass.draw(encoder, latticeSpan, { rest: null, motion: 'over' }, targetsOf);
       // A still group's lattice is drawn for its motion alone: it's laid where it's painted.
       if (map) rest = latticeRest.view;
     }
