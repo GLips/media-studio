@@ -6,8 +6,8 @@ media stays in the library; the project names the item by its id.
 ## Find the stretches
 
 `studio library search "<words>"` finds where something is said; `studio library show <item>` prints the transcript
-with times. A line's stretch is two item seconds, `from` and `to`: put each edge in the quiet just past the words.
-The speaker flags takes they like in the studio app's library (G L); `show` prints the flags.
+with times and the speaker's flags (made in the studio app's library, G L). A line runs from its first utterance's
+time to the next utterance's: it keeps the words whose middles fall between, and each edge moves into a pause.
 
 ## Name the item once
 
