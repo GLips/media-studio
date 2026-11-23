@@ -14,7 +14,7 @@ final class InputLog {
   /// The tap and its run-loop source, from `begin` until `end`.
   private var tap: (port: CFMachPort, source: CFRunLoopSource)?
 
-  init(url: URL, start: CMTime) throws {
+  init(url: URL, start: CMTime) throws(JSONLinesFailure) {
     lines = try JSONLines(url: url)
     self.start = start
   }

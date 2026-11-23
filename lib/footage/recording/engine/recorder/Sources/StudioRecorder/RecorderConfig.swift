@@ -28,18 +28,39 @@ struct RecorderConfig: Codable {
     .appendingPathComponent("Library/Application Support/StudioRecorder/config.json")
 
   /// Reads the config at `url`, writing the defaults there first when there's none.
-  static func load(from url: URL) throws -> RecorderConfig {
+  static func load(from url: URL) throws(RecorderConfigFailure) -> RecorderConfig {
     if !FileManager.default.fileExists(atPath: url.path) {
-      try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+      do {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+      } catch {
+        throw .unwritable(error)
+      }
       try defaults.save(to: url)
     }
-    return try JSONDecoder().decode(RecorderConfig.self, from: Data(contentsOf: url))
+    let data: Data
+    do { data = try Data(contentsOf: url) } catch { throw .unreadable(error) }
+    do { return try JSONDecoder().decode(RecorderConfig.self, from: data) } catch { throw .malformed(error) }
   }
 
-  func save(to url: URL) throws {
+  func save(to url: URL) throws(RecorderConfigFailure) {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-    try encoder.encode(self).write(to: url, options: .atomic)
+    do { try encoder.encode(self).write(to: url, options: .atomic) } catch { throw .unwritable(error) }
+  }
+}
+
+/// Why config.json couldn't be read or written. Each describes itself as Foundation's error does, the sentence the
+/// log shows.
+enum RecorderConfigFailure: Error, CustomStringConvertible {
+  case unreadable(any Error)
+  /// Read, but not a config: bad JSON, or a field missing or of the wrong type.
+  case malformed(any Error)
+  case unwritable(any Error)
+
+  var description: String {
+    switch self {
+    case .unreadable(let error), .malformed(let error), .unwritable(let error): "\(error)"
+    }
   }
 }
 

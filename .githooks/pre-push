@@ -1,5 +1,15 @@
 #!/bin/sh
-# The pre-push gate: the GPU gate over each pushed commit's own tree, when a path the push carries is one it imports or
-# reads (harness/stamp-paint-gate.ts pushed, reading the refs git hands this hook on stdin). No adapter, a timeout or
-# a difference refuses the push. It lives here, not in pre-commit, because it takes minutes on the one shared adapter.
-npm run -s stamp:gate -- pushed || { echo "pre-push gate: the GPU gate failed. Fix it and push again." >&2; exit 1; }
+# The pre-push gate: the recorder's Swift tests (`npm run test:recorder`), always; then the GPU gate over each pushed
+# commit's own tree, when a path the push carries is one it imports or reads (harness/stamp-paint-gate.ts pushed,
+# reading the refs git hands this hook on stdin). No adapter, a timeout or a difference refuses the push. The GPU gate
+# lives here, not in pre-commit, because it takes minutes on the one shared adapter.
+
+failed=''
+# Its stdin is the GPU gate's list of pushed refs, which swift must not read first.
+npm run -s test:recorder < /dev/null || failed="$failed test:recorder"
+npm run -s stamp:gate -- pushed || failed="$failed stamp:gate"
+
+if [ -n "$failed" ]; then
+  echo "pre-push gate: failed$failed. Fix it and push again." >&2
+  exit 1
+fi

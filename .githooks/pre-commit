@@ -2,7 +2,8 @@
 # The pre-commit gate: check:arch and lint (oxlint, against the baseline) over the studio's index, what the commit
 # holds (work/ is its own repository, judged by its own hook); then the typecheck and the tests of what a clean clone
 # holds, and the web app's typecheck, which read the working tree.
-# The GPU gate isn't here: it takes minutes on the one shared adapter, so pre-push runs it.
+# The GPU gate isn't here: it takes minutes on the one shared adapter, so pre-push runs it. The recorder's Swift tests run
+# here only when the commit touches its package.
 # Each runs on its own, so one failure doesn't hide the next, and any failure refuses the commit. `npm install`
 # switches it on (package.json's prepare sets core.hooksPath to .githooks, for every worktree of the clone).
 #
@@ -15,6 +16,11 @@ failed=''
 # lists the sources it left unchecked. lint's oxlint reads each file from disk, unstaged edits and all.
 npm run -s check:arch -- --scope public --snapshot index || failed="$failed check:arch"
 npm run -s lint -- --scope public --snapshot index || failed="$failed lint"
+# The recorder's Swift tests take seconds warm and a minute cold, so only a commit that touches its package runs them
+# here (pre-push runs them always). Asked of the index now, before its git environment goes; they build the working tree,
+# in a scratch path of their own (.build/gate), so they never wait on the release build `studio recorder install` makes.
+recorder_touched=
+git diff --cached --quiet -- lib/footage/recording/engine/recorder/ || recorder_touched=yes
 
 # Git exports GIT_DIR, GIT_INDEX_FILE and its -c settings to a hook. A test's throwaway repo must never see them, or
 # its git init, config and commit land in this repository.
@@ -25,6 +31,7 @@ npm run -s typecheck:web || failed="$failed typecheck:web"
 log=$(mktemp)
 npm run -s test:gate > "$log" 2>&1 || { tail -n 60 "$log"; failed="$failed test"; }
 rm -f "$log"
+if [ -n "$recorder_touched" ]; then npm run -s test:recorder || failed="$failed test:recorder"; fi
 
 if [ -n "$failed" ]; then
   echo "pre-commit gate: failed$failed. Fix it and commit again." >&2

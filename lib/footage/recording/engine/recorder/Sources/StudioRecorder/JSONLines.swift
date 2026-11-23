@@ -10,9 +10,9 @@ final class JSONLines<Line: Encodable> {
   private let handle: Mutex<FileHandle?>
   private let encoder = JSONEncoder()
 
-  init(url: URL) throws {
+  init(url: URL) throws(JSONLinesFailure) {
     FileManager.default.createFile(atPath: url.path, contents: nil)
-    handle = Mutex(try FileHandle(forWritingTo: url))
+    do { handle = Mutex(try FileHandle(forWritingTo: url)) } catch { throw .unopenable(error) }
     encoder.outputFormatting = [.sortedKeys]
   }
 
@@ -29,12 +29,23 @@ final class JSONLines<Line: Encodable> {
   }
 }
 
+/// Why a log file couldn't be opened for writing, described as Foundation's error describes itself.
+enum JSONLinesFailure: Error, CustomStringConvertible {
+  case unopenable(any Error)
+
+  var description: String {
+    switch self {
+    case .unopenable(let error): "\(error)"
+    }
+  }
+}
+
 /// How each device's own clock runs against the host clock, sampled through the take (clock.jsonl).
 final class ClockLog {
   private let lines: JSONLines<RecordingClockLine>
   let start: CMTime
 
-  init(url: URL, start: CMTime) throws {
+  init(url: URL, start: CMTime) throws(JSONLinesFailure) {
     lines = try JSONLines(url: url)
     self.start = start
   }
