@@ -6,7 +6,7 @@
 // each axis it wraps.
 //
 // Texture contracts: a source's texture is rgba16float premultiplied linear colour (normal blending over a clear
-// target premultiplies), its motion texture the lens's motion layer (lens-three-motion.ts); a painted texture is
+// target premultiplies), its motion and emission textures the lens's (lens-three-motion.ts); a painted texture is
 // rgba16float, gamma-encoded and opaque, decoded by paintedThreeColorNode.
 
 import { ExternalTexture, PerspectiveCamera, RepeatWrapping, type Camera, type RenderTarget, type Scene, type WebGPURenderer } from 'three/webgpu';
@@ -14,7 +14,7 @@ import type { FrameSize } from '#lib/picture/frame/models/frame.ts';
 import type { TraceRecorderSpan } from '#lib/platform/trace/models/trace-recorder.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
 import { shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
-import { createLensThreeMotion, LENS_THREE_MOTION_NAME, type LensThreeMotion } from '#lib/picture/lens/studio/lens-three-motion.ts';
+import { createLensThreeMotion, LENS_THREE_EMISSION_NAME, LENS_THREE_MOTION_NAME, type LensThreeMotion } from '#lib/picture/lens/studio/lens-three-motion.ts';
 import { setThreeShotCamera } from '#lib/picture/shot-camera/studio/three-shot-camera.ts';
 import { paintCameraWorld, paintWorldPlane, type PaintCameraWorld, type PaintWorldPlane } from '#lib/paint/animation/models/paint-camera-world.ts';
 import type { PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
@@ -82,6 +82,8 @@ export type PaintedThreeSourceScene = {
   poseAt: (moment: PaintMoment) => void;
   offscreen?: readonly PaintedThreeOffscreenPass[];
   shadows?: PaintedThreeShadows;
+  /** Its materials' emission (emissiveNode) is carried apart for the lens to bloom; left out, it shows in the colour alone. */
+  glows?: boolean;
   dispose: () => void;
 };
 
@@ -243,12 +245,15 @@ export async function loadPaintedThreeSources(
         const threeCamera = setThreeShotCamera(new PerspectiveCamera(), shotAt(paintMoment(0)));
         // Every layer, so an offscreen camera leaving a layer out hides what's on it from its pass alone.
         threeCamera.layers.enableAll();
-        const texture = ownTexture(w, h), motionTexture = ownTexture(w, h);
+        const texture = ownTexture(w, h), motionTexture = ownTexture(w, h), emission = built.glows ? ownTexture(w, h) : null;
         // three renders into our textures, where the stamp renderer reads them.
-        const target = targetInto([{ name: 'output', texture }, { name: LENS_THREE_MOTION_NAME, texture: motionTexture }], { samples: PAINTED_THREE_SAMPLES });
+        const attachments = [{ name: 'output', texture }, { name: LENS_THREE_MOTION_NAME, texture: motionTexture }, ...(emission ? [{ name: LENS_THREE_EMISSION_NAME, texture: emission }] : [])];
+        const target = targetInto(attachments, { samples: PAINTED_THREE_SAMPLES });
         made.push(target);
         const motion = createLensThreeMotion({ width: w, height: h, distanceUnit: world.depthUnit });
-        const loadedSource = { id: source.id, built, shadowsOn, shotAt, camera: threeCamera, target, motion, picture: { texture, motion: motionTexture, at: { x: -margin, y: -margin } } };
+        const loadedSource = {
+          id: source.id, built, shadowsOn, shotAt, camera: threeCamera, target, motion, picture: { texture, motion: motionTexture, emission, at: { x: -margin, y: -margin } },
+        };
         // Posed and drawn once at load, as a render draws it: a source may make its meshes as it poses, and they, its
         // passes and its shadow maps make their pipelines here, not in the first frame.
         built.poseAt(paintMoment(0));

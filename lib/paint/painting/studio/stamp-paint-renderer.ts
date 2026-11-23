@@ -802,7 +802,8 @@ function rendererOnSurface({
         return layerOf(planePicture(encoder, plane, index === 0 ? 'paper' : 'film', look, planeDraw), look, index > 0);
       });
       const { frame: lensFrameExposures, last } = lensFrameOf(paintFrame.kind === 'exposure' ? paintFrame.exposure : undefined);
-      lensFrameExposures.exposure(encoder, layers, { glowing: glows, moving });
+      // A glowing source's emission is bloomed only through a lens; drawn once, it shows in its colour alone.
+      lensFrameExposures.exposure(encoder, layers, { glowing: glows || (!!lensFrame && renders.glowing.size > 0), moving });
       // One bloom, of all that glows as the frame shows it, once its exposures are in.
       if (last) {
         lensFrameExposures.develop(encoder, {

@@ -13,15 +13,29 @@ import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { PAINTED_THREE_SHEET_ROOT, PAINTED_THREE_SHEET_THICKNESS, paintedThreeSheetFolding, paintedThreeSheetHingeAxis, type PaintedThreeSheet, type PaintedThreeSheetFolding } from './painted-three-sheet.ts';
 
 /**
+ * A shift of a print's colour in linear light, for seeded variation from one print: `hue`, radians turned about the
+ * grey axis; `value`, a share its brightness grows by (−0.1 a tenth darker). Lighting still never shows it past the
+ * print light cap of the shifted colour.
+ */
+export type PaintedThreePrintTint = { readonly hue?: number; readonly value?: number };
+
+/**
  * A sheet standing on a face of another: `on`, that sheet and face (the base's root by default, a sheet's root when
- * no face is named). Flat, its root's hinge's middle sits at `at` on that face's front (print px). It stands toward
- * the viewer by `angle`, radians from flat: on the base it faces the camera at the pitch.
+ * no face is named). Flat, its root's hinge's middle sits at `at` on that face's front (print px). It stands by
+ * `angle`, radians from flat: on the base, unturned, it faces the camera at the pitch.
  */
 export type PaintedThreePopUpSheet = PaintedThreeSheet & {
   readonly id: string;
   readonly on?: { readonly sheet: string; readonly face?: string };
   readonly at: StampPoint;
+  /** Radians turned about the parent face's normal at `at` before it stands, counter-clockwise seen from the front; 0 keeps its print upright on the face. */
+  readonly yaw?: PresentationValue<number>;
   readonly angle: PresentationValue<number>;
+  readonly tint?: PaintedThreePrintTint;
+  /** The painted texture id of an emission map spanning its print as the print does, black where nothing glows: added unlit after lighting. */
+  readonly glow?: string;
+  /** What its glow map is multiplied by, 1 when left out. */
+  readonly glowStrength?: PresentationValue<number>;
 };
 
 /**
@@ -33,6 +47,8 @@ export type PaintedThreePopUpSheet = PaintedThreeSheet & {
 export type PaintedThreePopUp = {
   readonly at: StampPoint;
   readonly pitch: number;
+  /** Radians the whole pop-up turns about the base's normal through its centre before it's tipped (a turntable), counter-clockwise seen from above. */
+  readonly turn?: PresentationValue<number>;
   readonly scale?: number;
   readonly thicknessPx?: number;
   readonly base: PaintedThreeSheet;
@@ -50,7 +66,7 @@ export type PaintedThreePopUpRig = {
   readonly folding: ReadonlyMap<string, PaintedThreeSheetFolding>;
   /** Sheet space into the pop-up's space at `moment`, by sheet id, then face id. */
   readonly poseAt: (moment: PaintMoment) => ReadonlyMap<string, ReadonlyMap<string, Matrix4>>;
-  /** A sphere about the base's centre holding the pop-up at any pose, print px: what a shadow camera is fitted to. */
+  /** A sphere about the base's centre holding the pop-up at any pose and turn, print px: what a shadow camera is fitted to. */
   readonly reach: number;
 };
 
@@ -97,8 +113,9 @@ export function paintedThreePopUpRig(popUp: PaintedThreePopUp): PaintedThreePopU
     const pivot = new Vector3((from.x + to.x) / 2, -(from.y + to.y) / 2, -thickness / 2);
     return [sheet.id, { pivot, axis: paintedThreeSheetHingeAxis(sheet.root.hinge!, folding.get(sheet.id)!.faces.get(PAINTED_THREE_SHEET_ROOT)!.rings[0]) }] as const;
   }));
-  // The base's centre to the origin, tipped back about x: its top edge goes away from the camera.
-  const baseMatrix = new Matrix4().makeRotationX(-pitch).multiply(new Matrix4().makeTranslation(-base.widthPx / 2, base.heightPx / 2, 0));
+  // The base's centre to the origin, turned on its turntable, tipped back about x: its top edge goes away from the camera.
+  const tipped = new Matrix4().makeRotationX(-pitch), centred = new Matrix4().makeTranslation(-base.widthPx / 2, base.heightPx / 2, 0);
+  const baseMatrixAt = (moment: PaintMoment) => tipped.clone().multiply(new Matrix4().makeRotationZ(presentationValueAt(popUp.turn ?? 0, moment))).multiply(centred);
   const baseFolding = folding.get(PAINTED_THREE_POP_UP_BASE)!, { x0, y0, x1, y1 } = baseFolding.faces.get(PAINTED_THREE_SHEET_ROOT)!.box, cx = base.widthPx / 2, cy = base.heightPx / 2;
   // The base's root's farthest corner from its centre, its other faces, then every face of every sheet stacked: no pose reaches past their sum.
   const rootReach = Math.hypot(Math.max(Math.abs(x0 - cx), Math.abs(x1 - cx)), Math.max(Math.abs(y0 - cy), Math.abs(y1 - cy)));
@@ -109,11 +126,11 @@ export function paintedThreePopUpRig(popUp: PaintedThreePopUp): PaintedThreePopU
     reach,
     poseAt: (moment) => {
       const placedAt = (id: string, sheet: Matrix4) => new Map([...folding.get(id)!.poseAt(moment)].map(([face, matrix]) => [face, sheet.clone().multiply(matrix)]));
-      const poses = new Map([[PAINTED_THREE_POP_UP_BASE, placedAt(PAINTED_THREE_POP_UP_BASE, baseMatrix)]]);
+      const poses = new Map([[PAINTED_THREE_POP_UP_BASE, placedAt(PAINTED_THREE_POP_UP_BASE, baseMatrixAt(moment))]]);
       for (const id of order) {
         const sheet = byId.get(id)!, { pivot, axis } = stands.get(id)!, parent = parentOf(sheet), face = poses.get(parent)!.get(sheet.on?.face ?? PAINTED_THREE_SHEET_ROOT)!;
-        // On the parent face's front at `at`, the sheet's back face down on it, turned up about its hinge.
-        const onParent = new Matrix4().makeTranslation(sheet.at.x, -sheet.at.y, folding.get(parent)!.thickness / 2);
+        // On the parent face's front at `at`, yawed about its normal there, the sheet's back face down on it, turned up about its hinge.
+        const onParent = new Matrix4().makeTranslation(sheet.at.x, -sheet.at.y, folding.get(parent)!.thickness / 2).multiply(new Matrix4().makeRotationZ(presentationValueAt(sheet.yaw ?? 0, moment)));
         const turned = new Matrix4().makeRotationAxis(axis, presentationValueAt(sheet.angle, moment));
         poses.set(id, placedAt(id, face.clone().multiply(onParent).multiply(turned).multiply(new Matrix4().makeTranslation(-pivot.x, -pivot.y, -pivot.z))));
       }

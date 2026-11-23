@@ -150,12 +150,17 @@ export {
   PAINTED_THREE_SHEET_ROOT, paintedThreeSheetFolding, type PaintedThreeSheet, type PaintedThreeSheetEdge, type PaintedThreeSheetFace, type PaintedThreeSheetFaceCut, type PaintedThreeSheetFold,
   type PaintedThreeSheetFolding, type PaintedThreeSheetRing, type PaintedThreeSheetRoot,
 } from '#lib/paint/three-layers/models/painted-three-sheet.ts';
-export { createPaintedThreeSheet, type PaintedThreeSheetMaterial, type PaintedThreeSheetMeshes } from '#lib/paint/three-layers/studio/painted-three-sheet.ts';
+export {
+  createPaintedThreeSheet, createPaintedThreeSheetFaceMeshes, createPaintedThreeSheetGeometry, type PaintedThreeSheetFaceGeometry, type PaintedThreeSheetMaterial, type PaintedThreeSheetMeshes,
+  type PaintedThreeSheetGeometry,
+} from '#lib/paint/three-layers/studio/painted-three-sheet.ts';
 export { PAINTED_THREE_PAPER_LIGHT_SHARES, type PaintedThreePaperLeak, type PaintedThreePaperLightShares } from '#lib/paint/three-layers/models/painted-three-paper.ts';
-export { createPaintedThreePaperLights, paintedThreePaperMaterial, type PaintedThreePaperLights, type PaintedThreePaperLook } from '#lib/paint/three-layers/studio/painted-three-paper.ts';
-export type { PaintedThreePopUp, PaintedThreePopUpSheet } from '#lib/paint/three-layers/models/painted-three-pop-up.ts';
+export {
+  createPaintedThreePaperLights, paintedThreePaperMaterial, setPaintedThreePaperShow, type PaintedThreePaperLights, type PaintedThreePaperLook, type PaintedThreePaperShow,
+} from '#lib/paint/three-layers/studio/painted-three-paper.ts';
+export type { PaintedThreePopUp, PaintedThreePopUpSheet, PaintedThreePrintTint } from '#lib/paint/three-layers/models/painted-three-pop-up.ts';
 export { paintedThreePopUp, type PaintedThreePopUpLook } from '#lib/paint/three-layers/studio/painted-three-pop-up.ts';
-export { paperPopUpPlane, type PaperPopUpPlaneOptions } from '#lib/paint/shot/studio/shot-paper-pop-up.ts';
+export { paperPopUpPlane, type PaperPopUpPlaneOptions, type PaperPopUpPrint } from '#lib/paint/shot/studio/shot-paper-pop-up.ts';
 export { paintWorldLightDirection, type PaintWorldDirection } from '#lib/paint/animation/models/paint-camera-world.ts';
 export { setThreeMirrorCamera } from '#lib/picture/shot-camera/studio/three-mirror-camera.ts';
 export type { PaintedThreeShadows } from '#lib/paint/three-layers/studio/painted-three-shadows.ts';

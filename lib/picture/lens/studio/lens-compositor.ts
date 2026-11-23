@@ -116,12 +116,12 @@ export type LensGaussianDraw = {
 };
 
 /**
- * A per-pixel defocus of `source`, a picture of colour and motion layers (lens-passes.ts) `size` texels, its first
- * texel's corner at frame px `at`, into `into` (two layers, as big): each texel blurred by `focus` at its own distance
- * and place, at most `most` px of sigma.
+ * A per-pixel defocus of `source`, a picture of `layers` layers (lens-passes.ts), colour, motion, then any blurred as
+ * the colour is (an emission), `size` texels, its first texel's corner at frame px `at`, into `into` (as many layers,
+ * as big): each texel blurred by `focus` at its own distance and place, at most `most` px of sigma.
  */
 export type LensDefocusDraw = {
-  readonly source: GPUTextureView; readonly into: GPUTextureView; readonly size: { readonly w: number; readonly h: number };
+  readonly source: GPUTextureView; readonly into: GPUTextureView; readonly layers: number; readonly size: { readonly w: number; readonly h: number };
   readonly at: { readonly x: number; readonly y: number }; readonly focus: LensFocus; readonly most: number;
 };
 
@@ -413,9 +413,9 @@ export function createLensCompositor(device: GPUDevice, { width, height, blurExt
     pass(across.array, into, 1, box, { x: 0, y: 0 }, box);
   }
 
-  function defocus(encoder: GPUCommandEncoder, { source, into, size, at, focus, most }: LensDefocusDraw) {
-    const pipeline = compute('defocus', () => lensDefocusWgsl(LENS_WORKGROUP));
-    const across = acrossFor(size.w, size.h, 2);
+  function defocus(encoder: GPUCommandEncoder, { source, into, layers, size, at, focus, most }: LensDefocusDraw) {
+    const pipeline = compute(`defocus|${layers}`, () => lensDefocusWgsl({ layers, workgroup: LENS_WORKGROUP }));
+    const across = acrossFor(size.w, size.h, layers);
     // The lean, times the aperture, over texels whose first corner lies at frame px `at`.
     const { aperture } = focus, lean = focus.lean ?? { x: 0, y: 0, centre: at };
     const leaning: [number, number, number, number] = [aperture * lean.x, aperture * lean.y, aperture * lensFocusLeanAt(focus, at), 0];

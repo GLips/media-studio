@@ -1,6 +1,6 @@
 // stamp-lens-source-layers.ts: a scene's source planes (stamp-lens-source.ts) rendered and laid through the lens, for
 // the stamp renderer and the sources renderer alike. A three source's render is already through the camera: it's laid
-// at rest, defocused per texel by its depth. A picture source's is in the stage's texels: it's defocused by its plane's
+// at rest, defocused per texel by its depth, its emission (when it glows) with it for the lens to bloom. A picture source's is in the stage's texels: it's defocused by its plane's
 // look, as a painted picture is, and laid where the look puts it, clear past its edge.
 
 import { LENS_DEFOCUS_LEAST, lensDefocusMost, lensGaussianReach, lensSigmaStepped, type LensFocus } from '#lib/picture/lens/models/lens-focus.ts';
@@ -14,10 +14,14 @@ import type { StampLensPicture, StampLensSource, StampLensSourceExposure, StampP
 
 /** A source's render's layers: laid over by its alpha, as a paper picture is, with no emission. */
 const SOURCE_LAYERS: LensPictureLayers = { taken: null, emission: null, motion: null };
-const SOURCE_MOTION_LAYERS: LensPictureLayers = { ...SOURCE_LAYERS, motion: 1 };
+/** A three source's layers as it's laid through the lens: its colour, its motion (1), its emission (2) when it glows. */
+const THREE_LAYER = { motion: 1, emission: 2 } as const;
 
-/** What a frame's sources rendered: the three sources that moved over its shutter, and each picture source's picture. */
-export type StampSourceRenders = { readonly moved: ReadonlySet<string>; readonly pictures: ReadonlyMap<string, StampLensPicture | null> };
+/**
+ * What a frame's sources rendered: the three sources that moved over its shutter, those that glow (their emission for
+ * the lens's bloom), and each picture source's picture.
+ */
+export type StampSourceRenders = { readonly moved: ReadonlySet<string>; readonly glowing: ReadonlySet<string>; readonly pictures: ReadonlyMap<string, StampLensPicture | null> };
 
 /**
  * How a frame lays a source plane: its `look`, the lens's `focus`, whether the frame gathers motion, whether it's the
@@ -44,8 +48,8 @@ export function checkStampLensSources(planes: StampLaidPlanes, sources: Readonly
     if (!source) throw new Error(`stamp paint: source plane ${id} has no source handed in`);
     if (source.kind !== kind) throw new Error(`stamp paint: ${kind} plane ${id} is handed a ${source.kind} source`);
     if (source.kind !== 'three') continue;
-    const { texture, motion, at } = source.picture;
-    for (const [name, made] of [['texture', texture], ['motion', motion]] as const) {
+    const { texture, motion, emission, at } = source.picture;
+    for (const [name, made] of [['texture', texture], ['motion', motion], ...(emission ? [['emission', emission] as const] : [])] as const) {
       const usage = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC;
       if (made.format !== 'rgba16float' || made.depthOrArrayLayers !== 1 || (made.usage & usage) !== usage || made.width !== texture.width || made.height !== texture.height) {
         throw new Error(`stamp paint: source plane ${id}'s ${name} must be rgba16float, one layer, the colour's size, with TEXTURE_BINDING and COPY_SRC usage`);
@@ -111,27 +115,28 @@ export function createStampLensSourceLayers(owner: StampPaintGpuOwner, { stage, 
   const scratch = (encoder: GPUCommandEncoder, name: string, w: number, h: number, layers: number) => owner.target(name, { size: [w, h, layers], format: 'rgba16float', usage }, encoder);
 
   /**
-   * A three source's picture for the lens and its box in frame px: its colour alone when sharp and the frame isn't
-   * `moving`, else with its motion layer, each texel defocused by `focus` at its own distance and place, at most as
-   * lensDefocusMost says.
+   * A three source's picture for the lens and its box in frame px: its colour alone when sharp, unglowing and the frame
+   * isn't `moving`, else with its motion layer and any emission, each texel defocused by `focus` at its own distance
+   * and place, at most as lensDefocusMost says.
    */
   function threeLayer(encoder: GPUCommandEncoder, id: string, { look, focus, moving, visibility }: StampSourceLaying): LensLayer {
-    const { texture, motion, at } = threes.get(id)!.picture, { width: w, height: h } = texture;
+    const { texture, motion, emission, at } = threes.get(id)!.picture, { width: w, height: h } = texture;
     // A source renders through the camera, its motion with it: only the lens's defocus is left to do. Still or not, a
     // gathered frame reads its texels' distances: its plane's would misplace what's in front.
     const laid = (picture: GPUTextureView, layers: LensPictureLayers): LensLayer => ({
       picture, layers, view: STAMP_REST_LOOK.view, shutter: null, shear: null, origin: at, size: { w, h }, clipped: true, distance: look.distance, distances: moving ? 'texels' : 'layer', visibility,
     });
     const defocusing = focus !== null && focus.aperture >= LENS_DEFOCUS_LEAST;
-    if (!defocusing && !moving) return laid(arrayView(texture), SOURCE_LAYERS);
-    const both = scratch(encoder, `source ${id}`, w, h, 2);
-    encoder.copyTextureToTexture({ texture }, { texture: both, origin: { x: 0, y: 0, z: 0 } }, [w, h, 1]);
-    encoder.copyTextureToTexture({ texture: motion }, { texture: both, origin: { x: 0, y: 0, z: 1 } }, [w, h, 1]);
-    const layers = moving ? SOURCE_MOTION_LAYERS : SOURCE_LAYERS;
-    if (!defocusing) return laid(arrayView(both), layers);
-    const defocused = scratch(encoder, `source ${id} defocused`, w, h, 2);
+    if (!defocusing && !moving && !emission) return laid(arrayView(texture), SOURCE_LAYERS);
+    const count = emission ? THREE_LAYER.emission + 1 : THREE_LAYER.motion + 1, all = scratch(encoder, `source ${id}`, w, h, count);
+    for (const [layer, from] of [[0, texture], [THREE_LAYER.motion, motion], ...(emission ? [[THREE_LAYER.emission, emission] as const] : [])] as const) {
+      encoder.copyTextureToTexture({ texture: from }, { texture: all, origin: { x: 0, y: 0, z: layer } }, [w, h, 1]);
+    }
+    const layers: LensPictureLayers = { ...SOURCE_LAYERS, motion: moving ? THREE_LAYER.motion : null, emission: emission ? THREE_LAYER.emission : null };
+    if (!defocusing) return laid(arrayView(all), layers);
+    const defocused = scratch(encoder, `source ${id} defocused`, w, h, count);
     const most = lensDefocusMost(focus, { x0: at.x, y0: at.y, x1: at.x + w, y1: at.y + h });
-    lens.defocus(encoder, { source: arrayView(both), into: arrayView(defocused), size: { w, h }, at, focus, most });
+    lens.defocus(encoder, { source: arrayView(all), into: arrayView(defocused), layers: count, size: { w, h }, at, focus, most });
     return laid(arrayView(defocused), layers);
   }
 
@@ -169,12 +174,13 @@ export function createStampLensSourceLayers(owner: StampPaintGpuOwner, { stage, 
     // One after another: each may render on the device the next does.
     render: async (t, exposure) => {
       const moved = new Set<string>(), pictures = new Map<string, StampLensPicture | null>();
+      const glowing = new Set([...threes].flatMap(([id, { picture }]) => (picture.emission ? [id] : [])));
       await gpuEachInTurn(sources, async ([id, source]) => {
         if (source.kind === 'three') {
           if ((await source.render(t, exposure)).moved) moved.add(id);
         } else pictures.set(id, await source.render(t, exposure));
       });
-      return { moved, pictures };
+      return { moved, glowing, pictures };
     },
     layer: (encoder, plane, renders, laying) => {
       if (plane.kind === 'three') return [threeLayer(encoder, plane.id, laying)];

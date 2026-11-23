@@ -4,10 +4,11 @@
 //   printLightMost of the print: pigment is never relit;
 // - lerps a shadow toward the leak, never black; darkens toward the edge it stands on; kraft back, sides toward cream;
 // - draws the cut edge and, facing the light, a lip from a field of its cut edges alone (none on a fold).
-// It keeps three's own output, so the lens's motion MRT (lens-three-motion.ts) records it.
+// Meshes sharing it each set their tint and glow (setPaintedThreePaperShow). It keeps three's own output and
+// emission, so the lens's MRT (lens-three-motion.ts) records both.
 
 import {
-  Color, DataTexture, DataUtils, DirectionalLight, HalfFloatType, HemisphereLight, LightingModel, LinearFilter, NodeMaterial, RGBAFormat, Vector3,
+  Color, DirectionalLight, HemisphereLight, LightingModel, NodeMaterial, Vector3,
   type ExternalTexture, type LightingModelDirectInput, type Object3D, type LightingModelReflectedLight, type Node, type NodeBuilder,
 } from 'three/webgpu';
 import { dFdx, dFdy, diffuseColor, float, mix, modelWorldMatrixInverse, normalLocal, normalView, positionLocal, select, smoothstep, texture, uniform, vec2, vec3, vec4 } from 'three/tsl';
@@ -16,7 +17,7 @@ import type { PaintLight } from '#lib/paint/painting/models/stamp-form.ts';
 import {
   PAINTED_THREE_PAPER_LIGHT_SHARES, PAINTED_THREE_PAPER_LOOK, PAINTED_THREE_PAPER_SKY_GROUND, paintedThreePaperLightStrengths, type PaintedThreePaperLeak, type PaintedThreePaperLightShares,
 } from '../models/painted-three-paper.ts';
-import { paintedThreeSheetField, type PaintedThreeSheet, type PaintedThreeSheetFaceCut } from '../models/painted-three-sheet.ts';
+import type { PaintedThreeSheet } from '../models/painted-three-sheet.ts';
 import { paintedThreeColorNode } from './painted-three-material.ts';
 import type { PaintedThreeSheetMaterial } from './painted-three-sheet.ts';
 
@@ -65,40 +66,55 @@ class PaintedThreePaperNodeMaterial extends NodeMaterial {
  */
 export type PaintedThreePaperLook = { readonly light: PaintLight; readonly back?: 'kraft' | 'mirrored'; readonly leak?: PaintedThreePaperLeak };
 
+/**
+ * What differs between meshes sharing one paper material, set on each mesh (setPaintedThreePaperShow): `hue` and
+ * `value`, its print's tint (PaintedThreePrintTint); `glow`, its glow map's strength. A mesh with none set shows plain.
+ */
+export type PaintedThreePaperShow = { readonly hue: number; readonly value: number; readonly glow: number };
+const PAINTED_THREE_PAPER_PLAIN: PaintedThreePaperShow = { hue: 0, value: 0, glow: 1 };
+const paperShows = new WeakMap<Object3D, PaintedThreePaperShow>();
+
+/** Sets how `mesh` shows its shared paper material, read as each draw of it begins. */
+export const setPaintedThreePaperShow = (mesh: Object3D, show: PaintedThreePaperShow) => void paperShows.set(mesh, show);
+
+/** A per-mesh uniform reading `key` of the drawn mesh's show. */
+const paperShowUniform = (key: keyof PaintedThreePaperShow) => uniform(PAINTED_THREE_PAPER_PLAIN[key]).onObjectUpdate(({ object }) => ((object && paperShows.get(object)) ?? PAINTED_THREE_PAPER_PLAIN)[key]);
+
 /** An sRGB hex colour as a node, in linear light (three's Color decodes it). */
 const paperColour = (hex: string) => {
   const { r, g, b } = new Color(hex);
   return vec3(r, g, b);
 };
 
-/** `face`'s distance field (paintedThreeSheetField) as a half-float texture, filtered, and the print px it spans. */
-function paintedThreePaperFieldTexture(face: PaintedThreeSheetFaceCut): { texture: DataTexture; box: { x0: number; y0: number; width: number; height: number } } {
-  const { x0, y0, columns, rows, cell, values } = paintedThreeSheetField(face);
-  const halves = new DataTexture(Uint16Array.from(values, (v) => DataUtils.toHalfFloat(v)), columns, rows, RGBAFormat, HalfFloatType);
-  halves.magFilter = halves.minFilter = LinearFilter;
-  halves.needsUpdate = true;
-  return { texture: halves, box: { x0, y0, width: columns * cell, height: rows * cell } };
+/** `rgb` turned by `hue` radians about the grey axis (Rodrigues), kept from going negative, then scaled by 1 + `value`. */
+function paperTinted(rgb: Node<'vec3'>, hue: Node<'float'>, value: Node<'float'>) {
+  const grey = vec3(1 / Math.sqrt(3)), cos = hue.cos();
+  return rgb.mul(cos).add(grey.cross(rgb).mul(hue.sin())).add(grey.mul(grey.dot(rgb).mul(float(1).sub(cos)))).max(0).mul(value.add(1));
 }
 
 /**
- * Paper as a sheet's material (PaintedThreeSheetMaterial): every face shows `print` (the sheet's painted texture) at
- * its flat-layout px, so one print spans the folded sheet. Build the sheet with createPaintedThreeSheet; light it with
- * createPaintedThreePaperLights.
+ * Paper as a sheet's material (PaintedThreeSheetMaterial): every face shows `print` (`widthPx` × `heightPx`) at its
+ * flat-layout px, so one print spans the folded sheet, tinted as each mesh's show says; `glow`, when given, an
+ * emission map spanning the print alike, added unlit on the front, times the mesh's glow. Share it across a
+ * geometry and print; light it with createPaintedThreePaperLights.
  */
-export function paintedThreePaperMaterial(sheet: PaintedThreeSheet, print: ExternalTexture, { light, back = 'kraft', leak = PAINTED_THREE_PAPER_LOOK.leak }: PaintedThreePaperLook): PaintedThreeSheetMaterial {
-  const { edge, lip, side, contact } = PAINTED_THREE_PAPER_LOOK, fields: DataTexture[] = [];
+export function paintedThreePaperMaterial(
+  { widthPx, heightPx }: Pick<PaintedThreeSheet, 'widthPx' | 'heightPx'>, print: ExternalTexture, { light, back = 'kraft', leak = PAINTED_THREE_PAPER_LOOK.leak }: PaintedThreePaperLook,
+  glow: ExternalTexture | null = null,
+): PaintedThreeSheetMaterial {
+  const { edge, lip, side, contact } = PAINTED_THREE_PAPER_LOOK;
   // Print px, y down: sheet space is the flat print's.
-  const px = vec2(positionLocal.x, positionLocal.y.negate());
-  const printed = paintedThreeColorNode(print, px.div(vec2(sheet.widthPx, sheet.heightPx))).rgb;
+  const px = vec2(positionLocal.x, positionLocal.y.negate()), printUv = px.div(vec2(widthPx, heightPx));
+  const printed = paperTinted(paintedThreeColorNode(print, printUv).rgb, paperShowUniform('hue'), paperShowUniform('value'));
   // The light in face space, its y turned down as the field's normals run; only its share along the face counts.
   const toward = paintWorldLightDirection(light), lightFace = modelWorldMatrixInverse.mul(vec4(uniform(new Vector3(toward.x, toward.y, toward.z)), 0)).xyz.normalize();
   const front = normalLocal.z.greaterThan(0.5), behind = normalLocal.z.lessThan(-0.5), onFace = select(front.or(behind), float(1), float(0));
   const sideColour = mix(printed.mul(side.shade), paperColour(side.cream), side.towardCream);
   const faceColour = select(front, printed, select(behind, back === 'mirrored' ? printed : paperColour(PAINTED_THREE_PAPER_LOOK.kraft), sideColour));
+  const glowing = glow && select(front, paintedThreeColorNode(glow, printUv).rgb.mul(paperShowUniform('glow')), vec3(0));
+  const made: PaintedThreePaperNodeMaterial[] = [];
   return {
-    faceMaterial: (face) => {
-      const field = paintedThreePaperFieldTexture(face);
-      fields.push(field.texture);
+    faceMaterial: ({ field }) => {
       const at = texture(field.texture, px.sub(vec2(field.box.x0, field.box.y0)).div(vec2(field.box.width, field.box.height)));
       const cut = at.r, stand = at.g, outward = at.ba.div(at.ba.length().max(1e-3));
 
@@ -108,18 +124,22 @@ export function paintedThreePaperMaterial(sheet: PaintedThreeSheet, print: Exter
       const inner = edgePx.sub(edge.px), lipPx = edge.px * lip.share;
       const lipBand = smoothstep(-0.5, 0.5, inner).mul(float(1).sub(smoothstep(lipPx - 0.5, lipPx + 0.5, inner)));
       const facing = outward.dot(vec2(lightFace.x, lightFace.y.negate())).clamp();
-      const contactShare = float(1).sub(smoothstep(0, contact.reach * sheet.heightPx, stand)).mul(contact.strength);
+      const contactShare = float(1).sub(smoothstep(0, contact.reach * heightPx, stand)).mul(contact.strength);
 
       const contacted = mix(faceColour, paperColour(contact.tint), contactShare.mul(onFace));
       const lipped = mix(contacted, paperColour(lip.colour), lipBand.mul(facing).mul(lip.strength).mul(onFace));
       const material = new PaintedThreePaperNodeMaterial();
       material.colorNode = vec4(mix(lipped, paperColour(edge.ink), line.mul(edge.strength).mul(onFace)), 1);
+      // NodeMaterial adds it after lighting and its cap (setupLighting), so a lit window reads at dusk; @types/three
+      // declares it on the lit subclasses alone.
+      if (glowing) Object.assign(material, { emissiveNode: glowing });
       // three hands each light's shadow to this before lighting with it; @types/three types it taking nothing.
       Object.assign(material, { receivedShadowNode: (shadow: Node<'float'>) => mix(vec3(...leak), vec3(1), shadow) });
+      made.push(material);
       return material;
     },
     dispose: () => {
-      for (const each of fields) each.dispose();
+      for (const each of made) each.dispose();
     },
   };
 }

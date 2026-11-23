@@ -141,7 +141,7 @@ export async function checkStampGateThreeCase(id: string): Promise<StampGateWash
     const usage = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC;
     const texture = device.createTexture({ size: [width, height], format: 'rgba16float', usage }), motion = device.createTexture({ size: [width, height], format: 'rgba16float', usage });
     // The card's texture is written before each frame, so its render does nothing, and nothing in it moves.
-    const card = { kind: 'three' as const, picture: { texture, motion, at: { x: 0, y: 0 } }, render: async () => ({ moved: false }) };
+    const card = { kind: 'three' as const, picture: { texture, motion, emission: null, at: { x: 0, y: 0 } }, render: async () => ({ moved: false }) };
     const withCard = async <T,>(use: (renderer: StampPaintRenderer) => Promise<T>) => {
       const renderer = await gateRenderer(gate, surface, { planes: stampGateThreePlanes(gate.painting, { card: true }), sources: new Map([[STAMP_GATE_CARD, card]]) });
       try {
@@ -205,7 +205,7 @@ async function checkPictureSource(): Promise<StampGateWashCheck[]> {
     const content = stampGateThreeContent('a');
     device.queue.writeTexture({ texture }, gpuHalfBitsOf(content), { bytesPerRow: width * 8 }, [width, height]);
     device.queue.writeTexture({ texture: motion }, gpuHalfBitsOf(stampGateThreeMotion(content)), { bytesPerRow: width * 8 }, [width, height]);
-    const card = { kind: 'three' as const, picture: { texture, motion, at: { x: 0, y: 0 } }, render: async () => ({ moved: false }) };
+    const card = { kind: 'three' as const, picture: { texture, motion, emission: null, at: { x: 0, y: 0 } }, render: async () => ({ moved: false }) };
     const three = await sharpAndBlurred({ planes: stampGateThreePlanes(gate.painting, { card: true }), sources: new Map([[STAMP_GATE_CARD, card]]) });
     texture.destroy();
     motion.destroy();
@@ -240,7 +240,7 @@ async function checkThreeStillFront(): Promise<StampGateWashCheck> {
     const content = stampGateThreeStillContent();
     device.queue.writeTexture({ texture }, Uint16Array.from(content, gpuHalfBits), { bytesPerRow: width * 8 }, [width, height]);
     device.queue.writeTexture({ texture: motion }, Uint16Array.from(stampGateThreeMotion(content), gpuHalfBits), { bytesPerRow: width * 8 }, [width, height]);
-    const card = { kind: 'three' as const, picture: { texture, motion, at: { x: 0, y: 0 } }, render: async () => ({ moved: false }) };
+    const card = { kind: 'three' as const, picture: { texture, motion, emission: null, at: { x: 0, y: 0 } }, render: async () => ({ moved: false }) };
     const drawnAs = async (draws: StampPaintFrame[]) => {
       const renderer = await gateRenderer(gate, surface, { planes: stampGateThreeStillPlanes(gate.painting), sources: new Map([[STAMP_GATE_CARD, card]]) });
       try {

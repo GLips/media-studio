@@ -15,12 +15,14 @@ export const stampLensSourceExposureOf = (exposure: StampLensSourceExposure | un
   (exposure ? { index: exposure.index, at: exposure.at, aperture: exposure.aperture } : null);
 
 /**
- * Where a three source renders, the same textures every frame. `texture`: rgba16float premultiplied linear colour.
- * `motion`: the lens's motion layer (lens-passes.ts): travel over the shutter, frame px; distance, setting defocus;
- * cover. Both one layer, TEXTURE_BINDING and COPY_SRC. `at`: their first texel's frame px, whole, at or before the
+ * Where a three source renders, the same textures every frame: `texture`, rgba16float premultiplied linear colour;
+ * `motion`, the lens's motion layer (lens-passes.ts); `emission`, a glowing source's unlit light to bloom (null:
+ * none). Each one layer, TEXTURE_BINDING and COPY_SRC. `at`: their first texel's frame px, whole, at or before the
  * frame's corner, so a blur reads past its edge.
  */
-export type StampLensSourcePicture = { readonly texture: GPUTexture; readonly motion: GPUTexture; readonly at: { readonly x: number; readonly y: number } };
+export type StampLensSourcePicture = {
+  readonly texture: GPUTexture; readonly motion: GPUTexture; readonly emission: GPUTexture | null; readonly at: { readonly x: number; readonly y: number };
+};
 
 /**
  * A picture source's picture: `texture`, rgba16float premultiplied linear colour, one layer, TEXTURE_BINDING, its first
