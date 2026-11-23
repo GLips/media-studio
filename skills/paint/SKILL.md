@@ -1,6 +1,6 @@
 ---
 name: paint
-description: Painting for a video or a still, in watercolour, gouache or crayon, from a painting document (`*.painting.ts`) shown by `<PaintedShot>`; also hand-drawn or generative canvas layers. Use to paint a picture or a painted shot, to animate one, for cut paper (cards, folds, pop-ups), when a wash or a painted render looks wrong, or to find the styles you can paint in.
+description: Painting for a video or a still, in watercolour, gouache or crayon, pencil and ink lines among them, from a painting document (`*.painting.ts`) shown by `<PaintedShot>`. Use to paint a picture or a painted shot, to animate one, for cut paper (cards, folds, pop-ups), when a wash or a painted render looks wrong, or to find the styles you can paint in.
 ---
 
 # Painting
@@ -57,11 +57,11 @@ Moving, fading, revealing and posing finished paint costs a frame; a new propert
 
 ## Rules a drawn layer obeys
 
-- **A frame is a pure function of time** (video-motion). `<PaintedShot>` keeps it. In anything else you draw into a
-  canvas, flush deferred drawing at the end of every layer, so one frame's marks never turn up in the next.
+- **A frame is a pure function of time** (video-motion); `<PaintedShot>` keeps it. A canvas your own code draws
+  (generative glyphs, particles) is video-motion's.
 - **Judge by eye at delivery size.** The painting engine is in flux: renders shift a little between runs and
   commits. Accept a moved look when it looks right, and chase only differences a viewer would notice.
-- **The checks can't see inside a canvas.** A painted loop round a price isn't a `Highlight`, so `expect` can't check
+- **The checks can't see inside a painting.** A painted loop round a price isn't a `Highlight`, so `expect` can't check
   it, and motion tracks list a painting as unmeasured. Check a drawn mark that carries a read by eye with
   `studio look --strip`, and keep it clear of the caption band yourself.
 - **Paintings draw with WebGPU**, which the render browser and `studio preview` have; without it they fail loudly.
