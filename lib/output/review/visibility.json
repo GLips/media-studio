@@ -1,0 +1,3 @@
+{
+  "lib/footage/library": "Library flags are the library's review scope: they persist in review's store (review-store.ts) as a project's notes do, by the same authors, and print ranges on review's clock."
+}
