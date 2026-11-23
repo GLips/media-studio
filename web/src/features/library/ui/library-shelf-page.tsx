@@ -23,8 +23,6 @@ const styles = stylex.create({
   mark: { color: colors.caution },
 });
 
-/** One item as the shelf lists it, with its flag count. */
-
 /** When the footage began, or was added: `22 Nov 2026, 21:41`. */
 const formatLibraryDate = (iso: string) => new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
@@ -84,7 +82,7 @@ export function LibraryShelfPage() {
           {searching && hits.error && <Text size="sm" {...stylex.props(styles.quiet)}>{hits.error.message}</Text>}
           {searching && hits.data?.length === 0 && <Text size="sm" {...stylex.props(styles.quiet)}>Nothing in the library says “{query.trim()}”.</Text>}
           {searching && hits.data?.map((hit) => (
-            <LibrarySearchHitRow key={`${hit.item}@${hit.on}@${hit.start}`} hit={hit} title={titles.get(hit.item) ?? hit.item} query={query} />
+            <LibrarySearchHitRow key={hit.on === 'flag' ? `${hit.item}#${hit.flag}` : `${hit.item}@${hit.start}`} hit={hit} title={titles.get(hit.item) ?? hit.item} query={query} />
           ))}
           {!searching && shelf.items.length === 0 && (
             <Text size="sm" {...stylex.props(styles.quiet)}>The library is empty: <Code>studio library add &lt;file&gt;</Code></Text>

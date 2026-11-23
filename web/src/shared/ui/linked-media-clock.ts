@@ -186,6 +186,8 @@ export function createLinkedMediaClock({ frameNow, steer }: LinkedMediaClockOpti
         element.removeEventListener('seeked', onMetadata);
         element.pause();
         element.style.opacity = '';
+        // A catch-up rate left on it would set the pace were it to lead next.
+        element.playbackRate = 1;
       };
     },
     onTick(listener) {

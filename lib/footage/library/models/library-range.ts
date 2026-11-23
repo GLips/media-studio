@@ -8,7 +8,8 @@ import type { LibraryItem } from './library-item.ts';
 /** Seconds as `12.5`, `1:02.5` or `1:02:03`. */
 export function libraryClockSecondsOf(text: string): Result.Result<number, LibraryRequestRefused> {
   const parts = text.trim().split(':');
-  if (parts.length > 3 || parts.some((p) => p === '' || Number.isNaN(Number(p)))) {
+  // Each part plain digits, and every part after the first under 60: `1:75` and `1e3` are typos, not times.
+  if (parts.length > 3 || parts.some((p, i) => !/^\d+(\.\d+)?$/.test(p) || (i > 0 && Number(p) >= 60))) {
     return Result.fail(new LibraryRequestRefused({ reason: `"${text}" isn't a time: give seconds (72.5) or m:ss (1:12.5)` }));
   }
   return Result.succeed(parts.reduce((total, part) => total * 60 + Number(part), 0));

@@ -77,11 +77,25 @@ type DecisionPicture = { key: string; follower: LinkedMediaFollower; sound: bool
 const decisionSoundLength = ({ element, placement }: DecisionSound) => placement?.length ?? element.duration;
 const decisionSoundLoaded = (sound: DecisionSound) => sound.element.readyState >= HTMLMediaElement.HAVE_METADATA;
 
-/** A candidate's own video as a follower: on the clock's frames, holding its last picture once it's played out. */
-function decisionVideoFollower(element: HTMLVideoElement): LinkedMediaFollower {
+/**
+ * The grid a candidate's own video is judged on as a follower. Its real rate is unknown; a video's usual one keeps the
+ * clock's frame tolerances at a video frame, not the 120th of a second that would hide it at every hair of drift.
+ */
+const DECISION_FOLLOWER_FPS = 30;
+
+/**
+ * A candidate's own video as a follower, its sound's placement applied: a range of a longer file holds its last
+ * picture past the range's end, a whole file once it's played out.
+ */
+function decisionVideoFollower(element: HTMLVideoElement, placement: DecisionSoundPlacement | undefined): LinkedMediaFollower {
+  const fps = DECISION_FOLLOWER_FPS, start = placement?.mediaStart ?? 0;
   return {
-    element, fps: DECISION_CLOCK_FPS, span: null, offGrid: true,
-    frameOf: (frame) => (element.duration > 0 ? Math.min(frame, Math.ceil(element.duration * DECISION_CLOCK_FPS) - 1) : frame),
+    element, fps, offGrid: true,
+    span: placement ? { from: 0, end: Math.round(placement.length * DECISION_CLOCK_FPS), holdAfter: true } : null,
+    frameOf: (frame) => {
+      const at = linkedMediaFrameAt(start + frame / DECISION_CLOCK_FPS, fps);
+      return element.duration > 0 ? Math.min(at, Math.ceil(element.duration * fps) - 1) : at;
+    },
   };
 }
 
@@ -123,12 +137,13 @@ export function createDecisionPlayback(): DecisionPlayback {
   };
   clock.onTick((frame) => paint(frame / DECISION_CLOCK_FPS));
 
-  /** A picture not on the clock shows the moment it's at, paused. */
-  const hold = ({ follower: { element, fps, frameOf } }: DecisionPicture) => {
+  /** A picture not on the clock shows the moment it's at, paused, kept within its span as the clock keeps it. */
+  const hold = ({ follower: { element, fps, frameOf, span } }: DecisionPicture) => {
     if (element.readyState < HTMLMediaElement.HAVE_METADATA) return;
     element.pause();
     element.muted = true;
-    const frame = Math.max(0, frameOf(Math.round(state.time * DECISION_CLOCK_FPS)));
+    const now = Math.round(timeNow() * DECISION_CLOCK_FPS);
+    const frame = Math.max(0, frameOf(span ? Math.min(Math.max(now, span.from), span.end - 1) : now));
     if (linkedMediaFrameAt(element.currentTime, fps) !== frame) element.currentTime = linkedMediaTimeOf(frame, fps);
   };
   /**
@@ -187,7 +202,7 @@ export function createDecisionPlayback(): DecisionPlayback {
     if (leader) placeSound(leader, time);
     publish({ time });
     paint(time);
-    if (!state.playing) arrange();
+    arrange();
     clock.sync();
   };
   const lead = (key: string | null) => {
@@ -228,7 +243,7 @@ export function createDecisionPlayback(): DecisionPlayback {
     element.muted = true;
     if (key === state.active) lead(key);
     const removePicture = element instanceof HTMLVideoElement
-      ? addPicture({ key, follower: decisionVideoFollower(element), sound: true, detach: null })
+      ? addPicture({ key, follower: decisionVideoFollower(element, placement), sound: true, detach: null })
       : undefined;
     if (placement) publish({ durations: { ...state.durations, [key]: placement.length } });
     const onMetadata = () => {

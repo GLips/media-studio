@@ -47,7 +47,7 @@ export function useLibraryFlags(item: string): LibraryFlagsFile {
 
 /**
  * Sends the reviewer's changes to an item's flags, shown at once by the same pure rule the server applies; the
- * server's file replaces the guess when it answers. A refused change throws its reason, which `error` holds.
+ * server's file replaces the guesses once the last queued change settles, so an earlier answer can't drop a later guess. A refused change throws its reason, which `error` holds.
  */
 export function useLibraryFlagOps(item: string, durationSeconds: number) {
   const client = useQueryClient();
@@ -65,8 +65,8 @@ export function useLibraryFlagOps(item: string, durationSeconds: number) {
         return Result.isSuccess(applied) ? applied.success.file : file;
       });
     },
-    onSuccess: (file) => client.setQueryData(queryKey, file),
-    onSettled: () => client.invalidateQueries({ queryKey }),
+    // Itself still counted while it settles: 1 is the last of the queue.
+    onSettled: () => (client.isMutating({ mutationKey: ['library-flag-ops', item] }) === 1 ? client.invalidateQueries({ queryKey }) : undefined),
   });
   return { apply: (op: LibraryFlagOpInput) => send.mutate(op), error: send.error, reset: send.reset };
 }

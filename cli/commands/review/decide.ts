@@ -32,8 +32,9 @@ type DecisionCandidateSpec = Omit<ReviewCandidateSpec, 'library'> | (Pick<Review
 
 /** `library:<item>@<from>-<to>`, its times left as written. */
 function libraryCandidateFlagOf(what: string): DecisionLibraryRangeSpec {
-  const at = what.lastIndexOf('@'), [from, to] = what.slice(at + 1).split('-');
-  if (at <= 0 || from === undefined || to === undefined) throw new Error(`a library candidate is library:<item>@<from>-<to>, not ${what}`);
+  const at = what.lastIndexOf('@'), times = what.slice(at + 1).split('-');
+  const [from, to] = times;
+  if (at <= 0 || times.length !== 2 || from === undefined || to === undefined) throw new Error(`a library candidate is library:<item>@<from>-<to>, not ${what}`);
   return { item: what.slice(0, at), from, to };
 }
 
@@ -74,6 +75,9 @@ async function resolveLibraryCandidates(candidates: readonly DecisionCandidateSp
   })), libraryLayer);
 }
 
+/** A range's time as a spec may give it: seconds, or text as the flag takes it. */
+const isDecisionTime = (time: unknown): time is number | string => typeof time === 'number' || typeof time === 'string';
+
 /** A --spec file, held to the shape its flag names: it's written by hand or by another tool. */
 function decisionSpecOf(text: string, from: string): DecisionSpec {
   // SAFETY: each field the decision needs is checked below before it's used.
@@ -84,6 +88,11 @@ function decisionSpecOf(text: string, from: string): DecisionSpec {
   if (spec.choose !== undefined && spec.choose !== 'one' && spec.choose !== 'many') throw new Error(`${from}: choose is "one" or "many"`);
   for (const key of ['scene', 'line'] as const) {
     if (spec[key] !== undefined && typeof spec[key] !== 'string') throw new Error(`${from}: ${key} is a storyboard id`);
+  }
+  for (const candidate of spec.candidates) {
+    if (!('library' in candidate)) continue;
+    const { item, from: start, to } = candidate.library;
+    if (typeof item !== 'string' || !isDecisionTime(start) || !isDecisionTime(to)) throw new Error(`${from}: a library candidate is { library: { item, from, to } }, times in seconds or m:ss`);
   }
   return {
     topic: spec.topic, question: spec.question, candidates: spec.candidates,
