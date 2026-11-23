@@ -1,6 +1,6 @@
 ---
-name: video-canvas
-description: Painting for a video or a still, in watercolour, gouache or crayon, from a painting document (`*.painting.ts`) shown by `<PaintedShot>`; also hand-drawn or generative canvas layers. Use to paint a picture or a painted shot, to animate one, when a wash or a painted render looks wrong, or to find the styles you can paint in.
+name: paint
+description: Painting for a video or a still, in watercolour, gouache or crayon, from a painting document (`*.painting.ts`) shown by `<PaintedShot>`; also hand-drawn or generative canvas layers. Use to paint a picture or a painted shot, to animate one, for cut paper (cards, folds, pop-ups), when a wash or a painted render looks wrong, or to find the styles you can paint in.
 ---
 
 # Painting
@@ -30,24 +30,25 @@ Moving, fading, revealing and posing finished paint costs a frame; a new propert
 1. **Find a style.** `ls "$(studio home)/work/styles/"` (folders spell a style `watercolor`), then read its
    `<name>.md`. Done when the project's
    `project.ts` names it in `styles`, or you've told the user there's no painted look on this machine
-   ([styles.md](${CLAUDE_PLUGIN_ROOT}/skills/video-canvas/references/styles.md)).
+   ([styles.md](${CLAUDE_PLUGIN_ROOT}/skills/paint/references/styles.md)).
 2. **Plan colour and light**: which lights are reserved paper, what mixes in one layer, what glazes over what, which
    washes later work waits on. Done when each light and each wet-in-wet moment has its application written down
-   ([techniques.md](${CLAUDE_PLUGIN_ROOT}/skills/video-canvas/references/techniques.md)).
+   ([techniques.md](${CLAUDE_PLUGIN_ROOT}/skills/paint/references/techniques.md)).
 3. **Write the source** in the scene's folder. A first painting:
-   [first-painting.md](${CLAUDE_PLUGIN_ROOT}/skills/video-canvas/references/first-painting.md); how water, `on`,
-   layers and sheets behave: [painting-model.md](${CLAUDE_PLUGIN_ROOT}/skills/video-canvas/references/painting-model.md).
+   [first-painting.md](${CLAUDE_PLUGIN_ROOT}/skills/paint/references/first-painting.md); how water, `on`,
+   layers and sheets behave: [painting-model.md](${CLAUDE_PLUGIN_ROOT}/skills/paint/references/painting-model.md).
 4. **Check, solve, look.** `studio paint check <source>` until clean; `--solve` until every landing time is the one
    you planned; `studio paint still` and read the PNG at delivery size. Done when all three agree with the plan. When
-   it looks wrong: [troubleshooting.md](${CLAUDE_PLUGIN_ROOT}/skills/video-canvas/references/troubleshooting.md).
+   it looks wrong: [troubleshooting.md](${CLAUDE_PLUGIN_ROOT}/skills/paint/references/troubleshooting.md).
    A painted still for delivery: `paint still --out assets/<name>.png` in the project, imported into `stills.tsx` as
    an image `{ src, w, h }` (the `stills` skill).
 5. **Put it in a scene and move it.** Planes, camera, lays, keyed values, motion and costs:
-   [shots.md](${CLAUDE_PLUGIN_ROOT}/skills/video-canvas/references/shots.md). Washes painted on screen, reveals,
+   [shots.md](${CLAUDE_PLUGIN_ROOT}/skills/paint/references/shots.md). Washes painted on screen, reveals,
    properties moving through a shot, rigs:
-   [painting-over-time.md](${CLAUDE_PLUGIN_ROOT}/skills/video-canvas/references/painting-over-time.md). Paint worn by
+   [painting-over-time.md](${CLAUDE_PLUGIN_ROOT}/skills/paint/references/painting-over-time.md). Paint worn by
    three.js, wrapped labels, 3D lighting:
-   [three-and-wrapping.md](${CLAUDE_PLUGIN_ROOT}/skills/video-canvas/references/three-and-wrapping.md). Done when
+   [three-and-wrapping.md](${CLAUDE_PLUGIN_ROOT}/skills/paint/references/three-and-wrapping.md). Cards, folds,
+   pop-ups, a cut-paper look: [cut-paper.md](${CLAUDE_PLUGIN_ROOT}/skills/paint/references/cut-paper.md). Done when
    `studio paint check <project>` is clean, every motion warning is fixed or meant, and a `studio look` sheet at the
    storyboard's moments reads right.
 6. **Prove and hand over.** `studio repeatable <project> <times>` at times mid-fade and after each move; then put
@@ -64,9 +65,6 @@ Moving, fading, revealing and posing finished paint costs a frame; a new propert
   it, and motion tracks list a painting as unmeasured. Check a drawn mark that carries a read by eye with
   `studio look --strip`, and keep it clear of the caption band yourself.
 - **Paintings draw with WebGPU**, which the render browser and `studio preview` have; without it they fail loudly.
-- **Imports**: scenes take `painting`, `layersOf`, `PaintedShot`, `paintKeyed`, `paintingInTime`, `dissolve`,
-  `sceneSecondsOf` and `WATERCOLOUR_PIGMENTS` from `#studio`. The stage, camera plays, depth, rig-pose and reveal
-  helpers aren't in `#studio`: each reference names its `#lib/paint/…` module. A source loads in plain Node and imports
-  models only.
+- **A source loads in plain Node** and imports models only.
 
 Older projects paint through `stampPaintRecipe` and `<StampPainting>`; write new work as painting documents.

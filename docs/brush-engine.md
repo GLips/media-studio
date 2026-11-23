@@ -540,7 +540,7 @@ vertices the lens's motion layer follows; `paint-rig-pieces-gpu.ts` draws them f
 by its part's map up the chain, as the shot builds each part's (exact wherever the skin moves paint wholly with its
 part), a two-bone reach, and a pose mirrored. A rig's files, poses and clocks stay with the projects that use them.
 
-**document** is the painting language a source writes, which the video-canvas skill teaches. A `*.painting.ts`
+**document** is the painting language a source writes, which the paint skill teaches. A `*.painting.ts`
 source's factory returns a `PaintingDocument` (`painting-document.ts`: a paper, a medium and a tree of layers, washes
 and applications), its values held to its schema (`painting-properties.ts`). `painting()` (`painting-source.ts`)
 evaluates a source, memoised by its values, and refuses a document with any error. `painting-document-check.ts` checks

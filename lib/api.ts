@@ -77,7 +77,7 @@ export { CoverImage, FitText, STILL_CARD_TILT, StillCard, StillHud, defineStills
 export { checkSourcePins, fitTake, onTake, pinnedSourceTime, sceneTimeOf, takeFrameAt, takeMouseAt, takeShot, takeTimeAt, type Take, type TakeFit, type TakeFrame, type TakeMark, type TakeMouse } from '#lib/footage/capture/studio/take.ts';
 export { ThreeStage, softboxEnvironment, type ThreeBloom, type ThreeEnvironment, type ThreeFrame, type ThreeLens, type ThreeSample } from '#lib/picture/film/studio/three-stage.tsx';
 // Stamp painting: a recipe of opaque and glaze groups of passages of applications, written against a style and
-// painted on the GPU with its brushes (the video-canvas skill).
+// painted on the GPU with its brushes (the paint skill).
 export { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 export { compileStampPaintRecipe, type CompiledStampPaint } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 export type {
@@ -125,7 +125,7 @@ export { paintMotionPlay, type PaintBoilMarks, type PaintLivePose, type PaintLiv
 export { paintMotionFrameAt } from '#lib/paint/animation/models/paint-motion-frame.ts';
 export { paintIdHash, paintIdPhase, type PaintMotionClip, type PaintPlaceClip, type PaintPose, type PaintPoseClip } from '#lib/paint/animation/models/paint-motion-clips.ts';
 export type { PaintPartPin, PaintPin, PaintPinRig, PaintPlacementMove, PaintRadialPin } from '#lib/paint/animation/models/paint-pins.ts';
-// Values in time (the video-canvas skill's shots): a constant or a function of the moment, keyed with curves.
+// Values in time (the paint skill's shots): a constant or a function of the moment, keyed with curves.
 export { presentationValueAt, type PaintKeyed, type PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
 export { paintKeyed, paintKeyedAccent, paintKeyedHit, type PaintKey, type PaintKeyedOptions } from '#lib/paint/animation/models/paint-keyed.ts';
 export type { PaintCurve } from '#lib/paint/animation/models/paint-curves.ts';
@@ -152,7 +152,7 @@ export { paperPopUpPlane, type PaperPopUpPlaneOptions } from '#lib/paint/shot/st
 export { paintWorldLightDirection, type PaintWorldDirection } from '#lib/paint/animation/models/paint-camera-world.ts';
 export { setThreeMirrorCamera } from '#lib/picture/shot-camera/studio/three-mirror-camera.ts';
 export type { PaintedThreeShadows } from '#lib/paint/three-layers/studio/painted-three-shadows.ts';
-// Painting sources (the video-canvas skill): a `*.painting.ts` factory returns a PaintingDocument, whose types a
+// Painting sources (the paint skill): a `*.painting.ts` factory returns a PaintingDocument, whose types a
 // source imports from lib/paint/document/models/painting-document.ts. A scene evaluates it and selects its layers.
 export { checkPaintingSource, painting, type PaintingEvaluation, type PaintingFactory, type PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
 export type { PropertySchema, PropertySpec, PropertyValues } from '#lib/paint/document/models/painting-properties.ts';

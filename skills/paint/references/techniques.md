@@ -1,7 +1,7 @@
 # Techniques: getting a look
 
 How to plan a painting's colour and light and write the look you want, as applications. Field units and defaults are
-in the document types' JSDoc; the water and `on` rules these build on are in `${CLAUDE_PLUGIN_ROOT}/skills/video-canvas/references/painting-model.md`.
+in the document types' JSDoc; the water and `on` rules these build on are in `${CLAUDE_PLUGIN_ROOT}/skills/paint/references/painting-model.md`.
 
 ## Plan colour and light first
 
@@ -11,12 +11,11 @@ before writing a wash.
 - **Light is the paper.** A light colour over a darker watercolour wash barely shows. Reserve every light (a sun, a
   lit rim, a lamp's reflection) on each darker application crossing it, one footprint shared as a TS constant. A lift
   leaves a stain. Only `TITANIUM_WHITE` in a mix covers, as body colour.
-- **One layer is one mixing film.** An application mixes into the paint there: a blue heart on yellow petals goes
-  olive. In a later layer, gouache covers and watercolour glazes (recipe 12).
+- **One layer is one mixing film** (painting-model.md): to cover or glaze, start a later layer (recipe 12).
 - **A field grades pigment amounts, never colours**: ultramarine to rose passes through violet, blue to orange
   through grey (the check warns). Grade one mix's strength, change hue across layers, or charge the second colour
   into the wet flood (recipe 2).
-- **Gouache lightens with white**, and dries 3–6 L* paler than written. Pale gouache laid as light reads chalky,
+- **Gouache lightens with white**, and dries paler (painting-model.md, Media). Pale gouache laid as light reads chalky,
   pasted on: for glow, reserve the paper; for a veil, cap the film (`opacityCap`, Thin films); for a near-black, a
   hex part at strength 1 (`'#10171f'` dries to L* 10).
 - **A big soft light on a dark ground** (a lit bank, a pool of lamplight): watercolour only darkens, and a reserve
@@ -27,7 +26,7 @@ before writing a wash.
   each other.
 - **Haze is paint; glow is light.** A haze is a veil graded by a radial `load` on its fill
   (`{kind: 'radial', center, radius, inner: 0.6, outer: 0}`): no edge anywhere. Light that gives off light is its
-  emitter's `glow` and the lens's bloom (`${CLAUDE_PLUGIN_ROOT}/skills/video-canvas/references/shots.md`): rings or discs painted round it read as rings or discs.
+  emitter's `glow` and the lens's bloom (`${CLAUDE_PLUGIN_ROOT}/skills/paint/references/shots.md`): rings or discs painted round it read as rings or discs.
 
 ## Techniques are applications
 
@@ -45,7 +44,7 @@ application, makes the engine fail one that certainly can't bloom.
 | rewet | water 0.5–1 | `dry` | — | wets the paper for later applications; set paint stays |
 | clear-water ground | the wash's `prewet: {region, water}` | — | — | an even soak at the wash's start, no brush texture |
 
-`${CLAUDE_PLUGIN_ROOT}/skills/video-canvas/references/bloom-rims.png` is the bloom chart: drops 0.1, 0.2 and 0.35 over damp, left to right, in washes of
+`${CLAUDE_PLUGIN_ROOT}/skills/paint/references/bloom-rims.png` is the bloom chart: drops 0.1, 0.2 and 0.35 over damp, left to right, in washes of
 `rim` 0.5, 1 and 2, top to bottom. A bloom under 0.2 surplus barely shows; `rim` darkens its edge as it darkens the
 flood's. A
 bloom rewets its footprint, so a later `damp` landing overlapping it waits or fails. Under `dryingScale: 'never'`
@@ -91,7 +90,7 @@ A capped film (`opacityCap`, or a flood's `load`) is thin paint over whatever li
   falls darker, not bluer, than what it lies on.
 - **A cap is per application, per texel**; overlapping applications add up (n caps of c build about n × c). Plan a
   veil of many marks by their sum: fourteen discs at 0.035 lay half a full load. A film meant to stay even is one
-  application; stacked capped discs show their rings, where one fill with a radial `load` has no edge.
+  application (recipe 44).
 - **Gouache at strength 0 is titanium white**, not nothing (crayon alike, with wax white). Fade gouache toward no
   paint by the fill's `load` or `opacityCap`, keeping the mix's strength.
 - Gouache under a cap shows what's under about half at 0.1 of a full load, a fifth at 0.25, a tenth at 0.5. A cap
@@ -146,30 +145,8 @@ hex part. A mix part takes the pigment's object (`WATERCOLOUR_PIGMENTS.ultramari
 
 ## Brushes and papers
 
-What each brush is for, in the studio's three pigment styles (if they're on this machine). How far pressure moves
-each one's size, opacity and flow, its visible width and the finest diameter it plans differ brush to brush and live
-only on your machine: `studio brushes describe --style <style>`.
-
-| Style | Brush | For |
-|---|---|---|
-| `watercolor` | `wash` | a lightly textured body, for floods nothing waits on |
-| | `filler` | a big, open, mottled glaze keeping paper showing |
-| | `wet`, `blend` | cloudy wet-in-wet; a soft feathered wash |
-| | `roughEdge` | a dense body with a broken edge: hair, a pine |
-| | `shadow`, `charge` | a round wash pooling at its rim; touches dropped into a wet wash |
-| | `dry` | bristle streaks catching the paper's peaks (dry) |
-| | `pigment`, `crystals` | granulating veins near the base colour; salt crystals clipped to a shape |
-| | `stains`, `blotch`, `splashes` | blooms with a dark pooled edge; cauliflower blooms as stamps; round drops |
-| | `pencil`, `ink` | a grainy broken line (dry); a crisp opaque tapered line for dark accents |
-| | `detail` | a smooth line at 4–12 px; laid big, **the even flood later work waits on** |
-| `gouache` | `wash`, `flat` | floods and flat blocks; a broad flat over a block |
-| | `thick`, `round` | dense opaque crisp edges; shadows, folds, the core |
-| | `bristly` | bristle marks, parting into a dry run-out under falling pressure |
-| | `dab`, `detail` | small lights and glints; fine opaque lines |
-| | `dry` | a scumble catching the peaks over a block, a broken edge |
-| `crayon` | `stick`, `side`, `tooth` | hatching; broad grainy zigzags; a scumbled ground |
-| | `conte`, `chalk`, `pencil` | small solid darks; rough texture; a graphite outline |
-| | `eraser` | a lift rubbing back toward the paper |
+Which brush to reach for, and on which paper, is the style's own judgment: its `<name>.md` (styles.md). How far
+pressure moves a brush's size, opacity and flow is measured on your machine: `studio brushes describe --style <style>`.
 
 A fill plans its strokes by its brush's measured profile, so its `diameterPx` must lie in the range the profile
 holds; the check names the range, or the import that measures a brush with none.
@@ -181,9 +158,7 @@ for a short blade, petal or wing, set it to about the stroke's length in diamete
 runs; `wobble` makes strokes along one path differ. A curve `(u) => pressure` is compared by identity: define it once
 at module level.
 
-**Papers.** The pigment styles' `vvds` pack holds `papers/vvds-watercolor-canvas-1.png` … `-4.png`, each with a
-`.grain.png`, named `{style, pack: 'vvds', file}`; the styles paint on canvas-3 at grain depth 0.35 (watercolor), 0.2
-(gouache), 1 (crayon). `image` is a photograph under the painting; `grain` is the tooth.
+**Papers.** `image` is a photograph under the painting; `grain` is the tooth.
 
 **Fields** (`Field<T>`, document px): `constant`, `linear` (held past its ends), `radial` (from `inner` at the centre
 to `outer` at `radius`), `noise` (features about `scale` px, named by `seed`). Mottle by purpose (a warm lit plane

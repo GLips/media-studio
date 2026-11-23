@@ -1,6 +1,6 @@
 # Private styles: importing, measuring and fitting brush packs
 
-A private style (`work/styles/<name>/`) is a bought brush pack with its palette and paper; the video-canvas skill
+A private style (`work/styles/<name>/`) is a bought brush pack with its palette and paper; the paint skill
 teaches finding, writing and painting with one. This doc is the machinery under it: how a pack is imported, how each
 brush is measured and judged against its app, and how the importers are fitted.
 

@@ -37,7 +37,7 @@ A beat is one idea on screen, usually one or two beats of the music. For each:
   animates.
 - **How we'd build it here**: the studio renders at the video's own format (1920×1080 at 30 fps unless it names
   another), every frame a pure function of time. Say whether DOM/SVG, a canvas, three.js on `ThreeStage` or a painted
-  layer (`video-canvas`) fits, and name the reusable piece it implies, with its parameters, rather than a one-off.
+  layer (`paint`) fits, and name the reusable piece it implies, with its parameters, rather than a one-off.
   Note what a 30 fps render must do differently from a 60 fps source (`${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/curves.md`, Fast moves).
 
 Measure rather than guess. When a number is an estimate, say so and how it was made. Where two readings disagree, the

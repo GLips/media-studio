@@ -79,7 +79,7 @@ key a wanted verb needs is in its environment, or the person has chosen to stay 
 - **A brand kit** (colours, fonts, logos, voice) is `work/brands/<name>/`:
   `${CLAUDE_PLUGIN_ROOT}/skills/studio-setup/references/brand-kits.md` says what it holds and how to make one.
 - **A painting style** is `work/styles/<name>/`, private because its brushes come from a bought pack: the
-  `video-canvas` skill, and `studio brushes --help`.
+  `paint` skill, and `studio brushes --help`.
 - **A product repo** whose real components a video shows is a host (`studio hosts --help`). `studio hosts sync <p>
   --install` runs the host's own install, lifecycle scripts included; a working copy named in `work/hosts.local.json`
   is used as it stands, so install its packages there yourself. Plain CSS and CSS modules load; Tailwind and PostCSS don't.

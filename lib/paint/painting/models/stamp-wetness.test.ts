@@ -4,9 +4,9 @@ import { test } from 'node:test';
 import { PAINT_MEDIA } from '#lib/paint/materials/models/paint-medium.ts';
 import { stampDrying, stampDryingTimes } from './stamp-wetness.ts';
 
-const PAINTING_MODEL_PAGE = new URL('../../../../skills/video-canvas/references/painting-model.md', import.meta.url);
+const PAINTING_MODEL_PAGE = new URL('../../../../skills/paint/references/painting-model.md', import.meta.url);
 
-/** The drying table's rows in the video-canvas skill's painting model, each split into its cells: the header first. */
+/** The drying table's rows in the paint skill's painting model, each split into its cells: the header first. */
 function dryingTableRows(): string[][] {
   const lines = readFileSync(PAINTING_MODEL_PAGE, 'utf8').split('\n'), start = lines.findIndex((line) => line.startsWith('| Medium, water |'));
   assert.ok(start >= 0, 'the painting model has its drying table');

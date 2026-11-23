@@ -30,7 +30,7 @@ Done when you can say why the treeline is soft and the hill's edge crisp.
 ## 2. Wire the project
 
 - `project.ts` names every style the painting brushes with: `styles: ['watercolor']`. A style it leaves out is
-  refused by the check and missing from the bundle. No style on this machine: `${CLAUDE_PLUGIN_ROOT}/skills/video-canvas/references/styles.md`.
+  refused by the check and missing from the bundle. No style on this machine: `${CLAUDE_PLUGIN_ROOT}/skills/paint/references/styles.md`.
 - A source one scene uses sits in that scene's folder (`scenes/meadow/meadow.painting.ts`); one several scenes share
   is listed in `project.ts`'s `shared`.
 - A source loads in plain Node, so it imports models only, never `#studio`: types from
@@ -65,8 +65,8 @@ export default function meadow({ hillTopPx }: PropertyValues<typeof properties>)
 ```
 
 Properties are `number` (`min`, `max`, optional `step`), `boolean` or `enum`. Give numbers a `step`: each distinct
-value is a solve. Plan the lights and the order of washes first (`${CLAUDE_PLUGIN_ROOT}/skills/video-canvas/references/techniques.md`); the rules water follows are in
-`${CLAUDE_PLUGIN_ROOT}/skills/video-canvas/references/painting-model.md`.
+value is a solve. Plan the lights and the order of washes first (`${CLAUDE_PLUGIN_ROOT}/skills/paint/references/techniques.md`); the rules water follows are in
+`${CLAUDE_PLUGIN_ROOT}/skills/paint/references/painting-model.md`.
 
 Done when the factory reads nothing but its values and imports.
 
@@ -112,7 +112,7 @@ export const meadowScene = (clock: StoryboardSceneClock<typeof storyboard, 'mead
 - The stage is the frame: at rest a plane's document px are frame px. The back plane must cover what the frame shows
   of it, or the shot is refused (`meadow.lay`). The 640 × 360 study is laid with a `cover`, three times its px and
   soft for it; paint a scene's back at the frame's size or larger and it needs no lay. A painting meant to sit small
-  inside the frame goes on a nearer plane (`${CLAUDE_PLUGIN_ROOT}/skills/video-canvas/references/shots.md`).
+  inside the frame goes on a nearer plane (`${CLAUDE_PLUGIN_ROOT}/skills/paint/references/shots.md`).
 - Keep the shot a module constant (or built once per scene binding): `PaintedShot` reloads when its identity changes.
 - `studio paint check <project>` compiles every painted shot without the GPU and prints motion warnings; `studio look
   <project> --sheet <seconds>` shows frames from the composition, and `--set <factory>.<property>=<value>` shows a

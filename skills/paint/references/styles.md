@@ -20,7 +20,7 @@ work/styles/<name>/
 
 Read `<name>.md` before painting for its brush judgment. Some speak the recipe path's terms (`paint.ts` groups,
 glazes by `opacity`, `reserve`): for water, mixing and glazes in a document,
-`${CLAUDE_PLUGIN_ROOT}/skills/video-canvas/references/painting-model.md` is the rule. Prefer brushes graded `close` (reads as its
+`${CLAUDE_PLUGIN_ROOT}/skills/paint/references/painting-model.md` is the rule. Prefer brushes graded `close` (reads as its
 preview at a glance); read the `fidelity.ts` note before leaning on a `rough` one's look (plainly different in some
 way); avoid `off` ones (shape, density or texture wrong).
 
@@ -60,7 +60,7 @@ named style is checked, and a pack not imported, a file gone or a brush its pack
    Photoshop's brushes don't say) is what a fill defaults to: a wet brush floods, a dry one strokes. A brush whose
    media differs from its pack's says its own.
 3. Write `<name>.md`: which brushes do what, and how the pack's author paints with them.
-4. Paint a test still with each brush you'll lean on (`${CLAUDE_PLUGIN_ROOT}/skills/video-canvas/references/first-painting.md`), and judge it against the pack's
+4. Paint a test still with each brush you'll lean on (`${CLAUDE_PLUGIN_ROOT}/skills/paint/references/first-painting.md`), and judge it against the pack's
    previews (Procreate: `brushes/<pack>/generations/<the id in current>/previews/`) or Photoshop's own renders
    (`brushes/<pack>/reference/`).
 

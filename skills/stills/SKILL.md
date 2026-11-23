@@ -45,7 +45,7 @@ Done when the hero image is in the project, from one of:
   hex: the prompt is sent as written. `--transparent` gives a cutout for a field; `--ref` sends the capture so the
   product keeps its likeness. Look before using it: colours drift from the hex, and a product shot can invent parts.
 - **JSX**: a product's output, a price tag, a big number. Its text is checked like any other, so draw it at real sizes.
-- **A painting** (the `video-canvas` skill), written to the project as a PNG and drawn like any image.
+- **A painting** (the `paint` skill), written to the project as a PNG and drawn like any image.
 
 ## 3. Design
 

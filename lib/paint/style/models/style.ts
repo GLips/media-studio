@@ -1,5 +1,5 @@
 // style.ts: what a private stamp-paint style is. A style lives in work/styles/<name>/ and nowhere else
-// (the video-canvas skill's styles): style.ts (a StampPaintStyle, typed here), <name>.md on painting in it, and brushes/, the
+// (the paint skill's styles): style.ts (a StampPaintStyle, typed here), <name>.md on painting in it, and brushes/, the
 // packs it paints with, imported on each machine from that machine's own bought copy and never tracked.
 //
 // Negative space: a style sets no per-brush defaults (diameter, opacity, material). A recipe states them on each

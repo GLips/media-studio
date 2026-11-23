@@ -1,7 +1,7 @@
 # Painting over time
 
 Paint that changes on screen: a wash painted as you watch, finished paint revealed along a path, a property moving
-through a shot, a figure that bends. Planes, the camera and keyed values are in `${CLAUDE_PLUGIN_ROOT}/skills/video-canvas/references/shots.md`.
+through a shot, a figure that bends. Planes, the camera and keyed values are in `${CLAUDE_PLUGIN_ROOT}/skills/paint/references/shots.md`.
 
 Pick by what should change:
 
@@ -108,8 +108,8 @@ chose and why.
 
 A group's entry takes `rig: {parts, pose}`. Each part is `{id, z, parent: null, cels}`, or a child joined by
 `joint: 'skin'` (bending along its own paint over `blend` px, keeping a limb's width) or `'hinge'` (rigid, folding
-about `crease?` radians through its pivot), with a `pivot`. `back?`, one of its cels, shows while a fold turns it away;
-paint it as seen through the card from the front.
+about `crease?` radians through its pivot), with a `pivot`. `back?`, one of its cels, shows while a fold turns it away
+(cut-paper.md); paint it as seen through the card from the front.
 
 - Every layer under the group lies in exactly one part's cels. A cel is a layer or a group (a line and its wash as one
   part, media mixed). A part's cels after its first are swaps, shown one at a time: a layer meant to show with a part
@@ -144,7 +144,7 @@ paint it as seen through the card from the front.
 | a collage cut-out sliding | its layer on `sheet: {kind: 'own', paper}`, a play on its occurrence | its grain travels with it |
 | paint drifting over still paper | the layer on its parent's sheet, a play on its occurrence, held | a solve per distinct pose |
 | passing behind a ridge on shared paper | `clips: [{region: ABOVE_RIDGE, anchor: 'paper'}]` | the clip stays on the paper |
-| mingling with a wet wash as it moves | its layer on the wash's sheet, posed, its charge timed while the wash is wet | hiding it leaves its water's work: fade a group holding both |
+| mingling with a wet wash as it moves | its layer on the wash's sheet, posed, its charge timed while the wash is wet | fade a group holding both (painting-model.md) |
 | falling rain, glitter on water | an instanced plane, items keyed for life, each its own phase | boil re-rolls a whole layer at once: twinkle each item on its own phase; fade items at an edge rather than dropping them |
 | a cycle: a wingbeat, a flicker | the cycle's drawings as one part's cels, `cel` picked by `m.frame` | a swap re-solves nothing; a flier's body rises as its wings beat down |
 | a light moving while the scene dissolves | the light a small painting on a nearer plane of its own, laid along its path | a light reserved in each held solve fades in place: a ghost |

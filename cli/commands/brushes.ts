@@ -46,7 +46,7 @@ const importBrushesCommand = defineCommand({
     const refused = Object.entries(profiles).flatMap(([name, profile]) => (profile.kind === 'refused' ? [`${name} (${profile.why})`] : []));
     console.error(`brushes: profiles in ${relative(STUDIO_ROOT, dir)}/profiles/: ${outcomes.measured} measured, ${outcomes.kept} already stored, ${outcomes.refused} refused, in ${Math.round((Date.now() - started) / 1000)} s`);
     if (refused.length) console.error(`brushes: their probes read no profile, so no fill can plan with them: ${refused.join('; ')}`);
-    if (!existsSync(join(STUDIO_STYLES_DIR, args.style, 'style.ts'))) console.error(`brushes: work/styles/${args.style}/ has no style.ts yet; the video-canvas skill says what goes in it`);
+    if (!existsSync(join(STUDIO_STYLES_DIR, args.style, 'style.ts'))) console.error(`brushes: work/styles/${args.style}/ has no style.ts yet; the paint skill says what goes in it`);
   },
 });
 

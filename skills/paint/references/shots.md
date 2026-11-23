@@ -1,8 +1,8 @@
 # Shots: paintings in a scene
 
 How a scene shows and moves finished paint: planes, the camera, lays, values in time, motion and what each costs.
-Paint landing over time, reveals and rigs are in `${CLAUDE_PLUGIN_ROOT}/skills/video-canvas/references/painting-over-time.md`; three.js and wrapped paintings in
-`${CLAUDE_PLUGIN_ROOT}/skills/video-canvas/references/three-and-wrapping.md`. Field-level reference: the JSDoc of `$(studio home)/lib/paint/shot/models/shot-props.ts`.
+Paint landing over time, reveals and rigs are in `${CLAUDE_PLUGIN_ROOT}/skills/paint/references/painting-over-time.md`; three.js and wrapped paintings in
+`${CLAUDE_PLUGIN_ROOT}/skills/paint/references/three-and-wrapping.md`. Field-level reference: the JSDoc of `$(studio home)/lib/paint/shot/models/shot-props.ts`.
 
 ## Paint or present?
 
@@ -11,7 +11,7 @@ shot does with finished paint (lays and the camera, motion nodes and plays, rigs
 instances): it runs every frame and solves nothing. So whatever changes continuously (a position, a size, an angle,
 an outline sliding) goes in presentation: a figure walks by its node's `place`, a gate swings on a rig, a sun climbs
 on its own plane's `lay`. Properties carry what only a new painting can show: the light, a colour, how heavily a wash
-is charged, a mark there or not. A property that sweeps through a shot is a painting in time (`${CLAUDE_PLUGIN_ROOT}/skills/video-canvas/references/painting-over-time.md`).
+is charged, a mark there or not. A property that sweeps through a shot is a painting in time (`${CLAUDE_PLUGIN_ROOT}/skills/paint/references/painting-over-time.md`).
 
 ## A shot is a camera and planes
 
@@ -30,7 +30,7 @@ PaintedShotProps {camera, span, light?, planes, paintedTextures?, warm?}
   the camera. So one helper returns one whole thing (a flock, a card) as one `PlaneProps`, and a problem is named where
   it's written (`birds.occurrences.flock.marks`).
 - Planes draw farther first by each frame's depths. The farthest plane at one numeric depth is the **back**: opaque,
-  painted on paper wherever the frame reads it, so a back smaller than the frame and its blur is refused. Nearer
+  painted on paper wherever the frame reads it (its reach: The camera). Nearer
   painted planes are clear film: opaque paint hides what's behind, a glaze filters it. A strongly coloured glaze over
   coloured paint on another plane comes out lighter than on one sheet: put such a glaze on the plane of what it tints.
 - A small painting meant to sit inside the frame goes on a nearer plane with `ground: 'paper'`, in front of a
@@ -115,7 +115,7 @@ under a moving camera, `paintSimilarityApply(paintShotViewAt(camera, span, depth
 
 Things that must stay in register as the camera moves (a glint under its sun, a shadow under a walker) share a depth,
 or are placed each moment through these. All three are exact between image-parallel planes only: a ground receding
-to a horizon is a three plane wearing its painting (`${CLAUDE_PLUGIN_ROOT}/skills/video-canvas/references/three-and-wrapping.md`).
+to a horizon is a three plane wearing its painting (`${CLAUDE_PLUGIN_ROOT}/skills/paint/references/three-and-wrapping.md`).
 
 ## Values in time
 
@@ -143,7 +143,7 @@ same numbers. A key is `{at, value, curve?, curves?, through?, snap?}` or `{at, 
 (rise to `peak`, settle) and `paintKeyedHit` (wind back first) rest at 0, so they add, and their peak snaps. Key with
 these, never a hand-written ease; `#studio`'s motion functions (`sineInOutEase`, `powerOutEase(3)`, `stagger`) are for
 where a function of the share is wanted. Moment times come from the storyboard's cues, never typed in
-(`${CLAUDE_PLUGIN_ROOT}/skills/video-canvas/references/painting-over-time.md`, Cues).
+(`${CLAUDE_PLUGIN_ROOT}/skills/paint/references/painting-over-time.md`, Cues).
 
 - **Moves on moves.** Node moves compose by level: an occurrence's play rides its group's node, and that its plane's.
   Slide a tram on its plane and bump it over each rail joint on its occurrence. Only two writers of one thing on one
@@ -161,12 +161,8 @@ where a function of the share is wanted. Moment times come from the storyboard's
 - **Plays**, each `{clip, clock, origin}`: clock `{at, rate?, loop?: {period, mode?: 'repeat' | 'pingpong', times?},
   hold?, until?}`, `at` in scene seconds, a cue's. Clips: `place` (rigid, about the pivot), `poses` (per pin),
   `breathe`, `sway {root, direction, length, amount, period}` (reeds, a hanging leaf), `flutter`, `strain {value}`
-  (squash and stretch about the pivot, keeping area: `#studio`'s `Strain`), `fold {angle, crease?}`. Two plays
+  (squash and stretch about the pivot, keeping area: `#studio`'s `Strain`), `fold {angle, crease?}` (cut-paper.md). Two plays
   writing one thing (a place, one pin) over the same seconds are refused; a place and a sway on one node compose.
-- **Cut paper folds.** `fold` a card's group node: it turns `angle` about a crease through its pivot (`crease`, level
-  by default; positive tips the side below away), narrowing by cos(angle), shaded by the shot's `light`. Past π/2 its
-  blank paper shows (a flip is a fold of π); π/2 draws nothing, a lingering sliver warns. Pop cards up with `latch`.
-  Nested folds multiply in the plane, not true 3D.
 - **Glow** (`{amount, threshold}`, a value in time) is light a node's paint adds past a luminance threshold, bloomed
   by the lens at `lens.bloom`. Glow the emitter (the lamp's glass, the lit window), never a painted halo: a halo glows
   only by its own thin film. Light comes only from paint that adds it, so an emitter is opaque paint (gouache, white

@@ -1,5 +1,5 @@
-// stamp-gate-reveals.ts: the gate's reveals (video-canvas, Reveals), each frame held to the CPU twin of
-// what it shows (stampRevealShownAt): drawn mid-reveal, it matches the all-hidden frame wherever the twin shows
+// stamp-gate-reveals.ts: the gate's reveals (paint skill: Reveals), each frame held to the CPU twin of
+// what it shows (stampRevealShownAt): mid-reveal it matches the all-hidden frame wherever the twin shows
 // nothing and the all-shown frame wherever it shows all. The ink: a flood revealed by three strokes of mixed widths
 // and caps; wrapped, by one across its seam. The fields: a flood, a moon and a petal, revealed by a linear, a radial
 // (profile `out`) and a noise field. The nested heron: its group and body each revealed, the body cut by both. The

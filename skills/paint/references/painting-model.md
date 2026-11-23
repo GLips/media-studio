@@ -128,9 +128,8 @@ taken as meant: a rig's clear cel, or a bare-paper back.
 - An own sheet's card is its paper cut round its paint at twice the paint's gain, so a `feather` or `bleed` outline
   shows a rim of paper past the paint. Keep a card's outline crisp, tint its paper where it should read as paint
   alone, and paint an edge meant to melt into what's behind on the parent's sheet.
-- In a shot a card catches its `light`: a short soft shadow away from it, a dark cut line round its edge, a pale lip
-  where the edge faces it. `card: {shadow?, rim?, lift?}` turns either off or lifts it further (`lift` px, 0.7: the
-  shadow's length and softness); `card: 'flat'` lays it flat, as for a card meant to melt into what's behind.
+- In a shot a card catches its `light` by default: a short soft shadow away from it, a dark cut line, a pale lip
+  where its edge faces it. `card: 'flat'` lays it flat; lift, folds and the cut-paper look: cut-paper.md.
 - Posing on shared paper re-solves from the element's first application at each distinct pose; a node's hold sets
   how many poses a second. Shared-sheet paint stays inside the document rectangle: an element leaving it needs a wider
   document or an own sheet.
