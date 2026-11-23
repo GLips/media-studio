@@ -3,17 +3,20 @@
 //   /library-media/<item>/<file>                  a file, with HTTP Range, for <video>, <audio> and fetch
 //   /library-frames?item=&file=&t=&width=&fps=    a video file's picture at media time `t`, as a JPEG (library-frame-decoder.ts)
 //
-// A render serves both from a loopback server of its own (serveLibraryMedia), the studio app's Vite server the first
-// through its middleware (studio-app-library-media.ts). Media offline answers 503 with the reason. Node only.
+// A render or the Remotion Studio serves both from a loopback server of its own (LibraryMediaServer), the studio
+// app's Vite server through its middleware (studio-app-library-media.ts). Media offline answers 503 with the reason.
+// Node only.
 //
-// Each request is an Effect program over the media folder's service; a file's bytes stream from the media folder into
-// the response with Range offsets, at the pace the page reads them.
+// Each request is an Effect program run on services built once per server; a file's bytes stream from the media
+// folder into the response with Range offsets, at the pace the page reads them. node:http stays: the handler is
+// what Vite's middleware and a loopback server both call.
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { NodeSink } from '@effect/platform-node';
-import { Effect, FileSystem, Path, Schema, Stream } from 'effect';
+import { Context, Effect, FileSystem, Layer, Path, Ref, Schema, Stream } from 'effect';
 import { listenOnRenderLoopback } from '#lib/platform/browser/engine/render-loopback.ts';
-import { runStudioEffect } from '#lib/platform/process/engine/studio-effect-runtime.ts';
-import { libraryFrameAt } from './library-frame-decoder.ts';
+import { studioFfmpegLayer } from '#lib/platform/ffmpeg/engine/studio-ffmpeg.ts';
+import { studioNodeLayer } from '#lib/platform/process/engine/studio-effect-runtime.ts';
+import { LibraryFrameDecoders, libraryFrameDecodersLayer } from './library-frame-decoder.ts';
 import { LibraryMediaFolder, libraryMediaFolderLayer } from './library-media-folder.ts';
 
 /** The path every page asks for library media under (library-media.ts names files under it). */
@@ -35,9 +38,20 @@ class LibraryMediaReaderGone extends Schema.TaggedError<LibraryMediaReaderGone>(
   }
 }
 
-/** Answers with a plain-text reason a page can show. */
+/** The loopback server couldn't listen. */
+export class LibraryMediaListenFailed extends Schema.TaggedError<LibraryMediaListenFailed>()('LibraryMediaListenFailed', { why: Schema.String }) {
+  override get message(): string {
+    return `the library's media server couldn't listen on loopback: ${this.why}`;
+  }
+}
+
+/**
+ * Answers with a plain-text reason a page can show; once a file's headers are sent, only dropping the connection
+ * tells the page.
+ */
 function refuse(response: ServerResponse, status: number, message: string) {
-  response.writeHead(status, { ...CORS, 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' }).end(message);
+  if (response.headersSent) return response.destroy();
+  return response.writeHead(status, { ...CORS, 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' }).end(message);
 }
 
 /** The file under the media folder that `relative` names, or null when it would step outside it. */
@@ -84,45 +98,70 @@ const answerMediaFile = Effect.fn('LibraryMediaServer.mediaFile')(function* (req
 });
 
 const answerFrame = Effect.fn('LibraryMediaServer.frame')(function* (response: ServerResponse, url: URL) {
-  const fs = yield* FileSystem.FileSystem, path = yield* Path.Path;
+  const fs = yield* FileSystem.FileSystem, path = yield* Path.Path, decoders = yield* LibraryFrameDecoders;
   const [item, file] = ['item', 'file'].map((name) => url.searchParams.get(name) ?? '');
   const [t, width, fps] = ['t', 'width', 'fps'].map((name) => Number(url.searchParams.get(name)));
   const media = item && file ? yield* mediaFileOf(path.join(item, file)) : null;
   if (!media || !(t >= 0) || !(width > 0) || !(fps > 0)) return refuse(response, 400, `${url.search} names no item, file, t, width and fps in the media folder`);
   if (!(yield* fs.exists(media))) return refuse(response, 404, `${item}'s ${file} isn't in the library's media folder (${media})`);
   // Even, as the JPEGs' chroma needs.
-  const jpeg = yield* libraryFrameAt({ path: media, width: Math.ceil(width / 2) * 2, fps }, t);
+  const jpeg = yield* decoders.frameAt({ path: media, width: Math.ceil(width / 2) * 2, fps }, t);
   return response.writeHead(200, { ...CORS, 'content-type': 'image/jpeg', 'content-length': jpeg.length, 'cache-control': 'no-store' }).end(jpeg);
 });
 
-let warnedOffline = false;
-
 /** Answers a library request, or returns false for any other path. */
-export function handleLibraryMediaRequest(request: IncomingMessage, response: ServerResponse): boolean {
-  const url = new URL(request.url ?? '/', 'http://localhost');
-  const media = url.pathname.startsWith(`${LIBRARY_MEDIA_PATH}/`), frames = url.pathname === LIBRARY_FRAMES_PATH;
-  if (!media && !frames) return false;
-  const answer = Effect.gen(function* () {
-    return media ? yield* answerMediaFile(request, response, url) : yield* answerFrame(response, url);
-  }).pipe(
-    Effect.catchTag('LibraryMediaOffline', (offline) => Effect.gen(function* () {
-      // Said once in the terminal too: an audio pass's download names only the status.
-      if (!warnedOffline) yield* Effect.log(offline.message);
-      warnedOffline = true;
-      refuse(response, 503, offline.message);
-    })),
-    // Its headers are already sent, so only dropping the connection tells the page.
-    Effect.catchTag('LibraryMediaReaderGone', () => Effect.sync(() => response.destroy())),
-    Effect.catch((error) => Effect.sync(() => refuse(response, 500, error.message))),
-  );
-  void runStudioEffect(answer, libraryMediaFolderLayer);
-  return true;
-}
+export type LibraryMediaRequestHandler = (request: IncomingMessage, response: ServerResponse) => boolean;
 
-/** A loopback server of the library's media and frames for one render's pages; its origin goes in VideoProps' libraryMedia. */
-export const serveLibraryMedia = Effect.fn('LibraryMediaServer.serve')(function* () {
-  const server = createServer((request, response) => {
-    if (!handleLibraryMediaRequest(request, response)) refuse(response, 404, `${request.url} isn't library media`);
-  });
-  return { url: `http://127.0.0.1:${yield* Effect.promise(() => listenOnRenderLoopback(server))}` };
+/** A request handler running each request as a fiber of its own on the services it's made with. */
+export const makeLibraryMediaRequestHandler = Effect.fn('LibraryMediaServer.handler')(function* () {
+  const run = Effect.runForkWith(yield* Effect.context<LibraryMediaFolder | LibraryFrameDecoders | FileSystem.FileSystem | Path.Path>());
+  // Said once in the terminal too: an audio pass's download names only the status.
+  const warnedOffline = yield* Ref.make(false);
+  const handle: LibraryMediaRequestHandler = (request, response) => {
+    const url = new URL(request.url ?? '/', 'http://localhost');
+    const media = url.pathname.startsWith(`${LIBRARY_MEDIA_PATH}/`), frames = url.pathname === LIBRARY_FRAMES_PATH;
+    if (!media && !frames) return false;
+    const answer = Effect.gen(function* () {
+      return media ? yield* answerMediaFile(request, response, url) : yield* answerFrame(response, url);
+    });
+    run(answer.pipe(
+      Effect.catchTag('LibraryMediaOffline', (offline) => Ref.getAndSet(warnedOffline, true).pipe(
+        Effect.flatMap((warned) => (warned ? Effect.void : Effect.log(offline.message))),
+        Effect.andThen(Effect.sync(() => refuse(response, 503, offline.message))),
+      )),
+      Effect.catchTag('LibraryMediaReaderGone', () => Effect.sync(() => response.destroy())),
+      Effect.catch((error) => Effect.sync(() => refuse(response, 500, error.message))),
+    ));
+    return true;
+  };
+  return handle;
 });
+
+/** The services library requests run on, over the studio's Node services: built once per server or Vite. */
+export const libraryMediaServicesLayer = Layer.mergeAll(libraryMediaFolderLayer, libraryFrameDecodersLayer.pipe(Layer.provide(studioFfmpegLayer))).pipe(Layer.provideMerge(studioNodeLayer));
+
+/**
+ * A loopback server of the library's media and frames for one render's or Studio's pages; its origin goes in
+ * VideoProps' libraryMedia. It closes, and its decoders with it, when its layer's scope does.
+ */
+export class LibraryMediaServer extends Context.Service<LibraryMediaServer, { readonly url: string }>()('LibraryMediaServer') {}
+
+export const libraryMediaServerLayer = Layer.effect(LibraryMediaServer, Effect.gen(function* () {
+  const handle = yield* makeLibraryMediaRequestHandler();
+  const server = createServer((request, response) => {
+    if (!handle(request, response)) refuse(response, 404, `${request.url} isn't library media`);
+  });
+  // listenOnRenderLoopback's promise never settles on a listen error, which the server emits instead.
+  const listenFailed = Effect.callback<never, LibraryMediaListenFailed>((resume) => {
+    server.once('error', (error) => resume(Effect.fail(new LibraryMediaListenFailed({ why: error.message }))));
+  });
+  const port = yield* Effect.acquireRelease(
+    Effect.raceFirst(Effect.tryPromise({ try: () => listenOnRenderLoopback(server), catch: (error) => new LibraryMediaListenFailed({ why: String(error) }) }), listenFailed),
+    () => Effect.callback<void>((resume) => {
+      server.close(() => resume(Effect.void));
+      // A kept render browser's keep-alive connections would hold the close open.
+      server.closeAllConnections();
+    }),
+  );
+  return LibraryMediaServer.of({ url: `http://127.0.0.1:${port}` });
+})).pipe(Layer.provide(libraryMediaServicesLayer));

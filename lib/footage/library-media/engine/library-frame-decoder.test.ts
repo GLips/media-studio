@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { Effect } from 'effect';
+import { NodeServices } from '@effect/platform-node';
+import { Effect, Layer, ManagedRuntime } from 'effect';
 import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
+import { studioFfmpegLayer } from '#lib/platform/ffmpeg/engine/studio-ffmpeg.ts';
 import { studioTempRoot } from '#lib/platform/temp/engine/studio-temp.ts';
-import { libraryFrameAt } from './library-frame-decoder.ts';
+import { LibraryFrameDecoders, libraryFrameDecodersLayer } from './library-frame-decoder.ts';
 
 const dir = studioTempRoot();
 
@@ -18,10 +20,25 @@ const frameShown = (jpeg: Buffer) => {
   return Math.round(grey[0] / (6 * 255 / 219));
 };
 
+const decoders = ManagedRuntime.make(libraryFrameDecodersLayer.pipe(Layer.provide(studioFfmpegLayer), Layer.provide(NodeServices.layer)));
+const frameAt = (source: { path: string; width: number; fps: number }, t: number) => decoders.runPromise(LibraryFrameDecoders.use((pool) => pool.frameAt(source, t)));
+
 test('a track serves the frame on screen at each time asked, in order, after a jump, and back again', async () => {
   const source = { path: clip, width: 64, fps: 30 };
   const asked = [1, 1 + 1 / 30, 1 + 2 / 30, 3, 1 + 1 / 30, 3.99];
-  const shown = await Promise.all(asked.map(async (t) => frameShown(await Effect.runPromise(libraryFrameAt(source, t)))));
+  const shown = await Promise.all(asked.map(async (t) => frameShown(await frameAt(source, t))));
   // Frames 30, 31, 32 in order; 90 by a jump ahead; 31 again from the frames kept; 119, the last.
   assert.deepEqual(shown, [30, 31, 32, 90, 31, 119].map((n) => n % 32));
+});
+
+test("a file ffmpeg can't read fails with ffmpeg's reason, named from the decoder's seek", async () => {
+  const notVideo = join(dir, 'library-frames-not-video.mp4');
+  runFfmpeg(['-v', 'error', '-f', 'lavfi', '-i', 'anullsrc=d=0.1', '-f', 'wav', '-y', notVideo]);
+  await assert.rejects(frameAt({ path: notVideo, width: 64, fps: 30 }, 2), (error: Error) => {
+    assert.equal(error.name, 'LibraryFrameUndecodable');
+    assert.match(error.message, /from 1\.500 s: .+/);
+    return true;
+  });
+  // Unused here, but its layer's close is what ends every decoder.
+  await Effect.runPromise(decoders.disposeEffect);
 });

@@ -29,6 +29,18 @@ export class StudioFfmpeg extends Context.Service<StudioFfmpeg, {
   readonly report: (args: readonly string[]) => Effect.Effect<FfmpegReport, FfmpegFailed>;
 }>()('StudioFfmpeg') {}
 
+/**
+ * ffmpeg left running in the caller's scope, its stdout read as it comes (a frame decoder's pictures). stdin and
+ * stderr are let go, since a pipe Node reads keeps the process alive: to learn why it failed, `run` the same input.
+ * Apart from the service, so its fakes needn't stand in for a process.
+ */
+export const startStudioFfmpegOutput = (args: readonly string[]) => Effect.gen(function* () {
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  return yield* spawner.spawn(ChildProcess.make('ffmpeg', [...args], { stdin: 'ignore', stderr: 'ignore' })).pipe(
+    Effect.mapError((error) => new FfmpegFailed({ tool: 'ffmpeg', args: [...args], stderr: error.message })),
+  );
+});
+
 // ffmpeg's stderr on a long encode is progress noise; only its end says why it failed.
 const STDERR_TAIL = 8000;
 
