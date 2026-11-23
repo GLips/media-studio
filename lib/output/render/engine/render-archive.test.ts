@@ -19,7 +19,7 @@ function archiveVersion(projectDir: string, path: string, name: string, made: st
   const { hash } = renderFileStamp(file);
   const snapshot: RenderSnapshot = {
     version: RENDER_SNAPSHOT_VERSION, render: { file: path.split('/').at(-1)!, path, hash }, frames: { from: 0, end: 300 }, started: made, made, captions: true, timeline, clock: null,
-    voice: null, gpu: 'Apple M1 Max', source: { engine: { commit: 'c2f33d98', dirty: false }, workspace: null },
+    voice: null, glitchCheck: 'whole', gpu: 'Apple M1 Max', source: { engine: { commit: 'c2f33d98', dirty: false }, workspace: null },
   };
   archiveRender(projectDir, file, snapshot);
   return hash;

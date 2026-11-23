@@ -17,7 +17,7 @@ test('a render reads back the timeline and commits it was made with, and a file 
   withStudioTemp('render-snapshot', (dir) => {
     const render = join(dir, '03.mp4');
     writeFileSync(render, 'bar three, as first rendered');
-    writeRenderSnapshot(render, { frames: { from: 120, end: 240 }, started: '2026-10-11T12:00:00.000Z', captions: true, timeline: timeline('before the retime'), clock: null, voice: null, gpu: 'ANGLE (Apple M1 Max); WebGPU apple metal-3', source });
+    writeRenderSnapshot(render, { frames: { from: 120, end: 240 }, started: '2026-10-11T12:00:00.000Z', captions: true, timeline: timeline('before the retime'), clock: null, voice: null, glitchCheck: 'whole', gpu: 'ANGLE (Apple M1 Max); WebGPU apple metal-3', source });
 
     const loaded = loadRenderSnapshot(render);
     assert.equal(loaded.kind, 'snapshot');
@@ -30,7 +30,7 @@ test('a render reads back the timeline and commits it was made with, and a file 
 
     const staged = renderStagingPathOf(render);
     writeFileSync(staged, 'bar three, rendered again by studio render');
-    placeRenderWithSnapshot(staged, render, { frames: { from: 120, end: 240 }, started: '2026-10-11T12:05:00.000Z', captions: true, timeline: timeline('after the retime'), clock: null, voice: null, gpu: 'Apple M1 Max', source });
+    placeRenderWithSnapshot(staged, render, { frames: { from: 120, end: 240 }, started: '2026-10-11T12:05:00.000Z', captions: true, timeline: timeline('after the retime'), clock: null, voice: null, glitchCheck: 'whole', gpu: 'Apple M1 Max', source });
     const placed = loadRenderSnapshot(render);
     assert.equal(placed.kind === 'snapshot' && placed.snapshot.timeline.title, 'after the retime');
   });
@@ -40,7 +40,7 @@ test('a snapshot of an older version reads as none, asking for the render again'
   withStudioTemp('render-snapshot', (dir) => {
     const render = join(dir, 'video.mp4');
     writeFileSync(render, 'a render from last week');
-    writeRenderSnapshot(render, { frames: { from: 0, end: 300 }, started: '2026-10-11T12:00:00.000Z', captions: true, timeline: timeline('last week'), clock: null, voice: null, gpu: 'Apple M1 Max', source });
+    writeRenderSnapshot(render, { frames: { from: 0, end: 300 }, started: '2026-10-11T12:00:00.000Z', captions: true, timeline: timeline('last week'), clock: null, voice: null, glitchCheck: 'whole', gpu: 'Apple M1 Max', source });
     // SAFETY: writeRenderSnapshot just wrote it.
     const written = JSON.parse(readFileSync(renderSnapshotPath(render), 'utf8')) as RenderSnapshot;
     writeFileSync(renderSnapshotPath(render), JSON.stringify({ version: 11, render: written.render, frames: written.frames, timeline: written.timeline }));

@@ -6,7 +6,7 @@ import type { TimelineReport } from '#lib/picture/video/models/timeline-report.t
 import type { TimelineClockTable } from '#lib/timing/timeline/models/timeline.ts';
 import type { RenderVoice } from '#lib/timing/voice/models/render-voice.ts';
 
-export const RENDER_SNAPSHOT_VERSION = 12;
+export const RENDER_SNAPSHOT_VERSION = 13;
 
 /** One repository's commit, and whether its working tree had changes then. */
 export type RenderSourceCommit = { commit: string; dirty: boolean };
@@ -49,9 +49,17 @@ export type RenderSnapshot = {
    */
   gpu: string;
   source: RenderSource;
+  /**
+   * How its frames were checked for blank and torn stretches (frame-glitch-check.ts), a render with any refused: as
+   * one run; piece by piece (a remote render's, each piece's edges judged without its neighbours); or not, being
+   * transparent, its clear pixels its design.
+   */
+  glitchCheck: RenderGlitchCheck;
   /** Every tracked element's motion, when the render path measured it (a delivered render's check does). */
   motion?: MotionTracks;
 };
+
+export type RenderGlitchCheck = 'whole' | 'pieces' | 'transparent';
 
 /** What a render's snapshot says, or why there's none to read. */
 export type LoadedRenderSnapshot =
