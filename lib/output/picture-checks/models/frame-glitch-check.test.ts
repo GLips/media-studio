@@ -31,13 +31,16 @@ test('a torn frame and a flickering inset are glitches, named by their frames an
   ]);
 });
 
-test('a fade to black, a snap to black before a cut, a black card and caption pills coming and going are design', () => {
+test('a fade to black, a snap to black before a cut, a black card, caption pills coming and going and the gaps of a scrolled page are design', () => {
   const dim = (k: number) => (x: number, y: number) => Math.round(picture(x, y) * (1 - k / 6));
   // A title on black: the text's band textured, the rest black.
   const card = (x: number, y: number) => (y > H * 0.4 && y < H * 0.6 && x > W * 0.3 && x < W * 0.7 ? picture(x, y) : 0);
+  // A fast scroll over a dark page: the gap between two paragraphs, 3 cells high, passing a spot three times.
+  const gap = (x: number, y: number) => (y > H * 0.2 && y < H * 0.2 + 22 && x > W * 0.4 && x < W * 0.5 ? 32 : picture(x, y));
   // Caption pages on a dark pill, a frame apart: blank runs, but too long to flicker.
   const pill = (x: number, y: number) => (y > H * 0.75 && x > W * 0.2 && x < W * 0.8 ? 32 : picture(x, y));
   const frames = Array.from({ length: 60 }, (_, k) => {
+    if ([16, 19, 22].includes(k)) return gap;
     if (k >= 4 && k < 10) return dim(k - 3); // fades out over 6 frames…
     if (k >= 10 && k < 14) return black; // …holds black, and snaps back in
     if (k >= 26 && k < 30) return black; // snaps to black, then the cut…

@@ -78,7 +78,7 @@ export function findFrameGlitches(frames: readonly FrameCells[], first: number, 
   // Snapping, not fading: the lit neighbour is no dimmer or flatter than FADING_RATIO of the frame past it.
   const level = (k: number, cell: number) => frames[k].luma[cell] + frames[k].spread[cell];
   const steady = (k: number, beyond: number, cell: number) => beyond < 0 || beyond >= n || level(k, cell) >= FADING_RATIO * level(beyond, cell);
-  const flagged: { cell: number; from: number; to: number }[] = [];
+  const flagged: { cell: number; from: number; to: number; black: boolean }[] = [];
   for (let cell = 0; cell < CELLS; cell++) {
     const snaps: { from: number; to: number; black: boolean; resumes: boolean }[] = [];
     for (let k = 0; k < n;) {
@@ -97,7 +97,7 @@ export function findFrameGlitches(frames: readonly FrameCells[], first: number, 
       && Array.from({ length: FLICKER_SNAPS }, (_, m) => brief(j + m)).every(Boolean);
     const flickering = (i: number) => snaps.some((_, j) => j <= i && i < j + FLICKER_SNAPS && burst(j));
     snaps.forEach((snap, i) => {
-      if (snap.black || flickering(i)) flagged.push({ cell, from: first + snap.from, to: first + snap.to });
+      if (snap.black || flickering(i)) flagged.push({ cell, from: first + snap.from, to: first + snap.to, black: snap.black });
     });
   }
   return solidGlitches(flagged);
@@ -110,21 +110,22 @@ function cutZones({ scenes }: Pick<TimelineReport, 'scenes'>): (frame: number) =
 }
 
 /**
- * Frames where flagged runs make a solid block blanking at once, consecutive ones joined. A cell counts only with
- * all eight neighbours, inside the frame, blank over the very same frames: at least 3 cells (~90 px at 1080p) thick.
- * Bold type and border bars are thinner; content sliding over a dark page flips its cells on other frames.
+ * Frames where flagged runs make a solid block blanking at once, consecutive ones joined: neighbours blank over the
+ * same frames, 3 cells (~90 px at 1080p) thick for black, 5 for a flickering dark fill. Bold type and border bars
+ * are thinner; so are the gaps between paragraphs a fast scroll over a dark page flickers through.
  */
-function solidGlitches(runs: readonly { cell: number; from: number; to: number }[]): FrameGlitch[] {
+function solidGlitches(runs: readonly { cell: number; from: number; to: number; black: boolean }[]): FrameGlitch[] {
   const { cols, rows } = FRAME_GLITCH_GRID, byFrame = new Map<number, Map<number, string>>();
-  for (const { cell, from, to } of runs) for (let f = from; f < to; f++) byFrame.set(f, (byFrame.get(f) ?? new Map<number, string>()).set(cell, `${from}-${to}`));
+  for (const { cell, from, to, black } of runs) for (let f = from; f < to; f++) byFrame.set(f, (byFrame.get(f) ?? new Map<number, string>()).set(cell, `${from}-${to}${black ? ' black' : ''}`));
   const glitches: FrameGlitch[] = [];
   for (const frame of [...byFrame.keys()].toSorted((a, b) => a - b)) {
     const active = byFrame.get(frame)!, block = new Set<number>();
     for (const [cell, run] of active) {
       const col = cell % cols, row = Math.floor(cell / cols);
       const sameRun = (dx: number, dy: number) => col + dx >= 0 && row + dy >= 0 && col + dx < cols && row + dy < rows && active.get((row + dy) * cols + col + dx) === run;
-      if (![-1, 0, 1].every((dy) => [-1, 0, 1].every((dx) => sameRun(dx, dy)))) continue;
-      for (const dy of [-1, 0, 1]) for (const dx of [-1, 0, 1]) block.add((row + dy) * cols + col + dx);
+      const reach = run.endsWith(' black') ? [-1, 0, 1] : [-2, -1, 0, 1, 2];
+      if (!reach.every((dy) => reach.every((dx) => sameRun(dx, dy)))) continue;
+      for (const dy of reach) for (const dx of reach) block.add((row + dy) * cols + col + dx);
     }
     if (!block.size) continue;
     const xs = [...block].map((c) => c % cols), ys = [...block].map((c) => Math.floor(c / cols));
