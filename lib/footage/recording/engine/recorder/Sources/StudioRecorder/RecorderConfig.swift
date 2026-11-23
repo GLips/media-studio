@@ -17,7 +17,7 @@ struct RecorderConfig: Codable {
     hotkey: "ctrl+opt+cmd+r",
     recordingsDir: "~/Movies/Studio Recordings",
     screen: ScreenConfig(display: "LG UltraFine", fps: 30, bitrateMbps: 16, showsCursor: true),
-    camera: CameraConfig(device: "Cam Link", width: 1920, height: 1080, fps: 30, bitrateMbps: 12, latencyMs: 160),
+    camera: CameraConfig(device: "Cam Link", width: 3840, height: 2160, fps: 30, bitrateMbps: 30, latencyMs: 160),
     mic: MicConfig(device: "Scarlett Solo", channel: 1, bitrateKbps: 192, latencyMs: 0)
   )
 

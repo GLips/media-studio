@@ -1,4 +1,4 @@
-// The camera, through AVFoundation, scaled to the configured size and written as H.264. Frames are restamped
+// The camera, through AVFoundation, scaled to the configured size and written as HEVC. Frames are restamped
 // from the capture session's clock onto the host clock, so the camera file shares the screen's timeline.
 import AVFoundation
 
@@ -37,7 +37,7 @@ final class CameraTrack: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate 
     writer = try TrackWriter(
       name: "camera", url: url, fileType: .mp4, mediaType: .video,
       settings: [
-        AVVideoCodecKey: AVVideoCodecType.h264,
+        AVVideoCodecKey: AVVideoCodecType.hevc,
         AVVideoWidthKey: config.width,
         AVVideoHeightKey: config.height,
         AVVideoCompressionPropertiesKey: [
@@ -45,7 +45,6 @@ final class CameraTrack: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate 
           AVVideoExpectedSourceFrameRateKey: config.fps,
           AVVideoMaxKeyFrameIntervalDurationKey: fragmentSeconds,
           AVVideoAllowFrameReorderingKey: false,
-          AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
         ],
       ])
     super.init()
