@@ -5,7 +5,7 @@
 import type { Rect } from '#lib/picture/frame/models/geometry.ts';
 
 /** Two neighbouring pins that play the take or footage between them at `speed` times its own pace. */
-export type TakeFitStrain = { source: 'take' | 'footage'; from: string; to: string; speed: number };
+export type TakeFitStrain = { source: 'take' | 'previs clip'; from: string; to: string; speed: number };
 
 export type FramingMark = {
   kind: 'subject' | 'tag' | 'caption';

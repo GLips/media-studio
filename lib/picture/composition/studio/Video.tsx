@@ -9,10 +9,10 @@ import { useMemo, useRef } from 'react';
 import { AbsoluteFill, Artifact, Sequence, useCurrentFrame, useRemotionEnvironment, useVideoConfig, type VideoConfig } from 'remotion';
 import { sfxSoundLabel } from '#lib/timing/sound/models/library.ts';
 import { levelGain, musicBedGainAt, VOICE_LUFS } from '#lib/timing/sound/models/mix.ts';
-import { previsRequestFor, previsSpan, type PrevisFootage } from '#lib/footage/previs/studio/previs.ts';
+import { previsRequestFor, previsSpan, type PrevisClip } from '#lib/footage/previs/studio/previs.ts';
 import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
 import type { BlockoutSoloProps, VideoProps } from '#lib/picture/video/models/composition-props.ts';
-import { PrevisFootagePlayer } from '#lib/footage/previs/studio/previs.tsx';
+import { PrevisClipPlayer } from '#lib/footage/previs/studio/previs.tsx';
 import { unmeasuredAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { FrameProbe } from '#lib/picture/measurement/studio/probe.tsx';
 import { PageTraceContext, PageTraceDetailContext, PageTraceFrameContext } from '#lib/picture/profiling/studio/page-trace-context.ts';
@@ -86,19 +86,19 @@ function timelineReport(video: VideoDef, tl: LaidVideo, { fps, width, height, du
 }
 
 /**
- * What a video plays from its project's generated modules: a bundle's `@footage` and `@sfx-cues` (Root.tsx), or the
+ * What a video plays from its project's generated modules: a bundle's `@previs-clips` and `@sfx-cues` (Root.tsx), or the
  * studio app's preview player. Props, not imports, so one page can play any project.
  */
 export type VideoProjectModules = {
-  /** Generated footage by previs scene id (generated/footage.ts). */
-  footage: Readonly<Record<string, PrevisFootage>>;
+  /** Previs clips by previs scene id (generated/previs-clips.ts). */
+  previsClips: Readonly<Record<string, PrevisClip>>;
   /** The cue list's rendered sounds (generated/sfx-cues.ts), or null with no sfx/cues.json. */
   sfxCues: readonly SfxCueSound[] | null;
 };
 
 // `reportTimeline` is off in the replay composition: its Freeze can land on frame 0 more than once, and Remotion
 // refuses a second artifact with the same name.
-export function Video({ video, footage, sfxCues, captions, probe, blockouts, auditionSfxCueList = false, traceDetail, lens = 'fast', picture = true, reportTimeline = true }: VideoProps & VideoProjectModules & { video: VideoDef; reportTimeline?: boolean }) {
+export function Video({ video, previsClips, sfxCues, captions, probe, blockouts, auditionSfxCueList = false, traceDetail, lens = 'fast', picture = true, reportTimeline = true }: VideoProps & VideoProjectModules & { video: VideoDef; reportTimeline?: boolean }) {
   const frame = useCurrentFrame();
   const config = useVideoConfig(), { fps } = config;
   const tl = useMemo(() => laidVideoOf(video), [video]);
@@ -126,7 +126,7 @@ export function Video({ video, footage, sfxCues, captions, probe, blockouts, aud
           const paint = painted.find((p) => p.k === k);
           return (
             <Sequence key={scene.id} name={scene.id} from={scene.visible.from} durationInFrames={Math.max(1, scene.visible.to - scene.visible.from)} layout="none">
-              {paint && <SceneLayer scene={scene} t={t} alpha={paint.alpha} transparent={transparent} footage={blockouts ? undefined : footageFor(footage, scene)} />}
+              {paint && <SceneLayer scene={scene} t={t} alpha={paint.alpha} transparent={transparent} clip={blockouts ? undefined : previsClipFor(previsClips, scene)} />}
             </Sequence>
           );
         })}
@@ -190,18 +190,18 @@ function BeatClickAudio({ timeline, fps }: { timeline: VideoDef['timeline']; fps
 }
 
 
-// Footage listed for a scene that no longer asks for previs is left unplayed, and kept, since it was paid for.
-const footageFor = (footage: VideoProjectModules['footage'], scene: LaidScene): PrevisFootage | undefined => (scene.previs ? footage[scene.id] : undefined);
+// A clip listed for a scene that no longer asks for previs is left unplayed, and kept, since it was paid for.
+const previsClipFor = (clips: VideoProjectModules['previsClips'], scene: LaidScene): PrevisClip | undefined => (scene.previs ? clips[scene.id] : undefined);
 
 // A transparent video's scene paints only what it draws, so in a crossfade each fades over the page, not over white.
-function SceneLayer({ scene, t, alpha, transparent = false, footage }: { scene: LaidScene; t: number; alpha: number; transparent?: boolean; footage?: PrevisFootage }) {
+function SceneLayer({ scene, t, alpha, transparent = false, clip }: { scene: LaidScene; t: number; alpha: number; transparent?: boolean; clip?: PrevisClip }) {
   const clock = sceneClockAt(scene, t);
   return (
     <AbsoluteFill data-scene={scene.id} data-scene-t={clock.t} style={{ background: transparent ? undefined : '#fff', opacity: alpha }}>
       <VideoTransparentContext value={transparent}>
         <SceneContext.Provider value={clock}>
-          {footage ? (
-            <AbsoluteFill {...unmeasuredAttrs('generated clip')}><PrevisFootagePlayer scene={scene} footage={footage} clock={clock} /></AbsoluteFill>
+          {clip ? (
+            <AbsoluteFill {...unmeasuredAttrs('generated clip')}><PrevisClipPlayer scene={scene} clip={clip} clock={clock} /></AbsoluteFill>
           ) : <SceneBody scene={scene} clock={clock} />}
         </SceneContext.Provider>
       </VideoTransparentContext>

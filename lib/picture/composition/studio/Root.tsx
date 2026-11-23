@@ -4,7 +4,7 @@
 // folder per design.
 
 import { Composition, Folder, Freeze, useCurrentFrame } from 'remotion';
-import { footage } from '@footage';
+import { previsClips } from '@previs-clips';
 import music from '@music';
 import sfxCues from '@sfx-cues';
 import stills from '@stills';
@@ -49,7 +49,7 @@ function videoOnBed(track: string): VideoDef {
   return made;
 }
 const ProjectVideo = ({ bedTrack, ...props }: VideoProps & CompositionRenderSettings) => (
-  <PictureRoot><Video video={bedTrack === undefined ? projectVideo : videoOnBed(bedTrack)} footage={footage} sfxCues={sfxCues} {...props} /></PictureRoot>
+  <PictureRoot><Video video={bedTrack === undefined ? projectVideo : videoOnBed(bedTrack)} previsClips={previsClips} sfxCues={sfxCues} {...props} /></PictureRoot>
 );
 
 /**
@@ -59,7 +59,7 @@ const ProjectVideo = ({ bedTrack, ...props }: VideoProps & CompositionRenderSett
 const ReplayVideo = ({ order, ...props }: ReplayProps & CompositionRenderSettings) => (
   <PictureRoot>
     <Freeze frame={order[Math.min(useCurrentFrame(), order.length - 1)]}>
-      <Video video={projectVideo} footage={footage} sfxCues={sfxCues} {...props} reportTimeline={false} />
+      <Video video={projectVideo} previsClips={previsClips} sfxCues={sfxCues} {...props} reportTimeline={false} />
     </Freeze>
   </PictureRoot>
 );

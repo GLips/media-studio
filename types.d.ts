@@ -59,9 +59,9 @@ declare module '*.mp4' {
   const src: string;
   export default src;
 }
-/** The project's generated/footage.ts, rewritten from footage.json on every bundle (lib/footage/previs/engine/previs-footage.ts). */
-declare module '@footage' {
-  export const footage: Readonly<Record<string, import('#lib/footage/previs/studio/previs.ts').PrevisFootage>>;
+/** The project's generated/previs-clips.ts, rewritten from previs-clips.json on every bundle (lib/footage/previs/engine/previs-clips.ts). */
+declare module '@previs-clips' {
+  export const previsClips: Readonly<Record<string, import('#lib/footage/previs/studio/previs.ts').PrevisClip>>;
 }
 /** The project's generated/sfx-cues.ts, rendered from sfx/cues.json on every bundle, or null without one (lib/output/sfx-cues/engine/cue-module.ts). */
 declare module '@sfx-cues' {

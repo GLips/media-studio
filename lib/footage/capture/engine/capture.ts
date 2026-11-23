@@ -16,6 +16,7 @@ import { pathToFileURL } from 'node:url';
 import { gitState, linkedProjectHost, type GitState, type ProjectHostSpec } from '#lib/platform/host/engine/hosts.ts';
 import { STUDIO_ROOT, STUDIO_WORKSPACE_DIR } from '#lib/platform/project/engine/studio-project.ts';
 import { isStudioWorkspaceRepo } from '#lib/platform/project/engine/studio-workspace.ts';
+import type { InputEvent, InputLog } from '#lib/footage/input-log/models/input-log.ts';
 
 // A shot's setup is handed playwright's Page. Projects take the type from here, so playwright keeps one importer.
 export type { Page };
@@ -78,9 +79,7 @@ type TakeEntry = {
   duration: number;
   frames: { file: string; t: number; scrollY: number }[];
   marks: Record<string, TakeMark>;
-  /** [t, x, y, click]: the cursor's waypoints in viewport pixels; `click` 1 where it clicked. */
-  mouse: [number, number, number, 0 | 1][];
-  keys: number[];
+  input: InputLog;
 };
 type Entry = StillEntry | TakeEntry;
 
@@ -357,6 +356,12 @@ export type Recorder = {
 const easeInOut = (k: number) => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
 
+/** A take's cursor event, rounded as the take stores it: ms and whole pixels. A click is the left button, once. */
+function takePointerEvent(type: 'mouseMove' | 'mouseDown' | 'mouseUp', t: number, p: Point): InputEvent {
+  const at = { t: round3(t), x: Math.round(p.x), y: Math.round(p.y) };
+  return type === 'mouseMove' ? { ...at, type } : { ...at, type, button: 'left', clicks: 1 };
+}
+
 async function filmTake(page: Page, dir: string, name: string, device: Device, { perform, mouse: start }: TakeOptions): Promise<TakeEntry> {
   const { width, height } = device.viewport;
   await page.evaluate(() => document.fonts.ready);
@@ -374,12 +379,11 @@ async function filmTake(page: Page, dir: string, name: string, device: Device, {
 
   const t0 = Date.now() / 1000;
   const now = () => Date.now() / 1000 - t0;
-  const mouse: TakeEntry['mouse'] = [];
-  const keys: number[] = [];
+  const events: InputEvent[] = [];
   const marks: Record<string, TakeMark> = {};
   let at = start ?? { x: width * 0.62, y: height * 0.78 };
   await page.mouse.move(at.x, at.y);
-  mouse.push([0, at.x, at.y, 0]);
+  events.push(takePointerEvent('mouseMove', 0, at));
 
   // Stamped once measuring is done, so the time is when the page looked like its rects, and an action right after
   // the mark (a click) lands on it rather than after a measuring delay.
@@ -409,7 +413,7 @@ async function filmTake(page: Page, dir: string, name: string, device: Device, {
       await page.mouse.move(from.x + (to.x - from.x) * e, from.y + (to.y - from.y) * e);
       await page.waitForTimeout((seconds * 1000) / steps);
     }
-    mouse.push([begin, from.x, from.y, 0], [now(), to.x, to.y, 0]);
+    events.push(takePointerEvent('mouseMove', begin, from), takePointerEvent('mouseMove', now(), to));
     at = to;
   };
 
@@ -423,13 +427,14 @@ async function filmTake(page: Page, dir: string, name: string, device: Device, {
     async click(target, { mark: label, rects } = {}) {
       await glide(await pointOf(target));
       await mark(label, rects);
-      mouse.push([label ? marks[label].t : now(), at.x, at.y, 1]);
+      const t = label ? marks[label].t : now();
+      events.push(takePointerEvent('mouseDown', t, at), takePointerEvent('mouseUp', t, at));
       await page.mouse.click(at.x, at.y);
     },
     async type(text, { mark: label, rects, perKey = 0.13 } = {}) {
       await mark(label, rects);
       for (const ch of text) {
-        keys.push(now());
+        events.push({ t: round3(now()), type: 'keyDown', key: ch });
         await page.keyboard.type(ch);
         await page.waitForTimeout(perKey * 1000);
       }
@@ -473,8 +478,7 @@ async function filmTake(page: Page, dir: string, name: string, device: Device, {
   return {
     kind: 'take', w: width, h: height, scale: device.scale, duration: round3(duration), frames,
     marks: Object.fromEntries(Object.entries(marks).map(([k, m]) => [k, { ...m, t: round3(m.t) }])),
-    mouse: mouse.map(([t, x, y, c]) => [round3(t), Math.round(x), Math.round(y), c]),
-    keys: keys.map(round3),
+    input: { coordinates: 'viewport-css-pixels', events },
   };
 }
 
@@ -519,7 +523,7 @@ function writeIndex(dir: string, shots: readonly Shot[]): UncapturedShot[] {
 
 // The index is a module rather than JSON so the video imports each image (the bundler hashes and serves it) and rect
 // and mark names are types: a scene asking for one the capture never measured fails to compile. A take's frames and
-// mouse are cast to their plain types, so hundreds of frames aren't hundreds of literal types.
+// input are cast to their plain types, so hundreds of frames aren't hundreds of literal types.
 function indexModule(entries: readonly (readonly [string, Entry])[]) {
   const imports: string[] = [];
   const src = (path: string) => {
@@ -532,14 +536,15 @@ function indexModule(entries: readonly (readonly [string, Entry])[]) {
       const { kind: _, file, ...rest } = entry;
       stills.push(`  ${JSON.stringify(name)}: { src: ${src(file)}, ${JSON.stringify(rest).slice(1)},`);
     } else {
-      const { kind: _, frames, mouse, keys, ...rest } = entry;
+      const { kind: _, frames, input, ...rest } = entry;
       const frameList = frames.map((f) => `{ src: ${src(`${name}/${f.file}`)}, t: ${f.t}, scrollY: ${f.scrollY} }`).join(', ');
-      takes.push(`  ${JSON.stringify(name)}: { ${JSON.stringify(rest).slice(1, -1)}, frames: [${frameList}] as readonly TakeFrame[], mouse: ${JSON.stringify(mouse)} as readonly TakeMouse[], keys: ${JSON.stringify(keys)} as readonly number[] },`);
+      takes.push(`  ${JSON.stringify(name)}: { ${JSON.stringify(rest).slice(1, -1)}, frames: [${frameList}] as readonly TakeFrame[], input: ${JSON.stringify(input)} as InputLog },`);
     }
   }
   return `// Written by \`studio capture\` (lib/footage/capture/engine/capture.ts). Edits here are lost on the next capture.
 import type { Shot } from '#lib/picture/camera/models/camera.ts';
-import type { Take, TakeFrame, TakeMouse } from '#lib/footage/capture/studio/take.ts';
+import type { Take, TakeFrame } from '#lib/footage/capture/studio/take.ts';
+import type { InputLog } from '#lib/footage/input-log/models/input-log.ts';
 ${imports.join('\n')}
 
 export const captures = {

@@ -102,6 +102,11 @@ export function formatReviewClock(seconds: number): string {
   return `${m}:${String(Math.floor(rest / 100)).padStart(2, '0')}.${String(rest % 100).padStart(2, '0')}`;
 }
 
+/** `0:04.53–0:09.10`: a range of seconds on the review clock, one instant when it has no length. */
+export function formatReviewClockRange(start: number, end: number): string {
+  return end > start ? `${formatReviewClock(start)}–${formatReviewClock(end)}` : formatReviewClock(start);
+}
+
 /** A mark on the ruler: a labelled timecode, or a beat (taller on the music's downbeats). */
 export type ReviewRulerTick =
   | { kind: 'time'; frame: number; x: number; label: string }

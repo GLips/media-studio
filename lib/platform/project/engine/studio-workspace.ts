@@ -4,11 +4,11 @@
 //   work/projects/<p>/        a project (studio new)
 //   work/brands/<name>/       a brand kit (the studio-setup skill)
 //   work/styles/<name>/       a private stamp-paint style (docs/private-styles.md)
+//   work/library/             the footage library (lib/footage/library/engine/library-store.ts)
 //   work/hosts.json           host name → { repo } (lib/platform/host/engine/hosts.ts); hosts.local.json beside it, ignored
 //   work/arch-baseline.json   check:arch's baseline for the workspace's files, as lint/arch-baseline.json is the studio's
 //
-// Its commits run .githooks-workspace/pre-commit: check:arch over its index against the studio's, lint over the
-// sources its index holds, the full typecheck and its projects' tests.
+// Its commits run .githooks-workspace/pre-commit: check:arch, lint, the full typecheck and its projects' tests.
 //
 // Negative space: no package.json in work/. A project's `#studio` and `#lib/*` resolve through the studio's
 // package.json because none sits between them.
@@ -22,13 +22,13 @@ import { STUDIO_BRANDS_DIR, STUDIO_PROJECTS_DIR, STUDIO_STYLES_DIR, STUDIO_WORKS
 const WORKSPACE_HOOKS_PATH = '../.githooks-workspace';
 
 /**
- * What a project writes that's made, not authored: recorded, generated or rendered; a brand's licensed fonts; and a
- * style's brushes, imported from a bought pack. Fonts and brushes have no trailing slash, so a symlink to another
+ * What a project writes that's made, not authored: recorded, generated or rendered; a brand's licensed fonts; a
+ * style's brushes, imported from a bought pack; and the library's media and this machine's library settings. Fonts and brushes have no trailing slash, so a symlink to another
  * checkout's folder (as a second worktree links them) is ignored too.
  */
 const WORKSPACE_IGNORES = [
   'projects/*/captures/', 'projects/*/out/', 'projects/*/audio/', 'projects/*/music/', 'projects/*/generated/',
-  'projects/*/host', 'brands/*/fonts', 'styles/*/brushes', 'hosts.local.json', '.DS_Store',
+  'projects/*/host', 'brands/*/fonts', 'styles/*/brushes', 'hosts.local.json', 'library/media/', 'library.local.json', '.DS_Store',
 ];
 
 export function isStudioWorkspaceRepo(): boolean {

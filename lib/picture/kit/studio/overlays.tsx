@@ -18,6 +18,7 @@ import { clamp, lerp, motionCurves, seg } from '#lib/picture/motion/models/motio
 import { pieceMotionAttrs } from '#lib/picture/measurement/studio/motion-tag.ts';
 import { SFX, Sfx } from '#lib/timing/sound/studio/sfx.tsx';
 import { sceneTimeOf, takeMouseAt, type TakeFit } from '#lib/footage/capture/studio/take.ts';
+import { inputLogKeyStrikes, inputLogWaypoints } from '#lib/footage/input-log/models/input-log.ts';
 import { useVideoFormat } from '#lib/picture/frame/studio/video-format.ts';
 
 const INK = '#1c365e';
@@ -121,7 +122,7 @@ export function TakeCursor({ view, t, fit, alpha = 1 }: { view: View; t: number;
   // The log's waypoints, plus a key at every pin: without those the cursor would glide on through a hold, or keep one
   // speed across a pin that changes the video's.
   const events: [number, Point, boolean][] = [
-    ...fit.take.mouse.map(([time, x, y, click]): [number, Point, boolean] => [sceneTimeOf(fit, time), { x, y }, click === 1]),
+    ...inputLogWaypoints(fit.take.input).map(({ t: time, x, y, click }): [number, Point, boolean] => [sceneTimeOf(fit, time), { x, y }, click]),
     ...fit.pins.map(([scene, time]): [number, Point, boolean] => [scene, takeMouseAt(fit.take, time), false]),
   ].toSorted((a, b) => a[0] - b[0]);
   const keys: [number, Point, { click?: boolean }][] = [];
@@ -133,7 +134,7 @@ export function TakeCursor({ view, t, fit, alpha = 1 }: { view: View; t: number;
   }
   return (
     <>
-      {fit.take.keys.map((time, i) => <Sfx key={i} sound={SFX.key} id={i} at={sceneTimeOf(fit, time)} t={t} volume={0.7} event="key" />)}
+      {inputLogKeyStrikes(fit.take.input).map((time, i) => <Sfx key={i} sound={SFX.key} id={i} at={sceneTimeOf(fit, time)} t={t} volume={0.7} event="key" />)}
       <CursorPath view={view} t={t} keys={keys} alpha={alpha} />
     </>
   );

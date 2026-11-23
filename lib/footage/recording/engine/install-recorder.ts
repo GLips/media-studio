@@ -5,6 +5,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
 
 const RECORDER_PACKAGE_DIR = join(import.meta.dirname, 'recorder');
 const RECORDER_BUNDLE_ID = 'studio.media.recorder';
@@ -12,7 +13,18 @@ const RECORDER_BUNDLE_ID = 'studio.media.recorder';
 const RECORDER_DISPLAY_NAME = 'Studio Recorder';
 export const RECORDER_APP_PATH = join(homedir(), 'Applications', `${RECORDER_DISPLAY_NAME}.app`);
 
-const recorderBundlePropertyList = `<?xml version="1.0" encoding="UTF-8"?>
+/**
+ * How the recorder hands a finished recording to the library (LibraryHandoff.swift): this checkout's CLI under this
+ * node, with this shell's PATH, since an app launchd starts has no ffmpeg on its own PATH. Reinstall after moving
+ * the checkout. No proxies: their hardware encodes would compete with the next take's; `studio library finish` makes them.
+ */
+const studioLibraryAddCommand = () => [
+  '/usr/bin/env', `PATH=${process.env.PATH ?? '/usr/bin:/bin'}`, process.execPath, join(STUDIO_ROOT, 'cli', 'studio.ts'), 'library', 'add', '--move', '--no-proxies',
+];
+
+const xmlText = (text: string) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+
+const recorderBundlePropertyList = () => `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -28,6 +40,7 @@ const recorderBundlePropertyList = `<?xml version="1.0" encoding="UTF-8"?>
   <key>LSUIElement</key><true/>
   <key>NSCameraUsageDescription</key><string>Records the camera as its own track.</string>
   <key>NSMicrophoneUsageDescription</key><string>Records the mic as its own track.</string>
+  <key>StudioLibraryAdd</key><array>${studioLibraryAddCommand().map((arg) => `<string>${xmlText(arg)}</string>`).join('')}</array>
 </dict>
 </plist>
 `;
@@ -48,7 +61,7 @@ export function installStudioRecorder(options: { identity?: string; launch: bool
   const macos = join(RECORDER_APP_PATH, 'Contents', 'MacOS');
   mkdirSync(macos, { recursive: true });
   cpSync(join(RECORDER_PACKAGE_DIR, '.build', 'release', 'StudioRecorder'), join(macos, 'StudioRecorder'));
-  writeFileSync(join(RECORDER_APP_PATH, 'Contents', 'Info.plist'), recorderBundlePropertyList);
+  writeFileSync(join(RECORDER_APP_PATH, 'Contents', 'Info.plist'), recorderBundlePropertyList());
   // Resources/ isn't a SwiftPM resource bundle: the app reads its icon and menu-bar glyphs from Contents/Resources.
   const resources = join(RECORDER_APP_PATH, 'Contents', 'Resources');
   cpSync(join(RECORDER_PACKAGE_DIR, 'Resources', 'AppIcon.icns'), join(resources, 'AppIcon.icns'));

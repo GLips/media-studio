@@ -55,6 +55,6 @@ export async function importProjectVideoModules(project: string): Promise<Projec
   const key = `${VIDEO_PROJECTS_PREFIX}${project}/video.tsx`;
   const loadVideo = videos?.[key], loadGenerated = generated?.[key];
   if (!loadVideo || !loadGenerated) return null;
-  const [{ default: video }, { footage, sfxCues }] = await Promise.all([loadVideo(), loadGenerated()]);
-  return video ? { video, footage, sfxCues } : null;
+  const [{ default: video }, { previsClips, sfxCues }] = await Promise.all([loadVideo(), loadGenerated()]);
+  return video ? { video, previsClips, sfxCues } : null;
 }
