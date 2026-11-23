@@ -1,9 +1,10 @@
 // library-sources.ts: what an add takes in, before any file is probed: a recorder's take read from its
 // recording.json, or files the caller names with their starts. Pure.
 import { Result } from 'effect';
+import type { RecordingWindowPlacement } from '#lib/footage/recording/models/recording-window-log.ts';
 import type { StudioRecordingJson } from '#lib/footage/recording/models/studio-recording-json.ts';
 import { LibraryNoTrackToAdd, LibraryRequestRefused } from './library-errors.ts';
-import type { LibraryItemSource, LibraryScreenDisplay } from './library-item.ts';
+import type { LibraryItemSource, LibraryScreenDisplay, LibraryScreenWindow } from './library-item.ts';
 import type { RecorderTakeEnding } from './library-take-machine.ts';
 
 /** A track to add: its source file and its sync, before ffprobe says what it holds. */
@@ -15,6 +16,7 @@ export type LibraryTrackSource = {
   hostDriftSeconds?: number;
   device?: string;
   display?: LibraryScreenDisplay;
+  window?: LibraryScreenWindow;
 };
 
 /** Everything an add needs from its source but the files' own facts. */
@@ -34,22 +36,29 @@ export type LibraryAddSource = {
 };
 
 /**
- * A recorder take's add source, as the take machine judged it ended. `present` lists the folder's files. A track
- * listed without its file or without a start (an early recorder listed a camera that sent nothing) is left out, not
- * added; a take left with none is refused.
+ * A recorder take's add source, as the take machine judged it ended. `present` lists the folder's files;
+ * `windowPlacements`, each window track's log as read. A track listed without its file or start (an early recorder
+ * listed a camera that sent nothing) is left out; a take left with none is refused.
  */
-export function recorderAddSource(folder: string, name: string, recording: StudioRecordingJson, present: ReadonlySet<string>, ending: RecorderTakeEnding): Result.Result<LibraryAddSource, LibraryNoTrackToAdd> {
+export function recorderAddSource(
+  folder: string, name: string, recording: StudioRecordingJson, present: ReadonlySet<string>, ending: RecorderTakeEnding,
+  windowPlacements: Readonly<Record<string, readonly RecordingWindowPlacement[]>> = {},
+): Result.Result<LibraryAddSource, LibraryNoTrackToAdd> {
+  const extras = [`${folder}/recording.json`];
   const leftOut: Record<string, string> = { ...recording.leftOut };
   const tracks: LibraryTrackSource[] = [];
   for (const [track, json] of Object.entries(recording.tracks)) {
     if (!present.has(json.file)) leftOut[track] = `${json.file} was never written`;
     else if (json.startSeconds === undefined) leftOut[track] = 'the recorder wrote no start for it';
     else {
+      const placements = windowPlacements[track] ?? [];
+      const window = json.window && placements.length ? { title: json.window.title, app: json.window.app, placements: [placements[0], ...placements.slice(1)] as const } : undefined;
+      if (json.window && present.has(json.window.file)) extras.push(`${folder}/${json.window.file}`);
       tracks.push({
         name: track, path: `${folder}/${json.file}`, startSeconds: json.startSeconds,
         ...(json.latencySeconds && { latencySeconds: json.latencySeconds }),
         ...(json.hostDriftSeconds && { hostDriftSeconds: json.hostDriftSeconds }),
-        ...(json.device && { device: json.device }), ...(json.display && { display: json.display }),
+        ...(json.device && { device: json.device }), ...(json.display && { display: json.display }), ...(window && { window }),
       });
     }
   }
@@ -59,7 +68,7 @@ export function recorderAddSource(folder: string, name: string, recording: Studi
   return Result.succeed({
     tracks, title: `Recording ${name}`, recordedAt: recording.startedAt,
     source: { kind: 'studio-recorder', folder, status: ending },
-    ...(input && { input }), ...(clockLog && { clockLog }), extras: [`${folder}/recording.json`],
+    ...(input && { input }), ...(clockLog && { clockLog }), extras,
     ...(recording.problems && { problems: recording.problems }), ...(Object.keys(leftOut).length && { leftOut }),
   });
 }
