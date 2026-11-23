@@ -1,6 +1,7 @@
 # Script first
 
-The words are written for the video: the ladder from treatment to a signed-off animatic, voiced last.
+The words are written for the video: steps 1–2 are the treatment, step 3 the scene table, step 4 the animatic,
+voiced last.
 
 ## 1. Take the dump
 
@@ -12,7 +13,8 @@ The first message is usually messy and dictated. Pull these out of it, and ask o
 - **Source material**: docs, a PR, a transcript, a launch-post draft, a thread. Read every one. Asked from inside a
   product repo, the change itself (its diff, docs and PR) is source material.
 - **What it's cut to**: a voice, music, or neither. That picks the project's capability and each scene's driver.
-  Recordings to speak it in are the `footage` path.
+  Recordings to cut it from are the `footage` path; a few recorded lines among read ones follow
+  `${CLAUDE_PLUGIN_ROOT}/skills/video-kickoff/references/recorded-footage.md`.
 - **What's on screen.** For a real product's UI: the URL, theme or preview query for each state the story needs, and
   whether it needs a sign-in (`video-capture`). For a product repo's own components: that repo becomes the project's
   host (`studio-setup`).

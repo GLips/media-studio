@@ -27,7 +27,8 @@ yes before the next spends more on it.
 **Choose the path at kickoff, and say which.** The full ladder suits a piece whose pacing or look is uncertain, or
 whose later rungs are expensive (generated footage, a long reel). To try ideas fast, skip style frames. On every path
 the animatic is signed off before anything gets a real voice or motion polish: a scene table is cheap to change, and
-voiced, polished motion is not.
+voiced, polished motion is not. On the `footage` path the voice is recorded already: the story pick is the plan's
+gate, and the first cut is the animatic.
 
 **An autonomous brief skips the gates** ("go all out", "surprise me"): make each gate's call yourself, write the
 table as your plan, build through to a render, and show the result.
