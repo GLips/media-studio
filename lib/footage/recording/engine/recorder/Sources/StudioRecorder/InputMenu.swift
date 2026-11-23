@@ -1,9 +1,9 @@
 // The menu's inputs section: a picker each for mic, camera and screen, the mic's live level under its picker and
-// the camera's picture under its. The check runs only while the menu is open and nothing records.
+// the camera's picture under its. The machine says when the check runs (`RecorderActivity.inputCheck`) and when a
+// pick is taken; this draws them.
 import AppKit
 import AVFoundation
-
-enum RecorderInputKind: String { case mic, camera, screen }
+import RecorderCore
 
 /// The width of the check's views, which sets the menu's: the camera's picture fills it less a 20 pt inset a side.
 private let inputMenuItemWidth: CGFloat = 440
@@ -12,8 +12,8 @@ private let inputMenuItemWidth: CGFloat = 440
 final class InputMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
   /// In menu order, for the menu bar dot to insert.
   let items: [NSMenuItem]
-  private let recorder: Recorder
-  private let check: InputCheck
+  let check: InputCheck
+  private unowned let app: RecorderApp
   private let micPicker = NSMenuItem(title: "", action: nil, keyEquivalent: "")
   private let cameraPicker = NSMenuItem(title: "", action: nil, keyEquivalent: "")
   private let screenPicker = NSMenuItem(title: "", action: nil, keyEquivalent: "")
@@ -21,11 +21,11 @@ final class InputMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
   private let previewItem = NSMenuItem()
   private let meter = LevelMeterView()
   private let preview = CameraPreviewView()
+  /// Redraws the level and the picture while the check runs.
   private var tick: Timer?
-  private var menuIsOpen = false
 
-  init(recorder: Recorder) {
-    self.recorder = recorder
+  init(app: RecorderApp) {
+    self.app = app
     check = InputCheck(pictureRenderer: preview.renderer)
     meterItem.view = meter
     previewItem.view = preview
@@ -35,35 +35,21 @@ final class InputMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
       picker.submenu = NSMenu()
       picker.submenu?.delegate = self
     }
+    showCheckItems(false)
   }
 
-  private var idle: Bool { if case .idle = recorder.state { true } else { false } }
-
-  /// Called as the menu opens: names the picked inputs and starts the live check.
-  func menuOpened() {
-    menuIsOpen = true
-    updatePickerTitles()
-    startCheck()
+  /// Names the picked inputs while the menu is open; called on every change of the recorder's state.
+  func render() {
+    guard app.state.menuOpen else { return }
+    let config = app.config
+    micPicker.title = "Mic: " + pickedName(config.mic.map { RecorderInputs.device(named: $0.device, in: RecorderInputs.mics())?.localizedName ?? "\($0.device) (not connected)" })
+    cameraPicker.title = "Camera: " + pickedName(config.camera.map { RecorderInputs.device(named: $0.device, in: RecorderInputs.cameras())?.localizedName ?? "\($0.device) (not connected)" })
+    screenPicker.title = "Screen: " + (RecorderInputs.screen(named: config.screen.display)?.localizedName ?? "\(config.screen.display) (not connected)")
   }
 
-  func menuClosed() {
-    menuIsOpen = false
-    stopCheck(waiting: false)
-  }
-
-  /// Called on every recorder state change. A recording is about to open the same devices: the check lets go of
-  /// them before `Recording.begin` runs, which is why this waits. Back to idle with the menu open, it checks again.
-  func recorderChanged() {
-    guard menuIsOpen else { return }
-    updatePickerTitles()
-    if idle && tick == nil { startCheck() }
-    if !idle { stopCheck(waiting: true) }
-  }
-
-  private func startCheck() {
-    guard idle else { return }
+  func startCheck() {
     showCheckItems(true)
-    check.start(config: recorder.config)
+    check.start(config: app.config)
     showCheck()
     // Common modes: a menu tracks in its own run loop mode, where a default-mode timer never fires.
     let timer = Timer(timeInterval: 1.0 / 20, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.showCheck() } }
@@ -71,16 +57,16 @@ final class InputMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
     tick = timer
   }
 
-  private func showCheckItems(_ showing: Bool) {
-    meterItem.isHidden = !showing || recorder.config.mic == nil
-    previewItem.isHidden = !showing || recorder.config.camera == nil
-  }
-
-  private func stopCheck(waiting: Bool) {
+  func stopCheck() {
     showCheckItems(false)
     tick?.invalidate()
     tick = nil
-    if waiting { check.stopAndWait() } else { check.stop() }
+    check.stop()
+  }
+
+  private func showCheckItems(_ showing: Bool) {
+    meterItem.isHidden = !showing || app.config.mic == nil
+    previewItem.isHidden = !showing || app.config.camera == nil
   }
 
   private func showCheck() {
@@ -90,20 +76,13 @@ final class InputMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
     preview.picture = picture
   }
 
-  private func updatePickerTitles() {
-    let config = recorder.config
-    micPicker.title = "Mic: " + pickedName(config.mic.map { RecorderInputs.device(named: $0.device, in: RecorderInputs.mics())?.localizedName ?? "\($0.device) (not connected)" })
-    cameraPicker.title = "Camera: " + pickedName(config.camera.map { RecorderInputs.device(named: $0.device, in: RecorderInputs.cameras())?.localizedName ?? "\($0.device) (not connected)" })
-    screenPicker.title = "Screen: " + (RecorderInputs.screen(named: config.screen.display)?.localizedName ?? "\(config.screen.display) (not connected)")
-  }
-
   /// A track left out of config.json has no picker: turning it back on means its settings, which live there.
   private func pickedName(_ name: String?) -> String { name ?? "off (config.json)" }
 
   // The submenus list what's connected when each opens, so a camera plugged in since shows up.
   func menuNeedsUpdate(_ menu: NSMenu) {
     menu.removeAllItems()
-    let config = recorder.config
+    let config = app.config
     let (kind, names, picked): (RecorderInputKind, [String], String?) = switch menu {
     case micPicker.submenu:
       (.mic, RecorderInputs.mics().map(\.localizedName), config.mic.flatMap { RecorderInputs.device(named: $0.device, in: RecorderInputs.mics())?.localizedName })
@@ -115,24 +94,32 @@ final class InputMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
     for name in names {
       let item = NSMenuItem(title: name, action: #selector(pick(_:)), keyEquivalent: "")
       item.target = self
-      item.representedObject = [kind.rawValue, name]
+      item.representedObject = PickedInput(RecorderInputPick(kind: kind, name: name))
       item.state = name == picked ? .on : .off
       menu.addItem(item)
     }
     if names.isEmpty { menu.addItem(NSMenuItem(title: "None connected", action: nil, keyEquivalent: "")) }
   }
 
+  /// A pick is only for a camera or mic the config already records, and only while no take holds the devices.
   func validateMenuItem(_ item: NSMenuItem) -> Bool {
-    guard item.action == #selector(pick(_:)) else { return true }
-    let kind = (item.representedObject as? [String]).flatMap { RecorderInputKind(rawValue: $0[0]) }
-    return idle && (kind == .screen || (kind == .mic ? recorder.config.mic != nil : recorder.config.camera != nil))
+    guard let pick = (item.representedObject as? PickedInput)?.pick else { return true }
+    let config = app.config
+    return app.state.atRest && (pick.kind == .screen || (pick.kind == .mic ? config.mic != nil : config.camera != nil))
   }
 
+  // A take the hotkey started while this submenu was open leaves its items enabled until AppKit revalidates: the
+  // machine refuses the pick then.
   @objc private func pick(_ sender: NSMenuItem) {
-    // A take the hotkey started while this submenu was open leaves its items enabled until AppKit revalidates.
-    guard idle, let pair = sender.representedObject as? [String], let kind = RecorderInputKind(rawValue: pair[0]) else { return }
-    recorder.pickInput(kind, named: pair[1])
+    guard let pick = (sender.representedObject as? PickedInput)?.pick else { return }
+    app.send(.inputPicked(pick))
   }
+}
+
+/// A picker item's input, boxed for `representedObject`.
+private final class PickedInput: NSObject {
+  let pick: RecorderInputPick
+  init(_ pick: RecorderInputPick) { self.pick = pick }
 }
 
 /// The mic's level as a bar, -60 dBFS to 0, green into amber above -12 and red above -3.

@@ -1,101 +1,132 @@
-// One recording: a folder holding a file per track, the input log, the clock log and recording.json, which says
-// how the tracks line up. Tracks are never retimed to fit: each file starts at its own first sample, and its
-// offset and corrections are numbers in recording.json, applied by whoever reads the recording.
+// One take: a folder holding a file per track, the input log, the clock log and recording.json, which says how the
+// tracks line up. Tracks are never retimed to fit: each file starts at its own first sample, and its offset and
+// corrections are numbers in recording.json, applied by whoever reads the recording. Which tracks started is fixed
+// when the take begins; what goes wrong later is the machine's (RecorderCore), handed in to be written.
 import AVFoundation
+import RecorderCore
 
-final class Recording {
+final class Recording: RecorderTake {
   let folder: URL
-  let start: CMTime
-  private let startedAt = Date()
-  private var screen: ScreenTrack?
-  private var camera: CameraTrack?
-  private var mic: MicTrack?
+  private let start: CMTime
+  private let startedAt: Date
+  private let screen: ScreenTrack?
+  private let camera: CameraTrack?
+  private let mic: MicTrack?
   private let input: InputLog
   private let clockLog: ClockLog
-  private let config: RecorderConfig
-  private var failures: [String: String] = [:]
-  /// What went wrong with a track during the take, by track: shown in the menu, written to recording.json.
-  private(set) var problems: [String: String] = [:]
-  private var stoppedAt: CMTime?
+  /// The tracks that couldn't start, and why; each started track is the one above that isn't nil.
+  private let startFailures: [RecorderTrack: TrackFailure]
 
-  static func begin(config: RecorderConfig) async throws -> Recording {
+  /// Opens every configured track. One that can't start (a camera unplugged) is left out and named in
+  /// recording.json; the rest record. Returns once every started track has its first sample.
+  static func begin(config: RecorderConfig) async throws(TakeStartFailure) -> Recording {
     let formatter = DateFormatter()
     formatter.dateFormat = "yyyy-MM-dd HH.mm.ss"
-    let folder = config.recordingsURL.appendingPathComponent(formatter.string(from: Date()))
-    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-    let recording = try Recording(folder: folder, config: config)
-    try await recording.startTracks()
-    return recording
-  }
+    let startedAt = Date()
+    let folder = config.recordingsURL.appendingPathComponent(formatter.string(from: startedAt))
+    let start: CMTime
+    let clockLog: ClockLog
+    let input: InputLog
+    do {
+      try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+      start = HostClock.now()
+      clockLog = try ClockLog(url: folder.appendingPathComponent("clock.jsonl"), start: start)
+      input = try InputLog(url: folder.appendingPathComponent("input.jsonl"), start: start)
+    } catch {
+      throw .folderUnwritable(error)
+    }
 
-  private init(folder: URL, config: RecorderConfig) throws {
-    self.folder = folder
-    self.config = config
-    start = HostClock.now()
-    clockLog = try ClockLog(url: folder.appendingPathComponent("clock.jsonl"), start: start)
-    input = try InputLog(url: folder.appendingPathComponent("input.jsonl"), start: start)
-  }
-
-  /// A track that can't start (a camera unplugged) is left out and named in recording.json; the rest record.
-  private func startTracks() async throws {
+    var failures: [RecorderTrack: TrackFailure] = [:]
     // Camera and mic open first and in the background: they are the slowest to deliver a first sample.
+    var camera: CameraTrack?
     if let cameraConfig = config.camera {
       do {
-        let track = try CameraTrack(config: cameraConfig, url: folder.appendingPathComponent("camera.mp4"), clockLog: clockLog)
-        track.start()
-        camera = track
-      } catch { failures["camera"] = "\(error)" }
+        camera = try CameraTrack(config: cameraConfig, url: folder.appendingPathComponent("camera.mp4"), clockLog: clockLog)
+        camera?.start()
+      } catch { failures[.camera] = error }
     }
+    var mic: MicTrack?
     if let micConfig = config.mic {
       do {
-        let track = try MicTrack(config: micConfig, url: folder.appendingPathComponent("mic.m4a"), clockLog: clockLog)
-        track.start()
-        mic = track
-      } catch { failures["mic"] = "\(error)" }
+        mic = try MicTrack(config: micConfig, url: folder.appendingPathComponent("mic.m4a"), clockLog: clockLog)
+        mic?.start()
+      } catch { failures[.mic] = error }
     }
+    var screen: ScreenTrack?
     do {
       let track = try await ScreenTrack.make(config: config.screen, url: folder.appendingPathComponent("screen.mp4"))
       try await track.start()
       screen = track
-    } catch { failures["screen"] = "\(error)" }
-    do { try input.begin() } catch { failures["input"] = "\(error)" }
-    for (track, failure) in failures { log("\(track) left out: \(failure)") }
-    if screen == nil && camera == nil && mic == nil { throw RecorderError("no track could start: \(failures)") }
-    // The dot turns red only once every track has its first sample (the mic takes about a second to open), so
-    // whatever Graham says after it turns red is on every track. Its offsets are written then.
-    let writers = [screen?.writer, camera?.writer, mic?.writer].compactMap { $0 }
-    let deadline = Date().addingTimeInterval(5)
-    while writers.contains(where: { $0.firstPTS == nil }) && Date() < deadline { try await Task.sleep(for: .milliseconds(20)) }
-    writeMetadata(status: "recording")
+    } catch { failures[.screen] = error }
+    guard screen != nil || camera != nil || mic != nil else {
+      for (track, failure) in failures.sorted(by: { $0.key < $1.key }) { log("\(track.rawValue) left out: \(failure)") }
+      clockLog.close()
+      input.end()
+      throw .noTrackStarted(failures)
+    }
+    do { try input.begin() } catch { failures[.input] = error }
+    for (track, failure) in failures.sorted(by: { $0.key < $1.key }) { log("\(track.rawValue) left out: \(failure)") }
+
+    let recording = Recording(
+      folder: folder, start: start, startedAt: startedAt, screen: screen, camera: camera, mic: mic, input: input, clockLog: clockLog,
+      startFailures: failures)
+    await recording.awaitFirstSamples()
+    recording.write(status: .recording, problems: [:], stoppedAt: nil)
+    return recording
   }
 
-  /// Looks for a camera or mic that went quiet (an HDMI signal lost, a cable pulled) or a screen stream that
-  /// stopped. Call each second while recording; returns whether it found a new problem. The screen isn't timed out:
-  /// a still screen sends no frames.
+  private init(
+    folder: URL, start: CMTime, startedAt: Date, screen: ScreenTrack?, camera: CameraTrack?, mic: MicTrack?, input: InputLog,
+    clockLog: ClockLog, startFailures: [RecorderTrack: TrackFailure]
+  ) {
+    self.folder = folder
+    self.start = start
+    self.startedAt = startedAt
+    self.screen = screen
+    self.camera = camera
+    self.mic = mic
+    self.input = input
+    self.clockLog = clockLog
+    self.startFailures = startFailures
+  }
+
+  private var writers: [(RecorderTrack, TrackWriter)] {
+    [(.screen, screen?.writer), (.camera, camera?.writer), (.mic, mic?.writer)].compactMap { track, writer in writer.map { (track, $0) } }
+  }
+
+  /// The menu's dot turns red only once every track has its first sample (the mic takes about a second to open), so
+  /// whatever Graham says after it turns red is on every track. Its offsets are written then.
+  private func awaitFirstSamples() async {
+    let deadline = ContinuousClock.now + .seconds(5)
+    while writers.contains(where: { $0.1.firstPTS == nil }) && ContinuousClock.now < deadline {
+      try? await Task.sleep(for: .milliseconds(20))
+    }
+  }
+
+  /// Looks for a camera or mic that went quiet (an HDMI signal lost, a cable pulled) or a screen stream that stopped,
+  /// skipping tracks with a problem already. The screen isn't timed out: a still screen sends no frames.
   @MainActor
-  func checkTracks() -> Bool {
+  func findTrackProblems(known: [RecorderTrack: String]) -> [RecorderTrack: String] {
     let now = HostClock.now()
-    var found: [String: String] = [:]
-    for (name, writer) in [("camera", camera?.writer), ("mic", mic?.writer)] {
-      guard let writer, problems[name] == nil else { continue }
-      let progress = writer.progress
-      if let last = progress.lastPTS {
-        if (now - last).seconds > 2 { found[name] = "stopped sending at \(String(format: "%.1f", (last - start).seconds)) s" }
+    var found: [RecorderTrack: String] = [:]
+    for (track, writer) in writers where track != .screen && known[track] == nil {
+      if let last = writer.progress.lastPTS {
+        if (now - last).seconds > 2 { found[track] = "stopped sending at \(String(format: "%.1f", (last - start).seconds)) s" }
       } else if (now - start).seconds > 5 {
-        found[name] = "sent nothing"
+        found[track] = "sent nothing"
       }
     }
-    if problems["screen"] == nil, let error = screen?.stopError { found["screen"] = "stopped: \(error)" }
-    guard !found.isEmpty else { return false }
-    problems.merge(found) { old, _ in old }
-    for (name, problem) in found { log("\(name) \(problem)") }
-    writeMetadata(status: "recording")
-    return true
+    if known[.screen] == nil, let error = screen?.stopError { found[.screen] = "stopped: \(error)" }
+    return found
   }
 
-  func end() async {
+  /// Rewrites recording.json mid-take with the take's problems.
+  func recordProblems(_ problems: [RecorderTrack: String]) {
+    write(status: .recording, problems: problems, stoppedAt: nil)
+  }
+
+  func end(problems: [RecorderTrack: String]) async {
     let end = HostClock.now()
-    stoppedAt = end
     // The tap's callbacks run on the main run loop: tear it down there, between callbacks.
     await MainActor.run { input.end() }
     async let screenDone: Void? = screen?.stop(at: end)
@@ -103,61 +134,52 @@ final class Recording {
     async let micDone: Void? = mic?.stop()
     _ = await (screenDone, cameraDone, micDone)
     clockLog.close()
-    writeMetadata(status: "complete")
+    write(status: .complete, problems: problems, stoppedAt: end)
   }
 
-  private func seconds(_ time: CMTime?) -> Double? { time.map { ($0 - start).seconds } }
+  private func seconds(_ time: CMTime) -> Double { (time - start).seconds }
 
-  private func writeMetadata(status: String) {
-    var tracks: [String: Any] = [:]
-    // A track that never got a sample (a camera with no HDMI signal) has no file: it's left out, not listed.
-    if stoppedAt != nil {
-      for (name, writer) in [("screen", screen?.writer), ("camera", camera?.writer), ("mic", mic?.writer)] where writer != nil && writer?.firstPTS == nil {
-        failures[name] = "no samples arrived"
+  private func write(status: RecordingStatus, problems: [RecorderTrack: String], stoppedAt: CMTime?) {
+    var tracks: [RecorderTrack: RecordingTrackEntry] = [:]
+    var leftOut = startFailures
+    for (track, writer) in writers {
+      // A track that never got a sample (a camera with no HDMI signal) has no file: it's left out, not listed.
+      guard let first = writer.firstPTS else {
+        if stoppedAt != nil { leftOut[track] = .noSamples }
+        continue
       }
-    }
-    if let screen, screen.writer.firstPTS != nil {
-      let geometry = screen.geometry
-      tracks["screen"] = compact([
-        "file": "screen.mp4", "startSeconds": seconds(screen.writer.firstPTS),
-        "writerDroppedFrames": screen.writer.progress.notReady,
-        "display": [
-          "name": geometry.name, "boundsPoints": geometry.boundsPoints, "scale": geometry.scale,
-          "widthPixels": geometry.widthPixels, "heightPixels": geometry.heightPixels,
-        ],
-      ])
-    }
-    if let camera, camera.writer.firstPTS != nil {
-      tracks["camera"] = compact([
-        "file": "camera.mp4", "startSeconds": seconds(camera.writer.firstPTS), "device": camera.deviceName,
-        "sourceFormat": camera.sourceFormat, "latencySeconds": camera.latencySeconds,
-        "captureDroppedFrames": camera.droppedByCapture, "writerDroppedFrames": camera.writer.progress.notReady,
-      ])
-    }
-    if let mic, mic.writer.firstPTS != nil {
-      tracks["mic"] = compact([
-        "file": "mic.m4a", "startSeconds": seconds(mic.writer.firstPTS), "device": mic.deviceName, "channel": mic.channel,
-        "sampleRate": mic.sampleRate, "latencySeconds": mic.latencySeconds,
-        "hostDriftSeconds": mic.driftSeconds,
-      ])
+      var entry = RecordingTrackEntry(file: writer.url.lastPathComponent, startSeconds: seconds(first))
+      switch track {
+      case .screen:
+        entry.display = screen?.geometry
+        entry.writerDroppedFrames = writer.progress.notReady
+      case .camera:
+        entry.device = camera?.deviceName
+        entry.sourceFormat = camera?.sourceFormat
+        entry.latencySeconds = camera?.latencySeconds
+        entry.captureDroppedFrames = camera?.droppedByCapture
+        entry.writerDroppedFrames = writer.progress.notReady
+      case .mic:
+        entry.device = mic?.deviceName
+        entry.channel = mic?.channel
+        entry.sampleRate = mic?.sampleRate
+        entry.latencySeconds = mic?.latencySeconds
+        entry.hostDriftSeconds = mic?.driftSeconds
+      case .input:
+        break
+      }
+      tracks[track] = entry
     }
     let iso = ISO8601DateFormatter()
     iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     iso.timeZone = .current
-    let metadata = compact([
-      "format": "studio-recording/1",
-      "status": status,
-      "startedAt": iso.string(from: startedAt),
-      "durationSeconds": seconds(stoppedAt),
-      "tracks": tracks,
-      "input": failures["input"] == nil ? ["file": "input.jsonl", "coordinates": "global-points"] : nil,
-      "clockLog": "clock.jsonl",
-      "leftOut": failures.isEmpty ? nil : failures,
-      "problems": problems.isEmpty ? nil : problems,
-    ])
-    guard let data = try? JSONSerialization.data(withJSONObject: metadata, options: [.prettyPrinted, .sortedKeys]) else { return }
-    try? data.write(to: folder.appendingPathComponent("recording.json"), options: .atomic)
+    let file = StudioRecordingFile(
+      status: status, startedAt: iso.string(from: startedAt), durationSeconds: stoppedAt.map(seconds), tracks: tracks, leftOut: leftOut,
+      problems: problems)
+    do {
+      try file.encoded().write(to: folder.appendingPathComponent("recording.json"), options: .atomic)
+    } catch {
+      log("couldn't write recording.json: \(error)")
+    }
   }
 }
-
-private func compact(_ dictionary: [String: Any?]) -> [String: Any] { dictionary.compactMapValues { $0 } }

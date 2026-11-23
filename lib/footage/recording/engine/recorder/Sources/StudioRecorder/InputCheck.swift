@@ -1,8 +1,9 @@
 // The menu's live check of the picked mic and camera, before a take: the mic's level on its configured input,
-// and the camera's picture, which it also reads for whether one arrives. It runs only while the menu is open and
-// the recorder idles, and never locks a device's configuration: its session may pick the camera's format, which a
-// recording then sets its own.
+// and the camera's picture, which it also reads for whether one arrives. The machine runs it only while the menu is
+// open and no take holds the devices, and it never locks a device's configuration: its session may pick the
+// camera's format, which a recording then sets its own.
 import AVFoundation
+import Synchronization
 
 /// What the menu shows for the camera.
 enum CameraPicture: Equatable {
@@ -24,20 +25,27 @@ enum MicSignal: Equatable {
 }
 
 final class InputCheck: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureAudioDataOutputSampleBufferDelegate {
+  /// The camera's side of the check: off (none configured, or stopped), failed before a session could open, or
+  /// watching one.
+  private enum CameraProbe {
+    case off
+    case failed(CameraPicture)
+    case watching(AVCaptureSession, AVCaptureVideoDataOutput, since: Date)
+  }
+
+  private enum MicProbe {
+    case off
+    case failed(MicSignal)
+    case metering(AVCaptureSession, AVCaptureConnection?, channel: Int)
+  }
+
   /// Starting and stopping sessions block for as long as a device takes to open; they run here, in order.
   private let sessionQueue = DispatchQueue(label: "recorder.input-check")
   private let frameQueue = DispatchQueue(label: "recorder.input-check.frames")
-  private var cameraSession: AVCaptureSession?
-  private var cameraOutput: AVCaptureVideoDataOutput?
-  private var micSession: AVCaptureSession?
-  private var micConnection: AVCaptureConnection?
-  private var micChannel = 1
-  private var cameraFailure: CameraPicture?
-  private var micFailure: MicSignal?
-  private var startedAt = Date.distantPast
-  /// Written on the frame queue, read on the main thread, under `lock`.
-  private var lastFrame: (at: Date, black: Bool)?
-  private let lock = NSLock()
+  private var camera = CameraProbe.off
+  private var mic = MicProbe.off
+  /// Written on the frame queue, read on the main thread.
+  private let lastFrame = Mutex<(at: Date, black: Bool)?>(nil)
   /// Shows each camera frame as it arrives; used on the frame queue only.
   private let pictureRenderer: AVSampleBufferVideoRenderer
 
@@ -48,27 +56,31 @@ final class InputCheck: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, 
   @MainActor
   func start(config: RecorderConfig) {
     stop()
-    startedAt = Date()
-    lock.withLock { lastFrame = nil }
+    lastFrame.withLock { $0 = nil }
     clearPicture()
-    if let camera = config.camera { startCamera(named: camera.device) }
-    if let mic = config.mic { startMic(config: mic) }
+    if let cameraConfig = config.camera { camera = openCamera(named: cameraConfig.device) }
+    if let micConfig = config.mic { mic = openMic(config: micConfig) }
   }
 
   /// Stops both sessions in the background, after any start still opening a device.
   @MainActor
   func stop() {
-    let sessions = [cameraSession, micSession].compactMap { $0 }
-    // A stopping session still sends frames until `stopRunning` returns; cut them off now, so none lands after
-    // the next start's `clearPicture` and shows the old camera.
-    cameraOutput?.setSampleBufferDelegate(nil, queue: nil)
-    cameraOutput = nil
-    cameraSession = nil
-    micSession = nil
-    micConnection = nil
-    cameraFailure = nil
-    micFailure = nil
+    var sessions: [AVCaptureSession] = []
+    if case .watching(let session, let output, _) = camera {
+      // A stopping session still sends frames until `stopRunning` returns; cut them off now, so none lands after
+      // the next start's `clearPicture` and shows the old camera.
+      output.setSampleBufferDelegate(nil, queue: nil)
+      sessions.append(session)
+    }
+    if case .metering(let session, _, _) = mic { sessions.append(session) }
+    camera = .off
+    mic = .off
     sessionQueue.async { for session in sessions { session.stopRunning() } }
+  }
+
+  /// Returns once every session a stop let go of has stopped: a take is about to open the same devices.
+  func awaitDevicesReleased() {
+    sessionQueue.sync {}
   }
 
   /// Takes the last image off the menu's picture, so a warning isn't read over a frozen one.
@@ -76,23 +88,13 @@ final class InputCheck: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, 
     frameQueue.async { [pictureRenderer] in pictureRenderer.flush(removingDisplayedImage: true, completionHandler: nil) }
   }
 
-  /// Stops both sessions and returns once they have: a recording is about to open the same devices.
   @MainActor
-  func stopAndWait() {
-    stop()
-    sessionQueue.sync {}
-  }
-
-  @MainActor
-  private func startCamera(named name: String) {
-    guard let device = RecorderInputs.device(named: name, in: RecorderInputs.cameras()) else { cameraFailure = .notConnected; return }
-    guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else { cameraFailure = .notAllowed; return }
+  private func openCamera(named name: String) -> CameraProbe {
+    guard let device = RecorderInputs.device(named: name, in: RecorderInputs.cameras()) else { return .failed(.notConnected) }
+    guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else { return .failed(.notAllowed) }
     let session = AVCaptureSession()
     session.beginConfiguration()
-    guard let input = try? AVCaptureDeviceInput(device: device), session.canAddInput(input) else {
-      cameraFailure = .noPicture("can't open")
-      return
-    }
+    guard let input = try? AVCaptureDeviceInput(device: device), session.canAddInput(input) else { return .failed(.noPicture("can't open")) }
     session.addInput(input)
     // Frames at the menu picture's Retina pixel width, drawn 1:1. The output's scaler shrinks the camera's 4K
     // cleanly; an AVCaptureVideoPreviewLayer shrinks it on the GPU at draw time, which blurs and aliases. The
@@ -109,58 +111,60 @@ final class InputCheck: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, 
     output.setSampleBufferDelegate(self, queue: frameQueue)
     if session.canAddOutput(output) { session.addOutput(output) }
     session.commitConfiguration()
-    cameraSession = session
-    cameraOutput = output
     sessionQueue.async { session.startRunning() }
+    return .watching(session, output, since: Date())
   }
 
   @MainActor
-  private func startMic(config: MicConfig) {
-    guard let device = RecorderInputs.device(named: config.device, in: RecorderInputs.mics()) else { micFailure = .notConnected; return }
-    guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else { micFailure = .notAllowed; return }
-    micChannel = config.channel(forDevice: device.localizedName)
+  private func openMic(config: MicConfig) -> MicProbe {
+    guard let device = RecorderInputs.device(named: config.device, in: RecorderInputs.mics()) else { return .failed(.notConnected) }
+    guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else { return .failed(.notAllowed) }
     let session = AVCaptureSession()
     session.beginConfiguration()
-    guard let input = try? AVCaptureDeviceInput(device: device), session.canAddInput(input) else {
-      micFailure = .notConnected
-      return
-    }
+    guard let input = try? AVCaptureDeviceInput(device: device), session.canAddInput(input) else { return .failed(.notConnected) }
     session.addInput(input)
     // The connection meters each of the device's inputs; the output only has to be there for audio to flow.
     let output = AVCaptureAudioDataOutput()
     output.setSampleBufferDelegate(self, queue: frameQueue)
     if session.canAddOutput(output) { session.addOutput(output) }
     session.commitConfiguration()
-    micSession = session
-    micConnection = output.connection(with: .audio)
     sessionQueue.async { session.startRunning() }
+    return .metering(session, output.connection(with: .audio), channel: config.channel(forDevice: device.localizedName))
   }
 
   /// Read each tick while the menu is open.
   @MainActor
   var picture: CameraPicture {
-    if let cameraFailure { return cameraFailure }
-    let frame = lock.withLock { lastFrame }
-    let now = Date()
-    // A camera takes a moment to open: until then, no frame isn't yet "no picture".
-    guard let frame, now.timeIntervalSince(frame.at) < 1 else {
-      return now.timeIntervalSince(startedAt) < 3 ? .opening : .noPicture("no picture")
+    switch camera {
+    case .off: return .opening
+    case .failed(let picture): return picture
+    case .watching(_, _, let since):
+      let frame = lastFrame.withLock { $0 }
+      let now = Date()
+      // A camera takes a moment to open: until then, no frame isn't yet "no picture".
+      guard let frame, now.timeIntervalSince(frame.at) < 1 else {
+        return now.timeIntervalSince(since) < 3 ? .opening : .noPicture("no picture")
+      }
+      return frame.black ? .noPicture("black picture") : .live
     }
-    return frame.black ? .noPicture("black picture") : .live
   }
 
   @MainActor
   var micSignal: MicSignal {
-    if let micFailure { return micFailure }
-    guard let channels = micConnection?.audioChannels, !channels.isEmpty else { return .level(-120) }
-    guard channels.indices.contains(micChannel - 1) else { return .noSuchInput(micChannel) }
-    return .level(channels[micChannel - 1].averagePowerLevel)
+    switch mic {
+    case .off: return .level(-120)
+    case .failed(let signal): return signal
+    case .metering(_, let connection, let channel):
+      guard let channels = connection?.audioChannels, !channels.isEmpty else { return .level(-120) }
+      guard channels.indices.contains(channel - 1) else { return .noSuchInput(channel) }
+      return .level(channels[channel - 1].averagePowerLevel)
+    }
   }
 
   func captureOutput(_ output: AVCaptureOutput, didOutput sample: CMSampleBuffer, from connection: AVCaptureConnection) {
     guard output is AVCaptureVideoDataOutput, let image = sample.imageBuffer else { return }
     let black = isBlack(image)
-    lock.withLock { lastFrame = (Date(), black) }
+    lastFrame.withLock { $0 = (Date(), black) }
     if pictureRenderer.status == .failed || pictureRenderer.requiresFlushToResumeDecoding { pictureRenderer.flush() }
     // A late frame is dropped rather than queued: the picture should be now, not a backlog.
     guard pictureRenderer.isReadyForMoreMediaData else { return }
