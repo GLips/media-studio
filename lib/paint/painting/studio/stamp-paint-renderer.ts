@@ -46,7 +46,7 @@ import {
   stampFramePlan, stampFramePlanExposed, stampFramePlanMotion, stampGroupSceneMap, type StampGroupFrame, type StampGroupTravel, type StampMotionSpan, type StampPosedMoment,
 } from '../models/stamp-frame-plan.ts';
 import type { StampGroupMarks, StampPaintFrameState } from '../models/stamp-paint-frame-state.ts';
-import { STAMP_REST_LOOK, stampSinglePlane, type StampLaidPlanes, type StampLensFrame, type StampPlaneLook } from '../models/stamp-plane.ts';
+import { STAMP_REST_LOOK, stampPictureDefocus, stampSinglePlane, type StampLaidPlanes, type StampLensFrame, type StampPlaneLook } from '../models/stamp-plane.ts';
 import { stampBoxUnion, stampStage, stampStageTexelsGrown, stampStageTexelsOf, stampStageTexelsWithin, type StampStage } from '../models/stamp-stage.ts';
 import { bindStampPaintBrushes, loadStampDepositBank, type StampDepositToLoad, type StampLoadedDeposit, type StampPaintBrushes } from './stamp-deposit-bank.ts';
 import { createStampDepositDrawing, stampDepositUniformSlots, stampPaperTooth, type StampDepositDraw, type StampDepositTargets, type StampWashStart } from './stamp-deposit-drawing.ts';
@@ -636,8 +636,8 @@ function rendererOnSurface({
     if (found) span('stamp paint picture restore')();
     const picture = found ?? paintPicture(encoder, plane.groups, kind, planeDraw, key);
     if (!picture) return null;
-    // A plane's defocus is frame px: on its picture, it's that over the view's scale.
-    return look.defocus ? planePictures.blurred(encoder, lensGpu, picture, key, look.defocus / Math.hypot(look.view.ma, look.view.mb)) : picture;
+    const defocus = stampPictureDefocus(look, margin);
+    return defocus ? planePictures.blurred(encoder, lensGpu, picture, key, defocus) : picture;
   }
   // Each group's film, kept on the device so a frame laying it elsewhere copies it back rather than painting it again
   // (stamp-paint-gpu-cache.ts). A film starts clear and reads nothing laid before it, so it's a function of its plan's
@@ -790,7 +790,7 @@ function rendererOnSurface({
       const planeDraw: StampPlaneDraw = { groups, motion: planeMotion, whole, frameTrace };
       const layerOf = (picture: StampPlanePicture | null, look: StampPlaneLook, clipped: boolean): LensLayer[] => (picture
         ? [{
-          picture: stampArrayView(picture.texture), layers: picture, view: look.view, shutter: look.shutter,
+          picture: stampArrayView(picture.texture), layers: picture, view: look.view, shutter: look.shutter, shear: look.shear,
           origin: { x: picture.box.x - margin, y: picture.box.y - margin }, size: picture.box, clipped, distance: look.distance, distances: 'layer', visibility: 1,
         }]
         : []);

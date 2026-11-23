@@ -6,7 +6,7 @@
 // painted plane is clear film, measured on white and on black: a two-point linearisation between them
 // (stamp-paint-plane-passes.ts says where that's close). A group's knockout, lift or glaze reads only its own plane.
 
-import type { LensDefocusField, LensFocus, LensFrameAffine } from '#lib/picture/lens/models/lens-focus.ts';
+import { lensDefocusFieldAt, lensGaussianReach, type LensDefocusField, type LensFocus, type LensFrameAffine } from '#lib/picture/lens/models/lens-focus.ts';
 import type { CompiledStampPaint } from './stamp-paint-recipe-compile.ts';
 import type { StampBox } from './stamp-region.ts';
 import type { PaintMoment } from './stamp-paint-frame-state.ts';
@@ -138,6 +138,37 @@ export type StampPlaneLook = {
   readonly shutter: { readonly open: StampPlaneView; readonly close: StampPlaneView } | null;
   readonly shear: LensFrameAffine | null;
 };
+
+/**
+ * How a plane's picture is defocused, in stage texels (a texel's centre c lies at plane point c − margin): an `even`
+ * gaussian of `sigma`, or, under a tilted focus, `across` it, a signed sigma of `at` + x·c.x + y·c.y.
+ */
+export type StampPictureDefocus = { readonly kind: 'even'; readonly sigma: number } | { readonly kind: 'across'; readonly x: number; readonly y: number; readonly at: number };
+
+/** `look`'s defocus on its plane's picture over a stage of `margin` (frame px over the view's scale); null, sharp. */
+export function stampPictureDefocus({ view: { ma, mb, kx, ky }, defocus, defocusField: field }: StampPlaneLook, margin: number): StampPictureDefocus | null {
+  const scale = Math.hypot(ma, mb);
+  if (!field) return defocus ? { kind: 'even', sigma: defocus / scale } : null;
+  // The view takes stage texel c to frame px (ma·u − mb·v + kx, mb·u + ma·v + ky), (u, v) = c − margin.
+  const origin = lensDefocusFieldAt(field, { x: (mb - ma) * margin + kx, y: -(ma + mb) * margin + ky });
+  return { kind: 'across', x: (field.x * ma + field.y * mb) / scale, y: (field.y * ma - field.x * mb) / scale, at: origin / scale };
+}
+
+/** The widest sigma `defocus` gives over stage texels `box`. */
+function stampPictureDefocusWidest(defocus: StampPictureDefocus, box: { x: number; y: number; w: number; h: number }): number {
+  if (defocus.kind === 'even') return defocus.sigma;
+  const corners = [[box.x, box.y], [box.x + box.w, box.y], [box.x, box.y + box.h], [box.x + box.w, box.y + box.h]];
+  return Math.max(...corners.map(([x, y]) => Math.abs(defocus.at + defocus.x * x + defocus.y * y)));
+}
+
+/**
+ * How far `defocus` spreads a picture over stage texels `box`, whole texels: an even sigma's reach, or across it the
+ * reach of the widest sigma where its edge's own spread lands, as that spread meets wider sigmas still.
+ */
+export function stampPictureDefocusReach(defocus: StampPictureDefocus, box: { x: number; y: number; w: number; h: number }): number {
+  const edge = lensGaussianReach(stampPictureDefocusWidest(defocus, box));
+  return lensGaussianReach(stampPictureDefocusWidest(defocus, { x: box.x - edge, y: box.y - edge, w: box.w + 2 * edge, h: box.h + 2 * edge }));
+}
 
 /** Rest: a plane where it's painted, sharp. */
 export const STAMP_REST_LOOK: StampPlaneLook = { view: { ma: 1, mb: 0, kx: 0, ky: 0 }, defocus: 0, defocusField: null, distance: 1, shutter: null, shear: null };

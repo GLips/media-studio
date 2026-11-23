@@ -15,7 +15,7 @@ import { paintingEvaluationCounts } from '#lib/paint/document/models/painting-so
 import { UNTRACED_NESTING } from '#lib/platform/trace/models/trace-recorder.ts';
 import { solvePaintingSheetFilms } from '#lib/paint/document/studio/painting-sheets-solve.ts';
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
-import type { StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
+import { stampPictureDefocus, type StampPictureDefocus, type StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
 import { STAMP_FILMS_WHOLE } from '#lib/paint/painting/models/stamp-reveal.ts';
 import { stampWrapPeriods, type StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { stampArrayView } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
@@ -224,9 +224,9 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
     });
   }
 
-  /** Each of `shares` that lays anything, defocused by `sigma` px of its own (0: sharp) as the picture pass keeps it. */
-  function defocused(encoder: GPUCommandEncoder, lens: LensCompositor, shares: readonly ShotSharePresented[], sigma: number): ShotDissolveShare[] {
-    return shares.flatMap(({ picture, key, weight }) => (picture ? [{ picture: sigma ? pictures.blurred(encoder, lens, picture, key, sigma) : picture, weight }] : []));
+  /** Each of `shares` that lays anything, defocused as `defocus` says (null: sharp) as the picture pass keeps it. */
+  function defocused(encoder: GPUCommandEncoder, lens: LensCompositor, shares: readonly ShotSharePresented[], defocus: StampPictureDefocus | null): ShotDissolveShare[] {
+    return shares.flatMap(({ picture, key, weight }) => (picture ? [{ picture: defocus ? pictures.blurred(encoder, lens, picture, key, defocus) : picture, weight }] : []));
   }
 
   /**
@@ -246,7 +246,7 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
    */
   function pictureDefocused(encoder: GPUCommandEncoder, lens: LensCompositor, moment: ShotPlaneMoment, sigma: number): StampPlanePicture | null {
     const shares = sharesUnder(encoder, moment, moment.shares.map(({ plan }) => plan.key), SHOT_READS_NOTHING);
-    return summed(encoder, moment, defocused(encoder, lens, shares, sigma));
+    return summed(encoder, moment, defocused(encoder, lens, shares, sigma ? { kind: 'even', sigma } : null));
   }
 
   return {
@@ -354,13 +354,12 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
      */
     picture(encoder: GPUCommandEncoder, lens: LensCompositor, presented: ShotPlanePresented, look: StampPlaneLook): LensLayer | null {
       const { moment } = presented, { plane } = moment;
-      // A plane's defocus is frame px: on its picture, it's that over the view's scale.
-      const sigma = look.defocus && look.defocus / Math.hypot(look.view.ma, look.view.mb);
-      const picture = sigma ? summed(encoder, moment, defocused(encoder, lens, presented.shares, sigma)) : presented.sharp();
+      const defocus = stampPictureDefocus(look, margin);
+      const picture = defocus ? summed(encoder, moment, defocused(encoder, lens, presented.shares, defocus)) : presented.sharp();
       if (!picture) return null;
       // Laid whole: the picture pass took the plane's visibility into its picture already.
       return {
-        picture: stampArrayView(picture.texture), layers: picture, view: look.view, shutter: look.shutter, origin: { x: picture.box.x - margin, y: picture.box.y - margin },
+        picture: stampArrayView(picture.texture), layers: picture, view: look.view, shutter: look.shutter, shear: look.shear, origin: { x: picture.box.x - margin, y: picture.box.y - margin },
         size: picture.box, clipped: !plane.opaqueBack, distance: look.distance, distances: 'layer', visibility: 1,
       };
     },

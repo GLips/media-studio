@@ -3,11 +3,11 @@
 // at rest, defocused per texel by its depth. A picture source's is in the stage's texels: it's defocused by its plane's
 // look, as a painted picture is, and laid where the look puts it, clear past its edge.
 
-import { LENS_DEFOCUS_LEAST, lensGaussianReach, lensSigmaStepped, type LensFocus } from '#lib/picture/lens/models/lens-focus.ts';
+import { LENS_DEFOCUS_LEAST, lensDefocusMost, lensGaussianReach, lensSigmaStepped, type LensFocus } from '#lib/picture/lens/models/lens-focus.ts';
 import type { LensCompositor, LensFrameExposures, LensFrameKeeps, LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
 import type { LensPictureLayers } from '#lib/picture/lens/studio/lens-passes.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
-import { STAMP_REST_LOOK, type StampLaidPlanes, type StampLaidSourcePlane, type StampPlaneExtent, type StampPlaneLook } from '../models/stamp-plane.ts';
+import { STAMP_REST_LOOK, stampPictureDefocus, stampPictureDefocusReach, type StampLaidPlanes, type StampLaidSourcePlane, type StampPlaneExtent, type StampPlaneLook } from '../models/stamp-plane.ts';
 import type { StampStage, StampStageTexels } from '../models/stamp-stage.ts';
 import type { StampPaintGpuOwner } from './stamp-paint-gpu-owner.ts';
 import type { StampLensPicture, StampLensSource, StampLensSourceExposure, StampPictureLensSource, StampThreeLensSource } from './stamp-lens-source.ts';
@@ -112,15 +112,15 @@ export function createStampLensSourceLayers(owner: StampPaintGpuOwner, { stage, 
 
   /**
    * A three source's picture for the lens and its box in frame px: its colour alone when sharp and the frame isn't
-   * `moving`, else with its motion layer, each texel defocused by `focus` at its own distance, at most twice the
-   * aperture: else a point by the lens would blur the whole picture.
+   * `moving`, else with its motion layer, each texel defocused by `focus` at its own distance and place, at most as
+   * lensDefocusMost says.
    */
   function threeLayer(encoder: GPUCommandEncoder, id: string, { look, focus, moving, visibility }: StampSourceLaying): LensLayer {
     const { texture, motion, at } = threes.get(id)!.picture, { width: w, height: h } = texture;
     // A source renders through the camera, its motion with it: only the lens's defocus is left to do. Still or not, a
     // gathered frame reads its texels' distances: its plane's would misplace what's in front.
     const laid = (picture: GPUTextureView, layers: LensPictureLayers): LensLayer => ({
-      picture, layers, view: STAMP_REST_LOOK.view, shutter: null, origin: at, size: { w, h }, clipped: true, distance: look.distance, distances: moving ? 'texels' : 'layer', visibility,
+      picture, layers, view: STAMP_REST_LOOK.view, shutter: null, shear: null, origin: at, size: { w, h }, clipped: true, distance: look.distance, distances: moving ? 'texels' : 'layer', visibility,
     });
     const defocusing = focus !== null && focus.aperture >= LENS_DEFOCUS_LEAST;
     if (!defocusing && !moving) return laid(arrayView(texture), SOURCE_LAYERS);
@@ -130,28 +130,30 @@ export function createStampLensSourceLayers(owner: StampPaintGpuOwner, { stage, 
     const layers = moving ? SOURCE_MOTION_LAYERS : SOURCE_LAYERS;
     if (!defocusing) return laid(arrayView(both), layers);
     const defocused = scratch(encoder, `source ${id} defocused`, w, h, 2);
-    lens.defocus(encoder, { source: arrayView(both), into: arrayView(defocused), size: { w, h }, focus, most: 2 * focus.aperture });
+    const most = lensDefocusMost(focus, { x0: at.x, y0: at.y, x1: at.x + w, y1: at.y + h });
+    lens.defocus(encoder, { source: arrayView(both), into: arrayView(defocused), size: { w, h }, at, focus, most });
     return laid(arrayView(defocused), layers);
   }
 
   /**
-   * Picture plane `id`'s picture laid by its `look`, defocused by it over its box grown by the blur's reach, into a
-   * stage-sized target cleared first: one target a plane, whatever its box.
+   * Picture plane `id`'s picture laid by its `look`, defocused by it over its box grown by the blur's widest reach,
+   * into a stage-sized target cleared first: one target a plane, whatever its box.
    */
   function pictureLayer(encoder: GPUCommandEncoder, id: string, { texture, box }: StampLensPicture, { look, visibility }: StampSourceLaying): LensLayer {
     // Sized to the texture, not the box: the lens samples its picture over `size`, and past the box it's clear.
     const laid = (view: GPUTextureView, at: StampStageTexels, size: { w: number; h: number }): LensLayer => ({
-      picture: view, layers: SOURCE_LAYERS, view: look.view, shutter: look.shutter, origin: { x: at.x - margin, y: at.y - margin }, size, clipped: true,
+      picture: view, layers: SOURCE_LAYERS, view: look.view, shutter: look.shutter, shear: look.shear, origin: { x: at.x - margin, y: at.y - margin }, size, clipped: true,
       distance: look.distance, distances: 'layer', visibility,
     });
-    // A plane's defocus is frame px: on its picture, it's that over the view's scale.
-    const sigma = look.defocus && lensSigmaStepped(look.defocus / Math.hypot(look.view.ma, look.view.mb));
-    if (!sigma) return laid(arrayView(texture), box, { w: texture.width, h: texture.height });
-    const reach = lensGaussianReach(sigma), x = Math.max(0, box.x - reach), y = Math.max(0, box.y - reach);
+    const defocus = stampPictureDefocus(look, margin), sigma = defocus?.kind === 'even' ? lensSigmaStepped(defocus.sigma) : 0;
+    if (!defocus || (defocus.kind === 'even' && !sigma)) return laid(arrayView(texture), box, { w: texture.width, h: texture.height });
+    const reach = defocus.kind === 'even' ? lensGaussianReach(sigma) : stampPictureDefocusReach(defocus, box), x = Math.max(0, box.x - reach), y = Math.max(0, box.y - reach);
     const grown = { x, y, w: Math.min(width, box.x + box.w + reach) - x, h: Math.min(height, box.y + box.h + reach) - y };
     const blurred = scratch(encoder, `picture ${id} blurred`, width, height, 1);
     encoder.beginRenderPass({ colorAttachments: [{ view: blurred.createView(), loadOp: 'clear', storeOp: 'store' }] }).end();
-    lens.gaussian(encoder, { source: arrayView(texture), into: arrayView(blurred), layers: 1, sigma, read: box, sourceAt: box, box: grown });
+    const draw = { source: arrayView(texture), into: arrayView(blurred), layers: 1, read: box, sourceAt: box, box: grown };
+    if (defocus.kind === 'even') lens.gaussian(encoder, { ...draw, sigma });
+    else lens.defocusAcross(encoder, { ...draw, sigma: defocus });
     return laid(arrayView(blurred), grown, { w: width, h: height });
   }
 

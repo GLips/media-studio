@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { shotCameraAxes, shotCameraFocalPx, shotCameraLookingAt, shotCameraProject, type ShotCamera } from '#lib/picture/shot-camera/models/shot-camera.ts';
-import { lensApertureSlide, lensDefocusSigned, lensFocusLean, shotCameraExposed, type LensFocus, type ShotCameraLensFocus } from './lens-focus.ts';
+import { lensApertureSlide, lensDefocusSigned, lensFocusLean, lensFrameAffineApply, shotCameraExposed, type LensFocus, type ShotCameraLensFocus } from './lens-focus.ts';
 
 const CAMERA = shotCameraLookingAt({ frame: { width: 320, height: 180 }, fov: 40, near: 0.1, far: 100 }, { position: [1, 6, 9], target: [0, 0, 0] });
 const FOCUS = 11, TILT = { angle: 0.6, axis: 0.25 };
@@ -31,13 +31,11 @@ test('an exposure under a tilted focus holds its leaning focal plane still, and 
       assert.ok(Math.hypot(sharp.x - at.x, sharp.y - at.y) < 1e-6, `the focal plane at (${at.x}, ${at.y}) lands at (${sharp.x}, ${sharp.y})`);
       for (const depth of [6, 25]) {
         const seen = shotCameraProject(exposed, onRay(CAMERA, at, depth))!, { shift, shear } = lensApertureSlide(lens, depth, aperture);
-        const moved = { x: at.x + shift.x, y: at.y + shift.y };
-        const slid = { x: shear!.xx * moved.x + shear!.xy * moved.y + shear!.x, y: shear!.yx * moved.x + shear!.yy * moved.y + shear!.y };
+        const slid = lensFrameAffineApply(shear!, { x: at.x + shift.x, y: at.y + shift.y });
         assert.ok(Math.hypot(seen.x - slid.x, seen.y - slid.y) < 1e-6, `depth ${depth} at (${at.x}, ${at.y}): seen (${seen.x}, ${seen.y}), slid (${slid.x}, ${slid.y})`);
         // To first order in the aperture, the slide is the fast path's signed sigma times the aperture point.
         const small = lensApertureSlide(lens, depth, [aperture[0] * 1e-4, aperture[1] * 1e-4]), signed = lensDefocusSigned(lens, depth, at);
-        const sm = { x: at.x + small.shift.x, y: at.y + small.shift.y };
-        const sx = small.shear!.xx * sm.x + small.shear!.xy * sm.y + small.shear!.x - at.x;
+        const sx = lensFrameAffineApply(small.shear!, { x: at.x + small.shift.x, y: at.y + small.shift.y }).x - at.x;
         assert.ok(Math.abs(sx / 1e-4 - aperture[0] * signed) < 1e-3 * Math.max(1, Math.abs(signed)), `depth ${depth}: slide ${sx / 1e-4}, sigma ${aperture[0] * signed}`);
       }
     }

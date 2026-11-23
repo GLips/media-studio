@@ -61,6 +61,14 @@ export const lensDefocusSigned = (lens: LensFocus, distance: number, at?: LensFr
   lens.aperture * ((at ? lensFocusLeanAt(lens, at) : 1) - lens.focus / distance);
 
 /**
+ * The widest sigma a per-pixel defocus by `lens` gives in frame `box`: twice the aperture straight ahead, so nearer
+ * than a third of the focus blurs no wider (else a point by the lens would blur the whole picture), and as much more
+ * as a tilted focus leans there.
+ */
+export const lensDefocusMost = (lens: LensFocus, { x0, y0, x1, y1 }: { x0: number; y0: number; x1: number; y1: number }) =>
+  lens.aperture * (1 + Math.max(...[[x0, y0], [x1, y0], [x0, y1], [x1, y1]].map(([x, y]) => lensFocusLeanAt(lens, { x, y }))));
+
+/**
  * A plane's defocus across the frame at one distance, under a tilted focus: its signed sigma, frame px, is `signed`
  * at frame px `centre` and rises `x` and `y` a px.
  */
@@ -79,6 +87,9 @@ export const lensDefocusFieldWidest = (field: LensDefocusField, { x0, y0, x1, y1
 
 /** An affine map of frame px: p ↦ (xx·p.x + xy·p.y + x, yx·p.x + yy·p.y + y). */
 export type LensFrameAffine = { readonly xx: number; readonly xy: number; readonly yx: number; readonly yy: number; readonly x: number; readonly y: number };
+
+/** Where `affine` takes frame px `p`. */
+export const lensFrameAffineApply = ({ xx, xy, yx, yy, x, y }: LensFrameAffine, p: LensFramePoint) => ({ x: xx * p.x + xy * p.y + x, y: yx * p.x + yy * p.y + y });
 
 /**
  * Where an exposure from aperture point `at` (lens-exposures.ts) slides what lies at `distance`, frame px: `shift`,

@@ -1,13 +1,14 @@
 // stamp-plane-picture-pass.ts: a painted plane's picture as the lens takes it (lens-passes.ts), kept in the device's
 // cache. The back is laid on its paper; a nearer plane is laid on white, its light measured, laid again on
 // black, and the picture pass reads what it lets through against the backings' own light. Defocused, a picture is
-// blurred by a stepped sigma. The old renderer and a shot's painted planes both draw theirs here, each under a key
+// blurred by a stepped sigma, or by one varying across it under a tilted focus. The old renderer and a shot's painted planes both draw theirs here, each under a key
 // naming what makes its pixels, so a plane held still is laid once.
 
 import { gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { lensGaussianReach, lensSigmaStepped } from '#lib/picture/lens/models/lens-focus.ts';
 import type { LensCompositor } from '#lib/picture/lens/studio/lens-compositor.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
+import { stampPictureDefocusReach, type StampPictureDefocus } from '../models/stamp-plane.ts';
 import { stampStageTexelsGrown, type StampStage } from '../models/stamp-stage.ts';
 import type { StampPaintCompositor } from './stamp-paint-compositor.ts';
 import { clearStampTarget, dispatchStampCompute, STAMP_WORKGROUP, stampArrayView } from './stamp-paint-gpu.ts';
@@ -118,19 +119,23 @@ export function createStampPlanePictures(owner: StampPaintGpuOwner, { stage, are
       return { ...note, texture };
     },
     /**
-     * `picture` (kept under `key`) defocused by `sigma` stage px through `lens`, kept under its key and the stepped
-     * sigma, its box grown by the blur's reach; the picture itself where the sigma steps to nothing. Only the layers
-     * the lens reads are blurred: the blurred picture holds no coverage.
+     * `picture` (kept under `key`) defocused as `defocus` says (stage px) through `lens`, kept under its key and the
+     * defocus, an even sigma stepped, its box grown by the blur's widest reach; the picture itself where an even
+     * sigma steps to nothing. Only the layers the lens reads are blurred: the blurred picture holds no coverage.
      */
-    blurred(encoder: GPUCommandEncoder, lens: Pick<LensCompositor, 'gaussian'>, picture: StampPlanePicture, key: string, sigma: number): StampPlanePicture {
-      const stepped = lensSigmaStepped(sigma), blurredKey = `${key}|${stepped}`;
-      if (!stepped) return picture;
+    blurred(encoder: GPUCommandEncoder, lens: Pick<LensCompositor, 'gaussian' | 'defocusAcross'>, picture: StampPlanePicture, key: string, defocus: StampPictureDefocus): StampPlanePicture {
+      const stepped = defocus.kind === 'even' ? lensSigmaStepped(defocus.sigma) : 0;
+      if (defocus.kind === 'even' && !stepped) return picture;
+      const blurredKey = defocus.kind === 'even' ? `${key}|${stepped}` : `${key}|across ${defocus.x} ${defocus.y} ${defocus.at}`;
       const found = blurred.find(blurredKey, encoder);
       if (found) return { ...found.note, texture: found.textures[0] };
       const { texture: sharp, box: sharpBox, ...layers } = picture;
-      const box = stampStageTexelsGrown(stage, sharpBox, lensGaussianReach(stepped)), note: StampPictureNote = { ...layers, coverage: null, box }, count = stampPlanePictureLayerCount(note);
+      const reach = defocus.kind === 'even' ? lensGaussianReach(stepped) : stampPictureDefocusReach(defocus, sharpBox);
+      const box = stampStageTexelsGrown(stage, sharpBox, reach), note: StampPictureNote = { ...layers, coverage: null, box }, count = stampPlanePictureLayerCount(note);
       const [texture] = blurred.make(blurredKey, encoder, [{ width: box.w, height: box.h, layers: count, format: 'rgba16float', usage: STORAGE | GPUTextureUsage.TEXTURE_BINDING }], note).textures;
-      lens.gaussian(encoder, { source: stampArrayView(sharp), into: stampArrayView(texture), layers: count, sigma: stepped, read: sharpBox, sourceAt: sharpBox, box });
+      const draw = { source: stampArrayView(sharp), into: stampArrayView(texture), layers: count, read: sharpBox, sourceAt: sharpBox, box };
+      if (defocus.kind === 'even') lens.gaussian(encoder, { ...draw, sigma: stepped });
+      else lens.defocusAcross(encoder, { ...draw, sigma: defocus });
       return { ...note, texture };
     },
     /** Gives up every picture kept, once the frames reading them are submitted. */
