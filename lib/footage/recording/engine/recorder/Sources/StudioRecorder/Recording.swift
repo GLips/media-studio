@@ -127,17 +127,17 @@ final class Recording {
         ],
       ])
     }
-    if let camera, camera.writer.firstPTS != nil, let cameraConfig = config.camera {
+    if let camera, camera.writer.firstPTS != nil {
       tracks["camera"] = compact([
         "file": "camera.mp4", "startSeconds": seconds(camera.writer.firstPTS), "device": camera.deviceName,
-        "sourceFormat": camera.sourceFormat, "latencySeconds": cameraConfig.latencyMs / 1000,
+        "sourceFormat": camera.sourceFormat, "latencySeconds": camera.latencySeconds,
         "captureDroppedFrames": camera.droppedByCapture, "writerDroppedFrames": camera.writer.progress.notReady,
       ])
     }
-    if let mic, mic.writer.firstPTS != nil, let micConfig = config.mic {
+    if let mic, mic.writer.firstPTS != nil {
       tracks["mic"] = compact([
         "file": "mic.m4a", "startSeconds": seconds(mic.writer.firstPTS), "device": mic.deviceName, "channel": mic.channel,
-        "sampleRate": mic.sampleRate, "latencySeconds": micConfig.latencyMs / 1000,
+        "sampleRate": mic.sampleRate, "latencySeconds": mic.latencySeconds,
         "hostDriftSeconds": mic.driftSeconds,
       ])
     }

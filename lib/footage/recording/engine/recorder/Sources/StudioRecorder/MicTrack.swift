@@ -7,6 +7,8 @@ final class MicTrack: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
   let writer: TrackWriter
   let deviceName: String
   let channel: Int
+  /// This device's latency from the config, for recording.json.
+  let latencySeconds: Double
   let sampleRate: Double
   private(set) var frames: Int64 = 0
   /// How far the host clock ran ahead of the mic's sample count by the last buffer, in seconds: positive means
@@ -20,17 +22,19 @@ final class MicTrack: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
   private var monoFormat: CMAudioFormatDescription?
 
   init(config: MicConfig, url: URL, clockLog: ClockLog) throws {
-    let discovery = AVCaptureDevice.DiscoverySession(deviceTypes: [.microphone, .external], mediaType: .audio, position: .unspecified)
-    guard let device = discovery.devices.first(where: { $0.localizedName.localizedCaseInsensitiveContains(config.device) }) else {
-      throw RecorderError("no mic named like \"\(config.device)\"; there are: \(discovery.devices.map(\.localizedName).joined(separator: ", "))")
+    let mics = RecorderInputs.mics()
+    guard let device = RecorderInputs.device(named: config.device, in: mics) else {
+      throw RecorderError("no mic named like \"\(config.device)\"; there are: \(mics.map(\.localizedName).joined(separator: ", "))")
     }
     guard let source = CMAudioFormatDescriptionGetStreamBasicDescription(device.activeFormat.formatDescription)?.pointee else {
       throw RecorderError("\(device.localizedName) has no audio format")
     }
     let channels = Int(source.mChannelsPerFrame)
-    guard (1...channels).contains(config.channel) else { throw RecorderError("\(device.localizedName) has \(channels) inputs, not \(config.channel)") }
+    let channel = config.channel(forDevice: device.localizedName)
+    guard (1...channels).contains(channel) else { throw RecorderError("\(device.localizedName) has \(channels) inputs, not \(channel)") }
     deviceName = device.localizedName
-    channel = config.channel
+    self.channel = channel
+    latencySeconds = (settingForDevice(config.latencyMsByDevice, named: device.localizedName) ?? 0) / 1000
     sampleRate = source.mSampleRate
     self.clockLog = clockLog
 
