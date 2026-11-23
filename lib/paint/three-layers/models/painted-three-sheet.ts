@@ -79,8 +79,8 @@ function towardSegment(p: StampPoint, a: StampPoint, b: StampPoint): { distance:
   return { distance: Math.hypot(p.x - a.x - ex * clamped, p.y - a.y - ey * clamped), along, offLine: Math.abs((p.x - a.x) * ey - (p.y - a.y) * ex) / Math.sqrt(length2) };
 }
 
-/** A ring traced to points. Refuses one that isn't a single closed area. */
-function sheetRing(ring: PaintedThreeSheetRing, what: string): readonly StampPoint[] {
+/** A ring traced to points, flat print px. Refuses one that isn't a single closed area, `what` naming it. */
+export function paintedThreeSheetRingPoints(ring: PaintedThreeSheetRing, what: string): readonly StampPoint[] {
   const regions = typeof ring === 'string' ? svgPathRegions(ring).regions : [{ kind: 'polygon' as const, points: ring }];
   if (regions.length !== 1) throw new Error(`${what}: a ring is one closed shape, not ${regions.length}`);
   return checkedStampPolygon(regions[0], what);
@@ -170,7 +170,7 @@ export function paintedThreeSheetFolding(sheet: PaintedThreeSheet): PaintedThree
     ...folds.filter((fold) => (fold.on ?? PAINTED_THREE_SHEET_ROOT) === id).map((fold) => ({ edge: fold.hinge, kind: 'fold' as const })),
   ];
   const faces = new Map(order.map((id): [string, PaintedThreeSheetFaceCut] => {
-    const face = faceOf(id), outline = sheetRing(face.outline, `${what}'s face ${id}`), holes = (face.holes ?? []).map((hole) => sheetRing(hole, `${what}'s face ${id}'s hole`));
+    const face = faceOf(id), outline = paintedThreeSheetRingPoints(face.outline, `${what}'s face ${id}`), holes = (face.holes ?? []).map((hole) => paintedThreeSheetRingPoints(hole, `${what}'s face ${id}'s hole`));
     for (const hole of holes) {
       if (stampRingsCross(outline, hole) || !hole.every(({ x, y }) => stampPolygonInside(outline, x, y))) throw new Error(`${what}: face ${id} has a hole outside its outline`);
     }

@@ -40,6 +40,7 @@ import {
 import { STAMP_GATE_LENS_TILT_IDS } from '../models/stamp-gate-lens-tilt.ts';
 import { STAMP_GATE_LIGHTING_IDS, stampGateLightingFrame, stampGateLightingInputs } from '../models/stamp-gate-three-lighting.ts';
 import { STAMP_GATE_PAPER_CARD_IDS, stampGatePaperCardFrame, stampGatePaperCardInputs } from '../models/stamp-gate-paper-card.ts';
+import { STAMP_GATE_PAPER_DIORAMA_IDS, stampGatePaperDioramaFrame, stampGatePaperDioramaInputs } from '../models/stamp-gate-paper-diorama.ts';
 import { readStampGateBaseline, stampGateFrame, stampGateInputsHash, writeStampGateCandidate, type StampGateOutput } from './stamp-gate-store.ts';
 
 /** The gate's browser side, which the private run loads too. */
@@ -99,6 +100,8 @@ const STAMP_GATE_FRAME_FAMILIES: readonly StampGateFrameFamily[] = [
   stampGateFrameFamily({ ids: STAMP_GATE_LIGHTING_IDS, page: 'paintStampGateLighting', inputs: stampGateLightingInputs, size: stampGateLightingFrame }),
   // three.js paper cards and a pop-up, lit as paper: the paper card page builds them.
   stampGateFrameFamily({ ids: STAMP_GATE_PAPER_CARD_IDS, page: 'paintStampGatePaperCard', inputs: stampGatePaperCardInputs, size: stampGatePaperCardFrame }),
+  // The paper kit's constructions on a painted ground, through the diorama's presets: the diorama page builds them.
+  stampGateFrameFamily({ ids: STAMP_GATE_PAPER_DIORAMA_IDS, page: 'paintStampGatePaperDiorama', inputs: stampGatePaperDioramaInputs, size: stampGatePaperDioramaFrame }),
 ];
 
 /** Every baseline subject's ID: each rendering formula's, each painting's and each frame family's cases'. */

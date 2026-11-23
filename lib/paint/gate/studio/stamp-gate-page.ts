@@ -59,6 +59,7 @@ import { checkStampGateShotTextureCase, checkStampGateTextureCase, paintStampGat
 import { checkStampGateLensTiltCase } from './stamp-gate-lens-tilt-page.ts';
 import { checkStampGateLightingCase, paintStampGateLighting } from './stamp-gate-three-lighting-page.ts';
 import { checkStampGatePaperCardCase, paintStampGatePaperCard } from './stamp-gate-paper-card-page.ts';
+import { paintStampGatePaperDiorama } from './stamp-gate-paper-diorama-page.ts';
 import { checkStampGateShotPageCase } from './stamp-gate-shot-dom-page.ts';
 import { checkStampGateRevealCase } from './stamp-gate-reveals-page.ts';
 import { checkStampGateRegion, stampGateRegionPaintings, type StampGateRegionId } from '../models/stamp-gate-regions.ts';
@@ -500,5 +501,6 @@ Object.assign(globalThis, {
   runStampGateFormulas, paintStampGate, paintStampGatePrivate, traceStampGate, checkStampGateWash, checkStampGateAnimation, checkStampGateFlowCase, checkStampGateStripeCase, checkStampGateRegionCase,
   checkStampGateContactCase, checkStampGateMaskCase, checkStampGateMediaCase, checkStampGateThreeCase, checkStampGateStageCase, checkStampGateSheetCase, paintStampGateSolved,
   checkStampGateShotPageCase, checkStampGateShotCase, paintStampGateShot, checkStampGateTextureCase, paintStampGateTexture, checkStampGateShotTextureCase, paintStampGateShotTexture,
-  checkStampGateRevealCase, checkStampGateLightingCase, paintStampGateLighting, checkStampGateLensTiltCase, checkStampGatePaperCardCase, paintStampGatePaperCard, stampGateAdapter,
+  checkStampGateRevealCase, checkStampGateLightingCase, paintStampGateLighting, checkStampGateLensTiltCase, checkStampGatePaperCardCase, paintStampGatePaperCard, paintStampGatePaperDiorama,
+  stampGateAdapter,
 });
