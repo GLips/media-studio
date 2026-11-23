@@ -15,7 +15,8 @@ export const LIBRARY_ITEM_FORMAT = 'studio-library-item/1';
 /** What a track's file holds, from ffprobe when it was added. */
 export const LibraryTrackStreams = Schema.Struct({
   video: Schema.optionalKey(Schema.Struct({ width: Schema.Finite, height: Schema.Finite, fps: Schema.Finite, variableRate: Schema.Boolean, codec: Schema.String })),
-  audio: Schema.optionalKey(Schema.Struct({ sampleRate: Schema.Finite, channels: Schema.Finite, codec: Schema.String })),
+  /** No `sampleRate` where ffprobe read none. */
+  audio: Schema.optionalKey(Schema.Struct({ sampleRate: Schema.optionalKey(Schema.Finite), channels: Schema.Finite, codec: Schema.String })),
 });
 export type LibraryTrackStreams = typeof LibraryTrackStreams.Type;
 

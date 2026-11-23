@@ -11,24 +11,33 @@ import { StudioFfmpeg } from '#lib/platform/ffmpeg/engine/studio-ffmpeg.ts';
 import { runStudioEffect } from '#lib/platform/process/engine/studio-effect-runtime.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { addLibraryItem } from './add-library-item.ts';
-import { makeRecorderDeviceLatenciesLayer } from './library-recorder-latencies.ts';
+import { LibraryFileUnreadable } from '../models/library-errors.ts';
+import { makeRecorderDeviceLatenciesLayer, RecorderDeviceLatencies } from './library-recorder-latencies.ts';
 import { makeLibraryStoreLayer } from './library-store.ts';
 
-/** ffprobe as a 10 s screen recording and a mic; loudnorm hears silence, so nothing is levelled. */
+/**
+ * ffprobe as a 10 s screen recording and a mic; loudnorm hears the mic at -30 LUFS and ebur128 its levelled copy at
+ * -16.2; an encode writes its output file.
+ */
 const fakeFfmpeg = StudioFfmpeg.of({
   probe: (args) => Effect.succeed(args.includes('-show_streams')
     ? JSON.stringify({ streams: args.at(-1)?.endsWith('.m4a') ? [{ codec_type: 'audio', codec_name: 'aac', sample_rate: '48000', channels: 1 }] : [{ codec_type: 'video', codec_name: 'h264', width: 1280, height: 720, r_frame_rate: '30/1', avg_frame_rate: '30/1' }] })
     : '10.0\n'),
-  report: () => Effect.succeed({ stderr: '{ "input_i": "-inf", "input_tp": "-inf", "input_lra": "0", "input_thresh": "-inf", "target_offset": "0" }', exitCode: 0 }),
-  run: () => Effect.void,
+  report: (args) => Effect.succeed({
+    stderr: args.some((arg) => arg.startsWith('ebur128'))
+      ? '[Parsed_ebur128_0] Summary:\n\n  Integrated loudness:\n    I:         -16.2 LUFS\n    Threshold: -26.3 LUFS\n'
+      : '{ "input_i": "-30.0", "input_tp": "-12.0", "input_lra": "4.0", "input_thresh": "-40.0", "target_offset": "0.0" }',
+    exitCode: 0,
+  }),
+  run: (args) => Effect.sync(() => writeFileSync(args.at(-1) ?? '', 'encoded')),
 });
 
 const fakeTranscriber = FootageTranscriber.of({ transcribe: () => Effect.succeed({ duration: 10, words: [{ text: 'Hello', start: 1, end: 1.4 }], pauses: [] }) });
 
-const libraryAt = (root: string) => Layer.mergeAll(
+const libraryAt = (root: string, latencies = makeRecorderDeviceLatenciesLayer(join(root, 'no-recorder-config.json'))) => Layer.mergeAll(
   makeLibraryStoreLayer({ libraryDir: join(root, 'work/library'), projectsDir: join(root, 'work/projects'), workspaceRequired: false }),
   makeLibraryMediaFolderLayer(join(root, 'work')),
-  makeRecorderDeviceLatenciesLayer(join(root, 'no-recorder-config.json')),
+  latencies,
   Layer.succeed(StudioFfmpeg, fakeFfmpeg),
   Layer.succeed(FootageTranscriber, fakeTranscriber),
 );
@@ -39,7 +48,7 @@ function writeTake(root: string, { status, stillFor, input }: { status: 'recordi
   mkdirSync(take, { recursive: true });
   writeFileSync(join(take, 'recording.json'), JSON.stringify({
     format: 'studio-recording/1', status, startedAt: '2026-11-22T18:19:29.847-08:00',
-    tracks: { screen: { file: 'screen.mp4', startSeconds: 0.34 }, mic: { file: 'mic.m4a', startSeconds: 0.83 } },
+    tracks: { screen: { file: 'screen.mp4', startSeconds: 0.34, device: 'Built-in Display' }, mic: { file: 'mic.m4a', startSeconds: 0.83 } },
     input: { file: 'input.jsonl', coordinates: 'global-points' },
   }));
   for (const file of ['screen.mp4', 'mic.m4a']) writeFileSync(join(take, file), file);
@@ -52,14 +61,15 @@ function writeTake(root: string, { status, stillFor, input }: { status: 'recordi
 const MOVE = { move: true, proxies: false } as const;
 const CLICK = '{"t":1.2,"type":"mouseDown","x":10,"y":20,"button":"left"}\n';
 
-test('a complete take is moved into the library and transcribed, and a torn last input line is dropped', () => withStudioTemp('library-add', async (root) => {
+test('a complete take is moved into the library, transcribed and its speech levelled, and a torn last input line is dropped', () => withStudioTemp('library-add', async (root) => {
   const take = writeTake(root, { status: 'complete', stillFor: 0, input: `${CLICK}{"t":1.5,"ty` });
   const item = await runStudioEffect(addLibraryItem({ paths: [take], ...MOVE }), libraryAt(root));
   assert.equal(item.id, '2026-11-22-181929');
   assert.deepEqual(item.source, { kind: 'studio-recorder', folder: take, status: 'complete' });
   assert.equal(existsSync(take), false);
-  assert.deepEqual(readdirSync(join(root, 'work/library/media', item.id)).toSorted(), ['input.jsonl', 'mic.m4a', 'recording.json', 'screen.mp4']);
+  assert.deepEqual(readdirSync(join(root, 'work/library/media', item.id)).toSorted(), ['input.jsonl', 'mic.m4a', 'proxies', 'recording.json', 'screen.mp4']);
   assert.match(readFileSync(join(root, 'work/library/items', item.id, 'transcript.json'), 'utf8'), /"track": *"mic"/);
+  assert.deepEqual(item.tracks.mic.levelled, { file: 'proxies/mic-levelled.wav', lufs: -16.2 });
 }));
 
 test('a take still being written is refused, and one whose input log is broken mid-way is refused before anything moves', () => withStudioTemp('library-add', async (root) => {
@@ -78,4 +88,18 @@ test("an add whose item.json can't be written moves the take's files back and le
   await assert.rejects(runStudioEffect(addLibraryItem({ paths: [take], ...MOVE }), libraryAt(root)));
   assert.deepEqual(readdirSync(take).toSorted(), ['input.jsonl', 'mic.m4a', 'recording.json', 'screen.mp4']);
   assert.deepEqual(readdirSync(join(root, 'work/library/media')), []);
+}));
+
+test("an add whose undo fails too fails with what broke the add, and leaves the file it couldn't move back in the media folder", () => withStudioTemp('library-add', async (root) => {
+  const take = writeTake(root, { status: 'complete', stillFor: 0, input: CLICK });
+  // The screen track is brought, then its latency fails with the take folder shut, so it can't move back.
+  const latencies = Layer.succeed(RecorderDeviceLatencies, RecorderDeviceLatencies.of({
+    latencyOf: () => Effect.sync(() => chmodSync(take, 0o555)).pipe(Effect.andThen(Effect.fail(new LibraryFileUnreadable({ path: 'config.json', reason: 'is unreadable' })))),
+  }));
+  try {
+    await assert.rejects(runStudioEffect(addLibraryItem({ paths: [take], ...MOVE }), libraryAt(root, latencies)), { message: 'config.json is unreadable' });
+  } finally {
+    chmodSync(take, 0o755);
+  }
+  assert.deepEqual(readdirSync(join(root, 'work/library/media', '2026-11-22-181929')), ['screen.mp4']);
 }));

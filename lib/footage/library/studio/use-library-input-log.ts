@@ -1,5 +1,6 @@
 // use-library-input-log.ts: an item's input log (clicks, keys, the cursor's path) for a scene, read from the media
 // folder as the page is served it. It's library data, not source: it stays beside the item's media, however long.
+import { Result } from 'effect';
 import { useEffect, useState } from 'react';
 import { useDelayRender } from 'remotion';
 import { parseRecorderInputLog, type InputLog } from '#lib/footage/input-log/models/input-log.ts';
@@ -22,7 +23,9 @@ export function useLibraryInputLog(footage: LibraryFootage): InputLog | null {
     if (!promise) {
       promise = fetch(url).then(async (response) => {
         if (!response.ok) throw new Error(`${id}'s input log isn't served (${response.status}): is the library's media folder online?`);
-        return { ...parseRecorderInputLog(await response.text()), coordinates: input.coordinates };
+        const read = parseRecorderInputLog(await response.text(), `${id}'s ${input.file}`);
+        if (Result.isFailure(read)) throw read.failure;
+        return { ...read.success, coordinates: input.coordinates };
       });
       loading.set(url, promise);
     }
@@ -30,6 +33,6 @@ export function useLibraryInputLog(footage: LibraryFootage): InputLog | null {
       setLog(loaded);
       return continueRender(handle);
     }, (error: Error) => cancelRender(error));
-  }, [url, id, input.coordinates, delayRender, continueRender, cancelRender]);
+  }, [url, id, input.file, input.coordinates, delayRender, continueRender, cancelRender]);
   return log;
 }

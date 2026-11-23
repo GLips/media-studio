@@ -4,11 +4,10 @@
 //
 // A proxy keeps its track's media time: frame-rate conversion holds each frame's timestamp, so the track's sync
 // numbers apply to it unchanged.
-import { Effect, FileSystem, Path, Ref, Result } from 'effect';
+import { Effect, FileSystem, Path, Result } from 'effect';
 import { StudioFfmpeg } from '#lib/platform/ffmpeg/engine/studio-ffmpeg.ts';
 import { LibraryMediaFolder } from '#lib/footage/library-media/engine/library-media-folder.ts';
-import { libraryProxiesWanted } from '../models/library-item.ts';
-import { libraryProxiesMade, libraryProxyRunStarted, libraryProxyRunStep } from '../models/library-proxy-machine.ts';
+import { libraryProxiesWanted, type LibraryTrackProxy } from '../models/library-item.ts';
 import { LibraryStore } from './library-store.ts';
 
 // macOS's hardware encoder: a 20-minute 5K screen takes minutes, not an hour. Its bitrate is for HD that edits cleanly.
@@ -24,29 +23,24 @@ export const makeLibraryProxies = Effect.fn('LibraryProxies.make')(function* (id
   const item = yield* store.readItem(id);
   const wanted = libraryProxiesWanted(item);
   if (!wanted.length) return item;
-  const run = yield* Ref.make(libraryProxyRunStarted(wanted.map((w) => w.track)));
 
   const encode = Effect.fn('LibraryProxies.encode')(function* ({ track, size }: (typeof wanted)[number]) {
     const file = `proxies/${track}.mp4`, out = path.join(yield* media.online(), id, file), temp = `${out}.part.mp4`;
     const source = yield* media.itemFile(id, item.tracks[track].file);
     yield* fs.makeDirectory(path.dirname(out), { recursive: true });
     yield* Effect.log(`making ${track}'s proxy, ${size.width}×${size.height} at ${size.fps} fps`);
+    // A failed encode's half-written file goes; failing to remove it is quieter than the encode's own failure.
     yield* ffmpeg.run([
       '-v', 'error', '-y', '-i', source,
       '-vf', `scale=${size.width}:${size.height}:flags=bicubic`, '-fps_mode', 'cfr', '-r', String(size.fps),
       ...PROXY_ENCODER, ...(item.tracks[track].audio ? ['-c:a', 'aac', '-b:a', '160k'] : ['-an']), '-movflags', '+faststart', temp,
-    ]);
+    ]).pipe(Effect.onError(() => Effect.ignore(fs.remove(temp, { force: true }))));
     yield* fs.rename(temp, out);
-    return { file, ...size };
+    return [track, { file, ...size }] as const;
   });
 
-  const settled = yield* Effect.forEach(wanted, (want) => encode(want).pipe(
-    Effect.tap((proxy) => Ref.update(run, (s) => libraryProxyRunStep(s, { type: 'proxyMade', track: want.track, proxy }))),
-    Effect.tapError(() => Ref.update(run, (s) => libraryProxyRunStep(s, { type: 'proxyFailed', track: want.track }))),
-    Effect.result,
-  ), { concurrency: 'unbounded' });
-
-  const made = libraryProxiesMade(yield* Ref.get(run)) ?? {};
+  const settled = yield* Effect.forEach(wanted, (want) => Effect.result(encode(want)), { concurrency: 'unbounded' });
+  const made: Record<string, LibraryTrackProxy> = Object.fromEntries(settled.filter(Result.isSuccess).map((result) => result.success));
   // Re-read: another process may have changed item.json while the encodes ran.
   const recorded = yield* store.updateItem(id, (now) => ({
     ...now, tracks: Object.fromEntries(Object.entries(now.tracks).map(([name, track]) => [name, made[name] ? { ...track, proxy: made[name] } : track])),

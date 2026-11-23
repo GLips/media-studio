@@ -1,7 +1,8 @@
 // input-log.ts: the input log, one shape for every source that logs input: Studio Recorder's input.jsonl
 // (lib/footage/recording/engine/recorder/Sources/StudioRecorder/InputLog.swift) and a capture's take, which fills
 // what a scripted browser knows (glide ends, clicks, typed characters). Pure, so it loads in plain Node.
-import { Cause, Exit, Schema } from 'effect';
+import { Result, Schema } from 'effect';
+import { parseRecorderLogLines, type RecordingLogLineUnreadable } from './recorder-log-lines.ts';
 
 /**
  * The space an event's x and y are in. `global-points`: macOS points, origin at the main display's top left, y down,
@@ -37,21 +38,11 @@ export const InputEventLine = Schema.fromJsonString(InputEvent);
 /** A take's or recording's input, in time order. */
 export type InputLog = { coordinates: InputLogCoordinates; events: readonly InputEvent[] };
 
-const decodeInputEventLine = Schema.decodeUnknownExit(InputEventLine);
+const decodeInputEventLine = Schema.decodeUnknownResult(InputEventLine);
 
-/**
- * Studio Recorder's input.jsonl as an input log. A killed recording can end mid-line: that torn last line is dropped,
- * as the events before it stand. Any other line that isn't an event refuses the whole log.
- */
-export function parseRecorderInputLog(jsonl: string): InputLog {
-  const lines = jsonl.split('\n').filter((line) => line.trim());
-  const events = lines.flatMap((line, i): InputEvent[] => {
-    const decoded = decodeInputEventLine(line);
-    if (Exit.isSuccess(decoded)) return [decoded.value];
-    if (i === lines.length - 1) return [];
-    throw new Error(`input.jsonl line ${i + 1} isn't an input event: ${Cause.pretty(decoded.cause)}`);
-  });
-  return { coordinates: 'global-points', events };
+/** Studio Recorder's input.jsonl, read from `path`, as an input log, by the recorder's line rule (recorder-log-lines.ts). */
+export function parseRecorderInputLog(jsonl: string, path: string): Result.Result<InputLog, RecordingLogLineUnreadable> {
+  return Result.map(parseRecorderLogLines({ path, holds: 'an input event' }, jsonl, decodeInputEventLine), (events) => ({ coordinates: 'global-points', events }));
 }
 
 /** A cursor waypoint: where a logged move ended or a click landed. */
