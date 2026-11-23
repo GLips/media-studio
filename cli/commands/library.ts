@@ -144,7 +144,7 @@ const flagCommand = defineCommand({
   meta: {
     name: 'flag',
     description: 'Flag a range of an item, with an optional note; or change or remove a flag.',
-    about: 'A flag marks a selection (a good take, a line to use, a stretch to cut), not a task. Times are item time, as search and show print them: seconds or m:ss.cc. The CLI flags as the agent; works with the media offline. Prints the flag as JSON.',
+    about: 'A flag marks a selection (a good take, a line to use, a stretch to cut), not a task. Times are item time, as search and show print them: seconds or m:ss.cc. It records who set it (--by; the agent by default). Works with the media offline. Prints the flag as JSON.',
   },
   args: {
     item: libraryItemArg,
@@ -153,21 +153,24 @@ const flagCommand = defineCommand({
     note: { type: 'string', description: 'What the range is; with --id, its new note (empty clears it)' },
     id: { type: 'string', description: 'Change this flag (its number) rather than add one' },
     remove: { type: 'boolean', description: 'Remove the flag --id names' },
+    by: { type: 'string', default: 'agent', description: 'Who sets it: agent, or reviewer when Graham flags by hand' },
   },
   async run({ args }) {
     const { changeLibraryFlags, resolveLibraryItemId } = await import('#lib/footage/library/engine/library-store.ts');
     const id = resolveLibraryItemId(args.item);
+    if (args.by !== 'agent' && args.by !== 'reviewer') throw new Error(`--by is agent or reviewer, not ${args.by}`);
+    const by = args.by;
     const flagId = args.id === undefined ? undefined : Number(args.id.replace(/^#/, ''));
     if (flagId === undefined) {
       if (args.remove) throw new Error('--remove needs --id, the flag to remove');
       if (!args.start) throw new Error('give the range to flag: studio library flag <item> <start> [<end>]');
       const start = parseClockSeconds(args.start);
-      console.log(JSON.stringify(changeLibraryFlags(id, { op: 'flag.add', start, end: args.end ? parseClockSeconds(args.end) : start, ...(args.note && { note: args.note }) }, 'agent'), null, 2));
+      console.log(JSON.stringify(changeLibraryFlags(id, { op: 'flag.add', start, end: args.end ? parseClockSeconds(args.end) : start, ...(args.note && { note: args.note }) }, by), null, 2));
       return;
     }
     if (args.start) throw new Error("a flag's range is fixed: remove it and flag the new range");
     if (!args.remove && args.note === undefined) throw new Error('with --id, give --note or --remove');
-    console.log(JSON.stringify(changeLibraryFlags(id, args.remove ? { op: 'flag.remove', id: flagId } : { op: 'flag.note', id: flagId, note: args.note ?? '' }, 'agent'), null, 2));
+    console.log(JSON.stringify(changeLibraryFlags(id, args.remove ? { op: 'flag.remove', id: flagId } : { op: 'flag.note', id: flagId, note: args.note ?? '' }, by), null, 2));
   },
 });
 

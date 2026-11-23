@@ -1,5 +1,5 @@
 // Hands each finished recording to the footage library, so it appears there with no manual step. The command is the
-// bundle's StudioLibraryAdd list (node, the studio CLI that installed the recorder, `library add --move`), written by
+// bundle's StudioLibraryAdd list (node, the studio CLI that installed the recorder, `library add --move --no-proxies`), written by
 // `studio recorder install`; the recording's folder is appended. It runs detached: transcribing and making proxies
 // take minutes, and the recorder is ready for the next take at once. A recording it fails on stays in the recordings
 // folder, named in the log and the menu, to add by hand.
@@ -17,12 +17,11 @@ func handOffToLibrary(_ folder: URL, failed: @escaping @MainActor (String) -> Vo
   let process = Process()
   process.executableURL = URL(fileURLWithPath: executable)
   process.arguments = Array(command.dropFirst()) + [folder.path]
-  // Its output goes to the recorder's log, so a failed add can be read there.
-  if let handle = try? FileHandle(forWritingTo: logURL) {
-    handle.seekToEndOfFile()
-    process.standardOutput = FileHandle.nullDevice
-    process.standardError = handle
-  }
+  // Its progress goes to the recorder's log, so a failed add can be read there. Opened to append, so its lines and
+  // the recorder's own interleave rather than overwrite each other.
+  process.standardOutput = FileHandle.nullDevice
+  let descriptor = open(logURL.path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
+  if descriptor >= 0 { process.standardError = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true) }
   process.terminationHandler = { done in
     let status = done.terminationStatus
     log(status == 0 ? "added \(folder.lastPathComponent) to the library" : "library add of \(folder.lastPathComponent) exited \(status)")

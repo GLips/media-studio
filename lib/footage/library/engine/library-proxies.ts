@@ -24,7 +24,7 @@ export async function makeLibraryProxies(id: string, log: (line: string) => void
     return size && !track.proxy ? [{ name, track, size }] : [];
   });
   if (!wanted.length) return item;
-  const made = await Promise.all(wanted.map(async ({ name, track, size }) => {
+  const settled = await Promise.allSettled(wanted.map(async ({ name, track, size }) => {
     const file = `proxies/${name}.mp4`, out = join(onlineLibraryMediaFolder(), id, file), temp = `${out}.part.mp4`;
     mkdirSync(dirname(out), { recursive: true });
     log(`making ${name}'s proxy, ${size.width}×${size.height} at ${size.fps} fps`);
@@ -36,9 +36,11 @@ export async function makeLibraryProxies(id: string, log: (line: string) => void
     renameSync(temp, out);
     return [name, { file, ...size }] as const;
   }));
-  // Re-read: another process may have changed item.json while the encodes ran.
+  // Re-read: another process may have changed item.json while the encodes ran. Proxies made are kept whatever failed.
   const now = readLibraryItem(id), tracks = { ...now.tracks };
-  for (const [name, proxy] of made) tracks[name] = { ...tracks[name], proxy };
+  for (const result of settled) if (result.status === 'fulfilled') tracks[result.value[0]] = { ...tracks[result.value[0]], proxy: result.value[1] };
   writeLibraryItem({ ...now, tracks });
+  const failed = settled.find((result) => result.status === 'rejected');
+  if (failed) throw failed.reason;
   return readLibraryItem(id);
 }

@@ -22,7 +22,7 @@ export default defineCommand({
   meta: {
     name: 'recorder',
     description: 'The menu-bar recorder: one key records screen, camera, mic and an input log, each its own file.',
-    about: 'Each finished recording is added to the footage library on its own (`studio library add --move` on its folder, by the checkout that installed the recorder; see `studio library --help`), leaving the recordings folder an inbox; a take it fails on stays there, named in the menu and the log. A recording is a folder: screen.mp4 (HEVC, the display at full pixel size, variable frame rate), camera.mp4 (HEVC, the size the config names), mic.m4a (mono AAC), input.jsonl, clock.jsonl and recording.json, which gives each track its start offset and latency on the one host clock.',
+    about: 'Each finished recording is added to the footage library on its own (`studio library add --move --no-proxies` on its folder; `studio library finish` makes its proxies, by the checkout that installed the recorder; see `studio library --help`), leaving the recordings folder an inbox; a take it fails on stays there, named in the menu and the log. A recording is a folder: screen.mp4 (HEVC, the display at full pixel size, variable frame rate), camera.mp4 (HEVC, the size the config names), mic.m4a (mono AAC), input.jsonl, clock.jsonl and recording.json, which gives each track its start offset and latency on the one host clock.',
   },
   setup: refuseOptionsBeforeSubcommand,
   subCommands: { install: installRecorderCommand },

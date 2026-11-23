@@ -37,21 +37,27 @@ export async function addLibraryItem(request: LibraryAddRequest): Promise<Librar
   const already = listLibraryItemIds().map(readLibraryItem).find((item) => sameSource(item, source));
   if (already) throw new Error(`${describeSource(source)} is in the library already, as ${already.id}`);
 
-  const probed = source.tracks.map((track) => ({ ...track, streams: probeStreams(track.path), mediaSeconds: probeSeconds(track.path) }));
-  // A lone file is named by what it holds.
-  if (request.paths.length === 1 && source.source.kind === 'files') probed[0].name = probed[0].streams.video ? 'video' : 'audio';
-  const id = unusedLibraryItemId(itemIdBase(source), new Set(listLibraryItemIds()));
-  const media = join(onlineLibraryMediaFolder({ make: true }), id);
+  const interrupted = source.source.kind === 'studio-recorder' && source.source.status === 'interrupted';
+  const probed = source.tracks.map((track) => ({ ...track, streams: probeStreams(track.path), mediaSeconds: probeSeconds(track.path, { interrupted }) }));
+  const mediaFolder = onlineLibraryMediaFolder({ make: true });
+  // A media folder left by a failed add holds footage too: its id stays taken.
+  const id = unusedLibraryItemId(itemIdBase(source), new Set([...listLibraryItemIds(), ...readdirSync(mediaFolder)]));
+  const media = join(mediaFolder, id);
   mkdirSync(media, { recursive: true });
 
   const recorderLatency = recorderDeviceLatencies();
   const tracks: Record<string, LibraryTrack> = {};
-  // A copy that fails leaves the sources as they were, so its half-filled media folder goes; a move's stays with what it moved.
+  // A failed add leaves the sources as they were: a move's files go back, and the half-filled media folder goes.
+  const brought: { from: string; to: string }[] = [];
+  const bring = (from: string, to: string) => {
+    bringFile(from, to, request.move ?? false);
+    brought.push({ from, to });
+  };
   try {
   for (const track of probed) {
     const file = `${track.name}${extname(track.path).toLowerCase()}`;
     log(`${request.move ? 'moving' : 'copying'} ${track.path} → ${join(media, file)}`);
-    bringFile(track.path, join(media, file), request.move ?? false);
+    bring(track.path, join(media, file));
     const latencySeconds = request.latencies?.[track.name] ?? track.latencySeconds ?? (track.device ? deviceLatency(recorderLatency, track.device) : undefined);
     tracks[track.name] = {
       file, ...track.streams, mediaSeconds: track.mediaSeconds, startSeconds: track.startSeconds,
@@ -59,10 +65,11 @@ export async function addLibraryItem(request: LibraryAddRequest): Promise<Librar
       ...(track.device && { device: track.device }), ...(track.display && { display: track.display }),
     };
   }
-  if (source.input) bringFile(source.input.path, join(media, 'input.jsonl'), request.move ?? false);
-  for (const extra of source.extras ?? []) bringFile(extra, join(media, basename(extra)), request.move ?? false);
+  if (source.input) bring(source.input.path, join(media, 'input.jsonl'));
+  for (const extra of source.extras ?? []) bring(extra, join(media, basename(extra)));
   } catch (error) {
-    if (!request.move) rmSync(media, { recursive: true, force: true });
+    if (request.move) for (const { from, to } of brought.toReversed()) bringFile(to, from, true);
+    rmSync(media, { recursive: true, force: true });
     throw error;
   }
   if (request.move && source.source.kind === 'studio-recorder') removeIfEmpty(source.source.folder);
@@ -116,7 +123,8 @@ function addSourceOf({ paths, title, starts, devices, latencies }: LibraryAddReq
     const source = recorderAddSource(path, basename(path), recording, new Set(readdirSync(path)));
     return title ? { ...source, title } : source;
   }
-  return namedFilesAddSource([`video=${path}`], { title, starts, latencies, devices });
+  // A lone file is named by what it holds.
+  return namedFilesAddSource([`${probeStreams(path).video ? 'video' : 'audio'}=${path}`], { title, starts, latencies, devices });
 }
 
 /** `2026-11-22-181929` for a recording, on its own clock; `2026-11-22-<title>` for files, dated today here. */
@@ -154,12 +162,12 @@ function probeStreams(path: string): LibraryTrackStreams {
 }
 
 /**
- * A file's length from its streams' ends rather than its header, which a killed recording never wrote. ffprobe reads
- * the last packet of each stream.
+ * A file's length: its header's, or for an interrupted take its packets' ends, since a killed recorder never finished
+ * its header and the one it started may name only its first fragment.
  */
-function probeSeconds(path: string): number {
+function probeSeconds(path: string, { interrupted }: { interrupted: boolean }): number {
   const header = Number(runFfprobe(['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', path], { encoding: 'utf8' }).trim());
-  if (Number.isFinite(header) && header > 0) return header;
+  if (!interrupted && Number.isFinite(header) && header > 0) return header;
   const last = runFfprobe(['-v', 'error', '-show_entries', 'packet=pts_time,duration_time', '-of', 'csv=p=0', '-read_intervals', '%+#999999', path], { encoding: 'utf8' })
     .trim().split('\n').map((line) => line.split(',').map(Number)).reduce((end, [pts, duration]) => Math.max(end, pts + (duration || 0)), 0);
   if (!(last > 0)) throw new Error(`${path} has no length ffprobe can read`);
@@ -186,7 +194,7 @@ function removeIfEmpty(folder: string): void {
 }
 
 // The recorder's settings hold each camera's and mic's latency by device name, set once for this machine's devices
-// (vid-197's RecorderConfig.swift); the library records a track's at add time.
+// (RecorderConfig.swift); the library records a track's at add time.
 const RECORDER_CONFIG = join(homedir(), 'Library/Application Support/StudioRecorder/config.json');
 
 /** Device name part → latency in seconds, from the recorder's settings; none without them. */

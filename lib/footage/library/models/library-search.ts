@@ -17,24 +17,26 @@ const searchToken = (word: string) => word.toLowerCase().normalize('NFKD').repla
 
 /**
  * Every place in `items` that says `query` (its words in order, ignoring case and punctuation), and every flag whose
- * note holds it, in the order of `items`, each item's in time order.
+ * note says it (its words in order, as the transcript is matched), in the order of `items`, each item's in time order.
  */
 export function searchLibrary(items: readonly LibrarySearchItem[], query: string): LibrarySearchHit[] {
   const wanted = query.split(/\s+/).map(searchToken).filter(Boolean);
   if (!wanted.length) throw new Error('search for at least one word');
-  const needle = query.trim().toLowerCase();
   return items.flatMap(({ item, transcript, flags }) => {
     const spoken = transcript && item.speech ? transcriptHits(item, item.tracks[item.speech], transcript, wanted) : [];
-    const flagged = flags.filter((f) => f.note?.toLowerCase().includes(needle))
+    const flagged = flags.filter((f) => f.note && holdsTokens(f.note.split(/\s+/).map(searchToken).filter(Boolean), wanted))
       .map((f): LibrarySearchHit => ({ item: item.id, on: 'flag', flag: f.id, start: f.start, end: f.end, text: f.note ?? '' }));
     return [...spoken, ...flagged].toSorted((a, b) => a.start - b.start);
   });
 }
 
+const tokensAt = (tokens: readonly string[], i: number, wanted: readonly string[]) => wanted.every((token, k) => tokens[i + k] === token);
+const holdsTokens = (tokens: readonly string[], wanted: readonly string[]) => tokens.some((_, i) => tokensAt(tokens, i, wanted));
+
 function transcriptHits(item: LibraryItem, track: LibraryItem['tracks'][string], transcript: FootageTranscript, wanted: readonly string[]): LibrarySearchHit[] {
   const tokens = transcript.words.map((w) => searchToken(w.text)), lines = transcriptLines(transcript), hits: LibrarySearchHit[] = [];
   for (let i = 0; i + wanted.length <= tokens.length; i++) {
-    if (!wanted.every((token, k) => tokens[i + k] === token)) continue;
+    if (!tokensAt(tokens, i, wanted)) continue;
     const first = transcript.words[i], last = transcript.words[i + wanted.length - 1];
     const line = lines.find((l) => l.start <= first.start && first.start <= l.end);
     hits.push({ item: item.id, on: 'transcript', start: libraryItemTimeOf(track, first.start), end: libraryItemTimeOf(track, last.end), text: line?.text ?? '' });

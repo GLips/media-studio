@@ -16,10 +16,10 @@ export const RECORDER_APP_PATH = join(homedir(), 'Applications', `${RECORDER_DIS
 /**
  * How the recorder hands a finished recording to the library (LibraryHandoff.swift): this checkout's CLI under this
  * node, with this shell's PATH, since an app launchd starts has no ffmpeg on its own PATH. Reinstall after moving
- * the checkout.
+ * the checkout. No proxies: their hardware encodes would compete with the next take's; `studio library finish` makes them.
  */
 const studioLibraryAddCommand = () => [
-  '/usr/bin/env', `PATH=${process.env.PATH ?? '/usr/bin:/bin'}`, process.execPath, join(STUDIO_ROOT, 'cli', 'studio.ts'), 'library', 'add', '--move',
+  '/usr/bin/env', `PATH=${process.env.PATH ?? '/usr/bin:/bin'}`, process.execPath, join(STUDIO_ROOT, 'cli', 'studio.ts'), 'library', 'add', '--move', '--no-proxies',
 ];
 
 const xmlText = (text: string) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
