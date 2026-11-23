@@ -9,6 +9,9 @@
 // Those imports are how a project refers to footage: `studio library uses` finds an item's projects by them.
 import type { FootageTranscript } from '#lib/footage/transcript/models/footage-transcript.ts';
 import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
+import { inputLogWaypoints, type InputLog } from '#lib/footage/input-log/models/input-log.ts';
+import type { TimedPoint } from '#lib/picture/camera/models/follow-point.ts';
+import type { SceneClock } from '#lib/timing/timeline/models/video-layout.ts';
 import type { RecordedSpeech } from '#lib/timing/voice/models/recorded-speech.ts';
 import { LIBRARY_ITEM_FORMAT, libraryItemTimeOf, libraryMediaTimeOf, type LibraryItem } from './library-item.ts';
 
@@ -25,6 +28,16 @@ export type LibraryFootage = {
    * levelled sound. Find the seconds with `studio library search` or `show`.
    */
   speech(from: number, to: number): RecordedSpeech;
+  /**
+   * The item second a scene shows at its time `s.t`, kept to its lines spoken in this item: within a line, where it's
+   * being said; after one, running on from it until the next line jumps; before the first, running up to it.
+   */
+  timeAt(s: SceneClock): number;
+  /**
+   * Where the cursor went over screen track `track`, in that track's video pixels and item seconds, from the item's
+   * input log (useLibraryInputLog loads it): for followPointAt to aim a camera. Moves off that screen are left out.
+   */
+  cursorOn(track: string, log: InputLog): TimedPoint[];
 };
 
 /** What a project imports of an item.json: read as the library wrote it once its format is checked. */
@@ -54,6 +67,24 @@ export function libraryFootage(itemJson: LibraryItemJson, transcript?: LibraryTr
       const { levelled } = speechTrack;
       const sound = levelled ? { item: item.id, file: levelled.file, start: libraryMediaTimeOf(speechTrack, from), lufs: levelled.lufs } : null;
       return { item: item.id, from, to, heard, sound };
+    },
+    cursorOn(name, log) {
+      const display = item.tracks[name]?.display;
+      if (!display) throw new Error(`${item.id}'s ${name} has no display geometry to place the cursor on: is it a screen track?`);
+      if (log.coordinates !== 'global-points') throw new Error(`${item.id}'s input log is in ${log.coordinates}, not the display's points`);
+      const [left, top, width, height] = display.boundsPoints, scale = display.widthPixels / width;
+      return inputLogWaypoints(log).flatMap((p) => (p.x >= left && p.x < left + width && p.y >= top && p.y < top + height
+        ? [{ t: p.t, x: (p.x - left) * scale, y: (p.y - top) * scale }]
+        : []));
+    },
+    timeAt(s) {
+      const spans = s.lines.flatMap((id) => {
+        const { start, speech } = s.line(id);
+        return speech?.item === item.id ? [{ start, from: speech.from }] : [];
+      });
+      if (!spans.length) throw new Error(`this scene speaks no line from ${item.id}, so nothing says which of its seconds to show`);
+      const current = spans.findLast((line) => line.start <= s.t) ?? spans[0];
+      return current.from + (s.t - current.start);
     },
   };
 }

@@ -14,6 +14,7 @@ export { pointZoomOf, type PointZoom } from '#lib/picture/camera/models/point-zo
 export { ZoomOnPoint } from '#lib/picture/camera/studio/zoom-on-point.tsx';
 export { PictureInPicture, type InsetRing } from '#lib/picture/inset/studio/picture-in-picture.tsx';
 export { DEFAULT_INSET_PLACEMENT, insetBoxAt, type InsetCorner, type InsetPlacement } from '#lib/picture/inset/models/inset-layout.ts';
+export { useLibraryInputLog } from '#lib/footage/library/studio/use-library-input-log.ts';
 export type { RecordedSpeech, SpokenStretch } from '#lib/timing/voice/models/recorded-speech.ts';
 export { inputLogKeyStrikes, inputLogWaypoints, parseRecorderInputLog, type InputEvent, type InputLog, type InputLogCoordinates, type InputModifier, type InputWaypoint } from '#lib/footage/input-log/models/input-log.ts';
 export { beatGrid, steadyBeatGrid, type BeatGrid } from '#lib/timing/timeline/models/beat-grid.ts';

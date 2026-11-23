@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { resolveStoryboard } from '#lib/timing/storyboard/models/resolve-storyboard.ts';
 import { defineStoryboard } from '#lib/timing/storyboard/models/storyboard.ts';
 import type { RecordedSpeech } from '#lib/timing/voice/models/recorded-speech.ts';
-import { videoLayoutOf } from '#lib/timing/timeline/models/video-layout.ts';
+import { sceneTimes, videoLayoutOf } from '#lib/timing/timeline/models/video-layout.ts';
 import { libraryFootage } from './library-footage.ts';
 import { LIBRARY_ITEM_FORMAT } from './library-item.ts';
 
@@ -32,8 +32,10 @@ test('a line spoken in a recording is timed, worded and sounded by its stretch, 
   assert.deepEqual(line.src, { item: 'take', file: 'proxies/mic-levelled.wav', start: 0.95 });
   assert.equal(line.lufs, -13);
   assert.equal(timeline!.clock('agents').cues.named, 50);
-  const span = videoLayoutOf(timeline!, voice).scenes[0].spans.definition;
-  assert.deepEqual(span.speech, { item: 'take', from: 1.45, to: 3.4 });
+  // The picture keeps to the line: 0.5 s into the scene is its start, and the lead runs up to it.
+  const scene = videoLayoutOf(timeline!, voice).scenes[0];
+  const at = (t: number) => footage.timeAt({ ...sceneTimes(scene), t });
+  assert.deepEqual([at(0), at(0.5), at(1.5)].map((x) => Math.round(x * 100) / 100), [0.95, 1.45, 2.45]);
 });
 
 const spokenPlan = (speech: RecordedSpeech) => defineStoryboard({
