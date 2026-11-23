@@ -1,6 +1,6 @@
 // previs-render.ts: `studio gen video`. Renders one previs scene's blockout alone (Video.tsx's BlockoutSolo), sends it
-// to the chosen model (PREVIS_MODELS) as the reference video with the scene's stills, and lists what comes back in generated/footage.json
-// (lib/footage/previs/engine/previs-footage.ts), so the scene plays it in place of its blockout (lib/footage/previs/studio/previs.tsx).
+// to the chosen model (PREVIS_MODELS) as the reference video with the scene's stills, and lists what comes back in generated/previs-clips.json
+// (lib/footage/previs/engine/previs-clips.ts), so the scene plays it in place of its blockout (lib/footage/previs/studio/previs.tsx).
 //
 // The blockout is the whole request's content: re-rendering an unchanged scene makes the same MP4 and so the same
 // cache key (lib/platform/paid-generation/engine/paid-generation.ts), while a changed subject, move or prompt pays for a new render. Timing never
@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { generatePaidMedia } from '#lib/platform/paid-generation/engine/paid-generation.ts';
-import { readPrevisFootageList, writePrevisFootageEntry } from '#lib/footage/previs/engine/previs-footage.ts';
+import { readPrevisClipList, writePrevisClipEntry } from '#lib/footage/previs/engine/previs-clips.ts';
 import type { RenderSession } from './render-session.ts';
 import { PREVIS_BLOCKOUT_SHORT_SIDE, PREVIS_MODEL_NAMES, PREVIS_MODELS, previsAspectRatio, previsShotSeconds, type PrevisModelName } from '#lib/footage/previs/models/previs-models.ts';
 import { probeMediaSeconds } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
@@ -32,11 +32,11 @@ const PREVIS_PREAMBLES = {
 
 /**
  * Renders scene `sceneId`'s blockout to generated/blockout-<scene>-<hash>.mp4, run for `model`'s seconds, and,
- * unless `dry`, makes its footage with `model`. Returns the blockout, the footage (null when dry), the request's
- * prompt, what the shot would cost with each model, and whether the footage the scene plays now came from another
+ * unless `dry`, makes its clip with `model`. Returns the blockout, the clip (null when dry), the request's
+ * prompt, what the shot would cost with each model, and whether the clip the scene plays now came from another
  * blockout: it's stale, and plays until this is run without `dry`.
  */
-export async function renderPrevisFootage(session: RenderSession, sceneId: string, { model, dry }: { model: PrevisModelName; dry: boolean }) {
+export async function renderPrevisClip(session: RenderSession, sceneId: string, { model, dry }: { model: PrevisModelName; dry: boolean }) {
   const { project } = session;
   const timeline = await session.readTimeline();
   const scene = timeline.scenes.find((s) => s.id === sceneId);
@@ -55,19 +55,19 @@ export async function renderPrevisFootage(session: RenderSession, sceneId: strin
   // The model takes minutes and nothing after the blockout draws.
   session.doneDrawing();
   const prompt = `${PREVIS_PREAMBLES[previs.blockout]}\n\n${previs.prompt}`;
-  const playing = readPrevisFootageList(project)[sceneId];
+  const playing = readPrevisClipList(project)[sceneId];
   const stale = Boolean(playing && playing.blockout !== basename(blockout));
-  if (dry) return { blockout, footage: null, prompt, stale, estimates: previsCostEstimates(previs.duration) };
+  if (dry) return { blockout, clip: null, prompt, stale, estimates: previsCostEstimates(previs.duration) };
 
-  const { files: [footage] } = await generatePaidMedia(project, {
+  const { files: [clip] } = await generatePaidMedia(project, {
     kind: 'video', model: chosen.id, name: sceneId, prompt,
     params: { duration: seconds, resolution: chosen.resolution, aspect_ratio: aspect, ...(chosen.audioOptional && { generate_audio: previs.audio }) },
     references: [{ path: blockout }, ...previs.references.map((ref) => ({ path: join(project, ref) }))],
   });
-  writePrevisFootageEntry(project, sceneId, {
-    file: relative(join(project, 'generated'), footage), from: previs.from, duration: mediaSeconds(footage), blockout: basename(blockout), model: chosen.id,
+  writePrevisClipEntry(project, sceneId, {
+    file: relative(join(project, 'generated'), clip), from: previs.from, duration: mediaSeconds(clip), blockout: basename(blockout), model: chosen.id,
   });
-  return { blockout, footage, prompt, stale: false, estimates: [] };
+  return { blockout, clip, prompt, stale: false, estimates: [] };
 }
 
 /** Each model's length and price for a scene on screen `onScreen` whole seconds, or why it can't render it. */
@@ -84,7 +84,7 @@ async function renderBlockout(session: RenderSession, sceneId: string, seconds: 
     const rendered = join(tmp, 'blockout.mp4');
     process.stderr.write(`rendering scene ${sceneId}'s blockout, ${seconds}s…\n`);
     await session.renderBlockoutVideo({ out: rendered, scene: sceneId, seconds, shortSide: PREVIS_BLOCKOUT_SHORT_SIDE });
-    // Named by its bytes, so each footage's blockout stays beside it for comparison.
+    // Named by its bytes, so each clip's blockout stays beside it for comparison.
     const hash = createHash('sha256').update(readFileSync(rendered)).digest('hex').slice(0, 12);
     const dir = join(session.project, 'generated');
     mkdirSync(dir, { recursive: true });

@@ -1,7 +1,7 @@
 // studio-app-project-modules.ts: the studio app's Vite plugin for playing projects live in the browser (the
 // video-preview feature), standing in for what project-bundle.ts gives a Remotion bundle. A bundle holds one project;
 // the app plays any, so each bundle-time module is found per project here:
-// - `<project>/video.tsx?studio-project-modules`: the project's generated footage and cue list, rewritten on load by
+// - `<project>/video.tsx?studio-project-modules`: the project's previs clips and cue list, rewritten on load by
 //   the writers a bundle runs, so a project never bundled still plays;
 // - `@brand`, from a project's file: that project's generated/brand.ts, rewritten the same way;
 // - `@stamp-paint-styles`: every workspace style (one page plays any project, and the shot code reads styles by name).
@@ -10,7 +10,7 @@
 // writers here.
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { writePrevisFootageModule, previsFootageModuleFor } from '#lib/footage/previs/engine/previs-footage.ts';
+import { writePrevisClipsModule, previsClipsModuleFor } from '#lib/footage/previs/engine/previs-clips.ts';
 import { writeProjectBrandModule } from '#lib/picture/brand/engine/project-brand.ts';
 import { workspaceStampPaintStylesModule } from '#lib/paint/style/engine/project-styles.ts';
 import { STUDIO_PROJECTS_DIR, STUDIO_STYLES_DIR } from '#lib/platform/project/engine/studio-project.ts';
@@ -36,22 +36,22 @@ export type StudioAppProjectModulesPlugin = {
 };
 
 /**
- * The project's generated footage and cue list as one module. A writer's failure (a cue that won't render) becomes
+ * the project's previs clips and cue list as one module. A writer's failure (a cue that won't render) becomes
  * the module's error, so the page's import rejects with its message rather than Vite's bare "failed to fetch".
  */
 function projectModulesSource(context: StudioAppPluginContext, project: string): string {
   const dir = join(STUDIO_PROJECTS_DIR, project);
-  // Only once it exists: Vite resolves a watched file as an import. generated/footage.ts needs no watch, since
+  // Only once it exists: Vite resolves a watched file as an import. generated/previs-clips.ts needs no watch, since
   // `studio gen video` rewrites it and it's imported.
   if (existsSync(sfxCueListFor(dir))) context.addWatchFile(sfxCueListFor(dir));
   let sfxCues: string;
   try {
-    writePrevisFootageModule(dir);
+    writePrevisClipsModule(dir);
     sfxCues = writeSfxCueModule(dir);
   } catch (error) {
     return `throw new Error(${JSON.stringify(`${project}'s generated modules: ${error instanceof Error ? error.message : String(error)}`)});\n`;
   }
-  return `export { footage } from ${JSON.stringify(previsFootageModuleFor(dir))};\nexport { default as sfxCues } from ${JSON.stringify(sfxCues)};\n`;
+  return `export { previsClips } from ${JSON.stringify(previsClipsModuleFor(dir))};\nexport { default as sfxCues } from ${JSON.stringify(sfxCues)};\n`;
 }
 
 export function studioAppProjectModulesPlugin(): StudioAppProjectModulesPlugin {

@@ -1325,7 +1325,7 @@
       "const video: import('#lib/picture/video/studio/video.ts').VideoDef | null;": 1,
       "const stills: import('#lib/picture/stills/studio/stills.tsx').StillsDef | null;": 1,
       "const brand: import('#lib/picture/brand/studio/brand.tsx').StudioBrand;": 1,
-      "export const footage: Readonly<Record<string, import('#lib/footage/previs/studio/previs.ts').PrevisFootage>>;": 1,
+      "export const previsClips: Readonly<Record<string, import('#lib/footage/previs/studio/previs.ts').PrevisClip>>;": 1,
       "const cues: readonly import('#lib/timing/sound/studio/sfx.tsx').SfxCueSound[] | null;": 1,
       "const styles: import('#lib/paint/style/models/style.ts').BundledStampPaintStyles;": 1
     }
@@ -1621,7 +1621,7 @@
     "lib/footage/capture/engine/capture.ts": {
       "const readProvenance = (dir: string): Record<string, ShotProvenance> => (existsSync(provenancePath(dir)) ? JSON.parse(readFileSync(provenancePath(dir), 'utf8')) : {});": 1
     },
-    "lib/footage/previs/engine/previs-footage.ts": {
+    "lib/footage/previs/engine/previs-clips.ts": {
       "return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {};": 1
     },
     "lib/output/render/engine/render-session.ts": {
