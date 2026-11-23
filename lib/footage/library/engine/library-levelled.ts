@@ -4,8 +4,8 @@
 //
 // The copy keeps its track's media time, sample for sample, so the track's sync numbers and its transcript's times
 // apply to it unchanged. PCM, not AAC: AAC's encoder delay would shift it.
-import { renameSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, renameSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { measureWithFfmpeg, runFfmpegAsync } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { measureAudibleLoudness } from '#lib/platform/ffmpeg/engine/loudness.ts';
 import { LIBRARY_LEVELLED_LUFS, type LibraryItem } from '../models/library-item.ts';
@@ -25,12 +25,18 @@ export async function levelLibrarySpeech(id: string, log: (line: string) => void
   const out = join(onlineLibraryMediaFolder(), id, file), temp = `${out}.part.wav`;
   const target = `I=${LIBRARY_LEVELLED_LUFS}:TP=${LEVELLED_TRUE_PEAK}:LRA=${LEVELLED_LRA}`;
   // loudnorm's two passes: measure, then apply the gain linearly where the peaks allow it.
-  const { stderr } = measureWithFfmpeg(['-hide_banner', '-nostats', '-i', source, '-vn', '-af', `loudnorm=${target}:print_format=json`, '-f', 'null', '-']);
+  const { stderr, status } = measureWithFfmpeg(['-hide_banner', '-nostats', '-i', source, '-vn', '-af', `loudnorm=${target}:print_format=json`, '-f', 'null', '-']);
+  if (status !== 0) throw new Error(`ffmpeg couldn't measure ${id}'s ${name}: ${stderr.trim().split('\n').at(-1)}`);
   // SAFETY: loudnorm prints this JSON object last on stderr, its values as strings.
   const measured = JSON.parse(stderr.slice(stderr.lastIndexOf('{'), stderr.lastIndexOf('}') + 1)) as Record<'input_i' | 'input_tp' | 'input_lra' | 'input_thresh' | 'target_offset', string>;
-  if (!Number.isFinite(Number(measured.input_i))) throw new Error(`${id}'s ${name} is silent: there's no speech to level`);
+  // A silent mic (muted, or the wrong input) leaves the item otherwise whole: it's said, not refused.
+  if (!Number.isFinite(Number(measured.input_i))) {
+    log(`${name} is silent: nothing to level, so no line can be spoken from it`);
+    return item;
+  }
   const second = `loudnorm=${target}:measured_I=${measured.input_i}:measured_TP=${measured.input_tp}:measured_LRA=${measured.input_lra}:measured_thresh=${measured.input_thresh}:offset=${measured.target_offset}:linear=true`;
   // loudnorm resamples to 192 kHz inside; the copy goes back to the track's rate.
+  mkdirSync(dirname(out), { recursive: true });
   await runFfmpegAsync(['-v', 'error', '-y', '-i', source, '-vn', '-af', second, '-ar', String(track.audio?.sampleRate ?? 48000), '-c:a', 'pcm_s16le', temp]);
   renameSync(temp, out);
   const { lufs } = measureAudibleLoudness(out);
