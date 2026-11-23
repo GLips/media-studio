@@ -14,7 +14,9 @@ const installRecorderCommand = defineCommand({
   },
   async run({ args }) {
     const { installStudioRecorder } = await import('#lib/footage/recording/engine/install-recorder.ts');
-    console.log(installStudioRecorder({ identity: args.identity, launch: args.launch }));
+    const { runStudioEffect } = await import('#lib/platform/process/engine/studio-effect-runtime.ts');
+    const { Layer } = await import('effect');
+    console.log(await runStudioEffect(installStudioRecorder({ identity: args.identity, launch: args.launch }), Layer.empty));
   },
 });
 
