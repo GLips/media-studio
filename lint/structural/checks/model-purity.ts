@@ -18,12 +18,20 @@ import { globalNamed, globalReferencesIn } from '../lexical-scope.ts';
 const ID = 'model-purity';
 
 /**
- * The only packages a model may import, by name: three's math classes and Remotion's pure easing. Anything else from
- * either package pulls in its renderer.
+ * The only packages a model may import, by name: three's math classes, Remotion's pure easing, Effect's data modules
+ * (schemas, tagged data, exits) and XState's machine definitions and pure transitions. Anything else from three or
+ * Remotion pulls in its renderer; Effect's runtime modules (Effect, Stream, Layer) and XState's running actors are the
+ * engine's.
  */
 export const MODEL_PACKAGE_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
   three: ['Vector3', 'Matrix4', 'Quaternion', 'Euler', 'MathUtils'],
   remotion: ['interpolate', 'Easing', 'spring'],
+  effect: [
+    'Schema', 'SchemaGetter', 'SchemaIssue', 'SchemaTransformation', 'Data', 'Exit', 'Cause', 'Option', 'Result', 'Match',
+    'Order', 'Equal', 'Brand', 'Predicate', 'Function', 'pipe', 'Array', 'Record', 'Struct', 'Tuple', 'Number', 'String',
+    'Boolean', 'Duration', 'DateTime', 'HashMap', 'HashSet', 'Chunk', 'Formatter',
+  ],
+  xstate: ['setup', 'createMachine', 'assign', 'emit', 'raise', 'enqueueActions', 'types', 'assertEvent', 'transition', 'initialTransition', 'getNextTransitions', 'matchesState', 'isMachineSnapshot', 'createActor'],
 };
 
 /** Globals that mean a browser or I/O. `fetch` and `process` exist in Node, and are I/O all the same. */
