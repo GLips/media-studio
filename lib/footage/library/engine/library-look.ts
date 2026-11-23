@@ -23,7 +23,10 @@ const framesPerSheet = (columns: number) => (columns === 1 ? 1 : columns * Math.
  */
 export type LibraryLookRequest = { item: string; track?: string; every: number; from?: number; to?: number; columns: number };
 
-const clockLabel = (seconds: number) => `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(1).padStart(4, '0')}`;
+const clockLabel = (seconds: number) => {
+  const tenths = Math.round(seconds * 10);
+  return `${Math.floor(tenths / 600)}:${((tenths % 600) / 10).toFixed(1).padStart(4, '0')}`;
+};
 
 /** Draws the sheets a request asks for, or finds them drawn already; answers their paths in order. */
 export const lookAtLibraryTrack = Effect.fn('LibraryLook.sheets')(function* ({ item: asked, track: trackName, every, from = 0, to, columns }: LibraryLookRequest) {
@@ -62,9 +65,11 @@ export const lookAtLibraryTrack = Effect.fn('LibraryLook.sheets')(function* ({ i
       return { file, label: clockLabel(t) };
     }), { concurrency: 4 });
     yield* Effect.tryPromise({
-      try: () => tileLabelledImages(cells, out, { cols: columns, w: Math.round(width), h: height }),
+      // Drawn under another name, then renamed in whole: a sheet cut short by a kill would be read back as drawn.
+      try: () => tileLabelledImages(cells, `${out}.part.jpg`, { cols: columns, w: Math.round(width), h: height }),
       catch: (error) => new LibrarySheetFailed({ path: out, reason: error instanceof Error ? error.message : String(error) }),
     });
+    yield* fs.rename(`${out}.part.jpg`, out);
   }
   return sheets;
 }, Effect.scoped);
