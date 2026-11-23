@@ -43,7 +43,7 @@ function renderPathInProject(render: string): string | null {
   return project && relative(realpathSync(project), join(realpathSync(dirname(render)), basename(render))).split(sep).join('/');
 }
 
-type RenderSnapshotMade = Pick<RenderSnapshot, 'frames' | 'started' | 'captions' | 'timeline' | 'clock' | 'voice' | 'gpu' | 'motion'> & { source?: RenderSource };
+type RenderSnapshotMade = Pick<RenderSnapshot, 'frames' | 'started' | 'captions' | 'timeline' | 'clock' | 'voice' | 'gpu' | 'glitchCheck' | 'motion'> & { source?: RenderSource };
 
 /**
  * Writes `render`'s snapshot beside it, bound to the bytes in `bytes` (the file itself unless it's still staged) as
@@ -51,13 +51,13 @@ type RenderSnapshotMade = Pick<RenderSnapshot, 'frames' | 'started' | 'captions'
  * (remote-render.ts) passes the ones it started from.
  */
 export function writeRenderSnapshot(render: string, made: RenderSnapshotMade, bytes = render): string {
-  const { frames, started, captions, timeline, clock, voice, gpu, motion, source = readRenderSource() } = made;
+  const { frames, started, captions, timeline, clock, voice, gpu, glitchCheck, motion, source = readRenderSource() } = made;
   if (!(frames.from >= 0 && frames.end > frames.from && frames.end <= timeline.durationInFrames)) {
     throw new Error(`${basename(render)}: frames ${frames.from}–${frames.end - 1} aren't within the composition's 0–${timeline.durationInFrames - 1}`);
   }
   const snapshot: RenderSnapshot = {
     version: RENDER_SNAPSHOT_VERSION, render: { file: basename(render), path: renderPathInProject(render), hash: renderFileStamp(bytes).hash }, frames, started,
-    made: new Date().toISOString(), captions, timeline, clock, voice, gpu, source, ...(motion && { motion }),
+    made: new Date().toISOString(), captions, timeline, clock, voice, gpu, source, glitchCheck, ...(motion && { motion }),
   };
   const path = renderSnapshotPath(render);
   writeFileSync(path, JSON.stringify(snapshot));

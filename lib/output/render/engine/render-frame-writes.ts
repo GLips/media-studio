@@ -1,9 +1,11 @@
 // render-frame-writes.ts: frames a render's pages send (render-frame-sink.ts) written out: as stills, one image a
-// frame, or in order into an encode's raw input. Node only.
+// frame, or in order into an encode's raw input, measured for blank and torn frames on the way. Node only.
 
 import { mkdirSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { openFfmpegInput } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
+import { findFrameGlitches, frameGlitchText, measureFrameCells, type FrameCells } from '#lib/output/picture-checks/models/frame-glitch-check.ts';
+import { timelineFrameText, type TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
 import type { RenderFrame } from './render-frame-sink.ts';
 
 /** How a still's frame is written: a PNG, exact, or a JPEG, to look at. */
@@ -64,4 +66,26 @@ export function renderFramesInOrder(first: number, size: { width: number; height
     if (ready.length > 0) await write(Buffer.concat(ready));
   };
   return { take, next: () => next };
+}
+
+/**
+ * Frames measured on their way to a draw's `take` (frame-glitch-check.ts), and `assertNoGlitches`, which throws naming
+ * each blank or torn frame of `frames` by its scene. Frames arrive in any order; a frame drawn again (a chunk retried,
+ * whose encode starts over) is measured again.
+ */
+export function measuredRenderFrames() {
+  const measured = new Map<number, FrameCells>();
+  return {
+    take: (take: (frame: RenderFrame) => Promise<void>) => async (frame: RenderFrame) => {
+      measured.set(frame.frame, measureFrameCells(frame.rgba, frame.width, frame.height));
+      await take(frame);
+    },
+    assertNoGlitches: (what: string, { from, end }: { from: number; end: number }, timeline: TimelineReport) => {
+      const cells = Array.from({ length: end - from }, (_, i) => measured.get(from + i)!);
+      const glitches = findFrameGlitches(cells, from, timeline);
+      if (!glitches.length) return;
+      const lines = glitches.map((g) => `  ${timelineFrameText(timeline, g.from)}: ${frameGlitchText(g)}`);
+      throw new Error(`${what} has ${glitches.length} blank or torn stretch${glitches.length > 1 ? 'es' : ''}, part of the picture snapping to black or flickering blank mid-scene:\n${lines.join('\n')}`);
+    },
+  };
 }

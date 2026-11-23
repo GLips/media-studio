@@ -139,7 +139,7 @@ async function encodeRemotePieces(ledger: RenderLedger, dir: string, { out, span
   });
   const counted = countVideoFrames(staged);
   if (counted !== count) throw new Error(`${out} holds ${counted} frames, not the ${count} drawn`);
-  return placeRenderWithSnapshot(staged, out, { frames, started: ledger.started, captions, timeline, clock: ledger.clock, voice: renderVoiceOf(ledger.project), gpu, source });
+  return placeRenderWithSnapshot(staged, out, { frames, started: ledger.started, captions, timeline, clock: ledger.clock, voice: renderVoiceOf(ledger.project), gpu, source, glitchCheck: 'pieces' });
 }
 
 /** Every container's pieces kept in out/wip/remote/ and joined at `out` under the mix mastered from their sound. */

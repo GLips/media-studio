@@ -1,5 +1,5 @@
 // render-slices.ts: a slice of the video (`studio render --frames` or `--scene`), rendered alone to re-render just what
-// a change touched, silent and unchecked, with its snapshot recording where in the video it starts. Review lays a
+// a change touched, silent, its framing unchecked, with its snapshot recording where in the video it starts. Review lays a
 // slice a reply names into the cut over its frames (render-splice.ts). Node only.
 import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
 import { renderSliceFramesOf, type RenderSliceSpan } from '../models/render-splice.ts';

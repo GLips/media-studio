@@ -101,6 +101,7 @@ export function readReviewArtifact(project: string, path: string, render?: strin
     });
     artifact.storyboard = reviewStoryboardOf({ fps, frames: snapshot.frames, scenes: timeline.scenes, lines: timeline.cues, clock: snapshot.clock });
     artifact.marks = reviewTimingMarksOf({ frames: snapshot.frames, clock: snapshot.clock });
+    if (snapshot.glitchCheck === 'pieces') artifact.missing.push(`a check for blank or torn frames where the remote pieces join: each piece was checked alone`);
     if (snapshot.motion) artifact.motion = snapshot.motion;
     else artifact.missing.push(`motion for what's under a point: only a delivered render (studio render) measures it`);
   }

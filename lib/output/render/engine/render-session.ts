@@ -19,7 +19,7 @@ import { refuseProjectPaintingErrors } from './render-preflight.ts';
 import { serveRenderPlacements, type RenderPlacements } from './render-placements.ts';
 import { paintCacheNamespace, servePaintCache } from './render-paint-cache.ts';
 import { serveRenderFrameSink, type RenderFrame } from './render-frame-sink.ts';
-import { rawRenderFrameInput, renderFramesInOrder, renderStillsByFrame, renderStillsInto, type RenderStillImage } from './render-frame-writes.ts';
+import { measuredRenderFrames, rawRenderFrameInput, renderFramesInOrder, renderStillsByFrame, renderStillsInto, type RenderStillImage } from './render-frame-writes.ts';
 import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
 import { countVideoFrames, openFfmpegInput, runFfmpegAsync } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { placeRenderWithSnapshot, renderStagingPathOf } from './render-snapshot.ts';
@@ -139,7 +139,7 @@ type FrameDraw = {
 );
 
 /** The lossless chunks `list` names, copied whole into one file at `out`, with its snapshot. */
-async function keepLossless(list: string, out: string, made: Pick<RenderSnapshot, 'frames' | 'started' | 'captions' | 'timeline' | 'clock' | 'voice' | 'gpu'>) {
+async function keepLossless(list: string, out: string, made: Pick<RenderSnapshot, 'frames' | 'started' | 'captions' | 'timeline' | 'clock' | 'voice' | 'gpu' | 'glitchCheck'>) {
   const staged = renderStagingPathOf(out);
   await runFfmpegAsync(['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', staged]);
   placeRenderWithSnapshot(staged, out, made);
@@ -282,7 +282,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
     inputProps: VideoProps; dir: string; timeline: TimelineReport; lossless: boolean; alpha?: boolean; encoding?: VideoEncoding;
     onProgress?: (p: { progress: number }) => void; onArtifact?: OnArtifact;
   }): Promise<{ lossless: string | null; encoded: string | null; gpu: string; heard: boolean }> {
-    const frames = Array.from({ length: end - from }, (_, i) => from + i), seen = new Set<number>();
+    const frames = Array.from({ length: end - from }, (_, i) => from + i), seen = new Set<number>(), measured = measuredRenderFrames();
     mkdirSync(dir, { recursive: true });
     const input = ['-y', '-v', 'error', ...rawRenderFrameInput(timeline, timeline.fps)];
     return trace.run(pass, async (span) => {
@@ -296,7 +296,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
         const { take, next } = renderFramesInOrder(piece[0], timeline, async (rgba) => void (await Promise.all(packings.map((packing) => packing.write(rgba)))));
         try {
           const { concurrency, heard } = await drawFrames(browser, watch, piece, {
-            inputProps, ...(onArtifact && { onArtifact }), take,
+            inputProps, ...(onArtifact && { onArtifact }), take: alpha ? take : measured.take(take),
             onFrame: (frame) => onProgress?.({ progress: seen.add(frame).size / frames.length }),
           });
           if (next() !== piece.at(-1)! + 1) throw new Error(`${pass}: frames ${piece[0]}–${piece.at(-1)} drew, but only up to ${next() - 1} reached their encodes`);
@@ -310,6 +310,8 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
         take: (_piece, { finish }) => finish(), browsers: RENDER_BROWSERS, describeFrame: (frame) => describeRenderFrame(frame, timeline), spans: { trace, parent: span },
       });
       span.end({ workers: { value: used, unit: 'tabs' }, gpu, frames: { value: frames.length, unit: 'frames' } });
+      // A transparent video's clear pixels are its design, so only an opaque one is held to having none blank.
+      if (!alpha) measured.assertNoGlitches(pass, { from, end }, timeline);
       const listOf = (files: readonly string[], name: string) => {
         const list = join(dir, name);
         writeFileSync(list, concatList(files));
@@ -403,7 +405,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
       const staged = renderStagingPathOf(out);
       if (track) await trace.run(`${name} mux`, () => muxDeliveredSound(picture, track, staged, { frames: count, fps: timeline.fps }));
       else copyFileSync(picture, staged);
-      placeRenderWithSnapshot(staged, out, { frames: span, started, captions: inputProps.captions, timeline, clock, voice: renderVoiceOf(project), gpu: drawn.gpu, ...(motion && { motion }) });
+      placeRenderWithSnapshot(staged, out, { frames: span, started, captions: inputProps.captions, timeline, clock, voice: renderVoiceOf(project), gpu: drawn.gpu, glitchCheck: 'whole', ...(motion && { motion }) });
       return out;
     });
   }
@@ -420,7 +422,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
       const inputProps = props();
       const drawn = await drawPacked(`${basename(out)} frames`, frames, { inputProps, dir: tmp, timeline, lossless: true, ...(onProgress && { onProgress }) });
       // SAFETY: drawn lossless, as asked just above.
-      await keepLossless(drawn.lossless!, out, { frames, started, captions: inputProps.captions, timeline, clock, voice: renderVoiceOf(project), gpu: drawn.gpu });
+      await keepLossless(drawn.lossless!, out, { frames, started, captions: inputProps.captions, timeline, clock, voice: renderVoiceOf(project), gpu: drawn.gpu, glitchCheck: 'whole' });
       return out;
     });
   }
@@ -455,7 +457,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
         runFfmpegAsync([...frames, '-vf', `format=bgra,premultiply=inplace=1,${bt709}`, '-c:v', 'hevc_videotoolbox', '-pix_fmt', 'bgra', '-colorspace', 'bt709', '-q:v', '70', '-alpha_quality', '0.9',
           '-tag:v', 'hvc1', '-movflags', '+faststart', staged.mov]),
       ]));
-      for (const out of [webm, mov]) placeRenderWithSnapshot(renderStagingPathOf(out), out, { frames: { from: 0, end: timeline.durationInFrames }, started, captions: inputProps.captions, timeline, clock, voice: renderVoiceOf(project), gpu, ...(motion && { motion }) });
+      for (const out of [webm, mov]) placeRenderWithSnapshot(renderStagingPathOf(out), out, { frames: { from: 0, end: timeline.durationInFrames }, started, captions: inputProps.captions, timeline, clock, voice: renderVoiceOf(project), gpu, glitchCheck: 'transparent', ...(motion && { motion }) });
     });
     return [webm, mov];
   }
