@@ -1,6 +1,6 @@
 // review-decision-markdown.ts: a project's decisions as the markdown `studio review decisions` and `watch` hand an
-// agent: the question, each candidate with its file (from the repo root, so it can be Read from anywhere) and meta,
-// the reviewer's verdicts and, once signed off, the picks.
+// agent: the question and the scene and line it's for, each candidate with its file (from the repo root, so it can be
+// Read from anywhere) and meta, the reviewer's verdicts and, once signed off, the picks.
 import type { ReviewCandidate, ReviewDecision } from './review-threads.ts';
 
 export function formatReviewDecisionsMarkdown(project: string, decisions: readonly ReviewDecision[]): string {
@@ -10,11 +10,17 @@ export function formatReviewDecisionsMarkdown(project: string, decisions: readon
 function formatReviewDecision(project: string, decision: ReviewDecision): string {
   const signed = decision.decided && `signed off: ${decision.decided.picks.length ? `picks ${decision.decided.picks.join(', ')}` : 'none picked'}`;
   return [
-    `### #${decision.id} decision \`${decision.topic}\` · ${decision.state} · choose ${decision.choose}`,
+    `### #${decision.id} decision \`${decision.topic}\` · ${decision.state} · choose ${decision.choose}${aboutOf(decision)}`,
     decision.question,
     decision.candidates.map((c) => formatReviewCandidate(project, c)).join('\n'),
     ...(signed ? [signed] : []),
   ].join('\n\n');
+}
+
+/** ` · for scene hook, line intro`, as `decide --scene --line` gave it. */
+function aboutOf({ about }: ReviewDecision): string {
+  if (!about) return '';
+  return ` · for scene ${about.scene}${about.line === undefined ? '' : `, line ${about.line}`}`;
 }
 
 function formatReviewCandidate(project: string, candidate: ReviewCandidate): string {

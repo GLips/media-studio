@@ -19,7 +19,7 @@ import { REVIEW_FALLBACK_FPS } from '../models/review-context.ts';
 import type { NewAnchor, NewDecision } from '../models/review-ops.ts';
 import { placeReviewThread, reviewVideoAnchorAt, type PlacedReviewThread, type ReviewPlacement, type ReviewPlacementTarget } from '../models/review-placement.ts';
 import { reviewPlanFieldText, reviewPlanNotePlacementOf, reviewPlanSignoffs, type ReviewPlanFieldChange } from '../models/review-plan.ts';
-import type { ReviewCandidate, ReviewDecision, ReviewEntryCommit, ReviewPlanAnchor, ReviewPlanField, ReviewSignoff, ReviewThread, ReviewThreadState } from '../models/review-threads.ts';
+import type { ReviewCandidate, ReviewDecision, ReviewDecisionAbout, ReviewEntryCommit, ReviewPlanAnchor, ReviewPlanField, ReviewSignoff, ReviewThread, ReviewThreadState } from '../models/review-threads.ts';
 import { projectFolderNamed, projectMediaTypeOf, projectPathOf, resolveProjectMedia } from './project-media.ts';
 import { readReviewArtifact, reviewPlacementTargetOf, reviewStillSizeOf } from './review-artifact.ts';
 import { readReviewSplices } from './review-splices.ts';
@@ -177,6 +177,24 @@ async function reviewAskPlanAnchorOf(project: string, place: Extract<ReviewAskPl
   const placed = reviewPlanNotePlacementOf(anchor, storyboard, resolved);
   if ('unplaced' in placed) throw new Error(`can't ask there: ${placed.unplaced}`);
   return anchor;
+}
+
+/**
+ * What a decision is for, checked against the storyboard so a typo fails here rather than sorting the decision last
+ * in the reviewer's queue. A line names its scene, as a plan question's does.
+ */
+export async function reviewDecisionAboutOf(project: string, place: { scene?: string; line?: string }): Promise<ReviewDecisionAbout> {
+  const plan = await readProjectStoryboard(projectFolderNamed(project));
+  if (!plan) throw new Error(`${project} has no storyboard.ts for a decision to be about`);
+  const { scenes } = plan.storyboard;
+  const { line } = place;
+  const scene = place.scene ?? (line === undefined ? undefined : Object.keys(scenes).find((id) => line in (scenes[id].lines ?? {})));
+  if (scene === undefined) throw new Error(place.line === undefined ? 'name the scene or the line' : `no scene has a line ${place.line}`);
+  if (!(scene in scenes)) throw new Error(`no scene ${scene}: ${Object.keys(scenes).join(', ')}`);
+  if (line !== undefined && !(line in (scenes[scene].lines ?? {}))) {
+    throw new Error(`scene ${scene} has no line ${line}: ${Object.keys(scenes[scene].lines ?? {}).join(', ') || 'it has none'}`);
+  }
+  return { scene, ...(line !== undefined && { line }) };
 }
 
 /** A candidate as `--candidate` or a `--spec` file gives it: a file in the project or a text, a label, its meta. */

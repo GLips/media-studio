@@ -64,17 +64,17 @@ word count until voiced; cues on their words; long silences and holds flagged), 
 
 ## Decisions
 
-Post a decision when the choice is the reviewer's taste and the options really differ: music beds, voices, takes,
-models, still variants, headlines (`text:` candidates). When one option is clearly better, pick it yourself and say
-why.
+Post a decision when the choice is taste and the options really differ: music beds, voices, takes, models, still
+variants, headlines (`text:` candidates). When one is clearly better, pick it yourself and say why.
 
 - **Cull first.** Two to four candidates, each one you'd ship, differing along the axis the question names. Render
   each to `out/decisions/<topic>/`, identical but for that axis: a bed is heard in its mix, a lead against the cut
   (`${CLAUDE_PLUGIN_ROOT}/skills/video-sound/references/music.md`).
 - **Ask one question**, the axis in words ("Which bed under the VO?"). `--many` when they may keep several. For
   generated candidates, carry the model, seed and cost as meta (`--spec`), so the pick can be made again.
-- **Act on the sign-off.** `watch` wakes on each pick or reject and on the sign-off. Comments on a candidate are notes
-  (`notes --on decision`): a rejected one's often says what the next round needs. Re-posting the open topic swaps
-  its candidates and keeps verdicts on the unchanged ones, for another round on the same question.
+- **Say what it's for**: `--scene`, or `--line` for a take; they're walked in story order.
+- **Act on the sign-off.** `watch` wakes on each verdict and sign-off. Comments on a candidate are notes (`notes --on
+  decision`), often saying what the next round needs. Re-posting the open topic swaps its candidates and
+  keeps verdicts on the unchanged ones.
 
 Done when `studio review decisions <p> --open` lists none, and the picks are in the work.

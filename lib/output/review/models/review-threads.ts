@@ -117,6 +117,9 @@ export type ReviewCandidate = {
   verdict?: 'pick' | 'reject';
 };
 
+/** A scene of the storyboard, by id, and optionally one of its lines. */
+export type ReviewDecisionAbout = { scene: string; line?: string };
+
 export type ReviewDecision = {
   id: number;
   topic: string;
@@ -125,7 +128,8 @@ export type ReviewDecision = {
   state: 'open' | 'decided';
   rev: number;
   at: string;
-  about?: { scene?: string; moment?: ReviewMoment; line?: string };
+  /** What in the story it's for, so the decisions queue walks them in story order and shows the line it's about. */
+  about?: ReviewDecisionAbout;
   candidates: ReviewCandidate[];
   /** The reviewer's sign-off. */
   decided?: { picks: string[]; at: string };
