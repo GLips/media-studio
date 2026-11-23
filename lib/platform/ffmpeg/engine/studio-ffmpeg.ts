@@ -3,8 +3,13 @@
 // provides a fake layer instead of a binary.
 import { Context, Effect, Layer, Schema, Stream } from 'effect';
 import { ChildProcess, ChildProcessSpawner } from 'effect/process';
+import { STUDIO_CHILD_PROCESS } from '#lib/platform/process/engine/studio-child-process.ts';
+import { toolStderrReason } from '#lib/platform/process/models/tool-stderr-reason.ts';
 
-/** ffmpeg or ffprobe exited non-zero, or couldn't start. `stderr` is its last lines, where it says why. */
+// ffmpeg's progress lines, and the sign-off it prints after the line saying why.
+const FFMPEG_STDERR_NOISE = /^(?:Conversion failed!|(?:frame|size)=)/;
+
+/** ffmpeg or ffprobe exited non-zero, or couldn't start. `stderr` is its tail; the message quotes the lines saying why. */
 export class FfmpegFailed extends Schema.TaggedError<FfmpegFailed>()('FfmpegFailed', {
   tool: Schema.Literals(['ffmpeg', 'ffprobe']),
   args: Schema.Array(Schema.String),
@@ -12,7 +17,7 @@ export class FfmpegFailed extends Schema.TaggedError<FfmpegFailed>()('FfmpegFail
   stderr: Schema.String,
 }) {
   override get message(): string {
-    const why = this.stderr.trim().split('\n').at(-1) ?? '';
+    const why = toolStderrReason(this.stderr, FFMPEG_STDERR_NOISE);
     return `${this.tool} ${this.exitCode === undefined ? "couldn't start" : `exited with ${this.exitCode}`}${why ? `: ${why}` : ''}`;
   }
 }
@@ -39,7 +44,7 @@ export const studioFfmpegLayer = Layer.effect(StudioFfmpeg, Effect.gen(function*
 
   const exec = Effect.fn('StudioFfmpeg.exec')(function* (tool: 'ffmpeg' | 'ffprobe', args: readonly string[]) {
     const failed = (stderr: string, exitCode?: number) => new FfmpegFailed({ tool, args: [...args], stderr: stderr.slice(-STDERR_TAIL), ...(exitCode !== undefined && { exitCode }) });
-    const handle = yield* spawner.spawn(ChildProcess.make(tool, [...args])).pipe(Effect.mapError((error) => failed(error.message)));
+    const handle = yield* spawner.spawn(ChildProcess.make(tool, [...args], STUDIO_CHILD_PROCESS)).pipe(Effect.mapError((error) => failed(error.message)));
     const [stdout, stderr, exitCode] = yield* Effect.all([decodeText(handle.stdout), decodeText(handle.stderr), handle.exitCode], { concurrency: 'unbounded' })
       .pipe(Effect.mapError((error) => failed(error.message)));
     return { stdout, stderr: stderr.slice(-STDERR_TAIL), exitCode: Number(exitCode), failed };

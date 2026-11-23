@@ -1,5 +1,6 @@
-// ffmpeg.ts: the one place the studio starts ffmpeg or ffprobe. Everything else passes its arguments through here,
-// so which binary runs, and how, has one owner (the sdk-containment check holds it).
+// ffmpeg.ts: ffmpeg and ffprobe for the studio's promise-and-sync code; studio-ffmpeg.ts starts them for Effect code.
+// Everything else passes its arguments through one of the two, so which binary runs, and how, is this folder's alone
+// (the sdk-containment check holds it).
 import {
   execFile, execFileSync, spawn, spawnSync,
   type ChildProcess, type ExecFileOptions, type ExecFileSyncOptions, type ExecFileSyncOptionsWithBufferEncoding,
