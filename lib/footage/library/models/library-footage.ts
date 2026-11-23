@@ -7,16 +7,31 @@
 //   const footage = libraryFootage(item, transcript);
 //
 // Those imports are how a project refers to footage: `studio library show` lists an item's projects by them.
-import type { FootageTranscript } from '#lib/footage/transcript/models/footage-transcript.ts';
+import { Result, Schema } from 'effect';
 import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 import { inputLogWaypoints, type InputLog } from '#lib/footage/input-log/models/input-log.ts';
 import type { TimedPoint } from '#lib/picture/camera/models/follow-point.ts';
 import type { SceneClock } from '#lib/timing/timeline/models/video-layout.ts';
 import type { RecordedSpeech } from '#lib/timing/voice/models/recorded-speech.ts';
-import { LIBRARY_ITEM_FORMAT, libraryItemTimeOf, libraryMediaTimeOf, type LibraryItem } from './library-item.ts';
+import { LibraryFileUnreadable } from './library-errors.ts';
+import { LIBRARY_ITEM_FORMAT, LibraryItem, libraryItemTimeOf, libraryMediaTimeOf } from './library-item.ts';
 
-/** An item's transcript.json: what its speech track says, on that track's media time. */
-export type LibraryTranscriptFile = FootageTranscript & { track: string };
+const TranscriptSpan = Schema.Struct({ start: Schema.Finite, end: Schema.Finite });
+
+/**
+ * An item's transcript.json: what its speech track says, on that track's media time. Its arrays are mutable, as the
+ * transcript's own type (FootageTranscript) is, so a file read here passes to anything that takes a transcript.
+ */
+export const LibraryTranscriptFile = Schema.Struct({
+  track: Schema.String,
+  duration: Schema.Finite,
+  words: Schema.mutable(Schema.Array(Schema.Struct({ text: Schema.String, ...TranscriptSpan.fields }))),
+  pauses: Schema.mutable(Schema.Array(TranscriptSpan)),
+});
+export type LibraryTranscriptFile = typeof LibraryTranscriptFile.Type;
+
+/** transcript.json's text, parsed and decoded. */
+export const LibraryTranscriptFileText = Schema.fromJsonString(LibraryTranscriptFile);
 
 /** A library item as a project uses it (libraryFootage). */
 export type LibraryFootage = {
@@ -40,19 +55,30 @@ export type LibraryFootage = {
   cursorOn(track: string, log: InputLog): TimedPoint[];
 };
 
-/** What a project imports of an item.json: read as the library wrote it once its format is checked. */
-type LibraryItemJson = { format: string; id: string };
+/**
+ * What a project imports of an item.json: JSON whose literals TypeScript widens (a format is any string), so it's
+ * decoded, never trusted.
+ */
+type LibraryItemJsonImport = { readonly format: string; readonly id: string };
+
+const decodeLibraryItem = Schema.decodeUnknownResult(LibraryItem);
+const decodeLibraryTranscript = Schema.decodeUnknownResult(LibraryTranscriptFile);
 
 /**
- * An item from its imported item.json and transcript.json. Refuses metadata in a format this studio doesn't read, and a
- * transcript that isn't of the item's speech track.
+ * An item from its imported item.json and transcript.json, each decoded. Refuses metadata in a format this studio
+ * doesn't read, and a transcript that isn't of the item's speech track, with a LibraryFileUnreadable.
  */
-export function libraryFootage(itemJson: LibraryItemJson, transcript?: LibraryTranscriptFile): LibraryFootage {
-  if (itemJson.format !== LIBRARY_ITEM_FORMAT) throw new Error(`library item ${itemJson.id} is ${itemJson.format}, not ${LIBRARY_ITEM_FORMAT}: this studio can't read it`);
-  // SAFETY: the library writes item.json as a LibraryItem, and its format is the one checked above.
-  const item = itemJson as LibraryItem;
+export function libraryFootage(itemJson: LibraryItemJsonImport, transcriptJson?: LibraryTranscriptFile): LibraryFootage {
+  const named = `library item ${itemJson.id}`;
+  if (itemJson.format !== LIBRARY_ITEM_FORMAT) throw new LibraryFileUnreadable({ path: named, reason: `is ${itemJson.format}, not ${LIBRARY_ITEM_FORMAT}: this studio can't read it` });
+  const decoded = decodeLibraryItem(itemJson);
+  if (Result.isFailure(decoded)) throw new LibraryFileUnreadable({ path: named, reason: `isn't an item the library wrote: ${decoded.failure.message}` });
+  const item = decoded.success;
+  const transcriptRead = transcriptJson && decodeLibraryTranscript(transcriptJson);
+  if (transcriptRead && Result.isFailure(transcriptRead)) throw new LibraryFileUnreadable({ path: `${item.id}'s transcript`, reason: `isn't a transcript the library wrote: ${transcriptRead.failure.message}` });
+  const transcript = transcriptRead?.success;
   const speechTrack = item.speech === undefined ? undefined : item.tracks[item.speech];
-  if (transcript && transcript.track !== item.speech) throw new Error(`${item.id}'s transcript is of ${transcript.track}, but its speech is ${item.speech ?? 'none'}`);
+  if (transcript && transcript.track !== item.speech) throw new LibraryFileUnreadable({ path: `${item.id}'s transcript`, reason: `is of ${transcript.track}, but its speech is ${item.speech ?? 'none'}` });
   const words = speechTrack && transcript
     ? transcript.words.map((w) => ({ text: w.text, start: libraryItemTimeOf(speechTrack, w.start), end: libraryItemTimeOf(speechTrack, w.end) }))
     : [];

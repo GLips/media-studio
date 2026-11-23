@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { Effect } from 'effect';
 import { runFfmpeg } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { studioTempRoot } from '#lib/platform/temp/engine/studio-temp.ts';
 import { libraryFrameAt } from './library-frame-decoder.ts';
@@ -20,7 +21,7 @@ const frameShown = (jpeg: Buffer) => {
 test('a track serves the frame on screen at each time asked, in order, after a jump, and back again', async () => {
   const source = { path: clip, width: 64, fps: 30 };
   const asked = [1, 1 + 1 / 30, 1 + 2 / 30, 3, 1 + 1 / 30, 3.99];
-  const shown = await Promise.all(asked.map(async (t) => frameShown(await libraryFrameAt(source, t))));
+  const shown = await Promise.all(asked.map(async (t) => frameShown(await Effect.runPromise(libraryFrameAt(source, t)))));
   // Frames 30, 31, 32 in order; 90 by a jump ahead; 31 again from the frames kept; 119, the last.
   assert.deepEqual(shown, [30, 31, 32, 90, 31, 119].map((n) => n % 32));
 });

@@ -1,0 +1,3 @@
+{
+  "lib/footage/library": "The library adds a recorder take: it decodes the take's recording.json, judges whether the recorder is done with it, and streams its logs to check them, all with the recorder's own schemas and readers."
+}

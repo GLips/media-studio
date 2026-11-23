@@ -5,12 +5,16 @@
 //
 // A render serves both from a loopback server of its own (serveLibraryMedia), the studio app's Vite server the first
 // through its middleware (studio-app-library-media.ts). Media offline answers 503 with the reason. Node only.
-import { createReadStream, existsSync, statSync } from 'node:fs';
+//
+// Each request is an Effect program over the media folder's service; a file's bytes go out through Node's streams,
+// which pipe straight into the response with Range offsets.
+import { createReadStream } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { extname, join, resolve, sep } from 'node:path';
+import { Effect, FileSystem, Path } from 'effect';
 import { listenOnRenderLoopback } from '#lib/platform/browser/engine/render-loopback.ts';
+import { runStudioEffect } from '#lib/platform/process/engine/studio-effect-runtime.ts';
 import { libraryFrameAt } from './library-frame-decoder.ts';
-import { LibraryMediaOffline, onlineLibraryMediaFolder } from './library-media-folder.ts';
+import { LibraryMediaFolder, libraryMediaFolderLayer } from './library-media-folder.ts';
 
 /** The path every page asks for library media under (library-media.ts names files under it). */
 export const LIBRARY_MEDIA_PATH = '/library-media';
@@ -30,15 +34,15 @@ function refuse(response: ServerResponse, status: number, message: string) {
 }
 
 /** The file under the media folder that `relative` names, or null when it would step outside it. */
-function mediaFileOf(relative: string): string | null {
-  const folder = onlineLibraryMediaFolder(), path = resolve(folder, relative);
-  return path.startsWith(folder + sep) ? path : null;
-}
+const mediaFileOf = Effect.fn('LibraryMediaServer.fileOf')(function* (relative: string) {
+  const folder = yield* (yield* LibraryMediaFolder).online(), path = yield* Path.Path;
+  const file = path.resolve(folder, relative);
+  return file.startsWith(folder + path.sep) ? file : null;
+});
 
-/** Serves `path` whole or by the request's one Range. */
-function sendMediaFile(request: IncomingMessage, response: ServerResponse, path: string) {
-  const { size } = statSync(path), type = CONTENT_TYPES[extname(path).toLowerCase()] ?? 'application/octet-stream';
-  const headers = { ...CORS, 'content-type': type, 'accept-ranges': 'bytes', 'cache-control': 'no-cache' };
+/** Serves `path`, `size` bytes, whole or by the request's one Range. */
+function sendMediaFile(request: IncomingMessage, response: ServerResponse, path: string, size: number, extension: string) {
+  const headers = { ...CORS, 'content-type': CONTENT_TYPES[extension] ?? 'application/octet-stream', 'accept-ranges': 'bytes', 'cache-control': 'no-cache' };
   const range = /^bytes=(\d*)-(\d*)$/.exec(request.headers.range ?? '');
   if (!range) {
     response.writeHead(200, { ...headers, 'content-length': size });
@@ -58,47 +62,46 @@ function sendMediaFile(request: IncomingMessage, response: ServerResponse, path:
   else createReadStream(path, { start, end }).pipe(response);
 }
 
+const answerMediaFile = Effect.fn('LibraryMediaServer.mediaFile')(function* (request: IncomingMessage, response: ServerResponse, url: URL) {
+  const fs = yield* FileSystem.FileSystem, path = yield* Path.Path;
+  const relative = decodeURIComponent(url.pathname.slice(LIBRARY_MEDIA_PATH.length + 1));
+  const file = yield* mediaFileOf(relative);
+  if (!file) return refuse(response, 403, `${url.pathname} isn't in the library's media folder`);
+  const info = (yield* fs.exists(file)) ? yield* fs.stat(file) : undefined;
+  if (info?.type !== 'File') return refuse(response, 404, `${relative} isn't in the library's media folder (${file})`);
+  return sendMediaFile(request, response, file, Number(info.size), path.extname(file).toLowerCase());
+});
+
+const answerFrame = Effect.fn('LibraryMediaServer.frame')(function* (response: ServerResponse, url: URL) {
+  const fs = yield* FileSystem.FileSystem, path = yield* Path.Path;
+  const [item, file] = ['item', 'file'].map((name) => url.searchParams.get(name) ?? '');
+  const [t, width, fps] = ['t', 'width', 'fps'].map((name) => Number(url.searchParams.get(name)));
+  const media = item && file ? yield* mediaFileOf(path.join(item, file)) : null;
+  if (!media || !(t >= 0) || !(width > 0) || !(fps > 0)) return refuse(response, 400, `${url.search} names no item, file, t, width and fps in the media folder`);
+  if (!(yield* fs.exists(media))) return refuse(response, 404, `${item}'s ${file} isn't in the library's media folder (${media})`);
+  // Even, as the JPEGs' chroma needs.
+  const jpeg = yield* libraryFrameAt({ path: media, width: Math.ceil(width / 2) * 2, fps }, t);
+  return response.writeHead(200, { ...CORS, 'content-type': 'image/jpeg', 'content-length': jpeg.length, 'cache-control': 'no-store' }).end(jpeg);
+});
+
+let warnedOffline = false;
+
 /** Answers a library request, or returns false for any other path. */
 export function handleLibraryMediaRequest(request: IncomingMessage, response: ServerResponse): boolean {
   const url = new URL(request.url ?? '/', 'http://localhost');
   const media = url.pathname.startsWith(`${LIBRARY_MEDIA_PATH}/`), frames = url.pathname === LIBRARY_FRAMES_PATH;
   if (!media && !frames) return false;
-  void (async () => {
-    if (media) {
-      const path = mediaFileOf(decodeURIComponent(url.pathname.slice(LIBRARY_MEDIA_PATH.length + 1)));
-      if (!path) refuse(response, 403, `${url.pathname} isn't in the library's media folder`);
-      else if (!existsSync(path) || !statSync(path).isFile()) refuse(response, 404, `${url.pathname.slice(LIBRARY_MEDIA_PATH.length + 1)} isn't in the library's media folder (${path})`);
-      else sendMediaFile(request, response, path);
-      return;
-    }
-    const [item, file] = ['item', 'file'].map((name) => url.searchParams.get(name) ?? '');
-    const [t, width, fps] = ['t', 'width', 'fps'].map((name) => Number(url.searchParams.get(name)));
-    const path = item && file ? mediaFileOf(join(item, file)) : null;
-    if (!path || !(t >= 0) || !(width > 0) || !(fps > 0)) {
-      refuse(response, 400, `${url.search} names no item, file, t, width and fps in the media folder`);
-      return;
-    }
-    if (!existsSync(path)) {
-      refuse(response, 404, `${item}'s ${file} isn't in the library's media folder (${path})`);
-      return;
-    }
-    // Even, as the JPEGs' chroma needs.
-    const jpeg = await libraryFrameAt({ path, width: Math.ceil(width / 2) * 2, fps }, t);
-    response.writeHead(200, { ...CORS, 'content-type': 'image/jpeg', 'content-length': jpeg.length, 'cache-control': 'no-store' }).end(jpeg);
-  })().catch((error: Error) => {
-    if (error instanceof LibraryMediaOffline) {
+  const answer = (media ? answerMediaFile(request, response, url) : answerFrame(response, url)).pipe(
+    Effect.catchTag('LibraryMediaOffline', (offline) => Effect.gen(function* () {
       // Said once in the terminal too: an audio pass's download names only the status.
-      warnOffline(error.message);
-      refuse(response, 503, error.message);
-    } else refuse(response, 500, error.message);
-  });
+      if (!warnedOffline) yield* Effect.log(offline.message);
+      warnedOffline = true;
+      refuse(response, 503, offline.message);
+    })),
+    Effect.catch((error) => Effect.sync(() => refuse(response, 500, error.message))),
+  );
+  void runStudioEffect(answer, libraryMediaFolderLayer);
   return true;
-}
-
-let warnedOffline = false;
-function warnOffline(message: string) {
-  if (!warnedOffline) process.stderr.write(`${message}\n`);
-  warnedOffline = true;
 }
 
 /** A loopback server of the library's media and frames for one render's pages; its origin goes in VideoProps' libraryMedia. */

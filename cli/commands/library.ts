@@ -1,20 +1,24 @@
-// studio library: the one store of footage any project draws on (lib/footage/library/).
+// studio library: the one store of footage any project draws on (lib/footage/library/). Each verb builds an Effect
+// program and runs it with the library's layer; its stdout is the payload, its progress Effect.log lines on stderr.
 import { defineCommand } from 'citty';
+import type { Effect } from 'effect';
+import type { LibraryStore } from '#lib/footage/library/engine/library-store.ts';
+import type { LibraryMediaFolder } from '#lib/footage/library-media/engine/library-media-folder.ts';
+import type { RecorderDeviceLatencies } from '#lib/footage/library/engine/library-recorder-latencies.ts';
+import type { FootageTranscriber } from '#lib/footage/transcript/engine/footage-transcriber.ts';
+import type { StudioFfmpeg } from '#lib/platform/ffmpeg/engine/studio-ffmpeg.ts';
+import type { NodeServices } from '@effect/platform-node';
 import { refuseOptionsBeforeSubcommand } from '../command-flags.ts';
 
-const log = (line: string) => process.stderr.write(`${line}\n`);
+type LibraryServices = LibraryStore | LibraryMediaFolder | RecorderDeviceLatencies | FootageTranscriber | StudioFfmpeg | NodeServices.NodeServices;
 
-/** Seconds as `12.5`, `1:02.5` or `1:02:03`. */
-function parseClockSeconds(text: string): number {
-  const parts = text.trim().split(':');
-  if (parts.length > 3 || parts.some((p) => p === '' || Number.isNaN(Number(p)))) throw new Error(`"${text}" isn't a time: give seconds (72.5) or m:ss (1:12.5)`);
-  return parts.reduce((total, part) => total * 60 + Number(part), 0);
-}
-
-function trackSeconds(value: string, track: string): number {
-  const n = Number(value);
-  if (!Number.isFinite(n)) throw new Error(`${track}'s ${value} isn't seconds`);
-  return n;
+/** Runs a verb's program over the library's services, loaded as the verb runs. */
+async function runLibraryProgram<A, E>(program: Effect.Effect<A, E, LibraryServices>): Promise<A> {
+  const [{ runStudioEffect }, { libraryLayer }] = await Promise.all([
+    import('#lib/platform/process/engine/studio-effect-runtime.ts'),
+    import('#lib/footage/library/engine/library-layer.ts'),
+  ]);
+  return runStudioEffect(program, libraryLayer);
 }
 
 const libraryItemArg = { type: 'positional', required: true, description: 'The item, by its id or a part of it only one id holds' } as const;
@@ -35,13 +39,23 @@ const addCommand = defineCommand({
     proxies: { type: 'boolean', default: true, description: 'Make editing proxies (--no-proxies to leave them for `studio library finish`)' },
   },
   async run({ args }) {
+    const { Console, Effect, Result } = await import('effect');
     const { addLibraryItem } = await import('#lib/footage/library/engine/add-library-item.ts');
     const { parseTrackValues } = await import('#lib/footage/library/models/library-sources.ts');
-    const item = await addLibraryItem({
-      paths: args._, title: args.title, move: args.move, proxies: args.proxies, log,
-      starts: parseTrackValues(args.starts, trackSeconds), latencies: parseTrackValues(args.latencies, trackSeconds), devices: parseTrackValues(args.devices, (v) => v),
-    });
-    console.log(JSON.stringify(item, null, 2));
+    const { LibraryRequestRefused } = await import('#lib/footage/library/models/library-errors.ts');
+    const trackSeconds = (value: string, track: string) => {
+      const n = Number(value);
+      return Number.isFinite(n) ? Result.succeed(n) : Result.fail(new LibraryRequestRefused({ reason: `${track}'s ${value} isn't seconds` }));
+    };
+    await runLibraryProgram(Effect.gen(function* () {
+      const item = yield* addLibraryItem({
+        paths: args._, title: args.title, move: args.move, proxies: args.proxies,
+        starts: yield* Effect.fromResult(parseTrackValues(args.starts, trackSeconds)),
+        latencies: yield* Effect.fromResult(parseTrackValues(args.latencies, trackSeconds)),
+        devices: yield* Effect.fromResult(parseTrackValues(args.devices, (v) => Result.succeed(v))),
+      });
+      yield* Console.log(JSON.stringify(item, null, 2));
+    }));
   },
 });
 
@@ -53,9 +67,13 @@ const finishCommand = defineCommand({
   },
   args: { item: libraryItemArg, proxies: { type: 'boolean', default: true, description: 'Make proxies too' } },
   async run({ args }) {
+    const { Console, Effect } = await import('effect');
     const { finishLibraryItem } = await import('#lib/footage/library/engine/add-library-item.ts');
-    const { resolveLibraryItemId } = await import('#lib/footage/library/engine/library-store.ts');
-    console.log(JSON.stringify(await finishLibraryItem(resolveLibraryItemId(args.item), { proxies: args.proxies, log }), null, 2));
+    const { LibraryStore } = await import('#lib/footage/library/engine/library-store.ts');
+    await runLibraryProgram(Effect.gen(function* () {
+      const id = yield* (yield* LibraryStore).resolveItemId(args.item);
+      yield* Console.log(JSON.stringify(yield* finishLibraryItem(id, { proxies: args.proxies }), null, 2));
+    }));
   },
 });
 
@@ -63,20 +81,24 @@ const listCommand = defineCommand({
   meta: { name: 'list', description: 'Print every item: id, length, tracks, flags and title.', about: 'Reads committed metadata only, so it works with the media offline; it says when the media is.' },
   args: { json: { type: 'boolean', description: 'Print the items as JSON' } },
   async run({ args }) {
-    const store = await import('#lib/footage/library/engine/library-store.ts');
+    const { Console, Effect } = await import('effect');
+    const { LibraryStore } = await import('#lib/footage/library/engine/library-store.ts');
+    const { LibraryMediaFolder } = await import('#lib/footage/library-media/engine/library-media-folder.ts');
     const { formatReviewClock } = await import('#lib/output/review/models/review-timeline-geometry.ts');
-    const items = store.listLibraryItemIds().map((id) => ({ item: store.readLibraryItem(id), flags: store.readLibraryFlags(id).flags.length }));
-    if (args.json) {
-      console.log(JSON.stringify(items.map(({ item }) => item), null, 2));
-      return;
-    }
-    const media = await import('#lib/footage/library-media/engine/library-media-folder.ts');
-    if (!media.libraryMediaIsOnline()) log(`media offline: ${media.libraryMediaFolder().path} isn't there; listing from metadata`);
-    if (!items.length) log('the library is empty: `studio library add <file>` adds footage');
-    for (const { item, flags } of items) {
-      const interrupted = item.source.kind === 'studio-recorder' && item.source.status === 'interrupted' ? ' (interrupted)' : '';
-      console.log(`${item.id}  ${formatReviewClock(item.durationSeconds)}  ${Object.keys(item.tracks).join('+')}  ${flags ? `${flags} flag${flags > 1 ? 's' : ''}  ` : ''}${item.title}${interrupted}`);
-    }
+    await runLibraryProgram(Effect.gen(function* () {
+      const store = yield* LibraryStore, media = yield* LibraryMediaFolder;
+      const items = yield* Effect.forEach(yield* store.itemIds(), (id) => Effect.all({ item: store.readItem(id), flags: Effect.map(store.readFlags(id), (file) => file.flags.length) }));
+      if (args.json) {
+        yield* Console.log(JSON.stringify(items.map(({ item }) => item), null, 2));
+        return;
+      }
+      if (!(yield* media.isOnline())) yield* Effect.log(`media offline: ${(yield* media.location()).path} isn't there; listing from metadata`);
+      if (!items.length) yield* Effect.log('the library is empty: `studio library add <file>` adds footage');
+      for (const { item, flags } of items) {
+        const interrupted = item.source.kind === 'studio-recorder' && item.source.status === 'interrupted' ? ' (interrupted)' : '';
+        yield* Console.log(`${item.id}  ${formatReviewClock(item.durationSeconds)}  ${Object.keys(item.tracks).join('+')}  ${flags ? `${flags} flag${flags > 1 ? 's' : ''}  ` : ''}${item.title}${interrupted}`);
+      }
+    }));
   },
 });
 
@@ -92,19 +114,23 @@ const searchCommand = defineCommand({
     json: { type: 'boolean', description: 'Print the hits as JSON, times in seconds' },
   },
   async run({ args }) {
-    const store = await import('#lib/footage/library/engine/library-store.ts');
+    const { Console, Effect } = await import('effect');
+    const { LibraryStore } = await import('#lib/footage/library/engine/library-store.ts');
     const { searchLibrary } = await import('#lib/footage/library/models/library-search.ts');
     const { formatReviewClockRange } = await import('#lib/output/review/models/review-timeline-geometry.ts');
-    const only = args.item && store.resolveLibraryItemId(args.item);
-    const hits = searchLibrary(store.readLibraryForSearch().filter(({ item }) => !only || item.id === only), args._.join(' '));
-    if (args.json) {
-      console.log(JSON.stringify(hits, null, 2));
-      return;
-    }
-    if (!hits.length) log(`nothing in the library says "${args._.join(' ')}"`);
-    for (const hit of hits) {
-      console.log(`${hit.item}  ${formatReviewClockRange(hit.start, hit.end)}  ${hit.on === 'flag' ? `flag #${hit.flag}: ` : ''}${hit.text}`);
-    }
+    await runLibraryProgram(Effect.gen(function* () {
+      const store = yield* LibraryStore, text = args._.join(' ');
+      const only = args.item ? yield* store.resolveItemId(args.item) : undefined;
+      const hits = yield* Effect.fromResult(searchLibrary((yield* store.readForSearch()).filter(({ item }) => !only || item.id === only), text));
+      if (args.json) {
+        yield* Console.log(JSON.stringify(hits, null, 2));
+        return;
+      }
+      if (!hits.length) yield* Effect.log(`nothing in the library says "${text}"`);
+      for (const hit of hits) {
+        yield* Console.log(`${hit.item}  ${formatReviewClockRange(hit.start, hit.end)}  ${hit.on === 'flag' ? `flag #${hit.flag}: ` : ''}${hit.text}`);
+      }
+    }));
   },
 });
 
@@ -112,35 +138,40 @@ const showCommand = defineCommand({
   meta: { name: 'show', description: 'Print an item: its tracks and sync, whether its media is online, the projects using it, its flags and transcript.', about: 'Reads committed metadata; works with the media offline. A project uses an item when its source imports `#library/<id>/item.json` or `transcript.json`.' },
   args: { item: libraryItemArg, json: { type: 'boolean', description: 'Print item.json, the projects that use it (usedBy), the flags file and the transcript as JSON' } },
   async run({ args }) {
-    const store = await import('#lib/footage/library/engine/library-store.ts');
+    const { Console, Effect, Option } = await import('effect');
+    const { LibraryStore } = await import('#lib/footage/library/engine/library-store.ts');
+    const { LibraryMediaFolder } = await import('#lib/footage/library-media/engine/library-media-folder.ts');
     const { transcriptLines } = await import('#lib/footage/transcript/models/footage-transcript.ts');
     const { libraryItemTimeOf } = await import('#lib/footage/library/models/library-item.ts');
     const { formatReviewClock, formatReviewClockRange } = await import('#lib/output/review/models/review-timeline-geometry.ts');
-    const id = store.resolveLibraryItemId(args.item), item = store.readLibraryItem(id), flags = store.readLibraryFlags(id), transcript = store.readLibraryTranscript(id);
-    const usedBy = store.projectsUsingLibraryItem(id);
-    if (args.json) {
-      console.log(JSON.stringify({ item, usedBy, flags, transcript }, null, 2));
-      return;
-    }
-    const media = await import('#lib/footage/library-media/engine/library-media-folder.ts');
-    const online = media.libraryMediaIsOnline();
-    console.log(`${item.id}  ${item.title}\n${formatReviewClock(item.durationSeconds)} long, ${item.recordedAt ? `recorded ${item.recordedAt}, ` : ''}added ${item.addedAt}`);
-    console.log(`media: ${online ? media.libraryMediaFolder().path : `offline (${media.libraryMediaFolder().path} isn't there)`}`);
-    for (const [name, track] of Object.entries(item.tracks)) {
-      const what = [track.video && `${track.video.width}×${track.video.height} ${track.video.codec} ${track.video.fps} fps${track.video.variableRate ? ' variable' : ''}`, track.audio && `${track.audio.codec} ${track.audio.sampleRate} Hz`].filter(Boolean).join(', ');
-      const sync = [`starts ${track.startSeconds.toFixed(3)} s`, track.latencySeconds && `latency ${track.latencySeconds} s`, track.hostDriftSeconds && `drift ${(track.hostDriftSeconds * 1000).toFixed(2)} ms`].filter(Boolean).join(', ');
-      console.log(`  ${name}: ${track.file}, ${what}; ${sync}${track.device ? `; ${track.device}` : ''}${track.proxy ? `; proxy ${track.proxy.width}×${track.proxy.height}` : ''}`);
-    }
-    for (const [name, why] of Object.entries({ ...item.leftOut })) console.log(`  ${name}: left out, ${why}`);
-    for (const [name, what] of Object.entries({ ...item.problems })) console.log(`  ${name}: ${what}`);
-    console.log(usedBy.length ? `used by: ${usedBy.join(', ')}` : 'used by no project');
-    if (flags.flags.length) console.log('flags:');
-    for (const flag of flags.flags) console.log(`  #${flag.id}  ${formatReviewClockRange(flag.start, flag.end)}  ${flag.note ?? ''}  (${flag.by})`);
-    if (transcript) {
-      console.log(`transcript (${transcript.track}):`);
-      const track = item.tracks[transcript.track];
-      for (const line of transcriptLines(transcript)) console.log(`  ${formatReviewClock(libraryItemTimeOf(track, line.start))}  ${line.text}`);
-    } else if (item.speech) console.log('no transcript yet: `studio library finish` makes it');
+    await runLibraryProgram(Effect.gen(function* () {
+      const store = yield* LibraryStore, media = yield* LibraryMediaFolder;
+      const id = yield* store.resolveItemId(args.item);
+      const item = yield* store.readItem(id), flags = yield* store.readFlags(id), transcript = Option.getOrUndefined(yield* store.readTranscript(id));
+      const usedBy = yield* store.projectsUsing(id);
+      if (args.json) {
+        yield* Console.log(JSON.stringify({ item, usedBy, flags, transcript }, null, 2));
+        return;
+      }
+      const online = yield* media.isOnline(), { path } = yield* media.location();
+      yield* Console.log(`${item.id}  ${item.title}\n${formatReviewClock(item.durationSeconds)} long, ${item.recordedAt ? `recorded ${item.recordedAt}, ` : ''}added ${item.addedAt}`);
+      yield* Console.log(`media: ${online ? path : `offline (${path} isn't there)`}`);
+      for (const [name, track] of Object.entries(item.tracks)) {
+        const what = [track.video && `${track.video.width}×${track.video.height} ${track.video.codec} ${track.video.fps} fps${track.video.variableRate ? ' variable' : ''}`, track.audio && `${track.audio.codec} ${track.audio.sampleRate} Hz`].filter(Boolean).join(', ');
+        const sync = [`starts ${track.startSeconds.toFixed(3)} s`, track.latencySeconds && `latency ${track.latencySeconds} s`, track.hostDriftSeconds && `drift ${(track.hostDriftSeconds * 1000).toFixed(2)} ms`].filter(Boolean).join(', ');
+        yield* Console.log(`  ${name}: ${track.file}, ${what}; ${sync}${track.device ? `; ${track.device}` : ''}${track.proxy ? `; proxy ${track.proxy.width}×${track.proxy.height}` : ''}`);
+      }
+      for (const [name, why] of Object.entries({ ...item.leftOut })) yield* Console.log(`  ${name}: left out, ${why}`);
+      for (const [name, what] of Object.entries({ ...item.problems })) yield* Console.log(`  ${name}: ${what}`);
+      yield* Console.log(usedBy.length ? `used by: ${usedBy.join(', ')}` : 'used by no project');
+      if (flags.flags.length) yield* Console.log('flags:');
+      for (const flag of flags.flags) yield* Console.log(`  #${flag.id}  ${formatReviewClockRange(flag.start, flag.end)}  ${flag.note ?? ''}  (${flag.by})`);
+      if (transcript) {
+        yield* Console.log(`transcript (${transcript.track}):`);
+        const track = item.tracks[transcript.track];
+        for (const line of transcriptLines(transcript)) yield* Console.log(`  ${formatReviewClock(libraryItemTimeOf(track, line.start))}  ${line.text}`);
+      } else if (item.speech) yield* Console.log('no transcript yet: `studio library finish` makes it');
+    }));
   },
 });
 
@@ -160,21 +191,32 @@ const flagCommand = defineCommand({
     by: { type: 'string', default: 'agent', description: 'Who sets it: agent, or reviewer when Graham flags by hand' },
   },
   async run({ args }) {
-    const { changeLibraryFlags, resolveLibraryItemId } = await import('#lib/footage/library/engine/library-store.ts');
-    const id = resolveLibraryItemId(args.item);
-    if (args.by !== 'agent' && args.by !== 'reviewer') throw new Error(`--by is agent or reviewer, not ${args.by}`);
-    const by = args.by;
-    const flagId = args.id === undefined ? undefined : Number(args.id.replace(/^#/, ''));
-    if (flagId === undefined) {
-      if (args.remove) throw new Error('--remove needs --id, the flag to remove');
-      if (!args.start) throw new Error('give the range to flag: studio library flag <item> <start> [<end>]');
-      const start = parseClockSeconds(args.start);
-      console.log(JSON.stringify(changeLibraryFlags(id, { op: 'flag.add', start, end: args.end ? parseClockSeconds(args.end) : start, ...(args.note && { note: args.note }) }, by), null, 2));
-      return;
-    }
-    if (args.start) throw new Error("a flag's range is fixed: remove it and flag the new range");
-    if (!args.remove && args.note === undefined) throw new Error('with --id, give --note or --remove');
-    console.log(JSON.stringify(changeLibraryFlags(id, args.remove ? { op: 'flag.remove', id: flagId } : { op: 'flag.note', id: flagId, note: args.note ?? '' }, by), null, 2));
+    const { Console, Effect, Schema } = await import('effect');
+    const { LibraryStore } = await import('#lib/footage/library/engine/library-store.ts');
+    const { LibraryRequestRefused } = await import('#lib/footage/library/models/library-errors.ts');
+    const { LibraryFlagAuthor } = await import('#lib/footage/library/models/library-flags.ts');
+    const refused = (reason: string) => new LibraryRequestRefused({ reason });
+    /** Seconds as `12.5`, `1:02.5` or `1:02:03`. */
+    const clockSeconds = (text: string) => {
+      const parts = text.trim().split(':');
+      if (parts.length > 3 || parts.some((p) => p === '' || Number.isNaN(Number(p)))) return Effect.fail(refused(`"${text}" isn't a time: give seconds (72.5) or m:ss (1:12.5)`));
+      return Effect.succeed(parts.reduce((total, part) => total * 60 + Number(part), 0));
+    };
+    await runLibraryProgram(Effect.gen(function* () {
+      const store = yield* LibraryStore;
+      const id = yield* store.resolveItemId(args.item);
+      const by = yield* Schema.decodeUnknownEffect(LibraryFlagAuthor)(args.by).pipe(Effect.mapError(() => refused(`--by is agent or reviewer, not ${args.by}`)));
+      const flagId = args.id === undefined ? undefined : Number(args.id.replace(/^#/, ''));
+      if (flagId === undefined) {
+        if (args.remove) return yield* refused('--remove needs --id, the flag to remove');
+        if (!args.start) return yield* refused('give the range to flag: studio library flag <item> <start> [<end>]');
+        const start = yield* clockSeconds(args.start), end = args.end ? yield* clockSeconds(args.end) : start;
+        return yield* Console.log(JSON.stringify(yield* store.changeFlags(id, { op: 'flag.add', start, end, ...(args.note && { note: args.note }) }, by), null, 2));
+      }
+      if (args.start) return yield* refused("a flag's range is fixed: remove it and flag the new range");
+      if (!args.remove && args.note === undefined) return yield* refused('with --id, give --note or --remove');
+      return yield* Console.log(JSON.stringify(yield* store.changeFlags(id, args.remove ? { op: 'flag.remove', id: flagId } : { op: 'flag.note', id: flagId, note: args.note ?? '' }, by), null, 2));
+    }));
   },
 });
 
@@ -186,17 +228,22 @@ const pathCommand = defineCommand({
     proxy: { type: 'boolean', description: "The track's editing proxy rather than its original" },
   },
   async run({ args }) {
-    const store = await import('#lib/footage/library/engine/library-store.ts');
-    const item = store.readLibraryItem(store.resolveLibraryItemId(args.item));
-    if (args.track === 'input') {
-      if (!item.input) throw new Error(`${item.id} has no input log`);
-      console.log(store.libraryMediaPath(item, item.input.file));
-      return;
-    }
-    const name = args.track ?? Object.keys(item.tracks)[0], track = item.tracks[name];
-    if (!track) throw new Error(`${item.id} has no ${name} track; it has ${Object.keys(item.tracks).join(', ')}`);
-    if (args.proxy && !track.proxy) throw new Error(`${item.id}'s ${name} has no proxy${track.video ? ': it needs none, or `studio library finish` makes it' : ': it has no picture'}`);
-    console.log(store.libraryMediaPath(item, args.proxy && track.proxy ? track.proxy.file : track.file));
+    const { Console, Effect } = await import('effect');
+    const { LibraryStore } = await import('#lib/footage/library/engine/library-store.ts');
+    const { LibraryMediaFolder } = await import('#lib/footage/library-media/engine/library-media-folder.ts');
+    const { LibraryRequestRefused } = await import('#lib/footage/library/models/library-errors.ts');
+    await runLibraryProgram(Effect.gen(function* () {
+      const store = yield* LibraryStore, media = yield* LibraryMediaFolder;
+      const item = yield* store.readItem(yield* store.resolveItemId(args.item));
+      if (args.track === 'input') {
+        if (!item.input) return yield* new LibraryRequestRefused({ reason: `${item.id} has no input log` });
+        return yield* Console.log(yield* media.itemFile(item.id, item.input.file));
+      }
+      const name = args.track ?? Object.keys(item.tracks)[0], track = item.tracks[name];
+      if (!track) return yield* new LibraryRequestRefused({ reason: `${item.id} has no ${name} track; it has ${Object.keys(item.tracks).join(', ')}` });
+      if (args.proxy && !track.proxy) return yield* new LibraryRequestRefused({ reason: `${item.id}'s ${name} has no proxy${track.video ? ': it needs none, or `studio library finish` makes it' : ': it has no picture'}` });
+      return yield* Console.log(yield* media.itemFile(item.id, args.proxy && track.proxy ? track.proxy.file : track.file));
+    }));
   },
 });
 
@@ -208,15 +255,18 @@ const configCommand = defineCommand({
   },
   args: { 'media-folder': { type: 'string', description: 'Where the media is now: a path, or "default" for work/library/media/' } },
   async run({ args }) {
-    const media = await import('#lib/footage/library-media/engine/library-media-folder.ts');
+    const { Console, Effect, Path } = await import('effect');
+    const { LibraryMediaFolder } = await import('#lib/footage/library-media/engine/library-media-folder.ts');
     const folder = args['media-folder'];
-    if (folder !== undefined) {
-      const { resolve } = await import('node:path');
-      const { mediaFolder: _, ...rest } = media.readLibraryMachineSettings();
-      media.writeLibraryMachineSettings(folder === 'default' ? rest : { ...rest, mediaFolder: resolve(folder) });
-    }
-    const { path, configured } = media.libraryMediaFolder();
-    console.log(JSON.stringify({ mediaFolder: path, default: !configured, online: media.libraryMediaIsOnline() }, null, 2));
+    await runLibraryProgram(Effect.gen(function* () {
+      const media = yield* LibraryMediaFolder, path = yield* Path.Path;
+      if (folder !== undefined) {
+        const { mediaFolder: _, ...rest } = yield* media.settings();
+        yield* media.writeSettings(folder === 'default' ? rest : { ...rest, mediaFolder: path.resolve(folder) });
+      }
+      const { path: mediaFolder, configured } = yield* media.location();
+      yield* Console.log(JSON.stringify({ mediaFolder, default: !configured, online: yield* media.isOnline() }, null, 2));
+    }));
   },
 });
 
