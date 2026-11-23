@@ -12,14 +12,14 @@
 // through to disk.
 
 import { resolve, sep } from 'node:path';
-import { API, SymbolFlags, TypeFlags } from 'typescript/unstable/sync';
+import { API, SignatureKind, SymbolFlags, TypeFlags } from 'typescript/unstable/sync';
 import type { Checker, IndexInfo, Program, Snapshot, Type } from 'typescript/unstable/sync';
 import { NodeFlags, SyntaxKind } from 'typescript/unstable/ast';
 import type { Node, SourceFile } from 'typescript/unstable/ast';
 import type { StudioPosition } from '../policy/studio-tree.ts';
 import type { SourceTree } from './source-tree.ts';
 
-export { NodeFlags, SyntaxKind, TypeFlags };
+export { NodeFlags, SignatureKind, SymbolFlags, SyntaxKind, TypeFlags };
 export type { Checker, IndexInfo, Node, Program, SourceFile, Type };
 
 /**

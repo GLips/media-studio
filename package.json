@@ -7,9 +7,9 @@
     "studio": "cli/studio.ts"
   },
   "scripts": {
-    "typecheck": "tsc -p .",
-    "typecheck:gate": "tsc -p tsconfig.gate.json",
-    "typecheck:web": "tsc -p web/tsconfig.json --noEmit",
+    "typecheck": "effect-tsgo tsc -p .",
+    "typecheck:gate": "effect-tsgo tsc -p tsconfig.gate.json",
+    "typecheck:web": "effect-tsgo tsc -p web/tsconfig.json --noEmit",
     "test": "node --test 'lib/**/*.test.ts' 'lint/**/*.test.ts' 'cli/**/*.test.ts' 'web/src/**/*.test.ts' 'work/projects/**/*.test.ts' lib/output/render/engine/workspace-retime-check.ts",
     "test:gate": "node --test 'lib/**/*.test.ts' 'lint/**/*.test.ts' 'cli/**/*.test.ts' 'web/src/**/*.test.ts'",
     "test:workspace": "node --test 'work/projects/**/*.test.ts' lib/output/render/engine/workspace-retime-check.ts",

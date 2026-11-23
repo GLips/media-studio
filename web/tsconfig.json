@@ -1,6 +1,7 @@
 // The app's program. Its compiler options are the repo's (../tsconfig.json), not tk2's stricter set: the app pulls in
 // lib's models and studio code, which is checked under whatever program imports it.
 {
+  "extends": "../tsconfig.effect.json",
   "compilerOptions": {
     "target": "ES2023",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
