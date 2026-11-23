@@ -67,8 +67,8 @@ behind it inside the shot at every frame; over a dark page, put an opaque backgr
   at 30 fps); `'shut'` draws every frame sharp, on purpose.
 - `plays: [paintCameraPlay({kind: 'move', value}, {clock, origin, blend?})]`, `origin` the name errors give it,
   `value` a `PaintCameraMovePose` `{pan?, dolly?, zoom?, roll?}` in time; `{kind: 'focus', value: {focus, aperture}}` for depth of field, `focus` the
-  depth held sharp, `aperture` the blur sigma at infinity. One move plays at a time: a second over the same seconds
-  is refused unless it says `blend: 'add'`, which adds its fields to the move under it (a kick on a push).
+  depth held sharp, `aperture` the blur sigma at infinity, `tilt?` leaning the sharp plane (tilt-shift). One move plays at a time: a second over the same seconds
+  is refused unless it says `blend: 'add'`, adding its fields to the move under it.
 - A plane at depth d shows scaled zoom · d ÷ (d − dolly) about the frame centre, shifted by −pan · zoom ÷ (d − dolly).
   A pan of 100 moves a plane at depth 2 by 50 and one at 0.5 by 200; a dolly grows near planes more than far ones.
   A pan moves a far plane less, so give it a document wider by what it travels.
