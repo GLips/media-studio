@@ -14,6 +14,8 @@ export const SDK_OWNERS: readonly SdkOwner[] = [
   // Driving a product's site to capture it, and rasterizing the studio's own drawings and pages.
   { sdk: 'playwright', owners: ['lib/footage/capture/engine/', 'lib/platform/raster/engine/'], packages: ['playwright', 'playwright-core', '@playwright/test'] },
   { sdk: 'ffmpeg', owners: ['lib/platform/ffmpeg/engine/'], binaries: ['ffmpeg', 'ffprobe'] },
+  // Hearing speech: every transcript, a voice take's included, comes from one place, so each is split and timed alike.
+  { sdk: 'whisper.cpp', owners: ['lib/footage/transcript/engine/'], packages: ['@remotion/install-whisper-cpp'], binaries: ['whisper-cli'] },
   // Rendering a project, and (platform/browser) opening the headless browser every render and every GPU page runs in.
   { sdk: '@remotion/renderer', owners: ['lib/output/render/engine/', 'lib/platform/browser/engine/'], packages: ['@remotion/renderer'] },
   { sdk: '@remotion/bundler', owners: ['lib/output/render/engine/'], packages: ['@remotion/bundler'] },

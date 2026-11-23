@@ -5,7 +5,7 @@
 // Negative space: the manifest holds real reads only. An estimate is worked out by resolveStoryboard each time it
 // resolves, and never stored.
 
-import type { SpokenWord } from './voice-words.ts';
+import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 
 /** A line's timing: its length, its words from its start, and the pause the read left before it. */
 export type VoiceTake = {

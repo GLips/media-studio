@@ -4,8 +4,7 @@
 // The script is the truth for *what* was said; whisper is only trusted for *when*. So there's always exactly one
 // timing per script word, even where whisper misheard ("seventeen" as "17") or dropped a word.
 
-/** A script word and when it's spoken, in seconds from the start of its line. */
-export type SpokenWord = { text: string; start: number; end: number };
+import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 
 export const scriptWords = (text: string) => text.split(/\s+/).filter(Boolean);
 

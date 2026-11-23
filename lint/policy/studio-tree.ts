@@ -116,6 +116,8 @@ export const LIB_LAYERS: readonly LibLayer[] = [
       'platform/gpu', 'platform/files', 'platform/hash', 'platform/remote', 'platform/trace',
     ],
   },
+  // Transcription stands below voice, which aligns a script to it, and below footage and the library, which index by it.
+  { name: 'hearing', features: ['footage/transcript'] },
   { name: 'vocabulary', features: ['picture/frame', 'picture/motion', 'picture/type', 'picture/color', 'picture/shot-camera', 'picture/lens', 'picture/readback'] },
   { name: 'timing', features: ['timing/voice', 'timing/timeline', 'timing/sound', 'timing/music', 'timing/storyboard'] },
   // The camera keeps clear of the caption band a style reserves, so it stands on captions.

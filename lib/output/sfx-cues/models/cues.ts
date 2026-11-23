@@ -8,7 +8,7 @@
 // - a whoosh lasts as long as its move, and a riser peaks on its reveal.
 // A sound a scene placed by hand plays from its `<Sfx>`; its cue is there so the rules count it.
 
-import type { SpokenWord } from '#lib/timing/voice/models/voice-words.ts';
+import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 import { roundSfxSeconds, sfxEventSeries, type SfxEvent } from './cue-events.ts';
 import { isSfxGenerated, resolveSfxParams, sfxSoundCategory, sfxSoundLabel, type SfxSoundRequest } from '#lib/timing/sound/models/library.ts';
 

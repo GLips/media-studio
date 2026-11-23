@@ -7,7 +7,7 @@ import { studioTempRoot } from '#lib/platform/temp/engine/studio-temp.ts';
 import { samplesFromWav, wavFromSamples } from '#lib/platform/wav/models/wav.ts';
 import type { RecordedVoice } from '../models/voice-manifest.ts';
 import type { VoiceScript } from '../models/voice-take.ts';
-import type { SpokenWord } from '../models/voice-words.ts';
+import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 
 // whisper.cpp is a local model of ~1.5 GB, so it stands in here: each run of tone is one word, told apart by its
 // length, as the fake TTS below reads them. `hearingFails` stands in for a cut that fails, and `collapsesRepeats` for
@@ -46,8 +46,8 @@ function heardWordsForTest(wavPath: string): SpokenWord[] {
 Object.assign(globalThis, { heardWordsForTest });
 registerHooks({
   resolve(specifier, context, nextResolve) {
-    if (specifier !== './whisper-words.ts') return nextResolve(specifier, context);
-    return { url: 'data:text/javascript,export const heardWords = async (path) => globalThis.heardWordsForTest(path);', shortCircuit: true };
+    if (specifier !== '#lib/footage/transcript/engine/transcribe-footage.ts') return nextResolve(specifier, context);
+    return { url: 'data:text/javascript,export const transcribeFootage = async (path) => ({ words: globalThis.heardWordsForTest(path) });', shortCircuit: true };
   },
 });
 const { importVoiceRecording, rereadVoiceLines, syncVoice, unvoicedVoiceLines, useVoiceTake } = await import('./voice-project.ts');
