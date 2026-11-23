@@ -8,5 +8,6 @@
   "lib/paint/three-layers": "three.js draws its painted textures with the renderer, on the device's owner the renderer draws on, and hands its renders to it as three planes.",
   "lib/paint/rig": "A rig's layers are paintings cut into parts along regions, and its feet and joints are points on the painting's plane.",
   "lib/paint/document": "A document is checked against the engine it compiles to: its regions, boundaries, fields, fills and blooms as the renderer reads them.",
-  "lib/paint/shot": "A shot's planes lay, hold and mask painted films with the painting's lays, moments, picture sources and boxes."
+  "lib/paint/shot": "A shot's planes lay, hold and mask painted films with the painting's lays, moments, picture sources and boxes.",
+  "lib/paint/paper-kit": "A construction's outlines and slots are polygons in print px, tested inside and crossing as regions are; the diorama light is a paint light."
 }

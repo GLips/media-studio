@@ -22,6 +22,10 @@ export type PaintedThreePopUpSheet = PaintedThreeSheet & {
   readonly on?: { readonly sheet: string; readonly face?: string };
   readonly at: StampPoint;
   readonly angle: PresentationValue<number>;
+  /** Radians it turns about its parent face's normal at `at`, before it stands. */
+  readonly yaw?: PresentationValue<number>;
+  /** An sRGB hex its print is multiplied by, so one print varies across placements. */
+  readonly tint?: string;
 };
 
 /**

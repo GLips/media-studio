@@ -156,6 +156,13 @@ export { createPaintedThreePaperLights, paintedThreePaperMaterial, type PaintedT
 export type { PaintedThreePopUp, PaintedThreePopUpSheet } from '#lib/paint/three-layers/models/painted-three-pop-up.ts';
 export { paintedThreePopUp, type PaintedThreePopUpLook } from '#lib/paint/three-layers/studio/painted-three-pop-up.ts';
 export { paperPopUpPlane, type PaperPopUpPlaneOptions } from '#lib/paint/shot/studio/shot-paper-pop-up.ts';
+// The paper kit: cut-paper constructions as pop-up sheets, folding up from flat by a rise, and a diorama's presets.
+export {
+  PAPER_BOX_HOUSE_WALLS, PAPER_STAND_UP_TAB, PAPER_TENT_BACK, paperBoxHouse, paperBoxHouseNet, paperBoxHouseRoofId, paperBoxHouseTabFace, paperStandUp, paperTent, paperXTree,
+  paperXTreeSlots, type PaperBoxHouseNet, type PaperBoxHouseOptions, type PaperBoxHouseWall, type PaperConstruction, type PaperConstructionPlace, type PaperOutline, type PaperRise,
+  type PaperStandUpOptions, type PaperTentOptions, type PaperXTreeOptions, type PaperXTreeSlots,
+} from '#lib/paint/paper-kit/models/paper-constructions.ts';
+export { PAPER_DIORAMA_PITCH, paperDioramaFocus, paperDioramaLight } from '#lib/paint/paper-kit/models/paper-diorama.ts';
 export { paintWorldLightDirection, type PaintWorldDirection } from '#lib/paint/animation/models/paint-camera-world.ts';
 export { setThreeMirrorCamera } from '#lib/picture/shot-camera/studio/three-mirror-camera.ts';
 export type { PaintedThreeShadows } from '#lib/paint/three-layers/studio/painted-three-shadows.ts';
