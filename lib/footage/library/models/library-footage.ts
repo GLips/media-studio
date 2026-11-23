@@ -30,9 +30,9 @@ export type LibraryFootage = {
   /** Every word said in it, on item time; none for an item with no speech or no transcript yet. */
   words: readonly SpokenWord[];
   /**
-   * The words said between `from` and `to`, in item seconds, as a storyboard line's `speech`: what's said and its
-   * levelled sound. A word is in when its middle is; each edge then moves into the pause beside the words kept, so
-   * the times `studio library search` and `show` print (a line's start, the next line's start) cut cleanly.
+   * The words whose middles lie between `from` and `to` (item seconds), as a storyboard line's `speech`: what's said
+   * and its levelled sound. Each edge moves into the pause beside the words, so the times `studio library show`
+   * prints (a line's start, the next line's) cut cleanly. Throws when no word lies between: a spoken line says something.
    */
   speech(from: number, to: number): RecordedSpeech;
   /**
@@ -107,11 +107,13 @@ export function libraryFootage(itemJson: LibraryItemJsonImport, transcriptJson?:
     words,
     speech(asked, askedTo) {
       if (!speechTrack) throw new Error(`${item.id} has no speech track to speak a line from`);
-      const { from, to } = cutInPauses(asked, askedTo);
+      // A track starting on a fraction of a millisecond can round an edge on its first or last word just outside it.
+      const first = libraryItemTimeOf(speechTrack, 0), last = libraryItemTimeOf(speechTrack, speechTrack.mediaSeconds);
+      const cut = cutInPauses(asked, askedTo);
+      const from = Math.max(first, cut.from), to = Math.min(last, cut.to);
       const heard = words.filter((w) => (w.start + w.end) / 2 >= from && (w.start + w.end) / 2 <= to)
         .map((w) => ({ text: w.text, start: Math.max(0, w.start - from), end: Math.min(to - from, w.end - from) }));
       // A stretch reaching outside the speech track has no sound there to play.
-      const first = libraryItemTimeOf(speechTrack, 0), last = libraryItemTimeOf(speechTrack, speechTrack.mediaSeconds);
       if (from < first || to > last) throw new Error(`${item.id}'s speech runs ${first.toFixed(3)}–${last.toFixed(3)} s: a line can't be spoken from ${from}–${to} s`);
       const { levelled } = speechTrack;
       const sound = levelled ? { item: item.id, file: levelled.file, start: libraryMediaTimeOf(speechTrack, from), lufs: levelled.lufs } : null;

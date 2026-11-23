@@ -6,7 +6,7 @@ export { Blockout, type BlockoutShape, type BlockoutSubject } from '#lib/footage
 export { dollyMove, orbitMove, pushInMove, type BlockoutLookAt, type BlockoutMove } from '#lib/footage/previs/models/blockout-camera.ts';
 export { FlatBlockout, type FlatPiece, type FlatPieceKind, type FlatViewMoves } from '#lib/footage/previs/studio/flat-blockout.tsx';
 export type { FlatKey, FlatPose, FlatView } from '#lib/footage/previs/models/flat-blockout-pose.ts';
-export { transcriptCutBefore, transcriptLines, type FootageTranscript } from '#lib/footage/transcript/models/footage-transcript.ts';
+export { transcriptLines, type FootageTranscript } from '#lib/footage/transcript/models/footage-transcript.ts';
 export type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 export { libraryFootage, type LibraryFootage, type LibraryTranscriptFile } from '#lib/footage/library/models/library-footage.ts';
 export { followPointAt, pointOnPathAt, type TimedPoint } from '#lib/picture/camera/models/follow-point.ts';

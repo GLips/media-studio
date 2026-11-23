@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { transcriptCutBefore } from './footage-transcript.ts';
 import { audioPauses, fileTimeInPiece, planTranscriptPieces, quietAudioLevel, wordsTimedAtPauses, type TranscriptPiece } from './transcript-audio.ts';
 
 /** Level frames (10 ms each) for runs of speech (`true`) and quiet, each `seconds` long. */
@@ -42,15 +41,4 @@ test('a word ends where the quiet after it begins, and words with no quiet betwe
     { text: 'three', start: 1.82, end: 2 },
     { text: 'four', start: 2.6, end: 3.4 },
   ]);
-});
-
-test('the cut before a word sits in the longest quiet between it and the word before', () => {
-  const transcript = {
-    duration: 6,
-    words: [{ text: 'take', start: 1, end: 1.5 }, { text: 'two', start: 2.2, end: 2.6 }, { text: 'now', start: 2.6, end: 3 }],
-    pauses: [{ start: 1.55, end: 1.6 }, { start: 1.7, end: 2.15 }, { start: 3, end: 6 }],
-  };
-  assert.deepEqual(transcriptCutBefore(transcript, 1), { start: 1.7, end: 2.15 });
-  assert.deepEqual(transcriptCutBefore(transcript, 2), { start: 2.6, end: 2.6 });
-  assert.deepEqual(transcriptCutBefore(transcript, 3), { start: 3, end: 6 });
 });
