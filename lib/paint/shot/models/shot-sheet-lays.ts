@@ -3,7 +3,7 @@
 // whole; the nodes below it posed its marks before the solve, and a lattice carries the solved paint where they pose
 // it now. Each composite step becomes a lattice (a card over its films as far as each shows, a film over its paint);
 // a sheet drawn as pieces gives way to its pieces at its card. A span faded apart is mixed back by its visibility; a
-// film is cut by its reveals; a sheet folded away lays blank paper. shotPlaneLayPlan plans and keys a moment.
+// film is cut by its reveals; a sheet turned away, blank paper over what stands on it.
 
 import { PAINT_SIMILARITY_IDENTITY } from '#lib/paint/animation/models/paint-similarity.ts';
 import { paintCardShade, paintCardSide } from '#lib/paint/animation/models/paint-card-face.ts';
@@ -149,19 +149,55 @@ export function shotSelectionStepLays({ compiled, filmBoxes, solved, at, shutter
   });
 }
 
+/**
+ * A plane's lay order, as indices in `compiled.steps`: document order, but an own sheet `turned` (showing its back)
+ * lays the sheets nested on it first, last first, each run whole, then its own steps. `turned` is the whole line's
+ * facing, so a sheet folded back over a turned card faces front, its run reversed twice, as paper would lie.
+ */
+export function shotStepLayOrder(compiled: PaintingSelectionCompiled, turned: (sheet: number) => boolean): number[] {
+  const { tree, sheets, steps } = compiled;
+  // The root's run is every step; an own sheet's, its owner's, which the compile keeps contiguous.
+  const runs = sheets.map(({ sheet: { owner } }) => {
+    if (owner === null) return { first: 0, last: steps.length - 1 };
+    const inside = paintingNodeSteps(compiled, owner);
+    return { first: inside[0], last: inside.at(-1)! };
+  });
+  // A sheet stands on the own sheet of the innermost group enclosing its owner that owns one; else on the root's.
+  const nested = sheets.map((): number[] => []);
+  sheets.forEach(({ sheet: { owner } }, s) => {
+    if (owner === null) return;
+    const groups = tree.byKey.get(owner)!.groups, on = groups.findLast((group) => sheets.some(({ sheet }) => sheet.owner === group));
+    nested[on === undefined ? 0 : sheets.findIndex(({ sheet }) => sheet.owner === on)].push(s);
+  });
+  const lay = (s: number): number[] => {
+    const { first, last } = runs[s], all = Array.from({ length: last - first + 1 }, (_, i) => first + i);
+    const children = nested[s].map((child) => ({ first: runs[child].first, last: runs[child].last, run: lay(child) }));
+    const childAt = (step: number) => children.find((child) => child.first <= step && step <= child.last);
+    // Seen from behind, what stands on a card's front lies behind it, the sheet nearest the card laid last.
+    if (turned(s)) return [...children.toSorted((a, b) => b.first - a.first).flatMap(({ run }) => run), ...all.filter((step) => !childAt(step))];
+    return all.flatMap((step) => {
+      const child = childAt(step);
+      if (!child) return [step];
+      return child.first === step ? child.run : [];
+    });
+  };
+  return lay(0);
+}
+
 /** The span of steps a node faded apart composites, `first` to `last` inclusive, and how visible it is, below 1. */
 export type ShotFadeSpan = { readonly node: NodeKey; readonly first: number; readonly last: number; readonly visibility: number };
 
 /**
- * The spans of steps `apart` nodes (document keys, by visibility: shotFadedApart's) composite apart: each one's steps
- * (paintingNodeSteps, its own sheet's card among them), contiguous in document order. Outermost first where spans
- * nest; none for a node the selection lays nothing of.
+ * The spans `apart` nodes (shotFadedApart's) composite apart, as places in `order` (shotStepLayOrder's): each one's
+ * steps that lay anything (`laid`, by compile index). Outermost first where spans nest; none for a node laying nothing.
+ * Laid steps alone, as a group on a turned card may hold a nested sheet and a turned-away film the order parts.
  */
-export function shotFadeSpans(compiled: PaintingSelectionCompiled, apart: ReadonlyMap<NodeKey, number>): ShotFadeSpan[] {
+export function shotFadeSpans(compiled: PaintingSelectionCompiled, apart: ReadonlyMap<NodeKey, number>, order: readonly number[], laid: (step: number) => boolean): ShotFadeSpan[] {
+  const placeOf = new Map(order.map((step, place) => [step, place]));
   const spans: ShotFadeSpan[] = [];
   for (const [node, visibility] of apart) {
-    const inside = paintingNodeSteps(compiled, node);
-    if (inside.length) spans.push({ node, first: inside[0], last: inside.at(-1)!, visibility });
+    const places = paintingNodeSteps(compiled, node).filter(laid).map((step) => placeOf.get(step)!);
+    if (places.length) spans.push({ node, first: Math.min(...places), last: Math.max(...places), visibility });
   }
   return spans.toSorted((a, b) => a.first - b.first || b.last - a.last);
 }
@@ -227,12 +263,16 @@ export type ShotPlaneRead = { readonly drawable: OccurrenceKey; readonly steps: 
 const shotMasksOf = ({ plane }: Pick<ShotPlaneLayInput, 'plane'>): ShotMaskAt[] =>
   plane.masks.map(({ drawable, invert }) => ({ drawable, invert: invert ?? false }));
 
-/** What of `input`'s plane the shot's alphaOf masks read: each drawable's steps in its compile, the plane's being all of them. */
-function shotPlaneReads({ shot, plane, compiled }: Pick<ShotPlaneLayInput, 'shot' | 'plane' | 'compiled'>): ShotPlaneRead[] {
+/**
+ * What of `input`'s plane the shot's alphaOf masks read: each drawable's steps as places in `order`
+ * (shotStepLayOrder's), the plane's being all of them.
+ */
+function shotPlaneReads({ shot, plane, compiled }: Pick<ShotPlaneLayInput, 'shot' | 'plane' | 'compiled'>, order: readonly number[]): ShotPlaneRead[] {
+  const placeOf = new Map(order.map((step, place) => [step, place]));
   return [...shot.masks.read].filter((drawable) => shotOccurrencePlane(drawable) === plane.id).map((drawable): ShotPlaneRead => {
-    if (drawable === plane.id) return { drawable, steps: new Set(compiled.steps.keys()), ground: true };
+    if (drawable === plane.id) return { drawable, steps: new Set(order.keys()), ground: true };
     const { node } = plane.occurrences.find(({ key }) => key === drawable)!;
-    return { drawable, steps: new Set(paintingNodeSteps(compiled, node)), ground: false };
+    return { drawable, steps: new Set(paintingNodeSteps(compiled, node).map((step) => placeOf.get(step)!)), ground: false };
   });
 }
 
@@ -256,12 +296,13 @@ export type ShotPlaneLayInput = {
 };
 
 /**
- * A painted plane at one moment, planned: its steps, each film's reveals by sheet (under the poses its marks were
- * solved by), its faded spans (outermost first), its ground, pieces rigs, masks, what others' masks read of it, its
- * visibility, whether it glows and whether anything travels over the shutter. `key` names all the lay reads.
+ * A painted plane at one moment, planned: its steps as laid, `order` their compile indices; each film's reveals by
+ * sheet; its fades (outermost first), ground, pieces rigs, masks and what others' masks read, places in `steps`; its
+ * visibility, and whether it glows or travels over the shutter. `key` names all the lay reads.
  */
 export type ShotPlaneLayPlan = {
   readonly key: string;
+  readonly order: readonly number[];
   readonly steps: readonly (ShotStepFrame | null)[];
   readonly reveals: readonly StampFilmRevealLinks[];
   readonly fades: readonly ShotFadeSpan[];
@@ -354,7 +395,7 @@ export function shotPlaneLayPlan(input: ShotPlaneLayInput, moment: ShotMomentAt)
   // What's inside a pieces rig fades in its picture (shotPiecesLevels), so it isn't composited apart here.
   const fadable =plane.occurrences.filter((occurrence) => !piecesRigs.some(({ rig }) => occurrence.groups.includes(rig.occurrence)));
   const owners = new Set(compiled.sheets.flatMap(({ sheet: { owner } }) => (owner === null ? [] : [owner])));
-  const apart = shotFadedApart(fadable, visibilityOf, owners), fades = shotFadeSpans(compiled, apart);
+  const apart = shotFadedApart(fadable, visibilityOf, owners);
 
   const hidden = new Set(rigs.filter(({ rig }) => !rig.pieces).flatMap(({ rig }) => shotRigHiddenCels(rig, read(rig, at).pose)));
   const filmBoxes = films.map((sheet) => sheet.map(({ box }): StampBox | null => box && { x0: box.x, y0: box.y, x1: box.x + box.w, y1: box.y + box.h }));
@@ -369,7 +410,11 @@ export function shotPlaneLayPlan(input: ShotPlaneLayInput, moment: ShotMomentAt)
     if (!glows.has(glow.from)) glows.set(glow.from, shotNodeGlowAt(motion, glow, at));
     return glows.get(glow.from)!;
   };
-  const steps = lays.map((lay): ShotStepFrame | null => {
+  // Taken at the moment alone: a sheet turning over within the shutter lays in one order the whole frame.
+  const order = shotStepLayOrder(compiled, (s) => s > 0 && paintCardSide(paintingPoseTurn(shotSheetPlaceAt(compiled.tree, compiled.sheets[s].sheet, atMoment))) === 'back');
+  const fades = shotFadeSpans(compiled, apart, order, (step) => lays[step] !== null);
+  const steps = order.map((index): ShotStepFrame | null => {
+    const lay = lays[index];
     if (!lay) return null;
     if (lay.kind !== 'film') return { lay, opacity: 1, glow: null };
     return { lay, opacity: apart.has(lay.layer) ? 1 : visibilityOf(lay.layer), glow: glowOf(lay.layer) };
@@ -388,19 +433,19 @@ export function shotPlaneLayPlan(input: ShotPlaneLayInput, moment: ShotMomentAt)
   }
 
   const reveals = paintingRevealLinksOf(compiled, solved, selection.at);
-  const masks = shotMasksOf(input), reads = shotPlaneReads(input);
+  const masks = shotMasksOf(input), reads = shotPlaneReads(input, order);
   const visibility = plane.opaqueBack ? 1 : shotVisibilityAt(shot, plane.id, plane.id, at), emits = steps.some((step) => step?.glow && step.opacity > 0);
   const travels = !!shutter && ((ground?.kind === 'placed' && latticeTravels(ground.lattice)) || steps.some((step) => step && shotStepLatticed(step.lay) && latticeTravels(step.lay.lattice)) || pieces.some((each) => each.travels));
   // All the lay reads: the compile and its films, every pose at the moment and the shutter's ends, how much shows of
   // what, the ground, the pieces, the masks and the drawables read, and the light. The stage's own store keeps the
   // pictures. Reveals are the compile's, so only when each shows and where it lies are new.
   const key = JSON.stringify([
-    plane.id, plane.opaqueBack, shot.light, compileId(compiled), films.map((sheet) => sheet.map((film) => film.key)), posesText(solved), planeAtText(atMoment),
+    plane.id, plane.opaqueBack, shot.light, compileId(compiled), films.map((sheet) => sheet.map((film) => film.key)), posesText(solved), planeAtText(atMoment), order,
     reveals.map((sheet) => sheet.map((film) => film.map(({ toRest, at: shownAt }) => [toRest, shownAt]))),
     shutterAt && [planeAtText(shutterAt.open), planeAtText(shutterAt.close)], [...hidden], steps.map((step) => step && [step.opacity, step.glow, step.lay.kind === 'card' && step.lay.films]), fades,
     ground && (ground.kind === 'stage' ? 'stage' : ground.box), pieces.map((each) => [
       each.rig.occurrence, each.shown, each.steps, each.levels, piecesPoseText(each.at),each.shutter && [piecesPoseText(each.shutter.open), piecesPoseText(each.shutter.close)],
     ]), masks.map((mask) => [mask.drawable, mask.invert]), reads.map(({ drawable }) => drawable), visibility, emits, travels,
   ]);
-  return { key, steps, reveals, fades, ground, pieces, masks, reads, visibility, emits, travels };
+  return { key, order, steps, reveals, fades, ground, pieces, masks, reads, visibility, emits, travels };
 }
